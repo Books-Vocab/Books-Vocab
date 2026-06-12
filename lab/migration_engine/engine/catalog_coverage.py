@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""
+catalog_coverage.py — the loss meter for the AST front-end, measured over the whole
+real SwiftUI corpus (ios/BooksAndVocab/Views, ~198 View structs).
+
+Optimizing the migration system "with the catalog as a large training set" is blind
+without a measurable loss. This harness IS that loss: it runs the SwiftSyntax dumper
+over every View struct and aggregates
+
+  - parse coverage   : structs the dumper produced IR for (vs crashed)
+  - contract pass    : IR that validates against ir_contract (the seam)
+  - node coverage    : resolved modifiers / total decorations (1 - unparsed_rate)
+  - unparsed histogram: which SwiftUI modifiers/constructs degrade most often
+                        → the priority queue for what to implement next
+  - dirtiest structs : per-struct unparsed counts → where the long tail lives
+
+Run: uv run python lab/migration_engine/engine/catalog_coverage.py [--json out.json] [--top N]
+"""
+from __future__ import annotations
+import json
+import re
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+ENG = ROOT / "lab/migration_engine/engine"
+sys.path.insert(0, str(ENG))
+from ir_contract import validate_ir  # noqa: E402
+
+BIN = ROOT / "lab/swift_ast_dumper/.build/debug/swift-ast-dumper"
+# Two scopes: SYMBOLS is the whole app (custom modifiers are defined app-wide in
+# UIComponents/, Platform/, …); CORPUS is the View layer we actually score. The dumper
+# builds its symbol table from SYMBOLS and emits only structs whose path matches EMIT.
+SYMBOLS = ROOT / "ios/BooksAndVocab"
+CORPUS = ROOT / "ios/BooksAndVocab/Views"
+EMIT = "/Views/"
+
+# unparsed strings are raw source fragments; classify by leading `.modifier(` or mark
+# as a non-modifier expression (a bare view call / control-flow the lowerer punted on).
+_MOD_RE = re.compile(r"^\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def classify_unparsed(s: str) -> str:
+    s = s.strip()
+    m = _MOD_RE.match(s)
+    if m:
+        return f".{m.group(1)}"
+    # leading identifier call like `Button(...)` / `if ...` / `ForEach(...)`
+    head = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", s)
+    return f"<expr:{head.group(1)}>" if head else "<expr:?>"
+
+
+def walk_nodes(node: dict):
+    yield node
+    for c in node.get("children", []) or []:
+        yield from walk_nodes(c)
+
+
+def dump_corpus(files: list[Path]) -> dict:
+    """One invocation over the WHOLE app file set — required so cross-file custom-modifier
+    definitions (an `extension View` func / `ViewModifier` struct in another file) are in
+    the symbol table when a usage site is lowered. `--emit` restricts the *measured*
+    structs to the View corpus. Returns {structs:[…], skipped:[…]}."""
+    try:
+        out = subprocess.run([str(BIN), *map(str, files), "--emit", EMIT],
+                             capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return {"__error__": "timeout", "structs": [], "skipped": []}
+    if out.returncode != 0:
+        return {"__error__": out.stderr.strip()[:300] or f"exit {out.returncode}",
+                "structs": [], "skipped": []}
+    try:
+        return json.loads(out.stdout)
+    except json.JSONDecodeError as e:
+        return {"__error__": f"bad json: {e}", "structs": [], "skipped": []}
+
+
+def compute() -> dict:
+    """Run the dumper over the whole corpus and aggregate the loss metrics. Returns a
+    dict consumed by both main() (pretty print) and the regression gate."""
+    symbol_files = sorted(SYMBOLS.rglob("*.swift"))   # app-wide → symbol table
+    files = sorted(CORPUS.rglob("*.swift"))           # measured corpus (reported count)
+    n_files = len(files)
+    n_structs = n_contract_ok = 0
+    n_resolved_mods = n_unparsed = n_scoped = 0
+    scoped_hist: Counter[str] = Counter()
+    file_errors: list[tuple[str, str]] = []
+    unparsed_hist: Counter[str] = Counter()
+    dirtiest: list[tuple[int, str, str]] = []
+    contract_violations: list[str] = []
+    junk_tokens: list[str] = []  # honesty invariant: a mod token must never be raw closure text
+
+    ir = dump_corpus(symbol_files)
+    if "__error__" in ir:
+        file_errors.append(("<corpus>", ir["__error__"]))
+    for sk in ir.get("skipped", []):
+        file_errors.append((sk, "unreadable"))
+    errs = validate_ir(ir)
+    if errs:
+        contract_violations.extend(errs[:20])
+    for s in ir.get("structs", []):
+        n_structs += 1
+        src = s.get("source", "?")
+        try:
+            src = str(Path(src).relative_to(ROOT))
+        except ValueError:
+            pass
+        root = s.get("root", {})
+        su = sm = sc = 0
+        for n in walk_nodes(root):
+            su += len(n.get("unparsed", []) or [])
+            sm += len(n.get("modifiers", []) or [])
+            sc += len(n.get("scoped", []) or [])
+            for u in n.get("unparsed", []) or []:
+                unparsed_hist[classify_unparsed(u)] += 1
+            for sk in n.get("scoped", []) or []:
+                scoped_hist[sk] += 1
+            for m in n.get("modifiers", []) or []:
+                tok = m.get("token")
+                if isinstance(tok, str) and ("{" in tok or "}" in tok):
+                    junk_tokens.append(f"{s.get('name')}: {m.get('name')} token={tok[:40]!r}")
+        n_unparsed += su
+        n_resolved_mods += sm
+        n_scoped += sc
+        if su:
+            dirtiest.append((su, s.get("name", "?"), src))
+    n_contract_ok = n_structs if not contract_violations else 0
+
+    # denominator = everything the system SHOULD eventually transpile = resolved +
+    # unparsed (not-yet) + scoped (visual, deliberately out of component scope). NON_VISUAL
+    # modifiers (a11y/lifecycle/…) are NOT here — they have no CSS analog. Folding `scoped`
+    # in is the honesty fix: moving a modifier to SCOPED_OUT can no longer raise coverage.
+    total_decor = n_resolved_mods + n_unparsed + n_scoped
+    return {
+        "files": n_files, "dump_failed": len(file_errors), "structs": n_structs,
+        "contract_ok": n_contract_ok, "resolved": n_resolved_mods, "unparsed": n_unparsed,
+        "scoped": n_scoped,
+        "node_coverage": (n_resolved_mods / total_decor) if total_decor else 0.0,
+        "histogram": dict(unparsed_hist), "scoped_histogram": dict(scoped_hist),
+        "errors": file_errors, "dirtiest": dirtiest,
+        "contract_violations": contract_violations, "junk_tokens": junk_tokens,
+    }
+
+
+def main(argv: list[str]) -> int:
+    if not BIN.exists():
+        print(f"AST dumper not built: {BIN.relative_to(ROOT)}", file=sys.stderr)
+        return 2
+    top_n = 20
+    out_json = None
+    for i, a in enumerate(argv):
+        if a == "--top" and i + 1 < len(argv):
+            top_n = int(argv[i + 1])
+        if a == "--json" and i + 1 < len(argv):
+            out_json = argv[i + 1]
+
+    r = compute()
+    n_files = r["files"]; n_structs = r["structs"]; n_contract_ok = r["contract_ok"]
+    n_resolved_mods = r["resolved"]; n_unparsed = r["unparsed"]; node_cov = r["node_coverage"]
+    file_errors = r["errors"]; unparsed_hist = Counter(r["histogram"])
+    dirtiest = r["dirtiest"]; contract_violations = r["contract_violations"]
+    node_cov = r["node_coverage"]
+
+    print("=" * 64)
+    print("AST FRONT-END COVERAGE  (corpus = ios/BooksAndVocab/Views)")
+    print("=" * 64)
+    print(f"files                : {n_files}")
+    print(f"files dump-failed    : {len(file_errors)}")
+    print(f"View structs parsed  : {n_structs}")
+    contract_state = "OK" if not contract_violations else f"{len(contract_violations)} VIOLATION(S)"
+    print(f"IR contract          : {contract_state}  ({n_structs} structs validated)")
+    n_scoped = r["scoped"]
+    denom = n_resolved_mods + n_unparsed + n_scoped
+    print(f"resolved modifiers   : {n_resolved_mods}")
+    print(f"unparsed decorations : {n_unparsed}  (visual, not-yet-implemented)")
+    print(f"scoped-out (in denom): {n_scoped}  (visual, deliberately out of component scope)")
+    print(f"denominator          : {denom}  (resolved + unparsed + scoped; NON_VISUAL excluded)")
+    print(f"NODE COVERAGE        : {node_cov*100:.1f}%   = resolved / denominator (honest)")
+    print()
+    print(f"--- unparsed histogram (top {top_n}; = implement-next priority) ---")
+    for name, cnt in unparsed_hist.most_common(top_n):
+        print(f"  {cnt:4d}  {name}")
+    print()
+    print("--- scoped-out histogram (in denominator; deliberate scope decisions) ---")
+    for name, cnt in Counter(r["scoped_histogram"]).most_common(12):
+        print(f"  {cnt:4d}  {name}")
+    print()
+    print("--- dirtiest structs (top 12) ---")
+    for su, name, f in sorted(dirtiest, reverse=True)[:12]:
+        print(f"  {su:3d}  {name}  ({f})")
+    if file_errors:
+        print()
+        print(f"--- dump-failed files ({len(file_errors)}) ---")
+        for f, e in file_errors[:12]:
+            print(f"  {f}: {e}")
+    if contract_violations:
+        print()
+        print(f"--- contract violations ({len(contract_violations)}) ---")
+        for v in contract_violations[:12]:
+            print(f"  {v}")
+
+    if out_json:
+        Path(out_json).write_text(json.dumps({
+            "files": n_files, "dump_failed": len(file_errors), "structs": n_structs,
+            "contract_ok": n_contract_ok, "resolved": n_resolved_mods,
+            "unparsed": n_unparsed, "node_coverage": node_cov,
+            "histogram": dict(unparsed_hist), "errors": file_errors,
+        }, indent=2), encoding="utf-8")
+        print(f"\nwrote {out_json}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
