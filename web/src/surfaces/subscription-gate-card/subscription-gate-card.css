@@ -1,0 +1,106 @@
+/* Subscription Views · Gate Card — iOS ProAccessGateCard（SubscriptionViews.swift）
+   的 web 鏡像。token 一律走 design-system 變數，不寫 literal（除結構 flex /
+   line-height:1 等）。
+
+   catalog scene layout = .fillH：corner = page-bg srgba(247,246,243,1) 不透明，
+   故元件級 crop（crop=component），surface = scene .padding(16) 的 intrinsic box，
+   bg = page-bg（**非透明，無 transparent flag**），crop 目標 = .subscription-gate-card-surface。 */
+
+/* surface = scene wrapper：ProAccessGateCard.padding()（預設 16 = s4）於
+   page-bg 上、撐滿 frame 寬（.frame(maxWidth:∞)）。crop 截此 box。 */
+.subscription-gate-card-surface {
+  display: flex;
+  justify-content: center; /* maxWidth 受限時（narrow 320）card 水平置中 */
+  width: 393px; /* phone-frame stage 寬（logical pt）→ .fillH 全幅 */
+  padding: var(--sp-4); /* iOS .padding() 預設 16 */
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* VocabCard（AppSectionCard .vocab(skin)）：padding cardPadding(18) + bg +
+   radius card(8) + border cardBorder@0.7 1px + elevation z1。預設 maxWidth=∞
+   → 撐滿；narrow scenario 由 inline style 覆寫 max-width:320px。 */
+.subscription-gate-card {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z1);
+}
+
+/* VStack(spacing: s4=16) + 外層 .padding(.vertical, inlineGap=8) */
+.subscription-gate-card-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4); /* VStack spacing 16 */
+  padding-block: var(--inline-gap); /* .padding(.vertical, inlineGap=8) */
+}
+
+/* Image(systemImage).font(symbolHero=symbol 44 light).foregroundStyle(accent) */
+.subscription-gate-card-icon {
+  flex: none;
+  color: var(--accent);
+}
+
+/* 內層 VStack(spacing: 6=microGap)[title · description] */
+.subscription-gate-card-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--micro-gap); /* spacing 6 */
+  width: 100%;
+}
+
+/* Text(title).font(sectionTitle=serif 18 bold).foregroundStyle(primaryText) */
+.subscription-gate-card-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description).font(body=sans 15).foregroundStyle(secondaryText)
+   .multilineTextAlignment(.center).lineSpacing(4)（body=15 → --text-subhead，非 --text-body=17） */
+.subscription-gate-card-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Button(.vocabAction(.primary))：bg primaryText、border primaryText 1px、
+   radius control(6)、padding .h actionButtonHorizontalPadding(16) .v
+   actionButtonVerticalPadding(13)、maxWidth:∞。 */
+.subscription-gate-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* .frame(maxWidth:∞) 內容置中 */
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--action-button-padding-v) var(--sp-4); /* .v 13 .h 16 */
+  border-radius: var(--radius-control); /* control = sm = 6 */
+  background: var(--text-primary); /* primaryText fill */
+  border: 1px solid var(--text-primary);
+  cursor: pointer;
+}
+
+/* Text(actionTitle).font(body.weight(.medium))（inner font 勝出 style 的 caption）
+   .frame(maxWidth:∞).padding(.vertical, rowContentSpacing=12) */
+.subscription-gate-card-action-label {
+  display: block;
+  width: 100%;
+  padding-block: var(--sp-3); /* rowContentSpacing 12 */
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = 15 */
+  font-weight: 500; /* .weight(.medium) */
+  line-height: var(--leading-body);
+  color: var(--page-bg); /* vocabAction primary foreground = pageBackground */
+  text-align: center;
+}

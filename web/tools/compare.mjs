@@ -17,7 +17,7 @@ import { composeContactSheet } from '../../design-system/parity/parity-core.mjs'
 
 const WEB_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-composeContactSheet({
+await composeContactSheet({
   parity: PARITY,
   shotsDir: join(WEB_DIR, 'tools', 'shots'),
   outDir: join(WEB_DIR, 'tools', 'compare'),

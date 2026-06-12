@@ -1,0 +1,59 @@
+/* VocabChromeIconButton — iOS VocabChromeIconButton + VocabChromeSurface 的 web 鏡像。
+   token 一律走 design-system 變數（chrome-button-size 32、radius-control sm/6、
+   card-bg、card-border、text-secondary、system-accent），不寫 literal。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   surface = 44pt touch box + scene wrapper .padding(24) 的 intrinsic 緊裹盒；
+   surface 與 phone-frame 在 crop=component 下透明，shots omitBackground 截圖
+   → web 與 ref 同為 card-over-transparent。 */
+
+/* surface = 44pt touch frame + scene wrapper .padding(24) 的緊裹 box（intrinsic，供 crop 截取） */
+.vocab-chrome-icon-button-surface {
+  display: inline-flex;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* Button + .frame(minWidth:44,minHeight:44).contentShape(Rectangle())
+   — 觸控目標 44pt，視覺維持 32pt card 置中，不撐大版面。 */
+.vocab-chrome-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* VocabChromeSurface：content.frame(32×32).background(RoundedRectangle(control)
+   .fill(cardBackground)).overlay(RoundedRectangle(control).stroke(cardBorder,1)) */
+.vocab-chrome-icon-button-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--chrome-button-size);
+  height: var(--chrome-button-size);
+  box-sizing: border-box;
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+/* Image(systemName).font(iconMedium).foregroundStyle(tone ?? secondaryText) */
+.vocab-chrome-icon-button-glyph {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* tone: .accentColor（SwiftUI 系統 accent，非 appSkin palette） */
+.vocab-chrome-icon-button-glyph--toned {
+  color: var(--system-blue);
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-chrome-icon-button'] {
+  background: transparent;
+}

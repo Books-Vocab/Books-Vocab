@@ -1,0 +1,159 @@
+/* VocabCalendarGrid — iOS VocabCalendarGrid.swift 的 web 鏡像。
+   token 一律走 design-system 變數（font-mono / text-mono-label / text-caption /
+   text-quaternary / text-secondary / text-primary / chart-highlight / muted-fill /
+   card-border / radius-sm / sp-1）。
+   cellFill / dot 顏色 = chart-highlight 疊不同 opacity 的「色階資料值」（runtime 衍生，
+   非靜態 token），以 inline rgba() 套（見 Screen，CHART_HIGHLIGHT_RGB token-allow）。
+
+   layout（iOS）：
+     VStack(spacing microGap=6) { weekday header LazyVGrid + day LazyVGrid }
+     LazyVGrid(7 flexible cols, spacing s1=4)
+     每 day cell：.frame(maxWidth:.infinity).aspectRatio(1, .fit) → 欄內置中的正方形
+     外層 scene .padding()（iOS 預設 16）。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop=component + transparent:true，crop 目標 = .vocab-calendar-surface（grid + padding 16
+   的 intrinsic box）。 */
+
+/* scene wrapper：iOS .padding() 預設 16 → 各邊 16；intrinsic box 供 crop 截取。
+   寬度 = 邏輯 393pt（phone-frame 寬），grid .fillH 撐滿。 */
+.vocab-calendar-surface {
+  box-sizing: border-box;
+  width: 393px;
+  padding: 16px; /* token-allow: SwiftUI .padding() 預設 16pt */
+}
+
+/* VStack(spacing microGap=6) */
+.vocab-calendar-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px; /* token-allow: appSkin.spacing.microGap = 6 */
+}
+
+/* LazyVGrid(7 flexible cols, spacing s1=4)：等寬 7 欄、欄距 4 */
+.vocab-calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  column-gap: var(--sp-1);
+}
+
+/* day grid 列距亦為 s1=4（LazyVGrid spacing 同時作用 row/column gap） */
+.vocab-calendar-days {
+  row-gap: var(--sp-1);
+}
+
+/* Text(symbol).font(monoLabel = mono 10 bold).foregroundStyle(quaternaryText) */
+.vocab-calendar-weekday {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  color: var(--text-quaternary);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* day cell（grid item）：撐滿欄寬，內部置中一個「固定尺寸的正方形」。
+   iOS：dayView 的 VStack(digit caption12 + gap1 + dot5) .frame(maxWidth:.infinity)
+   .aspectRatio(1, .fit)。.fit 取 min(欄寬, 內容高)；內容高 ≈ caption 行高 + 1 + 5 ≈ 21pt，
+   遠小於欄寬（~48pt），故方塊側 = 內容高 ≈ 21pt，水平置中於欄內。
+   量自 catalog ref（native 1179×636 ÷3）：實心 cell 一律 21×21pt 方塊、欄間距 52pt。
+   故 cell 容器撐滿欄（grid 1fr），fill/stroke/bg/content 走固定 21pt 內方塊置中——
+   不可用 width:100% + aspect-ratio 撐滿欄（會變 ~48pt 方塊，著色面積過大）。 */
+.vocab-calendar-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 內方塊：固定 21pt 正方形（= aspectRatio .fit 取的內容高），水平+垂直置中。
+   fill / stroke / selected-bg / content 全以此為定位框（inset:0 → 21×21）。 */
+.vocab-calendar-cell-square {
+  position: relative;
+  width: 21px;  /* token-allow: aspectRatio(1,.fit) 內容高，量自 catalog ref = 21pt */
+  height: 21px; /* token-allow: 同上，正方形 */
+}
+
+.vocab-calendar-cell-blank {
+  /* Color.clear.aspectRatio(1)：空白佔位撐滿欄寬的正方形。
+     iOS 此處 Color.clear 無內容高 → aspectRatio .fit 取欄寬 → 該列拉高至欄寬。
+     web 鏡像：撐滿欄寬的方塊，使含 blank 的列高 = 欄寬（mirror 首列幾何）。 */
+  aspect-ratio: 1 / 1;
+  width: 100%;
+}
+
+/* selected：.background(RoundedRect(tiny=6, mutedFill)) — 最底層 */
+.vocab-calendar-cell-selected-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm); /* tiny = AppRadius.sm = 6 */
+  background: var(--muted-fill);
+}
+
+/* .overlay(RoundedRect(tiny=6, cellFill(count))) — 疊在 selected 之上 */
+.vocab-calendar-cell-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  /* background 由 inline rgba(chart-highlight, opacity) 套（資料色階） */
+}
+
+/* .overlay(RoundedRect(tiny=6, stroke cardBorder.opacity(0.5), lineWidth 0.5)) */
+.vocab-calendar-cell-stroke {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid color-mix(in srgb, var(--card-border) 50%, transparent); /* token-allow: cardBorder.opacity(0.5) */
+  pointer-events: none;
+}
+
+/* VStack(spacing 1) { digit, dot }：置中於 21pt 內方塊（iOS VStack 置於 frame 中央）。
+   絕對置中避免 line-height 微差撐破方塊高。 */
+.vocab-calendar-cell-content {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px; /* token-allow: VStack(spacing: 1) */
+}
+
+/* Text(day).font(caption = sans 12 bold)。顏色三態（見下） */
+.vocab-calendar-digit,
+.vocab-calendar-digit-selected,
+.vocab-calendar-digit-today {
+  font-family: var(--font-sans); /* caption = AppFonts.sans */
+  font-size: var(--text-caption); /* caption = 12 */
+  font-weight: 700; /* sans 12 bold */
+  line-height: 1.2;
+}
+
+/* 預設：secondaryText */
+.vocab-calendar-digit {
+  color: var(--text-secondary);
+}
+
+/* selected：primaryText */
+.vocab-calendar-digit-selected {
+  color: var(--text-primary);
+}
+
+/* today：chartHighlight */
+.vocab-calendar-digit-today {
+  color: var(--chart-highlight);
+}
+
+/* Circle(dotColor or clear).frame(5×5) */
+.vocab-calendar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  /* background 由 inline 套（count>0 → chart-highlight 疊 opacity；否則 transparent） */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-calendar'] {
+  background: transparent;
+}

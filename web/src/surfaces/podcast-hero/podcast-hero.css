@@ -1,0 +1,146 @@
+/* Podcast Hero — iOS PodcastSeriesHero (Views/Podcast/PodcastSeriesHero.swift)
+   的 web 鏡像。所有視覺值走 design-system 變數；唯一非 token literal =
+   cover 的 render-time *data* 顏色（series.color #4A90D9 → legacyMigration #AFC2D3，
+   iOS 端 token-allow），存於 fixtures 以 --hero-cover-color 注入。
+
+   iOS 結構：
+     VStack(spacing statusHeroGap=12)[ backdrop · title · (meta) ]
+   backdrop：band height 196、full-width；ZStack{ LinearGradient(top→bottom)
+     [coverColor·0.42, coverColor·0.12, .clear] }（coverImagePath nil → 無模糊封面層）
+     .overlay{ LinearGradient[.clear,.clear,pageBackground] }（底部融入 page-bg）
+     .overlay{ NotebookCoverView 136×136 radius md=8 z3 } 置中
+   title：displayTitle(serif 24 bold) / primaryText、center、lineLimit 3
+   meta：caption(sans 12 bold) / tertiaryText、center、lineLimit 2
+
+   catalog scene layout = .fill（全裝置幀 1179×2556，畫布透明 corner srgba 0,0,0,0）：
+   ref 圖顯示 hero 於整幀**垂直置中**。故 web 走全 phone-frame 捕捉（非 crop=component）：
+   surface 撐滿 393×852、justify-content center；phone-frame + surface 透明，
+   shots transparent:true → 內容-over-transparent，與 ref 對等。 */
+
+/* surface 撐滿 phone-frame（.fill），hero 垂直置中 */
+.podcast-hero-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* VStack(spacing statusHeroGap=12)，子項水平置中、撐滿寬度 */
+.podcast-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--status-hero-gap);
+  width: 100%;
+}
+
+/* backdrop band：height 196、full-width；ambient wash + 底部融入 page-bg + 浮置封面 */
+.podcast-hero-backdrop {
+  position: relative;
+  width: 100%;
+  height: var(--podcast-hero-backdrop-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* LinearGradient(top→bottom)[coverColor·0.42, coverColor·0.12, .clear] */
+.podcast-hero-backdrop-wash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--hero-cover-color) 42%, transparent),
+    color-mix(in srgb, var(--hero-cover-color) 12%, transparent),
+    transparent
+  );
+}
+
+/* .overlay LinearGradient[.clear,.clear,pageBackground]（底部 1/3 融入 page-bg） */
+.podcast-hero-backdrop-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, transparent, var(--page-bg));
+}
+
+/* NotebookCoverView 136×136、clipShape RoundedRectangle md=8、appElevation z3 */
+.podcast-hero-cover {
+  position: relative;
+  width: var(--podcast-hero-cover-size);
+  height: var(--podcast-hero-cover-size);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--hero-cover-color);
+  box-shadow: var(--elevation-z3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* waves Canvas overlay（white 0.12 strokes） */
+.podcast-hero-cover-waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* cover 中央 name：AppFonts.body(weight .semibold) = sans 17 semibold white + shadow，
+   lineLimit 2、center、.padding(.horizontal s2=8) */
+.podcast-hero-cover-name {
+  position: relative;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: #fff;
+  text-align: center;
+  padding: 0 var(--sp-2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Text(title)：displayTitle(serif 24 bold) / primaryText、center、lineLimit 3 */
+.podcast-hero-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-display-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* Text(meta)：caption(sans 12 bold) / tertiaryText、center、lineLimit 2 */
+.podcast-hero-meta {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-tertiary);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* A11y3（dynamicTypeSize .accessibility3）：iOS hero title=displayTitle、meta=caption
+   皆為 AppFonts 固定字級，**不隨 Dynamic Type 縮放**（parity 實證：ref a11y3 字級同
+   full-meta，原 ×1.6 放大使 RMSE 0.259 超 ceiling；series-card a11y3 亦固定字級才過）。
+   故 a11y3 不覆寫字級，data-a11y3 保留供未來真正會縮放的元素用。 */
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布）：phone-frame 本體透明，
+   shots transparent:true → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='podcast-hero'] {
+  background: transparent;
+}

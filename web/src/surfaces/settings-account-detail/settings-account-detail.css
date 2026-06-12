@@ -1,0 +1,249 @@
+/* Settings Account Detail — iOS SettingsAccountDetailView 的 web 鏡像。
+   token 一律走 design-system 變數，唯一 literal = nav/scroll 幾何（與 `settings`
+   全螢幕 surface 同 catalog 已校準的 measured 像素）、結構值（flex / box-sizing /
+   hairline）、品牌 destructive/accent 走 token。
+
+   layout = .fill（全裝置幀 1179×2556、alpha-mean=1 不透明全幅 pageBackground）：
+   catalog 渲染完整 NavigationStack 螢幕，含 inline nav title「帳號詳情」。故**不透明
+   捕捉**（無 transparent flag）— surface 自帶 pageBackground 撐滿幀，phone-frame 預設
+   背景透出即 page-bg。幾何沿用 `settings`：nav 103（status 59 + bar 44）、scroll top 21
+   （= pageTopPadding 12 + iOS nav 額外 inset 9）/ h 20（pageHorizontalPadding s5）/
+   bottom 48、section gap 24（sectionSpacing s6）。 */
+
+.sad {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+/* --- Inline nav（UINavigationBar inline title）--- */
+.sad-nav {
+  height: 103px; /* status 59 + inline bar 44 */
+  padding-top: 59px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* inlineNavigationBarTitle("帳號詳情")。measured（settings 對拍）：light 渲染為比
+   背景亮的白字 srgb(250,249,247)（nav bar 材質效果，非 primaryText）；dark 仍近 primary。
+   serif 17（serifInline）；CJK 落系統 serif cascade。 */
+.sad-nav-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 700;
+  color: #faf9f7; /* token-allow: nav bar 材質白（measured，非 primaryText） */
+}
+
+[data-theme='dark'] .sad-nav-title {
+  color: var(--text-primary);
+}
+
+.sad-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面：不滾動，截到什麼算什麼（同 Catalog） */
+  padding: 21px 20px 48px; /* top = pageTopPadding 12 + nav inset 9；h = pageHorizontalPadding s5=20；bottom 48 */
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* AppShellMetrics.sectionSpacing s6 */
+}
+
+/* --- Section 骨架（VStack spacing sectionGap=14）--- */
+.sad-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* 14 */
+}
+
+/* SettingsSectionHeader — Label(icon, title)、caption→measured 14 bold / secondaryText、
+   leading s1=4；icon 15。 */
+.sad-section-header {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 */
+  padding-left: var(--sp-1); /* AppSectionHeader .padding(.leading, s1=4) */
+  font-family: var(--font-sans);
+  font-size: 14px; /* measured（settings/account-section 對拍） */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* .settingsCard — AppSectionCard(padding 0, .settings)：cardBg、cardBorder 1px、
+   radius card。measured：Catalog 卡角弧 ≈12（非 md 8）。z0 無陰影。 */
+.sad-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg); /* measured ≈12 */
+}
+
+/* AppKeyValueRow.settings / SettingsNavigationRow — HStack(spacing s3=12)[icon · label ·
+   Spacer · content]、padding h cardPadding=18 / v 13、minHeight 50。 */
+.sad-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3); /* AppSpacing.s3 = 12 */
+  min-height: 50px;
+  padding: 13px var(--card-padding); /* verticalPadding 13 / horizontalPadding cardPadding 18 */
+  box-sizing: border-box;
+}
+
+/* nav 列（匯出 CSV）= Button(.plain) 撐滿，重置 button chrome */
+.sad-nav-row {
+  width: 100%;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Image(systemName) — iconSmall(symbol 12 medium) / secondaryText、.frame(width 22, .center) */
+.sad-row-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; /* iconWidth */
+  color: var(--text-secondary);
+}
+
+/* Text(label) — body(sans 15) / primaryText */
+.sad-row-label {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* typography.body = sans 15 */
+  color: var(--text-primary);
+}
+
+/* Spacer() */
+.sad-spacer {
+  flex: 1;
+}
+
+/* SettingsStatusValue — caption(sans 12 bold) / secondaryText、trailing、lineLimit 1。
+   長字串 ellipsis（壓力 scene）。 */
+.sad-status-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700; /* caption sans bold */
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* SettingsTrailingChevronIcon — chevron.right iconTiny(10 thin) / tertiaryText */
+.sad-nav-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* AppSettingsDivider(default leadingInset 50) — divider hairline、左內縮 50 */
+.sad-divider {
+  height: 0.34px; /* iOS hairline 1 物理 px（dpr3）；capture rig dsf=3 */
+  margin-left: 50px; /* leadingInset 50（default） */
+  background: var(--divider);
+}
+
+/* SettingsSectionFooter — AppSectionFooter caption(sans 12 bold) / tertiaryText、
+   lineSpacing 3、.padding(.leading, s1=4) */
+.sad-footer {
+  margin: 0;
+  padding-left: var(--sp-1); /* s1 4 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: 1.5; /* lineSpacing 3 → 12 + 3 ≈ 1.5 行高 */
+  color: var(--text-tertiary);
+}
+
+/* --- 危險操作狀態卡（VocabStateMessageCard .vocab）--- */
+/* AppStateMessageCard：cardBg、cardBorder 1px、radius control=6、padding v12/h14。
+   Content VStack(spacing s2=8)[head · desc]。 */
+.sad-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* style.spacing s2=8 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control); /* control 6 */
+  padding: 12px 14px; /* verticalPadding 12 / horizontalPadding 14 */
+  box-sizing: border-box;
+}
+
+/* head HStack(firstTextBaseline, spacing s2=8)[iconSmall accent + title body semibold primaryText] */
+.sad-state-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2); /* 8 */
+}
+
+.sad-state-icon {
+  flex: none;
+  align-self: center;
+  color: var(--accent); /* iconColor accent（含刪除中 hourglass） */
+}
+
+/* title — body.weight(.semibold) = sans 15 semibold / primaryText */
+.sad-state-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* desc — caption(sans 12 bold) / secondaryText */
+.sad-state-desc {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* --- 刪除帳號鈕（.settingsCard 包 Button(.appAction destructive)）--- */
+/* settingsCard padding 0 → 卡僅作背景/邊框；按鈕自帶 padding。 */
+.sad-delete-card {
+  overflow: hidden;
+}
+
+/* AppActionButtonStyle .destructive：foreground destructive、bg destructive 10%、
+   border destructive 22%、radius md=8、padding h s4=16 / v actionButtonVerticalPadding=13、
+   maxWidth ∞。內含 HStack[label(typography.body=15 / destructive) · Spacer · trash(iconTiny 10)]。
+   注：.settingsCard 已包一層卡，按鈕的 bg/border 疊在卡上（與 ref 一致：淺紅滿幅）。 */
+.sad-delete-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px var(--sp-4); /* actionButtonVerticalPadding 13 / s4 16 */
+  border: 1px solid color-mix(in srgb, var(--destructive) 22%, transparent);
+  border-radius: var(--radius-md); /* md 8 */
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+  cursor: pointer;
+}
+
+.sad-delete-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* typography.body = 15 */
+  color: var(--destructive);
+}
+
+.sad-delete-spacer {
+  flex: 1;
+}
+
+.sad-delete-icon {
+  flex: none;
+  color: var(--destructive);
+}

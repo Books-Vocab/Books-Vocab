@@ -1,0 +1,239 @@
+/* Welcome onboarding surface — 幾何常數逐一對齊 iOS WelcomeView.swift / AppWelcomeMetrics：
+     pageHorizontalPadding = AppSpacing.s5 = 20（--sp-5）
+     tryItHint   .top s2=8 / banner .h 14 .v 8 / radius md=8 / bg accent.08 / border accent.2
+     Spacer(min s4=16) → AppHeroIcon 80 radius appIcon 18 .bottom 12
+     TabView height = pageHeight 240；page VStack(spacing s4=16)
+       halo = Circle(featureIconFrame 64 + iconHaloPadding 16 = 80) accent.opacity(0.10)
+       icon = hero(40 regular) accent
+       titles VStack(spacing pageContentSpacing 4)：STEP caption(12 semibold) accent tracking 1.4
+         + title h1(serif 28 semibold→700) primaryText
+       subtitle body(17) secondaryText .center .h subtitleHorizontalPadding 40
+     stepIndicator .top s2=8：capsule active 22×6 accent / inactive 6×6 secondaryText.opacity(0.25)
+       spacing s2=8
+     ctaStack .bottom bottomPadding 40：登入帳號 primary（fg pageBg / bg+border primaryText）
+       開始使用 outline（fg primaryText / bg clear / border secondaryText.opacity(0.3)）
+       說明 caption(12) secondaryText .top captionTopPadding 2；按鈕 spacing s2=8
+       button：subhead(15 semibold) .h s4=16 .v actionButtonVerticalPadding 13 radius md 8 maxWidth∞
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。
+   catalog scene = .fill（corner = pageBackground 不透明）→ 全 phone-frame 不透明捕捉
+   （無 crop、無 transparent），surface bg = page-bg。 */
+
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--page-bg);
+}
+
+/* --- tryItHint 試用提示帶 --- */
+/* .padding(.top, s2=8)；status bar 59 上方 → measured top = 103（59 status + 44 inline gap）
+   ref 實測帶頂 ≈ 103pt。.padding(.horizontal, pageHorizontalPadding s5=20) */
+.welcome-hint {
+  margin-top: 103px;
+  margin-inline: var(--sp-5);
+  width: calc(100% - 2 * var(--sp-5));
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* AppSpacing.s2 = HStack spacing */
+  /* AppBannerMetrics：.h 14 / .v 8 */
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent); /* backgroundOpacity 0.08 */
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent); /* borderOpacity 0.2 */
+}
+
+.welcome-hint-spark {
+  flex: none;
+  color: var(--text-secondary); /* HStack foregroundStyle secondaryText */
+}
+
+/* caption(12 medium) secondaryText */
+.welcome-hint-text {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* Button("試用") caption(12 semibold) accent；HStack Spacer 把它推到右側 */
+.welcome-hint-action {
+  margin-left: auto;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: var(--leading-caption);
+  color: var(--accent);
+}
+
+/* Spacer(minLength: s4) — 提示帶到 hero icon 的彈性間距（min 16） */
+.welcome-spacer-top {
+  flex: 1 1 auto;
+  min-height: var(--sp-4);
+}
+
+/* AppHeroIcon — Image 80×80, clipShape RoundedRectangle(appIcon 18) .padding(.bottom 12) */
+.welcome-hero-icon {
+  flex: none;
+  width: 80px; /* AppHeroIcon frame */
+  height: 80px;
+  border-radius: var(--radius-app-icon); /* AppRadius.appIcon = 18 */
+  margin-bottom: 12px; /* iconBottomPadding */
+}
+
+/* TabView(.frame(height: pageHeight 240)) — 單頁版面，VStack(spacing s4=16) */
+.welcome-page {
+  flex: none;
+  height: 240px; /* pageHeight */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--sp-4); /* pageView VStack spacing s4 */
+  width: 100%;
+}
+
+/* halo = Circle(64 + 16 = 80) accent.opacity(0.10) 居中 hero icon */
+.welcome-page-halo {
+  flex: none;
+  width: 80px; /* featureIconFrame 64 + iconHaloPadding 16 */
+  height: 80px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 10%, transparent); /* iconHaloOpacity 0.10 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Image(systemName) hero(40 regular) accent，frame 64×64（halo 內居中） */
+.welcome-page-icon {
+  color: var(--accent);
+}
+
+/* titles VStack(spacing pageContentSpacing 4) */
+.welcome-page-titles {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--welcome-page-content-gap); /* pageContentSpacing 4 */
+}
+
+/* STEP n — caption(12 semibold) accent tracking 1.4 */
+.welcome-page-step {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 1.4px; /* stepLabelTracking */
+  color: var(--accent);
+}
+
+/* title — h1(serif 28 semibold→700) primaryText */
+.welcome-page-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-h1);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* subtitle — body(17) secondaryText, .center, .h subtitleHorizontalPadding 40 */
+.welcome-page-subtitle {
+  margin: 0;
+  padding-inline: var(--welcome-subtitle-h-inset); /* subtitleHorizontalPadding 40 */
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* stepIndicator — 自繪 capsule page control，HStack(spacing s2=8) .padding(.top s2=8) */
+.welcome-indicator {
+  flex: none;
+  margin-top: var(--sp-2); /* .padding(.top, s2) */
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* HStack spacing s2 */
+}
+
+/* inactive：6×6 secondaryText.opacity(0.25) */
+.welcome-dot {
+  flex: none;
+  width: 6px; /* stepIndicatorInactiveWidth */
+  height: 6px; /* stepIndicatorHeight */
+  border-radius: var(--radius-pill); /* Capsule */
+  background: color-mix(in srgb, var(--text-secondary) 25%, transparent); /* inactiveOpacity 0.25 */
+}
+
+/* active：22×6 accent */
+.welcome-dot[data-active='1'] {
+  width: 22px; /* stepIndicatorActiveWidth */
+  background: var(--accent);
+}
+
+/* Spacer() — page indicator 到 CTA 的彈性間距 */
+.welcome-spacer-bottom {
+  flex: 1 1 auto;
+}
+
+/* ctaStack — VStack(spacing s2=8) .padding(.h pageHorizontalPadding 20) .padding(.bottom 40) */
+.welcome-cta {
+  flex: none;
+  width: 100%;
+  box-sizing: border-box;
+  padding-inline: var(--sp-5); /* pageHorizontalPadding */
+  padding-bottom: var(--welcome-bottom-padding); /* bottomPadding 40 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2); /* ctaStack VStack spacing s2 */
+}
+
+/* AppActionButtonStyle 共用幾何：subhead(15 semibold) .h s4=16 .v 13 radius md maxWidth∞ */
+.welcome-btn {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2); /* Label(icon + title) */
+  padding: var(--action-button-padding-v) var(--sp-4); /* .v 13 / .h s4 16 */
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* subhead 15 */
+  font-weight: 600;
+  line-height: var(--leading-body);
+}
+
+/* .primary — fg pageBackground / bg + border primaryText */
+.welcome-btn-primary {
+  color: var(--page-bg);
+  background: var(--text-primary);
+  border: 1px solid var(--text-primary);
+}
+
+.welcome-btn-icon {
+  flex: none;
+}
+
+/* .outline — fg primaryText / bg clear / border secondaryText.opacity(0.3) */
+.welcome-btn-outline {
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+}
+
+/* 說明 — caption(12) secondaryText .padding(.top captionTopPadding 2) */
+.welcome-cta-note {
+  margin: 2px 0 0; /* captionTopPadding */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+  text-align: center;
+}

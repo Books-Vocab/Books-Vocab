@@ -21,7 +21,7 @@ import { runParityAudit } from '../../design-system/parity/parity-core.mjs';
 const EXT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const onlyIdx = process.argv.indexOf('--only');
 
-runParityAudit({
+await runParityAudit({
   parity: PARITY,
   shotsDir: join(EXT_DIR, 'tools', 'shots'),
   outDir: join(EXT_DIR, 'tools', 'audit'),

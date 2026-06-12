@@ -24,7 +24,14 @@ NODE_KINDS = {
 }
 MODIFIER_NAMES = {
     "padding", "font", "font_direct", "foreground",
-    "frame", "spacer", "background", "stroke", "opacity",
+    "frame", "spacer", "background", "stroke", "opacity", "overlay",
+}
+# SwiftUI Alignment cases the overlay-layer model maps to a (align-items, justify-content)
+# flex pair. The dumper resolves the alignment arg to one of these; generate_css turns it
+# into the layer's flex placement. A `.center` default covers the no-arg `.overlay { … }`.
+OVERLAY_ALIGNMENTS = {
+    "center", "top", "bottom", "leading", "trailing",
+    "topLeading", "topTrailing", "bottomLeading", "bottomTrailing",
 }
 # "unknown" is the value-level degrade marker (parser gave up on this scalar; the
 # generator skips it / emits an orphan). It is the scalar analogue of the node-level
@@ -46,6 +53,7 @@ _MOD_REQUIRED = {
     "background": (),          # token/shape/radius/opacity all optional (param fills exist)
     "stroke": ("token",),
     "opacity": ("value",),
+    "overlay": ("alignment",),
 }
 _VALUE_REQUIRED = {
     "token": ("token",),
@@ -91,6 +99,9 @@ def _validate_modifier(mod: dict, path: str, errors: list[str]) -> None:
             errors.append(_err(path, f"padding.edge {mod.get('edge')!r} not in {sorted(PADDING_EDGES)}"))
         if "value" in mod:
             _validate_value(mod["value"], f"{path}.value", errors)
+    if name == "overlay":
+        if mod.get("alignment") not in OVERLAY_ALIGNMENTS:
+            errors.append(_err(path, f"overlay.alignment {mod.get('alignment')!r} not in {sorted(OVERLAY_ALIGNMENTS)}"))
     if name == "frame":
         dims = mod.get("dims")
         if not isinstance(dims, dict):

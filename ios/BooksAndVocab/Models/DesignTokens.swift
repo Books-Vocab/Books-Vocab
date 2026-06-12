@@ -160,14 +160,48 @@ public enum DesignTokens {
             public static let tiny: CGFloat = 3
         }
         public enum Semantic {
+            public static let accountAvatarSize: CGFloat = 46
+            public static let accountRowSpacing: CGFloat = 14
+            public static let actionButtonPaddingV: CGFloat = 13
+            public static let badgePadding: CGFloat = 6
+            public static let badgePaddingH: CGFloat = 9
             public static let cardPadding: CGFloat = 18
+            public static let chevronButtonSize: CGFloat = 30
             public static let chipPaddingH: CGFloat = 10
             public static let chipPaddingV: CGFloat = 5
+            public static let chromeButtonSize: CGFloat = 32
+            public static let compactChipPaddingH: CGFloat = 6
+            public static let compactChipPaddingV: CGFloat = 3
+            public static let compactRowPaddingV: CGFloat = 10
+            public static let controlGap: CGFloat = 10
+            public static let coverCornerRadius: CGFloat = 10
+            public static let coverHeightCompact: CGFloat = 210
             public static let dividerAir: CGFloat = 16
+            public static let emptyStateStack: CGFloat = 14
             public static let inlineGap: CGFloat = 8
+            public static let microGap: CGFloat = 6
             public static let pageHPadding: CGFloat = 20
+            public static let panelBInset: CGFloat = 16
+            public static let panelHInset: CGFloat = 18
+            public static let placeholderTitlePaddingH: CGFloat = 12
+            public static let progressBarFillMin: CGFloat = 6
+            public static let progressBarGap: CGFloat = 5
+            public static let progressBarHeight: CGFloat = 5
+            public static let progressBarHeightCard: CGFloat = 4
+            public static let progressBarWidth: CGFloat = 104
+            public static let rowPaddingV: CGFloat = 9
             public static let sectionGap: CGFloat = 14
             public static let sheetPadding: CGFloat = 24
+            public static let statusHeroGap: CGFloat = 12
+            public static let tabSelectorHeight: CGFloat = 32
+            public static let toneChipPaddingH: CGFloat = 10
+            public static let toneChipPaddingV: CGFloat = 6
+            public static let toolbarBadgePaddingH: CGFloat = 5
+            public static let toolbarBadgePaddingV: CGFloat = 2
+            public static let welcomeBottomPadding: CGFloat = 40
+            public static let welcomePageContentGap: CGFloat = 4
+            public static let welcomeSubtitleHInset: CGFloat = 40
+            public static let wordRowGap: CGFloat = 10
         }
     }
     public enum Typography {
@@ -190,15 +224,20 @@ public enum DesignTokens {
             public static let caption: CGFloat = 12
             public static let caption2: CGFloat = 11
             public static let detailWord: CGFloat = 27
+            public static let displayTitle: CGFloat = 24
             public static let h1: CGFloat = 28
             public static let h2: CGFloat = 22
             public static let hero: CGFloat = 40
+            public static let monoBody: CGFloat = 14
+            public static let monoLabel: CGFloat = 10
             public static let rowWord: CGFloat = 18
             public static let sectionTitle: CGFloat = 18
             public static let subhead: CGFloat = 15
+            public static let translationTitle: CGFloat = 21
         }
         public enum Tracking {
             public static let h2Tight: CGFloat = -0.65
+            public static let label: CGFloat = 0.5
             public static let normal: CGFloat = 0
             public static let tight: CGFloat = -1.2
             public static let uppercase: CGFloat = 0.8

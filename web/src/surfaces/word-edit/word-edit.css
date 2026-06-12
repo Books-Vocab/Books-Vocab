@@ -1,0 +1,95 @@
+/* WordEditSheet — iOS WordEditSheet（編輯翻譯 / 教學筆記）的 web 鏡像。
+   token 走 design-system 變數；page-bg / card / 文字色全為 design-system token。
+   唯一 literal = editor border（cardBorder.opacity(0.5)，DS token 無 ×0.5 變體，行內 token-allow）。
+
+   幾何量自 ref（1179×2556 native，÷3 = pt）：
+   - page-bg #f7f6f3 = --page-bg（measured 247,246,243 ✓）
+   - card 白 #fff = --card-bg；card border ≈ #f4f4f4（--card-border ×0.5 stroke）
+   - caption #6b6a65 = --text-secondary（measured solid 107,106,101 ✓）
+   - body #37352f = --text-primary（measured 55,53,47 ✓）
+   - card 水平 inset 18pt（cardPadding=18，card 左緣 ≈x54/3≈18 ✓）
+   - card1 top edge ≈y462/3≈154pt = nav103 + padding-top29 + caption14.4 + inlineGap8
+   - editor minHeight 80pt（card ≈y465..715 ≈250px/3≈83 ✓）
+   - nav title serif 近白、置中、inline（measured 255,255,255 over cream）
+
+   catalog scene = .fill opaque（alpha-mean=1）→ 全 phone-frame 不透明捕捉，無 transparent flag。 */
+
+.we-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg);
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status 59 + bar 44 = 103pt，標題置中偏下（nav title baseline ≈y250/3≈83pt） */
+.we-nav {
+  flex: none;
+  height: 103px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 11px; /* 量測 title 垂直中心 ≈y255/3≈85pt → 距 nav 底 ≈18pt，扣字高半 */
+}
+/* navigationTitle(entry.word) inline = serif headline 17 bold、近白、置中；
+   兩側 toolbar(取消/儲存)壓縮可用寬 → 過長以 … 截斷。
+   max-width 量自 Long word title ref：glyph x 289..850（pt 96..283）≈ 187pt 後截斷。 */
+.we-nav-title {
+  font-family: var(--font-serif); /* iOS uiSerif(17,bold) = Crimson Pro Bold → --font-serif */
+  font-size: var(--text-body); /* inline title 17pt */
+  font-weight: 700; /* uiSerif(size:17, bold:true) */
+  color: var(--card-bg); /* nav title 近白（measured 252..255,—,250 over cream）= card 白 token */
+  max-width: 187px; /* 量自 ref 截斷寬（toolbar 壓縮後可用寬） */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ScrollView{ VStack(spacing: sectionGap=14) }.padding(cardPadding=18)
+   水平/下 inset = cardPadding 18（量測 card 左緣 ≈x54/3≈18pt ✓）；
+   card1 top edge 量測 ≈462px/3=154pt = nav(103) + padding-top(29) + caption(14.4) + inlineGap(8)
+   → padding-top 29（caption box 上緣對齊 nav 底 + 29）。 */
+.we-form {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* spacing: appSkin.spacing.sectionGap = 14 */
+  padding: 29px var(--card-padding) var(--card-padding); /* top 29（量自 card 上緣回推）、左右下 cardPadding=18 */
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* editSection = VStack(alignment:.leading, spacing: inlineGap=8)[caption, editor] */
+.we-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--inline-gap); /* spacing: appSkin.spacing.inlineGap = 8 */
+}
+
+/* Text(title).font(caption = sans 12 bold).foregroundStyle(secondaryText) */
+.we-caption {
+  font-size: var(--text-caption); /* typography.caption = sans 12 */
+  font-weight: 700; /* caption = bold */
+  color: var(--text-secondary);
+}
+
+/* TextEditor：font(body=17)/primaryText、padding(inlineGap=8)、minHeight 80、
+   背景 RoundedRectangle(cardCornerRadius=8) fill(cardBackground)
+   + overlay stroke(cardBorder.opacity(0.5), lineWidth 1) */
+.we-editor {
+  min-height: 80px;
+  box-sizing: border-box;
+  padding: var(--inline-gap); /* TextEditor .padding(inlineGap=8) */
+  background: var(--card-bg);
+  border-radius: var(--radius-card); /* AppShellMetrics.cardCornerRadius = 8 */
+  border: 1px solid rgba(0, 0, 0, 0.045); /* token-allow: iOS stroke(cardBorder.opacity(0.5)) = black@0.09 ×0.5 = black@0.045（量測 card 邊 ≈236 over 247 ✓；--card-border=0.09 為 2× 過強） */
+  font-size: var(--text-subhead); /* typography.body = AppFonts.sans(15) = --text-subhead（非 17，常見坑） */
+  color: var(--text-primary);
+  line-height: 1.3; /* token-allow: TextEditor 預設行距，量自 Long content stress 行 pitch ≈59px/3≈19.5pt ÷15 ≈1.3（非 heading 1.2） */
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+}

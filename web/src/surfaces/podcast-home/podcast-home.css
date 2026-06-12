@@ -1,0 +1,413 @@
+/* PodcastHomeView surface — iOS PodcastHomeView.swift 的 web 鏡像（full-screen
+   .fill 不透明 scene，catalog alpha-mean=1，無 crop/transparent）。
+
+   幾何常數逐一對齊 iOS：
+     AppShellMetrics.pageHorizontalPadding = s5 = 20 / sectionSpacing = s6 = 24
+     content VStack spacing s5 = 20；continueShelf .padding(.top, s2=8)
+     PodcastShelf 內 spacing = statusHeroGap = 12；LazyHStack 卡間 s3 = 12
+     繼續收聽 / 所有節目 標題 = AppFonts.serif(18, bold)（skin sectionTitle）
+     nav large title = AppFonts.uiSerif(34, bold)
+     PodcastContinueRailCard：cardWidth 150 / cover 150² radius md(8) / playDisc 30² /
+       meta gap tinyGap(4) / progress h3 / remaining mono10 bold
+     PodcastSeriesCard：cover 210 radius 10 / VStack gap s2(8) / meta gap tinyGap(3) /
+       title caption(medium→bold) lineLimit2 reservesSpace / subtitle caption2 tertiary
+     grid GridItem.adaptive(min150) spacing 24 → 393pt 兩欄
+     empty = AppEmptyStateContent(.bookshelf)：icon 48 ultraLight quaternary / title
+       subhead15 bold secondary / desc caption12 tertiary / guidance caption12 tertiary×0.7
+       spacing 6
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。 */
+
+.podcast-home {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg); /* appTheme.palette.pageBackground = #F7F6F3 */
+}
+
+/* --- Large-title nav（與 bookshelf 對齊：status 59 + bar 44 + 列內距 15 = 118）--- */
+.ph-nav {
+  padding: 118px var(--sp-5) 0; /* 20 = pageHorizontalPadding */
+}
+
+.ph-nav-title {
+  margin: 0;
+  font-family: var(--font-serif); /* AppFonts.uiSerif(34, bold) — CrimsonPro/Songti cascade */
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 41px; /* UIKit largeTitle line height */
+  color: var(--text-primary);
+  padding-bottom: 6px;
+}
+
+.ph-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面：不滾動，截到什麼算什麼（同 Catalog） */
+  display: flex;
+  flex-direction: column;
+}
+
+/* content = VStack(.leading, spacing s5=20) */
+.ph-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5); /* AppSpacing.s5 = 20 */
+}
+
+/* --- 繼續收聽 shelf（PodcastShelf）--- */
+.ph-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* skin.spacing.statusHeroGap = 12 */
+  padding-top: var(--sp-2); /* continueShelf .padding(.top, s2=8) */
+}
+
+/* 區段標題（繼續收聽 / 所有節目）= serif sectionTitle(18 bold) primaryText, h-pad 20 */
+.ph-section-title {
+  margin: 0;
+  padding: 0 var(--sp-5); /* h-pad pageHorizontalPadding = 20 */
+  font-family: var(--font-serif); /* skin.typography.sectionTitle = serif(18, bold) */
+  font-size: 18px;
+  font-weight: 700;
+  line-height: var(--leading-heading); /* 1.2 */
+  color: var(--text-primary); /* skin.palette.primaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) + tail */
+}
+
+.ph-shelf-scroll {
+  overflow: hidden; /* ScrollView(.horizontal) 快照面不滾 */
+}
+
+/* LazyHStack(spacing s3=12)，h-pad 20 */
+.ph-shelf-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-3); /* AppSpacing.s3 = 12 */
+  padding: 0 var(--sp-5); /* h-pad pageHorizontalPadding = 20 */
+}
+
+/* === PodcastContinueRailCard（cardWidth 150）=== */
+.ph-rail-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* VStack spacing s2 = 8 */
+  width: 150px; /* cardWidth */
+  box-sizing: border-box;
+  flex: 0 0 auto;
+}
+
+.ph-rail-cover {
+  position: relative;
+  width: 150px;
+  height: 150px; /* .frame(width:150, height:150) */
+  border-radius: var(--radius-md); /* AppRadius.md = 8, .continuous */
+  overflow: hidden; /* clipShape */
+  background: var(--ph-cover); /* NotebookCoverView color（legacy-migrated 資料色 inline） */
+  box-shadow: var(--elevation-z1); /* .appElevation(.z1) */
+}
+
+.ph-cover-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* cover 中央白字 name：body=sans17 semibold，lineLimit 2 居中，legibility shadow */
+.ph-rail-cover-name {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 2 * var(--sp-2)); /* .padding(.horizontal, s2=8) */
+  text-align: center; /* multilineTextAlignment(.center) */
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* AppFonts.body = 17 */
+  font-weight: 600; /* .semibold */
+  line-height: 1.15;
+  color: #ffffff; /* token-allow: cover name fixed white（同 iOS .white） */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* token-allow: cover legibility shadow（同 iOS） */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* lineLimit(2) */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* playDisc：bottomTrailing，Circle().fill(brandHero) 30² pad s2(8) */
+.ph-rail-play {
+  position: absolute;
+  right: var(--sp-2);
+  bottom: var(--sp-2);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--brand-hero); /* skin.palette.brandHero */
+  color: var(--on-brand-hero); /* AppColors.onBrandHero */
+  box-shadow: var(--elevation-z1);
+}
+
+.ph-rail-play-glyph {
+  width: 13px; /* iconTiny 10pt thin（disc 內視覺三角） */
+  height: 13px;
+  margin-left: 1px; /* play.fill 三角略偏右視覺置中 */
+}
+
+/* meta VStack(spacing tinyGap=4)，width 150 */
+.ph-rail-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* skin.spacing.tinyGap = 4 */
+  width: 150px;
+  box-sizing: border-box;
+}
+
+.ph-rail-title {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* caption(.medium) → isBold true */
+  line-height: var(--leading-caption);
+  color: var(--text-primary); /* skin.palette.primaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) tail */
+}
+
+.ph-rail-episode {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* 11 */
+  font-weight: 400;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary); /* skin.palette.tertiaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ProgressCapsule height 3, fill accent, track progressBarBackground, pad-top tinyGap(4) */
+.ph-rail-progress {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  margin-top: var(--sp-1);
+  border-radius: 999px;
+  background: var(--progress-track); /* skin.palette.progressBarBackground */
+  overflow: hidden;
+}
+
+.ph-rail-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent); /* skin.palette.accent */
+}
+
+.ph-rail-remaining {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* mono 10 */
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums; /* monospacedDigit */
+  color: var(--text-tertiary);
+}
+
+/* === 所有節目 grid（GridItem.adaptive(min150) spacing 24）===
+   seriesGridSection 為 @ViewBuilder，回傳 Text("所有節目") + LazyVGrid 兩 view，
+   在 content VStack(spacing s5=20) 內被攤平 → title↔grid 與 shelf↔title 皆 gap s5=20。
+   故 .ph-section-title 與 .ph-grid 同為 .ph-content 直接子節點，由 gap 統一處理。 */
+
+.ph-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); /* adaptive(min150) → 2 欄 */
+  gap: var(--sp-6); /* AppShellMetrics.sectionSpacing = 24 */
+  padding: 0 var(--sp-5); /* h-pad pageHorizontalPadding = 20 */
+}
+
+/* 有 shelf 時 grid 緊接「所有節目」標題（iOS .padding(.top, 0)），但 content VStack
+   gap s5 已在 SeriesGridSection 整段與 shelf 之間。標題後 grid 無額外 top（margin-bottom:0
+   + grid 無 margin-top）→ 標題 baseline 帶與 grid 之間僅 line box 自然間距。 */
+
+/* 無 continue shelf：grid .padding(.top, s2=8)（seriesGridSection top 條件）。
+   ph-content gap s5 不作用（grid 為首個 child）→ 需顯式 top 8。 */
+.ph-grid-top {
+  padding-top: var(--sp-2); /* AppSpacing.s2 = 8（continueItems.isEmpty 分支） */
+}
+
+/* === PodcastSeriesCard（VStack(.leading, spacing s2=8)）=== */
+.ph-series-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2); /* VStack spacing s2 = 8 */
+  min-width: 0;
+  box-shadow: var(--elevation-z0); /* appElevation(.z0) = none */
+}
+
+/* 封面 aspectRatio 2/3 .frame(height 210) clip radius 10 */
+.ph-series-cover {
+  position: relative;
+  height: 210px; /* AppBookshelfMetrics.coverHeightCompact */
+  border-radius: 10px; /* coverCornerRadius */
+  overflow: hidden;
+  background: var(--ph-cover); /* NotebookCoverView color */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 置中白字 name — body 17 semibold white, shadow, lineLimit2, h-pad s2 */
+.ph-series-cover-name {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* 17 */
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: #fff; /* token-allow: cover name fixed white（同 iOS .white） */
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* token-allow: cover legibility shadow */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 左上 star.fill followed badge — caption2(bold) accent + ultraThinMaterial radius sm
+   inner pad s1(4) outer pad s2(8) */
+.ph-series-star {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1); /* inner .padding(s1) */
+  border-radius: var(--radius-sm); /* AppRadius.sm = 6 */
+  background: rgba(255, 255, 255, 0.18); /* token-allow: .ultraThinMaterial 近似（light cover） */
+  -webkit-backdrop-filter: blur(var(--blur-material)) saturate(180%);
+  backdrop-filter: blur(var(--blur-material)) saturate(180%);
+  color: var(--accent); /* appTheme.palette.accent */
+}
+
+.ph-series-star-icon {
+  display: block;
+  width: 13px; /* caption2(11pt bold) symbol box */
+  height: 13px;
+}
+
+/* 右上 waveform badge — caption2(bold) primaryText + ultraThinMaterial radius sm
+   inner pad s1 outer pad s2 */
+.ph-series-badge {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-1);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.18); /* token-allow: .ultraThinMaterial 近似（light cover） */
+  -webkit-backdrop-filter: blur(var(--blur-material)) saturate(180%);
+  backdrop-filter: blur(var(--blur-material)) saturate(180%);
+  color: var(--text-primary); /* appTheme.palette.primaryText */
+}
+
+.ph-series-badge-icon {
+  display: block;
+  width: 13px;
+  height: 13px;
+}
+
+/* meta VStack(.leading, spacing tinyGap=3) */
+.ph-series-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-tiny); /* AppSpacing.tinyGap = 3 */
+  min-width: 0;
+}
+
+/* title caption(medium) primaryText lineLimit(2, reservesSpace) */
+.ph-series-title {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 500; /* .medium */
+  line-height: var(--leading-caption);
+  color: var(--text-primary);
+  text-align: left;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* lineLimit(2, reservesSpace) */
+  -webkit-box-orient: vertical;
+  min-height: calc(2 * var(--text-caption) * var(--leading-caption)); /* reservesSpace 固定二行高 */
+  overflow: hidden;
+}
+
+/* subtitle caption2 tertiary lineLimit(1) tail */
+.ph-series-subtitle {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* 11 */
+  font-weight: 400;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* === 空狀態（AppEmptyStateContent .bookshelf）=== */
+.ph-empty {
+  align-items: stretch;
+  padding: 0 var(--sp-5); /* h-pad pageHorizontalPadding = 20 */
+}
+
+.ph-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px; /* AppEmptyStateStyle.bookshelf spacing = 6 */
+  /* 對齊 bookshelf empty 垂直錨點（Spacer(minLength 120) 非滾動快照實際更低）。 */
+  margin-top: 132px;
+  text-align: center;
+}
+
+.ph-empty-icon {
+  color: var(--text-quaternary); /* AppFonts.symbol(48, ultraLight) quaternary */
+}
+
+.ph-empty-title {
+  margin: 0;
+  font-family: var(--font-sans); /* AppFonts.subhead(.medium) → bold 15 */
+  font-size: var(--text-subhead); /* 15 */
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ph-empty-description,
+.ph-empty-guidance {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* AppFonts.caption = 12 */
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+}
+
+.ph-empty-guidance {
+  opacity: 0.7; /* guidance .opacity(0.7) */
+}

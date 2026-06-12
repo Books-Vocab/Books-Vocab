@@ -42,9 +42,15 @@ function getFreePort() {
 }
 
 function build() {
-  console.error('building web/ …');
-  execFileSync('npm', ['run', 'build'], { cwd: WEB_DIR, stdio: ['ignore', 'ignore', 'inherit'] });
+  console.error('building web/ … (vite output below)');
+  // inherit stdout too — vite prints its own transform/bundle progress, so the
+  // ~40s build is no longer a silent gap.
+  execFileSync('npm', ['run', 'build'], { cwd: WEB_DIR, stdio: ['ignore', 'inherit', 'inherit'] });
 }
+
+// Bounded-concurrency capture pool. Playwright contexts are memory-heavy, so the
+// default fan-out (5) is lower than the magick pool; SHOTS_CONCURRENCY overrides.
+const CAPTURE_CONCURRENCY = Math.max(1, Number(process.env.SHOTS_CONCURRENCY) || 5);
 
 async function waitForServer(url, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
@@ -103,53 +109,89 @@ async function main() {
     await waitForServer(BASE);
   }
 
+  // Capture one case (with the existing 3-attempt fresh-context retry). Returns
+  // nothing; throws after exhausting retries so the pool surfaces the failure.
+  async function captureCase(browser, p) {
+    const qs = new URLSearchParams(p.params).toString(); // surface omittable = bookshelf default
+    const url = `${BASE}/?${qs}`;
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // Fresh BrowserContext per attempt so Playwright tears down all TCP
+      // sockets on ctx.close(). Reusing a context (or just page.close()) leaves
+      // keep-alive connections in the server's socket pool; the pool fills and
+      // new connections get ECONNREFUSED. (Bounded concurrency keeps the live
+      // context count ≤ CAPTURE_CONCURRENCY, well under the pool ceiling.)
+      const ctx = await browser.newContext({
+        viewport: { width: 393, height: 852 },
+        deviceScaleFactor: 3,
+      });
+      try {
+        const page = await ctx.newPage();
+        // 'load' is sufficient and avoids the long networkidle polling window.
+        await page.goto(url, { waitUntil: 'load' });
+        // woff2 faces must be live before capture, or text falls back mid-shot.
+        await page.evaluate(() => document.fonts.ready);
+        // For `transparent` component cases, omitBackground only drops the
+        // browser's DEFAULT white backdrop — not the explicit rig backdrop
+        // (`body { background: #2b2b2b }`), which would show through the
+        // transparent canvas and mismatch the ref's flatten. Null them out.
+        if (p.transparent) {
+          await page.evaluate(() => {
+            document.documentElement.style.background = 'transparent';
+            document.body.style.background = 'transparent';
+          });
+        }
+        // 元件級 case（manifest 帶 `crop` 選擇器）：截元件 DOM 自身 intrinsic
+        // bounds，對齊 iOS catalog 緊裁切 scene；其餘截全幅 phone-frame。
+        const target = p.crop
+          ? page.locator(p.crop)
+          : page.locator('[data-harness="phone-frame"]');
+        // `transparent` cases mirror iOS Catalog component scenes on a TRANSPARENT
+        // canvas (faint pills whose fill is near-zero alpha). omitBackground keeps
+        // the web shot pill-over-transparent so both sides flatten identically.
+        await target.screenshot({
+          path: join(SHOTS, `${p.case}.png`),
+          omitBackground: !!p.transparent,
+        });
+        lastErr = null;
+      } catch (err) {
+        lastErr = err;
+        await ensureServer();
+      } finally {
+        await ctx.close().catch(() => {}); // drain this context's sockets immediately
+      }
+      if (!lastErr) break;
+    }
+    if (lastErr) throw lastErr;
+  }
+
   try {
     const browser = await chromium.launch();
     try {
-      for (const p of cases) {
-        // params 逐鍵序列化（surface 可省略 = bookshelf 向後相容預設）
-        const qs = new URLSearchParams(p.params).toString();
-        const url = `${BASE}/?${qs}`;
-        let lastErr;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          // Fresh BrowserContext per attempt so Playwright tears down all TCP
-          // sockets on ctx.close(). Reusing a context (or just page.close())
-          // leaves keep-alive connections in the server's socket pool; after
-          // ~9 cases the pool fills and new connections get ECONNREFUSED.
-          const ctx = await browser.newContext({
-            viewport: { width: 393, height: 852 },
-            deviceScaleFactor: 3,
-          });
-          try {
-            const page = await ctx.newPage();
-            // 'load' is sufficient and avoids the long networkidle polling
-            // window that compounds with accumulated keep-alive sockets.
-            await page.goto(url, { waitUntil: 'load' });
-            // woff2 faces must be live before capture, or text falls back mid-shot.
-            await page.evaluate(() => document.fonts.ready);
-            // 元件級 case（manifest 帶 `crop` 選擇器）：截元件 DOM 自身的
-            // intrinsic bounds，對齊 iOS catalog 對該元件的緊裁切 scene；
-            // 其餘 case 截全幅 phone-frame（1179×2556）。
-            const target = p.crop
-              ? page.locator(p.crop)
-              : page.locator('[data-harness="phone-frame"]');
-            await target.screenshot({
-              path: join(SHOTS, `${p.case}.png`),
-            });
-            lastErr = null;
-          } catch (err) {
-            lastErr = err;
-            await ensureServer();
-          } finally {
-            // ctx.close() drains this context's sockets immediately, keeping
-            // the server connection count bounded across all cases.
-            await ctx.close().catch(() => {});
-          }
-          if (!lastErr) break;
+      // Fan out capture across a bounded pool of contexts — the loop was serial
+      // (one page at a time). Live counter so the capture phase is never silent.
+      const lanes = Math.max(1, Math.min(CAPTURE_CONCURRENCY, cases.length));
+      console.error(`capturing ${cases.length} cases  (concurrency ${lanes})`);
+      const startMs = Date.now();
+      let cursor = 0;
+      let done = 0;
+      const worker = async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= cases.length) return;
+          const p = cases[i];
+          await captureCase(browser, p);
+          done += 1;
+          const elapsed = (Date.now() - startMs) / 1000;
+          const rate = done / Math.max(0.001, elapsed);
+          const eta = (cases.length - done) / Math.max(0.001, rate);
+          process.stderr.write(
+            `[${String(done).padStart(String(cases.length).length)}/${cases.length}] ` +
+            `${elapsed.toFixed(0)}s elapsed · ~${eta.toFixed(0)}s left · ${rate.toFixed(1)}/s  ✓ ${p.case}\n`,
+          );
         }
-        if (lastErr) throw lastErr;
-        console.error(`✓ ${p.case}`);
-      }
+      };
+      await Promise.all(Array.from({ length: lanes }, worker));
     } finally {
       await browser.close();
     }

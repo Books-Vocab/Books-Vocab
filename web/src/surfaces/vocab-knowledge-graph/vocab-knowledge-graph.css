@@ -1,0 +1,375 @@
+/* Vocabulary · Knowledge Graph — iOS KnowledgeGraphPresenter 的 web 鏡像。
+   token 一律走 design-system 變數；ReviewGradient 資料色為非品牌 token，以行內
+   token-allow literal 帶入（見 fixtures.ts / Screen）。
+
+   GraphWebView（WKWebView force-graph）在 catalog 快照不繪節點/邊 → content 態
+   ref 的 graph 區 = 全 page-bg。故僅還原：page-bg + legend chip(+ settings drawer)。
+
+   .fill scene = 全裝置幀 1179×2556、corner srgba(247,246,243,1)=page-bg（不透明）
+   → 全 phone-frame 捕捉（無 crop=component、無 transparent）。legend/settings 以
+   絕對定位釘在 ref 量得的像素位置（native px ÷ 3 = 邏輯 pt）。 */
+
+/* surface 撐滿 phone-frame、bg=page-bg；定位脈絡。 */
+.vkg-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--page-bg);
+  overflow: hidden;
+}
+
+/* empty / no-links 態 = VocabSceneShell `.empty` centeredWrapper：垂直置中卡片，
+   .padding(cardBlockPadding 24)。 */
+.vkg-surface--empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: var(--sp-6);
+}
+
+/* ── graphLegend chip（右上） ─────────────────────────────────────────────────
+   VStack(alignment:.trailing, spacing tinyGap=4)[bar 100×5 · 三色標籤列 · 灰點列]
+   .padding(.h inlineGap=8, .v microGap=6)
+   .background(RoundedRect(radius chip=6).fill(cardBackground.opacity(0.85))
+     .overlay(stroke cardBorder 1px))。
+   ref 量測 native bounds (793,355)→(1145,512) → 邏輯 left 264.3 / top 118.3 /
+   約 117×52。trailing inset = overlayDrawerHorizontalInset 12 + top microGap 6
+   貼齊 nav 下緣。以 right/top 絕對定位釘住。 */
+.vkg-legend {
+  position: absolute;
+  top: 118px; /* ref 量測（safe-area 下 nav + microGap） */
+  right: 12px; /* overlayDrawerHorizontalInset */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1); /* tinyGap 4 */
+  padding: var(--micro-gap) var(--inline-gap); /* v microGap 6 / h inlineGap 8 */
+  border-radius: var(--radius-chip);
+  background: color-mix(in srgb, var(--card-bg) 85%, transparent);
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+}
+
+/* ReviewGradientBar：100×5 膠囊（clipShape Capsule）。20 段並排矩形。 */
+.vkg-legend-bar {
+  display: flex;
+  width: 100px;
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.vkg-legend-bar-seg {
+  flex: 1 1 0;
+}
+
+/* HStack(spacing 0)[安全 · Spacer · 到期 · Spacer · 逾期].font(monoLabel).frame(width:100) */
+.vkg-legend-labels {
+  display: flex;
+  align-items: center;
+  width: 100px;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* monoLabel = mono 10 bold */
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vkg-legend-spacer {
+  flex: 1;
+}
+
+.vkg-legend-label {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* HStack(spacing tinyGap=4)[Circle 6×6 quaternary.opacity(0.5) · 未學習/封存 monoLabel quaternary] */
+.vkg-legend-unlearned {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.vkg-legend-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-quaternary) 50%, transparent);
+}
+
+.vkg-legend-unlearned-text {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-quaternary);
+  white-space: nowrap;
+}
+
+/* ── settingsOverlay（底部 drawer 卡） ──────────────────────────────────────────
+   VocabCard(padding 0) → AppSectionCard.vocab：cardBackground + radius card + border。
+   .frame(maxWidth:420).padding(.h overlayDrawerHorizontalInset=12)
+   .padding(.bottom overlayDrawerBottomInset=8)，貼底（含 home-indicator safe area）。
+   ref 量測：card native top≈1302 / left≈35 / right≈1148 / bottom≈2435
+   → 邏輯 left≈11.7 / right inset≈11.7 / 底距≈40（safe-area 34 + drawer inset）。 */
+.vkg-settings {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 40px; /* ref 量測（home-indicator safe area + overlayDrawerBottomInset） */
+  display: flex;
+  justify-content: center;
+}
+
+.vkg-settings-card {
+  width: 100%;
+  max-width: 420px; /* .frame(maxWidth: 420)（SwiftUI 常數） */
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  overflow: hidden;
+}
+
+/* VocabOverlayHeader：HStack(spacing sectionHeaderGap=10)[重設 · Label(關聯圖+glyph) ·
+   Spacer · xmark chrome]。.padding(.h overlayHeaderHorizontalInset 16, .v 12)。 */
+.vkg-overlay-header {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* sectionHeaderGap */
+  padding: 12px 16px; /* overlayHeaderVerticalInset 12 / overlayHeaderHorizontalInset 16 */
+}
+
+/* VocabInlineActionButton(重設)：body(17) / accent。 */
+.vkg-inline-action {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* body 17 */
+  line-height: var(--leading-body);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* Label(關聯圖, systemImage glyph)：caption(12) / tertiaryText，icon 在前。 */
+.vkg-overlay-title {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1); /* SF Symbol Label icon↔text 間隙 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary);
+}
+
+.vkg-overlay-title-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.vkg-overlay-spacer {
+  flex: 1;
+}
+
+/* VocabChromeIconButton(xmark)：32pt 圓角方塊、cardBackground + cardBorder、
+   iconMedium glyph / secondaryText。 */
+.vkg-chrome-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; /* chromeButtonSize */
+  height: 32px;
+  border-radius: var(--radius-control); /* control 6 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+
+.vkg-chrome-icon {
+  flex: none;
+}
+
+/* Divider().padding(.h overlayCompactDividerInset=8)。 */
+.vkg-overlay-divider {
+  height: 0.5px;
+  margin: 0 8px;
+  background: var(--divider);
+}
+
+/* 內容區：.padding(.h listRowHorizontalInset=16, .bottom graphDrawerBottomInset=11)。 */
+.vkg-settings-body {
+  padding: 0 16px 11px;
+}
+
+.vkg-settings-section {
+  display: flex;
+  flex-direction: column;
+}
+
+/* CardSectionDivider(horizontalPadding 0).padding(.v sectionGap=14)。 */
+.vkg-card-section-divider {
+  height: 0.5px;
+  margin: var(--section-gap) 0; /* .padding(.vertical, sectionGap 14) */
+  background: var(--divider);
+}
+
+/* VocabSectionHeader：caption(12 bold) tracking 0.5 / tertiaryText。
+   .padding(.bottom microGap=6)。 */
+.vkg-section-header {
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--micro-gap); /* .padding(.bottom, microGap) */
+}
+
+.vkg-section-header-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-tertiary);
+}
+
+/* VocabSliderRow：HStack(spacing inlineGap=8)[label w64 caption primary ·
+   Slider · value w42 monoLabel secondary].frame(height tabSelectorHeight=32)。 */
+.vkg-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--inline-gap);
+  height: var(--tab-selector-height); /* 32 */
+}
+
+.vkg-slider-label {
+  flex: none;
+  width: 64px; /* VocabSliderRow.labelWidth（SwiftUI 常數） */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 bold */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* Slider — Catalyst 無凸 thumb 雙段膠囊軌：filled = tint #37352f（ref 量 srgba(55,53,47)）、
+   empty = 系統灰（ref 量 srgba(229,229,229)，無 appSkin provenance）；軌高 ~6px。 */
+.vkg-slider-track {
+  flex: 1 1 auto;
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(229, 229, 229); /* SwiftUI Slider 系統預設空軌色（量測），無 token */
+  overflow: hidden;
+}
+
+.vkg-slider-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--tint); /* #37352f */
+}
+
+.vkg-slider-value {
+  flex: none;
+  width: 42px; /* VocabSliderRow.valueWidth（SwiftUI 常數） */
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* monoLabel mono 10 bold */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-secondary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Toggle(孤立節點, .switch)：HStack[caption label primary · Spacer · switch]。
+   .padding(.top microGap=6)。off track = 系統 systemGray3（ref srgba(197,197,199)）。 */
+.vkg-toggle-row {
+  display: flex;
+  align-items: center;
+  height: var(--tab-selector-height);
+  margin-top: var(--micro-gap); /* .padding(.top, microGap) */
+}
+
+.vkg-toggle-label {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 / primaryText */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-primary);
+}
+
+/* UISwitch off：51×31pt track、systemGray3 fill、白 knob 27pt。 */
+.vkg-toggle-switch {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: rgb(197, 197, 199); /* UISwitch off track（量測 systemGray3），無 token */
+}
+
+.vkg-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 999px;
+  background: #fff; /* token-allow UISwitch knob 白 */
+  box-shadow: 0 3px 1px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* ── empty / no-links 卡 = VocabEmptyStateCard.vocab（同 vocab-scene-shell 幾何） ──
+   icon symbolLarge(30)/tertiary · title sectionTitle(serif 18 bold)/primary ·
+   desc body(15=subhead)/secondary；card chrome cardPadding(18) + bg + radius card +
+   cardBorder.opacity(0.7) 1px + z1；content .padding(.v, 12)。 */
+.vkg-empty-card {
+  flex: none;
+  box-sizing: border-box;
+  padding: var(--card-padding); /* 18 */
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z1);
+}
+
+.vkg-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack); /* 14 */
+  padding-block: var(--sp-3); /* Content .padding(.vertical, 12) */
+}
+
+.vkg-empty-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.vkg-empty-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.vkg-empty-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}

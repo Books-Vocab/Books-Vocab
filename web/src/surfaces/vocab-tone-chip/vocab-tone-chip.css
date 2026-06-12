@@ -1,0 +1,46 @@
+/* VocabToneChip — iOS VocabComponents.swift `VocabToneChip` 的 web 鏡像。
+   token 一律走 design-system 變數（tone-chip-padding、tone-* 色、caption），
+   不寫 literal（除 capsule 999px 與結構）。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身（.padding(24) 的 intrinsic box），surface 與
+   phone-frame 在 crop=component 下透明，shots omitBackground 截圖 → web 與
+   ref 同為 chip-over-transparent。 */
+
+/* surface = scene wrapper .padding(24) 的緊裹 box（intrinsic，供 crop 截取） */
+.vocab-tone-chip-surface {
+  display: inline-flex;
+  padding: var(--sp-6); /* iOS .padding(24) */
+  box-sizing: border-box;
+}
+
+/* Variants = VStack(alignment:.leading, spacing:16)；Long text 單 chip 亦適用 */
+.vocab-tone-chip-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* VStack(alignment: .leading) */
+  gap: var(--sp-4); /* spacing: 16 */
+}
+
+/* VocabToneChip：Text(caption=sans12 bold).foregroundStyle(tone)
+   .padding(.h chipHorizontalPadding=10 .v chipVerticalPadding=6)
+   .background(tone.opacity(0.08)).clipShape(Capsule(.continuous)) */
+.vocab-tone-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--tone-chip-padding-v) var(--tone-chip-padding-h);
+  border-radius: 999px; /* Capsule(.continuous) */
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 8%, transparent); /* tone.opacity(0.08) */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-tone-chip'] {
+  background: transparent;
+}

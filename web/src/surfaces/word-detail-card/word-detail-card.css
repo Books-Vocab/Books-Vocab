@@ -1,0 +1,242 @@
+/* Word Detail · Card Document — iOS CardDocumentView.swift 的 web 鏡像。
+   token 一律走 design-system 變數，不寫 literal（除 capsule 999px / hairline 0.5px /
+   36px tap-target / box-sizing 等結構，與 scene .padding(24)）。
+
+   catalog component crop（ref corner = page-bg #f7f6f3 不透明 → 無 transparent）：
+   crop 目標 = `.word-detail-card`（含 page-bg + scene .padding(24)），compressed
+   layout 緊裁至內容 intrinsic box（Full/Compact 近滿寬 393pt；No-example 窄 ~240pt）。
+
+   幾何來源（CardDocumentView.body + CardDocumentScenarios.cardSheet）：
+   scene = ScrollView{ CardDocumentView.padding(cardBlockPadding=24) }.background(pageBg)。
+   VStack spacing = compact?foldSectionSpacing(24):0；每 block .padding(blockPadding=compact?0:24)。
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。 */
+
+/* surface = scene ScrollView 內容（page-bg + .padding(24)），crop 目標。
+   inline-block → compressed 緊裁；max-width 393pt = iPhone 邏輯寬，example serif 於此寬度折行。 */
+.word-detail-card {
+  display: inline-block;
+  box-sizing: border-box;
+  background: var(--page-bg); /* skin.palette.pageBackground */
+  padding: var(--sp-6); /* CardDocumentView 外 .padding(cardBlockPadding=24) */
+  max-width: 393px; /* iPhone 15 Pro 邏輯寬（compressed 提案寬） */
+}
+
+/* VStack(alignment:.leading, spacing: blockSpacing) */
+.wdc-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0; /* compact=false: blockSpacing 0 */
+}
+.word-detail-card[data-compact='true'] .wdc-stack {
+  gap: var(--sp-6); /* compact: foldSectionSpacing=24 */
+}
+
+/* 每個非 divider block .padding(blockPadding=cardBlockPadding=24) */
+.wdc-block {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-6); /* blockPadding=24 */
+}
+.word-detail-card[data-compact='true'] .wdc-block {
+  padding: 0; /* compact: blockPadding 0 */
+}
+
+/* CardSectionDivider：Rectangle(divider).frame(height: dividerThin=0.5)
+   .padding(.horizontal, cardDividerHorizontalPadding=24)。compact → horizontalPadding 0。 */
+.wdc-divider {
+  box-sizing: border-box;
+  height: 0.5px; /* AppMetrics.dividerThin */
+  background: var(--divider); /* skin.palette.divider */
+  /* .padding(.horizontal, cardDividerHorizontalPadding=24)：兩側內縮 24 */
+  margin: 0 var(--sp-6);
+  width: calc(100% - 2 * var(--sp-6));
+}
+.word-detail-card[data-compact='true'] .wdc-divider {
+  margin: 0;
+  width: 100%; /* compact: horizontalPadding 0 */
+}
+
+/* ── Hero（CardDocumentHeroBlock）──
+   HStack(alignment:.top, spacing cardBlockContentGap=16){ main … Spacer(minLength blockGap=12) tier } */
+.wdc-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4); /* cardBlockContentGap=16 */
+  width: 100%;
+}
+.wdc-hero-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* cardBlockInnerGap=8 */
+  flex: 1;
+  min-width: 0;
+}
+/* HStack(.firstTextBaseline, spacing heroBaselineGap=8) */
+.wdc-hero-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2); /* heroBaselineGap=8 */
+}
+.wdc-hero-word {
+  font-family: var(--font-mono); /* systemMono */
+  font-size: var(--text-detail-word); /* detailWord=27 */
+  font-weight: 600; /* .semibold */
+  letter-spacing: var(--tracking-h2-tight); /* AppFonts.Tracking.h2Tight -0.65 */
+  color: var(--text-primary); /* primaryText */
+  line-height: 1;
+}
+.wdc-hero-pos {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body=15 */
+  font-weight: 500; /* .medium */
+  color: var(--text-secondary); /* secondaryText */
+}
+/* HStack(spacing heroBaselineGap=8){ speaker 鈕 } */
+.wdc-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* heroBaselineGap=8 */
+}
+/* Button label Image(iconSmall=12).frame(width:36,height:36).contentShape */
+.wdc-hero-speaker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px; /* .frame(width:36,height:36) tap-target */
+  height: 36px;
+  color: var(--text-secondary); /* secondaryText */
+}
+.wdc-icon-small {
+  width: var(--text-caption); /* iconSmall=12 */
+  height: var(--text-caption);
+}
+
+/* VocabTierLabel：Text(monoLabel=mono10 bold).foregroundStyle(tierColor.opacity(0.78))
+   prominent=false → 無 padding / 無 capsule。tier "advanced" → tierAdvanced。 */
+.wdc-tier {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* monoLabel=10 */
+  font-weight: 700; /* bold */
+  line-height: 1;
+  color: var(--tier-advanced); /* tierColor("advanced")，alpha 已含 0.78（見 token） */
+  flex-shrink: 0;
+}
+
+/* ── Example（CardDocumentExampleBlock）──
+   detailExampleSerif=serifItalic22 primaryText，.lineSpacing(paragraphLineSpacing=4) */
+.wdc-example {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--text-h2); /* detailExampleSerif=22 */
+  color: var(--text-primary); /* primaryText */
+  /* lineSpacing 4 疊在字高上：22 + 4 ≈ 1.18 leading */
+  line-height: calc((var(--text-h2) + 4px) / var(--text-h2));
+}
+
+/* ── Meaning（CardDocumentMeaningBlock）──
+   VStack(.leading, spacing cardBlockContentGap=16){ title; VStack(spacing 16){ paragraphs } } */
+.wdc-meaning {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4); /* cardBlockContentGap=16 */
+  width: 100%;
+}
+.wdc-meaning-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-translation-title); /* translationTitle=21 */
+  font-weight: 700; /* bold */
+  letter-spacing: var(--tracking-h2-tight); /* h2Tight -0.65 */
+  color: var(--text-primary); /* primaryText */
+  line-height: var(--leading-heading);
+}
+.wdc-meaning-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4); /* cardBlockContentGap=16 */
+  width: 100%;
+}
+/* CardInlineText(.body)：body=sans15 secondaryText，.lineSpacing(detailLineSpacing=5) */
+.wdc-meaning-para {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body=15 */
+  color: var(--text-secondary); /* secondaryText */
+  line-height: calc((var(--text-subhead) + 5px) / var(--text-subhead)); /* lineSpacing 5 */
+}
+/* compact: .lineLimit(3) */
+.wdc-meaning-para--clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Section（Collocations / Source 共用）──
+   VStack(.leading, spacing cardBlockInnerGap=8){ CardSectionLabel; content } */
+.wdc-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* cardBlockInnerGap=8 */
+  width: 100%;
+}
+/* CardSectionLabel：Label{ Text(caption=sans12 bold) } icon{ Image(iconTiny=10) }
+   .foregroundStyle(tertiaryText)。Label 預設 icon↔title 間距 ≈ 微距。 */
+.wdc-section-label {
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* SwiftUI Label icon-title 間距 ≈ microGap(6) */
+  color: var(--text-tertiary); /* tertiaryText */
+}
+.wdc-section-label-text {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption=12 */
+  font-weight: 700; /* bold */
+  line-height: var(--leading-caption);
+}
+.wdc-icon-tiny {
+  width: var(--text-mono-label); /* iconTiny=10 */
+  height: var(--text-mono-label);
+}
+
+/* CollocationFlowLayout(spacing cardBlockInnerGap=8) — flex-wrap 模擬折行 */
+.wdc-collocations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2); /* cardBlockInnerGap=8 */
+  width: 100%;
+}
+/* pill：Text(monoBody=mono14 secondaryText).padding(.h s2=8 .v s1=4)
+   .background(Capsule.fill(divider.opacity(0.5)))。無 explanation → 無 stroke。 */
+.wdc-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-body); /* monoBody=14 */
+  color: var(--text-secondary); /* secondaryText */
+  padding: var(--sp-1) var(--sp-2); /* .v s1=4 / .h s2=8 */
+  border-radius: 999px; /* Capsule */
+  background: color-mix(in srgb, var(--divider) 50%, transparent); /* divider.opacity(0.5) */
+  line-height: 1; /* mono badge 緊湊：iOS Text leading tight */
+  box-sizing: border-box;
+}
+
+/* Source meta：HStack(spacing sourceMetadataGap=6){ bookTitle / · chapter }
+   caption=sans12 bold secondaryText */
+.wdc-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--micro-gap); /* sourceMetadataGap=6（= AppSpacing.microGap） */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption=12 */
+  font-weight: 700; /* bold */
+  color: var(--text-secondary); /* secondaryText */
+  line-height: var(--leading-caption);
+}

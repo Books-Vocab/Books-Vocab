@@ -1,0 +1,105 @@
+/* KGVocabRow — iOS KGVocabPresenter.swift `KGVocabRow` + WordRow.swift `WordRow`
+   的 web 鏡像。token 一律走 design-system 變數，不寫 literal（除 radius/結構）。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身（scene wrapper .padding(16) 的 intrinsic box），surface 與
+   phone-frame 在 crop=component 下透明，shots omitBackground 截圖 → web 與 ref 同為
+   row-over-transparent（對齊 vocab-sort-pill 模式）。 */
+
+/* surface = scene wrapper .padding(16) 的緊裹 box（intrinsic，供 crop 截取） */
+.kg-vocab-row-surface {
+  display: inline-flex;
+  padding: var(--sp-4); /* iOS scene .padding(16) */
+  box-sizing: border-box;
+}
+
+/* KGVocabRow 外層：.padding(.horizontal, s1=4) 包住 highlight background。
+   highlight = RoundedRectangle(sm=6).fill(accent.opacity(0.08))。 */
+.kg-vocab-row {
+  padding: 0 var(--sp-1); /* .padding(.horizontal, AppSpacing.s1=4) */
+  box-sizing: border-box;
+}
+
+/* HStack(spacing: inlineGap) wrapper + .padding(.horizontal 16 / .vertical 4)
+   + highlight background。inlineGap 只在 selecting 才有第二子，故此處不下 gap。 */
+.kg-vocab-row-content {
+  display: flex;
+  align-items: center;
+  gap: var(--word-row-gap); /* WordRow HStack spacing: wordRowHorizontalGap=10 */
+  padding: var(--sp-1) var(--sp-4); /* .padding(.vertical s1=4, .horizontal listRowHorizontalInset=16) */
+  /* WordRow .padding(.vertical, compactRowVerticalPadding=10) 疊加在內部 */
+  padding-top: calc(var(--sp-1) + var(--compact-row-padding-v));
+  padding-bottom: calc(var(--sp-1) + var(--compact-row-padding-v));
+  box-sizing: border-box;
+}
+
+.kg-vocab-row--highlighted .kg-vocab-row-content {
+  border-radius: var(--radius-sm); /* RoundedRectangle(cornerRadius: sm=6) */
+  background: color-mix(in srgb, var(--accent) 8%, transparent); /* accent.opacity(0.08) */
+}
+
+/* WordRow VStack(.leading, spacing: wordRowVerticalGap=4)；Spacer(minLength:0) → flex:1 */
+.kg-vocab-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* wordRowVerticalGap=4 */
+}
+
+/* HStack(.firstTextBaseline, spacing: wordRowBaselineGap=6) */
+.kg-vocab-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--micro-gap); /* wordRowBaselineGap=6 */
+}
+
+/* Text(word).font(rowWord = systemMono 18 semibold).foregroundStyle(primaryText) */
+.kg-vocab-row-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-row-word);
+  font-weight: 600; /* .semibold */
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* .lineLimit(1).truncationMode(.tail) */
+}
+
+/* Text(pos).font(caption = sans 12 bold).foregroundStyle(tertiaryText) */
+.kg-vocab-row-pos {
+  flex: none; /* .fixedSize(horizontal: true) */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700; /* caption bold:true */
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Text(translation).font(body = sans 15).foregroundStyle(secondaryText).lineLimit(2) */
+.kg-vocab-row-translation {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* AppFonts.sans(size: 15) */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* VocabReviewProgressBar unlearned ratio:nil 分支：
+   Text(detailLabel="首輪 12h").font(monoLabel = mono 10 bold).foregroundStyle(secondaryText) */
+.kg-vocab-row-detail {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1; /* mono 10 tight：iOS Text leading 緊；web 預設 leading 會撐高 box */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='kg-vocab-row'] {
+  background: transparent;
+}
