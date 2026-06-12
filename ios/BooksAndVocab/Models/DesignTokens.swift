@@ -220,10 +220,12 @@ public enum DesignTokens {
             public static let h1: CGFloat = 28
             public static let h2: CGFloat = 22
             public static let hero: CGFloat = 40
+            public static let monoBody: CGFloat = 14
             public static let monoLabel: CGFloat = 10
             public static let rowWord: CGFloat = 18
             public static let sectionTitle: CGFloat = 18
             public static let subhead: CGFloat = 15
+            public static let translationTitle: CGFloat = 21
         }
         public enum Tracking {
             public static let h2Tight: CGFloat = -0.65

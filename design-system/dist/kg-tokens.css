@@ -23,6 +23,8 @@
   --text-detail-word: 27px;
   --text-row-word: 18px;
   --text-mono-label: 10px;
+  --text-translation-title: 21px;
+  --text-mono-body: 14px;
   --tracking-tight: -1.2px;
   --tracking-h2-tight: -0.65px;
   --tracking-normal: 0px;
@@ -183,6 +185,7 @@
   --button-idle-fill: rgba(0,0,0,0.06);
   --button-pressed-fill: rgba(0,0,0,0.1);
   --vocab-highlight: linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%);
+  --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #ffffff;
   --system-red: #FF3B30;
   --system-blue: #007AFF;
@@ -230,6 +233,7 @@
   --button-idle-fill: rgba(255,255,255,0.1);
   --button-pressed-fill: rgba(255,255,255,0.16);
   --vocab-highlight: linear-gradient(to top, hsla(210, 32%, 64%, 0.20) 35%, transparent 35%);
+  --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #1c1a17;
   --system-red: #FF453A;
   --system-blue: #0A84FF;
@@ -277,6 +281,7 @@
   --button-idle-fill: rgba(0,0,0,0.07);
   --button-pressed-fill: rgba(0,0,0,0.12);
   --vocab-highlight: linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%);
+  --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #ffffff;
   --system-red: #FF3B30;
   --system-blue: #007AFF;

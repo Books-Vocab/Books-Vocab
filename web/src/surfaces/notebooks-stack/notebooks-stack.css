@@ -1,0 +1,239 @@
+/* Notebooks · Stack surface — iOS NotebookCard(style:.grid，NotebookListScenarios)的
+   web 鏡像。scene = `.fill` 全裝置幀（1179×2556 = 393×852pt @dpr3）。
+
+   兩種 layout（pixel 實測自 catalog ref PNG）：
+   - single（State/Depth/empty）：page-bg 內容窄欄 = card(maxWidth 200) + 水平 inset
+     s5(20)×2 = 240pt，於 frame **水平置中**（(393-240)/2 ≈ 76.5pt 邊距，ref 量到
+     band 左緣 75.7pt）；欄高滿幀；card top = safe-area(59) + pageTopInset(16) = 75pt。
+     欄外透明（ref corner srgba 0,0,0,0 → shots transparent:true / phone-frame 透明）。
+   - grid（D1 cover composition basic）：page-bg **全幅鋪滿**（ref corner = page-bg
+     #f7f6f3 不透明 → 無 transparent）。LazyVGrid 2-col，inset s5(20)、gap s6(24)、
+     card top 75pt。card 高 72、寬 ≈164pt（adaptive，欄寬均分）。
+
+   卡片常數逐一對齊 NotebookCard.body（非 coverArea/metadataArea dead path）：
+   height 72 / cover 40% / radius card(8) / cover-inner pad v=s2 h=s3、VStack gap s1 /
+   name serif(17,bold) clamp 2 / rule 寬 cover×0.3 高 1 / spine 0.5 cardBorder /
+   meta pad s3 gap s2 / count mono(10,bold) / actionable caption(12,bold) gap microGap(6)
+   + warning dot / progress h=4 fill=coverColor track=progressBarBackground /
+   dots pattern: white 0.12, 16pt grid, r=2.5pt。
+   px 註解標 iOS 來源常數，diff 迭代時別改丟對應。 */
+
+/* surface 撐滿 phone-frame（.fill layout） */
+.notebooks-stack {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* single：page-bg 240pt 窄欄水平置中、滿高，card 左上對齊 */
+.notebooks-stack[data-layout='single'] {
+  display: flex;
+  justify-content: center; /* 內容欄水平置中（ref band 左緣 ≈76.5pt） */
+}
+
+.nbs-single {
+  box-sizing: border-box;
+  width: 240px; /* card maxWidth 200 + pageHorizontalInset s5(20)×2 */
+  height: 100%;
+  background: var(--page-bg); /* skin.palette.pageBackground */
+  padding: 75px var(--sp-5) 0; /* safe-area 59 + pageTopInset 16 / horizontal s5(20) */
+}
+
+/* grid：page-bg 全幅鋪滿，LazyVGrid 2-col adaptive */
+.notebooks-stack[data-layout='grid'] {
+  background: var(--page-bg);
+}
+
+.nbs-grid {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-6); /* AppShellMetrics.sectionSpacing = s6(24) */
+  padding: 75px var(--sp-5) 0; /* safe-area 59 + pageTopInset 16 / horizontal s5(20) */
+}
+
+/* --- NotebookCard（HStack book-row，72pt 高）--- */
+.nbs-card {
+  position: relative;
+  display: flex;
+  height: 72px;
+  background: var(--card-bg); /* skin.palette.cardBackground */
+  border-radius: var(--radius-card); /* skin.radii.card = 8 */
+  overflow: hidden; /* clipShape RoundedRectangle */
+  /* 北極星二：list card 無 border，靠 cardBackground vs pageBackground 色差分區 */
+}
+
+/* 左：cover 40% 寬 */
+.nbs-card-cover {
+  position: relative;
+  flex: none;
+  width: 40%;
+  background: var(--nb-cover-light);
+  /* noise pattern（opacity 0.04）視覺極微，略 */
+}
+
+[data-theme='dark'] .nbs-card-cover {
+  background: var(--nb-cover-dark);
+}
+
+/* coverPattern dots — white 0.12，16pt grid，r=2.5pt，起點 spacing/2=8pt（NotebookCoverPatterns.dots） */
+.nbs-card-cover[data-pattern='dots'] {
+  background-image: radial-gradient(
+    circle 2.5px at 8px 8px,
+    rgba(255, 255, 255, 0.12) 99%,
+    transparent 100%
+  );
+  background-size: 16px 16px;
+}
+
+.nbs-card-cover-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* VStack spacing = s1(4) */
+  padding: var(--sp-2) var(--sp-3); /* vertical s2(8) / horizontal s3(12) */
+}
+
+.nbs-card-name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1); /* HStack spacing = s1(4) */
+  min-width: 0;
+}
+
+.nbs-card-active-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--nb-rule-light); /* darken(cover, 0.5) */
+}
+
+[data-theme='dark'] .nbs-card-active-dot {
+  background: var(--nb-rule-dark);
+}
+
+.nbs-card-name {
+  /* AppFonts.serif(17, bold).italic()。CJK（Songti TC）無 italic face → 直立 serif；
+     Latin（TOEIC/Self）呈 CrimsonPro italic 字形。不設 font-style:italic 避免
+     Chromium 對 CJK synthetic oblique 斜切造成 diff 雙影——交由字形 cascade。 */
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary); /* skin.palette.primaryText */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* lineLimit(2) + truncationMode(.tail) */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* editorial rule — 1pt，cover 寬 × 0.3，darken 0.5 */
+.nbs-card-rule {
+  width: 30%; /* coverWidth × 0.3（cover 已是 40% 容器） */
+  height: 1px;
+  background: var(--nb-rule-light);
+}
+
+[data-theme='dark'] .nbs-card-rule {
+  background: var(--nb-rule-dark);
+}
+
+/* 0.5pt 垂直 cardBorder rule（書背隱喻），cover 右緣 */
+.nbs-card-spine {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0.5px;
+  height: 100%;
+  background: var(--card-border); /* skin.palette.cardBorder */
+}
+
+/* 右：metadata 區 */
+.nbs-card-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2); /* VStack spacing = s2(8) */
+  padding: var(--sp-3); /* vertical s3(12) / horizontal s3(12) */
+  box-sizing: border-box;
+}
+
+.nbs-card-empty {
+  /* skin.typography.caption = sans 12 bold；tertiaryText */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.nbs-card-stats {
+  display: flex;
+  align-items: baseline; /* HStack alignment .firstTextBaseline */
+  justify-content: space-between; /* Spacer(minLength: s2) */
+  gap: var(--sp-2);
+}
+
+.nbs-card-count {
+  /* skin.typography.monoLabel = AppFonts.mono(10, bold) */
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1; /* mono badge：iOS Text 緊排，web 預設 leading 會撐高框 */
+  font-variant-numeric: tabular-nums; /* monospacedDigit */
+  color: var(--text-secondary); /* skin.palette.secondaryText */
+}
+
+.nbs-card-actionable {
+  flex: none; /* fixedSize(horizontal: true) */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--micro-gap); /* AppSpacing.microGap = 6 */
+  /* count: caption = sans 12 bold */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.nbs-card-warning-dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warning); /* skin.palette.warning */
+}
+
+/* ProgressCapsule height=4，fillColor=coverColor，track=progressBarBackground */
+.nbs-card-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--progress-track); /* skin.palette.progressBarBackground */
+  overflow: hidden;
+}
+
+.nbs-card-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--nb-cover-light); /* fillColor = coverColor */
+}
+
+[data-theme='dark'] .nbs-card-progress-fill {
+  background: var(--nb-cover-dark);
+}
+
+/* single scene 透明捕捉（.fill 透明畫布；grid 為 page-bg 全幅不透明，不在此列）：
+   phone-frame 本體透明，shots transparent:true omitBackground → 內容-over-transparent。 */
+.phone-frame[data-surface='notebooks-stack'][data-scenario='state-active'],
+.phone-frame[data-surface='notebooks-stack'][data-scenario='state-inactive'],
+.phone-frame[data-surface='notebooks-stack'][data-scenario='depth-100'],
+.phone-frame[data-surface='notebooks-stack'][data-scenario='d1-empty'] {
+  background: transparent;
+}
