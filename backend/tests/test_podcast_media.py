@@ -7,8 +7,7 @@ callable so tests remain hermetic and fast.
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -16,7 +15,6 @@ import pytest
 from fastapi import HTTPException
 
 from kg.routers import podcast_media as media_mod
-
 
 # ---------------------------------------------------------------------------
 # _media_type_for
@@ -125,7 +123,7 @@ class TestS3StaticHeaders:
         assert headers["ETag"] == '"abc"'
 
     def test_last_modified_with_timestamp(self):
-        ts = datetime(2026, 6, 6, 12, 0, 0, tzinfo=timezone.utc)
+        ts = datetime(2026, 6, 6, 12, 0, 0, tzinfo=UTC)
         obj = {"LastModified": ts}
         headers = media_mod._s3_static_headers(obj)
         assert headers["Last-Modified"] == "Sat, 06 Jun 2026 12:00:00 GMT"

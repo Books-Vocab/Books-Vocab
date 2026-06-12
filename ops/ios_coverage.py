@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13 python
 """Parse Xcode xccov output into a stable KG iOS coverage envelope."""
 
 from __future__ import annotations

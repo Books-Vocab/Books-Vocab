@@ -205,7 +205,6 @@ class TestListBackups:
 class TestRestore:
     def _create_backup(self, tmp_path: Path, uid: str = "u1") -> Path:
         import tarfile
-        from io import BytesIO
         backup_dir = tmp_path / "_ops_backups"
         backup_dir.mkdir()
         dest = backup_dir / f"{uid}__20240101T000000Z.tar.gz"
