@@ -118,7 +118,12 @@ export const SURFACE_SCENARIOS = {
   // Notebooks Stack（full-frame：single 透明 / grid 不透明）+ Word Detail Card（component
   // crop 不透明 page-bg，CardDocument）。SoT: NotebookCover/NotebookList/WordDetail scenarios。
   'notebook-cover': ['all-patterns-blue', 'color-swatches', 'solid-no-pattern', 'long-name-truncate', 'shows-name-false', 'image-fallback'],
-  'notebooks-stack': ['state-active', 'state-inactive', 'd1-cover-basic', 'depth-100', 'd1-empty'],
+  'notebooks-stack': [
+    'state-active', 'state-inactive', 'd1-cover-basic', 'depth-100', 'd1-empty',
+    // batch expansion（dots/null pattern、light、全幀，複用既有元件）
+    'depth-0', 'd1-large-card-count', 'd1-large-due-count', 'd2-grid-height',
+    'editorial-different-seeds', 'editorial-spine-rotation', 'stress-happy-2up',
+  ],
   'word-detail-card': ['full', 'compact', 'no-example'],
   // Composite layer (batch-8): Settings sections — Preferences/Review（full-frame transparent，
   // section over transparent）+ Subscription（component crop transparent，ProAccess section）。
