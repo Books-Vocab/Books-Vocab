@@ -166,6 +166,17 @@ let SCOPED_OUT: Set<String> = [
     "confirmationDialog", "popover",
 ]
 
+// ---------------------------------------------------------------------------
+// custom-modifier symbol table (cross-file): app-defined `extension View` funcs
+// and `ViewModifier` structs. Populated by StructCollector over the WHOLE file set
+// before any lowering, so a `.customModifier()` call can be resolved to its expansion.
+// ---------------------------------------------------------------------------
+
+// single-threaded CLI: the symbol table is built fully in pass 1 (main thread) before
+// any read in pass 2, so the unchecked annotation is sound.
+nonisolated(unsafe) var extFuncBodies: [String: ExprSyntax] = [:]      // ext View func → body expr
+nonisolated(unsafe) var modifierStructBodies: [String: ExprSyntax] = [:]  // ViewModifier struct → body(content:)
+
 func edgeName(_ e: ExprSyntax) -> String? {
     guard let m = e.as(MemberAccessExprSyntax.self), m.base == nil else { return nil }
     return m.declName.baseName.text
@@ -327,6 +338,86 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
 }
 
 // ---------------------------------------------------------------------------
+// custom-modifier resolution
+//
+// A `.customModifier()` call earns coverage ONLY when it provably expands to a pure
+// modifier chain anchored on `content`/`self` (fate 1). A chain terminating in a
+// SCOPED_OUT presentation modifier (.sheet/…) is `.scoped` — no coverage credit. A
+// body that structurally wraps `content` in another constructor (fate 3) is
+// `.unresolved` → honest unparsed. This asymmetry is the honesty guarantee: the only
+// path to +coverage is a provable visual modifier chain. Arg→body parameter
+// substitution is NOT modeled; a body referencing a func parameter degrades to a
+// literal/unknown value (honest), never a fabricated token.
+// ---------------------------------------------------------------------------
+
+enum CustomResolution { case modifiers([[String: Any]]); case scoped; case unresolved }
+
+func resolveCustom(_ name: String, _ depth: Int) -> CustomResolution {
+    if depth > 8 { return .unresolved }
+    guard let body = extFuncBodies[name] else { return .unresolved }
+    return resolveChain(body, depth + 1)
+}
+
+// Resolve a modifier-chain expression (anchored on content/self) into spliced
+// modifiers / scoped / unresolved. Base-first (source) order preserved.
+func resolveChain(_ expr: ExprSyntax, _ depth: Int) -> CustomResolution {
+    if depth > 16 { return .unresolved }
+
+    // anchor: `content` (ViewModifier) or `self` (View ext) → empty modifier prefix
+    if let ref = expr.as(DeclReferenceExprSyntax.self) {
+        let n = ref.baseName.text
+        return (n == "content" || n == "self") ? .modifiers([]) : .unresolved
+    }
+
+    // bare call `name(args)` == `self.name(args)` (implicit-self anchor). Three sub-cases:
+    // `modifier(StructName())`, a custom ext func, or a builtin modifier (sheet/…).
+    if let call = expr.as(FunctionCallExprSyntax.self),
+       let callee = call.calledExpression.as(DeclReferenceExprSyntax.self) {
+        let fn = callee.baseName.text
+        if fn == "modifier", let a0 = call.arguments.first?.expression,
+           let structCall = a0.as(FunctionCallExprSyntax.self),
+           let sref = structCall.calledExpression.as(DeclReferenceExprSyntax.self),
+           let mbody = modifierStructBodies[sref.baseName.text] {
+            return resolveChain(mbody, depth + 1)
+        }
+        if extFuncBodies[fn] != nil { return resolveCustom(fn, depth + 1) }
+        switch parseModifier(fn, call.arguments, call.trailingClosure) {
+        case .mod(let m): return .modifiers([m])
+        case .skip: return .modifiers([])
+        case .scoped: return .scoped
+        case .unparsed: return .unresolved
+        }
+    }
+
+    // `<base>.<name>(args) <trailing?>` — a modifier applied to base
+    if let call = expr.as(FunctionCallExprSyntax.self),
+       let ma = call.calledExpression.as(MemberAccessExprSyntax.self),
+       let base = ma.base {
+        let head = resolveChain(base, depth + 1)        // inner first → source order
+        guard case .modifiers(let acc) = head else { return head }  // scoped/unresolved propagate
+        let name = ma.declName.baseName.text
+        switch parseModifier(name, call.arguments, call.trailingClosure) {
+        case .mod(let m): return .modifiers(acc + [m])
+        case .skip: return .modifiers(acc)
+        case .scoped: return .scoped
+        case .unparsed:
+            // unknown builtin name — maybe another custom modifier
+            if extFuncBodies[name] != nil {
+                switch resolveCustom(name, depth + 1) {
+                case .modifiers(let m2): return .modifiers(acc + m2)
+                case .scoped: return .scoped
+                case .unresolved: return .unresolved
+                }
+            }
+            return .unresolved
+        }
+    }
+
+    // constructor wrap (AppSectionCard(…){content}) / anything else → structural
+    return .unresolved
+}
+
+// ---------------------------------------------------------------------------
 // expr → node (recursive lowering)
 // ---------------------------------------------------------------------------
 
@@ -343,10 +434,20 @@ func lower(_ expr: ExprSyntax) -> Node {
         case .mod(let m): node.modifiers.append(m)
         case .skip: break
         case .scoped(let nm): node.scoped.append(".\(nm)")
-        // record ONLY the modifier itself, not the whole chain — appending
-        // call.trimmedDescription would re-swallow the already-parsed base subtree
-        // (massive duplicate pollution) and lump the chain into one opaque blob.
-        case .unparsed: node.unparsed.append(".\(mname)")
+        case .unparsed:
+            // unknown builtin — try resolving as an app-defined custom modifier before
+            // conceding. Record ONLY the modifier name, never the whole chain (appending
+            // call.trimmedDescription would re-swallow the already-parsed base subtree).
+            switch resolveCustom(mname, 0) {
+            case .modifiers(let ms) where !ms.isEmpty:
+                node.modifiers.append(contentsOf: ms)
+            case .modifiers:
+                break  // resolved to a no-op (only NON_VISUAL inside) — not debt
+            case .scoped:
+                node.scoped.append(".\(mname)")  // keep the custom name for the histogram
+            case .unresolved:
+                node.unparsed.append(".\(mname)")
+            }
         }
         return node
     }
@@ -415,29 +516,71 @@ func exprOf(_ item: CodeBlockItemSyntax) -> ExprSyntax? {
     }
 }
 
+// the returned view of a getter/func body = its last expression-bearing statement.
+func lastReturnedExpr(_ stmts: CodeBlockItemListSyntax) -> ExprSyntax? {
+    for item in stmts.reversed() {
+        if let e = exprOf(item) { return e }
+    }
+    return nil
+}
+
+func returnsSomeView(_ fn: FunctionDeclSyntax) -> Bool {
+    guard let ret = fn.signature.returnClause?.type.trimmedDescription else { return false }
+    return ret.contains("View")
+}
+
 // ---------------------------------------------------------------------------
 // struct/body discovery
 // ---------------------------------------------------------------------------
 
 final class StructCollector: SyntaxVisitor {
     var found: [(name: String, body: ExprSyntax)] = []
-    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
-        let inherits = node.inheritanceClause?.inheritedTypes
-            .contains { $0.type.trimmedDescription == "View" } ?? false
-        guard inherits else { return .visitChildren }
+
+    // `var body: some View { … }` getter expr, shared by View and ViewModifier.
+    private func bodyGetterExpr(_ node: StructDeclSyntax) -> ExprSyntax? {
         for member in node.memberBlock.members {
             guard let v = member.decl.as(VariableDeclSyntax.self) else { continue }
             for b in v.bindings {
                 guard b.pattern.as(IdentifierPatternSyntax.self)?.identifier.text == "body",
-                      let accessor = b.accessorBlock?.accessors else { continue }
-                var stmts: CodeBlockItemListSyntax?
-                if case .getter(let g) = accessor { stmts = g }
-                guard let stmts else { continue }
-                // the returned view = last expression-bearing statement
-                for item in stmts.reversed() {
-                    if let e = exprOf(item) { found.append((node.name.text, e)); break }
-                }
+                      let accessor = b.accessorBlock?.accessors,
+                      case .getter(let g) = accessor else { continue }
+                if let e = lastReturnedExpr(g) { return e }
             }
+        }
+        return nil
+    }
+
+    // `func body(content: Content) -> some View { … }` returned expr (ViewModifier).
+    private func modifierBodyExpr(_ node: StructDeclSyntax) -> ExprSyntax? {
+        for member in node.memberBlock.members {
+            guard let fn = member.decl.as(FunctionDeclSyntax.self),
+                  fn.name.text == "body",
+                  let block = fn.body else { continue }
+            return lastReturnedExpr(block.statements)
+        }
+        return nil
+    }
+
+    override func visit(_ node: StructDeclSyntax) -> SyntaxVisitorContinueKind {
+        let conforms = node.inheritanceClause?.inheritedTypes
+            .map { $0.type.trimmedDescription } ?? []
+        if conforms.contains("View"), let e = bodyGetterExpr(node) {
+            found.append((node.name.text, e))
+        }
+        if conforms.contains("ViewModifier"), let e = modifierBodyExpr(node) {
+            modifierStructBodies[node.name.text] = e
+        }
+        return .visitChildren
+    }
+
+    // `extension View { func foo() -> some View { … } }` → symbol table entry.
+    override func visit(_ node: ExtensionDeclSyntax) -> SyntaxVisitorContinueKind {
+        guard node.extendedType.trimmedDescription == "View" else { return .visitChildren }
+        for member in node.memberBlock.members {
+            guard let fn = member.decl.as(FunctionDeclSyntax.self),
+                  returnsSomeView(fn), let block = fn.body,
+                  let e = lastReturnedExpr(block.statements) else { continue }
+            extFuncBodies[fn.name.text] = e
         }
         return .visitChildren
     }
@@ -448,26 +591,45 @@ final class StructCollector: SyntaxVisitor {
 // ---------------------------------------------------------------------------
 
 let argv = CommandLine.arguments
-guard argv.count >= 2 else {
-    FileHandle.standardError.write("usage: swift-ast-dumper <file.swift> [--struct Name]\n".data(using: .utf8)!)
-    exit(2)
-}
-let path = argv[1]
 var only: String?
 if let i = argv.firstIndex(of: "--struct"), i + 1 < argv.count { only = argv[i + 1] }
-
-let src = try String(contentsOfFile: path, encoding: .utf8)
-let tree = Parser.parse(source: src)
-let collector = StructCollector(viewMode: .sourceAccurate)
-collector.walk(tree)
-
-var structs: [[String: Any]] = []
-for (name, bodyExpr) in collector.found {
-    if let only, name != only { continue }
-    structs.append(["name": name, "root": lower(bodyExpr).json()])
+// Symbol table is built from ALL passed files (app-wide custom modifiers live in
+// UIComponents/, Platform/, …), but only structs whose source path contains `emitFilter`
+// are emitted/measured. This separates "where definitions live" from "what we score".
+var emitFilter: String?
+if let i = argv.firstIndex(of: "--emit"), i + 1 < argv.count { emitFilter = argv[i + 1] }
+let files = argv.dropFirst().filter { $0.hasSuffix(".swift") }
+guard !files.isEmpty else {
+    FileHandle.standardError.write("usage: swift-ast-dumper <file.swift>... [--struct Name]\n".data(using: .utf8)!)
+    exit(2)
 }
 
-let out: [String: Any] = ["source": path, "structs": structs]
+// pass 1: parse every file, populate the cross-file symbol table AND collect the
+// View bodies to lower (with their source attribution). Lowering must wait until the
+// symbol table is complete, so it cannot run inside this loop.
+var pending: [(name: String, source: String, body: ExprSyntax)] = []
+var skipped: [String] = []
+for path in files {
+    guard let src = try? String(contentsOfFile: path, encoding: .utf8) else {
+        skipped.append(path)
+        FileHandle.standardError.write("skip (unreadable): \(path)\n".data(using: .utf8)!)
+        continue
+    }
+    let tree = Parser.parse(source: src)
+    let collector = StructCollector(viewMode: .sourceAccurate)
+    collector.walk(tree)   // populates global extFuncBodies / modifierStructBodies + .found
+    for (name, body) in collector.found { pending.append((name, path, body)) }
+}
+
+// pass 2: lower with the full symbol table available for custom-modifier resolution.
+var structs: [[String: Any]] = []
+for (name, source, body) in pending {
+    if let only, name != only { continue }
+    if let emitFilter, !source.contains(emitFilter) { continue }
+    structs.append(["name": name, "source": source, "root": lower(body).json()])
+}
+
+let out: [String: Any] = ["structs": structs, "skipped": skipped]
 let data = try JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys])
 FileHandle.standardOutput.write(data)
 FileHandle.standardOutput.write("\n".data(using: .utf8)!)
