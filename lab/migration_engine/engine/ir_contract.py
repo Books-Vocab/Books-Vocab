@@ -110,6 +110,10 @@ def _validate_node(node: dict, path: str, errors: list[str]) -> None:
     for f, ty in (("modifiers", list), ("children", list), ("unparsed", list)):
         if not isinstance(node.get(f), ty):
             errors.append(_err(path, f"node.{f} must be {ty.__name__}, got {type(node.get(f)).__name__}"))
+    # `scoped` is optional (older regex IR omits it); if present it must be a list of the
+    # visual-but-out-of-component-scope modifier names that count toward the denominator.
+    if "scoped" in node and not isinstance(node["scoped"], list):
+        errors.append(_err(path, f"node.scoped must be list, got {type(node['scoped']).__name__}"))
     sp = node.get("spacing")
     if sp is not None:
         _validate_value(sp, f"{path}.spacing", errors)
