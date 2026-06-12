@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .. import observability_alerts, sentry_init
 from ..deps import get_admin_user
@@ -43,7 +44,7 @@ router = APIRouter(tags=["system"])
 
 
 @router.get("/api/system/info", response_model=SystemInfoResponse)
-def system_info() -> SystemInfoResponse:
+async def system_info() -> SystemInfoResponse:
     version = _VERSION
 
     from datetime import UTC, datetime
@@ -56,7 +57,7 @@ def system_info() -> SystemInfoResponse:
     # `run_all_checks` itself swallows exceptions; the outer guard is belt-and-
     # suspenders to ensure /api/system/info never 500s for an observability bug.
     try:
-        observability_alerts.run_all_checks()
+        await run_in_threadpool(observability_alerts.run_all_checks)
     except Exception:  # pragma: no cover — defensive
         _logger.warning("observability alerts run_all_checks failed", exc_info=True)
 

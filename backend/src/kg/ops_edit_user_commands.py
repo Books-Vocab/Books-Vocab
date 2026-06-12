@@ -1,6 +1,40 @@
 from __future__ import annotations
 
-from .ops_edit_support import *  # noqa: F403
+from .ops_edit_support import (
+    _USER_BACKUP_META_DIR,
+    _USER_BACKUP_RECORD,
+    UTC,
+    Any,
+    AutoLinkConfig,
+    EditContext,
+    EditError,
+    Path,
+    ReviewClockConfig,
+    ReviewModeConfig,
+    TranslationLanguageConfig,
+    VocabUIConfig,
+    _card_store,
+    _extract_user_backup_members,
+    _graph_store,
+    _mutate_users,
+    _notebook_store,
+    _passthrough_normalize,
+    _resolve_notebook_id,
+    _restore_user_record_snapshot,
+    argparse,
+    assert_safe_uid,
+    data_dir,
+    datetime,
+    emit,
+    list_user_backups,
+    load_users_from,
+    parse_datetime,
+    shutil,
+    tarfile,
+    user_dir_for,
+    users_file,
+)
+
 
 def cmd_user_create(args: argparse.Namespace) -> int:
     uid = args.uid
