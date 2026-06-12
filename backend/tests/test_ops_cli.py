@@ -689,7 +689,7 @@ class TestCostOverview:
         assert costs == sorted(costs, reverse=True)
 
 
-class TestAnalyze:
+class TestAnalyzeSmoke:
     """analyze — thin wrapper around ops_analyze.py subprocess."""
 
     def test_analyze_runs_without_crash(self, tmp_path):

@@ -5,10 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from kg.llm import ab as ab_mod
-
 
 # ---------------------------------------------------------------------------
 # available_providers

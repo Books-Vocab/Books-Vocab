@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
 
 from kg.admin_wiring import (
     AdminHandlerDependencies,
@@ -99,3 +102,28 @@ def test_admin_handler_dependencies_are_replaceable_named_contract():
 
     assert replacement.runtime_users_lock_file_fn() == Path("/tmp/other.lock")
     assert deps.runtime_users_lock_file_fn() == Path("/tmp/users.lock")
+
+
+@pytest.mark.anyio
+async def test_admin_log_retention_runs_via_threadpool():
+    handlers = create_admin_handlers_from_dependencies(dependencies=_dependencies())
+    report = {
+        "pipeline_log": {"deleted": 1},
+        "judge_log": {"deleted": 2},
+        "translate_log": {"deleted": 3},
+        "translate_cache_hits": {"deleted": 4},
+        "token_usage": {"deleted": 5},
+    }
+    calls = []
+
+    async def fake_threadpool(fn, *args, **kwargs):
+        calls.append((fn, args, kwargs))
+        return fn(*args, **kwargs)
+
+    with patch("kg.log_retention.run_all", return_value=report) as run_all, \
+         patch("kg.admin_wiring.run_in_threadpool", new=fake_threadpool):
+        response = await handlers.admin_log_retention_run()
+
+    assert calls == [(run_all, (), {})]
+    assert response["pipeline_deleted"] == 1
+    assert response["translate_cache_hits_deleted"] == 4

@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from .ops_edit_support import *  # noqa: F403
+from .ops_edit_support import (
+    Any,
+    EditContext,
+    EditError,
+    _assert_clean_notebook_name,
+    _card_store,
+    _notebook_store,
+    _resolve_notebook_id,
+    argparse,
+    data_dir,
+    sys,
+)
+
 
 def cmd_notebook_create(args: argparse.Namespace) -> int:
     dd = data_dir()

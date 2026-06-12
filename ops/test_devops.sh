@@ -298,6 +298,17 @@ grep -qE '(^|[[:space:]])ssh([[:space:]]|$)|run_remote\(\)' "$STATUS_ALL" \
   && fail_t "status_all still has raw ssh/run_remote bypass" \
   || ok "status_all has no raw ssh/run_remote bypass"
 
+VIEW_LOGS="$WORKSPACE/backend/view_logs.sh"
+bash -n "$VIEW_LOGS" \
+  && ok "view_logs syntax" \
+  || fail_t "view_logs syntax"
+grep -q 'devops_kg_safe.sh' "$VIEW_LOGS" \
+  && ok "view_logs calls devops_kg_safe.sh" \
+  || fail_t "view_logs does not call safe wrapper"
+grep -Eq '(^|[[:space:]])ssh([[:space:]]|$)|docker compose logs' "$VIEW_LOGS" \
+  && fail_t "view_logs still has raw ssh/docker logs bypass" \
+  || ok "view_logs has no raw ssh/docker logs bypass"
+
 # ── 12. typed read-only debug surfaces（縮 raw run surface）──────────────────
 section "Typed read-only debug surfaces"
 SAFE_KG="$WORKSPACE/ops/devops_kg_safe.sh"

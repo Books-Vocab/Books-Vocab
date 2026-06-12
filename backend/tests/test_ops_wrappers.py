@@ -10,7 +10,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
@@ -18,6 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 def test_ops_cli_wrapper_delegates_to_kg_module():
     import ops_cli
+
     from kg import ops_cli_app
 
     assert ops_cli.main is ops_cli_app.main
@@ -27,8 +27,15 @@ def test_ops_cli_wrapper_delegates_to_kg_module():
 
 def test_ops_edit_wrapper_delegates_to_kg_module():
     import ops_edit
+
     from kg import ops_edit_app
 
     assert ops_edit.main is ops_edit_app.main
     assert ops_edit.cmd_user_create is ops_edit_app.cmd_user_create
     assert ops_edit.cmd_world_restore is ops_edit_app.cmd_world_restore
+
+
+def test_ops_edit_app_preserves_aggregated_command_exports():
+    from kg import ops_edit_app, ops_edit_commands
+
+    assert set(ops_edit_commands.__all__).issubset(set(ops_edit_app.__all__))
