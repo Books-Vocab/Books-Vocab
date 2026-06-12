@@ -180,6 +180,48 @@
       "referenceDate": "2026-01-07T00:00:00Z"
     }
   },
+  "notebook": {
+    "populated": {
+      "notebooks": [
+        {
+          "remoteId": "default",
+          "name": "編輯精選詞彙",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            { "word": "discerning", "translation": "有鑑別力的", "bookTitle": "Editorial English" },
+            { "word": "prototype", "translation": "原型；雛形", "bookTitle": "Prototype Thinking" },
+            { "word": "resilient", "translation": "有韌性的", "bookTitle": "Editorial English" }
+          ]
+        },
+        {
+          "remoteId": "nb-press",
+          "name": "新聞英文",
+          "sortOrder": 1,
+          "entries": [
+            { "word": "watershed", "translation": "分水嶺", "bookTitle": "Editorial English" },
+            { "word": "bellwether", "translation": "領頭羊；風向標", "bookTitle": "Editorial English" }
+          ]
+        }
+      ]
+    }
+  },
+  "podcast": {
+    "shelf_continue": {
+      "series": {
+        "remoteId": "s-demo",
+        "title": "Atomic Habits Unpacked",
+        "hostNames": ["Ava Chen"],
+        "colorHex": "#4A90D9",
+        "coverPattern": "waves"
+      },
+      "episodes": [
+        { "episodeNumber": 1, "title": "Small Habits, Big Returns", "durationSec": 1832, "lastPlayedTime": 845 },
+        { "episodeNumber": 2, "title": "Designing Your Environment", "durationSec": 2105, "lastPlayedTime": 310 },
+        { "episodeNumber": 3, "title": "The Plateau of Latent Potential", "durationSec": 1968 }
+      ]
+    }
+  },
   "todayReview": {
     "front": {
       "progressText": "4 / 12",
