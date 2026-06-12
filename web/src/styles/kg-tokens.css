@@ -78,6 +78,8 @@
   --toolbar-badge-padding-h: 5px;
   --toolbar-badge-padding-v: 2px;
   --empty-state-stack: 14px;
+  --panel-h-inset: 18px;
+  --panel-b-inset: 16px;
   --radius-none: 0px;
   --radius-xs: 4px;
   --radius-sm: 6px;

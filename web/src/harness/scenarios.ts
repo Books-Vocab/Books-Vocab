@@ -73,6 +73,13 @@ export const SURFACE_SCENARIOS = {
   'vocab-tab-selector': ['no-counts', 'with-counts', 'zero-counts'],
   'vocab-toolbar-glyph': ['plain', 'with-badge', 'badge-stress'],
   'vocab-empty-state': ['card-no-action', 'card-with-action', 'content-basic', 'content-guidance-action'],
+  // Composite layer (batch-2): collocation sheet (.fill transparent full-frame) /
+  // KG empty state (.fill opaque full-frame).
+  // NOTE: banner-review deferred (task #8) — opaque card on transparent tight-crop is
+  // hypersensitive to card-edge scaling; web card height vs ref (serif/CJK line-metric
+  // delta) pushed RMSE to 0.26 (> 0.25 ceiling). Re-derive with font-metric height tuning.
+  'collocation-explain': ['loaded-short', 'loaded-long', 'loaded-with-delete'],
+  'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],
