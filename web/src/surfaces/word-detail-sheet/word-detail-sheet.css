@@ -1,0 +1,85 @@
+/* WordDetailSheet — iOS WordDetailSheet 的 web 鏡像（snapshot 載入態 placeholder）。
+   token 一律走 design-system 變數（card-bg/card-border、radius-control=6、sp-2=8、
+   text-subhead=15(=body)、accent、text-tertiary）；系統 spinner 灰走 token-allow literal。
+
+   catalog scene = .fill：透明畫布上 VocabStateMessageCard.padding()（≈16）→ 卡片區
+   alpha 1、其餘透明（量測 alpha-mean≈0.07）。走 transparent:true + phone-frame 透明捕捉。
+
+   幾何量自 catalog ref（iPhone 15 Pro, native 1179×2556 → ÷3 logical）：
+     card bbox native x46→1133 (w1087≈362pt) y1216→1415 (h199≈66pt)；
+     左右邊距 ≈15.3pt（.padding() 16）、card center y≈438pt ≈ 螢幕中線 → 垂直置中。 */
+
+/* 全 phone-frame 透明捕捉：scene 為透明畫布，僅 state card 不透明 */
+.phone-frame[data-surface='word-detail-sheet'] {
+  background: transparent;
+}
+
+/* Group(.fill) 容器：撐滿 frame，card 以 .padding() 撐邊、垂直+水平置中 */
+.wds-surface {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 16px; /* SwiftUI .padding() 預設 ≈16 */
+  box-sizing: border-box;
+}
+
+/* AppStateMessageCard(.vocab)：AppSectionCard(padding 0) 內容 .padding(.h14 .v12)
+   .background(cardBackground).clipShape(radii.control=6).overlay(stroke cardBorder lw1)
+   VStack(.leading, spacing s2=8) */
+.wds-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* style.spacing = AppSpacing.s2 = 8 */
+  width: 100%;
+  padding: 12px 14px; /* vertical 12 horizontal 14 */
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border-radius: var(--radius-control); /* .vocab cornerRadius = skin.radii.control = 6 */
+  border: 1px solid var(--card-border); /* .vocab border = skin.palette.cardBorder（全 0.09，非 ×0.9） */
+}
+
+/* HStack(.firstTextBaseline, spacing s2=8)[doc.text · "載入中" · Spacer] */
+.wds-state-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* Image(doc.text).font(iconSmall = symbol 12 medium)/accent */
+.wds-state-icon {
+  flex: none;
+  color: var(--accent); /* light accent #4d7396 = rgb(77,115,150)，逐字對齊 ref icon 量測 */
+  transform: translateY(3px); /* baseline 微調，與 firstTextBaseline 對齊 */
+}
+
+/* Text("載入中").font(body = sans 15).weight(.semibold)/primaryText */
+.wds-state-title {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = sans 15 = subhead（非 text-body 17） */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* accessory：ProgressView(.small)：iOS 系統 spinner，12 條輻射線淡入淡出 */
+.wds-spinner {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+}
+
+.wds-spinner i {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1.5px;
+  height: 4px;
+  margin-left: -0.75px;
+  border-radius: 1px;
+  background: var(--text-tertiary); /* token-allow: 系統 spinner 灰，近似 secondaryLabel */
+  transform-origin: 0.75px 8px;
+  opacity: 0.35;
+}

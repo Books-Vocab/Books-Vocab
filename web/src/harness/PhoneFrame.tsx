@@ -32,6 +32,20 @@ import { VocabHeatmapScreen } from '../surfaces/vocab-heatmap/VocabHeatmapScreen
 import { ReviewBannerScreen } from '../surfaces/review-banner/ReviewBannerScreen'
 import { VocabAddLinkScreen } from '../surfaces/vocab-add-link/VocabAddLinkScreen'
 import { VocabLinkedCardScreen } from '../surfaces/vocab-linked-card/VocabLinkedCardScreen'
+import { WordDetailSheetScreen } from '../surfaces/word-detail-sheet/WordDetailSheetScreen'
+import { PaywallScreen } from '../surfaces/paywall/PaywallScreen'
+import { DeleteAccountSheetScreen } from '../surfaces/delete-account-sheet/DeleteAccountSheetScreen'
+import { TranslationLanguageSettingsScreen } from '../surfaces/translation-language-settings/TranslationLanguageSettingsScreen'
+import { ArchivedVocabScreen } from '../surfaces/archived-vocab/ArchivedVocabScreen'
+import { SettingsAccountDetailScreen } from '../surfaces/settings-account-detail/SettingsAccountDetailScreen'
+import { PodcastShelfScreen } from '../surfaces/podcast-shelf/PodcastShelfScreen'
+import { NotebookCoverEditorialScreen } from '../surfaces/notebook-cover-editorial/NotebookCoverEditorialScreen'
+import { VocabPresenterSearchScreen } from '../surfaces/vocab-presenter-search/VocabPresenterSearchScreen'
+import { PodcastEpisodeListScreen } from '../surfaces/podcast-episode-list/PodcastEpisodeListScreen'
+import { PodcastHomeScreen } from '../surfaces/podcast-home/PodcastHomeScreen'
+import { VocabKnowledgeGraphScreen } from '../surfaces/vocab-knowledge-graph/VocabKnowledgeGraphScreen'
+import { KnowledgeGraphViewScreen } from '../surfaces/knowledge-graph-view/KnowledgeGraphViewScreen'
+import { PdfReaderUnavailableScreen } from '../surfaces/pdf-reader-unavailable/PdfReaderUnavailableScreen'
 import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
 import { SyncScreen } from '../surfaces/sync/SyncScreen'
 import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
@@ -136,6 +150,34 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <VocabAddLinkScreen scenario={config.scenario} />
     case 'vocab-linked-card':
       return <VocabLinkedCardScreen scenario={config.scenario} />
+    case 'word-detail-sheet':
+      return <WordDetailSheetScreen scenario={config.scenario} />
+    case 'paywall':
+      return <PaywallScreen scenario={config.scenario} />
+    case 'delete-account-sheet':
+      return <DeleteAccountSheetScreen scenario={config.scenario} />
+        case 'translation-language-settings':
+      return <TranslationLanguageSettingsScreen scenario={config.scenario} />
+    case 'archived-vocab':
+      return <ArchivedVocabScreen scenario={config.scenario} />
+        case 'settings-account-detail':
+      return <SettingsAccountDetailScreen scenario={config.scenario} />
+    case 'podcast-shelf':
+      return <PodcastShelfScreen scenario={config.scenario} />
+    case 'notebook-cover-editorial':
+      return <NotebookCoverEditorialScreen scenario={config.scenario} />
+    case 'vocab-presenter-search':
+      return <VocabPresenterSearchScreen scenario={config.scenario} />
+    case 'podcast-episode-list':
+      return <PodcastEpisodeListScreen scenario={config.scenario} />
+    case 'podcast-home':
+      return <PodcastHomeScreen scenario={config.scenario} />
+    case 'vocab-knowledge-graph':
+      return <VocabKnowledgeGraphScreen scenario={config.scenario} />
+    case 'knowledge-graph-view':
+      return <KnowledgeGraphViewScreen scenario={config.scenario} />
+    case 'pdf-reader-unavailable':
+      return <PdfReaderUnavailableScreen scenario={config.scenario} />
     case 'kg-empty-state':
       return <KgEmptyStateScreen scenario={config.scenario} />
     case 'sync':
