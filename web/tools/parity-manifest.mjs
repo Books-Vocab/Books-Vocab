@@ -828,6 +828,39 @@ export const PARITY = [
     ref: { surface: 'KG Empty State', scenario: 'Multi filter', appearance: 'light' },
     note: 'KG 空狀態 — 多選篩選（通用篩選圖示 line.3.horizontal.decrease.circle）',
   },
+
+  // --- LinkReasonSheet — 5 cases: card-link 解釋 sheet（.fill opaque page-bg full-frame）。
+  //     paperclip header + mono word + divider + reason body + 2× ghost button footer。
+  {
+    case: 'link-reason-sheet-medium-reason-light',
+    params: { surface: 'link-reason-sheet', scenario: 'medium-reason', appearance: 'light' },
+    ref: { surface: 'Link Reason Sheet', scenario: 'Loaded · medium reason', appearance: 'light' },
+    note: 'Link reason · 一般長度（forestall / 相似用法 / 三行 reason + 查看詳情 + 隱藏此連結）(light)',
+  },
+  {
+    case: 'link-reason-sheet-short-reason-light',
+    params: { surface: 'link-reason-sheet', scenario: 'short-reason', appearance: 'light' },
+    ref: { surface: 'Link Reason Sheet', scenario: 'Short reason', appearance: 'light' },
+    note: 'Link reason · 極短（deft / 同義詞 / 單行 reason）(light)',
+  },
+  {
+    case: 'link-reason-sheet-long-reason-light',
+    params: { surface: 'link-reason-sheet', scenario: 'long-reason', appearance: 'light' },
+    ref: { surface: 'Link Reason Sheet', scenario: 'Long reason (stress)', appearance: 'light' },
+    note: 'Link reason · 超長 stress（schadenfreude / 相關概念 / 多行 wrap reason）(light)',
+  },
+  {
+    case: 'link-reason-sheet-no-hide-light',
+    params: { surface: 'link-reason-sheet', scenario: 'no-hide', appearance: 'light' },
+    ref: { surface: 'Link Reason Sheet', scenario: 'No hide action', appearance: 'light' },
+    note: 'Link reason · onHide=nil → 僅查看詳情、無隱藏鈕（forestall）(light)',
+  },
+  {
+    case: 'link-reason-sheet-empty-reason-light',
+    params: { surface: 'link-reason-sheet', scenario: 'empty-reason', appearance: 'light' },
+    ref: { surface: 'Link Reason Sheet', scenario: 'Empty reason', appearance: 'light' },
+    note: 'Link reason · 空 reason 邊界（laconic / divider 緊鄰標題 / footer 不變）(light)',
+  },
   {
     case: 'kg-empty-state-no-entries-logged-out-light',
     params: { surface: 'kg-empty-state', scenario: 'no-entries-logged-out', appearance: 'light' },
