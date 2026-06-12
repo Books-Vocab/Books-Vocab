@@ -72,6 +72,12 @@
   --micro-gap: 6px;
   --word-row-gap: 10px;
   --compact-row-padding-v: 10px;
+  --badge-padding-h: 9px;
+  --cover-height-compact: 210px;
+  --cover-corner-radius: 10px;
+  --placeholder-title-padding-h: 12px;
+  --badge-padding: 6px;
+  --progress-bar-height-card: 4px;
   --action-button-padding-v: 13px;
   --progress-bar-width: 104px;
   --progress-bar-height: 5px;

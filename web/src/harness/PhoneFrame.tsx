@@ -25,6 +25,8 @@ import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScree
 import { SyncScreen } from '../surfaces/sync/SyncScreen'
 import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
 import { KGVocabRowScreen } from '../surfaces/kg-vocab-row/KGVocabRowScreen'
+import { BookCardScreen } from '../surfaces/book-card/BookCardScreen'
+import { SubscriptionGateCardScreen } from '../surfaces/subscription-gate-card/SubscriptionGateCardScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -90,6 +92,10 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <NotebooksCardScreen scenario={config.scenario} />
     case 'kg-vocab-row':
       return <KGVocabRowScreen scenario={config.scenario} />
+    case 'book-card':
+      return <BookCardScreen scenario={config.scenario} />
+    case 'subscription-gate-card':
+      return <SubscriptionGateCardScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':

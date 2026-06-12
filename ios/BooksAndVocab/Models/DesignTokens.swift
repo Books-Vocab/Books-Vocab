@@ -161,6 +161,8 @@ public enum DesignTokens {
         }
         public enum Semantic {
             public static let actionButtonPaddingV: CGFloat = 13
+            public static let badgePadding: CGFloat = 6
+            public static let badgePaddingH: CGFloat = 9
             public static let cardPadding: CGFloat = 18
             public static let chipPaddingH: CGFloat = 10
             public static let chipPaddingV: CGFloat = 5
@@ -168,6 +170,8 @@ public enum DesignTokens {
             public static let compactChipPaddingH: CGFloat = 6
             public static let compactChipPaddingV: CGFloat = 3
             public static let compactRowPaddingV: CGFloat = 10
+            public static let coverCornerRadius: CGFloat = 10
+            public static let coverHeightCompact: CGFloat = 210
             public static let dividerAir: CGFloat = 16
             public static let emptyStateStack: CGFloat = 14
             public static let inlineGap: CGFloat = 8
@@ -175,9 +179,11 @@ public enum DesignTokens {
             public static let pageHPadding: CGFloat = 20
             public static let panelBInset: CGFloat = 16
             public static let panelHInset: CGFloat = 18
+            public static let placeholderTitlePaddingH: CGFloat = 12
             public static let progressBarFillMin: CGFloat = 6
             public static let progressBarGap: CGFloat = 5
             public static let progressBarHeight: CGFloat = 5
+            public static let progressBarHeightCard: CGFloat = 4
             public static let progressBarWidth: CGFloat = 104
             public static let rowPaddingV: CGFloat = 9
             public static let sectionGap: CGFloat = 14
