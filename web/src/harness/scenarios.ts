@@ -100,6 +100,24 @@ export const SURFACE_SCENARIOS = {
   'review-banner': ['review-both', 'review-due', 'review-unlearned', 'review-large', 'demo-default'],
   'vocab-add-link': ['with-candidates', 'no-candidates'],
   'vocab-linked-card': ['single-card', 'stacked-3-deep'],
+
+  // ── wf-surface-batch corrected batch-2 (6 surface) ──
+  'word-detail-sheet': ['rich-entry', 'minimal-entry'],
+  'paywall': ['admin-granted', 'inactive', 'pro-active-renewing', 'pro-cancelled-but-active'],
+  'delete-account-sheet': ['idle', 'deleting'],
+  'translation-language-settings': ['english-to-traditional-chinese', 'japanese-to-english', 'french-to-simplified-chinese', 'korean-to-japanese'],
+  'archived-vocab': ['populated', 'single-card', 'empty', 'long-list'],
+  'settings-account-detail': ['subscribed-active', 'deleting-account', 'logged-out', 'long-name-email-stress'],
+
+  // ── wf-surface-batch corrected batch-3/4 (8 surface) ──
+  'podcast-shelf': ['continue-full', 'single-card', 'long-shelf-title', 'a11y3'],
+  'notebook-cover-editorial': ['grid-default', 'grid-active', 'grid-empty', 'grid-long-name', 'hero-default', 'hero-active'],
+  'vocab-presenter-search': ['matches', 'single-match', 'no-match'],
+  'podcast-episode-list': ['populated', 'empty'],
+  'podcast-home': ['populated', 'single', 'no-continue', 'empty'],
+  'vocab-knowledge-graph': ['with-data', 'settings-open', 'empty', 'no-links'],
+  'knowledge-graph-view': ['logged-out-empty-graph'],
+  'pdf-reader-unavailable': ['file-unavailable'],
   'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
   // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
   // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row

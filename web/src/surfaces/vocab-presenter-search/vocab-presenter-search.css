@@ -1,0 +1,326 @@
+/* Vocab Presenter (search) — iOS KGVocabPresenter（KGVocabView searchText 綁定）
+   的 web 鏡像。token 一律走 design-system 變數（系統色除外，加 token-allow）。
+
+   catalog scene layout=.fill → ref 全裝置幀 1179×2556、corner = page-bg（不透明）。
+   全 phone-frame 捕捉（無 crop=component、無 transparent）。
+
+   間距（皆 appSkin.spacing.* 或 AppSpacing.*）：
+     pageHorizontalInset = AppSpacing.s5 = 20（--sp-5）
+     pinned: spacing microGap=6（--micro-gap）/ top microGap=6 / bottom inlineGap=8（--sp-2）
+     scroll VStack: spacing sectionGap=14（--section-gap）/ top microGap=6 / bottom pageBottomInset
+     filter chip bar：HStack spacing s2=8、container .padding(tinyGap=3)、
+       chip .padding(.h/.v s2=8)、chip 內 HStack spacing=6、
+       count .frame(minWidth26).padding(.h compactChipHPad=6, .v AppSpacing.microGap=2)
+     sort pill：HStack spacing s1=4、.padding(.h compactChipHPad=6, .v compactChipVPad=3)
+     listCard：header EmptyView().padding(top14/bottom12/h16) + divider(.h inset16)、
+       row：WordRow + .padding(.h listRowHorizontalInset=16, .v s1=4)、
+            WordRow 內 .padding(.v compactRowVerticalPadding=10)、
+            外層 .padding(.h AppSpacing.s1=4)、row 間 divider(.leading inset16)
+     in-card 空狀態：VocabEmptyStateContent.padding(listRowHorizontalInset=16)
+       .padding(.v listEmptyStateVerticalInset=24)；content VStack spacing=14
+   字級：chip title caption(sans12bold) / count monoLabel(mono10bold) /
+        sort label caption(sans12bold) / word rowWord(mono18semibold) /
+        pos caption(sans12bold) / translation body(sans15=--text-subhead) /
+        detail monoLabel(mono10bold) / empty title sectionTitle(serif18bold) /
+        empty desc body(sans15) / guidance body@0.7。 */
+
+/* 外層 VStack(spacing:0)，.fill 撐滿 phone-frame，bg=page-bg */
+.vps-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* ── pinned filter bar block ───────────────────────────────────────────── */
+/* VStack(spacing: microGap=6).padding(.h 20, top microGap=6, bottom inlineGap=8)
+   .background(pageBackground) */
+.vps-pinned {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--micro-gap); /* appSkin.spacing.microGap = 6 */
+  padding: var(--micro-gap) var(--sp-5) var(--sp-2); /* top 6 / h 20 / bottom 8 */
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* AppFilterChipBar(.vocab)：HStack(spacing s2)[chips].padding(tinyGap)
+   .background(RoundedRect containerRadius=control+4=10 fill stageBackground) */
+.vps-chipbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* AppSpacing.s2 = 8 */
+  padding: var(--sp-tiny); /* AppSpacing.tinyGap = 3 */
+  border-radius: calc(var(--radius-control) + var(--sp-1)); /* control+4 = 10 */
+  background: var(--stage-bg);
+  box-sizing: border-box;
+}
+
+/* appChipLabel（unselected）：HStack(spacing 6)[title count].frame(maxWidth:∞)
+   .padding(.h/.v s2=8).background(Capsule .clear)。.vocab border 全 clear。 */
+.vps-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px; /* appChipLabel HStack(spacing: 6) — iOS raw literal */
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: 999px;
+  background: transparent;
+  white-space: nowrap;
+}
+
+/* title — caption(sans12bold)，unselected secondaryText */
+.vps-chip-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* count — monoLabel(mono10bold)，minWidth26、.padding(.h compactChipHPad=6,
+   .v AppSpacing.microGap=2)、Capsule fill mutedFill、文字 primaryText（count Text
+   無 explicit foregroundStyle → 繼承 label 預設 primary）。 */
+.vps-chip-count {
+  flex: none;
+  box-sizing: content-box; /* .frame(minWidth:26) 套在 Text content，padding 在外 */
+  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-micro) var(--compact-chip-padding-h); /* .v 2 / .h 6 */
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text-primary);
+  background: var(--muted-fill);
+}
+
+/* HStack(spacing inlineGap=8){ Spacer · VocabSortPill }；trailing → 右對齊 */
+.vps-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2); /* inlineGap = 8 */
+}
+
+/* VocabSortPill：HStack(spacing s1=4)[icon label].font(caption).fg(secondaryText)
+   .padding(.h compactChipHPad=6, .v compactChipVPad=3).background(Capsule mutedFill) */
+.vps-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1); /* AppSpacing.s1 = 4 */
+  padding: var(--sp-tiny) var(--compact-chip-padding-h); /* .v 3 / .h 6 */
+  border-radius: 999px;
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700; /* caption bold:true */
+  line-height: var(--leading-caption);
+  white-space: nowrap;
+}
+
+.vps-sort-icon {
+  flex: none;
+  display: block;
+}
+
+.vps-sort-label {
+  flex: none;
+}
+
+/* ── ScrollView content ────────────────────────────────────────────────── */
+/* VStack(spacing sectionGap=14).padding(.h 20, top microGap=6, bottom pageBottomInset)
+   本 scene 僅含 VocabListCard（無 banner）。 */
+.vps-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--micro-gap) var(--sp-5) 0; /* top microGap=6 / h 20 / bottom 由內容自然延伸 */
+  box-sizing: border-box;
+}
+
+/* VocabListCard = VocabCard(padding:0) → AppSectionCard(.vocab)：
+   white card、radius=md=8、border=cardBorder 1px。 */
+.vps-card {
+  border-radius: var(--radius-md); /* AppRadius.md = 8 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* header = EmptyView().padding(top14/bottom12/h16)。EmptyView 無內容 →
+   高度 = top+bottom inset。 */
+.vps-card-header {
+  height: 0;
+  /* listCardHeaderTopInset=14 = s3(12)+micro(2) / h=listRowHorizontalInset=16 /
+     listCardHeaderBottomInset=12 = s3 */
+  padding: calc(var(--sp-3) + var(--sp-micro)) var(--sp-4) var(--sp-3);
+}
+
+/* header 下方 divider(.h listDividerInset=16)，dividerThin=0.5 */
+.vps-card-divider {
+  height: 0.5px; /* AppMetrics.dividerThin = 0.5（無對應 token，直寫） */
+  margin: 0 var(--sp-4); /* listDividerInset = 16 */
+  background: var(--divider);
+}
+
+.vps-card-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── rows ──────────────────────────────────────────────────────────────── */
+.vps-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* KGVocabRow 外層 .padding(.h AppSpacing.s1=4)（包住 highlight bg；本 scene 無 highlight） */
+.vps-row {
+  padding: 0 var(--sp-1);
+  box-sizing: border-box;
+}
+
+/* HStack(spacing inlineGap)[WordRow].padding(.h listRowHorizontalInset=16, .v s1=4)
+   + WordRow .padding(.v compactRowVerticalPadding=10) 疊加。 */
+.vps-row-content {
+  display: flex;
+  align-items: center;
+  gap: var(--word-row-gap); /* WordRow HStack spacing wordRowHorizontalGap=10 */
+  padding: calc(var(--sp-1) + var(--compact-row-padding-v)) var(--sp-4);
+  box-sizing: border-box;
+}
+
+/* WordRow VStack(.leading, spacing wordRowVerticalGap=4)；Spacer → flex:1 */
+.vps-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* wordRowVerticalGap = 4 */
+}
+
+/* HStack(.firstTextBaseline, spacing wordRowBaselineGap=6) */
+.vps-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--micro-gap); /* wordRowBaselineGap = 6 */
+}
+
+/* word — rowWord(mono18semibold) / primaryText，lineLimit(1) tail */
+.vps-row-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-row-word);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* pos — caption(sans12bold) / tertiaryText，fixedSize */
+.vps-row-pos {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* translation — body(sans15=--text-subhead) / secondaryText，lineLimit(2) */
+.vps-row-translation {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* trailing「首輪 12h」— monoLabel(mono10bold) / secondaryText */
+.vps-row-detail {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* row 間 divider — Rectangle(divider).frame(height dividerThin=0.5)
+   .padding(.leading listDividerInset=16) */
+.vps-row-divider {
+  height: 0.5px; /* AppMetrics.dividerThin = 0.5（無對應 token，直寫） */
+  margin-left: var(--sp-4); /* .leading inset 16，trailing 抵卡邊 */
+  background: var(--divider);
+}
+
+/* ── in-card empty state ───────────────────────────────────────────────── */
+/* VocabEmptyStateContent.padding(listRowHorizontalInset=16)
+   .padding(.v listEmptyStateVerticalInset=24) */
+.vps-empty {
+  padding: var(--sp-6) var(--sp-4); /* listEmptyStateVerticalInset=24 / listRowHorizontalInset=16 */
+  box-sizing: border-box;
+}
+
+/* AppEmptyStateContent：VStack(spacing 14)[icon title desc guidance]
+   .frame(maxWidth:∞) → 子項置中 */
+.vps-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack); /* 14 */
+  width: 100%;
+}
+
+/* icon — symbolLarge(symbol 30 light) / tertiaryText */
+.vps-empty-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* title — sectionTitle(serif18bold) / primaryText */
+.vps-empty-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* desc — body(sans15) / secondaryText，centered */
+.vps-empty-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* guidanceText — body(sans15) / secondaryText.opacity(0.7)，centered */
+.vps-empty-guidance {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+  text-align: center;
+}

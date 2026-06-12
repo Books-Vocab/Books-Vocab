@@ -1,0 +1,206 @@
+/* PodcastShelf — iOS PodcastShelf.swift `PodcastShelf` 容器 + `PodcastContinueRailCard`
+   的 web 鏡像。component crop（catalog ref 1179×853 native = 393×284pt，corner
+   srgba 0,0,0,0 → transparent）。token 全走 design-system 變數；唯一資料字面 =
+   cover 色（notebook palette 資料色，inline --rail-cover）+ 結構值（flex / 999px /
+   150pt cardWidth / 30pt playDisc / 波浪幾何 / scene .padding(.vertical,16)）。
+
+   shelf 幾何逐一對齊 body：
+     scene wrapper：ScrollView { PodcastShelf(...).padding(.vertical, s4=16) }
+     PodcastShelf：VStack(.leading, spacing statusHeroGap=12)
+       Text(title) sectionTitle=serif18 bold primaryText lineLimit1 tail .pad(.horizontal 20)
+       ScrollView(.horizontal){ LazyHStack(spacing s3=12){cards}.pad(.horizontal 20) }
+     card（PodcastContinueRailCard, width 150）：
+       VStack(.leading, spacing s2=8)
+         cover 150×150 / radius md(8) / elevation z1 / overlay playDisc 30×30 pad s2(8)
+         waves overlay：white .12 / amp 8 / wavelength 30 / row-spacing 20 / lw 1.2
+         cover name：body=sans17 semibold / white / shadow black .3 r2 y1 / lineLimit2 居中
+         meta VStack(spacing tinyGap=4)：
+           title caption=sans12 bold primaryText lineLimit1 tail
+           episode caption2=sans11 reg tertiaryText lineLimit1 tail
+           progress ProgressCapsule h3 fill accent track progressBarBackground pad-top tinyGap(4)
+           remaining monoLabel=mono10 bold tertiaryText monospacedDigit */
+
+/* surface = scene wrapper .padding(.vertical, s4=16) intrinsic box。.fillH → 寬 = 393pt
+   全屏（iPhone 15 Pro logical），rail 溢出右緣由 crop 捕捉。 */
+.psh-surface {
+  width: 393px; /* iPhone 15 Pro 邏輯寬（.fillH 全屏） */
+  padding-top: var(--sp-4); /* .padding(.vertical, AppSpacing.s4=16) */
+  padding-bottom: var(--sp-4);
+  box-sizing: border-box;
+}
+
+/* PodcastShelf 根 VStack(.leading, spacing: statusHeroGap=12) */
+.psh-shelf {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3); /* statusHeroGap = 12 = AppSpacing.s3 */
+}
+
+/* Text(title).font(sectionTitle=serif18 bold).lineLimit(1).tail.padding(.horizontal, 20) */
+.psh-title {
+  padding-left: var(--sp-5); /* pageHorizontalPadding = AppSpacing.s5 = 20 */
+  padding-right: var(--sp-5);
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* sectionTitle = 18 */
+  font-weight: 700; /* serif(18, bold:true) */
+  line-height: var(--leading-display); /* serif 緊湊 leading，對齊 iOS Text */
+  color: var(--text-primary); /* skin.palette.primaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) + .tail */
+}
+
+/* ScrollView(.horizontal){ LazyHStack(spacing s3=12).padding(.horizontal 20) } */
+.psh-rail {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-3); /* LazyHStack(spacing: AppSpacing.s3=12) */
+  padding-left: var(--sp-5); /* .padding(.horizontal, pageHorizontalPadding=20) */
+  padding-right: var(--sp-5);
+  overflow: visible; /* rail 溢出右緣由 component crop 捕捉（對齊 .fillH ref） */
+}
+
+/* --- PodcastContinueRailCard：VStack(.leading, spacing s2=8), frame(width:150) --- */
+.psh-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* AppSpacing.s2 = 8 */
+  width: 150px; /* cardWidth = 150（結構常數） */
+  box-sizing: border-box;
+}
+
+/* NotebookCoverView 150×150 + clip(radius md) + appElevation(.z1) */
+.psh-cover {
+  position: relative;
+  width: 150px;
+  height: 150px; /* .frame(width:150, height:150) */
+  border-radius: var(--radius-md); /* AppRadius.md = 8, .continuous */
+  overflow: hidden; /* clipShape RoundedRectangle */
+  background: var(--rail-cover); /* NotebookCoverView color（palette 資料色 #AFC2D3） */
+  box-shadow: var(--elevation-z1); /* .appElevation(.z1) */
+}
+
+/* waves pattern overlay（white opacity 0.12，pt 幾何由 viewBox 承載） */
+.psh-cover-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* cover 中央白字 name：body=sans17 semibold，lineLimit 2 居中，legibility shadow */
+.psh-cover-name {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 2 * var(--sp-2)); /* .padding(.horizontal, s2=8) */
+  text-align: center; /* multilineTextAlignment(.center) */
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* AppFonts.body = sans 17 */
+  font-weight: 600; /* weight .semibold */
+  line-height: 1.15;
+  color: #ffffff; /* foregroundStyle(.white)（cover-internal，非 theme token） */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* legibility shadow（token-allow 等義） */
+  display: -webkit-box;
+  -webkit-line-clamp: 2; /* lineLimit(2) */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* playDisc：bottomTrailing overlay，Circle().fill(brandHero) 30×30，pad s2(8) */
+.psh-play-disc {
+  position: absolute;
+  right: var(--sp-2); /* .padding(s2=8) bottomTrailing */
+  bottom: var(--sp-2);
+  width: 30px; /* .frame(30×30) */
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%; /* Circle */
+  background: var(--brand-hero); /* skin.palette.brandHero */
+  color: var(--on-brand-hero); /* AppColors.onBrandHero（glyph currentColor） */
+  box-shadow: var(--elevation-z1); /* .appElevation(.z1) */
+}
+
+.psh-play-glyph {
+  width: 13px; /* iconTiny = symbol 10pt thin（play.fill 視覺三角偏右） */
+  height: 13px;
+  margin-left: 1px;
+}
+
+/* meta VStack(.leading, spacing: tinyGap=4)，frame(width:150,.leading) */
+.psh-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* skin.spacing.tinyGap = 4 */
+  width: 150px;
+  box-sizing: border-box;
+}
+
+/* series.title：caption=sans12 bold，primaryText，lineLimit1 tail */
+.psh-card-title {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* caption(weight:.medium) → isBold true → bold */
+  line-height: var(--leading-caption);
+  color: var(--text-primary); /* skin.palette.primaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) + .tail */
+}
+
+/* episode.displayTitle：caption2=sans11 reg，tertiaryText，lineLimit1 tail */
+.psh-episode {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* 11 */
+  font-weight: 400; /* caption2() default regular */
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary); /* skin.palette.tertiaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ProgressCapsule height=3，fill=accent，track=progressBarBackground，pad-top tinyGap(4) */
+.psh-progress {
+  position: relative;
+  width: 100%;
+  height: 3px; /* height: 3（結構常數） */
+  margin-top: var(--sp-1); /* .padding(.top, tinyGap=4) */
+  border-radius: 999px; /* Capsule(.continuous) */
+  background: var(--progress-track); /* skin.palette.progressBarBackground */
+  overflow: hidden;
+}
+
+.psh-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent); /* skin.palette.accent */
+}
+
+/* remaining：monoLabel=mono10 bold，tertiaryText，monospacedDigit */
+.psh-remaining {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* mono 10 */
+  font-weight: 700;
+  line-height: 1; /* mono badge：iOS Text 緊排 */
+  font-variant-numeric: tabular-nums; /* .monospacedDigit() */
+  color: var(--text-tertiary); /* skin.palette.tertiaryText */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='podcast-shelf'] {
+  background: transparent;
+}

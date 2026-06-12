@@ -1,0 +1,407 @@
+/* Podcast Episode List — iOS PodcastEpisodeListView（Views/Podcast/）的 web 鏡像。
+   token 一律走 design-system 變數；非 token 視覺僅：
+     · nav title 極淡 chrome 灰（catalog 量測 ≈252 on 247 頁底色，近隱形）— token-allow
+     · cover render-time data 色（#AFC2D3，由 fixtures 以 --hero-cover-color 注入）
+     · empty card / list-card 白底 + 邊框走 --card-bg / --card-border（design token）
+
+   幾何量自 ref（1179×2556 native ÷3 = pt）：
+     · nav band bottom ≈ 340px native ≈ 113pt（hero backdrop 起點實測）
+     · 頁底色 #F7F6F3 = --page-bg；card / list row 白 #fff = --card-bg；border ≈#EFEFEF
+   catalog scene = .fill；Populated / Empty alpha-mean=1（不透明全幀捕捉，無 transparent）。 */
+
+.pel-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg); /* vocabCanvasBackground → pageBackground */
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status + bar ≈113pt，標題置中、極淡（catalog 渲染近隱形） */
+.pel-nav {
+  flex: none;
+  height: 113px; /* hero backdrop 起點 ≈340px native = 113pt */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 14px;
+}
+.pel-nav-title {
+  font-size: var(--text-subhead); /* inline title 以 subhead 近似量測淡字尺寸 */
+  font-weight: 600;
+  color: #f5f4f1; /* token-allow: ref 量測標題 ≈252 on 247 頁底色（近隱形 chrome） */
+}
+
+/* ScrollView 區域：撐滿剩餘高度 */
+.pel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* LazyVStack(spacing sectionGap=14).padding(.h cardPadding=18).padding(.bottom sheetSectionSpacing=20) */
+.pel-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* 14 */
+  padding-inline: var(--card-padding); /* 18 */
+  padding-bottom: var(--sp-5); /* sheetSectionSpacing 20 */
+  box-sizing: border-box;
+}
+
+/* ── heroHeader = VStack(spacing statusHeroGap=12)[hero · continue].padding(.bottom sectionGap=14) ── */
+.pel-hero-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--status-hero-gap); /* 12 */
+  padding-bottom: var(--section-gap); /* 14 */
+}
+
+/* heroContinue .padding(.top inlineGap=8)，撐滿可用寬 */
+.pel-hero-continue {
+  width: 100%;
+  padding-top: var(--inline-gap); /* 8 */
+}
+
+/* ── PodcastSeriesHero：VStack(spacing statusHeroGap=12)[backdrop · title · meta] ── */
+.pel-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--status-hero-gap); /* 12 */
+  width: 100%;
+}
+
+/* backdrop band：height 196、full-width；ambient wash + 底部融入 page-bg + 浮置封面 */
+.pel-hero-backdrop {
+  position: relative;
+  width: 100%;
+  height: var(--podcast-hero-backdrop-height); /* 196 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+/* LinearGradient(top→bottom)[coverColor·0.42, coverColor·0.12, .clear] */
+.pel-hero-backdrop-wash {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--hero-cover-color) 42%, transparent),
+    color-mix(in srgb, var(--hero-cover-color) 12%, transparent),
+    transparent
+  );
+}
+/* .overlay LinearGradient[.clear,.clear,pageBackground]（底部 1/3 融入 page-bg） */
+.pel-hero-backdrop-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, transparent, var(--page-bg));
+}
+
+/* NotebookCoverView 136×136、clipShape RoundedRectangle md=8、appElevation z3 */
+.pel-hero-cover {
+  position: relative;
+  width: var(--podcast-hero-cover-size); /* 136 */
+  height: var(--podcast-hero-cover-size);
+  border-radius: var(--radius-md); /* 8 */
+  overflow: hidden;
+  background: var(--hero-cover-color);
+  box-shadow: var(--elevation-z3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pel-hero-cover-waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* cover 中央 name：AppFonts.body(semibold) = sans 17 semibold white + shadow，lineLimit 2 */
+.pel-hero-cover-name {
+  position: relative;
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* 17 */
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: #fff;
+  text-align: center;
+  padding: 0 var(--sp-2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Text(title)：displayTitle(serif 24 bold) / primaryText、center、lineLimit 3 */
+.pel-hero-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-display-title); /* 24 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+/* Text(meta)：caption(sans 12 bold) / tertiaryText、center、lineLimit 2 */
+.pel-hero-meta {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-tertiary);
+  text-align: center;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ── PodcastContinueCard(action .upgrade) ──
+   HStack(spacing cardPadding=18).padding(cardPadding=18)
+   .background(RoundedRectangle(lg=12).fill(cardBackground)).appElevation(.z1) */
+.pel-cc-card {
+  display: flex;
+  align-items: center;
+  gap: var(--card-padding); /* 18 */
+  width: 100%;
+  padding: var(--card-padding); /* 18 */
+  border-radius: var(--radius-lg); /* 12 */
+  background: var(--card-bg);
+  box-shadow: var(--elevation-z1);
+  box-sizing: border-box;
+}
+/* disc = Circle().fill(brandHero) 46×46（actionable：.upgrade isActionable=true） */
+.pel-cc-disc {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: var(--brand-hero);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-brand-hero); /* Image.foregroundStyle(AppColors.onBrandHero) */
+}
+.pel-cc-disc-icon {
+  display: block;
+}
+/* VStack(.leading, spacing tinyGap=4).frame(maxWidth:.infinity,.leading) */
+.pel-cc-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* tinyGap 4 */
+}
+/* eyebrow = Text(caption sans12 bold) / primaryText（actionable）、lineLimit 1 */
+.pel-cc-eyebrow {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* title = Text(displayTitle).font(sectionTitle serif18 bold) / primaryText、lineLimit 1 */
+.pel-cc-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-display);
+  color: var(--text-primary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* trailing = Image(lock.fill)（navigatesToPlayer=false）.font(iconTiny) / quaternaryText */
+.pel-cc-trailing {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: var(--sp-1); /* Spacer(minLength: tinyGap) */
+  color: var(--text-quaternary);
+}
+
+/* ── episodesSection ── */
+.pel-episodes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--inline-gap); /* VStack(.leading, spacing inlineGap=8) */
+}
+/* HStack[ Text「集數」 · Spacer · sortMenu ].padding(.h microGap=6) */
+.pel-episodes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--micro-gap); /* 6 */
+}
+/* Text「集數」.font(sectionTitle serif18 bold) / primaryText */
+.pel-episodes-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+/* sortMenu：HStack(spacing tinyGap=4)[Text(sort.label) · chevron.down].font(caption) / accent */
+.pel-sort {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1); /* tinyGap 4 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  color: var(--accent);
+}
+.pel-sort-chevron {
+  flex: none;
+}
+
+/* ListSectionCard：VStack(spacing 0){rows}.padding(.v microGap=6)
+   .fill(cardBackground).clipShape(md=8).overlay(stroke cardBorder 0.5px) */
+.pel-list-card {
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--micro-gap); /* 6 */
+  border-radius: var(--radius-md); /* 8 */
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid var(--card-border); /* 0.5px stroke */
+  overflow: hidden;
+  box-sizing: border-box;
+}
+/* Divider().background(divider).padding(.leading cardPadding=18) */
+.pel-divider {
+  height: var(--sp-hairline);
+  margin-left: var(--card-padding); /* 18 */
+  background: var(--divider);
+}
+
+/* ── PodcastEpisodeRow（locked） ──
+   HStack(.top, spacing wordRowHorizontalGap=10)
+   .padding(.v compactRowVerticalPadding=10).padding(.h cardPadding=18) */
+.pel-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--word-row-gap); /* 10 */
+  padding-block: var(--compact-row-padding-v); /* 10 */
+  padding-inline: var(--card-padding); /* 18 */
+  box-sizing: border-box;
+}
+/* leading VStack(.leading, spacing wordRowVerticalGap=4).frame(maxWidth:∞,.leading) */
+.pel-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* 4 */
+}
+/* Text(title) — sectionTitle(serif 18 bold) / primaryText（audioAvailable=true），lineLimit 2 */
+.pel-row-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* metadataLine — HStack(spacing metadataGap=4) monoLabel(mono 10 bold)、line-height 1 */
+.pel-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1); /* metadataGap 4 */
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  line-height: 1;
+}
+/* Ep N → secondaryText */
+.pel-row-ep {
+  color: var(--text-secondary);
+}
+/* "·" → quaternaryText */
+.pel-row-sep {
+  color: var(--text-quaternary);
+}
+/* date / duration → tertiaryText */
+.pel-row-date,
+.pel-row-duration {
+  color: var(--text-tertiary);
+}
+/* trailingAccessory lock.fill（iconSmall 12）/ tertiaryText.padding(.top accessoryTopInset=2） */
+.pel-row-accessory {
+  flex: none;
+  display: flex;
+  margin-top: var(--sp-micro); /* 2 */
+  color: var(--text-tertiary);
+}
+
+/* ── empty 態（VocabSceneShell .empty）──
+   VStack[Spacer · VocabEmptyStateCard · Spacer].padding(cardBlockPadding=24).background(pageBackground) */
+.pel-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: var(--sp-6); /* cardBlockPadding 24 */
+  box-sizing: border-box;
+}
+/* VocabEmptyStateCard = AppSectionCard(.vocab){ AppEmptyStateContent.padding(.v 12) }
+   card：白底 + cardBorder×0.7 1px + radius card=8 + z1 + padding cardPadding=18
+   content：VStack(spacing 14)[icon · title · desc]、maxWidth ∞ */
+.pel-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack); /* 14 */
+  width: 100%;
+  padding: var(--card-padding); /* AppSectionCard padding 18 */
+  padding-block: calc(var(--card-padding) + 12px); /* + AppEmptyStateContent.padding(.v 12) */
+  border-radius: var(--radius-md); /* card=8 */
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent); /* borderOpacity 0.7 */
+  box-shadow: var(--elevation-z1);
+  box-sizing: border-box;
+}
+/* icon — symbolLarge(symbol 30 light) / tertiaryText */
+.pel-empty-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+/* title — sectionTitle(serif 18 bold) / primaryText */
+.pel-empty-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+/* desc — body(sans 17，.vocab content style descriptionFont=body) / secondaryText、center */
+.pel-empty-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* 17（.vocab 用 body=17，非 subhead） */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
