@@ -989,6 +989,127 @@ export const PARITY = [
   { case: 'vocab-linked-card-single-card-light', params: { surface: 'vocab-linked-card', scenario: 'single-card', appearance: 'light' }, transparent: true, ref: { surface: 'Vocabulary · Linked Card', scenario: 'Single card', appearance: 'light' }, note: '單張連結卡 overlay（載入態 placeholder），scrim black 0.20 over 透明畫布 (light)' },
 { case: 'vocab-linked-card-stacked-3-deep-light', params: { surface: 'vocab-linked-card', scenario: 'stacked-3-deep', appearance: 'light' }, transparent: true, ref: { surface: 'Vocabulary · Linked Card', scenario: 'Stacked 3-deep', appearance: 'light' }, note: '三層疊卡 overlay（前卡 Nested Link +2），各層 offset/scale 遞增 (light)' },
 
+  // ── word-detail-sheet ──
+  { case: 'word-detail-sheet-rich-entry-light', params: { surface: 'word-detail-sheet', scenario: 'rich-entry', appearance: 'light' }, transparent: true, ref: { surface: 'Word Detail · Sheet', scenario: 'Rich entry', appearance: 'light' }, note: 'WordDetailSheet 載入中 placeholder（presenter 未及算完，snapshot 停在 else-branch）(light)' },
+{ case: 'word-detail-sheet-minimal-entry-light', params: { surface: 'word-detail-sheet', scenario: 'minimal-entry', appearance: 'light' }, transparent: true, ref: { surface: 'Word Detail · Sheet', scenario: 'Minimal entry', appearance: 'light' }, note: 'WordDetailSheet 載入中 placeholder（ref 與 Rich entry byte-identical，同畫面）(light)' },
+  // ── paywall ──
+  { case: 'paywall-admin-granted-light', params: { surface: 'paywall', scenario: 'admin-granted', appearance: 'light' }, ref: { surface: 'Paywall', scenario: 'Admin granted', appearance: 'light' }, note: 'Admin 授權 Pro：seal hero + 已解鎖列表 + 管理員授權 InfoBlock，無管理訂閱鈕 (light)' },
+{ case: 'paywall-inactive-light', params: { surface: 'paywall', scenario: 'inactive', appearance: 'light' }, ref: { surface: 'Paywall', scenario: 'Paywall (inactive)', appearance: 'light' }, note: '行銷式 paywall：sparkles hero + 金額/試用 + marketing 列表 + Free/Pro 對照表 + 訂閱 CTA (light)' },
+{ case: 'paywall-pro-active-renewing-light', params: { surface: 'paywall', scenario: 'pro-active-renewing', appearance: 'light' }, ref: { surface: 'Paywall', scenario: 'Pro active (renewing)', appearance: 'light' }, note: 'Pro 續訂中：seal hero + 已解鎖列表 + NT$90/月 + 管理訂閱/重新同步 (light)' },
+{ case: 'paywall-pro-cancelled-but-active-light', params: { surface: 'paywall', scenario: 'pro-cancelled-but-active', appearance: 'light' }, ref: { surface: 'Paywall', scenario: 'Pro cancelled but active', appearance: 'light' }, note: 'Pro 即將到期：triangle hero(accent) + 可用至 2026/06/20 16:00 + 管理訂閱/重新同步 (light)' },
+  // ── delete-account-sheet ──
+  { case: 'delete-account-sheet-idle-light', params: { surface: 'delete-account-sheet', scenario: 'idle', appearance: 'light' }, ref: { surface: 'Delete Account Sheet', scenario: 'Idle', appearance: 'light' }, note: '刪除帳號確認 sheet — idle（trash.fill + 永久刪除帳號鈕）(light)' },
+{ case: 'delete-account-sheet-deleting-light', params: { surface: 'delete-account-sheet', scenario: 'deleting', appearance: 'light' }, ref: { surface: 'Delete Account Sheet', scenario: 'Deleting (in progress)', appearance: 'light' }, note: '刪除帳號確認 sheet — deleting（ProgressView + 刪除中…鈕，差異多在折疊線下）(light)' },
+  // ── translation-language-settings ──
+  {
+    case: 'translation-language-settings-english-to-traditional-chinese-light',
+    params: { surface: 'translation-language-settings', scenario: 'english-to-traditional-chinese', appearance: 'light' },
+    ref: { surface: 'Translation Language Settings', scenario: 'English to Traditional Chinese', appearance: 'light' },
+    note: '翻譯語言設定 · 英文→繁體中文（source en 選定 / target zh-Hant 選定）(light)',
+  },
+  {
+    case: 'translation-language-settings-japanese-to-english-light',
+    params: { surface: 'translation-language-settings', scenario: 'japanese-to-english', appearance: 'light' },
+    ref: { surface: 'Translation Language Settings', scenario: 'Japanese to English', appearance: 'light' },
+    note: '翻譯語言設定 · 日文→英文（source ja 選定 / target en 選定）(light)',
+  },
+  {
+    case: 'translation-language-settings-french-to-simplified-chinese-light',
+    params: { surface: 'translation-language-settings', scenario: 'french-to-simplified-chinese', appearance: 'light' },
+    ref: { surface: 'Translation Language Settings', scenario: 'French to Simplified Chinese', appearance: 'light' },
+    note: '翻譯語言設定 · 法文→簡體中文（source fr 選定 / target zh-Hans 選定）(light)',
+  },
+  {
+    case: 'translation-language-settings-korean-to-japanese-light',
+    params: { surface: 'translation-language-settings', scenario: 'korean-to-japanese', appearance: 'light' },
+    ref: { surface: 'Translation Language Settings', scenario: 'Korean to Japanese', appearance: 'light' },
+    note: '翻譯語言設定 · 韓文→日文（source ko 選定 / target ja 選定）(light)',
+  },
+  // ── archived-vocab ──
+  {
+    case: 'archived-vocab-populated-light',
+    params: { surface: 'archived-vocab', scenario: 'populated', appearance: 'light' },
+    ref: { surface: 'Archived Vocab', scenario: 'Populated', appearance: 'light' },
+    note: '封存單字清單 populated（5 筆字母序）(light)',
+  },
+  {
+    case: 'archived-vocab-single-card-light',
+    params: { surface: 'archived-vocab', scenario: 'single-card', appearance: 'light' },
+    ref: { surface: 'Archived Vocab', scenario: 'Single card', appearance: 'light' },
+    note: '封存單字清單 single card（serendipity）(light)',
+  },
+  {
+    case: 'archived-vocab-empty-light',
+    params: { surface: 'archived-vocab', scenario: 'empty', appearance: 'light' },
+    ref: { surface: 'Archived Vocab', scenario: 'Empty', appearance: 'light' },
+    note: '封存單字空狀態白卡（archivebox + 沒有封存的卡片）(light)',
+  },
+  // ── settings-account-detail ──
+  { case: 'settings-account-detail-subscribed-active-light', params: { surface: 'settings-account-detail', scenario: 'subscribed-active', appearance: 'light' }, ref: { surface: 'Settings Account Detail', scenario: 'Subscribed · active', appearance: 'light' }, note: '已登入訂閱：帳號資訊+資料管理+危險操作三 section (light)' },
+{ case: 'settings-account-detail-deleting-account-light', params: { surface: 'settings-account-detail', scenario: 'deleting-account', appearance: 'light' }, ref: { surface: 'Settings Account Detail', scenario: 'Deleting account', appearance: 'light' }, note: '刪除中：狀態卡 hourglass「正在刪除帳號」+ 鈕 disabled「刪除中...」(light)' },
+{ case: 'settings-account-detail-logged-out-light', params: { surface: 'settings-account-detail', scenario: 'logged-out', appearance: 'light' }, ref: { surface: 'Settings Account Detail', scenario: 'Logged out · info only', appearance: 'light' }, note: '登出：僅帳號資訊單列(名稱=訪客)、無信箱/資料管理/危險操作 (light)' },
+{ case: 'settings-account-detail-long-name-email-stress-light', params: { surface: 'settings-account-detail', scenario: 'long-name-email-stress', appearance: 'light' }, ref: { surface: 'Settings Account Detail', scenario: 'Long name & email stress', appearance: 'light' }, note: '長字串壓力：名稱/信箱 lineLimit 1 ellipsis 截斷 (light)' },
+
+  // ── podcast-shelf ──
+  { case: 'podcast-shelf-continue-full-light', params: { surface: 'podcast-shelf', scenario: 'continue-full', appearance: 'light', crop: 'component' }, crop: '.psh-surface', transparent: true, ref: { surface: 'Podcast Shelf', scenario: 'Continue rail / Full', appearance: 'light' }, note: 'Podcast shelf · 繼續收聽 rail 四卡（標題 + 橫向滑動 rail）(light)' },
+  { case: 'podcast-shelf-single-card-light', params: { surface: 'podcast-shelf', scenario: 'single-card', appearance: 'light', crop: 'component' }, crop: '.psh-surface', transparent: true, ref: { surface: 'Podcast Shelf', scenario: 'Continue rail / Single card', appearance: 'light' }, note: 'Podcast shelf · 單卡 rail (light)' },
+  { case: 'podcast-shelf-long-shelf-title-light', params: { surface: 'podcast-shelf', scenario: 'long-shelf-title', appearance: 'light', crop: 'component' }, crop: '.psh-surface', transparent: true, ref: { surface: 'Podcast Shelf', scenario: 'Continue rail / Long shelf title', appearance: 'light' }, note: 'Podcast shelf · 長 section 標題 lineLimit(1) tail 截斷 (light)' },
+  { case: 'podcast-shelf-a11y3-light', params: { surface: 'podcast-shelf', scenario: 'a11y3', appearance: 'light', crop: 'component' }, crop: '.psh-surface', transparent: true, ref: { surface: 'Podcast Shelf', scenario: 'Continue rail / A11y3', appearance: 'light' }, note: 'Podcast shelf · accessibility3（AppFonts 固定字級不縮放，ref 與 Full byte-identical）(light)' },
+  // ── notebook-cover-editorial ──
+  { case: 'notebook-cover-editorial-grid-default-light', params: { surface: 'notebook-cover-editorial', scenario: 'grid-default', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Grid · default', appearance: 'light' }, note: 'Editorial cover · grid 預設（晨間散文 48 詞，藍底，無 spine） (light)' },
+   { case: 'notebook-cover-editorial-grid-active-light', params: { surface: 'notebook-cover-editorial', scenario: 'grid-active', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Grid · active (spine)', appearance: 'light' }, note: 'Editorial cover · grid active（左緣 3pt darken 0.4 spine） (light)' },
+   { case: 'notebook-cover-editorial-grid-empty-light', params: { surface: 'notebook-cover-editorial', scenario: 'grid-empty', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Grid · empty (no count)', appearance: 'light' }, note: 'Editorial cover · grid empty（0 詞隱藏 count，棕底） (light)' },
+   { case: 'notebook-cover-editorial-grid-long-name-light', params: { surface: 'notebook-cover-editorial', scenario: 'grid-long-name', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Grid · long name (truncate)', appearance: 'light' }, note: 'Editorial cover · grid 長名 lineLimit 2 tail 截斷（紫底 active 1280 詞） (light)' },
+   { case: 'notebook-cover-editorial-hero-default-light', params: { surface: 'notebook-cover-editorial', scenario: 'hero-default', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Hero · default', appearance: 'light' }, note: 'Editorial cover · hero 預設（夜讀筆記 312 詞，青底，serif 32） (light)' },
+   { case: 'notebook-cover-editorial-hero-active-light', params: { surface: 'notebook-cover-editorial', scenario: 'hero-active', appearance: 'light', crop: 'component' }, crop: '.nce-component-surface', transparent: true, ref: { surface: 'Notebook Cover · Editorial', scenario: 'Hero · active', appearance: 'light' }, note: 'Editorial cover · hero active（紅底，hero style 無 spine） (light)' },
+  // ── vocab-presenter-search ──
+  {
+    case: 'vocab-presenter-search-matches-light',
+    params: { surface: 'vocab-presenter-search', scenario: 'matches', appearance: 'light' },
+    ref: { surface: 'KG Vocab Presenter', scenario: 'Search · matches', appearance: 'light' },
+    note: 'Vocab presenter 搜尋 · query "ous" 命中 3 列（meticulous/ingenious/tenacious）+ chip 7/0/0 + 排序膠囊 複習優先 + white list card 三列(分隔線) (light)',
+  },
+  {
+    case: 'vocab-presenter-search-single-match-light',
+    params: { surface: 'vocab-presenter-search', scenario: 'single-match', appearance: 'light' },
+    ref: { surface: 'KG Vocab Presenter', scenario: 'Search · single match', appearance: 'light' },
+    note: 'Vocab presenter 搜尋 · query "serendipity" 唯一命中（單列 + n. + 機緣巧合 + 首輪 12h），最窄非空 list card (light)',
+  },
+  {
+    case: 'vocab-presenter-search-no-match-light',
+    params: { surface: 'vocab-presenter-search', scenario: 'no-match', appearance: 'light' },
+    ref: { surface: 'KG Vocab Presenter', scenario: 'Search · no match', appearance: 'light' },
+    note: 'Vocab presenter 搜尋 · query 無命中 → in-card 空狀態（magnifyingglass + 沒有符合的單字 + 描述 + guidanceText 嘗試切換篩選條件或新增單字） (light)',
+  },
+  // ── podcast-episode-list ──
+  { case: 'podcast-episode-list-populated-light', params: { surface: 'podcast-episode-list', scenario: 'populated', appearance: 'light' }, ref: { surface: 'Podcast Episode List View', scenario: 'Populated · series + episodes', appearance: 'light' }, note: '播客集數清單—series header + 升級 Pro 繼續卡 + 4 集 locked rows (light)' },
+{ case: 'podcast-episode-list-empty-light', params: { surface: 'podcast-episode-list', scenario: 'empty', appearance: 'light' }, ref: { surface: 'Podcast Episode List View', scenario: 'Empty · no episodes yet', appearance: 'light' }, note: '播客集數清單—空態白卡 waveform.slash + 尚無集數 (light)' },
+  // ── podcast-home ──
+  { case: 'podcast-home-populated-light', params: { surface: 'podcast-home', scenario: 'populated', appearance: 'light' }, ref: { surface: 'Podcast Home View', scenario: 'Content / Populated', appearance: 'light' }, note: '播客首頁 — 繼續收聽 shelf（Finding Flow 0:00 / Atomic 20:20）+ 所有節目 4 卡 (light)' },
+{ case: 'podcast-home-single-light', params: { surface: 'podcast-home', scenario: 'single', appearance: 'light' }, ref: { surface: 'Podcast Home View', scenario: 'Content / Single series', appearance: 'light' }, note: '播客首頁 — 單 series（shelf 1 卡 + 所有節目 1 卡） (light)' },
+{ case: 'podcast-home-no-continue-light', params: { surface: 'podcast-home', scenario: 'no-continue', appearance: 'light' }, ref: { surface: 'Podcast Home View', scenario: 'Content / No continue shelf', appearance: 'light' }, note: '播客首頁 — 無繼續收聽 shelf，grid only（無所有節目標題） (light)' },
+{ case: 'podcast-home-empty-light', params: { surface: 'podcast-home', scenario: 'empty', appearance: 'light' }, ref: { surface: 'Podcast Home View', scenario: 'Empty', appearance: 'light' }, note: '播客首頁 — 空狀態（waveform + 尚無播客 + 二行文案） (light)' },
+  // ── vocab-knowledge-graph ──
+  { case: 'vocab-knowledge-graph-with-data-light', params: { surface: 'vocab-knowledge-graph', scenario: 'with-data', appearance: 'light' }, ref: { surface: 'Vocabulary · Knowledge Graph', scenario: 'With Data', appearance: 'light' }, note: '關聯圖內容態：graph canvas 快照留白（page-bg）+ 右上 legend chip (light)' },
+{ case: 'vocab-knowledge-graph-settings-open-light', params: { surface: 'vocab-knowledge-graph', scenario: 'settings-open', appearance: 'light' }, ref: { surface: 'Vocabulary · Knowledge Graph', scenario: 'Settings Open', appearance: 'light' }, note: '內容態 + 底部 settings drawer 卡（力/顯示 slider rows + 孤立節點 toggle）(light)' },
+{ case: 'vocab-knowledge-graph-empty-light', params: { surface: 'vocab-knowledge-graph', scenario: 'empty', appearance: 'light' }, ref: { surface: 'Vocabulary · Knowledge Graph', scenario: 'Empty', appearance: 'light' }, note: '空態：居中 VocabEmptyStateCard「知識圖譜為空」(light)' },
+{ case: 'vocab-knowledge-graph-no-links-light', params: { surface: 'vocab-knowledge-graph', scenario: 'no-links', appearance: 'light' }, ref: { surface: 'Vocabulary · Knowledge Graph', scenario: 'No Links', appearance: 'light' }, note: '空態：居中 VocabEmptyStateCard「尚無知識連結」(light)' },
+  // ── knowledge-graph-view ──
+  {
+    case: 'knowledge-graph-view-logged-out-empty-graph-light',
+    params: { surface: 'knowledge-graph-view', scenario: 'logged-out-empty-graph', appearance: 'light' },
+    ref: { surface: 'Knowledge Graph View', scenario: 'Logged out · empty graph', appearance: 'light' },
+    note: '知識圖譜全屏 — 登出空圖：頁底 page-bg + 垂直置中白卡（人像驚嘆徽章 icon + 「需登入帳號」+ 提示，無 CTA）(light)',
+  },
+  // ── pdf-reader-unavailable ──
+  {
+    case: 'pdf-reader-unavailable-file-unavailable-light',
+    params: { surface: 'pdf-reader-unavailable', scenario: 'file-unavailable', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'PDF Reader View', scenario: 'File unavailable (iCloud / missing)', appearance: 'light' },
+    note: 'PDF reader 錯誤狀態 · 檔案不可用（iCloud 未下載/已移除）：透明畫布上 AppEmptyStateCard(.themed) 白卡 — exclamationmark.triangle hero + 「無法開啟 PDF」serif22 + iCloud 提示 sans17 + outline「重試載入」CTA (light)',
+  },
+
   {
     case: 'kg-empty-state-no-entries-logged-out-light',
     params: { surface: 'kg-empty-state', scenario: 'no-entries-logged-out', appearance: 'light' },

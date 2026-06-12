@@ -1,0 +1,118 @@
+/* PDF Reader Unavailable — iOS PDFReaderView.errorView 的 web 鏡像。
+   token 一律走 design-system 變數。
+
+   .themed AppEmptyStateStyle（AppEmptyStateCard.swift extension themed）：
+     icon  = hero(weight .light)  = serif 40pt  / tertiaryText
+     title = h2(weight .semibold) = serif 22pt bold / primaryText
+     desc  = body()               = sans 17pt（--text-body，非 subhead）/ secondaryText
+     spacing = 14（--empty-state-stack）、verticalPadding = 12
+   card（AppSectionCardStyle.themed）：bg=cardBackground、border=cardBorder×0.7、
+     radius=cardCornerRadius(md=8)、padding=cardPadding 18、elevation z1。
+   action（AppActionButtonStyle .outline）：
+     Label(icon16 + title)、font subhead(15 semibold) / primaryText
+     bg=clear、border=secondaryText.opacity(0.3) 1px、radius=md、
+     .padding(.h s4=16, .v actionButtonVerticalPadding=13)、maxWidth:.infinity
+
+   Scene layout=.fill：ScrollView{ Spacer(min s7=32) · card.padding(.h s5=20) ·
+     Spacer(min s7=32) }，ZStack 無底色 → 透明畫布、卡浮上緣。
+   catalog ref = 全裝置幀 1179×2556、corner alpha=0（透明）、card alpha=1 #fff
+   → 全 phone-frame 透明捕捉（manifest transparent:true，非 crop=component）。
+   card top y≈270→90pt = safe-area≈59 + Spacer s7。 */
+
+/* 透明畫布、卡浮上緣（ScrollView + 頂部 spacer 對齊 catalog 90pt 上緣） */
+.pdf-unavail-surface {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.pdf-unavail-scroll {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  /* Spacer(minLength s7=32) 之上再加 .fill scene 的 status-bar safe-area，使
+     card top ≈ 90pt（量測 y=270/3）。59pt = iPhone 15 Pro 安全區，token-allow。 */
+  padding-top: calc(59px + var(--sp-7)); /* token-allow: iOS safe-area inset */
+  /* card 水平內縮 pageHorizontalPadding = s5 = 20 */
+  padding-left: var(--sp-5);
+  padding-right: var(--sp-5);
+  box-sizing: border-box;
+}
+
+/* AppSectionCard(.themed)：白卡、border、radius md、padding 18 */
+.pdf-unavail-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px; /* token-allow: AppShellMetrics.cardPadding = 18 */
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+}
+
+/* AppEmptyStateContent：VStack(spacing 14)[icon+title+desc+button]
+   .frame(maxWidth:.infinity) → 子項置中；.padding(.vertical, 12) */
+.pdf-unavail-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack);
+  width: 100%;
+  box-sizing: border-box;
+  padding-top: 12px; /* token-allow: AppEmptyStateStyle.themed verticalPadding */
+  padding-bottom: 12px; /* token-allow: AppEmptyStateStyle.themed verticalPadding */
+}
+
+/* hero Image(systemName) — hero(.light) = serif 40 / tertiaryText */
+.pdf-unavail-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — h2(.semibold) = serif 22 bold / primaryText */
+.pdf-unavail-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-h2);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — body() = sans 17 / secondaryText，centered */
+.pdf-unavail-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Button(.appAction(.outline))：Label(icon + title)、maxWidth:.infinity */
+.pdf-unavail-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--action-button-padding-v) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+.pdf-unavail-action-icon {
+  flex: none;
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布，非 crop=component） */
+.phone-frame[data-surface='pdf-reader-unavailable'] {
+  background: transparent;
+}
