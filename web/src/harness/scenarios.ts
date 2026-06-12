@@ -102,6 +102,12 @@ export const SURFACE_SCENARIOS = {
   'review-fold-chevron': ['collapse-handle', 'on-card-backdrop'],
   'review-fold-paper': ['expanded', 'three-quarter', 'half', 'quarter', 'nearly-folded'],
   'review-fold-segment': ['single', 'stacked-group'],
+  // Composite layer (batch-6): Podcast cards — Continue Card（component crop transparent，
+  // 5 action 投影）+ Episode Row（full-frame transparent，單一 variants 列表）+ Series Card
+  // （component crop transparent，封面+host）。SoT: PodcastContinueCard/Row/SeriesCard scenarios。
+  'podcast-continue-card': ['in-progress', 'fresh', 'completed', 'free-preview', 'gated'],
+  'podcast-episode-row': ['variants'],
+  'podcast-series-card': ['normal', 'long-host', 'narrow', 'a11y3'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

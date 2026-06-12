@@ -669,6 +669,51 @@
       "rmse": 0.175341,
       "mae": 0.0332021,
       "ssim": 0.0287584
+    },
+    "podcast-continue-card-in-progress-light": {
+      "rmse": 0.154402,
+      "mae": 0.0337447,
+      "ssim": 0.0691156
+    },
+    "podcast-continue-card-fresh-light": {
+      "rmse": 0.100201,
+      "mae": 0.0154303,
+      "ssim": 0.0285242
+    },
+    "podcast-continue-card-completed-light": {
+      "rmse": 0.101263,
+      "mae": 0.0157157,
+      "ssim": 0.0292127
+    },
+    "podcast-continue-card-free-preview-light": {
+      "rmse": 0.107915,
+      "mae": 0.017982,
+      "ssim": 0.0332457
+    },
+    "podcast-continue-card-gated-light": {
+      "rmse": 0.104078,
+      "mae": 0.0173518,
+      "ssim": 0.0331021
+    },
+    "podcast-episode-row-variants-light": {
+      "rmse": 0.200652,
+      "mae": 0.0491429,
+      "ssim": 0.0557952
+    },
+    "podcast-series-card-normal-light": {
+      "rmse": 0.0743826,
+      "mae": 0.0151006,
+      "ssim": 0.0597534
+    },
+    "podcast-series-card-long-host-light": {
+      "rmse": 0.0876747,
+      "mae": 0.0224407,
+      "ssim": 0.0845364
+    },
+    "podcast-series-card-a11y3-light": {
+      "rmse": 0.0669269,
+      "mae": 0.0108443,
+      "ssim": 0.0425911
     }
   }
 }

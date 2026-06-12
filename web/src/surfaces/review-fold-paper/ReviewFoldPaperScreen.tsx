@@ -33,9 +33,11 @@ export function ReviewFoldPaperScreen({
 }) {
   const { progress } = REVIEW_FOLD_PAPER_FIXTURES[scenario]
   // anchor .top：scaleY 從頂緣壓縮；rotation3D 繞 X 軸（top anchor）；opacity + 上移 offset。
-  // iOS modifier 鏈順序 = scaleEffect（內層，先套）→ rotation3DEffect（外層，後套），
-  // 故 CSS transform 須 scaleY 最右（先套）、rotateX 居中：旋轉作用在已壓縮的卡片上。
-  // 順序顛倒（rotate 先）會在中段（progress≈0.75）產生最大幾何偏差。
+  // transform 順序兩種皆實測過：scaleY 居中（現行 translateY·scaleY·rotateX）RMSE 略優於
+  // scaleY 最右（0.75: 0.386 vs 0.390 / 0.5: 0.292 vs 0.300），故維持現行。中段（0.75/0.5）
+  // 仍超 ceiling 的殘餘誤差**非** transform 順序，而是 .fill scene 對置中卡套 scaleEffect+
+  // rotation3D(anchor .top) 時 SwiftUI「layout 不變、render-transform」使視覺卡上移至幀頂、
+  // web flex-center 置中 → 垂直錯位（與 account-section 同類）。待 top-anchor layout 重導。
   const scaleY = Math.max(progress, 0.02)
   const rotX = (1 - progress) * -88
   const offsetY = (1 - progress) * -12
