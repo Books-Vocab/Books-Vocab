@@ -24,6 +24,7 @@ import { VocabSceneShellScreen } from '../surfaces/vocab-scene-shell/VocabSceneS
 import { VocabHighlightPickerScreen } from '../surfaces/vocab-highlight-picker/VocabHighlightPickerScreen'
 import { CollocationExplainScreen } from '../surfaces/collocation-explain/CollocationExplainScreen'
 import { LinkReasonSheetScreen } from '../surfaces/link-reason-sheet/LinkReasonSheetScreen'
+import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
 import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
 import { SyncScreen } from '../surfaces/sync/SyncScreen'
 import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScreen'
@@ -112,6 +113,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <CollocationExplainScreen scenario={config.scenario} />
     case 'link-reason-sheet':
       return <LinkReasonSheetScreen scenario={config.scenario} />
+    case 'notebook-edit':
+      return <NotebookEditSheetScreen scenario={config.scenario} />
     case 'kg-empty-state':
       return <KgEmptyStateScreen scenario={config.scenario} />
     case 'sync':
