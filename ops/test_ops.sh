@@ -39,6 +39,7 @@ DEFAULT_TESTS=(
   ui-token
   plain-deadzone
   ui-quality-plane
+  ui-quality-gate
   visual-regression
   catalog-review
   docs-lint
@@ -105,6 +106,7 @@ run_one() {
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
+    ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     visual-regression)  ./ops/tests/test_visual_regression.sh ;;
     catalog-review)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
