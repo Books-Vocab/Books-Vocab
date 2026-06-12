@@ -5,10 +5,10 @@
     "subscribed_active": {
       "auth": {
         "isLoggedIn": true,
-        "userInitials": "MC",
+        "userInitials": "CL",
         "avatarURL": null,
-        "displayName": "Max Chen",
-        "email": "max@example.com",
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
         "authError": null,
         "isAuthenticating": false,
         "iconBreathing": false,
@@ -27,7 +27,7 @@
         "serverURL": "https://wordnexus.lol",
         "isConnected": true,
         "connectionPulse": false,
-        "serverCardCount": 240,
+        "serverCardCount": 128,
         "lastSyncDescription": "剛剛",
         "isUsingLocalServer": false,
         "localServerURL": null,
@@ -52,7 +52,74 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 240 張 · 剛剛"
+        "summaryText": "已連線 · 128 張 · 剛剛"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "subscription_loading": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": false,
+        "connectionPulse": true,
+        "serverCardCount": 0,
+        "lastSyncDescription": null,
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "—",
+        "badgeText": "載入中",
+        "badgeTone": "neutral",
+        "summary": "正在確認訂閱狀態…",
+        "detail": "請稍候，系統正在與 App Store 通訊。",
+        "sourceLabel": "確認中",
+        "managementNote": "正在連線…",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "載入中…",
+        "isRestoreAvailable": false,
+        "ctaTitle": "重新整理",
+        "isRefreshing": true
+      },
+      "syncSummary": {
+        "isConnected": false,
+        "isSyncing": false,
+        "summaryText": "離線"
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -67,10 +134,10 @@
     "pricing_unavailable": {
       "auth": {
         "isLoggedIn": true,
-        "userInitials": "MC",
+        "userInitials": "CL",
         "avatarURL": null,
-        "displayName": "Max Chen",
-        "email": "max@example.com",
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
         "authError": null,
         "isAuthenticating": false,
         "iconBreathing": false,
@@ -89,7 +156,7 @@
         "serverURL": "https://wordnexus.lol",
         "isConnected": true,
         "connectionPulse": false,
-        "serverCardCount": 240,
+        "serverCardCount": 128,
         "lastSyncDescription": "10 分鐘前",
         "isUsingLocalServer": false,
         "localServerURL": null,
@@ -101,7 +168,7 @@
         "badgeText": "確認中",
         "badgeTone": "neutral",
         "summary": "免費試用與月費將以 App Store 顯示為準。",
-        "detail": "目前已取得方案狀態，但價格資訊尚未回來。",
+        "detail": "目前已取得方案狀態，但價格資訊尚未回來；不影響你稍後進入訂閱頁。",
         "sourceLabel": "App Store",
         "managementNote": "價格與試用週期會在 App Store 完整顯示。",
         "pricingUnavailableMessage": "App Store 價格載入中，稍後會自動更新。",
@@ -114,7 +181,12 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 240 張 · 10 分鐘前"
+        "summaryText": "已連線 · 128 張 · 10 分鐘前"
+      },
+      "bookSync": {
+        "text": "同步異常",
+        "detail": "iCloud 帳號暫時無法使用（CKError.notAuthenticated）",
+        "tone": "warning"
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -125,19 +197,81 @@
       },
       "manualLoginUserId": null,
       "debugLocalServerURL": null
+    },
+    "deleting_account": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張 · 剛剛"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": true
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
     }
   },
   "bookshelf": {
     "progress_card": {
       "books": [
         {
-          "title": "Editorial English",
-          "author": "KG Studio",
-          "fileName": "editorial-english.epub",
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.epub",
           "format": "epub",
-          "progression": 0.64,
-          "dateAdded": "2026-01-02T00:00:00Z",
-          "dateLastRead": "2026-01-05T00:00:00Z"
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z"
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -145,13 +279,13 @@
     "placeholder_card": {
       "books": [
         {
-          "title": "Prototype Thinking",
-          "author": "A. Rivera",
-          "fileName": "prototype-thinking.epub",
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.epub",
           "format": "epub",
-          "progression": 0.18,
-          "dateAdded": "2026-01-01T00:00:00Z",
-          "dateLastRead": "2026-01-06T18:00:00Z"
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z"
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -159,22 +293,31 @@
     "with_books_library": {
       "books": [
         {
-          "title": "Editorial English",
-          "author": "KG Studio",
-          "fileName": "editorial-english.epub",
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.epub",
           "format": "epub",
-          "progression": 0.64,
-          "dateAdded": "2026-01-02T00:00:00Z",
-          "dateLastRead": "2026-01-05T00:00:00Z"
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z"
         },
         {
-          "title": "Prototype Thinking",
-          "author": "A. Rivera",
-          "fileName": "prototype-thinking.epub",
+          "title": "Word Architect",
+          "author": "Lena Harper",
+          "fileName": "word-architect.epub",
           "format": "epub",
-          "progression": 0.18,
-          "dateAdded": "2026-01-01T00:00:00Z",
-          "dateLastRead": "2026-01-06T18:00:00Z"
+          "progression": 0.64,
+          "dateAdded": "2025-12-28T00:00:00Z",
+          "dateLastRead": "2026-01-05T22:15:00Z"
+        },
+        {
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.epub",
+          "format": "epub",
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z"
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -185,22 +328,144 @@
       "notebooks": [
         {
           "remoteId": "default",
-          "name": "編輯精選詞彙",
+          "name": "我的單字本",
           "isDefault": true,
           "sortOrder": 0,
           "entries": [
-            { "word": "discerning", "translation": "有鑑別力的", "bookTitle": "Editorial English" },
-            { "word": "prototype", "translation": "原型；雛形", "bookTitle": "Prototype Thinking" },
-            { "word": "resilient", "translation": "有韌性的", "bookTitle": "Editorial English" }
+            {
+              "word": "incremental",
+              "translation": "漸進的；逐步累積的",
+              "context": "Atomic habits are the compound interest of self-improvement; incremental gains accrue over time.",
+              "explanation": "形容變化以微小、連續的步伐發生，強調累積而非一次到位。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals"
+            },
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；非常仔細的",
+              "context": "The editor was meticulous about every line break and caption.",
+              "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone"
+            },
+            {
+              "word": "ubiquitous",
+              "translation": "無所不在的；普遍存在的",
+              "context": "Smartphones have become ubiquitous in modern classrooms.",
+              "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "A Medium of the Most General Nature"
+            }
           ]
         },
         {
-          "remoteId": "nb-press",
-          "name": "新聞英文",
+          "remoteId": "nb-atomic",
+          "name": "原子習慣筆記",
           "sortOrder": 1,
           "entries": [
-            { "word": "watershed", "translation": "分水嶺", "bookTitle": "Editorial English" },
-            { "word": "bellwether", "translation": "領頭羊；風向標", "bookTitle": "Editorial English" }
+            {
+              "word": "cue",
+              "translation": "提示；觸發信號",
+              "context": "Make the cue of a good habit obvious in your environment.",
+              "explanation": "行為觸發的起點，習慣迴路的第一環。",
+              "partOfSpeech": "n.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The 1st Law: Make It Obvious"
+            },
+            {
+              "word": "compound",
+              "translation": "複利累積；疊加增長",
+              "context": "Small improvements compound into remarkable results.",
+              "explanation": "微小效益隨時間相乘放大，而非線性相加。",
+              "partOfSpeech": "v.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals"
+            },
+            {
+              "word": "plateau",
+              "translation": "高原期；停滯期",
+              "context": "Habits often appear to make no difference until you cross a critical plateau.",
+              "explanation": "進步在表面停滯、實則潛能蓄積的階段。",
+              "partOfSpeech": "n.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Plateau of Latent Potential"
+            }
+          ]
+        },
+        {
+          "remoteId": "nb-shallows",
+          "name": "深度閱讀",
+          "sortOrder": 2,
+          "entries": [
+            {
+              "word": "rewire",
+              "translation": "重新佈線；改變神經迴路",
+              "context": "The internet may be rewiring how we read and think.",
+              "explanation": "比喻長期行為重塑大腦的神經連結。",
+              "partOfSpeech": "v.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "The Juggler's Brain"
+            },
+            {
+              "word": "distraction",
+              "translation": "分心；干擾",
+              "context": "Every hyperlink is an invitation to distraction.",
+              "explanation": "注意力被外物拉離當前任務的狀態。",
+              "partOfSpeech": "n.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "The Juggler's Brain"
+            },
+            {
+              "word": "concise",
+              "translation": "簡潔的；言簡意賅的",
+              "context": "Strong writing is concise without being abrupt.",
+              "explanation": "用最少的字準確表達，不冗贅也不突兀。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone"
+            }
+          ]
+        }
+      ]
+    },
+    "single": {
+      "notebooks": [
+        {
+          "remoteId": "default",
+          "name": "我的單字本",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            {
+              "word": "incremental",
+              "translation": "漸進的；逐步累積的",
+              "context": "Atomic habits are the compound interest of self-improvement; incremental gains accrue over time.",
+              "explanation": "形容變化以微小、連續的步伐發生，強調累積而非一次到位。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Atomic Habits",
+              "chapterTitle": "The Fundamentals"
+            },
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；非常仔細的",
+              "context": "The editor was meticulous about every line break and caption.",
+              "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "Word Architect",
+              "chapterTitle": "Writing Tone"
+            },
+            {
+              "word": "ubiquitous",
+              "translation": "無所不在的；普遍存在的",
+              "context": "Smartphones have become ubiquitous in modern classrooms.",
+              "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Shallows",
+              "chapterTitle": "A Medium of the Most General Nature"
+            }
           ]
         }
       ]
@@ -209,50 +474,80 @@
   "podcast": {
     "shelf_continue": {
       "series": {
-        "remoteId": "s-demo",
+        "remoteId": "s-atomic",
         "title": "Atomic Habits Unpacked",
         "hostNames": ["Ava Chen"],
         "colorHex": "#4A90D9",
         "coverPattern": "waves"
       },
       "episodes": [
-        { "episodeNumber": 1, "title": "Small Habits, Big Returns", "durationSec": 1832, "lastPlayedTime": 845 },
-        { "episodeNumber": 2, "title": "Designing Your Environment", "durationSec": 2105, "lastPlayedTime": 310 },
+        { "episodeNumber": 1, "title": "The Fundamentals of Tiny Change", "durationSec": 1832, "lastPlayedTime": 845 },
+        { "episodeNumber": 2, "title": "Make It Obvious", "durationSec": 2105, "lastPlayedTime": 310 },
         { "episodeNumber": 3, "title": "The Plateau of Latent Potential", "durationSec": 1968 }
+      ]
+    },
+    "shelf_single": {
+      "series": {
+        "remoteId": "s-atomic",
+        "title": "Atomic Habits Unpacked",
+        "hostNames": ["Ava Chen"],
+        "colorHex": "#4A90D9",
+        "coverPattern": "waves"
+      },
+      "episodes": [
+        { "episodeNumber": 1, "title": "The Fundamentals of Tiny Change", "durationSec": 1832, "lastPlayedTime": 845 }
       ]
     }
   },
   "todayReview": {
     "front": {
-      "progressText": "4 / 12",
+      "progressText": "3 / 12",
       "currentCard": {
-        "word": "discerning",
-        "translation": "有鑑別力的",
-        "context": "She is discerning about what deserves her focus.",
-        "explanation": "形容人判斷細膩、有眼光。",
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
         "partOfSpeech": "adj.",
-        "bookTitle": "Editorial English",
-        "chapterTitle": "Tone",
-        "dateAdded": "2026-01-01T00:00:00Z",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
         "difficultyTier": "advanced",
         "reviewMode": "recognition",
         "reviewExamples": [
-          "She is discerning about what deserves her focus."
+          "The editor was meticulous about every line break and caption."
         ],
-        "rootForm": "discerning",
-        "inflections": [
-          "discernment"
-        ],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
+        "graphLinksByKind": {
+          "shares_usage": [
+            { "id": "md-link-1", "cardId": "md-meticulous", "word": "precise", "kind": "shares_usage", "label": "相關", "confidence": 0.82, "reason": "都與精確相關", "hidden": false },
+            { "id": "md-link-2", "cardId": "md-meticulous", "word": "thorough", "kind": "shares_usage", "label": "相關", "confidence": 0.79, "reason": "都與仔細相關", "hidden": false }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
         "graphLinksByKind": {}
       },
-      "nextCard": null,
       "revealStage": "front",
       "canShuffle": true,
       "canGoPrevious": true,
       "canGoNext": true,
-      "remainingCount": 8,
+      "remainingCount": 9,
       "forgotCount": 1,
-      "rememberedCount": 3,
+      "rememberedCount": 2,
       "rememberedFeedbackTrigger": 0,
       "forgotFeedbackTrigger": 0,
       "isAutoPlaying": false,
@@ -260,38 +555,56 @@
       "autoplayProgress": 0.25,
       "autoplaySpeed": "normal",
       "autoplaySoundEnabled": true,
-      "showFirstRunHint": false
+      "showFirstRunHint": true
     },
     "back": {
-      "progressText": "4 / 12",
+      "progressText": "3 / 12",
       "currentCard": {
-        "word": "discerning",
-        "translation": "有鑑別力的",
-        "context": "She is discerning about what deserves her focus.",
-        "explanation": "形容人判斷細膩、有眼光。",
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
         "partOfSpeech": "adj.",
-        "bookTitle": "Editorial English",
-        "chapterTitle": "Tone",
-        "dateAdded": "2026-01-01T00:00:00Z",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
         "difficultyTier": "advanced",
         "reviewMode": "recognition",
         "reviewExamples": [
-          "She is discerning about what deserves her focus."
+          "The editor was meticulous about every line break and caption."
         ],
-        "rootForm": "discerning",
-        "inflections": [
-          "discernment"
-        ],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
+        "graphLinksByKind": {
+          "shares_usage": [
+            { "id": "md-link-1", "cardId": "md-meticulous", "word": "precise", "kind": "shares_usage", "label": "相關", "confidence": 0.82, "reason": "都與精確相關", "hidden": false },
+            { "id": "md-link-2", "cardId": "md-meticulous", "word": "thorough", "kind": "shares_usage", "label": "相關", "confidence": 0.79, "reason": "都與仔細相關", "hidden": false }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
         "graphLinksByKind": {}
       },
-      "nextCard": null,
       "revealStage": "back",
       "canShuffle": true,
       "canGoPrevious": true,
       "canGoNext": true,
-      "remainingCount": 8,
+      "remainingCount": 9,
       "forgotCount": 1,
-      "rememberedCount": 3,
+      "rememberedCount": 2,
       "rememberedFeedbackTrigger": 0,
       "forgotFeedbackTrigger": 0,
       "isAutoPlaying": false,
@@ -322,33 +635,46 @@
       "showFirstRunHint": false
     },
     "autoplay": {
-      "progressText": "4 / 12",
+      "progressText": "3 / 12",
       "currentCard": {
-        "word": "prototype",
-        "translation": "原型；雛形",
-        "context": "The team turned the idea into a prototype in two days.",
-        "explanation": "指產品、設計或流程的初步版本。",
-        "partOfSpeech": "n.",
-        "bookTitle": "Prototype Thinking",
-        "chapterTitle": "Iteration",
-        "dateAdded": "2026-01-02T00:00:00Z",
-        "difficultyTier": "intermediate",
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
         "reviewMode": "recognition",
         "reviewExamples": [
-          "The team turned the idea into a prototype in two days."
+          "The editor was meticulous about every line break and caption."
         ],
-        "rootForm": "prototype",
-        "inflections": [
-          "prototypes"
-        ],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
         "graphLinksByKind": {}
       },
-      "nextCard": null,
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
+        "graphLinksByKind": {}
+      },
       "revealStage": "back",
       "canShuffle": true,
       "canGoPrevious": true,
       "canGoNext": true,
-      "remainingCount": 8,
+      "remainingCount": 9,
       "forgotCount": 0,
       "rememberedCount": 0,
       "rememberedFeedbackTrigger": 0,
@@ -356,6 +682,172 @@
       "isAutoPlaying": true,
       "isAutoPlayPaused": false,
       "autoplayProgress": 0.5,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "autoplayPaused": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The editor was meticulous about every line break and caption."
+        ],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
+        "graphLinksByKind": {}
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 0,
+      "rememberedCount": 0,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": true,
+      "isAutoPlayPaused": true,
+      "autoplayProgress": 0.5,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "productionFront": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "production",
+        "reviewExamples": [
+          "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
+        ],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
+        "graphLinksByKind": {
+          "shares_usage": [
+            { "id": "md-prod-1", "cardId": "md-ubiquitous", "word": "pervasive", "kind": "shares_usage", "label": "相關", "confidence": 0.83, "reason": "都描述普遍存在", "hidden": false },
+            { "id": "md-prod-2", "cardId": "md-ubiquitous", "word": "omnipresent", "kind": "shares_usage", "label": "相關", "confidence": 0.80, "reason": "都指無所不在", "hidden": false }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "production",
+        "reviewExamples": [],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "front",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    },
+    "productionBack": {
+      "progressText": "3 / 12",
+      "currentCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "production",
+        "reviewExamples": [
+          "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
+        ],
+        "rootForm": "ubiquitous",
+        "inflections": ["ubiquitously", "ubiquity"],
+        "graphLinksByKind": {
+          "shares_usage": [
+            { "id": "md-prod-1", "cardId": "md-ubiquitous", "word": "pervasive", "kind": "shares_usage", "label": "相關", "confidence": 0.83, "reason": "都描述普遍存在", "hidden": false },
+            { "id": "md-prod-2", "cardId": "md-ubiquitous", "word": "omnipresent", "kind": "shares_usage", "label": "相關", "confidence": 0.80, "reason": "都指無所不在", "hidden": false }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "meticulous",
+        "translation": "一絲不苟的；非常仔細的",
+        "context": "The editor was meticulous about every line break and caption.",
+        "explanation": "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "Word Architect",
+        "chapterTitle": "Writing Tone",
+        "dateAdded": "2025-12-29T00:00:00Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "production",
+        "reviewExamples": [],
+        "rootForm": "meticulous",
+        "inflections": ["meticulously", "meticulousness"],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 9,
+      "forgotCount": 1,
+      "rememberedCount": 2,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
       "autoplaySpeed": "normal",
       "autoplaySoundEnabled": true,
       "showFirstRunHint": false
