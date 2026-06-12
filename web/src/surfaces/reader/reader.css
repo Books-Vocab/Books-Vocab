@@ -392,6 +392,17 @@
   background: #000;
 }
 
+/* iOS scene = ZStack { scrim.ignoresSafeArea; VStack { Spacer; panel } }：scrim 鋪滿
+   全 frame，但 panel 的 VStack **不** ignoresSafeArea，故 panel 底緣 pin 在 *安全區*
+   底（iPhone 15 Pro home-indicator = 34pt），panel 浮在安全區之上、非貼螢幕底。
+   catalog PNG 實測：白卡底 y=2454/3 ≈ 818pt，下方 34pt 為透明 home-indicator 區。
+   web overlay 預設 flex-end 把 panel 貼螢幕底（852pt），故需在獨立場景補 34pt 底 inset
+   還原 iOS 浮起幾何。chrome reading-translation 案（R1，疊不透明 paper）走另一掛載點、
+   不受此規則影響。 */
+.reader-translation-scene .reader-bottom-overlay {
+  padding-bottom: 34px; /* iPhone 15 Pro home-indicator safe-area bottom */
+}
+
 /* full-frame 實體黑底背板（見 ReaderScreen TranslationScene 註）。 */
 .reader-translation-backdrop {
   position: absolute;
@@ -444,7 +455,7 @@
   flex-direction: column;
   /* 不用統一 gap：iOS hero→body=s3(12)、body 內 translation→footer=tinyGap(4)，
      兩段不同；用各自 margin 表達（PNG 實測收斂）。 */
-  padding: 2px 18px 20px; /* contentTopInset≈2 / inset 18 / bottom 20（grid-search 收斂） */
+  padding: 0 18px 16px; /* contentTopInset(bottomSheet)=0 / panelHorizontalInset 18 / panelBottomInset 16 */
   box-sizing: border-box;
 }
 
@@ -454,7 +465,7 @@
   display: flex;
   align-items: baseline;
   gap: 8px; /* AppSpacing.s2 */
-  margin-bottom: 18px; /* hero→body：s3(12) + iOS 大字行盒餘量（grid-search 收斂） */
+  margin-bottom: 12px; /* hero→body = outer VStack(spacing: s3=12) */
 }
 
 .translation-word {
@@ -613,11 +624,11 @@
 .translation-footer {
   display: flex;
   align-items: center;
-  gap: 4px; /* AppSpacing.s1 */
-  /* body→footer 間距：iOS tinyGap(4) + bottom-sheet footer 下沉餘量（PNG 實測 ~18）。 */
-  margin-top: 28px;
-  /* VocabChromeIconButton 觸控目標 44pt 下限 → footer 行高 44pt（視覺鈕仍 32pt）。 */
-  min-height: 44px;
+  gap: 4px; /* HStack(spacing: AppSpacing.s1=4) */
+  /* body→footer 間距 = footerToolbar 的 .padding(.top, tinyGap=4)。iOS 不墊 44pt
+     觸控行高（鈕本身 32pt），故 web 也不設 min-height，否則 footer 多撐 ~12pt
+     令整卡偏高（黑底假 floor 時代以 28px+44px 補償，現以 honest panel-crop 還原）。 */
+  margin-top: 4px;
 }
 
 /* 大卡（句子展開態）：footer auto top-margin 把它釘在卡底，撐開上方解釋區。 */
