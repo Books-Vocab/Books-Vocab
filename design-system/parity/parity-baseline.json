@@ -489,6 +489,46 @@
       "rmse": 0.0612758,
       "mae": 0.010152,
       "ssim": 0.0345897
+    },
+    "collocation-explain-loaded-short-light": {
+      "rmse": 0.114888,
+      "mae": 0.0177711,
+      "ssim": 0.0276238
+    },
+    "collocation-explain-loaded-long-light": {
+      "rmse": 0.138242,
+      "mae": 0.0323327,
+      "ssim": 0.0683911
+    },
+    "collocation-explain-loaded-with-delete-light": {
+      "rmse": 0.117987,
+      "mae": 0.0193675,
+      "ssim": 0.0310163
+    },
+    "kg-empty-state-multi-filter-light": {
+      "rmse": 0.0735467,
+      "mae": 0.00915168,
+      "ssim": 0.0206564
+    },
+    "kg-empty-state-no-entries-logged-out-light": {
+      "rmse": 0.0714704,
+      "mae": 0.0094862,
+      "ssim": 0.0220269
+    },
+    "kg-empty-state-no-entries-cta-light": {
+      "rmse": 0.0818814,
+      "mae": 0.012318,
+      "ssim": 0.0297848
+    },
+    "kg-empty-state-search-no-match-light": {
+      "rmse": 0.0602768,
+      "mae": 0.00648887,
+      "ssim": 0.0151489
+    },
+    "kg-empty-state-single-filter-due-light": {
+      "rmse": 0.0735371,
+      "mae": 0.0091473,
+      "ssim": 0.0209067
     }
   }
 }

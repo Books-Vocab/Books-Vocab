@@ -172,6 +172,8 @@ public enum DesignTokens {
             public static let inlineGap: CGFloat = 8
             public static let microGap: CGFloat = 6
             public static let pageHPadding: CGFloat = 20
+            public static let panelBInset: CGFloat = 16
+            public static let panelHInset: CGFloat = 18
             public static let progressBarFillMin: CGFloat = 6
             public static let progressBarGap: CGFloat = 5
             public static let progressBarHeight: CGFloat = 5

@@ -1,0 +1,114 @@
+/* CollocationExplainSheet — iOS CollocationExplainSheet（.loaded phase）的 web 鏡像。
+   token 一律走 design-system 變數（text-detail-word 27、font-mono、text-subhead=body 15、
+   text-primary/secondary、divider、sp-3/sp-5/sp-1、panel-h-inset 18 / panel-b-inset 16
+   （新增 token，$swift ReaderMetrics.panelHorizontalInset/panelBottomInset）、chrome-button-size 32、
+   radius-control sm/6、card-bg、card-border、destructive），不寫視覺 literal。
+
+   catalog scene layout = .fill（全裝置幀 1179×2556，畫布透明 corner srgba 0,0,0,0）：
+   元件以 VStack 撐滿整 frame，內容自頂部排列、footerToolbar 靠 Spacer() 推到底部。
+   故走**全 phone-frame 捕捉**（非 crop=component）：surface 撐滿、phone-frame 透明、
+   shots transparent:true（omitBackground）→ web 與 ref 同為內容-over-transparent。 */
+
+/* VStack(align .leading, spacing s3=12) 撐滿 frame；
+   .padding(.h panelHorizontalInset=18).padding(.top s5=20).padding(.bottom panelBottomInset=16) */
+.collocation-explain-surface {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-5) var(--panel-h-inset) var(--panel-b-inset);
+}
+
+/* Text(collocation).font(detailWord = systemMono 27 .semibold)/primaryText */
+.collocation-explain-title {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-detail-word);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* CardSectionDivider(horizontalPadding: 0)：Rectangle().fill(divider).frame(height dividerThin=0.5) */
+.collocation-explain-divider {
+  flex: none;
+  height: var(--sp-hairline);
+  background: var(--divider);
+}
+
+/* contentSection .loaded：Text(explanation).font(body = sans 15 = --text-subhead，
+   非 --text-body=17)/secondaryText .fixedSize(v).lineSpacing(3)
+   → 行距 = 自然行高 + 3pt（SwiftUI lineSpacing 為額外加成，非取代） */
+.collocation-explain-body {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: calc(1.2em + 3px);
+  color: var(--text-secondary);
+}
+
+/* Spacer() — 將 footer 推到底部 */
+.collocation-explain-spacer {
+  flex: 1 1 auto;
+}
+
+/* footerToolbar：HStack(spacing s1=4)[Spacer · trash · xmark]、底部對齊 */
+.collocation-explain-footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* HStack 的 leading Spacer() — 將兩鈕推到右側 */
+.collocation-explain-footer-spacer {
+  flex: 1 1 auto;
+}
+
+/* VocabChromeIconButton：Button + .frame(minWidth:44,minHeight:44).contentShape(Rectangle())
+   — 觸控目標 44pt，視覺維持 32pt card 置中，不撐大版面。 */
+.collocation-explain-chrome-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* VocabChromeSurface：content.frame(chromeButtonSize=32×32)
+   .background(RoundedRectangle(control=sm/6).fill(cardBackground))
+   .overlay(RoundedRectangle(control).stroke(cardBorder, 1)) */
+.collocation-explain-chrome-card {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--chrome-button-size);
+  height: var(--chrome-button-size);
+  box-sizing: border-box;
+  border-radius: var(--radius-control);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+/* Image(systemName).font(iconMedium = symbol 14 .medium).foregroundStyle(tone ?? secondaryText) */
+.collocation-explain-glyph {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* trash 的 tone = appSkin.palette.destructive */
+.collocation-explain-glyph--destructive {
+  color: var(--destructive);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布，非 crop=component） */
+.phone-frame[data-surface='collocation-explain'] {
+  background: transparent;
+}

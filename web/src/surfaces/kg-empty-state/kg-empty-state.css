@@ -1,0 +1,91 @@
+/* KG Empty State — iOS AppEmptyStateContent(style=.vocab(skin)) 經
+   KGVocabEmptyState resolver 的 web 鏡像。token 一律走 design-system 變數。
+
+   .vocab(skin) AppEmptyStateStyle（AppEmptyStateCard.swift extension vocab）：
+     icon  = symbolLarge(symbol 30 light) / tertiaryText
+     title = sectionTitle(serif 18 bold)  / primaryText
+     desc  = body(sans 15 = --text-subhead，非 --text-body=17) / secondaryText
+     spacing = 14（--empty-state-stack）
+   action（AppActionButtonStyle .outline）：
+     Label(icon16 + title)、font subhead(15 semibold) / primaryText
+     bg=clear、border=secondaryText.opacity(0.3) 1px、radius=md(--radius-md)
+     .padding(.h s4=16, .v actionButtonVerticalPadding=13)、maxWidth:.infinity
+
+   Scene layout=.fill（KGVocabEmptyStateScenarios.EmptyStateScene）：
+     VStack[Spacer · content.padding(.h,32) · Spacer]
+     .frame(maxW/maxH ∞).background(pageBackground)
+   catalog ref = 全裝置幀 1179×2556、corner srgba(247,246,243,1)=page-bg（不透明）
+   → 全 phone-frame 捕捉（無 crop=component、無 transparent）：surface 撐滿、
+   bg=page-bg、垂直置中、content 水平內縮 32（--sp-7）。 */
+
+/* surface 撐滿 phone-frame（.fill），bg=page-bg，內容垂直置中、水平內縮 32 */
+.kg-empty-state-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-7);
+  box-sizing: border-box;
+  background: var(--page-bg);
+}
+
+/* AppEmptyStateContent：VStack(spacing 14)[icon + title + desc + (button)]
+   .frame(maxWidth:.infinity) → 撐滿、子項置中 */
+.kg-empty-state-content {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack);
+  width: 100%;
+}
+
+/* hero Image(systemName) — symbolLarge(symbol 30 light) / tertiaryText */
+.kg-empty-state-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — sectionTitle(serif 18 bold) / primaryText */
+.kg-empty-state-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — body(sans 15) / secondaryText，multilineTextAlignment(.center) */
+.kg-empty-state-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Button(.appAction(.outline))：Label(icon + title)、maxWidth:.infinity */
+.kg-empty-state-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--action-button-padding-v) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+.kg-empty-state-action-icon {
+  flex: none;
+}

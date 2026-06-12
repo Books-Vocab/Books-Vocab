@@ -750,4 +750,58 @@ export const PARITY = [
     ref: { surface: 'Vocab Components · Empty State', scenario: 'Content — guidance + action', appearance: 'light' },
     note: 'Vocab empty state · Content 今天沒有要複習的單字（checkmark.circle，guidance@0.7 + outline「查看全部單字」CTA）(light)',
   },
+  // --- Composite layer batch-2 — 8 cases (wf-composite-batch): collocation-explain
+  //     (.fill transparent full-frame) + kg-empty-state (.fill opaque page-bg full-frame).
+  //     banner-review deferred (task #8: opaque-card-on-transparent edge-scale sensitivity).
+  {
+    case: 'collocation-explain-loaded-short-light',
+    params: { surface: 'collocation-explain', scenario: 'loaded-short', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Collocation Explain', scenario: 'Loaded · short', appearance: 'light' },
+    note: 'Collocation explain · loaded 短解釋（mono 標題 take into account + 單行片語動詞解釋 + trash/xmark footer）(light)',
+  },
+  {
+    case: 'collocation-explain-loaded-long-light',
+    params: { surface: 'collocation-explain', scenario: 'loaded-long', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Collocation Explain', scenario: 'Loaded · long', appearance: 'light' },
+    note: 'Collocation explain · loaded 長解釋（come to terms with，多行 wrap 解釋 + trash/xmark footer）(light)',
+  },
+  {
+    case: 'collocation-explain-loaded-with-delete-light',
+    params: { surface: 'collocation-explain', scenario: 'loaded-with-delete', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Collocation Explain', scenario: 'Loaded · with delete', appearance: 'light' },
+    note: 'Collocation explain · loaded（on the verge of，existingExplanation!=nil → trash 鈕現身 + xmark）(light)',
+  },
+  {
+    case: 'kg-empty-state-multi-filter-light',
+    params: { surface: 'kg-empty-state', scenario: 'multi-filter', appearance: 'light' },
+    ref: { surface: 'KG Empty State', scenario: 'Multi filter', appearance: 'light' },
+    note: 'KG 空狀態 — 多選篩選（通用篩選圖示 line.3.horizontal.decrease.circle）',
+  },
+  {
+    case: 'kg-empty-state-no-entries-logged-out-light',
+    params: { surface: 'kg-empty-state', scenario: 'no-entries-logged-out', appearance: 'light' },
+    ref: { surface: 'KG Empty State', scenario: 'No entries (logged out)', appearance: 'light' },
+    note: 'KG 空狀態 — 整本無卡、未登入（無 CTA）',
+  },
+  {
+    case: 'kg-empty-state-no-entries-cta-light',
+    params: { surface: 'kg-empty-state', scenario: 'no-entries-cta', appearance: 'light' },
+    ref: { surface: 'KG Empty State', scenario: 'No entries (with CTA)', appearance: 'light' },
+    note: 'KG 空狀態 — 整本無卡、含「重新整理」outline CTA',
+  },
+  {
+    case: 'kg-empty-state-search-no-match-light',
+    params: { surface: 'kg-empty-state', scenario: 'search-no-match', appearance: 'light' },
+    ref: { surface: 'KG Empty State', scenario: 'Search no match', appearance: 'light' },
+    note: 'KG 空狀態 — 搜尋無結果（magnifyingglass）',
+  },
+  {
+    case: 'kg-empty-state-single-filter-due-light',
+    params: { surface: 'kg-empty-state', scenario: 'single-filter-due', appearance: 'light' },
+    ref: { surface: 'KG Empty State', scenario: 'Single filter (due)', appearance: 'light' },
+    note: 'KG 空狀態 — 單一篩選（due）→ checkmark.seal',
+  },
 ];

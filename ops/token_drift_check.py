@@ -376,6 +376,7 @@ def check() -> list[str]:
     app_shell_metrics = parse_scale("AppShellComponents.swift", "AppShellMetrics", dt, reader=_read_uic)
     today_review_metrics = parse_scale(
         "Views/Vocabulary/Scenes/TodayReviewMetrics.swift", "TodayReviewMetrics", dt, reader=_read_rel)
+    reader_metrics = parse_scale("Views/Reader/ReaderMetrics.swift", "ReaderMetrics", dt, reader=_read_rel)
 
     # 1) primitive palette
     for name, variants in tokens["color"]["primitive"].items():
@@ -491,6 +492,7 @@ def check() -> list[str]:
         "AppTagMetrics.": tag_metrics,
         "AppShellMetrics.": app_shell_metrics,
         "TodayReviewMetrics.": today_review_metrics,
+        "ReaderMetrics.": reader_metrics,
     }
     for key, spec in tokens["space"]["semantic"].items():
         if key.startswith("$") or "$swift" not in spec:
