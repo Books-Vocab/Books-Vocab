@@ -1,0 +1,106 @@
+/* Vocab Shell review-state segmented bar — iOS VocabTabSelector →
+   AppTabSelector(style: .vocab) 的 web 鏡像。token 一律走 design-system 變數。
+
+   .vocab style（AppTabSelector.swift）：
+     title  = caption(sans12bold)  / sel primaryText · unsel secondaryText
+     count  = monoLabel(mono10bold) / sel primaryText@0.08 · unsel mutedFill
+     selected pill bg = mutedFill、unselected = transparent
+     border / outerBorder = .clear（.vocab 全清，無描邊）
+     container bg = stageBackground、containerRadius = control+4 = 6+4 = 10
+   間距：容器 HStack spacing = s2=8、容器 padding = tinyGap=3、
+        chip padding = .h/.v s2=8、chip 內 HStack spacing = 6、
+        count padding = .h compactChipHorizontalPadding=6 / .v microGap=6、
+        count minWidth = 26。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   scene = selector + .padding(24)（layout .fillH，maxWidth:.infinity → 全裝置寬
+   393pt）。crop 目標 = surface 自身；surface 與 phone-frame 在 crop=component 下
+   透明、shots omitBackground 截圖 → web 與 ref 同為 bar-over-transparent。 */
+
+/* surface = selector + scene wrapper .padding(24)，fillH → 撐滿裝置寬 */
+.vocab-tab-selector-surface {
+  display: flex;
+  width: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* AppTabSelector 容器：HStack(spacing s2)[chips].padding(tinyGap)
+   .background(RoundedRect containerRadius stageBackground) */
+.vocab-tab-selector {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-tiny);
+  border-radius: calc(var(--radius-control) + var(--sp-1)); /* control+4 = 10 */
+  background: var(--stage-bg);
+  box-sizing: border-box;
+}
+
+/* appChipLabel：HStack(spacing 6)[title (+count)].frame(maxWidth:.infinity)
+   .padding(.h/.v s2).background(Capsule sel?mutedFill:.clear)。.vocab border 全 clear。 */
+.vocab-tab-selector-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px; /* appChipLabel HStack(spacing: 6) — iOS 為 raw literal，非 design token */
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.vocab-tab-selector-chip[data-selected='1'] {
+  background: var(--muted-fill);
+}
+
+/* title — caption(sans12bold)，selected primaryText / unselected secondaryText */
+.vocab-tab-selector-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+.vocab-tab-selector-chip[data-selected='1'] .vocab-tab-selector-title {
+  color: var(--text-primary);
+}
+
+/* count — monoLabel(mono10bold=--text-mono-label)，minWidth 26、padding
+   .v AppSpacing.microGap=6 / .h compactChipHorizontalPadding=6、Capsule fill
+   selected primaryText@0.08 / unselected mutedFill。 */
+.vocab-tab-selector-count {
+  flex: none;
+  box-sizing: content-box; /* iOS .frame(minWidth:26) 套在 Text content 上，padding 加在外側 */
+  min-width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--micro-gap) var(--compact-chip-padding-h); /* .v microGap=6 / .h 6 */
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1; /* iOS Text(10pt) 緊排；不設則 web 預設 leading 撐高 badge，與 ref 不符 */
+  color: var(--text-secondary);
+  background: var(--muted-fill);
+}
+
+.vocab-tab-selector-chip[data-selected='1'] .vocab-tab-selector-count {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-tab-selector'] {
+  background: transparent;
+}

@@ -1,0 +1,124 @@
+/* Vocab · Empty State — iOS VocabEmptyStateContent / VocabEmptyStateCard
+   （皆委派 AppEmptyStateContent / AppEmptyStateCard，style = .vocab(skin)）的
+   web 鏡像。token 一律走 design-system 變數，不寫 literal。
+
+   .vocab(skin) AppEmptyStateStyle（AppEmptyStateCard.swift）：
+     icon  = symbolLarge(symbol 30 light) / tertiaryText
+     title = sectionTitle(serif 18 bold)   / primaryText
+     desc  = body(sans 15 = --text-subhead，非 --text-body=17) / secondaryText
+     guidance = body / secondaryText.opacity(0.7)
+     spacing = 14（--sp-empty-state-stack）、verticalPadding = 12（--sp-3）
+   action（AppActionButtonStyle .outline）：
+     Label(icon + title)、font subhead(15 semibold) / primaryText
+     bg = clear、border = secondaryText.opacity(0.3) 1px、radius = md(--radius-md=8)
+     .padding(.h s4=16, .v actionButtonVerticalPadding=13)、maxWidth:.infinity
+   Card chrome（AppSectionCard .vocab(skin)）：
+     padding = cardPadding(18 = --card-padding)、bg = cardBackground、
+     radius = card(--radius-card=8)、border = cardBorder.opacity(0.7) 1px、elevation z1
+
+   catalog scene layout = .fill（全裝置幀 1179×2556，畫布透明 corner srgba 0,0,0,0）：
+   scene = 元件 .padding(24) 於整 frame 內**垂直置中**（ref 圖確認 card 約置中、
+   水平內縮 24pt）。故 web 走**全 phone-frame 捕捉**（非 crop=component）：surface
+   撐滿 393×852、justify-content center、水平 padding 24；phone-frame + surface 透明，
+   shots transparent:true（omitBackground + null body bg）→ web 與 ref 同為內容-over-transparent。 */
+
+/* surface 撐滿 phone-frame（.fill layout），內容垂直置中、水平內縮 scene padding 24 */
+.vocab-empty-state-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-6);
+  box-sizing: border-box;
+}
+
+/* AppEmptyStateContent：VStack(spacing 14)[icon + title + desc + (guidance) + (button)]
+   .frame(maxWidth:.infinity) → 撐滿、子項置中 */
+.vocab-empty-state-content {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack);
+}
+
+/* Card 內 Content 額外 .padding(.vertical, verticalPadding=12) */
+.vocab-empty-state-content[data-in-card='1'] {
+  padding-block: var(--sp-3);
+}
+
+/* hero Image(systemName) — symbolLarge(symbol 30 light) / tertiaryText */
+.vocab-empty-state-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — sectionTitle(serif 18 bold) / primaryText */
+.vocab-empty-state-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — body(sans 15) / secondaryText，multilineTextAlignment(.center) */
+.vocab-empty-state-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Text(guidance) — body(sans 15) / secondaryText.opacity(0.7) */
+.vocab-empty-state-guidance {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  opacity: 0.7;
+  text-align: center;
+}
+
+/* Button(.appAction(.outline))：Label(icon + title)、maxWidth:.infinity */
+.vocab-empty-state-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--action-button-padding-v) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  line-height: var(--leading-body);
+  color: var(--text-primary);
+}
+
+.vocab-empty-state-action-icon {
+  flex: none;
+}
+
+/* AppSectionCard(.vocab(skin))：padding cardPadding(18) + bg + radius + border + z1 */
+.vocab-empty-state-card {
+  flex: none;
+  box-sizing: border-box;
+  padding: var(--card-padding);
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z1);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布，非 crop=component）：phone-frame
+   本體透明，shots transparent:true omitBackground → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='vocab-empty-state'] {
+  background: transparent;
+}
