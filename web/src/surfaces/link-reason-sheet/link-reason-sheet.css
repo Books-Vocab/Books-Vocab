@@ -83,7 +83,7 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--inline-gap); /* iOS spacing.inlineGap=8（語意 token，非裸 sp-2） */
 }
 
 /* GhostButtonStyle：label.foregroundStyle(tone).padding(.h14 .v10)、capsule 透明 at rest；
