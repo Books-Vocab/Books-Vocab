@@ -182,6 +182,22 @@ func edgeName(_ e: ExprSyntax) -> String? {
     return m.declName.baseName.text
 }
 
+// skin.radii.<field> → the AppRadius token it aliases (SoT: AppSkin+BaseValues.baseRadii):
+// card/overlay == md, control/chip/tiny == sm. Generator maps AppRadius.* → --radius-* var.
+let SKIN_RADII_ALIAS: [String: String] = [
+    "card": "AppRadius.md", "overlay": "AppRadius.md",
+    "control": "AppRadius.sm", "chip": "AppRadius.sm", "tiny": "AppRadius.sm",
+]
+
+// Resolve the cornerRadius of a `RoundedRectangle(cornerRadius: <radius> …)` source string
+// to a token the generator can map to a CSS var. Returns nil for literal / unknown radii
+// (no CSS var → honest degrade). Handles both AppRadius.* and the skin.radii.* alias.
+func roundedRectRadius(_ txt: String) -> String? {
+    if let r = cap(txt, "AppRadius\\.([A-Za-z0-9]+)") { return "AppRadius.\(r)" }
+    if let f = cap(txt, "radii\\.([A-Za-z0-9]+)"), let alias = SKIN_RADII_ALIAS[f] { return alias }
+    return nil
+}
+
 // `.stroke(color, lineWidth: w)` args → a stroke modifier (generate emits it as border).
 func strokeModFromArgs(_ args: LabeledExprListSyntax) -> [String: Any]? {
     let argList = Array(args)
@@ -274,8 +290,9 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
            ma.declName.baseName.text == "fill", let base = ma.base {
             let btxt = base.trimmedDescription
             if btxt.hasPrefix("Capsule") { mod["shape"] = "capsule" }
+            else if btxt.hasPrefix("Circle") { mod["shape"] = "circle" }
             else if btxt.hasPrefix("RoundedRectangle") {
-                if let r = cap(btxt, "AppRadius\\.([A-Za-z0-9]+)") { mod["radius"] = "AppRadius.\(r)" }
+                if let r = roundedRectRadius(btxt) { mod["radius"] = r }
             }
             if let c = call.arguments.first?.expression {
                 let (token, opacity) = parseColor(c)
@@ -302,17 +319,36 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
         if let m = strokeModFromArgs(args) { return .mod(m) }
         return .unparsed
 
+    case "opacity":
+        // view-level alpha → CSS opacity. Only a numeric literal is component-scope
+        // resolvable; a ternary / state-bound expr has no single static value → honest
+        // degrade (never fabricate a value). NOTE: this is the standalone view modifier,
+        // distinct from `.color.opacity(x)` which parseColor folds into the color value.
+        guard let a0 = argList.first?.expression else { return .unparsed }
+        if let f = a0.as(FloatLiteralExprSyntax.self), let v = Double(f.literal.text) {
+            return .mod(["name": "opacity", "value": v, "raw": ".opacity(\(v))"])
+        }
+        if let i = a0.as(IntegerLiteralExprSyntax.self), let v = Double(i.literal.text) {
+            return .mod(["name": "opacity", "value": v, "raw": ".opacity(\(v))"])
+        }
+        return .unparsed
+
     case "clipShape":
         // clip → border-radius only (no fill). Reuses generate's background shape/radius
-        // path with no token, so it emits just border-radius. Only AppRadius.* tokens map
-        // (literal cornerRadius has no CSS var → honest degrade).
+        // path with no token, so it emits just border-radius. Maps the deterministic
+        // shapes: Capsule → pill, Circle → 50%, RoundedRectangle(cornerRadius: <radius>)
+        // where the radius is a CSS-var-backed token (AppRadius.* or skin.radii.* — the
+        // latter aliases the AppRadius scale per AppSkin+BaseValues.baseRadii). A bare-var
+        // shape (clipShape(shape)) or a literal cornerRadius has no CSS var → honest degrade.
         guard let a0 = argList.first?.expression else { return .unparsed }
         let txt = a0.trimmedDescription
         var mod: [String: Any] = ["name": "background", "raw": ".clipShape(\(txt))"]
         if txt.hasPrefix("Capsule") {
             mod["shape"] = "capsule"
-        } else if txt.hasPrefix("RoundedRectangle"), let r = cap(txt, "AppRadius\\.([A-Za-z0-9]+)") {
-            mod["radius"] = "AppRadius.\(r)"
+        } else if txt.hasPrefix("Circle") {
+            mod["shape"] = "circle"
+        } else if txt.hasPrefix("RoundedRectangle"), let r = roundedRectRadius(txt) {
+            mod["radius"] = r
         } else {
             return .unparsed
         }

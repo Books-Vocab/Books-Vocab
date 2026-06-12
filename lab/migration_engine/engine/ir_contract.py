@@ -24,7 +24,7 @@ NODE_KINDS = {
 }
 MODIFIER_NAMES = {
     "padding", "font", "font_direct", "foreground",
-    "frame", "spacer", "background", "stroke",
+    "frame", "spacer", "background", "stroke", "opacity",
 }
 # "unknown" is the value-level degrade marker (parser gave up on this scalar; the
 # generator skips it / emits an orphan). It is the scalar analogue of the node-level
@@ -45,6 +45,7 @@ _MOD_REQUIRED = {
     "spacer": (),
     "background": (),          # token/shape/radius/opacity all optional (param fills exist)
     "stroke": ("token",),
+    "opacity": ("value",),
 }
 _VALUE_REQUIRED = {
     "token": ("token",),
