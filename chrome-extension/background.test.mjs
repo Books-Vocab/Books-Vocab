@@ -62,6 +62,7 @@ function makeChromeMock(initial = {}) {
 async function importBackground({ chrome, fetchImpl }) {
   globalThis.chrome = chrome;
   globalThis.fetch = fetchImpl;
+  await import(`./shared/pure.js?test=${Date.now()}-${Math.random()}`);
   const mod = await import(`./background.js?test=${Date.now()}-${Math.random()}`);
   await Promise.resolve();
   return mod.__test__;

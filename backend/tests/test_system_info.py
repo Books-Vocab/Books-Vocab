@@ -98,6 +98,19 @@ class TestSystemInfoEndpoint:
                 "once per request — wiring regression"
             )
 
+    def test_invokes_observability_checks_via_threadpool(self):
+        async def fake_threadpool(fn, *args, **kwargs):
+            calls.append((fn, args, kwargs))
+            return fn(*args, **kwargs)
+
+        calls = []
+        with patch("kg.routers.system.run_in_threadpool", new=fake_threadpool), \
+             patch("kg.routers.system.observability_alerts.run_all_checks") as m:
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get("/api/system/info")
+        assert r.status_code == 200
+        assert calls == [(m, (), {})]
+
     def test_observability_exception_does_not_break_endpoint(self):
         """If run_all_checks raises despite its own swallow, /api/system/info
         must still return 200. The handler has a belt-and-suspenders guard

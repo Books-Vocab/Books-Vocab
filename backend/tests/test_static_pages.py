@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi.responses import FileResponse, HTMLResponse
 
-from kg.routers.static_pages import get_home, get_privacy_policy, get_support, get_terms, get_guide
+from kg.routers.static_pages import get_guide, get_home, get_privacy_policy, get_support, get_terms
 
 
 class TestStaticPages:

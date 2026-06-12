@@ -26,7 +26,7 @@ from kg.ops_world_projection import project_user_world
 from kg.quota_service import token_cost_usd
 from kg.user_store import load_users_from
 
-from .ops_cli_shared import _cutoff_iso, _flatten_user_config, _ops_passthrough_normalize, _parse_day
+from .ops_cli_shared import _cutoff_iso, _flatten_user_config, _ops_passthrough_normalize
 
 
 def cmd_user_quota(args: argparse.Namespace) -> None:

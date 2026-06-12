@@ -1,6 +1,51 @@
 from __future__ import annotations
 
-from .ops_edit_support import *  # noqa: F403
+from .ops_edit_support import (
+    _CLONE_TMP_SUFFIX,
+    _VALID_REVIEW_STATES,
+    _WORLD_BACKUP_ROOT,
+    UTC,
+    Any,
+    EditContext,
+    EditError,
+    LinkKind,
+    Path,
+    ReviewEventStore,
+    _assert_clean_notebook_name,
+    _card_store,
+    _clone_source_files,
+    _clone_source_fingerprint,
+    _count_active_cards,
+    _count_graph_links,
+    _count_review_events,
+    _graph_store,
+    _is_vocab_file,
+    _list_world_backups,
+    _notebook_store,
+    _parse_seed_datetime,
+    _read_card_review_states,
+    _replace_world_from_snapshot,
+    _resolve_card_in_notebook,
+    _review_fields,
+    _source_to_json,
+    _sqlite_online_backup,
+    _world_members,
+    argparse,
+    assert_safe_uid,
+    backup_world,
+    data_dir,
+    datetime,
+    emit,
+    json,
+    shutil,
+    synthesize_many,
+    tarfile,
+    tempfile,
+    user_dir_for,
+    users_file,
+    world_backup_root,
+)
+
 
 def cmd_seed(args: argparse.Namespace) -> int:
     """一次性把 notebooks + cards + links 整套灌入(mock/demo 帳號用)。
@@ -37,7 +82,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
     # 預驗(寫入前,確保原子性):任何缺漏在動 DB 前就 raise,不留孤兒 notebook。
     def _prevalidate() -> None:
         seen_names: set[str] = set()
-        for i, n in enumerate(notebooks):
+        for n in notebooks:
             name = n.get("name") or ""
             _assert_clean_notebook_name(name)
             # spec 內重複 notebook name 會建出多本同名、name→id 映射被後者覆蓋、
@@ -86,7 +131,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
         "notebooks": len(notebooks), "cards": len(cards), "links": len(links),
         "notebook_names": [n.get("name") for n in notebooks],
         "card_sample": [c.get("content") for c in cards[:5]],
-        "link_sample": [f'{l.get("from")}→{l.get("to")} ({l.get("kind")})' for l in links[:3]],
+        "link_sample": [f'{link.get("from")}→{link.get("to")} ({link.get("kind")})' for link in links[:3]],
         "review_distribution": dist,
     }
 
