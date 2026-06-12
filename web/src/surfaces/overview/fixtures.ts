@@ -2,13 +2,14 @@ import type { ScenarioId } from '../../harness/scenarios'
 
 /**
  * Overview（統計儀表板）fixtures — 鏡射 iOS StatsViewScenarios.swift（Stats View）
- * 在 0608 catalog 的**渲染輸出**，而非重算日期邏輯。
+ * 的**渲染輸出**，而非重算日期邏輯。
  *
- * iOS 的 StatsPresenter / VocabActivityHeatmap 全部以 `Date()`（capture 當日）為錨
- * 計算 streak / heatmap / forecast，故 catalog PNG 是「now=2026-06-08 的渲染結果」。
- * web-parity 的參考 PNG 已凍結，因此 fixture 凍結那一刻的**像素輸出**（streak=10、
- * heatmap 只在 trailing 數欄有 dots 的「J」叢集），而非在 JS 重現 now-relative 種子。
- * 這樣 RMSE 對位移穩定、不會每日漂移。
+ * iOS 的 StatsPresenter / VocabActivityHeatmap 以「reference date」為錨計算 streak /
+ * heatmap / forecast。StatsViewScenarios 已把該 scenario 的 now 凍結在
+ * `StatsViewFixtures.fixedNow`（2026-06-01，並注入一個 paused 的 reviewSettingsStore
+ * 讓 presenter `.task` 重算也用同一錨），故 catalog PNG 是「now=2026-06-01 的決定性
+ * 渲染結果」，不再隨 capture 日漂移。fixture 凍結那一刻的**像素輸出**（streak=10、
+ * heatmap trailing 數欄叢集），而非在 JS 重現 now-relative 種子。RMSE 對位移穩定。
  *
  * 視覺結構順序對齊 StatsPresenter.body（VStack spacing = sectionGap 14pt）：
  *   graphEntrySection（白卡：header「關聯圖」+ 1:1 body，catalog 內 WKWebView no-op
@@ -54,11 +55,11 @@ export type OverviewFixture = {
  */
 const POPULATED_HEATMAP: HeatLevel[][] = [
   // col -5  col -4  col -3  col -2  col -1（右對齊；row 0=週一 … 6=週日）
-  [0, 0, 0, 0, 0, 1, 0], // col -5
-  [1, 0, 1, 0, 1, 0, 1], // col -4
-  [0, 1, 0, 1, 0, 1, 0], // col -3
-  [1, 0, 1, 0, 0, 2, 4], // col -2
-  [3, 2, 4, 3, 2, 4, 3], // col -1（trailing，最密）
+  [0, 0, 0, 0, 0, 0, 0], // col -5（空）
+  [0, 1, 0, 1, 0, 1, 0], // col -4
+  [1, 0, 1, 0, 1, 0, 0], // col -3
+  [0, 1, 0, 1, 0, 1, 0], // col -2
+  [0, 4, 3, 2, 4, 3, 0], // col -1（trailing，最密；amber 4/3/2 階梯）
 ]
 
 const POPULATED: OverviewFixture = {
