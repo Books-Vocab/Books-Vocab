@@ -62,7 +62,9 @@ export function composeContactSheet({ parity, shotsDir, outDir, repoRoot, shotLa
     const shot = join(shotsDir, `${p.case}.png`);
     if (!existsSync(shot)) { console.error(`⚠ missing shot: ${p.case}`); continue; }
     const pairPng = join(outDir, `${p.case}.png`);
-    const refPath = p.ref && catalogRoot ? resolveRef(catalogRoot, p.ref) : null;
+    // prepareRef applies component cropping (refCrop cases) so the sheet pairs
+    // the cropped ref beside the cropped web shot (apples-to-apples preview).
+    const refPath = p.ref && catalogRoot ? prepareRef(p, catalogRoot, outDir) : null;
     if (p.ref && catalogRoot && !refPath) {
       console.error(`⚠ catalog ref missing for ${p.case}: ${p.ref.surface} / ${p.ref.scenario} (${p.ref.appearance})`);
     }
@@ -146,6 +148,61 @@ function normalizedCopy(src, out, w, h) {
   magick(['convert', src, '-resize', `${w}x${h}!`, '-alpha', 'off', out]);
 }
 
+/**
+ * Component bbox of a Catalog ref PNG: the opaque-content bounding box, found
+ * by flattening on black, thresholding away the near-transparent scrim, and
+ * trimming. Returns "WxH+X+Y" (ImageMagick geometry) or null when the whole
+ * frame is opaque (no transparent margin → not a component scene).
+ *
+ * Why this exists — the black-floor honesty fix:
+ *   Bottom-sheet / overlay Catalog scenes (Reader · Translation 6 態) render
+ *   the component (a white panel) over a *transparent* backdrop carrying only a
+ *   faint scrim (black α≈0.024). parity normalize does `-alpha off`, which turns
+ *   that whole transparent void into near-black. A white panel measured against
+ *   a frame that is ~70% black void inflates RMSE into a 0.20–0.27 *floor* that
+ *   is a compositing artifact, not a visual diff (the void isn't even rendered
+ *   in the real app — the live reader page sits there). Cropping ref + shot to
+ *   the component removes the void from the denominator so the metric reflects
+ *   the panel itself. Threshold 6% (of 255 ≈ 15) clears the α≈0.024 scrim
+ *   (≈6 on black) while keeping the panel (≥40). Mirrors the iOS-side tight
+ *   crop that selection-toolbar already ships (PR #958); here the Catalog refs
+ *   are still full-frame, so the engine does the equivalent crop at audit time.
+ */
+function refComponentBbox(refPng) {
+  const geom = magick([
+    'convert', refPng, '-alpha', 'off', '-colorspace', 'Gray',
+    '-threshold', '6%', '-format', '%@', 'info:',
+  ]).trim();
+  const m = geom.match(/^(\d+)x(\d+)\+(\d+)\+(\d+)$/);
+  if (!m) return null;
+  const [, w, h] = m.map(Number);
+  // A trim that returns the full canvas = no transparent margin = not a
+  // component scene; treat as no-op so this stays safe to flag broadly.
+  const [fw, fh] = magick(['identify', '-format', '%w %h', refPng]).trim().split(/\s+/).map(Number);
+  if (w === fw && h === fh) return null;
+  return geom;
+}
+
+/**
+ * Resolve a ref to an absolute PNG, applying component cropping when the case
+ * declares `refCrop: 'panel'`. The cropped PNG is written next to the audit
+ * artifacts so downstream steps treat it like any other ref. Returns the path
+ * to use (cropped or original), or null if the ref is missing.
+ */
+function prepareRef(item, catalogRoot, outDir) {
+  const ref = resolveRef(catalogRoot, item.ref);
+  if (!ref) return null;
+  if (item.refCrop !== 'panel') return ref;
+  const bbox = refComponentBbox(ref);
+  if (!bbox) return ref; // no transparent margin — nothing to crop
+  // Case-keyed name: composeContactSheet shares one outDir across cases, so a
+  // fixed filename would collide; auditCase has a per-case outDir but the keyed
+  // name is harmless there too.
+  const cropped = join(outDir, `${item.case}.ios-component.png`);
+  magick(['convert', ref, '-crop', bbox, '+repage', cropped]);
+  return cropped;
+}
+
 function cropRows(w, h) {
   const rows = [
     { name: 'top-chrome', y: 0, height: Math.min(360, h) },
@@ -179,13 +236,15 @@ function refLabel(ref) {
 
 function auditCase(item, { shotsDir, outRoot, catalogRoot, shotLabel }) {
   const shot = join(shotsDir, `${item.case}.png`);
-  const ref = resolveRef(catalogRoot, item.ref);
   if (!existsSync(shot)) throw new Error(`missing shot: ${shot}`);
-  if (!ref) throw new Error(`missing catalog ref for ${item.case}: ${refLabel(item.ref)}`);
 
   const outDir = join(outRoot, item.case);
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
+
+  // prepareRef may write a component-cropped ref into outDir (refCrop cases).
+  const ref = prepareRef(item, catalogRoot, outDir);
+  if (!ref) throw new Error(`missing catalog ref for ${item.case}: ${refLabel(item.ref)}`);
 
   const d = dims(shot);
   const refNorm = join(outDir, 'ios-normalized.png');
