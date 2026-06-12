@@ -1,0 +1,60 @@
+{
+  "workflow_version": "v1",
+  "status": "baseline",
+  "description": "Current podcast pipeline snapshot before v2 creative workflow changes.",
+  "stage_order": [
+    "prep",
+    "analyst",
+    "architect",
+    "plan-review",
+    "enricher-gap",
+    "enricher",
+    "scriptwrite",
+    "series-polish",
+    "script-review",
+    "tts-prep",
+    "synthesize",
+    "audio-qa",
+    "subtitle",
+    "cover",
+    "publish"
+  ],
+  "prompt_dir": "prompts",
+  "validator_versions": {
+    "plan-review": "v1",
+    "series-polish": "v1",
+    "script-review": "v1",
+    "tts-prep": "v1",
+    "audio-qa": "v1"
+  },
+  "qa_thresholds": {
+    "plan-review": {
+      "rewrite_marker": "REWRITE_NEEDED",
+      "max_fail_count": 2
+    },
+    "script-review": {
+      "rewrite_marker": "REWRITE_NEEDED"
+    },
+    "series-polish": {
+      "block_marker": "STRUCTURAL_ISSUES_NEED_RESCRIPT"
+    },
+    "tts-prep": {
+      "ready_marker": "READY_FOR_TTS",
+      "block_marker": "BLOCKED"
+    },
+    "audio-qa": {
+      "strict": false
+    }
+  },
+  "tts_policy": {
+    "default_model": "gemini-2.5-flash-tts",
+    "workspace_sidecar": ".tts_model",
+    "script_family_sidecar": ".script_tts_family"
+  },
+  "cover_policy": {
+    "stage": "cover",
+    "artifact": "plan/cover.png",
+    "source": "pexels",
+    "idempotent": true
+  }
+}

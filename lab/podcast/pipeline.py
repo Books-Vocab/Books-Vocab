@@ -29,7 +29,7 @@ Usage:
     uv run pipeline.py workspaces/flow_950f1a7d/ --status
     uv run pipeline.py <book.epub> --dry-run
 
-Stages (authoritative source: ``STAGES`` constant below — keep in sync):
+Stages (v1 baseline; runtime order comes from workflow_versions/<v>/workflow.json):
     1.  prep           — extract + classify chapters
     2.  analyst        — deep book analysis
     3.  architect      — plan episodes + host design
@@ -43,7 +43,8 @@ Stages (authoritative source: ``STAGES`` constant below — keep in sync):
     11. synthesize     — Vertex AI Gemini TTS → MP3 (loudnorm mastering)
     12. audio-qa       — wpm / silence / clipping checks (hard gate)
     13. subtitle       — Whisper forced alignment → word-level SRT
-    14. publish        — upload workspace → S3 + verify live in catalog index
+    14. cover          — generate series cover art
+    15. publish        — upload workspace → S3 + verify live in catalog index
 """
 
 from __future__ import annotations
@@ -81,7 +82,11 @@ from tts_config import (
 
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
+WORKFLOW_VERSIONS_DIR = ROOT / "workflow_versions"
 WORKSPACES_DIR = ROOT / "workspaces"
+DEFAULT_WORKFLOW_VERSION = "v1"
+WORKFLOW_MANIFEST = "workflow_manifest.json"
+STAGE_PROVENANCE_DIR = "stage_provenance"
 # Stage 1-10 agent runner profile. `kimi` intentionally still invokes the
 # Claude Code CLI binary; it injects the same Anthropic-compatible env vars as
 # the user's shell function, so subprocesses and monitor jobs work without zsh.
@@ -166,6 +171,7 @@ def _agent_subprocess_env() -> dict[str, str]:
 # but loses per-stage cost tracking + tool-use feed in dashboard).
 _STREAM_JSON = os.getenv("PODCAST_VERBOSE", "1") != "0"
 _VERBOSE_FLAGS = ["--output-format", "stream-json", "--verbose"] if _STREAM_JSON else []
+_UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
 # Dashboard auto-launch — single-command UX. Set PODCAST_NO_DASHBOARD=1 to skip.
 _DASHBOARD_ENABLED = os.getenv("PODCAST_NO_DASHBOARD", "0") != "1"
@@ -282,14 +288,171 @@ _AGENT_PROFILE_SIDECAR = ".agent_profile"
 _AGENT_MODEL_SIDECAR = ".agent_model"
 
 
-def _prompt(name: str, archetype: str) -> str:
-    """Resolve a stage prompt for an archetype, falling through to the base file."""
+def available_workflow_versions() -> list[str]:
+    if not WORKFLOW_VERSIONS_DIR.exists():
+        return []
+    return sorted(
+        p.name for p in WORKFLOW_VERSIONS_DIR.iterdir()
+        if p.is_dir() and (p / "workflow.json").is_file()
+    )
+
+
+def load_workflow_definition(workflow_version: str) -> dict:
+    workflow_file = WORKFLOW_VERSIONS_DIR / workflow_version / "workflow.json"
+    if not workflow_file.is_file():
+        raise ValueError(f"unknown workflow version {workflow_version!r}")
+    data = json.loads(workflow_file.read_text())
+    if data.get("workflow_version") != workflow_version:
+        raise ValueError(f"{workflow_file} workflow_version mismatch")
+    return data
+
+
+def workflow_stage_order(workflow_version: str) -> list[str]:
+    stages = load_workflow_definition(workflow_version).get("stage_order")
+    if not isinstance(stages, list) or not stages or not all(isinstance(s, str) for s in stages):
+        raise ValueError(f"workflow {workflow_version!r} has invalid stage_order")
+    return stages
+
+
+def all_workflow_stage_names() -> list[str]:
+    names: set[str] = set(STAGES)
+    for version in available_workflow_versions():
+        names.update(workflow_stage_order(version))
+    return sorted(names, key=lambda s: (STAGES.index(s) if s in STAGES else 10_000, s))
+
+
+def _workflow_prompt_dir(workflow_version: str) -> Path:
+    workflow = load_workflow_definition(workflow_version)
+    return WORKFLOW_VERSIONS_DIR / workflow_version / workflow.get("prompt_dir", "prompts")
+
+
+def prompt_path(name: str, archetype: str, workflow_version: str) -> Path:
+    """Resolve a stage prompt for an archetype within a versioned snapshot."""
     suffix = archetypes.get(archetype)["suffix"]
+    # Tests and ad hoc tools historically monkeypatch PROMPTS_DIR to exercise
+    # archetype resolution without materializing workflow_versions. Preserve
+    # that override; production keeps PROMPTS_DIR at ROOT/prompts and uses the
+    # versioned snapshot.
+    prompt_dir = PROMPTS_DIR if PROMPTS_DIR != ROOT / "prompts" else _workflow_prompt_dir(workflow_version)
     if suffix:
-        variant = PROMPTS_DIR / f"{name}_{suffix}.md"
+        variant = prompt_dir / f"{name}_{suffix}.md"
         if variant.exists():
-            return variant.read_text()
-    return (PROMPTS_DIR / f"{name}.md").read_text()
+            return variant
+    return prompt_dir / f"{name}.md"
+
+
+def prompt_text(name: str, archetype: str, workflow_version: str) -> str:
+    return prompt_path(name, archetype, workflow_version).read_text()
+
+
+def active_workflow_version() -> str:
+    return os.getenv("PODCAST_WORKFLOW_VERSION", DEFAULT_WORKFLOW_VERSION)
+
+
+def configure_workflow(workflow_version: str) -> None:
+    load_workflow_definition(workflow_version)
+    os.environ["PODCAST_WORKFLOW_VERSION"] = workflow_version
+
+
+def _prompt(name: str, archetype: str) -> str:
+    return prompt_text(name, archetype, active_workflow_version())
+
+
+def read_workflow_manifest(workspace: Path) -> dict | None:
+    manifest = workspace / WORKFLOW_MANIFEST
+    if not manifest.exists():
+        return None
+    try:
+        return json.loads(manifest.read_text())
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{manifest} is not valid JSON: {e}") from e
+
+
+def resolve_workspace_workflow(workspace: Path, requested: str | None) -> str:
+    manifest = read_workflow_manifest(workspace)
+    saved = manifest.get("workflow_version") if manifest else None
+    if saved:
+        load_workflow_definition(str(saved))
+        if requested and requested != saved:
+            raise ValueError(
+                f"workspace was created with workflow_version {saved}; "
+                f"cannot resume as {requested}"
+            )
+        return str(saved)
+    version = requested or DEFAULT_WORKFLOW_VERSION
+    load_workflow_definition(version)
+    return version
+
+
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _prompt_fingerprints(workflow_version: str) -> dict[str, str]:
+    prompt_dir = _workflow_prompt_dir(workflow_version)
+    return {
+        str(p.relative_to(WORKFLOW_VERSIONS_DIR / workflow_version)): _sha256_file(p)
+        for p in sorted(prompt_dir.glob("*.md"))
+    }
+
+
+def _pipeline_commit() -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(ROOT.parent.parent),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return "unknown"
+    return proc.stdout.strip() if proc.returncode == 0 else "unknown"
+
+
+def write_workflow_manifest(
+    workspace: Path,
+    *,
+    workflow_version: str,
+    agent_profile: str,
+    agent_model: str,
+    tts_model: str,
+) -> dict:
+    workflow = load_workflow_definition(workflow_version)
+    existing = read_workflow_manifest(workspace) or {}
+    if existing.get("workflow_version") and existing.get("pipeline_commit") and existing.get("prompt_fingerprints"):
+        if existing["workflow_version"] != workflow_version:
+            raise ValueError(
+                f"workspace was created with workflow_version {existing['workflow_version']}; "
+                f"cannot rewrite manifest as {workflow_version}"
+            )
+        return existing
+    created_at = existing.get("created_at") or datetime.now().isoformat(timespec="seconds")
+    manifest = {
+        "workflow_version": workflow_version,
+        "pipeline_commit": _pipeline_commit(),
+        "prompt_fingerprints": _prompt_fingerprints(workflow_version),
+        "agent_profile": agent_profile,
+        "agent_model": agent_model,
+        "tts_model": tts_model,
+        "validator_versions": workflow.get("validator_versions", {}),
+        "stage_contracts": {
+            "stage_order": workflow.get("stage_order", STAGES),
+            "qa_thresholds": workflow.get("qa_thresholds", {}),
+            "tts_policy": workflow.get("tts_policy", {}),
+            "cover_policy": workflow.get("cover_policy", {}),
+        },
+        "created_at": created_at,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    (workspace / WORKFLOW_MANIFEST).write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    )
+    return manifest
 
 
 def write_mode_sidecar(workspace: Path, archetype: str, spoiler_mode: str | None) -> None:
@@ -461,6 +624,7 @@ def approval_gate_block(
     *,
     explicit_skip_idx: int | None = None,
     ignore_gates: bool = False,
+    stages: list[str] | None = None,
 ) -> str | None:
     """Return the approval-marker filename blocking entry to `stage_name`, or
     None if the stage may run.
@@ -483,7 +647,8 @@ def approval_gate_block(
     marker = _APPROVAL_GATES.get(stage_name)
     if not marker or ignore_gates:
         return None
-    gate_idx = STAGES.index(stage_name)
+    stage_order = stages or STAGES
+    gate_idx = stage_order.index(stage_name)
     if explicit_skip_idx is not None and explicit_skip_idx >= gate_idx:
         return None
     if (workspace / marker).exists():
@@ -1185,12 +1350,408 @@ def stage_done(workspace: Path, stage: str) -> bool:
     return (workspace / _STAGE_MARKER.format(name=stage)).exists()
 
 
-def detect_resume_point(workspace: Path) -> int:
+def detect_resume_point(workspace: Path, stages: list[str] | None = None) -> int:
     """Find the first incomplete stage index."""
-    for i, stage in enumerate(STAGES):
+    stage_order = stages or STAGES
+    for i, stage in enumerate(stage_order):
         if not stage_done(workspace, stage):
             return i
-    return len(STAGES)  # all done
+    return len(stage_order)  # all done
+
+
+# ─── Workflow provenance ───
+
+
+_STAGE_ARTIFACT_GLOBS = {
+    "prep": {
+        "input": ["raw_chapters/*.md", "series.md", "source/metadata.md"],
+        "output": ["source/chapters/*.md", "source/metadata.md"],
+    },
+    "analyst": {
+        "input": ["source/**/*.md", "series.md"],
+        "output": ["plan/analysis.md"],
+    },
+    "architect": {
+        "input": ["source/**/*.md", "series.md", "plan/analysis.md"],
+        "output": ["plan/overview.md", "plan/episodes/*.md"],
+    },
+    "plan-review": {
+        "input": ["plan/overview.md", "plan/episodes/*.md"],
+        "output": ["plan/review.md"],
+    },
+    "enricher-gap": {
+        "input": ["plan/overview.md", "plan/episodes/*.md", "plan/review.md"],
+        "output": ["plan/research_brief.md"],
+    },
+    "enricher": {
+        "input": ["plan/research_brief.md", "plan/episodes/*.md"],
+        "output": ["plan/episodes/*.md"],
+    },
+    "scriptwrite": {
+        "input": ["plan/overview.md", "plan/episodes/*.md"],
+        "output": ["scripts/ep_*_script.md", _SCRIPT_TTS_FAMILY_SIDECAR],
+    },
+    "series-polish": {
+        "input": ["plan/overview.md", "scripts/ep_*_script.md"],
+        "output": ["scripts/ep_*_script.md", "plan/series_polish.md"],
+    },
+    "script-review": {
+        "input": ["plan/overview.md", "scripts/ep_*_script.md"],
+        "output": ["scripts/ep_*_review.md"],
+    },
+    "tts-prep": {
+        "input": ["plan/overview.md", "scripts/ep_*_script.md", "scripts/ep_*_review.md"],
+        "output": ["plan/overview.md", "plan/tts_prep.md", "scripts/ep_*_script.md"],
+    },
+    "synthesize": {
+        "input": ["scripts/ep_*_script.md", _TTS_MODEL_SIDECAR, _SCRIPT_TTS_FAMILY_SIDECAR],
+        "output": ["scripts/ep_*.mp3", "scripts/ep_*.m4a", "scripts/ep_*.meta.json"],
+    },
+    "audio-qa": {
+        "input": ["scripts/ep_*.mp3", "scripts/ep_*.m4a"],
+        "output": ["audio_qa.json"],
+    },
+    "subtitle": {
+        "input": ["scripts/ep_*_script.md", "scripts/ep_*.mp3", "scripts/ep_*.m4a"],
+        "output": ["scripts/ep_*.srt"],
+    },
+    "cover": {
+        "input": ["plan/overview.md"],
+        "output": ["plan/cover.png", "plan/cover_meta.json"],
+    },
+    "publish": {
+        "input": ["plan/cover.png", "scripts/ep_*.mp3", "scripts/ep_*.m4a", "scripts/ep_*.srt"],
+        "output": [],
+    },
+}
+
+_LINEAGE_STAGES = {"scriptwrite", "series-polish", "script-review", "producer-cut", "tts-prep"}
+
+
+def _artifact_matches_episode(rel: str, only_episode: int | None) -> bool:
+    if only_episode is None or not rel.startswith("scripts/ep_"):
+        return True
+    m = re.match(r"scripts/ep_(\d+)_", rel)
+    return bool(m and int(m.group(1)) == only_episode)
+
+
+def _collect_artifacts(
+    workspace: Path,
+    patterns: list[str],
+    *,
+    only_episode: int | None = None,
+) -> dict[str, dict[str, object]]:
+    artifacts: dict[str, dict[str, object]] = {}
+    for pattern in patterns:
+        matches = [workspace / pattern] if not any(ch in pattern for ch in "*?[") else list(workspace.glob(pattern))
+        for p in sorted(matches):
+            if not p.is_file():
+                continue
+            rel = p.relative_to(workspace).as_posix()
+            if not _artifact_matches_episode(rel, only_episode):
+                continue
+            stat = p.stat()
+            artifacts[rel] = {
+                "sha256": _sha256_file(p),
+                "bytes": stat.st_size,
+                "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+            }
+    return artifacts
+
+
+def capture_stage_inputs(
+    workspace: Path,
+    stage: str,
+    only_episode: int | None,
+) -> dict[str, dict[str, object]]:
+    spec = _STAGE_ARTIFACT_GLOBS.get(stage, {})
+    return _collect_artifacts(workspace, spec.get("input", []), only_episode=only_episode)
+
+
+def _capture_stage_outputs(
+    workspace: Path,
+    stage: str,
+    only_episode: int | None,
+) -> dict[str, dict[str, object]]:
+    spec = _STAGE_ARTIFACT_GLOBS.get(stage, {})
+    return _collect_artifacts(workspace, spec.get("output", []), only_episode=only_episode)
+
+
+def _stage_prompt_metadata(workspace: Path, stage: str) -> dict[str, object] | None:
+    prompt_names = {
+        "prep": "prep",
+        "analyst": "analyst",
+        "architect": "architect",
+        "plan-review": "plan_review",
+        "enricher-gap": "enricher_gap",
+        "enricher": "enricher",
+        "scriptwrite": "scriptwriter",
+        "series-polish": "series_polish",
+        "script-review": "script_review",
+        "tts-prep": "tts_prep",
+        "cover": "cover",
+    }
+    prompt_name = prompt_names.get(stage)
+    if not prompt_name:
+        return None
+    workflow_version = resolve_workspace_workflow(workspace, None)
+    p = prompt_path(prompt_name, read_mode(workspace), workflow_version)
+    root = WORKFLOW_VERSIONS_DIR / workflow_version
+    return {
+        "version": workflow_version,
+        "name": prompt_name,
+        "path": p.relative_to(root).as_posix(),
+        "sha256": _sha256_file(p),
+    }
+
+
+def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
+    workflow = load_workflow_definition(resolve_workspace_workflow(workspace, None))
+    thresholds = workflow.get("qa_thresholds", {})
+    stage_thresholds = thresholds.get(stage, {}) if isinstance(thresholds, dict) else {}
+    if stage == "plan-review":
+        f = workspace / "plan" / "review.md"
+        if not f.exists():
+            return {"status": "missing", "artifact": "plan/review.md"}
+        text = f.read_text()
+        rewrite_marker = stage_thresholds.get("rewrite_marker", "REWRITE_NEEDED")
+        max_fail_count = int(stage_thresholds.get("max_fail_count", 2))
+        fail_count = text.count("FAIL")
+        return {
+            "status": "pass" if rewrite_marker not in text and fail_count <= max_fail_count else "fail",
+            "rewrite_marker": rewrite_marker,
+            "rewrite_needed": rewrite_marker in text,
+            "fail_count": fail_count,
+            "max_fail_count": max_fail_count,
+        }
+    if stage == "series-polish":
+        f = workspace / "plan" / "series_polish.md"
+        if not f.exists():
+            return {"status": "missing", "artifact": "plan/series_polish.md"}
+        text = f.read_text()
+        block_marker = stage_thresholds.get("block_marker", "STRUCTURAL_ISSUES_NEED_RESCRIPT")
+        return {
+            "status": "fail" if block_marker in text else "pass",
+            "block_marker": block_marker,
+            "structural_issues": block_marker in text,
+        }
+    if stage == "script-review":
+        rewrite_marker = stage_thresholds.get("rewrite_marker", "REWRITE_NEEDED")
+        rewrite = []
+        for f in sorted((workspace / "scripts").glob("ep_*_review.md")):
+            if rewrite_marker in f.read_text():
+                m = re.search(r"ep_(\d+)", f.stem)
+                rewrite.append(int(m.group(1)) if m else f.name)
+        return {"status": "fail" if rewrite else "pass", "rewrite_marker": rewrite_marker, "rewrite_needed": rewrite}
+    if stage == "tts-prep":
+        f = workspace / "plan" / "tts_prep.md"
+        if not f.exists():
+            return {"status": "missing", "artifact": "plan/tts_prep.md"}
+        text = f.read_text()
+        ready_marker = stage_thresholds.get("ready_marker", "READY_FOR_TTS")
+        block_marker = stage_thresholds.get("block_marker", "BLOCKED")
+        return {
+            "status": "pass" if ready_marker in text and block_marker not in text else "fail",
+            "ready_marker": ready_marker,
+            "block_marker": block_marker,
+            "ready": ready_marker in text,
+            "blocked": block_marker in text,
+        }
+    if stage == "audio-qa":
+        f = workspace / "audio_qa.json"
+        if not f.exists():
+            return {"status": "missing", "artifact": "audio_qa.json"}
+        try:
+            report = json.loads(f.read_text())
+        except json.JSONDecodeError:
+            return {"status": "unreadable", "artifact": "audio_qa.json"}
+        summary = report.get("summary") or {}
+        fail = int(summary.get("fail") or 0)
+        warn = int(summary.get("warn") or 0)
+        strict = bool(stage_thresholds.get("strict", False))
+        return {
+            "status": "fail" if fail or (strict and warn) else "pass",
+            "artifact": "audio_qa.json",
+            "strict": strict,
+            "summary": summary,
+        }
+    return None
+
+
+def _audio_qa_strict(workspace: Path) -> bool:
+    workflow = load_workflow_definition(resolve_workspace_workflow(workspace, None))
+    thresholds = workflow.get("qa_thresholds", {})
+    if not isinstance(thresholds, dict):
+        return False
+    audio_qa = thresholds.get("audio-qa", {})
+    return bool(audio_qa.get("strict", False)) if isinstance(audio_qa, dict) else False
+
+
+def _approval_marker_for_stage(workspace: Path, stage: str) -> dict[str, object] | None:
+    marker = _APPROVAL_GATES.get(stage)
+    if not marker:
+        return None
+    path = workspace / marker
+    return {"marker": marker, "approved": path.exists()}
+
+
+def _stage_label_prefixes(stage: str) -> tuple[str, ...]:
+    return {
+        "prep": ("prep",),
+        "analyst": ("analyst",),
+        "architect": ("architect",),
+        "plan-review": ("plan review",),
+        "enricher-gap": ("enricher gap",),
+        "enricher": ("enricher",),
+        "scriptwrite": ("scriptwriter",),
+        "series-polish": ("series polish",),
+        "script-review": ("script review",),
+        "tts-prep": ("tts prep",),
+        "synthesize": ("synthesize", "tts"),
+        "cover": ("cover",),
+    }.get(stage, (stage.replace("-", " "),))
+
+
+def _event_has_cost_payload(event: dict) -> bool:
+    payload = event.get("event", {})
+    if payload.get("type") in {"tts_usage", "image_usage"}:
+        return True
+    if payload.get("type") == "result":
+        usage = payload.get("modelUsage")
+        return bool(usage)
+    return False
+
+
+def _stage_cost_event_refs(workspace: Path, stage: str) -> list[str]:
+    events_path = workspace / "events.jsonl"
+    if not events_path.exists():
+        return []
+    prefixes = _stage_label_prefixes(stage)
+    refs: list[str] = []
+    for idx, line in enumerate(events_path.read_text().splitlines(), 1):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        label = str(event.get("stage_label", "")).strip().lower()
+        if not any(label.startswith(prefix) for prefix in prefixes):
+            continue
+        if _event_has_cost_payload(event):
+            refs.append(f"events.jsonl:{idx}")
+    return refs
+
+
+def _lineage_bucket(stage: str) -> str:
+    return stage.replace("-", "_")
+
+
+def _script_hash(path: Path) -> str | None:
+    return _sha256_file(path) if path.is_file() else None
+
+
+def _update_episode_lineage(
+    workspace: Path,
+    stage: str,
+    *,
+    input_artifacts: dict[str, dict[str, object]],
+    prompt: dict[str, object] | None,
+    only_episode: int | None,
+) -> None:
+    if stage not in _LINEAGE_STAGES:
+        return
+    scripts = sorted((workspace / "scripts").glob("ep_*_script.md"))
+    if only_episode is not None:
+        scripts = [p for p in scripts if p.name.startswith(f"ep_{only_episode}_")]
+    bucket = _lineage_bucket(stage)
+    workflow_version = resolve_workspace_workflow(workspace, None)
+    for script in scripts:
+        m = re.match(r"ep_(\d+)_script\.md", script.name)
+        if not m:
+            continue
+        episode = int(m.group(1))
+        rel = script.relative_to(workspace).as_posix()
+        before_hash = (input_artifacts.get(rel) or {}).get("sha256")
+        after_hash = _script_hash(script)
+        lineage_path = workspace / "scripts" / f"ep_{episode}_lineage.json"
+        if lineage_path.exists():
+            lineage = json.loads(lineage_path.read_text())
+        else:
+            lineage = {
+                "episode": episode,
+                "workflow_version": workflow_version,
+                "scriptwrite": [],
+                "series_polish": [],
+                "script_review": [],
+                "producer_cut": [],
+                "tts_prep": [],
+                "events": [],
+            }
+        event = {
+            "stage": stage,
+            "workflow_version": workflow_version,
+            "prompt": prompt,
+            "before_hash": before_hash,
+            "after_hash": after_hash,
+            "changed": before_hash != after_hash,
+            "edit_summary": "recorded deterministic before/after script hash",
+            "human_approved": (workspace / ".script_approved").exists() if stage == "tts-prep" else None,
+            "ts": datetime.now().isoformat(timespec="seconds"),
+        }
+        lineage.setdefault(bucket, []).append(event)
+        lineage.setdefault("events", []).append(event)
+        lineage_path.write_text(json.dumps(lineage, ensure_ascii=False, indent=2) + "\n")
+
+
+def write_stage_provenance(
+    workspace: Path,
+    *,
+    stage: str,
+    success: bool,
+    elapsed_s: float,
+    input_artifacts: dict[str, dict[str, object]],
+    only_episode: int | None,
+) -> dict:
+    workflow_version = resolve_workspace_workflow(workspace, None)
+    prompt = _stage_prompt_metadata(workspace, stage)
+    output_artifacts = _capture_stage_outputs(workspace, stage, only_episode)
+    provenance = {
+        "stage": stage,
+        "workflow_version": workflow_version,
+        "pipeline_commit": _pipeline_commit(),
+        "success": success,
+        "elapsed_s": round(elapsed_s, 1),
+        "input_artifacts": input_artifacts,
+        "output_artifacts": output_artifacts,
+        "prompt": prompt,
+        "model": {
+            "agent_profile": AGENT_PROFILE,
+            "agent_model": MODEL,
+            "tts_model": read_tts_model(workspace) or DEFAULT_TTS_MODEL,
+        },
+        "command": {
+            "entrypoint": "pipeline.py",
+            "stage": stage,
+            "only_episode": only_episode,
+        },
+        "cost_event_ids": _stage_cost_event_refs(workspace, stage),
+        "validator_result": _validator_result(workspace, stage),
+        "manual_approval_marker": _approval_marker_for_stage(workspace, stage),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    out_dir = workspace / STAGE_PROVENANCE_DIR
+    out_dir.mkdir(exist_ok=True)
+    suffix = f"_ep_{only_episode}" if only_episode is not None else ""
+    (out_dir / f"{stage}{suffix}.json").write_text(
+        json.dumps(provenance, ensure_ascii=False, indent=2) + "\n"
+    )
+    _update_episode_lineage(
+        workspace,
+        stage,
+        input_artifacts=input_artifacts,
+        prompt=prompt,
+        only_episode=only_episode,
+    )
+    return provenance
 
 
 # ─── Pipeline Stages ───
@@ -1498,8 +2059,11 @@ def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None =
         target = scripts_dir
 
     report = workspace / "audio_qa.json"
+    cmd = ["uv", "run", str(ROOT / "audio_qa.py"), str(target), "--report", str(report)]
+    if _audio_qa_strict(workspace):
+        cmd.append("--strict")
     proc = subprocess.run(
-        ["uv", "run", str(ROOT / "audio_qa.py"), str(target), "--report", str(report)],
+        cmd,
         cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
     )
     if proc.returncode != 0:
@@ -1662,6 +2226,10 @@ def _try_parse_json(line: str) -> dict | None:
 
 
 def show_status(workspace: Path) -> None:
+    try:
+        stages = workflow_stage_order(resolve_workspace_workflow(workspace, None))
+    except ValueError:
+        stages = STAGES
     print(f"\n{'='*60}")
     print(f"  WORKSPACE: {workspace.name}")
     print(f"{'='*60}")
@@ -1674,7 +2242,7 @@ def show_status(workspace: Path) -> None:
 
     # Stage markers
     print(f"\n  Stage Progress:")
-    for stage in STAGES:
+    for stage in stages:
         marker = workspace / _STAGE_MARKER.format(name=stage)
         if marker.exists():
             ts = marker.read_text().strip()
@@ -1748,12 +2316,12 @@ def show_status(workspace: Path) -> None:
 
     # Suggest next action + quick reference
     ws = workspace
-    resume = detect_resume_point(workspace)
+    resume = detect_resume_point(workspace, stages)
 
     print(f"\n  ── Quick Actions ──")
-    if resume < len(STAGES):
+    if resume < len(stages):
         print(f"  Resume:          uv run pipeline.py {ws}")
-        print(f"  Resume from:     uv run pipeline.py {ws} --skip-to {STAGES[resume]}")
+        print(f"  Resume from:     uv run pipeline.py {ws} --skip-to {stages[resume]}")
     else:
         print(f"  ✓ All stages complete!")
 
@@ -1765,7 +2333,7 @@ def show_status(workspace: Path) -> None:
     print(f"  Parallel:        uv run pipeline.py {ws} --parallel 5")
 
     print(f"\n  ── Stages ──")
-    for i, s in enumerate(STAGES, 1):
+    for i, s in enumerate(stages, 1):
         print(f"  {i:>2}. {s}")
 
     print(f"\n  ── Debug ──")
@@ -1822,6 +2390,8 @@ def main():
   11. synthesize     TTS audio generation (Vertex AI Gemini)
   12. audio-qa       audio quality check
   13. subtitle       word-level subtitle alignment
+  14. cover          series cover art
+  15. publish        upload workspace to S3 + verify catalog
 
 examples:
   uv run pipeline.py book.epub                          # run until plan gate, then pause
@@ -1858,9 +2428,10 @@ examples:
     )
     parser.add_argument("--parallel", type=int, default=3, help="Max parallel workers (default: 3)")
     parser.add_argument("--only-episode", type=int, help="Only process this episode number")
-    parser.add_argument("--skip-to", choices=STAGES, help="Start from this stage")
-    parser.add_argument("--stop-after", choices=STAGES, help="Stop after this stage")
-    parser.add_argument("--only-stage", choices=STAGES, help="Run exactly one stage")
+    stage_choices = all_workflow_stage_names()
+    parser.add_argument("--skip-to", choices=stage_choices, help="Start from this stage")
+    parser.add_argument("--stop-after", choices=stage_choices, help="Stop after this stage")
+    parser.add_argument("--only-stage", choices=stage_choices, help="Run exactly one stage")
     parser.add_argument(
         "--mode", choices=list(archetypes.ARCHETYPES),
         help="Production archetype (default: nonfiction). Selects the prompt set. "
@@ -1890,6 +2461,13 @@ examples:
         help="Stage 1-10 agent model override. Defaults: claude=opus[1m], "
         "kimi=kimi-for-coding. PODCAST_AGENT_MODEL also works; legacy "
         "PODCAST_CLAUDE_MODEL remains supported.",
+    )
+    parser.add_argument(
+        "--workflow-version",
+        choices=available_workflow_versions(),
+        help="Versioned workflow contract to use for prompts, validators and "
+        "provenance. Fresh workspaces default to v1; resume uses the saved "
+        "workflow_manifest.json value.",
     )
     parser.add_argument(
         "--force",
@@ -1966,28 +2544,11 @@ examples:
                 print("No workspace found for this EPUB.")
         return
 
-    # Determine stage range
-    start_idx = STAGES.index(args.skip_to) if args.skip_to else 0
-    stop_idx = STAGES.index(args.stop_after) if args.stop_after else len(STAGES) - 1
-
-    # Explicit start index for approval-gate bypass — set ONLY when the user
-    # passed --skip-to / --only-stage (a deliberate drive past the gate). Stays
-    # None for auto-resume runs so the gate still holds (see approval_gate_block).
-    explicit_skip_idx = STAGES.index(args.skip_to) if args.skip_to else None
-
-    if start_idx > stop_idx:
-        parser.error(f"--skip-to {args.skip_to} is after --stop-after {args.stop_after}")
-
     # Resolve workspace
     if workspace:
-        if not args.skip_to:
-            resume = detect_resume_point(workspace)
-            if resume > 0:
-                start_idx = max(start_idx, resume)
-                print(f"Auto-resume: {STAGES[start_idx]} (stages 0-{resume-1} have completion markers)")
         print(f"Workspace: {workspace}")
     elif epub_path:
-        if start_idx > 0:
+        if args.skip_to:
             workspace = find_workspace(epub_path)
             if not workspace:
                 print("ERROR: No existing workspace found. Run without --skip-to first.")
@@ -2043,6 +2604,36 @@ examples:
     write_agent_sidecars(workspace)
     print(f"Agent: {AGENT_PROFILE} ({MODEL})")
 
+    try:
+        workflow_version = resolve_workspace_workflow(workspace, args.workflow_version)
+        configure_workflow(workflow_version)
+    except ValueError as e:
+        parser.error(str(e))
+    print(f"Workflow: {workflow_version}")
+    stages = workflow_stage_order(workflow_version)
+    for selected in (args.skip_to, args.stop_after):
+        if selected and selected not in stages:
+            parser.error(f"stage {selected!r} is not in workflow {workflow_version} stage_order")
+
+    # Determine stage range from the selected workflow, not the v1 global list.
+    start_idx = stages.index(args.skip_to) if args.skip_to else 0
+    stop_idx = stages.index(args.stop_after) if args.stop_after else len(stages) - 1
+
+    # Explicit start index for approval-gate bypass — set ONLY when the user
+    # passed --skip-to / --only-stage (a deliberate drive past the gate). Stays
+    # None for auto-resume runs so the gate still holds (see approval_gate_block).
+    explicit_skip_idx = stages.index(args.skip_to) if args.skip_to else None
+
+    if start_idx > stop_idx:
+        parser.error(f"--skip-to {args.skip_to} is after --stop-after {args.stop_after}")
+
+    if not args.skip_to:
+        resume = detect_resume_point(workspace, stages)
+        if resume > 0:
+            start_idx = max(start_idx, resume)
+            if start_idx < len(stages):
+                print(f"Auto-resume: {stages[start_idx]} (stages 0-{resume-1} have completion markers)")
+
     # Freeze the TTS model the same way as .mode: fresh setup takes it from argv,
     # resume reads the saved sidecar and a conflicting --tts-model is an error.
     saved_tts = read_tts_model(workspace)
@@ -2055,6 +2646,14 @@ examples:
     elif args.tts_model:
         (workspace / _TTS_MODEL_SIDECAR).write_text(args.tts_model)
         print(f"TTS model: {args.tts_model} (family {tts_family(args.tts_model)})")
+
+    write_workflow_manifest(
+        workspace,
+        workflow_version=workflow_version,
+        agent_profile=AGENT_PROFILE,
+        agent_model=MODEL,
+        tts_model=read_tts_model(workspace) or DEFAULT_TTS_MODEL,
+    )
 
     # Saga preflight: build_saga_context() raises on a corrupt series.md (fail
     # closed — never run a saga spoiler-blind). Validate it ONCE here with a
@@ -2089,13 +2688,13 @@ examples:
     _ensure_dashboard_running(workspace)
 
     # Prereq marker check: --skip-to X (incl. --only-stage X which rewrites
-    # to skip_to=stop_after=X) requires STAGES[0:X] all to have completion
+    # to skip_to=stop_after=X) requires earlier workflow stages all to have completion
     # markers. Catches the footgun where user jumps to e.g. scriptwrite on a
     # workspace where architect/plan-review never ran — downstream stage will
     # crash trying to read missing plan/overview.md. --force opts out for
     # advanced cases (e.g. cherry-picked workspace, manual artifact stitching).
     if args.skip_to and start_idx > 0 and not args.force:
-        missing = [s for s in STAGES[:start_idx] if not stage_done(workspace, s)]
+        missing = [s for s in stages[:start_idx] if not stage_done(workspace, s)]
         if missing:
             print(f"ERROR: --skip-to {args.skip_to} requires earlier stages completed.")
             print(f"  Missing markers: {', '.join(missing)}")
@@ -2126,8 +2725,14 @@ examples:
         "cover": lambda: stage_cover(workspace, log),
         "publish": lambda: stage_publish(workspace, log),
     }
+    unimplemented = [s for s in stages if s not in stage_funcs]
+    if unimplemented:
+        parser.error(
+            f"workflow {workflow_version} references unimplemented stage(s): "
+            f"{', '.join(unimplemented)}"
+        )
 
-    stages_to_run = STAGES[start_idx:stop_idx + 1]
+    stages_to_run = stages[start_idx:stop_idx + 1]
 
     # Drop series-wide stages (series-polish / publish) from a bare single-episode
     # full loop: they re-process the WHOLE series, never honoring --only-episode.
@@ -2160,6 +2765,7 @@ examples:
             stage_name, workspace,
             explicit_skip_idx=explicit_skip_idx,
             ignore_gates=args.ignore_gates,
+            stages=stages,
         )
         if blocked_by:
             phase = "plan" if blocked_by == ".plan_approved" else "script"
@@ -2178,10 +2784,22 @@ examples:
 
         stage_t0 = time.time()
         log.stage_start(stage_name, step=f"{i}/{total_stages}")
+        input_artifacts = capture_stage_inputs(workspace, stage_name, args.only_episode)
 
-        if not stage_funcs[stage_name]():
+        success = stage_funcs[stage_name]()
+        stage_elapsed = time.time() - stage_t0
+        write_stage_provenance(
+            workspace,
+            stage=stage_name,
+            success=success,
+            elapsed_s=stage_elapsed,
+            input_artifacts=input_artifacts,
+            only_episode=args.only_episode,
+        )
+
+        if not success:
             elapsed = time.time() - t0
-            log.stage_end(stage_name, success=False, elapsed=time.time() - stage_t0, only_episode=bool(args.only_episode))
+            log.stage_end(stage_name, success=False, elapsed=stage_elapsed, only_episode=bool(args.only_episode))
             print(f"\n{'='*60}")
             print(f"  PIPELINE FAILED at: {stage_name} ({elapsed:.0f}s total)")
             print(f"  Workspace: {workspace}")
@@ -2190,7 +2808,7 @@ examples:
             print(f"{'='*60}")
             sys.exit(1)
 
-        log.stage_end(stage_name, success=True, elapsed=time.time() - stage_t0, only_episode=bool(args.only_episode))
+        log.stage_end(stage_name, success=True, elapsed=stage_elapsed, only_episode=bool(args.only_episode))
 
     elapsed = time.time() - t0
 
@@ -2213,8 +2831,8 @@ examples:
     if srts:
         print(f"  Subtitles: {len(srts)} files")
 
-    if stop_idx < len(STAGES) - 1:
-        print(f"\n  Next: uv run pipeline.py {workspace} --skip-to {STAGES[stop_idx + 1]}")
+    if stop_idx < len(stages) - 1:
+        print(f"\n  Next: uv run pipeline.py {workspace} --skip-to {stages[stop_idx + 1]}")
 
     print(f"{'='*60}")
 
