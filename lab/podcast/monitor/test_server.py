@@ -205,6 +205,34 @@ def test_start_pipeline_rejects_unknown_tts_model(client, spawn):
     assert list(server.UPLOAD_STAGING.glob("*")) == []
 
 
+def test_start_pipeline_agent_profile_metadata_and_env(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "agent_profile": "kimi", "agent_model": "kimi-for-coding"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert spawn.argv[-4:] == [
+        "--agent-profile", "kimi",
+        "--agent-model", "kimi-for-coding",
+    ]
+    assert spawn.kwargs["metadata"]["agent_profile"] == "kimi"
+    assert spawn.kwargs["metadata"]["agent_model"] == "kimi-for-coding"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "kimi"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "kimi-for-coding"
+
+
+def test_start_pipeline_rejects_unknown_agent_profile(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "agent_profile": "bogus"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 422
+    assert spawn.argv is None
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
 def test_start_saga_valid_tts_model_appends_flag(client, spawn):
     resp = client.post(
         "/api/pipeline/start-saga",
@@ -225,6 +253,28 @@ def test_start_saga_rejects_unknown_tts_model(client, spawn):
     assert resp.status_code == 422
     assert spawn.argv is None
     assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_start_saga_agent_profile_metadata_and_env(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={
+            "title": "Saga",
+            "spoiler_mode": "readalong",
+            "agent_profile": "kimi",
+            "agent_model": "kimi-for-coding",
+        },
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 200, resp.text
+    assert spawn.argv[-4:] == [
+        "--agent-profile", "kimi",
+        "--agent-model", "kimi-for-coding",
+    ]
+    assert spawn.kwargs["metadata"]["agent_profile"] == "kimi"
+    assert spawn.kwargs["metadata"]["agent_model"] == "kimi-for-coding"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "kimi"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "kimi-for-coding"
 
 
 # ── upload content-hash dedup (concurrent same-EPUB guard) ──────────────────
@@ -383,6 +433,15 @@ def test_tts_allowlist_parity_frontend_backend():
     for model in ALLOWED_TTS_MODELS:
         assert f'"{model}"' in app_js, f"{model} missing from app.js ALLOWED_TTS_MODELS"
         assert f'value="{model}"' in index_html, f"{model} missing from index.html <option>"
+
+
+def test_agent_profile_allowlist_parity_frontend_backend():
+    static = Path(__file__).parent / "static"
+    app_js = (static / "app.js").read_text()
+    index_html = (static / "index.html").read_text()
+    for profile in server.ALLOWED_AGENT_PROFILES:
+        assert f'"{profile}"' in app_js, f"{profile} missing from app.js ALLOWED_AGENT_PROFILES"
+        assert f'value="{profile}"' in index_html, f"{profile} missing from index.html <option>"
 
 
 # ── _workspace_summary saga fields ─────────────────────────────────────────

@@ -82,11 +82,85 @@ from tts_config import (
 ROOT = Path(__file__).parent
 PROMPTS_DIR = ROOT / "prompts"
 WORKSPACES_DIR = ROOT / "workspaces"
-_UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
-# Override with PODCAST_CLAUDE_MODEL env (e.g. "sonnet", "opus", "opus[1m]").
-# Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
-# series-polish) reason over multi-chapter context and benefit from 1M window.
-MODEL = os.getenv("PODCAST_CLAUDE_MODEL", "opus[1m]")
+# Stage 1-10 agent runner profile. `kimi` intentionally still invokes the
+# Claude Code CLI binary; it injects the same Anthropic-compatible env vars as
+# the user's shell function, so subprocesses and monitor jobs work without zsh.
+AGENT_PROFILES = ("claude", "kimi")
+KIMI_BASE_URL = "https://api.kimi.com/coding"
+
+
+def _normalize_agent_profile(profile: str | None) -> str:
+    value = (profile or os.getenv("PODCAST_AGENT_PROFILE") or "claude").strip().lower()
+    if value not in AGENT_PROFILES:
+        raise ValueError(f"unknown agent profile {value!r}; allowed: {', '.join(AGENT_PROFILES)}")
+    return value
+
+
+def _resolve_agent_model(profile: str, explicit: str | None = None) -> str:
+    if explicit and explicit.strip():
+        return explicit.strip()
+    env_model = os.getenv("PODCAST_AGENT_MODEL", "").strip()
+    if env_model:
+        return env_model
+    # Backward compatibility for existing scripts.
+    legacy = os.getenv("PODCAST_CLAUDE_MODEL", "").strip()
+    if legacy:
+        return legacy
+    # Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
+    # series-polish) reason over multi-chapter context and benefit from 1M window.
+    return "kimi-for-coding" if profile == "kimi" else "opus[1m]"
+
+
+AGENT_PROFILE = _normalize_agent_profile(None)
+MODEL = _resolve_agent_model(AGENT_PROFILE)
+
+
+def configure_agent(profile: str | None = None, model: str | None = None) -> None:
+    """Configure the process-wide stage-agent runner.
+
+    Also mirrors the resolved values into os.environ so ProcessPoolExecutor
+    workers spawned for parallel scriptwrite/script-review inherit the same
+    profile even when the platform starts fresh Python interpreters.
+    """
+    global AGENT_PROFILE, MODEL
+    AGENT_PROFILE = _normalize_agent_profile(profile)
+    MODEL = _resolve_agent_model(AGENT_PROFILE, model)
+    os.environ["PODCAST_AGENT_PROFILE"] = AGENT_PROFILE
+    os.environ["PODCAST_AGENT_MODEL"] = MODEL
+
+
+def _read_kimi_token(env: dict[str, str]) -> str:
+    token = (env.get("PODCAST_KIMI_API_KEY") or env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
+    if token:
+        return token
+    key_file = Path(os.path.expanduser(env.get("PODCAST_KIMI_KEY_FILE", "~/.secrets/kimi.env")))
+    try:
+        token = "".join(key_file.read_text().split())
+    except OSError:
+        token = ""
+    if not token:
+        raise RuntimeError(
+            f"Kimi API key missing. Set PODCAST_KIMI_API_KEY or write the key to {key_file}."
+        )
+    return token
+
+
+def _agent_subprocess_env() -> dict[str, str]:
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if AGENT_PROFILE == "kimi":
+        token = _read_kimi_token(env)
+        env.update({
+            "ANTHROPIC_BASE_URL": KIMI_BASE_URL,
+            "ANTHROPIC_AUTH_TOKEN": token,
+            "ANTHROPIC_MODEL": MODEL,
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": MODEL,
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": MODEL,
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL": MODEL,
+            "ANTHROPIC_SMALL_FAST_MODEL": MODEL,
+        })
+    return env
+
+
 # Stream claude CLI tool-use events live via stream-json. Default ON so the
 # dashboard has cost data. Set PODCAST_VERBOSE=0 to opt out (smaller log files,
 # but loses per-stage cost tracking + tool-use feed in dashboard).
@@ -204,6 +278,8 @@ _SPOILER_SIDECAR = ".spoiler_mode"
 # which TTS family scriptwrite authored for, so a cross-family synth is loud.
 _TTS_MODEL_SIDECAR = ".tts_model"
 _SCRIPT_TTS_FAMILY_SIDECAR = ".script_tts_family"
+_AGENT_PROFILE_SIDECAR = ".agent_profile"
+_AGENT_MODEL_SIDECAR = ".agent_model"
 
 
 def _prompt(name: str, archetype: str) -> str:
@@ -241,6 +317,19 @@ def read_tts_model(workspace: Path) -> str | None:
     """Read the frozen TTS model sidecar; None → synthesize.py's env default."""
     f = workspace / _TTS_MODEL_SIDECAR
     return f.read_text().strip() if f.exists() else None
+
+
+def read_agent_sidecars(workspace: Path) -> tuple[str | None, str | None]:
+    profile_f = workspace / _AGENT_PROFILE_SIDECAR
+    model_f = workspace / _AGENT_MODEL_SIDECAR
+    profile = profile_f.read_text().strip() if profile_f.exists() else None
+    model = model_f.read_text().strip() if model_f.exists() else None
+    return profile or None, model or None
+
+
+def write_agent_sidecars(workspace: Path) -> None:
+    (workspace / _AGENT_PROFILE_SIDECAR).write_text(AGENT_PROFILE)
+    (workspace / _AGENT_MODEL_SIDECAR).write_text(MODEL)
 
 
 def resolve_tts_family(workspace: Path) -> str:
@@ -828,6 +917,12 @@ def _run_claude_subprocess(
     t0 = time.time()
     stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
     stdin_bytes = prompt.encode() if prompt else b""
+    try:
+        proc_env = _agent_subprocess_env()
+    except RuntimeError as e:
+        if log:
+            log.error(f"{label} agent configuration error", profile=AGENT_PROFILE, reason=str(e))
+        return False, 0.0, _ClaudeFailure("auth", str(e))
 
     if _STREAM_JSON:
         # Live tool-use rendering via stream-json NDJSON. Also tees each event
@@ -841,7 +936,7 @@ def _run_claude_subprocess(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=False,
-            env=_UNBUF_ENV,
+            env=proc_env,
             bufsize=0,
         )
         try:
@@ -919,7 +1014,7 @@ def _run_claude_subprocess(
             input=stdin_bytes,
             stdout=None,
             stderr=subprocess.PIPE,
-            env=_UNBUF_ENV,
+            env=proc_env,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:
@@ -1023,7 +1118,8 @@ def run_claude(
     cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", ",".join(tools)]
     timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
-    log.event("claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt), timeout_s=timeout)
+    log.event("claude invocation", tools=tools, profile=AGENT_PROFILE, model=MODEL,
+              prompt_len=len(prompt), timeout_s=timeout)
 
     success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
     return success
@@ -1783,6 +1879,19 @@ examples:
         "synthesize.py env default.",
     )
     parser.add_argument(
+        "--agent-profile", choices=list(AGENT_PROFILES),
+        help="Stage 1-10 coding-agent billing/profile. claude uses the normal "
+        "Claude Code account; kimi injects Kimi Code endpoint/token env while "
+        "still invoking the claude CLI binary. Can also be set with "
+        "PODCAST_AGENT_PROFILE.",
+    )
+    parser.add_argument(
+        "--agent-model",
+        help="Stage 1-10 agent model override. Defaults: claude=opus[1m], "
+        "kimi=kimi-for-coding. PODCAST_AGENT_MODEL also works; legacy "
+        "PODCAST_CLAUDE_MODEL remains supported.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Bypass prereq marker check when using --skip-to / --only-stage. "
@@ -1797,6 +1906,11 @@ examples:
     parser.add_argument("--status", action="store_true", help="Show workspace status and exit")
     parser.add_argument("--dry-run", action="store_true", help="Extract EPUB and setup workspace only")
     args = parser.parse_args()
+
+    try:
+        configure_agent(args.agent_profile, args.agent_model)
+    except ValueError as e:
+        parser.error(str(e))
 
     if args.only_stage:
         if args.skip_to or args.stop_after:
@@ -1889,6 +2003,15 @@ examples:
             workspace = setup_workspace(metadata, chapters)
             print(f"  Workspace: {workspace}")
 
+    saved_agent_profile, saved_agent_model = read_agent_sidecars(workspace)
+    if not args.agent_profile and not args.agent_model and saved_agent_profile:
+        try:
+            configure_agent(saved_agent_profile, saved_agent_model)
+        except ValueError as e:
+            parser.error(str(e))
+    else:
+        write_agent_sidecars(workspace)
+
     # Resolve production mode. Fresh setup takes it from argv (default nonfiction);
     # resume takes it from the saved sidecar, and a conflicting --mode is an error
     # (mixing prompt sets mid-run corrupts the workspace). The sidecar is the
@@ -1917,6 +2040,8 @@ examples:
         label = archetypes.get(effective_mode)["label"]
         print(f"Mode: {effective_mode} ({label})"
               + (f" · spoiler={effective_spoiler}" if effective_spoiler else ""))
+    write_agent_sidecars(workspace)
+    print(f"Agent: {AGENT_PROFILE} ({MODEL})")
 
     # Freeze the TTS model the same way as .mode: fresh setup takes it from argv,
     # resume reads the saved sidecar and a conflicting --tts-model is an error.

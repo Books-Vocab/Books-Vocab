@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31g";
+const APP_VERSION = "2026-06-12a";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -35,20 +35,23 @@ function persistSidebarUI() {
   catch { /* private mode etc. — silently skip */ }
 }
 
-// Pipeline run settings (PARALLEL workers, TTS model, default spoiler policy).
+// Pipeline run settings (PARALLEL workers, TTS model, agent profile/model).
 // Persisted so they survive reloads and apply to the next pipeline you start.
 // Must mirror server-side ALLOWED_TTS_MODELS (tts_config.py) — an empty ttsModel
 // means "let synthesize.py use its env default" and sends no --tts-model.
 const SETTINGS_LS_KEY = "podcast-monitor:settings";
 const ALLOWED_TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-pro-tts", "gemini-2.5-flash-tts"];
+const ALLOWED_AGENT_PROFILES = ["claude", "kimi"];
 const settings = (() => {
-  const defaults = { parallel: 3, ttsModel: "" };
+  const defaults = { parallel: 3, ttsModel: "", agentProfile: "claude", agentModel: "" };
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_LS_KEY) || "{}");
     const p = Number(s.parallel);
     return {
       parallel: Number.isInteger(p) && p >= 1 && p <= 10 ? p : defaults.parallel,
       ttsModel: ALLOWED_TTS_MODELS.includes(s.ttsModel) ? s.ttsModel : defaults.ttsModel,
+      agentProfile: ALLOWED_AGENT_PROFILES.includes(s.agentProfile) ? s.agentProfile : defaults.agentProfile,
+      agentModel: typeof s.agentModel === "string" ? s.agentModel.trim() : defaults.agentModel,
     };
   } catch { return { ...defaults }; }
 })();
@@ -939,7 +942,10 @@ function openSettingsModal() {
   // Populate every field from the persisted store each open.
   $("#set-parallel").value = getSettings().parallel;
   $("#set-tts-model").value = getSettings().ttsModel;
+  $("#set-agent-profile").value = getSettings().agentProfile;
+  $("#set-agent-model").value = getSettings().agentModel;
   refreshTtsRisk();
+  refreshAgentHint();
   $("#settings-backdrop").hidden = false;
 }
 function closeSettingsModal() { $("#settings-backdrop").hidden = true; }
@@ -950,6 +956,17 @@ function refreshTtsRisk() {
   const v = $("#set-tts-model").value;
   const risky = v && !v.includes("3.1");
   $("#set-tts-risk").hidden = !risky;
+}
+
+function refreshAgentHint() {
+  const profile = $("#set-agent-profile").value;
+  const model = $("#set-agent-model");
+  const hint = $("#set-agent-hint");
+  if (!model || !hint) return;
+  model.placeholder = profile === "kimi" ? "kimi-for-coding" : "opus[1m]";
+  hint.textContent = profile === "kimi"
+    ? "uses ~/.secrets/kimi.env or PODCAST_KIMI_API_KEY, billed via Kimi Code"
+    : "uses the normal Claude Code account; blank model defaults to opus[1m]";
 }
 
 function refreshDropzonePrompt() {
@@ -1072,6 +1089,8 @@ async function submitNewPodcast(e) {
 
   const parallel = String(getSettings().parallel);
   const ttsModel = getSettings().ttsModel;  // "" → server omits --tts-model
+  const agentProfile = getSettings().agentProfile || "claude";
+  const agentModel = getSettings().agentModel || "";
   const fd = new FormData();
   let url;
   if (isSaga) {
@@ -1083,11 +1102,15 @@ async function submitNewPodcast(e) {
     fd.append("spoiler_mode", radio.value);
     fd.append("parallel", parallel);
     if (ttsModel) fd.append("tts_model", ttsModel);
+    fd.append("agent_profile", agentProfile);
+    if (agentModel) fd.append("agent_model", agentModel);
     url = "/api/pipeline/start-saga";
   } else {
     fd.append("epub", modalState.files[0]);
     fd.append("parallel", parallel);
     if (ttsModel) fd.append("tts_model", ttsModel);
+    fd.append("agent_profile", agentProfile);
+    if (agentModel) fd.append("agent_model", agentModel);
     url = "/api/pipeline/start";
   }
 
@@ -1882,6 +1905,13 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#set-tts-model")?.addEventListener("change", (e) => {
     setSetting("ttsModel", ALLOWED_TTS_MODELS.includes(e.target.value) ? e.target.value : "");
     refreshTtsRisk();
+  });
+  $("#set-agent-profile")?.addEventListener("change", (e) => {
+    setSetting("agentProfile", ALLOWED_AGENT_PROFILES.includes(e.target.value) ? e.target.value : "claude");
+    refreshAgentHint();
+  });
+  $("#set-agent-model")?.addEventListener("input", (e) => {
+    setSetting("agentModel", e.target.value.trim());
   });
   document.addEventListener("click", (e) => {
     if (e.target.closest("#settings-close, #settings-done")) { closeSettingsModal(); return; }
