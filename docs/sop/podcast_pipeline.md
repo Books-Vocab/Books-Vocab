@@ -68,7 +68,18 @@ PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review) �
 
 每 stage 成功 `stage_end()` 寫 `.stage_<name>_done`（內容 ISO timestamp）。`detect_resume_point()` 找第一個沒 marker 的 stage。傳 workspace 目錄無 `--skip-to` 時自動 resume。
 
-**脆弱點**:marker 僅代表「stage 函式回傳 True」，不驗證產物完整性、不對 EPUB/prompt 做 input-hash。手動刪中間檔但留 marker → resume 會跳過。改 prompt 不會讓下游 marker 失效——大改 prompt 後請手動 `rm -f .stage_*_done` 從適當階段重跑。
+**脆弱點**:marker 僅代表「stage 函式回傳 True」，不會自動讓下游 marker 因 prompt/input 改動而失效。`stage_provenance/<stage>.json` 會記 input/output artifact hash 與 prompt hash，能事後追溯 drift；但 resume 判斷仍看 marker。手動刪中間檔但留 marker → resume 會跳過。大改 prompt 後請手動 `rm -f .stage_*_done` 從適當階段重跑。
+
+### Workflow versioning / provenance
+
+`lab/podcast/workflow_versions/<version>/` 固化每版 workflow contract。`v1` 是現況 baseline snapshot；`v2` 先作為可分叉實驗副本，後續 producer-cut / script-validate / package-review 等創作改造在此版本上分歧。
+
+每個 workspace 會寫:
+- `workflow_manifest.json`: `workflow_version`、`pipeline_commit`、`prompt_fingerprints`、`agent_profile`、`agent_model`、`tts_model`、`validator_versions`、`stage_contracts`、`created_at/updated_at`。
+- `stage_provenance/<stage>.json`: stage input/output artifact hashes、prompt version/hash、agent/TTS model、command、validator result、manual approval marker。
+- `scripts/ep_N_lineage.json`: scriptwrite / series-polish / script-review / producer-cut / tts-prep 的 before/after hash、edit event、human approval marker。
+
+Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy workspace 補 manifest 時生效；已有 manifest 的 workspace resume 以 `workflow_manifest.json.workflow_version` 為準，CLI 傳入不同版本會 fail-fast，避免同一 workspace 混用 prompt/stage contract。
 
 ### Range 控制
 
@@ -79,6 +90,7 @@ PLAN(prep→enricher) ┃.plan_approved┃ SCRIPT(scriptwrite→script-review) �
 | `--only-stage S` | 只跑 S(等價 skip-to=stop-after,同樣驗證前置 marker) |
 | `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+| `--workflow-version V` | 指定版本化 workflow contract(`v1`/`v2`)。新 workspace 預設 `v1`;resume 讀 `workflow_manifest.json`,衝突版本報錯 |
 | `--tts-model M` | 凍結該 workspace 的 TTS model(`gemini-3.1-flash-tts-preview` / `gemini-2.5-pro-tts` / `gemini-2.5-flash-tts`),寫入 `.tts_model` sidecar,synthesize stage 讀回。resume 以 sidecar 為準;衝突的 `--tts-model` 報錯。省略 = 用 `synthesize.py` 的 env 預設。詳見 §3 |
 | `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
 | `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動) |
@@ -228,11 +240,14 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 ```
 lab/podcast/workspaces/<slug>_<hash>/
+  workflow_manifest.json                ← workflow 版本 / prompt fingerprints / model / validators / stage contracts
+  stage_provenance/<stage>.json         ← 每階段 input/output artifact hash + prompt/model/validator provenance
   plan/overview.md                  ← Voice Mapping(host SoT)
   scripts/ep_N_{pro,flash}.mp3      ← TTS 產出
   scripts/ep_N_{pro,flash}.srt      ← Whisper 對齊
   scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
   scripts/ep_N_script.md            ← 原稿
+  scripts/ep_N_lineage.json         ← 腳本 before/after hash 與 stage edit lineage
        │
        │  ./ops/podcast_upload.sh <workspace>   (config gap-filled from lab/podcast/.env)
        ▼
@@ -425,7 +440,7 @@ uv run --no-project --with boto3 python ops/podcast_ops.py series               
 | 優先 | 項目 |
 |---|---|
 | 高 | compute 預設 SA 金鑰權限過大，應換 minimal-scope SA 並輪替 |
-| 中 | `pipeline.py` docstring 寫 10 stages 實 13;`subtitle.py:22` 寫 base 實 medium;`tts_prep.md:24` 寫 Flash 實 pro |
+| 中 | `subtitle.py:22` 寫 base 實 medium;`tts_prep.md:24` 寫 Flash 實 pro |
 | 中 | scriptwrite/script-review 平行 stage 吞 agent 錯誤(`log=None`) |
 | 中 | Whisper speaker tag word-index 對齊脆弱、無 assertion |
 | 中 | 缺 unit test:`chunk_turns` / `_parse_overview_hosts` / `parse_script` / `script_word_count` |
