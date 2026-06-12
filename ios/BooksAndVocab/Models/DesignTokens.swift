@@ -160,6 +160,8 @@ public enum DesignTokens {
             public static let tiny: CGFloat = 3
         }
         public enum Semantic {
+            public static let accountAvatarSize: CGFloat = 46
+            public static let accountRowSpacing: CGFloat = 14
             public static let actionButtonPaddingV: CGFloat = 13
             public static let badgePadding: CGFloat = 6
             public static let badgePaddingH: CGFloat = 9
@@ -171,6 +173,7 @@ public enum DesignTokens {
             public static let compactChipPaddingH: CGFloat = 6
             public static let compactChipPaddingV: CGFloat = 3
             public static let compactRowPaddingV: CGFloat = 10
+            public static let controlGap: CGFloat = 10
             public static let coverCornerRadius: CGFloat = 10
             public static let coverHeightCompact: CGFloat = 210
             public static let dividerAir: CGFloat = 16
@@ -189,11 +192,15 @@ public enum DesignTokens {
             public static let rowPaddingV: CGFloat = 9
             public static let sectionGap: CGFloat = 14
             public static let sheetPadding: CGFloat = 24
+            public static let statusHeroGap: CGFloat = 12
             public static let tabSelectorHeight: CGFloat = 32
             public static let toneChipPaddingH: CGFloat = 10
             public static let toneChipPaddingV: CGFloat = 6
             public static let toolbarBadgePaddingH: CGFloat = 5
             public static let toolbarBadgePaddingV: CGFloat = 2
+            public static let welcomeBottomPadding: CGFloat = 40
+            public static let welcomePageContentGap: CGFloat = 4
+            public static let welcomeSubtitleHInset: CGFloat = 40
             public static let wordRowGap: CGFloat = 10
         }
     }
@@ -217,6 +224,7 @@ public enum DesignTokens {
             public static let caption: CGFloat = 12
             public static let caption2: CGFloat = 11
             public static let detailWord: CGFloat = 27
+            public static let displayTitle: CGFloat = 24
             public static let h1: CGFloat = 28
             public static let h2: CGFloat = 22
             public static let hero: CGFloat = 40

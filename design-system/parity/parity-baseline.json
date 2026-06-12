@@ -819,6 +819,126 @@
       "rmse": 0.174769,
       "mae": 0.0489154,
       "ssim": 0.093828
+    },
+    "podcast-bubble-cell-highlighted-active-light": {
+      "rmse": 0.142296,
+      "mae": 0.0456944,
+      "ssim": 0.0932758
+    },
+    "podcast-bubble-cell-idle-non-current-light": {
+      "rmse": 0.137052,
+      "mae": 0.0423003,
+      "ssim": 0.0844401
+    },
+    "podcast-bubble-cell-right-aligned-speaker-light": {
+      "rmse": 0.10789,
+      "mae": 0.0348998,
+      "ssim": 0.096622
+    },
+    "podcast-bubble-cell-vocab-highlighted-light": {
+      "rmse": 0.143332,
+      "mae": 0.0471107,
+      "ssim": 0.0896849
+    },
+    "podcast-hero-full-meta-light": {
+      "rmse": 0.160865,
+      "mae": 0.0378067,
+      "ssim": 0.0473688
+    },
+    "podcast-hero-long-title-multi-host-light": {
+      "rmse": 0.165282,
+      "mae": 0.0420429,
+      "ssim": 0.061566
+    },
+    "podcast-hero-fresh-no-meta-light": {
+      "rmse": 0.153879,
+      "mae": 0.0336204,
+      "ssim": 0.0385136
+    },
+    "podcast-hero-episodes-only-light": {
+      "rmse": 0.156067,
+      "mae": 0.03417,
+      "ssim": 0.0371847
+    },
+    "podcast-hero-a11y3-light": {
+      "rmse": 0.160186,
+      "mae": 0.0367808,
+      "ssim": 0.0435692
+    },
+    "podcast-rail-card-resume-light": {
+      "rmse": 0.223766,
+      "mae": 0.0808991,
+      "ssim": 0.130925
+    },
+    "podcast-rail-card-no-progress-light": {
+      "rmse": 0.242403,
+      "mae": 0.0934671,
+      "ssim": 0.147484
+    },
+    "podcast-rail-card-long-title-light": {
+      "rmse": 0.225544,
+      "mae": 0.0830005,
+      "ssim": 0.137331
+    },
+    "podcast-rail-card-large-numbers-light": {
+      "rmse": 0.220517,
+      "mae": 0.075044,
+      "ssim": 0.113124
+    },
+    "podcast-rail-card-a11y3-light": {
+      "rmse": 0.219509,
+      "mae": 0.0743714,
+      "ssim": 0.109766
+    },
+    "account-auth-summary-initials-free-light": {
+      "rmse": 0.0301416,
+      "mae": 0.00262608,
+      "ssim": 0.00791566
+    },
+    "account-auth-summary-initials-pro-light": {
+      "rmse": 0.0437296,
+      "mae": 0.00474046,
+      "ssim": 0.0105799
+    },
+    "account-auth-summary-long-name-email-overflow-light": {
+      "rmse": 0.0500127,
+      "mae": 0.00638938,
+      "ssim": 0.0159945
+    },
+    "login-sheet-default-light": {
+      "rmse": 0.108638,
+      "mae": 0.0177384,
+      "ssim": 0.0324334
+    },
+    "login-sheet-authenticating-light": {
+      "rmse": 0.0342878,
+      "mae": 0.00974899,
+      "ssim": 0.0163825
+    },
+    "login-sheet-error-light": {
+      "rmse": 0.121591,
+      "mae": 0.0231841,
+      "ssim": 0.0447795
+    },
+    "welcome-step-1-capture-light": {
+      "rmse": 0.204447,
+      "mae": 0.0652245,
+      "ssim": 0.0711235
+    },
+    "welcome-step-2-link-light": {
+      "rmse": 0.203647,
+      "mae": 0.0645791,
+      "ssim": 0.06993
+    },
+    "welcome-step-3-review-light": {
+      "rmse": 0.205114,
+      "mae": 0.0658842,
+      "ssim": 0.0706437
+    },
+    "welcome-step-3-dark-light": {
+      "rmse": 0.205114,
+      "mae": 0.0658842,
+      "ssim": 0.0706437
     }
   }
 }

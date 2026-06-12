@@ -1,0 +1,125 @@
+/* Account Section · Auth Summary —— iOS SettingsAuthSummary（SettingsAccountSection.swift:341）
+   的 web 鏡像。token 一律走 design-system 變數，不寫 visual literal。
+
+   元件（HStack spacing accountRowSpacing=14）：
+     avatar  = ZStack[Circle(mutedFill) frame accountAvatarSize=46
+                      + initials sectionTitle(serif 18 bold)/secondaryText]
+     id      = VStack(.leading, spacing microGap=6)[name-line · email]
+       name-line = HStack(spacing microGap=6)[name · (isProActive ? proBadge)]
+       name    = sectionTitle(serif 18 bold)/primaryText、lineLimit 1
+       proBadge= SettingsProBadge：HStack(microGap 6)[sparkles caption + "PRO" monoLabel 10]、
+                 accent / accent.opacity(0.12)=accent-subtle capsule、
+                 padding h badgeHorizontalPadding=9 / v chipVerticalPadding=6
+       email   = caption(sans 12 bold)/secondaryText、lineLimit 1
+     Spacer()
+     check   = checkmark.circle.fill symbolLarge(symbol 30 light)/success
+
+   name/email 量測值（21px/24、12/14）沿用 account-section.css（同元件對拍結論）。
+
+   catalog scene layout = .fill（1179×2556、corner srgba 0,0,0,0 透明）：scene = 元件
+   .padding(24) 於整 frame **垂直置中**（ref 圖確認 row 約置中、水平內縮 24）。故走**全
+   phone-frame 捕捉**：surface 撐滿、justify center、水平 padding 24；phone-frame + surface
+   透明，shots transparent:true（omitBackground）→ web 與 ref 同為內容-over-transparent。 */
+
+/* surface 撐滿 phone-frame（.fill），內容垂直置中、水平內縮 scene padding 24 */
+.account-auth-summary-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-6);
+  box-sizing: border-box;
+}
+
+/* HStack(spacing accountRowSpacing=14)[avatar · id · Spacer · check] */
+.account-auth-summary-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--account-row-spacing);
+}
+
+/* avatar — Circle(mutedFill) frame 46；initials sectionTitle(serif 18 bold)/secondaryText */
+.account-auth-summary-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--account-avatar-size);
+  height: var(--account-avatar-size);
+  border-radius: 50%;
+  background: var(--muted-fill);
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+/* VStack(.leading, spacing microGap=6)[name-line · email]；Spacer() 推 check 至最右 */
+.account-auth-summary-id {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--micro-gap); /* 6 */
+}
+
+/* HStack(spacing microGap=6)[name · proBadge] */
+.account-auth-summary-name-line {
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 */
+}
+
+/* Text(displayName) — sectionTitle(serif 18 bold)/primaryText、lineLimit 1。
+   measured：name cap-height 對應 ≈21px、行高 24（account-section 對拍結論）。 */
+.account-auth-summary-name {
+  font-family: var(--font-serif);
+  font-size: 21px; /* measured (account-section parity) */
+  font-weight: 700;
+  line-height: 24px; /* measured */
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* SettingsProBadge — HStack(microGap 6)[sparkles caption + "PRO" monoLabel 10]、
+   accent / accent-subtle(=accent.opacity 0.12) capsule、padding h 9 / v 6 */
+.account-auth-summary-pro-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 */
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  line-height: 1; /* mono badge tight，防 web 預設 leading 撐高 */
+  padding: var(--tone-chip-padding-v) var(--badge-padding-h); /* 6 / 9 */
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+/* Text(email) — caption(sans 12 bold)/secondaryText、lineLimit 1 */
+.account-auth-summary-email {
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* checkmark.circle.fill — symbolLarge(symbol 30 light)/success */
+.account-auth-summary-check {
+  flex: none;
+  color: var(--success);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布）：phone-frame 本體透明，
+   shots transparent:true omitBackground → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='account-auth-summary'] {
+  background: transparent;
+}
