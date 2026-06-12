@@ -86,6 +86,9 @@ export const SURFACE_SCENARIOS = {
   // hypersensitive to card-edge scaling; web card height vs ref (serif/CJK line-metric
   // delta) pushed RMSE to 0.26 (> 0.25 ceiling). Re-derive with font-metric height tuning.
   'collocation-explain': ['loaded-short', 'loaded-long', 'loaded-with-delete'],
+  // LinkReasonSheet (.fill opaque page-bg full-frame): card-link 解釋 sheet —
+  // paperclip header + mono word + divider + reason body + 2× ghost button footer.
+  'link-reason-sheet': ['medium-reason', 'short-reason', 'long-reason', 'no-hide', 'empty-reason'],
   'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
   // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
   // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row
