@@ -82,6 +82,7 @@
   --progress-bar-width: 104px;
   --progress-bar-height: 5px;
   --progress-bar-gap: 5px;
+  --chevron-button-size: 30px;
   --progress-bar-fill-min: 6px;
   --toolbar-badge-padding-h: 5px;
   --toolbar-badge-padding-v: 2px;
@@ -145,6 +146,8 @@
   --blur-material: 12px;
   --toggle-size: 34px;
   --toggle-glyph: 15px;
+  --text-title3: 20px;
+  --text-footnote: 13px;
 }
 
 :root, :host, [data-theme="light"] {

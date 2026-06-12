@@ -164,6 +164,7 @@ public enum DesignTokens {
             public static let badgePadding: CGFloat = 6
             public static let badgePaddingH: CGFloat = 9
             public static let cardPadding: CGFloat = 18
+            public static let chevronButtonSize: CGFloat = 30
             public static let chipPaddingH: CGFloat = 10
             public static let chipPaddingV: CGFloat = 5
             public static let chromeButtonSize: CGFloat = 32
