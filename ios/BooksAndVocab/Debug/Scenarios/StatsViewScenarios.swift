@@ -34,6 +34,20 @@ enum StatsViewScenarios {
 // MARK: - Fixtures
 
 private enum StatsViewFixtures {
+    /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
+    /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
+    /// this group's reference PNGs drift on every capture). All review records and
+    /// the seeded summary derive from this anchor — precedent:
+    /// `VocabCalendarGridScenarios.fixedMonth()`.
+    static let fixedNow: Date = {
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 6
+        comps.day = 1
+        comps.hour = 12
+        return Calendar.current.date(from: comps) ?? Date()
+    }()
+
     /// Builds a synced (non-deleted) entry so it passes the `syncStatus == 1 &&
     /// actionType != "delete"` query predicate.
     static func synced(
@@ -72,7 +86,7 @@ private enum StatsViewFixtures {
     /// run for streak) so heatmap / streak / forecast cards have signal.
     static var records: [ReviewRecord] {
         let calendar = Calendar.current
-        let now = Date()
+        let now = fixedNow
         let words = entries.map(\.word)
         var result: [ReviewRecord] = []
 
@@ -137,7 +151,7 @@ private struct StatsViewScene: View {
             from: entries,
             reviewRecords: records,
             forecastDays: 14,
-            now: Date()
+            now: StatsViewFixtures.fixedNow
         )
     }
 
@@ -150,6 +164,22 @@ private struct StatsViewScene: View {
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
+        // The presenter's `.task` recomputes `summary` using
+        // `reviewSettingsStore.settings.reviewReferenceDate()` as "now", which is
+        // live `Date()` unless progress is paused — that recompute would override
+        // the frozen `initialSummary` and re-introduce date drift. Inject a paused
+        // store anchored at `fixedNow` so the live recompute is deterministic too.
+        .environment(\.reviewSettingsStore, StatsViewScene.frozenStore)
     }
+
+    /// A paused `ReviewSettingsStore` whose reference date is pinned to
+    /// `StatsViewFixtures.fixedNow`, making the presenter's `@Query`-driven
+    /// summary recompute deterministic across catalog runs.
+    private static let frozenStore: ReviewSettingsStore = {
+        var settings = ReviewSettings()
+        settings.isProgressPaused = true
+        settings.progressPausedAt = StatsViewFixtures.fixedNow
+        return ReviewSettingsStore(previewSettings: settings)
+    }()
 }
 #endif
