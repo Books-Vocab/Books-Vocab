@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'wf-composite-batch',
+  name: 'wf-composite-batch5',
   description: 'Build the next web design-system tier (composite/molecule components) mirroring iOS SoT, in parallel; each agent writes its own isolated surface dir and returns shared-file integration snippets for the main loop to apply serially.',
   phases: [{ title: 'Build composites', detail: 'one agent per composite surface: read iOS SoT → write web component dir → return integration snippets' }],
 }
@@ -17,10 +17,12 @@ const WT = '/Users/chenliangyu/worktrees/kg-web-ds'
 // batch-3: Sync (.fill opaque page-bg full-frame, safe) / Notebooks·Card
 // (opaque-on-page-bg tight, low-contrast edge) / KG Vocab Row (WordRow molecule,
 // transparent tight, reusable). 3 capture modes exercised.
+// batch-5: Review Fold atoms (chevron pill / segment / paper-fold) — TodayReview
+// fold primitives. All likely transparent component crops; agents probe first.
 const BATCH = [
-  { surface: 'Sync', dir: 'sync', scenarios: ['Completed', 'Failed · full error', 'Failed · partial', 'Ready · pending rows', 'Running · steps in flight'] },
-  { surface: 'Notebooks · Card', dir: 'notebooks-card', scenarios: ['Grid · two notebooks', 'Hero · fresh notebook (no progress)', 'Hero · long name truncate', 'Hero · single notebook (heavy usage)'] },
-  { surface: 'KG Vocab Row', dir: 'kg-vocab-row', scenarios: ['Default', 'Highlighted'] },
+  { surface: 'Review Fold · Chevron Pill', dir: 'review-fold-chevron', scenarios: ['Collapse handle', 'On card backdrop'] },
+  { surface: 'Review Fold · Segment', dir: 'review-fold-segment', scenarios: ['Single', 'Stacked group'] },
+  { surface: 'Review Fold · Paper Fold', dir: 'review-fold-paper', scenarios: ['Expanded (1.0)', 'Half (0.5)', 'Nearly folded (0.05)', 'Quarter (0.25)', 'Three-quarter (0.75)'] },
 ]
 
 const BUILD_SCHEMA = {

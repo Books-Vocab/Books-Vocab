@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'wf-composite-batch',
+  name: 'wf-composite-batch7',
   description: 'Build the next web design-system tier (composite/molecule components) mirroring iOS SoT, in parallel; each agent writes its own isolated surface dir and returns shared-file integration snippets for the main loop to apply serially.',
   phases: [{ title: 'Build composites', detail: 'one agent per composite surface: read iOS SoT → write web component dir → return integration snippets' }],
 }
@@ -17,10 +17,12 @@ const WT = '/Users/chenliangyu/worktrees/kg-web-ds'
 // batch-3: Sync (.fill opaque page-bg full-frame, safe) / Notebooks·Card
 // (opaque-on-page-bg tight, low-contrast edge) / KG Vocab Row (WordRow molecule,
 // transparent tight, reusable). 3 capture modes exercised.
+// batch-7: Word/Notebook composites (word detail card / notebook cover / notebooks stack).
+// notebooks-stack: representative 5-scene subset of 21.
 const BATCH = [
-  { surface: 'Sync', dir: 'sync', scenarios: ['Completed', 'Failed · full error', 'Failed · partial', 'Ready · pending rows', 'Running · steps in flight'] },
-  { surface: 'Notebooks · Card', dir: 'notebooks-card', scenarios: ['Grid · two notebooks', 'Hero · fresh notebook (no progress)', 'Hero · long name truncate', 'Hero · single notebook (heavy usage)'] },
-  { surface: 'KG Vocab Row', dir: 'kg-vocab-row', scenarios: ['Default', 'Highlighted'] },
+  { surface: 'Word Detail · Card Document', dir: 'word-detail-card', scenarios: ['Compact', 'Full', 'No example / collocations'] },
+  { surface: 'Notebook Cover', dir: 'notebook-cover', scenarios: ['All patterns · blue', 'All patterns · color swatches', 'Image path fallback (missing → pattern)', 'Long name truncate', 'Solid color · no pattern', 'showsName = false (overlay use)'] },
+  { surface: 'Notebooks · Stack', dir: 'notebooks-stack', scenarios: ['State · active light', 'State · inactive light', 'D1 · cover composition basic', 'Depth · 100 字 (3 層)', 'D1 · empty notebook (0 詞 hides count)'] },
 ]
 
 const BUILD_SCHEMA = {

@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'wf-composite-batch',
+  name: 'wf-composite-batch4',
   description: 'Build the next web design-system tier (composite/molecule components) mirroring iOS SoT, in parallel; each agent writes its own isolated surface dir and returns shared-file integration snippets for the main loop to apply serially.',
   phases: [{ title: 'Build composites', detail: 'one agent per composite surface: read iOS SoT → write web component dir → return integration snippets' }],
 }
@@ -14,13 +14,13 @@ export const meta = {
 // parity-manifest.mjs serially and runs the single serial parity bless.
 const WT = '/Users/chenliangyu/worktrees/kg-web-ds'
 
-// batch-3: Sync (.fill opaque page-bg full-frame, safe) / Notebooks·Card
-// (opaque-on-page-bg tight, low-contrast edge) / KG Vocab Row (WordRow molecule,
-// transparent tight, reusable). 3 capture modes exercised.
+// batch-4: Book Card (bookshelf book molecule) / Subscription Views · Gate Card
+// (paywall gate card) / Account Section · Section (settings auth/subscription rows).
+// All distinct composites, no data-viz. Each agent probes capture mode first.
 const BATCH = [
-  { surface: 'Sync', dir: 'sync', scenarios: ['Completed', 'Failed · full error', 'Failed · partial', 'Ready · pending rows', 'Running · steps in flight'] },
-  { surface: 'Notebooks · Card', dir: 'notebooks-card', scenarios: ['Grid · two notebooks', 'Hero · fresh notebook (no progress)', 'Hero · long name truncate', 'Hero · single notebook (heavy usage)'] },
-  { surface: 'KG Vocab Row', dir: 'kg-vocab-row', scenarios: ['Default', 'Highlighted'] },
+  { surface: 'Book Card', dir: 'book-card', scenarios: ['A11y3', 'Long title + author', 'Placeholder · EPUB', 'Placeholder · PDF badge', 'Progress · Complete', 'Progress · Mid'] },
+  { surface: 'Subscription Views · Gate Card', dir: 'subscription-gate-card', scenarios: ['Dynamic Type · accessibility3', 'Happy path', 'Long copy stress', 'Narrow width 320pt'] },
+  { surface: 'Account Section · Section', dir: 'account-section', scenarios: ['Logged Out', 'Logged Out · Auth Error', 'Pricing Unavailable · Upgrade CTA', 'Subscribed · Pro Active', 'Subscription Loading'] },
 ]
 
 const BUILD_SCHEMA = {
