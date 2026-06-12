@@ -20,6 +20,7 @@ import { VocabReviewCTAPillScreen } from '../surfaces/vocab-review-cta-pill/Voca
 import { VocabTabSelectorScreen } from '../surfaces/vocab-tab-selector/VocabTabSelectorScreen'
 import { VocabToolbarGlyphScreen } from '../surfaces/vocab-toolbar-glyph/VocabToolbarGlyphScreen'
 import { VocabEmptyStateScreen } from '../surfaces/vocab-empty-state/VocabEmptyStateScreen'
+import { VocabSceneShellScreen } from '../surfaces/vocab-scene-shell/VocabSceneShellScreen'
 import { CollocationExplainScreen } from '../surfaces/collocation-explain/CollocationExplainScreen'
 import { KgEmptyStateScreen } from '../surfaces/kg-empty-state/KgEmptyStateScreen'
 import { SyncScreen } from '../surfaces/sync/SyncScreen'
@@ -101,6 +102,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <VocabToolbarGlyphScreen scenario={config.scenario} />
     case 'vocab-empty-state':
       return <VocabEmptyStateScreen scenario={config.scenario} />
+    case 'vocab-scene-shell':
+      return <VocabSceneShellScreen scenario={config.scenario} />
     case 'collocation-explain':
       return <CollocationExplainScreen scenario={config.scenario} />
     case 'kg-empty-state':

@@ -490,6 +490,36 @@
       "mae": 0.010152,
       "ssim": 0.0345897
     },
+    "vocab-scene-shell-loading-spinner-light": {
+      "rmse": 0.0403827,
+      "mae": 0.00350561,
+      "ssim": 0.00731478
+    },
+    "vocab-scene-shell-loading-skeleton-light": {
+      "rmse": 0.0509054,
+      "mae": 0.0315876,
+      "ssim": 0.0507463
+    },
+    "vocab-scene-shell-empty-cta-light": {
+      "rmse": 0.0787298,
+      "mae": 0.0115923,
+      "ssim": 0.0265344
+    },
+    "vocab-scene-shell-empty-no-action-light": {
+      "rmse": 0.060897,
+      "mae": 0.00738999,
+      "ssim": 0.0156898
+    },
+    "vocab-scene-shell-error-retry-light": {
+      "rmse": 0.0709438,
+      "mae": 0.00939997,
+      "ssim": 0.0144004
+    },
+    "vocab-scene-shell-content-light": {
+      "rmse": 0.0260486,
+      "mae": 0.00269292,
+      "ssim": 0.0127424
+    },
     "collocation-explain-loaded-short-light": {
       "rmse": 0.114888,
       "mae": 0.0177711,
