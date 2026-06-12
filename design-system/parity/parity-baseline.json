@@ -584,6 +584,56 @@
       "rmse": 0.0706986,
       "mae": 0.0145786,
       "ssim": 0.0689718
+    },
+    "book-card-placeholder-epub-light": {
+      "rmse": 0.0926955,
+      "mae": 0.0145982,
+      "ssim": 0.0262937
+    },
+    "book-card-pdf-badge-light": {
+      "rmse": 0.097773,
+      "mae": 0.0174534,
+      "ssim": 0.0358281
+    },
+    "book-card-progress-mid-light": {
+      "rmse": 0.112375,
+      "mae": 0.0223308,
+      "ssim": 0.0392728
+    },
+    "book-card-progress-complete-light": {
+      "rmse": 0.123004,
+      "mae": 0.0266111,
+      "ssim": 0.0442547
+    },
+    "book-card-long-title-light": {
+      "rmse": 0.138361,
+      "mae": 0.0411192,
+      "ssim": 0.0953025
+    },
+    "book-card-a11y3-light": {
+      "rmse": 0.112375,
+      "mae": 0.0223308,
+      "ssim": 0.0392728
+    },
+    "subscription-gate-card-happy-path-light": {
+      "rmse": 0.172226,
+      "mae": 0.0454457,
+      "ssim": 0.0745013
+    },
+    "subscription-gate-card-long-copy-stress-light": {
+      "rmse": 0.220254,
+      "mae": 0.0776218,
+      "ssim": 0.133171
+    },
+    "subscription-gate-card-narrow-width-320pt-light": {
+      "rmse": 0.157268,
+      "mae": 0.038033,
+      "ssim": 0.0632722
+    },
+    "subscription-gate-card-dynamic-type-accessibility3-light": {
+      "rmse": 0.147138,
+      "mae": 0.0337361,
+      "ssim": 0.0563999
     }
   }
 }
