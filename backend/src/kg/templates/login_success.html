@@ -98,6 +98,7 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 <script>
 (function() {
   var token = {{ token | tojson }};
+  var userId = {{ user_id | tojson }};
   var sent = false;
 
   function showFallback() {
@@ -123,6 +124,17 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
       );
       // Fallback after timeout in case sendMessage never calls back
       setTimeout(showFallback, 2000);
+    } catch (e) {
+      showFallback();
+    }
+  } else if (window.opener) {
+    // Web app popup flow: post token back to opener, then close.
+    try {
+      window.opener.postMessage({type: 'kg-auth-token', token: token, userId: userId}, '*');
+      sent = true;
+      document.getElementById('ext-status').style.display = 'block';
+      document.querySelector('#ext-status .status').textContent = 'Token 已自動傳送至網頁 app，此分頁即將關閉。';
+      setTimeout(function() { window.close(); }, 800);
     } catch (e) {
       showFallback();
     }
