@@ -417,6 +417,33 @@ func resolveChain(_ expr: ExprSyntax, _ depth: Int) -> CustomResolution {
     return .unresolved
 }
 
+// explicit `.modifier(SomeModifier(...))` use form → resolve the named ViewModifier
+// struct's body through the same chain machinery as the `.customExt()` sugar.
+func resolveExplicitModifier(_ args: LabeledExprListSyntax, _ depth: Int) -> CustomResolution {
+    guard let a0 = args.first?.expression,
+          let structCall = a0.as(FunctionCallExprSyntax.self),
+          let sref = structCall.calledExpression.as(DeclReferenceExprSyntax.self),
+          let mbody = modifierStructBodies[sref.baseName.text] else { return .unresolved }
+    return resolveChain(mbody, depth + 1)
+}
+
+// the ViewModifier struct name inside a `.modifier(X(...))` call (for the histogram).
+func explicitModifierName(_ args: LabeledExprListSyntax) -> String? {
+    args.first?.expression.as(FunctionCallExprSyntax.self)?
+        .calledExpression.as(DeclReferenceExprSyntax.self)?.baseName.text
+}
+
+// apply a resolution verdict to a node: only a provable inlinable chain earns modifiers;
+// scoped/unresolved are recorded under `display` with no coverage credit.
+func applyResolution(_ res: CustomResolution, _ display: String, _ node: Node) {
+    switch res {
+    case .modifiers(let ms) where !ms.isEmpty: node.modifiers.append(contentsOf: ms)
+    case .modifiers: break                       // resolved no-op (NON_VISUAL only) — not debt
+    case .scoped: node.scoped.append(display)
+    case .unresolved: node.unparsed.append(display)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // expr → node (recursive lowering)
 // ---------------------------------------------------------------------------
@@ -436,17 +463,14 @@ func lower(_ expr: ExprSyntax) -> Node {
         case .scoped(let nm): node.scoped.append(".\(nm)")
         case .unparsed:
             // unknown builtin — try resolving as an app-defined custom modifier before
-            // conceding. Record ONLY the modifier name, never the whole chain (appending
+            // conceding. Two forms: explicit `.modifier(Struct())` and the `.customExt()`
+            // sugar. Record ONLY the modifier/struct name, never the whole chain (appending
             // call.trimmedDescription would re-swallow the already-parsed base subtree).
-            switch resolveCustom(mname, 0) {
-            case .modifiers(let ms) where !ms.isEmpty:
-                node.modifiers.append(contentsOf: ms)
-            case .modifiers:
-                break  // resolved to a no-op (only NON_VISUAL inside) — not debt
-            case .scoped:
-                node.scoped.append(".\(mname)")  // keep the custom name for the histogram
-            case .unresolved:
-                node.unparsed.append(".\(mname)")
+            if mname == "modifier" {
+                let display = ".\(explicitModifierName(call.arguments) ?? "modifier")"
+                applyResolution(resolveExplicitModifier(call.arguments, 0), display, node)
+            } else {
+                applyResolution(resolveCustom(mname, 0), ".\(mname)", node)
             }
         }
         return node

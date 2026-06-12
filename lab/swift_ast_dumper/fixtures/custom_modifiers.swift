@@ -42,3 +42,12 @@ struct Demo: View {
         .myWrap()
     }
 }
+
+// explicit `.modifier(Struct())` form (vs the `.customExt()` sugar) must resolve too.
+struct Demo2: View {
+    var body: some View {
+        Text("hi")
+            .modifier(CanvasMod())   // → background (fate 1)
+            .modifier(WrapMod())     // → unparsed  (fate 3, structural)
+    }
+}
