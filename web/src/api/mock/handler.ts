@@ -11,6 +11,7 @@ import type { FetchLike } from '../transport'
 import {
   MOCK_ACCESS_TOKEN,
   MOCK_ENTITLEMENTS,
+  MOCK_NOTEBOOKS,
   MOCK_PODCAST_DETAIL,
   MOCK_PODCAST_PROGRESS,
   MOCK_PODCAST_SERIES,
@@ -18,6 +19,8 @@ import {
   MOCK_REVIEW_EVENTS,
   MOCK_USER_CONFIG,
   MOCK_VOCAB_CARDS,
+  mockNotebookCreate,
+  mockNotebookUpdate,
   mockVocabAdd,
   mockVocabByWord,
 } from './data'
@@ -91,6 +94,60 @@ const ROUTES: Route[] = [
         user_id: 'mock-user',
         expires_in: 3600,
       })
+    },
+  },
+
+  // notebook
+  {
+    method: 'GET',
+    pattern: /^\/api\/notebooks$/,
+    handle: () => json(MOCK_NOTEBOOKS.filter((n) => !n.isDeleted)),
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/notebooks$/,
+    handle: (req) => {
+      const body = (req.body ?? {}) as { name?: unknown; color?: unknown; cover_pattern?: unknown }
+      if (!body.name || typeof body.name !== 'string') {
+        return json({ detail: 'name is required' }, 422)
+      }
+      const created = mockNotebookCreate({
+        name: body.name,
+        color: typeof body.color === 'string' ? body.color : null,
+        cover_pattern: typeof body.cover_pattern === 'string' ? body.cover_pattern : null,
+      })
+      MOCK_NOTEBOOKS.push(created)
+      return json(created, 201)
+    },
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/notebooks\/([^/]+)$/,
+    handle: (req, m) => {
+      const id = decodeURIComponent(m[1])
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const updated = mockNotebookUpdate(id, {
+        name: typeof body.name === 'string' ? body.name : undefined,
+        color: body.color !== undefined ? (typeof body.color === 'string' ? body.color : null) : undefined,
+        sort_order: typeof body.sort_order === 'number' ? body.sort_order : undefined,
+        cover_pattern: body.cover_pattern !== undefined ? (typeof body.cover_pattern === 'string' ? body.cover_pattern : null) : undefined,
+      })
+      return updated ? json(updated) : notFound()
+    },
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/notebooks\/([^/]+)$/,
+    handle: (_req, m) => {
+      const id = decodeURIComponent(m[1])
+      const idx = MOCK_NOTEBOOKS.findIndex((n) => n.id === id)
+      if (idx < 0) return notFound()
+      if (MOCK_NOTEBOOKS[idx].isDefault) {
+        return json({ detail: 'cannot delete default notebook' }, 400)
+      }
+      const cardsDeleted = MOCK_NOTEBOOKS[idx].cardCount
+      MOCK_NOTEBOOKS.splice(idx, 1)
+      return json({ deleted: id, cardsDeleted })
     },
   },
 
