@@ -247,6 +247,11 @@ def _emit_node_modifiers(node: dict, decls: list[Decl]) -> None:
                 decls.append(d)
         elif name == "spacer":
             decls.append(Decl("flex", "1", "L1:token", "Spacer"))
+        elif name == "opacity":
+            # view-level alpha → CSS opacity. Render compactly (0.40 → 0.4, 1.0 → 1).
+            v = m["value"]
+            sval = f"{v:g}"
+            decls.append(Decl("opacity", sval, "L1:token", f"opacity {sval}"))
         elif name == "background":
             tok = m.get("token")
             var = COLOR_TOKENS.get(tok)
@@ -261,6 +266,8 @@ def _emit_node_modifiers(node: dict, decls: list[Decl]) -> None:
             shape = m.get("shape")
             if shape == "capsule":
                 decls.append(Decl("border-radius", "var(--radius-pill)", "L1:token", "Capsule"))
+            elif shape == "circle":
+                decls.append(Decl("border-radius", "50%", "L1:token", "Circle"))
             elif m.get("radius"):
                 rvar = RADIUS_VAR.get(m["radius"])
                 if rvar:
