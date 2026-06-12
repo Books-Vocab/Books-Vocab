@@ -1,4 +1,6 @@
 import { lazy, Suspense } from 'react'
+import { ApiProvider } from './api/ApiContext'
+import { LoginGate, useAuth } from './auth'
 import { PhoneFrame } from './harness/PhoneFrame'
 import { resolveHarnessConfig } from './harness/scenarios'
 
@@ -9,7 +11,9 @@ const ReaderLiveScreen = lazy(() =>
 )
 
 export function App() {
+  const { isLoggedIn, isLoading } = useAuth()
   const search = window.location.search
+
   if (new URLSearchParams(search).get('surface') === 'reader-live') {
     return (
       <div className="phone-frame" data-surface="reader-live" data-harness="phone-frame">
@@ -19,6 +23,7 @@ export function App() {
       </div>
     )
   }
+
   const config = resolveHarnessConfig(search)
   // ?shell=1 opt-in：把 surface 裝進 app 殼層（底部 tab bar）。預設不啟用，
   // 既有 ?surface=&scenario=&appearance= 行為與 parity capture 完全不變。
@@ -27,5 +32,21 @@ export function App() {
   // （收掉 in-app safe-area / 全幅留白），令元件 intrinsic bounds 對齊 iOS
   // catalog 的緊裁切 scene。預設不啟用，既有 capture 行為完全不變。
   const crop = new URLSearchParams(search).get('crop') === 'component'
-  return <PhoneFrame config={config} shell={shell} crop={crop} />
+
+  // 功能型 app（shell=1）需要登入；parity harness 不啟用 auth 閘門。
+  if (isLoading) {
+    return (
+      <div className="phone-frame" data-harness="phone-frame" data-auth-hydrating="1">
+        <div className="login-sheet-overlay" style={{ position: 'absolute', inset: 0 }}>
+          <div className="login-sheet-spinner" />
+        </div>
+      </div>
+    )
+  }
+  if (shell && !isLoggedIn) {
+    return <LoginGate />
+  }
+
+  const frame = <PhoneFrame config={config} shell={shell} crop={crop} />
+  return shell ? <ApiProvider>{frame}</ApiProvider> : frame
 }
