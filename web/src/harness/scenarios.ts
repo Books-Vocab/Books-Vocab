@@ -86,6 +86,16 @@ export const SURFACE_SCENARIOS = {
   sync: ['ready', 'running', 'completed', 'partial', 'full'],
   'notebooks-card': ['grid-two', 'hero-fresh', 'hero-long-name', 'hero-heavy'],
   'kg-vocab-row': ['default', 'highlighted'],
+  // Composite layer (batch-4): Book Card (transparent component crop, bookshelf cell) /
+  // Subscription Gate Card (opaque component crop, ProAccessGateCard) / Account
+  // Section (transparent full-frame, settings auth/subscription rows).
+  'book-card': ['placeholder-epub', 'pdf-badge', 'progress-mid', 'progress-complete', 'long-title', 'a11y3'],
+  'subscription-gate-card': ['happy-path', 'long-copy-stress', 'narrow-width-320pt', 'dynamic-type-accessibility3'],
+  // NOTE: account-section deferred — iOS scene = ScrollView{ section.padding() } is
+  // TOP-aligned + ScrollView safe-area top inset (~59pt status bar); web agent
+  // centered/top-stuck it without the safe-area offset → 全 5 case RMSE 0.33–0.36
+  // (>0.25 ceiling, systematic ~60pt vertical shift). Fix = top-align + safe-area
+  // top inset, re-derive. dir held in /tmp/deferred_hold/account-section.
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

@@ -819,4 +819,92 @@ export const PARITY = [
   // KG Vocab Row (WordRow molecule, transparent component crop, varying width)
   { case: 'kg-vocab-row-default-light', params: { surface: 'kg-vocab-row', scenario: 'default', appearance: 'light', crop: 'component' }, crop: '.kg-vocab-row-surface', transparent: true, ref: { surface: 'KG Vocab Row', scenario: 'Default', appearance: 'light' }, note: 'WordRow 非 selecting：mono18 word + caption pos + sans15 translation；trailing 進度 detailLabel「首輪 12h」' },
   { case: 'kg-vocab-row-highlighted-light', params: { surface: 'kg-vocab-row', scenario: 'highlighted', appearance: 'light', crop: 'component' }, crop: '.kg-vocab-row-surface', transparent: true, ref: { surface: 'KG Vocab Row', scenario: 'Highlighted', appearance: 'light' }, note: 'isHighlighted → RoundedRectangle(sm=6).fill(accent.opacity(0.08)) 包住 inset row' },
+
+  // ── Composite layer batch-4 ──
+  // Book Card（R: bookshelf cell atom）— BookCardScenarios.swift 6 態，皆 light、
+  // layout .compressed = 元件級 crop。catalog component scene 透明畫布
+  // （corner srgba 0,0,0,0）→ transparent crop，同 vocab-sort-pill。
+  // crop 目標 = .book-card-component-surface（card width 180 + scene .padding(24)）。
+  // 註：A11y3.png 與 Progress·Mid.png byte-identical（component scene 內 a11y3
+  // 字級未顯著放大）→ a11y3 fixture 沿用 midProgress 內容。
+  {
+    case: 'book-card-placeholder-epub-light',
+    params: { surface: 'book-card', scenario: 'placeholder-epub', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'Placeholder · EPUB', appearance: 'light' },
+    note: 'Book card · placeholder EPUB（0% track-only、無格式 pill）(light)',
+  },
+  {
+    case: 'book-card-pdf-badge-light',
+    params: { surface: 'book-card', scenario: 'pdf-badge', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'Placeholder · PDF badge', appearance: 'light' },
+    note: 'Book card · placeholder PDF（封面格式 pill PDF、0% track-only）(light)',
+  },
+  {
+    case: 'book-card-progress-mid-light',
+    params: { surface: 'book-card', scenario: 'progress-mid', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'Progress · Mid', appearance: 'light' },
+    note: 'Book card · 42% accent fill + 相對日期 (light)',
+  },
+  {
+    case: 'book-card-progress-complete-light',
+    params: { surface: 'book-card', scenario: 'progress-complete', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'Progress · Complete', appearance: 'light' },
+    note: 'Book card · 100% full accent fill (light)',
+  },
+  {
+    case: 'book-card-long-title-light',
+    params: { surface: 'book-card', scenario: 'long-title', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'Long title + author', appearance: 'light' },
+    note: 'Book card · 兩行標題 clamp + 作者 ellipsis + TXT pill + 8% (light)',
+  },
+  {
+    case: 'book-card-a11y3-light',
+    params: { surface: 'book-card', scenario: 'a11y3', appearance: 'light', crop: 'component' },
+    crop: '.book-card-component-surface',
+    transparent: true,
+    ref: { surface: 'Book Card', scenario: 'A11y3', appearance: 'light' },
+    note: 'Book card · A11y3（catalog 與 Progress·Mid byte-identical）(light)',
+  },
+  // Subscription Views · Gate Card — ProAccessGateCard（SubscriptionViews.swift）。
+  // layout .fillH → opaque component crop（corner = page-bg srgba(247,246,243,1)，
+  // 無 transparent）；crop 目標 = surface .padding(16) intrinsic box（撐滿 frame 寬）。
+  {
+    case: 'subscription-gate-card-happy-path-light',
+    params: { surface: 'subscription-gate-card', scenario: 'happy-path', appearance: 'light', crop: 'component' },
+    crop: '.subscription-gate-card-surface',
+    ref: { surface: 'Subscription Views · Gate Card', scenario: 'Happy path', appearance: 'light' },
+    note: 'Gate card happy path — sparkles + 升級 Pro (light)',
+  },
+  {
+    case: 'subscription-gate-card-long-copy-stress-light',
+    params: { surface: 'subscription-gate-card', scenario: 'long-copy-stress', appearance: 'light', crop: 'component' },
+    crop: '.subscription-gate-card-surface',
+    ref: { surface: 'Subscription Views · Gate Card', scenario: 'Long copy stress', appearance: 'light' },
+    note: 'Gate card long copy — graduationcap.fill + multiline (light)',
+  },
+  {
+    case: 'subscription-gate-card-narrow-width-320pt-light',
+    params: { surface: 'subscription-gate-card', scenario: 'narrow-width-320pt', appearance: 'light', crop: 'component' },
+    crop: '.subscription-gate-card-surface',
+    ref: { surface: 'Subscription Views · Gate Card', scenario: 'Narrow width 320pt', appearance: 'light' },
+    note: 'Gate card narrow 320pt — clock.badge.checkmark, card max-width 320 (light)',
+  },
+  {
+    case: 'subscription-gate-card-dynamic-type-accessibility3-light',
+    params: { surface: 'subscription-gate-card', scenario: 'dynamic-type-accessibility3', appearance: 'light', crop: 'component' },
+    crop: '.subscription-gate-card-surface',
+    ref: { surface: 'Subscription Views · Gate Card', scenario: 'Dynamic Type · accessibility3', appearance: 'light' },
+    note: 'Gate card a11y3 — headphones; AppFonts 固定字級不隨 Dynamic Type 縮放 (light)',
+  },
+  // account-section deferred (see scenarios.ts note): top-aligned + safe-area top inset fix pending.
 ];
