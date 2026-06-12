@@ -1,0 +1,136 @@
+/* Review Fold · Chevron Pill — iOS ReviewFoldChevronPill（ReviewFoldSurface.swift）
+   的 web 鏡像。token 一律走 design-system 變數，不寫 literal（結構值 flex/999px/
+   box-sizing 與 scene .padding 例外）。
+
+   ReviewFoldChevronPill：
+     Button[ Image(chevron.up) .font(iconTiny.weight(.semibold))（iconTiny=symbol 10pt）
+       / tertiaryText@0.78
+       .frame(34×18)
+       .background(Capsule fill cardBackground@0.94)
+       .overlay(Capsule stroke divider@0.58, lineWidth hairline=1)
+       .frame(48 × chevronButtonSize=30) ]
+     .buttonStyle(.plain) .contentShape(Capsule)
+   tokens：cardBackground=--card-bg、divider=--divider、tertiaryText=--text-tertiary、
+     hairline=--sp-hairline(1)、chevronButtonSize=30=--chevron-button-size、
+     iconTiny=10pt=--text-mono-label(10)。
+
+   sampleCard（on-card-backdrop 背景）：
+     VStack(spacing 8)[ Text(.title3.semibold) / Text(.subheadline,.secondary) /
+       Text(.footnote,.tertiary) ] .padding(24=--sp-6)
+     .background(RoundedRectangle card=md=8 fill cardBackground)
+     .overlay(stroke cardBorder 1px)
+     系統字級：title3=20=--text-title3、subheadline=15=--text-subhead、footnote=13=
+     --text-footnote；.secondary/.tertiary=SwiftUI 系統灰（--system-secondary-label /
+     --text-tertiary 近似）。
+
+   layout .fill（全裝置幀 1179×2556、畫布透明）：surface 撐滿 phone-frame、內容垂直
+   置中；phone-frame + surface 透明，shots transparent:true → 內容-over-transparent。 */
+
+/* surface 撐滿 phone-frame（.fill），內容垂直置中。scene .padding(40=--sp-8)：
+   card 水平內縮 40pt（ref 卡片左緣 40pt）；collapse-handle 為置中單一 pill，
+   水平 padding 不影響其置中。 */
+.review-fold-chevron-surface {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-8);
+  box-sizing: border-box;
+}
+
+/* ── ReviewFoldChevronPill ── */
+/* 外層 .frame(48 × chevronButtonSize=30)、contentShape Capsule */
+.review-fold-chevron-pill {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: var(--chevron-button-size);
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+/* 內層 .frame(34×18) + Capsule(fill cardBackground@0.94) + Capsule(stroke divider@0.58) */
+.review-fold-chevron-pill-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 18px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+  border: var(--sp-hairline) solid color-mix(in srgb, var(--divider) 58%, transparent);
+}
+
+/* Image(chevron.up) iconTiny 10pt semibold / tertiaryText@0.78 */
+.review-fold-chevron-pill-icon {
+  flex: none;
+  color: color-mix(in srgb, var(--text-tertiary) 78%, transparent);
+}
+
+/* ── sampleCard backdrop（on-card-backdrop scenario）── */
+/* VStack(spacing 8) .padding(24) + radii.card(md=8) bg cardBackground + stroke cardBorder */
+.review-fold-chevron-card {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-6);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+/* Text(.title3.weight(.semibold)) / primaryText */
+.review-fold-chevron-card-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-title3);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* Text(.subheadline) .foregroundStyle(.secondary) */
+.review-fold-chevron-card-subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--system-secondary-label);
+}
+
+/* Text(.footnote) .foregroundStyle(.tertiary) */
+.review-fold-chevron-card-body {
+  font-family: var(--font-sans);
+  font-size: var(--text-footnote);
+  line-height: var(--leading-body);
+  color: var(--text-tertiary);
+}
+
+/* .overlay(alignment: .bottom){ pill }.offset(y: 10)：overlay 將 pill（outer 48×30）
+   底邊對齊卡片底邊（bottom:0），再 .offset(y:10) 下移 10pt 跨出卡片底緣。
+   pill 自身 bottom 對齊容器 bottom，故 outer-bottom = card-bottom + 10。 */
+.review-fold-chevron-card-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: var(--chevron-button-size);
+  transform: translateY(10px);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布） */
+.phone-frame[data-surface='review-fold-chevron'] {
+  background: transparent;
+}

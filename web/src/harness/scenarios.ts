@@ -96,6 +96,12 @@ export const SURFACE_SCENARIOS = {
   // centered/top-stuck it without the safe-area offset → 全 5 case RMSE 0.33–0.36
   // (>0.25 ceiling, systematic ~60pt vertical shift). Fix = top-align + safe-area
   // top inset, re-derive. dir held in /tmp/deferred_hold/account-section.
+  // Composite layer (batch-5): Review Fold trio（皆 .fill transparent full-frame，
+  // sampleCard/segment over transparent，shots transparent:true）。SoT:
+  // ReviewFoldScenarios.swift（Chevron Pill / Paper Fold / Segment）。
+  'review-fold-chevron': ['collapse-handle', 'on-card-backdrop'],
+  'review-fold-paper': ['expanded', 'three-quarter', 'half', 'quarter', 'nearly-folded'],
+  'review-fold-segment': ['single', 'stacked-group'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

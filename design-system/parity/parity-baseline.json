@@ -634,6 +634,41 @@
       "rmse": 0.147138,
       "mae": 0.0337361,
       "ssim": 0.0563999
+    },
+    "review-fold-chevron-collapse-handle-light": {
+      "rmse": 0.0489451,
+      "mae": 0.00243565,
+      "ssim": 0.00163222
+    },
+    "review-fold-chevron-on-card-backdrop-light": {
+      "rmse": 0.167452,
+      "mae": 0.0303649,
+      "ssim": 0.0278339
+    },
+    "review-fold-paper-expanded-light": {
+      "rmse": 0.162855,
+      "mae": 0.0285054,
+      "ssim": 0.0254407
+    },
+    "review-fold-paper-quarter-light": {
+      "rmse": 0.191308,
+      "mae": 0.0369544,
+      "ssim": 0.0210453
+    },
+    "review-fold-paper-nearly-folded-light": {
+      "rmse": 0.0899344,
+      "mae": 0.0081657,
+      "ssim": 0.00625657
+    },
+    "review-fold-segment-single-light": {
+      "rmse": 0.183456,
+      "mae": 0.0346287,
+      "ssim": 0.0243876
+    },
+    "review-fold-segment-stacked-group-light": {
+      "rmse": 0.175341,
+      "mae": 0.0332021,
+      "ssim": 0.0287584
     }
   }
 }
