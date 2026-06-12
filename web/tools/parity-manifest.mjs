@@ -193,39 +193,63 @@ export const PARITY = [
   },
   // Translation panel（R2）— ReaderScenarios.swift「Reader · Translation」6 態
   // （layout .fill = scrim + bottom-sheet panel，gorgeous / adj.）。皆 light。
+  //
+  // 元件級量測（honest panel-crop，消滅黑底假 floor）：iOS catalog 這 6 態以
+  // *透明* backdrop + 極淡 scrim（黑 α≈0.024）擷取 bottom-sheet 白卡；parity
+  // normalize 的 `-alpha off` 把整片透明 void 壓成近黑，白卡對「~70% 黑底全幅」
+  // 的 RMSE 被灌成 0.20–0.27 的 *合成假 floor*（真實 app 那片是活的 reader 頁、
+  // 根本不渲染黑）。故兩端皆裁到元件本身再比：
+  //   web 側 `crop: '.translation-panel'` → shots.mjs 直接截 panel DOM；
+  //   ref 側 `refCrop: 'panel'` → parity-core 取 ref 不透明 bounding box 裁切
+  //   （閾值清掉 α≈0.024 scrim）。黑 void 不進分母。沿用 selection-toolbar（#958）
+  // 的元件級對比哲學，差別在 translation 的 catalog ref 仍是全幅，故由引擎在
+  // audit 時做等效裁切。panel 浮在 34pt home-indicator 安全區上（iOS VStack 不
+  // ignoresSafeArea），web 已對應補 `.reader-bottom-overlay` 底 inset。
   {
     case: 'reader-translation-expanded-light',
     params: { surface: 'reader', scenario: 'translation-expanded', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Expanded', appearance: 'light' },
     note: 'Translation panel expanded (light)',
   },
   {
     case: 'reader-translation-collapsed-light',
     params: { surface: 'reader', scenario: 'translation-collapsed', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Collapsed', appearance: 'light' },
     note: 'Translation panel collapsed (light)',
   },
   {
     case: 'reader-translation-loading-light',
     params: { surface: 'reader', scenario: 'translation-loading', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Loading', appearance: 'light' },
     note: 'Translation panel loading (light)',
   },
   {
     case: 'reader-translation-error-light',
     params: { surface: 'reader', scenario: 'translation-error', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Error', appearance: 'light' },
     note: 'Translation panel translation-error (light)',
   },
   {
     case: 'reader-translation-explain-only-light',
     params: { surface: 'reader', scenario: 'translation-explain-only', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Explain Only', appearance: 'light' },
     note: 'Translation panel explain-only (light)',
   },
   {
     case: 'reader-translation-explanation-error-light',
     params: { surface: 'reader', scenario: 'translation-explanation-error', appearance: 'light' },
+    crop: '.translation-panel',
+    refCrop: 'panel',
     ref: { surface: 'Reader · Translation', scenario: 'Explanation Error', appearance: 'light' },
     note: 'Translation panel explanation-error (light)',
   },
