@@ -49,7 +49,7 @@ enum PodcastFixtures {
         remoteId: "s-shelf",
         title: "Atomic Habits Unpacked",
         hostNames: ["Ava Chen"],
-        colorHex: "#4A90D9",
+        colorHex: NotebookPalette.defaultHex,
         coverPattern: NotebookCoverPattern.waves.rawValue
     )
 
