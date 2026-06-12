@@ -33,6 +33,12 @@ import { ReviewFoldSegmentScreen } from '../surfaces/review-fold-segment/ReviewF
 import { PodcastContinueCardScreen } from '../surfaces/podcast-continue-card/PodcastContinueCardScreen'
 import { PodcastEpisodeRowScreen } from '../surfaces/podcast-episode-row/PodcastEpisodeRowScreen'
 import { PodcastSeriesCardScreen } from '../surfaces/podcast-series-card/PodcastSeriesCardScreen'
+import { NotebookCoverScreen } from '../surfaces/notebook-cover/NotebookCoverScreen'
+import { NotebooksStackScreen } from '../surfaces/notebooks-stack/NotebooksStackScreen'
+import { WordDetailCardScreen } from '../surfaces/word-detail-card/WordDetailCardScreen'
+import { SettingsPreferencesScreen } from '../surfaces/settings-preferences/SettingsPreferencesScreen'
+import { SettingsReviewScreen } from '../surfaces/settings-review/SettingsReviewScreen'
+import { SettingsSubscriptionScreen } from '../surfaces/settings-subscription/SettingsSubscriptionScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -114,6 +120,18 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <PodcastEpisodeRowScreen scenario={config.scenario} />
     case 'podcast-series-card':
       return <PodcastSeriesCardScreen scenario={config.scenario} />
+    case 'notebook-cover':
+      return <NotebookCoverScreen scenario={config.scenario} />
+    case 'notebooks-stack':
+      return <NotebooksStackScreen scenario={config.scenario} />
+    case 'word-detail-card':
+      return <WordDetailCardScreen scenario={config.scenario} />
+    case 'settings-preferences':
+      return <SettingsPreferencesScreen scenario={config.scenario} />
+    case 'settings-review':
+      return <SettingsReviewScreen scenario={config.scenario} />
+    case 'settings-subscription':
+      return <SettingsSubscriptionScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':
