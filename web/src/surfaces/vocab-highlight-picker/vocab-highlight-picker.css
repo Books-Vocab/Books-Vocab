@@ -1,0 +1,84 @@
+/* Vocab · Highlight Picker — iOS VocabHighlightColorPresetPicker 的 web 鏡像。
+   token 走 design-system 變數；swatch 色為 highlight preset 專屬 rgb 字面（無 DS token，
+   見 fixtures.ts）。catalog .fill 透明 scene → 全 phone-frame 透明捕捉、picker 垂直置中。 */
+
+.vhp-surface {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* .fill 內容垂直置中 */
+  padding: var(--sp-4); /* AppThemeContainer { picker.padding(s4=16) } */
+}
+
+/* VStack(alignment:.leading, spacing s2)[title · row] */
+.vhp-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+/* Text(title) — caption(12) / secondaryText */
+.vhp-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+}
+
+/* HStack(spacing s2)[4 tiles]，各 flex:1（maxWidth:.infinity） */
+.vhp-row {
+  display: flex;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+/* ReaderSelectionTile chrome：radius control(sm) + border；padding .vertical
+   vocabOptionVerticalPadding(10)；內容 VStack(s2)[swatch · label] 置中。 */
+.vhp-tile {
+  flex: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px 0; /* vocabOptionVerticalPadding 10（pt→px） */
+  border-radius: var(--radius-sm); /* radii.control == AppRadius.sm */
+  /* unselected：pageBackground + divider×0.6 邊框 + secondaryText（label 由 .vhp-label 取） */
+  background: var(--page-bg);
+  border: 1px solid color-mix(in srgb, var(--divider) 60%, transparent);
+}
+
+/* selected：mutedFill + cardBorder + primaryText */
+.vhp-tile[data-selected] {
+  background: var(--muted-fill);
+  border-color: var(--card-border);
+}
+
+/* Circle().fill(preset).frame(18).overlay(stroke cardBorder 1px) */
+.vhp-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  border: 1px solid var(--card-border);
+}
+
+/* Text(label) — caption(12)；selected primaryText / unselected secondaryText */
+.vhp-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  line-height: 1.1;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.vhp-tile[data-selected] .vhp-label {
+  color: var(--text-primary);
+}
+
+/* 全 phone-frame 透明捕捉（.fill 透明 scene，alpha-mean 0.049） */
+.phone-frame[data-surface='vocab-highlight-picker'] {
+  background: transparent;
+}

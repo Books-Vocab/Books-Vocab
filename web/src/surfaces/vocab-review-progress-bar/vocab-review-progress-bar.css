@@ -1,0 +1,67 @@
+/* VocabReviewProgressBar — iOS VocabComponents.swift VocabReviewProgressBar 的 web 鏡像。
+   token 一律走 design-system 變數（progress-bar-width/height/gap、mono-label、
+   progress-track、secondaryText、font-mono），不寫 literal。fill 顏色為 ratio→HSL
+   衍生資料值（fixtures），以 inline style 套。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身（stack + 外層 padding 24 的 intrinsic box），surface 與
+   phone-frame 在 crop=component 下透明，shots omitBackground 截圖 → web 與 ref 同為
+   bar-over-transparent（對齊 vocab-sort-pill 模式）。 */
+
+/* surface = stack + scene wrapper .padding(24) 的緊裹 box（intrinsic，供 crop 截取） */
+.vocab-review-progress-bar-surface {
+  display: inline-flex;
+  padding: var(--sp-6);
+  box-sizing: border-box;
+}
+
+/* Ratios = VStack(alignment: .trailing, spacing 24)；單條 scenario 亦走此容器（單一子元素） */
+.vocab-review-progress-bar-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* .trailing */
+  gap: var(--sp-6); /* VStack spacing 24（scene-level，bars 間距） */
+}
+
+/* if ratio != nil: VStack(alignment: .trailing, spacing: progressBarGap=5) */
+.vocab-review-progress-bar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* .trailing */
+  gap: var(--progress-bar-gap);
+}
+
+/* Text(detailLabel).font(monoLabel = mono 10 bold).monospacedDigit().foregroundStyle(secondaryText) */
+.vocab-review-progress-bar-detail {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums; /* .monospacedDigit() */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* GeometryReader{ ZStack(.leading){ Capsule(progressBarBackground) ... }}
+   .frame(width: progressBarWidth=104, height: 5) */
+.vocab-review-progress-bar-track {
+  position: relative;
+  width: var(--progress-bar-width);
+  height: var(--progress-bar-height);
+  border-radius: 999px; /* Capsule(.continuous) */
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+/* Capsule(ReviewGradient.color(for: ratio)).frame(width: max(6, W*min(ratio,1))) */
+.vocab-review-progress-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999px; /* Capsule(.continuous) */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-review-progress-bar'] {
+  background: transparent;
+}

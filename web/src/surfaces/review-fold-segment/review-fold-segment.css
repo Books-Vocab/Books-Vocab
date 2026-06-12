@@ -1,0 +1,99 @@
+/* Review Fold · Segment — iOS ReviewFoldSurface 的 web 鏡像。
+   所有 visual value 走 design-system 變數，零 literal（除結構性 flex / box-sizing /
+   scene padding 24 = rig 慣例 / SwiftUI shape geometry 角半徑組合）。
+
+   ReviewFoldSurface（ReviewFoldSurface.swift）：
+     bg     = cardBackground.opacity(0.985) → --card-bg
+     border = cardBorder.opacity(0.72) 1px  → --card-border @0.72
+     divider= divider.opacity(0.85) 高 dividerThin(0.5) padding.h cardPadding(18) → middle/bottom 頂
+     shape  = UnevenRoundedRectangle：single/top 角 radii.card(8=--radius-card)、
+              join 邊(middle 上下、top 下、bottom 上) foldJoinRadius(4=--radius-xs)
+     elevation z1 → --elevation-z1
+   segmentBody = VStack(spacing 6=--micro-gap)[headline(17 semibold) · subheadline(15,.secondary)]
+                 padding 20=--sp-5、maxWidth ∞ leading
+   Stacked = VStack(spacing 0)；Single 單格。 */
+
+/* surface 撐滿 phone-frame（.fill），內容垂直置中、水平內縮 scene padding 24 */
+.review-fold-segment-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0 var(--sp-6);
+  box-sizing: border-box;
+}
+
+/* VStack(spacing 0) 堆疊各 fold 段 */
+.review-fold-segment-stack {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 每段 ReviewFoldSurface：bg + border + elevation。各角半徑依 position 設定 */
+.review-fold-segment-cell {
+  position: relative;
+  box-sizing: border-box;
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 72%, transparent);
+  box-shadow: var(--elevation-z1);
+}
+
+/* UnevenRoundedRectangle 角半徑：single = 四角皆 radii.card；top = 上 card / 下 join；
+   middle = 四角 join；bottom = 上 join / 下 card。join = --radius-xs(4)，card = --radius-card(8) */
+.review-fold-segment-cell[data-position='single'] {
+  border-radius: var(--radius-card);
+}
+.review-fold-segment-cell[data-position='top'] {
+  border-radius: var(--radius-card) var(--radius-card) var(--radius-xs) var(--radius-xs);
+}
+.review-fold-segment-cell[data-position='middle'] {
+  border-radius: var(--radius-xs);
+}
+.review-fold-segment-cell[data-position='bottom'] {
+  border-radius: var(--radius-xs) var(--radius-xs) var(--radius-card) var(--radius-card);
+}
+
+/* .overlay(.top) divider（middle/bottom）：divider.opacity(0.85)，高 dividerThin(0.5)，
+   水平內縮 cardPadding(18 = --card-padding) */
+.review-fold-segment-divider {
+  position: absolute;
+  top: 0;
+  left: var(--card-padding);
+  right: var(--card-padding);
+  height: var(--sp-hairline);
+  background: color-mix(in srgb, var(--divider) 85%, transparent);
+}
+
+/* segmentBody：VStack(spacing 6, leading) .padding(20) maxWidth ∞ */
+.review-fold-segment-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--micro-gap);
+  padding: var(--sp-5);
+}
+
+/* Text(title) — .font(.headline)（sans 17 semibold）/ primaryText */
+.review-fold-segment-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* Text(subtitle) — .font(.subheadline) / .foregroundStyle(.secondary) */
+.review-fold-segment-subtitle {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--system-secondary-label);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布）：phone-frame 本體透明，
+   shots transparent:true omitBackground → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='review-fold-segment'] {
+  background: transparent;
+}

@@ -40,7 +40,9 @@ verified_against: f0d37ca4
 | `motion.easing` | 緩動曲線 | `string` | `emphasized-decelerate`、`follow`… |
 | `motion.spring` | 彈簧參數（巢狀 `response`/`damping`） | `number` | `standard.response = 0.3`、`standard.damping = 0.75` |
 | `motion.transition` / `motion.tap-feedback` | 轉場 / 點按回饋 | 混合 | `tap-feedback.scale-down` |
-| `web-only.*` | **web 專屬**（iOS 無對應） | 混合 | `theme-color.on-success`、`invariant-value.blur-material`/`toggle-size`/`toggle-glyph` |
+| `web-only.*` | **web 專屬**（iOS 無對應） | 混合 | `theme-color.on-success`、`system-{red,blue,…}`（SwiftUI 系統色）、`invariant-value.blur-material`/`toggle-size`/`toggle-glyph` |
+
+> **⚠️ CSS var 命名陷阱（寫 web 元件鏡像 iOS 時最易踩）**：`space.scale.micro`→`--sp-micro`(**2px**) 與 `space.semantic.micro-gap`→`--micro-gap`(**6px**) 名稱相近但值不同。iOS 讀 `AppSpacing.microGap` / `appSkin.spacing.microGap`(=6) 一律對應 **`--micro-gap`**，**勿**誤用 `--sp-micro`(=`Scale.micro`=2)。同理 chip padding 三組勿混：`compact-chip-*`(6/3) / `tone-chip-*`=`Spacing.chip*`(10/6) / `chip-padding-*`=`AppTagMetrics`(10/5)。token 真值一律核 `ios/.../AppSkin+BaseValues.swift`，別靠名稱猜。
 
 **關鍵分組（決定下面 Token Set 怎麼切）**：
 - **mode-invariant**（不分主題）：`color.primitive`、`space.*`、`radius.*`、`type.*`、`elevation.*`、`motion.*` — 所有主題共用同一份。

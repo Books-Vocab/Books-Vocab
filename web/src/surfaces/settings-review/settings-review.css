@@ -1,0 +1,277 @@
+/* Settings Sections · Review（複習節奏）surface — 幾何逐一對齊 iOS：
+   SettingsReviewSection.swift + AppShellMetrics + AppSkin baseSpacing。
+     pageHorizontalPadding = AppSpacing.s5 = 20  → --sp-5
+     pageTopPadding        = AppSpacing.s3 = 12  → --sp-3
+     pageBottomPadding     = AppSpacing.s9 = 48  → --sp-9
+     sectionSpacing(VStack)= AppSpacing.s6 = 24  → --sp-6
+     appSkin.spacing.sectionGap = 14（header↔內容）→ --section-gap
+     appSkin.spacing.inlineGap  = 8              → --inline-gap
+     appSkin.spacing.cardPadding= 18             → --card-padding
+     appSkin.spacing.controlVerticalPadding = 12 = --sp-3
+     appSkin.spacing.controlHorizontalPadding = 14 = --section-gap（同 14；mode tile 同時吃水平+垂直）
+     AppSettingsMetrics.reviewModeTileGap = 10
+     AppSettingsMetrics.reviewStepperGap  = 12 = --sp-3
+     AppSettingsMetrics.reviewValueMinWidth = 52
+     AppMetrics.iconButtonSize = 52、dividerStandard = 1
+     radii.card = AppRadius.md = 8 → --radius-card；radii.control = AppRadius.sm = 6 → --radius-control
+   px 註解標 iOS 來源常數；.fill layout → 全 phone-frame 透明捕捉（shots transparent:true，
+   ref corner srgba 0,0,0,0；page-bg 僅卡片內，非全幅鋪滿）。 */
+
+.settings-review {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+}
+
+/* --- inline nav title「複習節奏」---
+   UINavigationBar inline title：page-bg 上 primaryText，catalog .fill harness
+   下渲染極淡。measured：title 中心 ~74pt、首段 header glyph top ~126.7pt。 */
+.settings-review-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 114px; /* nav 底 ≈ 首 header(126.7) − pageTopPadding(12) */
+  padding-top: 47px; /* status bar + inline bar 上緣留白，令 title 落 ~74pt */
+  flex: none;
+}
+
+.settings-review-nav-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* inline title ≈ 17→catalog 收 15；極淡 */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-review-scroll {
+  flex: 1;
+  overflow: hidden; /* 快照面不滾動 */
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-review-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6); /* sectionSpacing = 24 */
+  padding: var(--sp-3) var(--sp-5) var(--sp-9); /* top 12 / h 20 / bottom 48 */
+}
+
+/* --- section（header + 內容，spacing = appSkin.sectionGap 14）--- */
+.settings-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* 14 */
+}
+
+/* --- SettingsSectionHeader = AppSectionHeader：Label(caption bold、secondary)，
+   .padding(.leading, AppSpacing.s1=4) --- */
+.settings-review-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--inline-gap); /* Label icon↔title 默認間距，取 inlineGap 8 */
+  padding-left: var(--sp-1); /* AppSpacing.s1 = 4 */
+  color: var(--text-secondary);
+}
+
+.settings-review-section-header-icon {
+  display: inline-flex;
+  color: var(--text-secondary);
+}
+
+.settings-review-section-header-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption = 12 */
+  font-weight: 700; /* AppFonts.sans(12, bold) */
+  color: var(--text-secondary);
+}
+
+/* --- settingsCard = AppSectionCard(.settings)：cardBackground + cardBorder 1pt
+   + radii.card 8、padding 由內容自帶 --- */
+.settings-review-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-card); /* 8 */
+}
+
+/* --- pauseSection card：HStack(inlineGap 8)[VStack 文字 · Spacer · Toggle]，
+   .padding(.horizontal cardPadding 18, .vertical controlVerticalPadding 12) --- */
+.settings-review-pause-card {
+  display: flex;
+  align-items: center;
+  gap: var(--inline-gap); /* 8 */
+  padding: var(--sp-3) var(--card-padding); /* v 12 / h 18 */
+}
+
+.settings-review-pause-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* AppSpacing.s1 = 4 */
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-review-pause-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = 15 */
+  font-weight: 600; /* body.weight(.semibold) */
+  color: var(--text-primary);
+}
+
+.settings-review-pause-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption = 12（注：sans-bold caption，此處說明文 regular weight 由 typography.caption 來，但 SettingsReviewSection 用 typography.caption=bold 12；對拍說明文呈 regular 灰，取 secondary + 不加粗以對齊 ref ink）*/
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* --- Toggle = SwitchToggleStyle(tint accent)；off=灰、on=accent。
+   iOS UISwitch ≈ 51×31pt。 --- */
+.settings-review-toggle {
+  flex: none;
+  width: 51px;
+  height: 31px;
+  border-radius: var(--radius-pill); /* capsule */
+  background: var(--text-quaternary); /* off track ≈ system gray */
+  position: relative;
+  transition: none;
+}
+
+.settings-review-toggle[data-on] {
+  background: var(--accent); /* tint = palette.accent */
+}
+
+.settings-review-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #ffffff; /* UISwitch knob，固定白（系統控件，非 token） */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.16);
+}
+
+.settings-review-toggle[data-on] .settings-review-toggle-knob {
+  left: auto;
+  right: 2px;
+}
+
+/* --- modeSection：HStack(reviewModeTileGap 10)[3× SettingsSelectionTile] --- */
+.settings-review-mode-row {
+  display: flex;
+  gap: 10px; /* AppSettingsMetrics.reviewModeTileGap */
+}
+
+/* --- SettingsSelectionTile：content .frame(maxWidth ∞, leading)
+   .padding(.h controlHorizontalPadding 14, .v controlHorizontalPadding 14)
+   bg = selected? mutedFill : pageBackground；border radii.control 6，
+   selected? cardBorder : divider*0.4 --- */
+.settings-review-tile {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* tile VStack spacing = AppSpacing.s2 = 8 */
+  padding: var(--section-gap); /* controlHorizontalPadding 14（水平+垂直同值） */
+  border-radius: var(--radius-control); /* 6 */
+  background: var(--page-bg);
+  border: 1px solid color-mix(in srgb, var(--divider) 40%, transparent); /* divider.opacity(0.4) */
+  color: var(--text-secondary); /* unselected foregroundStyle = secondaryText */
+}
+
+.settings-review-tile[data-selected] {
+  background: var(--muted-fill);
+  border-color: var(--card-border);
+  color: var(--text-primary); /* selected foregroundStyle = primaryText */
+}
+
+.settings-review-tile-icon {
+  display: block;
+  color: currentColor;
+}
+
+.settings-review-tile-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = 15 */
+  font-weight: 400; /* regular（unselected） */
+  color: currentColor;
+}
+
+.settings-review-tile-label[data-selected] {
+  font-weight: 600; /* body.weight(.semibold)（selected） */
+}
+
+/* --- SettingsSectionFooter = AppSectionFooter：caption、tertiaryText、
+   lineSpacing 3、.padding(.h AppSpacing.s1=4) --- */
+.settings-review-footer {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption = 12 */
+  font-weight: 700; /* AppFonts.sans(12, bold) */
+  color: var(--text-tertiary);
+  line-height: 1.4; /* lineSpacing 3 over 12 ≈ */
+  padding: 0 var(--sp-1); /* AppSpacing.s1 = 4 */
+}
+
+/* --- customParamsSection card：VStack(spacing 0)[ParamRow + SettingsDivider] --- */
+/* SettingsDivider = AppSettingsDivider：1pt divider、leadingInset 50 */
+.settings-review-divider {
+  height: 1px; /* AppMetrics.dividerStandard */
+  background: var(--divider);
+  margin-left: 50px; /* AppSettingsDivider default leadingInset */
+}
+
+/* ParamRow：HStack[label · Spacer · HStack(reviewStepperGap 12)[− value +]]
+   .padding(.h cardPadding 18, .v controlVerticalPadding 12) */
+.settings-review-param-row {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-3) var(--card-padding); /* v 12 / h 18 */
+}
+
+.settings-review-param-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body = 15 */
+  color: var(--text-primary);
+  flex: 1 1 auto;
+}
+
+.settings-review-stepper {
+  display: flex;
+  align-items: center;
+  gap: 12px; /* AppSettingsMetrics.reviewStepperGap */
+}
+
+/* SettingsStepperIconButton：iconMedium(14 medium)、pageBackground fill +
+   cardBorder 1pt + radii.control 6、frame iconButtonSize 52×52 */
+.settings-review-stepper-btn {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control); /* 6 */
+  background: var(--page-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0;
+}
+
+.settings-review-stepper-btn[data-disabled] {
+  color: var(--text-quaternary); /* disabled → quaternaryText */
+}
+
+/* value：monoBodyStrong = mono 14 bold、primaryText、minWidth 52 center
+   （reader.css 同例 monoBodyStrong 走 raw 14px + font-mono） */
+.settings-review-param-value {
+  min-width: 52px; /* AppSettingsMetrics.reviewValueMinWidth */
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 14px; /* monoBodyStrong = mono 14 */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1; /* mono badge tight：避免 web 行高撐胖 */
+  color: var(--text-primary);
+}

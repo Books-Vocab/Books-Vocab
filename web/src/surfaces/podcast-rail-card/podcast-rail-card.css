@@ -1,0 +1,166 @@
+/* PodcastContinueRailCard — iOS PodcastShelf.swift `PodcastContinueRailCard` 的 web 鏡像。
+   component crop（catalog ref 546×{756|672}，corner srgba 0,0,0,0 → transparent）。
+   token 全走 design-system 變數；唯一資料字面 = cover 色（notebook palette 資料色，
+   inline --rail-cover 注入）+ 結構值（flex / 999px / 150pt cardWidth / 波浪幾何）。
+
+   幾何逐一對齊 body：
+     VStack(.leading, spacing s2=8) → .prc-card gap var(--sp-2)
+     cover 150×150 / radius md(8) / elevation z1 / overlay playDisc 30×30 pad s2(8)
+     waves overlay：white .12 / amp 8 / wavelength 30 / row-spacing 20 / lw 1.2
+     cover name：body=sans17 semibold / white / shadow black .3 r2 y1 / lineLimit 2 居中
+     meta VStack(spacing tinyGap=4)：
+       title caption=sans12 bold primaryText lineLimit1 tail
+       episode caption2=sans11 reg tertiaryText lineLimit1 tail
+       progress ProgressCapsule height 3 fill accent track progressBarBackground，pad-top tinyGap(4)
+       remaining monoLabel=mono10 bold tertiaryText monospacedDigit */
+
+/* surface = scene wrapper .padding(24)（rig 慣例，crop 目標 intrinsic box） */
+.prc-surface {
+  display: inline-flex;
+  padding: var(--sp-6); /* iOS .padding(24) */
+  box-sizing: border-box;
+}
+
+/* PodcastContinueRailCard 根 VStack(.leading, spacing: s2=8)，frame(width:150) */
+.prc-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2); /* AppSpacing.s2 = 8 */
+  width: 150px; /* cardWidth = 150 (結構常數) */
+  box-sizing: border-box;
+}
+
+/* --- NotebookCoverView 150×150 + clip(radius md) + appElevation(.z1) --- */
+.prc-cover {
+  position: relative;
+  width: 150px;
+  height: 150px; /* .frame(width:150, height:150)（cardWidth） */
+  border-radius: var(--radius-md); /* AppRadius.md = 8, .continuous */
+  overflow: hidden; /* clipShape RoundedRectangle */
+  background: var(--rail-cover); /* NotebookCoverView color（legacy-migrated palette 資料色） */
+  box-shadow: var(--elevation-z1); /* .appElevation(.z1) */
+}
+
+/* waves pattern overlay（white opacity 0.12，pt 幾何由 viewBox 承載） */
+.prc-cover-pattern {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* cover 中央白字 name：body=sans17 semibold，lineLimit 2 居中，legibility shadow。
+   絕對置中（top/left 50% + translate）承載居中，內部 -webkit-box 做 2 行 tail clamp。 */
+.prc-cover-name {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 2 * var(--sp-2)); /* .padding(.horizontal, s2=8) */
+  text-align: center; /* multilineTextAlignment(.center) */
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* AppFonts.body = sans 17 */
+  font-weight: 600; /* weight .semibold */
+  line-height: 1.15;
+  color: #ffffff; /* foregroundStyle(.white)（cover-internal，非 theme token） */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); /* legibility shadow（token-allow 等義） */
+  /* lineLimit(2) + truncationMode(.tail) */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* playDisc：bottomTrailing overlay，Circle().fill(brandHero) 30×30，pad s2(8) */
+.prc-play-disc {
+  position: absolute;
+  right: var(--sp-2); /* .padding(s2=8) bottomTrailing */
+  bottom: var(--sp-2);
+  width: 30px; /* .frame(30×30) */
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%; /* Circle */
+  background: var(--brand-hero); /* skin.palette.brandHero */
+  color: var(--on-brand-hero); /* AppColors.onBrandHero（glyph currentColor） */
+  box-shadow: var(--elevation-z1); /* .appElevation(.z1) */
+}
+
+.prc-play-glyph {
+  width: 13px; /* iconTiny = symbol 10pt thin（disc 內視覺三角，play.fill 偏右） */
+  height: 13px;
+  margin-left: 1px; /* 三角略偏右視覺置中 */
+}
+
+/* --- meta VStack(.leading, spacing: tinyGap=4)，frame(width:150,.leading) --- */
+.prc-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1); /* skin.spacing.tinyGap = 4 */
+  width: 150px;
+  box-sizing: border-box;
+}
+
+/* series.title：caption=sans12 bold，primaryText，lineLimit1 tail */
+.prc-title {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* caption(weight:.medium) → isBold true → bold */
+  line-height: var(--leading-caption);
+  color: var(--text-primary); /* skin.palette.primaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* lineLimit(1) + .tail */
+}
+
+/* episode.displayTitle：caption2=sans11 reg，tertiaryText，lineLimit1 tail */
+.prc-episode {
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption2); /* 11 */
+  font-weight: 400; /* caption2() default regular */
+  line-height: var(--leading-caption);
+  color: var(--text-tertiary); /* skin.palette.tertiaryText */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ProgressCapsule height=3，fill=accent，track=progressBarBackground，pad-top tinyGap(4) */
+.prc-progress {
+  position: relative;
+  width: 100%;
+  height: 3px; /* height: 3（結構常數，對齊 iOS literal） */
+  margin-top: var(--sp-1); /* .padding(.top, tinyGap=4) */
+  border-radius: 999px; /* Capsule(.continuous) */
+  background: var(--progress-track); /* skin.palette.progressBarBackground */
+  overflow: hidden;
+}
+
+.prc-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent); /* skin.palette.accent */
+}
+
+/* remaining：monoLabel=mono10 bold，tertiaryText，monospacedDigit */
+.prc-remaining {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* mono 10 */
+  font-weight: 700;
+  line-height: 1; /* mono badge：iOS Text 緊排，web 預設 leading 撐高框 */
+  font-variant-numeric: tabular-nums; /* monospacedDigit */
+  color: var(--text-tertiary); /* skin.palette.tertiaryText */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='podcast-rail-card'] {
+  background: transparent;
+}

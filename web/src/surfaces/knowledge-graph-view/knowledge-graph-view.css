@@ -1,0 +1,77 @@
+/* Knowledge Graph View — 知識圖譜全屏 screen 的 logged-out 空狀態。
+   token 一律走 design-system 變數。
+
+   iOS 層級：VocabSceneShell(.empty).centeredWrapper(padding cardBlockPadding=24,
+   bg=pageBackground) → VocabEmptyStateCard → AppSectionCard(.vocab) {
+     AppEmptyStateContent(.vocab).padding(.v, verticalPadding=12) }。
+
+   AppSectionCard(.vocab)：bg=cardBackground / border=cardBorder.opacity(0.7) 1px /
+     cornerRadius=radii.card(md=8) / padding=cardPadding(18) / elevation z1
+     (.shadow black@0.03, blur 4, y 1)。
+   AppEmptyStateStyle(.vocab)：icon symbolLarge(symbol 30 light)/tertiaryText、
+     title sectionTitle(serif 18 bold)/primaryText、desc body(sans 15 = --text-subhead,
+     非 --text-body=17)/secondaryText.centered、spacing 14。
+
+   ref：1179×2556、四角=page-bg(247,246,243)、alpha-mean=1（不透明）→ 全 phone-frame
+   捕捉、無 transparent / 無 crop=component。卡片量測（native px）top≈1072 bottom≈1655
+   left≈73 right≈1107 → 寬≈345pt 高≈194pt、左右 margin≈24pt（=cardBlockPadding）、
+   垂直置中。 */
+
+/* centeredWrapper：撐滿 phone-frame、bg=page-bg、卡片垂直置中、左右內縮 cardBlockPadding=24 */
+.kg-view-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-6);
+  box-sizing: border-box;
+  background: var(--page-bg);
+}
+
+/* AppSectionCard(.vocab)：cardBg / cardBorder@0.7 1px / radius md=8 / padding 18 / z1 shadow */
+.kg-view-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--card-padding);
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elevation-z1);
+}
+
+/* AppEmptyStateContent：VStack(spacing 14, maxWidth ∞) + .padding(.v, verticalPadding=12) */
+.kg-view-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack);
+  width: 100%;
+  padding: var(--sp-3) 0; /* verticalPadding 12 = --sp-3 */
+}
+
+/* Image(systemName) — symbolLarge(symbol 30 light) / tertiaryText */
+.kg-view-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — sectionTitle(serif 18 bold) / primaryText */
+.kg-view-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — body(sans 15 = --text-subhead) / secondaryText、centered */
+.kg-view-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}

@@ -1,0 +1,127 @@
+/* VocabActivityHeatmap — iOS VocabActivityHeatmap.swift 的 web 鏡像。
+   GitHub-style 活動熱圖：週×日 grid + graded 著色 + 圖例。
+
+   token：間距/字級走 design-system 變數；level 著色為「資料色」(chartHighlight
+   #F0CA89 = chart 強調，非 surface token)，以 token-allow literal + alpha 衍生。
+   mutedFill (level 1) 用 --muted-fill。
+
+   幾何（pt，1pt = 1 邏輯 px）：
+     cellSize 13、cellSpacing 3、label 列高 = 13+3 = 16、microGap 6
+     （appSkin.spacing.microGap，AppSkin+BaseValues.swift:79）、padding 16。
+     level≥3 圓放大 1.15× (13*1.15 = 14.95px)，外框固定 13×13 維持 grid 對齊。
+
+   catalog component scene 透明畫布（corner srgba 0,0,0,0）→ crop=component + transparent。
+   crop 目標 = .vocab-heatmap-surface（含外層 padding 16 的 intrinsic box）。 */
+
+/* 外層 .padding(16) 的緊裹 box（intrinsic，供 component crop 截取） */
+.vocab-heatmap-surface {
+  display: inline-flex;
+  padding: var(--sp-4); /* .padding() 預設 16 */
+  box-sizing: border-box;
+}
+
+/* VStack(alignment:.leading, spacing: appSkin.spacing.microGap=6) */
+.vocab-heatmap-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* .leading */
+  gap: 6px; /* appSkin.spacing.microGap = 6（AppSkin+BaseValues.swift:79） */
+}
+
+/* HStack(alignment:.top, spacing:0) { weekday labels | grid } */
+.vocab-heatmap-grid-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start; /* .top */
+  gap: 0;
+}
+
+/* weekday labels：VStack(.trailing, spacing:0).padding(.trailing, microGap=6) */
+.vocab-heatmap-weekdays {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* .trailing */
+  gap: 0;
+  padding-right: 6px; /* .padding(.trailing, appSkin.spacing.microGap=6) */
+}
+
+/* 每列固定高 = cellSize + cellSpacing = 16；標籤垂直置中於該列 */
+.vocab-heatmap-weekday-cell {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-family: var(--font-mono); /* AppFonts.mono */
+  font-size: var(--text-mono-label); /* monoLabel = mono 10 */
+  font-weight: 700; /* bold */
+  line-height: 1;
+  color: var(--text-quaternary); /* quaternaryText #9B9A93 */
+}
+
+/* grid：HStack(spacing: cellSpacing=3) */
+.vocab-heatmap-grid {
+  display: flex;
+  flex-direction: row;
+  gap: 3px; /* cellSpacing */
+}
+
+/* 每週：VStack(spacing: cellSpacing=3) */
+.vocab-heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px; /* cellSpacing */
+}
+
+/* cell 外框：固定 13×13，圓置中（level≥3 圓溢出外框由 overflow visible 容許） */
+.vocab-heatmap-cell {
+  width: 13px; /* cellSize */
+  height: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Circle().fill(levelColor)；level≥3 放大 1.15× */
+.vocab-heatmap-dot {
+  width: 13px; /* cellSize */
+  height: 13px;
+  border-radius: 50%;
+  flex: none;
+}
+.vocab-heatmap-dot[data-level='1'] {
+  background: var(--muted-fill); /* mutedFill rgba(0,0,0,0.04) */
+}
+/* chartHighlight = --chart-highlight (#F0CA89)；opacity 疊加用 color-mix 兌 transparent */
+.vocab-heatmap-dot[data-level='2'] {
+  background: color-mix(in srgb, var(--chart-highlight) 35%, transparent); /* .opacity(0.35) */
+}
+.vocab-heatmap-dot[data-level='3'] {
+  width: 14.95px; /* cellSize * 1.15 */
+  height: 14.95px;
+  background: color-mix(in srgb, var(--chart-highlight) 60%, transparent); /* .opacity(0.6) */
+}
+.vocab-heatmap-dot[data-level='4'] {
+  width: 14.95px; /* cellSize * 1.15 */
+  height: 14.95px;
+  background: var(--chart-highlight); /* chartHighlight 1.0 */
+}
+
+/* Legend：HStack(spacing: appSkin.spacing.microGap=6){ Text(少) ●●●● Text(多) } */
+.vocab-heatmap-legend {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px; /* appSkin.spacing.microGap = 6 */
+}
+.vocab-heatmap-legend-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* monoLabel = mono 10 */
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-quaternary); /* quaternaryText */
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-heatmap'] {
+  background: transparent;
+}

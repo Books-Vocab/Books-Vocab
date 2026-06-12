@@ -1,0 +1,285 @@
+/* Settings Subscription Section — iOS SettingsSubscriptionSection 的 web 鏡像。
+   token 一律走 design-system 變數。literal 例外（沿 account-section 既有慣例）：
+   scene padding 16（scenario `.padding()` 預設，measured ≈15.3pt）、controlGap 10、
+   rowContentSpacing 12、iconWidth 22、row minHeight 50、divider leadingInset 50、
+   structural（flex/999px/box-sizing）。card 圓角採 --radius-lg（measured ≈12，與
+   account-section 一致；非 md 8）。
+
+   catalog 元件 scene = `.fillH`，corner srgba(0,0,0,0) 透明 → 元件級 crop：
+   surface + phone-frame 透明，shots transparent:true，omitBackground 截圖。 */
+
+/* surface = section 內容 + scenario `.padding()`（預設 16）的緊裹 box（供 crop 截取） */
+.settings-subscription-surface {
+  display: inline-flex;
+  padding: var(--sp-4); /* scene .padding() 預設 16 */
+  box-sizing: border-box;
+}
+
+/* VStack(alignment .leading, spacing sectionGap=14)[header · card · footer] */
+.sub-section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--section-gap); /* 14 */
+  width: 360px; /* iPhone 15 Pro content width 393 - 2×16 scene pad（≈ ref 1179/3 - 32）*/
+}
+
+/* SettingsSectionHeader — Label(sparkles.rectangle.stack, "訂閱")，caption/secondaryText。
+   measured（同 account-section）：Catalog 字高比 caption 12 大一階，釘 14；icon 15。 */
+.sub-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 — Label icon/title 視覺帶 */
+  padding-left: var(--sp-1); /* AppSectionHeader .padding(.leading, s1=4) */
+  font-family: var(--font-sans);
+  font-size: 14px; /* measured */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+.sub-section-header-icon {
+  flex: none;
+  width: 15px;
+  height: 15px;
+}
+
+/* settingsCard — AppSectionCard(padding 0, .settings(skin))：cardBackground、
+   cardBorder 1px、radius card。measured 卡角弧 ≈12（同 account-section，非 md 8）。z0 無陰影。 */
+.sub-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg); /* measured ≈12 */
+  overflow: hidden;
+}
+
+/* HStack(alignment .top, spacing rowContentSpacing=12)[InfoBlock · Spacer · Badge]
+   .padding(cardPadding=18) */
+.sub-info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px; /* rowContentSpacing */
+  padding: var(--card-padding); /* 18 */
+}
+
+/* SettingsSubscriptionInfoBlock — VStack(alignment .leading, spacing microGap=6) */
+.sub-info-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--micro-gap); /* 6 */
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* planName — sectionTitle(serif 18 bold)/primaryText */
+.sub-plan-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title); /* 18 */
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--text-primary);
+}
+/* summary — caption(sans 12 bold)/secondaryText、lineSpacing 3 */
+.sub-plan-summary {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: calc(var(--text-caption) + 3px); /* lineSpacing 3 */
+  color: var(--text-secondary);
+}
+/* detail — caption(sans 12 bold)/tertiaryText、lineSpacing 3 */
+.sub-plan-detail {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: calc(var(--text-caption) + 3px); /* lineSpacing 3 */
+  color: var(--text-tertiary);
+}
+
+/* SettingsStatusBadge — monoLabel(mono 10 bold)、padding h badgeHorizontalPadding=9 /
+   v chipVerticalPadding=6、background tone.opacity(0.12)、Capsule。 */
+.sub-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* 10 */
+  font-weight: 700;
+  line-height: 1; /* mono badge tight，防 web 預設 leading 撐高 */
+  padding: var(--tone-chip-padding-v) var(--badge-padding-h); /* 6 / 9 */
+  border-radius: 999px;
+  white-space: nowrap;
+}
+/* tone → color + bg(opacity 0.12)：neutral=secondaryText, accent=accent, success=success */
+.sub-badge-neutral {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+}
+.sub-badge-accent {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.sub-badge-success {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+
+/* AppSettingsDivider(leadingInset 50) — divider hairline、左縮 50。 */
+.sub-divider {
+  height: 0.34px; /* iOS hairline 1 物理 px（dpr3）；capture rig dsf=3 */
+  background: var(--divider);
+  margin-left: 50px; /* leadingInset 50 */
+}
+
+/* AppKeyValueRow(.settings) — HStack(spacing s3=12)[icon(width22) · label · Spacer · value]
+   .padding(.h cardPadding=18, .v 13)、minHeight 50。 */
+.sub-meta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3); /* 12 — AppSpacing.s3 */
+  padding: var(--action-button-padding-v) var(--card-padding); /* 13 / 18 */
+  min-height: 50px;
+  box-sizing: border-box;
+}
+.sub-row-icon-box {
+  flex: none;
+  width: 22px; /* iconWidth */
+  display: flex;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.sub-row-icon {
+  width: 12px; /* iconSmall 12 */
+  height: 12px;
+}
+/* label — body(sans 15)/primaryText */
+.sub-row-label {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* 15 = AppFonts.sans(15) */
+  color: var(--text-primary);
+}
+.sub-row-spacer {
+  flex: 1 1 auto;
+}
+/* SettingsStatusValue — caption(sans 12 bold)、trailing 對齊 */
+.sub-status-value {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  text-align: right;
+}
+.sub-status-multi {
+  max-width: 56%; /* lineLimit 2 換行帶（measured） */
+}
+.sub-status-secondary {
+  color: var(--text-secondary);
+}
+.sub-status-accent {
+  color: var(--accent);
+}
+
+/* pricingUnavailableCard 外包 .padding(cardPadding=18) */
+.sub-pricing-wrap {
+  padding: var(--card-padding); /* 18 */
+}
+/* VocabStateMessageCard(.vocab) — AppStateMessageCard：cardBg + cardBorder 1px +
+   radius control=6、padding h 14 / v 12、內層 VStack(spacing s2=8)。 */
+.sub-state-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2); /* 8 — AppSpacing.s2 */
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-control); /* 6 */
+  padding: 12px 14px; /* verticalPadding 12 / horizontalPadding 14 */
+}
+/* head HStack(.firstTextBaseline, spacing s2=8)[icon · title · Spacer] */
+.sub-state-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2); /* 8 */
+}
+.sub-state-icon {
+  flex: none;
+  width: 12px; /* iconSmall 12 */
+  height: 12px;
+  color: var(--accent);
+  align-self: center;
+}
+/* title — body(sans 15) semibold/primaryText */
+.sub-state-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* 15 */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+/* description — caption(sans 12 bold)/secondaryText */
+.sub-state-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* CTA — SettingsActionRowLabel：HStack(spacing controlGap=10)[icon(14)/spinner · title ·
+   Spacer · chevron]、foreground primaryText、padding h cardPadding=18 / v 13、minHeight 50。 */
+.sub-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* controlGap */
+  padding: var(--action-button-padding-v) var(--card-padding); /* 13 / 18 */
+  min-height: 50px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+}
+.sub-cta-disabled {
+  /* .disabled(isRefreshing) — system 預設淡化 */
+  opacity: 0.55;
+}
+.sub-cta-icon {
+  flex: none;
+  width: 14px; /* iconMedium 14 */
+  height: 14px;
+}
+.sub-cta-spinner {
+  flex: none;
+  width: 18px; /* ProgressView(.small) */
+  height: 18px;
+  color: var(--text-secondary);
+}
+/* title — body(sans 15).weight(.medium)/primaryText */
+.sub-cta-title {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* 15 */
+  font-weight: 500;
+}
+.sub-cta-spacer {
+  flex: 1 1 auto;
+}
+/* SettingsTrailingChevronIcon — chevron.right iconTiny(10 thin)/tertiaryText */
+.sub-cta-chevron {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  color: var(--text-tertiary);
+}
+
+/* SettingsSectionFooter — AppSectionFooter caption(sans 12 bold)/tertiaryText、
+   lineSpacing 3、.padding(.h s1=4)。 */
+.sub-section-footer {
+  margin: 0;
+  padding: 0 var(--sp-1); /* .padding(.horizontal, s1=4) */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700;
+  line-height: calc(var(--text-caption) + 3px); /* lineSpacing 3 */
+  color: var(--text-tertiary);
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='settings-subscription'] {
+  background: transparent;
+}

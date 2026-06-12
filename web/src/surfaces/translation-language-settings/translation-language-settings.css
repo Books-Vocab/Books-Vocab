@@ -1,0 +1,120 @@
+/* TranslationLanguageSettings — iOS TranslationLanguageSettingsView 的 web 鏡像。
+   token 全走 design-system 變數（themed skin：--page-bg / --card-bg / --card-border /
+   --accent / --text-* / --divider）；selected 列 tint = accent@0.08（iOS
+   `accent.opacity(0.08)`，非 --accent-subtle 的 0.12）以行內 token-allow 標註。
+
+   幾何量自 ref（1179×2556 native，÷3 = pt）：pageBg #F7F6F3、card 白、card 左緣 ≈21pt
+   （pageH 20）、首 card top ≈155pt（status59+navBar44+pageTop12+header≈+sectionGap14）、
+   selected 列 tint #F1F4F7、checkmark #4D7396、header 文字 ≈#6F6E6A。
+   4 scene 皆 .fill opaque（alpha-mean=1）→ 全 phone-frame 不透明捕捉。 */
+
+.tls-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg);
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status 59 + bar 44 = 103pt；themed bg 上 title 近隱形 → 留空 */
+.tls-nav {
+  flex: none;
+  height: 103px;
+}
+
+/* ScrollView content：pageHorizontalPadding s5=20 / pageTopPadding s3=12 /
+   pageBottomPadding s9=48；section 間距 sectionSpacing s6=24 */
+.tls-scroll {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* AppShellMetrics.sectionSpacing = s6 */
+  padding: 12px 20px 48px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* section = VStack(sectionGap=14)[header, card, footer] */
+.tls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px; /* appSkin.spacing.sectionGap */
+}
+
+/* SettingsSectionHeader = Label(icon + title)；caption=sans12bold / secondaryText；
+   leading inset s1=4（AppSectionHeader .padding(.leading, s1)） */
+.tls-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px; /* AppSpacing.s1 */
+}
+.tls-header-icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+.tls-header-title {
+  font-size: var(--text-caption); /* caption = sans 12 */
+  font-weight: 700; /* iOS caption bold:true */
+  color: var(--text-secondary);
+}
+
+/* settingsCard = AppSectionCard(.settings)：cardBackground + cardBorder(1pt, opacity 1)
+   + radius card=8；padding 0（列自帶 inset） */
+.tls-card {
+  background: var(--card-bg);
+  border: var(--sp-hairline) solid var(--card-border);
+  border-radius: var(--radius-card); /* radii.card = AppRadius.md = 8 */
+  overflow: hidden;
+}
+
+/* SettingsDivider = Rectangle(divider, 1pt) .padding(.leading, 50) */
+.tls-divider {
+  height: 1px;
+  background: var(--divider);
+  margin-left: 50px;
+}
+
+/* SettingsSelectableRow：HStack(inlineGap=8)，padding(h cardPadding=18 / v rowPadding=9)，
+   selected 背景 accent.opacity(0.08) */
+.tls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* appSkin.spacing.inlineGap */
+  padding: 9px 18px; /* rowPadding 9 / cardPadding 18 */
+}
+.tls-row[data-selected] {
+  background: rgba(77, 115, 150, 0.08); /* token-allow: iOS accent(#4D7396).opacity(0.08) selected tint */
+}
+
+/* flag emoji + name 皆 typography.body = sans 15 = --text-subhead */
+.tls-flag {
+  font-size: var(--text-subhead);
+  line-height: 1;
+}
+.tls-name {
+  font-size: var(--text-subhead);
+  color: var(--text-primary);
+}
+.tls-spacer {
+  flex: 1 1 auto;
+}
+
+/* checkmark = iconSmall(symbol 12 medium) / accent */
+.tls-check {
+  flex: none;
+  color: var(--accent);
+}
+
+/* SettingsSectionFooter = caption(sans12bold) / tertiaryText / lineSpacing(3) /
+   .padding(.horizontal, s1=4) */
+.tls-footer {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  line-height: calc(1.2em + 3px); /* lineSpacing(3) */
+  padding: 0 4px; /* AppSpacing.s1 horizontal */
+}

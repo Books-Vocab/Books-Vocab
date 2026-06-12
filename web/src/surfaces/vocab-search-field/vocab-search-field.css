@@ -1,0 +1,74 @@
+/* Vocab Shell chrome 層 — iOS VocabSearchField → AppSearchField(.vocab) 的 web 鏡像。
+   token 一律走 design-system 變數，不寫 literal。
+
+   .vocab style（AppShellComponents+Styles.swift）：
+     icon  = iconSmall(symbol12medium)  / tertiaryText
+     text  = body(sans15 = --text-subhead，非 --text-body=17) / primaryText
+     clear = iconMedium(symbol14medium) / quaternaryText
+     bg = mutedFill、border = divider(1px)、radius = control(6 = --radius-control)
+   padding（AppSearchField）：.h s3=12(--sp-3)、.v rowPadding=9(--row-padding-v)
+   HStack spacing = s2=8(--sp-2)
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：scene =
+   bar + .frame(maxWidth:.infinity).padding(24)（fillH，全裝置寬 393pt）。crop 目標 =
+   surface 自身；surface 與 phone-frame 在 crop=component 下透明，shots omitBackground
+   截圖 → web 與 ref 同為 bar-over-transparent。 */
+
+/* surface = bar + scene wrapper .padding(24)，maxWidth:.infinity → 撐滿裝置寬 */
+.vocab-search-field-surface {
+  display: flex;
+  width: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* AppSearchField：HStack(spacing s2)[icon + text + clear]
+   .padding(.h s3, .v rowPadding).background(RoundedRect control mutedFill)
+   .overlay(RoundedRect control stroke divider 1) */
+.vocab-search-field {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--row-padding-v) var(--sp-3);
+  border-radius: var(--radius-control);
+  background: var(--muted-fill);
+  border: 1px solid var(--divider);
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+}
+
+/* leading magnifyingglass — iconSmall / tertiaryText */
+.vocab-search-field-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* TextField — body / primaryText；撐滿中段。空態 prompt = placeholder 色（tertiary）。 */
+.vocab-search-field-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vocab-search-field-text[data-placeholder='1'] {
+  color: var(--text-tertiary);
+}
+
+/* trailing clear xmark.circle.fill — iconMedium / quaternaryText */
+.vocab-search-field-clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-quaternary);
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-search-field'] {
+  background: transparent;
+}

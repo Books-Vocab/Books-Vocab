@@ -11,7 +11,9 @@ modifiers. A slice of each is deterministically derivable at component scope:
 
 The deliberately-NOT-derivable forms stay honest backlog and are NOT asserted here:
   - clipShape(shape) / clipShape(UnevenRoundedRectangle(...))  (bare var / no-CSS-shape)
-  - overlay { subview } / overlay(alignment:) { subview }      (needs overlay-layer model)
+
+The overlay SUB-VIEW form (`overlay(alignment:) { subview }`) now has its own layer model —
+see test_overlay.py / overlay_layer.swift. Only the overlay COLOR-tint idiom remains here.
 
 This is both the IR gate (dumper emits the right modifier record) and the CSS gate
 (generate_css emits the right declaration). Run:

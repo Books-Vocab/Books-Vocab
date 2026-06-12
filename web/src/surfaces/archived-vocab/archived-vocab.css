@@ -1,0 +1,202 @@
+/* Archived Vocab — iOS ArchivedVocabSheet.swift（NavigationStack 全螢幕 sheet）的
+   web 鏡像。token 一律走 design-system 變數；nav/search chrome 在 catalog 以極淡 alpha
+   渲染（量測 ≈243 on 247 頁底色，近隱形）→ 以 token-allow 淡灰近似（對齊 notebook-edit
+   nav-title 策略）。
+
+   幾何量自 ref（1179×2556 native ÷3 = pt）：
+     · nav band bottom ≈ 338px native ≈ 113pt（status 59 + bar 44 + 餘）
+     · 單 row ≈ 197px native ≈ 66pt（archive style：word + translation 兩行）
+     · divider leading inset 16pt（listDividerInset），延伸至右緣
+     · 頁底色 #F7F6F3 = --page-bg；list row 白 #fff = --card-bg
+   catalog scene = .fill；Populated/Single/Empty alpha-mean=1（不透明全幀捕捉）。 */
+
+.av-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--page-bg); /* vocabCanvasBackground → pageBackground */
+  font-family: var(--font-sans);
+}
+
+/* inline nav bar：status + bar ≈113pt，標題置中、極淡（catalog 渲染近隱形） */
+.av-nav {
+  flex: none;
+  height: 113px; /* 量測 nav band bottom ≈338px native = 113pt */
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 14px;
+}
+.av-nav-title {
+  font-size: var(--text-subhead); /* inline title 以 subhead 近似量測淡字尺寸 */
+  font-weight: 600;
+  color: #f3f2ef; /* token-allow: ref 量測標題 ≈243 on 247 頁底色（近隱形 chrome） */
+}
+
+/* List(.plain) 區域：撐滿剩餘高度 */
+.av-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* List(.plain)：邊到邊白底 row 列表 */
+.av-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg); /* plain list row 白底（量測 #fff） */
+}
+
+.av-row-cell {
+  position: relative;
+}
+
+/* row 間 hairline divider：leading inset 16pt（listDividerInset），延伸至右緣 */
+.av-divider {
+  height: var(--sp-hairline);
+  margin-left: 16px; /* token-allow: iOS listDividerInset 16pt（List plain row separator inset） */
+  background: var(--divider);
+}
+
+/* WordRow 容器：listRowInsets(leading/trailing = listRowHorizontalInset=16) */
+.av-row {
+  display: flex;
+  align-items: center;
+  gap: var(--word-row-gap); /* WordRow HStack spacing: wordRowHorizontalGap=10 */
+  padding: 0 16px; /* token-allow: listRowHorizontalInset 16pt（leading/trailing） */
+  /* WordRow .padding(.vertical, compactRowVerticalPadding=10) */
+  padding-top: var(--compact-row-padding-v);
+  padding-bottom: var(--compact-row-padding-v);
+  box-sizing: border-box;
+}
+
+/* WordRow VStack(.leading, spacing: wordRowVerticalGap=4) */
+.av-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1); /* wordRowVerticalGap=4 */
+}
+
+/* HStack(.firstTextBaseline, spacing: wordRowBaselineGap=6)：icon + word + pos */
+.av-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--micro-gap); /* wordRowBaselineGap=6 */
+}
+
+/* leadingSystemImage archivebox：iconSmall(symbol 12 medium) / tertiaryText（leadingTone=.tertiary） */
+.av-row-icon {
+  flex: none;
+  color: var(--text-tertiary);
+  align-self: center; /* SF symbol 於 firstTextBaseline HStack 內視覺置中 */
+}
+
+/* Text(word).font(rowWord = systemMono 18 semibold)。封存態 wordTone=.secondary → secondaryText */
+.av-row-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-row-word);
+  font-weight: 600; /* .semibold */
+  color: var(--text-secondary); /* showsArchiveStyle → wordTone=.secondary */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* .lineLimit(1).truncationMode(.tail) */
+}
+
+/* Text(pos).font(caption = sans 12 bold) / tertiaryText */
+.av-row-pos {
+  flex: none; /* .fixedSize(horizontal: true) */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700; /* caption bold:true */
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Text(translation).font(body = sans 15) / secondaryText, lineLimit 2 */
+.av-row-translation {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* AppFonts.sans(size: 15)（非 --text-body=17） */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Empty state ───────────────────────────────────────────── */
+/* VStack[Spacer · VocabEmptyStateCard.padding(cardBlockPadding=24) · Spacer]：
+   卡片垂直置中（量測 card 約 y1150–1660 native，居中略偏上） */
+.av-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px; /* token-allow: cardBlockPadding 24pt（外圈 .padding） */
+  box-sizing: border-box;
+}
+
+/* VocabEmptyStateCard（.vocab style）：cardBackground 白 / cardBorder 0.7 / radius card=8
+   AppSectionCard padding = cardPadding(18) + AppEmptyStateContent verticalPadding(12) */
+.av-empty-card {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack); /* AppEmptyStateContent spacing=14 */
+  padding: 30px 18px; /* cardPadding 18 + 內容 verticalPadding 12 = 30 上下；左右 cardPadding 18 */
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent); /* cardBorder.opacity(0.7) */
+  border-radius: var(--radius-card); /* radii.card = AppRadius.md = 8 */
+}
+
+/* Image(systemName archivebox) — symbolLarge(symbol 30 light) / tertiaryText */
+.av-empty-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — sectionTitle(serif 18 bold) / primaryText */
+.av-empty-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — body(sans 15) / secondaryText, multilineTextAlignment(.center) */
+.av-empty-desc {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* ── 底部 .searchable 列（極淡 chrome）──────────────────────── */
+.av-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 12px 16px;
+  color: #f3f2ef; /* token-allow: ref 量測 search prompt ≈243 on 247（近隱形 chrome） */
+}
+.av-search-icon {
+  flex: none;
+}
+.av-search-prompt {
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* searchbar prompt ~17pt */
+}

@@ -13,12 +13,19 @@ Coverage — EVERY token carrying a `$swift` provenance key is checked:
   AppMetrics   AppSpacing scale, AppRadius scale, AppElevation z0..z4, AppMotion
                durations / timingCurve control points, TapFeedback scalars
   AppFonts     TypeScale ramp, Tracking scale
-  AppSkin      baseTypography sizes, baseSpacing / baseMetrics, baseRadii refs
-  UIComponents AppTagMetrics chip padding + AppTag fill opacity (AppSurface.swift)
+  AppSkin      baseTypography sizes, baseSpacing / baseMetrics (incl. labelTracking),
+               baseRadii refs
+  UIComponents AppTagMetrics chip padding + AppTag fill opacity (AppSurface.swift),
+               AppShellMetrics (toolbar badge padding)
+  Scenes       TodayReviewMetrics (progressBarGap, …)
 
 Web-only values WITHOUT a $swift key (leading ratios, spring bezier
 approximations, composed --transition-* shorthands, CJK fallbacks) are out of
 scope by design and documented under $platform-equivalence in tokens.json.
+Two component tokens carry iOS provenance in $description but NO $swift because
+their source is not a parseable `enum { static let }`: space.semantic.empty-state-stack
+(AppEmptyStateStyle.vocab(_:) struct init arg) and space.semantic.progress-bar-fill-min
+(VocabComponents.swift inline `max(6, …)` literal). Add $swift if those move to enums.
 Invariant: a $swift-bearing token that this guard cannot map to a real Swift
 symbol raises an error rather than being silently skipped.
 
@@ -56,6 +63,12 @@ def _read(name: str) -> str:
 
 def _read_uic(name: str) -> str:
     return (UICOMPONENTS / name).read_text(encoding="utf-8")
+
+
+def _read_rel(relpath: str) -> str:
+    """Read a Swift file by path relative to ios/BooksAndVocab/ — for sources
+    outside Models/ and UIComponents/ (e.g. Views/Vocabulary/Scenes/)."""
+    return (MODELS.parent / relpath).read_text(encoding="utf-8")
 
 
 def parse_app_colors() -> dict[str, tuple[float, float, float]]:
@@ -96,11 +109,12 @@ def parse_app_theme() -> dict[str, dict[str, dict]]:
     return out
 
 
-def parse_scale(filename: str, enum_name: str, dt: dict | None = None) -> dict[str, float]:
+def parse_scale(filename: str, enum_name: str, dt: dict | None = None, reader=_read) -> dict[str, float]:
     """`static let key: CGFloat = value` inside `enum <enum_name> {...}`. value is a
     numeric literal or (when dt is given) a DesignTokens.* reference. Non-numeric
-    RHS (e.g. `s6` aliasing another let) is skipped, as before."""
-    src = _read(filename)
+    RHS (e.g. `s6` aliasing another let) is skipped, as before. `reader` selects the
+    source dir (_read=Models, _read_uic=UIComponents, _read_rel=relative path)."""
+    src = reader(filename)
     m = re.search(r"enum " + enum_name + r"\s*\{", src)
     if not m:
         return {}
@@ -359,6 +373,13 @@ def check() -> list[str]:
     tap = parse_scale("AppMetrics.swift", "TapFeedback", dt)
     tag_metrics = parse_tag_metrics()
     tag_fill = parse_tag_fill()
+    app_shell_metrics = parse_scale("AppShellComponents.swift", "AppShellMetrics", dt, reader=_read_uic)
+    today_review_metrics = parse_scale(
+        "Views/Vocabulary/Scenes/TodayReviewMetrics.swift", "TodayReviewMetrics", dt, reader=_read_rel)
+    reader_metrics = parse_scale("Views/Reader/ReaderMetrics.swift", "ReaderMetrics", dt, reader=_read_rel)
+    bookshelf_metrics = parse_scale("Views/Bookshelf/BookshelfMetrics.swift", "AppBookshelfMetrics", dt, reader=_read_rel)
+    settings_metrics = parse_scale("Views/Settings/SettingsMetrics.swift", "AppSettingsMetrics", dt, reader=_read_rel)
+    welcome_metrics = parse_scale("Views/Welcome/WelcomeView.swift", "AppWelcomeMetrics", dt, reader=_read_rel)
 
     # 1) primitive palette
     for name, variants in tokens["color"]["primitive"].items():
@@ -472,6 +493,12 @@ def check() -> list[str]:
         "AppSkin.baseMetrics.": base_metrics,
         "AppMetrics.": app_metrics,
         "AppTagMetrics.": tag_metrics,
+        "AppShellMetrics.": app_shell_metrics,
+        "TodayReviewMetrics.": today_review_metrics,
+        "ReaderMetrics.": reader_metrics,
+        "AppBookshelfMetrics.": bookshelf_metrics,
+        "AppSettingsMetrics.": settings_metrics,
+        "AppWelcomeMetrics.": welcome_metrics,
     }
     for key, spec in tokens["space"]["semantic"].items():
         if key.startswith("$") or "$swift" not in spec:
@@ -484,15 +511,18 @@ def check() -> list[str]:
         elif not _eq(_dtcg_px(spec), table[name]):
             errors.append(f"space.semantic.{key}: JSON {_dtcg_px(spec)} != Swift {sym} {table[name]}")
 
-    # 6) tracking (AppFonts.Tracking)
+    # 6) tracking — AppFonts.Tracking ramp, plus AppSkin.baseMetrics.* tracking metrics
+    #    (e.g. labelTracking, which lives in the baseMetrics struct, not the Tracking enum).
     for key, spec in tokens["type"]["tracking"].items():
         if key.startswith("$") or "$swift" not in spec:
             continue
-        name = spec["$swift"].split(".")[-1]
-        if name not in tracking:
-            errors.append(f"type.tracking.{key}: {spec['$swift']} not found")
-        elif not _eq(_dtcg_px(spec), tracking[name]):
-            errors.append(f"type.tracking.{key}: JSON {_dtcg_px(spec)} != Swift {spec['$swift']} {tracking[name]}")
+        sym = spec["$swift"]
+        table = base_metrics if sym.startswith("AppSkin.baseMetrics.") else tracking
+        name = sym.split(".")[-1]
+        if name not in table:
+            errors.append(f"type.tracking.{key}: {sym} not found")
+        elif not _eq(_dtcg_px(spec), table[name]):
+            errors.append(f"type.tracking.{key}: JSON {_dtcg_px(spec)} != Swift {sym} {table[name]}")
 
     # 7) semantic radius refs (AppSkin baseRadii -> AppRadius.X)
     for key, spec in tokens["radius"]["semantic"].items():

@@ -1,0 +1,143 @@
+/* Vocabulary · Add Link — iOS AddLinkSheet 的 web 鏡像。
+   token 一律走 design-system 變數；iOS 系統色 / 量測色以行內 token-allow 標注。
+
+   AddLinkSheet 結構：NavigationStack{ VStack(spacing 0)[searchField(pad 24) + empty(∞)] }
+     .vocabCanvasBackground()  = 填 #f7f6f3（= --page-bg，量測 srgba(247,246,243)）opaque
+     .navigationTitle("新增連結").inlineNavigationBarTitle()
+
+   searchField（AddLinkSheet.searchField，**非** .vocab AppSearchField）：
+     HStack(spacing cardBlockInnerGap=8)[magnifyingglass/tertiary + TextField/primary]
+     .padding(cardBlockInnerGap*1.5 = 12)
+     .background(RoundedRect(radius AppRadius.md=8).fill(cardBackground=白 #fff))
+     外層 .padding(cardBlockPadding=24)
+
+   empty（AppEmptyStateContent，scene 走 AppThemeContainer → 預設 style = .themed(appTheme)）：
+     icon  = AppFonts.hero(.light)  = serif/symbol 40 light / tertiaryText
+     title = AppFonts.h2(.semibold) = serif 22 bold      / primaryText
+     desc  = AppFonts.body()        = sans 17 = --text-body / secondaryText
+     spacing = 14（--empty-state-stack）；.frame(maxHeight:.infinity) → 垂直置中
+
+   量測（native 1179×2556 ÷3 = 393pt 邏輯寬）：
+     search field bounds: left 72→24pt、right 1108→24pt inset、top 411→137pt、height 138→46pt
+     empty icon bbox y 1367–1490（123px≈41pt → hero 40）、center y ≈1428（476pt）、color #8a8a8a≈tertiary
+     title「搜尋單字」band y 1560–1604（min=55=#37352f primaryText）、center ≈1582（527pt）
+     desc「輸入單字…」band y 1660–1704（min=107=#6b6a65 secondaryText）、center ≈1682（560pt）
+     nav title band y ≈ 240–290 native（80–97pt），near-invisible white serif on #f7f6f3
+
+   catalog scene = .fill opaque（alpha mean=1）→ 全 phone-frame 不透明捕捉，無 transparent flag。 */
+
+/* surface 撐滿 phone-frame；vocabCanvasBackground = --page-bg */
+.val-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--page-bg);
+  box-sizing: border-box;
+}
+
+/* inline nav bar — 標準 iOS inline nav（status 59 + nav 44 ≈ 103pt 區），標題置中
+   高度設為 search top(137) - cardBlockPadding(24) = 113pt，使 search field top 落在 137pt */
+.val-nav {
+  flex: none;
+  height: 113px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px; /* 使標題中心 ≈ 82pt（量測 title band 67–97pt） */
+}
+
+/* navigationTitle("新增連結") inline — catalog 量測標題筆畫為白 #fff（max=255）
+   anti-alias 於 page-bg #f7f6f3（min=247）上，near-invisible 但筆畫確為白
+   → 用 --card-bg(#fff) 重現淡白筆畫，較 --page-bg 全隱形更貼 ref。 */
+.val-nav-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-body); /* 17，iOS inline nav title 尺寸（band y240–290≈17pt） */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--card-bg); /* token-allow: ref 標題筆畫 = 白 #fff on #f7f6f3，near-invisible */
+}
+
+/* searchField 外層 .padding(cardBlockPadding=24) */
+.val-search-pad {
+  flex: none;
+  padding: var(--sp-6); /* 24 = cardBlockPadding */
+}
+
+/* searchField：HStack(spacing 8)[icon + text]
+   .padding(12 = cardBlockInnerGap*1.5).background(RoundedRect md=8 白) */
+.val-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2); /* 8 = cardBlockInnerGap */
+  padding: var(--sp-3); /* 12 = cardBlockInnerGap*1.5 */
+  border-radius: var(--radius-md); /* 8 = AppRadius.md */
+  background: var(--card-bg); /* cardBackground = 白 #fff */
+  box-sizing: border-box;
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* TextField 預設系統 body = 17（platformTextInputConfig 未設 font） */
+  line-height: var(--leading-body);
+}
+
+/* leading magnifyingglass — tertiaryText */
+.val-search-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* TextField — primaryText；空態 placeholder 色（≈ tertiary） */
+.val-search-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.val-search-text[data-placeholder='1'] {
+  /* TextField 空態 placeholder = iOS systemPlaceholderText（淺灰），量測 ≈ #c4c4c6（min 196 on 白）；
+     較 --text-tertiary(#8a8983) 淺，為系統色非品牌 token */
+  color: #c4c4c6; /* token-allow: iOS placeholderText 系統色（非品牌 token） */
+}
+
+/* AppEmptyStateContent .frame(maxHeight:.infinity) → 吃滿 search 以下空間、垂直置中 */
+.val-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* VStack(spacing 14)[icon + title + desc]，子項置中 */
+.val-empty-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-stack); /* 14 */
+}
+
+/* hero Image(systemName) — AppFonts.hero(.light) = symbol 40 light / tertiaryText */
+.val-empty-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* Text(title) — AppFonts.h2(.semibold) = serif 22 bold / primaryText */
+.val-empty-title {
+  font-family: var(--font-serif);
+  font-size: var(--text-h2); /* 22 */
+  font-weight: 700;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+  text-align: center;
+}
+
+/* Text(description) — AppFonts.body() = sans 17 = --text-body / secondaryText */
+.val-empty-description {
+  font-family: var(--font-sans);
+  font-size: var(--text-body); /* 17（.themed style，非 vocab skin 的 15） */
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+  text-align: center;
+}
