@@ -960,8 +960,9 @@ export const PARITY = [
   { case: 'word-detail-card-compact-light', params: { surface: 'word-detail-card', scenario: 'compact', appearance: 'light', crop: 'component' }, crop: '.word-detail-card', ref: { surface: 'Word Detail · Card Document', scenario: 'Compact', appearance: 'light' }, note: 'Word detail card · compact' },
   { case: 'word-detail-card-no-example-light', params: { surface: 'word-detail-card', scenario: 'no-example', appearance: 'light', crop: 'component' }, crop: '.word-detail-card', ref: { surface: 'Word Detail · Card Document', scenario: 'No example / collocations', appearance: 'light' }, note: 'Word detail card · 無例句/collocations' },
   // ── Composite layer batch-8 ── Settings Preferences/Review（full-frame transparent）+ Subscription（component crop .settings-subscription-surface）
-  // settings-preferences：transparent .fill scene 的 ScrollView in-app chrome 透明 inset（magick
-  //   -trim 量得 content 頂緣 231px）→ surface padding-top 231 對齊（修正先前 top-align padding 24 偏移）。
+  // settings-preferences：transparent .fill scene 的 ScrollView 內容落在 in-app chrome 之下。
+  //   逐列掃 ios-normalized.png 得 content 頂緣 ≈225 capture px → ÷dpr3 = 75 CSS px（commit
+  //   3cea3e84）。切勿把 capture px 當 CSS 值（231 CSS = 693 capture px 會把內容打到 ~900px）。
   { case: 'settings-preferences-with-auto-sync-light', params: { surface: 'settings-preferences', scenario: 'with-auto-sync', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '含自動同步', appearance: 'light' }, note: 'Settings preferences · 含自動同步列' },
   { case: 'settings-preferences-auto-sync-off-light', params: { surface: 'settings-preferences', scenario: 'auto-sync-off', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '自動同步關閉', appearance: 'light' }, note: 'Settings preferences · 自動同步關閉' },
   { case: 'settings-preferences-logged-out-light', params: { surface: 'settings-preferences', scenario: 'logged-out', appearance: 'light' }, transparent: true, ref: { surface: 'Settings Sections · Preferences', scenario: '未登入 / 無同步列', appearance: 'light' }, note: 'Settings preferences · 未登入（無同步列）' },
