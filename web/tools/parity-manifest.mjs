@@ -907,4 +907,18 @@ export const PARITY = [
     note: 'Gate card a11y3 — headphones; AppFonts 固定字級不隨 Dynamic Type 縮放 (light)',
   },
   // account-section deferred (see scenarios.ts note): top-aligned + safe-area top inset fix pending.
+  // ── Composite layer batch-5 ── Review Fold trio（.fill transparent full-frame，
+  //    sampleCard/segment over transparent，shots transparent:true，無 component crop）
+  { case: 'review-fold-chevron-collapse-handle-light', params: { surface: 'review-fold-chevron', scenario: 'collapse-handle', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Chevron Pill', scenario: 'Collapse handle', appearance: 'light' }, note: 'ReviewFoldChevronPill 裸 capsule（chevron.compact.down，muted-fill + hairline border），置中 padding 40' },
+  { case: 'review-fold-chevron-on-card-backdrop-light', params: { surface: 'review-fold-chevron', scenario: 'on-card-backdrop', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Chevron Pill', scenario: 'On card backdrop', appearance: 'light' }, note: 'sampleCard（title3 + subhead + footnote）+ bottom-overlay chevron pill（offset y 10）' },
+  { case: 'review-fold-paper-expanded-light', params: { surface: 'review-fold-paper', scenario: 'expanded', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Paper Fold', scenario: 'Expanded (1.0)', appearance: 'light' }, note: 'PaperFoldModifier progress 1.0 — sampleCard 全展開' },
+  // NOTE: paper three-quarter (0.75) + half (0.5) deferred — iOS .fill scene 對置中卡片
+  //   套 scaleEffect(anchor:.top)+rotation3DEffect(anchor:.top)，SwiftUI 的「layout 不變、
+  //   render-transform」在中段使視覺卡片上移至幀頂；web 以 flex center 置中 → 中段垂直錯位
+  //   （0.75 RMSE 0.39 / 0.5 RMSE 0.30 > ceiling，兩極端 1.0/0.25/0.05 對齊故過）。與
+  //   account-section 同類 .fill 對齊根因，待 top-anchor layout 模型重導。fixtures 仍保留 5 態。
+  { case: 'review-fold-paper-quarter-light', params: { surface: 'review-fold-paper', scenario: 'quarter', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Paper Fold', scenario: 'Quarter (0.25)', appearance: 'light' }, note: 'PaperFoldModifier progress 0.25 — sampleCard 摺至 25% 高' },
+  { case: 'review-fold-paper-nearly-folded-light', params: { surface: 'review-fold-paper', scenario: 'nearly-folded', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Paper Fold', scenario: 'Nearly folded (0.05)', appearance: 'light' }, note: 'PaperFoldModifier progress 0.05 — sampleCard 近全摺' },
+  { case: 'review-fold-segment-single-light', params: { surface: 'review-fold-segment', scenario: 'single', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Segment', scenario: 'Single', appearance: 'light' }, note: 'ReviewFoldSurface position single — 單段（四角 radii），padding 40' },
+  { case: 'review-fold-segment-stacked-group-light', params: { surface: 'review-fold-segment', scenario: 'stacked-group', appearance: 'light' }, transparent: true, ref: { surface: 'Review Fold · Segment', scenario: 'Stacked group', appearance: 'light' }, note: 'ReviewFoldSurface top/middle/bottom 三段堆疊（join radii），padding 24' },
 ];

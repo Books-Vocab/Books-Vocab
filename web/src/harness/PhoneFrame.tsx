@@ -27,6 +27,9 @@ import { NotebooksCardScreen } from '../surfaces/notebooks-card/NotebooksCardScr
 import { KGVocabRowScreen } from '../surfaces/kg-vocab-row/KGVocabRowScreen'
 import { BookCardScreen } from '../surfaces/book-card/BookCardScreen'
 import { SubscriptionGateCardScreen } from '../surfaces/subscription-gate-card/SubscriptionGateCardScreen'
+import { ReviewFoldChevronScreen } from '../surfaces/review-fold-chevron/ReviewFoldChevronScreen'
+import { ReviewFoldPaperScreen } from '../surfaces/review-fold-paper/ReviewFoldPaperScreen'
+import { ReviewFoldSegmentScreen } from '../surfaces/review-fold-segment/ReviewFoldSegmentScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -96,6 +99,12 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <BookCardScreen scenario={config.scenario} />
     case 'subscription-gate-card':
       return <SubscriptionGateCardScreen scenario={config.scenario} />
+    case 'review-fold-chevron':
+      return <ReviewFoldChevronScreen scenario={config.scenario} />
+    case 'review-fold-paper':
+      return <ReviewFoldPaperScreen scenario={config.scenario} />
+    case 'review-fold-segment':
+      return <ReviewFoldSegmentScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':
