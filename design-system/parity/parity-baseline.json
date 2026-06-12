@@ -529,6 +529,61 @@
       "rmse": 0.0735371,
       "mae": 0.0091473,
       "ssim": 0.0209067
+    },
+    "sync-completed-light": {
+      "rmse": 0.138906,
+      "mae": 0.0301177,
+      "ssim": 0.0468158
+    },
+    "sync-full-light": {
+      "rmse": 0.103932,
+      "mae": 0.0280413,
+      "ssim": 0.0557619
+    },
+    "sync-partial-light": {
+      "rmse": 0.145727,
+      "mae": 0.0396259,
+      "ssim": 0.074638
+    },
+    "sync-ready-light": {
+      "rmse": 0.217902,
+      "mae": 0.0662191,
+      "ssim": 0.0556399
+    },
+    "sync-running-light": {
+      "rmse": 0.0895904,
+      "mae": 0.0192275,
+      "ssim": 0.043291
+    },
+    "notebooks-card-grid-two-light": {
+      "rmse": 0.0718958,
+      "mae": 0.0131739,
+      "ssim": 0.0456557
+    },
+    "notebooks-card-hero-fresh-light": {
+      "rmse": 0.033159,
+      "mae": 0.00376927,
+      "ssim": 0.0125221
+    },
+    "notebooks-card-hero-long-name-light": {
+      "rmse": 0.0726307,
+      "mae": 0.013675,
+      "ssim": 0.0461995
+    },
+    "notebooks-card-hero-heavy-light": {
+      "rmse": 0.0551245,
+      "mae": 0.00871654,
+      "ssim": 0.0309886
+    },
+    "kg-vocab-row-default-light": {
+      "rmse": 0.091626,
+      "mae": 0.0212447,
+      "ssim": 0.0639399
+    },
+    "kg-vocab-row-highlighted-light": {
+      "rmse": 0.0706986,
+      "mae": 0.0145786,
+      "ssim": 0.0689718
     }
   }
 }
