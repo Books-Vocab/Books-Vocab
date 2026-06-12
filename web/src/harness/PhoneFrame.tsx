@@ -30,6 +30,9 @@ import { SubscriptionGateCardScreen } from '../surfaces/subscription-gate-card/S
 import { ReviewFoldChevronScreen } from '../surfaces/review-fold-chevron/ReviewFoldChevronScreen'
 import { ReviewFoldPaperScreen } from '../surfaces/review-fold-paper/ReviewFoldPaperScreen'
 import { ReviewFoldSegmentScreen } from '../surfaces/review-fold-segment/ReviewFoldSegmentScreen'
+import { PodcastContinueCardScreen } from '../surfaces/podcast-continue-card/PodcastContinueCardScreen'
+import { PodcastEpisodeRowScreen } from '../surfaces/podcast-episode-row/PodcastEpisodeRowScreen'
+import { PodcastSeriesCardScreen } from '../surfaces/podcast-series-card/PodcastSeriesCardScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -105,6 +108,12 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <ReviewFoldPaperScreen scenario={config.scenario} />
     case 'review-fold-segment':
       return <ReviewFoldSegmentScreen scenario={config.scenario} />
+    case 'podcast-continue-card':
+      return <PodcastContinueCardScreen scenario={config.scenario} />
+    case 'podcast-episode-row':
+      return <PodcastEpisodeRowScreen scenario={config.scenario} />
+    case 'podcast-series-card':
+      return <PodcastSeriesCardScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':
