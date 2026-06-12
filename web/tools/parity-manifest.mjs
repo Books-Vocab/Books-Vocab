@@ -490,4 +490,264 @@ export const PARITY = [
     ref: { surface: 'Reader Notebook Picker', scenario: 'Empty — no notebooks', appearance: 'light' },
     note: 'Reader Notebook picker, empty (light)',
   },
+  // --- Vocab primitive (atom) layer — 28 transparent component scenes (wf-vocab-atoms) ---
+  {
+    case: 'vocab-accessory-icon-button-default-light',
+    params: { surface: 'vocab-accessory-icon-button', scenario: 'default', appearance: 'light', crop: 'component' },
+    crop: '.vocab-accessory-icon-button-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Accessory Icon Button', scenario: 'Default fill', appearance: 'light' },
+    note: 'chromeButtonSize(32) 方形 muted-fill RoundedRectangle(tiny=6) + SF trash(iconToolbar 15/medium) 系統紅 tone；scene 透明畫布，surface = button + .padding(24) intrinsic box（dpr3 240×240）',
+  },
+  // Vocab Shell · Slider Row（VocabShellChromeScenarios.swift 唯一態「Interactive」）。
+  // 滿寬互動列、catalog scene 透明畫布（corner srgba 0,0,0,0），crop=component +
+  // transparent omitBackground 截圖 → row-over-transparent。
+  {
+    case: 'vocab-slider-row-interactive-light',
+    params: { surface: 'vocab-slider-row', scenario: 'interactive', appearance: 'light', crop: 'component' },
+    crop: '.vocab-slider-row-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Slider Row', scenario: 'Interactive', appearance: 'light' },
+    note: 'Vocab slider row · 間隔 0.6 interactive (light)',
+  },
+  // VocabToneChip（VocabComponents.swift:55）— 「Vocab Components · Tone Chip」2 態。
+  // catalog component scene 畫布透明（corner srgba 0,0,0,0）→ crop=component +
+  // transparent capture，crop 到 .vocab-tone-chip-surface（.padding(24) intrinsic box）。
+  // Variants = VStack(spacing 16) 4 chips（blue/green/red/purple）；Long text = 單 indigo chip。
+  {
+    case: 'vocab-tone-chip-variants-light',
+    params: { surface: 'vocab-tone-chip', scenario: 'variants', appearance: 'light', crop: 'component' },
+    crop: '.vocab-tone-chip-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Components · Tone Chip', scenario: 'Variants', appearance: 'light' },
+    note: 'Vocab tone chip · variants 4 系統色 chip (light)',
+  },
+  {
+    case: 'vocab-tone-chip-long-text-light',
+    params: { surface: 'vocab-tone-chip', scenario: 'long-text', appearance: 'light', crop: 'component' },
+    crop: '.vocab-tone-chip-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Components · Tone Chip', scenario: 'Long text', appearance: 'light' },
+    note: 'Vocab tone chip · long-text indigo capsule 隨內容延展 (light)',
+  },
+  {
+    case: 'vocab-chrome-icon-button-close-light',
+    params: { surface: 'vocab-chrome-icon-button', scenario: 'close', appearance: 'light', crop: 'component' },
+    crop: '.vocab-chrome-icon-button-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Chrome Icon Button', scenario: 'Close', appearance: 'light' },
+    note: 'Vocab chrome icon button · Close (xmark, secondaryText tone) light',
+  },
+  {
+    case: 'vocab-chrome-icon-button-toned-filter-light',
+    params: { surface: 'vocab-chrome-icon-button', scenario: 'toned-filter', appearance: 'light', crop: 'component' },
+    crop: '.vocab-chrome-icon-button-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Chrome Icon Button', scenario: 'Toned (filter)', appearance: 'light' },
+    note: 'Vocab chrome icon button · Toned filter (line.3.horizontal.decrease, .accentColor system blue) light',
+  },
+  // Vocab Shell · Inline Action Button（VocabShellChromeScenarios.swift 2 態）—
+  // 純文字 Button(.plain)，font = appSkin.typography.body = sans 15
+  // (= --text-subhead，非 --text-body=17)。component scene 透明 (corner srgba 0)。
+  // Accent default = palette.accent；Toned = SwiftUI 系統 Color.secondary
+  // (secondaryLabel rgba(60,60,67,0.6)，非 appSkin secondaryText)。
+  {
+    case: 'vocab-inline-action-button-accent-default-light',
+    params: { surface: 'vocab-inline-action-button', scenario: 'accent-default', appearance: 'light', crop: 'component' },
+    crop: '.vocab-inline-action-button-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Inline Action Button', scenario: 'Accent default', appearance: 'light' },
+    note: 'Vocab inline action button · accent default 全部選取 (light)',
+  },
+  {
+    case: 'vocab-inline-action-button-toned-light',
+    params: { surface: 'vocab-inline-action-button', scenario: 'toned', appearance: 'light', crop: 'component' },
+    crop: '.vocab-inline-action-button-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Inline Action Button', scenario: 'Toned', appearance: 'light' },
+    note: 'Vocab inline action button · toned 取消 (Color.secondary) (light)',
+  },
+  {
+    case: 'vocab-search-field-empty-light',
+    params: { surface: 'vocab-search-field', scenario: 'empty', appearance: 'light', crop: 'component' },
+    crop: '.vocab-search-field-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Search Field', scenario: 'Empty · prompt visible', appearance: 'light' },
+    note: 'Vocab search field · empty prompt visible (light)',
+  },
+  {
+    case: 'vocab-search-field-with-query-light',
+    params: { surface: 'vocab-search-field', scenario: 'with-query', appearance: 'light', crop: 'component' },
+    crop: '.vocab-search-field-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Search Field', scenario: 'With query', appearance: 'light' },
+    note: 'Vocab search field · with query + clear button (light)',
+  },
+  // Vocab Shell · Section Header（VocabShellChromeScenarios.swift 2 態，.fillH 滿寬列）。
+  // catalog component scene 透明（corner srgba 0）→ transparent:true，crop 到滿寬列盒
+  // (.vocab-section-header-surface = wrapWide .frame(maxWidth:.infinity).padding(24)，
+  // ref 1179×191 = 393×63.67pt@dpr3)。
+  {
+    case: 'vocab-section-header-title-only-light',
+    params: { surface: 'vocab-section-header', scenario: 'title-only', appearance: 'light', crop: 'component' },
+    crop: '.vocab-section-header-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Section Header', scenario: 'Title only', appearance: 'light' },
+    note: 'Vocab section header · title only 已收錄 (light)',
+  },
+  {
+    case: 'vocab-section-header-icon-trailing-light',
+    params: { surface: 'vocab-section-header', scenario: 'icon-trailing', appearance: 'light', crop: 'component' },
+    crop: '.vocab-section-header-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Section Header', scenario: 'Icon + trailing count', appearance: 'light' },
+    note: 'Vocab section header · clock.badge + trailing 5 待複習 (light)',
+  },
+  // Vocab Components · Review Progress Bar — VocabComponentScenarios.swift 3 態
+  // （VocabReviewProgressBar：detailLabel(mono 10 bold) + Capsule track(progress-track)
+  //  + ReviewGradient fill，width 104 / height 5）。catalog scene 透明（corner srgba 0）
+  //  → crop=component + transparent:true，crop 到 .vocab-review-progress-bar-surface。
+  {
+    case: 'vocab-review-progress-bar-ratios-light',
+    params: { surface: 'vocab-review-progress-bar', scenario: 'ratios', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-progress-bar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Components · Review Progress Bar', scenario: 'Ratios', appearance: 'light' },
+    note: 'Vocab review progress bar · ratios 0/0.33/0.75/1.0 四條 (light)',
+  },
+  {
+    case: 'vocab-review-progress-bar-detail-only-light',
+    params: { surface: 'vocab-review-progress-bar', scenario: 'detail-only', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-progress-bar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Components · Review Progress Bar', scenario: 'Detail only (no bar)', appearance: 'light' },
+    note: 'Vocab review progress bar · ratio nil，僅 detailLabel 文字 (light)',
+  },
+  {
+    case: 'vocab-review-progress-bar-over-100-light',
+    params: { surface: 'vocab-review-progress-bar', scenario: 'over-100', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-progress-bar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Components · Review Progress Bar', scenario: 'Over 100% (clamped)', appearance: 'light' },
+    note: 'Vocab review progress bar · ratio 1.5 fill clamp 至 100% (light)',
+  },
+  // Vocab Shell · Review CTA Pill（VocabShellComponentsScenarios.swift「Vocab Shell ·
+  // Review CTA Pill」3 態，layout .compressed = intrinsic pill）。catalog component
+  // scene 透明畫布（corner srgba 0,0,0,0）→ transparent crop，同 vocab-sort-pill。
+  // brandHero capsule + onBrandHero 前景；icon 依 due/unlearned 切 play.fill /
+  // clock.badge / sparkles，count = monospacedDigit。
+  {
+    case: 'vocab-review-cta-pill-both-types-light',
+    params: { surface: 'vocab-review-cta-pill', scenario: 'both-types', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-cta-pill-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Review CTA Pill', scenario: 'Both types (menu)', appearance: 'light' },
+    note: 'Vocab review CTA pill · both types (play.fill, 17) (light)',
+  },
+  {
+    case: 'vocab-review-cta-pill-due-only-light',
+    params: { surface: 'vocab-review-cta-pill', scenario: 'due-only', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-cta-pill-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Review CTA Pill', scenario: 'Due only', appearance: 'light' },
+    note: 'Vocab review CTA pill · due only (clock.badge, 5) (light)',
+  },
+  {
+    case: 'vocab-review-cta-pill-unlearned-only-light',
+    params: { surface: 'vocab-review-cta-pill', scenario: 'unlearned-only', appearance: 'light', crop: 'component' },
+    crop: '.vocab-review-cta-pill-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Review CTA Pill', scenario: 'Unlearned only', appearance: 'light' },
+    note: 'Vocab review CTA pill · unlearned only (sparkles, 8) (light)',
+  },
+  // Vocab Shell · Tab Selector（VocabShellComponentsScenarios.swift）— review-state
+  // segmented bar，layout .fillH（全裝置寬 393pt）。catalog 元件 scene 畫布透明
+  // （corner srgba 0）：transparent:true → shots omitBackground，使 ref/shot 同為
+  // bar-over-transparent。crop 目標 = surface 自身（.vocab-tab-selector-surface，
+  // bar + padding 24 的全寬 box）。selected pill = mutedFill 4%，三段均分寬。
+  {
+    case: 'vocab-tab-selector-no-counts-light',
+    params: { surface: 'vocab-tab-selector', scenario: 'no-counts', appearance: 'light', crop: 'component' },
+    crop: '.vocab-tab-selector-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Tab Selector', scenario: 'No counts · unlearned selected', appearance: 'light' },
+    note: 'Vocab tab selector · no counts, unlearned selected (light)',
+  },
+  {
+    case: 'vocab-tab-selector-with-counts-light',
+    params: { surface: 'vocab-tab-selector', scenario: 'with-counts', appearance: 'light', crop: 'component' },
+    crop: '.vocab-tab-selector-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Tab Selector', scenario: 'With counts · due selected', appearance: 'light' },
+    note: 'Vocab tab selector · counts 12/5/38, due selected (light)',
+  },
+  {
+    case: 'vocab-tab-selector-zero-counts-light',
+    params: { surface: 'vocab-tab-selector', scenario: 'zero-counts', appearance: 'light', crop: 'component' },
+    crop: '.vocab-tab-selector-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Tab Selector', scenario: 'Zero counts · reviewed selected', appearance: 'light' },
+    note: 'Vocab tab selector · counts 0/0/0, reviewed selected (light)',
+  },
+  // Vocab Shell · Toolbar Glyph（VocabShellChromeScenarios.swift「Vocab Shell ·
+  // Toolbar Glyph」3 態，layout .compressed = intrinsic glyph）。元件 scene 畫布
+  // 透明（corner srgba 0,0,0,0）→ transparent:true + crop 到 component-surface。
+  // AppToolbarGlyph(.vocab)：HStack(s1)[icon iconToolbar/secondaryText + 可選
+  // destructive Capsule badge（monoLabel white，5h/2v）]。皆 light。
+  {
+    case: 'vocab-toolbar-glyph-plain-light',
+    params: { surface: 'vocab-toolbar-glyph', scenario: 'plain', appearance: 'light', crop: 'component' },
+    crop: '.vocab-toolbar-glyph-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Toolbar Glyph', scenario: 'Plain', appearance: 'light' },
+    note: 'Vocab toolbar glyph · plain（無 badge）(light)',
+  },
+  {
+    case: 'vocab-toolbar-glyph-with-badge-light',
+    params: { surface: 'vocab-toolbar-glyph', scenario: 'with-badge', appearance: 'light', crop: 'component' },
+    crop: '.vocab-toolbar-glyph-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Toolbar Glyph', scenario: 'With badge', appearance: 'light' },
+    note: 'Vocab toolbar glyph · with badge "5" (light)',
+  },
+  {
+    case: 'vocab-toolbar-glyph-badge-stress-light',
+    params: { surface: 'vocab-toolbar-glyph', scenario: 'badge-stress', appearance: 'light', crop: 'component' },
+    crop: '.vocab-toolbar-glyph-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Toolbar Glyph', scenario: 'Badge stress (99+)', appearance: 'light' },
+    note: 'Vocab toolbar glyph · badge stress "99+" (light)',
+  },
+  // Vocab · Empty State（VocabComponentScenarios.swift「Vocab Components · Empty
+  // State」4 態）— AppEmptyStateContent/Card .vocab(skin)。scene = 元件
+  // .frame(maxWidth:.infinity).padding(24)，catalog canvas 透明（corner srgba 0,0,0,0），
+  // 故 crop=component + transparent + omitBackground，crop 目標 = surface 自身。
+  {
+    case: 'vocab-empty-state-card-no-action-light',
+    params: { surface: 'vocab-empty-state', scenario: 'card-no-action', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Vocab Components · Empty State', scenario: 'Card — no action', appearance: 'light' },
+    note: 'Vocab empty state · Card 找不到符合的單字（magnifyingglass，無 CTA）(light)',
+  },
+  {
+    case: 'vocab-empty-state-card-with-action-light',
+    params: { surface: 'vocab-empty-state', scenario: 'card-with-action', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Vocab Components · Empty State', scenario: 'Card — with action', appearance: 'light' },
+    note: 'Vocab empty state · Card 詞庫是空的（tray，outline「開始閱讀」CTA）(light)',
+  },
+  {
+    case: 'vocab-empty-state-content-basic-light',
+    params: { surface: 'vocab-empty-state', scenario: 'content-basic', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Vocab Components · Empty State', scenario: 'Content — basic', appearance: 'light' },
+    note: 'Vocab empty state · Content 尚無單字（book.closed，無 chrome）(light)',
+  },
+  {
+    case: 'vocab-empty-state-content-guidance-action-light',
+    params: { surface: 'vocab-empty-state', scenario: 'content-guidance-action', appearance: 'light' },
+    transparent: true,
+    ref: { surface: 'Vocab Components · Empty State', scenario: 'Content — guidance + action', appearance: 'light' },
+    note: 'Vocab empty state · Content 今天沒有要複習的單字（checkmark.circle，guidance@0.7 + outline「查看全部單字」CTA）(light)',
+  },
 ];

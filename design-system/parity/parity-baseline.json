@@ -349,6 +349,146 @@
       "rmse": 0.0116685,
       "mae": 0.000419548,
       "ssim": 0.00142979
+    },
+    "vocab-accessory-icon-button-default-light": {
+      "rmse": 0.0667527,
+      "mae": 0.0065367,
+      "ssim": 0.0178119
+    },
+    "vocab-slider-row-interactive-light": {
+      "rmse": 0.0215874,
+      "mae": 0.0016752,
+      "ssim": 0.00949234
+    },
+    "vocab-tone-chip-variants-light": {
+      "rmse": 0.0776679,
+      "mae": 0.0143702,
+      "ssim": 0.0312137
+    },
+    "vocab-tone-chip-long-text-light": {
+      "rmse": 0.0750853,
+      "mae": 0.0226944,
+      "ssim": 0.0308051
+    },
+    "vocab-chrome-icon-button-close-light": {
+      "rmse": 0.0238635,
+      "mae": 0.00183445,
+      "ssim": 0.0047299
+    },
+    "vocab-chrome-icon-button-toned-filter-light": {
+      "rmse": 0.0316958,
+      "mae": 0.00235566,
+      "ssim": 0.00509253
+    },
+    "vocab-inline-action-button-accent-default-light": {
+      "rmse": 0.0900806,
+      "mae": 0.0174709,
+      "ssim": 0.0528699
+    },
+    "vocab-inline-action-button-toned-light": {
+      "rmse": 0.0384804,
+      "mae": 0.00624027,
+      "ssim": 0.0322126
+    },
+    "vocab-search-field-empty-light": {
+      "rmse": 0.0511228,
+      "mae": 0.0066304,
+      "ssim": 0.015468
+    },
+    "vocab-search-field-with-query-light": {
+      "rmse": 0.0423118,
+      "mae": 0.00482377,
+      "ssim": 0.0180925
+    },
+    "vocab-section-header-title-only-light": {
+      "rmse": 0.0425781,
+      "mae": 0.00348713,
+      "ssim": 0.0095145
+    },
+    "vocab-section-header-icon-trailing-light": {
+      "rmse": 0.0587199,
+      "mae": 0.00649439,
+      "ssim": 0.0159589
+    },
+    "vocab-review-progress-bar-ratios-light": {
+      "rmse": 0.0832499,
+      "mae": 0.0154947,
+      "ssim": 0.0424796
+    },
+    "vocab-review-progress-bar-detail-only-light": {
+      "rmse": 0.0682968,
+      "mae": 0.0116632,
+      "ssim": 0.0493597
+    },
+    "vocab-review-progress-bar-over-100-light": {
+      "rmse": 0.0775678,
+      "mae": 0.0150012,
+      "ssim": 0.0441271
+    },
+    "vocab-review-cta-pill-both-types-light": {
+      "rmse": 0.127139,
+      "mae": 0.0217012,
+      "ssim": 0.0449387
+    },
+    "vocab-review-cta-pill-due-only-light": {
+      "rmse": 0.109547,
+      "mae": 0.0174963,
+      "ssim": 0.0408007
+    },
+    "vocab-review-cta-pill-unlearned-only-light": {
+      "rmse": 0.0889661,
+      "mae": 0.011743,
+      "ssim": 0.0303915
+    },
+    "vocab-tab-selector-no-counts-light": {
+      "rmse": 0.108995,
+      "mae": 0.01675,
+      "ssim": 0.0474175
+    },
+    "vocab-tab-selector-with-counts-light": {
+      "rmse": 0.155088,
+      "mae": 0.0305266,
+      "ssim": 0.06562
+    },
+    "vocab-tab-selector-zero-counts-light": {
+      "rmse": 0.153889,
+      "mae": 0.0299299,
+      "ssim": 0.0644892
+    },
+    "vocab-toolbar-glyph-plain-light": {
+      "rmse": 0.0799274,
+      "mae": 0.0154554,
+      "ssim": 0.0353506
+    },
+    "vocab-toolbar-glyph-with-badge-light": {
+      "rmse": 0.096818,
+      "mae": 0.0202183,
+      "ssim": 0.051099
+    },
+    "vocab-toolbar-glyph-badge-stress-light": {
+      "rmse": 0.108743,
+      "mae": 0.024191,
+      "ssim": 0.0604474
+    },
+    "vocab-empty-state-card-no-action-light": {
+      "rmse": 0.173617,
+      "mae": 0.0331559,
+      "ssim": 0.0312863
+    },
+    "vocab-empty-state-card-with-action-light": {
+      "rmse": 0.176208,
+      "mae": 0.0352087,
+      "ssim": 0.0385944
+    },
+    "vocab-empty-state-content-basic-light": {
+      "rmse": 0.0419389,
+      "mae": 0.00439732,
+      "ssim": 0.0129257
+    },
+    "vocab-empty-state-content-guidance-action-light": {
+      "rmse": 0.0612758,
+      "mae": 0.010152,
+      "ssim": 0.0345897
     }
   }
 }

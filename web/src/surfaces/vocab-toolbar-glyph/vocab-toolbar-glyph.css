@@ -1,0 +1,48 @@
+/* VocabToolbarGlyph — iOS AppToolbarGlyph(.vocab style) 的 web 鏡像。
+   token 一律走 design-system 變數（sp-1 spacing、icon-toolbar-size、
+   toolbar-badge padding、badge-font-size、destructive），不寫 literal。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身（glyph + padding 24 的 intrinsic box），surface 與
+   phone-frame 在 crop=component 下透明，shots omitBackground 截圖 → web 與 ref
+   同為 glyph-over-transparent。 */
+
+/* surface = glyph + scene wrapper .padding(24) 的緊裹 box（intrinsic，供 crop 截取） */
+.vocab-toolbar-glyph-component-surface {
+  display: inline-flex;
+  padding: var(--sp-6);
+  box-sizing: border-box;
+}
+
+/* AppToolbarGlyph：HStack(spacing s1)[Image(iconToolbar) + 可選 badge] */
+.vocab-toolbar-glyph {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.vocab-toolbar-glyph-icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* badge：Text(monoLabel).padding(.h 5,.v 2).background(Capsule destructive) */
+.vocab-toolbar-glyph-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--toolbar-badge-padding-v) var(--toolbar-badge-padding-h);
+  border-radius: 999px;
+  background: var(--destructive);
+  color: #ffffff;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-toolbar-glyph'] {
+  background: transparent;
+}

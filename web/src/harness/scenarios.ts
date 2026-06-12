@@ -58,6 +58,21 @@ export const SURFACE_SCENARIOS = {
   //     難度），muted-fill Capsule。catalog scene 畫布透明、layout .compressed
   //     intrinsic 裁切，故 web 走 crop=component + transparent capture。
   'vocab-sort-pill': ['default', 'alphabetical', 'difficulty'],
+  // Vocab Shell/Components primitive (atom) layer — all透明 catalog component scenes,
+  // crop=component capture. SoT: VocabShellChromeScenarios / VocabShellComponentsScenarios /
+  // VocabComponentScenarios. See each surface dir for fidelity notes.
+  'vocab-accessory-icon-button': ['default'],
+  'vocab-slider-row': ['interactive'],
+  'vocab-tone-chip': ['variants', 'long-text'],
+  'vocab-chrome-icon-button': ['close', 'toned-filter'],
+  'vocab-inline-action-button': ['accent-default', 'toned'],
+  'vocab-search-field': ['empty', 'with-query'],
+  'vocab-section-header': ['title-only', 'icon-trailing'],
+  'vocab-review-progress-bar': ['ratios', 'detail-only', 'over-100'],
+  'vocab-review-cta-pill': ['both-types', 'due-only', 'unlearned-only'],
+  'vocab-tab-selector': ['no-counts', 'with-counts', 'zero-counts'],
+  'vocab-toolbar-glyph': ['plain', 'with-badge', 'badge-stress'],
+  'vocab-empty-state': ['card-no-action', 'card-with-action', 'content-basic', 'content-guidance-action'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

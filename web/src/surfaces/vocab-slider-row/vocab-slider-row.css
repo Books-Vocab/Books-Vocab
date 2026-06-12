@@ -1,0 +1,87 @@
+/* Vocab Shell · Slider Row — iOS VocabSliderRow（chrome 層滿寬互動列）的 web 鏡像。
+   token 一律走 design-system 變數（inline-gap、caption、mono、tab-selector-height、
+   primary/secondary text、tint）。
+
+   例外（無 design-token provenance，刻意保留 literal）：
+   - Slider 是 SwiftUI/Catalyst 系統控件，appSkin 不對其著色。filled = .tint
+     (#37352f = var(--tint))；empty track = 系統預設灰，量測 srgba(0,0,0,0.1)，
+     非 appSkin 值，故以 system literal 記錄（design-system 無對應色）。
+   - label/value 的 frame width（64 / 42）= VocabSliderRow.labelWidth/valueWidth
+     的 SwiftUI hard-coded 預設常數（非 appSkin token），故保留 px literal。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface（滿寬 row + padding 24 的 box，dpr3 1179×240 對齊 ref），
+   surface 與 phone-frame 在 crop=component 下透明，shots omitBackground 截圖 →
+   web 與 ref 同為 row-over-transparent。 */
+
+/* surface = 滿寬 row + scene wrapper .frame(maxWidth:.infinity).padding(24)。 */
+.vocab-slider-row-surface {
+  display: block;
+  width: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* VocabSliderRow：HStack(spacing inlineGap)[label · Slider · value]
+   .frame(height: tabSelectorHeight)。 */
+.vocab-slider-row {
+  display: flex;
+  align-items: center;
+  gap: var(--inline-gap);
+  height: var(--tab-selector-height);
+}
+
+/* Text(label).font(caption).foregroundStyle(primaryText).frame(width:64, .leading) */
+.vocab-slider-row-label {
+  flex: none;
+  width: 64px; /* VocabSliderRow.labelWidth（SwiftUI 常數，非 token） */
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Slider(value, in: range) — Catalyst 無凸起 thumb 的雙段膠囊軌。
+   軌高量測 ~6px（19px@dpr3 ÷ 3）；empty track 系統預設灰。 */
+.vocab-slider-row-track {
+  flex: 1 1 auto;
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.1); /* SwiftUI Slider 系統預設空軌色，無 appSkin provenance */
+  overflow: hidden;
+}
+
+/* filled 段 = .tint（accentColor），左對齊膠囊。 */
+.vocab-slider-row-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--tint);
+}
+
+/* Text(format value).font(monoLabel).monospacedDigit().foregroundStyle(secondaryText)
+   .frame(width:42, .trailing)。monoLabel = AppFonts.mono(10, bold)，design-system
+   無對應 text-size var（overview/notebook surface 同樣以 10px literal 鏡像）。 */
+.vocab-slider-row-value {
+  flex: none;
+  width: 42px; /* VocabSliderRow.valueWidth（SwiftUI 常數，非 token） */
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-label); /* monoLabel = AppFonts.mono(10, bold) */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-slider-row'] {
+  height: auto;
+  background: transparent;
+}
