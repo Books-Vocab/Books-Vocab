@@ -7,6 +7,7 @@ import { VOCABULARY_FIXTURES } from '../../surfaces/vocabulary/fixtures'
 import type {
   CardResponse,
   EntitlementsResponse,
+  NotebookResponse,
   PodcastProgressListResponse,
   PodcastSeriesDetail,
   PodcastSeriesSummary,
@@ -17,6 +18,71 @@ import type {
 } from '../types'
 
 const NOW_ISO = '2026-06-11T00:00:00Z'
+
+export const MOCK_NOTEBOOKS: NotebookResponse[] = [
+  {
+    id: 'default',
+    name: '我的單字本',
+    color: '#AFC2D3',
+    coverPattern: null,
+    sortOrder: 0,
+    isDefault: true,
+    isDeleted: false,
+    cardCount: 3,
+    updatedAt: NOW_ISO,
+  },
+  {
+    id: 'classics',
+    name: '經典文學',
+    color: '#AFC2D3',
+    coverPattern: null,
+    sortOrder: 1,
+    isDefault: false,
+    isDeleted: false,
+    cardCount: 2,
+    updatedAt: NOW_ISO,
+  },
+  {
+    id: 'science',
+    name: '科普閱讀',
+    color: '#AFC2D3',
+    coverPattern: null,
+    sortOrder: 2,
+    isDefault: false,
+    isDeleted: false,
+    cardCount: 1,
+    updatedAt: NOW_ISO,
+  },
+]
+
+let nextNotebookId = 100
+
+export function mockNotebookCreate(req: { name: string; color?: string | null; cover_pattern?: string | null }): NotebookResponse {
+  const id = `nb-${nextNotebookId++}`
+  return {
+    id,
+    name: req.name,
+    color: req.color ?? '#AFC2D3',
+    coverPattern: req.cover_pattern ?? null,
+    sortOrder: 10,
+    isDefault: false,
+    isDeleted: false,
+    cardCount: 0,
+    updatedAt: NOW_ISO,
+  }
+}
+
+export function mockNotebookUpdate(id: string, req: Partial<{ name: string; color: string | null; sort_order: number; cover_pattern: string | null }>): NotebookResponse | undefined {
+  const base = MOCK_NOTEBOOKS.find((n) => n.id === id)
+  if (!base) return undefined
+  return {
+    ...base,
+    name: req.name ?? base.name,
+    color: req.color !== undefined ? req.color : base.color,
+    coverPattern: req.cover_pattern !== undefined ? req.cover_pattern : base.coverPattern,
+    sortOrder: req.sort_order ?? base.sortOrder,
+  }
+}
 
 function card(
   partial: Pick<CardResponse, 'id' | 'content' | 'meaning' | 'pos'> &
