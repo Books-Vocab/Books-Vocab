@@ -108,6 +108,17 @@ export const SURFACE_SCENARIOS = {
   'podcast-continue-card': ['in-progress', 'fresh', 'completed', 'free-preview', 'gated'],
   'podcast-episode-row': ['variants'],
   'podcast-series-card': ['normal', 'long-host', 'narrow', 'a11y3'],
+  // Composite layer (batch-7): Notebook Cover（component crop transparent，封面 pattern/色）+
+  // Notebooks Stack（full-frame：single 透明 / grid 不透明）+ Word Detail Card（component
+  // crop 不透明 page-bg，CardDocument）。SoT: NotebookCover/NotebookList/WordDetail scenarios。
+  'notebook-cover': ['all-patterns-blue', 'color-swatches', 'solid-no-pattern', 'long-name-truncate', 'shows-name-false', 'image-fallback'],
+  'notebooks-stack': ['state-active', 'state-inactive', 'd1-cover-basic', 'depth-100', 'd1-empty'],
+  'word-detail-card': ['full', 'compact', 'no-example'],
+  // Composite layer (batch-8): Settings sections — Preferences/Review（full-frame transparent，
+  // section over transparent）+ Subscription（component crop transparent，ProAccess section）。
+  'settings-preferences': ['with-auto-sync', 'auto-sync-off', 'logged-out'],
+  'settings-review': ['intensive', 'relaxed', 'frozen', 'custom'],
+  'settings-subscription': ['pro-active', 'loading', 'pricing-unavailable', 'inactive-free'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],

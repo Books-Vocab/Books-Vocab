@@ -1,0 +1,183 @@
+/* Settings · Preferences Section — iOS SettingsPreferencesSection 的 web 鏡像。
+   token 一律走 design-system 變數，唯一 literal = scene padding 24（rig 慣例）、
+   結構值（flex / 999px capsule / box-sizing）、與 account-section（同 settings card
+   家族、同一 catalog）已校準的 measured 像素（header 14、card radius lg≈12、
+   row 13/18、divider hairline 0.34px、iOS switch 幾何 51×31）。
+
+   layout = .fill（全裝置幀 1179×2556、畫布透明 corner srgba 0,0,0,0）：
+   scene = 元件於 ScrollView .padding(24) → 內容**頂部對齊**、水平內縮 24。故走全
+   phone-frame 透明捕捉（非 crop=component）：surface 撐滿、justify flex-start、padding
+   24；phone-frame + surface 透明，shots transparent:true → 與 ref 對等。 */
+
+.settings-preferences-surface {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  padding: var(--sp-6); /* scene .padding(24) */
+  box-sizing: border-box;
+}
+
+/* VStack(spacing sectionGap=14)[header · card · footer] */
+.settings-preferences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap); /* 14 */
+}
+
+/* SettingsSectionHeader — Label(slider.horizontal.3, "偏好")、caption / secondaryText。
+   measured（account-section 對拍結論）：Catalog 字高比 caption 12 大一階，釘 14；icon 15。 */
+.settings-preferences-header {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 — Label icon/title 視覺帶 */
+  padding-left: var(--sp-1); /* AppSectionHeader .padding(.leading, s1=4) */
+  font-family: var(--font-sans);
+  font-size: 14px; /* measured */
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+}
+
+/* .settingsCard — AppSectionCard(padding 0, .settings(skin))：cardBackground、
+   cardBorder 1px、radius card。measured：Catalog 卡角弧 ≈12（非 md 8）。z0 無陰影。 */
+.settings-preferences-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg); /* measured ≈12 */
+}
+
+/* AppKeyValueRow.settings / SettingsNavigationRow — HStack(spacing s3=12)[icon · label ·
+   Spacer · content]、padding h cardPadding=18 / v 13、minHeight 50。 */
+.sp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3); /* AppSpacing.s3 = 12 */
+  min-height: 50px;
+  padding: 13px var(--card-padding); /* verticalPadding 13 / horizontalPadding cardPadding 18 */
+  box-sizing: border-box;
+}
+
+/* Image(systemName) — iconSmall(symbol 12 medium) / secondaryText、.frame(width 22, .center) */
+.sp-row-icon {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; /* iconWidth */
+  color: var(--text-secondary);
+}
+
+/* Text(label) — body(sans 15) / primaryText */
+.sp-row-label {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead); /* body 15 */
+  color: var(--text-primary);
+}
+
+/* Spacer() */
+.sp-spacer {
+  flex: 1;
+}
+
+/* SettingsMenuValue — HStack(spacing 6)[text(caption 12 / secondaryText) ·
+   chevron.up.chevron.down(iconTiny 10 / tertiaryText)] */
+.sp-menu-value {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 */
+}
+
+.sp-value-text {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* caption 12 */
+  font-weight: 700; /* Catalog caption sans bold（account-section 對拍結論） */
+  color: var(--text-secondary);
+}
+
+.sp-menu-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* SettingsNavigationRow trailing — HStack(spacing 6)[SettingsStatusValue · chevron.right] */
+.sp-nav-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--micro-gap); /* 6 */
+}
+
+/* SettingsStatusValue — caption(sans 12) / secondaryText、trailing、lineLimit 1 */
+.sp-status-value {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* Catalog caption sans bold */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* SettingsTrailingChevronIcon — chevron.right iconTiny(10 thin) / tertiaryText */
+.sp-nav-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+/* AppSettingsDivider(leadingInset 50) — divider hairline、左內縮 50（icon column 後起） */
+.sp-divider {
+  height: 0.34px; /* iOS hairline 1 物理 px（dpr3）；capture rig dsf=3 */
+  margin-left: 50px; /* leadingInset 50（default） */
+  background: var(--divider);
+}
+
+/* Toggle(.labelsHidden).tint(accent) — 標準 iOS switch 51×31、knob 27、white knob、
+   on=accent / off=systemGray（→ text-quaternary 近似）。 */
+.sp-toggle {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 999px;
+  background: var(--text-quaternary); /* off track（systemGray 近似） */
+}
+
+.sp-toggle.is-on {
+  background: var(--accent); /* .tint(accent) */
+}
+
+.sp-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #fff; /* iOS switch knob 固定白（系統色，不入 token） */
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.12);
+}
+
+.sp-toggle.is-on .sp-toggle-knob {
+  left: 22px; /* 51 − 2 − 27 */
+}
+
+/* SettingsSectionFooter — AppSectionFooter caption(sans 12) / tertiaryText、
+   lineSpacing 3、.padding(.leading, s1=4) */
+.settings-preferences-footer {
+  margin: 0;
+  padding-left: var(--sp-1); /* s1 4 */
+  font-family: var(--font-sans);
+  font-size: var(--text-caption); /* 12 */
+  font-weight: 700; /* Catalog caption sans bold */
+  line-height: 1.5; /* lineSpacing 3 → 12 + 3 ≈ 1.5 行高（account footer 同族） */
+  color: var(--text-tertiary);
+}
+
+/* 全 phone-frame 透明捕捉（.fill scene 透明畫布）：phone-frame 本體透明，
+   shots transparent:true omitBackground → 內容-over-transparent，與 ref 對等 */
+.phone-frame[data-surface='settings-preferences'] {
+  background: transparent;
+}

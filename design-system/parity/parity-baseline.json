@@ -556,9 +556,9 @@
       "ssim": 0.043291
     },
     "notebooks-card-grid-two-light": {
-      "rmse": 0.0718958,
-      "mae": 0.0131739,
-      "ssim": 0.0456557
+      "rmse": 0.0996083,
+      "mae": 0.0238748,
+      "ssim": 0.0669331
     },
     "notebooks-card-hero-fresh-light": {
       "rmse": 0.033159,
@@ -714,6 +714,111 @@
       "rmse": 0.0669269,
       "mae": 0.0108443,
       "ssim": 0.0425911
+    },
+    "notebook-cover-all-patterns-blue-light": {
+      "rmse": 0.0889906,
+      "mae": 0.0210029,
+      "ssim": 0.0752215
+    },
+    "notebook-cover-solid-no-pattern-light": {
+      "rmse": 0.0261551,
+      "mae": 0.00173484,
+      "ssim": 0.00583802
+    },
+    "notebook-cover-long-name-truncate-light": {
+      "rmse": 0.207498,
+      "mae": 0.0810209,
+      "ssim": 0.154089
+    },
+    "notebook-cover-shows-name-false-light": {
+      "rmse": 0.0784903,
+      "mae": 0.0186652,
+      "ssim": 0.0736156
+    },
+    "notebook-cover-image-fallback-light": {
+      "rmse": 0.0764162,
+      "mae": 0.0131601,
+      "ssim": 0.0371212
+    },
+    "notebooks-stack-state-active-light": {
+      "rmse": 0.0439218,
+      "mae": 0.00247459,
+      "ssim": 0.00862367
+    },
+    "notebooks-stack-state-inactive-light": {
+      "rmse": 0.0433851,
+      "mae": 0.00235834,
+      "ssim": 0.0083705
+    },
+    "notebooks-stack-d1-cover-basic-light": {
+      "rmse": 0.0259941,
+      "mae": 0.00148482,
+      "ssim": 0.00445212
+    },
+    "notebooks-stack-depth-100-light": {
+      "rmse": 0.0433851,
+      "mae": 0.00235834,
+      "ssim": 0.0083705
+    },
+    "notebooks-stack-d1-empty-light": {
+      "rmse": 0.0413128,
+      "mae": 0.00203341,
+      "ssim": 0.00726594
+    },
+    "word-detail-card-full-light": {
+      "rmse": 0.135122,
+      "mae": 0.0319521,
+      "ssim": 0.0699098
+    },
+    "word-detail-card-compact-light": {
+      "rmse": 0.119952,
+      "mae": 0.0265076,
+      "ssim": 0.0590772
+    },
+    "word-detail-card-no-example-light": {
+      "rmse": 0.105607,
+      "mae": 0.0185694,
+      "ssim": 0.0334222
+    },
+    "settings-review-intensive-light": {
+      "rmse": 0.0967144,
+      "mae": 0.0240257,
+      "ssim": 0.0450967
+    },
+    "settings-review-relaxed-light": {
+      "rmse": 0.0964675,
+      "mae": 0.0239121,
+      "ssim": 0.0449212
+    },
+    "settings-review-frozen-light": {
+      "rmse": 0.0979011,
+      "mae": 0.0235215,
+      "ssim": 0.0405943
+    },
+    "settings-review-custom-light": {
+      "rmse": 0.124782,
+      "mae": 0.0365205,
+      "ssim": 0.0721827
+    },
+    "settings-subscription-pro-active-light": {
+      "rmse": 0.16003,
+      "mae": 0.0414527,
+      "ssim": 0.0861403
+    },
+    "settings-subscription-loading-light": {
+      "rmse": 0.15957,
+      "mae": 0.0400971,
+      "ssim": 0.0799807
+    },
+    "settings-subscription-pricing-unavailable-light": {
+      "rmse": 0.166756,
+      "mae": 0.0480985,
+      "ssim": 0.102043
+    },
+    "settings-subscription-inactive-free-light": {
+      "rmse": 0.174769,
+      "mae": 0.0489154,
+      "ssim": 0.093828
     }
   }
 }
