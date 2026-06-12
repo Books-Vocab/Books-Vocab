@@ -140,6 +140,21 @@
       "mae": 0.00530615,
       "ssim": 0.00919538
     },
+    "vocab-sort-pill-default-light": {
+      "rmse": 0.0744571,
+      "mae": 0.0149176,
+      "ssim": 0.0486226
+    },
+    "vocab-sort-pill-alphabetical-light": {
+      "rmse": 0.0711738,
+      "mae": 0.0133719,
+      "ssim": 0.0412709
+    },
+    "vocab-sort-pill-difficulty-light": {
+      "rmse": 0.0649148,
+      "mae": 0.0111673,
+      "ssim": 0.0369493
+    },
     "reader-translation-expanded-light": {
       "rmse": 0.168445,
       "mae": 0.0549827,

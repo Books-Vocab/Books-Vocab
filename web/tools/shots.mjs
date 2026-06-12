@@ -127,14 +127,32 @@ async function main() {
             await page.goto(url, { waitUntil: 'load' });
             // woff2 faces must be live before capture, or text falls back mid-shot.
             await page.evaluate(() => document.fonts.ready);
+            // For `transparent` component cases, omitBackground only drops the
+            // browser's DEFAULT white backdrop — it does NOT remove the explicit
+            // rig backdrop (`body { background: #2b2b2b }`), which would otherwise
+            // show through the transparent canvas and mismatch the ref's flatten.
+            // Null out html/body backgrounds so the capture is truly transparent.
+            if (p.transparent) {
+              await page.evaluate(() => {
+                document.documentElement.style.background = 'transparent';
+                document.body.style.background = 'transparent';
+              });
+            }
             // 元件級 case（manifest 帶 `crop` 選擇器）：截元件 DOM 自身的
             // intrinsic bounds，對齊 iOS catalog 對該元件的緊裁切 scene；
             // 其餘 case 截全幅 phone-frame（1179×2556）。
             const target = p.crop
               ? page.locator(p.crop)
               : page.locator('[data-harness="phone-frame"]');
+            // `transparent` cases mirror iOS Catalog component scenes captured on
+            // a TRANSPARENT canvas (faint pills/chips whose fill is near-zero
+            // alpha — e.g. muted-fill at 4%). omitBackground keeps the web shot
+            // pill-over-transparent too, so both sides flatten identically under
+            // the audit's `-alpha off` instead of web painting an opaque page bg
+            // the ref doesn't have.
             await target.screenshot({
               path: join(SHOTS, `${p.case}.png`),
+              omitBackground: !!p.transparent,
             });
             lastErr = null;
           } catch (err) {
