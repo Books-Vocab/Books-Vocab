@@ -820,6 +820,41 @@
       "mae": 0.00203341,
       "ssim": 0.00726594
     },
+    "notebooks-stack-depth-0-light": {
+      "rmse": 0.0413128,
+      "mae": 0.00203341,
+      "ssim": 0.00726594
+    },
+    "notebooks-stack-d1-large-card-count-light": {
+      "rmse": 0.0466179,
+      "mae": 0.00293653,
+      "ssim": 0.00964023
+    },
+    "notebooks-stack-d1-large-due-count-light": {
+      "rmse": 0.0300519,
+      "mae": 0.00192559,
+      "ssim": 0.00529861
+    },
+    "notebooks-stack-d2-grid-height-light": {
+      "rmse": 0.0214254,
+      "mae": 0.00109289,
+      "ssim": 0.00332663
+    },
+    "notebooks-stack-editorial-different-seeds-light": {
+      "rmse": 0.0259941,
+      "mae": 0.00148482,
+      "ssim": 0.00445212
+    },
+    "notebooks-stack-editorial-spine-rotation-light": {
+      "rmse": 0.0439218,
+      "mae": 0.00247459,
+      "ssim": 0.00862367
+    },
+    "notebooks-stack-stress-happy-2up-light": {
+      "rmse": 0.0212105,
+      "mae": 0.00107339,
+      "ssim": 0.00322712
+    },
     "word-detail-card-full-light": {
       "rmse": 0.135122,
       "mae": 0.0319521,
@@ -972,7 +1007,7 @@
     },
     "account-auth-summary-long-name-email-overflow-light": {
       "rmse": 0.0500127,
-      "mae": 0.00638938,
+      "mae": 0.00638939,
       "ssim": 0.0159945
     },
     "login-sheet-default-light": {

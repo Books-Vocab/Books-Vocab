@@ -71,6 +71,32 @@ const fresh: NotebooksStackItem = {
   isActive: false,
 }
 
+// iOS massiveCount — Massive Vocab / #AFC2D3（「海洋」，非 migration key → identity）/ dots /
+// 99999 詞 / due42 reviewed99947 / inactive。D1 邊界：monoLabel 字寬不抖、rule width 25%。
+const massiveCount: NotebooksStackItem = {
+  name: 'Massive Vocab',
+  color: '#AFC2D3',
+  pattern: 'dots',
+  cardCount: 99999,
+  dueCount: 42,
+  unlearnedCount: 10,
+  reviewedCount: 99947,
+  isActive: false,
+}
+
+// iOS massiveDue — Heavy Due / #DCABA4（「珊瑚」，migration value 非 key → identity）/ no pattern /
+// 9999 詞 / due9999（全到期）/ active。D2 邊界：bottom chip 不擠破 ProgressCapsule。
+const massiveDue: NotebooksStackItem = {
+  name: 'Heavy Due',
+  color: '#DCABA4',
+  pattern: null,
+  cardCount: 9999,
+  dueCount: 9999,
+  unlearnedCount: 0,
+  reviewedCount: 0,
+  isActive: true,
+}
+
 export const NOTEBOOKS_STACK_FIXTURES: Record<ScenarioId<'notebooks-stack'>, NotebooksStackFixture> = {
   // singleSheet(card: mediumActive).preferredColorScheme(.light)
   'state-active': { layout: 'single', cards: [mediumActive] },
@@ -82,4 +108,19 @@ export const NOTEBOOKS_STACK_FIXTURES: Record<ScenarioId<'notebooks-stack'>, Not
   'depth-100': { layout: 'single', cards: [medium] },
   // singleSheet(card: fresh) — cardCount=0 → 隱藏 N 詞、metadata 顯「尚未加入單字」
   'd1-empty': { layout: 'single', cards: [fresh] },
+  // ── batch expansion（dots/null pattern only，light，全幀；複用既有元件） ──
+  // singleSheet(card: fresh) — Depth 0 字（1 層；同 d1-empty 渲染，distinct catalog scene）
+  'depth-0': { layout: 'single', cards: [fresh] },
+  // singleSheet(card: massiveCount) — D1 99999 詞 monoLabel 邊界
+  'd1-large-card-count': { layout: 'single', cards: [massiveCount] },
+  // gridSheet(cards: [massiveDue, medium]) — D1 9999 到期 chip 不擠破
+  'd1-large-due-count': { layout: 'grid', cards: [massiveDue, medium] },
+  // gridSheet(cards: [medium, fresh]) — D2 grid 高度穩定（due=0/>0 同高）
+  'd2-grid-height': { layout: 'grid', cards: [medium, fresh] },
+  // gridSheet(cards: [mediumActive, medium]) — Editorial 不同 seed（同 d1-cover-basic 渲染，distinct scene）
+  'editorial-different-seeds': { layout: 'grid', cards: [mediumActive, medium] },
+  // singleSheet(card: mediumActive) — Editorial spine rotation（同 state-active 渲染，distinct scene）
+  'editorial-spine-rotation': { layout: 'single', cards: [mediumActive] },
+  // gridSheet(cards: [mediumActive, fresh]) — Stress happy 2-up
+  'stress-happy-2up': { layout: 'grid', cards: [mediumActive, fresh] },
 }
