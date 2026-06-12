@@ -356,8 +356,6 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
 
     case "overlay":
         // common border idiom: .overlay(Shape().stroke(c, lineWidth: w)) → border.
-        // an overlay of a sub-view (badge / divider) needs an overlay-layer model — not
-        // yet supported, so it degrades honestly.
         var ovExpr = argList.first?.expression
         if ovExpr == nil, let t = trailing, let first = t.statements.first { ovExpr = exprOf(first) }
         if let e = ovExpr, let strokeCall = findStrokeCall(e),
@@ -365,6 +363,19 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
             var border = m
             border["raw"] = ".overlay(stroke)"
             return .mod(border)
+        }
+        // sub-view overlay (trailing-closure form, e.g. `.overlay(alignment:) { badge }`):
+        // a positioned LAYER. Resolve the SwiftUI Alignment (default .center) to an overlay
+        // modifier; generate_css turns it into position:relative + an absolute flex layer.
+        // The child's INTERIOR styling is a separate sub-tree (honest backlog), exactly as a
+        // stack's own decls don't transpile its children. The bare-color tint form
+        // `.overlay(palette.x)` (no closure, no stroke) is a fill, not a layer → honest unparsed.
+        if trailing != nil {
+            var align = "center"
+            for a in argList where a.label?.text == "alignment" {
+                if let e = edgeName(a.expression) { align = e }
+            }
+            return .mod(["name": "overlay", "alignment": align, "raw": ".overlay(\(align))"])
         }
         return .unparsed
 
