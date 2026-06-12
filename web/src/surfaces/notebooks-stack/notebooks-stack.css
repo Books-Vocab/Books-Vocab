@@ -234,6 +234,10 @@
 .phone-frame[data-surface='notebooks-stack'][data-scenario='state-active'],
 .phone-frame[data-surface='notebooks-stack'][data-scenario='state-inactive'],
 .phone-frame[data-surface='notebooks-stack'][data-scenario='depth-100'],
-.phone-frame[data-surface='notebooks-stack'][data-scenario='d1-empty'] {
+.phone-frame[data-surface='notebooks-stack'][data-scenario='d1-empty'],
+/* batch expansion single scenes（grid 不在此列：page-bg 全幅不透明） */
+.phone-frame[data-surface='notebooks-stack'][data-scenario='depth-0'],
+.phone-frame[data-surface='notebooks-stack'][data-scenario='d1-large-card-count'],
+.phone-frame[data-surface='notebooks-stack'][data-scenario='editorial-spine-rotation'] {
   background: transparent;
 }
