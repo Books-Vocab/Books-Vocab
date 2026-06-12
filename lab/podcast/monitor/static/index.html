@@ -19,7 +19,7 @@
     <span id="nav-current-ws" class="nav-current-ws empty" title="—">—</span>
     <button id="act-advance" class="action-btn advance" hidden title="Move this podcast forward"></button>
     <button id="act-new" class="action-btn primary" title="Start a new podcast from an EPUB">+ NEW PODCAST</button>
-    <button id="act-settings" class="icon-btn" title="Pipeline run settings (PARALLEL · TTS model · spoiler default)" aria-label="Settings">⚙</button>
+    <button id="act-settings" class="icon-btn" title="Pipeline run settings (PARALLEL · agent · TTS model)" aria-label="Settings">⚙</button>
     <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
     <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
   </div>
@@ -98,13 +98,26 @@
       <label class="field">
         <span class="field-label">TTS MODEL</span>
         <select id="set-tts-model" class="field-input">
-          <option value="">default (gemini-3.1-flash-tts-preview)</option>
+          <option value="">default (gemini-2.5-flash-tts)</option>
           <option value="gemini-3.1-flash-tts-preview">gemini-3.1-flash-tts-preview</option>
           <option value="gemini-2.5-pro-tts">gemini-2.5-pro-tts</option>
           <option value="gemini-2.5-flash-tts">gemini-2.5-flash-tts</option>
         </select>
         <span class="field-hint">frozen for the workspace at creation; read back by the synthesize stage</span>
         <span id="set-tts-risk" class="field-hint field-warn" hidden>⚠ scripts are authored for the Gemini 3.1 tag palette — a 2.5 model will synthesize 3.1-palette scripts (prosody/tags may misrender). Full 2.5 palette support is Phase 2.</span>
+      </label>
+      <label class="field">
+        <span class="field-label">AGENT PROFILE</span>
+        <select id="set-agent-profile" class="field-input">
+          <option value="claude">claude</option>
+          <option value="kimi">kimi</option>
+        </select>
+        <span class="field-hint">Stage 1-10 text agents; stored on the workspace for approval/resume jobs</span>
+      </label>
+      <label class="field">
+        <span class="field-label">AGENT MODEL</span>
+        <input type="text" id="set-agent-model" class="field-input" autocomplete="off" spellcheck="false">
+        <span id="set-agent-hint" class="field-hint">uses the normal Claude Code account; blank model defaults to opus[1m]</span>
       </label>
     </div>
     <div class="modal-foot">

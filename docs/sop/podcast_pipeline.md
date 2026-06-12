@@ -142,13 +142,19 @@ TTS_MODEL=gemini-2.5-flash-tts   # 部署預設(.env,2026-06-02 起);synthesize.
 | `gemini-3.1-flash-tts-preview` | 可選,3.1 官方 audio-tag 名詞情緒集 + per-host director notes(`### PERFORMANCE`)，表情/節奏最佳但 ~8× 貴 |
 | `gemini-2.5-pro-tts` | 可選,自然度高但配額嚴(易 429) |
 
-**選法（兩種,優先序）**：
+**TTS 選法（兩種,優先序）**：
 - **per-workspace 凍結（建議）**：`--tts-model M`(或 dashboard SETTINGS 面板的 TTS MODEL 下拉)→ 寫 `.tts_model` sidecar → `stage_synthesize` 在 synth 前讀回注入 `TTS_MODEL` env。這是**單一還原點**,`/start`、`/resume`、`/approve`、手動 `--skip-to synthesize` 全部經此,故選定後整個 workspace 一致。resume 時 sidecar 為準,衝突的 `--tts-model` 報錯(同 `--mode` 慣例)。
 - **全域預設**：沒給 `--tts-model` / sidecar 不存在 → 落 `synthesize.py` 的 `TTS_MODEL` env 預設(`.env`)。
 
+**Stage 1-10 agent 選法**:
+- `--agent-profile claude|kimi`(或 env `PODCAST_AGENT_PROFILE`)選 billing/profile。`claude` 走正常 Claude Code 帳號;`kimi` 仍呼叫 `claude -p`,但在 subprocess env 注入 `ANTHROPIC_BASE_URL=https://api.kimi.com/coding`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL` 等 Kimi Code 相容變數。
+- `--agent-model M`(或 env `PODCAST_AGENT_MODEL`)覆寫 agent model。預設:`claude=opus[1m]`,`kimi=kimi-for-coding`;legacy `PODCAST_CLAUDE_MODEL` 仍支援但只建議當 Claude profile 的相容入口。
+- Kimi token 來源優先序:`PODCAST_KIMI_API_KEY` → `ANTHROPIC_AUTH_TOKEN` → `PODCAST_KIMI_KEY_FILE`(預設 `~/.secrets/kimi.env`)。缺 key 時 agent stage fail-fast,不 spawn 半套 CLI。
+- pipeline 會寫 `.agent_profile` / `.agent_model` sidecar;dashboard `/approve`、`/resume`、`/rerun` 無參數續跑時讀回,避免人工 gate 後掉回預設 Claude。要切回 Claude,下一次 CLI 明確帶 `--agent-profile claude` 或 dashboard SETTINGS 改回 `claude` 再開新 run。
+
 **audio-tag palette 是 family-parametric(重要)**：palette 的**唯一 SoT 是 `tts_tags.py:TAG_CONCEPTS`** —— 每個 delivery concept(excitement / whisper / 停頓…)一列,每個 TTS family("3.1"/"2.5"…)一欄(該 family 的 surface tag,缺欄=該 family 不支援)。`palette(family)` / `sanitize_tags_for_family()` / `render_palette_md(family)` 全衍生自它,加新世代 = 加一欄。關鍵事實:Gemini 對**不支援的 inline `[tag]` 不是靜默丟棄,而是當字面唸出來**(社群實證,Google 無 unsupported-tag 契約)—— 所以 palette 必須跟著合成的 family 走。
 
-- **源頭相容(scriptwrite 注入)**:腳本由 Claude(`PODCAST_CLAUDE_MODEL`,預設 `opus[1m]`)生成**一次**。`pipeline.py:inject_tts_palette` 在組 scriptwriter / script_review / tts_prep prompt 時,依該 workspace 實際合成的 family(`resolve_tts_family` = `.tts_model` sidecar → `DEFAULT_TTS_MODEL`)注入 `{tts_engine}`/`{tts_family}`/`{tts_palette}`(= `render_palette_md(family)`)。**腳本天生只用目標 family 的 tag**,reviewer 也按同一 palette 驗。未知 family → loud-fail(要求先在 `TAG_CONCEPTS` 註冊,不靜默猜)。`prompts/*.md` 不再手抄 palette(`test_palette_consistency` 從「3 處一致」改為「placeholder + render round-trip」,drift 結構上不可能)。
+- **源頭相容(scriptwrite 注入)**:腳本由 stage agent(`PODCAST_AGENT_PROFILE`/`PODCAST_AGENT_MODEL`,預設 `claude` + `opus[1m]`)生成**一次**。`pipeline.py:inject_tts_palette` 在組 scriptwriter / script_review / tts_prep prompt 時,依該 workspace 實際合成的 family(`resolve_tts_family` = `.tts_model` sidecar → `DEFAULT_TTS_MODEL`)注入 `{tts_engine}`/`{tts_family}`/`{tts_palette}`(= `render_palette_md(family)`)。**腳本天生只用目標 family 的 tag**,reviewer 也按同一 palette 驗。未知 family → loud-fail(要求先在 `TAG_CONCEPTS` 註冊,不靜默猜)。`prompts/*.md` 不再手抄 palette(`test_palette_consistency` 從「3 處一致」改為「placeholder + render round-trip」,drift 結構上不可能)。
 - **記錄真實 family**:scriptwrite 成功寫 `.script_tts_family = resolve_tts_family(workspace)`(**非寫死 3.1**)。
 - **合成端 backstop(defense-in-depth)**:`synthesize.py:_sanitize_dialogue` 仍對每句套 `sanitize_tags_for_family(text, TTS_FAMILY)` —— 把任何非目標 family 形的 tag 改寫成該 family 形 / 無對應則 strip,**非 palette 括號(如 `[NEW HABIT]`)原樣保留**。這在「腳本 family ≠ 合成 family」(跨 family 混用、或 registry 之前寫的 legacy 腳本)時兜底,正常流程下因源頭已相容多為 no-op。每集 parse 後印 `tag-sanitize (family X): N cross-family tag(s) made safe`。`stage_synthesize` 另比對 `.script_tts_family` 與 `.tts_model`(缺 sidecar 視為 `3.1`),不一致記一筆 informational(非硬 block —— sanitize 已保安全)。
 - 不同 model 在單一 workspace 混用仍可(每集分別 synth)但**不該作為錯誤恢復策略**:`the_let_them_theory` workspace 就出現 ep1-2=pro、ep3-5=flash、ep6-8 缺席的混亂混用,難 debug —— per-workspace 凍結正是為了根治此問題。
@@ -502,7 +508,7 @@ Endpoints:
 逐行掃 `events.jsonl`,輸出 `{total_usd, by_stage, by_model, pricing, warnings}`。
 
 **成本來源**:
-- **Stage 1-10(Claude)**:直接讀 `result.modelUsage[model].costUSD`。這是 claude CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算 — Anthropic 改價時 CLI 會自動拿到新價,不會有對不上的風險。
+- **Stage 1-10(agent)**:直接讀 claude CLI stream-json 的 `result.modelUsage[model].costUSD`。Claude profile 時這是 CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算。Kimi profile 仍透過 claude CLI 相容輸出;若 Kimi endpoint 未回 `modelUsage.costUSD`,dashboard 會顯示 token 但該 profile 的 USD 可能為 0/缺值,以 Kimi Code 帳單為準。
 - **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-2.5-flash-tts`,$0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier)。`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10(≤200K)、$2.50/$15(>200K)。event 缺 `model` 欄時 fallback 取當前預設 `gemini-2.5-flash-tts`(`monitor/cost.py:254`)。`verified_against: 2026-06-02`。
 - **Stage 12-13**:本地 pydub / Whisper,$0。
 
@@ -520,9 +526,10 @@ Endpoints:
 3. **COST BREAKDOWN 表** — stage × (model, calls, input, output, cache R/W, audio, USD),底列 TOTAL
 4. **LIVE ACTIVITY feed** — `tool_use` / `text` / `result` / `tts_usage` / stage 邊界,新事件插頂;**`[...]` 方括號內容(TTS 情緒 tag 如 `[amused]`、集數清單如 `[1, 2, 3]`)行內高亮成 badge**(`highlightTags()`,先 escape 再包 span;`error`/`stage_fail` 行不高亮)
 
-**nav SETTINGS(⚙)面板**(localStorage `podcast-monitor:settings`,套用於下一條 pipeline,非追溯)。**每個旋鈕單一來源**——PARALLEL/TTS model 只在此調,不在 nav 或其他 modal 重複:
+**nav SETTINGS(⚙)面板**(localStorage `podcast-monitor:settings`,套用於下一條 pipeline,非追溯)。**每個旋鈕單一來源**——PARALLEL/TTS model/agent profile 只在此調,不在 nav 或其他 modal 重複:
 - **PARALLEL WORKERS**(1-10):scriptwrite/script-review/synthesize 並發度(原 nav 常駐 input 已移除,收斂於此)
 - **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選定後腳本即依該 family 的 palette 生成(family-parametric,見 §3)。submit 時隨 `tts_model` 送出
+- **AGENT PROFILE / AGENT MODEL**:`claude`/`kimi` 下拉 + 可空 model override。submit 時隨 `agent_profile`/`agent_model` 送出;pipeline 寫 `.agent_*` sidecar,後續 approval/resume job 讀回。
 
 (spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
 
