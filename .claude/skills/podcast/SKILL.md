@@ -60,6 +60,10 @@ uv run pipeline.py workspaces/<name>/ --status
 
 # Dry run（只建 workspace，不跑 agent）
 uv run pipeline.py /path/to/book.epub --dry-run
+
+# 指定版本化 workflow（新 workspace 預設 v1；resume 讀 workflow_manifest.json）
+uv run pipeline.py /path/to/book.epub --workflow-version v1
+uv run pipeline.py /path/to/book.epub --workflow-version v2
 ```
 
 ### 階段控制
@@ -135,16 +139,19 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 ### 可用 stage 名稱
 
-`prep` · `analyst` · `architect` · `plan-review` · `enricher-gap` · `enricher` · `scriptwrite` · `series-polish` · `script-review` · `tts-prep` · `synthesize` · `audio-qa` · `subtitle`
+`prep` · `analyst` · `architect` · `plan-review` · `enricher-gap` · `enricher` · `scriptwrite` · `series-polish` · `script-review` · `tts-prep` · `synthesize` · `audio-qa` · `subtitle` · `cover` · `publish`
 
 ## 透明化機制
 
 1. **Stage markers**: 每個階段完成後寫入 `.stage_<name>_done`，用於自動 resume
-2. **JSONL log**: `pipeline_log.jsonl` — 每個事件一行 JSON，含時間戳、階段、詳情
-3. **Stream events**: `events.jsonl` — **預設開啟**(設 `PODCAST_VERBOSE=0` 關)。內含每個 stage-agent turn 的 tool-use + token usage(含 claude CLI stream-json 的 `result.modelUsage[*].costUSD`,若 provider 有回),以及 synthesize 階段每個 batch 的 `tts_usage` event(input tokens、output audio seconds、model)
-4. **Review artifacts**: `plan/review.md`（plan QA）+ `scripts/ep_N_review.md`（script QA）
-5. **Agent log**: `log.md` — 每個 Claude agent 自行附加的自然語言日誌
-6. **--status**: 一鍵顯示進度 + 所有可用指令
+2. **Workflow manifest**: `workflow_manifest.json` — `workflow_version`、pipeline commit、prompt fingerprints、agent/TTS model、validator versions、stage contracts
+3. **Stage provenance**: `stage_provenance/<stage>.json` — stage input/output artifact hash、prompt hash、model/profile、validator result、approval marker
+4. **Episode lineage**: `scripts/ep_N_lineage.json` — scriptwrite / series-polish / script-review / producer-cut / tts-prep 的 before/after hash 與 edit event
+5. **JSONL log**: `pipeline_log.jsonl` — 每個事件一行 JSON，含時間戳、階段、詳情
+6. **Stream events**: `events.jsonl` — **預設開啟**(設 `PODCAST_VERBOSE=0` 關)。內含每個 stage-agent turn 的 tool-use + token usage(含 claude CLI stream-json 的 `result.modelUsage[*].costUSD`,若 provider 有回),以及 synthesize 階段每個 batch 的 `tts_usage` event(input tokens、output audio seconds、model)
+7. **Review artifacts**: `plan/review.md`（plan QA）+ `scripts/ep_N_review.md`（script QA）
+8. **Agent log**: `log.md` — 每個 Claude agent 自行附加的自然語言日誌
+9. **--status**: 一鍵顯示進度 + 所有可用指令
 
 ## Dashboard 監控(單命令,零設定)
 
@@ -343,6 +350,8 @@ workspaces/<slug>_<hash>/
   .stage_analyst_done
   ...
   pipeline_log.jsonl             ← 結構化日誌
+  workflow_manifest.json          ← workflow 版本 / prompt fingerprints / model / validators / stage contracts
+  stage_provenance/<stage>.json   ← 每階段 input/output artifact hash + validator result
   log.md                         ← agent 自然語言日誌
   raw_chapters/raw_ch_*.md
   source/metadata.md
@@ -354,6 +363,7 @@ workspaces/<slug>_<hash>/
   plan/research_brief.md         ← enricher gap 研究清單
   scripts/
     ep_N_script.md               ← 對話腳本
+    ep_N_lineage.json             ← 腳本 before/after hash 與 stage edit lineage
     ep_N_review.md               ← script QA 結果
     ep_N_pro.mp3                 ← TTS 音訊（loudnorm 過）
     ep_N_pro.srt                 ← 詞級字幕
