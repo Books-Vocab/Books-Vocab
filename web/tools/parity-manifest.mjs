@@ -750,6 +750,47 @@ export const PARITY = [
     ref: { surface: 'Vocab Components · Empty State', scenario: 'Content — guidance + action', appearance: 'light' },
     note: 'Vocab empty state · Content 今天沒有要複習的單字（checkmark.circle，guidance@0.7 + outline「查看全部單字」CTA）(light)',
   },
+  // Vocab Scene Shell — Vocabulary 統一四態容器（VocabSceneShell）。catalog scene
+  // 為 .fill，vocabCanvasBackground = pageBackground（不透明全幀）→ 全 phone-frame
+  // 不透明捕捉（無 transparent/crop）。loading/empty/error/content 垂直置中、
+  // loadingSkeleton 頂部對齊 6 骨架列。
+  {
+    case: 'vocab-scene-shell-loading-spinner-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'loading-spinner', appearance: 'light' },
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Loading · centered spinner', appearance: 'light' },
+    note: 'Vocab scene shell · loading（arrow.clockwise + ProgressView spinner，置中 message card）',
+  },
+  {
+    case: 'vocab-scene-shell-loading-skeleton-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'loading-skeleton', appearance: 'light' },
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Loading skeleton · 6 rows', appearance: 'light' },
+    note: 'Vocab scene shell · loadingSkeleton 6 列（AppSkeletonCard，頂部對齊）',
+  },
+  {
+    case: 'vocab-scene-shell-empty-cta-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'empty-cta', appearance: 'light' },
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Empty · with CTA', appearance: 'light' },
+    note: 'Vocab scene shell · empty（sparkles + outline「前往閱讀」CTA，置中 empty card）',
+  },
+  {
+    case: 'vocab-scene-shell-empty-no-action-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'empty-no-action', appearance: 'light' },
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Empty · no action', appearance: 'light' },
+    note: 'Vocab scene shell · empty（magnifyingglass，無 CTA，置中 empty card）',
+  },
+  {
+    case: 'vocab-scene-shell-error-retry-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'error-retry', appearance: 'light' },
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Error · retry', appearance: 'light' },
+    note: 'Vocab scene shell · error（exclamationmark.triangle + 「重試」按鈕，置中 message card）',
+  },
+  {
+    case: 'vocab-scene-shell-content-light',
+    params: { surface: 'vocab-scene-shell', scenario: 'content', appearance: 'light' },
+    transparent: true, // content pass-through 不套 canvas → ref 透明（alpha-mean 0.008）
+    ref: { surface: 'Vocab Scene Shell', scenario: 'Content · pass-through', appearance: 'light' },
+    note: 'Vocab scene shell · content pass-through（範例字卡 serendipity，確認殼不污染 content）',
+  },
   // --- Composite layer batch-2 — 8 cases (wf-composite-batch): collocation-explain
   //     (.fill transparent full-frame) + kg-empty-state (.fill opaque page-bg full-frame).
   //     banner-review deferred (task #8: opaque-card-on-transparent edge-scale sensitivity).
