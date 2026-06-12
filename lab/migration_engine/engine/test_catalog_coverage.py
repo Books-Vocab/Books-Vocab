@@ -19,8 +19,12 @@ ENG = ROOT / "lab/migration_engine/engine"
 sys.path.insert(0, str(ENG))
 import catalog_coverage as cov  # noqa: E402
 
-# Ratchet: raise as the long tail (.overlay/.fill/.clipShape/custom modifiers) lands.
-COVERAGE_FLOOR = 0.68  # current 71.5%; buffer for corpus churn
+# Ratchet: raise as the long tail (.overlay/custom ViewModifiers) lands.
+COVERAGE_FLOOR = 0.60  # honest 65.3% (scoped-out folded into denominator); buffer for churn
+# Guards the OTHER gaming vector the #962 review flagged: shrinking the denominator by
+# moving a visual modifier into NON_VISUAL would raise coverage without real progress.
+# A denominator floor makes that show up as a failure instead of a "win".
+DENOM_FLOOR = 640  # current 674
 
 PASS, FAIL, SKIP = "\033[32mPASS\033[0m", "\033[31mFAIL\033[0m", "\033[33mSKIP\033[0m"
 
@@ -35,10 +39,19 @@ def main() -> int:
 
     cvg = r["node_coverage"]
     if cvg >= COVERAGE_FLOOR:
-        print(f"{PASS}  node coverage {cvg*100:.1f}% >= floor {COVERAGE_FLOOR*100:.0f}%")
+        print(f"{PASS}  node coverage {cvg*100:.1f}% >= floor {COVERAGE_FLOOR*100:.0f}%  "
+              f"(resolved {r['resolved']} / denom {r['resolved']+r['unparsed']+r['scoped']}, "
+              f"scoped-out {r['scoped']})")
     else:
         print(f"{FAIL}  node coverage {cvg*100:.1f}% < floor {COVERAGE_FLOOR*100:.0f}%")
         fails.append("coverage below floor")
+
+    denom = r["resolved"] + r["unparsed"] + r["scoped"]
+    if denom >= DENOM_FLOOR:
+        print(f"{PASS}  denominator {denom} >= floor {DENOM_FLOOR} (no denominator-shrink gaming)")
+    else:
+        print(f"{FAIL}  denominator {denom} < floor {DENOM_FLOOR} — visual modifier moved to NON_VISUAL?")
+        fails.append("denominator shrunk")
 
     if r["dump_failed"] == 0:
         print(f"{PASS}  0 dumper crashes over {r['files']} files")
