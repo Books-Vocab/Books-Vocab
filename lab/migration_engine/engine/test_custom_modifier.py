@@ -77,6 +77,21 @@ def main() -> int:
         print(f"{FAIL}  honesty: unexpected modifiers {mod_names}")
         fails.append("over-credit")
 
+    # explicit `.modifier(Struct())` form resolves through the same machinery
+    demo2 = next((s for s in ir["structs"] if s["name"] == "Demo2"), None)
+    if demo2 is None:
+        print(f"{FAIL}  Demo2 struct not found")
+        fails.append("demo2 missing")
+    else:
+        r2 = demo2["root"]
+        m2 = [m.get("name") for m in r2.get("modifiers", [])]
+        u2 = r2.get("unparsed", [])
+        if m2 == ["background"] and any("WrapMod" in x for x in u2):
+            print(f"{PASS}  (4) explicit .modifier(): CanvasMod→background, WrapMod→unparsed")
+        else:
+            print(f"{FAIL}  (4) explicit .modifier() mishandled; mods={m2} unparsed={u2}")
+            fails.append("explicit modifier")
+
     print(f"\n{'ALL GREEN' if not fails else str(len(fails)) + ' FAILURE(S)'}")
     return 1 if fails else 0
 
