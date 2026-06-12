@@ -25,6 +25,7 @@
   --text-mono-label: 10px;
   --text-translation-title: 21px;
   --text-mono-body: 14px;
+  --text-display-title: 24px;
   --tracking-tight: -1.2px;
   --tracking-h2-tight: -0.65px;
   --tracking-normal: 0px;
@@ -85,6 +86,13 @@
   --progress-bar-height: 5px;
   --progress-bar-gap: 5px;
   --chevron-button-size: 30px;
+  --status-hero-gap: 12px;
+  --control-gap: 10px;
+  --account-row-spacing: 14px;
+  --account-avatar-size: 46px;
+  --welcome-page-content-gap: 4px;
+  --welcome-subtitle-h-inset: 40px;
+  --welcome-bottom-padding: 40px;
   --progress-bar-fill-min: 6px;
   --toolbar-badge-padding-h: 5px;
   --toolbar-badge-padding-v: 2px;
@@ -142,6 +150,7 @@
   --press-scale: 0.97;
   --press-opacity: 0.92;
   --chart-highlight: #f0ca89;
+  --apple-black: #000000;
   --swatch-light: #f7f6f3;
   --swatch-dark: #191919;
   --swatch-sepia: #f5f1eb;
@@ -150,6 +159,10 @@
   --toggle-glyph: 15px;
   --text-title3: 20px;
   --text-footnote: 13px;
+  --text-speaker-label: 11px;
+  --podcast-hero-backdrop-height: 196px;
+  --podcast-hero-cover-size: 136px;
+  --radius-app-icon: 18px;
 }
 
 :root, :host, [data-theme="light"] {
@@ -185,6 +198,7 @@
   --button-idle-fill: rgba(0,0,0,0.06);
   --button-pressed-fill: rgba(0,0,0,0.1);
   --vocab-highlight: linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%);
+  --vocab-highlight-paper: hsl(212, 32%, 47%);
   --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #ffffff;
   --system-red: #FF3B30;
@@ -233,6 +247,7 @@
   --button-idle-fill: rgba(255,255,255,0.1);
   --button-pressed-fill: rgba(255,255,255,0.16);
   --vocab-highlight: linear-gradient(to top, hsla(210, 32%, 64%, 0.20) 35%, transparent 35%);
+  --vocab-highlight-paper: hsl(212, 32%, 62%);
   --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #1c1a17;
   --system-red: #FF453A;
@@ -281,6 +296,7 @@
   --button-idle-fill: rgba(0,0,0,0.07);
   --button-pressed-fill: rgba(0,0,0,0.12);
   --vocab-highlight: linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%);
+  --vocab-highlight-paper: hsl(212, 32%, 47%);
   --tier-advanced: rgba(214,138,71,0.78);
   --on-success: #ffffff;
   --system-red: #FF3B30;

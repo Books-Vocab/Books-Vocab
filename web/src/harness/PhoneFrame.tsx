@@ -39,6 +39,12 @@ import { WordDetailCardScreen } from '../surfaces/word-detail-card/WordDetailCar
 import { SettingsPreferencesScreen } from '../surfaces/settings-preferences/SettingsPreferencesScreen'
 import { SettingsReviewScreen } from '../surfaces/settings-review/SettingsReviewScreen'
 import { SettingsSubscriptionScreen } from '../surfaces/settings-subscription/SettingsSubscriptionScreen'
+import { PodcastBubbleCellScreen } from '../surfaces/podcast-bubble-cell/PodcastBubbleCellScreen'
+import { PodcastHeroScreen } from '../surfaces/podcast-hero/PodcastHeroScreen'
+import { PodcastRailCardScreen } from '../surfaces/podcast-rail-card/PodcastRailCardScreen'
+import { AccountAuthSummaryScreen } from '../surfaces/account-auth-summary/AccountAuthSummaryScreen'
+import { LoginSheetScreen } from '../surfaces/login-sheet/LoginSheetScreen'
+import { WelcomeScreen } from '../surfaces/welcome/WelcomeScreen'
 import { AppShell } from '../shell/AppShell'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
@@ -132,6 +138,18 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <SettingsReviewScreen scenario={config.scenario} />
     case 'settings-subscription':
       return <SettingsSubscriptionScreen scenario={config.scenario} />
+    case 'podcast-bubble-cell':
+      return <PodcastBubbleCellScreen scenario={config.scenario} />
+    case 'podcast-hero':
+      return <PodcastHeroScreen scenario={config.scenario} />
+    case 'podcast-rail-card':
+      return <PodcastRailCardScreen scenario={config.scenario} />
+    case 'account-auth-summary':
+      return <AccountAuthSummaryScreen scenario={config.scenario} />
+    case 'login-sheet':
+      return <LoginSheetScreen scenario={config.scenario} />
+    case 'welcome':
+      return <WelcomeScreen scenario={config.scenario} />
     case 'vocabulary':
       return <VocabularyScreen scenario={config.scenario} />
     case 'today-review':

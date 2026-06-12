@@ -14,7 +14,8 @@
      AppSettingsMetrics.reviewValueMinWidth = 52
      AppMetrics.iconButtonSize = 52、dividerStandard = 1
      radii.card = AppRadius.md = 8 → --radius-card；radii.control = AppRadius.sm = 6 → --radius-control
-   px 註解標 iOS 來源常數；.fill layout → 全 phone-frame 不透明捕捉（同 bookshelf）。 */
+   px 註解標 iOS 來源常數；.fill layout → 全 phone-frame 透明捕捉（shots transparent:true，
+   ref corner srgba 0,0,0,0；page-bg 僅卡片內，非全幅鋪滿）。 */
 
 .settings-review {
   display: flex;

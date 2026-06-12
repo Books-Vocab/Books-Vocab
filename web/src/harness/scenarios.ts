@@ -119,6 +119,16 @@ export const SURFACE_SCENARIOS = {
   'settings-preferences': ['with-auto-sync', 'auto-sync-off', 'logged-out'],
   'settings-review': ['intensive', 'relaxed', 'frozen', 'custom'],
   'settings-subscription': ['pro-active', 'loading', 'pricing-unavailable', 'inactive-free'],
+  // Composite layer (batch-9): Podcast Bubble Cell（component crop transparent，字幕泡泡）+
+  // Podcast Hero（full-frame transparent，series hero）+ Rail Card（component crop transparent）。
+  'podcast-bubble-cell': ['highlighted-active', 'idle-non-current', 'right-aligned-speaker', 'vocab-highlighted'],
+  'podcast-hero': ['full-meta', 'long-title-multi-host', 'fresh-no-meta', 'episodes-only', 'a11y3'],
+  'podcast-rail-card': ['resume', 'no-progress', 'long-title', 'large-numbers', 'a11y3'],
+  // Composite layer (batch-10): Account Auth Summary（full-frame transparent 垂直置中）+
+  // Login Sheet（full-frame opaque page）+ Welcome（full-frame opaque onboarding）。
+  'account-auth-summary': ['initials-free', 'initials-pro', 'long-name-email-overflow'],
+  'login-sheet': ['default', 'authenticating', 'error'],
+  'welcome': ['step-1-capture', 'step-2-link', 'step-3-review', 'step-3-dark'],
   vocabulary: ['populated', 'single', 'empty'],
   'today-review': ['front', 'back', 'production-front', 'production-back'],
   podcast: ['preview-player', 'locked-gate'],
