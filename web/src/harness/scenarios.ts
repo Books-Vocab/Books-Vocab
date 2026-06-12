@@ -92,6 +92,14 @@ export const SURFACE_SCENARIOS = {
   // NotebookEditSheet (.fill opaque grouped Form): create/edit 單字本 sheet —
   // cover preview + name field + 12 色圈 + 6 pattern tile + 自訂圖片。
   'notebook-edit': ['create-blank', 'color-pattern', 'color-only', 'long-name', 'empty-name'],
+  // ── wf-surface-batch（並行授權）7 surface ──
+  'word-edit': ['populated', 'empty-explanation', 'long-content-stress', 'long-word-title'],
+  'vocab-calendar': ['active-month', 'day-selected', 'heavy-intensity', 'no-activity', 'current-month'],
+  'vocab-forecast': ['7-day', '14-day', 'compact', 'sparse'],
+  'vocab-heatmap': ['dense-graded', 'empty', 'no-thresholds', 'short-range', 'sparse'],
+  'review-banner': ['review-both', 'review-due', 'review-unlearned', 'review-large', 'demo-default'],
+  'vocab-add-link': ['with-candidates', 'no-candidates'],
+  'vocab-linked-card': ['single-card', 'stacked-3-deep'],
   'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
   // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
   // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row

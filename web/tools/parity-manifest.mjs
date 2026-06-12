@@ -894,6 +894,101 @@ export const PARITY = [
     ref: { surface: 'Notebook Edit', scenario: 'Edit · empty name (save disabled)', appearance: 'light' },
     note: 'Notebook edit · 空名稱（森林色 / field placeholder / cover 顯預覽）(light)',
   },
+
+  // ── word-edit ──
+  { case: 'word-edit-populated-light', params: { surface: 'word-edit', scenario: 'populated', appearance: 'light' }, ref: { surface: 'Word Edit', scenario: 'Populated', appearance: 'light' }, note: '已填翻譯+教學筆記的詞條編輯（兩張白卡） (light)' },
+    { case: 'word-edit-empty-explanation-light', params: { surface: 'word-edit', scenario: 'empty-explanation', appearance: 'light' }, ref: { surface: 'Word Edit', scenario: 'Empty explanation', appearance: 'light' }, note: '教學筆記為空（第二張卡空白、minHeight 80 保留） (light)' },
+    { case: 'word-edit-long-content-stress-light', params: { surface: 'word-edit', scenario: 'long-content-stress', appearance: 'light' }, ref: { surface: 'Word Edit', scenario: 'Long content stress', appearance: 'light' }, note: '長翻譯+6 段重複教學筆記（第二張卡撐高） (light)' },
+    { case: 'word-edit-long-word-title-light', params: { surface: 'word-edit', scenario: 'long-word-title', appearance: 'light' }, ref: { surface: 'Word Edit', scenario: 'Long word title', appearance: 'light' }, note: '超長單字 navigationTitle（near-white serif、截斷） (light)' },
+  // ── vocab-calendar ──
+  {
+    case: 'vocab-calendar-active-month-light',
+    params: { surface: 'vocab-calendar', scenario: 'active-month', appearance: 'light', crop: 'component' },
+    crop: '.vocab-calendar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Calendar', scenario: 'Active month', appearance: 'light' },
+    note: '2024-03 gradient 全 intensity 色階（cellFill 0.12/0.16/0.20/0.26 + dot 0.5/0.75/1.0）；Monday-first 7欄 grid，.fillH 全寬透明畫布 (light)',
+  },
+  {
+    case: 'vocab-calendar-day-selected-light',
+    params: { surface: 'vocab-calendar', scenario: 'day-selected', appearance: 'light', crop: 'component' },
+    crop: '.vocab-calendar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Calendar', scenario: 'Day selected', appearance: 'light' },
+    note: '2024-03 gradient + 選中 day15（mutedFill 底 + primaryText 數字）；其餘同 active-month (light)',
+  },
+  {
+    case: 'vocab-calendar-heavy-intensity-light',
+    params: { surface: 'vocab-calendar', scenario: 'heavy-intensity', appearance: 'light', crop: 'component' },
+    crop: '.vocab-calendar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Calendar', scenario: 'Heavy intensity', appearance: 'light' },
+    note: '2024-03 全 count=20 → 最深 cellFill 0.26 + 滿 dot（chart-highlight 1.0）逼出色階上限 (light)',
+  },
+  {
+    case: 'vocab-calendar-no-activity-light',
+    params: { surface: 'vocab-calendar', scenario: 'no-activity', appearance: 'light', crop: 'component' },
+    crop: '.vocab-calendar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Calendar', scenario: 'No activity', appearance: 'light' },
+    note: '2024-03 空 map（empty state）：僅 secondaryText 數字 + cardBorder 0.5 格線，無 fill/dot (light)',
+  },
+  {
+    case: 'vocab-calendar-current-month-light',
+    params: { surface: 'vocab-calendar', scenario: 'current-month', appearance: 'light', crop: 'component' },
+    crop: '.vocab-calendar-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Calendar', scenario: 'Current month with today', appearance: 'light' },
+    note: '2026-06（catalog 擷取月）gradient + today=11 chartHighlight 數字色；月份較窄、ref 高度小於其他 scene (light)',
+  },
+  // ── vocab-forecast ──
+  {
+    case: 'vocab-forecast-7-day-light',
+    params: { surface: 'vocab-forecast', scenario: '7-day', appearance: 'light', crop: 'component' },
+    transparent: true,
+    crop: '.vocab-forecast-surface',
+    ref: { surface: 'Vocab Forecast', scenario: '7-day forecast', appearance: 'light' },
+    note: 'Vocab forecast 長條圖 · 7 天 counts [12,5,8,3,6,9,4]，index0 高亮、count label (light)',
+  },
+  {
+    case: 'vocab-forecast-14-day-light',
+    params: { surface: 'vocab-forecast', scenario: '14-day', appearance: 'light', crop: 'component' },
+    transparent: true,
+    crop: '.vocab-forecast-surface',
+    ref: { surface: 'Vocab Forecast', scenario: '14-day forecast', appearance: 'light' },
+    note: 'Vocab forecast 長條圖 · 14 天，index6 顯示「1週」label (light)',
+  },
+  {
+    case: 'vocab-forecast-compact-light',
+    params: { surface: 'vocab-forecast', scenario: 'compact', appearance: 'light', crop: 'component' },
+    transparent: true,
+    crop: '.vocab-forecast-surface',
+    ref: { surface: 'Vocab Forecast', scenario: 'Compact (30 days)', appearance: 'light' },
+    note: 'Vocab forecast 長條圖 · 30 天 isCompact，無 count label、date label 窄欄截斷 (light)',
+  },
+  {
+    case: 'vocab-forecast-sparse-light',
+    params: { surface: 'vocab-forecast', scenario: 'sparse', appearance: 'light', crop: 'component' },
+    transparent: true,
+    crop: '.vocab-forecast-surface',
+    ref: { surface: 'Vocab Forecast', scenario: 'Sparse — single spike', appearance: 'light' },
+    note: 'Vocab forecast 長條圖 · 單峰 [18,0,...]，僅 index0 有 bar/count (light)',
+  },
+  // ── vocab-heatmap ──
+  { case: 'vocab-heatmap-dense-graded-light', params: { surface: 'vocab-heatmap', scenario: 'dense-graded', appearance: 'light', crop: 'component' }, transparent: true, crop: '.vocab-heatmap-surface', ref: { surface: 'Vocab Heatmap', scenario: 'Dense · graded', appearance: 'light' }, note: '密集 graded 20 週活動熱圖 — 四級著色全覆蓋 (light)' },
+{ case: 'vocab-heatmap-sparse-light', params: { surface: 'vocab-heatmap', scenario: 'sparse', appearance: 'light', crop: 'component' }, transparent: true, crop: '.vocab-heatmap-surface', ref: { surface: 'Vocab Heatmap', scenario: 'Sparse', appearance: 'light' }, note: '稀疏低活躍熱圖 — 每 11 天一個 level 1 點 (light)' },
+{ case: 'vocab-heatmap-no-thresholds-light', params: { surface: 'vocab-heatmap', scenario: 'no-thresholds', appearance: 'light', crop: 'component' }, transparent: true, crop: '.vocab-heatmap-surface', ref: { surface: 'Vocab Heatmap', scenario: 'No thresholds (flat level)', appearance: 'light' }, note: '無 thresholds — 所有非零日扁平 level 1 (light)' },
+{ case: 'vocab-heatmap-empty-light', params: { surface: 'vocab-heatmap', scenario: 'empty', appearance: 'light', crop: 'component' }, transparent: true, crop: '.vocab-heatmap-surface', ref: { surface: 'Vocab Heatmap', scenario: 'Empty', appearance: 'light' }, note: '空活動 — 全格透明僅留 grid 結構與圖例 (light)' },
+{ case: 'vocab-heatmap-short-range-light', params: { surface: 'vocab-heatmap', scenario: 'short-range', appearance: 'light', crop: 'component' }, transparent: true, crop: '.vocab-heatmap-surface', ref: { surface: 'Vocab Heatmap', scenario: 'Short range (8 weeks)', appearance: 'light' }, note: '8 週短區間 graded 熱圖 (light)' },
+  // ── review-banner ──
+{ case: 'review-banner-demo-default-light', params: { surface: 'review-banner', scenario: 'demo-default', appearance: 'light' }, ref: { surface: 'Banners · Demo', scenario: 'Default', appearance: 'light' }, note: 'DemoBanner 全幀 strip：Demo 模式 + 結束 (light)' },
+  // ── vocab-add-link ──
+  { case: 'vocab-add-link-with-candidates-light', params: { surface: 'vocab-add-link', scenario: 'with-candidates', appearance: 'light' }, ref: { surface: 'Vocabulary · Add Link', scenario: 'With candidates', appearance: 'light' }, note: 'Add Link sheet 候選態：初始 searchText 為空，固定渲染空查詢空態（與 No candidates byte-identical）(light)' },
+{ case: 'vocab-add-link-no-candidates-light', params: { surface: 'vocab-add-link', scenario: 'no-candidates', appearance: 'light' }, ref: { surface: 'Vocabulary · Add Link', scenario: 'No candidates', appearance: 'light' }, note: 'Add Link sheet 無候選態：空查詢空態，視覺等同 With candidates (light)' },
+  // ── vocab-linked-card ──
+  { case: 'vocab-linked-card-single-card-light', params: { surface: 'vocab-linked-card', scenario: 'single-card', appearance: 'light' }, transparent: true, ref: { surface: 'Vocabulary · Linked Card', scenario: 'Single card', appearance: 'light' }, note: '單張連結卡 overlay（載入態 placeholder），scrim black 0.20 over 透明畫布 (light)' },
+{ case: 'vocab-linked-card-stacked-3-deep-light', params: { surface: 'vocab-linked-card', scenario: 'stacked-3-deep', appearance: 'light' }, transparent: true, ref: { surface: 'Vocabulary · Linked Card', scenario: 'Stacked 3-deep', appearance: 'light' }, note: '三層疊卡 overlay（前卡 Nested Link +2），各層 offset/scale 遞增 (light)' },
+
   {
     case: 'kg-empty-state-no-entries-logged-out-light',
     params: { surface: 'kg-empty-state', scenario: 'no-entries-logged-out', appearance: 'light' },
