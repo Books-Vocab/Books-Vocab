@@ -163,6 +163,8 @@ public enum DesignTokens {
             public static let cardPadding: CGFloat = 18
             public static let chipPaddingH: CGFloat = 10
             public static let chipPaddingV: CGFloat = 5
+            public static let compactChipPaddingH: CGFloat = 6
+            public static let compactChipPaddingV: CGFloat = 3
             public static let dividerAir: CGFloat = 16
             public static let inlineGap: CGFloat = 8
             public static let pageHPadding: CGFloat = 20

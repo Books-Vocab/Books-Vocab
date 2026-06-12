@@ -60,6 +60,8 @@
   --divider-air: 16px;
   --chip-padding-h: 10px;
   --chip-padding-v: 5px;
+  --compact-chip-padding-h: 6px;
+  --compact-chip-padding-v: 3px;
   --radius-none: 0px;
   --radius-xs: 4px;
   --radius-sm: 6px;
