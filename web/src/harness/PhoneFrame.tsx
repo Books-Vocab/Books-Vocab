@@ -43,6 +43,7 @@ import { PodcastBubbleCellScreen } from '../surfaces/podcast-bubble-cell/Podcast
 import { PodcastHeroScreen } from '../surfaces/podcast-hero/PodcastHeroScreen'
 import { PodcastRailCardScreen } from '../surfaces/podcast-rail-card/PodcastRailCardScreen'
 import { AccountAuthSummaryScreen } from '../surfaces/account-auth-summary/AccountAuthSummaryScreen'
+import { AccountSectionScreen } from '../surfaces/account-section/AccountSectionScreen'
 import { LoginSheetScreen } from '../surfaces/login-sheet/LoginSheetScreen'
 import { WelcomeScreen } from '../surfaces/welcome/WelcomeScreen'
 import { AppShell } from '../shell/AppShell'
@@ -146,6 +147,8 @@ function SurfaceView({ config }: { config: HarnessConfig }) {
       return <PodcastRailCardScreen scenario={config.scenario} />
     case 'account-auth-summary':
       return <AccountAuthSummaryScreen scenario={config.scenario} />
+    case 'account-section':
+      return <AccountSectionScreen scenario={config.scenario} />
     case 'login-sheet':
       return <LoginSheetScreen scenario={config.scenario} />
     case 'welcome':
