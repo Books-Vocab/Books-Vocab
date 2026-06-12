@@ -791,6 +791,13 @@ export const PARITY = [
     ref: { surface: 'Vocab Scene Shell', scenario: 'Content · pass-through', appearance: 'light' },
     note: 'Vocab scene shell · content pass-through（範例字卡 serendipity，確認殼不污染 content）',
   },
+  // Vocab Highlight Picker — Reader 螢光標記顏色選擇器（VocabHighlightColorPresetPicker）。
+  //   catalog .fill 透明 component scene（alpha-mean 0.049）→ 全 phone-frame 透明捕捉。
+  //   4 preset selected 態；Dark mode scene deferred（.preferredColorScheme 語意未定）。
+  { case: 'vocab-highlight-picker-paper-selected-light', params: { surface: 'vocab-highlight-picker', scenario: 'paper-selected', appearance: 'light' }, transparent: true, ref: { surface: 'Vocab Highlight Picker', scenario: 'Paper selected', appearance: 'light' }, note: 'Vocab highlight picker · 紙色 selected' },
+  { case: 'vocab-highlight-picker-blue-selected-light', params: { surface: 'vocab-highlight-picker', scenario: 'blue-selected', appearance: 'light' }, transparent: true, ref: { surface: 'Vocab Highlight Picker', scenario: 'Blue selected', appearance: 'light' }, note: 'Vocab highlight picker · 藍色 selected' },
+  { case: 'vocab-highlight-picker-sage-selected-light', params: { surface: 'vocab-highlight-picker', scenario: 'sage-selected', appearance: 'light' }, transparent: true, ref: { surface: 'Vocab Highlight Picker', scenario: 'Sage selected', appearance: 'light' }, note: 'Vocab highlight picker · 鼠尾草 selected' },
+  { case: 'vocab-highlight-picker-rose-selected-light', params: { surface: 'vocab-highlight-picker', scenario: 'rose-selected', appearance: 'light' }, transparent: true, ref: { surface: 'Vocab Highlight Picker', scenario: 'Rose selected', appearance: 'light' }, note: 'Vocab highlight picker · 玫瑰 selected' },
   // --- Composite layer batch-2 — 8 cases (wf-composite-batch): collocation-explain
   //     (.fill transparent full-frame) + kg-empty-state (.fill opaque page-bg full-frame).
   //     banner-review deferred (task #8: opaque-card-on-transparent edge-scale sensitivity).
