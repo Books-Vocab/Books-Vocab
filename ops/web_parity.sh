@@ -45,6 +45,10 @@ Usage: ops/web_parity.sh [--audit] [--check] [--bless] [--fast] [--only <case-su
   --fast       metrics-only: skip the contact sheet + per-case diff/zoom/palette/phash.
                ~4× faster; the gated numbers (rmse/mae/ssim) are identical. Use for
                bless/check loops; drop --fast (full audit) when you need to eyeball a case.
+  --no-audit   skip build/capture/contact/audit entirely and run the verdict (--check /
+               --bless) against the EXISTING web/tools/audit/summary.json. Use to chain
+               check→bless→check off ONE audit instead of re-capturing 3×. Requires a
+               prior audit run (summary.json must exist). Implies --check or --bless.
   --only SUB   restrict the audit to cases whose name contains SUB
   --no-build   skip the vite build (use when web/dist is fresh)
 Env: KG_CATALOG_ROOT  catalog snapshot root override (worktrees have an empty build/)
@@ -57,12 +61,14 @@ BLESS=0
 FAST=0
 ONLY=""
 NO_BUILD=0
+NO_AUDIT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --audit) AUDIT=1 ;;
     --check) CHECK=1; AUDIT=1 ;;
     --bless) BLESS=1; AUDIT=1 ;;
     --fast) FAST=1 ;;
+    --no-audit) NO_AUDIT=1 ;;
     --only) ONLY="${2:?--only needs a case substring}"; shift ;;
     --no-build) NO_BUILD=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -74,6 +80,17 @@ done
 if [[ "$BLESS" == 1 && "$CHECK" == 1 ]]; then
   echo "--bless and --check are mutually exclusive (bless rewrites the very baseline check verifies)" >&2
   exit 2
+fi
+
+if [[ "$NO_AUDIT" == 1 ]]; then
+  if [[ "$CHECK" != 1 && "$BLESS" != 1 ]]; then
+    echo "--no-audit needs --check or --bless (nothing to verify otherwise)" >&2
+    exit 2
+  fi
+  if [[ ! -f web/tools/audit/summary.json ]]; then
+    echo "--no-audit needs a prior audit: web/tools/audit/summary.json not found" >&2
+    exit 2
+  fi
 fi
 
 shot_args=()
@@ -94,15 +111,27 @@ run_phase() {
   banner "$label"
   "$@" &
   local pid=$! secs=0
+  # Poll every 1s (not sleep HEARTBEAT_SECS) so a fast phase exits within ~1s instead of
+  # blocking on a full heartbeat interval — that dead-wait was adding up to HEARTBEAT_SECS
+  # of pure latency PER phase (≈45s across build/capture/audit, ×N chained runs). Heartbeat
+  # line still only prints every HEARTBEAT_SECS.
   while kill -0 "$pid" 2>/dev/null; do
-    sleep "$HEARTBEAT_SECS"
-    kill -0 "$pid" 2>/dev/null || break
-    secs=$((secs + HEARTBEAT_SECS))
-    printf '  ⏳ %s … still running (%ds)\n' "$label" "$secs" >&2
+    sleep 1
+    secs=$((secs + 1))
+    if (( secs % HEARTBEAT_SECS == 0 )) && kill -0 "$pid" 2>/dev/null; then
+      printf '  ⏳ %s … still running (%ds)\n' "$label" "$secs" >&2
+    fi
   done
   wait "$pid"  # propagate the phase's exit code (set -e aborts the run on failure)
 }
 
+# --no-audit reuses the existing summary.json: skip capture + contact + audit entirely
+# and jump straight to the verdict. Lets check→bless→check share ONE audit (3× → 1×).
+if [[ "$NO_AUDIT" == 1 ]]; then
+  banner "reusing existing audit (web/tools/audit/summary.json)"
+fi
+
+if [[ "$NO_AUDIT" != 1 ]]; then
 run_phase "build + capture" node web/tools/shots.mjs "${shot_args[@]+"${shot_args[@]}"}"
 
 # The contact sheet (compare.mjs) is a human review artifact and itself a heavy
@@ -110,8 +139,9 @@ run_phase "build + capture" node web/tools/shots.mjs "${shot_args[@]+"${shot_arg
 if [[ "$FAST" != 1 ]]; then
   run_phase "contact sheet" node web/tools/compare.mjs
 fi
+fi
 
-if [[ "$AUDIT" == 1 ]]; then
+if [[ "$AUDIT" == 1 && "$NO_AUDIT" != 1 ]]; then
   [[ "$FAST" == 1 ]] && audit_label="audit (per-case metrics, fast/metrics-only)" || audit_label="audit (per-case metrics)"
   audit_args=()
   [[ -n "$ONLY" ]] && audit_args+=(--only "$ONLY")
