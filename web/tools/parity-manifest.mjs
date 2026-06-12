@@ -191,6 +191,37 @@ export const PARITY = [
     ref: { surface: 'Reader Selection Tile', scenario: 'Unselected', appearance: 'light' },
     note: 'Reader selection tile unselected (light)',
   },
+  // Vocab Shell · Sort Pill（元件庫原語層第一個 atom）— VocabShellComponentsScenarios.swift
+  // 3 態。catalog 元件 scene 畫布透明（component-isolated，layout .compressed
+  // intrinsic 388×209@dpr3 ≈ pill 81×22pt + padding 24）。web crop=component 截
+  // `.vocab-shell-component-surface`（pill + padding 24 intrinsic box），
+  // transparent:true → shots omitBackground 截圖，使 ref/shot 同為
+  // pill-over-transparent（faint muted-fill 4% 不需 refCrop：refComponentBbox
+  // 6% 閾值抓不到 4% 膠囊，反而會誤裁成只剩 icon+text）。
+  {
+    case: 'vocab-sort-pill-default-light',
+    params: { surface: 'vocab-sort-pill', scenario: 'default', appearance: 'light', crop: 'component' },
+    crop: '.vocab-shell-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Sort Pill', scenario: 'Default (複習優先)', appearance: 'light' },
+    note: 'Vocab sort pill · default 複習優先 (light)',
+  },
+  {
+    case: 'vocab-sort-pill-alphabetical-light',
+    params: { surface: 'vocab-sort-pill', scenario: 'alphabetical', appearance: 'light', crop: 'component' },
+    crop: '.vocab-shell-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Sort Pill', scenario: 'Alphabetical', appearance: 'light' },
+    note: 'Vocab sort pill · alphabetical 字母序 (light)',
+  },
+  {
+    case: 'vocab-sort-pill-difficulty-light',
+    params: { surface: 'vocab-sort-pill', scenario: 'difficulty', appearance: 'light', crop: 'component' },
+    crop: '.vocab-shell-component-surface',
+    transparent: true,
+    ref: { surface: 'Vocab Shell · Sort Pill', scenario: 'Difficulty', appearance: 'light' },
+    note: 'Vocab sort pill · difficulty 難度 (light)',
+  },
   // Translation panel（R2）— ReaderScenarios.swift「Reader · Translation」6 態
   // （layout .fill = scrim + bottom-sheet panel，gorgeous / adj.）。皆 light。
   //

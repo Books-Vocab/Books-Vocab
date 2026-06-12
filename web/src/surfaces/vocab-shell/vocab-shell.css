@@ -1,0 +1,41 @@
+/* Vocab Shell 原語層（atom）— iOS VocabShellComponents 的 web 鏡像。
+   token 一律走 design-system 變數（compact-chip padding、muted-fill、caption、
+   secondaryText、s1），不寫 literal。
+
+   catalog 元件 scene 畫布透明（component-isolated，corner srgba 0,0,0,0）：
+   crop 目標 = surface 自身（pill + padding 24 的 intrinsic box，dpr3 ≈ 388×209
+   對齊 ref），surface 與 phone-frame 在 crop=component 下透明，shots
+   omitBackground 截圖 → web 與 ref 同為 pill-over-transparent。 */
+
+/* surface = pill + scene wrapper .padding(24) 的緊裹 box（intrinsic，供 crop 截取） */
+.vocab-shell-component-surface {
+  display: inline-flex;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+/* VocabSortPill：HStack(spacing s1)[arrow.up.arrow.down + caption label]
+   .padding(.h compact-chip-h, .v compact-chip-v).background(Capsule muted-fill) */
+.vocab-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--compact-chip-padding-v) var(--compact-chip-padding-h);
+  border-radius: 999px;
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: var(--leading-caption);
+  white-space: nowrap;
+}
+
+.vocab-sort-pill-icon {
+  flex: none;
+}
+
+/* 元件級 crop：透明畫布（對齊 catalog component scene 的透明 canvas） */
+.phone-frame[data-crop='component'][data-surface='vocab-sort-pill'] {
+  background: transparent;
+}
