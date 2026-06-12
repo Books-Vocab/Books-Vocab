@@ -20,7 +20,7 @@ sys.path.insert(0, str(ENG))
 import catalog_coverage as cov  # noqa: E402
 
 # Ratchet: raise as the long tail (.overlay/custom ViewModifiers) lands.
-COVERAGE_FLOOR = 0.60  # honest 65.3% (scoped-out folded into denominator); buffer for churn
+COVERAGE_FLOOR = 0.64  # honest 66.9% (custom-modifier resolution landed); ~3pp buffer for churn
 # Guards the OTHER gaming vector the #962 review flagged: shrinking the denominator by
 # moving a visual modifier into NON_VISUAL would raise coverage without real progress.
 # A denominator floor makes that show up as a failure instead of a "win".
