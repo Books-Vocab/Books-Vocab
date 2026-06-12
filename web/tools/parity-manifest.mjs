@@ -861,6 +861,39 @@ export const PARITY = [
     ref: { surface: 'Link Reason Sheet', scenario: 'Empty reason', appearance: 'light' },
     note: 'Link reason · 空 reason 邊界（laconic / divider 緊鄰標題 / footer 不變）(light)',
   },
+
+  // --- NotebookEditSheet — 5 cases: 新建/編輯單字本 grouped Form（.fill opaque #F2F2F7）。
+  //     cover preview + name field + 12 色圈 + 6 pattern tile（橫向 scroll，噪點被裁）+ 自訂圖片。
+  {
+    case: 'notebook-edit-create-blank-light',
+    params: { surface: 'notebook-edit', scenario: 'create-blank', appearance: 'light' },
+    ref: { surface: 'Notebook Edit', scenario: 'Create · blank', appearance: 'light' },
+    note: 'Notebook edit · 新建空白（預覽 cover #AFC2D3 default / 空 name / 無色無 pattern）(light)',
+  },
+  {
+    case: 'notebook-edit-color-pattern-light',
+    params: { surface: 'notebook-edit', scenario: 'color-pattern', appearance: 'light' },
+    ref: { surface: 'Notebook Edit', scenario: 'Edit · color + pattern', appearance: 'light' },
+    note: 'Notebook edit · 海洋色 + 圓點 pattern（GRE 高頻字 / 色圈+tile 雙選定白勾）(light)',
+  },
+  {
+    case: 'notebook-edit-color-only-light',
+    params: { surface: 'notebook-edit', scenario: 'color-only', appearance: 'light' },
+    ref: { surface: 'Notebook Edit', scenario: 'Edit · color only', appearance: 'light' },
+    note: 'Notebook edit · 珊瑚色無 pattern（雅思核心詞彙 / 無 tile selected）(light)',
+  },
+  {
+    case: 'notebook-edit-long-name-light',
+    params: { surface: 'notebook-edit', scenario: 'long-name', appearance: 'light' },
+    ref: { surface: 'Notebook Edit', scenario: 'Edit · long name', appearance: 'light' },
+    note: 'Notebook edit · 長名稱壓力（紫藤色 / cover lineLimit 2 截斷）(light)',
+  },
+  {
+    case: 'notebook-edit-empty-name-light',
+    params: { surface: 'notebook-edit', scenario: 'empty-name', appearance: 'light' },
+    ref: { surface: 'Notebook Edit', scenario: 'Edit · empty name (save disabled)', appearance: 'light' },
+    note: 'Notebook edit · 空名稱（森林色 / field placeholder / cover 顯預覽）(light)',
+  },
   {
     case: 'kg-empty-state-no-entries-logged-out-light',
     params: { surface: 'kg-empty-state', scenario: 'no-entries-logged-out', appearance: 'light' },

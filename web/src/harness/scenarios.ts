@@ -89,6 +89,9 @@ export const SURFACE_SCENARIOS = {
   // LinkReasonSheet (.fill opaque page-bg full-frame): card-link 解釋 sheet —
   // paperclip header + mono word + divider + reason body + 2× ghost button footer.
   'link-reason-sheet': ['medium-reason', 'short-reason', 'long-reason', 'no-hide', 'empty-reason'],
+  // NotebookEditSheet (.fill opaque grouped Form): create/edit 單字本 sheet —
+  // cover preview + name field + 12 色圈 + 6 pattern tile + 自訂圖片。
+  'notebook-edit': ['create-blank', 'color-pattern', 'color-only', 'long-name', 'empty-name'],
   'kg-empty-state': ['no-entries-cta', 'no-entries-logged-out', 'search-no-match', 'single-filter-due', 'multi-filter'],
   // Composite layer (batch-3): Sync (.fill opaque full-frame, bookshelf pattern) /
   // Notebooks·Card (opaque component crop, editorial book-row) / KG Vocab Row
