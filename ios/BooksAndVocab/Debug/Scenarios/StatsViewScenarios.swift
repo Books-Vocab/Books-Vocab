@@ -176,7 +176,7 @@ private struct StatsViewScene: View {
     /// `StatsViewFixtures.fixedNow`, making the presenter's `@Query`-driven
     /// summary recompute deterministic across catalog runs.
     private static let frozenStore: ReviewSettingsStore = {
-        var settings = ReviewSettings()
+        var settings = ReviewSettings.default
         settings.isProgressPaused = true
         settings.progressPausedAt = StatsViewFixtures.fixedNow
         return ReviewSettingsStore(previewSettings: settings)
