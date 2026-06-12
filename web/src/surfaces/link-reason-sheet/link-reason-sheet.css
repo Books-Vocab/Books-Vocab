@@ -1,0 +1,122 @@
+/* LinkReasonSheet — iOS LinkReasonSheet 的 web 鏡像。token 一律走 design-system 變數
+   （section-gap 14、sp-2/sp-6、text-detail-word 27/font-mono、text-caption 12 bold、
+   text-subhead 15=body、text-body 17=ghost label、text-tertiary/primary/secondary、
+   divider/sp-hairline、destructive、page-bg），不寫視覺 literal。
+
+   catalog scene = .fill 但 .vocabCanvasBackground() + scene .background(pageBackground)
+   → opaque（alpha-mean 1）：surface 填 page-bg 撐滿整 frame，footer 靠 Spacer 推到底部。
+   走全 phone-frame 不透明捕捉（無 transparent flag、無 crop=component）。 */
+
+/* VStack(align .leading, spacing sectionGap=14) 撐滿 frame；.padding(cardBlockPadding=24)
+   .vocabCanvasBackground()=pageBackground */
+.lrs-surface {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--section-gap);
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-6);
+  background: var(--page-bg);
+}
+
+/* HStack(.firstTextBaseline, spacing s2=8)[paperclip · label] */
+.lrs-header {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+/* Image(paperclip).font(iconSmall = symbol 12 .medium)/tertiaryText */
+.lrs-header-icon {
+  flex: none;
+  color: var(--text-tertiary);
+  /* baseline 對齊：icon 視覺中心略沉，與 firstTextBaseline 對齊用 translateY 微調 */
+  transform: translateY(3px);
+}
+
+/* Text(label).font(caption = sans 12 bold)/tertiaryText */
+.lrs-label {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+/* Text(word).font(detailWord = mono 27 semibold)/primaryText */
+.lrs-word {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-detail-word);
+  font-weight: 600;
+  line-height: var(--leading-heading);
+  color: var(--text-primary);
+}
+
+/* CardSectionDivider(horizontalPadding: 0)：Rectangle().fill(divider).frame(height 0.5) */
+.lrs-divider {
+  flex: none;
+  height: var(--sp-hairline);
+  background: var(--divider);
+}
+
+/* Text(reason).font(body = sans 15)/secondaryText .lineSpacing(paragraphLineSpacing=4)
+   .fixedSize(v) → 行距 = 自然行高 + 4pt（SwiftUI lineSpacing 為額外加成） */
+.lrs-reason {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  line-height: calc(1.2em + 4px);
+  color: var(--text-secondary);
+}
+
+/* Spacer() — 將 footer 推到底部 */
+.lrs-spacer {
+  flex: 1 1 auto;
+}
+
+/* VStack(spacing inlineGap=8)[查看詳情 · 隱藏此連結] */
+.lrs-footer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* GhostButtonStyle：label.foregroundStyle(tone).padding(.h14 .v10)、capsule 透明 at rest；
+   label = HStack(spacing 6) .frame(maxWidth:.infinity)（置中）；字型走預設 system body 17 */
+.lrs-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 999px; /* Capsule */
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+.lrs-ghost--primary {
+  color: var(--text-primary);
+}
+
+.lrs-ghost--destructive {
+  color: var(--destructive);
+}
+
+.lrs-ghost-label {
+  flex: none;
+}
+
+/* Image(arrow.up.right / eye.slash).font(iconTiny = symbol 10 .thin) — 繼承 ghost tone */
+.lrs-ghost-glyph {
+  flex: none;
+}

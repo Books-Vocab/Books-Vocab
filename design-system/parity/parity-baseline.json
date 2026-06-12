@@ -560,6 +560,31 @@
       "mae": 0.00915168,
       "ssim": 0.0206564
     },
+    "link-reason-sheet-medium-reason-light": {
+      "rmse": 0.101043,
+      "mae": 0.0182276,
+      "ssim": 0.0404022
+    },
+    "link-reason-sheet-short-reason-light": {
+      "rmse": 0.0661099,
+      "mae": 0.00732086,
+      "ssim": 0.0150468
+    },
+    "link-reason-sheet-long-reason-light": {
+      "rmse": 0.147838,
+      "mae": 0.0411687,
+      "ssim": 0.0916867
+    },
+    "link-reason-sheet-no-hide-light": {
+      "rmse": 0.0960473,
+      "mae": 0.0165127,
+      "ssim": 0.0364182
+    },
+    "link-reason-sheet-empty-reason-light": {
+      "rmse": 0.06934,
+      "mae": 0.00749675,
+      "ssim": 0.0140973
+    },
     "kg-empty-state-no-entries-logged-out-light": {
       "rmse": 0.0714704,
       "mae": 0.0094862,

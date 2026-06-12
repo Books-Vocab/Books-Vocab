@@ -72,3 +72,7 @@ __pycache__/
 
 # ops Swift tooling local build (wrapper redirects to .cache/ops-swift-build)
 ops/swiftpm/.build/
+
+# worktree-local symlinks to main repo (machine-specific, never commit)
+/build
+/node_modules
