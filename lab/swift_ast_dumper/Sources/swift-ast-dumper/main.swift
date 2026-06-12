@@ -120,13 +120,36 @@ func parseColor(_ e: ExprSyntax) -> (token: String, opacity: Double?) {
 
 enum ModResult { case mod([String: Any]); case skip; case unparsed }
 
-// no-visual modifiers: silently dropped (don't pollute `unparsed`)
+// no-visual modifiers: silently dropped (don't pollute `unparsed`). These carry no
+// geometry/color the web CSS reproduces (lifecycle, a11y, text-fitting, layout hints).
+// Modifiers WITH visual effect but not yet implemented (overlay/stroke/clipShape/shadow/
+// blur/opacity/mask/scaleEffect/…) are intentionally NOT here — they degrade to honest
+// `unparsed` so the coverage meter still counts them as work to do.
 let IGNORE: Set<String> = [
-    "enableInjection", "observeInjection", "accessibilityAddTraits", "accessibilityLabel",
-    "accessibilityIdentifier", "accessibilityHint", "accessibilityElement", "appElevation",
-    "buttonStyle", "tracking", "ignoresSafeArea", "contentShape", "lineLimit",
-    "multilineTextAlignment", "fixedSize", "environment", "environmentObject", "onAppear",
-    "onTapGesture", "id", "tag", "tint", "labelStyle", "textCase", "kerning",
+    // injection / lifecycle / events
+    "enableInjection", "observeInjection", "appElevation", "task", "onAppear", "onDisappear",
+    "onTapGesture", "onChange", "onReceive", "onSubmit", "refreshable", "gesture",
+    // accessibility
+    "accessibilityAddTraits", "accessibilityLabel", "accessibilityIdentifier",
+    "accessibilityHint", "accessibilityElement", "accessibilityValue", "accessibilityHidden",
+    "help",
+    // text fitting / typographic micro-hints (no box geometry)
+    "lineLimit", "multilineTextAlignment", "truncationMode", "minimumScaleFactor",
+    "lineSpacing", "textCase", "kerning", "tracking", "allowsTightening",
+    // layout / interaction hints (no painted geometry)
+    "fixedSize", "layoutPriority", "zIndex", "allowsHitTesting", "contentShape",
+    "ignoresSafeArea", "focused", "focusable", "submitLabel", "keyboardType",
+    // environment / identity / styling-handles
+    "environment", "environmentObject", "id", "tag", "tint", "buttonStyle", "labelStyle",
+    "listRowSeparator", "listRowInsets", "listRowBackground", "scrollIndicators",
+    "scrollContentBackground", "animation", "transition", "disabled", "animatePhaseChange",
+    // navigation / screen-level chrome: NOT a component's own box — handled by the web
+    // shell layer, not by per-component transpilation. Scoped out of component coverage.
+    "navigationTitle", "inlineNavigationBarTitle", "largeNavigationBarTitle",
+    "navigationBarTitleDisplayMode", "navigationDestination", "navigationBarBackButtonHidden",
+    "navigationBarHidden", "toolbar", "toolbarBackground", "toolbarColorScheme",
+    "sensoryFeedback", "contextMenu", "focusedSceneValue", "searchable", "toastSheet",
+    "sheet", "fullScreenCover", "alert", "confirmationDialog", "popover",
 ]
 
 func edgeName(_ e: ExprSyntax) -> String? {
@@ -142,9 +165,13 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
     case "font":
         guard let a0 = argList.first?.expression else { return .unparsed }
         let txt = a0.trimmedDescription
-        if let role = cap(txt, "typography\\.([A-Za-z0-9]+)") {
+        // two role sources: `appSkin.typography.<role>` and `AppFonts.<role>(…)`.
+        if let role = cap(txt, "typography\\.([A-Za-z0-9]+)") ?? cap(txt, "AppFonts\\.([A-Za-z0-9]+)") {
             var mod: [String: Any] = ["name": "font", "role": role, "raw": ".font(\(txt))"]
-            if let w = cap(txt, "\\.weight\\(\\.([A-Za-z0-9]+)\\)") { mod["weight_override"] = w }
+            // weight from `.weight(.X)` or `AppFonts.role(weight: .X)`
+            if let w = cap(txt, "\\.weight\\(\\.([A-Za-z0-9]+)\\)") ?? cap(txt, "weight:\\s*\\.([A-Za-z0-9]+)") {
+                mod["weight_override"] = w
+            }
             return .mod(mod)
         }
         return .unparsed
@@ -171,17 +198,27 @@ func parseModifier(_ name: String, _ args: LabeledExprListSyntax, _ trailing: Cl
 
     case "frame":
         var dims: [String: Any] = [:]
+        let frameDims: Set<String> = [
+            "minWidth", "width", "maxWidth", "minHeight", "height", "maxHeight",
+            "idealWidth", "idealHeight",
+        ]
         for a in argList {
-            guard let l = a.label?.text else { continue }
-            if ["minWidth", "width", "height", "minHeight"].contains(l) {
-                dims[l] = parseValue(a.expression)
-            }
+            guard let l = a.label?.text, frameDims.contains(l) else { continue }
+            dims[l] = parseValue(a.expression)
         }
         if dims.isEmpty { return .unparsed }
         return .mod(["name": "frame", "dims": dims, "raw": ".frame"])
 
     case "background":
-        guard let a0 = argList.first?.expression ?? trailing.map({ ExprSyntax($0) }) else { return .unparsed }
+        // call form `.background(Capsule().fill(c))` → arg0; trailing-closure form
+        // `.background { Capsule().fill(c) }` → descend into the closure's first
+        // statement (NOT the closure expr itself — that fabricates a junk token and
+        // silently loses shape/radius; see review of #962).
+        var bgExpr = argList.first?.expression
+        if bgExpr == nil, let t = trailing, let first = t.statements.first {
+            bgExpr = exprOf(first)
+        }
+        guard let a0 = bgExpr else { return .unparsed }
         var mod: [String: Any] = ["name": "background", "raw": ".background(\(a0.trimmedDescription))"]
         // shape-wrapped fill: Capsule(...).fill(c) / RoundedRectangle(cornerRadius:R).fill(c)
         if let call = a0.as(FunctionCallExprSyntax.self),
@@ -225,7 +262,10 @@ func lower(_ expr: ExprSyntax) -> Node {
         switch parseModifier(mname, call.arguments, call.trailingClosure) {
         case .mod(let m): node.modifiers.append(m)
         case .skip: break
-        case .unparsed: node.unparsed.append(call.trimmedDescription)
+        // record ONLY the modifier itself, not the whole chain — appending
+        // call.trimmedDescription would re-swallow the already-parsed base subtree
+        // (massive duplicate pollution) and lump the chain into one opaque blob.
+        case .unparsed: node.unparsed.append(".\(mname)")
         }
         return node
     }
@@ -236,14 +276,15 @@ func lower(_ expr: ExprSyntax) -> Node {
         return constructorNode(ref.baseName.text, call.arguments, call.trailingClosure)
     }
 
-    // bare identifier
+    // bare identifier — almost always a sub-view reference in body position:
+    //   `content`      → @ViewBuilder injection point (decorated container)
+    //   `coverView` / `progressBar` / `SomeView` → a computed-property sub-view → child.
+    // Treating these as `unparsed` was the top loss source (they're structurable, not
+    // unknown). Cross-component inlining of the referent is a later phase.
     if let ref = expr.as(DeclReferenceExprSyntax.self) {
         let name = ref.baseName.text
-        if name == "content" { return Node("container") }        // @ViewBuilder injection point
-        if name.first?.isUppercase == true {
-            let n = Node("child"); n.hint = name; return n
-        }
-        let n = Node("unparsed"); n.unparsed.append(name); return n
+        if name == "content" { return Node("container") }
+        let n = Node("child"); n.hint = name; return n
     }
 
     // anything else is a degrade
