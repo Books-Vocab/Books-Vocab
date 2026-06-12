@@ -85,6 +85,22 @@ SKIN_SPACING_PX = {
 # symbolic metric constants (e.g. TodayReviewMetrics.chevronButtonSize) → px.
 METRIC_PX = {"TodayReviewMetrics.chevronButtonSize": 30}
 
+# SwiftUI Alignment → the overlay LAYER's flex placement (align-items = cross/vertical,
+# justify-content = main/horizontal). The layer is position:absolute; inset:0 (fills the
+# overlaid view); the flex box then places the child exactly where SwiftUI's alignment puts
+# it. This is the faithful overlay model — see test_overlay.py / overlay_layer.swift.
+OVERLAY_FLEX = {
+    "center": ("center", "center"),
+    "top": ("flex-start", "center"),
+    "bottom": ("flex-end", "center"),
+    "leading": ("center", "flex-start"),
+    "trailing": ("center", "flex-end"),
+    "topLeading": ("flex-start", "flex-start"),
+    "topTrailing": ("flex-start", "flex-end"),
+    "bottomLeading": ("flex-end", "flex-start"),
+    "bottomTrailing": ("flex-end", "flex-end"),
+}
+
 # L2 weight mapping.
 #  - bold_weight_700_floor: iOS .medium/.bold → 700 (ElmsSans-400/700-only floor).
 #  - semibold_chip_600: iOS .semibold → web 600 (Inter/SF ships a real 600 face;
@@ -252,6 +268,13 @@ def _emit_node_modifiers(node: dict, decls: list[Decl]) -> None:
             v = m["value"]
             sval = f"{v:g}"
             decls.append(Decl("opacity", sval, "L1:token", f"opacity {sval}"))
+        elif name == "overlay":
+            # the container's own contribution: become the positioning context for the
+            # absolutely-positioned overlay layer(s). The layer rules themselves are emitted
+            # by emit_css (they are separate selectors). Emit position:relative ONCE even
+            # when several overlays stack on one node.
+            if not any(d.prop == "position" for d in decls):
+                decls.append(Decl("position", "relative", "L1:overlay", "overlay anchor"))
         elif name == "background":
             tok = m.get("token")
             var = COLOR_TOKENS.get(tok)
@@ -347,6 +370,24 @@ def emit_css(struct: dict, selector: str) -> tuple[str, dict]:
         for u in unparsed:
             css += f"  /*   {u} */\n"
     css += "}\n"
+
+    # overlay LAYER rules: one absolute flex layer per overlay modifier, keyed by alignment
+    # (a node can stack several — e.g. a card with both topTrailing and topLeading badges).
+    for m in container["modifiers"]:
+        if m["name"] != "overlay":
+            continue
+        align = m["alignment"]
+        ai, jc = OVERLAY_FLEX.get(align, ("center", "center"))
+        css += (
+            f'.{selector} > [data-overlay="{align}"] {{\n'
+            f"  position: absolute;  /* L1:overlay layer */\n"
+            f"  inset: 0;  /* L1:overlay: fills the overlaid view */\n"
+            f"  display: flex;  /* L1:overlay: align child */\n"
+            f"  align-items: {ai};  /* L2:overlay align {align} */\n"
+            f"  justify-content: {jc};  /* L2:overlay align {align} */\n"
+            f"  pointer-events: none;  /* L2:overlay: layer is non-interactive by default */\n"
+            f"}}\n"
+        )
     return css, stats
 
 
