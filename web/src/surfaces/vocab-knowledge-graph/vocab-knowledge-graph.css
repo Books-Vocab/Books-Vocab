@@ -493,3 +493,64 @@
   color: var(--accent);
   cursor: pointer;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE (tablet/desktop shell) — scoped under .kg-responsive-shell ONLY.
+
+   PARITY ISOLATION: every rule below is a descendant of .kg-responsive-shell, so
+   it can only match inside ResponsiveShell (the shell path). The parity capture
+   path (?surface=X without ?shell=1) renders PhoneFrame -> SurfaceView and never
+   mounts .kg-responsive-shell, so the 393px static render is byte-identical.
+
+   The knowledge graph is a full-width canvas filling the content pane (no detail
+   pane). Internal adaptation uses @container queries so the surface reacts to its
+   OWN pane width (it may sit in a 360px master pane or a 900px content pane), not
+   the viewport. We establish a size container on the surface root, then react to
+   it. The fixed phone-frame pixel constants (legend top:118px = safe-area nav,
+   drawer bottom:40px = home-indicator) are re-anchored to the real pane corners
+   once there is genuine pane room (>= 600px container width).
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* Establish the size container on the live graph surface (shell only). */
+.kg-responsive-shell .vkg-surface {
+  container-type: size;
+  container-name: vkg-pane;
+}
+
+/* Wider pane: re-anchor the legend / gear to the real pane corners (no phone
+   safe-area inset) and let the canvas truly fill. */
+@container vkg-pane (min-width: 600px) {
+  .kg-responsive-shell .vkg-legend {
+    top: var(--sp-4);
+    right: var(--sp-4);
+  }
+
+  .kg-responsive-shell .vkg-gear-button {
+    bottom: var(--sp-4);
+    right: var(--sp-4);
+  }
+
+  .kg-responsive-shell .vkg-settings {
+    bottom: var(--sp-4);
+    left: auto;
+    right: var(--sp-4);
+    justify-content: flex-end;
+  }
+
+  /* Drawer reads as a floating panel docked bottom-right, not a full-width bar. */
+  .kg-responsive-shell .vkg-settings-card {
+    width: 360px;
+    max-width: 360px;
+  }
+
+  /* Empty / loading / error card: cap width + center so it fills the pane
+     gracefully instead of stretching edge-to-edge on a wide pane. */
+  .kg-responsive-shell .vkg-surface--empty {
+    align-items: center;
+  }
+
+  .kg-responsive-shell .vkg-surface--empty .vkg-empty-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}
