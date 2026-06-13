@@ -416,13 +416,12 @@ describe('vocabulary mutations', () => {
 })
 
 describe('library mutations', () => {
-  it('delete() soft-deletes a book and removes it from list()', async () => {
+  it('delete() returns { deleted } and removes the book from list()', async () => {
     const api = authedClient()
     const before = await api.library.list()
     const target = before[before.length - 1]
     const deleted = await api.library.delete(target.id)
-    expect(deleted.id).toBe(target.id)
-    expect(deleted.is_deleted).toBe(true)
+    expect(deleted).toEqual({ deleted: target.id })
     const after = await api.library.list()
     expect(after.some((b) => b.id === target.id)).toBe(false)
   })
