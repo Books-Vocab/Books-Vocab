@@ -373,3 +373,64 @@
   cursor: pointer;
   box-sizing: border-box;
 }
+
+/* ============================================================
+   RESPONSIVE — shell-gated desktop/tablet master-pane layout.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell (mounted only by ResponsiveShell on the shell path
+   at tablet+). The parity capture path (?surface=vocabulary without ?shell=1)
+   renders PhoneFrame -> .vocabulary WITHOUT a .kg-responsive-shell ancestor at
+   tablet/desktop/wide breakpoints, so the bare 393px render is byte-identical.
+   Mobile delegation (.kg-responsive-shell[data-breakpoint='mobile']) wraps the
+   EXISTING PhoneFrame and is deliberately NOT targeted here, so mobile stays
+   byte-identical to today's shell behaviour too.
+
+   Vocabulary is the MASTER of the master/detail pair: it lives in the list
+   (master) pane. The list is single-column and its chips/search span the full
+   pane width — that is already the surface's natural box model, so the work
+   here is (a) shed the phone status-bar offset + non-scrolling clip that only
+   make sense inside the 393x852 phone frame, and (b) become an @container so
+   internals react to the OWN pane width (a ~360px list pane on desktop, or a
+   fluid pane on tablet) rather than the viewport.
+   ============================================================ */
+
+/* Make the surface react to its OWN pane width, not the viewport. */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary {
+  container-type: inline-size;
+  container-name: vocab;
+  /* Flow within the pane (pane owns the scroll) instead of clipping to a fixed
+     phone viewport height. */
+  height: auto;
+  min-height: 100%;
+}
+
+/* Shed the 118px phone status-bar / nav offset; in a pane the title sits at the
+   pane top with breathing room. Keep the 20pt page inset. */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary .vc-nav,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary .vc-nav,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary .vc-nav {
+  padding-top: var(--sp-6); /* 24 */
+}
+
+/* Let content flow + scroll inside the pane (the pane is overflow-y:auto). */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary .vc-scroll,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary .vc-scroll,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary .vc-scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding-bottom: var(--sp-6); /* bottom breathing room when pane-scrolled */
+}
+
+/* @container: the list stays single-column at every pane width (master pane is
+   a narrow list column by design). When the surface ever sits in a wider pane
+   (e.g. tablet's single fluid pane), clamp the inner content to a comfortable
+   reading measure so chips/search/list don't stretch edge-to-edge. */
+@container vocab (min-width: 620px) {
+  .kg-responsive-shell .vocabulary .vc-nav,
+  .kg-responsive-shell .vocabulary .vc-scroll {
+    max-width: 640px;
+  }
+}
