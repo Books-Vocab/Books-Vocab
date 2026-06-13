@@ -80,3 +80,18 @@ export const PersonIcon = glyph(
     '<circle cx="12" cy="10" r="2.8"/>' +
     '<path d="M6.5 18.2a5.6 5.6 0 0 1 11 0"/>',
 )
+
+/**
+ * SF `point.3.connected.trianglepath.dotted` — 知識圖譜（三節點 + 虛線連邊）。
+ * 鏡射 iOS KnowledgeGraphPresenter 的 systemImage 與 web vocab-knowledge-graph
+ * surface 的 GraphNodesIcon 同一幾何；shell 自有 glyph（不從 surface import，
+ * 避免殼層依賴 Phase 2 surface 層）。
+ */
+export const KnowledgeGraphIcon = glyph(
+  '<circle cx="5" cy="7.5" r="2"/>' +
+    '<circle cx="19" cy="7.5" r="2"/>' +
+    '<circle cx="8" cy="18" r="2"/>' +
+    '<path d="M7 7.5h10" stroke-dasharray="1.4 1.8"/>' +
+    '<path d="M6.4 9.1 7 16.4" stroke-dasharray="1.4 1.8"/>' +
+    '<path d="M9.8 16.7 17.4 9" stroke-dasharray="1.4 1.8"/>',
+)

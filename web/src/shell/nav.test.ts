@@ -227,6 +227,22 @@ describe('pushTargetFor（誠實導航圖）', () => {
     })
   })
 
+  describe('word-detail-sheet', () => {
+    // iOS WordDetailPresenter.linksSection 的「知識連結」plus 鈕（onAddLink）→ 新增
+    // 連結 sheet。word-detail 是 vocabulary 點單字列 push 進來的詳情層，其內仍可
+    // 再下鑽新增連結，故導航圖須有 word-detail-sheet → vocab-add-link 邊。
+    it('知識連結 plus → vocab-add-link，攜帶 word（接力被檢視單字）', () => {
+      const t = pushTargetFor(screenFor('word-detail-sheet'), 'add-link', { word: 'lucid' })
+      expect(t?.surface).toBe('vocab-add-link')
+      expect(t?.params).toEqual({ word: 'lucid' })
+    })
+    it('無 params → vocab-add-link（param-free，仍可達）', () => {
+      const t = pushTargetFor(screenFor('word-detail-sheet'), 'add-link')
+      expect(t?.surface).toBe('vocab-add-link')
+      expect(t).not.toHaveProperty('params')
+    })
+  })
+
   describe('podcast', () => {
     it('podcast-home 點系列 → podcast-episode-list，攜帶 seriesId', () => {
       const t = pushTargetFor(screenFor('podcast-home'), 'open-podcast-series', { seriesId: 's9' })
@@ -275,6 +291,8 @@ describe('pushTargetFor（誠實導航圖）', () => {
       expect(pushTargetFor(screenFor('reader'), 'open-book')).toBeNull()
       expect(pushTargetFor(screenFor('vocabulary'), 'open-book')).toBeNull()
       expect(pushTargetFor(screenFor('overview'), 'open-knowledge-graph')).toBeNull()
+      // word-detail-sheet 只接 add-link，其餘 intent 不匹配。
+      expect(pushTargetFor(screenFor('word-detail-sheet'), 'open-word')).toBeNull()
     })
   })
 })

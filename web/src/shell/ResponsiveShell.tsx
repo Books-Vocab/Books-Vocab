@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 import type { Appearance, HarnessConfig } from '../harness/scenarios'
 import { PhoneFrame } from '../harness/PhoneFrame'
-import { ChevronLeftIcon, GearIcon, PersonIcon, SyncCircleIcon } from './icons'
+import { ChevronLeftIcon, GearIcon, KnowledgeGraphIcon, PersonIcon, SyncCircleIcon } from './icons'
 import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
@@ -90,6 +90,10 @@ type NavGlyph = ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeW
 type SecondaryNavItem = { id: string; label: string; icon: NavGlyph; target: Screen }
 
 const SECONDARY_NAV: readonly SecondaryNavItem[] = [
+  // 知識圖譜（live force-directed graph）— iOS KnowledgeGraphPresenter 入口的
+  // 殼層投影。vocab-header 內的 KG glyph 鈕是 surface-owned（Phase 2 補），此
+  // sidebar 入口為 shell-owned 的恆在側欄捷徑，push 同一 vocab-knowledge-graph 畫面。
+  { id: 'knowledge-graph', label: '知識圖譜', icon: KnowledgeGraphIcon, target: screenFor('vocab-knowledge-graph') },
   { id: 'settings', label: '設定', icon: GearIcon, target: screenFor('settings') },
   { id: 'sync', label: '同步', icon: SyncCircleIcon, target: screenFor('sync') },
   { id: 'account', label: '帳號', icon: PersonIcon, target: screenFor('settings-account-detail') },
