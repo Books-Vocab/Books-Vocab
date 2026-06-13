@@ -1,5 +1,9 @@
 import { useRef, useState } from 'react'
+import { useAuth } from '../../auth'
+import { Sheet } from '../../motion'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { pushTargetFor, screenFor } from '../../shell/nav'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { BookCard } from './BookCard'
 import type { BookFixture } from './fixtures'
@@ -41,7 +45,16 @@ function BookshelfScreenFixture({ scenario }: { scenario: ScenarioId<'bookshelf'
 
 /** API-driven screen — shell=1 時使用真實後端書目 + 檔案 picker 匯入。 */
 function BookshelfScreenApi() {
+  const { isLoggedIn } = useAuth()
   const store = useBookshelfApiStore()
+
+  // 訪客（未登入）：書庫綁帳號，無 token → list 必 401/失敗。此時顯示友善「登入以
+  // 同步書庫」空態，而非把帳號態誤報成「無法載入書庫」網路錯誤。對齊 iOS：登出時
+  // 書架顯示登入引導而非錯誤橫幅。
+  if (!isLoggedIn) {
+    return <GuestShelf />
+  }
+
   return (
     <VocabSceneShell
       status={
@@ -52,6 +65,24 @@ function BookshelfScreenApi() {
     >
       <BookshelfBody store={store} importMode="file" onImportFile={store.importFile} />
     </VocabSceneShell>
+  )
+}
+
+/** 訪客空態 — 未登入時的友善書庫引導（非網路錯誤）。 */
+function GuestShelf() {
+  return (
+    <div className="bookshelf">
+      <header className="bookshelf-nav">
+        <h1 className="bookshelf-nav-title">書庫</h1>
+      </header>
+      <main className="bookshelf-scroll bookshelf-empty">
+        <div className="bookshelf-empty-content">
+          <BookIcon size={52} strokeWidth={0.9} className="bookshelf-empty-icon" />
+          <p className="bookshelf-empty-title">登入以同步書庫</p>
+          <p className="bookshelf-empty-description">登入後，你在各裝置匯入的書籍會在這裡同步顯示。</p>
+        </div>
+      </main>
+    </div>
   )
 }
 
@@ -81,6 +112,14 @@ function BookshelfBody({
   importMode: 'stub' | 'file'
   onImportFile?: (file: File) => void | Promise<void>
 }) {
+  // 殼層導航：點書封面 → push 真閱讀器（帶 bookId=title）。parity 路徑無 provider →
+  // navigate no-op，封面點擊不做事，DOM/capture 行為不變。
+  const nav = useShellNav()
+  const openBook = (title: string) => {
+    const target = pushTargetFor(screenFor('bookshelf'), 'open-book', { bookId: title })
+    if (target) nav.navigate(target)
+  }
+
   const renamingBook =
     store.renamingTitle !== null
       ? store.books.find((b) => b.title === store.renamingTitle) ?? null
@@ -94,41 +133,63 @@ function BookshelfBody({
       {store.books.length === 0 ? (
         <EmptyShelf onImport={store.openImport} />
       ) : (
-        <BookGrid books={store.books} onMore={store.openMenu} onImport={store.openImport} />
+        <BookGrid
+          books={store.books}
+          onOpen={openBook}
+          onMore={store.openMenu}
+          onImport={store.openImport}
+        />
       )}
 
       {/* ── 浮層（互動後才掛載，首屏無此 DOM）── */}
-      {store.menuTitle !== null && (
-        <BookCardMenu
-          title={store.menuTitle}
-          onRename={() => store.openRenameFor(store.menuTitle!)}
-          onDelete={() => store.deleteBook(store.menuTitle!)}
-          onClose={store.closeMenu}
-        />
-      )}
-      {store.importing &&
-        (importMode === 'file' ? (
-          <ImportSheetFile onClose={store.closeImport} onPick={onImportFile} />
-        ) : (
-          <ImportSheet onClose={store.closeImport} />
-        ))}
-      {renamingBook && (
-        <RenameSheet
-          initialTitle={renamingBook.title}
-          onSubmit={(title) => store.renameBook(renamingBook.title, title)}
-          onClose={store.closeRename}
-        />
-      )}
+      {/* 次動作選單（改名 / 刪除）migrated 到共享 Sheet：vaul 處理 Esc / backdrop /
+          drag-dismiss / focus trap，徹底治掉舊 scrim「Esc 不關」的互動 bug。
+          導航推進時 menuTitle 仍為 null（openBook 不開選單），故換頁自然無殘留浮層。 */}
+      <Sheet
+        open={store.menuTitle !== null}
+        onClose={store.closeMenu}
+        ariaLabel={store.menuTitle ? `${store.menuTitle} 更多動作` : '書籍動作'}
+      >
+        {store.menuTitle !== null && (
+          <BookCardMenuContent
+            title={store.menuTitle}
+            onRename={() => store.openRenameFor(store.menuTitle!)}
+            onDelete={() => store.deleteBook(store.menuTitle!)}
+          />
+        )}
+      </Sheet>
+      {/* 匯入 sheet（stub / 真檔案 picker 共用共享 Sheet 殼，dismiss 統一由 vaul 治理）。 */}
+      <Sheet open={store.importing} onClose={store.closeImport} ariaLabel="匯入書籍">
+        {store.importing &&
+          (importMode === 'file' ? (
+            <ImportSheetFile onClose={store.closeImport} onPick={onImportFile} />
+          ) : (
+            <ImportSheet onClose={store.closeImport} />
+          ))}
+      </Sheet>
+      {/* 改名 sheet（真輸入框）。key=書名 → 換書時重建 input 初值（autoFocus 重觸）。 */}
+      <Sheet open={renamingBook !== null} onClose={store.closeRename} ariaLabel="重新命名">
+        {renamingBook && (
+          <RenameSheet
+            key={renamingBook.title}
+            initialTitle={renamingBook.title}
+            onSubmit={(title) => store.renameBook(renamingBook.title, title)}
+            onClose={store.closeRename}
+          />
+        )}
+      </Sheet>
     </div>
   )
 }
 
 function BookGrid({
   books,
+  onOpen,
   onMore,
   onImport,
 }: {
   books: BookFixture[]
+  onOpen: (title: string) => void
   onMore: (title: string) => void
   onImport: () => void
 }) {
@@ -149,6 +210,7 @@ function BookGrid({
           <BookCard
             key={`${book.title}-${book.format}`}
             book={book}
+            onOpen={() => onOpen(book.title)}
             onMore={() => onMore(book.title)}
           />
         ))}
@@ -177,31 +239,31 @@ function EmptyShelf({ onImport }: { onImport: () => void }) {
   )
 }
 
-/** 書卡 more 選單浮層（改名 / 刪除）。鏡射 iOS BookCard contextMenu。 */
-function BookCardMenu({
+/**
+ * 書卡次動作選單內容（改名 / 刪除）。鏡射 iOS BookCard contextMenu。
+ * 渲染於共享 <Sheet> 內 → scrim / Esc / backdrop / drag-dismiss 由 vaul 統一處理
+ * （不再自帶 scrim role=dialog；那曾是「Esc 不關」bug 的根源）。
+ */
+function BookCardMenuContent({
   title,
   onRename,
   onDelete,
-  onClose,
 }: {
   title: string
   onRename: () => void
   onDelete: () => void
-  onClose: () => void
 }) {
   return (
-    <div className="bs-menu-scrim" role="dialog" aria-modal="true" aria-label={`${title} 選單`} onClick={onClose}>
-      <div className="bs-menu" onClick={(e) => e.stopPropagation()}>
-        <p className="bs-menu-title">{title}</p>
-        <button type="button" className="bs-menu-item" onClick={onRename}>
-          <PencilIcon size={17} />
-          <span>改名</span>
-        </button>
-        <button type="button" className="bs-menu-item bs-menu-item-destructive" onClick={onDelete}>
-          <TrashIcon size={17} />
-          <span>刪除</span>
-        </button>
-      </div>
+    <div className="bs-menu">
+      <p className="bs-menu-title">{title}</p>
+      <button type="button" className="bs-menu-item" onClick={onRename}>
+        <PencilIcon size={17} />
+        <span>改名</span>
+      </button>
+      <button type="button" className="bs-menu-item bs-menu-item-destructive" onClick={onDelete}>
+        <TrashIcon size={17} />
+        <span>刪除</span>
+      </button>
     </div>
   )
 }
@@ -210,29 +272,26 @@ function BookCardMenu({
 function ImportSheet({ onClose }: { onClose: () => void }) {
   const ACCEPTED = ['EPUB', 'PDF', 'TXT', 'MD']
   return (
-    <div className="bs-sheet-scrim" role="dialog" aria-modal="true" aria-label="匯入書籍" onClick={onClose}>
-      <div className="bs-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="bs-sheet-grabber" />
-        <div className="bs-sheet-head">
-          <p className="bs-sheet-title">匯入書籍</p>
-          <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
-            <XmarkIcon size={16} />
-          </button>
-        </div>
-        {/* 檔案 picker 視覺占位 — web 端不真選檔/解析（誠實 stub）。 */}
-        <div className="bs-import-picker">
-          <DocIcon size={40} className="bs-import-picker-icon" />
-          <p className="bs-import-picker-hint">選擇檔案以加入書庫</p>
-          <div className="bs-import-formats">
-            {ACCEPTED.map((fmt) => (
-              <span key={fmt} className="bs-import-format">
-                {fmt}
-              </span>
-            ))}
-          </div>
-        </div>
-        <p className="bs-import-note">web 預覽不解析檔案，匯入於 iOS App 進行。</p>
+    <div className="bs-sheet-form">
+      <div className="bs-sheet-head">
+        <p className="bs-sheet-title">匯入書籍</p>
+        <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
+          <XmarkIcon size={16} />
+        </button>
       </div>
+      {/* 檔案 picker 視覺占位 — web 端不真選檔/解析（誠實 stub）。 */}
+      <div className="bs-import-picker">
+        <DocIcon size={40} className="bs-import-picker-icon" />
+        <p className="bs-import-picker-hint">選擇檔案以加入書庫</p>
+        <div className="bs-import-formats">
+          {ACCEPTED.map((fmt) => (
+            <span key={fmt} className="bs-import-format">
+              {fmt}
+            </span>
+          ))}
+        </div>
+      </div>
+      <p className="bs-import-note">web 預覽不解析檔案，匯入於 iOS App 進行。</p>
     </div>
   )
 }
@@ -251,45 +310,42 @@ function ImportSheetFile({
   const ACCEPTED = ['EPUB', 'PDF', 'TXT', 'MD']
   const inputRef = useRef<HTMLInputElement | null>(null)
   return (
-    <div className="bs-sheet-scrim" role="dialog" aria-modal="true" aria-label="匯入書籍" onClick={onClose}>
-      <div className="bs-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="bs-sheet-grabber" />
-        <div className="bs-sheet-head">
-          <p className="bs-sheet-title">匯入書籍</p>
-          <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
-            <XmarkIcon size={16} />
-          </button>
-        </div>
-        {/* 真檔案 picker：僅讀檔名/格式做 metadata，不讀檔案內容。 */}
-        <button
-          type="button"
-          className="bs-import-picker"
-          onClick={() => inputRef.current?.click()}
-          aria-label="選擇檔案"
-        >
-          <DocIcon size={40} className="bs-import-picker-icon" />
-          <p className="bs-import-picker-hint">選擇檔案以加入書庫</p>
-          <div className="bs-import-formats">
-            {ACCEPTED.map((fmt) => (
-              <span key={fmt} className="bs-import-format">
-                {fmt}
-              </span>
-            ))}
-          </div>
+    <div className="bs-sheet-form">
+      <div className="bs-sheet-head">
+        <p className="bs-sheet-title">匯入書籍</p>
+        <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
+          <XmarkIcon size={16} />
         </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".epub,.txt,.md,.pdf"
-          hidden
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) onPick?.(file)
-            e.target.value = ''
-          }}
-        />
-        <p className="bs-import-note">僅同步書籍資訊（書名・格式），不上傳檔案內容。</p>
       </div>
+      {/* 真檔案 picker：僅讀檔名/格式做 metadata，不讀檔案內容。 */}
+      <button
+        type="button"
+        className="bs-import-picker"
+        onClick={() => inputRef.current?.click()}
+        aria-label="選擇檔案"
+      >
+        <DocIcon size={40} className="bs-import-picker-icon" />
+        <p className="bs-import-picker-hint">選擇檔案以加入書庫</p>
+        <div className="bs-import-formats">
+          {ACCEPTED.map((fmt) => (
+            <span key={fmt} className="bs-import-format">
+              {fmt}
+            </span>
+          ))}
+        </div>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".epub,.txt,.md,.pdf"
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onPick?.(file)
+          e.target.value = ''
+        }}
+      />
+      <p className="bs-import-note">僅同步書籍資訊（書名・格式），不上傳檔案內容。</p>
     </div>
   )
 }
@@ -307,33 +363,30 @@ function RenameSheet({
   const [title, setTitle] = useState(initialTitle)
   const canSubmit = title.trim().length > 0
   return (
-    <div className="bs-sheet-scrim" role="dialog" aria-modal="true" aria-label="重新命名" onClick={onClose}>
-      <div className="bs-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="bs-sheet-grabber" />
-        <div className="bs-sheet-head">
-          <p className="bs-sheet-title">重新命名</p>
-          <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
-            <XmarkIcon size={16} />
-          </button>
-        </div>
-        <input
-          className="bs-sheet-input"
-          type="text"
-          placeholder="書名"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          aria-label="書名"
-          autoFocus
-        />
-        <button
-          type="button"
-          className="bs-sheet-submit"
-          disabled={!canSubmit}
-          onClick={() => onSubmit(title)}
-        >
-          儲存
+    <div className="bs-sheet-form">
+      <div className="bs-sheet-head">
+        <p className="bs-sheet-title">重新命名</p>
+        <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
+          <XmarkIcon size={16} />
         </button>
       </div>
+      <input
+        className="bs-sheet-input"
+        type="text"
+        placeholder="書名"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        aria-label="書名"
+        autoFocus
+      />
+      <button
+        type="button"
+        className="bs-sheet-submit"
+        disabled={!canSubmit}
+        onClick={() => onSubmit(title)}
+      >
+        儲存
+      </button>
     </div>
   )
 }
