@@ -11,7 +11,7 @@
 
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { join, resolve, dirname } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
@@ -60,8 +60,10 @@ async function main() {
 
   const port = process.env.SHOTS_PORT ? Number(process.env.SHOTS_PORT) : await getFreePort();
   const BASE = `http://localhost:${port}`;
-  const server = spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'),
-    ['preview', '--port', String(port), '--strictPort'], { cwd: WEB_DIR, stdio: 'ignore' });
+  // 經 `npm run preview` 起 vite：npm 會把 hoisted node_modules/.bin 加進 PATH，
+  // monorepo workspace 下 vite hoist 到根仍可解析（與上方 `npm run build` 一致）。
+  const server = spawn('npm', ['run', 'preview', '--', '--port', String(port), '--strictPort'],
+    { cwd: WEB_DIR, stdio: 'ignore' });
   await waitForServer(BASE);
 
   const browser = await chromium.launch();
