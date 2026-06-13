@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from 'react'
-import type { ApiClient } from '../../api'
+import { useEffect, useMemo, useRef } from 'react'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import type { PodcastSeriesSummary } from '../../api/types'
-import demoAudioUrl from '../../assets/podcast_demo.mp3'
+import { reduced, snappy } from '../../motion'
 import { DEMO_SRT } from '../podcast/demoSrt'
 import { activeCueIndex, parseSrt } from '../podcast/srt'
 import { DEMO_DURATION_SEC, formatClock } from '../podcast/timeline'
@@ -14,43 +14,42 @@ import {
   PersonCropCircleIcon,
   PlayFillIcon,
 } from '../podcast/icons'
+import type { PodcastPlaybackState } from './usePodcastPlayback'
 import './podcast-flow.css'
 
 /**
- * Functional player for the shell-gated flow.
+ * Functional full-player view for the shell-gated podcast flow.
  *
- * Subtitle: parses the inline demo SRT (mock backend has no subtitle byte route)
- * and highlights the cue under the live <audio> currentTime — the web mirror of
- * iOS PodcastPlayerViewModel.subtitleState + SubtitleRenderState.
+ * Playback is NOT owned here — the flow root (PodcastHomeApiStore) owns the
+ * single persistent <audio> + transport state via usePodcastPlayback, so the
+ * mini-player can keep audio alive across navigation. This component is a thin
+ * VIEW over that shared `playback` state: it loads the chosen episode on mount,
+ * renders the transcript/banner/transport, and drives the shared engine.
  *
- * Tier gate (PodcastAccess mirror):
- *   - guest  → sign-in gate (no player)
- *   - free   → ep1 = time-limited preview (banner + upgrade CTA); other eps locked
- *   - pro    → full playback
+ * Subtitle: parses the inline demo SRT and highlights the cue under the live
+ * playhead (web mirror of iOS PodcastPlayerViewModel.subtitleState) AND smoothly
+ * scrolls the active cue into view (reduced-motion → instant).
  *
- * Progress write-back: on pause/seek, POST /api/podcasts/{sid}/{ep}/progress
- * (LWW upsert) so the continue-shelf reflects where you stopped.
+ * Tier gate (PodcastAccess mirror): guest → sign-in gate; free → ep1 preview
+ * banner, others Pro-locked; pro → full playback.
  */
 export function PodcastFlowPlayer({
   seriesId,
   epNum,
   series,
   tier,
-  api,
+  playback,
 }: {
   seriesId: string
   epNum: number
   series: PodcastSeriesSummary | undefined
   tier: PodcastTier
-  api: ApiClient
+  playback: PodcastPlaybackState
 }) {
   const cues = useMemo(() => parseSrt(DEMO_SRT), [])
-  const audioRef = useRef<HTMLAudioElement>(null)
   const seekRef = useRef<HTMLDivElement>(null)
-
-  const [playing, setPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [dragging, setDragging] = useState(false)
+  const transcriptRef = useRef<HTMLDivElement>(null)
+  const prefersReduced = useReducedMotion() ?? false
 
   // ep1 free-preview asset assumed present under mock.
   const previewAvailable = epNum === 1
@@ -70,23 +69,38 @@ export function PodcastFlowPlayer({
     return `Ep ${epNum}`
   }, [series, epNum])
 
-  const activeIdx = activeCueIndex(cues, currentTime)
-  const progress = clamp01(currentTime / DEMO_DURATION_SEC)
+  const seriesTitle = String(series?.title ?? seriesId)
 
-  // Defensive deep-link gate: guest / locked episode → no player (mirrors iOS
-  // PodcastPlayerLockedGateView + loadEpisode early-return).
-  function persistProgress() {
+  // Load this episode into the shared engine when the player becomes visible
+  // (and whenever the chosen episode changes). Guarded by playability so a
+  // locked/guest deep-link never loads the audio (mirrors iOS loadEpisode gate).
+  // `load` is referentially stable (useCallback in the playback hook), so the
+  // effect re-runs only on episode-identity change — not every render.
+  const load = playback.load
+  useEffect(() => {
     if (!playable) return
-    void api.podcast
-      .putProgress(seriesId, epNum, {
-        position_sec: Math.round(currentTime),
-        duration_sec: DEMO_DURATION_SEC,
-        updated_at: new Date().toISOString(),
-      })
-      .catch(() => {
-        /* best-effort; never block playback */
-      })
-  }
+    load({ seriesId, epNum, seriesTitle, episodeTitle })
+  }, [load, seriesId, epNum, playable, seriesTitle, episodeTitle])
+
+  const isCurrent =
+    playback.nowPlaying?.seriesId === seriesId && playback.nowPlaying?.epNum === epNum
+  const currentTime = isCurrent ? playback.currentTime : 0
+  const playing = isCurrent && playback.playing
+  const progress = isCurrent ? playback.progress : 0
+  const activeIdx = activeCueIndex(cues, currentTime)
+
+  // Subtitle follow: smoothly scroll the active cue to centre as it advances.
+  useEffect(() => {
+    if (activeIdx < 0) return
+    const container = transcriptRef.current
+    if (!container) return
+    const el = container.querySelector<HTMLElement>(`[data-cue='${activeIdx}']`)
+    if (!el) return
+    el.scrollIntoView({
+      block: 'center',
+      behavior: prefersReduced ? 'auto' : 'smooth',
+    })
+  }, [activeIdx, prefersReduced])
 
   if (tier === 'guest') {
     return (
@@ -115,35 +129,28 @@ export function PodcastFlowPlayer({
     )
   }
 
+  function seekToClientX(clientX: number) {
+    const el = seekRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    playback.seekToFraction((clientX - rect.left) / rect.width)
+  }
+
   return (
     <main className="ph-scroll pf-player">
-      <audio
-        ref={audioRef}
-        src={demoAudioUrl}
-        preload="metadata"
-        onPlay={() => setPlaying(true)}
-        onPause={() => {
-          setPlaying(false)
-          persistProgress()
-        }}
-        onEnded={() => {
-          setPlaying(false)
-          persistProgress()
-        }}
-        onTimeUpdate={(e) => {
-          if (!dragging) setCurrentTime(e.currentTarget.currentTime)
-        }}
-      />
-
       <header className="pf-player-head">
-        <span className="pf-player-series">{String(series?.title ?? seriesId)}</span>
+        <span className="pf-player-series">{seriesTitle}</span>
         <span className="pf-player-episode">{episodeTitle}</span>
       </header>
 
-      {/* transcript: SRT cues, active cue tracks the playhead */}
-      <div className="pf-transcript" data-testid="pf-transcript">
+      {/* transcript: SRT cues, active cue tracks the playhead + auto-scrolls */}
+      <div className="pf-transcript" data-testid="pf-transcript" ref={transcriptRef}>
         {cues.map((cue, i) => (
-          <p key={cue.index} className={i === activeIdx ? 'pf-cue pf-cue-active' : 'pf-cue'}>
+          <p
+            key={cue.index}
+            data-cue={i}
+            className={i === activeIdx ? 'pf-cue pf-cue-active' : 'pf-cue'}
+          >
             {cue.text}
           </p>
         ))}
@@ -168,16 +175,16 @@ export function PodcastFlowPlayer({
           aria-valuenow={Math.round(progress * 100)}
           onPointerDown={(e) => {
             ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-            setDragging(true)
+            playback.setDragging(true)
             seekToClientX(e.clientX)
           }}
           onPointerMove={(e) => {
-            if (dragging) seekToClientX(e.clientX)
+            if (e.buttons === 1) seekToClientX(e.clientX)
           }}
           onPointerUp={(e) => {
             ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
-            setDragging(false)
-            persistProgress()
+            seekToClientX(e.clientX)
+            playback.setDragging(false)
           }}
         >
           <span className="pf-seek-track" />
@@ -189,52 +196,43 @@ export function PodcastFlowPlayer({
           <span>{formatClock(DEMO_DURATION_SEC)}</span>
         </div>
         <div className="pf-transport">
-          <button type="button" className="pf-control-btn" aria-label="後退 15 秒" onClick={() => skip(-15)}>
+          <button
+            type="button"
+            className="pf-control-btn"
+            aria-label="後退 15 秒"
+            onClick={() => playback.skip(-15)}
+          >
             <GoBackward15Icon size={28} />
           </button>
           <button
             type="button"
             className="pf-control-btn pf-play"
             aria-label={playing ? '暫停' : '播放'}
-            onClick={togglePlay}
+            onClick={playback.togglePlay}
           >
-            {playing ? <PauseFillIcon size={24} /> : <PlayFillIcon size={26} />}
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={playing ? 'pause' : 'play'}
+                className="pf-play-glyph"
+                initial={{ scale: prefersReduced ? 1 : 0.55, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: prefersReduced ? 1 : 0.55, opacity: 0 }}
+                transition={prefersReduced ? reduced : snappy}
+              >
+                {playing ? <PauseFillIcon size={24} /> : <PlayFillIcon size={26} />}
+              </motion.span>
+            </AnimatePresence>
           </button>
-          <button type="button" className="pf-control-btn" aria-label="前進 15 秒" onClick={() => skip(15)}>
+          <button
+            type="button"
+            className="pf-control-btn"
+            aria-label="前進 15 秒"
+            onClick={() => playback.skip(15)}
+          >
             <GoForward15Icon size={28} />
           </button>
         </div>
       </div>
     </main>
   )
-
-  function togglePlay() {
-    const a = audioRef.current
-    if (!a) return
-    if (a.paused) void a.play()
-    else a.pause()
-  }
-
-  function skip(delta: number) {
-    const a = audioRef.current
-    if (!a) return
-    const next = Math.min(DEMO_DURATION_SEC, Math.max(0, (a.currentTime || 0) + delta))
-    a.currentTime = next
-    setCurrentTime(next)
-  }
-
-  function seekToClientX(clientX: number) {
-    const el = seekRef.current
-    const a = audioRef.current
-    if (!el || !a) return
-    const rect = el.getBoundingClientRect()
-    const ratio = clamp01((clientX - rect.left) / rect.width)
-    const t = ratio * DEMO_DURATION_SEC
-    a.currentTime = t
-    setCurrentTime(t)
-  }
-}
-
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v
 }

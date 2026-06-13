@@ -3,6 +3,7 @@ import type { ScenarioId } from '../../harness/scenarios'
 import { PodcastHomeApiStore } from '../podcast-home/PodcastHomeApiStore'
 import { PodcastFlowPlayer } from '../podcast-home/PodcastFlowPlayer'
 import { usePodcastData } from '../podcast-home/usePodcastData'
+import { usePodcastPlayback } from '../podcast-home/usePodcastPlayback'
 import { indexCatalog } from './continueShelf'
 import { tierFromEntitlements } from './tier'
 import { useShellNav } from '../../shell/ShellNavContext'
@@ -311,16 +312,21 @@ function PodcastShellPlayer() {
 
 function ShellPlayerLoader({ seriesId, epNum }: { seriesId: string; epNum: number }) {
   const data = usePodcastData()
+  const playback = usePodcastPlayback(data.api)
   const catalog = useMemo(() => indexCatalog(data.series), [data.series])
   const tier = tierFromEntitlements(data.entitlements, data.hasToken)
   return (
     <div className="podcast-home pf-root">
+      {/* Persistent audio for the shell master-detail player. The shell owns the
+          nav stack (RouteTransition lives in AppShell/ResponsiveShell), so no
+          mini-player here — but the player still drives the shared engine. */}
+      <audio ref={playback.audioRef} {...playback.audioProps} />
       <PodcastFlowPlayer
         seriesId={seriesId}
         epNum={epNum}
         series={catalog.get(seriesId)}
         tier={tier}
-        api={data.api}
+        playback={playback}
       />
     </div>
   )
