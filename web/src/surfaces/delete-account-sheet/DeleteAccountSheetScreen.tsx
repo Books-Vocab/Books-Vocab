@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useApi } from '../../api/ApiContext'
 import { useAuth } from '../../auth'
 import './delete-account-sheet.css'
 import {
@@ -64,6 +65,7 @@ function DeleteAccountSheetScreenFixture({ scenario }: { scenario: ScenarioId<'d
 }
 
 function DeleteAccountSheetScreenApi() {
+  const api = useApi()
   const { logout } = useAuth()
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -72,21 +74,17 @@ function DeleteAccountSheetScreenApi() {
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      // Try DELETE /api/user/account — backend may not have this endpoint yet
-      const res = await fetch('/api/user/account', { method: 'DELETE' })
-      if (!res.ok) {
-        throw new Error('DELETE endpoint not available')
-      }
-      // Success: logout
+      // DELETE /api/user/account — typed client（mock 模式走注入的 transport；real 模式帶
+      // bearer）。成功 → 登出（清 session → AppShell 退回 LoginGate）。
+      await api.user.deleteAccount()
       logout()
     } catch {
-      // Backend endpoint not available — logout only
-      setDeleteError('後端刪除帳號端點尚未實作，僅執行登出。')
-      logout()
+      // 刪除失敗：標示錯誤，不登出（讓使用者得知並可重試），由 finally 解除 spinner。
+      setDeleteError('刪除帳號失敗，請稍後再試。')
     } finally {
       setIsDeleting(false)
     }
-  }, [logout])
+  }, [api, logout])
 
   return <DeleteAccountSheetBody isDeleting={isDeleting} onDelete={handleDelete} deleteError={deleteError} />
 }

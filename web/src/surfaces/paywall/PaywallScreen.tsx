@@ -3,7 +3,10 @@ import {
   PAYWALL_FIXTURES,
   type ComparisonMark,
   type FeatureItem,
+  type PaywallFixture,
 } from './fixtures'
+import { useEntitlementsApiStore } from '../settings-subscription/useEntitlementsApiStore'
+import type { SubscriptionView } from '../settings-subscription/subscriptionProjection'
 import {
   SparklesRectangleStackFillIcon,
   CheckmarkSealFillIcon,
@@ -30,7 +33,46 @@ import './paywall.css'
  */
 
 export function PaywallScreen({ scenario }: { scenario: ScenarioId<'paywall'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <PaywallScreenApi />
+  }
+  return <PaywallScreenFixture scenario={scenario} />
+}
+
+function PaywallScreenFixture({ scenario }: { scenario: ScenarioId<'paywall'> }) {
   const f = PAYWALL_FIXTURES[scenario]
+  return <PaywallBody f={f} />
+}
+
+/**
+ * SubscriptionView（真實 entitlements 投影）→ 既有 PaywallFixture 形狀。web 無 StoreKit，
+ * 故 active/admin 走確認式版面、inactive 走行銷式版面，但所有 CTA/manage 為純資訊（不可成交）。
+ * 載入中以 inactive marketing 版面 + 價格載入文案呈現（與 fixture inactive 一致，避免空白）。
+ */
+export function fixtureFromView(view: SubscriptionView): PaywallFixture {
+  if (view.isAdmin) {
+    return { ...PAYWALL_FIXTURES['admin-granted'], infoTitle: view.priceDisplay }
+  }
+  if (view.isActive) {
+    const base = PAYWALL_FIXTURES['pro-active-renewing']
+    return {
+      ...base,
+      infoTitle: view.priceDisplay,
+      summary: view.expiryNote || base.summary,
+    }
+  }
+  // inactive：行銷式版面，價格取自後端（缺則 fixture 既有 fallback 文案）。
+  const base = PAYWALL_FIXTURES.inactive
+  return { ...base, infoTitle: view.priceDisplay || base.infoTitle }
+}
+
+function PaywallScreenApi() {
+  const { view } = useEntitlementsApiStore()
+  return <PaywallBody f={fixtureFromView(view)} />
+}
+
+function PaywallBody({ f }: { f: PaywallFixture }) {
   const isInactive = f.variant === 'inactive'
 
   const HeroIcon =

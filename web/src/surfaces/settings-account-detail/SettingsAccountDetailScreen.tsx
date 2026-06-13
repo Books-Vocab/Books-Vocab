@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
-import { useApi } from '../../api/ApiContext'
-import type { UserConfigResponse } from '../../api/types'
+import { useAccountIdentityApiStore } from './useAccountIdentityApiStore'
 import { SETTINGS_ACCOUNT_DETAIL_FIXTURES, type AccountDetailFixture, type DangerSection } from './fixtures'
 import {
   ChevronRightIcon,
@@ -65,42 +63,17 @@ function SettingsAccountDetailScreenFixture({ scenario }: { scenario: ScenarioId
 }
 
 function SettingsAccountDetailScreenApi() {
-  const api = useApi()
-  const [config, setConfig] = useState<UserConfigResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { identity, status } = useAccountIdentityApiStore()
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const cfg = await api.user.config()
-      setConfig(cfg)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [api])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const fixture: AccountDetailFixture = useMemo(() => {
-    if (loading || !config) {
-      return {
-        isLoggedIn: false,
-        displayName: '訪客',
-        email: null,
-        danger: null,
-      }
-    }
-    return {
-      isLoggedIn: true,
-      displayName: 'User',
-      email: 'user@example.com',
-      danger: { isDeletingAccount: false },
-    }
-  }, [loading, config])
+  const fixture: AccountDetailFixture =
+    status === 'loading' || !identity.isLoggedIn
+      ? { isLoggedIn: false, displayName: '訪客', email: null, danger: null }
+      : {
+          isLoggedIn: true,
+          displayName: identity.displayName,
+          email: identity.email,
+          danger: { isDeletingAccount: false },
+        }
 
   return <SettingsAccountDetailBody fixture={fixture} />
 }
