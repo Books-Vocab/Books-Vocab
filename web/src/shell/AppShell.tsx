@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import type { Appearance, HarnessConfig, SurfaceId } from '../harness/scenarios'
 import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
 import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
@@ -8,6 +8,8 @@ import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { OverviewScreen } from '../surfaces/overview/OverviewScreen'
+import { useNotebookApiStore } from '../surfaces/notebook/useNotebookApiStore'
+import { useBookshelfApiStore } from '../surfaces/bookshelf/useBookshelfApiStore'
 import { ChevronLeftIcon } from './icons'
 import {
   currentScreen,
@@ -20,7 +22,9 @@ import {
   type NavIntent,
   type NavState,
   type Screen,
+  type ScreenParams,
 } from './nav'
+import { ShellNavProvider, type ShellNav } from './ShellNavContext'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import './shell.css'
 
@@ -52,6 +56,9 @@ const LiveReaderScreen = lazy(() =>
 
 function renderScreen(screen: Screen) {
   // discriminated union：switch 後 scenario 自動窄化為該 surface 合法 id。
+  // 注：surface 在 shell 內讀「攜帶的實體 id」走 ShellNavContext.params（見
+  // ShellNavProvider 注入），prop 優先於 window.location.search，後者為 deep-link
+  // fallback。surface 公開 prop 簽章不變（仍只吃 scenario），故 parity 路徑零改動。
   switch (screen.surface) {
     case 'bookshelf':
       return <BookshelfScreen scenario={screen.scenario} />
@@ -143,6 +150,14 @@ export function AppShell({ config }: { config: HarnessConfig }) {
   )
   const appearance: Appearance = config.appearance
 
+  // 殼層讀實體列表以攜帶被點擊實體的真實 id（mock-backed，離線可用）。store
+  // 公開狀態只暴露穩定鍵：notebook → card.name、book → book.title（rename/delete
+  // 全程以此鍵定位），故深層導航以此為實體 id 鍵，由下游 surface 解析。
+  const notebookStore = useNotebookApiStore()
+  const bookshelfStore = useBookshelfApiStore()
+  const firstNotebookId = notebookStore.cards[0]?.name
+  const firstBookId = bookshelfStore.books[0]?.title
+
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const screen = currentScreen(nav)
   const canGoBack = stackDepth(nav) > 1
@@ -151,9 +166,28 @@ export function AppShell({ config }: { config: HarnessConfig }) {
   // overlay（back chevron + 熱區），避免雙層導航重疊。
   const isLiveReader = !!screen && screen.surface === 'reader' && canGoBack
 
+  // navigate(target)：以當前 tab push 一層；surface 內部列/卡點擊可主動推進導航
+  // （attach 真實實體 id 的 Screen）。當前畫面 params 一併經 context 暴露給 surface。
+  const shellNav = useMemo<ShellNav>(
+    () => ({
+      navigate: (target: Screen) => setNav((s) => push(s, target)),
+      params: screen?.params ?? {},
+    }),
+    [screen],
+  )
+
+  // 殼層既有熱區的實體 id 投影：點書庫整片 → 開首本書（帶 bookId）；點單字本卡片區
+  // → 開首本單字本（帶 notebookId）。實體列表來自 API store（mock 離線可用）。
+  function paramsForIntent(intent: NavIntent): ScreenParams | undefined {
+    if (intent === 'open-book' && firstBookId !== undefined) return { bookId: firstBookId }
+    if (intent === 'open-notebook' && firstNotebookId !== undefined)
+      return { notebookId: firstNotebookId }
+    return undefined
+  }
+
   function handleHot(intent: NavIntent) {
     if (!screen) return
-    const target = pushTargetFor(screen, intent)
+    const target = pushTargetFor(screen, intent, paramsForIntent(intent))
     if (target) setNav((s) => push(s, target))
   }
 
@@ -162,6 +196,7 @@ export function AppShell({ config }: { config: HarnessConfig }) {
       <div className="shell-content">
         {activeTab.kind === 'surface' && screen ? (
           <div className="shell-screen" data-screen-surface={screen.surface}>
+            <ShellNavProvider value={shellNav}>
             {isLiveReader ? (
               <Suspense fallback={null}>
                 <LiveReaderScreen onBack={() => setNav((s) => pop(s))} />
@@ -192,6 +227,7 @@ export function AppShell({ config }: { config: HarnessConfig }) {
                 />
               ))}
             </div>
+            </ShellNavProvider>
           </div>
         ) : (
           <Placeholder label={activeTab.label} />
