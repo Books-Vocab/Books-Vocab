@@ -12,6 +12,7 @@ import {
 import { ChevronDownIcon, LockFillIcon, WaveformSlashIcon } from './icons'
 import { useShellNav } from '../../shell/ShellNavContext'
 import { pushTargetFor, screenFor } from '../../shell/nav'
+import { PodcastNowPlaying } from '../podcast/PodcastNowPlaying'
 import './podcast-episode-list.css'
 
 /**
@@ -152,7 +153,14 @@ function PodcastEpisodeListScreenApi() {
     }
   }, [loading, detail])
 
-  return <PodcastEpisodeListBody fixture={fixture} onOpenEpisode={openEpisode} />
+  return (
+    <>
+      <PodcastEpisodeListBody fixture={fixture} onOpenEpisode={openEpisode} />
+      {/* Persistent now-playing layer: keeps the mini-player alive on this
+          intermediate surface during home → series → episode → player. */}
+      <PodcastNowPlaying />
+    </>
+  )
 }
 
 function PodcastEpisodeListBody({

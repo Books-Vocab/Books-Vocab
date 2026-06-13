@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
-import { PodcastHomeApiStore } from '../podcast-home/PodcastHomeApiStore'
-import { PodcastFlowPlayer } from '../podcast-home/PodcastFlowPlayer'
 import { usePodcastData } from '../podcast-home/usePodcastData'
-import { usePodcastPlayback } from '../podcast-home/usePodcastPlayback'
 import { indexCatalog } from './continueShelf'
 import { tierFromEntitlements } from './tier'
+import { playbackEngine } from './playbackEngine'
+import { PodcastNowPlayingPlayer } from './PodcastNowPlayingPlayer'
+import { PodcastNowPlaying } from './PodcastNowPlaying'
 import { useShellNav } from '../../shell/ShellNavContext'
 import { PODCAST_FIXTURES } from './fixtures'
 import type { PodcastPlayerFixture } from './fixtures'
@@ -292,42 +292,56 @@ export function PodcastScreen({ scenario }: { scenario: ScenarioId<'podcast'> })
 /**
  * Shell master-detail player — reached as the detail pane via the shell nav
  * stack (podcast-home → podcast-episode-list → podcast, carrying seriesId/epNum
- * in ShellNavContext.params). Renders the live PodcastFlowPlayer for the chosen
- * episode (progress write-back unchanged: PodcastFlowPlayer still POSTs to
- * /api/podcasts/{sid}/{ep}/progress on pause/seek).
+ * in ShellNavContext.params). Drives the SINGLETON playbackEngine for the chosen
+ * episode so playback survives back/forth navigation and the persistent
+ * mini-player (PodcastNowPlaying) keeps it alive across surfaces.
  *
- * Defensive fallback: if this surface is reached WITHOUT shell nav params (e.g.
- * a direct deep-link to the podcast tab leaf), mount the self-contained
- * PodcastHomeApiStore flow so the leaf is never dead.
+ * Defensive fallback: if reached WITHOUT shell nav params (a direct deep-link to
+ * the podcast tab leaf), resolve the first series' ep1 so the leaf is never dead.
  */
 function PodcastShellPlayer() {
   const nav = useShellNav()
-  const seriesId = nav.params.seriesId
-  const epNum = nav.params.epNum
-  if (seriesId == null || epNum == null) {
-    return <PodcastHomeApiStore />
-  }
-  return <ShellPlayerLoader seriesId={seriesId} epNum={epNum} />
+  return <ShellPlayerLoader seriesId={nav.params.seriesId} epNum={nav.params.epNum} />
 }
 
-function ShellPlayerLoader({ seriesId, epNum }: { seriesId: string; epNum: number }) {
+function ShellPlayerLoader({ seriesId, epNum }: { seriesId?: string; epNum?: number }) {
   const data = usePodcastData()
-  const playback = usePodcastPlayback(data.api)
   const catalog = useMemo(() => indexCatalog(data.series), [data.series])
   const tier = tierFromEntitlements(data.entitlements, data.hasToken)
+
+  // Configure the singleton engine with the demo asset + live api (idempotent).
+  useEffect(() => {
+    playbackEngine.configure({ srcUrl: demoAudioUrl, api: data.api })
+  }, [data.api])
+
+  // Resolve a deep-linked leaf (no params) to the first series' ep1.
+  const resolvedSeriesId =
+    seriesId ?? (data.series.length > 0 ? String(data.series[0].id) : undefined)
+  const resolvedEpNum = epNum ?? 1
+
+  if (data.loading || resolvedSeriesId == null) {
+    return (
+      <div className="podcast-home">
+        <main className="ph-scroll">
+          <p className="npp-status" role="status">
+            載入中…
+          </p>
+        </main>
+      </div>
+    )
+  }
+
   return (
-    <div className="podcast-home pf-root">
-      {/* Persistent audio for the shell master-detail player. The shell owns the
-          nav stack (RouteTransition lives in AppShell/ResponsiveShell), so no
-          mini-player here — but the player still drives the shared engine. */}
-      <audio ref={playback.audioRef} {...playback.audioProps} />
-      <PodcastFlowPlayer
-        seriesId={seriesId}
-        epNum={epNum}
-        series={catalog.get(seriesId)}
+    <div className="podcast-home">
+      <PodcastNowPlayingPlayer
+        seriesId={resolvedSeriesId}
+        epNum={resolvedEpNum}
+        series={catalog.get(resolvedSeriesId)}
         tier={tier}
-        playback={playback}
       />
+      {/* Persistent now-playing overlay (mini-player + option sheets). Hides on
+          this player for the loaded episode; surfaces on home/episode-list. */}
+      <PodcastNowPlaying />
     </div>
   )
 }
