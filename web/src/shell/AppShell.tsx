@@ -1,28 +1,9 @@
 import { lazy, Suspense, useMemo, useState } from 'react'
 import type { Appearance, HarnessConfig, SurfaceId } from '../harness/scenarios'
-import { BookshelfScreen } from '../surfaces/bookshelf/BookshelfScreen'
-import { NotebookScreen } from '../surfaces/notebook/NotebookScreen'
-import { PodcastScreen } from '../surfaces/podcast/PodcastScreen'
-import { ReaderScreen } from '../surfaces/reader/ReaderScreen'
-import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
-import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
-import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
-import { OverviewScreen } from '../surfaces/overview/OverviewScreen'
-// 深層導航目標 surface（shell-only 可達；parity capture 不經 renderScreen）。
-import { SyncScreen } from '../surfaces/sync/SyncScreen'
-import { SettingsReviewScreen } from '../surfaces/settings-review/SettingsReviewScreen'
-import { SettingsSubscriptionScreen } from '../surfaces/settings-subscription/SettingsSubscriptionScreen'
-import { SettingsAccountDetailScreen } from '../surfaces/settings-account-detail/SettingsAccountDetailScreen'
-import { TranslationLanguageSettingsScreen } from '../surfaces/translation-language-settings/TranslationLanguageSettingsScreen'
-import { KnowledgeGraphViewScreen } from '../surfaces/knowledge-graph-view/KnowledgeGraphViewScreen'
-import { VocabKnowledgeGraphScreen } from '../surfaces/vocab-knowledge-graph/VocabKnowledgeGraphScreen'
-import { WordDetailSheetScreen } from '../surfaces/word-detail-sheet/WordDetailSheetScreen'
-import { VocabAddLinkScreen } from '../surfaces/vocab-add-link/VocabAddLinkScreen'
-import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
-import { PodcastEpisodeListScreen } from '../surfaces/podcast-episode-list/PodcastEpisodeListScreen'
 import { useNotebookApiStore } from '../surfaces/notebook/useNotebookApiStore'
 import { useBookshelfApiStore } from '../surfaces/bookshelf/useBookshelfApiStore'
 import { ChevronLeftIcon } from './icons'
+import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
   initialNavState,
@@ -48,74 +29,6 @@ const LiveReaderScreen = lazy(() =>
     default: m.LiveReaderScreen,
   })),
 )
-
-/**
- * Web app 殼層 — 像素對齊 iOS TabView（ContentView.swift）的底部 tab bar，並把
- * 各自孤島的 web surface 接成可達的 app 導航。
- *
- * 導航模型在 `nav.ts`（純函式 reducer + 誠實導航圖）：每個 surface-tab 各擁有一條
- * push/pop stack，切 tab 保留各自 stack（鏡射 iOS 各 section 自有 NavigationStack）。
- * 點擊熱區（書卡 / 單字本卡 / 今日複習 CTA）push 下一層；stack 深 >1 時左上角出
- * back chevron 退一層。
- *
- * Surface 本體不改：點擊熱區是疊在 surface 之上的透明 overlay 按鈕（殼層層、不碰
- * surface DOM），故所有 surface 維持 pixel-neutral，parity capture 完全不受影響。
- *
- * URL 契約：殼層由 PhoneFrame 在 ?shell=1 時掛載，預設不啟用——既有
- * ?surface=&scenario=&appearance= 行為完全不變。殼層初始 tab/scenario 對齊 URL
- * （見 nav.initialNavState）。
- */
-
-function renderScreen(screen: Screen) {
-  // discriminated union：switch 後 scenario 自動窄化為該 surface 合法 id。
-  // 注：surface 在 shell 內讀「攜帶的實體 id」走 ShellNavContext.params（見
-  // ShellNavProvider 注入），prop 優先於 window.location.search，後者為 deep-link
-  // fallback。surface 公開 prop 簽章不變（仍只吃 scenario），故 parity 路徑零改動。
-  switch (screen.surface) {
-    case 'bookshelf':
-      return <BookshelfScreen scenario={screen.scenario} />
-    case 'notebook':
-      return <NotebookScreen scenario={screen.scenario} />
-    case 'settings':
-      return <SettingsScreen scenario={screen.scenario} />
-    case 'reader':
-      return <ReaderScreen scenario={screen.scenario} />
-    case 'vocabulary':
-      return <VocabularyScreen scenario={screen.scenario} />
-    case 'today-review':
-      return <TodayReviewScreen scenario={screen.scenario} />
-    case 'podcast':
-      return <PodcastScreen scenario={screen.scenario} />
-    case 'overview':
-      return <OverviewScreen scenario={screen.scenario} />
-    // ── 深層導航目標（shell-only push 進來；各 surface 自帶 ?shell=1 live 分支）──
-    case 'sync':
-      return <SyncScreen scenario={screen.scenario} />
-    case 'settings-review':
-      return <SettingsReviewScreen scenario={screen.scenario} />
-    case 'settings-subscription':
-      return <SettingsSubscriptionScreen scenario={screen.scenario} />
-    case 'settings-account-detail':
-      return <SettingsAccountDetailScreen scenario={screen.scenario} />
-    case 'translation-language-settings':
-      return <TranslationLanguageSettingsScreen scenario={screen.scenario} />
-    case 'knowledge-graph-view':
-      return <KnowledgeGraphViewScreen scenario={screen.scenario} />
-    case 'vocab-knowledge-graph':
-      return <VocabKnowledgeGraphScreen scenario={screen.scenario} />
-    case 'word-detail-sheet':
-      return <WordDetailSheetScreen scenario={screen.scenario} />
-    case 'vocab-add-link':
-      return <VocabAddLinkScreen scenario={screen.scenario} />
-    case 'notebook-edit':
-      return <NotebookEditSheetScreen scenario={screen.scenario} />
-    case 'podcast-episode-list':
-      return <PodcastEpisodeListScreen scenario={screen.scenario} />
-    // 其餘 surface（元件級 scene / 尚無殼層入口）不會進 nav stack → 不渲染。
-    default:
-      return null
-  }
-}
 
 /**
  * 某 surface 在殼層內的可點擊熱區（誠實導航圖的 UI 投影）。每個熱區 = 一個透明
@@ -187,6 +100,25 @@ function TabButton({
   )
 }
 
+/**
+ * Web app 殼層 — 像素對齊 iOS TabView（ContentView.swift）的底部 tab bar，並把
+ * 各自孤島的 web surface 接成可達的 app 導航。
+ *
+ * 導航模型在 `nav.ts`（純函式 reducer + 誠實導航圖）：每個 surface-tab 各擁有一條
+ * push/pop stack，切 tab 保留各自 stack（鏡射 iOS 各 section 自有 NavigationStack）。
+ * 點擊熱區（書卡 / 單字本卡 / 今日複習 CTA）push 下一層；stack 深 >1 時左上角出
+ * back chevron 退一層。
+ *
+ * Screen → surface 元件的映射抽到共享 `screenRegistry`（renderScreen），與桌面
+ * ResponsiveShell 共用同一張路由表，避免雙殼 surface 路由 drift。
+ *
+ * Surface 本體不改：點擊熱區是疊在 surface 之上的透明 overlay 按鈕（殼層層、不碰
+ * surface DOM），故所有 surface 維持 pixel-neutral，parity capture 完全不受影響。
+ *
+ * URL 契約：殼層由 PhoneFrame 在 ?shell=1 時掛載，預設不啟用——既有
+ * ?surface=&scenario=&appearance= 行為完全不變。殼層初始 tab/scenario 對齊 URL
+ * （見 nav.initialNavState）。
+ */
 export function AppShell({ config }: { config: HarnessConfig }) {
   const [nav, setNav] = useState<NavState>(() =>
     initialNavState(config.surface, config.scenario as string),
