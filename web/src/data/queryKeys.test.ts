@@ -29,11 +29,30 @@ describe('queryKeys', () => {
     expect(queryKeys.library.all).toEqual(['library'])
   })
 
+  it('每個 domain 皆有 collection root（all），nested key 以其為前綴', () => {
+    // 正規化契約：每域有 all collection root，使「invalidate 整個 domain」恆可達；
+    // 任何 detail / 過濾型 key 必以 all 為前綴，partial-match invalidation 才成立。
+    expect(queryKeys.vocab.all).toEqual(['vocab'])
+    expect(queryKeys.vocab.cards().slice(0, 1)).toEqual(queryKeys.vocab.all)
+    expect(queryKeys.vocab.cards('nb-1').slice(0, 1)).toEqual(queryKeys.vocab.all)
+
+    expect(queryKeys.podcast.all).toEqual(['podcast'])
+    expect(queryKeys.podcast.series.slice(0, 1)).toEqual(queryKeys.podcast.all)
+
+    expect(queryKeys.user.all).toEqual(['user'])
+    expect(queryKeys.user.profile.slice(0, 1)).toEqual(queryKeys.user.all)
+
+    expect(queryKeys.notebooks.detail('x').slice(0, 1)).toEqual(queryKeys.notebooks.all)
+  })
+
   it('各 domain 的 root segment 互異（避免跨域誤命中）', () => {
     const roots = [
       queryKeys.notebooks.all[0],
-      queryKeys.vocab.cards()[0],
+      queryKeys.vocab.all[0],
       queryKeys.library.all[0],
+      queryKeys.todayReview.all[0],
+      queryKeys.podcast.all[0],
+      queryKeys.user.all[0],
     ]
     expect(new Set(roots).size).toBe(roots.length)
   })
