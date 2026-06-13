@@ -11,6 +11,14 @@ const ReaderLiveScreen = lazy(() =>
   import('./surfaces/reader-live/ReaderLiveScreen').then((m) => ({ default: m.ReaderLiveScreen })),
 )
 
+// Import-flow surface（功能型）：?surface=import-flow 走獨立 lazy 路徑，與 reader-live
+// 同理把 epub.js（解析封面 / OPF metadata）擋在 parity bundle 之外。此 surface 必用
+// useApi（library.create）→ 恆包 ApiProvider；可獨立到達、不依賴 shell/bookshelf，
+// 故未進 PhoneFrame 的 parity 路由表（不接 ?scenario/?appearance capture 軸）。
+const ImportFlowScreen = lazy(() =>
+  import('./surfaces/import-flow/ImportFlowScreen').then((m) => ({ default: m.ImportFlowScreen })),
+)
+
 export function App() {
   const { isLoggedIn, isLoading } = useAuth()
   const search = window.location.search
@@ -27,6 +35,21 @@ export function App() {
     // shell=1 時 ReaderLive 需 useApi 同步閱讀位置 → 包 ApiProvider；
     // 無 shell（純 spike / parity 觀察）維持原樣，不掛 provider、零 API 呼叫。
     return readerShell ? <ApiProvider>{readerFrame}</ApiProvider> : readerFrame
+  }
+
+  // Import-flow surface — 獨立、自足、可直接到達（不依賴 shell/bookshelf）。恆包
+  // ApiProvider（confirm-import 走 library.create）。OUT OF SCOPE（reconverge 補）：
+  // 從 bookshelf 開啟匯入的入口按鈕（觸及 shell/bookshelf，由並行 run 持有）。
+  if (new URLSearchParams(search).get('surface') === 'import-flow') {
+    return (
+      <ApiProvider>
+        <div className="phone-frame" data-surface="import-flow" data-harness="phone-frame">
+          <Suspense fallback={null}>
+            <ImportFlowScreen />
+          </Suspense>
+        </div>
+      </ApiProvider>
+    )
   }
 
   const config = resolveHarnessConfig(search)

@@ -1,0 +1,293 @@
+/* Import-flow surface — file picker → import engine → library.create.
+   Functional app surface (not a parity-captured Catalog mirror), so geometry is
+   token-driven rather than pixel-matched to an iOS scene. Reuses kg-tokens
+   (--page-bg / --card-bg / --accent / --radius-* / --text-*); only the if-*
+   classes below are new and scoped to this surface. */
+
+.import-flow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+/* --- large-title nav（沿用 notebook 的 large-title 幾何） --- */
+.if-nav {
+  padding: 118px 16px 6px;
+}
+
+.if-nav-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 41px;
+  color: var(--text-primary);
+  -webkit-text-stroke: 0.7px currentColor;
+}
+
+.if-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 16px 16px;
+}
+
+/* --- drop / select zone --- */
+.if-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 16px;
+  border-radius: var(--radius-lg);
+  border: 1.5px dashed var(--card-border);
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.if-dropzone[data-dragging='1'] {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.if-dropzone-icon {
+  color: var(--accent);
+}
+
+.if-dropzone-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.if-dropzone-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* native file input lives off-screen; the zone is the affordance */
+.if-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- empty state --- */
+.if-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.if-empty-icon {
+  color: var(--text-tertiary);
+}
+
+.if-empty-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.if-empty-desc {
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text-secondary);
+  max-width: 280px;
+}
+
+/* --- draft list --- */
+.if-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.if-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-card);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.if-row[data-status='done'] {
+  opacity: 0.7;
+}
+
+/* cover / format badge */
+.if-row-cover {
+  flex: none;
+  width: 40px;
+  height: 56px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--muted-fill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.if-row-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.if-row-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.if-row-format {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+/* metadata */
+.if-row-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.if-row-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.if-row-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.if-row-author {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.if-row-error {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--destructive);
+}
+
+/* status badge */
+.if-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.if-badge--done {
+  color: var(--accent);
+}
+
+.if-badge--error {
+  color: var(--destructive);
+}
+
+.if-badge--busy {
+  color: var(--text-secondary);
+}
+
+.if-spinner {
+  color: var(--text-secondary);
+}
+
+/* trailing actions */
+.if-row-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.if-row-remove,
+.if-row-retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.if-row-remove:hover,
+.if-row-retry:hover {
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+}
+
+.if-row-retry {
+  color: var(--accent);
+}
+
+/* --- confirm footer --- */
+.if-footer {
+  flex: none;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--divider);
+  background: var(--page-bg);
+}
+
+.if-confirm {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.if-confirm:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
