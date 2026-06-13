@@ -8,6 +8,7 @@ import type {
   BookMetadataResponse,
   CardResponse,
   DeleteAccountResponse,
+  DeleteBookResponse,
   EntitlementsResponse,
   ExplainResponse,
   GraphLinkResponse,
@@ -175,14 +176,14 @@ export function mockLibraryPosition(
   }
 }
 
-// DELETE /api/library/books/{id} — NEW backend (mock-only). Soft-delete:
-// flips is_deleted so list() (which filters deleted) hides it, mirroring the
-// LWW tombstone the backend is expected to write. Returns the tombstoned row.
-export function mockLibraryDelete(id: string): BookMetadataResponse | undefined {
+// DELETE /api/library/books/{id} — mirrors backend soft-delete. Flips is_deleted
+// in the in-memory store so list() (which filters deleted) hides it, then returns
+// { deleted: id } to match api_models/library.py::DeleteBookResponse.
+export function mockLibraryDelete(id: string): DeleteBookResponse | undefined {
   const base = MOCK_LIBRARY_BOOKS.find((b) => b.id === id)
   if (!base) return undefined
   base.is_deleted = true
-  return base
+  return { deleted: id }
 }
 
 export const MOCK_NOTEBOOKS: NotebookResponse[] = [

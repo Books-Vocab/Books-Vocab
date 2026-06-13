@@ -15,6 +15,7 @@ import type {
   BookUpdateRequest,
   CardResponse,
   DeleteAccountResponse,
+  DeleteBookResponse,
   DeleteWordResponse,
   EntitlementsResponse,
   ExplainResponse,
@@ -413,12 +414,9 @@ export class LibraryClient {
     })
   }
 
-  /**
-   * DELETE /api/library/books/{id} — soft-delete a book.
-   * NEW backend route: contract is encoded in the mock until the route lands.
-   */
-  delete(id: string): Promise<BookMetadataResponse> {
-    return this.t.request<BookMetadataResponse>(`/api/library/books/${encodeURIComponent(id)}`, {
+  /** DELETE /api/library/books/{id} — soft-delete a book (returns {deleted}). */
+  delete(id: string): Promise<DeleteBookResponse> {
+    return this.t.request<DeleteBookResponse>(`/api/library/books/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     })
   }

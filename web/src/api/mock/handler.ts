@@ -460,7 +460,8 @@ const ROUTES: Route[] = [
     },
   },
   {
-    // DELETE /api/library/books/{id} — NEW backend (mock-only) soft-delete.
+    // DELETE /api/library/books/{id} — soft-delete; returns { deleted: id } and
+    // tombstones the in-memory row so list() excludes it (matches backend).
     method: 'DELETE',
     pattern: /^\/api\/library\/books\/([^/]+)$/,
     handle: (_req, m) => {
