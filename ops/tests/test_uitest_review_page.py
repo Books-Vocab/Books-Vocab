@@ -82,6 +82,7 @@ def test_build_review_root_updates_workspace_index(tmp_path):
         status="ok",
         test_file="AuthFlowUITests.swift",
         device="STUB-UDID",
+        last_run_at="2026-06-14T01:02:03+00:00",
     )
 
     workspace_root = out_root.parent
@@ -93,9 +94,34 @@ def test_build_review_root_updates_workspace_index(tmp_path):
     run = workspace_index["runs"][0]
     assert run["flowId"] == "auth_flow"
     assert run["variantId"] == "free_preview"
+    assert run["lastRunAt"] == "2026-06-14T01:02:03+00:00"
     assert run["artifacts"]["reviewHtml"] == "20260614-010203-ui/UIreview.html"
     assert run["artifacts"]["video"] == "20260614-010203-ui/uitest-videos/20260614-010203-ui.mp4"
     assert run["artifacts"]["log"] == "20260614-010203-ui/test.log"
+
+    newer_out_root = tmp_path / "build" / "snapshots" / "uitest-runs" / "20260614-020304-ui"
+    mod.build_review_root(
+        screenshot_dir=steps,
+        manifest_path=manifest,
+        contact_sheet=None,
+        quick4_sheet=None,
+        video=video,
+        out_root=newer_out_root,
+        log=log,
+        flow_id="auth_flow",
+        variant_id="free_preview",
+        status="fail",
+        test_file="AuthFlowUITests.swift",
+        device="STUB-UDID",
+        last_run_at="2026-06-14T02:03:04+00:00",
+    )
+
+    replaced = json.loads((workspace_root / "index.json").read_text(encoding="utf-8"))
+    assert replaced["summary"]["totalRuns"] == 1
+    assert replaced["summary"]["okRuns"] == 0
+    assert replaced["summary"]["failRuns"] == 1
+    assert replaced["runs"][0]["runId"] == "20260614-020304-ui"
+    assert replaced["runs"][0]["lastRunAt"] == "2026-06-14T02:03:04+00:00"
 
 
 def test_workspace_html_links_runs_and_artifacts(tmp_path):
@@ -114,6 +140,7 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
                 "flowId": "settings_flow",
                 "variantId": "guest",
                 "status": "fail",
+                "lastRunAt": "2026-06-14T03:04:05+00:00",
                 "testFile": "SettingsFlowUITests.swift",
                 "device": "SIM-1",
                 "artifacts": {
@@ -129,6 +156,7 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
                 "flowId": "settings_flow",
                 "runs": 1,
                 "latestStatus": "fail",
+                "lastRunAt": "2026-06-14T03:04:05+00:00",
                 "variants": ["guest"],
             }
         ],
@@ -138,6 +166,7 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
 
     assert "settings_flow" in html
     assert "SettingsFlowUITests.swift" in html
+    assert "2026-06-14T03:04:05+00:00" in html
     assert "run-a/UIreview.html" in html
     assert "run-a/test.log" in html
     assert "run-a/uitest-videos/run-a.mp4" in html

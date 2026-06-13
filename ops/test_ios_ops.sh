@@ -961,6 +961,38 @@ else
   # keep $ui_steps_tmp as the debug artifact — the failure message points at it
   fail_t "ios_test ui-step visual review artifacts missing in $ui_steps_tmp: $(tail -3 "$ui_steps_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
 fi
+ui_empty_tmp="$(mktemp -d)"
+bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  PROJECT_ROOT="'"$ui_empty_tmp"'/project"
+  TEST_SCOPE="ui"
+  UI_TEST_SCREENSHOT_DIR=""
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
+  UI_TEST_REVIEW_ROOT=""
+  UI_TEST_REVIEW_HTML=""
+  UI_TEST_FLOW_ID="BooksAndVocabUITests"
+  UI_TEST_VARIANT_ID="profile:ui-smoke"
+  FILE_PATH="ios/BooksAndVocabUITests/BooksAndVocabUITests.swift"
+  TMPOUT="'"$ui_empty_tmp"'/test.log"
+  mkdir -p "$PROJECT_ROOT"
+  : > "$TMPOUT"
+  eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  resolve_run_device_udid() { printf "STUB-UDID-EMPTY"; }
+  build_ui_test_review_page ok
+' >"$ui_empty_tmp/snippet.log" 2>&1 || true
+ui_empty_index="$ui_empty_tmp/project/build/snapshots/uitest-runs/index.json"
+ui_empty_html="$ui_empty_tmp/project/build/snapshots/uitest-runs/UIreview.html"
+if [[ -s "$ui_empty_index" && -s "$ui_empty_html" ]] \
+  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .summary.okRuns==1 and .runs[0].flowId=="BooksAndVocabUITests" and .runs[0].stepCount==0 and (.runs[0].artifacts.log|endswith("/test.log")) and (.runs[0].lastRunAt|length > 0)' "$ui_empty_index" >/dev/null; then
+  ok "ios_test builds UITest workspace entry even when no step screenshots exist"
+  rm -rf "$ui_empty_tmp"
+else
+  fail_t "ios_test empty visual review fallback missing in $ui_empty_tmp: $(tail -5 "$ui_empty_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
+fi
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
 touch "$ios_test_xctestrun_tmp/Build/Products/BooksAndVocabUnitTests_BooksAndVocabUnitTests_iphonesimulator26.4-arm64.xctestrun"
