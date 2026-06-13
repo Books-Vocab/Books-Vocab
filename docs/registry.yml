@@ -563,6 +563,19 @@ documents:
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
 
+  - id: sop.agent_org
+    path: docs/sop/agent_org.md
+    kind: sop
+    authority: derived
+    triggers:
+      - delegation_contract_changed
+      - agent_roster_changed
+      - org_lifecycle_changed
+    sources:
+      - CLAUDE.md
+      - .claude/agents/
+      - docs/sop/agent_org.md
+
   - id: sop.architecture
     path: docs/sop/architecture.md
     kind: sop
