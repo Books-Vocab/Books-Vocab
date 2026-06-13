@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -38,7 +41,7 @@ def web_auth_env(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TestClient(app, base_url="https://testserver", raise_server_exceptions=False)
         yield SimpleNamespace(client=client, data_dir=data_dir)
     finally:
         app.state.kg_settings = original_settings
@@ -76,3 +79,88 @@ def test_web_auth_router_is_registered(web_auth_env):
     assert "/auth/web/google/login" in routes
     assert "/auth/web/google/callback" in routes
     assert "/auth/web/apple/callback" in routes
+
+
+# ── Google callback token-exchange failure branches ─────────────────────────
+# Regression net for the two non-network failure paths in google_callback that
+# the sibling suites do not cover (state CSRF lives in test_web_auth_state.py,
+# network 502 + retry there too; replay in test_web_auth_security.py).
+
+
+def _bootstrap_google_state(client: TestClient) -> str:
+    resp = client.get("/auth/web/google/login", follow_redirects=False)
+    assert resp.status_code == 307
+    return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
+
+
+def test_google_callback_token_exchange_non_200_returns_401(web_auth_env):
+    """Upstream token endpoint replying non-200 (e.g. invalid_grant) → 401,
+    not a leaked 500/200."""
+    client = web_auth_env.client
+    state = _bootstrap_google_state(client)
+
+    fake_resp = httpx.Response(
+        400,
+        json={"error": "invalid_grant"},
+        request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+    )
+
+    async def fake_post(self, url, data=None, **kwargs):
+        return fake_resp
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        resp = client.get(
+            f"/auth/web/google/callback?code=fake-code&state={state}",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 401, resp.text
+
+
+def test_google_callback_missing_id_token_returns_401(web_auth_env):
+    """A 200 token response that omits ``id_token`` → 401 (no OIDC identity to
+    verify), guarding against a None slipping into verify_google_token."""
+    client = web_auth_env.client
+    state = _bootstrap_google_state(client)
+
+    fake_resp = httpx.Response(
+        200,
+        json={"access_token": "opaque-no-id-token"},
+        request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+    )
+
+    async def fake_post(self, url, data=None, **kwargs):
+        return fake_resp
+
+    with patch("httpx.AsyncClient.post", new=fake_post):
+        resp = client.get(
+            f"/auth/web/google/callback?code=fake-code&state={state}",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 401, resp.text
+
+
+# ── Cookie security attributes (full assertion) ──────────────────────────────
+
+
+def test_google_login_state_cookie_security_attributes(web_auth_env):
+    """The oauth_state cookie must be HttpOnly + Secure + scoped to
+    Path=/auth/web/ so it never leaks to other paths or to JS."""
+    resp = web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
+    set_cookie = resp.headers.get("set-cookie", "").lower()
+    assert "oauth_state=" in set_cookie
+    assert "httponly" in set_cookie
+    assert "secure" in set_cookie
+    assert "path=/auth/web/" in set_cookie
+    assert "samesite=lax" in set_cookie
+
+
+def test_apple_login_state_cookie_security_attributes(web_auth_env):
+    """Apple's state cookie is SameSite=None (cross-site form_post) but must
+    still be HttpOnly + Secure + Path=/auth/web/."""
+    resp = web_auth_env.client.get("/auth/web/apple/login", follow_redirects=False)
+    set_cookie = resp.headers.get("set-cookie", "").lower()
+    assert "oauth_state=" in set_cookie
+    assert "httponly" in set_cookie
+    assert "secure" in set_cookie
+    assert "path=/auth/web/" in set_cookie
+    assert "samesite=none" in set_cookie
