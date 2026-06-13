@@ -30,6 +30,9 @@ export interface SettingsFixture {
   account: LoggedInAccount | LoggedOutAccount
   /** 偏好區「自動同步」toggle；未登入時 iOS 不顯示此列 → null */
   autoSync: boolean | null
+  /** 偏好區「自動連結」toggle（auto_link.enabled）；parity 路徑不渲染 → null。
+   *  shell/apiMode 路徑才填 boolean。 */
+  autoLink: boolean | null
   /** 偏好區 footnote（登入版多一句自動同步說明） */
   preferencesFootnote: string
   /** 其他區「同步狀態」列 value；未登入無此列 → null */
@@ -60,6 +63,7 @@ export const SETTINGS_FIXTURES: Record<ScenarioId<'settings'>, SettingsFixture> 
       },
     },
     autoSync: true,
+    autoLink: null,
     preferencesFootnote: PREFERENCES_FOOTNOTE_SYNC,
     syncStatusValue: '已連線 · 128 張 · 3 分鐘前',
   },
@@ -76,6 +80,7 @@ export const SETTINGS_FIXTURES: Record<ScenarioId<'settings'>, SettingsFixture> 
       },
     },
     autoSync: true,
+    autoLink: null,
     preferencesFootnote: PREFERENCES_FOOTNOTE_SYNC,
     syncStatusValue: '已連線 · 128 張 · 10 分鐘前',
   },
@@ -87,6 +92,7 @@ export const SETTINGS_FIXTURES: Record<ScenarioId<'settings'>, SettingsFixture> 
       heroSubtitle: 'AI 翻譯・知識圖譜・雲端同步',
     },
     autoSync: null,
+    autoLink: null,
     preferencesFootnote: PREFERENCES_FOOTNOTE_BASE,
     syncStatusValue: null,
   },

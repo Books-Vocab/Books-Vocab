@@ -1,5 +1,7 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCAB_CALENDAR_FIXTURES, type CalendarFixture } from './fixtures'
+import { useVocabCalendarApiStore } from './useVocabCalendarApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './vocab-calendar.css'
 
 /**
@@ -69,7 +71,26 @@ export function VocabCalendarScreen({
 }: {
   scenario: ScenarioId<'vocab-calendar'>
 }) {
-  const fx = VOCAB_CALENDAR_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <VocabCalendarScreenApi />
+  return <VocabCalendarBody fx={VOCAB_CALENDAR_FIXTURES[scenario]} />
+}
+
+/** API-driven screen — shell=1 時從 review-events 衍生當月活動。 */
+function VocabCalendarScreenApi() {
+  const store = useVocabCalendarApiStore()
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' && store.fixture ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      {store.fixture ? <VocabCalendarBody fx={store.fixture} /> : null}
+    </VocabSceneShell>
+  )
+}
+
+/** 日曆網格本體 — fixture / API 兩條路共用，DOM 結構與 class 完全一致。 */
+function VocabCalendarBody({ fx }: { fx: CalendarFixture }) {
   const cells = buildCells(fx)
 
   return (

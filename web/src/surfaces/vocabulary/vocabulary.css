@@ -373,3 +373,316 @@
   cursor: pointer;
   box-sizing: border-box;
 }
+
+/* ============================================================
+   SHELL-PATH FEEL / INTERACTION — gated under .vc-shell.
+
+   PARITY ISOLATION: every rule in this block is a descendant of .vc-shell,
+   a class only added to the surface root on the functional shell path
+   (VocabularyBody receives headerActions). The parity capture path renders
+   .vocabulary WITHOUT .vc-shell, so none of these rules apply there and the
+   bare 393px capture DOM/CSS is untouched. None of these live in a responsive
+   @media/@container context, so check:responsive stays CLEAN.
+   ============================================================ */
+
+/* --- Surface-owned header actions（知識圖譜 + 新增連結 鈕）---
+   只在 shell 路徑渲染（parity header 純標題）。large-title 列 right-align 一對
+   圓鈕，鏡射 iOS 工具列 glyph 的觀感（muted-fill 觸控圈，secondary glyph）。 */
+.vc-shell .vc-nav {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vc-shell .vc-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 與 large-title baseline 對齊（title 有 6px bottom pad）。 */
+  padding-bottom: 8px;
+}
+
+.vc-shell .vc-nav-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    background-color 0.18s ease,
+    transform 0.12s ease;
+}
+
+.vc-shell .vc-nav-action:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+.vc-shell .vc-nav-action:active {
+  transform: scale(0.92);
+}
+
+/* --- Animated filter-chip selection（shell）---
+   選中底色改由 framer-motion 共享 layoutId 的 .vc-stat-pill 繪製（spring 滑移），
+   故 .vc-stat-active 自身不再上靜態底色（避免雙層）。pill 為絕對定位填滿 chip。 */
+.vc-shell .vc-stat {
+  position: relative;
+  transition: color 0.18s ease;
+}
+
+.vc-shell .vc-stat-active .vc-stat-label {
+  color: var(--text-primary);
+}
+
+.vc-shell .vc-stat-pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--radius-md);
+  background: var(--muted-fill);
+}
+
+/* label / count 疊在 pill 之上。 */
+.vc-shell .vc-stat-label,
+.vc-shell .vc-stat-count {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Search field focus feel（shell）---
+   聚焦時 muted-fill 微亮 + 細邊框，給出 iOS 搜尋欄「啟用」回饋。靜態與非聚焦態
+   不變，故不影響首屏觀感。reduced-motion 由 prefers 媒體查詢收斂為瞬時。 */
+.vc-shell .vc-search {
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.vc-shell .vc-search:focus-within {
+  background: var(--button-idle-fill);
+  box-shadow: 0 0 0 1.5px var(--brand-hero);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-shell .vc-nav-action,
+  .vc-shell .vc-stat,
+  .vc-shell .vc-search {
+    transition: none;
+  }
+}
+
+/* --- List scroll momentum（shell）---
+   shell 路徑由 pane 擁有滾動；給 vc-scroll iOS 風慣性 + 防滾動鏈穿透。
+   parity 路徑 .vc-scroll 為 overflow:hidden（不滾動），這些屬性在該路徑為惰性。 */
+.vc-shell .vc-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-shell .vc-scroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* ============================================================
+   今日複習 bar（shell 路徑專用）— brandHero capsule，鏡射 iOS review CTA bar。
+   點擊 → vocabulary → open-today-review。僅 .vc-shell 下渲染，parity 路徑無。
+   非 responsive context（無 @media min-width>=768 / @container），故 isolation
+   gate 視為 CLEAN。
+   ============================================================ */
+.vc-shell .vc-review-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* inlineGap */
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--sp-3); /* 12 — search 上方留白 */
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-md); /* 8 */
+  background: var(--brand-hero);
+  color: var(--on-brand-hero);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    filter 0.18s ease,
+    transform 0.12s ease;
+}
+
+.vc-shell .vc-review-bar:hover {
+  filter: brightness(0.97);
+}
+
+.vc-shell .vc-review-bar:active {
+  transform: scale(0.985);
+}
+
+.vc-shell .vc-review-bar-icon {
+  flex: 0 0 auto;
+}
+
+.vc-shell .vc-review-bar-label {
+  flex: 1;
+  font-size: 15px; /* body */
+  font-weight: 600;
+}
+
+.vc-shell .vc-review-bar-count {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(28, 26, 23, 0.12); /* on-brand-hero @ low alpha */
+}
+
+/* shell 路徑的列容器：主區 button + 動作鈕並排（取代 parity 的單一 <button>）。
+   沿用 .vc-row 的 padding/min-height/flex 幾何，視覺與 parity 列等高對齊。 */
+.vc-row-interactive {
+  cursor: default;
+}
+
+/* 主可點區（word/pos/translation）— reset native button chrome，撐滿剩餘寬。 */
+.vc-row-tap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* --- Card actions: 發音 + 分享（shell 路徑取代右側 detail label）--- */
+.vc-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.vc-row-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.vc-row-action:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+.vc-row-action-note {
+  font-family: var(--font-sans);
+  font-size: 12px; /* caption */
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+/* 展開詳情層的動作列（card↔detail share parity）。詳情層僅互動後出現（capture
+   為收合態），故無條件渲染不影響 parity DOM。 */
+.vc-detail-actions {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-shell .vc-review-bar,
+  .vc-row-action {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE — shell-gated desktop/tablet master-pane layout.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell (mounted only by ResponsiveShell on the shell path
+   at tablet+). The parity capture path (?surface=vocabulary without ?shell=1)
+   renders PhoneFrame -> .vocabulary WITHOUT a .kg-responsive-shell ancestor at
+   tablet/desktop/wide breakpoints, so the bare 393px render is byte-identical.
+   Mobile delegation (.kg-responsive-shell[data-breakpoint='mobile']) wraps the
+   EXISTING PhoneFrame and is deliberately NOT targeted here, so mobile stays
+   byte-identical to today's shell behaviour too.
+
+   Vocabulary is the MASTER of the master/detail pair: it lives in the list
+   (master) pane. The list is single-column and its chips/search span the full
+   pane width — that is already the surface's natural box model, so the work
+   here is (a) shed the phone status-bar offset + non-scrolling clip that only
+   make sense inside the 393x852 phone frame, and (b) become an @container so
+   internals react to the OWN pane width (a ~360px list pane on desktop, or a
+   fluid pane on tablet) rather than the viewport.
+   ============================================================ */
+
+/* Make the surface react to its OWN pane width, not the viewport. */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary {
+  container-type: inline-size;
+  container-name: vocab;
+  /* Flow within the pane (pane owns the scroll) instead of clipping to a fixed
+     phone viewport height. */
+  height: auto;
+  min-height: 100%;
+}
+
+/* Shed the 118px phone status-bar / nav offset; in a pane the title sits at the
+   pane top with breathing room. Keep the 20pt page inset. */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary .vc-nav,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary .vc-nav,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary .vc-nav {
+  padding-top: var(--sp-6); /* 24 */
+}
+
+/* Let content flow + scroll inside the pane (the pane is overflow-y:auto). */
+.kg-responsive-shell[data-breakpoint='tablet'] .vocabulary .vc-scroll,
+.kg-responsive-shell[data-breakpoint='desktop'] .vocabulary .vc-scroll,
+.kg-responsive-shell[data-breakpoint='wide'] .vocabulary .vc-scroll {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding-bottom: var(--sp-6); /* bottom breathing room when pane-scrolled */
+}
+
+/* @container: the list stays single-column at every pane width (master pane is
+   a narrow list column by design). When the surface ever sits in a wider pane
+   (e.g. tablet's single fluid pane), clamp the inner content to a comfortable
+   reading measure so chips/search/list don't stretch edge-to-edge. */
+@container vocab (min-width: 620px) {
+  .kg-responsive-shell .vocabulary .vc-nav,
+  .kg-responsive-shell .vocabulary .vc-scroll {
+    max-width: 640px;
+  }
+}

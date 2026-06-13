@@ -22,6 +22,7 @@ from .api_models import (
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
+    UserProfileResponse,
     VocabUIConfig,
 )
 from .types import StoredUserRecord, UserRecord, UsersPayload
@@ -141,6 +142,30 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
 
 def get_user_config_response(user: UserRecord) -> UserConfigResponse:
     return _build_user_config_response(user["config"])
+
+
+def get_user_profile_response(user: UserRecord) -> UserProfileResponse:
+    """Read identity (displayName/email/provider) from the stored user record.
+
+    `provider`/`email` are persisted at login (auth_service.resolve_and_link_user).
+    `displayName` prefers an explicit `display_name`, then the email local-part,
+    else None — never fabricated from the opaque user id.
+    """
+    record = user.get("record") or {}
+    record = record if isinstance(record, dict) else {}
+
+    email = record.get("email")
+    provider = record.get("provider")
+
+    display_name = record.get("display_name")
+    if not display_name:
+        display_name = email.split("@", 1)[0] if isinstance(email, str) and "@" in email else None
+
+    return UserProfileResponse(
+        displayName=display_name,
+        email=email,
+        provider=provider,
+    )
 
 
 def get_user_entitlements_response(

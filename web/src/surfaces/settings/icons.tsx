@@ -87,6 +87,12 @@ export const SyncIcon = makeGlyph(
     '<path d="M18.9 5.2v4.1h-4.1M5.1 18.8v-4.1h4.1"/>',
 )
 
+/** SF `point.3.connected.trianglepath.dotted` — 自動連結列（知識圖譜節點互連）。 */
+export const LinkGraphIcon = makeGlyph(
+  '<circle cx="6" cy="17.5" r="2.2"/><circle cx="12" cy="6" r="2.2"/><circle cx="18" cy="17.5" r="2.2"/>' +
+    '<path d="M7.1 15.6 11 8M13 8l3.9 7.6M8.2 17.5h7.6"/>',
+)
+
 /** SF `hand.raised` — 隱私政策列。 */
 export const HandRaisedIcon = makeGlyph(
   '<path d="M8.6 12.6V5.9a1.2 1.2 0 0 1 2.4 0v5.3V4.6a1.2 1.2 0 0 1 2.4 0v6.6-5.5a1.2 1.2 0 0 1 2.4 0v6.3-4.4a1.2 1.2 0 0 1 2.4 0v7.5c0 3.4-2.4 5.9-5.8 5.9-2.3 0-3.8-.8-5-2.6L5.1 14.7c-.6-.9-.5-1.8.2-2.3.7-.5 1.6-.3 2.2.5z"/>',

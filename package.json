@@ -2,6 +2,10 @@
   "name": "kg-design-system",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "web"
+  ],
   "scripts": {
     "build": "style-dictionary build --config design-system/sd.config.mjs",
     "build:check": "node design-system/sd-check.mjs"

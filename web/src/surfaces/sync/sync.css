@@ -454,3 +454,26 @@
   flex: none;
   line-height: 0;
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=sync, no ?shell=1) never mounts it ->
+   393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .sync {
+  container-type: inline-size;
+  container-name: sync-surface;
+}
+.kg-responsive-shell .sync .sync-scroll {
+  overflow-y: auto;
+}
+@container sync-surface (min-width: 600px) {
+  .kg-responsive-shell .sync .sync-content,
+  .kg-responsive-shell .sync .sync-action {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

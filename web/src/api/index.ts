@@ -12,8 +12,13 @@
 
 import {
   AuthClient,
+  GraphClient,
+  LibraryClient,
+  NotebookClient,
+  PipelineClient,
   PodcastClient,
   TodayReviewClient,
+  TranslateClient,
   UserClient,
   VocabularyClient,
 } from './clients'
@@ -36,10 +41,15 @@ export interface ApiClientConfig {
 export interface ApiClient {
   readonly mode: ApiMode
   readonly auth: AuthClient
+  readonly library: LibraryClient
+  readonly notebook: NotebookClient
   readonly vocabulary: VocabularyClient
   readonly todayReview: TodayReviewClient
   readonly podcast: PodcastClient
   readonly user: UserClient
+  readonly translate: TranslateClient
+  readonly graph: GraphClient
+  readonly pipeline: PipelineClient
 }
 
 /** Read VITE_* config from import.meta.env, tolerating absence (tests/node). */
@@ -77,10 +87,15 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
   return {
     mode,
     auth: new AuthClient(transport),
+    library: new LibraryClient(transport),
+    notebook: new NotebookClient(transport),
     vocabulary: new VocabularyClient(transport),
     todayReview: new TodayReviewClient(transport),
     podcast: new PodcastClient(transport),
     user: new UserClient(transport),
+    translate: new TranslateClient(transport),
+    graph: new GraphClient(transport),
+    pipeline: new PipelineClient(transport),
   }
 }
 
@@ -95,10 +110,24 @@ export type {
 } from './transport'
 export {
   AuthClient,
+  GraphClient,
+  LibraryClient,
+  NotebookClient,
+  PipelineClient,
   PodcastClient,
   TodayReviewClient,
+  TranslateClient,
   UserClient,
   VocabularyClient,
 } from './clients'
 export { createMockFetch } from './mock/handler'
 export * from './types'
+export type {
+  BookCreateRequest,
+  BookMetadataResponse,
+  BookPositionRequest,
+  BookUpdateRequest,
+  NotebookCreateRequest,
+  NotebookResponse,
+  NotebookUpdateRequest,
+} from './types'

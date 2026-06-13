@@ -12,6 +12,7 @@ from kg.api_models.auth import (
     DeleteAccountResponse,
     UserConfigRequest,
     UserConfigResponse,
+    UserProfileResponse,
 )
 from kg.api_models.billing import (
     AdminGrantRequest,
@@ -28,6 +29,13 @@ from kg.api_models.billing import (
 from kg.api_models.cards import CardLinkSummaryResponse, CardResponse
 from kg.api_models.common import VocabSource, _normalize_context
 from kg.api_models.graph import AutoLinkConfig, GraphLinkResponse, ManualLinkRequest
+from kg.api_models.library import (
+    BookCreateRequest,
+    BookMetadataResponse,
+    BookPositionRequest,
+    BookUpdateRequest,
+    DeleteBookResponse,
+)
 from kg.api_models.notebook import (
     VALID_COVER_PATTERNS,
     NotebookCreateRequest,
@@ -74,6 +82,7 @@ from kg.api_models.vocab import (
     BatchDeleteResponse,
     DeleteWordResponse,
     VocabAddResponse,
+    VocabContentUpdateRequest,
     VocabEntry,
 )
 
@@ -96,9 +105,14 @@ __all__ = [
     "BatchArchiveResponse",
     "BatchDeleteRequest",
     "BatchDeleteResponse",
+    "BookCreateRequest",
+    "BookMetadataResponse",
+    "BookPositionRequest",
+    "BookUpdateRequest",
     "CardLinkSummaryResponse",
     "CardResponse",
     "DeleteAccountResponse",
+    "DeleteBookResponse",
     "DeleteWordResponse",
     "EntitlementsResponse",
     "ExplainResponse",
@@ -131,7 +145,9 @@ __all__ = [
     "TranslationLanguageConfig",
     "UserConfigRequest",
     "UserConfigResponse",
+    "UserProfileResponse",
     "VocabAddResponse",
+    "VocabContentUpdateRequest",
     "VocabEntry",
     "VocabSource",
     "VocabUIConfig",

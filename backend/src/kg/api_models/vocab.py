@@ -33,6 +33,23 @@ class ArchiveWordRequest(BaseModel):
     archived: bool
 
 
+class VocabContentUpdateRequest(BaseModel):
+    """Editorial content update for a single card (PATCH /api/vocab/{word}).
+
+    Distinct from ArchiveWordRequest (archive toggle) and the DELETE route.
+    All fields optional; at least one must be present (enforced at the handler
+    so the empty body maps to a 400, not a silent no-op).
+
+    `explanation` is accepted as a write-through alias for the `note` column
+    (the LLM-generated teacher note IS the explanation). An explicit `note`
+    wins over `explanation` when both are sent.
+    """
+
+    meaning: str | None = Field(default=None, min_length=1, max_length=1000)
+    note: str | None = Field(default=None, max_length=5000)
+    explanation: str | None = Field(default=None, max_length=5000)
+
+
 class DeleteWordResponse(BaseModel):
     deleted: str
     id: str

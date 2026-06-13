@@ -1,4 +1,5 @@
 import type { ScenarioId } from '../../harness/scenarios'
+import { useAccountIdentityApiStore } from './useAccountIdentityApiStore'
 import { SETTINGS_ACCOUNT_DETAIL_FIXTURES, type AccountDetailFixture, type DangerSection } from './fixtures'
 import {
   ChevronRightIcon,
@@ -47,8 +48,37 @@ import './settings-account-detail.css'
  * 故**不透明捕捉**（無 transparent flag）；幾何沿用 `settings` 全螢幕 surface（同 nav/page/
  * section 家族、同一 catalog）已校準的 measured 值。
  */
+
 export function SettingsAccountDetailScreen({ scenario }: { scenario: ScenarioId<'settings-account-detail'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <SettingsAccountDetailScreenApi />
+  }
+  return <SettingsAccountDetailScreenFixture scenario={scenario} />
+}
+
+function SettingsAccountDetailScreenFixture({ scenario }: { scenario: ScenarioId<'settings-account-detail'> }) {
   const fixture: AccountDetailFixture = SETTINGS_ACCOUNT_DETAIL_FIXTURES[scenario]
+  return <SettingsAccountDetailBody fixture={fixture} />
+}
+
+function SettingsAccountDetailScreenApi() {
+  const { identity, status } = useAccountIdentityApiStore()
+
+  const fixture: AccountDetailFixture =
+    status === 'loading' || !identity.isLoggedIn
+      ? { isLoggedIn: false, displayName: '訪客', email: null, danger: null }
+      : {
+          isLoggedIn: true,
+          displayName: identity.displayName,
+          email: identity.email,
+          danger: { isDeletingAccount: false },
+        }
+
+  return <SettingsAccountDetailBody fixture={fixture} />
+}
+
+function SettingsAccountDetailBody({ fixture }: { fixture: AccountDetailFixture }) {
   return (
     <div className="sad">
       <header className="sad-nav">

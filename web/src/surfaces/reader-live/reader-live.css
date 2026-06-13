@@ -80,7 +80,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* TOC 面板 */
+/* TOC scrim（點外退出 + 淡入；framer-motion 控 opacity） */
+.rlive-toc-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+/* TOC 面板（左抽屜；位移由 framer-motion navPush spring 驅動 transform） */
 .rlive-toc {
   position: absolute;
   top: 56px;
@@ -90,8 +98,8 @@
   max-width: 320px;
   background: #fffdf8;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.12);
-  z-index: 6;
   overflow-y: auto;
+  will-change: transform;
 }
 
 .rlive-toc-head {
@@ -127,23 +135,27 @@
   background: rgba(55, 53, 47, 0.04);
 }
 
-/* 選詞浮層 */
+/* 選詞浮層：外層為定位錨點（持有 CSS transform -50%/-100%，故 framer-motion 只動
+   外層 opacity，不覆寫 transform）；視覺盒與升起動畫掛內層 .rlive-selection-inner。 */
 .rlive-selection {
   position: absolute;
   left: var(--x);
   top: var(--y);
   transform: translate(-50%, calc(-100% - 12px));
+  z-index: 8;
+  pointer-events: none;
+}
+.rlive-selection-inner {
   max-width: 260px;
   padding: 12px 14px;
   background: #fffdf8;
   border: 0.5px solid rgba(55, 53, 47, 0.12);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
-  z-index: 8;
-  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  will-change: transform, opacity;
 }
 
 .rlive-selection-word {
@@ -176,4 +188,46 @@
   font-size: 15px;
   color: #b3261e;
   z-index: 9;
+}
+
+/* ── 翻頁滑移 cue（FEEL）── epub.js prev/next 瞬時切頁；翻頁時對 host 做一次短促
+   方向性位移＋淡入，給「頁面滑進」知覺。data-turn 由 React 設置、~220ms 後清。 */
+.rlive-host {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+.rlive[data-turn='next'] .rlive-host {
+  animation: rlive-turn-next 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rlive[data-turn='prev'] .rlive-host {
+  animation: rlive-turn-prev 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes rlive-turn-next {
+  0% {
+    transform: translateX(14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes rlive-turn-prev {
+  0% {
+    transform: translateX(-14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* prefers-reduced-motion：關閉翻頁 cue（浮層 spring 由 framer-motion 收斂為瞬時）。 */
+@media (prefers-reduced-motion: reduce) {
+  .rlive-host,
+  .rlive[data-turn='next'] .rlive-host,
+  .rlive[data-turn='prev'] .rlive-host {
+    transition: none;
+    animation: none;
+  }
 }

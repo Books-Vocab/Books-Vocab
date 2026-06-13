@@ -75,3 +75,28 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE (tablet/desktop shell) — scoped under .kg-responsive-shell ONLY.
+
+   PARITY ISOLATION: every rule below is a descendant of .kg-responsive-shell and
+   can only match on the shell path. The parity capture path never mounts
+   .kg-responsive-shell, so the 393px static render is byte-identical.
+
+   Under the shell this surface mounts the live force graph (devLogin) and the
+   static logged-out card is only seen logged out. Either way we fill the content
+   pane (no detail pane) and cap the card width via @container so it reads as a
+   centered card — reacting to its OWN pane width, not the viewport.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.kg-responsive-shell .kg-view-surface {
+  container-type: size;
+  container-name: kg-view-pane;
+}
+
+@container kg-view-pane (min-width: 600px) {
+  .kg-responsive-shell .kg-view-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}

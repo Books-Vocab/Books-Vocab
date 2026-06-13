@@ -1,6 +1,8 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { ARCHIVED_VOCAB_FIXTURES } from './fixtures'
-import { ArchiveboxIcon, MagnifyingGlassIcon } from './icons'
+import { ArchiveboxIcon, ArrowUTurnIcon, MagnifyingGlassIcon, TrashIcon } from './icons'
+import { useArchivedVocabApiStore } from './useArchivedVocabApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './archived-vocab.css'
 
 /**
@@ -28,6 +30,114 @@ import './archived-vocab.css'
  * notebook-edit 的 nav-title 量測淡字策略）。
  */
 export function ArchivedVocabScreen({ scenario }: { scenario: ScenarioId<'archived-vocab'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <ArchivedVocabApi />
+  return <ArchivedVocabFixture scenario={scenario} />
+}
+
+/** shell 路徑：列真實封存卡 + 還原/刪除（單列 + 多選批次）。 */
+function ArchivedVocabApi() {
+  const store = useArchivedVocabApiStore()
+  const selecting = store.selected.size > 0
+
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <div className="av-surface">
+        <header className="av-nav">
+          <span className="av-nav-title">封存</span>
+        </header>
+
+        <div className="av-body">
+          {store.rows.length === 0 ? (
+            <div className="av-empty">
+              <div className="av-empty-card">
+                <ArchiveboxIcon className="av-empty-icon" size={30} strokeWidth={1.2} />
+                <div className="av-empty-title">沒有封存的卡片</div>
+                <div className="av-empty-desc">左滑卡片即可封存。</div>
+              </div>
+            </div>
+          ) : (
+            <div className="av-list">
+              {store.rows.map((r, i) => (
+                <div className="av-row-cell" key={r.id}>
+                  {i > 0 && <div className="av-divider" />}
+                  <div className="av-row" data-selected={store.selected.has(r.word) ? '' : undefined}>
+                    <button
+                      type="button"
+                      className="av-row-select"
+                      aria-pressed={store.selected.has(r.word)}
+                      aria-label={`選取 ${r.word}`}
+                      onClick={() => store.toggleSelect(r.word)}
+                    >
+                      <ArchiveboxIcon className="av-row-icon" size={12} strokeWidth={1.5} />
+                    </button>
+                    <div className="av-row-main">
+                      <div className="av-row-head">
+                        <span className="av-row-word">{r.word}</span>
+                        {r.partOfSpeech ? <span className="av-row-pos">{r.partOfSpeech}</span> : null}
+                      </div>
+                      <span className="av-row-translation">{r.translation}</span>
+                    </div>
+                    <div className="av-row-actions">
+                      <button
+                        type="button"
+                        className="av-row-action"
+                        aria-label={`還原 ${r.word}`}
+                        onClick={() => store.restore(r.word)}
+                      >
+                        <ArrowUTurnIcon size={18} strokeWidth={1.6} />
+                      </button>
+                      <button
+                        type="button"
+                        className="av-row-action av-row-action--destructive"
+                        aria-label={`刪除 ${r.word}`}
+                        onClick={() => store.remove(r.word)}
+                      >
+                        <TrashIcon size={18} strokeWidth={1.6} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {selecting ? (
+          <div className="av-batchbar" role="toolbar" aria-label="批次操作">
+            <span className="av-batch-count">{`已選 ${store.selected.size}`}</span>
+            <button type="button" className="av-batch-btn" onClick={store.restoreSelected}>
+              <ArrowUTurnIcon size={20} strokeWidth={1.6} />
+              <span>還原</span>
+            </button>
+            <button
+              type="button"
+              className="av-batch-btn av-batch-btn--destructive"
+              onClick={store.deleteSelected}
+            >
+              <TrashIcon size={20} strokeWidth={1.6} />
+              <span>刪除</span>
+            </button>
+            <button type="button" className="av-batch-btn" onClick={store.clearSelection}>
+              取消
+            </button>
+          </div>
+        ) : (
+          <div className="av-search">
+            <MagnifyingGlassIcon className="av-search-icon" size={17} />
+            <span className="av-search-prompt">搜尋封存單字</span>
+          </div>
+        )}
+      </div>
+    </VocabSceneShell>
+  )
+}
+
+/** Fixture-driven 唯讀列表（parity 路徑，DOM byte-identical）。 */
+function ArchivedVocabFixture({ scenario }: { scenario: ScenarioId<'archived-vocab'> }) {
   const fixture = ARCHIVED_VOCAB_FIXTURES[scenario]
   const isEmpty = fixture.rows.length === 0
 

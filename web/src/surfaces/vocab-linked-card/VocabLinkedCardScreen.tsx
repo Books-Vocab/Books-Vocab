@@ -1,6 +1,8 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCAB_LINKED_CARD_FIXTURES } from './fixtures'
 import { DocTextIcon, RectangleStackIcon, XmarkIcon } from './icons'
+import { useVocabLinkedCardApiStore } from './useVocabLinkedCardApiStore'
+import type { LinkedCardGroup } from './useVocabLinkedCardApiStore'
 import './vocab-linked-card.css'
 
 /**
@@ -97,6 +99,83 @@ function CardLayer({ index }: { index: number }) {
 }
 
 export function VocabLinkedCardScreen({
+  scenario,
+}: {
+  scenario: ScenarioId<'vocab-linked-card'>
+}) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <VocabLinkedCardApi />
+  return <VocabLinkedCardFixture scenario={scenario} />
+}
+
+/** shell 路徑：以來源卡的 linksByKind 填入 overlay 卡內容。 */
+function VocabLinkedCardApi() {
+  const store = useVocabLinkedCardApiStore()
+  return (
+    <div className="vlc-surface">
+      <div className="vlc-scrim" />
+      <div className="vlc-layer" style={{ zIndex: 1 }}>
+        <div className="vlc-card" style={{ height: '620px' }}>
+          <div className="vlc-header">
+            <span className="vlc-header-label">
+              <RectangleStackIcon className="vlc-header-icon" />
+              Linked Card
+            </span>
+            <span className="vlc-spacer" />
+            <button type="button" className="vlc-close" aria-label="關閉">
+              <XmarkIcon className="vlc-close-glyph" />
+            </button>
+          </div>
+          <div className="vlc-divider" />
+          <div className="vlc-body vlc-body--links">
+            {store.status === 'ready' ? (
+              store.groups.length === 0 ? (
+                <p className="vlc-links-empty">尚無關聯卡片</p>
+              ) : (
+                store.groups.map((g) => <LinkGroup key={g.kind} group={g} />)
+              )
+            ) : (
+              <LoadingState />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LinkGroup({ group }: { group: LinkedCardGroup }) {
+  return (
+    <div className="vlc-link-group">
+      <span className="vlc-link-label">{group.label}</span>
+      {group.links.map((l) => (
+        <div key={l.id} className="vlc-link-row">
+          <span className="vlc-link-word">{l.word}</span>
+          <span className="vlc-link-reason">{l.reason}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LoadingState() {
+  return (
+    <div className="vlc-state-card">
+      <div className="vlc-state-row">
+        <DocTextIcon className="vlc-state-icon" />
+        <span className="vlc-state-title">載入中</span>
+      </div>
+      <span className="vlc-spinner" aria-hidden="true">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <i key={i} style={{ transform: `rotate(${i * 30}deg)` }} />
+        ))}
+      </span>
+    </div>
+  )
+}
+
+/** Fixture-driven 疊層 placeholder（parity 路徑，DOM byte-identical）。 */
+function VocabLinkedCardFixture({
   scenario,
 }: {
   scenario: ScenarioId<'vocab-linked-card'>
