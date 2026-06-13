@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,8 +13,9 @@ from ..api_models.library import (
     BookMetadataResponse,
     BookPositionRequest,
     BookUpdateRequest,
+    DeleteBookResponse,
 )
-from ..deps import CurrentUser
+from ..deps import CurrentUser, _book_store
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
@@ -198,3 +198,20 @@ def put_position(book_id: str, req: BookPositionRequest, user: CurrentUser):
     if book is None:
         raise NotFoundError("Book", book_id)
     return store._to_response(book)
+
+
+@router.delete("/api/library/books/{book_id}", response_model=DeleteBookResponse)
+def delete_book(book_id: str, user: CurrentUser):
+    """Soft-delete a library book (set ``is_deleted``).
+
+    Idempotent: a second delete of an already-deleted book still returns 200.
+    Unknown ids raise 404.
+    """
+    store = _book_store(user["dir"])
+    try:
+        result = store.soft_delete(book_id)
+    finally:
+        store.close()
+    if result is False:
+        raise NotFoundError("Book", book_id)
+    return DeleteBookResponse(deleted=book_id)
