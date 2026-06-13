@@ -52,8 +52,6 @@ DEFAULT_TESTS=(
   ios-device-files
   ios-device-logs
   ios-test-discovery
-  chrome-bundle
-  chrome-parity-refs
   script-help
   podcast-ops
 )
@@ -134,8 +132,6 @@ run_one() {
     ios-device-files)   ./ops/tests/test_ios_device_files.sh ;;
     ios-device-logs)    ./ops/tests/test_ios_device_logs.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
-    chrome-bundle)      ./ops/tests/test_chrome_ext_bundle.sh ;;
-    chrome-parity-refs) ./ops/tests/test_chrome_parity_refs.sh ;;
     script-help)        ./ops/tests/test_script_help.sh ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \

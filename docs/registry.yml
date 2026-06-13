@@ -30,8 +30,6 @@ documents:
       - backend/src/kg/vocab_crud.py
       - backend/src/kg/vocab_handlers/intake.py
       - backend/src/kg/vocab_handlers/crud.py
-      - chrome-extension/background.js
-      - chrome-extension/shared/vocab-outbox.js
 
   - id: contract.card_format
     path: docs/reference/card_format.md
@@ -61,7 +59,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
@@ -99,7 +96,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
@@ -132,14 +128,12 @@ documents:
     triggers:
       - user_facing_feature_changed
       - admin_surface_changed
-      - chrome_surface_changed
       - ios_surface_changed
     sources:
       - ios/
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
-      - chrome-extension/
       - ops/
       - "!ops/docs_lint.sh"
       - "!ops/docs_impact.py"
@@ -148,7 +142,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
@@ -272,17 +265,6 @@ documents:
       - ios/BooksAndVocab/Models/BookLibraryReconciler.swift
       - ios/BooksAndVocab/AppOrphanBookRecovery.swift
       - ios/BooksAndVocab/AppStartupRecovery.swift
-
-  - id: reference.feature_boundary.chrome
-    path: docs/reference/feature_boundary/chrome.md
-    kind: reference
-    authority: SoT
-    triggers:
-      - chrome_surface_changed
-      - chrome_sync_changed
-      - chrome_extension_manifest_changed
-    sources:
-      - chrome-extension/
 
   - id: reference.feature_boundary.notebook
     path: docs/reference/feature_boundary/notebook.md
@@ -736,7 +718,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
@@ -807,7 +788,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"
@@ -849,7 +829,6 @@ documents:
       - "!ops/tests/test_ui_quality_plane.sh"
       - "!ops/visual_regression.py"
       - "!ops/tests/test_visual_regression.sh"
-      - "!ops/tests/test_chrome_parity_refs.sh"
       - "!ops/docs_registry_coverage.py"
       - "!ops/tests/test_docs_*.sh"
       - "!ops/test_ops.sh"

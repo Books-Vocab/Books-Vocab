@@ -1,4 +1,4 @@
-"""Web OAuth flow for Chrome extension login.
+"""Web OAuth flow for browser-based login.
 
 Provides browser-based Google/Apple sign-in that passes JWT back to the extension.
 

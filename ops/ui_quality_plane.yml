@@ -25,12 +25,8 @@ mechanisms:
       - ios/BooksAndVocab/Models/DesignTokens.swift
       - ios/BooksAndVocab/UIComponents/AppTagMetrics.swift
       - ios/BooksAndVocab/UIComponents/AppSurface.swift
-      - chrome-extension/shared/tokens.css
-      - chrome-extension/shared/kg-components.css
       - backend/static/kg-tokens.css
       - backend/static/kg-components.css
-      - web/src/styles/kg-tokens.css
-      - web/src/styles/kg-components.css
       - ops/token_drift_check.py
       - ops/gen_web_tokens.py
       - ops/gen_web_components.py
@@ -40,7 +36,7 @@ mechanisms:
     verdict: >
       Exit code; per-guard PASS/FAIL on stdout. Umbrella over token drift,
       generated-CSS staleness, Figma sidecar, Style Dictionary byte-check,
-      component fidelity, extension shared tests.
+      component fidelity.
     docs:
       - docs/sop/ui-design.md
     notes: "Hard gate in .github/workflows/design-system.yml; best-effort in .githooks/pre-commit."
@@ -224,20 +220,3 @@ mechanisms:
     docs:
       - docs/reference/catalog_scope.md
     regression: visual-regression
-
-  - id: xplat.chrome_parity
-    layer: cross-platform
-    entrypoint: ops/chrome_parity.sh
-    gate: manual
-    triggers:
-      - chrome-extension/
-      - design-system/tokens.json
-    verdict: >
-      Side-by-side Chrome|iOS contact sheet per parity-manifest.mjs case; iOS
-      refs resolve from the newest usable Catalog snapshot root via
-      ios-ref.mjs ({surface, scenario, appearance}; KG_CATALOG_ROOT override).
-      --audit adds diff.png/zoom.png/palette.txt/metrics.json (RMSE/SSIM/pHash)
-      under chrome-extension/tools/audit/.
-    docs:
-      - docs/reference/feature_boundary/chrome.md
-    regression: chrome-parity-refs

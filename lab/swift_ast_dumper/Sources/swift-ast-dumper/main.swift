@@ -1,6 +1,6 @@
 // swift-ast-dumper — SwiftUI → box-tree IR (AST front-end for the migration engine).
 //
-// Replaces the regex+indentation heuristic (lab/migration_engine/engine/extract_swiftui.py)
+// Replaces the old regex+indentation SwiftUI extraction heuristic.
 // with a real SwiftSyntax parse. Emits the SAME IR JSON schema that ir_contract.py pins
 // and generate_css.py consumes — so the seam is unchanged; only the parser is upgraded.
 //

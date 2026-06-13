@@ -19,7 +19,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 
 **平台**：iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
 
-**Client 端**：iOS / Mac Catalyst app、Chrome Extension（side panel 選詞翻譯）
+**Client 端**：iOS / Mac Catalyst app；官網由 backend static pages 服務
 
 ---
 
@@ -34,7 +34,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
 | Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |
 | Podcast progress | Backend `podcast_progress` LWW store | `PodcastProgress` projection | CloudKit 只能視為 legacy/過渡，不應再當跨裝置權威 |
-| Podcast follow | 目標為 backend user preference | 目前 `PodcastSeries.isFollowed` local preference | 多平台前需後端化，否則 web/Android 看不到 |
+| Podcast follow | 目標為 backend user preference | 目前 `PodcastSeries.isFollowed` local preference | 若未來新增非 Apple client，需先後端化 |
 | Book metadata / reading progress | 目標為 backend library store | 目前 `Book` 由 SwiftData CloudKit 保存 | 後端化時保存 metadata、locator、progress、preferred notebook；原始檔走 asset/object storage |
 | Book / podcast media files | Object storage 或本機匯入來源 | FileManager cache / download | 不塞 SQLite；可刪後重抓或要求重新下載 |
 | Reader / review / translation / appearance settings | 目標為 backend user config | 目前混用 UserDefaults + iCloud KVS | 多平台前需 typed server config；UserDefaults 只作啟動快取 |
@@ -56,8 +56,8 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | Reader settings | `ReaderSettings` UserDefaults + iCloud KVS | **未後端化** | font/size/line-height/scroll/underline 尚無 server config domain |
 | Translation language | UserDefaults + iCloud KVS；backend `/api/user/config.translation`（含 `updated_at`） | **三層後端化**（Feature C；source/target 共用單一 group `updated_at` 整組 LWW + server cold-start wins、只寫本地不回寫 KVS） | 對標其他 group：backend 真 LWW 待 `serverTranslationLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威 |
 | Review settings / pause clock + mode/SRS | `ReviewSettingsStore` UserDefaults + iCloud KVS；backend `/api/user/config.review_clock` + `.review_mode` | **pause clock 與 mode/自訂 SRS 參數皆三層後端化**（各自 updatedAt LWW 整組原子 + server cold-start wins；autoplay 純本地） | 對標 translation：backend 真 LWW 待 `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled`，現以 iCloud KVS 為跨裝置權威 |
-| App language / appearance | UserDefaults + iCloud KVS | **未後端化** | web/Android 不會共享；`.system` selection 需 server contract |
-| Active notebook / notebook filter / sort | `activeNotebookId` 三層（`ActiveNotebookStore` UserDefaults + iCloud KVS + backend `/api/user/config.vocab_ui`）；`NotebookFilter` / `NotebookSortOption` 仍 `@AppStorage` local-only | **activeNotebookId 已三層後端化**（Feature B；updatedAt LWW 整組原子 + server cold-start wins；chrome 為 storage+backend 兩層橋樑；filter/sort 純觀感 local-only） | 對標 review settings：backend 真 LWW 待 `serverVocabUiLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威、backend 為 chrome/web 橋樑 + cold-start |
+| App language / appearance | UserDefaults + iCloud KVS | **未後端化** | 若未來新增非 Apple client，不會共享；`.system` selection 需 server contract |
+| Active notebook / notebook filter / sort | `activeNotebookId` 三層（`ActiveNotebookStore` UserDefaults + iCloud KVS + backend `/api/user/config.vocab_ui`）；`NotebookFilter` / `NotebookSortOption` 仍 `@AppStorage` local-only | **activeNotebookId 已三層後端化**（Feature B；updatedAt LWW 整組原子 + server cold-start wins；filter/sort 純觀感 local-only） | 對標 review settings：backend 真 LWW 待 `serverVocabUiLwwEnabled`，現以 iCloud KVS 為 Apple 裝置權威、backend 為 cold-start 橋樑 |
 | Review session snapshots | UserDefaults | **local-only** | 可保留本機；不應納入後端權威，除非要跨裝置續答 |
 | Podcast downloads / covers | `Documents/podcast-downloads`、`Documents/podcast-covers` | **device cache** | 登出清理已存在；不應後端化為 DB state |
 | Notebook cover photo files | `Documents/notebook-covers` path | **未後端化 asset** | 需要 cover asset contract，否則多裝置看不到自訂圖 |
@@ -290,14 +290,6 @@ Pipeline 的 Link 階段現由 one-shot judge 取代舊的 candidate queue：
 ### LLM Failure Log
 
 LLM provider/SDK 的 terminal failure（429/5xx/timeout 等）另寫入 `llm_errors.db`，供 admin cost/error 趨勢補齊「有燒請求但無 usage」的觀測缺口；error message 入庫前必須遮罩 bearer/API key/token/password/secret-like 值。
-
-### Chrome Extension Sync
-
-Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
-- `POST /api/vocab` + `POST /api/pipeline`（fire-and-forget）
-- Auth token 從 options page 設定，存 `chrome.storage.local`
-
----
 
 ## Notion-inspired UI 視覺系統
 

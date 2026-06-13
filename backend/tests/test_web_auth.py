@@ -1,4 +1,4 @@
-"""Tests for the web OAuth flow (Chrome extension login)."""
+"""Tests for the web OAuth flow."""
 
 from __future__ import annotations
 

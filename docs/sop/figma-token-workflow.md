@@ -127,7 +127,7 @@ Figma 改值
    └─ Push（手動，附 commit message）→ branch design-tokens-figma 的 tokens.json
         └─ 開 PR / 本地 checkout 該 branch
              └─ npm run build          # Style Dictionary 重生 ios/BooksAndVocab/Models/DesignTokens.swift
-             └─ ops/gen_web_tokens.py   # 重生 web CSS（dist + extension + backend/static + web/src/styles 副本）
+             └─ ops/gen_web_tokens.py   # 重生 web CSS（dist + backend/static 副本）
                   └─ ops/verify_design_system.sh   # 全 gate 必須綠
 ```
 
