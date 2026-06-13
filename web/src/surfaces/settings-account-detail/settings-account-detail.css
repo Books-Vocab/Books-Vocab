@@ -20,7 +20,7 @@
 /* --- Inline nav（UINavigationBar inline title）--- */
 .sad-nav {
   height: 103px; /* status 59 + inline bar 44 */
-  padding-top: 59px;
+  padding-top: var(--surface-safe-top, 59px);
   box-sizing: border-box;
   display: flex;
   align-items: center;

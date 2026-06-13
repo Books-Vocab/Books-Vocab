@@ -39,7 +39,7 @@
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  padding: 50px 16px 0;
+  padding: var(--surface-safe-top, 50px) 16px 0;
   box-sizing: border-box;
   overflow: hidden;
 }
