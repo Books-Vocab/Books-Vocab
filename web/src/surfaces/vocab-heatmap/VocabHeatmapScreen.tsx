@@ -4,6 +4,8 @@ import {
   HEATMAP_REFERENCE_TODAY,
   type HeatmapScenario,
 } from './fixtures'
+import { useVocabHeatmapApiStore } from './useVocabHeatmapApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './vocab-heatmap.css'
 
 /**
@@ -52,9 +54,15 @@ function addDays(d: Date, n: number): Date {
   return r
 }
 
-/** 對齊 buildGrid：找本週一，回推 weeks 週，每欄 7 天（Mon..Sun）。 */
-function buildGrid(activity: Record<string, number>, weeks: number): Cell[][] {
-  const today = HEATMAP_REFERENCE_TODAY
+/**
+ * 對齊 buildGrid：找本週一，回推 weeks 週，每欄 7 天（Mon..Sun）。
+ * fixture 路徑用固定參考日（catalog 截圖日）保 parity；shell 路徑傳真實 now。
+ */
+function buildGrid(
+  activity: Record<string, number>,
+  weeks: number,
+  today: Date = HEATMAP_REFERENCE_TODAY,
+): Cell[][] {
   // 本週一：getDay() 週日=0，Mon=1。算出到本週一的偏移。
   const dow = today.getDay() // 0..6
   const deltaToMonday = dow === 0 ? -6 : 1 - dow
@@ -88,8 +96,33 @@ export function VocabHeatmapScreen({
 }: {
   scenario: ScenarioId<'vocab-heatmap'>
 }) {
-  const fixture: HeatmapScenario = VOCAB_HEATMAP_FIXTURES[scenario]
-  const grid = buildGrid(fixture.activity, fixture.weeks)
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <VocabHeatmapScreenApi />
+  return <VocabHeatmapBody fixture={VOCAB_HEATMAP_FIXTURES[scenario]} />
+}
+
+/** API-driven screen — shell=1 時從 review-events 衍生活動 + thresholds，grid 以真實 now 回推。 */
+function VocabHeatmapScreenApi() {
+  const store = useVocabHeatmapApiStore()
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' && store.fixture ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      {store.fixture ? <VocabHeatmapBody fixture={store.fixture} today={new Date()} /> : null}
+    </VocabSceneShell>
+  )
+}
+
+/** 熱圖本體 — fixture / API 兩條路共用，DOM 結構與 class 完全一致。 */
+function VocabHeatmapBody({
+  fixture,
+  today,
+}: {
+  fixture: HeatmapScenario
+  today?: Date
+}) {
+  const grid = buildGrid(fixture.activity, fixture.weeks, today)
 
   return (
     <div className="vocab-heatmap-surface">

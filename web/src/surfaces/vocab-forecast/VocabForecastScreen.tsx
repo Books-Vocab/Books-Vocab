@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCAB_FORECAST_FIXTURES, type ForecastBucket } from './fixtures'
+import { useVocabForecastApiStore } from './useVocabForecastApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './vocab-forecast.css'
 
 /**
@@ -47,7 +49,29 @@ export function VocabForecastScreen({
 }: {
   scenario: ScenarioId<'vocab-forecast'>
 }) {
-  const { buckets } = VOCAB_FORECAST_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    const notebookId = new URLSearchParams(window.location.search).get('notebook_id')
+    return <VocabForecastScreenApi notebookId={notebookId} />
+  }
+  return <VocabForecastBody buckets={VOCAB_FORECAST_FIXTURES[scenario].buckets} />
+}
+
+/** API-driven screen — shell=1 時從 useApi().vocabulary.list() 衍生 14 日預測桶。 */
+function VocabForecastScreenApi({ notebookId }: { notebookId: string | null }) {
+  const store = useVocabForecastApiStore(notebookId)
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <VocabForecastBody buckets={store.buckets} />
+    </VocabSceneShell>
+  )
+}
+
+/** 預測長條圖本體 — fixture / API 兩條路共用，DOM 結構與 class 完全一致。 */
+function VocabForecastBody({ buckets }: { buckets: ForecastBucket[] }) {
   const isCompact = buckets.length > 14
   const maxCount = Math.max(1, ...buckets.map((b) => b.count))
 
