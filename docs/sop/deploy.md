@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: ad72461c
+verified_against: 48e89da1
 -->
 # 後端部署指南
 
@@ -53,7 +53,7 @@ cd ~/kg
 ./devops.sh logs 50     # 如有問題查日誌
 ```
 
-`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**（非通過自動中止）。
+`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate**（讓 `/api/system/info` 重新讀 `/app/VERSION`）→ migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**（非通過自動中止）。
 
 部署完成後可透過兩種方式確認遠端版本：
 - `./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
@@ -82,7 +82,7 @@ cd ~/kg
 
 #### 排查
 
-- `version=X 不等於 deploy_sha=Y` → rsync 沒同步 / VERSION 檔沒寫入 / 容器沒 rebuild。檢查 `run_remote "cat $REMOTE_DIR/VERSION"` 與 `docker compose ps`。
+- `version=X 不等於 deploy_sha=Y` → rsync 沒同步 / VERSION 檔沒寫入 / 容器沒 force-recreate（`/api/system/info` 啟動時快取 `/app/VERSION`）。檢查 `run_remote "cat $REMOTE_DIR/VERSION"` 與 `docker compose ps`。
 - `health 000` → 公網斷線、TLS 失敗、Caddy 沒起。`./devops.sh run "sudo systemctl status caddy"`。
 - `health 500` → app 起來但 auth middleware 起火。看 `docker compose logs --tail=100`。
 - sentry endpoint 期待 401 但拿到 200 → admin auth 失效，立即查 `get_admin_user`。
