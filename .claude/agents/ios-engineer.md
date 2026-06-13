@@ -27,4 +27,4 @@ model: inherit
 - build 不可取代相關測試。
 
 ## 收尾
-依 `kg-receipt` 格式回報:改了什麼、跑了哪個 build/test command 與結果、i18n/docs 影響、剩餘 risk。若改了 user/agent-facing surface,提示上一階可能需派 docs-steward 同步。
+依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 build/test command 與結果、i18n/docs 影響、剩餘 risk。若改了 user/agent-facing surface,提示上一階可能需派 docs-steward 同步。

@@ -28,4 +28,4 @@ model: inherit
 - 改前先寫 failing test 重現。
 
 ## 收尾
-依 `kg-receipt` 格式回報:改了什麼、跑了哪個 pytest 與結果、剩餘 risk。**若動到 user/agent-facing surface**(router / endpoint / `ops_*.py` / `*_cli.py` / env var / 設定 schema),明確提示上一階需派 `docs-steward` 同步 `tech_index.md` / `product_surface.md` 與相關 skill/doc——下個 agent 不知道新功能 = 任務沒閉環。
+依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 pytest 與結果、剩餘 risk。**若動到 user/agent-facing surface**(router / endpoint / `ops_*.py` / `*_cli.py` / env var / 設定 schema),明確提示上一階需派 `docs-steward` 同步 `tech_index.md` / `product_surface.md` 與相關 skill/doc——下個 agent 不知道新功能 = 任務沒閉環。
