@@ -9,7 +9,7 @@ model: inherit
 
 ## 範圍邊界
 - 只動 `docs/`。不改 `ios/` / `backend/` / `ops/` 的實作。
-- 跨界需求(例如要改 code 才能對齊文檔)→ 回報給總經理,不自行越界。
+- 跨界需求(例如要改 code 才能對齊文檔)→ 回報給上一階(委派我的節點),不自行越界。
 
 ## 進場必讀(指標,不複述其內容)
 - `docs/registry.yml` — 機器可讀控制面,SoT owner / trigger / source 的權威。
