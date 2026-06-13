@@ -433,3 +433,33 @@
   border-radius: 50%;
   background: var(--success);
 }
+
+/* ============================================================
+   Responsive (web-only) — shell panes only.
+
+   PARITY ISOLATION: all rules are descendants of .kg-responsive-shell (mounted
+   only by ResponsiveShell on the shell path, tablet+). The parity capture path
+   (?surface=settings, no ?shell=1) never mounts it, so the 393px render is
+   byte-identical. Settings is the master pane (section list) on desktop and a
+   fluid content column on tablet; @container caps the content to a comfortable
+   reading measure so cards do not stretch on wide panes.
+   ============================================================ */
+
+.kg-responsive-shell .settings {
+  container-type: inline-size;
+  container-name: settings-surface;
+}
+
+/* Scroll inside the pane (pane clips); parity keeps overflow:hidden. */
+.kg-responsive-shell .settings .settings-scroll {
+  overflow-y: auto;
+}
+
+/* Wide content pane (tablet / root desktop): centre + cap the cards column. */
+@container settings-surface (min-width: 600px) {
+  .kg-responsive-shell .settings .settings-section {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
+}
