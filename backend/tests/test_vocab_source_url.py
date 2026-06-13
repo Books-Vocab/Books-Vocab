@@ -1,6 +1,6 @@
 """Defense-in-depth tests for VocabSource.url scheme validator.
 
-Pairs with chrome-extension XSS hardening (Track 9). Backend rejects any
+Pairs with browser UI XSS hardening. Backend rejects any
 non-http(s) scheme up front so malicious payloads never reach storage or
 downstream renderers.
 """

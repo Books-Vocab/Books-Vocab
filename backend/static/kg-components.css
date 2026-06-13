@@ -1,6 +1,6 @@
 /* ============================================================
    Books & Vocab Web Component Primitives  (HAND-AUTHORED — this dist/ file IS the source.
-   Bundled into EVERY web surface — chrome-extension (shared/kg-components.css)
+   Bundled into active public web surfaces.
    AND backend/static — via ops/gen_web_tokens.py. The base classes here
    (.kg-btn / .kg-card / .kg-chip) are owned SOLELY by this file; each surface's
    own CSS only defines BEM-scoped LAYOUT classes (.kg-list-card / .kg-popup__btn)
@@ -8,7 +8,7 @@
    redefining a base class is a bug. ONE vocabulary, iOS-tracked.)
 
    Consumes kg-tokens.css. Encodes the iOS "Mochi 北極星五條" as reusable web
-   classes so every surface (chrome-extension, backend public pages, future 官網)
+   classes so backend public pages
    shares one editorial visual language with the app — instead of each page
    hand-rolling its own buttons/cards/chips and drifting.
 

@@ -5,7 +5,6 @@ update_trigger: code-change
 scope:
   - ios/
   - backend/
-  - chrome-extension/
   - ops/
   - lab/
 verified_against: d3fc3685
@@ -85,26 +84,6 @@ verified_against: d3fc3685
   - `TrackedLLM` 自動注入 provider `extra_body`(DeepSeek thinking-disabled)/`max_tokens`
   - `quota_service` provider-aware 計價
   - A/B 工具 `kg/llm/ab.py`;env 清單見 `docs/sop/deploy.md`
-
-## Chrome Extension (`chrome-extension/`)
-
-- Side panel vocab lookup
-- Chrome notebook scope + 管理：side panel 先讀 `/api/notebooks`，以 `active_notebook_id` 持久化目前單字本（active notebook 已**後端化**：chrome.storage.local 本地 + backend `vocab_ui` group 兩層 LWW 橋樑，`loadNotebookScope` 開啟時 cold-start resolve、切換/submit/delete 時 best-effort push，使 iOS/web 跨平台收斂同一 active notebook），`GET /api/vocab?notebook_id=...` 只顯示該本；若儲存的 notebook 已不存在則回落 canonical `default`。content popup 翻譯完成後也會讀 `listNotebooks` 顯示目標 notebook selector，選擇寫回同一 storage key，使網頁選詞可當下指定目標本而非永遠 default。scope row 提供 icon-only 新增 / 重新命名 / 刪除（default notebook 不可刪），sheet 走 backend notebook CRUD，名稱驗證 1..100 字元，並對齊 iOS `NotebookEditSheet` 的 12 色 Morandi palette + 6 種 cover pattern，送出 `color` / `cover_pattern`。
-- Chrome 加詞 outbox：content popup 加詞先寫入 `chrome.storage.local.vocab_outbox`，sidepanel 立即顯示該 notebook 的 pending/failed optimistic rows；背景 worker 依 notebook 分批 sync 到 `/api/vocab?notebook_id=...`，成功後觸發同 notebook enrich pipeline，失敗則標記「待重試」，可由列內「重試」立即 flush，並用 alarm 週期喚醒重送。
-- 單字本 filter chip 多選過濾複習狀態（空=全部）+ sort pill dropdown 切換 4 種排序（複習優先 / 字母序 / 最近新增 / 難度），對標 iOS `KGVocabView` 管線（state filter → search → sort）；無匹配顯示空狀態
-- 單字本 row 點開全幅 word-detail push 面板（覆蓋於 list 上保留 scroll/search/filter）：hero(詞+詞性+難度+TTS) → 例句(目標詞 highlight，`markWordInExample`+`parseInlineMarks` 對標 iOS) → 釋義/定義 → 搭配 → 變化形 → 知識連結(對比/相關 group，本地語料命中可導航 push/back) → 複習進度 → metadata footer → 來源；TTS 走裝置端 Web Speech API；top bar share action 先走 Web Share、fallback clipboard，純文字格式由 `vocabPlainTextExport` 對齊 iOS `CardDocument.plainTextExport`；唯讀無 mutation
-- 跨 context 詞庫刷新：頁面 popup 加入單字後 background bump storage `vocab_dirty`，side panel `storage.onChanged` → 非破壞性靜默刷新（保留 search/filter/sort/scroll/開啟中的 detail）
-- **加詞本地暫存 → sync outbox（對齊 iOS）**：選詞加入不再即時裸 POST，content popup 先顯示目標 notebook selector（讀 `listNotebooks`；變更會寫回 `active_notebook_id`，sidepanel 與內容頁共用同一 scope），再 optimistic enqueue 進 `chrome.storage` 的 `vocab_outbox`（每筆保留 `notebookId`；`pending/synced/failed` 狀態機鏡像 iOS `syncStatus`）+ 立即回 ack，背景 single-flight flush 依 notebook 分批 `POST /api/vocab?notebook_id=...` 收斂、失敗自動重試（網路抖動不丟詞；同 word 不同 notebook 不互相 dedup/收斂）；service worker spin-up 時 drain 殘留。flush 收斂後自動觸發同 notebook server enrich（`POST /api/pipeline?notebook_id=...`）並以 `chrome.alarms` 輪詢 `X-Pipeline-Pending` re-pull 回填，使 chrome 加的卡也長出詞性／例句／發音（不再永久裸卡）；sidepanel 即時顯示目前 notebook 的 pending／失敗詞（置頂 + 狀態標記「同步中／待重試」，失敗列提供「重試」按鈕送 `retryOutbox` 立即 flush，對齊 iOS 待同步可見性）
-- 閱讀選詞翻譯
-- 閱讀 popup 加 Web Speech API 朗讀 + 明確 × 關閉鈕（sticky head，loading/translated/saved 各態皆在）；長文 popup `max-height` + 內部捲動
-- 選字翻譯全域開關(options 頁「選字翻譯」master switch,storage key `kg_enabled` 預設開;content.js mouseup gate,跨分頁 onChanged live-sync 免重整)
-- options 設定頁「翻譯語言」（source→target，經 background → `GET/PUT /api/user/config`；source∈{en,ja,ko,fr,de,es}、target∈{zh-Hant,zh-Hans,en,ja,ko}，登出禁用 + 存檔失敗 revert）
-- options 帳號區「Pro 訂閱態」徽章（`GET /api/user/entitlements` 的 `pro.is_active`/`plan_name`；登入後載入，無法判定時隱藏）
-- 介面多語基礎(`chrome.i18n` + `_locales/zh_TW/messages.json`,現 zh_TW;`shared/i18n.js` DOM helper 套用 `[data-i18n]`,manifest `default_locale`)
-- Auth token 整合
-- woff2 字型(`shared/fonts.css` surface-local @font-face)
-- Side panel error state taxonomy + settings entry + `AbortError` safety
-- 消費生成的設計 token(`shared/tokens.css` 由 `ops/gen_web_tokens.py` 產出,`:host` selector 修掉注入 closed Shadow DOM 卻 token degraded 的 bug)
 
 ## Admin
 
@@ -186,7 +165,6 @@ verified_against: d3fc3685
 - **Podcast producer dashboard**(`lab/podcast/monitor/`,localhost:8765):workspace 列表 sidebar(search / 狀態 chip / sort recent⇄A→Z / mobile drawer,localStorage 持久)+ 每 workspace 富 summary(status `running|done|failed|awaiting|idle|fresh`、`milestones[]` 四產物關卡 + `gates[]` 兩道人工核准 gate 三態(passed/awaiting/pending)、progress、cost LLM/TTS split、episodes、last_updated、active_job 透過 `<ws>/.pipeline_job_id` sidecar 反查)+ 側欄進度改**三相雙閘軌**(PLAN/SCRIPT/AUDIO 三相條 + 兩 gate glyph,awaiting 琥珀脈動;subtitle 折進 audio 相細底線)+ 內嵌試聽(SRT chat-bubble 渲染:解析 `[Speaker]` 前綴將連續同講者 cue 合併成氣泡,兩位講者分左右兩色;每字 click-to-seek + 高亮同步保留)+ episode chip 顯示完整 TTS 模型 id(從 `ep_N_<variant>.meta.json` sidecar 讀;舊集數無 sidecar 時 fallback 為 `pro (?)` / `flash (?)` 表世代未知)+ LIVE ACTIVITY feed 把 `[...]` 方括號內容(TTS 情緒 tag / 集數清單)行內高亮成 badge + nav SETTINGS(⚙)面板(localStorage 持久,套用於下一條 pipeline,每旋鈕單一來源:PARALLEL workers(原 nav input 已收斂於此)、TTS MODEL 下拉(建立時凍結進 `.tts_model` sidecar、選非-3.1 family 顯示跨 family 風險紅字);spoiler 仍只在 NEW PODCAST modal)+ NEW PODCAST upload modal(可選 `tts_model`)+ UPLOAD / DELETE / RERUN-STAGE 動作 + **情境式推進鈕**(一顆鈕依狀態變身:awaiting→▶ APPROVE PLAN/SCRIPTS 寫 gate 標記續跑、idle/failed 有未完工→▶ RESUME 純 auto-resume、running→禁用、READY→隱藏)+ RECENT JOBS panel + PUBLISHED ON SERVER 遠端 series 管理(rm + index.json rebuild)。main 欄按 scope 分兩區:**THIS PODCAST**(選中 workspace:KPIs → stage 縱向 timeline → cost → episodes → live activity,band 顯示書名)與 **SERVER · all podcasts**(全域:recent jobs + published,recessed surface);stage 進度改縱向 timeline(spine dot + 連接線進度,running/failed 才顯 pill)。`./start.sh` 預設前景跑(`--bg` 給 pipeline.py auto-launch)
 - Post-deploy smoke verify: `system/info` + health + sentry test event
 - `backup_verify.sh`: restore drill + integrity check
-- Chrome extension release bundle script + tests(Chrome manifest `version` 發行規格守門 + zip 排除 test/dev tools)
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
-- **跨平台設計系統地基**: `design-system/tokens.json`(**W3C DTCG 格式**,跨平台 token SoT)經兩條生成鏈出貨 — **Style Dictionary**(`npm run build`,`sd.config.mjs`)→ iOS `DesignTokens.swift`(scalar bridge,禁手改)+ **`ops/gen_web_tokens.py`** → web CSS(`design-system/dist/` + chrome-extension + `backend/static/` + `web/src/styles/`)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進四 web surface(extension + 官網 + web app pilot);chrome-extension 三 surface(sidepanel/popup/options)已消費此 primitives,視覺鏡像 iOS。已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation,47 值)為 Figma→iOS 真注入,設計師 SOP 見 `docs/sop/figma-token-workflow.md`
-- **設計系統三層 guard + CI 強制**: `token_drift_check.py`(**值**:SoT-inversion-aware,已接線解析 `DesignTokens.*` 引用、未接線比 `$swift` literal,含 `AppTag` chip padding/fill)+ `component_fidelity_check.py`(**組裝**:contract-based 守每個 primitive 選用哪個 token 對齊 iOS 元件,如 `.kg-btn` radius md/700、`.kg-chip`↔`AppTag`、`.kg-input` body+hairline)+ `gen_web_tokens.py --check`/`gen_figma_sets.py --check`/`gen_web_components.py --check`(**生成**:web CSS/JS/sidecar 無 stale 副本)+ `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json)+ extension `shared/*.test.js`(純邏輯/CSS/outbox/inline drift),聚合入口 `ops/verify_design_system.sh`,由 **repo 首支 GitHub Actions CI**(`.github/workflows/design-system.yml`,路徑觸發 + `npm ci`)+ `.githooks/pre-commit` 雙重強制
+- **跨平台設計系統地基**: `design-system/tokens.json`(**W3C DTCG 格式**,跨平台 token SoT)經兩條生成鏈出貨 — **Style Dictionary**(`npm run build`,`sd.config.mjs`)→ iOS `DesignTokens.swift`(scalar bridge,禁手改)+ **`ops/gen_web_tokens.py`** → web CSS(`design-system/dist/` + `backend/static/`)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進官網；已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation,47 值)為 Figma→iOS 真注入,設計師 SOP 見 `docs/sop/figma-token-workflow.md`
+- **設計系統三層 guard + CI 強制**: `token_drift_check.py`(**值**:SoT-inversion-aware,已接線解析 `DesignTokens.*` 引用、未接線比 `$swift` literal,含 `AppTag` chip padding/fill)+ `component_fidelity_check.py`(**組裝**:contract-based 守每個 primitive 選用哪個 token 對齊 iOS 元件,如 `.kg-btn` radius md/700、`.kg-chip`↔`AppTag`、`.kg-input` body+hairline)+ `gen_web_tokens.py --check`/`gen_figma_sets.py --check`/`gen_web_components.py --check`(**生成**:web CSS/JS/sidecar 無 stale 副本)+ `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json),聚合入口 `ops/verify_design_system.sh`,由 GitHub Actions CI(`.github/workflows/design-system.yml`,路徑觸發 + `npm ci`)+ `.githooks/pre-commit` 雙重強制

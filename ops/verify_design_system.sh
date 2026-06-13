@@ -10,8 +10,6 @@
 #   2b. gen_figma_sets.py --check  — Tokens Studio sidecar 投影與 tokens.json 一致（無 stale）
 #   2c. gen_web_components.py --check — component structures / review-gradient 無 stale
 #   3. component_fidelity_check.py — web primitive 組裝對齊 iOS 元件契約（組裝層，若存在）
-#   4. shared/*.test.js            — extension shared 純邏輯與漂移守門
-#
 # 這些 ops 腳本皆 stdlib-only，刻意用 `uv run --no-project` 與 backend 的 68 套件
 # venv 解耦 — 設計系統 gate 不該依賴 backend 可安裝。
 #
@@ -44,8 +42,6 @@ run "Style Dictionary (Swift ↔ tokens.json)" npm run build:check
 if [ -f ops/component_fidelity_check.py ]; then
   run "component fidelity (primitive ↔ iOS)" "${PY[@]}" ops/component_fidelity_check.py
 fi
-run "extension shared tests"                node --test chrome-extension/shared/*.test.js
-
 echo
 if [ "$fail" -ne 0 ]; then
   printf '\033[31m❌ design-system verify FAILED\033[0m\n'

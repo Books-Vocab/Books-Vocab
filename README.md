@@ -4,7 +4,7 @@
 
 KG 是一套圍繞「**在閱讀情境中習得詞彙**」設計的學習系統。你在 reader 裡選一個字，它幫你翻譯、放進詞庫、和你已知的字建立語意連結（知識圖譜），再透過間隔複習與 AI 生成的播客把這些字鞏固下來。
 
-Monorepo，單一 `.git`：iOS（SwiftUI）+ Backend（FastAPI）+ Chrome 擴充 + 設計系統 + ops。
+Monorepo，單一 `.git`：iOS（SwiftUI）+ Backend（FastAPI）+ 官網 + 設計系統 + ops。
 
 ---
 
@@ -14,7 +14,6 @@ Monorepo，單一 `.git`：iOS（SwiftUI）+ Backend（FastAPI）+ Chrome 擴充
 flowchart TB
     subgraph Clients["客戶端"]
         iOS["📱 iOS / Mac Catalyst<br/>(SwiftUI · BooksAndVocab)"]
-        Chrome["🧩 Chrome Extension<br/>(sidepanel · content script)"]
         Web["🌐 官網 landing + 法律頁<br/>(static pages)"]
     end
 
@@ -40,7 +39,6 @@ flowchart TB
     end
 
     iOS --> Caddy
-    Chrome --> Caddy
     Web --> Caddy
     Caddy --> Routers
     Routers --> Pipeline
@@ -78,8 +76,8 @@ flowchart LR
 |------|------|
 | `ios/` | SwiftUI app（書架 / reader / 詞庫 / 圖譜 / 複習 / 播客 / 設定），支援 iPhone · iPad · Mac Catalyst |
 | `backend/` | FastAPI 服務 — REST API、圖譜 pipeline、官網靜態頁、SQLite log stores |
-| `chrome-extension/` | 瀏覽器選詞 → 翻譯 → 入庫的 sidepanel 擴充 |
 | `design-system/` | 跨平台設計 token（iOS 為 SoT），生成 web `kg-tokens.css` / `kg-components.css` |
+| `frozen/2026-06-14-web-chrome-parity/` | 已冷凍的 web pilot、Chrome extension 與 web/chrome parity tooling |
 | `ops/` | 部署、健康檢查、i18n lint、doc lint 等運維腳本 |
 | `lab/` | 播客生成 pipeline、Claude Code Gateway 等實驗工具 |
 | `docs/` | 工程文檔（reference / sop / policy / runbook，含 doc-as-code 契約） |

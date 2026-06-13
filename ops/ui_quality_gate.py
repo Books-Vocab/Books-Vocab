@@ -50,7 +50,6 @@ SLOW_COMMANDS: dict[str, list[str]] = {
     "behavior.uitest_flows": ["--ui", "--lease"],
     "perf.review_flip_probe": ["--flips", "30"],
     "visual.catalog_regression": ["--auto"],
-    "xplat.chrome_parity": ["--audit"],
 }
 
 

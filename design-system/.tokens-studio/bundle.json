@@ -247,6 +247,208 @@
           "$value": "5px",
           "$description": "AppTagMetrics.verticalPadding",
           "$swift": "AppTagMetrics.verticalPadding"
+        },
+        "compact-chip-padding-h": {
+          "$type": "dimension",
+          "$value": "6px",
+          "$description": "AppSkin.baseSpacing.compactChipHorizontalPadding (VocabSortPill / compact chrome pills)",
+          "$swift": "AppSkin.baseSpacing.compactChipHorizontalPadding"
+        },
+        "compact-chip-padding-v": {
+          "$type": "dimension",
+          "$value": "3px",
+          "$description": "AppSkin.baseSpacing.compactChipVerticalPadding (VocabSortPill / compact chrome pills)",
+          "$swift": "AppSkin.baseSpacing.compactChipVerticalPadding"
+        },
+        "chrome-button-size": {
+          "$type": "dimension",
+          "$value": "32px",
+          "$description": "VocabChromeIconButton / VocabAccessoryIconButton 方形 icon button 邊長",
+          "$swift": "AppSkin.baseMetrics.chromeButtonSize"
+        },
+        "tab-selector-height": {
+          "$type": "dimension",
+          "$value": "32px",
+          "$description": "VocabTabSelector / VocabSliderRow 滿寬 chrome 列固定列高",
+          "$swift": "AppSkin.baseMetrics.tabSelectorHeight"
+        },
+        "tone-chip-padding-h": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "VocabToneChip 水平 padding（Spacing.chipHorizontalPadding；≠ AppTagMetrics chip-padding）",
+          "$swift": "AppSkin.baseSpacing.chipHorizontalPadding"
+        },
+        "tone-chip-padding-v": {
+          "$type": "dimension",
+          "$value": "6px",
+          "$description": "VocabToneChip 垂直 padding（Spacing.chipVerticalPadding=6；≠ chip-padding-v=5）",
+          "$swift": "AppSkin.baseSpacing.chipVerticalPadding"
+        },
+        "row-padding-v": {
+          "$type": "dimension",
+          "$value": "9px",
+          "$description": "VocabSearchField 等 row 垂直 padding（Spacing.rowPadding）",
+          "$swift": "AppSkin.baseSpacing.rowPadding"
+        },
+        "micro-gap": {
+          "$type": "dimension",
+          "$value": "6px",
+          "$description": "VocabSectionHeader HStack spacing（Spacing.microGap）",
+          "$swift": "AppSkin.baseSpacing.microGap"
+        },
+        "word-row-gap": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "WordRow 外層 HStack 文字 VStack 與 trailing 進度/標籤之間的水平間距（Spacing.wordRowHorizontalGap）",
+          "$swift": "AppSkin.baseSpacing.wordRowHorizontalGap"
+        },
+        "compact-row-padding-v": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "WordRow body 上下內距（Spacing.compactRowVerticalPadding）",
+          "$swift": "AppSkin.baseSpacing.compactRowVerticalPadding"
+        },
+        "badge-padding-h": {
+          "$type": "dimension",
+          "$value": "9px",
+          "$description": "AccountSection 等徽章水平內距（Spacing.badgeHorizontalPadding）",
+          "$swift": "AppSkin.baseSpacing.badgeHorizontalPadding"
+        },
+        "cover-height-compact": {
+          "$type": "dimension",
+          "$value": "210px",
+          "$description": "BookCard / PodcastSeriesCard 封面 compact 高（AppBookshelfMetrics.coverHeightCompact）",
+          "$swift": "AppBookshelfMetrics.coverHeightCompact"
+        },
+        "cover-corner-radius": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "BookCard 封面圓角（AppBookshelfMetrics.coverCornerRadius；異於 --radius-lg=12）",
+          "$swift": "AppBookshelfMetrics.coverCornerRadius"
+        },
+        "placeholder-title-padding-h": {
+          "$type": "dimension",
+          "$value": "12px",
+          "$description": "BookCard placeholder 標題水平內距（AppBookshelfMetrics.placeholderTitleHorizontalPadding）",
+          "$swift": "AppBookshelfMetrics.placeholderTitleHorizontalPadding"
+        },
+        "badge-padding": {
+          "$type": "dimension",
+          "$value": "6px",
+          "$description": "BookCard iCloud 徽章 padding（AppBookshelfMetrics.badgePadding）",
+          "$swift": "AppBookshelfMetrics.badgePadding"
+        },
+        "progress-bar-height-card": {
+          "$type": "dimension",
+          "$value": "4px",
+          "$description": "BookCard 進度條軌道高（AppBookshelfMetrics.progressBarHeight；異於 Reader --progress-bar-height=5）",
+          "$swift": "AppBookshelfMetrics.progressBarHeight"
+        },
+        "action-button-padding-v": {
+          "$type": "dimension",
+          "$value": "13px",
+          "$description": "AppActionButton / VocabEmptyState action 垂直 padding（Spacing.actionButtonVerticalPadding）",
+          "$swift": "AppSkin.baseSpacing.actionButtonVerticalPadding"
+        },
+        "progress-bar-width": {
+          "$type": "dimension",
+          "$value": "104px",
+          "$description": "VocabReviewProgressBar 軌道寬（baseMetrics.progressBarWidth）",
+          "$swift": "AppSkin.baseMetrics.progressBarWidth"
+        },
+        "progress-bar-height": {
+          "$type": "dimension",
+          "$value": "5px",
+          "$description": "VocabReviewProgressBar 軌道高（baseMetrics.progressBarHeight）",
+          "$swift": "AppSkin.baseMetrics.progressBarHeight"
+        },
+        "progress-bar-gap": {
+          "$type": "dimension",
+          "$value": "5px",
+          "$description": "VocabReviewProgressBar VStack spacing。iOS SoT: TodayReviewMetrics.progressBarGap=5（未進 drift 表）",
+          "$swift": "TodayReviewMetrics.progressBarGap"
+        },
+        "chevron-button-size": {
+          "$type": "dimension",
+          "$value": "30px",
+          "$description": "ReviewFold chevron pill 高（ReviewFoldSurface.frame height）。iOS SoT: TodayReviewMetrics.chevronButtonSize=30",
+          "$swift": "TodayReviewMetrics.chevronButtonSize"
+        },
+        "status-hero-gap": {
+          "$type": "dimension",
+          "$value": "12px",
+          "$description": "Podcast Hero status/hero VStack spacing。iOS SoT: AppSkin.baseSpacing.statusHeroGap=12",
+          "$swift": "AppSkin.baseSpacing.statusHeroGap"
+        },
+        "control-gap": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "Login/Account control VStack/HStack spacing（appSkin.spacing.controlGap）。iOS SoT: AppSkin.baseSpacing.controlGap=10",
+          "$swift": "AppSkin.baseSpacing.controlGap"
+        },
+        "account-row-spacing": {
+          "$type": "dimension",
+          "$value": "14px",
+          "$description": "Account auth summary HStack spacing。iOS SoT: AppSettingsMetrics.accountRowSpacing=14",
+          "$swift": "AppSettingsMetrics.accountRowSpacing"
+        },
+        "account-avatar-size": {
+          "$type": "dimension",
+          "$value": "46px",
+          "$description": "Account avatar 圓框邊長。iOS SoT: AppSettingsMetrics.accountAvatarSize=46",
+          "$swift": "AppSettingsMetrics.accountAvatarSize"
+        },
+        "welcome-page-content-gap": {
+          "$type": "dimension",
+          "$value": "4px",
+          "$description": "Welcome PageView VStack 標題間距。iOS SoT: AppWelcomeMetrics.pageContentSpacing=4",
+          "$swift": "AppWelcomeMetrics.pageContentSpacing"
+        },
+        "welcome-subtitle-h-inset": {
+          "$type": "dimension",
+          "$value": "40px",
+          "$description": "Welcome subtitle 左右內縮。iOS SoT: AppWelcomeMetrics.subtitleHorizontalPadding=40",
+          "$swift": "AppWelcomeMetrics.subtitleHorizontalPadding"
+        },
+        "welcome-bottom-padding": {
+          "$type": "dimension",
+          "$value": "40px",
+          "$description": "Welcome CTA stack 底距。iOS SoT: AppWelcomeMetrics.bottomPadding=40",
+          "$swift": "AppWelcomeMetrics.bottomPadding"
+        },
+        "progress-bar-fill-min": {
+          "$type": "dimension",
+          "$value": "6px",
+          "$description": "VocabReviewProgressBar 填充最小寬 max(6, width*fraction)。iOS SoT: VocabComponents.swift 行內 literal 6"
+        },
+        "toolbar-badge-padding-h": {
+          "$type": "dimension",
+          "$value": "5px",
+          "$description": "VocabToolbarGlyph badge 水平 padding。iOS SoT: AppShellMetrics.toolbarBadgeHorizontalPadding=5（未進 drift 表）",
+          "$swift": "AppShellMetrics.toolbarBadgeHorizontalPadding"
+        },
+        "toolbar-badge-padding-v": {
+          "$type": "dimension",
+          "$value": "2px",
+          "$description": "VocabToolbarGlyph badge 垂直 padding。iOS SoT: AppShellMetrics.toolbarBadgeVerticalPadding=2（未進 drift 表）",
+          "$swift": "AppShellMetrics.toolbarBadgeVerticalPadding"
+        },
+        "empty-state-stack": {
+          "$type": "dimension",
+          "$value": "14px",
+          "$description": "VocabEmptyState VStack spacing。iOS SoT: AppEmptyStateStyle.vocab.spacing=14（未進 drift 表）"
+        },
+        "panel-h-inset": {
+          "$type": "dimension",
+          "$value": "18px",
+          "$description": "ReaderMetrics.panelHorizontalInset — Reader/Collocation sheet 水平內縮",
+          "$swift": "ReaderMetrics.panelHorizontalInset"
+        },
+        "panel-b-inset": {
+          "$type": "dimension",
+          "$value": "16px",
+          "$description": "ReaderMetrics.panelBottomInset — Reader/Collocation sheet 底部內縮",
+          "$swift": "ReaderMetrics.panelBottomInset"
         }
       }
     },
@@ -405,6 +607,30 @@
           "$value": "18px",
           "$description": "AppSkin.Typography.rowWord",
           "$swift": "AppSkin.Typography.rowWord"
+        },
+        "mono-label": {
+          "$type": "dimension",
+          "$value": "10px",
+          "$description": "AppFonts.mono(size:10,bold:true) — VocabSectionHeader/ProgressBar/ToolbarGlyph mono 標籤字級",
+          "$swift": "AppSkin.Typography.monoLabel"
+        },
+        "translation-title": {
+          "$type": "dimension",
+          "$value": "21px",
+          "$description": "AppFonts.serif(size:21,bold:true) — WordDetail 翻譯標題",
+          "$swift": "AppSkin.Typography.translationTitle"
+        },
+        "mono-body": {
+          "$type": "dimension",
+          "$value": "14px",
+          "$description": "AppFonts.mono(size:14) — WordDetail mono 內文",
+          "$swift": "AppSkin.Typography.monoBody"
+        },
+        "display-title": {
+          "$type": "dimension",
+          "$value": "24px",
+          "$description": "AppFonts.serif(size:24,bold:true) — Podcast Hero / Login Sheet 標題",
+          "$swift": "AppSkin.Typography.displayTitle"
         }
       },
       "tracking": {
@@ -437,6 +663,12 @@
           "$value": "0.8px",
           "$description": "AppFonts.Tracking.uppercase",
           "$swift": "AppFonts.Tracking.uppercase"
+        },
+        "label": {
+          "$type": "dimension",
+          "$value": "0.5px",
+          "$description": "VocabSectionHeader 標題字距。iOS SoT: AppSkin.baseMetrics.labelTracking=0.5（drift tracking 表僅認 AppFonts.Tracking，故不掛 $swift）",
+          "$swift": "AppSkin.baseMetrics.labelTracking"
         }
       },
       "leading": {
@@ -592,7 +824,7 @@
         "pulse": {
           "$type": "time",
           "$value": "1.4s",
-          "$description": "web/chrome-only loading-skeleton pulse (kg-pulse / kg-shimmer). No iOS literal — AppMotion.subtleBreath is 2.8s with autoreverse breath semantics, deliberately not reused. No $swift, so token_drift_check skips it."
+          "$description": "web-only loading-skeleton pulse (kg-pulse / kg-shimmer). No iOS literal — AppMotion.subtleBreath is 2.8s with autoreverse breath semantics, deliberately not reused. No $swift, so token_drift_check skips it."
         }
       },
       "easing": {

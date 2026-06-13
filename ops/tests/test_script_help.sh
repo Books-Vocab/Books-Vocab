@@ -3,11 +3,9 @@
 #
 # 目前覆蓋：
 #   1. catalyst_lint.sh --help → exit 0 + 印出 Modes
-#   2. chrome_parity.sh --help → exit 0 + 印出 Usage / Env
-#   3. chrome_verify.sh --help → exit 0 + 印出 Usage
-#   4. release_bump.sh --help → exit 0 + 印出 用法
-#   5. release_changelog.sh --help → exit 0 + 印出 用法
-#   6. podcast_upload.sh --help → exit 0 + 印出 Usage
+#   2. release_bump.sh --help → exit 0 + 印出 用法
+#   3. release_changelog.sh --help → exit 0 + 印出 用法
+#   4. podcast_upload.sh --help → exit 0 + 印出 Usage
 
 set -o pipefail
 
@@ -50,8 +48,6 @@ assert_log_contains() {
 
 section "Syntax"
 bash -n "$WORKTREE/ops/catalyst_lint.sh" && ok "catalyst_lint.sh syntax" || fail_t "catalyst_lint.sh syntax"
-bash -n "$WORKTREE/ops/chrome_parity.sh" && ok "chrome_parity.sh syntax" || fail_t "chrome_parity.sh syntax"
-bash -n "$WORKTREE/ops/chrome_verify.sh" && ok "chrome_verify.sh syntax" || fail_t "chrome_verify.sh syntax"
 bash -n "$WORKTREE/ops/release_bump.sh" && ok "release_bump.sh syntax" || fail_t "release_bump.sh syntax"
 bash -n "$WORKTREE/ops/release_changelog.sh" && ok "release_changelog.sh syntax" || fail_t "release_changelog.sh syntax"
 bash -n "$WORKTREE/ops/podcast_upload.sh" && ok "podcast_upload.sh syntax" || fail_t "podcast_upload.sh syntax"
@@ -60,17 +56,6 @@ section "catalyst_lint help"
 out=$(run_help "ops/catalyst_lint.sh"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "catalyst_lint help exits 0" 0 "$rc" "$log"
 assert_log_contains "catalyst_lint help" "Modes:" "$log"
-
-section "chrome_parity help"
-out=$(run_help "ops/chrome_parity.sh"); rc="${out%%|*}"; log="${out##*|}"
-assert_rc "chrome_parity help exits 0" 0 "$rc" "$log"
-assert_log_contains "chrome_parity help usage" "Usage:" "$log"
-assert_log_contains "chrome_parity help env" "Env:" "$log"
-
-section "chrome_verify help"
-out=$(run_help "ops/chrome_verify.sh"); rc="${out%%|*}"; log="${out##*|}"
-assert_rc "chrome_verify help exits 0" 0 "$rc" "$log"
-assert_log_contains "chrome_verify help usage" "Usage:" "$log"
 
 section "release_bump help"
 out=$(run_help "ops/release_bump.sh"); rc="${out%%|*}"; log="${out##*|}"

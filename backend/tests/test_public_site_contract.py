@@ -40,9 +40,9 @@ def test_landing_first_viewport_names_the_product_and_real_surfaces() -> None:
     assert h1 is not None
     assert "Books &amp; Vocab" in h1.group(1)
     assert "iPhone" in html
+    assert "Mac Catalyst" in html
     assert "單字本" in html
     assert "Podcast" in html
-    assert "Chrome" in html
 
 
 def test_landing_uses_real_iphone_product_screenshots() -> None:
@@ -68,7 +68,6 @@ def test_guide_matches_current_ios_surface() -> None:
         "知識圖譜",
         "每日複習",
         "Podcast",
-        "Chrome extension",
         "Pro",
     ]:
         assert phrase in html

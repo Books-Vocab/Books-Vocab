@@ -3,7 +3,7 @@
 ## Identity
 
 **KG = Knowledge Graph 英語詞彙學習 app** — EPUB/PDF/TXT/MD reader 選詞 → 翻譯 → 詞庫 → 知識圖譜 → today review → podcast。  
-Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python)+ `chrome-extension/` + `lab/`(Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`。
+Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官網)+ `lab/`(Podcast monitor / Claude Code Gateway 等)+ `ops/` + `docs/`,單一 `.git`；`frozen/2026-06-14-web-chrome-parity/` 收納已冷凍的 web pilot / Chrome extension / web-chrome parity tooling。
 
 | key | value |
 |-----|-------|
@@ -151,7 +151,6 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | 改 iOS Podcast player / 字幕 / progress | `docs/reference/feature_boundary/podcast.md` |
 | 改 podcast 生成 pipeline(`lab/podcast/` / synthesize / subtitle / TTS / upload) | `docs/sop/podcast_pipeline.md` |
 | 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
-| 改 chrome-extension(manifest / sidepanel / content / shared) | `docs/reference/feature_boundary/chrome.md` |
 | 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |
 | 改 sync 狀態流轉(`syncStatus` × `actionType`) | `docs/reference/sync_lifecycle.md` **(SoT)** |
 | 寫 backend test | `docs/reference/testing/backend_strategy.md` |
