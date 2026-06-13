@@ -61,6 +61,8 @@ UI_FIXTURE_DATASET_B64=""
 STAGED_DATASET_XCTESTRUN=""
 UI_TEST_REVIEW_ROOT=""
 UI_TEST_REVIEW_HTML=""
+UI_TEST_FLOW_ID=""
+UI_TEST_VARIANT_ID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -384,6 +386,7 @@ if [[ -n "$TEST_FILE" ]]; then
     fi
   fi
   [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE (tried .swift suffix and stem search under $TEST_DIR)" >&2; exit 1; }
+  UI_TEST_FLOW_ID="$(basename "$FILE_PATH" .swift)"
   while IFS= read -r flag; do
     [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
   done < <(discover_file_only_flags "$FILE_PATH" "" "$TEST_TARGET")
@@ -393,6 +396,7 @@ if [[ -n "$TEST_FILE" ]]; then
   fi
   echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests in file '$TEST_FILE' ($TEST_TARGET)"
 elif [[ -n "$GREP_PATTERN" ]]; then
+  UI_TEST_FLOW_ID="$GREP_PATTERN"
   # Auto-discover test funcs matching the pattern, attributing each func to its
   # OWN enclosing top-level container (struct / @Suite struct / class). See
   # lib/ios_test_discovery.sh for the discovery contract.
@@ -416,6 +420,19 @@ elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
   done
 elif [[ "$TEST_SCOPE" != "all" ]]; then
   ONLY_FLAGS+=("-only-testing:$TEST_TARGET")
+fi
+
+if [[ -z "$UI_TEST_FLOW_ID" ]]; then
+  UI_TEST_FLOW_ID="$TEST_TARGET"
+fi
+if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
+  UI_TEST_VARIANT_ID="dataset:$UI_FIXTURE_DATASET_NAME"
+elif [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
+  UI_TEST_VARIANT_ID="dataset-file:$(basename "$UI_FIXTURE_DATASET_FILE")"
+elif [[ -n "$UI_LAUNCH_PROFILE" ]]; then
+  UI_TEST_VARIANT_ID="profile:$UI_LAUNCH_PROFILE"
+else
+  UI_TEST_VARIANT_ID="default"
 fi
 
 if [[ "$TEST_SCOPE" == "ui" && -z "$UI_LAUNCH_PROFILE" ]]; then
@@ -1108,6 +1125,7 @@ archive_ui_test_recording() {
 }
 
 build_ui_test_review_page() {
+  local review_status="${1:-}"
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
   [[ -n "${UI_TEST_SCREENSHOT_MANIFEST:-}" && -s "$UI_TEST_SCREENSHOT_MANIFEST" ]] || return 0
 
@@ -1124,8 +1142,14 @@ build_ui_test_review_page() {
     --screenshot-dir "$UI_TEST_SCREENSHOT_DIR"
     --manifest "$UI_TEST_SCREENSHOT_MANIFEST"
     --out-root "$UI_TEST_REVIEW_ROOT"
+    --flow-id "$UI_TEST_FLOW_ID"
+    --variant-id "$UI_TEST_VARIANT_ID"
+    --test-file "${FILE_PATH:-}"
+    --device "$(resolve_run_device_udid 2>/dev/null || true)"
+    --log "$TMPOUT"
     --json
   )
+  [[ -n "$review_status" ]] && args+=(--status "$review_status")
   [[ -n "${UI_TEST_CONTACT_SHEET:-}" ]] && args+=(--contact-sheet "$UI_TEST_CONTACT_SHEET")
   [[ -n "${UI_TEST_QUICK4_SHEET:-}" ]] && args+=(--quick4-sheet "$UI_TEST_QUICK4_SHEET")
   [[ -n "${UI_TEST_VIDEO:-}" ]] && args+=(--video "$UI_TEST_VIDEO")
@@ -1488,6 +1512,7 @@ emit_ui_runner_lifecycle() {
 kg_ios_verdict_init test "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
+  build_ui_test_review_page "$result"
   jq -nc \
     --arg schema "kg.ios.run-verdict.v1" \
     --arg kind "test" \

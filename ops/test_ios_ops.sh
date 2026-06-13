@@ -930,20 +930,32 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  UI_TEST_FLOW_ID="PodcastPlaybackPerfUITests"
+  UI_TEST_VARIANT_ID="profile:ui-smoke"
+  FILE_PATH="ios/BooksAndVocabUITests/PodcastPlaybackPerfUITests.swift"
+  TMPOUT="'"$ui_steps_tmp"'/test.log"
+  : > "$TMPOUT"
   export_ui_step_attachments_from_xcresult() { :; }
   eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
   eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  resolve_run_device_udid() { printf "STUB-UDID-1234"; }
   build_ui_step_contact_sheet
   build_ui_test_review_page
 ' >"$ui_steps_tmp/snippet.log" 2>&1 || true
 ui_steps_review_html=""
+ui_steps_workspace_html=""
+ui_steps_workspace_index=""
 if [[ -d "$ui_steps_tmp/project/build/snapshots/uitest-runs" ]]; then
   ui_steps_review_html="$(find "$ui_steps_tmp/project/build/snapshots/uitest-runs" -name UIreview.html -type f | head -1)"
+  ui_steps_workspace_html="$ui_steps_tmp/project/build/snapshots/uitest-runs/UIreview.html"
+  ui_steps_workspace_index="$ui_steps_tmp/project/build/snapshots/uitest-runs/index.json"
 fi
 if [[ -s "$ui_steps_tmp/contact_sheet.png" && -s "$ui_steps_tmp/quick4_contact_sheet.png" && -s "$ui_steps_tmp/review_manifest.json" ]] \
   && [[ -n "$ui_steps_review_html" && -s "$ui_steps_review_html" ]] \
-  && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null; then
-  ok "ios_test builds full + quick4 contact sheets, manifest, and standalone UIreview from step screenshots"
+  && [[ -s "$ui_steps_workspace_html" && -s "$ui_steps_workspace_index" ]] \
+  && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null \
+  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .runs[0].flowId=="PodcastPlaybackPerfUITests" and .runs[0].variantId=="profile:ui-smoke" and (.runs[0].artifacts.log|endswith("/test.log"))' "$ui_steps_workspace_index" >/dev/null; then
+  ok "ios_test builds full + quick4 contact sheets, manifest, standalone UIreview, and UITest workspace index"
   rm -rf "$ui_steps_tmp"
 else
   # keep $ui_steps_tmp as the debug artifact — the failure message points at it
