@@ -175,31 +175,41 @@ async function main() {
 
     const bookCount = () => page.locator('.book-card').count();
     check('bookshelf initial shows 5 books', (await bookCount()) === 5);
-    check('bookshelf no sheet/menu before interaction',
-      (await page.locator('.bs-sheet-scrim').count()) === 0 && (await page.locator('.bs-menu-scrim').count()) === 0);
+    // 改名/刪除選單 + 匯入/改名 sheet 皆 migrated 到共享 vaul <Sheet>（.kg-sheet-content）。
+    // 舊 .bs-sheet-scrim / .bs-menu-scrim 已不存在；改以 vaul 內容區分：
+    //   menu 開 → 內容 .bs-menu；form sheet（匯入/改名）開 → 內容 .bs-sheet-form。
+    // 首屏互動前 vaul portal 未掛 → .kg-sheet-content 計數 0。
+    const sheetOpen = () => page.locator('.kg-sheet-content').count();
+    const menuOpen = () => page.locator('.bs-menu').count();
+    const formSheetOpen = () => page.locator('.bs-sheet-form').count();
+    check('bookshelf no sheet/menu before interaction', (await sheetOpen()) === 0);
 
     // 匯入入口：affordance → 匯入 sheet stub（檔案 picker 視覺）。
     await page.locator('.bookshelf-import-affordance').click();
-    check('bookshelf import affordance opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+    await page.locator('.bs-import-picker').first().waitFor();
+    check('bookshelf import affordance opens sheet', (await formSheetOpen()) === 1);
     check('bookshelf import sheet shows picker stub', (await page.locator('.bs-import-picker').count()) === 1);
     await page.locator('.bs-sheet-close').click();
-    check('bookshelf import sheet closes', (await page.locator('.bs-sheet-scrim').count()) === 0);
+    await page.locator('.kg-sheet-content').waitFor({ state: 'detached' });
+    check('bookshelf import sheet closes', (await sheetOpen()) === 0);
 
     // 書卡 more → 改名 → 真輸入 → 儲存 → 標題更新。
-    await page.locator('.book-card-more[data-title="Deep Work"]').click();
-    check('bookshelf more menu appears', (await page.locator('.bs-menu-scrim').count()) === 1);
+    await page.locator('.book-card-overflow[data-title="Deep Work"]').click();
+    await page.locator('.bs-menu').first().waitFor();
+    check('bookshelf more menu appears', (await menuOpen()) === 1);
     await page.locator('.bs-menu-item').first().click();
-    check('bookshelf rename opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+    await page.locator('.bs-sheet-input').first().waitFor();
+    check('bookshelf rename opens sheet', (await formSheetOpen()) === 1);
     await page.fill('.bs-sheet-input', 'Deep Focus');
     await page.locator('.bs-sheet-submit').click();
     check('bookshelf rename updates title',
-      (await page.locator('.book-card-more[data-title="Deep Focus"]').count()) === 1 &&
-      (await page.locator('.book-card-more[data-title="Deep Work"]').count()) === 0);
+      (await page.locator('.book-card-overflow[data-title="Deep Focus"]').count()) === 1 &&
+      (await page.locator('.book-card-overflow[data-title="Deep Work"]').count()) === 0);
 
     // 刪除：逐一刪到空 → empty scenario 視覺出現。
     const titles = ['Atomic Habits', 'Deep Focus', 'Flow', 'Meditations', 'On Writing Well'];
     for (const t of titles) {
-      await page.locator(`.book-card-more[data-title="${t}"]`).click();
+      await page.locator(`.book-card-overflow[data-title="${t}"]`).click();
       await page.locator('.bs-menu-item-destructive').click();
     }
     check('bookshelf delete-all empties grid', (await bookCount()) === 0);
@@ -208,7 +218,8 @@ async function main() {
       (await page.locator('.bookshelf-empty-import').count()) === 1);
     // empty state 匯入鈕也能開 sheet。
     await page.locator('.bookshelf-empty-import').click();
-    check('bookshelf empty import button opens sheet', (await page.locator('.bs-sheet-scrim').count()) === 1);
+    await page.locator('.bs-import-picker').first().waitFor();
+    check('bookshelf empty import button opens sheet', (await formSheetOpen()) === 1);
 
     await ctx.close();
   } finally {

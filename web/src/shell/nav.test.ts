@@ -185,6 +185,18 @@ describe('pushTargetFor（誠實導航圖）', () => {
       expect(t?.surface).toBe('reader')
       expect(t).not.toHaveProperty('params')
     })
+    // PDF 書共用 reader-live route：點書 → reader screen（depth>1 → isLiveReaderScreen
+    // true → 掛 LiveReaderScreen）。format flag 由 params 攜帶，reader-live Phase-2
+    // agent 依 params.format==='pdf' 切 pdfjs-dist 引擎，否則 epub.js。共用同一 push
+    // target/route，不另開 surface。
+    it('點 PDF 書 → reader，params 攜帶 format=pdf（共用 reader-live route）', () => {
+      const t = pushTargetFor(screenFor('bookshelf'), 'open-book', {
+        bookId: 'book-2',
+        format: 'pdf',
+      })
+      expect(t?.surface).toBe('reader')
+      expect(t?.params).toEqual({ bookId: 'book-2', format: 'pdf' })
+    })
     it('gear → settings（設定子樹入口）', () => {
       expect(pushTargetFor(screenFor('bookshelf'), 'open-settings')?.surface).toBe('settings')
     })
@@ -211,6 +223,18 @@ describe('pushTargetFor（誠實導航圖）', () => {
       const t = pushTargetFor(screenFor('vocabulary'), 'open-word', { word: 'serendipity' })
       expect(t?.surface).toBe('word-detail-sheet')
       expect(t?.params).toEqual({ word: 'serendipity' })
+    })
+    // 今日複習 bar（vocabulary header 上方）→ today-review 複習卡。iOS
+    // VocabularyView 的 review CTA bar 在單字本內，故 vocabulary 也須有此邊（桌面
+    // ?shell=1 點今日複習曾因缺此邊回傳 null → no-op 的根因）。
+    it('今日複習 → today-review（vocab review bar 入口；修桌面 no-op）', () => {
+      expect(pushTargetFor(screenFor('vocabulary'), 'open-today-review')?.surface).toBe(
+        'today-review',
+      )
+    })
+    it('今日複習 target param-free（today-review 不依實體 id）', () => {
+      const t = pushTargetFor(screenFor('vocabulary'), 'open-today-review')
+      expect(t).not.toHaveProperty('params')
     })
     it('新增連結 → vocab-add-link', () => {
       expect(pushTargetFor(screenFor('vocabulary'), 'add-link')?.surface).toBe('vocab-add-link')
