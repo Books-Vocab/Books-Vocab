@@ -1,0 +1,140 @@
+{
+  "schema": "kg.ops_world_expectation.v1",
+  "config": {
+    "review_clock": {
+      "is_paused": true
+    }
+  },
+  "notebooks": [
+    {
+      "name": "Editorial Picks",
+      "cover_pattern": "waves",
+      "color": "#8C6A5D"
+    },
+    {
+      "name": "Systems Thinking",
+      "cover_pattern": "grid",
+      "color": "#4F7C73"
+    },
+    {
+      "name": "Creative Practice",
+      "cover_pattern": "dots",
+      "color": "#B96F5B"
+    }
+  ],
+  "cards": [
+    {
+      "content": "meticulous",
+      "meaning": "一絲不苟的；極為仔細的"
+    },
+    {
+      "content": "discerning",
+      "meaning": "有洞察力的；能辨別細微差異的"
+    },
+    {
+      "content": "evoke",
+      "meaning": "喚起；引發（情感或記憶）"
+    },
+    {
+      "content": "luminous",
+      "meaning": "明亮的；清晰動人的（文筆）"
+    },
+    {
+      "content": "nuance",
+      "meaning": "細微差別；微妙之處"
+    },
+    {
+      "content": "entropy",
+      "meaning": "熵；系統的混亂程度"
+    },
+    {
+      "content": "cascade",
+      "meaning": "一連串；連鎖反應"
+    },
+    {
+      "content": "coherent",
+      "meaning": "連貫的；條理一致的"
+    },
+    {
+      "content": "leverage",
+      "meaning": "善用；以槓桿放大效果"
+    },
+    {
+      "content": "feedback",
+      "meaning": "回饋；系統輸出反向影響輸入"
+    },
+    {
+      "content": "cadence",
+      "meaning": "節奏；穩定推進的步調"
+    },
+    {
+      "content": "iterate",
+      "meaning": "反覆打磨；迭代改進"
+    },
+    {
+      "content": "tactile",
+      "meaning": "有觸感的；能喚起手感的"
+    },
+    {
+      "content": "prototype",
+      "meaning": "原型；先做出可驗證的版本"
+    }
+  ],
+  "graphs": [
+    {
+      "notebook": "Editorial Picks",
+      "links": [
+        {
+          "from": "meticulous",
+          "to": "discerning",
+          "kind": "shares_usage"
+        },
+        {
+          "from": "evoke",
+          "to": "luminous",
+          "kind": "shares_usage"
+        },
+        {
+          "from": "discerning",
+          "to": "nuance",
+          "kind": "shares_usage"
+        }
+      ]
+    },
+    {
+      "notebook": "Systems Thinking",
+      "links": [
+        {
+          "from": "entropy",
+          "to": "cascade",
+          "kind": "shares_usage"
+        },
+        {
+          "from": "cascade",
+          "to": "coherent",
+          "kind": "contrasts_with"
+        },
+        {
+          "from": "feedback",
+          "to": "leverage",
+          "kind": "shares_usage"
+        }
+      ]
+    },
+    {
+      "notebook": "Creative Practice",
+      "links": [
+        {
+          "from": "iterate",
+          "to": "prototype",
+          "kind": "shares_usage"
+        },
+        {
+          "from": "cadence",
+          "to": "tactile",
+          "kind": "shares_usage"
+        }
+      ]
+    }
+  ]
+}
