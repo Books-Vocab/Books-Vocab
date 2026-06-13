@@ -189,7 +189,7 @@
 .shell-notfound-code {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: var(--text-display, 56px);
+  font-size: 56px; /* web-only shell chrome；--text-display 非設計系統 token，用 literal */
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--text-quaternary);
