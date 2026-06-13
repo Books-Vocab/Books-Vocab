@@ -88,6 +88,18 @@ class KGSettings:
     # during local testing).
     podcast_bucket_endpoint_url: str | None = None
 
+    # Book asset storage backend (Architecture PR #7).
+    # When `library_bucket` is set, book assets (EPUB/PDF/TXT/MD) are uploaded
+    # to / downloaded from S3-compatible object storage via presigned URLs.
+    # When unset (dev / privacy-preserving default), assets stay client-local
+    # (CloudKit / on-device) and the upload endpoint declares them local-only.
+    library_bucket: str | None = None
+    library_bucket_region: str = "ap-northeast-1"
+    library_bucket_endpoint_url: str | None = None
+    # Per-asset upload cap (bytes). Large enough for full EPUB/PDF books, small
+    # enough to reject obvious abuse. Default 200 MiB.
+    library_asset_max_bytes: int = 200 * 1024 * 1024
+
     @property
     def users_file(self) -> Path:
         return self.data_dir / "users.json"
@@ -196,4 +208,8 @@ def load_settings() -> KGSettings:
         podcast_bucket=(os.getenv("PODCAST_BUCKET") or None),
         podcast_bucket_region=os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1"),
         podcast_bucket_endpoint_url=(os.getenv("PODCAST_BUCKET_ENDPOINT_URL") or None),
+        library_bucket=(os.getenv("LIBRARY_BUCKET") or None),
+        library_bucket_region=os.getenv("LIBRARY_BUCKET_REGION", "ap-northeast-1"),
+        library_bucket_endpoint_url=(os.getenv("LIBRARY_BUCKET_ENDPOINT_URL") or None),
+        library_asset_max_bytes=_env_int("LIBRARY_ASSET_MAX_BYTES", 200 * 1024 * 1024),
     )
