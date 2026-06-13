@@ -67,10 +67,9 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 
 ## 反硬幹:摩擦升級階梯(自我提升迴圈)
 
-撞到工具 / CLI / 文檔 / 架構摩擦時**禁止無聲妥協繞路**;先第一性原理判根因(鐵律9),依嚴重度(`kg-router`「Tool Friction」分級)走:
+撞到工具 / CLI / 文檔 / 架構摩擦時**禁止無聲妥協繞路**;先第一性原理判根因。依嚴重度處置:
 
-- **小** → receipt 的 Tooling Debt **強制表態**(`none` 或一筆)+ 登 `docs/runbook/improvement_backlog.md`,回到原目標。
-- **中大** → 停手、修工具、跑 regression、再續(鐵律9)。
-- **結構 / 架構級** → 升級回上一階(必要時到執行長)。
+- **小 / 中大** → 依 `kg-router`「Tool Friction」分級走對應動作(小=記錄續做 / 中大=停手修工具;鐵律9)。
+- **結構 / 架構級**(本手冊新增的第三級,前兩級之外)→ 不自決,**升級回上一階**(必要時到執行長,見 CLAUDE.md 組織模型升級觸發)。
 
-owner = `platform-steward`(triage backlog、把 fix 派給對的部門、追到 resolved)。每筆 resolved 連解決 commit = **可回溯**。沉默 = 違規。
+凡非當場修掉者一律進 `docs/runbook/improvement_backlog.md`,owner=`platform-steward` 追到 resolved。
