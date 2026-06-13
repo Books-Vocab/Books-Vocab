@@ -418,6 +418,13 @@
   cursor: pointer;
 }
 
+/* Density heat halo — a soft glow behind well-linked (high-degree) nodes. The
+   fill color + opacity are set inline per node (review tint × degree heat) so a
+   hub reads as a larger, warmer cluster. No own animation (static geometry). */
+.vkg-graph-node-heat {
+  pointer-events: none;
+}
+
 /* Nodes — fill comes from the review-state gradient (inline, per node). */
 .vkg-graph-node {
   stroke: var(--page-bg);
@@ -459,6 +466,85 @@
 
 .vkg-gear-icon {
   flex: none;
+}
+
+/* Density indicator chip — live/shell only (never in the parity DOM). Docked
+   bottom-left, mirrors the legend chip's frosted-card treatment. The fill width
+   IS the density signal, so a denser graph reads as a fuller bar. */
+.vkg-density {
+  position: absolute;
+  bottom: 40px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 132px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  pointer-events: none;
+}
+
+.vkg-density-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.vkg-density-title {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.vkg-density-band {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+/* Band-tinted label so denser graphs read warmer on the chip too. */
+.vkg-density[data-band='moderate'] .vkg-density-band {
+  color: var(--text-secondary);
+}
+
+.vkg-density[data-band='dense'] .vkg-density-band {
+  color: var(--accent);
+}
+
+.vkg-density-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-quaternary) 35%, transparent);
+  overflow: hidden;
+}
+
+.vkg-density-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.vkg-density-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* Reduced-motion: drop the bar's width transition (the value is informative, not
+   decorative — it must still appear, just without the animated grow). */
+@media (prefers-reduced-motion: reduce) {
+  .vkg-density-fill {
+    transition: none;
+  }
 }
 
 /* Live slider track wraps a transparent native range input over the fill bar. */
@@ -555,6 +641,12 @@
   .kg-responsive-shell .vkg-gear-button {
     bottom: var(--sp-4);
     right: var(--sp-4);
+  }
+
+  /* Density chip re-anchored to the real pane corner (no phone safe-area). */
+  .kg-responsive-shell .vkg-density {
+    bottom: var(--sp-4);
+    left: var(--sp-4);
   }
 
   .kg-responsive-shell .vkg-settings {

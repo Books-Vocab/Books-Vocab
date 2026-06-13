@@ -11,6 +11,7 @@ import {
   type SimNode,
 } from './forceGraph'
 import { nodeColor, type GraphData } from './graphData'
+import { degreeById, nodeDensityScale, nodeHeat } from './density'
 import {
   IDENTITY_VIEWPORT,
   clampScale,
@@ -109,6 +110,18 @@ export function ForceGraphCanvas({
     for (const n of visible.nodes) m.set(n.id, nodeColor(n))
     return m
   }, [visible.nodes])
+
+  // ── link DENSITY (Phase 2) ─────────────────────────────────────────────────
+  // Per-node degree drives BOTH a size bump and a "heat" halo: a richly-linked
+  // word renders as a larger, warmer hub so dense vocabularies read visually
+  // denser. Pure (density.ts) + memoised over the visible subgraph; the radius
+  // multiplier composes with the slider-driven `nodeSize` (which stays the floor).
+  const heatById = useMemo(() => {
+    const deg = degreeById(visible)
+    const m = new Map<string, number>()
+    for (const n of visible.nodes) m.set(n.id, nodeHeat(deg.get(n.id) ?? 0, deg))
+    return m
+  }, [visible])
 
   // ── pinned nodes (drag-pin) ────────────────────────────────────────────────
   // A dragged node is pinned: the sim relaxes everything else around its held
@@ -323,6 +336,12 @@ export function ForceGraphCanvas({
             const isSelected = selectedId === n.id
             const isDragging = draggingId === n.id
             const targetScale = isSelected || isDragging ? (prefersReduced ? 1.25 : 1.3) : 1
+            // DENSITY: hubs grow + earn a warm halo. Radius bump composes with the
+            // slider nodeSize; halo opacity tracks heat so only well-linked nodes
+            // glow. Both are static geometry (no extra animation), so reduced-motion
+            // needs no special-casing here.
+            const heat = heatById.get(n.id) ?? 0
+            const r = forces.nodeSize * nodeDensityScale(heat)
             // The gesture binding (which carries plain React event handlers) lives
             // on a plain <g>; the spring scale lives on an inner motion.g so the
             // two prop surfaces never collide (framer-motion redefines a few of
@@ -341,22 +360,33 @@ export function ForceGraphCanvas({
                   transition={prefersReduced ? { duration: 0 } : snappy}
                   style={{ transformOrigin: '0px 0px' }}
                 >
+                  {/* Density heat halo — drawn behind everything; only well-linked
+                      nodes (heat > 0) emit it, opacity scales with degree heat so
+                      hubs glow and isolated nodes show nothing. Pure geometry. */}
+                  {heat > 0 ? (
+                    <circle
+                      r={r + 4 + heat * 6}
+                      className="vkg-graph-node-heat"
+                      fill={colorById.get(n.id)}
+                      style={{ opacity: 0.1 + heat * 0.22 }}
+                    />
+                  ) : null}
                   {/* Focus ring for the tapped node — drawn behind the dot. */}
                   {isSelected ? (
                     <circle
-                      r={forces.nodeSize + 4}
+                      r={r + 4}
                       className="vkg-graph-node-ring"
                       fill="none"
                     />
                   ) : null}
                   <circle
-                    r={forces.nodeSize}
+                    r={r}
                     fill={colorById.get(n.id)}
                     className="vkg-graph-node"
                   />
                   <text
                     x={0}
-                    y={forces.nodeSize + 10}
+                    y={r + 10}
                     textAnchor="middle"
                     className="vkg-graph-node-label"
                   >
