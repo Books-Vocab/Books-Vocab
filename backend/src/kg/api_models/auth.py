@@ -43,6 +43,21 @@ class UserConfigResponse(BaseModel):
     auto_link: AutoLinkConfig | None = None
 
 
+class UserProfileResponse(BaseModel):
+    """Read-only identity face (GET /api/user/profile).
+
+    Derived from the stored user record (provider/email set at login by
+    auth_service.resolve_and_link_user). Distinct from UserConfigResponse,
+    which is the mutable, LWW-synced settings bundle. `displayName` prefers an
+    explicit stored name, falls back to the email local-part, else null (no
+    fabrication when neither is known).
+    """
+
+    displayName: str | None = None
+    email: str | None = None
+    provider: str | None = None
+
+
 class DeleteAccountResponse(BaseModel):
     deleted_user_id: str
     linked_ids: list[str]

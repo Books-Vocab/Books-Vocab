@@ -247,3 +247,24 @@
   flex: none;
   color: var(--destructive);
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=settings-account-detail, no ?shell=1)
+   never mounts it -> 393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .sad {
+  container-type: inline-size;
+  container-name: sad-surface;
+}
+.kg-responsive-shell .sad .sad-scroll {
+  overflow-y: auto;
+}
+@container sad-surface (min-width: 600px) {
+  .kg-responsive-shell .sad .sad-section {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
+}

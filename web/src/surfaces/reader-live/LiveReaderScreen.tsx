@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { TranslationPanel } from '../reader/TranslationPanel'
 import {
   BookClosedIcon,
@@ -6,10 +7,13 @@ import {
   ListBulletIcon,
   TextformatSizeIcon,
 } from '../reader/icons'
+import { navPush, sheet, snappy, usePreferredTransition } from '../../motion'
 import '../reader/reader.css'
 import './live-reader.css'
-import { loadingPanel, resolvedPanel } from './mockTranslation'
-import type { TranslationPanelData } from '../reader/fixtures'
+import { useLiveReaderApi } from './useLiveReaderApi'
+import { highlightCss, highlightWordSet, type LiveTheme } from './liveLoop'
+import { openPdfReader, pageFromProgress, type PdfReader } from './pdfEngine'
+import { demoPdfBytes } from './demoPdf'
 import {
   DEFAULT_SETTINGS,
   bodyCss,
@@ -24,22 +28,28 @@ import {
 } from './liveSettings'
 
 /**
- * Live Reader — web Reader 生產化 phase 1。
+ * Live Reader — web Reader 生產化（Phase 1 chrome → Phase 3 真迴圈）。
  *
- * epub.js 真渲染引擎（spike `ReaderLiveScreen` 的演進）嵌進像素級 parity reader
- * chrome：expanded header（書庫 + 居中書名 + TOC/設定/單字本鈕）、compact 進度膠囊、
- * bottom-overlay 翻譯面板掛點，全部沿用 `reader.css` 的既有視覺語彙。
+ * epub.js 真渲染引擎嵌進像素級 parity reader chrome：expanded header（書庫 +
+ * 居中書名 + TOC/設定鈕）、compact 進度膠囊、bottom-overlay 翻譯面板掛點，全部沿
+ * 用 `reader.css` 的既有視覺語彙。
  *
- *   選詞 → 真實 parity `TranslationPanel`（內容 mock，見 mockTranslation.ts）。
+ *   選詞 → 真實 `/api/translate/quick`（→ parity `TranslationPanel`），自動加入本書
+ *          綁定單字本（`/api/vocab`，source:'reader'）+ 觸發 pipeline；展開語境走
+ *          `/api/translate/explain`；trash 刪除。
+ *   highlight → 已加入詞於內文以 <mark> 標記（iOS `__markVocabWord` 的 web 對應）。
  *   TOC  → epub.js navigation 章節清單 + `rendition.display(href)` 真跳轉。
- *   設定 → 字級（iOS 檔位 0.75…2.0 step 0.125）+ serif/sans 即時作用於 epub.js。
- *   翻頁 → 點左右半屏熱區 + 鍵盤左右；字級/字體改變即時 registerCss 重套。
+ *   設定 → 字級 + serif/sans + 紙色主題；即時作用 epub.js 並 PUT user config 持久化。
+ *   進度 → relocate debounce 1200ms + visibilitychange + beforeunload flush PUT position。
  *
  * 隔離：epub.js dynamic import，僅此路徑載入，不進 parity bundle；既有 parity
- * surface（?surface=reader 等）DOM 與渲染零改動。
+ * surface（?surface=reader 等）DOM 與渲染零改動。此元件只在 shell（AppShell 內，
+ * 含 ApiProvider + ShellNavProvider）掛載，故 useLiveReaderApi 的 useApi 安全。
+ * 非 shell 的純引擎 spike 走 App.tsx 的 ReaderLiveScreen（零 API），互不影響。
  */
 
 const EPUB_URL = '/spike/childrens-literature.epub'
+const POSITION_DEBOUNCE_MS = 1200
 
 type TocItem = { label: string; href: string }
 type Panel = 'none' | 'toc' | 'settings'
@@ -78,38 +88,213 @@ function wordFromPoint(doc: Document, x: number, y: number) {
   return { word, rect: wr.getBoundingClientRect(), el: (range.startContainer as Text).parentElement }
 }
 
+/**
+ * 在 section document 內把命中已存詞的純文字節點以 <mark class="kg-vocab-hl"> 包裹
+ * （iOS `__markVocabWords` 的 web 對應）。CSS 由 themes.registerCss 注入。
+ * 只處理可見文字節點，跳過 script/style/已標記節點，避免破壞既有 highlight。
+ */
+function markSavedWords(doc: Document, words: Set<string>): void {
+  if (words.size === 0) return
+  const body = doc.body
+  if (!body) return
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = (node as Text).parentElement
+      if (!parent) return NodeFilter.FILTER_REJECT
+      const tag = parent.tagName.toUpperCase()
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'MARK' || tag === 'A') {
+        return NodeFilter.FILTER_REJECT
+      }
+      if (parent.closest('mark.kg-vocab-hl')) return NodeFilter.FILTER_REJECT
+      return /[a-zA-Z]/.test(node.textContent || '') ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+    },
+  })
+  const targets: Text[] = []
+  let n = walker.nextNode()
+  while (n) {
+    targets.push(n as Text)
+    n = walker.nextNode()
+  }
+  // 命中 regex：詞邊界 + 任一已存詞（小寫比對）。
+  const escaped = [...words].map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  if (escaped.length === 0) return
+  const re = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi')
+  for (const textNode of targets) {
+    const text = textNode.textContent || ''
+    re.lastIndex = 0
+    if (!re.test(text)) continue
+    re.lastIndex = 0
+    const frag = doc.createDocumentFragment()
+    let last = 0
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text)) !== null) {
+      const lower = m[1].toLowerCase()
+      if (!words.has(lower)) continue
+      if (m.index > last) frag.appendChild(doc.createTextNode(text.slice(last, m.index)))
+      const mark = doc.createElement('mark')
+      mark.className = 'kg-vocab-hl'
+      mark.textContent = m[1]
+      frag.appendChild(mark)
+      last = m.index + m[1].length
+    }
+    if (last === 0) continue // 無實際命中（regex 命中但非 saved set）
+    if (last < text.length) frag.appendChild(doc.createTextNode(text.slice(last)))
+    textNode.parentNode?.replaceChild(frag, textNode)
+  }
+}
+
 export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
+  const live = useLiveReaderApi()
+  const engine = live.engine
   const hostRef = useRef<HTMLDivElement | null>(null)
   const renditionRef = useRef<any>(null)
+  const bookRef = useRef<any>(null)
+  // PDF 引擎 handle（engine==='pdf' 時 boot 後填入；epub 路徑恆 null）。
+  const pdfRef = useRef<PdfReader | null>(null)
   const settingsRef = useRef<LiveReaderSettings>(DEFAULT_SETTINGS)
+  const themeRef = useRef<LiveTheme>('paper')
+  // 每個 section 渲染時讀最新已存詞集合（ref 避免重建 hook）。
+  const savedWordsRef = useRef<Set<string>>(new Set())
 
   const [toc, setToc] = useState<TocItem[]>([])
   const [progress, setProgress] = useState(0)
   const [bookTitle, setBookTitle] = useState('')
-  const [panelData, setPanelData] = useState<TranslationPanelData | null>(null)
   const [panel, setPanel] = useState<Panel>('none')
-  const [settings, setSettings] = useState<LiveReaderSettings>(DEFAULT_SETTINGS)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // 載入失敗的重試：bump 此 key 重跑 boot effect（清掉舊 error / 引擎並重建）。
+  const [retryKey, setRetryKey] = useState(0)
+  // 翻頁手感：epub.js 的 prev/next 是瞬時欄位切換（無位移動畫）。以一個短暫的方向性
+  // data-attr 觸發紙面層的位移＋淡入 cue（CSS 驅動，~220ms 後清除），給「頁面滑移」的
+  // 知覺平滑度而不碰 epub.js 內部。尊重 prefers-reduced-motion（CSS 端 media query 關閉）。
+  const [turning, setTurning] = useState<'prev' | 'next' | null>(null)
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // settings → epub.js registerCss（即時生效）。
-  const applyTheme = useCallback((s: LiveReaderSettings) => {
+  // ── 位置同步（debounce + visibilitychange + beforeunload flush）─────────────
+  const posTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestPos = useRef<{ cfi: string | null; pct: number } | null>(null)
+  const liveRef = useRef(live)
+  liveRef.current = live
+
+  const flushPosition = useCallback(() => {
+    const loc = latestPos.current
+    const id = bookRef.current?.__kgBookId as string | undefined
+    if (!loc) return
+    if (posTimer.current) {
+      clearTimeout(posTimer.current)
+      posTimer.current = null
+    }
+    if (!id) return
+    // 直接走 transport（hook 不暴露 putPosition；位置同步是引擎側 LWW）。
+    liveRef.current.putPosition?.(id, loc)
+  }, [])
+
+  // settings/theme → epub.js registerCss（即時生效）+ 同步 ref（供 boot/section 用）。
+  const applyTheme = useCallback((s: LiveReaderSettings, theme: LiveTheme) => {
+    settingsRef.current = s
+    themeRef.current = theme
     const r = renditionRef.current
     if (!r) return
-    // registerCss 以相同 name 重註冊 → 覆寫舊 CSS；select 觸發 iframe 重套樣式。
-    r.themes.registerCss('kg', bodyCss(s, location.origin))
+    // body CSS（字級/字體）+ highlight CSS（已存詞 mark）+ 紙色主題，同名重註冊覆寫。
+    r.themes.registerCss('kg', `${bodyCss(s, location.origin)}\n${themeBodyCss(theme)}\n${highlightCss()}`)
     r.themes.select('kg')
   }, [])
 
+  // 後端載入 / 樂觀更新的設定變動 → 重套 epub.js 主題。
   useEffect(() => {
+    applyTheme(live.settings, live.theme)
+  }, [applyTheme, live.settings, live.theme])
+
+  // 已存詞集合變動 → 更新 ref；對「已渲染」section 重新標記命中詞。
+  useEffect(() => {
+    savedWordsRef.current = highlightWordSet(live.savedWords)
+    const r = renditionRef.current
+    if (!r) return
+    try {
+      const contents = r.getContents?.() ?? []
+      for (const c of contents) {
+        if (c?.document) markSavedWords(c.document, savedWordsRef.current)
+      }
+    } catch {
+      /* teardown race */
+    }
+  }, [live.savedWords])
+
+  // ── PDF 引擎 boot（engine==='pdf'）─────────────────────────────────────────
+  // pdfjs dynamic import（與 epub.js 同樣 lazy，不進 parity bundle）；demo PDF bytes
+  // 自帶（demoPdf.ts）。選詞走共用 live.selectWord；翻頁回報走 latestPos + debounce flush。
+  useEffect(() => {
+    if (engine !== 'pdf') return
+    let destroyed = false
+    let reader: PdfReader | null = null
+    setReady(false)
+    setError(null)
+    setProgress(0)
+
+    async function bootPdf() {
+      try {
+        if (!hostRef.current) return
+        reader = await openPdfReader(hostRef.current, demoPdfBytes(), {
+          onWordSelect: (word, ctx) => liveRef.current.selectWord(word, ctx),
+          onRelocate: (_page, pct) => {
+            setProgress(pct)
+            latestPos.current = { cfi: null, pct }
+            if (posTimer.current) clearTimeout(posTimer.current)
+            posTimer.current = setTimeout(flushPosition, POSITION_DEBOUNCE_MS)
+          },
+        })
+        if (destroyed) {
+          reader.destroy()
+          return
+        }
+        pdfRef.current = reader
+        // book id 暴露給 flushPosition（PDF 用 progress LWW，無 cfi）。
+        const id = liveRef.current.bookId
+        if (id) bookRef.current = { __kgBookId: id }
+        setBookTitle('PDF')
+        // 從持久化進度恢復頁碼（撈到 progression 才跳）。
+        const restorePage = pageFromProgress(liveRef.current.initialProgress, reader.numPages)
+        if (restorePage > 1) await reader.goToPage(restorePage)
+        if (destroyed) {
+          reader.destroy()
+          return
+        }
+        setReady(true)
+      } catch (e: any) {
+        if (!destroyed) setError(String(e?.message || e))
+      }
+    }
+
+    bootPdf()
+    return () => {
+      destroyed = true
+      flushPosition()
+      try {
+        reader?.destroy()
+      } catch {
+        /* noop */
+      }
+      pdfRef.current = null
+    }
+    // engine / retryKey 變更才重 boot；其餘狀態走各自 effect。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, retryKey])
+
+  // ── EPUB 引擎 boot（engine!=='pdf'，即 epub/txt/md fallback）──────────────────
+  useEffect(() => {
+    if (engine === 'pdf') return
     let destroyed = false
     let book: any = null
+    setReady(false)
+    setError(null)
+    setProgress(0)
 
     async function boot() {
       try {
         const ePub = (await import('epubjs')).default
         if (destroyed || !hostRef.current) return
         book = ePub(EPUB_URL)
+        bookRef.current = book
         const rendition = book.renderTo(hostRef.current, {
           width: '100%',
           height: '100%',
@@ -118,13 +303,14 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         })
         renditionRef.current = rendition
 
-        rendition.themes.registerCss('kg', bodyCss(settingsRef.current, location.origin))
-        rendition.themes.select('kg')
+        applyTheme(settingsRef.current, themeRef.current)
 
-        // 選詞監聽：從父 context 綁 section document（spike 已驗）。
+        // 選詞監聽 + 已存詞標記：每個 section 渲染後綁定。
         rendition.hooks.content.register((contents: any) => {
           try {
             const doc: Document = contents.document
+            // 首次渲染即標記已存詞（highlight）。
+            markSavedWords(doc, savedWordsRef.current)
             doc.addEventListener(
               'click',
               (e: MouseEvent) => {
@@ -136,7 +322,7 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
                 if (Math.sqrt(dx * dx + dy * dy) > 12) return
                 const word = d.word
                 const ctx = extractContext(d.el, word)
-                openTranslation(word, ctx)
+                liveRef.current.selectWord(word, ctx)
               },
               true,
             )
@@ -146,17 +332,27 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         })
 
         rendition.on('relocated', (loc: any) => {
+          let pct = 0
           if (book.locations && book.locations.length()) {
-            setProgress(book.locations.percentageFromCfi(loc.start.cfi) || 0)
+            pct = book.locations.percentageFromCfi(loc.start.cfi) || 0
+            setProgress(pct)
           }
+          // 位置同步：debounce 1200ms（高頻 relocate 合併，只 PUT 最後一次 LWW）。
+          latestPos.current = { cfi: loc.start?.cfi ?? null, pct }
+          if (posTimer.current) clearTimeout(posTimer.current)
+          posTimer.current = setTimeout(flushPosition, POSITION_DEBOUNCE_MS)
         })
 
         await book.ready
         if (destroyed) return
+        // book id 經 ref 暴露給 flushPosition（hook 撈到後寫回）。
+        book.__kgBookId = liveRef.current.bookId
         setBookTitle((book.packaging?.metadata?.title as string) || 'EPUB')
         const nav = await book.loaded.navigation
         setToc((nav.toc || []).map((t: any) => ({ label: (t.label || '').trim(), href: t.href })))
-        await rendition.display()
+        // 從後端進度恢復閱讀位置（撈到 locator 才跳，否則首章）。
+        const restoreTo = liveRef.current.initialLocator
+        await rendition.display(restoreTo || undefined)
         setReady(true)
         book.locations.generate(1600).catch(() => {})
       } catch (e: any) {
@@ -167,34 +363,129 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
     boot()
     return () => {
       destroyed = true
+      // unmount flush 待落地位置（避免離開頁面丟進度）。
+      flushPosition()
       try {
         book?.destroy()
       } catch {
         /* noop */
       }
     }
-    // boot 只跑一次；settings 變更走 applyTheme（不重建 book）。
+    // engine / retryKey 變更才重 boot；settings/saved/theme 走各自 effect（不重建 book）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, retryKey])
+
+  // book id 撈到後寫回 ref（boot 時可能尚未 settle）。
+  useEffect(() => {
+    if (bookRef.current && live.bookId) bookRef.current.__kgBookId = live.bookId
+  }, [live.bookId])
+
+  // 翻頁 + 方向性 cue：epub.js 切頁瞬時，外加紙面層短暫位移／淡入給滑移知覺感。
+  // 每次翻頁重置 cue（連續翻頁不卡在上一個方向）；timer 在 unmount 清除。
+  const turnPage = useCallback((dir: 'prev' | 'next') => {
+    // 引擎分派：PDF → pdfReader.next/prev（async render）；epub → rendition 瞬時切頁。
+    if (pdfRef.current) {
+      if (dir === 'next') pdfRef.current.next()
+      else pdfRef.current.prev()
+    } else if (dir === 'next') {
+      renditionRef.current?.next()
+    } else {
+      renditionRef.current?.prev()
+    }
+    if (turnTimer.current) clearTimeout(turnTimer.current)
+    setTurning(dir)
+    turnTimer.current = setTimeout(() => setTurning(null), 220)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (turnTimer.current) clearTimeout(turnTimer.current)
+    }
   }, [])
 
   // 鍵盤左右翻頁（iOS 點邊緣的桌面對應）。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowRight') renditionRef.current?.next()
-      else if (e.key === 'ArrowLeft') renditionRef.current?.prev()
+      if (e.key === 'ArrowRight') turnPage('next')
+      else if (e.key === 'ArrowLeft') turnPage('prev')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [turnPage])
+
+  // 容器尺寸變動 → epub.js 重排（CFI 保位）。epub.js 的 renderTo 用 width:'100%'
+  // 但 *不會* 隨 CSS 寬度變化自動 reflow（內文仍排在舊量測欄寬，分頁/座標漂移）。
+  // 桌面殼層把 host 鎖到 --reader-measure 居中後，host 像素寬會變，故必須以
+  // ResizeObserver 主動呼叫 rendition.resize(w,h) 讓文字重排到新欄寬。重排前先讀
+  // 目前 CFI、resize 後 display(cfi) 還原閱讀位置（避免重排把讀者彈回章首）。
+  // parity 路徑（.phone-frame 固定 393×852）host 尺寸恆定 → observer 不觸發，零影響。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    let lastW = host.clientWidth
+    let lastH = host.clientHeight
+    const ro = new ResizeObserver(() => {
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      if (w <= 0 || h <= 0) return
+      // 連續 resize 合併到下一動畫幀，避免拖曳時高頻重排卡頓。
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        try {
+          // PDF：以新欄寬重排當前頁（保留頁碼）。
+          if (pdfRef.current) {
+            pdfRef.current.resize().catch(() => {})
+            return
+          }
+          const r = renditionRef.current
+          if (!r) return
+          const cfi: string | undefined = r.currentLocation?.()?.start?.cfi
+          r.resize(w, h)
+          if (cfi) r.display(cfi).catch(() => {})
+        } catch {
+          /* teardown / 尚未 ready：下次 resize 會再校 */
+        }
+      })
+    })
+    ro.observe(host)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
   }, [])
 
-  function openTranslation(word: string, context: string) {
-    setPanel('none')
-    setPanelData(loadingPanel(word))
-    // mock async：模擬翻譯延遲後填入譯文。
-    window.setTimeout(() => {
-      setPanelData(resolvedPanel(word, context, false))
-    }, 280)
-  }
+  // 位置同步 flush 觸發器：visibilitychange（切背景）+ beforeunload（關頁/重整）。
+  useEffect(() => {
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') flushPosition()
+    }
+    window.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('beforeunload', flushPosition)
+    return () => {
+      window.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('beforeunload', flushPosition)
+    }
+  }, [flushPosition])
+
+  // Escape：優先關翻譯面板 → 設定／TOC 浮層（與 iOS sheet 的「點外退出」同義）。
+  // 桌面實測 bug：浮層按 Escape 不消失；此處補上鍵盤退出路徑。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (liveRef.current.panel) {
+        liveRef.current.closePanel()
+      } else if (panel !== 'none') {
+        setPanel('none')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [panel])
 
   function goTo(href: string) {
     renditionRef.current?.display(href)
@@ -202,35 +493,51 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   }
 
   function updateSettings(next: LiveReaderSettings) {
-    settingsRef.current = next
-    setSettings(next)
-    applyTheme(next)
+    live.updateSettings(next)
+    applyTheme(next, themeRef.current)
+  }
+  function updateTheme(next: LiveTheme) {
+    live.updateTheme(next)
+    applyTheme(settingsRef.current, next)
   }
 
-  const closeTranslation = () => {
-    setPanelData(null)
-  }
+  // shell=1 時優先顯示後端書名（撈到才覆蓋）；否則沿用 EPUB metadata 書名。
+  const displayTitle = live.bookTitle || bookTitle || 'Reader'
+
+  // 浮層轉場：共用 motion springs（不自刻物理）。TOC = 左抽屜（navPush）、
+  // 設定／翻譯 = 底升 bottom-sheet（sheet）；scrim 走 snappy 淡入淡出。
+  // usePreferredTransition 把 prefers-reduced-motion 收斂為瞬時（duration 0）。
+  const drawerTransition = usePreferredTransition(navPush)
+  const sheetTransition = usePreferredTransition(sheet)
+  const scrimTransition = usePreferredTransition(snappy)
 
   return (
-    <div className="live-reader" data-ready={ready ? '' : undefined}>
-      {/* paper 底色（對齊 parity reader paperSepia） */}
-      <div className="live-reader-paper">
+    <div
+      className="live-reader"
+      data-ready={ready ? '' : undefined}
+      data-theme={live.theme === 'dark' ? 'dark' : undefined}
+      // desktop pane: TOC 變持久左側子面板時，內文欄需讓位（CSS 以此 attr 內推）。
+      // 非殼層 / 行動裝置 overlay 路徑此 attr 無 CSS 對應 → 純資料、零視覺影響。
+      data-toc-open={panel === 'toc' ? '' : undefined}
+    >
+      {/* paper 底色（對齊 parity reader paperSepia）。data-turn 驅動翻頁滑移 cue。 */}
+      <div className="live-reader-paper" data-turn={turning ?? undefined}>
         <div ref={hostRef} className="live-reader-host" />
       </div>
 
-      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感） */}
+      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感 + 方向性滑移 cue） */}
       <button
         className="live-reader-tap live-reader-tap-prev"
         aria-label="上一頁"
-        onClick={() => renditionRef.current?.prev()}
+        onClick={() => turnPage('prev')}
       />
       <button
         className="live-reader-tap live-reader-tap-next"
         aria-label="下一頁"
-        onClick={() => renditionRef.current?.next()}
+        onClick={() => turnPage('next')}
       />
 
-      {/* expanded header（沿用 parity reader.css：書庫 + 居中書名 + 4 鈕） */}
+      {/* expanded header（沿用 parity reader.css：書庫 + 居中書名 + 鈕） */}
       <div className="reader-header-expanded live-reader-header">
         <div className="reader-toolbar">
           <button
@@ -242,16 +549,19 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
             <ChevronLeftIcon size={15} strokeWidth={1.7} />
             <span className="reader-toolbar-back-label">書庫</span>
           </button>
-          <span className="reader-toolbar-title">{bookTitle || 'Reader'}</span>
+          <span className="reader-toolbar-title">{displayTitle}</span>
           <div className="reader-toolbar-actions">
-            <button
-              type="button"
-              className="reader-chrome-btn"
-              aria-label="目錄"
-              onClick={() => setPanel((p) => (p === 'toc' ? 'none' : 'toc'))}
-            >
-              <ListBulletIcon size={14} strokeWidth={1.7} />
-            </button>
+            {/* TOC 僅 epub（PDF 無章節導航）。 */}
+            {engine !== 'pdf' && (
+              <button
+                type="button"
+                className="reader-chrome-btn"
+                aria-label="目錄"
+                onClick={() => setPanel((p) => (p === 'toc' ? 'none' : 'toc'))}
+              >
+                <ListBulletIcon size={14} strokeWidth={1.7} />
+              </button>
+            )}
             <button
               type="button"
               className="reader-chrome-btn"
@@ -274,81 +584,192 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         </div>
       )}
 
-      {/* TOC 面板（epub.js 章節真跳轉，沿用 parity rpanel 視覺殼） */}
-      {panel === 'toc' && (
-        <div className="live-reader-overlay" onClick={() => setPanel('none')}>
-          <div className="rpanel rpanel-toc live-reader-panel-toc" onClick={(e) => e.stopPropagation()}>
-            <header className="rpanel-nav">
-              <span className="rpanel-nav-title">目錄</span>
-              <button type="button" className="rpanel-nav-action" onClick={() => setPanel('none')}>
-                完成
-              </button>
-            </header>
-            <div className="rpanel-toc-body">
-              {toc.length > 0 ? (
-                <ul className="rpanel-toc-list">
-                  {toc.map((t, i) => (
-                    <li key={i} className="rpanel-toc-row">
-                      <button
-                        type="button"
-                        className="rpanel-toc-row-text live-reader-toc-btn"
-                        onClick={() => goTo(t.href)}
-                      >
-                        {t.label || `章節 ${i + 1}`}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="rpanel-state-wrap">
-                  <div className="rpanel-empty-card">
-                    <h2 className="rpanel-empty-title">這本書沒有目錄</h2>
+      {/* TOC 面板（epub.js 章節真跳轉，沿用 parity rpanel 視覺殼）。左抽屜滑入 +
+          scrim 淡入；AnimatePresence 在關閉時演完退場再卸載。 */}
+      <AnimatePresence>
+        {panel === 'toc' && (
+          <motion.div
+            key="toc"
+            className="live-reader-overlay"
+            onClick={() => setPanel('none')}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rpanel rpanel-toc live-reader-panel-toc"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={drawerTransition}
+            >
+              <header className="rpanel-nav">
+                <span className="rpanel-nav-title">目錄</span>
+                <button type="button" className="rpanel-nav-action" onClick={() => setPanel('none')}>
+                  完成
+                </button>
+              </header>
+              <div className="rpanel-toc-body">
+                {toc.length > 0 ? (
+                  <ul className="rpanel-toc-list">
+                    {toc.map((t, i) => (
+                      <li key={i} className="rpanel-toc-row">
+                        <button
+                          type="button"
+                          className="rpanel-toc-row-text live-reader-toc-btn"
+                          onClick={() => goTo(t.href)}
+                        >
+                          {t.label || `章節 ${i + 1}`}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="rpanel-state-wrap">
+                    <div className="rpanel-empty-card">
+                      <h2 className="rpanel-empty-title">這本書沒有目錄</h2>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Settings 面板（字級 + serif/sans + 紙色主題即時生效，沿用 parity rsettings 視覺殼）。
+          bottom-sheet 升起 + scrim 淡入（sheet spring）；關閉時演完降下再卸載。 */}
+      <AnimatePresence>
+        {panel === 'settings' && (
+          <motion.div
+            key="settings"
+            className="live-reader-overlay live-reader-overlay-bottom"
+            onClick={() => setPanel('none')}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="live-reader-sheet"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={sheetTransition}
+            >
+              <LiveSettingsPanel
+                settings={live.settings}
+                theme={live.theme}
+                onChange={updateSettings}
+                onThemeChange={updateTheme}
+                onClose={() => setPanel('none')}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 翻譯面板（真實 parity TranslationPanel，內容來自 /api/translate）。
+          選詞 → 譯文卡自底升起（sheet spring）+ scrim 淡入，給「選詞即翻譯」的承接感；
+          關閉時演完降下再卸載。 */}
+      <AnimatePresence>
+        {live.panel && (
+          <div className="reader-bottom-overlay live-reader-translation" data-overlay="translation">
+            <motion.div
+              className="reader-scrim"
+              onClick={live.closePanel}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={scrimTransition}
+            />
+            <motion.div
+              className="live-reader-translation-card"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={sheetTransition}
+            >
+              <TranslationPanel
+                panel={live.panel}
+                actions={{
+                  onToggleExpand: live.toggleExpand,
+                  onDelete: live.deleteCurrent,
+                  onClose: live.closePanel,
+                }}
+              />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 載入失敗 → error card + 重試（bump retryKey 重跑 boot effect）。
+          retryTransition 尊重 prefers-reduced-motion（usePreferredTransition 收斂為瞬時）。 */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            className="live-reader-error"
+            role="alert"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <div className="live-reader-error-card">
+              <BookClosedIcon size={26} strokeWidth={1.4} />
+              <p className="live-reader-error-title">這本書暫時無法載入</p>
+              <p className="live-reader-error-detail">{error}</p>
+              <button
+                type="button"
+                className="live-reader-retry-btn"
+                onClick={() => {
+                  setError(null)
+                  setRetryKey((k) => k + 1)
+                }}
+              >
+                重新載入
+              </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Settings 面板（字級 + serif/sans 即時生效，沿用 parity rsettings 視覺殼） */}
-      {panel === 'settings' && (
-        <div className="live-reader-overlay live-reader-overlay-bottom" onClick={() => setPanel('none')}>
-          <LiveSettingsPanel
-            settings={settings}
-            onChange={updateSettings}
-            onClose={() => setPanel('none')}
-          />
-        </div>
-      )}
-
-      {/* 翻譯面板（真實 parity TranslationPanel，內容 mock） */}
-      {panelData && (
-        <div className="reader-bottom-overlay live-reader-translation" data-overlay="translation">
-          <div className="reader-scrim" onClick={closeTranslation} />
-          <div onClick={(e) => e.stopPropagation()}>
-            <TranslationPanel panel={panelData} />
-          </div>
-        </div>
-      )}
-
-      {error && <div className="live-reader-error">載入失敗：{error}</div>}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
-/** Live 設定面板 — 字級 stepper（iOS 檔位）+ serif/sans 字體切換，即時作用 epub.js。
+/** 紙色主題 CSS（注入 section iframe）。paper = 預設不覆寫；dark = 暗底亮字。 */
+function themeBodyCss(theme: LiveTheme): string {
+  if (theme === 'dark') {
+    return `body{background:#1c1c1e !important;color:#e6e1d8 !important;}
+a{color:#9bbcdc !important;}`
+  }
+  return ''
+}
+
+/** Live 設定面板 — 字級 stepper + serif/sans 字體 + 紙色主題，即時作用 epub.js。
  *  沿用 parity reader.css 的 rsettings 視覺類別。 */
 function LiveSettingsPanel({
   settings,
+  theme,
   onChange,
+  onThemeChange,
   onClose,
 }: {
   settings: LiveReaderSettings
+  theme: LiveTheme
   onChange: (s: LiveReaderSettings) => void
+  onThemeChange: (t: LiveTheme) => void
   onClose: () => void
 }) {
   const fonts: LiveFont[] = ['serif', 'sans']
+  const themes: { id: LiveTheme; label: string }[] = [
+    { id: 'paper', label: '紙色' },
+    { id: 'dark', label: '夜間' },
+  ]
   return (
     <div className="rpanel rpanel-settings" onClick={(e) => e.stopPropagation()}>
       <div className="rsettings-card">
@@ -401,6 +822,19 @@ function LiveSettingsPanel({
                   onClick={() => onChange({ ...settings, font: f })}
                 >
                   {FONT_LABEL[f]}
+                </button>
+              ))}
+            </div>
+            <div className="live-reader-font-toggle live-reader-theme-toggle">
+              {themes.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`rsettings-tile${theme === t.id ? ' is-selected' : ''}`}
+                  aria-pressed={theme === t.id}
+                  onClick={() => onThemeChange(t.id)}
+                >
+                  {t.label}
                 </button>
               ))}
             </div>

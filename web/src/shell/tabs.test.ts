@@ -11,10 +11,10 @@ describe('SHELL_TABS', () => {
   it('全四 tab 皆路由到真實 web surface（overview 統計儀表板已重寫，無 placeholder）', () => {
     const surfaceTabs = SHELL_TABS.filter((t) => t.kind === 'surface')
     expect(surfaceTabs.map((t) => t.id)).toEqual(['bookshelf', 'podcasts', 'notebooks', 'overview'])
-    // bookshelf→bookshelf、podcasts→podcast(player)、notebooks→notebook、overview→overview
+    // bookshelf→bookshelf、podcasts→podcast-home(系列目錄)、notebooks→notebook、overview→overview
     expect(surfaceTabs.map((t) => (t.kind === 'surface' ? t.surface : null))).toEqual([
       'bookshelf',
-      'podcast',
+      'podcast-home',
       'notebook',
       'overview',
     ])

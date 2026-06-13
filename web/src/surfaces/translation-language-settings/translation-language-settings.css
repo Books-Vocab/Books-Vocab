@@ -89,6 +89,21 @@
 .tls-row[data-selected] {
   background: rgba(77, 115, 150, 0.08); /* token-allow: iOS accent(#4D7396).opacity(0.08) selected tint */
 }
+/* shell 分支可點列：button reset，layout 與 fixture 的 .tls-row <div> 一致。 */
+.tls-row-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.tls-row-button[data-selected] {
+  background: rgba(77, 115, 150, 0.08); /* token-allow: iOS accent(#4D7396).opacity(0.08) selected tint */
+}
 
 /* flag emoji + name 皆 typography.body = sans 15 = --text-subhead */
 .tls-flag {
@@ -117,4 +132,25 @@
   color: var(--text-tertiary);
   line-height: calc(1.2em + 3px); /* lineSpacing(3) */
   padding: 0 4px; /* AppSpacing.s1 horizontal */
+}
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=translation-language-settings, no
+   ?shell=1) never mounts it -> 393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .tls-surface {
+  container-type: inline-size;
+  container-name: tls-surface;
+}
+.kg-responsive-shell .tls-surface .tls-scroll {
+  overflow-y: auto;
+}
+@container tls-surface (min-width: 600px) {
+  .kg-responsive-shell .tls-surface .tls-section {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
 }

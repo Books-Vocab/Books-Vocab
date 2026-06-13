@@ -283,3 +283,30 @@
 .phone-frame[data-crop='component'][data-surface='settings-subscription'] {
   background: transparent;
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=settings-subscription, no ?shell=1) never
+   mounts it -> 393px byte-identical (the bare crop surface keeps inline-flex +
+   fixed 360px section).
+
+   This surface is a component-crop scene (inline-flex). In a detail pane let it
+   become a normal column that fills + scrolls, with the card section capped to a
+   reading measure so it does not stretch on wide panes.
+   ============================================================ */
+.kg-responsive-shell .settings-subscription-surface {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  justify-content: center;
+  container-type: inline-size;
+  container-name: sub-surface;
+}
+.kg-responsive-shell .settings-subscription-surface .sub-section {
+  width: 100%;
+  max-width: var(--reader-measure);
+}

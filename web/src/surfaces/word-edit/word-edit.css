@@ -76,6 +76,40 @@
   color: var(--text-secondary);
 }
 
+/* ── shell editable controls（非 parity；只在 ?shell=1 渲染）──
+   parity 路徑不渲染這些節點，.we-nav / .we-editor 既有規則不受影響。 */
+.we-save {
+  position: absolute;
+  right: var(--card-padding);
+  bottom: 11px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.we-save:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.we-nav {
+  position: relative;
+}
+
+.we-editor--input {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-sans);
+  appearance: none;
+  -webkit-appearance: none;
+}
+.we-editor--input:disabled {
+  opacity: 0.6;
+}
+
 /* TextEditor：font(body=17)/primaryText、padding(inlineGap=8)、minHeight 80、
    背景 RoundedRectangle(cardCornerRadius=8) fill(cardBackground)
    + overlay stroke(cardBorder.opacity(0.5), lineWidth 1) */

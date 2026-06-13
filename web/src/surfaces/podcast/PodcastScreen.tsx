@@ -1,5 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { usePodcastData } from '../podcast-home/usePodcastData'
+import { indexCatalog } from './continueShelf'
+import { tierFromEntitlements } from './tier'
+import { playbackEngine } from './playbackEngine'
+import { PodcastNowPlayingPlayer } from './PodcastNowPlayingPlayer'
+import { PodcastNowPlaying } from './PodcastNowPlaying'
+import { useShellNav } from '../../shell/ShellNavContext'
 import { PODCAST_FIXTURES } from './fixtures'
 import type { PodcastPlayerFixture } from './fixtures'
 import demoAudioUrl from '../../assets/podcast_demo.mp3'
@@ -263,11 +270,78 @@ function LockedGate() {
   )
 }
 
+/** ?shell=1 opt-in: web app shell mounts the functional flow. */
+function isShellMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('shell') === '1'
+}
+
 export function PodcastScreen({ scenario }: { scenario: ScenarioId<'podcast'> }) {
+  // Shell-gated functional flow. Parity capture path (no ?shell=1) renders the
+  // untouched fixture branch below, byte-identical.
+  if (isShellMode()) return <PodcastShellPlayer />
+
   const fixture = PODCAST_FIXTURES[scenario]
   return (
     <div className="podcast">
       {fixture.kind === 'preview-player' ? <PlayerScene fixture={fixture} /> : <LockedGate />}
+    </div>
+  )
+}
+
+/**
+ * Shell master-detail player — reached as the detail pane via the shell nav
+ * stack (podcast-home → podcast-episode-list → podcast, carrying seriesId/epNum
+ * in ShellNavContext.params). Drives the SINGLETON playbackEngine for the chosen
+ * episode so playback survives back/forth navigation and the persistent
+ * mini-player (PodcastNowPlaying) keeps it alive across surfaces.
+ *
+ * Defensive fallback: if reached WITHOUT shell nav params (a direct deep-link to
+ * the podcast tab leaf), resolve the first series' ep1 so the leaf is never dead.
+ */
+function PodcastShellPlayer() {
+  const nav = useShellNav()
+  return <ShellPlayerLoader seriesId={nav.params.seriesId} epNum={nav.params.epNum} />
+}
+
+function ShellPlayerLoader({ seriesId, epNum }: { seriesId?: string; epNum?: number }) {
+  const data = usePodcastData()
+  const catalog = useMemo(() => indexCatalog(data.series), [data.series])
+  const tier = tierFromEntitlements(data.entitlements, data.hasToken)
+
+  // Configure the singleton engine with the demo asset + live api (idempotent).
+  useEffect(() => {
+    playbackEngine.configure({ srcUrl: demoAudioUrl, api: data.api })
+  }, [data.api])
+
+  // Resolve a deep-linked leaf (no params) to the first series' ep1.
+  const resolvedSeriesId =
+    seriesId ?? (data.series.length > 0 ? String(data.series[0].id) : undefined)
+  const resolvedEpNum = epNum ?? 1
+
+  if (data.loading || resolvedSeriesId == null) {
+    return (
+      <div className="podcast-home">
+        <main className="ph-scroll">
+          <p className="npp-status" role="status">
+            載入中…
+          </p>
+        </main>
+      </div>
+    )
+  }
+
+  return (
+    <div className="podcast-home">
+      <PodcastNowPlayingPlayer
+        seriesId={resolvedSeriesId}
+        epNum={resolvedEpNum}
+        series={catalog.get(resolvedSeriesId)}
+        tier={tier}
+      />
+      {/* Persistent now-playing overlay (mini-player + option sheets). Hides on
+          this player for the loaded episode; surfaces on home/episode-list. */}
+      <PodcastNowPlaying />
     </div>
   )
 }

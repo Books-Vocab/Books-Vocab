@@ -1,4 +1,5 @@
 import type { ScenarioId } from '../../harness/scenarios'
+import { SyncApiStore } from './SyncApiStore'
 import { SYNC_FIXTURES } from './fixtures'
 import type { PendingRow, PipelineStep, StepStatus, SyncState } from './fixtures'
 import {
@@ -21,10 +22,27 @@ import './sync.css'
  * 捕捉（無 crop、無 transparent，同 bookshelf pattern）。
  *
  * 五個 scenario 皆 isLoggedIn=true / isConnected=true，依 phase × failureKind 切換
- * hero / pending list / steps / summary / action。誠實邊界：web 無 SyncCoordinator
- * pipeline，按鈕為靜態視覺（onTap no-op）；parity 只比首屏靜態像素。
+ * hero / pending list / steps / summary / action。
+ *
+ * 兩條路徑（P6）：
+ *  - 預設（parity capture rig 唯一路徑，無 ?shell）：靜態 fixture 渲染，按鈕 no-op，
+ *    DOM 逐位元凍結 —— parity 對拍只比首屏靜態像素，此分支永不更動。
+ *  - ?shell=1（window.location.search opt-in）：掛 SyncApiStore，由真實
+ *    SyncCoordinator（web/src/sync）驅動 Start/Cancel/Retry + step timeline。
+ *    rig 的 surface-view 路徑永不帶 ?shell（shell=1 走 AppShell），故 fixture
+ *    分支與 parity capture 完全不受影響。
  */
+function isShellMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('shell') === '1'
+}
+
 export function SyncScreen({ scenario }: { scenario: ScenarioId<'sync'> }) {
+  // shell 分支：真實 coordinator。fixture/parity 分支以下完全不動。
+  if (isShellMode()) {
+    return <SyncApiStore />
+  }
+
   const state = SYNC_FIXTURES[scenario] ?? SYNC_FIXTURES.ready
 
   const showPending = state.phase === 'ready' && state.pendingRows.length > 0

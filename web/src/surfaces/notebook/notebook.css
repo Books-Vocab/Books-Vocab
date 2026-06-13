@@ -306,11 +306,49 @@
   appearance: none;
 }
 
-/* 卡片 more 觸發 — 透明 overlay 鈕蓋整卡，無視覺 chrome（glyph 隱形）。
-   pixel-neutral：不渲染任何可見像素，僅承接點擊。 */
-.nb-card-more {
+/* 今日複習 CTA pill：shell 路徑由 <span> 改 <button>（修點擊 no-op）。只清 UA chrome，
+   不覆寫 background/color → 沿用 .nb-pill-cta 的 brandHero 黃底，與 parity <span> 同像素。 */
+.nb-pill-cta-button {
+  margin: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 主要動作 — 透明 overlay 鈕蓋整卡，單擊打開該單字本。無視覺 chrome →
+   pixel-neutral：不渲染任何可見像素，僅承接點擊。z-index:1 壓在 overflow 鈕之下，
+   令右上角 overflow 鈕的點擊優先命中（次要動作不被 open 吃掉）。 */
+.nb-card-open {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  /* 觸控長按時瀏覽器預設的文字選取 / callout 干擾選單觸發，關掉。 */
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+/* 次要動作 — 右上角 overflow 鈕（改名/刪除選單）。命中區固定在角落（不再蓋整卡），
+   z-index:2 壓在 open overlay 之上。glyph 預設透明 → 首屏 pixel-neutral，hover/focus
+   才淡入作 affordance。 */
+.nb-card-more {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   margin: 0;
   padding: 0;
   border: none;
@@ -320,18 +358,16 @@
   appearance: none;
 }
 
-/* glyph 預設不可見（避免污染首屏像素）；hover 時於右上角淡入作 affordance。 */
+/* glyph 預設不可見（避免污染首屏像素）；hover/focus 時淡入作 affordance。 */
 .nb-card-more-glyph {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   color: var(--text-tertiary);
   opacity: 0;
   transition: opacity var(--motion-quick, 0.18s ease-out);
 }
 
 .nb-card-more:hover .nb-card-more-glyph,
-.nb-card-more:focus-visible .nb-card-more-glyph {
+.nb-card-more:focus-visible .nb-card-more-glyph,
+.nb-card:hover .nb-card-more-glyph {
   opacity: 0.9;
 }
 
@@ -510,5 +546,62 @@
   }
   to {
     transform: translateY(0);
+  }
+}
+
+/* --- shared Sheet（vaul）內容區 padding ---
+   grabber / overlay / 圓角由 foundation 的 .kg-sheet-* 提供；此處只給內容呼吸空間，
+   沿用靜態 sheet 的 gap/水平內距，令兩條路 sheet 視覺一致。 */
+.nb-sheet-shared {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 16px 20px;
+}
+
+/* prefers-reduced-motion：靜態 scrim/sheet 入場動畫收斂為即時（無 fade / slide）。
+   shell 路徑的按壓手感與 vaul sheet 各自走 framer-motion / vaul 的 reduced 處理。 */
+@media (prefers-reduced-motion: reduce) {
+  .nb-menu-scrim,
+  .nb-sheet-scrim {
+    animation: none;
+  }
+  .nb-menu,
+  .nb-sheet {
+    animation: none;
+  }
+  .nb-card-more-glyph {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: in a roomy pane the notebook book-rows tile into an adaptive grid
+   instead of one tall single column.
+   ============================================================ */
+
+.kg-responsive-shell .notebook {
+  container: notebook-pane / inline-size;
+}
+
+@container notebook-pane (min-width: 560px) {
+  /* book-rows tile two-up (or more) via auto-fill; each card keeps its
+     72px height and fills its column. */
+  .kg-responsive-shell .nb-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px;
+  }
+}
+
+/* Very wide pane: cap the list measure so cards do not stretch too wide. */
+@container notebook-pane (min-width: 1000px) {
+  .kg-responsive-shell .nb-scroll {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
   }
 }

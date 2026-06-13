@@ -8,7 +8,27 @@ import {
   SETTINGS_DISPLAY_ROWS,
   type SliderRowFixture,
 } from './fixtures'
+import { VocabKnowledgeGraphLive } from './VocabKnowledgeGraphLive'
 import './vocab-knowledge-graph.css'
+
+/**
+ * Shell gate (?shell=1): the functional web app mounts the live force-directed
+ * graph; the parity capture path (no ?shell=1) renders the byte-identical static
+ * fixture below. Read once at module call — matches App.tsx's gate convention.
+ */
+function isShell(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('shell') === '1'
+}
+
+/** Map a static scenario to the live empty-variant it represents. */
+function liveEmptyVariant(
+  scenario: ScenarioId<'vocab-knowledge-graph'>,
+): 'empty' | 'no-links' | undefined {
+  if (scenario === 'empty') return 'empty'
+  if (scenario === 'no-links') return 'no-links'
+  return undefined
+}
 
 /**
  * Vocabulary · Knowledge Graph surface — iOS `KnowledgeGraphPresenter` 的 web 鏡像。
@@ -37,6 +57,11 @@ export function VocabKnowledgeGraphScreen({
 }: {
   scenario: ScenarioId<'vocab-knowledge-graph'>
 }) {
+  // ?shell=1 → live functional force graph. Parity path falls through unchanged.
+  if (isShell()) {
+    return <VocabKnowledgeGraphLive emptyVariant={liveEmptyVariant(scenario)} />
+  }
+
   const fixture = KNOWLEDGE_GRAPH_FIXTURES[scenario]
 
   if (fixture.empty) {

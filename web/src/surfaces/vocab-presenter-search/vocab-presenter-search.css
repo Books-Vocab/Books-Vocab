@@ -108,6 +108,69 @@
   background: var(--muted-fill);
 }
 
+/* ── shell-only：互動 chip / sort 升級（parity 路徑不渲染這些 class）─────────
+   shell 路徑把 chip/sort 從唯讀 span 換成 <button>；button 預設 chrome 需重置，
+   selected chip 套 stage-bg + primary title 以指示選取態。 */
+.vps-chip,
+.vps-sort-pill {
+  cursor: default;
+}
+
+button.vps-chip,
+button.vps-sort-pill {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* selected chip：title 提到 primary、容器淡填 stage-bg（鏡射 AppFilterChipBar selected）。 */
+.vps-chip-selected {
+  background: var(--stage-bg);
+}
+
+.vps-chip-selected .vps-chip-title {
+  color: var(--text-primary);
+}
+
+/* shell 搜尋框（沿用 vocabulary.css 的 vc-search 度量）。 */
+.vps-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 41px;
+  margin: var(--micro-gap) var(--sp-5) 0;
+  padding: 0 13px;
+  border-radius: var(--radius-lg);
+  background: var(--muted-fill);
+  box-sizing: border-box;
+}
+
+.vps-search-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.vps-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  color: var(--text-primary);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.vps-search-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
 /* HStack(spacing inlineGap=8){ Spacer · VocabSortPill }；trailing → 右對齊 */
 .vps-sort-row {
   display: flex;

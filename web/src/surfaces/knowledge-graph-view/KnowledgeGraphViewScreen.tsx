@@ -1,6 +1,18 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { KNOWLEDGE_GRAPH_VIEW_FIXTURES } from './fixtures'
+import { VocabKnowledgeGraphLive } from '../vocab-knowledge-graph/VocabKnowledgeGraphLive'
 import './knowledge-graph-view.css'
+
+/**
+ * Shell gate (?shell=1): the full-screen Knowledge Graph view. The static
+ * fixture is the logged-out login prompt; inside the shell the offline mock
+ * session is logged in (devLogin), so we mount the live force graph. The parity
+ * capture path (no ?shell=1) renders the byte-identical login-prompt card below.
+ */
+function isShell(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('shell') === '1'
+}
 
 /**
  * Knowledge Graph View surface（知識圖譜全屏 screen）的 web 鏡像。
@@ -26,6 +38,11 @@ export function KnowledgeGraphViewScreen({
 }: {
   scenario: ScenarioId<'knowledge-graph-view'>
 }) {
+  // ?shell=1 → live force graph (logged-in offline session). Parity path unchanged.
+  if (isShell()) {
+    return <VocabKnowledgeGraphLive />
+  }
+
   const fixture = KNOWLEDGE_GRAPH_VIEW_FIXTURES[scenario]
   const Icon = fixture.icon
   return (

@@ -31,6 +31,21 @@ button.settings-toggle {
   transition: background-color var(--motion-quick, 0.18s ease-out);
 }
 
+/* spring knob（shell 路徑專用，fixture 不渲染此元素 → parity toggle 維持無 knob
+   純色膠囊）。位移由 motion 基座 snappy 彈簧驅動（見 SyncToggle）；此處只定義靜態
+   外觀與置位。膠囊 51×31、knob 27、padding 2 → on 位移 51-27-2-2=20px。 */
+.settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #ffffff; /* iOS UISwitch knob 為白色（品牌中性，不入 token） */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
 /* --- 偏好 sheet 浮層（互動後才出現，首屏無此 DOM）--- */
 
 .settings-sheet-scrim {
@@ -126,6 +141,138 @@ button.settings-toggle {
   to {
     transform: translateY(0);
   }
+}
+
+/* --- vaul Sheet 內容（shell 路徑專用，掛在 .kg-sheet-body 內，parity 不渲染）--- */
+
+/* 偏好選單 vaul body：沿用 fixture sheet 的 title/options 視覺，僅補內距
+   （vaul 已負責圓角 / grabber / drag-dismiss / Esc）。 */
+.settings-sheet-vaul-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 16px 16px;
+}
+
+/* 帳號 / 登出 sheet 內容。 */
+.settings-account-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 16px 16px;
+}
+
+.settings-account-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 6px;
+}
+
+.settings-account-sheet-avatar {
+  flex: none;
+}
+
+.settings-account-sheet-id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-account-sheet-name {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 22px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-account-sheet-email {
+  font-size: var(--text-caption);
+  line-height: 16px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* primary 登出鈕（沿用 destructive on destructive 風格，與 in-card 登出一致）。 */
+.settings-account-sheet-logout {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  line-height: 17px;
+  color: var(--destructive);
+  background: var(--destructive-bg);
+  border: 1px solid color-mix(in srgb, var(--destructive) 22%, transparent);
+  border-radius: var(--radius-md);
+  padding: 13px 16px;
+  cursor: pointer;
+}
+
+/* 刪除帳號守門區：刻意 SECONDARY（與卡片分隔線之上、灰階入口），二段確認才露危險鈕。 */
+.settings-account-sheet-danger {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 0.5px solid var(--divider);
+}
+
+/* 入口（未武裝）：低調 ghost、非危險紅，避免與 primary 登出競爭注意力。 */
+.settings-account-sheet-delete {
+  align-self: center;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.settings-account-sheet-danger-note {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.settings-account-sheet-danger-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-account-sheet-cancel,
+.settings-account-sheet-delete-confirm {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 700;
+  line-height: 17px;
+  border-radius: var(--radius-md);
+  padding: 13px 16px;
+  cursor: pointer;
+}
+
+.settings-account-sheet-cancel {
+  color: var(--text-primary);
+  background: var(--muted-fill);
+  border: none;
+}
+
+/* 確認刪除：唯一的實心危險鈕，只在二段武裝後出現。 */
+.settings-account-sheet-delete-confirm {
+  color: #ffffff; /* on solid destructive 用白字（中性，不入 token） */
+  background: var(--destructive);
+  border: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

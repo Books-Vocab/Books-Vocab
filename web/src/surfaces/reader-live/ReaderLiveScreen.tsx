@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useApi } from '../../api/ApiContext'
+import type { BookMetadataResponse } from '../../api/types'
+import { navPush, sheet, snappy, usePreferredTransition } from '../../motion'
 import './reader-live.css'
 
 /**
@@ -12,12 +16,20 @@ import './reader-live.css'
  *
  * iOS 的選詞/取 context 是注入 webview 的純 JS（非 Readium API），故可原樣移植到
  * epub.js 的 per-section iframe（rendition.hooks.content）。
+ *
+ * shell=1 + ?book_id= 時，外層 ReaderLiveScreen 包一層 API 同步：從 GET
+ * /api/library/books 撈該書（取書名 + 初始 progression），閱讀位置變動 debounce
+ * 後 PUT /api/library/books/{id}/position（LWW）。web 不持有 raw bytes，章節內容仍由
+ * spike EPUB 提供；同步的是「讀到哪」的跨裝置位置，而非檔案。無 shell 時零 API 呼叫。
  */
 
 const EPUB_URL = '/spike/childrens-literature.epub'
+const POSITION_DEBOUNCE_MS = 1200
 
 type TocItem = { label: string; href: string }
 type SelectedWord = { word: string; context: string; x: number; y: number }
+/** 引擎回報的閱讀位置（cfi = epub.js locator，pct = 0..1 進度）。 */
+type ReaderLocation = { cfi: string | null; pct: number }
 
 // iOS buildWordRangeFromPoint 的 web 移植：caret 吸附 + 詞邊界擴展 + 去頭尾標點。
 // SPIKE 發現：epub.js 把 section 渲染進 *sandboxed* iframe（無 allow-scripts），
@@ -56,9 +68,92 @@ function wordFromPoint(doc: Document, x: number, y: number) {
   return { word, rect: wr.getBoundingClientRect(), el: (range.startContainer as Text).parentElement }
 }
 
+/**
+ * 外層路由：shell=1 走 API 同步殼層，否則純 spike 引擎（零 API 呼叫，DOM 不變）。
+ * useApi 只在 shell 分支被呼叫（ReaderLiveSync 內），故無 provider 的 parity 路徑安全。
+ */
 export function ReaderLiveScreen() {
+  const params = new URLSearchParams(window.location.search)
+  const shell = params.get('shell') === '1'
+  const bookId = params.get('book_id')
+  if (shell) {
+    return <ReaderLiveSync bookId={bookId} />
+  }
+  return <ReaderLiveEngine />
+}
+
+/** shell=1 殼層：撈書 metadata + debounce 同步閱讀位置；引擎本體不變。 */
+function ReaderLiveSync({ bookId }: { bookId: string | null }) {
+  const api = useApi()
+  const [book, setBook] = useState<BookMetadataResponse | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latest = useRef<ReaderLocation | null>(null)
+
+  // 撈該書（取書名 + 初始 progression）。撈不到不致命，引擎仍可開 spike EPUB。
+  useEffect(() => {
+    if (!bookId) return
+    let cancelled = false
+    api.library
+      .list()
+      .then((books) => {
+        if (cancelled) return
+        setBook(books.find((b) => b.id === bookId) ?? null)
+      })
+      .catch(() => {
+        /* 撈書失敗不阻斷閱讀 spike */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, bookId])
+
+  // debounce：閱讀位置高頻變動，落地前合併，只 PUT 最後一次（LWW）。
+  const flush = useCallback(() => {
+    const loc = latest.current
+    if (!bookId || !loc) return
+    api.library
+      .putPosition(bookId, {
+        locator: loc.cfi,
+        progression: loc.pct,
+        updated_at: new Date().toISOString(),
+      })
+      .catch(() => {
+        /* 同步失敗不阻斷閱讀；下次 relocate 會再嘗試 */
+      })
+  }, [api, bookId])
+
+  const onRelocate = useCallback(
+    (loc: ReaderLocation) => {
+      latest.current = loc
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(flush, POSITION_DEBOUNCE_MS)
+    },
+    [flush],
+  )
+
+  // unmount 時把待落地的最後位置即時 flush（避免離開頁面丟失進度）。
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+      flush()
+    }
+  }, [flush])
+
+  return <ReaderLiveEngine titleOverride={book?.title ?? undefined} onRelocate={onRelocate} />
+}
+
+/** epub.js 引擎本體 — spike 與 shell 共用；callbacks 為選用（無 shell 時不傳）。 */
+function ReaderLiveEngine({
+  titleOverride,
+  onRelocate,
+}: {
+  titleOverride?: string
+  onRelocate?: (loc: ReaderLocation) => void
+} = {}) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const renditionRef = useRef<any>(null)
+  const onRelocateRef = useRef(onRelocate)
+  onRelocateRef.current = onRelocate
   const [toc, setToc] = useState<TocItem[]>([])
   const [tocOpen, setTocOpen] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -66,6 +161,9 @@ export function ReaderLiveScreen() {
   const [selected, setSelected] = useState<SelectedWord | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // 翻頁方向性 cue（同 LiveReaderScreen：紙面層短暫位移＋淡入，~220ms 後清）。
+  const [turning, setTurning] = useState<'prev' | 'next' | null>(null)
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let destroyed = false
@@ -131,10 +229,14 @@ export function ReaderLiveScreen() {
         })
 
         rendition.on('relocated', (loc: any) => {
+          let pct = 0
           if (book.locations && book.locations.length()) {
-            setProgress(book.locations.percentageFromCfi(loc.start.cfi) || 0)
+            pct = book.locations.percentageFromCfi(loc.start.cfi) || 0
+            setProgress(pct)
           }
           setSelected(null) // 翻頁清掉選詞浮層
+          // 回報閱讀位置（shell=1 殼層 debounce 後 PUT；無 shell 時 callback 不存在）。
+          onRelocateRef.current?.({ cfi: loc.start?.cfi ?? null, pct })
         })
 
         await book.ready
@@ -164,26 +266,85 @@ export function ReaderLiveScreen() {
     }
   }, [])
 
+  // 容器尺寸變動 → epub.js 重排（CFI 保位）。epub.js renderTo 用 width:'100%' 但
+  // *不會* 隨 CSS 寬度變化自動 reflow；故以 ResizeObserver 主動 rendition.resize(w,h)
+  // 讓內文重排到新欄寬，重排前讀 CFI、resize 後 display(cfi) 還原閱讀位置。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    let lastW = host.clientWidth
+    let lastH = host.clientHeight
+    const ro = new ResizeObserver(() => {
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      const r = renditionRef.current
+      if (!r || w <= 0 || h <= 0) return
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        try {
+          const cfi: string | undefined = r.currentLocation?.()?.start?.cfi
+          r.resize(w, h)
+          if (cfi) r.display(cfi).catch(() => {})
+        } catch {
+          /* teardown / 尚未 ready：下次 resize 會再校 */
+        }
+      })
+    })
+    ro.observe(host)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [])
+
   const goTo = (href: string) => {
     renditionRef.current?.display(href)
     setTocOpen(false)
   }
 
+  // 翻頁 + 方向性 cue（epub.js 切頁瞬時，外加紙面層滑移知覺）。
+  const turnPage = useCallback((dir: 'prev' | 'next') => {
+    if (dir === 'next') renditionRef.current?.next()
+    else renditionRef.current?.prev()
+    if (turnTimer.current) clearTimeout(turnTimer.current)
+    setTurning(dir)
+    turnTimer.current = setTimeout(() => setTurning(null), 220)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (turnTimer.current) clearTimeout(turnTimer.current)
+    }
+  }, [])
+
+  // shell=1 時優先顯示後端書名（撈到才覆蓋）；否則沿用 EPUB metadata 書名。
+  const displayTitle = titleOverride || bookTitle || 'Reader 引擎 spike'
+
+  // 浮層轉場：共用 motion springs（TOC 左抽屜 navPush、scrim snappy、選詞浮層 sheet）。
+  const drawerTransition = usePreferredTransition(navPush)
+  const scrimTransition = usePreferredTransition(snappy)
+  const popTransition = usePreferredTransition(sheet)
+
   return (
-    <div className="rlive" data-ready={ready ? '' : undefined}>
+    <div className="rlive" data-ready={ready ? '' : undefined} data-turn={turning ?? undefined}>
       {/* 本體：epub.js 掛載點（分頁 iframe 渲染於此） */}
       <div ref={hostRef} className="rlive-host" onClick={() => setSelected(null)} />
 
-      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感） */}
+      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感 + 方向性滑移 cue） */}
       <button
         className="rlive-tap rlive-tap-prev"
         aria-label="上一頁"
-        onClick={() => renditionRef.current?.prev()}
+        onClick={() => turnPage('prev')}
       />
       <button
         className="rlive-tap rlive-tap-next"
         aria-label="下一頁"
-        onClick={() => renditionRef.current?.next()}
+        onClick={() => turnPage('next')}
       />
 
       {/* 頂部 chrome（沿用 parity 視覺語彙） */}
@@ -191,34 +352,71 @@ export function ReaderLiveScreen() {
         <button className="rlive-chrome-btn" onClick={() => setTocOpen((v) => !v)} aria-label="目錄">
           ☰
         </button>
-        <span className="rlive-title">{bookTitle || 'Reader 引擎 spike'}</span>
+        <span className="rlive-title">{displayTitle}</span>
         <span className="rlive-progress">{(progress * 100).toFixed(0)}%</span>
       </div>
 
-      {/* TOC 面板（接 parity TocPanel 視覺殼的精神，簡化版） */}
-      {tocOpen && (
-        <div className="rlive-toc">
-          <div className="rlive-toc-head">目錄</div>
-          <ul className="rlive-toc-list">
-            {toc.map((t, i) => (
-              <li key={i}>
-                <button onClick={() => goTo(t.href)}>{t.label || `章節 ${i + 1}`}</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* TOC 面板（接 parity TocPanel 視覺殼的精神，簡化版）。左抽屜滑入 + scrim 淡入，
+          點 scrim 關閉（互動補強：原版無點外退出）。 */}
+      <AnimatePresence>
+        {tocOpen && (
+          <motion.div
+            key="toc"
+            className="rlive-toc-scrim"
+            onClick={() => setTocOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rlive-toc"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={drawerTransition}
+            >
+              <div className="rlive-toc-head">目錄</div>
+              <ul className="rlive-toc-list">
+                {toc.map((t, i) => (
+                  <li key={i}>
+                    <button onClick={() => goTo(t.href)}>{t.label || `章節 ${i + 1}`}</button>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 選詞浮層（不接翻譯，僅展示 word + 座標 + context，驗證 hook 能力） */}
-      {selected && (
-        <div
-          className="rlive-selection"
-          style={{ '--x': `${selected.x}px`, '--y': `${selected.y}px` } as CSSProperties}
-        >
-          <strong className="rlive-selection-word">{selected.word}</strong>
-          <span className="rlive-selection-ctx">{selected.context}</span>
-        </div>
-      )}
+      {/* 選詞浮層（不接翻譯，僅展示 word + 座標 + context，驗證 hook 能力）。
+          外層 .rlive-selection 持有 CSS transform 定位（-50% / -100%），故外層 motion
+          只動 opacity（不覆寫 transform）；y/scale 升起掛內層 motion 包層。 */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            key="sel"
+            className="rlive-selection"
+            style={{ '--x': `${selected.x}px`, '--y': `${selected.y}px` } as CSSProperties}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rlive-selection-inner"
+              initial={{ y: 6, scale: 0.96 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 6, scale: 0.96 }}
+              transition={popTransition}
+            >
+              <strong className="rlive-selection-word">{selected.word}</strong>
+              <span className="rlive-selection-ctx">{selected.context}</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {error && <div className="rlive-error">載入失敗：{error}</div>}
     </div>

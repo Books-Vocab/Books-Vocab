@@ -5,7 +5,11 @@ import {
   EMPTY_STATE,
   SORT_LABEL,
 } from './fixtures'
+import type { VocabRowFixture } from './fixtures'
 import { ArrowUpArrowDownIcon, MagnifyingGlassIcon } from './icons'
+import { useVocabPresenterSearchApiStore } from './useVocabPresenterSearchApiStore'
+import type { ReviewState } from './useVocabPresenterSearchApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './vocab-presenter-search.css'
 
 /**
@@ -55,28 +59,146 @@ export function VocabPresenterSearchScreen({
 }: {
   scenario: ScenarioId<'vocab-presenter-search'>
 }) {
-  const fx = VOCAB_PRESENTER_SEARCH_FIXTURES[scenario]
-  const counts = [fx.counts.unlearned, fx.counts.due, fx.counts.reviewed]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <VocabPresenterSearchApi />
+  return <VocabPresenterSearchFixture scenario={scenario} />
+}
 
+/** Fixture-driven 唯讀搜尋態（parity 路徑，DOM byte-identical）。 */
+function VocabPresenterSearchFixture({
+  scenario,
+}: {
+  scenario: ScenarioId<'vocab-presenter-search'>
+}) {
+  const fx = VOCAB_PRESENTER_SEARCH_FIXTURES[scenario]
+  return (
+    <VocabPresenterSearchBody
+      counts={[fx.counts.unlearned, fx.counts.due, fx.counts.reviewed]}
+      rows={fx.rows}
+    />
+  )
+}
+
+/**
+ * shell 路徑：可輸入搜尋框 + 可點三態 chip + 可切排序，client-side 過濾 / 排序載入的
+ * 卡片。非 ready 態由 VocabSceneShell 包裹。
+ */
+function VocabPresenterSearchApi() {
+  const store = useVocabPresenterSearchApiStore()
+  const rows: VocabRowFixture[] = store.rows.map((r) => ({
+    word: r.word,
+    partOfSpeech: r.partOfSpeech,
+    translation: r.translation,
+    detailLabel: r.detailLabel,
+  }))
+  const filterIds: ReviewState[] = ['unlearned', 'due', 'reviewed']
+  return (
+    <VocabSceneShell
+      status={
+        store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'
+      }
+      onRetry={store.retry}
+    >
+      <VocabPresenterSearchBody
+        counts={[store.counts.unlearned, store.counts.due, store.counts.reviewed]}
+        rows={rows}
+        query={store.query}
+        onQueryChange={store.setQuery}
+        activeFilter={store.filter}
+        onToggleFilter={(id) => store.toggleFilter(filterIds[id])}
+        sortLabel={store.sort === 'alphabetical' ? '字母順序' : SORT_LABEL}
+        onToggleSort={store.toggleSort}
+      />
+    </VocabSceneShell>
+  )
+}
+
+/**
+ * 共用畫面本體（fixture / API 兩條路共用）。互動 prop 全選用性：parity 路徑省略
+ * 全部互動 prop → chip/sort 為唯讀 span（DOM 與靜態 PNG 一致）；shell 路徑注入後
+ * 升級為可點按鈕並插入搜尋框。
+ */
+function VocabPresenterSearchBody({
+  counts,
+  rows,
+  query,
+  onQueryChange,
+  activeFilter,
+  onToggleFilter,
+  sortLabel,
+  onToggleSort,
+}: {
+  counts: [number, number, number]
+  rows: VocabRowFixture[]
+  query?: string
+  onQueryChange?: (q: string) => void
+  activeFilter?: ReviewState | null
+  onToggleFilter?: (chipIndex: number) => void
+  sortLabel?: string
+  onToggleSort?: () => void
+}) {
+  const interactive = onToggleFilter !== undefined
+  const filterIds: ReviewState[] = ['unlearned', 'due', 'reviewed']
   return (
     <div className="vps-surface">
+      {/* shell 路徑：搜尋輸入框（parity 路徑不渲染 → DOM 不變） */}
+      {onQueryChange ? (
+        <div className="vps-search">
+          <MagnifyingGlassIcon className="vps-search-icon" size={17} strokeWidth={1.6} />
+          <input
+            className="vps-search-input"
+            type="text"
+            placeholder="搜尋單字"
+            value={query ?? ''}
+            onChange={(e) => onQueryChange(e.target.value)}
+            aria-label="搜尋單字"
+          />
+        </div>
+      ) : null}
+
       {/* pinned filter bar — pageBackground */}
       <div className="vps-pinned">
-        {/* VocabFilterChipBar (.vocab) — 全 unselected */}
+        {/* VocabFilterChipBar (.vocab) */}
         <div className="vps-chipbar" role="tablist">
-          {FILTER_CHIPS.map((chip, i) => (
-            <span key={chip.id} className="vps-chip" role="tab" aria-selected={false}>
-              <span className="vps-chip-title">{chip.title}</span>
-              <span className="vps-chip-count">{counts[i]}</span>
-            </span>
-          ))}
+          {FILTER_CHIPS.map((chip, i) => {
+            const selected = interactive && activeFilter === filterIds[i]
+            const content = (
+              <>
+                <span className="vps-chip-title">{chip.title}</span>
+                <span className="vps-chip-count">{counts[i]}</span>
+              </>
+            )
+            return interactive ? (
+              <button
+                key={chip.id}
+                type="button"
+                className={`vps-chip${selected ? ' vps-chip-selected' : ''}`}
+                role="tab"
+                aria-selected={selected}
+                onClick={() => onToggleFilter?.(i)}
+              >
+                {content}
+              </button>
+            ) : (
+              <span key={chip.id} className="vps-chip" role="tab" aria-selected={false}>
+                {content}
+              </span>
+            )
+          })}
         </div>
         {/* HStack { Spacer · VocabSortPill } */}
         <div className="vps-sort-row">
-          <span className="vps-sort-pill">
-            <ArrowUpArrowDownIcon className="vps-sort-icon" size={15} strokeWidth={1.7} />
-            <span className="vps-sort-label">{SORT_LABEL}</span>
-          </span>
+          {onToggleSort ? (
+            <button type="button" className="vps-sort-pill" onClick={onToggleSort}>
+              <ArrowUpArrowDownIcon className="vps-sort-icon" size={15} strokeWidth={1.7} />
+              <span className="vps-sort-label">{sortLabel ?? SORT_LABEL}</span>
+            </button>
+          ) : (
+            <span className="vps-sort-pill">
+              <ArrowUpArrowDownIcon className="vps-sort-icon" size={15} strokeWidth={1.7} />
+              <span className="vps-sort-label">{SORT_LABEL}</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -87,7 +209,7 @@ export function VocabPresenterSearchScreen({
           <div className="vps-card-header" />
           <div className="vps-card-divider" />
           <div className="vps-card-body">
-            {fx.rows.length === 0 ? (
+            {rows.length === 0 ? (
               <div className="vps-empty">
                 <div className="vps-empty-content">
                   <MagnifyingGlassIcon className="vps-empty-icon" size={30} strokeWidth={1.4} />
@@ -98,7 +220,7 @@ export function VocabPresenterSearchScreen({
               </div>
             ) : (
               <div className="vps-rows">
-                {fx.rows.map((row, i) => (
+                {rows.map((row, i) => (
                   <div key={row.word}>
                     <div className="vps-row">
                       <div className="vps-row-content">
@@ -112,7 +234,7 @@ export function VocabPresenterSearchScreen({
                         <span className="vps-row-detail">{row.detailLabel}</span>
                       </div>
                     </div>
-                    {i < fx.rows.length - 1 && <div className="vps-row-divider" />}
+                    {i < rows.length - 1 && <div className="vps-row-divider" />}
                   </div>
                 ))}
               </div>

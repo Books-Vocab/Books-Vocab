@@ -38,6 +38,10 @@ export type CoverPattern = 'waves' | 'dots' | 'grid' | 'circles' | 'lines'
 
 /** 「繼續收聽」橫排卡（PodcastContinueRailCard，cardWidth 150）。 */
 export interface ContinueItem {
+  /** 真實 series id（shell 路徑導航攜帶；fixture/parity 路徑省略，不渲染、不影響 DOM）。 */
+  seriesId?: string
+  /** 接續播放的集數（shell 導航直開 player 用；省略則落系列首集）。 */
+  epNum?: number
   /** 封面色 + 封面置中白字（= series.title） */
   coverColor: string
   coverPattern: CoverPattern
@@ -54,6 +58,8 @@ export interface ContinueItem {
 
 /** 所有節目 grid 卡（PodcastSeriesCard，coverHeight 210）。 */
 export interface SeriesCard {
+  /** 真實 series id（shell 路徑導航攜帶；fixture/parity 路徑省略，不渲染、不影響 DOM）。 */
+  seriesId?: string
   coverColor: string
   coverPattern: CoverPattern
   title: string
