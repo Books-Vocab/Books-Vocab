@@ -4,7 +4,7 @@ import { MOCK_VOCAB_CARDS } from './mock/data'
 
 // Authenticated client (mock backend honors a Bearer header).
 function authedClient(): ApiClient {
-  return createApiClient({ mode: 'mock', getToken: () => 'mock-access-token' })
+  return createApiClient({ mode: 'mock', getToken: () => 'demo-access-token' })
 }
 
 // Logged-out client — no token → protected routes reply 401.
@@ -37,9 +37,9 @@ describe('api client — mode wiring', () => {
 describe('auth', () => {
   it('verify() exchanges a provider token for an access token (happy path)', async () => {
     const res = await anonClient().auth.verify({ provider: 'apple', token: 'tok' })
-    expect(res.access_token).toBe('mock-access-token')
+    expect(res.access_token).toBe('demo-access-token')
     expect(res.token_type).toBe('bearer')
-    expect(res.user_id).toBe('mock-user')
+    expect(res.user_id).toBe('demo-user')
     expect(res.expires_in).toBeGreaterThan(0)
   })
 
@@ -102,10 +102,11 @@ describe('vocabulary', () => {
   })
 
   it('list() with notebookId filters by notebook_id query param', async () => {
-    const cards = await authedClient().vocabulary.list({ notebookId: 'default' })
-    // All mock cards have notebookId='default'
+    const cards = await authedClient().vocabulary.list({ notebookId: 'editorial-picks' })
+    // The demo dataset assigns every card to a named notebook; editorial-picks
+    // holds 5. Filtering must return only that notebook's cards.
     expect(cards.length).toBeGreaterThan(0)
-    expect(cards.every((c) => c.notebookId === 'default')).toBe(true)
+    expect(cards.every((c) => c.notebookId === 'editorial-picks')).toBe(true)
   })
 
   it('list() with unknown notebookId returns empty', async () => {
@@ -237,14 +238,14 @@ describe('user config', () => {
 
   it('profile() returns identity (mock-only NEW contract)', async () => {
     const p = await authedClient().user.profile()
-    expect(p.user_id).toBe('mock-user')
+    expect(p.user_id).toBe('demo-user')
     expect(p).toHaveProperty('email')
     expect(p).toHaveProperty('display_name')
   })
 
   it('deleteAccount() returns the deletion summary (200 + body)', async () => {
     const res = await authedClient().user.deleteAccount()
-    expect(res.deleted_user_id).toBe('mock-user')
+    expect(res.deleted_user_id).toBe('demo-user')
     expect(Array.isArray(res.linked_ids)).toBe(true)
     expect(Array.isArray(res.deleted_dirs)).toBe(true)
   })
@@ -279,7 +280,8 @@ describe('translate', () => {
 
 describe('graph links', () => {
   it('list() returns the seeded visible links with the full typed shape', async () => {
-    const links = await authedClient().graph.list()
+    // The demo dataset scopes links to named notebooks; editorial-picks holds 3.
+    const links = await authedClient().graph.list('editorial-picks')
     expect(links.length).toBeGreaterThan(0)
     // Every link mirrors GraphLinkResponse: id/fromId/toId/kind/confidence/reason.
     for (const l of links) {
@@ -303,19 +305,21 @@ describe('graph links', () => {
 
   it('hide() then unhide() round-trips (link reappears in list)', async () => {
     const api = authedClient()
+    // link-1 lives in editorial-picks; scope list/toggle to that notebook.
     await api.graph.hide('link-1') // 204, no body
-    let links = await api.graph.list()
+    let links = await api.graph.list('editorial-picks')
     expect(links.some((l) => l.id === 'link-1')).toBe(false)
     await api.graph.unhide('link-1')
-    links = await api.graph.list()
+    links = await api.graph.list('editorial-picks')
     expect(links.some((l) => l.id === 'link-1')).toBe(true)
   })
 
   it('delete() removes a link', async () => {
     const api = authedClient()
-    await api.graph.delete('link-2')
-    const links = await api.graph.list()
-    expect(links.some((l) => l.id === 'link-2')).toBe(false)
+    // link-3 lives in editorial-picks; delete then re-list that notebook.
+    await api.graph.delete('link-3')
+    const links = await api.graph.list('editorial-picks')
+    expect(links.some((l) => l.id === 'link-3')).toBe(false)
   })
 
   it('list() throws 401 when logged out', async () => {
@@ -363,20 +367,20 @@ describe('podcast media', () => {
 describe('vocabulary mutations', () => {
   it('archive() then restore round-trips the flag', async () => {
     const api = authedClient()
-    const archived = await api.vocabulary.archive('petrichor', true)
-    expect(archived.word).toBe('petrichor')
+    const archived = await api.vocabulary.archive('meticulous', true)
+    expect(archived.word).toBe('meticulous')
     expect(archived.archived).toBe(true)
-    const restored = await api.vocabulary.archive('petrichor', false)
+    const restored = await api.vocabulary.archive('meticulous', false)
     expect(restored.archived).toBe(false)
   })
 
   it('updateContent() applies a partial patch (mock-only NEW route)', async () => {
-    const card = await authedClient().vocabulary.updateContent('petrichor', {
-      meaning: '雨後的氣味（已編輯）',
+    const card = await authedClient().vocabulary.updateContent('discerning', {
+      meaning: '有洞察力的（已編輯）',
       note: '使用者註記',
     })
-    expect(card.content).toBe('petrichor')
-    expect(card.meaning).toBe('雨後的氣味（已編輯）')
+    expect(card.content).toBe('discerning')
+    expect(card.meaning).toBe('有洞察力的（已編輯）')
     expect(card.note).toBe('使用者註記')
   })
 
@@ -388,24 +392,24 @@ describe('vocabulary mutations', () => {
   })
 
   it('batchArchive() partitions into updated / not_found', async () => {
-    const res = await authedClient().vocabulary.batchArchive(['serendipity', 'zzznope'], true)
-    expect(res.updated_words).toContain('serendipity')
+    const res = await authedClient().vocabulary.batchArchive(['evoke', 'zzznope'], true)
+    expect(res.updated_words).toContain('evoke')
     expect(res.not_found).toContain('zzznope')
     expect(res.failed).toEqual([])
   })
 
   it('batchDelete() removes matched words and reports not_found', async () => {
-    const res = await authedClient().vocabulary.batchDelete(['petrichor', 'zzznope'])
-    expect(res.deleted_words).toContain('petrichor')
+    const res = await authedClient().vocabulary.batchDelete(['luminous', 'zzznope'])
+    expect(res.deleted_words).toContain('luminous')
     expect(res.not_found).toContain('zzznope')
     expect(res.deleted).toBe(1)
   })
 
   it('delete() removes a single card', async () => {
-    const res = await authedClient().vocabulary.delete('ineffable')
-    expect(res.deleted).toBe('ineffable')
+    const res = await authedClient().vocabulary.delete('nuance')
+    expect(res.deleted).toBe('nuance')
     expect(res.id).toBeTruthy()
-    const err = await expectApiError(() => authedClient().vocabulary.detail('ineffable'))
+    const err = await expectApiError(() => authedClient().vocabulary.detail('nuance'))
     expect(err.status).toBe(404)
   })
 
