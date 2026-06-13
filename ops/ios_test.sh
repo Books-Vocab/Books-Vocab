@@ -1126,8 +1126,7 @@ archive_ui_test_recording() {
 
 build_ui_test_review_page() {
   local review_status="${1:-}"
-  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
-  [[ -n "${UI_TEST_SCREENSHOT_MANIFEST:-}" && -s "$UI_TEST_SCREENSHOT_MANIFEST" ]] || return 0
+  [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
 
   local stem
   if [[ -n "${UI_TEST_VIDEO:-}" ]]; then
@@ -1136,6 +1135,22 @@ build_ui_test_review_page() {
     stem="$(date -u +%Y%m%d-%H%M%S)-$TEST_SCOPE"
   fi
   UI_TEST_REVIEW_ROOT="$PROJECT_ROOT/build/snapshots/uitest-runs/$stem"
+  mkdir -p "$UI_TEST_REVIEW_ROOT"
+
+  if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" || ! -d "$UI_TEST_SCREENSHOT_DIR" ]]; then
+    UI_TEST_SCREENSHOT_DIR="$UI_TEST_REVIEW_ROOT"
+  fi
+  if [[ -z "${UI_TEST_SCREENSHOT_MANIFEST:-}" || ! -s "$UI_TEST_SCREENSHOT_MANIFEST" ]]; then
+    UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_REVIEW_ROOT/input_review_manifest.json"
+    jq -nc --arg flow "$UI_TEST_FLOW_ID" --arg variant "$UI_TEST_VARIANT_ID" \
+      '{
+        schema:"kg.visual-review.sheet.v1",
+        source:"uitest",
+        title:$flow,
+        variant:$variant,
+        items:[]
+      }' >"$UI_TEST_SCREENSHOT_MANIFEST"
+  fi
 
   local args=(
     "$SCRIPT_DIR/uitest_review_page.py"
