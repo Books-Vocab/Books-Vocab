@@ -365,11 +365,14 @@ final class PodcastSentenceUITextView: UITextView {
         let key = PodcastTextKitWordRects.LayoutKey(text: text, font: font, width: bounds.width)
         guard key != lastKey else { return }
         lastKey = key
-        let rects = PodcastTextKitWordRects.resolve(
-            layoutManager: layoutManager,
-            textContainer: textContainer,
-            wordRanges: wordRanges
-        )
+        let (rects, _) = PerfLog.layout.measure("podcast.rect.resolve", "words=\(wordRanges.count)") {
+            PodcastTextKitWordRects.resolve(
+                layoutManager: layoutManager,
+                textContainer: textContainer,
+                wordRanges: wordRanges
+            )
+        }
+        PerfLog.layout.tick("podcast.rect.publish", "words=\(wordRanges.count)")
         onResolveRects?(rects)
     }
 }

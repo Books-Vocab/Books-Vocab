@@ -233,8 +233,10 @@ final class PerfChannel: @unchecked Sendable {
         guard PerfLog.isEnabled(category) else { return }
         if detail.isEmpty {
             log.debug("\(name) \(ms, format: .fixed(precision: 2))ms")
+            NSLog("[KG_PERF][%@] %@ %.2fms", category.rawValue, name.description, ms)
         } else {
             log.debug("\(name) \(detail, privacy: .public) \(ms, format: .fixed(precision: 2))ms")
+            NSLog("[KG_PERF][%@] %@ %@ %.2fms", category.rawValue, name.description, detail, ms)
         }
         #endif
     }
@@ -266,7 +268,10 @@ final class PerfChannel: @unchecked Sendable {
             st.windowStart = now
             return line
         }
-        if let summary { log.debug("rate \(summary, privacy: .public)") }
+        if let summary {
+            log.debug("rate \(summary, privacy: .public)")
+            NSLog("[KG_PERF][%@] rate %@", category.rawValue, summary)
+        }
     }
 
     /// CADisplayLink-backed per-frame cadence recorder. Created on start, retained by
@@ -282,9 +287,11 @@ final class PerfChannel: @unchecked Sendable {
         private var maxGapAtMs: Double = 0   // ms-since-start of the worst gap → pins the freeze to the timeline
         private var maxGapCrumb = ""         // PerfChannel.lastBreadcrumb at the worst gap → names the culprit render
         private var stalls = 0   // inter-frame gaps > 33ms (≈ a dropped frame at 60fps)
+        private let categoryRawValue: String
 
-        init(log: Logger, label: String) {
+        init(log: Logger, categoryRawValue: String, label: String) {
             self.log = log
+            self.categoryRawValue = categoryRawValue
             self.label = label
             self.lastFrame = .now()
             super.init()
@@ -314,6 +321,18 @@ final class PerfChannel: @unchecked Sendable {
             let totalMs = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000
             let fps = totalMs > 0 ? Double(frames) / (totalMs / 1000) : 0
             log.debug("\(self.label).summary frames=\(self.frames) dur=\(totalMs, format: .fixed(precision: 1))ms fps=\(fps, format: .fixed(precision: 0)) maxGap=\(self.maxGapMs, format: .fixed(precision: 1))ms maxGapAt=\(self.maxGapAtMs, format: .fixed(precision: 1))ms stalls=\(self.stalls) after=[\(self.maxGapCrumb, privacy: .public)]")
+            NSLog(
+                "[KG_PERF][%@] %@.summary frames=%d dur=%.1fms fps=%.0f maxGap=%.1fms maxGapAt=%.1fms stalls=%d after=[%@]",
+                self.categoryRawValue,
+                self.label,
+                self.frames,
+                totalMs,
+                fps,
+                self.maxGapMs,
+                self.maxGapAtMs,
+                self.stalls,
+                self.maxGapCrumb
+            )
         }
     }
     #endif
@@ -326,7 +345,7 @@ final class PerfChannel: @unchecked Sendable {
         guard PerfLog.isEnabled(category) else { return }
         frameSamplers.withLock { samplers in
             samplers[label]?.stop()
-            samplers[label] = FrameSampler(log: log, label: label)
+            samplers[label] = FrameSampler(log: log, categoryRawValue: category.rawValue, label: label)
         }
         #endif
     }

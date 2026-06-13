@@ -762,6 +762,7 @@ documents:
       - ios/BooksAndVocabUITests/
       - ios/BooksAndVocab/Support/UITestFixtureSeed*.swift
       - ops/ios_test.sh
+      - ops/uitest_review_page.py
       - ops/catalog_contact_sheet.py
       - ops/plain_deadzone_lint.sh
 

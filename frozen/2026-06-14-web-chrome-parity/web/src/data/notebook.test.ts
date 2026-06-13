@@ -8,58 +8,72 @@ import {
   replaceNotebookId,
 } from './notebook'
 
-function nb(id: string, name: string): NotebookResponse {
-  return {
-    id,
-    name,
-    color: '#AFC2D3',
-    coverPattern: null,
-    sortOrder: 0,
-    isDefault: false,
-    isDeleted: false,
-    cardCount: 0,
-    updatedAt: null,
-  }
+/**
+ * Notebook 樂觀更新的純 cache-transform helper 契約。
+ *
+ * 樂觀更新邏輯（onMutate setQueryData / onError rollback / onSuccess 對換）裡真正的
+ * 資料變換抽成純函式於此測；hook 的 react-query 接線（cancelQueries / 快照 / invalidate）
+ * 由 headless tools/interaction.mjs 在真實瀏覽器覆蓋（notebook add/edit/delete）。
+ */
+
+const BASE: NotebookResponse = {
+  id: 'nb-1',
+  name: '科普閱讀',
+  color: '#AFC2D3',
+  coverPattern: null,
+  sortOrder: 0,
+  isDefault: false,
+  isDeleted: false,
+  cardCount: 5,
+  updatedAt: null,
 }
 
-describe('notebook optimistic helpers', () => {
-  it('buildOptimisticNotebook 帶 temp id 與預設封面，無實際卡片', () => {
-    const o = buildOptimisticNotebook('新本', 'optimistic-1')
+describe('notebook 樂觀 cache helpers', () => {
+  it('buildOptimisticNotebook 從 create request 造出佔位實體', () => {
+    const o = buildOptimisticNotebook('optimistic-1', { name: '  新單字本  '.trim() })
     expect(o.id).toBe('optimistic-1')
-    expect(o.name).toBe('新本')
+    expect(o.name).toBe('新單字本')
     expect(o.cardCount).toBe(0)
-    expect(o.color).toBe('#AFC2D3')
+    expect(o.isDeleted).toBe(false)
+    expect(o.color).toBeNull() // 未指定 → null（toFixtureCard 再套 UI 預設）
+    expect(o.coverPattern).toBeNull()
   })
 
-  it('appendNotebook 不可變地插入尾端', () => {
-    const list = [nb('a', 'A')]
-    const next = appendNotebook(list, nb('b', 'B'))
+  it('buildOptimisticNotebook 帶 color/cover 時保留', () => {
+    const o = buildOptimisticNotebook('optimistic-2', {
+      name: 'x',
+      color: '#FF0000',
+      cover_pattern: 'dots',
+    })
+    expect(o.color).toBe('#FF0000')
+    expect(o.coverPattern).toBe('dots')
+  })
+
+  it('appendNotebook 樂觀插入到列尾（不變原陣列）', () => {
+    const o = buildOptimisticNotebook('optimistic-3', { name: 'new' })
+    const next = appendNotebook([BASE], o)
     expect(next).toHaveLength(2)
-    expect(next[1].id).toBe('b')
-    expect(list).toHaveLength(1) // 原陣列未被改動
+    expect(next[1].id).toBe('optimistic-3')
+    expect(next[0]).toBe(BASE) // 原元素 reference 保留
   })
 
-  it('replaceNotebookId 用真 record 換掉 temp 佔位', () => {
-    const list = [nb('a', 'A'), nb('optimistic-1', '新本')]
-    const real = nb('real-9', '新本')
-    const next = replaceNotebookId(list, 'optimistic-1', real)
-    expect(next.map((n) => n.id)).toEqual(['a', 'real-9'])
+  it('replaceNotebookId 以真實實體換掉樂觀佔位（add 成功對換）', () => {
+    const optimistic = buildOptimisticNotebook('optimistic-4', { name: 'new' })
+    const real: NotebookResponse = { ...optimistic, id: 'nb-real', cardCount: 0 }
+    const next = replaceNotebookId([BASE, optimistic], 'optimistic-4', real)
+    expect(next.map((n) => n.id)).toEqual(['nb-1', 'nb-real'])
   })
 
-  it('replaceNotebookId 找不到 temp 時為 no-op', () => {
-    const list = [nb('a', 'A')]
-    expect(replaceNotebookId(list, 'missing', nb('x', 'X'))).toEqual(list)
+  it('renameNotebookName 樂觀改名（只動目標 id）', () => {
+    const other: NotebookResponse = { ...BASE, id: 'nb-2', name: '其他' }
+    const next = renameNotebookName([BASE, other], 'nb-1', '新名稱')
+    expect(next.find((n) => n.id === 'nb-1')?.name).toBe('新名稱')
+    expect(next.find((n) => n.id === 'nb-2')?.name).toBe('其他')
   })
 
-  it('renameNotebookName 依 id 命中改名，其餘不動', () => {
-    const list = [nb('a', 'A'), nb('b', 'B')]
-    const next = renameNotebookName(list, 'b', 'B2')
-    expect(next.find((n) => n.id === 'b')?.name).toBe('B2')
-    expect(next.find((n) => n.id === 'a')?.name).toBe('A')
-  })
-
-  it('removeNotebook 依 id 移除', () => {
-    const list = [nb('a', 'A'), nb('b', 'B')]
-    expect(removeNotebook(list, 'a').map((n) => n.id)).toEqual(['b'])
+  it('removeNotebook 樂觀刪除（按 id 濾除）', () => {
+    const other: NotebookResponse = { ...BASE, id: 'nb-2' }
+    const next = removeNotebook([BASE, other], 'nb-1')
+    expect(next.map((n) => n.id)).toEqual(['nb-2'])
   })
 })

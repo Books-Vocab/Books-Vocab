@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 5c72e391
+verified_against: d25aad2a
 -->
 # Books & Vocab iOS 開發技能
 
@@ -167,7 +167,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
 - 測試結束第一屏會列 `[ios][issues] source=xcresult-test-results` 與 `[ios][tests] tests=... passed=... failed=...`；false-green 執行數優先取官方 `.xcresult`，raw log 只作 fallback。
 - 失敗或 inconclusive 時保留完整 xcodebuild log 與 `.xcresult`，stdout 會印出 log / xcresult path；成功時 verdict 也記錄 log / xcresult path。
-- UI scope（`--ui` / `--all-targets`）跑完自動產出視覺證據三件套：full `contact_sheet.png` + `quick4_contact_sheet.png`（evenly:4 一列四格）+ `review_manifest.json`（schema `kg.visual-review.sheet.v1`），全部落在 step screenshot 暫存目錄；另自動全程錄影（`simctl io recordVideo`，需可解析 UDID——`--lease` 或帶 `id=` 的 destination，name-based 預設機不錄），錄影完成後自動歸檔到 `build/snapshots/uitest-videos/<UTC>-<scope>.mp4`（index.json schema `kg.ios.uitest-videos.v1`，保留最近 `KG_UITEST_VIDEO_KEEP`＝10 支；verdict 的 `artifacts.uiVideo` 指歸檔後穩定路徑，catalog `UIreview.html` 的「UITest 錄影」區塊直接瀏覽）。`test --json` 的 `kg.ios.run.v1` 直接回 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video + exists bools}`（非 UI run 為 `null`）與頂層 `device`（本次 run 的 sim UDID，取證用），UI flow 收尾直接 Read 圖回報，不要只貼 test passed。
+- UI scope（`--ui` / `--all-targets`）跑完自動產出視覺證據：full `contact_sheet.png` + `quick4_contact_sheet.png`（evenly:4 一列四格）+ `review_manifest.json`（schema `kg.visual-review.sheet.v1`），全部落在 step screenshot 暫存目錄；另自動全程錄影（`simctl io recordVideo`，需可解析 UDID——`--lease` 或帶 `id=` 的 destination，name-based 預設機不錄），錄影完成後自動歸檔到 `build/snapshots/uitest-videos/<UTC>-<scope>.mp4`（index.json schema `kg.ios.uitest-videos.v1`，保留最近 `KG_UITEST_VIDEO_KEEP`＝10 支；verdict 的 `artifacts.uiVideo` 指歸檔後穩定路徑）。runner 會再把本次 step screenshots / contact sheets / video 收斂成 standalone `build/snapshots/uitest-runs/<run>/UIreview.html`，不必先跑 catalog sync 才能看影片。`test --json` 的 `kg.ios.run.v1` 直接回 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml + exists bools}`（非 UI run 為 `null`）與頂層 `device`（本次 run 的 sim UDID，取證用），UI flow 收尾直接 Read `reviewHtml` 或 quick4，不要只貼 test passed。
 - 若 Xcode 回 `build.db database is locked` / `unable to attach DB`，runner 會在同一把 repo lock 內短暫等待並重試，避免把 infrastructure lock 誤判成測試失敗。
 - 若要把 build-for-testing 成本拆出日常迭代回路，先跑 `./ops/ios_ops.sh test --prepare-cache --unit` 或 `--ui`，後續 scoped `test` 會優先重用 `.xctestrun`；`--cache-status --json` 會回 `kg.ios.test-cache.v1`，含 `productsReady` / `xctestrunPath` / `timings.bootMs/buildForTestingMs`。
 - 若要讓 agent/human 在第一屏就看懂時間分布與 release readiness，不要只翻 raw log：`./ops/ios_ops.sh runs --json` 會保留每次 build/test/archive 的 `options` / `cache` / `timings`；`./ops/ios_ops.sh snapshot --json` 會再把它們收斂成 `summary.timings.build|test|archive|simulator`，並把 `doctor/workflow` 聚合成 `summary.counts.readiness*` / `workflow*`；文字模式固定在 `[ios][summary]` 後緊接 `[ios][timing] build ...` / `[ios][timing] test ...` / `[ios][timing] archive ...` / `[ios][timing] simulator ...`。
