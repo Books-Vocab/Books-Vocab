@@ -123,7 +123,7 @@ const ROUTES: Route[] = [
       return json({
         access_token: MOCK_ACCESS_TOKEN,
         token_type: 'bearer',
-        user_id: 'mock-user',
+        user_id: MOCK_USER_PROFILE.user_id,
         expires_in: 3600,
       })
     },
