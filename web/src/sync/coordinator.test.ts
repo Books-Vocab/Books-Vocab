@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SyncCoordinator } from './coordinator'
+import { createSyncApi } from './api'
+import { createApiClient } from '../api'
 import type {
   BatchDeleteResult,
   KVStorage,
@@ -33,6 +35,21 @@ function fakeApi(over: Partial<SyncApi> = {}): SyncApi {
     pull: async () => ({ count: 7 }),
     ...over,
   }
+}
+
+// A fully-bound SyncApi: every port method present (mirrors the default adapter
+// once batchDelete + triggerPipeline are wired). Used to prove the coordinator
+// runs the complete pipeline with NO step skipped.
+function fullApi(over: Partial<SyncApi> = {}): SyncApi {
+  return fakeApi({
+    batchDelete: async (words: string[]): Promise<BatchDeleteResult> => ({
+      deleted_words: words,
+      not_found: [],
+      failed: [],
+    }),
+    triggerPipeline: async (): Promise<void> => undefined,
+    ...over,
+  })
 }
 
 function stepOf(state: { steps: StepProgress[] }, id: SyncStepId): StepProgress {
@@ -233,5 +250,122 @@ describe('SyncCoordinator — review push step', () => {
     expect(pushReview).toHaveBeenCalledOnce()
     expect(stepOf(final, 'push_review').detail).toContain('5')
     expect(final.phase).toBe('completed')
+  })
+})
+
+describe('SyncCoordinator — full pipeline, no step skipped (routes bound)', () => {
+  const ALL_STEPS: SyncStepId[] = [
+    'upload_delete',
+    'upload_add',
+    'trigger',
+    'push_review',
+    'pull',
+  ]
+
+  it('runs every step (delete → add → trigger → push_review → pull) → completed', async () => {
+    const storage = memStorage()
+    const batchDelete = vi.fn(async (words: string[]): Promise<BatchDeleteResult> => ({
+      deleted_words: words,
+      not_found: [],
+      failed: [],
+    }))
+    const triggerPipeline = vi.fn(async (): Promise<void> => undefined)
+    const pushReview = vi.fn(async () => ({ insertedEvents: 1, updatedStates: 1 }))
+    const coord = new SyncCoordinator({
+      notebookId: 'default',
+      api: fullApi({ batchDelete, triggerPipeline, pushReview }),
+      storage,
+      reviewEvents: [
+        {
+          event_id: 'e1',
+          word_snapshot: 'gone',
+          notebook_id: 'default',
+          feedback: 1,
+          reviewed_at: '2026-06-13T00:00:00Z',
+          created_at: '2026-06-13T00:00:00Z',
+          is_synthetic: false,
+        },
+      ],
+      reviewStates: [],
+    })
+    coord.queueDelete('gone')
+    coord.queueAdd({ word: 'ephemeral', translation: '短暫的' })
+
+    const final = await coord.start()
+
+    // Every bound step actually RAN — none skipped.
+    for (const id of ALL_STEPS) {
+      expect(stepOf(final, id).status).not.toBe('skipped')
+    }
+    expect(stepOf(final, 'upload_delete').status).toBe('done')
+    expect(stepOf(final, 'upload_add').status).toBe('done')
+    expect(stepOf(final, 'trigger').status).toBe('done')
+    expect(stepOf(final, 'push_review').status).toBe('done')
+    expect(stepOf(final, 'pull').status).toBe('done')
+
+    expect(batchDelete).toHaveBeenCalledOnce()
+    expect(batchDelete).toHaveBeenCalledWith(['gone'], 'default')
+    expect(triggerPipeline).toHaveBeenCalledOnce()
+    expect(triggerPipeline).toHaveBeenCalledWith('default')
+    expect(pushReview).toHaveBeenCalledOnce()
+
+    // delete converged (deleted_words bucket) + add converged → nothing pending.
+    expect(final.pending).toHaveLength(0)
+    expect(final.phase).toBe('completed')
+    expect(final.failureKind).toBeNull()
+  })
+
+  it('emits the running-step stream in full pipeline order', async () => {
+    const storage = memStorage()
+    const coord = new SyncCoordinator({
+      notebookId: 'default',
+      api: fullApi(),
+      storage,
+      reviewEvents: [
+        {
+          event_id: 'e1',
+          word_snapshot: 'gone',
+          notebook_id: 'default',
+          feedback: 1,
+          reviewed_at: '2026-06-13T00:00:00Z',
+          created_at: '2026-06-13T00:00:00Z',
+          is_synthetic: false,
+        },
+      ],
+    })
+    coord.queueDelete('gone')
+    coord.queueAdd({ word: 'w', translation: 't' })
+
+    const running: SyncStepId[] = []
+    coord.subscribe((e: SyncEvent) => {
+      if (e.type === 'step' && e.step.status === 'running') running.push(e.step.id)
+    })
+    await coord.start()
+    expect(running).toEqual(ALL_STEPS)
+  })
+
+  it('default adapter (createSyncApi) binds batchDelete + triggerPipeline against the mock', async () => {
+    // Drives the REAL default adapter over the mock ApiClient end-to-end. Both
+    // previously-skipped steps must now run against mock-backed routes.
+    const storage = memStorage()
+    const api = createSyncApi({ client: createApiClient({ getToken: () => 'mock' }) })
+    expect(typeof api.batchDelete).toBe('function')
+    expect(typeof api.triggerPipeline).toBe('function')
+
+    const coord = new SyncCoordinator({ notebookId: 'default', api, storage })
+    // A word the mock store does not know → not_found bucket = locally resolvable
+    // (success semantics, never an infinite-retry failure per sync_lifecycle.md).
+    coord.queueDelete('definitely-not-a-seeded-word')
+    coord.queueAdd({ word: 'serendipity', translation: '機緣' })
+
+    const final = await coord.start()
+
+    for (const id of ALL_STEPS) {
+      expect(stepOf(final, id).status).not.toBe('skipped')
+    }
+    expect(stepOf(final, 'upload_delete').status).toBe('done')
+    expect(stepOf(final, 'trigger').status).toBe('done')
+    expect(final.phase).toBe('completed')
+    expect(final.pending).toHaveLength(0)
   })
 })
