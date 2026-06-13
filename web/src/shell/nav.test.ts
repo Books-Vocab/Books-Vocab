@@ -3,12 +3,14 @@ import { SURFACE_SCENARIOS } from '../harness/scenarios'
 import {
   currentScreen,
   initialNavState,
+  isLiveReaderScreen,
   pop,
   push,
   pushTargetFor,
   screenFor,
   selectTab,
   stackDepth,
+  type NavState,
 } from './nav'
 
 describe('initialNavState', () => {
@@ -102,6 +104,40 @@ describe('push / pop', () => {
     let s = initialNavState()
     s = push(s, screenFor('reader', { bookId: 'book-3' }))
     expect(currentScreen(s)?.params).toEqual({ bookId: 'book-3' })
+  })
+})
+
+describe('isLiveReaderScreen（雙殼共用：掛 Live Reader 取代靜態 ReaderScreen）', () => {
+  it('開書（bookshelf → reader push，深 2）→ true', () => {
+    let s = initialNavState()
+    s = push(s, screenFor('reader', { bookId: 'b1' }))
+    expect(isLiveReaderScreen(s)).toBe(true)
+  })
+
+  it('reader 在 root（深 1）→ false（非點書開啟，不掛真閱讀器）', () => {
+    // reader 不是 surface-tab，正常不會落 root；防禦性斷言 depth>1 條件。
+    const s: NavState = {
+      tabId: 'bookshelf',
+      stacks: { bookshelf: [screenFor('reader')] },
+    }
+    expect(isLiveReaderScreen(s)).toBe(false)
+  })
+
+  it('深層但非 reader（如 bookshelf → settings）→ false', () => {
+    let s = initialNavState()
+    s = push(s, screenFor('settings'))
+    expect(isLiveReaderScreen(s)).toBe(false)
+  })
+
+  it('bookshelf root（深 1）→ false', () => {
+    expect(isLiveReaderScreen(initialNavState())).toBe(false)
+  })
+
+  it('pop 回書架後 → false（離開閱讀器卸載真渲染）', () => {
+    let s = initialNavState()
+    s = push(s, screenFor('reader', { bookId: 'b1' }))
+    s = pop(s)
+    expect(isLiveReaderScreen(s)).toBe(false)
   })
 })
 

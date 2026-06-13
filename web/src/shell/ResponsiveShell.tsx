@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { ComponentType, SVGProps } from 'react'
 import type { Appearance, HarnessConfig } from '../harness/scenarios'
 import { PhoneFrame } from '../harness/PhoneFrame'
@@ -7,6 +7,7 @@ import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
   initialNavState,
+  isLiveReaderScreen,
   pop,
   push,
   screenFor,
@@ -17,6 +18,16 @@ import {
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import '../styles/responsive.css'
+
+// Live Reader（epub.js 真渲染）— dynamic import，epub.js 不進 parity bundle（與
+// AppShell 同一條 lazy 路徑）。桌面/平板殼層內點書（open-book push → reader screen
+// 在書庫 tab 深 >1）才掛載真閱讀器，填滿內容窗格；靜態 parity ReaderScreen 僅供
+// ?surface=reader（無殼層）對拍路徑，零改動。
+const LiveReaderScreen = lazy(() =>
+  import('../surfaces/reader-live/LiveReaderScreen').then((m) => ({
+    default: m.LiveReaderScreen,
+  })),
+)
 
 /**
  * ResponsiveShell — the single web app shell container for tablet/desktop, and
@@ -160,6 +171,15 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
   const hasDetail = detailStack.length >= 1
   const detailHasBack = detailStack.length >= 2
 
+  // 點書開啟的 reader 畫面（書庫 tab push 後 depth>1）→ 掛 Live Reader 真閱讀器
+  // （epub.js），取代靜態 parity ReaderScreen。Live Reader 自帶「書庫」返回鈕 +
+  // chrome，故填滿整個內容區（不切 master/detail 雙窗格），onBack 退一層回書架。
+  // bookId 由 currentScreen（深層 reader screen）的 params 經 ShellNavContext 流到
+  // useLiveReaderApi。掛在 .shell-pane-surface 內 → 觸發 live-reader.css 的容器查詢
+  // （居中 var(--reader-measure) 欄 + 寬窗格持久 TOC + epub.js ResizeObserver 重排）。
+  // 謂詞與 mobile AppShell 共用 nav.isLiveReaderScreen（單一真相，避免雙殼 drift）。
+  const isLiveReader = isLiveReaderScreen(nav)
+
   function selectPrimary(tab: TabSpec) {
     if (tab.kind !== 'surface') return
     setNav((s) => selectTab(s, tab.id))
@@ -205,9 +225,20 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
         </div>
       </nav>
 
-      <div className="shell-panes" data-has-detail={hasDetail}>
+      <div className="shell-panes" data-has-detail={isLiveReader ? false : hasDetail}>
         <ShellNavProvider value={shellNav}>
-          {breakpoint === 'tablet' ? (
+          {isLiveReader ? (
+            // Live Reader 填滿內容區（單一窗格，無 master/detail 切分）。掛在
+            // .shell-pane-surface 內以啟用 live-reader.css 容器查詢（居中閱讀欄 +
+            // 持久 TOC + epub.js ResizeObserver 重排到新欄寬）。
+            <div className="shell-pane-master shell-pane-reader">
+              <div className="shell-pane-surface">
+                <Suspense fallback={null}>
+                  <LiveReaderScreen onBack={() => setNav((s) => pop(s))} />
+                </Suspense>
+              </div>
+            </div>
+          ) : breakpoint === 'tablet' ? (
             // Single fluid content pane: show the deepest screen (slide-over),
             // else the master. Deep push stacks in the same column. This is the
             // .shell-pane-master class on purpose — tablet has no side-by-side

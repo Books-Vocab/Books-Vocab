@@ -108,6 +108,23 @@ export function stackDepth(state: NavState): number {
   return state.stacks[state.tabId]?.length ?? 0
 }
 
+/**
+ * 當前可見畫面是否為「點書開啟的真閱讀器」(Live Reader / epub.js)。
+ *
+ * 條件 = 當前畫面 surface 為 reader 且 stack 深 >1（即由 bookshelf 的 open-book
+ * push 進來，非 root）。兩個殼層（mobile AppShell、桌面/平板 ResponsiveShell）共用
+ * 此謂詞決定「掛 LiveReaderScreen 取代靜態 parity ReaderScreen」，避免兩殼各自
+ * inline fork 同一判斷而 drift（screenRegistry 註解強調的雙面風險）。
+ *
+ * 誠實邊界：parity capture（無殼層）不經 nav，故此謂詞對 ?surface=reader 對拍
+ * 路徑零影響——該路徑恆渲染靜態 ReaderScreen。
+ */
+export function isLiveReaderScreen(state: NavState): boolean {
+  const stack = state.stacks[state.tabId]
+  if (!stack || stack.length <= 1) return false
+  return stack[stack.length - 1].surface === 'reader'
+}
+
 /** 切 tab：placeholder tab 不切（不可選），surface-tab 保留其既有 stack。 */
 export function selectTab(state: NavState, tabId: string): NavState {
   const tab = SHELL_TABS.find((t) => t.id === tabId)
