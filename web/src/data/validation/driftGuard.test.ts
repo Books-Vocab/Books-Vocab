@@ -110,15 +110,51 @@ describe('drift guard (b): seed → transformer baseline is byte-equivalent', ()
         linksByKind: {},
         source: null,
         updatedAt: '2026-06-11T00:00:00Z',
-        reviewIntervalHours: 12.0,
-        nextReviewAt: '2026-06-11T00:00:00Z',
-        lastReviewedAt: null,
-        reviewCount: 0,
         lapseCount: 0,
-        reviewStreak: 0,
-        lastReviewFeedback: -1,
       })
     }
+    // Per-card SRS metadata DERIVED from the SoT review.state (+ review.interval,
+    // unit = hours). Pins the 未學習5 / 待複習4 / 已複習5 split anchored at
+    // SEED_NOW (2026-06-11): 'new' → never reviewed (reviewCount 0, nextReviewAt
+    // = SEED_NOW); 'due' → reviewed `interval`h ago, nextReviewAt = SEED_NOW
+    // (already overdue vs wall-clock now); 'reviewed' → reviewed at SEED_NOW,
+    // nextReviewAt = SEED_NOW + interval (future). A SoT review edit that changes
+    // any of these is caught here even when guard (a) still passes.
+    const SRS: Record<string, {
+      reviewIntervalHours: number
+      nextReviewAt: string
+      lastReviewedAt: string | null
+      reviewCount: number
+      reviewStreak: number
+      lastReviewFeedback: number
+    }> = {
+      'card-1': { reviewIntervalHours: 72.0, nextReviewAt: '2026-06-14T00:00:00Z', lastReviewedAt: '2026-06-11T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-2': { reviewIntervalHours: 96.0, nextReviewAt: '2026-06-15T00:00:00Z', lastReviewedAt: '2026-06-11T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-3': { reviewIntervalHours: 24.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: '2026-06-10T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-4': { reviewIntervalHours: 12.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: null, reviewCount: 0, reviewStreak: 0, lastReviewFeedback: -1 },
+      'card-5': { reviewIntervalHours: 12.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: null, reviewCount: 0, reviewStreak: 0, lastReviewFeedback: -1 },
+      'card-6': { reviewIntervalHours: 168.0, nextReviewAt: '2026-06-18T00:00:00Z', lastReviewedAt: '2026-06-11T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-7': { reviewIntervalHours: 48.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: '2026-06-09T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-8': { reviewIntervalHours: 12.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: null, reviewCount: 0, reviewStreak: 0, lastReviewFeedback: -1 },
+      'card-9': { reviewIntervalHours: 36.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: '2026-06-09T12:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-10': { reviewIntervalHours: 120.0, nextReviewAt: '2026-06-16T00:00:00Z', lastReviewedAt: '2026-06-11T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-11': { reviewIntervalHours: 36.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: '2026-06-09T12:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-12': { reviewIntervalHours: 60.0, nextReviewAt: '2026-06-13T12:00:00Z', lastReviewedAt: '2026-06-11T00:00:00Z', reviewCount: 1, reviewStreak: 1, lastReviewFeedback: 1 },
+      'card-13': { reviewIntervalHours: 12.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: null, reviewCount: 0, reviewStreak: 0, lastReviewFeedback: -1 },
+      'card-14': { reviewIntervalHours: 12.0, nextReviewAt: '2026-06-11T00:00:00Z', lastReviewedAt: null, reviewCount: 0, reviewStreak: 0, lastReviewFeedback: -1 },
+    }
+    for (const c of derived.vocabCards) {
+      expect(c).toMatchObject(SRS[c.id]!)
+    }
+    // The authored split, asserted on the derived rows: 5 unlearned / 4 due /
+    // 5 reviewed (reviewCount 0 vs 1; the wall-clock-relative due/reviewed
+    // classification itself lives in the surface stores).
+    const counts = { unlearned: 0, reviewedOnce: 0 }
+    for (const c of derived.vocabCards) {
+      if (c.reviewCount === 0) counts.unlearned++
+      else counts.reviewedOnce++
+    }
+    expect(counts).toEqual({ unlearned: 5, reviewedOnce: 9 })
   })
 
   it('graph links: eight seeded edges joined by content within notebook', () => {
