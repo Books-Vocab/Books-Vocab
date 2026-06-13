@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { motion } from 'framer-motion'
+import { Sheet, snappy, usePreferredTransition } from '../../motion'
 import type { ScenarioId } from '../../harness/scenarios'
 import { useAppearance } from '../../harness/appearance'
 import { useApi } from '../../api/ApiContext'
@@ -107,6 +109,48 @@ function PickerChevrons() {
 }
 
 /**
+ * 自動同步 toggle。
+ *
+ * parity 路徑（apiMode 省略）→ 維持空 <button data-on>，DOM/像素與靜態 PNG 逐位元
+ * 一致（iOS Catalog 渲染為無 knob 純色膠囊，故 fixture 不畫 knob）。
+ *
+ * shell 路徑（apiMode）→ 疊一顆 spring-driven 的 knob：用 motion 基座的 `snappy`
+ * 彈簧（response 0.3 / ζ 0.85）讓滑塊在 on/off 兩端帶 iOS UISwitch 的手感；位移
+ * 由 `data-on` 決定。reduced-motion 經 usePreferredTransition 收斂為瞬時切換。
+ */
+function SyncToggle({
+  on,
+  apiMode,
+  onToggle,
+}: {
+  on: boolean
+  apiMode?: boolean
+  onToggle: () => void
+}) {
+  const transition = usePreferredTransition(snappy)
+  return (
+    <button
+      type="button"
+      className="settings-toggle"
+      data-on={on}
+      role="switch"
+      aria-checked={on}
+      aria-label="自動同步"
+      onClick={onToggle}
+    >
+      {apiMode && (
+        <motion.span
+          className="settings-toggle-knob"
+          aria-hidden="true"
+          animate={{ x: on ? 20 : 0 }}
+          transition={transition}
+        />
+      )}
+    </button>
+  )
+}
+
+/**
  * 共用：把非互動的 settings-row div 變成可達導航熱區（shell 路徑）。無 onActivate
  * （parity 路徑）→ 回空 props，div 維持非互動，首屏 DOM 與靜態 PNG 逐位元一致。
  */
@@ -123,6 +167,94 @@ function rowNavProps(onActivate?: () => void) {
       }
     },
   }
+}
+
+/**
+ * 帳號 / 登出 sheet（shell 路徑專用）— 用 motion 基座的共用 `Sheet`（vaul）承載
+ * 登出流程：拖曳關閉 / 點 backdrop / Esc 皆關閉（vaul 內建，故 settings 不重造
+ * Escape 處理）。primary 動作 = 登出；delete-account 刻意 SECONDARY 且二段守門
+ * （先點「刪除帳號」才露出危險確認），避免誤觸不可逆操作。
+ */
+function AccountSheet({
+  account,
+  open,
+  onClose,
+  onConfirmLogout,
+  onConfirmDelete,
+}: {
+  account: LoggedInAccount
+  open: boolean
+  onClose: () => void
+  onConfirmLogout: () => void
+  /** 可選：刪除帳號（不可逆）。未提供時不渲染此守門區塊。 */
+  onConfirmDelete?: () => void
+}) {
+  const [armed, setArmed] = useState(false)
+  // sheet 關閉時重置守門狀態，下次開啟回到安全預設。
+  useEffect(() => {
+    if (!open) setArmed(false)
+  }, [open])
+  return (
+    <Sheet open={open} onClose={onClose} ariaLabel="帳號">
+      <div className="settings-account-sheet">
+        <div className="settings-account-sheet-head">
+          <span className="settings-avatar settings-account-sheet-avatar">{account.initials}</span>
+          <span className="settings-account-sheet-id">
+            <span className="settings-account-sheet-name">{account.displayName}</span>
+            <span className="settings-account-sheet-email">{account.email}</span>
+          </span>
+        </div>
+        <button
+          type="button"
+          className="settings-account-sheet-logout"
+          onClick={() => {
+            onClose()
+            onConfirmLogout()
+          }}
+        >
+          登出帳號
+        </button>
+        {onConfirmDelete && (
+          <div className="settings-account-sheet-danger">
+            {armed ? (
+              <>
+                <p className="settings-account-sheet-danger-note">
+                  此操作無法復原，將永久刪除你的帳號與雲端資料。
+                </p>
+                <div className="settings-account-sheet-danger-actions">
+                  <button
+                    type="button"
+                    className="settings-account-sheet-cancel"
+                    onClick={() => setArmed(false)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-account-sheet-delete-confirm"
+                    onClick={() => {
+                      onClose()
+                      onConfirmDelete()
+                    }}
+                  >
+                    確認刪除
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="settings-account-sheet-delete"
+                onClick={() => setArmed(true)}
+              >
+                刪除帳號
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </Sheet>
+  )
 }
 
 function LoggedInCard({
@@ -214,7 +346,37 @@ function LoggedOutCard({ account, onSignIn }: { account: LoggedOutAccount; onSig
   )
 }
 
-/** 偏好選單 sheet：底部浮層，點選項即套用並關閉。 */
+/** 偏好選項列表（fixture 浮層與 shell vaul Sheet 共用的內容本體）。 */
+function PreferenceOptionList({
+  label,
+  current,
+  onPick,
+}: {
+  label: PreferenceLabel
+  current: string
+  onPick: (value: string) => void
+}) {
+  return (
+    <div className="settings-sheet-options">
+      {SHEET_OPTIONS[label].map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          className={opt === current ? 'settings-sheet-option is-selected' : 'settings-sheet-option'}
+          onClick={() => onPick(opt)}
+        >
+          <span>{opt}</span>
+          {opt === current && <CheckCircleFillIcon size={18} />}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * 偏好選單 sheet（fixture / parity 路徑）：就地底部浮層，點選項即套用並關閉。
+ * 維持原 inline 實作（非 vaul portal），確保 parity 首屏與互動 DOM 不漂移。
+ */
 function PreferenceSheet({
   label,
   current,
@@ -231,21 +393,37 @@ function PreferenceSheet({
       <div className="settings-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="settings-sheet-grabber" />
         <p className="settings-sheet-title">{label}</p>
-        <div className="settings-sheet-options">
-          {SHEET_OPTIONS[label].map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              className={opt === current ? 'settings-sheet-option is-selected' : 'settings-sheet-option'}
-              onClick={() => onPick(opt)}
-            >
-              <span>{opt}</span>
-              {opt === current && <CheckCircleFillIcon size={18} />}
-            </button>
-          ))}
-        </div>
+        <PreferenceOptionList label={label} current={current} onPick={onPick} />
       </div>
     </div>
+  )
+}
+
+/**
+ * 偏好選單 sheet（shell 路徑）：用 motion 基座的共用 `Sheet`（vaul），帶 iOS
+ * drag-to-dismiss 手感與 Esc/backdrop 關閉。內容本體與 fixture 浮層共用
+ * PreferenceOptionList，避免雙面 drift。
+ */
+function PreferenceSheetVaul({
+  label,
+  current,
+  open,
+  onPick,
+  onClose,
+}: {
+  label: PreferenceLabel
+  current: string
+  open: boolean
+  onPick: (value: string) => void
+  onClose: () => void
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} ariaLabel={label}>
+      <div className="settings-sheet-vaul-body">
+        <p className="settings-sheet-title">{label}</p>
+        <PreferenceOptionList label={label} current={current} onPick={onPick} />
+      </div>
+    </Sheet>
   )
 }
 
@@ -376,6 +554,20 @@ function SettingsScreenApi() {
     [updateConfig, optimisticConfig],
   )
 
+  // 帳號 sheet 內守門確認後的「刪除帳號」：呼真實 DELETE /api/user/account
+  // （不可逆），成功與否都登出收尾（清本地 session）。
+  const deleteAccount = useCallback(() => {
+    void (async () => {
+      try {
+        await api.user.deleteAccount()
+      } catch {
+        // 即便後端錯誤也登出，避免停在已嘗試刪除的帳號上。
+      } finally {
+        logout()
+      }
+    })()
+  }, [api, logout])
+
   // shell 路徑：設定列點擊 → push 對應子 surface（master-detail detail pane）。
   // 鏡射 iOS SettingsView 的 NavigationLink；parity 路徑（fixture）不傳此 callback，
   // 列維持原互動（sheet / 純展示），故首屏 DOM 與靜態 PNG 逐位元一致。
@@ -390,6 +582,7 @@ function SettingsScreenApi() {
       fixture={fixture}
       apiMode
       onLogout={logout}
+      onDeleteAccount={deleteAccount}
       onUpdateConfig={updateConfig}
       onPersistAppearance={persistAppearance}
       onNavigateSetting={navigateSetting}
@@ -422,6 +615,7 @@ function SettingsBody({
   fixture,
   apiMode,
   onLogout,
+  onDeleteAccount,
   onUpdateConfig,
   onPersistAppearance,
   onNavigateSetting,
@@ -429,6 +623,8 @@ function SettingsBody({
   fixture: SettingsFixture
   apiMode?: boolean
   onLogout?: () => void
+  /** shell 路徑：帳號 sheet 內守門的「刪除帳號」確認後呼叫（不可逆）。 */
+  onDeleteAccount?: () => void
   onUpdateConfig?: (patch: Partial<UserConfigResponse>) => Promise<void>
   onPersistAppearance?: (pref: AppearancePref) => void
   /** shell 路徑：設定列 → push 子 surface。parity 路徑省略 → 維持 sheet / 純展示。 */
@@ -446,6 +642,8 @@ function SettingsBody({
     return init
   })
   const [openSheet, setOpenSheet] = useState<PreferenceLabel | null>(null)
+  // 帳號 / 登出 sheet 開關（shell 路徑專用；fixture 路徑恆 false → 不掛 vaul portal）。
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false)
   // 是否曾手動動過外觀（用以把列值從「跟隨系統」改成 淺色/深色）。
   const [appearanceTouched, setAppearanceTouched] = useState(false)
 
@@ -461,9 +659,12 @@ function SettingsBody({
       ? PREFERENCES_FOOTNOTE_SYNC
       : PREFERENCES_FOOTNOTE_BASE
 
-  function signOut() {
+  // shell 路徑：登出按鈕先開帳號 sheet（登出流程 + 守門的刪除帳號），由 sheet 內
+  // primary 動作真正觸發 onLogout。fixture 路徑：直接在雙態 fixture 間切到登出態
+  // （無 sheet，DOM 不漂移）。
+  function onSignOutButton() {
     if (apiMode && onLogout) {
-      onLogout()
+      setAccountSheetOpen(true)
     } else {
       setAccount(SETTINGS_FIXTURES['logged-out'].account)
     }
@@ -545,7 +746,7 @@ function SettingsBody({
           {account.kind === 'logged-in' ? (
             <LoggedInCard
               account={account}
-              onSignOut={signOut}
+              onSignOut={onSignOutButton}
               onOpenAccount={onNavigateSetting ? () => onNavigateSetting('open-settings-account') : undefined}
               onOpenSubscription={
                 onNavigateSetting ? () => onNavigateSetting('open-settings-subscription') : undefined
@@ -598,14 +799,10 @@ function SettingsBody({
                     <SyncIcon size={15} />
                   </span>
                   <span className="settings-row-label">自動同步</span>
-                  <button
-                    type="button"
-                    className="settings-toggle"
-                    data-on={showAutoSync}
-                    role="switch"
-                    aria-checked={showAutoSync}
-                    aria-label="自動同步"
-                    onClick={() => {
+                  <SyncToggle
+                    on={showAutoSync}
+                    apiMode={apiMode}
+                    onToggle={() => {
                       const next = !showAutoSync
                       setAutoSync(next)
                       if (apiMode && onUpdateConfig) {
@@ -668,12 +865,35 @@ function SettingsBody({
         </section>
       </div>
 
-      {openSheet && (
-        <PreferenceSheet
-          label={openSheet}
-          current={preferenceDisplayValue(openSheet)}
-          onPick={(value) => pickPreference(openSheet, value)}
+      {/* 偏好選單 sheet：shell 路徑用 vaul Sheet（drag-dismiss 手感），fixture 路徑
+          維持就地浮層（parity DOM 不漂移）。 */}
+      {apiMode ? (
+        <PreferenceSheetVaul
+          label={openSheet ?? '外觀'}
+          current={openSheet ? preferenceDisplayValue(openSheet) : ''}
+          open={openSheet !== null}
+          onPick={(value) => openSheet && pickPreference(openSheet, value)}
           onClose={() => setOpenSheet(null)}
+        />
+      ) : (
+        openSheet && (
+          <PreferenceSheet
+            label={openSheet}
+            current={preferenceDisplayValue(openSheet)}
+            onPick={(value) => pickPreference(openSheet, value)}
+            onClose={() => setOpenSheet(null)}
+          />
+        )
+      )}
+
+      {/* 帳號 / 登出 sheet（shell 路徑專用，fixture 恆 false → 不掛 vaul portal）。 */}
+      {apiMode && account.kind === 'logged-in' && (
+        <AccountSheet
+          account={account}
+          open={accountSheetOpen}
+          onClose={() => setAccountSheetOpen(false)}
+          onConfirmLogout={() => onLogout?.()}
+          onConfirmDelete={onDeleteAccount}
         />
       )}
     </div>
