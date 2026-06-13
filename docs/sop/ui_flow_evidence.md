@@ -30,6 +30,7 @@ verified_against: d25aad2a
 ```
 
 - JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑）。`reviewHtml` = 本次 run 專屬 `build/snapshots/uitest-runs/<run>/UIreview.html`，直接把狀態、`lastRunAt`、step screenshots、contact sheets、video、log 與 manifest 收在同一頁；即使 0 screenshot 也會顯示 run metadata 與 artifact links。畫面行為爭議時先開它看整段流程，再抽幀看 tap 當下。每次 UI run 也會更新 workspace-level `build/snapshots/uitest-runs/index.json`（schema `kg.ios.uitest-review-workspace.v1`）與 `build/snapshots/uitest-runs/UIreview.html`，依 `flowId × variantId` 只保留最新一次 run、`lastRunAt`、log/video/run-page 連結；`flowId` 來自 `--file`/grep/scope，`variantId` 來自 dataset 或 launch profile。頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
+- 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --include-default-data --lease --json`。它會展開 profile × dataset/default-data，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 

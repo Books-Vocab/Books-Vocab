@@ -1083,6 +1083,32 @@ grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test can inject UI app launch profiles into XCUIApplication" || fail_t "ios_test missing UI launch-profile injection"
+variant_combo="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^build_ui_test_variant_id()/,/^}/p" "$1")"
+    UI_FIXTURE_DATASET_NAME="marketing_demo"
+    UI_FIXTURE_DATASET_FILE=""
+    UI_LAUNCH_PROFILE="standard"
+    build_ui_test_variant_id
+  ' _ "$WORKSPACE/ops/ios_test.sh"
+)"
+[[ "$variant_combo" == "dataset:marketing_demo+profile:standard" ]] \
+  && ok "ios_test variant id combines dataset and launch profile" \
+  || fail_t "ios_test combined variant id wrong: $variant_combo"
+variant_profile="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^build_ui_test_variant_id()/,/^}/p" "$1")"
+    UI_FIXTURE_DATASET_NAME=""
+    UI_FIXTURE_DATASET_FILE=""
+    UI_LAUNCH_PROFILE="ui-smoke"
+    build_ui_test_variant_id
+  ' _ "$WORKSPACE/ops/ios_test.sh"
+)"
+[[ "$variant_profile" == "profile:ui-smoke" ]] \
+  && ok "ios_test variant id records launch profile state" \
+  || fail_t "ios_test profile variant id wrong: $variant_profile"
 
 section "ios_test fixture dataset flag (--dataset/--dataset-file)"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"

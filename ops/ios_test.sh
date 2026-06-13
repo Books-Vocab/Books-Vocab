@@ -61,6 +61,28 @@ UI_FIXTURE_DATASET_B64=""
 STAGED_DATASET_XCTESTRUN=""
 UI_TEST_REVIEW_ROOT=""
 UI_TEST_REVIEW_HTML=""
+
+build_ui_test_variant_id() {
+  local parts=()
+  if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
+    parts+=("dataset:$UI_FIXTURE_DATASET_NAME")
+  elif [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
+    parts+=("dataset-file:$(basename "$UI_FIXTURE_DATASET_FILE")")
+  fi
+  if [[ -n "$UI_LAUNCH_PROFILE" ]]; then
+    parts+=("profile:$UI_LAUNCH_PROFILE")
+  fi
+  if [[ ${#parts[@]} -eq 0 ]]; then
+    printf 'default'
+    return
+  fi
+  local joined="${parts[0]}"
+  local part
+  for part in "${parts[@]:1}"; do
+    joined+="+$part"
+  done
+  printf '%s' "$joined"
+}
 UI_TEST_FLOW_ID=""
 UI_TEST_VARIANT_ID=""
 
@@ -425,15 +447,6 @@ fi
 if [[ -z "$UI_TEST_FLOW_ID" ]]; then
   UI_TEST_FLOW_ID="$TEST_TARGET"
 fi
-if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
-  UI_TEST_VARIANT_ID="dataset:$UI_FIXTURE_DATASET_NAME"
-elif [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
-  UI_TEST_VARIANT_ID="dataset-file:$(basename "$UI_FIXTURE_DATASET_FILE")"
-elif [[ -n "$UI_LAUNCH_PROFILE" ]]; then
-  UI_TEST_VARIANT_ID="profile:$UI_LAUNCH_PROFILE"
-else
-  UI_TEST_VARIANT_ID="default"
-fi
 
 if [[ "$TEST_SCOPE" == "ui" && -z "$UI_LAUNCH_PROFILE" ]]; then
   UI_LAUNCH_PROFILE="ui-smoke"
@@ -449,6 +462,7 @@ if [[ "$LAUNCH_BENCHMARK" -eq 1 ]]; then
     UI_LAUNCH_PROFILE="standard"
   fi
 fi
+UI_TEST_VARIANT_ID="$(build_ui_test_variant_id)"
 
 # Dry-run: print resolved flags and exit before touching the lock / xcodebuild.
 if [[ "$LIST_ONLY" -eq 1 ]]; then
