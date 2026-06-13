@@ -261,6 +261,42 @@ function ReaderLiveEngine({
     }
   }, [])
 
+  // 容器尺寸變動 → epub.js 重排（CFI 保位）。epub.js renderTo 用 width:'100%' 但
+  // *不會* 隨 CSS 寬度變化自動 reflow；故以 ResizeObserver 主動 rendition.resize(w,h)
+  // 讓內文重排到新欄寬，重排前讀 CFI、resize 後 display(cfi) 還原閱讀位置。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    let lastW = host.clientWidth
+    let lastH = host.clientHeight
+    const ro = new ResizeObserver(() => {
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      const r = renditionRef.current
+      if (!r || w <= 0 || h <= 0) return
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        try {
+          const cfi: string | undefined = r.currentLocation?.()?.start?.cfi
+          r.resize(w, h)
+          if (cfi) r.display(cfi).catch(() => {})
+        } catch {
+          /* teardown / 尚未 ready：下次 resize 會再校 */
+        }
+      })
+    })
+    ro.observe(host)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [])
+
   const goTo = (href: string) => {
     renditionRef.current?.display(href)
     setTocOpen(false)

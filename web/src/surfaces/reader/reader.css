@@ -1387,3 +1387,72 @@
   flex: 1;
   padding: 12px 0;
 }
+
+/* ============================================================
+   RESPONSIVE (web-only, shell-gated) — static Reader surface in a
+   tablet/desktop pane.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell (mounted ONLY by ResponsiveShell on the shell
+   path; the parity capture path renders .reader inside .phone-frame and
+   never mounts .kg-responsive-shell). Internal adaptation is driven by
+   @container width — a surface may sit in a 360px list pane or a 900px
+   content pane, so it reacts to its OWN container, not the viewport. The
+   bare-root 393px parity render is untouched.
+
+   Goal mirrors the live reader column spec: when the reader sits in a
+   pane wider than the optimal measure, LOCK the reading column to
+   var(--reader-measure) (~720px) and CENTER it, letting the side margins
+   fill the pane. Chrome (header / progress / overlays) tracks the same
+   centred column so the toolbar geometry stays aligned.
+   ============================================================ */
+
+/* The pane-mounted reader is the @container query root. .shell-pane-surface
+   is the foundation pane wrapper; we make the reader itself a size container
+   so its children query the pane width it occupies (not the viewport). */
+.kg-responsive-shell .shell-pane-surface .reader {
+  container-type: inline-size;
+  container-name: reader;
+}
+
+/* Centre the reading column once the pane is wide enough to exceed the
+   optimal measure. Below this the surface keeps its native full-bleed
+   layout (narrow list pane / tablet), matching phone behaviour. */
+@container reader (min-width: 768px) {
+  /* synthetic paper blocks: clamp the text column to the measure + centre.
+     padding stays as the inner gutter; max-width caps the line length. */
+  .kg-responsive-shell .reader-blocks {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+  }
+
+  /* expanded header toolbar: track the centred column so the toolbar is not
+     stretched edge-to-edge (keeps the back/title/actions over the measure). */
+  .kg-responsive-shell .reader-header-expanded {
+    left: 50%;
+    right: auto;
+    width: min(100% - 40px, var(--reader-measure));
+    transform: translateX(-50%);
+  }
+
+  /* compact header progress capsule: pin to the right edge of the centred
+     column instead of the pane edge, so it sits over the reading measure. */
+  .kg-responsive-shell .reader-header-compact {
+    right: max(20px, calc((100% - var(--reader-measure)) / 2 + 20px));
+  }
+
+  /* loading / underline / error cards: centre their content to the measure
+     so they read as part of the same column, not the full pane width. */
+  .kg-responsive-shell .reader-loading-card,
+  .kg-responsive-shell .reader-error-card {
+    max-width: var(--reader-measure);
+  }
+
+  /* bottom-sheet overlays (translation panel) centre to the measure too so
+     the toolbar/panel align with the reading column on desktop. */
+  .kg-responsive-shell .reader-bottom-overlay > .translation-panel {
+    width: 100%;
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+  }
+}
