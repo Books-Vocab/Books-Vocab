@@ -400,6 +400,11 @@ export interface DeleteWordResponse {
   id: string
 }
 
+/** DELETE /api/library/books/{id} — api_models/library.py::DeleteBookResponse. */
+export interface DeleteBookResponse {
+  deleted: string
+}
+
 /** POST /api/vocab/batch-delete request — api_models/vocab.py::BatchDeleteRequest. */
 export interface BatchDeleteRequest {
   words: string[]

@@ -11,8 +11,8 @@ import type { BookFixture, BookFormat } from './fixtures'
  * 非 ready 態（loading / error）由 VocabSceneShell 在外層包裹。
  *
  * 誠實邊界：web 不持有 EPUB/PDF 解析器，import 只把 metadata 推上後端做跨裝置同步；
- * 真正開書閱讀的 spike 走 ?surface=reader-live。刪除為「本地端移除」——Phase 4 後端
- * 尚無 DELETE / is_deleted PATCH 端點，故刪除不落地後端（見 deleteBook 的 debt 註解）。
+ * 真正開書閱讀的 spike 走 ?surface=reader-live。刪除走 DELETE /api/library/books/{id}
+ * 樂觀移除 + rollback（後端做 is_deleted 軟刪 tombstone）。
  */
 
 export type BookshelfApiStatus = 'loading' | 'ready' | 'error'
@@ -152,13 +152,16 @@ export function useBookshelfApiStore(): BookshelfApiState {
     async (title: string) => {
       const target = raw.find((b) => b.title === title && !b.is_deleted)
       if (!target) return
-      // INTEGRATION DEBT (Phase 4): backend exposes no DELETE / is_deleted PATCH,
-      // so deletion is local-only here (matches the fixture store's removal). When
-      // the backend adds soft-delete, wire the server call + rollback like rename.
       setMenuTitle(null)
+      // 樂觀移除；DELETE /api/library/books/{id} 失敗則回復該書。
       setRaw((prev) => prev.filter((b) => b.id !== target.id))
+      try {
+        await api.library.delete(target.id)
+      } catch {
+        setRaw((prev) => (prev.some((b) => b.id === target.id) ? prev : [...prev, target]))
+      }
     },
-    [raw],
+    [api, raw],
   )
 
   return {
