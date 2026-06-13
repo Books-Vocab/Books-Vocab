@@ -354,3 +354,41 @@
   margin: 0;
   max-width: 280px;
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: dashboard sections tile into an auto-fill adaptive grid in a roomy
+   pane; each card fills its column width (charts/heatmap stay full-width).
+   ============================================================ */
+
+.kg-responsive-shell .overview {
+  container: overview-pane / inline-size;
+}
+
+@container overview-pane (min-width: 640px) {
+  /* sections become grid items that tile two-up (or more) and fill width.
+     align-items:start keeps cards top-aligned instead of stretching to the
+     tallest row. The graph card's 1:1 aspect already bounds its own height. */
+  .kg-responsive-shell .ov-scroll {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    align-items: start;
+    gap: 16px;
+  }
+  /* heatmap + forecast tend to be wider; let them span the full row so the
+     calendar/chart is not cramped into one narrow column. */
+  .kg-responsive-shell .ov-heat-section,
+  .kg-responsive-shell .ov-forecast {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Very wide pane: cap the dashboard measure and centre it so cards do not
+   stretch edge-to-edge on large displays. */
+@container overview-pane (min-width: 1040px) {
+  .kg-responsive-shell .ov-scroll {
+    max-width: 960px;
+    margin-inline: auto;
+  }
+}

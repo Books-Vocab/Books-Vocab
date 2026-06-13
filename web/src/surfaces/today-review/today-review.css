@@ -540,3 +540,36 @@
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: in a roomy content pane, centre the review card on a ~560px measure;
+   the extra width becomes side margins (no stretch).
+   ============================================================ */
+
+.kg-responsive-shell .today-review {
+  container: today-review-pane / inline-size;
+}
+
+@container today-review-pane (min-width: 620px) {
+  /* clamp the card stage to a comfortable reading measure and centre it. */
+  .kg-responsive-shell .tr-stage {
+    max-width: 560px;
+    margin-inline: auto;
+  }
+  /* the grade toolbar tracks the same measure so buttons stay under the card. */
+  .kg-responsive-shell .tr-toolbar {
+    max-width: 560px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  /* the top bar (progress/shuffle/chrome) also rides the centred measure. */
+  .kg-responsive-shell .tr-topbar {
+    max-width: 560px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

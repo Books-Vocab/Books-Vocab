@@ -512,3 +512,34 @@
     transform: translateY(0);
   }
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: in a roomy pane the notebook book-rows tile into an adaptive grid
+   instead of one tall single column.
+   ============================================================ */
+
+.kg-responsive-shell .notebook {
+  container: notebook-pane / inline-size;
+}
+
+@container notebook-pane (min-width: 560px) {
+  /* book-rows tile two-up (or more) via auto-fill; each card keeps its
+     72px height and fills its column. */
+  .kg-responsive-shell .nb-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px;
+  }
+}
+
+/* Very wide pane: cap the list measure so cards do not stretch too wide. */
+@container notebook-pane (min-width: 1000px) {
+  .kg-responsive-shell .nb-scroll {
+    max-width: 920px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
