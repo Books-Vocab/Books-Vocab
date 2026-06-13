@@ -176,28 +176,31 @@ export function pop(state: NavState): NavState {
  * 的單一真相：只連 web 真實可達的 surface→surface 邊。深層意圖可攜帶被點擊實體
  * 的 params（id），由 pushTargetFor 接力寫入目標畫面。
  */
-export type NavIntent =
+export const NAV_INTENTS = [
   // bookshelf
-  | 'open-book'
-  | 'open-settings'
+  'open-book',
+  'open-settings',
   // notebook
-  | 'open-notebook'
-  | 'open-today-review'
-  | 'edit-notebook'
+  'open-notebook',
+  'open-today-review',
+  'edit-notebook',
   // vocabulary
-  | 'open-word'
-  | 'add-link'
-  | 'open-knowledge-graph'
-  | 'open-vocab-knowledge-graph'
+  'open-word',
+  'add-link',
+  'open-knowledge-graph',
+  'open-vocab-knowledge-graph',
   // podcast
-  | 'open-podcast-series'
-  | 'open-podcast-episode'
+  'open-podcast-series',
+  'open-podcast-episode',
   // settings
-  | 'open-settings-review'
-  | 'open-settings-subscription'
-  | 'open-settings-account'
-  | 'open-settings-translation-language'
-  | 'open-sync'
+  'open-settings-review',
+  'open-settings-subscription',
+  'open-settings-account',
+  'open-settings-translation-language',
+  'open-sync',
+] as const
+
+export type NavIntent = (typeof NAV_INTENTS)[number]
 
 /**
  * 誠實導航圖：(from.surface, intent) → 下一畫面。params 可攜實體 id；省略 →

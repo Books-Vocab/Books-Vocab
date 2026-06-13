@@ -6,7 +6,6 @@ import { ChevronLeftIcon, GearIcon, KnowledgeGraphIcon, PersonIcon, SyncCircleIc
 import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
-  initialNavState,
   isLiveReaderScreen,
   pop,
   push,
@@ -16,7 +15,9 @@ import {
   type Screen,
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
-import { navStateFromLocation, useShellHistory } from './historySync'
+import { useShellHistory } from './historySync'
+import { initialShellRoute } from './route'
+import { NotFoundScreen } from './NotFoundScreen'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import { RouteTransition, useNavDirection } from '../motion'
 import { routeKeyFor, stackDepth } from './nav'
@@ -141,13 +142,14 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
   const breakpoint = useBreakpoint()
   const appearance: Appearance = config.appearance
 
-  // 初始 nav 優先從 /app URL 還原（refresh / deep-link）；無 shell URL 落回 config。
-  const [nav, setNav] = useState<NavState>(
-    () => navStateFromLocation() ?? initialNavState(config.surface, config.scenario as string),
-  )
+  // 初始狀態從 /app URL 解析（refresh / deep-link）；不合法/不可達 → notFound；
+  // 非 shell URL → config。
+  const initialRoute = useState(() => initialShellRoute(config))[0]
+  const [nav, setNav] = useState<NavState>(initialRoute.nav)
+  const [notFound, setNotFound] = useState(initialRoute.notFound)
   // mobile 斷點委派 AppShell（自帶當值 binder），故此處只在 tablet/desktop 當值時綁
   // history，避免雙寫；切回 mobile 時 disable，AppShell 接手（以 URL 為真相延續）。
-  useShellHistory(nav, setNav, breakpoint !== 'mobile')
+  const goHome = useShellHistory(nav, setNav, breakpoint !== 'mobile', notFound, setNotFound)
 
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const stack = nav.stacks[nav.tabId] ?? []
@@ -176,6 +178,9 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
       </div>
     )
   }
+
+  // 不合法/不可達的 /app URL → 全幅 404（mobile 由委派的 AppShell 自行渲染 404）。
+  if (notFound) return <NotFoundScreen onHome={goHome} />
 
   // tablet/desktop: own chrome (rail or side nav) + panes rendered via registry.
   const isSurfaceTab = activeTab.kind === 'surface'

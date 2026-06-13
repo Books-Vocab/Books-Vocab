@@ -5,6 +5,7 @@ import { resolveShellAccess } from './auth/devSession'
 import { PhoneFrame } from './harness/PhoneFrame'
 import { resolveHarnessConfig } from './harness/scenarios'
 import { ResponsiveShell } from './shell/ResponsiveShell'
+import { isAppPath } from './shell/route'
 
 // Reader 引擎 spike（探索性）：?surface=reader-live 走獨立 lazy 路徑，epub.js 不進
 // parity bundle，既有 ?surface=reader 等 capture 路徑與 DOM 完全不變。
@@ -58,9 +59,7 @@ export function App() {
   //   1. ?shell=1（legacy / 首次進場，useShellHistory 會 normalize 到 /app 路徑）
   //   2. /app/* pathname（P1.2 起的 canonical 路由；refresh /app/notebook 仍進 shell）
   // parity capture（pathname '/'、無 ?shell=1）完全不變。
-  const pathname = window.location.pathname
-  const isAppPath = pathname === '/app' || pathname.startsWith('/app/')
-  const shell = new URLSearchParams(search).get('shell') === '1' || isAppPath
+  const shell = new URLSearchParams(search).get('shell') === '1' || isAppPath(window.location.pathname)
   // ?crop=component opt-in：元件級 parity case 把 surface 切到「純元件」呈現
   // （收掉 in-app safe-area / 全幅留白），令元件 intrinsic bounds 對齊 iOS
   // catalog 的緊裁切 scene。預設不啟用，既有 capture 行為完全不變。
