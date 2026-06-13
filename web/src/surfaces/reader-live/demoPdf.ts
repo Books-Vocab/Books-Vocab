@@ -1,0 +1,37 @@
+/**
+ * 自帶的最小 demo PDF（surface-local presentational constant）。
+ *
+ * 為何不放 public/ 或 data/：本 Phase 只允許動 reader-live；公開資產與 seed 由他人
+ * 擁有。demo 書庫的 PDF 書（Deep Work, book-2, format:'pdf'）需要一份可解析的真 PDF
+ * 才能展示 pdfjs 渲染與選詞。此處內嵌一份手寫、3 頁、含可選文字（Helvetica 內建字型）
+ * 的合法 PDF（~2KB，已用 pdfjs getDocument 在 node 驗證：numPages=3、viewport
+ * 612x792、getTextContent 出真實英文），以 base64 攜帶並 decode 成 Uint8Array 餵給
+ * getDocument({ data })，無需任何網路資產。
+ *
+ * 隔離：本檔只被 pdfEngine / PDF 路徑引用，而 pdfEngine 走 dynamic import（與 epub.js
+ * 同樣 lazy），故此常數與 pdfjs 一起留在 PDF chunk，不進 parity bundle。
+ *
+ * 註記（seed extension needed）：理想上 demo 書應由後端／mock 提供真實 PDF 來源 URL，
+ * 由 web/src/data/seeds 攜帶（如 library.seed 加 sourceUrl 欄位）。目前 seed 無此面，
+ * 且本 Phase 不可動 data/，故以 surface-local 常數頂替。待 data 層補書源欄位後可遷移。
+ */
+
+// 3 頁 demo PDF（Deep Work 摘文）。base64 來源見上方註解的生成器。
+const DEMO_PDF_BASE64 =
+  'JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9Db3VudCAzIC9LaWRzIFszIDAgUiA0IDAgUiA1IDAgUl0gPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA5IDAgUiA+PiA+PiAvQ29udGVudHMgNiAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA5IDAgUiA+PiA+PiAvQ29udGVudHMgNyAwIFIgPj4KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA5IDAgUiA+PiA+PiAvQ29udGVudHMgOCAwIFIgPj4KZW5kb2JqCjYgMCBvYmoKPDwgL0xlbmd0aCAzNjYgPj4Kc3RyZWFtCkJUCi9GMSAxNiBUZgo3MiA3MjAgVGQKMjAgVEwKKERlZXAgV29yaykgVGoKVCoKKFJ1bGVzIGZvciBGb2N1c2VkIFN1Y2Nlc3MgaW4gYSBEaXN0cmFjdGVkIFdvcmxkKSBUagpUKgooYnkgQ2FsIE5ld3BvcnQpIFRqClQqCigpIFRqClQqCihEZWVwIHdvcmsgaXMgdGhlIGFiaWxpdHkgdG8gZm9jdXMgd2l0aG91dCBkaXN0cmFjdGlvbiBvbiBhKSBUagpUKgooY29nbml0aXZlbHkgZGVtYW5kaW5nIHRhc2suIEl0IGlzIGEgc2tpbGwgdGhhdCBhbGxvd3MgeW91IHRvKSBUagpUKgoocXVpY2tseSBtYXN0ZXIgY29tcGxpY2F0ZWQgaW5mb3JtYXRpb24gYW5kIHByb2R1Y2UgYmV0dGVyKSBUagpUKgoocmVzdWx0cyBpbiBsZXNzIHRpbWUuKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCjcgMCBvYmoKPDwgL0xlbmd0aCA0MjEgPj4Kc3RyZWFtCkJUCi9GMSAxNiBUZgo3MiA3MjAgVGQKMjAgVEwKKENoYXB0ZXIgT25lKSBUagpUKgooKSBUagpUKgooVGhlIGFiaWxpdHkgdG8gcGVyZm9ybSBkZWVwIHdvcmsgaXMgYmVjb21pbmcgaW5jcmVhc2luZ2x5KSBUagpUKgoocmFyZSBhdCBleGFjdGx5IHRoZSBzYW1lIHRpbWUgaXQgaXMgYmVjb21pbmcgaW5jcmVhc2luZ2x5KSBUagpUKgoodmFsdWFibGUgaW4gb3VyIGVjb25vbXkuIEFzIGEgY29uc2VxdWVuY2UsIHRoZSBmZXcgd2hvKSBUagpUKgooY3VsdGl2YXRlIHRoaXMgc2tpbGwsIGFuZCB0aGVuIG1ha2UgaXQgdGhlIGNvcmUgb2YgdGhlaXIpIFRqClQqCih3b3JraW5nIGxpZmUsIHdpbGwgdGhyaXZlLikgVGoKVCoKKCkgVGoKVCoKKFRhcCBhbnkgd29yZCBpbiB0aGlzIHBhZ2UgdG8gdHJhbnNsYXRlIGFuZCBzYXZlIGl0LikgVGoKRVQKZW5kc3RyZWFtCmVuZG9iago4IDAgb2JqCjw8IC9MZW5ndGggMjg2ID4+CnN0cmVhbQpCVAovRjEgMTYgVGYKNzIgNzIwIFRkCjIwIFRMCihDaGFwdGVyIFR3bykgVGoKVCoKKCkgVGoKVCoKKFRvIHByb2R1Y2UgYXQgeW91ciBwZWFrIGxldmVsIHlvdSBuZWVkIHRvIHdvcmsgZm9yIGV4dGVuZGVkKSBUagpUKgoocGVyaW9kcyB3aXRoIGZ1bGwgY29uY2VudHJhdGlvbiBvbiBhIHNpbmdsZSB0YXNrIGZyZWUgZnJvbSkgVGoKVCoKKGRpc3RyYWN0aW9uLiBDbGFyaXR5IGFib3V0IHdoYXQgbWF0dGVycyBwcm92aWRlcyBjbGFyaXR5KSBUagpUKgooYWJvdXQgd2hhdCBkb2VzIG5vdC4pIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKOSAwIG9iago8PCAvVHlwZSAvRm9udCAvU3VidHlwZSAvVHlwZTEgL0Jhc2VGb250IC9IZWx2ZXRpY2EgPj4KZW5kb2JqCnhyZWYKMCAxMAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTI3IDAwMDAwIG4gCjAwMDAwMDAyNTMgMDAwMDAgbiAKMDAwMDAwMDM3OSAwMDAwMCBuIAowMDAwMDAwNTA1IDAwMDAwIG4gCjAwMDAwMDA5MjIgMDAwMDAgbiAKMDAwMDAwMTM5NCAwMDAwMCBuIAowMDAwMDAxNzMxIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgMTAgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjE4MDEKJSVFT0YK'
+
+/** base64 → Uint8Array（瀏覽器 atob，無 Buffer 依賴）。 */
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return bytes
+}
+
+/**
+ * demo PDF 位元組。每次呼叫新建一份 buffer：pdfjs getDocument({ data }) 會 transfer
+ * 並 detach 傳入的 ArrayBuffer，重試載入時若共用同一 buffer 會拿到 detached（length 0）。
+ */
+export function demoPdfBytes(): Uint8Array {
+  return base64ToBytes(DEMO_PDF_BASE64)
+}

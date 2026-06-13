@@ -197,6 +197,45 @@
   }
 }
 
+/* ── PDF 引擎渲染層（pdfjs canvas + 透明選詞文字覆蓋層）──────────────────────
+   PDF 頁可能高於 host（letter 比例），故 host 在 PDF 路徑垂直捲動、頁面置中。
+   class 全為 .live-pdf-*（parity surface 無人引用）且非 responsive context，
+   故 check:responsive 恆乾淨；canvas/文字層由 pdfEngine.ts 動態建立。 */
+.live-reader-host:has(.live-pdf-page) {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.live-pdf-page {
+  position: relative;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.live-pdf-canvas {
+  display: block;
+}
+/* 透明選詞層：覆在 canvas 上，文字 span 透明但可被 caretRangeFromPoint 命中。 */
+.live-pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  cursor: text;
+  user-select: text;
+}
+.live-pdf-text-layer span {
+  pointer-events: auto;
+}
+/* 夜間：PDF 紙面（canvas 本身是白底）以濾鏡輕度反相，外層 host 暗化。 */
+.live-reader[data-theme='dark'] .live-pdf-page {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+}
+
 .live-reader-error {
   position: absolute;
   inset: 0;
@@ -205,10 +244,67 @@
   justify-content: center;
   padding: 0 24px;
   text-align: center;
+  background: rgba(250, 246, 240, 0.92);
+  z-index: 14;
+}
+.live-reader[data-theme='dark'] .live-reader-error {
+  background: rgba(28, 28, 30, 0.92);
+}
+.live-reader-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  color: #6b6259;
   font-family: 'ElmsSans', -apple-system, sans-serif;
-  font-size: 15px;
-  color: #b3261e;
-  z-index: 9;
+}
+.live-reader[data-theme='dark'] .live-reader-error-card {
+  color: #b8b0a6;
+}
+.live-reader-error-title {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #3a342e;
+}
+.live-reader[data-theme='dark'] .live-reader-error-title {
+  color: #e6e1d8;
+}
+.live-reader-error-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: 0.78;
+  word-break: break-word;
+}
+.live-reader-retry-btn {
+  margin-top: 6px;
+  padding: 9px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #3a342e;
+  color: #faf6f0;
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.live-reader-retry-btn:hover {
+  opacity: 0.86;
+}
+.live-reader-retry-btn:active {
+  transform: scale(0.97);
+}
+.live-reader[data-theme='dark'] .live-reader-retry-btn {
+  background: #e6e1d8;
+  color: #1c1c1e;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-reader-retry-btn {
+    transition: none;
+  }
 }
 
 /* ============================================================
