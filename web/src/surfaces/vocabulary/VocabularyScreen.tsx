@@ -5,6 +5,8 @@ import { BooksIcon, MagnifyingGlassIcon, RefreshIcon, SortIcon, SparklesIcon } f
 import { useVocabStore } from './store'
 import { useVocabApiStore } from './useVocabApiStore'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { screenFor } from '../../shell/nav'
 import './vocabulary.css'
 
 /**
@@ -33,18 +35,21 @@ function VocabRow({
   row,
   expanded,
   onToggle,
+  onOpen,
 }: {
   row: VocabRowFixture
   expanded: boolean
   onToggle: () => void
+  /** shell 路徑：點列 → 導航至 word-detail（取代就地展開）；parity 路徑為 undefined。 */
+  onOpen?: () => void
 }) {
   return (
     <div className={`vc-row-wrap${expanded ? ' vc-row-wrap-expanded' : ''}`}>
       <button
         type="button"
         className="vc-row"
-        onClick={onToggle}
-        aria-expanded={expanded}
+        onClick={onOpen ?? onToggle}
+        aria-expanded={onOpen ? undefined : expanded}
         data-word={row.word}
       >
         <div className="vc-row-main">
@@ -117,6 +122,10 @@ function VocabularyScreenFixture({ scenario }: { scenario: ScenarioId<'vocabular
 /** API-driven screen — shell=1 時使用真實後端資料。 */
 function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
   const store = useVocabApiStore(notebookId)
+  const nav = useShellNav()
+  // 點列 → 導航至 word-detail-sheet，攜 params.word（= card.content）+ notebookId。
+  const openWord = (word: string) =>
+    nav.navigate(screenFor('word-detail-sheet', { word, notebookId: notebookId ?? undefined }))
   const stats = {
     unlearned: store.visibleRows.filter((r) => r.reviewState === 'unlearned').length,
     due: store.visibleRows.filter((r) => r.reviewState === 'due').length,
@@ -142,7 +151,7 @@ function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
       status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
       onRetry={store.retry}
     >
-      <VocabularyBody fixture={fixture} store={store} />
+      <VocabularyBody fixture={fixture} store={store} onRowOpen={openWord} />
     </VocabSceneShell>
   )
 }
@@ -151,6 +160,7 @@ function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
 function VocabularyBody({
   fixture,
   store,
+  onRowOpen,
 }: {
   fixture: VocabFixture
   store: {
@@ -163,6 +173,8 @@ function VocabularyBody({
     expandedWord: string | null
     toggleExpanded: (word: string) => void
   }
+  /** shell 路徑：點列導航至 word-detail（word = card.content）。parity 路徑省略 → 就地展開。 */
+  onRowOpen?: (word: string) => void
 }) {
   const hasNoSeed = fixture.rows.length === 0
   const showZeroData = hasNoSeed && fixture.empty
@@ -241,6 +253,7 @@ function VocabularyBody({
                     row={row}
                     expanded={store.expandedWord === row.word}
                     onToggle={() => store.toggleExpanded(row.word)}
+                    onOpen={onRowOpen ? () => onRowOpen(row.word) : undefined}
                   />
                 </div>
               ))}

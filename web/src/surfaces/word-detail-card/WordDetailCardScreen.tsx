@@ -3,6 +3,7 @@ import type { ScenarioId } from '../../harness/scenarios'
 import { WORD_DETAIL_CARD_FIXTURES } from './fixtures'
 import type { WordDetailCardFixture } from './fixtures'
 import { SpeakerWaveFillIcon, TextWordSpacingIcon, BookClosedIcon } from './icons'
+import { useWordDetailCardApiStore, useWordParam } from './useWordDetailCardApiStore'
 import './word-detail-card.css'
 
 /**
@@ -45,9 +46,22 @@ import './word-detail-card.css'
  *     inner gap cardBlockInnerGap=8。
  */
 export function WordDetailCardScreen({ scenario }: { scenario: ScenarioId<'word-detail-card'> }) {
-  const fx = WORD_DETAIL_CARD_FIXTURES[scenario]
-  const blocks = buildBlocks(fx)
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <WordDetailCardApi />
+  return <WordDetailCardBody fx={WORD_DETAIL_CARD_FIXTURES[scenario]} />
+}
 
+/** shell 路徑：拉真實卡片並以同一 buildBlocks 佈局渲染（loading/error → no-example fixture）。 */
+function WordDetailCardApi() {
+  const word = useWordParam()
+  const store = useWordDetailCardApiStore(word)
+  const fx = store.status === 'ready' && store.fixture ? store.fixture : WORD_DETAIL_CARD_FIXTURES['no-example']
+  return <WordDetailCardBody fx={fx} />
+}
+
+/** 共用畫面本體：buildBlocks → block 佈局（fixture / API 兩條路共用）。 */
+function WordDetailCardBody({ fx }: { fx: WordDetailCardFixture }) {
+  const blocks = buildBlocks(fx)
   return (
     <div
       className="word-detail-card"
