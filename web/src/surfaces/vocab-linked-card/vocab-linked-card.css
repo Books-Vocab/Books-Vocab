@@ -139,6 +139,52 @@
   padding: 16px; /* SwiftUI .padding() 預設 ≈16 */
 }
 
+/* ── shell linksByKind 渲染（非 parity；只在 ?shell=1）── */
+.vlc-body--links {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.vlc-link-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.vlc-link-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.vlc-link-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--sp-1);
+  border-top: 0.5px solid var(--divider);
+}
+.vlc-link-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.vlc-link-reason {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.vlc-links-empty {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+}
+
 /* AppStateMessageCard(.vocab)：AppSectionCard(padding 0) 內容 .padding(.h14 .v12)
    .background(cardBackground).clipShape(radii.md=8).overlay(stroke cardBorder.opacity(0.9) lw1) */
 .vlc-state-card {
