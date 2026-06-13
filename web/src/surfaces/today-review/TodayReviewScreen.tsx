@@ -1,6 +1,8 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import type { ExampleSegment, ReviewCard, ReviewLink, RevealStage } from './fixtures'
 import { useTodayReviewStore } from './store'
+import { useTodayReviewApiStore } from './useTodayReviewApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import {
   ArrowUpRightIcon,
   ChevronLeftIcon,
@@ -28,6 +30,10 @@ import './today-review.css'
  * reveal，對齊 iOS ReviewFoldSurface 摺/展，CSS transition 等效手感）；答對/答錯
  * 推進佇列至下一張；走完佇列 → 完成態。parity 契約：初始狀態（index seed / reveal
  * = scenario）下 DOM 與靜態 PNG 逐像素一致；互動僅在使用者操作後改變 DOM。
+ *
+ * 當 URL 含 shell=1 時，切換至 API-backed useTodayReviewApiStore（讀 ?notebook_id=
+ * 拉取 due 卡建 queue，grade 後批次 submit events/state）。非 ready 態由 VocabSceneShell
+ * 包裹。
  */
 
 /** front prompt 右上 chrome（喇叭 / 詳情）。recognition 與 production 共用。 */
@@ -232,7 +238,48 @@ function BottomToolbar({
 }
 
 export function TodayReviewScreen({ scenario }: { scenario: ScenarioId<'today-review'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    const notebookId = new URLSearchParams(window.location.search).get('notebook_id')
+    return <TodayReviewScreenApi notebookId={notebookId} />
+  }
+  return <TodayReviewScreenFixture scenario={scenario} />
+}
+
+/** Fixture-driven screen — parity harness 路徑（無 shell=1 時）。 */
+function TodayReviewScreenFixture({ scenario }: { scenario: ScenarioId<'today-review'> }) {
   const store = useTodayReviewStore(scenario)
+  return <TodayReviewBody store={store} />
+}
+
+/** API-driven screen — shell=1 時使用真實後端資料。 */
+function TodayReviewScreenApi({ notebookId }: { notebookId: string | null }) {
+  const store = useTodayReviewApiStore(notebookId)
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <TodayReviewBody store={store} />
+    </VocabSceneShell>
+  )
+}
+
+/** 共享的 today-review 畫面本體（fixture / API 兩條路共用）。 */
+function TodayReviewBody({
+  store,
+}: {
+  store: {
+    currentCard: ReviewCard
+    reveal: RevealStage
+    progressText: string
+    forgotCount: number
+    rememberedCount: number
+    done: boolean
+    flip: () => void
+    grade: (g: 'forgot' | 'remembered') => void
+  }
+}) {
   return (
     <div className="today-review">
       <header className="tr-topbar">

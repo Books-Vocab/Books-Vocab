@@ -12,7 +12,9 @@ import {
   TrashIcon,
   XmarkIcon,
 } from './icons'
-import { useNotebookStore } from './store'
+import { useNotebookStore, type NotebookSheet } from './store'
+import { useNotebookApiStore } from './useNotebookApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './notebook.css'
 
 /**
@@ -26,6 +28,9 @@ import './notebook.css'
  * 移除）。誠實邊界：web 無 SwiftData/CloudKit，操作只動 in-memory 列表、不持久化、
  * 不同步後端（iOS NotebookListCoordinator 的 server PUT/getUserConfig 在 web 為 no-op）。
  * parity 契約：初值 cards = fixture.cards、無浮層 → capture 首屏與靜態版逐位元相同。
+ *
+ * 當 URL 含 shell=1 時，切換至 API-backed useNotebookApiStore（真實後端資料 +
+ * 樂觀更新 + rollback）。非 ready 態由 VocabSceneShell 包裹。
  */
 
 function NotebookCard({ card, onMore }: { card: NotebookFixtureCard; onMore: () => void }) {
@@ -174,13 +179,60 @@ function NotebookEditSheet({
 }
 
 export function NotebookScreen({ scenario }: { scenario: ScenarioId<'notebook'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <NotebookScreenApi />
+  }
+  return <NotebookScreenFixture scenario={scenario} />
+}
+
+/** Fixture-driven screen — parity harness 路徑（無 shell=1 時）。 */
+function NotebookScreenFixture({ scenario }: { scenario: ScenarioId<'notebook'> }) {
   const fixture = NOTEBOOK_FIXTURES[scenario]
   const store = useNotebookStore(fixture)
+  return <NotebookBody cards={store.cards} store={store} reviewTotal={fixture.reviewTotal} />
+}
 
+/** API-driven screen — shell=1 時使用真實後端資料。 */
+function NotebookScreenApi() {
+  const store = useNotebookApiStore()
+  const reviewTotal = store.cards.reduce((sum, c) => sum + c.actionableCount, 0)
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <NotebookBody cards={store.cards} store={store} reviewTotal={reviewTotal} />
+    </VocabSceneShell>
+  )
+}
+
+/** 共享的 notebook 畫面本體（fixture / API 兩條路共用）。 */
+function NotebookBody({
+  cards,
+  store,
+  reviewTotal,
+}: {
+  cards: NotebookFixtureCard[]
+  store: {
+    sheet: NotebookSheet | null
+    menuCardName: string | null
+    showFilter: boolean
+    openAdd: () => void
+    openEditFor: (cardName: string) => void
+    closeSheet: () => void
+    openMenu: (cardName: string) => void
+    closeMenu: () => void
+    addNotebook: (name: string) => void | Promise<void>
+    renameNotebook: (oldName: string, newName: string) => void | Promise<void>
+    deleteNotebook: (cardName: string) => void | Promise<void>
+  }
+  reviewTotal: number
+}) {
   // 編輯 sheet 鎖定的卡（以名稱定位）；改名時回填初值。
   const editingName = store.sheet?.kind === 'edit' ? store.sheet.cardName : null
   const editingCard =
-    editingName !== null ? store.cards.find((c) => c.name === editingName) ?? null : null
+    editingName !== null ? cards.find((c) => c.name === editingName) ?? null : null
 
   return (
     <div className="notebook">
@@ -195,7 +247,7 @@ export function NotebookScreen({ scenario }: { scenario: ScenarioId<'notebook'> 
           {/* CTA pill — brandHero（黃），未學複習 sparkles + 總數 */}
           <span className="nb-pill nb-pill-cta">
             <SparklesIcon size={15} />
-            <span className="nb-pill-num">{fixture.reviewTotal}</span>
+            <span className="nb-pill-num">{reviewTotal}</span>
           </span>
           {store.showFilter && (
             <span className="nb-pill nb-pill-tool">
@@ -217,7 +269,7 @@ export function NotebookScreen({ scenario }: { scenario: ScenarioId<'notebook'> 
         <div className="nb-air-divider" />
 
         <div className="nb-list">
-          {store.cards.map((card) => (
+          {cards.map((card) => (
             <NotebookCard key={card.name} card={card} onMore={() => store.openMenu(card.name)} />
           ))}
         </div>

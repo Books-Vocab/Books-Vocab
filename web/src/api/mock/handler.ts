@@ -28,6 +28,7 @@ import {
 interface ParsedRequest {
   method: string
   path: string // pathname only, no query
+  query: Record<string, string>
   hasAuth: boolean
   body: unknown
 }
@@ -60,9 +61,14 @@ function parse(input: string, init?: RequestInit): ParsedRequest {
       body = undefined
     }
   }
+  const query: Record<string, string> = {}
+  for (const [k, v] of url.searchParams) {
+    query[k] = v
+  }
   return {
     method: (init?.method ?? 'GET').toUpperCase(),
     path: url.pathname,
+    query,
     hasAuth: /^Bearer\s+\S+/.test(auth),
     body,
   }
@@ -155,7 +161,13 @@ const ROUTES: Route[] = [
   {
     method: 'GET',
     pattern: /^\/api\/vocab$/,
-    handle: () => json(MOCK_VOCAB_CARDS),
+    handle: (req) => {
+      const notebookId = req.query.notebook_id
+      if (notebookId) {
+        return json(MOCK_VOCAB_CARDS.filter((c) => c.notebookId === notebookId))
+      }
+      return json(MOCK_VOCAB_CARDS)
+    },
   },
   {
     method: 'POST',
@@ -258,6 +270,12 @@ const ROUTES: Route[] = [
     method: 'GET',
     pattern: /^\/api\/user\/quota$/,
     handle: () => json(MOCK_QUOTA),
+  },
+  // user account deletion (optional endpoint — may not exist in backend yet)
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/user\/account$/,
+    handle: () => json({ deleted: true }, 204),
   },
 ]
 
