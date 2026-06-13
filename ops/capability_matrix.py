@@ -57,6 +57,7 @@ SURFACES = [
     Surface("ios.ops.build", "./ops/ios_ops.sh", "./ops/ios_ops.sh build --json", "operator", "local-build", "local", "local compile gate"),
     Surface("ios.ops.test", "./ops/ios_ops.sh", "./ops/ios_ops.sh test --json", "operator", "local-test", "local", "local verification run"),
     Surface("ios.ops.catalog", "./ops/ios_ops.sh", "./ops/ios_ops.sh catalog snapshots --json", "operator", "local-artifact", "local", "local screenshot artifact generation"),
+    Surface("ios.ops.quality", "./ops/ios_ops.sh", "./ops/ios_ops.sh quality impact --files <path...> --json", "observer", "local-read", "local", "UI quality gate discovery for changed iOS files"),
     Surface("capture.profile.run", "./ops/capture_profile.py", "./ops/capture_profile.py run --profile <file>", "operator", "local-artifact", "local", "marketing capture orchestration"),
     Surface("podcast.ops.status", "./ops/podcast_ops.py", "./ops/podcast_ops.py status --json", "observer", "local-read", "local", "headless podcast workspace status"),
     Surface("podcast.ops.episodes", "./ops/podcast_ops.py", "./ops/podcast_ops.py episodes <workspace> --json", "observer", "local-read", "local", "podcast per-episode gate matrix"),
