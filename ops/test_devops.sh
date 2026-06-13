@@ -138,6 +138,9 @@ grep -q 'git rev-parse --short HEAD' "$KG" \
 grep -q 'VERSION' "$KG" \
   && ok "KG writes VERSION file" \
   || fail_t "KG missing VERSION file write"
+grep -q -- 'docker compose up -d --build --force-recreate' "$KG" \
+  && ok "KG deploy force-recreates container so VERSION is re-read" \
+  || fail_t "KG deploy should force-recreate container after stamping VERSION"
 grep -q 'deploy.log' "$KG" \
   && ok "KG appends deploy log" \
   || fail_t "KG missing deploy log"
