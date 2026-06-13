@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useApi } from '../../api/ApiContext'
+import { useMemo, useState } from 'react'
 import type { CardResponse } from '../../api/types'
+import { useVocabCardsQuery } from '../../data/vocab'
 import type { RowReviewState, VocabRowFixture } from './fixtures'
 import type { VocabFilter, VocabInteractionState } from './store'
 import { filterRows } from './store'
 
 /**
  * API-backed vocabulary store — 當 shell=1 時取代 fixture-driven useVocabStore。
- * 從後端 GET /api/vocab?notebook_id=xxx 拉取真實卡片，映射到既有 VocabRowFixture
- * 形狀，使 JSX 變動最小。搜尋/過濾仍本地處理。非 ready 態由 VocabSceneShell 包裹。
+ * 資料引擎已遷移到 P2 資料層的 useVocabCardsQuery（TanStack Query）：取得 GET
+ * /api/vocab?notebook_id=xxx 的真實卡片並映射到既有 VocabRowFixture 形狀（JSX 零變動），
+ * 換得跨 surface cache / dedup、正確 retry 策略與 staleTime。搜尋/過濾/展開仍是本地
+ * UI 狀態（與資料無關，留在本 hook）。非 ready 態由 VocabSceneShell 包裹。
  */
 
 export type VocabApiStatus = 'loading' | 'ready' | 'error'
@@ -47,27 +49,23 @@ export function toVocabRow(card: CardResponse): VocabRowFixture {
 }
 
 export function useVocabApiStore(notebookId: string | null): VocabApiState {
-  const api = useApi()
-  const [status, setStatus] = useState<VocabApiStatus>('loading')
-  const [rows, setRows] = useState<VocabRowFixture[]>([])
+  const cardsQuery = useVocabCardsQuery(notebookId)
   const [query, setQuery] = useState('')
   const [activeFilter, setActiveFilter] = useState<VocabFilter>(null)
   const [expandedWord, setExpandedWord] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setStatus('loading')
-    try {
-      const cards = await api.vocabulary.list(notebookId ? { notebookId } : {})
-      setRows(cards.map(toVocabRow))
-      setStatus('ready')
-    } catch {
-      setStatus('error')
-    }
-  }, [api, notebookId])
+  const rows = useMemo<VocabRowFixture[]>(
+    () => (cardsQuery.data ?? []).map(toVocabRow),
+    [cardsQuery.data],
+  )
 
-  useEffect(() => {
-    load()
-  }, [load])
+  // status 映射：有資料 → ready（背景 refetch 不退回 loading）；已 settle 的錯誤 →
+  // error；其餘（初次 pending、或從 error 觸發 retry 而正在 refetch）→ loading。
+  // 後者忠實重現原 retry()「先 loading 再 ready/error」的行為。
+  let status: VocabApiStatus
+  if (cardsQuery.data !== undefined) status = 'ready'
+  else if (cardsQuery.isError && !cardsQuery.isFetching) status = 'error'
+  else status = 'loading'
 
   const visibleRows = useMemo(
     () => filterRows(rows, query, activeFilter),
@@ -87,6 +85,8 @@ export function useVocabApiStore(notebookId: string | null): VocabApiState {
     setQuery,
     toggleFilter: (f: RowReviewState) => setActiveFilter((cur) => (cur === f ? null : f)),
     toggleExpanded: (word: string) => setExpandedWord((cur) => (cur === word ? null : word)),
-    retry: load,
+    retry: () => {
+      void cardsQuery.refetch()
+    },
   }
 }
