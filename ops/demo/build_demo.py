@@ -4,7 +4,6 @@
 Loads the single demo SoT (ops/demo/demo_identity.json + demo_dataset.json via
 sot.py) and dispatches to one of three emitters:
 
-    emit-web      ops/demo/emit_web.py::emit       SoT -> web generated seeds
     emit-ios      ops/demo/emit_ios.py::emit       SoT -> iOS FixtureDataset JSON
     emit-backend  ops/demo/emit_backend.py::emit   SoT -> ops_edit seed plan + expectation
 
@@ -21,7 +20,7 @@ Phase A: the emitter modules are STUBS raising NotImplementedError; this CLI is
 fully wired so Phase B only fills the emit() bodies.
 
 Canonical invocation is the script form, run via uv from the backend venv:
-    (cd backend && uv run python ../ops/demo/build_demo.py emit-web --json)
+    (cd backend && uv run python ../ops/demo/build_demo.py emit-ios --json)
 The sibling modules (sot/emit_*) are imported by absolute name after prepending
 this directory to sys.path, so no package context (ops/__init__.py) is required.
 """
@@ -42,11 +41,9 @@ if str(_HERE) not in sys.path:
 
 import emit_backend  # noqa: E402
 import emit_ios  # noqa: E402
-import emit_web  # noqa: E402
 from sot import SoTError, load_sot  # noqa: E402
 
 _EMITTERS = {
-    "emit-web": emit_web.emit,
     "emit-ios": emit_ios.emit,
     "emit-backend": emit_backend.emit,
 }
@@ -54,7 +51,7 @@ _EMITTERS = {
 
 def _build_parser() -> argparse.ArgumentParser:
     # Global flags live on a shared parent so they are accepted on BOTH sides of
-    # the subcommand (`build_demo.py --json emit-web` and `build_demo.py emit-web
+    # the subcommand (`build_demo.py --json emit-ios` and `build_demo.py emit-ios
     # --json` both work).
     globals_parent = argparse.ArgumentParser(add_help=False)
     globals_parent.add_argument(

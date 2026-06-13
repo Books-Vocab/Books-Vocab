@@ -26,7 +26,7 @@ def _validate_http_url(value: str) -> str:
     """Defense-in-depth: reject non-http(s) schemes on VocabSource.url.
 
     Blocks javascript:, data:, file:, ftp:, etc. to neutralize XSS payloads
-    that could otherwise reach chrome-extension UI rendering url verbatim.
+    that could otherwise reach browser UI rendering url verbatim.
     Pure validator (no normalization) to preserve round-trip equality.
     """
     if not value:

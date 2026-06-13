@@ -23,7 +23,7 @@ OPS_EDIT INVOCATIONS  (SoT -> argv, dry-run unless an operator adds --commit)
      "--email", identity.email, "--provider", identity.provider]
     (provider must be one of google/apple/demo — identity.provider="apple" here.)
     NOTE: ops_edit user-create does not take display_name / provider_user_id /
-    access_token; those identity fields are consumed by emit_web / emit_ios and
+    access_token; those identity fields are consumed by emit_ios and
     by the auth/login shim, not by the backend seed. Backend identity = uid +
     email + provider only.
   seed:

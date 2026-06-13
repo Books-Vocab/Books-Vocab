@@ -1,7 +1,7 @@
 // Hand-written TypeScript mirrors of backend pydantic schemas.
 // SoT = backend/src/kg/api_models/*.py. Field names are copied verbatim from
 // the pydantic models — DO NOT invent or rename fields. When a backend schema
-// changes, update here in the same PR (see web/src/api/README.md).
+// changes, update here in the same PR.
 
 // ── auth (api_models/auth.py) ──────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 name: design-system
 
 # 設計系統跨平台完整性 gate。iOS Swift 為 SoT；此 workflow 確保 tokens.json 鏡像 iOS、
-# 生成 CSS 無 stale、web primitive 組裝對齊 iOS 元件契約、extension shared 邏輯不破。
+# 生成 CSS 無 stale、web primitive 組裝對齊 iOS 元件契約。
 # 只在相關路徑變動時跑。本地等價入口：ops/verify_design_system.sh（pre-commit 亦用）。
 
 on:
@@ -16,13 +16,10 @@ on:
       - 'ops/verify_design_system.sh'
       - 'ios/BooksAndVocab/Models/**'
       - 'ios/BooksAndVocab/UIComponents/**'
-      - 'chrome-extension/shared/**'
       - 'backend/static/kg-tokens.css'
       - 'backend/static/kg-components.css'
       - 'backend/static/kg-component-structures.css'
       - 'backend/static/review-gradient.js'
-      - 'web/src/styles/kg-tokens.css'
-      - 'web/src/styles/kg-components.css'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/design-system.yml'

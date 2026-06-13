@@ -8,10 +8,8 @@ hard-coded, so token changes auto-propagate without re-running this script.
 
 Outputs (GENERATED — never hand-edit):
   design-system/dist/kg-components.css    canonical component CSS
-  chrome-extension/shared/kg-components.css bundled copy
   backend/static/kg-components.css        bundled copy for 官網
   design-system/dist/review-gradient.js   canonical JS algorithm
-  chrome-extension/shared/review-gradient.js bundled copy
 
 Run:  uv run python ops/gen_web_components.py
 """
@@ -29,8 +27,6 @@ COMPONENTS_JSON = REPO / "design-system" / "components.json"
 # kg-components.css (hand-authored primitives) so both can coexist.
 DIST_STRUCTURES = REPO / "design-system" / "dist" / "kg-component-structures.css"
 DIST_REVIEW_GRADIENT = REPO / "design-system" / "dist" / "review-gradient.js"
-EXT_STRUCTURES = REPO / "chrome-extension" / "shared" / "kg-component-structures.css"
-EXT_REVIEW_GRADIENT = REPO / "chrome-extension" / "shared" / "review-gradient.js"
 BACKEND_STATIC = REPO / "backend" / "static"
 BACKEND_STRUCTURES = BACKEND_STATIC / "kg-component-structures.css"
 BACKEND_REVIEW_GRADIENT = BACKEND_STATIC / "review-gradient.js"
@@ -227,10 +223,8 @@ def main() -> int:
 
     targets: list[tuple[Path, str]] = [
         (DIST_STRUCTURES, css),
-        (EXT_STRUCTURES, css),
         (BACKEND_STRUCTURES, css),
         (DIST_REVIEW_GRADIENT, js),
-        (EXT_REVIEW_GRADIENT, js),
         (BACKEND_REVIEW_GRADIENT, js),
     ]
 

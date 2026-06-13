@@ -197,15 +197,6 @@ mechanisms:
     verdict: "exit code"
     docs:
       - docs/sop/ios.md
-  - id: glob.gate
-    layer: cross-platform
-    entrypoint: ops/test_ops.sh
-    gate: manual
-    triggers:
-      - "chrome-extension/**/*.js"
-    verdict: "exit code"
-    docs:
-      - docs/sop/ios.md
   - id: exact.gate
     layer: static-value
     entrypoint: ops/test_ops.sh
@@ -230,13 +221,6 @@ if jq -e 'length == 0' <<<"$OUT" >/dev/null 2>&1; then
   ok "!exclude suppresses broad dir match"
 else
   fail_t "!exclude not honored: $OUT"
-fi
-
-OUT="$(IMPACT chrome-extension/sidepanel/sidepanel.js)"
-if jq -e 'map(.id) == ["glob.gate"]' <<<"$OUT" >/dev/null 2>&1; then
-  ok "glob trigger matches"
-else
-  fail_t "glob trigger failed: $OUT"
 fi
 
 OUT="$(IMPACT design-system/tokens.json backend/src/kg/main.py)"
