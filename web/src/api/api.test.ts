@@ -79,6 +79,18 @@ describe('vocabulary', () => {
     expect(res.skipped).toBe(0)
   })
 
+  it('list() with notebookId filters by notebook_id query param', async () => {
+    const cards = await authedClient().vocabulary.list({ notebookId: 'default' })
+    // All mock cards have notebookId='default'
+    expect(cards.length).toBeGreaterThan(0)
+    expect(cards.every((c) => c.notebookId === 'default')).toBe(true)
+  })
+
+  it('list() with unknown notebookId returns empty', async () => {
+    const cards = await authedClient().vocabulary.list({ notebookId: 'unknown-nb' })
+    expect(cards).toHaveLength(0)
+  })
+
   it('list() throws a 401 when logged out', async () => {
     const err = await expectApiError(() => anonClient().vocabulary.list())
     expect(err.isUnauthorized).toBe(true)
