@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { PodcastSeriesSummary } from '../../api/types'
+import { RouteTransition, useNavDirection } from '../../motion'
 import {
   buildContinueShelf,
   indexCatalog,
@@ -12,6 +13,7 @@ import {
   openEpisode,
   openSeries,
   popFlow,
+  type PodcastFlowScreen,
   type PodcastFlowStack,
 } from '../podcast/flowNav'
 import { tierFromEntitlements, type PodcastTier } from '../podcast/tier'
@@ -19,8 +21,12 @@ import { ChevronLeftIcon } from '../../shell/icons'
 import { PlayFillIcon } from './icons'
 import { usePodcastData } from './usePodcastData'
 import { PodcastFlowPlayer } from './PodcastFlowPlayer'
+import { PodcastMiniPlayer } from './PodcastMiniPlayer'
+import { reopenPlayer, shouldShowMiniPlayer } from './miniPlayer'
+import { usePodcastPlayback } from './usePodcastPlayback'
 import './podcast-home.css'
 import './podcast-flow.css'
+import './mini-player.css'
 
 /**
  * Shell-gated functional podcast flow — the live-API sibling of PodcastHomeScreen.
@@ -41,6 +47,9 @@ import './podcast-flow.css'
 export function PodcastHomeApiStore() {
   const data = usePodcastData()
   const [stack, setStack] = useState<PodcastFlowStack>(() => initialFlow())
+  // Single persistent playback engine: one <audio> kept alive across the flow so
+  // the mini-player continues playing while you navigate home ↔ list ↔ player.
+  const playback = usePodcastPlayback(data.api)
 
   const tier: PodcastTier = tierFromEntitlements(data.entitlements, data.hasToken)
   const catalog = useMemo(() => indexCatalog(data.series), [data.series])
@@ -50,10 +59,21 @@ export function PodcastHomeApiStore() {
   )
 
   const screen = currentFlowScreen(stack)
-  const canGoBack = flowDepth(stack) > 1
+  const depth = flowDepth(stack)
+  const canGoBack = depth > 1
+  // RouteTransition inputs: stable per-screen identity + inferred push/pop. Same
+  // foundation the shell uses (mode="stack") — no hand-rolled transition.
+  const routeKey = flowRouteKey(screen, depth)
+  const direction = useNavDirection(depth)
+  const miniVisible = shouldShowMiniPlayer(playback.nowPlaying, playback.engaged, screen)
 
   return (
-    <div className="podcast-home pf-root">
+    <div className="podcast-home pf-root" data-mini={miniVisible ? 'true' : undefined}>
+      {/* The one persistent audio element. Lives at the flow root (NOT inside a
+          screen) so popping back never tears down playback. The playback hook
+          owns all transport state; screens are thin views over it. */}
+      <audio ref={playback.audioRef} {...playback.audioProps} />
+
       {canGoBack && (
         <button
           type="button"
@@ -65,36 +85,61 @@ export function PodcastHomeApiStore() {
         </button>
       )}
 
-      {screen.route === 'home' && (
-        <HomeView
-          loading={data.loading}
-          series={data.series}
-          continueItems={continueItems}
-          onOpenSeries={(id) => setStack((s) => openSeries(s, id))}
-          onOpenEpisode={(id, ep) => setStack((s) => openEpisode(s, id, ep))}
-        />
-      )}
+      {/* iOS push/pop between home / episode-list / player via the shared
+          RouteTransition (incoming slides from the right, outgoing parallax-
+          dims; pop reverses; prefers-reduced-motion → instant). */}
+      <RouteTransition routeKey={routeKey} direction={direction} mode="stack">
+        {screen.route === 'home' && (
+          <HomeView
+            loading={data.loading}
+            series={data.series}
+            continueItems={continueItems}
+            onOpenSeries={(id) => setStack((s) => openSeries(s, id))}
+            onOpenEpisode={(id, ep) => setStack((s) => openEpisode(s, id, ep))}
+          />
+        )}
 
-      {screen.route === 'episode-list' && (
-        <EpisodeListView
-          seriesId={screen.seriesId}
-          series={catalog.get(screen.seriesId)}
-          tier={tier}
-          onOpenEpisode={(ep) => setStack((s) => openEpisode(s, screen.seriesId, ep))}
-        />
-      )}
+        {screen.route === 'episode-list' && (
+          <EpisodeListView
+            seriesId={screen.seriesId}
+            series={catalog.get(screen.seriesId)}
+            tier={tier}
+            onOpenEpisode={(ep) => setStack((s) => openEpisode(s, screen.seriesId, ep))}
+          />
+        )}
 
-      {screen.route === 'player' && (
-        <PodcastFlowPlayer
-          seriesId={screen.seriesId}
-          epNum={screen.epNum}
-          series={catalog.get(screen.seriesId)}
-          tier={tier}
-          api={data.api}
-        />
-      )}
+        {screen.route === 'player' && (
+          <PodcastFlowPlayer
+            seriesId={screen.seriesId}
+            epNum={screen.epNum}
+            series={catalog.get(screen.seriesId)}
+            tier={tier}
+            playback={playback}
+          />
+        )}
+      </RouteTransition>
+
+      {/* Persistent mini-player: animates in once an episode is loaded and the
+          full player isn't the visible screen; tap re-opens the player. */}
+      <PodcastMiniPlayer
+        visible={miniVisible}
+        playback={playback}
+        onOpen={() => setStack((s) => (playback.nowPlaying ? reopenPlayer(s, playback.nowPlaying) : s))}
+      />
     </div>
   )
+}
+
+/** Stable AnimatePresence key per flow screen (route + depth + entity id). */
+function flowRouteKey(screen: PodcastFlowScreen, depth: number): string {
+  switch (screen.route) {
+    case 'home':
+      return `home:${depth}`
+    case 'episode-list':
+      return `list:${depth}:${screen.seriesId}`
+    case 'player':
+      return `player:${depth}:${screen.seriesId}:${screen.epNum}`
+  }
 }
 
 // ── home ─────────────────────────────────────────────────────────────────────
