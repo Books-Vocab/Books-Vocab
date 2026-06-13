@@ -15,6 +15,7 @@
     "check:responsive": "node tools/check-responsive-isolation.mjs"
   },
   "dependencies": {
+    "@kg/types": "*",
     "@use-gesture/react": "^10.3.1",
     "epubjs": "^0.3.93",
     "framer-motion": "^12.40.0",
