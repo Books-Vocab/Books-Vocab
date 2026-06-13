@@ -25,7 +25,7 @@ verified_against: bdeab37490a5d04bc8924f03d22402c30a51e2dd
 | `user.py` | `/api/user/*` | 設定 (`GET`/`PUT /api/user/config`)、唯讀身分 face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由 `users.json` 登入時 record 衍生，與可變 config bundle 分離)、entitlements、quota |
 | `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、內容編修 (`PATCH /api/vocab/{word}` → meaning/note；`explanation` 為 `note` 欄的 write-through alias)、archive 切換 (`PATCH /api/vocab/{word}/archive`)、軟刪 (`DELETE /api/vocab/{word}`)、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
-| `library.py` | `/api/library/*` | 書庫（server 端 book 鏡像）；單一 store `LibraryStore`（per-user `library.db` / `LibraryBook`），承載 list/create/patch/position/delete。`DELETE /api/library/books/{id}` 軟刪（`LibraryStore.soft_delete` set `is_deleted`，冪等） |
+| `library.py` | `/api/library/*` | 書庫（server 端 book 鏡像）；單一 store `LibraryStore`（per-user `library.db` / `LibraryBook`），承載 list(`?since=` 增量含 tombstone)/create(`client_book_id` 冪等)/patch/position(LWW)/delete。`DELETE /api/library/books/{id}` 軟刪（`LibraryStore.soft_delete` set `is_deleted`，冪等）。書檔資產（Arch PR #7）：`POST /api/library/books/{id}/asset-upload`（依 `LIBRARY_BUCKET` env 決定：未設或 `local_only`→宣告 local-only 不發 URL；已設→發 presigned PUT + 記 `asset_object_key`，`LIBRARY_ASSET_MAX_BYTES` 超限 400）、`GET /api/library/books/{id}/asset`（object-stored→307 redirect 到 presigned GET；local-only/未註冊→409；未知 book→404）。S3-compatible，pattern 同 podcast media |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
 | `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**無 Authorization header 的訪客**；若 header 存在但 malformed / token invalid 則 401，不降級 guest；`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）；`progress` 仍 `get_current_user`，OpenAPI 以 `api_models/podcast.py` response models 固定 schema |
@@ -68,6 +68,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 - **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` / `LLM_ERROR_LOG_RETENTION_DAYS`
 - **Cache**: `TRANSLATE_CACHE_TTL_DAYS`
 - **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ`(ops-side only — 僅 root `devops.sh` 顯示 log 時間用,不影響 backend runtime) / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
+- **Object storage**: `PODCAST_BUCKET` / `PODCAST_BUCKET_REGION` / `PODCAST_BUCKET_ENDPOINT_URL`(播客媒體);`LIBRARY_BUCKET` / `LIBRARY_BUCKET_REGION` / `LIBRARY_BUCKET_ENDPOINT_URL` / `LIBRARY_ASSET_MAX_BYTES`(書檔資產,Arch PR #7;未設 → 資產 local-only)。皆 S3-compatible,unset 時走本地 fallback / 宣告 local-only
 ## iOS 模組地圖 (`ios/BooksAndVocab/`)
 
 | 目錄 | 用途 |

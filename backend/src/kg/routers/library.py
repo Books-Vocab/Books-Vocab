@@ -4,11 +4,14 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from ..api_models.library import (
+    AssetUploadRequest,
+    AssetUploadResponse,
     BookCreateRequest,
     BookMetadataResponse,
     BookPositionRequest,
@@ -16,8 +19,12 @@ from ..api_models.library import (
     DeleteBookResponse,
 )
 from ..deps import CurrentUser
-from ..exceptions import BadRequestError, NotFoundError
+from ..exceptions import BadRequestError, ConflictError, NotFoundError
+from ..settings import KGSettings
 from ..vocab_shared import _dt_to_iso
+
+# Presigned URL TTL (seconds) for asset upload/download targets.
+_ASSET_URL_TTL = 3600
 
 router = APIRouter(tags=["library"])
 
@@ -39,6 +46,12 @@ class LibraryBook(SQLModel, table=True):
     locator: str | None = SQLField(default=None)
     progression: float | None = SQLField(default=None)
     position_updated_at: str | None = SQLField(default=None)
+    # Asset storage (Architecture PR #7): where the raw book file lives.
+    # asset_storage in {None (unknown), "local", "object"}.
+    asset_storage: str | None = SQLField(default=None)
+    asset_object_key: str | None = SQLField(default=None)
+    asset_byte_size: int | None = SQLField(default=None)
+    asset_sha256: str | None = SQLField(default=None)
 
 
 class LibraryStore:
@@ -165,6 +178,33 @@ class LibraryStore:
                 session.refresh(book)
             return book
 
+    def set_asset(
+        self,
+        book_id: str,
+        *,
+        storage: str,
+        object_key: str | None,
+        byte_size: int | None,
+        sha256: str | None,
+    ) -> LibraryBook | None:
+        """Record where a book's raw asset lives (local-only or object key).
+
+        Returns the updated book, or ``None`` if the id is unknown.
+        """
+        with Session(self.engine) as session:
+            book = session.get(LibraryBook, book_id)
+            if book is None:
+                return None
+            book.asset_storage = storage
+            book.asset_object_key = object_key
+            book.asset_byte_size = byte_size
+            book.asset_sha256 = sha256
+            book.updated_at = datetime.now(UTC)
+            session.add(book)
+            session.commit()
+            session.refresh(book)
+            return book
+
 
 def _library_store(user_dir: Path) -> LibraryStore:
     return LibraryStore(user_dir / "library.db")
@@ -229,3 +269,116 @@ def delete_book(book_id: str, user: CurrentUser):
     if result is None:
         raise NotFoundError("Book", book_id)
     return DeleteBookResponse(deleted=book_id)
+
+
+# ---------------------------------------------------------------------------
+# Book asset storage (Architecture PR #7)
+# ---------------------------------------------------------------------------
+
+
+def _settings(request: Request) -> KGSettings:
+    return request.app.state.kg_settings
+
+
+def _library_s3_client(settings: KGSettings):
+    import boto3
+
+    return boto3.client(
+        "s3",
+        region_name=settings.library_bucket_region,
+        endpoint_url=settings.library_bucket_endpoint_url,
+    )
+
+
+def _asset_object_key(user_id: str, book_id: str, fmt: str) -> str:
+    safe_fmt = "".join(c for c in fmt.lower() if c.isalnum()) or "bin"
+    return f"library/{user_id}/{book_id}/asset.{safe_fmt}"
+
+
+@router.post(
+    "/api/library/books/{book_id}/asset-upload",
+    response_model=AssetUploadResponse,
+)
+def request_asset_upload(
+    book_id: str,
+    req: AssetUploadRequest,
+    user: CurrentUser,
+    request: Request,
+):
+    """Request an object-storage upload target or declare a local-only asset.
+
+    When no ``library_bucket`` is configured (dev / privacy-default) or the
+    client declares ``local_only``, the asset stays client-side and no upload
+    URL is minted. Otherwise a presigned PUT URL is returned and the resulting
+    object key is recorded on the book row for later download.
+    """
+    settings = _settings(request)
+    store = _library_store(user["dir"])
+    book = store.get(book_id)
+    if book is None:
+        raise NotFoundError("Book", book_id)
+
+    # Quota policy: reject obviously oversize assets before minting a target.
+    if req.byte_size > settings.library_asset_max_bytes:
+        raise BadRequestError(
+            f"asset too large ({req.byte_size} bytes); "
+            f"max {settings.library_asset_max_bytes}"
+        )
+
+    local_only = req.local_only or not settings.library_bucket
+    if local_only:
+        store.set_asset(
+            book_id,
+            storage="local",
+            object_key=None,
+            byte_size=req.byte_size,
+            sha256=req.sha256,
+        )
+        return AssetUploadResponse(book_id=book_id, storage="local")
+
+    object_key = _asset_object_key(user["id"], book_id, req.format)
+    client = _library_s3_client(settings)
+    upload_url = client.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": settings.library_bucket, "Key": object_key},
+        ExpiresIn=_ASSET_URL_TTL,
+    )
+    store.set_asset(
+        book_id,
+        storage="object",
+        object_key=object_key,
+        byte_size=req.byte_size,
+        sha256=req.sha256,
+    )
+    return AssetUploadResponse(
+        book_id=book_id,
+        storage="object",
+        upload_url=upload_url,
+        object_key=object_key,
+        expires_in=_ASSET_URL_TTL,
+    )
+
+
+@router.get("/api/library/books/{book_id}/asset")
+def download_asset(book_id: str, user: CurrentUser, request: Request):
+    """Redirect to an authorized object-storage URL for the book asset.
+
+    404 unknown book; 409 when the asset is local-only (not server-hosted) or
+    has never been registered.
+    """
+    settings = _settings(request)
+    store = _library_store(user["dir"])
+    book = store.get(book_id)
+    if book is None:
+        raise NotFoundError("Book", book_id)
+
+    if book.asset_storage != "object" or not book.asset_object_key:
+        raise ConflictError("Book asset is not server-hosted (local-only)")
+
+    client = _library_s3_client(settings)
+    download_url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.library_bucket, "Key": book.asset_object_key},
+        ExpiresIn=_ASSET_URL_TTL,
+    )
+    return RedirectResponse(url=download_url, status_code=307)
