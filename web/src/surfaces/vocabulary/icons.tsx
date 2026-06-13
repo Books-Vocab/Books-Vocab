@@ -45,3 +45,25 @@ export const KnowledgeGraphIcon = makeGlyph(
 
 /** SF `plus` — 新增連結 header 鈕（沿用 notebook/settings 的 plus 形狀）。 */
 export const PlusIcon = makeGlyph('<path d="M12 5.5v13M5.5 12h13"/>')
+
+/**
+ * SF `speaker.wave.2` — 卡片發音鈕（Web Speech API 朗讀）。喇叭本體 + 兩道聲波。
+ */
+export const SpeakerIcon = makeGlyph(
+  '<path d="M4 9.5h3l4-3.2v11.4l-4-3.2H4z"/>' +
+    '<path d="M14.5 9a4 4 0 0 1 0 6"/>' +
+    '<path d="M16.8 6.8a7 7 0 0 1 0 10.4"/>',
+)
+
+/**
+ * SF `square.and.arrow.up` — 分享 / 複製卡片鈕。向上箭頭出自方框（iOS 分享語意）。
+ */
+export const ShareIcon = makeGlyph(
+  '<path d="M12 4v11"/><path d="M8.5 7.5 12 4l3.5 3.5"/>' +
+    '<path d="M7 11.5H5.5v7h13v-7H17"/>',
+)
+
+/** SF `arrow.triangle.2.circlepath` 同家族「今日複習」CTA glyph（環形複習箭頭）。 */
+export const ReviewIcon = makeGlyph(
+  '<path d="M19 12a7 7 0 1 1-2-4.9"/><path d="M19 4.5V8h-3.5"/>',
+)
