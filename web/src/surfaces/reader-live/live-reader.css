@@ -120,6 +120,16 @@
   cursor: pointer;
   border: none;
 }
+/* 紙色主題 toggle（緊接字體 toggle 下方）。 */
+.live-reader-theme-toggle {
+  margin-top: 8px;
+}
+
+/* 夜間主題：外層 paper 底色同步暗化（內文 iframe 由 themeBodyCss 注入）。 */
+.live-reader[data-theme='dark'],
+.live-reader[data-theme='dark'] .live-reader-paper {
+  background: #1c1c1e;
+}
 
 /* 翻譯面板 overlay 定位（沿用 reader.css .reader-bottom-overlay 行為） */
 .live-reader-translation {
