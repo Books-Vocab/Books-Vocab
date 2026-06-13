@@ -13,7 +13,7 @@ import { BookIcon, EllipsisIcon, ICloudArrowDownIcon } from './icons'
  * 互動模型（iOS 對標 + web feel）：
  *  - 主動作 = 單擊封面 → `onOpen`（開書進閱讀器，殼層以 RouteTransition push）。
  *    鏡射 iOS BookCard 的 tap-to-open（context menu 才是次要動作，非主動作）。
- *  - 次動作（改名 / 刪除）= `onMore`，以三種次要 affordance 觸發：
+ *  - 次動作（改名 / 綁定 / 刪除）= `onMore`，以三種次要 affordance 觸發：
  *      desktop hover-revealed overflow 鈕（右上三點）、touch long-press、right-click。
  *    對齊 iOS BookCard 的 `.contextMenu`（長按）語意，桌面補 hover overflow。
  *  - 按壓手感：封面 whileTap 微縮放 + 變暗（snappy spring，尊重 reduced-motion）。
