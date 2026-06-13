@@ -7,9 +7,18 @@ import { pushTargetFor, screenFor } from '../../shell/nav'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { BookCard } from './BookCard'
 import type { BookFixture } from './fixtures'
-import { BookIcon, DocIcon, PencilIcon, TrashIcon, XmarkIcon } from './icons'
+import {
+  BookIcon,
+  BookmarkIcon,
+  CheckIcon,
+  DocIcon,
+  PencilIcon,
+  TrashIcon,
+  XmarkIcon,
+} from './icons'
 import { useBookshelfStore } from './store'
 import { useBookshelfApiStore } from './useBookshelfApiStore'
+import type { NotebookOption } from './useBookshelfApiStore'
 import './bookshelf.css'
 
 /**
@@ -63,7 +72,19 @@ function BookshelfScreenApi() {
       onRetry={store.retry}
       errorTitle="無法載入書庫"
     >
-      <BookshelfBody store={store} importMode="file" onImportFile={store.importFile} />
+      <BookshelfBody
+        store={store}
+        importMode="file"
+        onImportFile={store.importFile}
+        bind={{
+          bindingTitle: store.bindingTitle,
+          notebooks: store.notebooks,
+          boundNotebookId: store.boundNotebookId,
+          openBindFor: store.openBindFor,
+          closeBind: store.closeBind,
+          bindNotebook: store.bindNotebook,
+        }}
+      />
     </VocabSceneShell>
   )
 }
@@ -86,6 +107,16 @@ function GuestShelf() {
   )
 }
 
+/** API 路徑專屬的綁定能力（fixture 路徑不傳 → 不渲染綁定 UI，parity 不變）。 */
+interface BindCapability {
+  bindingTitle: string | null
+  notebooks: NotebookOption[]
+  boundNotebookId: (title: string) => string | null
+  openBindFor: (title: string) => void
+  closeBind: () => void
+  bindNotebook: (title: string, notebookId: string | null) => void | Promise<void>
+}
+
 /** 共享的書架本體（fixture / API 兩條路共用）。 */
 interface BookshelfBodyStore {
   books: BookFixture[]
@@ -106,11 +137,14 @@ function BookshelfBody({
   store,
   importMode,
   onImportFile,
+  bind,
 }: {
   store: BookshelfBodyStore
   /** 'stub' = parity 視覺占位（不真選檔）；'file' = 真檔案 picker（API 路徑）。 */
   importMode: 'stub' | 'file'
   onImportFile?: (file: File) => void | Promise<void>
+  /** 綁定單字本能力（API 路徑專屬）；fixture 路徑不傳 → 無綁定選項/picker。 */
+  bind?: BindCapability
 }) {
   // 殼層導航：點書封面 → push 真閱讀器（帶 bookId=title）。parity 路徑無 provider →
   // navigate no-op，封面點擊不做事，DOM/capture 行為不變。
@@ -142,7 +176,7 @@ function BookshelfBody({
       )}
 
       {/* ── 浮層（互動後才掛載，首屏無此 DOM）── */}
-      {/* 次動作選單（改名 / 刪除）migrated 到共享 Sheet：vaul 處理 Esc / backdrop /
+      {/* 次動作選單（改名 / 綁定 / 刪除）migrated 到共享 Sheet：vaul 處理 Esc / backdrop /
           drag-dismiss / focus trap，徹底治掉舊 scrim「Esc 不關」的互動 bug。
           導航推進時 menuTitle 仍為 null（openBook 不開選單），故換頁自然無殘留浮層。 */}
       <Sheet
@@ -155,6 +189,7 @@ function BookshelfBody({
             title={store.menuTitle}
             onRename={() => store.openRenameFor(store.menuTitle!)}
             onDelete={() => store.deleteBook(store.menuTitle!)}
+            onBind={bind ? () => bind.openBindFor(store.menuTitle!) : undefined}
           />
         )}
       </Sheet>
@@ -178,6 +213,25 @@ function BookshelfBody({
           />
         )}
       </Sheet>
+      {/* 綁定單字本 sheet（API 路徑專屬；fixture 無 bind → 不掛載，parity 不變）。同樣
+          收編進共享 Sheet（vaul 治理 dismiss），與其他浮層一致、無自帶 scrim。 */}
+      {bind && (
+        <Sheet
+          open={bind.bindingTitle !== null}
+          onClose={bind.closeBind}
+          ariaLabel="綁定單字本"
+        >
+          {bind.bindingTitle !== null && (
+            <BindNotebookSheet
+              title={bind.bindingTitle}
+              notebooks={bind.notebooks}
+              selectedId={bind.boundNotebookId(bind.bindingTitle)}
+              onSelect={(notebookId) => bind.bindNotebook(bind.bindingTitle!, notebookId)}
+              onClose={bind.closeBind}
+            />
+          )}
+        </Sheet>
+      )}
     </div>
   )
 }
@@ -240,7 +294,7 @@ function EmptyShelf({ onImport }: { onImport: () => void }) {
 }
 
 /**
- * 書卡次動作選單內容（改名 / 刪除）。鏡射 iOS BookCard contextMenu。
+ * 書卡次動作選單內容（改名 / 綁定單字本 / 刪除）。鏡射 iOS BookCard contextMenu。
  * 渲染於共享 <Sheet> 內 → scrim / Esc / backdrop / drag-dismiss 由 vaul 統一處理
  * （不再自帶 scrim role=dialog；那曾是「Esc 不關」bug 的根源）。
  */
@@ -248,10 +302,13 @@ function BookCardMenuContent({
   title,
   onRename,
   onDelete,
+  onBind,
 }: {
   title: string
   onRename: () => void
   onDelete: () => void
+  /** 綁定單字本（API 路徑專屬）；缺省（fixture）→ 不渲染綁定選項。 */
+  onBind?: () => void
 }) {
   return (
     <div className="bs-menu">
@@ -260,10 +317,68 @@ function BookCardMenuContent({
         <PencilIcon size={17} />
         <span>改名</span>
       </button>
+      {onBind && (
+        <button type="button" className="bs-menu-item" onClick={onBind}>
+          <BookmarkIcon size={17} />
+          <span>綁定單字本</span>
+        </button>
+      )}
       <button type="button" className="bs-menu-item bs-menu-item-destructive" onClick={onDelete}>
         <TrashIcon size={17} />
         <span>刪除</span>
       </button>
+    </div>
+  )
+}
+
+/**
+ * 綁定單字本 picker（shell=1 API 路徑）。列出單字本，選一個 → PATCH notebook_id；
+ * 已綁者顯打勾，點當前綁定 = 解綁（傳 null）。空清單顯提示。
+ */
+function BindNotebookSheet({
+  title,
+  notebooks,
+  selectedId,
+  onSelect,
+  onClose,
+}: {
+  title: string
+  notebooks: NotebookOption[]
+  selectedId: string | null
+  onSelect: (notebookId: string | null) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="bs-sheet-form">
+      <div className="bs-sheet-head">
+        <p className="bs-sheet-title">綁定單字本</p>
+        <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
+          <XmarkIcon size={16} />
+        </button>
+      </div>
+      <p className="bs-bind-subtitle">{title}</p>
+      {notebooks.length === 0 ? (
+        <p className="bs-import-note">尚無單字本可綁定。</p>
+      ) : (
+        <ul className="bs-bind-list">
+          {notebooks.map((nb) => {
+            const selected = nb.id === selectedId
+            return (
+              <li key={nb.id}>
+                <button
+                  type="button"
+                  className={`bs-bind-item${selected ? ' bs-bind-item-selected' : ''}`}
+                  aria-pressed={selected}
+                  onClick={() => onSelect(selected ? null : nb.id)}
+                >
+                  <span className="bs-bind-item-name">{nb.name}</span>
+                  {selected && <CheckIcon size={17} className="bs-bind-item-check" />}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }
