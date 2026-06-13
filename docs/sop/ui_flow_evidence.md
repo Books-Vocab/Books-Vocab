@@ -21,7 +21,7 @@ verified_against: d25aad2a
 | 3 | **Step screenshots** | `UITestDiagnostics.step()/captureStep()` | 每個語意步驟一張 `NN-name` 截圖；失敗路徑也截（`no-series-card`、`unexpected-login-sheet` 式防呆步）。 |
 | 4 | **真行為斷言** | `elapsedTime` 真實前進、control 切 pause | 斷言核心行為**發生**（狀態/數值變化），不是「按了按鈕」。守門斷言要能戳破假測試：fixture 該已登入卻見 login gate = `XCTFail`，不是 skip。 |
 | 5 | **KG_PERF log marks** | `ios/BooksAndVocab/Services/PerfLog.swift` | 核心行為打低頻 domain mark（如 `play.started`/`pause`/`seek`）。新常數 **append** 到 PerfLog，勿改既有 mark 名。驗證：`./ops/ios_ops.sh logs --simulator --device <udid> --debug --since 5m --predicate 'process == "BooksAndVocab" AND eventMessage CONTAINS "KG_PERF"'`。 |
-| 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 自動產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone `UIreview.html`。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過（light/dark 都要看時用 `catalog_contact_sheet.py --appearance both`）。 |
+| 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 自動產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone run `UIreview.html`，並同步更新 `build/snapshots/uitest-runs/UIreview.html` workspace 導覽頁。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過（light/dark 都要看時用 `catalog_contact_sheet.py --appearance both`）。 |
 
 ## 執行契約
 
@@ -29,7 +29,7 @@ verified_against: d25aad2a
 ./ops/ios_ops.sh test --ui --file <Flow>UITests.swift --lease --json   # 一律 --lease（pool 預設 3 台，KG_IOS_SIM_POOL_SIZE 可調）
 ```
 
-- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑）。`reviewHtml` = 本次 run 專屬 `build/snapshots/uitest-runs/<run>/UIreview.html`，直接把 step screenshots / contact sheets / video 收在同一頁；畫面行為爭議時先開它看整段流程，再抽幀看 tap 當下。頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
+- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑）。`reviewHtml` = 本次 run 專屬 `build/snapshots/uitest-runs/<run>/UIreview.html`，直接把 step screenshots / contact sheets / video 收在同一頁；畫面行為爭議時先開它看整段流程，再抽幀看 tap 當下。每次 UI run 也會更新 workspace-level `build/snapshots/uitest-runs/index.json`（schema `kg.ios.uitest-review-workspace.v1`）與 `build/snapshots/uitest-runs/UIreview.html`，依 `flowId × variantId` 聚合最新 runs、log/video/run-page 連結；`flowId` 來自 `--file`/grep/scope，`variantId` 來自 dataset 或 launch profile。頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
@@ -68,5 +68,6 @@ verified_against: d25aad2a
 
 1. flow UI test `--lease --json` 綠 + `uiVisualReview` 非 null + `uiVisualReview.reviewHtmlExists == true`。
 2. 獨立 reviewer **親 Read** 每張 step PNG 與 quick4，對照 KG_PERF log——不信 agent 自稱通過。
-3. `./ops/test_ios_ops.sh` 與 `./ops/docs_lint.sh` 綠。
-4. playbook 有新 seam 就回寫本檔。
+3. workspace `build/snapshots/uitest-runs/UIreview.html` 能從該 flow 導到本次 run page / video / log。
+4. `./ops/test_ios_ops.sh` 與 `./ops/docs_lint.sh` 綠。
+5. playbook 有新 seam 就回寫本檔。
