@@ -87,10 +87,11 @@ function nb(id: string, extra: Partial<NotebookResponse> = {}): NotebookResponse
 
 describe('loadGraphData — mock backend (ready)', () => {
   it('fuses graph.list edges + vocabulary.list cards into a GraphData', async () => {
-    const graph = await loadGraphData(authed(), 'default')
-    // mock seed: 4 cards in default, 2 links (card-1↔card-2, card-2↔card-3).
+    const graph = await loadGraphData(authed(), 'editorial-picks')
+    // demo seed: 5 cards + 3 links in editorial-picks (card-1↔card-2,
+    // card-3↔card-4, card-2↔card-5).
     expect(graph.nodes.length).toBeGreaterThanOrEqual(3)
-    expect(graph.links).toHaveLength(2)
+    expect(graph.links).toHaveLength(3)
     const ids = new Set(graph.nodes.map((n) => n.id))
     // every rendered edge endpoint must resolve to a node.
     for (const l of graph.links) {
@@ -100,8 +101,11 @@ describe('loadGraphData — mock backend (ready)', () => {
   })
 
   it('resolves the default notebook when none is passed', async () => {
+    // The demo seed assigns every card to a named notebook, so the implicit
+    // default notebook resolves to an empty graph — the path under test is that
+    // notebook.list() default-resolution runs without error and returns it.
     const graph = await loadGraphData(authed())
-    expect(graph.links).toHaveLength(2)
+    expect(graph.links).toEqual([])
   })
 })
 
