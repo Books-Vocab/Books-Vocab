@@ -7,6 +7,7 @@ import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
   initialNavState,
+  isLiveReaderScreen,
   pop,
   push,
   pushTargetFor,
@@ -138,8 +139,9 @@ export function AppShell({ config }: { config: HarnessConfig }) {
   const canGoBack = stackDepth(nav) > 1
   // 點書開啟的 reader 畫面（書庫 tab push 後 depth>1）→ 掛 Live Reader 真閱讀器，
   // 取代靜態 parity chrome。Live Reader 自帶「書庫」返回鈕 + chrome，故抑制殼層
-  // overlay（back chevron + 熱區），避免雙層導航重疊。
-  const isLiveReader = !!screen && screen.surface === 'reader' && canGoBack
+  // overlay（back chevron + 熱區），避免雙層導航重疊。謂詞與桌面 ResponsiveShell
+  // 共用 nav.isLiveReaderScreen（單一真相，避免雙殼 drift）。
+  const isLiveReader = isLiveReaderScreen(nav)
 
   // navigate(target)：以當前 tab push 一層；surface 內部列/卡點擊可主動推進導航
   // （attach 真實實體 id 的 Screen）。當前畫面 params 一併經 context 暴露給 surface。
