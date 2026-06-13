@@ -306,6 +306,17 @@
   appearance: none;
 }
 
+/* 今日複習 CTA pill：shell 路徑由 <span> 改 <button>（修點擊 no-op）。只清 UA chrome，
+   不覆寫 background/color → 沿用 .nb-pill-cta 的 brandHero 黃底，與 parity <span> 同像素。 */
+.nb-pill-cta-button {
+  margin: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 /* 主要動作 — 透明 overlay 鈕蓋整卡，單擊打開該單字本。無視覺 chrome →
    pixel-neutral：不渲染任何可見像素，僅承接點擊。z-index:1 壓在 overflow 鈕之下，
    令右上角 overflow 鈕的點擊優先命中（次要動作不被 open 吃掉）。 */
