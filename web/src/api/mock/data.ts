@@ -24,6 +24,7 @@ import type {
   UserProfileResponse,
   VocabAddResponse,
   VocabContentPatch,
+  VocabEntry,
 } from '../types'
 
 const NOW_ISO = '2026-06-11T00:00:00Z'
@@ -294,13 +295,19 @@ export function mockVocabByWord(word: string): CardResponse | undefined {
   return MOCK_VOCAB_CARDS.find((c) => c.content === word)
 }
 
-export function mockVocabAdd(count: number): VocabAddResponse {
+// POST /api/vocab — mints a card id per submitted entry. The sync SoT
+// (docs/reference/sync_lifecycle.md §"cardIds 不變式") requires `cardIds` to be
+// keyed by the client-submitted word as a BYTE-EXACT echo — no NFC / case / trim
+// normalization — because iOS reconcile does `cardIds[entry.word]` per-word.
+// Keying by index (`pending-${i}`) silently breaks that reconcile, so we key by
+// `entries[i].word` verbatim.
+export function mockVocabAdd(entries: VocabEntry[]): VocabAddResponse {
   return {
-    created: count,
+    created: entries.length,
     skipped: 0,
     duplicates: [],
     cardIds: Object.fromEntries(
-      Array.from({ length: count }, (_, i) => [`pending-${i}`, `new-card-${i}`]),
+      entries.map((e, i) => [e.word, `new-card-${i}`]),
     ),
   }
 }
