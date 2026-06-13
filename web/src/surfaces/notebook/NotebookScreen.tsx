@@ -15,6 +15,8 @@ import {
 import { useNotebookStore, type NotebookSheet } from './store'
 import { useNotebookApiStore } from './useNotebookApiStore'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { screenFor } from '../../shell/nav'
 import './notebook.css'
 
 /**
@@ -196,13 +198,26 @@ function NotebookScreenFixture({ scenario }: { scenario: ScenarioId<'notebook'> 
 /** API-driven screen — shell=1 時使用真實後端資料。 */
 function NotebookScreenApi() {
   const store = useNotebookApiStore()
+  const nav = useShellNav()
   const reviewTotal = store.cards.reduce((sum, c) => sum + c.actionableCount, 0)
+  // 編輯卡 → 導航至 notebook-edit surface（誠實導航圖既有的 notebook→notebook-edit
+  // 邊；此前無 UI 觸發故為死面）。先關 more 選單，再 push。parity 路徑（無 shell）
+  // 不傳此 callback → 沿用原地改名 sheet（DOM 與 capture 行為不變）。
+  const onEditNotebook = () => {
+    store.closeMenu()
+    nav.navigate(screenFor('notebook-edit'))
+  }
   return (
     <VocabSceneShell
       status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
       onRetry={store.retry}
     >
-      <NotebookBody cards={store.cards} store={store} reviewTotal={reviewTotal} />
+      <NotebookBody
+        cards={store.cards}
+        store={store}
+        reviewTotal={reviewTotal}
+        onEditNotebook={onEditNotebook}
+      />
     </VocabSceneShell>
   )
 }
@@ -212,6 +227,7 @@ function NotebookBody({
   cards,
   store,
   reviewTotal,
+  onEditNotebook,
 }: {
   cards: NotebookFixtureCard[]
   store: {
@@ -228,6 +244,9 @@ function NotebookBody({
     deleteNotebook: (cardName: string) => void | Promise<void>
   }
   reviewTotal: number
+  /** shell 路徑：點「編輯」導航至 notebook-edit surface（誠實導航圖既有邊）。
+      省略（parity/fixture 路徑）→ 沿用原地改名 sheet，capture DOM 不變。 */
+  onEditNotebook?: (cardName: string) => void
 }) {
   // 編輯 sheet 鎖定的卡（以名稱定位）；改名時回填初值。
   const editingName = store.sheet?.kind === 'edit' ? store.sheet.cardName : null
@@ -279,7 +298,11 @@ function NotebookBody({
       {store.menuCardName !== null && (
         <NotebookCardMenu
           cardName={store.menuCardName}
-          onEdit={() => store.openEditFor(store.menuCardName!)}
+          onEdit={() =>
+            onEditNotebook
+              ? onEditNotebook(store.menuCardName!)
+              : store.openEditFor(store.menuCardName!)
+          }
           onDelete={() => store.deleteNotebook(store.menuCardName!)}
           onClose={store.closeMenu}
         />
