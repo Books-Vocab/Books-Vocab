@@ -1,0 +1,279 @@
+/* ============================================================
+   Web-only responsive shell layout.
+
+   PARITY ISOLATION CONTRACT (do not break):
+   - Every rule in this file MUST be a descendant of .kg-responsive-shell.
+     Only ResponsiveShell mounts that class, and only on the shell path
+     (App.tsx shell===true) at the chosen breakpoints. The parity capture
+     path (?surface=X without ?shell=1) renders PhoneFrame -> SurfaceView in
+     the fixed 393x852 .phone-frame and NEVER mounts .kg-responsive-shell, so
+     nothing here can reach parity DOM.
+   - These layout custom properties are web-only. They live HERE (not in
+     design-system/tokens.json) on purpose: tokens.json is the cross-platform
+     design SoT and would pollute iOS/backend output + the drift guard.
+     Colours / spacing / radius keep using the generated kg-tokens.css vars.
+
+   BREAKPOINTS (literal px; mirror the JS breakpoint map in ResponsiveShell):
+     mobile   < 768    -> delegate to the existing AppShell / PhoneFrame
+     tablet   768-1119 -> icon rail (72px) + single fluid content pane
+     desktop  >= 1120  -> side nav (280px) + master pane + detail pane
+     wide     >= 1440  -> desktop layout, wider content measure clamp
+   ============================================================ */
+
+.kg-responsive-shell {
+  /* Layout constants — web-only, scoped here so they cannot leak to parity DOM. */
+  --shell-sidenav-w: 280px; /* desktop expanded side nav width */
+  --shell-rail-w: 72px; /* tablet collapsed icon rail width */
+  --pane-list-w: 360px; /* desktop master (list) pane width */
+  --reader-measure: 720px; /* optimal reading column measure */
+  --content-max-w: 1280px; /* max content width before centring on wide */
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── mobile (< 768): the shell delegates to the existing AppShell, which is
+   itself wrapped in a .phone-frame. We keep the responsive root as a passive
+   container (no chrome of its own) so the mobile experience is byte-identical
+   to today's shell behaviour. ───────────────────────────────────────────── */
+.kg-responsive-shell[data-breakpoint='mobile'] {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* ── shared grid frame for tablet + desktop (chrome column + content) ────── */
+.kg-responsive-shell[data-breakpoint='tablet'],
+.kg-responsive-shell[data-breakpoint='desktop'],
+.kg-responsive-shell[data-breakpoint='wide'] {
+  display: grid;
+  grid-template-rows: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* tablet (768-1119): persistent icon rail + single fluid content pane */
+.kg-responsive-shell[data-breakpoint='tablet'] {
+  grid-template-columns: var(--shell-rail-w) 1fr;
+}
+
+/* desktop (>= 1120): side nav + master pane + detail pane */
+.kg-responsive-shell[data-breakpoint='desktop'],
+.kg-responsive-shell[data-breakpoint='wide'] {
+  grid-template-columns: var(--shell-sidenav-w) 1fr;
+}
+
+/* ── nav chrome column ──────────────────────────────────────────────────── */
+.kg-responsive-shell .shell-chrome {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--card-bg);
+  border-right: var(--sp-hairline) solid var(--divider);
+}
+
+.kg-responsive-shell .shell-chrome-primary {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-2);
+}
+
+.kg-responsive-shell .shell-chrome-secondary {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border-top: var(--sp-hairline) solid var(--divider);
+}
+
+/* nav item — icon + (desktop) label */
+.kg-responsive-shell .shell-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.kg-responsive-shell .shell-nav-item[data-selected='true'] {
+  color: var(--tint);
+  background: var(--muted-fill);
+}
+
+.kg-responsive-shell .shell-nav-item[data-disabled='true'] {
+  color: var(--text-quaternary);
+  opacity: 0.55;
+  cursor: default;
+}
+
+.kg-responsive-shell .shell-nav-item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+}
+
+.kg-responsive-shell .shell-nav-item-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* tablet: collapse the rail — centre icons, hide labels */
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-chrome-primary,
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-chrome-secondary {
+  align-items: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: var(--sp-2);
+  width: var(--shell-rail-w);
+}
+
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-nav-item-label {
+  display: none;
+}
+
+/* ── content area ───────────────────────────────────────────────────────── */
+.kg-responsive-shell .shell-panes {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* tablet: single fluid content pane */
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-pane-master {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* tablet has no detail pane: deep push stacks in the same column (slide-over) */
+.kg-responsive-shell[data-breakpoint='tablet'] .shell-pane-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* desktop / wide: master (fixed list width) + detail (fluid) side by side */
+.kg-responsive-shell[data-breakpoint='desktop'] .shell-pane-master,
+.kg-responsive-shell[data-breakpoint='wide'] .shell-pane-master {
+  flex: 0 0 var(--pane-list-w);
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  border-right: var(--sp-hairline) solid var(--divider);
+}
+
+/* when only the master is present (stack depth 1) it fills the content area */
+.kg-responsive-shell[data-breakpoint='desktop'] .shell-panes[data-has-detail='false'] .shell-pane-master,
+.kg-responsive-shell[data-breakpoint='wide'] .shell-panes[data-has-detail='false'] .shell-pane-master {
+  flex: 1 1 auto;
+  border-right: none;
+}
+
+.kg-responsive-shell[data-breakpoint='desktop'] .shell-pane-detail,
+.kg-responsive-shell[data-breakpoint='wide'] .shell-pane-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* a single rendered surface inside a pane gets a centred max-width frame so
+   content does not stretch edge-to-edge on large displays */
+.kg-responsive-shell .shell-pane-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.kg-responsive-shell[data-breakpoint='wide'] .shell-pane-detail .shell-pane-surface {
+  max-width: var(--content-max-w);
+  margin-inline: auto;
+}
+
+/* detail-pane internal back affordance (desktop deep stack) */
+.kg-responsive-shell .shell-pane-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  background: transparent;
+  color: var(--tint);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── breakpoint media queries (chrome-level; literal px values match the JS
+   breakpoint map). These only ever match elements under .kg-responsive-shell,
+   so the global cascade never reaches parity DOM. ───────────────────────── */
+
+/* mobile < 768 */
+@media (max-width: 767px) {
+  .kg-responsive-shell .shell-chrome {
+    display: none; /* mobile uses the delegated AppShell tab bar instead */
+  }
+}
+
+/* tablet 768-1119 */
+@media (min-width: 768px) and (max-width: 1119px) {
+  .kg-responsive-shell .shell-pane-detail {
+    display: none; /* tablet stacks deep pushes into the master column */
+  }
+}
+
+/* desktop >= 1120 (master + detail) — base grid already set via data attr */
+@media (min-width: 1120px) {
+  .kg-responsive-shell .shell-nav-item-label {
+    display: block;
+  }
+}
+
+/* wide >= 1440 — wider content clamp handled by --content-max-w above */
+@media (min-width: 1440px) {
+  .kg-responsive-shell .shell-pane-detail .shell-pane-surface {
+    max-width: var(--content-max-w);
+    margin-inline: auto;
+  }
+}
