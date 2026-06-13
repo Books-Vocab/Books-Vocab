@@ -30,6 +30,8 @@ from kg.api_models.cards import CardLinkSummaryResponse, CardResponse
 from kg.api_models.common import VocabSource, _normalize_context
 from kg.api_models.graph import AutoLinkConfig, GraphLinkResponse, ManualLinkRequest
 from kg.api_models.library import (
+    AssetUploadRequest,
+    AssetUploadResponse,
     BookCreateRequest,
     BookMetadataResponse,
     BookPositionRequest,
@@ -98,6 +100,8 @@ __all__ = [
     "AppStoreSyncRequest",
     "ArchiveWordRequest",
     "ArchiveWordResponse",
+    "AssetUploadRequest",
+    "AssetUploadResponse",
     "AuthVerifyRequest",
     "AuthVerifyResponse",
     "AutoLinkConfig",
