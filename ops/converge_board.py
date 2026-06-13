@@ -136,6 +136,11 @@ def classify(facts: dict[str, Any]) -> State:
 
     # No unique patch left relative to main.
     if unmerged == 0:
+        # A remote-only ref (different name living on origin, no local branch) with
+        # no unique patch is a redundant remote ref to delete — never CURRENT,
+        # which means "this ref IS main".
+        if facts.get("remote_only"):
+            return State.MERGED
         # If the ref still carries commits (ahead>0) those patches already
         # landed in main under different hashes -> redundant ref = MERGED.
         # Otherwise it is literally at/under main = CURRENT.
@@ -155,10 +160,11 @@ def classify(facts: dict[str, Any]) -> State:
 
 
 def _is_live(facts: dict[str, Any]) -> bool:
-    """Heuristic: a worktree with unique committed work whose HEAD is a recent
-    commit is probably a live agent — flag it, suggest FREEZE."""
+    """Heuristic: unique committed work whose HEAD is a recent commit is probably
+    an active agent — flag it, suggest FREEZE. Covers both a local worktree
+    (live local agent) and a freshly pushed remote-only ref (live cloud session)."""
     return bool(
-        facts.get("worktree")
+        (facts.get("worktree") or facts.get("remote_only"))
         and int(facts.get("unmerged", 0)) > 0
         and facts.get("head_recent")
     )
@@ -321,9 +327,13 @@ def _is_dirty(worktree_path: str) -> bool:
 
 def _head_recent(worktree_path: str, within_seconds: int) -> bool:
     """True if the worktree HEAD commit is younger than `within_seconds`."""
-    rc, out = _git_ok(
-        ["log", "-1", "--format=%ct", "HEAD"], cwd=Path(worktree_path)
-    )
+    return _rev_recent("HEAD", within_seconds, cwd=Path(worktree_path))
+
+
+def _rev_recent(rev: str, within_seconds: int, cwd: Path | None = None) -> bool:
+    """True if `rev`'s commit time is younger than `within_seconds`. Works for a
+    worktree HEAD or any ref (e.g. a remote-only origin/<branch> tip)."""
+    rc, out = _git_ok(["log", "-1", "--format=%ct", rev], cwd=cwd)
     if rc != 0 or not out:
         return False
     try:
@@ -361,6 +371,8 @@ def gather_facts(
         b for b in _git(["for-each-ref", "--format=%(refname:short)", "refs/heads"]).splitlines()
         if b
     ]
+    local_names = set(branches)
+    tracked_upstreams: set[str] = set()  # origin refs already owned by a local branch
     for b in branches:
         is_main = b == base
         behind, ahead = _rev_list_count(base, b)
@@ -374,6 +386,7 @@ def gather_facts(
         upstream = _git(["for-each-ref", "--format=%(upstream:short)", f"refs/heads/{b}"])
         if upstream:
             has_origin = True
+            tracked_upstreams.add(upstream)
             # local-perspective: origin_ahead = local commits origin lacks (needs
             # push); origin_behind = origin commits local lacks (needs pull).
             origin_ahead, origin_behind = _rev_list_count(b, upstream)
@@ -384,6 +397,7 @@ def gather_facts(
             "name": b,
             "is_main": is_main,
             "detached": False,
+            "remote_only": False,
             "ahead": ahead,
             "behind": behind,
             "unmerged": unmerged,
@@ -394,6 +408,42 @@ def gather_facts(
             "worktree": wt_path,
             "head_recent": head_recent,
             # branch "landed in base" == cherry says no unique patch remains.
+            "contained": unmerged == 0,
+        })
+
+    # remote-only branches: refs/remotes/origin/* that no local branch owns. These
+    # are pushed by cloud sessions / other machines and have NO local ref and NO
+    # worktree; scanning only refs/heads above made the board blind to them, so a
+    # freshly pushed unmerged cloud branch read as fully converged. We surface each
+    # as a card the same way — classify on (ahead/behind/unmerged) vs base.
+    remote_refs = [
+        r for r in _git(
+            ["for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"]
+        ).splitlines() if r
+    ]
+    for ref in remote_refs:
+        if ref == "origin" or ref.endswith("/HEAD"):
+            continue  # origin/HEAD symbolic pointer, not a branch
+        name = ref[len("origin/"):] if ref.startswith("origin/") else ref
+        if name == base or name in local_names or ref in tracked_upstreams:
+            continue  # the base itself, or already represented by a local branch
+        behind, ahead = _rev_list_count(base, ref)
+        unmerged = _cherry_unmerged(base, ref)
+        head_recent = _rev_recent(ref, live_window_seconds)
+        cards.append({
+            "name": name,
+            "is_main": False,
+            "detached": False,
+            "remote_only": True,
+            "ahead": ahead,
+            "behind": behind,
+            "unmerged": unmerged,
+            "dirty": False,            # no worktree -> never dirty
+            "has_origin": True,        # it lives on origin by definition
+            "origin_ahead": 0,
+            "origin_behind": 0,
+            "worktree": None,
+            "head_recent": head_recent,
             "contained": unmerged == 0,
         })
 
@@ -445,6 +495,7 @@ def build_card(facts: dict[str, Any]) -> dict[str, Any]:
         "worktree": facts.get("worktree"),
         "live": live,
         "is_main": bool(facts.get("is_main")),
+        "remote_only": bool(facts.get("remote_only")),
     }
 
 
@@ -464,6 +515,28 @@ def plan_actions(card: dict[str, Any], mark: Mark) -> list[str]:
         steps.append(f"git worktree remove {wt}" if wt else "git worktree prune --verbose")
         if mark not in (Mark.CLEAN, Mark.FREEZE):
             steps.append(f"# note: '{mark.value}' is a no-op on a detached worktree; pruned instead")
+        return steps
+
+    # A remote-only card has NO local branch and NO worktree: never `git branch -D`
+    # and never a worktree rebase. Absorption merges the origin ref; teardown is a
+    # pure remote-ref delete.
+    if card.get("remote_only"):
+        if mark is Mark.FREEZE:
+            steps.append(f"# FREEZE {name}: no action (live cloud session / not ready)")
+        elif mark is Mark.CLEAN:
+            steps.append(f"# CLEAN is a no-op on remote-only {name} (no worktree to prune)")
+        elif mark is Mark.WHITE:
+            steps.append(f"# assemble origin/{name} into the single candidate (git merge origin/{name})")
+            steps.append("#   -> end-of-round: ONE build-gate of the candidate commit, then push main")
+            steps.append(f"git push origin --delete {name}      # delete remote ref (no local branch / worktree)")
+        elif mark in (Mark.PROMOTE, Mark.SNAP):
+            steps.append(f"# assemble committed work of origin/{name} into the single candidate")
+            steps.append(f"# remote-only: origin/{name} KEPT (no local checkout to rebase)")
+        elif mark is Mark.BLACK:
+            steps.append("# remote-only: no local worktree to rebase. To rebase + sync:")
+            steps.append(f"#   git fetch origin {name} && git checkout -b {name} FETCH_HEAD && "
+                         f"git rebase origin/main && git push origin {name} --force-with-lease")
+            steps.append("# or leave the remote ref untouched (main NOT advanced)")
         return steps
 
     snap = mark is Mark.SNAP
@@ -528,6 +601,8 @@ def render_board_table(cards: list[dict[str, Any]]) -> str:
         wt_short = wt
         if wt != "-":
             wt_short = "…/" + "/".join(Path(wt).parts[-2:])
+        elif c.get("remote_only"):
+            wt_short = "(remote-only)"
         live = " ⚡live" if c.get("live") else ""
         rows.append([
             c["name"] + (" *main" if c.get("is_main") else ""),
@@ -734,12 +809,16 @@ def cmd_teardown(args: argparse.Namespace) -> int:
     for f in safe:
         name = f["name"]
         wt = f.get("worktree")
+        remote_only = bool(f.get("remote_only"))
         print(f"\n## teardown {name}  [{classify(f).value}]")
-        if wt and not _exec_step("detach worktree HEAD (keep worktree)",
-                                 ["switch", "--detach"], Path(wt), args.commit):
-            failures += 1
-        if not _exec_step("delete local branch", ["branch", "-D", name], root, args.commit):
-            failures += 1
+        # remote-only card: no holding worktree, no local branch — go straight to
+        # the remote ref delete (the local steps below would fail on a missing ref).
+        if not remote_only:
+            if wt and not _exec_step("detach worktree HEAD (keep worktree)",
+                                     ["switch", "--detach"], Path(wt), args.commit):
+                failures += 1
+            if not _exec_step("delete local branch", ["branch", "-D", name], root, args.commit):
+                failures += 1
         # remote delete is idempotent: only act when origin still carries it.
         if args.commit:
             if _remote_branch_exists(name):
