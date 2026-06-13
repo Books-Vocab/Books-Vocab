@@ -11,6 +11,7 @@ from .admin_wiring import AdminHandlerDependencies, create_admin_handlers_from_d
 from .routers import (
     auth_router,
     billing_router,
+    library_router,
     notebook_router,
     pipeline_router,
     podcast_router,
@@ -53,6 +54,7 @@ def build_domain_routers() -> tuple[APIRouter, ...]:
         billing_router,
         vocab_router,
         notebook_router,
+        library_router,
         pipeline_router,
         translate_router,
         auth_router,

@@ -12,6 +12,7 @@
 
 import {
   AuthClient,
+  LibraryClient,
   NotebookClient,
   PodcastClient,
   TodayReviewClient,
@@ -37,6 +38,7 @@ export interface ApiClientConfig {
 export interface ApiClient {
   readonly mode: ApiMode
   readonly auth: AuthClient
+  readonly library: LibraryClient
   readonly notebook: NotebookClient
   readonly vocabulary: VocabularyClient
   readonly todayReview: TodayReviewClient
@@ -79,6 +81,7 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
   return {
     mode,
     auth: new AuthClient(transport),
+    library: new LibraryClient(transport),
     notebook: new NotebookClient(transport),
     vocabulary: new VocabularyClient(transport),
     todayReview: new TodayReviewClient(transport),
@@ -98,6 +101,7 @@ export type {
 } from './transport'
 export {
   AuthClient,
+  LibraryClient,
   NotebookClient,
   PodcastClient,
   TodayReviewClient,
@@ -107,6 +111,10 @@ export {
 export { createMockFetch } from './mock/handler'
 export * from './types'
 export type {
+  BookCreateRequest,
+  BookMetadataResponse,
+  BookPositionRequest,
+  BookUpdateRequest,
   NotebookCreateRequest,
   NotebookResponse,
   NotebookUpdateRequest,

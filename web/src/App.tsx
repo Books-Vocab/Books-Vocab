@@ -15,13 +15,17 @@ export function App() {
   const search = window.location.search
 
   if (new URLSearchParams(search).get('surface') === 'reader-live') {
-    return (
+    const readerShell = new URLSearchParams(search).get('shell') === '1'
+    const readerFrame = (
       <div className="phone-frame" data-surface="reader-live" data-harness="phone-frame">
         <Suspense fallback={null}>
           <ReaderLiveScreen />
         </Suspense>
       </div>
     )
+    // shell=1 時 ReaderLive 需 useApi 同步閱讀位置 → 包 ApiProvider；
+    // 無 shell（純 spike / parity 觀察）維持原樣，不掛 provider、零 API 呼叫。
+    return readerShell ? <ApiProvider>{readerFrame}</ApiProvider> : readerFrame
   }
 
   const config = resolveHarnessConfig(search)

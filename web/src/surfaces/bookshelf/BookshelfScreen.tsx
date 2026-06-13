@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { BookCard } from './BookCard'
 import type { BookFixture } from './fixtures'
 import { BookIcon, DocIcon, PencilIcon, TrashIcon, XmarkIcon } from './icons'
 import { useBookshelfStore } from './store'
+import { useBookshelfApiStore } from './useBookshelfApiStore'
 import './bookshelf.css'
 
 /**
@@ -19,9 +21,66 @@ import './bookshelf.css'
  * empty 視覺）。誠實邊界：web 無 SwiftData/CloudKit/檔案系統，匯入不入庫、改名/
  * 刪除不持久化、不反向傳播 CloudKit（iOS BookshelfCoordinator 對應流程為 no-op）。
  * parity 契約：初值 books = fixture(scenario)、無浮層 → capture 首屏與靜態版逐位元相同。
+ *
+ * 當 URL 含 shell=1 時，切換至 API-backed useBookshelfApiStore（真實後端書目 +
+ * 瀏覽器檔案 picker 匯入 metadata，不上傳 raw bytes）。非 ready 態由 VocabSceneShell 包裹。
  */
 export function BookshelfScreen({ scenario }: { scenario: ScenarioId<'bookshelf'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <BookshelfScreenApi />
+  }
+  return <BookshelfScreenFixture scenario={scenario} />
+}
+
+/** Fixture-driven screen — parity harness 路徑（無 shell=1 時，零 API 呼叫）。 */
+function BookshelfScreenFixture({ scenario }: { scenario: ScenarioId<'bookshelf'> }) {
   const store = useBookshelfStore(scenario)
+  return <BookshelfBody store={store} importMode="stub" />
+}
+
+/** API-driven screen — shell=1 時使用真實後端書目 + 檔案 picker 匯入。 */
+function BookshelfScreenApi() {
+  const store = useBookshelfApiStore()
+  return (
+    <VocabSceneShell
+      status={
+        store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'
+      }
+      onRetry={store.retry}
+      errorTitle="無法載入書庫"
+    >
+      <BookshelfBody store={store} importMode="file" onImportFile={store.importFile} />
+    </VocabSceneShell>
+  )
+}
+
+/** 共享的書架本體（fixture / API 兩條路共用）。 */
+interface BookshelfBodyStore {
+  books: BookFixture[]
+  importing: boolean
+  menuTitle: string | null
+  renamingTitle: string | null
+  openImport: () => void
+  closeImport: () => void
+  openMenu: (title: string) => void
+  closeMenu: () => void
+  openRenameFor: (title: string) => void
+  closeRename: () => void
+  renameBook: (oldTitle: string, newTitle: string) => void | Promise<void>
+  deleteBook: (title: string) => void | Promise<void>
+}
+
+function BookshelfBody({
+  store,
+  importMode,
+  onImportFile,
+}: {
+  store: BookshelfBodyStore
+  /** 'stub' = parity 視覺占位（不真選檔）；'file' = 真檔案 picker（API 路徑）。 */
+  importMode: 'stub' | 'file'
+  onImportFile?: (file: File) => void | Promise<void>
+}) {
   const renamingBook =
     store.renamingTitle !== null
       ? store.books.find((b) => b.title === store.renamingTitle) ?? null
@@ -47,7 +106,12 @@ export function BookshelfScreen({ scenario }: { scenario: ScenarioId<'bookshelf'
           onClose={store.closeMenu}
         />
       )}
-      {store.importing && <ImportSheet onClose={store.closeImport} />}
+      {store.importing &&
+        (importMode === 'file' ? (
+          <ImportSheetFile onClose={store.closeImport} onPick={onImportFile} />
+        ) : (
+          <ImportSheet onClose={store.closeImport} />
+        ))}
       {renamingBook && (
         <RenameSheet
           initialTitle={renamingBook.title}
@@ -168,6 +232,63 @@ function ImportSheet({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <p className="bs-import-note">web 預覽不解析檔案，匯入於 iOS App 進行。</p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 匯入 sheet（真檔案 picker）— shell=1 API 路徑。選檔後解析最小 metadata
+ * （title=檔名、format=副檔名）並 POST 後端，**不上傳 raw bytes**。
+ */
+function ImportSheetFile({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void
+  onPick?: (file: File) => void | Promise<void>
+}) {
+  const ACCEPTED = ['EPUB', 'PDF', 'TXT', 'MD']
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  return (
+    <div className="bs-sheet-scrim" role="dialog" aria-modal="true" aria-label="匯入書籍" onClick={onClose}>
+      <div className="bs-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="bs-sheet-grabber" />
+        <div className="bs-sheet-head">
+          <p className="bs-sheet-title">匯入書籍</p>
+          <button type="button" className="bs-sheet-close" aria-label="關閉" onClick={onClose}>
+            <XmarkIcon size={16} />
+          </button>
+        </div>
+        {/* 真檔案 picker：僅讀檔名/格式做 metadata，不讀檔案內容。 */}
+        <button
+          type="button"
+          className="bs-import-picker"
+          onClick={() => inputRef.current?.click()}
+          aria-label="選擇檔案"
+        >
+          <DocIcon size={40} className="bs-import-picker-icon" />
+          <p className="bs-import-picker-hint">選擇檔案以加入書庫</p>
+          <div className="bs-import-formats">
+            {ACCEPTED.map((fmt) => (
+              <span key={fmt} className="bs-import-format">
+                {fmt}
+              </span>
+            ))}
+          </div>
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".epub,.txt,.md,.pdf"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) onPick?.(file)
+            e.target.value = ''
+          }}
+        />
+        <p className="bs-import-note">僅同步書籍資訊（書名・格式），不上傳檔案內容。</p>
       </div>
     </div>
   )

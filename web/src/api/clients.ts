@@ -6,6 +6,10 @@ import type { Transport } from './transport'
 import type {
   AuthVerifyRequest,
   AuthVerifyResponse,
+  BookCreateRequest,
+  BookMetadataResponse,
+  BookPositionRequest,
+  BookUpdateRequest,
   CardResponse,
   EntitlementsResponse,
   NotebookCreateRequest,
@@ -185,6 +189,42 @@ export class PodcastClient {
       `/api/podcasts/${encodeURIComponent(seriesId)}/${epNum}/progress`,
       { method: 'POST', body: req },
     )
+  }
+}
+
+// ── library ──────────────────────────────────────────────────────────────────
+export class LibraryClient {
+  constructor(private readonly t: Transport) {}
+
+  /** GET /api/library/books — list books (optionally since cursor). */
+  list(opts: { since?: string } = {}): Promise<BookMetadataResponse[]> {
+    return this.t.request<BookMetadataResponse[]>('/api/library/books', {
+      query: { since: opts.since },
+    })
+  }
+
+  /** POST /api/library/books — create book metadata (idempotent via client_book_id). */
+  create(req: BookCreateRequest): Promise<BookMetadataResponse> {
+    return this.t.request<BookMetadataResponse>('/api/library/books', {
+      method: 'POST',
+      body: req,
+    })
+  }
+
+  /** PATCH /api/library/books/{id} — partial update / notebook binding. */
+  update(id: string, req: BookUpdateRequest): Promise<BookMetadataResponse> {
+    return this.t.request<BookMetadataResponse>(`/api/library/books/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: req,
+    })
+  }
+
+  /** PUT /api/library/books/{id}/position — LWW locator/progression. */
+  putPosition(id: string, req: BookPositionRequest): Promise<BookMetadataResponse> {
+    return this.t.request<BookMetadataResponse>(`/api/library/books/${encodeURIComponent(id)}/position`, {
+      method: 'PUT',
+      body: req,
+    })
   }
 }
 

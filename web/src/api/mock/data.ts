@@ -5,6 +5,7 @@
 
 import { VOCABULARY_FIXTURES } from '../../surfaces/vocabulary/fixtures'
 import type {
+  BookMetadataResponse,
   CardResponse,
   EntitlementsResponse,
   NotebookResponse,
@@ -18,6 +19,152 @@ import type {
 } from '../types'
 
 const NOW_ISO = '2026-06-11T00:00:00Z'
+
+export const MOCK_LIBRARY_BOOKS: BookMetadataResponse[] = [
+  {
+    id: 'book-1',
+    client_book_id: 'atomic-habits-epub',
+    title: 'Atomic Habits',
+    author: 'James Clear',
+    language: 'en',
+    format: 'epub',
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: 0.15,
+    position_updated_at: null,
+  },
+  {
+    id: 'book-2',
+    client_book_id: 'deep-work-pdf',
+    title: 'Deep Work',
+    author: 'Cal Newport',
+    language: 'en',
+    format: 'pdf',
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: 0.0,
+    position_updated_at: null,
+  },
+  {
+    id: 'book-3',
+    client_book_id: 'flow-epub',
+    title: 'Flow',
+    author: 'Mihaly Csikszentmihalyi',
+    language: 'en',
+    format: 'epub',
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: 0.0,
+    position_updated_at: null,
+  },
+  {
+    id: 'book-4',
+    client_book_id: 'meditations-txt',
+    title: 'Meditations',
+    author: 'Marcus Aurelius',
+    language: 'en',
+    format: 'txt',
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: 0.0,
+    position_updated_at: null,
+  },
+  {
+    id: 'book-5',
+    client_book_id: 'on-writing-well-md',
+    title: 'On Writing Well',
+    author: 'William Zinsser',
+    language: 'en',
+    format: 'md',
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: 0.0,
+    position_updated_at: null,
+  },
+]
+
+let nextBookId = 100
+
+export function mockLibraryCreate(req: {
+  client_book_id: string
+  title: string
+  author?: string | null
+  language?: string | null
+  format?: string | null
+}): BookMetadataResponse {
+  // Idempotency: check existing by client_book_id
+  const existing = MOCK_LIBRARY_BOOKS.find((b) => b.client_book_id === req.client_book_id)
+  if (existing) {
+    return existing
+  }
+  const id = `book-${nextBookId++}`
+  const created: BookMetadataResponse = {
+    id,
+    client_book_id: req.client_book_id,
+    title: req.title,
+    author: req.author ?? null,
+    language: req.language ?? null,
+    format: req.format ?? null,
+    notebook_id: null,
+    is_deleted: false,
+    updated_at: NOW_ISO,
+    locator: null,
+    progression: null,
+    position_updated_at: null,
+  }
+  MOCK_LIBRARY_BOOKS.push(created)
+  return created
+}
+
+export function mockLibraryUpdate(
+  id: string,
+  req: Partial<{
+    title: string | null
+    author: string | null
+    language: string | null
+    format: string | null
+    notebook_id: string | null
+  }>,
+): BookMetadataResponse | undefined {
+  const base = MOCK_LIBRARY_BOOKS.find((b) => b.id === id)
+  if (!base) return undefined
+  return {
+    ...base,
+    title: req.title !== undefined ? (req.title ?? base.title) : base.title,
+    author: req.author !== undefined ? req.author : base.author,
+    language: req.language !== undefined ? req.language : base.language,
+    format: req.format !== undefined ? req.format : base.format,
+    notebook_id: req.notebook_id !== undefined ? req.notebook_id : base.notebook_id,
+  }
+}
+
+export function mockLibraryPosition(
+  id: string,
+  req: {
+    locator?: string | null
+    progression?: number | null
+    position_updated_at?: string | null
+  },
+): BookMetadataResponse | undefined {
+  const base = MOCK_LIBRARY_BOOKS.find((b) => b.id === id)
+  if (!base) return undefined
+  return {
+    ...base,
+    locator: req.locator !== undefined ? req.locator : base.locator,
+    progression: req.progression !== undefined ? req.progression : base.progression,
+    position_updated_at: req.position_updated_at !== undefined ? req.position_updated_at : base.position_updated_at,
+  }
+}
 
 export const MOCK_NOTEBOOKS: NotebookResponse[] = [
   {
