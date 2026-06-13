@@ -3,7 +3,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useTransform } from '
 import { useDrag } from '@use-gesture/react'
 import type { ScenarioId } from '../../harness/scenarios'
 import type { ExampleSegment, ReviewCard, ReviewLink, RevealStage } from './fixtures'
-import { snappy, gentle, usePreferredTransition, useReducedMotion } from '../../motion'
+import { snappy, gentle, navPush, usePreferredTransition, useReducedMotion } from '../../motion'
 import { useTodayReviewStore } from './store'
 import type { Grade } from './store'
 import { useTodayReviewApiStore } from './useTodayReviewApiStore'
@@ -167,10 +167,11 @@ function CardFace({ card, isBack }: { card: ReviewCard; isBack: boolean }) {
  *     jitter band 0.005，僅 AA 級噪訊）。
  *
  *   • 滑動評分（swipe-to-rate）：@use-gesture useDrag → 卡跟手平移 + 隨位移微傾 +
- *     漸隱；放手過距離/速度閾值 → 評分（右=記得 / 左=忘記）並帶動量飛出，未過閾值
- *     → snappy 回彈。filterTaps 令「點」走翻面（保留既有 click→flip 契約）、「拖」
- *     走評分。bind 掛內層 plain .tr-card（避 motion.div onDrag 型別衝突），x
- *     motion value 驅動外層 .tr-card-swipe 的 transform。
+ *     漸隱；放手過距離/速度閾值 → 評分（右=記得 / 左=忘記）並帶動量飛出（飛出用共享
+ *     motion 層 navPush spring，並以手勢甩動速度 seed framer animate 的 velocity，故
+ *     甩越快飛越遠），未過閾值 → snappy 回彈。filterTaps 令「點」走翻面（保留既有
+ *     click→flip 契約）、「拖」走評分。bind 掛內層 plain .tr-card（避 motion.div
+ *     onDrag 型別衝突），x motion value 驅動外層 .tr-card-swipe 的 transform。
  *
  *   • 牌組推進（deck advance）：評分後 currentCard 換新，新卡由牌堆 scale-up 滑入
  *     （AnimatePresence key=cardKey；initial={false} 首幀不播）。
@@ -247,7 +248,11 @@ function DeckCard({
           onGrade(dir > 0 ? 'remembered' : 'forgot')
           return
         }
-        animate(x, dir * 520, { type: 'spring', stiffness: 320, damping: 34, mass: 0.9 }).then(() => {
+        // 飛出沿用共享 motion 層 navPush spring（response .5 / ζ .82，權威落定無
+        // overshoot），不再自編魔術數字。velocity 以手勢甩動速度 seed：@use-gesture
+        // 的 vx 是 px/ms 且恆為正量值，乘 1000 轉 px/s、套方向，令甩越快飛越遠的手感
+        // 與物理一致。
+        animate(x, dir * 520, { ...navPush, velocity: dir * vx * 1000 }).then(() => {
           // 飛出完成 → 評分推進；新卡由 deck-advance 進場前先把 x 歸零。
           x.set(0)
           firedRef.current = false
@@ -364,12 +369,20 @@ function BottomToolbar({
       </div>
       <div className="tr-feedback">
         {/* span role=button（非 <button>）：避免 button 內建 line 度量造成的基線/光柵差，
-            保證初始 DOM 與靜態 PNG 逐像素一致（parity gate RMSE=0）。 */}
+            保證初始 DOM 與靜態 PNG 逐像素一致（parity gate RMSE=0）。role=button +
+            tabIndex 使其可聚焦，故須補 Enter/Space 啟動（與卡面翻面的鍵盤契約一致），
+            否則鍵盤使用者能聚焦卻無法評分。 */}
         <span
           className="tr-feedback-btn tr-feedback-forgot"
           role="button"
           tabIndex={0}
           onClick={() => onGrade('forgot')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onGrade('forgot')
+            }
+          }}
         >
           <XmarkBoldIcon size={17} />
           <span>忘記</span>
@@ -380,6 +393,12 @@ function BottomToolbar({
           role="button"
           tabIndex={0}
           onClick={() => onGrade('remembered')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onGrade('remembered')
+            }
+          }}
         >
           <CheckmarkIcon size={17} />
           <span>記得</span>
