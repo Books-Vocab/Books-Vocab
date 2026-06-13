@@ -1,4 +1,7 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useApi } from '../../api/ApiContext'
+import type { UserConfigResponse } from '../../api/types'
 import { SETTINGS_ACCOUNT_DETAIL_FIXTURES, type AccountDetailFixture, type DangerSection } from './fixtures'
 import {
   ChevronRightIcon,
@@ -47,8 +50,62 @@ import './settings-account-detail.css'
  * 故**不透明捕捉**（無 transparent flag）；幾何沿用 `settings` 全螢幕 surface（同 nav/page/
  * section 家族、同一 catalog）已校準的 measured 值。
  */
+
 export function SettingsAccountDetailScreen({ scenario }: { scenario: ScenarioId<'settings-account-detail'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <SettingsAccountDetailScreenApi />
+  }
+  return <SettingsAccountDetailScreenFixture scenario={scenario} />
+}
+
+function SettingsAccountDetailScreenFixture({ scenario }: { scenario: ScenarioId<'settings-account-detail'> }) {
   const fixture: AccountDetailFixture = SETTINGS_ACCOUNT_DETAIL_FIXTURES[scenario]
+  return <SettingsAccountDetailBody fixture={fixture} />
+}
+
+function SettingsAccountDetailScreenApi() {
+  const api = useApi()
+  const [config, setConfig] = useState<UserConfigResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const cfg = await api.user.config()
+      setConfig(cfg)
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const fixture: AccountDetailFixture = useMemo(() => {
+    if (loading || !config) {
+      return {
+        isLoggedIn: false,
+        displayName: '訪客',
+        email: null,
+        danger: null,
+      }
+    }
+    return {
+      isLoggedIn: true,
+      displayName: 'User',
+      email: 'user@example.com',
+      danger: { isDeletingAccount: false },
+    }
+  }, [loading, config])
+
+  return <SettingsAccountDetailBody fixture={fixture} />
+}
+
+function SettingsAccountDetailBody({ fixture }: { fixture: AccountDetailFixture }) {
   return (
     <div className="sad">
       <header className="sad-nav">
