@@ -17,8 +17,11 @@ import { queryKeys } from './queryKeys'
  */
 export function useVocabCardsQuery(notebookId: string | null) {
   const api = useApi()
+  // 正規化 falsy（null / 空字串如 ?notebook_id=）為 null，使 queryKey 與 queryFn 對齊：
+  // 兩者皆「無過濾 = 全部卡片」走同一 cache 槽，避免空字串另開冗餘 key。
+  const id = notebookId || null
   return useQuery<CardResponse[], ApiError>({
-    queryKey: queryKeys.vocab.cards(notebookId ?? undefined),
-    queryFn: () => api.vocabulary.list(notebookId ? { notebookId } : {}),
+    queryKey: queryKeys.vocab.cards(id ?? undefined),
+    queryFn: () => api.vocabulary.list(id ? { notebookId: id } : {}),
   })
 }

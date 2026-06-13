@@ -19,6 +19,8 @@ emit_run_verdict_json() {
         --argjson uiQuick4SheetExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiQuick4Sheet // ""' "$json_file")")" \
         --argjson uiVisualReviewManifestExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiVisualReviewManifest // ""' "$json_file")")" \
         --argjson uiVideoExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiVideo // ""' "$json_file")")" \
+        --argjson uiReviewRootExists "$(path_exists_json_bool dir "$(jq -r '.artifacts.uiReviewRoot // ""' "$json_file")")" \
+        --argjson uiReviewHtmlExists "$(path_exists_json_bool file "$(jq -r '.artifacts.uiReviewHtml // ""' "$json_file")")" \
         '{
           kind:$kind,
           status:(.status // .result // "unknown"),
@@ -48,12 +50,16 @@ emit_run_verdict_json() {
             uiVisualReviewManifestExists:$uiVisualReviewManifestExists,
             uiScreenshotDir:(.artifacts.uiScreenshotDir // null),
             uiVideo:(.artifacts.uiVideo // null),
-            uiVideoExists:$uiVideoExists
+            uiVideoExists:$uiVideoExists,
+            uiReviewRoot:(.artifacts.uiReviewRoot // null),
+            uiReviewRootExists:$uiReviewRootExists,
+            uiReviewHtml:(.artifacts.uiReviewHtml // null),
+            uiReviewHtmlExists:$uiReviewHtmlExists
           },
           uiVisualReview:(
             if (.artifacts.uiScreenshotDir // .artifacts.uiContactSheet
                 // .artifacts.uiQuick4Sheet // .artifacts.uiVisualReviewManifest
-                // .artifacts.uiVideo) == null
+                // .artifacts.uiVideo // .artifacts.uiReviewHtml) == null
             then null
             else {
               screenshotDir:(.artifacts.uiScreenshotDir // null),
@@ -64,7 +70,11 @@ emit_run_verdict_json() {
               visualReviewManifest:(.artifacts.uiVisualReviewManifest // null),
               visualReviewManifestExists:$uiVisualReviewManifestExists,
               video:(.artifacts.uiVideo // null),
-              videoExists:$uiVideoExists
+              videoExists:$uiVideoExists,
+              reviewRoot:(.artifacts.uiReviewRoot // null),
+              reviewRootExists:$uiReviewRootExists,
+              reviewHtml:(.artifacts.uiReviewHtml // null),
+              reviewHtmlExists:$uiReviewHtmlExists
             }
             end
           )

@@ -59,6 +59,8 @@ UI_FIXTURE_DATASET_NAME=""
 UI_FIXTURE_DATASET_FILE=""
 UI_FIXTURE_DATASET_B64=""
 STAGED_DATASET_XCTESTRUN=""
+UI_TEST_REVIEW_ROOT=""
+UI_TEST_REVIEW_HTML=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -1105,6 +1107,40 @@ archive_ui_test_recording() {
   fi
 }
 
+build_ui_test_review_page() {
+  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
+  [[ -n "${UI_TEST_SCREENSHOT_MANIFEST:-}" && -s "$UI_TEST_SCREENSHOT_MANIFEST" ]] || return 0
+
+  local stem
+  if [[ -n "${UI_TEST_VIDEO:-}" ]]; then
+    stem="$(basename "$UI_TEST_VIDEO" .mp4)"
+  else
+    stem="$(date -u +%Y%m%d-%H%M%S)-$TEST_SCOPE"
+  fi
+  UI_TEST_REVIEW_ROOT="$PROJECT_ROOT/build/snapshots/uitest-runs/$stem"
+
+  local args=(
+    "$SCRIPT_DIR/uitest_review_page.py"
+    --screenshot-dir "$UI_TEST_SCREENSHOT_DIR"
+    --manifest "$UI_TEST_SCREENSHOT_MANIFEST"
+    --out-root "$UI_TEST_REVIEW_ROOT"
+    --json
+  )
+  [[ -n "${UI_TEST_CONTACT_SHEET:-}" ]] && args+=(--contact-sheet "$UI_TEST_CONTACT_SHEET")
+  [[ -n "${UI_TEST_QUICK4_SHEET:-}" ]] && args+=(--quick4-sheet "$UI_TEST_QUICK4_SHEET")
+  [[ -n "${UI_TEST_VIDEO:-}" ]] && args+=(--video "$UI_TEST_VIDEO")
+
+  local payload
+  if payload="$("${args[@]}" 2>/dev/null)" && [[ -n "$payload" ]]; then
+    UI_TEST_REVIEW_HTML="$(printf '%s' "$payload" | jq -r '.html // empty' 2>/dev/null || true)"
+    echo "[ios_test][ui-review] html=$UI_TEST_REVIEW_HTML"
+  else
+    echo "[ios_test][ui-review] warning: failed to build standalone UIreview root=$UI_TEST_REVIEW_ROOT" >&2
+    UI_TEST_REVIEW_ROOT=""
+    UI_TEST_REVIEW_HTML=""
+  fi
+}
+
 build_ui_step_contact_sheet() {
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
   if ! compgen -G "$UI_TEST_SCREENSHOT_DIR/*.png" >/dev/null; then
@@ -1473,6 +1509,8 @@ write_json_verdict() {
     --arg uiVisualReviewManifest "$UI_TEST_SCREENSHOT_MANIFEST" \
     --arg uiScreenshotDir "$UI_TEST_SCREENSHOT_DIR" \
     --arg uiVideo "$UI_TEST_VIDEO" \
+    --arg uiReviewRoot "$UI_TEST_REVIEW_ROOT" \
+    --arg uiReviewHtml "$UI_TEST_REVIEW_HTML" \
     --arg device "$(resolve_run_device_udid 2>/dev/null || true)" \
     --argjson lockWaitMs "${LOCK_WAIT_MS:-0}" \
     --argjson deviceRunLockWaitMs "${DEVICE_RUN_LOCK_WAIT_MS:-0}" \
@@ -1528,7 +1566,9 @@ write_json_verdict() {
         uiQuick4Sheet:(if $uiQuick4Sheet == "" then null else $uiQuick4Sheet end),
         uiVisualReviewManifest:(if $uiVisualReviewManifest == "" then null else $uiVisualReviewManifest end),
         uiScreenshotDir:(if $uiScreenshotDir == "" then null else $uiScreenshotDir end),
-        uiVideo:(if $uiVideo == "" then null else $uiVideo end)
+        uiVideo:(if $uiVideo == "" then null else $uiVideo end),
+        uiReviewRoot:(if $uiReviewRoot == "" then null else $uiReviewRoot end),
+        uiReviewHtml:(if $uiReviewHtml == "" then null else $uiReviewHtml end)
       }
     }' >"$VERDICT_JSON_FILE" || true
   # The per-invocation JSON has no concurrent writer, so per-run metric
@@ -1540,6 +1580,7 @@ write_json_verdict() {
 populate_timing_breakdown
 build_ui_step_contact_sheet
 archive_ui_test_recording
+build_ui_test_review_page
 populate_coverage_summary || true
 
 # Extract summary from xcresult if available

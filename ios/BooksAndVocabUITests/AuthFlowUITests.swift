@@ -18,11 +18,7 @@ final class AuthFlowUITests: UITestCase {
 
     @MainActor
     func testGuestGateLocksPodcastAndRoutesEntryPointsToLoginSheet() throws {
-        let app = launchIsolatedApp(
-            fixtures: [.authTieredCatalog],
-            extraEnvironment: PodcastFixture.tieredCatalogEnvironment,
-            perfLog: "auth"
-        )
+        let app = launchPodcastAccessScenario(.guest)
         captureStep("guest-launch", app: app)
 
         let auth = AuthPage(app: app)
@@ -98,11 +94,7 @@ final class AuthFlowUITests: UITestCase {
 
     @MainActor
     func testSignedInSessionHidesLoginGateAndLogoutRestoresGuest() throws {
-        let app = launchIsolatedApp(
-            fixtures: [.authTieredCatalog, .authSignedIn],
-            extraEnvironment: PodcastFixture.tieredCatalogEnvironment,
-            perfLog: "auth"
-        )
+        let app = launchPodcastAccessScenario(.free)
         captureStep("signedin-launch", app: app)
 
         let auth = AuthPage(app: app)
