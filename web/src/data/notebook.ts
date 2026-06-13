@@ -9,21 +9,75 @@ import type {
 import { queryKeys } from './queryKeys'
 
 /**
- * Notebook domain 的 TanStack Query hooks — P2 資料層的範式 exemplar。
+ * Notebook domain 的 TanStack Query hooks — P2.2② surface 遷移的範式（樂觀寫入）。
  *
- * 取代手刻 useXApiStore（useState(status) + useEffect(fetch) + 自管 retry）：
- * useQuery 提供 data / isPending / isError / refetch + 跨 surface cache 共享 + dedup；
- * mutation onSuccess 走 queryKeys.notebooks.all 一次 invalidate → list 與所有 detail
- * 自動重抓，寫入後 UI 即時一致。所有 key 取自 queryKeys（禁止 hook 內手寫陣列）。
+ * 取代手刻 useNotebookApiStore（useState(raw) + useEffect(fetch) + 三個 mutation
+ * 各自手管 optimistic/rollback）：list 走 useQuery（cache / dedup / retry / staleTime），
+ * 寫入走 useMutation 並在 query cache 上做樂觀更新——onMutate 先 cancel + snapshot +
+ * 樂觀套用，onError rollback 回 snapshot，onSettled 一律 invalidate notebooks.all 對齊
+ * 伺服器真相。樂觀邏輯下沉到 cache 層而非 component state，故跨 surface 共享同一份。
  *
- * 邊界：hooks 依賴 <ApiProvider>（useApi）與 <QueryProvider>（QueryClientProvider）
- * 雙 context；兩者皆由 shell 路徑掛載，parity capture 路徑不呼叫這些 hooks。
+ * 純 helper（buildOptimisticNotebook / appendNotebook / replaceNotebookId /
+ * renameNotebookName / removeNotebook）抽出做為無 DOM 可單元測的 seam；mutation 的
+ * onMutate 只是組合這些 helper + cache I/O。
  *
- * 錯誤型別：query/mutation 一律以 ApiError 為 error generic，呼叫端讀 mutation.error /
- * query.error 時無需 instanceof 收窄即可拿 .status / .code / isUnauthorized /
- * isForbidden 做分流（paywall / 重新登入）。queryFn 拋的恆是 ApiError（transport 層
- * 統一封裝 http/network/parse），故型別誠實。
+ * 錯誤型別一律 ApiError，呼叫端讀 .status / .code / isUnauthorized 分流無需 instanceof。
+ *
+ * 已知限制（可接受）：rollback 是 whole-list snapshot。若 mutation A、B 同時 in-flight
+ * 且 A 失敗，A 的 onError 還原的是「B 套用前」的快照 → 暫時蓋掉 B 的樂觀 delta，直到
+ * B 自己的 onSettled invalidate 重抓對齊伺服器。這是 list-snapshot recipe 的標準取捨；
+ * notebook 為單人低並發 surface，且 always-invalidate 保證最終收斂，故不額外做 per-id 合併。
  */
+
+// ─── 純 helper（可單元測，無 react-query / DOM 依賴）─────────────────────────
+
+/** 組一個樂觀 notebook（尚未落地，id 為 temp 佔位）。 */
+export function buildOptimisticNotebook(name: string, tempId: string): NotebookResponse {
+  return {
+    id: tempId,
+    name,
+    color: '#AFC2D3',
+    coverPattern: null,
+    sortOrder: 999,
+    isDefault: false,
+    isDeleted: false,
+    cardCount: 0,
+    updatedAt: null,
+  }
+}
+
+/** 樂觀插入到列表尾端。 */
+export function appendNotebook(
+  list: NotebookResponse[],
+  nb: NotebookResponse,
+): NotebookResponse[] {
+  return [...list, nb]
+}
+
+/** 伺服器回真實 record 後，用真 id 取代 temp 佔位（避免 invalidate 前的 id 抖動）。 */
+export function replaceNotebookId(
+  list: NotebookResponse[],
+  tempId: string,
+  real: NotebookResponse,
+): NotebookResponse[] {
+  return list.map((n) => (n.id === tempId ? real : n))
+}
+
+/** 樂觀改名（依 id 命中）。 */
+export function renameNotebookName(
+  list: NotebookResponse[],
+  id: string,
+  name: string,
+): NotebookResponse[] {
+  return list.map((n) => (n.id === id ? { ...n, name } : n))
+}
+
+/** 樂觀移除（依 id 命中）。 */
+export function removeNotebook(list: NotebookResponse[], id: string): NotebookResponse[] {
+  return list.filter((n) => n.id !== id)
+}
+
+// ─── hooks ──────────────────────────────────────────────────────────────────
 
 /** GET /api/notebooks — 單字本列表。 */
 export function useNotebooksQuery() {
@@ -34,38 +88,90 @@ export function useNotebooksQuery() {
   })
 }
 
-/** POST /api/notebooks — 建立單字本，成功後失效列表。 */
+type CreateContext = { previous: NotebookResponse[] | undefined; tempId: string }
+
+/** POST /api/notebooks — 樂觀新增；失敗 rollback，落定後 invalidate。 */
 export function useCreateNotebookMutation() {
   const api = useApi()
   const qc = useQueryClient()
-  return useMutation<NotebookResponse, ApiError, NotebookCreateRequest>({
+  return useMutation<NotebookResponse, ApiError, NotebookCreateRequest, CreateContext>({
     mutationFn: (req) => api.notebook.create(req),
-    onSuccess: () => {
+    onMutate: async (req) => {
+      await qc.cancelQueries({ queryKey: queryKeys.notebooks.all })
+      const previous = qc.getQueryData<NotebookResponse[]>(queryKeys.notebooks.all)
+      const tempId = `optimistic-${Date.now()}`
+      const optimistic = buildOptimisticNotebook(req.name, tempId)
+      qc.setQueryData<NotebookResponse[]>(queryKeys.notebooks.all, (old) =>
+        appendNotebook(old ?? [], optimistic),
+      )
+      return { previous, tempId }
+    },
+    onSuccess: (created, _req, ctx) => {
+      if (!ctx) return
+      qc.setQueryData<NotebookResponse[]>(queryKeys.notebooks.all, (old) =>
+        replaceNotebookId(old ?? [], ctx.tempId, created),
+      )
+    },
+    onError: (_err, _req, ctx) => {
+      if (ctx?.previous) qc.setQueryData(queryKeys.notebooks.all, ctx.previous)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.notebooks.all })
     },
   })
 }
 
-/** PATCH /api/notebooks/{id} — 更新單字本，成功後失效整個 domain（all 前綴已涵蓋 detail）。 */
+type ListContext = { previous: NotebookResponse[] | undefined }
+
+/** PATCH /api/notebooks/{id} — 樂觀改名；失敗 rollback，落定後 invalidate。 */
 export function useUpdateNotebookMutation() {
   const api = useApi()
   const qc = useQueryClient()
-  return useMutation<NotebookResponse, ApiError, { id: string; req: NotebookUpdateRequest }>({
+  return useMutation<
+    NotebookResponse,
+    ApiError,
+    { id: string; req: NotebookUpdateRequest },
+    ListContext
+  >({
     mutationFn: ({ id, req }) => api.notebook.update(id, req),
-    onSuccess: () => {
-      // all 是 detail 的前綴 → partial-match 一併失效 list 與該 detail，無需再點名 detail。
+    onMutate: async ({ id, req }) => {
+      await qc.cancelQueries({ queryKey: queryKeys.notebooks.all })
+      const previous = qc.getQueryData<NotebookResponse[]>(queryKeys.notebooks.all)
+      if (req.name != null) {
+        const name = req.name
+        qc.setQueryData<NotebookResponse[]>(queryKeys.notebooks.all, (old) =>
+          renameNotebookName(old ?? [], id, name),
+        )
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(queryKeys.notebooks.all, ctx.previous)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.notebooks.all })
     },
   })
 }
 
-/** DELETE /api/notebooks/{id} — 刪除單字本，成功後失效列表。 */
+/** DELETE /api/notebooks/{id} — 樂觀移除；失敗 rollback，落定後 invalidate。 */
 export function useDeleteNotebookMutation() {
   const api = useApi()
   const qc = useQueryClient()
-  return useMutation<{ deleted: string; cardsDeleted: number }, ApiError, string>({
+  return useMutation<{ deleted: string; cardsDeleted: number }, ApiError, string, ListContext>({
     mutationFn: (id) => api.notebook.delete(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: queryKeys.notebooks.all })
+      const previous = qc.getQueryData<NotebookResponse[]>(queryKeys.notebooks.all)
+      qc.setQueryData<NotebookResponse[]>(queryKeys.notebooks.all, (old) =>
+        removeNotebook(old ?? [], id),
+      )
+      return { previous }
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.previous) qc.setQueryData(queryKeys.notebooks.all, ctx.previous)
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: queryKeys.notebooks.all })
     },
   })
