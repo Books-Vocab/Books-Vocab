@@ -49,9 +49,10 @@ verified_against: d3fc3685
 
 ## Backend (`backend/src/kg`)
 
-- **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize
+- **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize + 唯讀 profile face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由登入 record 衍生，與可變 config bundle 分離)
 - **User config / account lifecycle**
-- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留）
+- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + 單字內容編修 (`PATCH /api/vocab/{word}` 改 meaning/note，`explanation` 為 `note` write-through alias) + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留）
+- **Library APIs**: server 端書庫鏡像；`DELETE /api/library/books/{id}` 軟刪（set `is_deleted`，冪等）
 - **Translate / explain / pipeline**
 - **Card / graph / embedding / difficulty / enrichment**
 - **Multi-format import parsing**

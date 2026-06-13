@@ -20,6 +20,7 @@ from ..api_models import (
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
+    VocabContentUpdateRequest,
     VocabEntry,
 )
 from ..deps import (
@@ -51,6 +52,7 @@ from ..vocab_handlers import (
     push_review_events_response,
     push_review_response,
     unhide_graph_link_response,
+    update_word_content_response,
 )
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
@@ -156,6 +158,24 @@ def lookup_word(
         notebook_id=notebook_id,
     )
 
+
+
+@router.patch("/api/vocab/{word}", response_model=CardResponse)
+def update_word_content(
+    word: str,
+    req: VocabContentUpdateRequest,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    # Editorial content update (meaning / note). Distinct from
+    # {word}/archive (archive toggle) and DELETE {word} (soft delete).
+    return update_word_content_response(
+        word, req, user,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        card_response_builder=_card_response,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
 
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
