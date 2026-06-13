@@ -40,9 +40,7 @@ body {
 h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 .status { font-size: 14px; margin-bottom: 24px; }
 .status.ok { color: var(--text-success); }
-.status.err { color: #c0392b; }
-#ext-status { display: none; }
-.fallback { display: none; }
+.hint { color: var(--text-secondary); font-size: 13px; margin-top: 8px; line-height: 1.5; }
 .token-box {
   background: var(--page-bg);
   border: 1px solid var(--border);
@@ -53,7 +51,7 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
   word-break: break-all;
   max-height: 120px;
   overflow-y: auto;
-  margin-bottom: 12px;
+  margin: 16px 0 12px;
   text-align: left;
   color: var(--text-secondary);
 }
@@ -70,79 +68,25 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
   transition: background 0.15s;
 }
 .btn-copy:hover { background: var(--accent-hover); }
-.hint { color: var(--text-secondary); font-size: 12px; margin-top: 16px; }
-.manual-steps { color: var(--text-secondary); font-size: 13px; margin-top: 16px; text-align: left; }
-.manual-steps ol { padding-left: 18px; margin: 8px 0 0 0; }
-.manual-steps li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
 <div class="card">
   <h1>Books &amp; Vocab</h1>
-  <div id="ext-status">
-    <p class="status ok">Token 已自動傳送至擴充功能，可關閉此分頁。</p>
-  </div>
-  <div id="fallback" class="fallback">
-    <p class="status">自動傳送失敗，請手動貼上 Token：</p>
-    <div class="token-box" id="token-display">{{ token }}</div>
-    <button class="btn-copy" onclick="copyToken()">複製 Token</button>
-    <div class="manual-steps">
-      <ol>
-        <li>點擊「複製 Token」</li>
-        <li>開啟擴充功能設定頁（點擊擴充功能圖示 → 設定）</li>
-        <li>將 Token 貼上至輸入框並確認</li>
-      </ol>
-    </div>
-  </div>
+  <p class="status ok">登入成功</p>
+  <p class="hint">
+    您已通過驗證。帳號與訂閱管理頁面即將推出，屆時登入後會自動導向您的帳號頁。
+  </p>
+  <!--
+    A session JWT is minted server-side on this callback. The future same-origin
+    web account flow will set a session cookie + redirect here instead of
+    surfacing the raw token. For now the token is shown as a manual fallback so
+    the flow is still usable end-to-end.
+  -->
+  <div class="token-box" id="token-display">{{ token }}</div>
+  <button class="btn-copy" onclick="copyToken()">複製 Token</button>
 </div>
 <script>
-(function() {
-  var token = {{ token | tojson }};
-  var userId = {{ user_id | tojson }};
-  var sent = false;
-
-  function showFallback() {
-    if (!sent) {
-      document.getElementById('fallback').style.display = 'block';
-    }
-  }
-
-  // On externally_connectable pages chrome.runtime is already bound to the
-  // extension that declared this origin — no extensionId required.
-  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
-    try {
-      chrome.runtime.sendMessage(
-        {type: 'auth_token', token: token},
-        function(response) {
-          if (chrome.runtime.lastError || !response || !response.ok) {
-            showFallback();
-          } else {
-            sent = true;
-            document.getElementById('ext-status').style.display = 'block';
-          }
-        }
-      );
-      // Fallback after timeout in case sendMessage never calls back
-      setTimeout(showFallback, 2000);
-    } catch (e) {
-      showFallback();
-    }
-  } else if (window.opener) {
-    // Web app popup flow: post token back to opener, then close.
-    try {
-      window.opener.postMessage({type: 'kg-auth-token', token: token, userId: userId}, '*');
-      sent = true;
-      document.getElementById('ext-status').style.display = 'block';
-      document.querySelector('#ext-status .status').textContent = 'Token 已自動傳送至網頁 app，此分頁即將關閉。';
-      setTimeout(function() { window.close(); }, 800);
-    } catch (e) {
-      showFallback();
-    }
-  } else {
-    showFallback();
-  }
-})();
-
 function copyToken() {
   var token = {{ token | tojson }};
   navigator.clipboard.writeText(token).then(function() {
