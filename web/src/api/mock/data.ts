@@ -18,6 +18,7 @@ import type {
   PodcastSeriesSummary,
   QuickTranslateResponse,
   QuotaResponse,
+  ReviewEventEntry,
   ReviewEventsResponse,
   UserConfigResponse,
   UserProfileResponse,
@@ -337,8 +338,43 @@ export function mockVocabUpdateContent(
   return c
 }
 
+// Synthetic review-event log so shell-mode stats surfaces (vocab-calendar /
+// vocab-heatmap, which derive activity from todayReview.events()) render a
+// non-empty history offline. Anchored to NOW_ISO's day (2026-06-11); a few
+// events per recent day across the last ~6 weeks. Only the calendar/heatmap
+// derivations read this — no other surface consumes the event log.
+function syntheticReviewEvents(): ReviewEventEntry[] {
+  const anchor = new Date(NOW_ISO) // 2026-06-11T00:00:00Z
+  const words = ['serendipity', 'ephemeral', 'quintessential', 'ubiquitous', 'eloquent']
+  const entries: ReviewEventEntry[] = []
+  // Past 42 days: skip every 4th day (gaps → streak/heatmap variety); count
+  // ramps with a deterministic pattern to exercise intensity thresholds.
+  for (let offset = 0; offset < 42; offset++) {
+    if (offset % 4 === 0) continue
+    const day = new Date(anchor)
+    day.setUTCDate(day.getUTCDate() - offset)
+    const count = ((offset * 3) % 11) + 1
+    for (let i = 0; i < count; i++) {
+      const at = new Date(day)
+      at.setUTCHours(9, i * 7, 0, 0)
+      const iso = at.toISOString()
+      entries.push({
+        event_id: `mock-evt-${offset}-${i}`,
+        card_id: null,
+        word_snapshot: words[i % words.length]!,
+        notebook_id: 'default',
+        feedback: i % 3 === 0 ? 0 : 1,
+        reviewed_at: iso,
+        created_at: iso,
+        is_synthetic: true,
+      })
+    }
+  }
+  return entries
+}
+
 export const MOCK_REVIEW_EVENTS: ReviewEventsResponse = {
-  entries: [],
+  entries: syntheticReviewEvents(),
   cursor: null,
 }
 
