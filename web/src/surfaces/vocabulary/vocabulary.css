@@ -375,6 +375,126 @@
 }
 
 /* ============================================================
+   SHELL-PATH FEEL / INTERACTION — gated under .vc-shell.
+
+   PARITY ISOLATION: every rule in this block is a descendant of .vc-shell,
+   a class only added to the surface root on the functional shell path
+   (VocabularyBody receives headerActions). The parity capture path renders
+   .vocabulary WITHOUT .vc-shell, so none of these rules apply there and the
+   bare 393px capture DOM/CSS is untouched. None of these live in a responsive
+   @media/@container context, so check:responsive stays CLEAN.
+   ============================================================ */
+
+/* --- Surface-owned header actions（知識圖譜 + 新增連結 鈕）---
+   只在 shell 路徑渲染（parity header 純標題）。large-title 列 right-align 一對
+   圓鈕，鏡射 iOS 工具列 glyph 的觀感（muted-fill 觸控圈，secondary glyph）。 */
+.vc-shell .vc-nav {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vc-shell .vc-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* 與 large-title baseline 對齊（title 有 6px bottom pad）。 */
+  padding-bottom: 8px;
+}
+
+.vc-shell .vc-nav-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--muted-fill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    background-color 0.18s ease,
+    transform 0.12s ease;
+}
+
+.vc-shell .vc-nav-action:hover {
+  background: var(--button-idle-fill);
+  color: var(--text-primary);
+}
+
+.vc-shell .vc-nav-action:active {
+  transform: scale(0.92);
+}
+
+/* --- Animated filter-chip selection（shell）---
+   選中底色改由 framer-motion 共享 layoutId 的 .vc-stat-pill 繪製（spring 滑移），
+   故 .vc-stat-active 自身不再上靜態底色（避免雙層）。pill 為絕對定位填滿 chip。 */
+.vc-shell .vc-stat {
+  position: relative;
+  transition: color 0.18s ease;
+}
+
+.vc-shell .vc-stat-active .vc-stat-label {
+  color: var(--text-primary);
+}
+
+.vc-shell .vc-stat-pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: var(--radius-md);
+  background: var(--muted-fill);
+}
+
+/* label / count 疊在 pill 之上。 */
+.vc-shell .vc-stat-label,
+.vc-shell .vc-stat-count {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Search field focus feel（shell）---
+   聚焦時 muted-fill 微亮 + 細邊框，給出 iOS 搜尋欄「啟用」回饋。靜態與非聚焦態
+   不變，故不影響首屏觀感。reduced-motion 由 prefers 媒體查詢收斂為瞬時。 */
+.vc-shell .vc-search {
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.vc-shell .vc-search:focus-within {
+  background: var(--button-idle-fill);
+  box-shadow: 0 0 0 1.5px var(--brand-hero);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-shell .vc-nav-action,
+  .vc-shell .vc-stat,
+  .vc-shell .vc-search {
+    transition: none;
+  }
+}
+
+/* --- List scroll momentum（shell）---
+   shell 路徑由 pane 擁有滾動；給 vc-scroll iOS 風慣性 + 防滾動鏈穿透。
+   parity 路徑 .vc-scroll 為 overflow:hidden（不滾動），這些屬性在該路徑為惰性。 */
+.vc-shell .vc-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-shell .vc-scroll {
+    scroll-behavior: auto;
+  }
+}
+
+/* ============================================================
    RESPONSIVE — shell-gated desktop/tablet master-pane layout.
 
    PARITY ISOLATION: every rule below is a descendant of
