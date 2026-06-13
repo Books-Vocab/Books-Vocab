@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { buildMockSession, isDevLoginEnabled } from './devSession'
 
 const STORAGE_KEY = 'kg-web-token'
 const USER_KEY = 'kg-web-user-id'
@@ -12,8 +13,12 @@ export interface AuthContextValue {
   session: AuthSession | null
   isLoading: boolean
   isLoggedIn: boolean
+  /** dev/demo 登入是否可用（dev server 或 mock 模式）。false 時不渲染 dev 按鈕。 */
+  devLoginEnabled: boolean
   error: string | null
   login: (provider: 'google' | 'apple') => void
+  /** 寫入合成 session（免 popup），僅在 devLoginEnabled 時生效。 */
+  devLogin: () => void
   logout: () => void
   dismissError: () => void
   getToken: () => string | null
@@ -67,6 +72,13 @@ export function AuthProvider({
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // import.meta.env 在 node 測試環境可能不存在；容錯讀取。
+  const env =
+    (typeof import.meta !== 'undefined' &&
+      (import.meta as { env?: { DEV?: boolean; VITE_API_MODE?: string } }).env) ||
+    {}
+  const devLoginEnabled = isDevLoginEnabled(env)
+
   // Hydrate from localStorage on mount.
   useEffect(() => {
     setSession(readStoredSession())
@@ -110,6 +122,14 @@ export function AuthProvider({
     [baseUrl],
   )
 
+  const devLogin = useCallback(() => {
+    if (!devLoginEnabled) return
+    const next = buildMockSession()
+    saveSession(next)
+    setSession(next)
+    setError(null)
+  }, [devLoginEnabled])
+
   const logout = useCallback(() => {
     saveSession(null)
     setSession(null)
@@ -125,13 +145,15 @@ export function AuthProvider({
       session,
       isLoading,
       isLoggedIn: !!session,
+      devLoginEnabled,
       error,
       login,
+      devLogin,
       logout,
       dismissError,
       getToken,
     }),
-    [session, isLoading, error, login, logout, dismissError, getToken],
+    [session, isLoading, devLoginEnabled, error, login, devLogin, logout, dismissError, getToken],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

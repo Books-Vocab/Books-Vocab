@@ -7,7 +7,7 @@ import '../surfaces/login-sheet/login-sheet.css'
  * 這是 app 層入口，不是 catalog parity surface，因此允許互動 state。
  */
 export function LoginGate() {
-  const { login, error, isLoading } = useAuth()
+  const { login, devLogin, devLoginEnabled, error, isLoading } = useAuth()
 
   return (
     <div className="login-sheet-surface">
@@ -50,6 +50,26 @@ export function LoginGate() {
             <span className="login-sheet-button-spacer" />
             <ChevronRightIcon className="login-sheet-button-chevron" size={10} strokeWidth={1} />
           </button>
+
+          {/* dev/demo 登入 — 僅 dev server / mock 模式渲染；免後端、免 popup，
+              直接寫入合成 session。ASCII-only 技術 label，不入 i18n。 */}
+          {devLoginEnabled ? (
+            <button
+              type="button"
+              className="login-sheet-button login-sheet-button--dev"
+              data-testid="dev-login-button"
+              disabled={isLoading}
+              onClick={() => devLogin()}
+            >
+              <span className="login-sheet-badge login-sheet-badge--dev">
+                <span className="login-sheet-badge-letter">D</span>
+              </span>
+              {/* i18n-allow: dev-only technical affordance, never shipped to prod+real */}
+              <span className="login-sheet-button-title">Dev / Demo login (mock)</span>
+              <span className="login-sheet-button-spacer" />
+              <ChevronRightIcon className="login-sheet-button-chevron" size={10} strokeWidth={1} />
+            </button>
+          ) : null}
         </div>
 
         {error ? (
