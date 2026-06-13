@@ -31,9 +31,14 @@ describe('historySyncOp', () => {
     expect(op).toEqual({ kind: 'replace', path: navToPath(notebooks) })
   })
 
-  it('剛 enable + URL 是 /app 但不合法（404 seam）→ replace 到 nav 路徑（P1.3 改 404）', () => {
+  it('剛 enable + URL 是 /app 但 codec 不合法 → notFound（不靜默 normalize）', () => {
     const op = historySyncOp({ nav: notebooks, currentPath: '/app/bogus', justEnabled: true })
-    expect(op).toEqual({ kind: 'replace', path: navToPath(notebooks) })
+    expect(op).toEqual({ kind: 'notFound', path: navToPath(notebooks) })
+  })
+
+  it('剛 enable + URL 合法 surface 但 nav-graph 不可達 → notFound', () => {
+    const op = historySyncOp({ nav: notebooks, currentPath: '/app/notebook/paywall', justEnabled: true })
+    expect(op).toEqual({ kind: 'notFound', path: navToPath(notebooks) })
   })
 
   it('剛 enable + URL 已等於 nav 路徑 → none（即使 justEnabled）', () => {

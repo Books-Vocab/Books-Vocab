@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
-import type { NavState } from './nav'
-import { navToPath, pathToNav } from './routeUrl'
+import { useCallback, useEffect, useRef } from 'react'
+import { initialNavState, type NavState } from './nav'
+import { navToPath } from './routeUrl'
+import { resolveShellRoute } from './route'
 
 /**
  * NavState ⇄ History API 雙向綁定 — 把 P1.1 的純 codec（routeUrl）接上瀏覽器歷史，
@@ -20,6 +21,7 @@ export type HistoryOp =
   | { kind: 'push'; path: string }
   | { kind: 'replace'; path: string }
   | { kind: 'adopt'; path: string; adopt: NavState }
+  | { kind: 'notFound'; path: string }
 
 /**
  * 純決策：給定當前 nav、瀏覽器 pathname、是否「剛 enable」，決定該對 history 做什麼。
@@ -39,41 +41,56 @@ export function historySyncOp(args: {
   const path = navToPath(args.nav)
   if (args.currentPath === path) return { kind: 'none', path }
   if (args.justEnabled) {
-    const fromUrl = pathToNav(args.currentPath)
-    if (fromUrl && navToPath(fromUrl) !== path) return { kind: 'adopt', path, adopt: fromUrl }
+    const route = resolveShellRoute(args.currentPath)
+    if (route.kind === 'valid') {
+      // URL 解析出另一合法 nav → adopt（URL 為真相）；解析回同一 nav 但 currentPath
+      // 非 canonical（trailing slash 等）→ replace normalize。
+      return navToPath(route.nav) !== path
+        ? { kind: 'adopt', path, adopt: route.nav }
+        : { kind: 'replace', path }
+    }
+    // /app 但不合法/不可達 → 404（交呼叫端標記，不靜默 normalize）。
+    if (route.kind === 'notFound') return { kind: 'notFound', path }
+    // nonShell（legacy ?shell=1 在 '/'）→ normalize 到 /app 路徑。注意：normalize 只
+    // 保留 nav-routable 狀態；appearance（theme 持久化層負責）與 login=1（一次性進場
+    // 意圖）刻意不入 URL，refresh 不重現屬預期、非遺漏。
     return { kind: 'replace', path }
   }
   return { kind: 'push', path }
 }
 
-/** 從當前瀏覽器 pathname 還原 NavState（shell URL）；非 shell URL / SSR → null。 */
-export function navStateFromLocation(): NavState | null {
-  if (typeof window === 'undefined') return null
-  return pathToNav(window.location.pathname)
-}
-
 /**
- * 把 nav 雙向綁定到 History API。`enabled=false` 時完全不綁（讓另一殼層當值）。
+ * 把 nav 雙向綁定到 History API，回傳 goHome（404 復原動作）。`enabled=false` 時
+ * 完全不綁（讓另一殼層當值）。`notFound`=目前是否在顯示 404；為真時 nav→URL 同步
+ * 停手（保留壞 URL 供使用者辨識，且令 effect 在 React StrictMode 雙invoke 下冪等）。
+ * `onNotFound` 回報 URL 是否不合法/不可達（殼層據此渲染 404）。
  */
 export function useShellHistory(
   nav: NavState,
   setNav: (next: NavState) => void,
   enabled = true,
-): void {
+  notFound = false,
+  onNotFound?: (notFound: boolean) => void,
+): () => void {
   const prevEnabled = useRef(false)
 
-  // nav / enabled 變動 → 套用 history op。
+  // nav / enabled 變動 → 套用 history op。顯示 404 期間（notFound）不動 URL。
   useEffect(() => {
     if (!enabled) {
       prevEnabled.current = false
       return
     }
+    if (notFound) return
     const justEnabled = !prevEnabled.current
     prevEnabled.current = true
     const op = historySyncOp({ nav, currentPath: window.location.pathname, justEnabled })
     switch (op.kind) {
       case 'adopt':
+        onNotFound?.(false)
         setNav(op.adopt)
+        break
+      case 'notFound':
+        onNotFound?.(true)
         break
       case 'push':
         window.history.pushState(null, '', op.path)
@@ -84,17 +101,32 @@ export function useShellHistory(
       case 'none':
         break
     }
-  }, [nav, enabled, setNav])
+  }, [nav, enabled, notFound, setNav, onNotFound])
 
   // back/forward（popstate）→ 從 URL 還原 nav。pathname 已被瀏覽器設好，故還原後
-  // nav→URL effect 會判定 in-sync（none），不製造迴圈。非 shell URL → 不動。
+  // nav→URL effect 會判定 in-sync（none），不製造迴圈。合法 → 還原；/app 不合法/
+  // 不可達 → 標 404；非 shell URL → 不動（瀏覽器已離開 /app）。
   useEffect(() => {
     if (!enabled) return
     const onPop = () => {
-      const restored = pathToNav(window.location.pathname)
-      if (restored) setNav(restored)
+      const route = resolveShellRoute(window.location.pathname)
+      if (route.kind === 'valid') {
+        onNotFound?.(false)
+        setNav(route.nav)
+      } else if (route.kind === 'notFound') {
+        onNotFound?.(true)
+      }
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
-  }, [enabled, setNav])
+  }, [enabled, setNav, onNotFound])
+
+  // 404 復原：在 event handler 內 pushState（不被 StrictMode 雙invoke）並清 notFound，
+  // 令隨後的 effect 判定 in-sync，不會 re-404。
+  return useCallback(() => {
+    const home = initialNavState()
+    if (enabled) window.history.pushState(null, '', navToPath(home))
+    onNotFound?.(false)
+    setNav(home)
+  }, [enabled, setNav, onNotFound])
 }
