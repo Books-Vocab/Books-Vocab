@@ -7,6 +7,12 @@ import { useAppearance } from '../../harness/appearance'
 import { useApi } from '../../api/ApiContext'
 import type { QuotaResponse, SubscriptionStatusResponse, UserConfigResponse } from '../../api/types'
 import { appearanceFromConfig, buildAppearancePatch, type AppearancePref } from './appearanceConfig'
+import {
+  autoLinkEnabled,
+  buildAutoLinkPatch,
+  syncStatusFromSignals,
+  type SyncStatusView,
+} from './syncConfig'
 import appIconUrl from '../../assets/app_icon.png'
 import { SETTINGS_FIXTURES, PREFERENCE_ROWS, EXTERNAL_ROWS } from './fixtures'
 import type { LoggedInAccount, LoggedOutAccount } from './fixtures'
@@ -20,6 +26,7 @@ import {
   EllipsisCircleIcon,
   HandRaisedIcon,
   LanguageBubbleIcon,
+  LinkGraphIcon,
   PersonCircleIcon,
   QuestionCircleIcon,
   SealCheckFillIcon,
@@ -122,10 +129,13 @@ function SyncToggle({
   on,
   apiMode,
   onToggle,
+  ariaLabel = '自動同步',
 }: {
   on: boolean
   apiMode?: boolean
   onToggle: () => void
+  /** 無障礙標籤（同一 toggle 元件用於自動同步 / 自動連結兩列）。 */
+  ariaLabel?: string
 }) {
   const transition = usePreferredTransition(snappy)
   return (
@@ -135,7 +145,7 @@ function SyncToggle({
       data-on={on}
       role="switch"
       aria-checked={on}
-      aria-label="自動同步"
+      aria-label={ariaLabel}
       onClick={onToggle}
     >
       {apiMode && (
@@ -497,8 +507,10 @@ function SettingsScreenApi() {
           heroSubtitle: 'AI 翻譯・知識圖譜・雲端同步',
         },
         autoSync: null,
+        autoLink: null,
         preferencesFootnote: PREFERENCES_FOOTNOTE_BASE,
         syncStatusValue: null,
+        syncStatus: null,
       }
     }
 
@@ -519,15 +531,26 @@ function SettingsScreenApi() {
       },
     }
 
+    // 自動同步暫停旗標（review_clock.is_paused）— 同時驅動偏好區 toggle 與同步狀態 tone。
+    const isPaused = optimisticConfig?.review_clock?.is_paused ?? false
+
     return {
       account,
-      autoSync: true,
+      autoSync: !isPaused,
+      // 自動連結開關：從（樂觀）config.auto_link.enabled 投影；缺 = 開（後端預設）。
+      autoLink: autoLinkEnabled(optimisticConfig),
       preferencesFootnote: PREFERENCES_FOOTNOTE_SYNC,
       syncStatusValue: quota
         ? `已連線 · ${Math.round(quota.fraction * 100)}% 額度 · ${formatResetTime(quota.reset_seconds)}`
         : FALLBACK_SYNC_STATUS,
+      // 結構化同步狀態：用現有可用訊號推導（last_synced_at / 暫停旗標）。
+      syncStatus: syncStatusFromSignals({
+        lastSyncedAt: entitlements?.last_synced_at ?? null,
+        isPaused,
+        quotaFraction: quota?.fraction,
+      }),
     }
-  }, [loading, config, entitlements, quota, profile])
+  }, [loading, config, optimisticConfig, entitlements, quota, profile])
 
   const updateConfig = useCallback(
     async (patch: Partial<UserConfigResponse>) => {
@@ -550,6 +573,16 @@ function SettingsScreenApi() {
   const persistAppearance = useCallback(
     (pref: AppearancePref) => {
       void updateConfig(buildAppearancePatch(optimisticConfig, pref))
+    },
+    [updateConfig, optimisticConfig],
+  )
+
+  // 自動連結開關：把 enabled 併進 auto_link group（保留其他鍵、清 updated_at 交後端 LWW）。
+  // updateConfig 已含樂觀更新 + 失敗 rollback；toggle 顯示值由 optimisticConfig 投影，
+  // 故 rollback 後 UI 自動回退（無需另存 toggle 本地 state）。
+  const toggleAutoLink = useCallback(
+    (next: boolean) => {
+      void updateConfig(buildAutoLinkPatch(optimisticConfig, next))
     },
     [updateConfig, optimisticConfig],
   )
@@ -585,6 +618,7 @@ function SettingsScreenApi() {
       onDeleteAccount={deleteAccount}
       onUpdateConfig={updateConfig}
       onPersistAppearance={persistAppearance}
+      onToggleAutoLink={toggleAutoLink}
       onNavigateSetting={navigateSetting}
     />
   )
@@ -618,6 +652,7 @@ function SettingsBody({
   onDeleteAccount,
   onUpdateConfig,
   onPersistAppearance,
+  onToggleAutoLink,
   onNavigateSetting,
 }: {
   fixture: SettingsFixture
@@ -627,6 +662,8 @@ function SettingsBody({
   onDeleteAccount?: () => void
   onUpdateConfig?: (patch: Partial<UserConfigResponse>) => Promise<void>
   onPersistAppearance?: (pref: AppearancePref) => void
+  /** shell 路徑：自動連結 toggle → 樂觀寫 auto_link.enabled（失敗 rollback）。 */
+  onToggleAutoLink?: (next: boolean) => void
   /** shell 路徑：設定列 → push 子 surface。parity 路徑省略 → 維持 sheet / 純展示。 */
   onNavigateSetting?: (intent: NavIntent) => void
 }) {
@@ -650,7 +687,12 @@ function SettingsBody({
   const isLoggedIn = account.kind === 'logged-in'
   // 登入/登出切換時，偏好區「自動同步」列與其他區「同步狀態」列跟著雙態。
   const showAutoSync = isLoggedIn ? autoSync : null
+  // 自動連結 toggle 直接由 fixture.autoLink 投影（apiMode 時 = optimisticConfig.auto_link.enabled，
+  // 故樂觀更新 / rollback 都自動反映，無需另存本地 state）。parity / fixture 路徑為 null → 不渲染。
+  const showAutoLink = isLoggedIn ? fixture.autoLink : null
   const syncStatusValue = isLoggedIn ? fixture.syncStatusValue ?? FALLBACK_SYNC_STATUS : null
+  // 結構化同步狀態（apiMode 才有）；fixture / parity 路徑為 undefined → 退回純字串。
+  const syncStatusView = isLoggedIn ? fixture.syncStatus ?? null : null
 
   // footnote：logged-out 用 fixture 原文案（避免首屏漂移）；logged-in 依 autoSync 推。
   const preferencesFootnote = !isLoggedIn
@@ -819,6 +861,26 @@ function SettingsBody({
                 </div>
               </div>
             )}
+            {/* 自動連結 toggle（shell/apiMode 路徑專用；fixture.autoLink 恆 null →
+                parity 首屏無此 DOM，逐位元一致）。值由 optimisticConfig.auto_link.enabled
+                投影，故樂觀更新 + 失敗 rollback 自動反映。 */}
+            {showAutoLink !== null && (
+              <div>
+                <div className="settings-divider is-inset" />
+                <div className="settings-row">
+                  <span className="settings-row-icon">
+                    <LinkGraphIcon size={15} />
+                  </span>
+                  <span className="settings-row-label">自動連結</span>
+                  <SyncToggle
+                    on={showAutoLink}
+                    apiMode={apiMode}
+                    ariaLabel="自動連結"
+                    onToggle={() => onToggleAutoLink?.(!showAutoLink)}
+                  />
+                </div>
+              </div>
+            )}
           </div>
           <p className="settings-footnote">{preferencesFootnote}</p>
         </section>
@@ -838,9 +900,14 @@ function SettingsBody({
                     <SyncIcon size={15} />
                   </span>
                   <span className="settings-row-label">同步狀態</span>
-                  <span className="settings-sync-status">
+                  {/* apiMode：用結構化視圖（含 tone：synced=綠 / paused=灰）；fixture/parity：
+                      純字串，DOM 與靜態 PNG 逐位元一致（不帶 data-tone，CSS 預設 success）。 */}
+                  <span
+                    className="settings-sync-status"
+                    {...(syncStatusView ? { 'data-tone': syncStatusView.tone } : {})}
+                  >
                     <span className="settings-sync-dot" />
-                    {syncStatusValue}
+                    {syncStatusView ? syncStatusView.label : syncStatusValue}
                   </span>
                 </div>
                 <div className="settings-divider is-inset" />
@@ -903,6 +970,11 @@ function SettingsBody({
 export interface SettingsFixture {
   account: LoggedInAccount | LoggedOutAccount
   autoSync: boolean | null
+  /** 自動連結（auto_link.enabled）開關初值。null = 不顯示此列（未登入 / fixture 路徑）。 */
+  autoLink: boolean | null
   preferencesFootnote: string
+  /** 同步狀態列的純字串值（fixture / parity 路徑用；首屏 DOM 不漂移）。 */
   syncStatusValue: string | null
+  /** 同步狀態列的結構化視圖（shell / apiMode 路徑用；含 tone）。缺/null → 退回 syncStatusValue。 */
+  syncStatus?: SyncStatusView | null
 }
