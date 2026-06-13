@@ -9,20 +9,84 @@ import type {
   ReviewEventEntry,
   ReviewEventsResponse,
 } from '../../api/types'
-import { CARD_DEFAULT_INTERVAL_HOURS } from '../seeds/vocabulary.seed'
 import type {
   GraphLinkSeed,
   ReviewEventLogSeed,
   VocabCardSeed,
 } from '../seeds/vocabulary.seed'
 
+const MS_PER_HOUR = 3_600_000
+
+/** SEED_NOW-style ISO (seconds precision, trailing Z) — matches SEED_NOW_ISO. */
+function isoSeconds(ms: number): string {
+  // toISOString() yields `...:00.000Z`; strip the millis for byte-parity with
+  // the SEED_NOW_ISO literal (`2026-06-11T00:00:00Z`).
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+}
+
 /**
- * Map a seeded card → CardResponse. The non-domain fields reproduce the legacy
- * `card()` helper's defaults verbatim (freshly-added unlearned card: empty
- * link/collocation/example/inflection sets, recognition mode, first-round 12h
- * interval, never reviewed). `nowIso` anchors updatedAt / nextReviewAt.
+ * SRS metadata derived from the SoT per-card review state. The runtime stores
+ * classify a card by (reviewCount, nextReviewAt vs wall-clock now):
+ *   reviewCount === 0                       → 未學習 (unlearned)
+ *   reviewCount ≥ 1 && nextReviewAt ≤ now   → 待複習 (due)
+ *   reviewCount ≥ 1 && nextReviewAt > now   → 已複習 (reviewed)
+ * so we anchor every timestamp at `nowIso` (= SEED_NOW_ISO) deterministically:
+ *   'new'      → never reviewed; nextReviewAt = SEED_NOW (unlearned).
+ *   'due'      → reviewed `interval`h ago; nextReviewAt = SEED_NOW (already
+ *                overdue: SEED_NOW < wall-clock now ⇒ stays due).
+ *   'reviewed' → just reviewed at SEED_NOW; nextReviewAt = SEED_NOW + interval
+ *                (future relative to SEED_NOW; classified reviewed).
+ */
+function deriveReviewMeta(seed: VocabCardSeed, nowIso: string): {
+  nextReviewAt: string
+  lastReviewedAt: string | null
+  reviewCount: number
+  reviewStreak: number
+  lastReviewFeedback: number
+} {
+  const nowMs = new Date(nowIso).getTime()
+  const intervalMs = seed.reviewIntervalHours * MS_PER_HOUR
+  switch (seed.reviewState) {
+    case 'due':
+      return {
+        nextReviewAt: nowIso,
+        lastReviewedAt: isoSeconds(nowMs - intervalMs),
+        reviewCount: 1,
+        reviewStreak: 1,
+        lastReviewFeedback: 1,
+      }
+    case 'reviewed':
+      return {
+        nextReviewAt: isoSeconds(nowMs + intervalMs),
+        lastReviewedAt: nowIso,
+        reviewCount: 1,
+        reviewStreak: 1,
+        lastReviewFeedback: 1,
+      }
+    case 'new':
+    default:
+      return {
+        nextReviewAt: nowIso,
+        lastReviewedAt: null,
+        reviewCount: 0,
+        reviewStreak: 0,
+        lastReviewFeedback: -1,
+      }
+  }
+}
+
+/**
+ * Map a seeded card → CardResponse. Domain fields come from the seed; the
+ * remaining card-metadata defaults reproduce the legacy `card()` helper (empty
+ * link/collocation/example/inflection sets, recognition mode). The SRS metadata
+ * (reviewIntervalHours / nextReviewAt / lastReviewedAt / reviewCount /
+ * reviewStreak / lastReviewFeedback) is DERIVED from the SoT per-card
+ * reviewState so the demo faithfully renders 未學習/待複習/已複習 instead of a
+ * flat never-reviewed list. `nowIso` (= SEED_NOW_ISO) anchors updatedAt and the
+ * SRS timestamps.
  */
 export function toCardResponse(seed: VocabCardSeed, nowIso: string): CardResponse {
+  const review = deriveReviewMeta(seed, nowIso)
   return {
     id: seed.id,
     content: seed.word,
@@ -41,13 +105,13 @@ export function toCardResponse(seed: VocabCardSeed, nowIso: string): CardRespons
     notebookId: seed.notebookId,
     source: null,
     updatedAt: nowIso,
-    reviewIntervalHours: CARD_DEFAULT_INTERVAL_HOURS,
-    nextReviewAt: nowIso,
-    lastReviewedAt: null,
-    reviewCount: 0,
+    reviewIntervalHours: seed.reviewIntervalHours,
+    nextReviewAt: review.nextReviewAt,
+    lastReviewedAt: review.lastReviewedAt,
+    reviewCount: review.reviewCount,
     lapseCount: 0,
-    reviewStreak: 0,
-    lastReviewFeedback: -1,
+    reviewStreak: review.reviewStreak,
+    lastReviewFeedback: review.lastReviewFeedback,
   }
 }
 
