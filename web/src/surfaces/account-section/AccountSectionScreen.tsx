@@ -1,12 +1,17 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import appIconUrl from '../../assets/app_icon.png'
 import { ACCOUNT_SECTION_FIXTURES, type AccountSectionFixture, type LoggedInFixture, type LoggedOutFixture } from './fixtures'
+import { useAuth } from '../../auth'
+import { useAccountIdentityApiStore } from '../settings-account-detail/useAccountIdentityApiStore'
+import { useEntitlementsApiStore } from '../settings-subscription/useEntitlementsApiStore'
 import {
   AppleLogoIcon,
   CheckCircleFillIcon,
   ChevronRightIcon,
   PersonCircleIcon,
+  SealCheckFillIcon,
   SparklesIcon,
+  SparklesRectangleStackIcon,
   WarningTriangleFillIcon,
 } from './icons'
 import './account-section.css'
@@ -31,7 +36,60 @@ import './account-section.css'
  * 幾何沿用 settings surface 已對 catalog 校準的 measured 值（同一元件、同一 catalog）。
  */
 export function AccountSectionScreen({ scenario }: { scenario: ScenarioId<'account-section'> }) {
-  const fixture: AccountSectionFixture = ACCOUNT_SECTION_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <AccountSectionScreenApi scenario={scenario} />
+  }
+  return <AccountSectionBody fixture={ACCOUNT_SECTION_FIXTURES[scenario]} />
+}
+
+function AccountSectionScreenApi({ scenario }: { scenario: ScenarioId<'account-section'> }) {
+  const { login, logout } = useAuth()
+  const { identity, status: idStatus } = useAccountIdentityApiStore()
+  const { view, status: entStatus } = useEntitlementsApiStore()
+
+  // 載入中：退回 scenario fixture（避免空白；幾何不變）。
+  if (idStatus === 'loading' || entStatus === 'loading') {
+    return <AccountSectionBody fixture={ACCOUNT_SECTION_FIXTURES[scenario]} />
+  }
+
+  if (!identity.isLoggedIn) {
+    const fixture: LoggedOutFixture = {
+      kind: 'logged-out',
+      heroTitle: '解鎖完整功能',
+      heroSubtitle: 'AI 翻譯・知識圖譜・雲端同步',
+    }
+    return <AccountSectionBody fixture={fixture} onLogin={login} />
+  }
+
+  const fixture: LoggedInFixture = {
+    kind: 'logged-in',
+    initials: identity.initials,
+    displayName: identity.displayName,
+    email: identity.email ?? '',
+    proBadge: identity.isPro,
+    subscription: {
+      active: view.isActive,
+      title: view.isActive ? 'Pro 已啟用' : view.planName,
+      detail: view.isActive ? view.summary : view.detail,
+      icon: view.isActive ? SealCheckFillIcon : SparklesRectangleStackIcon,
+      iconActive: view.isActive,
+      pillLabel: view.isActive ? view.badgeText : '升級',
+      pillTone: view.isActive ? 'success' : 'accent',
+    },
+  }
+  return <AccountSectionBody fixture={fixture} onLogout={logout} />
+}
+
+function AccountSectionBody({
+  fixture,
+  onLogin,
+  onLogout,
+}: {
+  fixture: AccountSectionFixture
+  onLogin?: (provider: 'google' | 'apple') => void
+  onLogout?: () => void
+}) {
   return (
     <div className="account-section-surface">
       <section className="account-section">
@@ -40,16 +98,16 @@ export function AccountSectionScreen({ scenario }: { scenario: ScenarioId<'accou
           帳號
         </h2>
         {fixture.kind === 'logged-in' ? (
-          <LoggedInCard fixture={fixture} />
+          <LoggedInCard fixture={fixture} onLogout={onLogout} />
         ) : (
-          <LoggedOutCard fixture={fixture} />
+          <LoggedOutCard fixture={fixture} onLogin={onLogin} />
         )}
       </section>
     </div>
   )
 }
 
-function LoggedInCard({ fixture }: { fixture: LoggedInFixture }) {
+function LoggedInCard({ fixture, onLogout }: { fixture: LoggedInFixture; onLogout?: () => void }) {
   const sub = fixture.subscription
   const SubIcon = sub.icon
   return (
@@ -94,7 +152,7 @@ function LoggedInCard({ fixture }: { fixture: LoggedInFixture }) {
 
       {/* 登出鈕 — Button(.appAction(.destructive)).padding(cardPadding=18) */}
       <div className="account-signout-frame">
-        <button className="account-signout" type="button">
+        <button className="account-signout" type="button" onClick={onLogout}>
           登出帳號
         </button>
       </div>
@@ -102,7 +160,7 @@ function LoggedInCard({ fixture }: { fixture: LoggedInFixture }) {
   )
 }
 
-function LoggedOutCard({ fixture }: { fixture: LoggedOutFixture }) {
+function LoggedOutCard({ fixture, onLogin }: { fixture: LoggedOutFixture; onLogin?: (provider: 'google' | 'apple') => void }) {
   return (
     <div className="account-card account-login-card">
       <div className="account-login-hero">
@@ -115,14 +173,14 @@ function LoggedOutCard({ fixture }: { fixture: LoggedOutFixture }) {
       <div className="account-divider" />
 
       <div className="account-login-actions">
-        <button className="account-login-button" type="button">
+        <button className="account-login-button" type="button" onClick={() => onLogin?.('google')}>
           <span className="account-social-badge is-google">G</span>
           <span className="account-login-button-label">
             以 <strong>Google</strong> 繼續
           </span>
           <ChevronRightIcon className="account-chevron" size={10} strokeWidth={1.2} />
         </button>
-        <button className="account-login-button" type="button">
+        <button className="account-login-button" type="button" onClick={() => onLogin?.('apple')}>
           <span className="account-social-badge is-apple">
             <AppleLogoIcon size={12} />
           </span>

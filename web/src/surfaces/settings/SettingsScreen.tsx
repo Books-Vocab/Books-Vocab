@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { useAppearance } from '../../harness/appearance'
 import { useApi } from '../../api/ApiContext'
 import type { QuotaResponse, SubscriptionStatusResponse, UserConfigResponse } from '../../api/types'
+import { appearanceFromConfig, buildAppearancePatch, type AppearancePref } from './appearanceConfig'
 import appIconUrl from '../../assets/app_icon.png'
 import { SETTINGS_FIXTURES, PREFERENCE_ROWS, EXTERNAL_ROWS } from './fixtures'
 import type { LoggedInAccount, LoggedOutAccount } from './fixtures'
@@ -218,37 +219,49 @@ function SettingsScreenFixture({ scenario }: { scenario: ScenarioId<'settings'> 
 function SettingsScreenApi() {
   const api = useApi()
   const { logout } = useAuth()
+  const { setAppearance } = useAppearance()
   const [config, setConfig] = useState<UserConfigResponse | null>(null)
   const [quota, setQuota] = useState<QuotaResponse | null>(null)
   const [entitlements, setEntitlements] = useState<SubscriptionStatusResponse | null>(null)
+  const [profile, setProfile] = useState<{ displayName: string; email: string | null; initials: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [optimisticConfig, setOptimisticConfig] = useState<UserConfigResponse | null>(null)
+  // 只在首次載入時 apply 一次持久化外觀（避免覆蓋使用者後續手動切換）。
+  const appearanceApplied = useRef(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [cfg, q, ent] = await Promise.all([
+      const [cfg, q, ent, prof] = await Promise.all([
         api.user.config(),
         api.user.quota().catch(() => null),
         api.user.entitlements().catch(() => null),
+        api.user.profile().catch(() => null),
       ])
       setConfig(cfg)
       setOptimisticConfig(cfg)
       setQuota(q)
       setEntitlements(ent?.pro ?? null)
+      if (prof) {
+        const name = prof.display_name?.trim() || prof.email?.split('@')[0] || '使用者'
+        setProfile({ displayName: name, email: prof.email ?? null, initials: initialsFromProfile(name, prof.email) })
+      }
+      // 套用持久化外觀偏好（'light'/'dark' 顯式覆蓋；'system' 不動）。
+      if (!appearanceApplied.current) {
+        const pref: AppearancePref = appearanceFromConfig(cfg)
+        if (pref === 'light' || pref === 'dark') setAppearance(pref)
+        appearanceApplied.current = true
+      }
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [api])
+  }, [api, setAppearance])
 
   useEffect(() => {
     load()
   }, [load])
-
-  const _isLoggedIn = !!config
-  void _isLoggedIn // used in fixture derivation below
 
   // Build fixture from API data
   const fixture: SettingsFixture = useMemo(() => {
@@ -268,9 +281,9 @@ function SettingsScreenApi() {
     const isPro = entitlements?.is_active ?? false
     const account: LoggedInAccount = {
       kind: 'logged-in',
-      displayName: 'User',
-      email: 'user@example.com',
-      initials: 'US',
+      displayName: profile?.displayName ?? '使用者',
+      email: profile?.email ?? '',
+      initials: profile?.initials ?? '?',
       proBadge: isPro,
       subscription: {
         active: isPro,
@@ -290,7 +303,7 @@ function SettingsScreenApi() {
         ? `已連線 · ${Math.round(quota.fraction * 100)}% 額度 · ${formatResetTime(quota.reset_seconds)}`
         : FALLBACK_SYNC_STATUS,
     }
-  }, [loading, config, entitlements, quota])
+  }, [loading, config, entitlements, quota, profile])
 
   const updateConfig = useCallback(
     async (patch: Partial<UserConfigResponse>) => {
@@ -309,14 +322,37 @@ function SettingsScreenApi() {
     [api, optimisticConfig, config],
   )
 
+  // 外觀偏好持久化：把 'system'|'light'|'dark' 併進 vocab_ui group（保留其他鍵）。
+  const persistAppearance = useCallback(
+    (pref: AppearancePref) => {
+      void updateConfig(buildAppearancePatch(optimisticConfig, pref))
+    },
+    [updateConfig, optimisticConfig],
+  )
+
   return (
     <SettingsBody
       fixture={fixture}
       apiMode
       onLogout={logout}
       onUpdateConfig={updateConfig}
+      onPersistAppearance={persistAppearance}
     />
   )
+}
+
+/** 頭像 initials（與帳號身分 store 同規則的精簡版，避免跨 surface 依賴）。 */
+function initialsFromProfile(displayName: string, email: string | null): string {
+  const name = displayName.trim()
+  if (name.length > 0) {
+    const parts = name.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    const first = parts[0]
+    if (/^[\x00-\x7F]+$/.test(first)) return first.slice(0, 2).toUpperCase()
+    return Array.from(first)[0]
+  }
+  const local = (email ?? '').split('@')[0]
+  return local.length > 0 ? local.slice(0, 2).toUpperCase() : '?'
 }
 
 function formatResetTime(sec: number): string {
@@ -331,11 +367,13 @@ function SettingsBody({
   apiMode,
   onLogout,
   onUpdateConfig,
+  onPersistAppearance,
 }: {
   fixture: SettingsFixture
   apiMode?: boolean
   onLogout?: () => void
   onUpdateConfig?: (patch: Partial<UserConfigResponse>) => Promise<void>
+  onPersistAppearance?: (pref: AppearancePref) => void
 }) {
   const { appearance, setAppearance } = useAppearance()
 
@@ -381,18 +419,21 @@ function SettingsBody({
       if (value === '淺色') {
         setAppearance('light')
         setAppearanceTouched(true)
+        if (apiMode) onPersistAppearance?.('light')
       } else if (value === '深色') {
         setAppearance('dark')
         setAppearanceTouched(true)
+        if (apiMode) onPersistAppearance?.('dark')
       } else {
         // 「跟隨系統」：保留當前主題，僅清手動標記。
         setAppearanceTouched(false)
+        if (apiMode) onPersistAppearance?.('system')
       }
     }
     setPrefValues((prev) => ({ ...prev, [label]: value }))
     setOpenSheet(null)
 
-    // API mode: update config for review_mode
+    // API mode: update config for review_mode / translation
     if (apiMode && onUpdateConfig) {
       if (label === '複習節奏') {
         const modeMap: Record<string, string> = {
@@ -411,6 +452,18 @@ function SettingsBody({
             updated_at: null,
           },
         })
+      } else if (label === '翻譯語言') {
+        // sheet 選項（顯示字串）→ source/target lang code 對。
+        const pairMap: Record<string, { source: string; target: string }> = {
+          'English → 繁體中文': { source: 'en', target: 'zh-Hant' },
+          'English → 日本語': { source: 'en', target: 'ja' },
+        }
+        const pair = pairMap[value]
+        if (pair) {
+          void onUpdateConfig({
+            translation: { source_lang: pair.source, target_lang: pair.target, updated_at: null },
+          })
+        }
       }
     }
   }

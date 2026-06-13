@@ -89,6 +89,21 @@
 .tls-row[data-selected] {
   background: rgba(77, 115, 150, 0.08); /* token-allow: iOS accent(#4D7396).opacity(0.08) selected tint */
 }
+/* shell 分支可點列：button reset，layout 與 fixture 的 .tls-row <div> 一致。 */
+.tls-row-button {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.tls-row-button[data-selected] {
+  background: rgba(77, 115, 150, 0.08); /* token-allow: iOS accent(#4D7396).opacity(0.08) selected tint */
+}
 
 /* flag emoji + name 皆 typography.body = sans 15 = --text-subhead */
 .tls-flag {

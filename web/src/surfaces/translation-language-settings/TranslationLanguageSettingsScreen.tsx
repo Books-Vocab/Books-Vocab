@@ -6,6 +6,7 @@ import {
   TRANSLATION_LANG_FIXTURES,
   type TranslationLanguage,
 } from './fixtures'
+import { useTranslationLangApiStore } from './useTranslationLangApiStore'
 import { BookIcon, CharacterBubbleIcon, CheckmarkIcon } from './icons'
 import './translation-language-settings.css'
 
@@ -32,14 +33,54 @@ import './translation-language-settings.css'
  * #F1F4F7(=accent#4D7396@0.08 疊白)、checkmark #4D7396(=--accent)、header 文字 ≈#6F6E6A(=--text-secondary)。
  *
  * catalog scene = .fill opaque（4 scene alpha-mean 皆=1）→ 全 phone-frame 不透明捕捉，無 transparent flag。
+ *
+ * **Parity 不變式**：無 ?shell=1 時走 fixture 分支（純展示，DOM/像素與既有捕捉一致）；
+ * shell=1 時切到 API store（點列即 PUT /api/user/config 樂觀更新 + 回滾）。
  */
 export function TranslationLanguageSettingsScreen({
   scenario,
 }: {
   scenario: ScenarioId<'translation-language-settings'>
 }) {
-  const fx = TRANSLATION_LANG_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <TranslationLanguageSettingsScreenApi />
+  }
+  return <TranslationLanguageSettingsScreenFixture scenario={scenario} />
+}
 
+function TranslationLanguageSettingsScreenFixture({
+  scenario,
+}: {
+  scenario: ScenarioId<'translation-language-settings'>
+}) {
+  const fx = TRANSLATION_LANG_FIXTURES[scenario]
+  return <TranslationLanguageSettingsBody sourceId={fx.sourceId} targetId={fx.targetId} />
+}
+
+function TranslationLanguageSettingsScreenApi() {
+  const store = useTranslationLangApiStore()
+  return (
+    <TranslationLanguageSettingsBody
+      sourceId={store.selection.sourceId}
+      targetId={store.selection.targetId}
+      onPickSource={store.pickSource}
+      onPickTarget={store.pickTarget}
+    />
+  )
+}
+
+function TranslationLanguageSettingsBody({
+  sourceId,
+  targetId,
+  onPickSource,
+  onPickTarget,
+}: {
+  sourceId: string
+  targetId: string
+  onPickSource?: (id: string) => void
+  onPickTarget?: (id: string) => void
+}) {
   return (
     <div className="tls-surface">
       {/* inline nav bar — 標題於 themed bg 近隱形（ref 無深色像素）→ 留空 103pt */}
@@ -51,14 +92,16 @@ export function TranslationLanguageSettingsScreen({
           title="閱讀語言"
           footer="書籍的語言"
           languages={SOURCE_LANGUAGES}
-          selectedId={fx.sourceId}
+          selectedId={sourceId}
+          onPick={onPickSource}
         />
         <Section
           icon={<CharacterBubbleIcon className="tls-header-icon" />}
           title="翻譯語言"
           footer="翻譯與解釋會以此語言呈現"
           languages={TARGET_LANGUAGES}
-          selectedId={fx.targetId}
+          selectedId={targetId}
+          onPick={onPickTarget}
         />
       </div>
     </div>
@@ -71,12 +114,14 @@ function Section({
   footer,
   languages,
   selectedId,
+  onPick,
 }: {
   icon: ReactNode
   title: string
   footer: string
   languages: TranslationLanguage[]
   selectedId: string
+  onPick?: (id: string) => void
 }) {
   return (
     <section className="tls-section">
@@ -89,7 +134,7 @@ function Section({
         {languages.map((lang, index) => (
           <div key={lang.id}>
             {index > 0 ? <div className="tls-divider" /> : null}
-            <LanguageRow lang={lang} selected={lang.id === selectedId} />
+            <LanguageRow lang={lang} selected={lang.id === selectedId} onPick={onPick} />
           </div>
         ))}
       </div>
@@ -102,16 +147,38 @@ function Section({
 function LanguageRow({
   lang,
   selected,
+  onPick,
 }: {
   lang: TranslationLanguage
   selected: boolean
+  onPick?: (id: string) => void
 }) {
-  return (
-    <div className="tls-row" data-selected={selected ? '1' : undefined}>
+  const content = (
+    <>
       <span className="tls-flag">{lang.flag}</span>
       <span className="tls-name">{lang.nativeName}</span>
       <span className="tls-spacer" />
       {selected ? <CheckmarkIcon className="tls-check" /> : null}
-    </div>
+    </>
+  )
+
+  // Parity 不變式：fixture 分支（無 onPick）保留純展示 <div>，DOM 與既有捕捉逐字一致；
+  // shell 分支才換成可點 <button>。
+  if (!onPick) {
+    return (
+      <div className="tls-row" data-selected={selected ? '1' : undefined}>
+        {content}
+      </div>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className="tls-row tls-row-button"
+      data-selected={selected ? '1' : undefined}
+      onClick={() => onPick(lang.id)}
+    >
+      {content}
+    </button>
   )
 }
