@@ -23,12 +23,12 @@ verified_against: d5542a1
 逐拍進行,每拍指向既有規則,不重述判準:
 
 1. **Intake 受理** — 意圖澄清。只有「升級觸發」(見 CLAUDE.md 組織模型)才回問執行長,否則自決後告知。
-2. **Planning 規劃** — 拆 WBS;選派任形狀(見下);決定派哪些下一階(`.claude/agents/` 目錄即名冊,`ls` + frontmatter `description` 查職責)。
+2. **Planning 規劃** — 拆 WBS;選派任形狀(見下);決定派哪些下一階(部門名冊查法見 CLAUDE.md 組織模型「部門名冊」)。
 3. **Execution 執行** — 下行 task brief(模板見下);**所有 `Agent()` 背景執行**(鐵律5),主線不阻塞。
 4. **Review gate 逐項** — 每個交付立即過 review,PASS 才下一個;禁批次(鐵律4 / `docs/sop/review_discipline.md`)。
 5. **Integration & Verify 整合驗證** — 彙整下一階產出;宣稱完成前必有**當下驗證輸出**(鐵律2)。
 6. **Report 回報** — 上行 receipt(`kg-receipt`)+ 明確下一步,交回上一階。
-7. **Retro 復盤** — 工具摩擦:小問題記 tooling debt、中大型立即修工具(鐵律9)。
+7. **Retro 復盤** — 工具摩擦依鐵律9 判定處理。
 
 ## 派任形狀
 
@@ -54,5 +54,5 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 
 - GM 下海做 domain 粗活(應下放;見 CLAUDE.md 總經理職位說明書「不做」)。
 - 全部寫完才一起 review(違鐵律4)。
-- 無當下輸出就宣稱「完成 / 應該可以」(違鐵律2)。
+- 無當下驗證輸出就宣稱完成(違鐵律2)。
 - 讓平輩下一階直接協調(應經共同上一階,或走 SoT/git)。
