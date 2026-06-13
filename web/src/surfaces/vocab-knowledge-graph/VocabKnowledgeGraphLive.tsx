@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { motion, useReducedMotion } from 'framer-motion'
+import { gentle } from '../../motion'
 import { GraphNodesIcon, XmarkIcon } from './icons'
 import {
   REVIEW_GRADIENT_BAR_STOPS,
@@ -6,6 +8,7 @@ import {
 } from './fixtures'
 import { ForceGraphCanvas } from './ForceGraphCanvas'
 import { hasLinks, type GraphData } from './graphData'
+import { graphDensityStats } from './density'
 import { type ForceConfig } from './forceGraph'
 import {
   formatForceValue,
@@ -200,6 +203,10 @@ function GraphView({
 
       <LiveLegend />
 
+      {/* Density indicator — conveys the graph's overall link density (sparse →
+          dense) so a richly-linked vocabulary reads visually denser. */}
+      <DensityIndicator graph={graph} />
+
       {/* Drawer toggle (gear chip) — opens the live settings overlay. */}
       <button
         type="button"
@@ -247,6 +254,51 @@ function LiveLegend() {
         <span className="vkg-legend-unlearned-text">未學習 / 封存</span>
       </div>
     </div>
+  )
+}
+
+/** Coarse Chinese label per density band (presentational only). */
+const DENSITY_BAND_LABEL: Record<'sparse' | 'moderate' | 'dense', string> = {
+  sparse: '稀疏',
+  moderate: '中等',
+  dense: '緊密',
+}
+
+/**
+ * Edge-density indicator chip (live/shell only) — a compact readout of how richly
+ * the vocabulary is interlinked: a filled density bar (realised vs. possible
+ * edges), the band label, and the edge/node counts. The fill width IS the
+ * density signal, so a denser graph literally reads as a fuller bar. Entry uses
+ * the shared `gentle` motion preset and collapses to an instant appear under
+ * prefers-reduced-motion.
+ */
+function DensityIndicator({ graph }: { graph: GraphData }) {
+  const prefersReduced = useReducedMotion()
+  const stats = useMemo(() => graphDensityStats(graph), [graph])
+  const pct = Math.round(stats.density * 100)
+  const entry = prefersReduced
+    ? { initial: false as const, animate: { opacity: 1 } }
+    : { initial: { opacity: 0, y: 6 }, animate: { opacity: 1, y: 0 }, transition: gentle }
+
+  return (
+    <motion.div
+      className="vkg-density"
+      data-band={stats.band}
+      role="status"
+      aria-label={`連結密度 ${DENSITY_BAND_LABEL[stats.band]}，${stats.edgeCount} 條連結、${stats.nodeCount} 個節點`}
+      {...entry}
+    >
+      <div className="vkg-density-head">
+        <span className="vkg-density-title">連結密度</span>
+        <span className="vkg-density-band">{DENSITY_BAND_LABEL[stats.band]}</span>
+      </div>
+      <div className="vkg-density-bar">
+        <span className="vkg-density-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="vkg-density-meta">
+        {stats.edgeCount} 連結 · {stats.nodeCount} 節點
+      </div>
+    </motion.div>
   )
 }
 
