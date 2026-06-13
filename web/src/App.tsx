@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { ApiProvider } from './api/ApiContext'
 import { LoginGate, useAuth } from './auth'
+import { resolveShellAccess } from './auth/devSession'
 import { PhoneFrame } from './harness/PhoneFrame'
 import { resolveHarnessConfig } from './harness/scenarios'
 
@@ -37,7 +38,12 @@ export function App() {
   // catalog 的緊裁切 scene。預設不啟用，既有 capture 行為完全不變。
   const crop = new URLSearchParams(search).get('crop') === 'component'
 
-  // 功能型 app（shell=1）需要登入；parity harness 不啟用 auth 閘門。
+  // ?shell=1&login=1 opt-in：明確要求登入閘門（LoginGate）。預設 ?shell=1 走 guest
+  // 進場（鏡像 iOS guest tier），故 LoginGate 仍可達且 devLogin 入口仍渲染。
+  const wantLoginGate = new URLSearchParams(search).get('login') === '1'
+
+  // hydration spinner — 與原行為一致，套用所有路徑（含 parity，timing 上 isLoading
+  // 於首次 effect 同步翻 false，故 capture 不受影響）。
   if (isLoading) {
     return (
       <div className="phone-frame" data-harness="phone-frame" data-auth-hydrating="1">
@@ -47,8 +53,16 @@ export function App() {
       </div>
     )
   }
-  if (shell && !isLoggedIn) {
-    return <LoginGate />
+
+  // 功能型 app（shell=1）的 auth 進場；parity harness（無 shell）完全不經過此分支，
+  // 維持原樣 frame，DOM 與 capture 行為逐位元不變。
+  if (shell) {
+    const access = resolveShellAccess({ isLoading, isLoggedIn })
+    // 未登入：預設以 guest 進場（podcast 瀏覽可用、寫入面由下游 surface 提示登入）；
+    // 僅 ?login=1 時改顯 LoginGate（含 dev/demo 入口），devLogin 由此進場。
+    if (access === 'guest' && wantLoginGate) {
+      return <LoginGate />
+    }
   }
 
   const frame = <PhoneFrame config={config} shell={shell} crop={crop} />
