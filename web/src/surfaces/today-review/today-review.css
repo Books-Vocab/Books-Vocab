@@ -25,7 +25,7 @@
   display: flex;
   align-items: center;
   gap: 12px; /* HStack spacing = s3 */
-  padding: 69px 20px 6px; /* measured：progress pill 文字頂 ≈ 258px(dpr3)=86pt → top 69px；h=20 / bottom=6 */
+  padding: var(--surface-safe-top, 69px) 20px 6px; /* measured：progress pill 文字頂 ≈ 258px(dpr3)=86pt → top 69px；h=20 / bottom=6 */
 }
 
 /* progress pill — monoLabel(10 bold) on mutedFill capsule，chip pad h=10 v=5(loose) */

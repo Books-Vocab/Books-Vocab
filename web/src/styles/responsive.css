@@ -40,6 +40,18 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── 容器注入：設備安全區 top inset ──────────────────────────────────────
+   每個 surface 為 PhoneFrame parity 把 iOS 安全區 top inset（≈118px = 狀態列 +
+   large-title 帶，inline-title 類 ≈59px）硬編進自己的 CSS。桌面/平板 pane 沒有
+   設備狀態列，那段 inset 就是死白（頂部一長條空白）。surface 端讀
+   `padding-top: var(--surface-safe-top, <iOS literal>)`；此處對 pane 內的 surface
+   注入 web 適當值，把設備 chrome 從「surface 的責任」移回「容器的責任」。
+   `.shell-pane-surface` 只存在於非 mobile pane（mobile 走 PhoneFrame，不經此），
+   故 parity / mobile 仍用各自 literal default → 像素一致、零破壞。 */
+.kg-responsive-shell .shell-pane-surface {
+  --surface-safe-top: var(--sp-8); /* 40px web top inset（取代 ~118px iOS 設備 chrome） */
+}
+
 /* ── mobile (< 768): the shell delegates to the existing AppShell, which is
    itself wrapped in a .phone-frame. We keep the responsive root as a passive
    container (no chrome of its own) so the mobile experience is byte-identical

@@ -14,7 +14,7 @@
    沿用 bookshelf/notebook 的 large-title 幾何：status bar 59 + inline bar 44 = 103，
    + 列內距 15 = 118（measured glyph top ≈123pt）。標題純 CJK，Songti cascade。 */
 .vc-nav {
-  padding: 118px 20px 0; /* pageHorizontalInset = 20 */
+  padding: var(--surface-safe-top, 118px) 20px 0; /* pageHorizontalInset = 20 */
 }
 
 .vc-nav-title {

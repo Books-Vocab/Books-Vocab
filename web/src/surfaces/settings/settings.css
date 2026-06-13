@@ -15,7 +15,7 @@
    status bar 59 + inline bar 44 = 103；title 置 bar 垂直中心。 */
 .settings-nav {
   height: 103px;
-  padding-top: 59px;
+  padding-top: var(--surface-safe-top, 59px);
   box-sizing: border-box;
   display: flex;
   align-items: center;
