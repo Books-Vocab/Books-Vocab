@@ -390,6 +390,17 @@
 .vkg-graph-canvas {
   flex: 1 1 auto;
   display: block;
+  /* Pan affordance: grab on the empty canvas, grabbing while a node is dragged.
+     touch-action:none (set inline) hands all pointer gestures to @use-gesture so
+     the browser never steals the pan/pinch for native scroll/zoom. */
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.vkg-graph-canvas[data-dragging='1'] {
+  cursor: grabbing;
 }
 
 /* Edges — subtle divider-toned strokes; thickness driven by 連結粗細 slider. */
@@ -398,10 +409,26 @@
   opacity: 0.45;
 }
 
+/* A draggable node group — grab cursor; the dot springs on tap/drag (motion). */
+.vkg-graph-node-group {
+  cursor: grab;
+}
+
+.vkg-graph-node-group[data-selected='1'] {
+  cursor: pointer;
+}
+
 /* Nodes — fill comes from the review-state gradient (inline, per node). */
 .vkg-graph-node {
   stroke: var(--page-bg);
   stroke-width: 1;
+}
+
+/* Focus ring around the tapped/selected node (review-tinted accent halo). */
+.vkg-graph-node-ring {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.85;
 }
 
 .vkg-graph-node-label {
