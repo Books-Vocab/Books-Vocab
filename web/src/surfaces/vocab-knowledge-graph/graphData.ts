@@ -4,15 +4,19 @@
 // (ios/.../Presentation/KnowledgeGraphPresentation.swift) and the review-state
 // coloring of `ReviewGradient` (the same gradient the legend chip already shows).
 //
-// Data source contract (P7e):
-//   The functional shell wants `useApi().graph.list(notebookId)` for nodes/links.
-//   In this worktree the GraphClient / useApi() context (P1) is NOT yet present
-//   (it lands on `main` via a parallel workflow; api/* + shell/* are FROZEN here
-//   and must not be edited — that would conflict with the P1 merge). So the live
-//   path stays offline against a local mock graph below; `toGraphFromCards` is the
-//   adapter that will consume `graph.list` rows verbatim once the client exists.
-//   See report: mock route `GET /api/graph` / GraphClient.list is genuinely missing.
+// Data source contract (P7e, now LIVE):
+//   The functional shell drives nodes/links from the backend:
+//     - links  = `useApi().graph.list(notebookId)`     (GraphLinkResponse[] edges)
+//     - nodes  = `useApi().vocabulary.list({notebookId})` (CardResponse[] for the
+//                word + review-state coloring; graph.list only carries fromId/toId)
+//   `toGraphFromApi` is the adapter that fuses both into a `GraphData`, mirroring
+//   the iOS `KnowledgeGraphPresentation` rules (archived excluded; reviewCount==0
+//   → gray/unlearned; otherwise gradient by the elapsed/interval review ratio;
+//   edges kept only when both endpoints survive). The MOCK_GRAPH below is retained
+//   ONLY as the byte-identical parity capture data / offline fallback — the live
+//   shell path no longer reads it (see VocabKnowledgeGraphLive).
 
+import type { CardResponse, GraphLinkResponse } from '../../api/types'
 import { LEGEND_COLORS, REVIEW_GRADIENT_BAR_STOPS } from './fixtures'
 
 /** A single vocabulary node in the knowledge graph (iOS KnowledgeGraphNode). */
@@ -131,4 +135,77 @@ export function toGraphFromCards(cards: GraphCardLike[]): GraphData {
 /** Whether a graph has any links (drives the "尚無知識連結" no-links empty state). */
 export function hasLinks(graph: GraphData): boolean {
   return graph.links.length > 0
+}
+
+// ── live API adapter ─────────────────────────────────────────────────────────
+// Fuses `graph.list` (edges) + `vocabulary.list` (cards) into a `GraphData`,
+// mirroring iOS `KnowledgeGraphPresentation` (Presentation/KnowledgeGraphPresentation.swift).
+
+/**
+ * Review urgency ratio for a card, matching iOS `reviewRatio(for:now:)`:
+ *   startDate = lastReviewedAt ?? updatedAt (web analog of iOS `dateAdded`)
+ *   interval  = max(nextReviewAt - startDate, 60s)
+ *   elapsed   = max(0, now - startDate)
+ *   ratio     = max(elapsed / interval, 0)
+ * Returns 0 when timestamps are missing/unparseable (safe band), never negative.
+ */
+export function cardReviewRatio(card: CardResponse, now: number = Date.now()): number {
+  const start = parseTime(card.lastReviewedAt) ?? parseTime(card.updatedAt)
+  const next = parseTime(card.nextReviewAt)
+  if (start == null || next == null) return 0
+  const interval = Math.max(next - start, 60_000) // ≥ 60s, mirrors iOS floor
+  const elapsed = Math.max(0, now - start)
+  return Math.max(elapsed / interval, 0)
+}
+
+function parseTime(iso: string | null | undefined): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  return Number.isNaN(t) ? null : t
+}
+
+/**
+ * Build live `GraphData` from the backend card list + graph links.
+ *
+ * Node rules (iOS `KnowledgeGraphPresentation.nodes`):
+ *   - archived or deleted cards are excluded entirely.
+ *   - reviewCount === 0 → learned:false, reviewRatio:null (gray/unlearned dot).
+ *   - otherwise         → learned:true, reviewRatio = cardReviewRatio (gradient).
+ * (Degree/isolated filtering stays in the renderer's `showIsolated` toggle, so the
+ * full node set is emitted here — unlike iOS which pre-filters by degree.)
+ *
+ * Edge rules (iOS `KnowledgeGraphPresentation.edges`):
+ *   - kept only when BOTH endpoints survive as nodes; undirected-dedupe so a pair
+ *     linked twice renders once.
+ */
+export function toGraphFromApi(
+  cards: CardResponse[],
+  links: GraphLinkResponse[],
+  now: number = Date.now(),
+): GraphData {
+  const nodes: GraphNode[] = []
+  const ids = new Set<string>()
+  for (const c of cards) {
+    if (c.isArchived || c.isDeleted) continue
+    const learned = c.reviewCount > 0
+    nodes.push({
+      id: c.id,
+      word: c.content,
+      reviewRatio: learned ? cardReviewRatio(c, now) : null,
+      learned,
+    })
+    ids.add(c.id)
+  }
+
+  const seen = new Set<string>()
+  const graphLinks: GraphLink[] = []
+  for (const l of links) {
+    if (!ids.has(l.fromId) || !ids.has(l.toId)) continue
+    const key = [l.fromId, l.toId].sort().join('→')
+    if (seen.has(key)) continue
+    seen.add(key)
+    graphLinks.push({ source: l.fromId, target: l.toId })
+  }
+
+  return { nodes, links: graphLinks }
 }

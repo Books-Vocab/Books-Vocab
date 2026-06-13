@@ -5,45 +5,164 @@ import {
   LEGEND_COLORS,
 } from './fixtures'
 import { ForceGraphCanvas } from './ForceGraphCanvas'
-import { EMPTY_GRAPH, MOCK_GRAPH, hasLinks, type GraphData } from './graphData'
+import { hasLinks, type GraphData } from './graphData'
 import { type ForceConfig } from './forceGraph'
 import {
   formatForceValue,
   sliderFill,
   useForceStore,
+  type ForceStore,
 } from './store'
+import { useKnowledgeGraphApiStore } from './useKnowledgeGraphApiStore'
 
 /**
  * Live (?shell=1) Knowledge Graph — drives a real, dependency-free force-directed
- * SVG graph from `loadGraphData(notebookId)` (mock-first; swaps onto
- * `useApi().graph.list` once the P1 GraphClient lands). The settings drawer
- * sliders mutate the live `ForceConfig` and persist it to the `auto_link` config
- * group via `user.updateConfig`.
+ * SVG graph from the backend via `useKnowledgeGraphApiStore` (graph.list +
+ * vocabulary.list, fused by `toGraphFromApi`). The settings drawer sliders mutate
+ * the live `ForceConfig` and persist it to the `auto_link` config group via
+ * `user.updateConfig`.
  *
  * This component is ONLY mounted behind the shell gate — the parity capture path
  * (no ?shell=1) renders the untouched static fixture screen, so the byte-identical
  * snapshot DOM is preserved.
  *
- * `emptyVariant`:
- *   - 'empty'    → no nodes at all (knowledge graph empty).
- *   - 'no-links' → nodes exist but no links (尚無知識連結; toggle 孤立節點 to see them).
- *   - undefined  → live force graph over MOCK_GRAPH.
+ * `emptyVariant` pins the empty-state demo scenarios from the catalog (so those
+ * scenarios still render their fixed copy under the shell). When undefined (the
+ * default/populated scenario) the surface fetches real data:
+ *   - 'empty'    → static "知識圖譜為空" card (scenario-pinned, no fetch).
+ *   - 'no-links' → static "尚無知識連結" card (scenario-pinned, no fetch).
+ *   - undefined  → live force graph over the backend's GraphData.
  */
 export function VocabKnowledgeGraphLive({
   emptyVariant,
 }: {
   emptyVariant?: 'empty' | 'no-links'
 }) {
-  const graph: GraphData =
-    emptyVariant === 'empty'
-      ? EMPTY_GRAPH
-      : emptyVariant === 'no-links'
-        ? { nodes: MOCK_GRAPH.nodes, links: [] }
-        : MOCK_GRAPH
-
   const store = useForceStore()
   const [showSettings, setShowSettings] = useState(false)
 
+  // Scenario-pinned empty demos render their fixed copy without touching the API
+  // (these are catalog scenarios, not live data). Default scenario → live fetch.
+  if (emptyVariant === 'empty' || emptyVariant === 'no-links') {
+    return <PinnedEmptyState variant={emptyVariant} store={store} />
+  }
+
+  return (
+    <LiveGraph store={store} showSettings={showSettings} setShowSettings={setShowSettings} />
+  )
+}
+
+/** Live data path: fetch the real graph, then render loading / ready / error / empty. */
+function LiveGraph({
+  store,
+  showSettings,
+  setShowSettings,
+}: {
+  store: ForceStore
+  showSettings: boolean
+  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>
+}) {
+  const { status, graph, retry } = useKnowledgeGraphApiStore()
+
+  if (status === 'loading') {
+    return (
+      <EmptyCard
+        title="載入知識圖譜…"
+        description="正在與伺服器同步單字與連結。"
+      />
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <EmptyCard
+        title="無法載入知識圖譜"
+        description="與伺服器連線時發生問題，請稍後再試。"
+        action={{ label: '重試', onClick: retry }}
+      />
+    )
+  }
+
+  return (
+    <GraphView
+      graph={graph}
+      store={store}
+      showSettings={showSettings}
+      setShowSettings={setShowSettings}
+    />
+  )
+}
+
+/** Scenario-pinned empty demos (catalog 'empty' / 'no-links') — no fetch. */
+function PinnedEmptyState({
+  variant,
+  store,
+}: {
+  variant: 'empty' | 'no-links'
+  store: ForceStore
+}) {
+  if (variant === 'no-links') {
+    return (
+      <EmptyCard
+        title="尚無知識連結"
+        description="持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。"
+        action={{ label: '顯示孤立節點', onClick: store.toggleIsolated }}
+      />
+    )
+  }
+  return (
+    <EmptyCard
+      title="知識圖譜為空"
+      description="尚無已收錄單字，或尚未與伺服器同步。"
+    />
+  )
+}
+
+/** Centered empty / loading / error card (no legend / no canvas) — shared chrome. */
+function EmptyCard({
+  title,
+  description,
+  action,
+}: {
+  title: string
+  description: string
+  action?: { label: string; onClick: () => void }
+}) {
+  return (
+    <div className="vkg-surface vkg-surface--empty" data-live="1">
+      <div className="vkg-empty-card">
+        <div className="vkg-empty-content">
+          <GraphNodesIcon className="vkg-empty-icon" size={30} strokeWidth={1.4} />
+          <div className="vkg-empty-title">{title}</div>
+          <div className="vkg-empty-description">{description}</div>
+          {action ? (
+            <button type="button" className="vkg-empty-action" onClick={action.onClick}>
+              {action.label}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Presentational graph view over a resolved `GraphData`. Renders the force canvas
+ * + legend + settings when there's something to draw; otherwise the data-driven
+ * empty / no-links card (mirroring iOS `KnowledgeGraphPresentation.emptyState`:
+ * synced words but no links → "尚無知識連結"; nothing at all → "知識圖譜為空").
+ */
+function GraphView({
+  graph,
+  store,
+  showSettings,
+  setShowSettings,
+}: {
+  graph: GraphData
+  store: ForceStore
+  showSettings: boolean
+  setShowSettings: React.Dispatch<React.SetStateAction<boolean>>
+}) {
   // Empty / no-links → centered empty card (no legend / no canvas), unless the
   // user opens 孤立節點 on the no-links graph (then we render the isolated nodes).
   const renderableLinks = hasLinks(graph)
@@ -51,36 +170,21 @@ export function VocabKnowledgeGraphLive({
   const showCanvas = renderableLinks || showIsolatedNodes
 
   if (!showCanvas) {
-    const copy =
-      emptyVariant === 'no-links'
-        ? {
-            title: '尚無知識連結',
-            description:
-              '持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。',
-          }
-        : {
-            title: '知識圖譜為空',
-            description: '尚無已收錄單字，或尚未與伺服器同步。',
-          }
+    const hasNodes = graph.nodes.length > 0
+    if (hasNodes) {
+      return (
+        <EmptyCard
+          title="尚無知識連結"
+          description="持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。"
+          action={{ label: '顯示孤立節點', onClick: store.toggleIsolated }}
+        />
+      )
+    }
     return (
-      <div className="vkg-surface vkg-surface--empty" data-live="1">
-        <div className="vkg-empty-card">
-          <div className="vkg-empty-content">
-            <GraphNodesIcon className="vkg-empty-icon" size={30} strokeWidth={1.4} />
-            <div className="vkg-empty-title">{copy.title}</div>
-            <div className="vkg-empty-description">{copy.description}</div>
-            {emptyVariant === 'no-links' ? (
-              <button
-                type="button"
-                className="vkg-empty-action"
-                onClick={store.toggleIsolated}
-              >
-                顯示孤立節點
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <EmptyCard
+        title="知識圖譜為空"
+        description="尚無已收錄單字，或尚未與伺服器同步。"
+      />
     )
   }
 
