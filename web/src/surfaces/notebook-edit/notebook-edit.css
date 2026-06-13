@@ -190,3 +190,24 @@
   flex: none;
   color: var(--tint); /* PhotosPicker Label icon = theme.palette.tint（#37352f 深色） */
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: keep the edit form as a narrow centred column in a roomy pane (a
+   grouped settings form should not stretch edge-to-edge).
+   ============================================================ */
+
+.kg-responsive-shell .nbe-surface {
+  container: nbe-pane / inline-size;
+}
+
+@container nbe-pane (min-width: 600px) {
+  .kg-responsive-shell .nbe-nav,
+  .kg-responsive-shell .nbe-form {
+    max-width: 540px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

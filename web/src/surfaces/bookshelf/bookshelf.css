@@ -552,3 +552,42 @@
     transform: translateY(0);
   }
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — every rule below is scoped under
+   .kg-responsive-shell (mounted solely by ResponsiveShell at tablet+) and
+   reacts to the surface's OWN container width (it may sit in a ~360px list
+   pane or a ~900px content pane). The parity capture path never mounts
+   .kg-responsive-shell, so the bare 393px render is byte-identical.
+   ============================================================ */
+
+/* Surface root becomes a query container so the grid adapts to the pane it
+   lives in, not the viewport. Not in a responsive context → lint-clean;
+   scoped under .kg-responsive-shell → parity-neutral. */
+.kg-responsive-shell .bookshelf {
+  container: bookshelf-pane / inline-size;
+}
+
+/* Roomier pane (≈ desktop master/detail pane): wider min tile + more spacing.
+   auto-fill keeps the column count fluid; bumping the min from 150 → 168
+   yields larger covers, and the gap grows from 24 → 32. */
+@container bookshelf-pane (min-width: 600px) {
+  .kg-responsive-shell .bookshelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 32px;
+  }
+  /* match the import affordance / guide-link padding to the grid edge. */
+  .kg-responsive-shell .bookshelf-nav,
+  .kg-responsive-shell .bookshelf-grid {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}
+
+/* Very wide content pane: cap the cover min so tiles do not balloon. */
+@container bookshelf-pane (min-width: 960px) {
+  .kg-responsive-shell .bookshelf-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 200px));
+    justify-content: start;
+  }
+}

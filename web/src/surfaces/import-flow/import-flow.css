@@ -291,3 +291,25 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* ============================================================
+   RESPONSIVE (web shell only) — scoped under .kg-responsive-shell, reacts to
+   the surface's OWN container width. Parity (no shell) renders byte-identical.
+   Goal: keep the import column narrow and centred in a roomy pane (the flow is
+   a single-task column; it should not stretch edge-to-edge).
+   ============================================================ */
+
+.kg-responsive-shell .import-flow {
+  container: import-flow-pane / inline-size;
+}
+
+@container import-flow-pane (min-width: 600px) {
+  .kg-responsive-shell .if-nav,
+  .kg-responsive-shell .if-scroll,
+  .kg-responsive-shell .if-footer {
+    max-width: 520px;
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
