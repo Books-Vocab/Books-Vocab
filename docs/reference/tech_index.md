@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 1e25c017
+verified_against: c4664f8e
 -->
 # Technical Reference Index
 
@@ -21,7 +21,7 @@ verified_against: 1e25c017
 | 檔案 | Endpoint prefix | 用途 |
 |------|-----------------|------|
 | `auth.py` | `/auth/*` | JWT 驗證、Apple/Google token 交換 |
-| `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF |
+| `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | 瀏覽器 Google/Apple OAuth 骨架(官網未來擴展成帳號/訂閱管理的入口)。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF。callback 成功後**僅** clear oauth_state cookie + 簽發 session JWT(由 `login_success.html` 中間頁呈現)；**不設**任何 admin/session cookie(admin session cookie 屬 `admin` router)。未來 same-origin 帳號流程會改設 session cookie + redirect |
 | `user.py` | `/api/user/*` | 設定 (`GET`/`PUT /api/user/config`)、唯讀身分 face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由 `users.json` 登入時 record 衍生，與可變 config bundle 分離)、entitlements、quota |
 | `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、內容編修 (`PATCH /api/vocab/{word}` → meaning/note；`explanation` 為 `note` 欄的 write-through alias)、archive 切換 (`PATCH /api/vocab/{word}/archive`)、軟刪 (`DELETE /api/vocab/{word}`)、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
@@ -62,7 +62,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 完整清單見 `docs/sop/deploy.md`。此處列分組與代表項:
 
 - **LLM & Embedding**: `GEMINI_API_KEY` / `GEMINI_MODEL` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` / `LLM_PROVIDER_*`(per-call-type 路由) / `LLM_PROVIDER_DEFAULT` / `JUDGE_CONFIDENCE_THRESHOLD`(judge link 接受門檻,default `0.7`;換低校準 judge model 時調低)
-- **Auth & SSO**: `JWT_SECRET` / `ADMIN_TOKEN` / `ADMIN_PASSWORD` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `APPLE_BUNDLE_ID` / `CHROME_EXTENSION_ID` / `APP_STORE_CONNECT_*`
+- **Auth & SSO**: `JWT_SECRET` / `ADMIN_TOKEN` / `ADMIN_PASSWORD` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `APPLE_BUNDLE_ID` / `APP_STORE_CONNECT_*`
 - **Secret encryption**: `SECRET_ENC_KEY`(可選)— `secret_store.py` 對 `enc:` stored secret 的對稱加密根金鑰,`sha256(SECRET_ENC_KEY)` 派生 Fernet key。**未設時 fallback `sha256(JWT_SECRET)`**(既有部署零破壞)。設了它後,**輪換 `JWT_SECRET` 不再令 stored secret 無法解密**(兩者脫鉤);解密採多金鑰容錯(當前 key 先試,失敗退回 legacy `sha256(JWT_SECRET)`),過渡期無需 re-encrypt migration。
 - **Quota & Rate Limit**: `FREE_DAILY_LIMIT_USD` / `PRO_DAILY_LIMIT_USD` / `API_RATE_LIMIT` / `TRANSLATE_RATE_LIMIT` / `KG_ALLOW_SANDBOX_PURCHASE` / `RATE_LIMIT_TRUSTED_HOPS`(匿名請求取 XFF 倒數第 N 段作 rate-limit key,default `1` = 現行單層 Caddy 行為;前置 N 層可信代理時設 `N+1`,見 `host_topology.md`)
 - **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` / `LLM_ERROR_LOG_RETENTION_DAYS`
