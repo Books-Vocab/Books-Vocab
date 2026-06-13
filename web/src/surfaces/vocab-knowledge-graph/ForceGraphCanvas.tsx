@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { resolveCanvasSize } from './canvasSize'
 import {
   initialLayout,
   runSimulation,
@@ -29,9 +30,31 @@ export function ForceGraphCanvas({
   graph: GraphData
   forces: ForceConfig
   showIsolated: boolean
+  /** Fallback dimensions used until the ResizeObserver reports the real box
+   *  (and for SSR / node renders where layout is unmeasured). */
   width?: number
   height?: number
 }) {
+  // Measure the REAL rendered box so the force layout runs in actual pixel space
+  // (fills the container) instead of a fixed 360×560 virtual box that gets scaled
+  // — scaling clusters nodes in a virtual top-left corner and distorts on a wide
+  // content pane. The SVG fills its host at 100%×100%, so its own client box is
+  // the host's content box. Before the observer fires we use the fixed fallback,
+  // so the phone-frame (<768) behaviour and tests are unchanged.
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [measured, setMeasured] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const apply = () => setMeasured({ w: el.clientWidth, h: el.clientHeight })
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const { width: cw, height: ch } = resolveCanvasSize(measured.w, measured.h, width, height)
+
   // Hide isolated (unlinked) nodes unless the "孤立節點" toggle is on.
   const visible = useMemo(() => {
     if (showIsolated) return graph
@@ -53,19 +76,22 @@ export function ForceGraphCanvas({
   }, [visible.nodes])
 
   // Pre-settle so the graph appears already laid out on mount (no visible bounce),
-  // then keep nudging it live as forces change.
+  // then keep nudging it live as forces change. Layout runs in the resolved
+  // (measured-or-fallback) box `cw`×`ch` so it fills the real container.
   const [sim, setSim] = useState<SimNode[]>(() =>
-    runSimulation(visible.nodes, visible.links, forces, width, height),
+    runSimulation(visible.nodes, visible.links, forces, cw, ch),
   )
 
-  // Re-seed when the node set changes (different graph / toggle).
+  // Re-seed when the node set OR the canvas box changes (different graph / toggle /
+  // resize) so the layout re-settles into the new dimensions rather than scaling.
   const nodeKey = visible.nodes.map((n) => n.id).join(',')
-  const seededRef = useRef(nodeKey)
-  if (seededRef.current !== nodeKey) {
-    seededRef.current = nodeKey
+  const seedKey = `${nodeKey}@${cw}x${ch}`
+  const seededRef = useRef(seedKey)
+  if (seededRef.current !== seedKey) {
+    seededRef.current = seedKey
     // Settle the new node set synchronously for a stable first paint.
     // (setState during render is allowed by React when conditional + cheap.)
-    setSim(runSimulation(visible.nodes, visible.links, forces, width, height))
+    setSim(runSimulation(visible.nodes, visible.links, forces, cw, ch))
   }
 
   // Live relaxation loop — a handful of ticks per frame keeps it lively but cheap.
@@ -77,7 +103,7 @@ export function ForceGraphCanvas({
     let raf = 0
     let frames = 0
     const tick = () => {
-      setSim((prev) => stepSimulation(prev, linksRef.current, forcesRef.current, width, height))
+      setSim((prev) => stepSimulation(prev, linksRef.current, forcesRef.current, cw, ch))
       frames++
       // Run ~3s of relaxation then idle to avoid a permanent rAF burn; the layout
       // is settled by then. Slider changes remount the effect via deps and re-run.
@@ -85,9 +111,9 @@ export function ForceGraphCanvas({
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-    // Restart the loop whenever forces/links identity changes so dragging a
-    // slider re-energizes the layout.
-  }, [forces, visible.links, width, height])
+    // Restart the loop whenever forces/links identity OR the canvas box changes so
+    // dragging a slider / resizing the pane re-energizes the layout.
+  }, [forces, visible.links, cw, ch])
 
   const posById = useMemo(() => {
     const m = new Map<string, SimNode>()
@@ -97,8 +123,9 @@ export function ForceGraphCanvas({
 
   return (
     <svg
+      ref={svgRef}
       className="vkg-graph-canvas"
-      viewBox={`0 0 ${width} ${height}`}
+      viewBox={`0 0 ${cw} ${ch}`}
       width="100%"
       height="100%"
       role="img"
