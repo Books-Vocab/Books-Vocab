@@ -1,0 +1,219 @@
+{
+  "schema": "kg.fixture.dataset.v1",
+  "datasetID": "demo-demo-user",
+  "settings": {},
+  "bookshelf": {},
+  "todayReview": {
+    "front": {
+      "progressText": "1 / 4",
+      "currentCard": {
+        "word": "evoke",
+        "translation": "喚起；引發（情感或記憶）",
+        "context": "The opening lines evoke a quiet sense of exile.",
+        "explanation": null,
+        "partOfSpeech": "v.",
+        "bookTitle": "A Room of One's Own",
+        "chapterTitle": "Chapter 1",
+        "dateAdded": "2026-06-11T00:00:00Z",
+        "difficultyTier": "medium",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "The opening lines evoke a quiet sense of exile."
+        ],
+        "rootForm": null,
+        "inflections": [],
+        "graphLinksByKind": {}
+      },
+      "nextCard": {
+        "word": "cascade",
+        "translation": "一連串；連鎖反應",
+        "context": "A single mutation can trigger a cascade of downstream effects.",
+        "explanation": null,
+        "partOfSpeech": "n.",
+        "bookTitle": "The Selfish Gene",
+        "chapterTitle": "Replicators",
+        "dateAdded": "2026-06-11T00:00:00Z",
+        "difficultyTier": "medium",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "A single mutation can trigger a cascade of downstream effects."
+        ],
+        "rootForm": null,
+        "inflections": [],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "front",
+      "canShuffle": true,
+      "canGoPrevious": false,
+      "canGoNext": true,
+      "remainingCount": 4,
+      "forgotCount": 0,
+      "rememberedCount": 0,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.0,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
+    }
+  },
+  "notebook": {
+    "populated": {
+      "notebooks": [
+        {
+          "remoteId": "editorial-picks",
+          "name": "Editorial Picks",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；極為仔細的",
+              "context": "Her meticulous notes turned a dusty archive into something alive.",
+              "explanation": "源自拉丁文 metus（恐懼），原指「過度謹慎」，今為褒義。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "A Room of One's Own",
+              "chapterTitle": "Chapter 2"
+            },
+            {
+              "word": "discerning",
+              "translation": "有洞察力的；能辨別細微差異的",
+              "context": "A discerning editor hears what a paragraph is still trying to become.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "Letters to a Young Poet",
+              "chapterTitle": "Letter 3"
+            },
+            {
+              "word": "evoke",
+              "translation": "喚起；引發（情感或記憶）",
+              "context": "The opening lines evoke a quiet sense of exile.",
+              "explanation": null,
+              "partOfSpeech": "v.",
+              "bookTitle": "A Room of One's Own",
+              "chapterTitle": "Chapter 1"
+            },
+            {
+              "word": "luminous",
+              "translation": "明亮的；清晰動人的（文筆）",
+              "context": "Her luminous prose makes a difficult idea feel intimate.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "On Writing",
+              "chapterTitle": "Toolbox"
+            },
+            {
+              "word": "nuance",
+              "translation": "細微差別；微妙之處",
+              "context": "Good criticism lives in the nuance between praise and dismissal.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "On Writing",
+              "chapterTitle": "On Revision"
+            }
+          ]
+        },
+        {
+          "remoteId": "systems-thinking",
+          "name": "Systems Thinking",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [
+            {
+              "word": "entropy",
+              "translation": "熵；系統的混亂程度",
+              "context": "Entropy rises as usable energy spreads evenly through a system.",
+              "explanation": "熱力學第二定律：孤立系統的熵不會自發減少。",
+              "partOfSpeech": "n.",
+              "bookTitle": "A Brief History of Time",
+              "chapterTitle": "The Arrow of Time"
+            },
+            {
+              "word": "cascade",
+              "translation": "一連串；連鎖反應",
+              "context": "A single mutation can trigger a cascade of downstream effects.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "The Selfish Gene",
+              "chapterTitle": "Replicators"
+            },
+            {
+              "word": "coherent",
+              "translation": "連貫的；條理一致的",
+              "context": "A good model gives a coherent account of scattered observations.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Selfish Gene",
+              "chapterTitle": "Memes"
+            },
+            {
+              "word": "leverage",
+              "translation": "善用；以槓桿放大效果",
+              "context": "Small teams leverage systems so one good decision compounds.",
+              "explanation": null,
+              "partOfSpeech": "v.",
+              "bookTitle": "Thinking in Systems",
+              "chapterTitle": "Leverage Points"
+            },
+            {
+              "word": "feedback",
+              "translation": "回饋；系統輸出反向影響輸入",
+              "context": "A reinforcing feedback loop turns a small lead into a runaway one.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "Thinking in Systems",
+              "chapterTitle": "Feedback Loops"
+            }
+          ]
+        },
+        {
+          "remoteId": "creative-practice",
+          "name": "Creative Practice",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [
+            {
+              "word": "cadence",
+              "translation": "節奏；穩定推進的步調",
+              "context": "A sustainable creative cadence beats occasional bursts of effort.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "Daily Rituals",
+              "chapterTitle": "Writers"
+            },
+            {
+              "word": "iterate",
+              "translation": "反覆打磨；迭代改進",
+              "context": "Designers iterate in public so the work can mature faster.",
+              "explanation": null,
+              "partOfSpeech": "v.",
+              "bookTitle": "The Creative Habit",
+              "chapterTitle": "Rituals"
+            },
+            {
+              "word": "tactile",
+              "translation": "有觸感的；能喚起手感的",
+              "context": "A tactile notebook invites slower, more deliberate thinking.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "The Shape of Design",
+              "chapterTitle": "Craft"
+            },
+            {
+              "word": "prototype",
+              "translation": "原型；先做出可驗證的版本",
+              "context": "A rough prototype reveals what the brief is still hiding.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "Creative Confidence",
+              "chapterTitle": "Build to Think"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "podcast": {}
+}
