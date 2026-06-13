@@ -148,6 +148,15 @@ cmd_commands_json() {
         jsonSchemas:["kg.ios.catalog.prepare.v1","kg.ios.catalog.v1","kg.ios.catalog.clean.v1"]
       },
       {
+        key:"quality",
+        aliases:[],
+        sideEffect:"read-only",
+        command:"./ops/ios_ops.sh quality list [--json] | ./ops/ios_ops.sh quality impact --files <path...> [--json] | ./ops/ios_ops.sh quality impact --since <ref> [--json] | ./ops/ios_ops.sh quality validate",
+        delegate:"./ops/ui_quality_plane.py",
+        purpose:"query the UI quality control plane for applicable static, structural, snapshot, behavior, perf, and visual-regression gates",
+        jsonSchemas:[]
+      },
+      {
         key:"commands",
         aliases:["capabilities"],
         sideEffect:"read-only",
