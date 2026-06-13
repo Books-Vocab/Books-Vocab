@@ -4,6 +4,7 @@ import { LoginGate, useAuth } from './auth'
 import { resolveShellAccess } from './auth/devSession'
 import { PhoneFrame } from './harness/PhoneFrame'
 import { resolveHarnessConfig } from './harness/scenarios'
+import { ResponsiveShell } from './shell/ResponsiveShell'
 
 // Reader 引擎 spike（探索性）：?surface=reader-live 走獨立 lazy 路徑，epub.js 不進
 // parity bundle，既有 ?surface=reader 等 capture 路徑與 DOM 完全不變。
@@ -88,6 +89,16 @@ export function App() {
     }
   }
 
-  const frame = <PhoneFrame config={config} shell={shell} crop={crop} />
-  return shell ? <ApiProvider>{frame}</ApiProvider> : frame
+  // shell===true → functional web app: mount the ResponsiveShell (it owns the
+  // mobile-breakpoint delegation back to AppShell/PhoneFrame incl. hotzone
+  // overlay, so no parity-path code changes). shell===false (parity capture)
+  // stays byte-identical: render the bare PhoneFrame surface, no ApiProvider.
+  if (shell) {
+    return (
+      <ApiProvider>
+        <ResponsiveShell config={config} />
+      </ApiProvider>
+    )
+  }
+  return <PhoneFrame config={config} shell={false} crop={crop} />
 }
