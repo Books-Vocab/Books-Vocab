@@ -74,14 +74,17 @@ export function useShellHistory(
 ): () => void {
   const prevEnabled = useRef(false)
 
-  // nav / enabled 變動 → 套用 history op。顯示 404 期間（notFound）不動 URL。
+  // nav / enabled 變動 → 套用 history op。
   useEffect(() => {
     if (!enabled) {
       prevEnabled.current = false
       return
     }
-    if (notFound) return
     const justEnabled = !prevEnabled.current
+    // 穩態顯示 404 期間（notFound）不動 URL（保留壞 URL 供辨識）。但「剛 enable」
+    // （斷點翻轉、此殼層接手）必須以 URL 為真相重解析，否則另一殼層遺留的 stale
+    // notFound 會在 resize 後誤顯 404 —— 故 justEnabled 繞過此 guard。
+    if (notFound && !justEnabled) return
     prevEnabled.current = true
     const op = historySyncOp({ nav, currentPath: window.location.pathname, justEnabled })
     switch (op.kind) {
@@ -92,13 +95,18 @@ export function useShellHistory(
       case 'notFound':
         onNotFound?.(true)
         break
+      // 任何合法 sync（push / replace / none）皆代表「不在 404」→ 一併清 stale
+      // notFound（已是 false 時為 no-op setState，StrictMode 雙invoke 下冪等）。
       case 'push':
+        onNotFound?.(false)
         window.history.pushState(null, '', op.path)
         break
       case 'replace':
+        onNotFound?.(false)
         window.history.replaceState(null, '', op.path)
         break
       case 'none':
+        onNotFound?.(false)
         break
     }
   }, [nav, enabled, notFound, setNav, onNotFound])
