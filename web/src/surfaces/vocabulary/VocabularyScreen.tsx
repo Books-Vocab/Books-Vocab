@@ -2,17 +2,23 @@ import { LayoutGroup, motion } from 'framer-motion'
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCABULARY_FIXTURES } from './fixtures'
 import type { RowReviewState, VocabFixture, VocabRowFixture } from './fixtures'
+import { useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import {
   BooksIcon,
   KnowledgeGraphIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   RefreshIcon,
+  ReviewIcon,
+  ShareIcon,
   SortIcon,
   SparklesIcon,
+  SpeakerIcon,
 } from './icons'
 import { useVocabStore } from './store'
 import { useVocabApiStore } from './useVocabApiStore'
+import { formatShareText, shareOrCopy, speakWord } from './share'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { useShellNav } from '../../shell/ShellNavContext'
 import { screenFor } from '../../shell/nav'
@@ -41,43 +47,165 @@ import './vocabulary.css'
 const STAT_LABELS = ['未學習', '待複習', '已複習'] as const
 const STAT_STATES: RowReviewState[] = ['unlearned', 'due', 'reviewed']
 
+/**
+ * 卡片動作列（shell 路徑專用）：發音（Web Speech）+ 分享/複製。純表現層，
+ * 兩鈕皆優雅降級（API 不支援 → no-op，see share.ts）。motion whileTap 提供
+ * iOS press feel，reduced-motion 由 transition 收斂為瞬時。parity 路徑不渲染
+ * （actions==null 時整列省略），故 capture DOM 不受影響。
+ *
+ * stopPropagation：動作鈕嵌在可點擊的 row/detail 內，避免冒泡觸發 row 的
+ * onOpen/onToggle 導致誤導航或誤收合。
+ */
+function VocabRowActions({ row }: { row: VocabRowFixture }) {
+  const transition = usePreferredTransition(snappy)
+  const [shareNote, setShareNote] = useState<string | null>(null)
+
+  const onSpeak = (e: ReactMouseEvent) => {
+    e.stopPropagation()
+    speakWord(row.word)
+  }
+  const onShare = async (e: ReactMouseEvent) => {
+    e.stopPropagation()
+    const result = await shareOrCopy(formatShareText(row))
+    if (result === 'copied') {
+      setShareNote('已複製')
+      window.setTimeout(() => setShareNote(null), 1600)
+    } else if (result === 'shared') {
+      setShareNote(null)
+    } else {
+      setShareNote('無法分享')
+      window.setTimeout(() => setShareNote(null), 1600)
+    }
+  }
+
+  return (
+    <div className="vc-row-actions">
+      <motion.button
+        type="button"
+        className="vc-row-action"
+        aria-label={`朗讀 ${row.word}`}
+        onClick={onSpeak}
+        whileTap={{ scale: 0.88 }}
+        transition={transition}
+      >
+        <SpeakerIcon size={18} />
+      </motion.button>
+      <motion.button
+        type="button"
+        className="vc-row-action"
+        aria-label={`分享 ${row.word}`}
+        onClick={onShare}
+        whileTap={{ scale: 0.88 }}
+        transition={transition}
+      >
+        <ShareIcon size={18} />
+      </motion.button>
+      {shareNote && (
+        <span className="vc-row-action-note" role="status">
+          {shareNote}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function VocabRow({
   row,
   expanded,
   onToggle,
   onOpen,
+  showActions,
 }: {
   row: VocabRowFixture
   expanded: boolean
   onToggle: () => void
   /** shell 路徑：點列 → 導航至 word-detail（取代就地展開）；parity 路徑為 undefined。 */
   onOpen?: () => void
+  /** shell 路徑：在列上掛發音/分享動作列；parity 路徑為 false（不渲染，DOM 不變）。 */
+  showActions?: boolean
 }) {
+  // 列頭 = word/pos/translation 主區（兩路共用）。
+  const main = (
+    <div className="vc-row-main">
+      <div className="vc-row-head">
+        <span className="vc-row-word">{row.word}</span>
+        <span className="vc-row-pos">{row.partOfSpeech}</span>
+      </div>
+      <span className="vc-row-translation">{row.translation}</span>
+    </div>
+  )
+
   return (
     <div className={`vc-row-wrap${expanded ? ' vc-row-wrap-expanded' : ''}`}>
-      <button
-        type="button"
-        className="vc-row"
-        onClick={onOpen ?? onToggle}
-        aria-expanded={onOpen ? undefined : expanded}
-        data-word={row.word}
-      >
-        <div className="vc-row-main">
-          <div className="vc-row-head">
-            <span className="vc-row-word">{row.word}</span>
-            <span className="vc-row-pos">{row.partOfSpeech}</span>
-          </div>
-          <span className="vc-row-translation">{row.translation}</span>
+      {showActions ? (
+        // shell 路徑：主區為 button，動作鈕為其 sibling（避免 button 巢套 button
+        // 的非法 DOM）。整列維持單列 flex（CSS .vc-row-interactive）。parity 路徑
+        // 不走此分支，故 capture DOM 與舊單一 <button> 結構完全不變。
+        <div className="vc-row vc-row-interactive">
+          <button
+            type="button"
+            className="vc-row-tap"
+            onClick={onOpen ?? onToggle}
+            aria-expanded={onOpen ? undefined : expanded}
+            data-word={row.word}
+          >
+            {main}
+          </button>
+          <VocabRowActions row={row} />
         </div>
-        <span className="vc-row-detail">{row.detail}</span>
-      </button>
+      ) : (
+        // parity 路徑：原始單一 <button className="vc-row">，右側 detail label。
+        // DOM/CSS 與靜態 PNG 逐像素一致。
+        <button
+          type="button"
+          className="vc-row"
+          onClick={onOpen ?? onToggle}
+          aria-expanded={onOpen ? undefined : expanded}
+          data-word={row.word}
+        >
+          {main}
+          <span className="vc-row-detail">{row.detail}</span>
+        </button>
+      )}
       {expanded && (
         <div className="vc-row-detail-panel">
           <p className="vc-detail-explanation">{row.expansion.explanation}</p>
           <p className="vc-detail-example">{row.expansion.example}</p>
+          {/*
+            word-detail share parity：就地展開的詳情層也帶發音/分享，與卡片動作
+            一致。展開僅在使用者點列後出現（parity capture 為收合初始態），故此
+            動作列不進 capture DOM，可無條件渲染 → parity 與 shell 兩路皆有 detail
+            share，達成「卡片↔單字詳情」share parity。
+          */}
+          <div className="vc-detail-actions">
+            <VocabRowActions row={row} />
+          </div>
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * 今日複習 bar（shell 路徑專用）— iOS VocabularyView review CTA bar 的 web 對應。
+ * 點擊 dispatch vocabulary → open-today-review（param-free 全域 due 佇列），
+ * RouteTransition（殼層全域）為此 push 上 nav-push spring。motion whileTap 提供
+ * press feel，reduced-motion 由 transition 收斂。parity 路徑不渲染（見 caller gate）。
+ */
+function ReviewBar({ count, onOpen }: { count: number; onOpen: () => void }) {
+  const transition = usePreferredTransition(snappy)
+  return (
+    <motion.button
+      type="button"
+      className="vc-review-bar"
+      onClick={onOpen}
+      whileTap={{ scale: 0.98 }}
+      transition={transition}
+    >
+      <ReviewIcon size={18} className="vc-review-bar-icon" />
+      <span className="vc-review-bar-label">今日複習</span>
+      <span className="vc-review-bar-count">{count}</span>
+    </motion.button>
   )
 }
 
@@ -182,6 +310,12 @@ type VocabHeaderActions = {
   openKnowledgeGraph: () => void
   /** 新增連結入口 → push vocab-add-link。 */
   openAddLink: () => void
+  /**
+   * 今日複習 bar → push today-review（param-free 全域 due 佇列）。修「桌面
+   * ?shell=1 點今日複習 no-op」：dispatch Phase-1 提供的 vocabulary →
+   * open-today-review 邊（nav.ts pushTargetFor）。
+   */
+  openTodayReview: () => void
 }
 
 /** API-driven screen — shell=1 時使用真實後端資料。 */
@@ -192,10 +326,12 @@ function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
   // RouteTransition（殼層全域）已為此 push 上 iOS nav-push spring 轉場。
   const openWord = (word: string) =>
     nav.navigate(screenFor('word-detail-sheet', { word, notebookId: notebookId ?? undefined }))
-  // header 鈕分派 Phase-1 導航邊：vocabulary → vocab-knowledge-graph / vocab-add-link。
+  // header 鈕分派 Phase-1 導航邊：vocabulary → vocab-knowledge-graph / vocab-add-link /
+  // today-review（修桌面今日複習 no-op；today-review param-free，鏡像 notebook 邊）。
   const headerActions: VocabHeaderActions = {
     openKnowledgeGraph: () => nav.navigate(screenFor('vocab-knowledge-graph')),
     openAddLink: () => nav.navigate(screenFor('vocab-add-link')),
+    openTodayReview: () => nav.navigate(screenFor('today-review')),
   }
   const stats = {
     unlearned: store.visibleRows.filter((r) => r.reviewState === 'unlearned').length,
@@ -290,6 +426,16 @@ function VocabularyBody({
       </header>
 
       <div className="vc-scroll">
+        {/*
+          今日複習 bar（shell 路徑專用）— 修桌面 ?shell=1 點今日複習 no-op 根因：
+          dispatch vocabulary → open-today-review（nav.ts）。僅在有可複習卡
+          （ctaCount>0）時顯示，鏡像 iOS VocabularyView 的 review CTA bar。parity
+          路徑無 headerActions → 不渲染，capture DOM 不變。
+        */}
+        {headerActions && fixture.ctaCount > 0 && (
+          <ReviewBar count={fixture.ctaCount} onOpen={headerActions.openTodayReview} />
+        )}
+
         {/* VocabSearchField — muted-fill 圓角輸入框，magnifyingglass + 真輸入 */}
         <div className="vc-search">
           <MagnifyingGlassIcon size={17} className="vc-search-icon" />
@@ -359,6 +505,7 @@ function VocabularyBody({
                     expanded={store.expandedWord === row.word}
                     onToggle={() => store.toggleExpanded(row.word)}
                     onOpen={onRowOpen ? () => onRowOpen(row.word) : undefined}
+                    showActions={isShell}
                   />
                 </div>
               ))}
