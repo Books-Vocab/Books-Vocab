@@ -44,9 +44,13 @@ extension UITestFixtureSeed {
         }
         let auth = AuthManager.shared
         // Profile first — login() persists the current displayName/userEmail.
-        auth.displayName = "UI Auth Tester"
-        auth.userEmail = "ui-auth-tester@example.com"
-        auth.login(userId: "ui-auth-user", token: "ui-auth-user-token")
+        // Identity VALUES come from the SoT-emitted DemoFixtureIdentity (generated
+        // by ops/demo/build_demo.py emit-ios from demo_identity.json). Only the
+        // literal values are sourced from the SoT; the simulator-gate and
+        // isolatedAuthSession guards above are unchanged.
+        auth.displayName = DemoFixtureIdentity.displayName
+        auth.userEmail = DemoFixtureIdentity.email
+        auth.login(userId: DemoFixtureIdentity.userId, token: DemoFixtureIdentity.accessToken)
         AppLog.app.info("UI-test fixture seeded: auth.signedIn")
         #else
         AppLog.app.error("UITestFixtureSeed: refused auth.signedIn on physical device — would overwrite the real Keychain session")
