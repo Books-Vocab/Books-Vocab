@@ -10,7 +10,7 @@
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
-import { join, resolve, dirname } from 'node:path'
+import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 
@@ -54,7 +54,8 @@ function check(name, cond) {
 async function main() {
   const port = await getFreePort()
   const BASE = `http://localhost:${port}`
-  const server = spawn(join(WEB_DIR, 'node_modules', '.bin', 'vite'), ['preview', '--port', String(port), '--strictPort'], {
+  // npm run preview：npm 把 hoisted node_modules/.bin 加進 PATH，monorepo 下仍可解析 vite。
+  const server = spawn('npm', ['run', 'preview', '--', '--port', String(port), '--strictPort'], {
     cwd: WEB_DIR,
     stdio: 'ignore',
   })
