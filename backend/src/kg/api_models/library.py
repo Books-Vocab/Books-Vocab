@@ -53,3 +53,29 @@ class DeleteBookResponse(BaseModel):
     """Result of DELETE /api/library/books/{id} (soft delete)."""
 
     deleted: str  # the book id that was soft-deleted
+
+
+class AssetUploadRequest(BaseModel):
+    """Request an object-storage upload target or declare a local-only asset.
+
+    Architecture PR #7: book asset (EPUB/PDF/TXT/MD) upload entitlement.
+    """
+
+    format: str = Field(min_length=1, max_length=10)  # epub | pdf | txt | md
+    byte_size: int = Field(ge=0)
+    sha256: str | None = Field(default=None, max_length=64)
+    local_only: bool = False
+
+
+class AssetUploadResponse(BaseModel):
+    """Upload target for a book asset.
+
+    storage="local"  -> asset stays client-local (no server URL).
+    storage="object" -> upload via presigned PUT to `upload_url` at `object_key`.
+    """
+
+    book_id: str
+    storage: str  # local | object
+    upload_url: str | None = None  # presigned PUT URL (object storage only)
+    object_key: str | None = None  # storage key (object storage only)
+    expires_in: int | None = None  # presigned URL TTL seconds (object storage only)
