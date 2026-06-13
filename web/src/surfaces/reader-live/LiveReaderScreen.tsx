@@ -311,6 +311,46 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // 容器尺寸變動 → epub.js 重排（CFI 保位）。epub.js 的 renderTo 用 width:'100%'
+  // 但 *不會* 隨 CSS 寬度變化自動 reflow（內文仍排在舊量測欄寬，分頁/座標漂移）。
+  // 桌面殼層把 host 鎖到 --reader-measure 居中後，host 像素寬會變，故必須以
+  // ResizeObserver 主動呼叫 rendition.resize(w,h) 讓文字重排到新欄寬。重排前先讀
+  // 目前 CFI、resize 後 display(cfi) 還原閱讀位置（避免重排把讀者彈回章首）。
+  // parity 路徑（.phone-frame 固定 393×852）host 尺寸恆定 → observer 不觸發，零影響。
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    let lastW = host.clientWidth
+    let lastH = host.clientHeight
+    const ro = new ResizeObserver(() => {
+      const w = host.clientWidth
+      const h = host.clientHeight
+      if (w === lastW && h === lastH) return
+      lastW = w
+      lastH = h
+      const r = renditionRef.current
+      if (!r || w <= 0 || h <= 0) return
+      // 連續 resize 合併到下一動畫幀，避免拖曳時高頻重排卡頓。
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        try {
+          const cfi: string | undefined = r.currentLocation?.()?.start?.cfi
+          r.resize(w, h)
+          if (cfi) r.display(cfi).catch(() => {})
+        } catch {
+          /* teardown / 尚未 ready：下次 resize 會再校 */
+        }
+      })
+    })
+    ro.observe(host)
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      ro.disconnect()
+    }
+  }, [])
+
   // 位置同步 flush 觸發器：visibilitychange（切背景）+ beforeunload（關頁/重整）。
   useEffect(() => {
     function onVisibility() {
@@ -346,6 +386,9 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
       className="live-reader"
       data-ready={ready ? '' : undefined}
       data-theme={live.theme === 'dark' ? 'dark' : undefined}
+      // desktop pane: TOC 變持久左側子面板時，內文欄需讓位（CSS 以此 attr 內推）。
+      // 非殼層 / 行動裝置 overlay 路徑此 attr 無 CSS 對應 → 純資料、零視覺影響。
+      data-toc-open={panel === 'toc' ? '' : undefined}
     >
       {/* paper 底色（對齊 parity reader paperSepia） */}
       <div className="live-reader-paper">

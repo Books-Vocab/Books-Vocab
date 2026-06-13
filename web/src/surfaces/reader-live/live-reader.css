@@ -149,3 +149,94 @@
   color: #b3261e;
   z-index: 9;
 }
+
+/* ============================================================
+   RESPONSIVE (web-only, shell-gated) — live epub.js Reader in a
+   tablet/desktop pane.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell. The live reader currently mounts either inside
+   .phone-frame (?surface=reader-live) or via the mobile AppShell
+   delegation (ResponsiveShell mobile breakpoint = passive container), so
+   it never receives these rules today; they are forward-compatible for
+   when the shell routes the live reader into a wide pane. Either way the
+   parity render (.phone-frame, fixed 393x852) is untouched: it never
+   mounts .kg-responsive-shell, and the JS ResizeObserver is a no-op while
+   the host size is constant.
+
+   Goal: LOCK the epub.js host (rendition container) to
+   var(--reader-measure) (~720px), CENTER it so the two side margins fill
+   the pane, and recompute the chrome over the same centred column. The JS
+   side (ResizeObserver -> rendition.resize, CFI-preserving) reflows the
+   text to the measured column; CSS only positions the box.
+   ============================================================ */
+
+/* the live reader becomes a size container so its chrome/host query the
+   pane width it occupies (not the viewport — it may sit in a narrow or
+   wide pane). */
+.kg-responsive-shell .shell-pane-surface .live-reader {
+  container-type: inline-size;
+  container-name: live-reader;
+}
+
+@container live-reader (min-width: 768px) {
+  /* host: lock to the optimal measure + centre. The ResizeObserver in
+     LiveReaderScreen calls rendition.resize() on the resulting width so
+     epub.js text reflows to this column (CSS alone does not reflow it). */
+  .kg-responsive-shell .live-reader-host {
+    left: 50%;
+    right: auto;
+    width: min(100% - 24px, var(--reader-measure));
+    transform: translateX(-50%);
+  }
+
+  /* expanded header tracks the centred column (toolbar over the measure). */
+  .kg-responsive-shell .live-reader-header.reader-header-expanded {
+    left: 50%;
+    right: auto;
+    width: min(100% - 40px, var(--reader-measure));
+    transform: translateX(-50%);
+  }
+
+  /* progress capsule pins to the right edge of the centred column. */
+  .kg-responsive-shell .live-reader-progress {
+    right: max(20px, calc((100% - var(--reader-measure)) / 2 + 20px));
+  }
+
+  /* translation panel centres to the measure (toolbar over reading column). */
+  .kg-responsive-shell .live-reader-translation .translation-panel {
+    width: 100%;
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+  }
+
+  /* TOC: on a wide pane become a PERSISTENT left sub-panel within the
+     reader layout (not an ~82% overlay). The overlay scrim collapses to
+     the panel column; the panel docks full-height at the pane's left and
+     the host/header are nudged right to clear it. */
+  .kg-responsive-shell .live-reader-overlay {
+    background: transparent;
+    pointer-events: none;
+  }
+  .kg-responsive-shell .live-reader-panel-toc {
+    width: 300px;
+    max-width: 300px;
+    pointer-events: auto;
+    box-shadow: 1px 0 0 var(--divider);
+    border-right: var(--sp-hairline) solid var(--divider);
+  }
+}
+
+/* desktop pane (>=1120 container): give the persistent TOC room by
+   insetting the reading column to the right of the docked panel. */
+@container live-reader (min-width: 1120px) {
+  /* TOC docked left (300px): centre the reading column in the REMAINING
+     pane (right of the panel). The 768px rule centres via translateX(-50%)
+     about left:50%; here we re-anchor to the right-of-panel midpoint and
+     keep the same -50% self-centring transform. */
+  .kg-responsive-shell .live-reader[data-toc-open] .live-reader-host,
+  .kg-responsive-shell .live-reader[data-toc-open] .live-reader-header.reader-header-expanded {
+    left: calc(300px + (100% - 300px) / 2);
+    transform: translateX(-50%);
+  }
+}
