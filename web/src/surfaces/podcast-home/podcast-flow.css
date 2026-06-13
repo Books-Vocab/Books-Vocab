@@ -9,6 +9,21 @@
   position: relative;
 }
 
+/* The functional flow wraps its screens in a shared RouteTransition. .pf-root is
+   a full-height flex column (.podcast-home), so the transition layer must be the
+   growing flex item — otherwise the inner .ph-scroll (flex:1) has no height to
+   fill and the player/back-bar/mini-player anchoring collapses. Functional-only
+   (mounted behind ?shell=1), not in a responsive context → check:responsive
+   stays CLEAN. */
+.pf-root > .route-transition {
+  flex: 1;
+  min-height: 0;
+}
+
+.pf-root > .route-transition > .route-layer {
+  height: 100%;
+}
+
 .pf-back {
   position: absolute;
   top: 8px;
