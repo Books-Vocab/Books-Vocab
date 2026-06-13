@@ -1,7 +1,16 @@
-import type { ScenarioId } from '../../harness/scenarios'
-import { SyncApiStore } from './SyncApiStore'
-import { SYNC_FIXTURES } from './fixtures'
-import type { PendingRow, PipelineStep, StepStatus, SyncState } from './fixtures'
+// Live, coordinator-driven Sync screen (shell branch).
+//
+// This is the SIBLING ...ApiStore variant required by the parity invariant: the
+// fixture branch in SyncScreen.tsx stays byte-identical; this view only renders
+// when ?shell=1 is present in the URL (gated in SyncScreen). It reuses sync.css
+// (same class names → same look) and drives every visual off the real
+// SyncCoordinator state machine (web/src/sync) instead of static fixtures.
+//
+// Mock-first: useSyncCoordinator() defaults to createSyncApi() → createApiClient()
+// in mock mode, so Start/Cancel/Retry exercise real client calls offline.
+
+import { useSyncCoordinator, STEP_LABELS } from '../../sync'
+import type { CoordinatorState, OutboxEntry, StepProgress } from '../../sync'
 import {
   ActivityIndicator,
   CheckmarkCircleFillIcon,
@@ -16,41 +25,33 @@ import {
 } from './icons'
 import './sync.css'
 
-/**
- * 鏡像 ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift
- * （+Header / +ActionArea）。catalog scene = .fill 全幀、opaque page-bg → 全 phone-frame
- * 捕捉（無 crop、無 transparent，同 bookshelf pattern）。
- *
- * 五個 scenario 皆 isLoggedIn=true / isConnected=true，依 phase × failureKind 切換
- * hero / pending list / steps / summary / action。
- *
- * 兩條路徑（P6）：
- *  - 預設（parity capture rig 唯一路徑，無 ?shell）：靜態 fixture 渲染，按鈕 no-op，
- *    DOM 逐位元凍結 —— parity 對拍只比首屏靜態像素，此分支永不更動。
- *  - ?shell=1（window.location.search opt-in）：掛 SyncApiStore，由真實
- *    SyncCoordinator（web/src/sync）驅動 Start/Cancel/Retry + step timeline。
- *    rig 的 surface-view 路徑永不帶 ?shell（shell=1 走 AppShell），故 fixture
- *    分支與 parity capture 完全不受影響。
- */
-function isShellMode(): boolean {
-  if (typeof window === 'undefined') return false
-  return new URLSearchParams(window.location.search).get('shell') === '1'
+/** Seed a couple of pending mutations so the live screen has something to sync
+ *  on first paint (mirrors the fixture `ready` state's two adds + one delete).
+ *  Idempotent: the outbox dedups by (notebook + raw word + action). */
+function useSeededCoordinator(notebookId: string) {
+  const sync = useSyncCoordinator({ notebookId })
+  // Seed once per coordinator instance (queue* is idempotent via outbox dedup).
+  if (sync.state.phase === 'ready' && sync.state.pending.length === 0) {
+    sync.coordinator.queueAdd({ word: 'ineffable', translation: '難以言喻的' })
+    sync.coordinator.queueAdd({ word: 'ephemeral', translation: '短暫的' })
+    sync.coordinator.queueDelete('obsolete')
+  }
+  return sync
 }
 
-export function SyncScreen({ scenario }: { scenario: ScenarioId<'sync'> }) {
-  // shell 分支：真實 coordinator。fixture/parity 分支以下完全不動。
-  if (isShellMode()) {
-    return <SyncApiStore />
-  }
+export function SyncApiStore({ notebookId = 'default' }: { notebookId?: string }) {
+  const { state, start, cancel, retry } = useSeededCoordinator(notebookId)
 
-  const state = SYNC_FIXTURES[scenario] ?? SYNC_FIXTURES.ready
-
-  const showPending = state.phase === 'ready' && state.pendingRows.length > 0
-  const showSteps = state.steps.length > 0
-  const showSummary = state.summaryText.length > 0
+  const adds = state.pending.filter((e) => e.action === 'add')
+  const deletes = state.pending.filter((e) => e.action === 'delete')
+  const showPending = state.phase === 'ready' && state.pending.length > 0
+  // steps are meaningful once a run has started (any non-waiting step).
+  const showSteps =
+    state.phase !== 'ready' && state.steps.some((s) => s.status !== 'waiting')
+  const summaryText = summaryFor(state)
 
   return (
-    <div className="sync">
+    <div className="sync" data-live="1">
       <header className="sync-nav">
         <h1 className="sync-nav-title">同步</h1>
       </header>
@@ -58,41 +59,49 @@ export function SyncScreen({ scenario }: { scenario: ScenarioId<'sync'> }) {
       <div className="sync-scroll">
         <div className="sync-content">
           <div className="sync-header">
-            <Header state={state} />
+            <LiveHeader state={state} addCount={adds.length} deleteCount={deletes.length} />
           </div>
 
-          {showPending && <PendingList rows={state.pendingRows} />}
-          {showSteps && <Steps steps={state.steps} />}
-          {showSummary && <SummaryCard state={state} />}
+          {showPending && <LivePendingList rows={state.pending} />}
+          {showSteps && <LiveSteps steps={state.steps} />}
+          {summaryText.length > 0 && <LiveSummary state={state} summaryText={summaryText} />}
         </div>
       </div>
 
-      <ActionArea state={state} />
+      <LiveActionArea state={state} onStart={start} onCancel={cancel} onRetry={retry} />
     </div>
   )
 }
 
-/* === Header（VocabStatusHero）=== */
-function Header({ state }: { state: SyncState }) {
+function LiveHeader({
+  state,
+  addCount,
+  deleteCount,
+}: {
+  state: CoordinatorState
+  addCount: number
+  deleteCount: number
+}) {
   if (state.phase === 'ready') {
+    const pendingCount = state.pending.length
     return (
       <div className="sync-hero">
         <span className="sync-hero-icon" style={{ color: 'var(--accent)' }}>
           <SyncIcon size={44} strokeWidth={2} />
         </span>
         <h2 className="sync-hero-title">
-          {state.pendingCount === 0 ? '強制同步到雲端' : `${state.pendingCount} 個待處理動作`}
+          {pendingCount === 0 ? '強制同步到雲端' : `${pendingCount} 個待處理動作`}
         </h2>
-        {(state.addCount > 0 || state.deleteCount > 0) && (
+        {(addCount > 0 || deleteCount > 0) && (
           <div className="sync-hero-badges">
-            {state.addCount > 0 && (
+            {addCount > 0 && (
               <span className="sync-tone-chip" data-tone="success">
-                {state.addCount} 新增
+                {addCount} 新增
               </span>
             )}
-            {state.deleteCount > 0 && (
+            {deleteCount > 0 && (
               <span className="sync-tone-chip" data-tone="destructive">
-                {state.deleteCount} 刪除
+                {deleteCount} 刪除
               </span>
             )}
           </div>
@@ -109,7 +118,6 @@ function Header({ state }: { state: SyncState }) {
         </span>
         <h2 className="sync-hero-title">同步中…</h2>
         <p className="sync-hero-desc">離開後同步將繼續在背景執行，可隨時返回查看進度</p>
-        {/* ProgressView(.large) */}
         <span className="sync-hero-icon" style={{ color: 'var(--text-secondary)' }}>
           <ActivityIndicator size={32} />
         </span>
@@ -152,21 +160,24 @@ function Header({ state }: { state: SyncState }) {
   )
 }
 
-/* === Pending list（ready）=== */
-function PendingList({ rows }: { rows: PendingRow[] }) {
+function LivePendingList({ rows }: { rows: OutboxEntry[] }) {
   return (
     <div className="sync-card">
       {rows.map((row, i) => (
-        <div key={row.word}>
+        <div key={row.id}>
           <div className="sync-pending-row">
             <div className="sync-wordrow">
               <div className="sync-wordrow-headline">
-                <span className="sync-word" data-tone={row.action === 'delete' ? 'destructive' : 'primary'}>
+                <span
+                  className="sync-word"
+                  data-tone={row.action === 'delete' ? 'destructive' : 'primary'}
+                >
                   {row.word}
                 </span>
-                <span className="sync-pos">{row.pos}</span>
               </div>
-              <span className="sync-translation">{row.translation}</span>
+              {row.entry?.translation && (
+                <span className="sync-translation">{row.entry.translation}</span>
+              )}
             </div>
             <div
               className="sync-accessory"
@@ -187,14 +198,13 @@ function PendingList({ rows }: { rows: PendingRow[] }) {
   )
 }
 
-/* === Steps === */
-function Steps({ steps }: { steps: PipelineStep[] }) {
+function LiveSteps({ steps }: { steps: StepProgress[] }) {
   return (
     <div className="sync-card">
       <div className="sync-steps">
         {steps.map((s, i) => (
           <div key={s.id}>
-            <StepRow step={s} />
+            <LiveStepRow step={s} />
             {i < steps.length - 1 && <div className="sync-step-divider" />}
           </div>
         ))}
@@ -203,7 +213,7 @@ function Steps({ steps }: { steps: PipelineStep[] }) {
   )
 }
 
-function StatusSymbol({ status }: { status: StepStatus }) {
+function LiveStatusSymbol({ status }: { status: StepProgress['status'] }) {
   switch (status) {
     case 'done':
       return <CheckmarkCircleFillIcon size={18} />
@@ -211,13 +221,14 @@ function StatusSymbol({ status }: { status: StepStatus }) {
       return <ActivityIndicator size={18} />
     case 'error':
       return <XmarkCircleFillIcon size={18} />
+    case 'skipped':
     case 'waiting':
     default:
       return <CircleIcon size={18} />
   }
 }
 
-function StepRow({ step }: { step: PipelineStep }) {
+function LiveStepRow({ step }: { step: StepProgress }) {
   const isWaiting = step.status === 'waiting'
   const detail = isWaiting ? '' : step.detail
   const detailTone = step.status === 'error' ? 'error' : 'secondary'
@@ -226,12 +237,12 @@ function StepRow({ step }: { step: PipelineStep }) {
   return (
     <div className="sync-timeline-row">
       <span className="sync-step-symbol" data-status={step.status}>
-        <StatusSymbol status={step.status} />
+        <LiveStatusSymbol status={step.status} />
       </span>
       <div className="sync-step-body">
         <div className="sync-step-head">
           <span className="sync-step-title" data-tone={isWaiting ? 'waiting' : 'normal'}>
-            {step.label}
+            {STEP_LABELS[step.id]}
           </span>
           {showProgress && (
             <span className="sync-step-trailing">
@@ -251,19 +262,23 @@ function StepRow({ step }: { step: PipelineStep }) {
   )
 }
 
-/* === Summary card（AppStateMessageCard .vocab）=== */
-function SummaryCard({ state }: { state: SyncState }) {
+function summaryFor(state: CoordinatorState): string {
+  if (state.phase === 'failed') {
+    return state.failureKind === 'partial'
+      ? '部分項目未成功同步，可直接再次重試。'
+      : '同步未完成，請稍後再試。'
+  }
+  return ''
+}
+
+function LiveSummary({ state, summaryText }: { state: CoordinatorState; summaryText: string }) {
   const title =
     state.failureKind === 'partial'
       ? '有些項目需要再試一次'
       : state.failureKind === 'full'
         ? '同步沒有完成'
-        : state.phase === 'completed'
-          ? '同步完成'
-          : '同步摘要'
-
+        : '同步摘要'
   const Icon = state.failureKind === 'partial' ? ExclamationCirclePathIcon : WarningTriangleFillIcon
-
   return (
     <div className="sync-summary">
       <div className="sync-summary-head">
@@ -272,17 +287,32 @@ function SummaryCard({ state }: { state: SyncState }) {
         </span>
         <h3 className="sync-summary-title">{title}</h3>
       </div>
-      <p className="sync-summary-desc">{state.summaryText}</p>
+      <p className="sync-summary-desc">{summaryText}</p>
     </div>
   )
 }
 
-/* === Action area === */
-function ActionArea({ state }: { state: SyncState }) {
+function LiveActionArea({
+  state,
+  onStart,
+  onCancel,
+  onRetry,
+}: {
+  state: CoordinatorState
+  onStart: () => void
+  onCancel: () => void
+  onRetry: () => void
+}) {
   if (state.phase === 'ready') {
     return (
       <div className="sync-action">
-        <button type="button" className="sync-action-button" data-style="primary" data-width="fill">
+        <button
+          type="button"
+          className="sync-action-button"
+          data-style="primary"
+          data-width="fill"
+          onClick={onStart}
+        >
           <span className="sync-action-button-icon">
             <SyncIcon size={15} strokeWidth={2} />
           </span>
@@ -295,7 +325,13 @@ function ActionArea({ state }: { state: SyncState }) {
   if (state.phase === 'running') {
     return (
       <div className="sync-action">
-        <button type="button" className="sync-action-button" data-style="neutral" data-width="fill">
+        <button
+          type="button"
+          className="sync-action-button"
+          data-style="neutral"
+          data-width="fill"
+          onClick={onCancel}
+        >
           取消
         </button>
       </div>
@@ -305,7 +341,13 @@ function ActionArea({ state }: { state: SyncState }) {
   if (state.phase === 'completed') {
     return (
       <div className="sync-action">
-        <button type="button" className="sync-action-button" data-style="primary" data-width="hug">
+        <button
+          type="button"
+          className="sync-action-button"
+          data-style="primary"
+          data-width="hug"
+          onClick={onStart}
+        >
           完成
         </button>
       </div>
@@ -321,6 +363,7 @@ function ActionArea({ state }: { state: SyncState }) {
         className="sync-action-button"
         data-style={isPartial ? 'neutral' : 'warning'}
         data-width="fill"
+        onClick={onRetry}
       >
         <span className="sync-action-button-icon">
           <RefreshIcon size={15} strokeWidth={2} />
