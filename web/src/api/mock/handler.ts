@@ -8,6 +8,7 @@
 // so the client's 401 path stays exercisable under mock mode.
 
 import type { FetchLike } from '../transport'
+import type { VocabEntry } from '../types'
 import {
   MOCK_ACCESS_TOKEN,
   MOCK_DELETE_ACCOUNT,
@@ -198,8 +199,13 @@ const ROUTES: Route[] = [
     method: 'POST',
     pattern: /^\/api\/vocab$/,
     handle: (req) => {
-      const entries = Array.isArray(req.body) ? req.body : []
-      return json(mockVocabAdd(entries.length))
+      // Body is a list of VocabEntry; keep only well-formed rows so the response
+      // cardIds echo the submitted word byte-exactly (sync reconcile contract).
+      const entries = (Array.isArray(req.body) ? req.body : []).filter(
+        (e): e is VocabEntry =>
+          typeof e === 'object' && e !== null && typeof (e as { word?: unknown }).word === 'string',
+      )
+      return json(mockVocabAdd(entries))
     },
   },
   {
