@@ -8,6 +8,7 @@ owns a single flow/session with screenshots, contact sheets, and the run video.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import html
 import json
 import os
@@ -81,6 +82,7 @@ def run_record(
     status: str | None,
     test_file: str | None,
     device: str | None,
+    last_run_at: str | None = None,
 ) -> dict:
     workspace_root = out_root.parent
     log_rel = None
@@ -100,6 +102,7 @@ def run_record(
         "flowId": flow_id or infer_flow_id(test_file, out_root),
         "variantId": variant_id or "default",
         "status": status or "unknown",
+        "lastRunAt": last_run_at or datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "testFile": test_file,
         "device": device,
         "stepCount": len(items),
@@ -151,6 +154,7 @@ def flow_records(runs: list[dict]) -> list[dict]:
                 "flowId": flow_id,
                 "runs": len(flow_runs),
                 "latestStatus": latest.get("status") or "unknown",
+                "lastRunAt": latest.get("lastRunAt"),
                 "variants": variants,
             }
         )
@@ -175,7 +179,11 @@ def load_workspace_index(workspace_root: Path) -> dict:
 def write_workspace_index(workspace_root: Path, run: dict) -> dict:
     workspace_root.mkdir(parents=True, exist_ok=True)
     index = load_workspace_index(workspace_root)
-    runs = [existing for existing in index.get("runs", []) if existing.get("runId") != run["runId"]]
+    runs = [
+        existing
+        for existing in index.get("runs", [])
+        if (existing.get("flowId"), existing.get("variantId")) != (run.get("flowId"), run.get("variantId"))
+    ]
     runs.insert(0, run)
     index["runs"] = runs
     index["summary"] = workspace_summary(runs)
@@ -208,6 +216,7 @@ def render_workspace_html(index: dict) -> str:
         <tr>
           <td><a href="#flow-{_esc(flow.get('flowId'))}">{_esc(flow.get('flowId'))}</a></td>
           <td>{_esc(flow.get('latestStatus'))}</td>
+          <td>{_esc(flow.get('lastRunAt'))}</td>
           <td>{_esc(flow.get('runs'))}</td>
           <td>{_esc(', '.join(flow.get('variants') or []))}</td>
         </tr>
@@ -234,6 +243,7 @@ def render_workspace_html(index: dict) -> str:
                 {_artifact_link(run, 'log', 'log')}
                 {_artifact_link(run, 'manifest', 'manifest')}
               </div>
+              <p class="meta">lastRunAt={_esc(run.get('lastRunAt'))}</p>
               <p class="meta">run={_esc(run.get('runId'))} steps={_esc(run.get('stepCount'))}</p>
             </article>
             """
@@ -291,7 +301,7 @@ def render_workspace_html(index: dict) -> str:
     <section>
       <h2>Flows</h2>
       <table>
-        <thead><tr><th>Flow</th><th>Latest</th><th>Runs</th><th>Variants</th></tr></thead>
+        <thead><tr><th>Flow</th><th>Latest</th><th>Last Run</th><th>Runs</th><th>Variants</th></tr></thead>
         <tbody>{flow_rows}</tbody>
       </table>
     </section>
@@ -316,6 +326,7 @@ def build_review_root(
     status: str | None = None,
     test_file: str | None = None,
     device: str | None = None,
+    last_run_at: str | None = None,
 ) -> dict:
     out_root.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(manifest_path)
@@ -353,6 +364,7 @@ def build_review_root(
         status=status,
         test_file=test_file,
         device=device,
+        last_run_at=last_run_at,
     )
     workspace = write_workspace_index(out_root.parent, run)
 
@@ -386,6 +398,7 @@ def main() -> int:
     parser.add_argument("--status")
     parser.add_argument("--test-file")
     parser.add_argument("--device")
+    parser.add_argument("--last-run-at")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -402,6 +415,7 @@ def main() -> int:
         status=args.status,
         test_file=args.test_file,
         device=args.device,
+        last_run_at=args.last_run_at,
     )
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
