@@ -79,6 +79,28 @@ describe('vocabulary', () => {
     expect(res.skipped).toBe(0)
   })
 
+  // Regression: the sync SoT (docs/reference/sync_lifecycle.md §cardIds 不變式)
+  // requires response.cardIds to be keyed by the client-submitted word as a
+  // BYTE-EXACT echo (no NFC / case / trim). Previously mockVocabAdd keyed by
+  // `pending-${i}` (index), which silently broke per-word reconcile.
+  it('add() echoes the submitted word byte-exactly as the cardIds key', async () => {
+    const entries = [
+      { word: 'serendipity', translation: '機緣' },
+      { word: 'ÉPHÉMÈRE', translation: '短暫' }, // accents + uppercase: no normalization
+      { word: '  spaced  ', translation: '空白' }, // surrounding whitespace: no trim
+    ]
+    const res = await authedClient().vocabulary.add(entries)
+    expect(res.created).toBe(entries.length)
+    // Every submitted word is present as a key, byte-for-byte.
+    for (const e of entries) {
+      expect(res.cardIds).toHaveProperty(e.word)
+      expect(typeof res.cardIds[e.word]).toBe('string')
+      expect(res.cardIds[e.word].length).toBeGreaterThan(0)
+    }
+    // Keys are exactly the submitted words — no index keys, no normalized keys.
+    expect(Object.keys(res.cardIds).sort()).toEqual(entries.map((e) => e.word).sort())
+  })
+
   it('list() with notebookId filters by notebook_id query param', async () => {
     const cards = await authedClient().vocabulary.list({ notebookId: 'default' })
     // All mock cards have notebookId='default'
@@ -256,11 +278,20 @@ describe('translate', () => {
 })
 
 describe('graph links', () => {
-  it('list() returns the seeded visible links', async () => {
+  it('list() returns the seeded visible links with the full typed shape', async () => {
     const links = await authedClient().graph.list()
     expect(links.length).toBeGreaterThan(0)
-    expect(links[0]).toHaveProperty('fromId')
-    expect(links[0]).toHaveProperty('confidence')
+    // Every link mirrors GraphLinkResponse: id/fromId/toId/kind/confidence/reason.
+    for (const l of links) {
+      expect(typeof l.id).toBe('string')
+      expect(typeof l.fromId).toBe('string')
+      expect(typeof l.toId).toBe('string')
+      expect(typeof l.kind).toBe('string')
+      expect(typeof l.confidence).toBe('number')
+      expect(l.confidence).toBeGreaterThanOrEqual(0)
+      expect(l.confidence).toBeLessThanOrEqual(1)
+      expect(typeof l.reason).toBe('string')
+    }
   })
 
   it('create() returns a new link', async () => {
