@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useApi } from '../../api/ApiContext'
-import type { EntitlementsResponse, PodcastProgressResponse, PodcastSeriesDetail } from '../../api/types'
+import { useMemo, useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { PodcastHomeApiStore } from '../podcast-home/PodcastHomeApiStore'
 import { PODCAST_FIXTURES } from './fixtures'
 import type { PodcastPlayerFixture } from './fixtures'
 import demoAudioUrl from '../../assets/podcast_demo.mp3'
@@ -47,102 +46,6 @@ import './interactive.css'
  * locked-gate 結構 = PodcastPlayerLockedGateView：維持靜態（無播放器）。
  */
 
-/** Tier access level derived from entitlements. */
-type Tier = 'guest' | 'free' | 'pro'
-
-function tierFromEntitlements(ent: EntitlementsResponse | null): Tier {
-  if (!ent) return 'guest'
-  if (ent.pro?.is_active) return 'pro'
-  return 'free'
-}
-
-export function PodcastScreen({ scenario }: { scenario: ScenarioId<'podcast'> }) {
-  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
-  if (shell) {
-    return <PodcastScreenApi />
-  }
-  const fixture = PODCAST_FIXTURES[scenario]
-  return (
-    <div className="podcast">
-      {fixture.kind === 'preview-player' ? <PlayerScene fixture={fixture} /> : <LockedGate />}
-    </div>
-  )
-}
-
-function PodcastScreenApi() {
-  const api = useApi()
-  const [detail, setDetail] = useState<PodcastSeriesDetail | null>(null)
-  const [progress, setProgress] = useState<PodcastProgressResponse | null>(null)
-  const [entitlements, setEntitlements] = useState<EntitlementsResponse | null>(null)
-  const [, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [series, ent] = await Promise.all([
-        api.podcast.series(),
-        api.user.entitlements().catch(() => null),
-      ])
-      setEntitlements(ent)
-      if (series.length > 0 && series[0].id) {
-        const [d, p] = await Promise.all([
-          api.podcast.seriesDetail(String(series[0].id)),
-          api.podcast.progress().catch(() => ({ items: [] })),
-        ])
-        setDetail(d)
-        const matched = p.items.find((item) => item.series_id === series[0].id)
-        setProgress(matched ?? null)
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [api])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const tier = tierFromEntitlements(entitlements)
-
-  // Guest → locked gate
-  if (tier === 'guest') {
-    return (
-      <div className="podcast">
-        <LockedGate />
-      </div>
-    )
-  }
-
-  // Build a fixture from API data for the player
-  const fixture: PodcastPlayerFixture = useMemo(() => {
-    const sentences = [
-      { text: 'Welcome back to Deep Work, Decoded.', isActive: false, activeWordIndex: -1 },
-      { text: 'Today we trace the comfort crisis.', isActive: false, activeWordIndex: -1 },
-      { text: 'Easy distraction quietly erodes our focus.', isActive: true, activeWordIndex: 2 },
-      { text: 'The thesis is simple and a little uncomfortable.', isActive: false, activeWordIndex: -1 },
-      { text: 'Discomfort chosen on purpose builds durable attention.', isActive: false, activeWordIndex: -1 },
-    ]
-    const positionSec = progress?.position_sec ?? 6.09
-    const durationSec = progress?.duration_sec ?? 1832
-    return {
-      kind: 'preview-player',
-      sentences,
-      elapsed: formatClock(positionSec),
-      total: formatClock(durationSec),
-      progress: clamp01(positionSec / durationSec),
-      rate: '×1',
-    }
-  }, [progress])
-
-  return (
-    <div className="podcast">
-      <PlayerScene fixture={fixture} tier={tier} seriesId={detail?.id as string | undefined} epNum={1} />
-    </div>
-  )
-}
-
 /** 一個字幕氣泡。slot 0（單一講者）→ 左對齊、無 speaker label。active 句加強 tint，
  *  active word 下方畫 playback 底線。 */
 function Bubble({
@@ -171,17 +74,7 @@ function Bubble({
   )
 }
 
-function PlayerScene({
-  fixture,
-  tier,
-  seriesId,
-  epNum,
-}: {
-  fixture: PodcastPlayerFixture
-  tier?: Tier
-  seriesId?: string
-  epNum?: number
-}) {
+function PlayerScene({ fixture }: { fixture: PodcastPlayerFixture }) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const seekRef = useRef<HTMLDivElement>(null)
   const wordSpans = useMemo(() => buildWordSpans(fixture.sentences), [fixture.sentences])
@@ -196,29 +89,6 @@ function PlayerScene({
   const [currentTime, setCurrentTime] = useState(0)
   const [rate, setRate] = useState<PlaybackRate>(1)
   const [dragging, setDragging] = useState(false)
-
-  const api = useApi()
-  const lastProgressRef = useRef(0)
-
-  // Throttled progress update (every 5s or on significant change)
-  const throttledPutProgress = useCallback(
-    (pos: number, dur: number) => {
-      if (!seriesId || epNum == null) return
-      const now = Date.now()
-      if (now - lastProgressRef.current < 5000) return
-      lastProgressRef.current = now
-      api.podcast
-        .putProgress(seriesId, epNum, {
-          position_sec: Math.floor(pos),
-          duration_sec: dur,
-          updated_at: new Date().toISOString(),
-        })
-        .catch(() => {
-          // ignore network errors
-        })
-    },
-    [api, seriesId, epNum],
-  )
 
   // active 句/詞：started 後由 currentTime 推，否則用 fixture 靜態值。
   const derived = started
@@ -278,10 +148,6 @@ function PlayerScene({
     setCurrentTime(t)
   }
 
-  // Tier gating: free users only get ep1 preview, pro gets full access
-  const isLocked = tier === 'free' && epNum !== 1
-  const showPreviewBanner = tier === 'free' && epNum === 1
-
   return (
     <div className="pc-player">
       {/* 真實 <audio> 元素：demo 音檔；timeupdate 驅動所有 UI。隱藏（player 自繪控制）。 */}
@@ -294,11 +160,7 @@ function PlayerScene({
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
         onTimeUpdate={(e) => {
-          if (!dragging) {
-            const t = e.currentTarget.currentTime
-            setCurrentTime(t)
-            throttledPutProgress(t, DEMO_DURATION_SEC)
-          }
+          if (!dragging) setCurrentTime(e.currentTarget.currentTime)
         }}
       />
 
@@ -316,22 +178,12 @@ function PlayerScene({
         </div>
       </div>
 
-      {/* preview banner — only for free tier on ep1 */}
-      {showPreviewBanner && (
-        <div className="pc-banner">
-          <LockCircleFillIcon className="pc-banner-lock" size={20} />
-          <span className="pc-banner-msg">免費試聽 · 升級聽完整單集</span>
-          <span className="pc-banner-cta">升級 Pro</span>
-        </div>
-      )}
-
-      {/* Tier lock overlay for free users on non-ep1 */}
-      {isLocked && (
-        <div className="pc-tier-lock">
-          <LockFillIcon size={48} />
-          <p>升級 Pro 解鎖完整內容</p>
-        </div>
-      )}
+      {/* preview banner */}
+      <div className="pc-banner">
+        <LockCircleFillIcon className="pc-banner-lock" size={20} />
+        <span className="pc-banner-msg">免費試聽 · 升級聽完整單集</span>
+        <span className="pc-banner-cta">升級 Pro</span>
+      </div>
 
       {/* controls cluster */}
       <div className="pc-controls">
@@ -408,6 +260,26 @@ function LockedGate() {
         <PersonCropCircleIcon size={22} />
         <span>登入後收聽</span>
       </button>
+    </div>
+  )
+}
+
+/** ?shell=1 opt-in: web app shell mounts the functional flow. */
+function isShellMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get('shell') === '1'
+}
+
+export function PodcastScreen({ scenario }: { scenario: ScenarioId<'podcast'> }) {
+  // Shell-gated functional flow (home → episode-list → player, live API,
+  // subtitle SRT sync, tier gating, continue-shelf). Parity capture path
+  // (no ?shell=1) renders the untouched fixture branch below, byte-identical.
+  if (isShellMode()) return <PodcastHomeApiStore />
+
+  const fixture = PODCAST_FIXTURES[scenario]
+  return (
+    <div className="podcast">
+      {fixture.kind === 'preview-player' ? <PlayerScene fixture={fixture} /> : <LockedGate />}
     </div>
   )
 }

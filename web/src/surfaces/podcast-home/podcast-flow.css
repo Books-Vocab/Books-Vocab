@@ -1,0 +1,329 @@
+/*
+ * Functional-only chrome for the shell-gated podcast flow (back bar, episode
+ * list, functional player). Mounted ONLY behind ?shell=1 — never on the parity
+ * capture path, so these rules never touch the byte-identical fixture render.
+ * Visual language reuses podcast-home.css tokens/colours where possible.
+ */
+
+.pf-root {
+  position: relative;
+}
+
+.pf-back {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--app-text-primary, #1c1c1e);
+  cursor: pointer;
+}
+
+.pf-status {
+  padding: 48px 20px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--app-text-secondary, #6b6b70);
+}
+
+/* tappable wrappers keep the rail/series card visuals from podcast-home.css */
+.pf-rail-button,
+.pf-series-button {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.pf-rail-card {
+  width: 150px;
+}
+
+/* ── episode list ─────────────────────────────────────────────────────────── */
+
+.pf-episode-list {
+  padding-top: 8px;
+}
+
+.pf-detail-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 48px;
+}
+
+.pf-detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--app-text-primary, #1c1c1e);
+  text-align: center;
+}
+
+.pf-episodes {
+  list-style: none;
+  margin: 0;
+  padding: 8px 18px 32px;
+}
+
+.pf-episode-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 4px;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.pf-episode-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pf-episode-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-episode-meta {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--app-text-tertiary, #9a9aa0);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-episode-accessory {
+  display: inline-flex;
+  align-items: center;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.pf-episode-row[data-locked] .pf-episode-accessory {
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.pf-episode-play {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── player ───────────────────────────────────────────────────────────────── */
+
+.pf-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 18px 24px;
+}
+
+.pf-player-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 36px 0 8px;
+  text-align: center;
+}
+
+.pf-player-series {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.pf-player-episode {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-transcript {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 4px;
+}
+
+.pf-cue {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--app-text-tertiary, #9a9aa0);
+  transition: color 120ms ease;
+}
+
+.pf-cue-active {
+  color: var(--app-text-primary, #1c1c1e);
+  font-weight: 600;
+}
+
+.pf-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  border-radius: 10px;
+  background: rgba(255, 149, 0, 0.12);
+  font-size: 13px;
+}
+
+.pf-banner-lock {
+  color: #c97a00;
+}
+
+.pf-banner-msg {
+  flex: 1;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-banner-cta {
+  font-weight: 700;
+  color: #c97a00;
+}
+
+.pf-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.pf-seek {
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.pf-seek-track,
+.pf-seek-fill {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.pf-seek-track {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.pf-seek-fill {
+  background: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-seek-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  border-radius: 6px;
+  background: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-clock {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--app-text-tertiary, #9a9aa0);
+  font-variant-numeric: tabular-nums;
+}
+
+.pf-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding-top: 4px;
+}
+
+.pf-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--app-text-primary, #1c1c1e);
+  cursor: pointer;
+}
+
+.pf-play {
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background: var(--app-text-primary, #1c1c1e);
+  color: #fff;
+}
+
+/* ── gates ────────────────────────────────────────────────────────────────── */
+
+.pf-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 0 32px;
+  text-align: center;
+}
+
+.pf-gate-lock {
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.pf-gate-title {
+  margin: 8px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.pf-gate-body {
+  margin: 0;
+  font-size: 15px;
+  color: var(--app-text-secondary, #6b6b70);
+}
+
+.pf-gate-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--app-text-primary, #1c1c1e);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
