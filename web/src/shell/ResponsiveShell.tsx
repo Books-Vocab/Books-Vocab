@@ -16,6 +16,7 @@ import {
   type Screen,
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
+import { navStateFromLocation, useShellHistory } from './historySync'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import { RouteTransition, useNavDirection } from '../motion'
 import { routeKeyFor, stackDepth } from './nav'
@@ -140,9 +141,13 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
   const breakpoint = useBreakpoint()
   const appearance: Appearance = config.appearance
 
-  const [nav, setNav] = useState<NavState>(() =>
-    initialNavState(config.surface, config.scenario as string),
+  // 初始 nav 優先從 /app URL 還原（refresh / deep-link）；無 shell URL 落回 config。
+  const [nav, setNav] = useState<NavState>(
+    () => navStateFromLocation() ?? initialNavState(config.surface, config.scenario as string),
   )
+  // mobile 斷點委派 AppShell（自帶當值 binder），故此處只在 tablet/desktop 當值時綁
+  // history，避免雙寫；切回 mobile 時 disable，AppShell 接手（以 URL 為真相延續）。
+  useShellHistory(nav, setNav, breakpoint !== 'mobile')
 
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const stack = nav.stacks[nav.tabId] ?? []
