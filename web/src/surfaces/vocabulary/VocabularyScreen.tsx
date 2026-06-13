@@ -1,12 +1,22 @@
+import { LayoutGroup, motion } from 'framer-motion'
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCABULARY_FIXTURES } from './fixtures'
 import type { RowReviewState, VocabFixture, VocabRowFixture } from './fixtures'
-import { BooksIcon, MagnifyingGlassIcon, RefreshIcon, SortIcon, SparklesIcon } from './icons'
+import {
+  BooksIcon,
+  KnowledgeGraphIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  RefreshIcon,
+  SortIcon,
+  SparklesIcon,
+} from './icons'
 import { useVocabStore } from './store'
 import { useVocabApiStore } from './useVocabApiStore'
 import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { useShellNav } from '../../shell/ShellNavContext'
 import { screenFor } from '../../shell/nav'
+import { snappy, usePreferredTransition } from '../../motion'
 import './vocabulary.css'
 
 /**
@@ -75,31 +85,78 @@ function StatSegment({
   stats,
   activeFilter,
   onToggle,
+  animated,
 }: {
   stats: VocabFixture['stats']
   activeFilter: RowReviewState | null
   onToggle: (f: RowReviewState) => void
+  /**
+   * shell 路徑：用 framer-motion 共享 layoutId 讓選中底色在 chip 間 spring 滑移
+   * （snappy），並加 press tap feel。parity 路徑為 false → 沿用純 CSS class
+   *（選中態僅互動後出現，初始 capture 無此 DOM，逐像素一致）。
+   */
+  animated: boolean
 }) {
   const counts = [stats.unlearned, stats.due, stats.reviewed]
+  const transition = usePreferredTransition(snappy)
+
+  // parity 路徑：純靜態 button + CSS class（不掛任何 motion）。選中態僅互動後出現，
+  // 初始 capture（activeFilter=null）無此 DOM，故與靜態 PNG 逐像素一致。
+  if (!animated) {
+    return (
+      <div className="vc-segment">
+        {STAT_LABELS.map((label, i) => {
+          const selected = activeFilter === STAT_STATES[i]
+          return (
+            <button
+              type="button"
+              className={`vc-stat${selected ? ' vc-stat-selected' : ''}`}
+              key={label}
+              onClick={() => onToggle(STAT_STATES[i])}
+              aria-pressed={selected}
+            >
+              <span className="vc-stat-label">{label}</span>
+              <span className="vc-stat-count">{counts[i]}</span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // shell 路徑：選中底色為共享 layoutId 的 motion.span → 切換 chip 時 spring 滑移
+  // 而非瞬跳；button 加 whileTap press feel。reduced-motion 由 transition 收斂為瞬時。
   return (
-    <div className="vc-segment">
-      {STAT_LABELS.map((label, i) => {
-        const state = STAT_STATES[i]
-        const selected = activeFilter === state
-        return (
-          <button
-            type="button"
-            className={`vc-stat${selected ? ' vc-stat-selected' : ''}`}
-            key={label}
-            onClick={() => onToggle(state)}
-            aria-pressed={selected}
-          >
-            <span className="vc-stat-label">{label}</span>
-            <span className="vc-stat-count">{counts[i]}</span>
-          </button>
-        )
-      })}
-    </div>
+    <LayoutGroup id="vc-segment">
+      <div className="vc-segment">
+        {STAT_LABELS.map((label, i) => {
+          const state = STAT_STATES[i]
+          const selected = activeFilter === state
+          return (
+            <motion.button
+              type="button"
+              className={`vc-stat${selected ? ' vc-stat-active' : ''}`}
+              key={label}
+              onClick={() => onToggle(state)}
+              aria-pressed={selected}
+              whileTap={{ scale: 0.94 }}
+              transition={transition}
+            >
+              {selected && (
+                <motion.span
+                  layoutId="vc-stat-pill"
+                  className="vc-stat-pill"
+                  transition={transition}
+                  aria-hidden="true"
+                />
+              )}
+              <span className="vc-stat-label">{label}</span>
+              <span className="vc-stat-count">{counts[i]}</span>
+            </motion.button>
+          )
+        })}
+      </div>
+    </LayoutGroup>
   )
 }
 
@@ -119,13 +176,27 @@ function VocabularyScreenFixture({ scenario }: { scenario: ScenarioId<'vocabular
   return <VocabularyBody fixture={fixture} store={store} />
 }
 
+/** 殼層 header 動作 bag — 只在 shell 路徑提供（parity 不掛，header 維持純標題）。 */
+type VocabHeaderActions = {
+  /** 知識圖譜（KG）入口 → push vocab-knowledge-graph（live force graph）。 */
+  openKnowledgeGraph: () => void
+  /** 新增連結入口 → push vocab-add-link。 */
+  openAddLink: () => void
+}
+
 /** API-driven screen — shell=1 時使用真實後端資料。 */
 function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
   const store = useVocabApiStore(notebookId)
   const nav = useShellNav()
   // 點列 → 導航至 word-detail-sheet，攜 params.word（= card.content）+ notebookId。
+  // RouteTransition（殼層全域）已為此 push 上 iOS nav-push spring 轉場。
   const openWord = (word: string) =>
     nav.navigate(screenFor('word-detail-sheet', { word, notebookId: notebookId ?? undefined }))
+  // header 鈕分派 Phase-1 導航邊：vocabulary → vocab-knowledge-graph / vocab-add-link。
+  const headerActions: VocabHeaderActions = {
+    openKnowledgeGraph: () => nav.navigate(screenFor('vocab-knowledge-graph')),
+    openAddLink: () => nav.navigate(screenFor('vocab-add-link')),
+  }
   const stats = {
     unlearned: store.visibleRows.filter((r) => r.reviewState === 'unlearned').length,
     due: store.visibleRows.filter((r) => r.reviewState === 'due').length,
@@ -151,7 +222,12 @@ function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
       status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
       onRetry={store.retry}
     >
-      <VocabularyBody fixture={fixture} store={store} onRowOpen={openWord} />
+      <VocabularyBody
+        fixture={fixture}
+        store={store}
+        onRowOpen={openWord}
+        headerActions={headerActions}
+      />
     </VocabSceneShell>
   )
 }
@@ -161,6 +237,7 @@ function VocabularyBody({
   fixture,
   store,
   onRowOpen,
+  headerActions,
 }: {
   fixture: VocabFixture
   store: {
@@ -175,14 +252,41 @@ function VocabularyBody({
   }
   /** shell 路徑：點列導航至 word-detail（word = card.content）。parity 路徑省略 → 就地展開。 */
   onRowOpen?: (word: string) => void
+  /**
+   * shell 路徑：header 動作 bag（知識圖譜 / 新增連結 鈕）。parity 路徑省略 →
+   * header 維持純標題、不掛 motion，DOM 與靜態 PNG 逐像素一致。其在場亦作為
+   * 「此為殼層渲染」的單一旗標：驅動 chip 動畫 / 搜尋聚焦 feel / 滾動慣性。
+   */
+  headerActions?: VocabHeaderActions
 }) {
   const hasNoSeed = fixture.rows.length === 0
   const showZeroData = hasNoSeed && fixture.empty
+  const isShell = headerActions != null
 
   return (
-    <div className="vocabulary">
+    <div className={`vocabulary${isShell ? ' vc-shell' : ''}`}>
       <header className="vc-nav">
         <h1 className="vc-nav-title">我的單字本</h1>
+        {headerActions && (
+          <div className="vc-nav-actions">
+            <button
+              type="button"
+              className="vc-nav-action"
+              aria-label="知識圖譜"
+              onClick={headerActions.openKnowledgeGraph}
+            >
+              <KnowledgeGraphIcon size={20} />
+            </button>
+            <button
+              type="button"
+              className="vc-nav-action"
+              aria-label="新增連結"
+              onClick={headerActions.openAddLink}
+            >
+              <PlusIcon size={20} />
+            </button>
+          </div>
+        )}
       </header>
 
       <div className="vc-scroll">
@@ -204,6 +308,7 @@ function VocabularyBody({
           stats={fixture.stats}
           activeFilter={store.activeFilter}
           onToggle={store.toggleFilter}
+          animated={isShell}
         />
 
         {/* chip/sort 列：Spacer 推到右 → sort pill +（可選）未學複習 CTA pill */}
