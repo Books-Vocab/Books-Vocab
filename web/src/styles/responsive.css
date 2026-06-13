@@ -174,16 +174,10 @@
   overflow: hidden;
 }
 
-/* tablet: single fluid content pane */
+/* tablet: single fluid content pane. The content lives in .shell-pane-master;
+   deep push stacks in the same column (slide-over). There is no side-by-side
+   detail pane on tablet, so the tablet @media below hides .shell-pane-detail. */
 .kg-responsive-shell[data-breakpoint='tablet'] .shell-pane-master {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  overflow-y: auto;
-}
-
-/* tablet has no detail pane: deep push stacks in the same column (slide-over) */
-.kg-responsive-shell[data-breakpoint='tablet'] .shell-pane-detail {
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
