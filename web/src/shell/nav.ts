@@ -18,16 +18,18 @@ import { DEFAULT_TAB_ID, SHELL_TABS } from './tabs'
  *
  * 誠實邊界：web 只重寫了部分 surface，導航圖只連「web 真實可達」的畫面：
  *   bookshelf      → reader（點書 → 靜態 reader chrome / live reader，帶 bookId）
+ *   bookshelf      → settings（gear glyph → 設定；設定子樹由此 surface 接力可達）
  *   notebook       → vocabulary（點單字本卡 → 該本單字列表，帶 notebookId）
  *   notebook       → today-review（今日複習 CTA → 複習卡）
  *   notebook       → notebook-edit（編輯單字本 → 編輯 sheet surface）
  *   vocabulary     → word-detail-sheet（點單字列 → 單字詳情，帶 word）
  *   vocabulary     → vocab-add-link（新增連結入口）
- *   vocabulary     → knowledge-graph-view（知識圖譜入口）
+ *   vocabulary     → knowledge-graph-view（知識圖譜 logged-out 空圖入口）
+ *   vocabulary     → vocab-knowledge-graph（知識圖譜 live force graph 入口）
  *   podcast-home   → podcast-episode-list（系列 → 集數列表，帶 seriesId）
  *   podcast-episode-list → podcast（點集數 → 播放器，帶 seriesId/epNum）
  *   settings       → settings-review / settings-subscription /
- *                    settings-account-detail / translation-language-settings
+ *                    settings-account-detail / translation-language-settings / sync
  *   overview       → 直接是統計儀表板（StatsPresenter；無下一層可達邊）
  */
 
@@ -139,6 +141,7 @@ export function pop(state: NavState): NavState {
 export type NavIntent =
   // bookshelf
   | 'open-book'
+  | 'open-settings'
   // notebook
   | 'open-notebook'
   | 'open-today-review'
@@ -147,6 +150,7 @@ export type NavIntent =
   | 'open-word'
   | 'add-link'
   | 'open-knowledge-graph'
+  | 'open-vocab-knowledge-graph'
   // podcast
   | 'open-podcast-series'
   | 'open-podcast-episode'
@@ -155,6 +159,7 @@ export type NavIntent =
   | 'open-settings-subscription'
   | 'open-settings-account'
   | 'open-settings-translation-language'
+  | 'open-sync'
 
 /**
  * 誠實導航圖：(from.surface, intent) → 下一畫面。params 可攜實體 id；省略 →
@@ -168,6 +173,9 @@ export function pushTargetFor(
   switch (from.surface) {
     case 'bookshelf':
       if (intent === 'open-book') return screenFor('reader', params)
+      // gear glyph（iOS BookshelfView top-leading toolbar）→ 設定。設定子樹
+      // （sync / subscription / account / translation）由此 surface 接力可達。
+      if (intent === 'open-settings') return screenFor('settings')
       return null
     case 'notebook':
       if (intent === 'open-notebook') return screenFor('vocabulary', params)
@@ -178,6 +186,10 @@ export function pushTargetFor(
       if (intent === 'open-word') return screenFor('word-detail-sheet', params)
       if (intent === 'add-link') return screenFor('vocab-add-link')
       if (intent === 'open-knowledge-graph') return screenFor('knowledge-graph-view')
+      // 知識圖譜（live force-directed graph，VocabKnowledgeGraphLive）— iOS
+      // KnowledgeGraphPresenter 入口。knowledge-graph-view 為 logged-out 空圖
+      // fixture；此邊落帶資料的互動圖。
+      if (intent === 'open-vocab-knowledge-graph') return screenFor('vocab-knowledge-graph')
       return null
     case 'podcast-home':
       if (intent === 'open-podcast-series') return screenFor('podcast-episode-list', params)
@@ -191,6 +203,8 @@ export function pushTargetFor(
       if (intent === 'open-settings-account') return screenFor('settings-account-detail')
       if (intent === 'open-settings-translation-language')
         return screenFor('translation-language-settings')
+      // 同步狀態列（SettingsView「其他」section）→ sync 狀態畫面（SyncApiStore）。
+      if (intent === 'open-sync') return screenFor('sync')
       return null
     default:
       return null
