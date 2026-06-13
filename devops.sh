@@ -645,7 +645,8 @@ cmd_backup() {
   local prev
   prev=$(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" | head -1) || true  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
   mkdir -p "$dest"
-  rsync -az --delete \
+  info "rsync progress enabled: --info=progress2 --human-readable"
+  rsync -az --delete --info=progress2 --human-readable \
     --exclude='_ops_backups/' \
     --exclude='_ops_world_backups/' \
     ${prev:+--link-dest="$prev"} \

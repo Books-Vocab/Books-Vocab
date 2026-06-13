@@ -41,6 +41,10 @@ grep -q -- "--exclude='_ops_backups/'" "$KG" \
   && grep -q -- "--exclude='_ops_world_backups/'" "$KG" \
   && ok "KG backup excludes nested ops backup trees" \
   || fail_t "KG backup should exclude nested ops backup trees"
+grep -q -- "--info=progress2" "$KG" \
+  && grep -q -- "--human-readable" "$KG" \
+  && ok "KG backup rsync shows transfer progress" \
+  || fail_t "KG backup rsync should expose transfer progress"
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"
