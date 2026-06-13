@@ -1,8 +1,13 @@
 import XCTest
 
 final class PodcastPlaybackPerfUITests: UITestCase {
-    private let sustainedPlaybackSeconds: TimeInterval = 8
-    private let minimumElapsedAdvance: TimeInterval = 4
+    private let sustainedPlaybackSeconds: TimeInterval = 60
+    private let minimumElapsedAdvance: TimeInterval = 55
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        executionTimeAllowance = 120
+    }
 
     @MainActor
     func testPodcastPlaybackProbeSustainsRealAudioPlayback() throws {
@@ -13,7 +18,7 @@ final class PodcastPlaybackPerfUITests: UITestCase {
                 "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
                 "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
             ]) { _, new in new },
-            perfLog: "audio"
+            perfLog: "audio,scroll,underline,layout,render"
         )
         captureStep("launch", app: app)
 
@@ -70,18 +75,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
         captureStep("play-verified", app: app)
 
         let initialElapsed = try readElapsedSeconds(from: podcast)
-        let deadline = Date().addingTimeInterval(sustainedPlaybackSeconds + 4)
-        var latestElapsed = initialElapsed
-
-        while Date() < deadline {
-            if let value = Self.parseClock(podcast.elapsedTimeLabel.label) {
-                latestElapsed = value
-                if latestElapsed - initialElapsed >= minimumElapsedAdvance {
-                    break
-                }
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
-        }
+        RunLoop.current.run(until: Date().addingTimeInterval(sustainedPlaybackSeconds))
+        let latestElapsed = try readElapsedSeconds(from: podcast)
 
         captureStep("playback-sustained", app: app)
         attachText(

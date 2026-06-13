@@ -3,11 +3,7 @@ import XCTest
 final class ProEntitlementUITests: UITestCase {
     @MainActor
     func testProEntitlementUnlocksGatedPodcastEpisode() throws {
-        let app = launchIsolatedApp(
-            fixtures: [.authTieredCatalog, .authSignedIn, .entitlementsProAccess],
-            extraEnvironment: PodcastFixture.tieredCatalogEnvironment,
-            perfLog: "pro-entitlement"
-        )
+        let app = launchPodcastAccessScenario(.pro)
         captureStep("pro-launch", app: app)
 
         let podcast = PodcastPage(app: app)
