@@ -74,7 +74,7 @@ describe('bookshelf API wiring (mock backend)', () => {
     expect(before.some((b) => b.id === book.id)).toBe(true)
 
     const deleted = await api.library.delete(book.id)
-    expect(deleted.is_deleted).toBe(true)
+    expect(deleted.deleted).toBe(book.id)
 
     const after = await api.library.list()
     expect(after.some((b) => b.id === book.id)).toBe(false)
