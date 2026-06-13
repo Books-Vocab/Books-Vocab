@@ -1,0 +1,31 @@
+/* ============================================================
+ * LoginGate — 功能型登入閘門的「殼層觀感」修正（shell-only）。
+ *
+ * WHY: LoginGate 沿用 login-sheet.css 的卡片 chrome，但那套幾何是為 393pt 手機
+ * sheet 設計的（按鈕滿幅 + 16pt 邊距）。在桌面寬視窗裡 LoginGate 由 App.tsx 直接
+ * 掛載（非 PhoneFrame），內容會被拉成整個視窗寬 → 巨型按鈕、左對齊、觀感破碎。
+ *
+ * 此檔只作用於 `.login-gate-shell`（LoginGate 根容器專屬 class）。parity 的
+ * `?surface=login-sheet` 走獨立的 LoginSheetScreen（fixture），**不帶**此 class，
+ * 故 login-sheet.css 與 parity capture DOM 完全不受影響（零位元改動）。
+ *
+ * 手法：用恆在的 max-width cap + margin-inline:auto 置中，**不開 @media min-width
+ * 響應式 context**。在手機殼層（393px 視窗、內容 ≈393px < cap）此 cap 為 no-op →
+ * mobile 殼層維持與今日逐位元一致；只有桌面寬視窗才真正收斂並置中。因此也天然
+ * 通過 parity-isolation 掃描（無 responsive context、無 .phone-frame 接觸）。
+ * ============================================================ */
+
+/* LoginGate 根 — 撐滿可用區域並把內容欄水平置中（cap 後才看得出置中效果）。 */
+.login-gate-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+/* 內容欄寬度上限：手機殼層 ≈393px < 420，cap inert（mobile 不變）；桌面收斂到
+   420px 的舒適登入卡寬。max-width-only，非響應式 context。 */
+.login-gate-shell .login-sheet-surface {
+  max-width: 420px;
+  margin-inline: auto;
+}

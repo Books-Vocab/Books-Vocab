@@ -1,15 +1,20 @@
 import { useAuth } from './AuthContext'
 import { AppHeroIcon, AppleLogoIcon, ChevronRightIcon, WarningTriangleFillIcon } from '../surfaces/login-sheet/icons'
 import '../surfaces/login-sheet/login-sheet.css'
+import './login-gate.css'
 
 /**
  * 功能型登入閘門 — 視覺沿用 login-sheet.css，但按鈕為真 button，觸發 OAuth popup。
  * 這是 app 層入口，不是 catalog parity surface，因此允許互動 state。
+ *
+ * 桌面寬視窗下由 `.login-gate-shell` wrapper（login-gate.css）把內容欄收斂到
+ * 420px 並置中（手機殼層 inert，parity surface 不帶此 class，零影響）。
  */
 export function LoginGate() {
   const { login, devLogin, devLoginEnabled, error, isLoading } = useAuth()
 
   return (
+    <div className="login-gate-shell">
     <div className="login-sheet-surface">
       <div className="login-sheet-content">
         <div className="login-sheet-spacer" />
@@ -94,6 +99,7 @@ export function LoginGate() {
           <div className="login-sheet-overlay-label">正在驗證帳號…</div>
         </div>
       ) : null}
+    </div>
     </div>
   )
 }

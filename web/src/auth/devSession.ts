@@ -49,3 +49,26 @@ export function resolveShellAccess(state: {
   if (state.isLoading) return 'loading'
   return state.isLoggedIn ? 'full' : 'guest'
 }
+
+/**
+ * 資料畫面的 guest 空態 vs 真錯誤分類 — 'ok' | 'guest-empty' | 'error'。
+ *
+ * 殼層提供的單一真相純函式：把「data fetch 是否失敗」與「是否已登入」分流成下游
+ * surface 的三態。未登入時（guest）無 token 必然取不到使用者資料，這**不是錯誤**而是
+ * 「尚未登入」→ surface 應顯示登入引導空態（'guest-empty'），不可裸報系統錯誤；
+ * 已登入仍失敗才是真錯誤（'error'，可重試）。Phase-2 bookshelf 以此把
+ * useBookshelfApiStore 的 status='error'（guest 因無 token catch→error）正確分流，
+ * 不再把「未登入」誤判成「載入失敗」。
+ *
+ * 不變式：isLoggedIn=false ⇒ 恆 'guest-empty'（無論 failed），因 guest 進場本就無
+ * 個人資料可顯示；isLoggedIn=true 時才依 failed 落 'error' / 'ok'。
+ */
+export type DataState = 'ok' | 'guest-empty' | 'error'
+
+export function classifyDataState(state: {
+  isLoggedIn: boolean
+  failed: boolean
+}): DataState {
+  if (!state.isLoggedIn) return 'guest-empty'
+  return state.failed ? 'error' : 'ok'
+}
