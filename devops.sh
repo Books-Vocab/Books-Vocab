@@ -452,7 +452,7 @@ cmd_deploy() {
   # src/ 不是 volume mount，所有程式碼都 COPY 進 image，必須 rebuild 才能生效
   section "重新編譯並啟動容器"
   run_remote "sudo chown -R 1000:1000 $REMOTE_DIR/data 2>/dev/null || true"
-  run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
+  run_remote "cd $REMOTE_DIR && docker compose up -d --build --force-recreate 2>&1 | tail -20"
 
   if [[ "$needs_full" == "true" ]]; then
     section "DB Migration"
