@@ -32,7 +32,7 @@
   align-items: center;
   justify-content: center;
   height: 114px; /* nav 底 ≈ 首 header(126.7) − pageTopPadding(12) */
-  padding-top: 47px; /* status bar + inline bar 上緣留白，令 title 落 ~74pt */
+  padding-top: var(--surface-safe-top, 47px); /* status bar + inline bar 上緣留白，令 title 落 ~74pt */
   flex: none;
 }
 

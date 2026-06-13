@@ -19,7 +19,7 @@
    top ≈123.3pt，103 + 列內距 15 = 118。標題色為 primaryText（非 settings 的 inline
    白字材質）。 */
 .nb-nav {
-  padding: 118px 12px 0; /* editorialHorizontal=12（非 bookshelf 的 20） */
+  padding: var(--surface-safe-top, 118px) 12px 0; /* editorialHorizontal=12（非 bookshelf 的 20） */
 }
 
 .nb-nav-title {

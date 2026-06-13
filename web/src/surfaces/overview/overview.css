@@ -18,7 +18,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px; /* sectionGap */
-  padding: 75.3px 20px 0; /* top measured · page-h-inset 20pt(s5) */
+  padding: var(--surface-safe-top, 75.3px) 20px 0; /* top measured · page-h-inset 20pt(s5) */
   box-sizing: border-box;
 }
 

@@ -27,7 +27,7 @@
 
 /* --- Large-title nav（與 bookshelf 對齊：status 59 + bar 44 + 列內距 15 = 118）--- */
 .ph-nav {
-  padding: 118px var(--sp-5) 0; /* 20 = pageHorizontalPadding */
+  padding: var(--surface-safe-top, 118px) var(--sp-5) 0; /* 20 = pageHorizontalPadding */
 }
 
 .ph-nav-title {

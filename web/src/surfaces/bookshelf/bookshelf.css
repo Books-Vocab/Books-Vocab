@@ -17,7 +17,7 @@
    glyph top = 123.3pt，103 + 列內距 15 = 118 釘齊（剩餘 5.3pt 是 41px
    line box 內 34px 字面上方的 ascent gap，由 line-height 自然提供）。 */
 .bookshelf-nav {
-  padding: 118px 20px 0;
+  padding: var(--surface-safe-top, 118px) 20px 0;
 }
 
 .bookshelf-nav-title {
@@ -287,7 +287,7 @@
    （nav large-title 右側熱區），預設不可見、hover 才淡入。pixel-neutral。 */
 .bookshelf-import-affordance {
   position: absolute;
-  top: 118px; /* 對齊 large-title baseline 帶 */
+  top: var(--surface-safe-top, 118px); /* 對齊 large-title baseline 帶（容器注入 → 桌面收斂） */
   right: 16px;
   display: inline-flex;
   align-items: center;

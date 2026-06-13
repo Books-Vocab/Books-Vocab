@@ -50,7 +50,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 18px; /* Preview.blockSpacing */
-  padding: 120px 28px 60px; /* topInset 120 / horizontalInset 28 / bottomInset 60 */
+  padding: var(--surface-safe-top, 120px) 28px 60px; /* topInset 120 / horizontalInset 28 / bottomInset 60 */
   box-sizing: border-box;
 }
 

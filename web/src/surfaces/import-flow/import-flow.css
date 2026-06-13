@@ -16,7 +16,7 @@
 
 /* --- large-title nav（沿用 notebook 的 large-title 幾何） --- */
 .if-nav {
-  padding: 118px 16px 6px;
+  padding: var(--surface-safe-top, 118px) 16px 6px;
 }
 
 .if-nav-title {

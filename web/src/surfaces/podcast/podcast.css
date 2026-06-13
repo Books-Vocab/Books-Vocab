@@ -26,7 +26,7 @@
   /* nav region：status bar + inline player nav（settings gear）。measured：
      padding-top 124 為 parity 最佳（diff-RMSE 收斂，非單看 bubble fill top——圓角
      使 fill-top 取樣偏移）。再上/下移皆抬升 RMSE。 */
-  padding-top: 124px;
+  padding-top: var(--surface-safe-top, 124px);
   box-sizing: border-box;
 }
 
