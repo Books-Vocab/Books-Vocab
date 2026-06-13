@@ -1,5 +1,7 @@
+import { useCallback, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useAuth } from '../../auth'
 import './delete-account-sheet.css'
 import {
   ACKNOWLEDGEMENT_ROWS,
@@ -43,13 +45,69 @@ import {
  * catalog scene = .fill opaque（pageBackground 不透明）→ 全 phone-frame 不透明捕捉，無
  * transparent flag。
  */
+
 export function DeleteAccountSheetScreen({
   scenario,
 }: {
   scenario: ScenarioId<'delete-account-sheet'>
 }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <DeleteAccountSheetScreenApi />
+  }
+  return <DeleteAccountSheetScreenFixture scenario={scenario} />
+}
+
+function DeleteAccountSheetScreenFixture({ scenario }: { scenario: ScenarioId<'delete-account-sheet'> }) {
   const fx = DELETE_ACCOUNT_FIXTURES[scenario]
+  return <DeleteAccountSheetBody isDeleting={fx.isDeleting} />
+}
+
+function DeleteAccountSheetScreenApi() {
+  const { logout } = useAuth()
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const handleDelete = useCallback(async () => {
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      // Try DELETE /api/user/account — backend may not have this endpoint yet
+      const res = await fetch('/api/user/account', { method: 'DELETE' })
+      if (!res.ok) {
+        throw new Error('DELETE endpoint not available')
+      }
+      // Success: logout
+      logout()
+    } catch {
+      // Backend endpoint not available — logout only
+      setDeleteError('後端刪除帳號端點尚未實作，僅執行登出。')
+      logout()
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [logout])
+
+  return <DeleteAccountSheetBody isDeleting={isDeleting} onDelete={handleDelete} deleteError={deleteError} />
+}
+
+function DeleteAccountSheetBody({
+  isDeleting,
+  onDelete,
+  deleteError,
+}: {
+  isDeleting: boolean
+  onDelete?: () => void
+  deleteError?: string | null
+}) {
   const c = DELETE_ACCOUNT_COPY
+  const [confirmText, setConfirmText] = useState('')
+  const [acknowledgements, setAcknowledgements] = useState<boolean[]>(() =>
+    ACKNOWLEDGEMENT_ROWS.map(() => false),
+  )
+
+  const allAcked = acknowledgements.every(Boolean)
+  const canDelete = allAcked && confirmText === c.confirmationPhrase && !isDeleting
 
   return (
     <div className="das-surface">
@@ -98,7 +156,18 @@ export function DeleteAccountSheetScreen({
                   {i > 0 ? <div className="das-divider" /> : null}
                   <div className="das-ack-row">
                     <span className="das-ack-title">{title}</span>
-                    <span className="das-toggle" data-on="false" />
+                    <button
+                      type="button"
+                      className="das-toggle"
+                      data-on={acknowledgements[i]}
+                      onClick={() =>
+                        setAcknowledgements((prev) => {
+                          const next = [...prev]
+                          next[i] = !next[i]
+                          return next
+                        })
+                      }
+                    />
                   </div>
                 </div>
               ))}
@@ -112,26 +181,41 @@ export function DeleteAccountSheetScreen({
             </SectionHeader>
             <div className="das-card das-card--settings das-card--confirm">
               <div className="das-confirm-prompt">{c.confirmationPrompt}</div>
-              <div className="das-textfield">{c.confirmationPhrase}</div>
+              <input
+                className="das-textfield"
+                type="text"
+                placeholder={c.confirmationPhrase}
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+              />
             </div>
           </section>
 
           {/* action stack */}
           <div className="das-actions">
-            <button type="button" className="das-btn das-btn--destructive" disabled>
-              {fx.isDeleting ? (
+            <button
+              type="button"
+              className="das-btn das-btn--destructive"
+              disabled={!canDelete}
+              onClick={onDelete}
+            >
+              {isDeleting ? (
                 <span className="das-spinner" aria-hidden="true" />
               ) : (
                 <TrashFillIcon className="das-btn-icon" size={14} />
               )}
               <span className="das-btn-label">
-                {fx.isDeleting ? c.deletingTitle : c.deleteTitle}
+                {isDeleting ? c.deletingTitle : c.deleteTitle}
               </span>
             </button>
             <button type="button" className="das-btn das-btn--neutral">
               {c.cancelTitle}
             </button>
           </div>
+
+          {deleteError && (
+            <p className="das-error">{deleteError}</p>
+          )}
         </div>
       </div>
     </div>

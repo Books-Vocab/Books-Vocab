@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { useAppearance } from '../../harness/appearance'
+import { useApi } from '../../api/ApiContext'
+import type { QuotaResponse, SubscriptionStatusResponse, UserConfigResponse } from '../../api/types'
 import appIconUrl from '../../assets/app_icon.png'
 import { SETTINGS_FIXTURES, PREFERENCE_ROWS, EXTERNAL_ROWS } from './fixtures'
 import type { LoggedInAccount, LoggedOutAccount } from './fixtures'
+import { useAuth } from '../../auth'
 import {
   AppearanceIcon,
   AppleLogoIcon,
@@ -200,7 +203,140 @@ function PreferenceSheet({
 }
 
 export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <SettingsScreenApi />
+  }
+  return <SettingsScreenFixture scenario={scenario} />
+}
+
+function SettingsScreenFixture({ scenario }: { scenario: ScenarioId<'settings'> }) {
   const fixture = SETTINGS_FIXTURES[scenario]
+  return <SettingsBody fixture={fixture} />
+}
+
+function SettingsScreenApi() {
+  const api = useApi()
+  const { logout } = useAuth()
+  const [config, setConfig] = useState<UserConfigResponse | null>(null)
+  const [quota, setQuota] = useState<QuotaResponse | null>(null)
+  const [entitlements, setEntitlements] = useState<SubscriptionStatusResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [optimisticConfig, setOptimisticConfig] = useState<UserConfigResponse | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [cfg, q, ent] = await Promise.all([
+        api.user.config(),
+        api.user.quota().catch(() => null),
+        api.user.entitlements().catch(() => null),
+      ])
+      setConfig(cfg)
+      setOptimisticConfig(cfg)
+      setQuota(q)
+      setEntitlements(ent?.pro ?? null)
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const _isLoggedIn = !!config
+  void _isLoggedIn // used in fixture derivation below
+
+  // Build fixture from API data
+  const fixture: SettingsFixture = useMemo(() => {
+    if (loading || !config) {
+      return {
+        account: {
+          kind: 'logged-out',
+          heroTitle: '解鎖完整功能',
+          heroSubtitle: 'AI 翻譯・知識圖譜・雲端同步',
+        },
+        autoSync: null,
+        preferencesFootnote: PREFERENCES_FOOTNOTE_BASE,
+        syncStatusValue: null,
+      }
+    }
+
+    const isPro = entitlements?.is_active ?? false
+    const account: LoggedInAccount = {
+      kind: 'logged-in',
+      displayName: 'User',
+      email: 'user@example.com',
+      initials: 'US',
+      proBadge: isPro,
+      subscription: {
+        active: isPro,
+        title: isPro ? 'Pro 已啟用' : 'Pro',
+        detail: isPro
+          ? `年度方案，到期日 ${entitlements?.expires_at ?? '2027-03-10'}`
+          : 'App Store 價格載入中，稍後會自動更新。',
+        pillLabel: isPro ? '啟用中' : '升級',
+      },
+    }
+
+    return {
+      account,
+      autoSync: true,
+      preferencesFootnote: PREFERENCES_FOOTNOTE_SYNC,
+      syncStatusValue: quota
+        ? `已連線 · ${Math.round(quota.fraction * 100)}% 額度 · ${formatResetTime(quota.reset_seconds)}`
+        : FALLBACK_SYNC_STATUS,
+    }
+  }, [loading, config, entitlements, quota])
+
+  const updateConfig = useCallback(
+    async (patch: Partial<UserConfigResponse>) => {
+      if (!optimisticConfig) return
+      const next = { ...optimisticConfig, ...patch }
+      setOptimisticConfig(next)
+      try {
+        const saved = await api.user.updateConfig(patch)
+        setConfig(saved)
+        setOptimisticConfig(saved)
+      } catch {
+        // rollback
+        setOptimisticConfig(config)
+      }
+    },
+    [api, optimisticConfig, config],
+  )
+
+  return (
+    <SettingsBody
+      fixture={fixture}
+      apiMode
+      onLogout={logout}
+      onUpdateConfig={updateConfig}
+    />
+  )
+}
+
+function formatResetTime(sec: number): string {
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  if (h > 0) return `${h} 小時後重置`
+  return `${m} 分鐘後重置`
+}
+
+function SettingsBody({
+  fixture,
+  apiMode,
+  onLogout,
+  onUpdateConfig,
+}: {
+  fixture: SettingsFixture
+  apiMode?: boolean
+  onLogout?: () => void
+  onUpdateConfig?: (patch: Partial<UserConfigResponse>) => Promise<void>
+}) {
   const { appearance, setAppearance } = useAppearance()
 
   // 互動 state：初值取自 fixture，確保 parity 首屏不變。
@@ -229,7 +365,11 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
       : PREFERENCES_FOOTNOTE_BASE
 
   function signOut() {
-    setAccount(SETTINGS_FIXTURES['logged-out'].account)
+    if (apiMode && onLogout) {
+      onLogout()
+    } else {
+      setAccount(SETTINGS_FIXTURES['logged-out'].account)
+    }
   }
   function signIn() {
     setAccount(SETTINGS_FIXTURES['subscribed-active'].account)
@@ -251,6 +391,28 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
     }
     setPrefValues((prev) => ({ ...prev, [label]: value }))
     setOpenSheet(null)
+
+    // API mode: update config for review_mode
+    if (apiMode && onUpdateConfig) {
+      if (label === '複習節奏') {
+        const modeMap: Record<string, string> = {
+          寬鬆: 'relaxed',
+          標準: 'intensive',
+          密集: 'custom',
+        }
+        void onUpdateConfig({
+          review_mode: {
+            mode: modeMap[value] ?? 'relaxed',
+            custom_initial_interval_hours: 12,
+            custom_remembered_multiplier: 1.9,
+            custom_forgot_multiplier: 0.45,
+            custom_minimum_interval_hours: 6,
+            custom_maximum_interval_hours: 1440,
+            updated_at: null,
+          },
+        })
+      }
+    }
   }
 
   function preferenceDisplayValue(label: PreferenceLabel): string {
@@ -317,7 +479,19 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
                     role="switch"
                     aria-checked={showAutoSync}
                     aria-label="自動同步"
-                    onClick={() => setAutoSync((v) => !v)}
+                    onClick={() => {
+                      const next = !showAutoSync
+                      setAutoSync(next)
+                      if (apiMode && onUpdateConfig) {
+                        void onUpdateConfig({
+                          review_clock: {
+                            is_paused: !next,
+                            paused_at: next ? null : new Date().toISOString(),
+                            updated_at: null,
+                          },
+                        })
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -373,4 +547,11 @@ export function SettingsScreen({ scenario }: { scenario: ScenarioId<'settings'> 
       )}
     </div>
   )
+}
+
+export interface SettingsFixture {
+  account: LoggedInAccount | LoggedOutAccount
+  autoSync: boolean | null
+  preferencesFootnote: string
+  syncStatusValue: string | null
 }
