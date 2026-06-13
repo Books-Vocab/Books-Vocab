@@ -38,11 +38,15 @@ MAPPING  (SoT key  ->  web export)
     this dataset, since every card lives in a named notebook).
 
   VOCAB CARDS  (from dataset.cards)
-    VocabCardSeed.id             <- "card-" + (1-based index)
-    VocabCardSeed.word           <- card.content
-    VocabCardSeed.meaning        <- card.meaning
-    VocabCardSeed.pos            <- strip-dot(card.pos)   ("n." -> "n", null -> null)
-    VocabCardSeed.notebookId     <- slug(card.notebook)   (NAME -> same id as above)
+    VocabCardSeed.id                 <- "card-" + (1-based index)
+    VocabCardSeed.word               <- card.content
+    VocabCardSeed.meaning            <- card.meaning
+    VocabCardSeed.pos                <- strip-dot(card.pos)   ("n." -> "n", null -> null)
+    VocabCardSeed.notebookId         <- slug(card.notebook)   (NAME -> same id as above)
+    VocabCardSeed.reviewState        <- card.review.state      ("new" | "due" | "reviewed")
+    VocabCardSeed.reviewIntervalHours<- card.review.interval   (SoT unit = hours, emitted
+                                        as a float literal; the transformer turns this +
+                                        reviewState into the SRS fields below, see there)
 
   GRAPH LINKS  (from dataset.links)
     GraphLinkSeed.id             <- "link-" + (1-based index)
@@ -198,6 +202,7 @@ def _derive(sot: DemoSoT) -> dict[str, Any]:
         card_id = f"card-{i}"
         nb_name = c.get("notebook", _DEFAULT_NOTEBOOK_ID)
         nb_id = _DEFAULT_NOTEBOOK_ID if nb_name == _DEFAULT_NOTEBOOK_ID else _slug(nb_name)
+        review = c.get("review", {}) or {}
         vocab_cards.append(
             {
                 "id": card_id,
@@ -205,6 +210,8 @@ def _derive(sot: DemoSoT) -> dict[str, Any]:
                 "meaning": c["meaning"],
                 "pos": _strip_dot(c.get("pos")),
                 "notebookId": nb_id,
+                "reviewState": review.get("state", "new"),
+                "reviewIntervalHours": review.get("interval"),
             }
         )
         id_by_nb_content[(nb_name, c["content"])] = card_id
@@ -322,7 +329,9 @@ def _render_vocabulary_ts(model: dict[str, Any]) -> str:
             f"word: {_ts_str(c['word'])}, "
             f"meaning: {_ts_str(c['meaning'])}, "
             f"pos: {_ts_str_or_null(c['pos'])}, "
-            f"notebookId: {_ts_str(c['notebookId'])} "
+            f"notebookId: {_ts_str(c['notebookId'])}, "
+            f"reviewState: {_ts_str(c['reviewState'])}, "
+            f"reviewIntervalHours: {_ts_num(float(c['reviewIntervalHours']))} "
             "},"
         )
     card_block = "\n".join(card_rows)
@@ -355,6 +364,16 @@ import {{ SEED_NOW_ISO }} from './account.generated'
 /** Default per-card review interval (hours) for freshly-added unlearned cards. */
 export const CARD_DEFAULT_INTERVAL_HOURS = {_CARD_DEFAULT_INTERVAL_HOURS}
 
+/**
+ * Per-card SoT review state. The transformer turns this into the SRS metadata
+ * (reviewCount / lastReviewedAt / nextReviewAt / reviewStreak) so the demo
+ * vocabulary UI faithfully renders the authored 未學習/待複習/已複習 split:
+ *   'new'      → never reviewed (reviewCount 0, nextReviewAt = SEED_NOW).
+ *   'due'      → reviewed once, already overdue (nextReviewAt = SEED_NOW).
+ *   'reviewed' → reviewed once, next review SEED_NOW + interval (future).
+ */
+export type VocabReviewState = 'new' | 'due' | 'reviewed'
+
 export interface VocabCardSeed {{
   /** Stable card id (card-1, card-2, …). */
   id: string
@@ -366,6 +385,10 @@ export interface VocabCardSeed {{
   pos: string | null
   /** Owning notebook id (slug of the dataset notebook NAME). */
   notebookId: string
+  /** Authored SoT review state (drives the SRS metadata the transformer derives). */
+  reviewState: VocabReviewState
+  /** SoT review interval in HOURS (CardResponse.reviewIntervalHours). */
+  reviewIntervalHours: number
 }}
 
 /** Demo vocab cards, derived 1:1 from dataset.cards (1-based card ids). */

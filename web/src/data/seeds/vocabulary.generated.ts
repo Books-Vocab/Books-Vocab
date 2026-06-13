@@ -11,6 +11,16 @@ import { SEED_NOW_ISO } from './account.generated'
 /** Default per-card review interval (hours) for freshly-added unlearned cards. */
 export const CARD_DEFAULT_INTERVAL_HOURS = 12.0
 
+/**
+ * Per-card SoT review state. The transformer turns this into the SRS metadata
+ * (reviewCount / lastReviewedAt / nextReviewAt / reviewStreak) so the demo
+ * vocabulary UI faithfully renders the authored 未學習/待複習/已複習 split:
+ *   'new'      → never reviewed (reviewCount 0, nextReviewAt = SEED_NOW).
+ *   'due'      → reviewed once, already overdue (nextReviewAt = SEED_NOW).
+ *   'reviewed' → reviewed once, next review SEED_NOW + interval (future).
+ */
+export type VocabReviewState = 'new' | 'due' | 'reviewed'
+
 export interface VocabCardSeed {
   /** Stable card id (card-1, card-2, …). */
   id: string
@@ -22,24 +32,28 @@ export interface VocabCardSeed {
   pos: string | null
   /** Owning notebook id (slug of the dataset notebook NAME). */
   notebookId: string
+  /** Authored SoT review state (drives the SRS metadata the transformer derives). */
+  reviewState: VocabReviewState
+  /** SoT review interval in HOURS (CardResponse.reviewIntervalHours). */
+  reviewIntervalHours: number
 }
 
 /** Demo vocab cards, derived 1:1 from dataset.cards (1-based card ids). */
 export const VOCAB_CARD_SEEDS: VocabCardSeed[] = [
-  { id: 'card-1', word: 'meticulous', meaning: '一絲不苟的；極為仔細的', pos: 'adj', notebookId: 'editorial-picks' },
-  { id: 'card-2', word: 'discerning', meaning: '有洞察力的；能辨別細微差異的', pos: 'adj', notebookId: 'editorial-picks' },
-  { id: 'card-3', word: 'evoke', meaning: '喚起；引發（情感或記憶）', pos: 'v', notebookId: 'editorial-picks' },
-  { id: 'card-4', word: 'luminous', meaning: '明亮的；清晰動人的（文筆）', pos: 'adj', notebookId: 'editorial-picks' },
-  { id: 'card-5', word: 'nuance', meaning: '細微差別；微妙之處', pos: 'n', notebookId: 'editorial-picks' },
-  { id: 'card-6', word: 'entropy', meaning: '熵；系統的混亂程度', pos: 'n', notebookId: 'systems-thinking' },
-  { id: 'card-7', word: 'cascade', meaning: '一連串；連鎖反應', pos: 'n', notebookId: 'systems-thinking' },
-  { id: 'card-8', word: 'coherent', meaning: '連貫的；條理一致的', pos: 'adj', notebookId: 'systems-thinking' },
-  { id: 'card-9', word: 'leverage', meaning: '善用；以槓桿放大效果', pos: 'v', notebookId: 'systems-thinking' },
-  { id: 'card-10', word: 'feedback', meaning: '回饋；系統輸出反向影響輸入', pos: 'n', notebookId: 'systems-thinking' },
-  { id: 'card-11', word: 'cadence', meaning: '節奏；穩定推進的步調', pos: 'n', notebookId: 'creative-practice' },
-  { id: 'card-12', word: 'iterate', meaning: '反覆打磨；迭代改進', pos: 'v', notebookId: 'creative-practice' },
-  { id: 'card-13', word: 'tactile', meaning: '有觸感的；能喚起手感的', pos: 'adj', notebookId: 'creative-practice' },
-  { id: 'card-14', word: 'prototype', meaning: '原型；先做出可驗證的版本', pos: 'n', notebookId: 'creative-practice' },
+  { id: 'card-1', word: 'meticulous', meaning: '一絲不苟的；極為仔細的', pos: 'adj', notebookId: 'editorial-picks', reviewState: 'reviewed', reviewIntervalHours: 72.0 },
+  { id: 'card-2', word: 'discerning', meaning: '有洞察力的；能辨別細微差異的', pos: 'adj', notebookId: 'editorial-picks', reviewState: 'reviewed', reviewIntervalHours: 96.0 },
+  { id: 'card-3', word: 'evoke', meaning: '喚起；引發（情感或記憶）', pos: 'v', notebookId: 'editorial-picks', reviewState: 'due', reviewIntervalHours: 24.0 },
+  { id: 'card-4', word: 'luminous', meaning: '明亮的；清晰動人的（文筆）', pos: 'adj', notebookId: 'editorial-picks', reviewState: 'new', reviewIntervalHours: 12.0 },
+  { id: 'card-5', word: 'nuance', meaning: '細微差別；微妙之處', pos: 'n', notebookId: 'editorial-picks', reviewState: 'new', reviewIntervalHours: 12.0 },
+  { id: 'card-6', word: 'entropy', meaning: '熵；系統的混亂程度', pos: 'n', notebookId: 'systems-thinking', reviewState: 'reviewed', reviewIntervalHours: 168.0 },
+  { id: 'card-7', word: 'cascade', meaning: '一連串；連鎖反應', pos: 'n', notebookId: 'systems-thinking', reviewState: 'due', reviewIntervalHours: 48.0 },
+  { id: 'card-8', word: 'coherent', meaning: '連貫的；條理一致的', pos: 'adj', notebookId: 'systems-thinking', reviewState: 'new', reviewIntervalHours: 12.0 },
+  { id: 'card-9', word: 'leverage', meaning: '善用；以槓桿放大效果', pos: 'v', notebookId: 'systems-thinking', reviewState: 'due', reviewIntervalHours: 36.0 },
+  { id: 'card-10', word: 'feedback', meaning: '回饋；系統輸出反向影響輸入', pos: 'n', notebookId: 'systems-thinking', reviewState: 'reviewed', reviewIntervalHours: 120.0 },
+  { id: 'card-11', word: 'cadence', meaning: '節奏；穩定推進的步調', pos: 'n', notebookId: 'creative-practice', reviewState: 'due', reviewIntervalHours: 36.0 },
+  { id: 'card-12', word: 'iterate', meaning: '反覆打磨；迭代改進', pos: 'v', notebookId: 'creative-practice', reviewState: 'reviewed', reviewIntervalHours: 60.0 },
+  { id: 'card-13', word: 'tactile', meaning: '有觸感的；能喚起手感的', pos: 'adj', notebookId: 'creative-practice', reviewState: 'new', reviewIntervalHours: 12.0 },
+  { id: 'card-14', word: 'prototype', meaning: '原型；先做出可驗證的版本', pos: 'n', notebookId: 'creative-practice', reviewState: 'new', reviewIntervalHours: 12.0 },
 ]
 
 export interface GraphLinkSeed {
