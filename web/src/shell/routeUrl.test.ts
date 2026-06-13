@@ -106,3 +106,51 @@ describe('pathToNav', () => {
     expect(pathToNav('/app/notebook/bogus')).toBeNull()
   })
 })
+
+describe('decode 嚴格性（P1.1-fix：禁止靜默 fallback）', () => {
+  it('param 值含 ~ 被編碼為 %7E 且 round-trip', () => {
+    let s = selectTab(initialNavState(), 'notebooks')
+    s = push(s, screenFor('vocabulary', { notebookId: 'nb-1' }))
+    s = push(s, screenFor('word-detail-sheet', { word: 'a~b' }))
+    expect(navToPath(s)).toBe(
+      '/app/notebook/vocabulary~notebookId:nb-1/word-detail-sheet~word:a%7Eb',
+    )
+    expect(pathToNav(navToPath(s))).toEqual(s)
+  })
+
+  it('format 合法值 round-trip', () => {
+    let s = selectTab(initialNavState(), 'bookshelf')
+    s = push(s, screenFor('reader', { bookId: 'bk-3', format: 'epub' }))
+    expect(pathToNav(navToPath(s))).toEqual(s)
+  })
+
+  it('epNum 非非負整數字面 → null', () => {
+    expect(pathToNav('/app/podcast-home/podcast~epNum:')).toBeNull()
+    expect(pathToNav('/app/podcast-home/podcast~epNum:3.5')).toBeNull()
+    expect(pathToNav('/app/podcast-home/podcast~epNum:0x10')).toBeNull()
+    expect(pathToNav('/app/podcast-home/podcast~epNum:-1')).toBeNull()
+    expect(pathToNav('/app/podcast-home/podcast~epNum:1e9')).toBeNull()
+  })
+
+  it('format 越域值 → null', () => {
+    expect(pathToNav('/app/bookshelf/reader~format:zzz')).toBeNull()
+  })
+
+  it('未知 param key → null', () => {
+    expect(pathToNav('/app/notebook/vocabulary~bogus:x')).toBeNull()
+  })
+
+  it('重複 param key → null', () => {
+    expect(pathToNav('/app/notebook/vocabulary~notebookId:a,notebookId:b')).toBeNull()
+  })
+
+  it('空 ~（無 params）→ null', () => {
+    expect(pathToNav('/app/notebook/vocabulary~')).toBeNull()
+  })
+
+  it('內部雙斜線 → null（尾斜線仍容忍）', () => {
+    expect(pathToNav('/app//notebook')).toBeNull()
+    expect(pathToNav('/app/notebook//vocabulary~notebookId:nb-1')).toBeNull()
+    expect(pathToNav('/app/notebook/')).not.toBeNull()
+  })
+})
