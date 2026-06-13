@@ -15,7 +15,6 @@ import os
 import shutil
 from pathlib import Path
 
-from catalog_review_renderer import render_html
 from catalog_review_sync import REVIEW_HTML_NAME
 
 
@@ -185,6 +184,7 @@ def write_workspace_index(workspace_root: Path, run: dict) -> dict:
         if (existing.get("flowId"), existing.get("variantId")) != (run.get("flowId"), run.get("variantId"))
     ]
     runs.insert(0, run)
+    runs.sort(key=lambda item: item.get("lastRunAt") or "", reverse=True)
     index["runs"] = runs
     index["summary"] = workspace_summary(runs)
     index["flows"] = flow_records(runs)
@@ -205,6 +205,106 @@ def _artifact_link(run: dict, key: str, label: str) -> str:
     if not href:
         return f'<span class="muted">{_esc(label)} missing</span>'
     return f'<a href="{_esc(href)}">{_esc(label)}</a>'
+
+
+def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[str]) -> str:
+    items = manifest.get("items") or []
+    artifacts = run.get("artifacts") or {}
+    video_href = videos[0].get("src") if videos else None
+    log_href = Path(artifacts["log"]).name if artifacts.get("log") else None
+    local_artifacts = (
+        ("video", video_href),
+        ("log", log_href),
+        ("manifest", "review_manifest.json"),
+    )
+    artifact_links = "\n".join(
+        f'<li><a href="{_esc(href)}">{_esc(label)}</a></li>' if href else f'<li class="muted">{_esc(label)} missing</li>'
+        for label, href in local_artifacts
+    )
+    video_blocks = "\n".join(
+        f"""
+        <figure>
+          <video controls preload="metadata" src="{_esc(video.get('src'))}"></video>
+          <figcaption>{_esc(video.get('file'))} · {_esc(video.get('sizeBytes'))} bytes</figcaption>
+        </figure>
+        """
+        for video in videos
+    )
+    sheet_links = "\n".join(f'<li><a href="{_esc(sheet)}">{_esc(sheet)}</a></li>' for sheet in sheets)
+    step_blocks = "\n".join(
+        f"""
+        <figure>
+          <img src="{_esc(item.get('relPath'))}" alt="{_esc(item.get('assetID') or item.get('stateLabel'))}">
+          <figcaption>
+            <strong>{_esc(item.get('assetID'))}</strong>
+            <span>{_esc(item.get('stateLabel'))}</span>
+            <code>{_esc(item.get('relPath'))}</code>
+          </figcaption>
+        </figure>
+        """
+        for item in items
+        if item.get("relPath")
+    )
+    if not step_blocks:
+        step_blocks = '<p class="empty">No step screenshots were emitted for this UITest run.</p>'
+    if not video_blocks:
+        video_blocks = '<p class="empty">No video artifact was archived for this UITest run.</p>'
+    if not sheet_links:
+        sheet_links = '<li class="muted">contact sheets missing</li>'
+
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KG UITest Run Review</title>
+  <style>
+    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif; background: #f8f7f4; color: #2a2520; }}
+    header {{ position: sticky; top: 0; background: #fcfbfa; border-bottom: 1px solid #dbd6cd; padding: 16px 22px; z-index: 1; }}
+    h1 {{ margin: 0; font-size: 18px; }}
+    main {{ max-width: 1180px; margin: 0 auto; padding: 22px; }}
+    section {{ margin: 22px 0; }}
+    h2 {{ border-bottom: 1px solid #dbd6cd; padding-bottom: 8px; font-size: 15px; }}
+    a {{ color: #2a2520; text-decoration-thickness: 1px; }}
+    .meta-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }}
+    .meta {{ border: 1px solid #dbd6cd; background: #fcfbfa; border-radius: 4px; padding: 10px 12px; }}
+    .meta span, .muted, .empty {{ color: #7a756c; }}
+    .meta strong {{ display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }}
+    ul {{ margin: 0; padding-left: 20px; }}
+    .artifact-grid, .step-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }}
+    figure {{ margin: 0; border: 1px solid #dbd6cd; background: #fcfbfa; border-radius: 4px; overflow: hidden; }}
+    img, video {{ display: block; width: 100%; max-height: 560px; object-fit: contain; background: #111; }}
+    figcaption {{ display: grid; gap: 3px; padding: 8px 10px; font-size: 12px; color: #7a756c; border-top: 1px solid #e8e4db; }}
+    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; overflow-wrap: anywhere; }}
+  </style>
+</head>
+<body>
+  <header><h1>KG UITest Run Review</h1></header>
+  <main>
+    <section class="meta-grid">
+      <div class="meta"><span>flow</span><strong>{_esc(run.get('flowId'))}</strong></div>
+      <div class="meta"><span>variant</span><strong>{_esc(run.get('variantId'))}</strong></div>
+      <div class="meta"><span>status</span><strong>{_esc(run.get('status'))}</strong></div>
+      <div class="meta"><span>lastRunAt</span><strong>{_esc(run.get('lastRunAt'))}</strong></div>
+      <div class="meta"><span>steps</span><strong>{_esc(run.get('stepCount'))}</strong></div>
+      <div class="meta"><span>device</span><strong>{_esc(run.get('device'))}</strong></div>
+    </section>
+    <section>
+      <h2>Artifacts</h2>
+      <ul>{artifact_links}{sheet_links}</ul>
+    </section>
+    <section>
+      <h2>Video</h2>
+      <div class="artifact-grid">{video_blocks}</div>
+    </section>
+    <section>
+      <h2>Step Screenshots</h2>
+      <div class="step-grid">{step_blocks}</div>
+    </section>
+  </main>
+</body>
+</html>
+"""
 
 
 def render_workspace_html(index: dict) -> str:
@@ -340,6 +440,7 @@ def build_review_root(
     for sheet in (contact_sheet, quick4_sheet):
         if sheet and sheet.is_file():
             link_or_copy(sheet, out_root / sheet.name)
+    sheets = [sheet.name for sheet in (contact_sheet, quick4_sheet) if sheet and sheet.is_file()]
 
     manifest["imageRoot"] = str(out_root)
     (out_root / "review_manifest.json").write_text(
@@ -353,7 +454,6 @@ def build_review_root(
 
     videos = video_entry(video, out_root) if video else []
     html_path = out_root / REVIEW_HTML_NAME
-    html_path.write_text(render_html(manifest, ui_test_videos=videos), encoding="utf-8")
     run = run_record(
         out_root=out_root,
         manifest=manifest,
@@ -366,6 +466,7 @@ def build_review_root(
         device=device,
         last_run_at=last_run_at,
     )
+    html_path.write_text(render_run_html(manifest, run, videos, sheets), encoding="utf-8")
     workspace = write_workspace_index(out_root.parent, run)
 
     return {
