@@ -372,6 +372,11 @@ function NotebookScreenApi() {
     store.closeMenu()
     nav.navigate(screenFor('vocabulary', { notebookId: card.id }))
   }
+  // 頂部「今日複習」CTA pill → push today-review（誠實導航圖 notebook → today-review
+  // 邊，nav.ts 既有；today-review param-free，全域 due 佇列，鏡射 VocabularyScreen
+  // 的 openTodayReview）。修「桌面 ?shell=1 點今日複習 no-op」根因：pill 原為無 onClick
+  // 的 <span>。parity 路徑不傳此 callback → pill 維持靜態，capture DOM 不變。
+  const onOpenTodayReview = () => nav.navigate(screenFor('today-review'))
   // 次要動作的「編輯」→ 導航至 notebook-edit surface（誠實導航圖既有的 notebook→
   // notebook-edit 邊）。先關 more 選單，再 push。
   const onEditNotebook = () => {
@@ -388,6 +393,7 @@ function NotebookScreenApi() {
         store={store}
         reviewTotal={reviewTotal}
         onOpenNotebook={onOpenNotebook}
+        onOpenTodayReview={onOpenTodayReview}
         onEditNotebook={onEditNotebook}
         useSharedSheet
       />
@@ -396,11 +402,12 @@ function NotebookScreenApi() {
 }
 
 /** 共享的 notebook 畫面本體（fixture / API 兩條路共用）。 */
-function NotebookBody({
+export function NotebookBody({
   cards,
   store,
   reviewTotal,
   onOpenNotebook,
+  onOpenTodayReview,
   onEditNotebook,
   useSharedSheet = false,
 }: {
@@ -422,6 +429,10 @@ function NotebookBody({
   /** shell 路徑：單擊卡片導航至該本單字本詞庫（notebook→vocabulary 邊，攜 notebookId）。
       省略（parity/fixture 路徑）→ onOpen no-op，capture DOM 與行為不變。 */
   onOpenNotebook?: (card: NotebookFixtureCard) => void
+  /** shell 路徑：點頂部「今日複習」CTA pill 導航至 today-review（notebook→today-review
+      邊，param-free 全域 due 佇列）。省略（parity/fixture 路徑）→ pill 維持靜態 <span>、
+      無互動，capture DOM 不變。 */
+  onOpenTodayReview?: () => void
   /** shell 路徑：點「編輯」導航至 notebook-edit surface（誠實導航圖既有邊）。
       省略（parity/fixture 路徑）→ 沿用原地改名 sheet，capture DOM 不變。 */
   onEditNotebook?: (cardName: string) => void
@@ -444,11 +455,27 @@ function NotebookBody({
         <div className="nb-actionbar">
           <span className="nb-actionbar-title">今日複習</span>
           <span className="nb-actionbar-spacer" />
-          {/* CTA pill — brandHero（黃），未學複習 sparkles + 總數 */}
-          <span className="nb-pill nb-pill-cta">
-            <SparklesIcon size={15} />
-            <span className="nb-pill-num">{reviewTotal}</span>
-          </span>
+          {/* CTA pill — brandHero（黃），未學複習 sparkles + 總數。
+              shell 路徑：傳 onOpenTodayReview → 渲成 <button>（清 UA chrome，幾何沿用
+              .nb-pill .nb-pill-cta，鏡射 .nb-pill-button 作法）並 dispatch notebook →
+              today-review 邊（nav.ts），修「點今日複習 no-op」。parity/fixture 路徑省略
+              → 維持原 <span>，capture 首屏 DOM 逐位元不變。 */}
+          {onOpenTodayReview ? (
+            <button
+              type="button"
+              className="nb-pill nb-pill-cta nb-pill-cta-button"
+              aria-label="今日複習"
+              onClick={onOpenTodayReview}
+            >
+              <SparklesIcon size={15} />
+              <span className="nb-pill-num">{reviewTotal}</span>
+            </button>
+          ) : (
+            <span className="nb-pill nb-pill-cta">
+              <SparklesIcon size={15} />
+              <span className="nb-pill-num">{reviewTotal}</span>
+            </span>
+          )}
           {store.showFilter && (
             <span className="nb-pill nb-pill-tool">
               <FilterCircleIcon size={15} />
