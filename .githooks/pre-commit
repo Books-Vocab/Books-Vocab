@@ -11,7 +11,7 @@ set -euo pipefail
 REPO="$(git rev-parse --show-toplevel)"
 STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-DS_PATTERN='^(design-system/|ops/(gen_web_tokens|gen_web_components|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksAndVocab/(Models|UIComponents)/|backend/static/(kg-(tokens|components|component-structures)\.css|review-gradient\.js))'
+DS_PATTERN='^(design-system/|ops/(gen_web_tokens|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksAndVocab/(Models|UIComponents)/|backend/static/kg-(tokens|components)\.css)'
 
 UQ_PATTERN='^(ios/BooksAndVocab/.*\.swift|ops/(ui_quality_gate|ui_quality_plane|ui_token_lint|plain_deadzone_lint|i18n_lint|catalyst_lint|injection_lint|_i18n_|_inject_shared))'
 

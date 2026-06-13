@@ -8,7 +8,6 @@
 #   1. token_drift_check.py        — tokens.json 鏡像 iOS Swift literal（值層）
 #   2. gen_web_tokens.py --check   — 所有生成 CSS 與 tokens.json 一致（無 stale 副本）
 #   2b. gen_figma_sets.py --check  — Tokens Studio sidecar 投影與 tokens.json 一致（無 stale）
-#   2c. gen_web_components.py --check — component structures / review-gradient 無 stale
 #   3. component_fidelity_check.py — web primitive 組裝對齊 iOS 元件契約（組裝層，若存在）
 # 這些 ops 腳本皆 stdlib-only，刻意用 `uv run --no-project` 與 backend 的 68 套件
 # venv 解耦 — 設計系統 gate 不該依賴 backend 可安裝。
@@ -37,7 +36,6 @@ run() {
 run "token drift (tokens.json ↔ iOS Swift)" "${PY[@]}" ops/token_drift_check.py
 run "web token gen (CSS ↔ tokens.json)"     "${PY[@]}" ops/gen_web_tokens.py --check
 run "Figma sidecar (Tokens Studio ↔ tokens.json)" "${PY[@]}" ops/gen_figma_sets.py --check
-run "web component gen (structures ↔ components.json)" "${PY[@]}" ops/gen_web_components.py --check
 run "Style Dictionary (Swift ↔ tokens.json)" npm run build:check
 if [ -f ops/component_fidelity_check.py ]; then
   run "component fidelity (primitive ↔ iOS)" "${PY[@]}" ops/component_fidelity_check.py
