@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:interaction": "node tools/interaction.mjs",
     "typecheck": "tsc -b",
-    "interactive-check": "node tools/interactive-check.mjs"
+    "interactive-check": "node tools/interactive-check.mjs",
+    "check:responsive": "node tools/check-responsive-isolation.mjs"
   },
   "dependencies": {
     "epubjs": "^0.3.93",
