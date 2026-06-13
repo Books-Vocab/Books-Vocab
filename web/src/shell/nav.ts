@@ -17,11 +17,13 @@ import { DEFAULT_TAB_ID, SHELL_TABS } from './tabs'
  * 故 params 對 parity capture 零影響（fixture 畫面恆 param-free）。
  *
  * 誠實邊界：web 只重寫了部分 surface，導航圖只連「web 真實可達」的畫面：
- *   bookshelf      → reader（點書 → 靜態 reader chrome / live reader，帶 bookId）
+ *   bookshelf      → reader（點書 → 靜態 reader chrome / live reader，帶 bookId；
+ *                    可選帶 format='pdf'|'epub'|'txt'|'md'，reader-live 依此切引擎）
  *   bookshelf      → settings（gear glyph → 設定；設定子樹由此 surface 接力可達）
  *   notebook       → vocabulary（點單字本卡 → 該本單字列表，帶 notebookId）
  *   notebook       → today-review（今日複習 CTA → 複習卡）
  *   notebook       → notebook-edit（編輯單字本 → 編輯 sheet surface）
+ *   vocabulary     → today-review（單字本內今日複習 bar → 複習卡；鏡像 notebook 邊）
  *   vocabulary     → word-detail-sheet（點單字列 → 單字詳情，帶 word）
  *   vocabulary     → vocab-add-link（新增連結入口）
  *   word-detail-sheet → vocab-add-link（詳情內「知識連結」plus → 新增連結，帶 word）
@@ -41,6 +43,13 @@ export type ScreenParams = {
   readonly seriesId?: string
   readonly epNum?: number
   readonly word?: string
+  /**
+   * 書籍格式（reader-live route 共用旗標）。PDF/EPUB/TXT/MD 皆 push 同一 `reader`
+   * screen（depth>1 → isLiveReaderScreen → 掛 LiveReaderScreen）；reader-live
+   * Phase-2 agent 依此值切渲染引擎（'pdf' → pdfjs-dist，其餘 → epub.js）。省略 →
+   * 由 reader 端落回該書 metadata 的 format（contract 見 nav.ts 頂部註解）。
+   */
+  readonly format?: 'epub' | 'pdf' | 'txt' | 'md'
 }
 
 /** stack 內一個畫面 = 一個 surface + 該 surface 的合法 scenario + 可選 params。 */
@@ -214,6 +223,11 @@ export function pushTargetFor(
     case 'vocabulary':
       if (intent === 'open-word') return screenFor('word-detail-sheet', params)
       if (intent === 'add-link') return screenFor('vocab-add-link')
+      // 今日複習 bar（VocabularyView 內 review CTA bar，notebook header 上方）→
+      // today-review 複習卡。此邊與 notebook → open-today-review 鏡像同一目標：
+      // 修「桌面 ?shell=1 點今日複習因 vocabulary 缺此邊回 null → no-op」根因。
+      // today-review 不依被檢視單字本實體 id（全域 due 佇列），故 param-free。
+      if (intent === 'open-today-review') return screenFor('today-review')
       if (intent === 'open-knowledge-graph') return screenFor('knowledge-graph-view')
       // 知識圖譜（live force-directed graph，VocabKnowledgeGraphLive）— iOS
       // KnowledgeGraphPresenter 入口。knowledge-graph-view 為 logged-out 空圖
