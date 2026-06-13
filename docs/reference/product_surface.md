@@ -52,7 +52,7 @@ verified_against: d3fc3685
 - **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize + 唯讀 profile face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由登入 record 衍生，與可變 config bundle 分離)
 - **User config / account lifecycle**
 - **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + 單字內容編修 (`PATCH /api/vocab/{word}` 改 meaning/note，`explanation` 為 `note` write-through alias) + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留）
-- **Library APIs**: server 端書庫鏡像；`DELETE /api/library/books/{id}` 軟刪（set `is_deleted`，冪等）
+- **Library APIs**: server 端書庫鏡像；list(`?since=` 增量含 tombstone)/create(`client_book_id` 冪等)/patch(metadata+notebook 綁定)/position(LWW 閱讀進度)/`DELETE /api/library/books/{id}` 軟刪（set `is_deleted`，冪等）；書檔資產跨裝置（Arch PR #7）：`POST /api/library/books/{id}/asset-upload`（`LIBRARY_BUCKET` 未設或 `local_only`→宣告 local-only；已設→presigned PUT + 配額上限）、`GET /api/library/books/{id}/asset`（object-stored→307 redirect presigned GET；local-only→409）
 - **Translate / explain / pipeline**
 - **Card / graph / embedding / difficulty / enrichment**
 - **Multi-format import parsing**
