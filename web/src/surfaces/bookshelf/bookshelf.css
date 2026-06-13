@@ -564,3 +564,59 @@
     justify-content: start;
   }
 }
+
+/* --- 綁定單字本 picker（互動後才出現，首屏無此 DOM）--- */
+.bs-bind-subtitle {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--secondary-label, rgba(60, 60, 67, 0.6));
+}
+
+.bs-bind-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.bs-bind-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.bs-bind-item:hover,
+.bs-bind-item:focus-visible {
+  background: var(--muted-fill, rgba(120, 120, 128, 0.12));
+}
+
+.bs-bind-item-selected {
+  font-weight: 600;
+}
+
+.bs-bind-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-bind-item-check {
+  flex: none;
+  color: var(--accent, #007aff);
+}

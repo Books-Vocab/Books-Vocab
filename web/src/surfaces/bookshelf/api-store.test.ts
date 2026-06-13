@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { formatFromName, titleFromName, toBookFixture } from './useBookshelfApiStore'
+import {
+  findBookByTitle,
+  formatFromName,
+  metadataFromEpub,
+  titleFromName,
+  toBookFixture,
+} from './useBookshelfApiStore'
 import type { BookMetadataResponse } from '../../api/types'
 
 const BASE: BookMetadataResponse = {
@@ -73,5 +79,60 @@ describe('toBookFixture', () => {
 
   it('normalizes uppercase format strings', () => {
     expect(toBookFixture({ ...BASE, format: 'PDF' }).format).toBe('pdf')
+  })
+})
+
+describe('metadataFromEpub', () => {
+  it('prefers EPUB package title/creator/language over the filename', () => {
+    const meta = metadataFromEpub(
+      { title: 'Atomic Habits', creator: 'James Clear', language: 'en' },
+      'whatever.epub',
+    )
+    expect(meta).toEqual({
+      title: 'Atomic Habits',
+      author: 'James Clear',
+      language: 'en',
+      format: 'epub',
+    })
+  })
+
+  it('falls back to the filename stem when the EPUB title is blank', () => {
+    const meta = metadataFromEpub({ title: '   ', creator: '', language: '' }, 'My Book.epub')
+    expect(meta.title).toBe('My Book')
+    expect(meta.author).toBeNull()
+    expect(meta.language).toBeNull()
+  })
+
+  it('handles a fully empty metadata object (corrupt / missing OPF)', () => {
+    const meta = metadataFromEpub({}, 'Mystery.epub')
+    expect(meta.title).toBe('Mystery')
+    expect(meta.author).toBeNull()
+    expect(meta.language).toBeNull()
+    expect(meta.format).toBe('epub')
+  })
+
+  it('always reports epub format (only ever called for .epub files)', () => {
+    expect(metadataFromEpub({ title: 'X', creator: 'Y', language: 'fr' }, 'x.EPUB').format).toBe(
+      'epub',
+    )
+  })
+})
+
+describe('findBookByTitle', () => {
+  const a: BookMetadataResponse = { ...BASE, id: 'a', title: 'Alpha' }
+  const b: BookMetadataResponse = { ...BASE, id: 'b', title: 'Beta' }
+  const deletedBeta: BookMetadataResponse = { ...BASE, id: 'b2', title: 'Beta', is_deleted: true }
+
+  it('resolves a live book by title', () => {
+    expect(findBookByTitle([a, b], 'Beta')?.id).toBe('b')
+  })
+
+  it('ignores soft-deleted rows', () => {
+    expect(findBookByTitle([deletedBeta, b], 'Beta')?.id).toBe('b')
+    expect(findBookByTitle([deletedBeta], 'Beta')).toBeUndefined()
+  })
+
+  it('returns undefined for an unknown title', () => {
+    expect(findBookByTitle([a, b], 'Gamma')).toBeUndefined()
   })
 })

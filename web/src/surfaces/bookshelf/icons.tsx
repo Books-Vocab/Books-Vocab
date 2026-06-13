@@ -45,3 +45,11 @@ export const XmarkIcon = makeGlyph('<path d="M6 6 18 18M18 6 6 18"/>')
 export const DocIcon = makeGlyph(
   '<path d="M7 3.5h6.5L18 8v12.5H7z"/>' + '<path d="M13.5 3.5V8H18"/>',
 )
+
+/** SF `bookmark` — more 選單「綁定單字本」選項（書籤）。 */
+export const BookmarkIcon = makeGlyph(
+  '<path d="M6.5 4.5h11v15l-5.5-3.6-5.5 3.6z"/>',
+)
+
+/** SF `checkmark` — 綁定 picker 選中標記。 */
+export const CheckIcon = makeGlyph('<path d="M5 12.5 10 17.5 19 6.5"/>')
