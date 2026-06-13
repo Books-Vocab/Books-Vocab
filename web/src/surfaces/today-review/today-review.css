@@ -113,6 +113,35 @@
   opacity: 0.86;
 }
 
+/* ── Motion wrappers（互動層；layout pass-through，不改 parity 幾何）──────────
+   結構：.tr-stage > .tr-card-advance(deck-advance) > .tr-card-swipe(swipe drag)
+        > .tr-card(翻面 box) > .tr-flip-face(3D 翻轉面)。
+   三層 wrapper 皆零 margin/padding/border、全幅、無自身視覺，僅承載 transform，
+   故 active 卡的落點與靜態 PNG 不變。framer-motion 首幀（AnimatePresence
+   initial={false}）以 settled 姿態渲染（rotateX:0 / scale:1 / x:0）→ 視覺等同無
+   transform，parity capture RMSE 不動。 */
+.tr-card-advance {
+  position: relative;
+  z-index: 1; /* 騎在 deck-shell（absolute, z-auto）之上 */
+  width: 100%;
+}
+
+.tr-card-swipe {
+  width: 100%;
+  /* swipe 跟手沿 x；放手過閾值飛出。touch-action 由 inline style 設（容直向捲動）。 */
+}
+
+/* 翻面舞台：perspective 給 3D 翻轉景深；preserve-3d 讓 rotateX 立體。 */
+.tr-card-swipe .tr-card {
+  perspective: 1200px;
+}
+
+.tr-flip-face {
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
 /* active card — ReviewFoldSurface：cardBackground.opacity(.985) + cardBorder stroke + z1。
    single（front）一段；folded（back）= top 段 + answer 段（中間摺縫 foldJoinRadius 4）。 */
 .tr-card {
@@ -123,6 +152,7 @@
   border-radius: var(--radius-card); /* 8 */
   box-shadow: var(--elevation-z1);
   cursor: pointer; /* 整卡可點翻面 */
+  user-select: none; /* 拖曳評分時不選字 */
 }
 
 .tr-card-single {
