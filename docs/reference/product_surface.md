@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: d3fc3685
+verified_against: 5688f7e0
 -->
 # Implemented Product Surface
 
@@ -167,4 +167,4 @@ verified_against: d3fc3685
 - `backup_verify.sh`: restore drill + integrity check
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
 - **跨平台設計系統地基**: `design-system/tokens.json`(**W3C DTCG 格式**,跨平台 token SoT)經兩條生成鏈出貨 — **Style Dictionary**(`npm run build`,`sd.config.mjs`)→ iOS `DesignTokens.swift`(scalar bridge,禁手改)+ **`ops/gen_web_tokens.py`** → web CSS(`design-system/dist/` + `backend/static/`)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進官網；已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation,47 值)為 Figma→iOS 真注入,設計師 SOP 見 `docs/sop/figma-token-workflow.md`
-- **設計系統三層 guard + CI 強制**: `token_drift_check.py`(**值**:SoT-inversion-aware,已接線解析 `DesignTokens.*` 引用、未接線比 `$swift` literal,含 `AppTag` chip padding/fill)+ `component_fidelity_check.py`(**組裝**:contract-based 守每個 primitive 選用哪個 token 對齊 iOS 元件,如 `.kg-btn` radius md/700、`.kg-chip`↔`AppTag`、`.kg-input` body+hairline)+ `gen_web_tokens.py --check`/`gen_figma_sets.py --check`/`gen_web_components.py --check`(**生成**:web CSS/JS/sidecar 無 stale 副本)+ `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json),聚合入口 `ops/verify_design_system.sh`,由 GitHub Actions CI(`.github/workflows/design-system.yml`,路徑觸發 + `npm ci`)+ `.githooks/pre-commit` 雙重強制
+- **設計系統三層 guard + CI 強制**: `token_drift_check.py`(**值**:SoT-inversion-aware,已接線解析 `DesignTokens.*` 引用、未接線比 `$swift` literal,含 `AppTag` chip padding/fill)+ `component_fidelity_check.py`(**組裝**:contract-based 守每個 primitive 選用哪個 token 對齊 iOS 元件,如 `.kg-btn` radius md/700、`.kg-chip`↔`AppTag`、`.kg-input` body+hairline)+ `gen_web_tokens.py --check`/`gen_figma_sets.py --check`(**生成**:web CSS/sidecar 無 stale 副本)+ `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json),聚合入口 `ops/verify_design_system.sh`,由 GitHub Actions CI(`.github/workflows/design-system.yml`,路徑觸發 + `npm ci`)+ `.githooks/pre-commit` 雙重強制
