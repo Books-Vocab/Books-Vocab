@@ -209,8 +209,11 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
         <ShellNavProvider value={shellNav}>
           {breakpoint === 'tablet' ? (
             // Single fluid content pane: show the deepest screen (slide-over),
-            // else the master. Deep push stacks in the same column.
-            <div className="shell-pane-detail">
+            // else the master. Deep push stacks in the same column. This is the
+            // .shell-pane-master class on purpose — tablet has no side-by-side
+            // detail pane, and the tablet @media in responsive.css hides
+            // .shell-pane-detail (the desktop deep-push column).
+            <div className="shell-pane-master">
               {screen ? <PaneSurface screen={screen} /> : null}
             </div>
           ) : (
