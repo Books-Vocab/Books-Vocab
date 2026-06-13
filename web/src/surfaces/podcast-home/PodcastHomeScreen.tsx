@@ -1,4 +1,7 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { useApi } from '../../api/ApiContext'
+import type { PodcastProgressResponse, PodcastSeriesSummary } from '../../api/types'
 import type { ScenarioId } from '../../harness/scenarios'
 import {
   metaLine,
@@ -15,7 +18,7 @@ import './podcast-home.css'
  *
  * view tree（PodcastHomeView.body → ZStack(pageBackground) + content/empty）：
  *   .navigationTitle("播客") large title（serif 34 bold）
- *   content = ScrollView { VStack(.leading, spacing s5=20) [
+ *   content = ScrollView { VStack(.leading, spacing s5=20)[
  *     if !continueItems.isEmpty: continueShelf.padding(.top, s2=8)
  *     seriesGridSection
  *   ] }
@@ -32,26 +35,98 @@ import './podcast-home.css'
  *
  * full-screen scene → 不透明（catalog alpha-mean=1），無 crop/transparent。
  */
-export function PodcastHomeScreen({ scenario }: { scenario: ScenarioId<'podcast-home'> }) {
-  const f = PODCAST_HOME_FIXTURES[scenario]
 
+export function PodcastHomeScreen({ scenario }: { scenario: ScenarioId<'podcast-home'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <PodcastHomeScreenApi />
+  }
+  return <PodcastHomeScreenFixture scenario={scenario} />
+}
+
+function PodcastHomeScreenFixture({ scenario }: { scenario: ScenarioId<'podcast-home'> }) {
+  const f = PODCAST_HOME_FIXTURES[scenario]
+  return <PodcastHomeBody fixture={f} />
+}
+
+function PodcastHomeScreenApi() {
+  const api = useApi()
+  const [series, setSeries] = useState<PodcastSeriesSummary[]>([])
+  const [progress, setProgress] = useState<PodcastProgressResponse[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [s, p] = await Promise.all([api.podcast.series(), api.podcast.progress().catch(() => ({ items: [] }))])
+      setSeries(s)
+      setProgress(p.items)
+    } catch {
+      // ignore: series() is anonymous and should not fail; progress may 401 for guests
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const fixture = useMemo((): PodcastHomeFixture => {
+    if (loading) {
+      return { empty: false, continueItems: [], series: [] }
+    }
+    if (series.length === 0) {
+      return { empty: true, continueItems: [], series: [] }
+    }
+    const mappedSeries: SeriesCard[] = series.map((s) => ({
+      coverColor: '#AFC2D3',
+      coverPattern: 'waves',
+      title: String(s.title ?? s.id ?? ''),
+      hosts: String(s.author ?? '').split(',').map((h) => h.trim()).filter(Boolean),
+      count: Number(s.episode_count ?? 0),
+      isFollowed: false,
+    }))
+    const mappedContinue: ContinueItem[] = progress.map((pr) => {
+      const matched = series.find((s) => s.id === pr.series_id)
+      return {
+        coverColor: '#AFC2D3',
+        coverPattern: 'waves',
+        coverName: String(matched?.title ?? pr.series_id),
+        title: String(matched?.title ?? pr.series_id),
+        episodeDisplay: `Ep ${pr.ep_num}`,
+        fraction: clamp01(pr.position_sec / Math.max(pr.duration_sec, 1)),
+        remaining: formatRemaining(Math.max(0, pr.duration_sec - pr.position_sec)),
+      }
+    })
+    return {
+      empty: false,
+      continueItems: mappedContinue,
+      series: mappedSeries,
+    }
+  }, [loading, series, progress])
+
+  return <PodcastHomeBody fixture={fixture} />
+}
+
+function PodcastHomeBody({ fixture }: { fixture: PodcastHomeFixture }) {
   return (
     <div className="podcast-home">
       <header className="ph-nav">
         <h1 className="ph-nav-title">播客</h1>
       </header>
 
-      {f.empty ? (
+      {fixture.empty ? (
         <EmptyState />
       ) : (
         <main className="ph-scroll">
           <div className="ph-content">
-            {f.continueItems.length > 0 && (
-              <ContinueShelf items={f.continueItems} />
+            {fixture.continueItems.length > 0 && (
+              <ContinueShelf items={fixture.continueItems} />
             )}
             <SeriesGridSection
-              series={f.series}
-              hasContinueShelf={f.continueItems.length > 0}
+              series={fixture.series}
+              hasContinueShelf={fixture.continueItems.length > 0}
             />
           </div>
         </main>
@@ -186,4 +261,21 @@ function WaveformGlyph() {
       <line x1="39" y1="20" x2="39" y2="28" />
     </svg>
   )
+}
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v
+}
+
+function formatRemaining(sec: number): string | null {
+  if (sec <= 0) return '還剩 0:00'
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `還剩 ${m}:${String(s).padStart(2, '0')}`
+}
+
+export interface PodcastHomeFixture {
+  empty: boolean
+  continueItems: ContinueItem[]
+  series: SeriesCard[]
 }

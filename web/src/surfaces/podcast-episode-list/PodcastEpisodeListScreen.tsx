@@ -1,4 +1,7 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useApi } from '../../api/ApiContext'
+import type { PodcastSeriesDetail } from '../../api/types'
 import {
   COVER_COLOR,
   PODCAST_EPISODE_LIST_FIXTURES,
@@ -40,12 +43,95 @@ import './podcast-episode-list.css'
  *   1px + radius card=8 + z1，內含 waveform.slash(symbolLarge 30) +「尚無集數」
  *   (sectionTitle serif18 bold) +「此系列目前沒有可播放的集數」(body sans17 / secondary)。
  */
+
 export function PodcastEpisodeListScreen({
   scenario,
 }: {
   scenario: ScenarioId<'podcast-episode-list'>
 }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <PodcastEpisodeListScreenApi />
+  }
+  return <PodcastEpisodeListScreenFixture scenario={scenario} />
+}
+
+function PodcastEpisodeListScreenFixture({ scenario }: { scenario: ScenarioId<'podcast-episode-list'> }) {
   const fixture = PODCAST_EPISODE_LIST_FIXTURES[scenario]
+  return <PodcastEpisodeListBody fixture={fixture} />
+}
+
+function PodcastEpisodeListScreenApi() {
+  const api = useApi()
+  const [detail, setDetail] = useState<PodcastSeriesDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      // For shell mode, use the first series from the catalog
+      const series = await api.podcast.series()
+      if (series.length > 0 && series[0].id) {
+        const d = await api.podcast.seriesDetail(String(series[0].id))
+        setDetail(d)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [api])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const fixture = useMemo((): PodcastEpisodeListFixture => {
+    if (loading || !detail) {
+      return {
+        navTitle: '',
+        seriesTitle: '',
+        meta: null,
+        continueCard: null,
+        sectionTitle: '集數',
+        sortLabel: '集數由小到大',
+        episodes: [],
+        empty: { title: '尚無集數', description: '此系列目前沒有可播放的集數' },
+      }
+    }
+    const episodes = Array.isArray(detail.episodes)
+      ? detail.episodes.map((ep: unknown) => {
+          const e = ep as { ep_num?: number; title?: string; duration_sec?: number }
+          return {
+            episodeNumber: Number(e.ep_num ?? 0),
+            title: String(e.title ?? ''),
+            duration: formatDuration(Number(e.duration_sec ?? 0)),
+            date: '今天',
+          }
+        })
+      : []
+    const isEmpty = episodes.length === 0
+    return {
+      navTitle: String(detail.title ?? ''),
+      seriesTitle: String(detail.title ?? ''),
+      meta: String(detail.author ?? '').length > 0 ? String(detail.author ?? '') : null,
+      continueCard: isEmpty
+        ? null
+        : {
+            eyebrow: '升級 Pro',
+            title: `Ep ${episodes[0].episodeNumber} · ${episodes[0].title}`,
+          },
+      sectionTitle: '集數',
+      sortLabel: '集數由小到大',
+      episodes,
+      empty: isEmpty ? { title: '尚無集數', description: '此系列目前沒有可播放的集數' } : null,
+    }
+  }, [loading, detail])
+
+  return <PodcastEpisodeListBody fixture={fixture} />
+}
+
+function PodcastEpisodeListBody({ fixture }: { fixture: PodcastEpisodeListFixture }) {
   const isEmpty = fixture.episodes.length === 0
 
   return (
@@ -211,4 +297,9 @@ function CoverWaves() {
       ))}
     </svg>
   )
+}
+
+function formatDuration(sec: number): string {
+  const total = Math.trunc(sec)
+  return `${Math.trunc(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }
