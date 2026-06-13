@@ -373,3 +373,123 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LIVE (?shell=1) ONLY — the functional force-directed graph. These classes are
+   never present in the parity capture DOM (the static fixture path renders no
+   .vkg-graph-* / .vkg-gear-* / *--live nodes), so the snapshot stays unchanged.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Full-bleed canvas host behind the legend + drawer. */
+.vkg-graph-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.vkg-graph-canvas {
+  flex: 1 1 auto;
+  display: block;
+}
+
+/* Edges — subtle divider-toned strokes; thickness driven by 連結粗細 slider. */
+.vkg-graph-edge {
+  stroke: var(--text-quaternary);
+  opacity: 0.45;
+}
+
+/* Nodes — fill comes from the review-state gradient (inline, per node). */
+.vkg-graph-node {
+  stroke: var(--page-bg);
+  stroke-width: 1;
+}
+
+.vkg-graph-node-label {
+  font-family: var(--font-mono);
+  font-size: 9px; /* compact node caption */
+  font-weight: 600;
+  fill: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* Gear chip — opens the live settings drawer; mirrors VocabChromeIconButton. */
+.vkg-gear-button {
+  position: absolute;
+  bottom: 40px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.vkg-gear-icon {
+  flex: none;
+}
+
+/* Live slider track wraps a transparent native range input over the fill bar. */
+.vkg-slider-track--live {
+  cursor: pointer;
+}
+
+.vkg-slider-input {
+  position: absolute;
+  inset: -8px 0; /* enlarge hit target above/below the 6px track */
+  width: 100%;
+  margin: 0;
+  opacity: 0; /* invisible — the .vkg-slider-fill bar is the visual */
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.vkg-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+}
+
+.vkg-slider-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+/* Toggle (孤立節點) on-state — accent track + knob slid right. */
+.vkg-toggle-switch {
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vkg-toggle-switch[data-on='1'] {
+  background: var(--accent);
+}
+
+.vkg-toggle-switch[data-on='1'] .vkg-toggle-knob {
+  left: auto;
+  right: 2px;
+}
+
+/* Empty-state inline action (no-links → 顯示孤立節點) — outline ghost button. */
+.vkg-empty-action {
+  margin-top: var(--sp-1);
+  padding: 8px 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--card-border);
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
