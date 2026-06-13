@@ -11,6 +11,7 @@ import type { FetchLike } from '../transport'
 import {
   MOCK_ACCESS_TOKEN,
   MOCK_ENTITLEMENTS,
+  MOCK_LIBRARY_BOOKS,
   MOCK_NOTEBOOKS,
   MOCK_PODCAST_DETAIL,
   MOCK_PODCAST_PROGRESS,
@@ -19,6 +20,9 @@ import {
   MOCK_REVIEW_EVENTS,
   MOCK_USER_CONFIG,
   MOCK_VOCAB_CARDS,
+  mockLibraryCreate,
+  mockLibraryUpdate,
+  mockLibraryPosition,
   mockNotebookCreate,
   mockNotebookUpdate,
   mockVocabAdd,
@@ -206,6 +210,81 @@ const ROUTES: Route[] = [
     handle: (_req, m) => {
       const c = mockVocabByWord(decodeURIComponent(m[1]))
       return c ? json(c) : notFound()
+    },
+  },
+
+  // library
+  {
+    method: 'GET',
+    pattern: /^\/api\/library\/books$/,
+    handle: (req) => {
+      const since = req.query.since
+      let books = MOCK_LIBRARY_BOOKS
+      if (since) {
+        books = books.filter((b) => b.updated_at && b.updated_at > since)
+      }
+      return json(books.filter((b) => !b.is_deleted))
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/library\/books$/,
+    handle: (req) => {
+      const body = (req.body ?? {}) as {
+        client_book_id?: unknown
+        title?: unknown
+        author?: unknown
+        language?: unknown
+        format?: unknown
+      }
+      if (!body.client_book_id || typeof body.client_book_id !== 'string') {
+        return json({ detail: 'client_book_id is required' }, 422)
+      }
+      if (!body.title || typeof body.title !== 'string') {
+        return json({ detail: 'title is required' }, 422)
+      }
+      const created = mockLibraryCreate({
+        client_book_id: body.client_book_id,
+        title: body.title,
+        author: typeof body.author === 'string' ? body.author : null,
+        language: typeof body.language === 'string' ? body.language : null,
+        format: typeof body.format === 'string' ? body.format : null,
+      })
+      return json(created, 201)
+    },
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/library\/books\/([^/]+)$/,
+    handle: (req, m) => {
+      const id = decodeURIComponent(m[1])
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const updated = mockLibraryUpdate(id, {
+        title: typeof body.title === 'string' ? body.title : undefined,
+        author: body.author !== undefined ? (typeof body.author === 'string' ? body.author : null) : undefined,
+        language: body.language !== undefined ? (typeof body.language === 'string' ? body.language : null) : undefined,
+        format: body.format !== undefined ? (typeof body.format === 'string' ? body.format : null) : undefined,
+        notebook_id: body.notebook_id !== undefined ? (typeof body.notebook_id === 'string' ? body.notebook_id : null) : undefined,
+      })
+      return updated ? json(updated) : notFound()
+    },
+  },
+  {
+    method: 'PUT',
+    pattern: /^\/api\/library\/books\/([^/]+)\/position$/,
+    handle: (req, m) => {
+      const id = decodeURIComponent(m[1])
+      const body = (req.body ?? {}) as {
+        locator?: unknown
+        progression?: unknown
+        updated_at?: unknown
+      }
+      const updated = mockLibraryPosition(id, {
+        locator: typeof body.locator === 'string' ? body.locator : null,
+        progression: typeof body.progression === 'number' ? body.progression : null,
+        position_updated_at: typeof body.updated_at === 'string' ? body.updated_at : null,
+      })
+      return updated ? json(updated) : notFound()
     },
   },
 

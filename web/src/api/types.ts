@@ -255,7 +255,49 @@ export interface ReviewEventsPushResponse {
   skipped: number
 }
 
-// ── podcast (api_models/podcast.py) ────────────────────────────────────────
+// ── library (api_models/library.py) ──────────────────────────────────────────
+
+/** GET /api/library/books — api_models/library.py::BookMetadataResponse. */
+export interface BookMetadataResponse {
+  id: string
+  client_book_id: string | null
+  title: string
+  author: string | null
+  language: string | null
+  format: string | null // epub | pdf | txt | md
+  notebook_id: string | null
+  is_deleted: boolean
+  updated_at: string | null // ISO8601
+  locator: string | null
+  progression: number | null // 0..1
+  position_updated_at: string | null // ISO8601
+}
+
+/** POST /api/library/books — api_models/library.py::BookCreateRequest. */
+export interface BookCreateRequest {
+  client_book_id: string
+  title: string
+  author?: string | null
+  language?: string | null
+  format?: string | null
+}
+
+/** PATCH /api/library/books/{id} — api_models/library.py::BookUpdateRequest. */
+export interface BookUpdateRequest {
+  title?: string | null
+  author?: string | null
+  language?: string | null
+  format?: string | null
+  notebook_id?: string | null
+}
+
+/** PUT /api/library/books/{id}/position — api_models/library.py::BookPositionRequest. */
+export interface BookPositionRequest {
+  locator?: string | null
+  progression?: number | null
+  updated_at: string // ISO8601 LWW timestamp
+}
+
 // PodcastSeriesSummary / PodcastSeriesDetail are RootModel[dict[str, Any]] on
 // the backend — the producer owns the editorial JSON shape and it is
 // intentionally opaque. We model it as an open record.

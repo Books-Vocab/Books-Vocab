@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useApi } from '../../api/ApiContext'
+import type { BookMetadataResponse } from '../../api/types'
 import './reader-live.css'
 
 /**
@@ -12,12 +14,20 @@ import './reader-live.css'
  *
  * iOS 的選詞/取 context 是注入 webview 的純 JS（非 Readium API），故可原樣移植到
  * epub.js 的 per-section iframe（rendition.hooks.content）。
+ *
+ * shell=1 + ?book_id= 時，外層 ReaderLiveScreen 包一層 API 同步：從 GET
+ * /api/library/books 撈該書（取書名 + 初始 progression），閱讀位置變動 debounce
+ * 後 PUT /api/library/books/{id}/position（LWW）。web 不持有 raw bytes，章節內容仍由
+ * spike EPUB 提供；同步的是「讀到哪」的跨裝置位置，而非檔案。無 shell 時零 API 呼叫。
  */
 
 const EPUB_URL = '/spike/childrens-literature.epub'
+const POSITION_DEBOUNCE_MS = 1200
 
 type TocItem = { label: string; href: string }
 type SelectedWord = { word: string; context: string; x: number; y: number }
+/** 引擎回報的閱讀位置（cfi = epub.js locator，pct = 0..1 進度）。 */
+type ReaderLocation = { cfi: string | null; pct: number }
 
 // iOS buildWordRangeFromPoint 的 web 移植：caret 吸附 + 詞邊界擴展 + 去頭尾標點。
 // SPIKE 發現：epub.js 把 section 渲染進 *sandboxed* iframe（無 allow-scripts），
@@ -56,9 +66,92 @@ function wordFromPoint(doc: Document, x: number, y: number) {
   return { word, rect: wr.getBoundingClientRect(), el: (range.startContainer as Text).parentElement }
 }
 
+/**
+ * 外層路由：shell=1 走 API 同步殼層，否則純 spike 引擎（零 API 呼叫，DOM 不變）。
+ * useApi 只在 shell 分支被呼叫（ReaderLiveSync 內），故無 provider 的 parity 路徑安全。
+ */
 export function ReaderLiveScreen() {
+  const params = new URLSearchParams(window.location.search)
+  const shell = params.get('shell') === '1'
+  const bookId = params.get('book_id')
+  if (shell) {
+    return <ReaderLiveSync bookId={bookId} />
+  }
+  return <ReaderLiveEngine />
+}
+
+/** shell=1 殼層：撈書 metadata + debounce 同步閱讀位置；引擎本體不變。 */
+function ReaderLiveSync({ bookId }: { bookId: string | null }) {
+  const api = useApi()
+  const [book, setBook] = useState<BookMetadataResponse | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latest = useRef<ReaderLocation | null>(null)
+
+  // 撈該書（取書名 + 初始 progression）。撈不到不致命，引擎仍可開 spike EPUB。
+  useEffect(() => {
+    if (!bookId) return
+    let cancelled = false
+    api.library
+      .list()
+      .then((books) => {
+        if (cancelled) return
+        setBook(books.find((b) => b.id === bookId) ?? null)
+      })
+      .catch(() => {
+        /* 撈書失敗不阻斷閱讀 spike */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, bookId])
+
+  // debounce：閱讀位置高頻變動，落地前合併，只 PUT 最後一次（LWW）。
+  const flush = useCallback(() => {
+    const loc = latest.current
+    if (!bookId || !loc) return
+    api.library
+      .putPosition(bookId, {
+        locator: loc.cfi,
+        progression: loc.pct,
+        updated_at: new Date().toISOString(),
+      })
+      .catch(() => {
+        /* 同步失敗不阻斷閱讀；下次 relocate 會再嘗試 */
+      })
+  }, [api, bookId])
+
+  const onRelocate = useCallback(
+    (loc: ReaderLocation) => {
+      latest.current = loc
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = setTimeout(flush, POSITION_DEBOUNCE_MS)
+    },
+    [flush],
+  )
+
+  // unmount 時把待落地的最後位置即時 flush（避免離開頁面丟失進度）。
+  useEffect(() => {
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+      flush()
+    }
+  }, [flush])
+
+  return <ReaderLiveEngine titleOverride={book?.title ?? undefined} onRelocate={onRelocate} />
+}
+
+/** epub.js 引擎本體 — spike 與 shell 共用；callbacks 為選用（無 shell 時不傳）。 */
+function ReaderLiveEngine({
+  titleOverride,
+  onRelocate,
+}: {
+  titleOverride?: string
+  onRelocate?: (loc: ReaderLocation) => void
+} = {}) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const renditionRef = useRef<any>(null)
+  const onRelocateRef = useRef(onRelocate)
+  onRelocateRef.current = onRelocate
   const [toc, setToc] = useState<TocItem[]>([])
   const [tocOpen, setTocOpen] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -131,10 +224,14 @@ export function ReaderLiveScreen() {
         })
 
         rendition.on('relocated', (loc: any) => {
+          let pct = 0
           if (book.locations && book.locations.length()) {
-            setProgress(book.locations.percentageFromCfi(loc.start.cfi) || 0)
+            pct = book.locations.percentageFromCfi(loc.start.cfi) || 0
+            setProgress(pct)
           }
           setSelected(null) // 翻頁清掉選詞浮層
+          // 回報閱讀位置（shell=1 殼層 debounce 後 PUT；無 shell 時 callback 不存在）。
+          onRelocateRef.current?.({ cfi: loc.start?.cfi ?? null, pct })
         })
 
         await book.ready
@@ -169,6 +266,9 @@ export function ReaderLiveScreen() {
     setTocOpen(false)
   }
 
+  // shell=1 時優先顯示後端書名（撈到才覆蓋）；否則沿用 EPUB metadata 書名。
+  const displayTitle = titleOverride || bookTitle || 'Reader 引擎 spike'
+
   return (
     <div className="rlive" data-ready={ready ? '' : undefined}>
       {/* 本體：epub.js 掛載點（分頁 iframe 渲染於此） */}
@@ -191,7 +291,7 @@ export function ReaderLiveScreen() {
         <button className="rlive-chrome-btn" onClick={() => setTocOpen((v) => !v)} aria-label="目錄">
           ☰
         </button>
-        <span className="rlive-title">{bookTitle || 'Reader 引擎 spike'}</span>
+        <span className="rlive-title">{displayTitle}</span>
         <span className="rlive-progress">{(progress * 100).toFixed(0)}%</span>
       </div>
 
