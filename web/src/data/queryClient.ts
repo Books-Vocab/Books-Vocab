@@ -5,14 +5,23 @@ import { ApiError } from '../api'
  * Query retry predicate — 餵給 TanStack Query 的 `retry` 選項。
  *
  * ApiError 的 http 4xx（client error）重試無意義：請求本身錯（缺權限 / 不存在 /
- * 驗證失敗），重送結果相同 → 立即失敗交 UI 顯示對應狀態。network / parse / http
- * 5xx 屬暫時性，退避重試至上限（failureCount 0/1 重試，2 起停 = 共 3 次嘗試）。
+ * 驗證失敗），重送結果相同 → 立即失敗交 UI 顯示對應狀態。例外 408（request
+ * timeout）與 429（rate-limit / quota）雖屬 4xx 但本質暫時（quota 路由如 translate/
+ * graph/pipeline 的 429 不該被當永久失敗）→ 視為可重試。network / parse / http 5xx
+ * 屬暫時性，退避重試至上限（failureCount 0/1 重試，2 起停 = 共 3 次嘗試）。
  * 非 ApiError 的未知例外亦受同一上限保護，避免無限重試。
  */
 const MAX_RETRIES = 2
+const TRANSIENT_4XX = new Set([408, 429])
 
 export function shouldRetry(failureCount: number, error: unknown): boolean {
-  if (error instanceof ApiError && error.kind === 'http' && error.status >= 400 && error.status < 500) {
+  if (
+    error instanceof ApiError &&
+    error.kind === 'http' &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    !TRANSIENT_4XX.has(error.status)
+  ) {
     return false
   }
   return failureCount < MAX_RETRIES
