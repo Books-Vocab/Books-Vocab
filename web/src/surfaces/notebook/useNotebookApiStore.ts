@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useApi } from '../../api/ApiContext'
+import { useMemo, useState } from 'react'
 import type { NotebookResponse } from '../../api/types'
+import {
+  useCreateNotebookMutation,
+  useDeleteNotebookMutation,
+  useNotebooksQuery,
+  useUpdateNotebookMutation,
+} from '../../data'
 import type { NotebookFixtureCard } from './fixtures'
 import type { NotebookSheet } from './store'
 
 /**
  * API-backed notebook store — 當 shell=1 時取代 fixture-driven useNotebookStore。
- * 從後端 GET /api/notebooks 拉取真實列表，add/rename/delete 做樂觀更新 + rollback。
+ * 資料引擎已遷移到 P2 資料層（data/notebook.ts）：useNotebooksQuery 讀列表，
+ * add/rename/delete 走樂觀 mutation hooks（onMutate setQueryData / onError rollback /
+ * onSettled invalidate，邏輯在 hook 內，跨 surface cache 一致）。本 store 只保留
+ * UI 狀態（sheet / menu）與 name→id 解析，並把公開介面 NotebookApiState 維持不變。
  * 非 ready 態（loading / error）由 VocabSceneShell 在外層包裹。
  */
 
@@ -44,102 +52,62 @@ export function toFixtureCard(n: NotebookResponse, activeId: string | null): Not
 }
 
 export function useNotebookApiStore(): NotebookApiState {
-  const api = useApi()
-  const [status, setStatus] = useState<NotebookApiStatus>('loading')
-  const [raw, setRaw] = useState<NotebookResponse[]>([])
+  const listQuery = useNotebooksQuery()
+  const createMut = useCreateNotebookMutation()
+  const updateMut = useUpdateNotebookMutation()
+  const deleteMut = useDeleteNotebookMutation()
   const [sheet, setSheet] = useState<NotebookSheet | null>(null)
   const [menuCardName, setMenuCardName] = useState<string | null>(null)
-  // 以第一個 notebook 當 active（簡化；後續可由 user config 或 URL 指定）
-  const activeId = useMemo(() => raw[0]?.id ?? null, [raw])
 
+  const raw = useMemo<NotebookResponse[]>(() => listQuery.data ?? [], [listQuery.data])
+  // 以第一個 notebook 當 active（簡化；後續可由 user config 或 URL 指定）
+  const activeId = raw[0]?.id ?? null
   const cards = useMemo(() => raw.map((n) => toFixtureCard(n, activeId)), [raw, activeId])
 
-  const load = useCallback(async () => {
-    setStatus('loading')
+  // status 映射（同 vocab 遷移）：有資料→ready（背景 refetch 不退 loading）、
+  // settle 的 error→error、初次/retry-refetch→loading。
+  let status: NotebookApiStatus
+  if (listQuery.data !== undefined) status = 'ready'
+  else if (listQuery.isError && !listQuery.isFetching) status = 'error'
+  else status = 'loading'
+
+  // 寫入：name→id 解析留在 surface（介面是 name-based），實際樂觀更新 + rollback +
+  // invalidate 由 mutation hook 內部處理；此處只關 UI 狀態。mutateAsync 失敗會 reject，
+  // catch 吞掉（rollback 已在 hook 的 onError 完成，呼叫端無需再處理）。
+  const addNotebook = async (name: string) => {
+    const trimmed = name.trim()
+    if (trimmed.length === 0) return
+    setSheet(null)
     try {
-      const list = await api.notebook.list()
-      setRaw(list)
-      setStatus('ready')
+      await createMut.mutateAsync({ name: trimmed })
     } catch {
-      setStatus('error')
+      /* rollback 已由 hook onError 處理 */
     }
-  }, [api])
+  }
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const renameNotebook = async (oldName: string, newName: string) => {
+    const trimmed = newName.trim()
+    if (trimmed.length === 0) return
+    const target = raw.find((n) => n.name === oldName)
+    if (!target) return
+    setSheet(null)
+    try {
+      await updateMut.mutateAsync({ id: target.id, req: { name: trimmed } })
+    } catch {
+      /* rollback 已由 hook onError 處理 */
+    }
+  }
 
-  const addNotebook = useCallback(
-    async (name: string) => {
-      const trimmed = name.trim()
-      if (trimmed.length === 0) return
-      const optimistic: NotebookResponse = {
-        id: `optimistic-${Date.now()}`,
-        name: trimmed,
-        color: '#AFC2D3',
-        coverPattern: null,
-        sortOrder: 999,
-        isDefault: false,
-        isDeleted: false,
-        cardCount: 0,
-        updatedAt: null,
-      }
-      setRaw((prev) => [...prev, optimistic])
-      setSheet(null)
-      try {
-        const created = await api.notebook.create({ name: trimmed })
-        setRaw((prev) => prev.map((n) => (n.id === optimistic.id ? created : n)))
-      } catch {
-        // rollback：移除樂觀插入
-        setRaw((prev) => prev.filter((n) => n.id !== optimistic.id))
-      }
-    },
-    [api],
-  )
-
-  const renameNotebook = useCallback(
-    async (oldName: string, newName: string) => {
-      const trimmed = newName.trim()
-      if (trimmed.length === 0) return
-      const target = raw.find((n) => n.name === oldName)
-      if (!target) return
-      const prevName = target.name
-      // optimistic
-      setRaw((prev) => prev.map((n) => (n.id === target.id ? { ...n, name: trimmed } : n)))
-      setSheet(null)
-      try {
-        await api.notebook.update(target.id, { name: trimmed })
-      } catch {
-        // rollback
-        setRaw((prev) => prev.map((n) => (n.id === target.id ? { ...n, name: prevName } : n)))
-      }
-    },
-    [api, raw],
-  )
-
-  const deleteNotebook = useCallback(
-    async (cardName: string) => {
-      const target = raw.find((n) => n.name === cardName)
-      if (!target) return
-      const removed = target
-      // optimistic
-      setRaw((prev) => prev.filter((n) => n.id !== target.id))
-      setMenuCardName(null)
-      try {
-        await api.notebook.delete(target.id)
-      } catch {
-        // rollback：插回原位（sortOrder 維持）
-        setRaw((prev) => {
-          const next = [...prev]
-          const idx = next.findIndex((n) => n.sortOrder > removed.sortOrder)
-          if (idx >= 0) next.splice(idx, 0, removed)
-          else next.push(removed)
-          return next
-        })
-      }
-    },
-    [api, raw],
-  )
+  const deleteNotebook = async (cardName: string) => {
+    const target = raw.find((n) => n.name === cardName)
+    if (!target) return
+    setMenuCardName(null)
+    try {
+      await deleteMut.mutateAsync(target.id)
+    } catch {
+      /* rollback 已由 hook onError 處理 */
+    }
+  }
 
   return {
     status,
@@ -158,6 +126,8 @@ export function useNotebookApiStore(): NotebookApiState {
     addNotebook,
     renameNotebook,
     deleteNotebook,
-    retry: load,
+    retry: () => {
+      void listQuery.refetch()
+    },
   }
 }
