@@ -17,6 +17,8 @@ import {
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
 import { SHELL_TABS, type TabSpec } from './tabs'
+import { RouteTransition, useNavDirection } from '../motion'
+import { routeKeyFor, stackDepth } from './nav'
 import '../styles/responsive.css'
 
 // Live Reader（epub.js 真渲染）— dynamic import，epub.js 不進 parity bundle（與
@@ -141,6 +143,10 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const stack = nav.stacks[nav.tabId] ?? []
   const screen = currentScreen(nav)
+  // RouteTransition inputs (shared with AppShell): stable route identity +
+  // inferred push/pop direction from stack depth across renders.
+  const routeKey = routeKeyFor(nav)
+  const direction = useNavDirection(stackDepth(nav))
 
   // Shared shell-nav context: surface row/card clicks push onto the active tab
   // stack (attaching real entity ids); current screen params flow to surfaces.
@@ -243,12 +249,16 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
             // else the master. Deep push stacks in the same column. This is the
             // .shell-pane-master class on purpose — tablet has no side-by-side
             // detail pane, and the tablet @media in responsive.css hides
-            // .shell-pane-detail (the desktop deep-push column).
+            // .shell-pane-detail (the desktop deep-push column). Push/pop slides
+            // as a same-column iOS slide-over (mode="stack").
             <div className="shell-pane-master">
-              {screen ? <PaneSurface screen={screen} /> : null}
+              <RouteTransition routeKey={routeKey} direction={direction} mode="stack">
+                {screen ? <PaneSurface screen={screen} /> : null}
+              </RouteTransition>
             </div>
           ) : (
             <>
+              {/* master pane is the persistent root — it does NOT transition. */}
               <div className="shell-pane-master">
                 {masterScreen ? <PaneSurface screen={masterScreen} /> : null}
               </div>
@@ -265,7 +275,16 @@ export function ResponsiveShell({ config }: { config: HarnessConfig }) {
                       返回
                     </button>
                   )}
-                  {detailScreen ? <PaneSurface screen={detailScreen} /> : null}
+                  {/* desktop detail swap = softer cross-fade/slide WITHIN the
+                      pane (mode="pane"), not a full-screen push. Keyed by the
+                      detail screen identity (surface + detail depth). */}
+                  <RouteTransition
+                    routeKey={`${detailScreen?.surface ?? 'none'}:${detailStack.length}`}
+                    direction={direction}
+                    mode="pane"
+                  >
+                    {detailScreen ? <PaneSurface screen={detailScreen} /> : null}
+                  </RouteTransition>
                 </div>
               )}
             </>
