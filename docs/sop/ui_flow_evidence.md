@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: d3fc3685
+verified_against: d25aad2a
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -21,7 +21,7 @@ verified_against: d3fc3685
 | 3 | **Step screenshots** | `UITestDiagnostics.step()/captureStep()` | 每個語意步驟一張 `NN-name` 截圖；失敗路徑也截（`no-series-card`、`unexpected-login-sheet` 式防呆步）。 |
 | 4 | **真行為斷言** | `elapsedTime` 真實前進、control 切 pause | 斷言核心行為**發生**（狀態/數值變化），不是「按了按鈕」。守門斷言要能戳破假測試：fixture 該已登入卻見 login gate = `XCTFail`，不是 skip。 |
 | 5 | **KG_PERF log marks** | `ios/BooksAndVocab/Services/PerfLog.swift` | 核心行為打低頻 domain mark（如 `play.started`/`pause`/`seek`）。新常數 **append** 到 PerfLog，勿改既有 mark 名。驗證：`./ops/ios_ops.sh logs --simulator --device <udid> --debug --since 5m --predicate 'process == "BooksAndVocab" AND eventMessage CONTAINS "KG_PERF"'`。 |
-| 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 自動產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）。收尾回報**必貼** quick4 或 full sheet 並親眼 Read 過（light/dark 都要看時用 `catalog_contact_sheet.py --appearance both`）。 |
+| 6 | **視覺證據** | `test --json` 的 `uiVisualReview` | UI scope 自動產 full `contact_sheet.png` + `quick4_contact_sheet.png` + `review_manifest.json`（schema `kg.visual-review.sheet.v1`）+ standalone `UIreview.html`。收尾回報**必貼** quick4 / full sheet 或直接貼 `uiVisualReview.reviewHtml`，並親眼 Read 過（light/dark 都要看時用 `catalog_contact_sheet.py --appearance both`）。 |
 
 ## 執行契約
 
@@ -29,7 +29,7 @@ verified_against: d3fc3685
 ./ops/ios_ops.sh test --ui --file <Flow>UITests.swift --lease --json   # 一律 --lease（pool 預設 3 台，KG_IOS_SIM_POOL_SIZE 可調）
 ```
 
-- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑，catalog `UIreview.html` 可直接瀏覽），畫面行為爭議時抽幀看 tap 當下；頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
+- JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑）。`reviewHtml` = 本次 run 專屬 `build/snapshots/uitest-runs/<run>/UIreview.html`，直接把 step screenshots / contact sheets / video 收在同一頁；畫面行為爭議時先開它看整段流程，再抽幀看 tap 當下。頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 
@@ -51,6 +51,7 @@ verified_against: d3fc3685
 - 全螢幕 podcast player **蓋住 tab bar**：從 player 進入其他 flow 前必須先 back out（見 `AuthFlowUITests` 的 `signedin-player-back` 步驟），否則 tab 點擊 silently 失敗。
 - **`launchIsolatedApp` 預設網路封閉**（hermetic）：自動注入不可達 `KG_UI_TEST_SERVER_URL`，否則 catalog sync 會打真生產 server 把 seeded series reconcile-tombstone 掉（Auth flow 紅燈根因）、假 token 的 401 會 wipe local data。真的需要 server 的測試自帶該 env var 覆蓋。
 - Pro gate UITest 走 entitlement-only fixture：`.entitlementsProAccess` 只由 App root 用 `UITestSubscriptionManager` 消費，`UITestFixtureSeed` router 對 `entitlements` domain 必須 no-op，避免誤導 warning。若測 gated episode 的正向 player path，fixture 裡被 Pro 解鎖的 episode 必須有真 `localAudioPath`/subtitle；否則測到的是 player audio-error，不是 entitlement gate。
+- Podcast access matrix 的 SoT 是 `PodcastAccessScenario`：`guest = [.authTieredCatalog]`、`free = [.authTieredCatalog, .authSignedIn]`、`pro = [.authTieredCatalog, .authSignedIn, .entitlementsProAccess]`。不要在新測試手刻 fixture 組合；資料形狀仍由 `kg.fixture.dataset.v1` / seeders 管，登入 token 與 Pro entitlement 是 launch-state，不在 dataset JSON 內。guest 的正確期望是 LoginSheet / gate，不是播放；free 播 preview ep1；pro 播 gated ep2/full。
 - **Subagent 等待紀律**：把 build/test 丟 `run_in_background` 後結束 turn = 永遠收不到完成通知（三個 fan-out agent 全踩過）。長命令一律前景跑（timeout 拉滿）或前景 `until [[ -f <verdict> ]]; do sleep 5; done` 等；工作未完不准結束 turn。
 - **`.plain` Button 中段透明死區 = 真陽性**：`buttonStyle(.plain)` 的 hit-test 會穿透透明像素，row 內 `Spacer()` 空白區點了沒反應；XCUITest `tap()` 永遠打 AX activation point（row 正中），剛好踩死區 → 決定性紅燈（Settings flow 抓到的 production bug）。修法 = Button label 加 `.contentShape(Rectangle())`，不是改測試去點文字。鑑別流程：AX frame + activation point（Session log）疊到截圖上驗座標 → 座標正確仍零反應 → 手動點同位置重現 → 死區即 app bug。此 bug class 已由 `ops/plain_deadzone_lint.sh` 守門（baseline 為空，新增即 regress）；遇疑似死區先跑 `--report`。
 - 登入閘門後的 UI（如詞庫搜尋框）→ fixture 注入 signed-in session，且 `KG_UI_TEST_SERVER_URL` 指向不可達位址（connection refused 不登出；真 backend 401 會 logout + clearLocalData 清掉 fixture 世界，同 auth flow seam）。
@@ -61,11 +62,11 @@ verified_against: d3fc3685
 - Reader 詞庫 highlight / 翻譯 scope 認 `book.preferredNotebookId` 綁定本：fixture 須同時種 notebook（synced）+ `book.preferredNotebookId` + `entry.notebookId` 三者一致，缺一則 library-hit / 底線不出現。
 - Today Review 翻卡狀態訊號：back identifier 必須放在 `backContentMounted` 的真內容分支（`TodayReviewPresenter+CardContent.swift` 的 `todayReview.card.back`）。answer fold surface 連同其 `accessibilityLabel("翻譯：…")` 在正面/摺疊（height 0）時仍常駐 view tree——identifier 放 surface/Group 上會讓 `.exists` 對翻卡狀態說謊。動畫中變動的 label（評分後 progress、計數 badge）**勿用** `waitUntilLabelContains`——`XCTNSPredicateExpectation` 會持續讀 stale accessibility snapshot 直到 timeout（實測 label 已是 "3 / 8" 仍判 fail）；改用顯式 RunLoop polling 每迭代重解析 query（`TodayReviewPage.waitUntilLabel(of:contains:)`，同 Podcast probe 讀 elapsed clock 的模式）。badge 斷言用「·1」避免裸 `1` 誤配。
 - Today Review 是純本地 flow，fixture 免登入即可走完（notebook 卡片 + CTA + session）；仍設 `KG_UI_TEST_SERVER_URL` 指向不可達位址保持 hermetic（同 AuthFlow seam）。
-- **Dataset override seam**（`ios_test.sh --dataset <name>` / `--dataset-file <path>`，限 `--ui`）：把 `ops/fixtures/catalog/<name>.json`（`kg.fixture.dataset.v1`）base64 注入 runner 的 `KG_FIXTURE_DATASET_B64`，再經 `UITestLaunchConfiguration` 轉發進 app，由 `FixtureDatasetStore` 餵 seeders 的 `renderModel` 鏈覆寫 fixture 內容（per-test fixture 值優先於 runner-wide）。注入面是 xctestrun 的 `TestingEnvironmentVariables`（test-without-building 不傳行內 env，同 catalog pipeline），副本以 `.scoped.xctestrun` 字尾避免被 discovery 撿到、cleanup trap 收殘檔。沒 dataset 時 dataset-aware 測試 `XCTSkip`，預設 `--ui` sweep 仍綠；與 `--list`/cache action 互斥。`NotebookFixtures`/`PodcastFixtures` 等 domain fixture 即走此 dataset-overridable seam（catalog scenario 與 UITest 共用同一 seeder）。
+- **Dataset override seam**（`ios_test.sh --dataset <name>` / `--dataset-file <path>`，限 `--ui`）：把 `ops/fixtures/catalog/<name>.json`（`kg.fixture.dataset.v1`）base64 注入 runner 的 `KG_FIXTURE_DATASET_B64`，再經 `UITestLaunchConfiguration` 轉發進 app，由 `FixtureDatasetStore` 餵 seeders 的 `renderModel` 鏈覆寫 fixture 內容（per-test fixture 值優先於 runner-wide）。注入面是 xctestrun 的 `TestingEnvironmentVariables`（test-without-building 不傳行內 env，同 catalog pipeline），副本以 `.scoped.xctestrun` 字尾避免被 discovery 撿到、cleanup trap 收殘檔。沒 dataset 時 dataset-aware 測試 `XCTSkip`，預設 `--ui` sweep 仍綠；與 `--list`/cache action 互斥。`NotebookFixtures`/`PodcastFixtures` 等 domain fixture 即走此 dataset-overridable seam（catalog scenario 與 UITest 共用同一 seeder）。邊界：dataset 是畫面/資料 SoT，不是帳號狀態 SoT；auth/pro 仍走 launch fixture matrix，避免截圖資料與安全邊界混成一份 JSON。
 
 ## 驗收（收斂層對抗驗證）
 
-1. flow UI test `--lease --json` 綠 + `uiVisualReview` 非 null。
+1. flow UI test `--lease --json` 綠 + `uiVisualReview` 非 null + `uiVisualReview.reviewHtmlExists == true`。
 2. 獨立 reviewer **親 Read** 每張 step PNG 與 quick4，對照 KG_PERF log——不信 agent 自稱通過。
 3. `./ops/test_ios_ops.sh` 與 `./ops/docs_lint.sh` 綠。
 4. playbook 有新 seam 就回寫本檔。

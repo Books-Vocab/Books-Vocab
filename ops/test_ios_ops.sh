@@ -387,10 +387,11 @@ IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
 bash -n "$IOS_TEST_VIDEO_ARCHIVE_LIB" 2>/dev/null && ok "ios_test_video_archive.sh syntax" || fail_t "ios_test_video_archive.sh syntax"
 grep -q 'source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test sources video archive lib" || fail_t "ios_test does not source video archive lib"
-# Archive must run after the recording is finalized (post contact sheet) and
-# before any verdict write, so artifacts.uiVideo points at the stable copy.
-awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && v && cs<ar && ar<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
-  && ok "ios_test archives recording after contact sheet and before verdict writes" || fail_t "archive_ui_test_recording call missing or misordered"
+# Archive must run after the recording is finalized (post contact sheet), and
+# standalone UIreview must be generated after archive so it links the stable
+# video path. Both must finish before any verdict write.
+awk '/^build_ui_step_contact_sheet$/{cs=NR} /^archive_ui_test_recording$/{ar=NR} /^build_ui_test_review_page$/{rv=NR} /write_json_verdict "/{if (!v) v=NR} END{exit (cs && ar && rv && v && cs<ar && ar<rv && rv<v) ? 0 : 1}' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test archives recording and builds UIreview before verdict writes" || fail_t "UIreview/archive calls missing or misordered"
 va_tmp="$(mktemp -d)"
 va_dest="$va_tmp/uitest-videos"
 printf 'fake-mp4-bytes' >"$va_tmp/run_recording.mp4"
@@ -612,7 +613,9 @@ mkdir -p "${TMPDIR:-/tmp}/ui-steps"
 : > "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png"
 : > "${TMPDIR:-/tmp}/ui-steps/review_manifest.json"
 : > "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4"
-jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" --arg video "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4" --arg device "STUB-UDID-1234" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",device:$device,options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir,uiVideo:$video}}' >"$json"
+mkdir -p "${TMPDIR:-/tmp}/ui-review"
+: > "${TMPDIR:-/tmp}/ui-review/UIreview.html"
+jq -nc --arg log "${TMPDIR:-/tmp}/test.log" --arg xcresult "${TMPDIR:-/tmp}/Test.xcresult" --arg sheet "${TMPDIR:-/tmp}/ui-steps/contact_sheet.png" --arg quick4 "${TMPDIR:-/tmp}/ui-steps/quick4_contact_sheet.png" --arg manifest "${TMPDIR:-/tmp}/ui-steps/review_manifest.json" --arg screenshotDir "${TMPDIR:-/tmp}/ui-steps" --arg video "${TMPDIR:-/tmp}/ui-steps/run_recording.mp4" --arg reviewRoot "${TMPDIR:-/tmp}/ui-review" --arg reviewHtml "${TMPDIR:-/tmp}/ui-review/UIreview.html" --arg device "STUB-UDID-1234" '{schema:"kg.ios.run-verdict.v1",kind:"test",status:"ok",result:"ok",exit:"0",reason:null,caller:"stub-test",elapsed:"2s",executed:"7",device:$device,options:{uiLaunchProfile:"standard"},cache:{status:"hit"},timings:{bootMs:44,buildForTestingMs:0,testInvocationMs:55,testBodyMs:21,xcresultSessionMs:34,xcresultHarnessOverheadMs:13,appLaunchAverageMs:8,appLaunchSamples:5,invocationOverheadMs:21,xcodebuildMs:55,totalMs:99},artifacts:{log:$log,xcresult:$xcresult,uiContactSheet:$sheet,uiQuick4Sheet:$quick4,uiVisualReviewManifest:$manifest,uiScreenshotDir:$screenshotDir,uiVideo:$video,uiReviewRoot:$reviewRoot,uiReviewHtml:$reviewHtml}}' >"$json"
 cp -f "$verdict" "$latest"
 cp -f "$json" "$latest.json"
 # RACE FIXTURE: concurrent session clobbers the latest pointer after our run.
@@ -645,9 +648,9 @@ echo "$build_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="build" a
 grep -q 'build stub stdout' "$delegate_tmp/build_stderr" \
   && ok "build --json redirects delegate stdout to stderr" || fail_t "build --json missing delegate output forwarding"
 test_direct_json="$(TMPDIR="$delegate_tmp" KG_IOS_TEST_DELEGATE="$delegate_tmp/test_stub.sh" bash "$IOS_OPS" test --json 2>"$delegate_tmp/test_stderr")"
-echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .artifacts.uiContactSheetExists==true and .artifacts.uiQuick4SheetExists==true and .artifacts.uiVisualReviewManifestExists==true and .artifacts.uiVideoExists==true and .device=="STUB-UDID-1234" and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
+echo "$test_direct_json" | jq -e '.schema=="kg.ios.run.v1" and .kind=="test" and .result=="ok" and .executed=="7" and .cache.status=="hit" and .timings.appLaunchAverageMs==8 and .artifacts.uiContactSheetExists==true and .artifacts.uiQuick4SheetExists==true and .artifacts.uiVisualReviewManifestExists==true and .artifacts.uiVideoExists==true and .artifacts.uiReviewRootExists==true and .artifacts.uiReviewHtmlExists==true and .device=="STUB-UDID-1234" and .diagnostics.schema=="kg.ios.diagnostics.v1"' >/dev/null \
   && ok "test --json emits machine-readable run report" || fail_t "test --json invalid: $test_direct_json"
-echo "$test_direct_json" | jq -e '.uiVisualReview.contactSheet==.artifacts.uiContactSheet and .uiVisualReview.contactSheetExists==true and .uiVisualReview.quick4Sheet==.artifacts.uiQuick4Sheet and .uiVisualReview.quick4SheetExists==true and .uiVisualReview.visualReviewManifest==.artifacts.uiVisualReviewManifest and .uiVisualReview.visualReviewManifestExists==true and .uiVisualReview.screenshotDir==.artifacts.uiScreenshotDir and .uiVisualReview.video==.artifacts.uiVideo and .uiVisualReview.videoExists==true' >/dev/null \
+echo "$test_direct_json" | jq -e '.uiVisualReview.contactSheet==.artifacts.uiContactSheet and .uiVisualReview.contactSheetExists==true and .uiVisualReview.quick4Sheet==.artifacts.uiQuick4Sheet and .uiVisualReview.quick4SheetExists==true and .uiVisualReview.visualReviewManifest==.artifacts.uiVisualReviewManifest and .uiVisualReview.visualReviewManifestExists==true and .uiVisualReview.screenshotDir==.artifacts.uiScreenshotDir and .uiVisualReview.video==.artifacts.uiVideo and .uiVisualReview.videoExists==true and .uiVisualReview.reviewRoot==.artifacts.uiReviewRoot and .uiVisualReview.reviewRootExists==true and .uiVisualReview.reviewHtml==.artifacts.uiReviewHtml and .uiVisualReview.reviewHtmlExists==true' >/dev/null \
   && ok "test --json exposes uiVisualReview block" || fail_t "test --json missing uiVisualReview block: $test_direct_json"
 grep -q 'test stub stdout' "$delegate_tmp/test_stderr" \
   && ok "test --json redirects delegate stdout to stderr" || fail_t "test --json missing delegate output forwarding"
@@ -913,21 +916,33 @@ done
 bash -c '
   set -euo pipefail
   SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  PROJECT_ROOT="'"$ui_steps_tmp"'/project"
+  TEST_SCOPE="ui"
   UI_TEST_SCREENSHOT_DIR="'"$ui_steps_tmp"'"
   UI_TEST_CONTACT_SHEET=""
   UI_TEST_QUICK4_SHEET=""
   UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
+  UI_TEST_REVIEW_ROOT=""
+  UI_TEST_REVIEW_HTML=""
   export_ui_step_attachments_from_xcresult() { :; }
   eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
   build_ui_step_contact_sheet
+  build_ui_test_review_page
 ' >"$ui_steps_tmp/snippet.log" 2>&1 || true
+ui_steps_review_html=""
+if [[ -d "$ui_steps_tmp/project/build/snapshots/uitest-runs" ]]; then
+  ui_steps_review_html="$(find "$ui_steps_tmp/project/build/snapshots/uitest-runs" -name UIreview.html -type f | head -1)"
+fi
 if [[ -s "$ui_steps_tmp/contact_sheet.png" && -s "$ui_steps_tmp/quick4_contact_sheet.png" && -s "$ui_steps_tmp/review_manifest.json" ]] \
+  && [[ -n "$ui_steps_review_html" && -s "$ui_steps_review_html" ]] \
   && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null; then
-  ok "ios_test builds full + quick4 contact sheets and manifest from step screenshots"
+  ok "ios_test builds full + quick4 contact sheets, manifest, and standalone UIreview from step screenshots"
   rm -rf "$ui_steps_tmp"
 else
   # keep $ui_steps_tmp as the debug artifact — the failure message points at it
-  fail_t "ios_test ui-step visual review trio missing in $ui_steps_tmp: $(tail -3 "$ui_steps_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
+  fail_t "ios_test ui-step visual review artifacts missing in $ui_steps_tmp: $(tail -3 "$ui_steps_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
 fi
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
