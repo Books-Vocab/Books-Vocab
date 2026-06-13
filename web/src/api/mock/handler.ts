@@ -10,6 +10,7 @@
 import type { FetchLike } from '../transport'
 import {
   MOCK_ACCESS_TOKEN,
+  MOCK_DELETE_ACCOUNT,
   MOCK_ENTITLEMENTS,
   MOCK_LIBRARY_BOOKS,
   MOCK_NOTEBOOKS,
@@ -18,15 +19,28 @@ import {
   MOCK_PODCAST_SERIES,
   MOCK_QUOTA,
   MOCK_REVIEW_EVENTS,
+  MOCK_SUBTITLE_SRT,
   MOCK_USER_CONFIG,
+  MOCK_USER_PROFILE,
   MOCK_VOCAB_CARDS,
+  mockGraphCreate,
+  mockGraphDelete,
+  mockGraphList,
+  mockGraphSetHidden,
   mockLibraryCreate,
+  mockLibraryDelete,
   mockLibraryUpdate,
   mockLibraryPosition,
   mockNotebookCreate,
   mockNotebookUpdate,
+  mockTranslateExplain,
+  mockTranslatePhrase,
+  mockTranslateQuick,
   mockVocabAdd,
+  mockVocabArchive,
   mockVocabByWord,
+  mockVocabDelete,
+  mockVocabUpdateContent,
 } from './data'
 
 interface ParsedRequest {
@@ -41,6 +55,13 @@ function json(data: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function text(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   })
 }
 
@@ -196,6 +217,40 @@ const ROUTES: Route[] = [
     handle: () => json(MOCK_REVIEW_EVENTS),
   },
   {
+    // POST /api/vocab/batch-delete — partitions requested words into deleted /
+    // not_found against the current store, then removes the matched cards.
+    method: 'POST',
+    pattern: /^\/api\/vocab\/batch-delete$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { words?: unknown }
+      const words = Array.isArray(b.words) ? b.words.filter((w): w is string => typeof w === 'string') : []
+      const deleted_words: string[] = []
+      const not_found: string[] = []
+      for (const w of words) {
+        if (mockVocabDelete(w)) deleted_words.push(w)
+        else not_found.push(w)
+      }
+      return json({ deleted: deleted_words.length, deleted_words, not_found, failed: [] })
+    },
+  },
+  {
+    // PATCH /api/vocab/batch-archive — partitions then flips the archived flag.
+    method: 'PATCH',
+    pattern: /^\/api\/vocab\/batch-archive$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { words?: unknown; archived?: unknown }
+      const words = Array.isArray(b.words) ? b.words.filter((w): w is string => typeof w === 'string') : []
+      const archived = typeof b.archived === 'boolean' ? b.archived : true
+      const updated_words: string[] = []
+      const not_found: string[] = []
+      for (const w of words) {
+        if (mockVocabArchive(w, archived)) updated_words.push(w)
+        else not_found.push(w)
+      }
+      return json({ updated: updated_words.length, updated_words, not_found, failed: [] })
+    },
+  },
+  {
     method: 'PATCH',
     pattern: /^\/api\/vocab\/review-events$/,
     handle: (req) => {
@@ -205,12 +260,123 @@ const ROUTES: Route[] = [
     },
   },
   {
+    // PATCH /api/vocab/{word}/archive — single-card archive toggle. Registered
+    // after batch-archive (a static path) so the {word} group can't swallow it.
+    method: 'PATCH',
+    pattern: /^\/api\/vocab\/([^/]+)\/archive$/,
+    handle: (req, m) => {
+      const word = decodeURIComponent(m[1])
+      const b = (req.body ?? {}) as { archived?: unknown }
+      const archived = typeof b.archived === 'boolean' ? b.archived : true
+      const c = mockVocabArchive(word, archived)
+      return c ? json({ word: c.content, id: c.id, archived: c.isArchived }) : notFound()
+    },
+  },
+  {
     method: 'GET',
     pattern: /^\/api\/vocab\/([^/]+)$/,
     handle: (_req, m) => {
       const c = mockVocabByWord(decodeURIComponent(m[1]))
       return c ? json(c) : notFound()
     },
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/vocab\/([^/]+)$/,
+    handle: (_req, m) => {
+      const word = decodeURIComponent(m[1])
+      const c = mockVocabDelete(word)
+      return c ? json({ deleted: word, id: c.id }) : notFound()
+    },
+  },
+  {
+    // PATCH /api/vocab/{word} — NEW backend partial content edit (mock-only).
+    // Registered after the static PATCH vocab routes (review / review-events /
+    // batch-archive) so those win for their reserved subpaths.
+    method: 'PATCH',
+    pattern: /^\/api\/vocab\/([^/]+)$/,
+    handle: (req, m) => {
+      const word = decodeURIComponent(m[1])
+      const body = (req.body ?? {}) as Record<string, unknown>
+      const c = mockVocabUpdateContent(word, {
+        meaning: typeof body.meaning === 'string' ? body.meaning : undefined,
+        note: body.note !== undefined ? (typeof body.note === 'string' ? body.note : null) : undefined,
+        explanation: typeof body.explanation === 'string' ? body.explanation : undefined,
+      })
+      return c ? json(c) : notFound()
+    },
+  },
+
+  // graph links
+  {
+    method: 'GET',
+    pattern: /^\/api\/graph\/links$/,
+    handle: (req) => json(mockGraphList(req.query.notebook_id ?? 'default')),
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/graph\/links$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { from_id?: unknown; to_id?: unknown }
+      if (typeof b.from_id !== 'string' || !b.from_id || typeof b.to_id !== 'string' || !b.to_id) {
+        return json({ detail: 'from_id and to_id are required' }, 422)
+      }
+      return json(mockGraphCreate({ from_id: b.from_id, to_id: b.to_id }, req.query.notebook_id ?? 'default'), 201)
+    },
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/graph\/links\/([^/]+)\/hide$/,
+    handle: (_req, m) =>
+      mockGraphSetHidden(decodeURIComponent(m[1]), true) ? json(null, 204) : notFound(),
+  },
+  {
+    method: 'PATCH',
+    pattern: /^\/api\/graph\/links\/([^/]+)\/unhide$/,
+    handle: (_req, m) =>
+      mockGraphSetHidden(decodeURIComponent(m[1]), false) ? json(null, 204) : notFound(),
+  },
+  {
+    method: 'DELETE',
+    pattern: /^\/api\/graph\/links\/([^/]+)$/,
+    handle: (_req, m) =>
+      mockGraphDelete(decodeURIComponent(m[1])) ? json(null, 204) : notFound(),
+  },
+
+  // translate — quota-gated LLM (terse t/p/r, t, e shapes)
+  {
+    method: 'POST',
+    pattern: /^\/api\/translate\/quick$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { word?: unknown }
+      if (typeof b.word !== 'string' || !b.word) return json({ detail: 'word is required' }, 422)
+      return json(mockTranslateQuick(b.word))
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/translate\/phrase$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { word?: unknown }
+      if (typeof b.word !== 'string' || !b.word) return json({ detail: 'word is required' }, 422)
+      return json(mockTranslatePhrase(b.word))
+    },
+  },
+  {
+    method: 'POST',
+    pattern: /^\/api\/translate\/explain$/,
+    handle: (req) => {
+      const b = (req.body ?? {}) as { word?: unknown }
+      if (typeof b.word !== 'string' || !b.word) return json({ detail: 'word is required' }, 422)
+      return json(mockTranslateExplain(b.word))
+    },
+  },
+
+  // pipeline — queue an async run (returns immediately)
+  {
+    method: 'POST',
+    pattern: /^\/api\/pipeline$/,
+    handle: () => json({ status: 'queued', message: 'pipeline scheduled' }),
   },
 
   // library
@@ -287,6 +453,15 @@ const ROUTES: Route[] = [
       return updated ? json(updated) : notFound()
     },
   },
+  {
+    // DELETE /api/library/books/{id} — NEW backend (mock-only) soft-delete.
+    method: 'DELETE',
+    pattern: /^\/api\/library\/books\/([^/]+)$/,
+    handle: (_req, m) => {
+      const deleted = mockLibraryDelete(decodeURIComponent(m[1]))
+      return deleted ? json(deleted) : notFound()
+    },
+  },
 
   // podcast — browse is anonymous
   {
@@ -317,6 +492,13 @@ const ROUTES: Route[] = [
         updated_at: b.updated_at ?? '2026-06-11T00:00:00Z',
       })
     },
+  },
+  {
+    // GET /api/podcasts/{series}/{ep}/subtitle — raw SRT (text/plain).
+    // Registered before the bare {series_id} route so it wins the match.
+    method: 'GET',
+    pattern: /^\/api\/podcasts\/([^/]+)\/(\d+)\/subtitle$/,
+    handle: () => text(MOCK_SUBTITLE_SRT),
   },
   {
     method: 'GET',
@@ -350,11 +532,18 @@ const ROUTES: Route[] = [
     pattern: /^\/api\/user\/quota$/,
     handle: () => json(MOCK_QUOTA),
   },
-  // user account deletion (optional endpoint — may not exist in backend yet)
   {
+    // GET /api/user/profile — NEW backend (mock-only) identity contract.
+    method: 'GET',
+    pattern: /^\/api\/user\/profile$/,
+    handle: () => json(MOCK_USER_PROFILE),
+  },
+  {
+    // DELETE /api/user/account — mirrors DeleteAccountResponse (200 + body),
+    // matching backend/src/kg/routers/user.py:60 (response_model, not 204).
     method: 'DELETE',
     pattern: /^\/api\/user\/account$/,
-    handle: () => json({ deleted: true }, 204),
+    handle: () => json(MOCK_DELETE_ACCOUNT),
   },
 ]
 
