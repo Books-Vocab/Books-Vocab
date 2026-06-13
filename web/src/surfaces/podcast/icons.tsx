@@ -87,3 +87,39 @@ export const PersonCropCircleIcon = makeGlyph(
     '<circle cx="12" cy="10" r="3"/>' +
     '<path d="M6.4 18.2a6.2 6.2 0 0 1 11.2 0"/>',
 )
+
+/** SF `moon.zzz` — sleep timer control。crescent + 小 z。 */
+export const MoonIcon = makeGlyph(
+  '<path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a6 6 0 1 0 9.5 9.5z"/>' +
+    '<path d="M16 4h3l-3 3.4h3" stroke-width="1.2"/>',
+)
+
+/** SF `captions.bubble` — subtitle size/follow control。氣泡 + cc 線。 */
+export const CaptionsIcon = makeGlyph(
+  '<rect x="3.5" y="4.5" width="17" height="12" rx="3"/>' +
+    '<path d="M9 8.5H8a2 2 0 0 0 0 4h1M16 8.5h-1a2 2 0 0 0 0 4h1"/>' +
+    '<path d="M8.5 19.5 12 16.5l3.5 3z" fill="currentColor" stroke="none"/>',
+)
+
+/** SF `list.bullet` — continuous-playback / queue control。 */
+export const ListBulletIcon = makeGlyph(
+  '<path d="M8 6.5h11M8 12h11M8 17.5h11"/>' +
+    '<circle cx="4.5" cy="6.5" r="1.1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="4.5" cy="12" r="1.1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="4.5" cy="17.5" r="1.1" fill="currentColor" stroke="none"/>',
+)
+
+/** SF `ellipsis` — overflow options (opens the option sheet)。 */
+export const EllipsisIcon = makeGlyph(
+  '<circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>' +
+    '<circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+)
+
+/** SF `forward.end.fill` — skip to next episode (continuous)。 */
+export const ForwardEndFillIcon = makeFilledGlyph(
+  '<path d="M5 5.5v13l9-6.5z"/>' + '<rect x="15" y="5" width="3" height="14" rx="1"/>',
+)
+
+/** SF `checkmark` — selected option in the sheet。 */
+export const CheckmarkIcon = makeGlyph('<path d="M5 12.5l4.5 4.5L19 6"/>', { strokeWidth: 2 })

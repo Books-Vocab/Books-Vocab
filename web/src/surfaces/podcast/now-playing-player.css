@@ -1,0 +1,295 @@
+/*
+ * PodcastNowPlayingPlayer chrome — the engine-driven full player for the
+ * shell-gated podcast master-detail. Functional-only (mounted behind ?shell=1),
+ * never on the parity capture path. No .phone-frame / *-surface selectors and no
+ * responsive @media(min-width>=768)/@container rules, so check:responsive stays
+ * CLEAN. (Subtitle size is data-attr driven; <Sheet>/vaul owns sheet chrome.)
+ */
+
+.npp-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0 18px;
+  gap: 12px;
+}
+
+.npp-status {
+  padding: 40px 18px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.npp-head {
+  padding: 18px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.npp-series {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.npp-episode {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+/* transcript */
+.npp-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.npp-cue {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--app-text-tertiary, #b0b0b6);
+  transition: color 160ms ease;
+}
+
+.npp-cue-active {
+  color: var(--app-text-primary, #1c1c1e);
+  font-weight: 600;
+}
+
+/* subtitle size ladder (data-subtitle-size on the container) */
+.npp-transcript[data-subtitle-size='s'] .npp-cue {
+  font-size: 14px;
+}
+.npp-transcript[data-subtitle-size='m'] .npp-cue {
+  font-size: 17px;
+}
+.npp-transcript[data-subtitle-size='l'] .npp-cue {
+  font-size: 20px;
+}
+.npp-transcript[data-subtitle-size='xl'] .npp-cue {
+  font-size: 24px;
+}
+
+/* preview banner */
+.npp-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 149, 0, 0.12);
+  color: #b25a00;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.npp-banner-lock {
+  flex: 0 0 auto;
+}
+
+.npp-banner-msg {
+  flex: 1;
+}
+
+.npp-banner-cta {
+  font-weight: 700;
+}
+
+/* controls */
+.npp-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+.npp-seek {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.npp-seek-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(120, 120, 128, 0.2);
+}
+
+.npp-seek-fill {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--app-text-primary, #1c1c1e);
+}
+
+.npp-seek-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--app-text-primary, #1c1c1e);
+  transform: translateX(-50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.npp-clock {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.npp-transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 4px 0;
+}
+
+.npp-ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--app-text-primary, #1c1c1e);
+  cursor: pointer;
+}
+
+.npp-play {
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background: var(--brand-hero, #1c1c1e);
+  color: #fff;
+}
+
+.npp-play-glyph {
+  display: inline-flex;
+}
+
+/* secondary controls row */
+.npp-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.npp-sec-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 38px;
+  border: none;
+  background: none;
+  color: var(--app-text-secondary, #6a6a70);
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.npp-sec-btn[data-active] {
+  color: var(--brand-hero, #1c1c1e);
+}
+
+.npp-sec-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.npp-sec-glyph {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.npp-sec-toggle[data-active] .npp-sec-glyph {
+  color: var(--brand-hero, #1c1c1e);
+}
+
+.npp-sec-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--brand-hero, #1c1c1e);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* gates */
+.npp-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 0 32px;
+  text-align: center;
+}
+
+.npp-gate-lock {
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.npp-gate-title {
+  margin: 8px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.npp-gate-body {
+  margin: 0;
+  font-size: 15px;
+  color: var(--app-text-secondary, #6b6b70);
+}
+
+.npp-gate-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  background: var(--app-text-primary, #1c1c1e);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .npp-cue {
+    transition: none;
+  }
+}

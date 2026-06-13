@@ -12,6 +12,7 @@ import {
 import { PatternOverlay, PlayFillIcon, StarFillIcon, WaveformBadgeIcon } from './icons'
 import { useShellNav } from '../../shell/ShellNavContext'
 import { pushTargetFor, screenFor } from '../../shell/nav'
+import { PodcastNowPlaying } from '../podcast/PodcastNowPlaying'
 import './podcast-home.css'
 
 /**
@@ -133,7 +134,14 @@ function PodcastHomeScreenApi() {
     )
     if (player) nav.navigate(player)
   }
-  return <PodcastHomeBody fixture={fixture} onOpenSeries={openSeries} onOpenEpisode={openEpisode} />
+  return (
+    <>
+      <PodcastHomeBody fixture={fixture} onOpenSeries={openSeries} onOpenEpisode={openEpisode} />
+      {/* Persistent now-playing layer: the mini-player floats above this tab root
+          once an episode is engaged, surviving the push into series/episode/player. */}
+      <PodcastNowPlaying />
+    </>
+  )
 }
 
 function PodcastHomeBody({
