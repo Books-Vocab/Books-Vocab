@@ -35,7 +35,6 @@ def web_auth_env(tmp_path):
         google_client_secret="test-google-client-secret",
         google_redirect_uri=TEST_GOOGLE_REDIRECT_URI,
         apple_bundle_id="test.apple.bundle",
-        chrome_extension_id="test-extension-id-abc",
     )
     _swap_settings(test_settings)
 
