@@ -212,4 +212,192 @@ describe('user config', () => {
     const err = await expectApiError(() => anonClient().user.config())
     expect(err.status).toBe(401)
   })
+
+  it('profile() returns identity (mock-only NEW contract)', async () => {
+    const p = await authedClient().user.profile()
+    expect(p.user_id).toBe('mock-user')
+    expect(p).toHaveProperty('email')
+    expect(p).toHaveProperty('display_name')
+  })
+
+  it('deleteAccount() returns the deletion summary (200 + body)', async () => {
+    const res = await authedClient().user.deleteAccount()
+    expect(res.deleted_user_id).toBe('mock-user')
+    expect(Array.isArray(res.linked_ids)).toBe(true)
+    expect(Array.isArray(res.deleted_dirs)).toBe(true)
+  })
+})
+
+describe('translate', () => {
+  it('quick() mirrors the terse {t,p,r} shape', async () => {
+    const res = await authedClient().translate.quick({ word: 'serendipity' })
+    expect(typeof res.t).toBe('string')
+    expect(res.t.length).toBeGreaterThan(0)
+    expect(res).toHaveProperty('p')
+    expect(res).toHaveProperty('r')
+  })
+
+  it('phrase() mirrors the terse {t} shape', async () => {
+    const res = await authedClient().translate.phrase({ word: 'a good fortune' })
+    expect(typeof res.t).toBe('string')
+    expect(res.t.length).toBeGreaterThan(0)
+  })
+
+  it('explain() mirrors the terse {e} shape', async () => {
+    const res = await authedClient().translate.explain({ word: 'ineffable' })
+    expect(typeof res.e).toBe('string')
+    expect(res.e.length).toBeGreaterThan(0)
+  })
+
+  it('quick() throws 401 when logged out', async () => {
+    const err = await expectApiError(() => anonClient().translate.quick({ word: 'x' }))
+    expect(err.status).toBe(401)
+  })
+})
+
+describe('graph links', () => {
+  it('list() returns the seeded visible links', async () => {
+    const links = await authedClient().graph.list()
+    expect(links.length).toBeGreaterThan(0)
+    expect(links[0]).toHaveProperty('fromId')
+    expect(links[0]).toHaveProperty('confidence')
+  })
+
+  it('create() returns a new link', async () => {
+    const link = await authedClient().graph.create({ from_id: 'card-1', to_id: 'card-4' })
+    expect(link.fromId).toBe('card-1')
+    expect(link.toId).toBe('card-4')
+    expect(link.id).toMatch(/^link-/)
+  })
+
+  it('hide() then unhide() round-trips (link reappears in list)', async () => {
+    const api = authedClient()
+    await api.graph.hide('link-1') // 204, no body
+    let links = await api.graph.list()
+    expect(links.some((l) => l.id === 'link-1')).toBe(false)
+    await api.graph.unhide('link-1')
+    links = await api.graph.list()
+    expect(links.some((l) => l.id === 'link-1')).toBe(true)
+  })
+
+  it('delete() removes a link', async () => {
+    const api = authedClient()
+    await api.graph.delete('link-2')
+    const links = await api.graph.list()
+    expect(links.some((l) => l.id === 'link-2')).toBe(false)
+  })
+
+  it('list() throws 401 when logged out', async () => {
+    const err = await expectApiError(() => anonClient().graph.list())
+    expect(err.status).toBe(401)
+  })
+})
+
+describe('pipeline', () => {
+  it('trigger() returns a queued status', async () => {
+    const res = await authedClient().pipeline.trigger('default')
+    expect(res.status).toBe('queued')
+    expect(typeof res.message).toBe('string')
+  })
+
+  it('trigger() throws 401 when logged out', async () => {
+    const err = await expectApiError(() => anonClient().pipeline.trigger())
+    expect(err.status).toBe(401)
+  })
+})
+
+describe('podcast media', () => {
+  it('subtitle() returns raw SRT text', async () => {
+    const srt = await authedClient().podcast.subtitle('pride-and-prejudice', 1)
+    expect(typeof srt).toBe('string')
+    expect(srt).toContain('-->')
+  })
+
+  it('audioUrl() composes the episode audio path (no fetch)', () => {
+    const url = authedClient().podcast.audioUrl('pride-and-prejudice', 2)
+    expect(url).toBe('/api/podcasts/pride-and-prejudice/2/audio')
+  })
+
+  it('subtitle() throws 401 when logged out', async () => {
+    const err = await expectApiError(() =>
+      anonClient().podcast.subtitle('pride-and-prejudice', 1),
+    )
+    expect(err.status).toBe(401)
+  })
+})
+
+// Destructive vocab-mutation tests run last: they mutate the shared mock store
+// (archive flips in place; delete removes rows). They target words/links not
+// asserted by earlier tests so ordering stays safe.
+describe('vocabulary mutations', () => {
+  it('archive() then restore round-trips the flag', async () => {
+    const api = authedClient()
+    const archived = await api.vocabulary.archive('petrichor', true)
+    expect(archived.word).toBe('petrichor')
+    expect(archived.archived).toBe(true)
+    const restored = await api.vocabulary.archive('petrichor', false)
+    expect(restored.archived).toBe(false)
+  })
+
+  it('updateContent() applies a partial patch (mock-only NEW route)', async () => {
+    const card = await authedClient().vocabulary.updateContent('petrichor', {
+      meaning: '雨後的氣味（已編輯）',
+      note: '使用者註記',
+    })
+    expect(card.content).toBe('petrichor')
+    expect(card.meaning).toBe('雨後的氣味（已編輯）')
+    expect(card.note).toBe('使用者註記')
+  })
+
+  it('updateContent() 404s on an unknown word', async () => {
+    const err = await expectApiError(() =>
+      authedClient().vocabulary.updateContent('zzznope', { meaning: 'x' }),
+    )
+    expect(err.status).toBe(404)
+  })
+
+  it('batchArchive() partitions into updated / not_found', async () => {
+    const res = await authedClient().vocabulary.batchArchive(['serendipity', 'zzznope'], true)
+    expect(res.updated_words).toContain('serendipity')
+    expect(res.not_found).toContain('zzznope')
+    expect(res.failed).toEqual([])
+  })
+
+  it('batchDelete() removes matched words and reports not_found', async () => {
+    const res = await authedClient().vocabulary.batchDelete(['petrichor', 'zzznope'])
+    expect(res.deleted_words).toContain('petrichor')
+    expect(res.not_found).toContain('zzznope')
+    expect(res.deleted).toBe(1)
+  })
+
+  it('delete() removes a single card', async () => {
+    const res = await authedClient().vocabulary.delete('ineffable')
+    expect(res.deleted).toBe('ineffable')
+    expect(res.id).toBeTruthy()
+    const err = await expectApiError(() => authedClient().vocabulary.detail('ineffable'))
+    expect(err.status).toBe(404)
+  })
+
+  it('delete() 404s on an unknown word', async () => {
+    const err = await expectApiError(() => authedClient().vocabulary.delete('zzznope'))
+    expect(err.status).toBe(404)
+  })
+})
+
+describe('library mutations', () => {
+  it('delete() soft-deletes a book and removes it from list()', async () => {
+    const api = authedClient()
+    const before = await api.library.list()
+    const target = before[before.length - 1]
+    const deleted = await api.library.delete(target.id)
+    expect(deleted.id).toBe(target.id)
+    expect(deleted.is_deleted).toBe(true)
+    const after = await api.library.list()
+    expect(after.some((b) => b.id === target.id)).toBe(false)
+  })
+
+  it('delete() 404s on an unknown book', async () => {
+    const err = await expectApiError(() => authedClient().library.delete('book-nope'))
+    expect(err.status).toBe(404)
+  })
 })

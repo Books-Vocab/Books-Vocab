@@ -7,15 +7,22 @@ import { VOCABULARY_FIXTURES } from '../../surfaces/vocabulary/fixtures'
 import type {
   BookMetadataResponse,
   CardResponse,
+  DeleteAccountResponse,
   EntitlementsResponse,
+  ExplainResponse,
+  GraphLinkResponse,
   NotebookResponse,
+  PhraseTranslateResponse,
   PodcastProgressListResponse,
   PodcastSeriesDetail,
   PodcastSeriesSummary,
+  QuickTranslateResponse,
   QuotaResponse,
   ReviewEventsResponse,
   UserConfigResponse,
+  UserProfileResponse,
   VocabAddResponse,
+  VocabContentPatch,
 } from '../types'
 
 const NOW_ISO = '2026-06-11T00:00:00Z'
@@ -166,6 +173,16 @@ export function mockLibraryPosition(
   }
 }
 
+// DELETE /api/library/books/{id} — NEW backend (mock-only). Soft-delete:
+// flips is_deleted so list() (which filters deleted) hides it, mirroring the
+// LWW tombstone the backend is expected to write. Returns the tombstoned row.
+export function mockLibraryDelete(id: string): BookMetadataResponse | undefined {
+  const base = MOCK_LIBRARY_BOOKS.find((b) => b.id === id)
+  if (!base) return undefined
+  base.is_deleted = true
+  return base
+}
+
 export const MOCK_NOTEBOOKS: NotebookResponse[] = [
   {
     id: 'default',
@@ -287,6 +304,39 @@ export function mockVocabAdd(count: number): VocabAddResponse {
   }
 }
 
+// PATCH /api/vocab/{word}/archive — flip a card's archived flag in place.
+export function mockVocabArchive(word: string, archived: boolean): CardResponse | undefined {
+  const c = MOCK_VOCAB_CARDS.find((x) => x.content === word)
+  if (!c) return undefined
+  c.isArchived = archived
+  return c
+}
+
+// DELETE /api/vocab/{word} — remove a card from the store.
+export function mockVocabDelete(word: string): CardResponse | undefined {
+  const idx = MOCK_VOCAB_CARDS.findIndex((x) => x.content === word)
+  if (idx < 0) return undefined
+  const [removed] = MOCK_VOCAB_CARDS.splice(idx, 1)
+  return removed
+}
+
+// PATCH /api/vocab/{word} — NEW backend (mock-only). Partial content edit:
+// only meaning / note / explanation are mutable. Returns the updated card.
+// Note: there is no `explanation` field on CardResponse; the backend contract
+// folds it into `note` for now, so we apply it there (last-write-wins).
+export function mockVocabUpdateContent(
+  word: string,
+  patch: VocabContentPatch,
+): CardResponse | undefined {
+  const c = MOCK_VOCAB_CARDS.find((x) => x.content === word)
+  if (!c) return undefined
+  if (patch.meaning !== undefined) c.meaning = patch.meaning
+  if (patch.note !== undefined) c.note = patch.note
+  if (patch.explanation !== undefined) c.note = patch.explanation
+  c.updatedAt = NOW_ISO
+  return c
+}
+
 export const MOCK_REVIEW_EVENTS: ReviewEventsResponse = {
   entries: [],
   cursor: null,
@@ -361,6 +411,122 @@ export const MOCK_QUOTA: QuotaResponse = {
   fraction: 0.12,
   reset_seconds: 43200,
 }
+
+// ── graph links ──────────────────────────────────────────────────────────────
+// Edges between the seeded vocab cards. hidden links stay in the store (the
+// real backend filters them server-side); the hide/unhide handlers mutate in
+// place so a list() after an unhide observes the round-trip.
+interface MockGraphLink extends GraphLinkResponse {
+  hidden: boolean
+  notebookId: string
+}
+
+export const MOCK_GRAPH_LINKS: MockGraphLink[] = [
+  {
+    id: 'link-1',
+    fromId: 'card-1',
+    toId: 'card-2',
+    kind: 'synonym',
+    confidence: 0.82,
+    reason: '兩字在語意上高度重疊',
+    hidden: false,
+    notebookId: 'default',
+  },
+  {
+    id: 'link-2',
+    fromId: 'card-2',
+    toId: 'card-3',
+    kind: 'related',
+    confidence: 0.64,
+    reason: '常於同一語境共現',
+    hidden: false,
+    notebookId: 'default',
+  },
+]
+
+function toGraphLink(l: MockGraphLink): GraphLinkResponse {
+  return { id: l.id, fromId: l.fromId, toId: l.toId, kind: l.kind, confidence: l.confidence, reason: l.reason }
+}
+
+/** GET /api/graph/links — visible links for a notebook (default if omitted). */
+export function mockGraphList(notebookId = 'default'): GraphLinkResponse[] {
+  return MOCK_GRAPH_LINKS.filter((l) => l.notebookId === notebookId && !l.hidden).map(toGraphLink)
+}
+
+let nextLinkId = 100
+
+/** POST /api/graph/links — create a manual link (judge synthesised here). */
+export function mockGraphCreate(req: { from_id: string; to_id: string }, notebookId = 'default'): GraphLinkResponse {
+  const link: MockGraphLink = {
+    id: `link-${nextLinkId++}`,
+    fromId: req.from_id,
+    toId: req.to_id,
+    kind: 'related',
+    confidence: 0.7,
+    reason: '使用者手動建立的連結',
+    hidden: false,
+    notebookId,
+  }
+  MOCK_GRAPH_LINKS.push(link)
+  return toGraphLink(link)
+}
+
+/** PATCH /api/graph/links/{id}/hide|unhide — toggle hidden; true if found. */
+export function mockGraphSetHidden(linkId: string, hidden: boolean): boolean {
+  const l = MOCK_GRAPH_LINKS.find((x) => x.id === linkId)
+  if (!l) return false
+  l.hidden = hidden
+  return true
+}
+
+/** DELETE /api/graph/links/{id} — remove a link; true if found. */
+export function mockGraphDelete(linkId: string): boolean {
+  const idx = MOCK_GRAPH_LINKS.findIndex((x) => x.id === linkId)
+  if (idx < 0) return false
+  MOCK_GRAPH_LINKS.splice(idx, 1)
+  return true
+}
+
+// ── translate ────────────────────────────────────────────────────────────────
+// Deterministic terse responses (t/p/r, t, e) — single-letter fields mirror the
+// backend pydantic models verbatim. Echoes the requested word so tests assert
+// the round-trip without coupling to a fixed dictionary.
+export function mockTranslateQuick(word: string): QuickTranslateResponse {
+  return { t: `${word} 的翻譯`, p: `/ˈmɒk/`, r: word }
+}
+
+export function mockTranslatePhrase(word: string): PhraseTranslateResponse {
+  return { t: `${word} 的片語翻譯` }
+}
+
+export function mockTranslateExplain(word: string): ExplainResponse {
+  return { e: `${word} 在此語境中的說明。` }
+}
+
+// ── user profile + account deletion ──────────────────────────────────────────
+// GET /api/user/profile — NEW backend (mock-only) identity contract.
+export const MOCK_USER_PROFILE: UserProfileResponse = {
+  user_id: 'mock-user',
+  email: 'reader@example.com',
+  display_name: '示範使用者',
+}
+
+// DELETE /api/user/account — mirrors api_models/auth.py::DeleteAccountResponse.
+export const MOCK_DELETE_ACCOUNT: DeleteAccountResponse = {
+  deleted_user_id: 'mock-user',
+  linked_ids: ['apple:mock-user'],
+  deleted_dirs: ['/data/users/mock-user'],
+}
+
+// GET /api/podcasts/{series}/{ep}/subtitle — raw SRT text (text/plain).
+export const MOCK_SUBTITLE_SRT = `1
+00:00:00,000 --> 00:00:02,500
+It is a truth universally acknowledged,
+
+2
+00:00:02,500 --> 00:00:05,000
+that a single man in possession of a good fortune,
+`
 
 /** A deterministic access token the mock /auth/verify mints. */
 export const MOCK_ACCESS_TOKEN = 'mock-access-token'

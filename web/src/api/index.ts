@@ -12,10 +12,13 @@
 
 import {
   AuthClient,
+  GraphClient,
   LibraryClient,
   NotebookClient,
+  PipelineClient,
   PodcastClient,
   TodayReviewClient,
+  TranslateClient,
   UserClient,
   VocabularyClient,
 } from './clients'
@@ -44,6 +47,9 @@ export interface ApiClient {
   readonly todayReview: TodayReviewClient
   readonly podcast: PodcastClient
   readonly user: UserClient
+  readonly translate: TranslateClient
+  readonly graph: GraphClient
+  readonly pipeline: PipelineClient
 }
 
 /** Read VITE_* config from import.meta.env, tolerating absence (tests/node). */
@@ -87,6 +93,9 @@ export function createApiClient(config: ApiClientConfig = {}): ApiClient {
     todayReview: new TodayReviewClient(transport),
     podcast: new PodcastClient(transport),
     user: new UserClient(transport),
+    translate: new TranslateClient(transport),
+    graph: new GraphClient(transport),
+    pipeline: new PipelineClient(transport),
   }
 }
 
@@ -101,10 +110,13 @@ export type {
 } from './transport'
 export {
   AuthClient,
+  GraphClient,
   LibraryClient,
   NotebookClient,
+  PipelineClient,
   PodcastClient,
   TodayReviewClient,
+  TranslateClient,
   UserClient,
   VocabularyClient,
 } from './clients'

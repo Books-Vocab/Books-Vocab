@@ -332,3 +332,137 @@ export interface PodcastProgressRequest {
   duration_sec: number
   updated_at: string
 }
+
+// ── translate (api_models/translate.py) ────────────────────────────────────
+// Response shapes are intentionally TERSE single-letter fields — copied
+// verbatim from the pydantic models. DO NOT expand/rename.
+
+/** POST /api/translate/* request — api_models/translate.py::TranslateRequest. */
+export interface TranslateRequest {
+  word: string
+  context?: string
+  source_lang?: string | null
+  target_lang?: string | null
+}
+
+/** POST /api/translate/quick — api_models/translate.py::QuickTranslateResponse. */
+export interface QuickTranslateResponse {
+  t: string // translation
+  p?: string | null // pronunciation
+  r?: string | null // root form (lemma)
+}
+
+/** POST /api/translate/phrase — api_models/translate.py::PhraseTranslateResponse. */
+export interface PhraseTranslateResponse {
+  t: string // translation
+}
+
+/** POST /api/translate/explain — api_models/translate.py::ExplainResponse. */
+export interface ExplainResponse {
+  e: string // explanation
+}
+
+// ── graph links (api_models/graph.py) ──────────────────────────────────────
+
+/** GET/POST /api/graph/links — api_models/graph.py::GraphLinkResponse. */
+export interface GraphLinkResponse {
+  id: string
+  fromId: string
+  toId: string
+  kind: string
+  confidence: number
+  reason: string
+}
+
+/** POST /api/graph/links request — api_models/graph.py::ManualLinkRequest. */
+export interface ManualLinkRequest {
+  from_id: string
+  to_id: string
+}
+
+// ── vocabulary mutations (api_models/vocab.py) ─────────────────────────────
+
+/** PATCH /api/vocab/{word}/archive request — api_models/vocab.py::ArchiveWordRequest. */
+export interface ArchiveWordRequest {
+  archived: boolean
+}
+
+/** PATCH /api/vocab/{word}/archive — api_models/vocab.py::ArchiveWordResponse. */
+export interface ArchiveWordResponse {
+  word: string
+  id: string
+  archived: boolean
+}
+
+/** DELETE /api/vocab/{word} — api_models/vocab.py::DeleteWordResponse. */
+export interface DeleteWordResponse {
+  deleted: string
+  id: string
+}
+
+/** POST /api/vocab/batch-delete request — api_models/vocab.py::BatchDeleteRequest. */
+export interface BatchDeleteRequest {
+  words: string[]
+}
+
+/** POST /api/vocab/batch-delete — api_models/vocab.py::BatchDeleteResponse. */
+export interface BatchDeleteResponse {
+  deleted: number
+  deleted_words: string[]
+  not_found: string[]
+  /** Words whose graph cleanup failed — card still exists; clients must retry. */
+  failed: string[]
+}
+
+/** PATCH /api/vocab/batch-archive request — api_models/vocab.py::BatchArchiveRequest. */
+export interface BatchArchiveRequest {
+  words: string[]
+  archived?: boolean
+}
+
+/** PATCH /api/vocab/batch-archive — api_models/vocab.py::BatchArchiveResponse. */
+export interface BatchArchiveResponse {
+  updated: number
+  updated_words: string[]
+  not_found: string[]
+  /** Words whose graph cleanup/restore failed — clients must retry. */
+  failed: string[]
+}
+
+/**
+ * PATCH /api/vocab/{word} request — NEW backend (mock-only for now).
+ * Partial content edit; only the provided fields are applied.
+ */
+export interface VocabContentPatch {
+  meaning?: string
+  note?: string | null
+  explanation?: string
+}
+
+// ── user (api_models/auth.py + NEW profile) ────────────────────────────────
+
+/** DELETE /api/user/account — api_models/auth.py::DeleteAccountResponse. */
+export interface DeleteAccountResponse {
+  deleted_user_id: string
+  linked_ids: string[]
+  deleted_dirs: string[]
+}
+
+/**
+ * GET /api/user/profile — NEW backend (mock-only for now). The backend has no
+ * displayName/email surface today (config only carries LWW settings groups), so
+ * this is a forward-declared contract the mock owns until the route lands.
+ */
+export interface UserProfileResponse {
+  user_id: string
+  email: string | null
+  display_name: string | null
+}
+
+// ── pipeline (api_models/system.py) ────────────────────────────────────────
+
+/** POST /api/pipeline — api_models/system.py::PipelineQueueResponse. */
+export interface PipelineQueueResponse {
+  status: string
+  message: string
+}
