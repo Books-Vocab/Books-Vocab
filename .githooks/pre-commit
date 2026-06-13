@@ -1,24 +1,47 @@
 #!/usr/bin/env bash
-# pre-commit — design-system 相關檔被 stage 時跑 verify_design_system.sh gate。
+# pre-commit — design-system 與 UI quality gate 的本地 best-effort 檢查。
 #
 # 啟用（一次性，已由建置時設好）: git config core.hooksPath .githooks
 # 停用: git config --unset core.hooksPath
 #
-# 設計：只在 design-system 路徑被 stage 時才跑（否則每次 commit 太重）；缺 uv/node
+# 設計：只在相關路徑被 stage 時才跑（否則每次 commit 太重）；缺 uv/node/rg
 # 時告警跳過而非 brick commit（CI 才是硬 gate）。
 set -euo pipefail
 
 REPO="$(git rev-parse --show-toplevel)"
-PATTERN='^(design-system/|ops/(gen_web_tokens|gen_web_components|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksAndVocab/(Models|UIComponents)/|chrome-extension/shared/|backend/static/(kg-(tokens|components|component-structures)\.css|review-gradient\.js))'
+STAGED_FILES="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE "$PATTERN"; then
-  exit 0
-fi
+DS_PATTERN='^(design-system/|ops/(gen_web_tokens|gen_web_components|gen_figma_sets|token_drift_check|component_fidelity_check|verify_design_system)\.(py|sh)|ios/BooksAndVocab/(Models|UIComponents)/|chrome-extension/shared/|backend/static/(kg-(tokens|components|component-structures)\.css|review-gradient\.js))'
 
-if ! command -v uv >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
-  printf '[pre-commit] \033[33m⚠ 缺 uv 或 node，跳過 design-system gate（CI 仍會擋）\033[0m\n' >&2
-  exit 0
-fi
+UQ_PATTERN='^(ios/BooksAndVocab/.*\.swift|ops/(ui_quality_gate|ui_quality_plane|ui_token_lint|plain_deadzone_lint|i18n_lint|catalyst_lint|injection_lint|_i18n_|_inject_shared))'
 
-printf '[pre-commit] design-system 變動 → verify_design_system.sh\n'
-"$REPO/ops/verify_design_system.sh"
+run_design_system() {
+  if ! echo "$STAGED_FILES" | grep -qE "$DS_PATTERN"; then
+    return 0
+  fi
+
+  if ! command -v uv >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+    printf '[pre-commit] \033[33m⚠ 缺 uv 或 node，跳過 design-system gate（CI 仍會擋）\033[0m\n' >&2
+    return 0
+  fi
+
+  printf '[pre-commit] design-system 變動 → verify_design_system.sh\n'
+  "$REPO/ops/verify_design_system.sh"
+}
+
+run_ui_quality_gate() {
+  if ! echo "$STAGED_FILES" | grep -qE "$UQ_PATTERN"; then
+    return 0
+  fi
+
+  if ! command -v uv >/dev/null 2>&1 || ! command -v rg >/dev/null 2>&1; then
+    printf '[pre-commit] \033[33m⚠ 缺 uv 或 rg，跳過 UI quality gate（CI 仍會擋）\033[0m\n' >&2
+    return 0
+  fi
+
+  printf '[pre-commit] UI 變動 → ui_quality_gate.sh --tier fast --execute\n'
+  "$REPO/ops/ui_quality_gate.sh" --tier fast --execute
+}
+
+run_design_system
+run_ui_quality_gate
