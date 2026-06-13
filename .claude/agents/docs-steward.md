@@ -28,4 +28,4 @@ model: inherit
 - 全 repo 健康盤點才用 `--audit`/`--all`,不把既有 audit debt 當本次 PR gate。
 
 ## 收尾
-依 `kg-receipt` 格式回報:改了哪些 doc、跑了哪個 lint command 與結果、剩餘 risk。
+依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了哪些 doc、跑了哪個 lint command 與結果、剩餘 risk。

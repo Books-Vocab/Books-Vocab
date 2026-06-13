@@ -27,4 +27,4 @@ model: inherit
 - 部署 / 遠端 → `devops_kg_safe.sh` preflight + `runbook/system.md` change flow;有當下狀態輸出。
 
 ## 收尾
-依 `kg-receipt` 格式回報:做了什麼運維動作、跑了哪個 preflight/驗證與結果、是否有不可逆步驟(及是否已升級)、剩餘 risk。**若改了 ops 腳本的 CLI/旗標/入口**,提示上一階需派 `docs-steward` 同步 `tech_index.md` 與引用該命令的 skill/sop/runbook。
+依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:做了什麼運維動作、跑了哪個 preflight/驗證與結果、是否有不可逆步驟(及是否已升級)、剩餘 risk。**若改了 ops 腳本的 CLI/旗標/入口**,提示上一階需派 `docs-steward` 同步 `tech_index.md` 與引用該命令的 skill/sop/runbook。
