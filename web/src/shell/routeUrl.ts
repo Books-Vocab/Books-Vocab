@@ -20,7 +20,7 @@ import { SHELL_TABS } from './tabs'
  * 由呼叫端（P1.3）落 404，不靜默 fallback。
  */
 
-const ROUTE_PREFIX = '/app'
+export const ROUTE_PREFIX = '/app'
 
 /** params 編碼的固定 key 順序 — 令 navToPath 輸出穩定（可比對、可快取）。 */
 const PARAM_KEYS = ['notebookId', 'bookId', 'seriesId', 'epNum', 'word', 'format'] as const

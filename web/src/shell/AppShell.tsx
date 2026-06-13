@@ -6,7 +6,6 @@ import { ChevronLeftIcon } from './icons'
 import { renderScreen } from './screenRegistry'
 import {
   currentScreen,
-  initialNavState,
   isLiveReaderScreen,
   pop,
   push,
@@ -19,7 +18,9 @@ import {
   type ScreenParams,
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
-import { navStateFromLocation, useShellHistory } from './historySync'
+import { useShellHistory } from './historySync'
+import { initialShellRoute } from './route'
+import { NotFoundScreen } from './NotFoundScreen'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import { RouteTransition, Sheet, useNavDirection, useSwipeBack } from '../motion'
 import { routeKeyFor } from './nav'
@@ -125,14 +126,14 @@ function TabButton({
  * （見 nav.initialNavState）。
  */
 export function AppShell({ config }: { config: HarnessConfig }) {
-  // 初始 nav 優先從 /app URL 還原（refresh / deep-link / 斷點切回 mobile 時延續
-  // 桌面殼層留下的位置）；無 shell URL（legacy ?shell=1）落回 config 初始狀態。
-  const [nav, setNav] = useState<NavState>(
-    () => navStateFromLocation() ?? initialNavState(config.surface, config.scenario as string),
-  )
+  // 初始狀態從 /app URL 解析（refresh / deep-link / 斷點切回 mobile 時延續桌面殼層
+  // 位置）；不合法/不可達 → notFound（渲染 404）；非 shell URL（legacy ?shell=1）→ config。
+  const initialRoute = useState(() => initialShellRoute(config))[0]
+  const [nav, setNav] = useState<NavState>(initialRoute.nav)
+  const [notFound, setNotFound] = useState(initialRoute.notFound)
   // AppShell 僅在 mobile shell context 掛載（PhoneFrame shell=1），故恆為當值殼層 →
   // history binder 恆 enabled。
-  useShellHistory(nav, setNav)
+  const goHome = useShellHistory(nav, setNav, true, notFound, setNotFound)
   const appearance: Appearance = config.appearance
   // Sheet primitive proof (Step 2.3): the notebook add/edit sheet — the simplest
   // existing sheet surface — routed through the shared <Sheet> (vaul drag-to-
@@ -188,6 +189,9 @@ export function AppShell({ config }: { config: HarnessConfig }) {
     const target = pushTargetFor(screen, intent, paramsForIntent(intent))
     if (target) setNav((s) => push(s, target))
   }
+
+  // 不合法/不可達的 /app URL → 全幅 404（取代靜默 fallback）。
+  if (notFound) return <NotFoundScreen onHome={goHome} />
 
   return (
     <div className="app-shell" data-appearance={appearance} data-tab={nav.tabId}>
