@@ -98,6 +98,49 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
     return ArchiveWordResponse(word=word, id=card.id, archived=archived)
 
 
+def update_vocab_word_content(
+    word: str,
+    *,
+    meaning: str | None,
+    note: str | None,
+    explanation: str | None,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    notebook_id: str | None = None,
+) -> CardResponse:
+    """Update editorial content (meaning / note) of a single card.
+
+    `explanation` is a write-through alias for the `note` column; an explicit
+    `note` takes precedence when both are supplied. Raises BadRequestError when
+    no content field is provided (the empty-body case), NotFoundError when the
+    word does not resolve in the notebook.
+    """
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
+
+    updates: dict[str, Any] = {}
+    if meaning is not None:
+        updates["meaning"] = meaning
+    note_value = note if note is not None else explanation
+    if note_value is not None:
+        updates["note"] = note_value
+
+    if not updates:
+        raise BadRequestError("No content fields to update")
+
+    cards_store.update(card.id, **updates)
+
+    # Re-read the card + its graph neighbours so the response reflects the
+    # committed state (mirrors lookup_vocab_word's neighbour resolution).
+    return lookup_vocab_word(
+        word,
+        cards_store=cards_store,
+        graph=graph,
+        card_response_builder=card_response_builder,
+        notebook_id=notebook_id,
+    )
+
+
 def _evict_embedding(embeddings: Any, card_id: str) -> None:
     """Evict a deleted card's vector. Best-effort: the card is already gone,
     so an embedding-store failure must not fail the request — it only leaves

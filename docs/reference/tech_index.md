@@ -22,9 +22,10 @@ verified_against: d5fd4918
 |------|-----------------|------|
 | `auth.py` | `/auth/*` | JWT 驗證、Apple/Google token 交換 |
 | `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF |
-| `user.py` | `/api/user/*` | 設定、entitlements、quota |
-| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
+| `user.py` | `/api/user/*` | 設定 (`GET`/`PUT /api/user/config`)、唯讀身分 face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由 `users.json` 登入時 record 衍生，與可變 config bundle 分離)、entitlements、quota |
+| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、內容編修 (`PATCH /api/vocab/{word}` → meaning/note；`explanation` 為 `note` 欄的 write-through alias)、archive 切換 (`PATCH /api/vocab/{word}/archive`)、軟刪 (`DELETE /api/vocab/{word}`)、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
+| `library.py` | `/api/library/*` | 書庫（server 端 book 鏡像）；`DELETE /api/library/books/{id}` 軟刪（set `is_deleted`，冪等；per-user `books.db` via `BookStore`） |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
 | `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**無 Authorization header 的訪客**；若 header 存在但 malformed / token invalid 則 401，不降級 guest；`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）；`progress` 仍 `get_current_user`，OpenAPI 以 `api_models/podcast.py` response models 固定 schema |
@@ -47,6 +48,7 @@ verified_against: d5fd4918
 | `token_tracker.py` | `token_usage` | LLM token / cost,provider-aware |
 | `llm_error_log.py` | `llm_errors` | 真實 LLM 基礎設施失敗(429/5xx/timeout)記錄；落 DB 前遮罩 bearer/API key/token/password/secret-like 值 |
 | `podcast_progress.py` | `podcast_progress` | per-user 播客 LWW 進度 |
+| `book_store.py` | `book` (`books.db`) | per-user 書庫鏡像（`BookStore`，仿 `NotebookStore`：WAL、`is_deleted` 軟刪）。背書 `library.py` 的 `DELETE /api/library/books/{id}` |
 | `review_events.py` | `review_events` | per-user 複習事件 append-only log；`event_id` 為 client UUID 冪等主鍵，供 iOS 月曆與每日明細跨裝置同步。pull 以 server 端單調遞增 `ingested_at` 為 cursor watermark（回應含 `cursor` 欄位），用 ingestion 序而非 `reviewed_at`，避免遲到事件漏拉。**SoT 回溯帳本**:已加寬 SRS 前後快照欄(`interval_before/after`、`next_review_before/after`、`review_count_after`、`streak_after`、`lapse_after`)+ `is_synthetic`(True=一次性回填的合成過去、False=上線後累積的真實事件),供深度研究逐筆還原學習曲線;欄位全 nullable、ADD COLUMN 冪等遷移、新舊 client 互通 |
 | `graph_event_log.py` | `graph_events` + `graph_snapshots` | per-user 圖譜 append-only 變更帳本(**SoT 回溯**)。`GraphEventStore` 記 7 種 mutation(`link_added`/`updated`/`hidden`/`unhidden`/`deprecated`/`restored`(deprecated→active,與 unhidden 區隔)/`deleted`)每筆含 confidence/status before+after、`reason`(add/update 帶 link 當前理由)、`source`(`auto`=pipeline / `manual`=使用者 API / `ops`=ops_edit·運維遷移 / `synth`=合成回填)、`is_synthetic`;`event_id` 冪等、`ingested_at` 單調 watermark。共用 `sqlite_ledger.py`(serialized-tx recipe + 單調時鐘)。`GraphSnapshotStore` 存 links 全量快照(`links_json` + `is_synthetic`),`latest()` 以 `(taken_at desc, snapshot_id desc)` 決定式 tie-break;並已提供週期性 checkpoint policy:某 notebook 若尚無 snapshot，第一個真實 mutation 後立刻補一張；之後每累積固定數量 graph events 再補下一張，讓 replay 重建長度有界。攔截點在 `GraphStore`(唯一 100% 覆蓋,pipeline AI 回寫亦經此),emit 走單筆交易批寫，成功寫 event 後再依 provider 解析 live snapshot store 補 checkpoint(LRU 逐出後重建,不丟事件) |
 | `admin_audit.py` | `admin_audit_log` | grant/revoke 等管理員操作 |
