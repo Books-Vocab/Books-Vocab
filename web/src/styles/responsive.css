@@ -52,6 +52,28 @@
   --surface-safe-top: var(--sp-8); /* 40px web top inset（取代 ~118px iOS 設備 chrome） */
 }
 
+/* ── 去 iOS-artifact：桌面 live-reader toolbar ───────────────────────────────
+   reader.css 的 `.reader-toolbar-back-label` 刻意用 `width:1em` + `word-break:
+   break-all` 把返回鈕「書庫」折成 CJK 直排「書/庫」，以對齊 iOS 窄欄 PNG（parity
+   實測值）。但 live-reader 在桌面/平板 pane 是 720px 閱讀欄的功能型 reader，沿用
+   該直排 = iOS 窄欄殘留洩漏進獨立 web app，視覺像壞掉。此處只在 shell 的「非
+   mobile」斷點把 back label 還原成正常水平標籤、並把 iOS-compact 的 title 截斷寬
+   放寬到閱讀欄合理值。scope 在 .kg-responsive-shell + 非 mobile → parity capture
+   路徑（無此 class）與 mobile shell（保留 iOS 觀感）皆零改動。 */
+.kg-responsive-shell[data-breakpoint='tablet'] .reader-toolbar-back-label,
+.kg-responsive-shell[data-breakpoint='desktop'] .reader-toolbar-back-label,
+.kg-responsive-shell[data-breakpoint='wide'] .reader-toolbar-back-label {
+  width: auto;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.kg-responsive-shell[data-breakpoint='tablet'] .reader-toolbar-title,
+.kg-responsive-shell[data-breakpoint='desktop'] .reader-toolbar-title,
+.kg-responsive-shell[data-breakpoint='wide'] .reader-toolbar-title {
+  max-width: 360px; /* 取代 iOS-compact 的 160px：桌面 720px 閱讀欄可容更長書名 */
+}
+
 /* ── mobile (< 768): the shell delegates to the existing AppShell, which is
    itself wrapped in a .phone-frame. We keep the responsive root as a passive
    container (no chrome of its own) so the mobile experience is byte-identical
