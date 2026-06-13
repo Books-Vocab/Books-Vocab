@@ -549,6 +549,19 @@ documents:
       - .claude/skills/cleanup/
       - .claude/skills/promote/
 
+  - id: runbook.improvement_backlog
+    path: docs/runbook/improvement_backlog.md
+    kind: runbook
+    authority: SoT
+    triggers:
+      - improvement_filed
+      - improvement_resolved
+      - kaizen_loop_changed
+    sources:
+      - docs/runbook/improvement_backlog.md
+      - .claude/agents/platform-steward.md
+      - .claude/skills/kg-receipt/
+
   - id: sop.review_discipline
     path: docs/sop/review_discipline.md
     kind: sop
@@ -562,6 +575,19 @@ documents:
       - .claude/skills/phased/
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
+
+  - id: sop.agent_org
+    path: docs/sop/agent_org.md
+    kind: sop
+    authority: derived
+    triggers:
+      - delegation_contract_changed
+      - agent_roster_changed
+      - org_lifecycle_changed
+    sources:
+      - CLAUDE.md
+      - .claude/agents/
+      - docs/sop/agent_org.md
 
   - id: sop.architecture
     path: docs/sop/architecture.md

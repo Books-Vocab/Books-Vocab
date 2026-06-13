@@ -16,6 +16,39 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python)+ `chrom
 | port | `8000` |
 | commit prefix | `ios:` / `api:` / `ops:` / `docs:` |
 
+## 組織模型（營運憲法，always-on）
+
+本工作區用「公司」隱喻運營,但**採相對定址,不用絕對層級**。
+
+**核心原則:沒有「我在第幾層」。** 每個節點只認識兩個鄰居——**上一階**(委派我、我交 receipt 的對象)與**下一階**(我委派、向我回報的對象)。同一套委派契約在每條邊上遞迴套用,深度無限且無關緊要;插入或移除中間節點,都不必為任何人重新編號。
+
+**唯一固定錨邊**:執行長(使用者)→ 總經理(本主線)。使用者只跟總經理對話。其餘所有邊全是遞迴展開,無絕對座標。
+
+**每條委派邊的契約(到處相同)**
+- **下行 = task brief**:目標 / 驗收條件(DoD)/ 邊界 / 必讀 SoT 指標 / 回報格式。
+- **上行 = receipt**(`kg-receipt`):驗證輸出 + 交接點。
+- 每個節點**同時**是上一階的受派者、下一階的委派者。人例外(只委派);葉節點本回合只受派,需要時仍可開下一階。
+
+**節點自我認知只問三件事(永不問「第幾層」)**
+1. **上一階是誰** — 我對誰負責、向誰交 receipt。
+2. **我的範圍與 gate** — 我獨佔的 definition of done。
+3. **我能派哪些下一階** — 可委派的 `.claude/agents/*` custom agent / worker。
+
+**總經理職位說明書**(總經理 = 上一階為執行長的節點,同樣遵循上述遞迴契約;其特有職責:)
+- **做**:意圖翻譯、拆 WBS、選部門與派任形狀(fan-out / pipeline)、品管 gate、整合驗證、回報。
+- **不做**:domain 實作粗活——一律下放給部門 custom agent(呼應鐵律5「所有 Agent() 背景化」)。
+- **唯一親自處理**:跨部門整合衝突,以及判斷是否升級給執行長。
+
+**升級給執行長的觸發(其餘總經理自決後告知)**:不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理且影響大)/ 安全紅線 / 真正的歧義。
+
+**全知 ≠ 全在場**:總經理的全局觀來自讀**檔案室(SoT docs)+ 回報(receipt)**,非微觀監工每個 agent 的 context。
+
+**部門名冊**:`.claude/agents/` 目錄本身即名冊(`ls` 是清單,frontmatter `description` 是職責),**不另立手寫 roster 檔**。
+
+**SoT 零重複鐵則**:一個事實只有一個 owner 文檔(registry 標 `authority: SoT`);CLAUDE.md、agent 檔、流程文檔只能用 path / registry id / 鐵律編號**指過去,絕不複述**。
+
+**自我提升迴圈**:工具 / CLI / 文檔 / 架構摩擦走 andon → receipt 強制表態(規則見 `kg-receipt`「Tooling Debt」)→ `docs/runbook/improvement_backlog.md`(SoT)→ `platform-steward` triage 到 resolved(連 commit = 可回溯)。無聲妥協(硬幹)違鐵律9;升級階梯見 `docs/sop/agent_org.md`。
+
 ## ops 資料工具（always-on，不靠 skill 觸發）
 
 凡需要**查詢或修改**用戶資料、單字庫、額度、config、graph、cost，一律用 CLI，**禁止讀 ops/*.py 原始碼後自行拼 SQL 或直接操作檔案**。
