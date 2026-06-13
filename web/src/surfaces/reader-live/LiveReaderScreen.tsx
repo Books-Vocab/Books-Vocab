@@ -12,6 +12,8 @@ import '../reader/reader.css'
 import './live-reader.css'
 import { useLiveReaderApi } from './useLiveReaderApi'
 import { highlightCss, highlightWordSet, type LiveTheme } from './liveLoop'
+import { openPdfReader, pageFromProgress, type PdfReader } from './pdfEngine'
+import { demoPdfBytes } from './demoPdf'
 import {
   DEFAULT_SETTINGS,
   bodyCss,
@@ -143,9 +145,12 @@ function markSavedWords(doc: Document, words: Set<string>): void {
 
 export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   const live = useLiveReaderApi()
+  const engine = live.engine
   const hostRef = useRef<HTMLDivElement | null>(null)
   const renditionRef = useRef<any>(null)
   const bookRef = useRef<any>(null)
+  // PDF 引擎 handle（engine==='pdf' 時 boot 後填入；epub 路徑恆 null）。
+  const pdfRef = useRef<PdfReader | null>(null)
   const settingsRef = useRef<LiveReaderSettings>(DEFAULT_SETTINGS)
   const themeRef = useRef<LiveTheme>('paper')
   // 每個 section 渲染時讀最新已存詞集合（ref 避免重建 hook）。
@@ -157,6 +162,8 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   const [panel, setPanel] = useState<Panel>('none')
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // 載入失敗的重試：bump 此 key 重跑 boot effect（清掉舊 error / 引擎並重建）。
+  const [retryKey, setRetryKey] = useState(0)
   // 翻頁手感：epub.js 的 prev/next 是瞬時欄位切換（無位移動畫）。以一個短暫的方向性
   // data-attr 觸發紙面層的位移＋淡入 cue（CSS 驅動，~220ms 後清除），給「頁面滑移」的
   // 知覺平滑度而不碰 epub.js 內部。尊重 prefers-reduced-motion（CSS 端 media query 關閉）。
@@ -213,9 +220,74 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
     }
   }, [live.savedWords])
 
+  // ── PDF 引擎 boot（engine==='pdf'）─────────────────────────────────────────
+  // pdfjs dynamic import（與 epub.js 同樣 lazy，不進 parity bundle）；demo PDF bytes
+  // 自帶（demoPdf.ts）。選詞走共用 live.selectWord；翻頁回報走 latestPos + debounce flush。
   useEffect(() => {
+    if (engine !== 'pdf') return
+    let destroyed = false
+    let reader: PdfReader | null = null
+    setReady(false)
+    setError(null)
+    setProgress(0)
+
+    async function bootPdf() {
+      try {
+        if (!hostRef.current) return
+        reader = await openPdfReader(hostRef.current, demoPdfBytes(), {
+          onWordSelect: (word, ctx) => liveRef.current.selectWord(word, ctx),
+          onRelocate: (_page, pct) => {
+            setProgress(pct)
+            latestPos.current = { cfi: null, pct }
+            if (posTimer.current) clearTimeout(posTimer.current)
+            posTimer.current = setTimeout(flushPosition, POSITION_DEBOUNCE_MS)
+          },
+        })
+        if (destroyed) {
+          reader.destroy()
+          return
+        }
+        pdfRef.current = reader
+        // book id 暴露給 flushPosition（PDF 用 progress LWW，無 cfi）。
+        const id = liveRef.current.bookId
+        if (id) bookRef.current = { __kgBookId: id }
+        setBookTitle('PDF')
+        // 從持久化進度恢復頁碼（撈到 progression 才跳）。
+        const restorePage = pageFromProgress(liveRef.current.initialProgress, reader.numPages)
+        if (restorePage > 1) await reader.goToPage(restorePage)
+        if (destroyed) {
+          reader.destroy()
+          return
+        }
+        setReady(true)
+      } catch (e: any) {
+        if (!destroyed) setError(String(e?.message || e))
+      }
+    }
+
+    bootPdf()
+    return () => {
+      destroyed = true
+      flushPosition()
+      try {
+        reader?.destroy()
+      } catch {
+        /* noop */
+      }
+      pdfRef.current = null
+    }
+    // engine / retryKey 變更才重 boot；其餘狀態走各自 effect。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, retryKey])
+
+  // ── EPUB 引擎 boot（engine!=='pdf'，即 epub/txt/md fallback）──────────────────
+  useEffect(() => {
+    if (engine === 'pdf') return
     let destroyed = false
     let book: any = null
+    setReady(false)
+    setError(null)
+    setProgress(0)
 
     async function boot() {
       try {
@@ -299,9 +371,9 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         /* noop */
       }
     }
-    // boot 只跑一次；settings/saved/theme 變更走各自 effect（不重建 book）。
+    // engine / retryKey 變更才重 boot；settings/saved/theme 走各自 effect（不重建 book）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [engine, retryKey])
 
   // book id 撈到後寫回 ref（boot 時可能尚未 settle）。
   useEffect(() => {
@@ -311,8 +383,15 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   // 翻頁 + 方向性 cue：epub.js 切頁瞬時，外加紙面層短暫位移／淡入給滑移知覺感。
   // 每次翻頁重置 cue（連續翻頁不卡在上一個方向）；timer 在 unmount 清除。
   const turnPage = useCallback((dir: 'prev' | 'next') => {
-    if (dir === 'next') renditionRef.current?.next()
-    else renditionRef.current?.prev()
+    // 引擎分派：PDF → pdfReader.next/prev（async render）；epub → rendition 瞬時切頁。
+    if (pdfRef.current) {
+      if (dir === 'next') pdfRef.current.next()
+      else pdfRef.current.prev()
+    } else if (dir === 'next') {
+      renditionRef.current?.next()
+    } else {
+      renditionRef.current?.prev()
+    }
     if (turnTimer.current) clearTimeout(turnTimer.current)
     setTurning(dir)
     turnTimer.current = setTimeout(() => setTurning(null), 220)
@@ -352,13 +431,19 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
       if (w === lastW && h === lastH) return
       lastW = w
       lastH = h
-      const r = renditionRef.current
-      if (!r || w <= 0 || h <= 0) return
+      if (w <= 0 || h <= 0) return
       // 連續 resize 合併到下一動畫幀，避免拖曳時高頻重排卡頓。
       if (raf) cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         raf = 0
         try {
+          // PDF：以新欄寬重排當前頁（保留頁碼）。
+          if (pdfRef.current) {
+            pdfRef.current.resize().catch(() => {})
+            return
+          }
+          const r = renditionRef.current
+          if (!r) return
           const cfi: string | undefined = r.currentLocation?.()?.start?.cfi
           r.resize(w, h)
           if (cfi) r.display(cfi).catch(() => {})
@@ -466,14 +551,17 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
           </button>
           <span className="reader-toolbar-title">{displayTitle}</span>
           <div className="reader-toolbar-actions">
-            <button
-              type="button"
-              className="reader-chrome-btn"
-              aria-label="目錄"
-              onClick={() => setPanel((p) => (p === 'toc' ? 'none' : 'toc'))}
-            >
-              <ListBulletIcon size={14} strokeWidth={1.7} />
-            </button>
+            {/* TOC 僅 epub（PDF 無章節導航）。 */}
+            {engine !== 'pdf' && (
+              <button
+                type="button"
+                className="reader-chrome-btn"
+                aria-label="目錄"
+                onClick={() => setPanel((p) => (p === 'toc' ? 'none' : 'toc'))}
+              >
+                <ListBulletIcon size={14} strokeWidth={1.7} />
+              </button>
+            )}
             <button
               type="button"
               className="reader-chrome-btn"
@@ -619,7 +707,36 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         )}
       </AnimatePresence>
 
-      {error && <div className="live-reader-error">載入失敗：{error}</div>}
+      {/* 載入失敗 → error card + 重試（bump retryKey 重跑 boot effect）。
+          retryTransition 尊重 prefers-reduced-motion（usePreferredTransition 收斂為瞬時）。 */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            className="live-reader-error"
+            role="alert"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <div className="live-reader-error-card">
+              <BookClosedIcon size={26} strokeWidth={1.4} />
+              <p className="live-reader-error-title">這本書暫時無法載入</p>
+              <p className="live-reader-error-detail">{error}</p>
+              <button
+                type="button"
+                className="live-reader-retry-btn"
+                onClick={() => {
+                  setError(null)
+                  setRetryKey((k) => k + 1)
+                }}
+              >
+                重新載入
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useShellNav } from '../../shell/ShellNavContext'
 import type { BookMetadataResponse, UserConfigResponse } from '../../api/types'
 import type { TranslationPanelData } from '../reader/fixtures'
 import { DEFAULT_SETTINGS, type LiveReaderSettings } from './liveSettings'
+import { resolveReaderFormat, type ReaderEngine } from './readerFormat'
 import {
   DEFAULT_THEME,
   type LiveTheme,
@@ -41,6 +42,13 @@ export interface LiveReaderApi {
   bookTitle?: string
   /** 後端持久化的初始閱讀位置（epub.js locator/cfi）；無則 undefined（首章）。 */
   initialLocator?: string
+  /** 持久化進度 0..1（PDF 頁碼恢復用；epub 路徑以 cfi 為主，此值僅輔助）。 */
+  initialProgress?: number
+  /**
+   * 有效渲染引擎：nav param `format` 優先，落回 book metadata format（resolveReaderFormat）。
+   * 'pdf' → pdfjs-dist，其餘 → epub.js。
+   */
+  engine: ReaderEngine
   /** 後端持久化的 reader 設定（首載前為 DEFAULT_SETTINGS）。 */
   settings: LiveReaderSettings
   theme: LiveTheme
@@ -67,6 +75,7 @@ export function useLiveReaderApi(): LiveReaderApi {
   const api = useApi()
   const nav = useShellNav()
   const bookId = nav.params.bookId
+  const navFormat = nav.params.format
 
   const [book, setBook] = useState<BookMetadataResponse | null>(null)
   const [config, setConfig] = useState<UserConfigResponse | null>(null)
@@ -86,6 +95,8 @@ export function useLiveReaderApi(): LiveReaderApi {
   const effectiveTheme = localTheme ?? theme ?? DEFAULT_THEME
 
   const boundNotebookId = resolveBoundNotebookId(book?.notebook_id, DEFAULT_NOTEBOOK_ID)
+  // 引擎選擇：nav param 優先（深層導航旗標），落回 book metadata format。
+  const engine = resolveReaderFormat(navFormat, book?.format)
 
   // 撈本書 metadata（書名 + 綁定單字本 + 進度）。撈不到不致命。
   useEffect(() => {
@@ -260,6 +271,8 @@ export function useLiveReaderApi(): LiveReaderApi {
     bookId: book?.id ?? undefined,
     bookTitle: book?.title ?? undefined,
     initialLocator: book?.locator ?? undefined,
+    initialProgress: book?.progression ?? undefined,
+    engine,
     settings: effectiveSettings,
     theme: effectiveTheme,
     panel,
