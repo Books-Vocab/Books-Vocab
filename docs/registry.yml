@@ -78,7 +78,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -114,7 +113,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
@@ -159,7 +157,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
 
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
@@ -373,7 +370,6 @@ documents:
       - ops/ui_token_lint.py
       - ops/test_ui_token_lint.sh
       - ops/gen_web_tokens.py
-      - ops/gen_web_components.py
 
   - id: sop.figma_token_workflow
     path: docs/sop/figma-token-workflow.md
@@ -738,7 +734,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -805,7 +800,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
       - backend/
       - "!backend/tests/"
       - "!backend/src/kg/llm/providers.py"
@@ -846,7 +840,6 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
-      - "!ops/gen_web_components.py"
       - docs/runbook/
 
   - id: generated.ios_baseline
