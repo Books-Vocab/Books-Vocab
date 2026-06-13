@@ -1,5 +1,6 @@
 import type { ScenarioId } from '../../harness/scenarios'
-import { ACCOUNT_AUTH_SUMMARY_FIXTURES } from './fixtures'
+import { ACCOUNT_AUTH_SUMMARY_FIXTURES, type AuthSummaryFixture } from './fixtures'
+import { useAccountIdentityApiStore } from '../settings-account-detail/useAccountIdentityApiStore'
 import { CheckCircleFillIcon, SparklesIcon } from './icons'
 import './account-auth-summary.css'
 
@@ -29,7 +30,29 @@ export function AccountAuthSummaryScreen({
 }: {
   scenario: ScenarioId<'account-auth-summary'>
 }) {
-  const fixture = ACCOUNT_AUTH_SUMMARY_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <AccountAuthSummaryScreenApi scenario={scenario} />
+  }
+  return <AccountAuthSummaryBody fixture={ACCOUNT_AUTH_SUMMARY_FIXTURES[scenario]} />
+}
+
+function AccountAuthSummaryScreenApi({ scenario }: { scenario: ScenarioId<'account-auth-summary'> }) {
+  const { identity, status } = useAccountIdentityApiStore()
+  // 載入中 / 未登入：退回該 scenario 的 fixture（避免空白；幾何不變）。
+  if (status === 'loading' || !identity.isLoggedIn) {
+    return <AccountAuthSummaryBody fixture={ACCOUNT_AUTH_SUMMARY_FIXTURES[scenario]} />
+  }
+  const fixture: AuthSummaryFixture = {
+    initials: identity.initials,
+    displayName: identity.displayName,
+    email: identity.email ?? '',
+    proBadge: identity.isPro,
+  }
+  return <AccountAuthSummaryBody fixture={fixture} />
+}
+
+function AccountAuthSummaryBody({ fixture }: { fixture: AuthSummaryFixture }) {
   return (
     <div className="account-auth-summary-surface">
       <div className="account-auth-summary-row">
