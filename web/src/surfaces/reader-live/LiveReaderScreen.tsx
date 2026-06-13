@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { TranslationPanel } from '../reader/TranslationPanel'
 import {
   BookClosedIcon,
@@ -6,6 +7,7 @@ import {
   ListBulletIcon,
   TextformatSizeIcon,
 } from '../reader/icons'
+import { navPush, sheet, snappy, usePreferredTransition } from '../../motion'
 import '../reader/reader.css'
 import './live-reader.css'
 import { useLiveReaderApi } from './useLiveReaderApi'
@@ -155,6 +157,11 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   const [panel, setPanel] = useState<Panel>('none')
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // 翻頁手感：epub.js 的 prev/next 是瞬時欄位切換（無位移動畫）。以一個短暫的方向性
+  // data-attr 觸發紙面層的位移＋淡入 cue（CSS 驅動，~220ms 後清除），給「頁面滑移」的
+  // 知覺平滑度而不碰 epub.js 內部。尊重 prefers-reduced-motion（CSS 端 media query 關閉）。
+  const [turning, setTurning] = useState<'prev' | 'next' | null>(null)
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── 位置同步（debounce + visibilitychange + beforeunload flush）─────────────
   const posTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -301,15 +308,31 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
     if (bookRef.current && live.bookId) bookRef.current.__kgBookId = live.bookId
   }, [live.bookId])
 
+  // 翻頁 + 方向性 cue：epub.js 切頁瞬時，外加紙面層短暫位移／淡入給滑移知覺感。
+  // 每次翻頁重置 cue（連續翻頁不卡在上一個方向）；timer 在 unmount 清除。
+  const turnPage = useCallback((dir: 'prev' | 'next') => {
+    if (dir === 'next') renditionRef.current?.next()
+    else renditionRef.current?.prev()
+    if (turnTimer.current) clearTimeout(turnTimer.current)
+    setTurning(dir)
+    turnTimer.current = setTimeout(() => setTurning(null), 220)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (turnTimer.current) clearTimeout(turnTimer.current)
+    }
+  }, [])
+
   // 鍵盤左右翻頁（iOS 點邊緣的桌面對應）。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'ArrowRight') renditionRef.current?.next()
-      else if (e.key === 'ArrowLeft') renditionRef.current?.prev()
+      if (e.key === 'ArrowRight') turnPage('next')
+      else if (e.key === 'ArrowLeft') turnPage('prev')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [turnPage])
 
   // 容器尺寸變動 → epub.js 重排（CFI 保位）。epub.js 的 renderTo 用 width:'100%'
   // 但 *不會* 隨 CSS 寬度變化自動 reflow（內文仍排在舊量測欄寬，分頁/座標漂移）。
@@ -364,6 +387,21 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
     }
   }, [flushPosition])
 
+  // Escape：優先關翻譯面板 → 設定／TOC 浮層（與 iOS sheet 的「點外退出」同義）。
+  // 桌面實測 bug：浮層按 Escape 不消失；此處補上鍵盤退出路徑。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (liveRef.current.panel) {
+        liveRef.current.closePanel()
+      } else if (panel !== 'none') {
+        setPanel('none')
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [panel])
+
   function goTo(href: string) {
     renditionRef.current?.display(href)
     setPanel('none')
@@ -381,6 +419,13 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
   // shell=1 時優先顯示後端書名（撈到才覆蓋）；否則沿用 EPUB metadata 書名。
   const displayTitle = live.bookTitle || bookTitle || 'Reader'
 
+  // 浮層轉場：共用 motion springs（不自刻物理）。TOC = 左抽屜（navPush）、
+  // 設定／翻譯 = 底升 bottom-sheet（sheet）；scrim 走 snappy 淡入淡出。
+  // usePreferredTransition 把 prefers-reduced-motion 收斂為瞬時（duration 0）。
+  const drawerTransition = usePreferredTransition(navPush)
+  const sheetTransition = usePreferredTransition(sheet)
+  const scrimTransition = usePreferredTransition(snappy)
+
   return (
     <div
       className="live-reader"
@@ -390,21 +435,21 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
       // 非殼層 / 行動裝置 overlay 路徑此 attr 無 CSS 對應 → 純資料、零視覺影響。
       data-toc-open={panel === 'toc' ? '' : undefined}
     >
-      {/* paper 底色（對齊 parity reader paperSepia） */}
-      <div className="live-reader-paper">
+      {/* paper 底色（對齊 parity reader paperSepia）。data-turn 驅動翻頁滑移 cue。 */}
+      <div className="live-reader-paper" data-turn={turning ?? undefined}>
         <div ref={hostRef} className="live-reader-host" />
       </div>
 
-      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感） */}
+      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感 + 方向性滑移 cue） */}
       <button
         className="live-reader-tap live-reader-tap-prev"
         aria-label="上一頁"
-        onClick={() => renditionRef.current?.prev()}
+        onClick={() => turnPage('prev')}
       />
       <button
         className="live-reader-tap live-reader-tap-next"
         aria-label="下一頁"
-        onClick={() => renditionRef.current?.next()}
+        onClick={() => turnPage('next')}
       />
 
       {/* expanded header（沿用 parity reader.css：書庫 + 居中書名 + 鈕） */}
@@ -451,72 +496,128 @@ export function LiveReaderScreen({ onBack }: { onBack?: () => void } = {}) {
         </div>
       )}
 
-      {/* TOC 面板（epub.js 章節真跳轉，沿用 parity rpanel 視覺殼） */}
-      {panel === 'toc' && (
-        <div className="live-reader-overlay" onClick={() => setPanel('none')}>
-          <div className="rpanel rpanel-toc live-reader-panel-toc" onClick={(e) => e.stopPropagation()}>
-            <header className="rpanel-nav">
-              <span className="rpanel-nav-title">目錄</span>
-              <button type="button" className="rpanel-nav-action" onClick={() => setPanel('none')}>
-                完成
-              </button>
-            </header>
-            <div className="rpanel-toc-body">
-              {toc.length > 0 ? (
-                <ul className="rpanel-toc-list">
-                  {toc.map((t, i) => (
-                    <li key={i} className="rpanel-toc-row">
-                      <button
-                        type="button"
-                        className="rpanel-toc-row-text live-reader-toc-btn"
-                        onClick={() => goTo(t.href)}
-                      >
-                        {t.label || `章節 ${i + 1}`}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="rpanel-state-wrap">
-                  <div className="rpanel-empty-card">
-                    <h2 className="rpanel-empty-title">這本書沒有目錄</h2>
+      {/* TOC 面板（epub.js 章節真跳轉，沿用 parity rpanel 視覺殼）。左抽屜滑入 +
+          scrim 淡入；AnimatePresence 在關閉時演完退場再卸載。 */}
+      <AnimatePresence>
+        {panel === 'toc' && (
+          <motion.div
+            key="toc"
+            className="live-reader-overlay"
+            onClick={() => setPanel('none')}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rpanel rpanel-toc live-reader-panel-toc"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={drawerTransition}
+            >
+              <header className="rpanel-nav">
+                <span className="rpanel-nav-title">目錄</span>
+                <button type="button" className="rpanel-nav-action" onClick={() => setPanel('none')}>
+                  完成
+                </button>
+              </header>
+              <div className="rpanel-toc-body">
+                {toc.length > 0 ? (
+                  <ul className="rpanel-toc-list">
+                    {toc.map((t, i) => (
+                      <li key={i} className="rpanel-toc-row">
+                        <button
+                          type="button"
+                          className="rpanel-toc-row-text live-reader-toc-btn"
+                          onClick={() => goTo(t.href)}
+                        >
+                          {t.label || `章節 ${i + 1}`}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="rpanel-state-wrap">
+                    <div className="rpanel-empty-card">
+                      <h2 className="rpanel-empty-title">這本書沒有目錄</h2>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Settings 面板（字級 + serif/sans + 紙色主題即時生效，沿用 parity rsettings 視覺殼） */}
-      {panel === 'settings' && (
-        <div className="live-reader-overlay live-reader-overlay-bottom" onClick={() => setPanel('none')}>
-          <LiveSettingsPanel
-            settings={live.settings}
-            theme={live.theme}
-            onChange={updateSettings}
-            onThemeChange={updateTheme}
-            onClose={() => setPanel('none')}
-          />
-        </div>
-      )}
+      {/* Settings 面板（字級 + serif/sans + 紙色主題即時生效，沿用 parity rsettings 視覺殼）。
+          bottom-sheet 升起 + scrim 淡入（sheet spring）；關閉時演完降下再卸載。 */}
+      <AnimatePresence>
+        {panel === 'settings' && (
+          <motion.div
+            key="settings"
+            className="live-reader-overlay live-reader-overlay-bottom"
+            onClick={() => setPanel('none')}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="live-reader-sheet"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={sheetTransition}
+            >
+              <LiveSettingsPanel
+                settings={live.settings}
+                theme={live.theme}
+                onChange={updateSettings}
+                onThemeChange={updateTheme}
+                onClose={() => setPanel('none')}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 翻譯面板（真實 parity TranslationPanel，內容來自 /api/translate）。 */}
-      {live.panel && (
-        <div className="reader-bottom-overlay live-reader-translation" data-overlay="translation">
-          <div className="reader-scrim" onClick={live.closePanel} />
-          <div onClick={(e) => e.stopPropagation()}>
-            <TranslationPanel
-              panel={live.panel}
-              actions={{
-                onToggleExpand: live.toggleExpand,
-                onDelete: live.deleteCurrent,
-                onClose: live.closePanel,
-              }}
+      {/* 翻譯面板（真實 parity TranslationPanel，內容來自 /api/translate）。
+          選詞 → 譯文卡自底升起（sheet spring）+ scrim 淡入，給「選詞即翻譯」的承接感；
+          關閉時演完降下再卸載。 */}
+      <AnimatePresence>
+        {live.panel && (
+          <div className="reader-bottom-overlay live-reader-translation" data-overlay="translation">
+            <motion.div
+              className="reader-scrim"
+              onClick={live.closePanel}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={scrimTransition}
             />
+            <motion.div
+              className="live-reader-translation-card"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={sheetTransition}
+            >
+              <TranslationPanel
+                panel={live.panel}
+                actions={{
+                  onToggleExpand: live.toggleExpand,
+                  onDelete: live.deleteCurrent,
+                  onClose: live.closePanel,
+                }}
+              />
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {error && <div className="live-reader-error">載入失敗：{error}</div>}
     </div>

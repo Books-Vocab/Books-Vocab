@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useApi } from '../../api/ApiContext'
 import type { BookMetadataResponse } from '../../api/types'
+import { navPush, sheet, snappy, usePreferredTransition } from '../../motion'
 import './reader-live.css'
 
 /**
@@ -159,6 +161,9 @@ function ReaderLiveEngine({
   const [selected, setSelected] = useState<SelectedWord | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // 翻頁方向性 cue（同 LiveReaderScreen：紙面層短暫位移＋淡入，~220ms 後清）。
+  const [turning, setTurning] = useState<'prev' | 'next' | null>(null)
+  const turnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     let destroyed = false
@@ -302,24 +307,44 @@ function ReaderLiveEngine({
     setTocOpen(false)
   }
 
+  // 翻頁 + 方向性 cue（epub.js 切頁瞬時，外加紙面層滑移知覺）。
+  const turnPage = useCallback((dir: 'prev' | 'next') => {
+    if (dir === 'next') renditionRef.current?.next()
+    else renditionRef.current?.prev()
+    if (turnTimer.current) clearTimeout(turnTimer.current)
+    setTurning(dir)
+    turnTimer.current = setTimeout(() => setTurning(null), 220)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (turnTimer.current) clearTimeout(turnTimer.current)
+    }
+  }, [])
+
   // shell=1 時優先顯示後端書名（撈到才覆蓋）；否則沿用 EPUB metadata 書名。
   const displayTitle = titleOverride || bookTitle || 'Reader 引擎 spike'
 
+  // 浮層轉場：共用 motion springs（TOC 左抽屜 navPush、scrim snappy、選詞浮層 sheet）。
+  const drawerTransition = usePreferredTransition(navPush)
+  const scrimTransition = usePreferredTransition(snappy)
+  const popTransition = usePreferredTransition(sheet)
+
   return (
-    <div className="rlive" data-ready={ready ? '' : undefined}>
+    <div className="rlive" data-ready={ready ? '' : undefined} data-turn={turning ?? undefined}>
       {/* 本體：epub.js 掛載點（分頁 iframe 渲染於此） */}
       <div ref={hostRef} className="rlive-host" onClick={() => setSelected(null)} />
 
-      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感） */}
+      {/* 翻頁熱區（左右半屏，iOS Readium 點擊翻頁體感 + 方向性滑移 cue） */}
       <button
         className="rlive-tap rlive-tap-prev"
         aria-label="上一頁"
-        onClick={() => renditionRef.current?.prev()}
+        onClick={() => turnPage('prev')}
       />
       <button
         className="rlive-tap rlive-tap-next"
         aria-label="下一頁"
-        onClick={() => renditionRef.current?.next()}
+        onClick={() => turnPage('next')}
       />
 
       {/* 頂部 chrome（沿用 parity 視覺語彙） */}
@@ -331,30 +356,67 @@ function ReaderLiveEngine({
         <span className="rlive-progress">{(progress * 100).toFixed(0)}%</span>
       </div>
 
-      {/* TOC 面板（接 parity TocPanel 視覺殼的精神，簡化版） */}
-      {tocOpen && (
-        <div className="rlive-toc">
-          <div className="rlive-toc-head">目錄</div>
-          <ul className="rlive-toc-list">
-            {toc.map((t, i) => (
-              <li key={i}>
-                <button onClick={() => goTo(t.href)}>{t.label || `章節 ${i + 1}`}</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* TOC 面板（接 parity TocPanel 視覺殼的精神，簡化版）。左抽屜滑入 + scrim 淡入，
+          點 scrim 關閉（互動補強：原版無點外退出）。 */}
+      <AnimatePresence>
+        {tocOpen && (
+          <motion.div
+            key="toc"
+            className="rlive-toc-scrim"
+            onClick={() => setTocOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rlive-toc"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={drawerTransition}
+            >
+              <div className="rlive-toc-head">目錄</div>
+              <ul className="rlive-toc-list">
+                {toc.map((t, i) => (
+                  <li key={i}>
+                    <button onClick={() => goTo(t.href)}>{t.label || `章節 ${i + 1}`}</button>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 選詞浮層（不接翻譯，僅展示 word + 座標 + context，驗證 hook 能力） */}
-      {selected && (
-        <div
-          className="rlive-selection"
-          style={{ '--x': `${selected.x}px`, '--y': `${selected.y}px` } as CSSProperties}
-        >
-          <strong className="rlive-selection-word">{selected.word}</strong>
-          <span className="rlive-selection-ctx">{selected.context}</span>
-        </div>
-      )}
+      {/* 選詞浮層（不接翻譯，僅展示 word + 座標 + context，驗證 hook 能力）。
+          外層 .rlive-selection 持有 CSS transform 定位（-50% / -100%），故外層 motion
+          只動 opacity（不覆寫 transform）；y/scale 升起掛內層 motion 包層。 */}
+      <AnimatePresence>
+        {selected && (
+          <motion.div
+            key="sel"
+            className="rlive-selection"
+            style={{ '--x': `${selected.x}px`, '--y': `${selected.y}px` } as CSSProperties}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={scrimTransition}
+          >
+            <motion.div
+              className="rlive-selection-inner"
+              initial={{ y: 6, scale: 0.96 }}
+              animate={{ y: 0, scale: 1 }}
+              exit={{ y: 6, scale: 0.96 }}
+              transition={popTransition}
+            >
+              <strong className="rlive-selection-word">{selected.word}</strong>
+              <span className="rlive-selection-ctx">{selected.context}</span>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {error && <div className="rlive-error">載入失敗：{error}</div>}
     </div>

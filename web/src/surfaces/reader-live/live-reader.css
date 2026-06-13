@@ -70,7 +70,8 @@
   justify-content: flex-end;
 }
 
-/* TOC 面板：左側抽屜，沿用 rpanel-toc 視覺，限寬。 */
+/* TOC 面板：左側抽屜，沿用 rpanel-toc 視覺，限寬。位移動畫由 framer-motion
+   （navPush spring）驅動 transform，CSS 只負責定位／視覺。 */
 .live-reader-panel-toc {
   position: absolute;
   top: 0;
@@ -80,6 +81,7 @@
   max-width: 320px;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.14);
   overflow-y: auto;
+  will-change: transform;
 }
 
 /* TOC 列改成可點 button（沿用 rpanel-toc-row-text 字樣，補互動樣式）。 */
@@ -94,6 +96,11 @@
 }
 .live-reader-toc-btn:hover {
   opacity: 0.6;
+}
+
+/* Settings sheet 動畫容器（framer-motion 以 y transform 驅動升起／降下）。 */
+.live-reader-sheet {
+  will-change: transform;
 }
 
 /* Settings 面板：bottom-sheet 升起；override parity .rsettings-card 的 full-frame
@@ -134,6 +141,60 @@
 /* 翻譯面板 overlay 定位（沿用 reader.css .reader-bottom-overlay 行為） */
 .live-reader-translation {
   z-index: 12;
+}
+
+/* 譯文卡動畫容器：framer-motion 以 y transform 驅動自底升起／降下。
+   reader-bottom-overlay 的 flex flex-end 仍把它推到底（取代原裸 div 包層）。 */
+.live-reader-translation-card {
+  pointer-events: auto;
+  will-change: transform;
+}
+
+/* ── 翻頁滑移 cue（FEEL）────────────────────────────────────────────────
+   epub.js prev/next 是瞬時欄位切換；翻頁時對紙面層做一次短促的反向位移＋淡入，
+   給「頁面滑進」的知覺平滑度，不碰 epub.js 內部分頁。data-turn 由 React 設置，
+   ~220ms 後清除（見 LiveReaderScreen.turnPage）。GPU transform/opacity only。 */
+.live-reader-paper {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+.live-reader-paper[data-turn='next'] {
+  animation: live-reader-turn-next 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.live-reader-paper[data-turn='prev'] {
+  animation: live-reader-turn-prev 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes live-reader-turn-next {
+  0% {
+    transform: translateX(14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes live-reader-turn-prev {
+  0% {
+    transform: translateX(-14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* prefers-reduced-motion：關閉翻頁 cue（位移／淡入）。浮層的 spring 由
+   framer-motion 的 useReducedMotion 收斂為瞬時（usePreferredTransition）。
+   注意：max-width 與 prefers-reduced-motion 不被 parity-isolation 視為
+   responsive context（無需 .kg-responsive-shell 範圍），故此區安全。 */
+@media (prefers-reduced-motion: reduce) {
+  .live-reader-paper,
+  .live-reader-paper[data-turn='next'],
+  .live-reader-paper[data-turn='prev'] {
+    transition: none;
+    animation: none;
+  }
 }
 
 .live-reader-error {
