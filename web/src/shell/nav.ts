@@ -24,6 +24,7 @@ import { DEFAULT_TAB_ID, SHELL_TABS } from './tabs'
  *   notebook       → notebook-edit（編輯單字本 → 編輯 sheet surface）
  *   vocabulary     → word-detail-sheet（點單字列 → 單字詳情，帶 word）
  *   vocabulary     → vocab-add-link（新增連結入口）
+ *   word-detail-sheet → vocab-add-link（詳情內「知識連結」plus → 新增連結，帶 word）
  *   vocabulary     → knowledge-graph-view（知識圖譜 logged-out 空圖入口）
  *   vocabulary     → vocab-knowledge-graph（知識圖譜 live force graph 入口）
  *   podcast-home   → podcast-episode-list（系列 → 集數列表，帶 seriesId）
@@ -218,6 +219,12 @@ export function pushTargetFor(
       // KnowledgeGraphPresenter 入口。knowledge-graph-view 為 logged-out 空圖
       // fixture；此邊落帶資料的互動圖。
       if (intent === 'open-vocab-knowledge-graph') return screenFor('vocab-knowledge-graph')
+      return null
+    case 'word-detail-sheet':
+      // iOS WordDetailPresenter.linksSection 的「知識連結」plus 鈕（onAddLink）→
+      // 新增連結。word-detail 是 vocabulary 點單字列 push 進來的詳情層，其內仍可
+      // 再下鑽新增連結；params 接力被檢視的單字（word），令 add-link 預填語境。
+      if (intent === 'add-link') return screenFor('vocab-add-link', params)
       return null
     case 'podcast-home':
       if (intent === 'open-podcast-series') return screenFor('podcast-episode-list', params)
