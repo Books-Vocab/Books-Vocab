@@ -5,6 +5,7 @@ import { resolveShellAccess } from './auth/devSession'
 import { PhoneFrame } from './harness/PhoneFrame'
 import { resolveHarnessConfig } from './harness/scenarios'
 import { ResponsiveShell } from './shell/ResponsiveShell'
+import { QueryProvider } from './data'
 import { isAppPath } from './shell/route'
 
 // Reader 引擎 spike（探索性）：?surface=reader-live 走獨立 lazy 路徑，epub.js 不進
@@ -103,7 +104,9 @@ export function App() {
   if (shell) {
     return (
       <ApiProvider>
-        <ResponsiveShell config={config} />
+        <QueryProvider>
+          <ResponsiveShell config={config} />
+        </QueryProvider>
       </ApiProvider>
     )
   }

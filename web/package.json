@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@kg/types": "*",
+    "@tanstack/react-query": "^5.101.0",
     "@use-gesture/react": "^10.3.1",
     "epubjs": "^0.3.93",
     "framer-motion": "^12.40.0",
