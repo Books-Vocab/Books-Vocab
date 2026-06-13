@@ -21,16 +21,37 @@ import {
  * footer 對齊 footerToolbar：已加入(success) + timer(mono) + chevron/trash/xmark。
  */
 
+/**
+ * Action callbacks — OPTIONAL data-provider seam (R2/Phase-3). parity fixtures
+ * render WITHOUT actions ⇒ every handler is undefined ⇒ buttons stay inert and
+ * the DOM is byte-identical. The live reader (shell) threads real handlers in.
+ */
+export interface TranslationPanelActions {
+  /** footer chevron — expand / collapse 語境解釋（單字模式）。 */
+  onToggleExpand?: () => void
+  /** footer trash — 刪除已加入單字。 */
+  onDelete?: () => void
+  /** footer xmark — 關閉面板。 */
+  onClose?: () => void
+  /** hero speaker — 朗讀（live reader 暫不接，留空即 inert）。 */
+  onSpeak?: () => void
+  /** footer chevron（句子模式高度切換）。 */
+  onToggleHeight?: () => void
+}
+
 /** chrome icon button（VocabChromeIconButton）：32pt 白卡 + control radius。
- *  tone 決定 icon 色（destructive=trash，否則 secondary）。 */
+ *  tone 決定 icon 色（destructive=trash，否則 secondary）。
+ *  onClick 為選用 data seam：未提供時按鈕仍渲染（DOM 不變）但 inert。 */
 function ChromeBtn({
   children,
   label,
   tone,
+  onClick,
 }: {
   children: React.ReactNode
   label: string
   tone?: 'destructive'
+  onClick?: () => void
 }) {
   return (
     <button
@@ -38,6 +59,7 @@ function ChromeBtn({
       className="reader-chrome-btn translation-chrome-btn"
       data-tone={tone}
       aria-label={label}
+      onClick={onClick}
     >
       {children}
     </button>
@@ -91,7 +113,7 @@ function ExplanationSection({ panel }: { panel: TranslationPanelData }) {
 }
 
 /** footer toolbar — 已加入 + timer（左）/ chevron/trash/xmark（右）。 */
-function Footer({ panel }: { panel: TranslationPanelData }) {
+function Footer({ panel, actions }: { panel: TranslationPanelData; actions?: TranslationPanelActions }) {
   // showsExpandAction（單字模式 chevron）：有譯文、非句子模式、非錯誤/loading。
   const showsExpand =
     panel.translation !== null &&
@@ -111,7 +133,7 @@ function Footer({ panel }: { panel: TranslationPanelData }) {
       {panel.timerText && <span className="translation-timer">{panel.timerText}</span>}
       <span className="translation-footer-spacer" />
       {showsHeightToggle && (
-        <ChromeBtn label={panel.isPanelLarge ? '縮小面板' : '放大面板'}>
+        <ChromeBtn label={panel.isPanelLarge ? '縮小面板' : '放大面板'} onClick={actions?.onToggleHeight}>
           {panel.isPanelLarge ? (
             <ChevronDownIcon size={14} strokeWidth={1.7} />
           ) : (
@@ -120,7 +142,7 @@ function Footer({ panel }: { panel: TranslationPanelData }) {
         </ChromeBtn>
       )}
       {showsExpand && (
-        <ChromeBtn label={panel.isExpanded ? '收合語境解釋' : '展開語境解釋'}>
+        <ChromeBtn label={panel.isExpanded ? '收合語境解釋' : '展開語境解釋'} onClick={actions?.onToggleExpand}>
           {panel.isExpanded ? (
             <ChevronUpIcon size={14} strokeWidth={1.7} />
           ) : (
@@ -129,11 +151,11 @@ function Footer({ panel }: { panel: TranslationPanelData }) {
         </ChromeBtn>
       )}
       {panel.isSaved && (
-        <ChromeBtn label="刪除單字" tone="destructive">
+        <ChromeBtn label="刪除單字" tone="destructive" onClick={actions?.onDelete}>
           <TrashIcon size={14} strokeWidth={1.6} />
         </ChromeBtn>
       )}
-      <ChromeBtn label="關閉">
+      <ChromeBtn label="關閉" onClick={actions?.onClose}>
         <XmarkIcon size={14} strokeWidth={1.7} />
       </ChromeBtn>
     </div>
@@ -178,7 +200,14 @@ function PanelBody({ panel }: { panel: TranslationPanelData }) {
   )
 }
 
-export function TranslationPanel({ panel }: { panel: TranslationPanelData }) {
+export function TranslationPanel({
+  panel,
+  actions,
+}: {
+  panel: TranslationPanelData
+  /** OPTIONAL action seam — parity fixtures omit it ⇒ buttons inert, DOM unchanged. */
+  actions?: TranslationPanelActions
+}) {
   return (
     <div className="translation-panel" data-large={panel.isPanelLarge ? '' : undefined}>
       {/* drag handle（bottomSheet capsule） */}
@@ -188,7 +217,12 @@ export function TranslationPanel({ panel }: { panel: TranslationPanelData }) {
         {/* hero：word（mono）+ speaker + adj. chip */}
         <div className="translation-hero">
           <span className="translation-word">{panel.word}</span>
-          <button type="button" className="translation-speaker" aria-label="朗讀">
+          <button
+            type="button"
+            className="translation-speaker"
+            aria-label="朗讀"
+            onClick={actions?.onSpeak}
+          >
             <SpeakerWaveIcon size={10} strokeWidth={1.3} />
           </button>
           <span className="translation-hero-spacer" />
@@ -201,7 +235,7 @@ export function TranslationPanel({ panel }: { panel: TranslationPanelData }) {
 
         <PanelBody panel={panel} />
         {/* loading 模式無 footer（iOS loadingSection 不掛 footerToolbar）。 */}
-        {!panel.isLoading && <Footer panel={panel} />}
+        {!panel.isLoading && <Footer panel={panel} actions={actions} />}
       </div>
     </div>
   )
