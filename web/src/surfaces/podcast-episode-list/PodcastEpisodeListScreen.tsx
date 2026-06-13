@@ -1,4 +1,8 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
+import { useApi } from '../../api/ApiContext'
+import type { PodcastSeriesDetail } from '../../api/types'
 import {
   COVER_COLOR,
   PODCAST_EPISODE_LIST_FIXTURES,
@@ -6,6 +10,9 @@ import {
   type PodcastEpisodeListFixture,
 } from './fixtures'
 import { ChevronDownIcon, LockFillIcon, WaveformSlashIcon } from './icons'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { pushTargetFor, screenFor } from '../../shell/nav'
+import { PodcastNowPlaying } from '../podcast/PodcastNowPlaying'
 import './podcast-episode-list.css'
 
 /**
@@ -40,12 +47,130 @@ import './podcast-episode-list.css'
  *   1px + radius card=8 + z1，內含 waveform.slash(symbolLarge 30) +「尚無集數」
  *   (sectionTitle serif18 bold) +「此系列目前沒有可播放的集數」(body sans17 / secondary)。
  */
+
 export function PodcastEpisodeListScreen({
   scenario,
 }: {
   scenario: ScenarioId<'podcast-episode-list'>
 }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <PodcastEpisodeListScreenApi />
+  }
+  return <PodcastEpisodeListScreenFixture scenario={scenario} />
+}
+
+function PodcastEpisodeListScreenFixture({ scenario }: { scenario: ScenarioId<'podcast-episode-list'> }) {
   const fixture = PODCAST_EPISODE_LIST_FIXTURES[scenario]
+  return <PodcastEpisodeListBody fixture={fixture} />
+}
+
+function PodcastEpisodeListScreenApi() {
+  const api = useApi()
+  const nav = useShellNav()
+  // master-detail：seriesId 由 home 系列卡點擊攜入（ShellNavContext.params）；
+  // 缺省（直接深連到此 surface）退回 catalog 首個系列，仍可達。
+  const seriesId = nav.params.seriesId ?? null
+  const [detail, setDetail] = useState<PodcastSeriesDetail | null>(null)
+  const [resolvedSeriesId, setResolvedSeriesId] = useState<string | null>(seriesId)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      let sid = seriesId
+      if (!sid) {
+        const series = await api.podcast.series()
+        sid = series.length > 0 && series[0].id != null ? String(series[0].id) : null
+      }
+      if (sid) {
+        setResolvedSeriesId(sid)
+        const d = await api.podcast.seriesDetail(sid)
+        setDetail(d)
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false)
+    }
+  }, [api, seriesId])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // 點集數 row → push player（攜 seriesId + epNum）。鏡射 iOS PodcastNavRoute.episode。
+  const openEpisode = (epNum: number) => {
+    const sid = resolvedSeriesId ?? undefined
+    const list = screenFor('podcast-episode-list', sid ? { seriesId: sid } : undefined)
+    const player = pushTargetFor(
+      list,
+      'open-podcast-episode',
+      sid ? { seriesId: sid, epNum } : { epNum },
+    )
+    if (player) nav.navigate(player)
+  }
+
+  const fixture = useMemo((): PodcastEpisodeListFixture => {
+    if (loading || !detail) {
+      return {
+        navTitle: '',
+        seriesTitle: '',
+        meta: null,
+        continueCard: null,
+        sectionTitle: '集數',
+        sortLabel: '集數由小到大',
+        episodes: [],
+        empty: { title: '尚無集數', description: '此系列目前沒有可播放的集數' },
+      }
+    }
+    const episodes = Array.isArray(detail.episodes)
+      ? detail.episodes.map((ep: unknown) => {
+          const e = ep as { ep_num?: number; title?: string; duration_sec?: number }
+          return {
+            episodeNumber: Number(e.ep_num ?? 0),
+            title: String(e.title ?? ''),
+            duration: formatDuration(Number(e.duration_sec ?? 0)),
+            date: '今天',
+          }
+        })
+      : []
+    const isEmpty = episodes.length === 0
+    return {
+      navTitle: String(detail.title ?? ''),
+      seriesTitle: String(detail.title ?? ''),
+      meta: String(detail.author ?? '').length > 0 ? String(detail.author ?? '') : null,
+      continueCard: isEmpty
+        ? null
+        : {
+            eyebrow: '升級 Pro',
+            title: `Ep ${episodes[0].episodeNumber} · ${episodes[0].title}`,
+          },
+      sectionTitle: '集數',
+      sortLabel: '集數由小到大',
+      episodes,
+      empty: isEmpty ? { title: '尚無集數', description: '此系列目前沒有可播放的集數' } : null,
+    }
+  }, [loading, detail])
+
+  return (
+    <>
+      <PodcastEpisodeListBody fixture={fixture} onOpenEpisode={openEpisode} />
+      {/* Persistent now-playing layer: keeps the mini-player alive on this
+          intermediate surface during home → series → episode → player. */}
+      <PodcastNowPlaying />
+    </>
+  )
+}
+
+function PodcastEpisodeListBody({
+  fixture,
+  onOpenEpisode,
+}: {
+  fixture: PodcastEpisodeListFixture
+  /** shell 路徑：點 row → push player。parity 路徑省略 → row 非互動（DOM 不變）。 */
+  onOpenEpisode?: (epNum: number) => void
+}) {
   const isEmpty = fixture.episodes.length === 0
 
   return (
@@ -58,13 +183,19 @@ export function PodcastEpisodeListScreen({
       {isEmpty ? (
         <EmptyBody fixture={fixture} />
       ) : (
-        <ContentBody fixture={fixture} />
+        <ContentBody fixture={fixture} onOpenEpisode={onOpenEpisode} />
       )}
     </div>
   )
 }
 
-function ContentBody({ fixture }: { fixture: PodcastEpisodeListFixture }) {
+function ContentBody({
+  fixture,
+  onOpenEpisode,
+}: {
+  fixture: PodcastEpisodeListFixture
+  onOpenEpisode?: (epNum: number) => void
+}) {
   return (
     <div className="pel-scroll">
       {/* LazyVStack(spacing sectionGap=14).padding(.h cardPadding=18) */}
@@ -94,7 +225,7 @@ function ContentBody({ fixture }: { fixture: PodcastEpisodeListFixture }) {
             {fixture.episodes.map((ep, i) => (
               <div key={ep.episodeNumber}>
                 {i > 0 ? <div className="pel-divider" /> : null}
-                <EpisodeRow ep={ep} />
+                <EpisodeRow ep={ep} onOpen={onOpenEpisode ? () => onOpenEpisode(ep.episodeNumber) : undefined} />
               </div>
             ))}
           </div>
@@ -145,9 +276,23 @@ function ContinueCard({ eyebrow, title }: { eyebrow: string; title: string }) {
 }
 
 /** PodcastEpisodeRow（locked 變體）：title + meta「Ep N · 今天 · M:SS」+ trailing lock。 */
-function EpisodeRow({ ep }: { ep: EpisodeFixture }) {
+function EpisodeRow({ ep, onOpen }: { ep: EpisodeFixture; onOpen?: () => void }) {
+  // shell 路徑：可點 push player。parity 路徑（無 onOpen）維持非互動 div（DOM 不變）。
+  const navProps = onOpen
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: onOpen,
+        onKeyDown: (e: ReactKeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpen()
+          }
+        },
+      }
+    : {}
   return (
-    <div className="pel-row">
+    <div className="pel-row" {...navProps}>
       <div className="pel-row-main">
         <div className="pel-row-title">{ep.title}</div>
         <div className="pel-row-meta">
@@ -211,4 +356,9 @@ function CoverWaves() {
       ))}
     </svg>
   )
+}
+
+function formatDuration(sec: number): string {
+  const total = Math.trunc(sec)
+  return `${Math.trunc(total / 60)}:${String(total % 60).padStart(2, '0')}`
 }

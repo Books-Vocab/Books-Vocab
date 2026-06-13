@@ -87,6 +87,47 @@ export class Transport {
     }
   }
 
+  /**
+   * Execute a request and decode the body as raw text (e.g. an SRT subtitle).
+   * Same error normalization as `request`; no JSON parse.
+   */
+  async requestText(path: string, options: RequestOptions = {}): Promise<string> {
+    const url = this.buildUrl(path, options.query)
+    const headers: Record<string, string> = { Accept: 'text/plain' }
+
+    if (!options.anonymous) {
+      const token = this.getToken()
+      if (token) headers.Authorization = `Bearer ${token}`
+    }
+
+    let init: RequestInit = { method: options.method ?? 'GET', headers }
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json'
+      init = { ...init, body: JSON.stringify(options.body) }
+    }
+
+    let response: Response
+    try {
+      response = await this.doFetch(url, init)
+    } catch {
+      throw new ApiError(`network error contacting ${url}`, {
+        kind: 'network',
+        status: 0,
+      })
+    }
+
+    if (!response.ok) {
+      throw await this.toHttpError(response)
+    }
+
+    return response.text()
+  }
+
+  /** Compose an absolute URL for a path (e.g. a media src the browser fetches directly). */
+  resolveUrl(path: string): string {
+    return `${this.baseUrl}${path}`
+  }
+
   private buildUrl(
     path: string,
     query?: RequestOptions['query'],

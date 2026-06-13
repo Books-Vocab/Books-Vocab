@@ -9,6 +9,7 @@ from ..api_models import (
     QuotaResponse,
     UserConfigRequest,
     UserConfigResponse,
+    UserProfileResponse,
 )
 from ..deps import (
     CurrentUser,
@@ -23,6 +24,7 @@ from ..user_handlers import (
     delete_user_account_response,
     get_user_config_response,
     get_user_entitlements_response,
+    get_user_profile_response,
     health_response,
     update_user_config_response,
 )
@@ -33,6 +35,11 @@ router = APIRouter(tags=["user"])
 @router.get("/api/user/config", response_model=UserConfigResponse)
 def get_user_config(user: CurrentUser):
     return get_user_config_response(user)
+
+
+@router.get("/api/user/profile", response_model=UserProfileResponse)
+def get_user_profile(user: CurrentUser):
+    return get_user_profile_response(user)
 
 
 @router.get("/api/user/entitlements", response_model=EntitlementsResponse)

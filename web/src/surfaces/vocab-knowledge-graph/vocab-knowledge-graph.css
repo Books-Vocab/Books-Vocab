@@ -373,3 +373,303 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   LIVE (?shell=1) ONLY — the functional force-directed graph. These classes are
+   never present in the parity capture DOM (the static fixture path renders no
+   .vkg-graph-* / .vkg-gear-* / *--live nodes), so the snapshot stays unchanged.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Full-bleed canvas host behind the legend + drawer. */
+.vkg-graph-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.vkg-graph-canvas {
+  flex: 1 1 auto;
+  display: block;
+  /* Pan affordance: grab on the empty canvas, grabbing while a node is dragged.
+     touch-action:none (set inline) hands all pointer gestures to @use-gesture so
+     the browser never steals the pan/pinch for native scroll/zoom. */
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.vkg-graph-canvas[data-dragging='1'] {
+  cursor: grabbing;
+}
+
+/* Edges — subtle divider-toned strokes; thickness driven by 連結粗細 slider. */
+.vkg-graph-edge {
+  stroke: var(--text-quaternary);
+  opacity: 0.45;
+}
+
+/* A draggable node group — grab cursor; the dot springs on tap/drag (motion). */
+.vkg-graph-node-group {
+  cursor: grab;
+}
+
+.vkg-graph-node-group[data-selected='1'] {
+  cursor: pointer;
+}
+
+/* Density heat halo — a soft glow behind well-linked (high-degree) nodes. The
+   fill color + opacity are set inline per node (review tint × degree heat) so a
+   hub reads as a larger, warmer cluster. No own animation (static geometry). */
+.vkg-graph-node-heat {
+  pointer-events: none;
+}
+
+/* Nodes — fill comes from the review-state gradient (inline, per node). */
+.vkg-graph-node {
+  stroke: var(--page-bg);
+  stroke-width: 1;
+}
+
+/* Focus ring around the tapped/selected node (review-tinted accent halo). */
+.vkg-graph-node-ring {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  opacity: 0.85;
+}
+
+.vkg-graph-node-label {
+  font-family: var(--font-mono);
+  font-size: 9px; /* compact node caption */
+  font-weight: 600;
+  fill: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* Gear chip — opens the live settings drawer; mirrors VocabChromeIconButton. */
+.vkg-gear-button {
+  position: absolute;
+  bottom: 40px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.vkg-gear-icon {
+  flex: none;
+}
+
+/* Density indicator chip — live/shell only (never in the parity DOM). Docked
+   bottom-left, mirrors the legend chip's frosted-card treatment. The fill width
+   IS the density signal, so a denser graph reads as a fuller bar. */
+.vkg-density {
+  position: absolute;
+  bottom: 40px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 132px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--card-bg) 92%, transparent);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--elevation-z1);
+  pointer-events: none;
+}
+
+.vkg-density-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.vkg-density-title {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.vkg-density-band {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+/* Band-tinted label so denser graphs read warmer on the chip too. */
+.vkg-density[data-band='moderate'] .vkg-density-band {
+  color: var(--text-secondary);
+}
+
+.vkg-density[data-band='dense'] .vkg-density-band {
+  color: var(--accent);
+}
+
+.vkg-density-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-quaternary) 35%, transparent);
+  overflow: hidden;
+}
+
+.vkg-density-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.vkg-density-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* Reduced-motion: drop the bar's width transition (the value is informative, not
+   decorative — it must still appear, just without the animated grow). */
+@media (prefers-reduced-motion: reduce) {
+  .vkg-density-fill {
+    transition: none;
+  }
+}
+
+/* Live slider track wraps a transparent native range input over the fill bar. */
+.vkg-slider-track--live {
+  cursor: pointer;
+}
+
+.vkg-slider-input {
+  position: absolute;
+  inset: -8px 0; /* enlarge hit target above/below the 6px track */
+  width: 100%;
+  margin: 0;
+  opacity: 0; /* invisible — the .vkg-slider-fill bar is the visual */
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.vkg-slider-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+}
+
+.vkg-slider-input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+}
+
+/* Toggle (孤立節點) on-state — accent track + knob slid right. */
+.vkg-toggle-switch {
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.vkg-toggle-switch[data-on='1'] {
+  background: var(--accent);
+}
+
+.vkg-toggle-switch[data-on='1'] .vkg-toggle-knob {
+  left: auto;
+  right: 2px;
+}
+
+/* Empty-state inline action (no-links → 顯示孤立節點) — outline ghost button. */
+.vkg-empty-action {
+  margin-top: var(--sp-1);
+  padding: 8px 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--card-border);
+  background: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE (tablet/desktop shell) — scoped under .kg-responsive-shell ONLY.
+
+   PARITY ISOLATION: every rule below is a descendant of .kg-responsive-shell, so
+   it can only match inside ResponsiveShell (the shell path). The parity capture
+   path (?surface=X without ?shell=1) renders PhoneFrame -> SurfaceView and never
+   mounts .kg-responsive-shell, so the 393px static render is byte-identical.
+
+   The knowledge graph is a full-width canvas filling the content pane (no detail
+   pane). Internal adaptation uses @container queries so the surface reacts to its
+   OWN pane width (it may sit in a 360px master pane or a 900px content pane), not
+   the viewport. We establish a size container on the surface root, then react to
+   it. The fixed phone-frame pixel constants (legend top:118px = safe-area nav,
+   drawer bottom:40px = home-indicator) are re-anchored to the real pane corners
+   once there is genuine pane room (>= 600px container width).
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* Establish the size container on the live graph surface (shell only). */
+.kg-responsive-shell .vkg-surface {
+  container-type: size;
+  container-name: vkg-pane;
+}
+
+/* Wider pane: re-anchor the legend / gear to the real pane corners (no phone
+   safe-area inset) and let the canvas truly fill. */
+@container vkg-pane (min-width: 600px) {
+  .kg-responsive-shell .vkg-legend {
+    top: var(--sp-4);
+    right: var(--sp-4);
+  }
+
+  .kg-responsive-shell .vkg-gear-button {
+    bottom: var(--sp-4);
+    right: var(--sp-4);
+  }
+
+  /* Density chip re-anchored to the real pane corner (no phone safe-area). */
+  .kg-responsive-shell .vkg-density {
+    bottom: var(--sp-4);
+    left: var(--sp-4);
+  }
+
+  .kg-responsive-shell .vkg-settings {
+    bottom: var(--sp-4);
+    left: auto;
+    right: var(--sp-4);
+    justify-content: flex-end;
+  }
+
+  /* Drawer reads as a floating panel docked bottom-right, not a full-width bar. */
+  .kg-responsive-shell .vkg-settings-card {
+    width: 360px;
+    max-width: 360px;
+  }
+
+  /* Empty / loading / error card: cap width + center so it fills the pane
+     gracefully instead of stretching edge-to-edge on a wide pane. */
+  .kg-responsive-shell .vkg-surface--empty {
+    align-items: center;
+  }
+
+  .kg-responsive-shell .vkg-surface--empty .vkg-empty-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}

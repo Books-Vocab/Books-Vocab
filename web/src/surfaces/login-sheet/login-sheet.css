@@ -263,3 +263,16 @@
 .phone-frame[data-surface='login-sheet'] {
   background: var(--card-bg);
 }
+
+/* dev/demo 登入按鈕 — 僅 LoginGate（app 層入口）渲染，永不出現在 parity capture
+   surface。沿用 .login-sheet-button card chrome，僅以虛線描邊與 tint badge 與正式
+   provider 按鈕區隔，提示這是開發/離線專用入口。 */
+.login-sheet-button--dev {
+  border-style: dashed;
+  border-color: var(--text-tertiary);
+}
+
+.login-sheet-badge--dev {
+  background: color-mix(in srgb, var(--text-tertiary) 18%, transparent);
+  border: 1px solid var(--text-tertiary);
+}

@@ -9,6 +9,9 @@ import type { ScenarioId } from '../../harness/scenarios'
  */
 
 export interface NotebookFixtureCard {
+  /** 後端 notebook id（shell 路徑由 API 填入；fixture/parity 路徑省略 → 不渲染、
+      open-notebook 導航時帶 undefined → vocabulary 落預設本，capture 無影響）。 */
+  id?: string
   /** 封面 serif italic 書名。 */
   name: string
   /** 封面底色 hex（NotebookPalette.color(for:)；catalog seed 全用 default）。 */

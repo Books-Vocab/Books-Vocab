@@ -1,6 +1,7 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { VOCAB_ADD_LINK_FIXTURES } from './fixtures'
 import { MagnifyingGlassIcon } from './icons'
+import { useVocabAddLinkApiStore } from './useVocabAddLinkApiStore'
 import './vocab-add-link.css'
 
 /**
@@ -34,6 +35,80 @@ import './vocab-add-link.css'
  * alpha channel mean=1 已量測）→ 全 phone-frame 不透明捕捉，manifest 不加 transparent flag。
  */
 export function VocabAddLinkScreen({ scenario }: { scenario: ScenarioId<'vocab-add-link'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <VocabAddLinkApi />
+  return <VocabAddLinkFixture scenario={scenario} />
+}
+
+/** shell 路徑：真實候選搜尋 + 建立連結。 */
+function VocabAddLinkApi() {
+  const store = useVocabAddLinkApiStore()
+  const emptyQuery = store.query.trim().length === 0
+
+  return (
+    <div className="val-surface">
+      <div className="val-nav">
+        <div className="val-nav-title">新增連結</div>
+      </div>
+
+      <div className="val-search-pad">
+        <div className="val-search-field" role="search">
+          <MagnifyingGlassIcon size={17} className="val-search-icon" />
+          <input
+            className="val-search-input"
+            type="text"
+            placeholder="搜尋單字…"
+            value={store.query}
+            onChange={(e) => store.setQuery(e.target.value)}
+            aria-label="搜尋單字"
+          />
+        </div>
+      </div>
+
+      {store.createState === 'created' ? (
+        <div className="val-banner" role="status">已建立連結</div>
+      ) : store.createState === 'error' ? (
+        <div className="val-banner val-banner--error" role="status">建立連結失敗，請重試</div>
+      ) : null}
+
+      {emptyQuery ? (
+        <div className="val-empty">
+          <div className="val-empty-content">
+            <MagnifyingGlassIcon size={40} strokeWidth={1.5} className="val-empty-icon" />
+            <div className="val-empty-title">搜尋單字</div>
+            <div className="val-empty-description">輸入單字名稱來建立連結</div>
+          </div>
+        </div>
+      ) : store.candidates.length === 0 ? (
+        <div className="val-empty">
+          <div className="val-empty-content">
+            <MagnifyingGlassIcon size={40} strokeWidth={1.5} className="val-empty-icon" />
+            <div className="val-empty-title">沒有符合的單字</div>
+            <div className="val-empty-description">試試其他關鍵字</div>
+          </div>
+        </div>
+      ) : (
+        <div className="val-candidates">
+          {store.candidates.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="val-candidate"
+              onClick={() => store.createLink(c.id)}
+              disabled={store.createState === 'creating'}
+            >
+              <span className="val-candidate-word">{c.word}</span>
+              <span className="val-candidate-translation">{c.translation}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Fixture-driven 空查詢空態（parity 路徑，DOM byte-identical）。 */
+function VocabAddLinkFixture({ scenario }: { scenario: ScenarioId<'vocab-add-link'> }) {
   const fx = VOCAB_ADD_LINK_FIXTURES[scenario]
   return (
     <div className="val-surface">

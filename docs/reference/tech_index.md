@@ -22,9 +22,10 @@ verified_against: bdeab37490a5d04bc8924f03d22402c30a51e2dd
 |------|-----------------|------|
 | `auth.py` | `/auth/*` | JWT 驗證、Apple/Google token 交換 |
 | `web_auth.py` | `/login`, `/auth/web/{google,apple}/*` | Web OAuth + admin cookie session。`/login` 會 mint `oauth_state` HttpOnly Secure cookie；Google 走 redirect state，Apple 以 SameSite=None state cookie + `response_mode=form_post` 直送 Apple authorize，callback 以 cookie/state compare 防 CSRF |
-| `user.py` | `/api/user/*` | 設定、entitlements、quota |
-| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
+| `user.py` | `/api/user/*` | 設定 (`GET`/`PUT /api/user/config`)、唯讀身分 face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由 `users.json` 登入時 record 衍生，與可變 config bundle 分離)、entitlements、quota |
+| `vocab.py` | `/api/vocab/*` | 單字 CRUD、批量、incremental sync、內容編修 (`PATCH /api/vocab/{word}` → meaning/note；`explanation` 為 `note` 欄的 write-through alias)、archive 切換 (`PATCH /api/vocab/{word}/archive`)、軟刪 (`DELETE /api/vocab/{word}`)、review state (`/api/vocab/review`)、review events (`/api/vocab/review-events`) |
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
+| `library.py` | `/api/library/*` | 書庫（server 端 book 鏡像）；單一 store `LibraryStore`（per-user `library.db` / `LibraryBook`），承載 list/create/patch/position/delete。`DELETE /api/library/books/{id}` 軟刪（`LibraryStore.soft_delete` set `is_deleted`，冪等） |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發（iOS sync 收斂後 + chrome-extension 加詞 outbox flush 收斂後皆 `POST /api/pipeline?notebook_id` 觸發 server enrich） |
 | `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 / 封面(`GET /api/podcasts/{sid}/cover`,image/png proxy,缺則 404)。**分層授權**(policy 在 `podcast_access.py`):browse(list/detail/cover)走 `get_current_user_optional` 允許**無 Authorization header 的訪客**；若 header 存在但 malformed / token invalid 則 401，不降級 guest；`audio`/`subtitle` 同一 tier gate（`_require_episode_access`）— guest→`401 {code:auth_required}`、free→只給 ep1（audio 服務 `preview.*`、subtitle 給 ep1 逐字稿；其餘 `403 {code:upgrade_required}`）、pro→full（防付費集逐字稿外洩）；`progress` 仍 `get_current_user`，OpenAPI 以 `api_models/podcast.py` response models 固定 schema |

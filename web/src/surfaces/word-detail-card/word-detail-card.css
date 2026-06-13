@@ -240,3 +240,41 @@
   color: var(--text-secondary); /* secondaryText */
   line-height: var(--leading-caption);
 }
+
+/* ============================================================
+   RESPONSIVE — shell-gated detail-pane layout.
+
+   PARITY ISOLATION: every rule below is a descendant of .kg-responsive-shell
+   (mounted only by ResponsiveShell on the shell path at tablet+). The parity
+   capture path (?surface=word-detail-card without ?shell=1) renders the bare
+   `.word-detail-card` WITHOUT a .kg-responsive-shell ancestor, so the
+   inline-block compressed 393px crop stays byte-identical.
+
+   The .word-detail-card max-width:393px is the ONE hard phone-width assumption
+   (spec). word-detail-card is a DETAIL surface of the vocabulary master/detail
+   pair; inside the detail pane it must FILL the pane instead of staying a 393px
+   inline-block crop. We flip it to a block that fills the pane and clamp prose
+   to a comfortable measure via @container — while the bare/parity render keeps
+   393px untouched.
+   ============================================================ */
+
+.kg-responsive-shell[data-breakpoint='tablet'] .word-detail-card,
+.kg-responsive-shell[data-breakpoint='desktop'] .word-detail-card,
+.kg-responsive-shell[data-breakpoint='wide'] .word-detail-card {
+  display: block;
+  width: 100%;
+  /* relax the phone-width cap so the card fills the detail pane */
+  max-width: none;
+  container-type: inline-size;
+  container-name: wdc;
+  min-height: 100%;
+}
+
+/* Keep the content readable: once the pane is wide, clamp the stack to a
+   comfortable measure and centre it (don't stretch hero/meaning edge-to-edge). */
+@container wdc (min-width: 720px) {
+  .kg-responsive-shell .word-detail-card .wdc-stack {
+    max-width: 720px;
+    margin-inline: auto;
+  }
+}

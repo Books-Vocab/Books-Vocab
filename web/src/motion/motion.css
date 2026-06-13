@@ -1,0 +1,104 @@
+/* ============================================================
+   Motion layer CSS — shell-only animated containers.
+
+   PARITY ISOLATION: these classes (.route-transition / .route-layer /
+   .kg-sheet-*) are mounted exclusively by the functional shell motion
+   primitives (RouteTransition, Sheet), which the parity capture path
+   (PhoneFrame shell={false} → SurfaceView) never renders. No selector here
+   touches .phone-frame or a bare *-surface root, and none live inside a
+   responsive @media/@container context — so check:responsive stays CLEAN.
+   ============================================================ */
+
+/* RouteTransition: the current screen renders in NORMAL flow (so it can scroll
+   its parent pane / fill the phone-frame). AnimatePresence mode="popLayout"
+   pops the OUTGOING screen out of layout (framer-motion sets it position:
+   absolute) so the two overlap only during the swap — no permanent absolute
+   layer that would collapse the parent's height or kill pane scrolling. */
+.route-transition {
+  position: relative;
+  width: 100%;
+  /* fill the available height so the entering screen has a stage to slide onto;
+     min-height (not height) keeps scrollable pane content from being clipped. */
+  min-height: 100%;
+}
+
+.route-layer {
+  width: 100%;
+  /* GPU-friendly: only transform/opacity animate (see motion variants). */
+  will-change: transform;
+}
+
+/* Stack mode = full-screen iOS push/pop. Clip ONLY the horizontal slide so the
+   off-screen screens never spill sideways during the transition. `overflow-x:
+   clip` (not hidden) does NOT force a scroll container or convert the vertical
+   axis — so when stack mode is used inside a scrollable pane (tablet single
+   column) the pane still owns vertical scroll, and on mobile the entering layer
+   fills .shell-screen (100% height, non-scrolling ancestor). */
+.route-transition--stack {
+  overflow-x: clip;
+}
+
+/* On mobile the .shell-content ancestor is overflow:hidden + 100% height, so
+   the entering full-screen layer should fill it for a true full-screen slide. */
+.shell-screen .route-transition--stack {
+  height: 100%;
+}
+
+.shell-screen .route-transition--stack > .route-layer {
+  height: 100%;
+}
+
+/* Pane mode = desktop detail cross-fade/slide: subtle, no clipping needed; the
+   detail pane itself owns overflow/scroll. */
+.route-transition--pane {
+  min-height: 100%;
+  overflow: visible;
+}
+
+/* ── vaul Sheet primitive ── */
+
+/* Backdrop dimming behind the sheet. */
+.kg-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+/* The bottom sheet itself: pinned to the bottom, rounded top, iOS card bg. */
+.kg-sheet-content {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  max-height: 92%;
+  background: var(--card-bg, #ffffff);
+  color: var(--text-primary, #000000);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  outline: none;
+  /* Respect the home-indicator safe area on devices that have one. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* iOS-style grabber pill, centred at the top of the sheet. */
+.kg-sheet-grabber {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 5px;
+  margin: 8px auto 4px;
+  border-radius: 999px;
+  background: var(--divider, rgba(60, 60, 67, 0.3));
+}
+
+/* Scrollable sheet body (the migrated call-site content lives here). */
+.kg-sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}

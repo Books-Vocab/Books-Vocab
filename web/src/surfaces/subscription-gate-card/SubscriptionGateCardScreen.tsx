@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { SUBSCRIPTION_GATE_CARD_FIXTURES, type GateCardFixture } from './fixtures'
+import { useEntitlementsApiStore } from '../settings-subscription/useEntitlementsApiStore'
+import { GraduationCapFillIcon } from './icons'
 import './subscription-gate-card.css'
 
 /**
@@ -38,7 +40,35 @@ export function SubscriptionGateCardScreen({
 }: {
   scenario: ScenarioId<'subscription-gate-card'>
 }) {
-  const fx: GateCardFixture = SUBSCRIPTION_GATE_CARD_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <SubscriptionGateCardScreenApi scenario={scenario} />
+  }
+  return <SubscriptionGateCardBody fx={SUBSCRIPTION_GATE_CARD_FIXTURES[scenario]} />
+}
+
+/**
+ * shell 分支：依真實 entitlements 投影 gate card。已 Pro → 改顯「已解鎖」確認式卡
+ * （informational；無實際購買 IO）；未 Pro → 維持該 scenario 的升級提示文案。
+ */
+function SubscriptionGateCardScreenApi({ scenario }: { scenario: ScenarioId<'subscription-gate-card'> }) {
+  const { view } = useEntitlementsApiStore()
+  const base = SUBSCRIPTION_GATE_CARD_FIXTURES[scenario]
+  if (view.isActive) {
+    const unlocked: GateCardFixture = {
+      ...base,
+      icon: GraduationCapFillIcon,
+      iconStrokeWidth: undefined,
+      title: 'Pro 已啟用',
+      description: '所有進階功能已解鎖，包含知識圖譜、Today Review 與播客。',
+      actionTitle: '查看訂閱',
+    }
+    return <SubscriptionGateCardBody fx={unlocked} />
+  }
+  return <SubscriptionGateCardBody fx={base} />
+}
+
+function SubscriptionGateCardBody({ fx }: { fx: GateCardFixture }) {
   const Icon = fx.icon
   return (
     <div className="subscription-gate-card-surface">

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
-import { SETTINGS_SUBSCRIPTION_FIXTURES, type BadgeTone } from './fixtures'
+import { SETTINGS_SUBSCRIPTION_FIXTURES, type BadgeTone, type SubscriptionFixture } from './fixtures'
+import { useEntitlementsApiStore } from './useEntitlementsApiStore'
+import type { SubscriptionView } from './subscriptionProjection'
 import {
   SparklesRectangleStackIcon,
   KeyIcon,
@@ -44,7 +46,51 @@ export function SettingsSubscriptionScreen({
 }: {
   scenario: ScenarioId<'settings-subscription'>
 }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    return <SettingsSubscriptionScreenApi />
+  }
+  return <SettingsSubscriptionScreenFixture scenario={scenario} />
+}
+
+function SettingsSubscriptionScreenFixture({
+  scenario,
+}: {
+  scenario: ScenarioId<'settings-subscription'>
+}) {
   const f = SETTINGS_SUBSCRIPTION_FIXTURES[scenario]
+  return <SettingsSubscriptionBody f={f} />
+}
+
+/** SubscriptionView（真實 entitlements 投影）→ 既有 SubscriptionFixture 形狀。 */
+export function fixtureFromView(view: SubscriptionView, loading: boolean): SubscriptionFixture {
+  if (loading) {
+    return SETTINGS_SUBSCRIPTION_FIXTURES.loading
+  }
+  return {
+    planName: view.planName,
+    badgeText: view.badgeText,
+    badgeTone: view.badgeTone,
+    summary: view.summary,
+    detail: view.detail,
+    sourceLabel: view.sourceLabel,
+    managementNote: view.managementNote,
+    pricingUnavailableMessage: null,
+    restoreLabel: '恢復購買',
+    restoreDescription: view.isActive ? '如果您曾購買過訂閱' : '曾經購買過？點此恢復先前的訂閱。',
+    isRestoreAvailable: view.isRestoreAvailable,
+    ctaTitle: view.ctaTitle,
+    isRefreshing: false,
+  }
+}
+
+function SettingsSubscriptionScreenApi() {
+  const { view, status } = useEntitlementsApiStore()
+  const f = fixtureFromView(view, status === 'loading')
+  return <SettingsSubscriptionBody f={f} />
+}
+
+function SettingsSubscriptionBody({ f }: { f: SubscriptionFixture }) {
   return (
     <div className="settings-subscription-surface">
       <div className="sub-section">

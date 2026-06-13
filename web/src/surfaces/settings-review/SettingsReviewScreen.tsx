@@ -1,5 +1,7 @@
 import type { ScenarioId } from '../../harness/scenarios'
-import { SETTINGS_REVIEW_FIXTURES, type ReviewMode, type ParamRowFixture } from './fixtures'
+import { SETTINGS_REVIEW_FIXTURES, type ReviewMode, type ParamRowFixture, type ReviewFixture } from './fixtures'
+import { useSettingsReviewApiStore } from './useSettingsReviewApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import {
   PauseCircleIcon,
   TimerIcon,
@@ -11,6 +13,29 @@ import {
   PlusIcon,
 } from './icons'
 import './settings-review.css'
+
+/** custom 參數列的穩定 key（與 PARAM_SPECS 順序對齊），供 shell 互動定位列。 */
+type ParamKey =
+  | 'customInitialIntervalHours'
+  | 'customRememberedMultiplier'
+  | 'customForgotMultiplier'
+  | 'customMinimumIntervalHours'
+  | 'customMaximumIntervalHours'
+
+const PARAM_KEYS: ParamKey[] = [
+  'customInitialIntervalHours',
+  'customRememberedMultiplier',
+  'customForgotMultiplier',
+  'customMinimumIntervalHours',
+  'customMaximumIntervalHours',
+]
+
+/** shell 互動回呼（fixture 路徑全為 undefined → DOM 與 ref byte-identical）。 */
+interface ReviewHandlers {
+  onTogglePause?: () => void
+  onSelectMode?: (mode: ReviewMode) => void
+  onStep?: (key: ParamKey, direction: 'inc' | 'dec') => void
+}
 
 /**
  * Settings Sections · Review（複習節奏）surface — iOS `SettingsReviewSection`
@@ -37,8 +62,38 @@ const MODES: { mode: ReviewMode; label: string; Icon: typeof HeartIcon }[] = [
 ]
 
 export function SettingsReviewScreen({ scenario }: { scenario: ScenarioId<'settings-review'> }) {
-  const fixture = SETTINGS_REVIEW_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <SettingsReviewScreenApi />
+  return <SettingsReviewBody fixture={SETTINGS_REVIEW_FIXTURES[scenario]} />
+}
 
+/** API-driven screen — shell=1 時讀寫 /api/user/config（review_clock + review_mode）。 */
+function SettingsReviewScreenApi() {
+  const store = useSettingsReviewApiStore()
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' && store.fixture ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      {store.fixture ? (
+        <SettingsReviewBody
+          fixture={store.fixture}
+          onTogglePause={store.togglePause}
+          onSelectMode={store.selectMode}
+          onStep={store.stepParam}
+        />
+      ) : null}
+    </VocabSceneShell>
+  )
+}
+
+/** 複習節奏本體 — fixture / API 兩條路共用。fixture 路徑無 handlers → DOM byte-identical。 */
+function SettingsReviewBody({
+  fixture,
+  onTogglePause,
+  onSelectMode,
+  onStep,
+}: { fixture: ReviewFixture } & ReviewHandlers) {
   return (
     <div className="settings-review">
       {/* inline nav title（UINavigationBar inline，page-bg 上 primaryText） */}
@@ -61,6 +116,7 @@ export function SettingsReviewScreen({ scenario }: { scenario: ScenarioId<'setti
                 data-on={fixture.isPaused ? '1' : undefined}
                 role="switch"
                 aria-checked={fixture.isPaused}
+                onClick={onTogglePause}
               >
                 <span className="settings-review-toggle-knob" />
               </div>
@@ -78,6 +134,7 @@ export function SettingsReviewScreen({ scenario }: { scenario: ScenarioId<'setti
                     key={mode}
                     className="settings-review-tile"
                     data-selected={selected ? '1' : undefined}
+                    onClick={onSelectMode ? () => onSelectMode(mode) : undefined}
                   >
                     <Icon className="settings-review-tile-icon" size={15} />
                     <span className="settings-review-tile-label" data-selected={selected ? '1' : undefined}>
@@ -98,7 +155,11 @@ export function SettingsReviewScreen({ scenario }: { scenario: ScenarioId<'setti
                 {fixture.customRows.map((row, i) => (
                   <div key={row.label}>
                     {i > 0 ? <div className="settings-review-divider" /> : null}
-                    <ParamRow row={row} />
+                    <ParamRow
+                      row={row}
+                      onDecrement={onStep ? () => onStep(PARAM_KEYS[i]!, 'dec') : undefined}
+                      onIncrement={onStep ? () => onStep(PARAM_KEYS[i]!, 'inc') : undefined}
+                    />
                   </div>
                 ))}
               </div>
@@ -122,7 +183,15 @@ function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }
   )
 }
 
-function ParamRow({ row }: { row: ParamRowFixture }) {
+function ParamRow({
+  row,
+  onDecrement,
+  onIncrement,
+}: {
+  row: ParamRowFixture
+  onDecrement?: () => void
+  onIncrement?: () => void
+}) {
   return (
     <div className="settings-review-param-row">
       <span className="settings-review-param-label">{row.label}</span>
@@ -131,6 +200,7 @@ function ParamRow({ row }: { row: ParamRowFixture }) {
           type="button"
           className="settings-review-stepper-btn"
           data-disabled={row.canDecrement ? undefined : '1'}
+          onClick={onDecrement && row.canDecrement ? onDecrement : undefined}
         >
           <MinusIcon size={14} />
         </button>
@@ -139,6 +209,7 @@ function ParamRow({ row }: { row: ParamRowFixture }) {
           type="button"
           className="settings-review-stepper-btn"
           data-disabled={row.canIncrement ? undefined : '1'}
+          onClick={onIncrement && row.canIncrement ? onIncrement : undefined}
         >
           <PlusIcon size={14} />
         </button>

@@ -70,7 +70,8 @@
   justify-content: flex-end;
 }
 
-/* TOC 面板：左側抽屜，沿用 rpanel-toc 視覺，限寬。 */
+/* TOC 面板：左側抽屜，沿用 rpanel-toc 視覺，限寬。位移動畫由 framer-motion
+   （navPush spring）驅動 transform，CSS 只負責定位／視覺。 */
 .live-reader-panel-toc {
   position: absolute;
   top: 0;
@@ -80,6 +81,7 @@
   max-width: 320px;
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.14);
   overflow-y: auto;
+  will-change: transform;
 }
 
 /* TOC 列改成可點 button（沿用 rpanel-toc-row-text 字樣，補互動樣式）。 */
@@ -94,6 +96,11 @@
 }
 .live-reader-toc-btn:hover {
   opacity: 0.6;
+}
+
+/* Settings sheet 動畫容器（framer-motion 以 y transform 驅動升起／降下）。 */
+.live-reader-sheet {
+  will-change: transform;
 }
 
 /* Settings 面板：bottom-sheet 升起；override parity .rsettings-card 的 full-frame
@@ -120,10 +127,113 @@
   cursor: pointer;
   border: none;
 }
+/* 紙色主題 toggle（緊接字體 toggle 下方）。 */
+.live-reader-theme-toggle {
+  margin-top: 8px;
+}
+
+/* 夜間主題：外層 paper 底色同步暗化（內文 iframe 由 themeBodyCss 注入）。 */
+.live-reader[data-theme='dark'],
+.live-reader[data-theme='dark'] .live-reader-paper {
+  background: #1c1c1e;
+}
 
 /* 翻譯面板 overlay 定位（沿用 reader.css .reader-bottom-overlay 行為） */
 .live-reader-translation {
   z-index: 12;
+}
+
+/* 譯文卡動畫容器：framer-motion 以 y transform 驅動自底升起／降下。
+   reader-bottom-overlay 的 flex flex-end 仍把它推到底（取代原裸 div 包層）。 */
+.live-reader-translation-card {
+  pointer-events: auto;
+  will-change: transform;
+}
+
+/* ── 翻頁滑移 cue（FEEL）────────────────────────────────────────────────
+   epub.js prev/next 是瞬時欄位切換；翻頁時對紙面層做一次短促的反向位移＋淡入，
+   給「頁面滑進」的知覺平滑度，不碰 epub.js 內部分頁。data-turn 由 React 設置，
+   ~220ms 後清除（見 LiveReaderScreen.turnPage）。GPU transform/opacity only。 */
+.live-reader-paper {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+.live-reader-paper[data-turn='next'] {
+  animation: live-reader-turn-next 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.live-reader-paper[data-turn='prev'] {
+  animation: live-reader-turn-prev 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes live-reader-turn-next {
+  0% {
+    transform: translateX(14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes live-reader-turn-prev {
+  0% {
+    transform: translateX(-14px);
+    opacity: 0.78;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* prefers-reduced-motion：關閉翻頁 cue（位移／淡入）。浮層的 spring 由
+   framer-motion 的 useReducedMotion 收斂為瞬時（usePreferredTransition）。
+   注意：max-width 與 prefers-reduced-motion 不被 parity-isolation 視為
+   responsive context（無需 .kg-responsive-shell 範圍），故此區安全。 */
+@media (prefers-reduced-motion: reduce) {
+  .live-reader-paper,
+  .live-reader-paper[data-turn='next'],
+  .live-reader-paper[data-turn='prev'] {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ── PDF 引擎渲染層（pdfjs canvas + 透明選詞文字覆蓋層）──────────────────────
+   PDF 頁可能高於 host（letter 比例），故 host 在 PDF 路徑垂直捲動、頁面置中。
+   class 全為 .live-pdf-*（parity surface 無人引用）且非 responsive context，
+   故 check:responsive 恆乾淨；canvas/文字層由 pdfEngine.ts 動態建立。 */
+.live-reader-host:has(.live-pdf-page) {
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.live-pdf-page {
+  position: relative;
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.live-pdf-canvas {
+  display: block;
+}
+/* 透明選詞層：覆在 canvas 上，文字 span 透明但可被 caretRangeFromPoint 命中。 */
+.live-pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  cursor: text;
+  user-select: text;
+}
+.live-pdf-text-layer span {
+  pointer-events: auto;
+}
+/* 夜間：PDF 紙面（canvas 本身是白底）以濾鏡輕度反相，外層 host 暗化。 */
+.live-reader[data-theme='dark'] .live-pdf-page {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
 }
 
 .live-reader-error {
@@ -134,8 +244,156 @@
   justify-content: center;
   padding: 0 24px;
   text-align: center;
+  background: rgba(250, 246, 240, 0.92);
+  z-index: 14;
+}
+.live-reader[data-theme='dark'] .live-reader-error {
+  background: rgba(28, 28, 30, 0.92);
+}
+.live-reader-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  color: #6b6259;
   font-family: 'ElmsSans', -apple-system, sans-serif;
-  font-size: 15px;
-  color: #b3261e;
-  z-index: 9;
+}
+.live-reader[data-theme='dark'] .live-reader-error-card {
+  color: #b8b0a6;
+}
+.live-reader-error-title {
+  margin: 4px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #3a342e;
+}
+.live-reader[data-theme='dark'] .live-reader-error-title {
+  color: #e6e1d8;
+}
+.live-reader-error-detail {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  opacity: 0.78;
+  word-break: break-word;
+}
+.live-reader-retry-btn {
+  margin-top: 6px;
+  padding: 9px 22px;
+  border: none;
+  border-radius: 999px;
+  background: #3a342e;
+  color: #faf6f0;
+  font-family: 'ElmsSans', -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.live-reader-retry-btn:hover {
+  opacity: 0.86;
+}
+.live-reader-retry-btn:active {
+  transform: scale(0.97);
+}
+.live-reader[data-theme='dark'] .live-reader-retry-btn {
+  background: #e6e1d8;
+  color: #1c1c1e;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-reader-retry-btn {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE (web-only, shell-gated) — live epub.js Reader in a
+   tablet/desktop pane.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell. The live reader currently mounts either inside
+   .phone-frame (?surface=reader-live) or via the mobile AppShell
+   delegation (ResponsiveShell mobile breakpoint = passive container), so
+   it never receives these rules today; they are forward-compatible for
+   when the shell routes the live reader into a wide pane. Either way the
+   parity render (.phone-frame, fixed 393x852) is untouched: it never
+   mounts .kg-responsive-shell, and the JS ResizeObserver is a no-op while
+   the host size is constant.
+
+   Goal: LOCK the epub.js host (rendition container) to
+   var(--reader-measure) (~720px), CENTER it so the two side margins fill
+   the pane, and recompute the chrome over the same centred column. The JS
+   side (ResizeObserver -> rendition.resize, CFI-preserving) reflows the
+   text to the measured column; CSS only positions the box.
+   ============================================================ */
+
+/* the live reader becomes a size container so its chrome/host query the
+   pane width it occupies (not the viewport — it may sit in a narrow or
+   wide pane). */
+.kg-responsive-shell .shell-pane-surface .live-reader {
+  container-type: inline-size;
+  container-name: live-reader;
+}
+
+@container live-reader (min-width: 768px) {
+  /* host: lock to the optimal measure + centre. The ResizeObserver in
+     LiveReaderScreen calls rendition.resize() on the resulting width so
+     epub.js text reflows to this column (CSS alone does not reflow it). */
+  .kg-responsive-shell .live-reader-host {
+    left: 50%;
+    right: auto;
+    width: min(100% - 24px, var(--reader-measure));
+    transform: translateX(-50%);
+  }
+
+  /* expanded header tracks the centred column (toolbar over the measure). */
+  .kg-responsive-shell .live-reader-header.reader-header-expanded {
+    left: 50%;
+    right: auto;
+    width: min(100% - 40px, var(--reader-measure));
+    transform: translateX(-50%);
+  }
+
+  /* progress capsule pins to the right edge of the centred column. */
+  .kg-responsive-shell .live-reader-progress {
+    right: max(20px, calc((100% - var(--reader-measure)) / 2 + 20px));
+  }
+
+  /* translation panel centres to the measure (toolbar over reading column). */
+  .kg-responsive-shell .live-reader-translation .translation-panel {
+    width: 100%;
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+  }
+
+  /* TOC: on a wide pane become a PERSISTENT left sub-panel within the
+     reader layout (not an ~82% overlay). The overlay scrim collapses to
+     the panel column; the panel docks full-height at the pane's left and
+     the host/header are nudged right to clear it. */
+  .kg-responsive-shell .live-reader-overlay {
+    background: transparent;
+    pointer-events: none;
+  }
+  .kg-responsive-shell .live-reader-panel-toc {
+    width: 300px;
+    max-width: 300px;
+    pointer-events: auto;
+    box-shadow: 1px 0 0 var(--divider);
+    border-right: var(--sp-hairline) solid var(--divider);
+  }
+}
+
+/* desktop pane (>=1120 container): give the persistent TOC room by
+   insetting the reading column to the right of the docked panel. */
+@container live-reader (min-width: 1120px) {
+  /* TOC docked left (300px): centre the reading column in the REMAINING
+     pane (right of the panel). The 768px rule centres via translateX(-50%)
+     about left:50%; here we re-anchor to the right-of-panel midpoint and
+     keep the same -50% self-centring transform. */
+  .kg-responsive-shell .live-reader[data-toc-open] .live-reader-host,
+  .kg-responsive-shell .live-reader[data-toc-open] .live-reader-header.reader-header-expanded {
+    left: calc(300px + (100% - 300px) / 2);
+    transform: translateX(-50%);
+  }
 }

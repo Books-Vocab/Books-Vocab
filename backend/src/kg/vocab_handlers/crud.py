@@ -9,6 +9,7 @@ from ..api_models import (
     BatchArchiveRequest,
     BatchDeleteRequest,
     CardResponse,
+    VocabContentUpdateRequest,
 )
 from ..vocab_crud import (
     archive_vocab_word,
@@ -17,6 +18,7 @@ from ..vocab_crud import (
     delete_vocab_word,
     list_vocab_cards,
     lookup_vocab_word,
+    update_vocab_word_content,
 )
 from ._shared import _resolve_stores
 
@@ -92,6 +94,35 @@ def archive_word_response(
         archived=req.archived,
         cards_store=stores.cards,
         graph=stores.graph,
+        notebook_id=notebook_id,
+    )
+
+
+def update_word_content_response(
+    word: str,
+    req: VocabContentUpdateRequest,
+    user: dict[str, Any],
+    *,
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> CardResponse:
+    stores = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
+    return update_vocab_word_content(
+        word,
+        meaning=req.meaning,
+        note=req.note,
+        explanation=req.explanation,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        card_response_builder=card_response_builder,
         notebook_id=notebook_id,
     )
 

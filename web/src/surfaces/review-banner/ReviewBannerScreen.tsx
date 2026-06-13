@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { REVIEW_BANNER_FIXTURES } from './fixtures'
+import { useReviewBannerApiStore } from './useReviewBannerApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import { PlayFillIcon, ClockBadgeIcon, SparklesIcon } from './icons'
 import './review-banner.css'
 
@@ -22,6 +24,16 @@ import './review-banner.css'
  *   .fill scene VStack(0)[DemoBanner, Spacer] 於 pageBackground 全幀；strip 背景延伸至 status bar。
  */
 export function ReviewBannerScreen({ scenario }: { scenario: ScenarioId<'review-banner'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    const notebookId = new URLSearchParams(window.location.search).get('notebook_id')
+    return <ReviewBannerScreenApi notebookId={notebookId} />
+  }
+  return <ReviewBannerScreenFixture scenario={scenario} />
+}
+
+/** Fixture-driven screen — parity harness 路徑（無 shell=1 時，DOM 須與 ref byte-identical）。 */
+function ReviewBannerScreenFixture({ scenario }: { scenario: ScenarioId<'review-banner'> }) {
   const fixture = REVIEW_BANNER_FIXTURES[scenario]
 
   if (fixture.kind === 'demo') {
@@ -40,7 +52,30 @@ export function ReviewBannerScreen({ scenario }: { scenario: ScenarioId<'review-
     )
   }
 
-  const { dueCount, unlearnedCount } = fixture
+  return <ReviewBannerCard dueCount={fixture.dueCount} unlearnedCount={fixture.unlearnedCount} />
+}
+
+/** API-driven screen — shell=1 時從 useApi().vocabulary.list() client-side 衍生計數。 */
+function ReviewBannerScreenApi({ notebookId }: { notebookId: string | null }) {
+  const store = useReviewBannerApiStore(notebookId)
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <ReviewBannerCard dueCount={store.dueCount} unlearnedCount={store.unlearnedCount} />
+    </VocabSceneShell>
+  )
+}
+
+/** 複習 CTA 卡 — fixture / API 兩條路共用，DOM 結構與 class 完全一致。 */
+function ReviewBannerCard({
+  dueCount,
+  unlearnedCount,
+}: {
+  dueCount: number
+  unlearnedCount: number
+}) {
   const total = dueCount + unlearnedCount
   const hasBoth = dueCount > 0 && unlearnedCount > 0
 

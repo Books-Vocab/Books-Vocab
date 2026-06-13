@@ -11,12 +11,18 @@
     "test": "vitest run",
     "test:interaction": "node tools/interaction.mjs",
     "typecheck": "tsc -b",
-    "interactive-check": "node tools/interactive-check.mjs"
+    "interactive-check": "node tools/interactive-check.mjs",
+    "check:responsive": "node tools/check-responsive-isolation.mjs"
   },
   "dependencies": {
+    "@kg/types": "*",
+    "@use-gesture/react": "^10.3.1",
     "epubjs": "^0.3.93",
+    "framer-motion": "^12.40.0",
+    "pdfjs-dist": "^6.0.227",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "vaul": "^1.1.2"
   },
   "overrides": {
     "@xmldom/xmldom": "^0.8.13"

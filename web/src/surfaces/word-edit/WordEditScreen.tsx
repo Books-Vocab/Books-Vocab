@@ -1,5 +1,6 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { WORD_EDIT_FIXTURES } from './fixtures'
+import { useWordEditApiStore, useWordParam } from './useWordEditApiStore'
 import './word-edit.css'
 
 /**
@@ -32,8 +33,14 @@ export function WordEditScreen({
 }: {
   scenario: ScenarioId<'word-edit'>
 }) {
-  const fx = WORD_EDIT_FIXTURES[scenario]
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <WordEditApi />
+  return <WordEditFixture scenario={scenario} />
+}
 
+/** Fixture-driven 唯讀編輯預覽（parity 路徑，DOM byte-identical）。 */
+function WordEditFixture({ scenario }: { scenario: ScenarioId<'word-edit'> }) {
+  const fx = WORD_EDIT_FIXTURES[scenario]
   return (
     <div className="we-surface">
       {/* inline nav bar — entry.word，serif、近白、置中、過長截斷 */}
@@ -49,11 +56,83 @@ export function WordEditScreen({
   )
 }
 
+/** shell 路徑：真實可編輯欄位 + 樂觀儲存 / 回滾。 */
+function WordEditApi() {
+  const word = useWordParam()
+  const store = useWordEditApiStore(word)
+  const title = store.word ?? '編輯單字'
+  const saveLabel =
+    store.saveState === 'saving'
+      ? '儲存中…'
+      : store.saveState === 'saved'
+        ? '已儲存'
+        : store.saveState === 'error'
+          ? '儲存失敗，重試'
+          : '儲存'
+
+  return (
+    <div className="we-surface">
+      <div className="we-nav">
+        <div className="we-nav-title">{title}</div>
+        <button
+          type="button"
+          className="we-save"
+          onClick={store.save}
+          disabled={store.status !== 'ready' || store.saveState === 'saving' || !store.isDirty}
+          data-state={store.saveState}
+        >
+          {saveLabel}
+        </button>
+      </div>
+
+      <div className="we-form">
+        <EditableSection
+          title="翻譯結果"
+          value={store.draft.meaning}
+          onChange={store.setMeaning}
+          disabled={store.status !== 'ready'}
+        />
+        <EditableSection
+          title="教學筆記"
+          value={store.draft.explanation}
+          onChange={store.setExplanation}
+          disabled={store.status !== 'ready'}
+        />
+      </div>
+    </div>
+  )
+}
+
 function EditSection({ title, text }: { title: string; text: string }) {
   return (
     <section className="we-section">
       <div className="we-caption">{title}</div>
       <div className="we-editor">{text}</div>
+    </section>
+  )
+}
+
+function EditableSection({
+  title,
+  value,
+  onChange,
+  disabled,
+}: {
+  title: string
+  value: string
+  onChange: (v: string) => void
+  disabled: boolean
+}) {
+  return (
+    <section className="we-section">
+      <div className="we-caption">{title}</div>
+      <textarea
+        className="we-editor we-editor--input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        aria-label={title}
+      />
     </section>
   )
 }

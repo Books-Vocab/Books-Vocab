@@ -206,6 +206,7 @@ async def google_callback(
 
     response = templates.TemplateResponse(request, "login_success.html", {
         "token": jwt_token,
+        "user_id": canonical_user_id,
     })
     _clear_state_cookie(response)
     return response
@@ -242,6 +243,7 @@ async def apple_callback(
 
     response = templates.TemplateResponse(request, "login_success.html", {
         "token": jwt_token,
+        "user_id": canonical_user_id,
     })
     _clear_state_cookie(response)
     return response
