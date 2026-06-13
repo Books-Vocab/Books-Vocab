@@ -98,6 +98,15 @@ def test_build_review_root_updates_workspace_index(tmp_path):
     assert run["artifacts"]["reviewHtml"] == "20260614-010203-ui/UIreview.html"
     assert run["artifacts"]["video"] == "20260614-010203-ui/uitest-videos/20260614-010203-ui.mp4"
     assert run["artifacts"]["log"] == "20260614-010203-ui/test.log"
+    run_html = (out_root / "UIreview.html").read_text(encoding="utf-8")
+    assert "KG UITest Run Review" in run_html
+    assert "2026-06-14T01:02:03+00:00" in run_html
+    assert "uitest-videos/20260614-010203-ui.mp4" in run_html
+    assert "20260614-010203-ui/uitest-videos/20260614-010203-ui.mp4" not in run_html
+    assert "test.log" in run_html
+    assert "review_manifest.json" in run_html
+    assert "01-launch.png" in run_html
+    assert "02-player.png" in run_html
 
     newer_out_root = tmp_path / "build" / "snapshots" / "uitest-runs" / "20260614-020304-ui"
     mod.build_review_root(
@@ -170,3 +179,44 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
     assert "run-a/UIreview.html" in html
     assert "run-a/test.log" in html
     assert "run-a/uitest-videos/run-a.mp4" in html
+
+
+def test_run_html_supports_zero_step_runs(tmp_path):
+    mod = _load()
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    manifest = steps / "review_manifest.json"
+    manifest.write_text(
+        json.dumps({"schema": "kg.visual-review.sheet.v1", "source": "uitest", "items": []}),
+        encoding="utf-8",
+    )
+    video = tmp_path / "20260614-040506-ui.mp4"
+    video.write_bytes(b"video")
+    log = tmp_path / "test.log"
+    log.write_text("launch smoke log\n", encoding="utf-8")
+    out_root = tmp_path / "build" / "snapshots" / "uitest-runs" / "20260614-040506-ui"
+
+    mod.build_review_root(
+        screenshot_dir=steps,
+        manifest_path=manifest,
+        contact_sheet=None,
+        quick4_sheet=None,
+        video=video,
+        out_root=out_root,
+        log=log,
+        flow_id="launch_smoke",
+        variant_id="default",
+        status="ok",
+        test_file="LaunchUITests.swift",
+        device="STUB-UDID",
+        last_run_at="2026-06-14T04:05:06+00:00",
+    )
+
+    html = (out_root / "UIreview.html").read_text(encoding="utf-8")
+    assert "No step screenshots were emitted for this UITest run." in html
+    assert "2026-06-14T04:05:06+00:00" in html
+    assert "uitest-videos/20260614-040506-ui.mp4" in html
+    assert "20260614-040506-ui/uitest-videos/20260614-040506-ui.mp4" not in html
+    assert "test.log" in html
+    assert "review_manifest.json" in html
+    assert "contact sheets missing" in html
