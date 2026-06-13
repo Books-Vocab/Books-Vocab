@@ -55,19 +55,23 @@ export function App() {
   }
 
   const config = resolveHarnessConfig(search)
-  // shell opt-in：把 surface 裝進 app 殼層（底部 tab bar）。兩條入口——
-  //   1. ?shell=1（legacy / 首次進場，useShellHistory 會 normalize 到 /app 路徑）
-  //   2. /app/* pathname（P1.2 起的 canonical 路由；refresh /app/notebook 仍進 shell）
-  // parity capture（pathname '/'、無 ?shell=1）完全不變。
-  const shell = new URLSearchParams(search).get('shell') === '1' || isAppPath(window.location.pathname)
-  // ?crop=component opt-in：元件級 parity case 把 surface 切到「純元件」呈現
-  // （收掉 in-app safe-area / 全幅留白），令元件 intrinsic bounds 對齊 iOS
-  // catalog 的緊裁切 scene。預設不啟用，既有 capture 行為完全不變。
-  const crop = new URLSearchParams(search).get('crop') === 'component'
+  const params = new URLSearchParams(search)
+  // D0（parity teardown 第一刀）：**功能型 app shell 是 DEFAULT**，parity capture 改為
+  // opt-in。對拍 pipeline 一律帶 ?surface=（capture 定址），故「?surface= 存在且非
+  // explicit-app」= parity 模式；其餘（裸 /、/app/* pathname、?shell=1）一律進 app。
+  //   explicit app 訊號：?shell=1 或 /app/* pathname（含 legacy ?shell=1&surface=X，
+  //   仍視為 app deep-link，由 useShellHistory normalize 到 /app）。
+  //   reader-live / import-flow 兩個 functional lazy surface 已在上方早退，不受影響。
+  const explicitApp = params.get('shell') === '1' || isAppPath(window.location.pathname)
+  const parityCapture = !explicitApp && params.get('surface') !== null
+  const shell = !parityCapture
+  // ?crop=component：元件級 parity case 把 surface 切到「純元件」呈現（收掉 in-app
+  // safe-area / 全幅留白）。僅在 parity capture 路徑有意義。
+  const crop = params.get('crop') === 'component'
 
-  // ?shell=1&login=1 opt-in：明確要求登入閘門（LoginGate）。預設 ?shell=1 走 guest
-  // 進場（鏡像 iOS guest tier），故 LoginGate 仍可達且 devLogin 入口仍渲染。
-  const wantLoginGate = new URLSearchParams(search).get('login') === '1'
+  // ?login=1 opt-in：明確要求登入閘門（LoginGate）。預設走 guest 進場（鏡像 iOS
+  // guest tier），故 LoginGate 仍可達且 devLogin 入口仍渲染。
+  const wantLoginGate = params.get('login') === '1'
 
   // hydration spinner — 與原行為一致，套用所有路徑（含 parity，timing 上 isLoading
   // 於首次 effect 同步翻 false，故 capture 不受影響）。
