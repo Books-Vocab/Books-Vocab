@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: c4664f8e
+verified_against: 5688f7e0
 -->
 # Technical Reference Index
 
@@ -151,10 +151,9 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `docs_registry_coverage.py` | registry 覆蓋率 audit:掃 `docs/**/*.md`(排除 assets/legal),比對 `docs/registry.yml` 的 `path` 清單,輸出 registered / unregistered counts,並把未登記項分成 `active_unregistered`(reference/sop/policy/runbook/missing tier 等應進控制面)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt)。human output 只強調 active/backlog 兩層,明示 backlog 只是資訊、不屬日常 gate，且不再把 backlog 重複印成 generic unregistered 噪音；`--help` 也會直接說明 `--strict` 只會對 active debt 失敗；`--json` 給機器讀；`--strict` 只對 active 未登記項 exit 1,用於追蹤控制平面覆蓋 debt |
 | `docs/registry.yml` | 文檔控制平面 registry:列出活文檔 `id/path/kind/authority/triggers/sources/generator`。doc-sync / review / gate 的路由以 registry 為 SoT,path 只做 impact hint,語意 trigger 才是同步判斷核心；`sources` 內 `!path` / `!glob` 表示排除規則 |
 | `gen_web_tokens.py` | 從 `design-system/tokens.json`(W3C DTCG 格式,跨平台 token SoT)生成 web CSS(`design-system/dist/kg-tokens.css` + `backend/static/{kg-tokens,kg-components}.css`);手寫 primitives 源 `dist/kg-components.css` 複製進官網;`--check` CI gate 比對 on-disk 是否 stale。生成檔禁手改 |
-| `gen_web_components.py` | 從 `design-system/components.json`(複合元件**結構** SoT)生成 web CSS+JS:`kg-component-structures.css`(dist + `backend/static/` 副本)+ `review-gradient.js`。token 以 `var(--*)` 引用(非硬編碼,token 改值自動傳播);支援 `_emit_modifiers`(`.class--active` 等 markup-toggled BEM modifier,states pseudo 之外)。生成檔禁手改;`uv run python ops/gen_web_components.py` 重生,`--check` 為 CI/pre-commit stale gate |
 | `token_drift_check.py` | drift guard(**值層**)— 驗證 `tokens.json` 每個 token 仍對齊 iOS Swift。**SoT-inversion-aware**:已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation/`AppMotion` duration + 全部具參數 spring 物理層,含 `interactiveSpring`)iOS 端引用 `DesignTokens.*`,`parse_design_tokens`/`_swift_num` 把引用解析回值再比對(證明 tokens.json==iOS 跨 SoT 反轉仍成立,且抓得到誤接線的值偏移);未接線群組(`AppColors`/`AppTheme`/`AppMotion` timingCurve easing 與 `systemSpring`(平台預設無參數)/`AppFonts` LineSpacing/`UIComponents` 的 `AppTagMetrics` chip padding + `AppTag` fill opacity)仍直接比對 literal。偏移不可 merge |
 | `component_fidelity_check.py` | drift guard(**組裝層**)— contract-based 驗證 `design-system/dist/kg-components.css` 每個手寫 primitive *選用* 的 token 對齊 iOS 元件契約(`.kg-chip`↔`AppTag`、`.kg-btn`↔`AppActionButtonStyle` radius md/700、`.kg-card`↔`AppSectionCardStyle`、`.kg-input` body(17)+hairline、`.kg-banner` caption(12)+v8、serif heading 700…),刻意的 web 發散(brand-hero CTA / banner 形狀)亦 pin 防回歸。`token_drift` 守值、它守*選用哪個值*;stdlib-only,env override `KG_COMPONENTS_CSS` |
-| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `gen_figma_sets --check` + `gen_web_components --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在);pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦 |
+| `verify_design_system.sh` | 設計系統完整性**聚合 gate** = `token_drift_check` + `gen_web_tokens --check` + `gen_figma_sets --check` + `npm run build:check`(Style Dictionary:`DesignTokens.swift` ↔ tokens.json byte-for-byte)+ `component_fidelity_check`(若存在);pre-commit hook 與 CI 共用入口,任一失敗 exit 1。Python guard 刻意用 `uv run --no-project` 與 backend 68-套件 venv 解耦。(註:鏡像 iOS vocab UI 的 `gen_web_components.py` component-structures 鏈只服務已凍 web pilot,2026-06-14 已移入 `frozen/2026-06-14-web-chrome-parity/`,不再屬本 gate) |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `catalyst_lint.sh` | Mac Catalyst runtime-crash 守門(`--report` / `--strict`);現抓「`.toolbar`/`ToolbarItem` 內掛 `.popover`」(present 過場 trap)。詳見 `docs/sop/ios.md §Catalyst 雷區` |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
@@ -179,13 +178,12 @@ Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`user-config <ui
 | iOS 生成鏈 | `npm run build`(`package.json` script)→ Style Dictionary(`design-system/sd.config.mjs` 自訂 `kg/swift-tokens` format,排除 color/web-only,PascalCase 巢狀 scalar enum)→ `ios/BooksAndVocab/Models/DesignTokens.swift`(禁手改);`npm run build:check`(`design-system/sd-check.mjs`)為 byte-for-byte stale gate |
 | web 生成鏈 | `ops/gen_web_tokens.py`(DTCG → web CSS,見 ops 表) |
 | **SoT 方向**(接線後二分) | **已接線 scalar**(`AppRadius`/`AppSpacing` scale/`AppFonts.TypeScale`+`Tracking`/`AppElevation`,47 值):tokens.json→`npm run build`→`DesignTokens.swift`→iOS 引用,Figma 改值重編即生效。**未接線**(全部顏色+`WCAGContrastTests`、`AppMotion`、`LineSpacing`、`AppSkin`):iOS Swift literal 為 SoT、tokens.json 鏡像。設計師接 tokens.json 的 SOP 見 `docs/sop/figma-token-workflow.md` |
-| Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check` + `gen_figma_sets.py --check` + `gen_web_components.py --check`(on-disk CSS/JS/sidecar ↔ tokens/components 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
+| Guard(三層)| **值** `ops/token_drift_check.py`(SoT-inversion-aware:已接線解析 `DesignTokens.*` 引用回值、未接線比 literal)+ **生成** `gen_web_tokens.py --check` + `gen_figma_sets.py --check`(on-disk CSS/sidecar ↔ tokens 無 stale)+ **組裝** `ops/component_fidelity_check.py`(primitive *選用* 的 token ↔ iOS 元件契約)。皆見 ops 表 |
 | 聚合入口 + 強制 | `ops/verify_design_system.sh` 跑齊三層 + `npm run build:check`;由 `.github/workflows/design-system.yml`(相關路徑變動才跑;含 `npm ci`)與 `.githooks/pre-commit`(`git config core.hooksPath .githooks`;DS 檔被 stage 才跑,缺 uv/node 告警跳過,CI 為硬 gate)共用 |
 | 一次性遷移工具 | `ops/migrate_tokens_to_dtcg.py`(自研格式 → DTCG,已執行完成,留檔) |
 | 生成輸出(canonical) | `design-system/dist/kg-tokens.css`(生成)+ `design-system/dist/kg-components.css`(**手寫** primitives 源,component_fidelity 守護對象) |
 | 消費副本 | `backend/static/{kg-tokens,kg-components}.css`(生成/複製,官網用) |
-| **複合元件結構 SoT** | `design-system/components.json` — 手寫**結構**契約(primitive 之上的 BEM 容器/modifier,如 `VocabFilterChipBar`:chips 容器 + chip + count + `--active` modifier,SoT = iOS `AppFilterChipBar`/`AppTabSelector` vocab style)。token 僅 by-reference。與 `dist/kg-components.css`(primitive)分層共存 |
-| 結構生成鏈 | `ops/gen_web_components.py`(components.json → `dist/kg-component-structures.css` + `review-gradient.js`,各複製進 `backend/static/`;見 ops 表)。生成檔禁手改 |
+| ~~複合元件結構鏈~~(已凍結) | `components.json → gen_web_components.py → kg-component-structures.css + review-gradient.js` 鏡像 iOS vocab UI,只服務已凍 web pilot / Chrome extension。官網 HTML 零引用,2026-06-14 整鏈移入 `frozen/2026-06-14-web-chrome-parity/`(design-system/ops/backend/static 對應子路徑)。要復活需移回活樹並重建 build/test/docs ownership |
 
 ## Backup / Disaster Recovery
 
