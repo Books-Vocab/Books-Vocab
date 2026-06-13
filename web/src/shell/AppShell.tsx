@@ -8,6 +8,18 @@ import { SettingsScreen } from '../surfaces/settings/SettingsScreen'
 import { TodayReviewScreen } from '../surfaces/today-review/TodayReviewScreen'
 import { VocabularyScreen } from '../surfaces/vocabulary/VocabularyScreen'
 import { OverviewScreen } from '../surfaces/overview/OverviewScreen'
+// 深層導航目標 surface（shell-only 可達；parity capture 不經 renderScreen）。
+import { SyncScreen } from '../surfaces/sync/SyncScreen'
+import { SettingsReviewScreen } from '../surfaces/settings-review/SettingsReviewScreen'
+import { SettingsSubscriptionScreen } from '../surfaces/settings-subscription/SettingsSubscriptionScreen'
+import { SettingsAccountDetailScreen } from '../surfaces/settings-account-detail/SettingsAccountDetailScreen'
+import { TranslationLanguageSettingsScreen } from '../surfaces/translation-language-settings/TranslationLanguageSettingsScreen'
+import { KnowledgeGraphViewScreen } from '../surfaces/knowledge-graph-view/KnowledgeGraphViewScreen'
+import { VocabKnowledgeGraphScreen } from '../surfaces/vocab-knowledge-graph/VocabKnowledgeGraphScreen'
+import { WordDetailSheetScreen } from '../surfaces/word-detail-sheet/WordDetailSheetScreen'
+import { VocabAddLinkScreen } from '../surfaces/vocab-add-link/VocabAddLinkScreen'
+import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
+import { PodcastEpisodeListScreen } from '../surfaces/podcast-episode-list/PodcastEpisodeListScreen'
 import { useNotebookApiStore } from '../surfaces/notebook/useNotebookApiStore'
 import { useBookshelfApiStore } from '../surfaces/bookshelf/useBookshelfApiStore'
 import { ChevronLeftIcon } from './icons'
@@ -76,9 +88,31 @@ function renderScreen(screen: Screen) {
       return <PodcastScreen scenario={screen.scenario} />
     case 'overview':
       return <OverviewScreen scenario={screen.scenario} />
-    // selection-* 為元件級 scene，無 app 殼層入口（不會進 nav stack）。
-    case 'selection-toolbar':
-    case 'selection-tile':
+    // ── 深層導航目標（shell-only push 進來；各 surface 自帶 ?shell=1 live 分支）──
+    case 'sync':
+      return <SyncScreen scenario={screen.scenario} />
+    case 'settings-review':
+      return <SettingsReviewScreen scenario={screen.scenario} />
+    case 'settings-subscription':
+      return <SettingsSubscriptionScreen scenario={screen.scenario} />
+    case 'settings-account-detail':
+      return <SettingsAccountDetailScreen scenario={screen.scenario} />
+    case 'translation-language-settings':
+      return <TranslationLanguageSettingsScreen scenario={screen.scenario} />
+    case 'knowledge-graph-view':
+      return <KnowledgeGraphViewScreen scenario={screen.scenario} />
+    case 'vocab-knowledge-graph':
+      return <VocabKnowledgeGraphScreen scenario={screen.scenario} />
+    case 'word-detail-sheet':
+      return <WordDetailSheetScreen scenario={screen.scenario} />
+    case 'vocab-add-link':
+      return <VocabAddLinkScreen scenario={screen.scenario} />
+    case 'notebook-edit':
+      return <NotebookEditSheetScreen scenario={screen.scenario} />
+    case 'podcast-episode-list':
+      return <PodcastEpisodeListScreen scenario={screen.scenario} />
+    // 其餘 surface（元件級 scene / 尚無殼層入口）不會進 nav stack → 不渲染。
+    default:
       return null
   }
 }
@@ -92,14 +126,23 @@ type HotZone = { intent: NavIntent; className: string; label: string }
 function hotZonesFor(surface: SurfaceId): HotZone[] {
   switch (surface) {
     case 'bookshelf':
-      // 整個書格區可點 → 開書（→ reader）。
-      return [{ intent: 'open-book', className: 'shell-hot shell-hot-bookgrid', label: '開啟書籍' }]
+      // 左上 gear glyph（iOS top-leading toolbar）→ 設定；其下整個書格區 → 開書。
+      return [
+        { intent: 'open-settings', className: 'shell-hot shell-hot-gear', label: '設定' },
+        { intent: 'open-book', className: 'shell-hot shell-hot-bookgrid', label: '開啟書籍' },
+      ]
     case 'notebook':
       // 今日複習 CTA（頂部）→ today-review；卡片列表區 → vocabulary。
       return [
         { intent: 'open-today-review', className: 'shell-hot shell-hot-nb-review', label: '今日複習' },
         { intent: 'open-notebook', className: 'shell-hot shell-hot-nb-cards', label: '開啟單字本' },
       ]
+    case 'settings':
+      // 「其他」section 的同步狀態列 → sync 狀態畫面（SyncApiStore）。
+      return [{ intent: 'open-sync', className: 'shell-hot shell-hot-settings-sync', label: '同步狀態' }]
+    case 'vocabulary':
+      // 工具列知識圖譜 glyph（右上）→ live force-directed 知識圖譜。
+      return [{ intent: 'open-vocab-knowledge-graph', className: 'shell-hot shell-hot-vocab-kg', label: '知識圖譜' }]
     default:
       return []
   }

@@ -77,12 +77,38 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* bookshelf：左上 gear glyph（iOS top-leading toolbar）→ 設定。釘在 large-title
+   之上的 nav 列左側（書格區 top:96px 之上，互不重疊）。 */
+.shell-hot-gear {
+  top: 52px;
+  left: 8px;
+  width: 44px;
+  height: 44px;
+}
+
 /* bookshelf：書格滾動區（nav header 之下整片）→ 開書。 */
 .shell-hot-bookgrid {
   top: 96px;
   left: 0;
   right: 0;
   bottom: 0;
+}
+
+/* settings：「其他」section 同步狀態列 → sync 狀態畫面。列落在 scroll 內容靠下，
+   依 live settings 版面取近似帶狀區（不影響像素：透明 overlay）。 */
+.shell-hot-settings-sync {
+  left: 20px;
+  right: 20px;
+  bottom: 220px;
+  height: 48px;
+}
+
+/* vocabulary：右上 toolbar 知識圖譜 glyph → live force graph。釘在 vc-nav 右側。 */
+.shell-hot-vocab-kg {
+  top: 60px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
 }
 
 /* notebook：頂部 review action bar（今日複習 CTA 列）→ today-review。 */

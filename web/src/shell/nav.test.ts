@@ -117,6 +117,9 @@ describe('pushTargetFor（誠實導航圖）', () => {
       expect(t?.surface).toBe('reader')
       expect(t).not.toHaveProperty('params')
     })
+    it('gear → settings（設定子樹入口）', () => {
+      expect(pushTargetFor(screenFor('bookshelf'), 'open-settings')?.surface).toBe('settings')
+    })
   })
 
   describe('notebook', () => {
@@ -148,6 +151,11 @@ describe('pushTargetFor（誠實導航圖）', () => {
       expect(pushTargetFor(screenFor('vocabulary'), 'open-knowledge-graph')?.surface).toBe(
         'knowledge-graph-view',
       )
+    })
+    it('知識圖譜（live force graph）→ vocab-knowledge-graph', () => {
+      expect(
+        pushTargetFor(screenFor('vocabulary'), 'open-vocab-knowledge-graph')?.surface,
+      ).toBe('vocab-knowledge-graph')
     })
   })
 
@@ -187,6 +195,9 @@ describe('pushTargetFor（誠實導航圖）', () => {
       expect(
         pushTargetFor(screenFor('settings'), 'open-settings-translation-language')?.surface,
       ).toBe('translation-language-settings')
+    })
+    it('同步狀態 → sync', () => {
+      expect(pushTargetFor(screenFor('settings'), 'open-sync')?.surface).toBe('sync')
     })
   })
 
