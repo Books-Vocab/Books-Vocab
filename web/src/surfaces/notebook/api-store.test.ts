@@ -15,9 +15,10 @@ const BASE: NotebookResponse = {
 }
 
 describe('toFixtureCard', () => {
-  it('maps name, color, cardCount, actionableCount, reviewProgress, isActive', () => {
+  it('maps id, name, color, cardCount, actionableCount, reviewProgress, isActive', () => {
     const result = toFixtureCard(BASE, 'nb-1')
     expect(result).toEqual({
+      id: 'nb-1',
       name: '測試本',
       color: '#FF0000',
       cardCount: 5,

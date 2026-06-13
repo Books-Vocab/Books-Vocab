@@ -32,6 +32,7 @@ export interface NotebookApiState {
 /** 把 API NotebookResponse 轉成 presentation 用的 NotebookFixtureCard。 */
 export function toFixtureCard(n: NotebookResponse, activeId: string | null): NotebookFixtureCard {
   return {
+    id: n.id,
     name: n.name,
     color: n.color ?? '#AFC2D3',
     cardCount: n.cardCount,
