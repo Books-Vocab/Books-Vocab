@@ -1,0 +1,39 @@
+name: ui-quality-gate
+
+# 對 iOS UI 改動自動執行 manual static-code quality gates。
+# 本地等價入口：./ops/ui_quality_gate.sh --tier fast --execute
+
+on:
+  push:
+    paths: &uq_paths
+      - 'ios/BooksAndVocab/**'
+      - 'ops/ui_quality_gate.py'
+      - 'ops/ui_quality_gate.sh'
+      - 'ops/ui_quality_plane.py'
+      - 'ops/ui_quality_plane.yml'
+      - 'ops/ui_token_lint.py'
+      - 'ops/ui_token_lint.sh'
+      - 'ops/plain_deadzone_lint.py'
+      - 'ops/plain_deadzone_lint.sh'
+      - 'ops/i18n_lint.sh'
+      - 'ops/_i18n_*.py'
+      - 'ops/catalyst_lint.sh'
+      - 'ops/injection_lint.py'
+      - 'ops/injection_lint.sh'
+      - 'ops/_inject_shared.py'
+      - '.github/workflows/ui-quality-gate.yml'
+      - '.githooks/pre-commit'
+  pull_request:
+    paths: *uq_paths
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Run UI quality fast gates
+        run: ./ops/ui_quality_gate.sh --tier fast --execute
