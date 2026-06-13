@@ -29,7 +29,6 @@ mechanisms:
       - backend/static/kg-components.css
       - ops/token_drift_check.py
       - ops/gen_web_tokens.py
-      - ops/gen_web_components.py
       - ops/gen_figma_sets.py
       - ops/component_fidelity_check.py
       - ops/verify_design_system.sh

@@ -9,7 +9,6 @@ on:
     paths: &ds_paths
       - 'design-system/**'
       - 'ops/gen_web_tokens.py'
-      - 'ops/gen_web_components.py'
       - 'ops/gen_figma_sets.py'
       - 'ops/token_drift_check.py'
       - 'ops/component_fidelity_check.py'
@@ -18,8 +17,6 @@ on:
       - 'ios/BooksAndVocab/UIComponents/**'
       - 'backend/static/kg-tokens.css'
       - 'backend/static/kg-components.css'
-      - 'backend/static/kg-component-structures.css'
-      - 'backend/static/review-gradient.js'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/design-system.yml'
