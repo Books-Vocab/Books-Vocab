@@ -7,6 +7,7 @@ import {
   pop,
   push,
   pushTargetFor,
+  routeKeyFor,
   screenFor,
   selectTab,
   stackDepth,
@@ -60,6 +61,37 @@ describe('screenFor', () => {
     expect(s.surface).toBe('vocabulary')
     expect(s.scenario).toBe(SURFACE_SCENARIOS.vocabulary[0])
     expect(s.params).toEqual({ notebookId: 'nb-7' })
+  })
+})
+
+describe('routeKeyFor', () => {
+  it('編碼 tabId:depth:surface（RouteTransition AnimatePresence 鍵）', () => {
+    const s = initialNavState()
+    expect(routeKeyFor(s)).toBe('bookshelf:1:bookshelf')
+  })
+
+  it('push 改變 depth → 鍵改變（觸發轉場）', () => {
+    let s = initialNavState()
+    const before = routeKeyFor(s)
+    s = push(s, screenFor('reader'))
+    const after = routeKeyFor(s)
+    expect(after).toBe('bookshelf:2:reader')
+    expect(after).not.toBe(before)
+  })
+
+  it('pop 還原鍵（pop 回前一畫面）', () => {
+    let s = initialNavState()
+    const root = routeKeyFor(s)
+    s = push(s, screenFor('reader'))
+    s = pop(s)
+    expect(routeKeyFor(s)).toBe(root)
+  })
+
+  it('切 tab → 鍵改變（tabId 段不同）', () => {
+    const s = initialNavState()
+    const next = selectTab(s, 'notebooks')
+    expect(routeKeyFor(next)).toBe('notebooks:1:notebook')
+    expect(routeKeyFor(next)).not.toBe(routeKeyFor(s))
   })
 })
 

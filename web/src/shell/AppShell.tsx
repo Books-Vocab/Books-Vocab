@@ -20,6 +20,9 @@ import {
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
 import { SHELL_TABS, type TabSpec } from './tabs'
+import { RouteTransition, Sheet, useNavDirection, useSwipeBack } from '../motion'
+import { routeKeyFor } from './nav'
+import { NotebookEditSheetScreen } from '../surfaces/notebook-edit/NotebookEditSheetScreen'
 import './shell.css'
 
 // Live Reader（epub.js 真渲染）— dynamic import，epub.js 不進 parity bundle。
@@ -125,6 +128,10 @@ export function AppShell({ config }: { config: HarnessConfig }) {
     initialNavState(config.surface, config.scenario as string),
   )
   const appearance: Appearance = config.appearance
+  // Sheet primitive proof (Step 2.3): the notebook add/edit sheet — the simplest
+  // existing sheet surface — routed through the shared <Sheet> (vaul drag-to-
+  // dismiss + grabber + backdrop) instead of being a pushed full screen.
+  const [editSheetOpen, setEditSheetOpen] = useState(false)
 
   // 殼層讀實體列表以攜帶被點擊實體的真實 id（mock-backed，離線可用）。store
   // 公開狀態只暴露穩定鍵：notebook → card.name、book → book.title（rename/delete
@@ -136,7 +143,15 @@ export function AppShell({ config }: { config: HarnessConfig }) {
 
   const activeTab = SHELL_TABS.find((t) => t.id === nav.tabId) ?? SHELL_TABS[0]
   const screen = currentScreen(nav)
-  const canGoBack = stackDepth(nav) > 1
+  const depth = stackDepth(nav)
+  const canGoBack = depth > 1
+  // RouteTransition inputs: stable route identity + inferred push/pop direction.
+  const routeKey = routeKeyFor(nav)
+  const direction = useNavDirection(depth)
+  // iOS edge-swipe-back (touch only): pull from the left edge → pop the stack.
+  // AppShell is the mobile shell, so it's always the mobile context; gate on
+  // canGoBack so it's inert at a tab root.
+  const swipeBack = useSwipeBack({ onBack: () => setNav((s) => pop(s)), enabled: canGoBack })
   // 點書開啟的 reader 畫面（書庫 tab push 後 depth>1）→ 掛 Live Reader 真閱讀器，
   // 取代靜態 parity chrome。Live Reader 自帶「書庫」返回鈕 + chrome，故抑制殼層
   // overlay（back chevron + 熱區），避免雙層導航重疊。謂詞與桌面 ResponsiveShell
@@ -172,15 +187,25 @@ export function AppShell({ config }: { config: HarnessConfig }) {
     <div className="app-shell" data-appearance={appearance} data-tab={nav.tabId}>
       <div className="shell-content">
         {activeTab.kind === 'surface' && screen ? (
-          <div className="shell-screen" data-screen-surface={screen.surface}>
+          <div
+            className="shell-screen"
+            data-screen-surface={screen.surface}
+            {...swipeBack()}
+          >
             <ShellNavProvider value={shellNav}>
-            {isLiveReader ? (
-              <Suspense fallback={null}>
-                <LiveReaderScreen onBack={() => setNav((s) => pop(s))} />
-              </Suspense>
-            ) : (
-              renderScreen(screen)
-            )}
+            {/* 共享動效層：push/pop 以 iOS UINavigationController 手感轉場（新畫面
+                自右滑入、舊畫面視差左移＋變暗；pop 反向）。AnimatePresence 以
+                routeKey（surface+depth）為鍵；overlay（back/熱區）刻意置於轉場層
+                之外，保持穩定不隨畫面滑動。尊重 prefers-reduced-motion（瞬時）。 */}
+            <RouteTransition routeKey={routeKey} direction={direction} mode="stack">
+              {isLiveReader ? (
+                <Suspense fallback={null}>
+                  <LiveReaderScreen onBack={() => setNav((s) => pop(s))} />
+                </Suspense>
+              ) : (
+                renderScreen(screen)
+              )}
+            </RouteTransition>
             {/* 透明 overlay 導航層：back chevron + 點擊熱區。不碰 surface DOM。
                 Live Reader 自帶 chrome → 不疊殼層 overlay。 */}
             <div className="shell-nav-overlay" data-hidden={isLiveReader ? '' : undefined}>
@@ -203,7 +228,28 @@ export function AppShell({ config }: { config: HarnessConfig }) {
                   onClick={() => handleHot(zone.intent)}
                 />
               ))}
+              {/* Sheet proof affordance: on the notebook surface, a small top-
+                  right "edit" pill opens the add/edit sheet via the shared
+                  <Sheet> primitive (drag-to-dismiss). Shell-only overlay. */}
+              {!isLiveReader && screen.surface === 'notebook' && (
+                <button
+                  type="button"
+                  className="shell-sheet-cta"
+                  onClick={() => setEditSheetOpen(true)}
+                >
+                  編輯單字本
+                </button>
+              )}
             </div>
+            {/* Shared bottom-sheet primitive (vaul): notebook add/edit migrated
+                as the one proof call site. parity path never mounts this. */}
+            <Sheet
+              open={editSheetOpen}
+              onClose={() => setEditSheetOpen(false)}
+              ariaLabel="編輯單字本"
+            >
+              <NotebookEditSheetScreen scenario="create-blank" />
+            </Sheet>
             </ShellNavProvider>
           </div>
         ) : (

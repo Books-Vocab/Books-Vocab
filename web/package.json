@@ -15,9 +15,12 @@
     "check:responsive": "node tools/check-responsive-isolation.mjs"
   },
   "dependencies": {
+    "@use-gesture/react": "^10.3.1",
     "epubjs": "^0.3.93",
+    "framer-motion": "^12.40.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "vaul": "^1.1.2"
   },
   "overrides": {
     "@xmldom/xmldom": "^0.8.13"

@@ -109,6 +109,17 @@ export function stackDepth(state: NavState): number {
 }
 
 /**
+ * 當前可見畫面的穩定路由識別子 — `tabId:depth:surface`。供 RouteTransition 的
+ * AnimatePresence key 用：tab 切換、push/pop、同 tab 內換 surface 皆改變此鍵 →
+ * 觸發轉場；同一畫面重渲染（params 變化等）不改鍵 → 不誤觸轉場。純函式，殼層
+ * 與 parity 無關（parity 不經 nav）。
+ */
+export function routeKeyFor(state: NavState): string {
+  const screen = currentScreen(state)
+  return `${state.tabId}:${stackDepth(state)}:${screen?.surface ?? 'none'}`
+}
+
+/**
  * 當前可見畫面是否為「點書開啟的真閱讀器」(Live Reader / epub.js)。
  *
  * 條件 = 當前畫面 surface 為 reader 且 stack 深 >1（即由 bookshelf 的 open-book
