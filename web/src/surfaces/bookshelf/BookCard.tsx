@@ -65,24 +65,6 @@ export function BookCard({
 
   const coverInner = (
     <>
-      {/* overflow 鈕置於 cover 首位（badge 之前）：badge 的 backdrop-filter 取樣其
-          下方內容，overflow 在 badge 之下 → 不擾動 badge 合成，pixel-neutral。 */}
-      {onMore && (
-        <button
-          type="button"
-          className="book-card-overflow"
-          aria-label={`${book.title} 更多動作`}
-          data-title={book.title}
-          onClick={(e) => {
-            // 次動作鈕：阻止冒泡到封面 onOpen，僅開選單。
-            e.stopPropagation()
-            onMore()
-          }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <EllipsisIcon size={18} className="book-card-overflow-glyph" />
-        </button>
-      )}
       <div className="book-card-placeholder">
         {/* measured：iOS 為 AppFonts.h1(28pt) 字級的 SF symbol 渲染框，PNG 實測 ≈34pt 寬 */}
         <BookIcon size={34} className="book-card-placeholder-icon" />
@@ -135,6 +117,22 @@ export function BookCard({
         </motion.button>
       ) : (
         <div className="book-card-cover">{coverInner}</div>
+      )}
+
+      {/* overflow「更多」鈕 — cover <button> 的 sibling（非後代），避免 button-in-button
+          非法巢狀（會觸發 hydration error + 損壞封面點擊）。絕對定位錨在 .book-card
+          article（position:relative），top/right 與舊位置同 → 視覺中性；at-rest opacity:0
+          故 parity 首屏零變動。 */}
+      {onMore && (
+        <button
+          type="button"
+          className="book-card-overflow"
+          aria-label={`${book.title} 更多動作`}
+          data-title={book.title}
+          onClick={onMore}
+        >
+          <EllipsisIcon size={18} className="book-card-overflow-glyph" />
+        </button>
       )}
 
       <div className="book-card-progress">

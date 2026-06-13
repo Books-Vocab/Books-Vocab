@@ -71,6 +71,7 @@
 /* --- BookCard --- */
 
 .book-card {
+  position: relative; /* overflow「更多」鈕（absolute）改錨於此 article，非 cover <button> */
   display: flex;
   flex-direction: column;
   gap: 8px; /* AppSpacing.s2 */
@@ -344,7 +345,7 @@
 
 /* desktop：hover 封面或聚焦 overflow → 顯示三點鈕。touch 無 hover，靠 long-press /
    right-click，故鈕在 touch 上保持隱形不佔視覺（互動仍可命中透明熱區）。 */
-.book-card-cover-button:hover .book-card-overflow,
+.book-card:hover .book-card-overflow,
 .book-card-overflow:focus-visible {
   opacity: 0.95;
 }
