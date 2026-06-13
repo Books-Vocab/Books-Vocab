@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react'
 import type { DragEvent } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import type { Transition } from 'framer-motion'
+import { gentle, reduced as instant, sheet, snappy } from '../../motion'
+
+/** Pick a spring vs the instant transition based on the reduced-motion flag. */
+function springOr(prefersReduced: boolean, spring: Transition): Transition {
+  return prefersReduced ? instant : spring
+}
 import {
   ArrowClockwiseIcon,
   ArrowDownDocIcon,
@@ -8,7 +16,7 @@ import {
   ExclamationmarkCircleIcon,
   XmarkIcon,
 } from './icons'
-import { isConfirmable, type ImportItem, type ImportStatus } from './importFlowMachine'
+import { allSettled, isConfirmable, type ImportItem, type ImportStatus } from './importFlowMachine'
 import { useImportFlow } from './useImportFlow'
 import './import-flow.css'
 
@@ -23,7 +31,22 @@ import './import-flow.css'
  * wiring that entry point is deferred to reconverge.
  *
  * Structure: large nav title → drop/select zone → parsed-draft list (each with
- * status + remove) → confirm-import footer. Empty state when nothing is picked.
+ * status + remove) → confirm-import footer. Empty state when nothing is picked,
+ * success banner when every confirmable draft has landed in the library.
+ *
+ * ── FEEL (Phase 2) ───────────────────────────────────────────────────────────
+ * The whole flow is choreographed with the shared motion springs (no hand-rolled
+ * physics): the dropzone springs on drag-over, rows enter/exit via AnimatePresence
+ * (slide+fade `snappy`), parsing rows carry an animated indeterminate progress
+ * bar, the status badge cross-fades between phases (the done checkmark pops in
+ * with a `sheet` spring), the confirm footer springs up from the bottom edge, and
+ * a success banner fades+rises in once everything is settled. Every animation is
+ * gated by `useReducedMotion()` so motion-sensitive users get an instant swap.
+ *
+ * PARITY ISOLATION: this surface is NOT a parity-captured Catalog mirror (it has
+ * no ?scenario/?appearance capture axis — see App.tsx). framer-motion here only
+ * adds transform/opacity to surface-local DOM; it cannot reach the .phone-frame
+ * parity fixtures of other surfaces.
  */
 
 const ACCEPT = '.epub,.txt,.md,.markdown,application/epub+zip,text/plain,text/markdown'
@@ -42,6 +65,7 @@ export function ImportFlowScreen() {
   const flow = useImportFlow()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
+  const reduced = useReducedMotion() ?? false
 
   const onPick = () => inputRef.current?.click()
 
@@ -60,6 +84,10 @@ export function ImportFlowScreen() {
   }
 
   const hasItems = flow.items.length > 0
+  // Success = at least one book landed AND nothing is left to do/retry.
+  const doneCount = flow.items.filter((it) => it.status === 'done').length
+  const settled = allSettled(flow.items)
+  const showSuccess = settled && doneCount > 0
 
   return (
     <div className="import-flow">
@@ -68,13 +96,17 @@ export function ImportFlowScreen() {
       </header>
 
       <div className="if-scroll">
-        {/* ── drop / select zone ── */}
-        <div
+        {/* ── drop / select zone ──
+            Springs on drag-over (snappy scale) so the drop affordance feels
+            "live"; reduced-motion users get the colour change only. */}
+        <motion.div
           className="if-dropzone"
           data-dragging={dragging ? '1' : undefined}
           role="button"
           tabIndex={0}
           aria-label="選擇或拖放檔案"
+          animate={{ scale: !reduced && dragging ? 1.02 : 1 }}
+          transition={springOr(reduced, snappy)}
           onClick={onPick}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -102,37 +134,95 @@ export function ImportFlowScreen() {
             aria-hidden="true"
             tabIndex={-1}
           />
-        </div>
+        </motion.div>
 
-        {/* ── parsed-draft list / empty ── */}
+        {/* ── success banner ──
+            Rises+fades in once every confirmable draft has landed; honest
+            celebration only (no nav: import-flow has no shell entry/exit edge —
+            see verification gap note). */}
+        <AnimatePresence initial={false}>
+          {showSuccess ? (
+            <motion.div
+              key="if-success"
+              className="if-success"
+              role="status"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              transition={springOr(reduced, sheet)}
+            >
+              <motion.span
+                className="if-success-icon"
+                initial={reduced ? false : { scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={springOr(reduced, sheet)}
+              >
+                <CheckmarkCircleIcon size={22} />
+              </motion.span>
+              <div className="if-success-text">
+                <div className="if-success-title">已加入書庫</div>
+                <div className="if-success-desc">
+                  {doneCount} 本書已加入你的書庫，可在書架中開啟。
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {/* ── parsed-draft list / empty ──
+            Rows enter/exit via AnimatePresence so picks slide+fade in and
+            removals animate out instead of snapping. */}
         {hasItems ? (
           <ul className="if-list">
-            {flow.items.map((item) => (
-              <ImportRow key={item.id} item={item} onRemove={() => flow.remove(item.id)} onRetry={() => void flow.retry(item.id)} />
-            ))}
+            <AnimatePresence initial={false}>
+              {flow.items.map((item) => (
+                <ImportRow
+                  key={item.id}
+                  item={item}
+                  reduced={reduced}
+                  onRemove={() => flow.remove(item.id)}
+                  onRetry={() => void flow.retry(item.id)}
+                />
+              ))}
+            </AnimatePresence>
           </ul>
         ) : (
-          <div className="if-empty">
+          <motion.div
+            className="if-empty"
+            initial={reduced ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={springOr(reduced, gentle)}
+          >
             <DocTextIcon className="if-empty-icon" size={30} strokeWidth={1.3} />
             <div className="if-empty-title">尚未選擇檔案</div>
             <div className="if-empty-desc">選擇本機的 EPUB、TXT 或 Markdown 檔來加入你的書庫。</div>
-          </div>
+          </motion.div>
         )}
       </div>
 
-      {/* ── confirm footer（有待匯入項目才掛載）── */}
-      {flow.confirmableCount > 0 && (
-        <div className="if-footer">
-          <button
-            type="button"
-            className="if-confirm"
-            disabled={flow.isBusy}
-            onClick={() => void flow.confirmImport()}
+      {/* ── confirm footer（有待匯入項目才掛載）──
+          Springs up from the bottom edge on mount / down on unmount. */}
+      <AnimatePresence initial={false}>
+        {flow.confirmableCount > 0 ? (
+          <motion.div
+            key="if-footer"
+            className="if-footer"
+            initial={reduced ? { opacity: 0 } : { opacity: 0, y: '100%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduced ? { opacity: 0 } : { opacity: 0, y: '100%' }}
+            transition={springOr(reduced, sheet)}
           >
-            加入書庫（{flow.confirmableCount}）
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              className="if-confirm"
+              disabled={flow.isBusy}
+              onClick={() => void flow.confirmImport()}
+            >
+              加入書庫（{flow.confirmableCount}）
+            </button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   )
 }
@@ -140,17 +230,28 @@ export function ImportFlowScreen() {
 /** One parsed-draft row: cover/format + title/author + status + remove/retry. */
 function ImportRow({
   item,
+  reduced,
   onRemove,
   onRetry,
 }: {
   item: ImportItem
+  reduced: boolean
   onRemove: () => void
   onRetry: () => void
 }) {
   const draft = item.draft
   const title = draft?.title ?? item.filename
+  const parsing = item.status === 'parsing' || item.status === 'pending'
   return (
-    <li className="if-row" data-status={item.status}>
+    <motion.li
+      className="if-row"
+      data-status={item.status}
+      layout={!reduced}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: item.status === 'done' ? 0.7 : 1, y: 0, scale: 1 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, x: 24, scale: 0.98 }}
+      transition={springOr(reduced, snappy)}
+    >
       {/* cover / format badge */}
       <div className="if-row-cover">
         {draft?.coverDataUrl ? (
@@ -167,8 +268,32 @@ function ImportRow({
         <div className="if-row-title">{title}</div>
         <div className="if-row-sub">
           {draft?.author ? <span className="if-row-author">{draft.author}</span> : null}
-          <StatusBadge item={item} />
+          <StatusBadge item={item} reduced={reduced} />
         </div>
+        {/* animated indeterminate progress while reading/parsing */}
+        <AnimatePresence initial={false}>
+          {parsing ? (
+            <motion.div
+              key="parse-progress"
+              className="if-progress"
+              initial={reduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 3 }}
+              exit={reduced ? { opacity: 0 } : { opacity: 0, height: 0 }}
+              transition={springOr(reduced, gentle)}
+              aria-hidden="true"
+            >
+              {!reduced ? (
+                <motion.span
+                  className="if-progress-bar"
+                  animate={{ x: ['-60%', '160%'] }}
+                  transition={{ duration: 1.1, ease: 'easeInOut', repeat: Infinity }}
+                />
+              ) : (
+                <span className="if-progress-bar if-progress-bar--static" />
+              )}
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
         {item.error?.stage === 'parse' ? (
           <div className="if-row-error">{parseErrorCopy(item)}</div>
         ) : null}
@@ -190,37 +315,39 @@ function ImportRow({
           </button>
         ) : null}
       </div>
-    </li>
+    </motion.li>
   )
 }
 
-function StatusBadge({ item }: { item: ImportItem }) {
+function StatusBadge({ item, reduced }: { item: ImportItem; reduced: boolean }) {
   const label = STATUS_LABEL[item.status]
-  if (item.status === 'done') {
-    return (
-      <span className="if-badge if-badge--done">
-        <CheckmarkCircleIcon size={13} />
+  // Cross-fade between status phases so a row's badge transitions with feel
+  // instead of swapping abruptly (keyed by status → AnimatePresence swap).
+  return (
+    <AnimatePresence initial={false} mode="wait">
+      <motion.span
+        key={item.status}
+        className={badgeClass(item.status)}
+        initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.85 }}
+        transition={springOr(reduced, item.status === 'done' ? sheet : snappy)}
+      >
+        {item.status === 'done' ? <CheckmarkCircleIcon size={13} /> : null}
+        {item.status === 'error' ? <ExclamationmarkCircleIcon size={13} /> : null}
+        {item.status === 'parsing' || item.status === 'uploading' ? <Spinner /> : null}
         {label}
-      </span>
-    )
-  }
-  if (item.status === 'error') {
-    return (
-      <span className="if-badge if-badge--error">
-        <ExclamationmarkCircleIcon size={13} />
-        {label}
-      </span>
-    )
-  }
-  if (item.status === 'parsing' || item.status === 'uploading') {
-    return (
-      <span className="if-badge if-badge--busy">
-        <Spinner />
-        {label}
-      </span>
-    )
-  }
-  return <span className="if-badge">{label}</span>
+      </motion.span>
+    </AnimatePresence>
+  )
+}
+
+/** Per-status badge class (kept in sync with the status enum). */
+function badgeClass(status: ImportStatus): string {
+  if (status === 'done') return 'if-badge if-badge--done'
+  if (status === 'error') return 'if-badge if-badge--error'
+  if (status === 'parsing' || status === 'uploading') return 'if-badge if-badge--busy'
+  return 'if-badge'
 }
 
 /** Maps the engine error code to user-facing copy（reuse 不支援的格式 style）. */

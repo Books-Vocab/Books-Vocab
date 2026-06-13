@@ -231,6 +231,85 @@
 
 .if-spinner {
   color: var(--text-secondary);
+  animation: if-spin 0.9s steps(12) infinite;
+  transform-origin: center;
+}
+
+@keyframes if-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Reduced motion: freeze the spinner ring (the spokes still read as "busy"). */
+@media (prefers-reduced-motion: reduce) {
+  .if-spinner {
+    animation: none;
+  }
+}
+
+/* --- animated indeterminate parse progress --- */
+.if-progress {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--muted-fill);
+  overflow: hidden;
+}
+
+.if-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Reduced motion: a calm static partial fill instead of a travelling sweep. */
+.if-progress-bar--static {
+  width: 60%;
+  opacity: 0.7;
+}
+
+/* --- success banner --- */
+.if-success {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+}
+
+.if-success-icon {
+  display: flex;
+  flex: none;
+  color: var(--accent);
+}
+
+.if-success-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.if-success-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.if-success-desc {
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-secondary);
 }
 
 /* trailing actions */
