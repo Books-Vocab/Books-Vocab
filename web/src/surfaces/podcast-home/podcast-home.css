@@ -411,3 +411,45 @@
 .ph-empty-guidance {
   opacity: 0.7; /* guidance .opacity(0.7) */
 }
+
+/* ============================================================
+   Responsive (web-only) — shell master pane only.
+
+   PARITY ISOLATION: every rule below is a descendant of
+   .kg-responsive-shell, which only ResponsiveShell mounts (shell path,
+   tablet+). The parity capture path (?surface=podcast-home, no ?shell=1)
+   renders PhoneFrame -> SurfaceView and NEVER mounts .kg-responsive-shell,
+   so the 393px render stays byte-identical. @container makes the series grid
+   react to its OWN pane width (master pane on desktop, full content on
+   tablet), not the viewport.
+   ============================================================ */
+
+/* Establish a query container on the surface root so descendants can use
+   @container. inline-size = width-only containment (no layout side effects on
+   the parity render, which never sees this class). */
+.kg-responsive-shell .podcast-home {
+  container-type: inline-size;
+  container-name: ph-surface;
+}
+
+/* In a pane the surface scrolls (the pane clips); parity keeps overflow:hidden. */
+.kg-responsive-shell .podcast-home .ph-scroll {
+  overflow-y: auto;
+}
+
+/* Series grid auto-fills by the surface's container width. Wider pane -> larger
+   tiles + a centred content measure so cards do not stretch edge-to-edge. */
+@container ph-surface (min-width: 600px) {
+  .kg-responsive-shell .podcast-home .ph-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  .kg-responsive-shell .podcast-home .ph-content {
+    max-width: var(--content-max-w);
+  }
+}
+
+@container ph-surface (min-width: 900px) {
+  .kg-responsive-shell .podcast-home .ph-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}

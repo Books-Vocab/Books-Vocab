@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { useAppearance } from '../../harness/appearance'
 import { useApi } from '../../api/ApiContext'
@@ -27,6 +28,8 @@ import {
   TimerIcon,
   TranslateIcon,
 } from './icons'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { pushTargetFor, screenFor, type NavIntent } from '../../shell/nav'
 import './settings.css'
 import './interactive.css'
 
@@ -69,6 +72,16 @@ const SHEET_OPTIONS: Record<PreferenceLabel, string[]> = {
   複習節奏: ['寬鬆', '標準', '密集'],
 }
 
+/**
+ * 偏好列 → shell 導航意圖（有對應子 surface 者）。iOS SettingsView 對應列為
+ * NavigationLink；外觀 / 語言為就地 Menu picker（無子畫面）→ 不在此 map，shell
+ * 路徑仍走 sheet。parity 路徑完全不查此 map。
+ */
+const NAV_PREFERENCE_INTENT: Partial<Record<PreferenceLabel, NavIntent>> = {
+  翻譯語言: 'open-settings-translation-language',
+  複習節奏: 'open-settings-review',
+}
+
 const PREFERENCES_FOOTNOTE_BASE = '切換後會立即套用到 app 介面。'
 const PREFERENCES_FOOTNOTE_SYNC =
   PREFERENCES_FOOTNOTE_BASE + '開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。'
@@ -93,11 +106,44 @@ function PickerChevrons() {
   )
 }
 
-function LoggedInCard({ account, onSignOut }: { account: LoggedInAccount; onSignOut: () => void }) {
+/**
+ * 共用：把非互動的 settings-row div 變成可達導航熱區（shell 路徑）。無 onActivate
+ * （parity 路徑）→ 回空 props，div 維持非互動，首屏 DOM 與靜態 PNG 逐位元一致。
+ */
+function rowNavProps(onActivate?: () => void) {
+  if (!onActivate) return {}
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: ReactKeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        onActivate()
+      }
+    },
+  }
+}
+
+function LoggedInCard({
+  account,
+  onSignOut,
+  onOpenAccount,
+  onOpenSubscription,
+}: {
+  account: LoggedInAccount
+  onSignOut: () => void
+  /** shell 路徑：點帳號列 → 帳號詳情。parity 路徑省略 → 非互動 div（DOM 不變）。 */
+  onOpenAccount?: () => void
+  /** shell 路徑：點訂閱列 → 訂閱詳情。parity 路徑省略 → 非互動 div（DOM 不變）。 */
+  onOpenSubscription?: () => void
+}) {
   const sub = account.subscription
+  const accountNav = rowNavProps(onOpenAccount)
+  const subNav = rowNavProps(onOpenSubscription)
   return (
     <div className="settings-card">
-      <div className="settings-row settings-account-row">
+      <div className="settings-row settings-account-row" {...accountNav}>
         <span className="settings-avatar">{account.initials}</span>
         <span className="settings-account-id">
           <span className="settings-account-name-line">
@@ -115,7 +161,7 @@ function LoggedInCard({ account, onSignOut }: { account: LoggedInAccount; onSign
         <ChevronRightIcon className="settings-chevron" size={10} strokeWidth={1.2} />
       </div>
       <div className="settings-divider" />
-      <div className="settings-row settings-subscription-row">
+      <div className="settings-row settings-subscription-row" {...subNav}>
         <span className={sub.active ? 'settings-subscription-icon is-active' : 'settings-subscription-icon'}>
           {sub.active ? <SealCheckFillIcon size={15} /> : <SparklesIcon size={15} />}
         </span>
@@ -330,6 +376,15 @@ function SettingsScreenApi() {
     [updateConfig, optimisticConfig],
   )
 
+  // shell 路徑：設定列點擊 → push 對應子 surface（master-detail detail pane）。
+  // 鏡射 iOS SettingsView 的 NavigationLink；parity 路徑（fixture）不傳此 callback，
+  // 列維持原互動（sheet / 純展示），故首屏 DOM 與靜態 PNG 逐位元一致。
+  const nav = useShellNav()
+  const navigateSetting = (intent: NavIntent) => {
+    const target = pushTargetFor(screenFor('settings'), intent)
+    if (target) nav.navigate(target)
+  }
+
   return (
     <SettingsBody
       fixture={fixture}
@@ -337,6 +392,7 @@ function SettingsScreenApi() {
       onLogout={logout}
       onUpdateConfig={updateConfig}
       onPersistAppearance={persistAppearance}
+      onNavigateSetting={navigateSetting}
     />
   )
 }
@@ -368,12 +424,15 @@ function SettingsBody({
   onLogout,
   onUpdateConfig,
   onPersistAppearance,
+  onNavigateSetting,
 }: {
   fixture: SettingsFixture
   apiMode?: boolean
   onLogout?: () => void
   onUpdateConfig?: (patch: Partial<UserConfigResponse>) => Promise<void>
   onPersistAppearance?: (pref: AppearancePref) => void
+  /** shell 路徑：設定列 → push 子 surface。parity 路徑省略 → 維持 sheet / 純展示。 */
+  onNavigateSetting?: (intent: NavIntent) => void
 }) {
   const { appearance, setAppearance } = useAppearance()
 
@@ -484,7 +543,14 @@ function SettingsBody({
         <section className="settings-section">
           <SectionHeader icon={PersonCircleIcon} label="帳號" />
           {account.kind === 'logged-in' ? (
-            <LoggedInCard account={account} onSignOut={signOut} />
+            <LoggedInCard
+              account={account}
+              onSignOut={signOut}
+              onOpenAccount={onNavigateSetting ? () => onNavigateSetting('open-settings-account') : undefined}
+              onOpenSubscription={
+                onNavigateSetting ? () => onNavigateSetting('open-settings-subscription') : undefined
+              }
+            />
           ) : (
             <LoggedOutCard account={account} onSignIn={signIn} />
           )}
@@ -501,7 +567,14 @@ function SettingsBody({
                   <button
                     type="button"
                     className="settings-row settings-row-button"
-                    onClick={() => setOpenSheet(row.label)}
+                    onClick={() => {
+                      // shell 路徑：翻譯語言 / 複習節奏 列改為 push 子 surface
+                      // （iOS 為 NavigationLink）；外觀 / 語言 仍走原 sheet。parity
+                      // 路徑（無 onNavigateSetting）一律維持原 sheet 行為。
+                      const intent = NAV_PREFERENCE_INTENT[row.label]
+                      if (onNavigateSetting && intent) onNavigateSetting(intent)
+                      else setOpenSheet(row.label)
+                    }}
                   >
                     <span className="settings-row-icon">
                       <Icon size={row.iconSize} />
@@ -558,7 +631,12 @@ function SettingsBody({
           <div className="settings-card">
             {syncStatusValue !== null && (
               <>
-                <div className="settings-row">
+                <div
+                  className="settings-row"
+                  {...rowNavProps(
+                    onNavigateSetting ? () => onNavigateSetting('open-sync') : undefined,
+                  )}
+                >
                   <span className="settings-row-icon">
                     <SyncIcon size={15} />
                   </span>

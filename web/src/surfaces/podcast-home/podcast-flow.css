@@ -327,3 +327,33 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+
+   PARITY ISOLATION: these rules descend from .kg-responsive-shell. This whole
+   file is functional-only (never on the parity capture path), but @container /
+   min-width>=768 rules must still be scoped under .kg-responsive-shell to pass
+   the parity-isolation lint. The player fills + scrolls the detail pane and caps
+   its transcript to a reading measure on wide panes.
+   ============================================================ */
+.kg-responsive-shell .pf-root {
+  height: 100%;
+  min-height: 0;
+  container-type: inline-size;
+  container-name: pf-surface;
+}
+.kg-responsive-shell .pf-root .pf-player {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+@container pf-surface (min-width: 600px) {
+  .kg-responsive-shell .pf-root .pf-player,
+  .kg-responsive-shell .pf-root .pf-gate {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+}

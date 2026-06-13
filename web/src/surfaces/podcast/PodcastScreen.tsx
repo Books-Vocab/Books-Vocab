@@ -1,6 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ScenarioId } from '../../harness/scenarios'
 import { PodcastHomeApiStore } from '../podcast-home/PodcastHomeApiStore'
+import { PodcastFlowPlayer } from '../podcast-home/PodcastFlowPlayer'
+import { usePodcastData } from '../podcast-home/usePodcastData'
+import { indexCatalog } from './continueShelf'
+import { tierFromEntitlements } from './tier'
+import { useShellNav } from '../../shell/ShellNavContext'
 import { PODCAST_FIXTURES } from './fixtures'
 import type { PodcastPlayerFixture } from './fixtures'
 import demoAudioUrl from '../../assets/podcast_demo.mp3'
@@ -271,15 +276,52 @@ function isShellMode(): boolean {
 }
 
 export function PodcastScreen({ scenario }: { scenario: ScenarioId<'podcast'> }) {
-  // Shell-gated functional flow (home → episode-list → player, live API,
-  // subtitle SRT sync, tier gating, continue-shelf). Parity capture path
-  // (no ?shell=1) renders the untouched fixture branch below, byte-identical.
-  if (isShellMode()) return <PodcastHomeApiStore />
+  // Shell-gated functional flow. Parity capture path (no ?shell=1) renders the
+  // untouched fixture branch below, byte-identical.
+  if (isShellMode()) return <PodcastShellPlayer />
 
   const fixture = PODCAST_FIXTURES[scenario]
   return (
     <div className="podcast">
       {fixture.kind === 'preview-player' ? <PlayerScene fixture={fixture} /> : <LockedGate />}
+    </div>
+  )
+}
+
+/**
+ * Shell master-detail player — reached as the detail pane via the shell nav
+ * stack (podcast-home → podcast-episode-list → podcast, carrying seriesId/epNum
+ * in ShellNavContext.params). Renders the live PodcastFlowPlayer for the chosen
+ * episode (progress write-back unchanged: PodcastFlowPlayer still POSTs to
+ * /api/podcasts/{sid}/{ep}/progress on pause/seek).
+ *
+ * Defensive fallback: if this surface is reached WITHOUT shell nav params (e.g.
+ * a direct deep-link to the podcast tab leaf), mount the self-contained
+ * PodcastHomeApiStore flow so the leaf is never dead.
+ */
+function PodcastShellPlayer() {
+  const nav = useShellNav()
+  const seriesId = nav.params.seriesId
+  const epNum = nav.params.epNum
+  if (seriesId == null || epNum == null) {
+    return <PodcastHomeApiStore />
+  }
+  return <ShellPlayerLoader seriesId={seriesId} epNum={epNum} />
+}
+
+function ShellPlayerLoader({ seriesId, epNum }: { seriesId: string; epNum: number }) {
+  const data = usePodcastData()
+  const catalog = useMemo(() => indexCatalog(data.series), [data.series])
+  const tier = tierFromEntitlements(data.entitlements, data.hasToken)
+  return (
+    <div className="podcast-home pf-root">
+      <PodcastFlowPlayer
+        seriesId={seriesId}
+        epNum={epNum}
+        series={catalog.get(seriesId)}
+        tier={tier}
+        api={data.api}
+      />
     </div>
   )
 }

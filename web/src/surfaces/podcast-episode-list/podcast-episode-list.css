@@ -405,3 +405,24 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=podcast-episode-list, no ?shell=1) never
+   mounts it -> 393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .pel-surface {
+  container-type: inline-size;
+  container-name: pel-surface;
+}
+.kg-responsive-shell .pel-surface .pel-scroll {
+  overflow-y: auto;
+}
+@container pel-surface (min-width: 600px) {
+  .kg-responsive-shell .pel-surface .pel-stack {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
+}
