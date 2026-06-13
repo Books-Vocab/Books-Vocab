@@ -1,21 +1,22 @@
-// Default SyncApi adapter — binds the coordinator's narrow port to the FROZEN
-// typed client (web/src/api). Mock-first: createApiClient() defaults to mock
-// mode, so this works fully offline.
+// Default SyncApi adapter — binds the coordinator's narrow port to the typed
+// client (web/src/api). Mock-first: createApiClient() defaults to mock mode, so
+// this works fully offline.
 //
-// Route availability vs the frozen foundation:
-//   uploadAdd   → POST /api/vocab                  (exists, mock-backed)
+// Route availability (all exist on the client + are mock-backed):
+//   uploadAdd   → POST /api/vocab                  (VocabularyClient.add)
+//   batchDelete → POST /api/vocab/batch-delete     (VocabularyClient.batchDelete)
+//   trigger     → POST /api/pipeline               (PipelineClient.trigger)
 //   pushReview  → PATCH /api/vocab/review-events
-//                 + PATCH /api/vocab/review         (exist, mock-backed)
-//   pull        → GET /api/vocab                    (exists, mock-backed)
-//   batchDelete → POST /api/vocab/batch-delete      (NOT in frozen client/mock)
-//   trigger     → POST /api/pipeline                (NOT in frozen client/mock)
+//                 + PATCH /api/vocab/review         (TodayReviewClient)
+//   pull        → GET /api/vocab                    (VocabularyClient.list)
 //
-// The two missing routes are deliberately left UNBOUND (optional port methods):
-// the coordinator reports those steps as `skipped` rather than fabricating a
-// result. When the foundation adds VocabularyClient.batchDelete /
-// PipelineClient.trigger + their mock routes, bind them here (one line each) —
-// the state-machine reconcile (stateMachine.applyDeleteReconcile) is already
-// wired and unit-tested for the three-bucket response.
+// batchDelete + trigger were previously left UNBOUND because the frozen base
+// lacked VocabularyClient.batchDelete / PipelineClient.trigger; the coordinator
+// then reported those steps as `skipped`. Both client methods + their mock
+// routes now exist, so the steps are bound and RUN. The three-bucket delete
+// reconcile (stateMachine.applyDeleteReconcile, transcribed from
+// docs/reference/sync_lifecycle.md §批次刪除) consumes the deleted_words /
+// not_found / failed buckets directly from the BatchDeleteResponse.
 
 import { createApiClient, type ApiClient } from '../api'
 import type { SyncApi } from './types'
@@ -36,7 +37,24 @@ export function createSyncApi(opts: SyncApiOptions = {}): SyncApi {
       return api.vocabulary.add(entries, { notebookId })
     },
 
-    // batchDelete / triggerPipeline intentionally omitted — see file header.
+    async batchDelete(words, notebookId) {
+      // BatchDeleteResponse is a superset of the port's BatchDeleteResult; map
+      // the three reconcile buckets (the `deleted` count is derivable and unused
+      // by the state machine, which keys off deleted_words/not_found/failed).
+      const r = await api.vocabulary.batchDelete(words, { notebookId })
+      return {
+        deleted_words: r.deleted_words,
+        not_found: r.not_found,
+        failed: r.failed,
+      }
+    },
+
+    async triggerPipeline(notebookId) {
+      // POST /api/pipeline — fire-and-forget background enrichment. The backend
+      // returns immediately with a queued status; the coordinator's trigger step
+      // is soft (never flips the run verdict), so we await + discard the body.
+      await api.pipeline.trigger(notebookId)
+    },
 
     async pushReview({ events, states }) {
       let insertedEvents = 0
