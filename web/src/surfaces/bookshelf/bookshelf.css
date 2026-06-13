@@ -315,8 +315,10 @@
 
 /* 書卡次動作 overflow 鈕（改名 / 刪除入口）— 右上三點，desktop hover/focus 才淡入，
    touch 仍可直接點。glyph 預設隱形 → 首屏 pixel-neutral（即便掛載亦不顯墨）。
-   置於 cover-button 內首位、badge 之前；自身 pointer-events 蓋過封面 onOpen
-   （onClick stopPropagation 雙保險），故點三點開選單、點封面其餘處開書。 */
+   結構（SR.2 後）：為封面 cover-<button> 的 sibling（非後代），絕對定位錨於
+   .book-card article（position:relative），top/right 落在封面右上同舊位置。siblings
+   不互相冒泡 → 點三點只開選單、點封面開書，無需 stopPropagation。z-index:2 疊於封面
+   之上保留可點性。 */
 .book-card-overflow {
   position: absolute;
   top: 6px;
