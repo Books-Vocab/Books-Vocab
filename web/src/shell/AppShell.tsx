@@ -19,6 +19,7 @@ import {
   type ScreenParams,
 } from './nav'
 import { ShellNavProvider, type ShellNav } from './ShellNavContext'
+import { navStateFromLocation, useShellHistory } from './historySync'
 import { SHELL_TABS, type TabSpec } from './tabs'
 import { RouteTransition, Sheet, useNavDirection, useSwipeBack } from '../motion'
 import { routeKeyFor } from './nav'
@@ -124,9 +125,14 @@ function TabButton({
  * （見 nav.initialNavState）。
  */
 export function AppShell({ config }: { config: HarnessConfig }) {
-  const [nav, setNav] = useState<NavState>(() =>
-    initialNavState(config.surface, config.scenario as string),
+  // 初始 nav 優先從 /app URL 還原（refresh / deep-link / 斷點切回 mobile 時延續
+  // 桌面殼層留下的位置）；無 shell URL（legacy ?shell=1）落回 config 初始狀態。
+  const [nav, setNav] = useState<NavState>(
+    () => navStateFromLocation() ?? initialNavState(config.surface, config.scenario as string),
   )
+  // AppShell 僅在 mobile shell context 掛載（PhoneFrame shell=1），故恆為當值殼層 →
+  // history binder 恆 enabled。
+  useShellHistory(nav, setNav)
   const appearance: Appearance = config.appearance
   // Sheet primitive proof (Step 2.3): the notebook add/edit sheet — the simplest
   // existing sheet surface — routed through the shared <Sheet> (vaul drag-to-
