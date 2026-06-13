@@ -30,11 +30,12 @@
 #   ./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json]
 #   ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json]
 #   ./ops/ios_ops.sh catalog clean [--json]
+#   ./ops/ios_ops.sh quality list [--json] | impact --files <path...> [--json] | impact --since <ref> [--json] | validate
 #   ./ops/ios_ops.sh review-probe --simulator|--device <udid> [--flips N] [--release] [--instruments] ...  # review-flip 量測 rig（詳 ./ops/review_flip_probe.sh --help）
 #   ./ops/ios_ops.sh commands [--json]
 #
 # Side-effect model:
-# - status/archives/issues/logs/sentry/doctor/workflow/gate/xcode/simulator status/runs/snapshot/dashboard/commands are read-only.
+# - status/archives/issues/logs/sentry/doctor/workflow/gate/xcode/simulator status/runs/snapshot/dashboard/quality/commands are read-only.
 # - build/test/archive/simulator screenshot/catalog snapshots are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
@@ -321,6 +322,7 @@ case "$cmd" in
   runs|reports) cmd_runs "$@" ;;
   snapshot|dashboard) cmd_snapshot "$@" ;;
   catalog) cmd_catalog "$@" ;;
+  quality) "$SCRIPT_DIR/ui_quality_plane.py" "$@" ;;
   review-probe) "$SCRIPT_DIR/review_flip_probe.sh" "$@" ;;
   commands|capabilities) cmd_commands "$@" ;;
   -h|--help|help) usage ;;
