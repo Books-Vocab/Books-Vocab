@@ -1,0 +1,9 @@
+{
+  "schema": "kg.demo_identity.v1",
+  "user_id": "demo-user",
+  "email": "demo@wordnexus.lol",
+  "display_name": "示範使用者",
+  "provider": "apple",
+  "provider_user_id": "apple:demo-user",
+  "access_token": "demo-access-token"
+}
