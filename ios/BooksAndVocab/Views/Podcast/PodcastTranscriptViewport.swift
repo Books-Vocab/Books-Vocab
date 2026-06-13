@@ -71,6 +71,13 @@ struct PodcastTranscriptViewport: View {
             .task {
                 applyInitialScrollPositionIfNeeded(proxy: proxy)
             }
+            .onAppear {
+                PerfLog.scroll.startFrameSampler("podcast.display")
+            }
+            .onDisappear {
+                PerfLog.scroll.stopFrameSampler("podcast.display")
+                PerfLog.scroll.stopFrameSampler("podcast.follow")
+            }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8).onChanged { _ in
                     if PodcastTranscriptScrollPolicy.shouldDisengageFollowOnManualDrag(isFollowing: isFollowing) {
@@ -143,11 +150,15 @@ struct PodcastTranscriptViewport: View {
         scrollAnimationTask = Task {
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
+            PerfLog.scroll.startFrameSampler("podcast.follow")
+            PerfLog.scroll.mark("followScroll.begin", "id=\(id)")
             PerfLog.scroll.measure("scrollTo", "id=\(id)") {
                 withAnimation(AppMotion.podcastFollowScroll) {
                     proxy.scrollTo(id, anchor: .center)
                 }
             }
+            try? await Task.sleep(for: .milliseconds(900))
+            PerfLog.scroll.stopFrameSampler("podcast.follow")
         }
     }
 
