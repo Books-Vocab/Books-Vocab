@@ -47,7 +47,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python)+ `chrom
 
 **SoT 零重複鐵則**:一個事實只有一個 owner 文檔(registry 標 `authority: SoT`);CLAUDE.md、agent 檔、流程文檔只能用 path / registry id / 鐵律編號**指過去,絕不複述**。
 
-**自我提升迴圈**:工具 / CLI / 文檔 / 架構摩擦走 andon → receipt 強制表態(`none` 或一筆)→ `docs/runbook/improvement_backlog.md`(SoT)→ `platform-steward` triage 到 resolved(連 commit = 可回溯)。無聲妥協(硬幹)違鐵律9;升級階梯見 `docs/sop/agent_org.md`。
+**自我提升迴圈**:工具 / CLI / 文檔 / 架構摩擦走 andon → receipt 強制表態(規則見 `kg-receipt`「Tooling Debt」)→ `docs/runbook/improvement_backlog.md`(SoT)→ `platform-steward` triage 到 resolved(連 commit = 可回溯)。無聲妥協(硬幹)違鐵律9;升級階梯見 `docs/sop/agent_org.md`。
 
 ## ops 資料工具（always-on，不靠 skill 觸發）
 
