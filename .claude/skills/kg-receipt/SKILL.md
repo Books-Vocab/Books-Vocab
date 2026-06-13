@@ -18,7 +18,7 @@ version: 1.0.0
 3. 若改 user/agent-facing surface，已跑 docs impact/lint 或明確說明為何不需要。
 4. 若改 git history / branch / worktree，已跑相應 audit。
 5. 若有未跑測試，明確列原因與風險。
-6. 若遇到工具摩擦，已分類為小問題記錄或中大型問題修復。
+6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → 登 `docs/runbook/improvement_backlog.md`。撞到摩擦無聲妥協(硬幹）= 違鐵律9。
 
 ## Minimal Format
 
@@ -51,6 +51,7 @@ Next:
 - 不用「應該可以」代替驗證。
 - 不把舊輸出當本輪證據。
 - 若背景工作還在跑，receipt 必須標示它不是完成證據。
+- Tooling Debt 不可留空：`none` 或一筆 filed item;沉默不合法(andon · 反硬幹)。非 trivial 未當場修者登 `docs/runbook/improvement_backlog.md`,由 `platform-steward` 追到 resolved。
 
 ## Handoff Prompt Rule
 
