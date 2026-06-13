@@ -189,6 +189,11 @@ def main() -> int:
         command = " ".join(shlex.quote(p) for p in [entrypoint, *(resolved_args or [])])
 
         if resolved_args is None or (layer not in FAST_LAYERS and not args.execute_slow):
+            if args.execute and layer not in FAST_LAYERS and not args.execute_slow:
+                print(
+                    "[ui_quality_gate] hint: slow gates stay planned; add --execute-slow to run them",
+                    file=sys.stderr,
+                )
             results.append({
                 **base_result,
                 "status": "planned",

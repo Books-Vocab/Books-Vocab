@@ -166,6 +166,30 @@ else
   fail_t "all tier missing fast or slow mechanisms"
 fi
 
+section "--include-ci includes ci gates"
+OUT="$($GATE --files design-system/tokens.json --tier fast --dry-run 2>&1)"
+if grep -q 'value.design_system' <<<"$OUT"; then
+  ok "--include-ci lists value.design_system"
+else
+  fail_t "--include-ci missing value.design_system: $OUT"
+fi
+
+section "--exclude skips specified gate"
+OUT="$($GATE --files "$SAMPLE_FILE" --tier fast --dry-run --exclude static.ui_token 2>&1)"
+if grep -q 'static.ui_token' <<<"$OUT" && grep -q 'excluded' <<<"$OUT"; then
+  ok "--exclude marks static.ui_token as excluded"
+else
+  fail_t "--exclude did not skip static.ui_token: $OUT"
+fi
+
+section "slow tier with --execute but no --execute-slow prints hint"
+OUT="$($GATE --files "$SAMPLE_FILE" --tier slow --execute 2>&1)"
+if grep -qi 'hint.*--execute-slow' <<<"$OUT"; then
+  ok "slow execute prints --execute-slow hint"
+else
+  fail_t "slow execute missing hint: $OUT"
+fi
+
 echo ""
 echo "ui-quality-gate: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
