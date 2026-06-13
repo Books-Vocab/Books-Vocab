@@ -18,3 +18,14 @@ export const ArchiveboxIcon = makeGlyph(
 export const MagnifyingGlassIcon = makeGlyph(
   '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5l4 4"/>',
 )
+
+/** SF `arrow.uturn.backward` — 還原（取消封存）。 */
+export const ArrowUTurnIcon = makeGlyph(
+  '<path d="M9 7H15a4 4 0 0 1 0 8H6"/><path d="M9 4 6 7l3 3"/>',
+)
+
+/** SF `trash` — 刪除。 */
+export const TrashIcon = makeGlyph(
+  '<path d="M5 7h14"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>' +
+    '<path d="M6.5 7l.8 11a1.5 1.5 0 0 0 1.5 1.4h6.4a1.5 1.5 0 0 0 1.5-1.4L18 7"/>',
+)

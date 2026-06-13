@@ -141,3 +141,74 @@
   color: var(--text-secondary);
   text-align: center;
 }
+
+/* ── shell controls（非 parity；只在 ?shell=1 渲染）── */
+.val-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+}
+.val-search-input::placeholder {
+  color: #c4c4c6; /* token-allow: iOS placeholderText 系統色（同 .val-search-text 空態） */
+}
+
+.val-banner {
+  flex: none;
+  margin: 0 var(--sp-6);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+}
+.val-banner--error {
+  background: color-mix(in srgb, #c0392b 12%, transparent); /* token-allow: destructive 紅 fallback */
+  color: #c0392b; /* token-allow: destructive 紅 fallback */
+}
+
+.val-candidates {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--sp-6);
+  gap: var(--sp-2);
+}
+.val-candidate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-3);
+  border: 0.5px solid var(--divider);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  text-align: left;
+  cursor: pointer;
+}
+.val-candidate:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.val-candidate-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.val-candidate-translation {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+}

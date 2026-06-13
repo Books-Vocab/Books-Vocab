@@ -200,3 +200,75 @@
   font-family: var(--font-sans);
   font-size: var(--text-body); /* searchbar prompt ~17pt */
 }
+
+/* ── shell actionable controls（非 parity；只在 ?shell=1 渲染）──
+   parity 路徑不渲染下列節點，.av-row / .av-list 既有規則不受影響。 */
+.av-row[data-selected] {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.av-row-select {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.av-row[data-selected] .av-row-select {
+  color: var(--accent);
+}
+.av-row-actions {
+  flex: none;
+  display: flex;
+  gap: var(--sp-1);
+}
+.av-row-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.av-row-action--destructive {
+  color: var(--accent-destructive, #c0392b); /* token-allow: destructive 紅 fallback（DS token 缺則用近似） */
+}
+
+.av-batchbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border-top: 0.5px solid var(--divider);
+}
+.av-batch-count {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+.av-batch-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  border: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.av-batch-btn--destructive {
+  color: var(--accent-destructive, #c0392b); /* token-allow: destructive 紅 fallback */
+}

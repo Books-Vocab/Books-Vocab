@@ -83,3 +83,125 @@
   transform-origin: 0.75px 8px;
   opacity: 0.35;
 }
+
+/* ── shell loaded view（非 parity；只在 ?shell=1 渲染真實卡片詳情）──
+   parity 路徑（fixture 載入態 placeholder）完全不受以下規則影響：loaded view 只在
+   .wds-surface--loaded 內生效，且 shell 路徑不帶 data-surface（由 AppShell 掛載）。 */
+.wds-surface--loaded {
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+
+.wds-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+.wds-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.wds-detail-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-h);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wds-detail-pos {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.wds-detail-tier {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: lowercase;
+}
+
+.wds-detail-meaning {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-translation);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wds-detail-note {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.wds-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-2);
+  border-top: 0.5px solid var(--divider);
+}
+
+.wds-detail-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+
+.wds-detail-example {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: var(--text-subhead);
+  font-style: italic;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.wds-detail-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.wds-detail-pill {
+  font-family: var(--font-mono);
+  font-size: var(--text-mono);
+  color: var(--text-secondary);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: 999px;
+  background: var(--card-bg);
+  border: 0.5px solid var(--divider);
+}
+
+.wds-detail-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wds-detail-link-word {
+  font-family: var(--font-mono);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.wds-detail-link-reason {
+  font-family: var(--font-sans);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}

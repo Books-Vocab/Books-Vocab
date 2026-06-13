@@ -1,6 +1,7 @@
 import type { ScenarioId } from '../../harness/scenarios'
 import { COLLOCATION_EXPLAIN_FIXTURES } from './fixtures'
 import { TrashIcon, XmarkIcon } from './icons'
+import { useCollocationExplainApiStore } from './useCollocationExplainApiStore'
 import './collocation-explain.css'
 
 /**
@@ -29,14 +30,53 @@ export function CollocationExplainScreen({
 }: {
   scenario: ScenarioId<'collocation-explain'>
 }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) return <CollocationExplainApi />
+  return <CollocationExplainFixture scenario={scenario} />
+}
+
+/** shell 路徑：把 nav 帶進來的搭配詞丟給 translate.explain，渲染即時解釋。 */
+function CollocationExplainApi() {
+  const store = useCollocationExplainApiStore()
+  // loading：無解釋文，顯示載入態提示；error：缺 collocation/呼叫失敗 → 沿用提示，
+  // 避免裸 error 字串（與其他 vocab surface 的 fallback 一致）。
+  const collocation = store.collocation ?? ''
+  const explanation =
+    store.status === 'ready'
+      ? store.explanation
+      : store.status === 'loading'
+        ? '正在產生解釋…'
+        : '無法載入解釋，請稍後再試。'
+  return <CollocationExplainBody collocation={collocation} explanation={explanation} />
+}
+
+/** Fixture-driven 唯讀 sheet（parity 路徑，DOM byte-identical）。 */
+function CollocationExplainFixture({
+  scenario,
+}: {
+  scenario: ScenarioId<'collocation-explain'>
+}) {
   const fixture = COLLOCATION_EXPLAIN_FIXTURES[scenario]
   return (
+    <CollocationExplainBody collocation={fixture.collocation} explanation={fixture.explanation} />
+  )
+}
+
+/** 共用畫面本體（fixture / API 兩條路共用）。 */
+function CollocationExplainBody({
+  collocation,
+  explanation,
+}: {
+  collocation: string
+  explanation: string
+}) {
+  return (
     <div className="collocation-explain-surface">
-      <div className="collocation-explain-title">{fixture.collocation}</div>
+      <div className="collocation-explain-title">{collocation}</div>
 
       <div className="collocation-explain-divider" />
 
-      <div className="collocation-explain-body">{fixture.explanation}</div>
+      <div className="collocation-explain-body">{explanation}</div>
 
       <div className="collocation-explain-spacer" />
 
