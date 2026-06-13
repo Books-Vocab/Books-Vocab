@@ -1,9 +1,19 @@
-// Mock API payloads, shaped to the backend pydantic schemas (./../types) and
-// derived from the existing surface fixtures so mock mode renders the same
-// content the parity captures already assert. Surface fixtures are
-// presentation-shaped; here we lift their domain values into API-shaped rows.
+// Mock API payloads, shaped to the backend pydantic schemas (./../types).
+//
+// SINGLE SOURCE OF TRUTH: every MOCK_* constant below is DERIVED from the
+// unified seed (src/data/seeds) via the pure transformers (src/data/transformers)
+// — zero hand-duplicated literals. The seed lifts the canonical demo values once;
+// `toMockBackend(SEED)` shapes them into the API responses this mock serves, so
+// the running app + tests see byte-equivalent output. A drift guard
+// (src/data/validation/driftGuard.test.ts) fails if any MOCK_* diverges from
+// transformer(SEED).
+//
+// Mutation handlers (create/update/delete/archive/…) still live here: they own
+// the in-memory store semantics (idempotency, soft-delete tombstones, id minting)
+// that are request-time behavior, not seed data.
 
-import { VOCABULARY_FIXTURES } from '../../surfaces/vocabulary/fixtures'
+import { SEED } from '../../data/seeds'
+import { toMockBackend, type MockGraphLink } from '../../data/transformers'
 import type {
   BookMetadataResponse,
   CardResponse,
@@ -19,7 +29,6 @@ import type {
   PodcastSeriesSummary,
   QuickTranslateResponse,
   QuotaResponse,
-  ReviewEventEntry,
   ReviewEventsResponse,
   UserConfigResponse,
   UserProfileResponse,
@@ -28,80 +37,12 @@ import type {
   VocabEntry,
 } from '../types'
 
-const NOW_ISO = '2026-06-11T00:00:00Z'
+// All derived payloads come from a single transform of the unified seed.
+const MOCK = toMockBackend(SEED)
 
-export const MOCK_LIBRARY_BOOKS: BookMetadataResponse[] = [
-  {
-    id: 'book-1',
-    client_book_id: 'atomic-habits-epub',
-    title: 'Atomic Habits',
-    author: 'James Clear',
-    language: 'en',
-    format: 'epub',
-    notebook_id: null,
-    is_deleted: false,
-    updated_at: NOW_ISO,
-    locator: null,
-    progression: 0.15,
-    position_updated_at: null,
-  },
-  {
-    id: 'book-2',
-    client_book_id: 'deep-work-pdf',
-    title: 'Deep Work',
-    author: 'Cal Newport',
-    language: 'en',
-    format: 'pdf',
-    notebook_id: null,
-    is_deleted: false,
-    updated_at: NOW_ISO,
-    locator: null,
-    progression: 0.0,
-    position_updated_at: null,
-  },
-  {
-    id: 'book-3',
-    client_book_id: 'flow-epub',
-    title: 'Flow',
-    author: 'Mihaly Csikszentmihalyi',
-    language: 'en',
-    format: 'epub',
-    notebook_id: null,
-    is_deleted: false,
-    updated_at: NOW_ISO,
-    locator: null,
-    progression: 0.0,
-    position_updated_at: null,
-  },
-  {
-    id: 'book-4',
-    client_book_id: 'meditations-txt',
-    title: 'Meditations',
-    author: 'Marcus Aurelius',
-    language: 'en',
-    format: 'txt',
-    notebook_id: null,
-    is_deleted: false,
-    updated_at: NOW_ISO,
-    locator: null,
-    progression: 0.0,
-    position_updated_at: null,
-  },
-  {
-    id: 'book-5',
-    client_book_id: 'on-writing-well-md',
-    title: 'On Writing Well',
-    author: 'William Zinsser',
-    language: 'en',
-    format: 'md',
-    notebook_id: null,
-    is_deleted: false,
-    updated_at: NOW_ISO,
-    locator: null,
-    progression: 0.0,
-    position_updated_at: null,
-  },
-]
+const NOW_ISO = MOCK.nowIso
+
+export const MOCK_LIBRARY_BOOKS: BookMetadataResponse[] = MOCK.libraryBooks
 
 let nextBookId = 100
 
@@ -186,41 +127,7 @@ export function mockLibraryDelete(id: string): DeleteBookResponse | undefined {
   return { deleted: id }
 }
 
-export const MOCK_NOTEBOOKS: NotebookResponse[] = [
-  {
-    id: 'default',
-    name: '我的單字本',
-    color: '#AFC2D3',
-    coverPattern: null,
-    sortOrder: 0,
-    isDefault: true,
-    isDeleted: false,
-    cardCount: 3,
-    updatedAt: NOW_ISO,
-  },
-  {
-    id: 'classics',
-    name: '經典文學',
-    color: '#AFC2D3',
-    coverPattern: null,
-    sortOrder: 1,
-    isDefault: false,
-    isDeleted: false,
-    cardCount: 2,
-    updatedAt: NOW_ISO,
-  },
-  {
-    id: 'science',
-    name: '科普閱讀',
-    color: '#AFC2D3',
-    coverPattern: null,
-    sortOrder: 2,
-    isDefault: false,
-    isDeleted: false,
-    cardCount: 1,
-    updatedAt: NOW_ISO,
-  },
-]
+export const MOCK_NOTEBOOKS: NotebookResponse[] = MOCK.notebooks
 
 let nextNotebookId = 100
 
@@ -251,46 +158,8 @@ export function mockNotebookUpdate(id: string, req: Partial<{ name: string; colo
   }
 }
 
-function card(
-  partial: Pick<CardResponse, 'id' | 'content' | 'meaning' | 'pos'> &
-    Partial<CardResponse>,
-): CardResponse {
-  return {
-    difficulty: null,
-    difficultyTier: null,
-    note: null,
-    collocations: [],
-    examples: [],
-    mode: 'recognition',
-    isDeleted: false,
-    isArchived: false,
-    inflections: [],
-    linksByKind: {},
-    notebookId: 'default',
-    source: null,
-    updatedAt: NOW_ISO,
-    reviewIntervalHours: 12.0,
-    nextReviewAt: NOW_ISO,
-    lastReviewedAt: null,
-    reviewCount: 0,
-    lapseCount: 0,
-    reviewStreak: 0,
-    lastReviewFeedback: -1,
-    ...partial,
-  }
-}
-
-// Lift the populated vocabulary fixture (4 synced unlearned rows) into
-// API-shaped CardResponse rows. Word/translation/pos mirror the fixture verbatim.
-export const MOCK_VOCAB_CARDS: CardResponse[] = VOCABULARY_FIXTURES.populated.rows.map(
-  (row, i) =>
-    card({
-      id: `card-${i + 1}`,
-      content: row.word,
-      meaning: row.translation,
-      pos: row.partOfSpeech.replace(/\.$/, '') || null,
-    }),
-)
+// The seeded vocabulary cards (4 synced unlearned rows), derived from SEED.
+export const MOCK_VOCAB_CARDS: CardResponse[] = MOCK.vocabCards
 
 export function mockVocabByWord(word: string): CardResponse | undefined {
   return MOCK_VOCAB_CARDS.find((c) => c.content === word)
@@ -348,145 +217,29 @@ export function mockVocabUpdateContent(
 
 // Synthetic review-event log so shell-mode stats surfaces (vocab-calendar /
 // vocab-heatmap, which derive activity from todayReview.events()) render a
-// non-empty history offline. Anchored to NOW_ISO's day (2026-06-11); a few
-// events per recent day across the last ~6 weeks. Only the calendar/heatmap
-// derivations read this — no other surface consumes the event log.
-function syntheticReviewEvents(): ReviewEventEntry[] {
-  const anchor = new Date(NOW_ISO) // 2026-06-11T00:00:00Z
-  const words = ['serendipity', 'ephemeral', 'quintessential', 'ubiquitous', 'eloquent']
-  const entries: ReviewEventEntry[] = []
-  // Past 42 days: skip every 4th day (gaps → streak/heatmap variety); count
-  // ramps with a deterministic pattern to exercise intensity thresholds.
-  for (let offset = 0; offset < 42; offset++) {
-    if (offset % 4 === 0) continue
-    const day = new Date(anchor)
-    day.setUTCDate(day.getUTCDate() - offset)
-    const count = ((offset * 3) % 11) + 1
-    for (let i = 0; i < count; i++) {
-      const at = new Date(day)
-      at.setUTCHours(9, i * 7, 0, 0)
-      const iso = at.toISOString()
-      entries.push({
-        event_id: `mock-evt-${offset}-${i}`,
-        card_id: null,
-        word_snapshot: words[i % words.length]!,
-        notebook_id: 'default',
-        feedback: i % 3 === 0 ? 0 : 1,
-        reviewed_at: iso,
-        created_at: iso,
-        is_synthetic: true,
-      })
-    }
-  }
-  return entries
-}
-
-export const MOCK_REVIEW_EVENTS: ReviewEventsResponse = {
-  entries: syntheticReviewEvents(),
-  cursor: null,
-}
+// non-empty history offline. The generator + params live in the seed +
+// transformer (src/data); derived here from SEED.
+export const MOCK_REVIEW_EVENTS: ReviewEventsResponse = MOCK.reviewEvents
 
 // Editorial podcast catalog — opaque dicts; shape mirrors the producer JSON
 // (id / title / episodes) the iOS bookshelf + player consume.
-export const MOCK_PODCAST_SERIES: PodcastSeriesSummary[] = [
-  {
-    id: 'pride-and-prejudice',
-    title: 'Pride and Prejudice',
-    author: 'Jane Austen',
-    episode_count: 6,
-  },
-]
+export const MOCK_PODCAST_SERIES: PodcastSeriesSummary[] = MOCK.podcastSeries
 
-export const MOCK_PODCAST_DETAIL: PodcastSeriesDetail = {
-  id: 'pride-and-prejudice',
-  title: 'Pride and Prejudice',
-  author: 'Jane Austen',
-  episodes: [
-    { ep_num: 1, title: 'Chapter 1', duration_sec: 1832 },
-    { ep_num: 2, title: 'Chapter 2', duration_sec: 1740 },
-  ],
-}
+export const MOCK_PODCAST_DETAIL: PodcastSeriesDetail = MOCK.podcastDetail
 
-export const MOCK_PODCAST_PROGRESS: PodcastProgressListResponse = {
-  items: [
-    {
-      series_id: 'pride-and-prejudice',
-      ep_num: 1,
-      position_sec: 6.09,
-      duration_sec: 1832,
-      updated_at: NOW_ISO,
-    },
-  ],
-}
+export const MOCK_PODCAST_PROGRESS: PodcastProgressListResponse = MOCK.podcastProgress
 
-export const MOCK_USER_CONFIG: UserConfigResponse = {
-  translation: null,
-  review_clock: { is_paused: false, paused_at: null, updated_at: null },
-  review_mode: {
-    mode: 'relaxed',
-    custom_initial_interval_hours: 12,
-    custom_remembered_multiplier: 1.9,
-    custom_forgot_multiplier: 0.45,
-    custom_minimum_interval_hours: 6,
-    custom_maximum_interval_hours: 1440,
-    updated_at: null,
-  },
-  vocab_ui: null,
-  auto_link: null,
-}
+export const MOCK_USER_CONFIG: UserConfigResponse = MOCK.userConfig
 
-export const MOCK_ENTITLEMENTS: EntitlementsResponse = {
-  pro: {
-    is_active: false,
-    product_id: null,
-    plan_name: null,
-    price_display: null,
-    status: 'none',
-    is_trial: false,
-    trial_days: null,
-    will_renew: false,
-    expires_at: null,
-    source: 'app_store',
-    last_synced_at: null,
-  },
-}
+export const MOCK_ENTITLEMENTS: EntitlementsResponse = MOCK.entitlements
 
-export const MOCK_QUOTA: QuotaResponse = {
-  fraction: 0.12,
-  reset_seconds: 43200,
-}
+export const MOCK_QUOTA: QuotaResponse = MOCK.quota
 
 // ── graph links ──────────────────────────────────────────────────────────────
 // Edges between the seeded vocab cards. hidden links stay in the store (the
 // real backend filters them server-side); the hide/unhide handlers mutate in
 // place so a list() after an unhide observes the round-trip.
-interface MockGraphLink extends GraphLinkResponse {
-  hidden: boolean
-  notebookId: string
-}
-
-export const MOCK_GRAPH_LINKS: MockGraphLink[] = [
-  {
-    id: 'link-1',
-    fromId: 'card-1',
-    toId: 'card-2',
-    kind: 'synonym',
-    confidence: 0.82,
-    reason: '兩字在語意上高度重疊',
-    hidden: false,
-    notebookId: 'default',
-  },
-  {
-    id: 'link-2',
-    fromId: 'card-2',
-    toId: 'card-3',
-    kind: 'related',
-    confidence: 0.64,
-    reason: '常於同一語境共現',
-    hidden: false,
-    notebookId: 'default',
-  },
-]
+export const MOCK_GRAPH_LINKS: MockGraphLink[] = MOCK.graphLinks
 
 function toGraphLink(l: MockGraphLink): GraphLinkResponse {
   return { id: l.id, fromId: l.fromId, toId: l.toId, kind: l.kind, confidence: l.confidence, reason: l.reason }
@@ -549,28 +302,13 @@ export function mockTranslateExplain(word: string): ExplainResponse {
 
 // ── user profile + account deletion ──────────────────────────────────────────
 // GET /api/user/profile — NEW backend (mock-only) identity contract.
-export const MOCK_USER_PROFILE: UserProfileResponse = {
-  user_id: 'mock-user',
-  email: 'reader@example.com',
-  display_name: '示範使用者',
-}
+export const MOCK_USER_PROFILE: UserProfileResponse = MOCK.userProfile
 
 // DELETE /api/user/account — mirrors api_models/auth.py::DeleteAccountResponse.
-export const MOCK_DELETE_ACCOUNT: DeleteAccountResponse = {
-  deleted_user_id: 'mock-user',
-  linked_ids: ['apple:mock-user'],
-  deleted_dirs: ['/data/users/mock-user'],
-}
+export const MOCK_DELETE_ACCOUNT: DeleteAccountResponse = MOCK.deleteAccount
 
 // GET /api/podcasts/{series}/{ep}/subtitle — raw SRT text (text/plain).
-export const MOCK_SUBTITLE_SRT = `1
-00:00:00,000 --> 00:00:02,500
-It is a truth universally acknowledged,
-
-2
-00:00:02,500 --> 00:00:05,000
-that a single man in possession of a good fortune,
-`
+export const MOCK_SUBTITLE_SRT = MOCK.subtitleSrt
 
 /** A deterministic access token the mock /auth/verify mints. */
-export const MOCK_ACCESS_TOKEN = 'mock-access-token'
+export const MOCK_ACCESS_TOKEN = MOCK.accessToken
