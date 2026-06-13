@@ -275,3 +275,24 @@
   line-height: 1; /* mono badge tight：避免 web 行高撐胖 */
   color: var(--text-primary);
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (mounted only
+   by ResponsiveShell, shell path, tablet+). The parity capture path
+   (?surface=settings-review, no ?shell=1) never mounts it -> 393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .settings-review {
+  container-type: inline-size;
+  container-name: settings-review-surface;
+}
+.kg-responsive-shell .settings-review .settings-review-scroll {
+  overflow-y: auto;
+}
+@container settings-review-surface (min-width: 600px) {
+  .kg-responsive-shell .settings-review .settings-review-stack {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
+}

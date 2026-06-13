@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useApi } from '../../api/ApiContext'
 import type { PodcastProgressResponse, PodcastSeriesSummary } from '../../api/types'
 import type { ScenarioId } from '../../harness/scenarios'
@@ -10,6 +10,8 @@ import {
   type SeriesCard,
 } from './fixtures'
 import { PatternOverlay, PlayFillIcon, StarFillIcon, WaveformBadgeIcon } from './icons'
+import { useShellNav } from '../../shell/ShellNavContext'
+import { pushTargetFor, screenFor } from '../../shell/nav'
 import './podcast-home.css'
 
 /**
@@ -80,6 +82,7 @@ function PodcastHomeScreenApi() {
       return { empty: true, continueItems: [], series: [] }
     }
     const mappedSeries: SeriesCard[] = series.map((s) => ({
+      seriesId: s.id != null ? String(s.id) : undefined,
       coverColor: '#AFC2D3',
       coverPattern: 'waves',
       title: String(s.title ?? s.id ?? ''),
@@ -90,6 +93,8 @@ function PodcastHomeScreenApi() {
     const mappedContinue: ContinueItem[] = progress.map((pr) => {
       const matched = series.find((s) => s.id === pr.series_id)
       return {
+        seriesId: pr.series_id != null ? String(pr.series_id) : undefined,
+        epNum: Number(pr.ep_num),
         coverColor: '#AFC2D3',
         coverPattern: 'waves',
         coverName: String(matched?.title ?? pr.series_id),
@@ -106,10 +111,42 @@ function PodcastHomeScreenApi() {
     }
   }, [loading, series, progress])
 
-  return <PodcastHomeBody fixture={fixture} />
+  // shell 路徑：點系列卡 → push podcast-episode-list（攜真實 seriesId）；
+  // 點繼續收聽 rail → 直開 player（攜 seriesId + epNum）。parity 路徑不傳此
+  // callback，卡片維持非互動 div，故首屏 DOM 與靜態 PNG 逐位元一致。
+  const nav = useShellNav()
+  const openSeries = (seriesId?: string) => {
+    const home = screenFor('podcast-home')
+    const target = pushTargetFor(home, 'open-podcast-series', seriesId ? { seriesId } : undefined)
+    if (target) nav.navigate(target)
+  }
+  const openEpisode = (seriesId?: string, epNum?: number) => {
+    // 先推系列集數列表，再推 player：保留 master-detail 的深層返回語意。
+    const home = screenFor('podcast-home')
+    const list = pushTargetFor(home, 'open-podcast-series', seriesId ? { seriesId } : undefined)
+    if (!list) return
+    nav.navigate(list)
+    const player = pushTargetFor(
+      list,
+      'open-podcast-episode',
+      seriesId ? { seriesId, epNum } : undefined,
+    )
+    if (player) nav.navigate(player)
+  }
+  return <PodcastHomeBody fixture={fixture} onOpenSeries={openSeries} onOpenEpisode={openEpisode} />
 }
 
-function PodcastHomeBody({ fixture }: { fixture: PodcastHomeFixture }) {
+function PodcastHomeBody({
+  fixture,
+  onOpenSeries,
+  onOpenEpisode,
+}: {
+  fixture: PodcastHomeFixture
+  /** shell 路徑：點系列卡 → episode-list。parity 路徑省略 → 卡片非互動。 */
+  onOpenSeries?: (seriesId?: string) => void
+  /** shell 路徑：點繼續收聽 → 直開 player。parity 路徑省略 → 卡片非互動。 */
+  onOpenEpisode?: (seriesId?: string, epNum?: number) => void
+}) {
   return (
     <div className="podcast-home">
       <header className="ph-nav">
@@ -122,11 +159,12 @@ function PodcastHomeBody({ fixture }: { fixture: PodcastHomeFixture }) {
         <main className="ph-scroll">
           <div className="ph-content">
             {fixture.continueItems.length > 0 && (
-              <ContinueShelf items={fixture.continueItems} />
+              <ContinueShelf items={fixture.continueItems} onOpenEpisode={onOpenEpisode} />
             )}
             <SeriesGridSection
               series={fixture.series}
               hasContinueShelf={fixture.continueItems.length > 0}
+              onOpenSeries={onOpenSeries}
             />
           </div>
         </main>
@@ -136,14 +174,20 @@ function PodcastHomeBody({ fixture }: { fixture: PodcastHomeFixture }) {
 }
 
 /** 繼續收聽 shelf — PodcastShelf：serif 標題 + 橫向 rail 卡列。 */
-function ContinueShelf({ items }: { items: ContinueItem[] }) {
+function ContinueShelf({
+  items,
+  onOpenEpisode,
+}: {
+  items: ContinueItem[]
+  onOpenEpisode?: (seriesId?: string, epNum?: number) => void
+}) {
   return (
     <section className="ph-shelf">
       <h2 className="ph-section-title">繼續收聽</h2>
       <div className="ph-shelf-scroll">
         <div className="ph-shelf-row">
           {items.map((item, i) => (
-            <ContinueRailCard key={`${item.title}-${i}`} item={item} />
+            <ContinueRailCard key={`${item.title}-${i}`} item={item} onOpenEpisode={onOpenEpisode} />
           ))}
         </div>
       </div>
@@ -152,9 +196,34 @@ function ContinueShelf({ items }: { items: ContinueItem[] }) {
 }
 
 /** PodcastContinueRailCard（cardWidth 150）。 */
-function ContinueRailCard({ item }: { item: ContinueItem }) {
+function ContinueRailCard({
+  item,
+  onOpenEpisode,
+}: {
+  item: ContinueItem
+  onOpenEpisode?: (seriesId?: string, epNum?: number) => void
+}) {
+  // shell 路徑：可點直開 player。parity 路徑（無 callback）維持非互動 div（DOM 不變）。
+  const interactive = onOpenEpisode != null
+  const navProps = interactive
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: () => onOpenEpisode(item.seriesId, item.epNum),
+        onKeyDown: (e: ReactKeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpenEpisode(item.seriesId, item.epNum)
+          }
+        },
+      }
+    : {}
   return (
-    <div className="ph-rail-card" style={{ '--ph-cover': item.coverColor } as CSSProperties}>
+    <div
+      className="ph-rail-card"
+      style={{ '--ph-cover': item.coverColor } as CSSProperties}
+      {...navProps}
+    >
       <div className="ph-rail-cover">
         <PatternOverlay pattern={item.coverPattern} />
         <span className="ph-rail-cover-name">{item.coverName}</span>
@@ -183,16 +252,18 @@ function ContinueRailCard({ item }: { item: ContinueItem }) {
 function SeriesGridSection({
   series,
   hasContinueShelf,
+  onOpenSeries,
 }: {
   series: SeriesCard[]
   hasContinueShelf: boolean
+  onOpenSeries?: (seriesId?: string) => void
 }) {
   return (
     <>
       {hasContinueShelf && <h2 className="ph-section-title">所有節目</h2>}
       <div className={`ph-grid${hasContinueShelf ? '' : ' ph-grid-top'}`}>
         {series.map((s, i) => (
-          <SeriesCardView key={`${s.title}-${i}`} series={s} />
+          <SeriesCardView key={`${s.title}-${i}`} series={s} onOpenSeries={onOpenSeries} />
         ))}
       </div>
     </>
@@ -200,9 +271,34 @@ function SeriesGridSection({
 }
 
 /** PodcastSeriesCard（poster tile，cover 210）。 */
-function SeriesCardView({ series }: { series: SeriesCard }) {
+function SeriesCardView({
+  series,
+  onOpenSeries,
+}: {
+  series: SeriesCard
+  onOpenSeries?: (seriesId?: string) => void
+}) {
+  // shell 路徑：可點 push episode-list。parity 路徑（無 callback）維持非互動 div。
+  const interactive = onOpenSeries != null
+  const navProps = interactive
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick: () => onOpenSeries(series.seriesId),
+        onKeyDown: (e: ReactKeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpenSeries(series.seriesId)
+          }
+        },
+      }
+    : {}
   return (
-    <div className="ph-series-card" style={{ '--ph-cover': series.coverColor } as CSSProperties}>
+    <div
+      className="ph-series-card"
+      style={{ '--ph-cover': series.coverColor } as CSSProperties}
+      {...navProps}
+    >
       <div className="ph-series-cover">
         <PatternOverlay pattern={series.coverPattern} />
         <span className="ph-series-cover-name">{series.title}</span>

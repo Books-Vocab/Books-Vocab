@@ -133,3 +133,24 @@
   line-height: calc(1.2em + 3px); /* lineSpacing(3) */
   padding: 0 4px; /* AppSpacing.s1 horizontal */
 }
+
+/* ============================================================
+   Responsive (web-only) — shell detail pane only.
+   PARITY ISOLATION: all rules descend from .kg-responsive-shell (shell path,
+   tablet+). Parity capture (?surface=translation-language-settings, no
+   ?shell=1) never mounts it -> 393px byte-identical.
+   ============================================================ */
+.kg-responsive-shell .tls-surface {
+  container-type: inline-size;
+  container-name: tls-surface;
+}
+.kg-responsive-shell .tls-surface .tls-scroll {
+  overflow-y: auto;
+}
+@container tls-surface (min-width: 600px) {
+  .kg-responsive-shell .tls-surface .tls-section {
+    max-width: var(--reader-measure);
+    margin-inline: auto;
+    width: 100%;
+  }
+}
