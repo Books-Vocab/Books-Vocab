@@ -32,3 +32,16 @@ export const BooksIcon = makeGlyph(
 export const RefreshIcon = makeGlyph(
   '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4h-4"/>',
 )
+
+/**
+ * SF `point.3.connected.trianglepath.dotted` — 知識圖譜 header 鈕（鏡射 iOS
+ * KnowledgeGraphPresenter systemImage 與 shell/icons.tsx KnowledgeGraphIcon）。
+ * 三節點三角佈局 + 虛線連邊。
+ */
+export const KnowledgeGraphIcon = makeGlyph(
+  '<circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/>' +
+    '<path d="M10.5 6.7 6.5 16.3M13.5 6.7l4 9.6M7 18h10" stroke-dasharray="0.1 3"/>',
+)
+
+/** SF `plus` — 新增連結 header 鈕（沿用 notebook/settings 的 plus 形狀）。 */
+export const PlusIcon = makeGlyph('<path d="M12 5.5v13M5.5 12h13"/>')
