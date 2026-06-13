@@ -163,12 +163,6 @@ def _notebook_store(user_dir: Path):
     return create_notebook_store(user_dir)
 
 
-def _book_store(user_dir: Path):
-    from .book_store import BookStore
-
-    return BookStore(user_dir / "books.db")
-
-
 def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
     return create_embedding_store(user_dir, llm=llm, notebook_id=notebook_id)
 

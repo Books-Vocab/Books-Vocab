@@ -15,7 +15,7 @@ from ..api_models.library import (
     BookUpdateRequest,
     DeleteBookResponse,
 )
-from ..deps import CurrentUser, _book_store
+from ..deps import CurrentUser
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
@@ -148,6 +148,23 @@ class LibraryStore:
             session.refresh(book)
             return book
 
+    def soft_delete(self, book_id: str) -> LibraryBook | None:
+        """Soft-delete a book by flipping ``is_deleted`` and bumping
+        ``updated_at``. Returns the book (idempotent: an already-deleted book
+        still returns it), or ``None`` if the id is unknown.
+        """
+        with Session(self.engine) as session:
+            book = session.get(LibraryBook, book_id)
+            if book is None:
+                return None
+            if not book.is_deleted:
+                book.is_deleted = True
+                book.updated_at = datetime.now(UTC)
+                session.add(book)
+                session.commit()
+                session.refresh(book)
+            return book
+
 
 def _library_store(user_dir: Path) -> LibraryStore:
     return LibraryStore(user_dir / "library.db")
@@ -207,11 +224,8 @@ def delete_book(book_id: str, user: CurrentUser):
     Idempotent: a second delete of an already-deleted book still returns 200.
     Unknown ids raise 404.
     """
-    store = _book_store(user["dir"])
-    try:
-        result = store.soft_delete(book_id)
-    finally:
-        store.close()
-    if result is False:
+    store = _library_store(user["dir"])
+    result = store.soft_delete(book_id)
+    if result is None:
         raise NotFoundError("Book", book_id)
     return DeleteBookResponse(deleted=book_id)
