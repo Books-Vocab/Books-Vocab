@@ -205,3 +205,44 @@
   color: var(--text-secondary);
   line-height: 1.4;
 }
+
+/* ============================================================
+   RESPONSIVE — shell-gated detail-pane layout.
+
+   PARITY ISOLATION: every rule below is a descendant of .kg-responsive-shell
+   (mounted only by ResponsiveShell on the shell path at tablet+). The parity
+   capture path (?surface=word-detail-sheet without ?shell=1) renders the
+   `.wds-surface` placeholder WITHOUT a .kg-responsive-shell ancestor, so the
+   bare 393x852 transparent render is byte-identical. The loaded view
+   (.wds-surface--loaded) only exists on the shell/API path anyway.
+
+   word-detail-sheet is one of the DETAIL surfaces of the vocabulary
+   master/detail pair: a word row click in the master pane pushes it into the
+   detail pane (nav.ts open-word edge). Inside the detail pane it should pad off
+   the pane edges and clamp the prose to a comfortable reading measure rather
+   than stretching across a wide content column. @container makes it react to
+   the OWN pane width.
+   ============================================================ */
+
+.kg-responsive-shell[data-breakpoint='tablet'] .wds-surface--loaded,
+.kg-responsive-shell[data-breakpoint='desktop'] .wds-surface--loaded,
+.kg-responsive-shell[data-breakpoint='wide'] .wds-surface--loaded {
+  container-type: inline-size;
+  container-name: wds;
+  padding: var(--sp-6); /* breathe off the pane edges (24) */
+}
+
+.kg-responsive-shell[data-breakpoint='tablet'] .wds-surface--loaded .wds-detail,
+.kg-responsive-shell[data-breakpoint='desktop'] .wds-surface--loaded .wds-detail,
+.kg-responsive-shell[data-breakpoint='wide'] .wds-surface--loaded .wds-detail {
+  gap: var(--sp-3); /* a touch more air between sections in a roomier pane */
+}
+
+/* Clamp the prose to a comfortable measure once the pane is wide (the detail
+   pane on desktop/wide is fluid and can grow well past phone width). */
+@container wds (min-width: 680px) {
+  .kg-responsive-shell .wds-surface--loaded .wds-detail {
+    max-width: 680px;
+    margin-inline: auto;
+  }
+}
