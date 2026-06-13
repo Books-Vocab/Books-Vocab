@@ -9,3 +9,4 @@ export {
   useUpdateNotebookMutation,
   useDeleteNotebookMutation,
 } from './notebook'
+export { useVocabCardsQuery } from './vocab'
