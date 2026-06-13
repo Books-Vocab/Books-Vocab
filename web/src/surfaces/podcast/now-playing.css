@@ -1,0 +1,301 @@
+/*
+ * PodcastNowPlaying chrome — the persistent mini-player + option sheets for the
+ * shell-gated podcast flow. Functional-only: this layer is portaled to
+ * document.body and is ONLY mounted behind ?shell=1, so it never reaches the
+ * parity capture DOM. No selector targets .phone-frame or a bare *-surface root,
+ * and there is no responsive @media(min-width>=768)/@container rule here, so
+ * check:responsive stays CLEAN. (framer-motion drives the slide; <Sheet>/vaul
+ * owns the sheet chrome.)
+ */
+
+/* ── mini-player ─────────────────────────────────────────────────────────── */
+
+.np-mini {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px); /* above tab bar */
+  width: min(372px, calc(100vw - 16px));
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 14px;
+  background: var(--card-bg, rgba(255, 255, 255, 0.92));
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  -webkit-backdrop-filter: saturate(1.4) blur(18px);
+  backdrop-filter: saturate(1.4) blur(18px);
+  will-change: transform, opacity;
+}
+
+.np-mini-progress {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.np-mini-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--app-text-primary, #1c1c1e);
+  transition: width 120ms linear;
+}
+
+.np-mini-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.np-mini-art {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--app-text-primary, #1c1c1e);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.np-mini-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.np-mini-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--app-text-primary, #1c1c1e);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.np-mini-series {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-text-tertiary, #9a9aa0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.np-mini-play,
+.np-mini-more {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 19px;
+  background: none;
+  color: var(--app-text-primary, #1c1c1e);
+  cursor: pointer;
+}
+
+.np-mini-more {
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.np-mini-play-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── option sheets (rendered inside the shared <Sheet> body) ─────────────── */
+
+.np-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 16px 8px;
+}
+
+.np-sheet-title {
+  margin: 0;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.np-sheet-section {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.np-sheet-foot {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.np-opt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.np-opt-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--app-text-primary, #1c1c1e);
+}
+
+.np-opt-list li + li .np-opt-row {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.np-opt-icon {
+  flex: 0 0 auto;
+  color: var(--app-text-secondary, #6a6a70);
+}
+
+.np-opt-text {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.np-opt-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--app-text-tertiary, #9a9aa0);
+}
+
+.np-opt-check {
+  flex: 0 0 auto;
+  color: var(--brand-hero, #1c1c1e);
+}
+
+.np-sheet-toggle {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* iOS-style switch */
+.np-switch {
+  flex: 0 0 auto;
+  display: inline-block;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: rgba(120, 120, 128, 0.32);
+  transition: background 160ms ease;
+}
+
+.np-switch-on {
+  background: #34c759;
+}
+
+.np-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 160ms ease;
+}
+
+.np-switch-on .np-switch-knob {
+  transform: translateX(18px);
+}
+
+/* subtitle size chips */
+.np-size-row {
+  display: flex;
+  gap: 10px;
+}
+
+.np-size-chip {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 4px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--card-bg, #fff);
+  color: var(--app-text-secondary, #6a6a70);
+  cursor: pointer;
+}
+
+.np-size-chip-on {
+  border-color: var(--brand-hero, #1c1c1e);
+  color: var(--app-text-primary, #1c1c1e);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.np-size-chip[data-size='s'] .np-size-glyph {
+  font-size: 14px;
+}
+.np-size-chip[data-size='m'] .np-size-glyph {
+  font-size: 18px;
+}
+.np-size-chip[data-size='l'] .np-size-glyph {
+  font-size: 22px;
+}
+.np-size-chip[data-size='xl'] .np-size-glyph {
+  font-size: 26px;
+}
+
+.np-size-glyph {
+  font-family: var(--font-serif, Georgia, serif);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.np-size-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .np-mini-progress-fill,
+  .np-switch,
+  .np-switch-knob {
+    transition: none;
+  }
+}
