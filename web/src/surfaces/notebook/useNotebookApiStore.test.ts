@@ -17,6 +17,7 @@ describe('toFixtureCard', () => {
     }
     const card = toFixtureCard(api, 'nb-1')
     expect(card).toEqual({
+      id: 'nb-1',
       name: '我的單字本',
       color: '#AFC2D3',
       cardCount: 3,
