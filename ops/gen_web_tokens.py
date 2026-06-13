@@ -4,10 +4,14 @@
 SoT = design-system/tokens.json (W3C DTCG format). This script is the ONE place
 that turns those tokens into CSS custom properties for every web surface.
 
-Outputs (GENERATED — never hand-edit):
-  design-system/dist/kg-tokens.css         canonical
-  backend/static/kg-tokens.css             bundled copy for the public 官網
-  backend/static/kg-components.css         bundled copy of the same primitives
+Outputs:
+  design-system/dist/kg-tokens.css         canonical (GENERATED — never hand-edit)
+  backend/static/kg-tokens.css             bundled copy for the public 官網 (GENERATED)
+  backend/static/kg-components.css         copy of the HAND-AUTHORED source
+                                           design-system/dist/kg-components.css —
+                                           edit that source file, NOT this copy nor any
+                                           token here. This script only mirrors it to
+                                           backend/static; it does not generate primitives.
 
 Modes:
   (default)  write all outputs
