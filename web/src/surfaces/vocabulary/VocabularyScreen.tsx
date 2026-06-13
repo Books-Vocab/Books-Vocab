@@ -3,6 +3,8 @@ import { VOCABULARY_FIXTURES } from './fixtures'
 import type { RowReviewState, VocabFixture, VocabRowFixture } from './fixtures'
 import { BooksIcon, MagnifyingGlassIcon, RefreshIcon, SortIcon, SparklesIcon } from './icons'
 import { useVocabStore } from './store'
+import { useVocabApiStore } from './useVocabApiStore'
+import { VocabSceneShell } from '../../shared/VocabSceneShell'
 import './vocabulary.css'
 
 /**
@@ -18,6 +20,10 @@ import './vocabulary.css'
  * 互動化（fixtures 當資料層，store 薄狀態）：搜尋框真輸入過濾、三態 chip 點選過濾、
  * row 點擊就地展開 detail。parity 契約：初始狀態（空搜尋 / 未選 chip / 全收合）下
  * DOM 與靜態 PNG 逐像素一致；互動僅在使用者操作後改變 DOM。
+ *
+ * 當 URL 含 shell=1 時，切換至 API-backed useVocabApiStore（讀 ?notebook_id= 拉取
+ * 真實卡片，映射到 VocabRowFixture 形狀）。搜尋/過濾仍本地處理。非 ready 態由
+ * VocabSceneShell 包裹。
  */
 
 const STAT_LABELS = ['未學習', '待複習', '已複習'] as const
@@ -93,11 +99,72 @@ function StatSegment({
 }
 
 export function VocabularyScreen({ scenario }: { scenario: ScenarioId<'vocabulary'> }) {
+  const shell = new URLSearchParams(window.location.search).get('shell') === '1'
+  if (shell) {
+    const notebookId = new URLSearchParams(window.location.search).get('notebook_id')
+    return <VocabularyScreenApi notebookId={notebookId} />
+  }
+  return <VocabularyScreenFixture scenario={scenario} />
+}
+
+/** Fixture-driven screen — parity harness 路徑（無 shell=1 時）。 */
+function VocabularyScreenFixture({ scenario }: { scenario: ScenarioId<'vocabulary'> }) {
   const fixture = VOCABULARY_FIXTURES[scenario]
   const store = useVocabStore(fixture)
-  const hasNoSeed = fixture.rows.length === 0
+  return <VocabularyBody fixture={fixture} store={store} />
+}
 
-  // zero-data（fixture.empty）優先；其次互動過濾後的 no-match 空狀態。
+/** API-driven screen — shell=1 時使用真實後端資料。 */
+function VocabularyScreenApi({ notebookId }: { notebookId: string | null }) {
+  const store = useVocabApiStore(notebookId)
+  const stats = {
+    unlearned: store.visibleRows.filter((r) => r.reviewState === 'unlearned').length,
+    due: store.visibleRows.filter((r) => r.reviewState === 'due').length,
+    reviewed: store.visibleRows.filter((r) => r.reviewState === 'reviewed').length,
+  }
+  const ctaCount = stats.unlearned + stats.due
+  const fixture: VocabFixture = {
+    stats,
+    ctaCount,
+    rows: store.visibleRows,
+    empty:
+      store.visibleRows.length === 0
+        ? {
+            title: '尚無已收錄單字',
+            description: '同步完成後，這裡會顯示你的雲端單字。',
+            actionTitle: '重新整理',
+            icon: 'books',
+          }
+        : undefined,
+  }
+  return (
+    <VocabSceneShell
+      status={store.status === 'ready' ? 'content' : store.status === 'loading' ? 'loading' : 'error'}
+      onRetry={store.retry}
+    >
+      <VocabularyBody fixture={fixture} store={store} />
+    </VocabSceneShell>
+  )
+}
+
+/** 共享的 vocabulary 畫面本體（fixture / API 兩條路共用）。 */
+function VocabularyBody({
+  fixture,
+  store,
+}: {
+  fixture: VocabFixture
+  store: {
+    query: string
+    setQuery: (q: string) => void
+    activeFilter: RowReviewState | null
+    toggleFilter: (f: RowReviewState) => void
+    visibleRows: VocabRowFixture[]
+    isNoMatch: boolean
+    expandedWord: string | null
+    toggleExpanded: (word: string) => void
+  }
+}) {
+  const hasNoSeed = fixture.rows.length === 0
   const showZeroData = hasNoSeed && fixture.empty
 
   return (
