@@ -36,6 +36,13 @@ verified_against: d5542a1
 - **pipeline(接力)** — 前一交付餵後一(例:`podcast` 分析 → 規劃 → 腳本 → TTS → 字幕)。每棒仍是「上一階 → 單一下一階」,**深 pipeline 不是深巢狀**。
 - **協作介質** — 下一階之間**不平輩直連**;共享狀態走 SoT docs / git(blackboard),跨節點交集靠檔案而非傳話。
 
+## 下一階的兩種角色
+
+委派前先分清你派的是哪一種:
+
+- **部門(work-doer)** — 擁有 scope、產出改動。由上一階委派「一塊工作」。Line:`ios` / `backend` / `ops-engineer`(做 domain);Staff:`docs-steward`(維 SoT)、`platform-steward`(推 kaizen)。
+- **通用審核器(shared reviewer)** — **不**擁有 scope、**不**產出改動,只審「任何節點自己的產出」。`code-reviewer` 即此:**任何節點**(不限總經理)完成一個可交付單位時,自行調用它當鐵律4 的自查 gate,審畢回給調用它的那個節點(上一階)。它是橫切共享服務,不是某人專屬部門。
+
 ## 下行 task brief 模板
 
 > 五欄的**定義**見 CLAUDE.md 組織模型「下行 = task brief」;此處只給可填骨架 + 一個已驗證實例。
@@ -56,3 +63,14 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 - 全部寫完才一起 review(違鐵律4)。
 - 無當下驗證輸出就宣稱完成(違鐵律2)。
 - 讓平輩下一階直接協調(應經共同上一階,或走 SoT/git)。
+- **硬幹**:撞到爛工具 / 壞架構卻無聲妥協繞路,而非報根因(違鐵律9;見下「反硬幹升級階梯」)。
+
+## 反硬幹:摩擦升級階梯(自我提升迴圈)
+
+撞到工具 / CLI / 文檔 / 架構摩擦時**禁止無聲妥協繞路**;先第一性原理判根因(鐵律9),依嚴重度(`kg-router`「Tool Friction」分級)走:
+
+- **小** → receipt 的 Tooling Debt **強制表態**(`none` 或一筆)+ 登 `docs/runbook/improvement_backlog.md`,回到原目標。
+- **中大** → 停手、修工具、跑 regression、再續(鐵律9)。
+- **結構 / 架構級** → 升級回上一階(必要時到執行長)。
+
+owner = `platform-steward`(triage backlog、把 fix 派給對的部門、追到 resolved)。每筆 resolved 連解決 commit = **可回溯**。沉默 = 違規。
