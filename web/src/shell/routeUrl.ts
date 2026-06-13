@@ -39,12 +39,21 @@ function tabForRootSurface(surface: SurfaceId): string | null {
   return tab ? tab.id : null
 }
 
+/**
+ * value 編碼 — encodeURIComponent 已編 : , / @ 等分隔符，但**不編 `~`**（RFC3986
+ * unreserved）。`~` 是 seg 的 params 分隔符，故額外手動編碼，讓 grammar 分隔符集
+ * 與 payload 字元集完全不重疊（消除隱性脆弱依賴）。
+ */
+function encodeValue(value: string): string {
+  return encodeURIComponent(value).replace(/~/g, '%7E')
+}
+
 function encodeParams(params: ScreenParams): string {
   const parts: string[] = []
   for (const key of PARAM_KEYS) {
     const value = params[key]
     if (value === undefined || value === null) continue
-    parts.push(`${key}:${encodeURIComponent(String(value))}`)
+    parts.push(`${key}:${encodeValue(String(value))}`)
   }
   return parts.join(',')
 }
@@ -61,19 +70,28 @@ function encodeScreen(screen: Screen): string {
   return seg
 }
 
+/**
+ * 解析非空 params 段（`k:v,k:v`）；任何畸形或越域 → null（禁止靜默 fallback）：
+ *   - 未知 key / 缺冒號 / 重複 key → null
+ *   - epNum 非「非負整數」字面（空 / 小數 / 負 / hex / 科學記號）→ null
+ *   - format 非 'epub'|'pdf'|'txt'|'md' → null（呼應 ScreenParams.format union，
+ *     不讓 `as ScreenParams` cast 在髒值上撒謊）
+ */
 function decodeParams(paramsStr: string): ScreenParams | null {
-  if (!paramsStr) return {}
   const params: Record<string, string | number> = {}
   for (const pair of paramsStr.split(',')) {
     const colon = pair.indexOf(':')
     if (colon < 0) return null
     const key = pair.slice(0, colon)
     if (!(PARAM_KEYS as readonly string[]).includes(key)) return null
+    if (key in params) return null
     const raw = decodeURIComponent(pair.slice(colon + 1))
     if (key === 'epNum') {
-      const n = Number(raw)
-      if (!Number.isFinite(n)) return null
-      params[key] = n
+      if (!/^\d+$/.test(raw)) return null
+      params[key] = Number(raw)
+    } else if (key === 'format') {
+      if (raw !== 'epub' && raw !== 'pdf' && raw !== 'txt' && raw !== 'md') return null
+      params[key] = raw
     } else {
       params[key] = raw
     }
@@ -86,7 +104,6 @@ function decodeScreen(seg: string): Screen | null {
   if (!seg) return null
   const tilde = seg.indexOf('~')
   const head = tilde >= 0 ? seg.slice(0, tilde) : seg
-  const paramsStr = tilde >= 0 ? seg.slice(tilde + 1) : ''
 
   const at = head.indexOf('@')
   const surface = at >= 0 ? head.slice(0, at) : head
@@ -97,8 +114,14 @@ function decodeScreen(seg: string): Screen | null {
   const scenario = scenarioRaw ?? scenarios[0]
   if (!scenarios.includes(scenario)) return null
 
-  const params = decodeParams(paramsStr)
-  if (params === null) return null
+  let params: ScreenParams = {}
+  if (tilde >= 0) {
+    const paramsStr = seg.slice(tilde + 1)
+    if (paramsStr === '') return null // 空 `~` 非 canonical（navToPath 不輸出）
+    const decoded = decodeParams(paramsStr)
+    if (decoded === null) return null
+    params = decoded
+  }
 
   const screen = { surface, scenario } as Screen
   return Object.keys(params).length > 0 ? { ...screen, params } : screen
@@ -118,9 +141,12 @@ export function navToPath(state: NavState): string {
 export function pathToNav(path: string): NavState | null {
   if (path !== ROUTE_PREFIX && !path.startsWith(`${ROUTE_PREFIX}/`)) return null
 
-  const rest = path.slice(ROUTE_PREFIX.length)
-  const segs = rest.split('/').filter(Boolean)
-  if (segs.length === 0) return null
+  // 容忍單一尾斜線，但拒絕內部空 seg（雙斜線 /app//x）— navToPath 永不輸出空 seg，
+  // 故空 seg = 畸形輸入，明確 null 而非靜默正規化。
+  let rest = path.slice(ROUTE_PREFIX.length).replace(/\/$/, '')
+  if (rest === '') return null // '/app' 或 '/app/'：無 tab seg
+  const segs = rest.slice(1).split('/') // 去掉前導 '/' 再切
+  if (segs.some((s) => s === '')) return null
 
   const screen0 = decodeScreen(segs[0])
   if (!screen0) return null
