@@ -2,14 +2,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Protocol
 
 from openai import OpenAIError
 
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, user_dir: Any) -> Any:
+        ...
+
+
+class GraphStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class EmbeddingStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class ClientFactory(Protocol):
+    def __call__(self, provider: Any) -> Any:
+        ...
 
 
 def _touch_linked_cards(
@@ -31,8 +50,8 @@ async def _step_enrich(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
-    client_factory: Callable[..., Any],
+    card_store_factory: CardStoreFactory,
+    client_factory: ClientFactory,
     logger: logging.Logger,
     force: bool = False,
     notebook_id: str = "default",
@@ -100,10 +119,10 @@ async def _step_embed_and_judge(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[..., Any],
-    embedding_store_factory: Callable[..., Any],
-    client_factory: Callable[..., Any],
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    embedding_store_factory: EmbeddingStoreFactory,
+    client_factory: ClientFactory,
     logger: logging.Logger,
     link_kind_enum: Any,
     notebook_id: str = "default",
@@ -404,7 +423,7 @@ async def _step_difficulty(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
+    card_store_factory: CardStoreFactory,
     logger: logging.Logger,
     notebook_id: str = "default",
 ) -> int:
