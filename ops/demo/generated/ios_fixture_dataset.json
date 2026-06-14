@@ -2455,6 +2455,119 @@
         }
       ],
       "notebookSyncStatus": 1
+    },
+    "wordEdit": {
+      "notebookRemoteId": "ui-word-edit-notebook",
+      "notebookName": "Word Edit Fixture",
+      "bookTitle": "The Weight of Words",
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity in the passage we read together.",
+          "explanation": "意外發現美好事物的能力；無心插柳的幸運。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Editing Notes",
+          "kgCardId": "word-edit-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "production",
+          "reviewExamples": [
+            "It was pure serendipity in the passage we read together."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ephemeral",
+          "translation": "短暫的",
+          "context": "The essay called the afternoon light ephemeral.",
+          "explanation": null,
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Editing Notes",
+          "kgCardId": "word-edit-ephemeral",
+          "difficultyTier": "core",
+          "reviewMode": "production",
+          "reviewExamples": [
+            "The essay called the afternoon light ephemeral."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "verisimilitude",
+          "translation": "逼真；貌似真實的特質，常用於形容文學或藝術作品營造的可信感",
+          "context": "The novel earned verisimilitude by giving ordinary objects precise names.",
+          "explanation": "這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。這個詞描述作品在細節與情境上達到的真實感，使讀者願意暫時擱置懷疑。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Editing Notes",
+          "kgCardId": "word-edit-verisimilitude",
+          "difficultyTier": "advanced",
+          "reviewMode": "production",
+          "reviewExamples": [
+            "The novel earned verisimilitude by giving ordinary objects precise names."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "antidisestablishmentarianism",
+          "translation": "反對廢除國教制度的立場",
+          "context": "The margin note used antidisestablishmentarianism as a stress test for long headings.",
+          "explanation": "一個常被引用為英語中最長單字之一的政治神學名詞。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Editing Notes",
+          "kgCardId": "word-edit-antidisestablishmentarianism",
+          "difficultyTier": "advanced",
+          "reviewMode": "production",
+          "reviewExamples": [
+            "The margin note used antidisestablishmentarianism as a stress test for long headings."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
     }
   },
   "reviewDeck": {

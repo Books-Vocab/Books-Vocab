@@ -149,6 +149,29 @@ import Playbook
         )
     }
 
+    @Test func wordEditCatalogUsesUIWorldVocabularySeed() throws {
+        let wordEditScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("WordEditScenarios.swift")
+        let source = try String(contentsOf: wordEditScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("sampleEntry", "Word Edit catalog must not construct local vocabulary entries"),
+            ("Sample Book", "Word Edit catalog book title must come from UI World"),
+            ("VocabularyEntry(", "Word Edit catalog must not inline SwiftData row literals"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(wordEditScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: .wordEdit)"),
+            "Word Edit catalog must source entries from UI World vocabulary.wordEdit"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Word Edit catalog must materialize UI World vocabulary rows into SwiftData"
+        )
+    }
+
     @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
         let subscriptionScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
