@@ -16,6 +16,7 @@ import shutil
 from pathlib import Path
 
 from catalog_review_sync import REVIEW_HTML_NAME
+from uitest_review_workspace import ensure_workspace, write_workspace_index as write_persistent_workspace_index
 
 
 def link_or_copy(source: Path, target: Path) -> None:
@@ -176,24 +177,7 @@ def load_workspace_index(workspace_root: Path) -> dict:
 
 
 def write_workspace_index(workspace_root: Path, run: dict) -> dict:
-    workspace_root.mkdir(parents=True, exist_ok=True)
-    index = load_workspace_index(workspace_root)
-    runs = [
-        existing
-        for existing in index.get("runs", [])
-        if (existing.get("flowId"), existing.get("variantId")) != (run.get("flowId"), run.get("variantId"))
-    ]
-    runs.insert(0, run)
-    runs.sort(key=lambda item: item.get("lastRunAt") or "", reverse=True)
-    index["runs"] = runs
-    index["summary"] = workspace_summary(runs)
-    index["flows"] = flow_records(runs)
-    (workspace_root / "index.json").write_text(
-        json.dumps(index, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    (workspace_root / REVIEW_HTML_NAME).write_text(render_workspace_html(index), encoding="utf-8")
-    return index
+    return write_persistent_workspace_index(workspace_root, run)
 
 
 def _esc(value) -> str:
