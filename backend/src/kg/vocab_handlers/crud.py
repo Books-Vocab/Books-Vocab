@@ -15,7 +15,9 @@ from ..vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
     batch_delete_vocab_words,
+    decode_cursor,
     delete_vocab_word,
+    encode_cursor,
     list_vocab_cards,
     lookup_vocab_word,
     update_vocab_word_content,
@@ -32,21 +34,29 @@ def list_vocab_response(
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
-) -> list[Any]:
+    limit: int = 5000,
+    cursor: str | None = None,
+) -> tuple[list[Any], str | None]:
+    """Return ``(cards, next_cursor_token)``. ``cursor`` is the opaque token
+    from a previous page's ``X-Next-Cursor`` header; ``next_cursor_token`` is
+    None on the last page. Raises BadRequestError on a malformed cursor."""
+    after = decode_cursor(cursor)
     stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    cards, _next_cursor = list_vocab_cards(
+    cards, next_cursor = list_vocab_cards(
         since=since,
         cards_store=stores.cards,
         graph=stores.graph,
         card_response_builder=card_response_builder,
         notebook_id=notebook_id,
+        limit=limit,
+        after=after,
     )
-    return cards
+    return cards, encode_cursor(next_cursor)
 
 
 def lookup_word_response(

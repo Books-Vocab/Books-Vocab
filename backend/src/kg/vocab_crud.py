@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from .api_models import CardResponse
@@ -20,6 +20,44 @@ from .vocab_shared import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def encode_cursor(cursor: tuple[datetime, str] | None) -> str | None:
+    """Encode an ``(updated_at, id)`` cursor as the opaque token
+    ``f"{updated_at_iso}|{id}"``. Returns ``None`` for ``None`` (last page)."""
+    if cursor is None:
+        return None
+    updated_at, card_id = cursor
+    return f"{updated_at.isoformat()}|{card_id}"
+
+
+def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
+    """Decode an opaque cursor token back to ``(updated_at, id)``.
+
+    Splits on the first ``|`` (ISO timestamps contain none; ids are hex).
+
+    The timestamp must round-trip to the **naive UTC** value stored in the card
+    table verbatim. We parse with ``datetime.fromisoformat`` directly rather than
+    ``parse_datetime`` because the latter reinterprets a naive ISO string as
+    *local* time before converting to UTC — an 8h-class shift on a UTC+N host
+    that would slide the cursor boundary backwards and re-yield the previous
+    page. A naive token (the common case, since ``encode_cursor`` emits the
+    stored naive value) is kept as-is; a tz-aware token is converted to UTC then
+    stripped. Raises :class:`BadRequestError` on any malformed token rather than
+    silently restarting pagination from the top.
+    """
+    if not token:
+        return None
+    raw_ts, sep, card_id = token.partition("|")
+    if not sep or not card_id:
+        raise BadRequestError("Invalid cursor")
+    try:
+        parsed = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise BadRequestError("Invalid cursor") from exc
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return (parsed, card_id)
 
 
 def _resolve_with_neighbours(cards: list[Any], graph: Any, cards_store: Any) -> dict[str, Any]:
