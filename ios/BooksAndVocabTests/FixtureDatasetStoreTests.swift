@@ -170,7 +170,11 @@ struct FixtureDatasetStoreTests {
                   "audioAvailable": true,
                   "previewAvailable": true,
                   "previewDurationSec": 60,
-                  "subtitleAvailable": true
+                  "subtitleAvailable": true,
+                  "download": {
+                    "audioAssetRef": "audio.runtime-audio",
+                    "subtitleAssetRef": "subtitles.runtime-subtitle"
+                  }
                 }
               ]
             }
@@ -267,7 +271,10 @@ struct FixtureDatasetStoreTests {
         """
 
         try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
-            #expect(FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview)?.seriesTitle == "Runtime Series")
+            let runtimeSeed = FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview)
+            #expect(runtimeSeed?.seriesTitle == "Runtime Series")
+            #expect(runtimeSeed?.episodes.first?.download?.audioAssetRef == "audio.runtime-audio")
+            #expect(runtimeSeed?.episodes.first?.download?.subtitleAssetRef == "subtitles.runtime-subtitle")
             #expect(FixtureDatasetStore.readerSeed(for: .realBookLibrary)?.entry.word == "introduction")
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.word == "affect")
             #expect(FixtureDatasetStore.reviewDeckSeed(for: .probe)?.entries.first?.word == "probeword001")

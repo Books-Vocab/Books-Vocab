@@ -34,6 +34,7 @@ extension UITestFixtureSeed {
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {
+                let download = try materializeDownload(for: episodeSeed)
                 let episode = PodcastEpisode(
                     remoteId: episodeSeed.remoteId,
                     episodeNumber: episodeSeed.episodeNumber,
@@ -44,7 +45,8 @@ extension UITestFixtureSeed {
                 episode.audioAvailable = episodeSeed.audioAvailable
                 episode.previewAvailable = episodeSeed.previewAvailable
                 episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
-                episode.localAudioPath = fixture.audioURL.path
+                episode.localAudioPath = download.audioURL?.path
+                episode.localSubtitlePath = download.subtitleURL?.path
                 episode.subtitleAvailable = episodeSeed.subtitleAvailable
                 episode.inlineSubtitle = subtitle
                 context.insert(episode)
@@ -94,6 +96,24 @@ extension UITestFixtureSeed {
             seriesTitle: seed.seriesTitle,
             hostNames: seed.hostNames
         )
+    }
+
+    private struct MaterializedEpisodeDownload {
+        let audioURL: URL?
+        let subtitleURL: URL?
+    }
+
+    private static func materializeDownload(
+        for episode: UIWorldRuntimePodcastEpisodeSeed
+    ) throws -> MaterializedEpisodeDownload {
+        guard let download = episode.download else {
+            return MaterializedEpisodeDownload(audioURL: nil, subtitleURL: nil)
+        }
+        let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: download.audioAssetRef)
+        let subtitleURL = try download.subtitleAssetRef.map {
+            try FixtureDatasetStore.requireInstalledAssetURL(ref: $0)
+        }
+        return MaterializedEpisodeDownload(audioURL: audioURL, subtitleURL: subtitleURL)
     }
 }
 #endif
