@@ -73,6 +73,7 @@ struct RepoFixtureDatasetsContractTests {
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
+            expectAuthUIStateKeys(topLevel, dataset: stem)
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectSwiftDataRowStateKeys(topLevel, dataset: stem)
@@ -383,6 +384,18 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
+    private func expectAuthUIStateKeys(_ topLevel: [String: Any], dataset: String) {
+        let authFixtures = topLevel["auth"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in authFixtures {
+            for key in ["authError", "isAuthenticating"] {
+                #expect(
+                    seed.keys.contains(key),
+                    "\(dataset): auth.\(fixtureKey) must explicitly declare \(key)"
+                )
+            }
+        }
+    }
+
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
@@ -485,6 +498,10 @@ struct RepoFixtureDatasetsContractTests {
         case .absent:
             #expect(!seed.isLoggedIn, "\(dataset): \(owner) keychainTokenState=absent requires isLoggedIn=false")
             #expect(seed.token == nil, "\(dataset): \(owner) keychainTokenState=absent must not include token")
+        }
+        if seed.isLoggedIn {
+            #expect(!seed.isAuthenticating, "\(dataset): \(owner) logged-in auth seed must not also be authenticating")
+            #expect(seed.authError == nil, "\(dataset): \(owner) logged-in auth seed must not carry login error copy")
         }
     }
 
