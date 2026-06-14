@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 7a0edbd5
+verified_against: 1e5e9ac4
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -50,6 +50,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Bookshelf View 契約（無本地 Book row / empty fallback）
 `BookshelfViewScenarios` 的 populated / single / empty 狀態必須取 UI World `bookshelf.*` seed；empty 也必須是 manifest 內明示的 `bookshelf.empty_library`，不可用本地 `return` 表示。scenario 必須透過 `BookshelfFixtures.renderModel(for:)` materialize SwiftData `Book` rows；缺 seed、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`BookshelfFixtures` 的 container 是非 optional；`BookshelfPreviews` 不得以 `EmptyView()` 隱藏 materialization failure。`CatalogCoverageTests.bookshelfViewCatalogUsesUIWorldBookshelfSeeds` 擋回本地 fixture enum、inline `Book(title:)`、`try? context.save()` 與硬寫書名。
+
+### Book Card 契約（無本地 Book row / 日期常數）
+`BookCardScenarios` 的 placeholder EPUB、PDF badge、mid-progress、complete、long-title / A11y 狀態必須取 UI World `bookshelf.book_card_*` seed。scenario 只能用 fixture enum 選 seed；title、author、fileName、format、progression、dateLastRead、referenceDate 與 bookAssetRef 都屬於 manifest。每個 book_card seed 必須剛好一筆 book row；缺 seed、book row 不唯一、ModelContainer 建立或 save 失敗都直接 fail-fast。`CatalogCoverageTests.bookCardCatalogUsesUIWorldBookshelfSeeds` 擋回本地 `Spec`、inline `Book(...)`、hardcoded `Date(timeIntervalSince1970:)`、fixture fileName、hardcoded title/author/progression。
 
 ### Podcast episode list 契約（無本地 series / episode / auth）
 `PodcastEpisodeListViewScenarios` 的 populated / empty 狀態必須取 UI World `runtimePodcast.*` seed，登入狀態必須取 UI World `auth.signedIn` seed；empty 也必須從明示 runtimePodcast seed 派生，不可用本地 fixture enum 或 hardcoded series id。scenario 必須把 manifest 的 `PodcastSeries` / `PodcastEpisode` rows materialize 進 in-memory SwiftData，並保留 `audioAvailable` / `previewAvailable` / `previewDurationSec` / `subtitleAvailable` 等播放可用性狀態；缺 seed、auth 非 logged-in、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.podcastEpisodeListCatalogUsesUIWorldRuntimePodcastSeeds` 擋回本地 podcast fixture id、硬寫 series/user、inline `PodcastEpisode(remoteId:)` 與 `try? container.mainContext.save()`。
