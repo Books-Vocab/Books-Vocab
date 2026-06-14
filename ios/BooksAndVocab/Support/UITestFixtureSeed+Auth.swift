@@ -135,14 +135,8 @@ extension UITestFixtureSeed {
     /// Same UI World-owned asset domain as the podcast playable preview.
     private static func resolveAuthPodcastFixture() throws -> AuthPodcastFixture {
         let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: .tieredCatalog)
-        let audioURL = URL(fileURLWithPath: seed.audioPath)
-        let subtitleURL = URL(fileURLWithPath: seed.subtitlePath)
-        guard FileManager.default.fileExists(atPath: audioURL.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: audioURL.path])
-        }
-        guard FileManager.default.fileExists(atPath: subtitleURL.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: subtitleURL.path])
-        }
+        let audioURL = try FixtureDatasetStore.requireAssetURL(ref: seed.audioAssetRef)
+        let subtitleURL = try FixtureDatasetStore.requireAssetURL(ref: seed.subtitleAssetRef)
         return AuthPodcastFixture(seed: seed, audioURL: audioURL, subtitleURL: subtitleURL)
     }
 

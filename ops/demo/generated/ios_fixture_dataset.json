@@ -1,6 +1,13 @@
 {
-  "schema": "kg.fixture.dataset.v1",
+  "schema": "kg.fixture.dataset.v2",
   "datasetID": "demo-demo-user",
+  "assets": {
+    "books": {},
+    "audio": {},
+    "subtitles": {},
+    "text": {},
+    "images": {}
+  },
   "auth": {
     "signedIn": {
       "isLoggedIn": true,

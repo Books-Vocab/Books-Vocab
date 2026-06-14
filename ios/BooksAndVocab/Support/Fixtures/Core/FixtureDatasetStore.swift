@@ -1,10 +1,12 @@
 import Foundation
+import CryptoKit
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 
 struct FixtureDatasetDocument: Decodable {
     let schema: String?
     let datasetID: String?
+    let assets: UIWorldAssetManifest
     let auth: [String: UIWorldAuthSeed]
     let entitlements: [String: UIWorldEntitlementsSeed]
     let settings: [String: SettingsFixtureSeed]
@@ -20,6 +22,7 @@ struct FixtureDatasetDocument: Decodable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
         case datasetID
+        case assets
         case auth
         case entitlements
         case settings
@@ -43,6 +46,7 @@ struct FixtureDatasetDocument: Decodable {
     init(
         schema: String? = nil,
         datasetID: String? = nil,
+        assets: UIWorldAssetManifest = .empty,
         auth: [String: UIWorldAuthSeed] = [:],
         entitlements: [String: UIWorldEntitlementsSeed] = [:],
         settings: [String: SettingsFixtureSeed] = [:],
@@ -57,6 +61,7 @@ struct FixtureDatasetDocument: Decodable {
     ) {
         self.schema = schema
         self.datasetID = datasetID
+        self.assets = assets
         self.auth = auth
         self.entitlements = entitlements
         self.settings = settings
@@ -74,6 +79,7 @@ struct FixtureDatasetDocument: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decodeIfPresent(String.self, forKey: .schema)
         datasetID = try container.decodeIfPresent(String.self, forKey: .datasetID)
+        assets = try container.decodeIfPresent(UIWorldAssetManifest.self, forKey: .assets) ?? .empty
         auth = try container.decodeIfPresent([String: UIWorldAuthSeed].self, forKey: .auth) ?? [:]
         entitlements = try container.decodeIfPresent([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) ?? [:]
         settings = try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
@@ -85,6 +91,55 @@ struct FixtureDatasetDocument: Decodable {
         reader = try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
         vocabulary = try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
         reviewDeck = try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
+    }
+}
+
+struct UIWorldAsset: Codable, Equatable {
+    let sourcePath: String
+    let sha256: String
+    let installAs: String?
+}
+
+struct UIWorldAssetManifest: Codable, Equatable {
+    let books: [String: UIWorldAsset]
+    let audio: [String: UIWorldAsset]
+    let subtitles: [String: UIWorldAsset]
+    let text: [String: UIWorldAsset]
+    let images: [String: UIWorldAsset]
+
+    static let empty = UIWorldAssetManifest(
+        books: [:],
+        audio: [:],
+        subtitles: [:],
+        text: [:],
+        images: [:]
+    )
+
+    var isEmpty: Bool {
+        books.isEmpty && audio.isEmpty && subtitles.isEmpty && text.isEmpty && images.isEmpty
+    }
+
+    var refs: [String] {
+        [
+            books.keys.map { "books.\($0)" },
+            audio.keys.map { "audio.\($0)" },
+            subtitles.keys.map { "subtitles.\($0)" },
+            text.keys.map { "text.\($0)" },
+            images.keys.map { "images.\($0)" },
+        ].flatMap { $0 }.sorted()
+    }
+
+    func asset(for ref: String) -> UIWorldAsset? {
+        let parts = ref.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return nil }
+        switch parts[0] {
+        case "books": return books[parts[1]]
+        case "audio": return audio[parts[1]]
+        case "subtitles": return subtitles[parts[1]]
+        case "text": return text[parts[1]]
+        case "images": return images[parts[1]]
+        default: return nil
+        }
     }
 }
 
@@ -129,8 +184,8 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
 }
 
 struct UIWorldRuntimePodcastSeed: Codable, Equatable {
-    let audioPath: String
-    let subtitlePath: String
+    let audioAssetRef: String
+    let subtitleAssetRef: String
     let seriesRemoteId: String
     let seriesTitle: String
     let hostNames: [String]
@@ -146,7 +201,7 @@ enum UIWorldReaderFixtureID: String, CaseIterable {
 }
 
 struct UIWorldReaderSeed: Codable, Equatable {
-    let textPath: String
+    let textAssetRef: String
     let title: String
     let author: String
     let bookFileName: String
@@ -310,6 +365,32 @@ enum FixtureDatasetStore {
             preconditionFailure("UI World is missing runtimePodcast.\(fixtureID.rawValue)")
         }
         return seed
+    }
+
+    static func requireAssetURL(ref: String) throws -> URL {
+        guard case let .loaded(document, _) = loadState() else {
+            preconditionFailure("UI World is not loaded; asset \(ref) cannot resolve")
+        }
+        guard let asset = document.assets.asset(for: ref) else {
+            preconditionFailure("UI World is missing asset \(ref)")
+        }
+        let url = URL(fileURLWithPath: asset.sourcePath)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        let actual = try sha256Hex(for: url)
+        guard actual == asset.sha256 else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: url.path,
+                NSLocalizedDescriptionKey: "UI World asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(actual)",
+            ])
+        }
+        return url
+    }
+
+    static func sha256Hex(for url: URL) throws -> String {
+        let data = try Data(contentsOf: url)
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     static func readerSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed? {

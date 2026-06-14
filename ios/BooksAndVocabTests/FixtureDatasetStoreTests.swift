@@ -9,7 +9,7 @@ struct FixtureDatasetStoreTests {
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
-          "schema": "kg.fixture.dataset.v1",
+          "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-ui-world",
           "auth": {
             "signedIn": {
@@ -79,12 +79,37 @@ struct FixtureDatasetStoreTests {
     @Test @MainActor func externalDatasetDeclaresRuntimeWorlds() throws {
         let dataset = """
         {
-          "schema": "kg.fixture.dataset.v1",
+          "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-runtime-worlds",
+          "assets": {
+            "books": {},
+            "audio": {
+              "runtime-audio": {
+                "sourcePath": "/tmp/audio.m4a",
+                "sha256": "unused-in-decode-test",
+                "installAs": null
+              }
+            },
+            "subtitles": {
+              "runtime-subtitle": {
+                "sourcePath": "/tmp/audio.srt",
+                "sha256": "unused-in-decode-test",
+                "installAs": null
+              }
+            },
+            "text": {
+              "reader-source": {
+                "sourcePath": "/tmp/source.md",
+                "sha256": "unused-in-decode-test",
+                "installAs": null
+              }
+            },
+            "images": {}
+          },
           "runtimePodcast": {
             "playablePreview": {
-              "audioPath": "/tmp/audio.m4a",
-              "subtitlePath": "/tmp/audio.srt",
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
@@ -108,7 +133,7 @@ struct FixtureDatasetStoreTests {
           },
           "reader": {
             "realBookLibrary": {
-              "textPath": "/tmp/source.md",
+              "textAssetRef": "text.reader-source",
               "title": "Reader Source",
               "author": "KG",
               "bookFileName": "reader.epub",
@@ -208,7 +233,7 @@ struct FixtureDatasetStoreTests {
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {
-          "schema": "kg.fixture.dataset.v1",
+          "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-marketing",
           "settings": {
             "subscribed_active": {
@@ -356,7 +381,7 @@ struct FixtureDatasetStoreTests {
     @Test @MainActor func externalDatasetOverridesNotebookAndPodcastSeeds() throws {
         let dataset = """
         {
-          "schema": "kg.fixture.dataset.v1",
+          "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-notebook-podcast",
           "notebook": {
             "populated": {

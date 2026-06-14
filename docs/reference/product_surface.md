@@ -50,15 +50,15 @@ verified_against: 5688f7e0
 
 - **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize + 唯讀 profile face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由登入 record 衍生，與可變 config bundle 分離)
 - **User config / account lifecycle**
-- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + 單字內容編修 (`PATCH /api/vocab/{word}` 改 meaning/note，`explanation` 為 `note` write-through alias) + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留）
+- **Vocabulary / graph-link APIs**: hide/unhide/blocked pairs + 單字內容編修 (`PATCH /api/vocab/{word}` 改 meaning/note，`explanation` 為 `note` write-through alias) + `/api/vocab/review-events` 完整複習事件同步（client UUID 冪等、刪卡後事件仍保留） + `GET /api/vocab` cursor 分頁（`limit`/`cursor` query + `X-Next-Cursor` header，與 `since` 增量正交）
 - **Library APIs**: server 端書庫鏡像；list(`?since=` 增量含 tombstone)/create(`client_book_id` 冪等)/patch(metadata+notebook 綁定)/position(LWW 閱讀進度)/`DELETE /api/library/books/{id}` 軟刪（set `is_deleted`，冪等）；書檔資產跨裝置（Arch PR #7）：`POST /api/library/books/{id}/asset-upload`（`LIBRARY_BUCKET` 未設或 `local_only`→宣告 local-only；已設→presigned PUT + 配額上限）、`GET /api/library/books/{id}/asset`（object-stored→307 redirect presigned GET；local-only→409）
 - **Translate / explain / pipeline**
 - **Card / graph / embedding / difficulty / enrichment**
 - **Multi-format import parsing**
-- **Query path perf**: incremental sync / zipf cache / filter-before-sort
+- **Query path perf**: incremental sync / zipf cache / filter-before-sort / cursor-bounded page fetch (`CardStore.page_cards`，不物化全表) / batched embedding similarity (`EmbeddingStore.find_similar_batch`，單次 matmul + argpartition top-k)
 - **Write path perf**: batch ops / N+1 elimination
 - **公開頁(官網)**: landing 首頁(`/`)+ privacy / terms / support / guide 已重構成消費 iOS 設計系統的官網 — Cormorant 襯線標題 + 暖色盤 + z1 卡片 + divider、暗色 no-FOUC toggle、響應式、a11y(skip-link / focus-visible / aria-current / 單一 h1+h2、FAQ 原生 `<details>`);landing 含 App Store CTA pill(自繪 Apple glyph、非 Apple licensed badge)+ token 渲染 iPhone device mock(illustrative、內嵌詞卡 popover 自證選詞流程)+ honest trust strip(formats/platform only、never a metric);全站注入 PWA/SEO 資產(og-image / favicon / apple-touch)+ `site-motion.js` progressive-enhancement scroll-reveal(reduced-motion / no-JS 全降級);吃 `/static/{kg-tokens,kg-components,site}.css` + 自帶 Cormorant Garamond / ElmsSans woff2,由 `app.mount("/static", StaticFiles)` 服務(`backend/static/`,Dockerfile `COPY static/`)
-- **System observability**: `/api/system/info` + VERSION tracking + `deploy.log` + site-wide observability panel + `observability_alerts` wired to `/system/info`
+- **System observability**: `/api/system/info` + VERSION tracking + `deploy.log` + site-wide observability panel + `observability_alerts` wired to `/system/info`（pipeline-failure / judge-rejection / translate-latency-p95 / **LLM error-rate** 四 check，threshold+cooldown）
 - **Pipeline telemetry** (`pipeline_log.db`): per-run/step timing + status + items;admin UI summary stats + stacked bar chart
 - **Pipeline lock-queue**: concurrent triggers queue via `async with lock` + catch-all defense for user-deleted-mid-queue KeyError
 - **Pipeline `degree_cap` audit metric fix**: UPDATE not INSERT;4 caller queries exclude `degree_cap`

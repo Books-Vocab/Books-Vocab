@@ -106,10 +106,7 @@ extension UITestFixtureSeed {
 
     private static func resolveReaderTextFixture() throws -> ReaderTextFixture {
         let seed = FixtureDatasetStore.requireReaderSeed(for: .realBookLibrary)
-        let sourceURL = URL(fileURLWithPath: seed.textPath)
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: sourceURL.path])
-        }
+        let sourceURL = try FixtureDatasetStore.requireAssetURL(ref: seed.textAssetRef)
         return ReaderTextFixture(
             seed: seed,
             sourceURL: sourceURL,
