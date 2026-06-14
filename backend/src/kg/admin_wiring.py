@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 
 PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
+logger = logging.getLogger(__name__)
 
 class SupportsAdminSettings(Protocol):
     admin_token: str
@@ -271,6 +273,12 @@ def create_admin_handlers_from_dependencies(
                 os.path.commonpath([str(user_dir), str(users_root)]) == str(users_root)
             )
         except ValueError:
+            logger.warning(
+                "Failed to resolve commonpath for admin user_id=%r user_dir=%s users_root=%s",
+                uid,
+                user_dir,
+                users_root,
+            )
             within_root = False  # different drives (Windows) → not under root
         if "/" in uid or os.sep in uid or user_dir == users_root or not within_root:
             raise HTTPException(status_code=400, detail="Invalid user_id")

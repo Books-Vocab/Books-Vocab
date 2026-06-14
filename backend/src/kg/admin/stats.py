@@ -154,7 +154,8 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
                     "percent": du.percent,
                 }
             )
-        except OSError:
+        except OSError as exc:
+            logger.warning("Failed collecting disk usage for %s: %s", path, exc)
             continue
     return disks
 
@@ -172,7 +173,8 @@ def _collect_process(psutil: Any) -> tuple[dict[str, Any], float]:
         except (AttributeError, OSError):
             p_fds = None
         p_create = proc.create_time()
-    except psutil.Error:
+    except psutil.Error as exc:
+        logger.warning("Failed collecting process metrics for host stats: %s", exc)
         p_rss = p_cpu = p_threads = p_create = 0
         p_fds = None
 
@@ -195,6 +197,7 @@ def admin_host_metrics_response() -> dict[str, Any]:
     try:
         import psutil
     except ImportError:
+        logger.warning("psutil not installed; host metrics unavailable", exc_info=True)
         return {"available": False, "reason": "psutil not installed"}
 
     try:

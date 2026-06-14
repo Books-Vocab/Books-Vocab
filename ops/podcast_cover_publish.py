@@ -384,7 +384,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             local = _collect_covers(workspaces_dir=args.workspaces_dir, workspace=args.workspace,
                                     series=args.series, cover=args.cover, all_=args.all)
-        except ValueError:
+        except ValueError as exc:
+            _LOGGER.debug("No local covers available for --check fallback: %s", exc)
             local = None  # check works without local sources
         report = check(s3, bucket=args.bucket, series_ids=series_ids, local_covers=local)
         print(json.dumps(report, ensure_ascii=False, indent=2))

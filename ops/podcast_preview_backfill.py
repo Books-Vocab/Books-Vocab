@@ -268,7 +268,8 @@ def check(s3, *, bucket: str, series_ids: list[str]) -> dict:
             continue
         try:
             fmt = resolve_audio_format(s3, bucket, sid, meta)
-        except ValueError:
+        except ValueError as exc:
+            _LOGGER.debug("Skipping series %s in backfill check: no episode1 preview format (%s)", sid, exc)
             rows[sid] = "no_ep1_audio"
             continue
         ep1 = next((e for e in meta.get("episodes", []) if e.get("episodeNumber") == PREVIEW_EP_NUM), None)
