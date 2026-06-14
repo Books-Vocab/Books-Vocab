@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 695d6e44
+verified_against: a9ab5f6d
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -65,6 +65,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Archived vocabulary 契約（無本地 archived row / empty fallback）
 `ArchivedVocabScenarios` 的 populated / single / long / empty 狀態必須取 UI World `vocabulary.archivedPopulated` / `vocabulary.archivedSingle` / `vocabulary.archivedLong` / `vocabulary.archivedEmpty` seed。scenario 必須把 manifest 的 `Notebook` + `VocabularyEntry` rows materialize 進 in-memory SwiftData，並用 `shouldAppearInArchiveList` 驗證 archived rows 真的符合 `synced + archived + non-delete`；empty 也必須是 manifest 內明示 seed，不可用本地 `[]` 表示。缺 seed、row shape drift、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.archivedVocabCatalogUsesUIWorldVocabularySeeds` 擋回本地 archived row builder、inline `VocabularyEntry(...)`、hardcoded book metadata、empty array fallback 與 silent save。
+
+### Vocabulary list 契約（無本地 VocabularyEntry / Notebook / auth）
+`VocabularyListViewScenarios` 的 populated / single / long / empty / syncing / logged-out 狀態必須取 UI World `vocabulary.vocabList*` seed，登入狀態必須取 UI World `auth.signedIn` / `auth.guest` seed。scenario 必須把 manifest 的 `Notebook` + `VocabularyEntry` rows materialize 進 in-memory SwiftData，並用 `shouldAppearInKnowledgeList` 驗證 synced/non-delete/non-archived rows 數量符合狀態；pending badge 只能由 manifest row 的 `syncStatus` / `actionType` 驅動。empty 與 logged-out 也必須使用 manifest seed，不可用本地 `[]` 或 hardcoded auth。缺 seed、auth drift、row shape drift、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.vocabularyListCatalogUsesUIWorldVocabularyAndAuthSeeds` 擋回本地 fixture enum、inline `VocabularyEntry(...)` / `Notebook(...)`、hardcoded book metadata、empty array fallback、hardcoded auth 與 silent save。
 
 ### Notebook filter picker 契約（無本地 Notebook row / empty fallback）
 `NotebookFilterChipScenarios` 的 with-notebooks / empty-list 狀態必須取 UI World `notebook.*` seed；empty-list 也必須是 manifest 內明示的 `notebook.empty`，不可用本地 `[]` 表示。scenario 必須透過 `NotebookFixtures.renderModel(for:)` materialize notebooks，選取狀態只能用 manifest row 的 `remoteId`；缺 seed、selected index drift、SwiftData seed/save 失敗都直接 fail-fast。`NotebookFixtures` 的 container 是非 optional；不能用 nil container 或空列表當渲染 fallback。`CatalogCoverageTests.notebookFilterChipCatalogUsesUIWorldNotebookSeeds` 擋回 `sampleNotebooks`、inline `Notebook(remoteId:)`、`notebooks: []` 與硬寫 `nb-1`。
