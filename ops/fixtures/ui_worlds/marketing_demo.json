@@ -1,6 +1,31 @@
 {
-  "schema": "kg.fixture.dataset.v1",
+  "schema": "kg.fixture.dataset.v2",
   "datasetID": "marketing_demo",
+  "assets": {
+    "books": {},
+    "audio": {
+      "atomic_habits_ep1_flash": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
+        "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
+        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a"
+      }
+    },
+    "subtitles": {
+      "atomic_habits_ep1_flash_srt": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+        "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
+        "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
+      }
+    },
+    "text": {
+      "atomic_habits_raw_ch_04": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/sources/atomic-habits-raw-ch-04.md"
+      }
+    },
+    "images": {}
+  },
   "auth": {
     "signedIn": {
       "isLoggedIn": true,
@@ -1042,8 +1067,8 @@
   },
   "runtimePodcast": {
     "playablePreview": {
-      "audioPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
-      "subtitlePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+      "audioAssetRef": "audio.atomic_habits_ep1_flash",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt",
       "seriesRemoteId": "ui-playable-series",
       "seriesTitle": "Atomic Habits",
       "hostNames": [
@@ -1067,8 +1092,8 @@
       ]
     },
     "tieredCatalog": {
-      "audioPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
-      "subtitlePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+      "audioAssetRef": "audio.atomic_habits_ep1_flash",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt",
       "seriesRemoteId": "ui-auth-series",
       "seriesTitle": "Atomic Habits (Auth Probe)",
       "hostNames": [
@@ -1104,7 +1129,7 @@
   },
   "reader": {
     "realBookLibrary": {
-      "textPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+      "textAssetRef": "text.atomic_habits_raw_ch_04",
       "title": "Atomic Habits — Introduction",
       "author": "James Clear",
       "bookFileName": "kg-uitest-reader-book.epub",

@@ -18,15 +18,17 @@ INJECTION SEAM (no Swift logic change to the loader)
   that var into the app process. emit() also prints the ready-to-export base64 when
   commit so it can be exported directly without the shell helper.
 
-SCHEMA NOTE (correction vs. the Phase-A planning docstring)
+SCHEMA NOTE
   The Phase-A skeleton planned schema "kg.fixture_dataset.v1". The Swift SoT
-  (FixtureDatasetStore.decode + RepoFixtureDatasetsContractTests) is authoritative
-  and expects "kg.fixture.dataset.v1" (dotted). We emit the dotted form so the
-  document decodes against the real iOS contract.
+  (FixtureDatasetStore.decode + RepoFixtureDatasetsContractTests) is authoritative.
+  Repo UI Worlds now use "kg.fixture.dataset.v2", which adds the top-level
+  asset manifest. This generated demo world has no file-backed assets yet, so it
+  emits an empty manifest instead of omitting the domain.
 
 DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift struct)
-  schema       <- "kg.fixture.dataset.v1"
+  schema       <- "kg.fixture.dataset.v2"
   datasetID    <- "demo-" + identity.user_id
+  assets       <- empty asset manifest (no file-backed demo assets yet)
   auth         <- signedIn/guest login state from demo identity
   entitlements <- free/pro subscription states
   settings     <- {}   (no settings fixtures derived from SoT yet)
@@ -112,7 +114,7 @@ _REPO_ROOT = _HERE.parent.parent  # ops/demo -> ops -> repo root
 GENERATED_DIR = _HERE / "generated"
 FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
 
-FIXTURE_SCHEMA = "kg.fixture.dataset.v1"
+FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
 NOTEBOOK_FIXTURE_KEY = "populated"  # NotebookFixtureID.populated
 TODAY_REVIEW_FIXTURE_KEY = "front"  # TodayReviewFixtureID.front
 
@@ -258,6 +260,13 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     return {
         "schema": FIXTURE_SCHEMA,
         "datasetID": f"demo-{identity['user_id']}",
+        "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {},
+        },
         "auth": {
             "signedIn": {
                 "isLoggedIn": True,
