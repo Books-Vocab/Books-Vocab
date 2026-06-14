@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,9 @@ FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_s
 # 純宣告轉換（不讀 DB），用來從 seed/steps 自動導出 world expectation。
 sys.path.insert(0, str(ROOT / "backend" / "src"))
 from kg.ops_world_expectation import derive_expectation  # noqa: E402
+
+
+logger = logging.getLogger(__name__)
 
 
 class CaptureProfileError(RuntimeError):
@@ -344,7 +348,8 @@ def emit_json(payload: dict[str, Any]) -> None:
 def parse_json_stdout(result: subprocess.CompletedProcess[str]) -> dict[str, Any] | None:
     try:
         return json.loads(result.stdout) if result.stdout.strip() else None
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.debug("failed to parse capture subprocess stdout as json: %s", exc)
         return None
 
 
@@ -777,6 +782,7 @@ def main() -> int:
             return cmd_run(profile, commit=args.commit, reuse_build=args.reuse_build)
     except CaptureProfileError as exc:
         emit_json({"schema": "kg.capture.run.v1", "action": "error", "status": "error", "error": str(exc)})
+        logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return 1
     return 1
 

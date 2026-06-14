@@ -58,6 +58,7 @@ def relpath(path: Path, root: Path) -> str:
     try:
         return path.relative_to(root).as_posix()
     except ValueError:
+        log.warning("Silently handled exception; using fallback response", exc_info=True)
         return str(path)
 
 

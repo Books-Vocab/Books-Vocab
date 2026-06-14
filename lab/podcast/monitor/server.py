@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import logging
 import json
 import os
 import re
@@ -59,6 +60,8 @@ from workspace_status import (  # noqa: E402
     _stages_done, _milestones, _gate_states, _episode_status, _ensure_created,
     reconcile_workspaces, disk_status, audio_episode_numbers,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 ALLOWED_AGENT_PROFILES = ("claude", "kimi")
 
@@ -171,7 +174,12 @@ def _sweep_staging(
             continue  # in-place input of a live job — never touch
         try:
             age = now - p.stat().st_mtime
-        except OSError:
+        except OSError as exc:
+            __import__("logging").getLogger(__name__).debug(
+                "workspace=%s staging file stat failed during reap: %s",
+                p,
+                exc,
+            )
             continue
         if age < max_age_s:
             continue  # too fresh — an upload may be mid-registration
@@ -179,7 +187,11 @@ def _sweep_staging(
             p.unlink()
             removed.append(p)
         except OSError:
-            pass
+            __import__("logging").getLogger(__name__).info(
+                "stale staging artifact delete skipped for %s",
+                p,
+                exc_info=True,
+            )
     return removed
 
 
@@ -299,7 +311,13 @@ def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None
     # Route 2: sidecar.
     try:
         jid = (WORKSPACES_DIR / ws_name / ".pipeline_job_id").read_text().strip()
-    except OSError:
+    except OSError as exc:
+        __import__("logging").getLogger(__name__).debug(
+            "workspace=%s missing/invalid sidecar marker: %s",
+            ws_name,
+            exc,
+        )
+        LOGGER.warning("Silently handled exception; using fallback response", exc_info=True)
         return None
     j = running.get(jid)
     return {"job_id": j.id, "label": j.label, "kind": j.kind} if j else None
@@ -408,7 +426,12 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
             try:
                 candidates.append(p.stat().st_mtime)
             except OSError:
-                pass
+                __import__("logging").getLogger(__name__).info(
+                    "workspace=%s unable to stat activity file %s",
+                    ws.name,
+                    rel,
+                    exc_info=True,
+                )
     if scripts.is_dir():
         # Newest script artifact (mp3 / srt / json) — caught by stat on dir
         # iter; we cap to 200 entries so a synthesize stage with hundreds of
@@ -418,9 +441,17 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
                 try:
                     candidates.append(f.stat().st_mtime)
                 except OSError:
-                    pass
+                    __import__("logging").getLogger(__name__).info(
+                        "workspace=%s unable to stat script artifact during scan",
+                        ws.name,
+                        exc_info=True,
+                    )
         except OSError:
-            pass
+            __import__("logging").getLogger(__name__).info(
+                "workspace=%s unable to iterate scripts directory for activity scan",
+                ws.name,
+                exc_info=True,
+            )
     # Added-date — computed here so a truly-fresh workspace (no events /
     # scripts) can fall back to its creation time for last_updated instead of
     # ws.stat().st_mtime, which _ensure_created itself pollutes by writing the
@@ -461,7 +492,11 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         has_cost_data = (ws / "events.jsonl").exists() and total_usd > 0
     except Exception:
         # Never let a bad workspace break the whole sidebar list.
-        pass
+        __import__("logging").getLogger(__name__).warning(
+            "workspace=%s cost aggregation failed; defaulting cost fields",
+            ws.name,
+            exc_info=True,
+        )
 
     # ─── Saga (multi-book continuous feed) fields ───
     # A workspace is a saga iff it carries a series.md manifest. All saga
@@ -477,7 +512,11 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
             books = saga.parse_series_manifest((ws / "series.md").read_text(encoding="utf-8"))
             book_count = len(books)
         except Exception:
-            pass
+            __import__("logging").getLogger(__name__).info(
+                "workspace=%s saga manifest parse failed; using fallback count",
+                ws.name,
+                exc_info=True,
+            )
         # Saga display title = the manifest's H1 ("# <title>"); fall back to the
         # workspace dir name if the heading is missing/unreadable.
         try:
@@ -486,12 +525,20 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
                     display = line[2:].strip() or name
                     break
         except Exception:
-            pass
+            __import__("logging").getLogger(__name__).info(
+                "workspace=%s saga title fallback to workspace name",
+                ws.name,
+                exc_info=True,
+            )
         spoiler_mode = ""
         try:
             spoiler_mode = (ws / ".spoiler_mode").read_text(encoding="utf-8").strip()
         except Exception:
-            pass
+            __import__("logging").getLogger(__name__).info(
+                "workspace=%s .spoiler_mode not available",
+                ws.name,
+                exc_info=True,
+            )
         saga_fields.update(
             book_count=book_count, spoiler_mode=spoiler_mode, display=display
         )
@@ -541,6 +588,7 @@ def snapshot(ws_name: str):
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
+                    LOGGER.debug("Skipping malformed JSON line in %s", fname)
                     continue
                 events.append({"kind": kind, "data": obj})
 
@@ -575,6 +623,7 @@ async def _tail(path: Path, last_size: int) -> tuple[str, int]:
     try:
         return data.decode("utf-8"), size
     except UnicodeDecodeError:
+        LOGGER.warning("Silently handled exception; using fallback response", exc_info=True)
         return data.decode("utf-8", errors="replace"), size
 
 
@@ -605,6 +654,7 @@ async def stream(ws_name: str):
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
+                    LOGGER.debug("Skipping malformed pipeline SSE line in %s", ws_name)
                     continue
                 yield f"event: pipeline\ndata: {json.dumps(obj)}\n\n"
 
@@ -615,6 +665,7 @@ async def stream(ws_name: str):
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
+                    LOGGER.debug("Skipping malformed stream SSE line in %s", ws_name)
                     continue
                 yield f"event: stream\ndata: {json.dumps(obj)}\n\n"
 
@@ -716,7 +767,13 @@ def workspace_episodes(ws_name: str):
                 if isinstance(m_id, str) and m_id.strip():
                     model_id = m_id.strip()
             except (OSError, ValueError):
-                pass
+                __import__("logging").getLogger(__name__).info(
+                    "workspace=%s ep_%d_%s meta sidecar parse failed",
+                    ws.name,
+                    n,
+                    variant,
+                    exc_info=True,
+                )
         seen[n] = {
             "episode": n,
             "variant": variant,
