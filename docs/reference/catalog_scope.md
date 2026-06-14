@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: cdfabee2
+verified_against: c7d26bc8
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -35,6 +35,9 @@ verified_against: cdfabee2
 
 ### 計數契約（可復現）
 **「必要組件」= 有自身 sourceFile + 多於一個可區分狀態 + 使用者可指名的具名視圖物件**。凡「以 scenario 覆蓋為畫面狀態」「折入母視圖狀態」者**不計入組件數**，僅作母視圖的 state 列出。主表中被計數者標 `[組件]`，折入者標 `(折入狀態)`。
+
+### Preview auth 契約（無 fallback）
+Catalog scenario 可用 DEBUG-only `CatalogPreviewAuth` 注入登入狀態，但不得由 `isLoggedIn` 推導假 user/token/name/email。logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`；logged-out scenario 必須明示 nil。`CatalogCoverageTests.catalogPreviewAuthDoesNotFallbackToImplicitUserState` 直接掃 Debug source，擋短式 constructor、preview fallback literal 與 `displayName ??` / `userEmail ??` 類型的隱式補值。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
