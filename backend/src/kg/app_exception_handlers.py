@@ -12,12 +12,15 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .exceptions import KGError
+
+_logger = logging.getLogger(__name__)
+
 
 class AppExceptionHandler(Protocol):
     def __call__(self, request: Request, exc: Exception) -> Awaitable[JSONResponse]:
         ...
 
-from .exceptions import KGError
 
 _VALIDATION_SECRET_KEYS = {
     "access_token",
@@ -100,7 +103,7 @@ def _redact_validation_body(body: str | None) -> str | None:
         parsed = json.loads(body)
     except json.JSONDecodeError:
         if _VALIDATION_SECRET_RE.search(body):
-            logger.warning("Silently handled exception; using fallback response", exc_info=True)
+            _logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return "[non-json body omitted: secret-like field present]"
         return body[:500]
     return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]

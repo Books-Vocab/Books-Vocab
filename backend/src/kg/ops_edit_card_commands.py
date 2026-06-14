@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+
 from .ops_edit_support import (
     _CARD_UPDATABLE_FIELDS,
     _VALID_REVIEW_STATES,

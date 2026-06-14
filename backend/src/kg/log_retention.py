@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from datetime import UTC, datetime, timedelta
 
 from . import judge_log, llm_error_log, pipeline_log, token_tracker, translate_log
+
+_logger = logging.getLogger(__name__)
 
 # Default retention windows (days). These match the brief.
 DEFAULT_DAYS_PIPELINE = 30
@@ -42,7 +45,7 @@ def _env_days(var: str, fallback: int) -> int:
     try:
         days = int(raw)
     except ValueError:
-        log.warning("Silently handled exception; using fallback response", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return fallback
     if days < 0:
         return fallback

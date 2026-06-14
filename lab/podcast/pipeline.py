@@ -206,7 +206,6 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
                 return True
             except OSError as exc:
                 _LOGGER.debug("dashboard port probe failed for %s: %s", _DASHBOARD_PORT, exc)
-                log.warning("Silently handled exception; using fallback response", exc_info=True)
                 return False
 
     if not _port_alive():
@@ -417,7 +416,6 @@ def _pipeline_commit() -> str:
         )
     except OSError as exc:
         _LOGGER.warning("cannot resolve git commit from repo root: %s", exc)
-        log.warning("Silently handled exception; using fallback response", exc_info=True)
         return "unknown"
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
@@ -1576,7 +1574,6 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         try:
             report = json.loads(f.read_text())
         except json.JSONDecodeError as exc:
-            log.warning("Silently handled exception; using fallback response", exc_info=True)
             _LOGGER.warning("cannot parse %s: %s", f, exc)
             return {"status": "unreadable", "artifact": "audio_qa.json"}
         summary = report.get("summary") or {}
