@@ -41,10 +41,14 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.schema == "kg.fixture.dataset.v2")
         #expect(document.datasetID == "demo-demo-user")
         #expect(!document.assets.books.isEmpty)
+        #expect(!document.assets.audio.isEmpty)
+        #expect(!document.assets.subtitles.isEmpty)
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
         #expect(document.auth["signedIn"]?.keychainTokenState == .available)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
         #expect(Set(document.bookshelf.keys) == Set(BookshelfFixtureID.allCases.map(\.rawValue)))
+        #expect(Set(document.podcast.keys) == Set(PodcastFixtureID.allCases.map(\.rawValue)))
+        #expect(Set(document.runtimePodcast.keys) == Set(UIWorldRuntimePodcastFixtureID.allCases.map(\.rawValue)))
         #expect(document.settings["preferences_auto_sync_off"] != nil)
         #expect(document.settings["preferences_logged_out_no_sync"] != nil)
         #expect(document.settings["subscription_free"]?.reviewSettings != nil)
@@ -53,6 +57,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
+        expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {
@@ -76,37 +81,7 @@ struct RepoFixtureDatasetsContractTests {
             try expectValidAssetManifest(document: document, dataset: stem)
             expectUniqueInstallPaths(document: document, dataset: stem)
 
-            for (fixtureKey, seed) in document.runtimePodcast {
-                expectInstallableAssetRef(
-                    seed.audioAssetRef,
-                    document: document,
-                    dataset: stem,
-                    owner: "runtimePodcast.\(fixtureKey).audioAssetRef"
-                )
-                expectInstallableAssetRef(
-                    seed.subtitleAssetRef,
-                    document: document,
-                    dataset: stem,
-                    owner: "runtimePodcast.\(fixtureKey).subtitleAssetRef"
-                )
-                for episode in seed.episodes {
-                    guard let download = episode.download else { continue }
-                    expectInstallableAssetRef(
-                        download.audioAssetRef,
-                        document: document,
-                        dataset: stem,
-                        owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.audioAssetRef"
-                    )
-                    if let subtitleAssetRef = download.subtitleAssetRef {
-                        expectInstallableAssetRef(
-                            subtitleAssetRef,
-                            document: document,
-                            dataset: stem,
-                            owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.subtitleAssetRef"
-                        )
-                    }
-                }
-            }
+            expectRuntimePodcastAssetRefs(document: document, dataset: stem)
 
             for (fixtureKey, seed) in document.reader {
                 expectNotebookSyncStatus(
@@ -351,6 +326,40 @@ struct RepoFixtureDatasetsContractTests {
                 try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
                 "\(dataset): asset \(ref) sha256 drift"
             )
+        }
+    }
+
+    private func expectRuntimePodcastAssetRefs(document: FixtureDatasetDocument, dataset: String) {
+        for (fixtureKey, seed) in document.runtimePodcast {
+            expectInstallableAssetRef(
+                seed.audioAssetRef,
+                document: document,
+                dataset: dataset,
+                owner: "runtimePodcast.\(fixtureKey).audioAssetRef"
+            )
+            expectInstallableAssetRef(
+                seed.subtitleAssetRef,
+                document: document,
+                dataset: dataset,
+                owner: "runtimePodcast.\(fixtureKey).subtitleAssetRef"
+            )
+            for episode in seed.episodes {
+                guard let download = episode.download else { continue }
+                expectInstallableAssetRef(
+                    download.audioAssetRef,
+                    document: document,
+                    dataset: dataset,
+                    owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.audioAssetRef"
+                )
+                if let subtitleAssetRef = download.subtitleAssetRef {
+                    expectInstallableAssetRef(
+                        subtitleAssetRef,
+                        document: document,
+                        dataset: dataset,
+                        owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.subtitleAssetRef"
+                    )
+                }
+            }
         }
     }
 
