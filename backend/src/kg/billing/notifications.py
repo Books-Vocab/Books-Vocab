@@ -5,13 +5,22 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from ..api_models import AppStoreNotificationRequest
 from ..exceptions import BadRequestError, ValidationError
 from .payloads import ACTIVE_BEARING_STATUSES
 
 _logger = logging.getLogger(__name__)
+
+
+class VerifiedJWS(Protocol):
+    payload: dict[str, Any]
+
+
+class VerifySignedJWS(Protocol):
+    def __call__(self, signed_jws: str, *, bundle_id: str) -> VerifiedJWS:
+        ...
 
 
 def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
@@ -121,7 +130,7 @@ def decode_signed_transaction_info(
     *,
     bundle_id: str,
     parse_datetime_fn: Callable[[Any], datetime | None],
-    verify_signed_jws: Callable[..., Any],
+    verify_signed_jws: VerifySignedJWS,
 ) -> dict[str, Any]:
     verified = verify_signed_jws(signed_transaction_info, bundle_id=bundle_id)
     return verified_transaction_snapshot(verified.payload, parse_datetime_fn=parse_datetime_fn)
@@ -133,7 +142,7 @@ def decode_notification_payload(
     bundle_id: str,
     allow_unsigned_notifications: bool,
     parse_datetime_fn: Callable[[Any], datetime | None],
-    verify_signed_jws: Callable[..., Any],
+    verify_signed_jws: VerifySignedJWS,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not req.signed_payload:
         if allow_unsigned_notifications:
