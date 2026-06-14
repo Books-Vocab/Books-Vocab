@@ -33,8 +33,8 @@ DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift stru
   datasetID    <- "demo-" + identity.user_id
   assets/settings/bookshelf/todayReview/notebook/podcast/runtimePodcast/reader/
                  vocabulary/reviewDeck <- copied from ops/fixtures/ui_worlds/marketing_demo.json
-  auth         <- signedIn/guest login state from demo identity, with explicit
-                 keychainTokenState (available/absent)
+  auth         <- baseline auth fixture set, with signedIn identity fields
+                 overlaid from demo identity and explicit keychain/UI auth state
   entitlements <- copied from the baseline UI World so generated demo exposes
                   the same free/pro/cancelled/admin catalog states
 
@@ -72,8 +72,10 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     document = _load_base_ui_world()
     document["schema"] = FIXTURE_SCHEMA
     document["datasetID"] = f"demo-{identity['user_id']}"
-    document["auth"] = {
-        "signedIn": {
+    auth = dict(document["auth"])
+    signed_in = dict(auth["signedIn"])
+    signed_in.update(
+        {
             "isLoggedIn": True,
             "userId": identity["user_id"],
             "token": identity["access_token"],
@@ -82,18 +84,12 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
             "provider": identity["provider"],
             "providerUserId": identity["provider_user_id"],
             "keychainTokenState": "available",
-        },
-        "guest": {
-            "isLoggedIn": False,
-            "userId": None,
-            "token": None,
-            "displayName": None,
-            "email": None,
-            "provider": None,
-            "providerUserId": None,
-            "keychainTokenState": "absent",
-        },
-    }
+            "authError": None,
+            "isAuthenticating": False,
+        }
+    )
+    auth["signedIn"] = signed_in
+    document["auth"] = auth
     return document
 
 

@@ -126,6 +126,32 @@ import Playbook
         )
     }
 
+    @Test func loginSheetCatalogUsesUIWorldAuthSeeds() throws {
+        let loginScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("LoginSheetScenarios.swift")
+        let source = try String(contentsOf: loginScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("LoginSheetScene()", "Login Sheet default state must select an explicit UI World auth seed"),
+            ("LoginSheetScene(isAuthenticating:", "Login Sheet authenticating state belongs in UI World auth seed"),
+            ("LoginSheetScene(authError:", "Login Sheet error state belongs in UI World auth seed"),
+            ("無法連線至伺服器", "Login Sheet error copy belongs in UI World, not Debug source"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(loginScenarios.lastPathComponent): \(reason)")
+        }
+        for snippet in [
+            "LoginSheetScene(authID: .guest)",
+            "LoginSheetScene(authID: .guestAuthenticating)",
+            "LoginSheetScene(authID: .guestError)",
+            "FixtureDatasetStore.requireAuthSeed(for: authID)",
+            "isAuthenticating: seed.isAuthenticating",
+            "authError: seed.authError",
+        ] {
+            #expect(source.contains(snippet), "\(loginScenarios.lastPathComponent): missing manifest-driven auth mapping \(snippet)")
+        }
+    }
+
     @Test func pdfReaderCatalogUsesUIWorldBookAsset() throws {
         let pdfScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

@@ -13,13 +13,13 @@ enum LoginSheetScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Login Sheet") {
             Scenario("Default", layout: .fill) {
-                LoginSheetScene()
+                LoginSheetScene(authID: .guest)
             }
             Scenario("Authenticating", layout: .fill) {
-                LoginSheetScene(isAuthenticating: true)
+                LoginSheetScene(authID: .guestAuthenticating)
             }
             Scenario("Error", layout: .fill) {
-                LoginSheetScene(authError: "無法連線至伺服器，請稍後再試。")
+                LoginSheetScene(authID: .guestError)
             }
         }
     }
@@ -28,18 +28,21 @@ enum LoginSheetScenarios {
 // MARK: - Scene harness
 
 private struct LoginSheetScene: View {
-    var isAuthenticating: Bool = false
-    var authError: String?
+    let authID: UIWorldAuthFixtureID
 
     var body: some View {
+        let seed = FixtureDatasetStore.requireAuthSeed(for: authID)
+        guard !seed.isLoggedIn else {
+            preconditionFailure("UI World auth.\(authID.rawValue) must be logged out for LoginSheetScenarios")
+        }
         let auth = CatalogPreviewAuth(
-            isLoggedIn: false,
-            userId: nil,
-            token: nil,
-            displayName: nil,
-            userEmail: nil,
-            isAuthenticating: isAuthenticating,
-            authError: authError
+            isLoggedIn: seed.isLoggedIn,
+            userId: seed.userId,
+            token: seed.token,
+            displayName: seed.displayName,
+            userEmail: seed.email,
+            isAuthenticating: seed.isAuthenticating,
+            authError: seed.authError
         )
         return AppThemeContainer {
             LoginSheet()

@@ -252,6 +252,8 @@ struct UIWorldAssetManifest: Codable, Equatable {
 
 enum UIWorldAuthFixtureID: String, CaseIterable {
     case guest
+    case guestAuthenticating
+    case guestError
     case signedIn
 }
 
@@ -268,8 +270,46 @@ struct UIWorldAuthSeed: Codable, Equatable {
     let keychainTokenState: KeychainTokenState
     let displayName: String?
     let email: String?
+    let authError: String?
+    let isAuthenticating: Bool
     let provider: String?
     let providerUserId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case isLoggedIn
+        case userId
+        case token
+        case keychainTokenState
+        case displayName
+        case email
+        case authError
+        case isAuthenticating
+        case provider
+        case providerUserId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        token = try container.decodeIfPresent(String.self, forKey: .token)
+        keychainTokenState = try container.decode(KeychainTokenState.self, forKey: .keychainTokenState)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        guard container.contains(.authError) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.authError,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World auth seed must explicitly declare authError, even when null"
+                )
+            )
+        }
+        authError = try container.decodeIfPresent(String.self, forKey: .authError)
+        isAuthenticating = try container.decode(Bool.self, forKey: .isAuthenticating)
+        provider = try container.decodeIfPresent(String.self, forKey: .provider)
+        providerUserId = try container.decodeIfPresent(String.self, forKey: .providerUserId)
+    }
 }
 
 enum UIWorldEntitlementsFixtureID: String, CaseIterable {

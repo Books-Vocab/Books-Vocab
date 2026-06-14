@@ -223,6 +223,8 @@ struct FixtureDatasetStoreTests {
               "keychainTokenState": "available",
               "displayName": "World User",
               "email": "world@example.com",
+              "authError": null,
+              "isAuthenticating": false,
               "provider": "apple",
               "providerUserId": "apple:world-user"
             },
@@ -233,6 +235,8 @@ struct FixtureDatasetStoreTests {
               "keychainTokenState": "absent",
               "displayName": null,
               "email": null,
+              "authError": null,
+              "isAuthenticating": false,
               "provider": null,
               "providerUserId": null
             }
@@ -267,11 +271,15 @@ struct FixtureDatasetStoreTests {
             #expect(auth.keychainTokenState == .available)
             #expect(auth.displayName == "World User")
             #expect(auth.email == "world@example.com")
+            #expect(auth.authError == nil)
+            #expect(auth.isAuthenticating == false)
 
             let guest = try #require(FixtureDatasetStore.authSeed(for: .guest))
             #expect(guest.isLoggedIn == false)
             #expect(guest.userId == nil)
             #expect(guest.keychainTokenState == .absent)
+            #expect(guest.authError == nil)
+            #expect(guest.isAuthenticating == false)
 
             let entitlements = try #require(FixtureDatasetStore.entitlementsSeed(for: .pro))
             #expect(entitlements.pro.is_active == true)
@@ -297,6 +305,8 @@ struct FixtureDatasetStoreTests {
               "keychainTokenState": "readFailed",
               "displayName": "Locked User",
               "email": "locked@example.com",
+              "authError": null,
+              "isAuthenticating": false,
               "provider": "apple",
               "providerUserId": "apple:locked-user"
             }
@@ -310,6 +320,8 @@ struct FixtureDatasetStoreTests {
             #expect(auth.userId == "locked-user")
             #expect(auth.token == nil)
             #expect(auth.keychainTokenState == .readFailed)
+            #expect(auth.authError == nil)
+            #expect(auth.isAuthenticating == false)
         }
     }
 
@@ -339,6 +351,8 @@ struct FixtureDatasetStoreTests {
               "keychainTokenState": "readFailed",
               "displayName": "Locked User",
               "email": "locked@example.com",
+              "authError": null,
+              "isAuthenticating": false,
               "provider": "apple",
               "providerUserId": "apple:locked-user"
             }
