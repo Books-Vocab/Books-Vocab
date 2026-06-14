@@ -4,17 +4,27 @@
   "assets": {
     "books": {},
     "audio": {
-      "atomic_habits_ep1_flash": {
+      "atomic_habits_ep1_flash_playable": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
         "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
         "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a"
+      },
+      "atomic_habits_ep1_flash_auth": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
+        "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
+        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a"
       }
     },
     "subtitles": {
-      "atomic_habits_ep1_flash_srt": {
+      "atomic_habits_ep1_flash_srt_playable": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
         "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
         "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
+      },
+      "atomic_habits_ep1_flash_srt_auth": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+        "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
+        "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
       }
     },
     "text": {
@@ -1067,8 +1077,8 @@
   },
   "runtimePodcast": {
     "playablePreview": {
-      "audioAssetRef": "audio.atomic_habits_ep1_flash",
-      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt",
+      "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable",
       "seriesRemoteId": "ui-playable-series",
       "seriesTitle": "Atomic Habits",
       "hostNames": [
@@ -1092,8 +1102,8 @@
       ]
     },
     "tieredCatalog": {
-      "audioAssetRef": "audio.atomic_habits_ep1_flash",
-      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt",
+      "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+      "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
       "seriesRemoteId": "ui-auth-series",
       "seriesTitle": "Atomic Habits (Auth Probe)",
       "hostNames": [

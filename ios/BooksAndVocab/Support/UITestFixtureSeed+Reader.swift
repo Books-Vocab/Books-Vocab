@@ -106,7 +106,7 @@ extension UITestFixtureSeed {
 
     private static func resolveReaderTextFixture() throws -> ReaderTextFixture {
         let seed = FixtureDatasetStore.requireReaderSeed(for: .realBookLibrary)
-        let sourceURL = try FixtureDatasetStore.requireAssetURL(ref: seed.textAssetRef)
+        let sourceURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.textAssetRef)
         return ReaderTextFixture(
             seed: seed,
             sourceURL: sourceURL,
