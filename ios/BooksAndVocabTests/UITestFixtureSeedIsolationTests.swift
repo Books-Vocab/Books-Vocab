@@ -18,6 +18,13 @@ import Testing
 @MainActor
 struct UITestFixtureSeedIsolationTests {
     private static let seedArguments = ["-ui-testing", "-seedFixture:todayReview:deck"]
+    private static var supportDirectory: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Support", isDirectory: true)
+    }
+
     private static var reviewProbeWorldData: Data {
         let entries = (0..<40).map { index in
             """
@@ -75,8 +82,32 @@ struct UITestFixtureSeedIsolationTests {
         )
     }
 
+    private static func fixtureSeedSourceURLs() throws -> [URL] {
+        try FileManager.default
+            .contentsOfDirectory(at: supportDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("UITestFixtureSeed") && $0.pathExtension == "swift" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     private func makeSchema() -> Schema {
         Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self])
+    }
+
+    @Test func fixtureSeedFailuresAreHardFailures() throws {
+        let forbiddenSnippets = [
+            "AppLog.app.warning(\"Unknown",
+            "AppLog.app.error(\"Failed to seed",
+        ]
+
+        for url in try Self.fixtureSeedSourceURLs() {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            for snippet in forbiddenSnippets {
+                #expect(
+                    !source.contains(snippet),
+                    "\(url.lastPathComponent) must fail hard instead of log-only for \(snippet)"
+                )
+            }
+        }
     }
 
     @Test func seedRefusesPersistentStore() throws {

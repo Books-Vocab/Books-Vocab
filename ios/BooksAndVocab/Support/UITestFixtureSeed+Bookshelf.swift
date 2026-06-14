@@ -5,7 +5,7 @@ extension UITestFixtureSeed {
     @MainActor
     static func seedBookshelf(_ id: String, into container: ModelContainer) {
         guard let fixtureID = BookshelfFixtureID(rawValue: id) else {
-            preconditionFailure("Unknown bookshelf fixture ID: \(id)")
+            failFixtureSeed("Unknown bookshelf fixture ID: \(id)")
         }
         let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
         let context = container.mainContext
@@ -26,7 +26,7 @@ extension UITestFixtureSeed {
             try context.save()
             AppLog.app.info("UI-test fixture seeded: bookshelf.\(id) (\(seed.books.count) books)")
         } catch {
-            preconditionFailure("Failed to seed bookshelf fixture: \(error)")
+            failFixtureSeed("Failed to seed bookshelf.\(id) fixture: \(error)")
         }
     }
 

@@ -22,7 +22,7 @@ extension UITestFixtureSeed {
         case "signedIn":
             seedAuthSignedInSession()
         default:
-            AppLog.app.warning("Unknown auth fixture ID: \(id)")
+            failFixtureSeed("Unknown auth fixture ID: \(id)")
         }
     }
 
@@ -98,7 +98,7 @@ extension UITestFixtureSeed {
             try context.save()
             AppLog.app.info("UI-test fixture seeded: auth.tieredCatalog")
         } catch {
-            AppLog.app.error("Failed to seed auth fixture: \(error)")
+            failFixtureSeed("Failed to seed auth.tieredCatalog fixture: \(error)")
         }
     }
 

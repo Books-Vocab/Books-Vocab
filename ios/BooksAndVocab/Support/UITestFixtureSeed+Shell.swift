@@ -22,7 +22,7 @@ extension UITestFixtureSeed {
         case "navigation":
             seedShellNavigation(into: container)
         default:
-            AppLog.app.warning("Unknown shell fixture ID: \(id)")
+            failFixtureSeed("Unknown shell fixture ID: \(id)")
         }
     }
 
@@ -45,7 +45,7 @@ extension UITestFixtureSeed {
             }
             AppLog.app.info("UI-test fixture seeded: shell.navigation (\(entries.count) entries)")
         } catch {
-            AppLog.app.error("Failed to seed shell fixture: \(error)")
+            failFixtureSeed("Failed to seed shell.navigation fixture: \(error)")
         }
     }
 

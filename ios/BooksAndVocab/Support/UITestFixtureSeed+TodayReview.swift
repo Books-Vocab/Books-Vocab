@@ -9,7 +9,7 @@ extension UITestFixtureSeed {
         case "deck":
             seedReviewProbeDeck(into: container)
         default:
-            AppLog.app.warning("Unknown todayReview fixture ID: \(id)")
+            failFixtureSeed("Unknown todayReview fixture ID: \(id)")
         }
     }
 
@@ -28,7 +28,7 @@ extension UITestFixtureSeed {
             try context.save()
             AppLog.app.info("UI-test fixture seeded: todayReview.deck size=\(deck.count)")
         } catch {
-            AppLog.app.error("Failed to seed todayReview fixture: \(error)")
+            failFixtureSeed("Failed to seed todayReview.deck fixture: \(error)")
         }
     }
 }

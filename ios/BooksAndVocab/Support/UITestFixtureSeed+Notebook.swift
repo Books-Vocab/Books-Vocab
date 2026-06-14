@@ -14,7 +14,7 @@ extension UITestFixtureSeed {
         case "reviewDeck":
             seedNotebookReviewDeck(into: container)
         default:
-            AppLog.app.warning("Unknown notebook fixture ID: \(id)")
+            failFixtureSeed("Unknown notebook fixture ID: \(id)")
         }
     }
 
@@ -47,7 +47,7 @@ extension UITestFixtureSeed {
             try context.save()
             AppLog.app.info("UI-test fixture seeded: notebook.reviewDeck (\(deck.count) cards)")
         } catch {
-            AppLog.app.error("Failed to seed notebook fixture: \(error)")
+            failFixtureSeed("Failed to seed notebook.reviewDeck fixture: \(error)")
         }
     }
 }

@@ -23,7 +23,7 @@ extension UITestFixtureSeed {
         case "vocabNotebook":
             seedSearchVocabNotebook(into: container)
         default:
-            AppLog.app.warning("Unknown search fixture ID: \(id)")
+            failFixtureSeed("Unknown search fixture ID: \(id)")
         }
     }
 
@@ -45,7 +45,7 @@ extension UITestFixtureSeed {
             }
             AppLog.app.info("UI-test fixture seeded: search.vocabNotebook (\(entries.count) entries)")
         } catch {
-            AppLog.app.error("Failed to seed search fixture: \(error)")
+            failFixtureSeed("Failed to seed search.vocabNotebook fixture: \(error)")
         }
     }
 

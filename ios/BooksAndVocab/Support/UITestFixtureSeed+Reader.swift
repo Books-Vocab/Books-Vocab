@@ -27,10 +27,10 @@ extension UITestFixtureSeed {
         case "realBookLibrary":
             seedReaderRealBookLibrary(into: container)
         default:
-            AppLog.app.warning("Unknown reader fixture ID: \(id)")
+            failFixtureSeed("Unknown reader fixture ID: \(id)")
         }
         #else
-        AppLog.app.error("UITestFixtureSeed: refused reader fixture on device — it writes the real Books directory")
+        failFixtureSeed("UITestFixtureSeed: refused reader fixture on device — it writes the real Books directory")
         #endif
     }
 
@@ -64,7 +64,7 @@ extension UITestFixtureSeed {
             try context.save()
             AppLog.app.info("UI-test fixture seeded: reader.realBookLibrary (book=\(fixture.title), epub=\(epubURL.lastPathComponent))")
         } catch {
-            AppLog.app.error("Failed to seed reader fixture: \(error)")
+            failFixtureSeed("Failed to seed reader.realBookLibrary fixture: \(error)")
         }
     }
 
