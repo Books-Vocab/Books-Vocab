@@ -273,6 +273,8 @@ struct UIWorldAuthSeed: Codable, Equatable {
 }
 
 enum UIWorldEntitlementsFixtureID: String, CaseIterable {
+    case adminGranted
+    case cancelledButActive
     case free
     case pro
 }

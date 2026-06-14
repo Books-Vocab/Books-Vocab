@@ -7,8 +7,9 @@ import SwiftUI
 ///
 /// The sheet derives every piece of copy from `subscriptionManager.entitlements.pro`
 /// via the pure `SubscriptionPaywallCopy` enum, and branches its whole layout on
-/// `subscriptionManager.hasProAccess`. So we drive the surface entirely through a
-/// synthetic `PreviewSubscriptionManager` mock — no network, no StoreKit.
+/// `subscriptionManager.hasProAccess`. So we drive the surface through UI World
+/// entitlement fixtures plus a synthetic `PreviewSubscriptionManager` mock — no
+/// network, no StoreKit, no local subscription data factory.
 ///
 /// `SubscriptionManaging` is `@MainActor`-isolated, so the mock is constructed
 /// inside a `View` body (`PaywallScene`), never synchronously inside a `Scenario`
@@ -17,75 +18,19 @@ enum PaywallScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Paywall") {
             Scenario("Paywall (inactive)", layout: .fill) {
-                PaywallScene(status: PaywallScenarios.inactiveStatus)
+                PaywallScene(fixtureID: .free)
             }
             Scenario("Pro active (renewing)", layout: .fill) {
-                PaywallScene(status: PaywallScenarios.activeRenewingStatus)
+                PaywallScene(fixtureID: .pro)
             }
             Scenario("Pro cancelled but active", layout: .fill) {
-                PaywallScene(status: PaywallScenarios.cancelledButActiveStatus)
+                PaywallScene(fixtureID: .cancelledButActive)
             }
             Scenario("Admin granted", layout: .fill) {
-                PaywallScene(status: PaywallScenarios.adminGrantedStatus)
+                PaywallScene(fixtureID: .adminGranted)
             }
         }
     }
-
-    // MARK: - Fixtures
-
-    private static func makeStatus(
-        is_active: Bool,
-        status: String,
-        is_trial: Bool = false,
-        will_renew: Bool,
-        expires_at: String? = nil,
-        source: String = "app_store",
-        price_display: String? = nil
-    ) -> KGSubscriptionStatus {
-        KGSubscriptionStatus(
-            is_active: is_active,
-            product_id: is_active ? BrandIdentity.proProductID : nil,
-            plan_name: "Books & Vocab Pro",
-            price_display: price_display,
-            status: status,
-            is_trial: is_trial,
-            trial_days: 7,
-            will_renew: will_renew,
-            expires_at: expires_at,
-            source: source,
-            last_synced_at: "2026-06-01T08:00:00Z"
-        )
-    }
-
-    static let inactiveStatus = makeStatus(
-        is_active: false,
-        status: "inactive",
-        will_renew: false
-    )
-
-    static let activeRenewingStatus = makeStatus(
-        is_active: true,
-        status: "active",
-        will_renew: true,
-        expires_at: "2026-07-01T08:00:00Z",
-        price_display: "NT$90 / 月"
-    )
-
-    static let cancelledButActiveStatus = makeStatus(
-        is_active: true,
-        status: "active",
-        will_renew: false,
-        expires_at: "2026-06-20T08:00:00Z",
-        price_display: "NT$90 / 月"
-    )
-
-    static let adminGrantedStatus = makeStatus(
-        is_active: true,
-        status: "active",
-        will_renew: true,
-        expires_at: nil,
-        source: "admin"
-    )
 }
 
 // MARK: - Scene harness
@@ -93,12 +38,13 @@ enum PaywallScenarios {
 /// Builds the `@MainActor` mock inside a main-actor-isolated `body`, then injects
 /// it into the sheet's environment.
 private struct PaywallScene: View {
-    let status: KGSubscriptionStatus
+    let fixtureID: UIWorldEntitlementsFixtureID
 
     var body: some View {
+        let seed = FixtureDatasetStore.requireEntitlementsSeed(for: fixtureID)
         AppThemeContainer {
             SubscriptionPaywallSheet()
-                .environment(\.subscriptionManager, PreviewSubscriptionManager(status: status))
+                .environment(\.subscriptionManager, PreviewSubscriptionManager(seed: seed))
         }
         .environmentObject(AppAppearanceStore.preview)
     }
@@ -119,8 +65,8 @@ private final class PreviewSubscriptionManager: SubscriptionManaging {
 
     var hasProAccess: Bool { entitlements.pro.is_active }
 
-    init(status: KGSubscriptionStatus) {
-        self.entitlements = KGEntitlements(pro: status)
+    init(seed: UIWorldEntitlementsSeed) {
+        self.entitlements = KGEntitlements(pro: seed.pro)
     }
 
     func refresh(using kgService: any KGServing, authManager: any AuthManaging, force: Bool) async {}
