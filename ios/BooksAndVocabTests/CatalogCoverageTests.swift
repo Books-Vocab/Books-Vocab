@@ -380,6 +380,50 @@ import Playbook
         )
     }
 
+    @Test func knowledgeGraphCatalogUsesUIWorldVocabularyLinksAndAuthSeeds() throws {
+        let graphScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("KnowledgeGraphViewScenarios.swift")
+        let source = try String(contentsOf: graphScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("KnowledgeGraphPresenterPreviewData", "Knowledge Graph catalog must not use presenter preview sample graph data"),
+            ("allEntries: []", "Knowledge Graph empty state must use a UI World vocabulary seed"),
+            ("KnowledgeGraphView(allEntries: [])", "Knowledge Graph catalog must not inline an empty entry array"),
+            ("shouldLoadGraphData: true", "Knowledge Graph catalog must not depend on remote graph task"),
+            ("DemoDataProvider.demoGraphLinks", "Knowledge Graph catalog links must come from UI World manifest rows"),
+            ("subtle", "Knowledge Graph catalog nodes must not come from presenter preview samples"),
+            ("nuance", "Knowledge Graph catalog nodes must not come from presenter preview samples"),
+            ("precise", "Knowledge Graph catalog nodes must not come from presenter preview samples"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(graphScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Knowledge Graph catalog must source entry rows from UI World vocabulary seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: fixture.authID)"),
+            "Knowledge Graph catalog must source auth from UI World auth seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)"),
+            "Knowledge Graph catalog must materialize VocabularyEntry rows from UI World"
+        )
+        #expect(
+            source.contains("initialGraphLinks: graphLinks"),
+            "Knowledge Graph catalog must inject manifest-derived graph links"
+        )
+        #expect(
+            source.contains("shouldLoadGraphData: false"),
+            "Knowledge Graph catalog must disable remote graph task"
+        )
+        #expect(
+            source.contains("summary.cardId"),
+            "Knowledge Graph catalog graph links must be derived from UI World graphLinksByKind"
+        )
+    }
+
     @Test func kgVocabRowCatalogUsesUIWorldVocabularySeed() throws {
         let rowScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

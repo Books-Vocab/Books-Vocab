@@ -36,6 +36,10 @@ final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
     var linkThickness: Double = 1.0
     var showsIsolatedNodes: Bool = false
 
+    init(links: [KGGraphLink] = []) {
+        self.links = links
+    }
+
     func toggleSettings() {
         withAnimation(AppMotion.panelState) {
             isShowingSettings.toggle()
