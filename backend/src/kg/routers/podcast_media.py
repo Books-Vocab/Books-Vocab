@@ -6,7 +6,7 @@ from collections.abc import Callable
 from email.utils import formatdate
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
@@ -17,6 +17,61 @@ from ..settings import KGSettings
 logger = logging.getLogger(__name__)
 
 _S3_AUDIO_FMT_CACHE: dict[tuple[str | None, str], str] = {}
+
+
+class S3SettingsProvider(Protocol):
+    def __call__(self, request: Request) -> KGSettings:
+        ...
+
+
+class S3ClientProvider(Protocol):
+    def __call__(self, request: Request) -> Any:
+        ...
+
+
+class IsS3NotFound(Protocol):
+    def __call__(self, exc: Exception, s3: Any) -> bool:
+        ...
+
+
+class ReadJsonFromS3(Protocol):
+    def __call__(self, request: Request, key: str, *, context: str) -> Any:
+        ...
+
+
+class AudioFormatResolver(Protocol):
+    def __call__(self, request: Request, series_id: str) -> str:
+        ...
+
+
+class GetObjectFromS3(Protocol):
+    def __call__(self, request: Request, key: str, *, context: str) -> dict[str, Any] | None:
+        ...
+
+
+class IterS3Body(Protocol):
+    def __call__(self, body: Any, chunk_size: int) -> Any:
+        ...
+
+
+class AudioFilenameBuilder(Protocol):
+    def __call__(self, request: Request, series_id: str, ep_num: int, *, stem: str = FULL_AUDIO_STEM) -> str:
+        ...
+
+
+class LoggerProtocol(Protocol):
+    def error(self, *args: Any, **kwargs: Any) -> None:
+        ...
+
+
+class ReadBytesFromS3(Protocol):
+    def __call__(self, request: Request, key: str, *, context: str) -> bytes | None:
+        ...
+
+
+class StaticHeadersBuilder(Protocol):
+    def __call__(self, obj: dict[str, Any], base_headers: dict[str, str] | None = None) -> dict[str, str]:
+        ...
 
 
 def _podcasts_dir(request: Request | None = None) -> Path:
@@ -69,11 +124,11 @@ def _s3_audio_format(
     request: Request,
     series_id: str,
     *,
-    settings_fn: Callable[[Request], Any],
-    read_json_from_s3: Callable[..., Any],
-    s3_client_fn: Callable[[Request], Any],
-    is_s3_not_found_fn: Callable[[Exception, Any], bool],
-    logger_: Any,
+    settings_fn: S3SettingsProvider,
+    read_json_from_s3: ReadJsonFromS3,
+    s3_client_fn: S3ClientProvider,
+    is_s3_not_found_fn: IsS3NotFound,
+    logger_: LoggerProtocol,
     cache: dict[tuple[str | None, str], str],
 ) -> str:
     cfg = settings_fn(request)
@@ -119,7 +174,7 @@ def _audio_filename(
     *,
     stem: str = FULL_AUDIO_STEM,
     using_s3: Callable[[Request], bool],
-    s3_audio_format: Callable[[Request, str], str],
+    s3_audio_format: AudioFormatResolver,
     podcasts_dir: Callable[[Request], Path],
 ) -> str:
     if using_s3(request):
@@ -135,7 +190,7 @@ def _media_type_for(filename: str) -> str:
     return "audio/mp4" if filename.endswith(".m4a") else "audio/mpeg"
 
 
-def _read_json_file(path: Path, *, context: str, logger_: Any) -> Any:
+def _read_json_file(path: Path, *, context: str, logger_: LoggerProtocol) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -148,10 +203,10 @@ def _read_json_from_s3(
     key: str,
     *,
     context: str,
-    settings_fn: Callable[[Request], Any],
-    s3_client_fn: Callable[[Request], Any],
-    is_s3_not_found_fn: Callable[[Exception, Any], bool],
-    logger_: Any,
+    settings_fn: S3SettingsProvider,
+    s3_client_fn: S3ClientProvider,
+    is_s3_not_found_fn: IsS3NotFound,
+    logger_: LoggerProtocol,
 ) -> Any:
     cfg = settings_fn(request)
     s3 = s3_client_fn(request)
@@ -189,11 +244,11 @@ def _get_object_from_s3(
     key: str,
     *,
     context: str,
-    settings_fn: Callable[[Request], Any],
-    s3_client_fn: Callable[[Request], Any],
-    is_s3_not_found_fn: Callable[[Exception, Any], bool],
-    logger_: Any,
-):
+    settings_fn: S3SettingsProvider,
+    s3_client_fn: S3ClientProvider,
+    is_s3_not_found_fn: IsS3NotFound,
+    logger_: LoggerProtocol,
+) -> dict[str, Any] | None:
     s3 = s3_client_fn(request)
     try:
         return s3.get_object(Bucket=settings_fn(request).podcast_bucket, Key=key)
@@ -209,7 +264,7 @@ def _read_bytes_from_s3(
     key: str,
     *,
     context: str,
-    get_object_from_s3: Callable[..., Any],
+    get_object_from_s3: GetObjectFromS3,
 ) -> bytes | None:
     obj = get_object_from_s3(request, key, context=context)
     if obj is None:
@@ -257,10 +312,10 @@ def _serve_static_media(
     transform: Callable[[bytes], bytes | str] = lambda b: b,
     stream_s3: bool = False,
     using_s3: Callable[[Request], bool],
-    get_object_from_s3: Callable[..., Any],
-    iter_s3_body: Callable[..., Any],
-    s3_static_headers: Callable[[dict, dict[str, str] | None], dict[str, str]],
-    read_bytes_from_s3: Callable[..., bytes | None],
+    get_object_from_s3: GetObjectFromS3,
+    iter_s3_body: IterS3Body,
+    s3_static_headers: StaticHeadersBuilder,
+    read_bytes_from_s3: ReadBytesFromS3,
     podcasts_dir: Callable[[Request], Path],
 ) -> Response | StreamingResponse:
     if using_s3(request) and stream_s3:
@@ -292,13 +347,13 @@ def _serve_audio_from_s3(
     range_header: str | None,
     *,
     stem: str,
-    settings_fn: Callable[[Request], Any],
-    s3_client_fn: Callable[[Request], Any],
-    audio_filename: Callable[[Request, str, int], str],
+    settings_fn: S3SettingsProvider,
+    s3_client_fn: S3ClientProvider,
+    audio_filename: AudioFilenameBuilder,
     media_type_for: Callable[[str], str],
-    is_s3_not_found_fn: Callable[[Exception, Any], bool],
-    iter_s3_body: Callable[..., Any],
-    logger_: Any,
+    is_s3_not_found_fn: IsS3NotFound,
+    iter_s3_body: IterS3Body,
+    logger_: LoggerProtocol,
 ) -> StreamingResponse:
     cfg = settings_fn(request)
     s3 = s3_client_fn(request)
