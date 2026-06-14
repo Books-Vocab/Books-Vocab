@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Protocol
 
 from .api_models import CardResponse
 from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
@@ -21,7 +21,39 @@ from .vocab_shared import (
 logger = logging.getLogger(__name__)
 
 
-def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
+class VocabCard(Protocol):
+    id: str
+    content: str
+    is_deleted: bool
+    is_archived: bool
+    notebook_id: str
+
+
+class VocabGraph(Protocol):
+    def get_links_for(self, card_id: str) -> object:
+        ...
+
+
+class CardResponseBuilder(Protocol):
+    def __call__(
+        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
+    ) -> CardResponse:
+        ...
+
+
+class CardMutator(Protocol):
+    def __call__(self, card: VocabCard) -> None:
+        ...
+
+
+def list_vocab_cards(
+    *, 
+    since: str | None,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+) -> list[CardResponse]:
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
@@ -29,7 +61,7 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
         naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
         # Phase 1: only fetch modified cards (uses ix_card_updated_at index)
         modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
-        modified_by_id: dict[str, Any] = {c.id: c for c in modified}
+        modified_by_id: dict[str, VocabCard] = {c.id: c for c in modified}
         # Phase 2: collect neighbour IDs for link resolution (graph is in-memory, N lookups OK)
         neighbour_ids: set[str] = set()
         for card in modified:
@@ -42,7 +74,7 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
         neighbours = cards_store.get_batch(neighbour_ids) if neighbour_ids else {}
         # NOTE: cards_by_id is a subset (modified + neighbours), not the full table.
         # build_links_by_kind skips missing neighbours via `if not other_card`.
-        cards_by_id = modified_by_id | neighbours
+        cards_by_id: dict[str, VocabCard] = modified_by_id | neighbours
         cards = modified
     else:
         # Full sync: all non-deleted cards. Deleted neighbours are skipped by build_links_by_kind.
@@ -52,7 +84,7 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 
-def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:
+def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> VocabCard:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
@@ -61,11 +93,18 @@ def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None)
     return card
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+def lookup_vocab_word(
+    word: str,
+    *,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+) -> CardResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
-    cards_by_id: dict[str, Any] = {card.id: card}
+    cards_by_id: dict[str, VocabCard] = {card.id: card}
     for link in graph.get_links_for(card.id):
         linked_id = link.from_id if link.to_id == card.id else link.to_id
         if linked_id not in cards_by_id:
@@ -106,7 +145,7 @@ def update_vocab_word_content(
     explanation: str | None,
     cards_store: Any,
     graph: Any,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
 ) -> CardResponse:
     """Update editorial content (meaning / note) of a single card.
@@ -191,7 +230,7 @@ class _GraphOpFailed(Exception):
 
 
 class BulkResult(NamedTuple):
-    succeeded: list[tuple[str, Any]]
+    succeeded: list[tuple[str, VocabCard]]
     not_found: list[str]
     failed: list[str]
 
@@ -201,7 +240,7 @@ def _batch_apply(
     *,
     cards_store: Any,
     notebook_id: str | None,
-    apply: Callable[[Any], None],
+    apply: CardMutator,
 ) -> BulkResult:
     """Shared skeleton for batch vocab mutations.
 
@@ -221,13 +260,13 @@ def _batch_apply(
     if len(words) > MAX_BATCH_SIZE:
         raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
-    succeeded: list[tuple[str, Any]] = []
+    succeeded: list[tuple[str, VocabCard]] = []
     not_found: list[str] = []
     failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
     seen_words_by_key: dict[str, set[str]] = {}
-    outcome_by_key: dict[str, tuple[str, Any | None]] = {}
+    outcome_by_key: dict[str, tuple[str, VocabCard | None]] = {}
 
     for word in words:
         key = _normalize_word(_clean_content(word))

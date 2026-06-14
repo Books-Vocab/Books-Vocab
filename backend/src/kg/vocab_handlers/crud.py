@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from ..api_models import (
@@ -19,6 +18,7 @@ from ..vocab_crud import (
     lookup_vocab_word,
     update_vocab_word_content,
 )
+from ..vocab_shared import CardResponseBuilder
 from ._shared import (
     CardStoreFactory,
     ClientFactory,
@@ -35,10 +35,10 @@ def list_vocab_response(
     *,
     card_store_factory: CardStoreFactory,
     graph_store_factory: GraphStoreFactory,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    card_response_builder: CardResponseBuilder,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str | None = None,
-) -> list[Any]:
+) -> list[CardResponse]:
     stores = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
@@ -60,7 +60,7 @@ def lookup_word_response(
     *,
     card_store_factory: CardStoreFactory,
     graph_store_factory: GraphStoreFactory,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    card_response_builder: CardResponseBuilder,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
@@ -111,7 +111,7 @@ def update_word_content_response(
     *,
     card_store_factory: CardStoreFactory,
     graph_store_factory: GraphStoreFactory,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    card_response_builder: CardResponseBuilder,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:

@@ -23,11 +23,10 @@ from __future__ import annotations
 import json
 import re
 import tarfile
-from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 # uid 會被 join 進檔案系統路徑(`data_dir/users/<uid>`),必須限制在 path-safe
 # 白名單,否則 crafted uid 可用 `/` 或 `..` 逃出 sandbox。鏡像
@@ -48,6 +47,16 @@ _MAX_UID_LEN = 200
 
 class EditError(Exception):
     """使用者可讀的編輯失敗(訊息直接呈現,不附 traceback)。"""
+
+
+class ApplyFn(Protocol):
+    def __call__(self) -> object:
+        ...
+
+
+class VerifyFn(Protocol):
+    def __call__(self) -> dict[str, object] | None:
+        ...
 
 
 def assert_safe_uid(uid: str) -> None:
@@ -340,8 +349,8 @@ class EditContext:
         *,
         action: str,
         plan: dict[str, Any],
-        apply_fn: Callable[[], Any],
-        verify_fn: Callable[[], dict[str, Any]] | None = None,
+        apply_fn: ApplyFn,
+        verify_fn: VerifyFn | None = None,
     ) -> int:
         """執行一個寫操作。回傳 process exit code(0 成功 / 1 verify 失敗)。"""
         if not self.commit:
