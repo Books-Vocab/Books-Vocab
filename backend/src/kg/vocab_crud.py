@@ -47,7 +47,7 @@ class CardMutator(Protocol):
 
 
 def list_vocab_cards(
-    *, 
+    *,
     since: str | None,
     cards_store: Any,
     graph: Any,
