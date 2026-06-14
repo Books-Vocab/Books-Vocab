@@ -172,15 +172,15 @@ private let catalogSnapshotCompileFlagEnabled = false
 
     @Test func parseListArgumentsReadsLaunchArgumentPairs() {
         let groups = Self.parseListArguments(
-            ["xctest", "-KG_CATALOG_GROUPS", "Bookshelf, Today Review"],
+            ["xctest", "-KG_CATALOG_GROUPS", "Bookshelf View, Today Review"],
             flag: "-KG_CATALOG_GROUPS"
         )
         let scenarios = Self.parseListArguments(
-            ["xctest", "-KG_CATALOG_SCENARIOS", "Today Review/Front\nBookshelf/With Books"],
+            ["xctest", "-KG_CATALOG_SCENARIOS", "Today Review/Front\nBookshelf View/Populated · mixed formats"],
             flag: "-KG_CATALOG_SCENARIOS"
         )
-        #expect(groups == ["Bookshelf", "Today Review"])
-        #expect(scenarios == ["Today Review/Front", "Bookshelf/With Books"])
+        #expect(groups == ["Bookshelf View", "Today Review"])
+        #expect(scenarios == ["Today Review/Front", "Bookshelf View/Populated · mixed formats"])
     }
 }
 
