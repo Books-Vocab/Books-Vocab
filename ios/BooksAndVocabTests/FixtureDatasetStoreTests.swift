@@ -341,6 +341,27 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func authSeedFailsWhenNullableIdentityKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-nullable-auth-keys",
+          "auth": {
+            "guest": {
+              "isLoggedIn": false,
+              "keychainTokenState": "absent",
+              "authError": null,
+              "isAuthenticating": false
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetCanDeclareLockedKeychainSession() throws {
         let dataset = """
         {

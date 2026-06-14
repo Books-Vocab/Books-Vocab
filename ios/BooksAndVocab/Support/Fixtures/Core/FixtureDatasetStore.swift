@@ -321,7 +321,7 @@ struct UIWorldAuthSeed: Codable, Equatable {
     let provider: String?
     let providerUserId: String?
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case isLoggedIn
         case userId
         case token
@@ -336,21 +336,21 @@ struct UIWorldAuthSeed: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World auth seed must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
         isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
         userId = try container.decodeIfPresent(String.self, forKey: .userId)
         token = try container.decodeIfPresent(String.self, forKey: .token)
         keychainTokenState = try container.decode(KeychainTokenState.self, forKey: .keychainTokenState)
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
         email = try container.decodeIfPresent(String.self, forKey: .email)
-        guard container.contains(.authError) else {
-            throw DecodingError.keyNotFound(
-                CodingKeys.authError,
-                DecodingError.Context(
-                    codingPath: container.codingPath,
-                    debugDescription: "UI World auth seed must explicitly declare authError, even when null"
-                )
-            )
-        }
         authError = try container.decodeIfPresent(String.self, forKey: .authError)
         isAuthenticating = try container.decode(Bool.self, forKey: .isAuthenticating)
         provider = try container.decodeIfPresent(String.self, forKey: .provider)
