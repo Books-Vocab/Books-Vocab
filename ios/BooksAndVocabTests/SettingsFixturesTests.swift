@@ -22,6 +22,7 @@ import Testing
         #expect(previewKeys == [
             "settings.logged_out",
             "settings.subscribed_active",
+            "settings.account_long_identity",
             "settings.subscription_free",
             "settings.subscription_loading",
             "settings.deleting_account",
@@ -39,6 +40,16 @@ import Testing
             #expect(subscription.isActive == false)
             #expect(subscription.planName == "免費方案")
             #expect(subscription.ctaTitle == "升級 Pro")
+        }
+    }
+
+    @Test func accountLongIdentityFixtureComesFromUIWorld() async throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let state = SettingsFixtures.state(for: .accountLongIdentity)
+            #expect(state.auth.isLoggedIn == true)
+            #expect(state.auth.displayName.contains("Wonderfully Long Display Name"))
+            #expect(state.auth.email?.contains("layout.testing") == true)
+            #expect(state.danger?.isDeletingAccount == false)
         }
     }
 }

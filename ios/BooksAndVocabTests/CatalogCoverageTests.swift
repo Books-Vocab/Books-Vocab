@@ -147,6 +147,28 @@ import Playbook
         )
     }
 
+    @Test func settingsAccountDetailCatalogUsesUIWorldSettingsSeeds() throws {
+        let detailScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SettingsAccountDetailScenarios.swift")
+        let source = try String(contentsOf: detailScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("SettingsPresenterPreviewData.subscribedActive.auth", "account detail must load settings.subscribed_active from UI World"),
+            ("SettingsPresenterPreviewData.deletingAccount.auth", "account detail must load settings.deleting_account from UI World"),
+            ("loggedOutAuth", "logged-out account detail must be a UI World settings seed"),
+            ("longInfoAuth", "long identity account detail must be a UI World settings seed"),
+            ("SettingsPresenterState.AuthSection(", "account detail must not construct local auth presenter state"),
+            ("SettingsPresenterState.DangerSection(", "account detail must not construct local danger presenter state"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(detailScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("SettingsFixtures.state(for: fixtureID)"),
+            "Settings account detail catalog must fail fast through UI World settings seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.
