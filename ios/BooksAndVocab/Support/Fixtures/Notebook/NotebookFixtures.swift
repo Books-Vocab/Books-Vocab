@@ -110,50 +110,13 @@ struct NotebookFixtureRenderModel {
 enum NotebookFixtures {
     private static let sharedSurfaces: Set<FixtureSurface> = [.preview, .catalog, .snapshot]
 
-    private static let defaultNotebook = NotebookSeed(
-        remoteId: "default",
-        name: "我的單字本",
-        syncStatus: 1,
-        isDefault: true,
-        sortOrder: 0,
-        entries: [
-            .init(word: "serendipity", translation: "機緣巧合", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The trip was pure serendipity.", explanation: "A pleasant discovery made by chance.", partOfSpeech: "n.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
-            .init(word: "ephemeral", translation: "短暫的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The morning mist felt ephemeral.", explanation: "Lasting for a very short time.", partOfSpeech: "adj.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
-            .init(word: "petrichor", translation: "雨後泥土香", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "Petrichor filled the street after rain.", explanation: "The earthy smell after rainfall.", partOfSpeech: "n.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
-        ]
+    private static let registry = FixtureRegistry<NotebookFixtureSeed>(
+        NotebookFixtureID.allCases.map { fixtureID in
+            FixtureRecipe(key: fixtureID.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
+                FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
+            }
+        }
     )
-
-    private static let registry = FixtureRegistry<NotebookFixtureSeed>([
-        FixtureRecipe(key: NotebookFixtureID.populated.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(notebooks: [
-                defaultNotebook,
-                NotebookSeed(
-                    remoteId: "nb-classics",
-                    name: "經典文學",
-                    syncStatus: 1,
-                    isDefault: false,
-                    sortOrder: 1,
-                    entries: [
-                        .init(word: "melancholy", translation: "憂鬱", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "A quiet melancholy runs through the chapter.", explanation: "A thoughtful sadness.", partOfSpeech: "n.", bookTitle: "Classic Fixture", chapterTitle: "Mood"),
-                        .init(word: "sublime", translation: "崇高的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The view was sublime.", explanation: "Of exceptional beauty or grandeur.", partOfSpeech: "adj.", bookTitle: "Classic Fixture", chapterTitle: "Mood"),
-                    ]
-                ),
-                NotebookSeed(
-                    remoteId: "nb-science",
-                    name: "科普閱讀",
-                    syncStatus: 1,
-                    isDefault: false,
-                    sortOrder: 2,
-                    entries: [
-                        .init(word: "entropy", translation: "熵", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "Entropy increases in a closed system.", explanation: "A measure of disorder.", partOfSpeech: "n.", bookTitle: "Science Fixture", chapterTitle: "Systems"),
-                    ]
-                ),
-            ])
-        },
-        FixtureRecipe(key: NotebookFixtureID.single.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(notebooks: [defaultNotebook])
-        },
-    ])
 
     static func recipes(for surface: FixtureSurface) -> [FixtureRecipe<NotebookFixtureSeed>] {
         registry.recipes(for: surface)

@@ -391,13 +391,18 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
 }
 
 enum FixtureDatasetStore {
-    static var testingOverrideData: Data?
+    @TaskLocal static var testingOverrideData: Data?
 
     static func withTestingData<T>(_ data: Data?, perform: () throws -> T) rethrows -> T {
-        let previous = testingOverrideData
-        testingOverrideData = data
-        defer { testingOverrideData = previous }
-        return try perform()
+        try $testingOverrideData.withValue(data) {
+            try perform()
+        }
+    }
+
+    static func withTestingData<T>(_ data: Data?, perform: () async throws -> T) async rethrows -> T {
+        try await $testingOverrideData.withValue(data) {
+            try await perform()
+        }
     }
 
     static func settingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed? {

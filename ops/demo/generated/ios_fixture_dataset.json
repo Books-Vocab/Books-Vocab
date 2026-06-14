@@ -1007,6 +1007,84 @@
           "syncStatus": 1
         }
       ]
+    },
+    "single": {
+      "notebooks": [
+        {
+          "remoteId": "editorial-picks",
+          "name": "Editorial Picks",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [
+            {
+              "word": "meticulous",
+              "translation": "一絲不苟的；極為仔細的",
+              "context": "Her meticulous notes turned a dusty archive into something alive.",
+              "explanation": "源自拉丁文 metus（恐懼），原指「過度謹慎」，今為褒義。",
+              "partOfSpeech": "adj.",
+              "bookTitle": "A Room of One's Own",
+              "chapterTitle": "Chapter 2",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
+            },
+            {
+              "word": "discerning",
+              "translation": "有洞察力的；能辨別細微差異的",
+              "context": "A discerning editor hears what a paragraph is still trying to become.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "Letters to a Young Poet",
+              "chapterTitle": "Letter 3",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
+            },
+            {
+              "word": "evoke",
+              "translation": "喚起；引發（情感或記憶）",
+              "context": "The opening lines evoke a quiet sense of exile.",
+              "explanation": null,
+              "partOfSpeech": "v.",
+              "bookTitle": "A Room of One's Own",
+              "chapterTitle": "Chapter 1",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
+            },
+            {
+              "word": "luminous",
+              "translation": "明亮的；清晰動人的（文筆）",
+              "context": "Her luminous prose makes a difficult idea feel intimate.",
+              "explanation": null,
+              "partOfSpeech": "adj.",
+              "bookTitle": "On Writing",
+              "chapterTitle": "Toolbox",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
+            },
+            {
+              "word": "nuance",
+              "translation": "細微差別；微妙之處",
+              "context": "Good criticism lives in the nuance between praise and dismissal.",
+              "explanation": null,
+              "partOfSpeech": "n.",
+              "bookTitle": "On Writing",
+              "chapterTitle": "On Revision",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
+            }
+          ],
+          "syncStatus": 1
+        }
+      ]
     }
   },
   "podcast": {},
