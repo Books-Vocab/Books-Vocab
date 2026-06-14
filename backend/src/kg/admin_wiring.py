@@ -6,9 +6,10 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Protocol
 
 from fastapi import Cookie, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from starlette.concurrency import run_in_threadpool
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
@@ -33,19 +34,31 @@ from .admin_test_matrix import (
     run_pytest_matrix,
     store_last_test_run,
 )
-from .api_models import AdminGrantRequest, AdminTestRunRequest, EntitlementsResponse
+from .api_models import (
+    AdminGrantRequest,
+    AdminTestRunRequest,
+    AdminUserEntitlementResponse,
+    EntitlementsResponse,
+)
 from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
 PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
 
-RuntimeSettingsFn = Callable[[], Any]
+class SupportsAdminSettings(Protocol):
+    admin_token: str
+    admin_password: str
+    data_dir: Path
+
+
+RuntimeSettingsFn = Callable[[], SupportsAdminSettings]
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
 MemLogGetter = Callable[..., list[dict[str, Any]]]
-CardStoreFactory = Callable[..., Any]
+CardStoreFactory = Callable[[Path], Any]
 EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
+AdminEndpointResult = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -62,32 +75,35 @@ class AdminHandlerDependencies:
 
 @dataclass(frozen=True)
 class AdminHandlers:
-    admin_ui: Callable
-    admin_stats: Callable
-    admin_logs: Callable
-    admin_user_entitlement: Callable
-    admin_grant_pro_access: Callable
-    admin_revoke_pro_access: Callable
-    admin_run_tests: Callable
-    admin_last_test_run: Callable
-    admin_test_catalog: Callable
-    admin_tests_ui: Callable
-    admin_graph_density: Callable
-    admin_graph_playback: Callable
-    admin_pipeline_runs: Callable
-    admin_judge_stats: Callable
-    admin_translate_history: Callable
-    admin_user_activity: Callable
-    admin_user_usage: Callable
-    admin_user_cost_summary: Callable
-    admin_host_metrics: Callable
-    admin_users_search: Callable
-    admin_observability: Callable
-    admin_stats_trends: Callable
-    admin_log_retention_run: Callable
-    admin_audit: Callable
-    admin_user_detail_ui: Callable
-    admin_orphans_scan: Callable
+    admin_ui: Callable[[], HTMLResponse]
+    admin_stats: Callable[[], AdminEndpointResult]
+    admin_logs: Callable[[int, str | None], AdminEndpointResult]
+    admin_user_entitlement: Callable[[str], AdminUserEntitlementResponse]
+    admin_grant_pro_access: Callable[
+        [AdminGrantRequest, str, str | None, str | None, str | None],
+        AdminUserEntitlementResponse,
+    ]
+    admin_revoke_pro_access: Callable[[str, str | None, str | None, str | None], AdminUserEntitlementResponse]
+    admin_run_tests: Callable[[AdminTestRunRequest | None], AdminEndpointResult]
+    admin_last_test_run: Callable[[], AdminEndpointResult]
+    admin_test_catalog: Callable[[], AdminEndpointResult]
+    admin_tests_ui: Callable[[], HTMLResponse]
+    admin_graph_density: Callable[[str, str], AdminEndpointResult]
+    admin_graph_playback: Callable[[str, str], AdminEndpointResult]
+    admin_pipeline_runs: Callable[[str, int], AdminEndpointResult]
+    admin_judge_stats: Callable[[str], AdminEndpointResult]
+    admin_translate_history: Callable[[str, int, str | None, str | None], AdminEndpointResult]
+    admin_user_activity: Callable[[str, int], AdminEndpointResult]
+    admin_user_usage: Callable[[str, str], AdminEndpointResult]
+    admin_user_cost_summary: Callable[[str, str], AdminEndpointResult]
+    admin_host_metrics: Callable[[], AdminEndpointResult]
+    admin_users_search: Callable[[str, int], AdminEndpointResult]
+    admin_observability: Callable[[], AdminEndpointResult]
+    admin_stats_trends: Callable[[int], AdminEndpointResult]
+    admin_log_retention_run: Callable[[], Awaitable[AdminEndpointResult]]
+    admin_audit: Callable[[str | None, int, str | None], AdminEndpointResult]
+    admin_user_detail_ui: Callable[[], HTMLResponse]
+    admin_orphans_scan: Callable[[], Awaitable[AdminEndpointResult]]
 
 
 def _clamp_limit(limit: int, cap: int) -> int:
@@ -111,14 +127,14 @@ def create_admin_handlers_from_dependencies(
     build_entitlements_response_fn = dependencies.build_entitlements_response_fn
     current_admin_grant_record_fn = dependencies.current_admin_grant_record_fn
 
-    def admin_ui():
+    def admin_ui() -> HTMLResponse:
         """Admin dashboard UI."""
         return admin_ui_response(
             admin_html=ADMIN_HTML,
             admin_token=runtime_settings_fn().admin_token,
         )
 
-    def admin_stats():
+    def admin_stats() -> AdminEndpointResult:
         """Return per-user token + vocab stats for admin dashboard."""
         from .token_tracker import get_all_stats
 
@@ -132,7 +148,9 @@ def create_admin_handlers_from_dependencies(
             card_store_factory=card_store_factory,
         )
 
-    def admin_logs(n: int = 200, level: str | None = None):
+    def admin_logs(
+        n: int = 200, level: str | None = None
+    ) -> AdminEndpointResult:
         """Return recent in-memory log entries for the admin dashboard."""
         return admin_logs_response(
             log_getter=mem_log_getter,
@@ -140,7 +158,7 @@ def create_admin_handlers_from_dependencies(
             level=level,
         )
 
-    def admin_user_entitlement(user_id: str):
+    def admin_user_entitlement(user_id: str) -> AdminUserEntitlementResponse:
         """Return one user's computed Pro entitlement plus raw admin grant metadata."""
         return admin_user_entitlement_response(
             user_id,
@@ -167,7 +185,7 @@ def create_admin_handlers_from_dependencies(
         token: str | None = Query(None),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
-    ):
+    ) -> AdminUserEntitlementResponse:
         """Manually grant Pro access for a user through the admin surface."""
         actor = _actor_from_request(token, authorization, admin_session)
         return admin_grant_pro_access_response(
@@ -186,7 +204,7 @@ def create_admin_handlers_from_dependencies(
         token: str | None = Query(None),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
-    ):
+    ) -> AdminUserEntitlementResponse:
         """Remove manual Pro access for a user through the admin surface."""
         actor = _actor_from_request(token, authorization, admin_session)
         return admin_revoke_pro_access_response(
@@ -199,7 +217,9 @@ def create_admin_handlers_from_dependencies(
             admin_uid=actor,
         )
 
-    def admin_run_tests(req: AdminTestRunRequest | None = None):
+    def admin_run_tests(
+        req: AdminTestRunRequest | None = None,
+    ) -> AdminEndpointResult:
         """Run test suite and return matrix view data."""
         return admin_run_tests_response(
             req=req,
@@ -207,19 +227,19 @@ def create_admin_handlers_from_dependencies(
             store_last_test_run=store_last_test_run,
         )
 
-    def admin_last_test_run():
+    def admin_last_test_run() -> AdminEndpointResult:
         """Get latest test run result for matrix page."""
         return admin_last_test_run_response(
             get_last_test_run=get_last_test_run,
         )
 
-    def admin_test_catalog():
+    def admin_test_catalog() -> AdminEndpointResult:
         """Return clickable test-matrix catalog."""
         return admin_test_catalog_response(
             build_test_catalog=build_test_catalog,
         )
 
-    def admin_tests_ui():
+    def admin_tests_ui() -> HTMLResponse:
         """Minimal grayscale test matrix dashboard."""
         return admin_tests_ui_response(
             admin_tests_html=ADMIN_TESTS_HTML,
@@ -249,17 +269,23 @@ def create_admin_handlers_from_dependencies(
             raise HTTPException(status_code=400, detail="Invalid user_id")
         return user_dir
 
-    def admin_graph_density(user_id: str, notebook_id: str = "default"):
+    def admin_graph_density(
+        user_id: str, notebook_id: str = "default"
+    ) -> AdminEndpointResult:
         """Return time-series graph density data for a user."""
         from .admin_graph_density import compute_graph_density
         return compute_graph_density(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
-    def admin_graph_playback(user_id: str, notebook_id: str = "default"):
+    def admin_graph_playback(
+        user_id: str, notebook_id: str = "default"
+    ) -> AdminEndpointResult:
         """Return full graph nodes + edges with timestamps for playback."""
         from .admin_graph_playback import compute_graph_playback
         return compute_graph_playback(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
-    def admin_pipeline_runs(user_id: str, limit: int = 20):
+    def admin_pipeline_runs(
+        user_id: str, limit: int = 20
+    ) -> AdminEndpointResult:
         """Return pipeline run history for a user."""
         from .pipeline_log import get_runs
         return {
@@ -267,7 +293,7 @@ def create_admin_handlers_from_dependencies(
             "runs": get_runs(user_id, limit=_clamp_limit(limit, PIPELINE_RUNS_MAX)),
         }
 
-    def admin_judge_stats(user_id: str):
+    def admin_judge_stats(user_id: str) -> AdminEndpointResult:
         """Return per-user judge acceptance stats."""
         from .judge_log import get_acceptance_stats
         return get_acceptance_stats(user_id=user_id)
@@ -277,7 +303,7 @@ def create_admin_handlers_from_dependencies(
         limit: int = 50,
         q: str | None = None,
         op: str | None = None,
-    ):
+    ) -> AdminEndpointResult:
         """Return translate/explain call history for a user, with optional search/filter.
 
         Query params:
@@ -295,17 +321,21 @@ def create_admin_handlers_from_dependencies(
             "op": op or "",
         }
 
-    def admin_user_activity(user_id: str, hours: int = 24):
+    def admin_user_activity(
+        user_id: str, hours: int = 24
+    ) -> AdminEndpointResult:
         """Return merged recent-activity timeline (translate + pipeline + judge)."""
         from .admin_user_activity import get_user_activity
         return get_user_activity(user_id, hours=hours)
 
-    def admin_user_usage(user_id: str, range: str = "24h"):
+    def admin_user_usage(user_id: str, range: str = "24h") -> AdminEndpointResult:
         """Return per-type usage breakdown for a user, filtered by time range."""
         from .admin_handlers import admin_user_usage_response
         return admin_user_usage_response(user_id, range_=range)
 
-    def admin_user_cost_summary(user_id: str, range: str = "month"):
+    def admin_user_cost_summary(
+        user_id: str, range: str = "month"
+    ) -> AdminEndpointResult:
         """Return per-service / per-model AI cost summary for a user.
 
         ``range`` accepts ``24h`` / ``7d`` / ``30d`` / ``month`` (default,
@@ -320,26 +350,28 @@ def create_admin_handlers_from_dependencies(
                 detail="Invalid range. Expected one of 24h/7d/30d/month/all",
             ) from exc
 
-    def admin_host_metrics():
+    def admin_host_metrics() -> AdminEndpointResult:
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
 
-    def admin_users_search(q: str = "", limit: int = 50):
+    def admin_users_search(
+        q: str = "", limit: int = 50
+    ) -> AdminEndpointResult:
         """Search users by uid prefix / email substring / display name substring."""
         from .admin_users_search import search_users
         return search_users(load_users_fn(), q=q, limit=limit)
 
-    def admin_observability():
+    def admin_observability() -> AdminEndpointResult:
         """Return site-wide aggregated observability metrics (24h / 7d)."""
         from .admin_observability import collect_observability
         return collect_observability()
 
-    def admin_stats_trends(days: int = 30):
+    def admin_stats_trends(days: int = 30) -> AdminEndpointResult:
         """Return site-wide 30-day error/token/DAU trend buckets."""
         from .admin_trends import collect_trends
         return collect_trends(window_days=days)
 
-    async def admin_log_retention_run():
+    async def admin_log_retention_run() -> AdminEndpointResult:
         """Manually trigger log-retention pruners across all 4 log DBs.
 
         Response shape merges the nested per-DB report with flat
@@ -359,7 +391,7 @@ def create_admin_handlers_from_dependencies(
 
     def admin_audit(
         since: str | None = None, limit: int = 100, action: str | None = None
-    ):
+    ) -> AdminEndpointResult:
         """Return recent admin mutation audit log entries.
 
         Optional ``action`` query param filters to an exact action
@@ -367,14 +399,14 @@ def create_admin_handlers_from_dependencies(
         """
         return admin_audit_response(since=since, limit=limit, action=action)
 
-    def admin_user_detail_ui():
+    def admin_user_detail_ui() -> HTMLResponse:
         """User detail page UI."""
         return admin_ui_response(
             admin_html=ADMIN_USER_DETAIL_HTML,
             admin_token=runtime_settings_fn().admin_token,
         )
 
-    async def admin_orphans_scan():
+    async def admin_orphans_scan() -> AdminEndpointResult:
         """Return a read-only data-consistency scan report.
 
         ``orphan_scan.scan`` is synchronous + heavy I/O (walks every users/<uid>
