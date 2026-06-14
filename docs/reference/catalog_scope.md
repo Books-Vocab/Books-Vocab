@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: a1a153fa
+verified_against: 4bf546d2
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -68,6 +68,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### KG Vocab Row 契約（無本地 word / row literal）
 `KGVocabRowScenarios` 的 default / highlighted / selecting-unselected / selecting-selected / long-translation 狀態必須取 UI World `vocabulary.kgVocabRow` seed。scenario 只能用狀態 enum 決定選取/高亮 UI flags；row 內容、book/chapter metadata、translation、part-of-speech、review/card metadata 都屬於 manifest entries，不可在 Debug source 另建 `VocabularyEntry(...)` 或保留本地 word/translation/part-of-speech 字串。manifest row 數必須等於 scenario state 數，缺 seed 或 row count drift 都直接 fail-fast。`CatalogCoverageTests.kgVocabRowCatalogUsesUIWorldVocabularySeed` 擋回 inline row constructor、hardcoded book metadata、本地 word/translation/part-of-speech 與舊 row fixture 字串。
+
+### Vocabulary linked card / add link 契約（無本地 entry factory）
+`VocabScenarios` 的 `Vocabulary · Linked Card` 與 `Vocabulary · Add Link` 狀態必須取 UI World `vocabulary.vocabLinkedCards` seed。scenario 只能用 entry index 決定 single / stacked / with-candidates / no-candidates 的 UI shape；source entry、candidate entries、word、translation、part-of-speech、book/chapter metadata、kgCardId 都屬於 manifest entries，不可在 Debug source 另建 `VocabularyEntry(...)`、`sampleEntry` 或保留本地詞面字串。manifest 必須宣告 6 筆 rows，缺 seed、row count drift 或 index drift 都直接 fail-fast。`CatalogCoverageTests.vocabLinkedCardCatalogUsesUIWorldVocabularySeed` 擋回本地 entry factory、inline row constructor、hardcoded book metadata、本地 word/translation/part-of-speech 與舊 linked-card candidate 字串。
 
 ### Archived vocabulary 契約（無本地 archived row / empty fallback）
 `ArchivedVocabScenarios` 的 populated / single / long / empty 狀態必須取 UI World `vocabulary.archivedPopulated` / `vocabulary.archivedSingle` / `vocabulary.archivedLong` / `vocabulary.archivedEmpty` seed。scenario 必須把 manifest 的 `Notebook` + `VocabularyEntry` rows materialize 進 in-memory SwiftData，並用 `shouldAppearInArchiveList` 驗證 archived rows 真的符合 `synced + archived + non-delete`；empty 也必須是 manifest 內明示 seed，不可用本地 `[]` 表示。缺 seed、row shape drift、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.archivedVocabCatalogUsesUIWorldVocabularySeeds` 擋回本地 archived row builder、inline `VocabularyEntry(...)`、hardcoded book metadata、empty array fallback 與 silent save。
