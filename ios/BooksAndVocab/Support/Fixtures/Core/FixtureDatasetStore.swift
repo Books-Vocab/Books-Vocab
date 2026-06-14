@@ -12,6 +12,10 @@ struct FixtureDatasetDocument: Decodable {
     let todayReview: [String: TodayReviewSessionSeed]
     let notebook: [String: NotebookFixtureSeed]
     let podcast: [String: PodcastFixtureSeed]
+    let runtimePodcast: [String: UIWorldRuntimePodcastSeed]
+    let reader: [String: UIWorldReaderSeed]
+    let vocabulary: [String: UIWorldVocabularySeed]
+    let reviewDeck: [String: UIWorldReviewDeckSeed]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
@@ -23,6 +27,10 @@ struct FixtureDatasetDocument: Decodable {
         case todayReview
         case notebook
         case podcast
+        case runtimePodcast
+        case reader
+        case vocabulary
+        case reviewDeck
     }
 
     /// Single source of truth for the top-level key set. Keyed decoding
@@ -41,7 +49,11 @@ struct FixtureDatasetDocument: Decodable {
         bookshelf: [String: BookshelfFixtureSeed] = [:],
         todayReview: [String: TodayReviewSessionSeed] = [:],
         notebook: [String: NotebookFixtureSeed] = [:],
-        podcast: [String: PodcastFixtureSeed] = [:]
+        podcast: [String: PodcastFixtureSeed] = [:],
+        runtimePodcast: [String: UIWorldRuntimePodcastSeed] = [:],
+        reader: [String: UIWorldReaderSeed] = [:],
+        vocabulary: [String: UIWorldVocabularySeed] = [:],
+        reviewDeck: [String: UIWorldReviewDeckSeed] = [:]
     ) {
         self.schema = schema
         self.datasetID = datasetID
@@ -52,6 +64,10 @@ struct FixtureDatasetDocument: Decodable {
         self.todayReview = todayReview
         self.notebook = notebook
         self.podcast = podcast
+        self.runtimePodcast = runtimePodcast
+        self.reader = reader
+        self.vocabulary = vocabulary
+        self.reviewDeck = reviewDeck
     }
 
     init(from decoder: Decoder) throws {
@@ -65,6 +81,10 @@ struct FixtureDatasetDocument: Decodable {
         todayReview = try container.decodeIfPresent([String: TodayReviewSessionSeed].self, forKey: .todayReview) ?? [:]
         notebook = try container.decodeIfPresent([String: NotebookFixtureSeed].self, forKey: .notebook) ?? [:]
         podcast = try container.decodeIfPresent([String: PodcastFixtureSeed].self, forKey: .podcast) ?? [:]
+        runtimePodcast = try container.decodeIfPresent([String: UIWorldRuntimePodcastSeed].self, forKey: .runtimePodcast) ?? [:]
+        reader = try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
+        vocabulary = try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
+        reviewDeck = try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
     }
 }
 
@@ -90,6 +110,100 @@ enum UIWorldEntitlementsFixtureID: String, CaseIterable {
 
 struct UIWorldEntitlementsSeed: Codable, Equatable {
     let pro: KGSubscriptionStatus
+}
+
+enum UIWorldRuntimePodcastFixtureID: String, CaseIterable {
+    case playablePreview
+    case tieredCatalog
+}
+
+struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
+    let remoteId: String
+    let episodeNumber: Int
+    let title: String
+    let durationSec: Double?
+    let audioAvailable: Bool
+    let previewAvailable: Bool
+    let previewDurationSec: Double?
+    let subtitleAvailable: Bool
+}
+
+struct UIWorldRuntimePodcastSeed: Codable, Equatable {
+    let audioPath: String
+    let subtitlePath: String
+    let seriesRemoteId: String
+    let seriesTitle: String
+    let hostNames: [String]
+    let color: String?
+    let coverPattern: String?
+    let sortOrder: Int?
+    let durationSec: Double
+    let episodes: [UIWorldRuntimePodcastEpisodeSeed]
+}
+
+enum UIWorldReaderFixtureID: String, CaseIterable {
+    case realBookLibrary
+}
+
+struct UIWorldReaderSeed: Codable, Equatable {
+    let textPath: String
+    let title: String
+    let author: String
+    let bookFileName: String
+    let notebookRemoteId: String
+    let notebookName: String
+    let entry: UIWorldVocabularyEntrySeed
+}
+
+enum UIWorldVocabularyFixtureID: String, CaseIterable {
+    case searchVocabNotebook
+    case shellNavigation
+}
+
+struct UIWorldVocabularySeed: Codable, Equatable {
+    let notebookRemoteId: String
+    let notebookName: String
+    let bookTitle: String
+    let entries: [UIWorldVocabularyEntrySeed]
+    let reviewHistory: [UIWorldReviewHistorySeed]
+}
+
+struct UIWorldReviewHistorySeed: Codable, Equatable {
+    let word: String
+    let feedback: Int
+    let reviewedAt: Date
+}
+
+enum UIWorldReviewDeckFixtureID: String, CaseIterable {
+    case probe
+    case notebookReviewDeck
+}
+
+struct UIWorldReviewDeckSeed: Codable, Equatable {
+    let notebookRemoteId: String?
+    let notebookName: String?
+    let entries: [UIWorldVocabularyEntrySeed]
+}
+
+struct UIWorldVocabularyEntrySeed: Codable, Equatable {
+    let word: String
+    let translation: String
+    let context: String
+    let explanation: String?
+    let partOfSpeech: String?
+    let bookTitle: String?
+    let chapterTitle: String?
+    let kgCardId: String?
+    let difficultyTier: String?
+    let reviewMode: VocabularyCardMode?
+    let reviewExamples: [String]
+    let reviewIntervalHours: Double?
+    let nextReviewAt: Date?
+    let lastReviewedAt: Date?
+    let reviewCount: Int?
+    let reviewStreak: Int?
+    let lastReviewFeedbackRaw: Int?
+    let graphLinksByKind: [String: [KGCardLinkSummary]]
 }
 
 enum FixtureDatasetStore {
@@ -182,6 +296,54 @@ enum FixtureDatasetStore {
     static func requirePodcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed {
         guard let seed = podcastSeed(for: fixtureID) else {
             preconditionFailure("UI World is missing podcast.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func runtimePodcastSeed(for fixtureID: UIWorldRuntimePodcastFixtureID) -> UIWorldRuntimePodcastSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.runtimePodcast[fixtureID.rawValue]
+    }
+
+    static func requireRuntimePodcastSeed(for fixtureID: UIWorldRuntimePodcastFixtureID) -> UIWorldRuntimePodcastSeed {
+        guard let seed = runtimePodcastSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing runtimePodcast.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func readerSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.reader[fixtureID.rawValue]
+    }
+
+    static func requireReaderSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed {
+        guard let seed = readerSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing reader.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func vocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.vocabulary[fixtureID.rawValue]
+    }
+
+    static func requireVocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed {
+        guard let seed = vocabularySeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing vocabulary.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func reviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.reviewDeck[fixtureID.rawValue]
+    }
+
+    static func requireReviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed {
+        guard let seed = reviewDeckSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing reviewDeck.\(fixtureID.rawValue)")
         }
         return seed
     }

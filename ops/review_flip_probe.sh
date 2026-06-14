@@ -9,8 +9,6 @@
 #   ./ops/review_flip_probe.sh --device <udid> [opts]
 # Options:
 #   --flips N       翻卡次數（預設 30）
-#   --deck-size N   fixture 卡組大小（預設 40；sim 走 SIMCTL_CHILD_、device 走
-#                   DEVICECTL_CHILD_、--instruments 走 xctrace --env 下發）
 #   --min-flips N   verdict 有效性下限（預設 = --flips）
 #   --timeout SECS  等 done/abort marker 的上限（預設 60 + 4×flips）
 #   --release       Release configuration（Debug 量測有 observation/最佳化噪音；
@@ -37,15 +35,15 @@ BUNDLE_ID="com.Max0228.BooksBrowser"
 APP_NAME="BooksAndVocab.app"
 JSONL_NAME="kg_review_probe.jsonl"
 
-MODE="" UDID="" FLIPS=30 DECK=40 MIN_FLIPS="" TIMEOUT="" SKIP_BUILD=0 OUT=""
+MODE="" UDID="" FLIPS=30 MIN_FLIPS="" TIMEOUT="" SKIP_BUILD=0 OUT=""
 CONFIG="Debug" INSTRUMENTS=0
+DATASET_FILE="$ROOT/ops/fixtures/ui_worlds/marketing_demo.json"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --simulator) MODE="simulator"; shift ;;
     --device) MODE="device"; UDID="$2"; shift 2 ;;
     --flips) FLIPS="$2"; shift 2 ;;
-    --deck-size) DECK="$2"; shift 2 ;;
     --min-flips) MIN_FLIPS="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --release) CONFIG="Release"; shift ;;
@@ -74,6 +72,8 @@ VERDICT_FILE="${TMP_BASE%/}/kg_review_probe_verdict"
 # set -e 早退路徑（install 失敗等）寫不到 verdict — 先清 stale，
 # 下游永遠不會讀到上一輪殘留。
 rm -f "$VERDICT_FILE"
+[[ -f "$DATASET_FILE" ]] || { echo "error: UI World dataset missing: $DATASET_FILE" >&2; exit 64; }
+FIXTURE_DATASET_B64="$(base64 <"$DATASET_FILE" | tr -d '\n')"
 
 LAUNCH_ARGS=(
   -ui-testing
@@ -177,11 +177,11 @@ if [[ "$MODE" == "simulator" ]]; then
   [[ -n "$UDID" ]] || fail_invalid "ensure_booted_no_udid"
   log "installing on simulator $UDID…"
   xcrun simctl install "$UDID" "$APP"
-  log "launching probe (flips=$FLIPS deck=$DECK timeout=${TIMEOUT}s)…"
+  log "launching probe (flips=$FLIPS world=marketing_demo reviewDeck=probe timeout=${TIMEOUT}s)…"
   # KG_UI_TEST_SERVER_URL=啞端點：第三層防線，fixture 世界永不打真後端。
   # 注意 override 是 #if DEBUG（Release 編譯掉）——Release run 的防線是
   # ephemeral 容器 + ReviewProbeScene 不掛 sync handler；此 env 蓋 Debug。
-  SIMCTL_CHILD_KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+  SIMCTL_CHILD_KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
     SIMCTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
     xcrun simctl launch --console-pty --terminate-running-process \
     "$UDID" "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" \
@@ -222,7 +222,7 @@ else
     # xctrace 對既存 trace bundle 直接 abort（要求 --append-run）；--out 重用
     # 或前輪中斷殘影都會觸發 → 錄前一律清（per-run scratch，無保留價值）。
     rm -rf "$TRACE"
-    log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS deck=$DECK）…"
+    log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS world=marketing_demo reviewDeck=probe）…"
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
     # 下行 rm 的對象是 device_info.json（非上方 trace）：防 --out 重用時
@@ -240,13 +240,13 @@ else
     # Document Missing Template Error，整輪作廢）。heartbeat 內建。
     # 刻意不在錄製中輪詢 devicectl processes 提早偵測 launch 失敗：
     # 量測期間對裝置發查詢會污染被量測系統，preflight + watchdog 已足。
-    # --env：xctrace 對 launched process 原生支援（曾誤判「無 env 通道」而
-    # 略過 deck-size 與啞端點下發——錯誤已修，與 devicectl 路徑語意對齊）。
+    # --env：xctrace 對 launched process 原生支援；UI World 與啞端點下發
+    # 必須與 devicectl 路徑語意對齊。
     # --instrument 'Time Profiler' 疊在 Hitches template 上：同一 trace 內
     # hitch 區間 + 區間內主執行緒堆疊互相對時，一次 run 榨乾兩層證據。
     xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
       --instrument 'Time Profiler' \
-      --env KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+      --env KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
       --env KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
@@ -273,9 +273,9 @@ else
     xcrun xctrace export --input "$TRACE" --toc >"$OUT/trace_toc.xml" 2>/dev/null || true
     log "trace saved: $TRACE"
   else
-    log "launching probe (flips=$FLIPS deck=$DECK timeout=${TIMEOUT}s)…"
+    log "launching probe (flips=$FLIPS world=marketing_demo reviewDeck=probe timeout=${TIMEOUT}s)…"
     # server URL 啞端點防線同 sim 路徑（#if DEBUG 語意見上）。
-    DEVICECTL_CHILD_KG_UI_TEST_REVIEW_DECK_SIZE="$DECK" \
+    DEVICECTL_CHILD_KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
       DEVICECTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       xcrun devicectl device process launch --console --terminate-existing \
       --device "$UDID" -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &

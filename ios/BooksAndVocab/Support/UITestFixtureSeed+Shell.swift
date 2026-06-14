@@ -28,50 +28,13 @@ extension UITestFixtureSeed {
 
     @MainActor
     private static func seedShellNavigation(into container: ModelContainer) {
-        let notebookId = "ui-shell-notebook"
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: .shellNavigation)
+        let notebookId = seed.notebookRemoteId
         let context = container.mainContext
         do {
             try clearShellFixtures(from: context, notebookId: notebookId)
 
-            let notebook = Notebook(remoteId: notebookId, name: "Shell Flow Vocab")
-            notebook.syncStatus = 1
-            context.insert(notebook)
-
-            // Reuse the curated demo entries (real words / translations /
-            // contexts / graph links shipped to the demo account) instead of
-            // inventing mock rows, then scope them to the shell notebook.
-            DemoDataProvider.injectDemoEntries(into: container)
-            let entries = try context.fetch(
-                FetchDescriptor<VocabularyEntry>(
-                    predicate: #Predicate { $0.isDemoEntry == true }
-                )
-            )
-            for entry in entries {
-                entry.notebookId = notebookId
-            }
-
-            // Review history over the past week: consecutive days build a real
-            // streak + heatmap so the overview phase resolves to `.content`.
-            let calendar = Calendar.current
-            let now = Date()
-            for (offset, entry) in entries.prefix(10).enumerated() {
-                let reviewedAt = calendar.date(
-                    byAdding: .day,
-                    value: -(offset % 7),
-                    to: now
-                ) ?? now
-                let record = ReviewRecord(
-                    word: entry.word,
-                    entryID: entry.id,
-                    feedback: offset.isMultiple(of: 3) ? 0 : 1,
-                    reviewedAt: reviewedAt,
-                    kgCardId: entry.kgCardId
-                )
-                record.notebookId = notebookId
-                context.insert(record)
-            }
-
-            try context.save()
+            let entries = try insertVocabularySeed(seed, into: context)
 
             // Overview + notebook list need an authenticated session. The
             // isolated auth session starts logged out; only log in when no
@@ -95,7 +58,7 @@ extension UITestFixtureSeed {
             context.delete(notebook)
         }
         for entry in try context.fetch(
-            FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.isDemoEntry == true })
+            FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.notebookId == notebookId })
         ) {
             context.delete(entry)
         }

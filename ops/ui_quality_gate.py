@@ -46,8 +46,8 @@ FAST_COMMANDS: dict[str, list[str]] = {
 SLOW_COMMANDS: dict[str, list[str]] = {
     "structure.ui_deadcode": ["--strict"],
     "structure.ui_graph": ["--json"],
-    "snapshot.catalog": ["catalog", "snapshots"],
-    "behavior.uitest_flows": ["--ui", "--lease"],
+    "snapshot.catalog": ["catalog", "snapshots", "--dataset", "marketing_demo"],
+    "behavior.uitest_flows": ["--ui", "--lease", "--dataset", "marketing_demo"],
     "perf.review_flip_probe": ["--flips", "30"],
     "visual.catalog_regression": ["--auto"],
 }

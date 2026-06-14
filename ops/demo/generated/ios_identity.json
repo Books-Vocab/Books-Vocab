@@ -1,8 +1,0 @@
-{
-  "userId": "demo-user",
-  "email": "demo@wordnexus.lol",
-  "displayName": "示範使用者",
-  "provider": "apple",
-  "providerUserId": "apple:demo-user",
-  "accessToken": "demo-access-token"
-}

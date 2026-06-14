@@ -916,7 +916,7 @@
               "word": "omnipresent",
               "kind": "shares_usage",
               "label": "相關",
-              "confidence": 0.80,
+              "confidence": 0.8,
               "reason": "都指無所不在",
               "hidden": false
             }
@@ -997,7 +997,7 @@
               "word": "omnipresent",
               "kind": "shares_usage",
               "label": "相關",
-              "confidence": 0.80,
+              "confidence": 0.8,
               "reason": "都指無所不在",
               "hidden": false
             }
@@ -1038,6 +1038,1680 @@
       "autoplaySpeed": "normal",
       "autoplaySoundEnabled": true,
       "showFirstRunHint": false
+    }
+  },
+  "runtimePodcast": {
+    "playablePreview": {
+      "audioPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
+      "subtitlePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+      "seriesRemoteId": "ui-playable-series",
+      "seriesTitle": "Atomic Habits",
+      "hostNames": [
+        "Lab Podcast"
+      ],
+      "color": "sunset",
+      "coverPattern": "waves",
+      "sortOrder": -10000,
+      "durationSec": 1034.6,
+      "episodes": [
+        {
+          "remoteId": "ui-playable-series_ep_01",
+          "episodeNumber": 1,
+          "title": "Actual Lab Episode",
+          "durationSec": 1034.6,
+          "audioAvailable": true,
+          "previewAvailable": true,
+          "previewDurationSec": 180,
+          "subtitleAvailable": true
+        }
+      ]
+    },
+    "tieredCatalog": {
+      "audioPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
+      "subtitlePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
+      "seriesRemoteId": "ui-auth-series",
+      "seriesTitle": "Atomic Habits (Auth Probe)",
+      "hostNames": [
+        "Lab Podcast"
+      ],
+      "color": "sunset",
+      "coverPattern": "waves",
+      "sortOrder": -10000,
+      "durationSec": 1034.6,
+      "episodes": [
+        {
+          "remoteId": "ui-auth-series_ep_01",
+          "episodeNumber": 1,
+          "title": "Tiered Access Preview Episode",
+          "durationSec": 1034.6,
+          "audioAvailable": true,
+          "previewAvailable": true,
+          "previewDurationSec": 180,
+          "subtitleAvailable": true
+        },
+        {
+          "remoteId": "ui-auth-series_ep_02",
+          "episodeNumber": 2,
+          "title": "Tiered Access Gated Episode",
+          "durationSec": 1034.6,
+          "audioAvailable": true,
+          "previewAvailable": false,
+          "previewDurationSec": null,
+          "subtitleAvailable": true
+        }
+      ]
+    }
+  },
+  "reader": {
+    "realBookLibrary": {
+      "textPath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+      "title": "Atomic Habits — Introduction",
+      "author": "James Clear",
+      "bookFileName": "kg-uitest-reader-book.epub",
+      "notebookRemoteId": "ui-reader-notebook",
+      "notebookName": "Reader Flow Vocab",
+      "entry": {
+        "word": "introduction",
+        "translation": "引言；導論",
+        "context": "Introduction — My Story",
+        "explanation": "introduction 的語境說明，用於 UI World 測試資料。",
+        "partOfSpeech": "n.",
+        "bookTitle": "Atomic Habits — Introduction",
+        "chapterTitle": "Introduction",
+        "kgCardId": "ui-reader-introduction",
+        "difficultyTier": "core",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "Introduction — My Story"
+        ],
+        "reviewIntervalHours": 24,
+        "nextReviewAt": "2026-01-06T00:00:00Z",
+        "lastReviewedAt": "2026-01-05T00:00:00Z",
+        "reviewCount": 3,
+        "reviewStreak": 2,
+        "lastReviewFeedbackRaw": 1,
+        "graphLinksByKind": {}
+      }
+    }
+  },
+  "vocabulary": {
+    "searchVocabNotebook": {
+      "notebookRemoteId": "ui-search-notebook",
+      "notebookName": "Search Flow Vocab",
+      "bookTitle": "The Weight of Words",
+      "entries": [
+        {
+          "word": "affect",
+          "translation": "影響；使產生變化",
+          "context": "Sleep can affect memory consolidation more than learners expect.",
+          "explanation": "動詞，表示對某事造成影響。常與 effect 混淆。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-affect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Sleep can affect memory consolidation more than learners expect."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-ae-1",
+                "cardId": "demo-effect",
+                "word": "effect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "affect 多作動詞，effect 多作名詞。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "effect",
+          "translation": "結果；影響",
+          "context": "The effect of spaced review becomes visible after several sessions.",
+          "explanation": "名詞，表示結果或影響。常與 affect 混淆。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-effect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The effect of spaced review becomes visible after several sessions."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-ea-1",
+                "cardId": "demo-affect",
+                "word": "affect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "effect 多作名詞，affect 多作動詞。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "complement",
+          "translation": "補足；使完整",
+          "context": "A concise example can complement a dense definition.",
+          "explanation": "表示補足、相輔相成。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-complement",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A concise example can complement a dense definition."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-cc-1",
+                "cardId": "demo-compliment",
+                "word": "compliment",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.92,
+                "reason": "complement 是補足；compliment 是稱讚。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "compliment",
+          "translation": "稱讚；讚美",
+          "context": "The tutor gave a specific compliment after the student revised the sentence.",
+          "explanation": "表示稱讚或讚美。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-compliment",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The tutor gave a specific compliment after the student revised the sentence."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-cc-2",
+                "cardId": "demo-complement",
+                "word": "complement",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.92,
+                "reason": "compliment 是稱讚；complement 是補足。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "ambiguous",
+          "translation": "模稜兩可的；不明確的",
+          "context": "The prompt was ambiguous enough to produce two valid interpretations.",
+          "explanation": "ambiguous 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-ambiguous",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The prompt was ambiguous enough to produce two valid interpretations."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 5,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "infer",
+          "translation": "推斷；推論",
+          "context": "Readers infer meaning from context when a word is unfamiliar.",
+          "explanation": "infer 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-infer",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Readers infer meaning from context when a word is unfamiliar."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "imply",
+          "translation": "暗示；意味著",
+          "context": "The narrator did not state it directly but seemed to imply regret.",
+          "explanation": "imply 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-imply",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The narrator did not state it directly but seemed to imply regret."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "resilient",
+          "translation": "有韌性的；能復原的",
+          "context": "A resilient learning routine survives a missed day.",
+          "explanation": "resilient 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-resilient",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A resilient learning routine survives a missed day."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        }
+      ],
+      "reviewHistory": []
+    },
+    "shellNavigation": {
+      "notebookRemoteId": "ui-shell-notebook",
+      "notebookName": "Shell Flow Vocab",
+      "bookTitle": "The Weight of Words",
+      "entries": [
+        {
+          "word": "affect",
+          "translation": "影響；使產生變化",
+          "context": "Sleep can affect memory consolidation more than learners expect.",
+          "explanation": "動詞，表示對某事造成影響。常與 effect 混淆。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-affect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Sleep can affect memory consolidation more than learners expect."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-ae-1",
+                "cardId": "demo-effect",
+                "word": "effect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "affect 多作動詞，effect 多作名詞。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "effect",
+          "translation": "結果；影響",
+          "context": "The effect of spaced review becomes visible after several sessions.",
+          "explanation": "名詞，表示結果或影響。常與 affect 混淆。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-effect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The effect of spaced review becomes visible after several sessions."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-ea-1",
+                "cardId": "demo-affect",
+                "word": "affect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "effect 多作名詞，affect 多作動詞。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "complement",
+          "translation": "補足；使完整",
+          "context": "A concise example can complement a dense definition.",
+          "explanation": "表示補足、相輔相成。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-complement",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A concise example can complement a dense definition."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-cc-1",
+                "cardId": "demo-compliment",
+                "word": "compliment",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.92,
+                "reason": "complement 是補足；compliment 是稱讚。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "compliment",
+          "translation": "稱讚；讚美",
+          "context": "The tutor gave a specific compliment after the student revised the sentence.",
+          "explanation": "表示稱讚或讚美。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-compliment",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The tutor gave a specific compliment after the student revised the sentence."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "l-cc-2",
+                "cardId": "demo-complement",
+                "word": "complement",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.92,
+                "reason": "compliment 是稱讚；complement 是補足。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "ambiguous",
+          "translation": "模稜兩可的；不明確的",
+          "context": "The prompt was ambiguous enough to produce two valid interpretations.",
+          "explanation": "ambiguous 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-ambiguous",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The prompt was ambiguous enough to produce two valid interpretations."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 5,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "infer",
+          "translation": "推斷；推論",
+          "context": "Readers infer meaning from context when a word is unfamiliar.",
+          "explanation": "infer 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-infer",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Readers infer meaning from context when a word is unfamiliar."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "imply",
+          "translation": "暗示；意味著",
+          "context": "The narrator did not state it directly but seemed to imply regret.",
+          "explanation": "imply 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "v.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-imply",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The narrator did not state it directly but seemed to imply regret."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "resilient",
+          "translation": "有韌性的；能復原的",
+          "context": "A resilient learning routine survives a missed day.",
+          "explanation": "resilient 的語境說明，用於 UI World 測試資料。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Usage Notes",
+          "kgCardId": "demo-resilient",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A resilient learning routine survives a missed day."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        }
+      ],
+      "reviewHistory": [
+        {
+          "word": "affect",
+          "feedback": 0,
+          "reviewedAt": "2026-01-07T12:00:00Z"
+        },
+        {
+          "word": "effect",
+          "feedback": 1,
+          "reviewedAt": "2026-01-06T12:00:00Z"
+        },
+        {
+          "word": "complement",
+          "feedback": 1,
+          "reviewedAt": "2026-01-05T12:00:00Z"
+        },
+        {
+          "word": "compliment",
+          "feedback": 0,
+          "reviewedAt": "2026-01-04T12:00:00Z"
+        },
+        {
+          "word": "ambiguous",
+          "feedback": 1,
+          "reviewedAt": "2026-01-03T12:00:00Z"
+        },
+        {
+          "word": "infer",
+          "feedback": 1,
+          "reviewedAt": "2026-01-02T12:00:00Z"
+        },
+        {
+          "word": "imply",
+          "feedback": 0,
+          "reviewedAt": "2026-01-01T12:00:00Z"
+        }
+      ]
+    }
+  },
+  "reviewDeck": {
+    "probe": {
+      "notebookRemoteId": "default",
+      "notebookName": null,
+      "entries": [
+        {
+          "word": "probeword001",
+          "translation": "量測卡片 1 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 1 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-001",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 1 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword002",
+          "translation": "量測卡片 2 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 2 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #2: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-002",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 2 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword003",
+          "translation": "量測卡片 3 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 3 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #3: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-003",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 3 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword004",
+          "translation": "量測卡片 4 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 4 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #4: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-004",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 4 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword005",
+          "translation": "量測卡片 5 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 5 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #5: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-005",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 5 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword006",
+          "translation": "量測卡片 6 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 6 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #6: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-006",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 6 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword007",
+          "translation": "量測卡片 7 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 7 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #7: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-007",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 7 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword008",
+          "translation": "量測卡片 8 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 8 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #8: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-008",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 8 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword009",
+          "translation": "量測卡片 9 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 9 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #9: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-009",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 9 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword010",
+          "translation": "量測卡片 10 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 10 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #10: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-010",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 10 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword011",
+          "translation": "量測卡片 11 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 11 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #11: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-011",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 11 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword012",
+          "translation": "量測卡片 12 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 12 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #12: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-012",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 12 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword013",
+          "translation": "量測卡片 13 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 13 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #13: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-013",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 13 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword014",
+          "translation": "量測卡片 14 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 14 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #14: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-014",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 14 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword015",
+          "translation": "量測卡片 15 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 15 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #15: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-015",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 15 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword016",
+          "translation": "量測卡片 16 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 16 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #16: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-016",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 16 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword017",
+          "translation": "量測卡片 17 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 17 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #17: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-017",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 17 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword018",
+          "translation": "量測卡片 18 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 18 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #18: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-018",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 18 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword019",
+          "translation": "量測卡片 19 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 19 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #19: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-019",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 19 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword020",
+          "translation": "量測卡片 20 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 20 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #20: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 2",
+          "kgCardId": "probe-020",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 20 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword021",
+          "translation": "量測卡片 21 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 21 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #21: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-021",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 21 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword022",
+          "translation": "量測卡片 22 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 22 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #22: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-022",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 22 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword023",
+          "translation": "量測卡片 23 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 23 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #23: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-023",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 23 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword024",
+          "translation": "量測卡片 24 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 24 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #24: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-024",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 24 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword025",
+          "translation": "量測卡片 25 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 25 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #25: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-025",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 25 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword026",
+          "translation": "量測卡片 26 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 26 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #26: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-026",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 26 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword027",
+          "translation": "量測卡片 27 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 27 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #27: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-027",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 27 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword028",
+          "translation": "量測卡片 28 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 28 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #28: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-028",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 28 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword029",
+          "translation": "量測卡片 29 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 29 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #29: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-029",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 29 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword030",
+          "translation": "量測卡片 30 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 30 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #30: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 3",
+          "kgCardId": "probe-030",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 30 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword031",
+          "translation": "量測卡片 31 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 31 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #31: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-031",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 31 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword032",
+          "translation": "量測卡片 32 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 32 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #32: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-032",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 32 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword033",
+          "translation": "量測卡片 33 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 33 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #33: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-033",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 33 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword034",
+          "translation": "量測卡片 34 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 34 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #34: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-034",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 34 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword035",
+          "translation": "量測卡片 35 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 35 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #35: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-035",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 35 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword036",
+          "translation": "量測卡片 36 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 36 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #36: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-036",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 36 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword037",
+          "translation": "量測卡片 37 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 37 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #37: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-037",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 37 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword038",
+          "translation": "量測卡片 38 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 38 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #38: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-038",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 38 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword039",
+          "translation": "量測卡片 39 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 39 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #39: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-039",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 39 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword040",
+          "translation": "量測卡片 40 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 40 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #40: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 4",
+          "kgCardId": "probe-040",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 40 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        }
+      ]
+    },
+    "notebookReviewDeck": {
+      "notebookRemoteId": "ui-review-notebook",
+      "notebookName": "Review Flow Vocab",
+      "entries": [
+        {
+          "word": "probeword001",
+          "translation": "量測卡片 1 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 1 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #1: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-001",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 1 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword002",
+          "translation": "量測卡片 2 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 2 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #2: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-002",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 2 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword003",
+          "translation": "量測卡片 3 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 3 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #3: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-003",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 3 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword004",
+          "translation": "量測卡片 4 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 4 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #4: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-004",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 4 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword005",
+          "translation": "量測卡片 5 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 5 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #5: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-005",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 5 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword006",
+          "translation": "量測卡片 6 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 6 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #6: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-006",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 6 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword007",
+          "translation": "量測卡片 7 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 7 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #7: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-007",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 7 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        },
+        {
+          "word": "probeword008",
+          "translation": "量測卡片 8 的譯文，長度貼近真實詞條的中等案例。",
+          "context": "The probe deck keeps every card deterministic so run number 8 stays comparable across builds.",
+          "explanation": "Deterministic fixture card #8: identical content shape across runs keeps frame-gap numbers comparable.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Probe Fixture",
+          "chapterTitle": "Probe Chapter 1",
+          "kgCardId": "probe-008",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The probe deck keeps every card deterministic so run number 8 stays comparable across builds."
+          ],
+          "reviewIntervalHours": 12,
+          "nextReviewAt": "2026-01-01T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        }
+      ]
     }
   }
 }
