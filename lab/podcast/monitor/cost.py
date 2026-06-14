@@ -22,11 +22,15 @@ set PODCAST_TTS_PRICING env var to a JSON dict matching VERTEX_PRICING shape.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import sys
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ─── Pricing tables (per 1M tokens, USD) ───
 
@@ -72,7 +76,9 @@ if _override:
     try:
         VERTEX_PRICING.update(json.loads(_override))
     except (json.JSONDecodeError, TypeError):
-        pass
+        # Keep defaults when override is malformed.
+        logger.warning("Invalid PODCAST_TTS_PRICING override; using default pricing")
+        print("[podcast_cost] PODCAST_TTS_PRICING override is invalid JSON/type; using default pricing", file=sys.stderr)
 
 PRICING_META = {
     "vertex_source": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
@@ -217,7 +223,8 @@ def aggregate_workspace(ws_dir: Path) -> dict:
                 continue
             try:
                 obj = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                logger.warning("Invalid event json in %s: %s", events_path, exc)
                 continue
 
             stage_label = obj.get("stage_label", "")
