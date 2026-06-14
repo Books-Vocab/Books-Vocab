@@ -6,7 +6,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Awaitable, Protocol
+from typing import TYPE_CHECKING, Any, Awaitable, Protocol
 
 from fastapi import Cookie, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -42,6 +42,9 @@ from .api_models import (
 )
 from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
 
+if TYPE_CHECKING:
+    from .cards import CardStore
+
 PIPELINE_RUNS_MAX = 100
 TRANSLATE_HISTORY_MAX = 200
 
@@ -57,7 +60,9 @@ UsersSaver = Callable[[UsersPayload], None]
 class MemLogGetter(Protocol):
     def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
         ...
-CardStoreFactory = Callable[[Path], Any]
+class CardStoreFactory(Protocol):
+    def __call__(self, data_dir: Path) -> "CardStore":
+        ...
 EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
 AdminEndpointResult = dict[str, Any]

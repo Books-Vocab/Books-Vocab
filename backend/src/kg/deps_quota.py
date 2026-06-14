@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
+from typing import TypeVar
 
 from fastapi import Response
 
 from .exceptions import QuotaExceededError
+
+_TResult = TypeVar("_TResult")
 
 
 def _is_pro(user: dict) -> bool:
@@ -15,8 +17,8 @@ def _is_pro(user: dict) -> bool:
 
 
 def _with_quota_check(
-    user: dict, call_type: str, response: Response | None, handler: Callable[[], Any],
-) -> Any:
+    user: dict, call_type: str, response: Response | None, handler: Callable[[], _TResult],
+) -> _TResult:
     quota = _check_quota(user, call_type, response)
     result = handler()
     _apply_quota_headers(response, quota)

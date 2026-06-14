@@ -25,14 +25,24 @@ class MemLogGetter(Protocol):
         ...
 
 
+class CardStore(Protocol):
+    def count(self) -> int:
+        ...
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, data_dir: Path) -> CardStore:
+        ...
+
+
 def admin_stats_response(
     *,
     load_users: Callable[[], UsersPayload],
-    get_all_stats: Callable[[], dict[str, Any]],
+    get_all_stats: Callable[[], dict[str, object]],
     build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
     data_dir: Path,
-    card_store_factory: Callable[[Path], Any],
+    card_store_factory: CardStoreFactory,
 ) -> dict[str, Any]:
     from ..deps_quota import _is_pro
     from ..quota_service import get_all_quota_usage, token_cost_usd
