@@ -555,6 +555,40 @@ import Playbook
         )
     }
 
+    @Test func todayReviewPhaseCatalogUsesUIWorldReviewDeckAndAuthSeeds() throws {
+        let phaseScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("TodayReviewPhaseScenarios.swift")
+        let source = try String(contentsOf: phaseScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("TodayReviewPhaseScenarioFixtures", "Today Review Phase catalog must not keep local review deck fixtures"),
+            ("VocabularyEntry(", "Today Review Phase catalog must not inline SwiftData row literals"),
+            ("preview-user", "Today Review Phase user id must come from UI World auth"),
+            ("modelContainer(for:", "Today Review Phase session must use the manifest-backed container"),
+            ("syncState = .synced", "Today Review Phase row sync state belongs in UI World reviewDeck entries"),
+            ("reviewMode = .recognition", "Today Review Phase review mode belongs in UI World reviewDeck entries"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(phaseScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireReviewDeckSeed(for: fixture.reviewDeckID)"),
+            "Today Review Phase catalog must source session cards from UI World reviewDeck seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
+            "Today Review Phase catalog must source session user state from UI World auth seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertReviewDeckSeed(reviewSeed, into: container.mainContext)"),
+            "Today Review Phase catalog must materialize UI World reviewDeck rows into SwiftData"
+        )
+        #expect(
+            source.contains("entries.count == fixture.expectedEntryCount"),
+            "Today Review Phase catalog must validate reviewDeck row count drift"
+        )
+    }
+
     @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
         let filterScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

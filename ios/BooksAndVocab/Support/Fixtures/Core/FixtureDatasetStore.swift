@@ -373,6 +373,9 @@ struct UIWorldReviewHistorySeed: Codable, Equatable {
 }
 
 enum UIWorldReviewDeckFixtureID: String, CaseIterable {
+    case phaseLongContent
+    case phaseMulti
+    case phaseSingle
     case probe
     case notebookReviewDeck
 }

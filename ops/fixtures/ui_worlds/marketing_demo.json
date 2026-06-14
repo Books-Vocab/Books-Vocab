@@ -6717,6 +6717,157 @@
     }
   },
   "reviewDeck": {
+      "phaseSingle": {
+        "notebookRemoteId": "ui-today-review-phase-single",
+        "notebookName": "Today Review Phase Single",
+        "notebookSyncStatus": 1,
+        "entries": [
+          {
+            "word": "meticulous",
+            "translation": "一絲不苟的",
+            "context": "The editor was meticulous about every detail.",
+            "explanation": "做事非常細心、注意細節。",
+            "partOfSpeech": "adj.",
+            "bookTitle": "Designing Interfaces",
+            "chapterTitle": "Writing Tone",
+            "kgCardId": "phase-meticulous",
+            "difficultyTier": "intermediate",
+            "reviewMode": "recognition",
+            "reviewExamples": [
+              "The editor was meticulous about every detail."
+            ],
+            "reviewIntervalHours": 24,
+            "nextReviewAt": "2026-01-06T00:00:00Z",
+            "lastReviewedAt": "2026-01-05T00:00:00Z",
+            "reviewCount": 2,
+            "reviewStreak": 1,
+            "lastReviewFeedbackRaw": -1,
+            "graphLinksByKind": {},
+            "syncStatus": 1,
+            "actionType": "add",
+            "isArchived": false,
+            "isExcludedFromReader": false
+          }
+        ]
+      },
+      "phaseMulti": {
+        "notebookRemoteId": "ui-today-review-phase-multi",
+        "notebookName": "Today Review Phase Multi",
+        "notebookSyncStatus": 1,
+        "entries": [
+          {
+            "word": "serendipity",
+            "translation": "機緣巧合",
+            "context": "It was pure serendipity that we met.",
+            "explanation": "意外發現美好事物的能力或運氣。",
+            "partOfSpeech": "n.",
+            "bookTitle": "A Wanderer's Tale",
+            "chapterTitle": "Chapter 1",
+            "kgCardId": "phase-serendipity",
+            "difficultyTier": "intermediate",
+            "reviewMode": "recognition",
+            "reviewExamples": [
+              "It was pure serendipity that we met."
+            ],
+            "reviewIntervalHours": 24,
+            "nextReviewAt": "2026-01-06T00:00:00Z",
+            "lastReviewedAt": "2026-01-05T00:00:00Z",
+            "reviewCount": 2,
+            "reviewStreak": 1,
+            "lastReviewFeedbackRaw": -1,
+            "graphLinksByKind": {},
+            "syncStatus": 1,
+            "actionType": "add",
+            "isArchived": false,
+            "isExcludedFromReader": false
+          },
+          {
+            "word": "ephemeral",
+            "translation": "短暫的",
+            "context": "Fame can be ephemeral.",
+            "explanation": "持續時間很短、稍縱即逝的。",
+            "partOfSpeech": "adj.",
+            "bookTitle": "On Time",
+            "chapterTitle": "Fleeting",
+            "kgCardId": "phase-ephemeral",
+            "difficultyTier": "intermediate",
+            "reviewMode": "recognition",
+            "reviewExamples": [
+              "Fame can be ephemeral."
+            ],
+            "reviewIntervalHours": 24,
+            "nextReviewAt": "2026-01-06T00:00:00Z",
+            "lastReviewedAt": "2026-01-05T00:00:00Z",
+            "reviewCount": 2,
+            "reviewStreak": 1,
+            "lastReviewFeedbackRaw": -1,
+            "graphLinksByKind": {},
+            "syncStatus": 1,
+            "actionType": "add",
+            "isArchived": false,
+            "isExcludedFromReader": false
+          },
+          {
+            "word": "resilience",
+            "translation": "韌性",
+            "context": "Her resilience carried the team through.",
+            "explanation": "從困難中迅速恢復的能力。",
+            "partOfSpeech": "n.",
+            "bookTitle": "Grit",
+            "chapterTitle": "Bounce Back",
+            "kgCardId": "phase-resilience",
+            "difficultyTier": "intermediate",
+            "reviewMode": "recognition",
+            "reviewExamples": [
+              "Her resilience carried the team through."
+            ],
+            "reviewIntervalHours": 24,
+            "nextReviewAt": "2026-01-06T00:00:00Z",
+            "lastReviewedAt": "2026-01-05T00:00:00Z",
+            "reviewCount": 2,
+            "reviewStreak": 1,
+            "lastReviewFeedbackRaw": -1,
+            "graphLinksByKind": {},
+            "syncStatus": 1,
+            "actionType": "add",
+            "isArchived": false,
+            "isExcludedFromReader": false
+          }
+        ]
+      },
+      "phaseLongContent": {
+        "notebookRemoteId": "ui-today-review-phase-long",
+        "notebookName": "Today Review Phase Long",
+        "notebookSyncStatus": 1,
+        "entries": [
+          {
+            "word": "circumlocution",
+            "translation": "迂迴冗長的說法",
+            "context": "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked.",
+            "explanation": "用過多、間接的詞語來表達原本可以簡短說明的意思，常見於迴避正面回答的場合；這個解釋刻意寫得很長，用來壓力測試複習卡片在大量文字下的版面與滾動行為是否仍然穩定且易讀。",
+            "partOfSpeech": "n.",
+            "bookTitle": "The Art of Rhetoric",
+            "chapterTitle": "Evasion and Indirection",
+            "kgCardId": "phase-circumlocution",
+            "difficultyTier": "intermediate",
+            "reviewMode": "recognition",
+            "reviewExamples": [
+              "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked."
+            ],
+            "reviewIntervalHours": 24,
+            "nextReviewAt": "2026-01-06T00:00:00Z",
+            "lastReviewedAt": "2026-01-05T00:00:00Z",
+            "reviewCount": 2,
+            "reviewStreak": 1,
+            "lastReviewFeedbackRaw": -1,
+            "graphLinksByKind": {},
+            "syncStatus": 1,
+            "actionType": "add",
+            "isArchived": false,
+            "isExcludedFromReader": false
+          }
+        ]
+      },
     "probe": {
       "notebookRemoteId": "default",
       "notebookName": "Review Probe Fixture",
