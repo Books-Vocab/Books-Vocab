@@ -328,6 +328,7 @@ struct RepoFixtureDatasetsContractTests {
 
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
+        let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
         let requiredUIWorldEntryKeys = requiredEntryKeys.union(["bookTitle", "reviewMode"])
 
         let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
@@ -342,7 +343,7 @@ struct RepoFixtureDatasetsContractTests {
                 let entries = notebook["entries"] as? [[String: Any]] ?? []
                 for entry in entries {
                     let word = entry["word"] as? String ?? "<missing-word>"
-                    let missing = requiredEntryKeys.subtracting(entry.keys)
+                    let missing = requiredNotebookEntryKeys.subtracting(entry.keys)
                     #expect(
                         missing.isEmpty,
                         "\(dataset): notebook.\(fixtureKey).\(remoteId).entry.\(word) missing row state keys \(missing.sorted())"

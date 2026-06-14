@@ -18,11 +18,75 @@ struct NotebookEntrySeed: Codable {
     let actionType: String
     let isArchived: Bool
     let isExcludedFromReader: Bool
-    var context: String?
-    var explanation: String?
-    var partOfSpeech: String?
-    var bookTitle: String?
-    var chapterTitle: String?
+    let context: String
+    let explanation: String?
+    let partOfSpeech: String?
+    let bookTitle: String
+    let chapterTitle: String?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case word
+        case translation
+        case syncStatus
+        case actionType
+        case isArchived
+        case isExcludedFromReader
+        case context
+        case explanation
+        case partOfSpeech
+        case bookTitle
+        case chapterTitle
+    }
+
+    init(
+        word: String,
+        translation: String,
+        syncStatus: Int,
+        actionType: String,
+        isArchived: Bool,
+        isExcludedFromReader: Bool,
+        context: String,
+        explanation: String?,
+        partOfSpeech: String?,
+        bookTitle: String,
+        chapterTitle: String?
+    ) {
+        self.word = word
+        self.translation = translation
+        self.syncStatus = syncStatus
+        self.actionType = actionType
+        self.isArchived = isArchived
+        self.isExcludedFromReader = isExcludedFromReader
+        self.context = context
+        self.explanation = explanation
+        self.partOfSpeech = partOfSpeech
+        self.bookTitle = bookTitle
+        self.chapterTitle = chapterTitle
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World notebook entry must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        word = try container.decode(String.self, forKey: .word)
+        translation = try container.decode(String.self, forKey: .translation)
+        syncStatus = try container.decode(Int.self, forKey: .syncStatus)
+        actionType = try container.decode(String.self, forKey: .actionType)
+        isArchived = try container.decode(Bool.self, forKey: .isArchived)
+        isExcludedFromReader = try container.decode(Bool.self, forKey: .isExcludedFromReader)
+        context = try container.decode(String.self, forKey: .context)
+        explanation = try container.decodeIfPresent(String.self, forKey: .explanation)
+        partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
+        bookTitle = try container.decode(String.self, forKey: .bookTitle)
+        chapterTitle = try container.decodeIfPresent(String.self, forKey: .chapterTitle)
+    }
 }
 
 struct NotebookSeed: Codable {
@@ -53,9 +117,9 @@ enum NotebookFixtures {
         isDefault: true,
         sortOrder: 0,
         entries: [
-            .init(word: "serendipity", translation: "機緣巧合", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
-            .init(word: "ephemeral", translation: "短暫的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
-            .init(word: "petrichor", translation: "雨後泥土香", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+            .init(word: "serendipity", translation: "機緣巧合", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The trip was pure serendipity.", explanation: "A pleasant discovery made by chance.", partOfSpeech: "n.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
+            .init(word: "ephemeral", translation: "短暫的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The morning mist felt ephemeral.", explanation: "Lasting for a very short time.", partOfSpeech: "adj.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
+            .init(word: "petrichor", translation: "雨後泥土香", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "Petrichor filled the street after rain.", explanation: "The earthy smell after rainfall.", partOfSpeech: "n.", bookTitle: "Notebook Fixture", chapterTitle: "Default"),
         ]
     )
 
@@ -69,8 +133,8 @@ enum NotebookFixtures {
                     syncStatus: 1,
                     sortOrder: 1,
                     entries: [
-                        .init(word: "melancholy", translation: "憂鬱", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
-                        .init(word: "sublime", translation: "崇高的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+                        .init(word: "melancholy", translation: "憂鬱", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "A quiet melancholy runs through the chapter.", explanation: "A thoughtful sadness.", partOfSpeech: "n.", bookTitle: "Classic Fixture", chapterTitle: "Mood"),
+                        .init(word: "sublime", translation: "崇高的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "The view was sublime.", explanation: "Of exceptional beauty or grandeur.", partOfSpeech: "adj.", bookTitle: "Classic Fixture", chapterTitle: "Mood"),
                     ]
                 ),
                 NotebookSeed(
@@ -79,7 +143,7 @@ enum NotebookFixtures {
                     syncStatus: 1,
                     sortOrder: 2,
                     entries: [
-                        .init(word: "entropy", translation: "熵", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+                        .init(word: "entropy", translation: "熵", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "Entropy increases in a closed system.", explanation: "A measure of disorder.", partOfSpeech: "n.", bookTitle: "Science Fixture", chapterTitle: "Systems"),
                     ]
                 ),
             ])
@@ -135,11 +199,11 @@ enum NotebookFixtures {
         let entry = VocabularyEntry(
             word: seed.word,
             translation: seed.translation,
-            context: seed.context ?? "A sentence using \(seed.word).",
-            explanation: seed.explanation ?? "A short gloss for \(seed.word).",
-            partOfSpeech: seed.partOfSpeech ?? "n.",
-            bookTitle: seed.bookTitle ?? "Sample Book",
-            chapterTitle: seed.chapterTitle ?? "第一章"
+            context: seed.context,
+            explanation: seed.explanation,
+            partOfSpeech: seed.partOfSpeech,
+            bookTitle: seed.bookTitle,
+            chapterTitle: seed.chapterTitle
         )
         entry.notebookId = notebookId
         entry.syncStatus = seed.syncStatus

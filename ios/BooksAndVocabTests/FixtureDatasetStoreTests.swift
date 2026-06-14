@@ -51,6 +51,40 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func notebookEntryFailsWhenMetadataKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-notebook-entry-metadata",
+          "notebook": {
+            "populated": {
+              "notebooks": [
+                {
+                  "remoteId": "default",
+                  "name": "Default",
+                  "syncStatus": 1,
+                  "entries": [
+                    {
+                      "word": "partial",
+                      "translation": "局部",
+                      "syncStatus": 1,
+                      "actionType": "add",
+                      "isArchived": false,
+                      "isExcludedFromReader": false
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -637,6 +671,11 @@ struct FixtureDatasetStoreTests {
                     {
                       "word": "serendipity",
                       "translation": "機緣巧合",
+                      "context": "Serendipity changed the plan.",
+                      "explanation": "A fortunate discovery by chance.",
+                      "partOfSpeech": "n.",
+                      "bookTitle": "外部單字本範例",
+                      "chapterTitle": "第一章",
                       "syncStatus": 2,
                       "actionType": "delete",
                       "isArchived": true,
