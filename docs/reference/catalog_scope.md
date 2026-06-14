@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 83840bbd
+verified_against: efde102c
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -44,6 +44,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### PDF Reader asset 契約（無 synthetic missing-file book）
 `PDFReaderViewScenarios` 的 `Manifest PDF` 狀態必須取 UI World `bookshelf.with_books_library` seed 內的 PDF `Book` row，且該 row 必須以 `bookAssetRef` 指向 `assets.books.catalog_reader_pdf`。scenario 必須用 `FixtureDatasetStore.requireInstalledAssetURL` 物化檔案，並驗證安裝位置是 `Documents/Books/<fileName>`；缺 row、缺 asset ref、缺資產、hash/byteSize 不符、unsafe install path、row `fileName` 與 asset 檔名不一致都直接 fail-fast。`CatalogCoverageTests.pdfReaderCatalogUsesUIWorldBookAsset` 擋回 synthetic `catalog-missing.pdf` / `Sample PDF` / `File unavailable` error-only fixture；`BookshelfFixturesTests.withBooksLibraryDeclaresManifestPDFBook` 驗 repo UI World 與 generated demo 都有可由 PDFKit 讀取的 PDF asset。
+
+### Bookshelf View 契約（無本地 Book row / empty fallback）
+`BookshelfViewScenarios` 的 populated / single / empty 狀態必須取 UI World `bookshelf.*` seed；empty 也必須是 manifest 內明示的 `bookshelf.empty_library`，不可用本地 `return` 表示。scenario 必須透過 `BookshelfFixtures.renderModel(for:)` materialize SwiftData `Book` rows；缺 seed、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`BookshelfFixtures` 的 container 是非 optional；`BookshelfPreviews` 不得以 `EmptyView()` 隱藏 materialization failure。`CatalogCoverageTests.bookshelfViewCatalogUsesUIWorldBookshelfSeeds` 擋回本地 fixture enum、inline `Book(title:)`、`try? context.save()` 與硬寫書名。
 
 ### Word Edit vocabulary 契約（無本地 VocabularyEntry literal）
 `WordEditScenarios` 的 populated / empty-explanation / long-content / long-word 狀態必須取 UI World `vocabulary.wordEdit` seed。scenario 必須把該 seed materialize 成 in-memory SwiftData `Notebook` + `VocabularyEntry` rows，再以 manifest 內的 word 選取 entry；缺 seed、缺 entry、row state key 漏宣告、SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.wordEditCatalogUsesUIWorldVocabularySeed` 擋回本地 `sampleEntry`、`Sample Book` 與 inline `VocabularyEntry(...)`。
