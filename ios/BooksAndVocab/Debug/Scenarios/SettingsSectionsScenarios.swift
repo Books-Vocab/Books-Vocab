@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Catalog scenarios for the higher-level Settings section blocks:
 /// `SettingsReviewSection` (full 複習節奏 screen) and `SettingsPreferencesSection`
-/// (偏好 card). Preferences state is sourced from UI World `settings.*` seeds so
-/// Catalog, UITest, and demo datasets share the same user-state owner.
+/// (偏好 card). Review/preference state is sourced from UI World `settings.*`
+/// seeds so Catalog, UITest, and demo datasets share the same user-state owner.
 ///
 /// `SettingsReviewSection` reads `\.reviewSettingsStore`; we inject an isolated
 /// `ReviewSettingsStore(previewSettings:)` per scenario from inside a View body
@@ -15,46 +15,16 @@ enum SettingsSectionsScenarios {
         // MARK: Review Section (複習節奏)
         playbook.addScenarios(of: "Settings Sections · Review") {
             Scenario("寬鬆模式", layout: .fill) {
-                ReviewSectionScene(settings: ReviewSettings(
-                    mode: .relaxed,
-                    customInitialIntervalHours: 12,
-                    customRememberedMultiplier: 1.9,
-                    customForgotMultiplier: 0.45,
-                    customMinimumIntervalHours: 6,
-                    customMaximumIntervalHours: 1440
-                ))
+                ReviewSectionScene(fixtureID: .subscriptionFree)
             }
             Scenario("密集模式", layout: .fill) {
-                ReviewSectionScene(settings: ReviewSettings(
-                    mode: .intensive,
-                    customInitialIntervalHours: 12,
-                    customRememberedMultiplier: 1.9,
-                    customForgotMultiplier: 0.45,
-                    customMinimumIntervalHours: 6,
-                    customMaximumIntervalHours: 1440
-                ))
+                ReviewSectionScene(fixtureID: .preferencesAutoSyncOff)
             }
             Scenario("自訂模式 / 展開參數", layout: .fill) {
-                ReviewSectionScene(settings: ReviewSettings(
-                    mode: .custom,
-                    customInitialIntervalHours: 24,
-                    customRememberedMultiplier: 2.1,
-                    customForgotMultiplier: 0.35,
-                    customMinimumIntervalHours: 4,
-                    customMaximumIntervalHours: 2160
-                ))
+                ReviewSectionScene(fixtureID: .accountLongIdentity)
             }
             Scenario("已凍結進度", layout: .fill) {
-                ReviewSectionScene(settings: ReviewSettings(
-                    mode: .relaxed,
-                    customInitialIntervalHours: 12,
-                    customRememberedMultiplier: 1.9,
-                    customForgotMultiplier: 0.45,
-                    customMinimumIntervalHours: 6,
-                    customMaximumIntervalHours: 1440,
-                    isProgressPaused: true,
-                    progressPausedAt: Date(timeIntervalSince1970: 1_733_500_000)
-                ))
+                ReviewSectionScene(fixtureID: .preferencesLoggedOutNoSync)
             }
         }
 
@@ -78,7 +48,11 @@ enum SettingsSectionsScenarios {
 /// Body is main-actor isolated, so the `ReviewSettingsStore` init runs in a
 /// safe context regardless of its isolation.
 private struct ReviewSectionScene: View {
-    let settings: ReviewSettings
+    let fixtureID: SettingsFixtureID
+
+    private var settings: ReviewSettings {
+        SettingsFixtures.reviewSettings(for: fixtureID)
+    }
 
     var body: some View {
         AppThemeContainer {

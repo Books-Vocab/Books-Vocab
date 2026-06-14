@@ -46,6 +46,10 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.entitlements["pro"]?.pro.is_active == true)
         #expect(document.settings["preferences_auto_sync_off"] != nil)
         #expect(document.settings["preferences_logged_out_no_sync"] != nil)
+        #expect(document.settings["subscription_free"]?.reviewSettings != nil)
+        #expect(document.settings["preferences_auto_sync_off"]?.reviewSettings != nil)
+        #expect(document.settings["account_long_identity"]?.reviewSettings != nil)
+        #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {

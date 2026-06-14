@@ -74,6 +74,19 @@ struct SettingsFixtureSeed: Codable {
         let showAutoSync: Bool
     }
 
+    struct Review: Codable {
+        let mode: String
+        let customInitialIntervalHours: Double
+        let customRememberedMultiplier: Double
+        let customForgotMultiplier: Double
+        let customMinimumIntervalHours: Double
+        let customMaximumIntervalHours: Double
+        let isProgressPaused: Bool
+        let progressPausedAt: Date?
+        let autoplaySpeed: String
+        let autoplaySoundEnabled: Bool
+    }
+
     struct SyncSummary: Codable {
         let isConnected: Bool
         let isSyncing: Bool
@@ -103,6 +116,9 @@ struct SettingsFixtureSeed: Codable {
 
     let auth: Auth
     let preferences: Preferences
+    // var + default：UI World-owned review settings slice, optional for settings seeds
+    // that do not render SettingsReviewSection.
+    var reviewSettings: Review? = nil
     let kg: KG?
     let subscription: Subscription?
     let syncSummary: SyncSummary?
@@ -449,6 +465,14 @@ enum SettingsFixtures {
         renderModel(for: fixtureID).state
     }
 
+    static func reviewSettings(for fixtureID: SettingsFixtureID) -> ReviewSettings {
+        let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
+        guard let review = seed.reviewSettings else {
+            preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare reviewSettings")
+        }
+        return SettingsFixtureAdapter.makeReviewSettings(from: review, fixtureID: fixtureID)
+    }
+
     static func renderModel(for fixtureID: SettingsFixtureID) -> SettingsFixtureRenderModel {
         let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
         return .init(
@@ -460,6 +484,27 @@ enum SettingsFixtures {
 }
 
 private enum SettingsFixtureAdapter {
+    static func makeReviewSettings(from seed: SettingsFixtureSeed.Review, fixtureID: SettingsFixtureID) -> ReviewSettings {
+        guard let mode = ReviewSettingsMode(rawValue: seed.mode) else {
+            preconditionFailure("UI World settings.\(fixtureID.rawValue).reviewSettings has unknown mode \(seed.mode)")
+        }
+        guard let autoplaySpeed = AutoplaySpeed(rawValue: seed.autoplaySpeed) else {
+            preconditionFailure("UI World settings.\(fixtureID.rawValue).reviewSettings has unknown autoplaySpeed \(seed.autoplaySpeed)")
+        }
+        return ReviewSettings(
+            mode: mode,
+            customInitialIntervalHours: seed.customInitialIntervalHours,
+            customRememberedMultiplier: seed.customRememberedMultiplier,
+            customForgotMultiplier: seed.customForgotMultiplier,
+            customMinimumIntervalHours: seed.customMinimumIntervalHours,
+            customMaximumIntervalHours: seed.customMaximumIntervalHours,
+            isProgressPaused: seed.isProgressPaused,
+            progressPausedAt: seed.progressPausedAt,
+            autoplaySpeed: autoplaySpeed,
+            autoplaySoundEnabled: seed.autoplaySoundEnabled
+        )
+    }
+
     static func makeState(from seed: SettingsFixtureSeed) -> SettingsPresenterState {
         SettingsPresenterState(
             auth: .init(
