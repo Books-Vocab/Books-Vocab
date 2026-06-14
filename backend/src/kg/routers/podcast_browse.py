@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from ..api_models.podcast import PodcastSeriesDetail, PodcastSeriesSummary
 from ..deps import OptionalCurrentUser
@@ -13,14 +14,40 @@ from ..deps import OptionalCurrentUser
 logger = logging.getLogger(__name__)
 
 
+class ReadJsonFromS3(Protocol):
+    def __call__(self, request: Request, key: str, *, context: str) -> Any:
+        ...
+
+
+class ReadJsonFile(Protocol):
+    def __call__(self, path: Path, *, context: str) -> Any:
+        ...
+
+
+class ServeStaticMedia(Protocol):
+    def __call__(
+        self,
+        request: Request,
+        series_id: str,
+        rel_key: str,
+        *,
+        media_type: str,
+        context: str,
+        headers: dict[str, str] | None = None,
+        transform: Callable[[bytes], bytes | str] = lambda b: b,
+        stream_s3: bool = False,
+    ) -> StreamingResponse:
+        ...
+
+
 def build_podcast_browse_router(
     *,
     validate_series_id: Callable[[str], None],
     using_s3: Callable[[Request], bool],
-    read_json_from_s3: Callable[..., Any],
+    read_json_from_s3: ReadJsonFromS3,
     podcasts_dir: Callable[[Request], Path],
-    read_json_file: Callable[..., Any],
-    serve_static_media: Callable[..., Any],
+    read_json_file: ReadJsonFile,
+    serve_static_media: ServeStaticMedia,
 ) -> APIRouter:
     router = APIRouter(tags=["podcast"])
 
