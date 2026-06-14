@@ -59,10 +59,6 @@ extension UITestFixtureSeed {
             try clearAuthFixtureWorld(from: context)
 
             let fixture = try resolveAuthPodcastFixture()
-            let audioURL = try copyAuthFixtureFile(
-                source: fixture.audioURL,
-                fileName: "kg-uitest-auth-\(fixture.audioURL.lastPathComponent)"
-            )
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
 
             let series = PodcastSeries(
@@ -90,7 +86,7 @@ extension UITestFixtureSeed {
                 episode.audioAvailable = episodeSeed.audioAvailable
                 episode.previewAvailable = episodeSeed.previewAvailable
                 episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
-                episode.localAudioPath = audioURL.path
+                episode.localAudioPath = fixture.audioURL.path
                 episode.subtitleAvailable = episodeSeed.subtitleAvailable
                 episode.inlineSubtitle = subtitle
                 context.insert(episode)
@@ -135,18 +131,9 @@ extension UITestFixtureSeed {
     /// Same UI World-owned asset domain as the podcast playable preview.
     private static func resolveAuthPodcastFixture() throws -> AuthPodcastFixture {
         let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: .tieredCatalog)
-        let audioURL = try FixtureDatasetStore.requireAssetURL(ref: seed.audioAssetRef)
-        let subtitleURL = try FixtureDatasetStore.requireAssetURL(ref: seed.subtitleAssetRef)
+        let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.audioAssetRef)
+        let subtitleURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.subtitleAssetRef)
         return AuthPodcastFixture(seed: seed, audioURL: audioURL, subtitleURL: subtitleURL)
-    }
-
-    private static func copyAuthFixtureFile(source: URL, fileName: String) throws -> URL {
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.copyItem(at: source, to: destination)
-        return destination
     }
 }
 #endif

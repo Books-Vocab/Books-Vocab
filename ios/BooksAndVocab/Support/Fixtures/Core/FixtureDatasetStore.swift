@@ -367,13 +367,40 @@ enum FixtureDatasetStore {
         return seed
     }
 
-    static func requireAssetURL(ref: String) throws -> URL {
+    static func requireInstalledAssetURL(ref: String) throws -> URL {
+        let asset = try requireAsset(ref: ref)
+        let sourceURL = try validatedSourceURL(for: asset, ref: ref)
+        let destination = try installURL(for: asset, ref: ref)
+        let fm = FileManager.default
+        try fm.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        try fm.copyItem(at: sourceURL, to: destination)
+        let installedHash = try sha256Hex(for: destination)
+        guard installedHash == asset.sha256 else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
+            ])
+        }
+        return destination
+    }
+
+    private static func requireAsset(ref: String) throws -> UIWorldAsset {
         guard case let .loaded(document, _) = loadState() else {
             preconditionFailure("UI World is not loaded; asset \(ref) cannot resolve")
         }
         guard let asset = document.assets.asset(for: ref) else {
             preconditionFailure("UI World is missing asset \(ref)")
         }
+        return asset
+    }
+
+    private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
         let url = URL(fileURLWithPath: asset.sourcePath)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
@@ -386,6 +413,22 @@ enum FixtureDatasetStore {
             ])
         }
         return url
+    }
+
+    private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {
+        guard let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !installAs.isEmpty else {
+            preconditionFailure("UI World asset \(ref) is missing installAs")
+        }
+        guard !installAs.hasPrefix("/") else {
+            preconditionFailure("UI World asset \(ref) installAs must be relative: \(installAs)")
+        }
+        let components = installAs.split(separator: "/").map(String.init)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            preconditionFailure("UI World asset \(ref) installAs contains an unsafe path component: \(installAs)")
+        }
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(installAs)
     }
 
     static func sha256Hex(for url: URL) throws -> String {
