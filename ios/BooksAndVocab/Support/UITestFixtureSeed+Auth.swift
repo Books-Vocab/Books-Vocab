@@ -15,6 +15,8 @@ extension UITestFixtureSeed {
     @MainActor
     static func seedAuth(_ id: String, into container: ModelContainer) {
         switch id {
+        case "guest":
+            AppLog.app.info("UI-test fixture seeded: auth.guest")
         case "tieredCatalog":
             seedAuthTieredCatalog(into: container)
         case "signedIn":
@@ -37,23 +39,16 @@ extension UITestFixtureSeed {
             // 大聲失敗（否則 test 以訪客態繼續跑，下游 assert 難診斷）；
             // unit-test host app（無 -ui-testing）則靜默拒絕即可。
             if AppRuntimeOptions.isUITesting() {
-                assertionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
+                preconditionFailure("auth.signedIn fixture requires -isolatedAuthSession (use launchIsolatedApp)")
             }
             AppLog.app.error("UITestFixtureSeed: refused auth.signedIn without -isolatedAuthSession — fake session would persist into the real store")
             return
         }
-        let auth = AuthManager.shared
-        // Profile first — login() persists the current displayName/userEmail.
-        // Identity VALUES come from the SoT-emitted DemoFixtureIdentity (generated
-        // by ops/demo/build_demo.py emit-ios from demo_identity.json). Only the
-        // literal values are sourced from the SoT; the simulator-gate and
-        // isolatedAuthSession guards above are unchanged.
-        auth.displayName = DemoFixtureIdentity.displayName
-        auth.userEmail = DemoFixtureIdentity.email
-        auth.login(userId: DemoFixtureIdentity.userId, token: DemoFixtureIdentity.accessToken)
+        seedSignedInLoginFromWorld()
         AppLog.app.info("UI-test fixture seeded: auth.signedIn")
         #else
         AppLog.app.error("UITestFixtureSeed: refused auth.signedIn on physical device — would overwrite the real Keychain session")
+        preconditionFailure("auth.signedIn fixture is simulator-only")
         #endif
     }
 

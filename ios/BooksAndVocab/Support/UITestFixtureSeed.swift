@@ -62,11 +62,24 @@ enum UITestFixtureSeed {
     /// 2026-06-10 事故經另一儲存平面重演。與 settings/reader fixture 同款
     /// simulator gate；fixture 一律經此 helper，不得直呼 login。
     @MainActor
-    static func seedLogin(userId: String, token: String) {
+    static func seedSignedInLoginFromWorld() {
         #if targetEnvironment(simulator)
-        AuthManager.shared.login(userId: userId, token: token)
+        let seed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+        guard seed.isLoggedIn else {
+            preconditionFailure("auth.signedIn fixture requires auth.signedIn.isLoggedIn = true")
+        }
+        let userId = seed.userId ?? ""
+        let token = seed.token ?? ""
+        guard !userId.isEmpty, !token.isEmpty else {
+            preconditionFailure("auth.signedIn fixture requires non-empty userId and token")
+        }
+        let auth = AuthManager.shared
+        auth.displayName = seed.displayName ?? ""
+        auth.userEmail = seed.email
+        auth.login(userId: userId, token: token)
         #else
-        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session (userId: \(userId))")
+        AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
+        preconditionFailure("auth.signedIn fixture is simulator-only")
         #endif
     }
 }

@@ -3,13 +3,12 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
-/// Contract gate for every named dataset under `ops/fixtures/catalog/`.
+/// Contract gate for every named UI World under `ops/fixtures/ui_worlds/`.
 ///
-/// `FixtureDatasetStore` falls back to embedded recipes when a dataset fails to
-/// decode or references unknown fixture IDs, so a broken dataset never crashes —
-/// it silently renders the wrong content. This suite turns that silence into a
-/// red test: each repo dataset must decode, carry a `datasetID` matching its
-/// filename, and only key into fixture IDs that exist in the Swift registries.
+/// `FixtureDatasetStore` is the UI World SoT. A broken dataset must be caught at
+/// the contract boundary: each repo dataset must decode, carry a `datasetID`
+/// matching its filename, and only key into fixture IDs that exist in the Swift
+/// registries.
 struct RepoFixtureDatasetsContractTests {
     private static var datasetsDirectory: URL {
         // …/ios/BooksAndVocabTests/RepoFixtureDatasetsContractTests.swift → repo root
@@ -17,7 +16,7 @@ struct RepoFixtureDatasetsContractTests {
             .deletingLastPathComponent() // BooksAndVocabTests
             .deletingLastPathComponent() // ios
             .deletingLastPathComponent() // repo root
-            .appendingPathComponent("ops/fixtures/catalog", isDirectory: true)
+            .appendingPathComponent("ops/fixtures/ui_worlds", isDirectory: true)
     }
 
     private static func datasetURLs() throws -> [URL] {
@@ -51,6 +50,8 @@ struct RepoFixtureDatasetsContractTests {
             )
 
             expectKnownKeys(document.settings.keys, SettingsFixtureID.self, domain: "settings", dataset: stem)
+            expectKnownKeys(document.auth.keys, UIWorldAuthFixtureID.self, domain: "auth", dataset: stem)
+            expectKnownKeys(document.entitlements.keys, UIWorldEntitlementsFixtureID.self, domain: "entitlements", dataset: stem)
             expectKnownKeys(document.bookshelf.keys, BookshelfFixtureID.self, domain: "bookshelf", dataset: stem)
             expectKnownKeys(document.todayReview.keys, TodayReviewFixtureID.self, domain: "todayReview", dataset: stem)
             expectKnownKeys(document.notebook.keys, NotebookFixtureID.self, domain: "notebook", dataset: stem)

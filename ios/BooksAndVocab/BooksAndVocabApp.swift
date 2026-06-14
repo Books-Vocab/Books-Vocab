@@ -45,9 +45,14 @@ struct BooksAndVocabApp: App {
         }
 
         #if DEBUG
-        if AppRuntimeOptions.isUITesting(arguments: runtimeArguments),
-           runtimeArguments.contains("-seedFixture:entitlements:pro") {
-            subscriptionManager = UITestSubscriptionManager.proAccess()
+        if AppRuntimeOptions.isUITesting(arguments: runtimeArguments) {
+            if runtimeArguments.contains("-seedFixture:entitlements:pro") {
+                subscriptionManager = UITestSubscriptionManager.proAccess()
+            } else if runtimeArguments.contains("-seedFixture:entitlements:free") {
+                subscriptionManager = UITestSubscriptionManager.freeAccess()
+            } else {
+                subscriptionManager = SubscriptionManager.shared
+            }
         } else {
             subscriptionManager = SubscriptionManager.shared
         }

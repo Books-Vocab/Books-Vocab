@@ -153,7 +153,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 ./ops/ios_ops.sh test --ui testLaunchShowsPrimaryTabs       # 只跑 UI test method
 ./ops/ios_ops.sh test --launch-benchmark
 ./ops/ios_ops.sh test --ui --ui-launch-profile standard testLaunchShowsPrimaryTabs
-./ops/ios_ops.sh test --ui --dataset marketing_demo -g FixtureDatasetUITests # 注入 named fixture dataset（ops/fixtures/catalog/<name>.json）
+./ops/ios_ops.sh test --ui --dataset marketing_demo -g FixtureDatasetUITests # 注入 named UI World（ops/fixtures/ui_worlds/<name>.json）
 ./ops/ios_ops.sh test --all-targets --timeout 1200          # scheme 全量：unit + UI
 ./ops/ios_ops.sh test --file FooTests.swift --list          # 只列 resolved -only-testing selectors
 ```
@@ -161,7 +161,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 - 預設 scope 是 `unit`，會自動加 `-only-testing:BooksAndVocabTests`；UI tests 不會被誤混進 unit full。
 - `./ops/ios_ops.sh build --json` / 一般 `test --json` 會把 delegate stdout/stderr 導到 stderr，stdout 保留單一 `kg.ios.run.v1` payload；`test --coverage --json` 會在同一 payload 內嵌 `coverage: kg.ios.coverage.v1`；已存在原生 JSON 契約的 `test --cache-status|--prepare-cache|--clean-cache --json` 維持原 schema，不再包一層 run report。
 - `--ui` 會把 discovery target 切到 `BooksAndVocabUITests`，支援 `--file` / method selector；未明示時會自動帶 `--ui-launch-profile ui-smoke`，把 UI smoke 驗證切到較輕的 app launch profile。若要回到完整 startup 行為做 baseline / A/B，明示 `--ui-launch-profile standard`。
-- `--ui --dataset <name>` / `--dataset-file <path>`（僅限 UI scope）把 fixture dataset（`kg.fixture.dataset.v1`，同 catalog snapshots 用的格式）注入 UI test run：機制是複製一份 staged `*.scoped.xctestrun` 並 upsert `TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64`（`test-without-building` 不會把行內 env 傳進 runner process），UITest 端 `UITestLaunchConfiguration` 再轉發進 app `launchEnvironment`，被 `UITestFixtureSeed` 的 renderModel 鏈消費。端到端證明測試：`FixtureDatasetUITests`（無 dataset 時自動 skip）。
+- `--ui` 實際執行必須明示 `--dataset <name>` / `--dataset-file <path>`。named dataset 解析到 `ops/fixtures/ui_worlds/<name>.json`；UI World（`kg.fixture.dataset.v1`）同時管理資料、auth session 與 entitlement。注入機制是複製一份 staged `*.scoped.xctestrun` 並 upsert `TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64`（`test-without-building` 不會把行內 env 傳進 runner process），UITest 端 `UITestLaunchConfiguration` 再轉發進 app `launchEnvironment`，被 `FixtureDatasetStore.require*Seed` 消費。缺 world / 缺 key 直接 fail hard；端到端證明測試：`FixtureDatasetUITests`。
 - `--launch-benchmark` 是正式的 UI launch perf 入口，固定跑 `BooksAndVocabUITests/testLaunchPerformance`；目前以 XCTest 內建 `XCTApplicationLaunchMetric` 預設行為為準，會在第一屏輸出 `appLaunchAverageMs` / `appLaunchSamples` 供比較。
 - `--coverage` 會對 `build-for-testing` / `test-without-building` 加 `-enableCodeCoverage YES`，測試後用 `ops/ios_coverage.py` 讀 `xccov view --report --json` 產出 `kg.ios.coverage.v1`。`summary.lowestFiles[]` 預設列出 selected target 最低覆蓋的前 10 個檔案，第一屏會印前三個 `[ios][coverage][low]`，用來決定下一輪補測試焦點。`--coverage-fail-under <percent>` 低於 BooksAndVocab target line coverage 門檻時，即使 tests passed 也會讓 run 以 `reason=coverage-fail-under` 失敗；coverage build cache key 會和一般 test 分開，避免重用無 coverage 的 `.xctestrun`。只調 parser 輸出時可直接跑 `ops/ios_coverage.py --max-low-files <n>`。
 - `--all-targets` 跑整個 scheme TestAction，不能和 `--file` / `-g` / specific method 混用。
@@ -573,7 +573,7 @@ enum FooScenarios {
 # 或直接指定任意外部檔案（不必改 iOS code）
 ./ops/ios_ops.sh catalog snapshots \
   --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  --dataset-file ops/fixtures/catalog/marketing_demo.json \
+  --dataset-file ops/fixtures/ui_worlds/marketing_demo.json \
   --scenario 'Today Review/Front' \
   --json
 

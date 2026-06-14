@@ -6,6 +6,76 @@ import Testing
 // .serialized: tests mutate FixtureDatasetStore.testingOverrideData singleton.
 @Suite(.serialized)
 struct FixtureDatasetStoreTests {
+    @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v1",
+          "datasetID": "test-ui-world",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "world-user",
+              "token": "world-token",
+              "displayName": "World User",
+              "email": "world@example.com",
+              "provider": "apple",
+              "providerUserId": "apple:world-user"
+            },
+            "guest": {
+              "isLoggedIn": false,
+              "userId": null,
+              "token": null,
+              "displayName": null,
+              "email": null,
+              "provider": null,
+              "providerUserId": null
+            }
+          },
+          "entitlements": {
+            "pro": {
+              "pro": {
+                "is_active": true,
+                "product_id": "com.wordnexus.pro.monthly",
+                "plan_name": "Books & Vocab Pro",
+                "price_display": "NT$90 / month",
+                "status": "active",
+                "is_trial": false,
+                "trial_days": 7,
+                "will_renew": true,
+                "expires_at": "2099-12-31T23:59:59Z",
+                "source": "app_store",
+                "last_synced_at": "2026-06-10T00:00:00Z"
+              }
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            #expect(FixtureDatasetStore.debugSummary() == "test-ui-world @ testing-override")
+
+            let auth = try #require(FixtureDatasetStore.authSeed(for: .signedIn))
+            #expect(auth.isLoggedIn == true)
+            #expect(auth.userId == "world-user")
+            #expect(auth.token == "world-token")
+            #expect(auth.displayName == "World User")
+            #expect(auth.email == "world@example.com")
+
+            let guest = try #require(FixtureDatasetStore.authSeed(for: .guest))
+            #expect(guest.isLoggedIn == false)
+            #expect(guest.userId == nil)
+
+            let entitlements = try #require(FixtureDatasetStore.entitlementsSeed(for: .pro))
+            #expect(entitlements.pro.is_active == true)
+            #expect(entitlements.pro.status == "active")
+
+            let subscriptionManager = UITestSubscriptionManager.proAccess()
+            #expect(subscriptionManager.entitlements.pro.is_active == true)
+            #expect(subscriptionManager.entitlements.pro.plan_name == "Books & Vocab Pro")
+            #expect(subscriptionManager.entitlements.pro.last_synced_at == "2026-06-10T00:00:00Z")
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {
@@ -220,21 +290,5 @@ struct FixtureDatasetStoreTests {
         }
     }
 
-    @Test @MainActor func notebookAndPodcastFallBackToEmbeddedRecipes() throws {
-        try FixtureDatasetStore.withTestingData(nil) {
-            let notebookModel = NotebookFixtures.renderModel(for: .populated)
-            #expect(notebookModel.notebooks.count == 3)
-            #expect(notebookModel.notebooks.first?.isDefault == true)
-
-            let singleModel = NotebookFixtures.renderModel(for: .single)
-            #expect(singleModel.notebooks.count == 1)
-
-            let podcastModel = PodcastFixtures.renderModel(for: .shelfContinue)
-            #expect(podcastModel.items.count == 4)
-
-            let singleShelf = PodcastFixtures.renderModel(for: .shelfSingle)
-            #expect(singleShelf.items.count == 1)
-        }
-    }
 }
 #endif

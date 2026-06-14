@@ -6,8 +6,7 @@
 //  runner env (KG_FIXTURE_DATASET_B64) → UITestLaunchConfiguration forwarding
 //  → app FixtureDatasetStore → UITestFixtureSeed bookshelf seeder → rendered UI.
 //
-//  Without a dataset on the runner the test skips, so the default --ui sweep
-//  stays green; run it for real via:
+//  Without a UI World on the runner the test fails; run it via:
 //      ./ops/ios_test.sh --ui --dataset marketing_demo -g FixtureDatasetUITests
 //
 
@@ -29,7 +28,8 @@ final class FixtureDatasetUITests: UITestCase {
     func testBookshelfRendersDatasetOverriddenTitle() throws {
         guard let base64 = ProcessInfo.processInfo.environment["KG_FIXTURE_DATASET_B64"],
               !base64.isEmpty else {
-            throw XCTSkip("no fixture dataset on the runner — run via ./ops/ios_test.sh --ui --dataset <name>")
+            XCTFail("missing UI World on the runner — run via ./ops/ios_test.sh --ui --dataset <name>")
+            return
         }
         guard let data = Data(base64Encoded: base64) else {
             XCTFail("KG_FIXTURE_DATASET_B64 is not valid base64")
@@ -37,7 +37,8 @@ final class FixtureDatasetUITests: UITestCase {
         }
         let document = try JSONDecoder().decode(DatasetDocument.self, from: data)
         guard let expectedTitle = document.bookshelf?["with_books_library"]?.books.first?.title else {
-            throw XCTSkip("dataset defines no bookshelf.with_books_library entry — nothing to assert")
+            XCTFail("UI World defines no bookshelf.with_books_library entry")
+            return
         }
 
         let app = launchIsolatedApp(fixtures: [.bookshelf("with_books_library")])

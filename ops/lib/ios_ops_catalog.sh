@@ -311,26 +311,9 @@ catalog_scope_file_path() {
   printf '%s/Library/Developer/CoreSimulator/Devices/%s/data/tmp/kg-catalog-scope.json\n' "$HOME" "$device_udid"
 }
 
-catalog_fixture_dataset_path() {
-  local device_udid="$1"
-  printf '%s/Library/Developer/CoreSimulator/Devices/%s/data/tmp/kg-fixture-dataset.json\n' "$HOME" "$device_udid"
-}
-
 catalog_named_dataset_path() {
   local dataset_name="$1"
-  printf '%s/ops/fixtures/catalog/%s.json\n' "$ROOT" "$dataset_name"
-}
-
-catalog_stage_fixture_dataset() {
-  local device_udid="$1" source_path="${2:-}"
-  local destination_path
-  destination_path="$(catalog_fixture_dataset_path "$device_udid")"
-  mkdir -p "$(dirname "$destination_path")"
-  if [[ -z "$source_path" ]]; then
-    rm -f "$destination_path"
-    return 0
-  fi
-  cp "$source_path" "$destination_path"
+  printf '%s/ops/fixtures/ui_worlds/%s.json\n' "$ROOT" "$dataset_name"
 }
 
 catalog_write_scope_file() {
@@ -808,25 +791,7 @@ cmd_catalog_snapshots_json() {
         dataset_rc=89
         dataset_status="encode-failed"
       else
-        dataset_status="embedded"
-      fi
-    fi
-
-    if [[ "$dataset_rc" -eq 0 && -n "$resolved_device" ]]; then
-      dataset_simulator_path="$(catalog_fixture_dataset_path "$resolved_device")"
-      if catalog_stage_fixture_dataset "$resolved_device" "$dataset_path"; then
-        if [[ -n "$dataset_path" ]]; then
-          dataset_status="embedded+copied"
-        else
-          dataset_status="cleared"
-        fi
-      else
-        dataset_rc=$?
-        if [[ -n "$dataset_path" ]]; then
-          dataset_status="copy-failed"
-        else
-          dataset_status="clear-failed"
-        fi
+        dataset_status="injected"
       fi
     fi
 

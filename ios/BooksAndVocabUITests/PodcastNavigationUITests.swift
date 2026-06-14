@@ -7,8 +7,8 @@
 //  detailRouter.show 牽動 body 重評時整個重建、隱式 path reset → 已 push 的
 //  集數列表被 pop。修法：root 改 `NavigationStack(path: $navigationPath)`。
 //  本 test 在 Catalyst（regular inline 路徑）點集數後斷言集數列表「不消失」，
-//  即不 pop 回書架根。需真實 container 有 podcast 資料（-ui-testing 不 reset），
-//  無資料時 XCTSkip。
+//  即不 pop 回書架根。Podcast data 由 UI World + explicit fixture seed 提供；
+//  缺資料即失敗，不允許 ambient simulator state 接管。
 //
 
 import XCTest
@@ -16,24 +16,32 @@ import XCTest
 final class PodcastNavigationUITests: UITestCase {
     @MainActor
     func testEpisodeTapDoesNotPopToRoot() throws {
-        let app = launchApp()
+        let app = launchIsolatedApp(
+            fixtures: [.podcastPlayablePreview],
+            extraEnvironment: PodcastFixture.assetEnvironment.merging([
+                "KG_UI_TEST_PODCAST_SERIES_TITLE": "Atomic Habits",
+                "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
+                "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
+            ]) { _, new in new }
+        )
 
         // 1. podcast series 卡片：accessibilityLabel = "<title>, podcast"
         let series = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] %@", ", podcast"))
             .firstMatch
         guard series.waitUntilExists(timeout: 15) else {
-            throw XCTSkip("無 podcast 測試資料（fresh container），無法 runtime 驗證 pop-to-root")
+            XCTFail("UI World + podcast.playablePreview fixture should render a podcast series")
+            return
         }
         series.tap()
 
-        // 2. 集數列表出現（找任一集標題；測試資料含 "The Two Words That Do the Work"，
-        //    用較寬鬆的關鍵字避免綁死特定 series）
+        // 2. 集數列表出現。
         let episode = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Two Words"))
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Actual Lab Episode"))
             .firstMatch
         guard episode.waitUntilExists(timeout: 10) else {
-            throw XCTSkip("集數列表未載入預期集數，跳過（資料不符）")
+            XCTFail("podcast.playablePreview fixture should render Actual Lab Episode")
+            return
         }
 
         // 3. 點集數 → regular inline 走 detailRouter.show（不 push），右欄掛 player。
