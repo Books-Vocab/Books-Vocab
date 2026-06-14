@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 41a657ac
+verified_against: 507bc89e
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -44,6 +44,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Settings subscription 契約（無本地 section fixture）
 `SettingsSubscriptionSectionScenarios` 的 active/loading/pricing-unavailable/free 狀態必須取 UI World `settings.*` seed 的 `subscription` slice；`subscription_free` 也必須存在於 repo UI World / generated demo manifest。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.subscription!`、不可保留 `inactiveFreeFixture`，也不可手建 `SettingsPresenterState.SubscriptionSection(...)`。
+
+### Settings account detail 契約（無本地 auth/danger fixture）
+`SettingsAccountDetailScenarios` 的 subscribed/deleting/logged-out/long-identity 狀態必須取 UI World `settings.*` seed；長字串壓力狀態是 `settings.account_long_identity`，且 repo UI World / generated demo manifest 都必須宣告。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.auth` / `.danger`，不可保留 `loggedOutAuth` / `longInfoAuth`，也不可手建 `SettingsPresenterState.AuthSection(...)` 或 `DangerSection(...)`。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
