@@ -60,49 +60,56 @@ enum VocabScenarios {
         // MARK: Linked Card Overlay
         playbook.addScenarios(of: "Vocabulary · Linked Card") {
             Scenario("Single card", layout: .fill) {
-                LinkedCardOverlayScene(entries: [Self.sampleEntry(word: "serendipity")])
+                LinkedCardOverlayScene(fixture: .single)
             }
             Scenario("Stacked 3-deep", layout: .fill) {
-                LinkedCardOverlayScene(entries: [
-                    Self.sampleEntry(word: "serendipity"),
-                    Self.sampleEntry(word: "epiphany"),
-                    Self.sampleEntry(word: "revelation"),
-                ])
+                LinkedCardOverlayScene(fixture: .stacked)
             }
         }
 
         // MARK: Add Link Sheet
         playbook.addScenarios(of: "Vocabulary · Add Link") {
             Scenario("With candidates", layout: .fill) {
-                AddLinkSheetScene(
-                    source: Self.sampleEntry(word: "serendipity"),
-                    candidates: [
-                        Self.sampleEntry(word: "fortuitous"),
-                        Self.sampleEntry(word: "fortunate"),
-                        Self.sampleEntry(word: "happy accident"),
-                    ]
-                )
+                AddLinkSheetScene(fixture: .withCandidates)
             }
             Scenario("No candidates", layout: .fill) {
-                AddLinkSheetScene(
-                    source: Self.sampleEntry(word: "serendipity"),
-                    candidates: []
-                )
+                AddLinkSheetScene(fixture: .noCandidates)
             }
         }
     }
+}
 
-    // MARK: - Fixtures
+// MARK: - Fixtures
 
-    private static func sampleEntry(word: String) -> VocabularyEntry {
-        VocabularyEntry(
-            word: word,
-            translation: "機緣巧合",
-            context: "It was pure \(word) that we met.",
-            explanation: "A happy accident; finding something good without looking for it.",
-            partOfSpeech: "n.",
-            bookTitle: "Sample Book"
-        )
+private enum VocabLinkedCardFixture {
+    case single
+    case stacked
+
+    var entryIndices: [Int] {
+        switch self {
+        case .single:
+            return [0]
+        case .stacked:
+            return [0, 1, 2]
+        }
+    }
+}
+
+private enum VocabAddLinkFixture {
+    case withCandidates
+    case noCandidates
+
+    var sourceIndex: Int {
+        0
+    }
+
+    var candidateIndices: [Int] {
+        switch self {
+        case .withCandidates:
+            return [3, 4, 5]
+        case .noCandidates:
+            return []
+        }
     }
 }
 
@@ -112,7 +119,10 @@ private struct LinkedCardOverlayScene: View {
     let entries: [VocabularyEntry]
     @State private var stack: [VocabularyEntry]
 
-    init(entries: [VocabularyEntry]) {
+    init(fixture: VocabLinkedCardFixture) {
+        let entries = MainActor.assumeIsolated {
+            Self.entries(at: fixture.entryIndices)
+        }
         self.entries = entries
         self._stack = State(initialValue: entries)
     }
@@ -123,11 +133,24 @@ private struct LinkedCardOverlayScene: View {
         }
         .environmentObject(AppAppearanceStore.preview)
     }
+
+    @MainActor
+    private static func entries(at indices: [Int]) -> [VocabularyEntry] {
+        VocabManifestEntries.entries(at: indices)
+    }
 }
 
 private struct AddLinkSheetScene: View {
     let source: VocabularyEntry
     let candidates: [VocabularyEntry]
+
+    init(fixture: VocabAddLinkFixture) {
+        let payload = MainActor.assumeIsolated {
+            Self.payload(for: fixture)
+        }
+        source = payload.source
+        candidates = payload.candidates
+    }
 
     var body: some View {
         AppThemeContainer {
@@ -138,6 +161,42 @@ private struct AddLinkSheetScene: View {
             )
         }
         .environmentObject(AppAppearanceStore.preview)
+    }
+
+    @MainActor
+    private static func payload(for fixture: VocabAddLinkFixture) -> (source: VocabularyEntry, candidates: [VocabularyEntry]) {
+        let source = VocabManifestEntries.entry(at: fixture.sourceIndex)
+        let candidates = VocabManifestEntries.entries(at: fixture.candidateIndices)
+        return (source, candidates)
+    }
+}
+
+private enum VocabManifestEntries {
+    private static func seed() -> UIWorldVocabularySeed {
+        FixtureDatasetStore.requireVocabularySeed(for: .vocabLinkedCards)
+    }
+
+    @MainActor
+    static func entry(at index: Int) -> VocabularyEntry {
+        entries(at: [index])[0]
+    }
+
+    @MainActor
+    static func entries(at indices: [Int]) -> [VocabularyEntry] {
+        let seed = seed()
+        precondition(
+            seed.entries.count == 6,
+            "UI World vocabulary.vocabLinkedCards expected 6 entries, got \(seed.entries.count)"
+        )
+        for index in indices {
+            precondition(
+                seed.entries.indices.contains(index),
+                "UI World vocabulary.vocabLinkedCards missing entry index \(index)"
+            )
+        }
+        return indices.map {
+            UITestFixtureSeed.makeVocabularyEntry(from: seed.entries[$0], notebookId: seed.notebookRemoteId)
+        }
     }
 }
 #endif

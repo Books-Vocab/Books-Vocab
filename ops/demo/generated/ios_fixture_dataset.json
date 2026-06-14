@@ -1885,6 +1885,135 @@
     }
   },
   "vocabulary": {
+    "vocabLinkedCards": {
+      "notebookRemoteId": "ui-vocab-linked-cards-notebook",
+      "notebookName": "Vocab Linked Cards Fixture",
+      "bookTitle": "The Weight of Words",
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity in the passage we read together.",
+          "explanation": "The luck of finding something valuable without planning for it.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Their discovery owed as much to serendipity as to discipline."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "epiphany",
+          "translation": "頓悟；豁然開朗",
+          "context": "The final paragraph gave her an epiphany about the argument.",
+          "explanation": "A sudden moment of insight or understanding.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-epiphany",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The diagram triggered an epiphany for the whole team."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "revelation",
+          "translation": "揭示；驚人的新發現",
+          "context": "The notebook margin contained a revelation about the author’s method.",
+          "explanation": "A newly revealed fact or insight, often surprising.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-revelation",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The archive produced one quiet revelation after another."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "fortuitous",
+          "translation": "偶然發生而幸運的",
+          "context": "A fortuitous delay gave the researcher time to notice the pattern.",
+          "explanation": "Happening by chance, usually with a favorable result.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-fortuitous",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The fortuitous meeting changed the project’s direction."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "fortunate",
+          "translation": "幸運的；有利的",
+          "context": "It was fortunate that the note survived in the old copy.",
+          "explanation": "Favored by luck or resulting in a good outcome.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-fortunate",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "They were fortunate to find the source before publication."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "happy accident",
+          "translation": "意外的好結果",
+          "context": "The phrase began as a happy accident in a draft.",
+          "explanation": "An unplanned event that turns out well.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Linked Cards",
+          "kgCardId": "vocab-linked-happy-accident",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The design emerged from a happy accident during testing."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
     "kgVocabRow": {
       "notebookRemoteId": "ui-kg-vocab-row-notebook",
       "notebookName": "KG Vocab Row Fixture",
