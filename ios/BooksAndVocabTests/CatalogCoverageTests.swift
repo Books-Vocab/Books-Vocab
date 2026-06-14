@@ -191,6 +191,27 @@ import Playbook
         )
     }
 
+    @Test func settingsPreferencesCatalogUsesUIWorldSettingsSeeds() throws {
+        let sectionScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SettingsSectionsScenarios.swift")
+        let source = try String(contentsOf: sectionScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("SettingsPresenterState.PreferencesSection(", "preferences section must not construct local presenter state"),
+            ("autoSyncEnabled: true", "auto-sync on state belongs in UI World settings preferences"),
+            ("autoSyncEnabled: false", "auto-sync off state belongs in UI World settings preferences"),
+            ("showAutoSync: true", "sync-row visibility belongs in UI World settings preferences"),
+            ("showAutoSync: false", "sync-row hidden state belongs in UI World settings preferences"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(sectionScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("SettingsFixtures.state(for: fixtureID).preferences"),
+            "Settings preferences catalog must fail fast through UI World settings seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.

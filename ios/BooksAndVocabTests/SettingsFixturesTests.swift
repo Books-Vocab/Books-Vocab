@@ -22,6 +22,8 @@ import Testing
         #expect(previewKeys == [
             "settings.logged_out",
             "settings.account_logged_out_error",
+            "settings.preferences_auto_sync_off",
+            "settings.preferences_logged_out_no_sync",
             "settings.subscribed_active",
             "settings.account_long_identity",
             "settings.subscription_free",
@@ -62,6 +64,24 @@ import Testing
             #expect(state.auth.authError == "無法連線至驗證伺服器，請稍後再試。")
             #expect(state.subscription == nil)
             #expect(state.danger == nil)
+        }
+    }
+
+    @Test func preferencesFixturesComeFromUIWorld() async throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let autoSyncOff = SettingsFixtures.state(for: .preferencesAutoSyncOff).preferences
+            #expect(autoSyncOff.selectedLanguage == "English")
+            #expect(autoSyncOff.selectedAppearance == "淺色")
+            #expect(autoSyncOff.translationTarget == "日本語")
+            #expect(autoSyncOff.selectedReviewMode == "密集")
+            #expect(autoSyncOff.autoSyncEnabled == false)
+            #expect(autoSyncOff.showAutoSync == true)
+
+            let loggedOut = SettingsFixtures.state(for: .preferencesLoggedOutNoSync).preferences
+            #expect(loggedOut.selectedAppearance == "深色")
+            #expect(loggedOut.selectedReviewMode == "已凍結 · 自訂")
+            #expect(loggedOut.autoSyncEnabled == false)
+            #expect(loggedOut.showAutoSync == false)
         }
     }
 }

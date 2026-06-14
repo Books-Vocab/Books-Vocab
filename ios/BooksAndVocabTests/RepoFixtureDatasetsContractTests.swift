@@ -44,6 +44,8 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
         #expect(document.auth["signedIn"]?.keychainTokenState == .available)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
+        #expect(document.settings["preferences_auto_sync_off"] != nil)
+        #expect(document.settings["preferences_logged_out_no_sync"] != nil)
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {

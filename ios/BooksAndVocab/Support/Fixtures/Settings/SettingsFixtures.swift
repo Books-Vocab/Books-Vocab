@@ -3,6 +3,8 @@ import Foundation
 enum SettingsFixtureID: String, CaseIterable {
     case loggedOut = "logged_out"
     case accountLoggedOutError = "account_logged_out_error"
+    case preferencesAutoSyncOff = "preferences_auto_sync_off"
+    case preferencesLoggedOutNoSync = "preferences_logged_out_no_sync"
     case subscribedActive = "subscribed_active"
     case accountLongIdentity = "account_long_identity"
     case subscriptionFree = "subscription_free"
@@ -155,6 +157,12 @@ enum SettingsFixtures {
         },
         FixtureRecipe(key: SettingsFixtureID.accountLoggedOutError.key, surfaces: sharedSurfaces, tags: ["edge"]) {
             FixtureDatasetStore.requireSettingsSeed(for: .accountLoggedOutError)
+        },
+        FixtureRecipe(key: SettingsFixtureID.preferencesAutoSyncOff.key, surfaces: sharedSurfaces, tags: ["preferences"]) {
+            FixtureDatasetStore.requireSettingsSeed(for: .preferencesAutoSyncOff)
+        },
+        FixtureRecipe(key: SettingsFixtureID.preferencesLoggedOutNoSync.key, surfaces: sharedSurfaces, tags: ["preferences"]) {
+            FixtureDatasetStore.requireSettingsSeed(for: .preferencesLoggedOutNoSync)
         },
         FixtureRecipe(key: SettingsFixtureID.subscribedActive.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
             .init(

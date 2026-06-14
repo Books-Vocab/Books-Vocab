@@ -213,6 +213,105 @@
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
+    "preferences_auto_sync_off": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "English",
+        "selectedAppearance": "淺色",
+        "translationSource": "English",
+        "translationTarget": "日本語",
+        "selectedReviewMode": "密集",
+        "autoSyncEnabled": false,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "免費方案",
+        "badgeText": "未訂閱",
+        "badgeTone": "neutral",
+        "summary": "升級 Pro 解鎖知識圖譜與播客。",
+        "detail": "目前使用免費額度，部分進階功能受限。",
+        "sourceLabel": "無",
+        "managementNote": "尚未訂閱，可隨時於 App Store 開始。",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "曾經購買過？點此恢復先前的訂閱。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "升級 Pro",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張 · 剛剛"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "preferences_logged_out_no_sync": {
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "深色",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "已凍結 · 自訂",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
     "subscribed_active": {
       "auth": {
         "isLoggedIn": true,
