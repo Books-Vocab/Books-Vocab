@@ -317,7 +317,8 @@ def health_response(
     db_ok = True
     try:
         cards.count()
-    except (OSError, sqlite3.DatabaseError):
+    except (OSError, sqlite3.DatabaseError) as exc:
+        logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
         db_ok = False
 
     data_dir_exists = user_dir.exists()

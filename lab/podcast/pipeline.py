@@ -144,6 +144,7 @@ def _read_kimi_token(env: dict[str, str]) -> str:
     try:
         token = "".join(key_file.read_text().split())
     except OSError:
+        _LOGGER.debug("Could not read Kimi token file: %s", key_file)
         token = ""
     if not token:
         raise RuntimeError(
@@ -2108,6 +2109,7 @@ def _emit_cover_usage(workspace: Path) -> None:
         try:
             meta = json.loads(meta_path.read_text())
         except (json.JSONDecodeError, OSError):
+            _LOGGER.debug("Failed to parse cover/metadata JSON: %s", meta_path)
             meta = {}
     event = {
         "type": "image_usage",
@@ -2243,7 +2245,8 @@ def _try_parse_json(line: str) -> dict | None:
 def show_status(workspace: Path) -> None:
     try:
         stages = workflow_stage_order(resolve_workspace_workflow(workspace, None))
-    except ValueError:
+    except ValueError as exc:
+        _LOGGER.warning("Using legacy stage list for %s (workflow parse failed: %s)", workspace, exc)
         stages = STAGES
     print(f"\n{'='*60}")
     print(f"  WORKSPACE: {workspace.name}")

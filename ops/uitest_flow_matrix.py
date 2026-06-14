@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,8 @@ def run_variant(cmd: list[str]) -> tuple[int, dict | None, str]:
     if proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse variant output as JSON for command %s: %s", " ".join(cmd), exc)
             payload = None
     return proc.returncode, payload, proc.stderr
 
