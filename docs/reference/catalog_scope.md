@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: d80a7490
+verified_against: 72122cce
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -104,6 +104,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Notebook Card 契約（無本地 NotebookCardData / 日期常數）
 `NotebooksScenarios` 的 hero heavy、fresh、grid pair、long-name 狀態必須取 UI World `notebook.cardGallery` seed。`NotebookSeed` 必須明示 `color`、`coverPattern`、`coverImageAssetRef`、`cardState`；非 card surface 也必須以 null 明示不使用 `cardState`。`cardState` 必須明示 `cardCount`、`dueCount`、`unlearnedCount`、`reviewedCount`、`pendingCount`、`lastActivity`、`isActive`，且 `cardCount == dueCount + unlearnedCount + reviewedCount`。缺 seed、缺 key、缺指定 card 狀態、日期解析失敗或 metric 不一致都 fail-fast。Catalog 不得保留本地 `NotebookCardData(...)`、`Date().addingTimeInterval`、hardcoded title 或 hardcoded card metric。`CatalogCoverageTests.notebooksCardCatalogUsesUIWorldCardGallerySeed`、`NotebookFixturesTests.cardGalleryMaterializesManifestCardState` 與 `RepoFixtureDatasetsContractTests.expectNotebookCardStateKeys` 擋回退。
+
+### Notebook Edit 契約（無本地 Mode payload / staged image fallback）
+`NotebookEditSheetScenarios` 的 create blank、edit color+pattern、color-only、long-name、custom-image、empty-name 狀態必須取 UI World `notebook.editGallery.editStates`。每個 notebook fixture 必須明示 `editStates`；非 edit fixture 也必須以空陣列明示無 transient edit state。每個 edit state 必須明示 `id`、`mode`、`name`、`color`、`coverPattern`、`coverImageAssetRef`；`mode` 只能是 `create` 或 `edit`，create 狀態不得攜帶 name/color/pattern/image。custom image 只能透過 `assets.images.*` asset manifest 安裝後轉成 `coverImagePath`。缺 seed、缺 key、未知 mode、未知 pattern、asset ref 指錯 domain、缺 asset、hash/byteSize 不符或 unsafe install path 都 fail-fast。Catalog 不得保留本地 `.create` / `.edit(...)` payload、hardcoded notebook name/color/pattern 或 `coverImagePath`。`CatalogCoverageTests.notebookEditCatalogUsesUIWorldEditGallerySeed`、`NotebookFixturesTests.editGalleryMaterializesManifestEditStates` 與 `RepoFixtureDatasetsContractTests.expectNotebookEditStateKeys` 擋回退。
 
 ### Notebook Cover 契約（無 missing-path fallback / 本地色票）
 `NotebookCoverScenarios` 的 pattern、color、title、image-backed cover 與 overlay-mode 狀態必須取 UI World `notebook.coverGallery` seed。`NotebookSeed` 必須明示 `coverPattern` 與 `coverImageAssetRef`；image-backed cover 只能透過 `assets.images.*` asset manifest 安裝後寫入 `Notebook.coverImagePath`。缺 seed、缺 pattern 覆蓋、缺 image-backed row、asset ref 指錯 domain、缺 asset、hash/byteSize 不符、unsafe install path 或安裝後檔案不存在都直接 fail-fast。Catalog 不得保留 `/tmp` missing-path fixture、`Image path fallback` scenario、本地 `Color(hex:)` 色票、`patternGrid` / `swatches` 本地矩陣或 fallback label。`CatalogCoverageTests.notebookCoverCatalogUsesUIWorldNotebookAssetSeed` 與 `NotebookFixturesTests.coverGalleryMaterializesManifestImageAsset` 擋回退。
