@@ -34,36 +34,23 @@ extension UITestFixtureSeed {
         #endif
     }
 
-    private static let readerNotebookId = "ui-reader-notebook"
-    private static let readerBookFileName = "kg-uitest-reader-book.epub"
-    /// Must stay in sync with ReaderFlowUITests.seededWord/seededTranslation.
-    private static let readerSeededWord = "introduction"
-    private static let readerSeededTranslation = "引言；導論"
-
     @MainActor
     private static func seedReaderRealBookLibrary(into container: ModelContainer) {
         let context = container.mainContext
         do {
-            try clearReaderFixtureWorld(from: context)
-
             let fixture = try resolveReaderTextFixture()
+            try clearReaderFixtureWorld(from: context, seed: fixture.seed)
             let epubURL = try convertRealTextToEPUB(fixture)
 
-            let notebook = Notebook(remoteId: readerNotebookId, name: "Reader Flow Vocab")
+            let notebook = Notebook(remoteId: fixture.seed.notebookRemoteId, name: fixture.seed.notebookName)
             notebook.syncStatus = 1
             context.insert(notebook)
 
-            // Real library entry in the bound-notebook scope: the reader's
-            // handleWordSelected library-hit branch renders this translation
-            // without touching the network.
-            let entry = VocabularyEntry(
-                word: readerSeededWord,
-                translation: readerSeededTranslation,
-                context: "Introduction — My Story",
-                bookTitle: fixture.title
+            let entry = makeVocabularyEntry(
+                from: fixture.seed.entry,
+                notebookId: fixture.seed.notebookRemoteId,
+                defaultBookTitle: fixture.title
             )
-            entry.notebookId = readerNotebookId
-            entry.syncStatus = 1
             context.insert(entry)
 
             let book = Book(
@@ -72,7 +59,7 @@ extension UITestFixtureSeed {
                 fileName: epubURL.lastPathComponent,
                 format: .txt
             )
-            book.preferredNotebookId = readerNotebookId
+            book.preferredNotebookId = fixture.seed.notebookRemoteId
             context.insert(book)
 
             try context.save()
@@ -87,11 +74,11 @@ extension UITestFixtureSeed {
     /// book must be on the shelf), this flow's notebook + entries, and the
     /// generated fixture EPUB file.
     @MainActor
-    private static func clearReaderFixtureWorld(from context: ModelContext) throws {
+    private static func clearReaderFixtureWorld(from context: ModelContext, seed: UIWorldReaderSeed) throws {
         for book in try context.fetch(FetchDescriptor<Book>()) {
             context.delete(book)
         }
-        let notebookId = readerNotebookId
+        let notebookId = seed.notebookRemoteId
         for notebook in try context.fetch(
             FetchDescriptor<Notebook>(predicate: #Predicate { $0.remoteId == notebookId })
         ) {
@@ -104,30 +91,30 @@ extension UITestFixtureSeed {
         }
         try context.save()
 
-        let staleEPUB = Book.localBooksDirectory.appendingPathComponent(readerBookFileName)
+        let staleEPUB = Book.localBooksDirectory.appendingPathComponent(seed.bookFileName)
         if FileManager.default.fileExists(atPath: staleEPUB.path) {
             try FileManager.default.removeItem(at: staleEPUB)
         }
     }
 
     private struct ReaderTextFixture {
+        let seed: UIWorldReaderSeed
         let sourceURL: URL
         let title: String
         let author: String
     }
 
     private static func resolveReaderTextFixture() throws -> ReaderTextFixture {
-        let env = ProcessInfo.processInfo.environment
-        let textPath = env["KG_UI_TEST_READER_TEXT"]
-            ?? "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md"
-        let sourceURL = URL(fileURLWithPath: textPath)
+        let seed = FixtureDatasetStore.requireReaderSeed(for: .realBookLibrary)
+        let sourceURL = URL(fileURLWithPath: seed.textPath)
         guard FileManager.default.fileExists(atPath: sourceURL.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: sourceURL.path])
         }
         return ReaderTextFixture(
+            seed: seed,
             sourceURL: sourceURL,
-            title: env["KG_UI_TEST_READER_TITLE"] ?? "Atomic Habits — Introduction",
-            author: env["KG_UI_TEST_READER_AUTHOR"] ?? "James Clear"
+            title: seed.title,
+            author: seed.author
         )
     }
 
@@ -151,7 +138,7 @@ extension UITestFixtureSeed {
         try cleaned.write(to: tmpSource, atomically: true, encoding: .utf8)
 
         let converted = try EPUBConverter().convertTXT(at: tmpSource, title: fixture.title)
-        let destination = Book.localBooksDirectory.appendingPathComponent(readerBookFileName)
+        let destination = Book.localBooksDirectory.appendingPathComponent(fixture.seed.bookFileName)
         if fm.fileExists(atPath: destination.path) {
             try fm.removeItem(at: destination)
         }

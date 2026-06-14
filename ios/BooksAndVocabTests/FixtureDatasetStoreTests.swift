@@ -76,6 +76,135 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func externalDatasetDeclaresRuntimeWorlds() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v1",
+          "datasetID": "test-runtime-worlds",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioPath": "/tmp/audio.m4a",
+              "subtitlePath": "/tmp/audio.srt",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true
+                }
+              ]
+            }
+          },
+          "reader": {
+            "realBookLibrary": {
+              "textPath": "/tmp/source.md",
+              "title": "Reader Source",
+              "author": "KG",
+              "bookFileName": "reader.epub",
+              "notebookRemoteId": "reader-notebook",
+              "notebookName": "Reader Notebook",
+              "entry": {
+                "word": "introduction",
+                "translation": "引言",
+                "context": "Introduction",
+                "explanation": null,
+                "partOfSpeech": "n.",
+                "bookTitle": "Reader Source",
+                "chapterTitle": "Intro",
+                "kgCardId": "reader-card",
+                "difficultyTier": "core",
+                "reviewMode": "recognition",
+                "reviewExamples": ["Introduction"],
+                "reviewIntervalHours": 24,
+                "nextReviewAt": "2026-01-01T00:00:00Z",
+                "lastReviewedAt": null,
+                "reviewCount": 0,
+                "reviewStreak": 0,
+                "lastReviewFeedbackRaw": -1,
+                "graphLinksByKind": {}
+              }
+            }
+          },
+          "vocabulary": {
+            "searchVocabNotebook": {
+              "notebookRemoteId": "search-notebook",
+              "notebookName": "Search Notebook",
+              "bookTitle": "Search Book",
+              "entries": [
+                {
+                  "word": "affect",
+                  "translation": "影響",
+                  "context": "Sleep can affect memory.",
+                  "explanation": "動詞。",
+                  "partOfSpeech": "v.",
+                  "bookTitle": "Search Book",
+                  "chapterTitle": "Usage",
+                  "kgCardId": "demo-affect",
+                  "difficultyTier": "core",
+                  "reviewMode": "recognition",
+                  "reviewExamples": ["Sleep can affect memory."],
+                  "reviewIntervalHours": 24,
+                  "nextReviewAt": "2026-01-01T00:00:00Z",
+                  "lastReviewedAt": null,
+                  "reviewCount": 1,
+                  "reviewStreak": 1,
+                  "lastReviewFeedbackRaw": 1,
+                  "graphLinksByKind": {}
+                }
+              ],
+              "reviewHistory": []
+            }
+          },
+          "reviewDeck": {
+            "probe": {
+              "notebookRemoteId": "default",
+              "notebookName": null,
+              "entries": [
+                {
+                  "word": "probeword001",
+                  "translation": "量測卡片 1",
+                  "context": "Probe context.",
+                  "explanation": "Probe explanation.",
+                  "partOfSpeech": "n.",
+                  "bookTitle": "Review Probe Fixture",
+                  "chapterTitle": "Probe",
+                  "kgCardId": "probe-001",
+                  "difficultyTier": "intermediate",
+                  "reviewMode": "recognition",
+                  "reviewExamples": ["Probe context."],
+                  "reviewIntervalHours": 12,
+                  "nextReviewAt": "2026-01-01T00:00:00Z",
+                  "lastReviewedAt": null,
+                  "reviewCount": 0,
+                  "reviewStreak": 0,
+                  "lastReviewFeedbackRaw": -1,
+                  "graphLinksByKind": {}
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            #expect(FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview)?.seriesTitle == "Runtime Series")
+            #expect(FixtureDatasetStore.readerSeed(for: .realBookLibrary)?.entry.word == "introduction")
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.word == "affect")
+            #expect(FixtureDatasetStore.reviewDeckSeed(for: .probe)?.entries.first?.word == "probeword001")
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {

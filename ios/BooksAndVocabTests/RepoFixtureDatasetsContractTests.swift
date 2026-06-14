@@ -30,6 +30,20 @@ struct RepoFixtureDatasetsContractTests {
         #expect(try !Self.datasetURLs().isEmpty)
     }
 
+    @Test func generatedDemoDatasetDecodes() throws {
+        let url = Self.datasetsDirectory
+            .deletingLastPathComponent() // ui_worlds
+            .deletingLastPathComponent() // fixtures
+            .appendingPathComponent("demo/generated/ios_fixture_dataset.json")
+        let data = try Data(contentsOf: url)
+        let document = try FixtureDatasetStore.decode(data)
+
+        #expect(document.schema == "kg.fixture.dataset.v1")
+        #expect(document.datasetID == "demo-demo-user")
+        #expect(document.auth["signedIn"]?.isLoggedIn == true)
+        #expect(document.entitlements["pro"]?.pro.is_active == true)
+    }
+
     @Test func everyRepoDatasetDecodesAndMatchesKnownFixtureIDs() throws {
         for url in try Self.datasetURLs() {
             let data = try Data(contentsOf: url)
@@ -56,6 +70,10 @@ struct RepoFixtureDatasetsContractTests {
             expectKnownKeys(document.todayReview.keys, TodayReviewFixtureID.self, domain: "todayReview", dataset: stem)
             expectKnownKeys(document.notebook.keys, NotebookFixtureID.self, domain: "notebook", dataset: stem)
             expectKnownKeys(document.podcast.keys, PodcastFixtureID.self, domain: "podcast", dataset: stem)
+            expectKnownKeys(document.runtimePodcast.keys, UIWorldRuntimePodcastFixtureID.self, domain: "runtimePodcast", dataset: stem)
+            expectKnownKeys(document.reader.keys, UIWorldReaderFixtureID.self, domain: "reader", dataset: stem)
+            expectKnownKeys(document.vocabulary.keys, UIWorldVocabularyFixtureID.self, domain: "vocabulary", dataset: stem)
+            expectKnownKeys(document.reviewDeck.keys, UIWorldReviewDeckFixtureID.self, domain: "reviewDeck", dataset: stem)
 
             // Duplicate identities render undefined (ForEach ids / notebookId
             // joins derive from them), so they must be unique within a seed.
@@ -71,6 +89,20 @@ struct RepoFixtureDatasetsContractTests {
                 #expect(
                     Set(ids).count == ids.count,
                     "\(stem): notebook.\(fixtureKey) has duplicate notebook remoteId values"
+                )
+            }
+            for (fixtureKey, seed) in document.runtimePodcast {
+                let ids = seed.episodes.map(\.remoteId)
+                #expect(
+                    Set(ids).count == ids.count,
+                    "\(stem): runtimePodcast.\(fixtureKey) has duplicate episode remoteId values"
+                )
+            }
+            for (fixtureKey, seed) in document.reviewDeck {
+                let words = seed.entries.map(\.word)
+                #expect(
+                    Set(words).count == words.count,
+                    "\(stem): reviewDeck.\(fixtureKey) has duplicate word values"
                 )
             }
         }

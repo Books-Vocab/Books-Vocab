@@ -5,11 +5,9 @@ import SwiftData
 extension UITestFixtureSeed {
     /// Notebook → Today Review flow fixture (`-seedFixture:notebook:reviewDeck`).
     ///
-    /// Seeds a real notebook (`ui-review-notebook`) scoped over the
-    /// deterministic review probe deck (reuses `makeReviewProbeDeck` — the
-    /// same real-shaped entries the review flip probe measures with), so the
-    /// notebook list renders a real card and the review action bar surfaces a
-    /// real unlearned count. No login: today review is a fully local flow.
+    /// Seeds the UI World-owned notebook review deck so the notebook list
+    /// renders a real card and the review action bar surfaces a real unlearned
+    /// count. No login: today review is a fully local flow.
     @MainActor
     static func seedNotebook(_ id: String, into container: ModelContainer) {
         switch id {
@@ -22,8 +20,8 @@ extension UITestFixtureSeed {
 
     @MainActor
     private static func seedNotebookReviewDeck(into container: ModelContainer) {
-        let notebookId = "ui-review-notebook"
-        let deckSize = 8
+        let seed = FixtureDatasetStore.requireReviewDeckSeed(for: .notebookReviewDeck)
+        let notebookId = seed.notebookRemoteId ?? "default"
         let context = container.mainContext
         do {
             // Idempotent re-seed: the simulator container persists across runs.
@@ -36,13 +34,14 @@ extension UITestFixtureSeed {
                 context.delete(entry)
             }
 
-            let notebook = Notebook(remoteId: notebookId, name: "Review Flow Vocab")
+            let notebook = Notebook(remoteId: notebookId, name: seed.notebookName ?? "Review Flow Vocab")
             notebook.syncStatus = 1
             context.insert(notebook)
 
-            let deck = makeReviewProbeDeck(size: deckSize)
+            let deck = seed.entries.map {
+                makeVocabularyEntry(from: $0, notebookId: notebookId, defaultBookTitle: "Review Probe Fixture")
+            }
             for entry in deck {
-                entry.notebookId = notebookId
                 context.insert(entry)
             }
             try context.save()

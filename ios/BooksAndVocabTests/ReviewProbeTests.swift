@@ -205,20 +205,28 @@ struct ReviewProbeDriverTests {
 @Suite("ReviewProbeDeckFixture")
 @MainActor
 struct ReviewProbeDeckFixtureTests {
-    @Test func deckIsDeterministicAndSorted() {
-        let deck = UITestFixtureSeed.makeReviewProbeDeck(size: 40)
-        #expect(deck.count == 40)
-        #expect(deck.first?.word == "probeword001")
-        #expect(deck.last?.word == "probeword040")
-        let words = deck.map(\.word)
-        #expect(words == words.sorted())
-        #expect(Set(words).count == 40)
-        #expect(deck.allSatisfy { $0.reviewMode == .recognition })
+    private static var marketingDemoData: Data {
+        get throws {
+            let url = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // BooksAndVocabTests
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // repo root
+                .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
+            return try Data(contentsOf: url)
+        }
     }
 
-    @Test func nonPositiveSizeClampsToOneCard() {
-        #expect(UITestFixtureSeed.makeReviewProbeDeck(size: 0).count == 1)
-        #expect(UITestFixtureSeed.makeReviewProbeDeck(size: -3).count == 1)
+    @Test func deckIsDeterministicAndSorted() throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let seed = try #require(FixtureDatasetStore.reviewDeckSeed(for: .probe))
+            #expect(seed.entries.count == 40)
+            #expect(seed.entries.first?.word == "probeword001")
+            #expect(seed.entries.last?.word == "probeword040")
+            let words = seed.entries.map(\.word)
+            #expect(words == words.sorted())
+            #expect(Set(words).count == 40)
+            #expect(seed.entries.allSatisfy { ($0.reviewMode ?? .recognition) == .recognition })
+        }
     }
 
     @Test func seedingClearsExistingEntriesAndInsertsDeck() throws {
@@ -233,7 +241,9 @@ struct ReviewProbeDeckFixtureTests {
         container.mainContext.insert(stale)
         try container.mainContext.save()
 
-        UITestFixtureSeed.seedTodayReview("deck", into: container)
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            UITestFixtureSeed.seedTodayReview("deck", into: container)
+        }
 
         let entries = try container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(entries.count == 40)

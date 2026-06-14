@@ -27,11 +27,17 @@ SCHEMA NOTE (correction vs. the Phase-A planning docstring)
 DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift struct)
   schema       <- "kg.fixture.dataset.v1"
   datasetID    <- "demo-" + identity.user_id
+  auth         <- signedIn/guest login state from demo identity
+  entitlements <- free/pro subscription states
   settings     <- {}   (no settings fixtures derived from SoT yet)
   bookshelf    <- {}   (no bookshelf fixtures derived from SoT yet)
   todayReview  <- { "front": TodayReviewSessionSeed }  (see TODAY REVIEW mapping)
   notebook     <- { "populated": NotebookFixtureSeed } (see NOTEBOOK mapping)
   podcast      <- {}   (no podcast fixtures derived from SoT yet)
+  runtimePodcast <- {} (no runtime podcast fixtures derived from SoT yet)
+  reader       <- {}   (no reader fixtures derived from SoT yet)
+  vocabulary   <- {}   (no runtime vocabulary fixtures derived from SoT yet)
+  reviewDeck   <- {}   (no review-deck fixtures derived from SoT yet)
 
   Keyed decoding silently ignores unknown top-level keys; emit() MUST NOT add keys
   outside FixtureDatasetDocument.knownTopLevelKeys, and the domain sub-keys must be
@@ -283,6 +289,10 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
         },
         "notebook": {NOTEBOOK_FIXTURE_KEY: {"notebooks": notebook_seeds}},
         "podcast": {},
+        "runtimePodcast": {},
+        "reader": {},
+        "vocabulary": {},
+        "reviewDeck": {},
     }
 
 

@@ -1,6 +1,58 @@
 {
   "schema": "kg.fixture.dataset.v1",
   "datasetID": "demo-demo-user",
+  "auth": {
+    "signedIn": {
+      "isLoggedIn": true,
+      "userId": "demo-user",
+      "token": "demo-access-token",
+      "displayName": "示範使用者",
+      "email": "demo@wordnexus.lol",
+      "provider": "apple",
+      "providerUserId": "apple:demo-user"
+    },
+    "guest": {
+      "isLoggedIn": false,
+      "userId": null,
+      "token": null,
+      "displayName": null,
+      "email": null,
+      "provider": null,
+      "providerUserId": null
+    }
+  },
+  "entitlements": {
+    "pro": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": true,
+        "expires_at": "2099-12-31T23:59:59Z",
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "free": {
+      "pro": {
+        "is_active": false,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "inactive",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": false,
+        "expires_at": null,
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    }
+  },
   "settings": {},
   "bookshelf": {},
   "todayReview": {
@@ -215,5 +267,9 @@
       ]
     }
   },
-  "podcast": {}
+  "podcast": {},
+  "runtimePodcast": {},
+  "reader": {},
+  "vocabulary": {},
+  "reviewDeck": {}
 }

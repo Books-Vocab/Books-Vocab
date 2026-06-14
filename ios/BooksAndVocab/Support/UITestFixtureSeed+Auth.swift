@@ -66,49 +66,37 @@ extension UITestFixtureSeed {
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
 
             let series = PodcastSeries(
-                remoteId: "ui-auth-series",
-                title: "Atomic Habits (Auth Probe)",
-                hostNames: ["Lab Podcast"]
+                remoteId: fixture.seed.seriesRemoteId,
+                title: fixture.seed.seriesTitle,
+                hostNames: fixture.seed.hostNames
             )
-            series.color = "sunset"
-            series.coverPattern = "waves"
-            series.episodeCount = 2
-            series.totalDurationSec = fixture.durationSec * 2
-            series.sortOrder = -10_000
+            series.color = fixture.seed.color
+            series.coverPattern = fixture.seed.coverPattern
+            series.episodeCount = fixture.seed.episodes.count
+            series.totalDurationSec = fixture.seed.episodes.reduce(0) { total, episode in
+                total + (episode.durationSec ?? fixture.seed.durationSec)
+            }
+            series.sortOrder = fixture.seed.sortOrder ?? 0
             series.isFollowed = false
 
-            // Ep1: previewable — free tier may open it, a guest may not.
-            let episode1 = PodcastEpisode(
-                remoteId: "ui-auth-series_ep_01",
-                episodeNumber: 1,
-                title: "Tiered Access Preview Episode",
-                durationSec: fixture.durationSec
-            )
-            episode1.series = series
-            episode1.audioAvailable = true
-            episode1.previewAvailable = true
-            episode1.previewDurationSec = min(fixture.durationSec, 180)
-            episode1.localAudioPath = audioURL.path
-            episode1.subtitleAvailable = true
-            episode1.inlineSubtitle = subtitle
-
-            // Ep2: gated for guest AND free — only Pro plays it.
-            let episode2 = PodcastEpisode(
-                remoteId: "ui-auth-series_ep_02",
-                episodeNumber: 2,
-                title: "Tiered Access Gated Episode",
-                durationSec: fixture.durationSec
-            )
-            episode2.series = series
-            episode2.audioAvailable = true
-            episode2.localAudioPath = audioURL.path
-            episode2.subtitleAvailable = true
-            episode2.inlineSubtitle = subtitle
-            episode2.previewAvailable = false
+            for episodeSeed in fixture.seed.episodes {
+                let episode = PodcastEpisode(
+                    remoteId: episodeSeed.remoteId,
+                    episodeNumber: episodeSeed.episodeNumber,
+                    title: episodeSeed.title,
+                    durationSec: episodeSeed.durationSec ?? fixture.seed.durationSec
+                )
+                episode.series = series
+                episode.audioAvailable = episodeSeed.audioAvailable
+                episode.previewAvailable = episodeSeed.previewAvailable
+                episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
+                episode.localAudioPath = audioURL.path
+                episode.subtitleAvailable = episodeSeed.subtitleAvailable
+                episode.inlineSubtitle = subtitle
+                context.insert(episode)
+            }
 
             context.insert(series)
-            context.insert(episode1)
-            context.insert(episode2)
             try context.save()
             AppLog.app.info("UI-test fixture seeded: auth.tieredCatalog")
         } catch {
@@ -139,30 +127,23 @@ extension UITestFixtureSeed {
     }
 
     private struct AuthPodcastFixture {
+        let seed: UIWorldRuntimePodcastSeed
         let audioURL: URL
         let subtitleURL: URL
-        let durationSec: Double
     }
 
-    /// Same real lab assets (and env overrides) as the podcast playable preview
-    /// — the auth flow gates the *same kind* of content the playback probe
-    /// plays, so the data must be equally real.
+    /// Same UI World-owned asset domain as the podcast playable preview.
     private static func resolveAuthPodcastFixture() throws -> AuthPodcastFixture {
-        let env = ProcessInfo.processInfo.environment
-        let audioPath = env["KG_UI_TEST_PODCAST_AUDIO"]
-            ?? "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a"
-        let subtitlePath = env["KG_UI_TEST_PODCAST_SUBTITLE"]
-            ?? "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt"
-        let durationSec = env["KG_UI_TEST_PODCAST_DURATION"].flatMap(Double.init) ?? 1_034.6
-        let audioURL = URL(fileURLWithPath: audioPath)
-        let subtitleURL = URL(fileURLWithPath: subtitlePath)
+        let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: .tieredCatalog)
+        let audioURL = URL(fileURLWithPath: seed.audioPath)
+        let subtitleURL = URL(fileURLWithPath: seed.subtitlePath)
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: audioURL.path])
         }
         guard FileManager.default.fileExists(atPath: subtitleURL.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: subtitleURL.path])
         }
-        return AuthPodcastFixture(audioURL: audioURL, subtitleURL: subtitleURL, durationSec: durationSec)
+        return AuthPodcastFixture(seed: seed, audioURL: audioURL, subtitleURL: subtitleURL)
     }
 
     private static func copyAuthFixtureFile(source: URL, fileName: String) throws -> URL {

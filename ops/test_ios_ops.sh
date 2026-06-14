@@ -279,7 +279,7 @@ prepare_catalog_hit_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="
 echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" and .status=="ok" and .cache.status=="hit" and .build.exitCode==0' >/dev/null \
   && ok "catalog prepare reuses ready cache without rebuilding" || fail_t "catalog prepare hit invalid: $prepare_catalog_hit_json"
 catalog_persist_root="$catalog_tmp/workspace-snapshots"
-catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_PERSIST_ROOT="$catalog_persist_root" TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json)"
+catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_PERSIST_ROOT="$catalog_persist_root" TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
 echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" --arg persistRoot "$catalog_persist_root" '.schema=="kg.ios.catalog.v1" and .action=="snapshots" and .status=="ok" and .mode=="fixture" and .artifacts.root==$root and .artifacts.pngCount==2 and (.artifacts.paths|length)==2 and (.scope.groups|length)==0 and (.scope.scenarios|length)==0 and all(.artifacts.paths[]; startswith($root)) and (.validation.status=="ok") and .validation.actualPngCount==2 and .validation.uniformImageCount==0 and .validation.transparentImageCount==0 and .validation.minPixelWidth==16 and .validation.maxPixelWidth==16 and .validation.minPixelHeight==16 and .validation.maxPixelHeight==16 and (.validation.images|length)==2 and (.validation.transparentImages|length)==0 and (.validation.warnings|length)==0 and .cache.status=="not-applicable" and .cache.key==null and .cache.root==null and (.test.command|contains("CatalogSnapshotTests")) and .test.exitCode==0 and .copy.exitCode==0 and .copy.containerDataPath=="/tmp/kg-sim-fixture/container" and .review.status=="ok" and (.review.reviewHtml|endswith("/UIreview.html")) and (.review.reviewManifest|endswith("/review_manifest.json")) and (.review.reviewState|endswith("/review_state.json")) and .workspaceArtifact.status=="ok" and (.workspaceArtifact.root==$persistRoot) and (.workspaceArtifact.name|startswith("catalog-full-")) and (.workspaceArtifact.artifactRoot|startswith($persistRoot)) and (.workspaceArtifact.reviewHtml|endswith("/UIreview.html")) and (.workspaceArtifact.reviewManifest|endswith("/review_manifest.json")) and (.workspaceArtifact.reviewState|endswith("/review_state.json")) and .flags.compileTimeFlag=="KG_RUN_CATALOG_SNAPSHOTS"' >/dev/null \
   && ok "catalog snapshots --json exports fixture PNG artifacts" || fail_t "catalog snapshots --json invalid: $catalog_json"
 [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewHtml')" ]] && [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewManifest')" ]] && [[ -f "$(echo "$catalog_json" | jq -r '.review.reviewState')" ]] \
@@ -288,16 +288,16 @@ echo "$catalog_json" | jq -e --arg root "$catalog_tmp/build/snapshots" --arg per
   && ok "catalog snapshots persists full review artifact into workspace snapshot root" || fail_t "catalog workspace artifact missing: $catalog_json"
 echo "$catalog_json" | jq -e '(.timings.wrapperWallMs|type)=="number" and .timings.wrapperWallMs >= 0 and (.timings.commandWallMs|type)=="number" and .timings.commandWallMs >= 0 and (.timings.testBodyMs|type)=="number" and .timings.testBodyMs >= 0 and (.timings.playbookBuildMs|type)=="number" and .timings.playbookBuildMs >= 0 and (.timings.snapshotRunMs|type)=="number" and .timings.snapshotRunMs >= 0 and (.timings.startupOverheadMs|type)=="number" and .timings.startupOverheadMs >= 0 and (.timings.simulatorStatusMs|type)=="number" and .timings.simulatorStatusMs >= 0 and (.timings.containerLookupMs|type)=="number" and .timings.containerLookupMs >= 0 and (.timings.copyMs|type)=="number" and .timings.copyMs >= 0 and (.timings.artifactIndexMs|type)=="number" and .timings.artifactIndexMs >= 0 and (.timings.validationMs|type)=="number" and .timings.validationMs >= 0' >/dev/null \
   && ok "catalog snapshots --json exposes timing breakdown" || fail_t "catalog snapshots timing invalid: $catalog_json"
-catalog_text="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots)"
+catalog_text="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json")"
 echo "$catalog_text" | grep -q '\[ios\]\[catalog\].*status=ok.*pngCount=2' && echo "$catalog_text" | grep -q 'validation status=ok' && echo "$catalog_text" | grep -q 'review status=ok' && echo "$catalog_text" | grep -q 'CatalogSnapshotTests' \
   && ok "catalog snapshots text reports artifact summary" || fail_t "catalog snapshots text invalid: $catalog_text"
-scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
+scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --group Bookshelf --group 'Today Review' --scenario 'Today Review/Front' --json)"
 echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksAndVocabCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
   && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
 dataset_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
 echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="not-applicable"' >/dev/null \
   && ok "catalog snapshots accepts dataset-file option" || fail_t "catalog dataset-file json invalid: $dataset_catalog_json"
-reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json)"
+reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --reuse-build --json)"
 echo "$reuse_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="ok" and .options.reuseBuild==true and .test.exitCode==0' >/dev/null \
   && ok "catalog snapshots accepts reuse-build option" || fail_t "catalog reuse-build json invalid: $reuse_catalog_json"
 clean_catalog_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog clean --json)"
@@ -312,6 +312,12 @@ else
   grep -q 'unknown catalog snapshots option' "$bad_catalog_tmp/err" \
     && ok "catalog snapshots rejects unknown option" || fail_t "catalog snapshots bad-arg message missing"
 fi
+if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots >"$bad_catalog_tmp/out0" 2>"$bad_catalog_tmp/err0"; then
+  fail_t "catalog snapshots rejects missing dataset"
+else
+  grep -q 'requires --dataset' "$bad_catalog_tmp/err0" \
+    && ok "catalog snapshots requires explicit UI World dataset" || fail_t "catalog missing dataset guard invalid: $(cat "$bad_catalog_tmp/err0")"
+fi
 if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset missing-dataset >"$bad_catalog_tmp/out2" 2>"$bad_catalog_tmp/err2"; then
   fail_t "catalog snapshots rejects missing named dataset"
 else
@@ -325,27 +331,27 @@ else
     && ok "catalog prepare rejects unknown option" || fail_t "catalog prepare bad-arg message missing"
 fi
 cachemiss_err="$catalog_tmp/cm.err"
-cachemiss_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=87 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --reuse-build --json 2>"$cachemiss_err" || true)"
+cachemiss_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=87 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --reuse-build --json 2>"$cachemiss_err" || true)"
 echo "$cachemiss_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="cache-miss" and .test.exitCode==87 and .cache.status=="miss" and (any(.errors[]; .key=="catalog-cache" and .error=="reuse-build-cache-miss" and (.hint|test("catalog prepare")))) and (all(.errors[]; .error!="xcodebuild-test-failed"))' >/dev/null \
   && ok "catalog snapshots exitCode 87 surfaces cache-miss (not generic test-failure)" || fail_t "catalog cache-miss signal wrong: $cachemiss_json"
 grep -q 'phase=cache miss' "$cachemiss_err" \
   && ok "catalog cache-miss emits human-readable stderr hint" || fail_t "catalog cache-miss stderr hint missing: $(cat "$cachemiss_err")"
 salvage_err="$catalog_tmp/sv.err"
-salvage_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$salvage_err" || true)"
+salvage_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>"$salvage_err" || true)"
 echo "$salvage_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .test.exitCode==65 and .artifacts.containerPngCount==2 and .artifacts.pngCount==2 and .copy.salvaged==true and .copy.exitCode==0 and (any(.errors[]; .key=="catalog-salvage" and .status=="info" and .pngCount==2 and .containerPngCount==2)) and (all(.errors[]; .key!="catalog-copy"))' >/dev/null \
   && ok "catalog snapshots salvages container PNGs when test fails (distinguishes generated-but-not-copied)" || fail_t "catalog salvage failed: $salvage_json"
 grep -q 'phase=salvage recovered' "$salvage_err" \
   && ok "catalog salvage emits stderr recovery notice" || fail_t "catalog salvage stderr missing: $(cat "$salvage_err")"
-salvage_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots 2>/dev/null || true)"
+salvage_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_EXIT=65 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" 2>/dev/null || true)"
 echo "$salvage_text" | grep -q 'note key=catalog-salvage' && ! echo "$salvage_text" | grep -q 'error key=catalog-salvage' \
   && ok "catalog salvage info renders as note (not error) in text output" || fail_t "catalog salvage text mislabeled: $salvage_text"
-ok_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null)"
+ok_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>/dev/null)"
 echo "$ok_json" | jq -e '.status=="ok" and .copy.salvaged==false and .artifacts.containerPngCount==2 and (all(.errors[]; .key!="catalog-salvage"))' >/dev/null \
   && ok "catalog snapshots success path keeps salvaged=false and no salvage error" || fail_t "catalog success salvage regression: $ok_json"
-uniform_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null)"
+uniform_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>/dev/null)"
 echo "$uniform_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="warn" and .validation.status=="warn" and .validation.uniformImageCount==2 and (.validation.warnings==["uniform-image-detected"]) and (any(.warnings[]; .key=="catalog-validation" and .warning=="uniform-image-detected")) and .test.exitCode==0 and .artifacts.pngCount==2 and .review.status=="ok"' >/dev/null \
   && ok "catalog snapshots treats uniform-image-detected as warning (not fatal error)" || fail_t "catalog uniform warning invalid: $uniform_json"
-uniform_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots 2>/dev/null || true)"
+uniform_text="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_UNIFORM=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" 2>/dev/null || true)"
 echo "$uniform_text" | grep -q '\[ios\]\[catalog\].*status=warn.*pngCount=2' && echo "$uniform_text" | grep -q 'warn key=catalog-validation' \
   && ok "catalog text surfaces validation warnings distinctly from errors" || fail_t "catalog uniform text invalid: $uniform_text"
 # --- multi-device validation: expectedPng must scale with device variant count ---
@@ -361,7 +367,7 @@ echo "$variant_json" | jq -e '.expectedPngCount==12' >/dev/null \
 variant_default_json="$(ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_inspect_pngs_json "'"$variant_empty_dir"'" 3')"
 echo "$variant_default_json" | jq -e '.expectedPngCount==6' >/dev/null \
   && ok "catalog validation defaults to 2 appearance variants when count absent (legacy logs)" || fail_t "legacy expectedPng default wrong: $variant_default_json"
-transparent_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_TRANSPARENT=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>/dev/null || true)"
+transparent_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_FIXTURE_TRANSPARENT=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>/dev/null || true)"
 echo "$transparent_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="error" and .validation.status=="error" and .validation.uniformImageCount==2 and .validation.transparentImageCount==2 and (.validation.transparentImages|length)==2 and (any(.validation.errors[]; .=="fully-transparent-image-detected")) and (any(.errors[]; .key=="catalog-validation" and .error=="fully-transparent-image-detected")) and .review.status=="ok"' >/dev/null \
   && ok "catalog snapshots treats fully transparent images as fatal validation error" || fail_t "catalog transparent validation invalid: $transparent_json"
 hb_log="$catalog_tmp/hb.log"; hb_err="$catalog_tmp/hb.err"; hb_cap="$catalog_tmp/hb.cap"
@@ -381,7 +387,7 @@ ROOT="$WORKSPACE" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_run_xcode
 [[ "$hb_rc" -eq 87 ]] && grep -q 'phase=full-test done exitCode=87' "$hb_cap" \
   && ok "catalog heartbeat propagates real exit code" || fail_t "catalog heartbeat lost exit code: rc=$hb_rc cap=$(cat "$hb_cap")"
 catalog_stderr_cap="$catalog_tmp/snap.stderr"
-catalog_json_clean="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --json 2>"$catalog_stderr_cap")"
+catalog_json_clean="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json 2>"$catalog_stderr_cap")"
 echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
   && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"

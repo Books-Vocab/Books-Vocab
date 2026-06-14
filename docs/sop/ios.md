@@ -579,7 +579,8 @@ enum FooScenarios {
 
 # 如需 full catalog，去掉 --scenario / --group 即可
 ./ops/ios_ops.sh catalog snapshots \
-  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max'
+  --destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  --dataset marketing_demo
 
 # full run 會自動落地成新的 workspace artifact：
 # build/snapshots/catalog-full-<UTC timestamp>/

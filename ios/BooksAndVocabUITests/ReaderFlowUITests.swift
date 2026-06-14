@@ -16,21 +16,12 @@
 import XCTest
 
 final class ReaderFlowUITests: UITestCase {
-    /// 真實章節文本：podcast pipeline 從原書 EPUB 抽出的 Introduction 原文。
-    /// 與 PodcastPlaybackPerfUITests 同一座 lab fixture 山（host 絕對路徑，
-    /// simulator 可直讀）。
-    private static let readerFixtureText =
-        "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md"
-
     /// 章首獨立成段的真實單字（fixture 詞庫 entry 的 word）。
     private static let seededWord = "Introduction"
-    /// fixture 種入詞庫的真翻譯 — 斷言「翻譯 UI 帶內容」的內容本體。
-    /// 必須與 UITestFixtureSeed+Reader.swift 的 readerSeededTranslation 一致。
+    /// UI World 種入詞庫的真翻譯 — 斷言「翻譯 UI 帶內容」的內容本體。
     private static let seededTranslation = "引言"
 
     private static let fixtureEnvironment: [String: String] = [
-        "KG_UI_TEST_READER_TEXT": readerFixtureText,
-        "KG_UI_TEST_READER_TITLE": "Atomic Habits — Introduction",
         // 詞庫命中路徑不需要網路；指向不可達位址確保任何意外請求
         // connection refused（而非真 backend 401 觸發 session 清除）。
         "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
@@ -124,7 +115,8 @@ final class ReaderFlowUITests: UITestCase {
         }
         attachText(
             """
-            fixtureText=\(Self.readerFixtureText)
+            fixtureDataset=marketing_demo
+            readerFixture=realBookLibrary
             seededWord=\(Self.seededWord)
             seededTranslation=\(Self.seededTranslation)
             progressBefore=\(initialProgress)
