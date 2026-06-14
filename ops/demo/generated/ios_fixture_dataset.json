@@ -1012,7 +1012,8 @@
           "bookAssetRef": "books.atomic_habits_markdown",
           "progression": 0.72,
           "dateAdded": "2025-12-20T00:00:00Z",
-          "dateLastRead": "2026-01-06T21:00:00Z"
+          "dateLastRead": "2026-01-06T21:00:00Z",
+          "preferredNotebookId": null
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -1027,7 +1028,8 @@
           "bookAssetRef": "books.the_shallows_markdown",
           "progression": 0.31,
           "dateAdded": "2026-01-02T00:00:00Z",
-          "dateLastRead": "2026-01-06T08:30:00Z"
+          "dateLastRead": "2026-01-06T08:30:00Z",
+          "preferredNotebookId": null
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -1110,7 +1112,8 @@
           "bookAssetRef": "books.catalog_reader_epub",
           "progression": 0.56,
           "dateAdded": "2026-01-01T00:00:00Z",
-          "dateLastRead": "2026-01-06T09:30:00Z"
+          "dateLastRead": "2026-01-06T09:30:00Z",
+          "preferredNotebookId": null
         },
         {
           "title": "Atomic Habits",
@@ -1120,7 +1123,8 @@
           "bookAssetRef": "books.atomic_habits_markdown",
           "progression": 0.72,
           "dateAdded": "2025-12-20T00:00:00Z",
-          "dateLastRead": "2026-01-06T21:00:00Z"
+          "dateLastRead": "2026-01-06T21:00:00Z",
+          "preferredNotebookId": null
         },
         {
           "title": "Word Architect",
@@ -1130,7 +1134,8 @@
           "bookAssetRef": "books.word_architect_markdown",
           "progression": 0.64,
           "dateAdded": "2025-12-28T00:00:00Z",
-          "dateLastRead": "2026-01-05T22:15:00Z"
+          "dateLastRead": "2026-01-05T22:15:00Z",
+          "preferredNotebookId": null
         },
         {
           "title": "The Shallows",
@@ -1140,7 +1145,8 @@
           "bookAssetRef": "books.the_shallows_markdown",
           "progression": 0.31,
           "dateAdded": "2026-01-02T00:00:00Z",
-          "dateLastRead": "2026-01-06T08:30:00Z"
+          "dateLastRead": "2026-01-06T08:30:00Z",
+          "preferredNotebookId": null
         },
         {
           "title": "Catalog Reader PDF",
@@ -1150,7 +1156,8 @@
           "bookAssetRef": "books.catalog_reader_pdf",
           "progression": 0.18,
           "dateAdded": "2026-01-03T00:00:00Z",
-          "dateLastRead": "2026-01-06T10:45:00Z"
+          "dateLastRead": "2026-01-06T10:45:00Z",
+          "preferredNotebookId": null
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"

@@ -448,6 +448,30 @@ struct RepoFixtureDatasetsContractTests {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
         let requiredUIWorldEntryKeys = requiredEntryKeys.union(["bookTitle", "reviewMode"])
+        let requiredBookshelfBookKeys: Set<String> = [
+            "title",
+            "author",
+            "fileName",
+            "format",
+            "bookAssetRef",
+            "progression",
+            "preferredNotebookId",
+            "dateAdded",
+            "dateLastRead",
+        ]
+
+        let bookshelfFixtures = topLevel["bookshelf"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in bookshelfFixtures {
+            let books = seed["books"] as? [[String: Any]] ?? []
+            for book in books {
+                let title = book["title"] as? String ?? "<missing-title>"
+                let missing = requiredBookshelfBookKeys.subtracting(book.keys)
+                #expect(
+                    missing.isEmpty,
+                    "\(dataset): bookshelf.\(fixtureKey).book.\(title) missing row state keys \(missing.sorted())"
+                )
+            }
+        }
 
         let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in notebookFixtures {
