@@ -306,6 +306,35 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func bookshelfBookFailsWhenNullableStateKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-bookshelf-nullable-state",
+          "bookshelf": {
+            "with_books_library": {
+              "books": [
+                {
+                  "title": "Editorial English",
+                  "author": "KG Studio",
+                  "fileName": "editorial-english.epub",
+                  "format": "epub",
+                  "progression": 0.5,
+                  "dateAdded": "2026-01-01T00:00:00Z",
+                  "dateLastRead": "2026-01-06T00:00:00Z"
+                }
+              ],
+              "referenceDate": "2026-01-07T00:00:00Z"
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -844,7 +873,9 @@ struct FixtureDatasetStoreTests {
                   "author": "KG Studio",
                   "fileName": "editorial-english.epub",
                   "format": "epub",
+                  "bookAssetRef": null,
                   "progression": 0.5,
+                  "preferredNotebookId": null,
                   "dateAdded": "2026-01-01T00:00:00Z",
                   "dateLastRead": "2026-01-06T00:00:00Z"
                 }

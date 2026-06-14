@@ -33,6 +33,40 @@ struct BookshelfBookSeed: Codable {
     let preferredNotebookId: String?
     let dateAdded: Date
     let dateLastRead: Date?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case title
+        case author
+        case fileName
+        case format
+        case bookAssetRef
+        case progression
+        case preferredNotebookId
+        case dateAdded
+        case dateLastRead
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World bookshelf book must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
+        title = try container.decode(String.self, forKey: .title)
+        author = try container.decode(String.self, forKey: .author)
+        fileName = try container.decode(String.self, forKey: .fileName)
+        format = try container.decode(BookFormat.self, forKey: .format)
+        bookAssetRef = try container.decodeIfPresent(String.self, forKey: .bookAssetRef)
+        progression = try container.decodeIfPresent(Double.self, forKey: .progression)
+        preferredNotebookId = try container.decodeIfPresent(String.self, forKey: .preferredNotebookId)
+        dateAdded = try container.decode(Date.self, forKey: .dateAdded)
+        dateLastRead = try container.decodeIfPresent(Date.self, forKey: .dateLastRead)
+    }
 }
 
 struct BookshelfFixtureSeed: Codable {
