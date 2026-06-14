@@ -350,7 +350,7 @@ class TestIncrementalSync:
         from unittest.mock import MagicMock
         mock_graph = MagicMock()
 
-        results = list_vocab_cards(
+        results, _cursor = list_vocab_cards(
             since=_iso(before_delete),
             cards_store=store,
             graph=mock_graph,
@@ -376,7 +376,7 @@ class TestIncrementalSync:
         from unittest.mock import MagicMock
         mock_graph = MagicMock()
 
-        results = list_vocab_cards(
+        results, _cursor = list_vocab_cards(
             since=_iso(since),
             cards_store=store,
             graph=mock_graph,
@@ -398,7 +398,7 @@ class TestIncrementalSync:
         from unittest.mock import MagicMock
         mock_graph = MagicMock()
 
-        results = list_vocab_cards(
+        results, _cursor = list_vocab_cards(
             since=None,
             cards_store=store,
             graph=mock_graph,
@@ -727,7 +727,7 @@ class TestThreeEndConcurrentSync:
                 lastReviewFeedback=card.last_review_feedback,
             )
 
-        results = list_vocab_cards(
+        results, _cursor = list_vocab_cards(
             since=_iso(_now() - timedelta(hours=24)),
             cards_store=store,
             graph=MagicMock(),
@@ -857,7 +857,7 @@ class TestIncrementalSyncEdges:
 
         # Drive the full handler path so we exercise CardResponse(isDeleted=...)
         # — that's the field clients use to propagate the delete.
-        results = list_vocab_cards(
+        results, _cursor = list_vocab_cards(
             since=_iso(midpoint),
             cards_store=store,
             graph=mock_graph,
