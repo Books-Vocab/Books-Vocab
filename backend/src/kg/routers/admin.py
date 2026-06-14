@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Awaitable, Protocol
 
 from fastapi import APIRouter, Cookie, Depends, Header, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..admin_handlers import check_admin_auth
 from ..api_models import AdminUserEntitlementResponse
 from ..deps import get_admin_user
 
-AdminEndpoint = Callable[..., object]
+AdminEndpointResult = dict[str, Any] | HTMLResponse | AdminUserEntitlementResponse
+AdminEndpoint = Callable[..., AdminEndpointResult | Awaitable[AdminEndpointResult]]
 
 
 class SupportsAdminSettings(Protocol):
@@ -153,14 +154,14 @@ def build_login_routes(
     router = APIRouter()
 
     @router.get("/admin/login", response_class=HTMLResponse, include_in_schema=False)
-    async def admin_login_get():
+    async def admin_login_get() -> HTMLResponse:
         from ..admin_handlers import admin_login_page
 
         settings = runtime_settings_fn()
         return admin_login_page(password_enabled=bool(settings.admin_password))
 
     @router.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
-    async def admin_login_submit(request: Request):
+    async def admin_login_submit(request: Request) -> HTMLResponse | RedirectResponse:
         from ..admin_handlers import admin_login_post
 
         form = await request.form()
@@ -186,7 +187,11 @@ def _build_html_admin_router_from_handlers(
 ) -> APIRouter:
     router = APIRouter()
 
-    def _is_authed(token, authorization, cookie_token) -> bool:
+    def _is_authed(
+        token: str | None,
+        authorization: str | None,
+        cookie_token: str | None,
+    ) -> bool:
         admin_token = runtime_settings_fn().admin_token
         return check_admin_auth(
             token=token,
@@ -201,7 +206,7 @@ def _build_html_admin_router_from_handlers(
         token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
-    ):
+    ) -> Response:
         if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return handlers.admin_ui()
@@ -212,7 +217,7 @@ def _build_html_admin_router_from_handlers(
         token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
-    ):
+    ) -> Response:
         if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return handlers.admin_tests_ui()
@@ -223,7 +228,7 @@ def _build_html_admin_router_from_handlers(
         token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
-    ):
+    ) -> Response:
         if not _is_authed(token, authorization, admin_session):
             return RedirectResponse("/admin/login", status_code=302)
         return handlers.admin_tests_ui()
@@ -237,7 +242,7 @@ def _build_html_admin_router_from_handlers(
             token: str | None = Query(None, max_length=256),
             authorization: str | None = Header(None),
             admin_session: str | None = Cookie(None),
-        ):
+        ) -> Response:
             if not _is_authed(token, authorization, admin_session):
                 return RedirectResponse("/admin/login", status_code=302)
             return handlers.admin_user_detail_ui()
