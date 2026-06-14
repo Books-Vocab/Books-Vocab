@@ -384,6 +384,43 @@ import Playbook
         )
     }
 
+    @Test func vocabLinkedCardCatalogUsesUIWorldVocabularySeed() throws {
+        let vocabScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("VocabScenarios.swift")
+        let source = try String(contentsOf: vocabScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("sampleEntry", "Vocabulary linked-card catalog must not keep local entry factories"),
+            ("= VocabularyEntry(", "Vocabulary linked-card catalog must not inline SwiftData row literals"),
+            ("return VocabularyEntry(", "Vocabulary linked-card catalog must not inline SwiftData row literals"),
+            ("Sample Book", "Vocabulary linked-card book metadata belongs in UI World"),
+            ("word:", "Vocabulary linked-card catalog must not keep local word data"),
+            ("translation:", "Vocabulary linked-card catalog must not keep local translation data"),
+            ("partOfSpeech:", "Vocabulary linked-card catalog must not keep local part-of-speech data"),
+            ("serendipity", "Vocabulary linked-card words must come from UI World"),
+            ("epiphany", "Vocabulary linked-card words must come from UI World"),
+            ("revelation", "Vocabulary linked-card words must come from UI World"),
+            ("fortuitous", "Vocabulary linked-card words must come from UI World"),
+            ("fortunate", "Vocabulary linked-card words must come from UI World"),
+            ("happy accident", "Vocabulary linked-card words must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(vocabScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: .vocabLinkedCards)"),
+            "Vocabulary linked-card catalog must source rows from UI World vocabulary.vocabLinkedCards"
+        )
+        #expect(
+            source.contains("seed.entries.count == 6"),
+            "Vocabulary linked-card catalog must fail fast when manifest row count drifts"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeVocabularyEntry(from: seed.entries[$0], notebookId: seed.notebookRemoteId)"),
+            "Vocabulary linked-card catalog must materialize VocabularyEntry from UI World rows"
+        )
+    }
+
     @Test func archivedVocabCatalogUsesUIWorldVocabularySeeds() throws {
         let archivedScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
