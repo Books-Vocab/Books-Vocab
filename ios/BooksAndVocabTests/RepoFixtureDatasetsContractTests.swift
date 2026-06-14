@@ -89,6 +89,23 @@ struct RepoFixtureDatasetsContractTests {
                     owner: "reader.\(fixtureKey).textAssetRef"
                 )
             }
+
+            for (fixtureKey, seed) in document.bookshelf {
+                for book in seed.books {
+                    guard let ref = book.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !ref.isEmpty else {
+                        Issue.record("\(stem): bookshelf.\(fixtureKey) book \(book.title) is missing bookAssetRef")
+                        continue
+                    }
+                    expectBookAssetRef(
+                        ref,
+                        document: document,
+                        dataset: stem,
+                        owner: "bookshelf.\(fixtureKey).\(book.title)",
+                        fileName: book.fileName
+                    )
+                }
+            }
         }
     }
 
@@ -204,6 +221,25 @@ struct RepoFixtureDatasetsContractTests {
         #expect(
             installAs.map { !$0.isEmpty } ?? false,
             "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
+        )
+    }
+
+    private func expectBookAssetRef(
+        _ ref: String,
+        document: FixtureDatasetDocument,
+        dataset: String,
+        owner: String,
+        fileName: String
+    ) {
+        #expect(ref.hasPrefix("books."), "\(dataset): \(owner) bookAssetRef must point into assets.books, got \(ref)")
+        guard let asset = document.assets.asset(for: ref) else {
+            Issue.record("\(dataset): \(owner) \(ref) is not declared")
+            return
+        }
+        let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(
+            installAs == "Books/\(fileName)",
+            "\(dataset): \(owner) \(ref) must install as Books/\(fileName), got \(installAs ?? "<nil>")"
         )
     }
 }

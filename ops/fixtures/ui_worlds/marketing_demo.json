@@ -2,7 +2,23 @@
   "schema": "kg.fixture.dataset.v2",
   "datasetID": "marketing_demo",
   "assets": {
-    "books": {},
+    "books": {
+      "atomic_habits_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/atomic-habits.md"
+      },
+      "word_architect_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/word-architect.md"
+      },
+      "the_shallows_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/the-shallows.md"
+      }
+    },
     "audio": {
       "atomic_habits_ep1_flash_playable": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
@@ -354,8 +370,9 @@
         {
           "title": "Atomic Habits",
           "author": "James Clear",
-          "fileName": "atomic-habits.epub",
-          "format": "epub",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
           "progression": 0.72,
           "dateAdded": "2025-12-20T00:00:00Z",
           "dateLastRead": "2026-01-06T21:00:00Z"
@@ -368,8 +385,9 @@
         {
           "title": "The Shallows",
           "author": "Nicholas Carr",
-          "fileName": "the-shallows.epub",
-          "format": "epub",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
           "progression": 0.31,
           "dateAdded": "2026-01-02T00:00:00Z",
           "dateLastRead": "2026-01-06T08:30:00Z"
@@ -382,8 +400,9 @@
         {
           "title": "Atomic Habits",
           "author": "James Clear",
-          "fileName": "atomic-habits.epub",
-          "format": "epub",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
           "progression": 0.72,
           "dateAdded": "2025-12-20T00:00:00Z",
           "dateLastRead": "2026-01-06T21:00:00Z"
@@ -391,8 +410,9 @@
         {
           "title": "Word Architect",
           "author": "Lena Harper",
-          "fileName": "word-architect.epub",
-          "format": "epub",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
           "progression": 0.64,
           "dateAdded": "2025-12-28T00:00:00Z",
           "dateLastRead": "2026-01-05T22:15:00Z"
@@ -400,8 +420,9 @@
         {
           "title": "The Shallows",
           "author": "Nicholas Carr",
-          "fileName": "the-shallows.epub",
-          "format": "epub",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
           "progression": 0.31,
           "dateAdded": "2026-01-02T00:00:00Z",
           "dateLastRead": "2026-01-06T08:30:00Z"
