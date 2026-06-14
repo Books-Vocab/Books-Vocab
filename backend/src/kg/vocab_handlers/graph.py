@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from ..api_models import GraphLinkResponse, ManualLinkRequest
@@ -12,14 +10,14 @@ from ..vocab_graph_ops import (
     hide_graph_link,
     unhide_graph_link,
 )
-from ._shared import _resolve_stores
+from ._shared import CardStoreFactory, ClientFactory, GraphStoreFactory, NotebookStoreFactory, _resolve_stores
 
 
 def get_graph_links_response(
     user: dict[str, Any],
     *,
-    graph_store_factory: Callable[..., Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    graph_store_factory: GraphStoreFactory,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> list[GraphLinkResponse]:
     stores = _resolve_stores(
@@ -36,10 +34,10 @@ def create_manual_link_response(
     req: ManualLinkRequest,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    client_factory: Callable[..., Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    client_factory: ClientFactory,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> GraphLinkResponse:
     stores = _resolve_stores(
@@ -85,9 +83,9 @@ def delete_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> None:
     stores = _resolve_stores(
@@ -103,9 +101,9 @@ def hide_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> None:
     stores = _resolve_stores(
@@ -121,9 +119,9 @@ def unhide_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> None:
     stores = _resolve_stores(
