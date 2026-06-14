@@ -3,6 +3,11 @@ import Foundation
 import SwiftData
 
 enum BookshelfFixtureID: String, CaseIterable {
+    case bookCardComplete = "book_card_complete"
+    case bookCardLongTitle = "book_card_long_title"
+    case bookCardMidProgress = "book_card_mid_progress"
+    case bookCardPdfFormat = "book_card_pdf_format"
+    case bookCardPlaceholderEpub = "book_card_placeholder_epub"
     case progressCard = "progress_card"
     case placeholderCard = "placeholder_card"
     case readerNotebookBound = "reader_notebook_bound"
@@ -58,7 +63,7 @@ enum BookshelfFixtures {
             return ["baseline", "marketing"]
         case .loadingOverlay:
             return ["loading"]
-        case .progressCard, .placeholderCard, .readerNotebookBound, .readerNotebookEmpty, .readerNotebookLongBound, .readerNotebookUnbound, .emptyLibrary:
+        case .bookCardComplete, .bookCardLongTitle, .bookCardMidProgress, .bookCardPdfFormat, .bookCardPlaceholderEpub, .progressCard, .placeholderCard, .readerNotebookBound, .readerNotebookEmpty, .readerNotebookLongBound, .readerNotebookUnbound, .emptyLibrary:
             return ["baseline"]
         }
     }

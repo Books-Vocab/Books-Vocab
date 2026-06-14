@@ -858,6 +858,86 @@
     }
   },
   "bookshelf": {
+      "book_card_placeholder_epub": {
+        "books": [
+          {
+            "title": "原子習慣",
+            "author": "James Clear",
+            "fileName": "atomic-habits.md",
+            "format": "epub",
+            "bookAssetRef": "books.atomic_habits_markdown",
+            "progression": null,
+            "preferredNotebookId": null,
+            "dateAdded": "2024-05-15T08:00:00Z",
+            "dateLastRead": null
+          }
+        ],
+        "referenceDate": "2024-06-04T08:00:00Z"
+      },
+      "book_card_pdf_format": {
+        "books": [
+          {
+            "title": "深度工作論文集",
+            "author": "Cal Newport",
+            "fileName": "catalog-reader.pdf",
+            "format": "pdf",
+            "bookAssetRef": "books.catalog_reader_pdf",
+            "progression": null,
+            "preferredNotebookId": null,
+            "dateAdded": "2024-05-15T08:00:00Z",
+            "dateLastRead": null
+          }
+        ],
+        "referenceDate": "2024-06-04T08:00:00Z"
+      },
+      "book_card_mid_progress": {
+        "books": [
+          {
+            "title": "刻意練習",
+            "author": "Anders Ericsson",
+            "fileName": "word-architect.md",
+            "format": "epub",
+            "bookAssetRef": "books.word_architect_markdown",
+            "progression": 0.42,
+            "preferredNotebookId": null,
+            "dateAdded": "2024-05-15T08:00:00Z",
+            "dateLastRead": "2024-05-31T14:13:20Z"
+          }
+        ],
+        "referenceDate": "2024-06-04T08:00:00Z"
+      },
+      "book_card_complete": {
+        "books": [
+          {
+            "title": "心流",
+            "author": "Mihaly Csikszentmihalyi",
+            "fileName": "the-shallows.md",
+            "format": "epub",
+            "bookAssetRef": "books.the_shallows_markdown",
+            "progression": 1,
+            "preferredNotebookId": null,
+            "dateAdded": "2024-05-15T08:00:00Z",
+            "dateLastRead": "2024-06-05T05:20:00Z"
+          }
+        ],
+        "referenceDate": "2024-06-04T08:00:00Z"
+      },
+      "book_card_long_title": {
+        "books": [
+          {
+            "title": "尋找心流：最優體驗的科學與日常生活中的應用實踐指南",
+            "author": "Mihaly Csikszentmihalyi & Co-Author With A Rather Long Name",
+            "fileName": "word-architect.md",
+            "format": "txt",
+            "bookAssetRef": "books.word_architect_markdown",
+            "progression": 0.08,
+            "preferredNotebookId": null,
+            "dateAdded": "2024-05-15T08:00:00Z",
+            "dateLastRead": "2024-05-20T11:33:20Z"
+          }
+        ],
+        "referenceDate": "2024-06-04T08:00:00Z"
+      },
     "progress_card": {
       "books": [
         {
