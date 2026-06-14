@@ -37,78 +37,26 @@ struct BookshelfFixtureRenderModel {
 }
 
 enum BookshelfFixtures {
-    private static let snapshotDate = Date(timeIntervalSince1970: 1_769_385_600) // 2026-01-07 00:00:00 UTC
     private static let sharedSurfaces: Set<FixtureSurface> = [.preview, .catalog, .snapshot]
 
-    private static let registry = FixtureRegistry<BookshelfFixtureSeed>([
-        FixtureRecipe(key: BookshelfFixtureID.progressCard.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(
-                books: [
-                    .init(
-                        title: "Word Architect",
-                        author: "Lena Harper",
-                        fileName: "word-architect.epub",
-                        format: .epub,
-                        bookAssetRef: nil,
-                        progression: 0.64,
-                        dateAdded: Date(timeIntervalSince1970: 1_768_521_600),
-                        dateLastRead: Date(timeIntervalSince1970: 1_769_126_400)
-                    )
-                ],
-                referenceDate: snapshotDate
-            )
-        },
-        FixtureRecipe(key: BookshelfFixtureID.placeholderCard.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(
-                books: [
-                    .init(
-                        title: "Notes on Deliberate Practice",
-                        author: "M. Rivera",
-                        fileName: "notes-on-deliberate-practice.epub",
-                        format: .epub,
-                        bookAssetRef: nil,
-                        progression: 0.18,
-                        dateAdded: Date(timeIntervalSince1970: 1_768_435_200),
-                        dateLastRead: Date(timeIntervalSince1970: 1_769_367_600)
-                    )
-                ],
-                referenceDate: snapshotDate
-            )
-        },
-        FixtureRecipe(key: BookshelfFixtureID.emptyLibrary.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(books: [], referenceDate: snapshotDate)
-        },
-        FixtureRecipe(key: BookshelfFixtureID.withBooksLibrary.key, surfaces: sharedSurfaces, tags: ["baseline", "marketing"]) {
-            .init(
-                books: [
-                    .init(
-                        title: "Word Architect",
-                        author: "Lena Harper",
-                        fileName: "word-architect.epub",
-                        format: .epub,
-                        bookAssetRef: nil,
-                        progression: 0.64,
-                        dateAdded: Date(timeIntervalSince1970: 1_768_521_600),
-                        dateLastRead: Date(timeIntervalSince1970: 1_769_126_400)
-                    ),
-                    .init(
-                        title: "Notes on Deliberate Practice",
-                        author: "M. Rivera",
-                        fileName: "notes-on-deliberate-practice.epub",
-                        format: .epub,
-                        bookAssetRef: nil,
-                        progression: 0.18,
-                        dateAdded: Date(timeIntervalSince1970: 1_768_435_200),
-                        dateLastRead: Date(timeIntervalSince1970: 1_769_367_600)
-                    ),
-                ],
-                referenceDate: snapshotDate
-            )
-        },
-        FixtureRecipe(key: BookshelfFixtureID.loadingOverlay.key, surfaces: sharedSurfaces, tags: ["loading"]) {
-            .init(books: [], referenceDate: snapshotDate)
-        },
-    ])
+    private static let registry = FixtureRegistry<BookshelfFixtureSeed>(
+        BookshelfFixtureID.allCases.map { fixtureID in
+            FixtureRecipe(key: fixtureID.key, surfaces: sharedSurfaces, tags: tags(for: fixtureID)) {
+                FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
+            }
+        }
+    )
+
+    private static func tags(for fixtureID: BookshelfFixtureID) -> Set<String> {
+        switch fixtureID {
+        case .withBooksLibrary:
+            return ["baseline", "marketing"]
+        case .loadingOverlay:
+            return ["loading"]
+        case .progressCard, .placeholderCard, .emptyLibrary:
+            return ["baseline"]
+        }
+    }
 
     static func recipes(for surface: FixtureSurface) -> [FixtureRecipe<BookshelfFixtureSeed>] {
         registry.recipes(for: surface)
