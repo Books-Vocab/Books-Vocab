@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: c7d26bc8
+verified_against: 16ff0a32
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -38,6 +38,9 @@ verified_against: c7d26bc8
 
 ### Preview auth 契約（無 fallback）
 Catalog scenario 可用 DEBUG-only `CatalogPreviewAuth` 注入登入狀態，但不得由 `isLoggedIn` 推導假 user/token/name/email。logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`；logged-out scenario 必須明示 nil。`CatalogCoverageTests.catalogPreviewAuthDoesNotFallbackToImplicitUserState` 直接掃 Debug source，擋短式 constructor、preview fallback literal 與 `displayName ??` / `userEmail ??` 類型的隱式補值。
+
+### Preview entitlement 契約（無本地假資料）
+Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI World `entitlements.*` seed。`PaywallScenarios` 只能用 `FixtureDatasetStore.requireEntitlementsSeed` fail-fast 取 seed，再注入 DEBUG-only `PreviewSubscriptionManager`；不可在 Debug source 內用 `KGSubscriptionStatus(...)` / `makeStatus` / `source: "admin"` / `last_synced_at` 重新造一套假訂閱資料。`CatalogCoverageTests.paywallCatalogDoesNotDeclareLocalSubscriptionStatusFixtures` 直接掃 Paywall source 擋回退。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
