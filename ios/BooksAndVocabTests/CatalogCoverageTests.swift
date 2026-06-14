@@ -525,6 +525,36 @@ import Playbook
         )
     }
 
+    @Test func reviewCalendarCatalogUsesUIWorldVocabularyReviewSeeds() throws {
+        let calendarScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("ReviewCalendarScenarios.swift")
+        let source = try String(contentsOf: calendarScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("ReviewCalendarSeed", "Review Calendar catalog must not keep local review history fixtures"),
+            ("var records:", "Review Calendar catalog records must come from UI World reviewHistory"),
+            ("return []", "Review Calendar empty state must use a UI World seed"),
+            ("ReviewRecord(", "Review Calendar catalog must not inline review records"),
+            ("try! ModelContainer", "Review Calendar catalog must fail fast with explicit materialization errors"),
+            ("Date()", "Review Calendar record dates must come from UI World reviewHistory"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(calendarScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Review Calendar catalog must source review history from UI World vocabulary seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Review Calendar catalog must materialize UI World reviewHistory into SwiftData"
+        )
+        #expect(
+            source.contains("FetchDescriptor<ReviewRecord>()"),
+            "Review Calendar catalog must validate UI World reviewHistory materialized as ReviewRecord rows"
+        )
+    }
+
     @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
         let filterScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
