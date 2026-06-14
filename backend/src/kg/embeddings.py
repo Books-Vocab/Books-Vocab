@@ -516,9 +516,17 @@ class EmbeddingStore:
         # Top (k+1) selection (the +1 absorbs self, filtered out below).
         # np.argpartition is O(N) vs argsort's O(N log N): for a 10k-row store
         # the full sort is the dominant cost of judge enrichment. We argpartition
-        # to a candidate pool, then argsort *only that pool* — reproducing
-        # argsort's exact descending order (ties included) on the slice that
-        # matters, so the result is identical to a full sort, just cheaper.
+        # to a candidate pool, then argsort *only that pool*.
+        #
+        # Equivalence to a full argsort, precisely: for a *continuous* spectrum
+        # (no exactly-equal scores) the result is identical element-for-element
+        # — and 3072-dim float32 cosine similarities effectively never tie, so
+        # this is the branch real data takes. The only divergence is when an
+        # *exact* tie block straddles the n-(k+1) partition boundary: which
+        # tied id lands just inside vs. just outside the cut is tie-break
+        # dependent, so the selected id subset may differ from full argsort.
+        # The returned score multiset is unaffected. See
+        # tests/test_embedding_topk.py for both halves of this contract.
         n = similarities.shape[0]
         want = k + 1  # include self; dropped after
         if want >= n:
