@@ -22,86 +22,35 @@ SCHEMA NOTE
   The Phase-A skeleton planned schema "kg.fixture_dataset.v1". The Swift SoT
   (FixtureDatasetStore.decode + RepoFixtureDatasetsContractTests) is authoritative.
   Repo UI Worlds now use "kg.fixture.dataset.v2", which adds the top-level
-  asset manifest. This generated demo world has no file-backed assets yet, so it
-  emits an empty manifest instead of omitting the domain.
+  asset manifest. The generated demo world is emitted from the repo UI World
+  manifest baseline, then only identity-owned auth fields and datasetID are
+  overlaid from demo_identity.json. This keeps Catalog, UITest, visual capture,
+  and generated demo on the same fixture shape instead of maintaining a second
+  partial iOS fixture skeleton.
 
 DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift struct)
   schema       <- "kg.fixture.dataset.v2"
   datasetID    <- "demo-" + identity.user_id
-  assets       <- empty asset manifest (no file-backed demo assets yet)
-  auth         <- signedIn/guest login state from demo identity
-  entitlements <- free/pro subscription states
-  settings     <- {}   (no settings fixtures derived from SoT yet)
-  bookshelf    <- {}   (no bookshelf fixtures derived from SoT yet)
-  todayReview  <- { "front": TodayReviewSessionSeed }  (see TODAY REVIEW mapping)
-  notebook     <- { "populated": NotebookFixtureSeed } (see NOTEBOOK mapping)
-  podcast      <- {}   (no podcast fixtures derived from SoT yet)
-  runtimePodcast <- {} (no runtime podcast fixtures derived from SoT yet)
-  reader       <- {}   (no reader fixtures derived from SoT yet)
-  vocabulary   <- {}   (no runtime vocabulary fixtures derived from SoT yet)
-  reviewDeck   <- {}   (no review-deck fixtures derived from SoT yet)
+  assets/settings/bookshelf/todayReview/notebook/podcast/runtimePodcast/reader/
+                 vocabulary/reviewDeck <- copied from ops/fixtures/ui_worlds/marketing_demo.json
+  auth         <- signedIn/guest login state from demo identity, with explicit
+                 keychainTokenState (available/absent)
+  entitlements <- copied from the baseline UI World so generated demo exposes
+                  the same free/pro/cancelled/admin catalog states
 
   Keyed decoding silently ignores unknown top-level keys; emit() MUST NOT add keys
-  outside FixtureDatasetDocument.knownTopLevelKeys, and the domain sub-keys must be
-  declared fixture IDs (NotebookFixtureID / TodayReviewFixtureID).
-
-NOTEBOOK MAPPING  (SoT dataset -> NotebookFixtureSeed, keyed under "populated")
-  notebook["populated"] = { "notebooks": [ NotebookSeed... ] }, one NotebookSeed per
-  dataset notebook (declared order), each:
-    NotebookSeed.remoteId    <- slug(notebook.name)        (NAME = stable join key)
-    NotebookSeed.name        <- notebook.name
-    NotebookSeed.isDefault   <- (index == 0)               (first notebook is default)
-    NotebookSeed.sortOrder   <- index
-    NotebookSeed.entries     <- [ NotebookEntrySeed for each card with notebook == name ]
-      NotebookEntrySeed.word           <- card.content
-      NotebookEntrySeed.translation    <- card.meaning
-      NotebookEntrySeed.context        <- first card.examples entry, markup stripped
-      NotebookEntrySeed.explanation    <- card.note          (if present)
-      NotebookEntrySeed.partOfSpeech   <- card.pos           (keep dot, iOS displays raw)
-      NotebookEntrySeed.bookTitle      <- card.source.title  (if source present)
-      NotebookEntrySeed.chapterTitle   <- card.source.chapter (if source present)
-
-TODAY REVIEW MAPPING  (SoT dataset -> TodayReviewSessionSeed, keyed under "front")
-  todayReview["front"] is a single session seeded from the cards whose
-  review.state == "due" (the actual review queue), in dataset order:
-    currentCard      <- TodayReviewCardSeed from the 1st due card
-    nextCard         <- TodayReviewCardSeed from the 2nd due card (or null)
-    revealStage      <- "front"
-    progressText     <- "1 / <due-count>"
-    remainingCount   <- due-count
-    forgotCount/rememberedCount/*FeedbackTrigger <- 0
-    canShuffle       <- (due-count > 1); canGoPrevious <- false; canGoNext <- (due-count > 1)
-    isAutoPlaying/isAutoPlayPaused <- false; autoplayProgress <- 0.0
-    autoplaySpeed    <- "normal"; autoplaySoundEnabled <- true; showFirstRunHint <- false
-  TodayReviewCardSeed per due card:
-    word          <- card.content
-    translation   <- card.meaning
-    context       <- first card.examples entry, markup stripped ("" if none)
-    explanation   <- card.note (null if absent)
-    partOfSpeech  <- card.pos
-    bookTitle     <- card.source.title ("" if no source)
-    chapterTitle  <- card.source.chapter (null if absent)
-    dateAdded     <- dataset.review_anchor (ISO8601 string; decoder accepts it)
-    difficultyTier<- bucketed from card.difficulty (>=5 "hard", >=4 "medium", else "easy")
-    reviewMode    <- "recognition" (card.mode default)
-    reviewExamples<- card.examples with markup stripped
-    rootForm      <- null; inflections <- []
-    graphLinksByKind <- {} (today-review link rollup deferred)
+  outside FixtureDatasetDocument.knownTopLevelKeys, and the domain sub-keys must
+  be declared fixture IDs known by the Swift manifest contract.
 
 CHECK MODE
   Re-emit the UI World file in memory, byte-compare against the committed artifact,
-  return a drift verdict (exit 1 on drift via build_demo.py). Date strings use
-  review_anchor so output is deterministic.
-
-slug(name): lower-case, non-alphanumerics -> "-", collapse repeats, trim "-".
-markup stripped: remove the **emphasis** markers (keep inner text).
+  return a drift verdict (exit 1 on drift via build_demo.py).
 """
 
 from __future__ import annotations
 
 import base64
 import json
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -115,210 +64,48 @@ GENERATED_DIR = _HERE / "generated"
 FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
 
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
-NOTEBOOK_FIXTURE_KEY = "populated"  # NotebookFixtureID.populated
-TODAY_REVIEW_FIXTURE_KEY = "front"  # TodayReviewFixtureID.front
-
-# **emphasis** markers used in SoT example sentences; stripped for display seeds.
-_EMPHASIS_RE = re.compile(r"\*\*(.+?)\*\*")
-_SLUG_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _strip_markup(text: str) -> str:
-    """Remove **emphasis** markers, keep inner text."""
-    return _EMPHASIS_RE.sub(r"\1", text)
-
-
-def _slug(name: str) -> str:
-    """lower-case, non-alphanumerics -> '-', collapse repeats, trim '-'."""
-    return _SLUG_NON_ALNUM_RE.sub("-", name.lower()).strip("-")
-
-
-def _first_example(card: dict[str, Any]) -> str:
-    examples = card.get("examples") or []
-    if examples:
-        return _strip_markup(str(examples[0]))
-    return ""
-
-
-def _difficulty_tier(card: dict[str, Any]) -> str:
-    diff = card.get("difficulty")
-    try:
-        value = float(diff)
-    except (TypeError, ValueError):
-        return "easy"
-    if value >= 5.0:
-        return "hard"
-    if value >= 4.0:
-        return "medium"
-    return "easy"
-
-
-def _notebook_entry_seed(card: dict[str, Any]) -> dict[str, Any]:
-    """NotebookEntrySeed (Swift field order)."""
-    source = card.get("source") or {}
-    return {
-        "word": card["content"],
-        "translation": card["meaning"],
-        "context": _first_example(card),
-        "explanation": card.get("note"),
-        "partOfSpeech": card.get("pos"),
-        "bookTitle": source.get("title"),
-        "chapterTitle": source.get("chapter"),
-    }
-
-
-def _notebook_seed(
-    notebook: dict[str, Any], index: int, cards: list[dict[str, Any]]
-) -> dict[str, Any]:
-    name = notebook["name"]
-    entries = [
-        _notebook_entry_seed(card)
-        for card in cards
-        if card.get("notebook") == name
-    ]
-    return {
-        "remoteId": _slug(name),
-        "name": name,
-        "isDefault": index == 0,
-        "sortOrder": index,
-        "entries": entries,
-    }
-
-
-def _today_review_card_seed(card: dict[str, Any], review_anchor: str) -> dict[str, Any]:
-    """TodayReviewCardSeed (Swift field order)."""
-    source = card.get("source") or {}
-    return {
-        "word": card["content"],
-        "translation": card["meaning"],
-        "context": _first_example(card),
-        "explanation": card.get("note"),
-        "partOfSpeech": card.get("pos"),
-        "bookTitle": source.get("title", ""),
-        "chapterTitle": source.get("chapter"),
-        "dateAdded": review_anchor,
-        "difficultyTier": _difficulty_tier(card),
-        "reviewMode": "recognition",
-        "reviewExamples": [
-            _strip_markup(str(ex)) for ex in (card.get("examples") or [])
-        ],
-        "rootForm": None,
-        "inflections": [],
-        "graphLinksByKind": {},
-    }
-
-
-def _today_review_session_seed(
-    due_cards: list[dict[str, Any]], review_anchor: str
-) -> dict[str, Any]:
-    """TodayReviewSessionSeed (Swift field order)."""
-    due_count = len(due_cards)
-    current = (
-        _today_review_card_seed(due_cards[0], review_anchor) if due_count >= 1 else None
-    )
-    nxt = (
-        _today_review_card_seed(due_cards[1], review_anchor) if due_count >= 2 else None
-    )
-    return {
-        "progressText": f"1 / {due_count}",
-        "currentCard": current,
-        "nextCard": nxt,
-        "revealStage": "front",
-        "canShuffle": due_count > 1,
-        "canGoPrevious": False,
-        "canGoNext": due_count > 1,
-        "remainingCount": due_count,
-        "forgotCount": 0,
-        "rememberedCount": 0,
-        "rememberedFeedbackTrigger": 0,
-        "forgotFeedbackTrigger": 0,
-        "isAutoPlaying": False,
-        "isAutoPlayPaused": False,
-        "autoplayProgress": 0.0,
-        "autoplaySpeed": "normal",
-        "autoplaySoundEnabled": True,
-        "showFirstRunHint": False,
-    }
+BASE_UI_WORLD_PATH = _REPO_ROOT / "ops/fixtures/ui_worlds/marketing_demo.json"
 
 
 def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
-    dataset = sot.dataset
     identity = sot.identity
-    notebooks = dataset["notebooks"]
-    cards = dataset["cards"]
-    review_anchor = dataset["review_anchor"]
-
-    notebook_seeds = [
-        _notebook_seed(nb, i, cards) for i, nb in enumerate(notebooks)
-    ]
-    due_cards = [
-        c
-        for c in cards
-        if isinstance(c.get("review"), dict) and c["review"].get("state") == "due"
-    ]
-
-    return {
-        "schema": FIXTURE_SCHEMA,
-        "datasetID": f"demo-{identity['user_id']}",
-        "assets": {
-            "books": {},
-            "audio": {},
-            "subtitles": {},
-            "text": {},
-            "images": {},
+    document = _load_base_ui_world()
+    document["schema"] = FIXTURE_SCHEMA
+    document["datasetID"] = f"demo-{identity['user_id']}"
+    document["auth"] = {
+        "signedIn": {
+            "isLoggedIn": True,
+            "userId": identity["user_id"],
+            "token": identity["access_token"],
+            "displayName": identity["display_name"],
+            "email": identity["email"],
+            "provider": identity["provider"],
+            "providerUserId": identity["provider_user_id"],
+            "keychainTokenState": "available",
         },
-        "auth": {
-            "signedIn": {
-                "isLoggedIn": True,
-                "userId": identity["user_id"],
-                "token": identity["access_token"],
-                "displayName": identity["display_name"],
-                "email": identity["email"],
-                "provider": identity["provider"],
-                "providerUserId": identity["provider_user_id"],
-            },
-            "guest": {
-                "isLoggedIn": False,
-                "userId": None,
-                "token": None,
-                "displayName": None,
-                "email": None,
-                "provider": None,
-                "providerUserId": None,
-            },
+        "guest": {
+            "isLoggedIn": False,
+            "userId": None,
+            "token": None,
+            "displayName": None,
+            "email": None,
+            "provider": None,
+            "providerUserId": None,
+            "keychainTokenState": "absent",
         },
-        "entitlements": {
-            "pro": {"pro": _subscription_status(active=True)},
-            "free": {"pro": _subscription_status(active=False)},
-        },
-        "settings": {},
-        "bookshelf": {},
-        "todayReview": {
-            TODAY_REVIEW_FIXTURE_KEY: _today_review_session_seed(due_cards, review_anchor)
-        },
-        "notebook": {NOTEBOOK_FIXTURE_KEY: {"notebooks": notebook_seeds}},
-        "podcast": {},
-        "runtimePodcast": {},
-        "reader": {},
-        "vocabulary": {},
-        "reviewDeck": {},
     }
+    return document
 
 
-def _subscription_status(*, active: bool) -> dict[str, Any]:
-    return {
-        "is_active": active,
-        "product_id": "com.wordnexus.pro.monthly",
-        "plan_name": "Books & Vocab Pro",
-        "price_display": "NT$90 / month",
-        "status": "active" if active else "inactive",
-        "is_trial": False,
-        "trial_days": 7,
-        "will_renew": active,
-        "expires_at": "2099-12-31T23:59:59Z" if active else None,
-        "source": "app_store",
-        "last_synced_at": "2026-06-10T00:00:00Z",
-    }
+def _load_base_ui_world() -> dict[str, Any]:
+    data = json.loads(BASE_UI_WORLD_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{BASE_UI_WORLD_PATH} top-level must be a JSON object")
+    if data.get("schema") != FIXTURE_SCHEMA:
+        raise ValueError(
+            f"{BASE_UI_WORLD_PATH} schema must be {FIXTURE_SCHEMA!r}, got {data.get('schema')!r}"
+        )
+    return data
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
