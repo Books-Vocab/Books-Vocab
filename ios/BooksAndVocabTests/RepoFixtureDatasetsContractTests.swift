@@ -410,11 +410,14 @@ struct RepoFixtureDatasetsContractTests {
                     notebook.keys.contains("syncStatus"),
                     "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare syncStatus"
                 )
-                for key in ["isDefault", "sortOrder", "coverPattern", "coverImageAssetRef"] {
+                for key in ["isDefault", "sortOrder", "coverPattern", "coverImageAssetRef", "cardState"] {
                     #expect(
                         notebook.keys.contains(key),
                         "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare \(key)"
                     )
+                }
+                if let cardState = notebook["cardState"] as? [String: Any] {
+                    expectNotebookCardStateKeys(cardState, dataset: dataset, owner: "notebook.\(fixtureKey).\(remoteId).cardState")
                 }
                 let entries = notebook["entries"] as? [[String: Any]] ?? []
                 for entry in entries {
@@ -469,6 +472,29 @@ struct RepoFixtureDatasetsContractTests {
                     )
                 }
             }
+        }
+    }
+
+    private func expectNotebookCardStateKeys(_ cardState: [String: Any], dataset: String, owner: String) {
+        for key in ["cardCount", "dueCount", "unlearnedCount", "reviewedCount", "pendingCount", "lastActivity", "isActive"] {
+            #expect(cardState.keys.contains(key), "\(dataset): \(owner) must explicitly declare \(key)")
+        }
+        let cardCount = cardState["cardCount"] as? Int ?? -1
+        let dueCount = cardState["dueCount"] as? Int ?? -1
+        let unlearnedCount = cardState["unlearnedCount"] as? Int ?? -1
+        let reviewedCount = cardState["reviewedCount"] as? Int ?? -1
+        let pendingCount = cardState["pendingCount"] as? Int ?? -1
+        #expect(cardCount >= 0, "\(dataset): \(owner).cardCount must be non-negative")
+        #expect(dueCount >= 0, "\(dataset): \(owner).dueCount must be non-negative")
+        #expect(unlearnedCount >= 0, "\(dataset): \(owner).unlearnedCount must be non-negative")
+        #expect(reviewedCount >= 0, "\(dataset): \(owner).reviewedCount must be non-negative")
+        #expect(pendingCount >= 0, "\(dataset): \(owner).pendingCount must be non-negative")
+        #expect(
+            cardCount == dueCount + unlearnedCount + reviewedCount,
+            "\(dataset): \(owner).cardCount must equal dueCount + unlearnedCount + reviewedCount"
+        )
+        if cardState["isActive"] as? Bool == true {
+            #expect(cardCount > 0, "\(dataset): \(owner) active card must not be empty")
         }
     }
 

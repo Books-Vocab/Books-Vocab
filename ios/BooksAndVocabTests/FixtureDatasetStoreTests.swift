@@ -803,11 +803,13 @@ struct FixtureDatasetStoreTests {
                 {
                   "remoteId": "default",
                   "name": "外部單字本",
+                  "color": null,
                   "syncStatus": 0,
                   "isDefault": true,
                   "sortOrder": 0,
                   "coverPattern": null,
                   "coverImageAssetRef": null,
+                  "cardState": null,
                   "entries": [
                     {
                       "word": "serendipity",
@@ -827,11 +829,13 @@ struct FixtureDatasetStoreTests {
                 {
                   "remoteId": "nb-external",
                   "name": "外部第二本",
+                  "color": null,
                   "syncStatus": 1,
                   "isDefault": false,
                   "sortOrder": 1,
                   "coverPattern": null,
                   "coverImageAssetRef": null,
+                  "cardState": null,
                   "entries": []
                 }
               ]
