@@ -259,6 +259,53 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func settingsSeedFailsWhenNullableStateKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-settings-nullable-state",
+          "settings": {
+            "logged_out": {
+              "auth": {
+                "isLoggedIn": false,
+                "userInitials": null,
+                "avatarURL": null,
+                "displayName": "未登入",
+                "email": null,
+                "authError": null,
+                "isAuthenticating": false,
+                "iconBreathing": false,
+                "manualLoginHint": null
+              },
+              "preferences": {
+                "selectedLanguage": "繁體中文",
+                "selectedAppearance": "跟隨系統",
+                "translationSource": "English",
+                "translationTarget": "繁體中文",
+                "selectedReviewMode": "寬鬆",
+                "autoSyncEnabled": false,
+                "showAutoSync": false
+              },
+              "kg": null,
+              "subscription": null,
+              "syncSummary": null,
+              "about": {
+                "version": "1.0 (1)",
+                "developerName": "MPSO"
+              },
+              "danger": null,
+              "manualLoginUserId": null,
+              "debugLocalServerURL": null
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -776,6 +823,8 @@ struct FixtureDatasetStoreTests {
                 "isSyncing": false,
                 "summaryText": "已連線 · 240 張 · 剛剛"
               },
+              "reviewSettings": null,
+              "bookSync": null,
               "about": {
                 "version": "9.9.9 (999)",
                 "developerName": "MPSO"
