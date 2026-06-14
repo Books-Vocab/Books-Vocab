@@ -58,6 +58,7 @@ struct RepoFixtureDatasetsContractTests {
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
+            expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectSwiftDataRowStateKeys(topLevel, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
@@ -321,6 +322,20 @@ struct RepoFixtureDatasetsContractTests {
                 #expect(
                     episode.keys.contains("download"),
                     "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare download (object or null)"
+                )
+            }
+        }
+    }
+
+    private func expectCatalogPodcastPlaybackKeys(_ topLevel: [String: Any], dataset: String) {
+        let podcast = topLevel["podcast"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in podcast {
+            let episodes = seed["episodes"] as? [[String: Any]] ?? []
+            for episode in episodes {
+                let episodeNumber = episode["episodeNumber"] as? Int ?? -1
+                #expect(
+                    episode.keys.contains("durationSec"),
+                    "\(dataset): podcast.\(fixtureKey).episode.\(episodeNumber) must explicitly declare durationSec"
                 )
             }
         }

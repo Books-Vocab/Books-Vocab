@@ -21,7 +21,7 @@ struct PodcastSeriesSeed: Codable {
 struct PodcastEpisodeSeed: Codable {
     let episodeNumber: Int
     let title: String
-    var durationSec: Double?
+    let durationSec: Double
     /// Seconds already played; `nil` renders the episode as unstarted (no progress row).
     var lastPlayedTime: Double?
 }
@@ -43,7 +43,6 @@ struct PodcastFixtureRenderModel {
 
 enum PodcastFixtures {
     private static let sharedSurfaces: Set<FixtureSurface> = [.preview, .catalog, .snapshot]
-    private static let defaultDurationSec: Double = 1832
 
     private static let continueSeries = PodcastSeriesSeed(
         remoteId: "s-shelf",
@@ -58,7 +57,7 @@ enum PodcastFixtures {
             .init(
                 series: continueSeries,
                 episodes: [
-                    .init(episodeNumber: 2, title: "On Deep Work", lastPlayedTime: 612),
+                    .init(episodeNumber: 2, title: "On Deep Work", durationSec: 1832, lastPlayedTime: 612),
                     .init(
                         episodeNumber: 5,
                         title: "A Very Long Episode Title That Should Truncate Cleanly",
@@ -66,7 +65,7 @@ enum PodcastFixtures {
                         lastPlayedTime: 1700
                     ),
                     .init(episodeNumber: 8, title: "Marathon Session", durationSec: 12_345, lastPlayedTime: 321),
-                    .init(episodeNumber: 1, title: "The Comfort Crisis"),
+                    .init(episodeNumber: 1, title: "The Comfort Crisis", durationSec: 1832),
                 ]
             )
         },
@@ -74,7 +73,7 @@ enum PodcastFixtures {
             .init(
                 series: continueSeries,
                 episodes: [
-                    .init(episodeNumber: 2, title: "On Deep Work", lastPlayedTime: 612),
+                    .init(episodeNumber: 2, title: "On Deep Work", durationSec: 1832, lastPlayedTime: 612),
                 ]
             )
         },
@@ -106,7 +105,7 @@ enum PodcastFixtures {
                 remoteId: episodeRemoteId,
                 episodeNumber: episodeSeed.episodeNumber,
                 title: episodeSeed.title,
-                durationSec: episodeSeed.durationSec ?? defaultDurationSec
+                durationSec: episodeSeed.durationSec
             )
             let progress = episodeSeed.lastPlayedTime.map {
                 PodcastProgress(episodeRemoteId: episodeRemoteId, lastPlayedTime: $0)
