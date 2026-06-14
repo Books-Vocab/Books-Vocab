@@ -45,6 +45,22 @@ struct FixtureDatasetDocument: Decodable {
         Set(CodingKeys.allCases.map(\.rawValue))
     }
 
+    private static let requiredV2DomainKeys: [CodingKeys] = [
+        .assets,
+        .preferences,
+        .auth,
+        .entitlements,
+        .settings,
+        .bookshelf,
+        .todayReview,
+        .notebook,
+        .podcast,
+        .runtimePodcast,
+        .reader,
+        .vocabulary,
+        .reviewDeck,
+    ]
+
     init(
         schema: String? = nil,
         datasetID: String? = nil,
@@ -83,19 +99,31 @@ struct FixtureDatasetDocument: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decodeIfPresent(String.self, forKey: .schema)
         datasetID = try container.decodeIfPresent(String.self, forKey: .datasetID)
-        assets = try container.decodeIfPresent(UIWorldAssetManifest.self, forKey: .assets) ?? .empty
-        preferences = try container.decodeIfPresent(UIWorldPreferencesSeed.self, forKey: .preferences) ?? .empty
-        auth = try container.decodeIfPresent([String: UIWorldAuthSeed].self, forKey: .auth) ?? [:]
-        entitlements = try container.decodeIfPresent([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) ?? [:]
-        settings = try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
-        bookshelf = try container.decodeIfPresent([String: BookshelfFixtureSeed].self, forKey: .bookshelf) ?? [:]
-        todayReview = try container.decodeIfPresent([String: TodayReviewSessionSeed].self, forKey: .todayReview) ?? [:]
-        notebook = try container.decodeIfPresent([String: NotebookFixtureSeed].self, forKey: .notebook) ?? [:]
-        podcast = try container.decodeIfPresent([String: PodcastFixtureSeed].self, forKey: .podcast) ?? [:]
-        runtimePodcast = try container.decodeIfPresent([String: UIWorldRuntimePodcastSeed].self, forKey: .runtimePodcast) ?? [:]
-        reader = try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
-        vocabulary = try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
-        reviewDeck = try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
+        let isV2 = schema == "kg.fixture.dataset.v2"
+        if isV2 {
+            for key in Self.requiredV2DomainKeys where !container.contains(key) {
+                throw DecodingError.keyNotFound(
+                    key,
+                    DecodingError.Context(
+                        codingPath: container.codingPath,
+                        debugDescription: "UI World v2 must explicitly declare top-level \(key.rawValue)"
+                    )
+                )
+            }
+        }
+        assets = isV2 ? try container.decode(UIWorldAssetManifest.self, forKey: .assets) : try container.decodeIfPresent(UIWorldAssetManifest.self, forKey: .assets) ?? .empty
+        preferences = isV2 ? try container.decode(UIWorldPreferencesSeed.self, forKey: .preferences) : try container.decodeIfPresent(UIWorldPreferencesSeed.self, forKey: .preferences) ?? .empty
+        auth = isV2 ? try container.decode([String: UIWorldAuthSeed].self, forKey: .auth) : try container.decodeIfPresent([String: UIWorldAuthSeed].self, forKey: .auth) ?? [:]
+        entitlements = isV2 ? try container.decode([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) : try container.decodeIfPresent([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) ?? [:]
+        settings = isV2 ? try container.decode([String: SettingsFixtureSeed].self, forKey: .settings) : try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
+        bookshelf = isV2 ? try container.decode([String: BookshelfFixtureSeed].self, forKey: .bookshelf) : try container.decodeIfPresent([String: BookshelfFixtureSeed].self, forKey: .bookshelf) ?? [:]
+        todayReview = isV2 ? try container.decode([String: TodayReviewSessionSeed].self, forKey: .todayReview) : try container.decodeIfPresent([String: TodayReviewSessionSeed].self, forKey: .todayReview) ?? [:]
+        notebook = isV2 ? try container.decode([String: NotebookFixtureSeed].self, forKey: .notebook) : try container.decodeIfPresent([String: NotebookFixtureSeed].self, forKey: .notebook) ?? [:]
+        podcast = isV2 ? try container.decode([String: PodcastFixtureSeed].self, forKey: .podcast) : try container.decodeIfPresent([String: PodcastFixtureSeed].self, forKey: .podcast) ?? [:]
+        runtimePodcast = isV2 ? try container.decode([String: UIWorldRuntimePodcastSeed].self, forKey: .runtimePodcast) : try container.decodeIfPresent([String: UIWorldRuntimePodcastSeed].self, forKey: .runtimePodcast) ?? [:]
+        reader = isV2 ? try container.decode([String: UIWorldReaderSeed].self, forKey: .reader) : try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
+        vocabulary = isV2 ? try container.decode([String: UIWorldVocabularySeed].self, forKey: .vocabulary) : try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
+        reviewDeck = isV2 ? try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) : try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
     }
 }
 

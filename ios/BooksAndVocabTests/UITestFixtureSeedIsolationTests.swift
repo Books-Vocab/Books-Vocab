@@ -39,6 +39,27 @@ struct UITestFixtureSeedIsolationTests {
             {
               "schema": "kg.fixture.dataset.v2",
               "datasetID": "test-review-probe",
+              "assets": {
+                "books": {},
+                "audio": {},
+                "subtitles": {},
+                "text": {},
+                "images": {}
+              },
+              "preferences": {
+                "userDefaults": {},
+                "ubiquitousKeyValueStore": {}
+              },
+              "auth": {},
+              "entitlements": {},
+              "settings": {},
+              "bookshelf": {},
+              "todayReview": {},
+              "notebook": {},
+              "podcast": {},
+              "runtimePodcast": {},
+              "reader": {},
+              "vocabulary": {},
               "reviewDeck": {
                 "probe": {
                   "notebookRemoteId": "default",
