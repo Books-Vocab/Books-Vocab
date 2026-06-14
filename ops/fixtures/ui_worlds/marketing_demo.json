@@ -64,7 +64,14 @@
         "byteSize": 17431
       }
     },
-    "images": {}
+    "images": {
+      "notebook_cover_app_icon": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "NotebookCovers/catalog-notebook-cover.png",
+        "byteSize": 30129
+      }
+    }
   },
   "preferences": {
     "userDefaults": {
@@ -858,86 +865,86 @@
     }
   },
   "bookshelf": {
-      "book_card_placeholder_epub": {
-        "books": [
-          {
-            "title": "原子習慣",
-            "author": "James Clear",
-            "fileName": "atomic-habits.md",
-            "format": "epub",
-            "bookAssetRef": "books.atomic_habits_markdown",
-            "progression": null,
-            "preferredNotebookId": null,
-            "dateAdded": "2024-05-15T08:00:00Z",
-            "dateLastRead": null
-          }
-        ],
-        "referenceDate": "2024-06-04T08:00:00Z"
-      },
-      "book_card_pdf_format": {
-        "books": [
-          {
-            "title": "深度工作論文集",
-            "author": "Cal Newport",
-            "fileName": "catalog-reader.pdf",
-            "format": "pdf",
-            "bookAssetRef": "books.catalog_reader_pdf",
-            "progression": null,
-            "preferredNotebookId": null,
-            "dateAdded": "2024-05-15T08:00:00Z",
-            "dateLastRead": null
-          }
-        ],
-        "referenceDate": "2024-06-04T08:00:00Z"
-      },
-      "book_card_mid_progress": {
-        "books": [
-          {
-            "title": "刻意練習",
-            "author": "Anders Ericsson",
-            "fileName": "word-architect.md",
-            "format": "epub",
-            "bookAssetRef": "books.word_architect_markdown",
-            "progression": 0.42,
-            "preferredNotebookId": null,
-            "dateAdded": "2024-05-15T08:00:00Z",
-            "dateLastRead": "2024-05-31T14:13:20Z"
-          }
-        ],
-        "referenceDate": "2024-06-04T08:00:00Z"
-      },
-      "book_card_complete": {
-        "books": [
-          {
-            "title": "心流",
-            "author": "Mihaly Csikszentmihalyi",
-            "fileName": "the-shallows.md",
-            "format": "epub",
-            "bookAssetRef": "books.the_shallows_markdown",
-            "progression": 1,
-            "preferredNotebookId": null,
-            "dateAdded": "2024-05-15T08:00:00Z",
-            "dateLastRead": "2024-06-05T05:20:00Z"
-          }
-        ],
-        "referenceDate": "2024-06-04T08:00:00Z"
-      },
-      "book_card_long_title": {
-        "books": [
-          {
-            "title": "尋找心流：最優體驗的科學與日常生活中的應用實踐指南",
-            "author": "Mihaly Csikszentmihalyi & Co-Author With A Rather Long Name",
-            "fileName": "word-architect.md",
-            "format": "txt",
-            "bookAssetRef": "books.word_architect_markdown",
-            "progression": 0.08,
-            "preferredNotebookId": null,
-            "dateAdded": "2024-05-15T08:00:00Z",
-            "dateLastRead": "2024-05-20T11:33:20Z"
-          }
-        ],
-        "referenceDate": "2024-06-04T08:00:00Z"
-      },
+    "book_card_placeholder_epub": {
+      "books": [
+        {
+          "title": "原子習慣",
+          "author": "James Clear",
+          "fileName": "atomic-habits.md",
+          "format": "epub",
+          "bookAssetRef": "books.atomic_habits_markdown",
+          "progression": null,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": null
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_pdf_format": {
+      "books": [
+        {
+          "title": "深度工作論文集",
+          "author": "Cal Newport",
+          "fileName": "catalog-reader.pdf",
+          "format": "pdf",
+          "bookAssetRef": "books.catalog_reader_pdf",
+          "progression": null,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": null
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_mid_progress": {
+      "books": [
+        {
+          "title": "刻意練習",
+          "author": "Anders Ericsson",
+          "fileName": "word-architect.md",
+          "format": "epub",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-05-31T14:13:20Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_complete": {
+      "books": [
+        {
+          "title": "心流",
+          "author": "Mihaly Csikszentmihalyi",
+          "fileName": "the-shallows.md",
+          "format": "epub",
+          "bookAssetRef": "books.the_shallows_markdown",
+          "progression": 1,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-06-05T05:20:00Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
+    "book_card_long_title": {
+      "books": [
+        {
+          "title": "尋找心流：最優體驗的科學與日常生活中的應用實踐指南",
+          "author": "Mihaly Csikszentmihalyi & Co-Author With A Rather Long Name",
+          "fileName": "word-architect.md",
+          "format": "txt",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.08,
+          "preferredNotebookId": null,
+          "dateAdded": "2024-05-15T08:00:00Z",
+          "dateLastRead": "2024-05-20T11:33:20Z"
+        }
+      ],
+      "referenceDate": "2024-06-04T08:00:00Z"
+    },
     "progress_card": {
       "books": [
         {
@@ -1099,7 +1106,9 @@
           "isDefault": true,
           "sortOrder": 0,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-green",
@@ -1108,7 +1117,9 @@
           "isDefault": false,
           "sortOrder": 1,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-blue",
@@ -1117,7 +1128,9 @@
           "isDefault": false,
           "sortOrder": 2,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1130,7 +1143,9 @@
           "isDefault": true,
           "sortOrder": 0,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-2",
@@ -1139,7 +1154,9 @@
           "isDefault": false,
           "sortOrder": 1,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-3",
@@ -1148,7 +1165,9 @@
           "isDefault": false,
           "sortOrder": 2,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-4",
@@ -1157,7 +1176,9 @@
           "isDefault": false,
           "sortOrder": 3,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-5",
@@ -1166,7 +1187,9 @@
           "isDefault": false,
           "sortOrder": 4,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-6",
@@ -1175,7 +1198,9 @@
           "isDefault": false,
           "sortOrder": 5,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-7",
@@ -1184,7 +1209,9 @@
           "isDefault": false,
           "sortOrder": 6,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-8",
@@ -1193,7 +1220,9 @@
           "isDefault": false,
           "sortOrder": 7,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-9",
@@ -1202,7 +1231,9 @@
           "isDefault": false,
           "sortOrder": 8,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-10",
@@ -1211,7 +1242,9 @@
           "isDefault": false,
           "sortOrder": 9,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-11",
@@ -1220,7 +1253,9 @@
           "isDefault": false,
           "sortOrder": 10,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-12",
@@ -1229,7 +1264,9 @@
           "isDefault": false,
           "sortOrder": 11,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-13",
@@ -1238,7 +1275,9 @@
           "isDefault": false,
           "sortOrder": 12,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-14",
@@ -1247,7 +1286,9 @@
           "isDefault": false,
           "sortOrder": 13,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1299,7 +1340,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "nb-atomic",
@@ -1347,7 +1390,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "nb-shallows",
@@ -1395,7 +1440,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1447,6 +1494,100 @@
               "isExcludedFromReader": false
             }
           ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        }
+      ]
+    },
+    "coverGallery": {
+      "notebooks": [
+        {
+          "remoteId": "cover-pattern-dots",
+          "name": "圓點",
+          "color": "#4A90D9",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null,
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-lines",
+          "name": "條紋",
+          "color": "#4A90D9",
+          "coverPattern": "lines",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-grid",
+          "name": "格線",
+          "color": "#8E6FD6",
+          "coverPattern": "grid",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-waves",
+          "name": "波浪",
+          "color": "#3FA77A",
+          "coverPattern": "waves",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-circles",
+          "name": "同心圓",
+          "color": "#E0735C",
+          "coverPattern": "circles",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 4,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-noise",
+          "name": "噪點",
+          "color": "#6E7781",
+          "coverPattern": "noise",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 5,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-solid-long-title",
+          "name": "我的英文單字本 — 進階學術詞彙與片語收藏夾",
+          "color": "#C9A227",
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 6,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-image-app-icon",
+          "name": "App Icon Cover",
+          "color": "#20242A",
+          "coverPattern": null,
+          "coverImageAssetRef": "images.notebook_cover_app_icon",
+          "isDefault": false,
+          "sortOrder": 7,
+          "entries": [],
           "syncStatus": 1
         }
       ]
@@ -3453,574 +3594,574 @@
       ],
       "notebookSyncStatus": 1
     },
-      "reviewCalendarDense": {
-        "notebookRemoteId": "ui-review-calendar-dense-notebook",
-        "notebookName": "Review Calendar Dense",
-        "bookTitle": "Review Calendar Manual",
-        "entries": [
-          {
-            "word": "serendipity",
-            "translation": "機緣巧合",
-            "context": "It was pure serendipity - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for serendipity.",
-            "partOfSpeech": "n.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-serendipity",
-            "difficultyTier": "core",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure serendipity - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "ephemeral",
-            "translation": "短暫的",
-            "context": "It was pure ephemeral - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for ephemeral.",
-            "partOfSpeech": "adj.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-ephemeral",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure ephemeral - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "petrichor",
-            "translation": "雨後泥土香",
-            "context": "It was pure petrichor - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for petrichor.",
-            "partOfSpeech": "n.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-petrichor",
-            "difficultyTier": "core",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure petrichor - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "ineffable",
-            "translation": "難以言喻的",
-            "context": "It was pure ineffable - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for ineffable.",
-            "partOfSpeech": "adj.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-ineffable",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure ineffable - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "quintessential",
-            "translation": "典型的",
-            "context": "It was pure quintessential - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for quintessential.",
-            "partOfSpeech": "adj.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-quintessential",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure quintessential - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "luminous",
-            "translation": "發光的",
-            "context": "It was pure luminous - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for luminous.",
-            "partOfSpeech": "adj.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-luminous",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure luminous - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "cadence",
-            "translation": "節奏",
-            "context": "It was pure cadence - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for cadence.",
-            "partOfSpeech": "n.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-cadence",
-            "difficultyTier": "core",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure cadence - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "solitude",
-            "translation": "獨處",
-            "context": "It was pure solitude - a moment that lingered in memory.",
-            "explanation": "A short contextual gloss for solitude.",
-            "partOfSpeech": "n.",
-            "bookTitle": "Review Calendar Manual",
-            "chapterTitle": "Dense Month",
-            "kgCardId": "stats-solitude",
-            "difficultyTier": "core",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure solitude - a moment that lingered in memory."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-06-02T12:00:00Z",
-            "lastReviewedAt": "2026-06-01T12:00:00Z",
-            "reviewCount": 3,
-            "reviewStreak": 2,
-            "lastReviewFeedbackRaw": 1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          }
-        ],
-        "reviewHistory": [
-          {
-            "word": "serendipity",
-            "feedback": 0,
-            "reviewedAt": "2026-06-15T08:00:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 1,
-            "reviewedAt": "2026-06-14T08:00:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-06-14T09:07:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-06-13T08:00:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 0,
-            "reviewedAt": "2026-06-13T09:07:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-06-13T10:14:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 0,
-            "reviewedAt": "2026-06-12T08:00:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-06-12T09:07:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 1,
-            "reviewedAt": "2026-06-12T10:14:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 0,
-            "reviewedAt": "2026-06-12T11:21:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-06-11T08:00:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 1,
-            "reviewedAt": "2026-06-10T08:00:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 0,
-            "reviewedAt": "2026-06-10T09:07:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 0,
-            "reviewedAt": "2026-06-09T08:00:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 1,
-            "reviewedAt": "2026-06-09T09:07:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-06-09T10:14:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 1,
-            "reviewedAt": "2026-06-08T08:00:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-06-08T09:07:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 0,
-            "reviewedAt": "2026-06-08T10:14:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-06-08T11:21:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-06-07T08:00:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 0,
-            "reviewedAt": "2026-06-06T08:00:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-06-06T09:07:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-06-05T08:00:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 1,
-            "reviewedAt": "2026-06-05T09:07:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 0,
-            "reviewedAt": "2026-06-05T10:14:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 1,
-            "reviewedAt": "2026-06-04T08:00:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 0,
-            "reviewedAt": "2026-06-04T09:07:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 1,
-            "reviewedAt": "2026-06-04T10:14:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-06-04T11:21:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 0,
-            "reviewedAt": "2026-06-03T08:00:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 1,
-            "reviewedAt": "2026-06-02T08:00:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-06-02T09:07:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-06-01T08:00:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 0,
-            "reviewedAt": "2026-06-01T09:07:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-06-01T10:14:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 0,
-            "reviewedAt": "2026-05-31T08:00:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-05-31T09:07:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 1,
-            "reviewedAt": "2026-05-31T10:14:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 0,
-            "reviewedAt": "2026-05-31T11:21:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 1,
-            "reviewedAt": "2026-05-30T08:00:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 1,
-            "reviewedAt": "2026-05-29T08:00:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 0,
-            "reviewedAt": "2026-05-29T09:07:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 0,
-            "reviewedAt": "2026-05-28T08:00:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 1,
-            "reviewedAt": "2026-05-28T09:07:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-05-28T10:14:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 1,
-            "reviewedAt": "2026-05-27T08:00:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-05-27T09:07:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 0,
-            "reviewedAt": "2026-05-27T10:14:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-05-27T11:21:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-05-26T08:00:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 0,
-            "reviewedAt": "2026-05-25T08:00:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-05-25T09:07:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 1,
-            "reviewedAt": "2026-05-24T08:00:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 1,
-            "reviewedAt": "2026-05-24T09:07:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 0,
-            "reviewedAt": "2026-05-24T10:14:00Z"
-          },
-          {
-            "word": "solitude",
-            "feedback": 1,
-            "reviewedAt": "2026-05-23T08:00:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 0,
-            "reviewedAt": "2026-05-23T09:07:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 1,
-            "reviewedAt": "2026-05-23T10:14:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-05-23T11:21:00Z"
-          },
-          {
-            "word": "serendipity",
-            "feedback": 0,
-            "reviewedAt": "2026-05-22T08:00:00Z"
-          },
-          {
-            "word": "ephemeral",
-            "feedback": 1,
-            "reviewedAt": "2026-05-21T08:00:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-05-21T09:07:00Z"
-          },
-          {
-            "word": "petrichor",
-            "feedback": 1,
-            "reviewedAt": "2026-05-20T08:00:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 0,
-            "reviewedAt": "2026-05-20T09:07:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-05-20T10:14:00Z"
-          },
-          {
-            "word": "ineffable",
-            "feedback": 0,
-            "reviewedAt": "2026-05-19T08:00:00Z"
-          },
-          {
-            "word": "quintessential",
-            "feedback": 1,
-            "reviewedAt": "2026-05-19T09:07:00Z"
-          },
-          {
-            "word": "luminous",
-            "feedback": 1,
-            "reviewedAt": "2026-05-19T10:14:00Z"
-          },
-          {
-            "word": "cadence",
-            "feedback": 0,
-            "reviewedAt": "2026-05-19T11:21:00Z"
-          }
-        ],
-        "notebookSyncStatus": 1
-      },
+    "reviewCalendarDense": {
+      "notebookRemoteId": "ui-review-calendar-dense-notebook",
+      "notebookName": "Review Calendar Dense",
+      "bookTitle": "Review Calendar Manual",
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for serendipity.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure serendipity - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ephemeral",
+          "translation": "短暫的",
+          "context": "It was pure ephemeral - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for ephemeral.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-ephemeral",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure ephemeral - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "petrichor",
+          "translation": "雨後泥土香",
+          "context": "It was pure petrichor - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for petrichor.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-petrichor",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure petrichor - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ineffable",
+          "translation": "難以言喻的",
+          "context": "It was pure ineffable - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for ineffable.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-ineffable",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure ineffable - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "quintessential",
+          "translation": "典型的",
+          "context": "It was pure quintessential - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for quintessential.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-quintessential",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure quintessential - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "luminous",
+          "translation": "發光的",
+          "context": "It was pure luminous - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for luminous.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-luminous",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure luminous - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "cadence",
+          "translation": "節奏",
+          "context": "It was pure cadence - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for cadence.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-cadence",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure cadence - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "solitude",
+          "translation": "獨處",
+          "context": "It was pure solitude - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for solitude.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-solitude",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure solitude - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-06-15T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-06-14T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-14T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-13T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-06-13T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-13T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-06-12T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-12T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-12T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-12T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-11T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-10T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-10T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-09T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-06-09T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-09T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 0,
+          "reviewedAt": "2026-06-08T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-07T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 0,
+          "reviewedAt": "2026-06-06T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-06T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-05T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-06-05T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-05T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-04T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-03T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-02T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-02T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-01T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 0,
+          "reviewedAt": "2026-06-01T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-01T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 0,
+          "reviewedAt": "2026-05-31T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-05-31T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-31T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-31T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-05-30T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-29T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-29T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-28T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-05-28T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-28T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 0,
+          "reviewedAt": "2026-05-27T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-26T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 0,
+          "reviewedAt": "2026-05-25T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-25T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-24T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-05-24T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-24T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-23T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-22T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-21T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-21T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-20T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-05-20T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-20T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-05-19T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-19T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-05-19T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-05-19T11:21:00Z"
+        }
+      ],
+      "notebookSyncStatus": 1
+    },
     "statsEmpty": {
       "notebookRemoteId": "ui-stats-empty-notebook",
       "notebookName": "Stats Empty",
@@ -6970,157 +7111,157 @@
     }
   },
   "reviewDeck": {
-      "phaseSingle": {
-        "notebookRemoteId": "ui-today-review-phase-single",
-        "notebookName": "Today Review Phase Single",
-        "notebookSyncStatus": 1,
-        "entries": [
-          {
-            "word": "meticulous",
-            "translation": "一絲不苟的",
-            "context": "The editor was meticulous about every detail.",
-            "explanation": "做事非常細心、注意細節。",
-            "partOfSpeech": "adj.",
-            "bookTitle": "Designing Interfaces",
-            "chapterTitle": "Writing Tone",
-            "kgCardId": "phase-meticulous",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "The editor was meticulous about every detail."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-01-06T00:00:00Z",
-            "lastReviewedAt": "2026-01-05T00:00:00Z",
-            "reviewCount": 2,
-            "reviewStreak": 1,
-            "lastReviewFeedbackRaw": -1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          }
-        ]
-      },
-      "phaseMulti": {
-        "notebookRemoteId": "ui-today-review-phase-multi",
-        "notebookName": "Today Review Phase Multi",
-        "notebookSyncStatus": 1,
-        "entries": [
-          {
-            "word": "serendipity",
-            "translation": "機緣巧合",
-            "context": "It was pure serendipity that we met.",
-            "explanation": "意外發現美好事物的能力或運氣。",
-            "partOfSpeech": "n.",
-            "bookTitle": "A Wanderer's Tale",
-            "chapterTitle": "Chapter 1",
-            "kgCardId": "phase-serendipity",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "It was pure serendipity that we met."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-01-06T00:00:00Z",
-            "lastReviewedAt": "2026-01-05T00:00:00Z",
-            "reviewCount": 2,
-            "reviewStreak": 1,
-            "lastReviewFeedbackRaw": -1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "ephemeral",
-            "translation": "短暫的",
-            "context": "Fame can be ephemeral.",
-            "explanation": "持續時間很短、稍縱即逝的。",
-            "partOfSpeech": "adj.",
-            "bookTitle": "On Time",
-            "chapterTitle": "Fleeting",
-            "kgCardId": "phase-ephemeral",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "Fame can be ephemeral."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-01-06T00:00:00Z",
-            "lastReviewedAt": "2026-01-05T00:00:00Z",
-            "reviewCount": 2,
-            "reviewStreak": 1,
-            "lastReviewFeedbackRaw": -1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          },
-          {
-            "word": "resilience",
-            "translation": "韌性",
-            "context": "Her resilience carried the team through.",
-            "explanation": "從困難中迅速恢復的能力。",
-            "partOfSpeech": "n.",
-            "bookTitle": "Grit",
-            "chapterTitle": "Bounce Back",
-            "kgCardId": "phase-resilience",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "Her resilience carried the team through."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-01-06T00:00:00Z",
-            "lastReviewedAt": "2026-01-05T00:00:00Z",
-            "reviewCount": 2,
-            "reviewStreak": 1,
-            "lastReviewFeedbackRaw": -1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          }
-        ]
-      },
-      "phaseLongContent": {
-        "notebookRemoteId": "ui-today-review-phase-long",
-        "notebookName": "Today Review Phase Long",
-        "notebookSyncStatus": 1,
-        "entries": [
-          {
-            "word": "circumlocution",
-            "translation": "迂迴冗長的說法",
-            "context": "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked.",
-            "explanation": "用過多、間接的詞語來表達原本可以簡短說明的意思，常見於迴避正面回答的場合；這個解釋刻意寫得很長，用來壓力測試複習卡片在大量文字下的版面與滾動行為是否仍然穩定且易讀。",
-            "partOfSpeech": "n.",
-            "bookTitle": "The Art of Rhetoric",
-            "chapterTitle": "Evasion and Indirection",
-            "kgCardId": "phase-circumlocution",
-            "difficultyTier": "intermediate",
-            "reviewMode": "recognition",
-            "reviewExamples": [
-              "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked."
-            ],
-            "reviewIntervalHours": 24,
-            "nextReviewAt": "2026-01-06T00:00:00Z",
-            "lastReviewedAt": "2026-01-05T00:00:00Z",
-            "reviewCount": 2,
-            "reviewStreak": 1,
-            "lastReviewFeedbackRaw": -1,
-            "graphLinksByKind": {},
-            "syncStatus": 1,
-            "actionType": "add",
-            "isArchived": false,
-            "isExcludedFromReader": false
-          }
-        ]
-      },
+    "phaseSingle": {
+      "notebookRemoteId": "ui-today-review-phase-single",
+      "notebookName": "Today Review Phase Single",
+      "notebookSyncStatus": 1,
+      "entries": [
+        {
+          "word": "meticulous",
+          "translation": "一絲不苟的",
+          "context": "The editor was meticulous about every detail.",
+          "explanation": "做事非常細心、注意細節。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Designing Interfaces",
+          "chapterTitle": "Writing Tone",
+          "kgCardId": "phase-meticulous",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The editor was meticulous about every detail."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ]
+    },
+    "phaseMulti": {
+      "notebookRemoteId": "ui-today-review-phase-multi",
+      "notebookName": "Today Review Phase Multi",
+      "notebookSyncStatus": 1,
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity that we met.",
+          "explanation": "意外發現美好事物的能力或運氣。",
+          "partOfSpeech": "n.",
+          "bookTitle": "A Wanderer's Tale",
+          "chapterTitle": "Chapter 1",
+          "kgCardId": "phase-serendipity",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure serendipity that we met."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ephemeral",
+          "translation": "短暫的",
+          "context": "Fame can be ephemeral.",
+          "explanation": "持續時間很短、稍縱即逝的。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "On Time",
+          "chapterTitle": "Fleeting",
+          "kgCardId": "phase-ephemeral",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Fame can be ephemeral."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "resilience",
+          "translation": "韌性",
+          "context": "Her resilience carried the team through.",
+          "explanation": "從困難中迅速恢復的能力。",
+          "partOfSpeech": "n.",
+          "bookTitle": "Grit",
+          "chapterTitle": "Bounce Back",
+          "kgCardId": "phase-resilience",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Her resilience carried the team through."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ]
+    },
+    "phaseLongContent": {
+      "notebookRemoteId": "ui-today-review-phase-long",
+      "notebookName": "Today Review Phase Long",
+      "notebookSyncStatus": 1,
+      "entries": [
+        {
+          "word": "circumlocution",
+          "translation": "迂迴冗長的說法",
+          "context": "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked.",
+          "explanation": "用過多、間接的詞語來表達原本可以簡短說明的意思，常見於迴避正面回答的場合；這個解釋刻意寫得很長，用來壓力測試複習卡片在大量文字下的版面與滾動行為是否仍然穩定且易讀。",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Art of Rhetoric",
+          "chapterTitle": "Evasion and Indirection",
+          "kgCardId": "phase-circumlocution",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Rather than answering directly, the politician resorted to circumlocution, weaving a lengthy and evasive reply that danced around the question without ever addressing the substance of what had been asked."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": "2026-01-05T00:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ]
+    },
     "probe": {
       "notebookRemoteId": "default",
       "notebookName": "Review Probe Fixture",

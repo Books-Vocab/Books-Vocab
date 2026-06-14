@@ -792,6 +792,8 @@ struct FixtureDatasetStoreTests {
                   "syncStatus": 0,
                   "isDefault": true,
                   "sortOrder": 0,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null,
                   "entries": [
                     {
                       "word": "serendipity",
@@ -814,6 +816,8 @@ struct FixtureDatasetStoreTests {
                   "syncStatus": 1,
                   "isDefault": false,
                   "sortOrder": 1,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null,
                   "entries": []
                 }
               ]

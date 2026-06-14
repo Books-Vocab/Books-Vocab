@@ -3,6 +3,7 @@ import Foundation
 import SwiftData
 
 enum NotebookFixtureID: String, CaseIterable {
+    case coverGallery
     case empty
     case populated
     case readerPickerMany
@@ -96,6 +97,8 @@ struct NotebookSeed: Codable {
     let remoteId: String
     let name: String
     let color: String?
+    let coverPattern: String?
+    let coverImageAssetRef: String?
     let syncStatus: Int
     let isDefault: Bool
     let sortOrder: Int
@@ -116,11 +119,29 @@ enum NotebookFixtures {
 
     private static let registry = FixtureRegistry<NotebookFixtureSeed>(
         NotebookFixtureID.allCases.map { fixtureID in
-            FixtureRecipe(key: fixtureID.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
+            FixtureRecipe(key: fixtureID.key, surfaces: surfaces(for: fixtureID), tags: tags(for: fixtureID)) {
                 FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
             }
         }
     )
+
+    private static func surfaces(for fixtureID: NotebookFixtureID) -> Set<FixtureSurface> {
+        switch fixtureID {
+        case .coverGallery:
+            return [.catalog, .snapshot]
+        case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
+            return sharedSurfaces
+        }
+    }
+
+    private static func tags(for fixtureID: NotebookFixtureID) -> Set<String> {
+        switch fixtureID {
+        case .coverGallery:
+            return ["cover"]
+        case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
+            return ["baseline"]
+        }
+    }
 
     static func recipes(for surface: FixtureSurface) -> [FixtureRecipe<NotebookFixtureSeed>] {
         registry.recipes(for: surface)
@@ -129,41 +150,50 @@ enum NotebookFixtures {
     @MainActor
     static func renderModel(for fixtureID: NotebookFixtureID) -> NotebookFixtureRenderModel {
         let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
-        let notebooks = seed.notebooks.map(makeNotebook(from:))
-        return .init(
-            notebooks: notebooks,
-            container: makeContainer(from: seed)
-        )
+        do {
+            let notebooks = try seed.notebooks.map(makeNotebook(from:))
+            return .init(
+                notebooks: notebooks,
+                container: try makeContainer(from: seed)
+            )
+        } catch {
+            preconditionFailure("Failed to materialize UI World notebook.\(fixtureID.rawValue): \(error)")
+        }
     }
 
     @MainActor
     static func notebooks(for fixtureID: NotebookFixtureID) -> [Notebook] {
         let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
-        return seed.notebooks.map(makeNotebook(from:))
-    }
-
-    @MainActor
-    private static func makeContainer(from seed: NotebookFixtureSeed) -> ModelContainer {
-        let schema = Schema([Notebook.self, VocabularyEntry.self])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
-            let container = try ModelContainer(for: schema, configurations: config)
-            let context = ModelContext(container)
-            for notebookSeed in seed.notebooks {
-                context.insert(makeNotebook(from: notebookSeed))
-                for entrySeed in notebookSeed.entries {
-                    context.insert(makeEntry(from: entrySeed, notebookId: notebookSeed.remoteId))
-                }
-            }
-            try context.save()
-            return container
+            return try seed.notebooks.map(makeNotebook(from:))
         } catch {
-            preconditionFailure("Failed to materialize UI World notebook seed: \(error)")
+            preconditionFailure("Failed to materialize UI World notebook.\(fixtureID.rawValue): \(error)")
         }
     }
 
-    private static func makeNotebook(from seed: NotebookSeed) -> Notebook {
+    @MainActor
+    private static func makeContainer(from seed: NotebookFixtureSeed) throws -> ModelContainer {
+        let schema = Schema([Notebook.self, VocabularyEntry.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let container = try ModelContainer(for: schema, configurations: config)
+        let context = ModelContext(container)
+        for notebookSeed in seed.notebooks {
+            context.insert(try makeNotebook(from: notebookSeed))
+            for entrySeed in notebookSeed.entries {
+                context.insert(makeEntry(from: entrySeed, notebookId: notebookSeed.remoteId))
+            }
+        }
+        try context.save()
+        return container
+    }
+
+    private static func makeNotebook(from seed: NotebookSeed) throws -> Notebook {
         let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, color: seed.color, isDefault: seed.isDefault)
+        notebook.coverPattern = seed.coverPattern
+        if let ref = seed.coverImageAssetRef {
+            let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
+            notebook.coverImagePath = installedURL.path
+        }
         notebook.sortOrder = seed.sortOrder
         notebook.syncStatus = seed.syncStatus
         return notebook

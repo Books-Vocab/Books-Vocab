@@ -64,7 +64,14 @@
         "byteSize": 17431
       }
     },
-    "images": {}
+    "images": {
+      "notebook_cover_app_icon": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
+        "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
+        "installAs": "NotebookCovers/catalog-notebook-cover.png",
+        "byteSize": 30129
+      }
+    }
   },
   "preferences": {
     "userDefaults": {
@@ -1099,7 +1106,9 @@
           "isDefault": true,
           "sortOrder": 0,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-green",
@@ -1108,7 +1117,9 @@
           "isDefault": false,
           "sortOrder": 1,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-blue",
@@ -1117,7 +1128,9 @@
           "isDefault": false,
           "sortOrder": 2,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1130,7 +1143,9 @@
           "isDefault": true,
           "sortOrder": 0,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-2",
@@ -1139,7 +1154,9 @@
           "isDefault": false,
           "sortOrder": 1,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-3",
@@ -1148,7 +1165,9 @@
           "isDefault": false,
           "sortOrder": 2,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-4",
@@ -1157,7 +1176,9 @@
           "isDefault": false,
           "sortOrder": 3,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-5",
@@ -1166,7 +1187,9 @@
           "isDefault": false,
           "sortOrder": 4,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-6",
@@ -1175,7 +1198,9 @@
           "isDefault": false,
           "sortOrder": 5,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-7",
@@ -1184,7 +1209,9 @@
           "isDefault": false,
           "sortOrder": 6,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-8",
@@ -1193,7 +1220,9 @@
           "isDefault": false,
           "sortOrder": 7,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-9",
@@ -1202,7 +1231,9 @@
           "isDefault": false,
           "sortOrder": 8,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-10",
@@ -1211,7 +1242,9 @@
           "isDefault": false,
           "sortOrder": 9,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-11",
@@ -1220,7 +1253,9 @@
           "isDefault": false,
           "sortOrder": 10,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-12",
@@ -1229,7 +1264,9 @@
           "isDefault": false,
           "sortOrder": 11,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-13",
@@ -1238,7 +1275,9 @@
           "isDefault": false,
           "sortOrder": 12,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "reader-nb-14",
@@ -1247,7 +1286,9 @@
           "isDefault": false,
           "sortOrder": 13,
           "entries": [],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1299,7 +1340,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "nb-atomic",
@@ -1347,7 +1390,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         },
         {
           "remoteId": "nb-shallows",
@@ -1395,7 +1440,9 @@
               "isExcludedFromReader": false
             }
           ],
-          "syncStatus": 1
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     },
@@ -1447,6 +1494,100 @@
               "isExcludedFromReader": false
             }
           ],
+          "syncStatus": 1,
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        }
+      ]
+    },
+    "coverGallery": {
+      "notebooks": [
+        {
+          "remoteId": "cover-pattern-dots",
+          "name": "圓點",
+          "color": "#4A90D9",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null,
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-lines",
+          "name": "條紋",
+          "color": "#4A90D9",
+          "coverPattern": "lines",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-grid",
+          "name": "格線",
+          "color": "#8E6FD6",
+          "coverPattern": "grid",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-waves",
+          "name": "波浪",
+          "color": "#3FA77A",
+          "coverPattern": "waves",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-circles",
+          "name": "同心圓",
+          "color": "#E0735C",
+          "coverPattern": "circles",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 4,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-pattern-noise",
+          "name": "噪點",
+          "color": "#6E7781",
+          "coverPattern": "noise",
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 5,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-solid-long-title",
+          "name": "我的英文單字本 — 進階學術詞彙與片語收藏夾",
+          "color": "#C9A227",
+          "coverPattern": null,
+          "coverImageAssetRef": null,
+          "isDefault": false,
+          "sortOrder": 6,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "cover-image-app-icon",
+          "name": "App Icon Cover",
+          "color": "#20242A",
+          "coverPattern": null,
+          "coverImageAssetRef": "images.notebook_cover_app_icon",
+          "isDefault": false,
+          "sortOrder": 7,
+          "entries": [],
           "syncStatus": 1
         }
       ]

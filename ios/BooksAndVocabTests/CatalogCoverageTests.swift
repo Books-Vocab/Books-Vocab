@@ -688,6 +688,41 @@ import Playbook
         )
     }
 
+    @Test func notebookCoverCatalogUsesUIWorldNotebookAssetSeed() throws {
+        let coverScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("NotebookCoverScenarios.swift")
+        let source = try String(contentsOf: coverScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("__kg_catalog_nonexistent_cover__", "Notebook Cover catalog must not exercise missing-path fallback"),
+            ("Image path fallback", "Notebook Cover catalog must not name or preserve fallback scenarios"),
+            ("patternGrid", "Notebook Cover catalog pattern matrix must come from UI World rows"),
+            ("swatches", "Notebook Cover catalog colors must come from UI World rows"),
+            ("Color(hex:", "Notebook Cover catalog colors must come from UI World notebook color"),
+            ("coverImagePath: \"/tmp/", "Notebook Cover catalog must not inline local image paths"),
+            ("Fallback", "Notebook Cover catalog must not use fallback fixture labels"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(coverScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.notebooks(for: .coverGallery)"),
+            "Notebook Cover catalog must source covers from UI World notebook.coverGallery"
+        )
+        #expect(
+            source.contains("NotebookPalette.color(for: notebook.color)"),
+            "Notebook Cover catalog must derive colors from manifest notebook rows"
+        )
+        #expect(
+            source.contains("notebook.coverPattern.flatMap(NotebookCoverPattern.init(rawValue:))"),
+            "Notebook Cover catalog must derive patterns from manifest notebook rows"
+        )
+        #expect(
+            source.contains("FileManager.default.fileExists(atPath: path)"),
+            "Notebook Cover catalog must validate image-backed covers are installed"
+        )
+    }
+
     @Test func readerNotebookPickerCatalogUsesUIWorldNotebookAndBookSeeds() throws {
         let pickerScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

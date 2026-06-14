@@ -33,10 +33,19 @@ import Testing
         #expect(previewKeys == [
             "notebook.empty",
             "notebook.populated",
+            "notebook.readerPickerMany",
+            "notebook.readerPickerPopulated",
             "notebook.single",
         ])
 
-        #expect(catalogKeys == previewKeys)
+        #expect(catalogKeys == [
+            "notebook.coverGallery",
+            "notebook.empty",
+            "notebook.populated",
+            "notebook.readerPickerMany",
+            "notebook.readerPickerPopulated",
+            "notebook.single",
+        ])
     }
 
     @Test func notebookFixtureRegistryIsManifestOnly() throws {
@@ -82,6 +91,23 @@ import Testing
         try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
             let model = NotebookFixtures.renderModel(for: .empty)
             #expect(model.notebooks.isEmpty)
+        }
+    }
+
+    @MainActor
+    @Test func coverGalleryMaterializesManifestImageAsset() async throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let seed = try #require(document.notebook[NotebookFixtureID.coverGallery.rawValue])
+        #expect(seed.notebooks.contains { $0.coverImageAssetRef == "images.notebook_cover_app_icon" })
+
+        try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let notebooks = NotebookFixtures.notebooks(for: .coverGallery)
+            let imageBacked = notebooks.filter { $0.coverImagePath != nil }
+            #expect(!imageBacked.isEmpty)
+            for notebook in imageBacked {
+                let path = try #require(notebook.coverImagePath)
+                #expect(FileManager.default.fileExists(atPath: path))
+            }
         }
     }
 }
