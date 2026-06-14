@@ -152,7 +152,7 @@ def init_sentry() -> bool:
         from sentry_sdk.integrations.starlette import StarletteIntegration
     except ImportError:
         _logger.warning("SENTRY_DSN set but sentry-sdk not installed; skipping init")
-        logger.warning("Silently handled exception; using fallback response", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return False
 
     environment = os.getenv("SENTRY_ENVIRONMENT", "production").strip() or "production"
@@ -166,7 +166,7 @@ def init_sentry() -> bool:
             return max(0.0, min(1.0, float(raw)))
         except ValueError:
             _logger.warning("%s=%r is not a float; using default %s", name, raw, default)
-            logger.warning("Silently handled exception; using fallback response", exc_info=True)
+            _logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return default
 
     profiles_rate = _float_env("SENTRY_PROFILES_SAMPLE_RATE", 0.0)

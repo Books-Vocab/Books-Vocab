@@ -11,12 +11,15 @@ import argparse
 from datetime import datetime, timezone
 import html
 import json
+import logging
 import os
 import shutil
 from pathlib import Path
 
 from catalog_review_sync import REVIEW_HTML_NAME
 from uitest_review_workspace import ensure_workspace, write_workspace_index as write_persistent_workspace_index
+
+log = logging.getLogger(__name__)
 
 
 def link_or_copy(source: Path, target: Path) -> None:

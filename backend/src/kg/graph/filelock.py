@@ -22,7 +22,7 @@ try:  # POSIX
     import fcntl
 
     _HAVE_FCNTL = True
-except ImportError as exc:  # pragma: no cover -- Windows fallback
+except ImportError:  # pragma: no cover -- Windows fallback
     logging.getLogger(__name__).warning("fcntl unavailable; file locks disabled (Windows fallback)", exc_info=True)
     fcntl = None  # type: ignore[assignment]
     _HAVE_FCNTL = False

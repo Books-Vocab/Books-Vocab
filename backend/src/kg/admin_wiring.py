@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from fastapi import Cookie, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -63,7 +63,7 @@ class MemLogGetter(Protocol):
     def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
         ...
 class CardStoreFactory(Protocol):
-    def __call__(self, data_dir: Path) -> "CardStore":
+    def __call__(self, data_dir: Path) -> CardStore:
         ...
 EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]

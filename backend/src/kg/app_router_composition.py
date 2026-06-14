@@ -7,11 +7,11 @@ from pathlib import Path
 from fastapi import APIRouter, FastAPI
 
 from .admin_wiring import (
+    AdminGrantRecordReader,
     AdminHandlerDependencies,
     CardStoreFactory,
     EntitlementsBuilder,
     MemLogGetter,
-    AdminGrantRecordReader,
     create_admin_handlers_from_dependencies,
 )
 from .routers import (

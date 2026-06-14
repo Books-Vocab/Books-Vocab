@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Protocol
+from typing import Any, Protocol
 
 from fastapi import APIRouter, Cookie, Depends, Header, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -165,7 +165,7 @@ def build_login_routes(
         return admin_login_page(password_enabled=bool(settings.admin_password))
 
     @router.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
-    async def admin_login_submit(request: Request) -> HTMLResponse | RedirectResponse:
+    async def admin_login_submit(request: Request) -> Response:
         from ..admin_handlers import admin_login_post
 
         form = await request.form()

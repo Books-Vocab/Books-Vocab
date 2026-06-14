@@ -101,7 +101,7 @@ def sentry_admin_ping(_admin=Depends(get_admin_user)) -> SentryPingResponse:
         import sentry_sdk
     except ImportError:  # pragma: no cover — sentry_sdk presence is implied by is_active()
         _logger.warning("sentry_init.is_active() True but sentry_sdk import failed")
-        logger.warning("Silently handled exception; using fallback response", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return SentryPingResponse(sent=False, is_active=True, event_id=None)
 
     try:
@@ -114,7 +114,7 @@ def sentry_admin_ping(_admin=Depends(get_admin_user)) -> SentryPingResponse:
             event_id = captured or event_id
     except Exception:  # pragma: no cover — Sentry transport must never crash the handler
         _logger.exception("Sentry admin ping failed to dispatch")
-        logger.warning("Silently handled exception; using fallback response", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return SentryPingResponse(sent=False, is_active=True, event_id=None)
 
     return SentryPingResponse(sent=True, is_active=True, event_id=event_id)

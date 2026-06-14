@@ -219,7 +219,7 @@ async def _call_one(
             input_tokens=0, output_tokens=0, raw_output="", parsed_output=None,
             error="timeout",
         )
-    except Exception:
+    except Exception as exc:
         logger.error("eval failed sample_id=%s provider=%s model=%s", sample_id, provider.name, model, exc_info=True)
         return EvalResult(
             sample_id=sample_id, model=model, provider=provider.name,

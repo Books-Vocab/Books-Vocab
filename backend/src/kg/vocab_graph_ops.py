@@ -28,9 +28,7 @@ so they rely on the barrier's observability + re-raise contract alone.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any
-from typing import Protocol
+from typing import Any, Protocol
 
 from .exceptions import ConflictError, NotFoundError
 

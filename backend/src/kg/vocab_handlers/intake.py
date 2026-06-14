@@ -9,8 +9,8 @@ from ._shared import (
     CardStoreFactory,
     ClientFactory,
     EmbeddingStoreFactory,
-    NotebookStoreFactory,
     GraphStoreFactory,
+    NotebookStoreFactory,
     _resolve_stores,
 )
 
