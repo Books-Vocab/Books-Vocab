@@ -3,14 +3,19 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+
+class AppExceptionHandler(Protocol):
+    def __call__(self, request: Request, exc: Exception) -> Awaitable[JSONResponse]:
+        ...
 
 from .exceptions import KGError
 
@@ -48,9 +53,9 @@ _VALIDATION_SECRET_RE = re.compile(
 
 @dataclass(frozen=True)
 class AppExceptionHandlers:
-    validation_error_handler: Callable[..., Any]
-    kg_error_handler: Callable[..., Any]
-    unhandled_exception_handler: Callable[..., Any]
+    validation_error_handler: AppExceptionHandler
+    kg_error_handler: AppExceptionHandler
+    unhandled_exception_handler: AppExceptionHandler
 
 
 @dataclass(frozen=True)
