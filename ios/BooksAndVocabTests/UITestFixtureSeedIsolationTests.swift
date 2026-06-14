@@ -18,6 +18,34 @@ import Testing
 @MainActor
 struct UITestFixtureSeedIsolationTests {
     private static let seedArguments = ["-ui-testing", "-seedFixture:todayReview:deck"]
+    private static var reviewProbeWorldData: Data {
+        let entries = (0..<40).map { index in
+            """
+            {
+              "word": "probeword\(index)",
+              "translation": "probe",
+              "context": "probe context \(index)",
+              "reviewExamples": ["probe context \(index)"],
+              "graphLinksByKind": {}
+            }
+            """
+        }.joined(separator: ",")
+        return Data(
+            """
+            {
+              "schema": "kg.fixture.dataset.v2",
+              "datasetID": "test-review-probe",
+              "reviewDeck": {
+                "probe": {
+                  "notebookRemoteId": "default",
+                  "notebookName": "Probe",
+                  "entries": [\(entries)]
+                }
+              }
+            }
+            """.utf8
+        )
+    }
 
     private func makeSchema() -> Schema {
         Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self])
@@ -44,7 +72,9 @@ struct UITestFixtureSeedIsolationTests {
         container.mainContext.insert(real)
         try container.mainContext.save()
 
-        UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
+            UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        }
 
         let words = try container.mainContext
             .fetch(FetchDescriptor<VocabularyEntry>())
@@ -78,7 +108,9 @@ struct UITestFixtureSeedIsolationTests {
             configurations: memoryConfig, diskConfig
         )
 
-        UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
+            UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        }
 
         let count = try container.mainContext.fetchCount(FetchDescriptor<VocabularyEntry>())
         #expect(count == 0, "混合配置容器必須整體拒絕 seeding")
@@ -104,7 +136,9 @@ struct UITestFixtureSeedIsolationTests {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: config)
 
-        UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        try FixtureDatasetStore.withTestingData(Self.reviewProbeWorldData) {
+            UITestFixtureSeed.injectIfNeeded(into: container, arguments: Self.seedArguments)
+        }
 
         let count = try container.mainContext.fetchCount(FetchDescriptor<VocabularyEntry>())
         #expect(count == 40, "in-memory 容器 seeding 必須照常運作")

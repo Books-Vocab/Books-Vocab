@@ -21,6 +21,8 @@ enum UITestFixtureSeed {
             return
         }
 
+        applyPreferencesFromWorld()
+
         for arg in arguments {
             guard arg.hasPrefix("-seedFixture:") else { continue }
             let remainder = arg.dropFirst("-seedFixture:".count)
@@ -54,6 +56,17 @@ enum UITestFixtureSeed {
                 AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
             }
         }
+    }
+
+    @MainActor
+    private static func applyPreferencesFromWorld() {
+        let document = FixtureDatasetStore.requireDocument()
+        guard !document.preferences.isEmpty else { return }
+        #if targetEnvironment(simulator)
+        document.preferences.apply()
+        #else
+        preconditionFailure("UI World preferences are simulator-only; refusing to overwrite real UserDefaults/iCloud KVS on device")
+        #endif
     }
 
     /// 非容器寫入面的 auth 防線：`AuthManager.login` 經 AuthSessionStore 直寫
