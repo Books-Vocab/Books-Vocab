@@ -53,7 +53,13 @@ private struct PodcastEpisodeListViewScene: View {
         Self.seed(fixture, into: container.mainContext)
         try? container.mainContext.save()
         self.container = container
-        self.auth = CatalogPreviewAuth(isLoggedIn: true)
+        self.auth = CatalogPreviewAuth(
+            isLoggedIn: true,
+            userId: "catalog-podcast-user",
+            token: "catalog-podcast-token",
+            displayName: "Catalog Podcast User",
+            userEmail: "catalog-podcast@example.com"
+        )
     }
 
     var body: some View {

@@ -27,6 +27,13 @@ import Playbook
         return Set(playbook.stores.map { $0.category.rawValue })
     }
 
+    private var debugDirectory: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Debug", isDirectory: true)
+    }
+
     // MARK: - Group coverage
 
     @Test func buildPlaybookRegistersAllKnownGroups() async throws {
@@ -60,6 +67,42 @@ import Playbook
                 !store.scenarios.isEmpty,
                 "Catalog group '\(store.category.rawValue)' registered zero scenarios"
             )
+        }
+    }
+
+    @Test func catalogPreviewAuthDoesNotFallbackToImplicitUserState() throws {
+        let forbidden: [(String, String)] = [
+            ("CatalogPreviewAuth(isLoggedIn: true)", "logged-in catalog auth must declare userId/token/name/email"),
+            ("CatalogPreviewAuth(isLoggedIn: false)", "logged-out catalog auth must declare nil userId/token/name/email"),
+            ("Preview User", "catalog auth displayName must not be a hidden fallback"),
+            ("preview@example.com", "catalog auth email must not be a hidden fallback"),
+            ("displayName ??", "catalog auth displayName must not fallback"),
+            ("userEmail ??", "catalog auth email must not fallback"),
+        ]
+        let urls = try FileManager.default
+            .contentsOfDirectory(at: debugDirectory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" || $0.lastPathComponent == "Scenarios" }
+        var swiftFiles: [URL] = []
+        for url in urls {
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                swiftFiles += try FileManager.default
+                    .contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+                    .filter { $0.pathExtension == "swift" }
+            } else if url.pathExtension == "swift" {
+                swiftFiles.append(url)
+            }
+        }
+
+        for url in swiftFiles.sorted(by: { $0.path < $1.path }) {
+            let source = try String(contentsOf: url, encoding: .utf8)
+            for (snippet, reason) in forbidden {
+                #expect(
+                    !source.contains(snippet),
+                    "\(url.lastPathComponent): \(reason)"
+                )
+            }
         }
     }
 

@@ -120,7 +120,13 @@ private struct KGVocabSearchScene: View {
         try? context.save()
 
         self.container = container
-        self.auth = CatalogPreviewAuth(isLoggedIn: true)
+        self.auth = CatalogPreviewAuth(
+            isLoggedIn: true,
+            userId: "catalog-vocab-search-user",
+            token: "catalog-vocab-search-token",
+            displayName: "Catalog Vocab Search User",
+            userEmail: "catalog-vocab-search@example.com"
+        )
         self.query = query
     }
 

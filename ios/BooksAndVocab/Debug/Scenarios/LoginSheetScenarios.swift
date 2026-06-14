@@ -34,6 +34,10 @@ private struct LoginSheetScene: View {
     var body: some View {
         let auth = CatalogPreviewAuth(
             isLoggedIn: false,
+            userId: nil,
+            token: nil,
+            displayName: nil,
+            userEmail: nil,
             isAuthenticating: isAuthenticating,
             authError: authError
         )
