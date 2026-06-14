@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 72122cce
+verified_against: 1975dddc
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -101,6 +101,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Notebook filter picker 契約（無本地 Notebook row / empty fallback）
 `NotebookFilterChipScenarios` 的 with-notebooks / empty-list 狀態必須取 UI World `notebook.*` seed；empty-list 也必須是 manifest 內明示的 `notebook.empty`，不可用本地 `[]` 表示。scenario 必須透過 `NotebookFixtures.renderModel(for:)` materialize notebooks，選取狀態只能用 manifest row 的 `remoteId`；缺 seed、selected index drift、SwiftData seed/save 失敗都直接 fail-fast。`NotebookFixtures` 的 container 是非 optional；不能用 nil container 或空列表當渲染 fallback。`CatalogCoverageTests.notebookFilterChipCatalogUsesUIWorldNotebookSeeds` 擋回 `sampleNotebooks`、inline `Notebook(remoteId:)`、`notebooks: []` 與硬寫 `nb-1`。
+
+### Notebook List View 契約（無本地 auth/user fixture）
+`NotebookListViewScenarios` 的 populated / single 狀態必須取 UI World `notebook.populated` / `notebook.single` seed，登入狀態必須取 UI World `auth.signedIn` seed。scenario 必須透過 `NotebookFixtures.renderModel(for:)` materialize SwiftData rows，並以 `FixtureDatasetStore.requireAuthSeed(for: .signedIn)` 建立 `CatalogPreviewAuth`；不得 hardcode catalog userId/token/displayName/email 或 `isLoggedIn: true`。缺 notebook seed、SwiftData seed/save 失敗、缺 auth seed 或 `auth.signedIn` 非 logged-in 都 fail-fast。`CatalogCoverageTests.notebookListCatalogUsesUIWorldNotebookSeedsAndAuth` 擋回退。
 
 ### Notebook Card 契約（無本地 NotebookCardData / 日期常數）
 `NotebooksScenarios` 的 hero heavy、fresh、grid pair、long-name 狀態必須取 UI World `notebook.cardGallery` seed。`NotebookSeed` 必須明示 `color`、`coverPattern`、`coverImageAssetRef`、`cardState`；非 card surface 也必須以 null 明示不使用 `cardState`。`cardState` 必須明示 `cardCount`、`dueCount`、`unlearnedCount`、`reviewedCount`、`pendingCount`、`lastActivity`、`isActive`，且 `cardCount == dueCount + unlearnedCount + reviewedCount`。缺 seed、缺 key、缺指定 card 狀態、日期解析失敗或 metric 不一致都 fail-fast。Catalog 不得保留本地 `NotebookCardData(...)`、`Date().addingTimeInterval`、hardcoded title 或 hardcoded card metric。`CatalogCoverageTests.notebooksCardCatalogUsesUIWorldCardGallerySeed`、`NotebookFixturesTests.cardGalleryMaterializesManifestCardState` 與 `RepoFixtureDatasetsContractTests.expectNotebookCardStateKeys` 擋回退。
