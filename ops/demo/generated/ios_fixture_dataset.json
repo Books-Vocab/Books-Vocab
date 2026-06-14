@@ -2697,6 +2697,179 @@
       "reviewHistory": [],
       "notebookSyncStatus": 1
     },
+    "knowledgeGraphPopulated": {
+      "notebookRemoteId": "ui-knowledge-graph-notebook",
+      "notebookName": "Knowledge Graph Vocab",
+      "bookTitle": "Graph Source Manual",
+      "entries": [
+        {
+          "word": "affect",
+          "translation": "影響；使產生變化",
+          "context": "Sleep can affect memory consolidation more than learners expect.",
+          "explanation": "動詞，表示對某事造成影響。常與 effect 混淆。",
+          "partOfSpeech": "v.",
+          "bookTitle": "Graph Source Manual",
+          "chapterTitle": "Connected Usage",
+          "kgCardId": "kg-graph-affect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Sleep can affect memory consolidation more than learners expect."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "kg-graph-affect-effect",
+                "cardId": "kg-graph-effect",
+                "word": "effect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "affect 多作動詞，effect 多作名詞。",
+                "hidden": false
+              }
+            ]
+          },
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "effect",
+          "translation": "結果；影響",
+          "context": "The effect of spaced review becomes visible after several sessions.",
+          "explanation": "名詞，表示結果或影響。常與 affect 混淆。",
+          "partOfSpeech": "n.",
+          "bookTitle": "Graph Source Manual",
+          "chapterTitle": "Connected Usage",
+          "kgCardId": "kg-graph-effect",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The effect of spaced review becomes visible after several sessions."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "kg-graph-effect-affect",
+                "cardId": "kg-graph-affect",
+                "word": "affect",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.95,
+                "reason": "effect 多作名詞，affect 多作動詞。",
+                "hidden": false
+              }
+            ]
+          },
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "complement",
+          "translation": "補足；使完整",
+          "context": "A concise example can complement a dense definition.",
+          "explanation": "表示補足、相輔相成。",
+          "partOfSpeech": "v.",
+          "bookTitle": "Graph Source Manual",
+          "chapterTitle": "Connected Usage",
+          "kgCardId": "kg-graph-complement",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A concise example can complement a dense definition."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "contrasts_with": [
+              {
+                "id": "kg-graph-complement-compliment",
+                "cardId": "kg-graph-compliment",
+                "word": "compliment",
+                "kind": "contrasts_with",
+                "label": "對比",
+                "confidence": 0.92,
+                "reason": "complement 是補足；compliment 是稱讚。",
+                "hidden": false
+              }
+            ]
+          },
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "compliment",
+          "translation": "稱讚；讚美",
+          "context": "The tutor gave a specific compliment after the student revised the sentence.",
+          "explanation": "表示稱讚或讚美。",
+          "partOfSpeech": "n.",
+          "bookTitle": "Graph Source Manual",
+          "chapterTitle": "Connected Usage",
+          "kgCardId": "kg-graph-compliment",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The tutor gave a specific compliment after the student revised the sentence."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 2,
+          "reviewStreak": 1,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "contrasts_with": [
+              {
+                "id": "kg-graph-compliment-complement",
+                "cardId": "kg-graph-complement",
+                "word": "complement",
+                "kind": "contrasts_with",
+                "label": "對比",
+                "confidence": 0.92,
+                "reason": "compliment 是稱讚；complement 是補足。",
+                "hidden": false
+              }
+            ]
+          },
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
+    "knowledgeGraphEmpty": {
+      "notebookRemoteId": "ui-knowledge-graph-empty-notebook",
+      "notebookName": "Knowledge Graph Empty",
+      "bookTitle": "Graph Source Manual",
+      "entries": [],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
     "shellNavigation": {
       "notebookRemoteId": "ui-shell-notebook",
       "notebookName": "Shell Flow Vocab",

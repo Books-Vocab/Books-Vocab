@@ -338,6 +338,8 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case archivedLong
     case archivedPopulated
     case archivedSingle
+    case knowledgeGraphEmpty
+    case knowledgeGraphPopulated
     case kgVocabRow
     case reviewCalendarDense
     case searchVocabNotebook

@@ -9,7 +9,26 @@ struct KnowledgeGraphView: View {
     @Environment(\.detailRouter) private var detailRouter
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     let allEntries: [VocabularyEntry]
-    @State private var coordinator = KnowledgeGraphCoordinator()
+    private let shouldLoadGraphData: Bool
+    @State private var coordinator: KnowledgeGraphCoordinator
+
+    init(allEntries: [VocabularyEntry]) {
+        self.allEntries = allEntries
+        self.shouldLoadGraphData = true
+        _coordinator = State(initialValue: KnowledgeGraphCoordinator())
+    }
+
+#if DEBUG
+    init(
+        allEntries: [VocabularyEntry],
+        initialGraphLinks: [KGGraphLink],
+        shouldLoadGraphData: Bool
+    ) {
+        self.allEntries = allEntries
+        self.shouldLoadGraphData = shouldLoadGraphData
+        _coordinator = State(initialValue: KnowledgeGraphCoordinator(links: initialGraphLinks))
+    }
+#endif
 
     var body: some View {
         KnowledgeGraphPresenter(
@@ -27,7 +46,10 @@ struct KnowledgeGraphView: View {
             onResetForces: coordinator.resetForces,
             onNodeTapped: handleNodeTap
         )
-        .task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
+        .task {
+            guard shouldLoadGraphData else { return }
+            await coordinator.loadGraphData(authManager: authManager, kgService: kgService)
+        }
         .onChange(of: coordinator.selectedEntry) { _, entry in
             if let entry, detailRouter != nil {
                 detailRouter?.showWordDetail(entry, allEntries: allEntries)
