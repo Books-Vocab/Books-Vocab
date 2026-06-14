@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 79c88475
+verified_against: 6029eea3
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -38,6 +38,9 @@ verified_against: 79c88475
 
 ### Preview auth 契約（無 fallback）
 Catalog scenario 可用 DEBUG-only `CatalogPreviewAuth` 注入登入狀態，但不得由 `isLoggedIn` 推導假 user/token/name/email。logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`；logged-out scenario 必須明示 nil。`CatalogCoverageTests.catalogPreviewAuthDoesNotFallbackToImplicitUserState` 直接掃 Debug source，擋短式 constructor、preview fallback literal 與 `displayName ??` / `userEmail ??` 類型的隱式補值。
+
+### Login Sheet auth 契約（無本地 auth/error 狀態）
+`LoginSheetScenarios` 的 default / authenticating / error 狀態必須取 UI World `auth.guest` / `auth.guestAuthenticating` / `auth.guestError` seed。`UIWorldAuthSeed` 必須明示 `authError` 與 `isAuthenticating`，即使值為 null / false；缺 key 在 decode / repo contract 直接 fail-fast。Login Sheet Catalog 不得用本地 `LoginSheetScene(isAuthenticating:)`、`LoginSheetScene(authError:)` 或 Debug source 內硬寫錯誤文案。`CatalogCoverageTests.loginSheetCatalogUsesUIWorldAuthSeeds`、`RepoFixtureDatasetsContractTests.expectAuthUIStateKeys` 與 `FixtureDatasetStore` 的 auth decoder 擋回退。
 
 ### Preview entitlement 契約（無本地假資料）
 Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI World `entitlements.*` seed。`PaywallScenarios` 只能用 `FixtureDatasetStore.requireEntitlementsSeed` fail-fast 取 seed，再注入 DEBUG-only `PreviewSubscriptionManager`；不可在 Debug source 內用 `KGSubscriptionStatus(...)` / `makeStatus` / `source: "admin"` / `last_synced_at` 重新造一套假訂閱資料。`CatalogCoverageTests.paywallCatalogDoesNotDeclareLocalSubscriptionStatusFixtures` 直接掃 Paywall source 擋回退。
