@@ -19,13 +19,7 @@ extension UITestFixtureSeed {
         do {
             try clearVocabularyEntries(from: context)
             let seed = FixtureDatasetStore.requireReviewDeckSeed(for: .probe)
-            let deck = seed.entries.map {
-                makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
-            }
-            for entry in deck {
-                context.insert(entry)
-            }
-            try context.save()
+            let deck = try insertReviewDeckSeed(seed, into: context)
             AppLog.app.info("UI-test fixture seeded: todayReview.deck size=\(deck.count)")
         } catch {
             failFixtureSeed("Failed to seed todayReview.deck fixture: \(error)")

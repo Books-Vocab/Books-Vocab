@@ -34,17 +34,7 @@ extension UITestFixtureSeed {
                 context.delete(entry)
             }
 
-            let notebook = Notebook(remoteId: notebookId, name: seed.notebookName)
-            notebook.syncStatus = seed.notebookSyncStatus
-            context.insert(notebook)
-
-            let deck = seed.entries.map {
-                makeVocabularyEntry(from: $0, notebookId: notebookId)
-            }
-            for entry in deck {
-                context.insert(entry)
-            }
-            try context.save()
+            let deck = try insertReviewDeckSeed(seed, into: context)
             AppLog.app.info("UI-test fixture seeded: notebook.reviewDeck (\(deck.count) cards)")
         } catch {
             failFixtureSeed("Failed to seed notebook.reviewDeck fixture: \(error)")

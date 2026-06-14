@@ -89,5 +89,25 @@ extension UITestFixtureSeed {
         try context.save()
         return entries
     }
+
+    @MainActor
+    static func insertReviewDeckSeed(
+        _ seed: UIWorldReviewDeckSeed,
+        into context: ModelContext
+    ) throws -> [VocabularyEntry] {
+        let notebook = Notebook(remoteId: seed.notebookRemoteId, name: seed.notebookName)
+        notebook.syncStatus = seed.notebookSyncStatus
+        context.insert(notebook)
+
+        let entries = seed.entries.map {
+            makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
+        }
+        for entry in entries {
+            context.insert(entry)
+        }
+
+        try context.save()
+        return entries
+    }
 }
 #endif
