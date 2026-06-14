@@ -19,23 +19,17 @@ final class UITestSubscriptionManager: SubscriptionManaging {
     }
 
     static func proAccess() -> UITestSubscriptionManager {
-        UITestSubscriptionManager(
-            entitlements: KGEntitlements(
-                pro: KGSubscriptionStatus(
-                    is_active: true,
-                    product_id: BrandIdentity.proProductID,
-                    plan_name: "Books & Vocab Pro",
-                    price_display: "NT$90 / month",
-                    status: "active",
-                    is_trial: false,
-                    trial_days: 7,
-                    will_renew: true,
-                    expires_at: "2099-12-31T23:59:59Z",
-                    source: "app_store",
-                    last_synced_at: "2026-06-10T00:00:00Z"
-                )
-            )
-        )
+        guard let seed = FixtureDatasetStore.entitlementsSeed(for: .pro) else {
+            preconditionFailure("entitlements.pro fixture requires UI World entitlements.pro")
+        }
+        return UITestSubscriptionManager(entitlements: KGEntitlements(pro: seed.pro))
+    }
+
+    static func freeAccess() -> UITestSubscriptionManager {
+        guard let seed = FixtureDatasetStore.entitlementsSeed(for: .free) else {
+            preconditionFailure("entitlements.free fixture requires UI World entitlements.free")
+        }
+        return UITestSubscriptionManager(entitlements: KGEntitlements(pro: seed.pro))
     }
 
     func refresh(using kgService: any KGServing, authManager: any AuthManaging, force: Bool) async {}

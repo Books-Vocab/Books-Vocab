@@ -28,7 +28,7 @@
     ]
   },
   "snapshot": {
-    "datasetFile": "ops/fixtures/catalog/marketing_demo.json",
+    "datasetFile": "ops/fixtures/ui_worlds/marketing_demo.json",
     "destination": "platform=iOS Simulator,name=iPhone 17 Pro Max",
     "groups": [],
     "scenarios": [

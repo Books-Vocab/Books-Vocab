@@ -30,7 +30,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
 
         guard podcast.anySeriesCard.waitUntilExists(timeout: 15) else {
             captureStep("no-series-card", app: app)
-            throw XCTSkip("無 podcast series 測試資料，跳過播放手感 probe")
+            XCTFail("podcast.playablePreview fixture should render a podcast series")
+            return
         }
         try step("series-detail", app: app) {
             podcast.tapFirstSeries()
@@ -39,7 +40,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
 
         guard podcast.anyEpisodeRow.waitUntilExists(timeout: 10) else {
             captureStep("no-episode-row", app: app)
-            throw XCTSkip("podcast series 無可見 episode row，跳過播放手感 probe")
+            XCTFail("podcast.playablePreview fixture should render an episode row")
+            return
         }
         try step("episode-tapped", app: app) {
             podcast.tapFirstEpisode()
@@ -115,7 +117,11 @@ final class PodcastPlaybackPerfUITests: UITestCase {
         )
         guard let seconds = Self.parseClock(podcast.elapsedTimeLabel.label) else {
             XCTFail("無法解析 elapsedTime：\(podcast.elapsedTimeLabel.label)", file: file, line: line)
-            throw XCTSkip("elapsedTime 不可解析")
+            throw NSError(
+                domain: "PodcastPlaybackPerfUITests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "elapsedTime 不可解析"]
+            )
         }
         return seconds
     }

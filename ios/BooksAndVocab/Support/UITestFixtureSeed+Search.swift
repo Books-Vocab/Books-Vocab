@@ -56,7 +56,7 @@ extension UITestFixtureSeed {
             // when no earlier fixture already did, so combining fixtures never
             // triggers the account-switch wipe.
             if !AuthManager.shared.isLoggedIn {
-                seedLogin(userId: "ui-search-user", token: "ui-search-user-token")
+                seedSignedInLoginFromWorld()
             }
             AppLog.app.info("UI-test fixture seeded: search.vocabNotebook (\(entries.count) entries)")
         } catch {

@@ -116,7 +116,8 @@ final class BooksAndVocabUITests: UITestCase {
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         guard let reader = bookshelf.tapFirstBook() else {
-            throw XCTSkip("Fixture 注入後 @Query 未讀取到書籍（SwiftData CloudStore 同步問題待調）")
+            XCTFail("bookshelf.withBooksLibrary fixture should render at least one book")
+            return
         }
         reader.assertIsActive()
     }

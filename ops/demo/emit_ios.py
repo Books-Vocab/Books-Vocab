@@ -1,20 +1,15 @@
-"""Emitter: demo SoT -> iOS FixtureDatasetDocument + identity constants.
+"""Emitter: demo SoT -> iOS UI World FixtureDatasetDocument.
 
 Phase B implementation. Mirrors the Phase-A mapping contract below, byte-for-byte
 deterministic so `--check` is a true drift gate.
 
 OUTPUT PATH(S)
   ops/demo/generated/ios_fixture_dataset.json   (FixtureDatasetDocument JSON)
-  ops/demo/generated/ios_identity.json          (identity constants, machine-readable)
-  ios/BooksAndVocab/Support/Fixtures/Generated/DemoFixtureIdentity.swift
-                                                (generated Swift constants — the auth
-                                                 seam reads userId/token/email from here)
 
 INJECTION SEAM (no Swift logic change to the loader)
   The fixture JSON is injected into the running app via the env var
   KG_FIXTURE_DATASET_B64 (base64 of the JSON file's bytes) — see
   ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift
-  (loadSource(): env KG_FIXTURE_DATASET_B64 first, then /tmp/kg-fixture-dataset.json).
   This emitter writes the *plaintext* JSON; the UITest harness base64s it into the
   env var via the existing seam:
       ./ops/ios_test.sh --ui --dataset-file ops/demo/generated/ios_fixture_dataset.json ...
@@ -85,13 +80,8 @@ TODAY REVIEW MAPPING  (SoT dataset -> TodayReviewSessionSeed, keyed under "front
     rootForm      <- null; inflections <- []
     graphLinksByKind <- {} (today-review link rollup deferred)
 
-IDENTITY CONSTANTS  (ops/demo/generated/ios_identity.json + DemoFixtureIdentity.swift)
-  { "userId": identity.user_id, "email": identity.email,
-    "displayName": identity.display_name, "provider": identity.provider,
-    "providerUserId": identity.provider_user_id, "accessToken": identity.access_token }
-
 CHECK MODE
-  Re-emit all three files in memory, byte-compare against the committed artifacts,
+  Re-emit the UI World file in memory, byte-compare against the committed artifact,
   return a drift verdict (exit 1 on drift via build_demo.py). Date strings use
   review_anchor so output is deterministic.
 
@@ -115,16 +105,6 @@ _REPO_ROOT = _HERE.parent.parent  # ops/demo -> ops -> repo root
 
 GENERATED_DIR = _HERE / "generated"
 FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
-IDENTITY_JSON_PATH = GENERATED_DIR / "ios_identity.json"
-SWIFT_IDENTITY_PATH = (
-    _REPO_ROOT
-    / "ios"
-    / "BooksAndVocab"
-    / "Support"
-    / "Fixtures"
-    / "Generated"
-    / "DemoFixtureIdentity.swift"
-)
 
 FIXTURE_SCHEMA = "kg.fixture.dataset.v1"
 NOTEBOOK_FIXTURE_KEY = "populated"  # NotebookFixtureID.populated
@@ -272,6 +252,30 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     return {
         "schema": FIXTURE_SCHEMA,
         "datasetID": f"demo-{identity['user_id']}",
+        "auth": {
+            "signedIn": {
+                "isLoggedIn": True,
+                "userId": identity["user_id"],
+                "token": identity["access_token"],
+                "displayName": identity["display_name"],
+                "email": identity["email"],
+                "provider": identity["provider"],
+                "providerUserId": identity["provider_user_id"],
+            },
+            "guest": {
+                "isLoggedIn": False,
+                "userId": None,
+                "token": None,
+                "displayName": None,
+                "email": None,
+                "provider": None,
+                "providerUserId": None,
+            },
+        },
+        "entitlements": {
+            "pro": {"pro": _subscription_status(active=True)},
+            "free": {"pro": _subscription_status(active=False)},
+        },
         "settings": {},
         "bookshelf": {},
         "todayReview": {
@@ -282,15 +286,19 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     }
 
 
-def _build_identity_constants(sot: DemoSoT) -> dict[str, Any]:
-    identity = sot.identity
+def _subscription_status(*, active: bool) -> dict[str, Any]:
     return {
-        "userId": identity["user_id"],
-        "email": identity["email"],
-        "displayName": identity["display_name"],
-        "provider": identity["provider"],
-        "providerUserId": identity["provider_user_id"],
-        "accessToken": identity["access_token"],
+        "is_active": active,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active" if active else "inactive",
+        "is_trial": False,
+        "trial_days": 7,
+        "will_renew": active,
+        "expires_at": "2099-12-31T23:59:59Z" if active else None,
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z",
     }
 
 
@@ -299,47 +307,9 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
-def _swift_string_literal(value: str) -> str:
-    """Swift double-quoted literal with the minimal required escapes."""
-    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def _build_swift_identity(constants: dict[str, Any]) -> bytes:
-    """Generated Swift constants the auth seam reads (values only — no logic change)."""
-    lines = [
-        "// Generated by ops/demo/build_demo.py emit-ios — DO NOT EDIT BY HAND.",
-        "// Source of truth: ops/demo/demo_identity.json (kg.demo_identity.v1).",
-        "// Regenerate: (cd backend && uv run python ../ops/demo/build_demo.py emit-ios --commit)",
-        "//",
-        "// These are the SoT-emitted demo auth identity VALUES consumed by",
-        "// UITestFixtureSeed+Auth.seedAuthSignedInSession. Only the literal values",
-        "// flow from the SoT here; the seeder's safety guards (simulator-gate,",
-        "// isolatedAuthSession requirement) live in the seeder and are untouched.",
-        "",
-        "import Foundation",
-        "",
-        "enum DemoFixtureIdentity {",
-        f"    static let userId = {_swift_string_literal(constants['userId'])}",
-        f"    static let email = {_swift_string_literal(constants['email'])}",
-        f"    static let displayName = {_swift_string_literal(constants['displayName'])}",
-        f"    static let provider = {_swift_string_literal(constants['provider'])}",
-        f"    static let providerUserId = {_swift_string_literal(constants['providerUserId'])}",
-        f"    static let accessToken = {_swift_string_literal(constants['accessToken'])}",
-        "}",
-        "",
-    ]
-    return "\n".join(lines).encode("utf-8")
-
-
 def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     document = _build_fixture_document(sot)
-    constants = _build_identity_constants(sot)
-    return [
-        (FIXTURE_JSON_PATH, _json_bytes(document)),
-        (IDENTITY_JSON_PATH, _json_bytes(constants)),
-        (SWIFT_IDENTITY_PATH, _build_swift_identity(constants)),
-    ]
+    return [(FIXTURE_JSON_PATH, _json_bytes(document))]
 
 
 def _rel(path: Path) -> str:
@@ -350,7 +320,7 @@ def _rel(path: Path) -> str:
 
 
 def emit(sot: DemoSoT, *, check: bool = False, commit: bool = False) -> dict:
-    """Emit the iOS FixtureDatasetDocument JSON + identity constants from the SoT.
+    """Emit the iOS UI World FixtureDatasetDocument JSON from the SoT.
 
     Args:
         sot: validated DemoSoT bundle (identity + dataset).

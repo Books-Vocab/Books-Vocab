@@ -86,8 +86,7 @@ enum PodcastFixtures {
 
     @MainActor
     static func renderModel(for fixtureID: PodcastFixtureID) -> PodcastFixtureRenderModel {
-        let seed = FixtureDatasetStore.podcastSeed(for: fixtureID)
-            ?? registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.requirePodcastSeed(for: fixtureID)
 
         let series = PodcastSeries(
             remoteId: seed.series.remoteId,
