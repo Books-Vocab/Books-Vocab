@@ -269,7 +269,9 @@
       },
       "danger": null,
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
     },
     "account_logged_out_error": {
       "auth": {
@@ -301,7 +303,9 @@
       },
       "danger": null,
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
     },
     "preferences_auto_sync_off": {
       "auth": {
@@ -424,7 +428,8 @@
       },
       "danger": null,
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "bookSync": null
     },
     "subscribed_active": {
       "auth": {
@@ -723,7 +728,9 @@
         "isDeletingAccount": false
       },
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
     },
     "deleting_account": {
       "auth": {
@@ -785,7 +792,9 @@
         "isDeletingAccount": true
       },
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "reviewSettings": null,
+      "bookSync": null
     },
     "pricing_unavailable": {
       "auth": {
@@ -852,7 +861,8 @@
         "isDeletingAccount": false
       },
       "manualLoginUserId": null,
-      "debugLocalServerURL": null
+      "debugLocalServerURL": null,
+      "reviewSettings": null
     },
     "debug_backend_local": {
       "auth": {
@@ -906,7 +916,9 @@
         "isDeletingAccount": false
       },
       "manualLoginUserId": "debug-user-id",
-      "debugLocalServerURL": "http://127.0.0.1:8000"
+      "debugLocalServerURL": "http://127.0.0.1:8000",
+      "reviewSettings": null,
+      "bookSync": null
     }
   },
   "bookshelf": {

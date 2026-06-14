@@ -29,12 +29,50 @@ struct SettingsFixtureSeed: Codable {
         let isAuthenticating: Bool
         let iconBreathing: Bool
         let manualLoginHint: String?
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case isLoggedIn
+            case userInitials
+            case avatarURL
+            case displayName
+            case email
+            case authError
+            case isAuthenticating
+            case iconBreathing
+            case manualLoginHint
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings auth")
+            isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
+            userInitials = try container.decodeIfPresent(String.self, forKey: .userInitials)
+            avatarURL = try container.decodeIfPresent(URL.self, forKey: .avatarURL)
+            displayName = try container.decode(String.self, forKey: .displayName)
+            email = try container.decodeIfPresent(String.self, forKey: .email)
+            authError = try container.decodeIfPresent(String.self, forKey: .authError)
+            isAuthenticating = try container.decode(Bool.self, forKey: .isAuthenticating)
+            iconBreathing = try container.decode(Bool.self, forKey: .iconBreathing)
+            manualLoginHint = try container.decodeIfPresent(String.self, forKey: .manualLoginHint)
+        }
     }
 
     struct KG: Codable {
         struct Observation: Codable {
             let previewLines: [String]
             let totalCount: Int
+
+            enum CodingKeys: String, CodingKey, CaseIterable {
+                case previewLines
+                case totalCount
+            }
+
+            init(from decoder: Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings KG observation")
+                previewLines = try container.decode([String].self, forKey: .previewLines)
+                totalCount = try container.decode(Int.self, forKey: .totalCount)
+            }
         }
 
         let serverURL: String
@@ -45,6 +83,30 @@ struct SettingsFixtureSeed: Codable {
         let isUsingLocalServer: Bool
         let localServerURL: String?
         let observation: Observation?
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case serverURL
+            case isConnected
+            case connectionPulse
+            case serverCardCount
+            case lastSyncDescription
+            case isUsingLocalServer
+            case localServerURL
+            case observation
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings KG")
+            serverURL = try container.decode(String.self, forKey: .serverURL)
+            isConnected = try container.decode(Bool.self, forKey: .isConnected)
+            connectionPulse = try container.decode(Bool.self, forKey: .connectionPulse)
+            serverCardCount = try container.decode(Int.self, forKey: .serverCardCount)
+            lastSyncDescription = try container.decodeIfPresent(String.self, forKey: .lastSyncDescription)
+            isUsingLocalServer = try container.decode(Bool.self, forKey: .isUsingLocalServer)
+            localServerURL = try container.decodeIfPresent(String.self, forKey: .localServerURL)
+            observation = try container.decodeIfPresent(Observation.self, forKey: .observation)
+        }
     }
 
     struct Subscription: Codable {
@@ -62,6 +124,42 @@ struct SettingsFixtureSeed: Codable {
         let isRestoreAvailable: Bool
         let ctaTitle: String
         let isRefreshing: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case isActive
+            case planName
+            case badgeText
+            case badgeTone
+            case summary
+            case detail
+            case sourceLabel
+            case managementNote
+            case pricingUnavailableMessage
+            case restoreLabel
+            case restoreDescription
+            case isRestoreAvailable
+            case ctaTitle
+            case isRefreshing
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings subscription")
+            isActive = try container.decode(Bool.self, forKey: .isActive)
+            planName = try container.decode(String.self, forKey: .planName)
+            badgeText = try container.decode(String.self, forKey: .badgeText)
+            badgeTone = try container.decode(SubscriptionBadgeTone.self, forKey: .badgeTone)
+            summary = try container.decode(String.self, forKey: .summary)
+            detail = try container.decode(String.self, forKey: .detail)
+            sourceLabel = try container.decode(String.self, forKey: .sourceLabel)
+            managementNote = try container.decode(String.self, forKey: .managementNote)
+            pricingUnavailableMessage = try container.decodeIfPresent(String.self, forKey: .pricingUnavailableMessage)
+            restoreLabel = try container.decode(String.self, forKey: .restoreLabel)
+            restoreDescription = try container.decode(String.self, forKey: .restoreDescription)
+            isRestoreAvailable = try container.decode(Bool.self, forKey: .isRestoreAvailable)
+            ctaTitle = try container.decode(String.self, forKey: .ctaTitle)
+            isRefreshing = try container.decode(Bool.self, forKey: .isRefreshing)
+        }
     }
 
     struct Preferences: Codable {
@@ -72,6 +170,28 @@ struct SettingsFixtureSeed: Codable {
         let selectedReviewMode: String
         let autoSyncEnabled: Bool
         let showAutoSync: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case selectedLanguage
+            case selectedAppearance
+            case translationSource
+            case translationTarget
+            case selectedReviewMode
+            case autoSyncEnabled
+            case showAutoSync
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings preferences")
+            selectedLanguage = try container.decode(String.self, forKey: .selectedLanguage)
+            selectedAppearance = try container.decode(String.self, forKey: .selectedAppearance)
+            translationSource = try container.decode(String.self, forKey: .translationSource)
+            translationTarget = try container.decode(String.self, forKey: .translationTarget)
+            selectedReviewMode = try container.decode(String.self, forKey: .selectedReviewMode)
+            autoSyncEnabled = try container.decode(Bool.self, forKey: .autoSyncEnabled)
+            showAutoSync = try container.decode(Bool.self, forKey: .showAutoSync)
+        }
     }
 
     struct Review: Codable {
@@ -85,21 +205,85 @@ struct SettingsFixtureSeed: Codable {
         let progressPausedAt: Date?
         let autoplaySpeed: String
         let autoplaySoundEnabled: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case mode
+            case customInitialIntervalHours
+            case customRememberedMultiplier
+            case customForgotMultiplier
+            case customMinimumIntervalHours
+            case customMaximumIntervalHours
+            case isProgressPaused
+            case progressPausedAt
+            case autoplaySpeed
+            case autoplaySoundEnabled
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings reviewSettings")
+            mode = try container.decode(String.self, forKey: .mode)
+            customInitialIntervalHours = try container.decode(Double.self, forKey: .customInitialIntervalHours)
+            customRememberedMultiplier = try container.decode(Double.self, forKey: .customRememberedMultiplier)
+            customForgotMultiplier = try container.decode(Double.self, forKey: .customForgotMultiplier)
+            customMinimumIntervalHours = try container.decode(Double.self, forKey: .customMinimumIntervalHours)
+            customMaximumIntervalHours = try container.decode(Double.self, forKey: .customMaximumIntervalHours)
+            isProgressPaused = try container.decode(Bool.self, forKey: .isProgressPaused)
+            progressPausedAt = try container.decodeIfPresent(Date.self, forKey: .progressPausedAt)
+            autoplaySpeed = try container.decode(String.self, forKey: .autoplaySpeed)
+            autoplaySoundEnabled = try container.decode(Bool.self, forKey: .autoplaySoundEnabled)
+        }
     }
 
     struct SyncSummary: Codable {
         let isConnected: Bool
         let isSyncing: Bool
         let summaryText: String
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case isConnected
+            case isSyncing
+            case summaryText
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings syncSummary")
+            isConnected = try container.decode(Bool.self, forKey: .isConnected)
+            isSyncing = try container.decode(Bool.self, forKey: .isSyncing)
+            summaryText = try container.decode(String.self, forKey: .summaryText)
+        }
     }
 
     struct About: Codable {
         let version: String
         let developerName: String
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case version
+            case developerName
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings about")
+            version = try container.decode(String.self, forKey: .version)
+            developerName = try container.decode(String.self, forKey: .developerName)
+        }
     }
 
     struct Danger: Codable {
         let isDeletingAccount: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case isDeletingAccount
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings danger")
+            isDeletingAccount = try container.decode(Bool.self, forKey: .isDeletingAccount)
+        }
     }
 
     struct BookSync: Codable {
@@ -112,22 +296,78 @@ struct SettingsFixtureSeed: Codable {
         let text: String
         let detail: String?
         let tone: Tone
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case text
+            case detail
+            case tone
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings bookSync")
+            text = try container.decode(String.self, forKey: .text)
+            detail = try container.decodeIfPresent(String.self, forKey: .detail)
+            tone = try container.decode(Tone.self, forKey: .tone)
+        }
     }
 
     let auth: Auth
     let preferences: Preferences
-    // var + default：UI World-owned review settings slice, optional for settings seeds
-    // that do not render SettingsReviewSection.
-    var reviewSettings: Review? = nil
+    let reviewSettings: Review?
     let kg: KG?
     let subscription: Subscription?
     let syncSummary: SyncSummary?
-    // var + default：讓既有 seed 建構處免改（同 SettingsPresenterState.bookSync）。
-    var bookSync: BookSync? = nil
+    let bookSync: BookSync?
     let about: About
     let danger: Danger?
     let manualLoginUserId: String?
     let debugLocalServerURL: String?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case auth
+        case preferences
+        case reviewSettings
+        case kg
+        case subscription
+        case syncSummary
+        case bookSync
+        case about
+        case danger
+        case manualLoginUserId
+        case debugLocalServerURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try Self.requireAllKeys(in: container, context: "UI World settings seed")
+        auth = try container.decode(Auth.self, forKey: .auth)
+        preferences = try container.decode(Preferences.self, forKey: .preferences)
+        reviewSettings = try container.decodeIfPresent(Review.self, forKey: .reviewSettings)
+        kg = try container.decodeIfPresent(KG.self, forKey: .kg)
+        subscription = try container.decodeIfPresent(Subscription.self, forKey: .subscription)
+        syncSummary = try container.decodeIfPresent(SyncSummary.self, forKey: .syncSummary)
+        bookSync = try container.decodeIfPresent(BookSync.self, forKey: .bookSync)
+        about = try container.decode(About.self, forKey: .about)
+        danger = try container.decodeIfPresent(Danger.self, forKey: .danger)
+        manualLoginUserId = try container.decodeIfPresent(String.self, forKey: .manualLoginUserId)
+        debugLocalServerURL = try container.decodeIfPresent(String.self, forKey: .debugLocalServerURL)
+    }
+
+    private static func requireAllKeys<C: KeyedDecodingContainerProtocol>(
+        in container: C,
+        context: String
+    ) throws where C.Key: CaseIterable & RawRepresentable, C.Key.RawValue == String {
+        for key in C.Key.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "\(context) must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
+    }
 }
 
 struct SettingsFixtureRenderModel {
