@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 1975dddc
+verified_against: 2065590a
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -131,6 +131,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Sync View 契約（無本地 pending row / auth fixture）
 `SyncViewScenarios` 的 mixed / single / empty 狀態必須取 UI World `vocabulary.syncPendingMixed` / `vocabulary.syncPendingSingle` / `vocabulary.syncEmpty` seed，登入狀態必須取 UI World `auth.guest` seed。scenario 必須把 manifest 的 `Notebook` + `VocabularyEntry` rows materialize 進 in-memory SwiftData，並保留 `syncStatus` / `actionType` 作為 pending add/delete/empty 的唯一依據；empty 也必須是 manifest 內明示 seed，不可用本地 `return` 表示。缺 seed、auth 非 logged-out、row shape drift、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.syncViewCatalogUsesUIWorldVocabularyAndAuthSeeds` 擋回本地 pending row builder、inline `VocabularyEntry(...)`、hardcoded book metadata、hardcoded logged-out auth 與 silent save。
+
+### Sync Presenter 契約（無本地 presenter state fixture）
+`SyncScenarios` 的 ready / running / completed / failed(partial/full) 狀態必須取 UI World `syncPresenter.*` seed。`syncPresenter` seed 必須明示 `isLoggedIn`、`isConnected`、`phase`、`failureKind`、`pendingCount`、`addCount`、`deleteCount`、`steps`、`summaryText`、`pendingRows`；pending/add/delete counts 必須一致，ready 狀態的 pendingRows 數量必須等於 pendingCount。每個 step 必須明示 id/label/status/current/total/detail；每個 pending row 必須明示 id/word/partOfSpeech/translation/wordTone/isStrikethrough/actionSystemImage/actionTone/actionAccessibilityLabel。未知 phase/failureKind/step status/tone、缺 seed、缺 key、UUID 格式錯誤或 count drift 都直接 fail-fast。Catalog 不得保留本地 `readyState` / `runningState` / `completedState` / failure state、hardcoded pending words、hardcoded step labels 或 failure summary。`CatalogCoverageTests.syncPresenterCatalogUsesUIWorldSyncPresenterSeeds` 與 `RepoFixtureDatasetsContractTests.expectSyncPresenterKeys` 擋回退。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
