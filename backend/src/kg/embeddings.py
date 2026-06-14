@@ -513,8 +513,24 @@ class EmbeddingStore:
         query_norm = norms[idx]
         similarities = (self._embeddings @ query_vec) / (norms * query_norm + _COSINE_EPS)
 
-        # Get top k+1 (including self), then filter
-        top_indices = np.argsort(similarities)[::-1][: k + 1]
+        # Top (k+1) selection (the +1 absorbs self, filtered out below).
+        # np.argpartition is O(N) vs argsort's O(N log N): for a 10k-row store
+        # the full sort is the dominant cost of judge enrichment. We argpartition
+        # to a candidate pool, then argsort *only that pool* — reproducing
+        # argsort's exact descending order (ties included) on the slice that
+        # matters, so the result is identical to a full sort, just cheaper.
+        n = similarities.shape[0]
+        want = k + 1  # include self; dropped after
+        if want >= n:
+            # Pool would be the whole array — partition buys nothing; sort all.
+            top_indices = np.argsort(similarities)[::-1]
+        else:
+            # kth picks the (n-want)-th smallest as the partition boundary, so
+            # the trailing `want` positions hold the largest `want` values
+            # (unordered). Sort just those, descending, to recover full order.
+            cand = np.argpartition(similarities, n - want)[-want:]
+            cand = cand[np.argsort(similarities[cand])[::-1]]
+            top_indices = cand
         results = []
         for i in top_indices:
             if self._ids[i] != card_id:
