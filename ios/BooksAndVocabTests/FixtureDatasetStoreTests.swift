@@ -17,6 +17,7 @@ struct FixtureDatasetStoreTests {
               "isLoggedIn": true,
               "userId": "world-user",
               "token": "world-token",
+              "keychainTokenState": "available",
               "displayName": "World User",
               "email": "world@example.com",
               "provider": "apple",
@@ -26,6 +27,7 @@ struct FixtureDatasetStoreTests {
               "isLoggedIn": false,
               "userId": null,
               "token": null,
+              "keychainTokenState": "absent",
               "displayName": null,
               "email": null,
               "provider": null,
@@ -59,12 +61,14 @@ struct FixtureDatasetStoreTests {
             #expect(auth.isLoggedIn == true)
             #expect(auth.userId == "world-user")
             #expect(auth.token == "world-token")
+            #expect(auth.keychainTokenState == .available)
             #expect(auth.displayName == "World User")
             #expect(auth.email == "world@example.com")
 
             let guest = try #require(FixtureDatasetStore.authSeed(for: .guest))
             #expect(guest.isLoggedIn == false)
             #expect(guest.userId == nil)
+            #expect(guest.keychainTokenState == .absent)
 
             let entitlements = try #require(FixtureDatasetStore.entitlementsSeed(for: .pro))
             #expect(entitlements.pro.is_active == true)
@@ -74,6 +78,79 @@ struct FixtureDatasetStoreTests {
             #expect(subscriptionManager.entitlements.pro.is_active == true)
             #expect(subscriptionManager.entitlements.pro.plan_name == "Books & Vocab Pro")
             #expect(subscriptionManager.entitlements.pro.last_synced_at == "2026-06-10T00:00:00Z")
+        }
+    }
+
+    @Test @MainActor func externalDatasetCanDeclareLockedKeychainSession() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-locked-keychain",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "locked-user",
+              "token": null,
+              "keychainTokenState": "readFailed",
+              "displayName": "Locked User",
+              "email": "locked@example.com",
+              "provider": "apple",
+              "providerUserId": "apple:locked-user"
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            let auth = try #require(FixtureDatasetStore.authSeed(for: .signedIn))
+            #expect(auth.isLoggedIn == true)
+            #expect(auth.userId == "locked-user")
+            #expect(auth.token == nil)
+            #expect(auth.keychainTokenState == .readFailed)
+        }
+    }
+
+    @Test @MainActor func lockedKeychainAuthSeedRestoresPendingSessionState() throws {
+        let auth = AuthManager.shared
+        let previous = PersistedAuthSession(
+            userId: auth.userId,
+            displayName: auth.displayName,
+            userEmail: auth.userEmail,
+            avatarURL: auth.avatarURL,
+            token: auth.token,
+            keychainReadFailed: auth.keychainReadPending
+        )
+        defer {
+            auth.applyUITestPersistedSession(previous)
+        }
+
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-locked-keychain-seed",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "locked-user",
+              "token": null,
+              "keychainTokenState": "readFailed",
+              "displayName": "Locked User",
+              "email": "locked@example.com",
+              "provider": "apple",
+              "providerUserId": "apple:locked-user"
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            UITestFixtureSeed.seedSignedInLoginFromWorld()
+            #expect(auth.isLoggedIn == true)
+            #expect(auth.userId == "locked-user")
+            #expect(auth.token == nil)
+            #expect(auth.keychainReadPending == true)
+            #expect(auth.displayName == "Locked User")
+            #expect(auth.userEmail == "locked@example.com")
         }
     }
 

@@ -227,9 +227,16 @@ enum UIWorldAuthFixtureID: String, CaseIterable {
 }
 
 struct UIWorldAuthSeed: Codable, Equatable {
+    enum KeychainTokenState: String, Codable {
+        case available
+        case readFailed
+        case absent
+    }
+
     let isLoggedIn: Bool
     let userId: String?
     let token: String?
+    let keychainTokenState: KeychainTokenState
     let displayName: String?
     let email: String?
     let provider: String?
