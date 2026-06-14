@@ -148,6 +148,36 @@
         "source": "app_store",
         "last_synced_at": "2026-06-10T00:00:00Z"
       }
+    },
+    "cancelledButActive": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": false,
+        "expires_at": "2026-06-20T08:00:00Z",
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "adminGranted": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": null,
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": true,
+        "expires_at": null,
+        "source": "admin",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
     }
   },
   "settings": {

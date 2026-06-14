@@ -106,6 +106,26 @@ import Playbook
         }
     }
 
+    @Test func paywallCatalogDoesNotDeclareLocalSubscriptionStatusFixtures() throws {
+        let paywallScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("PaywallScenarios.swift")
+        let source = try String(contentsOf: paywallScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("KGSubscriptionStatus(", "Paywall catalog subscription status must come from UI World entitlements"),
+            ("makeStatus", "Paywall catalog must not keep a local subscription status factory"),
+            ("source: \"admin\"", "admin entitlement state belongs in UI World, not Debug source"),
+            ("last_synced_at:", "subscription sync timestamp belongs in UI World, not Debug source"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(paywallScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireEntitlementsSeed"),
+            "Paywall catalog must fail fast through UI World entitlement seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.
