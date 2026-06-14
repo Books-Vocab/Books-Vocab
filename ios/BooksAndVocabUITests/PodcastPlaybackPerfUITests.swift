@@ -13,11 +13,6 @@ final class PodcastPlaybackPerfUITests: UITestCase {
     func testPodcastPlaybackProbeSustainsRealAudioPlayback() throws {
         let app = launchIsolatedApp(
             fixtures: [.podcastPlayablePreview],
-            extraEnvironment: PodcastFixture.assetEnvironment.merging([
-                "KG_UI_TEST_PODCAST_SERIES_TITLE": "Atomic Habits",
-                "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
-                "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
-            ]) { _, new in new },
             perfLog: "audio,scroll,underline,layout,render"
         )
         captureStep("launch", app: app)
@@ -83,8 +78,8 @@ final class PodcastPlaybackPerfUITests: UITestCase {
         captureStep("playback-sustained", app: app)
         attachText(
             """
-            fixtureAudio=\(PodcastFixture.root)/ep_1_flash.m4a
-            fixtureSubtitle=\(PodcastFixture.root)/ep_1_flash.srt
+            fixtureDataset=marketing_demo
+            runtimePodcast=playablePreview
             initialElapsed=\(initialElapsed)
             latestElapsed=\(latestElapsed)
             elapsedAdvance=\(latestElapsed - initialElapsed)

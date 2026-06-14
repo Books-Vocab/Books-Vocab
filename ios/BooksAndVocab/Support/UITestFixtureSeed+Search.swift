@@ -29,28 +29,13 @@ extension UITestFixtureSeed {
 
     @MainActor
     private static func seedSearchVocabNotebook(into container: ModelContainer) {
-        let notebookId = "ui-search-notebook"
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: .searchVocabNotebook)
+        let notebookId = seed.notebookRemoteId
         let context = container.mainContext
         do {
             try clearSearchFixtures(from: context, notebookId: notebookId)
 
-            let notebook = Notebook(remoteId: notebookId, name: "Search Flow Vocab")
-            notebook.syncStatus = 1
-            context.insert(notebook)
-
-            // Real curated learning content (same provider the demo account
-            // ships), re-scoped to the search notebook so the notebook-scoped
-            // knowledge list renders exactly this deterministic word set.
-            DemoDataProvider.injectDemoEntries(into: container)
-            let entries = try context.fetch(
-                FetchDescriptor<VocabularyEntry>(
-                    predicate: #Predicate { $0.isDemoEntry == true }
-                )
-            )
-            for entry in entries {
-                entry.notebookId = notebookId
-            }
-            try context.save()
+            let entries = try insertVocabularySeed(seed, into: context)
 
             // The search field is gated on a logged-in session. Only log in
             // when no earlier fixture already did, so combining fixtures never
@@ -73,7 +58,7 @@ extension UITestFixtureSeed {
             context.delete(notebook)
         }
         for entry in try context.fetch(
-            FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.isDemoEntry == true })
+            FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.notebookId == notebookId })
         ) {
             context.delete(entry)
         }

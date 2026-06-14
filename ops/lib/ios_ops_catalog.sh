@@ -1188,14 +1188,18 @@ cmd_catalog_snapshots() {
   fi
   if [[ -n "$dataset_name" && -n "$dataset_path" ]]; then
     echo "✗ choose either --dataset or --dataset-file" >&2
-    return 1
+    return 64
   fi
   if [[ -n "$dataset_name" ]]; then
     dataset_path="$(catalog_named_dataset_path "$dataset_name")"
   fi
+  if [[ -z "$dataset_path" ]]; then
+    echo "✗ catalog snapshots requires --dataset <name> or --dataset-file <path> (UI World SoT)" >&2
+    return 64
+  fi
   if [[ -n "$dataset_path" && ! -f "$dataset_path" ]]; then
     echo "✗ dataset file not found: $dataset_path" >&2
-    return 1
+    return 64
   fi
 
   local persist_workspace_artifact=0

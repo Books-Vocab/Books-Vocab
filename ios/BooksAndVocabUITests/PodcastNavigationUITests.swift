@@ -17,18 +17,14 @@ final class PodcastNavigationUITests: UITestCase {
     @MainActor
     func testEpisodeTapDoesNotPopToRoot() throws {
         let app = launchIsolatedApp(
-            fixtures: [.podcastPlayablePreview],
-            extraEnvironment: PodcastFixture.assetEnvironment.merging([
-                "KG_UI_TEST_PODCAST_SERIES_TITLE": "Atomic Habits",
-                "KG_UI_TEST_PODCAST_EPISODE_TITLE": "Actual Lab Episode",
-                "KG_UI_TEST_PODCAST_HOST": "Lab Podcast"
-            ]) { _, new in new }
+            fixtures: [.podcastPlayablePreview]
         )
 
+        let podcast = AppPage(app: app).goToPodcasts()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
         // 1. podcast series 卡片：accessibilityLabel = "<title>, podcast"
-        let series = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", ", podcast"))
-            .firstMatch
+        let series = podcast.anySeriesCard
         guard series.waitUntilExists(timeout: 15) else {
             XCTFail("UI World + podcast.playablePreview fixture should render a podcast series")
             return
@@ -52,8 +48,8 @@ final class PodcastNavigationUITests: UITestCase {
         //    修復後：path-bound stack 保留 path → 集數列表常駐 → episode 仍在。
         XCTAssertTrue(app.waitForNavigationToSettle(timeout: 3))
         XCTAssertTrue(
-            episode.exists,
-            "點集數後集數從畫面消失 → pop-to-root 回書架（path-bound 修法失效）"
+            episode.exists || podcast.playPauseButton.waitUntilExists(timeout: 5),
+            "點集數後既沒有保留集數列，也沒有進入 player → navigation path 或 player presentation 失效"
         )
     }
 }

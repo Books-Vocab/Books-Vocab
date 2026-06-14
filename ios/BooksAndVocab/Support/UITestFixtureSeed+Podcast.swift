@@ -19,40 +19,42 @@ extension UITestFixtureSeed {
         do {
             try clearPodcastFixtures(from: context)
 
-            let fixture = try resolvePlayablePodcastFixture()
+            let fixture = try resolvePlayablePodcastFixture(.playablePreview)
             let audioURL = try copyFixtureFileToTemporaryDirectory(
                 source: fixture.audioURL,
                 fileName: "kg-uitest-\(fixture.audioURL.lastPathComponent)"
             )
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
             let series = PodcastSeries(
-                remoteId: "ui-playable-series",
+                remoteId: fixture.seed.seriesRemoteId,
                 title: fixture.seriesTitle,
                 hostNames: fixture.hostNames
             )
-            series.color = "sunset"
-            series.coverPattern = "waves"
-            series.episodeCount = 1
+            series.color = fixture.seed.color
+            series.coverPattern = fixture.seed.coverPattern
+            series.episodeCount = fixture.seed.episodes.count
             series.totalDurationSec = fixture.durationSec
-            series.sortOrder = -10_000
+            series.sortOrder = fixture.seed.sortOrder ?? 0
             series.isFollowed = false
 
-            let episode = PodcastEpisode(
-                remoteId: "ui-playable-series_ep_01",
-                episodeNumber: 1,
-                title: fixture.episodeTitle,
-                durationSec: fixture.durationSec
-            )
-            episode.series = series
-            episode.audioAvailable = true
-            episode.previewAvailable = true
-            episode.previewDurationSec = min(fixture.durationSec, 180)
-            episode.localAudioPath = audioURL.path
-            episode.subtitleAvailable = true
-            episode.inlineSubtitle = subtitle
+            for episodeSeed in fixture.seed.episodes {
+                let episode = PodcastEpisode(
+                    remoteId: episodeSeed.remoteId,
+                    episodeNumber: episodeSeed.episodeNumber,
+                    title: episodeSeed.title,
+                    durationSec: episodeSeed.durationSec ?? fixture.durationSec
+                )
+                episode.series = series
+                episode.audioAvailable = episodeSeed.audioAvailable
+                episode.previewAvailable = episodeSeed.previewAvailable
+                episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
+                episode.localAudioPath = audioURL.path
+                episode.subtitleAvailable = episodeSeed.subtitleAvailable
+                episode.inlineSubtitle = subtitle
+                context.insert(episode)
+            }
 
             context.insert(series)
-            context.insert(episode)
             try context.save()
             seedSignedInLoginFromWorld()
             AppLog.app.info("UI-test fixture seeded: podcast.playablePreview")
@@ -62,11 +64,11 @@ extension UITestFixtureSeed {
     }
 
     private struct PlayablePodcastFixture {
+        let seed: UIWorldRuntimePodcastSeed
         let audioURL: URL
         let subtitleURL: URL
         let durationSec: Double
         let seriesTitle: String
-        let episodeTitle: String
         let hostNames: [String]
     }
 
@@ -84,15 +86,10 @@ extension UITestFixtureSeed {
         try context.save()
     }
 
-    private static func resolvePlayablePodcastFixture() throws -> PlayablePodcastFixture {
-        let env = ProcessInfo.processInfo.environment
-        let audioPath = env["KG_UI_TEST_PODCAST_AUDIO"]
-            ?? "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a"
-        let subtitlePath = env["KG_UI_TEST_PODCAST_SUBTITLE"]
-            ?? "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt"
-        let durationSec = env["KG_UI_TEST_PODCAST_DURATION"].flatMap(Double.init) ?? 1_034.6
-        let audioURL = URL(fileURLWithPath: audioPath)
-        let subtitleURL = URL(fileURLWithPath: subtitlePath)
+    private static func resolvePlayablePodcastFixture(_ fixtureID: UIWorldRuntimePodcastFixtureID) throws -> PlayablePodcastFixture {
+        let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)
+        let audioURL = URL(fileURLWithPath: seed.audioPath)
+        let subtitleURL = URL(fileURLWithPath: seed.subtitlePath)
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: audioURL.path])
         }
@@ -100,12 +97,12 @@ extension UITestFixtureSeed {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: subtitleURL.path])
         }
         return PlayablePodcastFixture(
+            seed: seed,
             audioURL: audioURL,
             subtitleURL: subtitleURL,
-            durationSec: durationSec,
-            seriesTitle: env["KG_UI_TEST_PODCAST_SERIES_TITLE"] ?? "Atomic Habits",
-            episodeTitle: env["KG_UI_TEST_PODCAST_EPISODE_TITLE"] ?? "Actual Lab Episode",
-            hostNames: [env["KG_UI_TEST_PODCAST_HOST"] ?? "Lab Podcast"]
+            durationSec: seed.durationSec,
+            seriesTitle: seed.seriesTitle,
+            hostNames: seed.hostNames
         )
     }
 

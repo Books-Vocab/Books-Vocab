@@ -8,7 +8,7 @@
 //
 //  Fixture: `-seedFixture:notebook:reviewDeck` — a real notebook scoped over
 //  the deterministic review probe deck (reuses the existing
-//  `makeReviewProbeDeck` builder; real-shaped entries, no mock rows).
+//  UI World reviewDeck seed; real-shaped entries, no mock rows).
 //
 //  Core behaviors asserted as STATE CHANGES, not taps:
 //    - flip: back content really mounts, and its translation pairs with the
