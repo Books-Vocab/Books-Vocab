@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,6 +18,11 @@ from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
 
 logger = logging.getLogger("kg.admin_handlers")
+
+
+class MemLogGetter(Protocol):
+    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
+        ...
 
 
 def admin_stats_response(
@@ -232,7 +237,7 @@ def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, An
 
 def admin_logs_response(
     *,
-    log_getter: Callable[..., list[dict[str, Any]]],
+    log_getter: MemLogGetter,
     n: int,
     level: str | None,
 ) -> dict[str, Any]:
