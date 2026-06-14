@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from .api_models import (
     CardLinkSummaryResponse,
@@ -21,13 +21,73 @@ MAX_BATCH_SIZE = 500
 MAX_WORD_LENGTH = 200
 
 
+class VocabCard(Protocol):
+    id: str
+    content: str
+    meaning: str | None
+    pos: str | None
+    difficulty: int | None
+    note: str | None
+    collocations: list[str]
+    examples: list[str]
+    mode: str
+    is_deleted: bool
+    is_archived: bool
+    inflections: list[str]
+    source: str | None
+    updated_at: datetime
+    review_interval_hours: int
+    next_review_at: datetime | None
+    last_reviewed_at: datetime | None
+    review_count: int
+    lapse_count: int
+    review_streak: int
+    last_review_feedback: str | None
+    notebook_id: str
+
+
+class VocabGraph(Protocol):
+    def get_links_for(self, card_id: str) -> object:
+        ...
+
+
+class LinkKind(Protocol):
+    value: str
+
+
+class Link(Protocol):
+    to_id: str
+    from_id: str
+    kind: LinkKind
+    id: str
+    confidence: float | None
+    reason: str | None
+    status: str
+
+
+class Tier(Protocol):
+    tag: str
+
+
+class TierGetter(Protocol):
+    def __call__(self, word: str) -> Tier:
+        ...
+
+
+class CardResponseBuilder(Protocol):
+    def __call__(
+        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
+    ) -> CardResponse:
+        ...
+
+
 def _normalize_word(word: str) -> str:
     return normalize_nfc_lower(word)
 
 
-def _build_content_lookup(cards_store: Any, notebook_id: str | None = None) -> dict[str, Any]:
+def _build_content_lookup(cards_store: Any, notebook_id: str | None = None) -> dict[str, VocabCard]:
     """Build a normalized-content → card dict from all active cards. O(N) single pass."""
-    lookup: dict[str, Any] = {}
+    lookup: dict[str, VocabCard] = {}
     for card in cards_store.all(include_deleted=False, notebook_id=notebook_id):
         key = _normalize_word(card.content)
         if key not in lookup:  # first match wins (same as find_by_content)
@@ -63,7 +123,14 @@ def _dt_to_iso(dt: datetime | None) -> str | None:
     return s
 
 
-def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any], link_kinds: list[Any], link_labels: dict[Any, str]) -> dict[str, list[CardLinkSummaryResponse]]:
+def build_links_by_kind(
+    card_id: str,
+    *,
+    graph: VocabGraph,
+    cards_by_id: dict[str, VocabCard],
+    link_kinds: list[LinkKind],
+    link_labels: dict[LinkKind, str],
+) -> dict[str, list[CardLinkSummaryResponse]]:
     grouped: dict[str, list[CardLinkSummaryResponse]] = {}
 
     for link in graph.get_links_for(card_id):
@@ -95,7 +162,15 @@ def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any]
     return ordered
 
 
-def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_getter: Callable[[str], Any], link_kinds: list[Any], link_labels: dict[Any, str]) -> CardResponse:
+def card_response(
+    card: VocabCard,
+    *,
+    graph: VocabGraph,
+    cards_by_id: dict[str, VocabCard],
+    tier_getter: TierGetter,
+    link_kinds: list[LinkKind],
+    link_labels: dict[LinkKind, str],
+) -> CardResponse:
     tier = tier_getter(card.content)
     links_by_kind = {}
     if not card.is_deleted:

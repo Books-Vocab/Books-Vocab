@@ -23,6 +23,11 @@ class VerifySignedJWS(Protocol):
         ...
 
 
+class ParseTimestamp(Protocol):
+    def __call__(self, value: object) -> datetime | None:
+        ...
+
+
 def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
     """Map an App Store Server Notification V2 type to a subscription status.
 
@@ -50,7 +55,7 @@ def notification_status(notification_type: str | None, subtype: str | None) -> s
     return None
 
 
-def normalize_ms_timestamp(raw: Any, parse_datetime_fn: Callable[[Any], datetime | None]) -> str | None:
+def normalize_ms_timestamp(raw: Any, parse_datetime_fn: ParseTimestamp) -> str | None:
     if raw is None:
         return None
     try:
@@ -73,7 +78,7 @@ def bool_from_any(raw: Any, default: bool = False) -> bool:
 
 def status_from_transaction_payload(
     payload: dict[str, Any],
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     renewal_payload: dict[str, Any] | None = None,
 ) -> str:
     if payload.get("revocationDate"):
@@ -96,7 +101,7 @@ def status_from_transaction_payload(
 def verified_transaction_snapshot(
     payload: dict[str, Any],
     *,
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     renewal_payload: dict[str, Any] | None = None,
     price_display: str | None = None,
 ) -> dict[str, Any]:
@@ -129,7 +134,7 @@ def decode_signed_transaction_info(
     signed_transaction_info: str,
     *,
     bundle_id: str,
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     verify_signed_jws: VerifySignedJWS,
 ) -> dict[str, Any]:
     verified = verify_signed_jws(signed_transaction_info, bundle_id=bundle_id)
@@ -141,7 +146,7 @@ def decode_notification_payload(
     *,
     bundle_id: str,
     allow_unsigned_notifications: bool,
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     verify_signed_jws: VerifySignedJWS,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not req.signed_payload:

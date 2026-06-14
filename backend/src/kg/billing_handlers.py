@@ -29,7 +29,7 @@ type EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsRespo
 class FetchTransactionInfo(Protocol):
     def __call__(self, transaction_id: str, *, bundle_id: str, environment: str | None = None) -> Awaitable[dict[str, Any]]:
         ...
-type AppendAppStoreEvent = Callable[[dict[str, Any]], None]
+type AppendAppStoreEvent = Callable[[dict[str, object]], None]
 
 
 class SubscriptionSnapshotWriter(Protocol):

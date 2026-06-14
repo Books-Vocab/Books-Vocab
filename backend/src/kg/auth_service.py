@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import jwt
 from filelock import FileLock
+
+from .types import UsersPayload
 
 
 def create_jwt_token(
@@ -41,8 +42,8 @@ def resolve_and_link_user(
     provider: str,
     *,
     users_lock_file: str,
-    load_users_fn: Callable[[], dict[str, Any]],
-    save_users_fn: Callable[[dict[str, Any]], None],
+    load_users_fn: Callable[[], UsersPayload],
+    save_users_fn: Callable[[UsersPayload], None],
     email: str | None = None,
 ) -> str:
     with FileLock(users_lock_file):
