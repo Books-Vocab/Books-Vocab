@@ -32,6 +32,7 @@ struct FixtureDatasetStoreTests {
             "reader",
             "vocabulary",
             "reviewDeck",
+            "syncPresenter",
         ] where object[key] == nil {
             object[key] = [:]
         }

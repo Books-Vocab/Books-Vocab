@@ -76,7 +76,8 @@ struct UITestFixtureSeedIsolationTests {
                   "notebookSyncStatus": 1,
                   "entries": [\(entries)]
                 }
-              }
+              },
+              "syncPresenter": {}
             }
             """.utf8
         )

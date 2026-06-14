@@ -5,38 +5,39 @@ import SwiftUI
 /// Catalog scenarios for `SyncPresenter` — the vocabulary sync overlay.
 ///
 /// 故意完全不接 `SyncCoordinator`（其 init 為 @MainActor 且會跑真實 pipeline）。
-/// 直接餵合成的 `SyncPresenterState` 覆蓋四個 `SyncPhase` 與 `SyncFailureKind`，
-/// 讓 ready / running / completed / failed(.partial) 都有永久視覺基準。
+/// `SyncPresenterState` 由 UI World `syncPresenter.*` seed 物化，讓 ready /
+/// running / completed / failed(.partial/full) 狀態與 pending rows / steps 同源。
 /// `SyncPresenter` 用到 `.navigationTitle` / `.toolbar` / `dismiss`，故每個 scenario
 /// 包一層 NavigationStack 提供導覽容器。
 enum SyncScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Sync") {
             Scenario("Ready · pending rows", layout: .fill) {
-                presenter(state: Self.readyState)
+                presenter(fixtureID: .ready)
             }
             Scenario("Running · steps in flight", layout: .fill) {
-                presenter(state: Self.runningState)
+                presenter(fixtureID: .running)
             }
             Scenario("Completed", layout: .fill) {
-                presenter(state: Self.completedState)
+                presenter(fixtureID: .completed)
             }
             Scenario("Failed · partial", layout: .fill) {
-                presenter(state: Self.partialFailureState)
+                presenter(fixtureID: .partialFailure)
             }
             Scenario("Failed · full error", layout: .fill) {
-                presenter(state: Self.fullFailureState)
+                presenter(fixtureID: .fullFailure)
             }
         }
     }
 
     // MARK: - Presenter wrapper
 
-    private static func presenter(state: SyncPresenterState) -> some View {
-        AppThemeContainer {
+    private static func presenter(fixtureID: UIWorldSyncPresenterFixtureID) -> some View {
+        let seed = FixtureDatasetStore.requireSyncPresenterSeed(for: fixtureID)
+        return AppThemeContainer {
             NavigationStack {
                 SyncPresenter(
-                    state: state,
+                    state: state(from: seed, fixtureID: fixtureID),
                     onPrimaryAction: {},
                     onCancel: {},
                     onShowSettings: {},
@@ -48,131 +49,52 @@ enum SyncScenarios {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // MARK: - States
+    // MARK: - Materialization
 
-    private static var readyState: SyncPresenterState {
-        SyncPresenterState(
-            isLoggedIn: true,
-            isConnected: true,
-            phase: .ready,
-            failureKind: nil,
-            pendingCount: 3,
-            addCount: 2,
-            deleteCount: 1,
-            steps: [],
-            summaryText: "",
-            pendingRows: [
-                pendingRow(word: "ineffable", pos: "adj.", translation: "難以言喻的", action: .add),
-                pendingRow(word: "ephemeral", pos: "adj.", translation: "短暫的", action: .add),
-                pendingRow(word: "obsolete", pos: "adj.", translation: "過時的", action: .delete)
-            ]
+    private static func state(
+        from seed: UIWorldSyncPresenterSeed,
+        fixtureID: UIWorldSyncPresenterFixtureID
+    ) -> SyncPresenterState {
+        precondition(
+            seed.pendingCount == seed.addCount + seed.deleteCount,
+            "UI World syncPresenter.\(fixtureID.rawValue) pendingCount must equal addCount + deleteCount"
         )
-    }
-
-    private static var runningState: SyncPresenterState {
-        SyncPresenterState(
-            isLoggedIn: true,
-            isConnected: true,
-            phase: .running,
-            failureKind: nil,
-            pendingCount: 3,
-            addCount: 2,
-            deleteCount: 1,
-            steps: [
-                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
-                step(id: "upload_add", label: "上傳新單字", status: .running, current: 1, total: 2),
-                step(id: "trigger", label: "觸發背景 AI 處理", status: .waiting),
-                step(id: "push_review", label: "上傳複習進度", status: .waiting),
-                step(id: "pull", label: "下載單字至本地", status: .waiting)
-            ],
-            summaryText: ""
+        if seed.phase == "ready" {
+            precondition(
+                seed.pendingRows.count == seed.pendingCount,
+                "UI World syncPresenter.\(fixtureID.rawValue) ready pendingRows must equal pendingCount"
+            )
+        }
+        return SyncPresenterState(
+            isLoggedIn: seed.isLoggedIn,
+            isConnected: seed.isConnected,
+            phase: phase(seed.phase, fixtureID: fixtureID),
+            failureKind: seed.failureKind.map { failureKind($0, fixtureID: fixtureID) },
+            pendingCount: seed.pendingCount,
+            addCount: seed.addCount,
+            deleteCount: seed.deleteCount,
+            steps: seed.steps.map { step($0, fixtureID: fixtureID) },
+            summaryText: seed.summaryText,
+            pendingRows: seed.pendingRows.map { pendingRow($0, fixtureID: fixtureID) }
         )
-    }
-
-    private static var completedState: SyncPresenterState {
-        SyncPresenterState(
-            isLoggedIn: true,
-            isConnected: true,
-            phase: .completed,
-            failureKind: nil,
-            pendingCount: 0,
-            addCount: 2,
-            deleteCount: 1,
-            steps: [
-                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
-                step(id: "upload_add", label: "上傳新單字", status: .done, current: 2, total: 2, detail: "2 新增, 0 已存在"),
-                step(id: "trigger", label: "觸發背景 AI 處理", status: .done, detail: "已交由伺服器背景處理"),
-                step(id: "push_review", label: "上傳複習進度", status: .done, detail: "已同步 5 筆複習紀錄"),
-                step(id: "pull", label: "下載單字至本地", status: .done, current: 1, total: 1, detail: "本地單字已建立完成")
-            ],
-            summaryText: ""
-        )
-    }
-
-    private static var partialFailureState: SyncPresenterState {
-        SyncPresenterState(
-            isLoggedIn: true,
-            isConnected: true,
-            phase: .failed,
-            failureKind: .partial,
-            pendingCount: 1,
-            addCount: 2,
-            deleteCount: 1,
-            steps: [
-                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .done, current: 1, total: 1, detail: "已刪除 1 個單字"),
-                step(id: "upload_add", label: "上傳新單字", status: .error, current: 1, total: 2, detail: "部分上傳失敗（1 筆）"),
-                step(id: "trigger", label: "觸發背景 AI 處理", status: .done, detail: "已交由伺服器背景處理"),
-                step(id: "push_review", label: "上傳複習進度", status: .done, detail: "已同步 5 筆複習紀錄"),
-                step(id: "pull", label: "下載單字至本地", status: .done, current: 1, total: 1, detail: "本地單字已建立完成")
-            ],
-            summaryText: "部分項目未成功同步，可直接再次重試。"
-        )
-    }
-
-    private static var fullFailureState: SyncPresenterState {
-        SyncPresenterState(
-            isLoggedIn: true,
-            isConnected: true,
-            phase: .failed,
-            failureKind: .full,
-            pendingCount: 3,
-            addCount: 2,
-            deleteCount: 1,
-            steps: [
-                step(id: "upload_delete", label: "刪除 Books & Vocab 單字", status: .running, current: 0, total: 1),
-                step(id: "upload_add", label: "上傳新單字", status: .waiting),
-                step(id: "trigger", label: "觸發背景 AI 處理", status: .waiting),
-                step(id: "push_review", label: "上傳複習進度", status: .waiting),
-                step(id: "pull", label: "下載單字至本地", status: .waiting)
-            ],
-            summaryText: "網路連線中斷，請稍後再試。"
-        )
-    }
-
-    // MARK: - Fixture helpers
-
-    private enum PendingAction {
-        case add
-        case delete
     }
 
     private static func pendingRow(
-        word: String,
-        pos: String,
-        translation: String,
-        action: PendingAction
+        _ seed: UIWorldSyncPresenterSeed.PendingRow,
+        fixtureID: UIWorldSyncPresenterFixtureID
     ) -> SyncPresenterState.RowItem {
-        let id = UUID()
-        let isDelete = action == .delete
+        guard let id = UUID(uuidString: seed.id) else {
+            preconditionFailure("UI World syncPresenter.\(fixtureID.rawValue) pending row id must be a UUID: \(seed.id)")
+        }
         return SyncPresenterState.RowItem(
             id: id,
             row: WordRow.ViewData(
                 id: id,
-                word: word,
-                wordTone: isDelete ? .destructive : .primary,
-                isStrikethrough: isDelete,
-                partOfSpeech: pos,
-                translation: translation,
+                word: seed.word,
+                wordTone: tone(seed.wordTone, fixtureID: fixtureID),
+                isStrikethrough: seed.isStrikethrough,
+                partOfSpeech: seed.partOfSpeech,
+                translation: seed.translation,
                 bookTitle: nil,
                 chapterTitle: nil,
                 difficultyTier: nil,
@@ -184,28 +106,64 @@ enum SyncScenarios {
                 statusText: nil,
                 statusTone: nil
             ),
-            actionSystemImage: isDelete ? "arrow.uturn.backward" : "minus.circle",
-            actionTone: isDelete ? .destructive : .secondary,
-            actionAccessibilityLabel: isDelete ? "復原刪除" : "移除待收錄"
+            actionSystemImage: seed.actionSystemImage,
+            actionTone: tone(seed.actionTone, fixtureID: fixtureID),
+            actionAccessibilityLabel: seed.actionAccessibilityLabel
         )
     }
 
-    private static func step(
-        id: String,
-        label: String,
-        status: PipelineStep.StepStatus,
-        current: Int = 0,
-        total: Int = 0,
-        detail: String = ""
-    ) -> PipelineStep {
+    private static func step(_ seed: UIWorldSyncPresenterSeed.Step, fixtureID: UIWorldSyncPresenterFixtureID) -> PipelineStep {
         PipelineStep(
-            id: id,
-            label: label,
-            status: status,
-            current: current,
-            total: total,
-            detail: detail
+            id: seed.id,
+            label: seed.label,
+            status: stepStatus(seed.status, fixtureID: fixtureID),
+            current: seed.current,
+            total: seed.total,
+            detail: seed.detail
         )
+    }
+
+    private static func phase(_ raw: String, fixtureID: UIWorldSyncPresenterFixtureID) -> SyncPhase {
+        switch raw {
+        case "ready": return .ready
+        case "running": return .running
+        case "completed": return .completed
+        case "failed": return .failed
+        default: preconditionFailure("UI World syncPresenter.\(fixtureID.rawValue) has unknown phase \(raw)")
+        }
+    }
+
+    private static func failureKind(_ raw: String, fixtureID: UIWorldSyncPresenterFixtureID) -> SyncFailureKind {
+        switch raw {
+        case "partial": return .partial
+        case "full": return .full
+        case "cancelled": return .cancelled
+        default: preconditionFailure("UI World syncPresenter.\(fixtureID.rawValue) has unknown failureKind \(raw)")
+        }
+    }
+
+    private static func stepStatus(_ raw: String, fixtureID: UIWorldSyncPresenterFixtureID) -> PipelineStep.StepStatus {
+        switch raw {
+        case "waiting": return .waiting
+        case "running": return .running
+        case "retry": return .retry
+        case "done": return .done
+        case "skipped": return .skipped
+        case "error": return .error
+        default: preconditionFailure("UI World syncPresenter.\(fixtureID.rawValue) has unknown step status \(raw)")
+        }
+    }
+
+    private static func tone(_ raw: String, fixtureID: UIWorldSyncPresenterFixtureID) -> WordRow.ViewData.Tone {
+        switch raw {
+        case "primary": return .primary
+        case "secondary": return .secondary
+        case "tertiary": return .tertiary
+        case "quaternary": return .quaternary
+        case "destructive": return .destructive
+        case "reviewDue": return .reviewDue
+        default: preconditionFailure("UI World syncPresenter.\(fixtureID.rawValue) has unknown tone \(raw)")
+        }
     }
 }
 #endif

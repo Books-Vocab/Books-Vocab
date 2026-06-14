@@ -19,6 +19,7 @@ struct FixtureDatasetDocument: Decodable {
     let reader: [String: UIWorldReaderSeed]
     let vocabulary: [String: UIWorldVocabularySeed]
     let reviewDeck: [String: UIWorldReviewDeckSeed]
+    let syncPresenter: [String: UIWorldSyncPresenterSeed]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
@@ -36,6 +37,7 @@ struct FixtureDatasetDocument: Decodable {
         case reader
         case vocabulary
         case reviewDeck
+        case syncPresenter
     }
 
     /// Single source of truth for the top-level key set. Keyed decoding
@@ -59,6 +61,7 @@ struct FixtureDatasetDocument: Decodable {
         .reader,
         .vocabulary,
         .reviewDeck,
+        .syncPresenter,
     ]
 
     init(
@@ -76,7 +79,8 @@ struct FixtureDatasetDocument: Decodable {
         runtimePodcast: [String: UIWorldRuntimePodcastSeed] = [:],
         reader: [String: UIWorldReaderSeed] = [:],
         vocabulary: [String: UIWorldVocabularySeed] = [:],
-        reviewDeck: [String: UIWorldReviewDeckSeed] = [:]
+        reviewDeck: [String: UIWorldReviewDeckSeed] = [:],
+        syncPresenter: [String: UIWorldSyncPresenterSeed] = [:]
     ) {
         self.schema = schema
         self.datasetID = datasetID
@@ -93,6 +97,7 @@ struct FixtureDatasetDocument: Decodable {
         self.reader = reader
         self.vocabulary = vocabulary
         self.reviewDeck = reviewDeck
+        self.syncPresenter = syncPresenter
     }
 
     init(from decoder: Decoder) throws {
@@ -124,6 +129,7 @@ struct FixtureDatasetDocument: Decodable {
         reader = isV2 ? try container.decode([String: UIWorldReaderSeed].self, forKey: .reader) : try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
         vocabulary = isV2 ? try container.decode([String: UIWorldVocabularySeed].self, forKey: .vocabulary) : try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
         reviewDeck = isV2 ? try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) : try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
+        syncPresenter = isV2 ? try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter) : try container.decodeIfPresent([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter) ?? [:]
     }
 }
 
@@ -309,6 +315,153 @@ struct UIWorldAuthSeed: Codable, Equatable {
         isAuthenticating = try container.decode(Bool.self, forKey: .isAuthenticating)
         provider = try container.decodeIfPresent(String.self, forKey: .provider)
         providerUserId = try container.decodeIfPresent(String.self, forKey: .providerUserId)
+    }
+}
+
+enum UIWorldSyncPresenterFixtureID: String, CaseIterable {
+    case ready
+    case running
+    case completed
+    case partialFailure
+    case fullFailure
+}
+
+struct UIWorldSyncPresenterSeed: Codable, Equatable {
+    struct Step: Codable, Equatable {
+        let id: String
+        let label: String
+        let status: String
+        let current: Int
+        let total: Int
+        let detail: String
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case id
+            case label
+            case status
+            case current
+            case total
+            case detail
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            for key in CodingKeys.allCases where !container.contains(key) {
+                throw DecodingError.keyNotFound(
+                    key,
+                    DecodingError.Context(
+                        codingPath: container.codingPath,
+                        debugDescription: "UI World syncPresenter step must explicitly declare \(key.rawValue)"
+                    )
+                )
+            }
+            id = try container.decode(String.self, forKey: .id)
+            label = try container.decode(String.self, forKey: .label)
+            status = try container.decode(String.self, forKey: .status)
+            current = try container.decode(Int.self, forKey: .current)
+            total = try container.decode(Int.self, forKey: .total)
+            detail = try container.decode(String.self, forKey: .detail)
+        }
+    }
+
+    struct PendingRow: Codable, Equatable {
+        let id: String
+        let word: String
+        let partOfSpeech: String?
+        let translation: String
+        let wordTone: String
+        let isStrikethrough: Bool
+        let actionSystemImage: String
+        let actionTone: String
+        let actionAccessibilityLabel: String
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case id
+            case word
+            case partOfSpeech
+            case translation
+            case wordTone
+            case isStrikethrough
+            case actionSystemImage
+            case actionTone
+            case actionAccessibilityLabel
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            for key in CodingKeys.allCases where !container.contains(key) {
+                throw DecodingError.keyNotFound(
+                    key,
+                    DecodingError.Context(
+                        codingPath: container.codingPath,
+                        debugDescription: "UI World syncPresenter pending row must explicitly declare \(key.rawValue)"
+                    )
+                )
+            }
+            id = try container.decode(String.self, forKey: .id)
+            word = try container.decode(String.self, forKey: .word)
+            partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
+            translation = try container.decode(String.self, forKey: .translation)
+            wordTone = try container.decode(String.self, forKey: .wordTone)
+            isStrikethrough = try container.decode(Bool.self, forKey: .isStrikethrough)
+            actionSystemImage = try container.decode(String.self, forKey: .actionSystemImage)
+            actionTone = try container.decode(String.self, forKey: .actionTone)
+            actionAccessibilityLabel = try container.decode(String.self, forKey: .actionAccessibilityLabel)
+        }
+    }
+
+    let isLoggedIn: Bool
+    let isConnected: Bool
+    let phase: String
+    let failureKind: String?
+    let pendingCount: Int
+    let addCount: Int
+    let deleteCount: Int
+    let steps: [Step]
+    let summaryText: String
+    let pendingRows: [PendingRow]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case isLoggedIn
+        case isConnected
+        case phase
+        case failureKind
+        case pendingCount
+        case addCount
+        case deleteCount
+        case steps
+        case summaryText
+        case pendingRows
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try Self.requireAllKeys(in: container, context: "UI World syncPresenter seed")
+        isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
+        isConnected = try container.decode(Bool.self, forKey: .isConnected)
+        phase = try container.decode(String.self, forKey: .phase)
+        failureKind = try container.decodeIfPresent(String.self, forKey: .failureKind)
+        pendingCount = try container.decode(Int.self, forKey: .pendingCount)
+        addCount = try container.decode(Int.self, forKey: .addCount)
+        deleteCount = try container.decode(Int.self, forKey: .deleteCount)
+        steps = try container.decode([Step].self, forKey: .steps)
+        summaryText = try container.decode(String.self, forKey: .summaryText)
+        pendingRows = try container.decode([PendingRow].self, forKey: .pendingRows)
+    }
+
+    private static func requireAllKeys<C: KeyedDecodingContainerProtocol>(
+        in container: C,
+        context: String
+    ) throws where C.Key: CaseIterable & RawRepresentable, C.Key.RawValue == String {
+        for key in C.Key.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "\(context) must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
     }
 }
 
@@ -504,6 +657,18 @@ enum FixtureDatasetStore {
     static func requireEntitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed {
         guard let seed = entitlementsSeed(for: fixtureID) else {
             preconditionFailure("UI World is missing entitlements.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func syncPresenterSeed(for fixtureID: UIWorldSyncPresenterFixtureID) -> UIWorldSyncPresenterSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.syncPresenter[fixtureID.rawValue]
+    }
+
+    static func requireSyncPresenterSeed(for fixtureID: UIWorldSyncPresenterFixtureID) -> UIWorldSyncPresenterSeed {
+        guard let seed = syncPresenterSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing syncPresenter.\(fixtureID.rawValue)")
         }
         return seed
     }
