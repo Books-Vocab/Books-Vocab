@@ -53,8 +53,11 @@ struct RepoFixtureDatasetsContractTests {
 
             #expect(document.schema == "kg.fixture.dataset.v2", "\(stem): repo UI Worlds must use the asset-manifest schema")
             #expect(!document.assets.isEmpty, "\(stem): repo UI Worlds must declare assets")
+            #expect(!document.preferences.isEmpty, "\(stem): repo UI Worlds must declare preferences")
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
+            expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
+            expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
             for ref in document.assets.refs {
                 let asset = try #require(document.assets.asset(for: ref), "\(stem): asset \(ref) must resolve")
@@ -222,6 +225,19 @@ struct RepoFixtureDatasetsContractTests {
             installAs.map { !$0.isEmpty } ?? false,
             "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
         )
+    }
+
+    private func expectValidPreferenceKeys(
+        _ keys: some Sequence<String>,
+        dataset: String,
+        domain: String
+    ) {
+        for key in keys {
+            #expect(
+                !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "\(dataset): \(domain) contains an empty key"
+            )
+        }
     }
 
     private func expectBookAssetRef(

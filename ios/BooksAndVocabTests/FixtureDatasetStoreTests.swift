@@ -76,6 +76,50 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func externalDatasetDeclaresAndAppliesPreferenceWorld() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-preferences",
+          "preferences": {
+            "userDefaults": {
+              "app_language_selection": "traditionalChinese",
+              "translation_source_lang": "en",
+              "translation_source_lang_updated_at": 1781424000,
+              "auto_sync_enabled": true,
+              "podcast.subtitleSize": "large"
+            },
+            "ubiquitousKeyValueStore": {
+              "app_language_selection": "traditionalChinese",
+              "translation_source_lang": "en",
+              "translation_source_lang_updated_at": 1781424000,
+              "review_settings_progress_paused": false
+            }
+          }
+        }
+        """
+
+        let suite = "test.ui-world.preferences.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let cloud = FakeCloudKVStore()
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            let document = FixtureDatasetStore.requireDocument()
+            document.preferences.apply(to: defaults, cloud: cloud)
+
+            #expect(defaults.string(forKey: "app_language_selection") == "traditionalChinese")
+            #expect(defaults.string(forKey: "translation_source_lang") == "en")
+            #expect(defaults.object(forKey: "translation_source_lang_updated_at") as? Double == 1_781_424_000)
+            #expect(defaults.bool(forKey: "auto_sync_enabled") == true)
+            #expect(defaults.string(forKey: "podcast.subtitleSize") == "large")
+            #expect(cloud.string(forKey: "app_language_selection") == "traditionalChinese")
+            #expect(cloud.string(forKey: "translation_source_lang") == "en")
+            #expect(cloud.double(forKey: "translation_source_lang_updated_at") == 1_781_424_000)
+            #expect(cloud.double(forKey: "review_settings_progress_paused") == 0.0)
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresRuntimeWorlds() throws {
         let dataset = """
         {

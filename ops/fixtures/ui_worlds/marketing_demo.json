@@ -52,6 +52,42 @@
     },
     "images": {}
   },
+  "preferences": {
+    "userDefaults": {
+      "app_language_selection": "traditionalChinese",
+      "app_appearance_selection": "system",
+      "translation_source_lang": "en",
+      "translation_source_lang_updated_at": 1781424000,
+      "translation_target_lang": "zh-Hant",
+      "translation_target_lang_updated_at": 1781424000,
+      "auto_sync_enabled": true,
+      "activeNotebookId": "default",
+      "active_notebook_updated_at": 1781424000,
+      "review_settings_mode": "relaxed",
+      "review_settings_mode_updated_at": 1781424000,
+      "review_settings_progress_paused": false,
+      "review_settings_progress_updated_at": 1781424000,
+      "review_settings_autoplay_speed": "normal",
+      "review_settings_autoplay_sound_enabled": true,
+      "podcast.wordFollowEnabled": true,
+      "podcast.autoPauseOnLookup": true,
+      "podcast.subtitleSize": "large"
+    },
+    "ubiquitousKeyValueStore": {
+      "app_language_selection": "traditionalChinese",
+      "app_appearance_selection": "system",
+      "translation_source_lang": "en",
+      "translation_source_lang_updated_at": 1781424000,
+      "translation_target_lang": "zh-Hant",
+      "translation_target_lang_updated_at": 1781424000,
+      "activeNotebookId": "default",
+      "active_notebook_updated_at": 1781424000,
+      "review_settings_mode": "relaxed",
+      "review_settings_mode_updated_at": 1781424000,
+      "review_settings_progress_paused": false,
+      "review_settings_progress_updated_at": 1781424000
+    }
+  },
   "auth": {
     "signedIn": {
       "isLoggedIn": true,
