@@ -385,6 +385,42 @@ import Playbook
         )
     }
 
+    @Test func statsViewCatalogUsesUIWorldVocabularyReviewSeeds() throws {
+        let statsScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("StatsViewScenarios.swift")
+        let source = try String(contentsOf: statsScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("StatsViewFixtures", "Stats View catalog must not keep local vocabulary/review fixtures"),
+            ("VocabularyEntry(", "Stats View catalog must not inline SwiftData row literals"),
+            ("ReviewRecord(", "Stats View catalog review history must come from UI World"),
+            ("Sample Book", "Stats View book metadata belongs in UI World"),
+            ("entries: []", "Stats View empty state must use a UI World seed"),
+            ("records: []", "Stats View empty review history must use a UI World seed"),
+            ("try? context.save()", "Stats View catalog SwiftData save must fail fast"),
+            ("try? container.mainContext.save()", "Stats View catalog SwiftData save must fail fast"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(statsScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Stats View catalog must source entries and review history from UI World vocabulary stats seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Stats View catalog must materialize UI World vocabulary/review rows into SwiftData"
+        )
+        #expect(
+            source.contains("visibleEntries = entries.filter(\\.shouldAppearInKnowledgeList)"),
+            "Stats View catalog must validate manifest rows are visible stats entries"
+        )
+        #expect(
+            source.contains("FetchDescriptor<ReviewRecord>()"),
+            "Stats View catalog must validate UI World reviewHistory materialized as ReviewRecord rows"
+        )
+    }
+
     @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
         let filterScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

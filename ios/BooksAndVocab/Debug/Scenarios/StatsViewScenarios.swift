@@ -19,13 +19,10 @@ enum StatsViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Stats View") {
             Scenario("Populated", layout: .fill) {
-                StatsViewScene(
-                    entries: StatsViewFixtures.entries,
-                    records: StatsViewFixtures.records
-                )
+                StatsViewScene(fixture: .populated)
             }
             Scenario("Empty", layout: .fill) {
-                StatsViewScene(entries: [], records: [])
+                StatsViewScene(fixture: .empty)
             }
         }
     }
@@ -33,7 +30,55 @@ enum StatsViewScenarios {
 
 // MARK: - Fixtures
 
-private enum StatsViewFixtures {
+private enum StatsViewFixture {
+    case populated
+    case empty
+
+    var vocabularyID: UIWorldVocabularyFixtureID {
+        switch self {
+        case .populated:
+            return .statsPopulated
+        case .empty:
+            return .statsEmpty
+        }
+    }
+
+    var expected: StatsViewExpectedShape {
+        switch self {
+        case .populated:
+            return .init(visibleEntries: .atLeast(8), reviewRecords: .atLeast(12))
+        case .empty:
+            return .init(visibleEntries: .exactly(0), reviewRecords: .exactly(0))
+        }
+    }
+}
+
+private struct StatsViewExpectedShape {
+    enum Count {
+        case exactly(Int)
+        case atLeast(Int)
+
+        func validate(_ actual: Int, label: String, fixtureID: UIWorldVocabularyFixtureID) {
+            switch self {
+            case .exactly(let expected):
+                precondition(
+                    actual == expected,
+                    "UI World vocabulary.\(fixtureID.rawValue) expected exactly \(expected) \(label), got \(actual)"
+                )
+            case .atLeast(let minimum):
+                precondition(
+                    actual >= minimum,
+                    "UI World vocabulary.\(fixtureID.rawValue) expected at least \(minimum) \(label), got \(actual)"
+                )
+            }
+        }
+    }
+
+    let visibleEntries: Count
+    let reviewRecords: Count
+}
+
+private enum StatsViewTime {
     /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
     /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
     /// this group's reference PNGs drift on every capture). All review records and
@@ -47,82 +92,6 @@ private enum StatsViewFixtures {
         comps.hour = 12
         return Calendar.current.date(from: comps) ?? Date()
     }()
-
-    /// Builds a synced (non-deleted) entry so it passes the `syncStatus == 1 &&
-    /// actionType != "delete"` query predicate.
-    static func synced(
-        word: String,
-        translation: String,
-        partOfSpeech: String? = "n."
-    ) -> VocabularyEntry {
-        let entry = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "It was pure \(word) — a moment that lingered in memory.",
-            explanation: "A short contextual gloss for \(word).",
-            partOfSpeech: partOfSpeech,
-            bookTitle: "Sample Book",
-            chapterTitle: "第一章"
-        )
-        entry.syncStatus = VocabularySyncState.synced.rawValue
-        entry.actionType = VocabularySyncAction.add.rawValue
-        return entry
-    }
-
-    static var entries: [VocabularyEntry] {
-        [
-            synced(word: "serendipity", translation: "機緣巧合"),
-            synced(word: "ephemeral", translation: "短暫的", partOfSpeech: "adj."),
-            synced(word: "petrichor", translation: "雨後泥土香"),
-            synced(word: "ineffable", translation: "難以言喻的", partOfSpeech: "adj."),
-            synced(word: "quintessential", translation: "典型的", partOfSpeech: "adj."),
-            synced(word: "luminous", translation: "發光的", partOfSpeech: "adj."),
-            synced(word: "cadence", translation: "節奏"),
-            synced(word: "solitude", translation: "獨處"),
-        ]
-    }
-
-    /// Review records spread across the last ~30 days (with a recent unbroken
-    /// run for streak) so heatmap / streak / forecast cards have signal.
-    static var records: [ReviewRecord] {
-        let calendar = Calendar.current
-        let now = fixedNow
-        let words = entries.map(\.word)
-        var result: [ReviewRecord] = []
-
-        // Recent 10-day unbroken streak: a few reviews per day.
-        for dayOffset in 0..<10 {
-            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
-            let reviewsThatDay = 2 + (dayOffset % 3)
-            for i in 0..<reviewsThatDay {
-                let word = words[(dayOffset + i) % words.count]
-                result.append(
-                    ReviewRecord(
-                        word: word,
-                        entryID: UUID(),
-                        feedback: i % 4 == 0 ? 0 : 1,
-                        reviewedAt: calendar.date(byAdding: .hour, value: -i, to: day) ?? day
-                    )
-                )
-            }
-        }
-
-        // Sparser activity further back to fill the heatmap.
-        for dayOffset in stride(from: 12, through: 30, by: 2) {
-            guard let day = calendar.date(byAdding: .day, value: -dayOffset, to: now) else { continue }
-            let word = words[dayOffset % words.count]
-            result.append(
-                ReviewRecord(
-                    word: word,
-                    entryID: UUID(),
-                    feedback: 1,
-                    reviewedAt: day
-                )
-            )
-        }
-
-        return result
-    }
 }
 
 // MARK: - Scene harness
@@ -133,26 +102,38 @@ private struct StatsViewScene: View {
     let container: ModelContainer
     let initialSummary: StatsPresentation.Summary
 
-    init(entries: [VocabularyEntry], records: [ReviewRecord]) {
-        let container = try! ModelContainer(
-            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-        for entry in entries {
-            context.insert(entry)
+    init(fixture: StatsViewFixture) {
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
+        do {
+            let container = try ModelContainer(
+                for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            let entries = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            let visibleEntries = entries.filter(\.shouldAppearInKnowledgeList)
+            fixture.expected.visibleEntries.validate(
+                visibleEntries.count,
+                label: "visible stats entries",
+                fixtureID: fixture.vocabularyID
+            )
+
+            let records = try container.mainContext.fetch(FetchDescriptor<ReviewRecord>())
+            fixture.expected.reviewRecords.validate(
+                records.count,
+                label: "review records",
+                fixtureID: fixture.vocabularyID
+            )
+
+            self.container = container
+            self.initialSummary = StatsPresentation.buildSummary(
+                from: visibleEntries,
+                reviewRecords: records,
+                forecastDays: 14,
+                now: StatsViewTime.fixedNow
+            )
+        } catch {
+            preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for Stats View catalog: \(error)")
         }
-        for record in records {
-            context.insert(record)
-        }
-        try? context.save()
-        self.container = container
-        self.initialSummary = StatsPresentation.buildSummary(
-            from: entries,
-            reviewRecords: records,
-            forecastDays: 14,
-            now: StatsViewFixtures.fixedNow
-        )
     }
 
     var body: some View {
@@ -173,12 +154,12 @@ private struct StatsViewScene: View {
     }
 
     /// A paused `ReviewSettingsStore` whose reference date is pinned to
-    /// `StatsViewFixtures.fixedNow`, making the presenter's `@Query`-driven
+    /// `StatsViewTime.fixedNow`, making the presenter's `@Query`-driven
     /// summary recompute deterministic across catalog runs.
     private static let frozenStore: ReviewSettingsStore = {
         var settings = ReviewSettings.default
         settings.isProgressPaused = true
-        settings.progressPausedAt = StatsViewFixtures.fixedNow
+        settings.progressPausedAt = StatsViewTime.fixedNow
         return ReviewSettingsStore(previewSettings: settings)
     }()
 }
