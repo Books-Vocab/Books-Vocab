@@ -349,6 +349,41 @@ import Playbook
         )
     }
 
+    @Test func kgVocabRowCatalogUsesUIWorldVocabularySeed() throws {
+        let rowScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("KGVocabRowScenarios.swift")
+        let source = try String(contentsOf: rowScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("= VocabularyEntry(", "KG Vocab Row catalog must not inline SwiftData row literals"),
+            ("return VocabularyEntry(", "KG Vocab Row catalog must not inline SwiftData row literals"),
+            ("Sample Book", "KG Vocab Row book metadata belongs in UI World"),
+            ("word:", "KG Vocab Row catalog must not keep local word data"),
+            ("translation:", "KG Vocab Row catalog must not keep local translation data"),
+            ("partOfSpeech:", "KG Vocab Row catalog must not keep local part-of-speech data"),
+            ("meticulous", "KG Vocab Row words must come from UI World"),
+            ("nuance", "KG Vocab Row words must come from UI World"),
+            ("ephemeral", "KG Vocab Row words must come from UI World"),
+            ("serendipity", "KG Vocab Row words must come from UI World"),
+            ("quintessential", "KG Vocab Row words must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(rowScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: .kgVocabRow)"),
+            "KG Vocab Row catalog must source row entries from UI World vocabulary.kgVocabRow"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeVocabularyEntry(from: seed.entries[fixture.entryIndex], notebookId: seed.notebookRemoteId)"),
+            "KG Vocab Row catalog must materialize VocabularyEntry from UI World rows"
+        )
+        #expect(
+            source.contains("seed.entries.count == KGVocabRowFixture.allCases.count"),
+            "KG Vocab Row catalog must fail fast when manifest row count drifts from scenario states"
+        )
+    }
+
     @Test func archivedVocabCatalogUsesUIWorldVocabularySeeds() throws {
         let archivedScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

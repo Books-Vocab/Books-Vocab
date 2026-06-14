@@ -1885,6 +1885,115 @@
     }
   },
   "vocabulary": {
+    "kgVocabRow": {
+      "notebookRemoteId": "ui-kg-vocab-row-notebook",
+      "notebookName": "KG Vocab Row Fixture",
+      "bookTitle": "The Weight of Words",
+      "entries": [
+        {
+          "word": "meticulous",
+          "translation": "一絲不苟的；非常仔細的",
+          "context": "It was a meticulous example that lingered in memory.",
+          "explanation": "Describes careful work with deliberate attention to every small detail.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Row States",
+          "kgCardId": "kg-vocab-row-meticulous",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The editor gave the manuscript a meticulous final pass."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "nuance",
+          "translation": "細微差異；語氣層次",
+          "context": "The speaker preserved every nuance of the original passage.",
+          "explanation": "A subtle distinction in meaning, tone, or expression.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Row States",
+          "kgCardId": "kg-vocab-row-nuance",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Good translators protect nuance instead of flattening it."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ephemeral",
+          "translation": "短暫的；轉瞬即逝的",
+          "context": "The essay called the afternoon light ephemeral.",
+          "explanation": "Existing only briefly, often with a sense of fragile beauty.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Row States",
+          "kgCardId": "kg-vocab-row-ephemeral",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The festival created an ephemeral city of lights."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity in the passage we read together.",
+          "explanation": "The luck of finding something valuable without planning for it.",
+          "partOfSpeech": "n.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Row States",
+          "kgCardId": "kg-vocab-row-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Their discovery owed as much to serendipity as to discipline."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "quintessential",
+          "translation": "典型的；最具代表性的；體現某事物本質的最完美範例",
+          "context": "The passage became the quintessential example of concise prose.",
+          "explanation": "Representing the purest or most typical example of a category.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "The Weight of Words",
+          "chapterTitle": "Row States",
+          "kgCardId": "kg-vocab-row-quintessential",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "That paragraph is the quintessential statement of the argument."
+          ],
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
     "searchVocabNotebook": {
       "notebookRemoteId": "ui-search-notebook",
       "notebookName": "Search Flow Vocab",

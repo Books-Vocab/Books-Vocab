@@ -13,45 +13,72 @@ enum KGVocabRowScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "KG Vocab Row") {
             Scenario("Default", layout: .compressed) {
-                KGVocabRowScene(
-                    word: "meticulous",
-                    translation: "一絲不苟的；非常仔細的",
-                    partOfSpeech: "adj."
-                )
+                KGVocabRowScene(fixture: .default)
             }
             Scenario("Highlighted", layout: .compressed) {
-                KGVocabRowScene(
-                    word: "nuance",
-                    translation: "細微差異；語氣層次",
-                    partOfSpeech: "n.",
-                    isHighlighted: true
-                )
+                KGVocabRowScene(fixture: .highlighted)
             }
             Scenario("Selecting · unselected", layout: .compressed) {
-                KGVocabRowScene(
-                    word: "ephemeral",
-                    translation: "短暫的；轉瞬即逝的",
-                    partOfSpeech: "adj.",
-                    isSelecting: true,
-                    isSelected: false
-                )
+                KGVocabRowScene(fixture: .selectingUnselected)
             }
             Scenario("Selecting · selected", layout: .compressed) {
-                KGVocabRowScene(
-                    word: "serendipity",
-                    translation: "機緣巧合",
-                    partOfSpeech: "n.",
-                    isSelecting: true,
-                    isSelected: true
-                )
+                KGVocabRowScene(fixture: .selectingSelected)
             }
             Scenario("Long translation", layout: .compressed) {
-                KGVocabRowScene(
-                    word: "quintessential",
-                    translation: "典型的；最具代表性的；體現某事物本質的最完美範例",
-                    partOfSpeech: "adj."
-                )
+                KGVocabRowScene(fixture: .longTranslation)
             }
+        }
+    }
+}
+
+// MARK: - Fixtures
+
+private enum KGVocabRowFixture: CaseIterable {
+    case `default`
+    case highlighted
+    case selectingUnselected
+    case selectingSelected
+    case longTranslation
+
+    var entryIndex: Int {
+        switch self {
+        case .default:
+            return 0
+        case .highlighted:
+            return 1
+        case .selectingUnselected:
+            return 2
+        case .selectingSelected:
+            return 3
+        case .longTranslation:
+            return 4
+        }
+    }
+
+    var isSelecting: Bool {
+        switch self {
+        case .selectingUnselected, .selectingSelected:
+            return true
+        case .default, .highlighted, .longTranslation:
+            return false
+        }
+    }
+
+    var isSelected: Bool {
+        switch self {
+        case .selectingSelected:
+            return true
+        case .default, .highlighted, .selectingUnselected, .longTranslation:
+            return false
+        }
+    }
+
+    var isHighlighted: Bool {
+        switch self {
+        case .highlighted:
+            return true
+        case .default, .selectingUnselected, .selectingSelected, .longTranslation:
+            return false
         }
     }
 }
@@ -61,22 +88,21 @@ enum KGVocabRowScenarios {
 /// `@MainActor` body so the `@Model` `VocabularyEntry` is constructed on the
 /// main actor before `KGVocabRow` reads it.
 private struct KGVocabRowScene: View {
-    let word: String
-    let translation: String
-    let partOfSpeech: String
-    var isSelecting: Bool = false
-    var isSelected: Bool = false
-    var isHighlighted: Bool = false
+    let entry: VocabularyEntry
+    let isSelecting: Bool
+    let isSelected: Bool
+    let isHighlighted: Bool
+
+    init(fixture: KGVocabRowFixture) {
+        entry = MainActor.assumeIsolated {
+            Self.entry(for: fixture)
+        }
+        isSelecting = fixture.isSelecting
+        isSelected = fixture.isSelected
+        isHighlighted = fixture.isHighlighted
+    }
 
     var body: some View {
-        let entry = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "It was a \(word) example that lingered in memory.",
-            partOfSpeech: partOfSpeech,
-            bookTitle: "Sample Book",
-            chapterTitle: "第一章"
-        )
         AppThemeContainer {
             KGVocabRow(
                 entry: entry,
@@ -90,6 +116,20 @@ private struct KGVocabRowScene: View {
             .padding(16)
         }
         .environmentObject(AppAppearanceStore.preview)
+    }
+
+    private static func seed() -> UIWorldVocabularySeed {
+        FixtureDatasetStore.requireVocabularySeed(for: .kgVocabRow)
+    }
+
+    @MainActor
+    private static func entry(for fixture: KGVocabRowFixture) -> VocabularyEntry {
+        let seed = seed()
+        precondition(
+            seed.entries.count == KGVocabRowFixture.allCases.count,
+            "UI World vocabulary.kgVocabRow expected \(KGVocabRowFixture.allCases.count) entries, got \(seed.entries.count)"
+        )
+        return UITestFixtureSeed.makeVocabularyEntry(from: seed.entries[fixture.entryIndex], notebookId: seed.notebookRemoteId)
     }
 }
 #endif
