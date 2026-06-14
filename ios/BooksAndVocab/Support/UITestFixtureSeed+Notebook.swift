@@ -21,7 +21,7 @@ extension UITestFixtureSeed {
     @MainActor
     private static func seedNotebookReviewDeck(into container: ModelContainer) {
         let seed = FixtureDatasetStore.requireReviewDeckSeed(for: .notebookReviewDeck)
-        let notebookId = seed.notebookRemoteId ?? "default"
+        let notebookId = seed.notebookRemoteId
         let context = container.mainContext
         do {
             // Idempotent re-seed: the simulator container persists across runs.
@@ -34,12 +34,12 @@ extension UITestFixtureSeed {
                 context.delete(entry)
             }
 
-            let notebook = Notebook(remoteId: notebookId, name: seed.notebookName ?? "Review Flow Vocab")
+            let notebook = Notebook(remoteId: notebookId, name: seed.notebookName)
             notebook.syncStatus = seed.notebookSyncStatus
             context.insert(notebook)
 
             let deck = seed.entries.map {
-                makeVocabularyEntry(from: $0, notebookId: notebookId, defaultBookTitle: "Review Probe Fixture")
+                makeVocabularyEntry(from: $0, notebookId: notebookId)
             }
             for entry in deck {
                 context.insert(entry)

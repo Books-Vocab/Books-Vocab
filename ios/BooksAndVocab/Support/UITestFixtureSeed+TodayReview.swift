@@ -20,7 +20,7 @@ extension UITestFixtureSeed {
             try clearVocabularyEntries(from: context)
             let seed = FixtureDatasetStore.requireReviewDeckSeed(for: .probe)
             let deck = seed.entries.map {
-                makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId ?? "default", defaultBookTitle: "Review Probe Fixture")
+                makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
             }
             for entry in deck {
                 context.insert(entry)

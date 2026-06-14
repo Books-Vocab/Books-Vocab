@@ -225,7 +225,7 @@ struct ReviewProbeDeckFixtureTests {
             let words = seed.entries.map(\.word)
             #expect(words == words.sorted())
             #expect(Set(words).count == 40)
-            #expect(seed.entries.allSatisfy { ($0.reviewMode ?? .recognition) == .recognition })
+            #expect(seed.entries.allSatisfy { $0.reviewMode == .recognition })
         }
     }
 

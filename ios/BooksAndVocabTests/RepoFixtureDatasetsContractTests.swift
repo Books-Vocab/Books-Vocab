@@ -328,6 +328,7 @@ struct RepoFixtureDatasetsContractTests {
 
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
+        let requiredUIWorldEntryKeys = requiredEntryKeys.union(["bookTitle", "reviewMode"])
 
         let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in notebookFixtures {
@@ -358,7 +359,7 @@ struct RepoFixtureDatasetsContractTests {
             )
             if let entry = seed["entry"] as? [String: Any] {
                 let word = entry["word"] as? String ?? "<missing-word>"
-                let missing = requiredEntryKeys.subtracting(entry.keys)
+                let missing = requiredUIWorldEntryKeys.subtracting(entry.keys)
                 #expect(
                     missing.isEmpty,
                     "\(dataset): reader.\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
@@ -373,10 +374,18 @@ struct RepoFixtureDatasetsContractTests {
                     seed.keys.contains("notebookSyncStatus"),
                     "\(dataset): \(domain).\(fixtureKey) must explicitly declare notebookSyncStatus"
                 )
+                if domain == "reviewDeck" {
+                    for key in ["notebookRemoteId", "notebookName"] {
+                        #expect(
+                            seed[key] is String,
+                            "\(dataset): reviewDeck.\(fixtureKey) must explicitly declare non-null \(key)"
+                        )
+                    }
+                }
                 let entries = seed["entries"] as? [[String: Any]] ?? []
                 for entry in entries {
                     let word = entry["word"] as? String ?? "<missing-word>"
-                    let missing = requiredEntryKeys.subtracting(entry.keys)
+                    let missing = requiredUIWorldEntryKeys.subtracting(entry.keys)
                     #expect(
                         missing.isEmpty,
                         "\(dataset): \(domain).\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"

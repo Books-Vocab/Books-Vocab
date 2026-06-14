@@ -5,8 +5,7 @@ import SwiftData
 extension UITestFixtureSeed {
     static func makeVocabularyEntry(
         from seed: UIWorldVocabularyEntrySeed,
-        notebookId: String,
-        defaultBookTitle: String
+        notebookId: String
     ) -> VocabularyEntry {
         let entry = VocabularyEntry(
             word: seed.word,
@@ -14,13 +13,13 @@ extension UITestFixtureSeed {
             context: seed.context,
             explanation: seed.explanation,
             partOfSpeech: seed.partOfSpeech,
-            bookTitle: seed.bookTitle ?? defaultBookTitle,
+            bookTitle: seed.bookTitle,
             chapterTitle: seed.chapterTitle
         )
         entry.notebookId = notebookId
         entry.kgCardId = seed.kgCardId
         entry.difficultyTier = seed.difficultyTier
-        entry.reviewMode = seed.reviewMode ?? .recognition
+        entry.reviewMode = seed.reviewMode
         entry.reviewExamples = seed.reviewExamples
         entry.syncStatus = seed.syncStatus
         entry.actionType = seed.actionType
@@ -64,7 +63,7 @@ extension UITestFixtureSeed {
         context.insert(notebook)
 
         let entries = seed.entries.map {
-            makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId, defaultBookTitle: seed.bookTitle)
+            makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
         }
         for entry in entries {
             context.insert(entry)

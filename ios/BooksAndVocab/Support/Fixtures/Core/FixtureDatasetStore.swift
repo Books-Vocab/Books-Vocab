@@ -357,8 +357,8 @@ enum UIWorldReviewDeckFixtureID: String, CaseIterable {
 }
 
 struct UIWorldReviewDeckSeed: Codable, Equatable {
-    let notebookRemoteId: String?
-    let notebookName: String?
+    let notebookRemoteId: String
+    let notebookName: String
     let notebookSyncStatus: Int
     let entries: [UIWorldVocabularyEntrySeed]
 }
@@ -369,11 +369,11 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let context: String
     let explanation: String?
     let partOfSpeech: String?
-    let bookTitle: String?
+    let bookTitle: String
     let chapterTitle: String?
     let kgCardId: String?
     let difficultyTier: String?
-    let reviewMode: VocabularyCardMode?
+    let reviewMode: VocabularyCardMode
     let reviewExamples: [String]
     let syncStatus: Int
     let actionType: String
