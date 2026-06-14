@@ -450,6 +450,36 @@ import Playbook
         )
     }
 
+    @Test func syncViewCatalogUsesUIWorldVocabularyAndAuthSeeds() throws {
+        let syncScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SyncViewScenarios.swift")
+        let source = try String(contentsOf: syncScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("private static func pending", "Sync View catalog must not locally construct pending vocabulary rows"),
+            ("VocabularyEntry(", "Sync View catalog must not inline SwiftData row literals"),
+            ("Sample Book", "Sync View catalog book metadata belongs in UI World"),
+            ("try? context.save()", "Sync View catalog SwiftData save must fail fast"),
+            ("try? container.mainContext.save()", "Sync View catalog SwiftData save must fail fast"),
+            ("isLoggedIn: false", "logged-out state belongs in UI World auth.guest"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(syncScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Sync View catalog must source rows from UI World vocabulary sync seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .guest)"),
+            "Sync View catalog must source logged-out auth from UI World auth.guest"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Sync View catalog must materialize UI World vocabulary rows into SwiftData"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.

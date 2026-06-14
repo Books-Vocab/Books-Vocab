@@ -2571,6 +2571,162 @@
       ],
       "reviewHistory": [],
       "notebookSyncStatus": 1
+    },
+    "syncPendingMixed": {
+      "notebookRemoteId": "ui-sync-pending-mixed-notebook",
+      "notebookName": "Sync Queue Mixed",
+      "bookTitle": "Sync Queue Manual",
+      "entries": [
+        {
+          "word": "ephemeral",
+          "translation": "短暫的",
+          "context": "The ephemeral note is waiting to be uploaded.",
+          "explanation": "pending add row for Sync View mixed state.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Sync Queue Manual",
+          "chapterTitle": "Pending Changes",
+          "kgCardId": "sync-ephemeral",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The ephemeral note is waiting to be uploaded."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 0,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "luminous",
+          "translation": "發光的",
+          "context": "A luminous phrase was captured while offline.",
+          "explanation": "pending add row for Sync View mixed state.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Sync Queue Manual",
+          "chapterTitle": "Pending Changes",
+          "kgCardId": "sync-luminous",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "A luminous phrase was captured while offline."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 0,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "petrichor",
+          "translation": "雨後泥土香",
+          "context": "Petrichor remained in the local queue overnight.",
+          "explanation": "pending add row for Sync View mixed state.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Sync Queue Manual",
+          "chapterTitle": "Pending Changes",
+          "kgCardId": "sync-petrichor",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Petrichor remained in the local queue overnight."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 0,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "obsolete",
+          "translation": "過時的",
+          "context": "The obsolete card is queued for deletion on the server.",
+          "explanation": "pending delete row for Sync View mixed state.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Sync Queue Manual",
+          "chapterTitle": "Pending Changes",
+          "kgCardId": "sync-obsolete",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The obsolete card is queued for deletion on the server."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 0,
+          "actionType": "delete",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 0
+    },
+    "syncPendingSingle": {
+      "notebookRemoteId": "ui-sync-pending-single-notebook",
+      "notebookName": "Sync Queue Single",
+      "bookTitle": "Sync Queue Manual",
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "Serendipity is the only pending change in this queue.",
+          "explanation": "single pending add row for Sync View.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Sync Queue Manual",
+          "chapterTitle": "Pending Changes",
+          "kgCardId": "sync-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "Serendipity is the only pending change in this queue."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-06T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 0,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 0
+    },
+    "syncEmpty": {
+      "notebookRemoteId": "ui-sync-empty-notebook",
+      "notebookName": "Sync Queue Empty",
+      "bookTitle": "Sync Queue Manual",
+      "entries": [],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
     }
   },
   "reviewDeck": {
