@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 73ef17b5
+verified_against: a1731638
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -80,6 +80,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Settings review section 契約（無本地 ReviewSettings fixture）
 `SettingsSectionsScenarios` 的 `SettingsReviewSection` relaxed/intensive/custom/paused 狀態必須取 UI World `settings.*.reviewSettings` seed；relaxed 使用 `settings.subscription_free`，intensive 使用 `settings.preferences_auto_sync_off`，custom 使用 `settings.account_long_identity`，paused 使用 `settings.preferences_logged_out_no_sync`。scenario source 不可手建 `ReviewSettings(...)`、不可寫死 `mode: .relaxed/.intensive/.custom`、不可用本地 `Date(timeIntervalSince1970:)` 或 `isProgressPaused: true` 決定暫停狀態。
+
+### Sync View 契約（無本地 pending row / auth fixture）
+`SyncViewScenarios` 的 mixed / single / empty 狀態必須取 UI World `vocabulary.syncPendingMixed` / `vocabulary.syncPendingSingle` / `vocabulary.syncEmpty` seed，登入狀態必須取 UI World `auth.guest` seed。scenario 必須把 manifest 的 `Notebook` + `VocabularyEntry` rows materialize 進 in-memory SwiftData，並保留 `syncStatus` / `actionType` 作為 pending add/delete/empty 的唯一依據；empty 也必須是 manifest 內明示 seed，不可用本地 `return` 表示。缺 seed、auth 非 logged-out、row shape drift、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.syncViewCatalogUsesUIWorldVocabularyAndAuthSeeds` 擋回本地 pending row builder、inline `VocabularyEntry(...)`、hardcoded book metadata、hardcoded logged-out auth 與 silent save。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
