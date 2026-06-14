@@ -137,6 +137,7 @@ def _env_float(name: str, default: float) -> float:
             raw,
             default,
         )
+        logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return default
 
 
@@ -153,6 +154,7 @@ def _env_int(name: str, default: int) -> int:
             raw,
             default,
         )
+        logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return default
 
 

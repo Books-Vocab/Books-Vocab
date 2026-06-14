@@ -21,6 +21,7 @@ JSON/human 輸出契約。供 `backend/ops_edit.py`(container 內 `/app/ops_edit
 from __future__ import annotations
 
 import json
+import logging
 import re
 import tarfile
 from datetime import UTC, datetime
@@ -43,6 +44,9 @@ _BACKUP_MANIFEST = "backup_manifest.json"
 _WORLD_ROOT_ARCNAME = "__kg_world__"
 # 檔名上限保守值(macOS/Linux 單段 255 bytes;留 buffer 給備份檔的 timestamp 後綴)。
 _MAX_UID_LEN = 200
+
+
+logger = logging.getLogger(__name__)
 
 
 class EditError(Exception):
@@ -112,7 +116,8 @@ def _load_users_json_raw(path: Path) -> dict[str, Any]:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("failed to read users.json: path=%s error=%s", path, exc)
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -151,7 +156,8 @@ def _read_json_member(
         return None
     try:
         data = json.loads(fileobj.read().decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        logger.warning("failed to parse JSON tar member %s: %s", arcname, exc)
         return None
     return data if isinstance(data, dict) else None
 
@@ -401,6 +407,7 @@ class EditContext:
                 },
                 json_mode=self.json_mode,
             )
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return 1
 
         verified = verify_fn() if verify_fn else None

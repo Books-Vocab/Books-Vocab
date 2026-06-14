@@ -214,6 +214,7 @@ def _read_json_from_s3(
         obj = s3.get_object(Bucket=cfg.podcast_bucket, Key=key)
     except Exception as exc:  # noqa: BLE001
         if is_s3_not_found_fn(exc, s3):
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return None
         logger_.error(
             "Podcast %s S3 read failed for s3://%s/%s: %s",
@@ -254,6 +255,7 @@ def _get_object_from_s3(
         return s3.get_object(Bucket=settings_fn(request).podcast_bucket, Key=key)
     except Exception as exc:  # noqa: BLE001
         if is_s3_not_found_fn(exc, s3):
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return None
         logger_.error("S3 GetObject failed for %s: %s", key, exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Storage error fetching {context}") from exc
@@ -298,7 +300,7 @@ def _iter_s3_body(body, chunk_size: int):
         try:
             body.close()
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning("podcast media body close failed", exc_info=True)
 
 
 def _serve_static_media(

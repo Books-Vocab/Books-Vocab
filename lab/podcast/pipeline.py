@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import logging
 import json
 import os
 import re
@@ -81,6 +82,7 @@ from tts_config import (
 )
 
 ROOT = Path(__file__).parent
+_LOGGER = logging.getLogger("podcast.pipeline")
 PROMPTS_DIR = ROOT / "prompts"
 WORKFLOW_VERSIONS_DIR = ROOT / "workflow_versions"
 WORKSPACES_DIR = ROOT / "workspaces"
@@ -201,7 +203,9 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
             try:
                 s.connect(("127.0.0.1", _DASHBOARD_PORT))
                 return True
-            except OSError:
+            except OSError as exc:
+                _LOGGER.debug("dashboard port probe failed for %s: %s", _DASHBOARD_PORT, exc)
+                log.warning("Silently handled exception; using fallback response", exc_info=True)
                 return False
 
     if not _port_alive():
@@ -229,8 +233,9 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
     print(f"[dashboard] {url}")
     try:
         webbrowser.open(url)
-    except Exception:
-        pass  # headless / no GUI — printed URL is enough
+    except Exception as exc:
+        # Keep URL as fallback path for manual open, but record reason.
+        print(f"[pipeline] failed to open dashboard URL automatically: {exc}", file=sys.stderr)
     return url
 
 # Authoritative stage order. When changing this list, also update the module
@@ -409,7 +414,9 @@ def _pipeline_commit() -> str:
             text=True,
             check=False,
         )
-    except OSError:
+    except OSError as exc:
+        _LOGGER.warning("cannot resolve git commit from repo root: %s", exc)
+        log.warning("Silently handled exception; using fallback response", exc_info=True)
         return "unknown"
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
 
@@ -1108,7 +1115,10 @@ def _run_claude_subprocess(
             proc.stdin.write(stdin_bytes)
             proc.stdin.close()
         except BrokenPipeError:
-            pass
+            print(
+                f"[pipeline] stdin closed/closed by child before full input: events_path={events_path}",
+                file=sys.stderr,
+            )
         result_event: dict | None = None
         try:
             with events_path.open("a", encoding="utf-8") as ev_f:
@@ -1119,23 +1129,24 @@ def _run_claude_subprocess(
                     try:
                         event = json.loads(line)
                     except json.JSONDecodeError:
+                        _LOGGER.debug("Skipping malformed pipeline child event line: %r", line)
                         continue
-                    # The terminal `result` event carries is_error / api_error_status
-                    # even when the agent printed an error and the CLI still exits 0
-                    # — capture it as the authoritative success signal.
-                    if event.get("type") == "result":
-                        result_event = event
-                    # Wrap with stage/label/ts for the monitor to correlate
-                    wrapped = {
-                        "ts": datetime.now().isoformat(timespec="seconds"),
-                        "stage_label": label,
-                        "event": event,
-                    }
-                    ev_f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
-                    ev_f.flush()
-                    rendered = _fmt_tool_event(event)
-                    if rendered:
-                        print(rendered, flush=True)
+                # The terminal `result` event carries is_error / api_error_status
+                # even when the agent printed an error and the CLI still exits 0
+                # — capture it as the authoritative success signal.
+                if event.get("type") == "result":
+                    result_event = event
+                # Wrap with stage/label/ts for the monitor to correlate
+                wrapped = {
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "stage_label": label,
+                    "event": event,
+                }
+                ev_f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
+                ev_f.flush()
+                rendered = _fmt_tool_event(event)
+                if rendered:
+                    print(rendered, flush=True)
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -1563,7 +1574,9 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
             return {"status": "missing", "artifact": "audio_qa.json"}
         try:
             report = json.loads(f.read_text())
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            log.warning("Silently handled exception; using fallback response", exc_info=True)
+            _LOGGER.warning("cannot parse %s: %s", f, exc)
             return {"status": "unreadable", "artifact": "audio_qa.json"}
         summary = report.get("summary") or {}
         fail = int(summary.get("fail") or 0)
@@ -1632,6 +1645,7 @@ def _stage_cost_event_refs(workspace: Path, stage: str) -> list[str]:
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
+            _LOGGER.debug("Skipping malformed event at events.jsonl:%s", idx)
             continue
         label = str(event.get("stage_label", "")).strip().lower()
         if not any(label.startswith(prefix) for prefix in prefixes):
@@ -2221,7 +2235,8 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
 def _try_parse_json(line: str) -> dict | None:
     try:
         return json.loads(line)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        _LOGGER.debug("non-JSON status line skipped: %r (%s)", line, exc)
         return None
 
 
@@ -2680,8 +2695,9 @@ examples:
     if _job_id:
         try:
             (workspace / ".pipeline_job_id").write_text(_job_id)
-        except OSError:
-            pass  # sidecar is best-effort; never block the actual pipeline
+        except OSError as err:
+            # sidecar is best-effort; never block the actual pipeline
+            print(f"[pipeline] unable to write .pipeline_job_id={_job_id}: {err}", file=sys.stderr)
 
     # Auto-start dashboard + open browser — single-command UX.
     # Idempotent: no-op if already running. Skip with PODCAST_NO_DASHBOARD=1.
