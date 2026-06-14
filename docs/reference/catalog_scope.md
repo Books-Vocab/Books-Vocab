@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 2e3f211a
+verified_against: c4cc82a4
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -50,6 +50,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Podcast episode list 契約（無本地 series / episode / auth）
 `PodcastEpisodeListViewScenarios` 的 populated / empty 狀態必須取 UI World `runtimePodcast.*` seed，登入狀態必須取 UI World `auth.signedIn` seed；empty 也必須從明示 runtimePodcast seed 派生，不可用本地 fixture enum 或 hardcoded series id。scenario 必須把 manifest 的 `PodcastSeries` / `PodcastEpisode` rows materialize 進 in-memory SwiftData，並保留 `audioAvailable` / `previewAvailable` / `previewDurationSec` / `subtitleAvailable` 等播放可用性狀態；缺 seed、auth 非 logged-in、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.podcastEpisodeListCatalogUsesUIWorldRuntimePodcastSeeds` 擋回本地 podcast fixture id、硬寫 series/user、inline `PodcastEpisode(remoteId:)` 與 `try? container.mainContext.save()`。
+
+### Podcast player 契約（無 synthetic SRT / 本地 episode / 本地 auth）
+`PodcastPlayerViewScenarios` 的 preview-player / locked-gate 狀態必須取 UI World `runtimePodcast.*` seed 與 `auth.*` seed；preview-player 的字幕內容必須從 manifest `subtitleAssetRef` 透過 asset manifest 物化，不能在 Debug source 內寫 synthetic SRT。scenario 必須把 manifest 的 `PodcastSeries` / selected `PodcastEpisode` row materialize 進 in-memory SwiftData，並保留 `audioAvailable` / `previewAvailable` / `previewDurationSec` / `subtitleAvailable` / `inlineSubtitle`；缺 seed、缺 preview/locked episode、缺字幕 asset、hash/byteSize 不符、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.podcastPlayerCatalogUsesUIWorldRuntimePodcastSeeds` 擋回 `sampleSRT`、硬寫 series/user、inline `PodcastEpisode(remoteId:)` 與 `try? container.mainContext.save()`。
 
 ### Word Edit vocabulary 契約（無本地 VocabularyEntry literal）
 `WordEditScenarios` 的 populated / empty-explanation / long-content / long-word 狀態必須取 UI World `vocabulary.wordEdit` seed。scenario 必須把該 seed materialize 成 in-memory SwiftData `Notebook` + `VocabularyEntry` rows，再以 manifest 內的 word 選取 entry；缺 seed、缺 entry、row state key 漏宣告、SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.wordEditCatalogUsesUIWorldVocabularySeed` 擋回本地 `sampleEntry`、`Sample Book` 與 inline `VocabularyEntry(...)`。
