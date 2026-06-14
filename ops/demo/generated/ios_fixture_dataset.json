@@ -20,6 +20,12 @@
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
         "installAs": "Books/the-shallows.md",
         "byteSize": 17431
+      },
+      "catalog_reader_pdf": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.pdf",
+        "sha256": "8538c4b3876e20bc3a473a82930ebccbf0699595544fd98ccb750214f451a662",
+        "installAs": "Books/catalog-reader.pdf",
+        "byteSize": 752
       }
     },
     "audio": {
@@ -917,6 +923,16 @@
           "progression": 0.31,
           "dateAdded": "2026-01-02T00:00:00Z",
           "dateLastRead": "2026-01-06T08:30:00Z"
+        },
+        {
+          "title": "Catalog Reader PDF",
+          "author": "Word Nexus Fixtures",
+          "fileName": "catalog-reader.pdf",
+          "format": "pdf",
+          "bookAssetRef": "books.catalog_reader_pdf",
+          "progression": 0.18,
+          "dateAdded": "2026-01-03T00:00:00Z",
+          "dateLastRead": "2026-01-06T10:45:00Z"
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"

@@ -126,6 +126,29 @@ import Playbook
         )
     }
 
+    @Test func pdfReaderCatalogUsesUIWorldBookAsset() throws {
+        let pdfScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("PDFReaderViewScenarios.swift")
+        let source = try String(contentsOf: pdfScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("catalog-missing.pdf", "PDF reader catalog must not render a synthetic missing-file book"),
+            ("Sample PDF", "PDF reader catalog title must come from UI World"),
+            ("File unavailable", "PDF reader catalog must not be pinned to the missing-file error state"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(pdfScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireBookshelfSeed(for: .withBooksLibrary)"),
+            "PDF reader catalog must source its book row from UI World bookshelf.with_books_library"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireInstalledAssetURL(ref: ref)"),
+            "PDF reader catalog must materialize the UI World book asset"
+        )
+    }
+
     @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
         let subscriptionScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
