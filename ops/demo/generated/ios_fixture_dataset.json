@@ -8,6 +8,10 @@
     "text": {},
     "images": {}
   },
+  "preferences": {
+    "userDefaults": {},
+    "ubiquitousKeyValueStore": {}
+  },
   "auth": {
     "signedIn": {
       "isLoggedIn": true,

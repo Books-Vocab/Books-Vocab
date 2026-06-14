@@ -7,6 +7,50 @@ import Testing
 // .serialized: tests mutate FixtureDatasetStore.testingOverrideData singleton.
 @Suite(.serialized)
 struct FixtureDatasetStoreTests {
+    private static func completeV2DatasetData(_ json: String) throws -> Data {
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        object["assets"] = object["assets"] ?? [
+            "books": [:],
+            "audio": [:],
+            "subtitles": [:],
+            "text": [:],
+            "images": [:],
+        ]
+        object["preferences"] = object["preferences"] ?? [
+            "userDefaults": [:],
+            "ubiquitousKeyValueStore": [:],
+        ]
+        for key in [
+            "auth",
+            "entitlements",
+            "settings",
+            "bookshelf",
+            "todayReview",
+            "notebook",
+            "podcast",
+            "runtimePodcast",
+            "reader",
+            "vocabulary",
+            "reviewDeck",
+        ] where object[key] == nil {
+            object[key] = [:]
+        }
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
+    @Test func v2DatasetFailsWhenTopLevelDomainIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-domains"
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Data(dataset.utf8))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -54,7 +98,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             #expect(FixtureDatasetStore.debugSummary() == "test-ui-world @ testing-override")
 
             let auth = try #require(FixtureDatasetStore.authSeed(for: .signedIn))
@@ -101,7 +145,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             let auth = try #require(FixtureDatasetStore.authSeed(for: .signedIn))
             #expect(auth.isLoggedIn == true)
             #expect(auth.userId == "locked-user")
@@ -143,7 +187,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             UITestFixtureSeed.seedSignedInLoginFromWorld()
             #expect(auth.isLoggedIn == true)
             #expect(auth.userId == "locked-user")
@@ -182,7 +226,7 @@ struct FixtureDatasetStoreTests {
         defaults.removePersistentDomain(forName: suite)
         let cloud = FakeCloudKVStore()
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             let document = FixtureDatasetStore.requireDocument()
             document.preferences.apply(to: defaults, cloud: cloud)
 
@@ -366,7 +410,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             let runtimeSeed = FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview)
             #expect(runtimeSeed?.seriesTitle == "Runtime Series")
             #expect(runtimeSeed?.episodes.first?.download?.audioAssetRef == "audio.runtime-audio")
@@ -417,7 +461,7 @@ struct FixtureDatasetStoreTests {
             try? FileManager.default.removeItem(at: expected.deletingLastPathComponent())
         }
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
             #expect(installed == expected)
             #expect(FileManager.default.fileExists(atPath: installed.path))
@@ -556,7 +600,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             #expect(FixtureDatasetStore.debugSummary() == "test-marketing @ testing-override")
             #expect(FixtureDatasetStore.settingsSeed(for: .subscribedActive)?.auth.displayName == "Max Chen")
             #expect(FixtureDatasetStore.bookshelfSeed(for: .withBooksLibrary)?.books.first?.title == "Editorial English")
@@ -628,7 +672,7 @@ struct FixtureDatasetStoreTests {
         }
         """
 
-        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
             #expect(FixtureDatasetStore.debugSummary() == "test-notebook-podcast @ testing-override")
 
             let notebookSeed = FixtureDatasetStore.notebookSeed(for: .populated)
