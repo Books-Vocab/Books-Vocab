@@ -85,6 +85,31 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func notebookRowFailsWhenMetadataKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-notebook-row-metadata",
+          "notebook": {
+            "populated": {
+              "notebooks": [
+                {
+                  "remoteId": "default",
+                  "name": "Default",
+                  "syncStatus": 1,
+                  "entries": []
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -687,6 +712,7 @@ struct FixtureDatasetStoreTests {
                   "remoteId": "nb-external",
                   "name": "外部第二本",
                   "syncStatus": 1,
+                  "isDefault": false,
                   "sortOrder": 1,
                   "entries": []
                 }
