@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import subprocess
@@ -65,6 +66,7 @@ PREVIEW_EP_NUM = 1
 _SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
 _JSON_CT = "application/json; charset=utf-8"
 _AUDIO_CT = {"m4a": "audio/mp4", "mp3": "audio/mpeg"}
+_LOGGER = logging.getLogger(__name__)
 
 
 def _is_not_found(exc: Exception, s3) -> bool:
@@ -84,6 +86,12 @@ def _get_json(s3, bucket: str, key: str):
         obj = s3.get_object(Bucket=bucket, Key=key)
     except Exception as exc:  # noqa: BLE001
         if _is_not_found(exc, s3):
+            _LOGGER.debug(
+                "preview metadata missing: bucket=%s key=%s; treating as absent",
+                bucket,
+                key,
+                exc_info=True,
+            )
             return None
         raise
     return json.loads(obj["Body"].read())
@@ -94,6 +102,12 @@ def _get_bytes(s3, bucket: str, key: str) -> bytes | None:
         obj = s3.get_object(Bucket=bucket, Key=key)
     except Exception as exc:  # noqa: BLE001
         if _is_not_found(exc, s3):
+            _LOGGER.debug(
+                "preview audio bytes missing: bucket=%s key=%s; treating as absent",
+                bucket,
+                key,
+                exc_info=True,
+            )
             return None
         raise
     return obj["Body"].read()
@@ -105,6 +119,12 @@ def _key_exists(s3, bucket: str, key: str) -> bool:
         return True
     except Exception as exc:  # noqa: BLE001
         if _is_not_found(exc, s3):
+            _LOGGER.debug(
+                "preview key missing: bucket=%s key=%s; treating as absent",
+                bucket,
+                key,
+                exc_info=True,
+            )
             return False
         raise
 
@@ -162,8 +182,8 @@ def _probe_duration(path: Path) -> int:
         )
         if pr.returncode == 0 and pr.stdout.strip():
             return int(float(pr.stdout.strip()))
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        print(f"[podcast_preview_backfill] ffprobe duration failed for {path}: {exc}", file=sys.stderr)
     return 0
 
 

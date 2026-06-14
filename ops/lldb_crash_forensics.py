@@ -24,6 +24,7 @@ $KG_LLDB_DUMP_DIR（預設 /tmp/kg_lldb_forensics）：
 
 import datetime
 import os
+import sys
 
 import lldb
 
@@ -167,6 +168,7 @@ def _write_dump(process, thread, trigger):
             os.remove(latest)
         os.symlink(path, latest)
     except OSError:
+        print(f"[kg-forensics] latest symlink update failed for {latest}: fallback to copy mode", file=sys.stderr)
         with open(latest, "w") as f:
             f.write("\n".join(parts) + "\n")
     return path
