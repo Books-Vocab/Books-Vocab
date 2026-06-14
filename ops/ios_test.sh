@@ -62,6 +62,30 @@ STAGED_DATASET_XCTESTRUN=""
 UI_TEST_REVIEW_ROOT=""
 UI_TEST_REVIEW_HTML=""
 
+build_ui_test_variant_id() {
+  local parts=()
+  if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
+    parts+=("dataset:$UI_FIXTURE_DATASET_NAME")
+  elif [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
+    parts+=("dataset-file:$(basename "$UI_FIXTURE_DATASET_FILE")")
+  fi
+  if [[ -n "$UI_LAUNCH_PROFILE" ]]; then
+    parts+=("profile:$UI_LAUNCH_PROFILE")
+  fi
+  if [[ ${#parts[@]} -eq 0 ]]; then
+    printf 'default'
+    return
+  fi
+  local joined="${parts[0]}"
+  local part
+  for part in "${parts[@]:1}"; do
+    joined+="+$part"
+  done
+  printf '%s' "$joined"
+}
+UI_TEST_FLOW_ID=""
+UI_TEST_VARIANT_ID=""
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
@@ -384,6 +408,7 @@ if [[ -n "$TEST_FILE" ]]; then
     fi
   fi
   [[ -f "$FILE_PATH" ]] || { echo "[ios_test] test file not found: $TEST_FILE (tried .swift suffix and stem search under $TEST_DIR)" >&2; exit 1; }
+  UI_TEST_FLOW_ID="$(basename "$FILE_PATH" .swift)"
   while IFS= read -r flag; do
     [[ -n "$flag" ]] && ONLY_FLAGS+=("$flag")
   done < <(discover_file_only_flags "$FILE_PATH" "" "$TEST_TARGET")
@@ -393,6 +418,7 @@ if [[ -n "$TEST_FILE" ]]; then
   fi
   echo "[ios_test] matched ${#ONLY_FLAGS[@]} tests in file '$TEST_FILE' ($TEST_TARGET)"
 elif [[ -n "$GREP_PATTERN" ]]; then
+  UI_TEST_FLOW_ID="$GREP_PATTERN"
   # Auto-discover test funcs matching the pattern, attributing each func to its
   # OWN enclosing top-level container (struct / @Suite struct / class). See
   # lib/ios_test_discovery.sh for the discovery contract.
@@ -418,6 +444,10 @@ elif [[ "$TEST_SCOPE" != "all" ]]; then
   ONLY_FLAGS+=("-only-testing:$TEST_TARGET")
 fi
 
+if [[ -z "$UI_TEST_FLOW_ID" ]]; then
+  UI_TEST_FLOW_ID="$TEST_TARGET"
+fi
+
 if [[ "$TEST_SCOPE" == "ui" && -z "$UI_LAUNCH_PROFILE" ]]; then
   UI_LAUNCH_PROFILE="ui-smoke"
 fi
@@ -432,6 +462,7 @@ if [[ "$LAUNCH_BENCHMARK" -eq 1 ]]; then
     UI_LAUNCH_PROFILE="standard"
   fi
 fi
+UI_TEST_VARIANT_ID="$(build_ui_test_variant_id)"
 
 # Dry-run: print resolved flags and exit before touching the lock / xcodebuild.
 if [[ "$LIST_ONLY" -eq 1 ]]; then
@@ -1108,8 +1139,8 @@ archive_ui_test_recording() {
 }
 
 build_ui_test_review_page() {
-  [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
-  [[ -n "${UI_TEST_SCREENSHOT_MANIFEST:-}" && -s "$UI_TEST_SCREENSHOT_MANIFEST" ]] || return 0
+  local review_status="${1:-}"
+  [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
 
   local stem
   if [[ -n "${UI_TEST_VIDEO:-}" ]]; then
@@ -1118,14 +1149,36 @@ build_ui_test_review_page() {
     stem="$(date -u +%Y%m%d-%H%M%S)-$TEST_SCOPE"
   fi
   UI_TEST_REVIEW_ROOT="$PROJECT_ROOT/build/snapshots/uitest-runs/$stem"
+  mkdir -p "$UI_TEST_REVIEW_ROOT"
+
+  if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" || ! -d "$UI_TEST_SCREENSHOT_DIR" ]]; then
+    UI_TEST_SCREENSHOT_DIR="$UI_TEST_REVIEW_ROOT"
+  fi
+  if [[ -z "${UI_TEST_SCREENSHOT_MANIFEST:-}" || ! -s "$UI_TEST_SCREENSHOT_MANIFEST" ]]; then
+    UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_REVIEW_ROOT/input_review_manifest.json"
+    jq -nc --arg flow "$UI_TEST_FLOW_ID" --arg variant "$UI_TEST_VARIANT_ID" \
+      '{
+        schema:"kg.visual-review.sheet.v1",
+        source:"uitest",
+        title:$flow,
+        variant:$variant,
+        items:[]
+      }' >"$UI_TEST_SCREENSHOT_MANIFEST"
+  fi
 
   local args=(
     "$SCRIPT_DIR/uitest_review_page.py"
     --screenshot-dir "$UI_TEST_SCREENSHOT_DIR"
     --manifest "$UI_TEST_SCREENSHOT_MANIFEST"
     --out-root "$UI_TEST_REVIEW_ROOT"
+    --flow-id "$UI_TEST_FLOW_ID"
+    --variant-id "$UI_TEST_VARIANT_ID"
+    --test-file "${FILE_PATH:-}"
+    --device "$(resolve_run_device_udid 2>/dev/null || true)"
+    --log "$TMPOUT"
     --json
   )
+  [[ -n "$review_status" ]] && args+=(--status "$review_status")
   [[ -n "${UI_TEST_CONTACT_SHEET:-}" ]] && args+=(--contact-sheet "$UI_TEST_CONTACT_SHEET")
   [[ -n "${UI_TEST_QUICK4_SHEET:-}" ]] && args+=(--quick4-sheet "$UI_TEST_QUICK4_SHEET")
   [[ -n "${UI_TEST_VIDEO:-}" ]] && args+=(--video "$UI_TEST_VIDEO")
@@ -1488,6 +1541,7 @@ emit_ui_runner_lifecycle() {
 kg_ios_verdict_init test "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
+  build_ui_test_review_page "$result"
   jq -nc \
     --arg schema "kg.ios.run-verdict.v1" \
     --arg kind "test" \
