@@ -175,6 +175,7 @@ struct UIWorldPreferencesSeed: Codable, Equatable {
 struct UIWorldAsset: Codable, Equatable {
     let sourcePath: String
     let sha256: String
+    let byteSize: Int
     let installAs: String?
 }
 
@@ -478,6 +479,13 @@ enum FixtureDatasetStore {
             try fm.removeItem(at: destination)
         }
         try fm.copyItem(at: sourceURL, to: destination)
+        let installedSize = try byteSize(for: destination)
+        guard installedSize == asset.byteSize else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: destination.path,
+                NSLocalizedDescriptionKey: "UI World installed asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(installedSize)",
+            ])
+        }
         let installedHash = try sha256Hex(for: destination)
         guard installedHash == asset.sha256 else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
@@ -502,6 +510,13 @@ enum FixtureDatasetStore {
         let url = URL(fileURLWithPath: asset.sourcePath)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        let size = try byteSize(for: url)
+        guard size == asset.byteSize else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSFilePathErrorKey: url.path,
+                NSLocalizedDescriptionKey: "UI World asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(size)",
+            ])
         }
         let actual = try sha256Hex(for: url)
         guard actual == asset.sha256 else {
@@ -532,6 +547,14 @@ enum FixtureDatasetStore {
     static func sha256Hex(for url: URL) throws -> String {
         let data = try Data(contentsOf: url)
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func byteSize(for url: URL) throws -> Int {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        guard let size = values.fileSize else {
+            throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return size
     }
 
     static func readerSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed? {
