@@ -3,6 +3,7 @@ import Foundation
 enum SettingsFixtureID: String, CaseIterable {
     case loggedOut = "logged_out"
     case subscribedActive = "subscribed_active"
+    case subscriptionFree = "subscription_free"
     case subscriptionLoading = "subscription_loading"
     case deletingAccount = "deleting_account"
     case pricingUnavailable = "pricing_unavailable"
@@ -205,6 +206,9 @@ enum SettingsFixtures {
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil
             )
+        },
+        FixtureRecipe(key: SettingsFixtureID.subscriptionFree.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
+            FixtureDatasetStore.requireSettingsSeed(for: .subscriptionFree)
         },
         FixtureRecipe(key: SettingsFixtureID.subscriptionLoading.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
             .init(
