@@ -537,6 +537,59 @@ class EmbeddingStore:
                 results.append((self._ids[i], float(similarities[i])))
         return results[:k]
 
+    def find_similar_batch(
+        self, card_ids: list[str], k: int = 10
+    ) -> dict[str, list[tuple[str, float]]]:
+        """Top-k neighbours for many query cards in one matrix product.
+
+        Equivalent to ``{cid: self.find_similar(cid, k) for cid in card_ids}``
+        but computes a single ``(N x dim) @ (dim x M)`` matmul instead of M
+        independent matvecs — the dominant cost of judge enrichment over a
+        large store. Unknown ids (not in the store) map to ``[]``.
+
+        Memory is ``N x M`` float32 (e.g. 10k x 100 ~= 4MB), safe for the
+        batch sizes the pipeline produces.
+        """
+        # Unknown / empty: every requested id still gets a key (callers iterate
+        # the input list and expect a result per id).
+        result: dict[str, list[tuple[str, float]]] = {cid: [] for cid in card_ids}
+        if self._embeddings is None:
+            return result
+
+        # Resolve query rows, dropping ids absent from the store. Preserve the
+        # caller's order so the M columns line up with `present`.
+        present = [cid for cid in card_ids if cid in self._id_set]
+        if not present:
+            return result
+        q_idx = np.array([self._id_pos[cid] for cid in present])
+
+        norms = self._get_norms()
+        query_vecs = self._embeddings[q_idx]  # (M, dim)
+        # ONE matmul over the whole matrix: (N, dim) @ (dim, M) -> (N, M).
+        # Use np.matmul explicitly (not the @ operator, which dispatches to
+        # ndarray.__matmul__) so the single-product invariant is observable.
+        sims = np.matmul(self._embeddings, query_vecs.T)
+        # Broadcast cosine denominator: column j divides by ||q_j||.
+        denom = norms[:, None] * norms[q_idx][None, :] + _COSINE_EPS
+        sims = sims / denom
+
+        n = self._embeddings.shape[0]
+        want = k + 1  # absorbs self, dropped below
+        for col, cid in enumerate(present):
+            col_sims = sims[:, col]
+            if want >= n:
+                order = np.argsort(col_sims)[::-1]
+            else:
+                cand = np.argpartition(col_sims, n - want)[-want:]
+                order = cand[np.argsort(col_sims[cand])[::-1]]
+            neighbours: list[tuple[str, float]] = []
+            for i in order:
+                other = self._ids[i]
+                if other != cid:
+                    neighbours.append((other, float(col_sims[i])))
+            result[cid] = neighbours[:k]
+        return result
+
     def has(self, card_id: str) -> bool:
         return card_id in self._id_set
 
