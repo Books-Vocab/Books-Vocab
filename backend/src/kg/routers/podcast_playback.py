@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Protocol
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi import Path as PathParam
@@ -15,6 +15,35 @@ from ..types import UserRecord
 _MAX_EPISODE_NUM = 999
 _AUDIO_CHUNK_SIZE = 64 * 1024  # 64 KiB per network read — balances RAM vs syscalls.
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+class ServeAudioFromS3(Protocol):
+    def __call__(
+        self,
+        request: Request,
+        series_id: str,
+        ep_num: int,
+        range_header: str | None,
+        *,
+        stem: str,
+    ) -> StreamingResponse:
+        ...
+
+
+class ServeStaticMedia(Protocol):
+    def __call__(
+        self,
+        request: Request,
+        series_id: str,
+        rel_key: str,
+        *,
+        media_type: str,
+        context: str,
+        headers: dict[str, str] | None = None,
+        transform: Callable[[bytes], bytes | str] = lambda b: b,
+        stream_s3: bool = False,
+    ) -> StreamingResponse:
+        ...
 
 
 def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
@@ -118,7 +147,7 @@ def build_podcast_playback_router(
     *,
     validate_series_id: Callable[[str], None],
     using_s3: Callable[[Request], bool],
-    serve_audio_from_s3: Callable[..., StreamingResponse],
+    serve_audio_from_s3: ServeAudioFromS3,
     gate_audio_access: Callable[[UserRecord | None, int], str],
     audio_filename: Callable[[Request, str, int], str],
     podcasts_dir: Callable[[Request], Path],
@@ -126,7 +155,7 @@ def build_podcast_playback_router(
     parse_range_header: Callable[[str, int], tuple[int, int] | None],
     iter_file_range: Callable[[Path, int, int], Iterator[bytes]],
     require_episode_access: Callable[[UserRecord | None, int], str],
-    serve_static_media: Callable[..., object],
+    serve_static_media: ServeStaticMedia,
 ) -> APIRouter:
     router = APIRouter(tags=["podcast"])
 
