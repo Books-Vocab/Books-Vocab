@@ -248,6 +248,58 @@
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
+    "account_long_identity": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "WW",
+        "avatarURL": null,
+        "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+        "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": null,
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張 · 剛剛"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
     "subscription_free": {
       "auth": {
         "isLoggedIn": true,
