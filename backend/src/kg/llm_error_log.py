@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from .ops_shared import data_dir
 
@@ -131,3 +131,20 @@ def record(
              redact_message(message)[:500], now),
         )
         conn.commit()
+
+
+def count_errors_since(window_min: int) -> int:
+    """Count terminal LLM failures recorded in the last ``window_min`` minutes.
+
+    Windowed by ``created_at`` (event-occurrence time), mirroring the
+    judge/translate observability checks. Uses the bare ``idx_le_created``
+    index. Parameterised query under the singleton lock; read-only.
+    """
+    cutoff = (datetime.now(UTC) - timedelta(minutes=window_min)).isoformat()
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM llm_errors WHERE created_at >= ?",
+            (cutoff,),
+        ).fetchone()
+    return int(row[0] or 0)

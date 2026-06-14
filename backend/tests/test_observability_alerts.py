@@ -5,7 +5,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from kg import judge_log, observability_alerts, pipeline_log, translate_log
+from kg import (
+    judge_log,
+    llm_error_log,
+    observability_alerts,
+    pipeline_log,
+    translate_log,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -27,12 +33,16 @@ def _isolate_log_dbs(tmp_path, monkeypatch):
     # translate_log uses _db_path() lookup via env var
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     translate_log._reset()
+    # llm_error_log uses module-level DB_PATH
+    monkeypatch.setattr(llm_error_log, "DB_PATH", tmp_path / "llm_errors.db")
+    llm_error_log._reset()
     # Reset cooldown state (module-level dict)
     observability_alerts._cooldown_state.clear()
     yield
     pipeline_log._reset()
     judge_log._reset()
     translate_log._reset()
+    llm_error_log._reset()
     observability_alerts._cooldown_state.clear()
 
 
@@ -118,6 +128,20 @@ def _insert_translate_log(*, latency_ms: int, minutes_ago: int) -> None:
         "source_lang, target_lang, response_raw, latency_ms, created_at) "
         "VALUES ('u1', 'translate', 'w', '', 'h', 'en', 'zh', '{}', ?, ?)",
         (latency_ms, created),
+    )
+    conn.commit()
+
+
+def _insert_llm_error(
+    *, minutes_ago: int, error_class: str = "RateLimitError", status_code: int = 429,
+) -> None:
+    created = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
+    conn = llm_error_log._get_conn()
+    conn.execute(
+        "INSERT INTO llm_errors (user_id, call_type, provider, model, error_class, "
+        "status_code, message, created_at) "
+        "VALUES ('u1', 'translate', 'openai', 'gpt-4o', ?, ?, '', ?)",
+        (error_class, status_code, created),
     )
     conn.commit()
 
@@ -328,6 +352,54 @@ class TestCheckTranslateLatencyP95:
 
 
 # ---------------------------------------------------------------------------
+# check_llm_error_rate
+# ---------------------------------------------------------------------------
+
+
+class TestCheckLlmErrorRate:
+    def test_check_llm_error_rate_fires(self, sentry_stub):
+        """≥ threshold terminal LLM errors in window → one Sentry capture."""
+        for _ in range(observability_alerts.LLM_ERROR_THRESHOLD):
+            _insert_llm_error(minutes_ago=5)
+        observability_alerts.run_all_checks()
+        llm_calls = [
+            c for c in sentry_stub.calls
+            if c["tags"].get("alert") == "llm_error_rate"
+        ]
+        assert len(llm_calls) == 1
+        call = llm_calls[0]
+        assert call["level"] == "error"
+        assert "llm" in call["message"].lower()
+        assert call["tags"].get("llm_errors") == observability_alerts.LLM_ERROR_THRESHOLD
+        assert call["tags"].get("window_min") == observability_alerts.LLM_ERROR_WINDOW_MIN
+
+    def test_llm_error_rate_cooldown(self, sentry_stub):
+        """Second consecutive run is suppressed by COOLDOWN_MIN."""
+        for _ in range(observability_alerts.LLM_ERROR_THRESHOLD):
+            _insert_llm_error(minutes_ago=5)
+        observability_alerts.check_llm_error_rate()
+        observability_alerts.check_llm_error_rate()
+        llm_calls = [
+            c for c in sentry_stub.calls
+            if c["tags"].get("alert") == "llm_error_rate"
+        ]
+        assert len(llm_calls) == 1
+
+    def test_llm_error_rate_below_threshold_silent(self, sentry_stub):
+        """Fewer than LLM_ERROR_MIN_TOTAL errors → no alert."""
+        for _ in range(observability_alerts.LLM_ERROR_MIN_TOTAL - 1):
+            _insert_llm_error(minutes_ago=5)
+        observability_alerts.check_llm_error_rate()
+        assert sentry_stub.calls == []
+
+    def test_llm_error_rate_outside_window_ignored(self, sentry_stub):
+        for _ in range(observability_alerts.LLM_ERROR_THRESHOLD + 5):
+            _insert_llm_error(minutes_ago=observability_alerts.LLM_ERROR_WINDOW_MIN + 30)
+        observability_alerts.check_llm_error_rate()
+        assert sentry_stub.calls == []
+
+
+# ---------------------------------------------------------------------------
 # Threshold boundary contract — pins inclusive vs exclusive semantics so
 # refactors can't silently flip them. The three checks intentionally differ:
 #
@@ -473,7 +545,7 @@ class TestCooldownIsolation:
 
 
 class TestRunAll:
-    def test_run_all_invokes_three_checks(self, monkeypatch, sentry_stub):
+    def test_run_all_invokes_all_checks(self, monkeypatch, sentry_stub):
         called: list[str] = []
         monkeypatch.setattr(
             observability_alerts, "check_pipeline_failures",
@@ -487,8 +559,12 @@ class TestRunAll:
             observability_alerts, "check_translate_latency_p95",
             lambda **kw: called.append("translate"),
         )
+        monkeypatch.setattr(
+            observability_alerts, "check_llm_error_rate",
+            lambda **kw: called.append("llm"),
+        )
         observability_alerts.run_all_checks()
-        assert called == ["pipeline", "judge", "translate"]
+        assert called == ["pipeline", "judge", "translate", "llm"]
 
     def test_run_all_swallows_exceptions(self, monkeypatch):
         # Spy that every check is *attempted* even though each raises — proving
