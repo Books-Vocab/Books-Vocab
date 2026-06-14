@@ -888,6 +888,70 @@
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
     },
+    "reader_notebook_unbound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_bound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": "reader-nb-green",
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_long_bound": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": "reader-nb-12",
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "reader_notebook_empty": {
+      "books": [
+        {
+          "title": "Reader Notebook Manual",
+          "author": "Word Nexus Fixtures",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.42,
+          "preferredNotebookId": null,
+          "dateAdded": "2026-01-04T00:00:00Z",
+          "dateLastRead": "2026-01-06T11:20:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
     "empty_library": {
       "books": [],
       "referenceDate": "2026-01-07T00:00:00Z"
@@ -945,6 +1009,167 @@
   "notebook": {
     "empty": {
       "notebooks": []
+    },
+    "readerPickerPopulated": {
+      "notebooks": [
+        {
+          "remoteId": "reader-nb-default",
+          "name": "我的單字本",
+          "color": null,
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-green",
+          "name": "綠野仙蹤生詞",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-blue",
+          "name": "商業英文",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1
+        }
+      ]
+    },
+    "readerPickerMany": {
+      "notebooks": [
+        {
+          "remoteId": "reader-nb-1",
+          "name": "單字本 #1 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": true,
+          "sortOrder": 0,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-2",
+          "name": "單字本 #2 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 1,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-3",
+          "name": "單字本 #3 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 2,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-4",
+          "name": "單字本 #4 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 3,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-5",
+          "name": "單字本 #5 — 長標題測試截斷行為的範例文字",
+          "color": "#E0533B",
+          "isDefault": false,
+          "sortOrder": 4,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-6",
+          "name": "單字本 #6 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 5,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-7",
+          "name": "單字本 #7 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 6,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-8",
+          "name": "單字本 #8 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 7,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-9",
+          "name": "單字本 #9 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 8,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-10",
+          "name": "單字本 #10 — 長標題測試截斷行為的範例文字",
+          "color": "#E0533B",
+          "isDefault": false,
+          "sortOrder": 9,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-11",
+          "name": "單字本 #11 — 長標題測試截斷行為的範例文字",
+          "color": "#2E8B57",
+          "isDefault": false,
+          "sortOrder": 10,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-12",
+          "name": "單字本 #12 — 長標題測試截斷行為的範例文字",
+          "color": "#3B6FD4",
+          "isDefault": false,
+          "sortOrder": 11,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-13",
+          "name": "單字本 #13 — 長標題測試截斷行為的範例文字",
+          "color": "#C9A227",
+          "isDefault": false,
+          "sortOrder": 12,
+          "entries": [],
+          "syncStatus": 1
+        },
+        {
+          "remoteId": "reader-nb-14",
+          "name": "單字本 #14 — 長標題測試截斷行為的範例文字",
+          "color": "#7A4FD0",
+          "isDefault": false,
+          "sortOrder": 13,
+          "entries": [],
+          "syncStatus": 1
+        }
+      ]
     },
     "populated": {
       "notebooks": [

@@ -7,81 +7,84 @@ import SwiftData
 /// the current book to a target notebook (or "follow global").
 ///
 /// The picker is `@Query`-backed over `Notebook` and reads `@Environment(\.modelContext)`,
-/// so each scenario seeds an in-memory `ModelContainer` with synthetic notebooks + a book.
-/// Container construction + model insertion touch `@MainActor`, so all seeding happens
-/// inside a `@MainActor` `View` scene struct (`body` is main-actor isolated).
+/// so each scenario materializes UI World notebook + bookshelf seeds into one
+/// in-memory `ModelContainer`. Missing seed, stale book binding, or save failure
+/// fail at catalog construction time.
 enum ReaderNotebookPickerScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Reader Notebook Picker") {
             Scenario("With notebooks · follow global", layout: .fill) {
-                ReaderNotebookPickerScene(
-                    notebooks: ReaderNotebookPickerScene.sampleNotebooks,
-                    boundRemoteId: nil
-                )
+                ReaderNotebookPickerScene(fixture: .populatedUnbound)
             }
             Scenario("With notebooks · one bound", layout: .fill) {
-                ReaderNotebookPickerScene(
-                    notebooks: ReaderNotebookPickerScene.sampleNotebooks,
-                    boundRemoteId: "nb-green"
-                )
+                ReaderNotebookPickerScene(fixture: .populatedBound)
             }
             Scenario("Many notebooks (stress)", layout: .fill) {
-                ReaderNotebookPickerScene(
-                    notebooks: ReaderNotebookPickerScene.manyNotebooks,
-                    boundRemoteId: "nb-12"
-                )
+                ReaderNotebookPickerScene(fixture: .manyBound)
             }
             Scenario("Empty — no notebooks", layout: .fill) {
-                ReaderNotebookPickerScene(
-                    notebooks: [],
-                    boundRemoteId: nil
-                )
+                ReaderNotebookPickerScene(fixture: .empty)
             }
+        }
+    }
+}
+
+// MARK: - Fixtures
+
+private enum ReaderNotebookPickerFixture {
+    case populatedUnbound
+    case populatedBound
+    case manyBound
+    case empty
+
+    var notebookID: NotebookFixtureID {
+        switch self {
+        case .populatedUnbound, .populatedBound:
+            return .readerPickerPopulated
+        case .manyBound:
+            return .readerPickerMany
+        case .empty:
+            return .empty
+        }
+    }
+
+    var bookshelfID: BookshelfFixtureID {
+        switch self {
+        case .populatedUnbound:
+            return .readerNotebookUnbound
+        case .populatedBound:
+            return .readerNotebookBound
+        case .manyBound:
+            return .readerNotebookLongBound
+        case .empty:
+            return .readerNotebookEmpty
+        }
+    }
+
+    var expectedNotebookCount: Int {
+        switch self {
+        case .populatedUnbound, .populatedBound:
+            return 3
+        case .manyBound:
+            return 14
+        case .empty:
+            return 0
         }
     }
 }
 
 // MARK: - Scene harness
 
-/// Builds an in-memory store, seeds the supplied notebooks + a single book, then
-/// presents `ReaderNotebookPicker`. Seeding runs in this struct's `init`; the
-/// struct stays nonisolated so the `Scenario { ... }` closure (also nonisolated)
-/// can construct it. This is safe because Playbook drives all rendering on the
-/// main thread, so `mainContext` is only ever touched there. (Cannot mark the
-/// struct `@MainActor`: that would make `init` main-actor-isolated and the
-/// nonisolated Scenario closure could no longer call it.)
 private struct ReaderNotebookPickerScene: View {
     private let container: ModelContainer
     private let book: Book
 
-    init(notebooks: [(remoteId: String, name: String, color: String?, isDefault: Bool)], boundRemoteId: String?) {
-        let container = try! ModelContainer(
-            for: Book.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-
-        for (index, spec) in notebooks.enumerated() {
-            let notebook = Notebook(
-                remoteId: spec.remoteId,
-                name: spec.name,
-                color: spec.color,
-                isDefault: spec.isDefault
-            )
-            notebook.sortOrder = index
-            context.insert(notebook)
+    init(fixture: ReaderNotebookPickerFixture) {
+        let payload = MainActor.assumeIsolated {
+            Self.materialize(fixture: fixture)
         }
-
-        let book = Book(
-            title: "The Sample Book",
-            author: "Anon",
-            fileName: "sample.epub"
-        )
-        book.preferredNotebookId = boundRemoteId
-        context.insert(book)
-
-        self.container = container
-        self.book = book
+        container = payload.container
+        book = payload.book
     }
 
     var body: some View {
@@ -92,24 +95,42 @@ private struct ReaderNotebookPickerScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // MARK: Fixtures
+    @MainActor
+    private static func materialize(fixture: ReaderNotebookPickerFixture) -> (container: ModelContainer, book: Book) {
+        let notebooks = NotebookFixtures.notebooks(for: fixture.notebookID)
+        let books = BookshelfFixtures.books(for: fixture.bookshelfID)
+        precondition(
+            notebooks.count == fixture.expectedNotebookCount,
+            "UI World notebook.\(fixture.notebookID.rawValue) expected \(fixture.expectedNotebookCount) notebooks, got \(notebooks.count)"
+        )
+        precondition(
+            books.count == 1,
+            "UI World bookshelf.\(fixture.bookshelfID.rawValue) expected exactly one reader book, got \(books.count)"
+        )
 
-    static let sampleNotebooks: [(remoteId: String, name: String, color: String?, isDefault: Bool)] = [
-        ("nb-default", "我的單字本", nil, true),
-        ("nb-green", "綠野仙蹤生詞", "#2E8B57", false),
-        ("nb-blue", "商業英文", "#3B6FD4", false),
-    ]
-
-    static let manyNotebooks: [(remoteId: String, name: String, color: String?, isDefault: Bool)] = {
-        let palette = ["#E0533B", "#2E8B57", "#3B6FD4", "#C9A227", "#7A4FD0"]
-        return (1...14).map { i in
-            (
-                remoteId: "nb-\(i)",
-                name: "單字本 #\(i) — 長標題測試截斷行為的範例文字",
-                color: palette[i % palette.count],
-                isDefault: i == 1
+        let book = books[0]
+        if let boundId = book.preferredNotebookId {
+            precondition(
+                notebooks.contains { $0.remoteId == boundId },
+                "UI World bookshelf.\(fixture.bookshelfID.rawValue) binds book to missing notebook \(boundId)"
             )
         }
-    }()
+
+        do {
+            let container = try ModelContainer(
+                for: Book.self, Notebook.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            let context = container.mainContext
+            for notebook in notebooks {
+                context.insert(notebook)
+            }
+            context.insert(book)
+            try context.save()
+            return (container, book)
+        } catch {
+            preconditionFailure("Failed to materialize UI World reader notebook picker fixture: \(error)")
+        }
+    }
 }
 #endif

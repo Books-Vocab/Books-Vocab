@@ -5,6 +5,8 @@ import SwiftData
 enum NotebookFixtureID: String, CaseIterable {
     case empty
     case populated
+    case readerPickerMany
+    case readerPickerPopulated
     case single
 
     var key: FixtureKey {
@@ -93,6 +95,7 @@ struct NotebookEntrySeed: Codable {
 struct NotebookSeed: Codable {
     let remoteId: String
     let name: String
+    let color: String?
     let syncStatus: Int
     let isDefault: Bool
     let sortOrder: Int
@@ -134,6 +137,12 @@ enum NotebookFixtures {
     }
 
     @MainActor
+    static func notebooks(for fixtureID: NotebookFixtureID) -> [Notebook] {
+        let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
+        return seed.notebooks.map(makeNotebook(from:))
+    }
+
+    @MainActor
     private static func makeContainer(from seed: NotebookFixtureSeed) -> ModelContainer {
         let schema = Schema([Notebook.self, VocabularyEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -154,7 +163,7 @@ enum NotebookFixtures {
     }
 
     private static func makeNotebook(from seed: NotebookSeed) -> Notebook {
-        let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, isDefault: seed.isDefault)
+        let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, color: seed.color, isDefault: seed.isDefault)
         notebook.sortOrder = seed.sortOrder
         notebook.syncStatus = seed.syncStatus
         return notebook
