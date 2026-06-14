@@ -100,10 +100,13 @@ markup stripped: remove the **emphasis** markers (keep inner text).
 from __future__ import annotations
 
 import base64
+import logging
 import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+_LOGGER = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sot import DemoSoT
@@ -145,6 +148,7 @@ def _difficulty_tier(card: dict[str, Any]) -> str:
     try:
         value = float(diff)
     except (TypeError, ValueError):
+        _LOGGER.debug("Invalid difficulty value on card %r: defaulting to easy", card.get("word"))
         return "easy"
     if value >= 5.0:
         return "hard"
@@ -335,6 +339,7 @@ def _rel(path: Path) -> str:
     try:
         return str(path.relative_to(_REPO_ROOT))
     except ValueError:
+        _LOGGER.debug("Cannot compute relative path from repo root for %s", path)
         return str(path)
 
 

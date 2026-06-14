@@ -28,6 +28,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import sys
 from pathlib import Path
@@ -48,6 +49,8 @@ SILENCE_MAX_MS = 4000          # any single gap > 4s is suspect
 SILENCE_THRESH_DBFS = -40
 PEAK_CLIP_DBFS = -0.5          # >= -0.5 dBFS = clipping risk
 LOUDNESS_MIN_DBFS = -30        # avg below this = near-silent render
+
+_LOGGER = logging.getLogger(__name__)
 
 # `[^:*]+` (not `\w+`) to stay in sync with synthesize.py and subtitle.py —
 def script_word_count(script_path: Path) -> int:
@@ -81,6 +84,7 @@ def analyze(audio_path: Path) -> dict:
         # Undecodable file (0-byte / truncated / corrupt) — the very failure
         # mode audio_qa exists to catch. Report it as FAIL instead of letting
         # one bad file abort the whole batch (CLI + pipeline stage both benefit).
+        _LOGGER.warning("audio_qa decode failed for %s", audio_path, exc_info=True)
         findings.append(("FAIL", f"decode error: {e}"))
         return {
             "file": audio_path.name,
