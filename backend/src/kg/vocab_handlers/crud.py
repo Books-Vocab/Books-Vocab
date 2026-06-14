@@ -39,13 +39,14 @@ def list_vocab_response(
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return list_vocab_cards(
+    cards, _next_cursor = list_vocab_cards(
         since=since,
         cards_store=stores.cards,
         graph=stores.graph,
         card_response_builder=card_response_builder,
         notebook_id=notebook_id,
     )
+    return cards
 
 
 def lookup_word_response(
