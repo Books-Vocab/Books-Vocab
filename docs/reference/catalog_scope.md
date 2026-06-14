@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 6029eea3
+verified_against: d80a7490
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -101,6 +101,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Notebook filter picker 契約（無本地 Notebook row / empty fallback）
 `NotebookFilterChipScenarios` 的 with-notebooks / empty-list 狀態必須取 UI World `notebook.*` seed；empty-list 也必須是 manifest 內明示的 `notebook.empty`，不可用本地 `[]` 表示。scenario 必須透過 `NotebookFixtures.renderModel(for:)` materialize notebooks，選取狀態只能用 manifest row 的 `remoteId`；缺 seed、selected index drift、SwiftData seed/save 失敗都直接 fail-fast。`NotebookFixtures` 的 container 是非 optional；不能用 nil container 或空列表當渲染 fallback。`CatalogCoverageTests.notebookFilterChipCatalogUsesUIWorldNotebookSeeds` 擋回 `sampleNotebooks`、inline `Notebook(remoteId:)`、`notebooks: []` 與硬寫 `nb-1`。
+
+### Notebook Card 契約（無本地 NotebookCardData / 日期常數）
+`NotebooksScenarios` 的 hero heavy、fresh、grid pair、long-name 狀態必須取 UI World `notebook.cardGallery` seed。`NotebookSeed` 必須明示 `color`、`coverPattern`、`coverImageAssetRef`、`cardState`；非 card surface 也必須以 null 明示不使用 `cardState`。`cardState` 必須明示 `cardCount`、`dueCount`、`unlearnedCount`、`reviewedCount`、`pendingCount`、`lastActivity`、`isActive`，且 `cardCount == dueCount + unlearnedCount + reviewedCount`。缺 seed、缺 key、缺指定 card 狀態、日期解析失敗或 metric 不一致都 fail-fast。Catalog 不得保留本地 `NotebookCardData(...)`、`Date().addingTimeInterval`、hardcoded title 或 hardcoded card metric。`CatalogCoverageTests.notebooksCardCatalogUsesUIWorldCardGallerySeed`、`NotebookFixturesTests.cardGalleryMaterializesManifestCardState` 與 `RepoFixtureDatasetsContractTests.expectNotebookCardStateKeys` 擋回退。
 
 ### Notebook Cover 契約（無 missing-path fallback / 本地色票）
 `NotebookCoverScenarios` 的 pattern、color、title、image-backed cover 與 overlay-mode 狀態必須取 UI World `notebook.coverGallery` seed。`NotebookSeed` 必須明示 `coverPattern` 與 `coverImageAssetRef`；image-backed cover 只能透過 `assets.images.*` asset manifest 安裝後寫入 `Notebook.coverImagePath`。缺 seed、缺 pattern 覆蓋、缺 image-backed row、asset ref 指錯 domain、缺 asset、hash/byteSize 不符、unsafe install path 或安裝後檔案不存在都直接 fail-fast。Catalog 不得保留 `/tmp` missing-path fixture、`Image path fallback` scenario、本地 `Color(hex:)` 色票、`patternGrid` / `swatches` 本地矩陣或 fallback label。`CatalogCoverageTests.notebookCoverCatalogUsesUIWorldNotebookAssetSeed` 與 `NotebookFixturesTests.coverGalleryMaterializesManifestImageAsset` 擋回退。
