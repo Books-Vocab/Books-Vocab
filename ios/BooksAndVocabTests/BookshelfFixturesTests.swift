@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import PDFKit
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -57,6 +58,29 @@ import Testing
         #expect(!registrySource.contains(".init("), "Bookshelf fixture registry must not construct local seed data")
     }
 
+    @Test func bookshelfFixtureMaterializationIsFailFast() throws {
+        let fixtureURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift")
+        let fixtureSource = try String(contentsOf: fixtureURL, encoding: .utf8)
+
+        #expect(fixtureSource.contains("let container: ModelContainer"))
+        #expect(!fixtureSource.contains("ModelContainer?"), "Bookshelf fixtures must not expose nil as a materialization fallback")
+        #expect(!fixtureSource.contains("try? context.save()"), "Bookshelf fixture SwiftData save must fail fast")
+        #expect(!fixtureSource.contains("return nil"), "Bookshelf fixtures must not fall back to nil containers")
+        #expect(!fixtureSource.contains("BookshelfFixtures container failed"), "Bookshelf fixtures must not log-and-continue after materialization failure")
+        #expect(fixtureSource.contains("preconditionFailure(\"Failed to materialize UI World bookshelf seed"))
+
+        let previewURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Views/Bookshelf/BookshelfPreviews.swift")
+        let previewSource = try String(contentsOf: previewURL, encoding: .utf8)
+        #expect(!previewSource.contains("if let container = renderModel.container"), "Bookshelf preview must not hide fixture materialization failure")
+        #expect(!previewSource.contains("EmptyView()"), "Bookshelf preview must not render an empty fallback when UI World materialization fails")
+    }
+
     @Test func repoAndGeneratedDatasetsDeclareEveryBookshelfFixture() throws {
         let expected = Set(BookshelfFixtureID.allCases.map(\.rawValue))
         let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
@@ -84,7 +108,8 @@ import Testing
             let model = BookshelfFixtures.renderModel(for: .withBooksLibrary)
             #expect(model.books.map(\.title) == expectedSeed.books.map(\.title))
             #expect(model.referenceDate == expectedSeed.referenceDate)
-            #expect(model.container != nil)
+            let rows = try model.container.mainContext.fetch(FetchDescriptor<Book>())
+            #expect(rows.map(\.title).sorted() == expectedSeed.books.map(\.title).sorted())
         }
     }
 

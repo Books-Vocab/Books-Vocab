@@ -32,7 +32,7 @@ struct BookshelfFixtureSeed: Codable {
 
 struct BookshelfFixtureRenderModel {
     let books: [Book]
-    let container: ModelContainer?
+    let container: ModelContainer
     let referenceDate: Date
 }
 
@@ -73,7 +73,7 @@ enum BookshelfFixtures {
     }
 
     @MainActor
-    private static func makeContainer(from seeds: [BookshelfBookSeed]) -> ModelContainer? {
+    private static func makeContainer(from seeds: [BookshelfBookSeed]) -> ModelContainer {
         let schema = Schema([Book.self, VocabularyEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
@@ -82,11 +82,10 @@ enum BookshelfFixtures {
             for book in seeds.map(makeBook(from:)) {
                 context.insert(book)
             }
-            try? context.save()
+            try context.save()
             return container
         } catch {
-            AppLog.app.warning("BookshelfFixtures container failed: \(error.localizedDescription)")
-            return nil
+            preconditionFailure("Failed to materialize UI World bookshelf seed: \(error)")
         }
     }
 

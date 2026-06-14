@@ -90,13 +90,9 @@ struct BookshelfFixtureLibraryScene: View {
     }
 
     var body: some View {
-        if let container = renderModel.container {
-            BookshelfView()
-                .modelContainer(container)
-                .environment(\.fixtureReferenceDate, renderModel.referenceDate)
-        } else {
-            EmptyView()
-        }
+        BookshelfView()
+            .modelContainer(renderModel.container)
+            .environment(\.fixtureReferenceDate, renderModel.referenceDate)
     }
 }
 #endif

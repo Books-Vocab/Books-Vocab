@@ -149,6 +149,31 @@ import Playbook
         )
     }
 
+    @Test func bookshelfViewCatalogUsesUIWorldBookshelfSeeds() throws {
+        let bookshelfScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("BookshelfViewScenarios.swift")
+        let source = try String(contentsOf: bookshelfScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("private enum BookshelfViewFixture", "Bookshelf catalog must not define local fixture ids"),
+            ("Book(title:", "Bookshelf catalog must not inline book rows"),
+            ("try? context.save()", "Bookshelf catalog SwiftData save must fail fast through BookshelfFixtures"),
+            ("Deep Work", "Bookshelf catalog book titles must come from UI World"),
+            ("return\n        case .single", "Bookshelf catalog empty state must be an explicit UI World seed"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(bookshelfScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("BookshelfFixtures.renderModel(for: fixture).container"),
+            "Bookshelf catalog must materialize its SwiftData store through UI World BookshelfFixtures"
+        )
+        #expect(
+            source.contains("fixture: .emptyLibrary"),
+            "Bookshelf catalog empty state must use UI World bookshelf.empty_library"
+        )
+    }
+
     @Test func wordEditCatalogUsesUIWorldVocabularySeed() throws {
         let wordEditScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

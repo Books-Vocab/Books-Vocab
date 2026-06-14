@@ -18,24 +18,16 @@ enum BookshelfViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Bookshelf View") {
             Scenario("Populated · mixed formats", layout: .fill) {
-                BookshelfViewScene(fixture: .populated)
+                BookshelfViewScene(fixture: .withBooksLibrary)
             }
             Scenario("Single book", layout: .fill) {
-                BookshelfViewScene(fixture: .single)
+                BookshelfViewScene(fixture: .progressCard)
             }
             Scenario("Empty shelf", layout: .fill) {
-                BookshelfViewScene(fixture: .empty)
+                BookshelfViewScene(fixture: .emptyLibrary)
             }
         }
     }
-}
-
-// MARK: - Fixtures
-
-private enum BookshelfViewFixture {
-    case populated
-    case single
-    case empty
 }
 
 // MARK: - Scene harness
@@ -43,15 +35,8 @@ private enum BookshelfViewFixture {
 private struct BookshelfViewScene: View {
     let container: ModelContainer
 
-    init(fixture: BookshelfViewFixture) {
-        let container = try! ModelContainer(
-            for: Book.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-        Self.seed(fixture, into: context)
-        try? context.save()
-        self.container = container
+    init(fixture: BookshelfFixtureID) {
+        self.container = BookshelfFixtures.renderModel(for: fixture).container
     }
 
     var body: some View {
@@ -60,35 +45,6 @@ private struct BookshelfViewScene: View {
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
-    }
-
-    // MARK: Seeding
-
-    private static func book(
-        title: String,
-        author: String,
-        format: BookFormat,
-        daysAgo: Int
-    ) -> Book {
-        let book = Book(title: title, author: author, fileName: "\(title).\(format.rawValue)", format: format)
-        let cal = Calendar.current
-        book.dateLastRead = cal.date(byAdding: .day, value: -daysAgo, to: Date())
-        return book
-    }
-
-    private static func seed(_ fixture: BookshelfViewFixture, into context: ModelContext) {
-        switch fixture {
-        case .empty:
-            return
-        case .single:
-            context.insert(book(title: "Atomic Habits", author: "James Clear", format: .epub, daysAgo: 0))
-        case .populated:
-            context.insert(book(title: "Atomic Habits", author: "James Clear", format: .epub, daysAgo: 0))
-            context.insert(book(title: "Deep Work", author: "Cal Newport", format: .pdf, daysAgo: 2))
-            context.insert(book(title: "Flow", author: "Mihaly Csikszentmihalyi", format: .epub, daysAgo: 5))
-            context.insert(book(title: "Meditations", author: "Marcus Aurelius", format: .txt, daysAgo: 9))
-            context.insert(book(title: "On Writing Well", author: "William Zinsser", format: .md, daysAgo: 14))
-        }
     }
 }
 #endif
