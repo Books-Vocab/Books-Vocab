@@ -535,6 +535,7 @@
         {
           "remoteId": "nb-atomic",
           "name": "原子習慣筆記",
+          "isDefault": false,
           "sortOrder": 1,
           "entries": [
             {
@@ -582,6 +583,7 @@
         {
           "remoteId": "nb-shallows",
           "name": "深度閱讀",
+          "isDefault": false,
           "sortOrder": 2,
           "entries": [
             {

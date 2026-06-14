@@ -340,6 +340,12 @@ struct RepoFixtureDatasetsContractTests {
                     notebook.keys.contains("syncStatus"),
                     "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare syncStatus"
                 )
+                for key in ["isDefault", "sortOrder"] {
+                    #expect(
+                        notebook.keys.contains(key),
+                        "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare \(key)"
+                    )
+                }
                 let entries = notebook["entries"] as? [[String: Any]] ?? []
                 for entry in entries {
                     let word = entry["word"] as? String ?? "<missing-word>"

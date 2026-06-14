@@ -93,8 +93,8 @@ struct NotebookSeed: Codable {
     let remoteId: String
     let name: String
     let syncStatus: Int
-    var isDefault: Bool?
-    var sortOrder: Int?
+    let isDefault: Bool
+    let sortOrder: Int
     let entries: [NotebookEntrySeed]
 }
 
@@ -131,6 +131,7 @@ enum NotebookFixtures {
                     remoteId: "nb-classics",
                     name: "經典文學",
                     syncStatus: 1,
+                    isDefault: false,
                     sortOrder: 1,
                     entries: [
                         .init(word: "melancholy", translation: "憂鬱", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "A quiet melancholy runs through the chapter.", explanation: "A thoughtful sadness.", partOfSpeech: "n.", bookTitle: "Classic Fixture", chapterTitle: "Mood"),
@@ -141,6 +142,7 @@ enum NotebookFixtures {
                     remoteId: "nb-science",
                     name: "科普閱讀",
                     syncStatus: 1,
+                    isDefault: false,
                     sortOrder: 2,
                     entries: [
                         .init(word: "entropy", translation: "熵", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false, context: "Entropy increases in a closed system.", explanation: "A measure of disorder.", partOfSpeech: "n.", bookTitle: "Science Fixture", chapterTitle: "Systems"),
@@ -189,8 +191,8 @@ enum NotebookFixtures {
     }
 
     private static func makeNotebook(from seed: NotebookSeed) -> Notebook {
-        let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, isDefault: seed.isDefault ?? false)
-        notebook.sortOrder = seed.sortOrder ?? 0
+        let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, isDefault: seed.isDefault)
+        notebook.sortOrder = seed.sortOrder
         notebook.syncStatus = seed.syncStatus
         return notebook
     }
