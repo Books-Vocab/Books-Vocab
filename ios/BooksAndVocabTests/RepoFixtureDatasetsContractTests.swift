@@ -57,6 +57,7 @@ struct RepoFixtureDatasetsContractTests {
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
+            expectSwiftDataRowStateKeys(topLevel, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
             expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
@@ -103,6 +104,16 @@ struct RepoFixtureDatasetsContractTests {
             }
 
             for (fixtureKey, seed) in document.reader {
+                expectNotebookSyncStatus(
+                    seed.notebookSyncStatus,
+                    dataset: stem,
+                    owner: "reader.\(fixtureKey).notebookSyncStatus"
+                )
+                expectVocabularyRowState(
+                    seed.entry,
+                    dataset: stem,
+                    owner: "reader.\(fixtureKey).entry.\(seed.entry.word)"
+                )
                 expectInstallableAssetRef(
                     seed.textAssetRef,
                     document: document,
@@ -124,6 +135,53 @@ struct RepoFixtureDatasetsContractTests {
                         dataset: stem,
                         owner: "bookshelf.\(fixtureKey).\(book.title)",
                         fileName: book.fileName
+                    )
+                }
+            }
+
+            for (fixtureKey, seed) in document.notebook {
+                for notebook in seed.notebooks {
+                    expectNotebookSyncStatus(
+                        notebook.syncStatus,
+                        dataset: stem,
+                        owner: "notebook.\(fixtureKey).\(notebook.remoteId).syncStatus"
+                    )
+                    for entry in notebook.entries {
+                        expectNotebookEntryRowState(
+                            entry,
+                            dataset: stem,
+                            owner: "notebook.\(fixtureKey).\(notebook.remoteId).entry.\(entry.word)"
+                        )
+                    }
+                }
+            }
+
+            for (fixtureKey, seed) in document.vocabulary {
+                expectNotebookSyncStatus(
+                    seed.notebookSyncStatus,
+                    dataset: stem,
+                    owner: "vocabulary.\(fixtureKey).notebookSyncStatus"
+                )
+                for entry in seed.entries {
+                    expectVocabularyRowState(
+                        entry,
+                        dataset: stem,
+                        owner: "vocabulary.\(fixtureKey).entry.\(entry.word)"
+                    )
+                }
+            }
+
+            for (fixtureKey, seed) in document.reviewDeck {
+                expectNotebookSyncStatus(
+                    seed.notebookSyncStatus,
+                    dataset: stem,
+                    owner: "reviewDeck.\(fixtureKey).notebookSyncStatus"
+                )
+                for entry in seed.entries {
+                    expectVocabularyRowState(
+                        entry,
+                        dataset: stem,
+                        owner: "reviewDeck.\(fixtureKey).entry.\(entry.word)"
                     )
                 }
             }
@@ -240,6 +298,123 @@ struct RepoFixtureDatasetsContractTests {
                 )
             }
         }
+    }
+
+    private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
+        let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
+
+        let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in notebookFixtures {
+            let notebooks = seed["notebooks"] as? [[String: Any]] ?? []
+            for notebook in notebooks {
+                let remoteId = notebook["remoteId"] as? String ?? "<missing-remote-id>"
+                #expect(
+                    notebook.keys.contains("syncStatus"),
+                    "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare syncStatus"
+                )
+                let entries = notebook["entries"] as? [[String: Any]] ?? []
+                for entry in entries {
+                    let word = entry["word"] as? String ?? "<missing-word>"
+                    let missing = requiredEntryKeys.subtracting(entry.keys)
+                    #expect(
+                        missing.isEmpty,
+                        "\(dataset): notebook.\(fixtureKey).\(remoteId).entry.\(word) missing row state keys \(missing.sorted())"
+                    )
+                }
+            }
+        }
+
+        let readerFixtures = topLevel["reader"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in readerFixtures {
+            #expect(
+                seed.keys.contains("notebookSyncStatus"),
+                "\(dataset): reader.\(fixtureKey) must explicitly declare notebookSyncStatus"
+            )
+            if let entry = seed["entry"] as? [String: Any] {
+                let word = entry["word"] as? String ?? "<missing-word>"
+                let missing = requiredEntryKeys.subtracting(entry.keys)
+                #expect(
+                    missing.isEmpty,
+                    "\(dataset): reader.\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
+                )
+            }
+        }
+
+        for domain in ["vocabulary", "reviewDeck"] {
+            let fixtures = topLevel[domain] as? [String: [String: Any]] ?? [:]
+            for (fixtureKey, seed) in fixtures {
+                #expect(
+                    seed.keys.contains("notebookSyncStatus"),
+                    "\(dataset): \(domain).\(fixtureKey) must explicitly declare notebookSyncStatus"
+                )
+                let entries = seed["entries"] as? [[String: Any]] ?? []
+                for entry in entries {
+                    let word = entry["word"] as? String ?? "<missing-word>"
+                    let missing = requiredEntryKeys.subtracting(entry.keys)
+                    #expect(
+                        missing.isEmpty,
+                        "\(dataset): \(domain).\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
+                    )
+                }
+            }
+        }
+    }
+
+    private func expectNotebookSyncStatus(_ syncStatus: Int, dataset: String, owner: String) {
+        #expect(
+            [0, 1].contains(syncStatus),
+            "\(dataset): \(owner) must be a valid Notebook.syncStatus (0=pending, 1=synced)"
+        )
+    }
+
+    private func expectVocabularyRowState(
+        _ entry: UIWorldVocabularyEntrySeed,
+        dataset: String,
+        owner: String
+    ) {
+        expectVocabularyRowState(
+            syncStatus: entry.syncStatus,
+            actionType: entry.actionType,
+            isArchived: entry.isArchived,
+            isExcludedFromReader: entry.isExcludedFromReader,
+            dataset: dataset,
+            owner: owner
+        )
+    }
+
+    private func expectNotebookEntryRowState(
+        _ entry: NotebookEntrySeed,
+        dataset: String,
+        owner: String
+    ) {
+        expectVocabularyRowState(
+            syncStatus: entry.syncStatus,
+            actionType: entry.actionType,
+            isArchived: entry.isArchived,
+            isExcludedFromReader: entry.isExcludedFromReader,
+            dataset: dataset,
+            owner: owner
+        )
+    }
+
+    private func expectVocabularyRowState(
+        syncStatus: Int,
+        actionType: String,
+        isArchived: Bool,
+        isExcludedFromReader: Bool,
+        dataset: String,
+        owner: String
+    ) {
+        #expect(
+            [0, 1, 2].contains(syncStatus),
+            "\(dataset): \(owner).syncStatus must be valid VocabularyEntry.syncStatus (0=pending, 1=synced, 2=failed)"
+        )
+        #expect(
+            ["add", "delete", "edit"].contains(actionType),
+            "\(dataset): \(owner).actionType must be add/delete/edit"
+        )
+        _ = isArchived
+        _ = isExcludedFromReader
     }
 
     private func expectInstallableAssetRef(

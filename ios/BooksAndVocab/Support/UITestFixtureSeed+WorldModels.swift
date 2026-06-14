@@ -22,8 +22,10 @@ extension UITestFixtureSeed {
         entry.difficultyTier = seed.difficultyTier
         entry.reviewMode = seed.reviewMode ?? .recognition
         entry.reviewExamples = seed.reviewExamples
-        entry.syncState = .synced
-        entry.actionType = "add"
+        entry.syncStatus = seed.syncStatus
+        entry.actionType = seed.actionType
+        entry.isArchived = seed.isArchived
+        entry.isExcludedFromReader = seed.isExcludedFromReader
         if let reviewIntervalHours = seed.reviewIntervalHours {
             entry.reviewIntervalHours = reviewIntervalHours
         }
@@ -58,7 +60,7 @@ extension UITestFixtureSeed {
         into context: ModelContext
     ) throws -> [VocabularyEntry] {
         let notebook = Notebook(remoteId: seed.notebookRemoteId, name: seed.notebookName)
-        notebook.syncStatus = 1
+        notebook.syncStatus = seed.notebookSyncStatus
         context.insert(notebook)
 
         let entries = seed.entries.map {

@@ -134,7 +134,11 @@
               "explanation": "源自拉丁文 metus（恐懼），原指「過度謹慎」，今為褒義。",
               "partOfSpeech": "adj.",
               "bookTitle": "A Room of One's Own",
-              "chapterTitle": "Chapter 2"
+              "chapterTitle": "Chapter 2",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "discerning",
@@ -143,7 +147,11 @@
               "explanation": null,
               "partOfSpeech": "adj.",
               "bookTitle": "Letters to a Young Poet",
-              "chapterTitle": "Letter 3"
+              "chapterTitle": "Letter 3",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "evoke",
@@ -152,7 +160,11 @@
               "explanation": null,
               "partOfSpeech": "v.",
               "bookTitle": "A Room of One's Own",
-              "chapterTitle": "Chapter 1"
+              "chapterTitle": "Chapter 1",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "luminous",
@@ -161,7 +173,11 @@
               "explanation": null,
               "partOfSpeech": "adj.",
               "bookTitle": "On Writing",
-              "chapterTitle": "Toolbox"
+              "chapterTitle": "Toolbox",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "nuance",
@@ -170,9 +186,14 @@
               "explanation": null,
               "partOfSpeech": "n.",
               "bookTitle": "On Writing",
-              "chapterTitle": "On Revision"
+              "chapterTitle": "On Revision",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             }
-          ]
+          ],
+          "syncStatus": 1
         },
         {
           "remoteId": "systems-thinking",
@@ -187,7 +208,11 @@
               "explanation": "熱力學第二定律：孤立系統的熵不會自發減少。",
               "partOfSpeech": "n.",
               "bookTitle": "A Brief History of Time",
-              "chapterTitle": "The Arrow of Time"
+              "chapterTitle": "The Arrow of Time",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "cascade",
@@ -196,7 +221,11 @@
               "explanation": null,
               "partOfSpeech": "n.",
               "bookTitle": "The Selfish Gene",
-              "chapterTitle": "Replicators"
+              "chapterTitle": "Replicators",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "coherent",
@@ -205,7 +234,11 @@
               "explanation": null,
               "partOfSpeech": "adj.",
               "bookTitle": "The Selfish Gene",
-              "chapterTitle": "Memes"
+              "chapterTitle": "Memes",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "leverage",
@@ -214,7 +247,11 @@
               "explanation": null,
               "partOfSpeech": "v.",
               "bookTitle": "Thinking in Systems",
-              "chapterTitle": "Leverage Points"
+              "chapterTitle": "Leverage Points",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "feedback",
@@ -223,9 +260,14 @@
               "explanation": null,
               "partOfSpeech": "n.",
               "bookTitle": "Thinking in Systems",
-              "chapterTitle": "Feedback Loops"
+              "chapterTitle": "Feedback Loops",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             }
-          ]
+          ],
+          "syncStatus": 1
         },
         {
           "remoteId": "creative-practice",
@@ -240,7 +282,11 @@
               "explanation": null,
               "partOfSpeech": "n.",
               "bookTitle": "Daily Rituals",
-              "chapterTitle": "Writers"
+              "chapterTitle": "Writers",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "iterate",
@@ -249,7 +295,11 @@
               "explanation": null,
               "partOfSpeech": "v.",
               "bookTitle": "The Creative Habit",
-              "chapterTitle": "Rituals"
+              "chapterTitle": "Rituals",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "tactile",
@@ -258,7 +308,11 @@
               "explanation": null,
               "partOfSpeech": "adj.",
               "bookTitle": "The Shape of Design",
-              "chapterTitle": "Craft"
+              "chapterTitle": "Craft",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             },
             {
               "word": "prototype",
@@ -267,9 +321,14 @@
               "explanation": null,
               "partOfSpeech": "n.",
               "bookTitle": "Creative Confidence",
-              "chapterTitle": "Build to Think"
+              "chapterTitle": "Build to Think",
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false
             }
-          ]
+          ],
+          "syncStatus": 1
         }
       ]
     }

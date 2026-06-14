@@ -14,6 +14,10 @@ enum NotebookFixtureID: String, CaseIterable {
 struct NotebookEntrySeed: Codable {
     let word: String
     let translation: String
+    let syncStatus: Int
+    let actionType: String
+    let isArchived: Bool
+    let isExcludedFromReader: Bool
     var context: String?
     var explanation: String?
     var partOfSpeech: String?
@@ -24,6 +28,7 @@ struct NotebookEntrySeed: Codable {
 struct NotebookSeed: Codable {
     let remoteId: String
     let name: String
+    let syncStatus: Int
     var isDefault: Bool?
     var sortOrder: Int?
     let entries: [NotebookEntrySeed]
@@ -44,12 +49,13 @@ enum NotebookFixtures {
     private static let defaultNotebook = NotebookSeed(
         remoteId: "default",
         name: "我的單字本",
+        syncStatus: 1,
         isDefault: true,
         sortOrder: 0,
         entries: [
-            .init(word: "serendipity", translation: "機緣巧合"),
-            .init(word: "ephemeral", translation: "短暫的"),
-            .init(word: "petrichor", translation: "雨後泥土香"),
+            .init(word: "serendipity", translation: "機緣巧合", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+            .init(word: "ephemeral", translation: "短暫的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+            .init(word: "petrichor", translation: "雨後泥土香", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
         ]
     )
 
@@ -60,18 +66,20 @@ enum NotebookFixtures {
                 NotebookSeed(
                     remoteId: "nb-classics",
                     name: "經典文學",
+                    syncStatus: 1,
                     sortOrder: 1,
                     entries: [
-                        .init(word: "melancholy", translation: "憂鬱"),
-                        .init(word: "sublime", translation: "崇高的"),
+                        .init(word: "melancholy", translation: "憂鬱", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
+                        .init(word: "sublime", translation: "崇高的", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
                     ]
                 ),
                 NotebookSeed(
                     remoteId: "nb-science",
                     name: "科普閱讀",
+                    syncStatus: 1,
                     sortOrder: 2,
                     entries: [
-                        .init(word: "entropy", translation: "熵"),
+                        .init(word: "entropy", translation: "熵", syncStatus: 1, actionType: "add", isArchived: false, isExcludedFromReader: false),
                     ]
                 ),
             ])
@@ -119,7 +127,7 @@ enum NotebookFixtures {
     private static func makeNotebook(from seed: NotebookSeed) -> Notebook {
         let notebook = Notebook(remoteId: seed.remoteId, name: seed.name, isDefault: seed.isDefault ?? false)
         notebook.sortOrder = seed.sortOrder ?? 0
-        notebook.syncStatus = 1
+        notebook.syncStatus = seed.syncStatus
         return notebook
     }
 
@@ -134,9 +142,10 @@ enum NotebookFixtures {
             chapterTitle: seed.chapterTitle ?? "第一章"
         )
         entry.notebookId = notebookId
-        entry.isArchived = false
-        entry.syncStatus = VocabularySyncState.synced.rawValue
-        entry.actionType = VocabularySyncAction.add.rawValue
+        entry.syncStatus = seed.syncStatus
+        entry.actionType = seed.actionType
+        entry.isArchived = seed.isArchived
+        entry.isExcludedFromReader = seed.isExcludedFromReader
         return entry
     }
 }
