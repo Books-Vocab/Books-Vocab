@@ -1005,6 +1005,45 @@ import Playbook
         )
     }
 
+    @Test func syncPresenterCatalogUsesUIWorldSyncPresenterSeeds() throws {
+        let syncScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SyncScenarios.swift")
+        let source = try String(contentsOf: syncScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("readyState", "ready presenter state must be a UI World syncPresenter seed"),
+            ("runningState", "running presenter state must be a UI World syncPresenter seed"),
+            ("completedState", "completed presenter state must be a UI World syncPresenter seed"),
+            ("partialFailureState", "partial failure presenter state must be a UI World syncPresenter seed"),
+            ("fullFailureState", "full failure presenter state must be a UI World syncPresenter seed"),
+            ("pendingRow(word:", "pending rows must be declared in UI World syncPresenter"),
+            ("step(id:", "pipeline steps must be declared in UI World syncPresenter"),
+            ("isLoggedIn: true", "auth state belongs in UI World syncPresenter"),
+            ("isLoggedIn: false", "auth state belongs in UI World syncPresenter"),
+            ("ineffable", "pending words belong in UI World syncPresenter"),
+            ("ephemeral", "pending words belong in UI World syncPresenter"),
+            ("obsolete", "pending words belong in UI World syncPresenter"),
+            ("網路連線中斷", "failure summary belongs in UI World syncPresenter"),
+            ("上傳新單字", "step labels belong in UI World syncPresenter"),
+            ("刪除 Books & Vocab 單字", "step labels belong in UI World syncPresenter"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(syncScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireSyncPresenterSeed(for: fixtureID)"),
+            "Sync presenter catalog must fail fast through UI World syncPresenter seeds"
+        )
+        #expect(
+            source.contains("seed.pendingCount == seed.addCount + seed.deleteCount"),
+            "Sync presenter catalog must validate pending/add/delete count consistency"
+        )
+        #expect(
+            source.contains("UI World syncPresenter."),
+            "Sync presenter catalog failure messages must identify the manifest domain"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.

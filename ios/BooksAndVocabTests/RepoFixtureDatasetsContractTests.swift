@@ -56,6 +56,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.settings["preferences_auto_sync_off"]?.reviewSettings != nil)
         #expect(document.settings["account_long_identity"]?.reviewSettings != nil)
         #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
+        #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
@@ -77,6 +78,7 @@ struct RepoFixtureDatasetsContractTests {
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectSwiftDataRowStateKeys(topLevel, document: document, dataset: stem)
+            expectSyncPresenterKeys(topLevel, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
             expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
@@ -217,6 +219,7 @@ struct RepoFixtureDatasetsContractTests {
             expectKnownKeys(document.reader.keys, UIWorldReaderFixtureID.self, domain: "reader", dataset: stem)
             expectKnownKeys(document.vocabulary.keys, UIWorldVocabularyFixtureID.self, domain: "vocabulary", dataset: stem)
             expectKnownKeys(document.reviewDeck.keys, UIWorldReviewDeckFixtureID.self, domain: "reviewDeck", dataset: stem)
+            expectKnownKeys(document.syncPresenter.keys, UIWorldSyncPresenterFixtureID.self, domain: "syncPresenter", dataset: stem)
 
             // Duplicate identities render undefined (ForEach ids / notebookId
             // joins derive from them), so they must be unique within a seed.
@@ -482,6 +485,117 @@ struct RepoFixtureDatasetsContractTests {
                     #expect(
                         missing.isEmpty,
                         "\(dataset): \(domain).\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
+                    )
+                }
+            }
+        }
+    }
+
+    private func expectSyncPresenterKeys(_ topLevel: [String: Any], dataset: String) {
+        guard let fixtures = topLevel["syncPresenter"] as? [String: [String: Any]] else {
+            Issue.record("\(dataset): UI World must explicitly declare syncPresenter")
+            return
+        }
+        let requiredSeedKeys: Set<String> = [
+            "isLoggedIn",
+            "isConnected",
+            "phase",
+            "failureKind",
+            "pendingCount",
+            "addCount",
+            "deleteCount",
+            "steps",
+            "summaryText",
+            "pendingRows",
+        ]
+        let requiredStepKeys: Set<String> = ["id", "label", "status", "current", "total", "detail"]
+        let requiredPendingRowKeys: Set<String> = [
+            "id",
+            "word",
+            "partOfSpeech",
+            "translation",
+            "wordTone",
+            "isStrikethrough",
+            "actionSystemImage",
+            "actionTone",
+            "actionAccessibilityLabel",
+        ]
+        let validPhases = ["ready", "running", "completed", "failed"]
+        let validFailureKinds = ["partial", "full", "cancelled"]
+        let validStepStatuses = ["waiting", "running", "retry", "done", "skipped", "error"]
+        let validTones = ["primary", "secondary", "tertiary", "quaternary", "destructive", "reviewDue"]
+
+        for (fixtureKey, seed) in fixtures {
+            let missingSeedKeys = requiredSeedKeys.subtracting(seed.keys)
+            #expect(
+                missingSeedKeys.isEmpty,
+                "\(dataset): syncPresenter.\(fixtureKey) missing keys \(missingSeedKeys.sorted())"
+            )
+
+            let phase = seed["phase"] as? String ?? "<missing-phase>"
+            #expect(validPhases.contains(phase), "\(dataset): syncPresenter.\(fixtureKey).phase is invalid")
+            if let failureKind = seed["failureKind"] as? String {
+                #expect(
+                    validFailureKinds.contains(failureKind),
+                    "\(dataset): syncPresenter.\(fixtureKey).failureKind is invalid"
+                )
+                #expect(phase == "failed", "\(dataset): syncPresenter.\(fixtureKey) non-null failureKind requires failed phase")
+            } else {
+                #expect(
+                    seed["failureKind"] is NSNull || seed.keys.contains("failureKind"),
+                    "\(dataset): syncPresenter.\(fixtureKey).failureKind must be explicit null when absent"
+                )
+            }
+
+            let pendingCount = seed["pendingCount"] as? Int ?? -1
+            let addCount = seed["addCount"] as? Int ?? -1
+            let deleteCount = seed["deleteCount"] as? Int ?? -1
+            #expect(pendingCount >= 0, "\(dataset): syncPresenter.\(fixtureKey).pendingCount must be non-negative")
+            #expect(addCount >= 0, "\(dataset): syncPresenter.\(fixtureKey).addCount must be non-negative")
+            #expect(deleteCount >= 0, "\(dataset): syncPresenter.\(fixtureKey).deleteCount must be non-negative")
+            #expect(
+                pendingCount == addCount + deleteCount,
+                "\(dataset): syncPresenter.\(fixtureKey).pendingCount must equal addCount + deleteCount"
+            )
+
+            let steps = seed["steps"] as? [[String: Any]] ?? []
+            for step in steps {
+                let id = step["id"] as? String ?? "<missing-id>"
+                let missingStepKeys = requiredStepKeys.subtracting(step.keys)
+                #expect(
+                    missingStepKeys.isEmpty,
+                    "\(dataset): syncPresenter.\(fixtureKey).steps.\(id) missing keys \(missingStepKeys.sorted())"
+                )
+                let status = step["status"] as? String ?? "<missing-status>"
+                #expect(
+                    validStepStatuses.contains(status),
+                    "\(dataset): syncPresenter.\(fixtureKey).steps.\(id).status is invalid"
+                )
+                #expect((step["current"] as? Int ?? -1) >= 0, "\(dataset): syncPresenter.\(fixtureKey).steps.\(id).current must be non-negative")
+                #expect((step["total"] as? Int ?? -1) >= 0, "\(dataset): syncPresenter.\(fixtureKey).steps.\(id).total must be non-negative")
+            }
+
+            let pendingRows = seed["pendingRows"] as? [[String: Any]] ?? []
+            if phase == "ready" {
+                #expect(
+                    pendingRows.count == pendingCount,
+                    "\(dataset): syncPresenter.\(fixtureKey).pendingRows count must equal pendingCount in ready phase"
+                )
+            }
+            for row in pendingRows {
+                let word = row["word"] as? String ?? "<missing-word>"
+                let missingRowKeys = requiredPendingRowKeys.subtracting(row.keys)
+                #expect(
+                    missingRowKeys.isEmpty,
+                    "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word) missing keys \(missingRowKeys.sorted())"
+                )
+                let id = row["id"] as? String ?? ""
+                #expect(UUID(uuidString: id) != nil, "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word).id must be UUID")
+                for key in ["wordTone", "actionTone"] {
+                    let tone = row[key] as? String ?? "<missing-tone>"
+                    #expect(
+                        validTones.contains(tone),
+                        "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word).\(key) is invalid"
                     )
                 }
             }

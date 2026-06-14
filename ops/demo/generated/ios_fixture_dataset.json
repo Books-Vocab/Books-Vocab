@@ -8729,5 +8729,265 @@
       ],
       "notebookSyncStatus": 1
     }
+  },
+  "syncPresenter": {
+    "ready": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "ready",
+      "failureKind": null,
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [],
+      "summaryText": "",
+      "pendingRows": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "word": "ineffable",
+          "partOfSpeech": "adj.",
+          "translation": "難以言喻的",
+          "wordTone": "primary",
+          "isStrikethrough": false,
+          "actionSystemImage": "minus.circle",
+          "actionTone": "secondary",
+          "actionAccessibilityLabel": "移除待收錄"
+        },
+        {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "word": "ephemeral",
+          "partOfSpeech": "adj.",
+          "translation": "短暫的",
+          "wordTone": "primary",
+          "isStrikethrough": false,
+          "actionSystemImage": "minus.circle",
+          "actionTone": "secondary",
+          "actionAccessibilityLabel": "移除待收錄"
+        },
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "word": "obsolete",
+          "partOfSpeech": "adj.",
+          "translation": "過時的",
+          "wordTone": "destructive",
+          "isStrikethrough": true,
+          "actionSystemImage": "arrow.uturn.backward",
+          "actionTone": "destructive",
+          "actionAccessibilityLabel": "復原刪除"
+        }
+      ]
+    },
+    "running": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "running",
+      "failureKind": null,
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "running",
+          "current": 1,
+          "total": 2,
+          "detail": ""
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        }
+      ],
+      "summaryText": "",
+      "pendingRows": []
+    },
+    "completed": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "completed",
+      "failureKind": null,
+      "pendingCount": 0,
+      "addCount": 0,
+      "deleteCount": 0,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "done",
+          "current": 2,
+          "total": 2,
+          "detail": "2 新增, 0 已存在"
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已交由伺服器背景處理"
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已同步 5 筆複習紀錄"
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "本地單字已建立完成"
+        }
+      ],
+      "summaryText": "",
+      "pendingRows": []
+    },
+    "partialFailure": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "failed",
+      "failureKind": "partial",
+      "pendingCount": 1,
+      "addCount": 1,
+      "deleteCount": 0,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "已刪除 1 個單字"
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "error",
+          "current": 1,
+          "total": 2,
+          "detail": "部分上傳失敗（1 筆）"
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已交由伺服器背景處理"
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "done",
+          "current": 0,
+          "total": 0,
+          "detail": "已同步 5 筆複習紀錄"
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "done",
+          "current": 1,
+          "total": 1,
+          "detail": "本地單字已建立完成"
+        }
+      ],
+      "summaryText": "部分項目未成功同步，可直接再次重試。",
+      "pendingRows": []
+    },
+    "fullFailure": {
+      "isLoggedIn": true,
+      "isConnected": true,
+      "phase": "failed",
+      "failureKind": "full",
+      "pendingCount": 3,
+      "addCount": 2,
+      "deleteCount": 1,
+      "steps": [
+        {
+          "id": "upload_delete",
+          "label": "刪除 Books & Vocab 單字",
+          "status": "running",
+          "current": 0,
+          "total": 1,
+          "detail": ""
+        },
+        {
+          "id": "upload_add",
+          "label": "上傳新單字",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "trigger",
+          "label": "觸發背景 AI 處理",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "push_review",
+          "label": "上傳複習進度",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        },
+        {
+          "id": "pull",
+          "label": "下載單字至本地",
+          "status": "waiting",
+          "current": 0,
+          "total": 0,
+          "detail": ""
+        }
+      ],
+      "summaryText": "網路連線中斷，請稍後再試。",
+      "pendingRows": []
+    }
   }
 }
