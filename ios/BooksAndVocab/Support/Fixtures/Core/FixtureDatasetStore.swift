@@ -211,6 +211,33 @@ struct UIWorldAsset: Codable, Equatable {
     let sha256: String
     let byteSize: Int
     let installAs: String?
+    let contentType: String
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case sourcePath
+        case sha256
+        case byteSize
+        case installAs
+        case contentType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World asset must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        sourcePath = try container.decode(String.self, forKey: .sourcePath)
+        sha256 = try container.decode(String.self, forKey: .sha256)
+        byteSize = try container.decode(Int.self, forKey: .byteSize)
+        installAs = try container.decodeIfPresent(String.self, forKey: .installAs)
+        contentType = try container.decode(String.self, forKey: .contentType)
+    }
 }
 
 struct UIWorldAssetManifest: Codable, Equatable {

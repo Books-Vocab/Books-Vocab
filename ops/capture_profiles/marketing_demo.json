@@ -32,7 +32,7 @@
     "destination": "platform=iOS Simulator,name=iPhone 17 Pro Max",
     "groups": [],
     "scenarios": [
-      "Bookshelf/With Books",
+      "Bookshelf View/Populated · mixed formats",
       "Today Review/Front",
       "Settings/Subscribed Active",
       "Welcome/Step 1 / Capture"
@@ -46,7 +46,7 @@
   "shots": [
     {
       "id": "bookshelf",
-      "sourceScenario": "Bookshelf/With Books",
+      "sourceScenario": "Bookshelf View/Populated · mixed formats",
       "outputName": "final_01_bookshelf.png",
       "appearance": "light",
       "copy": {

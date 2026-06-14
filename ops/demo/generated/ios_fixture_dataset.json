@@ -7,25 +7,36 @@
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
         "installAs": "Books/atomic-habits.md",
-        "byteSize": 17431
+        "byteSize": 17431,
+        "contentType": "text/markdown; charset=utf-8"
       },
       "word_architect_markdown": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
         "installAs": "Books/word-architect.md",
-        "byteSize": 17431
+        "byteSize": 17431,
+        "contentType": "text/markdown; charset=utf-8"
       },
       "the_shallows_markdown": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
         "installAs": "Books/the-shallows.md",
-        "byteSize": 17431
+        "byteSize": 17431,
+        "contentType": "text/markdown; charset=utf-8"
       },
       "catalog_reader_pdf": {
         "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.pdf",
         "sha256": "8538c4b3876e20bc3a473a82930ebccbf0699595544fd98ccb750214f451a662",
         "installAs": "Books/catalog-reader.pdf",
-        "byteSize": 752
+        "byteSize": 752,
+        "contentType": "application/pdf"
+      },
+      "catalog_reader_epub": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/catalog-reader.epub",
+        "sha256": "4cfe357ba9c217fbfbe1af6b2831c69e0d476041267c99fae81ea5ba1967c3de",
+        "installAs": "Books/catalog-reader.epub",
+        "byteSize": 1690,
+        "contentType": "application/epub+zip"
       }
     },
     "audio": {
@@ -33,13 +44,15 @@
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
         "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
         "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a",
-        "byteSize": 16655874
+        "byteSize": 16655874,
+        "contentType": "audio/mp4"
       },
       "atomic_habits_ep1_flash_auth": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
         "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
         "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
-        "byteSize": 16655874
+        "byteSize": 16655874,
+        "contentType": "audio/mp4"
       }
     },
     "subtitles": {
@@ -47,13 +60,15 @@
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
         "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
         "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt",
-        "byteSize": 144638
+        "byteSize": 144638,
+        "contentType": "application/x-subrip; charset=utf-8"
       },
       "atomic_habits_ep1_flash_srt_auth": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
         "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
         "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt",
-        "byteSize": 144638
+        "byteSize": 144638,
+        "contentType": "application/x-subrip; charset=utf-8"
       }
     },
     "text": {
@@ -61,7 +76,8 @@
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
         "installAs": "Books/sources/atomic-habits-raw-ch-04.md",
-        "byteSize": 17431
+        "byteSize": 17431,
+        "contentType": "text/markdown; charset=utf-8"
       }
     },
     "images": {
@@ -69,7 +85,8 @@
         "sourcePath": "/Users/chenliangyu/project/kg/ios/BooksAndVocab/Assets.xcassets/AppIconImage.imageset/app_icon.png",
         "sha256": "2383e224c5b09040a56b840897e1ea4028c0bb401aafb2335c20e50a7f8ff109",
         "installAs": "NotebookCovers/catalog-notebook-cover.png",
-        "byteSize": 30129
+        "byteSize": 30129,
+        "contentType": "image/png"
       }
     }
   },
@@ -898,9 +915,9 @@
         {
           "title": "原子習慣",
           "author": "James Clear",
-          "fileName": "atomic-habits.md",
+          "fileName": "catalog-reader.epub",
           "format": "epub",
-          "bookAssetRef": "books.atomic_habits_markdown",
+          "bookAssetRef": "books.catalog_reader_epub",
           "progression": null,
           "preferredNotebookId": null,
           "dateAdded": "2024-05-15T08:00:00Z",
@@ -930,9 +947,9 @@
         {
           "title": "刻意練習",
           "author": "Anders Ericsson",
-          "fileName": "word-architect.md",
+          "fileName": "catalog-reader.epub",
           "format": "epub",
-          "bookAssetRef": "books.word_architect_markdown",
+          "bookAssetRef": "books.catalog_reader_epub",
           "progression": 0.42,
           "preferredNotebookId": null,
           "dateAdded": "2024-05-15T08:00:00Z",
@@ -946,9 +963,9 @@
         {
           "title": "心流",
           "author": "Mihaly Csikszentmihalyi",
-          "fileName": "the-shallows.md",
+          "fileName": "catalog-reader.epub",
           "format": "epub",
-          "bookAssetRef": "books.the_shallows_markdown",
+          "bookAssetRef": "books.catalog_reader_epub",
           "progression": 1,
           "preferredNotebookId": null,
           "dateAdded": "2024-05-15T08:00:00Z",
@@ -963,7 +980,7 @@
           "title": "尋找心流：最優體驗的科學與日常生活中的應用實踐指南",
           "author": "Mihaly Csikszentmihalyi & Co-Author With A Rather Long Name",
           "fileName": "word-architect.md",
-          "format": "txt",
+          "format": "md",
           "bookAssetRef": "books.word_architect_markdown",
           "progression": 0.08,
           "preferredNotebookId": null,
@@ -1073,6 +1090,16 @@
     },
     "with_books_library": {
       "books": [
+        {
+          "title": "Catalog Reader EPUB",
+          "author": "Word Nexus Fixtures",
+          "fileName": "catalog-reader.epub",
+          "format": "epub",
+          "bookAssetRef": "books.catalog_reader_epub",
+          "progression": 0.56,
+          "dateAdded": "2026-01-01T00:00:00Z",
+          "dateLastRead": "2026-01-06T09:30:00Z"
+        },
         {
           "title": "Atomic Habits",
           "author": "James Clear",

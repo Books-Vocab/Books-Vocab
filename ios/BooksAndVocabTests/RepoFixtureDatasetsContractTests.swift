@@ -118,7 +118,8 @@ struct RepoFixtureDatasetsContractTests {
                         document: document,
                         dataset: stem,
                         owner: "bookshelf.\(fixtureKey).\(book.title)",
-                        fileName: book.fileName
+                        fileName: book.fileName,
+                        format: book.format
                     )
                 }
             }
@@ -331,6 +332,7 @@ struct RepoFixtureDatasetsContractTests {
             let asset = try #require(document.assets.asset(for: ref), "\(dataset): asset \(ref) must resolve")
             let url = URL(fileURLWithPath: asset.sourcePath)
             #expect(asset.byteSize > 0, "\(dataset): asset \(ref) byteSize must be positive")
+            expectAssetContentType(asset, ref: ref, dataset: dataset)
             #expect(FileManager.default.fileExists(atPath: url.path), "\(dataset): asset \(ref) missing at \(url.path)")
             #expect(
                 try FixtureDatasetStore.byteSize(for: url) == asset.byteSize,
@@ -339,6 +341,47 @@ struct RepoFixtureDatasetsContractTests {
             #expect(
                 try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
                 "\(dataset): asset \(ref) sha256 drift"
+            )
+        }
+    }
+
+    private func expectAssetContentType(_ asset: UIWorldAsset, ref: String, dataset: String) {
+        let contentType = asset.contentType.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!contentType.isEmpty, "\(dataset): asset \(ref) contentType must not be empty")
+
+        let allowedByDomain: [String: [String]] = [
+            "books": ["application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"],
+            "audio": ["audio/mp4", "audio/mpeg"],
+            "subtitles": ["application/x-subrip; charset=utf-8", "text/vtt; charset=utf-8"],
+            "text": ["text/markdown; charset=utf-8", "text/plain; charset=utf-8"],
+            "images": ["image/png", "image/jpeg"],
+        ]
+        let domain = ref.split(separator: ".", maxSplits: 1).first.map(String.init) ?? "<missing-domain>"
+        #expect(
+            allowedByDomain[domain]?.contains(contentType) == true,
+            "\(dataset): asset \(ref) contentType \(contentType) is invalid for domain \(domain)"
+        )
+
+        let installExtension = asset.installAs.map { URL(fileURLWithPath: $0).pathExtension.lowercased() }
+        let sourceExtension = URL(fileURLWithPath: asset.sourcePath).pathExtension.lowercased()
+        let ext = installExtension?.isEmpty == false ? installExtension! : sourceExtension
+        let expectedByExtension: [String: String] = [
+            "epub": "application/epub+zip",
+            "pdf": "application/pdf",
+            "md": "text/markdown; charset=utf-8",
+            "txt": "text/plain; charset=utf-8",
+            "m4a": "audio/mp4",
+            "mp3": "audio/mpeg",
+            "srt": "application/x-subrip; charset=utf-8",
+            "vtt": "text/vtt; charset=utf-8",
+            "png": "image/png",
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+        ]
+        if let expected = expectedByExtension[ext] {
+            #expect(
+                contentType == expected,
+                "\(dataset): asset \(ref) contentType \(contentType) must match .\(ext) as \(expected)"
             )
         }
     }
@@ -799,7 +842,8 @@ struct RepoFixtureDatasetsContractTests {
         document: FixtureDatasetDocument,
         dataset: String,
         owner: String,
-        fileName: String
+        fileName: String,
+        format: BookFormat
     ) {
         #expect(ref.hasPrefix("books."), "\(dataset): \(owner) bookAssetRef must point into assets.books, got \(ref)")
         guard let asset = document.assets.asset(for: ref) else {
@@ -810,6 +854,21 @@ struct RepoFixtureDatasetsContractTests {
         #expect(
             installAs == "Books/\(fileName)",
             "\(dataset): \(owner) \(ref) must install as Books/\(fileName), got \(installAs ?? "<nil>")"
+        )
+        let expectedContentType: String
+        switch format {
+        case .epub:
+            expectedContentType = "application/epub+zip"
+        case .pdf:
+            expectedContentType = "application/pdf"
+        case .md:
+            expectedContentType = "text/markdown; charset=utf-8"
+        case .txt:
+            expectedContentType = "text/plain; charset=utf-8"
+        }
+        #expect(
+            asset.contentType == expectedContentType,
+            "\(dataset): \(owner) format \(format.rawValue) requires \(expectedContentType), got \(asset.contentType)"
         )
     }
 }

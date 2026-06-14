@@ -33,8 +33,17 @@ import Testing
         let catalogKeys = BookshelfFixtures.recipes(for: .catalog).map(\.key.rawValue)
 
         #expect(previewKeys == [
+            "bookshelf.book_card_complete",
+            "bookshelf.book_card_long_title",
+            "bookshelf.book_card_mid_progress",
+            "bookshelf.book_card_pdf_format",
+            "bookshelf.book_card_placeholder_epub",
             "bookshelf.progress_card",
             "bookshelf.placeholder_card",
+            "bookshelf.reader_notebook_bound",
+            "bookshelf.reader_notebook_empty",
+            "bookshelf.reader_notebook_long_bound",
+            "bookshelf.reader_notebook_unbound",
             "bookshelf.empty_library",
             "bookshelf.with_books_library",
             "bookshelf.loading_overlay",
@@ -100,6 +109,14 @@ import Testing
         try Self.expectManifestPDFBook(in: generatedDocument, label: "generated_demo")
     }
 
+    @Test func withBooksLibraryDeclaresManifestEPUBBook() throws {
+        let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let generatedDocument = try FixtureDatasetStore.decode(Self.generatedDemoData)
+
+        try Self.expectManifestEPUBBook(in: repoDocument, label: "marketing_demo")
+        try Self.expectManifestEPUBBook(in: generatedDocument, label: "generated_demo")
+    }
+
     @MainActor
     @Test func withBooksLibraryFixtureComesFromUIWorld() async throws {
         let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
@@ -146,6 +163,26 @@ import Testing
             "\(label): \(ref) must be readable by PDFKit"
         )
         #expect(pdfDocument.pageCount > 0, "\(label): \(ref) must contain at least one PDF page")
+    }
+
+    private static func expectManifestEPUBBook(in document: FixtureDatasetDocument, label: String) throws {
+        let seed = try #require(document.bookshelf[BookshelfFixtureID.withBooksLibrary.rawValue])
+        let epubBook = try #require(
+            seed.books.first(where: { $0.format == .epub }),
+            "\(label): bookshelf.with_books_library must include an EPUB book for full book-state restoration"
+        )
+        let ref = try #require(
+            epubBook.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+            "\(label): EPUB book must declare bookAssetRef"
+        )
+        #expect(ref == "books.catalog_reader_epub")
+        let asset = try #require(document.assets.asset(for: ref), "\(label): \(ref) must resolve")
+        #expect(asset.contentType == "application/epub+zip", "\(label): \(ref) must declare EPUB contentType")
+        #expect(URL(fileURLWithPath: asset.sourcePath).pathExtension == "epub", "\(label): \(ref) source must be .epub")
+        #expect(asset.installAs == "Books/\(epubBook.fileName)", "\(label): \(ref) must install as the book fileName")
+        #expect(FileManager.default.fileExists(atPath: asset.sourcePath), "\(label): \(ref) source file must exist")
+        let data = try Data(contentsOf: URL(fileURLWithPath: asset.sourcePath))
+        #expect(data.starts(with: Data("PK".utf8)), "\(label): \(ref) must be a ZIP-backed EPUB package")
     }
 }
 #endif

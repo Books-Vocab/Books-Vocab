@@ -430,7 +430,8 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.m4a",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null
+                "installAs": null,
+                "contentType": "audio/mp4"
               }
             },
             "subtitles": {
@@ -438,7 +439,8 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null
+                "installAs": null,
+                "contentType": "application/x-subrip; charset=utf-8"
               }
             },
             "text": {
@@ -446,7 +448,8 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/source.md",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null
+                "installAs": null,
+                "contentType": "text/markdown; charset=utf-8"
               }
             },
             "images": {}
@@ -622,7 +625,8 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "\(source.path)",
                 "sha256": "\(hash)",
                 "byteSize": \(byteSize),
-                "installAs": "\(installAs)"
+                "installAs": "\(installAs)",
+                "contentType": "text/plain; charset=utf-8"
               }
             },
             "images": {}
