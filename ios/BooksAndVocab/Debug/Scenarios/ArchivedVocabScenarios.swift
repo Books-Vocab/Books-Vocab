@@ -7,24 +7,23 @@ import SwiftData
 ///
 /// The sheet is `@Query`-backed (filter `isArchived == true`, further narrowed
 /// at runtime by `shouldAppearInArchiveList`, i.e. `isSynced && action != .delete
-/// && isArchived`). Each scenario seeds a fresh in-memory `ModelContainer` with
-/// synthetic archived entries (or none, for the empty state) inside a
-/// `@MainActor` View body so the env-default services (`KGService`, toast
-/// coordinator — all `MainActor.assumeIsolated` constructed) resolve safely.
+/// && isArchived`). Each scenario materializes a UI World vocabulary seed into a
+/// fresh in-memory store; missing seeds, malformed archived row state, or save
+/// failure fail at catalog construction time.
 enum ArchivedVocabScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Archived Vocab") {
             Scenario("Populated", layout: .fill) {
-                ArchivedVocabScene(entries: ArchivedVocabFixtures.populated)
+                ArchivedVocabScene(fixture: .populated, expected: .atLeast(5))
             }
             Scenario("Single card", layout: .fill) {
-                ArchivedVocabScene(entries: ArchivedVocabFixtures.single)
+                ArchivedVocabScene(fixture: .single, expected: .exactly(1))
             }
             Scenario("Long list (stress)", layout: .fill) {
-                ArchivedVocabScene(entries: ArchivedVocabFixtures.long)
+                ArchivedVocabScene(fixture: .long, expected: .atLeast(40))
             }
             Scenario("Empty", layout: .fill) {
-                ArchivedVocabScene(entries: [])
+                ArchivedVocabScene(fixture: .empty, expected: .exactly(0))
             }
         }
     }
@@ -32,54 +31,29 @@ enum ArchivedVocabScenarios {
 
 // MARK: - Fixtures
 
-private enum ArchivedVocabFixtures {
-    /// Builds a synced + archived entry (satisfies `shouldAppearInArchiveList`).
-    static func archived(
-        word: String,
-        translation: String,
-        explanation: String? = nil,
-        partOfSpeech: String? = "n.",
-        bookTitle: String = "Sample Book",
-        chapterTitle: String? = "第一章"
-    ) -> VocabularyEntry {
-        let entry = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "It was pure \(word) — the moment lingered in memory.",
-            explanation: explanation ?? "A short AI-style contextual gloss for \(word).",
-            partOfSpeech: partOfSpeech,
-            bookTitle: bookTitle,
-            chapterTitle: chapterTitle
-        )
-        entry.isArchived = true
-        entry.syncStatus = VocabularySyncState.synced.rawValue
-        entry.actionType = VocabularySyncAction.add.rawValue
-        return entry
-    }
+private enum ArchivedVocabFixture {
+    case populated
+    case single
+    case long
+    case empty
 
-    static var single: [VocabularyEntry] {
-        [archived(word: "serendipity", translation: "機緣巧合")]
-    }
-
-    static var populated: [VocabularyEntry] {
-        [
-            archived(word: "serendipity", translation: "機緣巧合"),
-            archived(word: "ephemeral", translation: "短暫的", partOfSpeech: "adj."),
-            archived(word: "petrichor", translation: "雨後泥土香"),
-            archived(word: "ineffable", translation: "難以言喻的", partOfSpeech: "adj."),
-            archived(word: "quintessential", translation: "典型的", partOfSpeech: "adj."),
-        ]
-    }
-
-    static var long: [VocabularyEntry] {
-        (1...40).map { idx in
-            archived(
-                word: "archived-word-\(idx)",
-                translation: "封存單字 \(idx)",
-                bookTitle: "Book \(idx % 5)"
-            )
+    var vocabularyID: UIWorldVocabularyFixtureID {
+        switch self {
+        case .populated:
+            return .archivedPopulated
+        case .single:
+            return .archivedSingle
+        case .long:
+            return .archivedLong
+        case .empty:
+            return .archivedEmpty
         }
     }
+}
+
+private enum ArchivedVocabExpectedShape {
+    case exactly(Int)
+    case atLeast(Int)
 }
 
 // MARK: - Scene harness
@@ -89,17 +63,21 @@ private enum ArchivedVocabFixtures {
 private struct ArchivedVocabScene: View {
     let container: ModelContainer
 
-    init(entries: [VocabularyEntry]) {
-        let container = try! ModelContainer(
-            for: VocabularyEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-        for entry in entries {
-            context.insert(entry)
+    init(fixture: ArchivedVocabFixture, expected: ArchivedVocabExpectedShape) {
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
+        do {
+            let container = try ModelContainer(
+                for: VocabularyEntry.self, Notebook.self, ReviewRecord.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            let entries = try MainActor.assumeIsolated {
+                try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            }
+            Self.validate(entries, fixture: fixture, expected: expected)
+            self.container = container
+        } catch {
+            preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for ArchivedVocabScenarios: \(error)")
         }
-        try? context.save()
-        self.container = container
     }
 
     var body: some View {
@@ -108,6 +86,24 @@ private struct ArchivedVocabScene: View {
                 .modelContainer(container)
         }
         .environmentObject(AppAppearanceStore.preview)
+    }
+
+    private static func validate(
+        _ entries: [VocabularyEntry],
+        fixture: ArchivedVocabFixture,
+        expected: ArchivedVocabExpectedShape
+    ) {
+        let visible = entries.filter(\.shouldAppearInArchiveList)
+        switch expected {
+        case .exactly(let count):
+            guard visible.count == count else {
+                preconditionFailure("UI World vocabulary.\(fixture.vocabularyID.rawValue) must declare \(count) visible archived entries, got \(visible.count)")
+            }
+        case .atLeast(let count):
+            guard visible.count >= count else {
+                preconditionFailure("UI World vocabulary.\(fixture.vocabularyID.rawValue) must declare at least \(count) visible archived entries, got \(visible.count)")
+            }
+        }
     }
 }
 #endif

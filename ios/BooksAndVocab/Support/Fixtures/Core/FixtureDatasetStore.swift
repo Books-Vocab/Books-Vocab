@@ -334,6 +334,10 @@ struct UIWorldReaderSeed: Codable, Equatable {
 }
 
 enum UIWorldVocabularyFixtureID: String, CaseIterable {
+    case archivedEmpty
+    case archivedLong
+    case archivedPopulated
+    case archivedSingle
     case searchVocabNotebook
     case shellNavigation
     case syncEmpty
