@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import PDFKit
 import Testing
 @testable import BooksAndVocab
 
@@ -67,6 +68,14 @@ import Testing
         try Self.expectEveryBookAssetRefResolves(in: generatedDocument, label: "generated_demo")
     }
 
+    @Test func withBooksLibraryDeclaresManifestPDFBook() throws {
+        let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let generatedDocument = try FixtureDatasetStore.decode(Self.generatedDemoData)
+
+        try Self.expectManifestPDFBook(in: repoDocument, label: "marketing_demo")
+        try Self.expectManifestPDFBook(in: generatedDocument, label: "generated_demo")
+    }
+
     @MainActor
     @Test func withBooksLibraryFixtureComesFromUIWorld() async throws {
         let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
@@ -90,6 +99,28 @@ import Testing
                 #expect(document.assets.asset(for: ref) != nil, "\(label): bookshelf.\(fixtureKey).\(book.title) asset \(ref) must resolve")
             }
         }
+    }
+
+    private static func expectManifestPDFBook(in document: FixtureDatasetDocument, label: String) throws {
+        let seed = try #require(document.bookshelf[BookshelfFixtureID.withBooksLibrary.rawValue])
+        let pdfBook = try #require(
+            seed.books.first(where: { $0.format == .pdf }),
+            "\(label): bookshelf.with_books_library must include a PDF book for PDFReaderViewScenarios"
+        )
+        let ref = try #require(
+            pdfBook.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+            "\(label): PDF book must declare bookAssetRef"
+        )
+        #expect(ref == "books.catalog_reader_pdf")
+        let asset = try #require(document.assets.asset(for: ref), "\(label): \(ref) must resolve")
+        #expect(asset.installAs == "Books/\(pdfBook.fileName)")
+        #expect(asset.byteSize > 0)
+        #expect(asset.sha256.count == 64)
+        let pdfDocument = try #require(
+            PDFDocument(url: URL(fileURLWithPath: asset.sourcePath)),
+            "\(label): \(ref) must be readable by PDFKit"
+        )
+        #expect(pdfDocument.pageCount > 0, "\(label): \(ref) must contain at least one PDF page")
     }
 }
 #endif
