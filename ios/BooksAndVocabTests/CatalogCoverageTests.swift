@@ -287,6 +287,38 @@ import Playbook
         )
     }
 
+    @Test func wordDetailCatalogUsesUIWorldVocabularySeed() throws {
+        let wordDetailScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("WordDetailScenarios.swift")
+        let source = try String(contentsOf: wordDetailScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("= VocabularyEntry(", "Word Detail catalog must not inline SwiftData row literals"),
+            ("return VocabularyEntry(", "Word Detail catalog must not inline SwiftData row literals"),
+            ("CardDocumentBuilder.build(", "Word Detail catalog card document must derive from seeded cardPresentation"),
+            ("Sample Book", "Word Detail catalog book metadata belongs in UI World"),
+            ("richEntry", "Word Detail catalog must not keep local rich entry fixtures"),
+            ("minimalEntry", "Word Detail catalog must not keep local minimal entry fixtures"),
+            ("richDocument", "Word Detail catalog must not keep local rich document fixtures"),
+            ("minimalDocument", "Word Detail catalog must not keep local minimal document fixtures"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(wordDetailScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: .wordDetail)"),
+            "Word Detail catalog must source entries from UI World vocabulary.wordDetail"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)"),
+            "Word Detail catalog must materialize UI World vocabulary entry seeds"
+        )
+        #expect(
+            source.contains("entry(fixture).cardPresentation.document"),
+            "Word Detail card document scenarios must derive from the seeded VocabularyEntry"
+        )
+    }
+
     @Test func kgVocabSearchCatalogUsesUIWorldVocabularyAndAuthSeeds() throws {
         let searchScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

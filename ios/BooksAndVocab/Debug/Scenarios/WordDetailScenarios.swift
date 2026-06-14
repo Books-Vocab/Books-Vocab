@@ -3,40 +3,50 @@ import Playbook
 import SwiftUI
 
 /// Catalog scenarios for Word Detail surface — WordDetailSheet (full presenter,
-/// data-driven from a synthetic VocabularyEntry) and CardDocumentView (the
-/// reusable card body, rendered from a CardDocumentBuilder document).
+/// data-driven from UI World VocabularyEntry seeds) and CardDocumentView (the
+/// reusable card body, rendered from the same seeded card presentation).
 ///
 /// 不掛 backend / SwiftData container：WordDetailSheet 在 `.task` 內由
-/// `entry.cardPresentation` 同步計算 presenter state，故餵一個 in-memory
-/// VocabularyEntry 即可完整渲染。
+/// `entry.cardPresentation` 同步計算 presenter state；entry content 仍由
+/// UI World manifest 擔任 SoT。
 enum WordDetailScenarios {
     static func register(in playbook: Playbook) {
         // MARK: Word Detail Sheet
         playbook.addScenarios(of: "Word Detail · Sheet") {
             Scenario("Rich entry", layout: .fill) {
-                AppThemeContainer {
-                    WordDetailSheet(entry: Self.richEntry(), allEntries: [])
+                MainActor.assumeIsolated {
+                    AppThemeContainer {
+                        WordDetailSheet(entry: Self.entry(.rich), allEntries: Self.entries())
+                    }
+                    .environmentObject(AppAppearanceStore.preview)
                 }
-                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Minimal entry", layout: .fill) {
-                AppThemeContainer {
-                    WordDetailSheet(entry: Self.minimalEntry(), allEntries: [])
+                MainActor.assumeIsolated {
+                    AppThemeContainer {
+                        WordDetailSheet(entry: Self.entry(.minimal), allEntries: Self.entries())
+                    }
+                    .environmentObject(AppAppearanceStore.preview)
                 }
-                .environmentObject(AppAppearanceStore.preview)
             }
         }
 
         // MARK: Card Document
         playbook.addScenarios(of: "Word Detail · Card Document") {
             Scenario("Full", layout: .compressed) {
-                cardSheet(document: Self.richDocument(), compact: false)
+                MainActor.assumeIsolated {
+                    cardSheet(document: Self.document(.rich), compact: false)
+                }
             }
             Scenario("Compact", layout: .compressed) {
-                cardSheet(document: Self.richDocument(), compact: true)
+                MainActor.assumeIsolated {
+                    cardSheet(document: Self.document(.rich), compact: true)
+                }
             }
             Scenario("No example / collocations", layout: .compressed) {
-                cardSheet(document: Self.minimalDocument(), compact: false)
+                MainActor.assumeIsolated {
+                    cardSheet(document: Self.document(.minimal), compact: false)
+                }
             }
         }
     }
@@ -55,67 +65,45 @@ enum WordDetailScenarios {
 
     // MARK: - Fixtures
 
-    private static func richEntry() -> VocabularyEntry {
-        let entry = VocabularyEntry(
-            word: "ephemeral",
-            translation: "短暫的；轉瞬即逝的",
-            context: "Fame is ephemeral, but craft endures.",
-            explanation: "Lasting for a very short time; describes things that fade quickly, often with a wistful, literary tone.",
-            partOfSpeech: "adj.",
-            bookTitle: "On Writing Well",
-            chapterTitle: "Chapter 3 · Simplicity"
-        )
-        entry.difficultyTier = "advanced"
-        entry.reviewExamples = [
-            "The ephemeral beauty of cherry blossoms draws crowds each spring.",
-            "Social media trends are notoriously ephemeral.",
-        ]
-        entry.collocations = ["ephemeral nature", "ephemeral pleasure"]
-        return entry
+    private enum WordDetailFixture {
+        case rich
+        case minimal
+
+        var word: String {
+            switch self {
+            case .rich:
+                return "ephemeral"
+            case .minimal:
+                return "terse"
+            }
+        }
     }
 
-    private static func minimalEntry() -> VocabularyEntry {
-        VocabularyEntry(
-            word: "terse",
-            translation: "簡潔的",
-            context: "His terse reply ended the discussion.",
-            partOfSpeech: "adj.",
-            bookTitle: "Sample Book"
-        )
+    private static func seed() -> UIWorldVocabularySeed {
+        FixtureDatasetStore.requireVocabularySeed(for: .wordDetail)
     }
 
-    private static func richDocument() -> CardDocument {
-        CardDocumentBuilder.build(
-            word: "ephemeral",
-            translation: "短暫的；轉瞬即逝的",
-            partOfSpeech: "adj.",
-            difficultyTier: "advanced",
-            reviewModeTitle: "辨識",
-            examples: ["The ephemeral beauty of cherry blossoms draws crowds each spring."],
-            sourceContext: "Fame is ephemeral, but craft endures.",
-            bookTitle: "On Writing Well",
-            chapterTitle: "Chapter 3 · Simplicity",
-            explanation: "Lasting for a very short time; describes things that fade quickly, often with a wistful, literary tone.",
-            collocations: ["ephemeral nature", "ephemeral pleasure"],
-            showsSourceContext: true
-        )
+    @MainActor
+    private static func entries() -> [VocabularyEntry] {
+        let seed = seed()
+        return seed.entries.map {
+            UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
+        }
     }
 
-    private static func minimalDocument() -> CardDocument {
-        CardDocumentBuilder.build(
-            word: "terse",
-            translation: "簡潔的",
-            partOfSpeech: "adj.",
-            difficultyTier: nil,
-            reviewModeTitle: "辨識",
-            examples: [],
-            sourceContext: "His terse reply ended the discussion.",
-            bookTitle: "Sample Book",
-            chapterTitle: nil,
-            explanation: nil,
-            collocations: [],
-            showsSourceContext: true
+    @MainActor
+    private static func entry(_ fixture: WordDetailFixture) -> VocabularyEntry {
+        let matches = entries().filter { $0.word == fixture.word }
+        precondition(
+            matches.count == 1,
+            "UI World vocabulary.wordDetail expected exactly one entry for \(fixture.word), got \(matches.count)"
         )
+        return matches[0]
+    }
+
+    @MainActor
+    private static func document(_ fixture: WordDetailFixture) -> CardDocument {
+        entry(fixture).cardPresentation.document
     }
 }
 #endif
