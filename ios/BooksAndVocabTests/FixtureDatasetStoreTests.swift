@@ -110,6 +110,79 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func runtimePodcastFailsWhenSeriesSortOrderIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-series-sort-order",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "subtitleAvailable": true,
+                  "download": null
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenEpisodePlaybackMetadataKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-episode-playback-metadata",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "subtitleAvailable": true,
+                  "download": null
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
