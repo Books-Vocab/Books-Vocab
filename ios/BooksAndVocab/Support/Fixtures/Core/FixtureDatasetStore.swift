@@ -343,6 +343,11 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case syncEmpty
     case syncPendingMixed
     case syncPendingSingle
+    case vocabListEmpty
+    case vocabListLong
+    case vocabListPopulated
+    case vocabListSingle
+    case vocabListSyncing
     case wordEdit
 }
 
