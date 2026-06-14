@@ -3,11 +3,22 @@ import logging
 import random
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Awaitable, Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
 
 _LLM_RETRYABLE: tuple[type[Exception], ...] = ()
+T = TypeVar("T")
+
+
+class SyncCallable(Protocol[T]):
+    def __call__(self, *args: Any, **kwargs: Any) -> T:
+        ...
+
+
+class AsyncCallable(Protocol[T]):
+    def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[T]:
+        ...
 
 
 def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
@@ -25,7 +36,7 @@ def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
 
 
 def sync_retry[T](
-    fn: Callable[..., T],
+    fn: SyncCallable[T],
     *args: Any,
     max_attempts: int = 3,
     base_delay: float = 1.0,
@@ -61,7 +72,7 @@ def sync_retry[T](
 
 
 async def async_retry(
-    fn,
+    fn: AsyncCallable[T],
     *args,
     max_attempts: int = 3,
     base_delay: float = 1.0,
@@ -70,7 +81,7 @@ async def async_retry(
     step_name: str = "",
     uid: str = "",
     **kwargs,
-):
+) -> T:
     """執行 fn(*args, **kwargs)，瞬時錯誤時 exponential backoff 重試。"""
     for attempt in range(max_attempts):
         try:

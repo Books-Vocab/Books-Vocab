@@ -2,19 +2,38 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi.responses import HTMLResponse
 
 from .auth import _set_admin_cookie
 
 
+class RunPytestMatrix(Protocol):
+    def __call__(self, *, selected_items: list[str] | None = None) -> dict[str, Any]:
+        ...
+
+
+class StoreLastTestRun(Protocol):
+    def __call__(self, result: dict[str, Any]) -> dict[str, Any]:
+        ...
+
+
+class GetLastTestRun(Protocol):
+    def __call__(self) -> dict[str, Any] | None:
+        ...
+
+
+class BuildTestCatalog(Protocol):
+    def __call__(self) -> dict[str, Any]:
+        ...
+
+
 def admin_run_tests_response(
     *,
     req: Any,
-    run_pytest_matrix: Callable[..., dict[str, Any]],
-    store_last_test_run: Callable[[dict[str, Any]], dict[str, Any]],
+    run_pytest_matrix: RunPytestMatrix,
+    store_last_test_run: StoreLastTestRun,
 ) -> dict[str, Any]:
     selected = req.itemIds if req else []
     return store_last_test_run(run_pytest_matrix(selected_items=selected))
@@ -22,7 +41,7 @@ def admin_run_tests_response(
 
 def admin_last_test_run_response(
     *,
-    get_last_test_run: Callable[[], dict[str, Any] | None],
+    get_last_test_run: GetLastTestRun,
 ) -> dict[str, Any]:
     last_run = get_last_test_run()
     if last_run is None:
@@ -32,7 +51,7 @@ def admin_last_test_run_response(
 
 def admin_test_catalog_response(
     *,
-    build_test_catalog: Callable[[], dict[str, Any]],
+    build_test_catalog: BuildTestCatalog,
 ) -> dict[str, Any]:
     return build_test_catalog()
 

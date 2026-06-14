@@ -12,7 +12,11 @@ from ..api_models import AdminUserEntitlementResponse
 from ..deps import get_admin_user
 
 AdminEndpointResult = dict[str, Any] | HTMLResponse | AdminUserEntitlementResponse
-AdminEndpoint = Callable[..., AdminEndpointResult | Awaitable[AdminEndpointResult]]
+
+
+class AdminEndpoint(Protocol):
+    def __call__(self, *args: Any, **kwargs: Any) -> AdminEndpointResult | Awaitable[AdminEndpointResult]:
+        ...
 
 
 class SupportsAdminSettings(Protocol):

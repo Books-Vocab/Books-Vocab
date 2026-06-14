@@ -54,7 +54,9 @@ class SupportsAdminSettings(Protocol):
 RuntimeSettingsFn = Callable[[], SupportsAdminSettings]
 UsersLoader = Callable[[], UsersPayload]
 UsersSaver = Callable[[UsersPayload], None]
-MemLogGetter = Callable[..., list[dict[str, Any]]]
+class MemLogGetter(Protocol):
+    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
+        ...
 CardStoreFactory = Callable[[Path], Any]
 EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 AdminGrantRecordReader = Callable[[StoredUserRecord | None], AdminGrantRecord]
