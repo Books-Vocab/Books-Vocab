@@ -714,6 +714,35 @@ import Playbook
         )
     }
 
+    @Test func notebookListCatalogUsesUIWorldNotebookSeedsAndAuth() throws {
+        let listScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("NotebookListViewScenarios.swift")
+        let source = try String(contentsOf: listScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("catalog-notebook-user", "Notebook List auth userId belongs in UI World auth.signedIn"),
+            ("catalog-notebook-token", "Notebook List auth token belongs in UI World auth.signedIn"),
+            ("Catalog Notebook User", "Notebook List auth displayName belongs in UI World auth.signedIn"),
+            ("catalog-notebook@example.com", "Notebook List auth email belongs in UI World auth.signedIn"),
+            ("isLoggedIn: true", "Notebook List auth state must come from UI World auth.signedIn"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(listScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.renderModel(for: fixture).container"),
+            "Notebook List catalog must source notebooks from UI World notebook seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
+            "Notebook List catalog must source auth from UI World auth.signedIn"
+        )
+        #expect(
+            source.contains("UI World auth.signedIn must be logged in for NotebookListViewScenarios"),
+            "Notebook List catalog must fail fast when signedIn auth drifts"
+        )
+    }
+
     @Test func notebookCoverCatalogUsesUIWorldNotebookAssetSeed() throws {
         let coverScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
