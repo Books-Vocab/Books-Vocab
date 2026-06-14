@@ -8,13 +8,8 @@ import SwiftUI
 /// `PodcastHomeView` is `@Query`-backed (`PodcastSeries` filtered by
 /// `!isSoftDeleted`, plus `PodcastProgress`) and normally runs a network
 /// auto-sync `.task`. `CatalogTaskPolicy.disabled` skips that task so the view
-/// renders purely off the seeded in-memory store.
-///
-/// `PodcastHomePhase.resolve` is `seriesCount`-first: any seeded series ⇒
-/// `.content` (grid + 「繼續收聽」 shelf when un-completed progress exists); an
-/// empty store ⇒ `.empty`. The env-default services (`KGService`, toast,
-/// `authManager`) are `MainActor`-constructed, so each scene seeds its container
-/// and renders inside a `@MainActor` View body (mirrors `ArchivedVocabScene`).
+/// renders purely off the seeded in-memory store. Series, episodes, and auth
+/// state come from UI World `runtimePodcast.*` / `auth.*` seeds.
 enum PodcastHomeViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Podcast Home View") {
@@ -41,33 +36,45 @@ private enum PodcastHomeFixture {
     case single
     case noProgress
     case empty
+
+    var runtimePodcastIDs: [UIWorldRuntimePodcastFixtureID] {
+        switch self {
+        case .populated, .noProgress:
+            return [.playablePreview, .tieredCatalog]
+        case .single:
+            return [.playablePreview]
+        case .empty:
+            return []
+        }
+    }
+
+    var includesContinueProgress: Bool {
+        switch self {
+        case .populated, .single:
+            return true
+        case .noProgress, .empty:
+            return false
+        }
+    }
 }
 
 // MARK: - Scene harness
 
-/// `@MainActor` body: seeds a fresh in-memory `ModelContainer` (the `@Model`
-/// inits touch `@MainActor`) and renders the real `PodcastHomeView` with
-/// auto-sync skipped. Series carry `color`/`coverPattern`/`episodeCount`/
-/// `totalDurationSec`; un-completed `PodcastProgress` with `lastPlayedTime > 0`
-/// drives the 「繼續收聽」 shelf via `continueItems`.
 private struct PodcastHomeScene: View {
     let container: ModelContainer
+    let auth: CatalogPreviewAuth
 
     init(fixture: PodcastHomeFixture) {
-        let container = try! ModelContainer(
-            for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-        Self.seed(fixture, into: context)
-        try? context.save()
-        self.container = container
+        let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+        self.container = Self.makeContainer(for: fixture)
+        self.auth = Self.makeAuth(from: authSeed)
     }
 
     var body: some View {
         AppThemeContainer {
             PodcastHomeView()
                 .modelContainer(container)
+                .environment(\.authManager, auth)
                 .environment(\.catalogTaskPolicy, .disabled)
         }
         .environmentObject(AppAppearanceStore.preview)
@@ -75,115 +82,88 @@ private struct PodcastHomeScene: View {
 
     // MARK: Seeding
 
-    private static let palette = ["#4A90D9", "#E0719A", "#3FB68B", "#F2A65A", "#7E6CCB"]
-    private static let patterns: [NotebookCoverPattern] = [.waves, .dots, .grid, .circles, .lines]
-
-    private static func seed(_ fixture: PodcastHomeFixture, into context: ModelContext) {
-        switch fixture {
-        case .empty:
-            return
-
-        case .single:
-            let (series, episodes) = makeSeries(
-                index: 0,
-                title: "Atomic Habits Unpacked",
-                hosts: ["Ava Chen"],
-                episodeTitles: ["The 1% Rule", "Identity-Based Habits", "Make It Obvious"],
-                followed: true,
-                context: context
+    private static func makeContainer(for fixture: PodcastHomeFixture) -> ModelContainer {
+        do {
+            let container = try ModelContainer(
+                for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
-            insertProgress(episode: episodes[1], played: 612, completed: false, into: context)
-            _ = series
-
-        case .noProgress:
-            seedCatalog(into: context)
-            // Intentionally no PodcastProgress → continueItems empty → grid only.
-
-        case .populated:
-            let all = seedCatalog(into: context)
-            // Two un-completed resumes (newest-updated first in the shelf) plus
-            // one completed entry that must be filtered OUT of the shelf.
-            insertProgress(episode: all[0].1[1], played: 612, completed: false, into: context)
-            insertProgress(episode: all[1].1[0], played: 1700, completed: false, into: context)
-            insertProgress(episode: all[2].1[0], played: 1832, completed: true, into: context)
+            for (index, fixtureID) in fixture.runtimePodcastIDs.enumerated() {
+                let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)
+                let episodes = materialize(seed: seed, index: index, into: container.mainContext)
+                if fixture.includesContinueProgress, let episode = episodes.first {
+                    insertProgress(episode: episode, played: min(episode.durationSec / 3, 612), into: container.mainContext)
+                }
+            }
+            try container.mainContext.save()
+            return container
+        } catch {
+            preconditionFailure("Failed to materialize UI World runtimePodcast seeds for PodcastHomeViewScenarios.\(fixture): \(error)")
         }
     }
 
     @discardableResult
-    private static func seedCatalog(
-        into context: ModelContext
-    ) -> [(PodcastSeries, [PodcastEpisode])] {
-        let specs: [(String, [String], [String], Bool)] = [
-            ("Atomic Habits Unpacked", ["Ava Chen"],
-             ["The 1% Rule", "Identity-Based Habits", "Make It Obvious"], true),
-            ("Finding Flow: The Science of Optimal Experience",
-             ["Mihaly Csikszentmihalyi", "Alexandra Featherstone"],
-             ["What Is Flow", "Autotelic Personality"], true),
-            ("Deep Work in a Distracted World", ["Leo Park"],
-             ["Attention Residue", "The Shutdown Ritual", "Embracing Boredom", "Drain the Shallows"], false),
-            ("Hidden Hand", ["Maya Lin"],
-             ["Origins", "Markets & Myths"], false),
-        ]
-        return specs.enumerated().map { idx, spec in
-            makeSeries(
-                index: idx,
-                title: spec.0,
-                hosts: spec.1,
-                episodeTitles: spec.2,
-                followed: spec.3,
-                context: context
-            )
-        }
-    }
-
-    private static func makeSeries(
+    private static func materialize(
+        seed: UIWorldRuntimePodcastSeed,
         index: Int,
-        title: String,
-        hosts: [String],
-        episodeTitles: [String],
-        followed: Bool,
-        context: ModelContext
-    ) -> (PodcastSeries, [PodcastEpisode]) {
-        let series = PodcastSeries(remoteId: "series-\(index)", title: title, hostNames: hosts)
-        series.color = palette[index % palette.count]
-        series.coverPattern = patterns[index % patterns.count].rawValue
-        series.episodeCount = episodeTitles.count
-        series.sortOrder = index
-        series.isFollowed = followed
+        into context: ModelContext
+    ) -> [PodcastEpisode] {
+        let series = PodcastSeries(
+            remoteId: seed.seriesRemoteId,
+            title: seed.seriesTitle,
+            hostNames: seed.hostNames
+        )
+        series.color = seed.color
+        series.coverPattern = seed.coverPattern
+        series.episodeCount = seed.episodes.count
+        series.totalDurationSec = seed.durationSec
+        series.sortOrder = seed.sortOrder + index
+        series.isFollowed = index == 0
         context.insert(series)
 
         var episodes: [PodcastEpisode] = []
-        var total: Double = 0
-        for (epIdx, epTitle) in episodeTitles.enumerated() {
-            let duration = Double(1500 + epIdx * 332)
-            total += duration
-            let ep = PodcastEpisode(
-                remoteId: "series-\(index)_ep_\(epIdx + 1)",
-                episodeNumber: epIdx + 1,
-                title: epTitle,
-                durationSec: duration
+        for episodeSeed in seed.episodes {
+            let episode = PodcastEpisode(
+                remoteId: episodeSeed.remoteId,
+                episodeNumber: episodeSeed.episodeNumber,
+                title: episodeSeed.title,
+                durationSec: episodeSeed.durationSec
             )
-            ep.audioAvailable = true
-            ep.series = series
-            context.insert(ep)
-            episodes.append(ep)
+            episode.audioAvailable = episodeSeed.audioAvailable
+            episode.previewAvailable = episodeSeed.previewAvailable
+            episode.previewDurationSec = episodeSeed.previewDurationSec
+            episode.subtitleAvailable = episodeSeed.subtitleAvailable
+            episode.series = series
+            context.insert(episode)
+            episodes.append(episode)
         }
-        series.totalDurationSec = total
-        return (series, episodes)
+        return episodes
     }
 
     private static func insertProgress(
         episode: PodcastEpisode,
         played: Double,
-        completed: Bool,
         into context: ModelContext
     ) {
         let progress = PodcastProgress(
             episodeRemoteId: episode.remoteId,
             lastPlayedTime: played,
-            completed: completed
+            completed: false
         )
         context.insert(progress)
+    }
+
+    private static func makeAuth(from seed: UIWorldAuthSeed) -> CatalogPreviewAuth {
+        guard seed.isLoggedIn else {
+            preconditionFailure("UI World auth.signedIn must be logged in for PodcastHomeViewScenarios")
+        }
+        return CatalogPreviewAuth(
+            isLoggedIn: seed.isLoggedIn,
+            userId: seed.userId,
+            token: seed.token,
+            displayName: seed.displayName,
+            userEmail: seed.email
+        )
     }
 }
 #endif

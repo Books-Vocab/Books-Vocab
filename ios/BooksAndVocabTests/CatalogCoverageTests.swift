@@ -234,6 +234,36 @@ import Playbook
         )
     }
 
+    @Test func podcastHomeCatalogUsesUIWorldRuntimePodcastSeeds() throws {
+        let homeScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("PodcastHomeViewScenarios.swift")
+        let source = try String(contentsOf: homeScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("Atomic Habits Unpacked", "Podcast home catalog title must come from UI World"),
+            ("Finding Flow", "Podcast home catalog must not keep local series specs"),
+            ("private static let palette", "Podcast home catalog color must come from UI World"),
+            ("PodcastEpisode(remoteId: \"", "Podcast home catalog must not inline episode row literals"),
+            ("try? context.save()", "Podcast home catalog SwiftData save must fail fast"),
+            ("try? container.mainContext.save()", "Podcast home catalog SwiftData save must fail fast"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(homeScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)"),
+            "Podcast home catalog must source series and episodes from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
+            "Podcast home catalog auth must come from UI World auth.signedIn"
+        )
+        #expect(
+            source.contains("runtimePodcastIDs: [UIWorldRuntimePodcastFixtureID]"),
+            "Podcast home catalog states must be declared as UI World runtimePodcast ids"
+        )
+    }
+
     @Test func wordEditCatalogUsesUIWorldVocabularySeed() throws {
         let wordEditScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
