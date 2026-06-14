@@ -4,7 +4,7 @@ import SwiftData
 import Testing
 @testable import BooksAndVocab
 
-// .serialized: tests mutate FixtureDatasetStore.testingOverrideData singleton.
+// .serialized: tests exercise process-level fixture environment loading.
 @Suite(.serialized)
 struct FixtureDatasetStoreTests {
     private static func completeV2DatasetData(_ json: String) throws -> Data {
