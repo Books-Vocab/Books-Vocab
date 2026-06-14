@@ -2745,6 +2745,75 @@
       "reviewHistory": [],
       "notebookSyncStatus": 1
     },
+    "wordDetail": {
+      "notebookRemoteId": "ui-word-detail-notebook",
+      "notebookName": "Word Detail Fixture",
+      "bookTitle": "Word Detail Manual",
+      "entries": [
+        {
+          "word": "ephemeral",
+          "translation": "短暫的；轉瞬即逝的",
+          "context": "Fame is ephemeral, but craft endures.",
+          "explanation": "Lasting for a very short time; describes things that fade quickly, often with a wistful, literary tone.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "On Writing Well",
+          "chapterTitle": "Chapter 3 · Simplicity",
+          "kgCardId": "word-detail-ephemeral",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The ephemeral beauty of cherry blossoms draws crowds each spring.",
+            "Social media trends are notoriously ephemeral."
+          ],
+          "collocations": [
+            "ephemeral nature",
+            "ephemeral pleasure"
+          ],
+          "rootForm": "ephemeral",
+          "inflections": [],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "terse",
+          "translation": "簡潔的",
+          "context": "His terse reply ended the discussion.",
+          "explanation": null,
+          "partOfSpeech": "adj.",
+          "bookTitle": "Word Detail Manual",
+          "chapterTitle": null,
+          "kgCardId": "word-detail-terse",
+          "difficultyTier": null,
+          "reviewMode": "recognition",
+          "reviewExamples": [],
+          "collocations": [],
+          "rootForm": null,
+          "inflections": [],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [],
+      "notebookSyncStatus": 1
+    },
     "wordEdit": {
       "notebookRemoteId": "ui-word-edit-notebook",
       "notebookName": "Word Edit Fixture",

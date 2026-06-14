@@ -21,6 +21,9 @@ extension UITestFixtureSeed {
         entry.difficultyTier = seed.difficultyTier
         entry.reviewMode = seed.reviewMode
         entry.reviewExamples = seed.reviewExamples
+        entry.collocations = seed.collocations ?? []
+        entry.rootForm = seed.rootForm
+        entry.inflections = seed.inflections ?? []
         entry.syncStatus = seed.syncStatus
         entry.actionType = seed.actionType
         entry.isArchived = seed.isArchived

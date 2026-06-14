@@ -350,6 +350,7 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
     case vocabListPopulated
     case vocabListSingle
     case vocabListSyncing
+    case wordDetail
     case wordEdit
 }
 
@@ -392,6 +393,9 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let difficultyTier: String?
     let reviewMode: VocabularyCardMode
     let reviewExamples: [String]
+    let collocations: [String]?
+    let rootForm: String?
+    let inflections: [String]?
     let syncStatus: Int
     let actionType: String
     let isArchived: Bool
