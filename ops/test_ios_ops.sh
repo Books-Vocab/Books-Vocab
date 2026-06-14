@@ -930,24 +930,68 @@ bash -c '
   UI_TEST_VIDEO=""
   UI_TEST_REVIEW_ROOT=""
   UI_TEST_REVIEW_HTML=""
+  UI_TEST_FLOW_ID="PodcastPlaybackPerfUITests"
+  UI_TEST_VARIANT_ID="profile:ui-smoke"
+  FILE_PATH="ios/BooksAndVocabUITests/PodcastPlaybackPerfUITests.swift"
+  TMPOUT="'"$ui_steps_tmp"'/test.log"
+  : > "$TMPOUT"
   export_ui_step_attachments_from_xcresult() { :; }
   eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
   eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  resolve_run_device_udid() { printf "STUB-UDID-1234"; }
   build_ui_step_contact_sheet
   build_ui_test_review_page
 ' >"$ui_steps_tmp/snippet.log" 2>&1 || true
 ui_steps_review_html=""
+ui_steps_workspace_html=""
+ui_steps_workspace_index=""
 if [[ -d "$ui_steps_tmp/project/build/snapshots/uitest-runs" ]]; then
   ui_steps_review_html="$(find "$ui_steps_tmp/project/build/snapshots/uitest-runs" -name UIreview.html -type f | head -1)"
+  ui_steps_workspace_html="$ui_steps_tmp/project/build/snapshots/uitest-runs/UIreview.html"
+  ui_steps_workspace_index="$ui_steps_tmp/project/build/snapshots/uitest-runs/index.json"
 fi
 if [[ -s "$ui_steps_tmp/contact_sheet.png" && -s "$ui_steps_tmp/quick4_contact_sheet.png" && -s "$ui_steps_tmp/review_manifest.json" ]] \
   && [[ -n "$ui_steps_review_html" && -s "$ui_steps_review_html" ]] \
-  && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null; then
-  ok "ios_test builds full + quick4 contact sheets, manifest, and standalone UIreview from step screenshots"
+  && [[ -s "$ui_steps_workspace_html" && -s "$ui_steps_workspace_index" ]] \
+  && jq -e '.schema=="kg.visual-review.sheet.v1" and (.items|length)==8 and all(.items[]; (.relPath|test("contact_sheet"))|not)' "$ui_steps_tmp/review_manifest.json" >/dev/null \
+  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .runs[0].flowId=="PodcastPlaybackPerfUITests" and .runs[0].variantId=="profile:ui-smoke" and (.runs[0].artifacts.log|endswith("/test.log"))' "$ui_steps_workspace_index" >/dev/null; then
+  ok "ios_test builds full + quick4 contact sheets, manifest, standalone UIreview, and UITest workspace index"
   rm -rf "$ui_steps_tmp"
 else
   # keep $ui_steps_tmp as the debug artifact — the failure message points at it
   fail_t "ios_test ui-step visual review artifacts missing in $ui_steps_tmp: $(tail -3 "$ui_steps_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
+fi
+ui_empty_tmp="$(mktemp -d)"
+bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  PROJECT_ROOT="'"$ui_empty_tmp"'/project"
+  TEST_SCOPE="ui"
+  UI_TEST_SCREENSHOT_DIR=""
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
+  UI_TEST_REVIEW_ROOT=""
+  UI_TEST_REVIEW_HTML=""
+  UI_TEST_FLOW_ID="BooksAndVocabUITests"
+  UI_TEST_VARIANT_ID="profile:ui-smoke"
+  FILE_PATH="ios/BooksAndVocabUITests/BooksAndVocabUITests.swift"
+  TMPOUT="'"$ui_empty_tmp"'/test.log"
+  mkdir -p "$PROJECT_ROOT"
+  : > "$TMPOUT"
+  eval "$(sed -n "/^build_ui_test_review_page()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  resolve_run_device_udid() { printf "STUB-UDID-EMPTY"; }
+  build_ui_test_review_page ok
+' >"$ui_empty_tmp/snippet.log" 2>&1 || true
+ui_empty_index="$ui_empty_tmp/project/build/snapshots/uitest-runs/index.json"
+ui_empty_html="$ui_empty_tmp/project/build/snapshots/uitest-runs/UIreview.html"
+if [[ -s "$ui_empty_index" && -s "$ui_empty_html" ]] \
+  && jq -e '.schema=="kg.ios.uitest-review-workspace.v1" and .summary.totalRuns==1 and .summary.okRuns==1 and .runs[0].flowId=="BooksAndVocabUITests" and .runs[0].stepCount==0 and (.runs[0].artifacts.log|endswith("/test.log")) and (.runs[0].lastRunAt|length > 0)' "$ui_empty_index" >/dev/null; then
+  ok "ios_test builds UITest workspace entry even when no step screenshots exist"
+  rm -rf "$ui_empty_tmp"
+else
+  fail_t "ios_test empty visual review fallback missing in $ui_empty_tmp: $(tail -5 "$ui_empty_tmp/snippet.log" 2>/dev/null | tr '\n' ' ')"
 fi
 ios_test_xctestrun_tmp="$(mktemp -d)"
 mkdir -p "$ios_test_xctestrun_tmp/Build/Products"
@@ -1039,6 +1083,32 @@ grep -q -- '--ui-launch-profile' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--launch-benchmark' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_UI_TEST_APP_ARGS_JSON' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test can inject UI app launch profiles into XCUIApplication" || fail_t "ios_test missing UI launch-profile injection"
+variant_combo="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^build_ui_test_variant_id()/,/^}/p" "$1")"
+    UI_FIXTURE_DATASET_NAME="marketing_demo"
+    UI_FIXTURE_DATASET_FILE=""
+    UI_LAUNCH_PROFILE="standard"
+    build_ui_test_variant_id
+  ' _ "$WORKSPACE/ops/ios_test.sh"
+)"
+[[ "$variant_combo" == "dataset:marketing_demo+profile:standard" ]] \
+  && ok "ios_test variant id combines dataset and launch profile" \
+  || fail_t "ios_test combined variant id wrong: $variant_combo"
+variant_profile="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^build_ui_test_variant_id()/,/^}/p" "$1")"
+    UI_FIXTURE_DATASET_NAME=""
+    UI_FIXTURE_DATASET_FILE=""
+    UI_LAUNCH_PROFILE="ui-smoke"
+    build_ui_test_variant_id
+  ' _ "$WORKSPACE/ops/ios_test.sh"
+)"
+[[ "$variant_profile" == "profile:ui-smoke" ]] \
+  && ok "ios_test variant id records launch profile state" \
+  || fail_t "ios_test profile variant id wrong: $variant_profile"
 
 section "ios_test fixture dataset flag (--dataset/--dataset-file)"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"
