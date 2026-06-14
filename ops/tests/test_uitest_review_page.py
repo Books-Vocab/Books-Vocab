@@ -181,6 +181,106 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
     assert "run-a/uitest-videos/run-a.mp4" in html
 
 
+def test_workspace_html_lists_pending_flows_without_runs(tmp_path):
+    mod = _load()
+    test_root = tmp_path / "ios" / "BooksAndVocabUITests"
+    test_root.mkdir(parents=True)
+    (test_root / "OverviewFlowUITests.swift").write_text(
+        """
+        import XCTest
+        final class OverviewFlowUITests: XCTestCase {
+            func testOverviewStatsRenderFromSeededReviewHistory() throws {}
+        }
+        """,
+        encoding="utf-8",
+    )
+    (test_root / "SettingsFlowUITests.swift").write_text(
+        """
+        import XCTest
+        final class SettingsFlowUITests: XCTestCase {
+            func testSettingsRowsNavigate() throws {}
+            func helperIsNotATest() {}
+        }
+        """,
+        encoding="utf-8",
+    )
+    workspace_root = tmp_path / "build" / "snapshots" / "uitest-runs"
+
+    payload = mod.ensure_workspace(
+        workspace_root=workspace_root,
+        test_root=test_root,
+        project_root=tmp_path,
+    )
+
+    index = json.loads((workspace_root / "index.json").read_text(encoding="utf-8"))
+    html = (workspace_root / "UIreview.html").read_text(encoding="utf-8")
+    assert payload["summary"]["totalRuns"] == 0
+    assert payload["summary"]["flows"] == 2
+    assert payload["summary"]["pendingFlows"] == 2
+    assert index["flows"][0]["latestStatus"] == "never-run"
+    assert "Flow Inventory" in html
+    assert 'class="tabs"' in html
+    assert 'data-filter="pending"' in html
+    assert 'class="table-wrap"' in html
+    assert 'id="search"' in html
+    assert 'class="flow-row"' in html
+    assert 'class="flow-card status-pending"' in html
+    assert "OverviewFlowUITests" in html
+    assert "SettingsFlowUITests" in html
+    assert "never-run" in html
+    assert "./ops/ios_ops.sh test --ui --file OverviewFlowUITests.swift --lease --json" in html
+    assert "testOverviewStatsRenderFromSeededReviewHistory" in html
+    assert "testSettingsRowsNavigate" in html
+
+
+def test_workspace_preserves_run_and_marks_only_missing_flows_pending(tmp_path):
+    mod = _load()
+    test_root = tmp_path / "ios" / "BooksAndVocabUITests"
+    test_root.mkdir(parents=True)
+    (test_root / "OverviewFlowUITests.swift").write_text(
+        "final class OverviewFlowUITests { func testOverview() throws {} }\n",
+        encoding="utf-8",
+    )
+    (test_root / "SettingsFlowUITests.swift").write_text(
+        "final class SettingsFlowUITests { func testSettings() throws {} }\n",
+        encoding="utf-8",
+    )
+    workspace_root = tmp_path / "build" / "snapshots" / "uitest-runs"
+    index = {
+        "schema": "kg.ios.uitest-review-workspace.v1",
+        "summary": {"totalRuns": 1, "okRuns": 1, "failRuns": 0, "flows": 1, "variants": 1},
+        "runs": [
+            {
+                "runId": "run-a",
+                "flowId": "OverviewFlowUITests",
+                "variantId": "default",
+                "status": "ok",
+                "lastRunAt": "2026-06-14T03:04:05+00:00",
+                "testFile": "OverviewFlowUITests.swift",
+                "device": "SIM-1",
+                "stepCount": 2,
+                "artifacts": {"reviewHtml": "run-a/UIreview.html"},
+            }
+        ],
+        "flows": [],
+    }
+    workspace_root.mkdir(parents=True)
+    (workspace_root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+
+    payload = mod.ensure_workspace(
+        workspace_root=workspace_root,
+        test_root=test_root,
+        project_root=tmp_path,
+    )
+
+    flows = {flow["flowId"]: flow for flow in payload["flows"]}
+    assert payload["summary"]["totalRuns"] == 1
+    assert payload["summary"]["flows"] == 2
+    assert payload["summary"]["pendingFlows"] == 1
+    assert flows["OverviewFlowUITests"]["latestStatus"] == "ok"
+    assert flows["SettingsFlowUITests"]["latestStatus"] == "never-run"
+
+
 def test_run_html_supports_zero_step_runs(tmp_path):
     mod = _load()
     steps = tmp_path / "steps"
