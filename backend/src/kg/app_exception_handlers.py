@@ -100,6 +100,7 @@ def _redact_validation_body(body: str | None) -> str | None:
         parsed = json.loads(body)
     except json.JSONDecodeError:
         if _VALIDATION_SECRET_RE.search(body):
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return "[non-json body omitted: secret-like field present]"
         return body[:500]
     return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]
@@ -119,7 +120,7 @@ def install_app_exception_handlers_from_dependencies(
             body = await request.body()
             body = body.decode("utf-8", errors="replace")
         except Exception:
-            pass
+            logger.warning("Validation handler cannot read request body", exc_info=True)
         errors = _redact_validation_payload(jsonable_encoder(exc.errors()))
         logger.warning(
             "Validation error [%s %s] body=%s errors=%s",

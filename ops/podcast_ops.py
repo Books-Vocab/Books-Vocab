@@ -82,7 +82,10 @@ def collect_status(workspaces_dir: Path) -> dict:
         try:
             total_usd = float(aggregate_workspace(ws).get("total_usd") or 0.0)
         except Exception:  # noqa: BLE001 — cost is best-effort, status still stands
-            pass
+            print(
+                f"[podcast_ops] cost aggregate failed for workspace={ws.name}; keeping 0.0",
+                file=sys.stderr,
+            )
         row = {
             "name": s["name"], "status": s["status"],
             "episode_count": s["episode_count"], "progress": s["progress"],
@@ -255,6 +258,7 @@ def _rel_age(ts_iso: str | None) -> str:
     try:
         delta = time.time() - datetime.fromisoformat(ts_iso).timestamp()
     except ValueError:
+        log.warning("Silently handled exception; using fallback response", exc_info=True)
         return "-"
     if delta < 60:
         return "now"
@@ -470,6 +474,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "series":
             _emit(collect_series(), args.json, _print_series)
     except Exception as exc:  # noqa: BLE001 — RemoteError/ImportError → clean exit
+        log.warning("Silently handled exception; using fallback response", exc_info=True)
         return _fail(f"{args.cmd} failed (S3/boto3): {exc}", args.json)
     return 0
 
