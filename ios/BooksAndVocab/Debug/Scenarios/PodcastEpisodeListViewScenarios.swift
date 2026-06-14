@@ -22,50 +22,34 @@ enum PodcastEpisodeListViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Podcast Episode List View") {
             Scenario("Populated · series + episodes", layout: .fill) {
-                PodcastEpisodeListViewScene(fixture: .populated)
+                PodcastEpisodeListViewScene(fixture: .tieredCatalog)
             }
             Scenario("Empty · no episodes yet", layout: .fill) {
-                PodcastEpisodeListViewScene(fixture: .empty)
+                PodcastEpisodeListViewScene(fixture: .playablePreview, episodeLimit: 0)
             }
         }
     }
 }
 
-// MARK: - Fixtures
-
-private enum PodcastEpisodeListFixture {
-    case populated
-    case empty
-}
-
 // MARK: - Scene harness
 
 private struct PodcastEpisodeListViewScene: View {
-    static let seriesId = "series-atomic-habits"
     let container: ModelContainer
     let auth: CatalogPreviewAuth
+    let seriesId: String
 
-    init(fixture: PodcastEpisodeListFixture) {
-        let container = try! ModelContainer(
-            for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        Self.seed(fixture, into: container.mainContext)
-        try? container.mainContext.save()
-        self.container = container
-        self.auth = CatalogPreviewAuth(
-            isLoggedIn: true,
-            userId: "catalog-podcast-user",
-            token: "catalog-podcast-token",
-            displayName: "Catalog Podcast User",
-            userEmail: "catalog-podcast@example.com"
-        )
+    init(fixture: UIWorldRuntimePodcastFixtureID, episodeLimit: Int? = nil) {
+        let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture)
+        let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+        self.container = Self.makeContainer(from: seed, episodeLimit: episodeLimit)
+        self.auth = Self.makeAuth(from: authSeed)
+        self.seriesId = seed.seriesRemoteId
     }
 
     var body: some View {
         AppThemeContainer {
             NavigationStack {
-                PodcastEpisodeListView(seriesId: Self.seriesId)
+                PodcastEpisodeListView(seriesId: seriesId)
             }
             .modelContainer(container)
             .environment(\.authManager, auth)
@@ -73,31 +57,60 @@ private struct PodcastEpisodeListViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // MARK: Seeding
+    private static func makeContainer(
+        from seed: UIWorldRuntimePodcastSeed,
+        episodeLimit: Int?
+    ) -> ModelContainer {
+        do {
+            let container = try ModelContainer(
+                for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            let series = PodcastSeries(
+                remoteId: seed.seriesRemoteId,
+                title: seed.seriesTitle,
+                hostNames: seed.hostNames
+            )
+            series.color = seed.color
+            series.coverPattern = seed.coverPattern
+            series.episodeCount = seed.episodes.count
+            series.totalDurationSec = seed.durationSec
+            series.sortOrder = seed.sortOrder
+            container.mainContext.insert(series)
 
-    private static func seed(_ fixture: PodcastEpisodeListFixture, into context: ModelContext) {
-        let series = PodcastSeries(
-            remoteId: seriesId,
-            title: "Atomic Habits Unpacked",
-            hostNames: ["Ava Chen", "Leo Park"]
-        )
-        series.color = "#4A90D9"
-        series.coverPattern = NotebookCoverPattern.waves.rawValue
-        context.insert(series)
-
-        guard fixture == .populated else { return }
-
-        let episodes: [(Int, String, Double)] = [
-            (1, "The Comfort Crisis", 1832),
-            (2, "On Deep Work", 2014),
-            (3, "Habit Stacking in Practice", 1567),
-            (4, "Members-only Deep Dive", 2456),
-        ]
-        for (number, title, duration) in episodes {
-            let ep = PodcastEpisode(remoteId: "\(seriesId)_ep_\(number)", episodeNumber: number, title: title, durationSec: duration)
-            ep.series = series
-            context.insert(ep)
+            let episodes = episodeLimit.map { Array(seed.episodes.prefix($0)) } ?? seed.episodes
+            for episodeSeed in episodes {
+                let episode = PodcastEpisode(
+                    remoteId: episodeSeed.remoteId,
+                    episodeNumber: episodeSeed.episodeNumber,
+                    title: episodeSeed.title,
+                    durationSec: episodeSeed.durationSec
+                )
+                episode.series = series
+                episode.audioAvailable = episodeSeed.audioAvailable
+                episode.previewAvailable = episodeSeed.previewAvailable
+                episode.previewDurationSec = episodeSeed.previewDurationSec
+                episode.subtitleAvailable = episodeSeed.subtitleAvailable
+                container.mainContext.insert(episode)
+            }
+            try container.mainContext.save()
+            return container
+        } catch {
+            preconditionFailure("Failed to materialize UI World runtimePodcast.\(seed.seriesRemoteId): \(error)")
         }
+    }
+
+    private static func makeAuth(from seed: UIWorldAuthSeed) -> CatalogPreviewAuth {
+        guard seed.isLoggedIn else {
+            preconditionFailure("UI World auth.signedIn must be logged in for PodcastEpisodeListViewScenarios")
+        }
+        return CatalogPreviewAuth(
+            isLoggedIn: seed.isLoggedIn,
+            userId: seed.userId,
+            token: seed.token,
+            displayName: seed.displayName,
+            userEmail: seed.email
+        )
     }
 }
 #endif

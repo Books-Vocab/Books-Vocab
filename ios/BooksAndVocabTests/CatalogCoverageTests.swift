@@ -174,6 +174,36 @@ import Playbook
         )
     }
 
+    @Test func podcastEpisodeListCatalogUsesUIWorldRuntimePodcastSeeds() throws {
+        let podcastScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("PodcastEpisodeListViewScenarios.swift")
+        let source = try String(contentsOf: podcastScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("private enum PodcastEpisodeListFixture", "Podcast episode list catalog must not define local fixture ids"),
+            ("series-atomic-habits", "Podcast episode list catalog series id must come from UI World"),
+            ("Atomic Habits Unpacked", "Podcast episode list catalog title must come from UI World"),
+            ("Catalog Podcast User", "Podcast episode list catalog auth must come from UI World"),
+            ("PodcastEpisode(remoteId:", "Podcast episode list catalog must not inline episode rows"),
+            ("try? container.mainContext.save()", "Podcast episode list catalog SwiftData save must fail fast"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(podcastScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture)"),
+            "Podcast episode list catalog must source series and episodes from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
+            "Podcast episode list catalog auth must come from UI World auth.signedIn"
+        )
+        #expect(
+            source.contains("fixture: .playablePreview, episodeLimit: 0"),
+            "Podcast episode list empty state must derive from an explicit UI World runtimePodcast seed"
+        )
+    }
+
     @Test func wordEditCatalogUsesUIWorldVocabularySeed() throws {
         let wordEditScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
