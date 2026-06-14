@@ -125,6 +125,9 @@ if ./ops/docs_lint.sh --files docs/reference/does-not-exist.md >/tmp/kg_docs_lin
 fi
 grep -q "路徑不存在" /tmp/kg_docs_lint_missing.out
 
+run_capture /tmp/kg_docs_lint_positional.out ./ops/docs_lint.sh docs/reference/tech_index.md docs/sop/architecture.md
+require_grep "ERROR: 0" /tmp/kg_docs_lint_positional.out
+
 if ./ops/docs_lint.sh --files README.md >/tmp/kg_docs_lint_nondoc.out 2>&1; then
   echo "docs_lint accepted a non-doc --files path" >&2
   exit 1
