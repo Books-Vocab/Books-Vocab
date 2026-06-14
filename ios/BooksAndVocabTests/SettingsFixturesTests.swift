@@ -21,6 +21,7 @@ import Testing
 
         #expect(previewKeys == [
             "settings.logged_out",
+            "settings.account_logged_out_error",
             "settings.subscribed_active",
             "settings.account_long_identity",
             "settings.subscription_free",
@@ -49,7 +50,18 @@ import Testing
             #expect(state.auth.isLoggedIn == true)
             #expect(state.auth.displayName.contains("Wonderfully Long Display Name"))
             #expect(state.auth.email?.contains("layout.testing") == true)
+            #expect(state.subscription?.isActive == true)
             #expect(state.danger?.isDeletingAccount == false)
+        }
+    }
+
+    @Test func accountLoggedOutErrorFixtureComesFromUIWorld() async throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let state = SettingsFixtures.state(for: .accountLoggedOutError)
+            #expect(state.auth.isLoggedIn == false)
+            #expect(state.auth.authError == "無法連線至驗證伺服器，請稍後再試。")
+            #expect(state.subscription == nil)
+            #expect(state.danger == nil)
         }
     }
 }

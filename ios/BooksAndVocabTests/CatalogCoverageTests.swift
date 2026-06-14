@@ -169,6 +169,28 @@ import Playbook
         )
     }
 
+    @Test func settingsAccountSectionCatalogUsesUIWorldSettingsSeeds() throws {
+        let sectionScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SettingsAccountSectionScenarios.swift")
+        let source = try String(contentsOf: sectionScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("loggedOutWithError", "logged-out error account section must be a UI World settings seed"),
+            ("longIdentityState", "long identity account summary must be a UI World settings seed"),
+            ("SettingsPresenterState.AuthSection(", "account section must not construct local auth presenter state"),
+            ("return .init(", "account section must not locally mutate fixture state"),
+            ("isProActive: true", "auth summary Pro state must be derived from a UI World subscription seed"),
+            ("isProActive: false", "auth summary free state must be derived from a UI World subscription seed"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(sectionScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("SettingsFixtures.state(for: fixtureID)"),
+            "Settings account section catalog must fail fast through UI World settings seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.

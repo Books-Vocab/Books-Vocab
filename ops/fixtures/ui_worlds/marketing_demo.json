@@ -181,6 +181,38 @@
     }
   },
   "settings": {
+    "account_logged_out_error": {
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": "無法連線至驗證伺服器，請稍後再試。",
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
     "subscribed_active": {
       "auth": {
         "isLoggedIn": true,
@@ -279,7 +311,22 @@
         "localServerURL": null,
         "observation": null
       },
-      "subscription": null,
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "已解鎖全部功能，適合長姓名版面壓力測試。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
