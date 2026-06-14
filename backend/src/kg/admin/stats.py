@@ -7,11 +7,13 @@ import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..api_models import EntitlementsResponse
 from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
 
@@ -22,10 +24,10 @@ def admin_stats_response(
     *,
     load_users: Callable[[], UsersPayload],
     get_all_stats: Callable[[], dict[str, Any]],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
-    data_dir: Any,
-    card_store_factory: Callable[[Any], Any],
+    data_dir: Path,
+    card_store_factory: Callable[[Path], Any],
 ) -> dict[str, Any]:
     from ..deps_quota import _is_pro
     from ..quota_service import get_all_quota_usage, token_cost_usd

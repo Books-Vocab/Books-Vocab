@@ -9,7 +9,12 @@ from typing import Any
 
 from filelock import FileLock
 
-from ..api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
+from ..api_models import (
+    AdminGrantRequest,
+    AdminGrantStatusResponse,
+    AdminUserEntitlementResponse,
+    EntitlementsResponse,
+)
 from ..exceptions import NotFoundError
 from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
@@ -19,7 +24,7 @@ def admin_user_entitlement_response(
     user_id: str,
     *,
     load_users: Callable[[], UsersPayload],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
 ) -> AdminUserEntitlementResponse:
     users = load_users()
@@ -40,7 +45,7 @@ def _mutate_admin_grant(
     load_users: Callable[[], UsersPayload],
     save_users: Callable[[UsersPayload], None],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     grant_updates: AdminGrantRecord | None = None,
 ) -> AdminUserEntitlementResponse:
     """Shared logic for granting/revoking admin Pro access."""
@@ -71,7 +76,7 @@ def admin_grant_pro_access_response(
     load_users: Callable[[], UsersPayload],
     save_users: Callable[[UsersPayload], None],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
     from ..admin_audit import record_audit
@@ -116,7 +121,7 @@ def admin_revoke_pro_access_response(
     load_users: Callable[[], UsersPayload],
     save_users: Callable[[UsersPayload], None],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
     from ..admin_audit import record_audit
