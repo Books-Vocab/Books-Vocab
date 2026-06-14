@@ -3,6 +3,7 @@ import Foundation
 import SwiftData
 
 enum NotebookFixtureID: String, CaseIterable {
+    case cardGallery
     case coverGallery
     case empty
     case populated
@@ -99,10 +100,57 @@ struct NotebookSeed: Codable {
     let color: String?
     let coverPattern: String?
     let coverImageAssetRef: String?
+    let cardState: NotebookCardStateSeed?
     let syncStatus: Int
     let isDefault: Bool
     let sortOrder: Int
     let entries: [NotebookEntrySeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case remoteId
+        case name
+        case color
+        case coverPattern
+        case coverImageAssetRef
+        case cardState
+        case syncStatus
+        case isDefault
+        case sortOrder
+        case entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World notebook row must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        remoteId = try container.decode(String.self, forKey: .remoteId)
+        name = try container.decode(String.self, forKey: .name)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+        coverPattern = try container.decodeIfPresent(String.self, forKey: .coverPattern)
+        coverImageAssetRef = try container.decodeIfPresent(String.self, forKey: .coverImageAssetRef)
+        cardState = try container.decodeIfPresent(NotebookCardStateSeed.self, forKey: .cardState)
+        syncStatus = try container.decode(Int.self, forKey: .syncStatus)
+        isDefault = try container.decode(Bool.self, forKey: .isDefault)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        entries = try container.decode([NotebookEntrySeed].self, forKey: .entries)
+    }
+}
+
+struct NotebookCardStateSeed: Codable {
+    let cardCount: Int
+    let dueCount: Int
+    let unlearnedCount: Int
+    let reviewedCount: Int
+    let pendingCount: Int
+    let lastActivity: Date?
+    let isActive: Bool
 }
 
 struct NotebookFixtureSeed: Codable {
@@ -127,7 +175,7 @@ enum NotebookFixtures {
 
     private static func surfaces(for fixtureID: NotebookFixtureID) -> Set<FixtureSurface> {
         switch fixtureID {
-        case .coverGallery:
+        case .cardGallery, .coverGallery:
             return [.catalog, .snapshot]
         case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
             return sharedSurfaces
@@ -136,6 +184,8 @@ enum NotebookFixtures {
 
     private static func tags(for fixtureID: NotebookFixtureID) -> Set<String> {
         switch fixtureID {
+        case .cardGallery:
+            return ["card"]
         case .coverGallery:
             return ["cover"]
         case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
@@ -168,6 +218,34 @@ enum NotebookFixtures {
             return try seed.notebooks.map(makeNotebook(from:))
         } catch {
             preconditionFailure("Failed to materialize UI World notebook.\(fixtureID.rawValue): \(error)")
+        }
+    }
+
+    @MainActor
+    static func cardData(for fixtureID: NotebookFixtureID) -> [NotebookCardData] {
+        let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
+        return seed.notebooks.map { notebook in
+            guard let cardState = notebook.cardState else {
+                preconditionFailure("UI World notebook.\(fixtureID.rawValue).\(notebook.remoteId) is missing cardState")
+            }
+            let syncedTotal = cardState.dueCount + cardState.unlearnedCount + cardState.reviewedCount
+            precondition(
+                cardState.cardCount == syncedTotal,
+                "UI World notebook.\(fixtureID.rawValue).\(notebook.remoteId) cardCount \(cardState.cardCount) must equal due + unlearned + reviewed \(syncedTotal)"
+            )
+            return NotebookCardData(
+                name: notebook.name,
+                color: notebook.color,
+                coverPattern: notebook.coverPattern,
+                coverImagePath: nil,
+                cardCount: cardState.cardCount,
+                dueCount: cardState.dueCount,
+                unlearnedCount: cardState.unlearnedCount,
+                reviewedCount: cardState.reviewedCount,
+                pendingCount: cardState.pendingCount,
+                lastActivity: cardState.lastActivity,
+                isActive: cardState.isActive
+            )
         }
     }
 

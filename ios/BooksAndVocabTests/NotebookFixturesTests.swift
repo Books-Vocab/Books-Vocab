@@ -39,6 +39,7 @@ import Testing
         ])
 
         #expect(catalogKeys == [
+            "notebook.cardGallery",
             "notebook.coverGallery",
             "notebook.empty",
             "notebook.populated",
@@ -70,6 +71,24 @@ import Testing
 
         #expect(Set(repoDocument.notebook.keys) == expected)
         #expect(Set(generatedDocument.notebook.keys) == expected)
+    }
+
+    @MainActor
+    @Test func cardGalleryMaterializesManifestCardState() async throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let seed = try #require(document.notebook[NotebookFixtureID.cardGallery.rawValue])
+        #expect(seed.notebooks.count >= 4)
+        #expect(seed.notebooks.allSatisfy { $0.cardState != nil })
+
+        try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let cards = NotebookFixtures.cardData(for: .cardGallery)
+            #expect(cards.contains { $0.cardCount > 500 && $0.dueCount > 0 && $0.isActive })
+            #expect(cards.contains { $0.cardCount == 0 && $0.lastActivity == nil })
+            #expect(cards.contains { $0.name.count > 24 })
+            for card in cards {
+                #expect(card.cardCount == card.dueCount + card.unlearnedCount + card.reviewedCount)
+            }
+        }
     }
 
     @MainActor

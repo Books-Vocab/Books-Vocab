@@ -749,6 +749,32 @@ import Playbook
         )
     }
 
+    @Test func notebooksCardCatalogUsesUIWorldCardGallerySeed() throws {
+        let cardScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("NotebooksScenarios.swift")
+        let source = try String(contentsOf: cardScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("NotebookCardData(", "Notebooks card catalog must not construct local card data"),
+            ("Date().addingTimeInterval", "Notebooks card lastActivity belongs in UI World"),
+            ("我的學測必背 7000", "Notebooks card long title belongs in UI World"),
+            ("cardCount: 626", "Notebooks card metrics belong in UI World"),
+            ("dueCount: 538", "Notebooks card metrics belong in UI World"),
+            ("pendingCount: 2", "Notebooks card metrics belong in UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(cardScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.cardData(for: .cardGallery)"),
+            "Notebooks card catalog must source card data from UI World notebook.cardGallery"
+        )
+        #expect(
+            source.contains("UI World notebook.cardGallery is missing"),
+            "Notebooks card catalog must fail fast when expected card states drift"
+        )
+    }
+
     @Test func readerNotebookPickerCatalogUsesUIWorldNotebookAndBookSeeds() throws {
         let pickerScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
