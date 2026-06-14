@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 371a5bec
+verified_against: 357bcf34
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -41,6 +41,9 @@ Catalog scenario 可用 DEBUG-only `CatalogPreviewAuth` 注入登入狀態，但
 
 ### Preview entitlement 契約（無本地假資料）
 Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI World `entitlements.*` seed。`PaywallScenarios` 只能用 `FixtureDatasetStore.requireEntitlementsSeed` fail-fast 取 seed，再注入 DEBUG-only `PreviewSubscriptionManager`；不可在 Debug source 內用 `KGSubscriptionStatus(...)` / `makeStatus` / `source: "admin"` / `last_synced_at` 重新造一套假訂閱資料。`CatalogCoverageTests.paywallCatalogDoesNotDeclareLocalSubscriptionStatusFixtures` 直接掃 Paywall source 擋回退。
+
+### PDF Reader asset 契約（無 synthetic missing-file book）
+`PDFReaderViewScenarios` 的 `Manifest PDF` 狀態必須取 UI World `bookshelf.with_books_library` seed 內的 PDF `Book` row，且該 row 必須以 `bookAssetRef` 指向 `assets.books.catalog_reader_pdf`。scenario 必須用 `FixtureDatasetStore.requireInstalledAssetURL` 物化檔案，並驗證安裝位置是 `Documents/Books/<fileName>`；缺 row、缺 asset ref、缺資產、hash/byteSize 不符、unsafe install path、row `fileName` 與 asset 檔名不一致都直接 fail-fast。`CatalogCoverageTests.pdfReaderCatalogUsesUIWorldBookAsset` 擋回 synthetic `catalog-missing.pdf` / `Sample PDF` / `File unavailable` error-only fixture；`BookshelfFixturesTests.withBooksLibraryDeclaresManifestPDFBook` 驗 repo UI World 與 generated demo 都有可由 PDFKit 讀取的 PDF asset。
 
 ### Settings subscription 契約（無本地 section fixture）
 `SettingsSubscriptionSectionScenarios` 的 active/loading/pricing-unavailable/free 狀態必須取 UI World `settings.*` seed 的 `subscription` slice；`subscription_free` 也必須存在於 repo UI World / generated demo manifest。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.subscription!`、不可保留 `inactiveFreeFixture`，也不可手建 `SettingsPresenterState.SubscriptionSection(...)`。
@@ -92,7 +95,7 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 - Reader chrome header（`ReaderViewPresenter+Headers.swift`）— expanded / compact / compact-no-progress —（折入狀態）
 
 #### V2. PDF Reader View — `screen` — KEEP
-`Reader/PDFReaderView.swift` — loading / populated / error-unreadable / error-corrupt
+`Reader/PDFReaderView.swift` — populated-manifest-pdf / loading / error-unreadable / error-corrupt
 
 #### V3. Translation Panel (reader) — `overlay` — KEEP（共用）
 `Reader/TranslationPanel.swift` — loading / populated-translation / saved / explanation-only / expanded / error-translation / error-explanation / logged-out / panel-large
