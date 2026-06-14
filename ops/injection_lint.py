@@ -22,11 +22,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import logging
 import sys
 from pathlib import Path
 
 VIEWS_ROOT = Path("ios/BooksAndVocab/Views")
 BASELINE_FILE = Path("ops/injection_baseline.txt")
+LOGGER = logging.getLogger(__name__)
 
 # View-injection grammar shared with the codemod (single source of truth).
 from _inject_shared import (  # noqa: E402
@@ -117,7 +119,9 @@ def read_baseline() -> tuple[set[str], dt.date | None]:
             try:
                 sunset = dt.date.fromisoformat(line.split(":", 1)[1].strip())
             except ValueError:
-                pass
+                LOGGER.warning("Invalid sunset token in baseline: %r", raw.strip())
+                print(f"[injection_lint] invalid sunset token in baseline: {raw.strip()}")
+                sunset = None
             continue
         if line.startswith("#"):
             continue

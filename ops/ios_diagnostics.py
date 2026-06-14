@@ -9,12 +9,15 @@ without forcing agents to grep a large build log manually.
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+LOGGER = logging.getLogger("ops.ios_diagnostics")
 
 
 DIAGNOSTIC_RE = re.compile(
@@ -197,6 +200,7 @@ def _parse_duration_seconds(value: Any) -> float | None:
     try:
         return float(text)
     except ValueError:
+        LOGGER.debug("Failed to parse duration seconds from value %r", value, exc_info=True)
         return None
 
 
@@ -385,6 +389,11 @@ def parse_xcresult_test_results(summary_payload: dict[str, Any], tests_payload: 
         try:
             session_duration_seconds = max(float(finish_time) - float(start_time), 0.0)
         except (TypeError, ValueError):
+            LOGGER.debug(
+                "Failed to compute session duration from startTime=%r finishTime=%r",
+                start_time,
+                finish_time,
+            )
             session_duration_seconds = None
 
     performance_metrics = summarize_performance_metrics(metrics_payload)
