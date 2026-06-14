@@ -38,10 +38,52 @@ struct RepoFixtureDatasetsContractTests {
         let data = try Data(contentsOf: url)
         let document = try FixtureDatasetStore.decode(data)
 
-        #expect(document.schema == "kg.fixture.dataset.v1")
+        #expect(document.schema == "kg.fixture.dataset.v2")
         #expect(document.datasetID == "demo-demo-user")
+        #expect(document.assets.isEmpty)
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
+    }
+
+    @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {
+        for url in try Self.datasetURLs() {
+            let data = try Data(contentsOf: url)
+            let document = try FixtureDatasetStore.decode(data)
+            let stem = url.deletingPathExtension().lastPathComponent
+
+            #expect(document.schema == "kg.fixture.dataset.v2", "\(stem): repo UI Worlds must use the asset-manifest schema")
+            #expect(!document.assets.isEmpty, "\(stem): repo UI Worlds must declare assets")
+            let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+            expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
+
+            for ref in document.assets.refs {
+                let asset = try #require(document.assets.asset(for: ref), "\(stem): asset \(ref) must resolve")
+                let url = URL(fileURLWithPath: asset.sourcePath)
+                #expect(FileManager.default.fileExists(atPath: url.path), "\(stem): asset \(ref) missing at \(url.path)")
+                #expect(
+                    try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
+                    "\(stem): asset \(ref) sha256 drift"
+                )
+            }
+
+            for (fixtureKey, seed) in document.runtimePodcast {
+                #expect(
+                    document.assets.asset(for: seed.audioAssetRef) != nil,
+                    "\(stem): runtimePodcast.\(fixtureKey) audioAssetRef \(seed.audioAssetRef) is not declared"
+                )
+                #expect(
+                    document.assets.asset(for: seed.subtitleAssetRef) != nil,
+                    "\(stem): runtimePodcast.\(fixtureKey) subtitleAssetRef \(seed.subtitleAssetRef) is not declared"
+                )
+            }
+
+            for (fixtureKey, seed) in document.reader {
+                #expect(
+                    document.assets.asset(for: seed.textAssetRef) != nil,
+                    "\(stem): reader.\(fixtureKey) textAssetRef \(seed.textAssetRef) is not declared"
+                )
+            }
+        }
     }
 
     @Test func everyRepoDatasetDecodesAndMatchesKnownFixtureIDs() throws {
@@ -50,7 +92,7 @@ struct RepoFixtureDatasetsContractTests {
             let document = try FixtureDatasetStore.decode(data)
             let stem = url.deletingPathExtension().lastPathComponent
 
-            #expect(document.schema == "kg.fixture.dataset.v1", "\(stem): unexpected schema")
+            #expect(document.schema == "kg.fixture.dataset.v2", "\(stem): unexpected schema")
             #expect(document.datasetID == stem, "\(stem): datasetID must match filename")
 
             // Keyed decoding ignores unknown top-level keys, so a domain-level
@@ -120,6 +162,26 @@ struct RepoFixtureDatasetsContractTests {
             unknown.isEmpty,
             "\(dataset): domain \(domain) keys \(unknown.sorted()) have no matching fixture ID — they would silently never render"
         )
+    }
+
+    private func expectNoLegacyAssetPathKeys(_ topLevel: [String: Any], dataset: String) {
+        let runtimePodcast = topLevel["runtimePodcast"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in runtimePodcast {
+            let legacy = Set(seed.keys).intersection(["audioPath", "subtitlePath"])
+            #expect(
+                legacy.isEmpty,
+                "\(dataset): runtimePodcast.\(fixtureKey) uses legacy bare path keys \(legacy.sorted()); use audioAssetRef/subtitleAssetRef"
+            )
+        }
+
+        let reader = topLevel["reader"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in reader {
+            let legacy = Set(seed.keys).intersection(["textPath"])
+            #expect(
+                legacy.isEmpty,
+                "\(dataset): reader.\(fixtureKey) uses legacy bare path keys \(legacy.sorted()); use textAssetRef"
+            )
+        }
     }
 }
 #endif
