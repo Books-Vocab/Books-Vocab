@@ -15,6 +15,17 @@ import Testing
         }
     }
 
+    private static var generatedDemoData: Data {
+        get throws {
+            let url = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // BooksAndVocabTests
+                .deletingLastPathComponent() // ios
+                .deletingLastPathComponent() // repo root
+                .appendingPathComponent("ops/demo/generated/ios_fixture_dataset.json")
+            return try Data(contentsOf: url)
+        }
+    }
+
     @Test func settingsFixtureRegistryExposesPreviewAndCatalogScenarios() async throws {
         let previewKeys = SettingsFixtures.recipes(for: .preview).map(\.key.rawValue)
         let catalogKeys = SettingsFixtures.recipes(for: .catalog).map(\.key.rawValue)
@@ -34,6 +45,30 @@ import Testing
         ])
 
         #expect(catalogKeys == previewKeys)
+    }
+
+    @Test func settingsFixtureRegistryIsManifestOnly() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocab/Support/Fixtures/Settings/SettingsFixtures.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let registryStart = try #require(source.range(of: "private static let registry"))
+        let registryEnd = try #require(source.range(of: "static func recipes", range: registryStart.upperBound..<source.endIndex))
+        let registrySource = String(source[registryStart.lowerBound..<registryEnd.lowerBound])
+
+        #expect(registrySource.contains("SettingsFixtureID.allCases.map"))
+        #expect(registrySource.contains("FixtureDatasetStore.requireSettingsSeed(for: fixtureID)"))
+        #expect(!registrySource.contains(".init("), "Settings fixture registry must not construct local seed data")
+    }
+
+    @Test func repoAndGeneratedDatasetsDeclareEverySettingsFixture() throws {
+        let expected = Set(SettingsFixtureID.allCases.map(\.rawValue))
+        let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let generatedDocument = try FixtureDatasetStore.decode(Self.generatedDemoData)
+
+        #expect(Set(repoDocument.settings.keys) == expected)
+        #expect(Set(generatedDocument.settings.keys) == expected)
     }
 
     @Test func subscriptionFreeFixtureComesFromUIWorld() async throws {
