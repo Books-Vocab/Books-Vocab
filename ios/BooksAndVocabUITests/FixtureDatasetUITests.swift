@@ -13,15 +13,16 @@
 import XCTest
 
 final class FixtureDatasetUITests: UITestCase {
-    /// Minimal mirror of `kg.fixture.dataset.v1` — just enough to learn what
-    /// the injected dataset promises for the bookshelf fixture, so the
-    /// assertion adapts to whichever dataset the runner was given.
+    /// Minimal mirror of `kg.fixture.dataset.v2` — enough to assert the runner
+    /// injected the same required manifest shape the app consumes.
     private struct DatasetDocument: Decodable {
         struct Shelf: Decodable {
             struct Book: Decodable { let title: String }
             let books: [Book]
         }
-        let bookshelf: [String: Shelf]?
+        let schema: String
+        let datasetID: String
+        let bookshelf: [String: Shelf]
     }
 
     @MainActor
@@ -36,7 +37,9 @@ final class FixtureDatasetUITests: UITestCase {
             return
         }
         let document = try JSONDecoder().decode(DatasetDocument.self, from: data)
-        guard let expectedTitle = document.bookshelf?["with_books_library"]?.books.first?.title else {
+        XCTAssertEqual(document.schema, "kg.fixture.dataset.v2")
+        XCTAssertFalse(document.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        guard let expectedTitle = document.bookshelf["with_books_library"]?.books.first?.title else {
             XCTFail("UI World defines no bookshelf.with_books_library entry")
             return
         }

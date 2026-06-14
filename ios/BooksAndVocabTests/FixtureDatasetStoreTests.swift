@@ -39,6 +39,52 @@ struct FixtureDatasetStoreTests {
         return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
+    @Test func datasetFailsWhenSchemaIsMissing() throws {
+        let dataset = """
+        {
+          "datasetID": "missing-schema"
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Data(dataset.utf8))
+        }
+    }
+
+    @Test func datasetFailsWhenSchemaIsNotV2() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v1",
+          "datasetID": "legacy-schema"
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Data(dataset.utf8))
+        }
+    }
+
+    @Test func datasetFailsWhenDatasetIDIsMissingOrEmpty() throws {
+        let missingID = """
+        {
+          "schema": "kg.fixture.dataset.v2"
+        }
+        """
+        let emptyID = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "   "
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Data(missingID.utf8))
+        }
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(emptyID))
+        }
+    }
+
     @Test func v2DatasetFailsWhenTopLevelDomainIsMissing() throws {
         let dataset = """
         {

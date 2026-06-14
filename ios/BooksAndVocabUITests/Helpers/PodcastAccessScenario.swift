@@ -2,9 +2,8 @@ import XCTest
 
 /// Podcast access state matrix for UI tests.
 ///
-/// Data fixtures and access state are intentionally separate:
-/// `kg.fixture.dataset.v1` controls render data, while these launch fixtures
-/// control auth token and Pro entitlement state.
+/// Launch fixtures select which state path to seed; UI World v2 remains the
+/// SoT for render data, auth token state, and Pro entitlement values.
 enum PodcastAccessScenario: String, CaseIterable {
     case guest
     case free
