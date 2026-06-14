@@ -3,49 +3,49 @@ import Playbook
 import SwiftUI
 
 /// Catalog scenarios for the `NotebookFilterChip` picker sheet.
-/// The picker sheet takes a plain `[Notebook]` array, so it is fed synthetic
-/// fixtures directly without a container.
+/// The picker sheet takes a plain `[Notebook]` array, but those notebooks still
+/// come from UI World `notebook.*` seeds. Missing seed or SwiftData seed failure
+/// fail at catalog construction time through `NotebookFixtures.renderModel`.
 enum NotebookFilterChipScenarios {
     static func register(in playbook: Playbook) {
         // MARK: Picker sheet
         playbook.addScenarios(of: "Notebook Filter Chip · Picker") {
             Scenario("With notebooks", layout: .fill) {
                 NotebookFilterPickerScene(
-                    initialFilter: NotebookFilter(selectedIds: ["nb-1"]),
-                    notebooks: Self.sampleNotebooks()
+                    fixture: .populated,
+                    selectedNotebookIndex: 1
                 )
             }
             Scenario("Empty list", layout: .fill) {
                 NotebookFilterPickerScene(
-                    initialFilter: NotebookFilter(),
-                    notebooks: []
+                    fixture: .empty,
+                    selectedNotebookIndex: nil
                 )
             }
         }
-    }
-
-    // MARK: - Fixtures
-
-    private static func sampleNotebooks() -> [Notebook] {
-        [
-            Notebook(remoteId: "nb-1", name: "雅思核心字", color: "#4F46E5"),
-            Notebook(remoteId: "nb-2", name: "商業英文", color: "#16A34A"),
-            Notebook(remoteId: "nb-3", name: "科幻小說生字", color: "#DC2626"),
-            Notebook(remoteId: "nb-4", name: "未分類"),
-        ]
     }
 }
 
 // MARK: - Scene harness
 
-/// Renders the picker sheet directly with synthetic notebooks (no `@Query`).
+/// Renders the picker sheet directly with notebooks materialized from UI World.
 private struct NotebookFilterPickerScene: View {
     @State private var filter: NotebookFilter
     let notebooks: [Notebook]
 
-    init(initialFilter: NotebookFilter, notebooks: [Notebook]) {
-        self._filter = State(initialValue: initialFilter)
-        self.notebooks = notebooks
+    init(fixture: NotebookFixtureID, selectedNotebookIndex: Int?) {
+        let model = MainActor.assumeIsolated {
+            NotebookFixtures.renderModel(for: fixture)
+        }
+        if let selectedNotebookIndex {
+            guard model.notebooks.indices.contains(selectedNotebookIndex) else {
+                preconditionFailure("UI World notebook.\(fixture.rawValue) is missing selected notebook index \(selectedNotebookIndex)")
+            }
+            self._filter = State(initialValue: NotebookFilter(selectedIds: [model.notebooks[selectedNotebookIndex].remoteId]))
+        } else {
+            self._filter = State(initialValue: NotebookFilter())
+        }
+        self.notebooks = model.notebooks
     }
 
     var body: some View {

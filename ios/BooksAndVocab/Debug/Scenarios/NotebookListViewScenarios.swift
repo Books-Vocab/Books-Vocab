@@ -42,12 +42,7 @@ private struct NotebookListViewScene: View {
     let auth: CatalogPreviewAuth
 
     init(fixture: NotebookFixtureID) {
-        guard let container = NotebookFixtures.renderModel(for: fixture).container else {
-            // DEBUG-only surface: crash loud so the snapshot run goes red
-            // instead of silently rendering an empty notebook list.
-            preconditionFailure("NotebookFixtures.renderModel(\(fixture)) failed to build a container")
-        }
-        self.container = container
+        self.container = NotebookFixtures.renderModel(for: fixture).container
         self.auth = CatalogPreviewAuth(
             isLoggedIn: true,
             userId: "catalog-notebook-user",

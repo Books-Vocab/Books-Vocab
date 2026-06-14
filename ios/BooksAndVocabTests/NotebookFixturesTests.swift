@@ -31,6 +31,7 @@ import Testing
         let catalogKeys = NotebookFixtures.recipes(for: .catalog).map(\.key.rawValue)
 
         #expect(previewKeys == [
+            "notebook.empty",
             "notebook.populated",
             "notebook.single",
         ])
@@ -70,7 +71,17 @@ import Testing
             let model = NotebookFixtures.renderModel(for: .single)
             #expect(model.notebooks.count == 1)
             #expect(model.notebooks.first?.remoteId == expectedNotebook.remoteId)
-            #expect(model.container != nil)
+        }
+    }
+
+    @MainActor
+    @Test func emptyNotebookFixtureIsExplicitlyDeclaredByUIWorld() async throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let expectedSeed = try #require(document.notebook[NotebookFixtureID.empty.rawValue])
+        #expect(expectedSeed.notebooks.isEmpty)
+        try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let model = NotebookFixtures.renderModel(for: .empty)
+            #expect(model.notebooks.isEmpty)
         }
     }
 }

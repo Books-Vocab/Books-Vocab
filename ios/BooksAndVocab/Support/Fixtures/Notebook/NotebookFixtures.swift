@@ -3,6 +3,7 @@ import Foundation
 import SwiftData
 
 enum NotebookFixtureID: String, CaseIterable {
+    case empty
     case populated
     case single
 
@@ -104,7 +105,7 @@ struct NotebookFixtureSeed: Codable {
 
 struct NotebookFixtureRenderModel {
     let notebooks: [Notebook]
-    let container: ModelContainer?
+    let container: ModelContainer
 }
 
 enum NotebookFixtures {
@@ -133,7 +134,7 @@ enum NotebookFixtures {
     }
 
     @MainActor
-    private static func makeContainer(from seed: NotebookFixtureSeed) -> ModelContainer? {
+    private static func makeContainer(from seed: NotebookFixtureSeed) -> ModelContainer {
         let schema = Schema([Notebook.self, VocabularyEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
@@ -145,11 +146,10 @@ enum NotebookFixtures {
                     context.insert(makeEntry(from: entrySeed, notebookId: notebookSeed.remoteId))
                 }
             }
-            try? context.save()
+            try context.save()
             return container
         } catch {
-            AppLog.app.warning("NotebookFixtures container failed: \(error.localizedDescription)")
-            return nil
+            preconditionFailure("Failed to materialize UI World notebook seed: \(error)")
         }
     }
 

@@ -850,8 +850,7 @@ struct FixtureDatasetStoreTests {
             let notebookModel = NotebookFixtures.renderModel(for: .populated)
             #expect(notebookModel.notebooks.map(\.name) == ["外部單字本", "外部第二本"])
             #expect(notebookModel.notebooks.first?.syncStatus == 0)
-            #expect(notebookModel.container != nil)
-            let context = try #require(notebookModel.container?.mainContext)
+            let context = notebookModel.container.mainContext
             let entries = try context.fetch(FetchDescriptor<VocabularyEntry>())
             #expect(entries.first?.syncStatus == 2)
             #expect(entries.first?.actionType == "delete")
