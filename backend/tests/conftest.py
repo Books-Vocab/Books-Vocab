@@ -298,6 +298,26 @@ def _isolate_rate_limiters():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_user_locks():
+    """Reset process-wide user lock registries between tests.
+
+    ``_USER_LOCKS`` in ``kg.deps`` is a per-process cache keyed by user id and
+    has an optional global lock sentinel. Without per-test reset, locks can leak
+    across async paths and produce order-dependent failures in auth-heavy suites.
+    """
+    import kg.api as api
+    import kg.deps as deps
+
+    api._USER_LOCKS.clear()
+    deps._USER_LOCKS.clear()
+    deps._USER_LOCKS_MUTEX = None
+    yield
+    api._USER_LOCKS.clear()
+    deps._USER_LOCKS.clear()
+    deps._USER_LOCKS_MUTEX = None
+
+
+@pytest.fixture(autouse=True)
 def _isolate_observability_cooldown():
     """Clear observability_alerts in-memory alert cooldown between tests.
 
