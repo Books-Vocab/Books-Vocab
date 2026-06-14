@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: 507bc89e
+verified_against: 8ad59cf5
 -->
 # Implemented Product Surface
 
@@ -162,6 +162,7 @@ verified_against: 507bc89e
 - **Catalog preview entitlement contract**: Paywall / Pro Catalog 狀態由 UI World `entitlements.*` seed 驅動；`PaywallScenarios` 透過 `FixtureDatasetStore.requireEntitlementsSeed` 取 `free` / `pro` / `cancelledButActive` / `adminGranted`，缺 seed 直接 fail-fast。`CatalogCoverageTests` 會擋 Paywall Debug source 重新宣告 `KGSubscriptionStatus`、`makeStatus`、admin source literal 或 sync timestamp。
 - **Catalog settings subscription contract**: `Settings Subscription Section` Catalog 狀態由 UI World `settings.*.subscription` slice 驅動；free 狀態是 `settings.subscription_free`，且 repo UI World 與 generated demo manifest 都必須宣告。`CatalogCoverageTests` 會擋 section scenario 回到 `SettingsPresenterPreviewData.*.subscription!`、`inactiveFreeFixture` 或本地 `SettingsPresenterState.SubscriptionSection(...)`。
 - **Catalog settings account-detail contract**: `Settings Account Detail` Catalog 狀態由 UI World `settings.*` seed 驅動；long identity stress 是 `settings.account_long_identity`，且 repo UI World 與 generated demo manifest 都必須宣告。`CatalogCoverageTests` 會擋 detail scenario 回到 `SettingsPresenterPreviewData.*.auth/.danger`、`loggedOutAuth`、`longInfoAuth` 或本地 `SettingsPresenterState.AuthSection/DangerSection`。
+- **Catalog settings account-section contract**: `Settings Account Section` / `SettingsAuthSummary` Catalog 狀態由 UI World `settings.*` seed 驅動；logged-out error 是 `settings.account_logged_out_error`，long identity 是 `settings.account_long_identity`，Auth Summary 的 Pro/free badge 由該 seed 的 `subscription.isActive` 推導。`CatalogCoverageTests` 會擋 section scenario 回到 `loggedOutWithError`、`longIdentityState`、本地 `SettingsPresenterState.AuthSection(...)` 或本地 `isProActive: true/false`。
 - **遠端分支收斂審計**(`ops/branch_audit.sh`): 以 `origin/main..<branch>` commit reachability 為真相,GitHub PR 狀態只作輔助 metadata；分類 `safe-delete` / `open-pr` / `merged-pr-but-ahead` / `orphan-ahead` / `stale-ahead`,支援 `--json`(`kg.branch_audit.v1`)與 `--delete-merged --dry-run|--yes`。cleanup all 前用它擋「PR 已 merged 但 branch 還有 main 不可達 commit」的假安全感。
 - **Review receipt 審計**(`ops/review_audit.sh`): 把 `docs/sop/review_discipline.md` 的逐項 review 規範機械化。預設審 `origin/main..HEAD`，commit 必須帶 `Reviewed-by:` 或合法 `Review-Exempt:`；支援 `--base` / `--rev-range` / `--json`，JSON schema=`kg.review_audit.v1`。任一 commit 缺 receipt 或 exemption reason 不合法時 exit `2`，用來擋「口頭說有 review、歷史上卻沒有 receipt」。
 - **Capability matrix**(`ops/capability_matrix.py`): repo-level agent capability contract。把關鍵 control-plane surfaces 映射成 `minimumTier`（`observer` / `operator` / `editor` / `production-capable`）、`sideEffect`、`scope`、固定 command，支援 `--json` schema=`kg.capability_matrix.v1` 與 `--tier` 過濾。用途不是授權系統本身，而是讓 agent 在碰 production / local-build / raw escape hatch 前，先機械確認自己正在跨哪條能力邊界；目前覆蓋 repo audit、docs control-plane、release、devops、iOS ops、capture profile、podcast ops、llm_eval。
