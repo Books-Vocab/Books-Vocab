@@ -234,6 +234,18 @@
         "autoSyncEnabled": false,
         "showAutoSync": true
       },
+      "reviewSettings": {
+        "mode": "intensive",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "fast",
+        "autoplaySoundEnabled": true
+      },
       "kg": {
         "serverURL": "https://wordnexus.lol",
         "isConnected": true,
@@ -301,6 +313,18 @@
         "autoSyncEnabled": false,
         "showAutoSync": false
       },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": true,
+        "progressPausedAt": 1733500000,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
       "kg": null,
       "subscription": null,
       "syncSummary": null,
@@ -332,6 +356,18 @@
         "selectedReviewMode": "寬鬆",
         "autoSyncEnabled": true,
         "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
       },
       "kg": {
         "serverURL": "https://wordnexus.lol",
@@ -400,6 +436,18 @@
         "autoSyncEnabled": true,
         "showAutoSync": true
       },
+      "reviewSettings": {
+        "mode": "custom",
+        "customInitialIntervalHours": 24,
+        "customRememberedMultiplier": 2.1,
+        "customForgotMultiplier": 0.35,
+        "customMinimumIntervalHours": 4,
+        "customMaximumIntervalHours": 2160,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
       "kg": {
         "serverURL": "https://wordnexus.lol",
         "isConnected": true,
@@ -466,6 +514,18 @@
         "selectedReviewMode": "寬鬆",
         "autoSyncEnabled": true,
         "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
       },
       "kg": {
         "serverURL": "https://wordnexus.lol",

@@ -212,6 +212,29 @@ import Playbook
         )
     }
 
+    @Test func settingsReviewCatalogUsesUIWorldSettingsSeeds() throws {
+        let sectionScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SettingsSectionsScenarios.swift")
+        let source = try String(contentsOf: sectionScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("ReviewSectionScene(settings:", "review section must not receive locally constructed ReviewSettings"),
+            ("ReviewSettings(", "review section modes/custom/pause state belong in UI World settings reviewSettings"),
+            ("Date(timeIntervalSince1970:", "paused review clock belongs in UI World settings reviewSettings"),
+            ("mode: .relaxed", "review mode belongs in UI World settings reviewSettings"),
+            ("mode: .intensive", "review mode belongs in UI World settings reviewSettings"),
+            ("mode: .custom", "review mode belongs in UI World settings reviewSettings"),
+            ("isProgressPaused: true", "review pause state belongs in UI World settings reviewSettings"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(sectionScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("SettingsFixtures.reviewSettings(for: fixtureID)"),
+            "Settings review catalog must fail fast through UI World settings reviewSettings seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.

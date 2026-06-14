@@ -84,5 +84,28 @@ import Testing
             #expect(loggedOut.showAutoSync == false)
         }
     }
+
+    @Test func reviewSettingsFixturesComeFromUIWorld() async throws {
+        try FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let relaxed = SettingsFixtures.reviewSettings(for: .subscriptionFree)
+            #expect(relaxed.mode == .relaxed)
+            #expect(relaxed.customInitialIntervalHours == 12)
+            #expect(relaxed.isProgressPaused == false)
+
+            let intensive = SettingsFixtures.reviewSettings(for: .preferencesAutoSyncOff)
+            #expect(intensive.mode == .intensive)
+            #expect(intensive.autoplaySpeed == .fast)
+
+            let custom = SettingsFixtures.reviewSettings(for: .accountLongIdentity)
+            #expect(custom.mode == .custom)
+            #expect(custom.customInitialIntervalHours == 24)
+            #expect(custom.customMaximumIntervalHours == 2160)
+
+            let paused = SettingsFixtures.reviewSettings(for: .preferencesLoggedOutNoSync)
+            #expect(paused.mode == .relaxed)
+            #expect(paused.isProgressPaused == true)
+            #expect(paused.progressPausedAt == Date(timeIntervalSince1970: 1_733_500_000))
+        }
+    }
 }
 #endif
