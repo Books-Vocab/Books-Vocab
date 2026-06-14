@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -62,7 +61,7 @@ def normalize_ms_timestamp(raw: Any, parse_datetime_fn: ParseTimestamp) -> str |
         timestamp_ms = int(raw)
     except (TypeError, ValueError):
         parsed = parse_datetime_fn(raw)
-        logger.warning("Silently handled exception; using fallback response", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return parsed.isoformat() if parsed else None
     return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
 

@@ -15,6 +15,7 @@ Design notes:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import signal
@@ -26,6 +27,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent.parent
 JOBS_DIR = ROOT / "monitor" / ".jobs"
@@ -313,7 +316,7 @@ class JobTracker:
                 data = f.read()
             return data.decode("utf-8", errors="replace")
         except OSError:
-            __import__("logging").getLogger(__name__).warning(
+            log.warning(
                 "tail_log failed for job_id=%s path=%s",
                 job_id,
                 p,
@@ -359,7 +362,7 @@ class JobTracker:
                 try:
                     Path(j.log_path).unlink(missing_ok=True)
                 except OSError:
-                    __import__("logging").getLogger(__name__).info(
+                    log.info(
                         "job_id=%s cleanup: failed to remove job log file",
                         j.id,
                         exc_info=True,

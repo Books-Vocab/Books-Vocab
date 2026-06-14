@@ -33,10 +33,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 # Reuse the dashboard's pure primitives. monitor/ holds cost.py +
 # workspace_status.py (both stdlib-only); remote.py is imported lazily inside the

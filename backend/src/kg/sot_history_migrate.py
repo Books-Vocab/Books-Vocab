@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import sys
 from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-import sys
 
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 

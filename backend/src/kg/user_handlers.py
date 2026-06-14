@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import sqlite3
 from collections.abc import Callable
@@ -26,6 +27,8 @@ from .api_models import (
     VocabUIConfig,
 )
 from .types import StoredUserRecord, UserRecord, UsersPayload
+
+_logger = logging.getLogger(__name__)
 
 
 class CardStore(Protocol):
@@ -318,7 +321,7 @@ def health_response(
     try:
         cards.count()
     except (OSError, sqlite3.DatabaseError) as exc:
-        logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
+        _logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
         db_ok = False
 
     data_dir_exists = user_dir.exists()
