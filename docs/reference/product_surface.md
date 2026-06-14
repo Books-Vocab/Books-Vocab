@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: e62ff2d8
+verified_against: 9a8abd9b
 -->
 # Implemented Product Surface
 
@@ -168,6 +168,7 @@ verified_against: e62ff2d8
 - **Settings fixture registry contract**: `SettingsFixtures` registry 由 `SettingsFixtureID.allCases` 生成，所有 recipe 都只透過 `FixtureDatasetStore.requireSettingsSeed` 取 UI World `settings.*` seed；repo UI World 與 generated demo manifest 的 settings key set 必須等於 `SettingsFixtureID.allCases`。`SettingsFixturesTests` 會擋 registry 回到本地 `.init(...)` seed 或 manifest 漏 key。
 - **Notebook fixture registry contract**: `NotebookFixtures` registry 由 `NotebookFixtureID.allCases` 生成，所有 recipe 都只透過 `FixtureDatasetStore.requireNotebookSeed` 取 UI World `notebook.*` seed；repo UI World 與 generated demo manifest 的 notebook key set 必須等於 `NotebookFixtureID.allCases`。`NotebookFixturesTests` 會擋 registry 回到本地 `.init(...)` seed 或 manifest 漏 key，測試資料注入使用 task-local override，避免並行測試互相污染。
 - **Bookshelf fixture registry contract**: `BookshelfFixtures` registry 由 `BookshelfFixtureID.allCases` 生成，所有 recipe 都只透過 `FixtureDatasetStore.requireBookshelfSeed` 取 UI World `bookshelf.*` seed；repo UI World 與 generated demo manifest 的 bookshelf key set 必須等於 `BookshelfFixtureID.allCases`，有書的 seed 必須以 `bookAssetRef` 指向 `assets.books.*`，並通過 byteSize / sha256 / install path 驗證。`BookshelfFixturesTests` 會擋 registry 回到本地 `.init(...)` seed、manifest 漏 key、row 無 asset ref 或 asset ref 無法解析。
+- **Podcast fixture registry contract**: `PodcastFixtures` registry 由 `PodcastFixtureID.allCases` 生成，所有 recipe 都只透過 `FixtureDatasetStore.requirePodcastSeed` 取 UI World `podcast.*` seed；repo UI World 與 generated demo manifest 的 podcast key set 必須等於 `PodcastFixtureID.allCases`。generated demo 也必須宣告 `runtimePodcast.*`、`assets.audio.*`、`assets.subtitles.*`，並通過 byteSize / sha256 / install path 與 runtime download asset ref 驗證。`PodcastFixturesTests` 會擋 registry 回到本地 `.init(...)` seed 或 manifest 漏 key。
 - **遠端分支收斂審計**(`ops/branch_audit.sh`): 以 `origin/main..<branch>` commit reachability 為真相,GitHub PR 狀態只作輔助 metadata；分類 `safe-delete` / `open-pr` / `merged-pr-but-ahead` / `orphan-ahead` / `stale-ahead`,支援 `--json`(`kg.branch_audit.v1`)與 `--delete-merged --dry-run|--yes`。cleanup all 前用它擋「PR 已 merged 但 branch 還有 main 不可達 commit」的假安全感。
 - **Review receipt 審計**(`ops/review_audit.sh`): 把 `docs/sop/review_discipline.md` 的逐項 review 規範機械化。預設審 `origin/main..HEAD`，commit 必須帶 `Reviewed-by:` 或合法 `Review-Exempt:`；支援 `--base` / `--rev-range` / `--json`，JSON schema=`kg.review_audit.v1`。任一 commit 缺 receipt 或 exemption reason 不合法時 exit `2`，用來擋「口頭說有 review、歷史上卻沒有 receipt」。
 - **Capability matrix**(`ops/capability_matrix.py`): repo-level agent capability contract。把關鍵 control-plane surfaces 映射成 `minimumTier`（`observer` / `operator` / `editor` / `production-capable`）、`sideEffect`、`scope`、固定 command，支援 `--json` schema=`kg.capability_matrix.v1` 與 `--tier` 過濾。用途不是授權系統本身，而是讓 agent 在碰 production / local-build / raw escape hatch 前，先機械確認自己正在跨哪條能力邊界；目前覆蓋 repo audit、docs control-plane、release、devops、iOS ops、capture profile、podcast ops、llm_eval。
