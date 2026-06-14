@@ -9,7 +9,9 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlmodel import Field as SQLField
-from sqlmodel import Session, SQLModel, create_engine, select
+from sqlmodel import Session, SQLModel, select
+
+from .sqlite_utils import make_sqlite_engine
 
 logger = logging.getLogger(__name__)
 
@@ -36,13 +38,11 @@ class NotebookStore:
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        sqlite_url = f"sqlite:///{self.path.absolute()}"
-        self.engine = create_engine(sqlite_url)
-        with self.engine.connect() as conn:
-            conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
-            conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
-            conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
+        # make_sqlite_engine installs a connect listener that applies
+        # WAL/synchronous=NORMAL/busy_timeout to every pooled connection (and
+        # creates the parent dir). create_all + column migration below run
+        # after, so DDL lands on a WAL connection.
+        self.engine = make_sqlite_engine(path)
         Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
         self._migrate_columns()
 
