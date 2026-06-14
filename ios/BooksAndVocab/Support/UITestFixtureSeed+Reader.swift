@@ -48,8 +48,7 @@ extension UITestFixtureSeed {
 
             let entry = makeVocabularyEntry(
                 from: fixture.seed.entry,
-                notebookId: fixture.seed.notebookRemoteId,
-                defaultBookTitle: fixture.title
+                notebookId: fixture.seed.notebookRemoteId
             )
             context.insert(entry)
 

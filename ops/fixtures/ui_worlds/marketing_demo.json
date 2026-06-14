@@ -1884,7 +1884,7 @@
   "reviewDeck": {
     "probe": {
       "notebookRemoteId": "default",
-      "notebookName": null,
+      "notebookName": "Review Probe Fixture",
       "entries": [
         {
           "word": "probeword001",

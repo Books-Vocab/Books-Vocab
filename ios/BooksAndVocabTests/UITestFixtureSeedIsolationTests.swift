@@ -25,6 +25,8 @@ struct UITestFixtureSeedIsolationTests {
               "word": "probeword\(index)",
               "translation": "probe",
               "context": "probe context \(index)",
+              "bookTitle": "Review Probe Fixture",
+              "reviewMode": "recognition",
               "reviewExamples": ["probe context \(index)"],
               "syncStatus": 1,
               "actionType": "add",

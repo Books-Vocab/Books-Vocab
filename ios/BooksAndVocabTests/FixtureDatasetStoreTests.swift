@@ -377,7 +377,7 @@ struct FixtureDatasetStoreTests {
           "reviewDeck": {
             "probe": {
               "notebookRemoteId": "default",
-              "notebookName": null,
+              "notebookName": "Review Probe Fixture",
               "notebookSyncStatus": 1,
               "entries": [
                 {
