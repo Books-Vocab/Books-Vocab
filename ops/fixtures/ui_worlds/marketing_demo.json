@@ -882,6 +882,10 @@
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
     },
+    "empty_library": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
     "with_books_library": {
       "books": [
         {
@@ -917,7 +921,7 @@
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
     },
-    "empty_library": {
+    "loading_overlay": {
       "books": [],
       "referenceDate": "2026-01-07T00:00:00Z"
     }

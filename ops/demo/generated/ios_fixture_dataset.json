@@ -2,7 +2,26 @@
   "schema": "kg.fixture.dataset.v2",
   "datasetID": "demo-demo-user",
   "assets": {
-    "books": {},
+    "books": {
+      "atomic_habits_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/atomic-habits.md",
+        "byteSize": 17431
+      },
+      "word_architect_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/word-architect.md",
+        "byteSize": 17431
+      },
+      "the_shallows_markdown": {
+        "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
+        "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
+        "installAs": "Books/the-shallows.md",
+        "byteSize": 17431
+      }
+    },
     "audio": {},
     "subtitles": {},
     "text": {},
@@ -737,7 +756,81 @@
       "debugLocalServerURL": "http://127.0.0.1:8000"
     }
   },
-  "bookshelf": {},
+  "bookshelf": {
+    "progress_card": {
+      "books": [
+        {
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "placeholder_card": {
+      "books": [
+        {
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "empty_library": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "with_books_library": {
+      "books": [
+        {
+          "title": "Atomic Habits",
+          "author": "James Clear",
+          "fileName": "atomic-habits.md",
+          "format": "md",
+          "bookAssetRef": "books.atomic_habits_markdown",
+          "progression": 0.72,
+          "dateAdded": "2025-12-20T00:00:00Z",
+          "dateLastRead": "2026-01-06T21:00:00Z"
+        },
+        {
+          "title": "Word Architect",
+          "author": "Lena Harper",
+          "fileName": "word-architect.md",
+          "format": "md",
+          "bookAssetRef": "books.word_architect_markdown",
+          "progression": 0.64,
+          "dateAdded": "2025-12-28T00:00:00Z",
+          "dateLastRead": "2026-01-05T22:15:00Z"
+        },
+        {
+          "title": "The Shallows",
+          "author": "Nicholas Carr",
+          "fileName": "the-shallows.md",
+          "format": "md",
+          "bookAssetRef": "books.the_shallows_markdown",
+          "progression": 0.31,
+          "dateAdded": "2026-01-02T00:00:00Z",
+          "dateLastRead": "2026-01-06T08:30:00Z"
+        }
+      ],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "loading_overlay": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
+    }
+  },
   "todayReview": {
     "front": {
       "progressText": "1 / 4",

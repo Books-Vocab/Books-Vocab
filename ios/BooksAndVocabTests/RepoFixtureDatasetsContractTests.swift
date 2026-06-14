@@ -40,16 +40,19 @@ struct RepoFixtureDatasetsContractTests {
 
         #expect(document.schema == "kg.fixture.dataset.v2")
         #expect(document.datasetID == "demo-demo-user")
-        #expect(document.assets.isEmpty)
+        #expect(!document.assets.books.isEmpty)
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
         #expect(document.auth["signedIn"]?.keychainTokenState == .available)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
+        #expect(Set(document.bookshelf.keys) == Set(BookshelfFixtureID.allCases.map(\.rawValue)))
         #expect(document.settings["preferences_auto_sync_off"] != nil)
         #expect(document.settings["preferences_logged_out_no_sync"] != nil)
         #expect(document.settings["subscription_free"]?.reviewSettings != nil)
         #expect(document.settings["preferences_auto_sync_off"]?.reviewSettings != nil)
         #expect(document.settings["account_long_identity"]?.reviewSettings != nil)
         #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
+        try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
+        expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
     }
 
     @Test func everyRepoDatasetDeclaresValidAssetManifest() throws {
@@ -70,20 +73,7 @@ struct RepoFixtureDatasetsContractTests {
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
             expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
-            for ref in document.assets.refs {
-                let asset = try #require(document.assets.asset(for: ref), "\(stem): asset \(ref) must resolve")
-                let url = URL(fileURLWithPath: asset.sourcePath)
-                #expect(asset.byteSize > 0, "\(stem): asset \(ref) byteSize must be positive")
-                #expect(FileManager.default.fileExists(atPath: url.path), "\(stem): asset \(ref) missing at \(url.path)")
-                #expect(
-                    try FixtureDatasetStore.byteSize(for: url) == asset.byteSize,
-                    "\(stem): asset \(ref) byteSize drift"
-                )
-                #expect(
-                    try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
-                    "\(stem): asset \(ref) sha256 drift"
-                )
-            }
+            try expectValidAssetManifest(document: document, dataset: stem)
             expectUniqueInstallPaths(document: document, dataset: stem)
 
             for (fixtureKey, seed) in document.runtimePodcast {
@@ -344,6 +334,23 @@ struct RepoFixtureDatasetsContractTests {
                     "\(dataset): podcast.\(fixtureKey).episode.\(episodeNumber) must explicitly declare durationSec"
                 )
             }
+        }
+    }
+
+    private func expectValidAssetManifest(document: FixtureDatasetDocument, dataset: String) throws {
+        for ref in document.assets.refs {
+            let asset = try #require(document.assets.asset(for: ref), "\(dataset): asset \(ref) must resolve")
+            let url = URL(fileURLWithPath: asset.sourcePath)
+            #expect(asset.byteSize > 0, "\(dataset): asset \(ref) byteSize must be positive")
+            #expect(FileManager.default.fileExists(atPath: url.path), "\(dataset): asset \(ref) missing at \(url.path)")
+            #expect(
+                try FixtureDatasetStore.byteSize(for: url) == asset.byteSize,
+                "\(dataset): asset \(ref) byteSize drift"
+            )
+            #expect(
+                try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
+                "\(dataset): asset \(ref) sha256 drift"
+            )
         }
     }
 
