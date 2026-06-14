@@ -6,32 +6,34 @@ enum SettingsSubscriptionSectionScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Settings Subscription Section") {
             Scenario("Pro Active", layout: .fillH) {
-                SubscriptionSectionScene(
-                    state: SettingsPresenterPreviewData.subscribedActive.subscription!
-                )
+                SubscriptionSectionScene(fixtureID: .subscribedActive)
             }
 
             Scenario("Loading", layout: .fillH) {
-                SubscriptionSectionScene(
-                    state: SettingsPresenterPreviewData.subscriptionLoading.subscription!
-                )
+                SubscriptionSectionScene(fixtureID: .subscriptionLoading)
             }
 
             Scenario("Pricing Unavailable", layout: .fillH) {
-                SubscriptionSectionScene(
-                    state: SettingsPresenterPreviewData.pricingUnavailable.subscription!
-                )
+                SubscriptionSectionScene(fixtureID: .pricingUnavailable)
             }
 
             Scenario("Inactive · Free", layout: .fillH) {
-                SubscriptionSectionScene(state: .inactiveFreeFixture)
+                SubscriptionSectionScene(fixtureID: .subscriptionFree)
             }
         }
     }
 }
 
 private struct SubscriptionSectionScene: View {
-    let state: SettingsPresenterState.SubscriptionSection
+    let fixtureID: SettingsFixtureID
+
+    private var state: SettingsPresenterState.SubscriptionSection {
+        let fullState = SettingsFixtures.state(for: fixtureID)
+        guard let subscription = fullState.subscription else {
+            preconditionFailure("UI World settings.\(fixtureID.rawValue) must declare subscription section")
+        }
+        return subscription
+    }
 
     var body: some View {
         AppThemeContainer {
@@ -44,27 +46,6 @@ private struct SubscriptionSectionScene: View {
             }
         }
         .environmentObject(AppAppearanceStore.preview)
-    }
-}
-
-private extension SettingsPresenterState.SubscriptionSection {
-    static var inactiveFreeFixture: SettingsPresenterState.SubscriptionSection {
-        .init(
-            isActive: false,
-            planName: "免費方案",
-            badgeText: "未訂閱",
-            badgeTone: .neutral,
-            summary: "升級 Pro 解鎖知識圖譜與播客。",
-            detail: "目前使用免費額度，部分進階功能受限。",
-            sourceLabel: "無",
-            managementNote: "尚未訂閱，可隨時於 App Store 開始。",
-            pricingUnavailableMessage: nil,
-            restoreLabel: "恢復購買",
-            restoreDescription: "曾經購買過？點此恢復先前的訂閱。",
-            isRestoreAvailable: true,
-            ctaTitle: "升級 Pro",
-            isRefreshing: false
-        )
     }
 }
 #endif

@@ -126,6 +126,27 @@ import Playbook
         )
     }
 
+    @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
+        let subscriptionScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("SettingsSubscriptionSectionScenarios.swift")
+        let source = try String(contentsOf: subscriptionScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("SettingsPresenterPreviewData.subscribedActive.subscription!", "subscription section must load settings.subscribed_active from UI World"),
+            ("SettingsPresenterPreviewData.subscriptionLoading.subscription!", "subscription section must load settings.subscription_loading from UI World"),
+            ("SettingsPresenterPreviewData.pricingUnavailable.subscription!", "subscription section must load settings.pricing_unavailable from UI World"),
+            ("inactiveFreeFixture", "inactive free subscription section must be a UI World settings seed"),
+            ("SettingsPresenterState.SubscriptionSection(", "subscription section must not construct local presenter state"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(subscriptionScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("SettingsFixtures.state(for: fixtureID)"),
+            "Settings subscription catalog must fail fast through UI World settings seeds"
+        )
+    }
+
     @Test func buildPlaybookIsDeterministic() async throws {
         // `buildPlaybook()` must produce the same surface set on every call so the
         // in-app catalog and the snapshot test driver stay in lockstep.
