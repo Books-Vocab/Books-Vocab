@@ -9,14 +9,18 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import html
 import json
 import os
 import shutil
 from pathlib import Path
 
 from catalog_review_sync import REVIEW_HTML_NAME
-from uitest_review_workspace import ensure_workspace, write_workspace_index as write_persistent_workspace_index
+from uitest_review_ui import artifact_link, esc, image_modal_script, shell_css, status_badge
+from uitest_review_workspace import (
+    ensure_workspace,
+    render_workspace_html as render_persistent_workspace_html,
+    write_workspace_index as write_persistent_workspace_index,
+)
 
 
 def link_or_copy(source: Path, target: Path) -> None:
@@ -181,14 +185,7 @@ def write_workspace_index(workspace_root: Path, run: dict) -> dict:
 
 
 def _esc(value) -> str:
-    return html.escape("" if value is None else str(value), quote=True)
-
-
-def _artifact_link(run: dict, key: str, label: str) -> str:
-    href = (run.get("artifacts") or {}).get(key)
-    if not href:
-        return f'<span class="muted">{_esc(label)} missing</span>'
-    return f'<a href="{_esc(href)}">{_esc(label)}</a>'
+    return esc(value)
 
 
 def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[str]) -> str:
@@ -197,28 +194,41 @@ def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[
     video_href = videos[0].get("src") if videos else None
     log_href = Path(artifacts["log"]).name if artifacts.get("log") else None
     local_artifacts = (
-        ("video", video_href),
-        ("log", log_href),
-        ("manifest", "review_manifest.json"),
+        ("video", video_href, "video missing"),
+        ("log", log_href, "log missing"),
+        ("manifest", "review_manifest.json", "manifest missing"),
     )
     artifact_links = "\n".join(
-        f'<li><a href="{_esc(href)}">{_esc(label)}</a></li>' if href else f'<li class="muted">{_esc(label)} missing</li>'
-        for label, href in local_artifacts
+        artifact_link(href, label, missing_label=missing)
+        for label, href, missing in local_artifacts
     )
     video_blocks = "\n".join(
         f"""
-        <figure>
+        <figure class="panel">
           <video controls preload="metadata" src="{_esc(video.get('src'))}"></video>
-          <figcaption>{_esc(video.get('file'))} · {_esc(video.get('sizeBytes'))} bytes</figcaption>
+          <figcaption><strong>{_esc(video.get('file'))}</strong><span>{_esc(video.get('sizeBytes'))} bytes</span></figcaption>
         </figure>
         """
         for video in videos
     )
-    sheet_links = "\n".join(f'<li><a href="{_esc(sheet)}">{_esc(sheet)}</a></li>' for sheet in sheets)
+    sheet_blocks = "\n".join(
+        f"""
+        <figure class="panel">
+          <button class="shot-button" type="button" data-modal-src="{_esc(sheet)}" data-modal-title="{_esc(sheet)}">
+            <img src="{_esc(sheet)}" alt="{_esc(sheet)}">
+          </button>
+          <figcaption><strong>{_esc(sheet)}</strong><span>contact sheet</span></figcaption>
+        </figure>
+        """
+        for sheet in sheets
+    )
+    sheet_links = "\n".join(artifact_link(sheet, sheet) for sheet in sheets)
     step_blocks = "\n".join(
         f"""
-        <figure>
-          <img src="{_esc(item.get('relPath'))}" alt="{_esc(item.get('assetID') or item.get('stateLabel'))}">
+        <figure class="panel">
+          <button class="shot-button" type="button" data-modal-src="{_esc(item.get('relPath'))}" data-modal-title="{_esc(item.get('assetID') or item.get('stateLabel'))}">
+            <img src="{_esc(item.get('relPath'))}" alt="{_esc(item.get('assetID') or item.get('stateLabel'))}">
+          </button>
           <figcaption>
             <strong>{_esc(item.get('assetID'))}</strong>
             <span>{_esc(item.get('stateLabel'))}</span>
@@ -233,8 +243,10 @@ def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[
         step_blocks = '<p class="empty">No step screenshots were emitted for this UITest run.</p>'
     if not video_blocks:
         video_blocks = '<p class="empty">No video artifact was archived for this UITest run.</p>'
+    if not sheet_blocks:
+        sheet_blocks = '<p class="empty">contact sheets missing</p>'
     if not sheet_links:
-        sheet_links = '<li class="muted">contact sheets missing</li>'
+        sheet_links = '<span class="artifact missing">contact sheets missing</span>'
 
     return f"""<!doctype html>
 <html lang="zh-Hant">
@@ -243,157 +255,78 @@ def render_run_html(manifest: dict, run: dict, videos: list[dict], sheets: list[
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KG UITest Run Review</title>
   <style>
-    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif; background: #f8f7f4; color: #2a2520; }}
-    header {{ position: sticky; top: 0; background: #fcfbfa; border-bottom: 1px solid #dbd6cd; padding: 16px 22px; z-index: 1; }}
-    h1 {{ margin: 0; font-size: 18px; }}
-    main {{ max-width: 1180px; margin: 0 auto; padding: 22px; }}
-    section {{ margin: 22px 0; }}
-    h2 {{ border-bottom: 1px solid #dbd6cd; padding-bottom: 8px; font-size: 15px; }}
-    a {{ color: #2a2520; text-decoration-thickness: 1px; }}
-    .meta-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }}
-    .meta {{ border: 1px solid #dbd6cd; background: #fcfbfa; border-radius: 4px; padding: 10px 12px; }}
-    .meta span, .muted, .empty {{ color: #7a756c; }}
-    .meta strong {{ display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }}
-    ul {{ margin: 0; padding-left: 20px; }}
-    .artifact-grid, .step-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }}
-    figure {{ margin: 0; border: 1px solid #dbd6cd; background: #fcfbfa; border-radius: 4px; overflow: hidden; }}
-    img, video {{ display: block; width: 100%; max-height: 560px; object-fit: contain; background: #111; }}
-    figcaption {{ display: grid; gap: 3px; padding: 8px 10px; font-size: 12px; color: #7a756c; border-top: 1px solid #e8e4db; }}
-    code {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; overflow-wrap: anywhere; }}
+{shell_css()}
   </style>
 </head>
 <body>
-  <header><h1>KG UITest Run Review</h1></header>
-  <main>
-    <section class="meta-grid">
-      <div class="meta"><span>flow</span><strong>{_esc(run.get('flowId'))}</strong></div>
-      <div class="meta"><span>variant</span><strong>{_esc(run.get('variantId'))}</strong></div>
-      <div class="meta"><span>status</span><strong>{_esc(run.get('status'))}</strong></div>
-      <div class="meta"><span>lastRunAt</span><strong>{_esc(run.get('lastRunAt'))}</strong></div>
-      <div class="meta"><span>steps</span><strong>{_esc(run.get('stepCount'))}</strong></div>
-      <div class="meta"><span>device</span><strong>{_esc(run.get('device'))}</strong></div>
+  <div class="topbar">
+    <div class="brand">KG UITest Run Review <span>Evidence Cockpit</span></div>
+    <div class="top-actions">
+      <a class="btn" href="../UIreview.html">workspace</a>
+      <a class="btn" href="review_manifest.json">manifest</a>
+    </div>
+  </div>
+  <main class="page">
+    <section class="hero">
+      <div class="panel pad">
+        <div class="eyebrow">Run Evidence</div>
+        <div class="headline-row">
+          <div>
+            <h1>{_esc(run.get('flowId'))}</h1>
+            <p class="path">{_esc(run.get('variantId') or 'default')} · {_esc(run.get('testFile') or 'unknown test file')}</p>
+          </div>
+          {status_badge(run.get('status'))}
+        </div>
+        <div class="hero-meta">
+          <span>lastRunAt={_esc(run.get('lastRunAt'))}</span>
+          <span>device={_esc(run.get('device') or 'unknown')}</span>
+          <span>steps={_esc(run.get('stepCount'))}</span>
+        </div>
+        <div class="artifact-row">{artifact_links}{sheet_links}</div>
+      </div>
+      <div class="panel pad metric-grid">
+        <div class="metric"><div class="value">{_esc(run.get('stepCount'))}</div><div class="label">steps</div></div>
+        <div class="metric"><div class="value">{_esc(len(videos))}</div><div class="label">video</div></div>
+        <div class="metric"><div class="value">{_esc(len(sheets))}</div><div class="label">sheets</div></div>
+        <div class="metric"><div class="value">{_esc(run.get('status'))}</div><div class="label">status</div></div>
+      </div>
     </section>
-    <section>
+    <section class="section">
       <h2>Artifacts</h2>
-      <ul>{artifact_links}{sheet_links}</ul>
+      <div class="artifact-row">{artifact_links}{sheet_links}</div>
     </section>
-    <section>
+    <section class="section">
       <h2>Video</h2>
-      <div class="artifact-grid">{video_blocks}</div>
+      <div class="media-grid">{video_blocks}</div>
     </section>
-    <section>
+    <section class="section">
+      <h2>Contact Sheets</h2>
+      <div class="media-grid">{sheet_blocks}</div>
+    </section>
+    <section class="section">
       <h2>Step Screenshots</h2>
-      <div class="step-grid">{step_blocks}</div>
+      <div class="media-grid">{step_blocks}</div>
     </section>
   </main>
+  <div class="modal" id="image-modal" aria-hidden="true">
+    <div class="modal-inner">
+      <div class="modal-head">
+        <span id="modal-title"></span>
+        <button class="btn" type="button" data-close-modal="true">close</button>
+      </div>
+      <img id="modal-image" alt="">
+    </div>
+  </div>
+  <script>
+{image_modal_script()}
+  </script>
 </body>
 </html>
 """
 
 
 def render_workspace_html(index: dict) -> str:
-    summary = index.get("summary") or {}
-    flows = index.get("flows") or []
-    runs = index.get("runs") or []
-    flow_rows = "\n".join(
-        f"""
-        <tr>
-          <td><a href="#flow-{_esc(flow.get('flowId'))}">{_esc(flow.get('flowId'))}</a></td>
-          <td>{_esc(flow.get('latestStatus'))}</td>
-          <td>{_esc(flow.get('lastRunAt'))}</td>
-          <td>{_esc(flow.get('runs'))}</td>
-          <td>{_esc(', '.join(flow.get('variants') or []))}</td>
-        </tr>
-        """
-        for flow in flows
-    )
-    flow_sections = []
-    for flow in flows:
-        flow_id = flow.get("flowId")
-        flow_runs = [run for run in runs if run.get("flowId") == flow_id]
-        cards = "\n".join(
-            f"""
-            <article class="run-card status-{_esc(run.get('status'))}">
-              <div class="run-head">
-                <div>
-                  <h3>{_esc(run.get('variantId') or 'default')}</h3>
-                  <p>{_esc(run.get('testFile'))} · {_esc(run.get('device'))}</p>
-                </div>
-                <strong>{_esc(run.get('status'))}</strong>
-              </div>
-              <div class="links">
-                {_artifact_link(run, 'reviewHtml', 'review')}
-                {_artifact_link(run, 'video', 'video')}
-                {_artifact_link(run, 'log', 'log')}
-                {_artifact_link(run, 'manifest', 'manifest')}
-              </div>
-              <p class="meta">lastRunAt={_esc(run.get('lastRunAt'))}</p>
-              <p class="meta">run={_esc(run.get('runId'))} steps={_esc(run.get('stepCount'))}</p>
-            </article>
-            """
-            for run in flow_runs
-        )
-        flow_sections.append(
-            f"""
-            <section id="flow-{_esc(flow_id)}" class="flow">
-              <h2>{_esc(flow_id)}</h2>
-              <div class="run-grid">{cards}</div>
-            </section>
-            """
-        )
-
-    return f"""<!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KG UITest Review</title>
-  <style>
-    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif; background: #f8f7f4; color: #2a2520; }}
-    header {{ position: sticky; top: 0; background: #fcfbfa; border-bottom: 1px solid #dbd6cd; padding: 16px 22px; z-index: 1; }}
-    h1 {{ margin: 0; font-size: 18px; letter-spacing: .04em; }}
-    main {{ max-width: 1180px; margin: 0 auto; padding: 22px; }}
-    .stats {{ display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0; }}
-    .stat {{ border: 1px solid #dbd6cd; background: #fcfbfa; border-radius: 4px; padding: 10px 14px; min-width: 110px; }}
-    .stat strong {{ display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 22px; }}
-    .stat span {{ color: #7a756c; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }}
-    table {{ width: 100%; border-collapse: collapse; background: #fcfbfa; border: 1px solid #dbd6cd; }}
-    th, td {{ padding: 9px 10px; border-bottom: 1px solid #e8e4db; text-align: left; font-size: 13px; }}
-    th {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-transform: uppercase; color: #7a756c; }}
-    a {{ color: #2a2520; text-decoration-thickness: 1px; }}
-    .flow {{ margin-top: 26px; }}
-    .flow h2 {{ border-bottom: 1px solid #dbd6cd; padding-bottom: 8px; font-size: 15px; }}
-    .run-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }}
-    .run-card {{ background: #fcfbfa; border: 1px solid #dbd6cd; border-radius: 4px; padding: 13px; }}
-    .run-card.status-fail, .run-card.status-failed, .run-card.status-error {{ border-color: #b45b4c; }}
-    .run-head {{ display: flex; justify-content: space-between; gap: 12px; }}
-    .run-head h3 {{ margin: 0; font-size: 15px; }}
-    .run-head p, .meta, .muted {{ color: #7a756c; font-size: 12px; }}
-    .links {{ display: flex; gap: 9px; flex-wrap: wrap; margin-top: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }}
-  </style>
-</head>
-<body>
-  <header><h1>KG UITest Review</h1></header>
-  <main>
-    <section class="stats">
-      <div class="stat"><strong>{_esc(summary.get('totalRuns', 0))}</strong><span>runs</span></div>
-      <div class="stat"><strong>{_esc(summary.get('okRuns', 0))}</strong><span>ok</span></div>
-      <div class="stat"><strong>{_esc(summary.get('failRuns', 0))}</strong><span>fail</span></div>
-      <div class="stat"><strong>{_esc(summary.get('flows', 0))}</strong><span>flows</span></div>
-      <div class="stat"><strong>{_esc(summary.get('variants', 0))}</strong><span>variants</span></div>
-    </section>
-    <section>
-      <h2>Flows</h2>
-      <table>
-        <thead><tr><th>Flow</th><th>Latest</th><th>Last Run</th><th>Runs</th><th>Variants</th></tr></thead>
-        <tbody>{flow_rows}</tbody>
-      </table>
-    </section>
-    {''.join(flow_sections)}
-  </main>
-</body>
-</html>
-"""
+    return render_persistent_workspace_html(index)
 
 
 def build_review_root(
