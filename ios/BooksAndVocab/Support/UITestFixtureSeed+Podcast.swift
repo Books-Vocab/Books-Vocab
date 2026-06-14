@@ -30,7 +30,7 @@ extension UITestFixtureSeed {
             series.coverPattern = fixture.seed.coverPattern
             series.episodeCount = fixture.seed.episodes.count
             series.totalDurationSec = fixture.durationSec
-            series.sortOrder = fixture.seed.sortOrder ?? 0
+            series.sortOrder = fixture.seed.sortOrder
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {
@@ -39,12 +39,12 @@ extension UITestFixtureSeed {
                     remoteId: episodeSeed.remoteId,
                     episodeNumber: episodeSeed.episodeNumber,
                     title: episodeSeed.title,
-                    durationSec: episodeSeed.durationSec ?? fixture.durationSec
+                    durationSec: episodeSeed.durationSec
                 )
                 episode.series = series
                 episode.audioAvailable = episodeSeed.audioAvailable
                 episode.previewAvailable = episodeSeed.previewAvailable
-                episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
+                episode.previewDurationSec = episodeSeed.previewDurationSec
                 episode.localAudioPath = download.audioURL?.path
                 episode.localSubtitlePath = download.subtitleURL?.path
                 episode.subtitleAvailable = episodeSeed.subtitleAvailable

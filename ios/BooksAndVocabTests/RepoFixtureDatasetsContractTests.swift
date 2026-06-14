@@ -305,9 +305,19 @@ struct RepoFixtureDatasetsContractTests {
     private func expectRuntimePodcastDownloadKeys(_ topLevel: [String: Any], dataset: String) {
         let runtimePodcast = topLevel["runtimePodcast"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in runtimePodcast {
+            #expect(
+                seed.keys.contains("sortOrder"),
+                "\(dataset): runtimePodcast.\(fixtureKey) must explicitly declare sortOrder"
+            )
             let episodes = seed["episodes"] as? [[String: Any]] ?? []
             for episode in episodes {
                 let remoteId = episode["remoteId"] as? String ?? "<missing-remote-id>"
+                for key in ["durationSec", "previewDurationSec"] {
+                    #expect(
+                        episode.keys.contains(key),
+                        "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare \(key)"
+                    )
+                }
                 #expect(
                     episode.keys.contains("download"),
                     "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare download (object or null)"

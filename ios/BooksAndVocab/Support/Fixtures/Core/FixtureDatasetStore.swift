@@ -295,10 +295,10 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
     let remoteId: String
     let episodeNumber: Int
     let title: String
-    let durationSec: Double?
+    let durationSec: Double
     let audioAvailable: Bool
     let previewAvailable: Bool
-    let previewDurationSec: Double?
+    let previewDurationSec: Double
     let subtitleAvailable: Bool
     let download: Download?
 }
@@ -311,7 +311,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
     let hostNames: [String]
     let color: String?
     let coverPattern: String?
-    let sortOrder: Int?
+    let sortOrder: Int
     let durationSec: Double
     let episodes: [UIWorldRuntimePodcastEpisodeSeed]
 }

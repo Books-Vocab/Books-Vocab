@@ -1260,7 +1260,7 @@
           "durationSec": 1034.6,
           "audioAvailable": true,
           "previewAvailable": false,
-          "previewDurationSec": null,
+          "previewDurationSec": 0,
           "subtitleAvailable": true,
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
