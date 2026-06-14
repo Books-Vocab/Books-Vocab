@@ -251,6 +251,11 @@ enum UIWorldRuntimePodcastFixtureID: String, CaseIterable {
 }
 
 struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
+    struct Download: Codable, Equatable {
+        let audioAssetRef: String
+        let subtitleAssetRef: String?
+    }
+
     let remoteId: String
     let episodeNumber: Int
     let title: String
@@ -259,6 +264,7 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
     let previewAvailable: Bool
     let previewDurationSec: Double?
     let subtitleAvailable: Bool
+    let download: Download?
 }
 
 struct UIWorldRuntimePodcastSeed: Codable, Equatable {
