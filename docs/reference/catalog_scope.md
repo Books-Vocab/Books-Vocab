@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 1e5e9ac4
+verified_against: a05c96a3
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -71,6 +71,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### KG Vocab search 契約（無本地搜尋資料 / auth）
 `KGVocabSearchScenarios` 的 matches / single-match / no-match 狀態必須取 UI World `vocabulary.searchVocabNotebook` seed，並用 UI World `auth.signedIn` 注入登入狀態。scenario 必須把 vocabulary seed materialize 成 in-memory SwiftData rows，且在 construction time 驗證 query 對 manifest entries 的命中數（多筆 / 單筆 / 零筆）符合 scenario；缺 seed、auth 非 logged-in、query drift、row state key 漏宣告或 SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.kgVocabSearchCatalogUsesUIWorldVocabularyAndAuthSeeds` 擋回本地 `KGVocabSearchFixtures`、inline `VocabularyEntry(...)` / `Notebook(...)` 與硬寫 catalog user/token。
+
+### Knowledge Graph View 契約（無本地 entries / preview graph / remote task）
+`KnowledgeGraphViewScenarios` 的 populated graph 與 logged-out empty graph 狀態必須取 UI World `vocabulary.knowledgeGraphPopulated` / `vocabulary.knowledgeGraphEmpty` seed，登入狀態必須取 UI World `auth.signedIn` / `auth.guest` seed。scenario 必須從 manifest entries materialize `VocabularyEntry`，再由同一批 rows 的 `graphLinksByKind` 建出 `KGGraphLink` 注入 DEBUG-only `KnowledgeGraphView(initialGraphLinks:shouldLoadGraphData:)`；Catalog 不得跑 remote graph `.task`、不得吃 `DemoDataProvider.demoGraphLinks` 或 `KnowledgeGraphPresenterPreviewData`。缺 seed、auth drift、visible row count drift、graph link 指到不存在 cardId、link id 重複、node/edge count drift 都直接 fail-fast。`CatalogCoverageTests.knowledgeGraphCatalogUsesUIWorldVocabularyLinksAndAuthSeeds` 擋回本地 `allEntries: []`、preview sample nodes、remote graph task 與 demo links。
 
 ### KG Vocab Row 契約（無本地 word / row literal）
 `KGVocabRowScenarios` 的 default / highlighted / selecting-unselected / selecting-selected / long-translation 狀態必須取 UI World `vocabulary.kgVocabRow` seed。scenario 只能用狀態 enum 決定選取/高亮 UI flags；row 內容、book/chapter metadata、translation、part-of-speech、review/card metadata 都屬於 manifest entries，不可在 Debug source 另建 `VocabularyEntry(...)` 或保留本地 word/translation/part-of-speech 字串。manifest row 數必須等於 scenario state 數，缺 seed 或 row count drift 都直接 fail-fast。`CatalogCoverageTests.kgVocabRowCatalogUsesUIWorldVocabularySeed` 擋回 inline row constructor、hardcoded book metadata、本地 word/translation/part-of-speech 與舊 row fixture 字串。
