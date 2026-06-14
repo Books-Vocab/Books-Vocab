@@ -95,6 +95,7 @@ class EmbeddingStore:
         try:
             return json.loads(self._meta_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
+            logger.warning("Failed to read embedding meta for %s", self._meta_path, exc_info=True)
             return None
 
     def _write_meta(self) -> None:
@@ -220,12 +221,14 @@ class EmbeddingStore:
         try:
             vectors = np.load(self.embeddings_path)
         except (ValueError, EOFError, OSError) as e:
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return self._degrade_corrupt("npy_unreadable", detail=repr(e))
         # read_text: UnicodeDecodeError on binary garbage. json.loads:
         # JSONDecodeError (a ValueError subclass) on truncated/invalid JSON.
         try:
             ids = json.loads(self.ids_path.read_text())
         except (ValueError, UnicodeDecodeError, OSError) as e:
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return self._degrade_corrupt("ids_json_unreadable", detail=repr(e))
 
         # --- Structural consistency (#546) -------------------------------
@@ -603,4 +606,3 @@ class EmbeddingStore:
 
     def count(self) -> int:
         return len(self._ids)
-

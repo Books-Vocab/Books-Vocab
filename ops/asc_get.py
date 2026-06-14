@@ -13,12 +13,19 @@ env（皆有預設，對齊 asc.sh）：
   ASC_KEY_DIR   預設 ~/.secrets/apple（內含 AuthKey_<KEY_ID>.p8）
 HTTP 4xx/5xx 不裸 crash：印 {"_httpError": <code>, "_detail": ...} 供呼叫端判讀。
 """
-import os, sys, time, json, urllib.request, urllib.error
+import json
+import logging
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
 import jwt  # pyjwt（+cryptography 提供 ES256）
 
 KEY_ID = os.environ.get("ASC_KEY_ID", "TCXVHFRXMS")
 ISSUER = os.environ.get("ASC_ISSUER_ID", "d7f86188-7c56-46f7-bc99-f889421025fa")
 KEY_DIR = os.path.expanduser(os.environ.get("ASC_KEY_DIR", "~/.secrets/apple"))
+LOGGER = logging.getLogger("ops.asc_get")
 
 
 def mint_token():
@@ -41,12 +48,15 @@ def get(path, token):
         return json.load(urllib.request.urlopen(req))
     except urllib.error.HTTPError as e:  # 4xx/5xx：含 Apple 的 errors[] 細節
         body = e.read().decode("utf-8", "replace")
+        LOGGER.warning("ASC GET failed with HTTP %s for %s", e.code, path)
         try:
             detail = json.loads(body)
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("ASC GET non-JSON error body for %s: %s", path, exc)
             detail = {"raw": body[:500]}
         return {"_httpError": e.code, "_detail": detail}
     except urllib.error.URLError as e:  # 斷網 / DNS / TLS / 連線被拒：HTTPError 之外的 URLError
+        LOGGER.warning("ASC GET network error for %s: %s", path, e)
         return {"_httpError": "network", "_detail": {"reason": str(e.reason)}}
 
 

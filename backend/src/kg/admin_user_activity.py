@@ -9,8 +9,11 @@ This module reads only; it never writes.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 MAX_HOURS = 168  # 7 days — keeps per-source LIMIT bounded.
 MAX_PER_SOURCE = 500
@@ -21,6 +24,7 @@ def _clamp_hours(hours: int) -> int:
     try:
         h = int(hours)
     except (TypeError, ValueError):
+        logger.warning("Invalid hours input %r in activity query; using fallback 24", hours)
         h = 24
     if h < 1:
         return 1
@@ -75,6 +79,13 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
                     2,
                 )
             except (ValueError, TypeError):
+                logger.debug(
+                    "Failed parsing pipeline event timestamps for user=%s run_id=%s started=%r ended=%r",
+                    user_id,
+                    run_id,
+                    started,
+                    ended,
+                )
                 duration_s = None
         out.append({
             "type": "pipeline",

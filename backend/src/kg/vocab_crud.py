@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, Protocol
 
 from .api_models import CardResponse
 from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
@@ -96,12 +95,37 @@ def _page_cursor(cards: list[Any], limit: int) -> tuple[datetime, str] | None:
     return None
 
 
+class VocabCard(Protocol):
+    id: str
+    content: str
+    is_deleted: bool
+    is_archived: bool
+    notebook_id: str
+
+
+class VocabGraph(Protocol):
+    def get_links_for(self, card_id: str) -> object:
+        ...
+
+
+class CardResponseBuilder(Protocol):
+    def __call__(
+        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
+    ) -> CardResponse:
+        ...
+
+
+class CardMutator(Protocol):
+    def __call__(self, card: VocabCard) -> None:
+        ...
+
+
 def list_vocab_cards(
     *,
     since: str | None,
     cards_store: Any,
     graph: Any,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
     limit: int = 5000,
     after: tuple[datetime, str] | None = None,
@@ -137,7 +161,7 @@ def list_vocab_cards(
     return responses, _page_cursor(cards, limit)
 
 
-def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:
+def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> VocabCard:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
@@ -146,11 +170,18 @@ def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None)
     return card
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+def lookup_vocab_word(
+    word: str,
+    *,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+) -> CardResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
-    cards_by_id: dict[str, Any] = {card.id: card}
+    cards_by_id: dict[str, VocabCard] = {card.id: card}
     for link in graph.get_links_for(card.id):
         linked_id = link.from_id if link.to_id == card.id else link.to_id
         if linked_id not in cards_by_id:
@@ -191,7 +222,7 @@ def update_vocab_word_content(
     explanation: str | None,
     cards_store: Any,
     graph: Any,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
 ) -> CardResponse:
     """Update editorial content (meaning / note) of a single card.
@@ -276,7 +307,7 @@ class _GraphOpFailed(Exception):
 
 
 class BulkResult(NamedTuple):
-    succeeded: list[tuple[str, Any]]
+    succeeded: list[tuple[str, VocabCard]]
     not_found: list[str]
     failed: list[str]
 
@@ -286,7 +317,7 @@ def _batch_apply(
     *,
     cards_store: Any,
     notebook_id: str | None,
-    apply: Callable[[Any], None],
+    apply: CardMutator,
 ) -> BulkResult:
     """Shared skeleton for batch vocab mutations.
 
@@ -306,13 +337,13 @@ def _batch_apply(
     if len(words) > MAX_BATCH_SIZE:
         raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
-    succeeded: list[tuple[str, Any]] = []
+    succeeded: list[tuple[str, VocabCard]] = []
     not_found: list[str] = []
     failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
     seen_words_by_key: dict[str, set[str]] = {}
-    outcome_by_key: dict[str, tuple[str, Any | None]] = {}
+    outcome_by_key: dict[str, tuple[str, VocabCard | None]] = {}
 
     for word in words:
         key = _normalize_word(_clean_content(word))

@@ -16,6 +16,7 @@
 #   ops/docs_lint.sh --changed       # 只掃本分支/工作樹變更的 docs
 #   ops/docs_lint.sh --since <rev>   # 只掃 <rev>..HEAD + 工作樹變更的 docs
 #   ops/docs_lint.sh --files <docs...>
+#   ops/docs_lint.sh <docs/...md> [<docs/...md> ...]  # 相當於 --files
 #   ops/docs_lint.sh --registry      # 只驗證 docs/registry.yml
 #   ops/docs_lint.sh --audit|--all   # 全 repo audit(可暴露既有 debt)
 #   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
@@ -86,8 +87,21 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      echo "Unknown arg: $1" >&2
-      exit 2
+      if [ "${1#-}" != "$1" ]; then
+        echo "Unknown arg: $1" >&2
+        echo "提示: 若要指定 doc 路徑,請改用 --files: ops/docs_lint.sh --files docs/<path>.md ..." >&2
+        echo "      或直接傳 doc 路徑: ops/docs_lint.sh docs/<path>.md ..." >&2
+        exit 2
+      fi
+      MODE="files"
+      FILE_ARGS+=("$1")
+      shift
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --*) break ;;
+          *) FILE_ARGS+=("$1"); shift ;;
+        esac
+      done
       ;;
   esac
 done

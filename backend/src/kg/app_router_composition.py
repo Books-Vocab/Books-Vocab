@@ -3,11 +3,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, FastAPI
 
-from .admin_wiring import AdminHandlerDependencies, create_admin_handlers_from_dependencies
+from .admin_wiring import (
+    AdminGrantRecordReader,
+    AdminHandlerDependencies,
+    CardStoreFactory,
+    EntitlementsBuilder,
+    MemLogGetter,
+    create_admin_handlers_from_dependencies,
+)
 from .routers import (
     auth_router,
     billing_router,
@@ -22,10 +28,15 @@ from .routers import (
     vocab_router,
     web_auth_router,
 )
-from .routers.admin import AdminRouters, build_admin_route_handlers, build_admin_routers_from_handlers
-from .types import AdminGrantRecord, StoredUserRecord, UsersPayload
+from .routers.admin import (
+    AdminRouters,
+    SupportsAdminSettings,
+    build_admin_route_handlers,
+    build_admin_routers_from_handlers,
+)
+from .types import UsersPayload
 
-RuntimeSettingsFn = Callable[[], Any]
+RuntimeSettingsFn = Callable[[], SupportsAdminSettings]
 
 
 @dataclass(frozen=True)
@@ -40,10 +51,10 @@ class AppRouterDependencies:
     runtime_users_lock_file_fn: Callable[[], Path]
     load_users_fn: Callable[[], UsersPayload]
     save_users_fn: Callable[[UsersPayload], None]
-    mem_log_getter: Callable[..., list[dict[str, Any]]]
-    card_store_factory: Callable[..., Any]
-    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any]
-    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord]
+    mem_log_getter: MemLogGetter
+    card_store_factory: CardStoreFactory
+    build_entitlements_response_fn: EntitlementsBuilder
+    current_admin_grant_record_fn: AdminGrantRecordReader
 
 
 def build_domain_routers() -> tuple[APIRouter, ...]:
@@ -96,10 +107,10 @@ def build_app_routers(
     runtime_users_lock_file_fn: Callable[[], Path],
     load_users_fn: Callable[[], UsersPayload],
     save_users_fn: Callable[[UsersPayload], None],
-    mem_log_getter: Callable[..., list[dict[str, Any]]],
-    card_store_factory: Callable[..., Any],
-    build_entitlements_response_fn: Callable[[StoredUserRecord | None], Any],
-    current_admin_grant_record_fn: Callable[[StoredUserRecord | None], AdminGrantRecord],
+    mem_log_getter: MemLogGetter,
+    card_store_factory: CardStoreFactory,
+    build_entitlements_response_fn: EntitlementsBuilder,
+    current_admin_grant_record_fn: AdminGrantRecordReader,
 ) -> AppRouters:
     """Backward-compatible wrapper around :func:`build_app_routers_from_dependencies`."""
     return build_app_routers_from_dependencies(

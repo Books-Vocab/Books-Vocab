@@ -21,13 +21,13 @@ JSON/human 輸出契約。供 `backend/ops_edit.py`(container 內 `/app/ops_edit
 from __future__ import annotations
 
 import json
+import logging
 import re
 import tarfile
-from collections.abc import Callable
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 # uid 會被 join 進檔案系統路徑(`data_dir/users/<uid>`),必須限制在 path-safe
 # 白名單,否則 crafted uid 可用 `/` 或 `..` 逃出 sandbox。鏡像
@@ -46,8 +46,21 @@ _WORLD_ROOT_ARCNAME = "__kg_world__"
 _MAX_UID_LEN = 200
 
 
+logger = logging.getLogger(__name__)
+
+
 class EditError(Exception):
     """使用者可讀的編輯失敗(訊息直接呈現,不附 traceback)。"""
+
+
+class ApplyFn(Protocol):
+    def __call__(self) -> object:
+        ...
+
+
+class VerifyFn(Protocol):
+    def __call__(self) -> dict[str, object] | None:
+        ...
 
 
 def assert_safe_uid(uid: str) -> None:
@@ -103,7 +116,8 @@ def _load_users_json_raw(path: Path) -> dict[str, Any]:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("failed to read users.json: path=%s error=%s", path, exc)
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -142,7 +156,8 @@ def _read_json_member(
         return None
     try:
         data = json.loads(fileobj.read().decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        logger.warning("failed to parse JSON tar member %s: %s", arcname, exc)
         return None
     return data if isinstance(data, dict) else None
 
@@ -340,8 +355,8 @@ class EditContext:
         *,
         action: str,
         plan: dict[str, Any],
-        apply_fn: Callable[[], Any],
-        verify_fn: Callable[[], dict[str, Any]] | None = None,
+        apply_fn: ApplyFn,
+        verify_fn: VerifyFn | None = None,
     ) -> int:
         """執行一個寫操作。回傳 process exit code(0 成功 / 1 verify 失敗)。"""
         if not self.commit:
@@ -392,6 +407,7 @@ class EditContext:
                 },
                 json_mode=self.json_mode,
             )
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return 1
 
         verified = verify_fn() if verify_fn else None

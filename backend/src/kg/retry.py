@@ -2,12 +2,23 @@ import asyncio
 import logging
 import random
 import time
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, Protocol, TypeVar
 
 logger = logging.getLogger(__name__)
 
 _LLM_RETRYABLE: tuple[type[Exception], ...] = ()
+T = TypeVar("T")
+
+
+class SyncCallable(Protocol[T]):
+    def __call__(self, *args: Any, **kwargs: Any) -> T:
+        ...
+
+
+class AsyncCallable(Protocol[T]):
+    def __call__(self, *args: Any, **kwargs: Any) -> Awaitable[T]:
+        ...
 
 
 def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
@@ -25,7 +36,7 @@ def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
 
 
 def sync_retry[T](
-    fn: Callable[..., T],
+    fn: SyncCallable[T],
     *args: Any,
     max_attempts: int = 3,
     base_delay: float = 1.0,
@@ -60,17 +71,17 @@ def sync_retry[T](
     return fn(*args, **kwargs)  # unreachable, satisfies type checker
 
 
-async def async_retry(
-    fn,
-    *args,
+async def async_retry[T](
+    fn: AsyncCallable[T],
+    *args: Any,
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 10.0,
     retryable_exceptions: tuple = (Exception,),
     step_name: str = "",
     uid: str = "",
-    **kwargs,
-):
+    **kwargs: Any,
+) -> T:
     """執行 fn(*args, **kwargs)，瞬時錯誤時 exponential backoff 重試。"""
     for attempt in range(max_attempts):
         try:
@@ -82,3 +93,4 @@ async def async_retry(
             delay *= 0.5 + random.random()  # jitter: ×0.5–1.5
             logger.warning("[%s] %s attempt %d failed: %s, retrying in %.1fs", uid, step_name, attempt + 1, exc, delay)
             await asyncio.sleep(delay)
+    return await fn(*args, **kwargs)  # unreachable, satisfies type checker

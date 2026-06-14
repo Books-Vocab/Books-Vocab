@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import logging
 import os
 import re
 import sys
@@ -55,6 +56,7 @@ ALLOW_MARKER = "token-allow:"
 SKIP_PATH_FRAGMENTS = ("/Debug/",)
 SKIP_BASENAMES = ("AppMetrics.swift", "AppColors.swift")
 SKIP_NAME_GLOBS = ("*Preview*.swift", "*Tests*.swift")
+LOGGER = logging.getLogger(__name__)
 
 # (pattern_id, compiled regex, remediation hint). Order = report order.
 PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
@@ -133,6 +135,7 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError):
+        LOGGER.warning("scan failed for %s", path, exc_info=True)
         return findings
     for i, line in enumerate(lines, start=1):
         if ALLOW_MARKER in line:

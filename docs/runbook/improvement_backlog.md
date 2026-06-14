@@ -39,4 +39,4 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0002 | 2026-06-13 | review gate | doc | low | fixed | agent_org.md 3 處 borderline 複述鐵律判準 | `3671b89`(收斂為純指標) |
 | IMP-0003 | 2026-06-13 | docs-steward 首測 | cli | low | triaged | `docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 5 條 exact 誤報(`via=CLAUDE.md`);hint≠命令故不阻擋,但每次需人工判讀 | open — 候選 enhancement:registry 對 CLAUDE.md source 加 section-anchor 機制 |
 | IMP-0004 | 2026-06-13 | backend-engineer smoke | tool | low | wont-fix | 首次 `uv run` 觸發 .venv bootstrap(~100MB),新 worktree / CI 首跑有感 | 正常行為,快取後即解;不修 |
-| IMP-0005 | 2026-06-13 | kaizen-loop review gate | cli | low | triaged | `docs_lint.sh` 不接受裸 doc 路徑當位置參數(`docs_lint.sh foo.md` → Unknown arg),須用 `--files`/`--since`;報錯未提示正確旗標 | open — 候選:bare-path 報錯時提示改用 `--files`,或判 by-design 則 wont-fix |
+| IMP-0005 | 2026-06-13 | kaizen-loop review gate | cli | low | fixed | `docs_lint.sh` 不接受裸 doc 路徑當位置參數(`docs_lint.sh foo.md` → Unknown arg),已加可接受裸路徑並保留清楚提示 | `813356b1` |

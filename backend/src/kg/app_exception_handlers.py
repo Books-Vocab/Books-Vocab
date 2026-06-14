@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -13,6 +13,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .exceptions import KGError
+
+_logger = logging.getLogger(__name__)
+
+
+class AppExceptionHandler(Protocol):
+    def __call__(self, request: Request, exc: Exception) -> Awaitable[JSONResponse]:
+        ...
+
 
 _VALIDATION_SECRET_KEYS = {
     "access_token",
@@ -48,9 +56,9 @@ _VALIDATION_SECRET_RE = re.compile(
 
 @dataclass(frozen=True)
 class AppExceptionHandlers:
-    validation_error_handler: Callable[..., Any]
-    kg_error_handler: Callable[..., Any]
-    unhandled_exception_handler: Callable[..., Any]
+    validation_error_handler: AppExceptionHandler
+    kg_error_handler: AppExceptionHandler
+    unhandled_exception_handler: AppExceptionHandler
 
 
 @dataclass(frozen=True)
@@ -95,6 +103,7 @@ def _redact_validation_body(body: str | None) -> str | None:
         parsed = json.loads(body)
     except json.JSONDecodeError:
         if _VALIDATION_SECRET_RE.search(body):
+            _logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return "[non-json body omitted: secret-like field present]"
         return body[:500]
     return json.dumps(_redact_validation_payload(parsed), ensure_ascii=False, separators=(",", ":"))[:500]
@@ -114,7 +123,7 @@ def install_app_exception_handlers_from_dependencies(
             body = await request.body()
             body = body.decode("utf-8", errors="replace")
         except Exception:
-            pass
+            logger.warning("Validation handler cannot read request body", exc_info=True)
         errors = _redact_validation_payload(jsonable_encoder(exc.errors()))
         logger.warning(
             "Validation error [%s %s] body=%s errors=%s",

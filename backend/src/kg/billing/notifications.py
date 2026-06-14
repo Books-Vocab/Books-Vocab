@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from ..api_models import AppStoreNotificationRequest
 from ..exceptions import BadRequestError, ValidationError
 from .payloads import ACTIVE_BEARING_STATUSES
 
 _logger = logging.getLogger(__name__)
+
+
+class VerifiedJWS(Protocol):
+    payload: dict[str, Any]
+
+
+class VerifySignedJWS(Protocol):
+    def __call__(self, signed_jws: str, *, bundle_id: str) -> VerifiedJWS:
+        ...
+
+
+class ParseTimestamp(Protocol):
+    def __call__(self, value: object) -> datetime | None:
+        ...
 
 
 def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
@@ -41,13 +54,14 @@ def notification_status(notification_type: str | None, subtype: str | None) -> s
     return None
 
 
-def normalize_ms_timestamp(raw: Any, parse_datetime_fn: Callable[[Any], datetime | None]) -> str | None:
+def normalize_ms_timestamp(raw: Any, parse_datetime_fn: ParseTimestamp) -> str | None:
     if raw is None:
         return None
     try:
         timestamp_ms = int(raw)
     except (TypeError, ValueError):
         parsed = parse_datetime_fn(raw)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return parsed.isoformat() if parsed else None
     return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
 
@@ -64,7 +78,7 @@ def bool_from_any(raw: Any, default: bool = False) -> bool:
 
 def status_from_transaction_payload(
     payload: dict[str, Any],
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     renewal_payload: dict[str, Any] | None = None,
 ) -> str:
     if payload.get("revocationDate"):
@@ -87,7 +101,7 @@ def status_from_transaction_payload(
 def verified_transaction_snapshot(
     payload: dict[str, Any],
     *,
-    parse_datetime_fn: Callable[[Any], datetime | None],
+    parse_datetime_fn: ParseTimestamp,
     renewal_payload: dict[str, Any] | None = None,
     price_display: str | None = None,
 ) -> dict[str, Any]:
@@ -120,8 +134,8 @@ def decode_signed_transaction_info(
     signed_transaction_info: str,
     *,
     bundle_id: str,
-    parse_datetime_fn: Callable[[Any], datetime | None],
-    verify_signed_jws: Callable[..., Any],
+    parse_datetime_fn: ParseTimestamp,
+    verify_signed_jws: VerifySignedJWS,
 ) -> dict[str, Any]:
     verified = verify_signed_jws(signed_transaction_info, bundle_id=bundle_id)
     return verified_transaction_snapshot(verified.payload, parse_datetime_fn=parse_datetime_fn)
@@ -132,8 +146,8 @@ def decode_notification_payload(
     *,
     bundle_id: str,
     allow_unsigned_notifications: bool,
-    parse_datetime_fn: Callable[[Any], datetime | None],
-    verify_signed_jws: Callable[..., Any],
+    parse_datetime_fn: ParseTimestamp,
+    verify_signed_jws: VerifySignedJWS,
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not req.signed_payload:
         if allow_unsigned_notifications:

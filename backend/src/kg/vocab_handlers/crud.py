@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from ..api_models import (
@@ -22,21 +20,29 @@ from ..vocab_crud import (
     lookup_vocab_word,
     update_vocab_word_content,
 )
-from ._shared import _resolve_stores
+from ..vocab_shared import CardResponseBuilder
+from ._shared import (
+    CardStoreFactory,
+    ClientFactory,
+    EmbeddingStoreFactory,
+    GraphStoreFactory,
+    NotebookStoreFactory,
+    _resolve_stores,
+)
 
 
 def list_vocab_response(
     since: str | None,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    card_response_builder: CardResponseBuilder,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str | None = None,
     limit: int = 5000,
     cursor: str | None = None,
-) -> tuple[list[Any], str | None]:
+) -> tuple[list[CardResponse], str | None]:
     """Return ``(cards, next_cursor_token)``. ``cursor`` is the opaque token
     from a previous page's ``X-Next-Cursor`` header; ``next_cursor_token`` is
     None on the last page. Raises BadRequestError on a malformed cursor."""
@@ -63,10 +69,10 @@ def lookup_word_response(
     word: str,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    card_response_builder: CardResponseBuilder,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
@@ -89,9 +95,9 @@ def archive_word_response(
     req: ArchiveWordRequest,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
     stores = _resolve_stores(
@@ -114,10 +120,10 @@ def update_word_content_response(
     req: VocabContentUpdateRequest,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any],
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    card_response_builder: CardResponseBuilder,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
@@ -142,11 +148,11 @@ def delete_word_response(
     word: str,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
-    embedding_store_factory: Callable[..., Any] | None = None,
-    client_factory: Callable[..., Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
+    embedding_store_factory: EmbeddingStoreFactory | None = None,
+    client_factory: ClientFactory | None = None,
     notebook_id: str = "default",
 ) -> dict[str, str]:
     stores = _resolve_stores(
@@ -170,11 +176,11 @@ def batch_delete_response(
     req: BatchDeleteRequest,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
-    embedding_store_factory: Callable[..., Any] | None = None,
-    client_factory: Callable[..., Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
+    embedding_store_factory: EmbeddingStoreFactory | None = None,
+    client_factory: ClientFactory | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
     stores = _resolve_stores(
@@ -198,9 +204,9 @@ def batch_archive_response(
     req: BatchArchiveRequest,
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
     stores = _resolve_stores(
