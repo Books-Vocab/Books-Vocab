@@ -26,10 +26,13 @@ the ongoing safety net against this class of silent gap.
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import os
 import sys
 from pathlib import Path
+
+_LOGGER = logging.getLogger(__name__)
 
 # Content-Type per extension. Without these, S3 defaults to
 # binary/octet-stream and AVPlayer rejects the audio stream. MUST stay aligned
@@ -120,6 +123,12 @@ def _key_exists(s3, bucket: str, key: str) -> bool:
         return True
     except Exception as exc:  # noqa: BLE001
         if _is_not_found(exc, s3):
+            _LOGGER.debug(
+                "S3 object missing: bucket=%s key=%s; treating as absent",
+                bucket,
+                key,
+                exc_info=True,
+            )
             return False
         raise  # real S3 fault — loud-fail, don't treat as absent
 

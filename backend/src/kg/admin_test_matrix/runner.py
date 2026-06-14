@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
@@ -14,6 +15,8 @@ from .results import bucket_status, item_results
 CASE_LINE_RE = re.compile(
     r"^(?P<case>tests/\S+::\S+)\s+(?P<status>PASSED|FAILED|ERROR|SKIPPED|XFAILED|XPASSED)\b"
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _error_run(
@@ -131,6 +134,12 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
         stdout = exc.stdout or ""
         stderr = exc.stderr or ""
         return_code = 124
+        _LOGGER.warning(
+            "admin test matrix timed out (run_id=%s, return_code=%s)",
+            run_id,
+            return_code,
+            exc_info=True,
+        )
     except OSError as exc:
         return _error_run(
             run_id, started, selected_items,

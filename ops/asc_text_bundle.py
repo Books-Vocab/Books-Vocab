@@ -17,6 +17,7 @@ review, withdraw, upload screenshots, or change pricing/release controls.
 from __future__ import annotations
 
 import argparse
+import logging
 import json
 import os
 import sys
@@ -28,6 +29,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_KEY_ID = "TCXVHFRXMS"
@@ -122,9 +125,16 @@ def request_json(path: str, token: str, method: str = "GET", body: dict[str, Any
         try:
             detail = json.loads(raw)
         except Exception:
+            _LOGGER.warning(
+                "ASC request HTTPError returned non-JSON payload for path=%s: %r",
+                path,
+                raw[:500],
+                exc_info=True,
+            )
             detail = {"raw": raw[:500]}
         return {"_httpError": e.code, "_detail": detail}
     except urllib.error.URLError as e:
+        sys.stderr.write(f"[asc_text_bundle] network error: {e}\n")
         return {"_httpError": "network", "_detail": {"reason": str(e.reason)}}
 
 
