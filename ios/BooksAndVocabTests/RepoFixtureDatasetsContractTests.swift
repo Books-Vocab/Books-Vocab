@@ -423,10 +423,12 @@ struct RepoFixtureDatasetsContractTests {
     private func expectAuthKeychainStateKeys(_ topLevel: [String: Any], dataset: String) {
         let authFixtures = topLevel["auth"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in authFixtures {
-            #expect(
-                seed.keys.contains("keychainTokenState"),
-                "\(dataset): auth.\(fixtureKey) must explicitly declare keychainTokenState"
-            )
+            for key in ["isLoggedIn", "userId", "token", "keychainTokenState", "displayName", "email", "authError", "isAuthenticating", "provider", "providerUserId"] {
+                #expect(
+                    seed.keys.contains(key),
+                    "\(dataset): auth.\(fixtureKey) must explicitly declare \(key)"
+                )
+            }
         }
     }
 
