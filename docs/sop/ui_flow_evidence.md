@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: c4657cf9
+verified_against: 525fc0a4
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -63,7 +63,7 @@ verified_against: c4657cf9
 - Reader 詞庫 highlight / 翻譯 scope 認 `book.preferredNotebookId` 綁定本：fixture 須同時種 notebook（synced）+ `book.preferredNotebookId` + `entry.notebookId` 三者一致，缺一則 library-hit / 底線不出現。
 - Today Review 翻卡狀態訊號：back identifier 必須放在 `backContentMounted` 的真內容分支（`TodayReviewPresenter+CardContent.swift` 的 `todayReview.card.back`）。answer fold surface 連同其 `accessibilityLabel("翻譯：…")` 在正面/摺疊（height 0）時仍常駐 view tree——identifier 放 surface/Group 上會讓 `.exists` 對翻卡狀態說謊。動畫中變動的 label（評分後 progress、計數 badge）**勿用** `waitUntilLabelContains`——`XCTNSPredicateExpectation` 會持續讀 stale accessibility snapshot 直到 timeout（實測 label 已是 "3 / 8" 仍判 fail）；改用顯式 RunLoop polling 每迭代重解析 query（`TodayReviewPage.waitUntilLabel(of:contains:)`，同 Podcast probe 讀 elapsed clock 的模式）。badge 斷言用「·1」避免裸 `1` 誤配。
 - Today Review 是純本地 flow，fixture 免登入即可走完（notebook 卡片 + CTA + session）；仍設 `KG_UI_TEST_SERVER_URL` 指向不可達位址保持 hermetic（同 AuthFlow seam）。
-- **UI World seam**（`ios_test.sh --dataset <name>` / `--dataset-file <path>`，限 `--ui`）：把 `ops/fixtures/ui_worlds/<name>.json`（`kg.fixture.dataset.v2`）base64 注入 runner 的 `KG_FIXTURE_DATASET_B64`，再經 `UITestLaunchConfiguration` 轉發進 app。UI World 是 Catalog / UITest / capture 共用 SoT，同時管理畫面資料、auth session、entitlement、UserDefaults/iCloud KVS preferences 與 file-backed asset manifest；`FixtureDatasetStore.require*Seed` 缺 world 或缺 key 直接 fail hard，preferences 在 seed 前寫入標準 UserDefaults + iCloud KVS seam，`FixtureDatasetStore.requireInstalledAssetURL` 會驗 asset ref、來源檔存在、sha256，並依 `installAs` materialize 到 app Documents。Bookshelf seed 不再只建立 `Book` metadata row：repo UI World 的每本書必須有 `bookAssetRef` 指向 `assets.books.*`，並安裝到 `Documents/Books/<fileName>`。Podcast episode 的 `download` 欄位明示本集是否已下載；有值才物化 audio/subtitle 到 `PodcastEpisode.localAudioPath` / `localSubtitlePath`，沒有值就是未下載。`--ui` 實際執行未帶 world 會被 runner 擋下；`--list`/cache action 不執行注入。
+- **UI World seam**（`ios_test.sh --dataset <name>` / `--dataset-file <path>`，限 `--ui`）：把 `ops/fixtures/ui_worlds/<name>.json`（`kg.fixture.dataset.v2`）base64 注入 runner 的 `KG_FIXTURE_DATASET_B64`，再經 `UITestLaunchConfiguration` 轉發進 app。UI World 是 Catalog / UITest / capture 共用 SoT，同時管理畫面資料、auth session、entitlement、UserDefaults/iCloud KVS preferences、SwiftData row state 與 file-backed asset manifest；`FixtureDatasetStore.require*Seed` 缺 world 或缺 key 直接 fail hard，preferences 在 seed 前寫入標準 UserDefaults + iCloud KVS seam，Notebook / VocabularyEntry 的 sync/action/archive/reader-exclusion 狀態必須由 manifest 明示，`FixtureDatasetStore.requireInstalledAssetURL` 會驗 asset ref、來源檔存在、sha256，並依 `installAs` materialize 到 app Documents。Bookshelf seed 不再只建立 `Book` metadata row：repo UI World 的每本書必須有 `bookAssetRef` 指向 `assets.books.*`，並安裝到 `Documents/Books/<fileName>`。Podcast episode 的 `download` 欄位明示本集是否已下載；有值才物化 audio/subtitle 到 `PodcastEpisode.localAudioPath` / `localSubtitlePath`，沒有值就是未下載。`--ui` 實際執行未帶 world 會被 runner 擋下；`--list`/cache action 不執行注入。
 
 ## 驗收（收斂層對抗驗證）
 
