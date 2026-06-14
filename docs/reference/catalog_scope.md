@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: a45a2764
+verified_against: 371a5bec
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -53,6 +53,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Settings preferences section 契約（無本地 preference fixture）
 `SettingsSectionsScenarios` 的 `SettingsPreferencesSection` auto-sync on/off/hidden 狀態必須取 UI World `settings.*.preferences` seed；auto-sync off 是 `settings.preferences_auto_sync_off`，logged-out/no-sync-row 是 `settings.preferences_logged_out_no_sync`。scenario source 不可手建 `SettingsPresenterState.PreferencesSection(...)`，也不可在 Debug source 寫死 `autoSyncEnabled` / `showAutoSync`。
+
+### Settings review section 契約（無本地 ReviewSettings fixture）
+`SettingsSectionsScenarios` 的 `SettingsReviewSection` relaxed/intensive/custom/paused 狀態必須取 UI World `settings.*.reviewSettings` seed；relaxed 使用 `settings.subscription_free`，intensive 使用 `settings.preferences_auto_sync_off`，custom 使用 `settings.account_long_identity`，paused 使用 `settings.preferences_logged_out_no_sync`。scenario source 不可手建 `ReviewSettings(...)`、不可寫死 `mode: .relaxed/.intensive/.custom`、不可用本地 `Date(timeIntervalSince1970:)` 或 `isProgressPaused: true` 決定暫停狀態。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
