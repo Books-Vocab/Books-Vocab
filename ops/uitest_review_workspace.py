@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 from catalog_review_sync import REVIEW_HTML_NAME
+from uitest_review_ui import artifact_link, dom_id, esc, filter_script, shell_css, status_badge, status_kind
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -166,33 +167,27 @@ def _relpath(path: Path, root: Path) -> str:
         return str(path)
 
 
-def _esc(value) -> str:
-    return html.escape("" if value is None else str(value), quote=True)
-
-
-def _artifact_link(run: dict, key: str, label: str) -> str:
-    href = (run.get("artifacts") or {}).get(key)
-    if not href:
-        return f'<span class="muted">{_esc(label)} missing</span>'
-    return f'<a href="{_esc(href)}">{_esc(label)}</a>'
-
-
 def _flow_status(flow: dict) -> str:
-    status = str(flow.get("latestStatus") or "unknown")
-    if status in {"ok", "pass", "passed"}:
-        return "passed"
-    if status in {"fail", "failed", "error"}:
-        return "failed"
-    if status == "never-run":
-        return "pending"
-    return "idle"
+    return status_kind(flow.get("latestStatus"))
+
+
+def _flow_sort_key(flow: dict) -> tuple[int, float, str]:
+    priority = {"failed": 0, "pending": 1, "idle": 2, "passed": 3}.get(_flow_status(flow), 4)
+    value = flow.get("lastRunAt") or ""
+    timestamp = 0.0
+    if value:
+        try:
+            timestamp = datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            timestamp = 0.0
+    return (priority, -timestamp, str(flow.get("flowId") or ""))
 
 
 def _method_list(methods: list[str], *, limit: int = 4) -> str:
     if not methods:
         return '<span class="muted">no test methods discovered</span>'
     visible = methods[:limit]
-    items = "".join(f"<span>{_esc(method)}</span>" for method in visible)
+    items = "".join(f"<span>{esc(method)}</span>" for method in visible)
     if len(methods) > limit:
         items += f'<span class="muted">+{len(methods) - limit} more</span>'
     return items
@@ -202,14 +197,14 @@ def _pending_card(flow: dict) -> str:
     methods = flow.get("methods") or []
     command = flow.get("runCommand") or f"./ops/ios_ops.sh test --ui --file {flow.get('testFile')} --lease --json"
     return f"""
-            <article class="flow-card status-pending" data-status="pending" data-flow="{_esc(flow.get('flowId'))}" data-text="{_esc(' '.join([flow.get('flowId') or '', flow.get('testFile') or '', ' '.join(methods)]))}">
+            <article class="card status-pending" data-status="pending" data-flow="{esc(flow.get('flowId'))}" data-text="{esc(' '.join([flow.get('flowId') or '', flow.get('testFile') or '', ' '.join(methods)]))}">
               <div class="card-top">
-                <span class="badge pending">never-run</span>
-                <span class="count-pill">{_esc(len(methods))} tests</span>
+                {status_badge("never-run")}
+                <span class="muted">{esc(len(methods))} tests</span>
               </div>
-              <h3>{_esc(flow.get('flowId'))}</h3>
-              <p class="path">{_esc(flow.get('testFile'))}</p>
-              <div class="command-row"><code>{_esc(command)}</code></div>
+              <h3>{esc(flow.get('flowId'))}</h3>
+              <p class="path">{esc(flow.get('testFile'))}</p>
+              <code class="command">{esc(command)}</code>
               <div class="method-list">{_method_list(methods)}</div>
             </article>
             """
@@ -226,21 +221,21 @@ def _run_card(run: dict) -> str:
         ]
     )
     return f"""
-            <article class="flow-card status-{_esc(status_class)}" data-status="{_esc(status_class)}" data-flow="{_esc(run.get('flowId'))}" data-text="{_esc(text)}">
+            <article class="card status-{esc(status_class)}" data-status="{esc(status_class)}" data-flow="{esc(run.get('flowId'))}" data-text="{esc(text)}">
               <div class="card-top">
-                <span class="badge {_esc(status_class)}">{_esc(run.get('status'))}</span>
-                <span class="count-pill">{_esc(run.get('stepCount'))} steps</span>
+                {status_badge(run.get('status'))}
+                <span class="muted">{esc(run.get('stepCount'))} steps</span>
               </div>
-              <h3>{_esc(run.get('flowId'))}</h3>
-              <p class="path">{_esc(run.get('testFile'))} · {_esc(run.get('variantId') or 'default')}</p>
+              <h3>{esc(run.get('variantId') or 'default')}</h3>
+              <p class="path">{esc(run.get('testFile'))} · {esc(run.get('device') or 'unknown')}</p>
               <div class="links">
-                {_artifact_link(run, 'reviewHtml', 'review')}
-                {_artifact_link(run, 'video', 'video')}
-                {_artifact_link(run, 'log', 'log')}
-                {_artifact_link(run, 'manifest', 'manifest')}
+                {artifact_link((run.get('artifacts') or {}).get('reviewHtml'), 'review')}
+                {artifact_link((run.get('artifacts') or {}).get('video'), 'video')}
+                {artifact_link((run.get('artifacts') or {}).get('log'), 'log')}
+                {artifact_link((run.get('artifacts') or {}).get('manifest'), 'manifest')}
               </div>
-              <p class="meta">lastRunAt={_esc(run.get('lastRunAt'))}</p>
-              <p class="meta">device={_esc(run.get('device') or 'unknown')}</p>
+              <p class="meta">lastRunAt={esc(run.get('lastRunAt'))}</p>
+              <p class="meta">run={esc(run.get('runId'))}</p>
             </article>
             """
 
@@ -249,6 +244,8 @@ def _flow_table_row(flow: dict) -> str:
     status_class = _flow_status(flow)
     methods = flow.get("methods") or []
     command = flow.get("runCommand") or f"./ops/ios_ops.sh test --ui --file {flow.get('testFile')} --lease --json"
+    ran = int(flow.get("runs") or 0) > 0
+    flow_anchor = dom_id("flow", flow.get("flowId"))
     searchable = " ".join(
         [
             str(flow.get("flowId") or ""),
@@ -259,24 +256,24 @@ def _flow_table_row(flow: dict) -> str:
         ]
     )
     return f"""
-        <tr class="flow-row" data-status="{_esc(status_class)}" data-text="{_esc(searchable)}">
+        <tr class="flow-row" data-status="{esc(status_class)}" data-ran="{str(ran).lower()}" data-text="{esc(searchable)}">
           <td>
-            <a class="flow-link" href="#flow-{_esc(flow.get('flowId'))}">{_esc(flow.get('flowId'))}</a>
-            <div class="path">{_esc(flow.get('testFile') or '')}</div>
+            <a class="flow-link" href="#{esc(flow_anchor)}">{esc(flow.get('flowId'))}</a>
+            <div class="path">{esc(flow.get('testFile') or '')}</div>
           </td>
-          <td><span class="badge {_esc(status_class)}">{_esc(flow.get('latestStatus'))}</span></td>
-          <td>{_esc(flow.get('lastRunAt') or 'not run')}</td>
-          <td>{_esc(flow.get('runs'))}</td>
-          <td>{_esc(len(methods))}</td>
-          <td>{_esc(', '.join(flow.get('variants') or []) or 'none')}</td>
-          <td><code class="inline-command">{_esc(command)}</code></td>
+          <td>{status_badge(flow.get('latestStatus'))}</td>
+          <td>{esc(flow.get('lastRunAt') or 'not run')}</td>
+          <td>{esc(flow.get('runs'))}</td>
+          <td>{esc(len(methods))}</td>
+          <td>{esc(', '.join(flow.get('variants') or []) or 'none')}</td>
+          <td><code>{esc(command)}</code></td>
         </tr>
         """
 
 
 def render_workspace_html(index: dict) -> str:
     summary = index.get("summary") or {}
-    flows = index.get("flows") or []
+    flows = sorted(index.get("flows") or [], key=_flow_sort_key)
     runs = index.get("runs") or []
     flow_rows = "\n".join(_flow_table_row(flow) for flow in flows)
     status_counts = {
@@ -286,6 +283,20 @@ def render_workspace_html(index: dict) -> str:
         "failed": sum(1 for flow in flows if _flow_status(flow) == "failed"),
         "ran": sum(1 for flow in flows if int(flow.get("runs") or 0) > 0),
     }
+    latest = runs[0] if runs else None
+    if status_counts["failed"]:
+        headline = "Latest run needs attention"
+    elif status_counts["pending"]:
+        headline = "Never-run flows remain"
+    elif latest:
+        headline = "Latest run is passing"
+    else:
+        headline = "No UITest runs yet"
+    latest_summary = (
+        f"{esc(latest.get('flowId'))} · {esc(latest.get('variantId') or 'default')} · {esc(latest.get('lastRunAt'))}"
+        if latest
+        else "Run a UI flow to populate video, log, screenshot, and manifest links."
+    )
     flow_sections = []
     for flow in flows:
         flow_id = flow.get("flowId")
@@ -295,12 +306,13 @@ def render_workspace_html(index: dict) -> str:
             cards = "\n".join(_run_card(run) for run in flow_runs)
         else:
             cards = _pending_card(flow)
+        flow_anchor = dom_id("flow", flow_id)
         flow_sections.append(
             f"""
-            <section id="flow-{_esc(flow_id)}" class="flow-section" data-status="{_esc(status_class)}" data-text="{_esc(flow_id)}">
+            <section id="{esc(flow_anchor)}" class="flow-section section" data-status="{esc(status_class)}" data-ran="{str(bool(flow_runs)).lower()}" data-text="{esc(' '.join([str(flow_id or ''), str(flow.get('testFile') or ''), str(flow.get('latestStatus') or ''), ' '.join(flow.get('methods') or [])]))}">
               <div class="section-head">
-                <h2>{_esc(flow_id)}</h2>
-                <span>{_esc(flow.get('runs'))} run · { _esc(len(flow.get('methods') or [])) } tests</span>
+                <h2>{esc(flow_id)}</h2>
+                <span class="muted">{esc(flow.get('runs'))} run · { esc(len(flow.get('methods') or [])) } tests</span>
               </div>
               <div class="card-grid">{cards}</div>
             </section>
@@ -313,176 +325,75 @@ def render_workspace_html(index: dict) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KG UITest Review</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <style>
-    :root {{
-      --bg: #f8f7f4;
-      --surface: #fcfbfa;
-      --border: #dbd6cd;
-      --border-l: #e8e4db;
-      --ink: #2a2520;
-      --ink-light: #5a5550;
-      --sub: #7a756c;
-      --passed: #256246;
-      --passed-bg: rgba(37,98,70,.08);
-      --failed: #a7372a;
-      --failed-bg: rgba(167,55,42,.08);
-      --warn: #9b6b16;
-      --warn-bg: rgba(155,107,22,.08);
-      --idle: #69727d;
-      --idle-bg: rgba(105,114,125,.08);
-      --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-      --sans: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
-    }}
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body {{ margin: 0; font-family: var(--sans); background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.76; min-height: 100vh; }}
-    .nav {{ position: sticky; top: 0; z-index: 20; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }}
-    .brand {{ font-family: var(--mono); font-size: 12px; text-transform: uppercase; white-space: nowrap; display: flex; align-items: center; gap: 8px; }}
-    .brand .tag {{ border: 1px solid var(--ink); background: var(--ink); color: #fff; border-radius: 2px; padding: 1px 7px; font-size: 10px; font-weight: 500; }}
-    .nav-actions {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
-    .counts {{ font-family: var(--mono); font-size: 10px; color: var(--sub); text-transform: uppercase; }}
-    .btn {{ display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--ink-light); font-family: var(--mono); font-size: 10px; text-transform: uppercase; text-decoration: none; cursor: pointer; white-space: nowrap; }}
-    .btn:hover {{ border-color: var(--ink); color: var(--ink); }}
-    .tabs {{ display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; }}
-    .tab {{ height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 3px; background: transparent; color: var(--ink-light); font-family: var(--mono); font-size: 11px; text-transform: uppercase; cursor: pointer; }}
-    .tab:hover {{ border-color: var(--ink); color: var(--ink); }}
-    .tab.active {{ background: var(--ink); border-color: var(--ink); color: #fff; }}
-    .tab .n {{ opacity: .7; margin-left: 5px; }}
-    .toolbar {{ display: flex; align-items: center; gap: 10px; padding: 12px 16px 4px; background: var(--bg); }}
-    .filter-input {{ flex: 1; min-width: 260px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 2px; font: inherit; color: var(--ink); background: var(--surface); outline: none; }}
-    .filter-input:focus {{ border-color: var(--ink); }}
-    .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; padding: 8px 16px 0; max-width: 1320px; margin: 0 auto; }}
-    .stat {{ border: 1px solid var(--border); border-radius: 3px; background: var(--surface); padding: 9px 12px; }}
-    .stat .v {{ font-family: var(--mono); font-size: 24px; line-height: 1.1; color: var(--ink); }}
-    .stat .l {{ font-family: var(--mono); font-size: 10px; color: var(--sub); text-transform: uppercase; margin-top: 2px; }}
-    .main {{ max-width: 1320px; margin: 0 auto; padding: 16px 16px 56px; }}
-    .section-title {{ font-family: var(--mono); font-size: 11px; color: var(--sub); text-transform: uppercase; margin: 18px 0 10px; }}
-    .table-wrap {{ border: 1px solid var(--border); background: var(--surface); border-radius: 3px; overflow: auto; }}
-    table {{ width: 100%; border-collapse: collapse; min-width: 980px; }}
-    th, td {{ padding: 10px 12px; border-bottom: 1px solid var(--border-l); text-align: left; vertical-align: top; }}
-    th {{ position: sticky; top: 0; background: #f3f0ea; color: var(--sub); font-family: var(--mono); font-size: 10px; text-transform: uppercase; z-index: 1; }}
-    td {{ font-size: 13px; }}
-    tr:last-child td {{ border-bottom: 0; }}
-    .flow-link {{ color: var(--ink); font-weight: 500; text-decoration-thickness: 1px; }}
-    .path, .meta, .muted {{ color: var(--sub); font-size: 12px; }}
-    .path {{ margin-top: 2px; }}
-    .badge {{ display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 2px; padding: 1px 7px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; color: var(--ink-light); white-space: nowrap; }}
-    .badge.pending {{ color: var(--warn); border-color: var(--warn); background: var(--warn-bg); }}
-    .badge.passed {{ color: var(--passed); border-color: var(--passed); background: var(--passed-bg); }}
-    .badge.failed {{ color: var(--failed); border-color: var(--failed); background: var(--failed-bg); }}
-    .badge.idle {{ color: var(--idle); border-color: var(--idle); background: var(--idle-bg); }}
-    .inline-command {{ display: block; max-width: 360px; white-space: normal; overflow-wrap: anywhere; font-family: var(--mono); font-size: 11px; color: var(--ink-light); background: #f1eee8; border: 1px solid var(--border-l); border-radius: 2px; padding: 4px 6px; }}
-    .flow-section {{ margin-top: 18px; }}
-    .section-head {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 7px; margin-bottom: 12px; }}
-    .section-head h2 {{ font-family: var(--mono); font-size: 13px; text-transform: uppercase; font-weight: 700; }}
-    .section-head span {{ font-family: var(--mono); font-size: 10px; color: var(--sub); }}
-    .card-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }}
-    .flow-card {{ border: 1px solid var(--border); border-radius: 3px; background: var(--surface); padding: 12px; min-width: 0; }}
-    .flow-card.status-pending {{ border-style: dashed; }}
-    .flow-card.status-failed {{ border-color: rgba(167,55,42,.45); }}
-    .card-top {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }}
-    .count-pill {{ font-family: var(--mono); font-size: 10px; color: var(--sub); }}
-    .flow-card h3 {{ font-size: 15px; font-weight: 500; line-height: 1.25; margin-bottom: 2px; overflow-wrap: anywhere; }}
-    .command-row code {{ display: block; margin: 10px 0; padding: 8px; background: #f1eee8; border: 1px solid var(--border-l); border-radius: 2px; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }}
-    .method-list {{ display: flex; flex-direction: column; gap: 2px; color: var(--ink-light); font-size: 12px; }}
-    .method-list span {{ overflow-wrap: anywhere; }}
-    .links {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; font-family: var(--mono); font-size: 11px; }}
-    a {{ color: var(--ink); }}
-    .hidden {{ display: none !important; }}
-    .empty {{ border: 1px dashed var(--border); background: var(--surface); color: var(--sub); padding: 24px; border-radius: 3px; }}
-    @media (max-width: 760px) {{
-      .nav {{ align-items: flex-start; height: auto; padding: 12px 16px; flex-direction: column; }}
-      .nav-actions {{ justify-content: flex-start; }}
-      .toolbar {{ flex-direction: column; align-items: stretch; }}
-      .filter-input {{ min-width: 0; width: 100%; }}
-      .card-grid {{ grid-template-columns: 1fr; }}
-    }}
+{shell_css()}
   </style>
 </head>
 <body>
-  <div class="nav">
-    <div class="brand">KG UITest Review <span class="tag">FLOW</span></div>
-    <div class="nav-actions">
-      <span class="counts" id="visible-count">{_esc(len(flows))} flow · {_esc(summary.get('totalRuns', 0))} run · {_esc(summary.get('pendingFlows', 0))} pending</span>
+  <div class="topbar">
+    <div class="brand">KG UITest Review <span>Debug Cockpit</span></div>
+    <div class="top-actions">
+      <span class="muted" id="visible-count">{esc(len(flows))} flow · {esc(summary.get('totalRuns', 0))} run · {esc(summary.get('pendingFlows', 0))} pending</span>
       <a class="btn" href="index.json">index</a>
     </div>
   </div>
-  <div class="tabs" id="tabs">
-    <button class="tab active" data-filter="all">all <span class="n">{_esc(status_counts['all'])}</span></button>
-    <button class="tab" data-filter="pending">pending <span class="n">{_esc(status_counts['pending'])}</span></button>
-    <button class="tab" data-filter="passed">pass <span class="n">{_esc(status_counts['passed'])}</span></button>
-    <button class="tab" data-filter="failed">fail <span class="n">{_esc(status_counts['failed'])}</span></button>
-    <button class="tab" data-filter="ran">ran <span class="n">{_esc(status_counts['ran'])}</span></button>
-  </div>
-  <div class="toolbar">
-    <input id="search" class="filter-input" type="search" placeholder="搜尋 flow / file / method / variant">
-  </div>
-  <section class="stats">
-    <div class="stat"><div class="v">{_esc(summary.get('flows', 0))}</div><div class="l">flows</div></div>
-    <div class="stat"><div class="v">{_esc(summary.get('pendingFlows', 0))}</div><div class="l">pending</div></div>
-    <div class="stat"><div class="v">{_esc(summary.get('totalRuns', 0))}</div><div class="l">runs</div></div>
-    <div class="stat"><div class="v">{_esc(summary.get('okRuns', 0))}</div><div class="l">ok</div></div>
-    <div class="stat"><div class="v">{_esc(summary.get('failRuns', 0))}</div><div class="l">fail</div></div>
-    <div class="stat"><div class="v">{_esc(summary.get('variants', 0))}</div><div class="l">variants</div></div>
-  </section>
-  <main>
-    <section class="main">
-      <h2 class="section-title">Flow Inventory</h2>
+  <main class="page">
+    <section class="hero">
+      <div class="panel pad">
+        <div class="eyebrow">failed first · offline artifact desk</div>
+        <div class="headline-row">
+          <div>
+            <h1>{esc(headline)}</h1>
+            <p class="path">{latest_summary}</p>
+          </div>
+          {status_badge(latest.get('status') if latest else ('never-run' if status_counts['pending'] else 'unknown'))}
+        </div>
+        <div class="artifact-row">
+          {artifact_link((latest.get('artifacts') or {}).get('reviewHtml') if latest else None, 'latest review')}
+          {artifact_link((latest.get('artifacts') or {}).get('video') if latest else None, 'latest video')}
+          {artifact_link((latest.get('artifacts') or {}).get('log') if latest else None, 'latest log')}
+        </div>
+      </div>
+      <div class="panel pad metric-grid">
+        <div class="metric"><div class="value">{esc(summary.get('failRuns', 0))}</div><div class="label">fail</div></div>
+        <div class="metric"><div class="value">{esc(summary.get('pendingFlows', 0))}</div><div class="label">pending</div></div>
+        <div class="metric"><div class="value">{esc(summary.get('okRuns', 0))}</div><div class="label">ok</div></div>
+        <div class="metric"><div class="value">{esc(summary.get('totalRuns', 0))}</div><div class="label">runs</div></div>
+        <div class="metric"><div class="value">{esc(summary.get('flows', 0))}</div><div class="label">flows</div></div>
+        <div class="metric"><div class="value">{esc(summary.get('variants', 0))}</div><div class="label">variants</div></div>
+      </div>
+    </section>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-filter="all">all {esc(status_counts['all'])}</button>
+      <button class="tab" data-filter="failed">fail {esc(status_counts['failed'])}</button>
+      <button class="tab" data-filter="pending">pending {esc(status_counts['pending'])}</button>
+      <button class="tab" data-filter="passed">pass {esc(status_counts['passed'])}</button>
+      <button class="tab" data-filter="ran">ran {esc(status_counts['ran'])}</button>
+    </div>
+    <div class="toolbar">
+      <input id="search" class="search" type="search" placeholder="搜尋 flow / file / method / variant / status">
+    </div>
+    <section class="section">
+      <div class="section-head">
+        <h2>Flow Inventory</h2>
+        <span class="muted">failed first</span>
+      </div>
       <div class="table-wrap">
       <table id="flow-table">
         <thead><tr><th>Flow</th><th>Status</th><th>Last Run</th><th>Runs</th><th>Tests</th><th>Variants</th><th>Command</th></tr></thead>
         <tbody>{flow_rows}</tbody>
       </table>
       </div>
-      <h2 class="section-title">Flow Details</h2>
+      <div class="section-head section">
+        <h2>Flow Details</h2>
+        <span class="muted">Never-run flows show commands and discovered methods.</span>
+      </div>
       <div id="empty" class="empty hidden">No flows match the current filter.</div>
       {''.join(flow_sections)}
     </section>
   </main>
   <script>
-    const search = document.getElementById('search');
-    const tabs = Array.from(document.querySelectorAll('.tab'));
-    const rows = Array.from(document.querySelectorAll('.flow-row'));
-    const sections = Array.from(document.querySelectorAll('.flow-section'));
-    const empty = document.getElementById('empty');
-    const visibleCount = document.getElementById('visible-count');
-    let activeFilter = 'all';
-
-    function matchesStatus(node) {{
-      if (activeFilter === 'all') return true;
-      if (activeFilter === 'ran') {{
-        const row = rows.find((item) => item.dataset.text && node.dataset.text && item.dataset.text.includes(node.dataset.text.split(' ')[0]));
-        return node.dataset.status !== 'pending' || (row && row.children[3] && Number(row.children[3].textContent.trim()) > 0);
-      }}
-      return node.dataset.status === activeFilter;
-    }}
-
-    function applyFilters() {{
-      const q = search.value.trim().toLowerCase();
-      let shown = 0;
-      rows.forEach((row) => {{
-        const ok = matchesStatus(row) && (!q || row.dataset.text.toLowerCase().includes(q));
-        row.classList.toggle('hidden', !ok);
-        if (ok) shown += 1;
-      }});
-      sections.forEach((section) => {{
-        const ok = matchesStatus(section) && (!q || section.dataset.text.toLowerCase().includes(q) || section.textContent.toLowerCase().includes(q));
-        section.classList.toggle('hidden', !ok);
-      }});
-      empty.classList.toggle('hidden', shown !== 0);
-      visibleCount.textContent = `${{shown}} flow · {_esc(summary.get('totalRuns', 0))} run · {_esc(summary.get('pendingFlows', 0))} pending`;
-    }}
-
-    tabs.forEach((tab) => {{
-      tab.addEventListener('click', () => {{
-        activeFilter = tab.dataset.filter;
-        tabs.forEach((item) => item.classList.toggle('active', item === tab));
-        applyFilters();
-      }});
-    }});
-    search.addEventListener('input', applyFilters);
+{filter_script(total_runs=summary.get('totalRuns', 0), pending_flows=summary.get('pendingFlows', 0))}
   </script>
 </body>
 </html>
