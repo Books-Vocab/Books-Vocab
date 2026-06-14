@@ -716,3 +716,139 @@ def test_step_embed_and_judge_still_embeds_when_auto_link_disabled():
         f"newly embedded cards must queue into pending_judge, got {graph._pending}"
     )
     assert graph.batch_links_called is False
+
+
+# --------------------------------------------------------------------- #
+# D3: judge step uses find_similar_batch (with fallback)
+# --------------------------------------------------------------------- #
+class _BatchEmbeddings:
+    """Embeddings double exposing BOTH find_similar and find_similar_batch,
+    so the judge step takes the batched path. Counts each call so tests can
+    assert exactly one batch lookup for the whole pending set."""
+
+    def __init__(self, similar_map: dict[str, list[tuple[str, float]]]):
+        self._similar = similar_map
+        self.batch_calls = 0
+        self.single_calls = 0
+        self.batch_arg_ids: list[str] | None = None
+
+    def has(self, card_id):
+        return True
+
+    def add_batch(self, items):
+        pass
+
+    def find_similar(self, card_id, k=12):
+        self.single_calls += 1
+        return self._similar.get(card_id, [])
+
+    def find_similar_batch(self, card_ids, k=12):
+        self.batch_calls += 1
+        self.batch_arg_ids = list(card_ids)
+        return {cid: self._similar.get(cid, []) for cid in card_ids}
+
+
+class _TouchableCards(_CardsForLink):
+    """_CardsForLink + the batch_touch hook the judge step calls after linking."""
+
+    def __init__(self, card_ids):
+        super().__init__(card_ids)
+        self.touched_ids: set[str] = set()
+
+    def batch_touch(self, card_ids, *, notebook_id=None):
+        self.touched_ids.update(card_ids)
+
+
+def _run_judge(user, cards, graph, embeddings):
+    """Drive _step_embed_and_judge with a link-accepting fake judge."""
+    from kg.pipeline_service import _step_embed_and_judge
+
+    async def run():
+        import kg.judge as judge_mod
+        orig = judge_mod.Judge
+
+        class FakeJudge:
+            def __init__(self, llm, **kwargs):
+                pass
+
+            def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+                return {
+                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="t")
+                    for cid, _w, _m in candidates
+                }
+
+        judge_mod.Judge = FakeJudge
+        try:
+            await _step_embed_and_judge(
+                user["id"], user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=_FakeLogger(),
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = orig
+
+    asyncio.run(run())
+
+
+def test_step_judge_uses_find_similar_batch():
+    """When the store supports find_similar_batch, the judge step must call it
+    ONCE for the whole eligible pending set (not per-card find_similar)."""
+    ids = ["a", "b", "c"]
+    similar_map = {"a": [("b", 0.9)], "b": [("c", 0.9)], "c": [("a", 0.9)]}
+    cards = _TouchableCards(ids)
+    graph = _GraphWithPending(["a", "b", "c"])
+    emb = _BatchEmbeddings(similar_map)
+
+    _run_judge({"id": "u_batch", "dir": None, "config": {}}, cards, graph, emb)
+
+    assert emb.batch_calls == 1, f"expected 1 batch call, got {emb.batch_calls}"
+    assert emb.single_calls == 0, f"batched path must not call find_similar, got {emb.single_calls}"
+    # Only eligible (non-deleted/archived, under degree) ids are queried.
+    assert set(emb.batch_arg_ids or []) == set(ids)
+
+
+def test_step_judge_candidates_unchanged():
+    """The batched path must produce the SAME links as the per-card fallback.
+
+    Run the identical scenario twice: once with a store exposing
+    find_similar_batch (batched path), once with a store exposing only
+    find_similar (fallback path). The set of created links must be identical."""
+    ids = ["a", "b", "c"]
+    similar_map = {"a": [("b", 0.9), ("c", 0.1)], "b": [("c", 0.95)], "c": []}
+
+    # Batched path
+    graph_batch = _GraphWithPending(["a", "b", "c"])
+    graph_batch.created_links = []
+    orig_add = graph_batch.batch_add_links
+    def _capture_batch(links):
+        graph_batch.created_links.extend(links)
+        graph_batch.batch_links_called = True
+        return links
+    graph_batch.batch_add_links = _capture_batch
+    _run_judge({"id": "u1", "dir": None, "config": {}},
+               _TouchableCards(ids), graph_batch, _BatchEmbeddings(similar_map))
+
+    # Fallback path (only find_similar)
+    graph_single = _GraphWithPending(["a", "b", "c"])
+    graph_single.created_links = []
+    def _capture_single(links):
+        graph_single.created_links.extend(links)
+        graph_single.batch_links_called = True
+        return links
+    graph_single.batch_add_links = _capture_single
+    _run_judge({"id": "u2", "dir": None, "config": {}},
+               _TouchableCards(ids), graph_single, _EmbeddingsWithSimilar(similar_map))
+
+    def _norm(links):
+        # Links are (from, to, kind, conf, reason) tuples; compare unordered
+        # by the (from, to) identity that the candidate filter determines.
+        return sorted((lk[0], lk[1]) for lk in links)
+
+    assert _norm(graph_batch.created_links) == _norm(graph_single.created_links), (
+        f"batch links {_norm(graph_batch.created_links)} != "
+        f"fallback links {_norm(graph_single.created_links)}"
+    )
