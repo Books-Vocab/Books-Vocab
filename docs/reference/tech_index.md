@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 16ff0a32
+verified_against: 41a657ac
 -->
 # Technical Reference Index
 
@@ -79,7 +79,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS / Mac Catalyst 橋接(`PlatformRepresentable` 型別 alias、`PlatformCompatibility` modifier wrapper、`LayoutMode`、`MacWindowChrome` Catalyst 視窗尺寸+沉浸 title bar、`MacMenuCommands` Catalyst 頂部選單列+⌘ 快捷鍵、`AppCommandCoordinator` app-global menu intent、`FocusedCommandValues` focusedSceneValue 動作通道) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
-| `Debug/` | DEBUG-only — `CatalogScene` + `Scenarios/*Scenarios.swift` + `CatalogPreviewAuth`(Playbook iOS catalog,啟用方式見 `docs/sop/ios.md §Playbook Catalog`)。`CatalogScene.Manifest` 是 surface taxonomy 的 SoT:每個 category 宣告 `CatalogSurface{kind,feature,screen}`,`indexJSONData()` 吐 `catalog_index.json` 給離線 gallery 消費(取代像素/regex 猜測);`CatalogPreviewAuth` 是 Catalog preview auth seam,logged-in 必須明示 user/token/name/email、logged-out 必須明示 nil,不可從 `isLoggedIn` 或 fallback literal 推導;Paywall/Pro preview entitlement 只能取 UI World `entitlements.*` seed,不可在 Debug source 內造 `KGSubscriptionStatus`;契約由 `CatalogCoverageTests` 強制(一螢幕一 `featureScreen`、無重複/缺漏/漏宣告 kind、preview auth 無隱式 fallback、Paywall subscription 無本地假資料) |
+| `Debug/` | DEBUG-only — `CatalogScene` + `Scenarios/*Scenarios.swift` + `CatalogPreviewAuth`(Playbook iOS catalog,啟用方式見 `docs/sop/ios.md §Playbook Catalog`)。`CatalogScene.Manifest` 是 surface taxonomy 的 SoT:每個 category 宣告 `CatalogSurface{kind,feature,screen}`,`indexJSONData()` 吐 `catalog_index.json` 給離線 gallery 消費(取代像素/regex 猜測);`CatalogPreviewAuth` 是 Catalog preview auth seam,logged-in 必須明示 user/token/name/email、logged-out 必須明示 nil,不可從 `isLoggedIn` 或 fallback literal 推導;Paywall/Pro preview entitlement 只能取 UI World `entitlements.*` seed,不可在 Debug source 內造 `KGSubscriptionStatus`;Settings subscription section 只能取 UI World `settings.*.subscription` seed,free section 是 `settings.subscription_free`;契約由 `CatalogCoverageTests` 強制(一螢幕一 `featureScreen`、無重複/缺漏/漏宣告 kind、preview auth 無隱式 fallback、Paywall subscription 無本地假資料、Settings subscription section 無本地 presenter fixture) |
 
 iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios_baseline.md`。
 PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml` 與本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件；全 repo doc debt 盤點才跑 `ops/docs_lint.sh --audit` / `--all`。
