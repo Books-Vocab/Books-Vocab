@@ -22,9 +22,51 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+from sqlmodel import create_engine
+
 # 30s is the existing per-module value; keeping it consistent so behaviour
 # does not regress when a module switches from inline PRAGMAs to this helper.
 DEFAULT_BUSY_TIMEOUT_MS = 30000
+
+
+def make_sqlite_engine(
+    path: Path | str, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
+) -> Engine:
+    """Build a SQLModel/SQLAlchemy ``Engine`` for a per-user SQLite file whose
+    **every** pooled connection carries WAL + ``synchronous=NORMAL`` +
+    ``busy_timeout``.
+
+    Unlike a one-shot ``PRAGMA`` on the construction-time connection (the
+    pattern this replaces in cards/notebook/library stores), the
+    ``connect``-event listener re-applies the pragmas to any connection the
+    pool opens later — after a dispose/reconnect, or a fresh pooled
+    connection under concurrency. This is a behaviour *improvement*, not a
+    pure equivalence: pool-wide WAL instead of just the first connection.
+
+    Deliberately **separate from** ``sqlite_ledger.install_serializable_sqlite``:
+    that one additionally drives ``BEGIN IMMEDIATE`` for the append-only
+    ledgers' serialized take-a-number semantics, which CRUD stores neither
+    need nor want (it hurts read concurrency).
+
+    WAL can silently degrade on ``:memory:`` / some network filesystems, so the
+    listener never asserts the resulting ``journal_mode``; it only requests it.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    engine = create_engine(f"sqlite:///{path.absolute()}")
+    timeout = int(busy_timeout_ms)
+
+    @event.listens_for(engine, "connect")
+    def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA synchronous=NORMAL")
+        cur.execute(f"PRAGMA busy_timeout={timeout}")
+        cur.close()
+
+    return engine
 
 
 def init_sqlite_pragmas(conn: sqlite3.Connection, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS) -> None:
