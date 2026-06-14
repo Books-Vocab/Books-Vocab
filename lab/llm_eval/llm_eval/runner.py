@@ -129,9 +129,9 @@ async def _call_one(
     provider_name: str,
     model: str,
     prompt: RenderedPrompt,
-    sample: dict[str, Any],
+    sample: dict[str, object],
     config: EvalConfig,
-    render_fn: Callable[[dict[str, Any]], RenderedPrompt] | None = None,
+    render_fn: Callable[[dict[str, object]], RenderedPrompt] | None = None,
 ) -> EvalResult:
     """Call one LLM for one sample."""
     if render_fn is not None:
@@ -228,10 +228,10 @@ async def _call_one(
 
 async def run_eval(
     prompt: RenderedPrompt,
-    samples: list[dict[str, Any]],
+    samples: list[dict[str, object]],
     models: list[str],
     config: EvalConfig | None = None,
-    render_fn: Callable[[dict[str, Any]], RenderedPrompt] | None = None,
+    render_fn: Callable[[dict[str, object]], RenderedPrompt] | None = None,
 ) -> dict[str, EvalSummary]:
     """Run eval: one prompt against multiple models on a dataset.
 
@@ -263,7 +263,7 @@ async def run_eval(
         for pname in set(provider_map.values())
     }
 
-    async def _run_with_sem(model: str, sample: dict[str, Any]) -> EvalResult:
+    async def _run_with_sem(model: str, sample: dict[str, object]) -> EvalResult:
         pname = provider_map[model]
         async with semaphores[pname]:
             return await _call_one(pname, model, prompt, sample, config, render_fn)
