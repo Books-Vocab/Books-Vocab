@@ -183,6 +183,33 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func catalogPodcastFailsWhenEpisodeDurationIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-catalog-podcast-duration",
+          "podcast": {
+            "shelf_continue": {
+              "series": {
+                "remoteId": "s-external",
+                "title": "External Series",
+                "hostNames": ["Ava Chen"],
+                "colorHex": "#112233",
+                "coverPattern": "waves"
+              },
+              "episodes": [
+                { "episodeNumber": 1, "title": "External Episode", "lastPlayedTime": 300 }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresAuthAndEntitlementWorld() throws {
         let dataset = """
         {
@@ -803,7 +830,7 @@ struct FixtureDatasetStoreTests {
               },
               "episodes": [
                 { "episodeNumber": 1, "title": "External Episode", "durationSec": 900, "lastPlayedTime": 300 },
-                { "episodeNumber": 2, "title": "Unstarted Episode" }
+                { "episodeNumber": 2, "title": "Unstarted Episode", "durationSec": 1200 }
               ]
             }
           }
