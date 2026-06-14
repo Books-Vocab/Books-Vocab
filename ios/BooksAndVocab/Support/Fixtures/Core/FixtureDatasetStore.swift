@@ -1,11 +1,12 @@
 import Foundation
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
-private let fixtureDatasetFilePath = "/tmp/kg-fixture-dataset.json"
 
 struct FixtureDatasetDocument: Decodable {
     let schema: String?
     let datasetID: String?
+    let auth: [String: UIWorldAuthSeed]
+    let entitlements: [String: UIWorldEntitlementsSeed]
     let settings: [String: SettingsFixtureSeed]
     let bookshelf: [String: BookshelfFixtureSeed]
     let todayReview: [String: TodayReviewSessionSeed]
@@ -15,6 +16,8 @@ struct FixtureDatasetDocument: Decodable {
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
         case datasetID
+        case auth
+        case entitlements
         case settings
         case bookshelf
         case todayReview
@@ -32,6 +35,8 @@ struct FixtureDatasetDocument: Decodable {
     init(
         schema: String? = nil,
         datasetID: String? = nil,
+        auth: [String: UIWorldAuthSeed] = [:],
+        entitlements: [String: UIWorldEntitlementsSeed] = [:],
         settings: [String: SettingsFixtureSeed] = [:],
         bookshelf: [String: BookshelfFixtureSeed] = [:],
         todayReview: [String: TodayReviewSessionSeed] = [:],
@@ -40,6 +45,8 @@ struct FixtureDatasetDocument: Decodable {
     ) {
         self.schema = schema
         self.datasetID = datasetID
+        self.auth = auth
+        self.entitlements = entitlements
         self.settings = settings
         self.bookshelf = bookshelf
         self.todayReview = todayReview
@@ -51,12 +58,38 @@ struct FixtureDatasetDocument: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decodeIfPresent(String.self, forKey: .schema)
         datasetID = try container.decodeIfPresent(String.self, forKey: .datasetID)
+        auth = try container.decodeIfPresent([String: UIWorldAuthSeed].self, forKey: .auth) ?? [:]
+        entitlements = try container.decodeIfPresent([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) ?? [:]
         settings = try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
         bookshelf = try container.decodeIfPresent([String: BookshelfFixtureSeed].self, forKey: .bookshelf) ?? [:]
         todayReview = try container.decodeIfPresent([String: TodayReviewSessionSeed].self, forKey: .todayReview) ?? [:]
         notebook = try container.decodeIfPresent([String: NotebookFixtureSeed].self, forKey: .notebook) ?? [:]
         podcast = try container.decodeIfPresent([String: PodcastFixtureSeed].self, forKey: .podcast) ?? [:]
     }
+}
+
+enum UIWorldAuthFixtureID: String, CaseIterable {
+    case guest
+    case signedIn
+}
+
+struct UIWorldAuthSeed: Codable, Equatable {
+    let isLoggedIn: Bool
+    let userId: String?
+    let token: String?
+    let displayName: String?
+    let email: String?
+    let provider: String?
+    let providerUserId: String?
+}
+
+enum UIWorldEntitlementsFixtureID: String, CaseIterable {
+    case free
+    case pro
+}
+
+struct UIWorldEntitlementsSeed: Codable, Equatable {
+    let pro: KGSubscriptionStatus
 }
 
 enum FixtureDatasetStore {
@@ -74,9 +107,47 @@ enum FixtureDatasetStore {
         return document.settings[fixtureID.rawValue]
     }
 
+    static func requireSettingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed {
+        guard let seed = settingsSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing settings.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func authSeed(for fixtureID: UIWorldAuthFixtureID) -> UIWorldAuthSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.auth[fixtureID.rawValue]
+    }
+
+    static func requireAuthSeed(for fixtureID: UIWorldAuthFixtureID) -> UIWorldAuthSeed {
+        guard let seed = authSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing auth.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
+    static func entitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.entitlements[fixtureID.rawValue]
+    }
+
+    static func requireEntitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed {
+        guard let seed = entitlementsSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing entitlements.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
     static func bookshelfSeed(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureSeed? {
         guard case let .loaded(document, _) = loadState() else { return nil }
         return document.bookshelf[fixtureID.rawValue]
+    }
+
+    static func requireBookshelfSeed(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureSeed {
+        guard let seed = bookshelfSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing bookshelf.\(fixtureID.rawValue)")
+        }
+        return seed
     }
 
     static func todayReviewSeed(for fixtureID: TodayReviewFixtureID) -> TodayReviewSessionSeed? {
@@ -84,9 +155,23 @@ enum FixtureDatasetStore {
         return document.todayReview[fixtureID.rawValue]
     }
 
+    static func requireTodayReviewSeed(for fixtureID: TodayReviewFixtureID) -> TodayReviewSessionSeed {
+        guard let seed = todayReviewSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing todayReview.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
     static func notebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed? {
         guard case let .loaded(document, _) = loadState() else { return nil }
         return document.notebook[fixtureID.rawValue]
+    }
+
+    static func requireNotebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed {
+        guard let seed = notebookSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing notebook.\(fixtureID.rawValue)")
+        }
+        return seed
     }
 
     static func podcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed? {
@@ -94,9 +179,16 @@ enum FixtureDatasetStore {
         return document.podcast[fixtureID.rawValue]
     }
 
+    static func requirePodcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed {
+        guard let seed = podcastSeed(for: fixtureID) else {
+            preconditionFailure("UI World is missing podcast.\(fixtureID.rawValue)")
+        }
+        return seed
+    }
+
     /// Decode a dataset document without going through the ambient load chain.
     /// Used by contract tests (and any tooling) to fail loudly on malformed
-    /// datasets instead of relying on the silent embedded-recipe fallback.
+    /// UI World files.
     static func decode(_ data: Data) throws -> FixtureDatasetDocument {
         try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
     }
@@ -134,17 +226,12 @@ enum FixtureDatasetStore {
         }
 
         // Empty value counts as absent (defensive): `Data(base64Encoded: "")`
-        // is empty Data, not nil, so a stray empty export would otherwise
-        // shadow the staged-file fallback below and land in `.invalid`.
+        // is empty Data, not nil, so a stray empty export would otherwise land
+        // in `.invalid`.
         if let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey],
            !rawValue.isEmpty,
            let data = Data(base64Encoded: rawValue) {
             return (data, "env:\(fixtureDatasetEnvKey)")
-        }
-
-        let url = URL(fileURLWithPath: fixtureDatasetFilePath)
-        if let data = try? Data(contentsOf: url) {
-            return (data, fixtureDatasetFilePath)
         }
 
         return nil

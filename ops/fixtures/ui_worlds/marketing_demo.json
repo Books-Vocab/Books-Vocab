@@ -1,6 +1,58 @@
 {
   "schema": "kg.fixture.dataset.v1",
   "datasetID": "marketing_demo",
+  "auth": {
+    "signedIn": {
+      "isLoggedIn": true,
+      "userId": "demo-user",
+      "token": "demo-access-token",
+      "displayName": "示範使用者",
+      "email": "demo@wordnexus.lol",
+      "provider": "apple",
+      "providerUserId": "apple:demo-user"
+    },
+    "guest": {
+      "isLoggedIn": false,
+      "userId": null,
+      "token": null,
+      "displayName": null,
+      "email": null,
+      "provider": null,
+      "providerUserId": null
+    }
+  },
+  "entitlements": {
+    "pro": {
+      "pro": {
+        "is_active": true,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "active",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": true,
+        "expires_at": "2099-12-31T23:59:59Z",
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    },
+    "free": {
+      "pro": {
+        "is_active": false,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "Books & Vocab Pro",
+        "price_display": "NT$90 / month",
+        "status": "inactive",
+        "is_trial": false,
+        "trial_days": 7,
+        "will_renew": false,
+        "expires_at": null,
+        "source": "app_store",
+        "last_synced_at": "2026-06-10T00:00:00Z"
+      }
+    }
+  },
   "settings": {
     "subscribed_active": {
       "auth": {
@@ -321,6 +373,10 @@
         }
       ],
       "referenceDate": "2026-01-07T00:00:00Z"
+    },
+    "empty_library": {
+      "books": [],
+      "referenceDate": "2026-01-07T00:00:00Z"
     }
   },
   "notebook": {
@@ -476,26 +532,49 @@
       "series": {
         "remoteId": "s-atomic",
         "title": "Atomic Habits Unpacked",
-        "hostNames": ["Ava Chen"],
+        "hostNames": [
+          "Ava Chen"
+        ],
         "colorHex": "#4A90D9",
         "coverPattern": "waves"
       },
       "episodes": [
-        { "episodeNumber": 1, "title": "The Fundamentals of Tiny Change", "durationSec": 1832, "lastPlayedTime": 845 },
-        { "episodeNumber": 2, "title": "Make It Obvious", "durationSec": 2105, "lastPlayedTime": 310 },
-        { "episodeNumber": 3, "title": "The Plateau of Latent Potential", "durationSec": 1968 }
+        {
+          "episodeNumber": 1,
+          "title": "The Fundamentals of Tiny Change",
+          "durationSec": 1832,
+          "lastPlayedTime": 845
+        },
+        {
+          "episodeNumber": 2,
+          "title": "Make It Obvious",
+          "durationSec": 2105,
+          "lastPlayedTime": 310
+        },
+        {
+          "episodeNumber": 3,
+          "title": "The Plateau of Latent Potential",
+          "durationSec": 1968
+        }
       ]
     },
     "shelf_single": {
       "series": {
         "remoteId": "s-atomic",
         "title": "Atomic Habits Unpacked",
-        "hostNames": ["Ava Chen"],
+        "hostNames": [
+          "Ava Chen"
+        ],
         "colorHex": "#4A90D9",
         "coverPattern": "waves"
       },
       "episodes": [
-        { "episodeNumber": 1, "title": "The Fundamentals of Tiny Change", "durationSec": 1832, "lastPlayedTime": 845 }
+        {
+          "episodeNumber": 1,
+          "title": "The Fundamentals of Tiny Change",
+          "durationSec": 1832,
+          "lastPlayedTime": 845
+        }
       ]
     }
   },
@@ -517,11 +596,32 @@
           "The editor was meticulous about every line break and caption."
         ],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {
           "shares_usage": [
-            { "id": "md-link-1", "cardId": "md-meticulous", "word": "precise", "kind": "shares_usage", "label": "相關", "confidence": 0.82, "reason": "都與精確相關", "hidden": false },
-            { "id": "md-link-2", "cardId": "md-meticulous", "word": "thorough", "kind": "shares_usage", "label": "相關", "confidence": 0.79, "reason": "都與仔細相關", "hidden": false }
+            {
+              "id": "md-link-1",
+              "cardId": "md-meticulous",
+              "word": "precise",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.82,
+              "reason": "都與精確相關",
+              "hidden": false
+            },
+            {
+              "id": "md-link-2",
+              "cardId": "md-meticulous",
+              "word": "thorough",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.79,
+              "reason": "都與仔細相關",
+              "hidden": false
+            }
           ]
         }
       },
@@ -538,7 +638,10 @@
         "reviewMode": "recognition",
         "reviewExamples": [],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "front",
@@ -574,11 +677,32 @@
           "The editor was meticulous about every line break and caption."
         ],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {
           "shares_usage": [
-            { "id": "md-link-1", "cardId": "md-meticulous", "word": "precise", "kind": "shares_usage", "label": "相關", "confidence": 0.82, "reason": "都與精確相關", "hidden": false },
-            { "id": "md-link-2", "cardId": "md-meticulous", "word": "thorough", "kind": "shares_usage", "label": "相關", "confidence": 0.79, "reason": "都與仔細相關", "hidden": false }
+            {
+              "id": "md-link-1",
+              "cardId": "md-meticulous",
+              "word": "precise",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.82,
+              "reason": "都與精確相關",
+              "hidden": false
+            },
+            {
+              "id": "md-link-2",
+              "cardId": "md-meticulous",
+              "word": "thorough",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.79,
+              "reason": "都與仔細相關",
+              "hidden": false
+            }
           ]
         }
       },
@@ -595,7 +719,10 @@
         "reviewMode": "recognition",
         "reviewExamples": [],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "back",
@@ -651,7 +778,10 @@
           "The editor was meticulous about every line break and caption."
         ],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {}
       },
       "nextCard": {
@@ -667,7 +797,10 @@
         "reviewMode": "recognition",
         "reviewExamples": [],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "back",
@@ -703,7 +836,10 @@
           "The editor was meticulous about every line break and caption."
         ],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {}
       },
       "nextCard": {
@@ -719,7 +855,10 @@
         "reviewMode": "recognition",
         "reviewExamples": [],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "back",
@@ -755,11 +894,32 @@
           "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
         ],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {
           "shares_usage": [
-            { "id": "md-prod-1", "cardId": "md-ubiquitous", "word": "pervasive", "kind": "shares_usage", "label": "相關", "confidence": 0.83, "reason": "都描述普遍存在", "hidden": false },
-            { "id": "md-prod-2", "cardId": "md-ubiquitous", "word": "omnipresent", "kind": "shares_usage", "label": "相關", "confidence": 0.80, "reason": "都指無所不在", "hidden": false }
+            {
+              "id": "md-prod-1",
+              "cardId": "md-ubiquitous",
+              "word": "pervasive",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.83,
+              "reason": "都描述普遍存在",
+              "hidden": false
+            },
+            {
+              "id": "md-prod-2",
+              "cardId": "md-ubiquitous",
+              "word": "omnipresent",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.80,
+              "reason": "都指無所不在",
+              "hidden": false
+            }
           ]
         }
       },
@@ -776,7 +936,10 @@
         "reviewMode": "production",
         "reviewExamples": [],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "front",
@@ -812,11 +975,32 @@
           "In coastal towns the smell of salt is ubiquitous, clinging to every street and stairwell."
         ],
         "rootForm": "ubiquitous",
-        "inflections": ["ubiquitously", "ubiquity"],
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
         "graphLinksByKind": {
           "shares_usage": [
-            { "id": "md-prod-1", "cardId": "md-ubiquitous", "word": "pervasive", "kind": "shares_usage", "label": "相關", "confidence": 0.83, "reason": "都描述普遍存在", "hidden": false },
-            { "id": "md-prod-2", "cardId": "md-ubiquitous", "word": "omnipresent", "kind": "shares_usage", "label": "相關", "confidence": 0.80, "reason": "都指無所不在", "hidden": false }
+            {
+              "id": "md-prod-1",
+              "cardId": "md-ubiquitous",
+              "word": "pervasive",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.83,
+              "reason": "都描述普遍存在",
+              "hidden": false
+            },
+            {
+              "id": "md-prod-2",
+              "cardId": "md-ubiquitous",
+              "word": "omnipresent",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.80,
+              "reason": "都指無所不在",
+              "hidden": false
+            }
           ]
         }
       },
@@ -833,7 +1017,10 @@
         "reviewMode": "production",
         "reviewExamples": [],
         "rootForm": "meticulous",
-        "inflections": ["meticulously", "meticulousness"],
+        "inflections": [
+          "meticulously",
+          "meticulousness"
+        ],
         "graphLinksByKind": {}
       },
       "revealStage": "back",

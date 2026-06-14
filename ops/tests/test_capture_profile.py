@@ -157,7 +157,7 @@ def test_plan_outputs_machine_readable_json():
     assert payload["materialize"]["expectationFile"].endswith("ops/capture_profiles/marketing_demo_expectation.json")
     assert payload["verify"]["enabled"] is True
     assert payload["verify"]["command"][1:3] == ["ops-cli", "world-diff"]
-    assert payload["snapshot"]["datasetFile"].endswith("ops/fixtures/catalog/marketing_demo.json")
+    assert payload["snapshot"]["datasetFile"].endswith("ops/fixtures/ui_worlds/marketing_demo.json")
     assert payload["render"]["variant"] == "app-store"
     assert payload["render"]["target"] == "promotion"
     assert payload["render"]["sourceMode"] == "snapshot-derived"

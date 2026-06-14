@@ -159,8 +159,7 @@ enum TodayReviewFixtures {
     }
 
     static func renderModel(for fixtureID: TodayReviewFixtureID) -> TodayReviewFixtureRenderModel {
-        let seed = FixtureDatasetStore.todayReviewSeed(for: fixtureID)
-            ?? registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.requireTodayReviewSeed(for: fixtureID)
         return .init(
             state: TodayReviewFixtureAdapter.makeState(from: seed),
             showFirstRunHint: seed.showFirstRunHint

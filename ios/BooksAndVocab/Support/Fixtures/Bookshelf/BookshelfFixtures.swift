@@ -111,8 +111,7 @@ enum BookshelfFixtures {
 
     @MainActor
     static func renderModel(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureRenderModel {
-        let seed = FixtureDatasetStore.bookshelfSeed(for: fixtureID)
-            ?? registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
         return .init(
             books: seed.books.map(makeBook(from:)),
             container: makeContainer(from: seed.books),

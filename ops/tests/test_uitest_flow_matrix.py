@@ -29,12 +29,9 @@ def test_build_variants_crosses_profiles_and_data():
         profiles=["ui-smoke", "standard"],
         datasets=["marketing_demo"],
         dataset_files=[],
-        include_default_data=True,
     )
 
     assert [variant.label for variant in variants] == [
-        "profile:ui-smoke",
-        "profile:standard",
         "dataset:marketing_demo+profile:ui-smoke",
         "dataset:marketing_demo+profile:standard",
     ]
@@ -51,7 +48,6 @@ def test_dry_run_json_emits_ios_ops_commands(capsys):
             "standard",
             "--dataset",
             "marketing_demo",
-            "--include-default-data",
             "--lease",
             "--dry-run",
             "--json",
@@ -61,9 +57,8 @@ def test_dry_run_json_emits_ios_ops_commands(capsys):
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema"] == "kg.ios.uitest-flow-matrix.v1"
-    assert payload["summary"]["total"] == 2
+    assert payload["summary"]["total"] == 1
     assert [run["variantId"] for run in payload["runs"]] == [
-        "profile:standard",
         "dataset:marketing_demo+profile:standard",
     ]
     for run in payload["runs"]:
@@ -72,8 +67,7 @@ def test_dry_run_json_emits_ios_ops_commands(capsys):
         assert "--ui-launch-profile" in command
         assert "--lease" in command
         assert command[-1] == "--json"
-    assert "--dataset" not in payload["runs"][0]["command"]
-    assert payload["runs"][1]["command"][5:9] == [
+    assert payload["runs"][0]["command"][5:9] == [
         "--dataset",
         "marketing_demo",
         "--ui-launch-profile",

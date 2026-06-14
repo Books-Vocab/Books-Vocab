@@ -13,7 +13,7 @@
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
 #   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
-#   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/catalog/<name>.json into the app (KG_FIXTURE_DATASET_B64)
+#   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/ui_worlds/<name>.json into the app (KG_FIXTURE_DATASET_B64)
 #   ./ops/ios_test.sh --ui --dataset-file <path>  # same, arbitrary dataset path
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
 #   ./ops/ios_test.sh --coverage [--coverage-fail-under <percent>]
@@ -353,11 +353,14 @@ if [[ -n "$UI_FIXTURE_DATASET_NAME" && -n "$UI_FIXTURE_DATASET_FILE" ]]; then
   exit 1
 fi
 if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
-  UI_FIXTURE_DATASET_FILE="$PROJECT_ROOT/ops/fixtures/catalog/$UI_FIXTURE_DATASET_NAME.json"
+  UI_FIXTURE_DATASET_FILE="$PROJECT_ROOT/ops/fixtures/ui_worlds/$UI_FIXTURE_DATASET_NAME.json"
+fi
+if [[ "$TEST_SCOPE" == "ui" && -z "$UI_FIXTURE_DATASET_FILE" && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
+  echo "[ios_test] error: --ui requires --dataset <name> or --dataset-file <path> (UI World is the single source of truth)" >&2
+  exit 1
 fi
 if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
-  # 限 --ui：dataset env 會被 app 內 FixtureDatasetStore 全程讀取，unit/all 範圍
-  # 注入會污染 fixture fallback 類單元測試（embedded-recipe 斷言被外部資料覆蓋）。
+  # 限 --ui：UI World env 會被 app 內 FixtureDatasetStore 全程讀取。
   if [[ "$TEST_SCOPE" != "ui" ]]; then
     echo "[ios_test] error: --dataset/--dataset-file requires --ui" >&2
     exit 1

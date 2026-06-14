@@ -430,8 +430,7 @@ enum SettingsFixtures {
     }
 
     static func renderModel(for fixtureID: SettingsFixtureID) -> SettingsFixtureRenderModel {
-        let seed = FixtureDatasetStore.settingsSeed(for: fixtureID)
-            ?? registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.requireSettingsSeed(for: fixtureID)
         return .init(
             state: SettingsFixtureAdapter.makeState(from: seed),
             manualLoginUserId: seed.manualLoginUserId,

@@ -87,8 +87,7 @@ enum NotebookFixtures {
 
     @MainActor
     static func renderModel(for fixtureID: NotebookFixtureID) -> NotebookFixtureRenderModel {
-        let seed = FixtureDatasetStore.notebookSeed(for: fixtureID)
-            ?? registry.recipe(for: fixtureID.key).build()
+        let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
         let notebooks = seed.notebooks.map(makeNotebook(from:))
         return .init(
             notebooks: notebooks,
