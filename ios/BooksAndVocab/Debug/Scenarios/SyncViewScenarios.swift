@@ -9,22 +9,20 @@ import SwiftUI
 /// not yet synced) and renders `SyncPresenter(state:)`. Its `.task` only calls
 /// `refreshStepLayoutIfIdle()` — pure local layout, no network — so the view is
 /// fully catalogable by seeding a fresh in-memory store. `presenterState` reads
-/// `authManager.isLoggedIn` / `kgService.isConnected`; we inject a logged-out
-/// `CatalogPreviewAuth` so the rendering is deterministic instead of depending on
-/// the simulator's persisted `AuthManager.shared` session. Seeding happens inside a (nonisolated) View
-/// scene whose `init` touches `mainContext`; safe because Playbook renders on the
-/// main thread (mirrors `StatsViewScene`).
+/// `authManager.isLoggedIn` / `kgService.isConnected`; auth and pending row
+/// state both come from UI World, so missing sync/auth seeds or SwiftData save
+/// failure fail at catalog construction time.
 enum SyncViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Sync View") {
             Scenario("Pending · adds + deletes", layout: .fill) {
-                SyncViewScene(fixture: .mixed)
+                SyncViewScene(fixture: .mixed, expected: .mixed)
             }
             Scenario("Pending · single add", layout: .fill) {
-                SyncViewScene(fixture: .single)
+                SyncViewScene(fixture: .single, expected: .singleAdd)
             }
             Scenario("Empty · nothing pending", layout: .fill) {
-                SyncViewScene(fixture: .empty)
+                SyncViewScene(fixture: .empty, expected: .empty)
             }
         }
     }
@@ -36,74 +34,95 @@ private enum SyncViewFixture {
     case mixed
     case single
     case empty
+
+    var vocabularyID: UIWorldVocabularyFixtureID {
+        switch self {
+        case .mixed:
+            return .syncPendingMixed
+        case .single:
+            return .syncPendingSingle
+        case .empty:
+            return .syncEmpty
+        }
+    }
+}
+
+private enum SyncViewExpectedShape {
+    case mixed
+    case singleAdd
+    case empty
 }
 
 // MARK: - Scene harness
 
 private struct SyncViewScene: View {
     let container: ModelContainer
+    let auth: CatalogPreviewAuth
 
-    init(fixture: SyncViewFixture) {
-        let container = try! ModelContainer(
-            for: VocabularyEntry.self, Notebook.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let context = container.mainContext
-        Self.seed(fixture, into: context)
-        try? context.save()
-        self.container = container
+    init(fixture: SyncViewFixture, expected: SyncViewExpectedShape) {
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
+        let authSeed = FixtureDatasetStore.requireAuthSeed(for: .guest)
+        do {
+            let container = try ModelContainer(
+                for: VocabularyEntry.self, Notebook.self, ReviewRecord.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            let entries = try MainActor.assumeIsolated {
+                try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            }
+            Self.validate(entries, fixture: fixture, expected: expected)
+            self.container = container
+            self.auth = Self.makeAuth(from: authSeed)
+        } catch {
+            preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for SyncViewScenarios: \(error)")
+        }
     }
 
     var body: some View {
         AppThemeContainer {
             SyncView()
                 .modelContainer(container)
-                .environment(\.authManager, CatalogPreviewAuth(
-                    isLoggedIn: false,
-                    userId: nil,
-                    token: nil,
-                    displayName: nil,
-                    userEmail: nil
-                ))
+                .environment(\.authManager, auth)
         }
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    // MARK: Seeding
-
-    /// A pending (unsynced) entry: `syncStatus = pending` so it passes the
-    /// `syncStatus != 1` query; `actionType` drives add vs delete grouping.
-    private static func pending(
-        word: String,
-        translation: String,
-        action: VocabularySyncAction
-    ) -> VocabularyEntry {
-        let entry = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "A line of context featuring \(word) in situ.",
-            explanation: "A short gloss for \(word).",
-            partOfSpeech: "n.",
-            bookTitle: "Sample Book",
-            chapterTitle: "第一章"
-        )
-        entry.syncStatus = VocabularySyncState.pending.rawValue
-        entry.actionType = action.rawValue
-        return entry
+    private static func validate(
+        _ entries: [VocabularyEntry],
+        fixture: SyncViewFixture,
+        expected: SyncViewExpectedShape
+    ) {
+        let pending = entries.filter { $0.syncStatus != VocabularySyncState.synced.rawValue }
+        let actions = pending.map(\.actionType)
+        switch expected {
+        case .mixed:
+            guard pending.count > 1,
+                  actions.contains(VocabularySyncAction.add.rawValue),
+                  actions.contains(VocabularySyncAction.delete.rawValue) else {
+                preconditionFailure("UI World vocabulary.\(fixture.vocabularyID.rawValue) must declare multiple pending add/delete rows")
+            }
+        case .singleAdd:
+            guard pending.count == 1, actions == [VocabularySyncAction.add.rawValue] else {
+                preconditionFailure("UI World vocabulary.\(fixture.vocabularyID.rawValue) must declare one pending add row")
+            }
+        case .empty:
+            guard pending.isEmpty else {
+                preconditionFailure("UI World vocabulary.\(fixture.vocabularyID.rawValue) must declare no pending rows")
+            }
+        }
     }
 
-    private static func seed(_ fixture: SyncViewFixture, into context: ModelContext) {
-        switch fixture {
-        case .empty:
-            return
-        case .single:
-            context.insert(pending(word: "serendipity", translation: "機緣巧合", action: .add))
-        case .mixed:
-            context.insert(pending(word: "ephemeral", translation: "短暫的", action: .add))
-            context.insert(pending(word: "luminous", translation: "發光的", action: .add))
-            context.insert(pending(word: "petrichor", translation: "雨後泥土香", action: .add))
-            context.insert(pending(word: "obsolete", translation: "過時的", action: .delete))
+    private static func makeAuth(from seed: UIWorldAuthSeed) -> CatalogPreviewAuth {
+        guard !seed.isLoggedIn else {
+            preconditionFailure("UI World auth.guest must be logged out for SyncViewScenarios")
         }
+        return CatalogPreviewAuth(
+            isLoggedIn: seed.isLoggedIn,
+            userId: seed.userId,
+            token: seed.token,
+            displayName: seed.displayName,
+            userEmail: seed.email
+        )
     }
 }
 #endif
