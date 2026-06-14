@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, tuple_
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
@@ -78,6 +78,42 @@ class CardQueryMixin:
         with Session(self.engine) as session:
             statement = select(Card).where(Card.id.in_(card_ids))
             return {card.id: card for card in session.exec(statement).all()}
+
+    def page_cards(
+        self,
+        *,
+        limit: int,
+        after: tuple[datetime, str] | None,
+        include_deleted: bool,
+        notebook_id: str | None,
+    ) -> list[Card]:
+        """Return at most ``limit`` cards ordered by the composite cursor
+        ``(updated_at, id)`` using a row-value comparison.
+
+        Bounded by ``.limit`` — does NOT materialise the whole table or build a
+        dict. ``after`` is the ``(updated_at, id)`` of the last card of the
+        previous page; ``None`` starts from the first page. Paging is gap-free
+        and duplicate-free even when many cards share an ``updated_at`` because
+        ``id`` breaks ties. Backed by ``ix_card_updated_at_id``.
+
+        Correctness relies on ``updated_at`` being stored as fixed-width UTC
+        text (SQLite drops tz offsets): all card writes stamp
+        ``datetime.now(UTC)`` server-side, so lexicographic text order equals
+        chronological order. A non-UTC / variable-width write would corrupt the
+        cursor ordering.
+        """
+        with Session(self.engine) as session:
+            statement = select(Card)
+            if not include_deleted:
+                statement = statement.where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
+            if after is not None:
+                statement = statement.where(
+                    tuple_(Card.updated_at, Card.id) > tuple_(after[0], after[1])
+                )
+            statement = statement.order_by(Card.updated_at, Card.id).limit(limit)
+            return list(session.exec(statement).all())
 
     def get_modified_since(self, since: datetime, notebook_id: str | None = None) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
