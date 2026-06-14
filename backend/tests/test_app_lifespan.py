@@ -17,12 +17,17 @@ class _SpyLogger:
         rendered = message % args if args else message
         self._events.append(("log", rendered))
 
+    def warning(self, message: str, *args: object) -> None:
+        rendered = message % args if args else message
+        self._events.append(("warning", rendered))
+
 
 def _settings(tmp_path) -> KGSettings:
     return KGSettings(
         data_dir=tmp_path,
         jwt_secret="test-secret-key-for-ci-at-least-32-bytes",
         admin_token="adm-secret",
+        admin_password="adm-pw-secret",
         app_store_allow_unsigned_sync=True,
         app_store_allow_unsigned_notifications=True,
     )
@@ -76,6 +81,57 @@ def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
         "reset_clients",
         "reset_async_clients",
     ]
+
+
+def _run_lifespan_with_settings(tmp_path, settings: KGSettings) -> list[object]:
+    events: list[object] = []
+    deps = replace(_dependencies(tmp_path, events), settings=settings)
+    lifespan = build_app_lifespan_from_dependencies(dependencies=deps)
+    app = FastAPI(lifespan=lifespan)
+    with TestClient(app):
+        pass
+    return events
+
+
+def _warnings(events: list[object]) -> list[str]:
+    return [
+        e[1]
+        for e in events
+        if isinstance(e, tuple) and len(e) == 2 and e[0] == "warning"
+    ]
+
+
+def test_empty_admin_token_logs_startup_warning(tmp_path):
+    """Blank admin_token at startup → a prominent WARNING (no hard-fail)."""
+    settings = replace(_settings(tmp_path), admin_token="", admin_password="adm-pw")
+    events = _run_lifespan_with_settings(tmp_path, settings)
+    warnings = _warnings(events)
+    assert any("admin_token" in w.lower() or "admin token" in w.lower() for w in warnings), warnings
+
+
+def test_empty_admin_password_logs_startup_warning(tmp_path):
+    """Blank admin_password at startup → a prominent WARNING (no hard-fail)."""
+    settings = replace(_settings(tmp_path), admin_token="adm-tok", admin_password="")
+    events = _run_lifespan_with_settings(tmp_path, settings)
+    warnings = _warnings(events)
+    assert any("admin_password" in w.lower() or "admin password" in w.lower() for w in warnings), warnings
+
+
+def test_configured_admin_secrets_emit_no_warning(tmp_path):
+    """Both admin secrets set → no admin-secret startup warning."""
+    settings = replace(_settings(tmp_path), admin_token="adm-tok", admin_password="adm-pw")
+    events = _run_lifespan_with_settings(tmp_path, settings)
+    warnings = _warnings(events)
+    assert not any("admin" in w.lower() for w in warnings), warnings
+
+
+def test_empty_admin_secrets_do_not_hard_fail(tmp_path):
+    """Blank admin secrets must NOT raise at startup (dev/test flow preserved)."""
+    settings = replace(_settings(tmp_path), admin_token="", admin_password="")
+    events = _run_lifespan_with_settings(tmp_path, settings)
+    # Startup + shutdown both completed (no exception escaped TestClient).
+    assert ("log", "KG API starting up") in events
+    assert ("log", "KG API shutting down") in events
 
 
 def test_app_lifespan_dependencies_are_replaceable_named_contract(tmp_path):
