@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 80533b2a
+verified_against: 54dfe6b3
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -59,6 +59,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Word Edit vocabulary 契約（無本地 VocabularyEntry literal）
 `WordEditScenarios` 的 populated / empty-explanation / long-content / long-word 狀態必須取 UI World `vocabulary.wordEdit` seed。scenario 必須把該 seed materialize 成 in-memory SwiftData `Notebook` + `VocabularyEntry` rows，再以 manifest 內的 word 選取 entry；缺 seed、缺 entry、row state key 漏宣告、SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.wordEditCatalogUsesUIWorldVocabularySeed` 擋回本地 `sampleEntry`、`Sample Book` 與 inline `VocabularyEntry(...)`。
+
+### Word Detail 契約（無本地 VocabularyEntry / CardDocument literal）
+`WordDetailScenarios` 的 rich / minimal sheet 與 full / compact / minimal card document 狀態必須取 UI World `vocabulary.wordDetail` seed。scenario 必須從 manifest entries materialize `VocabularyEntry`，再由同一筆 entry 的 `cardPresentation.document` 產生 Card Document；詞形、collocations、review examples、book/chapter metadata 都屬於 manifest row，不可在 Debug source 另建 `VocabularyEntry(...)` 或 `CardDocumentBuilder.build(...)`。缺 seed、缺 rich/minimal word、重複 word、row shape drift 或 MainActor materialization 失敗都直接 fail-fast。`CatalogCoverageTests.wordDetailCatalogUsesUIWorldVocabularySeed` 擋回本地 rich/minimal entry/document builder、hardcoded book metadata 與 inline row/document literal。
 
 ### KG Vocab search 契約（無本地搜尋資料 / auth）
 `KGVocabSearchScenarios` 的 matches / single-match / no-match 狀態必須取 UI World `vocabulary.searchVocabNotebook` seed，並用 UI World `auth.signedIn` 注入登入狀態。scenario 必須把 vocabulary seed materialize 成 in-memory SwiftData rows，且在 construction time 驗證 query 對 manifest entries 的命中數（多筆 / 單筆 / 零筆）符合 scenario；缺 seed、auth 非 logged-in、query drift、row state key 漏宣告或 SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.kgVocabSearchCatalogUsesUIWorldVocabularyAndAuthSeeds` 擋回本地 `KGVocabSearchFixtures`、inline `VocabularyEntry(...)` / `Notebook(...)` 與硬寫 catalog user/token。
