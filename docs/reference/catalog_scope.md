@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 7c4c77be
+verified_against: f9059429
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -52,7 +52,7 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 `ReaderNotebookPickerScenarios` 的 with-notebooks/follow-global、one-bound、many-notebooks、empty 狀態必須取 UI World `notebook.*` seed 與 `bookshelf.reader_notebook_*` seed。scenario 只能用 fixture enum 選 notebook/bookshelf seed；notebook rows、顏色、sort order、當前 book metadata、book asset ref、`preferredNotebookId` 都屬於 manifest。缺 seed、book row 不唯一、notebook count drift、`preferredNotebookId` 指向不存在 notebook、ModelContainer 建立或 save 失敗都直接 fail-fast。`CatalogCoverageTests.readerNotebookPickerCatalogUsesUIWorldNotebookAndBookSeeds` 擋回本地 `sampleNotebooks` / `manyNotebooks`、inline `Notebook(...)` / `Book(...)`、hardcoded bound id、empty array 與 `try!`。
 
 ### Bookshelf View 契約（無本地 Book row / empty fallback）
-`BookshelfViewScenarios` 的 populated / single / empty 狀態必須取 UI World `bookshelf.*` seed；empty 也必須是 manifest 內明示的 `bookshelf.empty_library`，不可用本地 `return` 表示。scenario 必須透過 `BookshelfFixtures.renderModel(for:)` materialize SwiftData `Book` rows；有書的 seed 必須由 `bookAssetRef` 指向 `assets.books.*`，並通過 source path / byteSize / sha256 / `contentType` / `installAs` 契約，避免出現假 EPUB badge 或 row 存在但書檔缺失。缺 seed、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`BookshelfFixtures` 的 container 是非 optional；`BookshelfPreviews` 不得以 `EmptyView()` 隱藏 materialization failure。`CatalogCoverageTests.bookshelfViewCatalogUsesUIWorldBookshelfSeeds` 擋回本地 fixture enum、inline `Book(title:)`、`try? context.save()` 與硬寫書名。
+`BookshelfViewScenarios` 的 populated / single / empty 狀態必須取 UI World `bookshelf.*` seed；empty 也必須是 manifest 內明示的 `bookshelf.empty_library`，不可用本地 `return` 表示。scenario 必須透過 `BookshelfFixtures.renderModel(for:)` materialize SwiftData `Book` rows；`BookshelfFixtures` 的每本 `Book` row 必須明示 `title`、`author`、`fileName`、`format`、`bookAssetRef`、`progression`、`preferredNotebookId`、`dateAdded`、`dateLastRead`，nullable 欄位也要寫 `null`，缺 key 直接 decode fail-fast；有書的 seed 必須由 `bookAssetRef` 指向 `assets.books.*`，並通過 source path / byteSize / sha256 / `contentType` / `installAs` 契約，避免出現假 EPUB badge 或 row 存在但書檔缺失。缺 seed、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`BookshelfFixtures` 的 container 是非 optional；`BookshelfPreviews` 不得以 `EmptyView()` 隱藏 materialization failure。`CatalogCoverageTests.bookshelfViewCatalogUsesUIWorldBookshelfSeeds` 擋回本地 fixture enum、inline `Book(title:)`、`try? context.save()` 與硬寫書名。
 
 ### Book Card 契約（無本地 Book row / 日期常數）
 `BookCardScenarios` 的 placeholder EPUB、PDF badge、mid-progress、complete、long-title / A11y 狀態必須取 UI World `bookshelf.book_card_*` seed。scenario 只能用 fixture enum 選 seed；title、author、fileName、format、progression、dateLastRead、referenceDate 與 bookAssetRef 都屬於 manifest。每個 book_card seed 必須剛好一筆 book row；缺 seed、book row 不唯一、ModelContainer 建立或 save 失敗都直接 fail-fast。`CatalogCoverageTests.bookCardCatalogUsesUIWorldBookshelfSeeds` 擋回本地 `Spec`、inline `Book(...)`、hardcoded `Date(timeIntervalSince1970:)`、fixture fileName、hardcoded title/author/progression。
