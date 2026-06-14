@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: f87b2a85
+verified_against: c7d26bc8
 -->
 # Books & Vocab iOS 開發技能
 
@@ -528,7 +528,7 @@ enum FooScenarios {
 - 全螢幕 → `screen("Foo View", .someFeature, .fooScreen)`（先在 `ScreenID` 加 case；一個 case 對一個 `featureScreen`）
 - 浮層 → `overlay("Foo Sheet", .someFeature)`；元件 → `block("Foo Card", .someFeature)`；dev harness → `eng("Foo Presenter", .someFeature)`
 
-漏宣告 / 漏 register / 螢幕重複 / 覆蓋缺口都會被 `CatalogCoverageTests` 擋紅。**真實全螢幕優先走統一 seam**（seeded in-memory `ModelContainer` + 注入 `CatalogPreviewAuth` + DEBUG `skipCatalogTasks` 跳 `.task` 副作用），別依賴 `AuthManager.shared` 殘留 session（曾致 Settings 顯示已登入卻標 logged-out 的像素說謊）。範式見 `VocabularyListViewScenarios` / `NotebookListViewScenarios`。
+漏宣告 / 漏 register / 螢幕重複 / 覆蓋缺口都會被 `CatalogCoverageTests` 擋紅。**真實全螢幕優先走統一 seam**（seeded in-memory `ModelContainer` + 注入 `CatalogPreviewAuth` + DEBUG `skipCatalogTasks` 跳 `.task` 副作用），別依賴 `AuthManager.shared` 殘留 session（曾致 Settings 顯示已登入卻標 logged-out 的像素說謊）。`CatalogPreviewAuth` 也不可自己補假資料：logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`，logged-out scenario 必須明示 nil，短式 `CatalogPreviewAuth(isLoggedIn: ...)` 與 preview fallback literal 會被 source contract test 擋紅。範式見 `VocabularyListViewScenarios` / `NotebookListViewScenarios`。
 
 **simctl 截圖協作**：
 
