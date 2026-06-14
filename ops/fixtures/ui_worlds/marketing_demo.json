@@ -943,6 +943,9 @@
     }
   },
   "notebook": {
+    "empty": {
+      "notebooks": []
+    },
     "populated": {
       "notebooks": [
         {

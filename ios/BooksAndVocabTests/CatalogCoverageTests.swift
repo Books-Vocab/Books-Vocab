@@ -202,6 +202,30 @@ import Playbook
         )
     }
 
+    @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
+        let filterScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("NotebookFilterChipScenarios.swift")
+        let source = try String(contentsOf: filterScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("sampleNotebooks", "Notebook filter catalog must not keep local notebook fixtures"),
+            ("Notebook(remoteId:", "Notebook filter catalog must not inline notebook rows"),
+            ("notebooks: []", "Notebook filter empty state must be an explicit UI World seed"),
+            ("nb-1", "Notebook filter selected id must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(filterScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.renderModel(for: fixture)"),
+            "Notebook filter catalog must materialize notebooks through UI World NotebookFixtures"
+        )
+        #expect(
+            source.contains("fixture: .empty"),
+            "Notebook filter catalog empty state must use UI World notebook.empty"
+        )
+    }
+
     @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
         let subscriptionScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
