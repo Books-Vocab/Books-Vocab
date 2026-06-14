@@ -56,6 +56,7 @@ struct RepoFixtureDatasetsContractTests {
             #expect(!document.preferences.isEmpty, "\(stem): repo UI Worlds must declare preferences")
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
+            expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
             expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
@@ -82,6 +83,23 @@ struct RepoFixtureDatasetsContractTests {
                     dataset: stem,
                     owner: "runtimePodcast.\(fixtureKey).subtitleAssetRef"
                 )
+                for episode in seed.episodes {
+                    guard let download = episode.download else { continue }
+                    expectInstallableAssetRef(
+                        download.audioAssetRef,
+                        document: document,
+                        dataset: stem,
+                        owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.audioAssetRef"
+                    )
+                    if let subtitleAssetRef = download.subtitleAssetRef {
+                        expectInstallableAssetRef(
+                            subtitleAssetRef,
+                            document: document,
+                            dataset: stem,
+                            owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.subtitleAssetRef"
+                        )
+                    }
+                }
             }
 
             for (fixtureKey, seed) in document.reader {
@@ -207,6 +225,20 @@ struct RepoFixtureDatasetsContractTests {
                 legacy.isEmpty,
                 "\(dataset): reader.\(fixtureKey) uses legacy bare path keys \(legacy.sorted()); use textAssetRef"
             )
+        }
+    }
+
+    private func expectRuntimePodcastDownloadKeys(_ topLevel: [String: Any], dataset: String) {
+        let runtimePodcast = topLevel["runtimePodcast"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in runtimePodcast {
+            let episodes = seed["episodes"] as? [[String: Any]] ?? []
+            for episode in episodes {
+                let remoteId = episode["remoteId"] as? String ?? "<missing-remote-id>"
+                #expect(
+                    episode.keys.contains("download"),
+                    "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare download (object or null)"
+                )
+            }
         }
     }
 

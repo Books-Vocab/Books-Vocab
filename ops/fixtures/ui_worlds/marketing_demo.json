@@ -1154,7 +1154,11 @@
           "audioAvailable": true,
           "previewAvailable": true,
           "previewDurationSec": 180,
-          "subtitleAvailable": true
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable"
+          }
         }
       ]
     },
@@ -1179,7 +1183,11 @@
           "audioAvailable": true,
           "previewAvailable": true,
           "previewDurationSec": 180,
-          "subtitleAvailable": true
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth"
+          }
         },
         {
           "remoteId": "ui-auth-series_ep_02",
@@ -1189,7 +1197,11 @@
           "audioAvailable": true,
           "previewAvailable": false,
           "previewDurationSec": null,
-          "subtitleAvailable": true
+          "subtitleAvailable": true,
+          "download": {
+            "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth"
+          }
         }
       ]
     }
