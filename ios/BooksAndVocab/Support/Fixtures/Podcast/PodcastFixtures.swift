@@ -44,40 +44,13 @@ struct PodcastFixtureRenderModel {
 enum PodcastFixtures {
     private static let sharedSurfaces: Set<FixtureSurface> = [.preview, .catalog, .snapshot]
 
-    private static let continueSeries = PodcastSeriesSeed(
-        remoteId: "s-shelf",
-        title: "Atomic Habits Unpacked",
-        hostNames: ["Ava Chen"],
-        colorHex: NotebookPalette.defaultHex,
-        coverPattern: NotebookCoverPattern.waves.rawValue
+    private static let registry = FixtureRegistry<PodcastFixtureSeed>(
+        PodcastFixtureID.allCases.map { fixtureID in
+            FixtureRecipe(key: fixtureID.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
+                FixtureDatasetStore.requirePodcastSeed(for: fixtureID)
+            }
+        }
     )
-
-    private static let registry = FixtureRegistry<PodcastFixtureSeed>([
-        FixtureRecipe(key: PodcastFixtureID.shelfContinue.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(
-                series: continueSeries,
-                episodes: [
-                    .init(episodeNumber: 2, title: "On Deep Work", durationSec: 1832, lastPlayedTime: 612),
-                    .init(
-                        episodeNumber: 5,
-                        title: "A Very Long Episode Title That Should Truncate Cleanly",
-                        durationSec: 5432,
-                        lastPlayedTime: 1700
-                    ),
-                    .init(episodeNumber: 8, title: "Marathon Session", durationSec: 12_345, lastPlayedTime: 321),
-                    .init(episodeNumber: 1, title: "The Comfort Crisis", durationSec: 1832),
-                ]
-            )
-        },
-        FixtureRecipe(key: PodcastFixtureID.shelfSingle.key, surfaces: sharedSurfaces, tags: ["baseline"]) {
-            .init(
-                series: continueSeries,
-                episodes: [
-                    .init(episodeNumber: 2, title: "On Deep Work", durationSec: 1832, lastPlayedTime: 612),
-                ]
-            )
-        },
-    ])
 
     static func recipes(for surface: FixtureSurface) -> [FixtureRecipe<PodcastFixtureSeed>] {
         registry.recipes(for: surface)
