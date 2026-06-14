@@ -41,6 +41,7 @@ import Testing
         #expect(catalogKeys == [
             "notebook.cardGallery",
             "notebook.coverGallery",
+            "notebook.editGallery",
             "notebook.empty",
             "notebook.populated",
             "notebook.readerPickerMany",
@@ -87,6 +88,42 @@ import Testing
             #expect(cards.contains { $0.name.count > 24 })
             for card in cards {
                 #expect(card.cardCount == card.dueCount + card.unlearnedCount + card.reviewedCount)
+            }
+        }
+    }
+
+    @MainActor
+    @Test func editGalleryMaterializesManifestEditStates() async throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let seed = try #require(document.notebook[NotebookFixtureID.editGallery.rawValue])
+        let ids = Set(seed.editStates.map(\.id))
+        #expect(ids == [
+            "create_blank",
+            "edit_color_pattern",
+            "edit_color_only",
+            "edit_long_name",
+            "edit_custom_image",
+            "edit_empty_name",
+        ])
+        #expect(seed.editStates.contains { $0.mode == "create" && $0.name.isEmpty })
+        #expect(seed.editStates.contains { $0.mode == "edit" && $0.name.isEmpty })
+        #expect(seed.editStates.contains { $0.coverImageAssetRef == "images.notebook_cover_app_icon" })
+
+        try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            if case .create = NotebookFixtures.editSheetMode(id: "create_blank", for: .editGallery) {
+                #expect(Bool(true))
+            } else {
+                Issue.record("create_blank must materialize create mode")
+            }
+
+            if case let .edit(name, color, coverPattern, coverImagePath) = NotebookFixtures.editSheetMode(id: "edit_custom_image", for: .editGallery) {
+                #expect(name == "旅行閱讀詞庫")
+                #expect(color == "#6F8EA3")
+                #expect(coverPattern == nil)
+                let path = try #require(coverImagePath)
+                #expect(FileManager.default.fileExists(atPath: path))
+            } else {
+                Issue.record("edit_custom_image must materialize edit mode")
             }
         }
     }

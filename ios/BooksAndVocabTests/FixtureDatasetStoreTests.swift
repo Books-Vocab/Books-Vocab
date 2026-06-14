@@ -58,6 +58,7 @@ struct FixtureDatasetStoreTests {
           "datasetID": "missing-notebook-entry-metadata",
           "notebook": {
             "populated": {
+              "editStates": [],
               "notebooks": [
                 {
                   "remoteId": "default",
@@ -92,6 +93,7 @@ struct FixtureDatasetStoreTests {
           "datasetID": "missing-notebook-row-metadata",
           "notebook": {
             "populated": {
+              "editStates": [],
               "notebooks": [
                 {
                   "remoteId": "default",
@@ -799,6 +801,7 @@ struct FixtureDatasetStoreTests {
           "datasetID": "test-notebook-podcast",
           "notebook": {
             "populated": {
+              "editStates": [],
               "notebooks": [
                 {
                   "remoteId": "default",
