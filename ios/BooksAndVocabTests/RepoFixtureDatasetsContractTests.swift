@@ -66,12 +66,18 @@ struct RepoFixtureDatasetsContractTests {
             for ref in document.assets.refs {
                 let asset = try #require(document.assets.asset(for: ref), "\(stem): asset \(ref) must resolve")
                 let url = URL(fileURLWithPath: asset.sourcePath)
+                #expect(asset.byteSize > 0, "\(stem): asset \(ref) byteSize must be positive")
                 #expect(FileManager.default.fileExists(atPath: url.path), "\(stem): asset \(ref) missing at \(url.path)")
+                #expect(
+                    try FixtureDatasetStore.byteSize(for: url) == asset.byteSize,
+                    "\(stem): asset \(ref) byteSize drift"
+                )
                 #expect(
                     try FixtureDatasetStore.sha256Hex(for: url) == asset.sha256,
                     "\(stem): asset \(ref) sha256 drift"
                 )
             }
+            expectUniqueInstallPaths(document: document, dataset: stem)
 
             for (fixtureKey, seed) in document.runtimePodcast {
                 expectInstallableAssetRef(
@@ -474,6 +480,22 @@ struct RepoFixtureDatasetsContractTests {
             installAs.map { !$0.isEmpty } ?? false,
             "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
         )
+    }
+
+    private func expectUniqueInstallPaths(document: FixtureDatasetDocument, dataset: String) {
+        var seen: [String: String] = [:]
+        for ref in document.assets.refs {
+            guard let asset = document.assets.asset(for: ref),
+                  let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !installAs.isEmpty else {
+                continue
+            }
+            if let previous = seen[installAs] {
+                Issue.record("\(dataset): assets \(previous) and \(ref) share installAs \(installAs)")
+            } else {
+                seen[installAs] = ref
+            }
+        }
     }
 
     private func expectValidPreferenceKeys(

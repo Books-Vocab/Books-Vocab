@@ -209,6 +209,7 @@ struct FixtureDatasetStoreTests {
               "runtime-audio": {
                 "sourcePath": "/tmp/audio.m4a",
                 "sha256": "unused-in-decode-test",
+                "byteSize": 0,
                 "installAs": null
               }
             },
@@ -216,6 +217,7 @@ struct FixtureDatasetStoreTests {
               "runtime-subtitle": {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
+                "byteSize": 0,
                 "installAs": null
               }
             },
@@ -223,6 +225,7 @@ struct FixtureDatasetStoreTests {
               "reader-source": {
                 "sourcePath": "/tmp/source.md",
                 "sha256": "unused-in-decode-test",
+                "byteSize": 0,
                 "installAs": null
               }
             },
@@ -384,6 +387,7 @@ struct FixtureDatasetStoreTests {
             .appendingPathComponent("kg-ui-world-asset-source-\(UUID().uuidString).txt")
         try Data("asset payload".utf8).write(to: source)
         let hash = try FixtureDatasetStore.sha256Hex(for: source)
+        let byteSize = try FixtureDatasetStore.byteSize(for: source)
         let installAs = "UITestAssets/\(UUID().uuidString)/payload.txt"
         let dataset = """
         {
@@ -397,6 +401,7 @@ struct FixtureDatasetStoreTests {
               "payload": {
                 "sourcePath": "\(source.path)",
                 "sha256": "\(hash)",
+                "byteSize": \(byteSize),
                 "installAs": "\(installAs)"
               }
             },
@@ -417,6 +422,7 @@ struct FixtureDatasetStoreTests {
             #expect(installed == expected)
             #expect(FileManager.default.fileExists(atPath: installed.path))
             #expect(try Data(contentsOf: installed) == Data("asset payload".utf8))
+            #expect(try FixtureDatasetStore.byteSize(for: installed) == byteSize)
             #expect(try FixtureDatasetStore.sha256Hex(for: installed) == hash)
         }
     }

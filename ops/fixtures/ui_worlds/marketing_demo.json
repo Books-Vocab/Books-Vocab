@@ -6,48 +6,56 @@
       "atomic_habits_markdown": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
-        "installAs": "Books/atomic-habits.md"
+        "installAs": "Books/atomic-habits.md",
+        "byteSize": 17431
       },
       "word_architect_markdown": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
-        "installAs": "Books/word-architect.md"
+        "installAs": "Books/word-architect.md",
+        "byteSize": 17431
       },
       "the_shallows_markdown": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
-        "installAs": "Books/the-shallows.md"
+        "installAs": "Books/the-shallows.md",
+        "byteSize": 17431
       }
     },
     "audio": {
       "atomic_habits_ep1_flash_playable": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
         "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
-        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a"
+        "installAs": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a",
+        "byteSize": 16655874
       },
       "atomic_habits_ep1_flash_auth": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.m4a",
         "sha256": "c263208bec24669cf0ca2a00fc82f013a0432e8d29da19ddf94ac2054bebcbda",
-        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a"
+        "installAs": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
+        "byteSize": 16655874
       }
     },
     "subtitles": {
       "atomic_habits_ep1_flash_srt_playable": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
         "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
-        "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
+        "installAs": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt",
+        "byteSize": 144638
       },
       "atomic_habits_ep1_flash_srt_auth": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/scripts/ep_1_flash.srt",
         "sha256": "df4dd41699c47fb65a2a4ff752689e33689c0c80527e138f50733bff70623ad2",
-        "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
+        "installAs": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt",
+        "byteSize": 144638
       }
     },
     "text": {
       "atomic_habits_raw_ch_04": {
         "sourcePath": "/Users/chenliangyu/project/kg/lab/podcast/workspaces/atomic_habits_an_easy_proven_w_033e3990/raw_chapters/raw_ch_04.md",
         "sha256": "a2cf08eded56f4276d4e3fd6b1c40093ee294d6c429b55d98e25e614e9a11f6a",
-        "installAs": "Books/sources/atomic-habits-raw-ch-04.md"
+        "installAs": "Books/sources/atomic-habits-raw-ch-04.md",
+        "byteSize": 17431
       }
     },
     "images": {}
