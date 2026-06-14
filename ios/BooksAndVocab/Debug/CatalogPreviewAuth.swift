@@ -35,17 +35,38 @@ final class CatalogPreviewAuth: AuthManaging {
 
     init(
         isLoggedIn: Bool,
-        displayName: String? = nil,
-        userEmail: String? = nil,
+        userId: String?,
+        token: String?,
+        displayName: String?,
+        userEmail: String?,
         isDemoMode: Bool = false,
         isAuthenticating: Bool = false,
         authError: String? = nil
     ) {
+        if isLoggedIn {
+            guard let userId, !userId.isEmpty else {
+                preconditionFailure("CatalogPreviewAuth logged-in state requires explicit userId")
+            }
+            guard let token, !token.isEmpty else {
+                preconditionFailure("CatalogPreviewAuth logged-in state requires explicit token")
+            }
+            guard let displayName, !displayName.isEmpty else {
+                preconditionFailure("CatalogPreviewAuth logged-in state requires explicit displayName")
+            }
+            guard let userEmail, !userEmail.isEmpty else {
+                preconditionFailure("CatalogPreviewAuth logged-in state requires explicit userEmail")
+            }
+        } else {
+            precondition(userId == nil, "CatalogPreviewAuth logged-out state must explicitly use nil userId")
+            precondition(token == nil, "CatalogPreviewAuth logged-out state must explicitly use nil token")
+            precondition(displayName == nil, "CatalogPreviewAuth logged-out state must explicitly use nil displayName")
+            precondition(userEmail == nil, "CatalogPreviewAuth logged-out state must explicitly use nil userEmail")
+        }
         self.isLoggedIn = isLoggedIn
-        self.userId = isLoggedIn ? "preview-user" : nil
-        self.token = isLoggedIn ? "preview-token" : nil
-        self.displayName = displayName ?? (isLoggedIn ? "Preview User" : nil)
-        self.userEmail = userEmail ?? (isLoggedIn ? "preview@example.com" : nil)
+        self.userId = userId
+        self.token = token
+        self.displayName = displayName
+        self.userEmail = userEmail
         self.avatarURL = nil
         self.authError = authError
         self.isAuthenticating = isAuthenticating

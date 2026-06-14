@@ -65,7 +65,21 @@ private struct PodcastPlayerViewScene: View {
         try? container.mainContext.save()
         self.container = container
         self.episodeId = episodeId
-        self.auth = CatalogPreviewAuth(isLoggedIn: loggedIn)
+        self.auth = loggedIn
+            ? CatalogPreviewAuth(
+                isLoggedIn: true,
+                userId: "catalog-podcast-player-user",
+                token: "catalog-podcast-player-token",
+                displayName: "Catalog Podcast Player User",
+                userEmail: "catalog-podcast-player@example.com"
+            )
+            : CatalogPreviewAuth(
+                isLoggedIn: false,
+                userId: nil,
+                token: nil,
+                displayName: nil,
+                userEmail: nil
+            )
         // The preview-player fixture drives the catalog seam → deterministic,
         // AVPlayer-free `.ready` chrome with a populated, mid-episode transcript.
         // The locked-gate fixture never loads audio, so it needs no preview.

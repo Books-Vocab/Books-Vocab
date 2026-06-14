@@ -28,7 +28,13 @@ private struct KnowledgeGraphViewScene: View {
     var body: some View {
         AppThemeContainer {
             KnowledgeGraphView(allEntries: [])
-                .environment(\.authManager, CatalogPreviewAuth(isLoggedIn: false))
+                .environment(\.authManager, CatalogPreviewAuth(
+                    isLoggedIn: false,
+                    userId: nil,
+                    token: nil,
+                    displayName: nil,
+                    userEmail: nil
+                ))
         }
         .environmentObject(AppAppearanceStore.preview)
     }

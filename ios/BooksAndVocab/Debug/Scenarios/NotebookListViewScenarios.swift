@@ -48,7 +48,13 @@ private struct NotebookListViewScene: View {
             preconditionFailure("NotebookFixtures.renderModel(\(fixture)) failed to build a container")
         }
         self.container = container
-        self.auth = CatalogPreviewAuth(isLoggedIn: true)
+        self.auth = CatalogPreviewAuth(
+            isLoggedIn: true,
+            userId: "catalog-notebook-user",
+            token: "catalog-notebook-token",
+            displayName: "Catalog Notebook User",
+            userEmail: "catalog-notebook@example.com"
+        )
     }
 
     var body: some View {

@@ -58,7 +58,13 @@ private struct SyncViewScene: View {
         AppThemeContainer {
             SyncView()
                 .modelContainer(container)
-                .environment(\.authManager, CatalogPreviewAuth(isLoggedIn: false))
+                .environment(\.authManager, CatalogPreviewAuth(
+                    isLoggedIn: false,
+                    userId: nil,
+                    token: nil,
+                    displayName: nil,
+                    userEmail: nil
+                ))
         }
         .environmentObject(AppAppearanceStore.preview)
     }

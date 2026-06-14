@@ -182,7 +182,21 @@ private struct VocabularyListViewScene: View {
         try? context.save()
 
         self.container = container
-        self.auth = CatalogPreviewAuth(isLoggedIn: loggedIn)
+        self.auth = loggedIn
+            ? CatalogPreviewAuth(
+                isLoggedIn: true,
+                userId: "catalog-vocabulary-user",
+                token: "catalog-vocabulary-token",
+                displayName: "Catalog Vocabulary User",
+                userEmail: "catalog-vocabulary@example.com"
+            )
+            : CatalogPreviewAuth(
+                isLoggedIn: false,
+                userId: nil,
+                token: nil,
+                displayName: nil,
+                userEmail: nil
+            )
         // Pin the toolbar's `isSyncing` to what the scenario declares. The env
         // default is a fresh `.ready` coordinator; setting `.phase` directly
         // (no real pipeline kicked off) renders the active-sync glyph state
