@@ -291,6 +291,7 @@ struct UIWorldReaderSeed: Codable, Equatable {
     let bookFileName: String
     let notebookRemoteId: String
     let notebookName: String
+    let notebookSyncStatus: Int
     let entry: UIWorldVocabularyEntrySeed
 }
 
@@ -302,6 +303,7 @@ enum UIWorldVocabularyFixtureID: String, CaseIterable {
 struct UIWorldVocabularySeed: Codable, Equatable {
     let notebookRemoteId: String
     let notebookName: String
+    let notebookSyncStatus: Int
     let bookTitle: String
     let entries: [UIWorldVocabularyEntrySeed]
     let reviewHistory: [UIWorldReviewHistorySeed]
@@ -321,6 +323,7 @@ enum UIWorldReviewDeckFixtureID: String, CaseIterable {
 struct UIWorldReviewDeckSeed: Codable, Equatable {
     let notebookRemoteId: String?
     let notebookName: String?
+    let notebookSyncStatus: Int
     let entries: [UIWorldVocabularyEntrySeed]
 }
 
@@ -336,6 +339,10 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let difficultyTier: String?
     let reviewMode: VocabularyCardMode?
     let reviewExamples: [String]
+    let syncStatus: Int
+    let actionType: String
+    let isArchived: Bool
+    let isExcludedFromReader: Bool
     let reviewIntervalHours: Double?
     let nextReviewAt: Date?
     let lastReviewedAt: Date?

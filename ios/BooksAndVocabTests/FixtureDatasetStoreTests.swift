@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -187,6 +188,7 @@ struct FixtureDatasetStoreTests {
               "bookFileName": "reader.epub",
               "notebookRemoteId": "reader-notebook",
               "notebookName": "Reader Notebook",
+              "notebookSyncStatus": 1,
               "entry": {
                 "word": "introduction",
                 "translation": "引言",
@@ -199,6 +201,10 @@ struct FixtureDatasetStoreTests {
                 "difficultyTier": "core",
                 "reviewMode": "recognition",
                 "reviewExamples": ["Introduction"],
+                "syncStatus": 1,
+                "actionType": "add",
+                "isArchived": false,
+                "isExcludedFromReader": false,
                 "reviewIntervalHours": 24,
                 "nextReviewAt": "2026-01-01T00:00:00Z",
                 "lastReviewedAt": null,
@@ -213,6 +219,7 @@ struct FixtureDatasetStoreTests {
             "searchVocabNotebook": {
               "notebookRemoteId": "search-notebook",
               "notebookName": "Search Notebook",
+              "notebookSyncStatus": 0,
               "bookTitle": "Search Book",
               "entries": [
                 {
@@ -227,6 +234,10 @@ struct FixtureDatasetStoreTests {
                   "difficultyTier": "core",
                   "reviewMode": "recognition",
                   "reviewExamples": ["Sleep can affect memory."],
+                  "syncStatus": 2,
+                  "actionType": "edit",
+                  "isArchived": true,
+                  "isExcludedFromReader": true,
                   "reviewIntervalHours": 24,
                   "nextReviewAt": "2026-01-01T00:00:00Z",
                   "lastReviewedAt": null,
@@ -243,6 +254,7 @@ struct FixtureDatasetStoreTests {
             "probe": {
               "notebookRemoteId": "default",
               "notebookName": null,
+              "notebookSyncStatus": 1,
               "entries": [
                 {
                   "word": "probeword001",
@@ -256,6 +268,10 @@ struct FixtureDatasetStoreTests {
                   "difficultyTier": "intermediate",
                   "reviewMode": "recognition",
                   "reviewExamples": ["Probe context."],
+                  "syncStatus": 1,
+                  "actionType": "add",
+                  "isArchived": false,
+                  "isExcludedFromReader": false,
                   "reviewIntervalHours": 12,
                   "nextReviewAt": "2026-01-01T00:00:00Z",
                   "lastReviewedAt": null,
@@ -277,6 +293,11 @@ struct FixtureDatasetStoreTests {
             #expect(runtimeSeed?.episodes.first?.download?.subtitleAssetRef == "subtitles.runtime-subtitle")
             #expect(FixtureDatasetStore.readerSeed(for: .realBookLibrary)?.entry.word == "introduction")
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.word == "affect")
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.notebookSyncStatus == 0)
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.syncStatus == 2)
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.actionType == "edit")
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isArchived == true)
+            #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isExcludedFromReader == true)
             #expect(FixtureDatasetStore.reviewDeckSeed(for: .probe)?.entries.first?.word == "probeword001")
         }
     }
@@ -482,15 +503,24 @@ struct FixtureDatasetStoreTests {
                 {
                   "remoteId": "default",
                   "name": "外部單字本",
+                  "syncStatus": 0,
                   "isDefault": true,
                   "sortOrder": 0,
                   "entries": [
-                    { "word": "serendipity", "translation": "機緣巧合" }
+                    {
+                      "word": "serendipity",
+                      "translation": "機緣巧合",
+                      "syncStatus": 2,
+                      "actionType": "delete",
+                      "isArchived": true,
+                      "isExcludedFromReader": true
+                    }
                   ]
                 },
                 {
                   "remoteId": "nb-external",
                   "name": "外部第二本",
+                  "syncStatus": 1,
                   "sortOrder": 1,
                   "entries": []
                 }
@@ -521,10 +551,20 @@ struct FixtureDatasetStoreTests {
             let notebookSeed = FixtureDatasetStore.notebookSeed(for: .populated)
             #expect(notebookSeed?.notebooks.count == 2)
             #expect(notebookSeed?.notebooks.first?.name == "外部單字本")
+            #expect(notebookSeed?.notebooks.first?.syncStatus == 0)
+            #expect(notebookSeed?.notebooks.first?.entries.first?.syncStatus == 2)
+            #expect(notebookSeed?.notebooks.first?.entries.first?.actionType == "delete")
 
             let notebookModel = NotebookFixtures.renderModel(for: .populated)
             #expect(notebookModel.notebooks.map(\.name) == ["外部單字本", "外部第二本"])
+            #expect(notebookModel.notebooks.first?.syncStatus == 0)
             #expect(notebookModel.container != nil)
+            let context = try #require(notebookModel.container?.mainContext)
+            let entries = try context.fetch(FetchDescriptor<VocabularyEntry>())
+            #expect(entries.first?.syncStatus == 2)
+            #expect(entries.first?.actionType == "delete")
+            #expect(entries.first?.isArchived == true)
+            #expect(entries.first?.isExcludedFromReader == true)
 
             let podcastSeed = FixtureDatasetStore.podcastSeed(for: .shelfContinue)
             #expect(podcastSeed?.series.title == "External Series")

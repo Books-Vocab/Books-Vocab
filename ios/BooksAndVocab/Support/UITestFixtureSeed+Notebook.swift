@@ -35,7 +35,7 @@ extension UITestFixtureSeed {
             }
 
             let notebook = Notebook(remoteId: notebookId, name: seed.notebookName ?? "Review Flow Vocab")
-            notebook.syncStatus = 1
+            notebook.syncStatus = seed.notebookSyncStatus
             context.insert(notebook)
 
             let deck = seed.entries.map {

@@ -43,7 +43,7 @@ extension UITestFixtureSeed {
             let epubURL = try convertRealTextToEPUB(fixture)
 
             let notebook = Notebook(remoteId: fixture.seed.notebookRemoteId, name: fixture.seed.notebookName)
-            notebook.syncStatus = 1
+            notebook.syncStatus = fixture.seed.notebookSyncStatus
             context.insert(notebook)
 
             let entry = makeVocabularyEntry(
