@@ -317,6 +317,36 @@ import Playbook
         )
     }
 
+    @Test func archivedVocabCatalogUsesUIWorldVocabularySeeds() throws {
+        let archivedScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("ArchivedVocabScenarios.swift")
+        let source = try String(contentsOf: archivedScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("ArchivedVocabFixtures", "Archived Vocab catalog must not keep local archived entry fixtures"),
+            ("VocabularyEntry(", "Archived Vocab catalog must not inline SwiftData row literals"),
+            ("Sample Book", "Archived Vocab book metadata belongs in UI World"),
+            ("entries: []", "Archived Vocab empty state must be a UI World seed"),
+            ("try? context.save()", "Archived Vocab catalog SwiftData save must fail fast"),
+            ("try? container.mainContext.save()", "Archived Vocab catalog SwiftData save must fail fast"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(archivedScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Archived Vocab catalog must source rows from UI World archived vocabulary seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Archived Vocab catalog must materialize UI World vocabulary rows into SwiftData"
+        )
+        #expect(
+            source.contains("visible = entries.filter(\\.shouldAppearInArchiveList)"),
+            "Archived Vocab catalog must validate manifest rows are visible archived entries"
+        )
+    }
+
     @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
         let filterScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
