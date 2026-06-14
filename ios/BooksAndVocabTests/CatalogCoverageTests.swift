@@ -347,6 +347,44 @@ import Playbook
         )
     }
 
+    @Test func vocabularyListCatalogUsesUIWorldVocabularyAndAuthSeeds() throws {
+        let listScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("VocabularyListViewScenarios.swift")
+        let source = try String(contentsOf: listScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("VocabularyListViewFixtures", "Vocabulary List catalog must not keep local vocabulary fixtures"),
+            ("VocabularyEntry(", "Vocabulary List catalog must not inline SwiftData row literals"),
+            ("Notebook(remoteId:", "Vocabulary List catalog notebook must come from UI World"),
+            ("Sample Book", "Vocabulary List book metadata belongs in UI World"),
+            ("entries: []", "Vocabulary List empty/logged-out states must use UI World seeds"),
+            ("try? context.save()", "Vocabulary List catalog SwiftData save must fail fast"),
+            ("try? container.mainContext.save()", "Vocabulary List catalog SwiftData save must fail fast"),
+            ("catalog-vocabulary-user", "Vocabulary List auth user must come from UI World"),
+            ("catalog-vocabulary-token", "Vocabulary List auth token must come from UI World"),
+            ("Catalog Vocabulary User", "Vocabulary List auth display name must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(listScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)"),
+            "Vocabulary List catalog must source rows from UI World vocabulary list seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: authID)"),
+            "Vocabulary List catalog must source auth from UI World auth seeds"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "Vocabulary List catalog must materialize UI World vocabulary rows into SwiftData"
+        )
+        #expect(
+            source.contains("visible = entries.filter(\\.shouldAppearInKnowledgeList)"),
+            "Vocabulary List catalog must validate manifest rows are visible knowledge-list entries"
+        )
+    }
+
     @Test func notebookFilterChipCatalogUsesUIWorldNotebookSeeds() throws {
         let filterScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
