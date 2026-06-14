@@ -3200,6 +3200,574 @@
       ],
       "notebookSyncStatus": 1
     },
+    "reviewCalendarDense": {
+      "notebookRemoteId": "ui-review-calendar-dense-notebook",
+      "notebookName": "Review Calendar Dense",
+      "bookTitle": "Review Calendar Manual",
+      "entries": [
+        {
+          "word": "serendipity",
+          "translation": "機緣巧合",
+          "context": "It was pure serendipity - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for serendipity.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-serendipity",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure serendipity - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ephemeral",
+          "translation": "短暫的",
+          "context": "It was pure ephemeral - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for ephemeral.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-ephemeral",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure ephemeral - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "petrichor",
+          "translation": "雨後泥土香",
+          "context": "It was pure petrichor - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for petrichor.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-petrichor",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure petrichor - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "ineffable",
+          "translation": "難以言喻的",
+          "context": "It was pure ineffable - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for ineffable.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-ineffable",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure ineffable - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "quintessential",
+          "translation": "典型的",
+          "context": "It was pure quintessential - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for quintessential.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-quintessential",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure quintessential - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "luminous",
+          "translation": "發光的",
+          "context": "It was pure luminous - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for luminous.",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-luminous",
+          "difficultyTier": "intermediate",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure luminous - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "cadence",
+          "translation": "節奏",
+          "context": "It was pure cadence - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for cadence.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-cadence",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure cadence - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        },
+        {
+          "word": "solitude",
+          "translation": "獨處",
+          "context": "It was pure solitude - a moment that lingered in memory.",
+          "explanation": "A short contextual gloss for solitude.",
+          "partOfSpeech": "n.",
+          "bookTitle": "Review Calendar Manual",
+          "chapterTitle": "Dense Month",
+          "kgCardId": "stats-solitude",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "It was pure solitude - a moment that lingered in memory."
+          ],
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-06-02T12:00:00Z",
+          "lastReviewedAt": "2026-06-01T12:00:00Z",
+          "reviewCount": 3,
+          "reviewStreak": 2,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {},
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false
+        }
+      ],
+      "reviewHistory": [
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-06-15T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-06-14T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-14T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-13T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-06-13T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-13T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-06-12T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-12T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-12T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-12T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-06-11T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-10T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-10T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-06-09T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-06-09T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-09T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 0,
+          "reviewedAt": "2026-06-08T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-08T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-07T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 0,
+          "reviewedAt": "2026-06-06T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-06T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-06-05T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-06-05T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-05T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-04T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-04T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 0,
+          "reviewedAt": "2026-06-03T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-06-02T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-02T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-06-01T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 0,
+          "reviewedAt": "2026-06-01T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-06-01T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 0,
+          "reviewedAt": "2026-05-31T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-05-31T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-31T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-31T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 1,
+          "reviewedAt": "2026-05-30T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-29T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-29T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 0,
+          "reviewedAt": "2026-05-28T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-05-28T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-28T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 0,
+          "reviewedAt": "2026-05-27T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-27T11:21:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-26T08:00:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 0,
+          "reviewedAt": "2026-05-25T08:00:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-25T09:07:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 1,
+          "reviewedAt": "2026-05-24T08:00:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-05-24T09:07:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-24T10:14:00Z"
+        },
+        {
+          "word": "solitude",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T08:00:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-23T09:07:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T10:14:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-23T11:21:00Z"
+        },
+        {
+          "word": "serendipity",
+          "feedback": 0,
+          "reviewedAt": "2026-05-22T08:00:00Z"
+        },
+        {
+          "word": "ephemeral",
+          "feedback": 1,
+          "reviewedAt": "2026-05-21T08:00:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-21T09:07:00Z"
+        },
+        {
+          "word": "petrichor",
+          "feedback": 1,
+          "reviewedAt": "2026-05-20T08:00:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-05-20T09:07:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-20T10:14:00Z"
+        },
+        {
+          "word": "ineffable",
+          "feedback": 0,
+          "reviewedAt": "2026-05-19T08:00:00Z"
+        },
+        {
+          "word": "quintessential",
+          "feedback": 1,
+          "reviewedAt": "2026-05-19T09:07:00Z"
+        },
+        {
+          "word": "luminous",
+          "feedback": 1,
+          "reviewedAt": "2026-05-19T10:14:00Z"
+        },
+        {
+          "word": "cadence",
+          "feedback": 0,
+          "reviewedAt": "2026-05-19T11:21:00Z"
+        }
+      ],
+      "notebookSyncStatus": 1
+    },
     "statsEmpty": {
       "notebookRemoteId": "ui-stats-empty-notebook",
       "notebookName": "Stats Empty",
