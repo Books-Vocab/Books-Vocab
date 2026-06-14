@@ -7,6 +7,7 @@ struct FixtureDatasetDocument: Decodable {
     let schema: String?
     let datasetID: String?
     let assets: UIWorldAssetManifest
+    let preferences: UIWorldPreferencesSeed
     let auth: [String: UIWorldAuthSeed]
     let entitlements: [String: UIWorldEntitlementsSeed]
     let settings: [String: SettingsFixtureSeed]
@@ -23,6 +24,7 @@ struct FixtureDatasetDocument: Decodable {
         case schema
         case datasetID
         case assets
+        case preferences
         case auth
         case entitlements
         case settings
@@ -47,6 +49,7 @@ struct FixtureDatasetDocument: Decodable {
         schema: String? = nil,
         datasetID: String? = nil,
         assets: UIWorldAssetManifest = .empty,
+        preferences: UIWorldPreferencesSeed = .empty,
         auth: [String: UIWorldAuthSeed] = [:],
         entitlements: [String: UIWorldEntitlementsSeed] = [:],
         settings: [String: SettingsFixtureSeed] = [:],
@@ -62,6 +65,7 @@ struct FixtureDatasetDocument: Decodable {
         self.schema = schema
         self.datasetID = datasetID
         self.assets = assets
+        self.preferences = preferences
         self.auth = auth
         self.entitlements = entitlements
         self.settings = settings
@@ -80,6 +84,7 @@ struct FixtureDatasetDocument: Decodable {
         schema = try container.decodeIfPresent(String.self, forKey: .schema)
         datasetID = try container.decodeIfPresent(String.self, forKey: .datasetID)
         assets = try container.decodeIfPresent(UIWorldAssetManifest.self, forKey: .assets) ?? .empty
+        preferences = try container.decodeIfPresent(UIWorldPreferencesSeed.self, forKey: .preferences) ?? .empty
         auth = try container.decodeIfPresent([String: UIWorldAuthSeed].self, forKey: .auth) ?? [:]
         entitlements = try container.decodeIfPresent([String: UIWorldEntitlementsSeed].self, forKey: .entitlements) ?? [:]
         settings = try container.decodeIfPresent([String: SettingsFixtureSeed].self, forKey: .settings) ?? [:]
@@ -91,6 +96,79 @@ struct FixtureDatasetDocument: Decodable {
         reader = try container.decodeIfPresent([String: UIWorldReaderSeed].self, forKey: .reader) ?? [:]
         vocabulary = try container.decodeIfPresent([String: UIWorldVocabularySeed].self, forKey: .vocabulary) ?? [:]
         reviewDeck = try container.decodeIfPresent([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck) ?? [:]
+    }
+}
+
+enum UIWorldPreferenceValue: Codable, Equatable {
+    case string(String)
+    case double(Double)
+    case bool(Bool)
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "UI World preference values must be string, number, or bool"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        }
+    }
+}
+
+struct UIWorldPreferencesSeed: Codable, Equatable {
+    let userDefaults: [String: UIWorldPreferenceValue]
+    let ubiquitousKeyValueStore: [String: UIWorldPreferenceValue]
+
+    static let empty = UIWorldPreferencesSeed(userDefaults: [:], ubiquitousKeyValueStore: [:])
+
+    var isEmpty: Bool {
+        userDefaults.isEmpty && ubiquitousKeyValueStore.isEmpty
+    }
+
+    func apply(
+        to defaults: UserDefaults = .standard,
+        cloud: CloudKeyValueStore = CloudPreferencesSync.shared
+    ) {
+        for (key, value) in userDefaults {
+            precondition(!key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "UI World preferences contains an empty UserDefaults key")
+            switch value {
+            case .string(let string):
+                defaults.set(string, forKey: key)
+            case .double(let double):
+                defaults.set(double, forKey: key)
+            case .bool(let bool):
+                defaults.set(bool, forKey: key)
+            }
+        }
+        for (key, value) in ubiquitousKeyValueStore {
+            precondition(!key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "UI World preferences contains an empty iCloud KVS key")
+            switch value {
+            case .string(let string):
+                cloud.set(string, forKey: key)
+            case .double(let double):
+                cloud.set(double, forKey: key)
+            case .bool(let bool):
+                cloud.set(bool ? 1.0 : 0.0, forKey: key)
+            }
+        }
     }
 }
 
@@ -477,6 +555,13 @@ enum FixtureDatasetStore {
     /// UI World files.
     static func decode(_ data: Data) throws -> FixtureDatasetDocument {
         try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
+    }
+
+    static func requireDocument() -> FixtureDatasetDocument {
+        guard case let .loaded(document, _) = loadState() else {
+            preconditionFailure("UI World is not loaded")
+        }
+        return document
     }
 
     static func debugSummary() -> String {
