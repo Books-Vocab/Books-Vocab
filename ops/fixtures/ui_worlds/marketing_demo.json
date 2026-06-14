@@ -1639,6 +1639,119 @@
       "autoplaySpeed": "normal",
       "autoplaySoundEnabled": true,
       "showFirstRunHint": false
+    },
+    "longContent": {
+      "progressText": "5 / 18",
+      "currentCard": {
+        "word": "serendipity",
+        "translation": "機緣巧合；意外發現美好事物的能力與運氣",
+        "context": "It was pure serendipity that, while searching the archive for an unrelated maritime ledger, she stumbled upon the only surviving letter in which the composer described, in his own trembling hand, the night the symphony's final movement first came to him.",
+        "explanation": "指在尋找某事物的過程中，意外發現了另一件同樣珍貴、甚至更有價值的事物的現象或才能。這個詞帶有強烈的正面與浪漫色彩，常用於描述科學發現、人際相遇或藝術靈感的偶然降臨；與單純的「運氣」不同，serendipity 隱含當事人具備察覺並把握偶然機會的敏銳度，因此它既描述外在的巧合，也讚許內在的洞察力。",
+        "partOfSpeech": "n.",
+        "bookTitle": "The Travels and Adventures of Three Princes of Serendip",
+        "chapterTitle": "On Discoveries Neither Sought Nor Expected",
+        "dateAdded": "2024-12-24T05:46:40Z",
+        "difficultyTier": "advanced",
+        "reviewMode": "recognition",
+        "reviewExamples": [
+          "A series of serendipitous encounters led the two researchers to co-author the paper that would eventually reshape the field.",
+          "Finding that out-of-print edition in a roadside stall was a moment of genuine serendipity.",
+          "Much of scientific progress depends on serendipity tempered by a prepared, observant mind."
+        ],
+        "rootForm": "serendipity",
+        "inflections": [
+          "serendipitous",
+          "serendipitously"
+        ],
+        "graphLinksByKind": {
+          "shares_usage": [
+            {
+              "id": "lc-1",
+              "cardId": "c-1",
+              "word": "fortuitous",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.84,
+              "reason": "都描述偶然",
+              "hidden": false
+            },
+            {
+              "id": "lc-2",
+              "cardId": "c-2",
+              "word": "providence",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.8,
+              "reason": "都帶命運色彩",
+              "hidden": false
+            },
+            {
+              "id": "lc-3",
+              "cardId": "c-3",
+              "word": "happenstance",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.78,
+              "reason": "都指巧合",
+              "hidden": false
+            },
+            {
+              "id": "lc-4",
+              "cardId": "c-4",
+              "word": "windfall",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.72,
+              "reason": "意外之得",
+              "hidden": false
+            },
+            {
+              "id": "lc-5",
+              "cardId": "c-5",
+              "word": "kismet",
+              "kind": "shares_usage",
+              "label": "相關",
+              "confidence": 0.69,
+              "reason": "命定的緣分",
+              "hidden": false
+            }
+          ]
+        }
+      },
+      "nextCard": {
+        "word": "ubiquitous",
+        "translation": "無所不在的；普遍存在的",
+        "context": "Smartphones have become ubiquitous in modern classrooms.",
+        "explanation": "形容某事物到處都有、無處不在，常用於描述科技或現象的普及。",
+        "partOfSpeech": "adj.",
+        "bookTitle": "The Shallows",
+        "chapterTitle": "A Medium of the Most General Nature",
+        "dateAdded": "2026-01-03T00:00:00Z",
+        "difficultyTier": "intermediate",
+        "reviewMode": "recognition",
+        "reviewExamples": [],
+        "rootForm": "ubiquitous",
+        "inflections": [
+          "ubiquitously",
+          "ubiquity"
+        ],
+        "graphLinksByKind": {}
+      },
+      "revealStage": "back",
+      "canShuffle": true,
+      "canGoPrevious": true,
+      "canGoNext": true,
+      "remainingCount": 13,
+      "forgotCount": 1,
+      "rememberedCount": 4,
+      "rememberedFeedbackTrigger": 0,
+      "forgotFeedbackTrigger": 0,
+      "isAutoPlaying": false,
+      "isAutoPlayPaused": false,
+      "autoplayProgress": 0.25,
+      "autoplaySpeed": "normal",
+      "autoplaySoundEnabled": true,
+      "showFirstRunHint": false
     }
   },
   "runtimePodcast": {

@@ -49,6 +49,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(Set(document.bookshelf.keys) == Set(BookshelfFixtureID.allCases.map(\.rawValue)))
         #expect(Set(document.podcast.keys) == Set(PodcastFixtureID.allCases.map(\.rawValue)))
         #expect(Set(document.runtimePodcast.keys) == Set(UIWorldRuntimePodcastFixtureID.allCases.map(\.rawValue)))
+        #expect(Set(document.todayReview.keys) == Set(TodayReviewFixtureID.allCases.map(\.rawValue)))
         #expect(document.settings["preferences_auto_sync_off"] != nil)
         #expect(document.settings["preferences_logged_out_no_sync"] != nil)
         #expect(document.settings["subscription_free"]?.reviewSettings != nil)
