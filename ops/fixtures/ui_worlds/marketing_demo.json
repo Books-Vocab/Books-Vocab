@@ -1123,7 +1123,8 @@
   },
   "notebook": {
     "empty": {
-      "notebooks": []
+      "notebooks": [],
+      "editStates": []
     },
     "readerPickerPopulated": {
       "notebooks": [
@@ -1163,7 +1164,8 @@
           "coverImageAssetRef": null,
           "cardState": null
         }
-      ]
+      ],
+      "editStates": []
     },
     "readerPickerMany": {
       "notebooks": [
@@ -1335,7 +1337,8 @@
           "coverImageAssetRef": null,
           "cardState": null
         }
-      ]
+      ],
+      "editStates": []
     },
     "populated": {
       "notebooks": [
@@ -1495,7 +1498,8 @@
           "cardState": null,
           "color": null
         }
-      ]
+      ],
+      "editStates": []
     },
     "single": {
       "notebooks": [
@@ -1551,7 +1555,8 @@
           "cardState": null,
           "color": null
         }
-      ]
+      ],
+      "editStates": []
     },
     "coverGallery": {
       "notebooks": [
@@ -1651,7 +1656,8 @@
           "syncStatus": 1,
           "cardState": null
         }
-      ]
+      ],
+      "editStates": []
     },
     "cardGallery": {
       "notebooks": [
@@ -1734,6 +1740,60 @@
           "sortOrder": 3,
           "entries": [],
           "syncStatus": 1
+        }
+      ],
+      "editStates": []
+    },
+    "editGallery": {
+      "notebooks": [],
+      "editStates": [
+        {
+          "id": "create_blank",
+          "mode": "create",
+          "name": "",
+          "color": null,
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_color_pattern",
+          "mode": "edit",
+          "name": "GRE 高頻字",
+          "color": "#AFC2D3",
+          "coverPattern": "dots",
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_color_only",
+          "mode": "edit",
+          "name": "雅思核心詞彙",
+          "color": "#DCABA4",
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_long_name",
+          "mode": "edit",
+          "name": "莎士比亞十四行詩裡那些古英文罕用字與華麗修辭專用詞庫",
+          "color": "#C5B2D0",
+          "coverPattern": null,
+          "coverImageAssetRef": null
+        },
+        {
+          "id": "edit_custom_image",
+          "mode": "edit",
+          "name": "旅行閱讀詞庫",
+          "color": "#6F8EA3",
+          "coverPattern": null,
+          "coverImageAssetRef": "images.notebook_cover_app_icon"
+        },
+        {
+          "id": "edit_empty_name",
+          "mode": "edit",
+          "name": "",
+          "color": "#B1C5AE",
+          "coverPattern": null,
+          "coverImageAssetRef": null
         }
       ]
     }

@@ -775,6 +775,31 @@ import Playbook
         )
     }
 
+    @Test func notebookEditCatalogUsesUIWorldEditGallerySeed() throws {
+        let editScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("NotebookEditSheetScenarios.swift")
+        let source = try String(contentsOf: editScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("mode: .create", "Notebook Edit create mode must come from UI World"),
+            ("mode: .edit(", "Notebook Edit edit mode must come from UI World"),
+            ("GRE 高頻字", "Notebook Edit names belong in UI World"),
+            ("雅思核心詞彙", "Notebook Edit names belong in UI World"),
+            ("莎士比亞十四行詩", "Notebook Edit long names belong in UI World"),
+            ("#AFC2D3", "Notebook Edit colors belong in UI World"),
+            ("#DCABA4", "Notebook Edit colors belong in UI World"),
+            ("NotebookCoverPattern.allCases", "Notebook Edit patterns belong in UI World"),
+            ("coverImagePath: nil", "Notebook Edit image state belongs in UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(editScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.editSheetMode(id: stateID, for: .editGallery)"),
+            "Notebook Edit catalog must source mode state from UI World notebook.editGallery"
+        )
+    }
+
     @Test func readerNotebookPickerCatalogUsesUIWorldNotebookAndBookSeeds() throws {
         let pickerScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

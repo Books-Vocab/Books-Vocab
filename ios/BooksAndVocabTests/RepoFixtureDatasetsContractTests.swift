@@ -76,7 +76,7 @@ struct RepoFixtureDatasetsContractTests {
             expectAuthUIStateKeys(topLevel, dataset: stem)
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
-            expectSwiftDataRowStateKeys(topLevel, dataset: stem)
+            expectSwiftDataRowStateKeys(topLevel, document: document, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
             expectValidPreferenceKeys(document.preferences.ubiquitousKeyValueStore.keys, dataset: stem, domain: "preferences.ubiquitousKeyValueStore")
 
@@ -396,13 +396,26 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
-    private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
+    private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], document: FixtureDatasetDocument, dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
         let requiredUIWorldEntryKeys = requiredEntryKeys.union(["bookTitle", "reviewMode"])
 
         let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in notebookFixtures {
+            #expect(
+                seed.keys.contains("editStates"),
+                "\(dataset): notebook.\(fixtureKey) must explicitly declare editStates"
+            )
+            let editStates = seed["editStates"] as? [[String: Any]] ?? []
+            for editState in editStates {
+                expectNotebookEditStateKeys(
+                    editState,
+                    document: document,
+                    dataset: dataset,
+                    owner: "notebook.\(fixtureKey).editStates.\(editState["id"] as? String ?? "<missing-id>")"
+                )
+            }
             let notebooks = seed["notebooks"] as? [[String: Any]] ?? []
             for notebook in notebooks {
                 let remoteId = notebook["remoteId"] as? String ?? "<missing-remote-id>"
@@ -472,6 +485,32 @@ struct RepoFixtureDatasetsContractTests {
                     )
                 }
             }
+        }
+    }
+
+    private func expectNotebookEditStateKeys(_ editState: [String: Any], document: FixtureDatasetDocument, dataset: String, owner: String) {
+        for key in ["id", "mode", "name", "color", "coverPattern", "coverImageAssetRef"] {
+            #expect(editState.keys.contains(key), "\(dataset): \(owner) must explicitly declare \(key)")
+        }
+        let mode = editState["mode"] as? String ?? "<missing-mode>"
+        #expect(["create", "edit"].contains(mode), "\(dataset): \(owner).mode must be create or edit")
+        if mode == "create" {
+            #expect((editState["name"] as? String ?? "<missing-name>").isEmpty, "\(dataset): \(owner) create mode must have an empty name")
+            #expect(editState["color"] is NSNull, "\(dataset): \(owner) create mode color must be null")
+            #expect(editState["coverPattern"] is NSNull, "\(dataset): \(owner) create mode coverPattern must be null")
+            #expect(editState["coverImageAssetRef"] is NSNull, "\(dataset): \(owner) create mode coverImageAssetRef must be null")
+        }
+        if let coverPattern = editState["coverPattern"] as? String {
+            #expect(!coverPattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(dataset): \(owner).coverPattern must not be blank")
+        }
+        if let coverImageAssetRef = editState["coverImageAssetRef"] as? String {
+            expectAssetRef(
+                coverImageAssetRef,
+                document: document,
+                expectedPrefix: "images.",
+                dataset: dataset,
+                owner: "\(owner).coverImageAssetRef"
+            )
         }
     }
 

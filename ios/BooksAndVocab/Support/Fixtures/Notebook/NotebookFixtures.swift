@@ -5,6 +5,7 @@ import SwiftData
 enum NotebookFixtureID: String, CaseIterable {
     case cardGallery
     case coverGallery
+    case editGallery
     case empty
     case populated
     case readerPickerMany
@@ -153,8 +154,66 @@ struct NotebookCardStateSeed: Codable {
     let isActive: Bool
 }
 
+struct NotebookEditStateSeed: Codable {
+    let id: String
+    let mode: String
+    let name: String
+    let color: String?
+    let coverPattern: String?
+    let coverImageAssetRef: String?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case mode
+        case name
+        case color
+        case coverPattern
+        case coverImageAssetRef
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World notebook edit state must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        id = try container.decode(String.self, forKey: .id)
+        mode = try container.decode(String.self, forKey: .mode)
+        name = try container.decode(String.self, forKey: .name)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+        coverPattern = try container.decodeIfPresent(String.self, forKey: .coverPattern)
+        coverImageAssetRef = try container.decodeIfPresent(String.self, forKey: .coverImageAssetRef)
+    }
+}
+
 struct NotebookFixtureSeed: Codable {
     let notebooks: [NotebookSeed]
+    let editStates: [NotebookEditStateSeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case notebooks
+        case editStates
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World notebook fixture must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        notebooks = try container.decode([NotebookSeed].self, forKey: .notebooks)
+        editStates = try container.decode([NotebookEditStateSeed].self, forKey: .editStates)
+    }
 }
 
 struct NotebookFixtureRenderModel {
@@ -175,7 +234,7 @@ enum NotebookFixtures {
 
     private static func surfaces(for fixtureID: NotebookFixtureID) -> Set<FixtureSurface> {
         switch fixtureID {
-        case .cardGallery, .coverGallery:
+        case .cardGallery, .coverGallery, .editGallery:
             return [.catalog, .snapshot]
         case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
             return sharedSurfaces
@@ -188,6 +247,8 @@ enum NotebookFixtures {
             return ["card"]
         case .coverGallery:
             return ["cover"]
+        case .editGallery:
+            return ["edit"]
         case .empty, .populated, .readerPickerMany, .readerPickerPopulated, .single:
             return ["baseline"]
         }
@@ -246,6 +307,48 @@ enum NotebookFixtures {
                 lastActivity: cardState.lastActivity,
                 isActive: cardState.isActive
             )
+        }
+    }
+
+    @MainActor
+    static func editSheetMode(id: String, for fixtureID: NotebookFixtureID) -> NotebookEditSheet.Mode {
+        let seed = FixtureDatasetStore.requireNotebookSeed(for: fixtureID)
+        guard let state = seed.editStates.first(where: { $0.id == id }) else {
+            preconditionFailure("UI World notebook.\(fixtureID.rawValue) is missing edit state \(id)")
+        }
+        if let pattern = state.coverPattern {
+            precondition(
+                NotebookCoverPattern(rawValue: pattern) != nil,
+                "UI World notebook.\(fixtureID.rawValue).editStates.\(id) has unknown coverPattern \(pattern)"
+            )
+        }
+        let coverImagePath: String?
+        if let ref = state.coverImageAssetRef {
+            do {
+                let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
+                coverImagePath = installedURL.path
+            } catch {
+                preconditionFailure("Failed to install UI World notebook.\(fixtureID.rawValue).editStates.\(id) asset \(ref): \(error)")
+            }
+        } else {
+            coverImagePath = nil
+        }
+        switch state.mode {
+        case "create":
+            precondition(
+                state.name.isEmpty && state.color == nil && state.coverPattern == nil && state.coverImageAssetRef == nil,
+                "UI World notebook.\(fixtureID.rawValue).editStates.\(id) create mode must not carry edit appearance"
+            )
+            return .create
+        case "edit":
+            return .edit(
+                name: state.name,
+                color: state.color,
+                coverPattern: state.coverPattern,
+                coverImagePath: coverImagePath
+            )
+        default:
+            preconditionFailure("UI World notebook.\(fixtureID.rawValue).editStates.\(id) has unknown mode \(state.mode)")
         }
     }
 
