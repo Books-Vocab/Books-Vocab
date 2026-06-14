@@ -26,6 +26,10 @@ struct UITestFixtureSeedIsolationTests {
               "translation": "probe",
               "context": "probe context \(index)",
               "reviewExamples": ["probe context \(index)"],
+              "syncStatus": 1,
+              "actionType": "add",
+              "isArchived": false,
+              "isExcludedFromReader": false,
               "graphLinksByKind": {}
             }
             """
@@ -39,6 +43,7 @@ struct UITestFixtureSeedIsolationTests {
                 "probe": {
                   "notebookRemoteId": "default",
                   "notebookName": "Probe",
+                  "notebookSyncStatus": 1,
                   "entries": [\(entries)]
                 }
               }

@@ -82,14 +82,31 @@ enum UITestFixtureSeed {
             preconditionFailure("auth.signedIn fixture requires auth.signedIn.isLoggedIn = true")
         }
         let userId = seed.userId ?? ""
-        let token = seed.token ?? ""
-        guard !userId.isEmpty, !token.isEmpty else {
-            preconditionFailure("auth.signedIn fixture requires non-empty userId and token")
+        guard !userId.isEmpty else {
+            preconditionFailure("auth.signedIn fixture requires non-empty userId")
         }
         let auth = AuthManager.shared
         auth.displayName = seed.displayName ?? ""
         auth.userEmail = seed.email
-        auth.login(userId: userId, token: token)
+        switch seed.keychainTokenState {
+        case .available:
+            let token = seed.token ?? ""
+            guard !token.isEmpty else {
+                preconditionFailure("auth.signedIn keychainTokenState=available requires non-empty token")
+            }
+            auth.login(userId: userId, token: token)
+        case .readFailed:
+            auth.applyUITestPersistedSession(PersistedAuthSession(
+                userId: userId,
+                displayName: seed.displayName,
+                userEmail: seed.email,
+                avatarURL: nil,
+                token: nil,
+                keychainReadFailed: true
+            ))
+        case .absent:
+            preconditionFailure("auth.signedIn cannot declare keychainTokenState=absent")
+        }
         #else
         AppLog.app.error("UITestFixtureSeed: refused fixture login on physical device — would overwrite the real Keychain session")
         preconditionFailure("auth.signedIn fixture is simulator-only")

@@ -42,6 +42,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.datasetID == "demo-demo-user")
         #expect(document.assets.isEmpty)
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
+        #expect(document.auth["signedIn"]?.keychainTokenState == .available)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
     }
 
@@ -56,6 +57,7 @@ struct RepoFixtureDatasetsContractTests {
             #expect(!document.preferences.isEmpty, "\(stem): repo UI Worlds must declare preferences")
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
+            expectAuthKeychainStateKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectSwiftDataRowStateKeys(topLevel, dataset: stem)
             expectValidPreferenceKeys(document.preferences.userDefaults.keys, dataset: stem, domain: "preferences.userDefaults")
@@ -185,6 +187,14 @@ struct RepoFixtureDatasetsContractTests {
                     )
                 }
             }
+
+            for (fixtureKey, seed) in document.auth {
+                expectAuthKeychainState(
+                    seed,
+                    dataset: stem,
+                    owner: "auth.\(fixtureKey)"
+                )
+            }
         }
     }
 
@@ -300,6 +310,16 @@ struct RepoFixtureDatasetsContractTests {
         }
     }
 
+    private func expectAuthKeychainStateKeys(_ topLevel: [String: Any], dataset: String) {
+        let authFixtures = topLevel["auth"] as? [String: [String: Any]] ?? [:]
+        for (fixtureKey, seed) in authFixtures {
+            #expect(
+                seed.keys.contains("keychainTokenState"),
+                "\(dataset): auth.\(fixtureKey) must explicitly declare keychainTokenState"
+            )
+        }
+    }
+
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
 
@@ -365,6 +385,28 @@ struct RepoFixtureDatasetsContractTests {
             [0, 1].contains(syncStatus),
             "\(dataset): \(owner) must be a valid Notebook.syncStatus (0=pending, 1=synced)"
         )
+    }
+
+    private func expectAuthKeychainState(
+        _ seed: UIWorldAuthSeed,
+        dataset: String,
+        owner: String
+    ) {
+        switch seed.keychainTokenState {
+        case .available:
+            #expect(seed.isLoggedIn, "\(dataset): \(owner) keychainTokenState=available requires isLoggedIn=true")
+            #expect(
+                seed.token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+                "\(dataset): \(owner) keychainTokenState=available requires non-empty token"
+            )
+        case .readFailed:
+            #expect(seed.isLoggedIn, "\(dataset): \(owner) keychainTokenState=readFailed requires isLoggedIn=true")
+            #expect(seed.userId != nil, "\(dataset): \(owner) keychainTokenState=readFailed requires persisted userId")
+            #expect(seed.token == nil, "\(dataset): \(owner) keychainTokenState=readFailed must not also expose a readable token")
+        case .absent:
+            #expect(!seed.isLoggedIn, "\(dataset): \(owner) keychainTokenState=absent requires isLoggedIn=false")
+            #expect(seed.token == nil, "\(dataset): \(owner) keychainTokenState=absent must not include token")
+        }
     }
 
     private func expectVocabularyRowState(

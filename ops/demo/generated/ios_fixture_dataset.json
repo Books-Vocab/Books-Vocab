@@ -16,7 +16,8 @@
       "displayName": "示範使用者",
       "email": "demo@wordnexus.lol",
       "provider": "apple",
-      "providerUserId": "apple:demo-user"
+      "providerUserId": "apple:demo-user",
+      "keychainTokenState": "available"
     },
     "guest": {
       "isLoggedIn": false,
@@ -25,7 +26,8 @@
       "displayName": null,
       "email": null,
       "provider": null,
-      "providerUserId": null
+      "providerUserId": null,
+      "keychainTokenState": "absent"
     }
   },
   "entitlements": {
@@ -112,7 +114,7 @@
       "forgotFeedbackTrigger": 0,
       "isAutoPlaying": false,
       "isAutoPlayPaused": false,
-      "autoplayProgress": 0.0,
+      "autoplayProgress": 0,
       "autoplaySpeed": "normal",
       "autoplaySoundEnabled": true,
       "showFirstRunHint": false

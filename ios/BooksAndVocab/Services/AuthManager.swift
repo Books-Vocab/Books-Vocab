@@ -287,6 +287,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         authError = message
     }
 
+    #if DEBUG
+    func applyUITestPersistedSession(_ persisted: PersistedAuthSession) {
+        applyPersistedSession(persisted)
+    }
+    #endif
+
     func verify(provider: String, token: String, email: String?) async throws -> AuthVerificationResult {
         try await verifier.verify(provider: provider, token: token, email: email)
     }
