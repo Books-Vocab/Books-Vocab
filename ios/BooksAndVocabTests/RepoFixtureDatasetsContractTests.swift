@@ -127,6 +127,15 @@ struct RepoFixtureDatasetsContractTests {
                         dataset: stem,
                         owner: "notebook.\(fixtureKey).\(notebook.remoteId).syncStatus"
                     )
+                    if let coverImageAssetRef = notebook.coverImageAssetRef {
+                        expectAssetRef(
+                            coverImageAssetRef,
+                            document: document,
+                            expectedPrefix: "images.",
+                            dataset: stem,
+                            owner: "notebook.\(fixtureKey).\(notebook.remoteId).coverImageAssetRef"
+                        )
+                    }
                     for entry in notebook.entries {
                         expectNotebookEntryRowState(
                             entry,
@@ -388,7 +397,7 @@ struct RepoFixtureDatasetsContractTests {
                     notebook.keys.contains("syncStatus"),
                     "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare syncStatus"
                 )
-                for key in ["isDefault", "sortOrder"] {
+                for key in ["isDefault", "sortOrder", "coverPattern", "coverImageAssetRef"] {
                     #expect(
                         notebook.keys.contains(key),
                         "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare \(key)"
@@ -544,6 +553,20 @@ struct RepoFixtureDatasetsContractTests {
             installAs.map { !$0.isEmpty } ?? false,
             "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
         )
+    }
+
+    private func expectAssetRef(
+        _ ref: String,
+        document: FixtureDatasetDocument,
+        expectedPrefix: String,
+        dataset: String,
+        owner: String
+    ) {
+        #expect(ref.hasPrefix(expectedPrefix), "\(dataset): \(owner) must point into assets.\(expectedPrefix), got \(ref)")
+        guard document.assets.asset(for: ref) != nil else {
+            Issue.record("\(dataset): \(owner) \(ref) is not declared")
+            return
+        }
     }
 
     private func expectUniqueInstallPaths(document: FixtureDatasetDocument, dataset: String) {
