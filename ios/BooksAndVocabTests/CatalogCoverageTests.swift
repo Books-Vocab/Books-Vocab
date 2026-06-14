@@ -174,6 +174,37 @@ import Playbook
         )
     }
 
+    @Test func bookCardCatalogUsesUIWorldBookshelfSeeds() throws {
+        let bookCardScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("BookCardScenarios.swift")
+        let source = try String(contentsOf: bookCardScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("struct Spec", "Book Card catalog must not keep local book specs"),
+            ("Book(", "Book Card catalog must not inline Book rows"),
+            ("Date(timeIntervalSince1970:", "Book Card relative dates must come from UI World referenceDate"),
+            ("fileName: \"fixture.", "Book Card file names must come from UI World"),
+            ("原子習慣", "Book Card title metadata belongs in UI World"),
+            ("James Clear", "Book Card author metadata belongs in UI World"),
+            ("progression: 0.42", "Book Card progress belongs in UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(bookCardScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("BookshelfFixtures.renderModel(for: fixture.bookshelfID)"),
+            "Book Card catalog must materialize book rows from UI World bookshelf seeds"
+        )
+        #expect(
+            source.contains("renderModel.books.count == 1"),
+            "Book Card catalog must validate each card seed declares exactly one book"
+        )
+        #expect(
+            source.contains(".environment(\\.fixtureReferenceDate, referenceDate)"),
+            "Book Card catalog must use UI World bookshelf referenceDate"
+        )
+    }
+
     @Test func podcastEpisodeListCatalogUsesUIWorldRuntimePodcastSeeds() throws {
         let podcastScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
