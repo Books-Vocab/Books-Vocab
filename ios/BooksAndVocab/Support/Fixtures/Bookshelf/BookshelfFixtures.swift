@@ -19,6 +19,7 @@ struct BookshelfBookSeed: Codable {
     let author: String
     let fileName: String
     let format: BookFormat
+    let bookAssetRef: String?
     let progression: Double?
     let dateAdded: Date
     let dateLastRead: Date?
@@ -48,6 +49,7 @@ enum BookshelfFixtures {
                         author: "Lena Harper",
                         fileName: "word-architect.epub",
                         format: .epub,
+                        bookAssetRef: nil,
                         progression: 0.64,
                         dateAdded: Date(timeIntervalSince1970: 1_768_521_600),
                         dateLastRead: Date(timeIntervalSince1970: 1_769_126_400)
@@ -64,6 +66,7 @@ enum BookshelfFixtures {
                         author: "M. Rivera",
                         fileName: "notes-on-deliberate-practice.epub",
                         format: .epub,
+                        bookAssetRef: nil,
                         progression: 0.18,
                         dateAdded: Date(timeIntervalSince1970: 1_768_435_200),
                         dateLastRead: Date(timeIntervalSince1970: 1_769_367_600)
@@ -83,6 +86,7 @@ enum BookshelfFixtures {
                         author: "Lena Harper",
                         fileName: "word-architect.epub",
                         format: .epub,
+                        bookAssetRef: nil,
                         progression: 0.64,
                         dateAdded: Date(timeIntervalSince1970: 1_768_521_600),
                         dateLastRead: Date(timeIntervalSince1970: 1_769_126_400)
@@ -92,6 +96,7 @@ enum BookshelfFixtures {
                         author: "M. Rivera",
                         fileName: "notes-on-deliberate-practice.epub",
                         format: .epub,
+                        bookAssetRef: nil,
                         progression: 0.18,
                         dateAdded: Date(timeIntervalSince1970: 1_768_435_200),
                         dateLastRead: Date(timeIntervalSince1970: 1_769_367_600)
