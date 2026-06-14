@@ -204,6 +204,36 @@ import Playbook
         )
     }
 
+    @Test func podcastPlayerCatalogUsesUIWorldRuntimePodcastSeeds() throws {
+        let playerScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("PodcastPlayerViewScenarios.swift")
+        let source = try String(contentsOf: playerScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("sampleSRT", "Podcast player catalog subtitle must come from UI World subtitle asset"),
+            ("series-deep-work", "Podcast player catalog series id must come from UI World"),
+            ("Deep Work, Decoded", "Podcast player catalog title must come from UI World"),
+            ("Catalog Podcast Player User", "Podcast player catalog auth must come from UI World"),
+            ("PodcastEpisode(remoteId:", "Podcast player catalog must not inline episode rows"),
+            ("try? container.mainContext.save()", "Podcast player catalog SwiftData save must fail fast"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(playerScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture.runtimePodcastID)"),
+            "Podcast player catalog must source episode state from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: fixture.authID)"),
+            "Podcast player catalog auth must come from UI World auth seeds"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireInstalledAssetURL(ref: seed.subtitleAssetRef)"),
+            "Podcast player catalog subtitle must materialize through the UI World asset manifest"
+        )
+    }
+
     @Test func wordEditCatalogUsesUIWorldVocabularySeed() throws {
         let wordEditScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
