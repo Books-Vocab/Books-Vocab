@@ -172,6 +172,36 @@ import Playbook
         )
     }
 
+    @Test func kgVocabSearchCatalogUsesUIWorldVocabularyAndAuthSeeds() throws {
+        let searchScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("KGVocabSearchScenarios.swift")
+        let source = try String(contentsOf: searchScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("KGVocabSearchFixtures", "KG Vocab search catalog must not keep local vocabulary fixtures"),
+            ("VocabularyEntry(", "KG Vocab search catalog must not inline SwiftData row literals"),
+            ("Notebook(remoteId:", "KG Vocab search catalog notebook must come from UI World"),
+            ("Sample Book", "KG Vocab search catalog book title must come from UI World"),
+            ("catalog-vocab-search-user", "KG Vocab search auth user must come from UI World"),
+            ("catalog-vocab-search-token", "KG Vocab search auth token must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(searchScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("FixtureDatasetStore.requireVocabularySeed(for: .searchVocabNotebook)"),
+            "KG Vocab search catalog must source rows from UI World vocabulary.searchVocabNotebook"
+        )
+        #expect(
+            source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
+            "KG Vocab search catalog must source auth from UI World auth.signedIn"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            "KG Vocab search catalog must materialize UI World vocabulary rows into SwiftData"
+        )
+    }
+
     @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
         let subscriptionScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)

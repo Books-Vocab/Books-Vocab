@@ -25,70 +25,28 @@ import SwiftData
 /// `KGVocabView` is never presented standalone in production — `VocabularyListView`
 /// renders it — so per the `CatalogScene` taxonomy note it is catalogued as an
 /// engineering surface ("KG Vocab Presenter") backed by `KGVocabView`, not a
-/// `featureScreen`. We inject a logged-in `CatalogPreviewAuth`, seed a fresh
-/// in-memory store inside a `@MainActor` View body, and disable catalog tasks so
-/// `loadInitialData` (sync/network) never fires.
+/// `featureScreen`. Auth comes from UI World `auth.signedIn`; vocabulary rows
+/// come from UI World `vocabulary.searchVocabNotebook` and are materialized into
+/// SwiftData before rendering. Missing seed, malformed auth, query drift, or
+/// SwiftData seed failure all fail at catalog construction time.
 enum KGVocabSearchScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "KG Vocab Presenter") {
             // Query matches a subset of the seeded list → filtered rows + the
             // chip/sort bar render under an active query.
             Scenario("Search · matches", layout: .fill) {
-                KGVocabSearchScene(query: "ous")
+                KGVocabSearchScene(query: "影響", expectedMatches: .multiple)
             }
             // Single exact-ish match → narrowest non-empty searched list.
             Scenario("Search · single match", layout: .fill) {
-                KGVocabSearchScene(query: "serendipity")
+                KGVocabSearchScene(query: "ambiguous", expectedMatches: .exactly(1))
             }
             // Query matches nothing in the seeded list → the in-scene "no match"
             // empty state (no CTA, since searchText is non-empty).
             Scenario("Search · no match", layout: .fill) {
-                KGVocabSearchScene(query: "zzzznotaword")
+                KGVocabSearchScene(query: "zzzznotaword", expectedMatches: .exactly(0))
             }
         }
-    }
-}
-
-// MARK: - Fixtures
-
-private enum KGVocabSearchFixtures {
-    static let notebookId = "default"
-
-    /// A synced + non-archived + non-delete entry → satisfies
-    /// `knowledgeListPredicate`, so it renders in the knowledge list.
-    static func synced(
-        word: String,
-        translation: String,
-        partOfSpeech: String? = "n."
-    ) -> VocabularyEntry {
-        let entry = VocabularyEntry(
-            word: word,
-            translation: translation,
-            context: "It was pure \(word) — the moment lingered in memory.",
-            explanation: "A short AI-style contextual gloss for \(word).",
-            partOfSpeech: partOfSpeech,
-            bookTitle: "Sample Book",
-            chapterTitle: "第一章"
-        )
-        entry.notebookId = notebookId
-        entry.isArchived = false
-        entry.syncStatus = VocabularySyncState.synced.rawValue
-        entry.actionType = VocabularySyncAction.add.rawValue
-        return entry
-    }
-
-    /// A realistic notebook of synced words. "ous" matches `meticulous`,
-    /// `ingenious`, `tenacious`; "serendipity" matches exactly one.
-    static var library: [VocabularyEntry] {
-        [
-            synced(word: "serendipity", translation: "機緣巧合"),
-            synced(word: "meticulous", translation: "一絲不苟的", partOfSpeech: "adj."),
-            synced(word: "ingenious", translation: "巧妙的；獨創的", partOfSpeech: "adj."),
-            synced(word: "tenacious", translation: "堅韌不拔的", partOfSpeech: "adj."),
-            synced(word: "ephemeral", translation: "短暫的", partOfSpeech: "adj."),
-            synced(word: "petrichor", translation: "雨後泥土香"),
-            synced(word: "nuance", translation: "細微差異"),
-        ]
     }
 }
 
@@ -101,39 +59,48 @@ private enum KGVocabSearchFixtures {
 private struct KGVocabSearchScene: View {
     let container: ModelContainer
     let auth: CatalogPreviewAuth
+    let notebookId: String
     let query: String
 
-    init(query: String) {
+    init(query: String, expectedMatches: ExpectedMatches) {
         let container = try! ModelContainer(
-            for: VocabularyEntry.self, Notebook.self,
+            for: VocabularyEntry.self, Notebook.self, ReviewRecord.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
-        let context = container.mainContext
-
-        let notebook = Notebook(remoteId: "default", name: "我的單字本", isDefault: true)
-        notebook.syncStatus = 1
-        context.insert(notebook)
-
-        for entry in KGVocabSearchFixtures.library {
-            context.insert(entry)
+        let seed = FixtureDatasetStore.requireVocabularySeed(for: .searchVocabNotebook)
+        let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
+        do {
+            let entries = try MainActor.assumeIsolated {
+                try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            }
+            let matchCount = entries.filter {
+                $0.word.localizedCaseInsensitiveContains(query) ||
+                    $0.translation.localizedCaseInsensitiveContains(query)
+            }.count
+            switch expectedMatches {
+            case .multiple:
+                guard matchCount > 1 else {
+                    preconditionFailure("UI World vocabulary.searchVocabNotebook query \(query) must match multiple entries, got \(matchCount)")
+                }
+            case .exactly(let expected):
+                guard matchCount == expected else {
+                    preconditionFailure("UI World vocabulary.searchVocabNotebook query \(query) must match \(expected) entries, got \(matchCount)")
+                }
+            }
+        } catch {
+            preconditionFailure("Failed to seed UI World vocabulary.searchVocabNotebook: \(error)")
         }
-        try? context.save()
 
         self.container = container
-        self.auth = CatalogPreviewAuth(
-            isLoggedIn: true,
-            userId: "catalog-vocab-search-user",
-            token: "catalog-vocab-search-token",
-            displayName: "Catalog Vocab Search User",
-            userEmail: "catalog-vocab-search@example.com"
-        )
+        self.auth = Self.makeAuth(from: authSeed)
+        self.notebookId = seed.notebookRemoteId
         self.query = query
     }
 
     var body: some View {
         AppThemeContainer {
             NavigationStack {
-                KGVocabView(searchText: .constant(query), notebookId: "default")
+                KGVocabView(searchText: .constant(query), notebookId: notebookId)
                     .environment(\.catalogTaskPolicy, .disabled)
             }
             .modelContainer(container)
@@ -141,5 +108,23 @@ private struct KGVocabSearchScene: View {
         }
         .environmentObject(AppAppearanceStore.preview)
     }
+
+    private static func makeAuth(from seed: UIWorldAuthSeed) -> CatalogPreviewAuth {
+        guard seed.isLoggedIn else {
+            preconditionFailure("UI World auth.signedIn must be logged in for KGVocabSearchScenarios")
+        }
+        return CatalogPreviewAuth(
+            isLoggedIn: seed.isLoggedIn,
+            userId: seed.userId,
+            token: seed.token,
+            displayName: seed.displayName,
+            userEmail: seed.email
+        )
+    }
+}
+
+private enum ExpectedMatches {
+    case multiple
+    case exactly(Int)
 }
 #endif
