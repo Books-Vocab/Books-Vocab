@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 8ad59cf5
+verified_against: a45a2764
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -50,6 +50,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 
 ### Settings account section 契約（無本地 auth/pro fixture）
 `SettingsAccountSectionScenarios` 的 logged-out / subscribed / loading / pricing / logged-out-error 與 Auth Summary pro/free/long-identity 狀態必須取 UI World `settings.*` seed；logged-out error 是 `settings.account_logged_out_error`，long identity 是 `settings.account_long_identity`。scenario source 不可保留 `loggedOutWithError` / `longIdentityState`，不可手建 `SettingsPresenterState.AuthSection(...)`，也不可用本地 `isProActive: true/false` 決定 Pro badge。
+
+### Settings preferences section 契約（無本地 preference fixture）
+`SettingsSectionsScenarios` 的 `SettingsPreferencesSection` auto-sync on/off/hidden 狀態必須取 UI World `settings.*.preferences` seed；auto-sync off 是 `settings.preferences_auto_sync_off`，logged-out/no-sync-row 是 `settings.preferences_logged_out_no_sync`。scenario source 不可手建 `SettingsPresenterState.PreferencesSection(...)`，也不可在 Debug source 寫死 `autoSyncEnabled` / `showAutoSync`。
 
 ### 裁決紀錄（borderline，已拍板，2026-06-09）
 1. **Word Detail Loading Shimmer → OUT**：shimmer 是 Card Document 的 loading 皮、非可指名物件，降為 V11 Card Document 的 `shimmer` 狀態，不獨立計組件。
