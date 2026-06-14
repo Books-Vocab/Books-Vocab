@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, NamedTuple
 
 from .api_models import CardResponse
@@ -21,35 +22,81 @@ from .vocab_shared import (
 logger = logging.getLogger(__name__)
 
 
-def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
+def _resolve_with_neighbours(cards: list[Any], graph: Any, cards_store: Any) -> dict[str, Any]:
+    """Build the ``cards_by_id`` map for a page: the page's own cards plus the
+    graph neighbours (on other pages / soft-deleted) needed to render links.
+
+    The page itself is a *subset* of the full table, so any neighbour not on the
+    page is fetched via ``get_batch`` (one query). ``build_links_by_kind`` still
+    tolerates a missing neighbour (``if not other_card``), so a cross-page or
+    deleted neighbour that can't be resolved is simply skipped rather than
+    dropping the whole link silently.
+    """
+    by_id: dict[str, Any] = {c.id: c for c in cards}
+    neighbour_ids: set[str] = set()
+    for card in cards:
+        if card.is_deleted:
+            continue
+        for link in graph.get_links_for(card.id):
+            other_id = link.to_id if link.from_id == card.id else link.from_id
+            if other_id not in by_id:
+                neighbour_ids.add(other_id)
+    if neighbour_ids:
+        by_id |= cards_store.get_batch(neighbour_ids)
+    return by_id
+
+
+def _page_cursor(cards: list[Any], limit: int) -> tuple[datetime, str] | None:
+    """Cursor for the next page, or ``None`` when this page drained the source.
+
+    A full page (``len == limit``) means more rows *may* remain, so emit the
+    last card's ``(updated_at, id)``. A short page means the source is drained.
+    """
+    if limit and len(cards) == limit:
+        last = cards[-1]
+        return (last.updated_at, last.id)
+    return None
+
+
+def list_vocab_cards(
+    *,
+    since: str | None,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    notebook_id: str | None = None,
+    limit: int = 5000,
+    after: tuple[datetime, str] | None = None,
+) -> tuple[list[CardResponse], tuple[datetime, str] | None]:
+    """List vocab cards as ``(responses, next_cursor)``.
+
+    Both the full-sync (``since=None``) and incremental (``since=...``) paths
+    page by the composite cursor ``(updated_at, id)`` with a bounded ``limit``.
+    ``after`` is the previous page's cursor; ``next_cursor`` is non-None only
+    when a full page was returned (more rows may remain). Cards are returned in
+    ascending ``(updated_at, id)`` order so the cursor advances monotonically.
+    """
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
         naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
-        # Phase 1: only fetch modified cards (uses ix_card_updated_at index)
+        # Incremental: fetch the modified set (already bounded), then order and
+        # slice it by the same cursor so since + full-sync paginate identically.
         modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
-        modified_by_id: dict[str, Any] = {c.id: c for c in modified}
-        # Phase 2: collect neighbour IDs for link resolution (graph is in-memory, N lookups OK)
-        neighbour_ids: set[str] = set()
-        for card in modified:
-            if card.is_deleted:
-                continue
-            for link in graph.get_links_for(card.id):
-                other_id = link.to_id if link.from_id == card.id else link.from_id
-                if other_id not in modified_by_id:
-                    neighbour_ids.add(other_id)
-        neighbours = cards_store.get_batch(neighbour_ids) if neighbour_ids else {}
-        # NOTE: cards_by_id is a subset (modified + neighbours), not the full table.
-        # build_links_by_kind skips missing neighbours via `if not other_card`.
-        cards_by_id = modified_by_id | neighbours
-        cards = modified
+        modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
+        if after is not None:
+            modified = [c for c in modified if (c.updated_at, c.id) > after]
+        cards = modified[:limit]
     else:
-        # Full sync: all non-deleted cards. Deleted neighbours are skipped by build_links_by_kind.
-        cards_by_id = cards_store.all_as_dict(include_deleted=False, notebook_id=notebook_id)
-        cards = list(cards_by_id.values())
+        # Full sync: DB-bounded page (no full-table materialisation).
+        cards = cards_store.page_cards(
+            limit=limit, after=after, include_deleted=False, notebook_id=notebook_id
+        )
 
-    return [card_response_builder(card, graph, cards_by_id) for card in cards]
+    cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)
+    responses = [card_response_builder(card, graph, cards_by_id) for card in cards]
+    return responses, _page_cursor(cards, limit)
 
 
 def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:

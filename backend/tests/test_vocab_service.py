@@ -50,6 +50,15 @@ class _FakeCardsStore:
     def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None):
         return {card.id: card for card in self.all(include_deleted=include_deleted)}
 
+    def page_cards(self, *, limit, after, include_deleted, notebook_id):
+        cards = self.all(include_deleted=include_deleted)
+        if after is not None:
+            cards = [c for c in cards if (c.updated_at, c.id) > after]
+        return cards[:limit]
+
+    def get_batch(self, card_ids):
+        return {c.id: c for c in self._cards if c.id in card_ids}
+
     def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
 
@@ -86,7 +95,7 @@ def test_list_lookup_and_delete_vocab_helpers():
     cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke"), _FakeCard(id="c2", content="lucid")])
     graph = SimpleNamespace(get_links_for=lambda card_id: [])
 
-    listed = list_vocab_cards(since=None, cards_store=cards, graph=graph, card_response_builder=_card_builder)
+    listed, _cursor = list_vocab_cards(since=None, cards_store=cards, graph=graph, card_response_builder=_card_builder)
     assert [item["content"] for item in listed] == ["evoke", "lucid"]
 
     looked_up = lookup_vocab_word("Evoke", cards_store=cards, graph=graph, card_response_builder=_card_builder)
@@ -870,8 +879,8 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
                              tier_getter=get_tier, link_kinds=link_kinds, link_labels=link_labels)
 
     since_str = since_dt.isoformat() + "Z"
-    results = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
-                               card_response_builder=builder, notebook_id=None)
+    results, _cursor = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
+                                        card_response_builder=builder, notebook_id=None)
 
     assert len(results) == 1
     assert results[0].content == "fruit"
