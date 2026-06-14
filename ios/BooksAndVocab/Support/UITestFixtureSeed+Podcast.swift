@@ -9,7 +9,7 @@ extension UITestFixtureSeed {
         case "playablePreview":
             seedPlayablePodcastPreview(into: container)
         default:
-            AppLog.app.warning("Unknown podcast fixture ID: \(id)")
+            failFixtureSeed("Unknown podcast fixture ID: \(id)")
         }
     }
 
@@ -57,7 +57,7 @@ extension UITestFixtureSeed {
             seedSignedInLoginFromWorld()
             AppLog.app.info("UI-test fixture seeded: podcast.playablePreview")
         } catch {
-            AppLog.app.error("Failed to seed podcast fixture: \(error)")
+            failFixtureSeed("Failed to seed podcast.playablePreview fixture: \(error)")
         }
     }
 

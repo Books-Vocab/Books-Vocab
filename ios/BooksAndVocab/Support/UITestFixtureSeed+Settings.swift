@@ -9,7 +9,7 @@ extension UITestFixtureSeed {
         case "cleanPreferences":
             seedCleanPreferences()
         default:
-            AppLog.app.warning("Unknown settings fixture ID: \(id)")
+            failFixtureSeed("Unknown settings fixture ID: \(id)")
         }
     }
 
@@ -36,7 +36,7 @@ extension UITestFixtureSeed {
         TranslationLanguage.currentTarget = .zhHant
         AppLog.app.info("UI-test fixture seeded: settings.cleanPreferences")
         #else
-        AppLog.app.error("UITestFixtureSeed: refused settings.cleanPreferences on device — it writes real UserDefaults/iCloud KVS")
+        failFixtureSeed("UITestFixtureSeed: refused settings.cleanPreferences on device — it writes real UserDefaults/iCloud KVS")
         #endif
     }
 }

@@ -27,7 +27,9 @@ enum UITestFixtureSeed {
             guard arg.hasPrefix("-seedFixture:") else { continue }
             let remainder = arg.dropFirst("-seedFixture:".count)
             let parts = remainder.split(separator: ":", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
+            guard parts.count == 2 else {
+                failFixtureSeed("Malformed UI-test fixture argument: \(arg)")
+            }
             let domain = parts[0]
             let id = parts[1]
 
@@ -51,11 +53,19 @@ enum UITestFixtureSeed {
             case "notebook":
                 seedNotebook(id, into: container)
             case "entitlements":
+                guard id == "pro" || id == "free" else {
+                    failFixtureSeed("Unknown entitlements fixture ID: \(id)")
+                }
                 break
             default:
-                AppLog.app.warning("Unknown UI-test fixture domain: \(domain)")
+                failFixtureSeed("Unknown UI-test fixture domain: \(domain)")
             }
         }
+    }
+
+    static func failFixtureSeed(_ message: String) -> Never {
+        AppLog.app.error("\(message)")
+        preconditionFailure(message)
     }
 
     @MainActor
