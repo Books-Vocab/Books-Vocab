@@ -280,6 +280,48 @@ def test_concurrent_delete_and_update_same_card(tmp_path):
         store2.close()
 
 
+def test_card_store_uses_make_sqlite_engine(tmp_path, monkeypatch):
+    """CardStore must build its engine via the shared make_sqlite_engine helper
+    (pool-wide WAL listener), not an inline one-shot PRAGMA. Spy on the symbol
+    the store actually calls and assert it fired with the cards.db path."""
+    import kg.cards.store as cs
+    from kg.sqlite_utils import make_sqlite_engine as real
+
+    calls: list[object] = []
+
+    def spy(path, **kw):
+        calls.append(path)
+        return real(path, **kw)
+
+    monkeypatch.setattr(cs, "make_sqlite_engine", spy)
+    store = cs.CardStore(tmp_path / "cards.db")
+    try:
+        assert calls, "CardStore did not call make_sqlite_engine"
+        assert str(calls[0]).endswith("cards.db")
+    finally:
+        store.close()
+
+
+def test_notebook_store_uses_make_sqlite_engine(tmp_path, monkeypatch):
+    """NotebookStore must build its engine via make_sqlite_engine."""
+    import kg.notebook as nb
+    from kg.sqlite_utils import make_sqlite_engine as real
+
+    calls: list[object] = []
+
+    def spy(path, **kw):
+        calls.append(path)
+        return real(path, **kw)
+
+    monkeypatch.setattr(nb, "make_sqlite_engine", spy)
+    store = nb.NotebookStore(tmp_path / "notebooks.db")
+    try:
+        assert calls, "NotebookStore did not call make_sqlite_engine"
+        assert str(calls[0]).endswith("notebooks.db")
+    finally:
+        store.close()
+
+
 def test_concurrent_batch_touch_no_corruption(tmp_path):
     """N threads batch_touch the SAME notebook concurrently. Review state
     (review_count, next_review_at, is_deleted) must be untouched — batch_touch
