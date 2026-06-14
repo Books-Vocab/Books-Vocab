@@ -230,6 +230,48 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func assetInstallPlanCopiesIntoAppContainerAndVerifiesHash() throws {
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-ui-world-asset-source-\(UUID().uuidString).txt")
+        try Data("asset payload".utf8).write(to: source)
+        let hash = try FixtureDatasetStore.sha256Hex(for: source)
+        let installAs = "UITestAssets/\(UUID().uuidString)/payload.txt"
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "test-asset-install-plan",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "payload": {
+                "sourcePath": "\(source.path)",
+                "sha256": "\(hash)",
+                "installAs": "\(installAs)"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let expected = documents.appendingPathComponent(installAs)
+        defer {
+            try? FileManager.default.removeItem(at: source)
+            try? FileManager.default.removeItem(at: expected.deletingLastPathComponent())
+        }
+
+        try FixtureDatasetStore.withTestingData(Data(dataset.utf8)) {
+            let installed = try FixtureDatasetStore.requireInstalledAssetURL(ref: "text.payload")
+            #expect(installed == expected)
+            #expect(FileManager.default.fileExists(atPath: installed.path))
+            #expect(try Data(contentsOf: installed) == Data("asset payload".utf8))
+            #expect(try FixtureDatasetStore.sha256Hex(for: installed) == hash)
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {

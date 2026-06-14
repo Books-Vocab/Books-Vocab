@@ -67,20 +67,26 @@ struct RepoFixtureDatasetsContractTests {
             }
 
             for (fixtureKey, seed) in document.runtimePodcast {
-                #expect(
-                    document.assets.asset(for: seed.audioAssetRef) != nil,
-                    "\(stem): runtimePodcast.\(fixtureKey) audioAssetRef \(seed.audioAssetRef) is not declared"
+                expectInstallableAssetRef(
+                    seed.audioAssetRef,
+                    document: document,
+                    dataset: stem,
+                    owner: "runtimePodcast.\(fixtureKey).audioAssetRef"
                 )
-                #expect(
-                    document.assets.asset(for: seed.subtitleAssetRef) != nil,
-                    "\(stem): runtimePodcast.\(fixtureKey) subtitleAssetRef \(seed.subtitleAssetRef) is not declared"
+                expectInstallableAssetRef(
+                    seed.subtitleAssetRef,
+                    document: document,
+                    dataset: stem,
+                    owner: "runtimePodcast.\(fixtureKey).subtitleAssetRef"
                 )
             }
 
             for (fixtureKey, seed) in document.reader {
-                #expect(
-                    document.assets.asset(for: seed.textAssetRef) != nil,
-                    "\(stem): reader.\(fixtureKey) textAssetRef \(seed.textAssetRef) is not declared"
+                expectInstallableAssetRef(
+                    seed.textAssetRef,
+                    document: document,
+                    dataset: stem,
+                    owner: "reader.\(fixtureKey).textAssetRef"
                 )
             }
         }
@@ -182,6 +188,23 @@ struct RepoFixtureDatasetsContractTests {
                 "\(dataset): reader.\(fixtureKey) uses legacy bare path keys \(legacy.sorted()); use textAssetRef"
             )
         }
+    }
+
+    private func expectInstallableAssetRef(
+        _ ref: String,
+        document: FixtureDatasetDocument,
+        dataset: String,
+        owner: String
+    ) {
+        guard let asset = document.assets.asset(for: ref) else {
+            Issue.record("\(dataset): \(owner) \(ref) is not declared")
+            return
+        }
+        let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(
+            installAs.map { !$0.isEmpty } ?? false,
+            "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
+        )
     }
 }
 #endif

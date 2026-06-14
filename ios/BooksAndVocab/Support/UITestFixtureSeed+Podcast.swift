@@ -20,10 +20,6 @@ extension UITestFixtureSeed {
             try clearPodcastFixtures(from: context)
 
             let fixture = try resolvePlayablePodcastFixture(.playablePreview)
-            let audioURL = try copyFixtureFileToTemporaryDirectory(
-                source: fixture.audioURL,
-                fileName: "kg-uitest-\(fixture.audioURL.lastPathComponent)"
-            )
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
             let series = PodcastSeries(
                 remoteId: fixture.seed.seriesRemoteId,
@@ -48,7 +44,7 @@ extension UITestFixtureSeed {
                 episode.audioAvailable = episodeSeed.audioAvailable
                 episode.previewAvailable = episodeSeed.previewAvailable
                 episode.previewDurationSec = episodeSeed.previewDurationSec ?? 0
-                episode.localAudioPath = audioURL.path
+                episode.localAudioPath = fixture.audioURL.path
                 episode.subtitleAvailable = episodeSeed.subtitleAvailable
                 episode.inlineSubtitle = subtitle
                 context.insert(episode)
@@ -88,8 +84,8 @@ extension UITestFixtureSeed {
 
     private static func resolvePlayablePodcastFixture(_ fixtureID: UIWorldRuntimePodcastFixtureID) throws -> PlayablePodcastFixture {
         let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)
-        let audioURL = try FixtureDatasetStore.requireAssetURL(ref: seed.audioAssetRef)
-        let subtitleURL = try FixtureDatasetStore.requireAssetURL(ref: seed.subtitleAssetRef)
+        let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.audioAssetRef)
+        let subtitleURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.subtitleAssetRef)
         return PlayablePodcastFixture(
             seed: seed,
             audioURL: audioURL,
@@ -98,15 +94,6 @@ extension UITestFixtureSeed {
             seriesTitle: seed.seriesTitle,
             hostNames: seed.hostNames
         )
-    }
-
-    private static func copyFixtureFileToTemporaryDirectory(source: URL, fileName: String) throws -> URL {
-        let destination = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.copyItem(at: source, to: destination)
-        return destination
     }
 }
 #endif
