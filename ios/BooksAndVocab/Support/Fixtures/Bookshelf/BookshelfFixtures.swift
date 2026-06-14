@@ -5,6 +5,10 @@ import SwiftData
 enum BookshelfFixtureID: String, CaseIterable {
     case progressCard = "progress_card"
     case placeholderCard = "placeholder_card"
+    case readerNotebookBound = "reader_notebook_bound"
+    case readerNotebookEmpty = "reader_notebook_empty"
+    case readerNotebookLongBound = "reader_notebook_long_bound"
+    case readerNotebookUnbound = "reader_notebook_unbound"
     case emptyLibrary = "empty_library"
     case withBooksLibrary = "with_books_library"
     case loadingOverlay = "loading_overlay"
@@ -21,6 +25,7 @@ struct BookshelfBookSeed: Codable {
     let format: BookFormat
     let bookAssetRef: String?
     let progression: Double?
+    let preferredNotebookId: String?
     let dateAdded: Date
     let dateLastRead: Date?
 }
@@ -53,7 +58,7 @@ enum BookshelfFixtures {
             return ["baseline", "marketing"]
         case .loadingOverlay:
             return ["loading"]
-        case .progressCard, .placeholderCard, .emptyLibrary:
+        case .progressCard, .placeholderCard, .readerNotebookBound, .readerNotebookEmpty, .readerNotebookLongBound, .readerNotebookUnbound, .emptyLibrary:
             return ["baseline"]
         }
     }
@@ -70,6 +75,12 @@ enum BookshelfFixtures {
             container: makeContainer(from: seed.books),
             referenceDate: seed.referenceDate
         )
+    }
+
+    @MainActor
+    static func books(for fixtureID: BookshelfFixtureID) -> [Book] {
+        let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
+        return seed.books.map(makeBook(from:))
     }
 
     @MainActor
@@ -97,6 +108,7 @@ enum BookshelfFixtures {
             format: seed.format
         )
         book.progression = seed.progression
+        book.preferredNotebookId = seed.preferredNotebookId
         book.dateAdded = seed.dateAdded
         book.dateLastRead = seed.dateLastRead
         return book

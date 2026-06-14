@@ -549,6 +549,43 @@ import Playbook
         )
     }
 
+    @Test func readerNotebookPickerCatalogUsesUIWorldNotebookAndBookSeeds() throws {
+        let pickerScenarios = debugDirectory
+            .appendingPathComponent("Scenarios", isDirectory: true)
+            .appendingPathComponent("ReaderNotebookPickerScenarios.swift")
+        let source = try String(contentsOf: pickerScenarios, encoding: .utf8)
+        let forbidden: [(String, String)] = [
+            ("sampleNotebooks", "Reader notebook picker catalog must not keep local notebook fixtures"),
+            ("manyNotebooks", "Reader notebook picker catalog must not generate local notebook fixtures"),
+            ("Notebook(remoteId:", "Reader notebook picker catalog must not inline notebook rows"),
+            ("Book(", "Reader notebook picker book row must come from UI World bookshelf seed"),
+            ("The Sample Book", "Reader notebook picker book metadata belongs in UI World"),
+            ("try!", "Reader notebook picker catalog must fail fast with explicit precondition failure"),
+            ("notebooks: []", "Reader notebook picker empty state must be a UI World seed"),
+            ("nb-green", "Reader notebook picker selected notebook id must come from UI World"),
+            ("nb-12", "Reader notebook picker selected notebook id must come from UI World"),
+        ]
+        for (snippet, reason) in forbidden {
+            #expect(!source.contains(snippet), "\(pickerScenarios.lastPathComponent): \(reason)")
+        }
+        #expect(
+            source.contains("NotebookFixtures.notebooks(for: fixture.notebookID)"),
+            "Reader notebook picker catalog must source notebooks from UI World notebook seeds"
+        )
+        #expect(
+            source.contains("BookshelfFixtures.books(for: fixture.bookshelfID)"),
+            "Reader notebook picker catalog must source current book binding from UI World bookshelf seeds"
+        )
+        #expect(
+            source.contains("notebooks.count == fixture.expectedNotebookCount"),
+            "Reader notebook picker catalog must fail fast when notebook row count drifts"
+        )
+        #expect(
+            source.contains("notebooks.contains { $0.remoteId == boundId }"),
+            "Reader notebook picker catalog must validate book preferredNotebookId resolves to a seeded notebook"
+        )
+    }
+
     @Test func settingsSubscriptionCatalogUsesUIWorldSettingsSeeds() throws {
         let subscriptionScenarios = debugDirectory
             .appendingPathComponent("Scenarios", isDirectory: true)
