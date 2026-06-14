@@ -67,6 +67,38 @@
     }
   },
   "settings": {
+    "logged_out": {
+      "auth": {
+        "isLoggedIn": false,
+        "userInitials": null,
+        "avatarURL": null,
+        "displayName": "未登入",
+        "email": null,
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": false,
+        "showAutoSync": false
+      },
+      "kg": null,
+      "subscription": null,
+      "syncSummary": null,
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": null,
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
     "account_logged_out_error": {
       "auth": {
         "isLoggedIn": false,
@@ -222,13 +254,13 @@
       "manualLoginUserId": null,
       "debugLocalServerURL": null
     },
-    "subscription_free": {
+    "subscribed_active": {
       "auth": {
         "isLoggedIn": true,
-        "userInitials": "DU",
+        "userInitials": "CL",
         "avatarURL": null,
-        "displayName": "示範使用者",
-        "email": "demo@wordnexus.lol",
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
         "authError": null,
         "isAuthenticating": false,
         "iconBreathing": false,
@@ -259,32 +291,32 @@
         "serverURL": "https://wordnexus.lol",
         "isConnected": true,
         "connectionPulse": false,
-        "serverCardCount": 24,
-        "lastSyncDescription": "剛剛",
+        "serverCardCount": 128,
+        "lastSyncDescription": "3 分鐘前",
         "isUsingLocalServer": false,
         "localServerURL": null,
         "observation": null
       },
       "subscription": {
-        "isActive": false,
-        "planName": "免費方案",
-        "badgeText": "未訂閱",
-        "badgeTone": "neutral",
-        "summary": "升級 Pro 解鎖知識圖譜與播客。",
-        "detail": "目前使用免費額度，部分進階功能受限。",
-        "sourceLabel": "無",
-        "managementNote": "尚未訂閱，可隨時於 App Store 開始。",
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案，到期日 2027-03-10",
+        "detail": "感謝支持！所有進階功能已解鎖。",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
         "pricingUnavailableMessage": null,
         "restoreLabel": "恢復購買",
-        "restoreDescription": "曾經購買過？點此恢復先前的訂閱。",
+        "restoreDescription": "如果您曾購買過訂閱",
         "isRestoreAvailable": true,
-        "ctaTitle": "升級 Pro",
+        "ctaTitle": "管理訂閱",
         "isRefreshing": false
       },
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 24 張 · 剛剛"
+        "summaryText": "已連線 · 128 張 · 3 分鐘前"
       },
       "bookSync": {
         "text": "已同步",
@@ -379,6 +411,330 @@
       },
       "manualLoginUserId": null,
       "debugLocalServerURL": null
+    },
+    "subscription_free": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "DU",
+        "avatarURL": null,
+        "displayName": "示範使用者",
+        "email": "demo@wordnexus.lol",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "reviewSettings": {
+        "mode": "relaxed",
+        "customInitialIntervalHours": 12,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+        "isProgressPaused": false,
+        "progressPausedAt": null,
+        "autoplaySpeed": "normal",
+        "autoplaySoundEnabled": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 24,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "免費方案",
+        "badgeText": "未訂閱",
+        "badgeTone": "neutral",
+        "summary": "升級 Pro 解鎖知識圖譜與播客。",
+        "detail": "目前使用免費額度，部分進階功能受限。",
+        "sourceLabel": "無",
+        "managementNote": "尚未訂閱，可隨時於 App Store 開始。",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "曾經購買過？點此恢復先前的訂閱。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "升級 Pro",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 24 張 · 剛剛"
+      },
+      "bookSync": {
+        "text": "已同步",
+        "detail": null,
+        "tone": "success"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "subscription_loading": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "淺色",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": false,
+        "connectionPulse": true,
+        "serverCardCount": 0,
+        "lastSyncDescription": null,
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "—",
+        "badgeText": "載入中",
+        "badgeTone": "neutral",
+        "summary": "正在確認訂閱狀態…",
+        "detail": "請稍候，系統正在與 App Store 通訊。",
+        "sourceLabel": "確認中",
+        "managementNote": "正在連線…",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "載入中…",
+        "isRestoreAvailable": false,
+        "ctaTitle": "重新整理",
+        "isRefreshing": true
+      },
+      "syncSummary": {
+        "isConnected": false,
+        "isSyncing": false,
+        "summaryText": "離線"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "deleting_account": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "深色",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": true,
+        "planName": "Pro",
+        "badgeText": "啟用中",
+        "badgeTone": "success",
+        "summary": "年度方案",
+        "detail": "",
+        "sourceLabel": "App Store",
+        "managementNote": "訂閱狀態由 App Store 管理",
+        "pricingUnavailableMessage": null,
+        "restoreLabel": "恢復購買",
+        "restoreDescription": "如果您曾購買過訂閱",
+        "isRestoreAvailable": true,
+        "ctaTitle": "管理訂閱",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張 · 剛剛"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": true
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "pricing_unavailable": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": null
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "https://wordnexus.lol",
+        "isConnected": true,
+        "connectionPulse": false,
+        "serverCardCount": 128,
+        "lastSyncDescription": "10 分鐘前",
+        "isUsingLocalServer": false,
+        "localServerURL": null,
+        "observation": null
+      },
+      "subscription": {
+        "isActive": false,
+        "planName": "Pro",
+        "badgeText": "確認中",
+        "badgeTone": "neutral",
+        "summary": "免費試用與月費將以 App Store 顯示為準。",
+        "detail": "目前已取得方案狀態，但價格資訊尚未回來；不影響你稍後進入訂閱頁。",
+        "sourceLabel": "App Store",
+        "managementNote": "價格與試用週期會在 App Store 完整顯示。",
+        "pricingUnavailableMessage": "App Store 價格載入中，稍後會自動更新。",
+        "restoreLabel": "可恢復購買",
+        "restoreDescription": "若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。",
+        "isRestoreAvailable": true,
+        "ctaTitle": "開始免費試用",
+        "isRefreshing": false
+      },
+      "syncSummary": {
+        "isConnected": true,
+        "isSyncing": false,
+        "summaryText": "已連線 · 128 張 · 10 分鐘前"
+      },
+      "bookSync": {
+        "text": "同步異常",
+        "detail": "iCloud 帳號暫時無法使用（CKError.notAuthenticated）",
+        "tone": "warning"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": null,
+      "debugLocalServerURL": null
+    },
+    "debug_backend_local": {
+      "auth": {
+        "isLoggedIn": true,
+        "userInitials": "CL",
+        "avatarURL": null,
+        "displayName": "Chen Liang",
+        "email": "chen@example.com",
+        "authError": null,
+        "isAuthenticating": false,
+        "iconBreathing": false,
+        "manualLoginHint": "僅供本地測試帳號切換使用"
+      },
+      "preferences": {
+        "selectedLanguage": "繁體中文",
+        "selectedAppearance": "跟隨系統",
+        "translationSource": "English",
+        "translationTarget": "繁體中文",
+        "selectedReviewMode": "寬鬆",
+        "autoSyncEnabled": true,
+        "showAutoSync": true
+      },
+      "kg": {
+        "serverURL": "http://127.0.0.1:8000",
+        "isConnected": false,
+        "connectionPulse": true,
+        "serverCardCount": 12,
+        "lastSyncDescription": "剛剛",
+        "isUsingLocalServer": true,
+        "localServerURL": "http://127.0.0.1:8000",
+        "observation": {
+          "previewLines": [
+            "12:30:02 [INFO] event=app_session_started",
+            "12:30:05 [INFO] event=background_sync_triggered",
+            "12:30:07 [INFO] event=background_sync_completed duration_ms=1820 success=true"
+          ],
+          "totalCount": 24
+        }
+      },
+      "subscription": null,
+      "syncSummary": {
+        "isConnected": false,
+        "isSyncing": false,
+        "summaryText": "離線"
+      },
+      "about": {
+        "version": "1.1.0 (42)",
+        "developerName": "MPSO"
+      },
+      "danger": {
+        "isDeletingAccount": false
+      },
+      "manualLoginUserId": "debug-user-id",
+      "debugLocalServerURL": "http://127.0.0.1:8000"
     }
   },
   "bookshelf": {},
