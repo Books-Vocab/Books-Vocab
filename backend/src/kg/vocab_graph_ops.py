@@ -28,12 +28,16 @@ so they rely on the barrier's observability + re-raise contract alone.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from .exceptions import ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
+
+
+class LinkMutation(Protocol):
+    def __call__(self, link_id: str) -> None:
+        ...
 
 
 def _touch_both(cards_store: Any, from_id: str, to_id: str) -> None:
@@ -139,8 +143,8 @@ def _reversible_link_toggle(
     link_id: str,
     graph: Any,
     cards_store: Any,
-    apply: Callable[[str], Any],
-    revert: Callable[[str], Any],
+    apply: LinkMutation,
+    revert: LinkMutation,
 ) -> None:
     """Apply a reversible graph link mutation, then run the touch barrier.
 

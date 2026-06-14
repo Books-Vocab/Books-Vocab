@@ -176,7 +176,8 @@ def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[di
             rows = conn.execute(
                 f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id"
             ).fetchall()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
+            logger.warning("Failed to query orphan user rows from %s (%s)", table, exc)
             rows = []
         for uid, count in rows:
             if uid and uid not in user_ids:
@@ -230,7 +231,8 @@ def _scan_cards_and_graph_orphans(
         for nb_id, graph_path in _list_graph_files(udir):
             try:
                 links = json.loads(graph_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Skipping malformed graph file for user %s: %s", uid, exc)
                 continue
             if not isinstance(links, list):
                 continue
@@ -277,7 +279,8 @@ def _scan_judge_log_orphans(
                 "SELECT id, user_id, notebook_id, from_id, to_id "
                 "FROM judge_log"
             ).fetchall()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
+            logger.warning("Failed to query orphan judge_log rows: %s", exc)
             rows = []
     for row_id, uid, nb_id, from_id, to_id in rows:
         live = user_live_cards.get(uid)
@@ -498,7 +501,13 @@ def fix(
             )
         try:
             links = json.loads(graph_path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "Could not read graph file for cleanup %s / user %s: %s",
+                graph_path,
+                uid,
+                exc,
+            )
             continue
         if not isinstance(links, list):
             continue

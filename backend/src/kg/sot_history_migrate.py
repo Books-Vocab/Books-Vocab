@@ -20,7 +20,9 @@ dry-run 預設(只報告不寫);apply 才動檔。確定式 + 冪等(event_id �
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import sys
 from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass, field
@@ -39,6 +41,7 @@ _REVIEW_DB = "review_events.db"
 _GRAPH_DB = "graph_events.db"
 _REVIEW_BAK = "review_events.db.premigration.bak"
 _MIGRATED_MARKER = ".sot_history_migrated"  # 存在 = 首次遷移已跑,re-run 不再 purge card_id NULL
+logger = logging.getLogger("kg.sot_history_migrate")
 
 
 @dataclass
@@ -106,13 +109,15 @@ def _load_links(graph_path: Path) -> list[GraphLink]:
     try:
         raw = json.loads(graph_path.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("Failed to load graph links from %s", graph_path, exc_info=True)
         return []
     rows = raw if isinstance(raw, list) else list(raw.values()) if isinstance(raw, dict) else []
     links: list[GraphLink] = []
     for row in rows:
         try:
             links.append(GraphLink.model_validate(row))
-        except Exception:  # noqa: BLE001 — 跳過畸形/退役 kind 的 link
+        except Exception as exc:  # noqa: BLE001 — 跳過畸形/退役 kind 的 link
+            logger.debug("Skipping malformed migration link row from %s: %s", graph_path, exc)
             continue
     return links
 
@@ -133,6 +138,7 @@ def _is_sqlite_file(path: Path) -> bool:
         with path.open("rb") as f:
             return f.read(16) == _SQLITE_MAGIC
     except OSError:
+        logger.warning("Failed to read sqlite signature from %s", path, exc_info=True)
         return False
 
 
@@ -149,6 +155,7 @@ def _count_review_junk(review_db: Path) -> int:
             ).fetchone()
             return int(row[0]) if row else 0
     except sqlite3.Error:
+        logger.warning("Failed to count review junk in %s", review_db, exc_info=True)
         return 0
 
 
@@ -160,7 +167,11 @@ def _purge_review_junk(review_db: Path) -> None:
             conn.execute("DELETE FROM reviewevent WHERE card_id IS NULL")
             conn.commit()
     except sqlite3.Error:
-        pass
+        logger.warning("Failed to purge review junk in %s", review_db, exc_info=True)
+        print(
+            f"[sot_history_migrate] unable to purge review junk from {review_db} (continuing)",
+            file=sys.stderr,
+        )
 
 
 def _notebooks_without_snapshot_ro(graph_db: Path, notebooks: Iterable[str]) -> int:
@@ -182,6 +193,7 @@ def _notebooks_without_snapshot_ro(graph_db: Path, notebooks: Iterable[str]) -> 
                 ).fetchone() is None
             )
     except sqlite3.Error:
+        logger.warning("Failed to query graph snapshot presence in %s", graph_db, exc_info=True)
         return len(nbs)
 
 
@@ -194,7 +206,11 @@ def _checkpoint_wal(db: Path) -> None:
         with closing(sqlite3.connect(db)) as conn:
             conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
     except sqlite3.Error:
-        pass
+        logger.warning("Failed to checkpoint WAL for %s", db, exc_info=True)
+        print(
+            f"[sot_history_migrate] failed wal checkpoint for {db} (continuing)",
+            file=sys.stderr,
+        )
 
 
 def migrate_user(user_dir: Path, *, apply: bool) -> MigrationReport:

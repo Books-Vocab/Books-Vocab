@@ -128,6 +128,7 @@ def _emit(*, alert_key: str, level: str, message: str, tags: dict[str, Any]) -> 
         _capture(message, level, payload_tags)
     except Exception:
         _logger.warning("sentry capture_message failed", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return
     _stamp_cooldown(alert_key)
 
@@ -159,6 +160,7 @@ def _query_log(
             return cur.fetchall() if fetch_all else cur.fetchone()
     except Exception:
         _logger.warning("%s check query failed", error_label, exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return None
 
 

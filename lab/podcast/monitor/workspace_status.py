@@ -15,6 +15,7 @@ caller via ``disk_status(..., active_job=...)``.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -36,6 +37,7 @@ _STAGE_COUNT = len(_STAGES_ORDERED)
 _FINAL_STAGE = "publish"
 
 _MILESTONE_KEYS = ("plan", "script", "audio", "subtitle")
+logger = logging.getLogger(__name__)
 
 # Per-episode artifact gate regexes (durable, disk-derived). Leading-zero
 # tolerant so ep_04 and ep_4 collapse to the same episode number.
@@ -64,7 +66,13 @@ def _read_tail(plog: Path, nbytes: int = 65536) -> str | None:
         with plog.open("rb") as f:
             f.seek(max(0, size - nbytes))
             return f.read().decode("utf-8", errors="replace")
-    except OSError:
+    except OSError as exc:
+        __import__("logging").getLogger(__name__).warning(
+            "failed to read tail from pipeline log=%s: %s",
+            plog,
+            exc,
+        )
+        logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return None
 
 
@@ -77,6 +85,7 @@ def _iter_log(tail: str):
         try:
             yield i, json.loads(line)
         except json.JSONDecodeError:
+            logger.warning("Skipping malformed JSON line in workspace log tail (line=%s)", i)
             continue
 
 
@@ -329,21 +338,35 @@ def _ensure_created(ws: Path) -> float:
         raw = marker.read_text().strip()
         return float(raw)
     except (OSError, ValueError):
-        pass
+        __import__("logging").getLogger(__name__).info(
+            "workspace=%s .created marker missing/unreadable; falling back to filesystem time",
+            ws.name,
+            exc_info=True,
+        )
     # No (or unreadable) sidecar — derive from inode birth time. Guard the
     # stat() too: the dir can vanish in the TOCTOU window between the route's
     # directory listing and this call. Returning 0.0 keeps the contract that
     # one bad workspace never breaks the whole sidebar list.
     try:
         st = ws.stat()
-    except OSError:
+    except OSError as exc:
+        __import__("logging").getLogger(__name__).warning(
+            "workspace=%s marker read failed, fallback derived age value",
+            ws,
+            exc_info=True,
+        )
+        logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return 0.0
     bt = getattr(st, "st_birthtime", None)
     created = bt if bt is not None else st.st_mtime  # 0.0 birthtime is valid, don't `or`
     try:
         marker.write_text(f"{created}\n")
     except OSError:
-        pass  # read-only mount etc. — still return the derived value
+        __import__("logging").getLogger(__name__).info(
+            "workspace=%s .created marker write skipped (read-only mount?)",
+            ws.name,
+            exc_info=True,
+        )  # read-only mount etc. — still return the derived value
     return created
 
 

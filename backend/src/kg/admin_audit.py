@@ -7,6 +7,7 @@ on user accounts are auditable after the fact. Read back via the
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from datetime import UTC, datetime
@@ -17,6 +18,7 @@ from .ops_shared import data_dir
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+logger = logging.getLogger(__name__)
 
 
 def _db_path() -> Path:
@@ -81,6 +83,11 @@ def record_audit(
             try:
                 payload_str = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
             except (TypeError, ValueError):
+                logger.warning(
+                    "Failed to JSON serialize audit payload for action=%s, using fallback repr: %r",
+                    action,
+                    payload,
+                )
                 payload_str = json.dumps({"_unserializable": repr(payload)[:500]}, ensure_ascii=False)
         now = datetime.now(UTC).isoformat()
         with _lock:
@@ -90,8 +97,9 @@ def record_audit(
                 (actor, act, target, payload_str, now),
             )
             conn.commit()
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
         # Audit failure must never break the underlying admin mutation.
+        logger.warning("Failed to insert admin audit row for action %s: %s", action, exc)
         return
 
 
@@ -109,6 +117,7 @@ def list_audit(
     try:
         lim = max(1, min(int(limit or 100), 1000))
     except (TypeError, ValueError):
+        logger.warning("Invalid audit limit %r; using fallback 100", limit)
         lim = 100
     act = (action or "").strip() or None
     clauses: list[str] = []
@@ -136,6 +145,7 @@ def list_audit(
             try:
                 payload = json.loads(payload_raw)
             except (TypeError, ValueError):
+                logger.warning("Failed to decode audit payload JSON for row id=%s, passing raw string", row[0])
                 payload = payload_raw
         out.append(
             {

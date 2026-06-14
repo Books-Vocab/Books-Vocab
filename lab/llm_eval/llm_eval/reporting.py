@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -11,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from .runner import EvalResult, EvalSummary
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -29,6 +33,7 @@ def current_git_sha(cwd: Path | None = None) -> str:
             text=True,
         ).strip()
     except (OSError, subprocess.CalledProcessError):
+        LOGGER.warning("Failed to read git sha; using unknown", exc_info=True)
         return "unknown"
 
 

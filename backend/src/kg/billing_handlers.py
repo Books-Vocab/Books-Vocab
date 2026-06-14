@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 from fastapi import HTTPException
@@ -25,6 +25,41 @@ from .types import StoredUserRecord, SubscriptionRecord, UsersPayload
 type UsersLoader = Callable[[], UsersPayload]
 type UsersSaver = Callable[[UsersPayload], None]
 type EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
+
+class FetchTransactionInfo(Protocol):
+    def __call__(self, transaction_id: str, *, bundle_id: str, environment: str | None = None) -> Awaitable[dict[str, Any]]:
+        ...
+type AppendAppStoreEvent = Callable[[dict[str, object]], None]
+
+
+class SubscriptionSnapshotWriter(Protocol):
+    def __call__(
+        self,
+        users: UsersPayload,
+        user_id: str,
+        *,
+        product_id: str,
+        status: str,
+        is_trial: bool,
+        expires_at: str | None,
+        will_renew: bool,
+        environment: str | None,
+        transaction_id: str | None,
+        original_transaction_id: str | None,
+        source: str,
+        price_display: str | None = None,
+    ) -> StoredUserRecord:
+        ...
+
+
+type DecodeNotificationPayload = Callable[
+    [AppStoreNotificationRequest],
+    tuple[SubscriptionRecord, dict[str, Any] | None],
+]
+
+type ResolveUserIdFromSubscriptionIndex = Callable[
+    [UsersPayload, str | None, str | None], str | None
+]
 
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and
@@ -51,7 +86,7 @@ def _map_app_store_errors(verification_log: str, verification_detail: str) -> It
 
 
 def _write_snapshot(
-    write_subscription_snapshot: Callable[..., StoredUserRecord],
+    write_subscription_snapshot: SubscriptionSnapshotWriter,
     users: UsersPayload,
     user_id: str,
     snapshot: SubscriptionRecord,
@@ -79,7 +114,7 @@ def sync_app_store_subscription_response(
     load_users: UsersLoader,
     save_users: UsersSaver,
     decode_signed_transaction_info: Callable[[str], SubscriptionRecord],
-    write_subscription_snapshot: Callable[..., StoredUserRecord],
+    write_subscription_snapshot: SubscriptionSnapshotWriter,
     build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     with _map_app_store_errors(
@@ -130,10 +165,10 @@ def app_store_notifications_response(
     users_lock_file: Path,
     load_users: UsersLoader,
     save_users: UsersSaver,
-    decode_notification_payload: Callable[[AppStoreNotificationRequest], tuple[SubscriptionRecord, dict[str, Any] | None]],
-    append_app_store_event: Callable[[dict[str, Any]], None],
-    resolve_user_id_from_subscription_index: Callable[[UsersPayload, str | None, str | None], str | None],
-    write_subscription_snapshot: Callable[..., StoredUserRecord],
+    decode_notification_payload: DecodeNotificationPayload,
+    append_app_store_event: AppendAppStoreEvent,
+    resolve_user_id_from_subscription_index: ResolveUserIdFromSubscriptionIndex,
+    write_subscription_snapshot: SubscriptionSnapshotWriter,
     build_entitlements_response: EntitlementsBuilder,
 ) -> dict[str, Any]:
     with _map_app_store_errors(
@@ -202,10 +237,10 @@ async def reconcile_app_store_subscription_response(
     users_lock_file: Path,
     load_users: UsersLoader,
     save_users: UsersSaver,
-    fetch_transaction_info: Callable[..., Awaitable[dict[str, Any]]],
+    fetch_transaction_info: FetchTransactionInfo,
     decode_signed_transaction_info: Callable[[str], SubscriptionRecord],
-    resolve_user_id_from_subscription_index: Callable[[UsersPayload, str | None, str | None], str | None],
-    write_subscription_snapshot: Callable[..., StoredUserRecord],
+    resolve_user_id_from_subscription_index: ResolveUserIdFromSubscriptionIndex,
+    write_subscription_snapshot: SubscriptionSnapshotWriter,
     build_entitlements_response: EntitlementsBuilder,
 ) -> EntitlementsResponse:
     try:
