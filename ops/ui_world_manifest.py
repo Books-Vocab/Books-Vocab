@@ -32,6 +32,11 @@ FIXTURE_TOP_LEVEL_KEYS = {
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
+BOOK_FORMAT_CONTENT_TYPES = {
+    "epub": "application/epub+zip",
+    "pdf": "application/pdf",
+    "md": "text/markdown",
+}
 
 
 class UIWorldManifestError(ValueError):
@@ -64,6 +69,331 @@ def _validate_install_as(value: str, *, field: str, label: str) -> None:
         raise UIWorldManifestError(f"{label} {field}.installAs 必須是安全相對路徑")
     if "/" not in value:
         raise UIWorldManifestError(f"{label} {field}.installAs 必須含安裝目錄")
+
+
+def _require_mapping(raw: Any, *, field: str, label: str) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise UIWorldManifestError(f"{label} {field} 必須是 object")
+    return raw
+
+
+def _require_list(raw: Any, *, field: str, label: str) -> list[Any]:
+    if not isinstance(raw, list):
+        raise UIWorldManifestError(f"{label} {field} 必須是 array")
+    return raw
+
+
+def _require_ref(ref: Any, *, prefix: str, refs: set[str], owner: str, label: str) -> str:
+    value = _ensure_str(ref, field=owner, label=label).strip()
+    if not value.startswith(prefix):
+        raise UIWorldManifestError(f"{label} {owner} must reference {prefix}*, got {value}")
+    if value not in refs:
+        raise UIWorldManifestError(f"{label} {owner} references missing {value}")
+    return value
+
+
+def _all_notebook_ids(data: dict[str, Any], *, label: str) -> set[str]:
+    notebook_ids: set[str] = set()
+    for fixture_id, seed in _require_mapping(
+        data.get("notebook"),
+        field="notebook",
+        label=label,
+    ).items():
+        seed_obj = _require_mapping(seed, field=f"notebook.{fixture_id}", label=label)
+        for index, notebook in enumerate(
+            _require_list(
+                seed_obj.get("notebooks"),
+                field=f"notebook.{fixture_id}.notebooks",
+                label=label,
+            )
+        ):
+            notebook_obj = _require_mapping(
+                notebook,
+                field=f"notebook.{fixture_id}.notebooks[{index}]",
+                label=label,
+            )
+            remote_id = _ensure_str(
+                notebook_obj.get("remoteId"),
+                field=f"notebook.{fixture_id}.notebooks[{index}].remoteId",
+                label=label,
+            ).strip()
+            notebook_ids.add(remote_id)
+    return notebook_ids
+
+
+def _require_notebook_ref(ref: Any, *, notebook_ids: set[str], owner: str, label: str) -> str:
+    value = _ensure_str(ref, field=owner, label=label).strip()
+    if value not in notebook_ids:
+        raise UIWorldManifestError(f"{label} {owner} references missing notebook {value}")
+    return value
+
+
+def _validate_book_asset_alignment(
+    *,
+    ref: str,
+    asset: dict[str, Any],
+    file_name: Any,
+    book_format: Any,
+    owner: str,
+    label: str,
+) -> None:
+    file_name_value = _ensure_str(file_name, field=f"{owner}.fileName", label=label).strip()
+    format_value = _ensure_str(book_format, field=f"{owner}.format", label=label).strip()
+    expected_install = f"Books/{file_name_value}"
+    if asset.get("installAs") != expected_install:
+        raise UIWorldManifestError(
+            f"{label} {owner} {ref} installAs must be {expected_install}, got {asset.get('installAs')}"
+        )
+    expected_content_type = BOOK_FORMAT_CONTENT_TYPES.get(format_value)
+    if expected_content_type is None:
+        raise UIWorldManifestError(f"{label} {owner}.format 不支援: {format_value}")
+    content_type = _ensure_str(asset.get("contentType"), field=f"{owner}.contentType", label=label)
+    if not content_type.startswith(expected_content_type):
+        raise UIWorldManifestError(
+            f"{label} {owner} {ref} contentType must start with {expected_content_type}, got {content_type}"
+        )
+
+
+def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
+    assets = _require_mapping(data.get("assets"), field="assets", label=label)
+    asset_refs = {
+        f"{bucket}.{asset_id}"
+        for bucket, entries in assets.items()
+        if isinstance(entries, dict)
+        for asset_id in entries
+    }
+    auth_refs = {
+        f"auth.{key}"
+        for key in _require_mapping(data.get("auth"), field="auth", label=label)
+    }
+    entitlements_refs = {
+        f"entitlements.{key}"
+        for key in _require_mapping(data.get("entitlements"), field="entitlements", label=label)
+    }
+    notebook_ids = _all_notebook_ids(data, label=label)
+
+    for fixture_id, seed in _require_mapping(
+        data.get("settings"),
+        field="settings",
+        label=label,
+    ).items():
+        seed_obj = _require_mapping(seed, field=f"settings.{fixture_id}", label=label)
+        auth_ref = _require_ref(
+            seed_obj.get("authFixtureRef"),
+            prefix="auth.",
+            refs=auth_refs,
+            owner=f"settings.{fixture_id}.authFixtureRef",
+            label=label,
+        )
+        auth_key = auth_ref.removeprefix("auth.")
+        auth_seed = _require_mapping(data["auth"][auth_key], field=auth_ref, label=label)
+        auth_state = _require_mapping(
+            seed_obj.get("auth"),
+            field=f"settings.{fixture_id}.auth",
+            label=label,
+        )
+        if auth_state.get("isLoggedIn") != auth_seed.get("isLoggedIn"):
+            raise UIWorldManifestError(
+                f"{label} settings.{fixture_id}.auth.isLoggedIn must match {auth_ref}.isLoggedIn"
+            )
+        if auth_state.get("authError") != auth_seed.get("authError"):
+            raise UIWorldManifestError(
+                f"{label} settings.{fixture_id}.auth.authError must match {auth_ref}.authError"
+            )
+        if auth_state.get("isLoggedIn"):
+            for field in ("email", "displayName"):
+                if auth_state.get(field) != auth_seed.get(field):
+                    raise UIWorldManifestError(
+                        f"{label} settings.{fixture_id}.auth.{field} must match {auth_ref}.{field}"
+                    )
+
+        entitlements_ref = seed_obj.get("entitlementsFixtureRef")
+        if entitlements_ref is None:
+            if seed_obj.get("subscription") is not None:
+                raise UIWorldManifestError(
+                    f"{label} settings.{fixture_id} without entitlementsFixtureRef must not declare subscription UI state"
+                )
+        else:
+            ent_ref = _require_ref(
+                entitlements_ref,
+                prefix="entitlements.",
+                refs=entitlements_refs,
+                owner=f"settings.{fixture_id}.entitlementsFixtureRef",
+                label=label,
+            )
+            subscription = seed_obj.get("subscription")
+            if isinstance(subscription, dict) and not subscription.get("isRefreshing", False):
+                ent_key = ent_ref.removeprefix("entitlements.")
+                ent_seed = _require_mapping(
+                    data["entitlements"][ent_key],
+                    field=ent_ref,
+                    label=label,
+                )
+                pro = _require_mapping(ent_seed.get("pro"), field=f"{ent_ref}.pro", label=label)
+                if subscription.get("isActive") != pro.get("is_active"):
+                    raise UIWorldManifestError(
+                        f"{label} settings.{fixture_id}.subscription.isActive must match {ent_ref}.pro.is_active"
+                    )
+
+    for fixture_id, seed in _require_mapping(
+        data.get("runtimePodcast"),
+        field="runtimePodcast",
+        label=label,
+    ).items():
+        seed_obj = _require_mapping(seed, field=f"runtimePodcast.{fixture_id}", label=label)
+        _require_ref(
+            seed_obj.get("audioAssetRef"),
+            prefix="audio.",
+            refs=asset_refs,
+            owner=f"runtimePodcast.{fixture_id}.audioAssetRef",
+            label=label,
+        )
+        _require_ref(
+            seed_obj.get("subtitleAssetRef"),
+            prefix="subtitles.",
+            refs=asset_refs,
+            owner=f"runtimePodcast.{fixture_id}.subtitleAssetRef",
+            label=label,
+        )
+        preferred_notebook = seed_obj.get("preferredNotebookId")
+        if preferred_notebook is not None and str(preferred_notebook).strip():
+            _require_notebook_ref(
+                preferred_notebook,
+                notebook_ids=notebook_ids,
+                owner=f"runtimePodcast.{fixture_id}.preferredNotebookId",
+                label=label,
+            )
+        for index, episode in enumerate(
+            _require_list(
+                seed_obj.get("episodes"),
+                field=f"runtimePodcast.{fixture_id}.episodes",
+                label=label,
+            )
+        ):
+            episode_obj = _require_mapping(
+                episode,
+                field=f"runtimePodcast.{fixture_id}.episodes[{index}]",
+                label=label,
+            )
+            download = episode_obj.get("download")
+            if download is None:
+                continue
+            download_obj = _require_mapping(
+                download,
+                field=f"runtimePodcast.{fixture_id}.episodes[{index}].download",
+                label=label,
+            )
+            _require_ref(
+                download_obj.get("audioAssetRef"),
+                prefix="audio.",
+                refs=asset_refs,
+                owner=f"runtimePodcast.{fixture_id}.episodes[{index}].download.audioAssetRef",
+                label=label,
+            )
+            if download_obj.get("subtitleAssetRef") is not None:
+                _require_ref(
+                    download_obj.get("subtitleAssetRef"),
+                    prefix="subtitles.",
+                    refs=asset_refs,
+                    owner=f"runtimePodcast.{fixture_id}.episodes[{index}].download.subtitleAssetRef",
+                    label=label,
+                )
+
+    for fixture_id, seed in _require_mapping(data.get("reader"), field="reader", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"reader.{fixture_id}", label=label)
+        _require_ref(
+            seed_obj.get("textAssetRef"),
+            prefix="text.",
+            refs=asset_refs,
+            owner=f"reader.{fixture_id}.textAssetRef",
+            label=label,
+        )
+        ref = _require_ref(
+            seed_obj.get("bookAssetRef"),
+            prefix="books.",
+            refs=asset_refs,
+            owner=f"reader.{fixture_id}.bookAssetRef",
+            label=label,
+        )
+        _validate_book_asset_alignment(
+            ref=ref,
+            asset=assets["books"][ref.removeprefix("books.")],
+            file_name=seed_obj.get("bookFileName"),
+            book_format="epub",
+            owner=f"reader.{fixture_id}",
+            label=label,
+        )
+
+    for fixture_id, seed in _require_mapping(
+        data.get("bookshelf"),
+        field="bookshelf",
+        label=label,
+    ).items():
+        seed_obj = _require_mapping(seed, field=f"bookshelf.{fixture_id}", label=label)
+        for index, book in enumerate(
+            _require_list(
+                seed_obj.get("books"),
+                field=f"bookshelf.{fixture_id}.books",
+                label=label,
+            )
+        ):
+            book_obj = _require_mapping(
+                book,
+                field=f"bookshelf.{fixture_id}.books[{index}]",
+                label=label,
+            )
+            owner = f"bookshelf.{fixture_id}.books[{index}]"
+            ref = _require_ref(
+                book_obj.get("bookAssetRef"),
+                prefix="books.",
+                refs=asset_refs,
+                owner=f"{owner}.bookAssetRef",
+                label=label,
+            )
+            _validate_book_asset_alignment(
+                ref=ref,
+                asset=assets["books"][ref.removeprefix("books.")],
+                file_name=book_obj.get("fileName"),
+                book_format=book_obj.get("format"),
+                owner=owner,
+                label=label,
+            )
+            preferred_notebook = book_obj.get("preferredNotebookId")
+            if preferred_notebook is not None and str(preferred_notebook).strip():
+                _require_notebook_ref(
+                    preferred_notebook,
+                    notebook_ids=notebook_ids,
+                    owner=f"{owner}.preferredNotebookId",
+                    label=label,
+                )
+
+    for fixture_id, seed in _require_mapping(
+        data.get("notebook"),
+        field="notebook",
+        label=label,
+    ).items():
+        seed_obj = _require_mapping(seed, field=f"notebook.{fixture_id}", label=label)
+        for collection in ("notebooks", "editStates"):
+            for index, item in enumerate(
+                _require_list(
+                    seed_obj.get(collection),
+                    field=f"notebook.{fixture_id}.{collection}",
+                    label=label,
+                )
+            ):
+                item_obj = _require_mapping(
+                    item,
+                    field=f"notebook.{fixture_id}.{collection}[{index}]",
+                    label=label,
+                )
+                if item_obj.get("coverImageAssetRef") is not None:
+                    _require_ref(
+                        item_obj.get("coverImageAssetRef"),
+                        prefix="images.",
+                        refs=asset_refs,
+                        owner=f"notebook.{fixture_id}.{collection}[{index}].coverImageAssetRef",
+                        label=label,
+                    )
 
 
 def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset") -> str:
@@ -137,6 +467,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 raise UIWorldManifestError(
                     f"{label} {asset_label}.sha256 mismatch: expected {expected_hash}, got {actual_hash}"
                 )
+    _validate_cross_references(data, label=label)
     return dataset_id
 
 

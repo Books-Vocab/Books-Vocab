@@ -59,6 +59,56 @@ def test_validate_rejects_unknown_asset_property(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_missing_runtime_download_asset_ref(tmp_path: Path):
+    data = _marketing_demo()
+    data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["audioAssetRef"] = "audio.missing"
+    path = tmp_path / "missing_runtime_audio.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="download.audioAssetRef references missing audio.missing"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_auth_state_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["auth"]["email"] = "drift@example.com"
+    path = tmp_path / "settings_auth_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="settings.subscription_free.auth.email must match auth.settingsSignedIn.email"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_bookshelf_book_install_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["assets"]["books"]["catalog_reader_epub"]["installAs"] = "Books/wrong.epub"
+    path = tmp_path / "book_install_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="installAs must be Books/catalog-reader.epub"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_missing_preferred_notebook_ref(tmp_path: Path):
+    data = _marketing_demo()
+    data["bookshelf"]["reader_notebook_bound"]["books"][0]["preferredNotebookId"] = "missing-nb"
+    path = tmp_path / "missing_preferred_notebook.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="preferredNotebookId references missing notebook missing-nb"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_missing_notebook_cover_asset_ref(tmp_path: Path):
+    data = _marketing_demo()
+    data["notebook"]["coverGallery"]["notebooks"][0]["coverImageAssetRef"] = "images.missing"
+    path = tmp_path / "missing_notebook_cover.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="coverImageAssetRef references missing images.missing"):
+        validate_fixture_dataset_file(path)
+
+
 def test_cli_prints_dataset_id_for_valid_world():
     result = subprocess.run(
         [
