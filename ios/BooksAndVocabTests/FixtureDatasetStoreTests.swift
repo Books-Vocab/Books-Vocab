@@ -782,6 +782,61 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func catalogPodcastFailsWhenEpisodeNullableProgressIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-catalog-podcast-nullable-progress",
+          "podcast": {
+            "shelf_continue": {
+              "series": {
+                "remoteId": "s-external",
+                "title": "External Series",
+                "hostNames": ["Ava Chen"],
+                "colorHex": "#112233",
+                "coverPattern": "waves"
+              },
+              "episodes": [
+                { "episodeNumber": 1, "title": "External Episode", "durationSec": 900 }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func catalogPodcastFailsWhenSeedContainsUnknownKey() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-catalog-podcast-key",
+          "podcast": {
+            "shelf_continue": {
+              "series": {
+                "remoteId": "s-external",
+                "title": "External Series",
+                "hostNames": ["Ava Chen"],
+                "colorHex": "#112233",
+                "coverPattern": "waves",
+                "artworkURL": null
+              },
+              "episodes": [
+                { "episodeNumber": 1, "title": "External Episode", "durationSec": 900, "lastPlayedTime": null }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func settingsSeedFailsWhenNullableStateKeysAreMissing() throws {
         let dataset = """
         {
@@ -1899,7 +1954,7 @@ struct FixtureDatasetStoreTests {
               },
               "episodes": [
                 { "episodeNumber": 1, "title": "External Episode", "durationSec": 900, "lastPlayedTime": 300 },
-                { "episodeNumber": 2, "title": "Unstarted Episode", "durationSec": 1200 }
+                { "episodeNumber": 2, "title": "Unstarted Episode", "durationSec": 1200, "lastPlayedTime": null }
               ]
             }
           }
