@@ -2479,6 +2479,7 @@
       "hostNames": [
         "Lab Podcast"
       ],
+      "preferredNotebookId": null,
       "color": "sunset",
       "coverPattern": "waves",
       "sortOrder": -10000,
@@ -2508,6 +2509,7 @@
       "hostNames": [
         "Lab Podcast"
       ],
+      "preferredNotebookId": null,
       "color": "sunset",
       "coverPattern": "waves",
       "sortOrder": -10000,

@@ -171,6 +171,7 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
               "color": "sunset",
               "coverPattern": "waves",
               "durationSec": 120.5,
@@ -207,6 +208,34 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": []
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenPreferredNotebookKeyIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-preferred-notebook-key",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
               "sortOrder": -100,
               "durationSec": 120.5,
               "episodes": []
@@ -232,6 +261,7 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
               "color": "sunset",
               "coverPattern": "waves",
               "sortOrder": -100,
@@ -269,6 +299,7 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
               "color": "sunset",
               "coverPattern": "waves",
               "sortOrder": -100,
@@ -307,6 +338,7 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
               "color": "sunset",
               "coverPattern": "waves",
               "sortOrder": -100,
@@ -745,6 +777,7 @@ struct FixtureDatasetStoreTests {
               "seriesRemoteId": "series-runtime",
               "seriesTitle": "Runtime Series",
               "hostNames": ["Lab Host"],
+              "preferredNotebookId": "runtime-notebook",
               "color": "sunset",
               "coverPattern": "waves",
               "sortOrder": -100,
@@ -763,6 +796,25 @@ struct FixtureDatasetStoreTests {
                     "audioAssetRef": "audio.runtime-audio",
                     "subtitleAssetRef": "subtitles.runtime-subtitle"
                   }
+                }
+              ]
+            }
+          },
+          "notebook": {
+            "populated": {
+              "editStates": [],
+              "notebooks": [
+                {
+                  "remoteId": "runtime-notebook",
+                  "name": "Runtime Notebook",
+                  "color": null,
+                  "syncStatus": 1,
+                  "isDefault": true,
+                  "sortOrder": 0,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null,
+                  "cardState": null,
+                  "entries": []
                 }
               ]
             }
@@ -883,10 +935,18 @@ struct FixtureDatasetStoreTests {
         """
 
         try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let document = FixtureDatasetStore.requireDocument()
             let runtimeSeed = FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview)
             #expect(runtimeSeed?.seriesTitle == "Runtime Series")
+            #expect(runtimeSeed?.preferredNotebookId == "runtime-notebook")
             #expect(runtimeSeed?.episodes.first?.download?.audioAssetRef == "audio.runtime-audio")
             #expect(runtimeSeed?.episodes.first?.download?.subtitleAssetRef == "subtitles.runtime-subtitle")
+            let series = try UITestFixtureSeed.makeRuntimePodcastSeries(
+                from: try #require(runtimeSeed),
+                document: document,
+                owner: "runtimePodcast.playablePreview"
+            )
+            #expect(series.preferredNotebookId == "runtime-notebook")
             #expect(FixtureDatasetStore.readerSeed(for: .realBookLibrary)?.entry.word == "introduction")
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.word == "affect")
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.notebookSyncStatus == 0)
@@ -895,6 +955,46 @@ struct FixtureDatasetStoreTests {
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isArchived == true)
             #expect(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook)?.entries.first?.isExcludedFromReader == true)
             #expect(FixtureDatasetStore.reviewDeckSeed(for: .probe)?.entries.first?.word == "probeword001")
+        }
+    }
+
+    @Test @MainActor func runtimePodcastMaterializationFailsWhenPreferredNotebookIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-preferred-notebook-ref",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": "ghost-notebook",
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": []
+            }
+          }
+        }
+        """
+
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let document = FixtureDatasetStore.requireDocument()
+            let seed = try #require(FixtureDatasetStore.runtimePodcastSeed(for: .playablePreview))
+
+            #expect(throws: UIWorldRuntimePodcastMaterializationError.preferredNotebookMissing(
+                owner: "runtimePodcast.playablePreview",
+                notebookId: "ghost-notebook"
+            )) {
+                _ = try UITestFixtureSeed.makeRuntimePodcastSeries(
+                    from: seed,
+                    document: document,
+                    owner: "runtimePodcast.playablePreview"
+                )
+            }
         }
     }
 

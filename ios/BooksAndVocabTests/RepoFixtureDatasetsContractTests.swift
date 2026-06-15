@@ -86,6 +86,7 @@ struct RepoFixtureDatasetsContractTests {
             expectUniqueInstallPaths(document: document, dataset: stem)
 
             expectRuntimePodcastAssetRefs(document: document, dataset: stem)
+            expectRuntimePodcastNotebookRefs(document: document, dataset: stem)
 
             for (fixtureKey, seed) in document.reader {
                 expectNotebookSyncStatus(
@@ -450,6 +451,21 @@ struct RepoFixtureDatasetsContractTests {
                     )
                 }
             }
+        }
+    }
+
+    private func expectRuntimePodcastNotebookRefs(document: FixtureDatasetDocument, dataset: String) {
+        for (fixtureKey, seed) in document.runtimePodcast {
+            guard let preferredNotebookId = seed.preferredNotebookId,
+                  !preferredNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            expectNotebookRef(
+                preferredNotebookId,
+                document: document,
+                dataset: dataset,
+                owner: "runtimePodcast.\(fixtureKey).preferredNotebookId"
+            )
         }
     }
 

@@ -627,6 +627,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
     let seriesRemoteId: String
     let seriesTitle: String
     let hostNames: [String]
+    let preferredNotebookId: String?
     let color: String?
     let coverPattern: String?
     let sortOrder: Int
@@ -639,6 +640,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
         case seriesRemoteId
         case seriesTitle
         case hostNames
+        case preferredNotebookId
         case color
         case coverPattern
         case sortOrder
@@ -652,6 +654,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
         seriesRemoteId: String,
         seriesTitle: String,
         hostNames: [String],
+        preferredNotebookId: String?,
         color: String?,
         coverPattern: String?,
         sortOrder: Int,
@@ -663,6 +666,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
         self.seriesRemoteId = seriesRemoteId
         self.seriesTitle = seriesTitle
         self.hostNames = hostNames
+        self.preferredNotebookId = preferredNotebookId
         self.color = color
         self.coverPattern = coverPattern
         self.sortOrder = sortOrder
@@ -687,6 +691,7 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
         seriesRemoteId = try container.decode(String.self, forKey: .seriesRemoteId)
         seriesTitle = try container.decode(String.self, forKey: .seriesTitle)
         hostNames = try container.decode([String].self, forKey: .hostNames)
+        preferredNotebookId = try container.decodeIfPresent(String.self, forKey: .preferredNotebookId)
         color = try container.decodeIfPresent(String.self, forKey: .color)
         coverPattern = try container.decodeIfPresent(String.self, forKey: .coverPattern)
         sortOrder = try container.decode(Int.self, forKey: .sortOrder)
