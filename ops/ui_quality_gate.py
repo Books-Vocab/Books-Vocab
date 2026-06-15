@@ -8,6 +8,7 @@ Usage:
   ops/ui_quality_gate.py [--since REF] [--files FILE...]
                          [--tier fast|slow|all]
                          [--execute] [--execute-slow]
+                         [--dataset NAME | --dataset-file PATH]
                          [--include-ci] [--exclude ID...]
                          [--json]
 
@@ -46,10 +47,16 @@ FAST_COMMANDS: dict[str, list[str]] = {
 SLOW_COMMANDS: dict[str, list[str]] = {
     "structure.ui_deadcode": ["--strict"],
     "structure.ui_graph": ["--json"],
-    "snapshot.catalog": ["catalog", "snapshots", "--dataset", "marketing_demo"],
-    "behavior.uitest_flows": ["--ui", "--lease", "--dataset", "marketing_demo"],
+    "snapshot.catalog": ["catalog", "snapshots"],
+    "behavior.uitest_flows": ["--ui", "--lease"],
     "perf.review_flip_probe": ["--flips", "30"],
     "visual.catalog_regression": ["--auto"],
+}
+
+UI_WORLD_REQUIRED = {
+    "snapshot.catalog",
+    "behavior.uitest_flows",
+    "perf.review_flip_probe",
 }
 
 
@@ -101,13 +108,32 @@ def injection_args(root: Path) -> tuple[list[str], str | None]:
     )
 
 
-def resolve_args(mech_id: str, layer: str, root: Path) -> tuple[list[str] | None, str | None]:
+def ui_world_args(dataset: str | None, dataset_file: str | None, root: Path) -> list[str] | None:
+    if dataset:
+        return ["--dataset", dataset]
+    if dataset_file:
+        path = Path(dataset_file)
+        resolved = path if path.is_absolute() else root / path
+        return ["--dataset-file", str(resolved)]
+    return None
+
+
+def resolve_args(
+    mech_id: str,
+    layer: str,
+    root: Path,
+    world_args: list[str] | None,
+) -> tuple[list[str] | None, str | None]:
     """Return ([args], warning) for a mechanism. None args means dry-run only."""
     if mech_id in FAST_COMMANDS:
         return FAST_COMMANDS[mech_id], None
     if mech_id == "static.injection":
         return injection_args(root)
     if mech_id in SLOW_COMMANDS:
+        if mech_id in UI_WORLD_REQUIRED:
+            if world_args is None:
+                return None, "requires --dataset <name> or --dataset-file <path> (UI World SoT)"
+            return [*SLOW_COMMANDS[mech_id], *world_args], None
         return SLOW_COMMANDS[mech_id], None
     return None, None
 
@@ -125,6 +151,8 @@ def run_mech(entrypoint: str, args: list[str], root: Path) -> tuple[int, str, st
 
 def human_summary(r: dict) -> str:
     if r["status"] == "planned":
+        if r.get("warning"):
+            return f"[DRY-RUN] {r['command']} ({r['warning']})"
         return f"[DRY-RUN] {r['command']}"
     if r["status"] == "skipped":
         return f"[SKIPPED] {r['reason']}"
@@ -145,12 +173,26 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", default=True, help="print plan without running (default)")
     parser.add_argument("--execute", action="store_true", help="run gates (fast tier only by default)")
     parser.add_argument("--execute-slow", action="store_true", help="also run slow/expensive gates")
+    parser.add_argument("--dataset", help="UI World name under ops/fixtures/ui_worlds/<name>.json for slow UI World gates")
+    parser.add_argument("--dataset-file", help="UI World JSON path for slow UI World gates")
     parser.add_argument("--include-ci", action="store_true", help="include gates already wired to CI")
     parser.add_argument("--exclude", action="append", default=[], help="mechanism ids to skip")
     parser.add_argument("--json", action="store_true", help="emit JSON report")
     args = parser.parse_args()
 
     root = repo_root()
+    if args.dataset and args.dataset_file:
+        parser.error("choose either --dataset or --dataset-file")
+    if args.dataset:
+        named_path = root / "ops" / "fixtures" / "ui_worlds" / f"{args.dataset}.json"
+        if not named_path.is_file():
+            parser.error(f"dataset file not found: {named_path}")
+    if args.dataset_file:
+        dataset_file_path = Path(args.dataset_file)
+        resolved_dataset_file = dataset_file_path if dataset_file_path.is_absolute() else root / dataset_file_path
+        if not resolved_dataset_file.is_file():
+            parser.error(f"dataset file not found: {resolved_dataset_file}")
+    world_args = ui_world_args(args.dataset, args.dataset_file, root)
     impacted = get_impacted(root, args.files, args.since)
 
     excluded = set(args.exclude)
@@ -184,7 +226,7 @@ def main() -> int:
             results.append({**base_result, "status": "skipped", "reason": f"layer={layer} not in tier={args.tier}"})
             continue
 
-        resolved_args, warning = resolve_args(mech_id, layer, root)
+        resolved_args, warning = resolve_args(mech_id, layer, root, world_args)
         command = " ".join(shlex.quote(p) for p in [entrypoint, *(resolved_args or [])])
 
         if resolved_args is None or (layer not in FAST_LAYERS and not args.execute_slow):
@@ -193,6 +235,18 @@ def main() -> int:
                     "[ui_quality_gate] hint: slow gates stay planned; add --execute-slow to run them",
                     file=sys.stderr,
                 )
+            if resolved_args is None and mech_id in UI_WORLD_REQUIRED and args.execute and args.execute_slow:
+                results.append({
+                    **base_result,
+                    "status": "failed",
+                    "command": command,
+                    "args": [],
+                    "rc": 2,
+                    "stdout": "",
+                    "stderr": warning or "",
+                    "warning": warning,
+                })
+                continue
             results.append({
                 **base_result,
                 "status": "planned",

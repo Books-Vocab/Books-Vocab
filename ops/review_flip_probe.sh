@@ -5,9 +5,11 @@
 # 收 console marker → 拉 JSONL → 預登門檻 verdict。人只需要保證裝置插著解鎖。
 #
 # Usage:
-#   ./ops/review_flip_probe.sh --simulator [opts]
-#   ./ops/review_flip_probe.sh --device <udid> [opts]
+#   ./ops/review_flip_probe.sh --simulator --dataset <name> [opts]
+#   ./ops/review_flip_probe.sh --device <udid> --dataset-file <path> [opts]
 # Options:
+#   --dataset NAME   UI World under ops/fixtures/ui_worlds/<name>.json（必填，與 --dataset-file 擇一）
+#   --dataset-file P UI World JSON path（必填，與 --dataset 擇一）
 #   --flips N       翻卡次數（預設 30）
 #   --min-flips N   verdict 有效性下限（預設 = --flips）
 #   --timeout SECS  等 done/abort marker 的上限（預設 60 + 4×flips）
@@ -37,12 +39,14 @@ JSONL_NAME="kg_review_probe.jsonl"
 
 MODE="" UDID="" FLIPS=30 MIN_FLIPS="" TIMEOUT="" SKIP_BUILD=0 OUT=""
 CONFIG="Debug" INSTRUMENTS=0
-DATASET_FILE="$ROOT/ops/fixtures/ui_worlds/marketing_demo.json"
+DATASET_NAME="" DATASET_FILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --simulator) MODE="simulator"; shift ;;
     --device) MODE="device"; UDID="$2"; shift 2 ;;
+    --dataset) DATASET_NAME="${2:?--dataset needs value}"; shift 2 ;;
+    --dataset-file) DATASET_FILE="${2:?--dataset-file needs value}"; shift 2 ;;
     --flips) FLIPS="$2"; shift 2 ;;
     --min-flips) MIN_FLIPS="$2"; shift 2 ;;
     --timeout) TIMEOUT="$2"; shift 2 ;;
@@ -57,6 +61,14 @@ done
 
 # usage error 用 64（EX_USAGE），與 invalid run 的 2 嚴格分流。
 [[ -n "$MODE" ]] || { echo "error: --simulator 或 --device <udid> 必選其一" >&2; exit 64; }
+if [[ -n "$DATASET_NAME" && -n "$DATASET_FILE" ]]; then
+  echo "error: choose either --dataset or --dataset-file" >&2
+  exit 64
+fi
+if [[ -n "$DATASET_NAME" ]]; then
+  DATASET_FILE="$ROOT/ops/fixtures/ui_worlds/$DATASET_NAME.json"
+fi
+[[ -n "$DATASET_FILE" ]] || { echo "error: --dataset <name> or --dataset-file <path> is required (UI World SoT)" >&2; exit 64; }
 if [[ "$INSTRUMENTS" -eq 1 && "$MODE" != "device" ]]; then
   echo "error: --instruments 只支援 --device（render-server hitch 量測無 simulator 意義）" >&2
   exit 64
@@ -73,6 +85,8 @@ VERDICT_FILE="${TMP_BASE%/}/kg_review_probe_verdict"
 # 下游永遠不會讀到上一輪殘留。
 rm -f "$VERDICT_FILE"
 [[ -f "$DATASET_FILE" ]] || { echo "error: UI World dataset missing: $DATASET_FILE" >&2; exit 64; }
+DATASET_ID="$(jq -r 'select(type == "object") | select(.schema == "kg.fixture.dataset.v2") | .datasetID // empty' "$DATASET_FILE" 2>/dev/null || true)"
+[[ -n "$DATASET_ID" ]] || { echo "error: UI World dataset must use schema kg.fixture.dataset.v2 and non-empty datasetID: $DATASET_FILE" >&2; exit 64; }
 FIXTURE_DATASET_B64="$(base64 <"$DATASET_FILE" | tr -d '\n')"
 
 LAUNCH_ARGS=(
@@ -177,7 +191,7 @@ if [[ "$MODE" == "simulator" ]]; then
   [[ -n "$UDID" ]] || fail_invalid "ensure_booted_no_udid"
   log "installing on simulator $UDID…"
   xcrun simctl install "$UDID" "$APP"
-  log "launching probe (flips=$FLIPS world=marketing_demo reviewDeck=probe timeout=${TIMEOUT}s)…"
+  log "launching probe (flips=$FLIPS world=$DATASET_ID reviewDeck=probe timeout=${TIMEOUT}s)…"
   # KG_UI_TEST_SERVER_URL=啞端點：第三層防線，fixture 世界永不打真後端。
   # 注意 override 是 #if DEBUG（Release 編譯掉）——Release run 的防線是
   # ephemeral 容器 + ReviewProbeScene 不掛 sync handler；此 env 蓋 Debug。
@@ -222,7 +236,7 @@ else
     # xctrace 對既存 trace bundle 直接 abort（要求 --append-run）；--out 重用
     # 或前輪中斷殘影都會觸發 → 錄前一律清（per-run scratch，無保留價值）。
     rm -rf "$TRACE"
-    log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS world=marketing_demo reviewDeck=probe）…"
+    log "recording 'Animation Hitches'+'Time Profiler' trace（time-limit ${TIMEOUT}s，flips=$FLIPS world=$DATASET_ID reviewDeck=probe）…"
     # xctrace 只認硬體 UDID（00008120-…），不認 devicectl 的 CoreDevice UUID；
     # 兩者經 devicectl info 對映，解析不到一律 invalid（不可拿原值矇跑）。
     # 下行 rm 的對象是 device_info.json（非上方 trace）：防 --out 重用時
@@ -273,7 +287,7 @@ else
     xcrun xctrace export --input "$TRACE" --toc >"$OUT/trace_toc.xml" 2>/dev/null || true
     log "trace saved: $TRACE"
   else
-    log "launching probe (flips=$FLIPS world=marketing_demo reviewDeck=probe timeout=${TIMEOUT}s)…"
+    log "launching probe (flips=$FLIPS world=$DATASET_ID reviewDeck=probe timeout=${TIMEOUT}s)…"
     # server URL 啞端點防線同 sim 路徑（#if DEBUG 語意見上）。
     DEVICECTL_CHILD_KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
       DEVICECTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \

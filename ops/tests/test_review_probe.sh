@@ -106,6 +106,30 @@ rc=0; ( set -u; kg_probe_write_verdict "$TMP/v2" "pass" ) || rc=$?
 check "空 detail rc==0" "$rc" "0"
 check "空 detail 行" "$(cat "$TMP/v2")" "RESULT=pass"
 
+note "case 12: review_flip_probe shell requires explicit UI World"
+set +e
+out="$("$SCRIPT_DIR/../review_flip_probe.sh" --simulator --skip-build 2>&1)"
+rc=$?
+set -e
+check "missing dataset rc==64" "$rc" "64"
+if grep -q -- '--dataset <name> or --dataset-file <path> is required' <<<"$out"; then
+  ok "missing dataset error is explicit"
+else
+  bad "missing dataset error unclear: $out"
+fi
+
+note "case 13: review_flip_probe rejects dataset + dataset-file together"
+set +e
+out="$("$SCRIPT_DIR/../review_flip_probe.sh" --simulator --dataset marketing_demo --dataset-file "$TMP/nope.json" --skip-build 2>&1)"
+rc=$?
+set -e
+check "exclusive dataset rc==64" "$rc" "64"
+if grep -q 'choose either --dataset or --dataset-file' <<<"$out"; then
+  ok "dataset exclusivity error is explicit"
+else
+  bad "dataset exclusivity error unclear: $out"
+fi
+
 note ""
 note "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

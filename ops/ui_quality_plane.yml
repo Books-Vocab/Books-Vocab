@@ -194,7 +194,8 @@ mechanisms:
     verdict: >
       Single-line RESULT=pass|fail|invalid in $TMPDIR/kg_review_probe_verdict;
       per-flip JSONL metrics; exit 0/1/2 (invalid != fail). Simulator or real
-      device (--device <udid>, optional --instruments xctrace).
+      device (--device <udid>, optional --instruments xctrace). Requires an
+      explicit UI World via --dataset or --dataset-file.
     docs:
       - docs/sop/ios.md
     regression: review-flip-probe

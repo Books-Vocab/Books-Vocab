@@ -102,6 +102,38 @@ if grep -q '\[DRY-RUN\]' <<<"$OUT"; then
 else
   fail_t "slow tier missing [DRY-RUN] marker"
 fi
+if grep -q -- '--dataset marketing_demo' <<<"$OUT"; then
+  fail_t "slow tier should not inject marketing_demo without an explicit UI World: $OUT"
+else
+  ok "slow tier does not silently inject marketing_demo"
+fi
+if grep -q 'requires --dataset' <<<"$OUT"; then
+  ok "slow tier explains UI World dataset requirement"
+else
+  fail_t "slow tier missing UI World requirement warning: $OUT"
+fi
+
+section "Slow UI World gates use explicit dataset"
+OUT="$($GATE --files "$SAMPLE_FILE" --tier slow --dry-run --dataset marketing_demo 2>&1)"
+if grep -q -- '--dataset marketing_demo' <<<"$OUT"; then
+  ok "explicit --dataset is forwarded to slow UI World gates"
+else
+  fail_t "explicit --dataset was not forwarded: $OUT"
+fi
+
+section "Execute-slow without UI World fails before running those gates"
+JSON="$($GATE --files ops/review_flip_probe.sh --tier slow --execute --execute-slow --json 2>&1)"
+RC=$?
+if [[ "$RC" -eq 1 ]]; then
+  ok "execute-slow without dataset exits non-zero"
+else
+  fail_t "execute-slow without dataset exited $RC: $JSON"
+fi
+if jq -e '.results[] | select(.id == "perf.review_flip_probe" and .status == "failed" and (.warning | contains("requires --dataset")))' <<<"$JSON" >/dev/null 2>&1; then
+  ok "execute-slow reports missing UI World as failed gate"
+else
+  fail_t "execute-slow missing dataset failure payload: $JSON"
+fi
 
 section "No-impact file yields empty plan"
 OUT="$($GATE --files "$NOIMPACT_FILE" --tier all --dry-run 2>&1)"
