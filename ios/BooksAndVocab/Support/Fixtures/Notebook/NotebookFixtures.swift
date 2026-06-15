@@ -152,6 +152,36 @@ struct NotebookCardStateSeed: Codable {
     let pendingCount: Int
     let lastActivity: Date?
     let isActive: Bool
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case cardCount
+        case dueCount
+        case unlearnedCount
+        case reviewedCount
+        case pendingCount
+        case lastActivity
+        case isActive
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World notebook cardState must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
+        cardCount = try container.decode(Int.self, forKey: .cardCount)
+        dueCount = try container.decode(Int.self, forKey: .dueCount)
+        unlearnedCount = try container.decode(Int.self, forKey: .unlearnedCount)
+        reviewedCount = try container.decode(Int.self, forKey: .reviewedCount)
+        pendingCount = try container.decode(Int.self, forKey: .pendingCount)
+        lastActivity = try container.decodeIfPresent(Date.self, forKey: .lastActivity)
+        isActive = try container.decode(Bool.self, forKey: .isActive)
+    }
 }
 
 struct NotebookEditStateSeed: Codable {
