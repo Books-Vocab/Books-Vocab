@@ -138,6 +138,16 @@ def test_validate_rejects_unknown_asset_property(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_duplicate_asset_install_path(tmp_path: Path):
+    data = _marketing_demo()
+    data["assets"]["images"]["notebook_cover_app_icon"]["installAs"] = data["assets"]["books"]["catalog_reader_epub"]["installAs"]
+    path = tmp_path / "duplicate_asset_install_path.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"assets\.images\.notebook_cover_app_icon\.installAs duplicates assets\.books\.catalog_reader_epub\.installAs"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_missing_preference_wrapper_key(tmp_path: Path):
     data = _marketing_demo()
     del data["preferences"]["ubiquitousKeyValueStore"]

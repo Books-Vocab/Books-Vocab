@@ -288,6 +288,42 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenAssetInstallPathIsDuplicated() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "duplicate-asset-install-path",
+          "assets": {
+            "books": {
+              "book": {
+                "sourcePath": "/tmp/book.epub",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "Books/shared.epub",
+                "contentType": "application/epub+zip"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "source": {
+                "sourcePath": "/tmp/source.md",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "Books/shared.epub",
+                "contentType": "text/markdown; charset=utf-8"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
         let dataset = """
         {
