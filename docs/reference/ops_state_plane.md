@@ -58,7 +58,7 @@ verified_against: 72c31f88
 
 `kg.capture.profile.v1`(`ops/capture_profile.py`)是**疊在 `ops_edit` 之上的 manifest/orchestration 層**,不是平行系統。`build_ops_edit_commands`(`:201`)把 `materialize{uid,seedFile,steps[]}` 編譯成 `ops-edit seed` + steps 序列,繼承 dry-run/`--commit` gate。截圖(`shots/render/snapshot`)是它的**下游用途之一,不是它的定義**。
 
-`snapshot.datasetFile` 必須是完整 `kg.fixture.dataset.v2` UI World:`load_profile` 委派 `ops/ui_world_manifest.py` 驗證 top-level key set、`datasetID`、asset buckets(`books/audio/images/subtitles/text`)與每個 asset 的 `sourcePath/byteSize/sha256/installAs/contentType`;source 檔缺失、byteSize/hash 漂移或非 UI World schema 直接 fail-fast,不把錯誤延後到 simulator 或 renderer。
+`snapshot.datasetFile` 必須是完整 `kg.fixture.dataset.v2` UI World:`load_profile` 委派 `ops/ui_world_manifest.py` 驗證 top-level key set、`datasetID`、asset buckets(`books/audio/images/subtitles/text`)與每個 asset 的 `sourcePath/byteSize/sha256/installAs/contentType`;同時驗 settings auth/entitlements refs、runtime podcast audio/subtitle refs、reader/bookshelf book refs、notebook cover refs、preferred notebook refs,以及 Book `fileName/format` 對齊 asset `installAs/contentType`。source 檔缺失、byteSize/hash 漂移、跨引用缺失或 row↔asset 漂移都直接 fail-fast,不把錯誤延後到 simulator 或 renderer。
 
 **何時用 capture profile**:需要「造景 → verify(world-diff)→ snapshot → render」**可重現串接**、需要 derive-expectation 做 drift guard、或要進 CI/行銷流程的場景。
 
