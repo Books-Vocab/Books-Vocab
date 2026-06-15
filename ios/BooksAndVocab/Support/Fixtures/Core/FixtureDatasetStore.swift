@@ -145,6 +145,7 @@ struct FixtureDatasetDocument: Decodable {
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
 
         try validateKnownFixtureIDs(codingPath: container.codingPath)
+        try Self.validatePreferenceKeys(preferences, codingPath: container.codingPath)
         try Self.validateAuthSeeds(auth, codingPath: container.codingPath)
         try Self.validateSettingsStateReferences(settings, auth: auth, entitlements: entitlements, codingPath: container.codingPath)
         try Self.validateSwiftDataRowState(
@@ -187,6 +188,32 @@ struct FixtureDatasetDocument: Decodable {
                 "UI World domain \(domain) contains unknown fixture IDs \(unknown.sorted())",
                 codingPath: codingPath
             )
+        }
+    }
+
+    private static func validatePreferenceKeys(
+        _ preferences: UIWorldPreferencesSeed,
+        codingPath: [CodingKey]
+    ) throws {
+        try validatePreferenceKeys(
+            preferences.userDefaults.keys,
+            domain: "preferences.userDefaults",
+            codingPath: codingPath
+        )
+        try validatePreferenceKeys(
+            preferences.ubiquitousKeyValueStore.keys,
+            domain: "preferences.ubiquitousKeyValueStore",
+            codingPath: codingPath
+        )
+    }
+
+    private static func validatePreferenceKeys(
+        _ keys: some Sequence<String>,
+        domain: String,
+        codingPath: [CodingKey]
+    ) throws {
+        for key in keys where key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw dataCorrupted("UI World \(domain) contains an empty key", codingPath: codingPath)
         }
     }
 

@@ -1155,6 +1155,44 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func preferenceWorldFailsWhenUserDefaultsKeyIsEmpty() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "empty-user-defaults-preference-key",
+          "preferences": {
+            "userDefaults": {
+              "   ": "traditionalChinese"
+            },
+            "ubiquitousKeyValueStore": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func preferenceWorldFailsWhenUbiquitousKeyValueStoreKeyIsEmpty() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "empty-ubiquitous-preference-key",
+          "preferences": {
+            "userDefaults": {},
+            "ubiquitousKeyValueStore": {
+              "": false
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetDeclaresRuntimeWorlds() throws {
         let dataset = """
         {
