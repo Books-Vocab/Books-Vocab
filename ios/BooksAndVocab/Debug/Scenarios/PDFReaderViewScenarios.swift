@@ -27,47 +27,22 @@ private struct PDFReaderViewScene: View {
     let book: Book
 
     init() {
-        let container = try! ModelContainer(
-            for: Book.self, VocabularyEntry.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        )
-        let seed = FixtureDatasetStore.requireBookshelfSeed(for: .withBooksLibrary)
-        guard let source = seed.books.first(where: { $0.format == .pdf }) else {
+        let books = BookshelfFixtures.books(for: .withBooksLibrary)
+        guard let book = books.first(where: { $0.format == .pdf }) else {
             preconditionFailure("UI World bookshelf.with_books_library must declare a PDF book for PDFReaderViewScenarios")
         }
-        guard let ref = source.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !ref.isEmpty else {
-            preconditionFailure("UI World PDF book \(source.title) is missing bookAssetRef")
-        }
         do {
-            let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
-            guard installedURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL else {
-                preconditionFailure("UI World PDF asset \(ref) must install directly under Books/: \(installedURL.path)")
-            }
-            guard installedURL.lastPathComponent == source.fileName else {
-                preconditionFailure("UI World PDF book fileName \(source.fileName) must match installed asset \(installedURL.lastPathComponent)")
-            }
-        } catch {
-            preconditionFailure("Failed to install UI World PDF asset \(ref): \(error)")
-        }
-
-        let book = Book(
-            title: source.title,
-            author: source.author,
-            fileName: source.fileName,
-            format: source.format
-        )
-        book.progression = source.progression
-        book.dateAdded = source.dateAdded
-        book.dateLastRead = source.dateLastRead
-        container.mainContext.insert(book)
-        do {
+            let container = try ModelContainer(
+                for: Book.self, VocabularyEntry.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            )
+            container.mainContext.insert(book)
             try container.mainContext.save()
+            self.container = container
+            self.book = book
         } catch {
             preconditionFailure("Failed to seed UI World PDF book row: \(error)")
         }
-        self.container = container
-        self.book = book
     }
 
     var body: some View {
