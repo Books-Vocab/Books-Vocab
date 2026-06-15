@@ -1281,6 +1281,52 @@ struct UIWorldReaderSeed: Codable, Equatable {
     let notebookName: String
     let notebookSyncStatus: Int
     let entry: UIWorldVocabularyEntrySeed
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case textAssetRef
+        case bookAssetRef
+        case title
+        case author
+        case bookFileName
+        case notebookRemoteId
+        case notebookName
+        case notebookSyncStatus
+        case entry
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World reader seed contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World reader seed must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        textAssetRef = try container.decode(String.self, forKey: .textAssetRef)
+        bookAssetRef = try container.decode(String.self, forKey: .bookAssetRef)
+        title = try container.decode(String.self, forKey: .title)
+        author = try container.decode(String.self, forKey: .author)
+        bookFileName = try container.decode(String.self, forKey: .bookFileName)
+        notebookRemoteId = try container.decode(String.self, forKey: .notebookRemoteId)
+        notebookName = try container.decode(String.self, forKey: .notebookName)
+        notebookSyncStatus = try container.decode(Int.self, forKey: .notebookSyncStatus)
+        entry = try container.decode(UIWorldVocabularyEntrySeed.self, forKey: .entry)
+    }
 }
 
 enum UIWorldVocabularyFixtureID: String, CaseIterable {
