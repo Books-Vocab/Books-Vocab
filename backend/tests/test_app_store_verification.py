@@ -24,7 +24,10 @@ from kg.api import app
 from kg.settings import KGSettings
 
 
-def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None):
+APPLE_APP_STORE_OID = "1.2.840.113635.100.6.11.1"
+
+
+def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None, *, app_store_oid=False):
     key = ec.generate_private_key(ec.SECP256R1())
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject_cn)])
     issuer = issuer_cert.subject if issuer_cert else subject
@@ -40,6 +43,13 @@ def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None):
         .not_valid_after(now + timedelta(days=30))
         .add_extension(x509.BasicConstraints(ca=issuer_cert is None or issuer_key is not None, path_length=None), critical=True)
     )
+    if app_store_oid:
+        # Real App Store signing leaves carry this marker extension; pin it so the
+        # fixture chain matches what production verification now requires.
+        builder = builder.add_extension(
+            x509.UnrecognizedExtension(x509.ObjectIdentifier(APPLE_APP_STORE_OID), b"\x05\x00"),
+            critical=False,
+        )
     cert = builder.sign(private_key=signer_key, algorithm=hashes.SHA256())
     return key, cert
 
@@ -55,6 +65,7 @@ def _certificate_chain():
         "Test Apple Leaf",
         issuer_cert=intermediate_cert,
         issuer_key=intermediate_key,
+        app_store_oid=True,
     )
     return {
         "root_key": root_key,

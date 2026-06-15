@@ -31,6 +31,16 @@ class AppStoreConfigurationError(RuntimeError):
 PRODUCTION_API_BASE_URL = "https://api.storekit.itunes.apple.com"
 SANDBOX_API_BASE_URL = "https://api.storekit-sandbox.itunes.apple.com"
 
+# Apple's "App Store" leaf-certificate marker extension. A certificate may chain
+# to the Apple Root CA without being a legitimate App Store signing leaf; pinning
+# this OID ensures the leaf was issued by Apple specifically for App Store use.
+# https://developer.apple.com/documentation/appstoreserverapi (WWDR App Store OID)
+APPLE_APP_STORE_OID = x509.ObjectIdentifier("1.2.840.113635.100.6.11.1")
+
+# JWS signatures from Apple are ECDSA P-256 (ES256). We pin this and never read
+# the attacker-controlled `alg` header, closing alg-confusion / downgrade attacks.
+_APP_STORE_JWS_ALGORITHM = "ES256"
+
 
 @dataclass(frozen=True)
 class VerifiedAppStoreJWS:
@@ -131,6 +141,21 @@ def _verify_certificate_chain(certificates: list[x509.Certificate], trusted_root
     raise AppStoreVerificationError("App Store JWS chain does not terminate at a trusted root.")
 
 
+def _ensure_leaf_is_app_store_certificate(leaf: x509.Certificate) -> None:
+    """Reject any leaf that does not carry Apple's App Store OID extension.
+
+    Without this pin, any certificate Apple's Root CA has ever signed (for any
+    purpose) would be accepted as a valid App Store signing leaf, letting an
+    attacker mint forged transaction/notification proofs.
+    """
+    try:
+        leaf.extensions.get_extension_for_oid(APPLE_APP_STORE_OID)
+    except x509.ExtensionNotFound as exc:
+        raise AppStoreVerificationError(
+            "App Store JWS leaf certificate is missing the Apple App Store OID extension."
+        ) from exc
+
+
 def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = None) -> VerifiedAppStoreJWS:
     parts = signed_jws.split(".")
     if len(parts) != 3:
@@ -147,25 +172,38 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
     )
     trusted_roots = _load_trusted_root_certificates()
     _verify_certificate_chain(list(certificates), trusted_roots)
+    _ensure_leaf_is_app_store_certificate(certificates[0])
 
     public_key = certificates[0].public_key()
-    payload = jwt.decode(
-        signed_jws,
-        key=public_key,
-        algorithms=[header.get("alg", "ES256")],
-        options={
-            "verify_signature": True,
-            "verify_aud": False,
-            "verify_iss": False,
-            "verify_exp": False,
-            "verify_nbf": False,
-            "verify_iat": False,
-        },
-    )
+    try:
+        payload = jwt.decode(
+            signed_jws,
+            key=public_key,
+            # alg is PINNED — never sourced from the attacker-controlled header.
+            algorithms=[_APP_STORE_JWS_ALGORITHM],
+            options={
+                "verify_signature": True,
+                # Apple JWS payloads carry no standard iss/aud; trust is rooted in
+                # the cert chain + Apple OID pin + bundleId binding below, so these
+                # remain off. exp IS enforced (expired proofs are rejected).
+                "verify_aud": False,
+                "verify_iss": False,
+                "verify_exp": True,
+                "verify_nbf": True,
+                "verify_iat": False,
+            },
+        )
+    except jwt.InvalidTokenError as exc:
+        # Covers ExpiredSignatureError, InvalidAlgorithmError, InvalidSignatureError,
+        # and any other malformed/forged-token failure — collapse to our domain error.
+        raise AppStoreVerificationError(f"App Store JWS verification failed: {exc}") from exc
 
+    # bundleId binds the proof to THIS app. JWSTransaction / notification envelopes
+    # carry it and a mismatch is an attack. JWSRenewalInfo legitimately omits it, so
+    # absence is tolerated — the cert chain + OID pin remain the trust root there.
     if bundle_id:
         candidate_bundle = payload.get("bundleId") or payload.get("bid")
-        if candidate_bundle and candidate_bundle != bundle_id:
+        if candidate_bundle is not None and candidate_bundle != bundle_id:
             raise AppStoreVerificationError("App Store JWS bundleId does not match this app.")
 
     return VerifiedAppStoreJWS(header=header, payload=payload, certificates=certificates)
