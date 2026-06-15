@@ -260,6 +260,53 @@ VALID_SETTINGS_REVIEW_MODES = {"relaxed", "intensive", "custom"}
 VALID_SETTINGS_AUTOPLAY_SPEEDS = {"slow", "normal", "fast"}
 VALID_SETTINGS_BADGE_TONES = {"neutral", "accent", "success"}
 VALID_SETTINGS_BOOK_SYNC_TONES = {"progress", "success", "warning"}
+TODAY_REVIEW_SESSION_KEYS = {
+    "progressText",
+    "currentCard",
+    "nextCard",
+    "revealStage",
+    "canShuffle",
+    "canGoPrevious",
+    "canGoNext",
+    "remainingCount",
+    "forgotCount",
+    "rememberedCount",
+    "rememberedFeedbackTrigger",
+    "forgotFeedbackTrigger",
+    "isAutoPlaying",
+    "isAutoPlayPaused",
+    "autoplayProgress",
+    "autoplaySpeed",
+    "autoplaySoundEnabled",
+    "showFirstRunHint",
+}
+TODAY_REVIEW_CARD_KEYS = {
+    "word",
+    "translation",
+    "context",
+    "explanation",
+    "partOfSpeech",
+    "bookTitle",
+    "chapterTitle",
+    "dateAdded",
+    "difficultyTier",
+    "reviewMode",
+    "reviewExamples",
+    "rootForm",
+    "inflections",
+    "graphLinksByKind",
+}
+TODAY_REVIEW_LINK_KEYS = {
+    "id",
+    "cardId",
+    "word",
+    "kind",
+    "label",
+    "confidence",
+    "reason",
+    "hidden",
+}
+VALID_TODAY_REVIEW_REVEAL_STAGES = {"front", "back"}
 BOOK_FORMAT_CONTENT_TYPES = {
     "epub": "application/epub+zip",
     "pdf": "application/pdf",
@@ -776,6 +823,90 @@ def _validate_settings(data: dict[str, Any], *, label: str) -> None:
     for fixture_id, seed in _require_mapping(data.get("settings"), field="settings", label=label).items():
         seed_obj = _require_mapping(seed, field=f"settings.{fixture_id}", label=label)
         _validate_settings_seed(seed_obj, owner=f"settings.{fixture_id}", label=label)
+
+
+def _validate_today_review_link(seed: Mapping[str, Any], *, owner: str, bucket_kind: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=TODAY_REVIEW_LINK_KEYS, owner=owner, label=label)
+    for field in ("id", "cardId", "word", "kind", "label", "reason"):
+        _ensure_str(seed.get(field), field=f"{owner}.{field}", label=label)
+    if seed.get("kind") != bucket_kind:
+        raise UIWorldManifestError(f"{label} {owner}.kind must match graphLinksByKind bucket {bucket_kind}")
+    confidence = _ensure_number(seed.get("confidence"), field=f"{owner}.confidence", label=label)
+    if confidence < 0 or confidence > 1:
+        raise UIWorldManifestError(f"{label} {owner}.confidence must be between 0 and 1")
+    _ensure_bool(seed.get("hidden"), field=f"{owner}.hidden", label=label)
+
+
+def _validate_today_review_card(seed: Mapping[str, Any], *, owner: str, label: str) -> str:
+    _validate_exact_keys(seed, expected=TODAY_REVIEW_CARD_KEYS, owner=owner, label=label)
+    word = _ensure_str(seed.get("word"), field=f"{owner}.word", label=label).strip()
+    _ensure_str(seed.get("translation"), field=f"{owner}.translation", label=label)
+    _ensure_str(seed.get("context"), field=f"{owner}.context", label=label)
+    _ensure_str(seed.get("bookTitle"), field=f"{owner}.bookTitle", label=label)
+    for field in ("explanation", "partOfSpeech", "chapterTitle", "difficultyTier", "rootForm"):
+        _validate_nullable_string(seed.get(field), owner=f"{owner}.{field}", label=label)
+    _validate_optional_fixture_date(seed.get("dateAdded"), owner=f"{owner}.dateAdded", label=label)
+    review_mode = _ensure_str(seed.get("reviewMode"), field=f"{owner}.reviewMode", label=label)
+    if review_mode not in VALID_REVIEW_MODES:
+        raise UIWorldManifestError(f"{label} {owner}.reviewMode is invalid")
+    review_examples = _require_list(seed.get("reviewExamples"), field=f"{owner}.reviewExamples", label=label)
+    for index, value in enumerate(review_examples):
+        _ensure_str(value, field=f"{owner}.reviewExamples[{index}]", label=label)
+    inflections = _require_list(seed.get("inflections"), field=f"{owner}.inflections", label=label)
+    for index, value in enumerate(inflections):
+        _ensure_str(value, field=f"{owner}.inflections[{index}]", label=label)
+    links_by_kind = _require_mapping(seed.get("graphLinksByKind"), field=f"{owner}.graphLinksByKind", label=label)
+    for kind, links in links_by_kind.items():
+        kind_value = _ensure_str(kind, field=f"{owner}.graphLinksByKind key", label=label)
+        link_list = _require_list(links, field=f"{owner}.graphLinksByKind.{kind_value}", label=label)
+        for index, link in enumerate(link_list):
+            link_obj = _require_mapping(link, field=f"{owner}.graphLinksByKind.{kind_value}[{index}]", label=label)
+            _validate_today_review_link(
+                link_obj,
+                owner=f"{owner}.graphLinksByKind.{kind_value}[{index}]",
+                bucket_kind=kind_value,
+                label=label,
+            )
+    return word
+
+
+def _validate_today_review(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("todayReview"), field="todayReview", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"todayReview.{fixture_id}", label=label)
+        owner = f"todayReview.{fixture_id}"
+        _validate_exact_keys(seed_obj, expected=TODAY_REVIEW_SESSION_KEYS, owner=owner, label=label)
+        _ensure_string(seed_obj.get("progressText"), field=f"{owner}.progressText", label=label)
+        reveal_stage = _ensure_str(seed_obj.get("revealStage"), field=f"{owner}.revealStage", label=label)
+        if reveal_stage not in VALID_TODAY_REVIEW_REVEAL_STAGES:
+            raise UIWorldManifestError(f"{label} {owner}.revealStage is invalid")
+        for field in ("canShuffle", "canGoPrevious", "canGoNext", "isAutoPlaying", "isAutoPlayPaused", "autoplaySoundEnabled", "showFirstRunHint"):
+            _ensure_bool(seed_obj.get(field), field=f"{owner}.{field}", label=label)
+        for field in ("remainingCount", "forgotCount", "rememberedCount", "rememberedFeedbackTrigger", "forgotFeedbackTrigger"):
+            value = _ensure_int(seed_obj.get(field), field=f"{owner}.{field}", label=label)
+            if value < 0:
+                raise UIWorldManifestError(f"{label} {owner}.{field} must be non-negative")
+        autoplay_progress = _ensure_number(seed_obj.get("autoplayProgress"), field=f"{owner}.autoplayProgress", label=label)
+        if autoplay_progress < 0 or autoplay_progress > 1:
+            raise UIWorldManifestError(f"{label} {owner}.autoplayProgress must be between 0 and 1")
+        autoplay_speed = _ensure_str(seed_obj.get("autoplaySpeed"), field=f"{owner}.autoplaySpeed", label=label)
+        if autoplay_speed not in VALID_SETTINGS_AUTOPLAY_SPEEDS:
+            raise UIWorldManifestError(f"{label} {owner}.autoplaySpeed is invalid")
+        if seed_obj.get("isAutoPlayPaused") and not seed_obj.get("isAutoPlaying"):
+            raise UIWorldManifestError(f"{label} {owner}.isAutoPlayPaused requires isAutoPlaying=true")
+        card_words: list[str] = []
+        for card_key in ("currentCard", "nextCard"):
+            card = seed_obj.get(card_key)
+            if card is not None:
+                card_words.append(
+                    _validate_today_review_card(
+                        _require_mapping(card, field=f"{owner}.{card_key}", label=label),
+                        owner=f"{owner}.{card_key}",
+                        label=label,
+                    )
+                )
+        if seed_obj.get("remainingCount") == 0 and seed_obj.get("currentCard") is not None:
+            raise UIWorldManifestError(f"{label} {owner} completed session must not declare currentCard")
+        _validate_unique(card_words, owner=f"{owner}.card.word", label=label)
 
 
 def _validate_sync_presenter(data: dict[str, Any], *, label: str) -> None:
@@ -1453,6 +1584,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     _validate_auth_state(data, label=label)
     _validate_entitlements(data, label=label)
     _validate_settings(data, label=label)
+    _validate_today_review(data, label=label)
     _validate_sync_presenter(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id

@@ -446,6 +446,76 @@ def test_validate_rejects_review_deck_invalid_action_type(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_today_review_missing_nullable_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["todayReview"]["front"]["currentCard"]["chapterTitle"]
+    path = tmp_path / "today_review_missing_nullable_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview.front.currentCard keys .*chapterTitle"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_invalid_reveal_stage(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["front"]["revealStage"] = "middle"
+    path = tmp_path / "today_review_bad_reveal_stage.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview.front.revealStage is invalid"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_autoplay_progress_out_of_range(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["front"]["autoplayProgress"] = 1.2
+    path = tmp_path / "today_review_bad_autoplay_progress.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview.front.autoplayProgress must be between 0 and 1"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_paused_without_autoplay(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["front"]["isAutoPlayPaused"] = True
+    path = tmp_path / "today_review_paused_without_autoplay.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview.front.isAutoPlayPaused requires isAutoPlaying=true"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_link_kind_bucket_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["front"]["currentCard"]["graphLinksByKind"]["shares_usage"][0]["kind"] = "antonym"
+    path = tmp_path / "today_review_link_kind_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"kind must match graphLinksByKind bucket shares_usage"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_link_confidence_out_of_range(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["front"]["currentCard"]["graphLinksByKind"]["shares_usage"][0]["confidence"] = 1.5
+    path = tmp_path / "today_review_link_confidence_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"confidence must be between 0 and 1"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_today_review_completed_session_with_current_card(tmp_path: Path):
+    data = _marketing_demo()
+    data["todayReview"]["completed"]["currentCard"] = dict(data["todayReview"]["front"]["currentCard"])
+    path = tmp_path / "today_review_completed_with_current_card.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview.completed completed session must not declare currentCard"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_sync_presenter_unknown_key(tmp_path: Path):
     data = _marketing_demo()
     data["syncPresenter"]["ready"]["legacyPhase"] = "idle"
