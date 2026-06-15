@@ -183,10 +183,11 @@ enum BookshelfFixtures {
         owner: String
     ) throws -> Book {
         try seed.validatePreferredNotebook(in: document, owner: owner)
+        let fileName = try materializeBookFile(for: seed)
         let book = Book(
             title: seed.title,
             author: seed.author,
-            fileName: seed.fileName,
+            fileName: fileName,
             format: seed.format
         )
         book.progression = seed.progression
@@ -194,6 +195,25 @@ enum BookshelfFixtures {
         book.dateAdded = seed.dateAdded
         book.dateLastRead = seed.dateLastRead
         return book
+    }
+
+    static func materializeBookFile(for seed: BookshelfBookSeed) throws -> String {
+        guard let ref = seed.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !ref.isEmpty else {
+            preconditionFailure("UI World bookshelf book \(seed.title) is missing bookAssetRef")
+        }
+        let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
+        guard installedURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL else {
+            preconditionFailure(
+                "UI World bookshelf book \(seed.title) asset \(ref) must install directly under Books/: \(installedURL.path)"
+            )
+        }
+        guard installedURL.lastPathComponent == seed.fileName else {
+            preconditionFailure(
+                "UI World bookshelf book \(seed.title) fileName \(seed.fileName) must match installed asset \(installedURL.lastPathComponent)"
+            )
+        }
+        return installedURL.lastPathComponent
     }
 }
 #endif

@@ -127,6 +127,17 @@ import Testing
             #expect(model.referenceDate == expectedSeed.referenceDate)
             let rows = try model.container.mainContext.fetch(FetchDescriptor<Book>())
             #expect(rows.map(\.title).sorted() == expectedSeed.books.map(\.title).sorted())
+            let expectedFileNamesByTitle = Dictionary(
+                uniqueKeysWithValues: expectedSeed.books.map { ($0.title, $0.fileName) }
+            )
+            for row in rows {
+                #expect(row.epubFileName == expectedFileNamesByTitle[row.title])
+                let installedURL = Book.localBooksDirectory.appendingPathComponent(row.epubFileName)
+                #expect(
+                    FileManager.default.fileExists(atPath: installedURL.path),
+                    "BookshelfFixtures must materialize asset-backed book file \(row.epubFileName)"
+                )
+            }
         }
     }
 

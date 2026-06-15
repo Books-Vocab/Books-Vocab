@@ -16,7 +16,7 @@ extension UITestFixtureSeed {
                     in: document,
                     owner: "bookshelf.\(id).\(source.title)"
                 )
-                let fileName = try materializeBookFile(for: source)
+                let fileName = try BookshelfFixtures.materializeBookFile(for: source)
                 let book = Book(
                     title: source.title,
                     author: source.author,
@@ -34,25 +34,6 @@ extension UITestFixtureSeed {
         } catch {
             failFixtureSeed("Failed to seed bookshelf.\(id) fixture: \(error)")
         }
-    }
-
-    private static func materializeBookFile(for seed: BookshelfBookSeed) throws -> String {
-        guard let ref = seed.bookAssetRef?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !ref.isEmpty else {
-            preconditionFailure("UI World bookshelf book \(seed.title) is missing bookAssetRef")
-        }
-        let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
-        guard installedURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL else {
-            preconditionFailure(
-                "UI World bookshelf book \(seed.title) asset \(ref) must install directly under Books/: \(installedURL.path)"
-            )
-        }
-        guard installedURL.lastPathComponent == seed.fileName else {
-            preconditionFailure(
-                "UI World bookshelf book \(seed.title) fileName \(seed.fileName) must match installed asset \(installedURL.lastPathComponent)"
-            )
-        }
-        return installedURL.lastPathComponent
     }
 }
 #endif

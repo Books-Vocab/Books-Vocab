@@ -161,17 +161,16 @@ import Playbook
             ("catalog-missing.pdf", "PDF reader catalog must not render a synthetic missing-file book"),
             ("Sample PDF", "PDF reader catalog title must come from UI World"),
             ("File unavailable", "PDF reader catalog must not be pinned to the missing-file error state"),
+            ("Book(", "PDF reader catalog must not inline Book rows"),
+            ("try! ModelContainer", "PDF reader catalog must fail fast with explicit materialization errors"),
+            ("FixtureDatasetStore.requireInstalledAssetURL(ref: ref)", "PDF reader asset install must go through shared BookshelfFixtures materialization"),
         ]
         for (snippet, reason) in forbidden {
             #expect(!source.contains(snippet), "\(pdfScenarios.lastPathComponent): \(reason)")
         }
         #expect(
-            source.contains("FixtureDatasetStore.requireBookshelfSeed(for: .withBooksLibrary)"),
-            "PDF reader catalog must source its book row from UI World bookshelf.with_books_library"
-        )
-        #expect(
-            source.contains("FixtureDatasetStore.requireInstalledAssetURL(ref: ref)"),
-            "PDF reader catalog must materialize the UI World book asset"
+            source.contains("BookshelfFixtures.books(for: .withBooksLibrary)"),
+            "PDF reader catalog must source its book row and asset from shared UI World bookshelf materialization"
         )
     }
 
