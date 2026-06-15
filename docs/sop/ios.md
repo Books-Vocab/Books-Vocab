@@ -498,7 +498,7 @@ DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣�
 - **覆蓋無缺口**：`Set(ScreenID.allCases) − Manifest.pendingCoverage` 必須全被 `featureScreen` 覆蓋（`pendingCoverage` 目前為空 = 全覆蓋；它是顯式遞減的 debt set，不能對已覆蓋螢幕說謊）。
 - **index round-trip**：`Manifest.indexJSONData()` 必須一 category 一筆、各帶 source-declared kind/feature/screen。
 
-**離線 gallery 消費 `catalog_index.json`（不再猜）**：snapshot run（`CatalogSnapshotTests`）在 PNG 旁吐 `catalog_index.json`（`category → {kind, feature, screen}`，來自 `Manifest.indexJSONData()`）；`ops/catalog_review_*.py` 讀它決定 lane/feature/screen，**退役**舊的透明邊緣像素 sniff + `Presenter`/` View` regex（僅在 index 缺失的 legacy artifact 才降級為 fallback）。改 lane/feature 分類 = 改 iOS source 的 `CatalogSurface`，不是改 Python heuristic。
+**離線 gallery 消費 `catalog_index.json`（不再猜）**：snapshot run（`CatalogSnapshotTests`）在 PNG 旁吐 `catalog_index.json`（`category → {kind, feature, screen}`，來自 `Manifest.indexJSONData()`）；`ops/catalog_review_*.py` 讀它決定 lane/feature/screen，**缺 `catalog_index.json`、壞 JSON、`surfaces` 非 object 或單筆 surface entry 非 object 都直接 fail-fast**，不再對 legacy / unblessed artifact 降級到透明邊緣像素 sniff + `Presenter`/` View` regex。改 lane/feature 分類 = 改 iOS source 的 `CatalogSurface`，不是改 Python heuristic。
 
 **仍排除**：Reader 本體（Readium SDK runtime 太重，catalog 只蓋 `Reader View · Chrome` 層；ReadiumNavigator 為嵌入式不獨立）。
 
