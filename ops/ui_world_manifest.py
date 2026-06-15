@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlparse
 from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -177,6 +178,88 @@ ENTITLEMENTS_PRO_KEYS = {
 VALID_ENTITLEMENT_STATUSES = {"active", "trial", "grace_period", "inactive", "expired"}
 ACTIVE_ENTITLEMENT_STATUSES = {"active", "trial", "grace_period"}
 VALID_ENTITLEMENT_SOURCES = {"app_store", "admin"}
+SETTINGS_SEED_KEYS = {
+    "auth",
+    "authFixtureRef",
+    "entitlementsFixtureRef",
+    "preferences",
+    "reviewSettings",
+    "kg",
+    "subscription",
+    "syncSummary",
+    "bookSync",
+    "about",
+    "danger",
+    "manualLoginUserId",
+    "debugLocalServerURL",
+}
+SETTINGS_AUTH_KEYS = {
+    "isLoggedIn",
+    "userInitials",
+    "avatarURL",
+    "displayName",
+    "email",
+    "authError",
+    "isAuthenticating",
+    "iconBreathing",
+    "manualLoginHint",
+}
+SETTINGS_PREFERENCES_KEYS = {
+    "selectedLanguage",
+    "selectedAppearance",
+    "translationSource",
+    "translationTarget",
+    "selectedReviewMode",
+    "autoSyncEnabled",
+    "showAutoSync",
+}
+SETTINGS_KG_KEYS = {
+    "serverURL",
+    "isConnected",
+    "connectionPulse",
+    "serverCardCount",
+    "lastSyncDescription",
+    "isUsingLocalServer",
+    "localServerURL",
+    "observation",
+}
+SETTINGS_KG_OBSERVATION_KEYS = {"previewLines", "totalCount"}
+SETTINGS_SUBSCRIPTION_KEYS = {
+    "isActive",
+    "planName",
+    "badgeText",
+    "badgeTone",
+    "summary",
+    "detail",
+    "sourceLabel",
+    "managementNote",
+    "pricingUnavailableMessage",
+    "restoreLabel",
+    "restoreDescription",
+    "isRestoreAvailable",
+    "ctaTitle",
+    "isRefreshing",
+}
+SETTINGS_REVIEW_KEYS = {
+    "mode",
+    "customInitialIntervalHours",
+    "customRememberedMultiplier",
+    "customForgotMultiplier",
+    "customMinimumIntervalHours",
+    "customMaximumIntervalHours",
+    "isProgressPaused",
+    "progressPausedAt",
+    "autoplaySpeed",
+    "autoplaySoundEnabled",
+}
+SETTINGS_SYNC_SUMMARY_KEYS = {"isConnected", "isSyncing", "summaryText"}
+SETTINGS_ABOUT_KEYS = {"version", "developerName"}
+SETTINGS_DANGER_KEYS = {"isDeletingAccount"}
+SETTINGS_BOOK_SYNC_KEYS = {"text", "detail", "tone"}
+VALID_SETTINGS_REVIEW_MODES = {"relaxed", "intensive", "custom"}
+VALID_SETTINGS_AUTOPLAY_SPEEDS = {"slow", "normal", "fast"}
+VALID_SETTINGS_BADGE_TONES = {"neutral", "accent", "success"}
+VALID_SETTINGS_BOOK_SYNC_TONES = {"progress", "success", "warning"}
 BOOK_FORMAT_CONTENT_TYPES = {
     "epub": "application/epub+zip",
     "pdf": "application/pdf",
@@ -288,6 +371,18 @@ def _validate_optional_iso8601(raw: Any, *, owner: str, label: str) -> datetime 
     return _parse_iso8601(raw, owner=owner, label=label)
 
 
+def _validate_optional_fixture_date(raw: Any, *, owner: str, label: str) -> None:
+    if raw is None:
+        return
+    if isinstance(raw, str):
+        _parse_iso8601(raw, owner=owner, label=label)
+        return
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise UIWorldManifestError(f"{label} {owner} must be ISO8601 string or epoch seconds")
+    if raw < 0:
+        raise UIWorldManifestError(f"{label} {owner} epoch seconds must be non-negative")
+
+
 def _ensure_int(raw: Any, *, field: str, label: str) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise UIWorldManifestError(f"{label} {field} 必須是 int")
@@ -304,6 +399,12 @@ def _ensure_string(raw: Any, *, field: str, label: str) -> str:
     if not isinstance(raw, str):
         raise UIWorldManifestError(f"{label} {field} 必須是 string")
     return raw
+
+
+def _ensure_number(raw: Any, *, field: str, label: str) -> float:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise UIWorldManifestError(f"{label} {field} 必須是 number")
+    return float(raw)
 
 
 def _ensure_non_negative_int(raw: Any, *, field: str, label: str) -> int:
@@ -443,6 +544,15 @@ def _validate_nullable_string(raw: Any, *, owner: str, label: str) -> None:
         _ensure_str(raw, field=owner, label=label)
 
 
+def _validate_optional_url(raw: Any, *, owner: str, label: str) -> None:
+    if raw is None:
+        return
+    value = _ensure_str(raw, field=owner, label=label)
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise UIWorldManifestError(f"{label} {owner} must be http(s) URL")
+
+
 def _validate_entitlements(data: dict[str, Any], *, label: str) -> None:
     for fixture_id, seed in _require_mapping(data.get("entitlements"), field="entitlements", label=label).items():
         seed_obj = _require_mapping(seed, field=f"entitlements.{fixture_id}", label=label)
@@ -483,6 +593,189 @@ def _validate_entitlements(data: dict[str, Any], *, label: str) -> None:
                 raise UIWorldManifestError(f"{label} {pro_owner} admin source must not carry trial or renewal state")
         for field in ("expires_at", "last_synced_at"):
             _validate_optional_iso8601(pro.get(field), owner=f"{pro_owner}.{field}", label=label)
+
+
+def _validate_settings_auth(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_AUTH_KEYS, owner=owner, label=label)
+    _ensure_bool(seed.get("isLoggedIn"), field=f"{owner}.isLoggedIn", label=label)
+    _ensure_str(seed.get("displayName"), field=f"{owner}.displayName", label=label)
+    _ensure_bool(seed.get("isAuthenticating"), field=f"{owner}.isAuthenticating", label=label)
+    _ensure_bool(seed.get("iconBreathing"), field=f"{owner}.iconBreathing", label=label)
+    for field in ("userInitials", "email", "authError", "manualLoginHint"):
+        _validate_nullable_string(seed.get(field), owner=f"{owner}.{field}", label=label)
+    _validate_optional_url(seed.get("avatarURL"), owner=f"{owner}.avatarURL", label=label)
+
+
+def _validate_settings_preferences(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_PREFERENCES_KEYS, owner=owner, label=label)
+    for field in (
+        "selectedLanguage",
+        "selectedAppearance",
+        "translationSource",
+        "translationTarget",
+        "selectedReviewMode",
+    ):
+        _ensure_str(seed.get(field), field=f"{owner}.{field}", label=label)
+    _ensure_bool(seed.get("autoSyncEnabled"), field=f"{owner}.autoSyncEnabled", label=label)
+    _ensure_bool(seed.get("showAutoSync"), field=f"{owner}.showAutoSync", label=label)
+    if seed.get("autoSyncEnabled") and not seed.get("showAutoSync"):
+        raise UIWorldManifestError(f"{label} {owner}.autoSyncEnabled requires showAutoSync=true")
+
+
+def _validate_settings_kg(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_KG_KEYS, owner=owner, label=label)
+    _validate_optional_url(seed.get("serverURL"), owner=f"{owner}.serverURL", label=label)
+    _ensure_bool(seed.get("isConnected"), field=f"{owner}.isConnected", label=label)
+    _ensure_bool(seed.get("connectionPulse"), field=f"{owner}.connectionPulse", label=label)
+    server_card_count = _ensure_int(seed.get("serverCardCount"), field=f"{owner}.serverCardCount", label=label)
+    if server_card_count < 0:
+        raise UIWorldManifestError(f"{label} {owner}.serverCardCount must be non-negative")
+    _validate_nullable_string(seed.get("lastSyncDescription"), owner=f"{owner}.lastSyncDescription", label=label)
+    is_using_local = _ensure_bool(seed.get("isUsingLocalServer"), field=f"{owner}.isUsingLocalServer", label=label)
+    local_server_url = seed.get("localServerURL")
+    observation = seed.get("observation")
+    if is_using_local:
+        _validate_optional_url(local_server_url, owner=f"{owner}.localServerURL", label=label)
+        if local_server_url is None:
+            raise UIWorldManifestError(f"{label} {owner}.localServerURL is required when isUsingLocalServer=true")
+        if observation is None:
+            raise UIWorldManifestError(f"{label} {owner}.observation is required when isUsingLocalServer=true")
+    else:
+        if local_server_url is not None or observation is not None:
+            raise UIWorldManifestError(f"{label} {owner} non-local server must not declare localServerURL or observation")
+    if observation is not None:
+        observation_obj = _require_mapping(observation, field=f"{owner}.observation", label=label)
+        _validate_exact_keys(
+            observation_obj,
+            expected=SETTINGS_KG_OBSERVATION_KEYS,
+            owner=f"{owner}.observation",
+            label=label,
+        )
+        lines = _require_list(observation_obj.get("previewLines"), field=f"{owner}.observation.previewLines", label=label)
+        for index, value in enumerate(lines):
+            _ensure_str(value, field=f"{owner}.observation.previewLines[{index}]", label=label)
+        total_count = _ensure_int(observation_obj.get("totalCount"), field=f"{owner}.observation.totalCount", label=label)
+        if total_count < len(lines):
+            raise UIWorldManifestError(f"{label} {owner}.observation.totalCount must cover previewLines")
+
+
+def _validate_settings_subscription(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_SUBSCRIPTION_KEYS, owner=owner, label=label)
+    _ensure_bool(seed.get("isActive"), field=f"{owner}.isActive", label=label)
+    for field in (
+        "planName",
+        "badgeText",
+        "summary",
+        "detail",
+        "sourceLabel",
+        "managementNote",
+        "restoreLabel",
+        "restoreDescription",
+        "ctaTitle",
+    ):
+        _ensure_str(seed.get(field), field=f"{owner}.{field}", label=label)
+    badge_tone = _ensure_str(seed.get("badgeTone"), field=f"{owner}.badgeTone", label=label)
+    if badge_tone not in VALID_SETTINGS_BADGE_TONES:
+        raise UIWorldManifestError(f"{label} {owner}.badgeTone is invalid")
+    _validate_nullable_string(
+        seed.get("pricingUnavailableMessage"),
+        owner=f"{owner}.pricingUnavailableMessage",
+        label=label,
+    )
+    _ensure_bool(seed.get("isRestoreAvailable"), field=f"{owner}.isRestoreAvailable", label=label)
+    _ensure_bool(seed.get("isRefreshing"), field=f"{owner}.isRefreshing", label=label)
+
+
+def _validate_settings_review(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_REVIEW_KEYS, owner=owner, label=label)
+    mode = _ensure_str(seed.get("mode"), field=f"{owner}.mode", label=label)
+    if mode not in VALID_SETTINGS_REVIEW_MODES:
+        raise UIWorldManifestError(f"{label} {owner}.mode is invalid")
+    autoplay_speed = _ensure_str(seed.get("autoplaySpeed"), field=f"{owner}.autoplaySpeed", label=label)
+    if autoplay_speed not in VALID_SETTINGS_AUTOPLAY_SPEEDS:
+        raise UIWorldManifestError(f"{label} {owner}.autoplaySpeed is invalid")
+    intervals = {
+        field: _ensure_number(seed.get(field), field=f"{owner}.{field}", label=label)
+        for field in (
+            "customInitialIntervalHours",
+            "customRememberedMultiplier",
+            "customForgotMultiplier",
+            "customMinimumIntervalHours",
+            "customMaximumIntervalHours",
+        )
+    }
+    for field, value in intervals.items():
+        if value <= 0:
+            raise UIWorldManifestError(f"{label} {owner}.{field} must be positive")
+    if intervals["customMaximumIntervalHours"] < intervals["customMinimumIntervalHours"]:
+        raise UIWorldManifestError(f"{label} {owner}.customMaximumIntervalHours must be >= customMinimumIntervalHours")
+    _ensure_bool(seed.get("isProgressPaused"), field=f"{owner}.isProgressPaused", label=label)
+    _validate_optional_fixture_date(seed.get("progressPausedAt"), owner=f"{owner}.progressPausedAt", label=label)
+    _ensure_bool(seed.get("autoplaySoundEnabled"), field=f"{owner}.autoplaySoundEnabled", label=label)
+
+
+def _validate_settings_seed(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=SETTINGS_SEED_KEYS, owner=owner, label=label)
+    _ensure_str(seed.get("authFixtureRef"), field=f"{owner}.authFixtureRef", label=label)
+    entitlements_ref = seed.get("entitlementsFixtureRef")
+    if entitlements_ref is not None:
+        _ensure_str(entitlements_ref, field=f"{owner}.entitlementsFixtureRef", label=label)
+    _validate_settings_auth(_require_mapping(seed.get("auth"), field=f"{owner}.auth", label=label), owner=f"{owner}.auth", label=label)
+    _validate_settings_preferences(
+        _require_mapping(seed.get("preferences"), field=f"{owner}.preferences", label=label),
+        owner=f"{owner}.preferences",
+        label=label,
+    )
+    kg = seed.get("kg")
+    if kg is not None:
+        _validate_settings_kg(_require_mapping(kg, field=f"{owner}.kg", label=label), owner=f"{owner}.kg", label=label)
+    subscription = seed.get("subscription")
+    if subscription is not None:
+        _validate_settings_subscription(
+            _require_mapping(subscription, field=f"{owner}.subscription", label=label),
+            owner=f"{owner}.subscription",
+            label=label,
+        )
+    review = seed.get("reviewSettings")
+    if review is not None:
+        _validate_settings_review(
+            _require_mapping(review, field=f"{owner}.reviewSettings", label=label),
+            owner=f"{owner}.reviewSettings",
+            label=label,
+        )
+    sync_summary = seed.get("syncSummary")
+    if sync_summary is not None:
+        sync_obj = _require_mapping(sync_summary, field=f"{owner}.syncSummary", label=label)
+        _validate_exact_keys(sync_obj, expected=SETTINGS_SYNC_SUMMARY_KEYS, owner=f"{owner}.syncSummary", label=label)
+        _ensure_bool(sync_obj.get("isConnected"), field=f"{owner}.syncSummary.isConnected", label=label)
+        _ensure_bool(sync_obj.get("isSyncing"), field=f"{owner}.syncSummary.isSyncing", label=label)
+        _ensure_string(sync_obj.get("summaryText"), field=f"{owner}.syncSummary.summaryText", label=label)
+    about = _require_mapping(seed.get("about"), field=f"{owner}.about", label=label)
+    _validate_exact_keys(about, expected=SETTINGS_ABOUT_KEYS, owner=f"{owner}.about", label=label)
+    _ensure_str(about.get("version"), field=f"{owner}.about.version", label=label)
+    _ensure_str(about.get("developerName"), field=f"{owner}.about.developerName", label=label)
+    danger = seed.get("danger")
+    if danger is not None:
+        danger_obj = _require_mapping(danger, field=f"{owner}.danger", label=label)
+        _validate_exact_keys(danger_obj, expected=SETTINGS_DANGER_KEYS, owner=f"{owner}.danger", label=label)
+        _ensure_bool(danger_obj.get("isDeletingAccount"), field=f"{owner}.danger.isDeletingAccount", label=label)
+    book_sync = seed.get("bookSync")
+    if book_sync is not None:
+        book_sync_obj = _require_mapping(book_sync, field=f"{owner}.bookSync", label=label)
+        _validate_exact_keys(book_sync_obj, expected=SETTINGS_BOOK_SYNC_KEYS, owner=f"{owner}.bookSync", label=label)
+        _ensure_str(book_sync_obj.get("text"), field=f"{owner}.bookSync.text", label=label)
+        _validate_nullable_string(book_sync_obj.get("detail"), owner=f"{owner}.bookSync.detail", label=label)
+        tone = _ensure_str(book_sync_obj.get("tone"), field=f"{owner}.bookSync.tone", label=label)
+        if tone not in VALID_SETTINGS_BOOK_SYNC_TONES:
+            raise UIWorldManifestError(f"{label} {owner}.bookSync.tone is invalid")
+    _validate_nullable_string(seed.get("manualLoginUserId"), owner=f"{owner}.manualLoginUserId", label=label)
+    _validate_optional_url(seed.get("debugLocalServerURL"), owner=f"{owner}.debugLocalServerURL", label=label)
+
+
+def _validate_settings(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("settings"), field="settings", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"settings.{fixture_id}", label=label)
+        _validate_settings_seed(seed_obj, owner=f"settings.{fixture_id}", label=label)
 
 
 def _validate_sync_presenter(data: dict[str, Any], *, label: str) -> None:
@@ -1159,6 +1452,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
     _validate_entitlements(data, label=label)
+    _validate_settings(data, label=label)
     _validate_sync_presenter(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id

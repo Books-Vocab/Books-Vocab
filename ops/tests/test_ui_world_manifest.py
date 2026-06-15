@@ -161,6 +161,77 @@ def test_validate_rejects_settings_auth_state_drift(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_settings_seed_missing_nullable_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["settings"]["logged_out"]["bookSync"]
+    path = tmp_path / "settings_missing_nullable_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.logged_out keys .*bookSync"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_seed_unknown_nested_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["preferences"]["legacyTheme"] = "sepia"
+    path = tmp_path / "settings_unknown_nested_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.subscription_free.preferences keys .*legacyTheme"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_review_invalid_mode(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["reviewSettings"]["mode"] = "turbo"
+    path = tmp_path / "settings_bad_review_mode.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.subscription_free.reviewSettings.mode is invalid"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_review_interval_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["reviewSettings"]["customMinimumIntervalHours"] = 48
+    data["settings"]["subscription_free"]["reviewSettings"]["customMaximumIntervalHours"] = 24
+    path = tmp_path / "settings_bad_review_interval.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"customMaximumIntervalHours must be >= customMinimumIntervalHours"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_local_server_without_observation(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["debug_backend_local"]["kg"]["observation"] = None
+    path = tmp_path / "settings_local_server_without_observation.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.debug_backend_local.kg.observation is required"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_subscription_invalid_badge_tone(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["subscription"]["badgeTone"] = "danger"
+    path = tmp_path / "settings_bad_badge_tone.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.subscription_free.subscription.badgeTone is invalid"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_settings_book_sync_invalid_tone(tmp_path: Path):
+    data = _marketing_demo()
+    data["settings"]["subscription_free"]["bookSync"]["tone"] = "idle"
+    path = tmp_path / "settings_bad_book_sync_tone.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"settings.subscription_free.bookSync.tone is invalid"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_logged_in_auth_without_user_id(tmp_path: Path):
     data = _marketing_demo()
     data["auth"]["signedIn"]["userId"] = None
