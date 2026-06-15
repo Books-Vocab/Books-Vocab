@@ -190,6 +190,45 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenNotebookCardStateOmitsNullableField() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "notebook-card-state-missing-nullable",
+          "notebook": {
+            "populated": {
+              "notebooks": [
+                {
+                  "remoteId": "nb-card-state",
+                  "name": "Card state",
+                  "color": null,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null,
+                  "cardState": {
+                    "cardCount": 0,
+                    "dueCount": 0,
+                    "unlearnedCount": 0,
+                    "reviewedCount": 0,
+                    "pendingCount": 0,
+                    "isActive": true
+                  },
+                  "syncStatus": 2,
+                  "isDefault": false,
+                  "sortOrder": 0,
+                  "entries": []
+                }
+              ],
+              "editStates": []
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func notebookEntryFailsWhenMetadataKeysAreMissing() throws {
         let dataset = """
         {
