@@ -772,6 +772,30 @@ struct RepoFixtureDatasetsContractTests {
             "lastReviewFeedbackRaw",
             "graphLinksByKind",
         ])
+        let uiWorldEntryKeys = requiredUIWorldEntryKeys.union([
+            "word",
+            "translation",
+            "context",
+        ])
+        let vocabularySeedKeys: Set<String> = [
+            "notebookRemoteId",
+            "notebookName",
+            "notebookSyncStatus",
+            "bookTitle",
+            "entries",
+            "reviewHistory",
+        ]
+        let reviewDeckSeedKeys: Set<String> = [
+            "notebookRemoteId",
+            "notebookName",
+            "notebookSyncStatus",
+            "entries",
+        ]
+        let reviewHistoryKeys: Set<String> = [
+            "word",
+            "feedback",
+            "reviewedAt",
+        ]
         let requiredBookshelfBookKeys: Set<String> = [
             "title",
             "author",
@@ -853,12 +877,23 @@ struct RepoFixtureDatasetsContractTests {
                     missing.isEmpty,
                     "\(dataset): reader.\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
                 )
+                let unknown = Set(entry.keys).subtracting(uiWorldEntryKeys)
+                #expect(
+                    unknown.isEmpty,
+                    "\(dataset): reader.\(fixtureKey).entry.\(word) contains unknown keys \(unknown.sorted())"
+                )
             }
         }
 
         for domain in ["vocabulary", "reviewDeck"] {
             let fixtures = topLevel[domain] as? [String: [String: Any]] ?? [:]
             for (fixtureKey, seed) in fixtures {
+                let seedKeys = domain == "vocabulary" ? vocabularySeedKeys : reviewDeckSeedKeys
+                let unknownSeedKeys = Set(seed.keys).subtracting(seedKeys)
+                #expect(
+                    unknownSeedKeys.isEmpty,
+                    "\(dataset): \(domain).\(fixtureKey) contains unknown keys \(unknownSeedKeys.sorted())"
+                )
                 #expect(
                     seed.keys.contains("notebookSyncStatus"),
                     "\(dataset): \(domain).\(fixtureKey) must explicitly declare notebookSyncStatus"
@@ -879,6 +914,27 @@ struct RepoFixtureDatasetsContractTests {
                         missing.isEmpty,
                         "\(dataset): \(domain).\(fixtureKey).entry.\(word) missing row state keys \(missing.sorted())"
                     )
+                    let unknown = Set(entry.keys).subtracting(uiWorldEntryKeys)
+                    #expect(
+                        unknown.isEmpty,
+                        "\(dataset): \(domain).\(fixtureKey).entry.\(word) contains unknown keys \(unknown.sorted())"
+                    )
+                }
+                if domain == "vocabulary" {
+                    let reviewHistory = seed["reviewHistory"] as? [[String: Any]] ?? []
+                    for record in reviewHistory {
+                        let word = record["word"] as? String ?? "<missing-word>"
+                        let missing = reviewHistoryKeys.subtracting(record.keys)
+                        #expect(
+                            missing.isEmpty,
+                            "\(dataset): vocabulary.\(fixtureKey).reviewHistory.\(word) missing keys \(missing.sorted())"
+                        )
+                        let unknown = Set(record.keys).subtracting(reviewHistoryKeys)
+                        #expect(
+                            unknown.isEmpty,
+                            "\(dataset): vocabulary.\(fixtureKey).reviewHistory.\(word) contains unknown keys \(unknown.sorted())"
+                        )
+                    }
                 }
             }
         }
