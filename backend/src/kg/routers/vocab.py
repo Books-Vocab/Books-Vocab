@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
+from pydantic import Field
 
 from ..api_models import (
     ArchiveWordRequest,
@@ -282,7 +285,11 @@ def delete_graph_link(
 
 @router.post("/api/vocab", response_model=VocabAddResponse)
 def add_vocab(
-    entries: list[VocabEntry],
+    # Cap intake batch at the schema layer (matches batch-delete/archive's
+    # max_length=500) so an oversized list is rejected at request validation
+    # before being deserialized — bounds LLM/DB amplification. The handler keeps
+    # its own MAX_BATCH_SIZE guard as defense-in-depth.
+    entries: Annotated[list[VocabEntry], Field(max_length=500)],
     response: Response,
     user: CurrentUser,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
