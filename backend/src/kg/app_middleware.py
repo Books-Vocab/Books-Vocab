@@ -90,7 +90,13 @@ def install_app_middlewares_from_dependencies(
     async def limit_request_body(request: Request, call_next):
         content_length = request.headers.get("content-length")
         if content_length is not None:
-            if int(content_length) > max_body_bytes:
+            try:
+                declared = int(content_length)
+            except ValueError:
+                return JSONResponse(
+                    {"detail": "Invalid Content-Length header"}, status_code=400
+                )
+            if declared > max_body_bytes:
                 return JSONResponse(
                     {"detail": "Request body too large"}, status_code=413
                 )

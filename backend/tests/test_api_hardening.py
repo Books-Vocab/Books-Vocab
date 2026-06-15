@@ -333,6 +333,21 @@ class TestRequestBodySizeLimit:
         )
         assert r.status_code != 413, "small chunked body must not be size-rejected"
 
+    def test_malformed_content_length_returns_400_not_500(self, client_env):
+        """A non-numeric Content-Length must be a clean 400, not a 500.
+
+        int('abc') previously raised ValueError inside the middleware -> 500.
+        Malformed client input should map to a 4xx, not surface as a server
+        error.
+        """
+        client, user_id, headers, _ = client_env
+        r = client.post(
+            "/api/vocab",
+            content=b"hi",
+            headers={**headers, "content-type": "application/json", "content-length": "abc"},
+        )
+        assert r.status_code == 400, r.text
+
 
 # ============================================================================
 # Vocab intake batch cap — POST /api/vocab list max_length
