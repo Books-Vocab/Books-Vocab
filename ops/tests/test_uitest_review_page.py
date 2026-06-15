@@ -173,6 +173,10 @@ def test_workspace_html_links_runs_and_artifacts(tmp_path):
 
     html = mod.render_workspace_html(index)
 
+    assert "Debug Cockpit" in html
+    assert "failed first" in html
+    assert 'data-filter="failed"' in html
+    assert "Latest run needs attention" in html
     assert "settings_flow" in html
     assert "SettingsFlowUITests.swift" in html
     assert "2026-06-14T03:04:05+00:00" in html
@@ -218,13 +222,15 @@ def test_workspace_html_lists_pending_flows_without_runs(tmp_path):
     assert payload["summary"]["flows"] == 2
     assert payload["summary"]["pendingFlows"] == 2
     assert index["flows"][0]["latestStatus"] == "never-run"
+    assert "Debug Cockpit" in html
+    assert "Never-run flows" in html
     assert "Flow Inventory" in html
     assert 'class="tabs"' in html
     assert 'data-filter="pending"' in html
     assert 'class="table-wrap"' in html
     assert 'id="search"' in html
     assert 'class="flow-row"' in html
-    assert 'class="flow-card status-pending"' in html
+    assert 'class="card status-pending"' in html
     assert "OverviewFlowUITests" in html
     assert "SettingsFlowUITests" in html
     assert "never-run" in html
@@ -313,6 +319,7 @@ def test_run_html_supports_zero_step_runs(tmp_path):
     )
 
     html = (out_root / "UIreview.html").read_text(encoding="utf-8")
+    assert "Evidence Cockpit" in html
     assert "No step screenshots were emitted for this UITest run." in html
     assert "2026-06-14T04:05:06+00:00" in html
     assert "uitest-videos/20260614-040506-ui.mp4" in html
@@ -320,3 +327,81 @@ def test_run_html_supports_zero_step_runs(tmp_path):
     assert "test.log" in html
     assert "review_manifest.json" in html
     assert "contact sheets missing" in html
+
+
+def test_run_html_prioritizes_video_sheets_and_image_modal(tmp_path):
+    mod = _load()
+    steps = tmp_path / "steps"
+    steps.mkdir()
+    _png(steps / "01-launch.png")
+    manifest = _manifest(steps)
+    video = tmp_path / "20260614-050607-ui.mp4"
+    video.write_bytes(b"video")
+    log = tmp_path / "test.log"
+    log.write_text("log\n", encoding="utf-8")
+    contact_sheet = tmp_path / "contact_sheet.png"
+    quick4_sheet = tmp_path / "quick4_contact_sheet.png"
+    _png(contact_sheet)
+    _png(quick4_sheet)
+    out_root = tmp_path / "build" / "snapshots" / "uitest-runs" / "20260614-050607-ui"
+
+    mod.build_review_root(
+        screenshot_dir=steps,
+        manifest_path=manifest,
+        contact_sheet=contact_sheet,
+        quick4_sheet=quick4_sheet,
+        video=video,
+        out_root=out_root,
+        log=log,
+        flow_id="auth_flow",
+        variant_id="free_preview",
+        status="fail",
+        test_file="AuthFlowUITests.swift",
+        device="STUB-UDID",
+        last_run_at="2026-06-14T05:06:07+00:00",
+    )
+
+    html = (out_root / "UIreview.html").read_text(encoding="utf-8")
+    assert "Run Evidence" in html
+    assert "quick4_contact_sheet.png" in html
+    assert "contact_sheet.png" in html
+    assert 'data-modal-src="01-launch.png"' in html
+    assert 'id="image-modal"' in html
+    assert "document.addEventListener('keydown'" in html
+    assert "KG UITest Run Review" in html
+
+
+def test_review_html_escapes_untrusted_labels():
+    mod = _load()
+    index = {
+        "schema": "kg.ios.uitest-review-workspace.v1",
+        "summary": {"totalRuns": 1, "okRuns": 0, "failRuns": 1, "flows": 1, "variants": 1},
+        "runs": [
+            {
+                "runId": "run-a",
+                "flowId": '<script>alert("flow")</script>',
+                "variantId": 'guest"><img src=x onerror=alert(1)>',
+                "status": "fail",
+                "lastRunAt": "2026-06-14T03:04:05+00:00",
+                "testFile": 'SettingsFlowUITests.swift"><script>',
+                "device": "SIM-1",
+                "stepCount": 1,
+                "artifacts": {"reviewHtml": "run-a/UIreview.html"},
+            }
+        ],
+        "flows": [
+            {
+                "flowId": '<script>alert("flow")</script>',
+                "runs": 1,
+                "latestStatus": "fail",
+                "lastRunAt": "2026-06-14T03:04:05+00:00",
+                "variants": ['guest"><img src=x onerror=alert(1)>'],
+            }
+        ],
+    }
+
+    html = mod.render_workspace_html(index)
+
+    assert "<script>alert" not in html
+    assert "&lt;script&gt;alert" in html
+    assert "<img" not in html
