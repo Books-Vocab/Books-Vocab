@@ -752,6 +752,7 @@ struct RepoFixtureDatasetsContractTests {
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], document: FixtureDatasetDocument, dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
+        let notebookEntryKeys = requiredNotebookEntryKeys.union(["word", "translation"])
         let requiredUIWorldEntryKeys = requiredEntryKeys.union([
             "bookTitle",
             "reviewMode",
@@ -811,6 +812,19 @@ struct RepoFixtureDatasetsContractTests {
             "dateAdded",
             "dateLastRead",
         ]
+        let requiredNotebookFixtureKeys: Set<String> = ["notebooks", "editStates"]
+        let requiredNotebookRowKeys: Set<String> = [
+            "remoteId",
+            "name",
+            "color",
+            "coverPattern",
+            "coverImageAssetRef",
+            "cardState",
+            "syncStatus",
+            "isDefault",
+            "sortOrder",
+            "entries",
+        ]
 
         let bookshelfFixtures = topLevel["bookshelf"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in bookshelfFixtures {
@@ -837,6 +851,11 @@ struct RepoFixtureDatasetsContractTests {
 
         let notebookFixtures = topLevel["notebook"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in notebookFixtures {
+            let unknownSeedKeys = Set(seed.keys).subtracting(requiredNotebookFixtureKeys)
+            #expect(
+                unknownSeedKeys.isEmpty,
+                "\(dataset): notebook.\(fixtureKey) contains unknown keys \(unknownSeedKeys.sorted())"
+            )
             #expect(
                 seed.keys.contains("editStates"),
                 "\(dataset): notebook.\(fixtureKey) must explicitly declare editStates"
@@ -853,6 +872,11 @@ struct RepoFixtureDatasetsContractTests {
             let notebooks = seed["notebooks"] as? [[String: Any]] ?? []
             for notebook in notebooks {
                 let remoteId = notebook["remoteId"] as? String ?? "<missing-remote-id>"
+                let unknownNotebookKeys = Set(notebook.keys).subtracting(requiredNotebookRowKeys)
+                #expect(
+                    unknownNotebookKeys.isEmpty,
+                    "\(dataset): notebook.\(fixtureKey).\(remoteId) contains unknown keys \(unknownNotebookKeys.sorted())"
+                )
                 #expect(
                     notebook.keys.contains("syncStatus"),
                     "\(dataset): notebook.\(fixtureKey).\(remoteId) must explicitly declare syncStatus"
@@ -873,6 +897,11 @@ struct RepoFixtureDatasetsContractTests {
                     #expect(
                         missing.isEmpty,
                         "\(dataset): notebook.\(fixtureKey).\(remoteId).entry.\(word) missing row state keys \(missing.sorted())"
+                    )
+                    let unknown = Set(entry.keys).subtracting(notebookEntryKeys)
+                    #expect(
+                        unknown.isEmpty,
+                        "\(dataset): notebook.\(fixtureKey).\(remoteId).entry.\(word) contains unknown keys \(unknown.sorted())"
                     )
                 }
             }
@@ -1081,7 +1110,10 @@ struct RepoFixtureDatasetsContractTests {
     }
 
     private func expectNotebookEditStateKeys(_ editState: [String: Any], document: FixtureDatasetDocument, dataset: String, owner: String) {
-        for key in ["id", "mode", "name", "color", "coverPattern", "coverImageAssetRef"] {
+        let requiredKeys: Set<String> = ["id", "mode", "name", "color", "coverPattern", "coverImageAssetRef"]
+        let unknownKeys = Set(editState.keys).subtracting(requiredKeys)
+        #expect(unknownKeys.isEmpty, "\(dataset): \(owner) contains unknown keys \(unknownKeys.sorted())")
+        for key in requiredKeys {
             #expect(editState.keys.contains(key), "\(dataset): \(owner) must explicitly declare \(key)")
         }
         let mode = editState["mode"] as? String ?? "<missing-mode>"
@@ -1107,7 +1139,10 @@ struct RepoFixtureDatasetsContractTests {
     }
 
     private func expectNotebookCardStateKeys(_ cardState: [String: Any], dataset: String, owner: String) {
-        for key in ["cardCount", "dueCount", "unlearnedCount", "reviewedCount", "pendingCount", "lastActivity", "isActive"] {
+        let requiredKeys: Set<String> = ["cardCount", "dueCount", "unlearnedCount", "reviewedCount", "pendingCount", "lastActivity", "isActive"]
+        let unknownKeys = Set(cardState.keys).subtracting(requiredKeys)
+        #expect(unknownKeys.isEmpty, "\(dataset): \(owner) contains unknown keys \(unknownKeys.sorted())")
+        for key in requiredKeys {
             #expect(cardState.keys.contains(key), "\(dataset): \(owner) must explicitly declare \(key)")
         }
         let cardCount = cardState["cardCount"] as? Int ?? -1

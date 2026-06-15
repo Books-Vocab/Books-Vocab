@@ -340,6 +340,61 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func notebookFixtureFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.notebookDataset(
+            datasetID: "unknown-notebook-fixture-key",
+            fixtureExtraFields: ",\"layout\": \"grid\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func notebookRowFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.notebookDataset(
+            datasetID: "unknown-notebook-row-key",
+            notebookExtraFields: ",\"localOnly\": true"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func notebookEntryFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.notebookDataset(
+            datasetID: "unknown-notebook-entry-key",
+            entryExtraFields: ",\"legacySource\": \"csv\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func notebookCardStateFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.notebookDataset(
+            datasetID: "unknown-notebook-card-state-key",
+            cardStateExtraFields: ",\"isStale\": false"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func notebookEditStateFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.notebookDataset(
+            datasetID: "unknown-notebook-edit-state-key",
+            editStateExtraFields: ",\"source\": \"draft\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func runtimePodcastFailsWhenSeriesSortOrderIsMissing() throws {
         let dataset = """
         {
@@ -2455,6 +2510,72 @@ struct FixtureDatasetStoreTests {
               "entries": [
                 \(entriesJSON)
               ]\(extraFields)
+            }
+          }
+        }
+        """
+    }
+
+    private static func notebookDataset(
+        datasetID: String,
+        fixtureExtraFields: String = "",
+        notebookExtraFields: String = "",
+        cardStateExtraFields: String = "",
+        entryExtraFields: String = "",
+        editStateExtraFields: String = ""
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "notebook": {
+            "populated": {
+              "editStates": [
+                {
+                  "id": "edit-default",
+                  "mode": "edit",
+                  "name": "Default",
+                  "color": null,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null\(editStateExtraFields)
+                }
+              ],
+              "notebooks": [
+                {
+                  "remoteId": "default",
+                  "name": "Default",
+                  "color": null,
+                  "coverPattern": null,
+                  "coverImageAssetRef": null,
+                  "cardState": {
+                    "cardCount": 1,
+                    "dueCount": 1,
+                    "unlearnedCount": 0,
+                    "reviewedCount": 0,
+                    "pendingCount": 0,
+                    "lastActivity": null,
+                    "isActive": true\(cardStateExtraFields)
+                  },
+                  "syncStatus": 1,
+                  "isDefault": true,
+                  "sortOrder": 0,
+                  "entries": [
+                    {
+                      "word": "anchored",
+                      "translation": "固定",
+                      "syncStatus": 1,
+                      "actionType": "add",
+                      "isArchived": false,
+                      "isExcludedFromReader": false,
+                      "context": "A deterministic context.",
+                      "explanation": null,
+                      "partOfSpeech": "v.",
+                      "bookTitle": "Notebook Book",
+                      "chapterTitle": null\(entryExtraFields)
+                    }
+                  ]\(notebookExtraFields)
+                }
+              ]\(fixtureExtraFields)
             }
           }
         }
