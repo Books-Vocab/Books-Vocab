@@ -336,6 +336,43 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func vocabularyEntryFailsWhenNullableRowStateKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-vocabulary-entry-nullable-row-state",
+          "vocabulary": {
+            "searchVocabNotebook": {
+              "notebookRemoteId": "search-notebook",
+              "notebookName": "Search Notebook",
+              "notebookSyncStatus": 1,
+              "bookTitle": "Search Book",
+              "entries": [
+                {
+                  "word": "partial",
+                  "translation": "局部",
+                  "context": "Partial context.",
+                  "bookTitle": "Search Book",
+                  "reviewMode": "recognition",
+                  "reviewExamples": [],
+                  "syncStatus": 1,
+                  "actionType": "add",
+                  "isArchived": false,
+                  "isExcludedFromReader": false,
+                  "graphLinksByKind": {}
+                }
+              ],
+              "reviewHistory": []
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func catalogPodcastFailsWhenEpisodeDurationIsMissing() throws {
         let dataset = """
         {
@@ -751,6 +788,9 @@ struct FixtureDatasetStoreTests {
                 "difficultyTier": "core",
                 "reviewMode": "recognition",
                 "reviewExamples": ["Introduction"],
+                "collocations": null,
+                "rootForm": null,
+                "inflections": null,
                 "syncStatus": 1,
                 "actionType": "add",
                 "isArchived": false,
@@ -784,6 +824,9 @@ struct FixtureDatasetStoreTests {
                   "difficultyTier": "core",
                   "reviewMode": "recognition",
                   "reviewExamples": ["Sleep can affect memory."],
+                  "collocations": null,
+                  "rootForm": null,
+                  "inflections": null,
                   "syncStatus": 2,
                   "actionType": "edit",
                   "isArchived": true,
@@ -818,6 +861,9 @@ struct FixtureDatasetStoreTests {
                   "difficultyTier": "intermediate",
                   "reviewMode": "recognition",
                   "reviewExamples": ["Probe context."],
+                  "collocations": null,
+                  "rootForm": null,
+                  "inflections": null,
                   "syncStatus": 1,
                   "actionType": "add",
                   "isArchived": false,

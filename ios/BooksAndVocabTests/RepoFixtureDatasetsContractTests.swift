@@ -457,7 +457,26 @@ struct RepoFixtureDatasetsContractTests {
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], document: FixtureDatasetDocument, dataset: String) {
         let requiredEntryKeys: Set<String> = ["syncStatus", "actionType", "isArchived", "isExcludedFromReader"]
         let requiredNotebookEntryKeys = requiredEntryKeys.union(["context", "explanation", "partOfSpeech", "bookTitle", "chapterTitle"])
-        let requiredUIWorldEntryKeys = requiredEntryKeys.union(["bookTitle", "reviewMode"])
+        let requiredUIWorldEntryKeys = requiredEntryKeys.union([
+            "bookTitle",
+            "reviewMode",
+            "explanation",
+            "partOfSpeech",
+            "chapterTitle",
+            "kgCardId",
+            "difficultyTier",
+            "reviewExamples",
+            "collocations",
+            "rootForm",
+            "inflections",
+            "reviewIntervalHours",
+            "nextReviewAt",
+            "lastReviewedAt",
+            "reviewCount",
+            "reviewStreak",
+            "lastReviewFeedbackRaw",
+            "graphLinksByKind",
+        ])
         let requiredBookshelfBookKeys: Set<String> = [
             "title",
             "author",

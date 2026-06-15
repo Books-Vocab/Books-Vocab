@@ -792,6 +792,73 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let reviewStreak: Int?
     let lastReviewFeedbackRaw: Int?
     let graphLinksByKind: [String: [KGCardLinkSummary]]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case word
+        case translation
+        case context
+        case explanation
+        case partOfSpeech
+        case bookTitle
+        case chapterTitle
+        case kgCardId
+        case difficultyTier
+        case reviewMode
+        case reviewExamples
+        case collocations
+        case rootForm
+        case inflections
+        case syncStatus
+        case actionType
+        case isArchived
+        case isExcludedFromReader
+        case reviewIntervalHours
+        case nextReviewAt
+        case lastReviewedAt
+        case reviewCount
+        case reviewStreak
+        case lastReviewFeedbackRaw
+        case graphLinksByKind
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World vocabulary entry must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+
+        word = try container.decode(String.self, forKey: .word)
+        translation = try container.decode(String.self, forKey: .translation)
+        context = try container.decode(String.self, forKey: .context)
+        explanation = try container.decodeIfPresent(String.self, forKey: .explanation)
+        partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
+        bookTitle = try container.decode(String.self, forKey: .bookTitle)
+        chapterTitle = try container.decodeIfPresent(String.self, forKey: .chapterTitle)
+        kgCardId = try container.decodeIfPresent(String.self, forKey: .kgCardId)
+        difficultyTier = try container.decodeIfPresent(String.self, forKey: .difficultyTier)
+        reviewMode = try container.decode(VocabularyCardMode.self, forKey: .reviewMode)
+        reviewExamples = try container.decode([String].self, forKey: .reviewExamples)
+        collocations = try container.decodeIfPresent([String].self, forKey: .collocations)
+        rootForm = try container.decodeIfPresent(String.self, forKey: .rootForm)
+        inflections = try container.decodeIfPresent([String].self, forKey: .inflections)
+        syncStatus = try container.decode(Int.self, forKey: .syncStatus)
+        actionType = try container.decode(String.self, forKey: .actionType)
+        isArchived = try container.decode(Bool.self, forKey: .isArchived)
+        isExcludedFromReader = try container.decode(Bool.self, forKey: .isExcludedFromReader)
+        reviewIntervalHours = try container.decodeIfPresent(Double.self, forKey: .reviewIntervalHours)
+        nextReviewAt = try container.decodeIfPresent(Date.self, forKey: .nextReviewAt)
+        lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+        reviewCount = try container.decodeIfPresent(Int.self, forKey: .reviewCount)
+        reviewStreak = try container.decodeIfPresent(Int.self, forKey: .reviewStreak)
+        lastReviewFeedbackRaw = try container.decodeIfPresent(Int.self, forKey: .lastReviewFeedbackRaw)
+        graphLinksByKind = try container.decode([String: [KGCardLinkSummary]].self, forKey: .graphLinksByKind)
+    }
 }
 
 enum FixtureDatasetStore {
