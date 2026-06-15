@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import sys
@@ -38,6 +39,18 @@ RUNTIME_PODCAST_DOWNLOAD_KEYS = {
     "subtitleAssetRef",
     "localAudioPath",
     "localSubtitlePath",
+}
+BOOKSHELF_SEED_KEYS = {"books", "referenceDate"}
+BOOKSHELF_BOOK_KEYS = {
+    "title",
+    "author",
+    "fileName",
+    "format",
+    "bookAssetRef",
+    "progression",
+    "preferredNotebookId",
+    "dateAdded",
+    "dateLastRead",
 }
 AUTH_REQUIRED_KEYS = {
     "isLoggedIn",
@@ -136,6 +149,30 @@ def _validate_download_local_path(
         raise UIWorldManifestError(
             f"{label} {owner} must match asset installAs {expected_install_as}, got {local_path}"
         )
+
+
+def _validate_optional_progression(raw: Any, *, owner: str, label: str) -> None:
+    if raw is None:
+        return
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise UIWorldManifestError(f"{label} {owner} must be null or a number between 0 and 1")
+    if raw < 0 or raw > 1:
+        raise UIWorldManifestError(f"{label} {owner} must be between 0 and 1, got {raw}")
+
+
+def _parse_iso8601(raw: Any, *, owner: str, label: str) -> datetime:
+    value = _ensure_str(raw, field=owner, label=label).strip()
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise UIWorldManifestError(f"{label} {owner} must be ISO8601, got {value}") from exc
+
+
+def _validate_optional_iso8601(raw: Any, *, owner: str, label: str) -> datetime | None:
+    if raw is None:
+        return None
+    return _parse_iso8601(raw, owner=owner, label=label)
 
 
 def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
@@ -482,6 +519,17 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         label=label,
     ).items():
         seed_obj = _require_mapping(seed, field=f"bookshelf.{fixture_id}", label=label)
+        _validate_exact_keys(
+            seed_obj,
+            expected=BOOKSHELF_SEED_KEYS,
+            owner=f"bookshelf.{fixture_id}",
+            label=label,
+        )
+        _parse_iso8601(
+            seed_obj.get("referenceDate"),
+            owner=f"bookshelf.{fixture_id}.referenceDate",
+            label=label,
+        )
         for index, book in enumerate(
             _require_list(
                 seed_obj.get("books"),
@@ -495,6 +543,19 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
                 label=label,
             )
             owner = f"bookshelf.{fixture_id}.books[{index}]"
+            _validate_exact_keys(book_obj, expected=BOOKSHELF_BOOK_KEYS, owner=owner, label=label)
+            _ensure_str(book_obj.get("title"), field=f"{owner}.title", label=label)
+            if not isinstance(book_obj.get("author"), str):
+                raise UIWorldManifestError(f"{label} {owner}.author 必須是 string")
+            _validate_optional_progression(book_obj.get("progression"), owner=f"{owner}.progression", label=label)
+            date_added = _parse_iso8601(book_obj.get("dateAdded"), owner=f"{owner}.dateAdded", label=label)
+            date_last_read = _validate_optional_iso8601(
+                book_obj.get("dateLastRead"),
+                owner=f"{owner}.dateLastRead",
+                label=label,
+            )
+            if date_last_read is not None and date_last_read < date_added:
+                raise UIWorldManifestError(f"{label} {owner}.dateLastRead must not be earlier than dateAdded")
             ref = _require_ref(
                 book_obj.get("bookAssetRef"),
                 prefix="books.",
