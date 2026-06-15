@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 4779cee9
+verified_against: 307dee7c
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -118,9 +118,9 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 `NotebookCoverScenarios` 的 pattern、color、title、image-backed cover 與 overlay-mode 狀態必須取 UI World `notebook.coverGallery` seed。`NotebookSeed` 必須明示 `coverPattern` 與 `coverImageAssetRef`；image-backed cover 只能透過 `assets.images.*` asset manifest 安裝後寫入 `Notebook.coverImagePath`。缺 seed、缺 pattern 覆蓋、缺 image-backed row、asset ref 指錯 domain、缺 asset、hash/byteSize 不符、unsafe install path 或安裝後檔案不存在都直接 fail-fast。Catalog 不得保留 `/tmp` missing-path fixture、`Image path fallback` scenario、本地 `Color(hex:)` 色票、`patternGrid` / `swatches` 本地矩陣或 fallback label。`CatalogCoverageTests.notebookCoverCatalogUsesUIWorldNotebookAssetSeed` 與 `NotebookFixturesTests.coverGalleryMaterializesManifestImageAsset` 擋回退。
 
 ### Settings subscription 契約（無本地 section fixture）
-所有 `settings.*` seed 必須明示 `auth`、`preferences`、`reviewSettings`、`kg`、`subscription`、`syncSummary`、`bookSync`、`about`、`danger`、`manualLoginUserId`、`debugLocalServerURL`；nullable slice / 欄位也要寫 `null`，缺 key 直接 decode fail-fast，不得靠 Swift `Codable` 預設補 nil。
+所有 `settings.*` seed 必須明示 `authFixtureRef`、`entitlementsFixtureRef`、`auth`、`preferences`、`reviewSettings`、`kg`、`subscription`、`syncSummary`、`bookSync`、`about`、`danger`、`manualLoginUserId`、`debugLocalServerURL`；nullable slice / 欄位也要寫 `null`，缺 key 直接 decode fail-fast，不得靠 Swift `Codable` 預設補 nil。`authFixtureRef` 必須指向同一 UI World 的 `auth.*`，`entitlementsFixtureRef` 必須指向 `entitlements.*` 或明示 `null`；repo contract 會驗 settings auth/pro UI state 與引用目標一致，避免登入/Pro 狀態在 settings slice 內漂移成第二套 SoT。
 
-`SettingsSubscriptionSectionScenarios` 的 active/loading/pricing-unavailable/free 狀態必須取 UI World `settings.*` seed 的 `subscription` slice；`subscription_free` 也必須存在於 repo UI World / generated demo manifest。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.subscription!`、不可保留 `inactiveFreeFixture`，也不可手建 `SettingsPresenterState.SubscriptionSection(...)`。
+`SettingsSubscriptionSectionScenarios` 的 active/loading/pricing-unavailable/free 狀態必須取 UI World `settings.*` seed 的 `subscription` slice；`subscription_free` 也必須存在於 repo UI World / generated demo manifest，且有 subscription UI state 的 seed 必須以 `entitlementsFixtureRef` 綁回 `entitlements.*`。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.subscription!`、不可保留 `inactiveFreeFixture`，也不可手建 `SettingsPresenterState.SubscriptionSection(...)`。
 
 ### Settings account detail 契約（無本地 auth/danger fixture）
 `SettingsAccountDetailScenarios` 的 subscribed/deleting/logged-out/long-identity 狀態必須取 UI World `settings.*` seed；長字串壓力狀態是 `settings.account_long_identity`，且 repo UI World / generated demo manifest 都必須宣告。scenario source 不可直接引用 `SettingsPresenterPreviewData.*.auth` / `.danger`，不可保留 `loggedOutAuth` / `longInfoAuth`，也不可手建 `SettingsPresenterState.AuthSection(...)` 或 `DangerSection(...)`。
