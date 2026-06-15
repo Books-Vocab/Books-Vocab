@@ -1362,6 +1362,28 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func settingsSeedFailsWhenUnknownKeysArePresent() throws {
+        let datasets = [
+            Self.settingsDataset(datasetID: "unknown-settings-seed-key", seedExtraFields: ",\"legacyMode\": true"),
+            Self.settingsDataset(datasetID: "unknown-settings-auth-key", authExtraFields: ",\"legacyUserId\": \"u\""),
+            Self.settingsDataset(datasetID: "unknown-settings-preferences-key", preferencesExtraFields: ",\"legacyAutoSync\": true"),
+            Self.settingsDataset(datasetID: "unknown-settings-kg-key", kgExtraFields: ",\"legacyServer\": true"),
+            Self.settingsDataset(datasetID: "unknown-settings-kg-observation-key", observationExtraFields: ",\"sampledAt\": \"2026-01-01T00:00:00Z\""),
+            Self.settingsDataset(datasetID: "unknown-settings-subscription-key", subscriptionExtraFields: ",\"legacyProductId\": \"pro\""),
+            Self.settingsDataset(datasetID: "unknown-settings-review-key", reviewExtraFields: ",\"legacyInterval\": 24"),
+            Self.settingsDataset(datasetID: "unknown-settings-sync-summary-key", syncSummaryExtraFields: ",\"lastSyncedAt\": \"now\""),
+            Self.settingsDataset(datasetID: "unknown-settings-about-key", aboutExtraFields: ",\"buildChannel\": \"debug\""),
+            Self.settingsDataset(datasetID: "unknown-settings-danger-key", dangerExtraFields: ",\"pendingReason\": \"test\""),
+            Self.settingsDataset(datasetID: "unknown-settings-book-sync-key", bookSyncExtraFields: ",\"queuedCount\": 1"),
+        ]
+
+        for dataset in datasets {
+            #expect(throws: DecodingError.self) {
+                _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+            }
+        }
+    }
+
     @Test func bookshelfBookFailsWhenNullableStateKeysAreMissing() throws {
         let dataset = """
         {
@@ -2465,6 +2487,145 @@ struct FixtureDatasetStoreTests {
         #expect(throws: DecodingError.self) {
             _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
         }
+    }
+
+    private static func settingsDataset(
+        datasetID: String,
+        seedExtraFields: String = "",
+        authExtraFields: String = "",
+        preferencesExtraFields: String = "",
+        kgExtraFields: String = "",
+        observationExtraFields: String = "",
+        subscriptionExtraFields: String = "",
+        reviewExtraFields: String = "",
+        syncSummaryExtraFields: String = "",
+        aboutExtraFields: String = "",
+        dangerExtraFields: String = "",
+        bookSyncExtraFields: String = ""
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "settings-user",
+              "token": "settings-token",
+              "keychainTokenState": "available",
+              "displayName": "Settings User",
+              "email": "settings@example.com",
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": "apple",
+              "providerUserId": "apple:settings-user"
+            }
+          },
+          "entitlements": {
+            "pro": {
+              "pro": {
+                "is_active": true,
+                "product_id": "com.wordnexus.pro.monthly",
+                "plan_name": "Books & Vocab Pro",
+                "price_display": "NT$90 / month",
+                "status": "active",
+                "is_trial": false,
+                "trial_days": 7,
+                "will_renew": true,
+                "expires_at": "2099-12-31T23:59:59Z",
+                "source": "app_store",
+                "last_synced_at": "2026-06-10T00:00:00Z"
+              }
+            }
+          },
+          "settings": {
+            "subscribed_active": {
+              "authFixtureRef": "auth.signedIn",
+              "entitlementsFixtureRef": "entitlements.pro",
+              "auth": {
+                "isLoggedIn": true,
+                "userInitials": "SU",
+                "avatarURL": null,
+                "displayName": "Settings User",
+                "email": "settings@example.com",
+                "authError": null,
+                "isAuthenticating": false,
+                "iconBreathing": false,
+                "manualLoginHint": null\(authExtraFields)
+              },
+              "preferences": {
+                "selectedLanguage": "繁體中文",
+                "selectedAppearance": "跟隨系統",
+                "translationSource": "English",
+                "translationTarget": "繁體中文",
+                "selectedReviewMode": "寬鬆",
+                "autoSyncEnabled": true,
+                "showAutoSync": true\(preferencesExtraFields)
+              },
+              "kg": {
+                "serverURL": "\(TestBrandIdentity.publicBaseURL)",
+                "isConnected": true,
+                "connectionPulse": false,
+                "serverCardCount": 240,
+                "lastSyncDescription": "剛剛",
+                "isUsingLocalServer": true,
+                "localServerURL": "http://127.0.0.1:8000",
+                "observation": {
+                  "previewLines": ["ok"],
+                  "totalCount": 1\(observationExtraFields)
+                }\(kgExtraFields)
+              },
+              "subscription": {
+                "isActive": true,
+                "planName": "Pro",
+                "badgeText": "啟用中",
+                "badgeTone": "success",
+                "summary": "年度方案",
+                "detail": "已解鎖全部功能",
+                "sourceLabel": "App Store",
+                "managementNote": "由 App Store 管理",
+                "pricingUnavailableMessage": null,
+                "restoreLabel": "恢復購買",
+                "restoreDescription": "如果曾購買過訂閱",
+                "isRestoreAvailable": true,
+                "ctaTitle": "管理訂閱",
+                "isRefreshing": false\(subscriptionExtraFields)
+              },
+              "syncSummary": {
+                "isConnected": true,
+                "isSyncing": false,
+                "summaryText": "已連線"\(syncSummaryExtraFields)
+              },
+              "reviewSettings": {
+                "mode": "lenient",
+                "customInitialIntervalHours": 24,
+                "customRememberedMultiplier": 2,
+                "customForgotMultiplier": 0.5,
+                "customMinimumIntervalHours": 1,
+                "customMaximumIntervalHours": 720,
+                "isProgressPaused": false,
+                "progressPausedAt": null,
+                "autoplaySpeed": "normal",
+                "autoplaySoundEnabled": true\(reviewExtraFields)
+              },
+              "bookSync": {
+                "text": "同步完成",
+                "detail": null,
+                "tone": "success"\(bookSyncExtraFields)
+              },
+              "about": {
+                "version": "1.0 (1)",
+                "developerName": "MPSO"\(aboutExtraFields)
+              },
+              "danger": {
+                "isDeletingAccount": false\(dangerExtraFields)
+              },
+              "manualLoginUserId": null,
+              "debugLocalServerURL": null\(seedExtraFields)
+            }
+          }
+        }
+        """
     }
 
     private static func vocabularyDataset(

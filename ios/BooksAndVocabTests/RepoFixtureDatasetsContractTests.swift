@@ -60,6 +60,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
+        expectSettingsKeys(topLevel, dataset: "ios_fixture_dataset")
         expectEntitlementsKeys(topLevel, dataset: "ios_fixture_dataset")
         expectTodayReviewKeys(topLevel, dataset: "ios_fixture_dataset")
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
@@ -79,6 +80,7 @@ struct RepoFixtureDatasetsContractTests {
             expectPreferenceWrapperKeys(topLevel, dataset: stem)
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
             expectAuthUIStateKeys(topLevel, dataset: stem)
+            expectSettingsKeys(topLevel, dataset: stem)
             expectEntitlementsKeys(topLevel, dataset: stem)
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectTodayReviewKeys(topLevel, dataset: stem)
@@ -747,6 +749,129 @@ struct RepoFixtureDatasetsContractTests {
                 )
             }
         }
+    }
+
+    private func expectSettingsKeys(_ topLevel: [String: Any], dataset: String) {
+        let settingsFixtures = topLevel["settings"] as? [String: [String: Any]] ?? [:]
+        let seedKeys: Set<String> = [
+            "auth",
+            "authFixtureRef",
+            "entitlementsFixtureRef",
+            "preferences",
+            "reviewSettings",
+            "kg",
+            "subscription",
+            "syncSummary",
+            "bookSync",
+            "about",
+            "danger",
+            "manualLoginUserId",
+            "debugLocalServerURL",
+        ]
+        let authKeys: Set<String> = [
+            "isLoggedIn",
+            "userInitials",
+            "avatarURL",
+            "displayName",
+            "email",
+            "authError",
+            "isAuthenticating",
+            "iconBreathing",
+            "manualLoginHint",
+        ]
+        let preferencesKeys: Set<String> = [
+            "selectedLanguage",
+            "selectedAppearance",
+            "translationSource",
+            "translationTarget",
+            "selectedReviewMode",
+            "autoSyncEnabled",
+            "showAutoSync",
+        ]
+        let kgKeys: Set<String> = [
+            "serverURL",
+            "isConnected",
+            "connectionPulse",
+            "serverCardCount",
+            "lastSyncDescription",
+            "isUsingLocalServer",
+            "localServerURL",
+            "observation",
+        ]
+        let observationKeys: Set<String> = ["previewLines", "totalCount"]
+        let subscriptionKeys: Set<String> = [
+            "isActive",
+            "planName",
+            "badgeText",
+            "badgeTone",
+            "summary",
+            "detail",
+            "sourceLabel",
+            "managementNote",
+            "pricingUnavailableMessage",
+            "restoreLabel",
+            "restoreDescription",
+            "isRestoreAvailable",
+            "ctaTitle",
+            "isRefreshing",
+        ]
+        let reviewKeys: Set<String> = [
+            "mode",
+            "customInitialIntervalHours",
+            "customRememberedMultiplier",
+            "customForgotMultiplier",
+            "customMinimumIntervalHours",
+            "customMaximumIntervalHours",
+            "isProgressPaused",
+            "progressPausedAt",
+            "autoplaySpeed",
+            "autoplaySoundEnabled",
+        ]
+        let syncSummaryKeys: Set<String> = ["isConnected", "isSyncing", "summaryText"]
+        let aboutKeys: Set<String> = ["version", "developerName"]
+        let dangerKeys: Set<String> = ["isDeletingAccount"]
+        let bookSyncKeys: Set<String> = ["text", "detail", "tone"]
+
+        for (fixtureKey, seed) in settingsFixtures {
+            expectExactKeys(seed, seedKeys, dataset: dataset, owner: "settings.\(fixtureKey)")
+            if let auth = seed["auth"] as? [String: Any] {
+                expectExactKeys(auth, authKeys, dataset: dataset, owner: "settings.\(fixtureKey).auth")
+            }
+            if let preferences = seed["preferences"] as? [String: Any] {
+                expectExactKeys(preferences, preferencesKeys, dataset: dataset, owner: "settings.\(fixtureKey).preferences")
+            }
+            if let kg = seed["kg"] as? [String: Any] {
+                expectExactKeys(kg, kgKeys, dataset: dataset, owner: "settings.\(fixtureKey).kg")
+                if let observation = kg["observation"] as? [String: Any] {
+                    expectExactKeys(observation, observationKeys, dataset: dataset, owner: "settings.\(fixtureKey).kg.observation")
+                }
+            }
+            if let subscription = seed["subscription"] as? [String: Any] {
+                expectExactKeys(subscription, subscriptionKeys, dataset: dataset, owner: "settings.\(fixtureKey).subscription")
+            }
+            if let review = seed["reviewSettings"] as? [String: Any] {
+                expectExactKeys(review, reviewKeys, dataset: dataset, owner: "settings.\(fixtureKey).reviewSettings")
+            }
+            if let syncSummary = seed["syncSummary"] as? [String: Any] {
+                expectExactKeys(syncSummary, syncSummaryKeys, dataset: dataset, owner: "settings.\(fixtureKey).syncSummary")
+            }
+            if let about = seed["about"] as? [String: Any] {
+                expectExactKeys(about, aboutKeys, dataset: dataset, owner: "settings.\(fixtureKey).about")
+            }
+            if let danger = seed["danger"] as? [String: Any] {
+                expectExactKeys(danger, dangerKeys, dataset: dataset, owner: "settings.\(fixtureKey).danger")
+            }
+            if let bookSync = seed["bookSync"] as? [String: Any] {
+                expectExactKeys(bookSync, bookSyncKeys, dataset: dataset, owner: "settings.\(fixtureKey).bookSync")
+            }
+        }
+    }
+
+    private func expectExactKeys(_ object: [String: Any], _ allowed: Set<String>, dataset: String, owner: String) {
+        let missing = allowed.subtracting(object.keys)
+        #expect(missing.isEmpty, "\(dataset): \(owner) missing keys \(missing.sorted())")
+        let unknown = Set(object.keys).subtracting(allowed)
+        #expect(unknown.isEmpty, "\(dataset): \(owner) contains unknown keys \(unknown.sorted())")
     }
 
     private func expectSwiftDataRowStateKeys(_ topLevel: [String: Any], document: FixtureDatasetDocument, dataset: String) {

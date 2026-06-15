@@ -1,5 +1,20 @@
 import Foundation
 
+private struct AnySettingsCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
 enum SettingsFixtureID: String, CaseIterable {
     case loggedOut = "logged_out"
     case accountLoggedOutError = "account_logged_out_error"
@@ -43,6 +58,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings auth"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings auth")
             isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
@@ -68,6 +88,11 @@ struct SettingsFixtureSeed: Codable {
             }
 
             init(from decoder: Decoder) throws {
+                try SettingsFixtureSeed.rejectUnknownKeys(
+                    from: decoder,
+                    keys: CodingKeys.allCases,
+                    context: "UI World settings KG observation"
+                )
                 let container = try decoder.container(keyedBy: CodingKeys.self)
                 try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings KG observation")
                 previewLines = try container.decode([String].self, forKey: .previewLines)
@@ -96,6 +121,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings KG"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings KG")
             serverURL = try container.decode(String.self, forKey: .serverURL)
@@ -143,6 +173,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings subscription"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings subscription")
             isActive = try container.decode(Bool.self, forKey: .isActive)
@@ -182,6 +217,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings preferences"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings preferences")
             selectedLanguage = try container.decode(String.self, forKey: .selectedLanguage)
@@ -220,6 +260,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings reviewSettings"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings reviewSettings")
             mode = try container.decode(String.self, forKey: .mode)
@@ -247,6 +292,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings syncSummary"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings syncSummary")
             isConnected = try container.decode(Bool.self, forKey: .isConnected)
@@ -265,6 +315,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings about"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings about")
             version = try container.decode(String.self, forKey: .version)
@@ -280,6 +335,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings danger"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings danger")
             isDeletingAccount = try container.decode(Bool.self, forKey: .isDeletingAccount)
@@ -304,6 +364,11 @@ struct SettingsFixtureSeed: Codable {
         }
 
         init(from decoder: Decoder) throws {
+            try SettingsFixtureSeed.rejectUnknownKeys(
+                from: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World settings bookSync"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             try SettingsFixtureSeed.requireAllKeys(in: container, context: "UI World settings bookSync")
             text = try container.decode(String.self, forKey: .text)
@@ -343,6 +408,11 @@ struct SettingsFixtureSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try Self.rejectUnknownKeys(
+            from: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World settings seed"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try Self.requireAllKeys(in: container, context: "UI World settings seed")
         auth = try container.decode(Auth.self, forKey: .auth)
@@ -386,6 +456,24 @@ struct SettingsFixtureSeed: Codable {
                 DecodingError.Context(
                     codingPath: container.codingPath,
                     debugDescription: "\(context) must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
+    }
+
+    private static func rejectUnknownKeys<K: CodingKey & RawRepresentable>(
+        from decoder: Decoder,
+        keys: [K],
+        context: String
+    ) throws where K.RawValue == String {
+        let rawContainer = try decoder.container(keyedBy: AnySettingsCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(keys.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
                 )
             )
         }
