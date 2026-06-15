@@ -5,11 +5,11 @@ update_trigger: code-change
 scope:
   - ops/
   - docs/policy/
-verified_against: d67bed12
+verified_against: 20a22c64
 -->
 # Host Background (Single Source of Truth)
 
-> **過渡狀態（2026-06-15 起）**：正式站 `wordnexus.lol` 已從 AWS Lightsail 遷到家用常駐機 `standby`，經 **Cloudflare Tunnel** 對外。Lightsail 容器**已 STOP**（未 terminate），保留 1-2 週當 rollback。hostname 全程不變 → iOS app / Apple 推播 / Google OAuth 零改動。
+> **狀態（2026-06-15 遷移，2026-06-16 Lightsail 下架）**：正式站 `wordnexus.lol` 已從 AWS Lightsail 遷到家用常駐機 `standby`，經 **Cloudflare Tunnel** 對外。**Lightsail instance `booksbrowser-kg-api-2gb` 已於 2026-06-16 完全 terminate**（含 7 份 auto-snapshot + addon 排程，全區域零計費資源驗證）。原「啟動已停容器」的快速回滾路徑不再存在；回滾 = 從零冷重建（見 §Rollback / 重新上架）。hostname 全程不變 → iOS app / Apple 推播 / Google OAuth 零改動。
 > 服務層部署正本（含 tunnel ID / CF zone / reboot 復活鏈）在 butler `~/butler/docs/kg-backend-deployment.md`；機器層建置在 `~/butler/docs/standby-host-setup.md`。本檔是 kg repo 內的 host topology SoT。
 
 ## Host（primary，2026-06-15 起）
@@ -20,14 +20,12 @@ verified_against: d67bed12
 - 容器引擎：OrbStack docker（`app.start_at_login=true`）
 - Edge：**Cloudflare Tunnel**（CF 邊緣終結 TLS，憑證 CF 託管）；**無 Caddy、不開任何 inbound 埠**（cloudflared 主動 outbound）
 
-## Host（rollback，STOPPED）
-- Provider: AWS Lightsail
-- Instance: `booksbrowser-kg-api-2gb` (small_3_0, 2GB RAM, 60GB disk)
-- Region: `ap-northeast-1`
-- OS: Ubuntu 24.04
-- IP: `13.193.212.134`
+## Host（rollback，TERMINATED 2026-06-16）
+- Provider: AWS Lightsail（已下架）
+- 原 Instance 規格（重建用）：`booksbrowser-kg-api-2gb`，blueprint `ubuntu_24_04`，bundle `small_3_0`（2GB RAM / 40GB SSD），AZ `ap-northeast-1a`
+- 原 IP `13.193.212.134`（動態，已隨 instance 釋放，**勿再引用**）
 - Edge Proxy: Caddy (80/443)
-- 狀態：容器 **STOP**（資料停留在遷移當下快照），Caddy 仍在。回滾程序見下方 §Rollback。
+- 狀態：**已完全 terminate**（instance + 系統碟 + 7 份 auto-snapshot + auto-snapshot addon 排程全刪，全 16 區域零計費資源已驗）。原「資料停留在遷移當下快照」那份 rollback 資料已隨 terminate 消失——standby 是唯一權威。重新上架程序見下方 §Rollback / 重新上架。
 
 ## Service Map
 | Project | Canonical Local Path | Primary（standby）| Rollback（Lightsail）| Domain | Internal Port | Container |
@@ -66,13 +64,40 @@ wordnexus.lol {
 }
 ```
 
-## Rollback（standby → Lightsail，緊急）
+## Rollback / 重新上架（Lightsail 冷重建）
 
-Lightsail 容器只是 STOP，資料還在遷移當下快照。回滾步驟：
-1. 啟動 Lightsail 容器：`ssh -i ~/.secrets/lightsail_kg_prod ubuntu@13.193.212.134 'cd ~/knowledge_graph_api && docker compose up -d'`
-2. CF apex 從 tunnel proxied CNAME 改回 **A → `13.193.212.134`**（grey/DNS-only），用 `~/.secrets/cloudflare_token`。
-- ⚠ **資料分岔風險**：standby 上線後產生的新資料**不在** Lightsail 快照。回滾 = 丟掉切換後的寫入。僅限「standby 嚴重故障且短期內無法修」的災難情境。
-- 完整回滾與 DNS 委派傳播坑見 butler `~/butler/docs/kg-backend-deployment.md §6 / §8`。
+> Lightsail 已 terminate，**無「啟動已停容器」的快速回滾**。標準正式站是 standby 家用機；Lightsail 僅作災難備援，平時不需要。下列為從零重建 Lightsail 正式站的完整步驟（架構/腳本已保留，可重現）。
+
+**1. 建 instance（對齊原規格）**
+```bash
+aws lightsail create-instances \
+  --instance-names booksbrowser-kg-api-2gb \
+  --availability-zone ap-northeast-1a \
+  --blueprint-id ubuntu_24_04 --bundle-id small_3_0 \
+  --region ap-northeast-1
+```
+
+**2. 開放防火牆埠**（443 對外；80 給 ACME/redirect；22 建議鎖管理 IP 而非 `0.0.0.0/0`）
+```bash
+for p in 80 443; do aws lightsail open-instance-public-ports --instance-name booksbrowser-kg-api-2gb \
+  --port-info fromPort=$p,toPort=$p,protocol=TCP --region ap-northeast-1; done
+# 22 限自己 IP：--port-info fromPort=22,toPort=22,protocol=TCP,cidrs=<YOUR_IP>/32
+```
+
+**3. SSH 進入**：`aws lightsail download-default-key-pair --region ap-northeast-1` 取私鑰（chmod 600）→ `ssh -i <key> ubuntu@<新IP>`。
+
+**4. Bootstrap**：`apt install -y docker.io docker-compose-plugin caddy` → `git clone <repo> ~/knowledge_graph_api`。
+
+**5. 放 .env**（生產 secrets，從 standby `~/project/kg/backend/.env` 取，**勿入庫**）。
+
+**6. Caddyfile** `/etc/caddy/Caddyfile`（見上方 §Routing rollback 區塊）→ `systemctl restart caddy`。
+
+**7. 起服務**：`cd ~/knowledge_graph_api && docker compose up -d --build` → migrate → health。
+
+**8. 切 DNS**：CF apex 從 tunnel proxied CNAME 改 **A → 新 IP**（grey/DNS-only），用 `~/.secrets/cloudflare_token`。
+
+- ⚠ **資料分岔風險**：重建站是空的（舊 rollback 快照已隨 terminate 消失）。災難回滾須先把 standby 當下 data 搬上去（`devops_kg_safe.sh` 備份 → scp）。
+- 完整 bootstrap / deploy / DNS 委派傳播坑見 butler `~/butler/docs/kg-backend-deployment.md`。
 
 ## Security Posture（primary）
 - **無 inbound 開埠**：cloudflared 主動 outbound 連 CF 邊緣，家用機不需公網 IP、不需開 80/443。
@@ -89,8 +114,8 @@ Lightsail 容器只是 STOP，資料還在遷移當下快照。回滾步驟：
 → 全自動恢復對外服務（config 已逐項驗，真 reboot 演練待補）。
 
 ## Data Persistence
-- KG API（primary）：`~/project/kg/backend/data`（~403M；12 用戶 + root DB）
-- KG API（rollback）：`~/knowledge_graph_api/data`
+- KG API（primary）：`~/project/kg/backend/data`（~403M；12 用戶 + root DB）—— 唯一權威
+- KG API（rollback）：~~`~/knowledge_graph_api/data`~~ 已隨 Lightsail terminate（2026-06-16）消失；冷重建站需從 standby 搬資料
 
 ## Agent Operation Entry
 - Entry: `CLAUDE.md`
