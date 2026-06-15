@@ -19,16 +19,12 @@ final class UITestSubscriptionManager: SubscriptionManaging {
     }
 
     static func proAccess() -> UITestSubscriptionManager {
-        guard let seed = FixtureDatasetStore.entitlementsSeed(for: .pro) else {
-            preconditionFailure("entitlements.pro fixture requires UI World entitlements.pro")
-        }
+        let seed = FixtureDatasetStore.requireEntitlementsSeed(for: .pro)
         return UITestSubscriptionManager(entitlements: KGEntitlements(pro: seed.pro))
     }
 
     static func freeAccess() -> UITestSubscriptionManager {
-        guard let seed = FixtureDatasetStore.entitlementsSeed(for: .free) else {
-            preconditionFailure("entitlements.free fixture requires UI World entitlements.free")
-        }
+        let seed = FixtureDatasetStore.requireEntitlementsSeed(for: .free)
         return UITestSubscriptionManager(entitlements: KGEntitlements(pro: seed.pro))
     }
 

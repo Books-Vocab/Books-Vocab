@@ -278,6 +278,9 @@ struct FixtureDatasetDocument: Decodable {
             }
 
             if seed.isLoggedIn {
+                guard seed.userId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                    throw dataCorrupted("\(owner) logged-in seed requires a non-empty userId", codingPath: codingPath)
+                }
                 guard !seed.isAuthenticating else {
                     throw dataCorrupted("\(owner) logged-in seed must not also be authenticating", codingPath: codingPath)
                 }

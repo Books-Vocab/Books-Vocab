@@ -92,6 +92,43 @@ def _require_ref(ref: Any, *, prefix: str, refs: set[str], owner: str, label: st
     return value
 
 
+def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("auth"), field="auth", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"auth.{fixture_id}", label=label)
+        owner = f"auth.{fixture_id}"
+        is_logged_in = seed_obj.get("isLoggedIn")
+        if not isinstance(is_logged_in, bool):
+            raise UIWorldManifestError(f"{label} {owner}.isLoggedIn 必須是 bool")
+        token_state = _ensure_str(seed_obj.get("keychainTokenState"), field=f"{owner}.keychainTokenState", label=label)
+        token = seed_obj.get("token")
+        user_id = seed_obj.get("userId")
+
+        if is_logged_in:
+            _ensure_str(user_id, field=f"{owner}.userId", label=label)
+            if seed_obj.get("isAuthenticating") is True:
+                raise UIWorldManifestError(f"{label} {owner} logged-in seed must not also be authenticating")
+            if seed_obj.get("authError") is not None:
+                raise UIWorldManifestError(f"{label} {owner} logged-in seed must not carry authError")
+
+        if token_state == "available":
+            if is_logged_in is not True:
+                raise UIWorldManifestError(f"{label} {owner} keychainTokenState=available requires isLoggedIn=true")
+            _ensure_str(token, field=f"{owner}.token", label=label)
+        elif token_state == "readFailed":
+            if is_logged_in is not True:
+                raise UIWorldManifestError(f"{label} {owner} keychainTokenState=readFailed requires isLoggedIn=true")
+            _ensure_str(user_id, field=f"{owner}.userId", label=label)
+            if token is not None:
+                raise UIWorldManifestError(f"{label} {owner} keychainTokenState=readFailed must not expose a readable token")
+        elif token_state == "absent":
+            if is_logged_in:
+                raise UIWorldManifestError(f"{label} {owner} keychainTokenState=absent requires isLoggedIn=false")
+            if token is not None:
+                raise UIWorldManifestError(f"{label} {owner} keychainTokenState=absent must not include token")
+        else:
+            raise UIWorldManifestError(f"{label} {owner}.keychainTokenState 不支援: {token_state}")
+
+
 def _all_notebook_ids(data: dict[str, Any], *, label: str) -> set[str]:
     notebook_ids: set[str] = set()
     for fixture_id, seed in _require_mapping(
@@ -467,6 +504,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 raise UIWorldManifestError(
                     f"{label} {asset_label}.sha256 mismatch: expected {expected_hash}, got {actual_hash}"
                 )
+    _validate_auth_state(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id
 

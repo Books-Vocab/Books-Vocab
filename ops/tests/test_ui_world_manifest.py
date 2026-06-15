@@ -90,6 +90,16 @@ def test_validate_rejects_settings_auth_state_drift(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_logged_in_auth_without_user_id(tmp_path: Path):
+    data = _marketing_demo()
+    data["auth"]["signedIn"]["userId"] = None
+    path = tmp_path / "missing_logged_in_user_id.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="auth.signedIn.userId"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_bookshelf_book_install_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["installAs"] = "Books/wrong.epub"

@@ -1607,6 +1607,33 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func authSeedFailsWhenLoggedInUserIdIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "invalid-auth-missing-user-id",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": null,
+              "token": "world-token",
+              "keychainTokenState": "available",
+              "displayName": "World User",
+              "email": "world@example.com",
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": "apple",
+              "providerUserId": "apple:world-user"
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func entitlementsSeedFailsWhenNullableProKeysAreMissing() throws {
         let dataset = """
         {
