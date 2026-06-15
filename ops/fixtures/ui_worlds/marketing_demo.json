@@ -37,6 +37,13 @@
         "installAs": "Books/catalog-reader.epub",
         "byteSize": 1690,
         "contentType": "application/epub+zip"
+      },
+      "reader_real_book_epub": {
+        "sourcePath": "/Users/chenliangyu/project/kg/ops/fixtures/assets/reader-real-book.epub",
+        "sha256": "1c903a07f1e75ec48b472062207d543698fe8a8d381348be0f8110953776bb2f",
+        "installAs": "Books/reader-real-book.epub",
+        "byteSize": 2236,
+        "contentType": "application/epub+zip"
       }
     },
     "audio": {
@@ -2549,9 +2556,10 @@
   "reader": {
     "realBookLibrary": {
       "textAssetRef": "text.atomic_habits_raw_ch_04",
+      "bookAssetRef": "books.reader_real_book_epub",
       "title": "Atomic Habits — Introduction",
       "author": "James Clear",
-      "bookFileName": "kg-uitest-reader-book.epub",
+      "bookFileName": "reader-real-book.epub",
       "notebookRemoteId": "ui-reader-notebook",
       "notebookName": "Reader Flow Vocab",
       "entry": {
