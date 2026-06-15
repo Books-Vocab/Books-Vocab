@@ -1,5 +1,53 @@
 import Foundation
 
+private struct AnyTodayReviewCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownTodayReviewKeys<Key>(
+    from decoder: Decoder,
+    knownKeys: Key.Type,
+    context: String
+) throws where Key: CodingKey & CaseIterable, Key.AllCases: Sequence {
+    let rawContainer = try decoder.container(keyedBy: AnyTodayReviewCodingKey.self)
+    let known = Set(Key.allCases.map(\.stringValue))
+    let unknown = Set(rawContainer.allKeys.map(\.stringValue)).subtracting(known)
+    guard unknown.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(context) contains unknown keys \(unknown.sorted())"
+            )
+        )
+    }
+}
+
+private func requireAllTodayReviewKeys<Key>(
+    in container: KeyedDecodingContainer<Key>,
+    context: String
+) throws where Key: CodingKey & CaseIterable, Key.AllCases: Sequence {
+    for key in Key.allCases where !container.contains(key) {
+        throw DecodingError.keyNotFound(
+            key,
+            .init(
+                codingPath: container.codingPath,
+                debugDescription: "\(context) must explicitly declare \(key.stringValue), even when null"
+            )
+        )
+    }
+}
+
 enum TodayReviewFixtureID: String, CaseIterable {
     case front = "front"
     case back = "back"
@@ -25,6 +73,31 @@ struct TodayReviewCardSeed: Codable {
         let confidence: Double
         let reason: String
         let hidden: Bool
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case id
+            case cardId
+            case word
+            case kind
+            case label
+            case confidence
+            case reason
+            case hidden
+        }
+
+        init(from decoder: Decoder) throws {
+            try rejectUnknownTodayReviewKeys(from: decoder, knownKeys: CodingKeys.self, context: "UI World todayReview card link")
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            try requireAllTodayReviewKeys(in: container, context: "UI World todayReview card link")
+            id = try container.decode(String.self, forKey: .id)
+            cardId = try container.decode(String.self, forKey: .cardId)
+            word = try container.decode(String.self, forKey: .word)
+            kind = try container.decode(String.self, forKey: .kind)
+            label = try container.decode(String.self, forKey: .label)
+            confidence = try container.decode(Double.self, forKey: .confidence)
+            reason = try container.decode(String.self, forKey: .reason)
+            hidden = try container.decode(Bool.self, forKey: .hidden)
+        }
     }
 
     let word: String
@@ -41,6 +114,43 @@ struct TodayReviewCardSeed: Codable {
     let rootForm: String?
     let inflections: [String]
     let graphLinksByKind: [String: [LinkSeed]]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case word
+        case translation
+        case context
+        case explanation
+        case partOfSpeech
+        case bookTitle
+        case chapterTitle
+        case dateAdded
+        case difficultyTier
+        case reviewMode
+        case reviewExamples
+        case rootForm
+        case inflections
+        case graphLinksByKind
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownTodayReviewKeys(from: decoder, knownKeys: CodingKeys.self, context: "UI World todayReview card")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try requireAllTodayReviewKeys(in: container, context: "UI World todayReview card")
+        word = try container.decode(String.self, forKey: .word)
+        translation = try container.decode(String.self, forKey: .translation)
+        context = try container.decode(String.self, forKey: .context)
+        explanation = try container.decodeIfPresent(String.self, forKey: .explanation)
+        partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
+        bookTitle = try container.decode(String.self, forKey: .bookTitle)
+        chapterTitle = try container.decodeIfPresent(String.self, forKey: .chapterTitle)
+        dateAdded = try container.decode(Date.self, forKey: .dateAdded)
+        difficultyTier = try container.decodeIfPresent(String.self, forKey: .difficultyTier)
+        reviewMode = try container.decode(VocabularyCardMode.self, forKey: .reviewMode)
+        reviewExamples = try container.decode([String].self, forKey: .reviewExamples)
+        rootForm = try container.decodeIfPresent(String.self, forKey: .rootForm)
+        inflections = try container.decode([String].self, forKey: .inflections)
+        graphLinksByKind = try container.decode([String: [LinkSeed]].self, forKey: .graphLinksByKind)
+    }
 }
 
 struct TodayReviewSessionSeed: Codable {
@@ -62,6 +172,51 @@ struct TodayReviewSessionSeed: Codable {
     let autoplaySpeed: AutoplaySpeed
     let autoplaySoundEnabled: Bool
     let showFirstRunHint: Bool
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case progressText
+        case currentCard
+        case nextCard
+        case revealStage
+        case canShuffle
+        case canGoPrevious
+        case canGoNext
+        case remainingCount
+        case forgotCount
+        case rememberedCount
+        case rememberedFeedbackTrigger
+        case forgotFeedbackTrigger
+        case isAutoPlaying
+        case isAutoPlayPaused
+        case autoplayProgress
+        case autoplaySpeed
+        case autoplaySoundEnabled
+        case showFirstRunHint
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownTodayReviewKeys(from: decoder, knownKeys: CodingKeys.self, context: "UI World todayReview session")
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try requireAllTodayReviewKeys(in: container, context: "UI World todayReview session")
+        progressText = try container.decode(String.self, forKey: .progressText)
+        currentCard = try container.decodeIfPresent(TodayReviewCardSeed.self, forKey: .currentCard)
+        nextCard = try container.decodeIfPresent(TodayReviewCardSeed.self, forKey: .nextCard)
+        revealStage = try container.decode(TodayReviewRevealStage.self, forKey: .revealStage)
+        canShuffle = try container.decode(Bool.self, forKey: .canShuffle)
+        canGoPrevious = try container.decode(Bool.self, forKey: .canGoPrevious)
+        canGoNext = try container.decode(Bool.self, forKey: .canGoNext)
+        remainingCount = try container.decode(Int.self, forKey: .remainingCount)
+        forgotCount = try container.decode(Int.self, forKey: .forgotCount)
+        rememberedCount = try container.decode(Int.self, forKey: .rememberedCount)
+        rememberedFeedbackTrigger = try container.decode(Int.self, forKey: .rememberedFeedbackTrigger)
+        forgotFeedbackTrigger = try container.decode(Int.self, forKey: .forgotFeedbackTrigger)
+        isAutoPlaying = try container.decode(Bool.self, forKey: .isAutoPlaying)
+        isAutoPlayPaused = try container.decode(Bool.self, forKey: .isAutoPlayPaused)
+        autoplayProgress = try container.decode(Double.self, forKey: .autoplayProgress)
+        autoplaySpeed = try container.decode(AutoplaySpeed.self, forKey: .autoplaySpeed)
+        autoplaySoundEnabled = try container.decode(Bool.self, forKey: .autoplaySoundEnabled)
+        showFirstRunHint = try container.decode(Bool.self, forKey: .showFirstRunHint)
+    }
 }
 
 struct TodayReviewFixtureRenderModel {

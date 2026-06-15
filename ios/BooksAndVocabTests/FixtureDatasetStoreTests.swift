@@ -837,6 +837,75 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func todayReviewFailsWhenNullableCardKeyIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-today-review-nullable-card-key",
+          "todayReview": {
+            "front": {
+              "progressText": "1 / 3",
+              "currentCard": null,
+              "revealStage": "front",
+              "canShuffle": true,
+              "canGoPrevious": false,
+              "canGoNext": true,
+              "remainingCount": 2,
+              "forgotCount": 0,
+              "rememberedCount": 1,
+              "rememberedFeedbackTrigger": 0,
+              "forgotFeedbackTrigger": 0,
+              "isAutoPlaying": false,
+              "isAutoPlayPaused": false,
+              "autoplayProgress": 0,
+              "autoplaySpeed": "normal",
+              "autoplaySoundEnabled": true,
+              "showFirstRunHint": false
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func todayReviewFailsWhenNestedLinkContainsUnknownKey() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-today-review-link-key",
+          "todayReview": {
+            "front": {
+              "progressText": "1 / 3",
+              "currentCard": \(Self.todayReviewCardJSON(extraLinkFields: #","rank": 1"#)),
+              "nextCard": null,
+              "revealStage": "front",
+              "canShuffle": true,
+              "canGoPrevious": false,
+              "canGoNext": true,
+              "remainingCount": 2,
+              "forgotCount": 0,
+              "rememberedCount": 1,
+              "rememberedFeedbackTrigger": 0,
+              "forgotFeedbackTrigger": 0,
+              "isAutoPlaying": false,
+              "isAutoPlayPaused": false,
+              "autoplayProgress": 0,
+              "autoplaySpeed": "normal",
+              "autoplaySoundEnabled": true,
+              "showFirstRunHint": false
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func settingsSeedFailsWhenNullableStateKeysAreMissing() throws {
         let dataset = """
         {
@@ -2067,6 +2136,47 @@ struct FixtureDatasetStoreTests {
           "reviewStreak": 0,
           "lastReviewFeedbackRaw": -1,
           "graphLinksByKind": {}
+        }
+        """
+    }
+
+    private static func todayReviewCardJSON(
+        extraCardFields: String = "",
+        extraLinkFields: String = ""
+    ) -> String {
+        """
+        {
+          "word": "discerning",
+          "translation": "有鑑別力的",
+          "context": "She is discerning about what deserves her focus.",
+          "explanation": "形容人判斷細膩、有眼光。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "Editorial English",
+          "chapterTitle": "Tone",
+          "dateAdded": "2026-01-01T00:00:00Z",
+          "difficultyTier": "advanced",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "She is discerning about what deserves her focus."
+          ],
+          "rootForm": "discerning",
+          "inflections": [
+            "discernment"
+          ],
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "link-1",
+                "cardId": "card-1",
+                "word": "perceptive",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.9,
+                "reason": "both describe careful judgment",
+                "hidden": false\(extraLinkFields)
+              }
+            ]
+          }\(extraCardFields)
         }
         """
     }
