@@ -130,6 +130,56 @@ import Testing
         }
     }
 
+    @MainActor
+    @Test func readerNotebookBoundRestoresManifestPreferredNotebook() async throws {
+        let document = try FixtureDatasetStore.decode(Self.marketingDemoData)
+        let expectedBook = try #require(document.bookshelf[BookshelfFixtureID.readerNotebookBound.rawValue]?.books.first)
+        let expectedNotebookId = try #require(expectedBook.preferredNotebookId)
+
+        try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
+            let books = try BookshelfFixtures.materializeBooks(for: .readerNotebookBound)
+            let book = try #require(books.first)
+            #expect(book.preferredNotebookId == expectedNotebookId)
+        }
+    }
+
+    @MainActor
+    @Test func bookshelfMaterializationFailsWhenPreferredNotebookIsMissing() async throws {
+        let dataset = try Self.completeV2DatasetData("""
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-bookshelf-preferred-notebook",
+          "bookshelf": {
+            "reader_notebook_bound": {
+              "books": [
+                {
+                  "title": "Ghost Bound",
+                  "author": "KG Studio",
+                  "fileName": "ghost-bound.epub",
+                  "format": "epub",
+                  "bookAssetRef": null,
+                  "progression": 0.25,
+                  "preferredNotebookId": "ghost-nb",
+                  "dateAdded": "2026-01-01T00:00:00Z",
+                  "dateLastRead": null
+                }
+              ],
+              "referenceDate": "2026-01-02T00:00:00Z"
+            }
+          }
+        }
+        """)
+
+        try await FixtureDatasetStore.withTestingData(dataset) {
+            #expect(throws: BookshelfFixtureMaterializationError.preferredNotebookMissing(
+                owner: "bookshelf.reader_notebook_bound.Ghost Bound",
+                notebookId: "ghost-nb"
+            )) {
+                _ = try BookshelfFixtures.materializeBooks(for: .readerNotebookBound)
+            }
+        }
+    }
+
     private static func expectEveryBookAssetRefResolves(in document: FixtureDatasetDocument, label: String) throws {
         for (fixtureKey, seed) in document.bookshelf {
             for book in seed.books {
@@ -141,6 +191,38 @@ import Testing
                 #expect(document.assets.asset(for: ref) != nil, "\(label): bookshelf.\(fixtureKey).\(book.title) asset \(ref) must resolve")
             }
         }
+    }
+
+    private static func completeV2DatasetData(_ json: String) throws -> Data {
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+        object["assets"] = object["assets"] ?? [
+            "books": [:],
+            "audio": [:],
+            "subtitles": [:],
+            "text": [:],
+            "images": [:],
+        ]
+        object["preferences"] = object["preferences"] ?? [
+            "userDefaults": [:],
+            "ubiquitousKeyValueStore": [:],
+        ]
+        for key in [
+            "auth",
+            "entitlements",
+            "settings",
+            "bookshelf",
+            "todayReview",
+            "notebook",
+            "podcast",
+            "runtimePodcast",
+            "reader",
+            "vocabulary",
+            "reviewDeck",
+            "syncPresenter",
+        ] where object[key] == nil {
+            object[key] = [:]
+        }
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
     private static func expectManifestPDFBook(in document: FixtureDatasetDocument, label: String) throws {

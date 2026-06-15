@@ -23,6 +23,10 @@ enum BookshelfFixtureID: String, CaseIterable {
     }
 }
 
+enum BookshelfFixtureMaterializationError: Error, Equatable {
+    case preferredNotebookMissing(owner: String, notebookId: String)
+}
+
 struct BookshelfBookSeed: Codable {
     let title: String
     let author: String
@@ -67,6 +71,22 @@ struct BookshelfBookSeed: Codable {
         dateAdded = try container.decode(Date.self, forKey: .dateAdded)
         dateLastRead = try container.decodeIfPresent(Date.self, forKey: .dateLastRead)
     }
+
+    func validatePreferredNotebook(in document: FixtureDatasetDocument, owner: String) throws {
+        guard let preferredNotebookId,
+              !preferredNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        let notebookIDs = Set(document.notebook.values.flatMap { seed in
+            seed.notebooks.map(\.remoteId)
+        })
+        guard notebookIDs.contains(preferredNotebookId) else {
+            throw BookshelfFixtureMaterializationError.preferredNotebookMissing(
+                owner: owner,
+                notebookId: preferredNotebookId
+            )
+        }
+    }
 }
 
 struct BookshelfFixtureSeed: Codable {
@@ -110,26 +130,44 @@ enum BookshelfFixtures {
     static func renderModel(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureRenderModel {
         let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
         return .init(
-            books: seed.books.map(makeBook(from:)),
-            container: makeContainer(from: seed.books),
+            books: books(for: fixtureID),
+            container: makeContainer(for: fixtureID, from: seed.books),
             referenceDate: seed.referenceDate
         )
     }
 
     @MainActor
     static func books(for fixtureID: BookshelfFixtureID) -> [Book] {
-        let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
-        return seed.books.map(makeBook(from:))
+        do {
+            return try materializeBooks(for: fixtureID)
+        } catch {
+            preconditionFailure("Failed to materialize UI World bookshelf.\(fixtureID.rawValue): \(error)")
+        }
     }
 
     @MainActor
-    private static func makeContainer(from seeds: [BookshelfBookSeed]) -> ModelContainer {
+    static func materializeBooks(for fixtureID: BookshelfFixtureID) throws -> [Book] {
+        let document = FixtureDatasetStore.requireDocument()
+        let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
+        return try seed.books.map { seed in
+            try makeBook(from: seed, document: document, owner: "bookshelf.\(fixtureID.rawValue).\(seed.title)")
+        }
+    }
+
+    @MainActor
+    private static func makeContainer(for fixtureID: BookshelfFixtureID, from seeds: [BookshelfBookSeed]) -> ModelContainer {
         let schema = Schema([Book.self, VocabularyEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
             let container = try ModelContainer(for: schema, configurations: config)
             let context = ModelContext(container)
-            for book in seeds.map(makeBook(from:)) {
+            let document = FixtureDatasetStore.requireDocument()
+            for seed in seeds {
+                let book = try makeBook(
+                    from: seed,
+                    document: document,
+                    owner: "bookshelf.\(fixtureID.rawValue).\(seed.title)"
+                )
                 context.insert(book)
             }
             try context.save()
@@ -139,7 +177,12 @@ enum BookshelfFixtures {
         }
     }
 
-    private static func makeBook(from seed: BookshelfBookSeed) -> Book {
+    private static func makeBook(
+        from seed: BookshelfBookSeed,
+        document: FixtureDatasetDocument,
+        owner: String
+    ) throws -> Book {
+        try seed.validatePreferredNotebook(in: document, owner: owner)
         let book = Book(
             title: seed.title,
             author: seed.author,

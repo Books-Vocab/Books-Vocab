@@ -121,6 +121,15 @@ struct RepoFixtureDatasetsContractTests {
                         fileName: book.fileName,
                         format: book.format
                     )
+                    if let preferredNotebookId = book.preferredNotebookId,
+                       !preferredNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        expectNotebookRef(
+                            preferredNotebookId,
+                            document: document,
+                            dataset: stem,
+                            owner: "bookshelf.\(fixtureKey).\(book.title).preferredNotebookId"
+                        )
+                    }
                 }
             }
 
@@ -442,6 +451,21 @@ struct RepoFixtureDatasetsContractTests {
                 }
             }
         }
+    }
+
+    private func expectNotebookRef(
+        _ notebookId: String,
+        document: FixtureDatasetDocument,
+        dataset: String,
+        owner: String
+    ) {
+        let notebookIDs = Set(document.notebook.values.flatMap { seed in
+            seed.notebooks.map(\.remoteId)
+        })
+        #expect(
+            notebookIDs.contains(notebookId),
+            "\(dataset): \(owner) references missing notebook \(notebookId)"
+        )
     }
 
     private func expectAuthKeychainStateKeys(_ topLevel: [String: Any], dataset: String) {
