@@ -111,6 +111,71 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-fixture-id",
+          "auth": {
+            "guest": {
+              "isLoggedIn": false,
+              "userId": null,
+              "token": null,
+              "keychainTokenState": "absent",
+              "displayName": null,
+              "email": null,
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": null,
+              "providerUserId": null
+            }
+          },
+          "settings": {
+            "subscribed_typo": {
+              "authFixtureRef": "auth.guest",
+              "entitlementsFixtureRef": null,
+              "auth": {
+                "isLoggedIn": false,
+                "userInitials": null,
+                "avatarURL": null,
+                "displayName": "未登入",
+                "email": null,
+                "authError": null,
+                "isAuthenticating": false,
+                "iconBreathing": false,
+                "manualLoginHint": null
+              },
+              "preferences": {
+                "selectedLanguage": "繁體中文",
+                "selectedAppearance": "跟隨系統",
+                "translationSource": "English",
+                "translationTarget": "繁體中文",
+                "selectedReviewMode": "寬鬆",
+                "autoSyncEnabled": false,
+                "showAutoSync": false
+              },
+              "kg": null,
+              "subscription": null,
+              "syncSummary": null,
+              "reviewSettings": null,
+              "bookSync": null,
+              "about": {
+                "version": "1.0 (1)",
+                "developerName": "MPSO"
+              },
+              "danger": null,
+              "manualLoginUserId": null,
+              "debugLocalServerURL": null
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func notebookEntryFailsWhenMetadataKeysAreMissing() throws {
         let dataset = """
         {
