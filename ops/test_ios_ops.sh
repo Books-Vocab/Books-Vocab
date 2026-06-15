@@ -267,10 +267,7 @@ echo "$prepare_catalog_json" | jq -e '(.build.wallMs|type)=="number" and .build.
 prepare_xctestrun="$(echo "$prepare_catalog_json" | jq -r '.cache.xctestrunPath')"
 [[ -f "$prepare_xctestrun" ]] \
   && ok "catalog prepare materializes xctestrun artifact" || fail_t "catalog prepare missing xctestrun: $prepare_xctestrun"
-dataset_fixture_json="$catalog_tmp/dataset.json"
-cat >"$dataset_fixture_json" <<'JSON'
-{"schema":"kg.fixture.dataset.v1","datasetID":"fixture-catalog-test"}
-JSON
+dataset_fixture_json="$WORKSPACE/ops/fixtures/ui_worlds/marketing_demo.json"
 dataset_fixture_b64="$(base64 <"$dataset_fixture_json" | tr -d '\n')"
 dataset_scoped_xctestrun="$catalog_tmp/dataset.scoped.xctestrun"
 ROOT="$WORKSPACE" XCODEPROJ="$WORKSPACE/ios/BooksAndVocab.xcodeproj" \
@@ -298,7 +295,7 @@ scoped_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS
 echo "$scoped_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and (.scope.groups==["Bookshelf View","Today Review"]) and (.scope.scenarios==["Today Review/Front"]) and (.validation.status=="ok") and .validation.actualPngCount==2 and .cache.status=="not-applicable" and (.test.command|contains("-scheme BooksAndVocabCatalogSnapshots")) and (.test.command|contains("build-for-testing")) and (.test.command|contains("test-without-building")) and (.test.command|contains("-xctestrun"))' >/dev/null \
   && ok "catalog snapshots --json reports scoped group/scenario filters" || fail_t "catalog scoped json invalid: $scoped_catalog_json"
 dataset_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --json)"
-echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="not-applicable"' >/dev/null \
+echo "$dataset_catalog_json" | jq -e --arg path "$dataset_fixture_json" '.schema=="kg.ios.catalog.v1" and .status=="ok" and .dataset.requestedPath==$path and .dataset.status=="validated"' >/dev/null \
   && ok "catalog snapshots accepts dataset-file option" || fail_t "catalog dataset-file json invalid: $dataset_catalog_json"
 reuse_catalog_json="$(KG_IOS_OPS_FIXTURE=1 TMPDIR="$catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$dataset_fixture_json" --reuse-build --json)"
 echo "$reuse_catalog_json" | jq -e '.schema=="kg.ios.catalog.v1" and .status=="ok" and .options.reuseBuild==true and .test.exitCode==0' >/dev/null \
@@ -326,6 +323,14 @@ if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapsh
 else
   grep -q 'dataset file not found' "$bad_catalog_tmp/err2" \
     && ok "catalog snapshots rejects missing named dataset" || fail_t "catalog missing dataset message invalid: $(cat "$bad_catalog_tmp/err2")"
+fi
+bad_catalog_dataset="$bad_catalog_tmp/bad-dataset.json"
+printf '{"schema":"kg.fixture.dataset.v1","datasetID":"bad"}\n' >"$bad_catalog_dataset"
+if KG_IOS_OPS_FIXTURE=1 TMPDIR="$bad_catalog_tmp" bash "$IOS_OPS" catalog snapshots --dataset-file "$bad_catalog_dataset" >"$bad_catalog_tmp/out3" 2>"$bad_catalog_tmp/err3"; then
+  fail_t "catalog snapshots rejects invalid UI World manifest"
+else
+  grep -q 'schema 必須是 kg.fixture.dataset.v2' "$bad_catalog_tmp/err3" \
+    && ok "catalog snapshots rejects invalid UI World manifest" || fail_t "catalog invalid dataset message missing: $(cat "$bad_catalog_tmp/err3")"
 fi
 if KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" catalog prepare --unknown >"$bad_catalog_tmp/prepare.out" 2>"$bad_catalog_tmp/prepare.err"; then
   fail_t "catalog prepare rejects unknown option"
@@ -1129,6 +1134,12 @@ ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset a --dataset-file b 2>&1 ||
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset definitely-not-a-dataset 2>&1 || true)"
 [[ "$ds_out" == *"dataset file not found"* ]] \
   && ok "ios_test rejects missing named dataset" || fail_t "ios_test missing-dataset guard: $ds_out"
+ios_test_bad_dataset="$(mktemp)"
+printf '{"schema":"kg.fixture.dataset.v1","datasetID":"bad"}\n' >"$ios_test_bad_dataset"
+ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset-file "$ios_test_bad_dataset" 2>&1 || true)"
+rm -f "$ios_test_bad_dataset"
+[[ "$ds_out" == *"schema 必須是 kg.fixture.dataset.v2"* ]] \
+  && ok "ios_test rejects invalid UI World manifest before staging" || fail_t "ios_test invalid-dataset guard: $ds_out"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset marketing_demo --list 2>&1 || true)"
 [[ "$ds_out" == *"cannot be combined with --list"* ]] \
   && ok "ios_test rejects --dataset with --list (no staging would run)" || fail_t "ios_test dataset/--list guard: $ds_out"

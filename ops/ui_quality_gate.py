@@ -27,6 +27,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+OPS_DIR = Path(__file__).resolve().parent
+if str(OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(OPS_DIR))
+
+from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file
+
 FAST_LAYERS = {"static-code", "static-value"}
 SLOW_LAYERS = {
     "structure",
@@ -118,6 +124,15 @@ def ui_world_args(dataset: str | None, dataset_file: str | None, root: Path) -> 
     return None
 
 
+def resolve_dataset_path(dataset: str | None, dataset_file: str | None, root: Path) -> Path | None:
+    if dataset:
+        return root / "ops" / "fixtures" / "ui_worlds" / f"{dataset}.json"
+    if dataset_file:
+        path = Path(dataset_file)
+        return path if path.is_absolute() else root / path
+    return None
+
+
 def resolve_args(
     mech_id: str,
     layer: str,
@@ -183,15 +198,14 @@ def main() -> int:
     root = repo_root()
     if args.dataset and args.dataset_file:
         parser.error("choose either --dataset or --dataset-file")
-    if args.dataset:
-        named_path = root / "ops" / "fixtures" / "ui_worlds" / f"{args.dataset}.json"
-        if not named_path.is_file():
-            parser.error(f"dataset file not found: {named_path}")
-    if args.dataset_file:
-        dataset_file_path = Path(args.dataset_file)
-        resolved_dataset_file = dataset_file_path if dataset_file_path.is_absolute() else root / dataset_file_path
-        if not resolved_dataset_file.is_file():
-            parser.error(f"dataset file not found: {resolved_dataset_file}")
+    dataset_path = resolve_dataset_path(args.dataset, args.dataset_file, root)
+    if dataset_path is not None:
+        if not dataset_path.is_file():
+            parser.error(f"dataset file not found: {dataset_path}")
+        try:
+            validate_fixture_dataset_file(dataset_path, label="UI quality UI World dataset")
+        except UIWorldManifestError as exc:
+            parser.error(str(exc))
     world_args = ui_world_args(args.dataset, args.dataset_file, root)
     impacted = get_impacted(root, args.files, args.since)
 
