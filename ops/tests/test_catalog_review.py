@@ -51,6 +51,52 @@ def _make_rgba_png(path: Path, width: int, height: int, *, corner_alpha: int) ->
     path.write_bytes(png)
 
 
+def _write_catalog_index(source_root: Path, surfaces: dict[str, dict] | None = None) -> None:
+    source_root.mkdir(parents=True, exist_ok=True)
+    default_surfaces = {
+        "Settings View": {
+            "kind": "featureScreen",
+            "feature": "settings",
+            "screen": "settings",
+            "backing": "SettingsView",
+        },
+        "Reader · Translation": {
+            "kind": "featureScreen",
+            "feature": "reader",
+            "screen": "reader",
+            "backing": "ReaderView",
+        },
+        "Settings · ParamRow": {
+            "kind": "component",
+            "feature": "settings",
+            "screen": "settings",
+            "backing": "SettingsParamRow",
+        },
+        "Reader View": {
+            "kind": "featureScreen",
+            "feature": "reader",
+            "screen": "reader",
+            "backing": "ReaderView",
+        },
+        "Podcast Home View": {
+            "kind": "featureScreen",
+            "feature": "podcast",
+            "screen": "podcastHome",
+            "backing": "PodcastHomeView",
+        },
+        "iCloud Progress Badge": {
+            "kind": "buildingBlock",
+            "feature": "settings",
+            "screen": "settings",
+            "backing": "CloudProgressBadge",
+        },
+    }
+    (source_root / "catalog_index.json").write_text(
+        json.dumps({"version": 1, "surfaces": surfaces or default_surfaces}),
+        encoding="utf-8",
+    )
+
+
 def test_read_png_transparent_margin_separates_component_from_screen(tmp_path: Path):
     """Components are rendered centered on a transparent 1179x2556 canvas, screens
     fill it — same size, so only the pixel alpha tells them apart. The detector
@@ -73,6 +119,7 @@ def test_collect_items_assigns_stable_asset_ids(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     items = manifest_module.collect_items(source_root, profile)
     assert items
@@ -102,6 +149,7 @@ def test_collect_items_builds_feature_surface_state_taxonomy(tmp_path: Path):
     settings_dir = source_root / "iPhone 15 Pro portrait" / "Settings_·_ParamRow"
     settings_dir.mkdir(parents=True)
     (settings_dir / "Subscribed.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     items = manifest_module.collect_items(source_root, profile)
     by_category = {item["category"]: item for item in items}
@@ -157,10 +205,8 @@ def test_collect_items_consumes_catalog_index_ground_truth(tmp_path: Path):
     assert item["backing"] == ""
 
 
-def test_collect_items_survives_malformed_index_entry(tmp_path: Path):
-    """A corrupted entry value (string instead of dict, e.g. hand-edited JSON)
-    must fall back to heuristics for that category — not crash with AttributeError.
-    Honours load_catalog_index's "malformed → fallback" contract per-entry."""
+def test_collect_items_rejects_malformed_index_entry(tmp_path: Path):
+    """A corrupted entry value must fail before pixel/regex fallback can render."""
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     source_root = tmp_path / "snapshots"
     img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
@@ -170,28 +216,26 @@ def test_collect_items_survives_malformed_index_entry(tmp_path: Path):
         json.dumps({"version": 1, "surfaces": {"Settings View": "not-a-dict"}}),
         encoding="utf-8",
     )
-    items = manifest_module.collect_items(source_root, profile)  # must not raise
-    item = next(i for i in items if i["category"] == "Settings View")
-    assert item["assetKind"] == "screen"      # heuristic fallback for the bad entry
-    assert item["sourceDeclared"] is False
-    assert item["screen"] == ""
-    assert item["backing"] == ""
+    try:
+        manifest_module.collect_items(source_root, profile)
+        raise AssertionError("expected malformed catalog_index.json to fail")
+    except ValueError as exc:
+        assert "malformed surface entries" in str(exc)
 
 
-def test_collect_items_falls_back_to_heuristics_without_index(tmp_path: Path):
-    """No ``catalog_index.json`` (legacy / un-blessed artifact) → the pixel/regex
-    heuristics still classify, and the declared ``screen`` is empty."""
+def test_collect_items_requires_catalog_index(tmp_path: Path):
+    """No catalog_index.json means the visual tool is not manifest-backed."""
     profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
     source_root = tmp_path / "snapshots"
     img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     img_dir.mkdir(parents=True)
     _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)  # opaque → full-bleed screen
-    items = manifest_module.collect_items(source_root, profile)
-    item = next(i for i in items if i["category"] == "Settings View")
-    assert item["assetKind"] == "screen"
-    assert item["surfaceRole"] == "feature-surface"
-    assert item["screen"] == ""
-    assert item["backing"] == ""
+    try:
+        manifest_module.collect_items(source_root, profile)
+        raise AssertionError("expected missing catalog_index.json to fail")
+    except ValueError as exc:
+        assert "requires" in str(exc)
+        assert "catalog_index.json" in str(exc)
 
 
 def test_collect_items_preserve_declared_backing_name(tmp_path: Path):
@@ -464,7 +508,7 @@ def test_declared_building_block_lane_ignores_stale_profile_eligibility():
     assert taxonomy.classify_lane("building-block", "engineering", source_declared=True) == "building-block"
     # declared engineering (surfaceRole presenter) is still engineering-only
     assert taxonomy.classify_lane("presenter", "review", source_declared=True) == "engineering-only"
-    # legacy / un-declared artifacts keep the old eligibility-based demotion
+    # sourceDeclared=false remains the pure fallback branch for unit-level taxonomy inputs.
     assert taxonomy.classify_lane("building-block", "engineering", source_declared=False) == "engineering-only"
 
 
@@ -613,6 +657,7 @@ def test_render_catalog_review_writes_manifest_html_and_state(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     state_path = tmp_path / "out" / "review_state.json"
     state_path.parent.mkdir(parents=True)
@@ -803,20 +848,14 @@ def test_render_html_escapes_breakout_sequences():
     assert "\\u0026" in html                               # & escaped
 
 
-def test_gallery_requires_source_declared_when_index_present(tmp_path: Path):
-    """Presence-gated fail-loud: an index present means it's the source of truth
-    and must be complete; a no-index source is explicit legacy mode (no enforce)."""
+def test_gallery_requires_source_declared(tmp_path: Path):
+    """Rendered categories must be declared by catalog_index.json."""
     require = render_entry_module._require_source_declared
     src = tmp_path / "src"
     src.mkdir()
     items = [{"category": "Foo", "sourceDeclared": True},
              {"category": "Bar", "sourceDeclared": False}]
 
-    # no index file → legacy fallback, never raises
-    require(items, src)
-
-    # index present but a rendered category is undeclared → drift → raise, named
-    (src / "catalog_index.json").write_text(json.dumps({"version": 1, "surfaces": {}}), encoding="utf-8")
     try:
         require(items, src)
         raise AssertionError("expected SystemExit for undeclared surface")
@@ -842,6 +881,7 @@ def test_catalog_review_cli_gaps_query(tmp_path: Path):
     badge_dir = source_root / "iPhone 15 Pro portrait" / "iCloud_Progress_Badge"
     badge_dir.mkdir(parents=True)
     (badge_dir / "Idle.png").write_bytes(b"png")  # building-block → untracked, must never show as a gap
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -879,6 +919,7 @@ def test_catalog_review_cli_can_summarize_show_and_mark(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -998,6 +1039,7 @@ def test_catalog_review_cli_can_bulk_apply_with_dry_run_and_commit(tmp_path: Pat
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
     (image_dir / "Signed_in.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1125,6 +1167,7 @@ def test_catalog_review_report_emits_next_actions_for_unmarked_work(tmp_path: Pa
     image_dir = source_root / "iPhone 15 Pro portrait" / "Reader_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Hero.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1174,6 +1217,7 @@ def test_catalog_review_report_hero_command_returns_hero_candidates(tmp_path: Pa
     image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1228,6 +1272,7 @@ def test_catalog_review_report_commands_quote_root_paths(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out with space"
     render = subprocess.run(
@@ -1280,6 +1325,7 @@ def test_catalog_review_verify_reports_ok_and_detects_drift(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1334,6 +1380,7 @@ def test_catalog_review_verify_detects_schema_drift_and_repair_fixes_it(tmp_path
     image_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1428,6 +1475,7 @@ def test_catalog_review_doctor_aggregates_verify_repair_and_report(tmp_path: Pat
     image_dir = source_root / "iPhone 15 Pro portrait" / "Reader_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Hero.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1497,6 +1545,7 @@ def test_catalog_review_doctor_needs_attention_is_non_blocking(tmp_path: Path):
     image_dir = source_root / "iPhone 15 Pro portrait" / "Podcast_Home_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1534,6 +1583,7 @@ def test_catalog_review_doctor_projected_modes_keep_repair_plan_non_blocking(tmp
     image_dir = source_root / "iPhone 15 Pro portrait" / "Reader_View"
     image_dir.mkdir(parents=True)
     (image_dir / "Hero.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     output_root = tmp_path / "out"
     render = subprocess.run(
@@ -1627,6 +1677,7 @@ def test_multi_device_manifest_devices_and_cluster_identity(tmp_path: Path):
         image_dir = source_root / device_dir / "Settings_View"
         image_dir.mkdir(parents=True)
         (image_dir / "Signed_out.png").write_bytes(b"png")
+    _write_catalog_index(source_root)
 
     items = manifest_module.collect_items(source_root, profile)
     assert len(items) == 4
