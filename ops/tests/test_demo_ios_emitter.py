@@ -63,6 +63,23 @@ def test_emit_ios_uses_full_ui_world_manifest_baseline():
     assert document["reviewDeck"]
 
 
+def test_emit_ios_validates_generated_manifest_with_shared_validator(monkeypatch):
+    bundle = sot.load_sot()
+    calls = []
+
+    def fail_validator(path, *, label):
+        calls.append((path, label))
+        raise emit_ios.UIWorldManifestError("shared validator rejected generated demo")
+
+    monkeypatch.setattr(emit_ios, "validate_fixture_dataset_file", fail_validator)
+
+    with pytest.raises(ValueError, match="shared validator rejected generated demo"):
+        emit_ios._artifacts(bundle)
+
+    assert calls
+    assert calls[0][1] == "Generated demo UI World"
+
+
 def test_emit_ios_only_overlays_identity_owned_auth_fields():
     """Generated demo must remain the baseline UI World plus identity overlay."""
     bundle = sot.load_sot()
