@@ -90,7 +90,12 @@ private struct PodcastHomeScene: View {
             )
             for (index, fixtureID) in fixture.runtimePodcastIDs.enumerated() {
                 let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)
-                let episodes = materialize(seed: seed, index: index, into: container.mainContext)
+                let episodes = try materialize(
+                    seed: seed,
+                    fixtureID: fixtureID,
+                    index: index,
+                    into: container.mainContext
+                )
                 if fixture.includesContinueProgress, let episode = episodes.first {
                     insertProgress(episode: episode, played: min(episode.durationSec / 3, 612), into: container.mainContext)
                 }
@@ -105,35 +110,25 @@ private struct PodcastHomeScene: View {
     @discardableResult
     private static func materialize(
         seed: UIWorldRuntimePodcastSeed,
+        fixtureID: UIWorldRuntimePodcastFixtureID,
         index: Int,
         into context: ModelContext
-    ) -> [PodcastEpisode] {
-        let series = PodcastSeries(
-            remoteId: seed.seriesRemoteId,
-            title: seed.seriesTitle,
-            hostNames: seed.hostNames
+    ) throws -> [PodcastEpisode] {
+        let series = try UITestFixtureSeed.makeRuntimePodcastSeries(
+            from: seed,
+            document: FixtureDatasetStore.requireDocument(),
+            owner: "runtimePodcast.\(fixtureID.rawValue)"
         )
-        series.color = seed.color
-        series.coverPattern = seed.coverPattern
-        series.episodeCount = seed.episodes.count
-        series.totalDurationSec = seed.durationSec
         series.sortOrder = seed.sortOrder + index
         series.isFollowed = index == 0
         context.insert(series)
 
         var episodes: [PodcastEpisode] = []
         for episodeSeed in seed.episodes {
-            let episode = PodcastEpisode(
-                remoteId: episodeSeed.remoteId,
-                episodeNumber: episodeSeed.episodeNumber,
-                title: episodeSeed.title,
-                durationSec: episodeSeed.durationSec
+            let episode = try UITestFixtureSeed.makeRuntimePodcastEpisode(
+                from: episodeSeed,
+                series: series
             )
-            episode.audioAvailable = episodeSeed.audioAvailable
-            episode.previewAvailable = episodeSeed.previewAvailable
-            episode.previewDurationSec = episodeSeed.previewDurationSec
-            episode.subtitleAvailable = episodeSeed.subtitleAvailable
-            episode.series = series
             context.insert(episode)
             episodes.append(episode)
         }

@@ -33,21 +33,11 @@ extension UITestFixtureSeed {
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {
-                let download = try materializeDownload(for: episodeSeed)
-                let episode = PodcastEpisode(
-                    remoteId: episodeSeed.remoteId,
-                    episodeNumber: episodeSeed.episodeNumber,
-                    title: episodeSeed.title,
-                    durationSec: episodeSeed.durationSec
+                let episode = try makeRuntimePodcastEpisode(
+                    from: episodeSeed,
+                    series: series,
+                    inlineSubtitle: subtitle
                 )
-                episode.series = series
-                episode.audioAvailable = episodeSeed.audioAvailable
-                episode.previewAvailable = episodeSeed.previewAvailable
-                episode.previewDurationSec = episodeSeed.previewDurationSec
-                episode.localAudioPath = download.audioURL?.path
-                episode.localSubtitlePath = download.subtitleURL?.path
-                episode.subtitleAvailable = episodeSeed.subtitleAvailable
-                episode.inlineSubtitle = subtitle
                 context.insert(episode)
             }
 
@@ -87,6 +77,29 @@ extension UITestFixtureSeed {
         series.totalDurationSec = seed.durationSec
         series.sortOrder = seed.sortOrder
         return series
+    }
+
+    static func makeRuntimePodcastEpisode(
+        from seed: UIWorldRuntimePodcastEpisodeSeed,
+        series: PodcastSeries,
+        inlineSubtitle: String? = nil
+    ) throws -> PodcastEpisode {
+        let download = try materializeDownload(for: seed)
+        let episode = PodcastEpisode(
+            remoteId: seed.remoteId,
+            episodeNumber: seed.episodeNumber,
+            title: seed.title,
+            durationSec: seed.durationSec
+        )
+        episode.series = series
+        episode.audioAvailable = seed.audioAvailable
+        episode.previewAvailable = seed.previewAvailable
+        episode.previewDurationSec = seed.previewDurationSec
+        episode.localAudioPath = download.audioURL?.path
+        episode.localSubtitlePath = download.subtitleURL?.path
+        episode.subtitleAvailable = seed.subtitleAvailable
+        episode.inlineSubtitle = inlineSubtitle
+        return episode
     }
 
     @MainActor

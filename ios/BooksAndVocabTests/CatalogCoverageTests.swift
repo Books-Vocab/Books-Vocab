@@ -241,6 +241,7 @@ import Playbook
             ("series-atomic-habits", "Podcast episode list catalog series id must come from UI World"),
             ("Atomic Habits Unpacked", "Podcast episode list catalog title must come from UI World"),
             ("Catalog Podcast User", "Podcast episode list catalog auth must come from UI World"),
+            ("let series = PodcastSeries(", "Podcast episode list catalog must not inline series rows"),
             ("PodcastEpisode(remoteId:", "Podcast episode list catalog must not inline episode rows"),
             ("try? container.mainContext.save()", "Podcast episode list catalog SwiftData save must fail fast"),
         ]
@@ -250,6 +251,14 @@ import Playbook
         #expect(
             source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture)"),
             "Podcast episode list catalog must source series and episodes from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastSeries("),
+            "Podcast episode list catalog must use the shared runtime podcast series materializer"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastEpisode("),
+            "Podcast episode list catalog must use the shared runtime podcast episode materializer"
         )
         #expect(
             source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
@@ -271,6 +280,7 @@ import Playbook
             ("series-deep-work", "Podcast player catalog series id must come from UI World"),
             ("Deep Work, Decoded", "Podcast player catalog title must come from UI World"),
             ("Catalog Podcast Player User", "Podcast player catalog auth must come from UI World"),
+            ("let series = PodcastSeries(", "Podcast player catalog must not inline series rows"),
             ("PodcastEpisode(remoteId:", "Podcast player catalog must not inline episode rows"),
             ("try? container.mainContext.save()", "Podcast player catalog SwiftData save must fail fast"),
         ]
@@ -280,6 +290,14 @@ import Playbook
         #expect(
             source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture.runtimePodcastID)"),
             "Podcast player catalog must source episode state from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastSeries("),
+            "Podcast player catalog must use the shared runtime podcast series materializer"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastEpisode("),
+            "Podcast player catalog must use the shared runtime podcast episode materializer"
         )
         #expect(
             source.contains("FixtureDatasetStore.requireAuthSeed(for: fixture.authID)"),
@@ -300,6 +318,7 @@ import Playbook
             ("Atomic Habits Unpacked", "Podcast home catalog title must come from UI World"),
             ("Finding Flow", "Podcast home catalog must not keep local series specs"),
             ("private static let palette", "Podcast home catalog color must come from UI World"),
+            ("let series = PodcastSeries(", "Podcast home catalog must not inline series row literals"),
             ("PodcastEpisode(remoteId: \"", "Podcast home catalog must not inline episode row literals"),
             ("try? context.save()", "Podcast home catalog SwiftData save must fail fast"),
             ("try? container.mainContext.save()", "Podcast home catalog SwiftData save must fail fast"),
@@ -310,6 +329,14 @@ import Playbook
         #expect(
             source.contains("FixtureDatasetStore.requireRuntimePodcastSeed(for: fixtureID)"),
             "Podcast home catalog must source series and episodes from UI World runtimePodcast"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastSeries("),
+            "Podcast home catalog must use the shared runtime podcast series materializer"
+        )
+        #expect(
+            source.contains("UITestFixtureSeed.makeRuntimePodcastEpisode("),
+            "Podcast home catalog must use the shared runtime podcast episode materializer"
         )
         #expect(
             source.contains("FixtureDatasetStore.requireAuthSeed(for: .signedIn)"),
