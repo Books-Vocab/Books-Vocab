@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import subprocess
 import sys
@@ -19,31 +18,12 @@ SAFE_WRAPPER = ROOT / "ops" / "devops_kg_safe.sh"
 IOS_OPS = ROOT / "ops" / "ios_ops.sh"
 PROMO_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"
 FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_screenshots.py"
-FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
-FIXTURE_TOP_LEVEL_KEYS = {
-    "schema",
-    "datasetID",
-    "assets",
-    "preferences",
-    "auth",
-    "entitlements",
-    "settings",
-    "bookshelf",
-    "todayReview",
-    "notebook",
-    "podcast",
-    "runtimePodcast",
-    "reader",
-    "vocabulary",
-    "reviewDeck",
-    "syncPresenter",
-}
-ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
-ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 
 # 純宣告轉換（不讀 DB），用來從 seed/steps 自動導出 world expectation。
 sys.path.insert(0, str(ROOT / "backend" / "src"))
+sys.path.insert(0, str(ROOT / "ops"))
 from kg.ops_world_expectation import derive_expectation  # noqa: E402
+from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file as _validate_ui_world  # noqa: E402
 
 
 class CaptureProfileError(RuntimeError):
@@ -118,84 +98,11 @@ def _resolve_path(raw: str) -> Path:
     return path if path.is_absolute() else (ROOT / path)
 
 
-def _sha256_hex(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def validate_fixture_dataset_file(path: Path) -> None:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise CaptureProfileError(f"snapshot.datasetFile 不是可讀 JSON: {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise CaptureProfileError(f"snapshot.datasetFile top-level 必須是 object: {path}")
-    if data.get("schema") != FIXTURE_SCHEMA:
-        raise CaptureProfileError(
-            f"snapshot.datasetFile schema 必須是 {FIXTURE_SCHEMA}: {path}"
-        )
-    keys = set(data)
-    if keys != FIXTURE_TOP_LEVEL_KEYS:
-        extra = sorted(keys - FIXTURE_TOP_LEVEL_KEYS)
-        missing = sorted(FIXTURE_TOP_LEVEL_KEYS - keys)
-        raise CaptureProfileError(
-            f"snapshot.datasetFile top-level keys 不符合 UI World v2: extra={extra} missing={missing}"
-        )
-    dataset_id = data.get("datasetID")
-    if not isinstance(dataset_id, str) or not dataset_id.strip():
-        raise CaptureProfileError(f"snapshot.datasetFile datasetID 必須是非空字串: {path}")
-
-    assets = data.get("assets")
-    if not isinstance(assets, dict):
-        raise CaptureProfileError(f"snapshot.datasetFile assets 必須是 object: {path}")
-    asset_keys = set(assets)
-    if asset_keys != ASSET_BUCKETS:
-        extra = sorted(asset_keys - ASSET_BUCKETS)
-        missing = sorted(ASSET_BUCKETS - asset_keys)
-        raise CaptureProfileError(
-            f"snapshot.datasetFile assets buckets 不符合 UI World v2: extra={extra} missing={missing}"
-        )
-    for bucket in sorted(ASSET_BUCKETS):
-        entries = assets[bucket]
-        if not isinstance(entries, dict):
-            raise CaptureProfileError(f"snapshot.datasetFile assets.{bucket} 必須是 object: {path}")
-        for asset_id, asset in sorted(entries.items()):
-            label = f"assets.{bucket}.{asset_id}"
-            if not isinstance(asset_id, str) or not asset_id:
-                raise CaptureProfileError(f"snapshot.datasetFile {label} key 必須是非空字串")
-            if not isinstance(asset, dict):
-                raise CaptureProfileError(f"snapshot.datasetFile {label} 必須是 object")
-            missing = sorted(ASSET_REQUIRED_KEYS - set(asset))
-            if missing:
-                raise CaptureProfileError(f"snapshot.datasetFile {label} 缺少欄位 {missing}")
-            source_path = _resolve_path(_ensure_str(asset.get("sourcePath"), field=f"{label}.sourcePath"))
-            install_as = _ensure_str(asset.get("installAs"), field=f"{label}.installAs")
-            content_type = _ensure_str(asset.get("contentType"), field=f"{label}.contentType")
-            expected_hash = _ensure_str(asset.get("sha256"), field=f"{label}.sha256")
-            expected_size = asset.get("byteSize")
-            if "/" not in install_as:
-                raise CaptureProfileError(f"snapshot.datasetFile {label}.installAs 必須含安裝目錄")
-            if "/" not in content_type:
-                raise CaptureProfileError(f"snapshot.datasetFile {label}.contentType 必須是 MIME type")
-            if len(expected_hash) != 64 or any(ch not in "0123456789abcdef" for ch in expected_hash):
-                raise CaptureProfileError(f"snapshot.datasetFile {label}.sha256 必須是 64 字元小寫 hex")
-            if not isinstance(expected_size, int) or expected_size < 0:
-                raise CaptureProfileError(f"snapshot.datasetFile {label}.byteSize 必須是非負整數")
-            if not source_path.is_file():
-                raise CaptureProfileError(f"snapshot.datasetFile {label}.sourcePath 不存在: {source_path}")
-            actual_size = source_path.stat().st_size
-            if actual_size != expected_size:
-                raise CaptureProfileError(
-                    f"snapshot.datasetFile {label}.byteSize mismatch: expected {expected_size}, got {actual_size}"
-                )
-            actual_hash = _sha256_hex(source_path)
-            if actual_hash != expected_hash:
-                raise CaptureProfileError(
-                    f"snapshot.datasetFile {label}.sha256 mismatch: expected {expected_hash}, got {actual_hash}"
-                )
+        _validate_ui_world(path, label="snapshot.datasetFile")
+    except UIWorldManifestError as exc:
+        raise CaptureProfileError(str(exc)) from exc
 
 
 def load_profile(path: str | Path) -> CaptureProfile:

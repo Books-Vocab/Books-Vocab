@@ -85,8 +85,15 @@ VERDICT_FILE="${TMP_BASE%/}/kg_review_probe_verdict"
 # 下游永遠不會讀到上一輪殘留。
 rm -f "$VERDICT_FILE"
 [[ -f "$DATASET_FILE" ]] || { echo "error: UI World dataset missing: $DATASET_FILE" >&2; exit 64; }
-DATASET_ID="$(jq -r 'select(type == "object") | select(.schema == "kg.fixture.dataset.v2") | .datasetID // empty' "$DATASET_FILE" 2>/dev/null || true)"
-[[ -n "$DATASET_ID" ]] || { echo "error: UI World dataset must use schema kg.fixture.dataset.v2 and non-empty datasetID: $DATASET_FILE" >&2; exit 64; }
+UV_BIN="${UV_BIN:-}"
+if [[ -z "$UV_BIN" ]]; then
+  if [[ -x "$HOME/.local/bin/uv" ]]; then
+    UV_BIN="$HOME/.local/bin/uv"
+  else
+    UV_BIN="uv"
+  fi
+fi
+DATASET_ID="$("$UV_BIN" run --python 3.13 python "$SCRIPT_DIR/ui_world_manifest.py" validate "$DATASET_FILE" --label "UI World dataset")" || exit 64
 FIXTURE_DATASET_B64="$(base64 <"$DATASET_FILE" | tr -d '\n')"
 
 LAUNCH_ARGS=(
