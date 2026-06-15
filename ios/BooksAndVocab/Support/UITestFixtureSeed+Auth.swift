@@ -61,18 +61,11 @@ extension UITestFixtureSeed {
             let fixture = try resolveAuthPodcastFixture()
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
 
-            let series = PodcastSeries(
-                remoteId: fixture.seed.seriesRemoteId,
-                title: fixture.seed.seriesTitle,
-                hostNames: fixture.seed.hostNames
+            let series = try makeRuntimePodcastSeries(
+                from: fixture.seed,
+                document: FixtureDatasetStore.requireDocument(),
+                owner: "runtimePodcast.tieredCatalog"
             )
-            series.color = fixture.seed.color
-            series.coverPattern = fixture.seed.coverPattern
-            series.episodeCount = fixture.seed.episodes.count
-            series.totalDurationSec = fixture.seed.episodes.reduce(0) { total, episode in
-                total + episode.durationSec
-            }
-            series.sortOrder = fixture.seed.sortOrder
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {

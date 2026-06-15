@@ -32,13 +32,27 @@ struct UITestFixtureSeedIsolationTests {
               "word": "probeword\(index)",
               "translation": "probe",
               "context": "probe context \(index)",
+              "explanation": null,
+              "partOfSpeech": "n.",
               "bookTitle": "Review Probe Fixture",
+              "chapterTitle": "Probe",
+              "kgCardId": "probe-\(index)",
+              "difficultyTier": "core",
               "reviewMode": "recognition",
               "reviewExamples": ["probe context \(index)"],
+              "collocations": null,
+              "rootForm": null,
+              "inflections": null,
               "syncStatus": 1,
               "actionType": "add",
               "isArchived": false,
               "isExcludedFromReader": false,
+              "reviewIntervalHours": 24,
+              "nextReviewAt": "2026-01-01T00:00:00Z",
+              "lastReviewedAt": null,
+              "reviewCount": 0,
+              "reviewStreak": 0,
+              "lastReviewFeedbackRaw": -1,
               "graphLinksByKind": {}
             }
             """
@@ -109,6 +123,24 @@ struct UITestFixtureSeedIsolationTests {
                 )
             }
         }
+    }
+
+    @Test func authTieredCatalogUsesSharedRuntimePodcastMaterializer() throws {
+        let url = Self.supportDirectory.appendingPathComponent("UITestFixtureSeed+Auth.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        #expect(
+            source.contains("makeRuntimePodcastSeries("),
+            "auth.tieredCatalog must materialize PodcastSeries through the shared runtimePodcast builder"
+        )
+        #expect(
+            source.contains("owner: \"runtimePodcast.tieredCatalog\""),
+            "auth.tieredCatalog materialization failures must name the owning UI World seed"
+        )
+        #expect(
+            !source.contains("let series = PodcastSeries("),
+            "auth.tieredCatalog must not inline PodcastSeries rows and bypass preferredNotebook validation"
+        )
     }
 
     @Test func seedRefusesPersistentStore() throws {
@@ -191,7 +223,7 @@ struct UITestFixtureSeedIsolationTests {
         #expect(outcome.failure == nil)
     }
 
-    @Test func seedSeedsEphemeralStore() throws {
+    @Test @MainActor func seedSeedsEphemeralStore() throws {
         let schema = makeSchema()
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: schema, configurations: config)
