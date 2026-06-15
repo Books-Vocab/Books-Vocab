@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
@@ -91,6 +92,34 @@ NOTEBOOK_ENTRY_KEYS = {
 VOCABULARY_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "bookTitle", "entries", "reviewHistory"}
 REVIEW_DECK_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "entries"}
 REVIEW_HISTORY_KEYS = {"word", "feedback", "reviewedAt"}
+SYNC_PRESENTER_SEED_KEYS = {
+    "isLoggedIn",
+    "isConnected",
+    "phase",
+    "failureKind",
+    "pendingCount",
+    "addCount",
+    "deleteCount",
+    "steps",
+    "summaryText",
+    "pendingRows",
+}
+SYNC_PRESENTER_STEP_KEYS = {"id", "label", "status", "current", "total", "detail"}
+SYNC_PRESENTER_PENDING_ROW_KEYS = {
+    "id",
+    "word",
+    "partOfSpeech",
+    "translation",
+    "wordTone",
+    "isStrikethrough",
+    "actionSystemImage",
+    "actionTone",
+    "actionAccessibilityLabel",
+}
+VALID_SYNC_PHASES = {"ready", "running", "completed", "failed"}
+VALID_SYNC_FAILURE_KINDS = {"partial", "full", "cancelled"}
+VALID_SYNC_STEP_STATUSES = {"waiting", "running", "retry", "done", "skipped", "error"}
+VALID_WORD_ROW_TONES = {"primary", "secondary", "tertiary", "quaternary", "destructive", "reviewDue"}
 UI_WORLD_ENTRY_KEYS = {
     "word",
     "translation",
@@ -254,6 +283,19 @@ def _ensure_bool(raw: Any, *, field: str, label: str) -> bool:
     return raw
 
 
+def _ensure_string(raw: Any, *, field: str, label: str) -> str:
+    if not isinstance(raw, str):
+        raise UIWorldManifestError(f"{label} {field} 必須是 string")
+    return raw
+
+
+def _ensure_non_negative_int(raw: Any, *, field: str, label: str) -> int:
+    value = _ensure_int(raw, field=field, label=label)
+    if value < 0:
+        raise UIWorldManifestError(f"{label} {field} must be non-negative")
+    return value
+
+
 def _validate_notebook_sync_status(raw: Any, *, owner: str, label: str) -> None:
     value = _ensure_int(raw, field=owner, label=label)
     if value not in {0, 1}:
@@ -369,6 +411,84 @@ def _validate_notebook_edit_state(seed: Mapping[str, Any], *, owner: str, label:
             _ensure_str(value, field=f"{owner}.{field}", label=label)
     if mode == "create" and (name or seed.get("color") is not None or seed.get("coverPattern") is not None or seed.get("coverImageAssetRef") is not None):
         raise UIWorldManifestError(f"{label} {owner} create mode must have empty name and null appearance")
+
+
+def _validate_uuid(raw: Any, *, owner: str, label: str) -> None:
+    value = _ensure_str(raw, field=owner, label=label).strip()
+    try:
+        UUID(value)
+    except ValueError as exc:
+        raise UIWorldManifestError(f"{label} {owner} must be UUID") from exc
+
+
+def _validate_sync_presenter(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("syncPresenter"), field="syncPresenter", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"syncPresenter.{fixture_id}", label=label)
+        owner = f"syncPresenter.{fixture_id}"
+        _validate_exact_keys(seed_obj, expected=SYNC_PRESENTER_SEED_KEYS, owner=owner, label=label)
+        _ensure_bool(seed_obj.get("isLoggedIn"), field=f"{owner}.isLoggedIn", label=label)
+        _ensure_bool(seed_obj.get("isConnected"), field=f"{owner}.isConnected", label=label)
+        phase = _ensure_str(seed_obj.get("phase"), field=f"{owner}.phase", label=label)
+        if phase not in VALID_SYNC_PHASES:
+            raise UIWorldManifestError(f"{label} {owner}.phase is invalid")
+        failure_kind = seed_obj.get("failureKind")
+        if failure_kind is None:
+            if phase == "failed":
+                raise UIWorldManifestError(f"{label} {owner}.failureKind must be explicit when phase is failed")
+        else:
+            failure_kind = _ensure_str(failure_kind, field=f"{owner}.failureKind", label=label)
+            if failure_kind not in VALID_SYNC_FAILURE_KINDS:
+                raise UIWorldManifestError(f"{label} {owner}.failureKind is invalid")
+            if phase != "failed":
+                raise UIWorldManifestError(f"{label} {owner} non-null failureKind requires failed phase")
+
+        pending_count = _ensure_non_negative_int(seed_obj.get("pendingCount"), field=f"{owner}.pendingCount", label=label)
+        add_count = _ensure_non_negative_int(seed_obj.get("addCount"), field=f"{owner}.addCount", label=label)
+        delete_count = _ensure_non_negative_int(seed_obj.get("deleteCount"), field=f"{owner}.deleteCount", label=label)
+        if pending_count != add_count + delete_count:
+            raise UIWorldManifestError(f"{label} {owner}.pendingCount must equal addCount + deleteCount")
+        _ensure_string(seed_obj.get("summaryText"), field=f"{owner}.summaryText", label=label)
+
+        steps = _require_list(seed_obj.get("steps"), field=f"{owner}.steps", label=label)
+        for index, step in enumerate(steps):
+            step_obj = _require_mapping(step, field=f"{owner}.steps[{index}]", label=label)
+            step_owner = f"{owner}.steps[{index}]"
+            _validate_exact_keys(step_obj, expected=SYNC_PRESENTER_STEP_KEYS, owner=step_owner, label=label)
+            step_id = _ensure_str(step_obj.get("id"), field=f"{step_owner}.id", label=label)
+            _ensure_str(step_obj.get("label"), field=f"{step_owner}.label", label=label)
+            status = _ensure_str(step_obj.get("status"), field=f"{step_owner}.status", label=label)
+            if status not in VALID_SYNC_STEP_STATUSES:
+                raise UIWorldManifestError(f"{label} {step_owner}.{step_id}.status is invalid")
+            current = _ensure_non_negative_int(step_obj.get("current"), field=f"{step_owner}.current", label=label)
+            total = _ensure_non_negative_int(step_obj.get("total"), field=f"{step_owner}.total", label=label)
+            if current > total:
+                raise UIWorldManifestError(f"{label} {step_owner}.current must not exceed total")
+            _ensure_string(step_obj.get("detail"), field=f"{step_owner}.detail", label=label)
+
+        pending_rows = _require_list(seed_obj.get("pendingRows"), field=f"{owner}.pendingRows", label=label)
+        if phase == "ready" and len(pending_rows) != pending_count:
+            raise UIWorldManifestError(f"{label} {owner}.pendingRows count must equal pendingCount in ready phase")
+        for index, row in enumerate(pending_rows):
+            row_obj = _require_mapping(row, field=f"{owner}.pendingRows[{index}]", label=label)
+            row_owner = f"{owner}.pendingRows[{index}]"
+            _validate_exact_keys(row_obj, expected=SYNC_PRESENTER_PENDING_ROW_KEYS, owner=row_owner, label=label)
+            _validate_uuid(row_obj.get("id"), owner=f"{row_owner}.id", label=label)
+            _ensure_str(row_obj.get("word"), field=f"{row_owner}.word", label=label)
+            part_of_speech = row_obj.get("partOfSpeech")
+            if part_of_speech is not None:
+                _ensure_str(part_of_speech, field=f"{row_owner}.partOfSpeech", label=label)
+            _ensure_str(row_obj.get("translation"), field=f"{row_owner}.translation", label=label)
+            for field in ("wordTone", "actionTone"):
+                tone = _ensure_str(row_obj.get(field), field=f"{row_owner}.{field}", label=label)
+                if tone not in VALID_WORD_ROW_TONES:
+                    raise UIWorldManifestError(f"{label} {row_owner}.{field} is invalid")
+            _ensure_bool(row_obj.get("isStrikethrough"), field=f"{row_owner}.isStrikethrough", label=label)
+            _ensure_str(row_obj.get("actionSystemImage"), field=f"{row_owner}.actionSystemImage", label=label)
+            _ensure_str(
+                row_obj.get("actionAccessibilityLabel"),
+                field=f"{row_owner}.actionAccessibilityLabel",
+                label=label,
+            )
 
 
 def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
@@ -974,6 +1094,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 )
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
+    _validate_sync_presenter(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id
 

@@ -325,6 +325,96 @@ def test_validate_rejects_review_deck_invalid_action_type(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_sync_presenter_unknown_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["legacyPhase"] = "idle"
+    path = tmp_path / "sync_presenter_unknown_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready keys .*legacyPhase"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_invalid_phase(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["phase"] = "idle"
+    path = tmp_path / "sync_presenter_invalid_phase.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready.phase is invalid"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_failure_kind_without_failed_phase(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["failureKind"] = "partial"
+    path = tmp_path / "sync_presenter_failure_kind_without_failed_phase.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready non-null failureKind requires failed phase"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_pending_count_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["pendingCount"] = 4
+    path = tmp_path / "sync_presenter_pending_count_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready.pendingCount must equal addCount"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_ready_pending_rows_count_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["pendingRows"].pop()
+    path = tmp_path / "sync_presenter_ready_rows_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready.pendingRows count must equal pendingCount"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_invalid_step_state(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["running"]["steps"][0]["status"] = "queued"
+    path = tmp_path / "sync_presenter_invalid_step_state.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.running.steps\[0\].upload_delete.status is invalid"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_step_progress_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["running"]["steps"][0]["current"] = 2
+    path = tmp_path / "sync_presenter_step_progress_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.running.steps\[0\].current must not exceed total"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_invalid_pending_row_uuid(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["pendingRows"][0]["id"] = "not-a-uuid"
+    path = tmp_path / "sync_presenter_invalid_row_uuid.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready.pendingRows\[0\].id must be UUID"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_sync_presenter_invalid_pending_row_tone(tmp_path: Path):
+    data = _marketing_demo()
+    data["syncPresenter"]["ready"]["pendingRows"][0]["actionTone"] = "warning"
+    path = tmp_path / "sync_presenter_invalid_row_tone.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"syncPresenter.ready.pendingRows\[0\].actionTone is invalid"):
+        validate_fixture_dataset_file(path)
+
+
 def test_cli_prints_dataset_id_for_valid_world():
     result = subprocess.run(
         [
