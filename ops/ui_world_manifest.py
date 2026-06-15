@@ -52,6 +52,73 @@ BOOKSHELF_BOOK_KEYS = {
     "dateAdded",
     "dateLastRead",
 }
+NOTEBOOK_SEED_KEYS = {"notebooks", "editStates"}
+NOTEBOOK_ROW_KEYS = {
+    "remoteId",
+    "name",
+    "color",
+    "coverPattern",
+    "coverImageAssetRef",
+    "cardState",
+    "syncStatus",
+    "isDefault",
+    "sortOrder",
+    "entries",
+}
+NOTEBOOK_CARD_STATE_KEYS = {
+    "cardCount",
+    "dueCount",
+    "unlearnedCount",
+    "reviewedCount",
+    "pendingCount",
+    "lastActivity",
+    "isActive",
+}
+NOTEBOOK_EDIT_STATE_KEYS = {"id", "mode", "name", "color", "coverPattern", "coverImageAssetRef"}
+NOTEBOOK_ENTRY_KEYS = {
+    "word",
+    "translation",
+    "syncStatus",
+    "actionType",
+    "isArchived",
+    "isExcludedFromReader",
+    "context",
+    "explanation",
+    "partOfSpeech",
+    "bookTitle",
+    "chapterTitle",
+}
+VOCABULARY_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "bookTitle", "entries", "reviewHistory"}
+REVIEW_DECK_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "entries"}
+REVIEW_HISTORY_KEYS = {"word", "feedback", "reviewedAt"}
+UI_WORLD_ENTRY_KEYS = {
+    "word",
+    "translation",
+    "context",
+    "explanation",
+    "partOfSpeech",
+    "bookTitle",
+    "chapterTitle",
+    "kgCardId",
+    "difficultyTier",
+    "reviewMode",
+    "reviewExamples",
+    "collocations",
+    "rootForm",
+    "inflections",
+    "syncStatus",
+    "actionType",
+    "isArchived",
+    "isExcludedFromReader",
+    "reviewIntervalHours",
+    "nextReviewAt",
+    "lastReviewedAt",
+    "reviewCount",
+    "reviewStreak",
+    "lastReviewFeedbackRaw",
+    "graphLinksByKind",
+}
+VALID_REVIEW_MODES = {"recognition", "production"}
 AUTH_REQUIRED_KEYS = {
     "isLoggedIn",
     "userId",
@@ -173,6 +240,135 @@ def _validate_optional_iso8601(raw: Any, *, owner: str, label: str) -> datetime 
     if raw is None:
         return None
     return _parse_iso8601(raw, owner=owner, label=label)
+
+
+def _ensure_int(raw: Any, *, field: str, label: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise UIWorldManifestError(f"{label} {field} 必須是 int")
+    return raw
+
+
+def _ensure_bool(raw: Any, *, field: str, label: str) -> bool:
+    if not isinstance(raw, bool):
+        raise UIWorldManifestError(f"{label} {field} 必須是 bool")
+    return raw
+
+
+def _validate_notebook_sync_status(raw: Any, *, owner: str, label: str) -> None:
+    value = _ensure_int(raw, field=owner, label=label)
+    if value not in {0, 1}:
+        raise UIWorldManifestError(f"{label} {owner} must be valid Notebook.syncStatus (0=pending, 1=synced)")
+
+
+def _validate_vocabulary_row_state(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    sync_status = _ensure_int(seed.get("syncStatus"), field=f"{owner}.syncStatus", label=label)
+    if sync_status not in {0, 1, 2}:
+        raise UIWorldManifestError(
+            f"{label} {owner}.syncStatus must be valid VocabularyEntry.syncStatus (0=pending, 1=synced, 2=failed)"
+        )
+    action_type = _ensure_str(seed.get("actionType"), field=f"{owner}.actionType", label=label)
+    if action_type not in {"add", "delete", "edit"}:
+        raise UIWorldManifestError(f"{label} {owner}.actionType must be add/delete/edit")
+    _ensure_bool(seed.get("isArchived"), field=f"{owner}.isArchived", label=label)
+    _ensure_bool(seed.get("isExcludedFromReader"), field=f"{owner}.isExcludedFromReader", label=label)
+
+
+def _validate_unique(values: list[str], *, owner: str, label: str) -> None:
+    if len(set(values)) != len(values):
+        raise UIWorldManifestError(f"{label} {owner} must not contain duplicate values")
+
+
+def _validate_optional_string_list(raw: Any, *, owner: str, label: str) -> None:
+    if raw is None:
+        return
+    values = _require_list(raw, field=owner, label=label)
+    for index, value in enumerate(values):
+        _ensure_str(value, field=f"{owner}[{index}]", label=label)
+
+
+def _validate_ui_world_entry(seed: Mapping[str, Any], *, owner: str, label: str) -> str:
+    _validate_exact_keys(seed, expected=UI_WORLD_ENTRY_KEYS, owner=owner, label=label)
+    word = _ensure_str(seed.get("word"), field=f"{owner}.word", label=label).strip()
+    _ensure_str(seed.get("translation"), field=f"{owner}.translation", label=label)
+    _ensure_str(seed.get("context"), field=f"{owner}.context", label=label)
+    _ensure_str(seed.get("bookTitle"), field=f"{owner}.bookTitle", label=label)
+    for field in ("explanation", "partOfSpeech", "chapterTitle", "kgCardId", "difficultyTier", "rootForm"):
+        value = seed.get(field)
+        if value is not None:
+            _ensure_str(value, field=f"{owner}.{field}", label=label)
+    review_mode = _ensure_str(seed.get("reviewMode"), field=f"{owner}.reviewMode", label=label)
+    if review_mode not in VALID_REVIEW_MODES:
+        raise UIWorldManifestError(f"{label} {owner}.reviewMode 不支援: {review_mode}")
+    review_examples = _require_list(seed.get("reviewExamples"), field=f"{owner}.reviewExamples", label=label)
+    for index, value in enumerate(review_examples):
+        _ensure_str(value, field=f"{owner}.reviewExamples[{index}]", label=label)
+    _validate_optional_string_list(seed.get("collocations"), owner=f"{owner}.collocations", label=label)
+    _validate_optional_string_list(seed.get("inflections"), owner=f"{owner}.inflections", label=label)
+    for field in ("reviewIntervalHours",):
+        value = seed.get(field)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
+            raise UIWorldManifestError(f"{label} {owner}.{field} must be null or a non-negative number")
+    for field in ("nextReviewAt", "lastReviewedAt"):
+        _validate_optional_iso8601(seed.get(field), owner=f"{owner}.{field}", label=label)
+    for field in ("reviewCount", "reviewStreak", "lastReviewFeedbackRaw"):
+        value = seed.get(field)
+        if value is not None:
+            int_value = _ensure_int(value, field=f"{owner}.{field}", label=label)
+            if field != "lastReviewFeedbackRaw" and int_value < 0:
+                raise UIWorldManifestError(f"{label} {owner}.{field} must be non-negative")
+    graph_links = _require_mapping(seed.get("graphLinksByKind"), field=f"{owner}.graphLinksByKind", label=label)
+    for kind, links in graph_links.items():
+        _ensure_str(kind, field=f"{owner}.graphLinksByKind key", label=label)
+        _require_list(links, field=f"{owner}.graphLinksByKind.{kind}", label=label)
+    _validate_vocabulary_row_state(seed, owner=owner, label=label)
+    return word
+
+
+def _validate_notebook_entry(seed: Mapping[str, Any], *, owner: str, label: str) -> str:
+    _validate_exact_keys(seed, expected=NOTEBOOK_ENTRY_KEYS, owner=owner, label=label)
+    word = _ensure_str(seed.get("word"), field=f"{owner}.word", label=label).strip()
+    _ensure_str(seed.get("translation"), field=f"{owner}.translation", label=label)
+    _ensure_str(seed.get("context"), field=f"{owner}.context", label=label)
+    _ensure_str(seed.get("bookTitle"), field=f"{owner}.bookTitle", label=label)
+    for field in ("explanation", "partOfSpeech", "chapterTitle"):
+        value = seed.get(field)
+        if value is not None:
+            _ensure_str(value, field=f"{owner}.{field}", label=label)
+    _validate_vocabulary_row_state(seed, owner=owner, label=label)
+    return word
+
+
+def _validate_notebook_card_state(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=NOTEBOOK_CARD_STATE_KEYS, owner=owner, label=label)
+    counts = {
+        field: _ensure_int(seed.get(field), field=f"{owner}.{field}", label=label)
+        for field in ("cardCount", "dueCount", "unlearnedCount", "reviewedCount", "pendingCount")
+    }
+    for field, value in counts.items():
+        if value < 0:
+            raise UIWorldManifestError(f"{label} {owner}.{field} must be non-negative")
+    if counts["cardCount"] != counts["dueCount"] + counts["unlearnedCount"] + counts["reviewedCount"]:
+        raise UIWorldManifestError(f"{label} {owner}.cardCount must equal dueCount + unlearnedCount + reviewedCount")
+    if _ensure_bool(seed.get("isActive"), field=f"{owner}.isActive", label=label) and counts["cardCount"] <= 0:
+        raise UIWorldManifestError(f"{label} {owner} active card must not be empty")
+    _validate_optional_iso8601(seed.get("lastActivity"), owner=f"{owner}.lastActivity", label=label)
+
+
+def _validate_notebook_edit_state(seed: Mapping[str, Any], *, owner: str, label: str) -> None:
+    _validate_exact_keys(seed, expected=NOTEBOOK_EDIT_STATE_KEYS, owner=owner, label=label)
+    _ensure_str(seed.get("id"), field=f"{owner}.id", label=label)
+    mode = _ensure_str(seed.get("mode"), field=f"{owner}.mode", label=label)
+    if mode not in {"create", "edit"}:
+        raise UIWorldManifestError(f"{label} {owner}.mode must be create or edit")
+    name = seed.get("name")
+    if not isinstance(name, str):
+        raise UIWorldManifestError(f"{label} {owner}.name 必須是 string")
+    for field in ("color", "coverPattern", "coverImageAssetRef"):
+        value = seed.get(field)
+        if value is not None:
+            _ensure_str(value, field=f"{owner}.{field}", label=label)
+    if mode == "create" and (name or seed.get("color") is not None or seed.get("coverPattern") is not None or seed.get("coverImageAssetRef") is not None):
+        raise UIWorldManifestError(f"{label} {owner} create mode must have empty name and null appearance")
 
 
 def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
@@ -490,6 +686,13 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
 
     for fixture_id, seed in _require_mapping(data.get("reader"), field="reader", label=label).items():
         seed_obj = _require_mapping(seed, field=f"reader.{fixture_id}", label=label)
+        _validate_notebook_sync_status(
+            seed_obj.get("notebookSyncStatus"),
+            owner=f"reader.{fixture_id}.notebookSyncStatus",
+            label=label,
+        )
+        entry_obj = _require_mapping(seed_obj.get("entry"), field=f"reader.{fixture_id}.entry", label=label)
+        _validate_ui_world_entry(entry_obj, owner=f"reader.{fixture_id}.entry", label=label)
         _require_ref(
             seed_obj.get("textAssetRef"),
             prefix="text.",
@@ -586,27 +789,116 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         label=label,
     ).items():
         seed_obj = _require_mapping(seed, field=f"notebook.{fixture_id}", label=label)
-        for collection in ("notebooks", "editStates"):
-            for index, item in enumerate(
-                _require_list(
-                    seed_obj.get(collection),
-                    field=f"notebook.{fixture_id}.{collection}",
+        _validate_exact_keys(seed_obj, expected=NOTEBOOK_SEED_KEYS, owner=f"notebook.{fixture_id}", label=label)
+        notebooks = _require_list(seed_obj.get("notebooks"), field=f"notebook.{fixture_id}.notebooks", label=label)
+        notebook_remote_ids: list[str] = []
+        for index, item in enumerate(notebooks):
+            item_obj = _require_mapping(
+                item,
+                field=f"notebook.{fixture_id}.notebooks[{index}]",
+                label=label,
+            )
+            owner = f"notebook.{fixture_id}.notebooks[{index}]"
+            _validate_exact_keys(item_obj, expected=NOTEBOOK_ROW_KEYS, owner=owner, label=label)
+            remote_id = _ensure_str(item_obj.get("remoteId"), field=f"{owner}.remoteId", label=label).strip()
+            notebook_remote_ids.append(remote_id)
+            _ensure_str(item_obj.get("name"), field=f"{owner}.name", label=label)
+            for field in ("color", "coverPattern", "coverImageAssetRef"):
+                value = item_obj.get(field)
+                if value is not None:
+                    _ensure_str(value, field=f"{owner}.{field}", label=label)
+            if item_obj.get("coverImageAssetRef") is not None:
+                _require_ref(
+                    item_obj.get("coverImageAssetRef"),
+                    prefix="images.",
+                    refs=asset_refs,
+                    owner=f"{owner}.coverImageAssetRef",
                     label=label,
                 )
+            card_state = item_obj.get("cardState")
+            if card_state is not None:
+                _validate_notebook_card_state(
+                    _require_mapping(card_state, field=f"{owner}.cardState", label=label),
+                    owner=f"{owner}.cardState",
+                    label=label,
+                )
+            _validate_notebook_sync_status(item_obj.get("syncStatus"), owner=f"{owner}.syncStatus", label=label)
+            _ensure_bool(item_obj.get("isDefault"), field=f"{owner}.isDefault", label=label)
+            _ensure_int(item_obj.get("sortOrder"), field=f"{owner}.sortOrder", label=label)
+            entry_words: list[str] = []
+            for entry_index, entry in enumerate(
+                _require_list(item_obj.get("entries"), field=f"{owner}.entries", label=label)
             ):
-                item_obj = _require_mapping(
-                    item,
-                    field=f"notebook.{fixture_id}.{collection}[{index}]",
+                entry_obj = _require_mapping(entry, field=f"{owner}.entries[{entry_index}]", label=label)
+                entry_words.append(
+                    _validate_notebook_entry(entry_obj, owner=f"{owner}.entries[{entry_index}]", label=label)
+                )
+            _validate_unique(entry_words, owner=f"{owner}.entries.word", label=label)
+        _validate_unique(notebook_remote_ids, owner=f"notebook.{fixture_id}.notebooks.remoteId", label=label)
+
+        for index, item in enumerate(
+            _require_list(seed_obj.get("editStates"), field=f"notebook.{fixture_id}.editStates", label=label)
+        ):
+            item_obj = _require_mapping(
+                item,
+                field=f"notebook.{fixture_id}.editStates[{index}]",
+                label=label,
+            )
+            owner = f"notebook.{fixture_id}.editStates[{index}]"
+            _validate_notebook_edit_state(item_obj, owner=owner, label=label)
+            if item_obj.get("coverImageAssetRef") is not None:
+                _require_ref(
+                    item_obj.get("coverImageAssetRef"),
+                    prefix="images.",
+                    refs=asset_refs,
+                    owner=f"{owner}.coverImageAssetRef",
                     label=label,
                 )
-                if item_obj.get("coverImageAssetRef") is not None:
-                    _require_ref(
-                        item_obj.get("coverImageAssetRef"),
-                        prefix="images.",
-                        refs=asset_refs,
-                        owner=f"notebook.{fixture_id}.{collection}[{index}].coverImageAssetRef",
-                        label=label,
-                    )
+
+    for fixture_id, seed in _require_mapping(data.get("vocabulary"), field="vocabulary", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"vocabulary.{fixture_id}", label=label)
+        _validate_exact_keys(seed_obj, expected=VOCABULARY_SEED_KEYS, owner=f"vocabulary.{fixture_id}", label=label)
+        _ensure_str(seed_obj.get("notebookRemoteId"), field=f"vocabulary.{fixture_id}.notebookRemoteId", label=label)
+        _ensure_str(seed_obj.get("notebookName"), field=f"vocabulary.{fixture_id}.notebookName", label=label)
+        _ensure_str(seed_obj.get("bookTitle"), field=f"vocabulary.{fixture_id}.bookTitle", label=label)
+        _validate_notebook_sync_status(
+            seed_obj.get("notebookSyncStatus"),
+            owner=f"vocabulary.{fixture_id}.notebookSyncStatus",
+            label=label,
+        )
+        entry_words = []
+        for index, entry in enumerate(_require_list(seed_obj.get("entries"), field=f"vocabulary.{fixture_id}.entries", label=label)):
+            entry_obj = _require_mapping(entry, field=f"vocabulary.{fixture_id}.entries[{index}]", label=label)
+            entry_words.append(_validate_ui_world_entry(entry_obj, owner=f"vocabulary.{fixture_id}.entries[{index}]", label=label))
+        _validate_unique(entry_words, owner=f"vocabulary.{fixture_id}.entries.word", label=label)
+        entry_word_set = set(entry_words)
+        for index, record in enumerate(
+            _require_list(seed_obj.get("reviewHistory"), field=f"vocabulary.{fixture_id}.reviewHistory", label=label)
+        ):
+            record_obj = _require_mapping(record, field=f"vocabulary.{fixture_id}.reviewHistory[{index}]", label=label)
+            owner = f"vocabulary.{fixture_id}.reviewHistory[{index}]"
+            _validate_exact_keys(record_obj, expected=REVIEW_HISTORY_KEYS, owner=owner, label=label)
+            word = _ensure_str(record_obj.get("word"), field=f"{owner}.word", label=label)
+            if word not in entry_word_set:
+                raise UIWorldManifestError(f"{label} {owner}.{word} must reference an entry in the same seed")
+            _ensure_int(record_obj.get("feedback"), field=f"{owner}.feedback", label=label)
+            _parse_iso8601(record_obj.get("reviewedAt"), owner=f"{owner}.reviewedAt", label=label)
+
+    for fixture_id, seed in _require_mapping(data.get("reviewDeck"), field="reviewDeck", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"reviewDeck.{fixture_id}", label=label)
+        _validate_exact_keys(seed_obj, expected=REVIEW_DECK_SEED_KEYS, owner=f"reviewDeck.{fixture_id}", label=label)
+        _ensure_str(seed_obj.get("notebookRemoteId"), field=f"reviewDeck.{fixture_id}.notebookRemoteId", label=label)
+        _ensure_str(seed_obj.get("notebookName"), field=f"reviewDeck.{fixture_id}.notebookName", label=label)
+        _validate_notebook_sync_status(
+            seed_obj.get("notebookSyncStatus"),
+            owner=f"reviewDeck.{fixture_id}.notebookSyncStatus",
+            label=label,
+        )
+        entry_words = []
+        for index, entry in enumerate(_require_list(seed_obj.get("entries"), field=f"reviewDeck.{fixture_id}.entries", label=label)):
+            entry_obj = _require_mapping(entry, field=f"reviewDeck.{fixture_id}.entries[{index}]", label=label)
+            entry_words.append(_validate_ui_world_entry(entry_obj, owner=f"reviewDeck.{fixture_id}.entries[{index}]", label=label))
+        _validate_unique(entry_words, owner=f"reviewDeck.{fixture_id}.entries.word", label=label)
 
 
 def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset") -> str:
