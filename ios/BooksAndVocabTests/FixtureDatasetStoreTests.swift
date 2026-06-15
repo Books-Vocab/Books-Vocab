@@ -603,6 +603,151 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func settingsSeedFailsWhenAuthFixtureRefIsMissingFromWorld() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-settings-auth-ref",
+          "auth": {
+            "guest": {
+              "isLoggedIn": false,
+              "userId": null,
+              "token": null,
+              "keychainTokenState": "absent",
+              "displayName": null,
+              "email": null,
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": null,
+              "providerUserId": null
+            }
+          },
+          "settings": {
+            "logged_out": {
+              "authFixtureRef": "auth.missing",
+              "entitlementsFixtureRef": null,
+              "auth": {
+                "isLoggedIn": false,
+                "userInitials": null,
+                "avatarURL": null,
+                "displayName": "未登入",
+                "email": null,
+                "authError": null,
+                "isAuthenticating": false,
+                "iconBreathing": false,
+                "manualLoginHint": null
+              },
+              "preferences": {
+                "selectedLanguage": "繁體中文",
+                "selectedAppearance": "跟隨系統",
+                "translationSource": "English",
+                "translationTarget": "繁體中文",
+                "selectedReviewMode": "寬鬆",
+                "autoSyncEnabled": false,
+                "showAutoSync": false
+              },
+              "kg": null,
+              "subscription": null,
+              "syncSummary": null,
+              "reviewSettings": null,
+              "bookSync": null,
+              "about": {
+                "version": "1.0 (1)",
+                "developerName": "MPSO"
+              },
+              "danger": null,
+              "manualLoginUserId": null,
+              "debugLocalServerURL": null
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func settingsSeedFailsWhenSubscriptionStateHasNoEntitlementsRef() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "settings-subscription-without-entitlements-ref",
+          "auth": {
+            "guest": {
+              "isLoggedIn": false,
+              "userId": null,
+              "token": null,
+              "keychainTokenState": "absent",
+              "displayName": null,
+              "email": null,
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": null,
+              "providerUserId": null
+            }
+          },
+          "settings": {
+            "logged_out": {
+              "authFixtureRef": "auth.guest",
+              "entitlementsFixtureRef": null,
+              "auth": {
+                "isLoggedIn": false,
+                "userInitials": null,
+                "avatarURL": null,
+                "displayName": "未登入",
+                "email": null,
+                "authError": null,
+                "isAuthenticating": false,
+                "iconBreathing": false,
+                "manualLoginHint": null
+              },
+              "preferences": {
+                "selectedLanguage": "繁體中文",
+                "selectedAppearance": "跟隨系統",
+                "translationSource": "English",
+                "translationTarget": "繁體中文",
+                "selectedReviewMode": "寬鬆",
+                "autoSyncEnabled": false,
+                "showAutoSync": false
+              },
+              "kg": null,
+              "subscription": {
+                "isActive": true,
+                "planName": "Pro",
+                "badgeText": "啟用中",
+                "badgeTone": "success",
+                "summary": "年度方案",
+                "detail": "已解鎖全部功能",
+                "sourceLabel": "App Store",
+                "managementNote": "由 App Store 管理",
+                "pricingUnavailableMessage": null,
+                "restoreLabel": "恢復購買",
+                "restoreDescription": "如果曾購買過訂閱",
+                "isRestoreAvailable": true,
+                "ctaTitle": "管理訂閱",
+                "isRefreshing": false
+              },
+              "syncSummary": null,
+              "reviewSettings": null,
+              "bookSync": null,
+              "about": {
+                "version": "1.0 (1)",
+                "developerName": "MPSO"
+              },
+              "danger": null,
+              "manualLoginUserId": null,
+              "debugLocalServerURL": null
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func bookshelfBookFailsWhenNullableStateKeysAreMissing() throws {
         let dataset = """
         {
@@ -725,6 +870,33 @@ struct FixtureDatasetStoreTests {
               "keychainTokenState": "absent",
               "authError": null,
               "isAuthenticating": false
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func authSeedFailsWhenReadableTokenIsMissingForAvailableKeychain() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "invalid-auth-keychain-token",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "world-user",
+              "token": null,
+              "keychainTokenState": "available",
+              "displayName": "World User",
+              "email": "world@example.com",
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": "apple",
+              "providerUserId": "apple:world-user"
             }
           }
         }
@@ -1279,6 +1451,37 @@ struct FixtureDatasetStoreTests {
             "subtitles": {},
             "text": {},
             "images": {}
+          },
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "marketing-user",
+              "token": "marketing-token",
+              "keychainTokenState": "available",
+              "displayName": "Max Chen",
+              "email": "max@example.com",
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": "apple",
+              "providerUserId": "apple:marketing-user"
+            }
+          },
+          "entitlements": {
+            "pro": {
+              "pro": {
+                "is_active": true,
+                "product_id": "com.wordnexus.pro.monthly",
+                "plan_name": "Books & Vocab Pro",
+                "price_display": "NT$90 / month",
+                "status": "active",
+                "is_trial": false,
+                "trial_days": 7,
+                "will_renew": true,
+                "expires_at": "2099-12-31T23:59:59Z",
+                "source": "app_store",
+                "last_synced_at": "2026-06-10T00:00:00Z"
+              }
+            }
           },
           "settings": {
             "subscribed_active": {
