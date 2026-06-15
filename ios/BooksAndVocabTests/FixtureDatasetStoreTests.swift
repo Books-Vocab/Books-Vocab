@@ -527,6 +527,66 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func vocabularyEntryFailsWhenRowStateValuesAreInvalid() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "invalid-state")
+            .replacingOccurrences(of: "\"syncStatus\": 1", with: "\"syncStatus\": 9")
+            .replacingOccurrences(of: "\"actionType\": \"add\"", with: "\"actionType\": \"merge\"")
+        let dataset = Self.vocabularyDataset(
+            datasetID: "invalid-vocabulary-row-state",
+            entriesJSON: entry,
+            reviewHistoryJSON: "[]"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func vocabularySeedFailsWhenReviewHistoryReferencesMissingEntry() throws {
+        let dataset = Self.vocabularyDataset(
+            datasetID: "review-history-missing-entry",
+            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
+            reviewHistoryJSON: """
+            [
+              {
+                "word": "orphaned",
+                "feedback": 1,
+                "reviewedAt": "2026-01-02T00:00:00Z"
+              }
+            ]
+            """
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func vocabularySeedFailsWhenEntryWordsAreDuplicated() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
+        let dataset = Self.vocabularyDataset(
+            datasetID: "duplicate-vocabulary-entry-word",
+            entriesJSON: "\(entry),\(entry)",
+            reviewHistoryJSON: "[]"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func reviewDeckSeedFailsWhenEntryWordsAreDuplicated() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
+        let dataset = Self.reviewDeckDataset(
+            datasetID: "duplicate-review-deck-entry-word",
+            entriesJSON: "\(entry),\(entry)"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func catalogPodcastFailsWhenEpisodeDurationIsMissing() throws {
         let dataset = """
         {
@@ -1372,66 +1432,6 @@ struct FixtureDatasetStoreTests {
         }
     }
 
-    @Test @MainActor func vocabularyMaterializationFailsWhenReviewHistoryReferencesMissingEntry() throws {
-        let dataset = Self.vocabularyDataset(
-            datasetID: "review-history-missing-entry",
-            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
-            reviewHistoryJSON: """
-            [
-              {
-                "word": "orphaned",
-                "feedback": 1,
-                "reviewedAt": "2026-01-02T00:00:00Z"
-              }
-            ]
-            """
-        )
-
-        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-            let seed = try #require(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook))
-            let container = try Self.makeVocabularyContainer()
-
-            #expect(throws: UITestFixtureSeedMaterializationError.reviewHistoryEntryMissingVocabularyEntry("orphaned")) {
-                _ = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
-            }
-        }
-    }
-
-    @Test @MainActor func vocabularyMaterializationFailsWhenEntryWordsAreDuplicated() throws {
-        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
-        let dataset = Self.vocabularyDataset(
-            datasetID: "duplicate-vocabulary-entry-word",
-            entriesJSON: "\(entry),\(entry)",
-            reviewHistoryJSON: "[]"
-        )
-
-        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-            let seed = try #require(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook))
-            let container = try Self.makeVocabularyContainer()
-
-            #expect(throws: UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord("duplicated")) {
-                _ = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
-            }
-        }
-    }
-
-    @Test @MainActor func reviewDeckMaterializationFailsWhenEntryWordsAreDuplicated() throws {
-        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
-        let dataset = Self.reviewDeckDataset(
-            datasetID: "duplicate-review-deck-entry-word",
-            entriesJSON: "\(entry),\(entry)"
-        )
-
-        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
-            let seed = try #require(FixtureDatasetStore.reviewDeckSeed(for: .phaseSingle))
-            let container = try Self.makeVocabularyContainer()
-
-            #expect(throws: UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord("duplicated")) {
-                _ = try UITestFixtureSeed.insertReviewDeckSeed(seed, into: container.mainContext)
-            }
-        }
-    }
-
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {
@@ -1729,12 +1729,6 @@ struct FixtureDatasetStoreTests {
             #expect(podcastModel.items[0].progress?.lastPlayedTime == 300)
             #expect(podcastModel.items[1].progress == nil)
         }
-    }
-
-    private static func makeVocabularyContainer() throws -> ModelContainer {
-        let schema = Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self])
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        return try ModelContainer(for: schema, configurations: [config])
     }
 
     private static func vocabularyDataset(

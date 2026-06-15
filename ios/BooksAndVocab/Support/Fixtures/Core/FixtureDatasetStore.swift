@@ -146,6 +146,13 @@ struct FixtureDatasetDocument: Decodable {
 
         try Self.validateAuthSeeds(auth, codingPath: container.codingPath)
         try Self.validateSettingsStateReferences(settings, auth: auth, entitlements: entitlements, codingPath: container.codingPath)
+        try Self.validateSwiftDataRowState(
+            reader: reader,
+            notebook: notebook,
+            vocabulary: vocabulary,
+            reviewDeck: reviewDeck,
+            codingPath: container.codingPath
+        )
         try Self.validateRuntimePodcastAssetReferences(runtimePodcast, assets: assets, codingPath: container.codingPath)
         try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
         try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
@@ -244,6 +251,136 @@ struct FixtureDatasetDocument: Decodable {
                     throw dataCorrupted("\(owner) without entitlementsFixtureRef must not declare subscription UI state", codingPath: codingPath)
                 }
             }
+        }
+    }
+
+    private static func validateSwiftDataRowState(
+        reader: [String: UIWorldReaderSeed],
+        notebook: [String: NotebookFixtureSeed],
+        vocabulary: [String: UIWorldVocabularySeed],
+        reviewDeck: [String: UIWorldReviewDeckSeed],
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in reader {
+            try validateNotebookSyncStatus(
+                seed.notebookSyncStatus,
+                owner: "reader.\(fixtureID).notebookSyncStatus",
+                codingPath: codingPath
+            )
+            try validateVocabularyEntryRowState(
+                syncStatus: seed.entry.syncStatus,
+                actionType: seed.entry.actionType,
+                owner: "reader.\(fixtureID).entry.\(seed.entry.word)",
+                codingPath: codingPath
+            )
+        }
+
+        for (fixtureID, seed) in notebook {
+            let notebookIDs = seed.notebooks.map(\.remoteId)
+            try validateUniqueValues(
+                notebookIDs,
+                owner: "notebook.\(fixtureID).notebooks.remoteId",
+                codingPath: codingPath
+            )
+            for notebook in seed.notebooks {
+                try validateNotebookSyncStatus(
+                    notebook.syncStatus,
+                    owner: "notebook.\(fixtureID).\(notebook.remoteId).syncStatus",
+                    codingPath: codingPath
+                )
+                for entry in notebook.entries {
+                    try validateVocabularyEntryRowState(
+                        syncStatus: entry.syncStatus,
+                        actionType: entry.actionType,
+                        owner: "notebook.\(fixtureID).\(notebook.remoteId).entry.\(entry.word)",
+                        codingPath: codingPath
+                    )
+                }
+            }
+        }
+
+        for (fixtureID, seed) in vocabulary {
+            try validateNotebookSyncStatus(
+                seed.notebookSyncStatus,
+                owner: "vocabulary.\(fixtureID).notebookSyncStatus",
+                codingPath: codingPath
+            )
+            let words = seed.entries.map(\.word)
+            try validateUniqueValues(
+                words,
+                owner: "vocabulary.\(fixtureID).entries.word",
+                codingPath: codingPath
+            )
+            let entryWords = Set(words)
+            for entry in seed.entries {
+                try validateVocabularyEntryRowState(
+                    syncStatus: entry.syncStatus,
+                    actionType: entry.actionType,
+                    owner: "vocabulary.\(fixtureID).entry.\(entry.word)",
+                    codingPath: codingPath
+                )
+            }
+            for record in seed.reviewHistory where !entryWords.contains(record.word) {
+                throw dataCorrupted(
+                    "vocabulary.\(fixtureID).reviewHistory.\(record.word) must reference an entry in the same seed",
+                    codingPath: codingPath
+                )
+            }
+        }
+
+        for (fixtureID, seed) in reviewDeck {
+            try validateNotebookSyncStatus(
+                seed.notebookSyncStatus,
+                owner: "reviewDeck.\(fixtureID).notebookSyncStatus",
+                codingPath: codingPath
+            )
+            try validateUniqueValues(
+                seed.entries.map(\.word),
+                owner: "reviewDeck.\(fixtureID).entries.word",
+                codingPath: codingPath
+            )
+            for entry in seed.entries {
+                try validateVocabularyEntryRowState(
+                    syncStatus: entry.syncStatus,
+                    actionType: entry.actionType,
+                    owner: "reviewDeck.\(fixtureID).entry.\(entry.word)",
+                    codingPath: codingPath
+                )
+            }
+        }
+    }
+
+    private static func validateNotebookSyncStatus(
+        _ syncStatus: Int,
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        guard [0, 1].contains(syncStatus) else {
+            throw dataCorrupted("\(owner) must be valid Notebook.syncStatus (0=pending, 1=synced), got \(syncStatus)", codingPath: codingPath)
+        }
+    }
+
+    private static func validateVocabularyEntryRowState(
+        syncStatus: Int,
+        actionType: String,
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        guard [0, 1, 2].contains(syncStatus) else {
+            throw dataCorrupted("\(owner).syncStatus must be valid VocabularyEntry.syncStatus (0=pending, 1=synced, 2=failed), got \(syncStatus)", codingPath: codingPath)
+        }
+        guard ["add", "delete", "edit"].contains(actionType) else {
+            throw dataCorrupted("\(owner).actionType must be add/delete/edit, got \(actionType)", codingPath: codingPath)
+        }
+    }
+
+    private static func validateUniqueValues(
+        _ values: [String],
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        guard Set(values).count == values.count else {
+            throw dataCorrupted("\(owner) must not contain duplicate values", codingPath: codingPath)
         }
     }
 
