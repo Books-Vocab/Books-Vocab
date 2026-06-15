@@ -145,23 +145,27 @@ def load_catalog_index(source_root: Path) -> dict[str, dict]:
     Returns ``{category: {kind, feature, screen, backing}}`` keyed by the raw
     category string (which matches ``normalize_label(category_dir)``); ``backing``
     is the source-declared production view type (absent for inline-composed
-    surfaces). The full entry dict is preserved; unknown keys ride along inert.
-    An empty dict when
-    the file is absent or malformed — the gallery then falls back to the
-    pixel/regex heuristics, so legacy/un-blessed artifacts still render."""
+    surfaces). The full entry dict is preserved; unknown keys ride along inert."""
     index_path = source_root / "catalog_index.json"
     if not index_path.is_file():
-        return {}
+        raise ValueError(
+            f"catalog gallery requires {index_path}; visual review artifacts "
+            "must come from a Catalog snapshot UI World manifest"
+        )
     try:
         data = json.loads(index_path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"catalog gallery catalog_index.json is unreadable: {index_path}: {exc}") from exc
     surfaces = data.get("surfaces", {}) if isinstance(data, dict) else {}
     if not isinstance(surfaces, dict):
-        return {}
-    # Drop corrupted per-entry values (string/list instead of object) so a bad
-    # entry falls back to heuristics for that one category rather than crashing.
-    return {category: entry for category, entry in surfaces.items() if isinstance(entry, dict)}
+        raise ValueError(f"catalog gallery catalog_index.json surfaces must be an object: {index_path}")
+    malformed = sorted(category for category, entry in surfaces.items() if not isinstance(entry, dict))
+    if malformed:
+        listed = ", ".join(malformed)
+        raise ValueError(
+            f"catalog gallery catalog_index.json has malformed surface entries: {listed}"
+        )
+    return dict(surfaces)
 
 
 def load_ui_graph(source_root: Path) -> dict:

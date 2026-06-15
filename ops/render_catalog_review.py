@@ -22,21 +22,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def _require_source_declared(items: list[dict], source_root: Path) -> None:
-    """Fail loud when a *blessed* source set has a surface missing from taxonomy.
+    """Fail loud when a source set has a surface missing from taxonomy.
 
     The gallery's premise is that every lane is *declared* by the iOS
     `CatalogScene` manifest (emitted as `catalog_index.json`), never guessed from
-    pixels/regex. The enforcement is presence-gated:
-
-    - No `catalog_index.json` → a legacy / un-blessed artifact rendered in
-      explicit heuristic-fallback mode; nothing to enforce.
-    - Index present → it is the source of truth and must be COMPLETE. A rendered
-      category absent from it is drift (a surface added without declaring it):
-      refuse to render and name the offenders, so the fix is to declare the
-      surface in source, not to let a pixel/regex guess leak into the gallery.
+    pixels/regex. `collect_items` already requires the index to exist and parse;
+    this guard proves it is complete for the rendered categories.
     """
-    if not (source_root / "catalog_index.json").is_file():
-        return
     undeclared = sorted({item["category"] for item in items if not item.get("sourceDeclared")})
     if undeclared:
         listed = "\n  - ".join(undeclared)
