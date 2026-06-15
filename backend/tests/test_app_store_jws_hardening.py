@@ -192,8 +192,9 @@ def test_alg_hs256_confusion_rejected(root_ca):
 
 def test_expired_jws_rejected(root_ca):
     chain = root_ca(leaf_has_apple_oid=True)
+    # Past the 60s clock-skew leeway so this is unambiguously expired, not drift.
     token = _sign(
-        _valid_payload(exp=int(datetime.now(tz=UTC).timestamp()) - 10),
+        _valid_payload(exp=int(datetime.now(tz=UTC).timestamp()) - 300),
         chain=chain,
     )
     with pytest.raises(AppStoreVerificationError):
@@ -244,5 +245,110 @@ def test_broken_chain_rejected(root_ca):
         "leaf_cert": leaf_cert,
     }
     token = _sign(_valid_payload(), chain=chain)
+    with pytest.raises(AppStoreVerificationError):
+        verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
+
+
+def test_forged_inner_link_with_real_root_tail_rejected(root_ca):
+    """Attacker keeps the REAL trusted root at the chain tail but forges the
+    inner link: the intermediate is signed by an attacker key, not the root.
+
+    The inner-link signature check (intermediate-signed-by-root) raises
+    cryptography's ``InvalidSignature``. That is NOT a subclass of
+    ``AppStoreVerificationError`` / ``ValueError``, so if the check ran outside a
+    try/except it would escape the domain-error boundary and surface as HTTP 500
+    instead of 400. This asserts the chain verifier collapses it to the domain
+    error so the billing handler can map it to 400.
+    """
+    chain = root_ca(leaf_has_apple_oid=True)
+
+    # Re-mint the intermediate cert with the SAME subject/public key but signed
+    # by an attacker key. The root_cert in the chain is the genuine trusted root,
+    # so the chain still *terminates* at a trusted root — only the inner link
+    # (inter signed-by root) is forged.
+    attacker_key = ec.generate_private_key(ec.SECP256R1())
+    inter_cert = chain["inter_cert"]
+    now = datetime.now(tz=UTC)
+    forged_inter = (
+        x509.CertificateBuilder()
+        .subject_name(inter_cert.subject)
+        .issuer_name(chain["root_cert"].subject)
+        .public_key(inter_cert.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(private_key=attacker_key, algorithm=hashes.SHA256())
+    )
+    chain["inter_cert"] = forged_inter
+
+    token = _sign(_valid_payload(), chain=chain)
+    with pytest.raises(AppStoreVerificationError):
+        verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
+
+
+def test_forged_leaf_signature_with_real_root_tail_rejected(root_ca):
+    """Attacker signs the leaf with their own key (not the genuine intermediate's
+    key) while keeping the real intermediate + real trusted root in the chain.
+
+    Same boundary as above: the leaf->intermediate signature check raises
+    ``InvalidSignature``, which must be collapsed to ``AppStoreVerificationError``
+    rather than escaping as a raw cryptography exception (HTTP 500).
+    """
+    chain = root_ca(leaf_has_apple_oid=True)
+
+    attacker_key = ec.generate_private_key(ec.SECP256R1())
+    leaf_cert = chain["leaf_cert"]
+    now = datetime.now(tz=UTC)
+    forged_leaf = (
+        x509.CertificateBuilder()
+        .subject_name(leaf_cert.subject)
+        # Keep the issuer name pointing at the real intermediate so the chain
+        # structure is intact; only the signing key is wrong.
+        .issuer_name(chain["inter_cert"].subject)
+        .public_key(chain["leaf_key"].public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(
+            x509.UnrecognizedExtension(ObjectIdentifier(APPLE_APP_STORE_OID), b"\x05\x00"),
+            critical=False,
+        )
+        .sign(private_key=attacker_key, algorithm=hashes.SHA256())
+    )
+    chain["leaf_cert"] = forged_leaf
+
+    token = _sign(_valid_payload(), chain=chain)
+    with pytest.raises(AppStoreVerificationError):
+        verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
+
+
+# ---------------------------------------------------------------------------
+# Robustness: a small clock-skew leeway is allowed on exp so a legitimate proof
+# that just barely crossed expiry due to clock drift is not killed, while a
+# proof past the leeway window is still rejected.
+# ---------------------------------------------------------------------------
+
+
+def test_exp_within_leeway_still_verifies(root_ca):
+    """A proof expired by less than the leeway window still verifies (clock-skew
+    tolerance). Its signature is genuine — only the wall clock disagrees."""
+    chain = root_ca(leaf_has_apple_oid=True)
+    token = _sign(
+        _valid_payload(exp=int(datetime.now(tz=UTC).timestamp()) - 30),
+        chain=chain,
+    )
+    verified = verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
+    assert verified.payload["bundleId"] == BUNDLE_ID
+
+
+def test_exp_beyond_leeway_rejected(root_ca):
+    """A proof expired well beyond the leeway window is still rejected."""
+    chain = root_ca(leaf_has_apple_oid=True)
+    token = _sign(
+        _valid_payload(exp=int(datetime.now(tz=UTC).timestamp()) - 600),
+        chain=chain,
+    )
     with pytest.raises(AppStoreVerificationError):
         verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
