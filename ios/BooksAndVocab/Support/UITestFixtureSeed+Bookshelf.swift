@@ -10,7 +10,12 @@ extension UITestFixtureSeed {
         let seed = FixtureDatasetStore.requireBookshelfSeed(for: fixtureID)
         let context = container.mainContext
         do {
+            let document = FixtureDatasetStore.requireDocument()
             for source in seed.books {
+                try source.validatePreferredNotebook(
+                    in: document,
+                    owner: "bookshelf.\(id).\(source.title)"
+                )
                 let fileName = try materializeBookFile(for: source)
                 let book = Book(
                     title: source.title,
@@ -19,6 +24,7 @@ extension UITestFixtureSeed {
                     format: source.format
                 )
                 book.progression = source.progression
+                book.preferredNotebookId = source.preferredNotebookId
                 book.dateAdded = source.dateAdded
                 book.dateLastRead = source.dateLastRead
                 context.insert(book)
