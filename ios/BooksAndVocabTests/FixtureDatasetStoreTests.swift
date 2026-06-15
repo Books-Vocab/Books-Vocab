@@ -195,6 +195,31 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func runtimePodcastFailsWhenNullableSeriesStateKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-nullable-series-state",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": []
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func runtimePodcastFailsWhenEpisodePlaybackMetadataKeysAreMissing() throws {
         let dataset = """
         {
@@ -220,6 +245,85 @@ struct FixtureDatasetStoreTests {
                   "previewAvailable": true,
                   "subtitleAvailable": true,
                   "download": null
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenEpisodeDownloadStateKeyIsMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-episode-download-state",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenDownloadNullableStateKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-download-nullable-state",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true,
+                  "download": {
+                    "audioAssetRef": "audio.runtime-audio"
+                  }
                 }
               ]
             }
