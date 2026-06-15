@@ -51,6 +51,8 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -59,6 +61,11 @@ if TYPE_CHECKING:
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent  # ops/demo -> ops -> repo root
+_OPS_DIR = _REPO_ROOT / "ops"
+if str(_OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(_OPS_DIR))
+
+from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file  # noqa: E402
 
 GENERATED_DIR = _HERE / "generated"
 FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
@@ -199,9 +206,21 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
+def _validate_fixture_json_bytes(content: bytes) -> None:
+    with tempfile.TemporaryDirectory(prefix="kg-demo-ui-world-") as tmp:
+        path = Path(tmp) / "ios_fixture_dataset.json"
+        path.write_bytes(content)
+        try:
+            validate_fixture_dataset_file(path, label="Generated demo UI World")
+        except UIWorldManifestError as exc:
+            raise ValueError(str(exc)) from exc
+
+
 def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     document = _build_fixture_document(sot)
-    return [(FIXTURE_JSON_PATH, _json_bytes(document))]
+    content = _json_bytes(document)
+    _validate_fixture_json_bytes(content)
+    return [(FIXTURE_JSON_PATH, content)]
 
 
 def _rel(path: Path) -> str:
