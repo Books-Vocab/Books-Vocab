@@ -735,6 +735,37 @@ struct UIWorldAsset: Codable, Equatable {
         byteSize = try container.decode(Int.self, forKey: .byteSize)
         installAs = try container.decodeIfPresent(String.self, forKey: .installAs)
         contentType = try container.decode(String.self, forKey: .contentType)
+        try Self.validateInstallAs(installAs, codingPath: container.codingPath)
+    }
+
+    private static func validateInstallAs(_ installAs: String?, codingPath: [CodingKey]) throws {
+        guard let installAs else { return }
+        let trimmed = installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset installAs must be null or a non-empty relative path"
+                )
+            )
+        }
+        guard !trimmed.hasPrefix("/") else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset installAs must be relative: \(trimmed)"
+                )
+            )
+        }
+        let components = trimmed.split(separator: "/").map(String.init)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset installAs contains an unsafe path component: \(trimmed)"
+                )
+            )
+        }
     }
 }
 

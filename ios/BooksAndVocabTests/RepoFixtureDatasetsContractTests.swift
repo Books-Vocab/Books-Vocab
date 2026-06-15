@@ -541,6 +541,7 @@ struct RepoFixtureDatasetsContractTests {
             let asset = try #require(document.assets.asset(for: ref), "\(dataset): asset \(ref) must resolve")
             let url = URL(fileURLWithPath: asset.sourcePath)
             #expect(asset.byteSize > 0, "\(dataset): asset \(ref) byteSize must be positive")
+            expectAssetInstallPath(asset, ref: ref, dataset: dataset)
             expectAssetContentType(asset, ref: ref, dataset: dataset)
             #expect(FileManager.default.fileExists(atPath: url.path), "\(dataset): asset \(ref) missing at \(url.path)")
             #expect(
@@ -552,6 +553,18 @@ struct RepoFixtureDatasetsContractTests {
                 "\(dataset): asset \(ref) sha256 drift"
             )
         }
+    }
+
+    private func expectAssetInstallPath(_ asset: UIWorldAsset, ref: String, dataset: String) {
+        guard let installAs = asset.installAs else { return }
+        let trimmed = installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!trimmed.isEmpty, "\(dataset): asset \(ref) installAs must be non-empty when declared")
+        #expect(!trimmed.hasPrefix("/"), "\(dataset): asset \(ref) installAs must be relative")
+        let components = trimmed.split(separator: "/").map(String.init)
+        #expect(
+            components.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." },
+            "\(dataset): asset \(ref) installAs contains unsafe path components"
+        )
     }
 
     private func expectAssetContentType(_ asset: UIWorldAsset, ref: String, dataset: String) {
