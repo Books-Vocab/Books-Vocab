@@ -1259,6 +1259,66 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func entitlementsSeedFailsWhenNullableProKeysAreMissing() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-nullable-entitlement-keys",
+          "entitlements": {
+            "pro": {
+              "pro": {
+                "is_active": true,
+                "product_id": "com.wordnexus.pro.monthly",
+                "plan_name": "Books & Vocab Pro",
+                "price_display": "NT$90 / month",
+                "status": "active",
+                "is_trial": false,
+                "trial_days": 7,
+                "will_renew": true,
+                "expires_at": null,
+                "source": "app_store"
+              }
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func entitlementsSeedFailsWhenProStatusContainsUnknownKey() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-entitlement-pro-key",
+          "entitlements": {
+            "pro": {
+              "pro": {
+                "is_active": true,
+                "product_id": "com.wordnexus.pro.monthly",
+                "plan_name": "Books & Vocab Pro",
+                "price_display": "NT$90 / month",
+                "status": "active",
+                "is_trial": false,
+                "trial_days": 7,
+                "will_renew": true,
+                "expires_at": null,
+                "source": "app_store",
+                "last_synced_at": "2026-06-10T00:00:00Z",
+                "is_admin_granted": false
+              }
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func externalDatasetCanDeclareLockedKeychainSession() throws {
         let dataset = """
         {
