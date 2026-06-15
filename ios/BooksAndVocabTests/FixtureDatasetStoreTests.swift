@@ -430,6 +430,35 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func runtimePodcastFailsWhenSeriesUnknownKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-runtime-podcast-series-key",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [],
+              "cached": true
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func runtimePodcastFailsWhenEpisodePlaybackMetadataKeysAreMissing() throws {
         let dataset = """
         {
@@ -456,6 +485,47 @@ struct FixtureDatasetStoreTests {
                   "previewAvailable": true,
                   "subtitleAvailable": true,
                   "download": null
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenEpisodeUnknownKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-runtime-podcast-episode-key",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true,
+                  "download": null,
+                  "downloaded": true
                 }
               ]
             }
@@ -495,6 +565,50 @@ struct FixtureDatasetStoreTests {
                   "previewAvailable": true,
                   "previewDurationSec": 60,
                   "subtitleAvailable": true
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenDownloadUnknownKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-runtime-podcast-download-key",
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true,
+                  "download": {
+                    "audioAssetRef": "audio.runtime-audio",
+                    "subtitleAssetRef": null,
+                    "localAudioPath": "Podcast/audio.m4a"
+                  }
                 }
               ]
             }

@@ -358,33 +358,74 @@ struct RepoFixtureDatasetsContractTests {
 
     private func expectRuntimePodcastDownloadKeys(_ topLevel: [String: Any], dataset: String) {
         let runtimePodcast = topLevel["runtimePodcast"] as? [String: [String: Any]] ?? [:]
+        let seriesKeys: Set<String> = [
+            "audioAssetRef",
+            "subtitleAssetRef",
+            "seriesRemoteId",
+            "seriesTitle",
+            "hostNames",
+            "preferredNotebookId",
+            "color",
+            "coverPattern",
+            "sortOrder",
+            "durationSec",
+            "episodes",
+        ]
+        let episodeKeys: Set<String> = [
+            "remoteId",
+            "episodeNumber",
+            "title",
+            "durationSec",
+            "audioAvailable",
+            "previewAvailable",
+            "previewDurationSec",
+            "subtitleAvailable",
+            "download",
+        ]
+        let downloadKeys: Set<String> = [
+            "audioAssetRef",
+            "subtitleAssetRef",
+        ]
         for (fixtureKey, seed) in runtimePodcast {
-            for key in ["color", "coverPattern", "sortOrder"] {
+            for key in seriesKeys {
                 #expect(
                     seed.keys.contains(key),
                     "\(dataset): runtimePodcast.\(fixtureKey) must explicitly declare \(key)"
                 )
             }
+            let unknownSeriesKeys = Set(seed.keys).subtracting(seriesKeys)
+            #expect(
+                unknownSeriesKeys.isEmpty,
+                "\(dataset): runtimePodcast.\(fixtureKey) contains unknown keys \(unknownSeriesKeys.sorted())"
+            )
+
             let episodes = seed["episodes"] as? [[String: Any]] ?? []
             for episode in episodes {
                 let remoteId = episode["remoteId"] as? String ?? "<missing-remote-id>"
-                for key in ["durationSec", "previewDurationSec"] {
+                for key in episodeKeys {
                     #expect(
                         episode.keys.contains(key),
                         "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare \(key)"
                     )
                 }
+                let unknownEpisodeKeys = Set(episode.keys).subtracting(episodeKeys)
                 #expect(
-                    episode.keys.contains("download"),
-                    "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) must explicitly declare download (object or null)"
+                    unknownEpisodeKeys.isEmpty,
+                    "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId) contains unknown keys \(unknownEpisodeKeys.sorted())"
                 )
+
                 if let download = episode["download"] as? [String: Any] {
-                    for key in ["audioAssetRef", "subtitleAssetRef"] {
+                    for key in downloadKeys {
                         #expect(
                             download.keys.contains(key),
                             "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId).download must explicitly declare \(key)"
                         )
                     }
+                    let unknownDownloadKeys = Set(download.keys).subtracting(downloadKeys)
+                    #expect(
+                        unknownDownloadKeys.isEmpty,
+                        "\(dataset): runtimePodcast.\(fixtureKey).episode.\(remoteId).download contains unknown keys \(unknownDownloadKeys.sorted())"
+                    )
                 }
             }
         }
