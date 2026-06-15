@@ -121,6 +121,18 @@ else
   fail_t "explicit --dataset was not forwarded: $OUT"
 fi
 
+section "Invalid UI World dataset fails before planning"
+BAD_DATASET="$(mktemp)"
+printf '{"schema":"kg.fixture.dataset.v1","datasetID":"bad"}\n' >"$BAD_DATASET"
+OUT="$($GATE --files "$SAMPLE_FILE" --tier slow --dry-run --dataset-file "$BAD_DATASET" 2>&1)"
+RC=$?
+rm -f "$BAD_DATASET"
+if [[ "$RC" -ne 0 ]] && grep -q 'schema 必須是 kg.fixture.dataset.v2' <<<"$OUT"; then
+  ok "invalid --dataset-file is rejected before dry-run plan"
+else
+  fail_t "invalid --dataset-file was not rejected: rc=$RC out=$OUT"
+fi
+
 section "Execute-slow without UI World fails before running those gates"
 JSON="$($GATE --files ops/review_flip_probe.sh --tier slow --execute --execute-slow --json 2>&1)"
 RC=$?

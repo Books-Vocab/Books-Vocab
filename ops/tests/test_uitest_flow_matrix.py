@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 OPS = ROOT / "ops"
@@ -73,3 +75,23 @@ def test_dry_run_json_emits_ios_ops_commands(capsys):
         "--ui-launch-profile",
         "standard",
     ]
+
+
+def test_invalid_dataset_file_fails_before_dry_run(tmp_path, capsys):
+    mod = _load()
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"schema":"kg.fixture.dataset.v1","datasetID":"bad"}\n', encoding="utf-8")
+
+    with pytest.raises(SystemExit):
+        mod.main(
+            [
+                "--file",
+                "FixtureDatasetUITests.swift",
+                "--dataset-file",
+                str(bad),
+                "--dry-run",
+                "--json",
+            ]
+        )
+
+    assert "schema 必須是 kg.fixture.dataset.v2" in capsys.readouterr().err

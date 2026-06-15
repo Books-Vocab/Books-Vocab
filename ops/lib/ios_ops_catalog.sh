@@ -208,6 +208,49 @@ catalog_fixture_seed_snapshots() {
   local snapshot_root="$container_root/tmp/kg-catalog-snapshots"
   catalog_fixture_write_png "$snapshot_root/iPhone15Pro/Bookshelf/bookshelf-grid.png"
   catalog_fixture_write_png "$snapshot_root/iPhone15Pro/Today Review/review-card.png"
+  cat >"$snapshot_root/catalog_index.json" <<'JSON'
+{
+  "version": 1,
+  "surfaces": {
+    "Bookshelf": {
+      "kind": "featureScreen",
+      "feature": "bookshelf",
+      "screen": "bookshelf",
+      "backing": "BookshelfView"
+    },
+    "Today Review": {
+      "kind": "featureScreen",
+      "feature": "todayReview",
+      "screen": "todayReview",
+      "backing": "TodayReviewView"
+    }
+  }
+}
+JSON
+  cat >"$snapshot_root/ui_graph.json" <<'JSON'
+{
+  "schema": "kg.ui.graph.v1",
+  "nodeCount": 2,
+  "edgeCount": 0,
+  "nodes": [
+    {
+      "id": "BookshelfView",
+      "kind": "struct",
+      "name": "BookshelfView",
+      "file": "ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift",
+      "surfaces": ["Bookshelf"]
+    },
+    {
+      "id": "TodayReviewView",
+      "kind": "struct",
+      "name": "TodayReviewView",
+      "file": "ios/BooksAndVocab/Views/TodayReview/TodayReviewView.swift",
+      "surfaces": ["Today Review"]
+    }
+  ],
+  "edges": []
+}
+JSON
 }
 
 catalog_fixture_seed_cache() {
@@ -378,6 +421,25 @@ catalog_dataset_base64() {
   base64 <"$dataset_path" | tr -d '\n'
 }
 
+catalog_uv_bin() {
+  if [[ -n "${UV_BIN:-}" ]]; then
+    printf '%s\n' "$UV_BIN"
+  elif [[ -x "$HOME/.local/bin/uv" ]]; then
+    printf '%s\n' "$HOME/.local/bin/uv"
+  else
+    printf '%s\n' "uv"
+  fi
+}
+
+catalog_validate_dataset_file() {
+  local dataset_path="$1"
+  [[ -n "$dataset_path" ]] || return 0
+  [[ -f "$dataset_path" ]] || return 1
+  local uv_bin
+  uv_bin="$(catalog_uv_bin)"
+  "$uv_bin" run --python 3.13 python "$ROOT/ops/ui_world_manifest.py" validate "$dataset_path" --label "Catalog UI World dataset" >/dev/null
+}
+
 catalog_prepare_scoped_xctestrun() {
   local base_xctestrun="$1" groups_csv="$2" scenarios_csv="$3" dataset_b64="$4" scoped_xctestrun="$5"
   local args_json
@@ -495,7 +557,15 @@ catalog_render_review_json() {
   local graph_err=""
   local graph_store=""
 
-  if [[ -f "$catalog_index" && -f "$ui_graph_cli" ]]; then
+  if [[ -f "$catalog_index" && -f "$ui_graph_json" ]]; then
+    graph_json="$(jq -n --arg path "$ui_graph_json" --arg mode "sidecar" --argjson payload "$(cat "$ui_graph_json")" '{
+      status:"ok",
+      path:$path,
+      mode:$mode,
+      nodeCount:($payload.nodeCount // null),
+      edgeCount:($payload.edgeCount // null)
+    }')"
+  elif [[ -f "$catalog_index" && -f "$ui_graph_cli" ]]; then
     if [[ -n "$derived_data_root" && -d "$derived_data_root/Index.noindex/DataStore" ]]; then
       graph_store="$derived_data_root/Index.noindex/DataStore"
       if "$ui_graph_cli" --store-path "$graph_store" --catalog-index "$catalog_index" --json >"$ui_graph_json" 2>"$review_state.ui_graph.stderr"; then
@@ -767,9 +837,20 @@ cmd_catalog_snapshots_json() {
     test_cmd="$build_cmd && $scope_test_cmd"
   fi
 
+  if [[ -n "$dataset_path" ]]; then
+    if ! catalog_validate_dataset_file "$dataset_path"; then
+      dataset_rc=64
+      dataset_status="invalid"
+    elif ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
+      dataset_rc=89
+      dataset_status="encode-failed"
+    else
+      dataset_status="validated"
+    fi
+  fi
+
   if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
     mode="fixture"
-    dataset_status="not-applicable"
     derived_data_root=""
     cache_key=""
     cache_status="not-applicable"
@@ -781,20 +862,15 @@ cmd_catalog_snapshots_json() {
     : >"$xcode_err"
     # Test seam: inject a failure exit code to exercise the cache-miss (87) and
     # salvage-on-failure JSON paths without a real simulator/xcodebuild run.
-    rc="${KG_IOS_OPS_CATALOG_FIXTURE_EXIT:-0}"
+    if [[ "$dataset_rc" -ne 0 ]]; then
+      rc="$dataset_rc"
+    else
+      rc="${KG_IOS_OPS_CATALOG_FIXTURE_EXIT:-0}"
+    fi
     if [[ "$rc" == "87" ]]; then
       cache_status="miss"
     fi
   else
-    if [[ -n "$dataset_path" ]]; then
-      if ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
-        dataset_rc=89
-        dataset_status="encode-failed"
-      else
-        dataset_status="injected"
-      fi
-    fi
-
     if [[ "$dataset_rc" -ne 0 ]]; then
       rc="$dataset_rc"
     elif [[ "$use_cached_xctestrun" -eq 1 ]]; then

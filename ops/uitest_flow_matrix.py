@@ -11,6 +11,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+OPS_DIR = ROOT / "ops"
+if str(OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(OPS_DIR))
+
+from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file
 
 
 @dataclass(frozen=True)
@@ -109,6 +114,27 @@ def run_variant(cmd: list[str]) -> tuple[int, dict | None, str]:
     return proc.returncode, payload, proc.stderr
 
 
+def resolve_dataset_variant_path(variant: DataVariant) -> Path:
+    if variant.kind == "dataset":
+        return ROOT / "ops" / "fixtures" / "ui_worlds" / f"{variant.value}.json"
+    if variant.kind == "dataset-file":
+        path = Path(variant.value or "")
+        return path if path.is_absolute() else ROOT / path
+    raise ValueError(f"unknown data variant kind: {variant.kind}")
+
+
+def validate_dataset_variants(variants: list[FlowVariant]) -> None:
+    validated: set[Path] = set()
+    for variant in variants:
+        path = resolve_dataset_variant_path(variant.data)
+        if path in validated:
+            continue
+        if not path.is_file():
+            raise UIWorldManifestError(f"UITest flow matrix UI World dataset file not found: {path}")
+        validate_fixture_dataset_file(path, label="UITest flow matrix UI World dataset")
+        validated.add(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run one UITest file across state/data variants.")
     parser.add_argument("--file", required=True, help="UITest Swift file or type name passed to ios_ops.sh test --file")
@@ -130,6 +156,10 @@ def main(argv: list[str] | None = None) -> int:
             dataset_files=args.dataset_file,
         )
     except ValueError as error:
+        parser.error(str(error))
+    try:
+        validate_dataset_variants(variants)
+    except UIWorldManifestError as error:
         parser.error(str(error))
     runs = [
         {
