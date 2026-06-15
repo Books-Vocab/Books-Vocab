@@ -37,6 +37,15 @@ def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
     return fixture_ids
 
 
+def _swift_string_set(path: str, constant_name: str) -> set[str]:
+    source = (ROOT / path).read_text(encoding="utf-8")
+    match = re.search(rf"static let {constant_name}: Set<String> = \[(?P<body>.*?)\n\s*\]", source, flags=re.S)
+    assert match, f"missing Swift Set constant {constant_name}"
+    values = set(re.findall(r'"([^"]+)"', match.group("body")))
+    assert values, f"missing values for Swift Set constant {constant_name}"
+    return values
+
+
 def test_validate_accepts_repo_ui_world():
     dataset_id = validate_fixture_dataset_file(ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json")
 
@@ -73,6 +82,19 @@ def test_validate_accepts_all_repo_and_generated_ui_worlds():
 )
 def test_fixture_domain_ids_match_swift_fixture_enums(domain: str, path: str, enum_name: str):
     assert MODULE.FIXTURE_DOMAIN_IDS[domain] == _swift_fixture_ids(path, enum_name)
+
+
+@pytest.mark.parametrize(
+    ("domain", "swift_constant"),
+    [
+        ("userDefaults", "userDefaultsKeys"),
+        ("ubiquitousKeyValueStore", "ubiquitousKeyValueStoreKeys"),
+    ],
+)
+def test_preference_domain_keys_match_swift_preferences_seed(domain: str, swift_constant: str):
+    swift_path = "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift"
+
+    assert MODULE.PREFERENCE_DOMAIN_KEYS[domain] == _swift_string_set(swift_path, swift_constant)
 
 
 @pytest.mark.parametrize("domain", sorted(MODULE.FIXTURE_DOMAIN_IDS))
@@ -143,6 +165,26 @@ def test_validate_rejects_invalid_preference_value_type(tmp_path: Path):
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match="preferences.userDefaults.auto_sync_enabled"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_unknown_user_defaults_preference_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["preferences"]["userDefaults"]["translation_source_lagn"] = "en"
+    path = tmp_path / "unknown_user_defaults_preference_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"preferences.userDefaults contains unknown app preference keys .*translation_source_lagn"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_local_only_preference_in_icloud_kvs(tmp_path: Path):
+    data = _marketing_demo()
+    data["preferences"]["ubiquitousKeyValueStore"]["auto_sync_enabled"] = True
+    path = tmp_path / "local_only_preference_in_icloud_kvs.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"preferences.ubiquitousKeyValueStore contains unknown app preference keys .*auto_sync_enabled"):
         validate_fixture_dataset_file(path)
 
 

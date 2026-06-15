@@ -119,6 +119,64 @@ FIXTURE_DOMAIN_IDS = {
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 PREFERENCES_KEYS = {"userDefaults", "ubiquitousKeyValueStore"}
+PREFERENCE_DOMAIN_KEYS = {
+    "userDefaults": {
+        "activeNotebookId",
+        "active_notebook_updated_at",
+        "app_appearance_selection",
+        "app_language_selection",
+        "auto_sync_enabled",
+        "hasSeenWelcome",
+        "kg_last_incremental_sync",
+        "kg_review_payload_version",
+        "podcast.autoPauseOnLookup",
+        "podcast.subtitleSize",
+        "podcast.wordFollowEnabled",
+        "reader_settings_font",
+        "reader_settings_fontSize",
+        "reader_settings_lineHeight",
+        "reader_settings_scrollMode",
+        "reader_settings_showHitTestingDebug",
+        "reader_settings_underlineOpacity",
+        "review_settings_autoplay_sound_enabled",
+        "review_settings_autoplay_speed",
+        "review_settings_custom_params",
+        "review_settings_mode",
+        "review_settings_mode_updated_at",
+        "review_settings_progress_paused",
+        "review_settings_progress_paused_at",
+        "review_settings_progress_updated_at",
+        "translation_source_lang",
+        "translation_source_lang_updated_at",
+        "translation_target_lang",
+        "translation_target_lang_updated_at",
+        "vocab_highlight_colorPreset",
+        "vocab_highlight_opacity",
+    },
+    "ubiquitousKeyValueStore": {
+        "activeNotebookId",
+        "active_notebook_updated_at",
+        "app_appearance_selection",
+        "app_language_selection",
+        "reader_settings_font",
+        "reader_settings_fontSize",
+        "reader_settings_lineHeight",
+        "reader_settings_scrollMode",
+        "reader_settings_underlineOpacity",
+        "review_settings_custom_params",
+        "review_settings_mode",
+        "review_settings_mode_updated_at",
+        "review_settings_progress_paused",
+        "review_settings_progress_paused_at",
+        "review_settings_progress_updated_at",
+        "translation_source_lang",
+        "translation_source_lang_updated_at",
+        "translation_target_lang",
+        "translation_target_lang_updated_at",
+        "vocab_highlight_colorPreset",
+        "vocab_highlight_opacity",
+    },
+}
 RUNTIME_PODCAST_DOWNLOAD_KEYS = {
     "audioAssetRef",
     "subtitleAssetRef",
@@ -1181,6 +1239,9 @@ def _validate_preferences(data: dict[str, Any], *, label: str) -> None:
 
     for domain in sorted(PREFERENCES_KEYS):
         entries = _require_mapping(preferences.get(domain), field=f"preferences.{domain}", label=label)
+        unknown = sorted(set(entries) - PREFERENCE_DOMAIN_KEYS[domain])
+        if unknown:
+            raise UIWorldManifestError(f"{label} preferences.{domain} contains unknown app preference keys {unknown}")
         for key, value in sorted(entries.items()):
             if not isinstance(key, str) or not key.strip():
                 raise UIWorldManifestError(f"{label} preferences.{domain} contains an empty key")

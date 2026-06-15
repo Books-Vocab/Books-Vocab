@@ -1950,6 +1950,25 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func preferenceWorldFailsWhenUserDefaultsKeyIsUnknown() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-user-defaults-preference-key",
+          "preferences": {
+            "userDefaults": {
+              "translation_source_lagn": "en"
+            },
+            "ubiquitousKeyValueStore": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func preferenceWorldFailsWhenUnknownWrapperKeyIsPresent() throws {
         let dataset = """
         {
@@ -1959,6 +1978,25 @@ struct FixtureDatasetStoreTests {
             "userDefaults": {},
             "ubiquitousKeyValueStore": {},
             "keychain": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func preferenceWorldFailsWhenLocalOnlyKeyIsDeclaredInUbiquitousKeyValueStore() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "local-only-preference-in-icloud-kvs",
+          "preferences": {
+            "userDefaults": {},
+            "ubiquitousKeyValueStore": {
+              "auto_sync_enabled": true
+            }
           }
         }
         """
