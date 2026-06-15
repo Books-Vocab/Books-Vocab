@@ -76,6 +76,7 @@ struct RepoFixtureDatasetsContractTests {
             #expect(!document.preferences.isEmpty, "\(stem): repo UI Worlds must declare preferences")
             let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
+            expectPreferenceWrapperKeys(topLevel, dataset: stem)
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
             expectAuthUIStateKeys(topLevel, dataset: stem)
             expectEntitlementsKeys(topLevel, dataset: stem)
@@ -617,14 +618,50 @@ struct RepoFixtureDatasetsContractTests {
 
     private func expectAuthKeychainStateKeys(_ topLevel: [String: Any], dataset: String) {
         let authFixtures = topLevel["auth"] as? [String: [String: Any]] ?? [:]
+        let authKeys: Set<String> = [
+            "isLoggedIn",
+            "userId",
+            "token",
+            "keychainTokenState",
+            "displayName",
+            "email",
+            "authError",
+            "isAuthenticating",
+            "provider",
+            "providerUserId",
+        ]
         for (fixtureKey, seed) in authFixtures {
-            for key in ["isLoggedIn", "userId", "token", "keychainTokenState", "displayName", "email", "authError", "isAuthenticating", "provider", "providerUserId"] {
+            for key in authKeys {
                 #expect(
                     seed.keys.contains(key),
                     "\(dataset): auth.\(fixtureKey) must explicitly declare \(key)"
                 )
             }
+            let unknown = Set(seed.keys).subtracting(authKeys)
+            #expect(
+                unknown.isEmpty,
+                "\(dataset): auth.\(fixtureKey) contains unknown keys \(unknown.sorted())"
+            )
         }
+    }
+
+    private func expectPreferenceWrapperKeys(_ topLevel: [String: Any], dataset: String) {
+        let preferences = topLevel["preferences"] as? [String: Any] ?? [:]
+        let keys: Set<String> = [
+            "userDefaults",
+            "ubiquitousKeyValueStore",
+        ]
+        for key in keys {
+            #expect(
+                preferences.keys.contains(key),
+                "\(dataset): preferences must explicitly declare \(key)"
+            )
+        }
+        let unknown = Set(preferences.keys).subtracting(keys)
+        #expect(
+            unknown.isEmpty,
+            "\(dataset): preferences contains unknown keys \(unknown.sorted())"
+        )
     }
 
     private func expectAuthUIStateKeys(_ topLevel: [String: Any], dataset: String) {

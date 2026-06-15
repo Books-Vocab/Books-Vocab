@@ -1232,6 +1232,34 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func authSeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-auth-key",
+          "auth": {
+            "signedIn": {
+              "isLoggedIn": true,
+              "userId": "world-user",
+              "token": "world-token",
+              "keychainTokenState": "available",
+              "displayName": "World User",
+              "email": "world@example.com",
+              "authError": null,
+              "isAuthenticating": false,
+              "provider": "apple",
+              "providerUserId": "apple:world-user",
+              "staleSession": true
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func authSeedFailsWhenReadableTokenIsMissingForAvailableKeychain() throws {
         let dataset = """
         {
@@ -1452,6 +1480,24 @@ struct FixtureDatasetStoreTests {
               "   ": "traditionalChinese"
             },
             "ubiquitousKeyValueStore": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func preferenceWorldFailsWhenUnknownWrapperKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-preference-wrapper-key",
+          "preferences": {
+            "userDefaults": {},
+            "ubiquitousKeyValueStore": {},
+            "keychain": {}
           }
         }
         """
