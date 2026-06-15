@@ -84,11 +84,29 @@ def install_app_middlewares_from_dependencies(
         response.headers["X-Request-ID"] = request_id
         return response
 
+    max_body_bytes = 10 * 1024 * 1024
+
     @app.middleware("http")
     async def limit_request_body(request: Request, call_next):
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:
-            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        if content_length is not None:
+            if int(content_length) > max_body_bytes:
+                return JSONResponse(
+                    {"detail": "Request body too large"}, status_code=413
+                )
+            return await call_next(request)
+        # No Content-Length (e.g. Transfer-Encoding: chunked): the declared-size
+        # check above can be bypassed, so stream-count the body and abort once it
+        # exceeds the cap. Buffer the consumed bytes back onto the request so
+        # downstream handlers can still read it.
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > max_body_bytes:
+                return JSONResponse(
+                    {"detail": "Request body too large"}, status_code=413
+                )
+        request._body = bytes(body)
         return await call_next(request)
 
     rate_limit_exempt_prefixes = (

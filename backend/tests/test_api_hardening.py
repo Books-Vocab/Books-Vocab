@@ -296,6 +296,43 @@ class TestRequestBodySizeLimit:
         )
         assert r.status_code != 413, "9MB body should not be rejected by size limit middleware"
 
+    def test_chunked_large_body_without_content_length_returns_413(self, client_env):
+        """A large body sent chunked (no Content-Length) must not bypass the cap.
+
+        Passing a generator as httpx `content` triggers Transfer-Encoding:
+        chunked with no Content-Length header. The size guard previously only
+        fired when Content-Length was present, so this path slipped through.
+        """
+        client, user_id, headers, _ = client_env
+
+        def gen():
+            chunk = b"x" * (1024 * 1024)  # 1MB chunks
+            for _ in range(11):  # 11MB total, over the 10MB cap
+                yield chunk
+
+        r = client.post(
+            "/api/vocab",
+            content=gen(),
+            headers={**headers, "content-type": "application/json"},
+        )
+        assert r.status_code == 413, r.text
+
+    def test_chunked_small_body_without_content_length_not_rejected(self, client_env):
+        """A small chunked body must still pass the size guard."""
+        client, user_id, headers, _ = client_env
+
+        def gen():
+            # 2MB total, well under the cap. JSON-invalid so handler will 422,
+            # but the size middleware must NOT 413 it.
+            yield b"x" * (2 * 1024 * 1024)
+
+        r = client.post(
+            "/api/vocab",
+            content=gen(),
+            headers={**headers, "content-type": "application/json"},
+        )
+        assert r.status_code != 413, "small chunked body must not be size-rejected"
+
 
 # ============================================================================
 # Vocab intake batch cap — POST /api/vocab list max_length
