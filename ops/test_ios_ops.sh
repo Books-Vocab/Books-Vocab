@@ -134,6 +134,9 @@ echo "$commands_text" | grep -q 'key=quality' \
   && ok "commands text lists quality" || fail_t "commands text missing quality: $commands_text"
 echo "$commands_text" | grep -q 'kg.ios.commands.v1' \
   && ok "commands text lists catalog schema" || fail_t "commands text missing schema: $commands_text"
+catalog_help="$(bash "$IOS_OPS" catalog --help)"
+echo "$catalog_help" | grep -q -- '--dataset <name> | --dataset-file <path>' \
+  && ok "catalog help requires explicit UI World dataset" || fail_t "catalog help missing dataset requirement: $catalog_help"
 
 section "Xcode environment surface"
 status_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" status --json)"

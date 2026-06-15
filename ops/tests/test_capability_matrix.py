@@ -46,6 +46,12 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
         and "external-upload" in surface["sideEffect"]
         for surface in payload["surfaces"]
     )
+    assert any(
+        surface["key"] == "ios.ops.catalog"
+        and "--dataset <name>" in surface["command"]
+        and "UI World" in surface["purpose"]
+        for surface in payload["surfaces"]
+    )
     required_router_surfaces = {
         "docs.impact",
         "docs.lint.gate",
