@@ -668,6 +668,18 @@ struct UIWorldAsset: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World asset contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -693,6 +705,28 @@ struct UIWorldAssetManifest: Codable, Equatable {
     let text: [String: UIWorldAsset]
     let images: [String: UIWorldAsset]
 
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case books
+        case audio
+        case subtitles
+        case text
+        case images
+    }
+
+    init(
+        books: [String: UIWorldAsset],
+        audio: [String: UIWorldAsset],
+        subtitles: [String: UIWorldAsset],
+        text: [String: UIWorldAsset],
+        images: [String: UIWorldAsset]
+    ) {
+        self.books = books
+        self.audio = audio
+        self.subtitles = subtitles
+        self.text = text
+        self.images = images
+    }
+
     static let empty = UIWorldAssetManifest(
         books: [:],
         audio: [:],
@@ -703,6 +737,36 @@ struct UIWorldAssetManifest: Codable, Equatable {
 
     var isEmpty: Bool {
         books.isEmpty && audio.isEmpty && subtitles.isEmpty && text.isEmpty && images.isEmpty
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World asset manifest contains unknown buckets \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World asset manifest must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        books = try container.decode([String: UIWorldAsset].self, forKey: .books)
+        audio = try container.decode([String: UIWorldAsset].self, forKey: .audio)
+        subtitles = try container.decode([String: UIWorldAsset].self, forKey: .subtitles)
+        text = try container.decode([String: UIWorldAsset].self, forKey: .text)
+        images = try container.decode([String: UIWorldAsset].self, forKey: .images)
     }
 
     var refs: [String] {
