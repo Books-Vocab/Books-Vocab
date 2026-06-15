@@ -125,6 +125,56 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenAssetManifestContainsUnknownBucket() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-asset-bucket",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {},
+            "videos": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func datasetFailsWhenAssetContainsUnknownProperty() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-asset-property",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "source": {
+                "sourcePath": "/tmp/source.md",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "text/markdown; charset=utf-8",
+                "encoding": "utf-8"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
         let dataset = """
         {
