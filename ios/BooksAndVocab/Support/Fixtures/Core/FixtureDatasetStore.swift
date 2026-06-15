@@ -3,6 +3,21 @@ import CryptoKit
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
 
+private struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
 struct FixtureDatasetDocument: Decodable {
     static let currentSchema = "kg.fixture.dataset.v2"
 
@@ -43,7 +58,7 @@ struct FixtureDatasetDocument: Decodable {
     }
 
     /// Single source of truth for the top-level key set. Keyed decoding
-    /// silently ignores unknown keys, so contract tests diff a dataset's raw
+    /// silently ignores unknown keys, so decode and contract tests diff raw
     /// keys against this to fail loudly on domain-level typos.
     static var knownTopLevelKeys: Set<String> {
         Set(CodingKeys.allCases.map(\.rawValue))
@@ -103,6 +118,18 @@ struct FixtureDatasetDocument: Decodable {
     }
 
     init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownTopLevelKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(Self.knownTopLevelKeys)
+        guard unknownTopLevelKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World v2 contains unknown top-level keys \(unknownTopLevelKeys.sorted())"
+                )
+            )
+        }
+
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decode(String.self, forKey: .schema)
         guard schema == Self.currentSchema else {
