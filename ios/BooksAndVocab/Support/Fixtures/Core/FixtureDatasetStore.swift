@@ -225,11 +225,13 @@ struct FixtureDatasetDocument: Decodable {
         try validatePreferenceKeys(
             preferences.userDefaults.keys,
             domain: "preferences.userDefaults",
+            allowed: UIWorldPreferencesSeed.userDefaultsKeys,
             codingPath: codingPath
         )
         try validatePreferenceKeys(
             preferences.ubiquitousKeyValueStore.keys,
             domain: "preferences.ubiquitousKeyValueStore",
+            allowed: UIWorldPreferencesSeed.ubiquitousKeyValueStoreKeys,
             codingPath: codingPath
         )
     }
@@ -237,10 +239,18 @@ struct FixtureDatasetDocument: Decodable {
     private static func validatePreferenceKeys(
         _ keys: some Sequence<String>,
         domain: String,
+        allowed: Set<String>,
         codingPath: [CodingKey]
     ) throws {
         for key in keys where key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw dataCorrupted("UI World \(domain) contains an empty key", codingPath: codingPath)
+        }
+        let unknown = Set(keys).subtracting(allowed)
+        guard unknown.isEmpty else {
+            throw dataCorrupted(
+                "UI World \(domain) contains unknown app preference keys \(unknown.sorted())",
+                codingPath: codingPath
+            )
         }
     }
 
@@ -674,6 +684,63 @@ enum UIWorldPreferenceValue: Codable, Equatable {
 }
 
 struct UIWorldPreferencesSeed: Codable, Equatable {
+    static let userDefaultsKeys: Set<String> = [
+        "activeNotebookId",
+        "active_notebook_updated_at",
+        "app_appearance_selection",
+        "app_language_selection",
+        "auto_sync_enabled",
+        "hasSeenWelcome",
+        "kg_last_incremental_sync",
+        "kg_review_payload_version",
+        "podcast.autoPauseOnLookup",
+        "podcast.subtitleSize",
+        "podcast.wordFollowEnabled",
+        "reader_settings_font",
+        "reader_settings_fontSize",
+        "reader_settings_lineHeight",
+        "reader_settings_scrollMode",
+        "reader_settings_showHitTestingDebug",
+        "reader_settings_underlineOpacity",
+        "review_settings_autoplay_sound_enabled",
+        "review_settings_autoplay_speed",
+        "review_settings_custom_params",
+        "review_settings_mode",
+        "review_settings_mode_updated_at",
+        "review_settings_progress_paused",
+        "review_settings_progress_paused_at",
+        "review_settings_progress_updated_at",
+        "translation_source_lang",
+        "translation_source_lang_updated_at",
+        "translation_target_lang",
+        "translation_target_lang_updated_at",
+        "vocab_highlight_colorPreset",
+        "vocab_highlight_opacity",
+    ]
+    static let ubiquitousKeyValueStoreKeys: Set<String> = [
+        "activeNotebookId",
+        "active_notebook_updated_at",
+        "app_appearance_selection",
+        "app_language_selection",
+        "reader_settings_font",
+        "reader_settings_fontSize",
+        "reader_settings_lineHeight",
+        "reader_settings_scrollMode",
+        "reader_settings_underlineOpacity",
+        "review_settings_custom_params",
+        "review_settings_mode",
+        "review_settings_mode_updated_at",
+        "review_settings_progress_paused",
+        "review_settings_progress_paused_at",
+        "review_settings_progress_updated_at",
+        "translation_source_lang",
+        "translation_source_lang_updated_at",
+        "translation_target_lang",
+        "translation_target_lang_updated_at",
+        "vocab_highlight_colorPreset",
+        "vocab_highlight_opacity",
+    ]
+
     let userDefaults: [String: UIWorldPreferenceValue]
     let ubiquitousKeyValueStore: [String: UIWorldPreferenceValue]
 
