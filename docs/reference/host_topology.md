@@ -76,6 +76,7 @@ Lightsail 容器只是 STOP，資料還在遷移當下快照。回滾步驟：
 
 ## Security Posture（primary）
 - **無 inbound 開埠**：cloudflared 主動 outbound 連 CF 邊緣，家用機不需公網 IP、不需開 80/443。
+- **容器 port 綁 loopback（2026-06-16 收斂）**：`docker-compose.yml` 將 8000 綁 `127.0.0.1:8000:8000`（非 `0.0.0.0`）。origin 只接受來自 cloudflared（localhost）的連線。**綁 `0.0.0.0` 會讓 8000 暴露在家用 LAN（`192.168.50.x`）與 Tailscale tailnet（`100.118.39.104`），任何同網段/同 tailnet 裝置可繞過 Cloudflare Tunnel 直打 origin（含 `/admin` 與全部 `/api/*`，後者仍受各自 JWT 守，但攻擊面無謂擴大）。** 維運查健康改走 `wordnexus.lol`（經 CF）或 ssh 進機器打 localhost；`devops_kg_safe.sh`（ssh + docker exec）不受影響。
 - **TLS 由 CF 邊緣終結**（憑證 CF 託管），standby 容器內無憑證管理。
 - **Rate-limit / XFF 契約**：CF 邊緣後置疊一層 XFF。但 iOS app 全程帶 JWT，rate-limit key 按 token 後 16 碼計（CF 無影響）；CF 標準 XFF = 真 client 單段附在尾端 → `RATE_LIMIT_TRUSTED_HOPS`（default `1`）取倒數第 1 段仍正確。**若未來把 tunnel 換成多層可信代理務必同步調整 `RATE_LIMIT_TRUSTED_HOPS`**，否則匿名限流會 key 到可被偽造的代理 IP。（僅匿名+非豁免端點理論需驗，見 butler §7 G2。）
 

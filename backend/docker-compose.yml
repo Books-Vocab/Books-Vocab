@@ -6,7 +6,10 @@ services:
     container_name: knowledge-graph-api
     restart: always
     ports:
-      - "8000:8000"
+      # loopback-only：origin 只經 cloudflared(localhost) 對外。綁 0.0.0.0 會讓 8000
+      # 暴露在 LAN/tailnet，繞過 Cloudflare 直打 origin（含 /admin、/api/*）。
+      # 見 docs/reference/host_topology.md §Security Posture。
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
       - ./certs:/app/certs:ro
