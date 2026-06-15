@@ -160,7 +160,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/source.md",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "UITestAssets/source.md",
                 "contentType": "text/markdown; charset=utf-8",
                 "encoding": "utf-8"
               }
@@ -208,6 +208,34 @@ struct FixtureDatasetStoreTests {
             #expect(throws: DecodingError.self) {
                 _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
             }
+        }
+    }
+
+    @Test func datasetFailsWhenAssetInstallPathIsNull() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "null-asset-install-path",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {
+              "source": {
+                "sourcePath": "/tmp/source.md",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "text/markdown; charset=utf-8"
+              }
+            },
+            "images": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
         }
     }
 
@@ -767,7 +795,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
             },
@@ -809,7 +837,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.m4a",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
             },
@@ -818,7 +846,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
             },
@@ -1924,7 +1952,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.m4a",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
             },
@@ -1933,7 +1961,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
             },
@@ -1942,7 +1970,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/source.md",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "Books/sources/source.md",
                 "contentType": "text/markdown; charset=utf-8"
               }
             },
@@ -2165,7 +2193,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.m4a",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
             },
@@ -2174,7 +2202,7 @@ struct FixtureDatasetStoreTests {
                 "sourcePath": "/tmp/audio.srt",
                 "sha256": "unused-in-decode-test",
                 "byteSize": 0,
-                "installAs": null,
+                "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
             },

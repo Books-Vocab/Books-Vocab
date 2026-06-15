@@ -699,7 +699,7 @@ struct UIWorldAsset: Codable, Equatable {
     let sourcePath: String
     let sha256: String
     let byteSize: Int
-    let installAs: String?
+    let installAs: String
     let contentType: String
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -736,19 +736,18 @@ struct UIWorldAsset: Codable, Equatable {
         sourcePath = try container.decode(String.self, forKey: .sourcePath)
         sha256 = try container.decode(String.self, forKey: .sha256)
         byteSize = try container.decode(Int.self, forKey: .byteSize)
-        installAs = try container.decodeIfPresent(String.self, forKey: .installAs)
+        installAs = try container.decode(String.self, forKey: .installAs)
         contentType = try container.decode(String.self, forKey: .contentType)
         try Self.validateInstallAs(installAs, codingPath: container.codingPath)
     }
 
-    private static func validateInstallAs(_ installAs: String?, codingPath: [CodingKey]) throws {
-        guard let installAs else { return }
+    private static func validateInstallAs(_ installAs: String, codingPath: [CodingKey]) throws {
         let trimmed = installAs.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw DecodingError.dataCorrupted(
                 .init(
                     codingPath: codingPath,
-                    debugDescription: "UI World asset installAs must be null or a non-empty relative path"
+                    debugDescription: "UI World asset installAs must be a non-empty relative path"
                 )
             )
         }
@@ -1943,10 +1942,7 @@ enum FixtureDatasetStore {
     }
 
     private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {
-        guard let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !installAs.isEmpty else {
-            preconditionFailure("UI World asset \(ref) is missing installAs")
-        }
+        let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !installAs.hasPrefix("/") else {
             preconditionFailure("UI World asset \(ref) installAs must be relative: \(installAs)")
         }
