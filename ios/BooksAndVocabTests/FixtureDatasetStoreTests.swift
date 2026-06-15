@@ -381,6 +381,115 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func runtimePodcastFailsWhenSeriesAudioAssetRefIsMissingFromManifest() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-audio-asset-ref",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {
+              "runtime-subtitle": {
+                "sourcePath": "/tmp/audio.srt",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "application/x-subrip; charset=utf-8"
+              }
+            },
+            "text": {},
+            "images": {}
+          },
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": []
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func runtimePodcastFailsWhenDownloadSubtitleAssetRefIsMissingFromManifest() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "missing-runtime-podcast-download-subtitle-asset-ref",
+          "assets": {
+            "books": {},
+            "audio": {
+              "runtime-audio": {
+                "sourcePath": "/tmp/audio.m4a",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "audio/mp4"
+              }
+            },
+            "subtitles": {
+              "runtime-subtitle": {
+                "sourcePath": "/tmp/audio.srt",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "application/x-subrip; charset=utf-8"
+              }
+            },
+            "text": {},
+            "images": {}
+          },
+          "runtimePodcast": {
+            "playablePreview": {
+              "audioAssetRef": "audio.runtime-audio",
+              "subtitleAssetRef": "subtitles.runtime-subtitle",
+              "seriesRemoteId": "series-runtime",
+              "seriesTitle": "Runtime Series",
+              "hostNames": ["Lab Host"],
+              "preferredNotebookId": null,
+              "color": "sunset",
+              "coverPattern": "waves",
+              "sortOrder": -100,
+              "durationSec": 120.5,
+              "episodes": [
+                {
+                  "remoteId": "series-runtime_ep_01",
+                  "episodeNumber": 1,
+                  "title": "Runtime Episode",
+                  "durationSec": 120.5,
+                  "audioAvailable": true,
+                  "previewAvailable": true,
+                  "previewDurationSec": 60,
+                  "subtitleAvailable": true,
+                  "download": {
+                    "audioAssetRef": "audio.runtime-audio",
+                    "subtitleAssetRef": "subtitles.missing-runtime-subtitle"
+                  }
+                }
+              ]
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func vocabularyEntryFailsWhenNullableRowStateKeysAreMissing() throws {
         let dataset = """
         {
@@ -987,6 +1096,29 @@ struct FixtureDatasetStoreTests {
         {
           "schema": "kg.fixture.dataset.v2",
           "datasetID": "missing-runtime-podcast-preferred-notebook-ref",
+          "assets": {
+            "books": {},
+            "audio": {
+              "runtime-audio": {
+                "sourcePath": "/tmp/audio.m4a",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "audio/mp4"
+              }
+            },
+            "subtitles": {
+              "runtime-subtitle": {
+                "sourcePath": "/tmp/audio.srt",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": null,
+                "contentType": "application/x-subrip; charset=utf-8"
+              }
+            },
+            "text": {},
+            "images": {}
+          },
           "runtimePodcast": {
             "playablePreview": {
               "audioAssetRef": "audio.runtime-audio",

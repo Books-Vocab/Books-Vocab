@@ -143,6 +143,119 @@ struct FixtureDatasetDocument: Decodable {
         vocabulary = try container.decode([String: UIWorldVocabularySeed].self, forKey: .vocabulary)
         reviewDeck = try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck)
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
+
+        try Self.validateRuntimePodcastAssetReferences(runtimePodcast, assets: assets, codingPath: container.codingPath)
+        try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
+        try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
+    }
+
+    private static func validateRuntimePodcastAssetReferences(
+        _ seeds: [String: UIWorldRuntimePodcastSeed],
+        assets: UIWorldAssetManifest,
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in seeds {
+            try requireAssetRef(
+                seed.audioAssetRef,
+                prefix: "audio.",
+                assets: assets,
+                owner: "runtimePodcast.\(fixtureID).audioAssetRef",
+                codingPath: codingPath
+            )
+            try requireAssetRef(
+                seed.subtitleAssetRef,
+                prefix: "subtitles.",
+                assets: assets,
+                owner: "runtimePodcast.\(fixtureID).subtitleAssetRef",
+                codingPath: codingPath
+            )
+            for episode in seed.episodes {
+                guard let download = episode.download else { continue }
+                try requireAssetRef(
+                    download.audioAssetRef,
+                    prefix: "audio.",
+                    assets: assets,
+                    owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.audioAssetRef",
+                    codingPath: codingPath
+                )
+                if let subtitleAssetRef = download.subtitleAssetRef {
+                    try requireAssetRef(
+                        subtitleAssetRef,
+                        prefix: "subtitles.",
+                        assets: assets,
+                        owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.subtitleAssetRef",
+                        codingPath: codingPath
+                    )
+                }
+            }
+        }
+    }
+
+    private static func validateReaderAssetReferences(
+        _ seeds: [String: UIWorldReaderSeed],
+        assets: UIWorldAssetManifest,
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in seeds {
+            try requireAssetRef(
+                seed.textAssetRef,
+                prefix: "text.",
+                assets: assets,
+                owner: "reader.\(fixtureID).textAssetRef",
+                codingPath: codingPath
+            )
+            try requireAssetRef(
+                seed.bookAssetRef,
+                prefix: "books.",
+                assets: assets,
+                owner: "reader.\(fixtureID).bookAssetRef",
+                codingPath: codingPath
+            )
+        }
+    }
+
+    private static func validateBookshelfAssetReferences(
+        _ seeds: [String: BookshelfFixtureSeed],
+        assets: UIWorldAssetManifest,
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in seeds {
+            for book in seed.books {
+                guard let bookAssetRef = book.bookAssetRef else { continue }
+                try requireAssetRef(
+                    bookAssetRef,
+                    prefix: "books.",
+                    assets: assets,
+                    owner: "bookshelf.\(fixtureID).\(book.title).bookAssetRef",
+                    codingPath: codingPath
+                )
+            }
+        }
+    }
+
+    private static func requireAssetRef(
+        _ ref: String,
+        prefix: String,
+        assets: UIWorldAssetManifest,
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        guard ref.hasPrefix(prefix) else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World \(owner) must reference a \(prefix) asset, got \(ref)"
+                )
+            )
+        }
+        guard assets.asset(for: ref) != nil else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World \(owner) references missing asset \(ref)"
+                )
+            )
+        }
     }
 }
 
