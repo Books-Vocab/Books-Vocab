@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  KG production data backup → AWS S3, on the standby host (macOS).
+  Replaces the old Lightsail /etc/cron.d/kg-backup (see ops/cron/kg-backup.cron)
+  after the 2026-06-15 migration to the home standby box.
+
+  Runs ops/kg_backup.sh daily at 11:00 Taipei (= UTC 03:00, matching the old cron).
+  launchd StartCalendarInterval uses LOCAL time; standby is Asia/Taipei (UTC+8).
+
+  Deploy: copy to ~/Library/LaunchAgents/com.kg.backup.plist (mode 644), then
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.backup.plist
+  It is a LaunchAgent (per-user): runs in the auto-login chenliangyu session.
+
+  Identity: reuses the dedicated PutObject-only IAM user kg-backup-agent
+  (creds in ~/.aws/credentials, copied from the old Lightsail /root/.aws).
+  Paths are hardcoded for the standby host, same convention as the old cron.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kg.backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/chenliangyu/project/kg/ops/kg_backup.sh</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/sbin:/usr/bin:/bin</string>
+        <key>KG_DATA_DIR</key>
+        <string>/Users/chenliangyu/project/kg/backend/data</string>
+        <key>KG_BACKUP_LOG</key>
+        <string>/Users/chenliangyu/Library/Logs/kg_backup.log</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>11</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_backup.launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_backup.launchd.err.log</string>
+</dict>
+</plist>
