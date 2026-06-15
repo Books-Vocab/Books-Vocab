@@ -775,7 +775,9 @@ struct FixtureDatasetStoreTests {
                   "download": {
                     "audioAssetRef": "audio.runtime-audio",
                     "subtitleAssetRef": null,
-                    "localAudioPath": "Podcast/audio.m4a"
+                    "localAudioPath": "podcast-downloads/audio.m4a",
+                    "localSubtitlePath": null,
+                    "downloaded": true
                   }
                 }
               ]
@@ -817,7 +819,9 @@ struct FixtureDatasetStoreTests {
                   "previewDurationSec": 60,
                   "subtitleAvailable": true,
                   "download": {
-                    "audioAssetRef": "audio.runtime-audio"
+                    "audioAssetRef": "audio.runtime-audio",
+                    "subtitleAssetRef": null,
+                    "localAudioPath": "podcast-downloads/audio.m4a"
                   }
                 }
               ]
@@ -926,7 +930,9 @@ struct FixtureDatasetStoreTests {
                   "subtitleAvailable": true,
                   "download": {
                     "audioAssetRef": "audio.runtime-audio",
-                    "subtitleAssetRef": "subtitles.missing-runtime-subtitle"
+                    "subtitleAssetRef": "subtitles.missing-runtime-subtitle",
+                    "localAudioPath": "podcast-downloads/audio.m4a",
+                    "localSubtitlePath": "podcast-subtitles/audio.srt"
                   }
                 }
               ]
@@ -2049,7 +2055,9 @@ struct FixtureDatasetStoreTests {
                   "subtitleAvailable": true,
                   "download": {
                     "audioAssetRef": "audio.runtime-audio",
-                    "subtitleAssetRef": "subtitles.runtime-subtitle"
+                    "subtitleAssetRef": "subtitles.runtime-subtitle",
+                    "localAudioPath": "podcast-downloads/audio.m4a",
+                    "localSubtitlePath": "podcast-subtitles/audio.srt"
                   }
                 }
               ]
@@ -2197,6 +2205,8 @@ struct FixtureDatasetStoreTests {
             #expect(runtimeSeed?.preferredNotebookId == "runtime-notebook")
             #expect(runtimeSeed?.episodes.first?.download?.audioAssetRef == "audio.runtime-audio")
             #expect(runtimeSeed?.episodes.first?.download?.subtitleAssetRef == "subtitles.runtime-subtitle")
+            #expect(runtimeSeed?.episodes.first?.download?.localAudioPath == "podcast-downloads/audio.m4a")
+            #expect(runtimeSeed?.episodes.first?.download?.localSubtitlePath == "podcast-subtitles/audio.srt")
             let series = try UITestFixtureSeed.makeRuntimePodcastSeries(
                 from: try #require(runtimeSeed),
                 document: document,

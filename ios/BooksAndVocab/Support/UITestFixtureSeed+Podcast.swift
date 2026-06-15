@@ -95,8 +95,8 @@ extension UITestFixtureSeed {
         episode.audioAvailable = seed.audioAvailable
         episode.previewAvailable = seed.previewAvailable
         episode.previewDurationSec = seed.previewDurationSec
-        episode.localAudioPath = download.audioURL?.path
-        episode.localSubtitlePath = download.subtitleURL?.path
+        episode.localAudioPath = download.audioPath
+        episode.localSubtitlePath = download.subtitlePath
         episode.subtitleAvailable = seed.subtitleAvailable
         episode.inlineSubtitle = inlineSubtitle
         return episode
@@ -131,21 +131,36 @@ extension UITestFixtureSeed {
     }
 
     private struct MaterializedEpisodeDownload {
-        let audioURL: URL?
-        let subtitleURL: URL?
+        let audioPath: String?
+        let subtitlePath: String?
     }
 
     private static func materializeDownload(
         for episode: UIWorldRuntimePodcastEpisodeSeed
     ) throws -> MaterializedEpisodeDownload {
         guard let download = episode.download else {
-            return MaterializedEpisodeDownload(audioURL: nil, subtitleURL: nil)
+            return MaterializedEpisodeDownload(audioPath: nil, subtitlePath: nil)
         }
-        let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: download.audioAssetRef)
-        let subtitleURL = try download.subtitleAssetRef.map {
+        let audioInstalledURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: download.audioAssetRef)
+        let subtitleInstalledURL = try download.subtitleAssetRef.map {
             try FixtureDatasetStore.requireInstalledAssetURL(ref: $0)
         }
-        return MaterializedEpisodeDownload(audioURL: audioURL, subtitleURL: subtitleURL)
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let audioURL = documentsURL.appendingPathComponent(download.localAudioPath)
+        let subtitleURL = download.localSubtitlePath.map { documentsURL.appendingPathComponent($0) }
+        if audioURL != audioInstalledURL {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [
+                NSLocalizedDescriptionKey: "UI World runtime podcast audio local path does not match installed asset path",
+            ])
+        }
+        if let subtitleInstalledURL {
+            guard let subtitleURL, subtitleURL == subtitleInstalledURL else {
+                throw CocoaError(.fileReadCorruptFile, userInfo: [
+                    NSLocalizedDescriptionKey: "UI World runtime podcast subtitle local path does not match installed asset path",
+                ])
+            }
+        }
+        return MaterializedEpisodeDownload(audioPath: audioURL.path, subtitlePath: subtitleURL?.path)
     }
 }
 
