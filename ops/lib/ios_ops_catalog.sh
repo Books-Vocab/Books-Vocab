@@ -1449,7 +1449,7 @@ cmd_catalog() {
       ;;
     -h|--help|help)
       echo "Usage: ./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json]"
-      echo "       ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--reuse-build] [--json]"
+      echo "       ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json]"
       echo "       ./ops/ios_ops.sh catalog clean [--json]"
       ;;
     *)
