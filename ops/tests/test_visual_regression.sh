@@ -39,7 +39,14 @@ draw_wide_a() { magick -size 120x200 xc:white -fill black -draw "rectangle 10,10
 make_root() {
   # $1 = root dir
   mkdir -p "$1/Dev portrait/Surface_One" "$1/Dev portrait (dark)/Surface_One"
-  printf '{"totalImages": 4}' >"$1/review_manifest.json"
+}
+
+write_manifest() {
+  # $1 = root dir
+  find "$1" -mindepth 3 -maxdepth 3 -type f -name '*.png' -print \
+    | sed "s#^$1/##" \
+    | jq -R '{relPath: .}' \
+    | jq -s '{totalImages: length, items: .}' >"$1/review_manifest.json"
 }
 
 BASE="$TMP/catalog-full-20260101-000000"
@@ -51,6 +58,7 @@ draw_a "$BASE/Dev portrait/Surface_One/Removed.png"
 draw_b "$CURR/Dev portrait/Surface_One/Added.png"
 draw_a "$BASE/Dev portrait (dark)/Surface_One/Same.png"; draw_a "$CURR/Dev portrait (dark)/Surface_One/Same.png"
 draw_a "$BASE/Dev portrait/Surface_One/Resized.png";  draw_wide_a "$CURR/Dev portrait/Surface_One/Resized.png"
+write_manifest "$BASE"; write_manifest "$CURR"
 
 section "Diff detection"
 OUT="$("${VR[@]}" --baseline "$BASE" --current "$CURR" --json 2>/dev/null)"; RC=$?
@@ -92,6 +100,32 @@ else
   fail_t "self-compare should exit 0"
 fi
 
+section "Manifest guard"
+RAW="$TMP/raw-png-dir"
+mkdir -p "$RAW/Dev portrait/Surface_One"
+draw_a "$RAW/Dev portrait/Surface_One/Same.png"
+ERR="$TMP/raw.err"
+if "${VR[@]}" --baseline "$RAW" --current "$CURR" >"$TMP/raw.out" 2>"$ERR"; then
+  fail_t "raw png dir without review_manifest.json should fail"
+elif grep -q "missing review_manifest.json" "$ERR"; then
+  ok "manual roots require review_manifest.json"
+else
+  fail_t "missing manifest error was not explicit: $(cat "$ERR")"
+fi
+
+BROKEN="$TMP/catalog-full-20260301-000000"
+make_root "$BROKEN"
+draw_a "$BROKEN/Dev portrait/Surface_One/Same.png"
+printf '{"items":[{"relPath":"Dev portrait/Surface_One/Missing.png"}]}' >"$BROKEN/review_manifest.json"
+ERR="$TMP/missing-item.err"
+if "${VR[@]}" --baseline "$BROKEN" --current "$CURR" >"$TMP/missing-item.out" 2>"$ERR"; then
+  fail_t "manifest item pointing at missing PNG should fail"
+elif grep -q "item PNG missing" "$ERR"; then
+  ok "manifest relPath must point at an existing PNG"
+else
+  fail_t "missing PNG error was not explicit: $(cat "$ERR")"
+fi
+
 section "Threshold + filter"
 OUT="$("${VR[@]}" --baseline "$BASE" --current "$CURR" --threshold 99999 --only Changed --json 2>/dev/null)"; RC=$?
 if [[ "$RC" == "0" ]] && jq -e '.changed == []' <<<"$OUT" >/dev/null 2>&1; then
@@ -110,6 +144,7 @@ section "--auto root pairing"
 # usable manifest + lexicographically after catalog-full-*: must NOT be paired.
 make_root "$TMP/gallery-admin-preview"
 draw_a "$TMP/gallery-admin-preview/Dev portrait/Surface_One/Same.png"
+write_manifest "$TMP/gallery-admin-preview"
 OUT="$(KG_VISREG_SNAPSHOTS="$TMP" "${VR[@]}" --auto --json 2>/dev/null)"
 if jq -e '.baseline | endswith("catalog-full-20260101-000000")' <<<"$OUT" >/dev/null 2>&1 \
   && jq -e '.current | endswith("catalog-full-20260201-000000")' <<<"$OUT" >/dev/null 2>&1; then

@@ -57,14 +57,43 @@ def usable_roots(snapshots: Path) -> list[Path]:
     roots = []
     if not snapshots.is_dir():
         return roots
-    for manifest in sorted(snapshots.glob("catalog-full-*/review_manifest.json")):
+    for manifest_path in sorted(snapshots.glob("catalog-full-*/review_manifest.json")):
+        root = manifest_path.parent
         try:
-            data = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            if manifest_shot_paths(root):
+                roots.append(root)
+        except SystemExit:
             continue
-        if data.get("totalImages", 0) > 0:
-            roots.append(manifest.parent)
     return roots
+
+
+def manifest_shot_paths(root: Path) -> set[str]:
+    manifest_path = root / "review_manifest.json"
+    if not manifest_path.is_file():
+        raise fail(f"catalog snapshot root is missing review_manifest.json: {root}")
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise fail(f"review_manifest.json is unreadable: {manifest_path}: {exc}")
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        raise fail(f"review_manifest.json items must be an array: {manifest_path}")
+
+    paths: set[str] = set()
+    root_resolved = root.resolve()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or not isinstance(item.get("relPath"), str):
+            raise fail(f"review_manifest.json item {index} missing string relPath: {manifest_path}")
+        rel = item["relPath"]
+        candidate = (root / rel).resolve()
+        if not candidate.is_relative_to(root_resolved):
+            raise fail(f"review_manifest.json item escapes snapshot root: {rel}")
+        if candidate.suffix.lower() != ".png" or not candidate.is_file():
+            raise fail(f"review_manifest.json item PNG missing: {rel}")
+        paths.add(Path(rel).as_posix())
+    if not paths:
+        raise fail(f"review_manifest.json contains no PNG items: {manifest_path}")
+    return paths
 
 
 def auto_roots() -> tuple[Path, Path]:
@@ -79,7 +108,7 @@ def auto_roots() -> tuple[Path, Path]:
 
 
 def shot_paths(root: Path) -> set[str]:
-    return {str(p.relative_to(root)) for p in root.glob("*/*/*.png")}
+    return manifest_shot_paths(root)
 
 
 def magick(args: list[str]) -> subprocess.CompletedProcess:
