@@ -600,6 +600,7 @@ documents:
       - backup_monitoring_changed
     sources:
       - ops/kg_backup.sh
+      - ops/launchd/com.kg.backup.plist
       - ops/cron/kg-backup.cron
       - ops/backup_verify.sh
       - ops/tests/test_backup_verify.sh
@@ -616,6 +617,7 @@ documents:
       - backup_safety_boundary_changed
     sources:
       - ops/kg_backup.sh
+      - ops/launchd/com.kg.backup.plist
       - ops/cron/kg-backup.cron
       - ops/backup_verify.sh
       - ops/tests/test_backup_verify.sh

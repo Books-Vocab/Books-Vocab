@@ -4,18 +4,21 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/kg_backup.sh
+  - ops/launchd/com.kg.backup.plist
   - ops/cron/kg-backup.cron
-verified_against: d0e9a0cb
+verified_against: d67bed12
 -->
 # Backup / Restore SOP
 
-> 「沒做過 restore 演練 = 薛丁格的 backup」。本文是 KG 生產 SQLite 資料(`/home/ubuntu/knowledge_graph_api/data/`)從 AWS S3 異地 backup **完整還原**的 step-by-step。事故當下下一個 agent 直接讀這份即能恢復服務,**不需問人**。
+> 「沒做過 restore 演練 = 薛丁格的 backup」。本文是 KG 生產 SQLite 資料從 AWS S3 異地 backup **完整還原**的 step-by-step。事故當下下一個 agent 直接讀這份即能恢復服務,**不需問人**。
+>
+> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（macOS / OrbStack docker）。**現役 data 目錄 = `~/project/kg/backend/data/`（standby）**，不再是 Lightsail `/home/ubuntu/knowledge_graph_api/data/`。S3 backup 由 standby launchd（`ops/launchd/com.kg.backup.plist`）跑同一支 `ops/kg_backup.sh`，bucket / IAM / 物件格式不變。**§2 標準流程下方已給 standby 指令**；§3 災難情境的 Lightsail 重建保留為回滾路徑。
 
 ---
 
 ## 0. 受 backup 涵蓋的內容
 
-`/home/ubuntu/knowledge_graph_api/data/`:
+現役（standby）：`~/project/kg/backend/data/`；回滾（Lightsail）：`/home/ubuntu/knowledge_graph_api/data/`。內容相同：
 
 | 子目錄 | 內容 |
 |---|---|
@@ -29,7 +32,7 @@ verified_against: d0e9a0cb
 
 ---
 
-## 1. Backup 配置(現況)
+## 1. Backup 配置(現況，2026-06-15 起 standby)
 
 | 項目 | 值 |
 |---|---|
@@ -40,23 +43,32 @@ verified_against: d0e9a0cb
 | Encryption | SSE-S3 (AES256) |
 | Lifecycle | **無**(AWS 強制 lifecycle 與 MFA Delete 互斥)— backup 永久累積,要清舊版需手動走 root+MFA(見 §7) |
 | Key 格式 | `data/YYYY-MM-DD.tar.gz`(UTC 日期) |
-| Cron | `/etc/cron.d/kg-backup` → 每天 UTC 03:00(台北 11:00) |
-| Script | `/usr/local/bin/kg_backup.sh`(root:root, 755) |
-| Log | `/var/log/kg_backup.log`(每執行一行) |
-| IAM | `kg-backup-agent` 僅 `s3:PutObject*`,**無 Delete / 無 List**(限制 blast radius) |
+| **排程（現役）** | **standby launchd `~/Library/LaunchAgents/com.kg.backup.plist`** → 每天 11:00 台北(= UTC 03:00)。源檔 `ops/launchd/com.kg.backup.plist` |
+| **排程（已停用）** | 舊 Lightsail `/etc/cron.d/kg-backup`（cron）— 遷移後停用 |
+| Script | `ops/kg_backup.sh`（standby/Lightsail 共用，靠 `KG_DATA_DIR`/`KG_BACKUP_BUCKET`/`KG_BACKUP_LOG` env 參數化，無需改 code） |
+| Log（現役） | standby `~/Library/Logs/kg_backup.log`(每執行一行) |
+| Log（舊 Lightsail） | `/var/log/kg_backup.log` |
+| IAM | `kg-backup-agent` 僅 `s3:PutObject*`,**無 Delete / 無 List**(限制 blast radius)。同一主體跨機沿用(creds 由 Lightsail `/root/.aws` 複製到 standby `~/.aws/credentials`) |
 | 本機操作身份 | `MaxChen228`(admin),用 `~/.aws/credentials` 預設 profile |
 
-防線層級:
+防線層級（遷移後）:
 
-1. **Lightsail AutoSnapshot** — 每日 UTC 22:00,保留 7 份。整個 instance 還原(含 docker、`.env`、`certs/`)。RTO 大、彈性低,但最 self-contained。
-2. **本機 tar backup** — `devops.sh cmd_backup`(`backup_verify.sh` 拉到 `~/kg/backups/`)。事故時若 server 已壞、S3 也壞,此為最後一道。
-3. **AWS S3 異地 backup** — 本 SOP。粒度小、最近 30 天可逐日選版本。
+1. ~~**Lightsail AutoSnapshot**~~ — **OFFLINE**（Lightsail STOP，僅留遷移當下漸舊快照當回滾；standby 無 instance 級替代，見 `backup.md`）。
+2. ~~**本機 tar backup**~~ — `devops.sh cmd_backup` 寫死 Lightsail，**OFFLINE**；standby 改用手動冷 `tar`（見 `deploy.md §備份 SOP`）。
+3. **AWS S3 異地 backup（現役主防線）** — 本 SOP。standby launchd 每日跑，粒度小、可逐日選版本。
 
 ---
 
 ## 2. Restore — 標準流程(RTO ~15 分鐘)
 
-> 假設場景:`data/` 目錄被誤刪 / DB 損壞 / 需回到指定日期。Lightsail instance 本身可達。
+> 假設場景:`data/` 目錄被誤刪 / DB 損壞 / 需回到指定日期，host 本身可達。
+>
+> **機器對照（現役 = standby）**：下方 §2.2–2.8 的指令以 Lightsail 範本寫成（`ssh ubuntu@13.193.212.134`、`/home/ubuntu/knowledge_graph_api/`、`/var/log/kg_backup.log`）。**在現役 standby 上等價替換**：
+> - SSH：`ssh chenliangyu@100.118.39.104`（Tailscale，公鑰免密碼）
+> - data 目錄 / 工作區：`~/project/kg/backend/`（data 在其下 `data/`）
+> - backup log（查 sha256 對照）：standby `~/Library/Logs/kg_backup.log`
+> - 容器名：`knowledge-graph-api`（OrbStack）；`sudo` 在 macOS 通常不需（檔案 owner = `chenliangyu`，非容器 root drift）
+> - 拉 S3：standby 上若 `kg-backup-agent` 只有 PutObject 遇 `AccessDenied`，改用主力機 admin profile 拉再 scp 到 standby（同 §2.3 備援）。
 
 ### 2.1 列出可用 backup
 
@@ -165,12 +177,17 @@ done
 
 ---
 
-## 3. Restore — 災難情境(Lightsail instance 也掛)
+## 3. Restore — 災難情境(host 也掛)
 
-優先順序:
+### 3a. standby 掛（現役 host 故障）
 
-1. **Lightsail Snapshot 還原 instance**(AWS Console → Lightsail → Snapshots → Create instance from snapshot)→ 上面已有 docker / `.env` / `certs/` → 進到 2 拉最新 S3 backup 覆蓋 data → 改 elastic IP 指到新 instance(或在 Caddyfile / iOS endpoint 切 DNS)。RTO 30–60 分鐘。
-2. **完全空白 instance** → 重跑 `devops.sh deploy`(會 build image, scp `.env`, certs, compose, `VERSION`)→ 拉 S3 backup → 同 2.5–2.7。RTO 1–2 小時(主要卡 Docker build)。
+1. **快速回滾到 Lightsail**：Lightsail 容器只是 STOP，資料停在遷移當下快照。`ssh -i ~/.secrets/lightsail_kg_prod ubuntu@13.193.212.134 'cd ~/knowledge_graph_api && docker compose up -d'` → CF apex 從 tunnel proxied CNAME 改回 A `13.193.212.134` → 進 §2 拉最新 S3 backup 覆蓋 Lightsail data（補回遷移後寫入）。⚠ 資料分岔：Lightsail 快照不含 standby 上線後寫入，**必須**靠 §2 從 S3 拉最新 backup 蓋上。完整回滾見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
+2. **重建 standby**：機器層建置見 butler `~/butler/docs/standby-host-setup.md`；服務層（容器 + cloudflared + launchd）見 butler `~/butler/docs/kg-backend-deployment.md §3-4` → 拉 S3 backup 到 `~/project/kg/backend/data/` → 同 §2.5–2.8。
+
+### 3b. Lightsail 災難情境（僅回滾到 Lightsail 後相關）
+
+1. **Lightsail Snapshot 還原 instance**(AWS Console → Lightsail → Snapshots → Create instance from snapshot)→ 上面已有 docker / `.env` / `certs/` → 進到 §2 拉最新 S3 backup 覆蓋 data → 改 elastic IP 指到新 instance(或在 Caddyfile / iOS endpoint 切 DNS)。RTO 30–60 分鐘。
+2. **完全空白 instance** → 重跑 `KG_ALLOW_LIGHTSAIL=1 devops.sh deploy`(會 build image, scp `.env`, certs, compose, `VERSION`)→ 拉 S3 backup → 同 §2.5–2.7。RTO 1–2 小時(主要卡 Docker build)。
 
 > 已知陷阱:`compose.yml` 中 `./VERSION:/app/VERSION:ro` 是 bind mount file,如果 `VERSION` 不存在會被 Docker 當成目錄掛,容器秒退 exit 127。`deploy` 流程會寫 `VERSION`,手動還原時 `echo "$(git rev-parse --short HEAD)" > VERSION` 不要漏。
 
@@ -188,8 +205,9 @@ DATE=$(date -u -d 'yesterday' +%Y-%m-%d 2>/dev/null || date -u -v-1d +%Y-%m-%d)
 aws s3 cp "s3://kg-backups-prod-967512079054/data/${DATE}.tar.gz" .
 tar xzf "${DATE}.tar.gz"
 
-# 2. sha256 比對(查 server log)
-ssh ubuntu@13.193.212.134 "sudo grep ${DATE} /var/log/kg_backup.log"
+# 2. sha256 比對(查 server log；現役 standby)
+ssh chenliangyu@100.118.39.104 "grep ${DATE} ~/Library/Logs/kg_backup.log"
+# 回滾到 Lightsail 時：ssh ubuntu@13.193.212.134 "sudo grep ${DATE} /var/log/kg_backup.log"
 sha256sum "${DATE}.tar.gz"
 
 # 3. SQLite integrity check
@@ -221,10 +239,11 @@ cd /tmp && rm -rf "$DRILL"
 
 | 不含 | 怎麼救 |
 |---|---|
-| `.env` | git 不在;`~/kg/backend/.env` 為本機真實檔(`.gitignore`)。事故時從本機 scp 還原。Pre-flight 應該每月把 `.env` 加密後丟個保險櫃。 |
+| `.env` | git 不在;現役 standby `~/project/kg/backend/.env` 為真實檔(`.gitignore`)。事故時從本機/Time Machine 還原（須對齊 prod 值，尤其 `JWT_SECRET`）。Pre-flight 應每月把 `.env` 加密後丟保險櫃。 |
 | `certs/AuthKey_*.p8` | Apple Developer Portal 重下載或 `~/Downloads/` 找。**這也應有本機定期備份**。 |
 | Docker images | `docker compose build` 重 build。耗時但確定可重現。 |
-| Lightsail SSH key | `~/.ssh/lightsail_kg_prod`。**本機備份必含 `~/.ssh/`**(每日 Time Machine 已含)。掉了 → Lightsail Console 改用 Browser-based SSH 或 EC2 Instance Connect 重塞 pubkey。 |
+| Lightsail SSH key（rollback 用）| `~/.secrets/lightsail_kg_prod`（**不跨機同步**，僅主力機持有）。**本機備份必含 `~/.secrets/`**(每日 Time Machine 已含)。掉了 → Lightsail Console 改用 Browser-based SSH 重塞 pubkey。 |
+| standby SSH 存取 | Tailscale 公鑰（主力機 → `chenliangyu@100.118.39.104`）。掉了 → 實體前往 standby 重配公鑰。 |
 
 ---
 

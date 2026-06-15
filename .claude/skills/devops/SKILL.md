@@ -8,19 +8,23 @@ allowed-tools: Bash, Read, Grep
 
 ## Identity
 
-| key | value |
-|-----|-------|
-| server | `ubuntu@13.193.212.134` |
-| remote | `~/knowledge_graph_api` |
-| domain | `wordnexus.lol` |
-| container | `knowledge-graph-api` |
-| port | `8000` |
+> ⚠ **2026-06-15 正式站已遷到家用 standby（Cloudflare Tunnel）**。`devops_kg_safe.sh` / `devops.sh` 整套**仍寫死打 Lightsail**（下表 server），且 Lightsail 容器已 STOP（rollback）。因此 `deploy/restart/migrate/backup/backup-s3-test` 預設被 guard 擋下（`exit 2`），只有 `KG_ALLOW_LIGHTSAIL=1` 才放行（rollback 用）。**現役 prod 運維/部署/備份走 standby**，權威程序 = `~/butler/docs/kg-backend-deployment.md`。唯讀 ops-cli / ops-edit / 業務查詢仍可用（打 Lightsail 已停容器會回錯，需對 standby 容器跑 → 見該文檔 §4.3）。
+
+| key | value（現役 standby） | rollback（Lightsail，已停） |
+|-----|-------|-------|
+| host | `chenliangyu@100.118.39.104`（Tailscale，OrbStack） | `ubuntu@13.193.212.134`（Lightsail，Caddy） |
+| repo / data | `~/project/kg/backend`（git 同步） | `~/knowledge_graph_api` |
+| 對外 | Cloudflare Tunnel `kg-standby`（CF 邊緣終結 TLS） | Caddy（Let's Encrypt） |
+| domain | `wordnexus.lol`（hostname 不變） | 同 |
+| container | `knowledge-graph-api`（service `kg-api`） | 同 |
+| port | `8000` | 同 |
 
 ## 安全規則
 
 1. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`
 2. **deploy / migration 前**再加 backup：`./ops/devops_kg_safe.sh backup`
 3. 禁止封鎖指令：`setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串
+4. **Lightsail 遷移 guard**：`deploy/restart/migrate/backup/backup-s3-test` 預設擋下（這些打已停的 Lightsail）。現役 standby 運維走 `~/butler/docs/kg-backend-deployment.md`；真要對 Lightsail 操作（rollback）才 `KG_ALLOW_LIGHTSAIL=1 ./ops/devops_kg_safe.sh <sub>`。
 
 ## 指令參考 **(SoT)**
 
@@ -164,7 +168,9 @@ python3 ops/data_inspect.py [command]
 
 ## Deploy 機制
 
-`deploy` 自動偵測改動範圍，決定路徑：
+> ⚠ **以下 `deploy` 自動偵測機制是 Lightsail 路徑，現已被 guard 擋下**（正式站遷 standby）。**現役 standby 部署 = 手動**：`ssh chenliangyu@100.118.39.104` → `cd ~/project/kg/backend && git pull && git rev-parse --short HEAD > VERSION && docker compose up -d --build` → 驗 `/api/system/info`。完整見 `~/butler/docs/kg-backend-deployment.md` §4.2。下表僅供 Lightsail rollback（需 `KG_ALLOW_LIGHTSAIL=1`）時參考。
+
+`deploy`（Lightsail）自動偵測改動範圍，決定路徑：
 
 | 偵測結果 | 路徑 | 耗時 |
 |----------|------|------|
@@ -264,10 +270,12 @@ KG_LOG_TZ=Asia/Taipei ./ops/devops_kg_safe.sh logs 50
 
 ```
 HTTP 200 → API OK，問題在 iOS App 或 DNS
-HTTP 502 → Caddy OK，FastAPI down → 查 Docker logs
-HTTP 000 → Caddy down 或 firewall blocking
-DNS fail → DNS issue
+HTTP 502 → CF 邊緣可達但回源失敗（cloudflared 或 standby 容器 down）→ 三層分層定位
+HTTP 000 → DNS / CF 邊緣不可達
+DNS fail → DNS issue（注意 NS 遷移期 resolver 快取，見 ~/butler/docs/kg-backend-deployment.md §8）
 ```
+
+> ⚠ 現役 prod 是 **standby + CF Tunnel**（無 Caddy）。502 分層：先 `--resolve wordnexus.lol:443:104.21.85.113` 直打 CF 邊緣驗服務本身（回 200=只是本機 DNS 快取）；再 `ssh chenliangyu@100.118.39.104` 查容器(`docker ps`)與隧道(`pgrep -lf cloudflared`)。完整除錯走 `docs/sop/debug.md`。下方 `caddy-status`/`caddyfile` 等 typed 指令僅對 Lightsail rollback 有意義。
 
 ### 常用 Debug 指令
 
@@ -289,26 +297,27 @@ DNS fail → DNS issue
 ./ops/devops_kg_safe.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
 ```
 
-## 緊急恢復
+## 緊急恢復（現役 = standby）
 
 ```bash
-# 1. Stop container
-./ops/devops_kg_safe.sh run "cd ~/knowledge_graph_api && docker compose stop"
+# 標準資料還原走 ops-edit world-restore / restore（容器內，免手動搬檔）。
+# 整機級災難（standby 容器/資料壞）→ 從 S3 拉每日備份還原：
 
-# 2. Backup broken data
-scp -i ~/.ssh/lightsail_default.pem -r \
-  ubuntu@13.193.212.134:~/knowledge_graph_api/data \
-  ~/Desktop/broken_data_$(date +%Y%m%d_%H%M)
+# 1. 停容器
+ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose stop'
 
-# 3. Restore good backup
-scp -i ~/.ssh/lightsail_default.pem -r \
-  ~/kg/backups/data_<date> \
-  ubuntu@13.193.212.134:~/knowledge_graph_api/data
+# 2. 備份當前壞資料（標時間戳）
+ssh chenliangyu@100.118.39.104 'tar czf ~/broken_data_$(date +%Y%m%d_%H%M).tgz -C ~/project/kg/backend data'
 
-# 4. Restart
-./ops/devops_kg_safe.sh restart
-./ops/devops_kg_safe.sh status
+# 3. 從 S3 拉某日備份還原（kg-backup-agent 是 PutObject-only，讀取需另一把有 GetObject 的 key）
+#    解開到 ~/project/kg/backend/data/，細節見 docs/sop/backup_restore.md
+
+# 4. 起容器 + 驗
+ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d && curl -s http://localhost:8000/api/system/info'
 ```
+
+> 完整還原 SOP（S3 拉取 / WAL 一致性 / 跨主機指令對照）見 `docs/sop/backup_restore.md`。
+> Lightsail rollback（起舊站 + DNS 切回）見 `~/butler/docs/kg-backend-deployment.md` §6。
 
 ## Scope 邊界(不屬本 skill)
 
