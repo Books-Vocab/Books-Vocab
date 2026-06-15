@@ -3,9 +3,8 @@
 //  Books & Vocab UI Tests
 //
 //  Reader 核心 flow（docs/sop/ui_flow_evidence.md 六件套）— 真書 + 視覺證據。
-//  Fixture（`-seedFixture:reader:realBookLibrary`）以 lab 真實章節文本
-//  （Atomic Habits Introduction，pipeline 抽取的原文）經 app 內 EPUBConverter
-//  轉成真 EPUB 入庫，並在綁定單字本內種一筆真詞庫 entry（introduction →
+//  Fixture（`-seedFixture:reader:realBookLibrary`）從 UI World `bookAssetRef`
+//  安裝完整 EPUB 入庫，並在綁定單字本內種一筆真詞庫 entry（introduction →
 //  引言；導論）。Flow：書架開書 → Readium 渲染真內容 → 選詞 → 翻譯面板
 //  帶真內容（詞庫命中路徑，零網路）→ 翻頁進度真前進。
 //

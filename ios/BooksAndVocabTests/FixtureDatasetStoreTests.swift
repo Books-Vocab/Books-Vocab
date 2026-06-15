@@ -7,6 +7,19 @@ import Testing
 // .serialized: tests exercise process-level fixture environment loading.
 @Suite(.serialized)
 struct FixtureDatasetStoreTests {
+    private static var repoRootURL: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // BooksAndVocabTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // repo root
+    }
+
+    private static var readerRealBookAssetPath: String {
+        repoRootURL
+            .appendingPathComponent("ops/fixtures/assets/reader-real-book.epub")
+            .path
+    }
+
     private static func completeV2DatasetData(_ json: String) throws -> Data {
         var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         object["assets"] = object["assets"] ?? [
@@ -740,7 +753,15 @@ struct FixtureDatasetStoreTests {
           "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-runtime-worlds",
           "assets": {
-            "books": {},
+            "books": {
+              "reader-book": {
+                "sourcePath": "/tmp/reader.epub",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "Books/reader.epub",
+                "contentType": "application/epub+zip"
+              }
+            },
             "audio": {
               "runtime-audio": {
                 "sourcePath": "/tmp/audio.m4a",
@@ -822,6 +843,7 @@ struct FixtureDatasetStoreTests {
           "reader": {
             "realBookLibrary": {
               "textAssetRef": "text.reader-source",
+              "bookAssetRef": "books.reader-book",
               "title": "Reader Source",
               "author": "KG",
               "bookFileName": "reader.epub",
@@ -1109,6 +1131,21 @@ struct FixtureDatasetStoreTests {
         {
           "schema": "kg.fixture.dataset.v2",
           "datasetID": "test-marketing",
+          "assets": {
+            "books": {
+              "editorial_english_epub": {
+                "sourcePath": "\(Self.readerRealBookAssetPath)",
+                "sha256": "1c903a07f1e75ec48b472062207d543698fe8a8d381348be0f8110953776bb2f",
+                "byteSize": 2236,
+                "installAs": "Books/editorial-english.epub",
+                "contentType": "application/epub+zip"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {}
+          },
           "settings": {
             "subscribed_active": {
               "auth": {
@@ -1183,7 +1220,7 @@ struct FixtureDatasetStoreTests {
                   "author": "KG Studio",
                   "fileName": "editorial-english.epub",
                   "format": "epub",
-                  "bookAssetRef": null,
+                  "bookAssetRef": "books.editorial_english_epub",
                   "progression": 0.5,
                   "preferredNotebookId": null,
                   "dateAdded": "2026-01-01T00:00:00Z",

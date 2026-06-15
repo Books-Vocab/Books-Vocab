@@ -105,6 +105,14 @@ struct RepoFixtureDatasetsContractTests {
                     dataset: stem,
                     owner: "reader.\(fixtureKey).textAssetRef"
                 )
+                expectBookAssetRef(
+                    seed.bookAssetRef,
+                    document: document,
+                    dataset: stem,
+                    owner: "reader.\(fixtureKey).bookAssetRef",
+                    fileName: seed.bookFileName,
+                    format: .epub
+                )
             }
 
             for (fixtureKey, seed) in document.bookshelf {
@@ -309,6 +317,10 @@ struct RepoFixtureDatasetsContractTests {
             #expect(
                 legacy.isEmpty,
                 "\(dataset): reader.\(fixtureKey) uses legacy bare path keys \(legacy.sorted()); use textAssetRef"
+            )
+            #expect(
+                seed.keys.contains("bookAssetRef"),
+                "\(dataset): reader.\(fixtureKey) must declare bookAssetRef for the complete reader book"
             )
         }
     }

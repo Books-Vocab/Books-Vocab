@@ -706,6 +706,7 @@ enum UIWorldReaderFixtureID: String, CaseIterable {
 
 struct UIWorldReaderSeed: Codable, Equatable {
     let textAssetRef: String
+    let bookAssetRef: String
     let title: String
     let author: String
     let bookFileName: String
