@@ -6,7 +6,7 @@ import time
 from queue import Queue
 from unittest.mock import MagicMock
 
-from kg.service_factories import _get_cached, clear_store_cache
+from kg.service_factories import _get_cached, clear_store_cache, create_library_store
 
 
 def test_evicted_store_is_closed():
@@ -117,6 +117,32 @@ def test_factory_runs_outside_lock():
             "factory() executed while _STORE_CACHE_LOCK was held — "
             "this serialises every other request behind store init."
         )
+    finally:
+        clear_store_cache()
+
+
+def test_create_library_store_is_cached(tmp_path):
+    """Same user_dir returns the *same* LibraryStore instance (shared engine,
+    not a fresh per-request engine which leaked connections + lost WAL cache)."""
+    clear_store_cache()
+    try:
+        s1 = create_library_store(tmp_path)
+        s2 = create_library_store(tmp_path)
+        assert s1 is s2
+    finally:
+        clear_store_cache()
+
+
+def test_library_store_has_close(tmp_path):
+    """LibraryStore must expose close() so the LRU can dispose its engine on
+    eviction (without it, evicted stores leak SQLite connections)."""
+    clear_store_cache()
+    try:
+        store = create_library_store(tmp_path)
+        assert hasattr(store, "close")
+        store.close()
+        # After close the engine is released; a fresh build still works.
+        assert store.engine is None
     finally:
         clear_store_cache()
 

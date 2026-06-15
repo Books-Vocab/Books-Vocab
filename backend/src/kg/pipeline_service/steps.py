@@ -2,14 +2,33 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Protocol
 
 from openai import OpenAIError
 
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, user_dir: Any) -> Any:
+        ...
+
+
+class GraphStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class EmbeddingStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class ClientFactory(Protocol):
+    def __call__(self, provider: Any) -> Any:
+        ...
 
 
 def _touch_linked_cards(
@@ -31,8 +50,8 @@ async def _step_enrich(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
-    client_factory: Callable[..., Any],
+    card_store_factory: CardStoreFactory,
+    client_factory: ClientFactory,
     logger: logging.Logger,
     force: bool = False,
     notebook_id: str = "default",
@@ -100,10 +119,10 @@ async def _step_embed_and_judge(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[..., Any],
-    embedding_store_factory: Callable[..., Any],
-    client_factory: Callable[..., Any],
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    embedding_store_factory: EmbeddingStoreFactory,
+    client_factory: ClientFactory,
     logger: logging.Logger,
     link_kind_enum: Any,
     notebook_id: str = "default",
@@ -193,21 +212,44 @@ async def _step_embed_and_judge(
     # ── Phase 2a: Prepare judge tasks ──
     # Pass 1: collect all other_ids from find_similar across all pending cards
     # to do ONE batch fetch instead of per-card get_batch (fixes C2 N+1 query).
-    per_card_similar: list[tuple[str, Any, int, list[tuple[str, float]]]] = []
-    all_other_ids: set[str] = set()
+    #
+    # Eligibility (not deleted/archived, under MAX_DEGREE) is resolved up front
+    # so similarity is computed only for cards that can actually gain links. The
+    # neighbour lookup is then done in a single batched matmul via
+    # find_similar_batch when the store supports it (real EmbeddingStore);
+    # the per-card find_similar path is kept as a fallback for fakes/stores that
+    # only implement find_similar (the audit found 11+ such test doubles).
+    eligible: list[tuple[str, Any, int]] = []
     for card_id in pending:
         card = cards_cache.get(card_id)
         if not card or card.is_deleted or card.is_archived:
             continue
-
         current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
             continue
+        eligible.append((card_id, card, current_degree))
 
+    similar_by_id: dict[str, list[tuple[str, float]]] = {}
+    if hasattr(embeddings, "find_similar_batch"):
         try:
-            similar = embeddings.find_similar(card_id, k=CANDIDATE_K)
+            similar_by_id = embeddings.find_similar_batch(
+                [cid for cid, _, _ in eligible], k=CANDIDATE_K
+            )
         except (OSError, ValueError) as exc:
-            logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
+            logger.warning("[%s] find_similar_batch failed: %s", uid, exc)
+            similar_by_id = {}
+    else:
+        for card_id, _, _ in eligible:
+            try:
+                similar_by_id[card_id] = embeddings.find_similar(card_id, k=CANDIDATE_K)
+            except (OSError, ValueError) as exc:
+                logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
+
+    per_card_similar: list[tuple[str, Any, int, list[tuple[str, float]]]] = []
+    all_other_ids: set[str] = set()
+    for card_id, card, current_degree in eligible:
+        similar = similar_by_id.get(card_id)
+        if not similar:
             continue
 
         candidates: list[tuple[str, float]] = []
@@ -404,7 +446,7 @@ async def _step_difficulty(
     uid: str,
     user: UserRecord,
     *,
-    card_store_factory: Callable[[Any], Any],
+    card_store_factory: CardStoreFactory,
     logger: logging.Logger,
     notebook_id: str = "default",
 ) -> int:

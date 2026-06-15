@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import sys
 import tempfile
 from pathlib import Path
@@ -66,6 +67,8 @@ if str(_OPS_DIR) not in sys.path:
     sys.path.insert(0, str(_OPS_DIR))
 
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file  # noqa: E402
+
+_LOGGER = logging.getLogger(__name__)
 
 GENERATED_DIR = _HERE / "generated"
 FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
@@ -227,6 +230,7 @@ def _rel(path: Path) -> str:
     try:
         return str(path.relative_to(_REPO_ROOT))
     except ValueError:
+        _LOGGER.debug("Cannot compute relative path from repo root for %s", path)
         return str(path)
 
 

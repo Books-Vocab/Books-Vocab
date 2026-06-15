@@ -7,25 +7,42 @@ import os
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..api_models import EntitlementsResponse
 from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
 
 logger = logging.getLogger("kg.admin_handlers")
 
 
+class MemLogGetter(Protocol):
+    def __call__(self, n: int = 200, level: str | None = None) -> list[dict[str, Any]]:
+        ...
+
+
+class CardStore(Protocol):
+    def count(self) -> int:
+        ...
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, data_dir: Path) -> CardStore:
+        ...
+
+
 def admin_stats_response(
     *,
     load_users: Callable[[], UsersPayload],
-    get_all_stats: Callable[[], dict[str, Any]],
-    build_entitlements_response: Callable[[StoredUserRecord | None], Any],
+    get_all_stats: Callable[[], dict[str, object]],
+    build_entitlements_response: Callable[[StoredUserRecord | None], EntitlementsResponse],
     current_admin_grant_record: Callable[[StoredUserRecord | None], AdminGrantRecord],
-    data_dir: Any,
-    card_store_factory: Callable[[Any], Any],
+    data_dir: Path,
+    card_store_factory: CardStoreFactory,
 ) -> dict[str, Any]:
     from ..deps_quota import _is_pro
     from ..quota_service import get_all_quota_usage, token_cost_usd
@@ -137,7 +154,8 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
                     "percent": du.percent,
                 }
             )
-        except OSError:
+        except OSError as exc:
+            logger.warning("Failed collecting disk usage for %s: %s", path, exc)
             continue
     return disks
 
@@ -155,7 +173,8 @@ def _collect_process(psutil: Any) -> tuple[dict[str, Any], float]:
         except (AttributeError, OSError):
             p_fds = None
         p_create = proc.create_time()
-    except psutil.Error:
+    except psutil.Error as exc:
+        logger.warning("Failed collecting process metrics for host stats: %s", exc)
         p_rss = p_cpu = p_threads = p_create = 0
         p_fds = None
 
@@ -178,6 +197,7 @@ def admin_host_metrics_response() -> dict[str, Any]:
     try:
         import psutil
     except ImportError:
+        logger.warning("psutil not installed; host metrics unavailable", exc_info=True)
         return {"available": False, "reason": "psutil not installed"}
 
     try:
@@ -230,7 +250,7 @@ def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, An
 
 def admin_logs_response(
     *,
-    log_getter: Callable[..., list[dict[str, Any]]],
+    log_getter: MemLogGetter,
     n: int,
     level: str | None,
 ) -> dict[str, Any]:

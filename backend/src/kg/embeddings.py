@@ -95,6 +95,7 @@ class EmbeddingStore:
         try:
             return json.loads(self._meta_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
+            logger.warning("Failed to read embedding meta for %s", self._meta_path, exc_info=True)
             return None
 
     def _write_meta(self) -> None:
@@ -220,12 +221,14 @@ class EmbeddingStore:
         try:
             vectors = np.load(self.embeddings_path)
         except (ValueError, EOFError, OSError) as e:
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return self._degrade_corrupt("npy_unreadable", detail=repr(e))
         # read_text: UnicodeDecodeError on binary garbage. json.loads:
         # JSONDecodeError (a ValueError subclass) on truncated/invalid JSON.
         try:
             ids = json.loads(self.ids_path.read_text())
         except (ValueError, UnicodeDecodeError, OSError) as e:
+            logger.warning("Silently handled exception; using fallback response", exc_info=True)
             return self._degrade_corrupt("ids_json_unreadable", detail=repr(e))
 
         # --- Structural consistency (#546) -------------------------------
@@ -513,17 +516,93 @@ class EmbeddingStore:
         query_norm = norms[idx]
         similarities = (self._embeddings @ query_vec) / (norms * query_norm + _COSINE_EPS)
 
-        # Get top k+1 (including self), then filter
-        top_indices = np.argsort(similarities)[::-1][: k + 1]
+        # Top (k+1) selection (the +1 absorbs self, filtered out below).
+        # np.argpartition is O(N) vs argsort's O(N log N): for a 10k-row store
+        # the full sort is the dominant cost of judge enrichment. We argpartition
+        # to a candidate pool, then argsort *only that pool*.
+        #
+        # Equivalence to a full argsort, precisely: for a *continuous* spectrum
+        # (no exactly-equal scores) the result is identical element-for-element
+        # — and 3072-dim float32 cosine similarities effectively never tie, so
+        # this is the branch real data takes. The only divergence is when an
+        # *exact* tie block straddles the n-(k+1) partition boundary: which
+        # tied id lands just inside vs. just outside the cut is tie-break
+        # dependent, so the selected id subset may differ from full argsort.
+        # The returned score multiset is unaffected. See
+        # tests/test_embedding_topk.py for both halves of this contract.
+        n = similarities.shape[0]
+        want = k + 1  # include self; dropped after
+        if want >= n:
+            # Pool would be the whole array — partition buys nothing; sort all.
+            top_indices = np.argsort(similarities)[::-1]
+        else:
+            # kth picks the (n-want)-th smallest as the partition boundary, so
+            # the trailing `want` positions hold the largest `want` values
+            # (unordered). Sort just those, descending, to recover full order.
+            cand = np.argpartition(similarities, n - want)[-want:]
+            cand = cand[np.argsort(similarities[cand])[::-1]]
+            top_indices = cand
         results = []
         for i in top_indices:
             if self._ids[i] != card_id:
                 results.append((self._ids[i], float(similarities[i])))
         return results[:k]
 
+    def find_similar_batch(
+        self, card_ids: list[str], k: int = 10
+    ) -> dict[str, list[tuple[str, float]]]:
+        """Top-k neighbours for many query cards in one matrix product.
+
+        Equivalent to ``{cid: self.find_similar(cid, k) for cid in card_ids}``
+        but computes a single ``(N x dim) @ (dim x M)`` matmul instead of M
+        independent matvecs — the dominant cost of judge enrichment over a
+        large store. Unknown ids (not in the store) map to ``[]``.
+
+        Memory is ``N x M`` float32 (e.g. 10k x 100 ~= 4MB), safe for the
+        batch sizes the pipeline produces.
+        """
+        # Unknown / empty: every requested id still gets a key (callers iterate
+        # the input list and expect a result per id).
+        result: dict[str, list[tuple[str, float]]] = {cid: [] for cid in card_ids}
+        if self._embeddings is None:
+            return result
+
+        # Resolve query rows, dropping ids absent from the store. Preserve the
+        # caller's order so the M columns line up with `present`.
+        present = [cid for cid in card_ids if cid in self._id_set]
+        if not present:
+            return result
+        q_idx = np.array([self._id_pos[cid] for cid in present])
+
+        norms = self._get_norms()
+        query_vecs = self._embeddings[q_idx]  # (M, dim)
+        # ONE matmul over the whole matrix: (N, dim) @ (dim, M) -> (N, M).
+        # Use np.matmul explicitly (not the @ operator, which dispatches to
+        # ndarray.__matmul__) so the single-product invariant is observable.
+        sims = np.matmul(self._embeddings, query_vecs.T)
+        # Broadcast cosine denominator: column j divides by ||q_j||.
+        denom = norms[:, None] * norms[q_idx][None, :] + _COSINE_EPS
+        sims = sims / denom
+
+        n = self._embeddings.shape[0]
+        want = k + 1  # absorbs self, dropped below
+        for col, cid in enumerate(present):
+            col_sims = sims[:, col]
+            if want >= n:
+                order = np.argsort(col_sims)[::-1]
+            else:
+                cand = np.argpartition(col_sims, n - want)[-want:]
+                order = cand[np.argsort(col_sims[cand])[::-1]]
+            neighbours: list[tuple[str, float]] = []
+            for i in order:
+                other = self._ids[i]
+                if other != cid:
+                    neighbours.append((other, float(col_sims[i])))
+            result[cid] = neighbours[:k]
+        return result
+
     def has(self, card_id: str) -> bool:
         return card_id in self._id_set
 
     def count(self) -> int:
         return len(self._ids)
-

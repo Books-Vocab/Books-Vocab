@@ -15,6 +15,7 @@ Design notes:
 """
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import signal
@@ -26,6 +27,8 @@ from collections import OrderedDict
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 ROOT = Path(__file__).parent.parent
 JOBS_DIR = ROOT / "monitor" / ".jobs"
@@ -286,6 +289,11 @@ class JobTracker:
             # SIGTERM the entire group (handles `uv run python pipeline.py` properly).
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
+            log.warning(
+                "kill job_id=%s failed for pid=%s: exception=ProcessLookupError/PermissionError",
+                job_id,
+                proc.pid,
+            )
             return False
         # The reaper thread will flip status to "killed" once wait() returns.
         return True
@@ -308,6 +316,12 @@ class JobTracker:
                 data = f.read()
             return data.decode("utf-8", errors="replace")
         except OSError:
+            log.warning(
+                "tail_log failed for job_id=%s path=%s",
+                job_id,
+                p,
+                exc_info=True,
+            )
             return ""
 
     # ─── Internals ─────────────────────────────────────────────────────────
@@ -348,7 +362,11 @@ class JobTracker:
                 try:
                     Path(j.log_path).unlink(missing_ok=True)
                 except OSError:
-                    pass
+                    log.info(
+                        "job_id=%s cleanup: failed to remove job log file",
+                        j.id,
+                        exc_info=True,
+                    )
                 self._jobs.pop(jid, None)
                 excess -= 1
 

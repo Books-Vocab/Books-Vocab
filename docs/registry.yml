@@ -808,6 +808,21 @@ documents:
       - "!backend/src/kg/llm/providers.py"
       - "!backend/src/kg/routers/*.py"
 
+  - id: sop.scaling_readiness
+    path: docs/sop/scaling_readiness.md
+    kind: sop
+    authority: derived
+    triggers:
+      - scaling_invariant_changed
+      - single_worker_state_changed
+    sources:
+      - backend/src/kg/quota_service.py
+      - backend/src/kg/translate_service.py
+      - backend/src/kg/pipeline_log.py
+      - backend/src/kg/worker_guard.py
+      - backend/src/kg/app_lifespan.py
+      - backend/Dockerfile
+
   - id: sop.debug
     path: docs/sop/debug.md
     kind: sop

@@ -21,8 +21,11 @@ import json
 import re
 import subprocess
 import sys
+import logging
 from collections import Counter
 from pathlib import Path
+
+LOGGER = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[3]
 ENG = ROOT / "lab/migration_engine/engine"
@@ -67,6 +70,7 @@ def dump_corpus(files: list[Path]) -> dict:
         out = subprocess.run([str(BIN), *map(str, files), "--emit", EMIT],
                              capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
+        LOGGER.warning("catalog_coverage timed out while running swift_ast_dumper")
         return {"__error__": "timeout", "structs": [], "skipped": []}
     if out.returncode != 0:
         return {"__error__": out.stderr.strip()[:300] or f"exit {out.returncode}",
@@ -74,6 +78,7 @@ def dump_corpus(files: list[Path]) -> dict:
     try:
         return json.loads(out.stdout)
     except json.JSONDecodeError as e:
+        LOGGER.warning("catalog_coverage got invalid dumper JSON", exc_info=True)
         return {"__error__": f"bad json: {e}", "structs": [], "skipped": []}
 
 
@@ -106,7 +111,10 @@ def compute() -> dict:
         try:
             src = str(Path(src).relative_to(ROOT))
         except ValueError:
-            pass
+            LOGGER.debug(
+                "Could not compute catalog coverage source relative path for source=%r",
+                src,
+            )
         root = s.get("root", {})
         su = sm = sc = 0
         for n in walk_nodes(root):

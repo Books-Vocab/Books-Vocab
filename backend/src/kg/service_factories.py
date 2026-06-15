@@ -12,6 +12,7 @@ from .cards import CardStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
 from .graph_event_log import GraphEventStore, GraphSnapshotStore
+from .library import LibraryStore
 from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
 from .ops_shared import NOTEBOOK_FILE_SPECS
@@ -185,6 +186,11 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
 def create_notebook_store(user_dir: Path) -> NotebookStore:
     key = f"notebook:{user_dir}"
     return _get_cached(key, lambda: NotebookStore(user_dir / "notebooks.db"))
+
+
+def create_library_store(user_dir: Path) -> LibraryStore:
+    key = f"library:{user_dir}"
+    return _get_cached(key, lambda: LibraryStore(user_dir / "library.db"))
 
 
 # Per-provider OpenAI-compatible client cache. Keyed by provider name so a

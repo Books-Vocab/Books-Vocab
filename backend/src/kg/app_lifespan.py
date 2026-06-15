@@ -31,6 +31,20 @@ def build_app_lifespan_from_dependencies(
     async def lifespan(app: FastAPI):
         del app
         dependencies.logger.info("KG API starting up")
+        # Surface (but do not hard-fail on) missing admin credentials: with a
+        # blank token/password, require_admin silently rejects every admin call,
+        # which is easy to miss in production. Empty values stay valid for
+        # test/dev flows by design.
+        if not dependencies.settings.admin_token:
+            dependencies.logger.warning(
+                "admin_token is empty → admin API is disabled "
+                "(set ADMIN_TOKEN to enable)"
+            )
+        if not dependencies.settings.admin_password:
+            dependencies.logger.warning(
+                "admin_password is empty → admin password login is disabled "
+                "(set ADMIN_PASSWORD to enable)"
+            )
         dependencies.assert_single_worker_fn(
             dependencies.settings.data_dir / ".worker.lock"
         )

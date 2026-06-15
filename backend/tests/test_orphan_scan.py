@@ -195,6 +195,40 @@ def test_scan_detects_judge_log_with_ghost_card(env):
     assert "card_ghost" in item["missing"]
 
 
+def test_scan_judge_log_pointing_to_live_card_not_flagged(env):
+    """A judge_log row whose both endpoints are live cards must NOT be flagged.
+
+    Guards the dependency where the judge_log pass reuses ``user_live_cards``
+    populated during the cards/graph pass: if that wiring breaks (e.g. the
+    refactor forgets to pass the live-card set), a perfectly valid judge row
+    would be mis-reported as an orphan.
+    """
+    import kg.judge_log as jl
+    from kg.cards import CardStore
+    from kg.orphan_scan import scan
+
+    # Second live card in the same notebook so both judge endpoints are live.
+    cards = CardStore(env.user_dir / "cards.db")
+    second = cards.add(
+        content="banana", pos="n.", meaning="香蕉",
+        notebook_id=env.real_notebook_id,
+    )
+
+    jl.record(
+        user_id=env.user_id,
+        notebook_id=env.real_notebook_id,
+        from_id=env.real_card_id,
+        to_id=second.id,
+        similarity=0.7,
+        verdict="accept",
+        confidence=0.9,
+        accepted=True,
+    )
+
+    report = scan(data_dir=env.data_dir)
+    assert report["judge_log_orphan_card"]["count"] == 0
+
+
 def test_scan_detects_token_usage_for_ghost_user(env):
     import kg.token_tracker as tt
     from kg.orphan_scan import scan

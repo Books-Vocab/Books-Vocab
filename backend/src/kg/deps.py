@@ -34,6 +34,7 @@ from .service_factories import (
     create_card_store,
     create_embedding_store,
     create_graph_store,
+    create_library_store,
     create_notebook_store,
     create_review_event_store,
 )
@@ -161,6 +162,10 @@ def _graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
 
 def _notebook_store(user_dir: Path):
     return create_notebook_store(user_dir)
+
+
+def _library_store(user_dir: Path):
+    return create_library_store(user_dir)
 
 
 def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):

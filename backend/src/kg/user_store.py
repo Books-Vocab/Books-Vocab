@@ -7,9 +7,19 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from .types import UsersPayload
+
+
+class NormalizeUsersPayload(Protocol):
+    def __call__(self, users: dict[str, object]) -> tuple[dict[str, object], bool]:
+        ...
+
+
+class DefaultSubscriptionPayload(Protocol):
+    def __call__(self) -> dict[str, object]:
+        ...
 
 
 def is_real_user(user_id: str, record: Any) -> bool:
@@ -27,7 +37,7 @@ class CachedUserStore:
     def __init__(
         self,
         users_file: Path,
-        normalize_fn: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]],
+        normalize_fn: NormalizeUsersPayload,
         ttl: float = 2.0,
     ) -> None:
         self._users_file = users_file
@@ -37,7 +47,7 @@ class CachedUserStore:
         self._cache_time: float = 0.0
         self._lock = threading.Lock()
 
-    def load(self) -> dict[str, dict[str, Any]]:
+    def load(self) -> dict[str, dict[str, object]]:
         with self._lock:
             now = time.monotonic()
             if self._cache is not None and (now - self._cache_time) < self._ttl:
@@ -47,7 +57,7 @@ class CachedUserStore:
             self._cache_time = now
             return copy.deepcopy(data)
 
-    def save(self, users: dict[str, dict[str, Any]]) -> None:
+    def save(self, users: dict[str, dict[str, object]]) -> None:
         save_users_to(self._users_file, users, self._normalize_fn)
         normalized, _ = self._normalize_fn(users)
         with self._lock:
@@ -60,7 +70,10 @@ class CachedUserStore:
             self._cache_time = 0.0
 
 
-def load_users_from(users_file: Path, normalize_users_payload: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]]) -> dict[str, dict[str, Any]]:
+def load_users_from(
+    users_file: Path,
+    normalize_users_payload: NormalizeUsersPayload,
+) -> dict[str, dict[str, object]]:
     if not users_file.exists():
         return {}
     data = json.loads(users_file.read_text())
@@ -70,8 +83,8 @@ def load_users_from(users_file: Path, normalize_users_payload: Callable[[dict[st
 
 def save_users_to(
     users_file: Path,
-    users: dict[str, dict[str, Any]],
-    normalize_users_payload: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]],
+    users: dict[str, dict[str, object]],
+    normalize_users_payload: NormalizeUsersPayload,
 ) -> None:
     normalized, _ = normalize_users_payload(users)
     tmp_path = users_file.with_suffix(".json.tmp")
@@ -80,12 +93,12 @@ def save_users_to(
 
 
 def normalize_users_payload(
-    users: dict[str, Any],
-    default_subscription_payload: Callable[[], dict[str, Any]],
+    users: dict[str, object],
+    default_subscription_payload: DefaultSubscriptionPayload,
     encrypt_fn: Callable[[str], str] | None = None,
-) -> tuple[dict[str, Any], bool]:
+) -> tuple[dict[str, object], bool]:
     changed = False
-    normalized: dict[str, Any] = {}
+    normalized: dict[str, object] = {}
 
     for user_id, record in users.items():
         if not is_real_user(user_id, record):

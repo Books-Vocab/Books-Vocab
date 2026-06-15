@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import Logger
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import HTTPException
 from filelock import FileLock
@@ -26,6 +27,32 @@ from .api_models import (
     VocabUIConfig,
 )
 from .types import StoredUserRecord, UserRecord, UsersPayload
+
+_logger = logging.getLogger(__name__)
+
+
+class CardStore(Protocol):
+    def count(self) -> int:
+        ...
+
+
+class GraphStore(Protocol):
+    def link_count(self) -> int:
+        ...
+
+    def candidate_count(self) -> int:
+        ...
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, user_dir: Path) -> CardStore:
+        ...
+
+
+class GraphStoreFactory(Protocol):
+    def __call__(self, user_dir: Path) -> GraphStore:
+        ...
+
 
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
@@ -277,8 +304,8 @@ def delete_user_account_response(
 def health_response(
     user: dict[str, Any],
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[[Path], Any],
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
 ) -> HealthResponse:
     user_dir: Path = user["dir"]
     cards = card_store_factory(user_dir)
@@ -293,7 +320,8 @@ def health_response(
     db_ok = True
     try:
         cards.count()
-    except (OSError, sqlite3.DatabaseError):
+    except (OSError, sqlite3.DatabaseError) as exc:
+        _logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
         db_ok = False
 
     data_dir_exists = user_dir.exists()

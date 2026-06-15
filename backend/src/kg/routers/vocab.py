@@ -66,17 +66,26 @@ def list_vocab(
     user: CurrentUser,
     since: str | None = None,
     notebook_id: str | None = Query(None, pattern=NOTEBOOK_ID_PATTERN),
+    limit: int = Query(5000, ge=1, le=10000),
+    cursor: str | None = None,
 ):
     from ..pipeline_service import is_pipeline_running
 
-    result = list_vocab_response(
+    # Body stays response_model=list[CardResponse] (iOS parsing unchanged); the
+    # opaque next-page cursor rides the X-Next-Cursor header (same out-of-band
+    # pattern as X-Pipeline-Pending). A malformed cursor -> BadRequestError.
+    result, next_cursor = list_vocab_response(
         since=since, user=user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
+        limit=limit,
+        cursor=cursor,
     )
     response.headers["X-Pipeline-Pending"] = "true" if is_pipeline_running(user["id"]) else "false"
+    if next_cursor is not None:
+        response.headers["X-Next-Cursor"] = next_cursor
     return result
 
 

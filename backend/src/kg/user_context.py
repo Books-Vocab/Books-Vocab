@@ -3,13 +3,12 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any
 
 import jwt
 from fastapi import HTTPException
 
 from .settings import KGSettings
-from .types import UserRecord
+from .types import UserRecord, UsersPayload
 
 # `user_id` is the JWT `sub`, which is later joined into a filesystem path
 # (`data_dir / "users" / user_id`). It MUST be constrained to a path-safe
@@ -25,8 +24,8 @@ def resolve_current_user(
     token: str,
     *,
     settings: KGSettings,
-    load_users: Callable[[], dict[str, dict[str, Any]]],
-    parse_datetime: Callable[[Any], datetime | None],
+    load_users: Callable[[], UsersPayload],
+    parse_datetime: Callable[[object], datetime | None],
 ) -> UserRecord:
     token = token.strip()
     token_iat: datetime | None = None

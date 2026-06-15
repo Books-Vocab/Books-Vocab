@@ -27,6 +27,12 @@ def _create_indexes(engine: Engine) -> None:
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_card_updated_at ON card (updated_at)"
         )
+        # Composite index backing cursor pagination — row-value comparison and
+        # ORDER BY both use (updated_at, id). Kept alongside the single-column
+        # index above (still used by get_modified_since's `updated_at >` scan).
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_card_updated_at_id ON card (updated_at, id)"
+        )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_card_content ON card (content)"
         )
