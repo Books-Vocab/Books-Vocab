@@ -1,3 +1,8 @@
+# SUPERSEDED 2026-06-15 by ops/launchd/com.kg.backup.plist (prod moved to the
+# macOS standby host; macOS uses launchd, not cron). On Lightsail this cron is
+# disabled (renamed to /etc/cron.d/kg-backup.disabled.migrated). Kept for
+# Lightsail rollback reference only — do NOT redeploy to the standby.
+#
 # KG production data backup → AWS S3.
 # Daily at UTC 03:00 (Taipei 11:00). Runs as root so it can read
 # data/ regardless of container UID drift and write to /var/log/.

@@ -139,6 +139,23 @@ is_blocked_run() {
 
 main() {
   local sub="${1:-}"
+
+  # ── Lightsail 遷移防呆（2026-06-15）─────────────────────────────────────────
+  # 正式站已從 Lightsail 遷到家用 standby（Cloudflare Tunnel）。這些變更型子命令
+  # 仍寫死打向已停的 Lightsail = footgun：deploy 推到錯主機；backup / backup-s3-test
+  # 會用 Lightsail 凍結舊資料覆蓋 standby 今天的好備份。預設擋下；rollback 情境
+  # （見 ~/butler/docs/kg-backend-deployment.md §6）才以 KG_ALLOW_LIGHTSAIL=1 放行。
+  case "$sub" in
+    deploy|restart|migrate|backup|backup-s3-test)
+      if [[ "${KG_ALLOW_LIGHTSAIL:-}" != "1" ]]; then
+        echo "✗ '$sub' 會操作已停用的 Lightsail（正式站已遷到 standby）" >&2
+        echo "  standby 部署 / 備份 / 回滾程序見 ~/butler/docs/kg-backend-deployment.md（§4、§6）" >&2
+        echo "  確定要對 Lightsail 操作（rollback）→ 設 KG_ALLOW_LIGHTSAIL=1 重跑" >&2
+        exit 2
+      fi
+      ;;
+  esac
+
   case "$sub" in
     preflight)
       preflight

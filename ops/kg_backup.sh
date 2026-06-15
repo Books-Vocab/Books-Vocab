@@ -6,11 +6,16 @@
 # Writes a one-line audit log to /var/log/kg_backup.log per run:
 #   <timestamp> exit=<rc> bytes=<size> sha256=<hash> key=<s3 key>
 #
-# Intentionally NO local intermediate file: avoids filling /home/ubuntu disk
-# and removes the "backup tarball deleted by same incident" risk.
+# Intentionally NO local intermediate file: avoids filling the data disk and
+# removes the "backup tarball deleted by same incident" risk.
 #
-# Deployed at /usr/local/bin/kg_backup.sh, owned root:root mode 755.
-# Invoked by /etc/cron.d/kg-backup as root.
+# Portable across the two prod hosts (paths come from env, not hardcoded):
+#   - standby (current prod, macOS/OrbStack): invoked by the LaunchAgent
+#     ops/launchd/com.kg.backup.plist as user chenliangyu, with
+#     KG_DATA_DIR=~/project/kg/backend/data, KG_BACKUP_LOG=~/Library/Logs/kg_backup.log.
+#     Uses /sbin/sha256sum + bsdtar (both present on macOS).
+#   - Lightsail (stopped rollback, Linux): was /usr/local/bin/kg_backup.sh run by
+#     /etc/cron.d/kg-backup as root (cron now disabled; see ops/cron/kg-backup.cron).
 set -euo pipefail
 
 BUCKET="${KG_BACKUP_BUCKET:-kg-backups-prod-967512079054}"
@@ -54,6 +59,12 @@ tar -C "$(dirname "$DATA_DIR")" \
       --no-progress
 rc=${PIPESTATUS[3]}
 set -e
+
+# Ensure the `tee >(...)` process-substitution children have finished writing
+# TMP_SHA / TMP_SIZE before we read them. Without this the read races the async
+# subshells; it happens to win under the current aws consumer but that's luck,
+# not contract.
+wait
 
 SHA="$(cat "$TMP_SHA")"
 SIZE="$(cat "$TMP_SIZE")"
