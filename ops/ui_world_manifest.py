@@ -160,6 +160,23 @@ AUTH_REQUIRED_KEYS = {
     "provider",
     "providerUserId",
 }
+ENTITLEMENTS_SEED_KEYS = {"pro"}
+ENTITLEMENTS_PRO_KEYS = {
+    "is_active",
+    "product_id",
+    "plan_name",
+    "price_display",
+    "status",
+    "is_trial",
+    "trial_days",
+    "will_renew",
+    "expires_at",
+    "source",
+    "last_synced_at",
+}
+VALID_ENTITLEMENT_STATUSES = {"active", "trial", "grace_period", "inactive", "expired"}
+ACTIVE_ENTITLEMENT_STATUSES = {"active", "trial", "grace_period"}
+VALID_ENTITLEMENT_SOURCES = {"app_store", "admin"}
 BOOK_FORMAT_CONTENT_TYPES = {
     "epub": "application/epub+zip",
     "pdf": "application/pdf",
@@ -419,6 +436,53 @@ def _validate_uuid(raw: Any, *, owner: str, label: str) -> None:
         UUID(value)
     except ValueError as exc:
         raise UIWorldManifestError(f"{label} {owner} must be UUID") from exc
+
+
+def _validate_nullable_string(raw: Any, *, owner: str, label: str) -> None:
+    if raw is not None:
+        _ensure_str(raw, field=owner, label=label)
+
+
+def _validate_entitlements(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("entitlements"), field="entitlements", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"entitlements.{fixture_id}", label=label)
+        owner = f"entitlements.{fixture_id}"
+        _validate_exact_keys(seed_obj, expected=ENTITLEMENTS_SEED_KEYS, owner=owner, label=label)
+        pro = _require_mapping(seed_obj.get("pro"), field=f"{owner}.pro", label=label)
+        pro_owner = f"{owner}.pro"
+        _validate_exact_keys(pro, expected=ENTITLEMENTS_PRO_KEYS, owner=pro_owner, label=label)
+        is_active = _ensure_bool(pro.get("is_active"), field=f"{pro_owner}.is_active", label=label)
+        status = _ensure_str(pro.get("status"), field=f"{pro_owner}.status", label=label)
+        if status not in VALID_ENTITLEMENT_STATUSES:
+            raise UIWorldManifestError(f"{label} {pro_owner}.status is invalid")
+        expected_active = status in ACTIVE_ENTITLEMENT_STATUSES
+        if is_active != expected_active:
+            raise UIWorldManifestError(f"{label} {pro_owner}.is_active must match entitlement-bearing status")
+        source = _ensure_str(pro.get("source"), field=f"{pro_owner}.source", label=label)
+        if source not in VALID_ENTITLEMENT_SOURCES:
+            raise UIWorldManifestError(f"{label} {pro_owner}.source is invalid")
+        is_trial = _ensure_bool(pro.get("is_trial"), field=f"{pro_owner}.is_trial", label=label)
+        if is_trial != (status == "trial"):
+            raise UIWorldManifestError(f"{label} {pro_owner}.is_trial must match status=trial")
+        will_renew = _ensure_bool(pro.get("will_renew"), field=f"{pro_owner}.will_renew", label=label)
+        if status in {"inactive", "expired"} and will_renew:
+            raise UIWorldManifestError(f"{label} {pro_owner}.will_renew must be false for inactive/expired status")
+        trial_days = pro.get("trial_days")
+        if trial_days is not None and _ensure_int(trial_days, field=f"{pro_owner}.trial_days", label=label) < 0:
+            raise UIWorldManifestError(f"{label} {pro_owner}.trial_days must be non-negative")
+        for field in ("product_id", "plan_name", "price_display"):
+            _validate_nullable_string(pro.get(field), owner=f"{pro_owner}.{field}", label=label)
+        if source == "app_store" and is_active:
+            _ensure_str(pro.get("product_id"), field=f"{pro_owner}.product_id", label=label)
+        if source == "admin":
+            if not is_active or status != "active":
+                raise UIWorldManifestError(f"{label} {pro_owner} admin source must be active")
+            if pro.get("product_id") is not None or pro.get("price_display") is not None:
+                raise UIWorldManifestError(f"{label} {pro_owner} admin source must not carry App Store product or price")
+            if trial_days is not None or is_trial or will_renew:
+                raise UIWorldManifestError(f"{label} {pro_owner} admin source must not carry trial or renewal state")
+        for field in ("expires_at", "last_synced_at"):
+            _validate_optional_iso8601(pro.get(field), owner=f"{pro_owner}.{field}", label=label)
 
 
 def _validate_sync_presenter(data: dict[str, Any], *, label: str) -> None:
@@ -1094,6 +1158,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 )
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
+    _validate_entitlements(data, label=label)
     _validate_sync_presenter(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id

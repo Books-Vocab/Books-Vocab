@@ -191,6 +191,56 @@ def test_validate_rejects_auth_seed_unknown_key(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_entitlements_seed_missing_nullable_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["entitlements"]["pro"]["pro"]["price_display"]
+    path = tmp_path / "missing_nullable_entitlement_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entitlements.pro.pro keys .*price_display"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_entitlements_seed_unknown_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["entitlements"]["pro"]["pro"]["is_admin_granted"] = False
+    path = tmp_path / "unknown_entitlement_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entitlements.pro.pro keys .*is_admin_granted"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_entitlements_active_status_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["entitlements"]["free"]["pro"]["is_active"] = True
+    path = tmp_path / "entitlement_active_status_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entitlements.free.pro.is_active must match entitlement-bearing status"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_admin_entitlement_with_app_store_product(tmp_path: Path):
+    data = _marketing_demo()
+    data["entitlements"]["adminGranted"]["pro"]["product_id"] = "com.wordnexus.pro.monthly"
+    path = tmp_path / "admin_entitlement_with_app_store_product.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entitlements.adminGranted.pro admin source must not carry App Store product"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_entitlements_invalid_sync_timestamp(tmp_path: Path):
+    data = _marketing_demo()
+    data["entitlements"]["pro"]["pro"]["last_synced_at"] = "yesterday"
+    path = tmp_path / "entitlement_bad_timestamp.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"entitlements.pro.pro.last_synced_at must be ISO8601"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_bookshelf_book_install_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["installAs"] = "Books/wrong.epub"
