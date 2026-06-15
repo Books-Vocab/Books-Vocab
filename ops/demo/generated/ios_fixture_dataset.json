@@ -146,6 +146,30 @@
       "authError": null,
       "isAuthenticating": false
     },
+    "settingsSignedIn": {
+      "isLoggedIn": true,
+      "userId": "settings-user",
+      "token": "settings-access-token",
+      "displayName": "Chen Liang",
+      "email": "chen@example.com",
+      "provider": "apple",
+      "providerUserId": "apple:settings-user",
+      "keychainTokenState": "available",
+      "authError": null,
+      "isAuthenticating": false
+    },
+    "longIdentity": {
+      "isLoggedIn": true,
+      "userId": "long-identity-user",
+      "token": "long-identity-access-token",
+      "displayName": "王小明的超級長英文混中文顯示名稱測試 Wonderfully Long Display Name",
+      "email": "an.extremely.long.email.address.for.layout.testing@example-domain.com",
+      "provider": "apple",
+      "providerUserId": "apple:long-identity-user",
+      "keychainTokenState": "available",
+      "authError": null,
+      "isAuthenticating": false
+    },
     "guest": {
       "isLoggedIn": false,
       "userId": null,
@@ -247,6 +271,8 @@
   },
   "settings": {
     "logged_out": {
+      "authFixtureRef": "auth.guest",
+      "entitlementsFixtureRef": null,
       "auth": {
         "isLoggedIn": false,
         "userInitials": null,
@@ -281,6 +307,8 @@
       "bookSync": null
     },
     "account_logged_out_error": {
+      "authFixtureRef": "auth.guestError",
+      "entitlementsFixtureRef": null,
       "auth": {
         "isLoggedIn": false,
         "userInitials": null,
@@ -315,6 +343,8 @@
       "bookSync": null
     },
     "preferences_auto_sync_off": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -394,6 +424,8 @@
       "debugLocalServerURL": null
     },
     "preferences_logged_out_no_sync": {
+      "authFixtureRef": "auth.guest",
+      "entitlementsFixtureRef": null,
       "auth": {
         "isLoggedIn": false,
         "userInitials": null,
@@ -439,6 +471,8 @@
       "bookSync": null
     },
     "subscribed_active": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -518,6 +552,8 @@
       "debugLocalServerURL": null
     },
     "account_long_identity": {
+      "authFixtureRef": "auth.longIdentity",
+      "entitlementsFixtureRef": "entitlements.pro",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "WW",
@@ -597,6 +633,8 @@
       "debugLocalServerURL": null
     },
     "subscription_free": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -676,6 +714,8 @@
       "debugLocalServerURL": null
     },
     "subscription_loading": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -740,6 +780,8 @@
       "bookSync": null
     },
     "deleting_account": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.pro",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -804,6 +846,8 @@
       "bookSync": null
     },
     "pricing_unavailable": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": "entitlements.free",
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",
@@ -872,6 +916,8 @@
       "reviewSettings": null
     },
     "debug_backend_local": {
+      "authFixtureRef": "auth.settingsSignedIn",
+      "entitlementsFixtureRef": null,
       "auth": {
         "isLoggedIn": true,
         "userInitials": "CL",

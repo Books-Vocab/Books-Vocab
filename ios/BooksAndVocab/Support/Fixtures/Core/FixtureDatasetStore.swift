@@ -301,6 +301,8 @@ enum UIWorldAuthFixtureID: String, CaseIterable {
     case guestAuthenticating
     case guestError
     case signedIn
+    case settingsSignedIn
+    case longIdentity
 }
 
 struct UIWorldAuthSeed: Codable, Equatable {

@@ -313,6 +313,8 @@ struct SettingsFixtureSeed: Codable {
     }
 
     let auth: Auth
+    let authFixtureRef: String
+    let entitlementsFixtureRef: String?
     let preferences: Preferences
     let reviewSettings: Review?
     let kg: KG?
@@ -326,6 +328,8 @@ struct SettingsFixtureSeed: Codable {
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case auth
+        case authFixtureRef
+        case entitlementsFixtureRef
         case preferences
         case reviewSettings
         case kg
@@ -342,6 +346,24 @@ struct SettingsFixtureSeed: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try Self.requireAllKeys(in: container, context: "UI World settings seed")
         auth = try container.decode(Auth.self, forKey: .auth)
+        authFixtureRef = try container.decode(String.self, forKey: .authFixtureRef)
+        entitlementsFixtureRef = try container.decodeIfPresent(String.self, forKey: .entitlementsFixtureRef)
+        guard !authFixtureRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .authFixtureRef,
+                in: container,
+                debugDescription: "UI World settings seed authFixtureRef must not be empty"
+            )
+        }
+        if let entitlementsFixtureRef {
+            guard !entitlementsFixtureRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .entitlementsFixtureRef,
+                    in: container,
+                    debugDescription: "UI World settings seed entitlementsFixtureRef must be null or non-empty"
+                )
+            }
+        }
         preferences = try container.decode(Preferences.self, forKey: .preferences)
         reviewSettings = try container.decodeIfPresent(Review.self, forKey: .reviewSettings)
         kg = try container.decodeIfPresent(KG.self, forKey: .kg)

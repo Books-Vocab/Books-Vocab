@@ -205,6 +205,15 @@ struct RepoFixtureDatasetsContractTests {
                     owner: "auth.\(fixtureKey)"
                 )
             }
+
+            for (fixtureKey, seed) in document.settings {
+                expectSettingsStateRefs(
+                    seed,
+                    document: document,
+                    dataset: stem,
+                    owner: "settings.\(fixtureKey)"
+                )
+            }
         }
     }
 
@@ -845,6 +854,59 @@ struct RepoFixtureDatasetsContractTests {
         if seed.isLoggedIn {
             #expect(!seed.isAuthenticating, "\(dataset): \(owner) logged-in auth seed must not also be authenticating")
             #expect(seed.authError == nil, "\(dataset): \(owner) logged-in auth seed must not carry login error copy")
+        }
+    }
+
+    private func expectSettingsStateRefs(
+        _ seed: SettingsFixtureSeed,
+        document: FixtureDatasetDocument,
+        dataset: String,
+        owner: String
+    ) {
+        let authRef = seed.authFixtureRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(authRef.hasPrefix("auth."), "\(dataset): \(owner).authFixtureRef must point into auth.*, got \(authRef)")
+        let authKey = String(authRef.dropFirst("auth.".count))
+        guard let authSeed = document.auth[authKey] else {
+            Issue.record("\(dataset): \(owner).authFixtureRef references missing \(authRef)")
+            return
+        }
+        #expect(
+            seed.auth.isLoggedIn == authSeed.isLoggedIn,
+            "\(dataset): \(owner).auth.isLoggedIn must match \(authRef).isLoggedIn"
+        )
+        #expect(
+            seed.auth.authError == authSeed.authError,
+            "\(dataset): \(owner).auth.authError must match \(authRef).authError"
+        )
+        if seed.auth.isLoggedIn {
+            #expect(
+                seed.auth.email == authSeed.email,
+                "\(dataset): \(owner).auth.email must match \(authRef).email"
+            )
+            #expect(
+                seed.auth.displayName == authSeed.displayName,
+                "\(dataset): \(owner).auth.displayName must match \(authRef).displayName"
+            )
+        }
+
+        if let entitlementsRef = seed.entitlementsFixtureRef?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            #expect(
+                entitlementsRef.hasPrefix("entitlements."),
+                "\(dataset): \(owner).entitlementsFixtureRef must point into entitlements.*, got \(entitlementsRef)"
+            )
+            let entitlementsKey = String(entitlementsRef.dropFirst("entitlements.".count))
+            guard let entitlementsSeed = document.entitlements[entitlementsKey] else {
+                Issue.record("\(dataset): \(owner).entitlementsFixtureRef references missing \(entitlementsRef)")
+                return
+            }
+            if let subscription = seed.subscription, !subscription.isRefreshing {
+                #expect(
+                    subscription.isActive == entitlementsSeed.pro.is_active,
+                    "\(dataset): \(owner).subscription.isActive must match \(entitlementsRef).pro.is_active"
+                )
+            }
+        } else {
+            #expect(seed.subscription == nil, "\(dataset): \(owner) without entitlementsFixtureRef must not declare subscription UI state")
         }
     }
 
