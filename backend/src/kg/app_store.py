@@ -88,22 +88,29 @@ def _verify_certificate_signature(child: x509.Certificate, issuer: x509.Certific
     public_key = issuer.public_key()
     signature_hash = child.signature_hash_algorithm
 
-    if isinstance(public_key, rsa.RSAPublicKey):
-        public_key.verify(
-            child.signature,
-            child.tbs_certificate_bytes,
-            padding.PKCS1v15(),
-            signature_hash,
-        )
-        return
+    try:
+        if isinstance(public_key, rsa.RSAPublicKey):
+            public_key.verify(
+                child.signature,
+                child.tbs_certificate_bytes,
+                padding.PKCS1v15(),
+                signature_hash,
+            )
+            return
 
-    if isinstance(public_key, ec.EllipticCurvePublicKey):
-        public_key.verify(
-            child.signature,
-            child.tbs_certificate_bytes,
-            ec.ECDSA(signature_hash),
-        )
-        return
+        if isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(
+                child.signature,
+                child.tbs_certificate_bytes,
+                ec.ECDSA(signature_hash),
+            )
+            return
+    except InvalidSignature as exc:
+        # cryptography raises InvalidSignature (NOT a ValueError subclass) when a
+        # cert is signed by the wrong key — e.g. an attacker keeps the genuine
+        # trusted root at the chain tail but forges an inner link. Collapse it to
+        # our domain error so the billing handler maps it to HTTP 400, not 500.
+        raise AppStoreVerificationError("App Store certificate signature is invalid.") from exc
 
     raise AppStoreVerificationError("Unsupported App Store certificate public key type.")
 
@@ -134,7 +141,10 @@ def _verify_certificate_chain(certificates: list[x509.Certificate], trusted_root
                 return
             _verify_certificate_signature(chain_root, trusted_root)
             return
-        except (AppStoreVerificationError, InvalidSignature):
+        except AppStoreVerificationError:
+            # _verify_certificate_signature + _ensure_certificate_valid_now now
+            # only raise the domain error (raw InvalidSignature is collapsed at
+            # source), so trying the next trusted root candidate is sufficient.
             logger.debug("Trusted root candidate did not match chain root", exc_info=True)
             continue
 
@@ -181,6 +191,11 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
             key=public_key,
             # alg is PINNED — never sourced from the attacker-controlled header.
             algorithms=[_APP_STORE_JWS_ALGORITHM],
+            # Small clock-skew tolerance on exp/nbf so a genuinely-signed proof
+            # that just crossed expiry by a few seconds of clock drift is not
+            # killed. A forged proof remains unverifiable regardless of leeway, so
+            # this has no security cost (the signature gate is independent of exp).
+            leeway=timedelta(seconds=60),
             options={
                 "verify_signature": True,
                 # Apple JWS payloads carry no standard iss/aud; trust is rooted in
@@ -194,8 +209,12 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
             },
         )
     except jwt.InvalidTokenError as exc:
-        # Covers ExpiredSignatureError, InvalidAlgorithmError, InvalidSignatureError,
-        # and any other malformed/forged-token failure — collapse to our domain error.
+        # This block covers only failures jwt.decode itself raises here:
+        # ExpiredSignatureError, ImmatureSignatureError, the JWS-payload
+        # InvalidSignatureError, and InvalidAlgorithmError. It does NOT cover
+        # cert-CHAIN signature failures — those happen earlier in
+        # _verify_certificate_chain (before this try) and are collapsed to
+        # AppStoreVerificationError at their own source.
         raise AppStoreVerificationError(f"App Store JWS verification failed: {exc}") from exc
 
     # bundleId binds the proof to THIS app. JWSTransaction / notification envelopes
