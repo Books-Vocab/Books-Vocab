@@ -32,6 +32,18 @@ FIXTURE_TOP_LEVEL_KEYS = {
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
+AUTH_REQUIRED_KEYS = {
+    "isLoggedIn",
+    "userId",
+    "token",
+    "keychainTokenState",
+    "displayName",
+    "email",
+    "authError",
+    "isAuthenticating",
+    "provider",
+    "providerUserId",
+}
 BOOK_FORMAT_CONTENT_TYPES = {
     "epub": "application/epub+zip",
     "pdf": "application/pdf",
@@ -96,6 +108,13 @@ def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
     for fixture_id, seed in _require_mapping(data.get("auth"), field="auth", label=label).items():
         seed_obj = _require_mapping(seed, field=f"auth.{fixture_id}", label=label)
         owner = f"auth.{fixture_id}"
+        keys = set(seed_obj)
+        missing = sorted(AUTH_REQUIRED_KEYS - keys)
+        extra = sorted(keys - AUTH_REQUIRED_KEYS)
+        if missing or extra:
+            raise UIWorldManifestError(
+                f"{label} {owner} keys 不符合 UI World v2: extra={extra} missing={missing}"
+            )
         is_logged_in = seed_obj.get("isLoggedIn")
         if not isinstance(is_logged_in, bool):
             raise UIWorldManifestError(f"{label} {owner}.isLoggedIn 必須是 bool")

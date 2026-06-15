@@ -100,6 +100,26 @@ def test_validate_rejects_logged_in_auth_without_user_id(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_auth_seed_missing_nullable_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["auth"]["signedIn"]["providerUserId"]
+    path = tmp_path / "missing_nullable_auth_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"auth.signedIn keys .*providerUserId"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_auth_seed_unknown_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["auth"]["signedIn"]["legacyUserId"] = "user-legacy"
+    path = tmp_path / "unknown_auth_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"auth.signedIn keys .*legacyUserId"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_bookshelf_book_install_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["installAs"] = "Books/wrong.epub"
