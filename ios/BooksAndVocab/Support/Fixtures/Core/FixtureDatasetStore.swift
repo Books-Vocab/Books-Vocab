@@ -964,6 +964,16 @@ struct UIWorldAssetManifest: Codable, Equatable {
         subtitles = try container.decode([String: UIWorldAsset].self, forKey: .subtitles)
         text = try container.decode([String: UIWorldAsset].self, forKey: .text)
         images = try container.decode([String: UIWorldAsset].self, forKey: .images)
+        try Self.validateUniqueInstallPaths(
+            buckets: [
+                "books": books,
+                "audio": audio,
+                "subtitles": subtitles,
+                "text": text,
+                "images": images,
+            ],
+            codingPath: container.codingPath
+        )
     }
 
     var refs: [String] {
@@ -986,6 +996,28 @@ struct UIWorldAssetManifest: Codable, Equatable {
         case "text": return text[parts[1]]
         case "images": return images[parts[1]]
         default: return nil
+        }
+    }
+
+    private static func validateUniqueInstallPaths(
+        buckets: [String: [String: UIWorldAsset]],
+        codingPath: [CodingKey]
+    ) throws {
+        var seen: [String: String] = [:]
+        for (bucket, assets) in buckets {
+            for (assetID, asset) in assets {
+                let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+                let ref = "\(bucket).\(assetID)"
+                if let previous = seen[installAs] {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: codingPath,
+                            debugDescription: "UI World assets \(previous) and \(ref) share installAs \(installAs)"
+                        )
+                    )
+                }
+                seen[installAs] = ref
+            }
         }
     }
 }

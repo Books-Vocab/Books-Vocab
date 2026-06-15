@@ -1747,6 +1747,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
         raise UIWorldManifestError(
             f"{label} assets buckets 不符合 UI World v2: extra={extra} missing={missing}"
         )
+    install_paths: dict[str, str] = {}
     for bucket in sorted(ASSET_BUCKETS):
         entries = assets[bucket]
         if not isinstance(entries, dict):
@@ -1770,6 +1771,12 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
             expected_hash = _ensure_str(asset.get("sha256"), field=f"{asset_label}.sha256", label=label)
             expected_size = asset.get("byteSize")
             _validate_install_as(install_as, field=asset_label, label=label)
+            previous_asset = install_paths.get(install_as)
+            if previous_asset is not None:
+                raise UIWorldManifestError(
+                    f"{label} {asset_label}.installAs duplicates {previous_asset}.installAs: {install_as}"
+                )
+            install_paths[install_as] = asset_label
             if "/" not in content_type:
                 raise UIWorldManifestError(f"{label} {asset_label}.contentType 必須是 MIME type")
             if len(expected_hash) != 64 or any(ch not in "0123456789abcdef" for ch in expected_hash):
