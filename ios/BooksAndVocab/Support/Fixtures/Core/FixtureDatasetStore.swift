@@ -2034,31 +2034,48 @@ enum FixtureDatasetStore {
         case loaded(FixtureDatasetDocument, source: String)
     }
 
+    private enum LoadSource {
+        case absent
+        case invalid(source: String, error: String)
+        case data(Data, description: String)
+    }
+
     private static func loadState() -> LoadState {
-        guard let source = loadSource() else { return .absent }
-        do {
-            let document = try decode(source.data)
-            return .loaded(document, source: source.description)
-        } catch {
-            return .invalid(source: source.description, error: String(reflecting: error))
+        let source = loadSource()
+        switch source {
+        case .absent:
+            return .absent
+        case let .invalid(source, error):
+            return .invalid(source: source, error: error)
+        case let .data(data, description):
+            do {
+                let document = try decode(data)
+                return .loaded(document, source: description)
+            } catch {
+                return .invalid(source: description, error: String(reflecting: error))
+            }
         }
     }
 
-    private static func loadSource() -> (data: Data, description: String)? {
+    private static func loadSource() -> LoadSource {
         if let testingOverrideData {
-            return (testingOverrideData, "testing-override")
+            return .data(testingOverrideData, description: "testing-override")
         }
 
-        // Empty value counts as absent (defensive): `Data(base64Encoded: "")`
-        // is empty Data, not nil, so a stray empty export would otherwise land
-        // in `.invalid`.
-        if let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey],
-           !rawValue.isEmpty,
-           let data = Data(base64Encoded: rawValue) {
-            return (data, "env:\(fixtureDatasetEnvKey)")
+        let envDescription = "env:\(fixtureDatasetEnvKey)"
+        guard let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey] else {
+            return .absent
         }
 
-        return nil
+        guard !rawValue.isEmpty else {
+            return .invalid(source: envDescription, error: "\(fixtureDatasetEnvKey) must not be empty")
+        }
+
+        guard let data = Data(base64Encoded: rawValue) else {
+            return .invalid(source: envDescription, error: "\(fixtureDatasetEnvKey) is not valid base64")
+        }
+
+        return .data(data, description: envDescription)
     }
 
     private static func makeDecoder() -> JSONDecoder {

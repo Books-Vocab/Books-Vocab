@@ -20,6 +20,24 @@ struct FixtureDatasetStoreTests {
             .path
     }
 
+    private static func withFixtureDatasetEnv<T>(_ value: String?, perform: () throws -> T) rethrows -> T {
+        let key = "KG_FIXTURE_DATASET_B64"
+        let previous = getenv(key).map { String(cString: $0) }
+        if let value {
+            setenv(key, value, 1)
+        } else {
+            unsetenv(key)
+        }
+        defer {
+            if let previous {
+                setenv(key, previous, 1)
+            } else {
+                unsetenv(key)
+            }
+        }
+        return try perform()
+    }
+
     private static func completeV2DatasetData(_ json: String) throws -> Data {
         var object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
         object["assets"] = object["assets"] ?? [
@@ -95,6 +113,37 @@ struct FixtureDatasetStoreTests {
         }
         #expect(throws: DecodingError.self) {
             _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(emptyID))
+        }
+    }
+
+    @Test func fixtureDatasetEnvFailsWhenPresentButEmptyOrMalformed() throws {
+        try Self.withFixtureDatasetEnv("") {
+            try FixtureDatasetStore.withTestingData(nil) {
+                #expect(FixtureDatasetStore.debugSummary().contains("invalid @ env:KG_FIXTURE_DATASET_B64"))
+                #expect(FixtureDatasetStore.debugSummary().contains("must not be empty"))
+            }
+        }
+
+        try Self.withFixtureDatasetEnv("not-base64") {
+            try FixtureDatasetStore.withTestingData(nil) {
+                #expect(FixtureDatasetStore.debugSummary().contains("invalid @ env:KG_FIXTURE_DATASET_B64"))
+                #expect(FixtureDatasetStore.debugSummary().contains("not valid base64"))
+            }
+        }
+    }
+
+    @Test func fixtureDatasetTestingOverrideTakesPrecedenceOverMalformedEnv() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "override-world"
+        }
+        """
+
+        try Self.withFixtureDatasetEnv("not-base64") {
+            try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+                #expect(FixtureDatasetStore.debugSummary() == "override-world @ testing-override")
+            }
         }
     }
 
