@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 from openai import OpenAIError
 
@@ -19,6 +18,31 @@ from .steps import _step_difficulty, _step_embed_and_judge, _step_enrich
 # stuck "running" in pipeline_log telemetry and bubbling a 429-style error
 # to a background task with no HTTP context to catch it.
 _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError, KGError)
+
+
+class AsyncLockFactory(Protocol):
+    async def __call__(self, user_id: str) -> Any:
+        ...
+
+
+class CardStoreFactory(Protocol):
+    def __call__(self, user_dir: Any) -> Any:
+        ...
+
+
+class GraphStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class EmbeddingStoreFactory(Protocol):
+    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class ClientFactory(Protocol):
+    def __call__(self, provider: Any) -> Any:
+        ...
 
 
 def _telemetry(logger: logging.Logger, method: str, *args: Any, **kwargs: Any) -> None:
@@ -85,11 +109,11 @@ async def _run_step(
 async def run_pipeline_background(
     user: UserRecord,
     *,
-    get_user_lock_fn: Callable[[str], Any],
-    card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[..., Any],
-    embedding_store_factory: Callable[..., Any],
-    client_factory: Callable[..., Any],
+    get_user_lock_fn: AsyncLockFactory,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    embedding_store_factory: EmbeddingStoreFactory,
+    client_factory: ClientFactory,
     logger: logging.Logger,
     link_kind_enum: Any,
     force_enrich: bool = False,

@@ -100,6 +100,7 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
                 try:
                     data = json.loads(content)
                 except (json.JSONDecodeError, ValueError):
+                    logger.warning("LLM returned malformed JSON for %s; trying regex fallback", link.id)
                     m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
                     data = json.loads(m.group()) if m else {}
 

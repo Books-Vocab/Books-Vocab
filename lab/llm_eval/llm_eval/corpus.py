@@ -7,11 +7,14 @@ explicitly promotes them.
 
 from __future__ import annotations
 
+import logging
 import json
 import re
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 _UID_RE = re.compile(r"\b\d{6}\.[A-Fa-f0-9]{32}\.[A-Za-z0-9_-]+\b")
 _CARD_ID_RE = re.compile(r"\b[A-Fa-f0-9]{12}\b")
@@ -120,6 +123,7 @@ def _first_example(raw: Any) -> str:
             if isinstance(data, list) and data:
                 return str(data[0])
         except json.JSONDecodeError:
+            logger.debug("Failed to parse first example JSON in llm_eval corpus")
             return raw
     return ""
 
@@ -138,6 +142,7 @@ def _int_or_default(value: Any, default: int) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
+        logger.warning("Invalid integer value %r in corpus; using default %s", value, default)
         return default
 
 

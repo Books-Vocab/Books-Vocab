@@ -18,13 +18,20 @@ env（皆有預設，對齊 asc.sh）：
 HTTP 4xx/5xx 不裸 crash：印 {"_httpError": <code>, "_detail": ...} 供呼叫端判讀。
 204 No Content（常見於 DELETE）回 {"_ok": <status>}。
 """
-import os, sys, time, json, urllib.request, urllib.error
+import json
+import logging
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
 import jwt  # pyjwt（+cryptography 提供 ES256）
 
 KEY_ID = os.environ.get("ASC_KEY_ID", "TCXVHFRXMS")
 ISSUER = os.environ.get("ASC_ISSUER_ID", "d7f86188-7c56-46f7-bc99-f889421025fa")
 KEY_DIR = os.path.expanduser(os.environ.get("ASC_KEY_DIR", "~/.secrets/apple"))
 ALLOWED = {"PATCH", "POST", "DELETE"}
+LOGGER = logging.getLogger("ops.asc_write")
 
 
 def mint_token():
@@ -55,12 +62,15 @@ def write(path, token, body, method):
         return json.loads(raw)
     except urllib.error.HTTPError as e:       # 4xx/5xx：含 Apple 的 errors[] 細節
         raw = e.read().decode("utf-8", "replace")
+        LOGGER.warning("ASC %s failed with HTTP %s for %s", method, e.code, path)
         try:
             detail = json.loads(raw)
-        except Exception:
+        except Exception as exc:
+            LOGGER.warning("ASC %s non-JSON response for %s: %s", method, path, exc)
             detail = {"raw": raw[:500]}
         return {"_httpError": e.code, "_detail": detail}
     except urllib.error.URLError as e:        # 斷網 / DNS / TLS / 連線被拒
+        LOGGER.warning("ASC %s network error for %s: %s", method, path, e)
         return {"_httpError": "network", "_detail": {"reason": str(e.reason)}}
 
 

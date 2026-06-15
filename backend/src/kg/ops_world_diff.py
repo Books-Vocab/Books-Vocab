@@ -87,6 +87,77 @@ def _graph_link_key(link: dict[str, Any]) -> tuple[str | None, str | None, str |
     )
 
 
+def _compare_graphs(
+    actual: dict[str, Any],
+    expected_graphs: Any,
+    *,
+    mismatches: list[dict[str, Any]],
+) -> None:
+    """Append graph/link mismatches (read-only over ``actual``/``expected``)."""
+    actual_graphs: dict[str, dict[str, Any]] = {}
+    for graph in actual.get("graphs", []):
+        if not isinstance(graph, dict):
+            continue
+        for key in (graph.get("notebook_name"), graph.get("notebook_id")):
+            if isinstance(key, str) and key:
+                actual_graphs[key] = graph
+    for graph in expected_graphs:
+        if not isinstance(graph, dict):
+            mismatches.append({
+                "kind": "invalid-spec",
+                "path": "graphs",
+                "expected": "object entries",
+                "actual": graph,
+            })
+            continue
+        key = graph.get("notebook") or graph.get("notebook_name") or graph.get("notebook_id")
+        label = str(key) if key else "<unknown>"
+        if not isinstance(key, str) or key not in actual_graphs:
+            mismatches.append({
+                "kind": "missing-graph",
+                "path": f"graphs[{label}]",
+                "expected": graph,
+                "actual": None,
+            })
+            continue
+        actual_graph = actual_graphs[key]
+        actual_links = {
+            _graph_link_key(link): link
+            for link in actual_graph.get("links", [])
+            if isinstance(link, dict)
+        }
+        for idx, link in enumerate(graph.get("links", [])):
+            if not isinstance(link, dict):
+                mismatches.append({
+                    "kind": "invalid-spec",
+                    "path": f"graphs[{label}].links[{idx}]",
+                    "expected": "object",
+                    "actual": link,
+                })
+                continue
+            link_key = _graph_link_key(link)
+            link_label = f"{link_key[0]}->{link_key[1]}:{link_key[2]}"
+            if link_key not in actual_links:
+                mismatches.append({
+                    "kind": "missing-link",
+                    "path": f"graphs[{label}].links[{link_label}]",
+                    "expected": link,
+                    "actual": None,
+                })
+                continue
+            normalized = dict(link)
+            if "from" in normalized and "from_content" not in normalized:
+                normalized["from_content"] = normalized.pop("from")
+            if "to" in normalized and "to_content" not in normalized:
+                normalized["to_content"] = normalized.pop("to")
+            _compare_subset(
+                actual_links[link_key],
+                normalized,
+                path=f"graphs[{label}].links[{link_label}]",
+                mismatches=mismatches,
+            )
+
+
 def diff_world_state(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
     mismatches: list[dict[str, Any]] = []
 
@@ -151,68 +222,7 @@ def diff_world_state(actual: dict[str, Any], expected: dict[str, Any]) -> dict[s
             _compare_subset(actual_cards[key], normalized, path=f"cards[{label}]", mismatches=mismatches)
 
     if "graphs" in expected:
-        actual_graphs: dict[str, dict[str, Any]] = {}
-        for graph in actual.get("graphs", []):
-            if not isinstance(graph, dict):
-                continue
-            for key in (graph.get("notebook_name"), graph.get("notebook_id")):
-                if isinstance(key, str) and key:
-                    actual_graphs[key] = graph
-        for graph in expected["graphs"]:
-            if not isinstance(graph, dict):
-                mismatches.append({
-                    "kind": "invalid-spec",
-                    "path": "graphs",
-                    "expected": "object entries",
-                    "actual": graph,
-                })
-                continue
-            key = graph.get("notebook") or graph.get("notebook_name") or graph.get("notebook_id")
-            label = str(key) if key else "<unknown>"
-            if not isinstance(key, str) or key not in actual_graphs:
-                mismatches.append({
-                    "kind": "missing-graph",
-                    "path": f"graphs[{label}]",
-                    "expected": graph,
-                    "actual": None,
-                })
-                continue
-            actual_graph = actual_graphs[key]
-            actual_links = {
-                _graph_link_key(link): link
-                for link in actual_graph.get("links", [])
-                if isinstance(link, dict)
-            }
-            for idx, link in enumerate(graph.get("links", [])):
-                if not isinstance(link, dict):
-                    mismatches.append({
-                        "kind": "invalid-spec",
-                        "path": f"graphs[{label}].links[{idx}]",
-                        "expected": "object",
-                        "actual": link,
-                    })
-                    continue
-                link_key = _graph_link_key(link)
-                link_label = f"{link_key[0]}->{link_key[1]}:{link_key[2]}"
-                if link_key not in actual_links:
-                    mismatches.append({
-                        "kind": "missing-link",
-                        "path": f"graphs[{label}].links[{link_label}]",
-                        "expected": link,
-                        "actual": None,
-                    })
-                    continue
-                normalized = dict(link)
-                if "from" in normalized and "from_content" not in normalized:
-                    normalized["from_content"] = normalized.pop("from")
-                if "to" in normalized and "to_content" not in normalized:
-                    normalized["to_content"] = normalized.pop("to")
-                _compare_subset(
-                    actual_links[link_key],
-                    normalized,
-                    path=f"graphs[{label}].links[{link_label}]",
-                    mismatches=mismatches,
-                )
+        _compare_graphs(actual, expected["graphs"], mismatches=mismatches)
 
     return {
         "schema": DIFF_SCHEMA,

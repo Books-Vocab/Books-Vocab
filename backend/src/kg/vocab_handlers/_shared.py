@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from ..notebook import validate_notebook_access
 
@@ -15,12 +14,37 @@ class ResolvedStores:
     embeddings: Any | None = None
 
 
+class CardStoreFactory(Protocol):
+    def __call__(self, user_dir: Path) -> Any:
+        ...
+
+
+class NotebookStoreFactory(Protocol):
+    def __call__(self, user_dir: Path) -> Any:
+        ...
+
+
+class GraphStoreFactory(Protocol):
+    def __call__(self, user_dir: Path, notebook_id: str = "default") -> Any:
+        ...
+
+
+class EmbeddingStoreFactory(Protocol):
+    def __call__(self, user_dir: Path, llm: Any, notebook_id: str = "default") -> Any:
+        ...
+
+
+class ClientFactory(Protocol):
+    def __call__(self, provider: Any) -> Any:
+        ...
+
+
 def _resolve_embedding_store(
     user: dict[str, Any],
     notebook_id: str,
     *,
-    embedding_store_factory: Callable[..., Any] | None,
-    client_factory: Callable[..., Any] | None,
+    embedding_store_factory: EmbeddingStoreFactory | None,
+    client_factory: ClientFactory | None,
 ) -> Any | None:
     """Build an embedding store for mutation paths, or None if disabled."""
     if embedding_store_factory is None or client_factory is None:
@@ -45,11 +69,11 @@ def _resolve_stores(
     user: dict[str, Any],
     notebook_id: str | None,
     *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
-    embedding_store_factory: Callable[..., Any] | None = None,
-    client_factory: Callable[..., Any] | None = None,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory | None = None,
+    notebook_store_factory: NotebookStoreFactory | None = None,
+    embedding_store_factory: EmbeddingStoreFactory | None = None,
+    client_factory: ClientFactory | None = None,
 ) -> ResolvedStores:
     """Validate notebook access and construct card/graph/embedding stores."""
     if notebook_id is not None and notebook_store_factory is not None:

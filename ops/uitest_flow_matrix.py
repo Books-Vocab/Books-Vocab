@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -109,7 +112,8 @@ def run_variant(cmd: list[str]) -> tuple[int, dict | None, str]:
     if proc.stdout.strip():
         try:
             payload = json.loads(proc.stdout)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning("Failed to parse variant output as JSON for command %s: %s", " ".join(cmd), exc)
             payload = None
     return proc.returncode, payload, proc.stderr
 

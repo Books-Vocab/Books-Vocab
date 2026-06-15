@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from .ops_edit_support import (
     _CARD_UPDATABLE_FIELDS,
     _VALID_REVIEW_STATES,
@@ -23,6 +25,8 @@ from .ops_edit_support import (
     datetime,
     json,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def cmd_card_add(args: argparse.Namespace) -> int:
@@ -80,6 +84,7 @@ def cmd_card_update(args: argparse.Namespace) -> int:
         try:
             value = json.loads(raw)
         except json.JSONDecodeError:
+            logger.debug("Failed to parse --set value as JSON for user command (field=%s, raw=%r), treating as string", field, raw)
             value = raw  # 裸字串
         updates[field] = value
     if not updates:

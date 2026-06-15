@@ -8,6 +8,7 @@ changing the public API or method semantics.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,8 @@ from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc, normalize_nfc_lower
 from .model import Card
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CardMutationMixin:
@@ -70,6 +73,12 @@ class CardMutationMixin:
             try:
                 session.commit()
             except IntegrityError:
+                _LOGGER.debug(
+                    "add() duplicate detected for content=%r notebook=%s; returning existing row",
+                    norm,
+                    notebook_id,
+                    exc_info=True,
+                )
                 session.rollback()
                 row = session.connection().exec_driver_sql(
                     "SELECT id FROM card WHERE content = ? COLLATE NOCASE "

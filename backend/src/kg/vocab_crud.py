@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
-from typing import Any, NamedTuple
+from datetime import UTC, datetime
+from typing import Any, NamedTuple, Protocol
 
 from .api_models import CardResponse
 from .api_models.vocab import ArchiveWordResponse, DeleteWordResponse
@@ -21,38 +21,147 @@ from .vocab_shared import (
 logger = logging.getLogger(__name__)
 
 
-def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
+def encode_cursor(cursor: tuple[datetime, str] | None) -> str | None:
+    """Encode an ``(updated_at, id)`` cursor as the opaque token
+    ``f"{updated_at_iso}|{id}"``. Returns ``None`` for ``None`` (last page)."""
+    if cursor is None:
+        return None
+    updated_at, card_id = cursor
+    return f"{updated_at.isoformat()}|{card_id}"
+
+
+def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
+    """Decode an opaque cursor token back to ``(updated_at, id)``.
+
+    Splits on the first ``|`` (ISO timestamps contain none; ids are hex).
+
+    The timestamp must round-trip to the **naive UTC** value stored in the card
+    table verbatim. We parse with ``datetime.fromisoformat`` directly rather than
+    ``parse_datetime`` because the latter reinterprets a naive ISO string as
+    *local* time before converting to UTC — an 8h-class shift on a UTC+N host
+    that would slide the cursor boundary backwards and re-yield the previous
+    page. A naive token (the common case, since ``encode_cursor`` emits the
+    stored naive value) is kept as-is; a tz-aware token is converted to UTC then
+    stripped. Raises :class:`BadRequestError` on any malformed token rather than
+    silently restarting pagination from the top.
+    """
+    if not token:
+        return None
+    raw_ts, sep, card_id = token.partition("|")
+    if not sep or not card_id:
+        raise BadRequestError("Invalid cursor")
+    try:
+        parsed = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise BadRequestError("Invalid cursor") from exc
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return (parsed, card_id)
+
+
+def _resolve_with_neighbours(cards: list[Any], graph: Any, cards_store: Any) -> dict[str, Any]:
+    """Build the ``cards_by_id`` map for a page: the page's own cards plus the
+    graph neighbours (on other pages / soft-deleted) needed to render links.
+
+    The page itself is a *subset* of the full table, so any neighbour not on the
+    page is fetched via ``get_batch`` (one query). ``build_links_by_kind`` still
+    tolerates a missing neighbour (``if not other_card``), so a cross-page or
+    deleted neighbour that can't be resolved is simply skipped rather than
+    dropping the whole link silently.
+    """
+    by_id: dict[str, Any] = {c.id: c for c in cards}
+    neighbour_ids: set[str] = set()
+    for card in cards:
+        if card.is_deleted:
+            continue
+        for link in graph.get_links_for(card.id):
+            other_id = link.to_id if link.from_id == card.id else link.from_id
+            if other_id not in by_id:
+                neighbour_ids.add(other_id)
+    if neighbour_ids:
+        by_id |= cards_store.get_batch(neighbour_ids)
+    return by_id
+
+
+def _page_cursor(cards: list[Any], limit: int) -> tuple[datetime, str] | None:
+    """Cursor for the next page, or ``None`` when this page drained the source.
+
+    A full page (``len == limit``) means more rows *may* remain, so emit the
+    last card's ``(updated_at, id)``. A short page means the source is drained.
+    """
+    if limit and len(cards) == limit:
+        last = cards[-1]
+        return (last.updated_at, last.id)
+    return None
+
+
+class VocabCard(Protocol):
+    id: str
+    content: str
+    is_deleted: bool
+    is_archived: bool
+    notebook_id: str
+
+
+class VocabGraph(Protocol):
+    def get_links_for(self, card_id: str) -> object:
+        ...
+
+
+class CardResponseBuilder(Protocol):
+    def __call__(
+        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
+    ) -> CardResponse:
+        ...
+
+
+class CardMutator(Protocol):
+    def __call__(self, card: VocabCard) -> None:
+        ...
+
+
+def list_vocab_cards(
+    *,
+    since: str | None,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+    limit: int = 5000,
+    after: tuple[datetime, str] | None = None,
+) -> tuple[list[CardResponse], tuple[datetime, str] | None]:
+    """List vocab cards as ``(responses, next_cursor)``.
+
+    Both the full-sync (``since=None``) and incremental (``since=...``) paths
+    page by the composite cursor ``(updated_at, id)`` with a bounded ``limit``.
+    ``after`` is the previous page's cursor; ``next_cursor`` is non-None only
+    when a full page was returned (more rows may remain). Cards are returned in
+    ascending ``(updated_at, id)`` order so the cursor advances monotonically.
+    """
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
         naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
-        # Phase 1: only fetch modified cards (uses ix_card_updated_at index)
+        # Incremental: fetch the modified set (already bounded), then order and
+        # slice it by the same cursor so since + full-sync paginate identically.
         modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
-        modified_by_id: dict[str, Any] = {c.id: c for c in modified}
-        # Phase 2: collect neighbour IDs for link resolution (graph is in-memory, N lookups OK)
-        neighbour_ids: set[str] = set()
-        for card in modified:
-            if card.is_deleted:
-                continue
-            for link in graph.get_links_for(card.id):
-                other_id = link.to_id if link.from_id == card.id else link.from_id
-                if other_id not in modified_by_id:
-                    neighbour_ids.add(other_id)
-        neighbours = cards_store.get_batch(neighbour_ids) if neighbour_ids else {}
-        # NOTE: cards_by_id is a subset (modified + neighbours), not the full table.
-        # build_links_by_kind skips missing neighbours via `if not other_card`.
-        cards_by_id = modified_by_id | neighbours
-        cards = modified
+        modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
+        if after is not None:
+            modified = [c for c in modified if (c.updated_at, c.id) > after]
+        cards = modified[:limit]
     else:
-        # Full sync: all non-deleted cards. Deleted neighbours are skipped by build_links_by_kind.
-        cards_by_id = cards_store.all_as_dict(include_deleted=False, notebook_id=notebook_id)
-        cards = list(cards_by_id.values())
+        # Full sync: DB-bounded page (no full-table materialisation).
+        cards = cards_store.page_cards(
+            limit=limit, after=after, include_deleted=False, notebook_id=notebook_id
+        )
 
-    return [card_response_builder(card, graph, cards_by_id) for card in cards]
+    cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)
+    responses = [card_response_builder(card, graph, cards_by_id) for card in cards]
+    return responses, _page_cursor(cards, limit)
 
 
-def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> Any:
+def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> VocabCard:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
@@ -61,11 +170,18 @@ def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None)
     return card
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
+def lookup_vocab_word(
+    word: str,
+    *,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+) -> CardResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
-    cards_by_id: dict[str, Any] = {card.id: card}
+    cards_by_id: dict[str, VocabCard] = {card.id: card}
     for link in graph.get_links_for(card.id):
         linked_id = link.from_id if link.to_id == card.id else link.to_id
         if linked_id not in cards_by_id:
@@ -106,7 +222,7 @@ def update_vocab_word_content(
     explanation: str | None,
     cards_store: Any,
     graph: Any,
-    card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse],
+    card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
 ) -> CardResponse:
     """Update editorial content (meaning / note) of a single card.
@@ -191,7 +307,7 @@ class _GraphOpFailed(Exception):
 
 
 class BulkResult(NamedTuple):
-    succeeded: list[tuple[str, Any]]
+    succeeded: list[tuple[str, VocabCard]]
     not_found: list[str]
     failed: list[str]
 
@@ -201,7 +317,7 @@ def _batch_apply(
     *,
     cards_store: Any,
     notebook_id: str | None,
-    apply: Callable[[Any], None],
+    apply: CardMutator,
 ) -> BulkResult:
     """Shared skeleton for batch vocab mutations.
 
@@ -221,13 +337,13 @@ def _batch_apply(
     if len(words) > MAX_BATCH_SIZE:
         raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
-    succeeded: list[tuple[str, Any]] = []
+    succeeded: list[tuple[str, VocabCard]] = []
     not_found: list[str] = []
     failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
     seen_words_by_key: dict[str, set[str]] = {}
-    outcome_by_key: dict[str, tuple[str, Any | None]] = {}
+    outcome_by_key: dict[str, tuple[str, VocabCard | None]] = {}
 
     for word in words:
         key = _normalize_word(_clean_content(word))

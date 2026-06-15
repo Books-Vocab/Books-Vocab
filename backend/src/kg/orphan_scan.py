@@ -176,7 +176,8 @@ def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[di
             rows = conn.execute(
                 f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id"
             ).fetchall()
-        except sqlite3.OperationalError:
+        except sqlite3.OperationalError as exc:
+            logger.warning("Failed to query orphan user rows from %s (%s)", table, exc)
             rows = []
         for uid, count in rows:
             if uid and uid not in user_ids:
@@ -191,30 +192,18 @@ def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[di
     return orphans
 
 
-def scan(*, data_dir: Path) -> dict[str, Any]:
-    """Read-only scan; returns a structured report.
+def _scan_cards_and_graph_orphans(
+    user_dirs: list[tuple[str, Path]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, set[str]]]:
+    """Single pass over each user's cards.db + graph files.
 
-    Shape::
-
-        {
-          "cards_orphan_notebook":      {"count": N, "items": [...]},
-          "graph_links_orphan_card":    {"count": N, "items": [...]},
-          "translate_log_orphan_user":  {"count": N, "items": [...]},
-          "judge_log_orphan_card":      {"count": N, "items": [...]},
-          "token_usage_orphan_user":    {"count": N, "items": [...]},
-          "total": int,
-        }
+    Returns ``(cards_orphan, graph_orphan, user_live_cards)``. The
+    ``user_live_cards`` map is built here and threaded into the judge_log pass
+    so cards.db is read exactly once per user — re-scanning a second time was
+    wasteful and risked a TOCTOU race with concurrent writes.
     """
-    data_dir = Path(data_dir)
-    user_ids = _load_user_ids(data_dir)
-    user_dirs = _iter_user_dirs(data_dir, user_ids)
-
     cards_orphan: list[dict[str, Any]] = []
     graph_orphan: list[dict[str, Any]] = []
-    judge_orphan: list[dict[str, Any]] = []
-    # Built once per user during the cards/graph pass and reused below for the
-    # judge_log orphan check — re-scanning cards.db a second time was wasteful
-    # and risked a TOCTOU race with concurrent writes.
     user_live_cards: dict[str, set[str]] = {}
 
     for uid, udir in user_dirs:
@@ -242,7 +231,8 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
         for nb_id, graph_path in _list_graph_files(udir):
             try:
                 links = json.loads(graph_path.read_text())
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Skipping malformed graph file for user %s: %s", uid, exc)
                 continue
             if not isinstance(links, list):
                 continue
@@ -266,41 +256,83 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                         "missing": missing,
                     })
 
-    # 4. judge_log — reuses ``user_live_cards`` populated in the loop above.
+    return cards_orphan, graph_orphan, user_live_cards
+
+
+def _scan_judge_log_orphans(
+    data_dir: Path,
+    user_live_cards: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """judge_log rows whose endpoints are missing/non-live cards.
+
+    Reuses ``user_live_cards`` populated by :func:`_scan_cards_and_graph_orphans`
+    rather than re-reading cards.db. The live-card set is passed in explicitly
+    so this pass never re-scans the database.
+    """
+    judge_orphan: list[dict[str, Any]] = []
     judge_db = data_dir / "judge_log.db"
-    if judge_db.exists():
-        with sqlite3.connect(str(judge_db)) as conn:
-            try:
-                rows = conn.execute(
-                    "SELECT id, user_id, notebook_id, from_id, to_id "
-                    "FROM judge_log"
-                ).fetchall()
-            except sqlite3.OperationalError:
-                rows = []
-        for row_id, uid, nb_id, from_id, to_id in rows:
-            live = user_live_cards.get(uid)
-            if live is None:
-                # judge_log row for a user we don't know — covered by the
-                # user-orphan category indirectly; flag both endpoints.
-                judge_orphan.append({
-                    "id": row_id,
-                    "user_id": uid,
-                    "notebook_id": nb_id,
-                    "from_id": from_id,
-                    "to_id": to_id,
-                    "missing": [from_id, to_id],
-                })
-                continue
-            missing = [c for c in (from_id, to_id) if c and c not in live]
-            if missing:
-                judge_orphan.append({
-                    "id": row_id,
-                    "user_id": uid,
-                    "notebook_id": nb_id,
-                    "from_id": from_id,
-                    "to_id": to_id,
-                    "missing": missing,
-                })
+    if not judge_db.exists():
+        return judge_orphan
+    with sqlite3.connect(str(judge_db)) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, user_id, notebook_id, from_id, to_id "
+                "FROM judge_log"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            logger.warning("Failed to query orphan judge_log rows: %s", exc)
+            rows = []
+    for row_id, uid, nb_id, from_id, to_id in rows:
+        live = user_live_cards.get(uid)
+        if live is None:
+            # judge_log row for a user we don't know — covered by the
+            # user-orphan category indirectly; flag both endpoints.
+            judge_orphan.append({
+                "id": row_id,
+                "user_id": uid,
+                "notebook_id": nb_id,
+                "from_id": from_id,
+                "to_id": to_id,
+                "missing": [from_id, to_id],
+            })
+            continue
+        missing = [c for c in (from_id, to_id) if c and c not in live]
+        if missing:
+            judge_orphan.append({
+                "id": row_id,
+                "user_id": uid,
+                "notebook_id": nb_id,
+                "from_id": from_id,
+                "to_id": to_id,
+                "missing": missing,
+            })
+    return judge_orphan
+
+
+def scan(*, data_dir: Path) -> dict[str, Any]:
+    """Read-only scan; returns a structured report.
+
+    Shape::
+
+        {
+          "cards_orphan_notebook":      {"count": N, "items": [...]},
+          "graph_links_orphan_card":    {"count": N, "items": [...]},
+          "translate_log_orphan_user":  {"count": N, "items": [...]},
+          "judge_log_orphan_card":      {"count": N, "items": [...]},
+          "token_usage_orphan_user":    {"count": N, "items": [...]},
+          "total": int,
+        }
+    """
+    data_dir = Path(data_dir)
+    user_ids = _load_user_ids(data_dir)
+    user_dirs = _iter_user_dirs(data_dir, user_ids)
+
+    # cards/graph pass builds ``user_live_cards`` once; the judge_log pass
+    # reuses it (explicit hand-off — no second cards.db read).
+    cards_orphan, graph_orphan, user_live_cards = _scan_cards_and_graph_orphans(user_dirs)
+
+    # 4. judge_log — reuses ``user_live_cards`` from the cards/graph pass.
+    judge_orphan = _scan_judge_log_orphans(data_dir, user_live_cards)
 
     # 3. translate_log → user
     translate_orphan = _scan_user_orphans(data_dir / "translate_log.db", "translate_log", user_ids)
@@ -469,7 +501,13 @@ def fix(
             )
         try:
             links = json.loads(graph_path.read_text())
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "Could not read graph file for cleanup %s / user %s: %s",
+                graph_path,
+                uid,
+                exc,
+            )
             continue
         if not isinstance(links, list):
             continue

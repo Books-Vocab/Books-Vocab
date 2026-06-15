@@ -45,6 +45,12 @@ _OAUTH_STATE_PATH = "/auth/web/"
 _GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS = (0.2, 0.5)
 
 
+def _is_transient_status(status_code: int) -> bool:
+    # Retry transient upstream failures only; authentication failures (4xx) should
+    # fail fast so operators get immediate feedback.
+    return status_code >= 500 or status_code == 429
+
+
 def _set_state_cookie(response: Response, nonce: str, *, samesite: str = "lax") -> None:
     # Google's callback is a top-level GET redirect → SameSite=Lax suffices.
     # Apple uses response_mode=form_post → a cross-site top-level POST, to which
@@ -76,18 +82,30 @@ def _verify_state(request: Request, provided: str | None) -> None:
 
 async def _exchange_google_code(data: dict[str, str]) -> httpx.Response:
     attempts = len(_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS) + 1
+    last_resp: httpx.Response | None = None
     last_exc: httpx.HTTPError | None = None
     async with httpx.AsyncClient(timeout=10.0) as client:
         for attempt in range(attempts):
             try:
-                return await client.post(GOOGLE_TOKEN_URL, data=data)
+                resp = await client.post(GOOGLE_TOKEN_URL, data=data)
+                if _is_transient_status(resp.status_code):
+                    last_resp = resp
+                    if attempt < attempts - 1:
+                        await asyncio.sleep(_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS[attempt])
+                        continue
+                return resp
             except httpx.HTTPError as exc:
                 last_exc = exc
                 if attempt == attempts - 1:
                     break
                 await asyncio.sleep(_GOOGLE_TOKEN_RETRY_BACKOFF_SECONDS[attempt])
-    assert last_exc is not None
-    raise last_exc
+    if last_resp is not None:
+        # Exhausted transient HTTP retries on an upstream server-side issue.
+        return last_resp
+    if last_exc is not None:
+        raise last_exc
+    # Defensive fallback: should not happen, but keep behavior deterministic.
+    raise RuntimeError("google token exchange failed with no response and no exception")
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -158,7 +176,11 @@ async def google_callback(
     error: str | None = None,
 ):
     if error:
-        raise HTTPException(status_code=400, detail=f"Google auth error: {error}")
+        # Redact the upstream provider string from the client (it can carry
+        # provider-internal hints); keep the raw value server-side only,
+        # mirroring ExternalServiceError's redaction philosophy.
+        logger.warning("Google OAuth callback returned provider error: %s", error)
+        raise HTTPException(status_code=400, detail="Authentication failed")
     if not code:
         raise HTTPException(status_code=400, detail="Missing authorization code")
 
@@ -221,7 +243,10 @@ async def apple_callback(
     error: str = Form(None),
 ):
     if error:
-        raise HTTPException(status_code=400, detail=f"Apple auth error: {error}")
+        # Redact the upstream provider string from the client; keep raw value
+        # server-side only (see google_callback above).
+        logger.warning("Apple OAuth callback returned provider error: %s", error)
+        raise HTTPException(status_code=400, detail="Authentication failed")
 
     _verify_state(request, state)
 

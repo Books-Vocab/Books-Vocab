@@ -13,6 +13,7 @@ processes* on the same machine. Stdlib only -- no new dependency.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -22,6 +23,7 @@ try:  # POSIX
 
     _HAVE_FCNTL = True
 except ImportError:  # pragma: no cover -- Windows fallback
+    logging.getLogger(__name__).warning("fcntl unavailable; file locks disabled (Windows fallback)", exc_info=True)
     fcntl = None  # type: ignore[assignment]
     _HAVE_FCNTL = False
 

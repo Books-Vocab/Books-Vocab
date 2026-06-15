@@ -138,6 +138,50 @@ def test_google_callback_missing_id_token_returns_401(web_auth_env):
     assert resp.status_code == 401, resp.text
 
 
+# ── Provider error redaction (B1) ────────────────────────────────────────────
+# OAuth callbacks must NOT echo the upstream provider's ``error`` string back to
+# the client (it can carry provider-internal hints). The client receives a
+# generic 400; the raw provider error is logged server-side at WARNING.
+
+_PROVIDER_ERROR_SENTINEL = "access_denied_internal_provider_hint_xyz"
+
+
+def test_google_callback_provider_error_is_redacted(web_auth_env, caplog):
+    """Google callback ``?error=<x>`` → 400 with generic body (no ``<x>``) and a
+    server-side WARNING carrying the raw provider error."""
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.get(
+            f"/auth/web/google/callback?error={_PROVIDER_ERROR_SENTINEL}",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 400, resp.text
+    assert _PROVIDER_ERROR_SENTINEL not in resp.text
+    assert any(
+        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
+    ), "raw provider error must be logged server-side"
+
+
+def test_apple_callback_provider_error_is_redacted(web_auth_env, caplog):
+    """Apple callback ``error=<x>`` (form POST) → 400 with generic body (no
+    ``<x>``) and a server-side WARNING carrying the raw provider error."""
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.post(
+            "/auth/web/apple/callback",
+            data={
+                "id_token": "unused-when-error-present",
+                "error": _PROVIDER_ERROR_SENTINEL,
+            },
+            follow_redirects=False,
+        )
+    assert resp.status_code == 400, resp.text
+    assert _PROVIDER_ERROR_SENTINEL not in resp.text
+    assert any(
+        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
+    ), "raw provider error must be logged server-side"
+
+
 # ── Cookie security attributes (full assertion) ──────────────────────────────
 
 

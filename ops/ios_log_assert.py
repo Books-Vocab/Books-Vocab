@@ -30,10 +30,13 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import logging
 import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _spec = importlib.util.spec_from_file_location(
     "ios_perf_naming", Path(__file__).resolve().parent / "ios_perf_naming.py"
@@ -79,7 +82,8 @@ def normalize_events(raw: str) -> list[Event]:
     # Try whole-text JSON first (envelope or array or single object).
     try:
         doc = json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        logger.debug("Root JSON parse failed, falling back to NDJSON: %s", exc)
         doc = None
     if doc is not None:
         if isinstance(doc, dict) and isinstance(doc.get("entries"), list):
@@ -96,7 +100,8 @@ def normalize_events(raw: str) -> list[Event]:
             continue
         try:
             obj = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning("Skipping invalid NDJSON line: %s", exc)
             continue
         if isinstance(obj, dict):
             events.append(_event_from_obj(obj))
@@ -120,6 +125,7 @@ def extract_metrics(events: list[Event]) -> dict:
             try:
                 parsed = naming.parse(name)
             except ValueError:
+                logger.debug("Skipping invalid metric token %r in message %r", name, ev.message)
                 continue
             slot = acc.setdefault(name, {
                 "kind": parsed.kind,
@@ -174,6 +180,7 @@ def summarize(events: list[Event]) -> dict:
             try:
                 seen.add(naming.parse(m.group("name")).feature)
             except ValueError:
+                logger.debug("Skipping invalid metric token for feature extraction: %r", m.group("name"))
                 continue
         for feat in seen:
             if feat in features:

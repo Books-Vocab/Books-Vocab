@@ -29,7 +29,8 @@ Public API
 check_pipeline_failures(window_min, threshold, include_interrupted=False)
 check_judge_rejection_rate(window_min, min_total, threshold)
 check_translate_latency_p95(window_min, threshold_ms)
-run_all_checks()  — calls all three with module defaults.
+check_llm_error_rate(window_min, threshold, min_total)
+run_all_checks()  — calls all four with module defaults.
 """
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import judge_log, pipeline_log, translate_log
+from . import judge_log, llm_error_log, pipeline_log, translate_log
 
 _logger = logging.getLogger(__name__)
 
@@ -86,6 +87,15 @@ JUDGE_MIN_TOTAL = 10
 JUDGE_REJECT_THRESHOLD = 0.5
 TRANSLATE_WINDOW_MIN = 15
 TRANSLATE_P95_THRESHOLD_MS = 5000
+# LLM infrastructure failures (429/5xx/timeout) recorded in llm_errors.db.
+# These are terminal failures the SDK's retries couldn't recover — a spike
+# means a provider is degraded. Inclusive count threshold (>=), matching the
+# pipeline-failure check. `MIN_TOTAL` is the floor below which we stay silent
+# to avoid noise from one-off blips; with THRESHOLD >= MIN_TOTAL the floor is
+# implied, but it's kept explicit so the silence contract is testable.
+LLM_ERROR_WINDOW_MIN = 15
+LLM_ERROR_THRESHOLD = 10
+LLM_ERROR_MIN_TOTAL = 3
 
 # Maps alert key → datetime of last emission. Test fixture clears.
 _cooldown_state: dict[str, datetime] = {}
@@ -118,6 +128,7 @@ def _emit(*, alert_key: str, level: str, message: str, tags: dict[str, Any]) -> 
         _capture(message, level, payload_tags)
     except Exception:
         _logger.warning("sentry capture_message failed", exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return
     _stamp_cooldown(alert_key)
 
@@ -149,6 +160,7 @@ def _query_log(
             return cur.fetchall() if fetch_all else cur.fetchone()
     except Exception:
         _logger.warning("%s check query failed", error_label, exc_info=True)
+        _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return None
 
 
@@ -309,6 +321,45 @@ def check_translate_latency_p95(
     )
 
 
+def check_llm_error_rate(
+    *,
+    window_min: int = LLM_ERROR_WINDOW_MIN,
+    threshold: int = LLM_ERROR_THRESHOLD,
+    min_total: int = LLM_ERROR_MIN_TOTAL,
+) -> None:
+    """Emit Sentry error if terminal LLM failures in `window_min` >= threshold.
+
+    Surfaces provider-infrastructure outages (429/5xx/timeout) that
+    `llm_error_log.record` captures — the signal the pipeline/judge/translate
+    checks miss. Inclusive count semantics (`>=`), like the pipeline-failure
+    check: an integer count crossing the threshold is unambiguous. Stays
+    silent below `min_total` so a single transient blip can't alert.
+
+    Best-effort: a query failure is swallowed (logged) and never disturbs the
+    caller, matching the other checks' contract.
+    """
+    try:
+        count = llm_error_log.count_errors_since(window_min)
+    except Exception:
+        _logger.warning("llm error rate check query failed", exc_info=True)
+        return
+    if count < min_total or count < threshold:
+        return
+    _emit(
+        alert_key="llm_error_rate",
+        level="error",
+        message=(
+            f"LLM infrastructure failures spiked: {count} terminal errors in "
+            f"last {window_min}m (threshold {threshold})"
+        ),
+        tags={
+            "llm_errors": count,
+            "window_min": window_min,
+            "threshold": threshold,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Composite runner.
 # ---------------------------------------------------------------------------
@@ -324,6 +375,7 @@ def run_all_checks() -> None:
         check_pipeline_failures,
         check_judge_rejection_rate,
         check_translate_latency_p95,
+        check_llm_error_rate,
     ):
         try:
             fn()
