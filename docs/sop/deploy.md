@@ -5,59 +5,89 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 48e89da1
+verified_against: d67bed12
 -->
 # 後端部署指南
 
 > ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
+>
+> **過渡狀態（2026-06-15 起）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（無 Caddy / 無 inbound 埠）。Lightsail 容器**已 STOP** 當 rollback。**目前 standby 走手動部署**（§標準部署流程）；`./ops/devops_kg_safe.sh deploy/restart/migrate` 仍寫死 Lightsail，已加 guard（`KG_ALLOW_LIGHTSAIL=1` 才放行），**直接跑會誤推到已停的 Lightsail**——只在回滾時用（§Lightsail rollback 部署流程）。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)；服務層部署正本見 butler `~/butler/docs/kg-backend-deployment.md`。
 
 ## 核心資訊
 
-- **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`
-- **Domain**: `wordnexus.lol`（Porkbun DNS → Caddy → Docker FastAPI）
-- **SSH Key**: `~/.ssh/lightsail_kg_prod`（2026-05-30 事故後輪替；舊 `lightsail_default.pem` 已撤銷）
-- **本地工作區**: `~/kg/`
-- **devops.sh 位置**: KG workspace 根目錄
+- **primary 伺服器**: 家用常駐機 `chenliangyusAir`（M3 Air），user `chenliangyu`，Tailscale `100.118.39.104`，OrbStack docker
+- **Edge**: Cloudflare Tunnel（名 `kg-standby`，CF 邊緣終結 TLS）；**無 Caddy、不開 inbound 埠**
+- **Domain**: `wordnexus.lol`（CF DNS apex proxied CNAME → tunnel → standby localhost:8000）
+- **SSH**: `ssh chenliangyu@100.118.39.104`（主力機公鑰免密碼）
+- **primary 工作區**: `~/project/kg/backend`（git 同步，非 rsync）
+- **rollback 伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`，IP `13.193.212.134`，SSH key `~/.secrets/lightsail_kg_prod`，工作區 `~/knowledge_graph_api`（容器 STOP）
 
 ---
 
-## Step 0：先判斷用哪個指令
+## 標準部署流程（standby，手動）
+
+> standby 程式碼靠 **git 同步**（非 rsync），部署 = git pull + 重建容器。
+
+```bash
+ssh chenliangyu@100.118.39.104
+cd ~/project/kg/backend
+git pull                                  # 程式碼靠 git 同步
+git rev-parse --short HEAD > VERSION       # 更新 version 標記（/api/system/info 讀此檔）
+docker compose up -d --build               # 重建+起；restart:always
+curl -s http://localhost:8000/api/system/info   # 驗 version 對上
+```
+
+- 純 `.py`/`.html` 改動理論可只 `docker compose restart`，但 compose 用 build image，仍建議 `up -d --build`。
+- **migration**：app 啟動自動跑（`migration_version` 暴露於 `/api/system/info`）；如需手動 `docker exec knowledge-graph-api <cmd>`。
+- **.env 改動**：直接編輯 standby `~/project/kg/backend/.env` 後 `docker compose up -d --build`（容器讀新值需重建，不能只 restart）。⚠ `JWT_SECRET` 必須維持 prod 值，否則全用戶被登出。
+
+### 部署後驗證（standby）
+
+```bash
+# 經公網（CF→tunnel→standby）
+curl -s https://wordnexus.lol/api/system/info        # 期望 200 + version == git rev-parse --short HEAD
+curl -s -o /dev/null -w '%{http_code}\n' https://wordnexus.lol/api/health   # 期望 401（CurrentUser 端點，無 JWT 本就擋）
+
+# DNS 卡舊 IP 時繞過快取直打 CF 邊緣驗服務本身
+curl -s --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info
+
+# 直連 standby（繞過 CF，分層驗容器/隧道）
+ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --format "{{.Status}}"; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
+```
+
+`version` 不等於 deploy sha = git pull 沒生效 / VERSION 沒寫 / 容器沒 `--build`。
+
+---
+
+## Lightsail rollback 部署流程（僅回滾時用）
+
+> ⚠️ **僅在 standby 嚴重故障需回滾時執行**。`devops.sh` 仍寫死 Lightsail，受 `KG_ALLOW_LIGHTSAIL=1` guard 保護，避免常態誤推到已停的 Lightsail。回滾完整步驟（含 CF apex 改回 A 記錄）見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md) 與 butler `~/butler/docs/kg-backend-deployment.md §6`。
 
 ```
-你要做什麼？
+你要做什麼？（回滾到 Lightsail 後的運維）
 │
 ├─ 首次部署 / .env 有改動？
-│   └─→ ./devops.sh setup    ← push-env + deploy 一條龍
+│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh setup    ← push-env + deploy 一條龍
 │
 ├─ 只是代碼更新（.env 未變）？
-│   └─→ ./devops.sh deploy   ← rsync + build + migrate + health
+│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh deploy   ← rsync + build + migrate + health
 │
 ├─ 只需重啟（不需重新 build）？
-│   └─→ ./devops.sh restart  ← 快 10 倍，保留現有鏡像
+│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh restart  ← 快 10 倍，保留現有鏡像
 │
 └─ 只跑 DB migration？
-    └─→ ./devops.sh migrate
+    └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh migrate
 ```
 
 **黃金原則**：`restart` 比 `deploy` 快 10 倍，只有代碼真的改了才 `deploy`。
 
----
-
-## 標準部署流程
-
-```bash
-cd ~/kg
-
-./devops.sh deploy      # rsync + build + migrate + health
-./devops.sh status      # 確認健康
-./devops.sh logs 50     # 如有問題查日誌
-```
-
 `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate**（讓 `/api/system/info` 重新讀 `/app/VERSION`）→ migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**（非通過自動中止）。
 
 部署完成後可透過兩種方式確認遠端版本：
-- `./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
+- `KG_ALLOW_LIGHTSAIL=1 ./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
 - `curl https://wordnexus.lol/api/system/info` — 無需 auth，回傳 version、uptime、migration 狀態
+
+> 📍 **以下到 §特殊情境 SOP 之間的段落（smoke verify / 排查 / Rollback）皆為 Lightsail rollback 語境**（Caddy / `13.193.212.134` / `devops.sh` 流程）。standby primary 的部署後驗證見上方 §標準部署流程；standby 上 TLS 由 CF 邊緣處理，無 Caddy。
 
 ### 外部 smoke verify（deploy 末段自動執行）
 
@@ -277,7 +307,9 @@ iOS 端（`ios/BooksAndVocab/Services/AppCrashReporting.swift`）：
 ./devops.sh deploy
 ```
 
-### 首次部署 / 全新伺服器
+### 首次部署 / 全新伺服器（Lightsail；rollback 重建用）
+
+> standby 的機器層建置（OrbStack / cloudflared / launchd）見 butler `~/butler/docs/standby-host-setup.md`，**不走**下方 Lightsail+Caddy 流程。
 
 ```bash
 # 1. 安裝 Docker
@@ -337,17 +369,13 @@ deploy 失敗
 
 ## 備份 SOP
 
-> 🔒 **異地 S3 backup（事故後新增）**：伺服器 cron 每日 UTC 03:00 跑 `ops/kg_backup.sh`，把 `data/` 串流上傳到 `s3://kg-backups-prod-967512079054/data/<UTC-date>.tar.gz`（versioning + SSE-S3 + 30/35d lifecycle；IAM principal `kg-backup-agent` 只有 `s3:PutObject*`，無 Delete/List，host 上的 `rm -rf` 碰不到歷史備份）。**從零還原（事故當下下一個 agent 直接照做）的權威 SOP 是 [`docs/sop/backup_restore.md`](backup_restore.md)，不是本段。** 本段的 `./devops.sh backup` 是本地 ad-hoc 快照，僅作補充。`devops_kg_safe.sh backup-s3-test` 可手動觸發一次 S3 備份。
+> 🔒 **異地 S3 backup**：遷移後由 **standby launchd**（`ops/launchd/com.kg.backup.plist`，每日 11:00 台北 = UTC 03:00）跑 `ops/kg_backup.sh`，把 `data/` 串流上傳到 `s3://kg-backups-prod-967512079054/data/<UTC-date>.tar.gz`（同一 PutObject-only IAM principal `kg-backup-agent`）。舊 Lightsail `/etc/cron.d/kg-backup` 已停用。三層備份的過渡現實（L1/L2 失效、L3 移 standby）與從零還原的權威 SOP 見 [`docs/sop/backup.md`](backup.md) / [`docs/sop/backup_restore.md`](backup_restore.md)，不是本段。`devops_kg_safe.sh backup-s3-test`（受 `KG_ALLOW_LIGHTSAIL` guard）為 Lightsail 語境，rollback 時才用。
+
+standby 手動快照：
 
 ```bash
-./devops.sh backup
-# 等同：rsync -az --link-dest=<上一份> ubuntu@13.193.212.134:~/knowledge_graph_api/data/ backups/data_YYYYMMDD/（增量快照，未變的 db 走硬連結不重傳）
-
-# 恢復
-scp -i ~/.ssh/lightsail_kg_prod -r \
-  ~/kg/backups/data_<日期> \
-  ubuntu@13.193.212.134:~/knowledge_graph_api/data
-./devops.sh restart
+ssh chenliangyu@100.118.39.104 'tar czf ~/kg_data_$(date +%Y%m%d).tgz -C ~/project/kg/backend data'
+# WAL 一致性需冷快照：先 docker compose stop 再 tar
 ```
 
 ---
@@ -388,11 +416,13 @@ data 目錄由容器 root 寫入，host ubuntu user 無法直接 rm，需進容�
 
 ---
 
-## rsync 手動指令
+## rsync 手動指令（Lightsail only）
+
+> standby 程式碼靠 git 同步（`git pull`），**不用 rsync**。下方僅適用回滾到 Lightsail。
 
 ```bash
 rsync -avz --delete \
-  -e "ssh -i ~/.ssh/lightsail_kg_prod" \
+  -e "ssh -i ~/.secrets/lightsail_kg_prod" \
   --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
   ~/kg/backend/ \
   ubuntu@13.193.212.134:~/knowledge_graph_api/

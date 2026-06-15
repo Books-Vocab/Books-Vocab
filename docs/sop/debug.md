@@ -5,20 +5,23 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: f0d37ca4
+verified_against: d67bed12
 -->
 # 伺服器排障指南
 
 > `./devops.sh *` 子指令的完整參考由 `devops` skill 作 SoT;本文件內的 `./devops.sh run "..."` 用法為診斷情境範例,非指令清單。
 >
 > ⚠️ **生產禁用指令邊界**：所有 ops 與診斷動作受 [`docs/policy/safety.md`](../policy/safety.md) 約束。`docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 一律禁止；診斷可讀不可破壞性清理。
+>
+> **過渡狀態（2026-06-15 起）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（**無 Caddy / 不開 inbound 埠**）。以下「primary」段為 CF tunnel 語境；Caddy / Lightsail / 防火牆段保留於 §Lightsail rollback 排障（容器 STOP，僅回滾時相關）。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)。
 
-## 核心資訊
+## 核心資訊（primary：standby + CF Tunnel）
 
-- **伺服器 IP**: `13.193.212.134`（AWS Lightsail，ap-northeast-1a）
-- **Domain**: `wordnexus.lol`（Porkbun DNS A record）
-- **SSH**: `ssh -i ~/.ssh/lightsail_kg_prod ubuntu@13.193.212.134`（舊 `lightsail_default.pem` 已於 2026-05-31 洩漏後撤銷，勿再使用）
-- **Stack**: Caddy（443/80）→ Docker FastAPI（localhost:8000）→ SQLite（/app/data/）
+- **primary 機器**: `chenliangyusAir`（M3 Air），user `chenliangyu`，Tailscale `100.118.39.104`，OrbStack docker
+- **Edge**: Cloudflare Tunnel（名 `kg-standby`，CF 邊緣終結 TLS）；**無 Caddy、無 inbound 埠**
+- **Domain**: `wordnexus.lol`（CF DNS apex proxied CNAME → tunnel）；CF anycast IP `104.21.85.113` / `172.67.204.212`
+- **SSH**: `ssh chenliangyu@100.118.39.104`（主力機公鑰免密碼）
+- **Stack**: CF 邊緣（TLS）→ cloudflared 隧道（outbound）→ standby localhost:8000 → Docker FastAPI → SQLite（/app/data/）
 
 ---
 
@@ -28,28 +31,97 @@ verified_against: f0d37ca4
 # 最快：不需 SSH、不需 auth
 curl -s https://wordnexus.lol/api/system/info | uv run --python 3.13 python -m json.tool
 
-# 詳細
-cd ~/kg
-./ops/devops_kg_safe.sh status   # HTTP code + 部署版本 + 部署記錄
-./ops/devops_kg_safe.sh logs 50
+# DNS 卡舊 IP 時繞過快取直打 CF 邊緣驗服務本身（回 200 + server:cloudflare + cf-ray = CF→tunnel→standby 全鏈健康）
+curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info -o /dev/null
+
+# 直連 standby（繞過 CF，分層定位）
+ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --format "{{.Status}}"; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
 ```
 
 ```
-HTTP 200 → API 正常，問題在 iOS App 或 DNS
-HTTP 502 → Caddy 正常，FastAPI 掛了 → 看 Docker logs
-HTTP 000 → Caddy 掛了或防火牆阻擋
-DNS 失敗 → DNS 問題
+公網 HTTP 200 → API 正常，問題在 iOS App 或 DNS 傳播
+公網 502/530 但 local:8000 健康 → cloudflared 隧道斷（連接器掛/重連中）
+public + local:8000 都掛 → 容器掛 → 看 docker logs
+public 失敗但 --resolve 直打 CF 邊緣 OK → 純 DNS 傳播問題（見下方 §DNS）
 ```
 
 ---
 
-## 症狀 → 診斷 → 修復
+## 症狀 → 診斷 → 修復（primary）
 
 ### HTTPS 連線失敗（iOS 無法連線）
 
+分層定位：CF 邊緣 → cloudflared 隧道 → 容器。
+
 ```bash
-# 1. DNS
-nslookup wordnexus.lol                # 應返回 13.193.212.134
+# 1. DNS 解析（期望 CF anycast，不是 13.193.212.134）
+dig wordnexus.lol @8.8.8.8 +short        # 應回 104.21.85.113 / 172.67.204.212（CF）
+dig wordnexus.lol @1.1.1.1 +short
+
+# 2. 服務本身（繞過 DNS，直打 CF 邊緣）
+curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info -o /dev/null
+#   回 200 + cf-ray → CF→tunnel→standby 全鏈 OK，問題純在 DNS 傳播
+#   回 502/530 → 隧道斷或容器掛，往下查
+
+# 3. cloudflared 連接器（standby 上）
+ssh chenliangyu@100.118.39.104 'pgrep -lf "cloudflared.*tunnel"; sudo launchctl print system/com.cloudflare.cloudflared 2>/dev/null | grep -E "state|pid"'
+
+# 4. 容器（standby 上）
+ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info'
+```
+
+**修復：cloudflared 隧道斷**（local:8000 健康但公網 502/530）
+```bash
+# system LaunchDaemon，KeepAlive 通常自動拉起；卡住時 kickstart
+ssh chenliangyu@100.118.39.104 'sudo launchctl kickstart -k system/com.cloudflare.cloudflared'
+```
+
+**修復：容器掛**（local:8000 不回）
+```bash
+ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'   # 通常 .env 缺 key / Python import 錯誤
+ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d'   # restart:always，不應需要手動
+```
+
+> TLS 憑證由 CF 邊緣託管，standby 端**無**憑證可查/可清（不再有 Let's Encrypt / Caddy 流程）。
+
+---
+
+### API 無回應（HTTP 502 / 530）
+
+```bash
+# 先分層：是隧道斷還是容器掛？
+ssh chenliangyu@100.118.39.104 'curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info; pgrep -lf "cloudflared.*tunnel"'
+```
+- `local:8000` 健康但公網 502/530 → cloudflared 隧道問題 → `sudo launchctl kickstart -k system/com.cloudflare.cloudflared`
+- `local:8000` 也掛 → 容器問題：
+```bash
+ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'
+ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d --build'   # .env 缺 key / import 錯誤需重 build
+```
+
+---
+
+### DNS 問題
+
+```bash
+dig wordnexus.lol @8.8.8.8 +short
+# 期望：CF anycast 104.21.85.113 / 172.67.204.212
+# 仍回 13.193.212.134（舊 Lightsail）→ DNS 傳播未收斂或回滾後沒切回
+```
+- NS 已從 Porkbun 移到 CF（`damien/gabriella.ns.cloudflare.com`）。遷移初期「服務健康但部分用戶 502」多為**純 DNS 委派傳播**（舊 Porkbun NS 殘留舊 apex A，最久卡 24h）。成因鏈與緩解手段（強刷 resolver 快取、`/etc/hosts` 釘 CF IP）見 butler `~/butler/docs/kg-backend-deployment.md §8`。
+- **驗服務本身排除 DNS 干擾**：永遠用 `--resolve wordnexus.lol:443:104.21.85.113` 直打 CF 邊緣。
+
+---
+
+## Lightsail rollback 排障（僅回滾時相關）
+
+> 以下為舊 Lightsail + Caddy 語境。Lightsail 容器**已 STOP**，僅在回滾後這些 Caddy/防火牆/SSL 診斷才生效。回滾程序見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
+
+### HTTPS 連線失敗（Lightsail）
+
+```bash
+# 1. DNS（回滾後期望 13.193.212.134）
+nslookup wordnexus.lol
 dig wordnexus.lol @8.8.8.8
 
 # 2. 防火牆
@@ -57,32 +129,32 @@ aws lightsail describe-instance-firewall-rules \
   --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
 
 # 3. Caddy
-./devops.sh run "sudo systemctl status caddy"
-./devops.sh run "sudo journalctl -u caddy -n 100 --no-pager"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl status caddy"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo journalctl -u caddy -n 100 --no-pager"
 
 # 4. SSL 憑證
-./devops.sh run "ls -la /var/lib/caddy/.local/share/caddy/certificates/"
-./devops.sh run "sudo ss -tlnp | grep -E ':80|:443|:8000'"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "ls -la /var/lib/caddy/.local/share/caddy/certificates/"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo ss -tlnp | grep -E ':80|:443|:8000'"
 ```
 
 **修復：Caddy 掛了**
 ```bash
-./devops.sh run "sudo systemctl restart caddy"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl restart caddy"
 ```
 
 **修復：SSL 憑證問題**
 ```bash
-./devops.sh run "sudo systemctl stop caddy"
-./devops.sh run "sudo rm -rf /var/lib/caddy/.local/share/caddy/certificates/"
-./devops.sh run "sudo systemctl start caddy"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl stop caddy"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo rm -rf /var/lib/caddy/.local/share/caddy/certificates/"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl start caddy"
 # Caddy 啟動時自動向 Let's Encrypt 申請（需 DNS 已正確解析）
 ```
 
 **修復：Caddyfile 配置錯誤**
 ```bash
-./devops.sh run "cat /etc/caddy/Caddyfile"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "cat /etc/caddy/Caddyfile"
 # 正確格式（含 Claude Gateway；Antigravity Proxy 2026-05-23 撤出公網改本機執行）：
-./devops.sh run "cat <<'CADDY' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl reload caddy
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "cat <<'CADDY' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl reload caddy
 wordnexus.lol {
     handle /claude/* {
         uri strip_prefix /claude
@@ -93,39 +165,15 @@ wordnexus.lol {
 CADDY"
 ```
 
-> 完整 routing 表詳見 `docs/reference/host_topology.md`（SoT）。
-
----
-
-### API 無回應（HTTP 502）
+### API 無回應（HTTP 502，Lightsail）
 
 ```bash
-./devops.sh run "docker ps"           # 容器是否在跑
-./devops.sh logs 100                  # 詳細日誌
-./devops.sh restart                   # 快速重啟
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "docker ps"
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh logs 100
+KG_ALLOW_LIGHTSAIL=1 ./devops.sh restart
 ```
 
-restart 後仍 502：
-```bash
-./devops.sh run "docker logs knowledge-graph-api -n 100"
-# 通常是 .env 缺 key 或 Python import 錯誤
-./devops.sh deploy                    # 重新 build
-```
-
----
-
-### DNS 問題
-
-```bash
-dig wordnexus.lol @8.8.8.8
-# 期望：wordnexus.lol → 13.193.212.134
-# 不對 → 去 Porkbun 後台確認 A record
-# DNS 生效需 5-10 分鐘
-```
-
----
-
-### 防火牆阻擋
+### 防火牆阻擋（Lightsail）
 
 ```bash
 aws lightsail put-instance-public-ports \
@@ -138,6 +186,10 @@ aws lightsail put-instance-public-ports \
 ```
 
 ---
+
+## 症狀 → 診斷 → 修復（平台無關）
+
+> 以下 pipeline / 用戶管理 / DB 直查走容器內，standby 與 Lightsail 通用。standby 上把 `./devops.sh run "..."` 換成 `ssh chenliangyu@100.118.39.104 "..."`；rollback 後在 Lightsail 用 `KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "..."`。
 
 ### Pipeline 卡住
 
@@ -263,20 +315,31 @@ scp -i ~/.ssh/lightsail_kg_prod -r \
 
 ---
 
-## 重要檔案位置（伺服器）
+## 重要檔案位置
 
+### primary（standby，macOS）
+| 檔案 | 路徑 |
+|------|------|
+| API 代碼 / compose | `~/project/kg/backend/`（user `chenliangyu`） |
+| API .env | `~/project/kg/backend/.env` |
+| 資料庫 | `~/project/kg/backend/data/` |
+| cloudflared daemon | `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` |
+| backup launchd | `~/Library/LaunchAgents/com.kg.backup.plist`（源 `ops/launchd/com.kg.backup.plist`） |
+| TLS 憑證 | 無（CF 邊緣託管） |
+
+### rollback（Lightsail，Ubuntu）
 | 檔案 | 路徑 |
 |------|------|
 | Caddy 設定 | `/etc/caddy/Caddyfile` |
 | API 代碼 | `/home/ubuntu/knowledge_graph_api/` |
-| API .env | `/home/ubuntu/backend/.env` |
+| API .env | `/home/ubuntu/knowledge_graph_api/.env` |
 | 資料庫 | `/home/ubuntu/knowledge_graph_api/data/` |
 | SSL 憑證 | `/var/lib/caddy/.local/share/caddy/certificates/` |
 | Docker Compose | `/home/ubuntu/knowledge_graph_api/docker-compose.yml` |
 
 ---
 
-## AWS Lightsail 指令
+## AWS Lightsail 指令（rollback 語境）
 
 ```bash
 # 查看實例狀態

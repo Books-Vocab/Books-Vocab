@@ -17,12 +17,14 @@ verified_against: 23521f39
 
 ### 1.1 Lightsail fixed bundle 沒被默默改
 
+> **過渡狀態（2026-06-15 起）**：正式站運算已遷到家用 standby（CF Tunnel）。Lightsail instance **STOP 未 terminate**，**STOP 期間仍計 fixed bundle $12/mo**，故下方查詢仍會列到 `booksbrowser-kg-api-2gb`，且仍要盤點（過渡期 baseline 仍含此 row）。standby 運算/CF Tunnel 不在 AWS/CE 帳（家用沉沒成本，見 `cost_baseline.md §1`）。**Lightsail terminate 後** instance row 會消失、fixed 小計降到 $3——屆時對照 `cost_baseline.md` 已更新的下修值，不要把「instance 消失」誤判為異常。
+
 ```bash
-aws lightsail get-instances --query 'instances[].[name,bundleId]' --output table
+aws lightsail get-instances --query 'instances[].[name,bundleId,state.name]' --output table
 aws lightsail get-buckets    --query 'buckets[].[name,bundleId]'   --output table
 ```
 
-期望:`booksbrowser-kg-api-2gb=small_3_0` / `kg-podcasts-prod=medium_1_0`。**不一致 = baseline §5 沒記錄的變更,立刻追**。
+期望(過渡期):`booksbrowser-kg-api-2gb=small_3_0`(state `stopped`) / `kg-podcasts-prod=medium_1_0`。bundle **不一致 = baseline §5 沒記錄的變更,立刻追**;instance 已 terminate 且 baseline §5 已記錄遷移 = 正常。
 
 ### 1.2 AWS usage-based(僅 S3 backup / data transfer)
 
