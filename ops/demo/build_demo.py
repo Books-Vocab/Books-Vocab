@@ -55,13 +55,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # --json` both work).
     globals_parent = argparse.ArgumentParser(add_help=False)
     globals_parent.add_argument(
-        "--check", action="store_true",
+        "--check", action="store_true", default=argparse.SUPPRESS,
         help="verify committed artifact == fresh emit; exit 1 on drift")
     globals_parent.add_argument(
-        "--commit", action="store_true",
+        "--commit", action="store_true", default=argparse.SUPPRESS,
         help="write generated artifact(s) to disk (never seeds production)")
     globals_parent.add_argument(
-        "--json", action="store_true", help="machine-readable output")
+        "--json", action="store_true", default=argparse.SUPPRESS,
+        help="machine-readable output")
 
     parser = argparse.ArgumentParser(
         prog="build_demo.py",
@@ -85,6 +86,9 @@ def _emit_output(payload: dict, *, json_mode: bool) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    for flag in ("check", "commit", "json"):
+        if not hasattr(args, flag):
+            setattr(args, flag, False)
     try:
         sot = load_sot()
     except SoTError as exc:
