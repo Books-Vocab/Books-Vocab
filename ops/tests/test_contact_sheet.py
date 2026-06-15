@@ -4,6 +4,7 @@ and these run in the plain backend venv with no Pillow."""
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +167,56 @@ def test_images_source_excludes_generated_sheets(tmp_path):
     for name in ("01-launch.png", "contact_sheet.png", "quick4_contact_sheet.png"):
         _write_minimal_png(tmp_path / name)
     bundle = mod._resolve_source(tmp_path, "images")
+    assert [item["relPath"] for item in bundle.manifest["items"]] == ["01-launch.png"]
+
+
+def test_auto_source_rejects_catalog_like_root_without_manifest(tmp_path):
+    mod = _load()
+    _write_minimal_png(tmp_path / "01-launch.png")
+    (tmp_path / "catalog_index.json").write_text("{}\n")
+
+    try:
+        mod._resolve_source(tmp_path, "auto")
+    except SystemExit as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("catalog-like roots without review_manifest.json must fail")
+
+    assert "missing review_manifest.json" in message
+    assert "--source images explicitly" in message
+
+
+def test_auto_source_reads_catalog_manifest_when_present(tmp_path):
+    mod = _load()
+    (tmp_path / "catalog_index.json").write_text("{}\n")
+    manifest = {"schema": "kg.catalog.review_manifest.v1", "items": []}
+    (tmp_path / "review_manifest.json").write_text(json.dumps(manifest))
+
+    bundle = mod._resolve_source(tmp_path, "auto")
+
+    assert bundle.source_kind == "catalog"
+    assert bundle.manifest == manifest
+    assert bundle.manifest_path == tmp_path / "review_manifest.json"
+
+
+def test_auto_source_still_resolves_uitest_steps(tmp_path):
+    mod = _load()
+    _write_minimal_png(tmp_path / "01-launch.png")
+
+    bundle = mod._resolve_source(tmp_path, "auto")
+
+    assert bundle.source_kind == "uitest"
+    assert bundle.manifest["source"] == "uitest"
+
+
+def test_explicit_images_can_read_catalog_like_raw_pngs(tmp_path):
+    mod = _load()
+    _write_minimal_png(tmp_path / "01-launch.png")
+    (tmp_path / "catalog_index.json").write_text("{}\n")
+
+    bundle = mod._resolve_source(tmp_path, "images")
+
+    assert bundle.source_kind == "images"
     assert [item["relPath"] for item in bundle.manifest["items"]] == ["01-launch.png"]
 
 
