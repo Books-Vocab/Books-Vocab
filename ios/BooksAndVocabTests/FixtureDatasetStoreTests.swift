@@ -929,6 +929,39 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func syncPresenterSeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.syncPresenterDataset(
+            datasetID: "unknown-sync-presenter-seed-key",
+            extraFields: ",\"lastRunAt\": \"2026-01-01T00:00:00Z\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func syncPresenterStepFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.syncPresenterDataset(
+            datasetID: "unknown-sync-presenter-step-key",
+            stepExtraFields: ",\"retryAfterSec\": 5"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func syncPresenterPendingRowFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.syncPresenterDataset(
+            datasetID: "unknown-sync-presenter-pending-row-key",
+            pendingRowExtraFields: ",\"remoteStatus\": \"queued\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func catalogPodcastFailsWhenEpisodeDurationIsMissing() throws {
         let dataset = """
         {
@@ -2399,6 +2432,55 @@ struct FixtureDatasetStoreTests {
               "notebookSyncStatus": 1,
               "entries": [
                 \(entriesJSON)
+              ]\(extraFields)
+            }
+          }
+        }
+        """
+    }
+
+    private static func syncPresenterDataset(
+        datasetID: String,
+        extraFields: String = "",
+        stepExtraFields: String = "",
+        pendingRowExtraFields: String = ""
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "syncPresenter": {
+            "ready": {
+              "isLoggedIn": true,
+              "isConnected": true,
+              "phase": "ready",
+              "failureKind": null,
+              "pendingCount": 1,
+              "addCount": 1,
+              "deleteCount": 0,
+              "steps": [
+                {
+                  "id": "push",
+                  "label": "Push local changes",
+                  "status": "waiting",
+                  "current": 0,
+                  "total": 1,
+                  "detail": "Waiting"\(stepExtraFields)
+                }
+              ],
+              "summaryText": "1 pending",
+              "pendingRows": [
+                {
+                  "id": "11111111-1111-1111-1111-111111111111",
+                  "word": "anchored",
+                  "partOfSpeech": "v.",
+                  "translation": "固定",
+                  "wordTone": "primary",
+                  "isStrikethrough": false,
+                  "actionSystemImage": "plus.circle",
+                  "actionTone": "primary",
+                  "actionAccessibilityLabel": "新增 anchored"\(pendingRowExtraFields)
+                }
               ]\(extraFields)
             }
           }

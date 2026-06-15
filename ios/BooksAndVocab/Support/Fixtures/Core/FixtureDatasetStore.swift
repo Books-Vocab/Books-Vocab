@@ -936,6 +936,11 @@ struct UIWorldSyncPresenterSeed: Codable, Equatable {
         }
 
         init(from decoder: Decoder) throws {
+            try UIWorldSyncPresenterSeed.rejectUnknownKeys(
+                decoder: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World syncPresenter step"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             for key in CodingKeys.allCases where !container.contains(key) {
                 throw DecodingError.keyNotFound(
@@ -979,6 +984,11 @@ struct UIWorldSyncPresenterSeed: Codable, Equatable {
         }
 
         init(from decoder: Decoder) throws {
+            try UIWorldSyncPresenterSeed.rejectUnknownKeys(
+                decoder: decoder,
+                keys: CodingKeys.allCases,
+                context: "UI World syncPresenter pending row"
+            )
             let container = try decoder.container(keyedBy: CodingKeys.self)
             for key in CodingKeys.allCases where !container.contains(key) {
                 throw DecodingError.keyNotFound(
@@ -1026,6 +1036,11 @@ struct UIWorldSyncPresenterSeed: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
+        try Self.rejectUnknownKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World syncPresenter seed"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try Self.requireAllKeys(in: container, context: "UI World syncPresenter seed")
         isLoggedIn = try container.decode(Bool.self, forKey: .isLoggedIn)
@@ -1038,6 +1053,24 @@ struct UIWorldSyncPresenterSeed: Codable, Equatable {
         steps = try container.decode([Step].self, forKey: .steps)
         summaryText = try container.decode(String.self, forKey: .summaryText)
         pendingRows = try container.decode([PendingRow].self, forKey: .pendingRows)
+    }
+
+    fileprivate static func rejectUnknownKeys<K: CodingKey & RawRepresentable>(
+        decoder: Decoder,
+        keys: [K],
+        context: String
+    ) throws where K.RawValue == String {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(keys.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
     }
 
     private static func requireAllKeys<C: KeyedDecodingContainerProtocol>(

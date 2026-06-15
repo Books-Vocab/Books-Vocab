@@ -980,6 +980,11 @@ struct RepoFixtureDatasetsContractTests {
                 missingSeedKeys.isEmpty,
                 "\(dataset): syncPresenter.\(fixtureKey) missing keys \(missingSeedKeys.sorted())"
             )
+            let unknownSeedKeys = Set(seed.keys).subtracting(requiredSeedKeys)
+            #expect(
+                unknownSeedKeys.isEmpty,
+                "\(dataset): syncPresenter.\(fixtureKey) contains unknown keys \(unknownSeedKeys.sorted())"
+            )
 
             let phase = seed["phase"] as? String ?? "<missing-phase>"
             #expect(validPhases.contains(phase), "\(dataset): syncPresenter.\(fixtureKey).phase is invalid")
@@ -1015,6 +1020,11 @@ struct RepoFixtureDatasetsContractTests {
                     missingStepKeys.isEmpty,
                     "\(dataset): syncPresenter.\(fixtureKey).steps.\(id) missing keys \(missingStepKeys.sorted())"
                 )
+                let unknownStepKeys = Set(step.keys).subtracting(requiredStepKeys)
+                #expect(
+                    unknownStepKeys.isEmpty,
+                    "\(dataset): syncPresenter.\(fixtureKey).steps.\(id) contains unknown keys \(unknownStepKeys.sorted())"
+                )
                 let status = step["status"] as? String ?? "<missing-status>"
                 #expect(
                     validStepStatuses.contains(status),
@@ -1037,6 +1047,11 @@ struct RepoFixtureDatasetsContractTests {
                 #expect(
                     missingRowKeys.isEmpty,
                     "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word) missing keys \(missingRowKeys.sorted())"
+                )
+                let unknownRowKeys = Set(row.keys).subtracting(requiredPendingRowKeys)
+                #expect(
+                    unknownRowKeys.isEmpty,
+                    "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word) contains unknown keys \(unknownRowKeys.sorted())"
                 )
                 let id = row["id"] as? String ?? ""
                 #expect(UUID(uuidString: id) != nil, "\(dataset): syncPresenter.\(fixtureKey).pendingRows.\(word).id must be UUID")
