@@ -111,6 +111,20 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenTopLevelDomainIsUnknown() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-top-level-domain",
+          "podcasts": {}
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
         let dataset = """
         {
