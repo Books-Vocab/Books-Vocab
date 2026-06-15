@@ -371,13 +371,22 @@ struct RepoFixtureDatasetsContractTests {
     private func expectCatalogPodcastPlaybackKeys(_ topLevel: [String: Any], dataset: String) {
         let podcast = topLevel["podcast"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in podcast {
+            let series = seed["series"] as? [String: Any] ?? [:]
+            for key in ["colorHex", "coverPattern"] {
+                #expect(
+                    series.keys.contains(key),
+                    "\(dataset): podcast.\(fixtureKey).series must explicitly declare \(key)"
+                )
+            }
             let episodes = seed["episodes"] as? [[String: Any]] ?? []
             for episode in episodes {
                 let episodeNumber = episode["episodeNumber"] as? Int ?? -1
-                #expect(
-                    episode.keys.contains("durationSec"),
-                    "\(dataset): podcast.\(fixtureKey).episode.\(episodeNumber) must explicitly declare durationSec"
-                )
+                for key in ["durationSec", "lastPlayedTime"] {
+                    #expect(
+                        episode.keys.contains(key),
+                        "\(dataset): podcast.\(fixtureKey).episode.\(episodeNumber) must explicitly declare \(key)"
+                    )
+                }
             }
         }
     }

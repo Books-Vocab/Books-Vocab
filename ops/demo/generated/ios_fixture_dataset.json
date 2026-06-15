@@ -1924,7 +1924,8 @@
         {
           "episodeNumber": 3,
           "title": "The Plateau of Latent Potential",
-          "durationSec": 1968
+          "durationSec": 1968,
+          "lastPlayedTime": null
         }
       ]
     },
