@@ -987,6 +987,23 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func reviewDeckMaterializationFailsWhenEntryWordsAreDuplicated() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
+        let dataset = Self.reviewDeckDataset(
+            datasetID: "duplicate-review-deck-entry-word",
+            entriesJSON: "\(entry),\(entry)"
+        )
+
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let seed = try #require(FixtureDatasetStore.reviewDeckSeed(for: .phaseSingle))
+            let container = try Self.makeVocabularyContainer()
+
+            #expect(throws: UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord("duplicated")) {
+                _ = try UITestFixtureSeed.insertReviewDeckSeed(seed, into: container.mainContext)
+            }
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {
@@ -1263,6 +1280,28 @@ struct FixtureDatasetStoreTests {
                 \(entriesJSON)
               ],
               "reviewHistory": \(reviewHistoryJSON)
+            }
+          }
+        }
+        """
+    }
+
+    private static func reviewDeckDataset(
+        datasetID: String,
+        entriesJSON: String
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "reviewDeck": {
+            "phaseSingle": {
+              "notebookRemoteId": "review-deck-notebook",
+              "notebookName": "Review Deck Notebook",
+              "notebookSyncStatus": 1,
+              "entries": [
+                \(entriesJSON)
+              ]
             }
           }
         }

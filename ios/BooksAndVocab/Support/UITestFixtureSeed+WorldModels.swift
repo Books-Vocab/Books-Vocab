@@ -61,6 +61,17 @@ extension UITestFixtureSeed {
         try context.save()
     }
 
+    private static func entriesByUniqueWord(_ entries: [VocabularyEntry]) throws -> [String: VocabularyEntry] {
+        var entriesByWord: [String: VocabularyEntry] = [:]
+        for entry in entries {
+            if entriesByWord[entry.word] != nil {
+                throw UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord(entry.word)
+            }
+            entriesByWord[entry.word] = entry
+        }
+        return entriesByWord
+    }
+
     @MainActor
     static func insertVocabularySeed(
         _ seed: UIWorldVocabularySeed,
@@ -77,13 +88,7 @@ extension UITestFixtureSeed {
             context.insert(entry)
         }
 
-        var entriesByWord: [String: VocabularyEntry] = [:]
-        for entry in entries {
-            if entriesByWord[entry.word] != nil {
-                throw UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord(entry.word)
-            }
-            entriesByWord[entry.word] = entry
-        }
+        let entriesByWord = try entriesByUniqueWord(entries)
         for recordSeed in seed.reviewHistory {
             guard let entry = entriesByWord[recordSeed.word] else {
                 throw UITestFixtureSeedMaterializationError.reviewHistoryEntryMissingVocabularyEntry(recordSeed.word)
@@ -118,6 +123,8 @@ extension UITestFixtureSeed {
         for entry in entries {
             context.insert(entry)
         }
+
+        _ = try entriesByUniqueWord(entries)
 
         try context.save()
         return entries
