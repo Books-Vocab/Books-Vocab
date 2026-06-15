@@ -175,6 +175,42 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenAssetInstallPathIsInvalid() throws {
+        let installPaths = [
+            "   ",
+            "/tmp/payload.txt",
+            "Books/../payload.txt",
+        ]
+
+        for installAs in installPaths {
+            let dataset = """
+            {
+              "schema": "kg.fixture.dataset.v2",
+              "datasetID": "invalid-asset-install-path",
+              "assets": {
+                "books": {},
+                "audio": {},
+                "subtitles": {},
+                "text": {
+                  "source": {
+                    "sourcePath": "/tmp/source.md",
+                    "sha256": "unused-in-decode-test",
+                    "byteSize": 0,
+                    "installAs": "\(installAs)",
+                    "contentType": "text/markdown; charset=utf-8"
+                  }
+                },
+                "images": {}
+              }
+            }
+            """
+
+            #expect(throws: DecodingError.self) {
+                _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+            }
+        }
+    }
+
     @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
         let dataset = """
         {
