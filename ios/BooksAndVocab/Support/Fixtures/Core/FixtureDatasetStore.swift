@@ -144,6 +144,7 @@ struct FixtureDatasetDocument: Decodable {
         reviewDeck = try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck)
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
 
+        try validateKnownFixtureIDs(codingPath: container.codingPath)
         try Self.validateAuthSeeds(auth, codingPath: container.codingPath)
         try Self.validateSettingsStateReferences(settings, auth: auth, entitlements: entitlements, codingPath: container.codingPath)
         try Self.validateSwiftDataRowState(
@@ -156,6 +157,37 @@ struct FixtureDatasetDocument: Decodable {
         try Self.validateRuntimePodcastAssetReferences(runtimePodcast, assets: assets, codingPath: container.codingPath)
         try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
         try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
+    }
+
+    private func validateKnownFixtureIDs(codingPath: [CodingKey]) throws {
+        try Self.validateKnownKeys(settings.keys, SettingsFixtureID.self, domain: "settings", codingPath: codingPath)
+        try Self.validateKnownKeys(auth.keys, UIWorldAuthFixtureID.self, domain: "auth", codingPath: codingPath)
+        try Self.validateKnownKeys(entitlements.keys, UIWorldEntitlementsFixtureID.self, domain: "entitlements", codingPath: codingPath)
+        try Self.validateKnownKeys(bookshelf.keys, BookshelfFixtureID.self, domain: "bookshelf", codingPath: codingPath)
+        try Self.validateKnownKeys(todayReview.keys, TodayReviewFixtureID.self, domain: "todayReview", codingPath: codingPath)
+        try Self.validateKnownKeys(notebook.keys, NotebookFixtureID.self, domain: "notebook", codingPath: codingPath)
+        try Self.validateKnownKeys(podcast.keys, PodcastFixtureID.self, domain: "podcast", codingPath: codingPath)
+        try Self.validateKnownKeys(runtimePodcast.keys, UIWorldRuntimePodcastFixtureID.self, domain: "runtimePodcast", codingPath: codingPath)
+        try Self.validateKnownKeys(reader.keys, UIWorldReaderFixtureID.self, domain: "reader", codingPath: codingPath)
+        try Self.validateKnownKeys(vocabulary.keys, UIWorldVocabularyFixtureID.self, domain: "vocabulary", codingPath: codingPath)
+        try Self.validateKnownKeys(reviewDeck.keys, UIWorldReviewDeckFixtureID.self, domain: "reviewDeck", codingPath: codingPath)
+        try Self.validateKnownKeys(syncPresenter.keys, UIWorldSyncPresenterFixtureID.self, domain: "syncPresenter", codingPath: codingPath)
+    }
+
+    private static func validateKnownKeys<ID: RawRepresentable & CaseIterable>(
+        _ keys: some Sequence<String>,
+        _ idType: ID.Type,
+        domain: String,
+        codingPath: [CodingKey]
+    ) throws where ID.RawValue == String {
+        let known = Set(idType.allCases.map(\.rawValue))
+        let unknown = Set(keys).subtracting(known)
+        guard unknown.isEmpty else {
+            throw dataCorrupted(
+                "UI World domain \(domain) contains unknown fixture IDs \(unknown.sorted())",
+                codingPath: codingPath
+            )
+        }
     }
 
     private static func validateAuthSeeds(
