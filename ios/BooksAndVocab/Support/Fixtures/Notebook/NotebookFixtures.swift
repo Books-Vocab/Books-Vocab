@@ -2,6 +2,39 @@
 import Foundation
 import SwiftData
 
+private struct AnyNotebookCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownNotebookKeys<K: CodingKey & RawRepresentable>(
+    decoder: Decoder,
+    keys: [K],
+    context: String
+) throws where K.RawValue == String {
+    let rawContainer = try decoder.container(keyedBy: AnyNotebookCodingKey.self)
+    let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+        .subtracting(keys.map(\.rawValue))
+    guard unknownKeys.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
+            )
+        )
+    }
+}
+
 enum NotebookFixtureID: String, CaseIterable {
     case cardGallery
     case coverGallery
@@ -71,6 +104,11 @@ struct NotebookEntrySeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook entry"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -121,6 +159,11 @@ struct NotebookSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook row"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -164,6 +207,11 @@ struct NotebookCardStateSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook cardState"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -202,6 +250,11 @@ struct NotebookEditStateSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook edit state"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -231,6 +284,11 @@ struct NotebookFixtureSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownNotebookKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World notebook fixture"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
