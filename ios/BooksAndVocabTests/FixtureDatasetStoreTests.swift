@@ -944,6 +944,49 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test @MainActor func vocabularyMaterializationFailsWhenReviewHistoryReferencesMissingEntry() throws {
+        let dataset = Self.vocabularyDataset(
+            datasetID: "review-history-missing-entry",
+            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
+            reviewHistoryJSON: """
+            [
+              {
+                "word": "orphaned",
+                "feedback": 1,
+                "reviewedAt": "2026-01-02T00:00:00Z"
+              }
+            ]
+            """
+        )
+
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let seed = try #require(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook))
+            let container = try Self.makeVocabularyContainer()
+
+            #expect(throws: UITestFixtureSeedMaterializationError.reviewHistoryEntryMissingVocabularyEntry("orphaned")) {
+                _ = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            }
+        }
+    }
+
+    @Test @MainActor func vocabularyMaterializationFailsWhenEntryWordsAreDuplicated() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "duplicated")
+        let dataset = Self.vocabularyDataset(
+            datasetID: "duplicate-vocabulary-entry-word",
+            entriesJSON: "\(entry),\(entry)",
+            reviewHistoryJSON: "[]"
+        )
+
+        try FixtureDatasetStore.withTestingData(Self.completeV2DatasetData(dataset)) {
+            let seed = try #require(FixtureDatasetStore.vocabularySeed(for: .searchVocabNotebook))
+            let container = try Self.makeVocabularyContainer()
+
+            #expect(throws: UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord("duplicated")) {
+                _ = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            }
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {
@@ -1193,6 +1236,69 @@ struct FixtureDatasetStoreTests {
             #expect(podcastModel.items[0].progress?.lastPlayedTime == 300)
             #expect(podcastModel.items[1].progress == nil)
         }
+    }
+
+    private static func makeVocabularyContainer() throws -> ModelContainer {
+        let schema = Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    private static func vocabularyDataset(
+        datasetID: String,
+        entriesJSON: String,
+        reviewHistoryJSON: String
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "vocabulary": {
+            "searchVocabNotebook": {
+              "notebookRemoteId": "search-notebook",
+              "notebookName": "Search Notebook",
+              "notebookSyncStatus": 1,
+              "bookTitle": "Search Book",
+              "entries": [
+                \(entriesJSON)
+              ],
+              "reviewHistory": \(reviewHistoryJSON)
+            }
+          }
+        }
+        """
+    }
+
+    private static func fullVocabularyEntryJSON(word: String) -> String {
+        """
+        {
+          "word": "\(word)",
+          "translation": "測試",
+          "context": "A deterministic test context.",
+          "explanation": null,
+          "partOfSpeech": "n.",
+          "bookTitle": "Search Book",
+          "chapterTitle": null,
+          "kgCardId": "\(word)-card",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [],
+          "collocations": null,
+          "rootForm": null,
+          "inflections": null,
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false,
+          "reviewIntervalHours": 24,
+          "nextReviewAt": "2026-01-03T00:00:00Z",
+          "lastReviewedAt": null,
+          "reviewCount": 0,
+          "reviewStreak": 0,
+          "lastReviewFeedbackRaw": -1,
+          "graphLinksByKind": {}
+        }
+        """
     }
 
 }

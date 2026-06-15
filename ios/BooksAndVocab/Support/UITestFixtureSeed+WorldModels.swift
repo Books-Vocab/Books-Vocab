@@ -2,6 +2,11 @@
 import Foundation
 import SwiftData
 
+enum UITestFixtureSeedMaterializationError: Error, Equatable {
+    case duplicateVocabularyEntryWord(String)
+    case reviewHistoryEntryMissingVocabularyEntry(String)
+}
+
 extension UITestFixtureSeed {
     static func makeVocabularyEntry(
         from seed: UIWorldVocabularyEntrySeed,
@@ -72,15 +77,23 @@ extension UITestFixtureSeed {
             context.insert(entry)
         }
 
-        let entriesByWord = Dictionary(uniqueKeysWithValues: entries.map { ($0.word, $0) })
+        var entriesByWord: [String: VocabularyEntry] = [:]
+        for entry in entries {
+            if entriesByWord[entry.word] != nil {
+                throw UITestFixtureSeedMaterializationError.duplicateVocabularyEntryWord(entry.word)
+            }
+            entriesByWord[entry.word] = entry
+        }
         for recordSeed in seed.reviewHistory {
-            let entry = entriesByWord[recordSeed.word]
+            guard let entry = entriesByWord[recordSeed.word] else {
+                throw UITestFixtureSeedMaterializationError.reviewHistoryEntryMissingVocabularyEntry(recordSeed.word)
+            }
             let record = ReviewRecord(
                 word: recordSeed.word,
-                entryID: entry?.id,
+                entryID: entry.id,
                 feedback: recordSeed.feedback,
                 reviewedAt: recordSeed.reviewedAt,
-                kgCardId: entry?.kgCardId
+                kgCardId: entry.kgCardId
             )
             record.notebookId = seed.notebookRemoteId
             context.insert(record)

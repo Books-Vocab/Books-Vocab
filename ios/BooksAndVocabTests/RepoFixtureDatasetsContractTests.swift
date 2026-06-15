@@ -245,6 +245,20 @@ struct RepoFixtureDatasetsContractTests {
                     "\(stem): runtimePodcast.\(fixtureKey) has duplicate episode remoteId values"
                 )
             }
+            for (fixtureKey, seed) in document.vocabulary {
+                let words = seed.entries.map(\.word)
+                #expect(
+                    Set(words).count == words.count,
+                    "\(stem): vocabulary.\(fixtureKey) has duplicate word values"
+                )
+                let entryWords = Set(words)
+                for record in seed.reviewHistory {
+                    #expect(
+                        entryWords.contains(record.word),
+                        "\(stem): vocabulary.\(fixtureKey).reviewHistory.\(record.word) must reference an entry in the same seed"
+                    )
+                }
+            }
             for (fixtureKey, seed) in document.reviewDeck {
                 let words = seed.entries.map(\.word)
                 #expect(
