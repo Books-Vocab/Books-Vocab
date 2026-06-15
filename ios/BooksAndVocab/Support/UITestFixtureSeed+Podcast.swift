@@ -2,6 +2,10 @@
 import Foundation
 import SwiftData
 
+enum UIWorldRuntimePodcastMaterializationError: Error, Equatable {
+    case preferredNotebookMissing(owner: String, notebookId: String)
+}
+
 extension UITestFixtureSeed {
     @MainActor
     static func seedPodcast(_ id: String, into container: ModelContainer) {
@@ -21,16 +25,11 @@ extension UITestFixtureSeed {
 
             let fixture = try resolvePlayablePodcastFixture(.playablePreview)
             let subtitle = try String(contentsOf: fixture.subtitleURL, encoding: .utf8)
-            let series = PodcastSeries(
-                remoteId: fixture.seed.seriesRemoteId,
-                title: fixture.seriesTitle,
-                hostNames: fixture.hostNames
+            let series = try makeRuntimePodcastSeries(
+                from: fixture.seed,
+                document: FixtureDatasetStore.requireDocument(),
+                owner: "runtimePodcast.playablePreview"
             )
-            series.color = fixture.seed.color
-            series.coverPattern = fixture.seed.coverPattern
-            series.episodeCount = fixture.seed.episodes.count
-            series.totalDurationSec = fixture.durationSec
-            series.sortOrder = fixture.seed.sortOrder
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {
@@ -68,6 +67,26 @@ extension UITestFixtureSeed {
         let durationSec: Double
         let seriesTitle: String
         let hostNames: [String]
+    }
+
+    static func makeRuntimePodcastSeries(
+        from seed: UIWorldRuntimePodcastSeed,
+        document: FixtureDatasetDocument,
+        owner: String
+    ) throws -> PodcastSeries {
+        try seed.validatePreferredNotebook(in: document, owner: owner)
+        let series = PodcastSeries(
+            remoteId: seed.seriesRemoteId,
+            title: seed.seriesTitle,
+            hostNames: seed.hostNames
+        )
+        series.preferredNotebookId = seed.preferredNotebookId
+        series.color = seed.color
+        series.coverPattern = seed.coverPattern
+        series.episodeCount = seed.episodes.count
+        series.totalDurationSec = seed.durationSec
+        series.sortOrder = seed.sortOrder
+        return series
     }
 
     @MainActor
@@ -114,6 +133,24 @@ extension UITestFixtureSeed {
             try FixtureDatasetStore.requireInstalledAssetURL(ref: $0)
         }
         return MaterializedEpisodeDownload(audioURL: audioURL, subtitleURL: subtitleURL)
+    }
+}
+
+extension UIWorldRuntimePodcastSeed {
+    func validatePreferredNotebook(in document: FixtureDatasetDocument, owner: String) throws {
+        guard let preferredNotebookId,
+              !preferredNotebookId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+        let notebookIDs = Set(document.notebook.values.flatMap { seed in
+            seed.notebooks.map(\.remoteId)
+        })
+        guard notebookIDs.contains(preferredNotebookId) else {
+            throw UIWorldRuntimePodcastMaterializationError.preferredNotebookMissing(
+                owner: owner,
+                notebookId: preferredNotebookId
+            )
+        }
     }
 }
 #endif
