@@ -556,9 +556,8 @@ struct RepoFixtureDatasetsContractTests {
     }
 
     private func expectAssetInstallPath(_ asset: UIWorldAsset, ref: String, dataset: String) {
-        guard let installAs = asset.installAs else { return }
-        let trimmed = installAs.trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(!trimmed.isEmpty, "\(dataset): asset \(ref) installAs must be non-empty when declared")
+        let trimmed = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!trimmed.isEmpty, "\(dataset): asset \(ref) installAs must be non-empty")
         #expect(!trimmed.hasPrefix("/"), "\(dataset): asset \(ref) installAs must be relative")
         let components = trimmed.split(separator: "/").map(String.init)
         #expect(
@@ -584,9 +583,9 @@ struct RepoFixtureDatasetsContractTests {
             "\(dataset): asset \(ref) contentType \(contentType) is invalid for domain \(domain)"
         )
 
-        let installExtension = asset.installAs.map { URL(fileURLWithPath: $0).pathExtension.lowercased() }
+        let installExtension = URL(fileURLWithPath: asset.installAs).pathExtension.lowercased()
         let sourceExtension = URL(fileURLWithPath: asset.sourcePath).pathExtension.lowercased()
-        let ext = installExtension?.isEmpty == false ? installExtension! : sourceExtension
+        let ext = installExtension.isEmpty ? sourceExtension : installExtension
         let expectedByExtension: [String: String] = [
             "epub": "application/epub+zip",
             "pdf": "application/pdf",
@@ -1459,11 +1458,8 @@ struct RepoFixtureDatasetsContractTests {
             Issue.record("\(dataset): \(owner) \(ref) is not declared")
             return
         }
-        let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines)
-        #expect(
-            installAs.map { !$0.isEmpty } ?? false,
-            "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container"
-        )
+        let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(!installAs.isEmpty, "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container")
     }
 
     private func expectAssetRef(
@@ -1483,11 +1479,11 @@ struct RepoFixtureDatasetsContractTests {
     private func expectUniqueInstallPaths(document: FixtureDatasetDocument, dataset: String) {
         var seen: [String: String] = [:]
         for ref in document.assets.refs {
-            guard let asset = document.assets.asset(for: ref),
-                  let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !installAs.isEmpty else {
+            guard let asset = document.assets.asset(for: ref) else {
                 continue
             }
+            let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !installAs.isEmpty else { continue }
             if let previous = seen[installAs] {
                 Issue.record("\(dataset): assets \(previous) and \(ref) share installAs \(installAs)")
             } else {
@@ -1522,10 +1518,10 @@ struct RepoFixtureDatasetsContractTests {
             Issue.record("\(dataset): \(owner) \(ref) is not declared")
             return
         }
-        let installAs = asset.installAs?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(
             installAs == "Books/\(fileName)",
-            "\(dataset): \(owner) \(ref) must install as Books/\(fileName), got \(installAs ?? "<nil>")"
+            "\(dataset): \(owner) \(ref) must install as Books/\(fileName), got \(installAs)"
         )
         let expectedContentType: String
         switch format {
