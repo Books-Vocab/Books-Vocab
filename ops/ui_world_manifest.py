@@ -307,6 +307,9 @@ TODAY_REVIEW_LINK_KEYS = {
     "hidden",
 }
 VALID_TODAY_REVIEW_REVEAL_STAGES = {"front", "back"}
+PODCAST_SEED_KEYS = {"series", "episodes"}
+PODCAST_SERIES_KEYS = {"remoteId", "title", "hostNames", "colorHex", "coverPattern"}
+PODCAST_EPISODE_KEYS = {"episodeNumber", "title", "durationSec", "lastPlayedTime"}
 BOOK_FORMAT_CONTENT_TYPES = {
     "epub": "application/epub+zip",
     "pdf": "application/pdf",
@@ -907,6 +910,56 @@ def _validate_today_review(data: dict[str, Any], *, label: str) -> None:
         if seed_obj.get("remainingCount") == 0 and seed_obj.get("currentCard") is not None:
             raise UIWorldManifestError(f"{label} {owner} completed session must not declare currentCard")
         _validate_unique(card_words, owner=f"{owner}.card.word", label=label)
+
+
+def _validate_color_hex(raw: Any, *, owner: str, label: str) -> None:
+    if raw is None:
+        return
+    value = _ensure_str(raw, field=owner, label=label)
+    if len(value) != 7 or not value.startswith("#") or any(ch not in "0123456789abcdefABCDEF" for ch in value[1:]):
+        raise UIWorldManifestError(f"{label} {owner} must be #RRGGBB")
+
+
+def _validate_podcast(data: dict[str, Any], *, label: str) -> None:
+    for fixture_id, seed in _require_mapping(data.get("podcast"), field="podcast", label=label).items():
+        seed_obj = _require_mapping(seed, field=f"podcast.{fixture_id}", label=label)
+        owner = f"podcast.{fixture_id}"
+        _validate_exact_keys(seed_obj, expected=PODCAST_SEED_KEYS, owner=owner, label=label)
+        series = _require_mapping(seed_obj.get("series"), field=f"{owner}.series", label=label)
+        _validate_exact_keys(series, expected=PODCAST_SERIES_KEYS, owner=f"{owner}.series", label=label)
+        _ensure_str(series.get("remoteId"), field=f"{owner}.series.remoteId", label=label)
+        _ensure_str(series.get("title"), field=f"{owner}.series.title", label=label)
+        hosts = _require_list(series.get("hostNames"), field=f"{owner}.series.hostNames", label=label)
+        if not hosts:
+            raise UIWorldManifestError(f"{label} {owner}.series.hostNames must not be empty")
+        for index, host in enumerate(hosts):
+            _ensure_str(host, field=f"{owner}.series.hostNames[{index}]", label=label)
+        _validate_color_hex(series.get("colorHex"), owner=f"{owner}.series.colorHex", label=label)
+        _validate_nullable_string(series.get("coverPattern"), owner=f"{owner}.series.coverPattern", label=label)
+        episode_numbers: list[str] = []
+        episodes = _require_list(seed_obj.get("episodes"), field=f"{owner}.episodes", label=label)
+        if not episodes:
+            raise UIWorldManifestError(f"{label} {owner}.episodes must not be empty")
+        for index, episode in enumerate(episodes):
+            episode_obj = _require_mapping(episode, field=f"{owner}.episodes[{index}]", label=label)
+            episode_owner = f"{owner}.episodes[{index}]"
+            _validate_exact_keys(episode_obj, expected=PODCAST_EPISODE_KEYS, owner=episode_owner, label=label)
+            episode_number = _ensure_int(episode_obj.get("episodeNumber"), field=f"{episode_owner}.episodeNumber", label=label)
+            if episode_number <= 0:
+                raise UIWorldManifestError(f"{label} {episode_owner}.episodeNumber must be positive")
+            episode_numbers.append(str(episode_number))
+            _ensure_str(episode_obj.get("title"), field=f"{episode_owner}.title", label=label)
+            duration = _ensure_number(episode_obj.get("durationSec"), field=f"{episode_owner}.durationSec", label=label)
+            if duration <= 0:
+                raise UIWorldManifestError(f"{label} {episode_owner}.durationSec must be positive")
+            last_played = episode_obj.get("lastPlayedTime")
+            if last_played is not None:
+                last_played_value = _ensure_number(last_played, field=f"{episode_owner}.lastPlayedTime", label=label)
+                if last_played_value < 0:
+                    raise UIWorldManifestError(f"{label} {episode_owner}.lastPlayedTime must be non-negative")
+                if last_played_value > duration:
+                    raise UIWorldManifestError(f"{label} {episode_owner}.lastPlayedTime must not exceed durationSec")
+        _validate_unique(episode_numbers, owner=f"{owner}.episodes.episodeNumber", label=label)
 
 
 def _validate_sync_presenter(data: dict[str, Any], *, label: str) -> None:
@@ -1584,6 +1637,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     _validate_auth_state(data, label=label)
     _validate_entitlements(data, label=label)
     _validate_settings(data, label=label)
+    _validate_podcast(data, label=label)
     _validate_today_review(data, label=label)
     _validate_sync_presenter(data, label=label)
     _validate_cross_references(data, label=label)

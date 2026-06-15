@@ -446,6 +446,76 @@ def test_validate_rejects_review_deck_invalid_action_type(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_podcast_missing_nullable_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["podcast"]["shelf_continue"]["episodes"][2]["lastPlayedTime"]
+    path = tmp_path / "podcast_missing_nullable_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.episodes\[2\] keys .*lastPlayedTime"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_unknown_series_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["series"]["legacyCover"] = "cover.png"
+    path = tmp_path / "podcast_unknown_series_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.series keys .*legacyCover"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_invalid_color_hex(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["series"]["colorHex"] = "blue"
+    path = tmp_path / "podcast_bad_color_hex.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.series.colorHex must be #RRGGBB"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_empty_hosts(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["series"]["hostNames"] = []
+    path = tmp_path / "podcast_empty_hosts.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.series.hostNames must not be empty"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_duplicate_episode_numbers(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["episodes"][1]["episodeNumber"] = 1
+    path = tmp_path / "podcast_duplicate_episode_numbers.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.episodes.episodeNumber must not contain duplicate values"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_progress_after_duration(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["episodes"][0]["lastPlayedTime"] = 9999
+    path = tmp_path / "podcast_progress_after_duration.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.episodes\[0\].lastPlayedTime must not exceed durationSec"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_podcast_non_positive_duration(tmp_path: Path):
+    data = _marketing_demo()
+    data["podcast"]["shelf_continue"]["episodes"][0]["durationSec"] = 0
+    path = tmp_path / "podcast_non_positive_duration.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"podcast.shelf_continue.episodes\[0\].durationSec must be positive"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_today_review_missing_nullable_key(tmp_path: Path):
     data = _marketing_demo()
     del data["todayReview"]["front"]["currentCard"]["chapterTitle"]
