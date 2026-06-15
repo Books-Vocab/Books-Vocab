@@ -201,6 +201,57 @@ def test_validate_rejects_bookshelf_book_install_drift(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_bookshelf_seed_missing_reference_date(tmp_path: Path):
+    data = _marketing_demo()
+    del data["bookshelf"]["with_books_library"]["referenceDate"]
+    path = tmp_path / "bookshelf_missing_reference_date.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"bookshelf.with_books_library keys .*referenceDate"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_bookshelf_book_unknown_row_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["bookshelf"]["with_books_library"]["books"][0]["legacyProgress"] = 0.1
+    path = tmp_path / "bookshelf_unknown_book_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"bookshelf.with_books_library.books\[0\] keys .*legacyProgress"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_bookshelf_progression_out_of_range(tmp_path: Path):
+    data = _marketing_demo()
+    data["bookshelf"]["with_books_library"]["books"][0]["progression"] = 1.1
+    path = tmp_path / "bookshelf_bad_progression.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"progression must be between 0 and 1"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_bookshelf_invalid_date(tmp_path: Path):
+    data = _marketing_demo()
+    data["bookshelf"]["with_books_library"]["books"][0]["dateAdded"] = "not-a-date"
+    path = tmp_path / "bookshelf_bad_date.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"dateAdded must be ISO8601"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_bookshelf_last_read_before_added(tmp_path: Path):
+    data = _marketing_demo()
+    data["bookshelf"]["with_books_library"]["books"][0]["dateAdded"] = "2026-01-06T00:00:00Z"
+    data["bookshelf"]["with_books_library"]["books"][0]["dateLastRead"] = "2026-01-05T00:00:00Z"
+    path = tmp_path / "bookshelf_last_read_before_added.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"dateLastRead must not be earlier than dateAdded"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_missing_preferred_notebook_ref(tmp_path: Path):
     data = _marketing_demo()
     data["bookshelf"]["reader_notebook_bound"]["books"][0]["preferredNotebookId"] = "missing-nb"
@@ -218,6 +269,59 @@ def test_validate_rejects_missing_notebook_cover_asset_ref(tmp_path: Path):
     path.write_text(json.dumps(data), encoding="utf-8")
 
     with pytest.raises(UIWorldManifestError, match="coverImageAssetRef references missing images.missing"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_notebook_sync_status_out_of_range(tmp_path: Path):
+    data = _marketing_demo()
+    data["notebook"]["populated"]["notebooks"][0]["syncStatus"] = 9
+    path = tmp_path / "notebook_bad_sync_status.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"notebook.populated.notebooks\[0\].syncStatus"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_notebook_card_count_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["notebook"]["cardGallery"]["notebooks"][0]["cardState"]["cardCount"] = 1
+    path = tmp_path / "notebook_card_count_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="cardCount must equal dueCount"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_vocabulary_duplicate_entry_words(tmp_path: Path):
+    data = _marketing_demo()
+    entry = dict(data["vocabulary"]["vocabLinkedCards"]["entries"][0])
+    data["vocabulary"]["vocabLinkedCards"]["entries"].append(entry)
+    path = tmp_path / "vocabulary_duplicate_entries.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="vocabulary.vocabLinkedCards.entries.word must not contain duplicate values"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_vocabulary_review_history_missing_entry_ref(tmp_path: Path):
+    data = _marketing_demo()
+    data["vocabulary"]["vocabLinkedCards"]["reviewHistory"] = [
+        {"word": "missing-word", "feedback": 1, "reviewedAt": "2026-01-01T00:00:00Z"}
+    ]
+    path = tmp_path / "vocabulary_review_history_missing_entry.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"reviewHistory\[0\].missing-word must reference an entry"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_review_deck_invalid_action_type(tmp_path: Path):
+    data = _marketing_demo()
+    data["reviewDeck"]["phaseSingle"]["entries"][0]["actionType"] = "merge"
+    path = tmp_path / "review_deck_bad_action_type.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"reviewDeck.phaseSingle.entries\[0\].actionType must be add/delete/edit"):
         validate_fixture_dataset_file(path)
 
 
