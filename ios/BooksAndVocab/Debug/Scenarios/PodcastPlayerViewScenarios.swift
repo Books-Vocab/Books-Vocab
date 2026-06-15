@@ -109,31 +109,19 @@ private struct PodcastPlayerViewScene: View {
             )
             let subtitleURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.subtitleAssetRef)
             let subtitleSRT = try String(contentsOf: subtitleURL, encoding: .utf8)
-            let series = PodcastSeries(
-                remoteId: seed.seriesRemoteId,
-                title: seed.seriesTitle,
-                hostNames: seed.hostNames
+            let series = try UITestFixtureSeed.makeRuntimePodcastSeries(
+                from: seed,
+                document: FixtureDatasetStore.requireDocument(),
+                owner: "runtimePodcast.\(fixture.runtimePodcastID.rawValue)"
             )
-            series.color = seed.color
-            series.coverPattern = seed.coverPattern
-            series.episodeCount = seed.episodes.count
-            series.totalDurationSec = seed.durationSec
-            series.sortOrder = seed.sortOrder
             container.mainContext.insert(series)
 
             let episodeSeed = try selectedEpisodeSeed(from: seed, fixture: fixture)
-            let episode = PodcastEpisode(
-                remoteId: episodeSeed.remoteId,
-                episodeNumber: episodeSeed.episodeNumber,
-                title: episodeSeed.title,
-                durationSec: episodeSeed.durationSec
+            let episode = try UITestFixtureSeed.makeRuntimePodcastEpisode(
+                from: episodeSeed,
+                series: series,
+                inlineSubtitle: subtitleSRT
             )
-            episode.series = series
-            episode.audioAvailable = episodeSeed.audioAvailable
-            episode.previewAvailable = episodeSeed.previewAvailable
-            episode.previewDurationSec = episodeSeed.previewDurationSec
-            episode.subtitleAvailable = episodeSeed.subtitleAvailable
-            episode.inlineSubtitle = subtitleSRT
             container.mainContext.insert(episode)
             try container.mainContext.save()
             return .init(container: container, episodeId: episode.remoteId, subtitleSRT: subtitleSRT)

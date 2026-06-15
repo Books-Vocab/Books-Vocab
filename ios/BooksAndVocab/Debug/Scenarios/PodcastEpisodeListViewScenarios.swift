@@ -41,7 +41,7 @@ private struct PodcastEpisodeListViewScene: View {
     init(fixture: UIWorldRuntimePodcastFixtureID, episodeLimit: Int? = nil) {
         let seed = FixtureDatasetStore.requireRuntimePodcastSeed(for: fixture)
         let authSeed = FixtureDatasetStore.requireAuthSeed(for: .signedIn)
-        self.container = Self.makeContainer(from: seed, episodeLimit: episodeLimit)
+        self.container = Self.makeContainer(from: seed, fixtureID: fixture, episodeLimit: episodeLimit)
         self.auth = Self.makeAuth(from: authSeed)
         self.seriesId = seed.seriesRemoteId
     }
@@ -59,6 +59,7 @@ private struct PodcastEpisodeListViewScene: View {
 
     private static func makeContainer(
         from seed: UIWorldRuntimePodcastSeed,
+        fixtureID: UIWorldRuntimePodcastFixtureID,
         episodeLimit: Int?
     ) -> ModelContainer {
         do {
@@ -66,31 +67,19 @@ private struct PodcastEpisodeListViewScene: View {
                 for: PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
-            let series = PodcastSeries(
-                remoteId: seed.seriesRemoteId,
-                title: seed.seriesTitle,
-                hostNames: seed.hostNames
+            let series = try UITestFixtureSeed.makeRuntimePodcastSeries(
+                from: seed,
+                document: FixtureDatasetStore.requireDocument(),
+                owner: "runtimePodcast.\(fixtureID.rawValue)"
             )
-            series.color = seed.color
-            series.coverPattern = seed.coverPattern
-            series.episodeCount = seed.episodes.count
-            series.totalDurationSec = seed.durationSec
-            series.sortOrder = seed.sortOrder
             container.mainContext.insert(series)
 
             let episodes = episodeLimit.map { Array(seed.episodes.prefix($0)) } ?? seed.episodes
             for episodeSeed in episodes {
-                let episode = PodcastEpisode(
-                    remoteId: episodeSeed.remoteId,
-                    episodeNumber: episodeSeed.episodeNumber,
-                    title: episodeSeed.title,
-                    durationSec: episodeSeed.durationSec
+                let episode = try UITestFixtureSeed.makeRuntimePodcastEpisode(
+                    from: episodeSeed,
+                    series: series
                 )
-                episode.series = series
-                episode.audioAvailable = episodeSeed.audioAvailable
-                episode.previewAvailable = episodeSeed.previewAvailable
-                episode.previewDurationSec = episodeSeed.previewDurationSec
-                episode.subtitleAvailable = episodeSeed.subtitleAvailable
                 container.mainContext.insert(episode)
             }
             try container.mainContext.save()

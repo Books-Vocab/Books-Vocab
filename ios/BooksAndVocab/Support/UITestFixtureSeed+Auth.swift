@@ -69,21 +69,11 @@ extension UITestFixtureSeed {
             series.isFollowed = false
 
             for episodeSeed in fixture.seed.episodes {
-                let download = try materializeAuthDownload(for: episodeSeed)
-                let episode = PodcastEpisode(
-                    remoteId: episodeSeed.remoteId,
-                    episodeNumber: episodeSeed.episodeNumber,
-                    title: episodeSeed.title,
-                    durationSec: episodeSeed.durationSec
+                let episode = try makeRuntimePodcastEpisode(
+                    from: episodeSeed,
+                    series: series,
+                    inlineSubtitle: subtitle
                 )
-                episode.series = series
-                episode.audioAvailable = episodeSeed.audioAvailable
-                episode.previewAvailable = episodeSeed.previewAvailable
-                episode.previewDurationSec = episodeSeed.previewDurationSec
-                episode.localAudioPath = download.audioURL?.path
-                episode.localSubtitlePath = download.subtitleURL?.path
-                episode.subtitleAvailable = episodeSeed.subtitleAvailable
-                episode.inlineSubtitle = subtitle
                 context.insert(episode)
             }
 
@@ -129,24 +119,6 @@ extension UITestFixtureSeed {
         let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.audioAssetRef)
         let subtitleURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.subtitleAssetRef)
         return AuthPodcastFixture(seed: seed, audioURL: audioURL, subtitleURL: subtitleURL)
-    }
-
-    private struct MaterializedAuthEpisodeDownload {
-        let audioURL: URL?
-        let subtitleURL: URL?
-    }
-
-    private static func materializeAuthDownload(
-        for episode: UIWorldRuntimePodcastEpisodeSeed
-    ) throws -> MaterializedAuthEpisodeDownload {
-        guard let download = episode.download else {
-            return MaterializedAuthEpisodeDownload(audioURL: nil, subtitleURL: nil)
-        }
-        let audioURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: download.audioAssetRef)
-        let subtitleURL = try download.subtitleAssetRef.map {
-            try FixtureDatasetStore.requireInstalledAssetURL(ref: $0)
-        }
-        return MaterializedAuthEpisodeDownload(audioURL: audioURL, subtitleURL: subtitleURL)
     }
 }
 #endif
