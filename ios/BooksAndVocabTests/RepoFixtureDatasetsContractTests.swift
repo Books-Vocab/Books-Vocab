@@ -37,6 +37,7 @@ struct RepoFixtureDatasetsContractTests {
             .appendingPathComponent("demo/generated/ios_fixture_dataset.json")
         let data = try Data(contentsOf: url)
         let document = try FixtureDatasetStore.decode(data)
+        let topLevel = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
 
         #expect(document.schema == "kg.fixture.dataset.v2")
         #expect(document.datasetID == "demo-demo-user")
@@ -59,6 +60,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
+        expectTodayReviewKeys(topLevel, dataset: "ios_fixture_dataset")
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
     }
 
@@ -76,6 +78,7 @@ struct RepoFixtureDatasetsContractTests {
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
             expectAuthUIStateKeys(topLevel, dataset: stem)
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
+            expectTodayReviewKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
             expectSwiftDataRowStateKeys(topLevel, document: document, dataset: stem)
             expectSyncPresenterKeys(topLevel, dataset: stem)
@@ -386,6 +389,86 @@ struct RepoFixtureDatasetsContractTests {
                         episode.keys.contains(key),
                         "\(dataset): podcast.\(fixtureKey).episode.\(episodeNumber) must explicitly declare \(key)"
                     )
+                }
+            }
+        }
+    }
+
+    private func expectTodayReviewKeys(_ topLevel: [String: Any], dataset: String) {
+        let todayReview = topLevel["todayReview"] as? [String: [String: Any]] ?? [:]
+        let sessionKeys = [
+            "progressText",
+            "currentCard",
+            "nextCard",
+            "revealStage",
+            "canShuffle",
+            "canGoPrevious",
+            "canGoNext",
+            "remainingCount",
+            "forgotCount",
+            "rememberedCount",
+            "rememberedFeedbackTrigger",
+            "forgotFeedbackTrigger",
+            "isAutoPlaying",
+            "isAutoPlayPaused",
+            "autoplayProgress",
+            "autoplaySpeed",
+            "autoplaySoundEnabled",
+            "showFirstRunHint",
+        ]
+        let cardKeys = [
+            "word",
+            "translation",
+            "context",
+            "explanation",
+            "partOfSpeech",
+            "bookTitle",
+            "chapterTitle",
+            "dateAdded",
+            "difficultyTier",
+            "reviewMode",
+            "reviewExamples",
+            "rootForm",
+            "inflections",
+            "graphLinksByKind",
+        ]
+        let linkKeys = [
+            "id",
+            "cardId",
+            "word",
+            "kind",
+            "label",
+            "confidence",
+            "reason",
+            "hidden",
+        ]
+        for (fixtureKey, seed) in todayReview {
+            for key in sessionKeys {
+                #expect(
+                    seed.keys.contains(key),
+                    "\(dataset): todayReview.\(fixtureKey) must explicitly declare \(key)"
+                )
+            }
+            for cardKey in ["currentCard", "nextCard"] {
+                guard let card = seed[cardKey] as? [String: Any] else {
+                    continue
+                }
+                for key in cardKeys {
+                    #expect(
+                        card.keys.contains(key),
+                        "\(dataset): todayReview.\(fixtureKey).\(cardKey) must explicitly declare \(key)"
+                    )
+                }
+                let linksByKind = card["graphLinksByKind"] as? [String: [[String: Any]]] ?? [:]
+                for (kind, links) in linksByKind {
+                    for link in links {
+                        for key in linkKeys {
+                            #expect(
+                                link.keys.contains(key),
+                                "\(dataset): todayReview.\(fixtureKey).\(cardKey).graphLinksByKind.\(kind) must explicitly declare \(key)"
+                            )
+                        }
+                    }
                 }
             }
         }
