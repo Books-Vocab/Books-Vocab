@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,19 @@ def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
 
 
+def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
+    source = (ROOT / path).read_text(encoding="utf-8")
+    match = re.search(rf"enum {enum_name}: String, CaseIterable \{{(?P<body>.*?)\n\}}", source, flags=re.S)
+    assert match, f"missing Swift enum {enum_name}"
+    fixture_ids = set()
+    for line in match.group("body").splitlines():
+        case_match = re.match(r'\s*case\s+(\w+)(?:\s*=\s*"([^"]+)")?', line)
+        if case_match:
+            fixture_ids.add(case_match.group(2) or case_match.group(1))
+    assert fixture_ids, f"missing cases for Swift enum {enum_name}"
+    return fixture_ids
+
+
 def test_validate_accepts_repo_ui_world():
     dataset_id = validate_fixture_dataset_file(ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json")
 
@@ -38,6 +52,38 @@ def test_validate_accepts_all_repo_and_generated_ui_worlds():
 
     assert "marketing_demo" in dataset_ids
     assert "demo-demo-user" in dataset_ids
+
+
+@pytest.mark.parametrize(
+    ("domain", "path", "enum_name"),
+    [
+        ("auth", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldAuthFixtureID"),
+        ("entitlements", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldEntitlementsFixtureID"),
+        ("settings", "ios/BooksAndVocab/Support/Fixtures/Settings/SettingsFixtures.swift", "SettingsFixtureID"),
+        ("bookshelf", "ios/BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift", "BookshelfFixtureID"),
+        ("todayReview", "ios/BooksAndVocab/Support/Fixtures/TodayReview/TodayReviewFixtures.swift", "TodayReviewFixtureID"),
+        ("notebook", "ios/BooksAndVocab/Support/Fixtures/Notebook/NotebookFixtures.swift", "NotebookFixtureID"),
+        ("podcast", "ios/BooksAndVocab/Support/Fixtures/Podcast/PodcastFixtures.swift", "PodcastFixtureID"),
+        ("runtimePodcast", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldRuntimePodcastFixtureID"),
+        ("reader", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldReaderFixtureID"),
+        ("vocabulary", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldVocabularyFixtureID"),
+        ("reviewDeck", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldReviewDeckFixtureID"),
+        ("syncPresenter", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldSyncPresenterFixtureID"),
+    ],
+)
+def test_fixture_domain_ids_match_swift_fixture_enums(domain: str, path: str, enum_name: str):
+    assert MODULE.FIXTURE_DOMAIN_IDS[domain] == _swift_fixture_ids(path, enum_name)
+
+
+@pytest.mark.parametrize("domain", sorted(MODULE.FIXTURE_DOMAIN_IDS))
+def test_validate_rejects_unknown_fixture_domain_id(tmp_path: Path, domain: str):
+    data = _marketing_demo()
+    data[domain]["ghostFixture"] = next(iter(data[domain].values()))
+    path = tmp_path / f"unknown_{domain}_fixture.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=rf"{domain} fixture ids .*ghostFixture"):
+        validate_fixture_dataset_file(path)
 
 
 def test_validate_rejects_asset_hash_drift(tmp_path: Path):

@@ -33,6 +33,89 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "reviewDeck",
     "syncPresenter",
 }
+FIXTURE_DOMAIN_IDS = {
+    "auth": {"guest", "guestAuthenticating", "guestError", "signedIn", "settingsSignedIn", "longIdentity"},
+    "entitlements": {"adminGranted", "cancelledButActive", "free", "pro"},
+    "settings": {
+        "logged_out",
+        "account_logged_out_error",
+        "preferences_auto_sync_off",
+        "preferences_logged_out_no_sync",
+        "subscribed_active",
+        "account_long_identity",
+        "subscription_free",
+        "subscription_loading",
+        "deleting_account",
+        "pricing_unavailable",
+        "debug_backend_local",
+    },
+    "bookshelf": {
+        "book_card_complete",
+        "book_card_long_title",
+        "book_card_mid_progress",
+        "book_card_pdf_format",
+        "book_card_placeholder_epub",
+        "progress_card",
+        "placeholder_card",
+        "reader_notebook_bound",
+        "reader_notebook_empty",
+        "reader_notebook_long_bound",
+        "reader_notebook_unbound",
+        "empty_library",
+        "with_books_library",
+        "loading_overlay",
+    },
+    "todayReview": {
+        "front",
+        "back",
+        "completed",
+        "autoplay",
+        "autoplayPaused",
+        "productionFront",
+        "productionBack",
+        "longContent",
+    },
+    "notebook": {
+        "cardGallery",
+        "coverGallery",
+        "editGallery",
+        "empty",
+        "populated",
+        "readerPickerMany",
+        "readerPickerPopulated",
+        "single",
+    },
+    "podcast": {"shelf_continue", "shelf_single"},
+    "runtimePodcast": {"playablePreview", "tieredCatalog"},
+    "reader": {"realBookLibrary"},
+    "vocabulary": {
+        "archivedEmpty",
+        "archivedLong",
+        "archivedPopulated",
+        "archivedSingle",
+        "knowledgeGraphEmpty",
+        "knowledgeGraphPopulated",
+        "kgVocabRow",
+        "reviewCalendarDense",
+        "searchVocabNotebook",
+        "shellNavigation",
+        "statsEmpty",
+        "statsPopulated",
+        "syncEmpty",
+        "syncPendingMixed",
+        "syncPendingSingle",
+        "vocabLinkedCards",
+        "vocabListEmpty",
+        "vocabListLong",
+        "vocabListPopulated",
+        "vocabListSingle",
+        "vocabListSyncing",
+        "wordDetail",
+        "wordEdit",
+    },
+    "reviewDeck": {"phaseLongContent", "phaseMulti", "phaseSingle", "probe", "notebookReviewDeck"},
+    "syncPresenter": {"ready", "running", "completed", "partialFailure", "fullFailure"},
+}
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 PREFERENCES_KEYS = {"userDefaults", "ubiquitousKeyValueStore"}
@@ -486,6 +569,16 @@ def _validate_vocabulary_row_state(seed: Mapping[str, Any], *, owner: str, label
 def _validate_unique(values: list[str], *, owner: str, label: str) -> None:
     if len(set(values)) != len(values):
         raise UIWorldManifestError(f"{label} {owner} must not contain duplicate values")
+
+
+def _validate_fixture_domain_ids(data: dict[str, Any], *, label: str) -> None:
+    for domain, known_ids in sorted(FIXTURE_DOMAIN_IDS.items()):
+        seeds = _require_mapping(data.get(domain), field=domain, label=label)
+        unknown = sorted(set(seeds) - known_ids)
+        if unknown:
+            raise UIWorldManifestError(
+                f"{label} {domain} fixture ids {unknown} have no matching app fixture ID"
+            )
 
 
 def _validate_optional_string_list(raw: Any, *, owner: str, label: str) -> None:
@@ -1581,6 +1674,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     dataset_id = data.get("datasetID")
     if not isinstance(dataset_id, str) or not dataset_id.strip():
         raise UIWorldManifestError(f"{label} datasetID 必須是非空字串: {path}")
+    _validate_fixture_domain_ids(data, label=label)
 
     assets = data.get("assets")
     if not isinstance(assets, dict):
