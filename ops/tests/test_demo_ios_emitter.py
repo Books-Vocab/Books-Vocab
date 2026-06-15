@@ -110,6 +110,26 @@ def test_emit_ios_rejects_non_identity_domain_drift():
         emit_ios._validate_fixture_document(document, baseline)
 
 
+def test_demo_sot_requires_card_notebook(tmp_path):
+    dataset = json.loads((DEMO_DIR / "demo_dataset.json").read_text(encoding="utf-8"))
+    del dataset["cards"][0]["notebook"]
+    path = tmp_path / "demo_dataset_missing_card_notebook.json"
+    path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    with pytest.raises(sot.SoTError, match=r"cards\[0\] missing notebook"):
+        sot.load_dataset(path)
+
+
+def test_demo_sot_requires_link_notebook(tmp_path):
+    dataset = json.loads((DEMO_DIR / "demo_dataset.json").read_text(encoding="utf-8"))
+    del dataset["links"][0]["notebook"]
+    path = tmp_path / "demo_dataset_missing_link_notebook.json"
+    path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    with pytest.raises(sot.SoTError, match=r"links\[0\] missing notebook"):
+        sot.load_dataset(path)
+
+
 @pytest.mark.parametrize(
     "argv",
     [

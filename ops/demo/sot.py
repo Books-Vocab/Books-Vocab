@@ -132,9 +132,10 @@ def load_dataset(path: Path = DATASET_PATH) -> dict[str, Any]:
             raise SoTError(f"{path.name} duplicate notebook name: {name!r}")
         nb_names.add(name)
 
-    # Cards must reference an existing (spec-declared) notebook, carry non-empty
-    # content+meaning, and use a legal review.state. This is the subset of the
-    # backend prevalidator that downstream emitters depend on for a clean join.
+    # Cards must explicitly reference an existing (spec-declared) notebook,
+    # carry non-empty content+meaning, and use a legal review.state. This is the
+    # subset of the backend prevalidator that downstream emitters depend on for
+    # a clean join.
     contents_by_nb: dict[str, set[str]] = {}
     for i, c in enumerate(cards):
         if not isinstance(c, dict):
@@ -144,8 +145,10 @@ def load_dataset(path: Path = DATASET_PATH) -> dict[str, Any]:
             raise SoTError(f"{path.name} cards[{i}] content empty")
         if not (c.get("meaning") or "").strip():
             raise SoTError(f"{path.name} cards[{i}] meaning empty: {content!r}")
-        nb = c.get("notebook", "default")
-        if nb != "default" and nb not in nb_names:
+        nb = c.get("notebook")
+        if not isinstance(nb, str) or not nb.strip():
+            raise SoTError(f"{path.name} cards[{i}] missing notebook")
+        if nb not in nb_names:
             raise SoTError(
                 f"{path.name} cards[{i}] notebook {nb!r} not declared in notebooks[]"
             )
@@ -175,7 +178,9 @@ def load_dataset(path: Path = DATASET_PATH) -> dict[str, Any]:
         # Links are per-notebook: both endpoints must live in the link's notebook
         # (the backend resolves card refs within nb_id). Enforce the same join key
         # here so a malformed cross-notebook edge fails at the SoT, not at emit time.
-        nb = lk.get("notebook", "default")
+        nb = lk.get("notebook")
+        if not isinstance(nb, str) or not nb.strip():
+            raise SoTError(f"{path.name} links[{i}] missing notebook")
         members = contents_by_nb.get(nb, set())
         for end in ("from", "to"):
             if lk[end] not in members:
