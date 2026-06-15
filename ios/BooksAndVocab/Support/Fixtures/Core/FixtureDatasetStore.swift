@@ -1450,12 +1450,86 @@ struct UIWorldVocabularySeed: Codable, Equatable {
     let bookTitle: String
     let entries: [UIWorldVocabularyEntrySeed]
     let reviewHistory: [UIWorldReviewHistorySeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case notebookRemoteId
+        case notebookName
+        case notebookSyncStatus
+        case bookTitle
+        case entries
+        case reviewHistory
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World vocabulary seed contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World vocabulary seed must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        notebookRemoteId = try container.decode(String.self, forKey: .notebookRemoteId)
+        notebookName = try container.decode(String.self, forKey: .notebookName)
+        notebookSyncStatus = try container.decode(Int.self, forKey: .notebookSyncStatus)
+        bookTitle = try container.decode(String.self, forKey: .bookTitle)
+        entries = try container.decode([UIWorldVocabularyEntrySeed].self, forKey: .entries)
+        reviewHistory = try container.decode([UIWorldReviewHistorySeed].self, forKey: .reviewHistory)
+    }
 }
 
 struct UIWorldReviewHistorySeed: Codable, Equatable {
     let word: String
     let feedback: Int
     let reviewedAt: Date
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case word
+        case feedback
+        case reviewedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World review history contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World review history must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        word = try container.decode(String.self, forKey: .word)
+        feedback = try container.decode(Int.self, forKey: .feedback)
+        reviewedAt = try container.decode(Date.self, forKey: .reviewedAt)
+    }
 }
 
 enum UIWorldReviewDeckFixtureID: String, CaseIterable {
@@ -1471,6 +1545,42 @@ struct UIWorldReviewDeckSeed: Codable, Equatable {
     let notebookName: String
     let notebookSyncStatus: Int
     let entries: [UIWorldVocabularyEntrySeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case notebookRemoteId
+        case notebookName
+        case notebookSyncStatus
+        case entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World review deck seed contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World review deck seed must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        notebookRemoteId = try container.decode(String.self, forKey: .notebookRemoteId)
+        notebookName = try container.decode(String.self, forKey: .notebookName)
+        notebookSyncStatus = try container.decode(Int.self, forKey: .notebookSyncStatus)
+        entries = try container.decode([UIWorldVocabularyEntrySeed].self, forKey: .entries)
+    }
 }
 
 struct UIWorldVocabularyEntrySeed: Codable, Equatable {
@@ -1529,6 +1639,18 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     }
 
     init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World vocabulary entry contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(

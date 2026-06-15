@@ -809,6 +809,54 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func vocabularySeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.vocabularyDataset(
+            datasetID: "unknown-vocabulary-seed-key",
+            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
+            reviewHistoryJSON: "[]",
+            extraFields: #","cachedCount": 1"#
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func vocabularyEntryFailsWhenUnknownKeyIsPresent() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "unexpected")
+            .replacingOccurrences(of: "\"graphLinksByKind\": {}", with: "\"graphLinksByKind\": {}, \"legacyEase\": 2.5")
+        let dataset = Self.vocabularyDataset(
+            datasetID: "unknown-vocabulary-entry-key",
+            entriesJSON: entry,
+            reviewHistoryJSON: "[]"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func vocabularyReviewHistoryFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.vocabularyDataset(
+            datasetID: "unknown-review-history-key",
+            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
+            reviewHistoryJSON: """
+            [
+              {
+                "word": "anchored",
+                "feedback": 1,
+                "reviewedAt": "2026-01-02T00:00:00Z",
+                "source": "legacy"
+              }
+            ]
+            """
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func vocabularyEntryFailsWhenRowStateValuesAreInvalid() throws {
         let entry = Self.fullVocabularyEntryJSON(word: "invalid-state")
             .replacingOccurrences(of: "\"syncStatus\": 1", with: "\"syncStatus\": 9")
@@ -862,6 +910,18 @@ struct FixtureDatasetStoreTests {
         let dataset = Self.reviewDeckDataset(
             datasetID: "duplicate-review-deck-entry-word",
             entriesJSON: "\(entry),\(entry)"
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func reviewDeckSeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.reviewDeckDataset(
+            datasetID: "unknown-review-deck-key",
+            entriesJSON: Self.fullVocabularyEntryJSON(word: "anchored"),
+            extraFields: #","sessionSeed": true"#
         )
 
         #expect(throws: DecodingError.self) {
@@ -2300,7 +2360,8 @@ struct FixtureDatasetStoreTests {
     private static func vocabularyDataset(
         datasetID: String,
         entriesJSON: String,
-        reviewHistoryJSON: String
+        reviewHistoryJSON: String,
+        extraFields: String = ""
     ) -> String {
         """
         {
@@ -2314,7 +2375,7 @@ struct FixtureDatasetStoreTests {
               "bookTitle": "Search Book",
               "entries": [
                 \(entriesJSON)
-              ],
+              ]\(extraFields),
               "reviewHistory": \(reviewHistoryJSON)
             }
           }
@@ -2324,7 +2385,8 @@ struct FixtureDatasetStoreTests {
 
     private static func reviewDeckDataset(
         datasetID: String,
-        entriesJSON: String
+        entriesJSON: String,
+        extraFields: String = ""
     ) -> String {
         """
         {
@@ -2337,7 +2399,7 @@ struct FixtureDatasetStoreTests {
               "notebookSyncStatus": 1,
               "entries": [
                 \(entriesJSON)
-              ]
+              ]\(extraFields)
             }
           }
         }
