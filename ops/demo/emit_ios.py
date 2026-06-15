@@ -65,11 +65,42 @@ FIXTURE_JSON_PATH = GENERATED_DIR / "ios_fixture_dataset.json"
 
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
 BASE_UI_WORLD_PATH = _REPO_ROOT / "ops/fixtures/ui_worlds/marketing_demo.json"
+FIXTURE_TOP_LEVEL_KEYS = {
+    "schema",
+    "datasetID",
+    "assets",
+    "preferences",
+    "auth",
+    "entitlements",
+    "settings",
+    "bookshelf",
+    "todayReview",
+    "notebook",
+    "podcast",
+    "runtimePodcast",
+    "reader",
+    "vocabulary",
+    "reviewDeck",
+    "syncPresenter",
+}
+IDENTITY_OWNED_SIGNED_IN_KEYS = {
+    "isLoggedIn",
+    "userId",
+    "token",
+    "displayName",
+    "email",
+    "provider",
+    "providerUserId",
+    "keychainTokenState",
+    "authError",
+    "isAuthenticating",
+}
 
 
 def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     identity = sot.identity
-    document = _load_base_ui_world()
+    baseline = _load_base_ui_world()
+    document = dict(baseline)
     document["schema"] = FIXTURE_SCHEMA
     document["datasetID"] = f"demo-{identity['user_id']}"
     auth = dict(document["auth"])
@@ -90,6 +121,7 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     )
     auth["signedIn"] = signed_in
     document["auth"] = auth
+    _validate_fixture_document(document, baseline)
     return document
 
 
@@ -102,6 +134,64 @@ def _load_base_ui_world() -> dict[str, Any]:
             f"{BASE_UI_WORLD_PATH} schema must be {FIXTURE_SCHEMA!r}, got {data.get('schema')!r}"
         )
     return data
+
+
+def _validate_fixture_document(document: dict[str, Any], baseline: dict[str, Any]) -> None:
+    """Fail loud if generated demo stops being a UI World + identity overlay."""
+    top_level = set(document)
+    if top_level != FIXTURE_TOP_LEVEL_KEYS:
+        extra = sorted(top_level - FIXTURE_TOP_LEVEL_KEYS)
+        missing = sorted(FIXTURE_TOP_LEVEL_KEYS - top_level)
+        raise ValueError(
+            "generated iOS UI World has invalid top-level keys "
+            f"extra={extra} missing={missing}"
+        )
+
+    baseline_top_level = set(baseline)
+    if baseline_top_level != FIXTURE_TOP_LEVEL_KEYS:
+        extra = sorted(baseline_top_level - FIXTURE_TOP_LEVEL_KEYS)
+        missing = sorted(FIXTURE_TOP_LEVEL_KEYS - baseline_top_level)
+        raise ValueError(
+            f"{BASE_UI_WORLD_PATH} has invalid top-level keys extra={extra} missing={missing}"
+        )
+
+    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"}):
+        if document[key] != baseline[key]:
+            raise ValueError(
+                "generated iOS UI World may only overlay identity-owned auth; "
+                f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
+            )
+
+    auth = document["auth"]
+    baseline_auth = baseline["auth"]
+    if set(auth) != set(baseline_auth):
+        raise ValueError("generated iOS UI World auth fixture keys must match baseline")
+
+    for fixture_key, seed in auth.items():
+        if fixture_key != "signedIn":
+            if seed != baseline_auth[fixture_key]:
+                raise ValueError(
+                    "generated iOS UI World may only overlay auth.signedIn; "
+                    f"auth.{fixture_key} drifted from baseline"
+                )
+            continue
+
+        signed_in_keys = set(seed)
+        baseline_signed_in_keys = set(baseline_auth[fixture_key])
+        if signed_in_keys != baseline_signed_in_keys:
+            raise ValueError("generated iOS UI World auth.signedIn keys must match baseline")
+
+        changed = {
+            key
+            for key in signed_in_keys
+            if seed[key] != baseline_auth[fixture_key][key]
+        }
+        disallowed = sorted(changed - IDENTITY_OWNED_SIGNED_IN_KEYS)
+        if disallowed:
+            raise ValueError(
+                "generated iOS UI World auth.signedIn changed non-identity keys "
+                f"{disallowed}"
+            )
 
 
 def _json_bytes(payload: dict[str, Any]) -> bytes:
