@@ -326,6 +326,17 @@ struct RepoFixtureDatasetsContractTests {
         }
 
         let reader = topLevel["reader"] as? [String: [String: Any]] ?? [:]
+        let readerKeys: Set<String> = [
+            "textAssetRef",
+            "bookAssetRef",
+            "title",
+            "author",
+            "bookFileName",
+            "notebookRemoteId",
+            "notebookName",
+            "notebookSyncStatus",
+            "entry",
+        ]
         for (fixtureKey, seed) in reader {
             let legacy = Set(seed.keys).intersection(["textPath"])
             #expect(
@@ -335,6 +346,11 @@ struct RepoFixtureDatasetsContractTests {
             #expect(
                 seed.keys.contains("bookAssetRef"),
                 "\(dataset): reader.\(fixtureKey) must declare bookAssetRef for the complete reader book"
+            )
+            let unknown = Set(seed.keys).subtracting(readerKeys)
+            #expect(
+                unknown.isEmpty,
+                "\(dataset): reader.\(fixtureKey) contains unknown keys \(unknown.sorted())"
             )
         }
     }

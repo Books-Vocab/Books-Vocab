@@ -1713,6 +1713,22 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func readerSeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "unknown-reader-key",
+          "reader": {
+            "realBookLibrary": \(Self.readerSeedJSON(extraFields: ",\"selectionWord\": \"introduction\""))
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test @MainActor func runtimePodcastMaterializationFailsWhenPreferredNotebookIsMissing() throws {
         let dataset = """
         {
@@ -2196,6 +2212,22 @@ struct FixtureDatasetStoreTests {
           "reviewStreak": 0,
           "lastReviewFeedbackRaw": -1,
           "graphLinksByKind": {}
+        }
+        """
+    }
+
+    private static func readerSeedJSON(extraFields: String = "") -> String {
+        """
+        {
+          "textAssetRef": "text.reader-source",
+          "bookAssetRef": "books.reader-book",
+          "title": "Reader Source",
+          "author": "KG",
+          "bookFileName": "reader.epub",
+          "notebookRemoteId": "reader-notebook",
+          "notebookName": "Reader Notebook",
+          "notebookSyncStatus": 1,
+          "entry": \(Self.fullVocabularyEntryJSON(word: "introduction"))\(extraFields)
         }
         """
     }
