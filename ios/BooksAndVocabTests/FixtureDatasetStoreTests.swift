@@ -2390,6 +2390,28 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func bookshelfSeedFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.bookshelfDataset(
+            datasetID: "unknown-bookshelf-seed-key",
+            extraFields: ",\"layout\": \"grid\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func bookshelfBookFailsWhenUnknownKeyIsPresent() throws {
+        let dataset = Self.bookshelfDataset(
+            datasetID: "unknown-bookshelf-book-key",
+            bookExtraFields: ",\"localPath\": \"Books/editorial-english.epub\""
+        )
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     private static func vocabularyDataset(
         datasetID: String,
         entriesJSON: String,
@@ -2433,6 +2455,52 @@ struct FixtureDatasetStoreTests {
               "entries": [
                 \(entriesJSON)
               ]\(extraFields)
+            }
+          }
+        }
+        """
+    }
+
+    private static func bookshelfDataset(
+        datasetID: String,
+        extraFields: String = "",
+        bookExtraFields: String = ""
+    ) -> String {
+        """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "\(datasetID)",
+          "assets": {
+            "books": {
+              "editorial_english_epub": {
+                "sourcePath": "/tmp/editorial.epub",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "Books/editorial-english.epub",
+                "contentType": "application/epub+zip"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {}
+          },
+          "bookshelf": {
+            "with_books_library": {
+              "books": [
+                {
+                  "title": "Editorial English",
+                  "author": "KG Studio",
+                  "fileName": "editorial-english.epub",
+                  "format": "epub",
+                  "bookAssetRef": "books.editorial_english_epub",
+                  "progression": 0.5,
+                  "preferredNotebookId": null,
+                  "dateAdded": "2026-01-01T00:00:00Z",
+                  "dateLastRead": "2026-01-06T00:00:00Z"\(bookExtraFields)
+                }
+              ],
+              "referenceDate": "2026-01-07T00:00:00Z"\(extraFields)
             }
           }
         }

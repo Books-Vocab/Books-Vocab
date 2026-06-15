@@ -796,6 +796,10 @@ struct RepoFixtureDatasetsContractTests {
             "feedback",
             "reviewedAt",
         ]
+        let requiredBookshelfSeedKeys: Set<String> = [
+            "books",
+            "referenceDate",
+        ]
         let requiredBookshelfBookKeys: Set<String> = [
             "title",
             "author",
@@ -810,6 +814,11 @@ struct RepoFixtureDatasetsContractTests {
 
         let bookshelfFixtures = topLevel["bookshelf"] as? [String: [String: Any]] ?? [:]
         for (fixtureKey, seed) in bookshelfFixtures {
+            let unknownSeedKeys = Set(seed.keys).subtracting(requiredBookshelfSeedKeys)
+            #expect(
+                unknownSeedKeys.isEmpty,
+                "\(dataset): bookshelf.\(fixtureKey) contains unknown keys \(unknownSeedKeys.sorted())"
+            )
             let books = seed["books"] as? [[String: Any]] ?? []
             for book in books {
                 let title = book["title"] as? String ?? "<missing-title>"
@@ -817,6 +826,11 @@ struct RepoFixtureDatasetsContractTests {
                 #expect(
                     missing.isEmpty,
                     "\(dataset): bookshelf.\(fixtureKey).book.\(title) missing row state keys \(missing.sorted())"
+                )
+                let unknown = Set(book.keys).subtracting(requiredBookshelfBookKeys)
+                #expect(
+                    unknown.isEmpty,
+                    "\(dataset): bookshelf.\(fixtureKey).book.\(title) contains unknown keys \(unknown.sorted())"
                 )
             }
         }

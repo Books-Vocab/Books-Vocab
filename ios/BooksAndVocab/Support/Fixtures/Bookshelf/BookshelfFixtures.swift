@@ -2,6 +2,39 @@
 import Foundation
 import SwiftData
 
+private struct AnyBookshelfCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
+    }
+}
+
+private func rejectUnknownBookshelfKeys<K: CodingKey & RawRepresentable>(
+    decoder: Decoder,
+    keys: [K],
+    context: String
+) throws where K.RawValue == String {
+    let rawContainer = try decoder.container(keyedBy: AnyBookshelfCodingKey.self)
+    let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+        .subtracting(keys.map(\.rawValue))
+    guard unknownKeys.isEmpty else {
+        throw DecodingError.dataCorrupted(
+            .init(
+                codingPath: decoder.codingPath,
+                debugDescription: "\(context) contains unknown keys \(unknownKeys.sorted())"
+            )
+        )
+    }
+}
+
 enum BookshelfFixtureID: String, CaseIterable {
     case bookCardComplete = "book_card_complete"
     case bookCardLongTitle = "book_card_long_title"
@@ -51,6 +84,11 @@ struct BookshelfBookSeed: Codable {
     }
 
     init(from decoder: Decoder) throws {
+        try rejectUnknownBookshelfKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World bookshelf book"
+        )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         for key in CodingKeys.allCases where !container.contains(key) {
             throw DecodingError.keyNotFound(
@@ -92,6 +130,31 @@ struct BookshelfBookSeed: Codable {
 struct BookshelfFixtureSeed: Codable {
     let books: [BookshelfBookSeed]
     let referenceDate: Date
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case books
+        case referenceDate
+    }
+
+    init(from decoder: Decoder) throws {
+        try rejectUnknownBookshelfKeys(
+            decoder: decoder,
+            keys: CodingKeys.allCases,
+            context: "UI World bookshelf seed"
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                DecodingError.Context(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World bookshelf seed must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        books = try container.decode([BookshelfBookSeed].self, forKey: .books)
+        referenceDate = try container.decode(Date.self, forKey: .referenceDate)
+    }
 }
 
 struct BookshelfFixtureRenderModel {
