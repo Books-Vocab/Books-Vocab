@@ -896,6 +896,27 @@ struct UIWorldAsset: Codable, Equatable {
 }
 
 struct UIWorldAssetManifest: Codable, Equatable {
+    private static let contentTypesByBucket: [String: Set<String>] = [
+        "books": ["application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"],
+        "audio": ["audio/mp4", "audio/mpeg"],
+        "subtitles": ["application/x-subrip; charset=utf-8", "text/vtt; charset=utf-8"],
+        "text": ["text/markdown; charset=utf-8", "text/plain; charset=utf-8"],
+        "images": ["image/png", "image/jpeg"],
+    ]
+    private static let contentTypesByExtension: [String: String] = [
+        "epub": "application/epub+zip",
+        "pdf": "application/pdf",
+        "md": "text/markdown; charset=utf-8",
+        "txt": "text/plain; charset=utf-8",
+        "m4a": "audio/mp4",
+        "mp3": "audio/mpeg",
+        "srt": "application/x-subrip; charset=utf-8",
+        "vtt": "text/vtt; charset=utf-8",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+    ]
+
     let books: [String: UIWorldAsset]
     let audio: [String: UIWorldAsset]
     let subtitles: [String: UIWorldAsset]
@@ -974,6 +995,16 @@ struct UIWorldAssetManifest: Codable, Equatable {
             ],
             codingPath: container.codingPath
         )
+        try Self.validateContentTypes(
+            buckets: [
+                "books": books,
+                "audio": audio,
+                "subtitles": subtitles,
+                "text": text,
+                "images": images,
+            ],
+            codingPath: container.codingPath
+        )
     }
 
     var refs: [String] {
@@ -1017,6 +1048,36 @@ struct UIWorldAssetManifest: Codable, Equatable {
                     )
                 }
                 seen[installAs] = ref
+            }
+        }
+    }
+
+    private static func validateContentTypes(
+        buckets: [String: [String: UIWorldAsset]],
+        codingPath: [CodingKey]
+    ) throws {
+        for (bucket, assets) in buckets {
+            for (assetID, asset) in assets {
+                let ref = "\(bucket).\(assetID)"
+                guard contentTypesByBucket[bucket]?.contains(asset.contentType) == true else {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: codingPath,
+                            debugDescription: "UI World asset \(ref) contentType \(asset.contentType) is invalid for \(bucket)"
+                        )
+                    )
+                }
+                let installExtension = URL(fileURLWithPath: asset.installAs).pathExtension.lowercased()
+                let sourceExtension = URL(fileURLWithPath: asset.sourcePath).pathExtension.lowercased()
+                let ext = installExtension.isEmpty ? sourceExtension : installExtension
+                if let expected = contentTypesByExtension[ext], asset.contentType != expected {
+                    throw DecodingError.dataCorrupted(
+                        .init(
+                            codingPath: codingPath,
+                            debugDescription: "UI World asset \(ref) contentType \(asset.contentType) must match .\(ext) as \(expected)"
+                        )
+                    )
+                }
             }
         }
     }

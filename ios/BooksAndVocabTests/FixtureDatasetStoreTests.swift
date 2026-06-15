@@ -324,6 +324,62 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    @Test func datasetFailsWhenAssetContentTypeDoesNotBelongToBucket() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "wrong-asset-content-type-bucket",
+          "assets": {
+            "books": {},
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {
+              "cover": {
+                "sourcePath": "/tmp/cover.png",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "NotebookCovers/cover.png",
+                "contentType": "application/pdf"
+              }
+            }
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
+    @Test func datasetFailsWhenAssetContentTypeDoesNotMatchExtension() throws {
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "wrong-asset-content-type-extension",
+          "assets": {
+            "books": {
+              "book": {
+                "sourcePath": "/tmp/book.epub",
+                "sha256": "unused-in-decode-test",
+                "byteSize": 0,
+                "installAs": "Books/book.epub",
+                "contentType": "application/pdf"
+              }
+            },
+            "audio": {},
+            "subtitles": {},
+            "text": {},
+            "images": {}
+          }
+        }
+        """
+
+        #expect(throws: DecodingError.self) {
+            _ = try FixtureDatasetStore.decode(Self.completeV2DatasetData(dataset))
+        }
+    }
+
     @Test func datasetFailsWhenFixtureDomainContainsUnknownFixtureID() throws {
         let dataset = """
         {
