@@ -357,6 +357,47 @@ def test_build_manifest_marks_missing_graph_linkage_states(tmp_path: Path):
     assert hero["graph"]["health"] == ["graph-missing"]
 
 
+def test_build_manifest_rejects_malformed_ui_graph_sidecar(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)
+    _write_catalog_index(source_root)
+    (source_root / "ui_graph.json").write_text("{bad json", encoding="utf-8")
+
+    items = manifest_module.collect_items(source_root, profile)
+
+    try:
+        manifest_module.build_manifest(items, profile, source_root=source_root)
+    except ValueError as exc:
+        assert "ui_graph.json is unreadable" in str(exc)
+    else:
+        raise AssertionError("expected malformed ui_graph.json to fail")
+
+
+def test_build_manifest_rejects_wrong_ui_graph_schema(tmp_path: Path):
+    profile = profile_module.load_profile(ROOT / "ops" / "catalog_review_profile.json")
+    source_root = tmp_path / "snapshots"
+    img_dir = source_root / "iPhone 15 Pro portrait" / "Settings_View"
+    img_dir.mkdir(parents=True)
+    _make_rgba_png(img_dir / "Signed_out.png", 40, 30, corner_alpha=255)
+    _write_catalog_index(source_root)
+    (source_root / "ui_graph.json").write_text(
+        json.dumps({"schema": "kg.ui.graph.legacy", "nodes": [], "edges": []}),
+        encoding="utf-8",
+    )
+
+    items = manifest_module.collect_items(source_root, profile)
+
+    try:
+        manifest_module.build_manifest(items, profile, source_root=source_root)
+    except ValueError as exc:
+        assert "schema must be kg.ui.graph.v1" in str(exc)
+    else:
+        raise AssertionError("expected wrong ui_graph.json schema to fail")
+
+
 def _surface_item(surface, lane, surface_role, cluster, facet, **extra):
     base = {
         "surfaceKey": surface.lower().replace(" ", "-"),

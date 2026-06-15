@@ -175,14 +175,14 @@ def load_ui_graph(source_root: Path) -> dict:
         return {}
     try:
         data = json.loads(graph_path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return {}
+    except (ValueError, OSError) as exc:
+        raise ValueError(f"catalog gallery ui_graph.json is unreadable: {graph_path}: {exc}") from exc
     if not isinstance(data, dict):
-        return {}
+        raise ValueError(f"catalog gallery ui_graph.json root must be an object: {graph_path}")
     if data.get("schema") != "kg.ui.graph.v1":
-        return {}
+        raise ValueError(f"catalog gallery ui_graph.json schema must be kg.ui.graph.v1: {graph_path}")
     if not isinstance(data.get("nodes"), list) or not isinstance(data.get("edges"), list):
-        return {}
+        raise ValueError(f"catalog gallery ui_graph.json nodes and edges must be arrays: {graph_path}")
     return data
 
 
