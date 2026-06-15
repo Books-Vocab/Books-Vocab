@@ -19,6 +19,7 @@ build_render_command = MODULE.build_render_command
 build_snapshot_command = MODULE.build_snapshot_command
 load_profile = MODULE.load_profile
 build_expectation = MODULE.build_expectation
+CaptureProfileError = MODULE.CaptureProfileError
 
 
 def _assertion_is_subset(small, big, path=""):
@@ -47,6 +48,16 @@ def _try_subset(small, big):
         return True
     except AssertionError:
         return False
+
+
+def _write_profile_with_dataset(tmp_path: Path, dataset_path: Path) -> Path:
+    source = json.loads((ROOT / "ops" / "capture_profiles" / "marketing_demo.json").read_text(
+        encoding="utf-8"
+    ))
+    source["snapshot"]["datasetFile"] = str(dataset_path)
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+    return profile_path
 
 
 def test_derive_expectation_covers_handwritten():
@@ -138,6 +149,36 @@ def test_load_profile_and_build_commands():
     assert "promotion" in render_command
     assert "--source-dir" in render_command
     assert "--shots-json" in render_command
+
+
+def test_load_profile_rejects_non_ui_world_dataset(tmp_path: Path):
+    dataset = tmp_path / "bad_dataset.json"
+    dataset.write_text(json.dumps({"schema": "not-ui-world", "datasetID": "bad"}), encoding="utf-8")
+    profile_path = _write_profile_with_dataset(tmp_path, dataset)
+
+    try:
+        load_profile(profile_path)
+    except CaptureProfileError as exc:
+        assert "schema 必須是 kg.fixture.dataset.v2" in str(exc)
+    else:
+        raise AssertionError("expected non-UI World dataset to fail")
+
+
+def test_load_profile_rejects_asset_hash_drift(tmp_path: Path):
+    source_dataset = json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(
+        encoding="utf-8"
+    ))
+    source_dataset["assets"]["books"]["catalog_reader_epub"]["sha256"] = "0" * 64
+    dataset = tmp_path / "bad_hash_dataset.json"
+    dataset.write_text(json.dumps(source_dataset, ensure_ascii=False), encoding="utf-8")
+    profile_path = _write_profile_with_dataset(tmp_path, dataset)
+
+    try:
+        load_profile(profile_path)
+    except CaptureProfileError as exc:
+        assert "assets.books.catalog_reader_epub.sha256 mismatch" in str(exc)
+    else:
+        raise AssertionError("expected asset hash drift to fail")
 
 
 def test_plan_outputs_machine_readable_json():
