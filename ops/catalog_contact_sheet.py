@@ -40,6 +40,13 @@ from pathlib import Path
 # Sheets this tool writes back into the scanned directory; never re-ingest
 # them as input shots on a later pass over the same dir.
 GENERATED_SHEET_NAMES = {"contact_sheet.png", "quick4_contact_sheet.png"}
+CATALOG_SIDECAR_NAMES = {
+    "catalog.html",
+    "catalog_index.json",
+    "review_state.json",
+    "UIreview.html",
+    "ui_graph.json",
+}
 
 
 def plan_grid(n, cols, cell_w, cell_h, label_h, gap, pad):
@@ -380,6 +387,12 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
     )
 
 
+def _catalog_sidecars(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(path for name in CATALOG_SIDECAR_NAMES if (path := root / name).exists())
+
+
 def _resolve_source(root, source="auto"):
     root = Path(root)
     source = source or "auto"
@@ -397,6 +410,14 @@ def _resolve_source(root, source="auto"):
             )
         if source == "catalog":
             raise SystemExit(f"manifest not found: {cand}")
+        sidecars = _catalog_sidecars(root)
+        if sidecars:
+            found = ", ".join(path.name for path in sidecars)
+            raise SystemExit(
+                "catalog-like visual artifact is missing review_manifest.json: "
+                f"{root} (found {found}); rerun catalog snapshots from UI World "
+                "or pass --source images explicitly for non-SoT raw PNG inspection"
+            )
 
     if source in {"auto", "uitest"} and root.is_dir():
         pngs = sorted(p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES)
