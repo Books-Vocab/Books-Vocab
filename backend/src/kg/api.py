@@ -44,7 +44,7 @@ from .app_lifespan import AppLifespanDependencies, build_app_lifespan_from_depen
 from .app_middleware import AppMiddlewareDependencies, install_app_middlewares_from_dependencies
 from .app_router_composition import AppRouterDependencies, build_app_routers_from_dependencies, include_app_routers
 from .app_runtime_state import RuntimeUserStateDependencies, install_runtime_user_state_from_dependencies
-from .rate_limit import api_limiter, translate_limiter
+from .rate_limit import api_limiter, login_limiter, translate_limiter
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
 
@@ -108,6 +108,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             tag_request_id=_sentry_init.tag_request_id,
             api_limiter=api_limiter,
             translate_limiter=translate_limiter,
+            login_limiter=login_limiter,
         )
     )
     install_app_exception_handlers_from_dependencies(

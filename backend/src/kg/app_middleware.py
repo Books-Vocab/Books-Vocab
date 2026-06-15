@@ -27,6 +27,7 @@ class AppMiddlewareDependencies:
     tag_request_id: Callable[[str | None], None]
     api_limiter: RateLimiter
     translate_limiter: RateLimiter
+    login_limiter: RateLimiter | None = None
 
 
 def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
@@ -61,6 +62,7 @@ def install_app_middlewares_from_dependencies(
     tag_request_id = dependencies.tag_request_id
     api_limiter = dependencies.api_limiter
     translate_limiter = dependencies.translate_limiter
+    login_limiter = dependencies.login_limiter
 
     app.add_middleware(
         CORSMiddleware,
@@ -105,6 +107,20 @@ def install_app_middlewares_from_dependencies(
     @app.middleware("http")
     async def rate_limit_middleware(request: Request, call_next):
         path = request.url.path
+        # Dedicated brute-force lockout for admin password login. Keyed by client
+        # IP (login is anonymous, no Authorization header). Checked before the
+        # generic budget so it trips at a much lower threshold.
+        if login_limiter is not None and request.method == "POST" and path == "/admin/login":
+            xff = request.headers.get("x-forwarded-for", "")
+            client_host = request.client.host if request.client else None
+            login_key = _anon_rate_limit_key(xff, client_host, rate_limit_trusted_hops)
+            if not await login_limiter.is_allowed(login_key):
+                return JSONResponse(
+                    {"detail": "Too many login attempts"},
+                    status_code=429,
+                    headers={"Retry-After": str(login_limiter.window_seconds)},
+                )
+            return await call_next(request)
         if any(path.startswith(prefix) for prefix in rate_limit_exempt_prefixes):
             return await call_next(request)
         auth = request.headers.get("authorization", "")
@@ -149,6 +165,7 @@ def install_app_middlewares(
     tag_request_id: Callable[[str | None], None],
     api_limiter: RateLimiter,
     translate_limiter: RateLimiter,
+    login_limiter: RateLimiter | None = None,
 ) -> AppMiddlewareRuntime:
     """Backward-compatible wrapper around :func:`install_app_middlewares_from_dependencies`."""
     return install_app_middlewares_from_dependencies(
@@ -160,5 +177,6 @@ def install_app_middlewares(
             tag_request_id=tag_request_id,
             api_limiter=api_limiter,
             translate_limiter=translate_limiter,
+            login_limiter=login_limiter,
         )
     )

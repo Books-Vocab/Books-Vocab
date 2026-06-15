@@ -95,3 +95,10 @@ translate_limiter = RateLimiter(
     max_requests=int(os.getenv("TRANSLATE_RATE_LIMIT", "20")),
     window_seconds=60,
 )
+# Dedicated low-threshold limiter for POST /admin/login. The admin password is a
+# single shared online-guessable secret, so the generic api_limiter (60/min) is
+# far too loose to slow credential stuffing. Default 5/min/IP, env-overridable.
+login_limiter = RateLimiter(
+    max_requests=int(os.getenv("ADMIN_LOGIN_RATE_LIMIT", "5")),
+    window_seconds=60,
+)
