@@ -525,6 +525,32 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
     struct Download: Codable, Equatable {
         let audioAssetRef: String
         let subtitleAssetRef: String?
+
+        enum CodingKeys: String, CodingKey, CaseIterable {
+            case audioAssetRef
+            case subtitleAssetRef
+        }
+
+        init(audioAssetRef: String, subtitleAssetRef: String?) {
+            self.audioAssetRef = audioAssetRef
+            self.subtitleAssetRef = subtitleAssetRef
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            for key in CodingKeys.allCases where !container.contains(key) {
+                throw DecodingError.keyNotFound(
+                    key,
+                    .init(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "UI World runtime podcast download must explicitly declare \(key.rawValue)"
+                    )
+                )
+            }
+
+            audioAssetRef = try container.decode(String.self, forKey: .audioAssetRef)
+            subtitleAssetRef = try container.decodeIfPresent(String.self, forKey: .subtitleAssetRef)
+        }
     }
 
     let remoteId: String
@@ -536,6 +562,63 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
     let previewDurationSec: Double
     let subtitleAvailable: Bool
     let download: Download?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case remoteId
+        case episodeNumber
+        case title
+        case durationSec
+        case audioAvailable
+        case previewAvailable
+        case previewDurationSec
+        case subtitleAvailable
+        case download
+    }
+
+    init(
+        remoteId: String,
+        episodeNumber: Int,
+        title: String,
+        durationSec: Double,
+        audioAvailable: Bool,
+        previewAvailable: Bool,
+        previewDurationSec: Double,
+        subtitleAvailable: Bool,
+        download: Download?
+    ) {
+        self.remoteId = remoteId
+        self.episodeNumber = episodeNumber
+        self.title = title
+        self.durationSec = durationSec
+        self.audioAvailable = audioAvailable
+        self.previewAvailable = previewAvailable
+        self.previewDurationSec = previewDurationSec
+        self.subtitleAvailable = subtitleAvailable
+        self.download = download
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World runtime podcast episode must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+
+        remoteId = try container.decode(String.self, forKey: .remoteId)
+        episodeNumber = try container.decode(Int.self, forKey: .episodeNumber)
+        title = try container.decode(String.self, forKey: .title)
+        durationSec = try container.decode(Double.self, forKey: .durationSec)
+        audioAvailable = try container.decode(Bool.self, forKey: .audioAvailable)
+        previewAvailable = try container.decode(Bool.self, forKey: .previewAvailable)
+        previewDurationSec = try container.decode(Double.self, forKey: .previewDurationSec)
+        subtitleAvailable = try container.decode(Bool.self, forKey: .subtitleAvailable)
+        download = try container.decodeIfPresent(Download.self, forKey: .download)
+    }
 }
 
 struct UIWorldRuntimePodcastSeed: Codable, Equatable {
@@ -549,6 +632,67 @@ struct UIWorldRuntimePodcastSeed: Codable, Equatable {
     let sortOrder: Int
     let durationSec: Double
     let episodes: [UIWorldRuntimePodcastEpisodeSeed]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case audioAssetRef
+        case subtitleAssetRef
+        case seriesRemoteId
+        case seriesTitle
+        case hostNames
+        case color
+        case coverPattern
+        case sortOrder
+        case durationSec
+        case episodes
+    }
+
+    init(
+        audioAssetRef: String,
+        subtitleAssetRef: String,
+        seriesRemoteId: String,
+        seriesTitle: String,
+        hostNames: [String],
+        color: String?,
+        coverPattern: String?,
+        sortOrder: Int,
+        durationSec: Double,
+        episodes: [UIWorldRuntimePodcastEpisodeSeed]
+    ) {
+        self.audioAssetRef = audioAssetRef
+        self.subtitleAssetRef = subtitleAssetRef
+        self.seriesRemoteId = seriesRemoteId
+        self.seriesTitle = seriesTitle
+        self.hostNames = hostNames
+        self.color = color
+        self.coverPattern = coverPattern
+        self.sortOrder = sortOrder
+        self.durationSec = durationSec
+        self.episodes = episodes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World runtime podcast series must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+
+        audioAssetRef = try container.decode(String.self, forKey: .audioAssetRef)
+        subtitleAssetRef = try container.decode(String.self, forKey: .subtitleAssetRef)
+        seriesRemoteId = try container.decode(String.self, forKey: .seriesRemoteId)
+        seriesTitle = try container.decode(String.self, forKey: .seriesTitle)
+        hostNames = try container.decode([String].self, forKey: .hostNames)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+        coverPattern = try container.decodeIfPresent(String.self, forKey: .coverPattern)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        durationSec = try container.decode(Double.self, forKey: .durationSec)
+        episodes = try container.decode([UIWorldRuntimePodcastEpisodeSeed].self, forKey: .episodes)
+    }
 }
 
 enum UIWorldReaderFixtureID: String, CaseIterable {
