@@ -29,6 +29,17 @@ def test_validate_accepts_repo_ui_world():
     assert dataset_id == "marketing_demo"
 
 
+def test_validate_accepts_all_repo_and_generated_ui_worlds():
+    repo_worlds = sorted((ROOT / "ops" / "fixtures" / "ui_worlds").glob("*.json"))
+    generated_worlds = [ROOT / "ops" / "demo" / "generated" / "ios_fixture_dataset.json"]
+    assert repo_worlds
+
+    dataset_ids = [validate_fixture_dataset_file(path) for path in [*repo_worlds, *generated_worlds]]
+
+    assert "marketing_demo" in dataset_ids
+    assert "demo-demo-user" in dataset_ids
+
+
 def test_validate_rejects_asset_hash_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["sha256"] = "0" * 64
