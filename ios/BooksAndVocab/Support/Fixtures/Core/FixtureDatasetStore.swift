@@ -1013,6 +1013,74 @@ enum UIWorldEntitlementsFixtureID: String, CaseIterable {
 
 struct UIWorldEntitlementsSeed: Codable, Equatable {
     let pro: KGSubscriptionStatus
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case pro
+    }
+
+    private enum ProCodingKeys: String, CodingKey, CaseIterable {
+        case is_active
+        case product_id
+        case plan_name
+        case price_display
+        case status
+        case is_trial
+        case trial_days
+        case will_renew
+        case expires_at
+        case source
+        case last_synced_at
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World entitlements seed contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World entitlements seed must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+
+        let rawProContainer = try container.nestedContainer(keyedBy: AnyCodingKey.self, forKey: .pro)
+        let unknownProKeys = Set(rawProContainer.allKeys.map(\.stringValue))
+            .subtracting(ProCodingKeys.allCases.map(\.rawValue))
+        guard unknownProKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: rawProContainer.codingPath,
+                    debugDescription: "UI World entitlements pro status contains unknown keys \(unknownProKeys.sorted())"
+                )
+            )
+        }
+
+        let proContainer = try container.nestedContainer(keyedBy: ProCodingKeys.self, forKey: .pro)
+        for key in ProCodingKeys.allCases where !proContainer.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: proContainer.codingPath,
+                    debugDescription: "UI World entitlements pro status must explicitly declare \(key.rawValue), even when null"
+                )
+            )
+        }
+
+        pro = try container.decode(KGSubscriptionStatus.self, forKey: .pro)
+    }
 }
 
 enum UIWorldRuntimePodcastFixtureID: String, CaseIterable {

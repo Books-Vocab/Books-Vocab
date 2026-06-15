@@ -60,6 +60,7 @@ struct RepoFixtureDatasetsContractTests {
         #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
+        expectEntitlementsKeys(topLevel, dataset: "ios_fixture_dataset")
         expectTodayReviewKeys(topLevel, dataset: "ios_fixture_dataset")
         expectRuntimePodcastAssetRefs(document: document, dataset: "ios_fixture_dataset")
     }
@@ -77,6 +78,7 @@ struct RepoFixtureDatasetsContractTests {
             expectNoLegacyAssetPathKeys(topLevel, dataset: stem)
             expectAuthKeychainStateKeys(topLevel, dataset: stem)
             expectAuthUIStateKeys(topLevel, dataset: stem)
+            expectEntitlementsKeys(topLevel, dataset: stem)
             expectCatalogPodcastPlaybackKeys(topLevel, dataset: stem)
             expectTodayReviewKeys(topLevel, dataset: stem)
             expectRuntimePodcastDownloadKeys(topLevel, dataset: stem)
@@ -616,6 +618,38 @@ struct RepoFixtureDatasetsContractTests {
                 #expect(
                     seed.keys.contains(key),
                     "\(dataset): auth.\(fixtureKey) must explicitly declare \(key)"
+                )
+            }
+        }
+    }
+
+    private func expectEntitlementsKeys(_ topLevel: [String: Any], dataset: String) {
+        let entitlements = topLevel["entitlements"] as? [String: [String: Any]] ?? [:]
+        let proKeys = [
+            "is_active",
+            "product_id",
+            "plan_name",
+            "price_display",
+            "status",
+            "is_trial",
+            "trial_days",
+            "will_renew",
+            "expires_at",
+            "source",
+            "last_synced_at",
+        ]
+        for (fixtureKey, seed) in entitlements {
+            #expect(
+                seed.keys.contains("pro"),
+                "\(dataset): entitlements.\(fixtureKey) must explicitly declare pro"
+            )
+            guard let pro = seed["pro"] as? [String: Any] else {
+                continue
+            }
+            for key in proKeys {
+                #expect(
+                    pro.keys.contains(key),
+                    "\(dataset): entitlements.\(fixtureKey).pro must explicitly declare \(key)"
                 )
             }
         }
