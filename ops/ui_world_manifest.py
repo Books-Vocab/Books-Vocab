@@ -32,6 +32,7 @@ FIXTURE_TOP_LEVEL_KEYS = {
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
+PREFERENCES_KEYS = {"userDefaults", "ubiquitousKeyValueStore"}
 AUTH_REQUIRED_KEYS = {
     "isLoggedIn",
     "userId",
@@ -146,6 +147,27 @@ def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
                 raise UIWorldManifestError(f"{label} {owner} keychainTokenState=absent must not include token")
         else:
             raise UIWorldManifestError(f"{label} {owner}.keychainTokenState 不支援: {token_state}")
+
+
+def _validate_preferences(data: dict[str, Any], *, label: str) -> None:
+    preferences = _require_mapping(data.get("preferences"), field="preferences", label=label)
+    keys = set(preferences)
+    missing = sorted(PREFERENCES_KEYS - keys)
+    extra = sorted(keys - PREFERENCES_KEYS)
+    if missing or extra:
+        raise UIWorldManifestError(
+            f"{label} preferences keys 不符合 UI World v2: extra={extra} missing={missing}"
+        )
+
+    for domain in sorted(PREFERENCES_KEYS):
+        entries = _require_mapping(preferences.get(domain), field=f"preferences.{domain}", label=label)
+        for key, value in sorted(entries.items()):
+            if not isinstance(key, str) or not key.strip():
+                raise UIWorldManifestError(f"{label} preferences.{domain} contains an empty key")
+            if not isinstance(value, (str, int, float, bool)) or value is None:
+                raise UIWorldManifestError(
+                    f"{label} preferences.{domain}.{key} value 必須是 string、number 或 bool"
+                )
 
 
 def _all_notebook_ids(data: dict[str, Any], *, label: str) -> set[str]:
@@ -523,6 +545,7 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
                 raise UIWorldManifestError(
                     f"{label} {asset_label}.sha256 mismatch: expected {expected_hash}, got {actual_hash}"
                 )
+    _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id

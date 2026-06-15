@@ -70,6 +70,36 @@ def test_validate_rejects_unknown_asset_property(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_missing_preference_wrapper_key(tmp_path: Path):
+    data = _marketing_demo()
+    del data["preferences"]["ubiquitousKeyValueStore"]
+    path = tmp_path / "missing_preference_wrapper.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"preferences keys .*ubiquitousKeyValueStore"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_unknown_preference_wrapper_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["preferences"]["legacyDefaults"] = {}
+    path = tmp_path / "unknown_preference_wrapper.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"preferences keys .*legacyDefaults"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_invalid_preference_value_type(tmp_path: Path):
+    data = _marketing_demo()
+    data["preferences"]["userDefaults"]["auto_sync_enabled"] = None
+    path = tmp_path / "invalid_preference_value.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="preferences.userDefaults.auto_sync_enabled"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_missing_runtime_download_asset_ref(tmp_path: Path):
     data = _marketing_demo()
     data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["audioAssetRef"] = "audio.missing"
