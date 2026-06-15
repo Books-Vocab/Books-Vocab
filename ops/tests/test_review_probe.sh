@@ -130,6 +130,20 @@ else
   bad "dataset exclusivity error unclear: $out"
 fi
 
+note "case 14: review_flip_probe validates UI World asset hashes before launch"
+jq '.assets.books.catalog_reader_epub.sha256 = "0000000000000000000000000000000000000000000000000000000000000000"' \
+  "$SCRIPT_DIR/../fixtures/ui_worlds/marketing_demo.json" >"$TMP/bad_hash_ui_world.json"
+set +e
+out="$("$SCRIPT_DIR/../review_flip_probe.sh" --simulator --dataset-file "$TMP/bad_hash_ui_world.json" --skip-build 2>&1)"
+rc=$?
+set -e
+check "asset hash drift rc==64" "$rc" "64"
+if grep -q 'assets.books.catalog_reader_epub.sha256 mismatch' <<<"$out"; then
+  ok "asset hash drift error names the asset"
+else
+  bad "asset hash drift error unclear: $out"
+fi
+
 note ""
 note "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
