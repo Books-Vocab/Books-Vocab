@@ -721,7 +721,8 @@ struct RepoFixtureDatasetsContractTests {
 
     private func expectEntitlementsKeys(_ topLevel: [String: Any], dataset: String) {
         let entitlements = topLevel["entitlements"] as? [String: [String: Any]] ?? [:]
-        let proKeys = [
+        let seedKeys: Set<String> = ["pro"]
+        let proKeys: Set<String> = [
             "is_active",
             "product_id",
             "plan_name",
@@ -735,6 +736,11 @@ struct RepoFixtureDatasetsContractTests {
             "last_synced_at",
         ]
         for (fixtureKey, seed) in entitlements {
+            let unknownSeedKeys = Set(seed.keys).subtracting(seedKeys)
+            #expect(
+                unknownSeedKeys.isEmpty,
+                "\(dataset): entitlements.\(fixtureKey) contains unknown keys \(unknownSeedKeys.sorted())"
+            )
             #expect(
                 seed.keys.contains("pro"),
                 "\(dataset): entitlements.\(fixtureKey) must explicitly declare pro"
@@ -748,6 +754,11 @@ struct RepoFixtureDatasetsContractTests {
                     "\(dataset): entitlements.\(fixtureKey).pro must explicitly declare \(key)"
                 )
             }
+            let unknownProKeys = Set(pro.keys).subtracting(proKeys)
+            #expect(
+                unknownProKeys.isEmpty,
+                "\(dataset): entitlements.\(fixtureKey).pro contains unknown keys \(unknownProKeys.sorted())"
+            )
         }
     }
 
