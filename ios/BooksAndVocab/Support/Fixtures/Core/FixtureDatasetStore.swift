@@ -144,9 +144,107 @@ struct FixtureDatasetDocument: Decodable {
         reviewDeck = try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck)
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
 
+        try Self.validateAuthSeeds(auth, codingPath: container.codingPath)
+        try Self.validateSettingsStateReferences(settings, auth: auth, entitlements: entitlements, codingPath: container.codingPath)
         try Self.validateRuntimePodcastAssetReferences(runtimePodcast, assets: assets, codingPath: container.codingPath)
         try Self.validateReaderAssetReferences(reader, assets: assets, codingPath: container.codingPath)
         try Self.validateBookshelfAssetReferences(bookshelf, assets: assets, codingPath: container.codingPath)
+    }
+
+    private static func validateAuthSeeds(
+        _ seeds: [String: UIWorldAuthSeed],
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in seeds {
+            let owner = "auth.\(fixtureID)"
+            switch seed.keychainTokenState {
+            case .available:
+                guard seed.isLoggedIn else {
+                    throw dataCorrupted("\(owner) keychainTokenState=available requires isLoggedIn=true", codingPath: codingPath)
+                }
+                guard seed.token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                    throw dataCorrupted("\(owner) keychainTokenState=available requires a non-empty token", codingPath: codingPath)
+                }
+            case .readFailed:
+                guard seed.isLoggedIn else {
+                    throw dataCorrupted("\(owner) keychainTokenState=readFailed requires isLoggedIn=true", codingPath: codingPath)
+                }
+                guard seed.userId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                    throw dataCorrupted("\(owner) keychainTokenState=readFailed requires a persisted userId", codingPath: codingPath)
+                }
+                guard seed.token == nil else {
+                    throw dataCorrupted("\(owner) keychainTokenState=readFailed must not expose a readable token", codingPath: codingPath)
+                }
+            case .absent:
+                guard !seed.isLoggedIn else {
+                    throw dataCorrupted("\(owner) keychainTokenState=absent requires isLoggedIn=false", codingPath: codingPath)
+                }
+                guard seed.token == nil else {
+                    throw dataCorrupted("\(owner) keychainTokenState=absent must not include token", codingPath: codingPath)
+                }
+            }
+
+            if seed.isLoggedIn {
+                guard !seed.isAuthenticating else {
+                    throw dataCorrupted("\(owner) logged-in seed must not also be authenticating", codingPath: codingPath)
+                }
+                guard seed.authError == nil else {
+                    throw dataCorrupted("\(owner) logged-in seed must not carry authError", codingPath: codingPath)
+                }
+            }
+        }
+    }
+
+    private static func validateSettingsStateReferences(
+        _ seeds: [String: SettingsFixtureSeed],
+        auth: [String: UIWorldAuthSeed],
+        entitlements: [String: UIWorldEntitlementsSeed],
+        codingPath: [CodingKey]
+    ) throws {
+        for (fixtureID, seed) in seeds {
+            let owner = "settings.\(fixtureID)"
+            let authRef = seed.authFixtureRef.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard authRef.hasPrefix("auth.") else {
+                throw dataCorrupted("\(owner).authFixtureRef must point into auth.*, got \(authRef)", codingPath: codingPath)
+            }
+            let authKey = String(authRef.dropFirst("auth.".count))
+            guard let authSeed = auth[authKey] else {
+                throw dataCorrupted("\(owner).authFixtureRef references missing \(authRef)", codingPath: codingPath)
+            }
+            guard seed.auth.isLoggedIn == authSeed.isLoggedIn else {
+                throw dataCorrupted("\(owner).auth.isLoggedIn must match \(authRef).isLoggedIn", codingPath: codingPath)
+            }
+            guard seed.auth.authError == authSeed.authError else {
+                throw dataCorrupted("\(owner).auth.authError must match \(authRef).authError", codingPath: codingPath)
+            }
+            if seed.auth.isLoggedIn {
+                guard seed.auth.email == authSeed.email else {
+                    throw dataCorrupted("\(owner).auth.email must match \(authRef).email", codingPath: codingPath)
+                }
+                guard seed.auth.displayName == authSeed.displayName else {
+                    throw dataCorrupted("\(owner).auth.displayName must match \(authRef).displayName", codingPath: codingPath)
+                }
+            }
+
+            if let entitlementsRef = seed.entitlementsFixtureRef?.trimmingCharacters(in: .whitespacesAndNewlines) {
+                guard entitlementsRef.hasPrefix("entitlements.") else {
+                    throw dataCorrupted("\(owner).entitlementsFixtureRef must point into entitlements.*, got \(entitlementsRef)", codingPath: codingPath)
+                }
+                let entitlementsKey = String(entitlementsRef.dropFirst("entitlements.".count))
+                guard let entitlementsSeed = entitlements[entitlementsKey] else {
+                    throw dataCorrupted("\(owner).entitlementsFixtureRef references missing \(entitlementsRef)", codingPath: codingPath)
+                }
+                if let subscription = seed.subscription, !subscription.isRefreshing {
+                    guard subscription.isActive == entitlementsSeed.pro.is_active else {
+                        throw dataCorrupted("\(owner).subscription.isActive must match \(entitlementsRef).pro.is_active", codingPath: codingPath)
+                    }
+                }
+            } else {
+                guard seed.subscription == nil else {
+                    throw dataCorrupted("\(owner) without entitlementsFixtureRef must not declare subscription UI state", codingPath: codingPath)
+                }
+            }
+        }
     }
 
     private static func validateRuntimePodcastAssetReferences(
@@ -241,21 +339,20 @@ struct FixtureDatasetDocument: Decodable {
         codingPath: [CodingKey]
     ) throws {
         guard ref.hasPrefix(prefix) else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: codingPath,
-                    debugDescription: "UI World \(owner) must reference a \(prefix) asset, got \(ref)"
-                )
-            )
+            throw dataCorrupted("UI World \(owner) must reference a \(prefix) asset, got \(ref)", codingPath: codingPath)
         }
         guard assets.asset(for: ref) != nil else {
-            throw DecodingError.dataCorrupted(
-                .init(
-                    codingPath: codingPath,
-                    debugDescription: "UI World \(owner) references missing asset \(ref)"
-                )
-            )
+            throw dataCorrupted("UI World \(owner) references missing asset \(ref)", codingPath: codingPath)
         }
+    }
+
+    private static func dataCorrupted(_ debugDescription: String, codingPath: [CodingKey]) -> DecodingError {
+        DecodingError.dataCorrupted(
+            .init(
+                codingPath: codingPath,
+                debugDescription: debugDescription
+            )
+        )
     }
 }
 
