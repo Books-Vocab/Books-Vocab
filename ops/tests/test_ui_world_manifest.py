@@ -100,6 +100,47 @@ def test_validate_rejects_invalid_preference_value_type(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_missing_runtime_download_local_path(tmp_path: Path):
+    data = _marketing_demo()
+    del data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["localAudioPath"]
+    path = tmp_path / "missing_download_local_path.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"download keys .*localAudioPath"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_unknown_runtime_download_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["downloaded"] = True
+    path = tmp_path / "unknown_download_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"download keys .*downloaded"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_runtime_download_local_path_drift(tmp_path: Path):
+    data = _marketing_demo()
+    data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["localAudioPath"] = "podcast-downloads/wrong.m4a"
+    path = tmp_path / "download_local_path_drift.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="localAudioPath must match asset installAs"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_runtime_download_subtitle_path_without_subtitle_ref(tmp_path: Path):
+    data = _marketing_demo()
+    download = data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]
+    download["subtitleAssetRef"] = None
+    path = tmp_path / "download_subtitle_path_without_ref.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match="localSubtitlePath must be null"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_missing_runtime_download_asset_ref(tmp_path: Path):
     data = _marketing_demo()
     data["runtimePodcast"]["playablePreview"]["episodes"][0]["download"]["audioAssetRef"] = "audio.missing"

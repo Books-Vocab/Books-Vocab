@@ -2550,7 +2550,9 @@
           "subtitleAvailable": true,
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_playable",
-            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable"
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_playable",
+            "localAudioPath": "podcast-downloads/ui-playable-series/ui-playable-series_ep_01.m4a",
+            "localSubtitlePath": "podcast-subtitles/ui-playable-series/ui-playable-series_ep_01.srt"
           }
         }
       ]
@@ -2580,7 +2582,9 @@
           "subtitleAvailable": true,
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
-            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth"
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
+            "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
           }
         },
         {
@@ -2594,7 +2598,9 @@
           "subtitleAvailable": true,
           "download": {
             "audioAssetRef": "audio.atomic_habits_ep1_flash_auth",
-            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth"
+            "subtitleAssetRef": "subtitles.atomic_habits_ep1_flash_srt_auth",
+            "localAudioPath": "podcast-downloads/ui-auth-series/ui-auth-series_ep_01.m4a",
+            "localSubtitlePath": "podcast-subtitles/ui-auth-series/ui-auth-series_ep_01.srt"
           }
         }
       ]

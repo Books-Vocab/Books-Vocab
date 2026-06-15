@@ -387,6 +387,8 @@ struct RepoFixtureDatasetsContractTests {
         let downloadKeys: Set<String> = [
             "audioAssetRef",
             "subtitleAssetRef",
+            "localAudioPath",
+            "localSubtitlePath",
         ]
         for (fixtureKey, seed) in runtimePodcast {
             for key in seriesKeys {
@@ -629,12 +631,31 @@ struct RepoFixtureDatasetsContractTests {
                     dataset: dataset,
                     owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.audioAssetRef"
                 )
+                expectDownloadLocalPath(
+                    download.localAudioPath,
+                    assetRef: download.audioAssetRef,
+                    document: document,
+                    dataset: dataset,
+                    owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.localAudioPath"
+                )
                 if let subtitleAssetRef = download.subtitleAssetRef {
                     expectInstallableAssetRef(
                         subtitleAssetRef,
                         document: document,
                         dataset: dataset,
                         owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.subtitleAssetRef"
+                    )
+                    expectDownloadLocalPath(
+                        download.localSubtitlePath,
+                        assetRef: subtitleAssetRef,
+                        document: document,
+                        dataset: dataset,
+                        owner: "runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.localSubtitlePath"
+                    )
+                } else {
+                    #expect(
+                        download.localSubtitlePath == nil,
+                        "\(dataset): runtimePodcast.\(fixtureKey).episode.\(episode.remoteId).download.localSubtitlePath must be null when subtitleAssetRef is null"
                     )
                 }
             }
@@ -1460,6 +1481,23 @@ struct RepoFixtureDatasetsContractTests {
         }
         let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
         #expect(!installAs.isEmpty, "\(dataset): \(owner) \(ref) must declare installAs so the asset is materialized into the app container")
+    }
+
+    private func expectDownloadLocalPath(
+        _ localPath: String?,
+        assetRef: String,
+        document: FixtureDatasetDocument,
+        dataset: String,
+        owner: String
+    ) {
+        guard let asset = document.assets.asset(for: assetRef) else {
+            Issue.record("\(dataset): \(owner) cannot validate local path because \(assetRef) is not declared")
+            return
+        }
+        #expect(
+            localPath == asset.installAs,
+            "\(dataset): \(owner) must match \(assetRef).installAs \(asset.installAs), got \(localPath ?? "nil")"
+        )
     }
 
     private func expectAssetRef(

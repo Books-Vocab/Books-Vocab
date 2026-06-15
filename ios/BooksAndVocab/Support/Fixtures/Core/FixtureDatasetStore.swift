@@ -495,19 +495,46 @@ struct FixtureDatasetDocument: Decodable {
             )
             for episode in seed.episodes {
                 guard let download = episode.download else { continue }
+                let audioOwner = "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.audioAssetRef"
                 try requireAssetRef(
                     download.audioAssetRef,
                     prefix: "audio.",
                     assets: assets,
-                    owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.audioAssetRef",
+                    owner: audioOwner,
+                    codingPath: codingPath
+                )
+                guard let audioAsset = assets.asset(for: download.audioAssetRef) else {
+                    throw dataCorrupted("UI World \(audioOwner) references missing asset \(download.audioAssetRef)", codingPath: codingPath)
+                }
+                try validateDownloadLocalPath(
+                    download.localAudioPath,
+                    expectedInstallAs: audioAsset.installAs,
+                    owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.localAudioPath",
                     codingPath: codingPath
                 )
                 if let subtitleAssetRef = download.subtitleAssetRef {
+                    let subtitleOwner = "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.subtitleAssetRef"
                     try requireAssetRef(
                         subtitleAssetRef,
                         prefix: "subtitles.",
                         assets: assets,
-                        owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.subtitleAssetRef",
+                        owner: subtitleOwner,
+                        codingPath: codingPath
+                    )
+                    guard let subtitleAsset = assets.asset(for: subtitleAssetRef) else {
+                        throw dataCorrupted("UI World \(subtitleOwner) references missing asset \(subtitleAssetRef)", codingPath: codingPath)
+                    }
+                    try validateDownloadLocalPath(
+                        download.localSubtitlePath,
+                        expectedInstallAs: subtitleAsset.installAs,
+                        owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.localSubtitlePath",
+                        codingPath: codingPath
+                    )
+                } else {
+                    try validateDownloadLocalPath(
+                        download.localSubtitlePath,
+                        expectedInstallAs: nil,
+                        owner: "runtimePodcast.\(fixtureID).episodes.\(episode.remoteId).download.localSubtitlePath",
                         codingPath: codingPath
                     )
                 }
@@ -569,6 +596,36 @@ struct FixtureDatasetDocument: Decodable {
         }
         guard assets.asset(for: ref) != nil else {
             throw dataCorrupted("UI World \(owner) references missing asset \(ref)", codingPath: codingPath)
+        }
+    }
+
+    private static func validateDownloadLocalPath(
+        _ path: String?,
+        expectedInstallAs: String?,
+        owner: String,
+        codingPath: [CodingKey]
+    ) throws {
+        guard let expectedInstallAs else {
+            if path != nil {
+                throw dataCorrupted("UI World \(owner) must be null when subtitleAssetRef is null", codingPath: codingPath)
+            }
+            return
+        }
+        guard let path, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw dataCorrupted("UI World \(owner) must explicitly declare a non-empty local path", codingPath: codingPath)
+        }
+        guard !path.hasPrefix("/") else {
+            throw dataCorrupted("UI World \(owner) must be relative to Documents, got \(path)", codingPath: codingPath)
+        }
+        let components = path.split(separator: "/").map(String.init)
+        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
+            throw dataCorrupted("UI World \(owner) contains an unsafe path component: \(path)", codingPath: codingPath)
+        }
+        guard path == expectedInstallAs else {
+            throw dataCorrupted(
+                "UI World \(owner) must match asset installAs \(expectedInstallAs), got \(path)",
+                codingPath: codingPath
+            )
         }
     }
 
@@ -1210,15 +1267,26 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
     struct Download: Codable, Equatable {
         let audioAssetRef: String
         let subtitleAssetRef: String?
+        let localAudioPath: String
+        let localSubtitlePath: String?
 
         enum CodingKeys: String, CodingKey, CaseIterable {
             case audioAssetRef
             case subtitleAssetRef
+            case localAudioPath
+            case localSubtitlePath
         }
 
-        init(audioAssetRef: String, subtitleAssetRef: String?) {
+        init(
+            audioAssetRef: String,
+            subtitleAssetRef: String?,
+            localAudioPath: String,
+            localSubtitlePath: String?
+        ) {
             self.audioAssetRef = audioAssetRef
             self.subtitleAssetRef = subtitleAssetRef
+            self.localAudioPath = localAudioPath
+            self.localSubtitlePath = localSubtitlePath
         }
 
         init(from decoder: Decoder) throws {
@@ -1247,6 +1315,8 @@ struct UIWorldRuntimePodcastEpisodeSeed: Codable, Equatable {
 
             audioAssetRef = try container.decode(String.self, forKey: .audioAssetRef)
             subtitleAssetRef = try container.decodeIfPresent(String.self, forKey: .subtitleAssetRef)
+            localAudioPath = try container.decode(String.self, forKey: .localAudioPath)
+            localSubtitlePath = try container.decodeIfPresent(String.self, forKey: .localSubtitlePath)
         }
     }
 

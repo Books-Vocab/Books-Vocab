@@ -8,7 +8,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_SCHEMA = "kg.fixture.dataset.v2"
@@ -33,6 +33,12 @@ FIXTURE_TOP_LEVEL_KEYS = {
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
 PREFERENCES_KEYS = {"userDefaults", "ubiquitousKeyValueStore"}
+RUNTIME_PODCAST_DOWNLOAD_KEYS = {
+    "audioAssetRef",
+    "subtitleAssetRef",
+    "localAudioPath",
+    "localSubtitlePath",
+}
 AUTH_REQUIRED_KEYS = {
     "isLoggedIn",
     "userId",
@@ -103,6 +109,33 @@ def _require_ref(ref: Any, *, prefix: str, refs: set[str], owner: str, label: st
     if value not in refs:
         raise UIWorldManifestError(f"{label} {owner} references missing {value}")
     return value
+
+
+def _validate_exact_keys(value: Mapping[str, Any], *, expected: set[str], owner: str, label: str) -> None:
+    keys = set(value)
+    missing = sorted(expected - keys)
+    extra = sorted(keys - expected)
+    if missing or extra:
+        raise UIWorldManifestError(f"{label} {owner} keys 不符合 UI World v2: extra={extra} missing={missing}")
+
+
+def _validate_download_local_path(
+    raw: Any,
+    *,
+    expected_install_as: str | None,
+    owner: str,
+    label: str,
+) -> None:
+    if expected_install_as is None:
+        if raw is not None:
+            raise UIWorldManifestError(f"{label} {owner} must be null when subtitleAssetRef is null")
+        return
+    local_path = _ensure_str(raw, field=owner, label=label).strip()
+    _validate_install_as(local_path, field=owner, label=label)
+    if local_path != expected_install_as:
+        raise UIWorldManifestError(
+            f"{label} {owner} must match asset installAs {expected_install_as}, got {local_path}"
+        )
 
 
 def _validate_auth_state(data: dict[str, Any], *, label: str) -> None:
@@ -361,21 +394,62 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
                 field=f"runtimePodcast.{fixture_id}.episodes[{index}].download",
                 label=label,
             )
-            _require_ref(
+            download_owner = f"runtimePodcast.{fixture_id}.episodes[{index}].download"
+            _validate_exact_keys(
+                download_obj,
+                expected=RUNTIME_PODCAST_DOWNLOAD_KEYS,
+                owner=download_owner,
+                label=label,
+            )
+            audio_ref = _require_ref(
                 download_obj.get("audioAssetRef"),
                 prefix="audio.",
                 refs=asset_refs,
-                owner=f"runtimePodcast.{fixture_id}.episodes[{index}].download.audioAssetRef",
+                owner=f"{download_owner}.audioAssetRef",
                 label=label,
             )
-            if download_obj.get("subtitleAssetRef") is not None:
-                _require_ref(
-                    download_obj.get("subtitleAssetRef"),
+            audio_asset = _require_mapping(
+                assets["audio"][audio_ref.removeprefix("audio.")],
+                field=audio_ref,
+                label=label,
+            )
+            _validate_download_local_path(
+                download_obj.get("localAudioPath"),
+                expected_install_as=_ensure_str(
+                    audio_asset.get("installAs"),
+                    field=f"{audio_ref}.installAs",
+                    label=label,
+                ),
+                owner=f"{download_owner}.localAudioPath",
+                label=label,
+            )
+            subtitle_ref = download_obj.get("subtitleAssetRef")
+            if subtitle_ref is not None:
+                subtitle_ref = _require_ref(
+                    subtitle_ref,
                     prefix="subtitles.",
                     refs=asset_refs,
-                    owner=f"runtimePodcast.{fixture_id}.episodes[{index}].download.subtitleAssetRef",
+                    owner=f"{download_owner}.subtitleAssetRef",
                     label=label,
                 )
+                subtitle_asset = _require_mapping(
+                    assets["subtitles"][subtitle_ref.removeprefix("subtitles.")],
+                    field=subtitle_ref,
+                    label=label,
+                )
+                expected_subtitle_path: str | None = _ensure_str(
+                    subtitle_asset.get("installAs"),
+                    field=f"{subtitle_ref}.installAs",
+                    label=label,
+                )
+            else:
+                expected_subtitle_path = None
+            _validate_download_local_path(
+                download_obj.get("localSubtitlePath"),
+                expected_install_as=expected_subtitle_path,
+                owner=f"{download_owner}.localSubtitlePath",
+                label=label,
+            )
 
     for fixture_id, seed in _require_mapping(data.get("reader"), field="reader", label=label).items():
         seed_obj = _require_mapping(seed, field=f"reader.{fixture_id}", label=label)
