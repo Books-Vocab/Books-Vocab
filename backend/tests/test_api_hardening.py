@@ -295,3 +295,69 @@ class TestRequestBodySizeLimit:
             headers={**headers, "content-type": "application/json", "content-length": str(len(small_body))},
         )
         assert r.status_code != 413, "9MB body should not be rejected by size limit middleware"
+
+
+# ============================================================================
+# Vocab intake batch cap — POST /api/vocab list max_length
+# ============================================================================
+
+
+class TestVocabIntakeBatchCap:
+    """POST /api/vocab must cap the entries list AT THE SCHEMA LAYER.
+
+    A pre-existing handler guard (vocab_intake.add_vocab_entries) already raised
+    422 for >500 entries, but only AFTER FastAPI deserialized the entire list
+    into VocabEntry models — so a ~10^5-element payload still got fully parsed,
+    which is the amplification the audit flags. Putting max_length=500 on the
+    route's `entries` field rejects at request-validation time (FastAPI
+    RequestValidationError, loc-based "too_long") before the list is built.
+
+    This test pins the *schema-layer* rejection by asserting the FastAPI
+    validation-error shape, distinguishing it from the handler's custom
+    {"code":"ValidationError"} body.
+    """
+
+    @staticmethod
+    def _entry(i: int) -> dict:
+        return {"word": f"w{i}", "translation": "t"}
+
+    def test_over_cap_rejected_at_schema_layer(self, client_env):
+        client, _user_id, headers, _ = client_env
+        payload = [self._entry(i) for i in range(501)]
+        r = client.post("/api/vocab", json=payload, headers=headers)
+        assert r.status_code == 422, r.text
+        body = r.json()
+        # FastAPI request-validation error: detail is a list of loc/type dicts.
+        # The handler's guard instead returns {"code":"ValidationError",...}.
+        detail = body.get("detail")
+        assert isinstance(detail, list), (
+            f"expected FastAPI validation-error list, got {body!r}"
+        )
+        types = {err.get("type") for err in detail}
+        assert "too_long" in types, f"expected too_long error, got {detail!r}"
+
+    def test_route_entries_field_has_max_length_500(self):
+        """The route signature carries the cap as schema metadata."""
+        import typing
+
+        from kg.routers import vocab as vocab_router
+
+        hints = typing.get_type_hints(
+            vocab_router.add_vocab, include_extras=True
+        )
+        entries_hint = hints["entries"]
+        metadata = getattr(entries_hint, "__metadata__", ())
+        # The cap can sit directly on a constraint marker (annotated-types
+        # MaxLen) or inside a pydantic FieldInfo's nested .metadata list.
+        max_lengths: list[int] = []
+        for m in metadata:
+            direct = getattr(m, "max_length", None)
+            if direct is not None:
+                max_lengths.append(direct)
+            for inner in getattr(m, "metadata", ()):  # FieldInfo.metadata
+                inner_len = getattr(inner, "max_length", None)
+                if inner_len is not None:
+                    max_lengths.append(inner_len)
+        assert 500 in max_lengths, (
+            f"entries field must carry max_length=500, metadata={metadata!r}"
+        )
