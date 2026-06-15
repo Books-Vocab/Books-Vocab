@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 3965a0e3
+verified_against: 212a5064
 -->
 # KG iOS Catalog Scope Bible (SoT)
 
@@ -67,7 +67,7 @@ Paywall / Pro 相關 Catalog scenario 的 subscription status 必須來自 UI Wo
 `PodcastHomeViewScenarios` 的 populated / single / no-progress / empty 狀態必須取 UI World `runtimePodcast.*` seed 與 `auth.signedIn` seed；series / episode rows 必須從 manifest materialize，continue shelf progress 只能引用 manifest episode `remoteId`，不得保留本地 palette/specs、hardcoded podcast titles、inline episode literal 或 `try? save`。series color/pattern/sort、episode duration/preview/download/local file state 都屬於 manifest；缺 seed、auth 非 logged-in、缺 nullable key、ModelContainer 建立失敗或 SwiftData save 失敗都直接 fail-fast。`CatalogCoverageTests.podcastHomeCatalogUsesUIWorldRuntimePodcastSeeds` 擋回本地 series specs、hardcoded titles、inline episode remoteId literal 與 silent save。
 
 ### VocabularyEntry row 契約（無 Codable nil fallback）
-所有 UI World `reader.*.entry`、`vocabulary.*.entries[]`、`reviewDeck.*.entries[]` 都必須明示完整 `UIWorldVocabularyEntrySeed` 欄位：詞面/翻譯/語境、explanation、partOfSpeech、book/chapter、kgCardId、difficultyTier、reviewMode、reviewExamples、collocations、rootForm、inflections、sync/action/archive/reader-exclusion、review scheduling counters、last review state 與 `graphLinksByKind`。nullable 欄位也要寫 `null`，空集合要寫 `[]` 或 `{}`；缺 key 在 decoder 與 `RepoFixtureDatasetsContractTests.expectSwiftDataRowStateKeys` 直接 fail-fast。Catalog 不得把缺欄位解讀成空 collocations、空 inflections、未複習或無 KG links。
+所有 UI World `reader.*.entry`、`vocabulary.*.entries[]`、`reviewDeck.*.entries[]` 都必須明示完整 `UIWorldVocabularyEntrySeed` 欄位：詞面/翻譯/語境、explanation、partOfSpeech、book/chapter、kgCardId、difficultyTier、reviewMode、reviewExamples、collocations、rootForm、inflections、sync/action/archive/reader-exclusion、review scheduling counters、last review state 與 `graphLinksByKind`。nullable 欄位也要寫 `null`，空集合要寫 `[]` 或 `{}`；缺 key 在 decoder 與 `RepoFixtureDatasetsContractTests.expectSwiftDataRowStateKeys` 直接 fail-fast。`vocabulary.*.reviewHistory[].word` 必須引用同一 seed 內存在且唯一的 entry word；缺引用或重複 word 在 repo contract 與 materialization 都 fail-fast。Catalog 不得把缺欄位解讀成空 collocations、空 inflections、未複習、無 KG links 或孤兒 ReviewRecord。
 
 ### Word Edit vocabulary 契約（無本地 VocabularyEntry literal）
 `WordEditScenarios` 的 populated / empty-explanation / long-content / long-word 狀態必須取 UI World `vocabulary.wordEdit` seed。scenario 必須把該 seed materialize 成 in-memory SwiftData `Notebook` + `VocabularyEntry` rows，再以 manifest 內的 word 選取 entry；缺 seed、缺 entry、row state key 漏宣告、SwiftData seed/save 失敗都直接 fail-fast。`CatalogCoverageTests.wordEditCatalogUsesUIWorldVocabularySeed` 擋回本地 `sampleEntry`、`Sample Book` 與 inline `VocabularyEntry(...)`。
