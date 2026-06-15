@@ -452,6 +452,8 @@ struct FixtureDatasetStoreTests {
           "datasetID": "missing-settings-nullable-state",
           "settings": {
             "logged_out": {
+              "authFixtureRef": "auth.guest",
+              "entitlementsFixtureRef": null,
               "auth": {
                 "isLoggedIn": false,
                 "userInitials": null,
@@ -1148,6 +1150,8 @@ struct FixtureDatasetStoreTests {
           },
           "settings": {
             "subscribed_active": {
+              "authFixtureRef": "auth.signedIn",
+              "entitlementsFixtureRef": "entitlements.pro",
               "auth": {
                 "isLoggedIn": true,
                 "userInitials": "MC",
