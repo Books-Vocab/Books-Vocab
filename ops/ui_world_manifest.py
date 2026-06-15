@@ -118,6 +118,26 @@ FIXTURE_DOMAIN_IDS = {
 }
 ASSET_BUCKETS = {"books", "audio", "images", "subtitles", "text"}
 ASSET_REQUIRED_KEYS = {"sourcePath", "sha256", "installAs", "byteSize", "contentType"}
+ASSET_CONTENT_TYPES_BY_BUCKET = {
+    "books": {"application/epub+zip", "application/pdf", "text/markdown; charset=utf-8", "text/plain; charset=utf-8"},
+    "audio": {"audio/mp4", "audio/mpeg"},
+    "subtitles": {"application/x-subrip; charset=utf-8", "text/vtt; charset=utf-8"},
+    "text": {"text/markdown; charset=utf-8", "text/plain; charset=utf-8"},
+    "images": {"image/png", "image/jpeg"},
+}
+ASSET_CONTENT_TYPES_BY_EXTENSION = {
+    "epub": "application/epub+zip",
+    "pdf": "application/pdf",
+    "md": "text/markdown; charset=utf-8",
+    "txt": "text/plain; charset=utf-8",
+    "m4a": "audio/mp4",
+    "mp3": "audio/mpeg",
+    "srt": "application/x-subrip; charset=utf-8",
+    "vtt": "text/vtt; charset=utf-8",
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+}
 PREFERENCES_KEYS = {"userDefaults", "ubiquitousKeyValueStore"}
 PREFERENCE_DOMAIN_KEYS = {
     "userDefaults": {
@@ -1779,6 +1799,16 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
             install_paths[install_as] = asset_label
             if "/" not in content_type:
                 raise UIWorldManifestError(f"{label} {asset_label}.contentType 必須是 MIME type")
+            if content_type not in ASSET_CONTENT_TYPES_BY_BUCKET[bucket]:
+                raise UIWorldManifestError(
+                    f"{label} {asset_label}.contentType {content_type} is invalid for assets.{bucket}"
+                )
+            ext = Path(install_as).suffix.lower().removeprefix(".") or source_path.suffix.lower().removeprefix(".")
+            expected_content_type = ASSET_CONTENT_TYPES_BY_EXTENSION.get(ext)
+            if expected_content_type is not None and content_type != expected_content_type:
+                raise UIWorldManifestError(
+                    f"{label} {asset_label}.contentType must match .{ext} as {expected_content_type}, got {content_type}"
+                )
             if len(expected_hash) != 64 or any(ch not in "0123456789abcdef" for ch in expected_hash):
                 raise UIWorldManifestError(f"{label} {asset_label}.sha256 必須是 64 字元小寫 hex")
             if not isinstance(expected_size, int) or expected_size <= 0:

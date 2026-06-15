@@ -148,6 +148,26 @@ def test_validate_rejects_duplicate_asset_install_path(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_asset_content_type_for_wrong_bucket(tmp_path: Path):
+    data = _marketing_demo()
+    data["assets"]["images"]["notebook_cover_app_icon"]["contentType"] = "application/pdf"
+    path = tmp_path / "wrong_bucket_content_type.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"assets\.images\.notebook_cover_app_icon\.contentType application/pdf is invalid for assets\.images"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_asset_content_type_extension_mismatch(tmp_path: Path):
+    data = _marketing_demo()
+    data["assets"]["books"]["catalog_reader_epub"]["contentType"] = "application/pdf"
+    path = tmp_path / "asset_content_type_extension_mismatch.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"assets\.books\.catalog_reader_epub\.contentType must match \.epub as application/epub\+zip"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_missing_preference_wrapper_key(tmp_path: Path):
     data = _marketing_demo()
     del data["preferences"]["ubiquitousKeyValueStore"]
