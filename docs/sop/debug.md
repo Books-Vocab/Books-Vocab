@@ -276,7 +276,7 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'SELECT COUNT(*) FROM cards;'"
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'PRAGMA table_info(cards);'"
-./devops.sh run "cat ~/backend/data/users.json"
+./devops.sh run "cat ~/kg-data/users.json"   # host data 2026-06-16 移至 ~/kg-data（原 backend/data）
 ```
 
 ---
@@ -322,7 +322,7 @@ scp -i ~/.ssh/lightsail_kg_prod -r \
 |------|------|
 | API 代碼 / compose | `~/project/kg/backend/`（user `chenliangyu`） |
 | API .env | `~/project/kg/backend/.env` |
-| 資料庫 | `~/project/kg/backend/data/` |
+| 資料庫 | `~/kg-data/`（felix；2026-06-16 移出 git worktree，原 `~/project/kg/backend/data/`） |
 | cloudflared daemon | `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist` |
 | backup launchd | `~/Library/LaunchAgents/com.kg.backup.plist`（源 `ops/launchd/com.kg.backup.plist`） |
 | TLS 憑證 | 無（CF 邊緣託管） |

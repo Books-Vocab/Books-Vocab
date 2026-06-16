@@ -32,7 +32,7 @@ verified_against: f0d37ca4
 - redirect / `tee` / `truncate` / `dd of=` 對受保護路徑的覆寫
 - `delete-user`（用戶資料刪除 CLI）
 
-受保護路徑：`/`（含 `/*`、`/.` 整機抹除）、`~`、`$HOME`、`/home/ubuntu`、`/app/data`、`/root`、`knowledge_graph_api`、`knowledge-graph-api_data`。
+受保護路徑：`/`（含 `/*`、`/.` 整機抹除）、`~`、`$HOME`、`/home/ubuntu`、`/app/data`（容器內）、`~/kg-data`（felix host live data，2026-06-16 起 data 移出 worktree）、`/root`、`knowledge_graph_api`、`knowledge-graph-api_data`。
 
 繞過變體（引號路徑、`;` 終止、`//`、`${HOME}`、`/bin/rm`、`rm -rf /*`、`find -delete`、redirect、`tee`、`docker volume rm` 等）
 與誤殺防護（`rm -rf ./build`、`/tmp/foo`、非遞迴單檔、`tar`/`grep -r` 讀取等須放行）皆由 `ops/test_devops.sh` 的 Blocklist 段守住。
