@@ -31,7 +31,7 @@
         <key>PATH</key>
         <string>/opt/homebrew/bin:/sbin:/usr/bin:/bin</string>
         <key>KG_DATA_DIR</key>
-        <string>/Users/chenliangyu/project/kg/backend/data</string>
+        <string>/Users/chenliangyu/kg-data</string>
         <key>KG_BACKUP_LOG</key>
         <string>/Users/chenliangyu/Library/Logs/kg_backup.log</string>
     </dict>

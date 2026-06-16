@@ -12,7 +12,7 @@
 # Portable across the two prod hosts (paths come from env, not hardcoded):
 #   - standby (current prod, macOS/OrbStack): invoked by the LaunchAgent
 #     ops/launchd/com.kg.backup.plist as user chenliangyu, with
-#     KG_DATA_DIR=~/project/kg/backend/data, KG_BACKUP_LOG=~/Library/Logs/kg_backup.log.
+#     KG_DATA_DIR=~/kg-data (moved out of git worktree 2026-06-16), KG_BACKUP_LOG=~/Library/Logs/kg_backup.log.
 #     Uses /sbin/sha256sum + bsdtar (both present on macOS).
 #   - Lightsail (stopped rollback, Linux): was /usr/local/bin/kg_backup.sh run by
 #     /etc/cron.d/kg-backup as root (cron now disabled; see ops/cron/kg-backup.cron).
