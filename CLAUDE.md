@@ -1,5 +1,7 @@
 # KG Workspace Agent Guide
 
+> 🖥 **雙機專案（managed_on: both）**：本 repo 兩台都有 clone，正式站 wordnexus.lol + iOS build 在常駐機（ssh chenliangyu@100.118.39.104）。雙機架構/ssh/gh 互通/部署回滾完整指引見 ~/project/AGENTS.md「雙機體系」段與 ~/butler/docs/kg-backend-deployment.md。先 hostname -s 定位。
+
 ## Identity
 
 **KG = Knowledge Graph 英語詞彙學習 app** — EPUB/PDF/TXT/MD reader 選詞 → 翻譯 → 詞庫 → 知識圖譜 → today review → podcast。  
