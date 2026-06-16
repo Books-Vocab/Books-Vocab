@@ -11,7 +11,7 @@ services:
       # 見 docs/reference/host_topology.md §Security Posture。
       - "127.0.0.1:8000:8000"
     volumes:
-      - ./data:/app/data
+      - ${KG_DATA_DIR:-./data}:/app/data
       - ./certs:/app/certs:ro
       # devops.sh cmd_deploy writes the deploy SHA to ./VERSION on host and
       # rsyncs it to the remote. Mount it read-only so sentry_init._resolve_release()
@@ -21,6 +21,11 @@ services:
       - ./VERSION:/app/VERSION:ro
     env_file:
       - .env
+    environment:
+      # KG_DATA_DIR in .env = HOST data path (ops CLI on host + compose bind
+      # source via the volume above). Inside the container data_dir must be the
+      # mount target, so pin it here (environment overrides env_file).
+      - KG_DATA_DIR=/app/data
     deploy:
       resources:
         limits:
