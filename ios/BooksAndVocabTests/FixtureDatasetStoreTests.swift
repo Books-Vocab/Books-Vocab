@@ -207,8 +207,8 @@ struct FixtureDatasetStoreTests {
             "text": {
               "source": {
                 "sourcePath": "/tmp/source.md",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "UITestAssets/source.md",
                 "contentType": "text/markdown; charset=utf-8",
                 "encoding": "utf-8"
@@ -243,8 +243,8 @@ struct FixtureDatasetStoreTests {
                 "text": {
                   "source": {
                     "sourcePath": "/tmp/source.md",
-                    "sha256": "unused-in-decode-test",
-                    "byteSize": 0,
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "byteSize": 1,
                     "installAs": "\(installAs)",
                     "contentType": "text/markdown; charset=utf-8"
                   }
@@ -272,8 +272,8 @@ struct FixtureDatasetStoreTests {
             "text": {
               "source": {
                 "sourcePath": "/tmp/source.md",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": null,
                 "contentType": "text/markdown; charset=utf-8"
               }
@@ -297,8 +297,8 @@ struct FixtureDatasetStoreTests {
             "books": {
               "book": {
                 "sourcePath": "/tmp/book.epub",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/shared.epub",
                 "contentType": "application/epub+zip"
               }
@@ -308,8 +308,8 @@ struct FixtureDatasetStoreTests {
             "text": {
               "source": {
                 "sourcePath": "/tmp/source.md",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/shared.epub",
                 "contentType": "text/markdown; charset=utf-8"
               }
@@ -337,8 +337,8 @@ struct FixtureDatasetStoreTests {
             "images": {
               "cover": {
                 "sourcePath": "/tmp/cover.png",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "NotebookCovers/cover.png",
                 "contentType": "application/pdf"
               }
@@ -361,8 +361,8 @@ struct FixtureDatasetStoreTests {
             "books": {
               "book": {
                 "sourcePath": "/tmp/book.epub",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/book.epub",
                 "contentType": "application/pdf"
               }
@@ -938,8 +938,8 @@ struct FixtureDatasetStoreTests {
             "subtitles": {
               "runtime-subtitle": {
                 "sourcePath": "/tmp/audio.srt",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
@@ -980,8 +980,8 @@ struct FixtureDatasetStoreTests {
             "audio": {
               "runtime-audio": {
                 "sourcePath": "/tmp/audio.m4a",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
@@ -989,8 +989,8 @@ struct FixtureDatasetStoreTests {
             "subtitles": {
               "runtime-subtitle": {
                 "sourcePath": "/tmp/audio.srt",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
@@ -2126,8 +2126,8 @@ struct FixtureDatasetStoreTests {
             "books": {
               "reader-book": {
                 "sourcePath": "/tmp/reader.epub",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/reader.epub",
                 "contentType": "application/epub+zip"
               }
@@ -2135,8 +2135,8 @@ struct FixtureDatasetStoreTests {
             "audio": {
               "runtime-audio": {
                 "sourcePath": "/tmp/audio.m4a",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
@@ -2144,8 +2144,8 @@ struct FixtureDatasetStoreTests {
             "subtitles": {
               "runtime-subtitle": {
                 "sourcePath": "/tmp/audio.srt",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
@@ -2153,8 +2153,8 @@ struct FixtureDatasetStoreTests {
             "text": {
               "reader-source": {
                 "sourcePath": "/tmp/source.md",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/sources/source.md",
                 "contentType": "text/markdown; charset=utf-8"
               }
@@ -2380,8 +2380,8 @@ struct FixtureDatasetStoreTests {
             "audio": {
               "runtime-audio": {
                 "sourcePath": "/tmp/audio.m4a",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-downloads/audio.m4a",
                 "contentType": "audio/mp4"
               }
@@ -2389,8 +2389,8 @@ struct FixtureDatasetStoreTests {
             "subtitles": {
               "runtime-subtitle": {
                 "sourcePath": "/tmp/audio.srt",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "podcast-subtitles/audio.srt",
                 "contentType": "application/x-subrip; charset=utf-8"
               }
@@ -3067,8 +3067,8 @@ struct FixtureDatasetStoreTests {
             "books": {
               "editorial_english_epub": {
                 "sourcePath": "/tmp/editorial.epub",
-                "sha256": "unused-in-decode-test",
-                "byteSize": 0,
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "byteSize": 1,
                 "installAs": "Books/editorial-english.epub",
                 "contentType": "application/epub+zip"
               }
