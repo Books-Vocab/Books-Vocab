@@ -223,11 +223,14 @@ openssl rand -hex 32
 production 現在預設只接受 signed App Store payload。下列 key 缺一不可：
 
 ```bash
-APP_STORE_ROOT_CA_PATH=/home/ubuntu/knowledge_graph_api/certs/apple_root_ca.pem
+# .env 放 HOST 路徑（裸機 ops CLI 直接讀；oscar/felix 同 user 故兩機一致、可攜）
+APP_STORE_ROOT_CA_PATH=/Users/chenliangyu/project/kg/backend/certs/apple_root_ca.pem
 APP_STORE_CONNECT_ISSUER_ID=<issuer-id>
 APP_STORE_CONNECT_KEY_ID=<key-id>
-APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appstore_connect.p8
+APP_STORE_CONNECT_PRIVATE_KEY_PATH=/Users/chenliangyu/project/kg/backend/certs/AuthKey_<key-id>.p8
 ```
+
+> **容器部署的路徑分裂（2026-06-16，比照 `KG_DATA_DIR`）**：上列為 **host 路徑**；容器內 app 需 `/app/certs/…`，由 `docker-compose.yml` 的 `environment:` 注入並覆蓋 `env_file`。**勿在 `.env` 寫 `/app/certs`**——那會讓 host 裸機 ops CLI 讀不到 cert，且破壞 `.env` 兩機可攜性。
 
 補充規則：
 - `APP_STORE_ALLOW_UNSIGNED_SYNC` 不應在 production 設為 `true`
