@@ -114,7 +114,7 @@ for p in 80 443; do aws lightsail open-instance-public-ports --instance-name boo
 → 全自動恢復對外服務（config 已逐項驗，真 reboot 演練待補）。
 
 ## Data Persistence
-- KG API（primary）：`~/project/kg/backend/data`（~403M；12 用戶 + root DB）—— 唯一權威
+- KG API（primary）：`~/kg-data`（felix；~403M；12 用戶 + root DB）—— 唯一權威。2026-06-16 移出 git worktree（原 `backend/data`），由 `KG_DATA_DIR` 指向、compose 掛為容器 `/app/data`（dev/deploy 隔離：git reset/clean 不再碰 live data）
 - KG API（rollback）：~~`~/knowledge_graph_api/data`~~ 已隨 Lightsail terminate（2026-06-16）消失；冷重建站需從 standby 搬資料
 
 ## Agent Operation Entry

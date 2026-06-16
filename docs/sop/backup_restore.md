@@ -12,13 +12,13 @@ verified_against: d67bed12
 
 > 「沒做過 restore 演練 = 薛丁格的 backup」。本文是 KG 生產 SQLite 資料從 AWS S3 異地 backup **完整還原**的 step-by-step。事故當下下一個 agent 直接讀這份即能恢復服務,**不需問人**。
 >
-> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（macOS / OrbStack docker）。**現役 data 目錄 = `~/project/kg/backend/data/`（standby）**，不再是 Lightsail `/home/ubuntu/knowledge_graph_api/data/`。S3 backup 由 standby launchd（`ops/launchd/com.kg.backup.plist`）跑同一支 `ops/kg_backup.sh`，bucket / IAM / 物件格式不變。**§2 標準流程下方已給 standby 指令**；§3 災難情境的 Lightsail 重建保留為回滾路徑。
+> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（macOS / OrbStack docker）。**現役 data 目錄 = `~/kg-data/`（standby；2026-06-16 移出 git worktree，原 `~/project/kg/backend/data/`）**，不再是 Lightsail `/home/ubuntu/knowledge_graph_api/data/`。S3 backup 由 standby launchd（`ops/launchd/com.kg.backup.plist`）跑同一支 `ops/kg_backup.sh`，bucket / IAM / 物件格式不變。**§2 標準流程下方已給 standby 指令**；§3 災難情境的 Lightsail 重建保留為回滾路徑。
 
 ---
 
 ## 0. 受 backup 涵蓋的內容
 
-現役（standby）：`~/project/kg/backend/data/`；回滾（Lightsail）：`/home/ubuntu/knowledge_graph_api/data/`。內容相同：
+現役（standby）：`~/kg-data/`（2026-06-16 移出 git worktree）；回滾（Lightsail）：`/home/ubuntu/knowledge_graph_api/data/`。內容相同：
 
 | 子目錄 | 內容 |
 |---|---|
@@ -182,7 +182,7 @@ done
 ### 3a. standby 掛（現役 host 故障）
 
 1. **快速回滾到 Lightsail**：Lightsail 容器只是 STOP，資料停在遷移當下快照。`ssh -i ~/.secrets/lightsail_kg_prod ubuntu@13.193.212.134 'cd ~/knowledge_graph_api && docker compose up -d'` → CF apex 從 tunnel proxied CNAME 改回 A `13.193.212.134` → 進 §2 拉最新 S3 backup 覆蓋 Lightsail data（補回遷移後寫入）。⚠ 資料分岔：Lightsail 快照不含 standby 上線後寫入，**必須**靠 §2 從 S3 拉最新 backup 蓋上。完整回滾見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
-2. **重建 standby**：機器層建置見 butler `~/butler/docs/standby-host-setup.md`；服務層（容器 + cloudflared + launchd）見 butler `~/butler/docs/kg-backend-deployment.md §3-4` → 拉 S3 backup 到 `~/project/kg/backend/data/` → 同 §2.5–2.8。
+2. **重建 standby**：機器層建置見 butler `~/butler/docs/standby-host-setup.md`；服務層（容器 + cloudflared + launchd）見 butler `~/butler/docs/kg-backend-deployment.md §3-4` → 拉 S3 backup 到 `~/kg-data/`（2026-06-16 移出 worktree） → 同 §2.5–2.8。
 
 ### 3b. Lightsail 災難情境（僅回滾到 Lightsail 後相關）
 
