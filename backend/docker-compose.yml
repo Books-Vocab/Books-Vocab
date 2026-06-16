@@ -26,6 +26,13 @@ services:
       # source via the volume above). Inside the container data_dir must be the
       # mount target, so pin it here (environment overrides env_file).
       - KG_DATA_DIR=/app/data
+      # App Store cert paths follow the same split: .env holds HOST paths so the
+      # bare-metal ops CLI on either machine can read them, while the container
+      # needs the mount-target paths under /app/certs. Pinning them here keeps
+      # .env machine-portable (oscar bare-metal / felix container share one .env).
+      # If the App Store key is rotated, update the filename in BOTH places.
+      - APP_STORE_CONNECT_PRIVATE_KEY_PATH=/app/certs/AuthKey_6Y7DC88RUY.p8
+      - APP_STORE_ROOT_CA_PATH=/app/certs/apple_root_ca.pem
     deploy:
       resources:
         limits:
