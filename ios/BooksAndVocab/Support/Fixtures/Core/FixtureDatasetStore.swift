@@ -862,7 +862,44 @@ struct UIWorldAsset: Codable, Equatable {
         byteSize = try container.decode(Int.self, forKey: .byteSize)
         installAs = try container.decode(String.self, forKey: .installAs)
         contentType = try container.decode(String.self, forKey: .contentType)
+        try Self.validateSourcePath(sourcePath, codingPath: container.codingPath)
+        try Self.validateSHA256(sha256, codingPath: container.codingPath)
+        try Self.validateByteSize(byteSize, codingPath: container.codingPath)
         try Self.validateInstallAs(installAs, codingPath: container.codingPath)
+    }
+
+    private static func validateSourcePath(_ sourcePath: String, codingPath: [CodingKey]) throws {
+        guard !sourcePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset sourcePath must be a non-empty path"
+                )
+            )
+        }
+    }
+
+    private static func validateSHA256(_ sha256: String, codingPath: [CodingKey]) throws {
+        let pattern = #"^[0-9a-f]{64}$"#
+        guard sha256.range(of: pattern, options: .regularExpression) != nil else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset sha256 must be lowercase 64 hex characters"
+                )
+            )
+        }
+    }
+
+    private static func validateByteSize(_ byteSize: Int, codingPath: [CodingKey]) throws {
+        guard byteSize > 0 else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: codingPath,
+                    debugDescription: "UI World asset byteSize must be a positive integer"
+                )
+            )
+        }
     }
 
     private static func validateInstallAs(_ installAs: String, codingPath: [CodingKey]) throws {
