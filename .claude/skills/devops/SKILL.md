@@ -307,10 +307,10 @@ DNS fail → DNS issue（注意 NS 遷移期 resolver 快取，見 ~/butler/docs
 ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose stop'
 
 # 2. 備份當前壞資料（標時間戳）
-ssh chenliangyu@100.118.39.104 'tar czf ~/broken_data_$(date +%Y%m%d_%H%M).tgz -C ~/project/kg/backend data'
+ssh chenliangyu@100.118.39.104 'tar czf ~/broken_data_$(date +%Y%m%d_%H%M).tgz -C ~ kg-data'
 
 # 3. 從 S3 拉某日備份還原（kg-backup-agent 是 PutObject-only，讀取需另一把有 GetObject 的 key）
-#    解開到 ~/project/kg/backend/data/，細節見 docs/sop/backup_restore.md
+#    解開到 ~/kg-data/（2026-06-16 移出 worktree），細節見 docs/sop/backup_restore.md
 
 # 4. 起容器 + 驗
 ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d && curl -s http://localhost:8000/api/system/info'

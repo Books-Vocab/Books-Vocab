@@ -395,7 +395,7 @@ ssh chenliangyu@100.118.39.104 'tar czf ~/kg_data_$(date +%Y%m%d).tgz -C ~/proje
 
 ## Docker 資料安全
 
-`docker-compose.yml` 的 `volumes: ./data:/app/data`：
+`docker-compose.yml` 的 `volumes: ${KG_DATA_DIR:-./data}:/app/data`（2026-06-16 起 data 移出 git worktree → felix host `~/kg-data`，見下方「路徑陷阱」）：
 - ✅ `deploy` / `restart` 均不刪除 SQLite / embeddings / graph
 - ✅ `restart: always`，伺服器重啟後自動恢復
 
@@ -406,7 +406,8 @@ ssh chenliangyu@100.118.39.104 'tar czf ~/kg_data_$(date +%Y%m%d).tgz -C ~/proje
 | 路徑 | 有效位置 |
 |------|---------|
 | `/app/data/` | 容器內（`docker exec` 才能用） |
-| `/home/ubuntu/knowledge_graph_api/data/` | host（`devops.sh run` 用這個） |
+| `~/kg-data/`（felix） | **現役 host data 根**（2026-06-16 移出 worktree；`KG_DATA_DIR` 指向它，host 端 ops CLI 讀此） |
+| `/home/ubuntu/knowledge_graph_api/data/` | ~~Lightsail host~~ 已隨 Lightsail terminate（保留為歷史） |
 
 data 目錄由容器 root 寫入，host ubuntu user 無法直接 rm，需進容器操作：
 
