@@ -12,7 +12,7 @@ verified_against: 0cea7f67b
 
 每月各服務基準月費 + 預算上限 + drift 閾值。**任何 bundle 升降級、新供應商接入、定價變動,同 PR 必須更新此檔**。skill `billing` 與 SOP `cost_review.md` 對照本檔判斷是否漂移。
 
-> **遷移完成（2026-06-19 確認）**：正式站運算層已遷到家用常駐機 `standby`（電力/網路為家用沉沒成本，不計入本表）。Lightsail instance **已 terminate**（`aws lightsail get-instances` 跨 ap-south-1 / ap-northeast-1 / us-east-1 皆回空），不再計費。故 fixed 月費已從過渡期 $15 下修至 **$3**（僅 Object Storage）。**注意 tooling drift**：`ops/devops_kg_safe.sh` preflight 仍指向已死的 Lightsail IP `ubuntu@13.193.212.134`（SSH timeout），cost-overview 須改用 standby（`ssh chenliangyu@100.118.39.104` 上跑 `ops_cli cost-overview`）或本機直連 DB——該 wrapper 待 devops 更新。
+> **遷移完成（2026-06-19 確認）**：正式站運算層已遷到家用常駐機 `standby`（電力/網路為家用沉沒成本，不計入本表）。Lightsail instance **已 terminate**（`aws lightsail get-instances` 跨 ap-south-1 / ap-northeast-1 / us-east-1 皆回空），不再計費。故 fixed 月費已從過渡期 $15 下修至 **$3**（僅 Object Storage）。**tooling drift 已修復（2026-06-19）**：`ops/devops_kg_safe.sh` + `devops.sh` transport 已 retarget 到 standby（`chenliangyu@100.118.39.104`，via Tailscale）。`./ops/devops_kg_safe.sh ops-cli cost-overview --range month --json` 現直接回 standby 的成本 JSON。
 
 ## 1. 月度基準成本表(2026-06，遷移後)
 
@@ -87,7 +87,7 @@ Service mapping(call_type → service):`backend/src/kg/admin_cost_summary.py:_SE
 
 | 日期 | 變更 | 月費影響 | 原因 / commit |
 |---|---|---:|---|
-| 2026-06-19 | Lightsail instance `booksbrowser-kg-api-2gb` **terminate**（跨 region get-instances 回空確認） | **-$12** → fixed 小計 $15 降至 **$3**（僅 Object Storage） | rollback 窗結束，standby 遷移定案。tooling drift：`devops_kg_safe.sh` 仍指舊 IP，待 devops 修 |
+| 2026-06-19 | Lightsail instance `booksbrowser-kg-api-2gb` **terminate**（跨 region get-instances 回空確認） | **-$12** → fixed 小計 $15 降至 **$3**（僅 Object Storage） | rollback 窗結束，standby 遷移定案。tooling drift 已於 2026-06-19 修復：`devops_kg_safe.sh`/`devops.sh` transport retarget 到 standby |
 | 2026-06-15 | 正式站運算遷到家用 standby（Cloudflare Tunnel）；Lightsail instance **STOP 未 terminate** 當 1-2 週 rollback | 過渡期 **$0**（STOP 仍計 $12，terminate 後才 -$12 → fixed 降到 $3）；standby 電費不入帳 | 自託管降本 + 脫離 Lightsail；S3 backup 改 standby launchd（bucket 不變）。host topology SoT 見 `host_topology.md` |
 | 2026-06-01 | Object Storage 由 `small_1_0`($1)→ `medium_1_0`($3) | +$2 | Track B 上線,5 GB 太緊。**delete+recreate workaround**(AWS 月度 bundle 變更限制)|
 | 2026-06-01 | Lightsail 手動 snapshot `kg-upgrade-20260412` 刪除 | -$2 | 對應已不存在的 `micro_3_0` instance,屬殘留 |
