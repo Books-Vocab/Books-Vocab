@@ -11,15 +11,20 @@
 set -euo pipefail
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
-SSH_KEY="$HOME/.ssh/lightsail_kg_prod"
-SERVER="ubuntu@13.193.212.134"
-REMOTE_DIR="~/knowledge_graph_api"
+# 正式站 2026-06-15 起 = 家用常駐機 felix（standby），經 Cloudflare Tunnel 對外。
+# transport 走 Tailscale + 原生 sshd 公鑰（免密碼，default key，不再用 lightsail .pem）。
+# 拓撲正本：~/butler/docs/kg-backend-deployment.md；host/port 正本：docs/reference/host_topology.md。
+SERVER="${KG_SERVER:-chenliangyu@100.118.39.104}"
+REMOTE_DIR="${KG_REMOTE_DIR:-~/project/kg/backend}"
 CONTAINER="knowledge-graph-api"
+# standby: 用戶資料在 ~/kg-data（搬出 git worktree），container 內 mount 為 /app/data。
+REMOTE_DATA_DIR="${KG_REMOTE_DATA_DIR:-~/kg-data}"
 PUBLIC_WEB_BASE_URL="https://wordnexus.lol"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
-SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
+# default key + 已知 host（standby 用內建 ssh config / known_hosts，免帶 -i）
+SSH_OPTS=( -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 # KG_SSH_CMD is a test seam: point it at a stub (e.g. one that echoes the remote
 # command string) to assert transport-layer quoting without a real SSH hop.
 if [[ -n "${KG_SSH_CMD:-}" ]]; then
@@ -30,7 +35,7 @@ fi
 if [[ -n "${KG_SCP_CMD:-}" ]]; then
   read -r -a SCP_CMD <<< "$KG_SCP_CMD"
 else
-  SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
+  SCP_CMD=( scp -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 fi
 
 # 必要環境變數清單（deploy 前自動檢查）
@@ -281,7 +286,7 @@ cmd_env_drift() {
 
   local container_app_root="/app"
 
-  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$container_app_root" <<'PY'
+  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$container_app_root" "$SERVER" <<'PY'
 import os
 import subprocess
 import sys
@@ -291,6 +296,7 @@ local_env_path = Path(sys.argv[1])
 remote_env_path = sys.argv[2]
 local_dir = Path(sys.argv[3]).resolve()
 container_root = sys.argv[4].strip()
+server = sys.argv[5].strip()
 
 host_specific = {
     "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{container_root}/certs"),
@@ -314,7 +320,7 @@ def parse_local_env(path: Path):
 
 def parse_remote_env(path: str):
     proc = subprocess.run(
-        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_kg_prod"), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "ubuntu@13.193.212.134", f"cat {path}"],
+        ["ssh", "-T", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", server, f"cat {path}"],
         capture_output=True,
         text=True,
         check=False,
@@ -373,97 +379,46 @@ PY
 }
 
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
-# 自動偵測改動範圍，決定 fast path 或 full path：
-#   fast: rsync → restart → health check           (~15s)
-#   full: backup（rsync 增量）→ env-check → rsync → build → migrate → health → env-drift (~2min)
-#
-# 觸發 full 的條件（任一命中）：
-#   - Dockerfile / docker-compose.yml / pyproject.toml 有改動
-#   - 無法取得上次 deploy sha（首次 deploy 或 VERSION 遺失）
-#   - DEPLOY_FULL=1 環境變數強制
+# standby 流程（2026-06-15 起，正本見 ~/butler/docs/kg-backend-deployment.md §4.2）：
+#   遠端 git pull → 寫 VERSION → docker compose up -d --build → health → smoke verify。
+#   程式碼靠 git 同步（非 rsync push）；data/ 是 ~/kg-data volume mount，build 不碰。
+#   migration 由 app 啟動自動跑（migration_version 在 /api/system/info），不再本地 SQL loop。
 cmd_deploy() {
   acquire_deploy_lock
   preflight
 
-  local deploy_sha
-  deploy_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-  # ── 偵測改動範圍 ──
-  local last_sha=""
-  local deploy_log="$BACKUP_DIR/deploy.log"
-  if [[ -f "$deploy_log" ]]; then
-    last_sha=$(tail -1 "$deploy_log" | sed -n 's/.*sha=\([^ ]*\).*/\1/p')
-  fi
-
-  local needs_full=false
-  if [[ "${DEPLOY_FULL:-0}" == "1" ]]; then
-    needs_full=true
-    info "DEPLOY_FULL=1 強制完整部署"
-  elif [[ -z "$last_sha" ]]; then
-    needs_full=true
-    info "無上次部署記錄，執行完整部署"
-  else
-    local changed
-    changed=$(cd "$LOCAL_DIR" && git diff --name-only "$last_sha"..HEAD -- . 2>/dev/null || echo "UNKNOWN")
-    if [[ "$changed" == "UNKNOWN" ]]; then
-      needs_full=true
-      info "無法比較改動（sha $last_sha 不存在），執行完整部署"
-    elif echo "$changed" | grep -qE '(Dockerfile|docker-compose|pyproject\.toml)'; then
-      needs_full=true
-      info "偵測到 infra 變更（Dockerfile/compose/pyproject），執行完整部署"
-    else
-      info "偵測到僅程式碼變更，執行快速部署 (fast path)"
-    fi
-  fi
-
-  # ── 檢查 working tree 是否與 HEAD 一致（dirty 直接拒絕，不可 bypass）──
+  # ── 本地 working tree 必須乾淨且已 push（standby 靠 git pull 取碼）──
   local dirty
   dirty=$(cd "$LOCAL_DIR" && git diff --name-only HEAD -- . 2>/dev/null || true)
   if [[ -n "$dirty" ]]; then
-    echo "✗ 拒絕在 dirty 工作區部署。以下檔案未 commit："
-    echo "$dirty" | head -20
-    err "請先 commit 或 stash 後再部署（DEVOPS_YES=1 不再 bypass dirty 檢查）"
+    echo "✗ 拒絕在 dirty 工作區部署。以下檔案未 commit：" >&2
+    echo "$dirty" | head -20 >&2
+    err "請先 commit + push 後再部署（standby 由 git pull 取碼，未 push 的改動不會生效）"
   fi
 
-  # ── Full path: backup + env-check ──
-  if [[ "$needs_full" == "true" ]]; then
-    cmd_backup
-    cmd_env_check
-  fi
+  local local_sha
+  local_sha=$(cd "$LOCAL_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  info "本地 HEAD = $local_sha（請先確認已 git push，否則 standby pull 不到）"
 
-  # ── 寫入部署版本標記 ──
-  echo "$deploy_sha" > "$LOCAL_DIR/VERSION"
+  local deploy_log="$BACKUP_DIR/deploy.log"
 
-  # ── Step 1: 同步代碼 ──
-  section "同步代碼"
-  rsync -az --stats --delete \
-    -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
-    --exclude '.venv' \
-    --exclude '__pycache__' \
-    --exclude '.git' \
-    --exclude '.env' \
-    --exclude 'certs' \
-    --exclude 'data' \
-    --exclude '.pytest_cache' \
-    --exclude '*.pyc' \
-    "$LOCAL_DIR/" "$SERVER:$REMOTE_DIR/"
+  # ── Step 1: standby git pull + 寫 VERSION ──
+  section "standby git pull + 更新 VERSION"
+  run_remote "cd $REMOTE_DIR && git pull --ff-only && git rev-parse --short HEAD > VERSION && cat VERSION"
 
-  # ── Step 2: 重新編譯並啟動容器 ──
-  # src/ 不是 volume mount，所有程式碼都 COPY 進 image，必須 rebuild 才能生效
+  local deploy_sha
+  deploy_sha=$(run_remote "cd $REMOTE_DIR && git rev-parse --short HEAD" 2>/dev/null || echo "unknown")
+
+  # ── Step 2: 重建並啟動容器 ──
+  # src/ COPY 進 image（非 volume），改碼必 rebuild 才生效。data/ = ~/kg-data volume，不動。
   section "重新編譯並啟動容器"
-  run_remote "sudo chown -R 1000:1000 $REMOTE_DIR/data 2>/dev/null || true"
-  run_remote "cd $REMOTE_DIR && docker compose up -d --build --force-recreate 2>&1 | tail -20"
+  run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
 
-  if [[ "$needs_full" == "true" ]]; then
-    section "DB Migration"
-    cmd_migrate
-  fi
-
-  # ── Step 3: 健康驗證 ──
+  # ── Step 3: 健康驗證（直連 standby localhost）──
   section "健康驗證"
   local max_attempts=5
   local delay=3
-  local url="http://localhost:8000/docs"
+  local url="http://localhost:8000/api/system/info"
   local http_code=""
   for i in $(seq 1 $max_attempts); do
     http_code=$(run_remote "curl -o /dev/null -s -w '%{http_code}' $url" || echo "000")
@@ -479,26 +434,16 @@ cmd_deploy() {
     err "部署後健康檢查失敗 (HTTP $http_code)，請確認日誌"
   fi
 
-  # ── Full path: env-drift ──
-  if [[ "$needs_full" == "true" ]]; then
-    section ".env 一致性驗證"
-    cmd_env_drift
-  fi
-
-  # ── Sentry release 驗證 ──
-  # 容器內 sentry_init._resolve_release() 依序讀 SENTRY_RELEASE / KG_VERSION /
-  # /app/VERSION。我們透過 /api/system/info 確認 deploy_sha 已生效，這樣
-  # Sentry 端的 release tag 能對齊 commit，做 regression diff 才有意義。
+  # ── Sentry release 對齊驗證 ──
   section "Sentry release 驗證"
-  local sysinfo_url="http://localhost:8000/api/system/info"
   local reported_version
-  reported_version=$(run_remote "curl -s $sysinfo_url" 2>/dev/null \
+  reported_version=$(run_remote "curl -s $url" 2>/dev/null \
     | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','unknown'))" 2>/dev/null \
     || echo "unknown")
   if [[ "$reported_version" == "$deploy_sha" ]]; then
     ok "Sentry release = $deploy_sha (api/system/info 對齊)"
   else
-    echo "⚠ /api/system/info 回報 version=${reported_version} 但本次 deploy_sha=${deploy_sha}；Sentry release 可能會用 ${reported_version}"
+    echo "⚠ /api/system/info 回報 version=${reported_version} 但部署 sha=${deploy_sha}" >&2
   fi
 
   # ── 記錄部署日誌 ──
@@ -506,22 +451,19 @@ cmd_deploy() {
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
   info "部署記錄已追加至 $deploy_log"
 
-  # ── 部署後 smoke verify（外部視角，確認公網全鏈路 + 版本對齊）──
-  # 失敗會 err exit；deploy.log 已寫，無回滾語意（人工介入決定）
+  # ── 部署後 smoke verify（外部視角，確認 CF→tunnel→standby 全鏈路 + 版本對齊）──
   verify_post_deploy "$deploy_sha"
 
-  if [[ "$needs_full" == "true" ]]; then
-    ok "完整部署完成 (version: $deploy_sha)。"
-  else
-    ok "快速部署完成 (version: $deploy_sha)。"
-  fi
+  ok "部署完成 (version: $deploy_sha)。"
 }
 
 # ── 指令：migrate ─────────────────────────────────────────────────────────────
-# 對所有用戶的 cards.db 執行 idempotent schema migration（在容器內執行）
+# standby 現況：schema migration 由 app 啟動自動跑（migration_version 在
+# /api/system/info），deploy 已不再呼叫本指令。此指令保留為手動 idempotent
+# fallback（對所有用戶 cards.db 補欄位，在容器內執行），需要時手動觸發。
 cmd_migrate() {
   acquire_deploy_lock
-  section "DB Migration"
+  section "DB Migration（手動 fallback；standby 正常情況由 app 啟動自動跑）"
   run_remote "docker exec knowledge-graph-api python3 -c \"
 import sqlite3, glob, os
 
@@ -555,10 +497,10 @@ for db in dbs:
 cmd_restart() {
   acquire_deploy_lock
   info "重啟容器（不重新 build）"
-  run_remote "docker compose -f $REMOTE_DIR/docker-compose.yml restart"
+  run_remote "cd $REMOTE_DIR && docker compose restart"
   sleep 3
   local http_code
-  http_code=$(run_remote "curl -o /dev/null -s -w '%{http_code}' http://localhost:8000/docs" || echo "000")
+  http_code=$(run_remote "curl -o /dev/null -s -w '%{http_code}' http://localhost:8000/api/system/info" || echo "000")
   if [[ "$http_code" == "200" ]]; then
     ok "容器已重啟，API 回應正常"
   else
@@ -574,15 +516,16 @@ cmd_status() {
   section "Docker 容器"
   run_remote "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
-  section "Caddy 狀態"
-  run_remote "sudo systemctl is-active caddy && echo 'Caddy: 運行中' || echo 'Caddy: 已停止'"
+  section "對外入口（Cloudflare Tunnel）"
+  # standby 無 Caddy（macOS）。對外走 CF Tunnel：cloudflared 由 launchd 常駐。
+  run_remote "pgrep -lf 'cloudflared.*tunnel' >/dev/null 2>&1 && echo 'cloudflared tunnel: 運行中（CF Tunnel）' || echo 'cloudflared tunnel: 未偵測到（檢查 launchd com.cloudflare.cloudflared）'"
 
   section "磁碟使用"
   run_remote "df -h / | awk 'NR==2{print \"根目錄: \" \$3 \" used / \" \$2 \" total (\"\$5\" used)\"}'"
-  run_remote "du -sh $REMOTE_DIR/data 2>/dev/null && echo '(以上為 data/ 目錄)' || echo 'data/ 目錄不存在'"
+  run_remote "du -sh ~/kg-data 2>/dev/null && echo '(以上為 ~/kg-data 資料目錄，container /app/data volume)' || echo '~/kg-data 不存在'"
 
   section "用戶數量"
-  run_remote "ls $REMOTE_DIR/data/users/ 2>/dev/null | wc -l | xargs echo '用戶目錄數:'" || echo "(無用戶資料)"
+  run_remote "ls ~/kg-data/users/ 2>/dev/null | wc -l | xargs echo '用戶目錄數:'" || echo "(無用戶資料)"
 
   section "最近部署記錄"
   local deploy_log="$BACKUP_DIR/deploy.log"
@@ -635,11 +578,15 @@ cleanup_old_backups() {
 }
 
 cmd_backup() {
+  # 注意：standby 的**權威排程/異地**備份 = standby launchd `com.kg.backup` → S3
+  #（見 ~/butler/docs/kg-backend-deployment.md §4.5 / §7 G5）。本指令是 oscar 端
+  # 的「臨時冷快照」：把 standby ~/kg-data **拉**回本地 backups/ 並做完整性驗證，
+  # 不對 prod 寫入、不取代排程備份。
   local date_str; date_str=$(date +%Y%m%d_%H%M)
   local dest="$BACKUP_DIR/data_$date_str"
   mkdir -p "$BACKUP_DIR"
 
-  info "備份 $REMOTE_DIR/data → ${dest}（排除 data/_ops_backups 與 data/_ops_world_backups）"
+  info "本地冷快照（pull from standby）：$SERVER:$REMOTE_DATA_DIR → ${dest}（排除 _ops_backups / _ops_world_backups）"
 
   # 找最近一份備份目錄當增量基準（未變的 db 走硬連結，只傳當日有寫入的）
   local prev
@@ -650,8 +597,8 @@ cmd_backup() {
     --exclude='_ops_backups/' \
     --exclude='_ops_world_backups/' \
     ${prev:+--link-dest="$prev"} \
-    -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
-    "$SERVER:$REMOTE_DIR/data/" "$dest/"
+    -e "ssh -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+    "$SERVER:$REMOTE_DATA_DIR/" "$dest/"
   [[ -n "$prev" ]] && info "增量基準: $(basename "$prev")（未變檔走硬連結）" \
                    || info "首次全量備份（無基準）"
 
@@ -689,10 +636,10 @@ cmd_backup() {
 # ── 指令：users ───────────────────────────────────────────────────────────────
 cmd_users() {
   section "遠端用戶目錄"
-  run_remote "ls -la $REMOTE_DIR/data/users/ 2>/dev/null || echo '(無用戶資料)'"
+  run_remote "ls -la $REMOTE_DATA_DIR/users/ 2>/dev/null || echo '(無用戶資料)'"
 
   section "users.json（可選第三方整合設定）"
-  run_remote "cat $REMOTE_DIR/data/users.json 2>/dev/null || echo '(不存在)'"
+  run_remote "cat $REMOTE_DATA_DIR/users.json 2>/dev/null || echo '(不存在)'"
 }
 
 # ── 指令：user-info <user_id> ─────────────────────────────────────────────────
@@ -702,13 +649,13 @@ cmd_user_info() {
   validate_uid "$uid"
 
   section "用戶: $uid"
-  run_remote "ls -lah $REMOTE_DIR/data/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
+  run_remote "ls -lah $REMOTE_DATA_DIR/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
 
   section "單字庫統計"
   run_remote "python3 -c \"
 import sqlite3, sys
 try:
-    conn = sqlite3.connect('$REMOTE_DIR/data/users/$uid/cards.db')
+    conn = sqlite3.connect('$REMOTE_DATA_DIR/users/$uid/cards.db')
     cur = conn.cursor()
     cur.execute('SELECT COUNT(*), SUM(CASE WHEN is_deleted=0 THEN 1 ELSE 0 END), SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END) FROM card')
     total, active, deleted = cur.fetchone()
@@ -726,11 +673,11 @@ cmd_delete_user() {
   validate_uid "$uid"
 
   info "即將刪除的資料:"
-  run_remote "ls -lah $REMOTE_DIR/data/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
+  run_remote "ls -lah $REMOTE_DATA_DIR/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
 
   [[ "$yes_flag" == "--yes" ]] && DEVOPS_YES=1
   confirm "永久刪除用戶 '$uid' 的所有資料（SQLite、向量、圖譜、第三方整合映射）。此操作不可逆。"
-  run_remote "rm -rf $REMOTE_DIR/data/users/$uid"
+  run_remote "rm -rf $REMOTE_DATA_DIR/users/$uid"
   ok "用戶 $uid 的資料已刪除。"
 }
 
@@ -898,12 +845,12 @@ case "${1:-help}" in
     echo "指令:"
     echo "  setup [env_file]        push-env + deploy 一條龍（初始化或 secret 變動時）
   push-env [file]         推送本地 .env 到遠端（預設: backend/.env）
-  deploy                  env-check + rsync + build + migrate + health-check
+  deploy                  standby git pull + build + health + smoke（需先 git push）
   restart                 重啟容器（不重新 build）
-  migrate                 對所有用戶 DB 執行 idempotent schema migration"
+  migrate                 手動 fallback：對用戶 DB 補欄位（standby 正常由 app 啟動自動跑）"
     echo "  env-check               檢查遠端 .env 是否包含所有必要環境變數"
     echo "  env-drift               檢查本地/遠端 .env 是否一致（path key 正規化）"
-    echo "  status                  Docker / Caddy / 磁碟 / 用戶數概覽"
+    echo "  status                  Docker / CF Tunnel / 磁碟 / 用戶數概覽"
     echo "  logs [n]                最新 n 行日誌（預設 50）"
     echo "  backup                  備份 data/ 到本地 backups/"
     echo "  users                   列出所有遠端用戶 + users.json"

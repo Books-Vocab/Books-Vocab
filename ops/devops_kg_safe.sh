@@ -55,8 +55,10 @@ preflight() {
     echo "project   : kg"
     echo "root      : $ROOT_DIR"
     echo "base      : $BASE"
-    echo "server    : ubuntu@13.193.212.134"
-    echo "remote    : ~/knowledge_graph_api"
+    echo "server    : ${KG_SERVER:-chenliangyu@100.118.39.104} (standby/felix, via Tailscale)"
+    echo "remote    : ${KG_REMOTE_DIR:-~/project/kg/backend}"
+    echo "data      : ${KG_REMOTE_DATA_DIR:-~/kg-data}"
+    echo "ingress   : Cloudflare Tunnel (no Caddy on standby)"
     echo "domain    : $KG_PUBLIC_DOMAIN"
     echo "container : knowledge-graph-api"
   } >&2
@@ -140,21 +142,13 @@ is_blocked_run() {
 main() {
   local sub="${1:-}"
 
-  # ── Lightsail 遷移防呆（2026-06-15）─────────────────────────────────────────
-  # 正式站已從 Lightsail 遷到家用 standby（Cloudflare Tunnel）。這些變更型子命令
-  # 仍寫死打向已停的 Lightsail = footgun：deploy 推到錯主機；backup / backup-s3-test
-  # 會用 Lightsail 凍結舊資料覆蓋 standby 今天的好備份。預設擋下；rollback 情境
-  # （見 ~/butler/docs/kg-backend-deployment.md §6）才以 KG_ALLOW_LIGHTSAIL=1 放行。
-  case "$sub" in
-    deploy|restart|migrate|backup|backup-s3-test)
-      if [[ "${KG_ALLOW_LIGHTSAIL:-}" != "1" ]]; then
-        echo "✗ '$sub' 會操作已停用的 Lightsail（正式站已遷到 standby）" >&2
-        echo "  standby 部署 / 備份 / 回滾程序見 ~/butler/docs/kg-backend-deployment.md（§4、§6）" >&2
-        echo "  確定要對 Lightsail 操作（rollback）→ 設 KG_ALLOW_LIGHTSAIL=1 重跑" >&2
-        exit 2
-      fi
-      ;;
-  esac
+  # ── transport retarget（2026-06-19）────────────────────────────────────────
+  # devops.sh transport 已從停用的 Lightsail retarget 到家用 standby（felix，
+  # 經 Cloudflare Tunnel）。deploy/restart/migrate 現對 standby 生效 = 正式站。
+  # 破壞性 run 命令仍由 is_blocked_run 守護；deploy 仍要求本地 working tree 乾淨
+  # 且已 git push（standby 靠 git pull 取碼）。
+  # backup-s3-test 的舊 Lightsail cron（/usr/local/bin/kg_backup.sh）在 standby
+  # 不適用 → 改成指向 standby launchd com.kg.backup（見下方 handler）。
 
   case "$sub" in
     preflight)
@@ -165,11 +159,10 @@ main() {
       "$BASE" "$sub"
       ;;
     backup-s3-test)
-      # Manually trigger /usr/local/bin/kg_backup.sh on prod and tail the log.
-      # Cron does the same daily at UTC 03:00 — use this for ad-hoc verification
-      # (e.g. after editing kg_backup.sh, before relying on it for a release).
-      preflight
-      "$BASE" run "sudo /usr/local/bin/kg_backup.sh && sudo tail -1 /var/log/kg_backup.log"
+      # standby：排程備份由 launchd `com.kg.backup` → S3 跑（非 Lightsail cron）。
+      # 此命令做唯讀驗證：確認 launchd job 已載入並 tail 最近一行 log。
+      # 手動觸發/排程細節見 ~/butler/docs/kg-backend-deployment.md §4.5 / §7 G5。
+      run_fixed_remote "launchctl list 2>/dev/null | grep -E 'com\\.kg\\.backup' || echo '(launchd com.kg.backup 未載入)'; tail -1 ~/Library/Logs/kg_backup.log 2>/dev/null || echo '(無 kg_backup.log)'"
       ;;
     logs)
       preflight
@@ -177,10 +170,14 @@ main() {
       "$BASE" logs "${1:-80}"
       ;;
     caddy-status)
-      run_fixed_remote "sudo systemctl status caddy"
+      # standby（macOS）無 Caddy；對外走 Cloudflare Tunnel。回報 tunnel 狀態。
+      echo "ℹ caddy 不適用（standby 走 Cloudflare Tunnel，無 Caddy）" >&2
+      run_fixed_remote "pgrep -lf 'cloudflared.*tunnel' || echo '(cloudflared tunnel 未偵測到；檢查 launchd com.cloudflare.cloudflared)'"
       ;;
     caddyfile)
-      run_fixed_remote "cat /etc/caddy/Caddyfile"
+      # 無本地 Caddyfile；CF Tunnel ingress 是 remotely-managed（存 CF 端）。
+      echo "ℹ caddyfile 不適用（standby 走 CF Tunnel，ingress 為 CF remotely-managed config）" >&2
+      echo "  ingress 正本見 ~/butler/docs/kg-backend-deployment.md §3.1" >&2
       ;;
     docker-ps)
       run_fixed_remote "docker ps"
