@@ -5,13 +5,13 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: d67bed12
+verified_against: a67653fdf
 -->
 # 後端部署指南
 
 > ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
 >
-> **過渡狀態（2026-06-15 起）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（無 Caddy / 無 inbound 埠）。Lightsail 容器**已 STOP** 當 rollback。**目前 standby 走手動部署**（§標準部署流程）；`./ops/devops_kg_safe.sh deploy/restart/migrate` 仍寫死 Lightsail，已加 guard（`KG_ALLOW_LIGHTSAIL=1` 才放行），**直接跑會誤推到已停的 Lightsail**——只在回滾時用（§Lightsail rollback 部署流程）。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)；服務層部署正本見 butler `~/butler/docs/kg-backend-deployment.md`。
+> **狀態（2026-06-15 遷移，2026-06-19 wrapper retarget）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（無 Caddy / 無 inbound 埠）。Lightsail instance 已 terminate（僅作冷重建 rollback 備援）。`./ops/devops_kg_safe.sh deploy/restart/migrate/backup` 已 retarget standby（transport 變數 `KG_SERVER`/`KG_REMOTE_DIR`/`KG_REMOTE_DATA_DIR`，default felix；`KG_ALLOW_LIGHTSAIL` guard 已移除）；`deploy` = 遠端 `git pull --ff-only` + 寫 VERSION + `docker compose up -d --build` + health + smoke（§標準部署流程）。下方 §Lightsail rollback 段為冷重建歷史語境，保留供災難回滾。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)；服務層部署正本見 butler `~/butler/docs/kg-backend-deployment.md`。
 
 ## 核心資訊
 
@@ -61,30 +61,27 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 
 ## Lightsail rollback 部署流程（僅回滾時用）
 
-> ⚠️ **僅在 standby 嚴重故障需回滾時執行**。`devops.sh` 仍寫死 Lightsail，受 `KG_ALLOW_LIGHTSAIL=1` guard 保護，避免常態誤推到已停的 Lightsail。回滾完整步驟（含 CF apex 改回 A 記錄）見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md) 與 butler `~/butler/docs/kg-backend-deployment.md §6`。
+> ⚠️ **僅在 standby 嚴重故障需回滾時執行**。Lightsail instance 已 terminate，回滾 = 從零冷重建（建 instance → bootstrap → Caddy → 搬 standby data）。`devops.sh` 已 retarget standby（不再寫死 Lightsail），故下方一鍵 `./devops.sh deploy` 流程**僅為歷史 Lightsail 語境參考**；冷重建須重新指向新站（`KG_SERVER=ubuntu@<新IP>` 等）或手動執行。回滾完整步驟（含 CF apex 改回 A 記錄）見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md) 與 butler `~/butler/docs/kg-backend-deployment.md §6`。
+
+> 以下決策樹與 `deploy` 內部流程為**舊 Lightsail wrapper 行為的歷史記錄**（rsync + fast/full + force-recreate）。現役 `devops.sh` 已 retarget standby（git pull + compose，無 rsync）；`KG_ALLOW_LIGHTSAIL` env var 已移除。冷重建 Lightsail 時須另指向新站或手動執行對應步驟。
 
 ```
-你要做什麼？（回滾到 Lightsail 後的運維）
+舊 Lightsail wrapper 行為（歷史記錄，現役不適用）
 │
-├─ 首次部署 / .env 有改動？
-│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh setup    ← push-env + deploy 一條龍
-│
-├─ 只是代碼更新（.env 未變）？
-│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh deploy   ← rsync + build + migrate + health
-│
-├─ 只需重啟（不需重新 build）？
-│   └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh restart  ← 快 10 倍，保留現有鏡像
-│
-└─ 只跑 DB migration？
-    └─→ KG_ALLOW_LIGHTSAIL=1 ./devops.sh migrate
+├─ 首次部署 / .env 有改動？  → ./devops.sh setup    ← push-env + deploy 一條龍
+├─ 只是代碼更新（.env 未變）？ → ./devops.sh deploy   ← rsync + build + migrate + health
+├─ 只需重啟（不需重新 build）？ → ./devops.sh restart  ← 快 10 倍，保留現有鏡像
+└─ 只跑 DB migration？        → ./devops.sh migrate
 ```
 
-**黃金原則**：`restart` 比 `deploy` 快 10 倍，只有代碼真的改了才 `deploy`。
+**舊黃金原則**：`restart` 比 `deploy` 快 10 倍，只有代碼真的改了才 `deploy`。
 
-`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate**（讓 `/api/system/info` 重新讀 `/app/VERSION`）→ migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**（非通過自動中止）。
+舊 Lightsail `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate** → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**。
 
-部署完成後可透過兩種方式確認遠端版本：
-- `KG_ALLOW_LIGHTSAIL=1 ./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
+> 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate/force-recreate。
+
+部署完成後確認遠端版本：
+- `./devops.sh status` — 顯示部署版本 + 最近部署記錄
 - `curl https://wordnexus.lol/api/system/info` — 無需 auth，回傳 version、uptime、migration 狀態
 
 > 📍 **以下到 §特殊情境 SOP 之間的段落（smoke verify / 排查 / Rollback）皆為 Lightsail rollback 語境**（Caddy / `13.193.212.134` / `devops.sh` 流程）。standby primary 的部署後驗證見上方 §標準部署流程；standby 上 TLS 由 CF 邊緣處理，無 Caddy。
