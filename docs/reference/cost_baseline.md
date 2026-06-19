@@ -6,27 +6,27 @@ scope:
   - .claude/skills/billing/
   - docs/sop/cost_review.md
   - backend/src/kg/llm/providers.py
-verified_against: d67bed12
+verified_against: 0cea7f67b
 -->
 # Cost Baseline (Single Source of Truth)
 
 每月各服務基準月費 + 預算上限 + drift 閾值。**任何 bundle 升降級、新供應商接入、定價變動,同 PR 必須更新此檔**。skill `billing` 與 SOP `cost_review.md` 對照本檔判斷是否漂移。
 
-> **過渡狀態（2026-06-15 起）**：正式站運算層遷到家用常駐機 `standby`（電力/網路為家用沉沒成本，不計入本表）。Lightsail instance **STOP 未 terminate**（保留 1-2 週當 rollback），**STOP 期間仍計 fixed bundle ~$12/mo**（terminate 才停 billing）。故過渡期實際 fixed 月費 = $15（沿用下表，instance 仍計費）+ standby 家用電費（不入帳）。terminate Lightsail 後 fixed 小計 → $3（僅 Object Storage）。**過渡窗仍走下表，不下修**——下修時機 = Lightsail terminate 決策落地時，屆時同 PR 更新 §1 與 §5。
+> **遷移完成（2026-06-19 確認）**：正式站運算層已遷到家用常駐機 `standby`（電力/網路為家用沉沒成本，不計入本表）。Lightsail instance **已 terminate**（`aws lightsail get-instances` 跨 ap-south-1 / ap-northeast-1 / us-east-1 皆回空），不再計費。故 fixed 月費已從過渡期 $15 下修至 **$3**（僅 Object Storage）。**注意 tooling drift**：`ops/devops_kg_safe.sh` preflight 仍指向已死的 Lightsail IP `ubuntu@13.193.212.134`（SSH timeout），cost-overview 須改用 standby（`ssh chenliangyu@100.118.39.104` 上跑 `ops_cli cost-overview`）或本機直連 DB——該 wrapper 待 devops 更新。
 
-## 1. 月度基準成本表(2026-06，過渡期)
+## 1. 月度基準成本表(2026-06，遷移後)
 
 | 服務 | 帳戶 / SKU | 規格 | 月費 (USD) | 計費模型 | 查詢入口 |
 |---|---|---|---:|---|---|
-| Lightsail Instance | AWS `967512079054` / `booksbrowser-kg-api-2gb` | `small_3_0`(2 GB RAM / 60 GB SSD / 3 TB transfer)；**STOP/rollback，仍計費** | **$12.00** | Fixed bundle | `aws lightsail get-instances` |
+| ~~Lightsail Instance~~ | AWS `967512079054` / `booksbrowser-kg-api-2gb` | **已 terminate（2026-06-19 確認）**，原 `small_3_0` | **$0.00** | — | `aws lightsail get-instances`（回空）|
 | Lightsail Object Storage | AWS `967512079054` / `kg-podcasts-prod` | `medium_1_0`(100 GB / 250 GB transfer) | **$3.00** | Fixed bundle | `aws lightsail get-buckets` |
 | S3 backup | AWS `967512079054` / `kg-backups-prod-967512079054` | Standard,daily tar+gz（**現由 standby launchd 跑**，bucket 不變） | **~$0** | Usage(預估首年 < $1/月,容量極小)| `aws s3 ls --summarize` / `aws ce` |
 | standby 運算 | 家用 `chenliangyusAir`（M3）+ Cloudflare Tunnel（free tier） | 自託管 | **不入帳**（家用電費沉沒成本；CF Tunnel free） | — | — |
-| Gemini LLM | GCP billing `011E6D-6EE0E0-B1F479` | Per-token usage | **變動,見 §2 內部歸因** | Usage,無 fixed | `gcloud billing` / 自家 `/api/admin/user-cost-summary` |
+| Gemini LLM | GCP billing `011E6D-6EE0E0-B1F479` | Per-token usage | **變動,見 §2 內部歸因** | Usage,無 fixed | `gcloud billing` / standby `ops_cli cost-overview` |
 | DeepSeek LLM | DeepSeek dashboard | Per-token usage | **變動,見 §2 內部歸因** | Usage,無 fixed | Dashboard 手動(無 CLI) |
-| **Fixed 小計（過渡期）** | | | **$15.00** | | terminate Lightsail 後 → **$3.00** |
+| **Fixed 小計** | | | **$3.00** | | 僅 Object Storage |
 
-**$15/月 = 過渡期月底之前一定會繳的底**（Lightsail STOP 仍計費）。terminate Lightsail 後降到 $3/月（僅 Object Storage）。LLM 是「用越多繳越多」,單獨追蹤(§2)。
+**$3/月 = 月底之前一定會繳的底**（僅 Object Storage fixed bundle）。LLM 是「用越多繳越多」,單獨追蹤(§2)；2026-06 當月實際 LLM 內部歸因 = **~$0.0035**（72 calls / 2 用戶，可忽略）。
 
 ### Lightsail 不走 Cost Explorer 的陷阱
 
@@ -34,10 +34,12 @@ verified_against: d67bed12
 
 ## 2. LLM 內部歸因(自家算的 USD)
 
-| Provider | Pricing 快照(USD per M tokens) | 來源 |
-|---|---|---|
-| Gemini | input **$0.10** / output **$0.40** / embed **$0.00025** | `backend/src/kg/llm/providers.py:REGISTRY` |
-| DeepSeek | input **$0.14** / output **$0.28** / embed n/a | 同上 |
+| Provider | 模型 | Pricing 快照(USD per M tokens) | 來源 |
+|---|---|---|---|
+| Gemini | `gemini-2.5-flash-lite` | input **$0.10** / output **$0.40** / cache **$0.01** / embed **$0.00025** | `backend/src/kg/llm/providers.py:REGISTRY` |
+| DeepSeek | `deepseek-v4-flash` | input **$0.14** / output **$0.28** / cache **$0.0028** / embed n/a(無 endpoint) | 同上 |
+
+embeddings 預設 provider = Gemini（DeepSeek 無 embeddings endpoint）。cache token 走 `cache_price_per_m`（命中快取的輸入 token 以此費率計，遠低於 input）。
 
 **SoT 在 `backend/src/kg/llm/providers.py:REGISTRY`**。改價必須同 PR 同步此快照(`update_trigger: code-change` 覆蓋此項)。
 
@@ -85,6 +87,7 @@ Service mapping(call_type → service):`backend/src/kg/admin_cost_summary.py:_SE
 
 | 日期 | 變更 | 月費影響 | 原因 / commit |
 |---|---|---:|---|
+| 2026-06-19 | Lightsail instance `booksbrowser-kg-api-2gb` **terminate**（跨 region get-instances 回空確認） | **-$12** → fixed 小計 $15 降至 **$3**（僅 Object Storage） | rollback 窗結束，standby 遷移定案。tooling drift：`devops_kg_safe.sh` 仍指舊 IP，待 devops 修 |
 | 2026-06-15 | 正式站運算遷到家用 standby（Cloudflare Tunnel）；Lightsail instance **STOP 未 terminate** 當 1-2 週 rollback | 過渡期 **$0**（STOP 仍計 $12，terminate 後才 -$12 → fixed 降到 $3）；standby 電費不入帳 | 自託管降本 + 脫離 Lightsail；S3 backup 改 standby launchd（bucket 不變）。host topology SoT 見 `host_topology.md` |
 | 2026-06-01 | Object Storage 由 `small_1_0`($1)→ `medium_1_0`($3) | +$2 | Track B 上線,5 GB 太緊。**delete+recreate workaround**(AWS 月度 bundle 變更限制)|
 | 2026-06-01 | Lightsail 手動 snapshot `kg-upgrade-20260412` 刪除 | -$2 | 對應已不存在的 `micro_3_0` instance,屬殘留 |
