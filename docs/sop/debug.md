@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: d67bed12
+verified_against: a67653fdf
 -->
 # 伺服器排障指南
 
@@ -115,7 +115,8 @@ dig wordnexus.lol @8.8.8.8 +short
 
 ## Lightsail rollback 排障（僅回滾時相關）
 
-> 以下為舊 Lightsail + Caddy 語境。Lightsail 容器**已 STOP**，僅在回滾後這些 Caddy/防火牆/SSL 診斷才生效。回滾程序見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
+> 以下為舊 Lightsail + Caddy 語境。Lightsail instance **已 terminate**，僅在冷重建回滾後這些 Caddy/防火牆/SSL 診斷才生效。回滾程序見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
+> ⚠️ 本段 `KG_ALLOW_LIGHTSAIL=1 ./devops.sh ...` 為歷史寫法 —— 該 guard env var 2026-06-19 隨 wrapper retarget standby 移除。冷重建 Lightsail 時須將 wrapper transport（`KG_SERVER` 等）指向新站，或直接 ssh 進新站手動執行下列 Caddy/SSL 診斷。standby 現役無 Caddy，CF tunnel 排障見上方 §症狀→診斷→修復（primary）。
 
 ### HTTPS 連線失敗（Lightsail）
 

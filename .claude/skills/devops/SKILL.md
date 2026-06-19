@@ -8,12 +8,13 @@ allowed-tools: Bash, Read, Grep
 
 ## Identity
 
-> ⚠ **2026-06-15 正式站已遷到家用 standby（Cloudflare Tunnel）**。`devops_kg_safe.sh` / `devops.sh` 整套**仍寫死打 Lightsail**（下表 server），且 Lightsail 容器已 STOP（rollback）。因此 `deploy/restart/migrate/backup/backup-s3-test` 預設被 guard 擋下（`exit 2`），只有 `KG_ALLOW_LIGHTSAIL=1` 才放行（rollback 用）。**現役 prod 運維/部署/備份走 standby**，權威程序 = `~/butler/docs/kg-backend-deployment.md`。唯讀 ops-cli / ops-edit / 業務查詢仍可用（打 Lightsail 已停容器會回錯，需對 standby 容器跑 → 見該文檔 §4.3）。
+> ✅ **2026-06-19 起 `devops_kg_safe.sh` / `devops.sh` 已 retarget 到 standby**（不再寫死 Lightsail，已移除 `KG_ALLOW_LIGHTSAIL` guard）。transport 由 `KG_SERVER` / `KG_REMOTE_DIR` / `KG_REMOTE_DATA_DIR` 控制，default = `chenliangyu@100.118.39.104` / `~/project/kg/backend` / `~/kg-data`（Tailscale 免密碼，不再用 `-i lightsail_kg_prod`）。`deploy/restart/migrate/backup` 直接透傳 standby（破壞性 `run` 仍由 `is_blocked_run` 守護）。權威服務層程序 = `~/butler/docs/kg-backend-deployment.md`。Lightsail instance 已 terminate，僅作冷重建 rollback 備援（見 `docs/reference/host_topology.md §Rollback`）。
 
-| key | value（現役 standby） | rollback（Lightsail，已停） |
+| key | value（現役 standby） | rollback（Lightsail，已 terminate） |
 |-----|-------|-------|
-| host | `chenliangyu@100.118.39.104`（Tailscale，OrbStack） | `ubuntu@13.193.212.134`（Lightsail，Caddy） |
-| repo / data | `~/project/kg/backend`（git 同步） | `~/knowledge_graph_api` |
+| host | `chenliangyu@100.118.39.104`（Tailscale，OrbStack；`KG_SERVER`） | `ubuntu@<冷重建新 IP>`（Caddy） |
+| repo | `~/project/kg/backend`（git 同步；`KG_REMOTE_DIR`） | `~/knowledge_graph_api` |
+| data | `~/kg-data`（`KG_REMOTE_DATA_DIR`） | `~/knowledge_graph_api/data` |
 | 對外 | Cloudflare Tunnel `kg-standby`（CF 邊緣終結 TLS） | Caddy（Let's Encrypt） |
 | domain | `wordnexus.lol`（hostname 不變） | 同 |
 | container | `knowledge-graph-api`（service `kg-api`） | 同 |
@@ -23,13 +24,13 @@ allowed-tools: Bash, Read, Grep
 
 1. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`
 2. **deploy / migration 前**再加 backup：`./ops/devops_kg_safe.sh backup`
-3. 禁止封鎖指令：`setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串
-4. **Lightsail 遷移 guard**：`deploy/restart/migrate/backup/backup-s3-test` 預設擋下（這些打已停的 Lightsail）。現役 standby 運維走 `~/butler/docs/kg-backend-deployment.md`；真要對 Lightsail 操作（rollback）才 `KG_ALLOW_LIGHTSAIL=1 ./ops/devops_kg_safe.sh <sub>`。
+3. 禁止封鎖指令：`setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串（`is_blocked_run` 守護）
+4. **transport**：`deploy/restart/migrate/backup` 直接打 standby（`KG_SERVER` 等變數，default felix）。Lightsail guard 已移除（2026-06-19）；冷重建 rollback 走 `docs/reference/host_topology.md §Rollback` + `~/butler/docs/kg-backend-deployment.md`。
 
 ## 指令參考 **(SoT)**
 
 本段為 `./ops/devops_kg_safe.sh`（與 repo-local shortcut `./devops.sh`）的權威指令清單；`docs/sop/deploy.md` / `docs/sop/debug.md` 內任何 `./devops.sh *` 用法以本表為準。
-對 `docker ps`、`sudo systemctl status caddy`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。
+對 `docker ps`、`df -h` 這類高頻唯讀 debug 查詢，safe wrapper 已提供 typed 子命令，且 raw `run "<cmd>"` 會直接提示改用 typed surface。standby 無 Caddy：`caddy-status` 已改為唯讀檢查 cloudflared tunnel（`pgrep`），`caddyfile` 回 N/A（CF ingress 為 remotely-managed config）；`backup-s3-test` 改為唯讀驗 standby launchd `com.kg.backup`。
 
 ### Safe Wrapper（`./ops/devops_kg_safe.sh`）
 
@@ -166,22 +167,16 @@ python3 ops/data_inspect.py [command]
 # overview / sample N / gaps / graph / notes / search <keyword> / card <id> / sql "..."
 ```
 
-## Deploy 機制
+## Deploy 機制（standby）
 
-> ⚠ **以下 `deploy` 自動偵測機制是 Lightsail 路徑，現已被 guard 擋下**（正式站遷 standby）。**現役 standby 部署 = 手動**：`ssh chenliangyu@100.118.39.104` → `cd ~/project/kg/backend && git pull && git rev-parse --short HEAD > VERSION && docker compose up -d --build` → 驗 `/api/system/info`。完整見 `~/butler/docs/kg-backend-deployment.md` §4.2。下表僅供 Lightsail rollback（需 `KG_ALLOW_LIGHTSAIL=1`）時參考。
+> ✅ `deploy` 已 retarget standby（2026-06-19）。**不再 rsync、不再 fast/full 偵測、不再 force-recreate**。
 
-`deploy`（Lightsail）自動偵測改動範圍，決定路徑：
+`deploy` 流程（透傳 `KG_SERVER`）：遠端 `git pull --ff-only` → 寫 `VERSION`（`git rev-parse --short HEAD`，`/api/system/info` 讀此）→ `docker compose up -d --build` → 容器內 health（`api/system/info`）→ 外部 smoke verify（公網三層，非通過自動中止）。
 
-| 偵測結果 | 路徑 | 耗時 |
-|----------|------|------|
-| 只有 .py / .html / 靜態檔 | **fast**: rsync → restart → health | ~15s |
-| Dockerfile / docker-compose / pyproject.toml | **full**: backup（rsync 增量）→ env-check → rsync → build → migrate → health → env-drift | ~2min |
-| 無上次 deploy 記錄 / sha 不存在 | **full** | ~2min |
-
-偵測依據：`git diff <last_deploy_sha>..HEAD -- backend/`，last_deploy_sha 來自 `deploy.log`。
-
-- `DEPLOY_FULL=1 ./ops/devops_kg_safe.sh deploy` — 強制完整部署
-- `./ops/devops_kg_safe.sh restart` — 最快，僅重啟容器不 rsync（程式碼未變時用）
+- **migration**：app 啟動自動跑（`migration_version` 暴露於 `/api/system/info`）；`migrate` 子命令降為手動 fallback，deploy 不再自動 migrate/backup。
+- `./ops/devops_kg_safe.sh restart` = `docker compose restart`（不 rebuild，程式碼未變時用；health 改打 `api/system/info`）。
+- `.env` 改動不能只 restart，容器讀不到新值，需 `deploy`（含 `--build`）。
+- 完整服務層程序見 `~/butler/docs/kg-backend-deployment.md` §4.2。
 
 ## 高頻操作範例
 
