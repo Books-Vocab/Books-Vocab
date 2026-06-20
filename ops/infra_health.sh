@@ -48,7 +48,10 @@ INODE_WARN="${KG_HEALTH_INODE_WARN:-80}"; INODE_CRIT="${KG_HEALTH_INODE_CRIT:-90
 MEM_WARN="${KG_HEALTH_MEM_WARN:-15}";     MEM_CRIT="${KG_HEALTH_MEM_CRIT:-8}"   # 可用%，低於告警
 CERT_WARN="${KG_HEALTH_CERT_WARN:-14}";   CERT_CRIT="${KG_HEALTH_CERT_CRIT:-3}" # 剩餘天數
 ERR_WARN="${KG_HEALTH_ERR_WARN:-20}";     ERR_CRIT="${KG_HEALTH_ERR_CRIT:-100}" # 近1h錯誤行
-SWAP_WARN="${KG_HEALTH_SWAP_WARN:-20}";   SWAP_CRIT="${KG_HEALTH_SWAP_CRIT:-50}"  # swap 使用%
+# swap 使用%。macOS 動態 swap + 壓縮記憶體：中度 swap 是常態（惰性換頁），swap-used
+# 高 ≠ OOM 前兆（真實記憶體壓力看 mem_avail_pct）。故閾值比 Linux 寬鬆，swap 僅當粗略
+# 旁證信號，避免 RAM 健康時假 crit。Linux 舊值 warn20/crit50 不適用 macOS。
+SWAP_WARN="${KG_HEALTH_SWAP_WARN:-70}";   SWAP_CRIT="${KG_HEALTH_SWAP_CRIT:-90}"
 RESTART_WARN="${KG_HEALTH_RESTART_WARN:-1}"
 
 log() { echo "$@" >&2; }

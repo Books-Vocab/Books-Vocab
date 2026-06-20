@@ -103,12 +103,15 @@ section "HTTPS 探針：200 → ok + raw=200"
 echo "$js" | py 'import sys,json;d=json.load(sys.stdin);h=[m for m in d["metrics"] if m["key"]=="http_probe"][0];assert h["status"]=="ok" and h["raw"]==200,h' \
   && ok "HTTPS 200 ok + raw=200" || fail_t "HTTPS 200 未 ok"
 
-section "Swap：使用 34% → warn（門檻 warn20/crit50）"
-echo "$(KG_TEST_SWAP_USED=700 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="warn",s' \
-  && ok "swap 34% warn" || fail_t "swap 34% 未 warn"
-section "Swap：使用 63% → crit"
-echo "$(KG_TEST_SWAP_USED=1300 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="crit",s' \
-  && ok "swap 63% crit" || fail_t "swap 63% 未 crit"
+section "Swap：使用 63% → ok（macOS 門檻 warn70/crit90；中度 swap 為常態）"
+echo "$(KG_TEST_SWAP_USED=1300 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="ok",s' \
+  && ok "swap 63% ok" || fail_t "swap 63% 未 ok"
+section "Swap：使用 78% → warn（門檻 warn70/crit90）"
+echo "$(KG_TEST_SWAP_USED=1600 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="warn",s' \
+  && ok "swap 78% warn" || fail_t "swap 78% 未 warn"
+section "Swap：使用 93% → crit"
+echo "$(KG_TEST_SWAP_USED=1900 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);s=[m for m in d["metrics"] if m["key"]=="swap_used_pct"][0];assert s["status"]=="crit",s' \
+  && ok "swap 93% crit" || fail_t "swap 93% 未 crit"
 
 section "Uptime：93600s → 1d 2h + raw 秒數"
 echo "$js" | py 'import sys,json;d=json.load(sys.stdin);u=[m for m in d["metrics"] if m["key"]=="container_uptime"][0];assert u["raw"]==93600,u;assert "1d" in u["value"] and "2h" in u["value"],u' \
