@@ -334,9 +334,9 @@ curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
 | `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |
 | `TTS_MASTER_LUFS` | `-16` | 目標整合響度（Apple Podcasts 標準） |
-| `PODCAST_SSH_KEY` | `~/.ssh/lightsail_default.pem` | Monitor remote endpoints + `ops/podcast_upload.sh` 用的 SSH key |
-| `PODCAST_REMOTE_SERVER` | `ubuntu@13.193.212.134` | Lightsail VPS 連線目標(必要時改 host topology) |
-| `PODCAST_REMOTE_DIR` | `~/knowledge_graph_api/data/podcasts` | 遠端 podcast 資產根目錄 |
+| ~~`PODCAST_SSH_KEY`~~ | — | **已廢棄**：上傳全走 S3，無 SSH。見 `lab/podcast/monitor/remote.py:20` |
+| ~~`PODCAST_REMOTE_SERVER`~~ | — | **已廢棄**：S3 取代遠端 SSH 端點（Lightsail 已 terminate）。設了也無效 |
+| ~~`PODCAST_REMOTE_DIR`~~ | — | **已廢棄**：資產根目錄改 S3 catalog。設了也無效 |
 | `PODCAST_SSH_TIMEOUT` | `20` | SSH 連線 timeout 秒數 |
 | `PODCAST_MAX_ACTIVE_JOBS` | `4` | Monitor 同時 running 的 subprocess job 上限,超過回 429 |
 | `PODCAST_JOB_HISTORY` | `100` | Monitor 留多少筆已完成 job log(超過 LRU 砍最舊) |
