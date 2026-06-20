@@ -78,6 +78,8 @@ documents:
       - "!ops/test_plain_deadzone_lint.sh"
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
+      - "!ops/infra_health.sh"
+      - "!ops/test_infra_health.sh"
 
   - id: policy.safety
     path: docs/policy/safety.md
