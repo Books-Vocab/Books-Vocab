@@ -5,8 +5,12 @@
 # 一次 SSH 收集 host 層指標 + 本地 openssl 探 TLS 憑證 + 本地 curl 探 HTTPS 端點
 # （皆 client 真實視角），套閾值判 ok/warn/crit，吐人讀文字或 --json 機讀。
 #
-# 全唯讀：df/free/docker inspect/docker stats/systemctl is-active/docker logs grep。
+# 全唯讀（macOS-native 探針，prod = standby/felix = macOS+OrbStack+CF Tunnel）：
+#   df / vm_stat+sysctl(記憶體/swap) / docker inspect / docker stats /
+#   pgrep cloudflared(對外入口) / docker logs grep / du。
 # 不改機器狀態（但仍經 safe wrapper 的 preflight）。
+# 設計定案：macOS-native，不做 dual-OS 偵測（Lightsail 已 terminate）。若日後
+#   再遷 Linux host 須補回 free/systemctl 分支或加 OS 偵測。
 #
 # 用法：
 #   ./ops/infra_health.sh            # 人讀
@@ -32,7 +36,7 @@ BASE="${KG_BASE:-$ROOT/devops.sh}"
 DOMAIN="${KG_DOMAIN:-wordnexus.lol}"
 PUBLIC_WEB_BASE_URL="${KG_PUBLIC_WEB_BASE_URL:-https://${DOMAIN}}"
 CONTAINER="${KG_CONTAINER:-knowledge-graph-api}"
-DATA_DIR="${KG_DATA_DIR:-/home/ubuntu/knowledge_graph_api/data}"
+DATA_DIR="${KG_DATA_DIR:-/Users/chenliangyu/kg-data}"
 PROBE_URL="${KG_HEALTH_PROBE_URL:-${PUBLIC_WEB_BASE_URL}/api/system/info}"
 
 JSON=0
@@ -57,14 +61,21 @@ C='"$CONTAINER"'
 D='"$DATA_DIR"'
 df -P / | awk "NR==2{gsub(/%/,\"\",\$5); printf \"disk_pct\t%s\n\", \$5; printf \"disk_used_gb\t%d\n\", \$3/1048576; printf \"disk_total_gb\t%d\n\", \$2/1048576}"
 df -Pi / | awk "NR==2{gsub(/%/,\"\",\$5); printf \"inode_pct\t%s\n\", \$5}"
-free -m | awk "/^Mem:/{printf \"mem_total_mb\t%s\n\", \$2; printf \"mem_avail_mb\t%s\n\", \$7} /^Swap:/{printf \"swap_total_mb\t%s\n\", \$2; printf \"swap_used_mb\t%s\n\", \$3}"
+# macOS 記憶體：total=sysctl hw.memsize；available=(free+inactive+speculative 頁)×頁大小。
+# 頁大小由 vm_stat header 動態讀（felix 為 16384，非 4096）。BSD awk 無 match() array，
+# 故 header 用欄位掃描取「size N bytes」的 N。
+TB=$(sysctl -n hw.memsize)
+vm_stat | awk -v tb="$TB" "NR==1{for(i=1;i<=NF;i++)if(\$i==\"size\"){ps=\$(i+2);sub(/[^0-9].*/,\"\",ps)}} /Pages free/{gsub(/\./,\"\",\$3);f=\$3} /Pages inactive/{gsub(/\./,\"\",\$3);ia=\$3} /Pages speculative/{gsub(/\./,\"\",\$3);sp=\$3} END{printf \"mem_total_mb\t%d\n\",tb/1048576;printf \"mem_avail_mb\t%d\n\",(f+ia+sp)*ps/1048576}"
+# macOS swap：vm.swapusage = "total = N.NNM  used = N.NNM  free = ..."；取 total/used 的 M 值。
+sysctl -n vm.swapusage | awk "{for(i=1;i<=NF;i++){if(\$i==\"total\"){v=\$(i+2);gsub(/M/,\"\",v);t=v}if(\$i==\"used\"){v=\$(i+2);gsub(/M/,\"\",v);u=v}}printf \"swap_total_mb\t%d\n\",t;printf \"swap_used_mb\t%d\n\",u}"
 docker inspect -f "container_health	{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}
 container_status	{{.State.Status}}
 container_restarts	{{.RestartCount}}" "$C" 2>/dev/null || printf "container_status\tmissing\n"
 S=$(docker inspect -f "{{.State.StartedAt}}" "$C" 2>/dev/null || echo "")
-if [ -n "$S" ]; then NOW=$(date +%s); ST=$(date -d "$S" +%s 2>/dev/null || echo "$NOW"); printf "container_uptime_s\t%s\n" "$(( NOW - ST ))"; fi
+if [ -n "$S" ]; then NOW=$(date +%s); SP=${S%.*}; ST=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$SP" +%s 2>/dev/null || echo "$NOW"); printf "container_uptime_s\t%s\n" "$(( NOW - ST ))"; fi
 docker stats --no-stream --format "cpu_pct	{{.CPUPerc}}\nmem_pct	{{.MemPerc}}" "$C" 2>/dev/null | tr -d "%" || true
-printf "caddy\t%s\n" "$(systemctl is-active caddy 2>/dev/null || echo unknown)"
+# 對外入口 = Cloudflare Tunnel 連接器（macOS 無 Caddy/systemctl）。
+printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo active || echo inactive)"
 printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -ciE "error|exception|traceback|critical" || true)"
 printf "data_dir_mb\t%s\n" "$(du -sm "$D" 2>/dev/null | cut -f1 || echo 0)"
 '
@@ -81,7 +92,12 @@ cert_enddate() {
   echo | openssl s_client -connect "${DOMAIN}:443" -servername "$DOMAIN" 2>/dev/null \
     | openssl x509 -noout -enddate 2>/dev/null | sed 's/notAfter=//'
 }
-to_epoch() { date -d "$1" +%s 2>/dev/null || date -j -f "%b %e %T %Y %Z" "$1" +%s 2>/dev/null || echo ""; }
+# macOS date：須 LC_ALL=C（locale 會讓 %b/%e 解析失敗）+ 分解 %T 成 %H:%M:%S
+# （此版 BSD date 對 %T 挑剔），TZ=UTC 對應 openssl 輸出的 GMT。openssl notAfter
+# 格式：「Sep 13 11:00:13 2026 GMT」（單/雙位日皆 %e 容納）。GNU date 分支留作後援。
+to_epoch() { date -d "$1" +%s 2>/dev/null \
+  || LC_ALL=C TZ=UTC date -j -f "%b %e %H:%M:%S %Y %Z" "$1" +%s 2>/dev/null \
+  || echo ""; }
 CERT_RAW="$(cert_enddate || true)"; CERT_DAYS=""
 if [[ -n "$CERT_RAW" ]]; then
   ep="$(to_epoch "$CERT_RAW")"
@@ -158,10 +174,10 @@ fi
 cpu="$(getm cpu_pct)"; add cpu "CPU" "${cpu:-?}%" ok "$cpu"
 mp="$(getm mem_pct)";  add mem_pct "容器記憶體佔比" "${mp:-?}%" ok "$mp"
 
-# Caddy
-cad="$(getm caddy)"; cad="${cad:-unknown}"
-cst="ok"; [[ "$cad" != "active" ]] && cst="crit"
-add caddy "Caddy" "$cad" "$cst" ""
+# Cloudflare Tunnel（對外入口）：active 才綠，否則 crit（公網打不進來）。
+ing="$(getm ingress)"; ing="${ing:-unknown}"
+ist="ok"; [[ "$ing" != "active" ]] && ist="crit"
+add ingress "Cloudflare Tunnel" "$ing" "$ist" ""
 
 # HTTPS 端點（200 才綠；其餘皆 crit —— client 真的打不到）
 hst="crit"; [[ "$HTTP_CODE" == "200" ]] && hst="ok"
