@@ -6,19 +6,21 @@ scope:
   - ops/kg_backup.sh
   - ops/launchd/com.kg.backup.plist
   - ops/cron/kg-backup.cron
-verified_against: d67bed12
+verified_against: b82fc08be
 -->
 # Backup / Restore SOP
 
 > 「沒做過 restore 演練 = 薛丁格的 backup」。本文是 KG 生產 SQLite 資料從 AWS S3 異地 backup **完整還原**的 step-by-step。事故當下下一個 agent 直接讀這份即能恢復服務,**不需問人**。
 >
-> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（macOS / OrbStack docker）。**現役 data 目錄 = `~/kg-data/`（standby；2026-06-16 移出 git worktree，原 `~/project/kg/backend/data/`）**，不再是 Lightsail `/home/ubuntu/knowledge_graph_api/data/`。S3 backup 由 standby launchd（`ops/launchd/com.kg.backup.plist`）跑同一支 `ops/kg_backup.sh`，bucket / IAM / 物件格式不變。**§2 標準流程下方已給 standby 指令**；§3 災難情境的 Lightsail 重建保留為回滾路徑。
+> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（macOS / OrbStack docker）。**現役 data 目錄 = `~/kg-data/`（standby；2026-06-16 移出 git worktree，原 `~/project/kg/backend/data/`）**，不再是 Lightsail `/home/ubuntu/knowledge_graph_api/data/`。S3 backup 由 standby launchd（`ops/launchd/com.kg.backup.plist`）跑同一支 `ops/kg_backup.sh`，bucket / IAM / 物件格式不變。**§2 標準流程下方已給 standby 指令**。
+>
+> **⚠ Lightsail instance 已於 2026-06-19 terminate**：原「快速回滾到 Lightsail」路徑**不再可用**（無 instance、無 elastic IP、無 STOP 容器可 `up`）。§3 的 Lightsail 內容**僅供「從零重建」參考**，不再是現成回滾目標。現役唯一防線 = AWS S3 異地 backup（§2），host 故障時於可達 host（standby 或新建機）上重建 + 拉 S3。
 
 ---
 
 ## 0. 受 backup 涵蓋的內容
 
-現役（standby）：`~/kg-data/`（2026-06-16 移出 git worktree）；回滾（Lightsail）：`/home/ubuntu/knowledge_graph_api/data/`。內容相同：
+現役（standby）：`~/kg-data/`（2026-06-16 移出 git worktree）。（舊 Lightsail data `/home/ubuntu/knowledge_graph_api/data/` 隨 instance 2026-06-19 terminate 一併消失，僅 S3 backup 留存。）內容：
 
 | 子目錄 | 內容 |
 |---|---|
@@ -53,7 +55,7 @@ verified_against: d67bed12
 
 防線層級（遷移後）:
 
-1. ~~**Lightsail AutoSnapshot**~~ — **OFFLINE**（Lightsail STOP，僅留遷移當下漸舊快照當回滾；standby 無 instance 級替代，見 `backup.md`）。
+1. ~~**Lightsail AutoSnapshot**~~ — **已消滅**（Lightsail instance 2026-06-19 terminate，snapshot 與 instance 一併不存；standby 無 instance 級替代，見 `backup.md`）。
 2. ~~**本機 tar backup**~~ — `devops.sh cmd_backup` 寫死 Lightsail，**OFFLINE**；standby 改用手動冷 `tar`（見 `deploy.md §備份 SOP`）。
 3. **AWS S3 異地 backup（現役主防線）** — 本 SOP。standby launchd 每日跑，粒度小、可逐日選版本。
 
@@ -120,7 +122,7 @@ ACTUAL=$(sha256sum /tmp/${DATE}.tar.gz | awk '{print $1}')
 [[ "$EXPECTED" == "$ACTUAL" ]] && echo "✓ MATCH" || { echo "✗ MISMATCH"; exit 1; }
 ```
 
-校驗失敗 → 改拉 noncurrent version(`--version-id <id>` 加在 `aws s3api get-object` 上)或退到 Lightsail Snapshot。
+校驗失敗 → 改拉 noncurrent version(`--version-id <id>` 加在 `aws s3api get-object` 上)。（舊「退到 Lightsail Snapshot」已不可用：instance 2026-06-19 terminate。）
 
 ### 2.5 停容器、備份「壞掉的」現場、解壓覆蓋
 
@@ -181,12 +183,15 @@ done
 
 ### 3a. standby 掛（現役 host 故障）
 
-1. **快速回滾到 Lightsail**：Lightsail 容器只是 STOP，資料停在遷移當下快照。`ssh -i ~/.secrets/lightsail_kg_prod ubuntu@13.193.212.134 'cd ~/knowledge_graph_api && docker compose up -d'` → CF apex 從 tunnel proxied CNAME 改回 A `13.193.212.134` → 進 §2 拉最新 S3 backup 覆蓋 Lightsail data（補回遷移後寫入）。⚠ 資料分岔：Lightsail 快照不含 standby 上線後寫入，**必須**靠 §2 從 S3 拉最新 backup 蓋上。完整回滾見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
-2. **重建 standby**：機器層建置見 butler `~/butler/docs/standby-host-setup.md`；服務層（容器 + cloudflared + launchd）見 butler `~/butler/docs/kg-backend-deployment.md §3-4` → 拉 S3 backup 到 `~/kg-data/`（2026-06-16 移出 worktree） → 同 §2.5–2.8。
+> **⚠ 舊「快速回滾到 Lightsail」已失效**：Lightsail instance 2026-06-19 terminate，無容器可 `up`、無 `13.193.212.134` 可指。standby 掛掉的唯一路徑 = 在可達 host（修好的 standby 或新建機）重建 + 拉 S3。
 
-### 3b. Lightsail 災難情境（僅回滾到 Lightsail 後相關）
+1. **重建 standby（或任一可達 host）**：機器層建置見 butler `~/butler/docs/standby-host-setup.md`；服務層（容器 + cloudflared + launchd）見 butler `~/butler/docs/kg-backend-deployment.md §3-4` → 拉 S3 backup 到 `~/kg-data/`（2026-06-16 移出 worktree） → 同 §2.5–2.8。完整回滾見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
 
-1. **Lightsail Snapshot 還原 instance**(AWS Console → Lightsail → Snapshots → Create instance from snapshot)→ 上面已有 docker / `.env` / `certs/` → 進到 §2 拉最新 S3 backup 覆蓋 data → 改 elastic IP 指到新 instance(或在 Caddyfile / iOS endpoint 切 DNS)。RTO 30–60 分鐘。
+### 3b. Lightsail 重建（歷史參考，instance 已 terminate）
+
+> Lightsail instance 已於 2026-06-19 terminate，本節**不再是現成回滾目標**，僅保留為「若日後需在雲端 Linux host 從零重建」的參考流程。現役災難回復一律走 §3a（重建可達 host + 拉 S3）。
+
+1. **從 snapshot 還原 instance** — **已不適用**（snapshot 隨 instance 一併 terminate）。如需雲端重建，改走下一步全新建置。
 2. **完全空白 instance** → 重跑 `KG_ALLOW_LIGHTSAIL=1 devops.sh deploy`(會 build image, scp `.env`, certs, compose, `VERSION`)→ 拉 S3 backup → 同 §2.5–2.7。RTO 1–2 小時(主要卡 Docker build)。
 
 > 已知陷阱:`compose.yml` 中 `./VERSION:/app/VERSION:ro` 是 bind mount file,如果 `VERSION` 不存在會被 Docker 當成目錄掛,容器秒退 exit 127。`deploy` 流程會寫 `VERSION`,手動還原時 `echo "$(git rev-parse --short HEAD)" > VERSION` 不要漏。
