@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: d0b5c916
+verified_against: b82fc08be
 -->
 # Technical Reference Index
 
@@ -139,11 +139,11 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `release_changelog.sh` | changelog 生成 primitive(依 `api:`/`ios:` prefix 從 git log 自上個同類 tag 分類成 新功能/修復/其他/維運);一般經 `release.sh changelog` 呼叫。前身 `scripts/generate-changelog.sh` |
 | `gen_ios_baseline.sh` | 再生 `docs/snapshot/ios_baseline.md` 快照 |
 | `migrate_sot_history.py` | **SoT 回溯帳本一次性遷移** CLI(`backend/src/kg/sot_history_migrate.py` 的 ops 入口,uv shebang)。對指定 `-u <uid>` 或 `--all` 用戶:**就地**只清 legacy `review_events.db` 的 card_id NULL junk(一次性 `.premigration.bak` 備份 + 前置 WAL checkpoint;不 unlink,不孤兒化 server inode)、從 `cards.db` 確定式合成 SRS 完整的 `review_events`(`is_synthetic=True`、event_id 為 uuid5)、逐 notebook 從 terminal links 合成 `graph_events` 史、並存初始全量 `graph_snapshots`。purge 由 `.sot_history_migrated` marker 鎖定**僅首次**(上線後 re-run 絕不刪真實事件,合成靠 event_id 去重補上)。**dry-run 預設且唯讀**(不改 schema/不建檔);`--apply` 才寫且需 `--i-stopped-the-api`(防 live-dir 併發寫);`resolve_uid` 走 `data_dir()`、存在性 hard guard;冪等可重跑。輸出 `MigrationReport`。合成引擎 `demo_review_synth.py`(複習史)+ `graph_history_synth.py`(圖譜史) |
-| `devops_kg_safe.sh` | 部署 / 維護 safe wrapper。命令面:`preflight` / `deploy` / `restart` / `status` / `health [--json]` / `logs [n]` / `caddy-status` / `caddyfile` / `docker-ps` / `docker-logs [n]` / `disk-usage` / `memory-usage` / `docker-stats` / `backup` / `backup-s3-test` / `env-check` / `env-drift` / `migrate` / `users` / `user-info <id>` / `run` / `container-run` / `migrate-run` / `ops-cli` / `ops-edit` / `ops-edit-batch <plan.json>` / `container-script`。其中新增的 typed debug surfaces 皆是固定唯讀命令映射，目標是把高頻 debug 查詢從自由字串 `run` 收斂掉；`ops-edit-batch` 會把本地 `kg.ops_edit_batch.v1` plan 上傳到 container 內一次執行，專供大量 demo shaping / materialize，避免數百次單筆 round-trip。對 `docker ps` / `sudo systemctl status caddy` / `df -h` 等已 typed 查詢，raw `run` 會直接拒絕並提示對應子命令。`run/container-run/migrate-run` 保留為例外 escape hatch。預設擋 `setup` / `push-env` / `delete-user` / `ssh` / destructive run command；任意遠端命令先經 `is_blocked_run` |
+| `devops_kg_safe.sh` | 部署 / 維護 safe wrapper。命令面:`preflight` / `deploy` / `restart` / `status` / `health [--json]`（macOS-native 探針：vm_stat/sysctl 記憶體·swap、cloudflared `ingress`(取代舊 `caddy` metric)、CF 邊緣 TLS 憑證）/ `logs [n]` / `caddy-status`（**standby 回報 N/A**：無 Caddy，改吐 cloudflared tunnel 狀態）/ `caddyfile`（**standby 回報 N/A**：CF Tunnel ingress 由 CF 端 remotely-managed）/ `docker-ps` / `docker-logs [n]` / `disk-usage` / `memory-usage` / `docker-stats` / `backup` / `backup-s3-test` / `env-check` / `env-drift` / `migrate` / `users` / `user-info <id>` / `run` / `container-run` / `migrate-run` / `ops-cli` / `ops-edit` / `ops-edit-batch <plan.json>` / `container-script`。其中新增的 typed debug surfaces 皆是固定唯讀命令映射，目標是把高頻 debug 查詢從自由字串 `run` 收斂掉；`ops-edit-batch` 會把本地 `kg.ops_edit_batch.v1` plan 上傳到 container 內一次執行，專供大量 demo shaping / materialize，避免數百次單筆 round-trip。對 `docker ps` / `sudo systemctl status caddy` / `df -h` 等已 typed 查詢，raw `run` 會直接拒絕並提示對應子命令。`run/container-run/migrate-run` 保留為例外 escape hatch。預設擋 `setup` / `push-env` / `delete-user` / `ssh` / destructive run command；任意遠端命令先經 `is_blocked_run` |
 | `status_all.sh` | 相容入口；不再直接 SSH，委派 `devops_kg_safe.sh status` + `devops_kg_safe.sh health` 一覽 backend / caddy / 容器 / host health |
 | `backup_verify.sh` | tarball 還原演練 + SQLite integrity |
-| `kg_backup.sh` | server 端 streaming tar → S3 backup;cron 觸發,日誌 `/var/log/kg_backup.log` |
-| `cron/kg-backup.cron` | `/etc/cron.d/kg-backup`(daily UTC 03:00) |
+| `kg_backup.sh` | server 端 streaming tar → S3 backup;**standby 由 launchd `com.kg.backup` 觸發**(非 cron),日誌 `~/Library/Logs/kg_backup.log`(`KG_DATA_DIR`/`KG_BACKUP_LOG` 由 plist 覆寫,腳本內預設值不命中) |
+| `launchd/com.kg.backup.plist` | standby 排程備份 job(`StartCalendarInterval`,LOCAL=Asia/Taipei);取代已停用的 Lightsail `cron/kg-backup.cron` |
 | `podcast_upload.sh` | 播客資源上傳(workspace 佈局 → S3,idempotent + index 重建);pipeline 終端 `publish` stage 自動呼叫 |
 | `podcast_backfill_disk.py` | served-disk(`/app/data/podcasts/`)→ S3 回填 + `--check` drift reconcile;容器內 boto3 跑(dry-run 預設、無 delete、注入 `audioFormat`) |
 | `podcast_preview_backfill.py` | free-tier **試聽片**回填,與 audio/cover 完全解耦:對 bucket 內既有 series,下載 `ep_01/audio.<fmt>` → `ffmpeg -t 180 -c copy` → PUT `ep_01/preview.<fmt>` → RMW `metadata.json` ep1 `previewAvailable`/`previewDurationSec`(不 bump updatedAt → 冪等;不重建 index,preview 欄在 episodes 內被 index strip)。`--all`/`--series`、dry-run 預設、`--execute` 才寫、`--check` drift(in_sync/missing/flag_without_preview/preview_without_flag);per-series 失敗記錄不中斷批次。新 series 由 `ops/podcast_upload.sh` 在 publish 時對 ep_01 自動生成 preview(同 stream-copy) |
@@ -194,13 +194,13 @@ Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`user-config <ui
 
 | 項目 | 值 / 路徑 |
 |------|-----------|
-| L1 Lightsail AutoSnapshot | 每日 UTC 22:00,保留 7 份 |
+| L1 Lightsail AutoSnapshot | **已停用**(Lightsail instance 2026-06-19 terminate);standby 無對應 host snapshot 層 |
 | L3 S3 bucket | `s3://kg-backups-prod-967512079054`(ap-northeast-1, Versioning + MFA Delete + SSE-S3,**無 lifecycle**) |
 | S3 IAM user | `kg-backup-agent` — 僅 `s3:PutObject*`,無 Delete / List |
-| Server backup script | `/usr/local/bin/kg_backup.sh`(root 755) |
-| Server cron | `/etc/cron.d/kg-backup` — daily UTC 03:00 |
-| Server log | `/var/log/kg_backup.log`(每執行一行:exit / bytes / sha256 / key) |
-| Server AWS profile | `/home/ubuntu/.aws/`(uid 1000)+ `/root/.aws/`(cron 用) |
+| Server backup script | `ops/kg_backup.sh`(standby `~/project/kg/ops/`;舊 Lightsail `/usr/local/bin/kg_backup.sh` 已停用) |
+| Server scheduler | launchd `com.kg.backup`(plist `ops/launchd/com.kg.backup.plist`,LOCAL time;舊 `/etc/cron.d/kg-backup` 已停用) |
+| Server log | `~/Library/Logs/kg_backup.log`(每執行一行:exit / bytes / sha256 / key) |
+| Server AWS profile | standby `~/.aws/`(user chenliangyu) |
 | S3 key 格式 | `data/YYYY-MM-DD.tar.gz`(UTC 日期) |
 | Lifecycle | 無(MFA Delete 互斥)— 永久累積,手動清見 `backup_restore.md §7` |
 | 手動觸發 | `./ops/devops_kg_safe.sh backup-s3-test` |
