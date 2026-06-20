@@ -3,7 +3,7 @@
 #
 # Pipeline:
 #   tar -czf - data/  →  tee >(sha256sum)  →  aws s3 cp - s3://...
-# Writes a one-line audit log to /var/log/kg_backup.log per run:
+# Writes a one-line audit log per run (path from $KG_BACKUP_LOG):
 #   <timestamp> exit=<rc> bytes=<size> sha256=<hash> key=<s3 key>
 #
 # Intentionally NO local intermediate file: avoids filling the data disk and
@@ -14,14 +14,18 @@
 #     ops/launchd/com.kg.backup.plist as user chenliangyu, with
 #     KG_DATA_DIR=~/kg-data (moved out of git worktree 2026-06-16), KG_BACKUP_LOG=~/Library/Logs/kg_backup.log.
 #     Uses /sbin/sha256sum + bsdtar (both present on macOS).
-#   - Lightsail (stopped rollback, Linux): was /usr/local/bin/kg_backup.sh run by
-#     /etc/cron.d/kg-backup as root (cron now disabled; see ops/cron/kg-backup.cron).
+#   - Lightsail (Linux): historical host, instance terminated 2026-06-19. Was
+#     /usr/local/bin/kg_backup.sh run by /etc/cron.d/kg-backup as root. No longer
+#     a live target; kept here only for reference (see ops/cron/kg-backup.cron).
+#
+# Defaults below are host-agnostic fallbacks only; prod always provides
+# KG_DATA_DIR / KG_BACKUP_LOG via env (launchd plist), so they don't get hit.
 set -euo pipefail
 
 BUCKET="${KG_BACKUP_BUCKET:-kg-backups-prod-967512079054}"
 REGION="${KG_BACKUP_REGION:-ap-northeast-1}"
-DATA_DIR="${KG_DATA_DIR:-/home/ubuntu/knowledge_graph_api/data}"
-LOG="${KG_BACKUP_LOG:-/var/log/kg_backup.log}"
+DATA_DIR="${KG_DATA_DIR:-$HOME/kg-data}"
+LOG="${KG_BACKUP_LOG:-$HOME/kg_backup.log}"
 
 DATE="$(date -u +%Y-%m-%d)"
 KEY="data/${DATE}.tar.gz"
