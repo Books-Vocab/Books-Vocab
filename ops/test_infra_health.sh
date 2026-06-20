@@ -5,6 +5,10 @@
 #   KG_BASE                  指向 stub，取代 ./devops.sh，攔截 `run "<bundle>"`，吐 canned 指標
 #   KG_HEALTH_CERT_ENDDATE   注入憑證 notAfter（繞過 openssl 網路呼叫）
 #   KG_HEALTH_HTTP_CODE      注入 HTTPS 探針 http_code（繞過 curl）
+#
+# 注意：stub 直接吐 canned tab 指標（忽略 REMOTE_BUNDLE），故 macOS-native 探針
+#   （vm_stat/sysctl 記憶體·swap、cloudflared ingress、date StartedAt 解析）的真實
+#   解析行為無法在此 stub 行使，須靠 standby 實機 `health --json` 驗證（見 receipt）。
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,14 +35,16 @@ printf 'container_status\trunning\n'
 printf 'container_restarts\t%s\n' "${KG_TEST_RESTARTS:-0}"
 printf 'container_uptime_s\t%s\n' "${KG_TEST_UPTIME:-93600}"
 printf 'cpu_pct\t4.2\n'; printf 'mem_pct\t38.0\n'
-printf 'caddy\t%s\n' "${KG_TEST_CADDY:-active}"
+printf 'ingress\t%s\n' "${KG_TEST_INGRESS:-active}"
 printf 'log_errors_1h\t%s\n' "${KG_TEST_ERRS:-0}"
 printf 'data_dir_mb\t393\n'
 EOF
 chmod +x "$STUB"
 trap 'rm -f "$STUB"' EXIT
 
-FUTURE_CERT="$(date -u -v+30d '+%b %e %T %Y GMT' 2>/dev/null || date -u -d '+30 days' '+%b %e %T %Y GMT')"
+# openssl notAfter 一律英文月名（如 "Sep 13 .. 2026 GMT"）；fixture 須 LC_ALL=C
+# 才不會被系統 locale 換成本地月名（如 "7月"），否則無法行使真實解析路徑。
+FUTURE_CERT="$(LC_ALL=C date -u -v+30d '+%b %e %T %Y GMT' 2>/dev/null || LC_ALL=C date -u -d '+30 days' '+%b %e %T %Y GMT')"
 
 run_health() {  # 預設健康全綠的環境
   KG_BASE="$STUB" KG_HEALTH_CERT_ENDDATE="${KG_HEALTH_CERT_ENDDATE:-$FUTURE_CERT}" \
@@ -65,8 +71,16 @@ echo "$js" | py 'import sys,json;d=json.load(sys.stdin);assert d["overall"]=="ok
 section "JSON：raw 數值欄（B agent 回饋）"
 echo "$js" | py 'import sys,json;d=json.load(sys.stdin);m={x["key"]:x for x in d["metrics"]};assert m["disk_pct"]["raw"]==27,m["disk_pct"];assert isinstance(m["disk_pct"]["raw"],(int,float))' \
   && ok "disk_pct.raw 為純數值 27" || fail_t "disk_pct.raw 非數值"
-echo "$js" | py 'import sys,json;d=json.load(sys.stdin);m={x["key"]:x for x in d["metrics"]};assert m["caddy"]["raw"] is None,m["caddy"]' \
-  && ok "非數值 metric raw=null" || fail_t "caddy.raw 非 null"
+echo "$js" | py 'import sys,json;d=json.load(sys.stdin);m={x["key"]:x for x in d["metrics"]};assert m["ingress"]["raw"] is None,m["ingress"]' \
+  && ok "非數值 metric raw=null" || fail_t "ingress.raw 非 null"
+
+section "Cloudflare Tunnel ingress：active → ok"
+echo "$js" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="ingress"][0];assert g["status"]=="ok" and g["value"]=="active",g' \
+  && ok "ingress active → ok" || fail_t "ingress active 未 ok"
+
+section "Cloudflare Tunnel ingress：inactive → crit"
+echo "$(KG_TEST_INGRESS=inactive run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="ingress"][0];assert g["status"]=="crit",g;assert d["overall"]=="crit",d["overall"]' \
+  && ok "ingress inactive → crit" || fail_t "ingress inactive 未 crit"
 
 section "閾值：磁碟 92% → crit"
 echo "$(KG_TEST_DISK=92 run_health --json 2>/dev/null)" | py 'import sys,json;assert json.load(sys.stdin)["overall"]=="crit"' \
@@ -77,7 +91,7 @@ echo "$(KG_TEST_HEALTH=unhealthy run_health --json 2>/dev/null)" | py 'import sy
   && ok "容器 unhealthy crit" || fail_t "容器 unhealthy 未 crit"
 
 section "閾值：憑證 2 天 → crit"
-SOON="$(date -u -v+2d '+%b %e %T %Y GMT' 2>/dev/null || date -u -d '+2 days' '+%b %e %T %Y GMT')"
+SOON="$(LC_ALL=C date -u -v+2d '+%b %e %T %Y GMT' 2>/dev/null || LC_ALL=C date -u -d '+2 days' '+%b %e %T %Y GMT')"
 echo "$(KG_HEALTH_CERT_ENDDATE="$SOON" run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);c=[m for m in d["metrics"] if m["key"]=="cert_days_left"][0];assert c["status"]=="crit",c' \
   && ok "憑證 2 天 crit" || fail_t "憑證 2 天 未 crit"
 

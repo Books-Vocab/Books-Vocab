@@ -196,11 +196,13 @@ main() {
       run_fixed_remote "docker stats --no-stream"
       ;;
     health)
-      # host 層唯讀健康聚合（系統資源 + 容器 + Caddy + TLS 憑證 + 近期錯誤）。
+      # host 層唯讀健康聚合（系統資源 + 容器 + Cloudflare Tunnel + TLS 憑證 + 近期錯誤）。
       # 全唯讀，補 ops-cli（讀業務 DB）看不到的機器層盲區。--json 走 stdout。
+      # data dir 單一真相：由本 wrapper 已知的 standby 路徑注入 infra_health（兩處不各寫死）。
       preflight
       shift
-      "$ROOT_DIR/ops/infra_health.sh" "$@"
+      KG_DATA_DIR="${KG_REMOTE_DATA_DIR:-/Users/chenliangyu/kg-data}" \
+        "$ROOT_DIR/ops/infra_health.sh" "$@"
       ;;
     user-info)
       preflight
