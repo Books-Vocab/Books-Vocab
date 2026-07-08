@@ -5,6 +5,7 @@ private let uiTestAppArgumentsEnvKey = "KG_UI_TEST_APP_ARGS_JSON"
 private let uiTestLaunchProfileEnvKey = "KG_UI_TEST_LAUNCH_PROFILE"
 private let uiTestPerfLogEnvKey = "KG_PERF_LOG"
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
+private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 
 enum UITestFixture: Equatable {
     case raw(String)
@@ -80,13 +81,16 @@ struct UITestLaunchConfiguration {
         if let perfLog, !perfLog.isEmpty {
             environment[uiTestPerfLogEnvKey] = perfLog
         }
-        // ios_test.sh --dataset exports the dataset onto the runner process;
+        // ios_test.sh --dataset exports the dataset onto the runner process
+        // (deflate+base64 by default; plaintext base64 kept for compatibility);
         // forward it into the app so the seeders' renderModel chain picks it
         // up. An explicit per-test value always wins over the runner-wide one.
-        if environment[fixtureDatasetEnvKey] == nil,
-           let dataset = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey],
-           !dataset.isEmpty {
-            environment[fixtureDatasetEnvKey] = dataset
+        for key in [fixtureDatasetDeflateEnvKey, fixtureDatasetEnvKey] {
+            if environment[key] == nil,
+               let dataset = ProcessInfo.processInfo.environment[key],
+               !dataset.isEmpty {
+                environment[key] = dataset
+            }
         }
         return environment
     }

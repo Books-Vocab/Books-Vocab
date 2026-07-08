@@ -268,13 +268,34 @@ prepare_xctestrun="$(echo "$prepare_catalog_json" | jq -r '.cache.xctestrunPath'
 [[ -f "$prepare_xctestrun" ]] \
   && ok "catalog prepare materializes xctestrun artifact" || fail_t "catalog prepare missing xctestrun: $prepare_xctestrun"
 dataset_fixture_json="$WORKSPACE/ops/fixtures/ui_worlds/marketing_demo.json"
-dataset_fixture_b64="$(base64 <"$dataset_fixture_json" | tr -d '\n')"
+# Plaintext base64 of a multi-MB UI World overflows the ~1MB spawn env block —
+# the injection contract is base64(raw DEFLATE), produced by the shared lib.
+FIXTURE_DATASET_ENV_LIB="$WORKSPACE/ops/lib/fixture_dataset_env.sh"
+[[ -f "$FIXTURE_DATASET_ENV_LIB" ]] \
+  && ok "fixture_dataset_env.sh exists" || fail_t "fixture_dataset_env.sh missing"
+bash -n "$FIXTURE_DATASET_ENV_LIB" && ok "fixture_dataset_env.sh syntax" || fail_t "fixture_dataset_env.sh syntax"
+dataset_fixture_b64="$(bash -c 'source "$1"; kg_fixture_dataset_deflate_b64 "$2"' _ "$FIXTURE_DATASET_ENV_LIB" "$dataset_fixture_json")"
+[[ -n "$dataset_fixture_b64" ]] \
+  && ok "kg_fixture_dataset_deflate_b64 emits non-empty payload" || fail_t "kg_fixture_dataset_deflate_b64 emitted nothing"
+# Independent oracle: base64-decode + raw-DEFLATE-inflate must roundtrip to the
+# exact source bytes (raw stream, wbits=-15 — Apple `.zlib` semantics).
+dataset_roundtrip_ok="$(printf '%s' "$dataset_fixture_b64" | base64 -d | "${UV_BIN:-$HOME/.local/bin/uv}" run --python 3.13 python -c '
+import sys, zlib
+inflated = zlib.decompress(sys.stdin.buffer.read(), wbits=-15)
+expected = open(sys.argv[1], "rb").read()
+print("ok" if inflated == expected else "mismatch")
+' "$dataset_fixture_json")"
+[[ "$dataset_roundtrip_ok" == "ok" ]] \
+  && ok "deflate payload roundtrips to source dataset bytes (raw DEFLATE)" || fail_t "deflate payload roundtrip: $dataset_roundtrip_ok"
 dataset_scoped_xctestrun="$catalog_tmp/dataset.scoped.xctestrun"
 ROOT="$WORKSPACE" XCODEPROJ="$WORKSPACE/ios/BooksAndVocab.xcodeproj" \
   bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_prepare_scoped_xctestrun "'"$prepare_xctestrun"'" "" "" "'"$dataset_fixture_b64"'" "'"$dataset_scoped_xctestrun"'"'
-[[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
-  && [[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
-  && ok "catalog scoped xctestrun embeds fixture dataset env" || fail_t "catalog scoped xctestrun missing fixture dataset env"
+[[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
+  && [[ "$(plutil -extract 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64' raw -o - "$dataset_scoped_xctestrun")" == "$dataset_fixture_b64" ]] \
+  && ok "catalog scoped xctestrun embeds deflate fixture dataset env" || fail_t "catalog scoped xctestrun missing deflate fixture dataset env"
+! plutil -extract 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun" >/dev/null 2>&1 \
+  && ! plutil -extract 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' raw -o - "$dataset_scoped_xctestrun" >/dev/null 2>&1 \
+  && ok "catalog scoped xctestrun does not stage legacy plaintext dataset key" || fail_t "catalog scoped xctestrun still stages KG_FIXTURE_DATASET_B64"
 prepare_catalog_hit_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_CATALOG_CACHE_ROOT="$catalog_cache_root" bash "$IOS_OPS" catalog prepare --json)"
 echo "$prepare_catalog_hit_json" | jq -e '.schema=="kg.ios.catalog.prepare.v1" and .status=="ok" and .cache.status=="hit" and .build.exitCode==0' >/dev/null \
   && ok "catalog prepare reuses ready cache without rebuilding" || fail_t "catalog prepare hit invalid: $prepare_catalog_hit_json"
@@ -1158,15 +1179,24 @@ ds_staged_value="$(
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables dict" "$base"
-    UI_FIXTURE_DATASET_B64="aGVsbG8+Pz8rLz1aWg=="
+    UI_FIXTURE_DATASET_DEFLATE_B64="aGVsbG8+Pz8rLz1aWg=="
     staged="$tmp/base_dataset_test.scoped.xctestrun"
     stage_fixture_dataset_xctestrun "$base" "$staged"
-    /usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64" "$staged"
+    /usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64" "$staged"
   ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
 )"
 [[ "$ds_staged_value" == "aGVsbG8+Pz8rLz1aWg==" ]] \
-  && ok "ios_test dataset staging upserts KG_FIXTURE_DATASET_B64 into xctestrun copy (base64 +/= safe)" \
+  && ok "ios_test dataset staging upserts KG_FIXTURE_DATASET_DEFLATE_B64 into xctestrun copy (base64 +/= safe)" \
   || fail_t "ios_test dataset staging roundtrip: got '$ds_staged_value'"
+grep -q 'source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'kg_fixture_dataset_deflate_b64' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test produces dataset env via shared deflate lib" \
+  || fail_t "ios_test does not use fixture_dataset_env.sh deflate producer"
+grep -q 'kg_fixture_dataset_deflate_b64' "$WORKSPACE/ops/review_flip_probe.sh" \
+  && grep -q 'KG_FIXTURE_DATASET_DEFLATE_B64' "$WORKSPACE/ops/review_flip_probe.sh" \
+  && ! grep -q 'KG_FIXTURE_DATASET_B64=' "$WORKSPACE/ops/review_flip_probe.sh" \
+  && ok "review_flip_probe injects deflate dataset env on all launch paths" \
+  || fail_t "review_flip_probe still injects plaintext KG_FIXTURE_DATASET_B64"
 grep -q 'STAGED_DATASET_XCTESTRUN="\${xctestrun_path%' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'rm -f "\${STAGED_DATASET_XCTESTRUN:-}"' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test staged dataset xctestrun is parent-shell tracked + cleaned in trap" \

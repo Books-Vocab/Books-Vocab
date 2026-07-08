@@ -3,6 +3,8 @@
 
 # shellcheck source=ios_cache_evict.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_cache_evict.sh"
+# shellcheck source=fixture_dataset_env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixture_dataset_env.sh"
 
 CATALOG_SCHEME="BooksAndVocabCatalogSnapshots"
 CATALOG_LAST_BUILD_WALL_MS=0
@@ -414,11 +416,11 @@ catalog_remove_plist_key() {
   plutil -remove "$key_path" "$plist_path" >/dev/null 2>&1 || true
 }
 
+# base64(raw DEFLATE) — plaintext base64 of a multi-MB world overflows the
+# ~1MB spawn env block and the app silently sees no dataset (see
+# ops/lib/fixture_dataset_env.sh).
 catalog_dataset_base64() {
-  local dataset_path="$1"
-  [[ -n "$dataset_path" ]] || return 0
-  [[ -f "$dataset_path" ]] || return 1
-  base64 <"$dataset_path" | tr -d '\n'
+  kg_fixture_dataset_deflate_b64 "$1"
 }
 
 catalog_uv_bin() {
@@ -464,12 +466,16 @@ catalog_prepare_scoped_xctestrun() {
     catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_SCENARIOS'
   fi
   if [[ -n "$dataset_b64" ]]; then
-    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64' "$dataset_b64"
-    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64' "$dataset_b64"
+    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64' "$dataset_b64"
+    catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64' "$dataset_b64"
   else
-    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64'
-    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64'
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64'
+    catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_DEFLATE_B64'
   fi
+  # Legacy plaintext key: never co-stage — both keys set is a fail-loud error
+  # in the app (ambiguous UI World source).
+  catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_B64'
+  catalog_remove_plist_key "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_B64'
 }
 
 catalog_run_scoped_xctestrun() {
