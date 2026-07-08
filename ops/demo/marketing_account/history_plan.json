@@ -1,0 +1,12 @@
+{
+ "schema": "kg.history_plan.v1",
+ "anchor_day": "2026-07-09",
+ "render_utc_offset_hours": [9, 8],
+ "current_streak_days": 26,
+ "longest_streak_days": 41,
+ "due_at_anchor": {"primary": 8, "other": 4},
+ "due_horizon_days": 30,
+ "weekday_weights": [1.0, 1.0, 1.0, 1.0, 1.2, 1.6, 1.5],
+ "event_utc_hours": [1, 14],
+ "daily_primary_events_max": 30
+}
