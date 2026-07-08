@@ -73,6 +73,19 @@ def _build_parser() -> argparse.ArgumentParser:
     for name in _EMITTERS:
         sp = sub.add_parser(name, parents=[globals_parent], help=f"run the {name} emitter")
         sp.set_defaults(target=name)
+        if name == "emit-ios":
+            # SPEC MODE (marketing-account projector): derive the
+            # vocabulary/notebook/reviewDeck/todayReview domains from a Phase-1
+            # `ops_cli world-export` seed spec; every other domain follows the
+            # committed baseline. Writes ONLY to --out; the committed generated
+            # artifact and its --check gate are untouched. --check compares
+            # --out against a fresh emit of --spec.
+            sp.add_argument(
+                "--spec", metavar="PATH", default=None,
+                help="kg.seed_spec.v1 input (ops_cli world-export output); requires --out")
+            sp.add_argument(
+                "--out", metavar="PATH", default=None,
+                help="spec-mode output path for the generated UI World JSON")
     return parser
 
 
@@ -97,8 +110,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     emit_fn = _EMITTERS[args.target]
+    extra_kwargs: dict = {}
+    if getattr(args, "spec", None) is not None or getattr(args, "out", None) is not None:
+        # Only emit-ios declares --spec/--out; emit_ios.emit fail-louds when
+        # only one of the pair is provided.
+        extra_kwargs = {"spec_path": getattr(args, "spec", None),
+                        "out_path": getattr(args, "out", None)}
     try:
-        result = emit_fn(sot, check=args.check, commit=args.commit)
+        result = emit_fn(sot, check=args.check, commit=args.commit, **extra_kwargs)
     except NotImplementedError as exc:
         # Phase A: stubs are not implemented yet. Surface clearly, exit non-zero
         # so a check gate never reports a false green against an unimplemented emitter.

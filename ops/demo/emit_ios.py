@@ -45,11 +45,26 @@ DOCUMENT SHAPE  (FixtureDatasetDocument top-level keys — exact, see Swift stru
 CHECK MODE
   Re-emit the UI World file in memory, byte-compare against the committed artifact,
   return a drift verdict (exit 1 on drift via build_demo.py).
+
+SPEC MODE  (marketing-account projector, Phase 2/6)
+  `build_demo.py emit-ios --spec <kg.seed_spec.v1> --out <path>` derives the
+  vocabulary / notebook / reviewDeck / todayReview domains from a Phase-1
+  `ops_cli world-export` seed spec (projection rules live in
+  ops/demo/spec_world.py; deterministic, byte-stable). Every other domain plus
+  the identity auth overlay follows the exact baseline recipe above. Inside the
+  four spec domains, the account-data-independent UI-chrome fixtures listed in
+  SPEC_BASELINE_KEPT_FIXTURES stay byte-equal to the baseline — notably the
+  notebook.readerPicker* rows are cross-referenced by baseline bookshelf
+  `preferredNotebookId` and MUST NOT be replaced. Spec mode writes ONLY to the
+  caller-provided --out path; the committed generated artifact and its --check
+  drift gate are frozen. --check in spec mode byte-compares --out against a
+  fresh emit of --spec. datasetID = "spec-" + sha256(canonical spec)[:12].
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import sys
@@ -65,7 +80,10 @@ _REPO_ROOT = _HERE.parent.parent  # ops/demo -> ops -> repo root
 _OPS_DIR = _REPO_ROOT / "ops"
 if str(_OPS_DIR) not in sys.path:
     sys.path.insert(0, str(_OPS_DIR))
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
 
+import spec_world  # noqa: E402
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file  # noqa: E402
 
 _LOGGER = logging.getLogger(__name__)
@@ -105,15 +123,22 @@ IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "authError",
     "isAuthenticating",
 }
+SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"})
+# spec 模式下四 domain 內仍沿用 baseline 的 fixture id（帳號資料無關的 UI-chrome /
+# gallery 語意；其中 notebook.readerPicker* 的 rows 是 baseline bookshelf
+# `preferredNotebookId` 的跨 domain ref 解析目標，替換會破壞 cross-ref 驗證）。
+SPEC_BASELINE_KEPT_FIXTURES = (
+    ("notebook", "coverGallery"),
+    ("notebook", "cardGallery"),
+    ("notebook", "editGallery"),
+    ("notebook", "readerPickerMany"),
+    ("notebook", "readerPickerPopulated"),
+    ("todayReview", "longContent"),
+)
 
 
-def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
-    identity = sot.identity
-    baseline = _load_base_ui_world()
-    document = dict(baseline)
-    document["schema"] = FIXTURE_SCHEMA
-    document["datasetID"] = f"demo-{identity['user_id']}"
-    auth = dict(document["auth"])
+def _overlay_identity_auth(baseline_auth: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
+    auth = dict(baseline_auth)
     signed_in = dict(auth["signedIn"])
     signed_in.update(
         {
@@ -130,9 +155,41 @@ def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
         }
     )
     auth["signedIn"] = signed_in
-    document["auth"] = auth
+    return auth
+
+
+def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
+    identity = sot.identity
+    baseline = _load_base_ui_world()
+    document = dict(baseline)
+    document["schema"] = FIXTURE_SCHEMA
+    document["datasetID"] = f"demo-{identity['user_id']}"
+    document["auth"] = _overlay_identity_auth(baseline["auth"], identity)
     _validate_fixture_document(document, baseline)
     return document
+
+
+def _spec_digest(spec: dict[str, Any]) -> str:
+    canonical = json.dumps(spec, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()[:12]
+
+
+def _build_spec_fixture_document(
+    sot: DemoSoT, spec: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """spec 模式:baseline + 四 domain spec-derived merge + identity auth overlay。"""
+    baseline = _load_base_ui_world()
+    derived, stats = spec_world.derive_domains(spec)
+    document = dict(baseline)
+    document["schema"] = FIXTURE_SCHEMA
+    document["datasetID"] = f"spec-{_spec_digest(spec)}"
+    for domain, seeds in derived.items():
+        merged = dict(baseline[domain])
+        merged.update(seeds)
+        document[domain] = merged
+    document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
+    _validate_fixture_document(document, baseline, spec_domains=SPEC_DOMAINS)
+    return document, stats
 
 
 def _load_base_ui_world() -> dict[str, Any]:
@@ -146,8 +203,18 @@ def _load_base_ui_world() -> dict[str, Any]:
     return data
 
 
-def _validate_fixture_document(document: dict[str, Any], baseline: dict[str, Any]) -> None:
-    """Fail loud if generated demo stops being a UI World + identity overlay."""
+def _validate_fixture_document(
+    document: dict[str, Any],
+    baseline: dict[str, Any],
+    *,
+    spec_domains: frozenset[str] = frozenset(),
+) -> None:
+    """Fail loud if generated demo stops being a UI World + identity overlay.
+
+    `spec_domains`（spec 模式）內的 domain 允許內容偏離 baseline，但 fixture id
+    key set 必須與 baseline 完全一致（Swift *FixtureID.allCases registry 契約），
+    且 SPEC_BASELINE_KEPT_FIXTURES 列出的 UI-chrome fixture 必須 byte-equal。
+    """
     top_level = set(document)
     if top_level != FIXTURE_TOP_LEVEL_KEYS:
         extra = sorted(top_level - FIXTURE_TOP_LEVEL_KEYS)
@@ -165,11 +232,25 @@ def _validate_fixture_document(document: dict[str, Any], baseline: dict[str, Any
             f"{BASE_UI_WORLD_PATH} has invalid top-level keys extra={extra} missing={missing}"
         )
 
-    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"}):
+    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"} - spec_domains):
         if document[key] != baseline[key]:
             raise ValueError(
                 "generated iOS UI World may only overlay identity-owned auth; "
                 f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
+            )
+
+    for domain in sorted(spec_domains):
+        if set(document[domain]) != set(baseline[domain]):
+            extra = sorted(set(document[domain]) - set(baseline[domain]))
+            missing = sorted(set(baseline[domain]) - set(document[domain]))
+            raise ValueError(
+                f"spec-derived domain {domain!r} fixture id key set must equal baseline "
+                f"(Swift allCases registry contract) extra={extra} missing={missing}"
+            )
+    for domain, fixture_id in SPEC_BASELINE_KEPT_FIXTURES:
+        if domain in spec_domains and document[domain][fixture_id] != baseline[domain][fixture_id]:
+            raise ValueError(
+                f"spec mode must keep UI-chrome fixture {domain}.{fixture_id} byte-equal to baseline"
             )
 
     auth = document["auth"]
@@ -226,6 +307,28 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
     return [(FIXTURE_JSON_PATH, content)]
 
 
+def _spec_build(
+    sot: DemoSoT, *, spec_path: Path, out_path: Path
+) -> tuple[Path, bytes, dict[str, Any], dict[str, Any]]:
+    """spec 模式共用管線:載入 → 投影 → serialize → shared-validator 驗證。
+
+    `_spec_artifacts`(測試 seam)與 `_emit_spec`(CLI)都走這一條,防兩路徑 drift。
+    """
+    spec = spec_world.load_seed_spec(Path(spec_path))
+    document, stats = _build_spec_fixture_document(sot, spec)
+    content = _json_bytes(document)
+    _validate_fixture_json_bytes(content)
+    return Path(out_path), content, document, stats
+
+
+def _spec_artifacts(
+    sot: DemoSoT, *, spec_path: Path, out_path: Path
+) -> list[tuple[Path, bytes]]:
+    """spec 模式 artifact:回傳 (out_path, bytes)。"""
+    out, content, _document, _stats = _spec_build(sot, spec_path=spec_path, out_path=out_path)
+    return [(out, content)]
+
+
 def _rel(path: Path) -> str:
     try:
         return str(path.relative_to(_REPO_ROOT))
@@ -234,20 +337,94 @@ def _rel(path: Path) -> str:
         return str(path)
 
 
-def emit(sot: DemoSoT, *, check: bool = False, commit: bool = False) -> dict:
+def _emit_spec(
+    sot: DemoSoT,
+    *,
+    spec_path: Path,
+    out_path: Path,
+    check: bool,
+    commit: bool,
+) -> dict:
+    """Spec 模式的 emit:輸出到呼叫者指定路徑，不碰 committed artifact。"""
+    out, content, document, stats = _spec_build(sot, spec_path=spec_path, out_path=out_path)
+
+    base: dict[str, Any] = {
+        "mode": "spec",
+        "spec": str(spec_path),
+        "datasetID": document["datasetID"],
+        "specStats": stats,
+        "bytes": len(content),
+        "base64Bytes": (len(content) + 2) // 3 * 4,  # KG_FIXTURE_DATASET_B64 注入體積
+        "specDerivedDomains": sorted(SPEC_DOMAINS),
+        "baselineKeptFixtures": [f"{d}.{f}" for d, f in SPEC_BASELINE_KEPT_FIXTURES],
+    }
+
+    if check:
+        if not out.exists():
+            return {**base, "action": "check", "drift": True,
+                    "drifted": [{"path": str(out), "reason": "missing"}]}
+        actual = out.read_bytes()
+        drifted = (
+            [{"path": str(out), "reason": "content-mismatch",
+              "committed_bytes": len(actual), "fresh_bytes": len(content)}]
+            if actual != content else []
+        )
+        return {**base, "action": "check", "drift": bool(drifted), "drifted": drifted}
+
+    if commit:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(content)
+        return {
+            **base,
+            "action": "commit",
+            "drift": False,
+            "written": [str(out)],
+            "inject_hint": (
+                f"./ops/ios_ops.sh catalog snapshots --dataset-file {out} ...  # or: "
+                f"./ops/ios_test.sh --ui --dataset-file {out} ..."
+            ),
+        }
+
+    return {**base, "action": "dry-run", "drift": False, "planned_paths": [str(out)]}
+
+
+def emit(
+    sot: DemoSoT,
+    *,
+    check: bool = False,
+    commit: bool = False,
+    spec_path: str | Path | None = None,
+    out_path: str | Path | None = None,
+) -> dict:
     """Emit the iOS UI World FixtureDatasetDocument JSON from the SoT.
 
     Args:
         sot: validated DemoSoT bundle (identity + dataset).
         check: re-emit in memory and byte-compare against the committed
-            artifact(s); return a drift report instead of writing.
+            artifact(s) (baseline mode) or against --out (spec mode); return a
+            drift report instead of writing.
         commit: write the generated file(s) to disk (and print the base64 the
             harness exports as KG_FIXTURE_DATASET_B64). When False (and check
             False), dry-run returning the planned output paths.
+        spec_path: kg.seed_spec.v1 input — switches to SPEC MODE (see module
+            docstring). Must be given together with out_path.
+        out_path: spec-mode output path (never the committed generated artifact).
 
     Returns:
         A dict describing the action (paths written / drift verdict / base64).
     """
+    if (spec_path is None) != (out_path is None):
+        raise ValueError(
+            "spec mode requires BOTH --spec <kg.seed_spec.v1> and --out <path> "
+            "(got only one of them)"
+        )
+    if spec_path is not None:
+        assert out_path is not None
+        return _emit_spec(
+            sot, spec_path=Path(spec_path), out_path=Path(out_path),
+            check=check, commit=commit,
+        )
+
     artifacts = _artifacts(sot)
 
     if check:
