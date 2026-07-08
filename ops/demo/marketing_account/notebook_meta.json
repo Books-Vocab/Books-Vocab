@@ -1,0 +1,6 @@
+{
+  "人物群像": {"color": "#8C6A5D", "cover_pattern": "waves", "is_default": true},
+  "中世紀風物": {"color": "#4F7C73", "cover_pattern": "grid", "is_default": false},
+  "敘事筆法": {"color": "#6B7A8F", "cover_pattern": "lines", "is_default": false},
+  "情感與心緒": {"color": "#B96F5B", "cover_pattern": "dots", "is_default": false}
+}
