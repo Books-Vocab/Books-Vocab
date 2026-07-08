@@ -10,8 +10,15 @@ import SwiftUI
 enum KnowledgeGraphViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Knowledge Graph View") {
-            Scenario("Populated graph", layout: .fill) {
-                KnowledgeGraphViewScene(fixture: .populated)
+            // Wrapped in CatalogGraphSnapshotScene: the graph renders in a
+            // WKWebView, which `layer.render(in:)` snapshots cannot see — the
+            // freezer settles the d3 layout and swaps in a rasterized overlay
+            // before the snapshot is taken. The empty scene needs no wrapper
+            // (no webview is ever mounted in its empty state).
+            Scenario("Populated graph", layout: .fill) { context in
+                CatalogGraphSnapshotScene(context: context) {
+                    KnowledgeGraphViewScene(fixture: .populated)
+                }
             }
             Scenario("Logged out · empty graph", layout: .fill) {
                 KnowledgeGraphViewScene(fixture: .loggedOutEmpty)
