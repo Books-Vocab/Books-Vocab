@@ -21,7 +21,10 @@
 - **自洽**：`review_interval_hours == next_review_at - last_reviewed_at`；
   `review_count > 0 ⇒ last_reviewed_at 非空`（synthesize_many 前置）。
 
-敘事形狀（相對 anchor_day，canonical day = UTC ts + day_utc_offset_hours）：
+敘事形狀（相對 anchor_day；day 分桶 = UTC ts + render offset。iOS dayKey 用
+render 機器牆鐘時區（Calendar.current）→ plan 的 `render_utc_offset_hours` 列出
+候選時區（如 [9, 8] = Tokyo/Taipei，首位 canonical），敘事斷言（streak /
+forbidden day 零事件 / 覆蓋）必須在**每個** offset 下同時成立）：
 - 目前 streak：[anchor-cs+1 .. anchor] 每日有事件（cs = current_streak_days）。
 - 斷檔日：anchor-cs 零事件（streak 邊界）。
 - 最長紀錄：[anchor-cs-ls .. anchor-cs-1] 每日有事件（ls = longest_streak_days），
@@ -85,7 +88,13 @@ class _Narrative:
                 f"plan schema 必須是 {PLAN_SCHEMA}，got {plan.get('schema')!r}")
         try:
             self.anchor: date = date.fromisoformat(str(plan["anchor_day"]))
-            self.offset = timedelta(hours=int(plan["day_utc_offset_hours"]))
+            offsets = plan["render_utc_offset_hours"]
+            if not isinstance(offsets, list) or not offsets:
+                raise ValueError("render_utc_offset_hours 必須是非空 list")
+            # render 機器牆鐘時區候選（iOS dayKey 用 Calendar.current）。
+            # 首位 = canonical（報表分桶）；敘事斷言須在每個 offset 下同時成立。
+            self.offsets = [timedelta(hours=int(h)) for h in offsets]
+            self.offset = self.offsets[0]
             self.current_days = int(plan["current_streak_days"])
             self.longest_days = int(plan["longest_streak_days"])
             due = plan["due_at_anchor"]
@@ -103,9 +112,14 @@ class _Narrative:
                 "需 1 <= current_streak_days < longest_streak_days（否則 longest 顯示值會被目前 run 蓋掉）")
         if len(self.weights) != 7:
             raise HistoryShapeError("weekday_weights 必須是 7 元素（Mon..Sun）")
-        if not (0 <= self.hour_lo <= self.hour_hi <= 15):
+        max_off = max(td.total_seconds() / 3600 for td in self.offsets)
+        min_off = min(td.total_seconds() / 3600 for td in self.offsets)
+        if min_off < 0 or max_off > 14:
+            raise HistoryShapeError("render_utc_offset_hours 必須落在 [0,14]")
+        if not (0 <= self.hour_lo <= self.hour_hi <= 23 - int(max_off)):
             raise HistoryShapeError(
-                "event_utc_hours 必須落在 [0,15]（UTC 與 UTC+8 同日的交集）")
+                f"event_utc_hours 必須落在 [0,{23 - int(max_off)}]"
+                "（UTC 與所有 render offset 同日的交集）")
         if self.horizon < 1:
             raise HistoryShapeError("due_horizon_days 必須 >= 1")
 
@@ -132,8 +146,8 @@ class _Narrative:
             firebreaks.append(d)
         self.forbidden_days = {self.break_day, self.pre_gap_day, *firebreaks}
 
-    def day_of(self, dt: datetime) -> date:
-        return (dt.astimezone(timezone.utc) + self.offset).date()
+    def day_of(self, dt: datetime, offset: timedelta | None = None) -> date:
+        return (dt.astimezone(timezone.utc) + (offset or self.offset)).date()
 
 
 def load_plan(path: Path) -> dict[str, Any]:
@@ -175,7 +189,10 @@ def _event_time(content: str, d: date, *, hour_lo: int, hour_hi: int,
 
 
 def _synth_event_days(card_fields: dict[str, Any], narrative: _Narrative) -> set[date]:
-    """以 spec_world 的合成語意（= iOS fixture 實際事件）算出此卡事件覆蓋的日集合。"""
+    """以 spec_world 的合成語意（= iOS fixture 實際事件）算出此卡事件覆蓋的日集合。
+
+    合成 tail 事件的 UTC 時刻不受 event_utc_hours 窗限制 → 對「每個」候選 render
+    offset 各分桶一次取聯集：任何 offset 下踩到 forbidden day 都算碰撞。"""
     normalized = {
         "word": card_fields["content"],
         "review_count": card_fields["review_count"],
@@ -189,7 +206,8 @@ def _synth_event_days(card_fields: dict[str, Any], narrative: _Narrative) -> set
     for event in spec_world._card_history(normalized):
         dt = datetime.strptime(event["reviewedAt"], "%Y-%m-%dT%H:%M:%SZ").replace(
             tzinfo=timezone.utc)
-        days.add(narrative.day_of(dt))
+        for offset in narrative.offsets:
+            days.add(narrative.day_of(dt, offset))
     return days
 
 
@@ -439,7 +457,9 @@ def narrative_report(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
     narrative = _Narrative(plan)
     primary = _primary_notebook(spec)
 
-    per_day_primary: dict[date, int] = {}
+    # 每個候選 render offset 各建一份 primary 事件日直方圖（iOS dayKey 用
+    # Calendar.current，牆鐘時區不歸我們管 → 敘事必須在每個 offset 下都成立）
+    per_day_by_offset: list[dict[date, int]] = [{} for _ in narrative.offsets]
     all_event_days: set[date] = set()
     for card in spec["cards"]:
         r = card["review"]
@@ -457,8 +477,7 @@ def narrative_report(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
             "review_interval_hours": float(r["review_interval_hours"]),
             "last_dt": last_dt,
         }
-        event_days = _synth_event_days(card_fields, narrative)
-        all_event_days |= event_days
+        all_event_days |= _synth_event_days(card_fields, narrative)
         if card["notebook"] == primary and not card.get("is_archived"):
             normalized = {
                 "word": card["content"],
@@ -472,26 +491,36 @@ def narrative_report(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
             for event in spec_world._card_history(normalized):
                 dt = datetime.strptime(
                     event["reviewedAt"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                d = narrative.day_of(dt)
-                if d < narrative.metric_floor:
-                    continue  # 鏡像 iOS @Query 6 個月 cutoff：更深的事件不進指標
-                per_day_primary[d] = per_day_primary.get(d, 0) + 1
+                for i, offset in enumerate(narrative.offsets):
+                    d = narrative.day_of(dt, offset)
+                    if d < narrative.metric_floor:
+                        continue  # 鏡像 iOS @Query 6 個月 cutoff：更深的事件不進指標
+                    per_day_by_offset[i][d] = per_day_by_offset[i].get(d, 0) + 1
 
-    current = 0
-    probe = narrative.anchor
-    while per_day_primary.get(probe, 0) > 0:
-        current += 1
-        probe -= timedelta(days=1)
-    longest = run = 0
-    if per_day_primary:
-        d = min(per_day_primary)
-        while d <= max(per_day_primary):
-            if per_day_primary.get(d, 0) > 0:
-                run += 1
-                longest = max(longest, run)
-            else:
-                run = 0
-            d += timedelta(days=1)
+    def _streaks(per_day: dict[date, int]) -> tuple[int, int]:
+        current = 0
+        probe = narrative.anchor
+        while per_day.get(probe, 0) > 0:
+            current += 1
+            probe -= timedelta(days=1)
+        longest = run = 0
+        if per_day:
+            d = min(per_day)
+            while d <= max(per_day):
+                if per_day.get(d, 0) > 0:
+                    run += 1
+                    longest = max(longest, run)
+                else:
+                    run = 0
+                d += timedelta(days=1)
+        return current, longest
+
+    streaks_by_offset = {
+        int(offset.total_seconds() // 3600): _streaks(per_day)
+        for offset, per_day in zip(narrative.offsets, per_day_by_offset)
+    }
+    per_day_primary = per_day_by_offset[0]  # canonical（報表用）
+    current, longest = _streaks(per_day_primary)
 
     render_floor = (datetime(narrative.anchor.year, narrative.anchor.month,
                              narrative.anchor.day, tzinfo=timezone.utc)
@@ -521,6 +550,9 @@ def narrative_report(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, An
         "primaryNotebook": primary,
         "currentStreak": current,
         "longestStreak": longest,
+        "streaksByRenderOffset": {
+            str(k): {"current": c, "longest": l}
+            for k, (c, l) in sorted(streaks_by_offset.items())},
         "duePrimary": due_primary,
         "dueOther": due_other,
         "horizonViolations": horizon_violations,
@@ -535,12 +567,13 @@ def _self_check(spec: dict[str, Any], plan: dict[str, Any]) -> None:
     narrative = _Narrative(plan)
     report = narrative_report(spec, plan)
     problems: list[str] = []
-    if report["currentStreak"] != narrative.current_days:
-        problems.append(
-            f"currentStreak {report['currentStreak']} != {narrative.current_days}")
-    if report["longestStreak"] != narrative.longest_days:
-        problems.append(
-            f"longestStreak {report['longestStreak']} != {narrative.longest_days}")
+    for off, s in report["streaksByRenderOffset"].items():
+        if s["current"] != narrative.current_days:
+            problems.append(
+                f"offset+{off} currentStreak {s['current']} != {narrative.current_days}")
+        if s["longest"] != narrative.longest_days:
+            problems.append(
+                f"offset+{off} longestStreak {s['longest']} != {narrative.longest_days}")
     if report["duePrimary"] != narrative.due_primary:
         problems.append(f"duePrimary {report['duePrimary']} != {narrative.due_primary}")
     if report["dueOther"] != narrative.due_other:
