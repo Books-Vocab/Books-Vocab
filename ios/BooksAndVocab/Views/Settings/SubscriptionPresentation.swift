@@ -43,7 +43,10 @@ enum SubscriptionPresentation {
         }
     }
 
-    static func summary(for status: KGSubscriptionStatus) -> String {
+    static func summary(
+        for status: KGSubscriptionStatus,
+        podcastEnabled: Bool = KGFeatureFlags.podcastEnabled
+    ) -> String {
         if status.source == "admin", status.is_active {
             return L10n.string("你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
@@ -57,7 +60,11 @@ enum SubscriptionPresentation {
             return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
         if status.is_active {
-            return L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜、內建複習與 Podcast。")
+            // Podcast is DEBUG-gated (`KGFeatureFlags.podcastEnabled`) — a hidden
+            // feature must not be claimed as unlocked in Release copy.
+            return podcastEnabled
+                ? L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜、內建複習與 Podcast。")
+                : L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
         return L10n.string("升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。")
     }

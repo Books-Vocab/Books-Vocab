@@ -13,7 +13,13 @@ enum SubscriptionPaywallFeatureCatalog {
     // Computed (not `static let`) so each access re-resolves `L10n.string` against the
     // current `AppLanguageStore` language — in-app locale switches must update the paywall.
     static var descriptors: [SubscriptionPaywallFeatureDescriptor] {
-        [
+        descriptors(podcastEnabled: KGFeatureFlags.podcastEnabled)
+    }
+
+    /// Pure variant for the DEBUG-only podcast gate: a hidden feature must not
+    /// be advertised on the paywall / plan-comparison surfaces.
+    static func descriptors(podcastEnabled: Bool) -> [SubscriptionPaywallFeatureDescriptor] {
+        var items: [SubscriptionPaywallFeatureDescriptor] = [
         .init(
             title: L10n.string("閱讀器（EPUB/PDF/TXT/MD）"),
             marketingDescription: nil,
@@ -55,22 +61,25 @@ enum SubscriptionPaywallFeatureCatalog {
             freeMark: .label(L10n.string("有限")),
             proMark: .check,
             includeInActiveList: false
-        ),
-        .init(
-            title: L10n.string("Podcast 跨集播放"),
-            marketingDescription: nil,
-            freeMark: .label(L10n.string("有限")),
-            proMark: .check,
-            includeInActiveList: false
-        ),
-        .init(
+        )
+        ]
+        if podcastEnabled {
+            items.append(.init(
+                title: L10n.string("Podcast 跨集播放"),
+                marketingDescription: nil,
+                freeMark: .label(L10n.string("有限")),
+                proMark: .check,
+                includeInActiveList: false
+            ))
+        }
+        items.append(.init(
             title: L10n.string("每日 AI 額度"),
             marketingDescription: nil,
             freeMark: .label("1x"),
             proMark: .label("10x"),
             includeInActiveList: false
-        )
-        ]
+        ))
+        return items
     }
 
     static var comparisonRows: [SettingsPlanComparisonRow] {
