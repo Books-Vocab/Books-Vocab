@@ -40,6 +40,17 @@ def _parse_dt(value: str) -> datetime:
 def _rebalance_reviews(cards: list[dict[str, Any]], *, anchor: datetime,
                        target_due: int, spread_days: int) -> None:
     """把過期山攤平：多數過期卡確定式延到未來，保留 target_due 張 due。"""
+    if spread_days <= 0:
+        raise CurationError(f"spread_days 必須 > 0，得 {spread_days}")
+    if target_due < 0:
+        raise CurationError(f"target_due 必須 >= 0，得 {target_due}")
+    violators = sorted(
+        c["content"] for c in cards
+        if c["review"]["review_count"] > 0 and not c["review"].get("last_reviewed_at")
+    )
+    if violators:  # §1.1 spec 不變量，違反=上游資料壞，fail-loud 不硬扛
+        raise CurationError(
+            f"{len(violators)} 卡 review_count>0 但缺 last_reviewed_at: {violators[:10]}")
     overdue = [
         c for c in cards
         if c["review"]["review_count"] > 0

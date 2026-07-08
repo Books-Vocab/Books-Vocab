@@ -185,3 +185,36 @@ class TestReviewRebalance:
         a = json.dumps(_run(), ensure_ascii=False, sort_keys=True)
         b = json.dumps(_run(), ensure_ascii=False, sort_keys=True)
         assert a == b
+
+
+class TestEdgeCases:
+    def test_reviewed_card_missing_last_reviewed_fails_loud(self):
+        spec = _spec()
+        (gamma,) = [c for c in spec["cards"] if c["content"] == "gamma"]
+        gamma["review"]["last_reviewed_at"] = None
+        with pytest.raises(apply_curation.CurationError, match="gamma"):
+            _run(spec=spec)
+
+    def test_spread_days_zero_fails_loud(self):
+        with pytest.raises(apply_curation.CurationError, match="spread_days"):
+            apply_curation.apply(_spec(), _plan(), notebook_meta=NB_META,
+                                 anchor=ANCHOR, target_due=1, spread_days=0)
+
+    def test_target_due_exceeding_overdue_is_noop(self):
+        out = _run(target_due=99)
+        # 全部過期卡維持 due，無卡被重排
+        anchor = datetime.fromisoformat(ANCHOR)
+        due = [c for c in out["cards"]
+               if c["review"]["review_count"] > 0
+               and datetime.fromisoformat(c["review"]["next_review_at"]) <= anchor]
+        assert len(due) == 4
+
+    def test_empty_plan_on_empty_spec_ok(self):
+        spec = _spec()
+        spec["cards"] = []
+        spec["links"] = []
+        plan = {"schema": "kg.curation_plan.v1", "notebooks": [], "remove": [],
+                "assign": {}}
+        out = apply_curation.apply(spec, plan, notebook_meta=NB_META,
+                                   anchor=ANCHOR, target_due=1)
+        assert out["cards"] == [] and out["links"] == []
