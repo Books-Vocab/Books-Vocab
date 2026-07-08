@@ -43,6 +43,16 @@ enum KGFeatureFlags {
     /// via the backend group.)
     static var serverVocabUiLwwEnabled: Bool { false }
 
+    /// Whether the podcast feature is exposed anywhere in the UI (top-level
+    /// section tab / Catalyst sidebar row / paywall marketing copy). DEBUG-only
+    /// while the feature incubates: Release builds ship reader + vocabulary +
+    /// notebook only. Compile-time constant so Release codepaths are strippable.
+    #if DEBUG
+    static let podcastEnabled = true
+    #else
+    static let podcastEnabled = false
+    #endif
+
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the
     /// fields would be silently dropped; flip this when backend accepts them.

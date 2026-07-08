@@ -365,6 +365,7 @@
 "免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。" = "Free trial active. AI translation, cloud sync, graph view, and built-in review are available during the trial.";
 "你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。" = "Your account has been granted Pro by an administrator. AI translation, cloud sync, graph view, and built-in review are available.";
 "你目前已解鎖 AI 翻譯、雲端同步、知識圖譜、內建複習與 Podcast。" = "You currently have AI translation, cloud sync, graph view, built-in review, and podcasts unlocked.";
+"你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與內建複習。" = "You currently have AI translation, cloud sync, graph view, and built-in review unlocked.";
 "升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。" = "Upgrade to unlock AI translation, context explanation, cloud sync, graph view, and built-in review.";
 "來源：管理員授權 · 有效至 %@" = "Source: Admin grant · valid until %@";
 "來源：管理員授權 · 此權限不經由 App Store 續訂或恢復購買" = "Source: Admin grant · this access is not renewed or restored through the App Store.";

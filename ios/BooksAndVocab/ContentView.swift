@@ -33,6 +33,20 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
         case .overview: return "chart.bar"
         }
     }
+
+    /// Sections the shell actually surfaces (iOS TabView + Catalyst sidebar).
+    /// Pure so the DEBUG-only podcast gate (`KGFeatureFlags.podcastEnabled`)
+    /// stays testable without conditional compilation at every switch site.
+    static func visibleCases(podcastEnabled: Bool) -> [AppPrimarySection] {
+        allCases.filter { podcastEnabled || $0 != .podcasts }
+    }
+
+    /// Normalizes a selection against the visible set — if a hidden section
+    /// (e.g. `.podcasts` with the gate off) ever leaks into selection state,
+    /// fall back to the default section instead of a blank detail pane.
+    static func resolvedSelection(_ selection: AppPrimarySection, podcastEnabled: Bool) -> AppPrimarySection {
+        visibleCases(podcastEnabled: podcastEnabled).contains(selection) ? selection : .bookshelf
+    }
 }
 
 /// 主介面 — Tab 導航
@@ -40,6 +54,10 @@ struct ContentView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.modelContext) private var modelContext
     @State private var selectedSection: AppPrimarySection = .bookshelf
+
+    private var visibleSections: [AppPrimarySection] {
+        AppPrimarySection.visibleCases(podcastEnabled: KGFeatureFlags.podcastEnabled)
+    }
 
     // Why: Hot-reload hook. Release builds: LLVM-strip 成 no-op，零 runtime cost。
     // 詳見 docs/sop/ios.md §Hot Reload。
@@ -62,6 +80,15 @@ struct ContentView: View {
         .onChange(of: selectedSection) { _, section in
             PerfLog.shell.mark("tab.selected", "section=\(section.rawValue)")
         }
+        // Defensive: selection is plain @State today (no persistence), but if a
+        // hidden section ever leaks in (future restoration / deep link), snap
+        // back to the default instead of rendering a blank detail pane.
+        .onAppear {
+            selectedSection = AppPrimarySection.resolvedSelection(
+                selectedSection,
+                podcastEnabled: KGFeatureFlags.podcastEnabled
+            )
+        }
         .animatePhaseChange(authManager.isDemoMode)
         .macWindowChrome()
         .enableInjection()
@@ -72,7 +99,7 @@ struct ContentView: View {
         #if targetEnvironment(macCatalyst)
         NavigationSplitView {
             List {
-                ForEach(AppPrimarySection.allCases) { section in
+                ForEach(visibleSections) { section in
                     AppSidebarRow(
                         systemImage: section.systemImage,
                         title: L10n.string(section.titleKey),
@@ -100,10 +127,12 @@ struct ContentView: View {
                 .accessibilityIdentifier("tab.bookshelf")
                 .tag(AppPrimarySection.bookshelf)
             #endif
-            PodcastHomeView()
-                .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
-                .accessibilityIdentifier("tab.podcasts")
-                .tag(AppPrimarySection.podcasts)
+            if visibleSections.contains(.podcasts) {
+                PodcastHomeView()
+                    .tabItem { Label(L10n.string(AppPrimarySection.podcasts.titleKey), systemImage: AppPrimarySection.podcasts.systemImage) }
+                    .accessibilityIdentifier("tab.podcasts")
+                    .tag(AppPrimarySection.podcasts)
+            }
             NotebookListView()
                 .tabItem { Label(L10n.string(AppPrimarySection.notebooks.titleKey), systemImage: AppPrimarySection.notebooks.systemImage) }
                 .accessibilityIdentifier("tab.notebooks")
