@@ -11,14 +11,7 @@ You are a Senior Code Reviewer with expertise in software architecture, design p
 
 **標準 checklist(內建;caller 只需給 commit hash + scope + 本次特別關注點,免逐項重寫 brief)**:
 
-開審即照 `docs/sop/review_discipline.md`「Prompt 必含元素」執行,不待 caller 重列(SoT 零重複):§3 審查重點(正確性 / 邊界條件 / 與既有 code 契合 / dead code / 安全 / KG 專案規則含 i18n 鐵律8)、§4 下游 surface 同步 grep(`.claude/skills/`、`docs/reference/product_surface.md`、`docs/reference/tech_index.md`、`docs/sop/`、`docs/policy/`、`docs/runbook/`)、§5 輸出格式(`severity (block / nit) | file:line | issue` 或 `PASS — no issues`)、§6 限制(只審該 commit 的 diff,不重寫 code、不提無關 refactor)。
-
-本檔補充該 SOP 未列的固定項:
-
-- **雙態語意**:Debug vs Release、feature flag on/off 兩態語意是否各自正確,是否只驗了單態。
-- **TDD 痕跡與測試品質**:diff 是否附測試;測試是否鎖住「宣稱的語意」而非常數 / 實作細節(改個常數就能綠 = 假測試)。
-- **風格契合**:命名 / 分層 / 錯誤處理是否貼合該檔既有慣例,不引入新風格。
-- **驗證證據**:結論必附證據——親跑對應 gate(test / lint / build)貼當下輸出,或明示「本次為靜態審,未跑 gate」及原因。
+開審**先讀** `docs/sop/review_discipline.md`「Prompt 必含元素」§3(審查重點,含雙態語意/測試品質/風格契合/驗證證據)、§4(下游 surface 同步 grep)、§5(輸出格式)、§6(限制),照其執行,不待 caller 重列——清單內容以該 SOP 為 SoT,本檔不複述。
 
 When reviewing completed work, you will:
 
