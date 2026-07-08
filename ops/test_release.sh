@@ -142,13 +142,59 @@ cat > "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
 /* tests Debug */  MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
 /* tests Release */MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
 PBX
-KG_ROOT="$TMP" bash "$BUMP" ios 9.9.1 >/dev/null 2>&1 || fail_t "bump ios fixture run failed"
+KG_ROOT="$TMP" bash "$BUMP" ios 9.9.1 --yes >/dev/null 2>&1 || fail_t "bump ios fixture run failed"
 got_app="$(grep -c 'MARKETING_VERSION = 9.9.1;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 got_test="$(grep -c 'MARKETING_VERSION = 1.2.0;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 [[ "$got_app" -eq 2 ]]  && ok "app MARKETING_VERSION → 9.9.1 (2 處)"      || fail_t "app bump wrong count: $got_app"
 [[ "$got_test" -eq 2 ]] && ok "test bundle MARKETING_VERSION 不動 (still 1.2.0 ×2)" || fail_t "test bundle was clobbered: 1.2.0 count=$got_test"
 [[ "$got_build" -eq 2 ]] && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)"   || fail_t "app build bump wrong count: $got_build"
+
+# ── 13. bump 寫入 gate：dry-run 預設、--yes 才寫（對齊 publish / asc.sh set 慣例） ──
+section "Bump gate (dry-run by default)"
+TMP2="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2"' EXIT
+mkdir -p "$TMP2/ios/BooksAndVocab.xcodeproj" "$TMP2/backend/src/kg"
+cat > "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
+/* app Debug */    MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+/* app Release */  MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+PBX
+cat > "$TMP2/backend/pyproject.toml" <<'TOML'
+[project]
+version = "0.1.0"
+TOML
+cat > "$TMP2/backend/src/kg/api.py" <<'PY'
+app = FastAPI(title="kg", version="0.1.0")
+PY
+
+# 13a. dry-run（無 --yes）：exit 0、不改任何檔
+dry_out="$(KG_ROOT="$TMP2" bash "$BUMP" ios 9.9.1 2>&1)" \
+  && ok "bump ios dry-run exits 0" || fail_t "bump ios dry-run exited non-zero"
+grep -q 'MARKETING_VERSION = 9.9;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ! grep -q '9\.9\.1' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ok "dry-run leaves pbxproj untouched" || fail_t "dry-run modified pbxproj (must not write without --yes)"
+# 13b. dry-run 輸出：舊→新 + 指引 --yes
+echo "$dry_out" | grep -q '9.9 → 9.9.1' \
+  && ok "dry-run prints old→new version" || fail_t "dry-run missing old→new preview: $dry_out"
+echo "$dry_out" | grep -q -- '--yes' \
+  && ok "dry-run points to --yes" || fail_t "dry-run does not mention --yes"
+# 13c. api dry-run：兩檔皆不動、輸出含舊→新
+api_dry="$(KG_ROOT="$TMP2" bash "$BUMP" api 0.2.0 2>&1)" \
+  && ok "bump api dry-run exits 0" || fail_t "bump api dry-run exited non-zero"
+grep -q 'version = "0.1.0"' "$TMP2/backend/pyproject.toml" \
+  && grep -q 'version="0.1.0"' "$TMP2/backend/src/kg/api.py" \
+  && ok "api dry-run leaves pyproject+api.py untouched" || fail_t "api dry-run modified version files"
+echo "$api_dry" | grep -q '0.1.0 → 0.2.0' \
+  && ok "api dry-run prints old→new" || fail_t "api dry-run missing old→new preview: $api_dry"
+# 13d. --yes 經 release.sh wrapper 傳遞到 primitive（全域 --yes flag 生效）
+KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 --yes >/dev/null 2>&1 \
+  || fail_t "release.sh bump api --yes failed"
+grep -q 'version = "0.2.0"' "$TMP2/backend/pyproject.toml" \
+  && grep -q 'version="0.2.0"' "$TMP2/backend/src/kg/api.py" \
+  && ok "release.sh bump --yes writes both api version files" || fail_t "release.sh bump --yes did not write api files"
+KG_ROOT="$TMP2" bash "$REL" bump ios 9.9.1 --yes >/dev/null 2>&1 \
+  || fail_t "release.sh bump ios --yes failed"
+grep -q 'MARKETING_VERSION = 9.9.1;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ok "release.sh bump --yes writes pbxproj" || fail_t "release.sh bump ios --yes did not write pbxproj"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

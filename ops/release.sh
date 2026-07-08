@@ -2,16 +2,16 @@
 # release.sh — KG 版號發布統一入口（對標 backend/ops_cli.py 的單入口 + 乾淨 subcommand）
 #
 # 收斂原本散在 /release command（prose）+ scripts/ primitives 的發版編排。
-# 對外副作用（push）走 dry-run 預設、--yes 才真送（同 asc.sh set 紀律）。
+# 寫入面（bump 改本地檔、publish push）一律 dry-run 預設、--yes 才落地（同 asc.sh set 紀律）。
 # 注意：目前無 tag-triggered CI workflow，tag 為「版本標記」，GitHub Release 須手動建。
 #
 # Usage:
 #   ./ops/release.sh status                     # 各 component 自上個 tag 以來的待發版 commit + 建議版號
 #   ./ops/release.sh changelog <api|ios>        # 印 markdown changelog 預覽（唯讀）
-#   ./ops/release.sh bump <api|ios> <x.y.z>     # 改本地版號檔（api: pyproject+api.py / ios: pbxproj）
+#   ./ops/release.sh bump <api|ios> <x.y.z>     # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；預設 dry-run 印舊→新，--yes 才寫）
 #   ./ops/release.sh publish <api|ios> <x.y.z>  # commit 版號檔 + tag + push（預設 dry-run，--yes 才真送）
 #
-# 全域 flag：--yes（publish 真送）  -h|--help
+# 全域 flag：--yes（bump 真寫 / publish 真送）  -h|--help
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
@@ -85,7 +85,7 @@ cmd_status() {
     fi
     echo
   done
-  echo "下一步：./ops/release.sh bump <c> <ver> → changelog <c> → publish <c> <ver> --yes"
+  echo "下一步：./ops/release.sh bump <c> <ver> --yes → changelog <c> → publish <c> <ver> --yes"
 }
 
 # ---- changelog：委派 primitive（唯讀） ----
@@ -94,13 +94,17 @@ cmd_changelog() {
   "$ROOT/ops/release_changelog.sh" "$c"
 }
 
-# ---- bump：委派 primitive（本地檔案寫入） ----
+# ---- bump：委派 primitive（本地檔案寫入；dry-run 預設，--yes 才寫） ----
 cmd_bump() {
-  local c="${1:?用法: release.sh bump <api|ios> <x.y.z>}" v="${2:-}"
+  local c="${1:?用法: release.sh bump <api|ios> <x.y.z> [--yes]}" v="${2:-}"
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
-  "$ROOT/ops/release_bump.sh" "$c" "$v"
+  if [[ $YES -eq 1 ]]; then
+    "$ROOT/ops/release_bump.sh" "$c" "$v" --yes
+  else
+    "$ROOT/ops/release_bump.sh" "$c" "$v"
+  fi
 }
 
 # ---- publish：commit 版號檔 + tag + push（dry-run 預設，--yes 才真送） ----
@@ -123,7 +127,7 @@ cmd_publish() {
   git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
     && err "tag $tag 已存在（重複發版？換版號或先刪 tag）"
   curver="$(current_version "$c")"
-  [[ "$curver" == "$v" ]] || err "版號檔目前是 ${curver}，非 ${v} —— 先跑 ./ops/release.sh bump ${c} ${v}"
+  [[ "$curver" == "$v" ]] || err "版號檔目前是 ${curver}，非 ${v} —— 先跑 ./ops/release.sh bump ${c} ${v} --yes"
 
   echo "component=$c  version=$v  tag=$tag  branch=$branch"
   echo "  將 commit 的檔：${files[*]}"
