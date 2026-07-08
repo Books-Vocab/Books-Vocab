@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -80,6 +81,57 @@ struct PodcastFeatureGatePaywallTests {
         #expect(!disabledSummary.localizedCaseInsensitiveContains("podcast"))
         let enabledSummary = SubscriptionPresentation.summary(for: active, podcastEnabled: true)
         #expect(enabledSummary.localizedCaseInsensitiveContains("podcast"))
+    }
+}
+#endif
+
+// MARK: - Data-layer footprint
+
+/// Release (`podcastEnabled == false`) must have **zero** podcast network/disk
+/// footprint — the UI gate alone doesn't stop `backgroundSync`'s podcast
+/// catalog leg (list fetch + cover downloads) which fires on post-login /
+/// scenePhase→active / ⌘R / Settings manual sync. Pins the seam that
+/// short-circuits it before any `PodcastSyncService` work happens.
+@MainActor
+struct PodcastDataLayerGateTests {
+
+    @Test func backgroundCatalogSyncSkippedWhenDisabled() async {
+        var ran = false
+        await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: false) { ran = true }
+        #expect(!ran)
+    }
+
+    @Test func backgroundCatalogSyncRunsWhenEnabled() async {
+        var ran = false
+        await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: true) { ran = true }
+        #expect(ran)
+    }
+}
+
+#if os(iOS)
+/// `PodcastDownloadManager.configure` runs unconditionally at app launch; when
+/// the podcast gate is off it must refuse the container so the manager stays
+/// inert (no delegate persistence path, nothing to drive downloads).
+@MainActor
+struct PodcastDownloadManagerGateTests {
+
+    private func makeContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: PodcastEpisode.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+    }
+
+    @Test func configureIsRefusedWhenDisabled() throws {
+        let manager = PodcastDownloadManager()
+        manager.configure(modelContainer: try makeContainer(), podcastEnabled: false)
+        #expect(!manager.isConfigured)
+    }
+
+    @Test func configureAppliesWhenEnabled() throws {
+        let manager = PodcastDownloadManager()
+        manager.configure(modelContainer: try makeContainer(), podcastEnabled: true)
+        #expect(manager.isConfigured)
     }
 }
 #endif

@@ -95,6 +95,8 @@ struct BooksAndVocabApp: App {
         #if os(iOS)
         // PodcastDownloadManager must hold a ModelContainer ref before any
         // background URLSession delegate callback can persist localAudioPath.
+        // Internally no-ops when `KGFeatureFlags.podcastEnabled == false`
+        // (Release) so the download data path stays inert.
         if !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) {
             PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
         }

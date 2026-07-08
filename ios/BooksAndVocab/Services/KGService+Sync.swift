@@ -279,7 +279,22 @@ extension KGService {
     /// `container.mainContext` 存取合法。
     @MainActor
     private func syncPodcastCatalog(container: ModelContainer) async {
-        await PodcastSyncService(kgService: self).syncAll(context: container.mainContext)
+        await Self.runPodcastCatalogSyncIfEnabled {
+            await PodcastSyncService(kgService: self).syncAll(context: container.mainContext)
+        }
+    }
+
+    /// Feature-gate seam for the podcast catalog leg of `backgroundSync`.
+    /// Release（`KGFeatureFlags.podcastEnabled == false`）必須零 podcast 網路/磁碟
+    /// 足跡：catalog list fetch + 封面下載在建構 `PodcastSyncService` 之前就短路。
+    /// `podcastEnabled` 參數化僅供測試鎖語意；production 一律走預設值。
+    @MainActor
+    static func runPodcastCatalogSyncIfEnabled(
+        podcastEnabled: Bool = KGFeatureFlags.podcastEnabled,
+        sync: @MainActor () async -> Void
+    ) async {
+        guard podcastEnabled else { return }
+        await sync()
     }
 
     func pushReviewQuietly(container: ModelContainer) async {
