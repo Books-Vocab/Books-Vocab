@@ -54,7 +54,7 @@ def _plan(**overrides) -> dict:
     plan = {
         "schema": "kg.history_plan.v1",
         "anchor_day": "2026-07-09",
-        "day_utc_offset_hours": 8,
+        "render_utc_offset_hours": [9, 8],
         "current_streak_days": 5,
         "longest_streak_days": 8,
         "due_at_anchor": {"primary": 2, "other": 1},
@@ -112,29 +112,31 @@ def _dumps(spec: dict) -> str:
 
 
 ANCHOR = date(2026, 7, 9)
-OFFSET = timedelta(hours=8)
+# render 機器牆鐘時區候選（iOS dayKey = Calendar.current）：Tokyo(+9)/Taipei(+8)。
+# 敘事必須在每個 offset 下同時成立 —— L2 曾抓到 +8 假設下最長紀錄在 +9 主機膨脹成 82。
+OFFSETS = (timedelta(hours=9), timedelta(hours=8))
 
 
-def _day(ts: str) -> date:
+def _day(ts: str, offset: timedelta = OFFSETS[0]) -> date:
     dt = datetime.fromisoformat(ts)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return (dt.astimezone(timezone.utc) + OFFSET).date()
+    return (dt.astimezone(timezone.utc) + offset).date()
 
 
-def _norm_day(ts: str) -> date:
-    """spec_world 正規化格式（YYYY-MM-DDTHH:MM:SSZ）→ canonical +08 day。"""
+def _norm_day(ts: str, offset: timedelta) -> date:
+    """spec_world 正規化格式（YYYY-MM-DDTHH:MM:SSZ）→ render-offset day。"""
     dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-    return (dt + OFFSET).date()
+    return (dt + offset).date()
 
 
-def _primary_event_days(shaped: dict) -> dict[date, int]:
+def _primary_event_days(shaped: dict, offset: timedelta = OFFSETS[0]) -> dict[date, int]:
     """走真投影：reviewCalendarDense.reviewHistory（primary notebook 全 active 卡）。"""
     domains, _ = spec_world.derive_domains(shaped)
     history = domains["vocabulary"]["reviewCalendarDense"]["reviewHistory"]
     days: dict[date, int] = {}
     for event in history:
-        d = _norm_day(event["reviewedAt"])
+        d = _norm_day(event["reviewedAt"], offset)
         days[d] = days.get(d, 0) + 1
     return days
 
@@ -176,15 +178,15 @@ class TestDeterminism:
 class TestNarrative:
     def test_streaks_match_plan_via_projection(self):
         shaped = shape_history.shape(_spec(), _plan())
-        days = _primary_event_days(shaped)
-        current, longest = _streaks(days, ANCHOR)
-        assert current == 5
-        assert longest == 8
+        for offset in OFFSETS:
+            current, longest = _streaks(_primary_event_days(shaped, offset), ANCHOR)
+            assert current == 5, f"offset {offset}"
+            assert longest == 8, f"offset {offset}"
 
     def test_anchor_day_has_events(self):
         shaped = shape_history.shape(_spec(), _plan())
-        days = _primary_event_days(shaped)
-        assert days.get(ANCHOR, 0) >= 1
+        for offset in OFFSETS:
+            assert _primary_event_days(shaped, offset).get(ANCHOR, 0) >= 1
 
     def test_forbidden_gap_days_have_zero_events_all_notebooks(self):
         plan = _plan()
@@ -207,7 +209,8 @@ class TestNarrative:
                     r["last_reviewed_at"], owner=card["content"]),
             }
             for event in spec_world._card_history(norm):
-                all_days.add(_norm_day(event["reviewedAt"]))
+                for offset in OFFSETS:
+                    all_days.add(_norm_day(event["reviewedAt"], offset))
         assert break_day not in all_days
         assert pre_gap not in all_days
 
@@ -352,9 +355,10 @@ class TestCommittedMarketingSpec:
 
     def test_committed_spec_meets_narrative(self, committed):
         spec, plan = committed
-        days = _primary_event_days(spec)
         anchor = date.fromisoformat(plan["anchor_day"])
-        current, longest = _streaks(days, anchor)
-        assert current == plan["current_streak_days"]
-        assert longest == plan["longest_streak_days"]
-        assert days.get(anchor, 0) >= 1
+        for hours in plan["render_utc_offset_hours"]:
+            days = _primary_event_days(spec, timedelta(hours=hours))
+            current, longest = _streaks(days, anchor)
+            assert current == plan["current_streak_days"], f"offset +{hours}"
+            assert longest == plan["longest_streak_days"], f"offset +{hours}"
+            assert days.get(anchor, 0) >= 1, f"offset +{hours}"
