@@ -6,6 +6,7 @@ from .ops_edit_support import (
     _WORLD_BACKUP_ROOT,
     UTC,
     Any,
+    CardReviewState,
     EditContext,
     EditError,
     LinkKind,
@@ -47,19 +48,94 @@ from .ops_edit_support import (
 )
 
 
+# 擴充 review 形式(計數器直設,`ops_cli world-export` 的無損重放面)的合法鍵。
+_REVIEW_COUNTER_KEYS = frozenset({
+    "review_count", "review_streak", "lapse_count", "review_interval_hours",
+    "next_review_at", "last_reviewed_at", "last_review_feedback",
+})
+
+
+def _review_form(rv: Any, label: str) -> str:
+    """判定 card review 形式:legacy ``state`` / 擴充 ``counters`` / ``none``。
+
+    兩形式混用 fail-loud —— state 是「語意態 + anchor 推導時間」,counters 是
+    「絕對值直設」,混填會產生互相矛盾的欄位來源。
+    """
+    if not isinstance(rv, dict):
+        return "none"
+    has_state = rv.get("state") not in (None, "")
+    has_counters = any(k in rv for k in _REVIEW_COUNTER_KEYS)
+    if has_state and has_counters:
+        raise EditError(f"{label} 不可混用 state 形式與計數器形式:{sorted(rv)}")
+    if has_counters:
+        return "counters"
+    if has_state:
+        return "state"
+    return "none"
+
+
+def _parse_review_counters(rv: dict[str, Any], label: str) -> dict[str, Any]:
+    """擴充 review 形式 → card update 欄位(僅回傳 spec 有宣告的鍵)。
+
+    嚴格白名單鍵(typo fail-loud,對齊 seed 其餘預驗風格);``review_count > 0``
+    必須帶 ``last_reviewed_at``:它是 review events 確定式合成的時間錨
+    (對齊 `_read_card_review_states` 的合成前提),缺錨的計數器會產出
+    iOS heatmap/streak 對不上的半套狀態。
+    """
+    unknown = set(rv) - _REVIEW_COUNTER_KEYS
+    if unknown:
+        raise EditError(
+            f"{label} 計數器形式含未知鍵 {sorted(unknown)}(允許 {sorted(_REVIEW_COUNTER_KEYS)})"
+        )
+    out: dict[str, Any] = {}
+    for key in ("review_count", "review_streak", "lapse_count"):
+        if key in rv:
+            val = rv[key]
+            if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+                raise EditError(f"{label}.{key} 須為 >= 0 整數:{val!r}")
+            out[key] = val
+    if "last_review_feedback" in rv:
+        val = rv["last_review_feedback"]
+        if isinstance(val, bool) or val not in (-1, 0, 1):
+            raise EditError(f"{label}.last_review_feedback 須為 -1/0/1:{val!r}")
+        out["last_review_feedback"] = val
+    if "review_interval_hours" in rv:
+        val = rv["review_interval_hours"]
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or val <= 0:
+            raise EditError(f"{label}.review_interval_hours 須為 > 0 數值:{val!r}")
+        out["review_interval_hours"] = float(val)
+    for key in ("next_review_at", "last_reviewed_at"):
+        if key in rv:
+            out[key] = _parse_seed_datetime(rv[key], f"{label}.{key}")
+    if out.get("review_count", 0) > 0 and out.get("last_reviewed_at") is None:
+        raise EditError(f"{label}: review_count > 0 需同時提供 last_reviewed_at(review events 合成錨點)")
+    return out
+
+
 def cmd_seed(args: argparse.Namespace) -> int:
     """一次性把 notebooks + cards + links 整套灌入(mock/demo 帳號用)。
 
     spec JSON 結構:
       {
-        "notebooks": [{"name", "color"?, "cover_pattern"?}],
+        "notebooks": [{"name", "color"?, "cover_pattern"?, "sort_order"?,
+                       "is_default"?}],
         "cards": [{"content","meaning","pos"?,"examples"?,"collocations"?,
-                   "note"?,"difficulty"?,"mode"?,"notebook"?,
-                   "review"?: {"state":"new|due|reviewed","interval"?}}],
+                   "note"?,"difficulty"?,"mode"?,"root_form"?,"inflections"?,
+                   "is_archived"?,"notebook"?,
+                   "review"?: {"state":"new|due|reviewed","interval"?}
+                            | {review_count/review_streak/lapse_count/
+                               review_interval_hours/next_review_at/
+                               last_reviewed_at/last_review_feedback}}],
         "links": [{"from","to","kind","confidence","reason","notebook"?}]
       }
     cards/links 的 "notebook" 可指 spec 建立的、或**既存的** notebook name / id;
     links 的 from/to 用 card content 參照(seed 內先建卡再連結)。
+
+    review 兩形式:legacy ``state`` 由 anchor 推導時間(既有消費者不變);擴充
+    計數器形式直設絕對值(`world-export` 產物的無損重放),``review_count > 0``
+    會經 `synthesize_many` 確定式合成逐筆 review events 寫入 review_events.db
+    (uuid5 event_id,重跑經 store 去重而冪等)。``is_default: true`` 的 notebook
+    映射到既存預設本(id 恆 "default",改名不增殖),使導出的預設本可重放。
     """
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
@@ -82,6 +158,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
     # 預驗(寫入前,確保原子性):任何缺漏在動 DB 前就 raise,不留孤兒 notebook。
     def _prevalidate() -> None:
         seen_names: set[str] = set()
+        default_entries = 0
         for n in notebooks:
             name = n.get("name") or ""
             _assert_clean_notebook_name(name)
@@ -90,6 +167,15 @@ def cmd_seed(args: argparse.Namespace) -> int:
             if name in seen_names:
                 raise EditError(f"notebooks 有重複 name:{name!r}")
             seen_names.add(name)
+            if "sort_order" in n:
+                so = n["sort_order"]
+                if isinstance(so, bool) or not isinstance(so, int):
+                    raise EditError(f"notebooks[{name!r}].sort_order 須為整數:{so!r}")
+            if n.get("is_default"):
+                default_entries += 1
+        if default_entries > 1:
+            # 預設本結構上唯一(id 恆 "default");兩本以上 is_default 是矛盾 spec。
+            raise EditError("notebooks 至多一本 is_default: true(預設本唯一)")
         for i, c in enumerate(cards):
             if not (c.get("content") or "").strip():
                 raise EditError(f"cards[{i}] content 空白:{c!r}")
@@ -99,10 +185,14 @@ def cmd_seed(args: argparse.Namespace) -> int:
             # review.state 非法值 fail-loud,而非靜默當 reviewed(dogfood B5 / A LOW-1)。
             rv = c.get("review")
             if isinstance(rv, dict):
-                st = rv.get("state")
-                if st not in (None, "") and st not in _VALID_REVIEW_STATES:
-                    raise EditError(f"cards[{i}] review.state 非法:{st!r}(僅 {_VALID_REVIEW_STATES})")
-                _parse_seed_datetime(rv.get("anchor"), f"cards[{i}].review.anchor")
+                form = _review_form(rv, f"cards[{i}].review")
+                if form == "counters":
+                    _parse_review_counters(rv, f"cards[{i}].review")
+                else:
+                    st = rv.get("state")
+                    if st not in (None, "") and st not in _VALID_REVIEW_STATES:
+                        raise EditError(f"cards[{i}] review.state 非法:{st!r}(僅 {_VALID_REVIEW_STATES})")
+                    _parse_seed_datetime(rv.get("anchor"), f"cards[{i}].review.anchor")
             if "source" in c:
                 _source_to_json(c.get("source"), f"cards[{i}].source")
         for i, lk in enumerate(links):
@@ -122,9 +212,12 @@ def cmd_seed(args: argparse.Namespace) -> int:
     # (dogfood E F7)。_prevalidate 純檢查無副作用,前移安全。
     _prevalidate()
 
-    dist = {"new": 0, "due": 0, "reviewed": 0, "unspecified": 0}
+    dist = {"new": 0, "due": 0, "reviewed": 0, "counters": 0, "unspecified": 0}
     for c in cards:
         rv = c.get("review")
+        if isinstance(rv, dict) and _review_form(rv, "cards[].review") == "counters":
+            dist["counters"] += 1
+            continue
         st = rv.get("state") if isinstance(rv, dict) else None
         dist[st if st in _VALID_REVIEW_STATES else "unspecified"] += 1
     plan = {
@@ -154,14 +247,33 @@ def cmd_seed(args: argparse.Namespace) -> int:
             name = n["name"]
             # 冪等:同名既存(含上輪 seed 建立)直接重用,不重複新建(dogfood A MED-2/MED-4)。
             # seed 是「確保狀態」語意,重跑同 spec 結果應一致、不增殖孤兒 notebook。
-            if name in name_to_id:
-                created_nb.append({"id": name_to_id[name], "name": name, "reused": True})
-                continue
-            nb = nb_store.create(name=name, color=n.get("color"),
-                                 cover_pattern=n.get("cover_pattern"))
-            name_to_id[name] = nb.id
-            existing_ids.add(nb.id)
-            created_nb.append({"id": nb.id, "name": name})
+            if n.get("is_default"):
+                # 預設本 id 恆 "default" 且唯一:is_default entry 映到既存預設本
+                # (可改名/改欄位,不增殖新本),使 world-export 導出的預設本可無損重放。
+                nb_id, reused = "default", True
+            elif name in name_to_id:
+                nb_id, reused = name_to_id[name], True
+            else:
+                nb = nb_store.create(name=name, color=n.get("color"),
+                                     cover_pattern=n.get("cover_pattern"))
+                nb_id, reused = nb.id, False
+            # 「確保狀態」語意:spec 宣告的欄位一律 upsert(reuse 者對齊 spec,
+            # 新建者冗餘覆蓋無害 —— NotebookStore.update 有 has_changes 檢查)。
+            # 用 `key in n` 區分「省略=保留舊值」與「明確 null=清空」,對齊 card 欄位語意。
+            nb_updates: dict[str, Any] = {"name": name}
+            if "color" in n:
+                nb_updates["color"] = n["color"]
+            if "cover_pattern" in n:
+                nb_updates["cover_pattern"] = n["cover_pattern"]
+            if "sort_order" in n:
+                nb_updates["sort_order"] = n["sort_order"]
+            nb_store.update(nb_id, **nb_updates)
+            name_to_id[name] = nb_id
+            existing_ids.add(nb_id)
+            entry = {"id": nb_id, "name": name}
+            if reused:
+                entry["reused"] = True
+            created_nb.append(entry)
 
         def _resolve_nb(ref: str) -> str:
             # 接受:已知 name、直接給的合法既存 id;否則明確報錯(不靜默存 name)。
@@ -178,13 +290,17 @@ def cmd_seed(args: argparse.Namespace) -> int:
         # content 冪等回舊卡,無腦 +=1 會把 dup 誤報成新增(dogfood C3)。
         pre_ids = {c.id for c in card_store.all()}
         card_checks: list[dict[str, Any]] = []
+        synth_states: list[CardReviewState] = []
         for c in cards:
             nb_id = _resolve_nb(c.get("notebook", "default"))
             card = card_store.add(
                 content=c["content"], meaning=c.get("meaning", ""),
                 pos=c.get("pos"), examples=c.get("examples") or [],
                 collocations=c.get("collocations") or [],
-                mode=c.get("mode", "recognition"), notebook_id=nb_id,
+                mode=c.get("mode", "recognition"),
+                root_form=c.get("root_form"),
+                inflections=c.get("inflections") or [],
+                notebook_id=nb_id,
             )
             # dup 卡也 upsert 核心欄位:add 對既有 content 回舊卡、**不更新** meaning,
             # 但 seed 須冪等可重跑(調 spec 再灌)→ 顯式覆蓋 meaning/pos/examples/... ,
@@ -207,12 +323,35 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 updates["note"] = c["note"]
             if "difficulty" in c:
                 updates["difficulty"] = c["difficulty"]
+            if "root_form" in c:
+                updates["root_form"] = c["root_form"]
+            if "inflections" in c:
+                updates["inflections"] = c["inflections"] or []
+            if "is_archived" in c:
+                updates["is_archived"] = bool(c["is_archived"])
             if "source" in c:
                 updates["source"] = _source_to_json(c.get("source"), "cards[].source")
             rv = c.get("review")
-            if isinstance(rv, dict) and rv.get("state"):
+            form = _review_form(rv, "cards[].review")
+            if form == "state":
                 review_now = _parse_seed_datetime(rv.get("anchor"), "cards[].review.anchor") or now
                 updates.update(_review_fields(rv["state"], rv.get("interval"), review_now))
+            elif form == "counters":
+                counters = _parse_review_counters(rv, "cards[].review")
+                updates.update(counters)
+                if counters.get("review_count", 0) > 0:
+                    # 計數器 ⇒ 逐筆 review events 一併合成(對齊 clone-demo 的合成
+                    # 契約),否則 iOS heatmap/streak 與卡片聚合對不上。
+                    synth_states.append(CardReviewState(
+                        card_id=card.id, content=c["content"], notebook_id=nb_id,
+                        review_count=counters["review_count"],
+                        lapse_count=counters.get("lapse_count", 0),
+                        review_streak=counters.get("review_streak", 0),
+                        last_review_feedback=counters.get("last_review_feedback", -1),
+                        last_reviewed_at=counters["last_reviewed_at"],
+                        created_at=card.created_at,
+                        review_interval_hours=counters.get("review_interval_hours", 12.0),
+                    ))
             card_store.update(card.id, **updates)
             card_checks.append({"content": c["content"].strip(), "nb_id": nb_id,
                                 "meaning": c.get("meaning", "")})
@@ -237,10 +376,23 @@ def cmd_seed(args: argparse.Namespace) -> int:
             except (EditError, ValueError, KeyError) as exc:
                 link_errors.append(f"{lk.get('from')}→{lk.get('to')}: {exc}")
 
+        # 計數器形式的卡 → 確定式合成逐筆 review events(uuid5 event_id,
+        # store 以 event_id 去重 → 重跑冪等,對齊 seed 整體的「確保狀態」語意)。
+        events_written = 0
+        if synth_states:
+            events = synthesize_many(synth_states)
+            if events:
+                store = ReviewEventStore(ctx.user_dir / "review_events.db")
+                try:
+                    events_written = store.insert_many(events)["inserted"]
+                finally:
+                    store.close()
+
         seed_state["link_errors"] = link_errors
         return {"notebooks_created": created_nb, "cards_added": actually_new,
                 "skipped_dup": len(cards) - actually_new,
-                "links_added": added_links, "link_errors": link_errors}
+                "links_added": added_links, "link_errors": link_errors,
+                "review_events_written": events_written}
 
     def verify_fn() -> dict[str, Any]:
         card_store = _card_store(ctx.user_dir)
