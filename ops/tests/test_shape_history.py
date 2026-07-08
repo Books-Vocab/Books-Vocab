@@ -321,7 +321,7 @@ class TestConservation:
 
 class TestFailLoud:
     def test_primary_too_thin_fails(self):
-        spec = _spec(n_primary=5, n_other=2)  # 5 < 敘事日數 14
+        spec = _spec(n_primary=5, n_other=2)  # 5 < 敘事日數 13（cs 5 + ls 8）
         with pytest.raises(shape_history.HistoryShapeError, match="primary"):
             shape_history.shape(spec, _plan())
 
