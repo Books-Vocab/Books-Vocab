@@ -108,6 +108,18 @@ def test_validate_rejects_unknown_fixture_domain_id(tmp_path: Path, domain: str)
         validate_fixture_dataset_file(path)
 
 
+def test_validate_rejects_today_review_card_null_date_added(tmp_path: Path):
+    # Swift TodayReviewCardSeed.dateAdded 是非 optional Date：null 會在 app 內
+    # preconditionFailure，validator 必須在這裡就 fail-fast（IMP-0018）。
+    data = _marketing_demo()
+    data["todayReview"]["front"]["currentCard"]["dateAdded"] = None
+    path = tmp_path / "null_today_review_date_added.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"todayReview\.front\.currentCard\.dateAdded"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_asset_hash_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["sha256"] = "0" * 64

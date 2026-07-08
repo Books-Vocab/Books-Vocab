@@ -28,6 +28,20 @@ BASELINE_PATH = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
 
 SPEC_DOMAINS = ("vocabulary", "notebook", "reviewDeck", "todayReview")
 
+# Catalog scenario 釘死特定內容/形狀的 vocabulary fixtures（SoT 註解見
+# emit_ios.SPEC_BASELINE_KEPT_FIXTURES）：任意合法 spec 無法保證命中 →
+# spec 模式必須保留 baseline，不得投影。
+CONTENT_PINNED_VOCAB_FIXTURES = (
+    "wordDetail",
+    "wordEdit",
+    "searchVocabNotebook",
+    "kgVocabRow",
+    "vocabLinkedCards",
+    "archivedPopulated",
+    "archivedSingle",
+    "archivedLong",
+)
+
 
 def _load_module(name: str):
     spec = importlib.util.spec_from_file_location(name, DEMO_DIR / f"{name}.py")
@@ -258,10 +272,10 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     assert alpha["reviewMode"] == "recognition"
     assert alpha["translation"] == "alpha 的意思"
 
-    # archived views only carry genuinely archived cards
-    archived = document["vocabulary"]["archivedPopulated"]
-    assert [e["word"] for e in archived["entries"]] == ["delta"]
-    assert archived["entries"][0]["isArchived"] is True
+    # archived views are content-pinned by ArchivedVocabScenarios (≥5 / ==1 / ≥40)
+    # -> spec mode keeps them baseline instead of projecting (see
+    # test_spec_mode_keeps_content_pinned_vocabulary_fixtures_baseline)
+    assert document["vocabulary"]["archivedPopulated"] == baseline["vocabulary"]["archivedPopulated"]
 
     # notebook rows mirror the spec notebooks
     rows = document["notebook"]["populated"]["notebooks"]
@@ -322,6 +336,86 @@ def test_spec_mode_today_review_invariants(tmp_path):
     # production fixtures surface production-mode cards
     assert today["productionFront"]["currentCard"]["reviewMode"] == "production"
     assert today["productionBack"]["revealStage"] == "back"
+
+
+def test_spec_mode_today_review_cards_declare_non_null_date_added(tmp_path):
+    """Swift TodayReviewCardSeed.dateAdded 是非 optional Date（FixtureDatasetStore
+    decode contract）→ 投影出的每張 session 卡 dateAdded 必須非空可解析。"""
+    from datetime import datetime as _dt
+
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    today = json.loads(content)["todayReview"]
+    kept = {f for d, f in emit_ios.SPEC_BASELINE_KEPT_FIXTURES if d == "todayReview"}
+    checked = 0
+    for fixture_id, seed in today.items():
+        if fixture_id in kept:
+            continue
+        for key in ("currentCard", "nextCard"):
+            card = seed[key]
+            if card is None:
+                continue
+            assert card["dateAdded"], f"todayReview.{fixture_id}.{key}.dateAdded must be non-null"
+            _dt.strptime(card["dateAdded"], "%Y-%m-%dT%H:%M:%SZ")
+            checked += 1
+    assert checked >= 8  # front/back/autoplay*/production* 的 current+next 都要被驗到
+
+
+def test_spec_mode_date_added_precedes_first_synth_review_event(tmp_path):
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    document = json.loads(content)
+    front = document["todayReview"]["front"]
+    assert front["currentCard"]["word"] == "alpha"
+    history = document["vocabulary"]["reviewCalendarDense"]["reviewHistory"]
+    alpha_events = [r["reviewedAt"] for r in history if r["word"] == "alpha"]
+    assert alpha_events
+    assert front["currentCard"]["dateAdded"] < min(alpha_events)
+
+
+def test_spec_mode_date_added_deterministic_fallback_without_review_dates(tmp_path):
+    """spec 完全無 review 日期素材時，dateAdded 落到固定錨點（禁 Date.now/隨機）。"""
+    payload = _small_spec()
+    for card in payload["cards"]:
+        card["review"] = {
+            "review_count": 0, "review_streak": 0, "lapse_count": 0,
+            "review_interval_hours": 12.0, "next_review_at": None,
+            "last_reviewed_at": None, "last_review_feedback": -1,
+        }
+    content = _emit_spec_bytes(tmp_path, payload)
+    front = json.loads(content)["todayReview"]["front"]
+    assert front["currentCard"]["dateAdded"] == spec_world._DATE_ADDED_FALLBACK_ANCHOR
+    assert content == _emit_spec_bytes(tmp_path, payload)  # byte-stable
+
+
+def test_spec_mode_keeps_content_pinned_vocabulary_fixtures_baseline(tmp_path):
+    spec_path = _write_spec(tmp_path, _small_spec())
+    domains, _stats = spec_world.derive_domains(spec_world.load_seed_spec(spec_path))
+    for fixture_id in CONTENT_PINNED_VOCAB_FIXTURES:
+        assert fixture_id not in domains["vocabulary"], (
+            f"vocabulary.{fixture_id} is content-pinned and must not be spec-derived")
+
+    kept = set(emit_ios.SPEC_BASELINE_KEPT_FIXTURES)
+    assert {("vocabulary", f) for f in CONTENT_PINNED_VOCAB_FIXTURES} <= kept
+
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    document = json.loads(content)
+    baseline = _baseline()
+    for fixture_id in CONTENT_PINNED_VOCAB_FIXTURES:
+        assert document["vocabulary"][fixture_id] == baseline["vocabulary"][fixture_id], (
+            f"vocabulary.{fixture_id} must stay byte-equal to baseline in spec mode")
+
+
+def test_spec_mode_sync_pending_mixed_covers_add_and_delete_with_two_active(tmp_path):
+    """SyncViewScenarios mixed 釘 pending>1 且同時含 add+delete —— 只要 spec 有
+    ≥2 張 active 卡就必須滿足，不得依賴恰有 4 張。"""
+    payload = _small_spec()
+    payload["cards"] = [c for c in payload["cards"] if c["content"] in {"alpha", "bravo", "echo"}]
+    payload["links"] = [payload["links"][0]]  # alpha -> bravo；去掉指向 charlie 的 link
+    content = _emit_spec_bytes(tmp_path, payload)
+    mixed = json.loads(content)["vocabulary"]["syncPendingMixed"]
+    pending = [e for e in mixed["entries"] if e["syncStatus"] != 1]
+    actions = {e["actionType"] for e in pending}
+    assert len(pending) > 1
+    assert {"add", "delete"} <= actions
 
 
 def test_spec_mode_dedupes_duplicate_card_contents(tmp_path):

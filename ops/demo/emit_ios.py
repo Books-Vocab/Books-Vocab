@@ -125,16 +125,43 @@ IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "isAuthenticating",
 }
 SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"})
-# spec 模式下四 domain 內仍沿用 baseline 的 fixture id（帳號資料無關的 UI-chrome /
-# gallery 語意；其中 notebook.readerPicker* 的 rows 是 baseline bookshelf
-# `preferredNotebookId` 的跨 domain ref 解析目標，替換會破壞 cross-ref 驗證）。
+# spec 模式下四 domain 內仍沿用 baseline 的 fixture id。兩類：
+# (a) 帳號資料無關的 UI-chrome / gallery 語意；其中 notebook.readerPicker* 的
+#     rows 是 baseline bookshelf `preferredNotebookId` 的跨 domain ref 解析目標，
+#     替換會破壞 cross-ref 驗證。
+# (b) content-pinned：catalog scenario（含 UITest seed seam）釘死特定 word /
+#     query 命中數 / exact count / archived 量，任意合法 spec（可 0 archived、
+#     0 命中）無法保證 → 投影必致 preconditionFailure。逐條 SoT 見行內註解
+#     （盤點 2026-07-08，涵蓋 vocabulary/notebook/reviewDeck/todayReview 全部
+#     consumer；reviewDeck phase*/probe/notebookReviewDeck 與 todayReview 各
+#     session、notebook empty/single/populated 無 content pin，維持投影）。
 SPEC_BASELINE_KEPT_FIXTURES = (
+    # (a) UI-chrome / gallery
     ("notebook", "coverGallery"),
     ("notebook", "cardGallery"),
     ("notebook", "editGallery"),
     ("notebook", "readerPickerMany"),
     ("notebook", "readerPickerPopulated"),
     ("todayReview", "longContent"),
+    # (b) content-pinned vocabulary fixtures
+    # WordDetailScenarios.swift: "ephemeral"(rich)/"terse"(minimal) 各恰 1 命中
+    ("vocabulary", "wordDetail"),
+    # WordEditScenarios.swift: serendipity / ephemeral / verisimilitude /
+    # antidisestablishmentarianism 四字必在
+    ("vocabulary", "wordEdit"),
+    # KGVocabSearchScenarios.swift: "影響">1、"ambiguous"==1、"zzzznotaword"==0
+    # 命中（UITestFixtureSeed+Search.swift 吃同一 seed）
+    ("vocabulary", "searchVocabNotebook"),
+    # KGVocabRowScenarios.swift: entries.count == KGVocabRowFixture.allCases.count
+    # 且 index-addressed（每列對應固定 row state）
+    ("vocabulary", "kgVocabRow"),
+    # VocabScenarios.swift(VocabManifestEntries): 恰 6 entries、index-addressed
+    ("vocabulary", "vocabLinkedCards"),
+    # ArchivedVocabScenarios.swift: populated ≥5 / single ==1 / long ≥40 條
+    # archived——spec 可合法 0 archived（行銷帳號實測 0）
+    ("vocabulary", "archivedPopulated"),
+    ("vocabulary", "archivedSingle"),
+    ("vocabulary", "archivedLong"),
 )
 
 
