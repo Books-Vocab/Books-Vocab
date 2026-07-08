@@ -543,6 +543,42 @@ window.updateForces = function(arg) {
     sim.alpha(0.3).restart();
 };
 
+// ── settleGraphForSnapshot ────────────────────────────────────────────────────
+// Catalog snapshot support (CatalogGraphSnapshotFreezer). Runs the force
+// simulation to full convergence *synchronously* so a single rasterization
+// captures the final layout instead of frame 0, and re-spawns nodes from a
+// seeded PRNG so repeated catalog runs produce diffable, byte-stable layouts
+// (initGraph spawns via Math.random). Returns true on success.
+window.settleGraphForSnapshot = function() {
+    if (!sim) return false;
+    // mulberry32 — tiny deterministic PRNG, fixed seed.
+    let seed = 0x9E3779B9;
+    function seededRandom() {
+        seed = (seed + 0x6D2B79F5) | 0;
+        let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    const cx = W / 2, cy = H / 2;
+    const spawnR = isThumbnail ? 30 : 80;
+    const spawnMin = isThumbnail ? 10 : 20;
+    nodes.forEach(n => {
+        const radius = seededRandom() * spawnR + spawnMin;
+        const angle = seededRandom() * 2 * Math.PI;
+        n.x = cx + Math.cos(angle) * radius;
+        n.y = cy + Math.sin(angle) * radius;
+        n.vx = 0; n.vy = 0;
+        n.fx = null; n.fy = null;
+    });
+    sim.stop();
+    sim.alpha(1);
+    while (sim.alpha() > sim.alphaMin()) sim.tick();
+    if (!isThumbnail) qt = d3.quadtree(nodes, d => d.x, d => d.y);
+    canvas.style.opacity = '1';
+    draw();
+    return true;
+};
+
 // ── updateTheme ───────────────────────────────────────────────────────────────
 window.updateTheme = function(mode) {
     glowCache.clear();

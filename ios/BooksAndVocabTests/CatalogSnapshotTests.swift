@@ -83,8 +83,16 @@ private let catalogSnapshotCompileFlagEnabled = false
     /// at `<NSTemporaryDirectory>/kg-catalog-snapshots/<device>/<category>/<scenario>.png`.
     ///
     /// 本 test 不對結果做 assertion;它的職責是「生圖」,給 Claude / CLI 後續比對。
-    /// 失敗條件只剩 PlaybookSnapshot 內部 timeout 或寫檔錯誤,會以 throw 冒出。
-    @Test @MainActor func generateAllScenarioPNGs() throws {
+    /// 失敗條件只剩 PlaybookSnapshot 內部 timeout、寫檔錯誤(以 throw 冒出),
+    /// 以及 web-view scene 的 freeze gate(見 `renderWebViewScenarioPNGs`)。
+    ///
+    /// WKWebView-backed scenes(知識圖譜)不走 `snapshot.run`:其等待迴圈用
+    /// `RunLoop.run(mode:before:)` 自旋,WebContent process 在裡面 launch 不完
+    /// (實測 ~598s 才啟動),圖永遠空白。它們改走 `renderWebViewScenarioPNGs`
+    /// 的 async 擷取管線 — Swift concurrency 等待下 main runloop 自由運轉,
+    /// web process 正常啟動、d3 收斂後由 `CatalogGraphSnapshotFreezer` 轉成
+    /// 原生點陣圖再照相。
+    @Test @MainActor func generateAllScenarioPNGs() async throws {
         guard
             catalogSnapshotCompileFlagEnabled
                 || ProcessInfo.processInfo.environment["KG_RUN_CATALOG_SNAPSHOTS"] == "1"
@@ -127,6 +135,8 @@ private let catalogSnapshotCompileFlagEnabled = false
             SnapshotDevice.iPadPro11(.landscape),
             SnapshotDevice.iPadPro11(.landscape).style(.dark)
         ]
+        let (mainPlaybook, webViewScenarios) = Self.splitWebViewScenarios(from: playbook)
+
         let snapshot = Snapshot(
             directory: outputDirectory,
             clean: true,
@@ -135,7 +145,25 @@ private let catalogSnapshotCompileFlagEnabled = false
         )
 
         let snapshotRunStart = CFAbsoluteTimeGetCurrent()
-        try snapshot.run(with: playbook)
+        let armedBeforeMainPass = CatalogGraphSnapshotFreezer.armedCount
+        try snapshot.run(with: mainPlaybook)
+        // Anti-drift gate: a CatalogGraphSnapshotScene-wrapped scenario whose
+        // key is missing from webViewSnapshotScenarioKeys would arm a waiter
+        // inside the main pass, wait out 30s, and silently write a blank
+        // canvas. Fail loudly instead.
+        let armedDuringMainPass = CatalogGraphSnapshotFreezer.armedCount - armedBeforeMainPass
+        guard armedDuringMainPass == 0 else {
+            throw WebViewSnapshotError(description: """
+            \(armedDuringMainPass) CatalogGraphSnapshotScene waiter(s) armed inside the main \
+            Snapshot.run pass — a web-view-backed scenario is missing from \
+            CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys and would render blank.
+            """)
+        }
+        try await Self.renderWebViewScenarioPNGs(
+            webViewScenarios,
+            devices: deviceVariants,
+            outputDirectory: outputDirectory
+        )
         let snapshotRunMs = Self.elapsedMilliseconds(since: snapshotRunStart)
 
         // Emit the source-of-truth taxonomy index next to the PNGs. `snapshot.run`
@@ -168,6 +196,94 @@ private let catalogSnapshotCompileFlagEnabled = false
         if !scopeSummary.isEmpty {
             print("KG catalog snapshot scope: \(scopeSummary)")
         }
+    }
+
+    // MARK: Web-view scenario pipeline
+
+    /// Splits the filtered playbook into the `Snapshot.run` set and the
+    /// WKWebView-backed set (`CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys`).
+    private static func splitWebViewScenarios(
+        from playbook: Playbook
+    ) -> (main: Playbook, webView: [(category: ScenarioCategory, scenario: Scenario)]) {
+        let mainPlaybook = Playbook()
+        var webView: [(category: ScenarioCategory, scenario: Scenario)] = []
+        for store in playbook.stores {
+            for scenario in store.scenarios {
+                let key = "\(store.category.rawValue)/\(scenario.title.rawValue)"
+                if CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys.contains(key) {
+                    webView.append((store.category, scenario))
+                } else {
+                    mainPlaybook.scenarios(of: store.category).add(scenario)
+                }
+            }
+        }
+        return (mainPlaybook, webView)
+    }
+
+    private struct WebViewSnapshotError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    /// Captures WKWebView-backed scenarios via `SnapshotSupport.data` under
+    /// Swift-concurrency waiting (main runloop free → WebContent process can
+    /// launch, unlike inside `Snapshot.run`'s spin loop), writing PNGs into the
+    /// same `<device>/<category>/<scenario>.png` taxonomy as the main pass.
+    ///
+    /// Freeze gate(false-green 防護): each capture must consume exactly one
+    /// `CatalogGraphSnapshotFreezer` freeze — otherwise the canvas is blank
+    /// (legend-only) and the run fails loudly instead of shipping it.
+    @MainActor
+    private static func renderWebViewScenarioPNGs(
+        _ scenarios: [(category: ScenarioCategory, scenario: Scenario)],
+        devices: [SnapshotDevice],
+        outputDirectory: URL
+    ) async throws {
+        guard !scenarios.isEmpty else { return }
+        let fileManager = FileManager.default
+
+        for device in devices {
+            for (category, scenario) in scenarios {
+                let directoryURL = outputDirectory
+                    .appendingPathComponent(device.name, isDirectory: true)
+                    .appendingPathComponent(normalizeSnapshotName(category.rawValue), isDirectory: true)
+                try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+                let fileURL = directoryURL
+                    .appendingPathComponent(normalizeSnapshotName(scenario.title.rawValue))
+                    .appendingPathExtension("png")
+
+                // NOTE: dark device variants currently follow the simulator's
+                // global appearance rather than the per-device trait — that is
+                // pre-existing catalog-wide behavior (verified: light/dark PNG
+                // pairs are byte-identical in the `Snapshot.run` pass too), not
+                // something this async pass introduces or can locally fix.
+                let freezesBefore = CatalogGraphSnapshotFreezer.freezeCount
+                let data: Data = await withCheckedContinuation { continuation in
+                    SnapshotSupport.data(for: scenario, on: device, format: .png) { data in
+                        continuation.resume(returning: data)
+                    }
+                }
+                guard CatalogGraphSnapshotFreezer.freezeCount == freezesBefore + 1 else {
+                    throw WebViewSnapshotError(description: """
+                    web-view scenario '\(category.rawValue)/\(scenario.title.rawValue)' on device \
+                    '\(device.name)' completed without a graph freeze — the graph canvas would be \
+                    blank. Check CatalogGraphSnapshotScene wiring, the kgGraphWebViewInitHook path, \
+                    and graph.html readiness (settleGraphForSnapshot).
+                    """)
+                }
+                try data.write(to: fileURL)
+            }
+        }
+    }
+
+    /// Mirrors PlaybookSnapshot's private `Snapshot.normalize` so web-view
+    /// scenario PNGs land in the same directory taxonomy as the main pass.
+    private static let snapshotNameNormalizationCharacters = CharacterSet(charactersIn: ".:/")
+        .union(.whitespacesAndNewlines)
+        .union(.illegalCharacters)
+        .union(.controlCharacters)
+
+    private static func normalizeSnapshotName(_ string: String) -> String {
+        string.components(separatedBy: snapshotNameNormalizationCharacters).joined(separator: "_")
     }
 
     @Test func parseListArgumentsReadsLaunchArgumentPairs() {
