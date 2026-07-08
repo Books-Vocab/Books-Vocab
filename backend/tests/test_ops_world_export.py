@@ -170,6 +170,41 @@ class TestWorldExport:
         out = _export(tmp_path, uid)
         assert "plain" not in {c["content"] for c in out["cards"]}
 
+    def test_export_dedupes_multi_link_per_pair(self, tmp_path):
+        """app 語意：一對卡至多一條 active link（add_link 對既存 pair 拋
+        ConflictError）。legacy graph 資料可能同 pair 存雙向兩條——export 若
+        照導，spec 重放時第二條被冪等吸收，roundtrip 破功。export 必須確定式
+        保留 sorted 首條並 stderr warning。"""
+        uid = _mk_user(tmp_path)
+        assert _seed(tmp_path, uid, _RICH_SPEC, "--commit", "--json").returncode == 0
+        user_dir = tmp_path / "users" / uid
+        meticulous = _card_row(tmp_path, uid, "meticulous")
+        wince = _card_row(tmp_path, uid, "wince")
+        (graph_path,) = [
+            p for p in user_dir.glob("graph_*.json")
+            if json.loads(p.read_text(encoding="utf-8"))
+        ]
+        entries = json.loads(graph_path.read_text(encoding="utf-8"))
+        assert isinstance(entries, list) and len(entries) == 1
+        entries.append({
+            **entries[0], "id": "legacy-reverse",
+            "from_id": wince["id"], "to_id": meticulous["id"],
+            "kind": "contrasts_with", "status": "active",
+        })
+        graph_path.write_text(json.dumps(entries, ensure_ascii=False), encoding="utf-8")
+
+        r = _export_raw(tmp_path, uid)
+        assert r.returncode == 0, r.stderr
+        out = json.loads(r.stdout)
+        pair_links = [
+            l for l in out["links"]
+            if {l["from"], l["to"]} == {"meticulous", "wince"}
+        ]
+        assert len(pair_links) == 1
+        # 確定式：sorted (notebook, from, to, kind) 首條勝出
+        assert (pair_links[0]["from"], pair_links[0]["kind"]) == ("meticulous", "shares_usage")
+        assert "同卡對多條 active link" in r.stderr
+
     def test_export_out_flag_writes_file(self, tmp_path):
         uid = _mk_user(tmp_path)
         assert _seed(tmp_path, uid, _RICH_SPEC, "--commit", "--json").returncode == 0
