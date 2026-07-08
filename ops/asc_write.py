@@ -78,6 +78,8 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("用法：asc_write.py /v1/<path> [PATCH|POST|DELETE]  < body.json")
     path = sys.argv[1]
+    if not path.startswith("/"):
+        sys.exit(f"✗ path 必須以 / 開頭（通常是 /v1/...），收到：{path}（裸拼接會產生無效 hostname → 假 DNS 錯誤）")
     method = (sys.argv[2] if len(sys.argv) > 2 else "PATCH").upper()
     if method not in ALLOWED:
         sys.exit(f"✗ 不支援的 method：{method}（只允許 PATCH/POST/DELETE）")

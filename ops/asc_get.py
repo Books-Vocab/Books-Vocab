@@ -63,6 +63,8 @@ def get(path, token):
 def main():
     if len(sys.argv) < 2:
         sys.exit("用法：asc_get.py /v1/<path>")
+    if not sys.argv[1].startswith("/"):
+        sys.exit(f"✗ path 必須以 / 開頭（通常是 /v1/...），收到：{sys.argv[1]}（裸拼接會產生無效 hostname → 假 DNS 錯誤）")
     out = get(sys.argv[1], mint_token())
     print(json.dumps(out, ensure_ascii=False, indent=1))
 
