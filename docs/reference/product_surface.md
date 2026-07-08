@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: 050f1862
+verified_against: 2b69a831
 -->
 # Implemented Product Surface
 
@@ -143,7 +143,7 @@ verified_against: 050f1862
 
 - **Safe wrapper**(`ops/devops_kg_safe.sh`): 生產維護統一入口。除 `deploy/status/health/logs/ops-cli/ops-edit` 外，現在把高頻 host/container 唯讀診斷也 typed 化成 `caddy-status` / `caddyfile` / `docker-ps` / `docker-logs [n]` / `disk-usage` / `memory-usage` / `docker-stats`，降低 agent 直接使用 `run "<cmd>"` 的需求；對這些已 typed 的常見查詢，raw `run` 會回覆「use typed command」。`run/container-run/migrate-run` 保留為例外逃生口，不是預設查詢面。
 - Smart deploy: auto fast/full path + rsync `--delete` stale files
-- ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`world-state <uid>` 以穩定 schema `kg.ops_world_state.v1` 投影 `users.json config + notebooks/cards + disk graph`；`world-diff <uid> <spec.json>` 以 expectation schema `kg.ops_world_expectation.v1` 比對 actual world-state，輸出穩定 mismatch path，供 scenario diff/verify；`user-config-set`（含 `--auto-link on|off` 自動連結開關）+ `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景；`world-snapshot` / `world-restore` 提供整個 data_dir world 級快照與回滾）
+- ops-cli / ops-edit（container 內查詢與寫入工具；`db-query` 不需引號；`user-config <uid>` 唯讀檢視 user config；`world-state <uid>` 以穩定 schema `kg.ops_world_state.v1` 投影 `users.json config + notebooks/cards + disk graph`；`world-diff <uid> <spec.json>` 以 expectation schema `kg.ops_world_expectation.v1` 比對 actual world-state，輸出穩定 mismatch path，供 scenario diff/verify；`user-config-set`（含 `--auto-link on|off` 自動連結開關）+ `notebook-update --sort-order` 可做 Settings / active notebook / surface ordering 行銷造景；`world-snapshot` / `world-restore` 提供整個 data_dir world 級快照與回滾；`world-export <uid> [--out]` 把帳號 vocab 層唯讀導出成 `seed` 相容 spec `kg.seed_spec.v1`（全欄位含 review 計數器、確定式排序，`seed → export → seed(新沙盒) → export` 兩份相等 —— 行銷帳號可復現性地基），`seed` 對應支援 notebooks `sort_order`/`is_default`、cards `root_form`/`inflections`/`is_archived` 與 review 計數器形式（`review_count>0` 自動確定式合成 `review_events.db`，legacy `{state,interval}` 形式不變））
 - capture profile 編排層（`ops/capture_profile.py`；marketing screenshot 主入口 orchestrator。把 `ops_edit` 真資料造景、`ios_ops.sh catalog snapshots --dataset-file ...`、`frame_catalog_screenshots.py` 的外框橋接、以及 `render_screenshots.py` 最終宣傳圖渲染收進同一個 recipe。profile 內以 `shots[]` 同時描述 `sourceScenario + appearance + copy.title/subtitle + outputName`，因此改資料、改文案、改 shot mapping 都不必動 iOS code 或 renderer 常數；`snapshot.datasetFile` 在 profile 載入時就驗完整 UI World v2 schema/top-level domains 與 asset sourcePath+byteSize+sha256，缺資產或 hash 漂移直接 fail-fast；`materialize.expectationFile` 可選掛 `world-diff` 驗證，`run --commit` 會在 snapshot 前 fail loud。`run` 預設 dry-run materialize、不寫 demo 帳號；若 `--reuse-build` 遇 stale cache，會自動 `catalog prepare` 再重試 snapshot。`derive-expectation` 可從 `seedFile + steps` 自動再生 expectation spec(取代手寫、`--check` 做 drift guard)，消除 scenario expectation 的手維護漂移）
 - container-script (本地腳本上傳執行)
 - `ops_analyze.py` one-command deep graph analysis levels 1-6

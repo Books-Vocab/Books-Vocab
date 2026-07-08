@@ -201,6 +201,7 @@ documents:
       - backend/src/kg/ops_world_projection.py
       - backend/src/kg/ops_world_expectation.py
       - backend/src/kg/ops_world_diff.py
+      - backend/src/kg/ops_world_export.py
       - ops/capture_profile.py
 
   - id: sop.doc_sync
