@@ -594,6 +594,17 @@ def _validate_optional_fixture_date(raw: Any, *, owner: str, label: str) -> None
         raise UIWorldManifestError(f"{label} {owner} epoch seconds must be non-negative")
 
 
+def _validate_required_fixture_date(raw: Any, *, owner: str, label: str) -> None:
+    """Swift 端以 `decode(Date.self)` 讀取（非 optional）的 fixture date：null 會在
+    app 內 preconditionFailure，validator 必須 fail-fast。格式同 optional 版
+    （ISO8601 字串或 epoch seconds，對齊 FixtureDatasetStore 的 Date decoder）。"""
+    if raw is None:
+        raise UIWorldManifestError(
+            f"{label} {owner} must be a non-null date (Swift decoder requires Date)"
+        )
+    _validate_optional_fixture_date(raw, owner=owner, label=label)
+
+
 def _ensure_int(raw: Any, *, field: str, label: str) -> int:
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise UIWorldManifestError(f"{label} {field} 必須是 int")
@@ -1019,7 +1030,8 @@ def _validate_today_review_card(seed: Mapping[str, Any], *, owner: str, label: s
     _ensure_str(seed.get("bookTitle"), field=f"{owner}.bookTitle", label=label)
     for field in ("explanation", "partOfSpeech", "chapterTitle", "difficultyTier", "rootForm"):
         _validate_nullable_string(seed.get(field), owner=f"{owner}.{field}", label=label)
-    _validate_optional_fixture_date(seed.get("dateAdded"), owner=f"{owner}.dateAdded", label=label)
+    # Swift TodayReviewCardSeed.dateAdded 是非 optional Date（TodayReviewFixtures.swift）
+    _validate_required_fixture_date(seed.get("dateAdded"), owner=f"{owner}.dateAdded", label=label)
     review_mode = _ensure_str(seed.get("reviewMode"), field=f"{owner}.reviewMode", label=label)
     if review_mode not in VALID_REVIEW_MODES:
         raise UIWorldManifestError(f"{label} {owner}.reviewMode is invalid")

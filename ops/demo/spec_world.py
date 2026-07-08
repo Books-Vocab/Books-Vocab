@@ -35,7 +35,19 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
   可解析，秒級 Z 格式是雙端最穩交集。
 * spec 無書籍來源欄位（kg.seed_spec.v1 不含 source）→ bookTitle 用 notebook 名
   （validator 要求非空字串）、context 缺 example 時 fallback 為 word 本身、
-  chapterTitle / dateAdded 一律 null（明示、非省略）。
+  chapterTitle 一律 null（明示、非省略）。
+* todayReview 卡片 dateAdded：Swift TodayReviewCardSeed.dateAdded 是非 optional
+  Date → 必須確定式導出非空值（規則見 `_card_date_added` docstring；缺料逐級
+  fallback 到 `_DATE_ADDED_FALLBACK_ANCHOR` 固定錨點，禁 Date.now / 隨機）。
+* content-pinned fixtures 不投影：catalog scenario 釘死特定 word / query 命中數 /
+  exact count / archived 量的 vocabulary fixture（清單與 SoT 註解 =
+  `emit_ios.SPEC_BASELINE_KEPT_FIXTURES`）由 emit_ios 保留 baseline，本模組
+  不得回傳這些 id——任意合法 spec（可 0 archived、0 命中）無法保證其斷言。
+* 仍投影的 populated/dense fixtures 帶 catalog 端最低量斷言（vocabListPopulated
+  ≥4、vocabListLong ≥40、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
+  ≥70 事件、knowledgeGraphPopulated ≥3 卡/≥2 link、reviewDeck.phaseMulti ==3）：
+  這是行銷 spec 的資料量責任，投影器不擋薄 spec（測試/沙盒 spec 合法），量不足
+  時對應 catalog surface 會 fail-loud。
 
 測試：ops/tests/test_demo_ios_spec_emitter.py。
 """
@@ -58,10 +70,8 @@ _TODAY_SESSION_MAX = 12      # todayReview 一場 session 的卡數上限
 _DECK_PROBE_MAX = 40         # reviewDeck.probe（flip-probe 卡組，對齊 baseline 40）
 _DECK_MULTI_MAX = 3          # reviewDeck.phaseMulti
 _DECK_NOTEBOOK_MAX = 8       # reviewDeck.notebookReviewDeck
-_LIST_LONG_MAX = 40          # vocabListLong / archivedLong（長列表捲動語意）
-_SEARCH_MAX = 60             # searchVocabNotebook
+_LIST_LONG_MAX = 40          # vocabListLong（長列表捲動語意）
 _KG_GRAPH_MAX = 24           # knowledgeGraphPopulated（圖面可渲染上限）
-_LINKED_CARDS_MAX = 6        # vocabLinkedCards
 _STATS_ENTRIES_MAX = 8       # statsPopulated / shellNavigation entries
 _SYNCING_MAX = 5             # vocabListSyncing
 _PENDING_MIXED_MAX = 4       # syncPendingMixed
@@ -72,6 +82,8 @@ _HISTORY_SHELL_MAX = 200     # shellNavigation
 _INTERVAL_GROWTH = 1.7       # 對齊 demo_review_synth 的往過去回推成長係數
 _MIN_RECENT_GAP_HOURS = 8.0
 _MAX_GAP_HOURS = 24.0 * 30   # 單段間隔上限（30 天）
+_DATE_ADDED_LEAD_HOURS = 24.0  # dateAdded 至少早於最早 review 錨點 24h（卡先加入才被複習）
+_DATE_ADDED_FALLBACK_ANCHOR = "2026-01-01T00:00:00Z"  # spec 全無日期素材時的固定錨點
 
 
 class SpecWorldError(ValueError):
@@ -290,6 +302,9 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         notebooks,
         key=lambda nb: (_active_count(nb), nb["is_default"], -nb["index"]),
     )
+    for cards in cards_by_nb.values():
+        for card in cards:
+            card["date_added"] = _card_date_added(card)
     return {"notebooks": notebooks, "cards_by_nb": cards_by_nb, "primary": primary}
 
 
@@ -367,6 +382,27 @@ def _card_history(card: dict[str, Any]) -> list[dict[str, Any]]:
         }
         for i in range(n)
     ]
+
+
+def _card_date_added(card: dict[str, Any]) -> str:
+    """確定式導出非空 dateAdded（Swift TodayReviewCardSeed.dateAdded 非 optional）。
+
+    規則（缺料逐級 fallback；全部是 spec 內容的純函式，零 wall-clock、零隨機）：
+    1. 有合成 review 事件（review_count>0 且 last_reviewed_at 非空）→ 取最早
+       合成事件再往前 _DATE_ADDED_LEAD_HOURS：卡必先加入才有首次 review。
+    2. 否則有 last_reviewed_at 或 next_review_at → 該錨點往前
+       _DATE_ADDED_LEAD_HOURS。
+    3. 全無日期素材 → _DATE_ADDED_FALLBACK_ANCHOR 固定錨點。
+    """
+    history = _card_history(card)
+    if history:
+        anchor = _parse_norm_ts(history[0]["reviewedAt"])  # index 0 = 最舊事件
+    else:
+        raw = card["last_reviewed_at"] or card["next_review_at"]
+        if not raw:
+            return _DATE_ADDED_FALLBACK_ANCHOR
+        anchor = _parse_norm_ts(raw)
+    return _fmt_ts(anchor - timedelta(hours=_DATE_ADDED_LEAD_HOURS))
 
 
 def _history_for(cards: list[dict[str, Any]], *, cap: int) -> list[dict[str, Any]]:
@@ -483,7 +519,7 @@ def _today_card(card: dict[str, Any], *, nb_name: str,
         "partOfSpeech": card["pos"],
         "bookTitle": nb_name,
         "chapterTitle": None,
-        "dateAdded": None,  # spec 無 created_at → 明示 null
+        "dateAdded": card["date_added"],  # 非空確定式導出（_card_date_added）
         "difficultyTier": card["difficulty_tier"],
         "reviewMode": reviewed_mode or card["mode"],
         "reviewExamples": card["examples"],
@@ -576,7 +612,9 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         _entry(c, nb_name=primary["name"], sync_status=1 if i < syncing_split else 0)
         for i, c in enumerate(syncing)
     ]
-    mixed_actions = ("add", "add", "edit", "delete")
+    # SyncViewScenarios mixed 釘「pending>1 且同時含 add+delete」→ delete 排第二，
+    # 讓 ≥2 張 active 卡的 spec 就能滿足，不依賴恰有 4 張。
+    mixed_actions = ("add", "delete", "add", "edit")
     mixed_entries = [
         _entry(c, nb_name=primary["name"], sync_status=0,
                action_type=mixed_actions[i % len(mixed_actions)])
@@ -588,6 +626,10 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     stats_history = _history_for(stats_cards, cap=_HISTORY_STATS_MAX)
     shell_history = _history_for(stats_cards, cap=_HISTORY_SHELL_MAX)
 
+    # content-pinned fixtures（wordDetail / wordEdit / searchVocabNotebook /
+    # kgVocabRow / vocabLinkedCards / archivedPopulated / archivedSingle /
+    # archivedLong）刻意不投影：catalog scenario 釘死特定內容/形狀，由 emit_ios
+    # 保留 baseline（SoT 註解見 emit_ios.SPEC_BASELINE_KEPT_FIXTURES）。
     vocabulary = {
         "vocabListPopulated": _vocab_seed(primary, entries(active)),
         "vocabListSingle": _vocab_seed(primary, entries(active[:1])),
@@ -598,17 +640,9 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
             primary, entries(active[:1], sync_status=0), notebook_sync=0),
         "syncPendingMixed": _vocab_seed(primary, mixed_entries, notebook_sync=0),
         "syncEmpty": _vocab_seed(primary, []),
-        "archivedPopulated": _vocab_seed(primary, entries(archived)),
-        "archivedSingle": _vocab_seed(primary, entries(archived[:1])),
-        "archivedLong": _vocab_seed(primary, entries(archived[:_LIST_LONG_MAX])),
         "archivedEmpty": _vocab_seed(primary, []),
         "knowledgeGraphPopulated": _vocab_seed(primary, entries(linked[:_KG_GRAPH_MAX])),
         "knowledgeGraphEmpty": _vocab_seed(primary, []),
-        "kgVocabRow": _vocab_seed(primary, entries(active[:5])),
-        "searchVocabNotebook": _vocab_seed(primary, entries(active[:_SEARCH_MAX])),
-        "vocabLinkedCards": _vocab_seed(primary, entries(linked[:_LINKED_CARDS_MAX])),
-        "wordDetail": _vocab_seed(primary, entries(linked[:2])),
-        "wordEdit": _vocab_seed(primary, entries(active[:4])),
         "shellNavigation": _vocab_seed(primary, entries(stats_cards), shell_history),
         "statsPopulated": _vocab_seed(primary, entries(stats_cards), stats_history),
         "reviewCalendarDense": _vocab_seed(primary, entries(active), dense_history),
