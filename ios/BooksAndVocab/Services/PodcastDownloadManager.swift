@@ -54,10 +54,24 @@ final class PodcastDownloadManager: NSObject {
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
+    /// Whether `configure` has taken effect (delegate callbacks can persist).
+    /// Exposed for the feature-gate tests; production code never branches on it.
+    var isConfigured: Bool { modelContainer != nil }
+
     /// Call once from app launch — required before any startDownload call.
     /// Persists the container reference so background delegate callbacks
     /// can update SwiftData without piping it through every API call.
-    func configure(modelContainer: ModelContainer) {
+    ///
+    /// Podcast gate: when `KGFeatureFlags.podcastEnabled == false`（Release）
+    /// the manager must stay inert — refuse the container so the download
+    /// data path is dead end-to-end (`startDownload` is unreachable anyway
+    /// because the UI is gated, and `commit` drops stashes without a
+    /// container). `podcastEnabled` 參數化僅供測試；production 走預設值。
+    func configure(
+        modelContainer: ModelContainer,
+        podcastEnabled: Bool = KGFeatureFlags.podcastEnabled
+    ) {
+        guard podcastEnabled else { return }
         self.modelContainer = modelContainer
     }
 

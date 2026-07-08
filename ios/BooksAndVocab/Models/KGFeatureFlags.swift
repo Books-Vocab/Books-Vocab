@@ -44,9 +44,13 @@ enum KGFeatureFlags {
     static var serverVocabUiLwwEnabled: Bool { false }
 
     /// Whether the podcast feature is exposed anywhere in the UI (top-level
-    /// section tab / Catalyst sidebar row / paywall marketing copy). DEBUG-only
+    /// section tab / Catalyst sidebar row / paywall marketing copy) **and**
+    /// whether its data layer may run at all（`backgroundSync` catalog leg 含
+    /// 封面下載、`PodcastDownloadManager.configure`）。DEBUG-only
     /// while the feature incubates: Release builds ship reader + vocabulary +
-    /// notebook only. Compile-time constant so Release codepaths are strippable.
+    /// notebook only — 零 podcast 網路/磁碟足跡（logout cleanup 除外，刻意保留
+    /// 以清舊 build 殘檔）。Compile-time constant so Release codepaths are
+    /// strippable.
     #if DEBUG
     static let podcastEnabled = true
     #else
