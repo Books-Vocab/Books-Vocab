@@ -220,7 +220,7 @@ write_workflow_release_steps_json() {
     if (( build > tf_latest )); then
       emit_workflow_step_json "$out" 5 "upload" "ready" "./ops/ios_ops.sh archive --upload" "project build $build is greater than TestFlight latest $tf_latest"
     else
-      emit_workflow_step_json "$out" 5 "upload" "block" "./ops/release.sh bump ios <next-version>" "project build $build is not greater than TestFlight latest $tf_latest"
+      emit_workflow_step_json "$out" 5 "upload" "block" "./ops/release.sh bump ios <next-version> --yes" "project build $build is not greater than TestFlight latest $tf_latest"
     fi
   else
     emit_workflow_step_json "$out" 5 "upload" "warn" "./ops/ios_ops.sh doctor" "cannot prove TestFlight latest build"

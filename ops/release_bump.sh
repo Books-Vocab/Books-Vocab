@@ -22,6 +22,7 @@ done
 
 COMPONENT="${POS[0]:?用法: ops/release_bump.sh <api|ios> <version> [--yes]}"
 VERSION="${POS[1]:?請提供版本號，例如 1.3.0}"
+[[ ${#POS[@]} -le 2 ]] || { echo "✗ 多餘參數：${POS[*]:2}（用法: ops/release_bump.sh <api|ios> <version> [--yes]）" >&2; exit 1; }
 
 KG_ROOT="${KG_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"   # 可由 env 覆寫（測試指向 fixture）
 

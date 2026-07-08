@@ -45,7 +45,7 @@ SURFACES = [
     Surface("docs.registry.coverage", "./ops/docs_registry_coverage.py", "./ops/docs_registry_coverage.py --json", "observer", "repo-read", "repo", "docs registry coverage audit"),
     Surface("release.status", "./ops/release.sh", "./ops/release.sh status", "observer", "repo-read", "repo", "api/iOS release status and suggested version bump"),
     Surface("release.changelog", "./ops/release.sh", "./ops/release.sh changelog <api|ios>", "observer", "repo-read", "repo", "release changelog preview"),
-    Surface("release.bump", "./ops/release.sh", "./ops/release.sh bump <api|ios> <x.y.z>", "editor", "repo-write", "repo", "local version-file bump"),
+    Surface("release.bump", "./ops/release.sh", "./ops/release.sh bump <api|ios> <x.y.z> --yes", "editor", "repo-write", "repo", "local version-file bump (dry-run without --yes)"),
     Surface("release.publish", "./ops/release.sh", "./ops/release.sh publish <api|ios> <x.y.z> --yes", "production-capable", "repo-write external-push", "external", "commit version files, tag, and push release marker"),
     Surface("devops.safe.status", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh status", "observer", "prod-read", "production", "production app/container status"),
     Surface("devops.safe.health", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh health --json", "observer", "prod-read", "production", "host-level health aggregation"),
