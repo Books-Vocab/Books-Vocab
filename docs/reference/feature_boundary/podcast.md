@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Podcast/
-verified_against: 1d23758d
+verified_against: 050f1862
 -->
 # Podcast Feature Boundary
 
@@ -14,7 +14,7 @@ verified_against: 1d23758d
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastHomeView.swift` | ~354 | **podcast 頂層 section 入口（軸 B Phase 3）** `struct PodcastHomeView: View`，由 `ContentView` `AppPrimarySection.podcasts`（iOS TabView 第 2 / Catalyst sidebar）掛載。自有 `NavigationStack(path: $navigationPath)`（鏡射 `NotebookListView` path-bound root）；root 統一註冊 `navigationDestination(for: PodcastNavRoute.self)`（`.series→PodcastEpisodeListView`、`.episode→PodcastPlayerView`），**series→episode→player push 全在本 stack 完成**，不再寄生 `BookshelfView`（解架構債）。首頁 phase 由 `PodcastHomePhase.resolve` 分成 loading / error / empty / content：首次同步中顯示同步卡，list fetch failed 且本地無 series 顯示 retry error state，有既有 catalog 時保留 content。**內容為串流 shelf 堆疊**：`continueShelf`（繼續收聽，`@Query PodcastProgress`（updatedAt desc）跨 series 在記憶體 join episode→`PodcastContinueRailCard`，空則整段隱藏）+ `seriesGridSection`（所有節目 `LazyVGrid`，followed 排前 + star badge）。series 卡 / continue 卡一律 value-based `NavigationLink(value:)`（LazyV/HStack freeze 契約 PR #366/#368/#370/#373）。`.task(id: authManager.isLoggedIn)` 觸發 `syncPodcastCatalog(showToastOnFailure:warmAudioAfterSync:)`；pull-to-refresh 走同一路徑但不 warm audio。`toggleFollow` / `refreshPodcastCatalog` 自 `BookshelfView` re-home。卡片 tap feedback 共用 `BookshelfCardButtonStyle`（已提升 internal） |
+| `PodcastHomeView.swift` | ~354 | **podcast 頂層 section 入口（軸 B Phase 3）** `struct PodcastHomeView: View`，由 `ContentView` `AppPrimarySection.podcasts`（iOS TabView 第 2 / Catalyst sidebar）掛載——**DEBUG-only**：`AppPrimarySection.visibleCases(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled`（compile-time `#if DEBUG`）過濾，Release 不出現本 section；`resolvedSelection(_:podcastEnabled:)` 防禦回退 `.bookshelf`（測試 `PodcastFeatureGateTests`）。自有 `NavigationStack(path: $navigationPath)`（鏡射 `NotebookListView` path-bound root）；root 統一註冊 `navigationDestination(for: PodcastNavRoute.self)`（`.series→PodcastEpisodeListView`、`.episode→PodcastPlayerView`），**series→episode→player push 全在本 stack 完成**，不再寄生 `BookshelfView`（解架構債）。首頁 phase 由 `PodcastHomePhase.resolve` 分成 loading / error / empty / content：首次同步中顯示同步卡，list fetch failed 且本地無 series 顯示 retry error state，有既有 catalog 時保留 content。**內容為串流 shelf 堆疊**：`continueShelf`（繼續收聽，`@Query PodcastProgress`（updatedAt desc）跨 series 在記憶體 join episode→`PodcastContinueRailCard`，空則整段隱藏）+ `seriesGridSection`（所有節目 `LazyVGrid`，followed 排前 + star badge）。series 卡 / continue 卡一律 value-based `NavigationLink(value:)`（LazyV/HStack freeze 契約 PR #366/#368/#370/#373）。`.task(id: authManager.isLoggedIn)` 觸發 `syncPodcastCatalog(showToastOnFailure:warmAudioAfterSync:)`；pull-to-refresh 走同一路徑但不 warm audio。`toggleFollow` / `refreshPodcastCatalog` 自 `BookshelfView` re-home。卡片 tap feedback 共用 `BookshelfCardButtonStyle`（已提升 internal） |
 | `PodcastPlayerView.swift` | ~49 | **薄 wrapper**：保留 feature 入口與測試相容的 static helper API（`fetchEpisode` / `resolveVocabularyContext` / `shouldPersist` / `isCompleted`），實際 UI 與生命周期 orchestration 下放到 `PodcastPlayerScene.swift` / `PodcastPlayerSupport.swift` |
 | `PodcastPlayerScene.swift` | ~631 | 主播放器場景 orchestration。持有 `PodcastPlayerViewModel` / `ReaderTranslationHandler` / progress persistence / episode-switch state，負責 `.task(id: activeEpisodeId)` 換集、`scenePhase`/`onDisappear` 存檔、字幕設定 sheet、translation panel bridge、retry subtitle、auto-advance 與高頻 `PodcastProgressTicker` 隔離。**系列綁定單字本 scope**：選詞 / cache（`resolveVocabularyContext` 的 `rawNotebookId`）/ 底線（`loadLookedUpWords(notebookId:)`）一律認 `loadedSeries?.resolvedNotebookId`（`NotebookBindable`），取代舊的全域 `ActiveNotebookStore.activeNotebookId`；`seedSeriesBindingIfNeeded`（`onChange(of: loadedSeries?.remoteId)` + `liveNotebooks` settle 時觸發）以最近使用的真實單字本 seed 固化綁定（`PodcastSeries.canSeedBinding` gate live 清單）；toolbar `books.vertical` → `$showNotebookPicker` sheet → `PodcastNotebookPicker` 切換 |
 | `PodcastPlayerAccessSurface.swift` | ~82 | player access chrome：`PodcastPlayerLockedGateView`（guest/login vs free/paywall 鎖定畫面）、`PodcastPlayerPreviewBanner`（3 分鐘 preview 升級條）、`PodcastPlayerSettingsButton`（toolbar glyph）。把 monetization / locked UI 從 session orchestration 抽離成明名 surface |
@@ -61,7 +61,7 @@ verified_against: 1d23758d
 | 檔案 | 說明 |
 |------|------|
 | `PodcastAssetPreloader.swift` | @MainActor singleton；warm AVFoundation HTTP/2 連線（tap-on-row + bookshelf-appear）；LRU-5, 60s TTL；失敗即 evict |
-| `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察 |
+| `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察。`configure(podcastEnabled:)` 於 gate off（Release）時拒收 ModelContainer，manager 保持 inert（測試 `PodcastDownloadManagerGateTests`）|
 | `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後以 bounded concurrency 跑 `cacheCoverIfNeeded`，把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>_<v>.png`（legacy 無 `?v=` 時退 `<sid>.png`）→ 寫 `PodcastSeries.coverImagePath`（HTTP 2xx + `image/png` + PNG magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪當前 path/legacy `<sid>.png`，避免 stale 快取永久渲染且不以 prefix 誤刪其他 `_` series；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除 disk + memory cover cache。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（Phase 3，序執行於 vocab pull 後，見 §同步觸發） |
 
 ### 同步觸發
@@ -69,7 +69,7 @@ verified_against: 1d23758d
 podcast catalog 同步現有兩條觸發鏈：
 
 1. **PodcastHomeView 局部觸發** — `.task(id: authManager.isLoggedIn)`（登入狀態翻轉時同步）+ `.refreshable`（下拉重試）。首頁以 `PodcastHomePhase` 區分 loading / error / empty / content。
-2. **`KGService.backgroundSync` Phase 3**（`KGService+Sync.swift`，序執行於 vocab pull 之後）— 共用所有既有 resync 觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。補上局部 task/refresh 沒跑到時 podcast catalog 仍可由全域同步復原的路徑（書為本地 `@Query` 故恆在）。token 過期已由 vocab pull 的 401 分支提早 return。
+2. **`KGService.backgroundSync` Phase 3**（`KGService+Sync.swift`，序執行於 vocab pull 之後）— 共用所有既有 resync 觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。補上局部 task/refresh 沒跑到時 podcast catalog 仍可由全域同步復原的路徑（書為本地 `@Query` 故恆在）。token 過期已由 vocab pull 的 401 分支提早 return。**Release gate**：整條 catalog leg（list fetch + 封面下載）經 `KGService.runPodcastCatalogSyncIfEnabled` seam——`KGFeatureFlags.podcastEnabled == false`（Release）時在建構 `PodcastSyncService` 前 early-return，零 podcast 網路/磁碟活動（測試 `PodcastDataLayerGateTests`；logout cleanup 刻意不 gate，清舊 build 殘檔）。
 
 ### metadata.json contract
 

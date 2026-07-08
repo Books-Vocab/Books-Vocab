@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: cdfabee2
+verified_against: 050f1862
 -->
 # Settings Feature Boundary
 
@@ -41,8 +41,8 @@ verified_against: cdfabee2
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `SettingsPresentation.swift` | 170 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
-| `SubscriptionPresentation.swift` | 142 | `enum SubscriptionPresentation`：KGSubscriptionStatus → badge / tone / 摘要 / 詳情 / CTA / permissions UI 模型 |
-| `SubscriptionPaywallFeatureCatalog.swift` | 114 | Free vs Pro 功能對照目錄（EPUB/PDF、AI 翻譯、同步、知識圖譜、複習、Podcast）；計算屬性支援語言即時切換 |
+| `SubscriptionPresentation.swift` | 149 | `enum SubscriptionPresentation`：KGSubscriptionStatus → badge / tone / 摘要 / 詳情 / CTA / permissions UI 模型；`summary(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 切換 active 摘要文案（Release 用不含 Podcast 的版本）|
+| `SubscriptionPaywallFeatureCatalog.swift` | 123 | Free vs Pro 功能對照目錄（EPUB/PDF、AI 翻譯、同步、知識圖譜、複習、Podcast）；`descriptors(podcastEnabled:)` 於 gate off（Release，`KGFeatureFlags.podcastEnabled`）時移除 Podcast row（quota row 恆末位）；計算屬性支援語言即時切換 |
 | `SettingsMetrics.swift` | 14 | `enum AppSettingsMetrics`，Settings 專用版面常數（帳號 / 複習區塊間距與大小）|
 
 ### Section Views（各設定區塊）

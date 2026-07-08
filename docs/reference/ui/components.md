@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: f0d37ca4
+verified_against: 050f1862
 -->
 # UI Component & Pattern Inventory
 
@@ -65,7 +65,7 @@ Scope: `ios/BooksAndVocab`
 - `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRadius.sm` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
 
 主導航 pattern：
-- `ContentView` 以 `AppPrimarySection` 定義全 app 一級資訊架構（書庫 → 單字本 → 總覽）。iPhone / iPad 保留 `TabView`；Mac Catalyst 走 `NavigationSplitView` + `.sidebar` list，將主區切換移到左側側欄，避免桌面版沿用手機底部分頁。Catalyst 不用 `List(selection:)`（iOS SDK availability unavailable），改以 sidebar `AppSidebarRow`（見上）+ `selectedSection` 狀態維持選取背景。
+- `ContentView` 以 `AppPrimarySection` 定義全 app 一級資訊架構（DEBUG：書庫 → 播客 → 單字本 → 總覽；Release：無播客——`AppPrimarySection.visibleCases(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 過濾，見 `tech_index.md`）。iPhone / iPad 保留 `TabView`；Mac Catalyst 走 `NavigationSplitView` + `.sidebar` list，將主區切換移到左側側欄，避免桌面版沿用手機底部分頁。Catalyst 不用 `List(selection:)`（iOS SDK availability unavailable），改以 sidebar `AppSidebarRow`（見上）+ `selectedSection` 狀態維持選取背景。
 
 #### Toast 子系統
 
