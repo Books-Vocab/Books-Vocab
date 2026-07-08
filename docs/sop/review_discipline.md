@@ -4,6 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - .claude/skills/
+  - .claude/agents/
   - docs/sop/
 verified_against: a6ad9d5d
 -->
@@ -48,7 +49,7 @@ verified_against: a6ad9d5d
 
 用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`。
 
-固定模板：
+固定模板（**優先軌**：`subagent_type: "code-reviewer"`，§3–§6 已內建，prompt 只給 commit hash + scope + 特別關注點；下方 general-purpose 為 fallback 軌，才需完整帶齊六項）：
 
 ```
 Agent({
@@ -72,6 +73,10 @@ Agent({
    - 是否引入 dead code / 半成品
    - 安全（鐵律 7 邊界、auth、PII、injection）
    - KG 專案規則：iOS raw 中文（鐵律 8）、SwiftData migration、provider registry not silent fallback
+   - 雙態語意：Debug vs Release、feature flag on/off 兩態是否各自正確，是否只驗了單態
+   - TDD 痕跡與測試品質：diff 是否附測試；測試是否鎖住「宣稱的語意」而非常數/實作細節（改個常數就能綠 = 假測試）
+   - 風格契合：命名/分層/錯誤處理是否貼合該檔既有慣例，不引入新風格
+   - 驗證證據：結論必附證據 — 親跑對應 gate（test/lint/build）貼當下輸出，或明示「本次為靜態審，未跑 gate」及原因
 4. **下游 surface 同步檢查** — 若 commit 改了 user/agent-facing 介面（CLI 子指令、admin endpoint、env var、設定 schema、CSV schema），明確要 reviewer grep `.claude/skills/`、`docs/reference/product_surface.md`、`docs/reference/tech_index.md`、`docs/sop/`、`docs/policy/`、`docs/runbook/`，凡引用到舊清單但未在同 commit/PR 同步 → 標 **block**
 5. **輸出格式約束** — `severity (block / nit) | file:line | issue` 條列，或 `PASS — no issues`
 6. **限制** — 「只審這個 commit 的 diff，不要重寫 code，不要 propose 無關 refactor」

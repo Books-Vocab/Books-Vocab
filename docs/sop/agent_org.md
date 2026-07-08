@@ -41,7 +41,7 @@ verified_against: a6ad9d5d
 
 「粗活全下放」不是無下限——委派本身有成本(agent 啟動 + 全套 receipt)。Planning 拍先判:
 
-- **trivial**(同時滿足:單檔、約 ≤10 行、純樣板 / 無語意風險)→ **當前節點直接做**,免下放、免全套 receipt;review 豁免依 `docs/sop/review_discipline.md`「Receipt 契約」的 `Review-Exempt` 白名單。
+- **trivial**(同時滿足:單檔、約 ≤10 行、純樣板 / 無語意風險)→ **當前節點直接做**,免下放、免全套 receipt。注意:trivial 判的只是「要不要派 agent」;**review 豁免另判**,僅限 `docs/sop/review_discipline.md`「Receipt 契約」的 `Review-Exempt` 白名單 reason——符合 trivial 但不合白名單者,仍需 `Reviewed-by` receipt。
 - **非 trivial** → 照常走委派契約(下行 task brief / 上行 receipt)。
 
 本門檻與鐵律5 **正交**:這裡判的是「要不要派 agent」;一旦決定派,鐵律5(所有 `Agent()` 背景化)照常適用,不因工作小而改同步。
