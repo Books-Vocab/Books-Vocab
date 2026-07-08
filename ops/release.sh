@@ -9,6 +9,7 @@
 #   ./ops/release.sh status                     # 各 component 自上個 tag 以來的待發版 commit + 建議版號
 #   ./ops/release.sh changelog <api|ios>        # 印 markdown changelog 預覽（唯讀）
 #   ./ops/release.sh bump <api|ios> <x.y.z>     # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；預設 dry-run 印舊→新，--yes 才寫）
+#   ./ops/release.sh bump-build ios             # 只 +1 pbxproj CURRENT_PROJECT_VERSION、MARKETING_VERSION 不動（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh publish <api|ios> <x.y.z>  # commit 版號檔 + tag + push（預設 dry-run，--yes 才真送）
 #
 # 全域 flag：--yes（bump 真寫 / publish 真送）  -h|--help
@@ -107,6 +108,18 @@ cmd_bump() {
   fi
 }
 
+# ---- bump-build：只 +1 iOS build number（被拒同版重送；委派 primitive --build-only） ----
+cmd_bump_build() {
+  local c="${1:?用法: release.sh bump-build ios [--yes]}"
+  [[ "$c" == ios ]] || err "bump-build 只支援 ios（api 無 build number；改版號用 ./ops/release.sh bump api <x.y.z>）"
+  [[ $# -le 1 ]] || err "多餘參數：${*:2}（bump-build 不吃版本號，build number 自動 +1）"
+  if [[ $YES -eq 1 ]]; then
+    "$ROOT/ops/release_bump.sh" ios --build-only --yes
+  else
+    "$ROOT/ops/release_bump.sh" ios --build-only
+  fi
+}
+
 # ---- publish：commit 版號檔 + tag + push（dry-run 預設，--yes 才真送） ----
 cmd_publish() {
   local c="${1:?用法: release.sh publish <api|ios> <x.y.z> [--yes]}" v="${2:-}"
@@ -162,6 +175,7 @@ case "${SUB:-}" in
   status)    cmd_status ;;
   changelog) cmd_changelog ${ARGS[@]+"${ARGS[@]}"} ;;
   bump)      cmd_bump ${ARGS[@]+"${ARGS[@]}"} ;;
+  bump-build) cmd_bump_build ${ARGS[@]+"${ARGS[@]}"} ;;
   publish)   cmd_publish ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
