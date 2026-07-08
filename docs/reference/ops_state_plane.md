@@ -72,6 +72,7 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 - **不可重放資料不進 payload**：孤兒卡（notebook 已刪）、斷鏈 link（端點卡已刪）走 stderr warning，stdout 維持純 spec JSON；active notebook 同名多本、卡 meaning 空白 → export fail-loud（seed 無法重放）。
 - **`is_default: true` 映射預設本**：seed 遇 is_default entry 直接更新 id=`default` 的既存預設本（可改名，不增殖新本），否則 export 的預設本重放後會變成第二本普通 notebook、roundtrip 破功。
 - **review events 不在 export 範圍**：export 只涵蓋 cards.db 聚合；重放側由計數器重新合成逐筆事件（legacy seed 的世界本來就無事件，重放後會多出合成事件 —— 這是計數器形式的契約，不是 drift）。
+- **export 恆唯讀、無 dry-run 語意**：`world-export` 是 ops-cli 讀面指令，沒有 `--commit` 旗標，任何模式下執行都只讀盤（測試以 cards.db sha 不變固化）；「dry-run 才安全」的心智模型不適用也不需要。
 
 ## 2. capture_profile 抽象邊界宣告
 

@@ -47,3 +47,4 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0010 | 2026-07-08 | iOS 2.0.0 發版檢討 | cli | med | fixed | `release.sh bump` 跑了立即寫檔,違 dry-run 預設慣例(實際咬人:預覽即污染 pbxproj) | `34cd97866`+`9c88b55b2`(dry-run 預設+--yes+全面語意同步+迴歸) |
 | IMP-0011 | 2026-07-08 | iOS 2.0.0 發版檢討 | cli | low | fixed | `ios_test.sh --ui` 缺 dataset 錯誤不列可用清單,需二次查找 | `27d61ecb5`+`d56efeabe`(錯誤附 ui_worlds 名單+set -e 防死+迴歸) |
 | IMP-0012 | 2026-07-08 | iOS 2.0.0 發版檢討 | doc | low | open | `docs/sop/ios.md` §UI World dataset 契約為單行 ~4000 字牆,知識密度高但不可讀不可維護;候選:結構化為表格+分節 | — |
+| IMP-0013 | 2026-07-08 | Phase 1 review(world-export) | tool | low | open | Card/Notebook schema 變更無 lint 抓「export/seed 未同 PR 對齊」→ roundtrip 靜默有損;現靠 ops_state_plane §1.1 紀律 + roundtrip 測試抓 export 側漏導。符合 gate 刻意延後政策([[ops-gate-enforcement-deferred-by-design]]),升級訊號=同錯第三次 | — |
