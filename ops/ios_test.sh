@@ -13,7 +13,7 @@
 #   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
 #   ./ops/ios_test.sh --launch-benchmark
 #   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
-#   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/ui_worlds/<name>.json into the app (KG_FIXTURE_DATASET_B64)
+#   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/ui_worlds/<name>.json into the app (KG_FIXTURE_DATASET_DEFLATE_B64)
 #   ./ops/ios_test.sh --ui --dataset-file <path>  # same, arbitrary dataset path
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
 #   ./ops/ios_test.sh --coverage [--coverage-fail-under <percent>]
@@ -57,7 +57,7 @@ COVERAGE_FAIL_UNDER=""
 COVERAGE_TARGET="${KG_IOS_TEST_COVERAGE_TARGET:-BooksAndVocab}"
 UI_FIXTURE_DATASET_NAME=""
 UI_FIXTURE_DATASET_FILE=""
-UI_FIXTURE_DATASET_B64=""
+UI_FIXTURE_DATASET_DEFLATE_B64=""
 STAGED_DATASET_XCTESTRUN=""
 UI_TEST_REVIEW_ROOT=""
 UI_TEST_REVIEW_HTML=""
@@ -198,6 +198,8 @@ source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
 # shellcheck source=lib/ios_run_verdict.sh
 source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
+# shellcheck source=lib/fixture_dataset_env.sh
+source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -393,7 +395,13 @@ if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
   if ! "$UV_BIN" run --python 3.13 python "$PROJECT_ROOT/ops/ui_world_manifest.py" validate "$UI_FIXTURE_DATASET_FILE" --label "UITest UI World dataset" >/dev/null; then
     exit 1
   fi
-  UI_FIXTURE_DATASET_B64="$(base64 <"$UI_FIXTURE_DATASET_FILE" | tr -d '\n')"
+  # deflate+base64（非 plaintext base64）：>1MB world 會撐爆 spawn env block，
+  # app 端會靜默看不到 dataset（見 ops/lib/fixture_dataset_env.sh）。
+  if ! UI_FIXTURE_DATASET_DEFLATE_B64="$(kg_fixture_dataset_deflate_b64 "$UI_FIXTURE_DATASET_FILE")" \
+     || [[ -z "$UI_FIXTURE_DATASET_DEFLATE_B64" ]]; then
+    echo "[ios_test] error: failed to deflate-compress dataset file: $UI_FIXTURE_DATASET_FILE" >&2
+    exit 1
+  fi
 fi
 
 if [[ -n "$TEST_CACHE_ACTION" && ( "$LIST_ONLY" -eq 1 || -n "$GREP_PATTERN" || -n "$TEST_FILE" || ${#SPECIFIC_TESTS[@]} -gt 0 ) ]]; then
@@ -879,16 +887,18 @@ should_rebuild_after_test_without_building_failure() {
 stage_fixture_dataset_xctestrun() {
   local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
-  local key=':TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64'
-  if ! /usr/libexec/PlistBuddy -c "Set $key $UI_FIXTURE_DATASET_B64" "$staged_path" 2>/dev/null; then
-    /usr/libexec/PlistBuddy -c "Add $key string $UI_FIXTURE_DATASET_B64" "$staged_path" || return 1
+  local key=':TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64'
+  if ! /usr/libexec/PlistBuddy -c "Set $key $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" 2>/dev/null; then
+    /usr/libexec/PlistBuddy -c "Add $key string $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" || return 1
   fi
+  # 舊 plaintext key 不可殘留（雙 key 同時存在 app 端 fail-loud）
+  /usr/libexec/PlistBuddy -c "Delete :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64" "$staged_path" 2>/dev/null || true
 }
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
-  if [[ -n "$UI_FIXTURE_DATASET_B64" ]]; then
+  if [[ -n "$UI_FIXTURE_DATASET_DEFLATE_B64" ]]; then
     # 父 shell 先賦值 STAGED_DATASET_XCTESTRUN 再 cp：即使 staging 半途失敗，
     # cleanup trap 也能刪掉殘檔。.scoped.xctestrun 字尾使 ios_test_find_xctestrun
     # 永不撿到副本（SIGKILL 漏刪也不污染後續 discovery）；同 PID retry 時 cp
@@ -899,7 +909,7 @@ run_xcodebuild_test_without_building_once() {
       return 1
     fi
     xctestrun_path="$STAGED_DATASET_XCTESTRUN"
-    echo "[ios_test] fixture dataset staged: $(basename "$xctestrun_path") (KG_FIXTURE_DATASET_B64 ← ${UI_FIXTURE_DATASET_FILE})"
+    echo "[ios_test] fixture dataset staged: $(basename "$xctestrun_path") (KG_FIXTURE_DATASET_DEFLATE_B64 ← ${UI_FIXTURE_DATASET_FILE})"
   fi
   acquire_test_device_lock
   start_ui_test_recording

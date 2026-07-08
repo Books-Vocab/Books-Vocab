@@ -2,6 +2,12 @@ import Foundation
 import CryptoKit
 
 private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
+// base64(raw DEFLATE(JSON)) — preferred injection key. Plaintext base64 of a
+// multi-MB UI World overflows the ~1MB posix_spawn env block and the app then
+// silently sees *no* dataset; compressing keeps large worlds under the limit.
+// Apple `.zlib` decompression expects a raw DEFLATE stream (no zlib/gzip
+// container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
+private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 
 private struct AnyCodingKey: CodingKey {
     let stringValue: String
@@ -2045,7 +2051,7 @@ enum FixtureDatasetStore {
 
     static func requireSettingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed {
         guard let seed = settingsSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing settings.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "settings.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2057,7 +2063,7 @@ enum FixtureDatasetStore {
 
     static func requireAuthSeed(for fixtureID: UIWorldAuthFixtureID) -> UIWorldAuthSeed {
         guard let seed = authSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing auth.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "auth.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2069,7 +2075,7 @@ enum FixtureDatasetStore {
 
     static func requireEntitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed {
         guard let seed = entitlementsSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing entitlements.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "entitlements.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2081,7 +2087,7 @@ enum FixtureDatasetStore {
 
     static func requireSyncPresenterSeed(for fixtureID: UIWorldSyncPresenterFixtureID) -> UIWorldSyncPresenterSeed {
         guard let seed = syncPresenterSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing syncPresenter.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "syncPresenter.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2093,7 +2099,7 @@ enum FixtureDatasetStore {
 
     static func requireBookshelfSeed(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureSeed {
         guard let seed = bookshelfSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing bookshelf.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "bookshelf.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2105,7 +2111,7 @@ enum FixtureDatasetStore {
 
     static func requireTodayReviewSeed(for fixtureID: TodayReviewFixtureID) -> TodayReviewSessionSeed {
         guard let seed = todayReviewSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing todayReview.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "todayReview.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2117,7 +2123,7 @@ enum FixtureDatasetStore {
 
     static func requireNotebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed {
         guard let seed = notebookSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing notebook.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "notebook.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2129,7 +2135,7 @@ enum FixtureDatasetStore {
 
     static func requirePodcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed {
         guard let seed = podcastSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing podcast.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "podcast.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2141,7 +2147,7 @@ enum FixtureDatasetStore {
 
     static func requireRuntimePodcastSeed(for fixtureID: UIWorldRuntimePodcastFixtureID) -> UIWorldRuntimePodcastSeed {
         guard let seed = runtimePodcastSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing runtimePodcast.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "runtimePodcast.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2178,10 +2184,10 @@ enum FixtureDatasetStore {
 
     private static func requireAsset(ref: String) throws -> UIWorldAsset {
         guard case let .loaded(document, _) = loadState() else {
-            preconditionFailure("UI World is not loaded; asset \(ref) cannot resolve")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
         }
         guard let asset = document.assets.asset(for: ref) else {
-            preconditionFailure("UI World is missing asset \(ref)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
         }
         return asset
     }
@@ -2241,7 +2247,7 @@ enum FixtureDatasetStore {
 
     static func requireReaderSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed {
         guard let seed = readerSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing reader.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "reader.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2253,7 +2259,7 @@ enum FixtureDatasetStore {
 
     static func requireVocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed {
         guard let seed = vocabularySeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing vocabulary.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "vocabulary.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2265,7 +2271,7 @@ enum FixtureDatasetStore {
 
     static func requireReviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed {
         guard let seed = reviewDeckSeed(for: fixtureID) else {
-            preconditionFailure("UI World is missing reviewDeck.\(fixtureID.rawValue)")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "reviewDeck.\(fixtureID.rawValue)"))
         }
         return seed
     }
@@ -2279,9 +2285,25 @@ enum FixtureDatasetStore {
 
     static func requireDocument() -> FixtureDatasetDocument {
         guard case let .loaded(document, _) = loadState() else {
-            preconditionFailure("UI World is not loaded")
+            preconditionFailure(seedResolutionFailureDescription(resolving: "the UI World document"))
         }
         return document
+    }
+
+    /// Diagnostic for `require*Seed` / asset resolution failures. When the UI
+    /// World never loaded (missing env, invalid base64, decompress failure,
+    /// decode error) the message must surface that root cause — reporting
+    /// "missing <fixture key>" against a world that was never injected sends
+    /// the investigation down the wrong path.
+    static func seedResolutionFailureDescription(resolving reference: String) -> String {
+        switch loadState() {
+        case .loaded:
+            return "UI World is missing \(reference)"
+        case .absent:
+            return "UI World is not loaded — neither \(fixtureDatasetDeflateEnvKey) nor \(fixtureDatasetEnvKey) is set (and no testing override); cannot resolve \(reference)"
+        case let .invalid(source, error):
+            return "UI World failed to load from \(source): \(error); cannot resolve \(reference)"
+        }
     }
 
     static func debugSummary() -> String {
@@ -2329,8 +2351,41 @@ enum FixtureDatasetStore {
             return .data(testingOverrideData, description: "testing-override")
         }
 
+        let environment = ProcessInfo.processInfo.environment
+        let deflateRawValue = environment[fixtureDatasetDeflateEnvKey]
+        let plainRawValue = environment[fixtureDatasetEnvKey]
+
+        if deflateRawValue != nil, plainRawValue != nil {
+            // Two sources could describe two different worlds; picking one
+            // silently would hide exactly the kind of tooling drift this
+            // fail-loud chain exists to expose.
+            return .invalid(
+                source: "env:\(fixtureDatasetDeflateEnvKey)+\(fixtureDatasetEnvKey)",
+                error: "both \(fixtureDatasetDeflateEnvKey) and \(fixtureDatasetEnvKey) are set; the UI World source is ambiguous — unset one"
+            )
+        }
+
+        if let deflateRawValue {
+            let envDescription = "env:\(fixtureDatasetDeflateEnvKey)"
+            guard !deflateRawValue.isEmpty else {
+                return .invalid(source: envDescription, error: "\(fixtureDatasetDeflateEnvKey) must not be empty")
+            }
+            guard let compressed = Data(base64Encoded: deflateRawValue) else {
+                return .invalid(source: envDescription, error: "\(fixtureDatasetDeflateEnvKey) is not valid base64")
+            }
+            do {
+                let data = try (compressed as NSData).decompressed(using: .zlib) as Data
+                return .data(data, description: envDescription)
+            } catch {
+                return .invalid(
+                    source: envDescription,
+                    error: "\(fixtureDatasetDeflateEnvKey) is not a raw DEFLATE stream (decompress failed: \(error.localizedDescription))"
+                )
+            }
+        }
+
         let envDescription = "env:\(fixtureDatasetEnvKey)"
-        guard let rawValue = ProcessInfo.processInfo.environment[fixtureDatasetEnvKey] else {
+        guard let rawValue = plainRawValue else {
             return .absent
         }
 

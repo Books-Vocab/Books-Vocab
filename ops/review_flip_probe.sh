@@ -33,6 +33,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 等待原語 / lockState 判讀 / verdict 行格式（ops/tests/test_review_probe.sh 單測）
 source "$SCRIPT_DIR/lib/review_probe_lib.sh"
+# shellcheck source=lib/fixture_dataset_env.sh
+source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
 BUNDLE_ID="com.Max0228.BooksBrowser"
 APP_NAME="BooksAndVocab.app"
 JSONL_NAME="kg_review_probe.jsonl"
@@ -94,7 +96,10 @@ if [[ -z "$UV_BIN" ]]; then
   fi
 fi
 DATASET_ID="$("$UV_BIN" run --python 3.13 python "$SCRIPT_DIR/ui_world_manifest.py" validate "$DATASET_FILE" --label "UI World dataset")" || exit 64
-FIXTURE_DATASET_B64="$(base64 <"$DATASET_FILE" | tr -d '\n')"
+# deflate+base64：plaintext base64 的大 world 會撐爆 spawn env block（app 端
+# 靜默看不到 dataset），見 ops/lib/fixture_dataset_env.sh。
+FIXTURE_DATASET_DEFLATE_B64="$(kg_fixture_dataset_deflate_b64 "$DATASET_FILE")" || exit 64
+[[ -n "$FIXTURE_DATASET_DEFLATE_B64" ]] || { echo "[probe] error: deflate compression produced empty payload for $DATASET_FILE" >&2; exit 64; }
 
 LAUNCH_ARGS=(
   -ui-testing
@@ -202,7 +207,7 @@ if [[ "$MODE" == "simulator" ]]; then
   # KG_UI_TEST_SERVER_URL=啞端點：第三層防線，fixture 世界永不打真後端。
   # 注意 override 是 #if DEBUG（Release 編譯掉）——Release run 的防線是
   # ephemeral 容器 + ReviewProbeScene 不掛 sync handler；此 env 蓋 Debug。
-  SIMCTL_CHILD_KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
+  SIMCTL_CHILD_KG_FIXTURE_DATASET_DEFLATE_B64="$FIXTURE_DATASET_DEFLATE_B64" \
     SIMCTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
     xcrun simctl launch --console-pty --terminate-running-process \
     "$UDID" "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" \
@@ -267,7 +272,7 @@ else
     # hitch 區間 + 區間內主執行緒堆疊互相對時，一次 run 榨乾兩層證據。
     xcrun xctrace record --template 'Animation Hitches' --device "$HW_UDID" \
       --instrument 'Time Profiler' \
-      --env KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
+      --env KG_FIXTURE_DATASET_DEFLATE_B64="$FIXTURE_DATASET_DEFLATE_B64" \
       --env KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       --output "$TRACE" --time-limit "${TIMEOUT}s" \
       --launch -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
@@ -296,7 +301,7 @@ else
   else
     log "launching probe (flips=$FLIPS world=$DATASET_ID reviewDeck=probe timeout=${TIMEOUT}s)…"
     # server URL 啞端點防線同 sim 路徑（#if DEBUG 語意見上）。
-    DEVICECTL_CHILD_KG_FIXTURE_DATASET_B64="$FIXTURE_DATASET_B64" \
+    DEVICECTL_CHILD_KG_FIXTURE_DATASET_DEFLATE_B64="$FIXTURE_DATASET_DEFLATE_B64" \
       DEVICECTL_CHILD_KG_UI_TEST_SERVER_URL="http://127.0.0.1:9" \
       xcrun devicectl device process launch --console --terminate-existing \
       --device "$UDID" -- "$BUNDLE_ID" "${LAUNCH_ARGS[@]}" >"$CONSOLE" 2>&1 &
