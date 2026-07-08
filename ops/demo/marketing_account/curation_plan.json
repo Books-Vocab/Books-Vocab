@@ -66,6 +66,18 @@
   {
    "word": "ramblemen",
    "reason": "非真實英語詞（OCR 錯誤），無學習價值"
+  },
+  {
+   "word": "strip",
+   "reason": "例句含露骨性內容（refuse to strip / 王的寢宮場景），行銷截圖硬傷"
+  },
+  {
+   "word": "innuendo",
+   "reason": "例句明示 sexual innuendo，不適合審查員觀看"
+  },
+  {
+   "word": "infidelity",
+   "reason": "collocations 含 sexual infidelity，詞面上截圖也偏調"
   }
  ],
  "assign": {
@@ -338,11 +350,9 @@
   "inexorable": "敘事筆法",
   "infamous": "人物群像",
   "infatuated": "情感與心緒",
-  "infidelity": "人物群像",
   "infringes on": "敘事筆法",
   "infuriating": "情感與心緒",
   "infuse": "敘事筆法",
-  "innuendo": "人物群像",
   "inscribed": "人物群像",
   "inset tubs": "中世紀風物",
   "insolence": "情感與心緒",
@@ -601,7 +611,6 @@
   "strangulation": "敘事筆法",
   "stray word": "敘事筆法",
   "stringent": "人物群像",
-  "strip": "敘事筆法",
   "stubble": "人物群像",
   "stuck-up": "人物群像",
   "stupor": "人物群像",
