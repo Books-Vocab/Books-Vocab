@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: b82fc08be
+verified_against: 050f1862
 -->
 # Technical Reference Index
 
@@ -96,7 +96,7 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 日常 gate,確認 `docs/registry.yml
 | `Localizable.stringsdict` | `<lang>.lproj/` | NSStringPluralRuleType plural variations;新增 key 流程見 `docs/sop/i18n_plural_keys.md` |
 | `TranslationLanguage` | `Models/TranslationLanguage.swift` | 翻譯來源/目標語言;UserDefaults + iCloud KV + updatedAt LWW;預設值讀 `Locale.preferredLanguages`(script-aware) |
 | `ReviewSettings` / `ReviewSettingsStore` | `Models/ReviewSettings.swift` | 複習設定 + **pause review clock**;**mode/自訂 SRS 參數與 pause 各自三層** UserDefaults + iCloud KV + updatedAt LWW(`ReviewModeLWW` / `ReviewClockLWW` 整組原子),登入經 `/api/user/config` 的 `review_mode` / `review_clock` push/fetch + rollback、server cold-start wins;autoplay 純本地 |
-| `KGFeatureFlags` | `Models/KGFeatureFlags.swift` | iOS-side feature gates(目前控 `serverTranslationLwwEnabled` / `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled` / `vocabularyLangPayloadEnabled`) |
+| `KGFeatureFlags` | `Models/KGFeatureFlags.swift` | iOS-side feature gates(目前控 `serverTranslationLwwEnabled` / `serverReviewClockLwwEnabled` / `serverReviewModeLwwEnabled` / `serverVocabUiLwwEnabled` / `vocabularyLangPayloadEnabled` / `podcastEnabled`)。`podcastEnabled` 為 compile-time `#if DEBUG` 常數:gate 整個 iOS podcast 面——UI(`AppPrimarySection.visibleCases(podcastEnabled:)` tab/sidebar 過濾、paywall `SubscriptionPaywallFeatureCatalog.descriptors(podcastEnabled:)` / `SubscriptionPresentation.summary(podcastEnabled:)`)+ 資料層(`KGService.runPodcastCatalogSyncIfEnabled` backgroundSync catalog leg、`PodcastDownloadManager.configure(podcastEnabled:)` 拒收 container),Release 零 podcast 網路/磁碟足跡(logout cleanup 除外);測試 `PodcastFeatureGateTests` |
 | `AppFonts.cjk{Sans,Serif}FallbackName` | `Models/AppFonts.swift` | 依 effectiveLanguage 切 CJK fallback(PingFangTC/SC、Hiragino、AppleSDGothic) |
 | `SpeechService.voiceCode(for:)` | `Services/SpeechService.swift` | TranslationLanguage → BCP-47 region 對 AVSpeechSynthesisVoice 的 mapping(zh-Hant → zh-TW) |
 
