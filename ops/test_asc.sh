@@ -144,8 +144,10 @@ hasme "$help_out" 'set -euo pipefail|^KEY_ID=|^ISSUER_ID=' \
 
 # Bash 會把部分非 ASCII 字元視為變數名延伸；`$field」` 在 set -u 下會讀成未定義變數。
 section "Bash variable braces before non-ASCII"
+# LC_ALL 鎖 UTF-8：C locale 下 awk byte-wise 比對，「（」首 byte（EF）誤入 [」）] class 造成
+# 誤報（$KEY_PATH（… 被抓），本檢查在乾淨 HEAD 上也會假紅。鎖定字元語意，維持原判準。
 bad_vars="$(
-  awk 'match($0, /\$[A-Za-z_][A-Za-z0-9_]*[」）]/) { print FNR ":" $0 }' "$ASC"
+  LC_ALL=en_US.UTF-8 awk 'match($0, /\$[A-Za-z_][A-Za-z0-9_]*[」）]/) { print FNR ":" $0 }' "$ASC"
 )"
 [[ -z "$bad_vars" ]] \
   && ok "no unbraced shell vars before Chinese punctuation" \
@@ -442,6 +444,67 @@ hasm "$so_body" 'emit_write' \
 # 16d. sub-offers 需 subId 引數守衛
 hasm "$so_body" 'subId' \
   && ok "sub-offers requires subId arg" || fail_t "sub-offers missing subId guard"
+
+# ── §17 asc() API 錯誤透出（403 agreement 回歸：不得「無輸出 exit 1」）──────────
+# 根因：codemagic CLI 遇 API 4xx 把錯誤印到 stderr（ANSI 紅字）+ exit 非零；呼叫端慣用
+# `asc … 2>/dev/null | jq` 壓進度噪音 → 錯誤被吞，set -e+pipefail 下只剩無輸出 exit 1。
+# 修法：asc() 捕捉 stderr，失敗時去 ANSI 透出 fd3（exec 3>&2，呼叫端 2>/dev/null 動不到）。
+section "asc() surfaces API errors (403 agreement regression)"
+# 17a. 結構不變量：fd3 通道 + wrapper 捕捉 stderr + agreement 指引存在
+grep -q 'exec 3>&2' "$ASC" \
+  && ok "asc.sh opens fd3 error channel" || fail_t "asc.sh missing exec 3>&2 (call-site 2>/dev/null swallows errors)"
+asc_fn="$(awk '/^asc\(\)/,/^}/' "$ASC")"
+hasm "$asc_fn" '>&3' \
+  && ok "asc() emits failures to fd3"    || fail_t "asc() doesn't write errors to fd3"
+hasm "$asc_fn" 'required agreement is missing or has expired' \
+  && ok "asc() has 403-agreement hint"   || fail_t "asc() missing agreement-expired guidance"
+hasm "$asc_fn" 'App Store Connect GUI' \
+  && ok "hint points to ASC GUI signing" || fail_t "agreement hint doesn't point to GUI"
+# ios_release.sh 的 asc() 同病同修（guard_build_number 的 latest_tf 賦值同樣會無聲中止）
+REL="$WORKSPACE/ops/ios_release.sh"
+grep -q 'exec 3>&2' "$REL" \
+  && ok "ios_release.sh opens fd3 channel" || fail_t "ios_release.sh asc() still swallows API errors"
+hasm "$(awk '/^asc\(\)/,/^}/' "$REL")" '>&3' \
+  && ok "ios_release.sh asc() emits to fd3" || fail_t "ios_release.sh asc() doesn't write errors to fd3"
+
+# 17b. 行為驗證（假 uvx 注入 PATH，不打 live API；ASC_KEY_DIR 指向假金鑰過 require_key）
+fake="$(mktemp -d)"; trap 'rm -rf "$fake"' EXIT
+mkdir -p "$fake/keys" "$fake/bin403" "$fake/binok"
+touch "$fake/keys/AuthKey_TCXVHFRXMS.p8"
+cat >"$fake/bin403/uvx" <<'FAKE'
+#!/usr/bin/env bash
+# 重演 codemagic CLI 遇 403 的真實行為（2026-07-08 量測）：stderr ANSI 紅字 + exit 1、stdout 空
+printf 'Get App Store Versions for App 6759816274\n' >&2
+printf '\033[31mGET https://api.appstoreconnect.apple.com/v1/apps/6759816274/appStoreVersions?limit=100 returned 403: A required agreement is missing or has expired. - This request requires an in-effect agreement that has not been signed or has expired.\033[0m\n' >&2
+exit 1
+FAKE
+cat >"$fake/binok/uvx" <<'FAKE'
+#!/usr/bin/env bash
+# 成功路徑：stderr 進度噪音 + stdout JSON、exit 0（驗 wrapper 不弄壞正常流）
+echo "Get App Store Versions for App 6759816274" >&2
+printf '[{"id":"v1","attributes":{"versionString":"9.9.9","platform":"IOS","appStoreState":"READY_FOR_SALE"}}]\n'
+FAKE
+chmod +x "$fake/bin403/uvx" "$fake/binok/uvx"
+
+v_rc=0
+v_out="$(PATH="$fake/bin403:$PATH" ASC_KEY_DIR="$fake/keys" bash "$ASC" versions 2>&1)" || v_rc=$?
+[[ $v_rc -ne 0 ]] \
+  && ok "403: versions exits non-zero (rc=$v_rc)" || fail_t "403: versions exits 0 (must fail)"
+[[ -n "$v_out" ]] \
+  && ok "403: versions is not silent"        || fail_t "403: versions silent again (P0 regression)"
+hasm "$v_out" '403' && hasm "$v_out" 'required agreement is missing' \
+  && ok "403: output carries HTTP status + Apple error text" \
+  || fail_t "403: output missing status/error text (got: $(head -2 <<<"$v_out"))"
+hasm "$v_out" 'App Store Connect GUI' \
+  && ok "403: output guides to sign agreement in GUI" || fail_t "403: no GUI signing guidance"
+hasm "$v_out" $'\x1b\[' \
+  && fail_t "403: ANSI escapes leak into error output" || ok "403: ANSI stripped from error output"
+
+s_rc=0
+s_out="$(PATH="$fake/binok:$PATH" ASC_KEY_DIR="$fake/keys" bash "$ASC" versions 2>&1)" || s_rc=$?
+[[ $s_rc -eq 0 ]] && hasm "$s_out" '9.9.9' && hasm "$s_out" 'READY_FOR_SALE' \
+  && ok "success path intact (stdout passthrough, rc=0)" \
+  || fail_t "success path broken (rc=$s_rc, out: $(head -1 <<<"$s_out"))"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
