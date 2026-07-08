@@ -716,6 +716,47 @@ def _validate_ui_world_entry(seed: Mapping[str, Any], *, owner: str, label: str)
     return word
 
 
+def _validate_seed_graph_links(
+    entries: list[Mapping[str, Any]],
+    entry_word_set: set[str],
+    *,
+    owner_prefix: str,
+    label: str,
+) -> None:
+    """vocabulary / reviewDeck seed 是自足宇宙：graphLinksByKind 的 target 必須
+    resolve 到同 seed entries。對齊並「刻意嚴於」Swift KnowledgeGraphViewScenarios
+    的 `Set(entries.kgCardId)` 檢查（Swift 豁免 isHidden / nil-source 且只驗
+    cardId；validator 全驗 word+cardId，fail-fast 方向安全）——dangling link 在
+    app 內是 preconditionFailure。todayReview 卡刻意不適用（baseline 語意容許
+    cross-seed chips）。"""
+    card_ids = {
+        entry.get("kgCardId")
+        for entry in entries
+        if isinstance(entry.get("kgCardId"), str)
+    }
+    for index, entry in enumerate(entries):
+        graph_links = entry.get("graphLinksByKind")
+        if not isinstance(graph_links, Mapping):
+            continue  # 頂層形狀由 _validate_ui_world_entry 擋；link 元素層 schema 驗證是 pre-existing 缺口（backlog IMP-0021），此處只驗 resolve
+        for kind, links in graph_links.items():
+            if not isinstance(links, list):
+                continue
+            for link_index, link in enumerate(links):
+                if not isinstance(link, Mapping):
+                    continue
+                owner = f"{owner_prefix}.entries[{index}].graphLinksByKind.{kind}[{link_index}]"
+                word = link.get("word")
+                if isinstance(word, str) and word not in entry_word_set:
+                    raise UIWorldManifestError(
+                        f"{label} {owner}.word {word!r} must resolve to an in-seed entry"
+                    )
+                card_id = link.get("cardId")
+                if isinstance(card_id, str) and card_id not in card_ids:
+                    raise UIWorldManifestError(
+                        f"{label} {owner}.cardId {card_id!r} must resolve to an in-seed entry kgCardId"
+                    )
+
+
 def _validate_notebook_entry(seed: Mapping[str, Any], *, owner: str, label: str) -> str:
     _validate_exact_keys(seed, expected=NOTEBOOK_ENTRY_KEYS, owner=owner, label=label)
     word = _ensure_str(seed.get("word"), field=f"{owner}.word", label=label).strip()
@@ -1714,11 +1755,14 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
             label=label,
         )
         entry_words = []
+        entry_objs = []
         for index, entry in enumerate(_require_list(seed_obj.get("entries"), field=f"vocabulary.{fixture_id}.entries", label=label)):
             entry_obj = _require_mapping(entry, field=f"vocabulary.{fixture_id}.entries[{index}]", label=label)
             entry_words.append(_validate_ui_world_entry(entry_obj, owner=f"vocabulary.{fixture_id}.entries[{index}]", label=label))
+            entry_objs.append(entry_obj)
         _validate_unique(entry_words, owner=f"vocabulary.{fixture_id}.entries.word", label=label)
         entry_word_set = set(entry_words)
+        _validate_seed_graph_links(entry_objs, entry_word_set, owner_prefix=f"vocabulary.{fixture_id}", label=label)
         for index, record in enumerate(
             _require_list(seed_obj.get("reviewHistory"), field=f"vocabulary.{fixture_id}.reviewHistory", label=label)
         ):
@@ -1742,10 +1786,13 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
             label=label,
         )
         entry_words = []
+        entry_objs = []
         for index, entry in enumerate(_require_list(seed_obj.get("entries"), field=f"reviewDeck.{fixture_id}.entries", label=label)):
             entry_obj = _require_mapping(entry, field=f"reviewDeck.{fixture_id}.entries[{index}]", label=label)
             entry_words.append(_validate_ui_world_entry(entry_obj, owner=f"reviewDeck.{fixture_id}.entries[{index}]", label=label))
+            entry_objs.append(entry_obj)
         _validate_unique(entry_words, owner=f"reviewDeck.{fixture_id}.entries.word", label=label)
+        _validate_seed_graph_links(entry_objs, set(entry_words), owner_prefix=f"reviewDeck.{fixture_id}", label=label)
 
 
 def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset") -> str:

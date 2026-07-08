@@ -130,11 +130,12 @@ SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"}
 #     rows 是 baseline bookshelf `preferredNotebookId` 的跨 domain ref 解析目標，
 #     替換會破壞 cross-ref 驗證。
 # (b) content-pinned：catalog scenario（含 UITest seed seam）釘死特定 word /
-#     query 命中數 / exact count / archived 量，任意合法 spec（可 0 archived、
-#     0 命中）無法保證 → 投影必致 preconditionFailure。逐條 SoT 見行內註解
-#     （盤點 2026-07-08，涵蓋 vocabulary/notebook/reviewDeck/todayReview 全部
-#     consumer；reviewDeck phase*/probe/notebookReviewDeck 與 todayReview 各
-#     session、notebook empty/single/populated 無 content pin，維持投影）。
+#     query 命中數 / exact count / archived 量 / probeword 合成 deck，任意合法
+#     spec 無法保證 → 投影必致 preconditionFailure / XCTFail。逐條 SoT 見行內
+#     註解（盤點 2026-07-08，涵蓋 vocabulary/notebook/reviewDeck/todayReview
+#     全部 consumer——catalog scenarios + UITestFixtureSeed+* seam；reviewDeck
+#     phase* 與 todayReview 各 session、notebook empty/single/populated 無
+#     content pin，維持投影）。
 SPEC_BASELINE_KEPT_FIXTURES = (
     # (a) UI-chrome / gallery
     ("notebook", "coverGallery"),
@@ -162,6 +163,12 @@ SPEC_BASELINE_KEPT_FIXTURES = (
     ("vocabulary", "archivedPopulated"),
     ("vocabulary", "archivedSingle"),
     ("vocabulary", "archivedLong"),
+    # (b) content-pinned reviewDeck fixtures（UITest 量測 deck）
+    # NotebookReviewFlowUITests.swift:85,125,162: frontWord 必須 hasPrefix
+    # "probeword"、背面譯文必須配對「量測卡片 N 的譯文」——合成量測資料，
+    # 非帳號資料；probe 另為 flip-probe rig 卡組（UITestFixtureSeed+TodayReview）
+    ("reviewDeck", "probe"),
+    ("reviewDeck", "notebookReviewDeck"),
 )
 
 
