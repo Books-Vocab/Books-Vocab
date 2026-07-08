@@ -46,6 +46,7 @@ SURFACES = [
     Surface("release.status", "./ops/release.sh", "./ops/release.sh status", "observer", "repo-read", "repo", "api/iOS release status and suggested version bump"),
     Surface("release.changelog", "./ops/release.sh", "./ops/release.sh changelog <api|ios>", "observer", "repo-read", "repo", "release changelog preview"),
     Surface("release.bump", "./ops/release.sh", "./ops/release.sh bump <api|ios> <x.y.z> --yes", "editor", "repo-write", "repo", "local version-file bump (dry-run without --yes)"),
+    Surface("release.bump-build", "./ops/release.sh", "./ops/release.sh bump-build ios --yes", "editor", "repo-write", "repo", "iOS build-number-only bump for same-version App Review resubmit (dry-run without --yes)"),
     Surface("release.publish", "./ops/release.sh", "./ops/release.sh publish <api|ios> <x.y.z> --yes", "production-capable", "repo-write external-push", "external", "commit version files, tag, and push release marker"),
     Surface("devops.safe.status", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh status", "observer", "prod-read", "production", "production app/container status"),
     Surface("devops.safe.health", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh health --json", "observer", "prod-read", "production", "host-level health aggregation"),

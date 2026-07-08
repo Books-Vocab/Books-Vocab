@@ -17,7 +17,7 @@ bash -n "$REL"   && ok "release.sh syntax" || fail_t "release.sh syntax error"
 
 # ── 2. 子命令 dispatch 齊全 ─────────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in status changelog bump publish; do
+for sub in status changelog bump bump-build publish; do
   grep -qE "^[[:space:]]*$sub\)" "$REL" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -203,6 +203,48 @@ KG_ROOT="$TMP2" bash "$REL" bump ios 9.9.1 --yes >/dev/null 2>&1 \
   || fail_t "release.sh bump ios --yes failed"
 grep -q 'MARKETING_VERSION = 9.9.1;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
   && ok "release.sh bump --yes writes pbxproj" || fail_t "release.sh bump ios --yes did not write pbxproj"
+
+# ── 14. bump-build：同 MARKETING_VERSION 重送、只 bump CURRENT_PROJECT_VERSION ──
+section "Bump-build gate (build number only; App Review resubmit)"
+TMP3="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3"' EXIT
+mkdir -p "$TMP3/ios/BooksAndVocab.xcodeproj"
+cat > "$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
+/* app Debug */    MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+/* app Release */  MARKETING_VERSION = 9.9; CURRENT_PROJECT_VERSION = 7;
+/* tests Debug */  MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
+/* tests Release */MARKETING_VERSION = 1.2.0; CURRENT_PROJECT_VERSION = 1;
+PBX
+# 14a. dry-run（無 --yes）：exit 0、印舊→新 build、不寫檔
+bb_dry="$(KG_ROOT="$TMP3" bash "$REL" bump-build ios 2>&1)" \
+  && ok "bump-build ios dry-run exits 0" || fail_t "bump-build ios dry-run exited non-zero: $bb_dry"
+echo "$bb_dry" | grep -q '7 → 8' \
+  && ok "dry-run prints old→new build" || fail_t "dry-run missing old→new build preview: $bb_dry"
+echo "$bb_dry" | grep -q -- '--yes' \
+  && ok "dry-run points to --yes" || fail_t "dry-run does not mention --yes"
+grep -q 'CURRENT_PROJECT_VERSION = 7;' "$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ! grep -q 'CURRENT_PROJECT_VERSION = 8;' "$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ok "dry-run leaves pbxproj untouched" || fail_t "bump-build dry-run modified pbxproj"
+# 14b. --yes 經 wrapper：只動 app CURRENT_PROJECT_VERSION，MARKETING_VERSION 與測試 bundle 不動
+KG_ROOT="$TMP3" bash "$REL" bump-build ios --yes >/dev/null 2>&1 \
+  || fail_t "release.sh bump-build ios --yes failed"
+bb_pbx="$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj"
+[[ "$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$bb_pbx" || true)" -eq 2 ]] \
+  && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)" || fail_t "app build bump wrong count"
+[[ "$(grep -c 'MARKETING_VERSION = 9.9;' "$bb_pbx" || true)" -eq 2 ]] \
+  && ok "MARKETING_VERSION 不動 (still 9.9 ×2)" || fail_t "MARKETING_VERSION was touched by bump-build"
+[[ "$(grep -c 'CURRENT_PROJECT_VERSION = 1;' "$bb_pbx" || true)" -eq 2 ]] \
+  && ok "test bundle build 不動 (still 1 ×2)" || fail_t "test bundle build was clobbered"
+# 14c. api 拒絕（api 無 build number 概念），錯誤訊息給可行動指引
+bb_api="$(KG_ROOT="$TMP3" bash "$REL" bump-build api 2>&1)" \
+  && fail_t "bump-build api should be rejected" \
+  || { echo "$bb_api" | grep -q 'bump api' \
+         && ok "bump-build api 拒絕且指向 bump api" || fail_t "bump-build api error not actionable: $bb_api"; }
+# 14d. 多餘 positional 拒絕（不得靜默忽略）
+KG_ROOT="$TMP3" bash "$REL" bump-build ios 9.9.1 >/dev/null 2>&1 \
+  && fail_t "bump-build extra positional silently accepted" || ok "bump-build 拒絕多餘 positional"
+# 14e. primitive 直呼也拒絕 api build-only
+KG_ROOT="$TMP3" bash "$BUMP" api --build-only >/dev/null 2>&1 \
+  && fail_t "release_bump --build-only api should be rejected" || ok "primitive 拒絕 api --build-only"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
