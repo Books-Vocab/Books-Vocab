@@ -57,7 +57,7 @@ run_devicectl() {
     xcrun devicectl "$@" 2>&1 | grep -vE "provisioning paramter|devicectl manage create|Acquired tunnel|Enabling developer disk|Acquired usage assertion"
 }
 
-# sim 模式：解析 app data 容器路徑到 $CONTAINER（dry-run 用 <container> 佔位，離線可測）
+# sim 模式：解析 app data 容器路徑到 ${CONTAINER}（dry-run 用 <container> 佔位，離線可測）
 sim_container() {
     if [ "$DRY_RUN" = "1" ]; then
         echo "DRY-RUN: xcrun simctl get_app_container ${DEVICE:-booted} $APP data"
@@ -145,12 +145,12 @@ cmd_pull_store() {
             for suffix in "" "-shm" "-wal"; do
                 local f="$store$suffix"
                 if ! run_local cp "$CONTAINER/Library/Application Support/$f" "$out/$f"; then
-                    echo "WARN: 拉取失敗 $f（store 可能無 wal/shm，屬正常）" >&2
+                    echo "WARN: 拉取失敗 ${f}（store 可能無 wal/shm，屬正常）" >&2
                     failed=$((failed+1))
                 fi
             done
         done
-        echo "store 三件套已拉到 $out（失敗 $failed 個，wal/shm 缺檔屬正常）"
+        echo "store 三件套已拉到 ${out}（失敗 $failed 個，wal/shm 缺檔屬正常）"
         [ "$DRY_RUN" = "1" ] || ls -la "$out"
         return 0
     fi
@@ -162,12 +162,12 @@ cmd_pull_store() {
             if ! run_devicectl device copy from --device "$DEVICE" --user mobile \
                 --domain-type appDataContainer --domain-identifier "$APP" \
                 --source "Library/Application Support/$f" --destination "$out/$f"; then
-                echo "WARN: 拉取失敗 $f（store 可能無 wal/shm，屬正常）" >&2
+                echo "WARN: 拉取失敗 ${f}（store 可能無 wal/shm，屬正常）" >&2
                 failed=$((failed+1))
             fi
         done
     done
-    echo "store 三件套已拉到 $out（失敗 $failed 個，wal/shm 缺檔屬正常）"
+    echo "store 三件套已拉到 ${out}（失敗 $failed 個，wal/shm 缺檔屬正常）"
     ls -la "$out"
 }
 

@@ -5,7 +5,7 @@
 # exception stop reason 拿得到全量 frame）：
 #   1. `command script import` 後 stop-hook 已註冊、`kgdump` 命令可用。
 #   2. process 因 stack-overflow crash（exception/signal stop）→ 自動寫 dump 檔
-#      到 $KG_LLDB_DUMP_DIR，內容含：stop reason、全量 frame 表（含遞迴函式名）、
+#      到 ${KG_LLDB_DUMP_DIR}，內容含：stop reason、全量 frame 表（含遞迴函式名）、
 #      fp 差分 frame size（本 crasher 每層 ≥65536）、stack region 段。
 #   3. breakpoint stop 不觸發自動 dump（否則每次斷點都噴檔案）。
 #   4. `kgdump` 在任何 stop 點可手動 dump。
@@ -44,7 +44,7 @@ KG_LLDB_DUMP_DIR="$DUMPS1" xcrun lldb -b "$TMP/crasher" \
 grep -q "kg-forensics" "$TMP/lldb1.log" || fail "import 無註冊訊息（kg-forensics）"
 
 DUMP_COUNT=$(find "$DUMPS1" -name "*.txt" ! -name "LATEST*" | wc -l | tr -d ' ')
-[ "$DUMP_COUNT" -ge 1 ] || fail "crash 後無自動 dump（count=$DUMP_COUNT）"
+[ "$DUMP_COUNT" -ge 1 ] || fail "crash 後無自動 dump（count=${DUMP_COUNT}）"
 
 DUMP_FILE=$(find "$DUMPS1" -name "*.txt" ! -name "LATEST*" | head -1)
 if [ -n "${DUMP_FILE:-}" ]; then
@@ -55,7 +55,7 @@ if [ -n "${DUMP_FILE:-}" ]; then
     grep -qE "region: \[0x[0-9a-f]+ - 0x[0-9a-f]+\)" "$DUMP_FILE" || fail "dump 缺真實 stack region bounds"
     # 全量 frame：crasher 在 8MB stack 上每層 64KB+，深度應 >100
     FRAME_ROWS=$(grep -cE "^ *[0-9]+ +0x" "$DUMP_FILE")
-    [ "$FRAME_ROWS" -gt 100 ] || fail "frame 表非全量（rows=$FRAME_ROWS，應 >100）"
+    [ "$FRAME_ROWS" -gt 100 ] || fail "frame 表非全量（rows=${FRAME_ROWS}，應 >100）"
     # fp 差分 frame size：至少一層 ≥65536
     grep -E "^ *[0-9]+ +0x" "$DUMP_FILE" | awk '{for(i=1;i<=NF;i++) if ($i ~ /^[0-9]+$/ && $i+0>=65536) found=1} END {exit found?0:1}' \
         || fail "frame size 欄無 ≥65536 的層（fp 差分未實作或錯誤）"

@@ -196,7 +196,7 @@ if [[ "$MODE" == "simulator" ]]; then
   # 從 simctl list 撈 booted[0] 會撞到別的 agent 租用中的 pool sim。
   UDID="$("$SCRIPT_DIR/ios_ops.sh" simulator ensure-booted --json | jq -r '.device.udid // empty')"
   [[ -n "$UDID" ]] || fail_invalid "ensure_booted_no_udid"
-  log "installing on simulator $UDID…"
+  log "installing on simulator ${UDID}…"
   xcrun simctl install "$UDID" "$APP"
   log "launching probe (flips=$FLIPS world=$DATASET_ID reviewDeck=probe timeout=${TIMEOUT}s)…"
   # KG_UI_TEST_SERVER_URL=啞端點：第三層防線，fixture 世界永不打真後端。
@@ -234,7 +234,7 @@ else
       ;;
     unknown) log "warn: lockState 查詢失敗（繼續跑，watchdog 兜底）" ;;
   esac
-  log "installing on device $UDID…"
+  log "installing on device ${UDID}…"
   xcrun devicectl device install app --device "$UDID" "$APP"
   if [[ "$INSTRUMENTS" -eq 1 ]]; then
     # xctrace 包住整個 run：render-server 側 hitch 真相。無 console 串流，
