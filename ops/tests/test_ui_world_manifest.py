@@ -120,6 +120,32 @@ def test_validate_rejects_today_review_card_null_date_added(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+@pytest.mark.parametrize("domain", ["vocabulary", "reviewDeck"])
+def test_validate_rejects_graph_link_to_missing_in_seed_target(tmp_path: Path, domain: str):
+    # KnowledgeGraphViewScenarios.swift:199 驗 graph link cardId 必 resolve 同
+    # seed entries（Set(entries.kgCardId)）：dangling link 到 app 內才 fatal，
+    # validator 必須在這裡 fail-fast。
+    data = _marketing_demo()
+    mutated = False
+    for fixture_id, seed in data[domain].items():
+        entries = seed.get("entries", [])
+        if not entries:
+            continue
+        entries[0]["graphLinksByKind"]["shares_usage"] = [{
+            "id": "ghost-link", "cardId": "ghost-card-id", "word": "ghostword",
+            "kind": "shares_usage", "label": "相關", "confidence": 0.5,
+            "reason": "dangling", "hidden": False,
+        }]
+        mutated = True
+        break
+    assert mutated, f"baseline {domain} must contain at least one entry to mutate"
+    path = tmp_path / f"dangling_{domain}_graph_link.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"graphLinksByKind.*(resolve|missing|in-seed)|in-seed"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_asset_hash_drift(tmp_path: Path):
     data = _marketing_demo()
     data["assets"]["books"]["catalog_reader_epub"]["sha256"] = "0" * 64

@@ -28,18 +28,21 @@ BASELINE_PATH = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
 
 SPEC_DOMAINS = ("vocabulary", "notebook", "reviewDeck", "todayReview")
 
-# Catalog scenario 釘死特定內容/形狀的 vocabulary fixtures（SoT 註解見
+# Catalog scenario / UITest seed seam 釘死特定內容/形狀的 fixtures（SoT 註解見
 # emit_ios.SPEC_BASELINE_KEPT_FIXTURES）：任意合法 spec 無法保證命中 →
 # spec 模式必須保留 baseline，不得投影。
-CONTENT_PINNED_VOCAB_FIXTURES = (
-    "wordDetail",
-    "wordEdit",
-    "searchVocabNotebook",
-    "kgVocabRow",
-    "vocabLinkedCards",
-    "archivedPopulated",
-    "archivedSingle",
-    "archivedLong",
+CONTENT_PINNED_FIXTURES = (
+    ("vocabulary", "wordDetail"),
+    ("vocabulary", "wordEdit"),
+    ("vocabulary", "searchVocabNotebook"),
+    ("vocabulary", "kgVocabRow"),
+    ("vocabulary", "vocabLinkedCards"),
+    ("vocabulary", "archivedPopulated"),
+    ("vocabulary", "archivedSingle"),
+    ("vocabulary", "archivedLong"),
+    # UITest seam pins（NotebookReviewFlowUITests: probeword 前綴 + 量測卡片配對）
+    ("reviewDeck", "probe"),
+    ("reviewDeck", "notebookReviewDeck"),
 )
 
 
@@ -287,10 +290,13 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     assert len({r["remoteId"] for r in rows}) == 2
 
     # reviewDeck: due order = scheduled first (by nextReviewAt), then unscheduled
-    deck = document["reviewDeck"]["notebookReviewDeck"]
+    deck = document["reviewDeck"]["phaseMulti"]
     assert [e["word"] for e in deck["entries"]] == ["alpha", "bravo", "charlie"]
     assert deck["notebookName"] == "Marketing Core"
     assert [e["word"] for e in document["reviewDeck"]["phaseSingle"]["entries"]] == ["alpha"]
+    # probe / notebookReviewDeck 是 UITest 量測 deck（probeword content-pin）→ 保留 baseline
+    assert document["reviewDeck"]["probe"] == baseline["reviewDeck"]["probe"]
+    assert document["reviewDeck"]["notebookReviewDeck"] == baseline["reviewDeck"]["notebookReviewDeck"]
 
 
 def test_spec_mode_fixture_id_key_sets_match_baseline_and_whitelist_kept(tmp_path):
@@ -386,22 +392,68 @@ def test_spec_mode_date_added_deterministic_fallback_without_review_dates(tmp_pa
     assert content == _emit_spec_bytes(tmp_path, payload)  # byte-stable
 
 
-def test_spec_mode_keeps_content_pinned_vocabulary_fixtures_baseline(tmp_path):
+def test_spec_mode_keeps_content_pinned_fixtures_baseline(tmp_path):
     spec_path = _write_spec(tmp_path, _small_spec())
     domains, _stats = spec_world.derive_domains(spec_world.load_seed_spec(spec_path))
-    for fixture_id in CONTENT_PINNED_VOCAB_FIXTURES:
-        assert fixture_id not in domains["vocabulary"], (
-            f"vocabulary.{fixture_id} is content-pinned and must not be spec-derived")
+    for domain, fixture_id in CONTENT_PINNED_FIXTURES:
+        assert fixture_id not in domains[domain], (
+            f"{domain}.{fixture_id} is content-pinned and must not be spec-derived")
 
     kept = set(emit_ios.SPEC_BASELINE_KEPT_FIXTURES)
-    assert {("vocabulary", f) for f in CONTENT_PINNED_VOCAB_FIXTURES} <= kept
+    assert set(CONTENT_PINNED_FIXTURES) <= kept
 
     content = _emit_spec_bytes(tmp_path, _small_spec())
     document = json.loads(content)
     baseline = _baseline()
-    for fixture_id in CONTENT_PINNED_VOCAB_FIXTURES:
-        assert document["vocabulary"][fixture_id] == baseline["vocabulary"][fixture_id], (
-            f"vocabulary.{fixture_id} must stay byte-equal to baseline in spec mode")
+    for domain, fixture_id in CONTENT_PINNED_FIXTURES:
+        assert document[domain][fixture_id] == baseline[domain][fixture_id], (
+            f"{domain}.{fixture_id} must stay byte-equal to baseline in spec mode")
+
+
+def test_spec_mode_date_added_anchor_fallback_without_history(tmp_path):
+    """階梯第 2 級：無合成 history（review_count=0）但有 next_review_at →
+    dateAdded = 錨點往前 _DATE_ADDED_LEAD_HOURS。"""
+    payload = _small_spec()
+    for card in payload["cards"]:
+        card["review"] = {
+            "review_count": 0, "review_streak": 0, "lapse_count": 0,
+            "review_interval_hours": 12.0,
+            "next_review_at": "2026-06-10T08:00:00+00:00",
+            "last_reviewed_at": None, "last_review_feedback": -1,
+        }
+    content = _emit_spec_bytes(tmp_path, payload)
+    front = json.loads(content)["todayReview"]["front"]
+    assert front["currentCard"]["dateAdded"] == "2026-06-09T08:00:00Z"  # 錨點 - 24h
+
+
+def test_spec_mode_prunes_graph_links_to_in_seed_targets(tmp_path):
+    """KnowledgeGraphViewScenarios 驗 graph link cardId 必 resolve 同 seed entries
+    （KnowledgeGraphViewScenarios.swift:199）→ 子集 seed 的 links 必須 prune 到
+    子集內 target；全量 seed 保留完整 links。"""
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    vocab = json.loads(content)["vocabulary"]
+
+    # 全量 populated：alpha 的兩條 link（bravo/charlie 皆在 seed）保留
+    populated = {e["word"]: e for e in vocab["vocabListPopulated"]["entries"]}
+    assert set(populated["alpha"]["graphLinksByKind"]) == {"contrasts_with", "shares_usage"}
+
+    # 單卡子集：alpha 的 link target（bravo/charlie）不在 seed → 全 prune
+    single = vocab["vocabListSingle"]["entries"]
+    assert [e["word"] for e in single] == ["alpha"]
+    assert single[0]["graphLinksByKind"] == {}
+
+    # 大 spec（merge 後完整文件，kgVocabRow 為 baseline kept、一併驗其自足）：
+    # 子集 seed 必須 link 自足（word + cardId 都 in-seed）
+    big = json.loads(_emit_spec_bytes(tmp_path, _big_spec(636)))
+    for fixture_id in ("knowledgeGraphPopulated", "vocabListSingle", "kgVocabRow"):
+        seed = big["vocabulary"][fixture_id]
+        words = {e["word"] for e in seed["entries"]}
+        ids = {e["kgCardId"] for e in seed["entries"]}
+        for entry in seed["entries"]:
+            for links in entry["graphLinksByKind"].values():
+                for link in links:
+                    assert link["word"] in words, f"{fixture_id}: dangling word {link['word']}"
+                    assert link["cardId"] in ids, f"{fixture_id}: dangling cardId {link['cardId']}"
 
 
 def test_spec_mode_sync_pending_mixed_covers_add_and_delete_with_two_active(tmp_path):
@@ -506,8 +558,9 @@ def test_spec_mode_large_synthetic_spec(tmp_path):
     # primary = "Deck 0" -> i % 3 == 0 -> 212 cards, minus archived (i%20==19 never
     # hits i%3==0 ... it can: i=39? 39%3=0 and 39%20=19 -> archived), so < 212.
     assert len(populated["entries"]) > 150
-    assert document["reviewDeck"]["probe"]["entries"]
-    assert len(document["reviewDeck"]["probe"]["entries"]) <= 40
+    # probe 是 UITest 量測 deck（probeword pin）→ 大 spec 下仍保留 baseline
+    assert document["reviewDeck"]["probe"] == _baseline()["reviewDeck"]["probe"]
+    assert document["reviewDeck"]["phaseMulti"]["entries"]
     assert document["todayReview"]["front"]["currentCard"] is not None
     # emit-side size guard: plaintext must stay well under the injection ceiling
     assert len(first) < 3 * 1024 * 1024, f"fixture too large: {len(first)} bytes"

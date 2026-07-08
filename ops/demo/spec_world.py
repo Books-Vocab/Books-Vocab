@@ -39,10 +39,15 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
 * todayReview 卡片 dateAdded：Swift TodayReviewCardSeed.dateAdded 是非 optional
   Date → 必須確定式導出非空值（規則見 `_card_date_added` docstring；缺料逐級
   fallback 到 `_DATE_ADDED_FALLBACK_ANCHOR` 固定錨點，禁 Date.now / 隨機）。
-* content-pinned fixtures 不投影：catalog scenario 釘死特定 word / query 命中數 /
-  exact count / archived 量的 vocabulary fixture（清單與 SoT 註解 =
-  `emit_ios.SPEC_BASELINE_KEPT_FIXTURES`）由 emit_ios 保留 baseline，本模組
-  不得回傳這些 id——任意合法 spec（可 0 archived、0 命中）無法保證其斷言。
+* content-pinned fixtures 不投影：catalog scenario / UITest seam 釘死特定 word /
+  query 命中數 / exact count / archived 量 / probeword deck 的 fixture（清單與
+  SoT 註解 = `emit_ios.SPEC_BASELINE_KEPT_FIXTURES`，涵蓋 vocabulary 8 個 +
+  reviewDeck probe/notebookReviewDeck）由 emit_ios 保留 baseline，本模組不得
+  回傳這些 id——任意合法 spec（可 0 archived、0 命中）無法保證其斷言。
+* seed 自足（link 域）：vocabulary / reviewDeck seed 的 graphLinksByKind target
+  必須 resolve 到同 seed entries（Swift KG 圖面以 Set(entries.kgCardId) 驗證）
+  → 子集投影時 prune 指向子集外的 link；todayReview 卡不 prune（baseline 語意
+  即容許 cross-seed 顯示 chips）。
 * 仍投影的 populated/dense fixtures 帶 catalog 端最低量斷言（vocabListPopulated
   ≥4、vocabListLong ≥40、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
   ≥70 事件、knowledgeGraphPopulated ≥3 卡/≥2 link、reviewDeck.phaseMulti ==3）：
@@ -67,9 +72,7 @@ _LINK_LABELS = {"shares_usage": "相關", "contrasts_with": "對比"}
 
 # ---- bounded deterministic selection constants ------------------------------
 _TODAY_SESSION_MAX = 12      # todayReview 一場 session 的卡數上限
-_DECK_PROBE_MAX = 40         # reviewDeck.probe（flip-probe 卡組，對齊 baseline 40）
 _DECK_MULTI_MAX = 3          # reviewDeck.phaseMulti
-_DECK_NOTEBOOK_MAX = 8       # reviewDeck.notebookReviewDeck
 _LIST_LONG_MAX = 40          # vocabListLong（長列表捲動語意）
 _KG_GRAPH_MAX = 24           # knowledgeGraphPopulated（圖面可渲染上限）
 _STATS_ENTRIES_MAX = 8       # statsPopulated / shellNavigation entries
@@ -417,8 +420,15 @@ def _history_for(cards: list[dict[str, Any]], *, cap: int) -> list[dict[str, Any
 # entry / seed builders
 # --------------------------------------------------------------------------- #
 def _entry(card: dict[str, Any], *, nb_name: str, sync_status: int = 1,
-           action_type: str = "add", reviewed_mode: str | None = None) -> dict[str, Any]:
-    """卡 → UI_WORLD_ENTRY_KEYS 全鍵明示的 vocabulary/reviewDeck entry。"""
+           action_type: str = "add", reviewed_mode: str | None = None,
+           allowed_words: set[str] | None = None) -> dict[str, Any]:
+    """卡 → UI_WORLD_ENTRY_KEYS 全鍵明示的 vocabulary/reviewDeck entry。
+
+    `allowed_words`：seed 子集的 word 集合。vocabulary/reviewDeck seed 是自足
+    宇宙——graphLinksByKind 的 target 必須 resolve 到同 seed entries
+    （KnowledgeGraphViewScenarios.swift:199 以 Set(entries.kgCardId) 驗證，
+    dangling 即 preconditionFailure）→ 子集投影時把指向子集外的 link prune 掉。
+    """
     return {
         "word": card["word"],
         "translation": card["translation"],
@@ -444,13 +454,20 @@ def _entry(card: dict[str, Any], *, nb_name: str, sync_status: int = 1,
         "reviewCount": card["review_count"],
         "reviewStreak": card["review_streak"],
         "lastReviewFeedbackRaw": card["last_review_feedback"],
-        "graphLinksByKind": _links_by_kind(card),
+        "graphLinksByKind": _links_by_kind(card, allowed_words=allowed_words),
     }
 
 
-def _links_by_kind(card: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+def _links_by_kind(
+    card: dict[str, Any], *, allowed_words: set[str] | None = None
+) -> dict[str, list[dict[str, Any]]]:
+    """card links → kind buckets。`allowed_words` 非 None 時只保留 target 在
+    集合內的 link（seed 自足契約）；None = 不過濾（todayReview 卡對齊 baseline
+    語意：links 是顯示 chips，容許指向 session 外的字）。"""
     buckets: dict[str, list[dict[str, Any]]] = {}
     for link in card["links"]:
+        if allowed_words is not None and link["word"] not in allowed_words:
+            continue
         buckets.setdefault(link["kind"], []).append(dict(link))
     return {kind: buckets[kind] for kind in sorted(buckets)}
 
@@ -604,21 +621,28 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         force_mode = "production"
 
     def entries(cards: list[dict[str, Any]], **kw: Any) -> list[dict[str, Any]]:
-        return [_entry(c, nb_name=primary["name"], **kw) for c in cards]
+        allowed = {c["word"] for c in cards}
+        return [_entry(c, nb_name=primary["name"], allowed_words=allowed, **kw)
+                for c in cards]
 
     syncing = active[:_SYNCING_MAX]
     syncing_split = (len(syncing) * 3) // 5
+    syncing_words = {c["word"] for c in syncing}
     syncing_entries = [
-        _entry(c, nb_name=primary["name"], sync_status=1 if i < syncing_split else 0)
+        _entry(c, nb_name=primary["name"], sync_status=1 if i < syncing_split else 0,
+               allowed_words=syncing_words)
         for i, c in enumerate(syncing)
     ]
     # SyncViewScenarios mixed 釘「pending>1 且同時含 add+delete」→ delete 排第二，
     # 讓 ≥2 張 active 卡的 spec 就能滿足，不依賴恰有 4 張。
     mixed_actions = ("add", "delete", "add", "edit")
+    mixed_cards = active[:_PENDING_MIXED_MAX]
+    mixed_words = {c["word"] for c in mixed_cards}
     mixed_entries = [
         _entry(c, nb_name=primary["name"], sync_status=0,
-               action_type=mixed_actions[i % len(mixed_actions)])
-        for i, c in enumerate(active[:_PENDING_MIXED_MAX])
+               action_type=mixed_actions[i % len(mixed_actions)],
+               allowed_words=mixed_words)
+        for i, c in enumerate(mixed_cards)
     ]
 
     dense_history = _history_for(active, cap=_HISTORY_DENSE_MAX)
@@ -661,8 +685,10 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         },
     }
 
+    # probe / notebookReviewDeck 刻意不投影：UITest 量測 deck
+    # （NotebookReviewFlowUITests 釘 probeword 前綴 + 譯文配對），由 emit_ios
+    # 保留 baseline（SoT 註解見 emit_ios.SPEC_BASELINE_KEPT_FIXTURES）。
     review_deck = {
-        "probe": _deck_seed(primary, entries(due[:_DECK_PROBE_MAX])),
         "phaseSingle": _deck_seed(primary, entries(due[:1])),
         "phaseMulti": _deck_seed(primary, entries(due[:_DECK_MULTI_MAX])),
         "phaseLongContent": _deck_seed(
@@ -670,7 +696,6 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
             entries([max(active, key=lambda c: (len(c["translation"]) + len(
                 c["examples"][0] if c["examples"] else ""), c["word"]))]),
         ),
-        "notebookReviewDeck": _deck_seed(primary, entries(due[:_DECK_NOTEBOOK_MAX])),
     }
 
     nb_name = primary["name"]
