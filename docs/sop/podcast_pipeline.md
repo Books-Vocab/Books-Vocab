@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 546b52c6
+verified_against: 5c814f970
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。

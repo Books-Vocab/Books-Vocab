@@ -345,6 +345,16 @@ fi
 while IFS= read -r f; do
   [ -z "$f" ] && continue
 
+  # git 衝突標記殘留檢查(IMP-0015 / 事故 92da32e64):rebase 未解衝突的標記進 main,
+  # docs_lint 全綠沒擋到。只掃 <<<<<<< / ||||||| / >>>>>>>(行首 7 字元 + 空白),
+  # 刻意不掃 =======,以免誤判 setext H1 底線。
+  if conflict_hits=$(grep -nE '^([<]{7} |[|]{7} |[>]{7} )' "$f"); then
+    echo "ERROR $f — 發現 git 衝突標記殘留(rebase/merge 未解):"
+    echo "$conflict_hits" | sed 's/^/    /'
+    errors=$((errors+1))
+    continue
+  fi
+
   # Extract frontmatter block(只抓第一個 <!-- doc-meta ... -->,避免被 doc 內其他 HTML 註解誤抓)
   meta=$(awk '/<!-- doc-meta/{flag=1} flag{print} /-->/{if(flag){exit}}' "$f")
   if [ -z "$meta" ]; then
