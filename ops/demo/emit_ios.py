@@ -8,15 +8,15 @@ OUTPUT PATH(S)
 
 INJECTION SEAM (no Swift logic change to the loader)
   The fixture JSON is injected into the running app via the env var
-  KG_FIXTURE_DATASET_B64 (base64 of the JSON file's bytes) — see
-  ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift
-  This emitter writes the *plaintext* JSON; the UITest harness base64s it into the
-  env var via the existing seam:
+  KG_FIXTURE_DATASET_DEFLATE_B64 (base64 of the raw-DEFLATE-compressed JSON
+  bytes; plaintext base64 of a multi-MB world overflows the ~1MB spawn env
+  block) — see ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift
+  and ops/lib/fixture_dataset_env.sh. This emitter writes the *plaintext* JSON;
+  the UITest harness compresses+base64s it into the env var via the seam:
       ./ops/ios_test.sh --ui --dataset-file ops/demo/generated/ios_fixture_dataset.json ...
-  ios_test.sh base64-encodes the file into the runner's KG_FIXTURE_DATASET_B64, and
-  UITestAppLaunch.swift (UITestLaunchConfiguration.launchEnvironment) already forwards
-  that var into the app process. emit() also prints the ready-to-export base64 when
-  commit so it can be exported directly without the shell helper.
+  UITestAppLaunch.swift (UITestLaunchConfiguration.launchEnvironment) forwards
+  that var into the app process. emit() also prints the ready-to-export deflate
+  base64 when commit so it can be exported directly without the shell helper.
 
 SCHEMA NOTE
   The Phase-A skeleton planned schema "kg.fixture_dataset.v1". The Swift SoT
@@ -69,6 +69,7 @@ import json
 import logging
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -403,15 +404,16 @@ def emit(
         check: re-emit in memory and byte-compare against the committed
             artifact(s) (baseline mode) or against --out (spec mode); return a
             drift report instead of writing.
-        commit: write the generated file(s) to disk (and print the base64 the
-            harness exports as KG_FIXTURE_DATASET_B64). When False (and check
+        commit: write the generated file(s) to disk (and print the deflate
+            base64 the harness exports as KG_FIXTURE_DATASET_DEFLATE_B64).
+            When False (and check
             False), dry-run returning the planned output paths.
         spec_path: kg.seed_spec.v1 input — switches to SPEC MODE (see module
             docstring). Must be given together with out_path.
         out_path: spec-mode output path (never the committed generated artifact).
 
     Returns:
-        A dict describing the action (paths written / drift verdict / base64).
+        A dict describing the action (paths written / drift verdict / deflate base64).
     """
     if (spec_path is None) != (out_path is None):
         raise ValueError(
@@ -459,15 +461,20 @@ def emit(
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
             written.append(_rel(path))
-        fixture_b64 = base64.b64encode(artifacts[0][1]).decode("ascii")
+        # raw DEFLATE (wbits=-15) == Apple NSData .zlib; plaintext base64 of a
+        # multi-MB world overflows the ~1MB spawn env block.
+        compressor = zlib.compressobj(9, zlib.DEFLATED, -15)
+        fixture_deflate_b64 = base64.b64encode(
+            compressor.compress(artifacts[0][1]) + compressor.flush()
+        ).decode("ascii")
         return {
             "action": "commit",
             "drift": False,
             "written": written,
             "datasetID": json.loads(artifacts[0][1])["datasetID"],
-            "fixture_dataset_b64": fixture_b64,
+            "fixture_dataset_deflate_b64": fixture_deflate_b64,
             "inject_hint": (
-                "export KG_FIXTURE_DATASET_B64=<fixture_dataset_b64>  # or: "
+                "export KG_FIXTURE_DATASET_DEFLATE_B64=<fixture_dataset_deflate_b64>  # or: "
                 "./ops/ios_test.sh --ui --dataset-file "
                 f"{_rel(FIXTURE_JSON_PATH)} ..."
             ),
