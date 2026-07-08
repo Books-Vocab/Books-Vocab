@@ -87,9 +87,32 @@ done
 
 KEY_PATH="$ASC_KEY_DIR/AuthKey_${KEY_ID}.p8"
 
+# asc() 錯誤透出通道：呼叫端慣以 `asc … 2>/dev/null | jq` 壓 codemagic 的 stderr 噪音
+# （成功時也往 stderr 印 "Get App Store Versions…" 進度行），但 API 層錯誤（如 403
+# agreement 未簽）同樣走 stderr + 非零 exit → 被同一個重導吞掉，set -e+pipefail 下只剩
+# 「無輸出 exit 1」（P0 回歸：agent/human 無法行動）。fd3 在此複製 script 原始 stderr，
+# asc() 把失敗訊息寫到 fd3，呼叫端的 2>/dev/null 動不到它，錯誤永遠可見。
+exec 3>&2
+
 asc() {  # codemagic CLI wrapper（auth flag 放在 subcommand 之後）
+  # stderr 全量捕捉：成功時丟棄（進度噪音），失敗時去 ANSI 後透出 fd3 並保留非零 exit。
+  local _asc_err rc=0
+  _asc_err="$(mktemp)"
   uvx --from codemagic-cli-tools app-store-connect "$@" \
-    --issuer-id "$ISSUER_ID" --key-id "$KEY_ID" --private-key "@file:$KEY_PATH"
+    --issuer-id "$ISSUER_ID" --key-id "$KEY_ID" --private-key "@file:$KEY_PATH" \
+    2>"$_asc_err" || rc=$?
+  if (( rc != 0 )); then
+    {
+      echo "✗ ASC API 失敗（app-store-connect ${1:-?}，exit ${rc}）："
+      sed $'s/\x1b\\[[0-9;]*m//g' "$_asc_err" | grep . | tail -n 5 | sed 's/^/  /' || true
+      if grep -qi 'required agreement is missing or has expired' "$_asc_err"; then
+        echo "  → 403 協議未簽/已過期：以 Account Holder 登入 App Store Connect GUI"
+        echo "    （首頁橫幅或 Business → Agreements）簽署最新協議後重試。"
+      fi
+    } >&3
+  fi
+  rm -f "$_asc_err"
+  return "$rc"
 }
 
 require_key() { [[ -f "$KEY_PATH" ]] || err "API key not found: $KEY_PATH（見 ~/.secrets/apple/README.md）"; }

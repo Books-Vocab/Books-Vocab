@@ -95,9 +95,29 @@ auth=(-allowProvisioningUpdates
       -authenticationKeyID "$KEY_ID"
       -authenticationKeyIssuerID "$ISSUER_ID")
 
+# asc() 錯誤透出通道（對齊 asc.sh）：呼叫端以 2>/dev/null 壓 codemagic 進度噪音時，
+# API 層錯誤（如 403 agreement 未簽）不得被同一個重導吞成「無輸出 exit 1」。
+exec 3>&2
+
 asc() {  # codemagic CLI wrapper（uvx，免 fastlane/ruby）
+  # stderr 全量捕捉：成功時丟棄（進度噪音），失敗時去 ANSI 後透出 fd3 並保留非零 exit。
+  local _asc_err rc=0
+  _asc_err="$(mktemp)"
   uvx --from codemagic-cli-tools app-store-connect "$@" \
-    --issuer-id "$ISSUER_ID" --key-id "$KEY_ID"
+    --issuer-id "$ISSUER_ID" --key-id "$KEY_ID" \
+    2>"$_asc_err" || rc=$?
+  if (( rc != 0 )); then
+    {
+      echo "✗ ASC API 失敗（app-store-connect ${1:-?}，exit ${rc}）："
+      sed $'s/\x1b\\[[0-9;]*m//g' "$_asc_err" | grep . | tail -n 5 | sed 's/^/  /' || true
+      if grep -qi 'required agreement is missing or has expired' "$_asc_err"; then
+        echo "  → 403 協議未簽/已過期：以 Account Holder 登入 App Store Connect GUI"
+        echo "    （首頁橫幅或 Business → Agreements）簽署最新協議後重試。"
+      fi
+    } >&3
+  fi
+  rm -f "$_asc_err"
+  return "$rc"
 }
 
 write_json_verdict() {
