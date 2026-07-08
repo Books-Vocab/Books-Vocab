@@ -344,7 +344,7 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
 
 def _spec_build(
     sot: DemoSoT, *, spec_path: Path, out_path: Path
-) -> tuple[Path, bytes, dict[str, Any], dict[str, Any]]:
+) -> tuple[Path, bytes, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """spec 模式共用管線:載入 → 投影 → serialize → shared-validator 驗證。
 
     `_spec_artifacts`(測試 seam)與 `_emit_spec`(CLI)都走這一條,防兩路徑 drift。
@@ -353,14 +353,15 @@ def _spec_build(
     document, stats = _build_spec_fixture_document(sot, spec)
     content = _json_bytes(document)
     _validate_fixture_json_bytes(content)
-    return Path(out_path), content, document, stats
+    return Path(out_path), content, document, stats, spec
 
 
 def _spec_artifacts(
     sot: DemoSoT, *, spec_path: Path, out_path: Path
 ) -> list[tuple[Path, bytes]]:
     """spec 模式 artifact:回傳 (out_path, bytes)。"""
-    out, content, _document, _stats = _spec_build(sot, spec_path=spec_path, out_path=out_path)
+    out, content, _document, _stats, _spec = _spec_build(
+        sot, spec_path=spec_path, out_path=out_path)
     return [(out, content)]
 
 
@@ -420,9 +421,9 @@ def _emit_spec(
     commit: bool,
 ) -> dict:
     """Spec 模式的 emit:輸出到呼叫者指定路徑，不碰 committed artifact。"""
-    out, content, document, stats = _spec_build(sot, spec_path=spec_path, out_path=out_path)
-    staleness = spec_staleness_warning(
-        json.loads(Path(spec_path).read_text(encoding="utf-8")))
+    out, content, document, stats, spec = _spec_build(
+        sot, spec_path=spec_path, out_path=out_path)
+    staleness = spec_staleness_warning(spec)
     if staleness:
         print(staleness, file=sys.stderr)
 

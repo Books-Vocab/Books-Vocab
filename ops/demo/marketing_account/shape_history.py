@@ -220,6 +220,10 @@ def _primary_notebook(spec: dict[str, Any]) -> str:
     names = [str(nb["name"]) for nb in spec["notebooks"]]
     active_count = {name: 0 for name in names}
     for card in spec["cards"]:
+        if card["notebook"] not in active_count:
+            raise HistoryShapeError(
+                f"卡 {card.get('content')!r} 的 notebook {card['notebook']!r} 未在 "
+                "spec.notebooks 宣告")
         if not card.get("is_archived"):
             active_count[card["notebook"]] += 1
     return max(
@@ -590,6 +594,18 @@ def _self_check(spec: dict[str, Any], plan: dict[str, Any]) -> None:
         if count > narrative.daily_primary_max:
             problems.append(
                 f"敘事日 {day_iso} primary 事件 {count} > {narrative.daily_primary_max}")
+    # 投影面全域 cap 建模：statsPopulated / reviewCalendarDense 只保留最近
+    # N 筆事件——若合成事件總量觸頂，最舊敘事日會被截掉、streak 崩而自檢仍過。
+    total_primary_events = sum(
+        min(c["review"]["review_count"], spec_world._HISTORY_PER_CARD_MAX)
+        for c in spec["cards"]
+        if c["notebook"] == report["primaryNotebook"]
+        and not c.get("is_archived") and c["review"]["review_count"] > 0)
+    fixture_cap = min(spec_world._HISTORY_STATS_MAX, spec_world._HISTORY_DENSE_MAX)
+    if total_primary_events > fixture_cap:
+        problems.append(
+            f"primary 合成事件 {total_primary_events} > fixture cap {fixture_cap}"
+            "（最舊敘事日會被投影截斷）")
     if problems:
         raise HistoryShapeError("敘事自檢失敗: " + "; ".join(problems))
 
