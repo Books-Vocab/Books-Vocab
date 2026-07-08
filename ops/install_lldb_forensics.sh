@@ -52,6 +52,6 @@ remove_block
     echo "$MARKER_END"
 } >> "$INIT"
 
-echo "已安裝到 $INIT："
+echo "已安裝到 ${INIT}："
 echo "  command script import $MODULE"
 echo "驗證：xcrun lldb -b -o quit 2>&1 | grep kg-forensics"

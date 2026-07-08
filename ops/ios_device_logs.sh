@@ -84,7 +84,7 @@ cmd_collect() {
     [ -n "$UDID" ] && args+=(--udid "$UDID")
     run_cmd uvx pymobiledevice3 "${args[@]}" || return 1
     [ "$DRY_RUN" = "1" ] && return 0
-    echo "logarchive 已拉到 $out；讀法（log 是 zsh builtin，必須用絕對路徑）："
+    echo "logarchive 已拉到 ${out}；讀法（log 是 zsh builtin，必須用絕對路徑）："
     echo "  /usr/bin/log show --archive $out --predicate 'process == \"BooksAndVocab\"' --info --debug --last 1h"
 }
 
@@ -140,7 +140,7 @@ cmd_pull_crashes() {
         fi
     fi
     [ "$DRY_RUN" = "1" ] && return 0
-    echo "crash report 已拉到 $out（match=$match）"
+    echo "crash report 已拉到 ${out}（match=${match}）"
     ls -la "$out" 2>/dev/null || true
 }
 

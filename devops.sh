@@ -398,7 +398,7 @@ cmd_deploy() {
 
   local local_sha
   local_sha=$(cd "$LOCAL_DIR" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-  info "本地 HEAD = $local_sha（請先確認已 git push，否則 standby pull 不到）"
+  info "本地 HEAD = ${local_sha}（請先確認已 git push，否則 standby pull 不到）"
 
   local deploy_log="$BACKUP_DIR/deploy.log"
 
