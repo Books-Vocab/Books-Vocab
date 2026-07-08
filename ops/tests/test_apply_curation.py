@@ -102,11 +102,11 @@ NB_META = {
 }
 
 
-def _run(spec=None, plan=None, target_due=1):
+def _run(spec=None, plan=None):
     return apply_curation.apply(
         spec if spec is not None else _spec(),
         plan if plan is not None else _plan(),
-        notebook_meta=NB_META, anchor=ANCHOR, target_due=target_due,
+        notebook_meta=NB_META,
     )
 
 
@@ -148,38 +148,15 @@ class TestCoverageAndNotebooks:
             _run(plan=plan)
 
 
-class TestReviewRebalance:
-    def test_due_count_capped_at_target(self):
-        out = _run(target_due=1)
-        anchor = datetime.fromisoformat(ANCHOR)
-        due = [c for c in out["cards"]
-               if c["review"]["review_count"] > 0
-               and datetime.fromisoformat(c["review"]["next_review_at"]) <= anchor]
-        assert len(due) == 1
-        # 最近複習者優先保留 due
-        assert due[0]["content"] == "alpha"
+class TestReviewFieldsUntouched:
+    """review 敘事 owner = shape_history.py：結構策展一律不碰 review 欄位。"""
 
-    def test_deferred_cards_keep_interval_consistency(self):
-        out = _run(target_due=1)
-        anchor = datetime.fromisoformat(ANCHOR)
-        for c in out["cards"]:
-            r = c["review"]
-            if r["review_count"] == 0 or c["content"] == "alpha":
-                continue  # new 卡與「保留 due」的卡不被改寫，原值不動
-            nxt = datetime.fromisoformat(r["next_review_at"])
-            last = datetime.fromisoformat(r["last_reviewed_at"])
-            got = (nxt - last).total_seconds() / 3600
-            assert abs(got - r["review_interval_hours"]) < 0.01, c["content"]
-            assert nxt > anchor
-        # 未改動的卡保持原值（連原本的不自洽都保留——轉換不越權「修」資料）
-        (alpha,) = [c for c in out["cards"] if c["content"] == "alpha"]
-        assert alpha["review"]["review_interval_hours"] == 24.0
-
-    def test_new_cards_untouched(self):
-        out = _run()
-        (fresh,) = [c for c in out["cards"] if c["content"] == "fresh"]
-        assert fresh["review"]["review_count"] == 0
-        assert fresh["review"]["next_review_at"] is None
+    def test_review_fields_pass_through_verbatim(self):
+        spec = _spec()
+        out = _run(spec=spec)
+        by_word = {c["content"]: c for c in spec["cards"]}
+        for card in out["cards"]:
+            assert card["review"] == by_word[card["content"]]["review"], card["content"]
 
     def test_deterministic_byte_stable(self):
         a = json.dumps(_run(), ensure_ascii=False, sort_keys=True)
@@ -188,33 +165,11 @@ class TestReviewRebalance:
 
 
 class TestEdgeCases:
-    def test_reviewed_card_missing_last_reviewed_fails_loud(self):
-        spec = _spec()
-        (gamma,) = [c for c in spec["cards"] if c["content"] == "gamma"]
-        gamma["review"]["last_reviewed_at"] = None
-        with pytest.raises(apply_curation.CurationError, match="gamma"):
-            _run(spec=spec)
-
-    def test_spread_days_zero_fails_loud(self):
-        with pytest.raises(apply_curation.CurationError, match="spread_days"):
-            apply_curation.apply(_spec(), _plan(), notebook_meta=NB_META,
-                                 anchor=ANCHOR, target_due=1, spread_days=0)
-
-    def test_target_due_exceeding_overdue_is_noop(self):
-        out = _run(target_due=99)
-        # 全部過期卡維持 due，無卡被重排
-        anchor = datetime.fromisoformat(ANCHOR)
-        due = [c for c in out["cards"]
-               if c["review"]["review_count"] > 0
-               and datetime.fromisoformat(c["review"]["next_review_at"]) <= anchor]
-        assert len(due) == 4
-
     def test_empty_plan_on_empty_spec_ok(self):
         spec = _spec()
         spec["cards"] = []
         spec["links"] = []
         plan = {"schema": "kg.curation_plan.v1", "notebooks": [], "remove": [],
                 "assign": {}}
-        out = apply_curation.apply(spec, plan, notebook_meta=NB_META,
-                                   anchor=ANCHOR, target_due=1)
+        out = apply_curation.apply(spec, plan, notebook_meta=NB_META)
         assert out["cards"] == [] and out["links"] == []
