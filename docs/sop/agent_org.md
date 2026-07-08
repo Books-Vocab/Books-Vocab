@@ -7,7 +7,7 @@ scope:
   - .claude/agents/
   - .claude/skills/kg-router/
   - .claude/skills/kg-receipt/
-verified_against: d5542a1
+verified_against: a6ad9d5d
 -->
 # 組織營運手冊（總經理 SOP）
 
@@ -29,6 +29,22 @@ verified_against: d5542a1
 5. **Integration & Verify 整合驗證** — 彙整下一階產出;宣稱完成前必有**當下驗證輸出**(鐵律2)。
 6. **Report 回報** — 上行 receipt(`kg-receipt`)+ 明確下一步,交回上一階。
 7. **Retro 復盤** — 工具摩擦依鐵律9 判定處理。
+
+## 升級觸發補充:human-only blocker 即時升級
+
+> 基準觸發清單在 CLAUDE.md 組織模型「升級給執行長的觸發」,不複述;本節新增一類並定義其**時效**。
+
+- **執行中發現只有使用者本人能做的外部動作**(GUI-only 操作、帳號持有人專屬簽署、外部系統人工步驟)→ **當下立即告知執行長**,不等收尾 receipt;告知後**繼續平行推進其餘可做的工作**,讓人工動作與 agent 工作同時進行。
+- 觸發時點 = blocker **定讞**(確認無 agent 可行替代路徑)那一刻。晚報一分鐘就損失一分鐘可平行的人工時間(2026-07-08 實例:ASC API 403 需帳號持有人 GUI 簽協議,開場 10 分鐘定讞卻批到收尾 receipt 才告知,白損 40 分鐘)。
+
+## 委派成本門檻(要不要派,先於怎麼派)
+
+「粗活全下放」不是無下限——委派本身有成本(agent 啟動 + 全套 receipt)。Planning 拍先判:
+
+- **trivial**(同時滿足:單檔、約 ≤10 行、純樣板 / 無語意風險)→ **當前節點直接做**,免下放、免全套 receipt;review 豁免依 `docs/sop/review_discipline.md`「Receipt 契約」的 `Review-Exempt` 白名單。
+- **非 trivial** → 照常走委派契約(下行 task brief / 上行 receipt)。
+
+本門檻與鐵律5 **正交**:這裡判的是「要不要派 agent」;一旦決定派,鐵律5(所有 `Agent()` 背景化)照常適用,不因工作小而改同步。
 
 ## 派任形狀
 
@@ -59,7 +75,8 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 
 ## 總經理反模式(不做)
 
-- GM 下海做 domain 粗活(應下放;見 CLAUDE.md 總經理職位說明書「不做」)。
+- GM 下海做 domain 粗活(應下放;見 CLAUDE.md 總經理職位說明書「不做」。trivial 例外見上「委派成本門檻」)。
+- human-only blocker 定讞後壓到收尾 receipt 才報(違上「升級觸發補充」;即時告知 + 平行續推)。
 - 全部寫完才一起 review(違鐵律4)。
 - 無當下驗證輸出就宣稱完成(違鐵律2)。
 - 讓平輩下一階直接協調(應經共同上一階,或走 SoT/git)。

@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - .claude/skills/
   - docs/sop/
-verified_against: f0d37ca4
+verified_against: a6ad9d5d
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
@@ -28,6 +28,8 @@ verified_against: f0d37ca4
 `phased` skill 已在第 N phase（N≥2）強制背景派 review 審 N-1 phase；本 SOP 把同樣模式擴到 phased 以外的場景。
 
 ## 怎麼派
+
+> 派 `code-reviewer` agent 時,下方「Prompt 必含元素」§3–§6 已內建於 `.claude/agents/code-reviewer.md`(指回本 SOP,零重複),prompt 只需給 **commit hash + scope + 本次特別關注點**;用 general-purpose 當 reviewer 才需完整帶齊六項。
 
 ## Receipt 契約（機械可驗）
 
