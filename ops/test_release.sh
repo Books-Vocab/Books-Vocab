@@ -185,6 +185,14 @@ grep -q 'version = "0.1.0"' "$TMP2/backend/pyproject.toml" \
   && ok "api dry-run leaves pyproject+api.py untouched" || fail_t "api dry-run modified version files"
 echo "$api_dry" | grep -q '0.1.0 → 0.2.0' \
   && ok "api dry-run prints old→new" || fail_t "api dry-run missing old→new preview: $api_dry"
+# 13d0. wrapper 無 --yes：dry-run 不寫檔（wrapper 路徑，非只測 primitive）
+KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 >/dev/null 2>&1 \
+  && ok "release.sh bump（無 --yes）exits 0" || fail_t "release.sh bump dry-run exited non-zero"
+grep -q 'version = "0.1.0"' "$TMP2/backend/pyproject.toml" \
+  && ok "release.sh bump（無 --yes）不寫檔" || fail_t "release.sh bump without --yes wrote files"
+# 13d1. 多餘 positional 拒絕（不得靜默忽略）
+KG_ROOT="$TMP2" bash "$BUMP" ios 9.9.1 extra >/dev/null 2>&1 \
+  && fail_t "extra positional silently accepted" || ok "bump 拒絕多餘 positional"
 # 13d. --yes 經 release.sh wrapper 傳遞到 primitive（全域 --yes flag 生效）
 KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 --yes >/dev/null 2>&1 \
   || fail_t "release.sh bump api --yes failed"

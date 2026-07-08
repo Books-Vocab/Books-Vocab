@@ -16,7 +16,7 @@ description: 分析變更並執行版號發布（backend / iOS）—— 薄路�
 
 3. **bump + 預覽 changelog**（本地，無對外副作用）：
    ```bash
-   ./ops/release.sh bump <api|ios> <x.y.z>        # 改版號檔
+   ./ops/release.sh bump <api|ios> <x.y.z> --yes  # 改版號檔（無 --yes 為 dry-run 印舊→新）
    ./ops/release.sh changelog <api|ios>            # 印 changelog 給使用者看
    ```
    把 changelog 貼給使用者確認。
