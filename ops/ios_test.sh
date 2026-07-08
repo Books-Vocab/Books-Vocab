@@ -365,6 +365,8 @@ if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
 fi
 if [[ "$TEST_SCOPE" == "ui" && -z "$UI_FIXTURE_DATASET_FILE" && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
   echo "[ios_test] error: --ui requires --dataset <name> or --dataset-file <path> (UI World is the single source of truth)" >&2
+  available_worlds="$(cd "$PROJECT_ROOT/ops/fixtures/ui_worlds" 2>/dev/null && ls -- *.json 2>/dev/null | sed 's/\.json$//' | paste -sd ' ' -)"
+  echo "[ios_test] available datasets (ops/fixtures/ui_worlds/): ${available_worlds:-none}" >&2
   exit 1
 fi
 if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
