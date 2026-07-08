@@ -40,3 +40,10 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0003 | 2026-06-13 | docs-steward 首測 | cli | low | triaged | `docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 5 條 exact 誤報(`via=CLAUDE.md`);hint≠命令故不阻擋,但每次需人工判讀 | open — 候選 enhancement:registry 對 CLAUDE.md source 加 section-anchor 機制 |
 | IMP-0004 | 2026-06-13 | backend-engineer smoke | tool | low | wont-fix | 首次 `uv run` 觸發 .venv bootstrap(~100MB),新 worktree / CI 首跑有感 | 正常行為,快取後即解;不修 |
 | IMP-0005 | 2026-06-13 | kaizen-loop review gate | cli | low | fixed | `docs_lint.sh` 不接受裸 doc 路徑當位置參數(`docs_lint.sh foo.md` → Unknown arg),已加可接受裸路徑並保留清楚提示 | `813356b1` |
+| IMP-0006 | 2026-07-08 | iOS 2.0.0 發版檢討 | tool | low | fixed | `asc.sh`/`ios_release.sh` 靜默吞 ASC API 錯誤(403 agreement 無輸出 exit 1) | `ef5fcfb00`(fd3 透出+403 GUI 指引+test_asc §17) |
+| IMP-0007 | 2026-07-08 | iOS 2.0.0 發版檢討 | arch | med | fixed | 升級觸發清單漏「執行中發現 human-only 動作」,blocker 批到 receipt 才告知(ASC 403 損失 40 min 可平行人工時間) | `9a8209a4c`(agent_org.md 補即時升級觸發) |
+| IMP-0008 | 2026-07-08 | iOS 2.0.0 發版檢討 | arch | med | fixed | 委派無成本下限,trivial 工作也燒全套 agent+receipt | `9a8209a4c`(agent_org.md 補 trivial 門檻) |
+| IMP-0009 | 2026-07-08 | iOS 2.0.0 發版檢討 | doc | low | fixed | 逐項 review 固定檢查項靠 GM 每次手寫 brief,重複且易漏 | `9a8209a4c`(code-reviewer.md 內建 checklist) |
+| IMP-0010 | 2026-07-08 | iOS 2.0.0 發版檢討 | cli | med | fixed | `release.sh bump` 跑了立即寫檔,違 dry-run 預設慣例(實際咬人:預覽即污染 pbxproj) | `34cd97866`(dry-run 預設+--yes+迴歸) |
+| IMP-0011 | 2026-07-08 | iOS 2.0.0 發版檢討 | cli | low | fixed | `ios_test.sh --ui` 缺 dataset 錯誤不列可用清單,需二次查找 | `27d61ecb5`(錯誤附 ui_worlds 名單) |
+| IMP-0012 | 2026-07-08 | iOS 2.0.0 發版檢討 | doc | low | open | `docs/sop/ios.md` §UI World dataset 契約為單行 ~4000 字牆,知識密度高但不可讀不可維護;候選:結構化為表格+分節 | — |
