@@ -14,9 +14,10 @@ scope:
   - backend/src/kg/ops_edit_shared.py
   - backend/src/kg/ops_world_projection.py
   - backend/src/kg/ops_world_expectation.py
+  - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: 72c31f88
+verified_against: 2b69a831
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -31,6 +32,7 @@ verified_against: 72c31f88
 - 寫面 `backend/ops_edit.py` 現在只是 thin wrapper；真正的 command dispatch 在 `backend/src/kg/ops_edit_app.py` + `ops_edit_parser.py` + `ops_edit_commands.py`。實際落地仍走 app per-user store（`CardStore` / `NotebookStore` / `GraphStore`），複用 NFC/dedup/graph merge，不重刻資料寫路徑。
 - 讀面 `backend/ops_cli.py` 也是 thin wrapper；真正的 readonly control plane 在 `backend/src/kg/ops_cli_app.py`，再拆成 `ops_cli_parser.py` / `ops_cli_queries.py` / `ops_cli_observability.py` / `ops_cli_costs.py` / `ops_cli_shared.py`。query 已不再塞在單一大檔，但仍是獨立於寫面的讀取邏輯。
 - state-diff 的投影面 `project_user_world`（`ops_world_projection.py`）仍是**第三條獨立讀盤路徑**：cards 走 `_load_cards` 動態 SELECT，graph 走 `_load_graphs` 直讀 `graph_*.json`，刻意繞過 GraphStore 快取。
+- seed-replay 的導出面 `export_seed_spec`（`ops_world_export.py`，`ops-cli world-export`）是**第四條獨立讀盤路徑**：與 projection 不同，它導出 seed 可**無損重放**的全欄位（含 review 計數器），`connect_ro` + 直讀 `graph_*.json`。它的對齊契約不是 expectation diff，而是 roundtrip 不變量（見 §1.1）。
 
 **後果(結構限制,非 bug)**:寫面寫進 DB 的欄位,讀面/投影面**不保證撈得到**。現在雖然已把 CLI/EDIT monolith 拆成模組,但三面仍各自演進；新增欄位若沒同步到 readonly query 與 projection,照樣會 silent drift。
 
@@ -53,6 +55,23 @@ verified_against: 72c31f88
 **加新可斷言欄位的 checklist**:① 確認 `ops_edit` 直寫該欄(非 store 衍生);② grep `_load_cards`/`_load_graphs` SELECT 確認 projection 撈得到該**原始值**(非 transform 後);③ 在 `ops_world_expectation.py` 的 `_*_VERBATIM_FIELDS` 加欄;④ 跑 real-parity(`test_ops_world_expectation.py::TestRealParity`)→ `mismatches==[]` + tamper 必 FAIL。少任一步 = drift 風險。
 
 防 tautology 鐵則:**derive 只讀宣告 spec,絕不讀 DB**;diff 的 actual 側才走真讀盤。兩條路徑獨立才有鑑別力。
+
+### 1.1 world-export ↔ seed 的 roundtrip 契約（改 seed 欄位 / export surface 前必讀）
+
+`ops-cli world-export <uid> [--out]` 把帳號 vocab 層 dump 成 `ops-edit seed` 相容 spec（`kg.seed_spec.v1`），是行銷帳號**可復現性**地基。它與 seed 之間的不變量（`test_ops_world_export.py::TestRoundtrip` 固化）：
+
+```
+seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等（payload 無 uid/路徑 → byte 相等）
+```
+
+支撐這條不變量的設計約束，**改任一面都必須守住**：
+
+- **欄位對稱**：export 導出的每個欄位，seed 必須吃得進去且無損落盤。現況全集 = notebooks(`name/color/cover_pattern/sort_order/is_default`) + cards(內容欄 + `root_form/inflections/is_archived` + review 7 計數器) + links(content 參照)。**給 Card/Notebook 加新欄位時，export 與 seed 要同 PR 對齊**，否則 roundtrip 靜默有損。
+- **確定式排序不依賴不可重放值**：排序鍵禁用 created_at / 隨機 id（跨沙盒重放後會變）——notebooks 按 `(sort_order, name)`、cards 按 `(notebook name, content)`、links 按 `(notebook name, from, to, kind)`；datetime 一律正規化 aware UTC isoformat（寫面 naive/aware 落盤不一，export 統一）。
+- **review 雙形式**：seed 的 `review` 接 legacy `{state,interval,anchor?}`（語意態，anchor 推導時間，**行為凍結** —— `ops/demo/demo_dataset.json` 等既有消費者依賴）與計數器形式（7 欄直設；`review_count>0` 必帶 `last_reviewed_at`，並經 `synthesize_many` 合成 `review_events.db`，uuid5 event_id 去重冪等）。兩形式混用 fail-loud。export 一律產計數器形式。
+- **不可重放資料不進 payload**：孤兒卡（notebook 已刪）、斷鏈 link（端點卡已刪）走 stderr warning，stdout 維持純 spec JSON；active notebook 同名多本、卡 meaning 空白 → export fail-loud（seed 無法重放）。
+- **`is_default: true` 映射預設本**：seed 遇 is_default entry 直接更新 id=`default` 的既存預設本（可改名，不增殖新本），否則 export 的預設本重放後會變成第二本普通 notebook、roundtrip 破功。
+- **review events 不在 export 範圍**：export 只涵蓋 cards.db 聚合；重放側由計數器重新合成逐筆事件（legacy seed 的世界本來就無事件，重放後會多出合成事件 —— 這是計數器形式的契約，不是 drift）。
 
 ## 2. capture_profile 抽象邊界宣告
 

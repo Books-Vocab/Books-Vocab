@@ -82,6 +82,7 @@ ops-cli fleet-overview                     # 跨用戶體檢：每用戶 cards/l
 ops-cli sync-trace <uid> [--date YYYY-MM-DD] # 用戶單日 sync 時間線（cards+API+judge+translate 合併按時間排序；預設今天）
 ops-cli world-state <uid>                  # 穩定投影 actual world（config/notebooks/cards/graph_*.json）
 ops-cli world-diff <uid> <spec.json>       # 用 kg.ops_world_expectation.v1 比對 actual，拿穩定 mismatch path
+ops-cli world-export <uid> [--out <path>]  # 帳號 vocab 層 → ops-edit seed 相容 spec（kg.seed_spec.v1，唯讀、確定式排序、stdout 純 JSON；不可重放資料走 stderr warning）
 ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<uid>] [--fill-zero]
                                            # 時間序列趨勢；metric=cost|calls|active_users（預設 bucket=day, range=30d, uid=all）
                                            # --fill-zero：補齊區間內零值桶，時間軸連續、斷層顯式化（找「哪幾天/週沒人用」必加）
@@ -151,12 +152,17 @@ ops-edit-batch <plan.json>                                      # plan schema=kg
 
 # seed spec JSON:
 #   {"review_anchor"?: "2026-06-06T00:00:00Z",
-#    "notebooks":[{"name","color"?,"cover_pattern"?}],
+#    "notebooks":[{"name","color"?,"cover_pattern"?,"sort_order"?,"is_default"?}],
 #    "cards":[{"content","meaning","pos"?,"examples"?,"collocations"?,"note"?,"difficulty"?,
-#              "mode"?,"notebook"?,"source"?: VocabSource,
-#              "review"?:{"state","interval"?,"anchor"?}}],
+#              "mode"?,"root_form"?,"inflections"?,"is_archived"?,"notebook"?,"source"?: VocabSource,
+#              "review"?:{"state","interval"?,"anchor"?}                    # legacy：語意態 + anchor 推導時間
+#                       |{review_count,review_streak?,lapse_count?,review_interval_hours?,
+#                         next_review_at?,last_reviewed_at?,last_review_feedback?}}],  # 計數器直設（world-export 重放面）
 #    "links":[{"from","to","kind","confidence","reason","notebook"?}]}      # from/to 用 card content 參照
 # review_anchor/anchor 固定 seed 的複習時鐘,行銷 demo 重跑不會因今天日期不同而漂移。
+# review 計數器形式：review_count>0 必帶 last_reviewed_at，seed 會用 synthesize_many 確定式合成
+# review_events.db（uuid5 去重、重跑冪等）；不可與 state 形式混用。is_default:true 映到既存預設本（改名不增殖）。
+# ops-cli world-export 的產物即此 schema：seed→export→seed(新沙盒)→export 兩份 export 相等（可復現地基）。
 # 內建行銷 seed: ops/seeds/marketing_demo.json
 ```
 
