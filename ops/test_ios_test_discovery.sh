@@ -284,9 +284,9 @@ if [[ -n "$PAT_A" && -n "$PAT_B" && "$PAT_A" != "$PAT_B" ]]; then
   N_A="$(grep -c only-testing <<<"$LIST_A" || true)"
   N_B="$(grep -c only-testing <<<"$LIST_B" || true)"
   if (( N_A >= 1 && N_B >= 1 && superset == 1 )); then
-    ok "multi -g 累積且合併輸出 ⊇ 兩單獨輸出聯集（$PAT_A:$N_A + $PAT_B:$N_B）"
+    ok "multi -g 累積且合併輸出 ⊇ 兩單獨輸出聯集（$PAT_A:$N_A + $PAT_B:${N_B}）"
   else
-    fail_t "multi -g 未累積（$PAT_A:$N_A, $PAT_B:$N_B, superset=$superset）"
+    fail_t "multi -g 未累積（$PAT_A:$N_A, $PAT_B:$N_B, superset=${superset}）"
   fi
 else
   fail_t "找不到兩個可用的真實測試名（PAT_A='$PAT_A' PAT_B='$PAT_B'）"
@@ -295,7 +295,7 @@ fi
 # ── 11b. 空 -g pattern 必須被拒（空 ERE alternative 匹配一切 = silent broadening）─
 section "empty -g pattern rejected"
 EMPTY_ERR="$("$IOS_TEST" -g '' --list 2>&1 >/dev/null)" && EMPTY_RC=0 || EMPTY_RC=$?
-[[ "$EMPTY_RC" -eq 2 ]] && ok "空 pattern exit 2" || fail_t "空 pattern rc=$EMPTY_RC（應 2）"
+[[ "$EMPTY_RC" -eq 2 ]] && ok "空 pattern exit 2" || fail_t "空 pattern rc=${EMPTY_RC}（應 2）"
 grep -q "空 pattern" <<<"$EMPTY_ERR" && ok "錯誤訊息明示拒絕原因" || fail_t "錯誤訊息缺拒絕原因: $EMPTY_ERR"
 
 # ── 12. 零匹配錯誤訊息必須講清楚匹配語意（方法名＋suite/容器名，不對檔名）────
@@ -321,6 +321,14 @@ if [[ -n "$SUITE_NAME" ]]; then
 else
   fail_t "找不到可用的真實 suite 名"
 fi
+
+# ── 13. --ui 缺 dataset 錯誤必須列出可用 UI World 名單（IMP-0011 迴歸）──────
+section "--ui missing dataset lists available worlds"
+DS_ERR="$("$IOS_TEST" --ui -g Foo 2>&1 >/dev/null)" && DS_RC=0 || DS_RC=$?
+[[ "$DS_RC" -ne 0 ]] && ok "--ui 缺 dataset exit 非 0" || fail_t "--ui 缺 dataset 竟 exit 0"
+grep -q "available datasets" <<<"$DS_ERR" && grep -q "marketing_demo" <<<"$DS_ERR" \
+  && ok "錯誤列出可用 dataset 名單（含 marketing_demo）" \
+  || fail_t "錯誤未列可用 dataset: $DS_ERR"
 
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
