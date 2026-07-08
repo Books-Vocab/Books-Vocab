@@ -18,6 +18,7 @@ from .ops_cli_queries import (
     cmd_user_quota,
     cmd_user_stats,
     cmd_world_diff,
+    cmd_world_export,
     cmd_world_state,
 )
 
@@ -47,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("world-state", parents=[jp], help="單用戶 world-state 投影（cards/notebooks/graphs/config）")
     p.add_argument("uid", help="User ID")
     p.set_defaults(func=cmd_world_state)
+
+    p = sub.add_parser("world-export", help="單帳號 vocab 層導出成 ops_edit seed 相容 spec（唯讀；stdout 純 JSON）")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("--out", help="寫入檔案路徑（預設印 stdout）")
+    p.set_defaults(func=cmd_world_export)
 
     p = sub.add_parser("world-diff", parents=[jp], help="用 expectation spec 比對單用戶 world-state")
     p.add_argument("uid", help="User ID")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from kg.ops_shared import (
     table_columns,
 )
 from kg.ops_world_diff import diff_world_state, load_expectation
+from kg.ops_world_export import WorldExportError, export_seed_spec
 from kg.ops_world_projection import SCHEMA as WORLD_STATE_SCHEMA
 from kg.ops_world_projection import project_user_world
 from kg.quota_service import token_cost_usd
@@ -171,6 +173,28 @@ def cmd_world_state(args: argparse.Namespace) -> None:
     print(f"schema: {WORLD_STATE_SCHEMA}")
     print(f"user: {uid}")
     print(f"cards={len(payload['cards'])} notebooks={len(payload['notebooks'])} graphs={len(payload['graphs'])}")
+
+
+def cmd_world_export(args: argparse.Namespace) -> None:
+    """單帳號 vocab 層 → seed 相容 spec（唯讀）。stdout 為純 spec JSON。"""
+    dd = data_dir()
+    uid = resolve_uid(args.uid, dd)
+    try:
+        payload, warnings = export_seed_spec(uid, data_root=dd)
+    except WorldExportError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(
+            f"world-export: {args.out} (notebooks={len(payload['notebooks'])} "
+            f"cards={len(payload['cards'])} links={len(payload['links'])})"
+        )
+        return
+    sys.stdout.write(text)
 
 
 def cmd_world_diff(args: argparse.Namespace) -> None:
