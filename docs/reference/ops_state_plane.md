@@ -17,7 +17,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: d23c58b4
+verified_against: 5afba51d7
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -72,12 +72,9 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 - **不可重放資料不進 payload**：孤兒卡（notebook 已刪）、斷鏈 link（端點卡已刪）走 stderr warning，stdout 維持純 spec JSON；active notebook 同名多本、卡 meaning 空白 → export fail-loud（seed 無法重放）。
 - **`is_default: true` 映射預設本**：seed 遇 is_default entry 直接更新 id=`default` 的既存預設本（可改名，不增殖新本），否則 export 的預設本重放後會變成第二本普通 notebook、roundtrip 破功。
 - **review events 不在 export 範圍**：export 只涵蓋 cards.db 聚合；重放側由計數器重新合成逐筆事件（legacy seed 的世界本來就無事件，重放後會多出合成事件 —— 這是計數器形式的契約，不是 drift）。
-<<<<<<< HEAD
 - **link 卡對唯一**：app 語意一對卡至多一條 active link（`add_link` 對既存 pair 拋 ConflictError）。legacy graph 同 pair 存多條時，export 確定式保留 sorted 首條、其餘 stderr warning 略過——照導會產出重放時被冪等吸收的 spec，roundtrip 破功（真實案例：000287 divisiveness↔division 雙向兩條）。
 - **export 恆唯讀、無 dry-run 語意**：`world-export` 是 ops-cli 讀面指令，沒有 `--commit` 旗標，任何模式下執行都只讀盤（測試以 cards.db sha 不變固化）；「dry-run 才安全」的心智模型不適用也不需要。
-=======
 - **下游消費者（Phase 2）**：`ops/demo/build_demo.py emit-ios --spec <export產物> --out <path>` 把 seed spec 投影成 iOS UI World v2 fixture（投影規則 SoT = `ops/demo/spec_world.py`）。給 export payload 加/改欄位時，除 seed 對稱外也要確認 spec 投影是否需要跟進（contract 見 `docs/reference/tech_index.md` fixture 契約段）。
->>>>>>> 0cabed779 (docs: emit-ios spec 模式語意同步（tech_index fixture 契約段 + ios_test cache-key 過濾 / ops_state_plane §1.1 下游消費者 / IMP-0013 mute rc-0 abort 殘口登記）)
 
 ## 2. capture_profile 抽象邊界宣告
 
