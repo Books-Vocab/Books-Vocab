@@ -243,9 +243,15 @@ ios_test_build_cache_key() {
     # Hash all inputs in a single shasum process instead of one fork per file
     # (~5.3s -> ~0.05s for ~556 files). Paths are already sorted+unique and
     # relative to the repo root, so the digest stays stable across worktrees
-    # and independent of listing order.
+    # and independent of listing order. Filter to files that exist first:
+    # untracked inputs (e.g. Xcode-generated swiftpm/Package.resolved) are
+    # legitimately absent in fresh worktrees, and a missing file would make
+    # shasum exit non-zero — under set -e + pipefail that silently killed the
+    # whole script (mute exit, no payload) on every cache path.
     ios_test_build_input_paths \
-      | ( cd "$PROJECT_ROOT" && tr '\n' '\0' | xargs -0 shasum -a 256 2>/dev/null )
+      | ( cd "$PROJECT_ROOT" \
+          && while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\n' "$f" || :; done \
+          | tr '\n' '\0' | xargs -0 shasum -a 256 2>/dev/null )
   } | shasum -a 256 | awk '{print $1}'
 }
 
