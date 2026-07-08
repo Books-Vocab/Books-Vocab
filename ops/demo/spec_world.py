@@ -53,6 +53,12 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
   ≥70 事件、knowledgeGraphPopulated ≥3 卡/≥2 link、reviewDeck.phaseMulti ==3）：
   這是行銷 spec 的資料量責任，投影器不擋薄 spec（測試/沙盒 spec 合法），量不足
   時對應 catalog surface 會 fail-loud。
+* statsPopulated = primary 全 active 卡 + 全量合成事件（cap
+  _HISTORY_STATS_MAX）：它是 Stats / ReviewCalendar 的敘事底稿（streak / 學習
+  日曆 / totalCards）；只投影小樣本時 streak 與 heatmap 必崩。shellNavigation
+  維持 _STATS_ENTRIES_MAX 小樣本（chrome smoke，非敘事面）。複習歷史敘事的
+  上游 owner = ops/demo/marketing_account/shape_history.py（塑形 spec 的
+  review 日期欄位），本模組只忠實合成，不造敘事。
 
 測試：ops/tests/test_demo_ios_spec_emitter.py。
 """
@@ -80,7 +86,7 @@ _SYNCING_MAX = 5             # vocabListSyncing
 _PENDING_MIXED_MAX = 4       # syncPendingMixed
 _HISTORY_PER_CARD_MAX = 40   # 每卡合成事件上限（防指數回推溢位）
 _HISTORY_DENSE_MAX = 3000    # reviewCalendarDense 全域事件上限（fixture 體積）
-_HISTORY_STATS_MAX = 500     # statsPopulated
+_HISTORY_STATS_MAX = 3000    # statsPopulated（敘事底稿：全 active 卡事件，勿截舊日）
 _HISTORY_SHELL_MAX = 200     # shellNavigation
 _INTERVAL_GROWTH = 1.7       # 對齊 demo_review_synth 的往過去回推成長係數
 _MIN_RECENT_GAP_HOURS = 8.0
@@ -646,8 +652,11 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
     ]
 
     dense_history = _history_for(active, cap=_HISTORY_DENSE_MAX)
+    # statsPopulated 承載 streak / heatmap 敘事 → 必須全 active 卡 + 全量事件
+    # （只取前 8 張時，8 條幾何回推序列的聯集永遠湊不出連續日 streak）。
+    # shellNavigation 是 chrome smoke，維持 8 卡小樣本。
     stats_cards = active[:_STATS_ENTRIES_MAX]
-    stats_history = _history_for(stats_cards, cap=_HISTORY_STATS_MAX)
+    stats_history = _history_for(active, cap=_HISTORY_STATS_MAX)
     shell_history = _history_for(stats_cards, cap=_HISTORY_SHELL_MAX)
 
     # content-pinned fixtures（wordDetail / wordEdit / searchVocabNotebook /
@@ -668,7 +677,7 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         "knowledgeGraphPopulated": _vocab_seed(primary, entries(linked[:_KG_GRAPH_MAX])),
         "knowledgeGraphEmpty": _vocab_seed(primary, []),
         "shellNavigation": _vocab_seed(primary, entries(stats_cards), shell_history),
-        "statsPopulated": _vocab_seed(primary, entries(stats_cards), stats_history),
+        "statsPopulated": _vocab_seed(primary, entries(active), stats_history),
         "reviewCalendarDense": _vocab_seed(primary, entries(active), dense_history),
         "statsEmpty": _vocab_seed(primary, []),
     }

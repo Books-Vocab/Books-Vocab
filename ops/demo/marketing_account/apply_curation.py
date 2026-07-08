@@ -3,22 +3,23 @@
 
 輸入輸出都是 `kg.seed_spec.v1`（見 docs/reference/ops_state_plane.md §1.1）；
 plan 是 `kg.curation_plan.v1`（remove + assign，由策展編輯產出）。轉換全程無
-時鐘/隨機依賴（anchor 由參數傳入），同 input 重跑 byte 相等，spec 的 git 歷史
-即策展版本序列。
+時鐘/隨機依賴，同 input 重跑 byte 相等，spec 的 git 歷史即策展版本序列。
+
+**只做結構策展**（剔字 / 分本 / notebook 重建 / link 收斂）。review 時間欄位
+一律不動——複習歷史敘事的唯一 owner 是同目錄 `shape_history.py`（原
+`_rebalance_reviews` 過期山攤平已退役、由它收編）。pipeline：
+`ops_cli world-export` → `apply_curation.py`（結構）→ `shape_history.py`
+（敘事）→ `build_demo.py emit-ios --spec`。
 
 不變量（違反即 CurationError fail-loud，絕不靜默丟卡）：
 - remove ∪ assign 恰好覆蓋 spec 全卡；assign 目標必在 notebook_meta。
 - link 兩端卡必須落在同一 notebook（link 嚴格 per-notebook），否則列名報錯。
-- review 重排只動「anchor 時點已過期」的卡：保留最近複習的 target_due 張維持
-  due，其餘確定式攤到 anchor 後 1..spread_days 天，並同步 review_interval_hours
-  = next - last 維持自洽；new 卡（review_count=0）與未過期卡不動。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,50 +31,8 @@ class CurationError(Exception):
     pass
 
 
-def _parse_dt(value: str) -> datetime:
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt
-
-
-def _rebalance_reviews(cards: list[dict[str, Any]], *, anchor: datetime,
-                       target_due: int, spread_days: int) -> None:
-    """把過期山攤平：多數過期卡確定式延到未來，保留 target_due 張 due。"""
-    if spread_days <= 0:
-        raise CurationError(f"spread_days 必須 > 0，得 {spread_days}")
-    if target_due < 0:
-        raise CurationError(f"target_due 必須 >= 0，得 {target_due}")
-    violators = sorted(
-        c["content"] for c in cards
-        if c["review"]["review_count"] > 0 and not c["review"].get("last_reviewed_at")
-    )
-    if violators:  # §1.1 spec 不變量，違反=上游資料壞，fail-loud 不硬扛
-        raise CurationError(
-            f"{len(violators)} 卡 review_count>0 但缺 last_reviewed_at: {violators[:10]}")
-    overdue = [
-        c for c in cards
-        if c["review"]["review_count"] > 0
-        and c["review"].get("next_review_at")
-        and _parse_dt(c["review"]["next_review_at"]) <= anchor
-    ]
-    # 最近複習者優先保留 due（真實學習者的 due 通常是近期活躍卡）
-    overdue.sort(key=lambda c: (c["review"]["last_reviewed_at"] or "", c["content"]),
-                 reverse=True)
-    for i, card in enumerate(overdue[target_due:]):
-        r = card["review"]
-        # 以排序序位確定式攤平到 anchor 後 1..spread_days 天（同日再以小時錯開）
-        day = 1 + (i % spread_days)
-        hour = 6 + (i * 7) % 12
-        nxt = anchor + timedelta(days=day, hours=hour)
-        last = _parse_dt(r["last_reviewed_at"])
-        r["next_review_at"] = nxt.isoformat()
-        r["review_interval_hours"] = round((nxt - last).total_seconds() / 3600, 6)
-
-
 def apply(spec: dict[str, Any], plan: dict[str, Any], *,
-          notebook_meta: dict[str, dict[str, Any]], anchor: str,
-          target_due: int = 12, spread_days: int = 45) -> dict[str, Any]:
+          notebook_meta: dict[str, dict[str, Any]]) -> dict[str, Any]:
     if spec.get("schema") != SPEC_SCHEMA:
         raise CurationError(f"spec schema 不是 {SPEC_SCHEMA}: {spec.get('schema')!r}")
     if plan.get("schema") != PLAN_SCHEMA:
@@ -130,9 +89,6 @@ def apply(spec: dict[str, Any], plan: dict[str, Any], *,
         raise CurationError(
             f"{len(broken)} 條 link 端點被拆到不同本（同分量必須同本）: {broken[:10]}")
 
-    _rebalance_reviews(cards, anchor=_parse_dt(anchor), target_due=target_due,
-                       spread_days=spread_days)
-
     cards.sort(key=lambda c: (c["notebook"], c["content"]))
     links.sort(key=lambda l: (l["notebook"], l["from"], l["to"], l["kind"]))
     out = dict(spec)
@@ -147,17 +103,13 @@ def main() -> int:
     ap.add_argument("spec", help="輸入 kg.seed_spec.v1 JSON")
     ap.add_argument("plan", help="kg.curation_plan.v1 JSON")
     ap.add_argument("meta", help="notebook_meta JSON（name → {color,cover_pattern,is_default}）")
-    ap.add_argument("--anchor", required=True, help="review 重排錨點（ISO8601）")
-    ap.add_argument("--target-due", type=int, default=12)
-    ap.add_argument("--spread-days", type=int, default=45)
     ap.add_argument("--out", help="輸出路徑（預設 stdout）")
     args = ap.parse_args()
 
     spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
     plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
     meta = json.loads(Path(args.meta).read_text(encoding="utf-8"))
-    result = apply(spec, plan, notebook_meta=meta, anchor=args.anchor,
-                   target_due=args.target_due, spread_days=args.spread_days)
+    result = apply(spec, plan, notebook_meta=meta)
     payload = json.dumps(result, ensure_ascii=False, indent=1) + "\n"
     if args.out:
         Path(args.out).write_text(payload, encoding="utf-8")
