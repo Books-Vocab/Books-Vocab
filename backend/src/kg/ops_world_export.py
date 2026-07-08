@@ -175,7 +175,23 @@ def _export_links(
                 "notebook": nb_name,
             })
     links.sort(key=lambda lk: (lk["notebook"], lk["from"], lk["to"], lk["kind"]))
-    return links
+    # app 語意：一對卡至多一條 active link（vocab_graph_ops.add_link 對既存 pair
+    # 拋 ConflictError）。legacy graph 可能同 pair 存雙向多條——照導會產出
+    # seed 無法完整重放的 spec（第二條被冪等吸收），違反 roundtrip 契約。
+    # 確定式保留 sorted 首條，其餘 warning 略過。
+    seen_pairs: set[tuple[str, str, str]] = set()
+    deduped: list[dict[str, Any]] = []
+    for lk in links:
+        pair = (lk["notebook"], *sorted((lk["from"], lk["to"])))
+        if pair in seen_pairs:
+            warnings.append(
+                f"同卡對多條 active link（{lk['from']} ↔ {lk['to']}，{lk['notebook']}）"
+                f"，僅保留 sorted 首條（app 語意一對卡至多一條）"
+            )
+            continue
+        seen_pairs.add(pair)
+        deduped.append(lk)
+    return deduped
 
 
 def export_seed_spec(uid: str, *, data_root: Path | None = None) -> tuple[dict[str, Any], list[str]]:
