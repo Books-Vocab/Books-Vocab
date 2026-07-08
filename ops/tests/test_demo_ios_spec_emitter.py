@@ -499,6 +499,39 @@ def test_spec_mode_review_history_is_synthesized_and_references_entries(tmp_path
                              reverse=True)
 
 
+def test_spec_mode_stats_populated_covers_all_primary_active_cards(tmp_path):
+    """statsPopulated 是 Stats/ReviewCalendar 的敘事底稿：entries 必須是 primary
+    notebook 全 active 卡（非只取前 8 張），reviewHistory 必須涵蓋前 8 張以外的
+    卡的合成事件——否則 streak / heatmap 只剩 8 條幾何序列，敘事必崩。"""
+    content = _emit_spec_bytes(tmp_path, _big_spec(60))
+    document = json.loads(content)
+    stats = document["vocabulary"]["statsPopulated"]
+    populated = document["vocabulary"]["vocabListPopulated"]
+
+    assert [e["word"] for e in stats["entries"]] == [
+        e["word"] for e in populated["entries"]]
+    assert len(stats["entries"]) > 8
+
+    history_words = {r["word"] for r in stats["reviewHistory"]}
+    beyond_first_8 = {
+        e["word"] for e in stats["entries"][8:] if e["reviewCount"] > 0}
+    assert beyond_first_8 & history_words, (
+        "statsPopulated.reviewHistory 必須含前 8 張以外的卡事件")
+
+
+def test_spec_staleness_warning_helper():
+    """emit --spec 防呆：spec 錨日（max last_reviewed_at）距 now > 48h → WARN。"""
+    stale = _small_spec()  # last_reviewed 全在 2026-05-31 之前
+    now = __import__("datetime").datetime(
+        2026, 7, 9, tzinfo=__import__("datetime").timezone.utc)
+    warning = emit_ios.spec_staleness_warning(stale, now=now)
+    assert warning is not None and "48h" in warning
+
+    fresh = _small_spec()
+    fresh["cards"][0]["review"]["last_reviewed_at"] = "2026-07-09T01:00:00+00:00"
+    assert emit_ios.spec_staleness_warning(fresh, now=now) is None
+
+
 def test_spec_mode_accepts_empty_link_reason(tmp_path):
     """export 面容許 reason=""；投影必須確定式 fallback，不得在 session 卡位置炸。"""
     payload = _small_spec()

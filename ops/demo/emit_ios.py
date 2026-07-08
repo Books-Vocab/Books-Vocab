@@ -372,6 +372,45 @@ def _rel(path: Path) -> str:
         return str(path)
 
 
+_SPEC_STALENESS_HOURS = 48.0
+
+
+def spec_staleness_warning(spec: dict[str, Any], *, now: "object | None" = None) -> str | None:
+    """spec 錨日防呆：iOS streak / 學習日曆的「今天」是 render 時的牆鐘，spec 的
+    複習事件卻是絕對日期 —— 拿陳舊 spec 出圖時 streak 歸零、日曆變空。以
+    max(last_reviewed_at) 當 spec 錨日，距 now 超過 _SPEC_STALENESS_HOURS 即回傳
+    WARN 訊息（純提示，不影響輸出 bytes；重新錨定走
+    ops/demo/marketing_account/shape_history.py）。"""
+    from datetime import datetime, timezone
+
+    latest: "datetime | None" = None
+    for card in spec.get("cards", []):
+        raw = (card.get("review") or {}).get("last_reviewed_at")
+        if not raw:
+            continue
+        s = str(raw).strip()
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            continue  # 格式錯誤由 load_seed_spec/投影面把關，防呆不重複驗
+        dt = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+        if latest is None or dt > latest:
+            latest = dt
+    if latest is None:
+        return None
+    now_dt = now if now is not None else datetime.now(timezone.utc)
+    age_hours = (now_dt - latest).total_seconds() / 3600
+    if age_hours <= _SPEC_STALENESS_HOURS:
+        return None
+    return (
+        f"WARN: spec 錨日 {latest.isoformat()} 距今 {age_hours / 24:.1f} 天（> 48h）；"
+        "以此 spec 出圖時 streak / 學習日曆會因牆鐘漂移而崩。先用 "
+        "ops/demo/marketing_account/shape_history.py 重新錨定再 emit。"
+    )
+
+
 def _emit_spec(
     sot: DemoSoT,
     *,
@@ -382,6 +421,10 @@ def _emit_spec(
 ) -> dict:
     """Spec 模式的 emit:輸出到呼叫者指定路徑，不碰 committed artifact。"""
     out, content, document, stats = _spec_build(sot, spec_path=spec_path, out_path=out_path)
+    staleness = spec_staleness_warning(
+        json.loads(Path(spec_path).read_text(encoding="utf-8")))
+    if staleness:
+        print(staleness, file=sys.stderr)
 
     base: dict[str, Any] = {
         "mode": "spec",
@@ -393,6 +436,8 @@ def _emit_spec(
         "specDerivedDomains": sorted(SPEC_DOMAINS),
         "baselineKeptFixtures": [f"{d}.{f}" for d, f in SPEC_BASELINE_KEPT_FIXTURES],
     }
+    if staleness:
+        base["stalenessWarning"] = staleness
 
     if check:
         if not out.exists():
