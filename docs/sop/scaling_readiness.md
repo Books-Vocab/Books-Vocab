@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/
-verified_against: 1097a2a2
+verified_against: 3925cff86
 -->
 # 水平擴展整備 (Scaling Readiness)
 

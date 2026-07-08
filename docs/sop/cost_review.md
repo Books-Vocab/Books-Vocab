@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - .claude/skills/billing/
   - docs/reference/cost_baseline.md
-verified_against: 23521f39
+verified_against: 1a77c4946
 -->
 # Cost Review SOP — 月度盤點 / drift 觸發 / 異常追
 

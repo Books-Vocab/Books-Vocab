@@ -133,3 +133,54 @@ if ./ops/docs_lint.sh --files README.md >/tmp/kg_docs_lint_nondoc.out 2>&1; then
   exit 1
 fi
 grep -q "只接受 docs/.*\\.md" /tmp/kg_docs_lint_nondoc.out
+
+# --- IMP-0015: git 衝突標記殘留必須被 gate 攔截 ---
+# 事故 92da32e64: rebase 解衝突未完成,衝突標記進 main 而 docs_lint 全綠。
+# 衝突標記 <<<<<<< / >>>>>>> 在正常 doc 無合法用途,應 ERROR。
+conflict_fixture="docs/.lint_test_conflict_marker.md"
+cleanup_conflict() { rm -f "$conflict_fixture"; }
+trap cleanup_conflict EXIT
+cat > "$conflict_fixture" <<'CONFLICT_EOF'
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/docs_lint.sh
+verified_against: HEAD
+-->
+# Conflict fixture
+
+<<<<<<< HEAD
+ours line
+=======
+theirs line
+>>>>>>> some-branch
+CONFLICT_EOF
+if ./ops/docs_lint.sh --files "$conflict_fixture" >/tmp/kg_docs_lint_conflict.out 2>&1; then
+  echo "docs_lint 未攔截 git 衝突標記殘留(--files)" >&2
+  dump_file /tmp/kg_docs_lint_conflict.out
+  exit 1
+fi
+require_grep "衝突標記" /tmp/kg_docs_lint_conflict.out
+# setext H1 底線(===)不得被誤判為衝突標記
+setext_fixture="docs/.lint_test_setext.md"
+cleanup_setext() { rm -f "$conflict_fixture" "$setext_fixture"; }
+trap cleanup_setext EXIT
+cat > "$setext_fixture" <<'SETEXT_EOF'
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/docs_lint.sh
+verified_against: HEAD
+-->
+Setext Heading
+=======
+內文,不該被當成衝突標記。
+SETEXT_EOF
+run_capture /tmp/kg_docs_lint_setext.out ./ops/docs_lint.sh --files "$setext_fixture"
+require_grep "ERROR: 0" /tmp/kg_docs_lint_setext.out
+cleanup_setext
+trap - EXIT
