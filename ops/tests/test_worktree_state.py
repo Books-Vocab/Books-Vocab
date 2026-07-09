@@ -157,11 +157,21 @@ def test_dirty_beats_detached_orphan():
     assert classify(f) is State.DIRTY
 
 
-def test_live_beats_looks_recyclable_stub():
-    # looks like an unowned stub (ORPHAN) but the HEAD is recent -> LIVE wins.
+def test_live_beats_stub_when_worktree_present():
+    # looks like an unowned stub (ORPHAN) but a checked-out worktree with a recent
+    # HEAD -> LIVE wins. LIVE now REQUIRES has_worktree (see next test).
+    f = _facts(name="stub", unique_commits=0, landed_in_base=True,
+               registered_active=False, has_worktree=True, head_age_s=5)
+    assert classify(f) is State.LIVE
+
+
+def test_fresh_head_is_not_live_without_a_worktree():
+    # THE bug fix: a dangling stub branch (no worktree) with a FRESH HEAD is NOT
+    # LIVE — a just-landed ref must stay reclaimable, not be shielded as a running
+    # agent because a merge commit made its HEAD look recent.
     f = _facts(name="stub", unique_commits=0, landed_in_base=True,
                registered_active=False, has_worktree=False, head_age_s=5)
-    assert classify(f) is State.LIVE
+    assert classify(f) is State.ORPHAN
 
 
 def test_live_beats_detached_orphan():
@@ -220,6 +230,14 @@ def test_drop_unsafe_when_unique_work_unlanded():
 def test_drop_unsafe_when_live():
     reason = unsafe_to_drop(_facts(head_age_s=5, live_window_s=7200))
     assert reason is not None and "live" in reason.lower()
+
+
+def test_drop_safe_for_fresh_dangling_landed_branch():
+    # fresh HEAD but no worktree + landed + clean -> not LIVE (no worktree to shield),
+    # nothing unlanded -> safe to reclaim. Pairs with the classify bug-fix test.
+    f = _facts(name="stub", unique_commits=0, landed_in_base=True,
+               has_worktree=False, head_age_s=5)
+    assert unsafe_to_drop(f) is None
 
 
 def test_drop_safe_when_detached_contained_in_base():
