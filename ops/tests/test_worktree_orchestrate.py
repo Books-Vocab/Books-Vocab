@@ -481,3 +481,75 @@ def test_preflight_runs_sweep_and_reports(scratch):
     assert pre["schema"] == "kg.worktree.orchestrate.v1"
     assert pre["step"] == "preflight"
     assert "sweep" in pre
+
+
+@gitmark
+def test_resolve_from_inside_the_target_worktree_completes(scratch):
+    # Regression: resolve invoked with cwd INSIDE the target worktree used to derive
+    # its teardown cwd from repo_root() — the worktree's own toplevel. Step 1
+    # (worktree remove) then vaporized that cwd and every remaining step (branch -D,
+    # gate-cache strike) crashed with an unhandled FileNotFoundError, leaving a
+    # half-resolved state. Standing inside the worktree is the natural place for a
+    # working agent, so the full teardown must complete from there.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "fix the reader crash", "--slug", "inside-resolve",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("did the thing\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    rc, _ = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert cut["pushed"] is True
+    gate_cache = MODULE._gate_record_path(state, wt)
+    assert gate_cache.exists()
+
+    os.chdir(wt)
+    try:
+        rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    finally:
+        os.chdir(repo)
+
+    assert rc == MODULE.EXIT_OK
+    assert res["failures"] == 0
+    assert not Path(wt).exists()
+    assert "debug/inside-resolve" not in _local_branches(repo)
+    assert res.get("gate_cache_removed") is True
+    assert not gate_cache.exists()
+    recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
+    assert recs["debug/inside-resolve"]["status"] == "merged"
+
+
+@gitmark
+def test_open_from_inside_another_worktree_anchors_at_primary_root(scratch):
+    # Regression: open used repo_root() (cwd's toplevel), so opening from inside a
+    # linked worktree would NEST the new worktree under it instead of anchoring at
+    # the primary root's .claude/worktrees/ like every other flow expects.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, first = _run_json(
+        ["open", "--intent", "fix the reader crash", "--slug", "first",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+
+    os.chdir(first["path"])
+    try:
+        rc, second = _run_json(
+            ["open", "--intent", "fix the reader crash", "--slug", "second",
+             "--state", state, "--json"]
+        )
+    finally:
+        os.chdir(repo)
+
+    assert rc == MODULE.EXIT_OK
+    expected = (repo / ".claude" / "worktrees" / "second").resolve()
+    assert Path(second["path"]).resolve() == expected
