@@ -40,11 +40,13 @@ get_verdict() { printf '%s' "$1" | sed -n 's/.*"verdict":"\([^"]*\)".*/\1/p' | h
 make_mock_curl() {
   local fixture_content="$1"
   local dir="$2"
+  local served="${3:-}"          # 選填：容器「實際 serving」版本檔；localhost 動態回此值
   local fixture="$dir/curl_fixture_$RANDOM.txt"
   local script="$dir/mock_curl_$RANDOM.sh"
   printf '%s\n' "$fixture_content" > "$fixture"
   cat >"$script" <<MOCK
 #!/usr/bin/env bash
+SERVED="$served"
 url=""
 want_body_plus_http=0
 want_http_only=0
@@ -63,6 +65,20 @@ for a in "\$@"; do
     url="\$a"
   fi
 done
+# 動態 localhost：容器 serving 版本 = SERVED 檔內容（模擬 rebuild 後版本改變）。
+# SERVED 空 → 該檔缺 → 容器視為 down（000/exit 6）。僅套用於 localhost；外部 URL 走 fixture。
+if [[ -n "\$SERVED" && "\$url" == *localhost* ]]; then
+  if [[ -s "\$SERVED" ]]; then
+    sv="\$(head -1 "\$SERVED" | tr -d '[:space:]')"
+    code=200; body="{\"version\":\"\$sv\"}"
+    if [[ "\$want_body_plus_http" == "1" ]]; then printf '%s\n%s' "\$body" "\$code";
+    elif [[ "\$want_http_only" == "1" ]]; then printf '%s' "\$code";
+    else printf '%s' "\$body"; fi
+    exit 0
+  else
+    exit 6
+  fi
+fi
 match_line=""
 while IFS= read -r line; do
   [[ -z "\$line" || "\$line" == \#* ]] && continue
@@ -99,6 +115,7 @@ new_scratch() {
   GITLOG="$SC/git.log"; COMPOSELOG="$SC/compose.log"
   STATE="$SC/backups/reconciler.state"; DEPLOYLOG="$SC/backups/deploy.log"
   VERSIONFILE="$REPO/backend/VERSION"
+  SERVEDFILE="$SC/served.txt"     # 容器「實際 serving」版本（compose rebuild 時更新為 VERSION 內容）
   LOCK="$SC/deploy.lock"
   mkdir -p "$BIN" "$SC/backups"
 
@@ -131,6 +148,7 @@ new_scratch() {
     SHA_NEW="$SHA_OLD"
   fi
   echo "$SHA_OLD" > "$VERSIONFILE"
+  echo "$SHA_OLD" > "$SERVEDFILE"   # 容器起始 serving 舊版（與 VERSION 一致）
 
   # git wrapper mock: 記錄呼叫 + 委派真 git
   cat >"$BIN/git_mock.sh" <<EOF
@@ -138,10 +156,11 @@ new_scratch() {
 printf '%s\n' "\$*" >> "$GITLOG"
 exec "$REALGIT" "\$@"
 EOF
-  # compose stub: 記錄呼叫 + 成功
+  # compose stub: 記錄呼叫 + 模擬 rebuild（容器改 serving 當前 VERSION 內容）+ 成功
   cat >"$BIN/compose_mock.sh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$COMPOSELOG"
+cp "$VERSIONFILE" "$SERVEDFILE" 2>/dev/null || true
 exit 0
 EOF
   # infra_health stub: exit code 由 env 控制
@@ -220,11 +239,10 @@ head_now="$("$REALGIT" -C "$REPO" rev-parse --short HEAD)"
 section "backend change + smoke 全綠 → deployed"
 new_scratch backend
 MOCK_CURL="$(make_mock_curl "$(cat <<EOF
-localhost:8000/api/system/info|200|{"version":"$SHA_NEW"}
 wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
 wordnexus.lol/api/health|401|{"detail":"x"}
 EOF
-)" "$SC")"
+)" "$SC" "$SERVEDFILE")"
 out="$(run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
 [[ "$v" == "deployed" ]] && ok "verdict deployed" || bad "expected deployed, got '$v' (out=$out)"
@@ -238,11 +256,10 @@ ver_now="$(cat "$VERSIONFILE")"
 section "backend change + smoke 失敗 → rolled-back"
 new_scratch backend
 MOCK_CURL="$(make_mock_curl "$(cat <<EOF
-localhost:8000/api/system/info|200|{"version":"$SHA_NEW"}
 wordnexus.lol/api/system/info|500|internal error
 wordnexus.lol/api/health|401|{"detail":"x"}
 EOF
-)" "$SC")"
+)" "$SC" "$SERVEDFILE")"
 out="$(run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
 [[ "$v" == "rolled-back" ]] && ok "verdict rolled-back" || bad "expected rolled-back, got '$v' (out=$out)"
@@ -290,6 +307,46 @@ v="$(get_verdict "$out")"
 [[ "$rc" -eq 0 ]] && ok "locked exit 0" || bad "locked exit $rc"
 [[ ! -s "$COMPOSELOG" ]] && ok "locked: compose not called" || bad "locked: compose called"
 [[ -d "$LOCK" ]] && ok "locked: 未刪別人的鎖" || bad "locked: 誤刪他人鎖"
+
+section "VERSION 缺失 + 容器 down → graceful noop（block 修復，不崩）"
+new_scratch none
+rm -f "$VERSIONFILE"
+MOCK_CURL="$(make_mock_curl "" "$SC")"           # 無 served、無 fixture → localhost 視為 down
+out="$(run_recon --once 2>"$SC/seed.err")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "noop" ]] && ok "missing-VERSION: verdict noop（非崩潰）" || bad "missing-VERSION: expected noop, got '$v' (out=$out)"
+[[ "$rc" -eq 0 ]] && ok "missing-VERSION: exit 0" || bad "missing-VERSION: exit $rc"
+[[ -n "$out" ]] && ok "missing-VERSION: stdout 有 verdict（輸出契約守住）" || bad "missing-VERSION: stdout 空（block 未修）"
+grep -qi "seed VERSION" "$SC/seed.err" && ok "missing-VERSION: alert 指引 seed VERSION" || bad "missing-VERSION: 無 seed 指引"
+[[ ! -s "$COMPOSELOG" ]] && ok "missing-VERSION: compose not called" || bad "missing-VERSION: compose called"
+
+section "VERSION 缺失但容器健在 → 以 live 版重建游標（crash-consistency）"
+new_scratch none
+rm -f "$VERSIONFILE"
+MOCK_CURL="$(make_mock_curl "" "$SC" "$SERVEDFILE")"   # served=SHA_OLD（容器健在自報舊版）
+out="$(run_recon --once 2>"$SC/live.err")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "noop" ]] && ok "live-recover: verdict noop（recovered==origin）" || bad "live-recover: expected noop, got '$v' (out=$out)"
+[[ "$rc" -eq 0 ]] && ok "live-recover: exit 0" || bad "live-recover: exit $rc"
+[[ -f "$VERSIONFILE" && "$(cat "$VERSIONFILE")" == "$SHA_OLD" ]] && ok "live-recover: VERSION 游標由 live 重建==$SHA_OLD" || bad "live-recover: VERSION 未重建（=$(cat "$VERSIONFILE" 2>/dev/null))"
+grep -qi "serving" "$SC/live.err" && ok "live-recover: alert 標明以實際版為準" || bad "live-recover: 無 live-mismatch alert"
+[[ ! -s "$COMPOSELOG" ]] && ok "live-recover: compose not called（已同版）" || bad "live-recover: compose called"
+
+section "crash-window：VERSION 宣稱 new 但容器 serving old → 自癒重部署"
+new_scratch backend
+echo "$SHA_NEW" > "$VERSIONFILE"       # 謊稱已部署 new（VERSION 於 health 確認前寫入後斷電）
+# SERVED 仍 = SHA_OLD（容器實際 serving 舊，compose 未成功跑完）
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(run_recon --once 2>"$SC/crash.err")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "deployed" ]] && ok "crash-window: 自癒→verdict deployed" || bad "crash-window: expected deployed, got '$v' (out=$out)"
+grep -qi "serving" "$SC/crash.err" && ok "crash-window: 偵測 VERSION 與 live 不一致" || bad "crash-window: 未偵測不一致"
+[[ "$(cat "$VERSIONFILE")" == "$SHA_NEW" ]] && ok "crash-window: 重部署後 VERSION==$SHA_NEW" || bad "crash-window: VERSION=$(cat "$VERSIONFILE") != $SHA_NEW"
+grep -q 'up -d --build' "$COMPOSELOG" && ok "crash-window: compose up 重建" || bad "crash-window: compose 未跑"
 
 echo ""
 echo "══════════════════════════════"

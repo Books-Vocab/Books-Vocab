@@ -66,6 +66,7 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 - **腳本**：`ops/kg_reconcile.sh`（`--once`／`--dry-run`／`--help`）。它**跑在 felix 本機**（不走 SSH，git/docker/curl 全本機）。一輪冪等 tick 跑完即退。
 - **驅動**：`ops/launchd/com.kg.reconcile.plist`（`StartInterval=90` 秒輪詢、`RunAtLoad`、**不 KeepAlive**、`ThrottleInterval=60`）。log → `~/Library/Logs/kg_reconcile.{out,err}.log`。
 - **收斂真相**：`deployed_sha` = felix `backend/VERSION`（容器 serving 版本）；`origin_sha` = `origin/main`。差異檔 = `git diff <deployed_sha>..origin/main`。
+- **crash-consistency 交叉驗證**（felix 無 UPS）：`backend/VERSION` 於 deploy 時 build/health 確認「之前」就寫入，若該窗口斷電/被 kill，VERSION 會宣稱 new 但容器實際仍 serving 舊 image。故每輪 tick 先用 live 容器自報 version（`localhost /api/system/info`）交叉驗證：與 `VERSION` 不符（或 `VERSION` 缺失/不可解析）且 live 版可解析 → **以 live 實際版為準**覆蓋 `deployed_sha` 並修正 `VERSION` 游標，從實際狀態重新收斂（自癒 crash-window drift、亦救 `VERSION` 遺失但容器健在）。VERSION 缺失且容器亦無回應 → 大聲告警 + no-op（等人工 seed，不做「驚訝的」rebuild）。
 
 ### path-filter 判準（哪些變更才 rebuild）
 只有變更命中 backend 觸發正則才 `compose up --build`；否則只 `git pull --ff-only`（追 felix repo HEAD、含自我更新本腳本），**不動容器**。觸發集（錨定 `backend/`）：`src/`、`tests/`、`static/`、`pyproject.toml`、`pytest.ini`、`Dockerfile`、`docker-compose.yml`、`ops_{cli,analyze,edit}.py`、`{index,privacy,support,terms,guide}.html`。

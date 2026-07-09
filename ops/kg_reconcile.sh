@@ -185,6 +185,17 @@ run_health_gate() {
   return 0
 }
 
+# live 容器自報版本（crash-consistency 交叉驗證用）：GET localhost /api/system/info 抽
+# version；非 200 或抽不到 → 回空字串（呼叫端據此不覆蓋 VERSION 游標）。純 read-only。
+reconcile_live_version() {
+  local body code
+  body="$("$CURL_BIN" -sS -o - -w $'\n%{http_code}' --max-time 5 "$KG_LOCAL_HEALTH_URL" 2>/dev/null || true)"
+  code="$(printf '%s\n' "$body" | tail -n1)"
+  body="$(printf '%s\n' "$body" | sed '$d')"
+  [[ "$code" == "200" ]] || return 0
+  extract_version "$body"
+}
+
 # ── verdict 輸出（stdout 唯一機讀 payload）───────────────────────────────────
 DEPLOYED_SHA="unknown"
 ORIGIN_SHA="unknown"
@@ -286,13 +297,32 @@ main() {
   fi
 
   # 2) deployed_sha（容器版本真相）= backend/VERSION；origin_sha = origin/main
-  DEPLOYED_SHA="$(cat "$KG_RECON_REPO/backend/VERSION" 2>/dev/null | head -1 | tr -d '[:space:]')"
+  #    註：`|| true` 不可省——set -euo pipefail 下 VERSION 缺檔會令 cat exit 1，經 pipefail
+  #    傳播使賦值觸 errexit，下一行 `|| unknown` fallback 反成死碼（首次啟用/VERSION 遺失即崩）。
+  DEPLOYED_SHA="$(cat "$KG_RECON_REPO/backend/VERSION" 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
   [[ -n "$DEPLOYED_SHA" ]] || DEPLOYED_SHA="unknown"
   ORIGIN_SHA="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short origin/main 2>/dev/null || echo unknown)"
 
   if [[ "$ORIGIN_SHA" == "unknown" ]]; then
     alert "無法解析 origin/main（fetch 失敗或 ref 缺失），本輪 no-op。"
     emit_verdict "noop"; exit 0
+  fi
+
+  # 2b) crash-consistency 交叉驗證（非 dry-run；純觀測 read-only）——reconciler 信「實際狀態」
+  #     而非游標：VERSION 是「宣稱」部署版，但 backend/VERSION 於 deploy 時 build/health 確認
+  #     「之前」就寫入；felix 無 UPS，若該窗口斷電/被 kill，VERSION 會宣稱 new 但容器實際仍
+  #     serving 舊 image。用 live 容器自報 version 為準：不一致（或 VERSION 缺失/不可解析）且
+  #     live 版可解析為 commit → 以 live 版覆蓋 DEPLOYED_SHA 並修正 VERSION 游標對齊現實，
+  #     從實際狀態重新收斂（自癒 crash-window drift；亦救 VERSION 遺失但容器健在）。
+  if [[ "$dry_run" != "1" ]]; then
+    local live_ver
+    live_ver="$(reconcile_live_version)"
+    if [[ -n "$live_ver" && "$live_ver" != "$DEPLOYED_SHA" ]] \
+       && "$KG_GIT" -C "$KG_RECON_REPO" rev-parse --verify --quiet "${live_ver}^{commit}" >/dev/null 2>&1; then
+      alert "VERSION 宣稱 deployed=$DEPLOYED_SHA 但容器實際 serving=$live_ver（疑上次部署寫 VERSION 後未完成即中斷）。以實際版為準重新收斂並修正游標。"
+      DEPLOYED_SHA="$live_ver"
+      printf '%s\n' "$live_ver" > "$KG_RECON_REPO/backend/VERSION"
+    fi
   fi
 
   # baseline 必須可解析才能算 diff；否則不做「驚訝的」rebuild，警告 + no-op，等人 seed VERSION。
