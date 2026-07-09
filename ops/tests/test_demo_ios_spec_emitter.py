@@ -299,6 +299,29 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     assert document["reviewDeck"]["notebookReviewDeck"] == baseline["reviewDeck"]["notebookReviewDeck"]
 
 
+def test_spec_mode_notebook_entries_carry_review_scheduling(tmp_path):
+    # Notebook list 徽章/進度條資料面：notebook entry 投影必須帶 review
+    # scheduling 欄位（否則列表徽章=總卡數、進度條全空）。
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    document = json.loads(content)
+
+    rows = document["notebook"]["populated"]["notebooks"]
+    by_word = {e["word"]: e for e in rows[0]["entries"]}
+    alpha = by_word["alpha"]
+    assert alpha["reviewCount"] == 4
+    assert alpha["reviewIntervalHours"] == 48.0
+    assert alpha["nextReviewAt"] == "2026-06-01T00:00:00Z"
+    assert alpha["lastReviewedAt"] == "2026-05-30T12:00:00Z"
+    charlie = by_word["charlie"]
+    assert charlie["reviewCount"] == 0
+    assert charlie["reviewIntervalHours"] == 12.0
+    assert charlie["nextReviewAt"] is None
+    assert charlie["lastReviewedAt"] is None
+
+    single = document["notebook"]["single"]["notebooks"][0]
+    assert {e["word"]: e["reviewCount"] for e in single["entries"]}["alpha"] == 4
+
+
 def test_spec_mode_fixture_id_key_sets_match_baseline_and_whitelist_kept(tmp_path):
     content = _emit_spec_bytes(tmp_path, _small_spec())
     document = json.loads(content)

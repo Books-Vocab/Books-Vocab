@@ -569,6 +569,72 @@ def test_validate_rejects_notebook_card_count_drift(tmp_path: Path):
         validate_fixture_dataset_file(path)
 
 
+def test_validate_accepts_notebook_entry_review_scheduling_fields(tmp_path: Path):
+    # Notebook list 徽章/進度條資料面：entry 可帶 optional review scheduling
+    # 欄位（與 Swift NotebookEntrySeed decodeIfPresent 對齊）。
+    data = _marketing_demo()
+    data["notebook"]["populated"]["notebooks"][0]["entries"][0].update({
+        "reviewIntervalHours": 48.0,
+        "nextReviewAt": "2026-07-09T00:00:00Z",
+        "lastReviewedAt": "2026-07-07T12:00:00Z",
+        "reviewCount": 4,
+    })
+    data["notebook"]["populated"]["notebooks"][0]["entries"][1].update({
+        "reviewIntervalHours": None,
+        "nextReviewAt": None,
+        "lastReviewedAt": None,
+        "reviewCount": None,
+    })
+    path = tmp_path / "notebook_review_fields.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path) == "marketing_demo"
+
+
+def test_validate_accepts_notebook_entry_without_review_fields(tmp_path: Path):
+    # optional 契約：baseline-kept fixture（readerPicker* / cardGallery 等）
+    # 不帶 review 欄位仍必須通過。
+    data = _marketing_demo()
+    for seed in data["notebook"].values():
+        for notebook in seed["notebooks"]:
+            for entry in notebook["entries"]:
+                for key in ("reviewIntervalHours", "nextReviewAt", "lastReviewedAt", "reviewCount"):
+                    entry.pop(key, None)
+    path = tmp_path / "notebook_no_review_fields.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert validate_fixture_dataset_file(path) == "marketing_demo"
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value", "message"),
+    [
+        ("reviewCount", -1, r"reviewCount must be non-negative"),
+        ("reviewIntervalHours", -1.0, r"reviewIntervalHours must be null or a non-negative number"),
+        ("nextReviewAt", "not-a-date", r"nextReviewAt must be ISO8601"),
+        ("lastReviewedAt", "not-a-date", r"lastReviewedAt must be ISO8601"),
+    ],
+)
+def test_validate_rejects_notebook_entry_bad_review_fields(tmp_path: Path, field: str, bad_value, message: str):
+    data = _marketing_demo()
+    data["notebook"]["populated"]["notebooks"][0]["entries"][0][field] = bad_value
+    path = tmp_path / f"notebook_bad_review_{field}.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=rf"notebook.populated.notebooks\[0\].entries\[0\].{message}"):
+        validate_fixture_dataset_file(path)
+
+
+def test_validate_rejects_notebook_entry_unknown_key(tmp_path: Path):
+    data = _marketing_demo()
+    data["notebook"]["populated"]["notebooks"][0]["entries"][0]["reviewStreak"] = 3
+    path = tmp_path / "notebook_entry_unknown_key.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(UIWorldManifestError, match=r"notebook.populated.notebooks\[0\].entries\[0\] keys 不符合"):
+        validate_fixture_dataset_file(path)
+
+
 def test_validate_rejects_vocabulary_duplicate_entry_words(tmp_path: Path):
     data = _marketing_demo()
     entry = dict(data["vocabulary"]["vocabLinkedCards"]["entries"][0])
