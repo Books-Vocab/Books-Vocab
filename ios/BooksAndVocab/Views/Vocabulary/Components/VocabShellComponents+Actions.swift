@@ -100,6 +100,7 @@ struct VocabAccessoryIconButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .appPointerHover()
         .accessibilityLabel(accessibilityLabel)
         .enableInjection()
     }
