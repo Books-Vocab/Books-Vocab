@@ -592,3 +592,78 @@ def test_resolve_from_inside_without_state_flag_completes(scratch):
     assert "debug/inside-default-state" not in _local_branches(repo)
     assert res.get("gate_cache_removed") is True
     assert not gate_cache.exists()
+
+
+# ============================================================================
+# INTEGRATION: adopt (register an out-of-band worktree — the bootstrap fallback)
+# ============================================================================
+@gitmark
+def test_adopt_registers_an_out_of_band_worktree(scratch):
+    # bare `git worktree add` needs no repo tooling; adopt backfills the ledger so the
+    # rest of the flow (gate/cutover/resolve/sweep) sees a born-registered peer.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    rc, res = _run_json(["adopt", "--worktree", str(wt), "--intent", "hand-made worktree",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["step"] == "adopt"
+    assert res["branch"] == "feat/oob"
+    recs = json.loads(Path(state).read_text())["records"]
+    mine = [r for r in recs if r["branch"] == "feat/oob"]
+    assert len(mine) == 1
+    assert mine[0]["status"] == "active"
+    assert Path(mine[0]["path"]).resolve() == wt.resolve()
+
+
+@gitmark
+def test_adopt_is_idempotent(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    for _ in range(2):
+        rc, _res = _run_json(["adopt", "--worktree", str(wt), "--intent", "twice",
+                              "--state", state, "--json"])
+        assert rc == MODULE.EXIT_OK
+    recs = json.loads(Path(state).read_text())["records"]
+    assert len([r for r in recs if r["branch"] == "feat/oob"]) == 1
+
+
+@gitmark
+def test_adopt_defaults_to_cwd(scratch):
+    # the bootstrap flow is `cd <fresh worktree> && orchestrate adopt --intent ...`
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    os.chdir(wt)
+    try:
+        rc, res = _run_json(["adopt", "--intent", "from inside", "--state", state, "--json"])
+    finally:
+        os.chdir(repo)
+    assert rc == MODULE.EXIT_OK
+    assert res["branch"] == "feat/oob"
+
+
+@gitmark
+def test_adopt_refuses_primary_root(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, res = _run_json(["adopt", "--worktree", str(repo), "--intent", "nope",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE
+    assert not (tmp_path / "reg.json").exists() or not json.loads(
+        (tmp_path / "reg.json").read_text())["records"]
+
+
+@gitmark
+def test_adopt_refuses_detached_worktree(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "det"
+    _git(["worktree", "add", "--detach", str(wt), "main"], repo)
+    rc, _res = _run_json(["adopt", "--worktree", str(wt), "--intent", "nope",
+                          "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE
