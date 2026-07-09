@@ -235,6 +235,17 @@ def test_drop_unsafe_when_detached_not_contained():
     assert reason is not None and "contain" in reason.lower()
 
 
+def test_drop_unsafe_when_branch_not_contained_even_with_zero_unique():
+    # belt-and-suspenders: IO reports contradictory facts (not landed_in_base but
+    # 0 unique commits). A non-detached branch must NOT be silently declared safe —
+    # the branch path guards on containment (not landed_in_base), not on
+    # unique_commits alone, so committed work can never be dropped by a bad count.
+    f = _facts(name="feature-x", detached=False,
+               landed_in_base=False, unique_commits=0, ahead=0)
+    reason = unsafe_to_drop(f)
+    assert reason is not None and "contain" in reason.lower()
+
+
 def test_drop_unsafe_dirty_dominates_even_if_landed():
     # a landed+clean-looking card that is actually dirty is still unsafe.
     reason = unsafe_to_drop(_facts(unique_commits=0, landed_in_base=True, dirty=True))

@@ -15,20 +15,31 @@ never mis-reclaiming a running or unsaved worktree.
 --------------------------------------------------------------------------------
 facts schema (contract the IO layer MUST honor)
 --------------------------------------------------------------------------------
-Every field below describes ONE worktree/branch card.
+Every field below describes ONE worktree/branch card. Two fields are REQUIRED —
+the pure predicates consume them and the IO layer MUST populate both; the rest are
+ADVISORY (render/messaging) and optional:
+
+  REQUIRED (consumed by predicates):
+    unique_commits, landed_in_base
+  ADVISORY (optional; NOT consumed by predicates — render/messaging only):
+    ahead, has_origin
 
   name              str | None  — branch short-name; None for a detached worktree.
   detached          bool        — HEAD is not on a branch (a raw worktree).
   dirty             bool        — worktree has uncommitted changes.
-  ahead             int         — TOPOLOGICAL commits on the ref not on base
-                                  (rev-list base..ref). ADVISORY ONLY — after a
-                                  rebase/squash it does NOT prove unlanded work.
+  ahead             int         — ADVISORY. TOPOLOGICAL commits on the ref not on
+                                  base (rev-list base..ref). Not consumed by the
+                                  predicates — after a rebase/squash it does NOT
+                                  prove unlanded work; use unique_commits for that.
   behind            int         — commits on base not reachable from the ref
                                   (base moved ahead). Drives DIVERGED vs ACTIVE.
-  unique_commits    int         — count of commits carrying genuinely unique work
-                                  (used for messaging + "is there unlanded work").
-  landed_in_base    bool        — **THE containment truth**: the ref's net change
-                                  is already present in base.
+  unique_commits    int         — REQUIRED. Count of commits carrying genuinely
+                                  unique work (drives messaging + "is there
+                                  unlanded work"). The IO layer MUST populate it;
+                                  when absent the predicates default it to an
+                                  explicit 0 (they never borrow the advisory ahead).
+  landed_in_base    bool        — REQUIRED. **THE containment truth**: the ref's
+                                  net change is already present in base.
                                   ⚠ CONTRACT: the IO layer MUST compute this by
                                   TREE-DIFF (compare the ref's cumulative tree vs
                                   base's tree). It is STRICTLY FORBIDDEN to derive
@@ -45,7 +56,7 @@ Every field below describes ONE worktree/branch card.
   live_window_s     int         — a HEAD younger than this is treated as LIVE.
                                   Optional; defaults to LIVE_WINDOW_DEFAULT_S.
   has_worktree      bool        — a checked-out worktree exists for this ref.
-  has_origin        bool        — an upstream tracking ref exists. ADVISORY (for
+  has_origin        bool        — ADVISORY. An upstream tracking ref exists (for
                                   render/messaging; not read by the predicates).
   registered_active bool        — the active-worktree registry/ledger owns this
                                   ref (the "登記閉環": is it a booked, owned wt?).
@@ -74,6 +85,13 @@ class State(enum.Enum):
     ORPHAN    a detached worktree (no branch to act on), OR an unowned stub branch
               (not registered, no worktree) carrying no unique work — the orphan
               sentinel a reclaim pass exists to sweep.
+              ⚠ ORPHAN is NOT by itself a clearance to sweep. A detached worktree
+              still classifies ORPHAN even when it carries unlanded committed work
+              (there is no branch to file it under any other state) — such work is
+              only visible through `unsafe_to_drop`, which reports the missing
+              containment. A consumer MUST gate every reclaim on BOTH contracts:
+              classify (ORPHAN) AND unsafe_to_drop (None). Safety holds only when
+              both are checked; acting on classify alone can orphan real commits.
     DIVERGED  base moved ahead (behind>0) AND the ref still has unlanded unique
               work — needs a rebase before it can land.
     ACTIVE    unlanded unique work, clean, on top of base — a healthy going concern.
@@ -108,12 +126,14 @@ def _is_live(facts: dict[str, Any]) -> bool:
 
 
 def _unique(facts: dict[str, Any]) -> int:
-    """Count of unique-work commits. Prefers `unique_commits`; falls back to the
-    advisory topological `ahead` only when unique_commits is absent."""
-    v = facts.get("unique_commits")
-    if v is None:
-        v = facts.get("ahead", 0)
-    return int(v or 0)
+    """Count of unique-work commits, read from the REQUIRED `unique_commits` field.
+
+    Contract: the IO layer MUST populate `unique_commits`. When absent this defaults
+    to an explicit 0 — it deliberately does NOT fall back to the advisory topological
+    `ahead` (which the predicates never consume; after a rebase/squash `ahead` no
+    longer proves unlanded work, so borrowing it would silently contradict the
+    contract)."""
+    return int(facts.get("unique_commits") or 0)
 
 
 def _has_unlanded_work(facts: dict[str, Any]) -> bool:
@@ -128,7 +148,9 @@ def _is_stub_orphan(facts: dict[str, Any]) -> bool:
     orphan sentinel (the detached-worktree shape is handled directly in classify)."""
     if facts.get("detached"):
         return False
-    if _has_unlanded_work(facts) or _unique(facts) > 0:
+    # Any unique work at all disqualifies (a stub has none). `_has_unlanded_work`
+    # implies `_unique > 0`, so `_unique(facts) > 0` alone is the equivalent guard.
+    if _unique(facts) > 0:
         return False
     return not facts.get("registered_active", False) and not facts.get("has_worktree", False)
 
@@ -186,12 +208,18 @@ def unsafe_to_drop(facts: dict[str, Any]) -> str | None:
                            never stash).
       detached !contained  a detached HEAD whose net change is NOT in base (tree-
                            diff) — pruning would orphan commits absent from base.
-      unlanded unique      a branch with unique commits not yet landed in base
-                           (tree-diff) — deleting the ref would lose them.
+      branch !contained    a branch whose net change is NOT in base (tree-diff) —
+                           deleting the ref would lose it. The guard is containment
+                           (`not landed_in_base`), NOT `unique_commits > 0` alone:
+                           if the IO layer hands over contradictory facts
+                           (not landed_in_base yet 0 unique commits) the branch is
+                           still refused — belt-and-suspenders so a bad count can
+                           never silently green-light dropping committed work.
 
     Safe (None): a landed+clean branch, an owned empty ref, or a detached worktree
     whose work is already contained in base. `landed_in_base` — computed by the IO
-    layer via TREE-DIFF, never git cherry — is the authority on containment.
+    layer via TREE-DIFF, never git cherry — is the authority on containment (and,
+    per the facts contract, REQUIRED; a missing value fails safe = refuse to drop).
     """
     if _is_live(facts):
         return "live: HEAD within live window (an agent may be running; do not reclaim)"
@@ -202,7 +230,13 @@ def unsafe_to_drop(facts: dict[str, Any]) -> str | None:
             return ("detached HEAD not contained in base (tree-diff): "
                     "pruning would orphan commits not in base")
         return None
-    if _has_unlanded_work(facts):
+    # Branch path: containment is the guard. `not landed_in_base` refuses the drop
+    # even when unique_commits is 0 (contradictory IO facts) so committed work is
+    # never lost to a bad count.
+    if not facts.get("landed_in_base", False):
         n = _unique(facts)
-        return f"{n} unique commit(s) not yet landed in base (tree-diff) — would be lost"
+        if n > 0:
+            return f"{n} unique commit(s) not yet landed in base (tree-diff) — would be lost"
+        return ("branch not contained in base (tree-diff) but 0 unique commits "
+                "reported — contradictory facts; refusing to drop (belt-and-suspenders)")
     return None
