@@ -553,3 +553,42 @@ def test_open_from_inside_another_worktree_anchors_at_primary_root(scratch):
     assert rc == MODULE.EXIT_OK
     expected = (repo / ".claude" / "worktrees" / "second").resolve()
     assert Path(second["path"]).resolve() == expected
+
+
+@gitmark
+def test_resolve_from_inside_without_state_flag_completes(scratch):
+    # The production invocation form (worktree-flow SKILL.md) passes NO --state. That
+    # branch of _gate_record_path derives the ledger anchor lazily via the registry's
+    # common_anchor() — a cwd-dependent git call. Computed AFTER the teardown loop it
+    # runs from a vanished cwd (empty git output → Path("").resolve() → getcwd() →
+    # FileNotFoundError), so it must be resolved BEFORE the worktree is removed.
+    tmp_path, repo, remote = scratch
+    rc, opened = _run_json(
+        ["open", "--intent", "fix the reader crash", "--slug", "inside-default-state",
+         "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("did the thing\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    rc, _ = _run_json(["gate", "--worktree", wt, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert cut["pushed"] is True
+    gate_cache = MODULE._gate_record_path(None, wt)
+    assert gate_cache.exists()
+
+    os.chdir(wt)
+    try:
+        rc, res = _run_json(["resolve", "--worktree", wt, "--commit", "--json"])
+    finally:
+        os.chdir(repo)
+
+    assert rc == MODULE.EXIT_OK
+    assert res["failures"] == 0
+    assert not Path(wt).exists()
+    assert "debug/inside-default-state" not in _local_branches(repo)
+    assert res.get("gate_cache_removed") is True
+    assert not gate_cache.exists()
