@@ -13,6 +13,8 @@ verified_against: frozen
 
 > **狀態**：規劃定稿，未執行。由多 agent workflow（6 現況深掃 → 8 架構決策各自設計+紅隊對抗 → 綜合 → completeness critic）產出，critic 抓到的不一致與缺口已逐條定案 fold 回本文。
 > **執行方式**：用 `phased` skill，逐 Phase 可獨立 commit + PR，每 Phase 標 TDD 起點與 DoD。所有 Agent 背景執行、逐項 review（鐵律 4）。
+>
+> **⚑ 範圍定案（2026-07-09，執行長）**：**只做官方牌組（P1-P2）** —— 官方策展牌組的唯讀瀏覽 + 複製學習。**社群 UGC（P3-P4：使用者發布/公開/評分/審核）為 out-of-scope，不承擔 moderation / 版權 / PII / GDPR erasure 的營運成本。** 為避免未來開 UGC 需 migration，**schema 仍 day-one 保留完整 forward-compat 欄位**（visibility/status/rating/report 等），但**不實作**其 write path 與 moderation surface。凡標 🔒P3+ 者即為此次不做、但 schema/seam 已預留的部分。
 
 ---
 
@@ -352,13 +354,13 @@ Anki-informal：publish 當下 snapshot `publisher_display_name`，顯於卡，�
 - **TDD 起點**：copy 後 SRS=預設/fresh id/無 review_events；mid-copy crash 無半成品；同牌組 copy 兩次後 world-export 仍成功（export trap）；>page-size 牌組每卡 sync down 恰一次（tie skip）；retry copy 不造重複 notebook（idempotency）。
 - **DoD**：官方牌組可 copy 進私人 Notebook、即時 review、SRS 隔離契約全綠、既有 sync 契約不變、public deep-link 可分享。
 
-### Phase 3 — 使用者 publish（flag-gated，unlisted-only 直到 P4）
+### 🔒 Phase 3 — 使用者 publish（OUT OF SCOPE，schema/seam 已預留，未來開 UGC 才做）
 - backend：`POST/PATCH/DELETE /api/decks`（owner-gated、硬編 community、`UNIQUE(owner_id,source_notebook_id)` upsert、原子 version、publish guard、PATCH source-deleted→409）；**runtime guard：community publish 強制 visibility ∈ {private,unlisted}**（§6.3）；profanity denylist（title/desc）；account-erasure 跨 store hook（§6.4）；badge negative test。
 - iOS：PublishSheet + 「我發布的牌組」管理 surface + provenance 顯示 + unlisted `/by-token` deep-link。
 - **TDD 起點**：attacker 送 `source='official'` 被拒；community publish 送 `visibility=public` 被 guard 拒；republish upsert 保留 download_count；0-card/default notebook 拒；source notebook 刪後 PATCH→409。
 - **DoD**：owner 可發布/改版/下架（unlisted 分享），badge 不可偽造，provenance 跨裝置 sync，erasure 觸及全域 store。**public UGC 仍不對 guest 開放。**
 
-### Phase 4 — Moderation + rating + public UGC flip
+### 🔒 Phase 4 — Moderation + rating + public UGC flip（OUT OF SCOPE，同 P3）
 - backend：`/rate`（copy-gated one-vote、Bayesian sort）+ `/report`（Sybil dedup、auto-hide、official 豁免、reason enum）+ `/takedown`（admin）；rate-limit；EULA amendment（docs/legal）。
 - iOS：rating UI（LoginGate、copy 過才可）+ report 流。
 - telemetry：`deck_report`/`deck_publish` 事件。
@@ -381,8 +383,8 @@ Anki-informal：publish 當下 snapshot `publisher_display_name`，顯於卡，�
 9. **全域 store DR + erasure 盲點**（§3.5/§6.4）— root-level DB 在既有 backup/erasure scope 外，須擴充。
 10. **SwiftData container 版本**（§8.2）— 新 @Model + Notebook 加欄未版本化 → 開既有 store 失敗風險；verify lightweight migration。
 
-### 須升級給執行長的產品取捨
-- **是否開放社群 UGC publish（vs 只做官方牌組）**：UGC 帶 moderation/版權/PII/GDPR erasure 的持續營運成本。**建議 P1-P2 先只做官方唯讀+copy（零 UGC 風險、立即交付價值）**，P3-P4 的 UGC 需執行長明確 go（含 EULA amendment、takedown 承諾）。
+### 執行長已定案 / 待拍板
+- **社群 UGC publish** — ✅ **已定案：不做**（2026-07-09）。範圍鎖 P1-P2 官方牌組唯讀+copy；P3-P4 out-of-scope，schema forward-compat 欄位保留但 write path/moderation 不實作。未來要開再拍板（含 EULA amendment、takedown 承諾）。
 - **官方牌組生產注入**：approval-gated `--commit`（U6 precedent），每次注入須執行長 go。
 - **verified/monetization tier**：是否要 Quizlet Verified Creator 類付費/認證層、是否與 billing 互動 — 產品方向，未決。
 
