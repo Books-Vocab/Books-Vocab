@@ -54,7 +54,9 @@ private enum KnowledgeGraphViewFixture {
     var expected: ExpectedShape {
         switch self {
         case .populated:
-            return .init(visibleEntries: .atLeast(3), graphLinks: .atLeast(2), graphNodes: .atLeast(3), graphEdges: .atLeast(2))
+            // 全螢幕知識圖 = Stats 縮圖關聯圖的放大版（primary 全 active）。floor
+            // 拉高到行銷 spec 的密度量級，擋掉舊 linked[:24] 窗口只剩 3 節點的空洞回退。
+            return .init(visibleEntries: .atLeast(80), graphLinks: .atLeast(50), graphNodes: .atLeast(80), graphEdges: .atLeast(50))
         case .loggedOutEmpty:
             return .init(visibleEntries: .exactly(0), graphLinks: .exactly(0), graphNodes: .exactly(0), graphEdges: .exactly(0))
         }
