@@ -8,7 +8,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # ~/.lldbinit 是全機長壽設定：必須指向 main repo，不能指向 worktree
-# （worktree 被 converge 清掉後，每個 lldb session 啟動都會報 import error）。
+# （worktree 被 orchestrator resolve/sweep 清掉後，每個 lldb session 啟動都會報 import error）。
 if COMMON_DIR="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
     MAIN_ROOT="$(dirname "$COMMON_DIR")"
     [ -f "$MAIN_ROOT/ops/lldb_crash_forensics.py" ] && REPO="$MAIN_ROOT"
