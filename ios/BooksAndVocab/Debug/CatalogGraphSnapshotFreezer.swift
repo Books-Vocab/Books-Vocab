@@ -30,6 +30,19 @@ import WebKit
 
 @MainActor
 final class CatalogGraphSnapshotFreezer {
+    /// How many waiters a web-view scenario is expected to arm per capture.
+    enum WebViewArmingExpectation {
+        /// The scenario always mounts a webview — exactly one waiter must be
+        /// armed and frozen per capture. Removing the
+        /// `CatalogGraphSnapshotScene` wrapper (while the key stays listed)
+        /// fails loudly instead of silently shipping a blank canvas.
+        case always
+        /// Webview presence depends on the seed content (e.g. Stats View
+        /// 關聯圖 mounts only when the dataset carries graph links) — every
+        /// armed waiter must freeze, and zero armed/zero frozen is legal.
+        case datasetDependent
+    }
+
     /// Scenarios whose content hosts a WKWebView and therefore must be
     /// captured by the async web-view pass in `CatalogSnapshotTests`, not by
     /// `Snapshot.run`. Playbook's `Snapshot.run` waits by spinning
@@ -40,27 +53,29 @@ final class CatalogGraphSnapshotFreezer {
     ///
     /// Keep in sync: every catalog scenario wrapped in
     /// `CatalogGraphSnapshotScene` must have its `"<category>/<title>"` key
-    /// listed here. A wrapped-but-unlisted scenario would fall into the main
-    /// `Snapshot.run` pass, wait out its 30s waiter, and silently write a
-    /// blank canvas — which is why `CatalogSnapshotTests` asserts `armedCount`
-    /// stays untouched across the main pass (turning that misconfiguration
-    /// into a loud failure).
-    static let webViewSnapshotScenarioKeys: Set<String> = [
-        "Knowledge Graph View/Populated graph",
-        "Vocabulary · Knowledge Graph/With Data",
-        "Vocabulary · Knowledge Graph/Settings Open",
+    /// listed here with the right expectation. A wrapped-but-unlisted
+    /// scenario would fall into the main `Snapshot.run` pass, wait out its
+    /// 30s waiter, and silently write a blank canvas — which is why
+    /// `CatalogSnapshotTests` asserts `armedCount` stays untouched across the
+    /// main pass (turning that misconfiguration into a loud failure).
+    static let webViewSnapshotScenarios: [String: WebViewArmingExpectation] = [
+        "Knowledge Graph View/Populated graph": .always,
+        "Vocabulary · Knowledge Graph/With Data": .always,
+        "Vocabulary · Knowledge Graph/Settings Open": .always,
+        "Stats View/Populated": .datasetDependent,
     ]
 
     /// Total successful freezes (settled + rasterized + overlay installed) in
-    /// this process. The catalog runner asserts this increments once per
-    /// web-view scenario capture — the loud gate against silently shipping a
-    /// legend-only blank canvas again.
+    /// this process. The catalog runner asserts, per capture, that freezes
+    /// match the scenario's `WebViewArmingExpectation` (`.always` → exactly
+    /// one; `.datasetDependent` → equal to armed waiters) — the loud gate
+    /// against silently shipping a legend-only blank canvas again.
     private(set) static var freezeCount = 0
 
     /// Total waiters armed in snapshot context in this process. Must stay
     /// constant across the main `Snapshot.run` pass — a change there means a
     /// `CatalogGraphSnapshotScene`-wrapped scenario is missing from
-    /// `webViewSnapshotScenarioKeys` and would render a blank canvas.
+    /// `webViewSnapshotScenarios` and would render a blank canvas.
     private(set) static var armedCount = 0
 
     private let waiter: SnapshotWaiter?
@@ -167,18 +182,25 @@ final class CatalogGraphSnapshotFreezer {
 ///             KnowledgeGraphViewScene(fixture: .populated)
 ///         }
 ///     }
+///
+/// `isActive` lets a scene whose webview presence is dataset-dependent (e.g.
+/// Stats View 關聯圖 card — only mounted when the seed carries graph links)
+/// skip arming the waiter when no webview will ever exist. The async catalog
+/// pass verifies freezes == armed waiters per capture, so "armed but never
+/// froze" still fails loudly while a legitimately link-less dataset renders
+/// its empty card without stalling or false-failing.
 struct CatalogGraphSnapshotScene<Content: View>: View {
-    private let freezer: CatalogGraphSnapshotFreezer
+    private let freezer: CatalogGraphSnapshotFreezer?
     private let content: Content
 
-    init(context: ScenarioContext, @ViewBuilder content: () -> Content) {
-        self.freezer = CatalogGraphSnapshotFreezer(context: context)
+    init(context: ScenarioContext, isActive: Bool = true, @ViewBuilder content: () -> Content) {
+        self.freezer = isActive ? CatalogGraphSnapshotFreezer(context: context) : nil
         self.content = content()
     }
 
     var body: some View {
         content
-            .environment(\.kgGraphWebViewInitHook, freezer.initGraphHook)
+            .environment(\.kgGraphWebViewInitHook, freezer?.initGraphHook)
     }
 }
 #endif
