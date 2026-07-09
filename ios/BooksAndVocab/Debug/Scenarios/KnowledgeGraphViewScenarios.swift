@@ -109,7 +109,7 @@ private struct KnowledgeGraphViewScene: View {
             fixtureID: fixture.vocabularyID
         )
 
-        let graphLinks = Self.makeGraphLinks(from: visibleEntries, fixtureID: fixture.vocabularyID)
+        let graphLinks = UIWorldGraphLinks.makeGraphLinks(from: visibleEntries, fixtureID: fixture.vocabularyID)
         fixture.expected.graphLinks.validate(
             graphLinks.count,
             label: "manifest graph links",
@@ -192,40 +192,5 @@ private struct KnowledgeGraphViewScene: View {
         )
     }
 
-    private static func makeGraphLinks(
-        from entries: [VocabularyEntry],
-        fixtureID: UIWorldVocabularyFixtureID
-    ) -> [KGGraphLink] {
-        let cardIDs = Set(entries.compactMap(\.kgCardId))
-        var links: [KGGraphLink] = []
-
-        for entry in entries {
-            guard let sourceID = entry.kgCardId else { continue }
-            for summary in entry.graphLinksByKind.values.flatMap({ $0 }) where !summary.isHidden {
-                guard cardIDs.contains(summary.cardId) else {
-                    preconditionFailure(
-                        "UI World vocabulary.\(fixtureID.rawValue) graph link \(summary.id) points to missing cardId \(summary.cardId)"
-                    )
-                }
-                links.append(
-                    KGGraphLink(
-                        id: summary.id,
-                        fromId: sourceID,
-                        toId: summary.cardId,
-                        kind: summary.kind,
-                        confidence: summary.confidence,
-                        reason: summary.reason
-                    )
-                )
-            }
-        }
-
-        let uniqueIDs = Set(links.map(\.id))
-        precondition(
-            uniqueIDs.count == links.count,
-            "UI World vocabulary.\(fixtureID.rawValue) graph links must have unique IDs"
-        )
-        return links
-    }
 }
 #endif

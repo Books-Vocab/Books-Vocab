@@ -41,10 +41,24 @@ final class GraphThumbnailCoordinator: NSObject, WKScriptMessageHandler {
     var pendingPayload: String?
     var lastSignature: String?
     weak var webView: WKWebView?
+    #if DEBUG
+    /// Catalog snapshot hook (`\.kgGraphWebViewInitHook`), fired on the main
+    /// actor after `initGraph` actually ran in the web process — both on the
+    /// immediate send and the ready-flush of a pending payload. Nil in all
+    /// production and interactive paths.
+    var onInitGraphApplied: (@MainActor (WKWebView) -> Void)?
+    #endif
 
     func sendInitGraph(_ json: String, webView: WKWebView) {
         guard graphBridgeReady else { pendingPayload = json; return }
-        webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')", completionHandler: nil)
+        webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')") { [weak self, weak webView] _, _ in
+            #if DEBUG
+            MainActor.assumeIsolated {
+                guard let self, let webView else { return }
+                self.onInitGraphApplied?(webView)
+            }
+            #endif
+        }
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -74,6 +88,9 @@ struct GraphThumbnailWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView { holder.webView }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        #if DEBUG
+        holder.coordinator.onInitGraphApplied = context.environment.kgGraphWebViewInitHook
+        #endif
         Self.performUpdate(webView, coordinator: holder.coordinator, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
     }
 
