@@ -611,6 +611,91 @@ def cmd_freeze(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_sync_main(args: argparse.Namespace) -> int:
+    """Guarded fast-forward of the PRIMARY checkout's local main to origin/main.
+
+    The historical 'never ff the user's local main' rule guards against LOSSY moves;
+    this primitive makes the threat model precise and only performs the provably
+    lossless one: tracked-clean primary, checked out on main, no merge/rebase in
+    flight, local strictly behind origin (ancestor check) — three-green or refuse.
+    A diverged main is NEVER merged or rebased here; land unique commits via cutover.
+    Dry-run by default."""
+    blocked = _freeze_guard(args.state, "sync-main", args.json)
+    if blocked is not None:
+        return blocked
+
+    base = args.base
+    if not base.startswith("origin/"):
+        _emit({"schema": SCHEMA, "step": "sync-main", "error": "base must be an "
+               "origin/* ref", "base": base}, args.json,
+              f"✗ base must be an origin/* ref, got {base!r}")
+        return EXIT_USAGE
+    local = base.split("/", 1)[1]
+    primary = primary_root()
+
+    def _refuse(reason: str) -> int:
+        _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "refused",
+               "reason": reason, "primary": str(primary)}, args.json,
+              f"✗ sync-main refused: {reason}")
+        return EXIT_BLOCK
+
+    cur = _current_branch(str(primary))
+    if cur != local:
+        return _refuse(f"primary checkout is on {cur!r}, not {local!r} — sync-main "
+                       "only ever moves the base branch under the base checkout")
+    rc, _ = _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=primary)
+    if rc == 0:
+        return _refuse("a merge is in progress in the primary checkout")
+    for probe in ("rebase-merge", "rebase-apply"):
+        rc, p = _git(["rev-parse", "--path-format=absolute", "--git-path", probe],
+                     cwd=primary)
+        if rc == 0 and p and Path(p).exists():
+            return _refuse("a rebase is in progress in the primary checkout")
+    rc, out = _git(["status", "--porcelain", "--untracked-files=no"], cwd=primary)
+    if rc != 0:
+        return _refuse(f"cannot read primary status: {out[:200]}")
+    if out.strip():
+        return _refuse("primary working tree is dirty (tracked changes) — a ff moves "
+                       "checked-out files; commit/evacuate or restore first")
+
+    _fetch()
+    rc, local_sha = _git(["rev-parse", local], cwd=primary)
+    rc2, base_sha = _git(["rev-parse", base], cwd=primary)
+    if rc != 0 or rc2 != 0:
+        return _refuse(f"cannot resolve {local!r}/{base!r}")
+    if local_sha == base_sha:
+        _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "noop",
+               "sha": local_sha[:9], "primary": str(primary)}, args.json,
+              f"# sync-main: noop — {local} already at {local_sha[:9]}")
+        return EXIT_OK
+    rc, _ = _git(["merge-base", "--is-ancestor", local, base], cwd=primary)
+    if rc != 0:
+        return _refuse(f"local {local} has commits {base} lacks — never auto-merged; "
+                       "land them via cutover (or resolve the divergence by hand)")
+    _, count = _git(["rev-list", "--count", f"{local}..{base}"], cwd=primary)
+
+    if not args.commit:
+        _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "dry-run",
+               "from": local_sha[:9], "to": base_sha[:9], "commits": int(count or 0),
+               "primary": str(primary)}, args.json,
+              (f"# sync-main (dry-run)\n  would ff {local}: {local_sha[:9]} -> "
+               f"{base_sha[:9]} ({count} commit(s))\n  (--commit to execute)"))
+        return EXIT_OK
+
+    rc, out = _git(["merge", "--ff-only", base], cwd=primary)
+    if rc != 0:
+        return _refuse(f"git merge --ff-only failed: {out[:300]}")
+    rc, now_sha = _git(["rev-parse", local], cwd=primary)
+    if rc != 0 or now_sha != base_sha:
+        return _refuse(f"post-ff verification failed: {local} is at "
+                       f"{now_sha[:9] if rc == 0 else '?'}, expected {base_sha[:9]}")
+    _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "ff",
+           "from": local_sha[:9], "to": base_sha[:9], "commits": int(count or 0),
+           "primary": str(primary)}, args.json,
+          f"✓ sync-main: ff {local} {local_sha[:9]} -> {base_sha[:9]} ({count} commit(s))")
+    return EXIT_OK
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     """Impact-based verification: route changed files to the existing gate tools, run
     them, aggregate a verdict, and record it for cutover."""
@@ -858,6 +943,16 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--intent", default="adopted out-of-band worktree",
                     help="why this worktree exists (recorded in the ledger)")
     ad.set_defaults(func=cmd_adopt)
+
+    sm = sub.add_parser("sync-main", help="guarded ff of the PRIMARY checkout's local "
+                        "main to origin/main — refuses unless tracked-clean, on main, "
+                        "no merge/rebase in flight, and strictly behind (lossless by "
+                        "construction; dry-run default)")
+    add_common(sm)
+    add_base(sm)
+    sm.add_argument("--commit", action="store_true",
+                    help="execute the ff (default: dry-run)")
+    sm.set_defaults(func=cmd_sync_main)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
                         "births/landings (open/adopt/cutover) until `off`; draining "
