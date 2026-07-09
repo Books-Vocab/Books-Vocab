@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  KG push=deploy 自動 reconciler，跑在正式站常駐機 felix（macOS）。
+  週期 poller：每 StartInterval 秒拉起 ops/kg_reconcile.sh --once 跑一輪冪等 tick 即退，
+  讓 origin/main 一前進（且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版。
+
+  一次性冪等設計：**不要 KeepAlive**（那會 busy-loop 立即重拉，本腳本非常駐 while-loop）。
+  StartInterval=90 秒輪詢；ThrottleInterval=60 保底避免異常快速重啟；RunAtLoad 開機即先跑一輪。
+
+  Deploy（由總經理手動啟用，首次務必先 dry-run 驗）：
+    cp ops/launchd/com.kg.reconcile.plist ~/Library/LaunchAgents/com.kg.reconcile.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.reconcile.plist
+  它是 LaunchAgent（per-user）：跑在 auto-login 的 chenliangyu session（docker/git 就緒）。
+  停用：launchctl bootout gui/$(id -u)/com.kg.reconcile
+
+  PATH 必含 docker（OrbStack）+ git。與 devops.sh 人工 deploy 共用 /tmp/kg-deploy.lock 互斥。
+  安全契約與 path-filter 判準見 docs/sop/deploy.md §push=deploy 自動 reconciler。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kg.reconcile</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/chenliangyu/project/kg/ops/kg_reconcile.sh</string>
+        <string>--once</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/chenliangyu/.orbstack/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>StartInterval</key>
+    <integer>90</integer>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_reconcile.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_reconcile.err.log</string>
+</dict>
+</plist>
