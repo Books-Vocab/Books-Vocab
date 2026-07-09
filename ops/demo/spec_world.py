@@ -513,6 +513,12 @@ def _notebook_entry(card: dict[str, Any], *, nb_name: str) -> dict[str, Any]:
         "actionType": "add",
         "isArchived": card["is_archived"],
         "isExcludedFromReader": False,
+        # review scheduling：NotebookStatsCalculator 的 due/unlearned/reviewed
+        # 徽章與進度條靠這四欄；缺了列表徽章=總卡數、進度條全空。
+        "reviewIntervalHours": card["review_interval_hours"],
+        "nextReviewAt": card["next_review_at"],
+        "lastReviewedAt": card["last_reviewed_at"],
+        "reviewCount": card["review_count"],
     }
 
 

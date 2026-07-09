@@ -62,6 +62,13 @@ struct NotebookEntrySeed: Codable {
     let partOfSpeech: String?
     let bookTitle: String
     let chapterTitle: String?
+    // Optional review scheduling（NotebookStatsCalculator 徽章/進度條資料面）。
+    // optional = 既有 baseline fixture 不帶欄位時行為不變（沿用 model 預設）；
+    // key set 對齊 ops/ui_world_manifest.py NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS。
+    let reviewIntervalHours: Double?
+    let nextReviewAt: Date?
+    let lastReviewedAt: Date?
+    let reviewCount: Int?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case word
@@ -75,7 +82,19 @@ struct NotebookEntrySeed: Codable {
         case partOfSpeech
         case bookTitle
         case chapterTitle
+        case reviewIntervalHours
+        case nextReviewAt
+        case lastReviewedAt
+        case reviewCount
     }
+
+    /// 可缺席的 review scheduling key（其餘 key 缺席仍 fail-loud）。
+    private static let optionalKeys: Set<CodingKeys> = [
+        .reviewIntervalHours,
+        .nextReviewAt,
+        .lastReviewedAt,
+        .reviewCount,
+    ]
 
     init(
         word: String,
@@ -88,7 +107,11 @@ struct NotebookEntrySeed: Codable {
         explanation: String?,
         partOfSpeech: String?,
         bookTitle: String,
-        chapterTitle: String?
+        chapterTitle: String?,
+        reviewIntervalHours: Double? = nil,
+        nextReviewAt: Date? = nil,
+        lastReviewedAt: Date? = nil,
+        reviewCount: Int? = nil
     ) {
         self.word = word
         self.translation = translation
@@ -101,6 +124,10 @@ struct NotebookEntrySeed: Codable {
         self.partOfSpeech = partOfSpeech
         self.bookTitle = bookTitle
         self.chapterTitle = chapterTitle
+        self.reviewIntervalHours = reviewIntervalHours
+        self.nextReviewAt = nextReviewAt
+        self.lastReviewedAt = lastReviewedAt
+        self.reviewCount = reviewCount
     }
 
     init(from decoder: Decoder) throws {
@@ -110,7 +137,7 @@ struct NotebookEntrySeed: Codable {
             context: "UI World notebook entry"
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        for key in CodingKeys.allCases where !container.contains(key) {
+        for key in CodingKeys.allCases where !Self.optionalKeys.contains(key) && !container.contains(key) {
             throw DecodingError.keyNotFound(
                 key,
                 DecodingError.Context(
@@ -130,6 +157,10 @@ struct NotebookEntrySeed: Codable {
         partOfSpeech = try container.decodeIfPresent(String.self, forKey: .partOfSpeech)
         bookTitle = try container.decode(String.self, forKey: .bookTitle)
         chapterTitle = try container.decodeIfPresent(String.self, forKey: .chapterTitle)
+        reviewIntervalHours = try container.decodeIfPresent(Double.self, forKey: .reviewIntervalHours)
+        nextReviewAt = try container.decodeIfPresent(Date.self, forKey: .nextReviewAt)
+        lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)
+        reviewCount = try container.decodeIfPresent(Int.self, forKey: .reviewCount)
     }
 }
 
@@ -483,6 +514,19 @@ enum NotebookFixtures {
         entry.actionType = seed.actionType
         entry.isArchived = seed.isArchived
         entry.isExcludedFromReader = seed.isExcludedFromReader
+        // Optional review scheduling：缺席時沿用 VocabularyEntry 預設（unlearned）。
+        if let reviewIntervalHours = seed.reviewIntervalHours {
+            entry.reviewIntervalHours = reviewIntervalHours
+        }
+        if let nextReviewAt = seed.nextReviewAt {
+            entry.nextReviewAt = nextReviewAt
+        }
+        if let lastReviewedAt = seed.lastReviewedAt {
+            entry.lastReviewedAt = lastReviewedAt
+        }
+        if let reviewCount = seed.reviewCount {
+            entry.reviewCount = reviewCount
+        }
         return entry
     }
 }
