@@ -124,6 +124,19 @@ struct PodcastHomeView: View {
             }
             .navigationTitle(L10n.string("app.section.podcasts"))
             .largeNavigationBarTitle()
+            #if targetEnvironment(macCatalyst)
+            // 電腦模式無下拉刷新 → 提供可見的 toolbar 刷新鈕（對齊書架 Catalyst 樣板）。
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: { Task { await refreshPodcastCatalog() } }) {
+                        AppToolbarGlyph(systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel(L10n.string("重新整理"))
+                    .accessibilityIdentifier("podcast.refreshButton")
+                    .help(L10n.string("重新整理"))
+                }
+            }
+            #endif
             // 統一在 NavigationStack root 註冊 destination（避免 nested-modifier
             // 競爭）；series / episode 全平台單欄 push。
             .navigationDestination(for: PodcastNavRoute.self) { route in
@@ -157,9 +170,12 @@ struct PodcastHomeView: View {
             }
             .animateContentFade(podcastSeries.count)
         }
+        // 電腦模式無下拉刷新；改由 Catalyst-only toolbar 刷新鈕提供（見 body toolbar）。
+#if !targetEnvironment(macCatalyst)
         .refreshable {
             await refreshPodcastCatalog()
         }
+#endif
     }
 
     /// 繼續收聽 — 跨 series 最近播放未完成；空則整段不顯示。LazyHStack 內走
@@ -231,9 +247,11 @@ struct PodcastHomeView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
+#if !targetEnvironment(macCatalyst)
         .refreshable {
             await refreshPodcastCatalog()
         }
+#endif
     }
 
     private var loadingState: some View {
@@ -278,9 +296,11 @@ struct PodcastHomeView: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
+#if !targetEnvironment(macCatalyst)
         .refreshable {
             await refreshPodcastCatalog()
         }
+#endif
     }
 
     // MARK: - 同步 / 預熱 / 追蹤（自 BookshelfView re-home，行為逐字保留）
