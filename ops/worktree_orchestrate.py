@@ -618,8 +618,11 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             return EXIT_BLOCK
 
     # teardown MUST run from the primary root: step 1 removes the target worktree,
-    # which may be the very directory this process was invoked from.
+    # which may be the very directory this process was invoked from. For the same
+    # reason the gate-cache path is resolved NOW — its default-state branch derives
+    # the ledger anchor from the process cwd, which teardown may be about to remove.
     root = primary_root()
+    gate_cache = _gate_record_path(args.state, worktree)
     steps: list[dict[str, Any]] = []
 
     def _plan(label: str, gargs: list[str], cwd: Path) -> None:
@@ -654,8 +657,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     # nit3 ZERO RESIDUE: also drop this worktree's gate-record cache (the per-machine
     # verdict file gate wrote beside the ledger). Otherwise a stale verdict lingers
-    # after the worktree it described is gone.
-    gate_cache = _gate_record_path(args.state, worktree)
+    # after the worktree it described is gone. (Path was resolved pre-teardown.)
     gate_cache_removed = False
     if gate_cache.exists():
         try:
