@@ -28,6 +28,7 @@ DEFAULT_TESTS=(
   devops
   deploy-smoke
   infra-health
+  reconcile
   branch-audit
   worktree-orchestrator
   review-audit
@@ -81,6 +82,7 @@ run_one() {
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
+    reconcile)          ./ops/tests/test_kg_reconcile.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
     worktree-orchestrator)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
