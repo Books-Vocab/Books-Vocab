@@ -67,6 +67,10 @@ chrome-extension/tools/audit/
 __pycache__/
 .pytest_cache/
 .cache/
+# worktree_registry.py ledger — per-machine local state, anchored at
+# <git-common-dir dirname>/.cache/worktree_registry.json (covered by .cache/ above;
+# pinned explicitly for intent): NEVER commit.
+.cache/worktree_registry.json
 .worktrees/
 .claude/worktrees/
 .claude/scheduled_tasks.lock

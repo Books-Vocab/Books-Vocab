@@ -6,6 +6,7 @@
 #   2. release_bump.sh --help → exit 0 + 印出 用法
 #   3. release_changelog.sh --help → exit 0 + 印出 用法
 #   4. podcast_upload.sh --help → exit 0 + 印出 Usage
+#   5. worktree_registry.py --help → exit 0 + 印出 orphan sentinel
 
 set -o pipefail
 
@@ -71,6 +72,11 @@ section "podcast_upload help"
 out=$(run_help "ops/podcast_upload.sh"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "podcast_upload help exits 0" 0 "$rc" "$log"
 assert_log_contains "podcast_upload help" "Usage:" "$log"
+
+section "worktree_registry help"
+out=$(run_help "ops/worktree_registry.py"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "worktree_registry help exits 0" 0 "$rc" "$log"
+assert_log_contains "worktree_registry help" "orphan sentinel" "$log"
 
 echo ""
 echo "══════════════════════════════"
