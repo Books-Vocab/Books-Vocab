@@ -86,6 +86,21 @@ def test_intent_feat(text):
     assert classify_intent(text) == "feat"
 
 
+@pytest.mark.parametrize("text", [
+    # nit4: a bare noun-phrase (no leading imperative verb) is a feature, even when it
+    # CONTAINS a research noun — an article introduces a noun phrase, not a research
+    # imperative. Previously "the explore tab" mis-classified as research because the
+    # filler-skip walked past "the" and hit the "explore" noun.
+    "the explore tab",
+    "the audit log view",
+    "a research summary card",
+    "the survey results screen",
+    "the review checklist",
+])
+def test_intent_bare_noun_phrase_is_feat(text):
+    assert classify_intent(text) == "feat"
+
+
 def test_branch_for_composes_type_and_slug():
     assert branch_for("fix the reader crash", "reader-crash") == "debug/reader-crash"
     assert branch_for("add a share sheet", "share-sheet") == "feat/share-sheet"
@@ -276,6 +291,9 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     assert gate["verdict"] == "pass"
     assert gate["gates"] == []
     assert "notes.txt" in gate["changed_files"]
+    # gate wrote a verdict cache beside the ledger (nit3 will strike it on resolve).
+    gate_cache = MODULE._gate_record_path(state, wt)
+    assert gate_cache.exists()
 
     # --- cutover: rebase onto origin/main + ff push sha:main (--commit) ---
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
@@ -288,9 +306,11 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     rc, res = _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK
 
-    # NO residue: worktree gone, local branch gone
+    # NO residue: worktree gone, local branch gone, gate-record cache struck (nit3)
     assert not Path(wt).exists()
     assert "debug/reader-crash" not in _local_branches(repo)
+    assert res.get("gate_cache_removed") is True
+    assert not gate_cache.exists()
     # ledger record struck to merged
     recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
     assert recs["debug/reader-crash"]["status"] == "merged"
@@ -341,6 +361,103 @@ def test_cutover_refused_when_gate_verdict_is_stale(scratch):
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
     assert cut["pushed"] is False
+
+
+@gitmark
+def test_cutover_lands_with_warn_verdict(scratch):
+    # nit1: a WARN verdict is advisory — the driving agent owns its disposition, the
+    # tool must not hard-refuse it. A backend-src-only change (no targeted test in the
+    # diff) plans a WARN advisory gate; cutover --commit must LAND it and record the
+    # warning ("landed with warnings: <gate>").
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "add backend endpoint", "--slug", "backend-ep",
+         "--state", state, "--json"]
+    )
+    wt = opened["path"]
+    src = Path(wt) / "backend" / "src" / "kg" / "app.py"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("x = 1\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "backend src"], wt)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["verdict"] == "warn"
+    assert "backend-tests-advisory" in {g["name"] for g in gate["gates"]}
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert cut["pushed"] is True
+    assert cut["verdict"] == "warn"
+    assert "backend-tests-advisory" in cut["warnings"]
+    # the work actually landed on origin/main
+    assert "backend/src/kg/app.py" in _origin_main_files(remote)
+
+
+@gitmark
+def test_cutover_refused_when_gate_verdict_is_block(scratch):
+    # nit1 (the other edge): a BLOCK verdict must STILL refuse cutover. A docs change
+    # with a conflict marker -> docs-conflict-markers blocks -> verdict block -> refused.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    # seed a no-op docs_lint.sh into base so the docs-lint shell gate can run cleanly
+    # (the conflict-marker internal gate is what supplies the block).
+    lint = repo / "ops" / "docs_lint.sh"
+    lint.parent.mkdir(parents=True, exist_ok=True)
+    lint.write_text("#!/bin/sh\nexit 0\n")
+    lint.chmod(0o755)
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "seed docs_lint"], repo)
+    _git(["push", "-q", "origin", "main"], repo)
+
+    rc, opened = _run_json(
+        ["open", "--intent", "update the reader doc", "--slug", "reader-doc",
+         "--state", state, "--json"]
+    )
+    wt = opened["path"]
+    doc = Path(wt) / "docs" / "reference" / "x.md"
+    doc.parent.mkdir(parents=True, exist_ok=True)
+    doc.write_text("intro\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "doc with conflict"], wt)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert gate["verdict"] == "block"
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["pushed"] is False
+    assert "docs/reference/x.md" not in _origin_main_files(remote)
+
+
+@gitmark
+def test_resolve_refused_when_branch_not_landed(scratch):
+    # nit2: resolve is a force-discard (worktree remove --force + branch -D). Called
+    # out of order (before cutover) it would vaporize unlanded work. It must REFUSE a
+    # branch not contained in base (tree-diff), unless --force.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "add share sheet", "--slug", "share-sheet",
+         "--state", state, "--json"]
+    )
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("unlanded work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "unlanded"], wt)
+
+    # resolve WITHOUT a prior cutover -> branch not landed -> refused, NO teardown.
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert res.get("landed") is False
+    assert Path(wt).exists()                                   # worktree preserved
+    assert "feat/share-sheet" in _local_branches(repo)         # branch preserved
+
+    # --force overrides the floor (an operator that accepts the loss).
+    rc, res2 = _run_json(
+        ["resolve", "--worktree", wt, "--state", state, "--commit", "--force", "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+    assert not Path(wt).exists()
+    assert "feat/share-sheet" not in _local_branches(repo)
 
 
 @gitmark

@@ -37,12 +37,17 @@ Subcommands (the API a driving agent / the worktree-flow skill calls):
              pass/warn/block verdict, and RECORDS it (keyed by worktree + HEAD sha) so
              cutover can require a fresh pass. Runs the gates EXPLICITLY — the
              .githooks pre-commit is best-effort only and must not be relied on.
-  cutover    require a fresh gate pass (verdict==pass AND recorded HEAD == current
-             HEAD) → fetch → rebase worktree onto origin/main → ff push HEAD:main.
+  cutover    require a fresh NON-BLOCK gate verdict (verdict in {pass, warn} AND
+             recorded HEAD == current HEAD) → fetch → rebase worktree onto origin/main
+             → ff push HEAD:main. A `warn` is advisory: it LANDS ("landed with
+             warnings") — the driving agent owns a warn's disposition, so the tool must
+             not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
              (Landing into main is pre-authorized; DEPLOY to production is NOT part of
              cutover and stays a separate, human-approved gate.) dry-run default.
-  resolve    registry resolve <branch> merged → git worktree remove + branch -D
-             (local, and origin if present) → ledger closed, no residue.
+  resolve    landed-floor (refuse to force-discard a branch not yet in base, unless
+             --force) → registry resolve <branch> merged → git worktree remove +
+             branch -D (local, and origin if present) + drop the gate-record cache →
+             ledger closed, no residue.
 
 Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused / partial).
 """
@@ -96,8 +101,14 @@ _DEBUG_KW = ("bug", "crash", "fix", "hang", "regression", "broken", "stutter",
 _RESEARCH_VERBS = frozenset({"research", "investigate", "audit", "explore", "analyze",
                              "analyse", "survey", "study", "understand", "compare",
                              "evaluate", "assess", "map", "review"})
+# Politeness / pronoun filler that can precede a LEADING imperative verb ("please
+# investigate …", "can you research …") — transparent to the verb check.
 _LEADING_FILLER = frozenset({"please", "can", "could", "you", "lets", "let's", "let",
-                             "us", "we", "i", "to", "the", "a", "an", "help", "me", "do"})
+                             "us", "we", "i", "to", "help", "me", "do"})
+# Articles introduce a NOUN phrase, NOT an imperative — deliberately NOT filler. A
+# phrase whose first meaningful token is an article ("the explore tab") is a feature
+# noun, so the research-verb check must never see through it (nit4).
+_ARTICLES = frozenset({"the", "a", "an"})
 
 
 def classify_intent(text: str) -> str:
@@ -105,14 +116,19 @@ def classify_intent(text: str) -> str:
 
     Precedence: a fix/bug intent is `debug` even when phrased as "investigate … and
     fix it" (a debug keyword anywhere dominates). Otherwise a `research` intent is one
-    whose LEADING verb is a research verb (research/investigate/audit/explore/…); this
-    avoids matching feature nouns like "the explore tab". Everything else is `feat`."""
+    whose LEADING imperative verb is a research verb (research/investigate/audit/…),
+    ignoring politeness filler. A bare noun-phrase — one that opens with an article
+    (the/a/an) after any filler — is `feat` even when it CONTAINS a research noun
+    ("the explore tab", "the audit log"): an article marks a noun, not an imperative.
+    Everything else is `feat`."""
     t = f" {text.lower()} "
     if any(k in t for k in _DEBUG_KW):
         return "debug"          # a fix intent dominates ("investigate … and fix it")
     for word in re.findall(r"[a-z']+", text.lower()):
         if word in _LEADING_FILLER:
             continue
+        if word in _ARTICLES:
+            return "feat"        # bare noun-phrase, no leading imperative verb (nit4)
         return "research" if word in _RESEARCH_VERBS else "feat"
     return "feat"
 
@@ -167,8 +183,11 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
                            with no targeted test is a WARN advisory (never the full
                            suite — it carries known pre-existing false failures).
 
-    Levels: `block` fails the verdict; `warn` degrades it; informational gates are
-    `warn` so they surface without blocking. A neutral file selects nothing."""
+    Levels: `block` fails the verdict; `warn` is ADVISORY — it degrades the aggregate
+    to `warn` but does NOT block cutover (a warn LANDS "with warnings"; its disposition
+    belongs to the driving agent). Informational gates (backend-src-only advisory,
+    verified_against reachability) are `warn` so they surface without blocking. A
+    neutral file selects nothing."""
     gates: list[dict[str, Any]] = []
 
     ios = [p for p in changed_files if p.startswith("ios/")]
@@ -496,7 +515,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_cutover(args: argparse.Namespace) -> int:
-    """Require a fresh gate pass, then rebase onto origin/main and ff push HEAD:main."""
+    """Require a fresh non-block gate verdict, then rebase onto origin/main and ff push
+    HEAD:main. A `warn` verdict LANDS (its disposition belongs to the driving agent —
+    the tool records it as "landed with warnings" but never blocks on it); only `block`
+    (and a stale/absent verdict) refuses."""
     worktree = _norm(args.worktree)
     if not Path(worktree).is_dir():
         _emit({"schema": SCHEMA, "step": "cutover", "error": "worktree not found",
@@ -506,15 +528,24 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     rec_path = _gate_record_path(args.state, worktree)
     head = _head_sha(worktree)
     refuse: str | None = None
+    verdict: str | None = None
+    warnings: list[str] = []
     if not rec_path.exists():
         refuse = "no gate verdict on record — run `gate` first"
     else:
         rec = json.loads(rec_path.read_text())
-        if rec.get("verdict") != "pass":
-            refuse = f"gate verdict is {rec.get('verdict')!r}, not pass"
-        elif rec.get("head_sha") != head:
+        verdict = rec.get("verdict")
+        if rec.get("head_sha") != head:
             refuse = ("gate verdict is stale (recorded HEAD "
                       f"{str(rec.get('head_sha'))[:8]} != current {head[:8]}) — re-run `gate`")
+        elif verdict == "block":
+            refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
+        elif verdict not in ("pass", "warn"):
+            refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"
+        elif verdict == "warn":
+            # a warn LANDS; surface which gates warned so the record is explicit.
+            warnings = [g.get("name") for g in rec.get("gates", [])
+                        if g.get("status") == "warn"]
     if refuse:
         _emit({"schema": SCHEMA, "step": "cutover", "error": refuse, "pushed": False,
                "worktree": worktree}, args.json, f"✗ cutover refused: {refuse}")
@@ -533,25 +564,29 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     sha = _head_sha(worktree)
     target = args.base.split("/", 1)[1] if "/" in args.base else args.base
     push_cmd = ["push", "origin", f"{sha}:{target}"]
+    warn_line = (f"\n  landed with warnings: {', '.join(warnings)}" if warnings else "")
     if not args.commit:
         payload = {"schema": SCHEMA, "step": "cutover", "mode": "dry-run", "pushed": False,
-                   "sha": sha, "target": target, "cmd": "git " + " ".join(push_cmd)}
+                   "sha": sha, "target": target, "verdict": verdict, "warnings": warnings,
+                   "cmd": "git " + " ".join(push_cmd)}
         _emit(payload, args.json,
-              f"# cutover (dry-run)\n  would ff push {sha[:8]} -> {target}\n"
+              f"# cutover (dry-run)\n  would ff push {sha[:8]} -> {target}{warn_line}\n"
               f"  git {' '.join(push_cmd)}\n  (--commit to push)")
         return EXIT_OK
 
     prc, pout = _git(push_cmd, cwd=worktree)
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed",
-               "pushed": prc == 0, "sha": sha, "target": target, "detail": pout[:200]}
-    human = (f"✓ cutover: ff pushed {sha[:8]} -> {target}" if prc == 0
+               "pushed": prc == 0, "sha": sha, "target": target, "verdict": verdict,
+               "warnings": warnings, "detail": pout[:200]}
+    human = (f"✓ cutover: ff pushed {sha[:8]} -> {target}{warn_line}" if prc == 0
              else f"✗ push failed:\n{pout}")
     _emit(payload, args.json, human)
     return EXIT_OK if prc == 0 else EXIT_BLOCK
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
-    """registry resolve merged → worktree remove + branch -D (local + remote)."""
+    """Landed-floor guard, then registry resolve merged → worktree remove + branch -D
+    (local + remote) + drop the gate-record cache."""
     worktree = _norm(args.worktree)
     branch = args.branch or (_current_branch(worktree) if Path(worktree).is_dir() else None)
     if not branch:
@@ -559,6 +594,21 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                "(pass --branch, or point --worktree at a live worktree)"}, args.json,
               "✗ cannot determine branch — pass --branch or a live --worktree")
         return EXIT_USAGE
+
+    # nit2 LANDED FLOOR: resolve is a force-discard (worktree remove --force + branch -D).
+    # Called out of order (before cutover) it would vaporize unlanded work. Refuse a
+    # branch whose net change is NOT already in base — using the registry's tree-diff
+    # containment (never git cherry; same authority the sweep trusts). --force overrides.
+    if not args.force:
+        _fetch()  # base may have advanced; compare against the fresh tip
+        if not wr.landed_in_base(args.base, branch):
+            reason = (f"branch {branch!r} is not landed in {args.base} (tree-diff) — "
+                      "resolve would force-discard unlanded work; run `cutover` first "
+                      "or pass --force")
+            _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
+                   "reason": reason, "branch": branch, "landed": False}, args.json,
+                  f"✗ resolve refused: {reason}")
+            return EXIT_BLOCK
 
     root = repo_root()
     steps: list[dict[str, Any]] = []
@@ -592,11 +642,27 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                         "detail": out[:200] if rc != 0 else ""})
         if rc != 0:
             failures += 1
+
+    # nit3 ZERO RESIDUE: also drop this worktree's gate-record cache (the per-machine
+    # verdict file gate wrote beside the ledger). Otherwise a stale verdict lingers
+    # after the worktree it described is gone.
+    gate_cache = _gate_record_path(args.state, worktree)
+    gate_cache_removed = False
+    if gate_cache.exists():
+        try:
+            gate_cache.unlink()
+            gate_cache_removed = True
+        except OSError:
+            pass
+
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
-               "resolved": "merged", "executed": results, "failures": failures}
+               "resolved": "merged", "executed": results, "failures": failures,
+               "gate_cache_removed": gate_cache_removed}
     human = ["# resolve (committed): ledger -> merged"]
     for r in results:
         human.append(f"  {'✓' if r['ok'] else '✗'} {r['cmd']}   # {r['label']}")
+    if gate_cache_removed:
+        human.append("  ✓ dropped gate-record cache")
     _emit(payload, args.json, "\n".join(human))
     return EXIT_OK if failures == 0 else EXIT_BLOCK
 
@@ -655,12 +721,17 @@ def build_parser() -> argparse.ArgumentParser:
     co.add_argument("--commit", action="store_true", help="execute the push (default: dry-run)")
     co.set_defaults(func=cmd_cutover)
 
-    rs = sub.add_parser("resolve", help="ledger -> merged + worktree remove + branch -D "
-                        "(local/remote) — no residue (dry-run default)")
+    rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "
+                        "remove + branch -D (local/remote) + drop gate cache — no "
+                        "residue (dry-run default)")
     add_common(rs)
+    add_base(rs)
     rs.add_argument("--worktree", required=True, help="worktree path to resolve")
     rs.add_argument("--branch", default=None,
                     help="branch to resolve (default: the worktree's checked-out branch)")
+    rs.add_argument("--force", action="store_true",
+                    help="override the landed-floor (tear down even if the branch's work "
+                         "is NOT yet in base — accepts the loss of unlanded work)")
     rs.add_argument("--commit", action="store_true", help="execute teardown (default: dry-run)")
     rs.set_defaults(func=cmd_resolve)
 
