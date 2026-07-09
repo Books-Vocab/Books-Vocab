@@ -16,7 +16,7 @@ Provide one stable operations system so any agent can safely execute tasks from:
 ## Startup Checklist
 1. For a new or cross-surface task, trigger `kg-router`.
 2. Run `ops/devops_kg_safe.sh preflight` before production work.
-3. Before cleanup / promote / branch convergence, run `ops/branch_audit.sh`.
+3. Before merging worktree branches into `main` or pruning remote branches, run `ops/branch_audit.sh` (commit reachability, not PR state).
 4. Before touching unfamiliar control-plane surfaces, run `ops/capability_matrix.py --json`.
 5. If a typed tool is confusing or nudges agents toward bypassing it, classify the friction; fix medium/large tool issues before continuing the original workflow.
 
@@ -24,7 +24,7 @@ Provide one stable operations system so any agent can safely execute tasks from:
 - KG API: `ops/devops_kg_safe.sh`
 - Global status: `ops/devops_kg_safe.sh status` + `ops/devops_kg_safe.sh health`
 - Compatibility status wrapper: `ops/status_all.sh`
-- Branch convergence audit: `ops/branch_audit.sh`
+- Remote branch reachability audit: `ops/branch_audit.sh`
 - Capability contract: `ops/capability_matrix.py`
 - Cold-start routing: `.claude/skills/kg-router`
 - Docs control-plane flow: `.claude/skills/kg-docs-control-plane`
@@ -48,14 +48,14 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 3. If health fails post-deploy, rollback to previous artifact/snapshot.
 4. Record incident summary and update runbook docs.
 
-### C) Convergence Maintenance
-1. Use the single `converge` methodology; `cleanup` and `promote` are mode aliases, not separate systems.
-2. Establish a `T0 snapshot barrier` first: preserve every hot branch/worktree snapshot before any sync/reset/rebase.
-3. Assemble the target final state offline in one integration/final worktree; validate there instead of re-reading hot branches during the main flow.
-4. Execute a **short cutover** as one serialized sequence: push `main`, fetch/prune, rebase surviving branches onto the new `main`, push survivor remotes, then clean white shadows or temporary integration containers.
-5. Any dirty work or new commits that appear after `T0` belong to the next round, not the current cutover.
-6. Preserve work identity before any `main` reset or sync; if blacklisted work is sitting on `main`, extract it to a branch/worktree first.
-7. `promote` mode may delete only its temporary integration container; the original branch/worktree stays unless the user explicitly asks otherwise.
+### C) Worktree Lifecycle
+Worktree health is a **process-internal invariant**, not a periodic cleanup chore. Isolated worktrees are driven by the `worktree-flow` skill orchestrating `ops/worktree_orchestrate.py` (`preflight` / `open` / `gate` / `cutover` / `resolve`); each worktree lands via `cutover` and self-cleans via `resolve`. (The former `converge` / `cleanup` / `promote` sweep methodology is retired — its function is now subsumed by this in-flow invariant.)
+1. `preflight` = `git fetch` + `worktree_registry sweep` (conservative shapes only: dangling-landed / detached-orphan / registry-resolved). It collects crash residue left *outside* the flow; the base branch and the primary worktree are absolutely protected.
+2. `open` births the worktree + branch and registers it (registry born→resolved ledger + orphan sentinel).
+3. `gate` diffs the worktree vs `origin/main`, routes changes to existing gate tools, and records a `verdict` bound to worktree + HEAD. `block` must be fixed; `warn` is advisory.
+4. `cutover` requires a **fresh non-block verdict** for the current HEAD, then fetch → rebase onto `origin/main` → ff-push `HEAD:main`. Landing in `main` ≠ deploying.
+5. `resolve` enforces a **landed-floor** (unlanded branches are refused; `--force` to override), then registry-resolves, removes the worktree, deletes the branch (local + remote if present), and drops the gate-record cache.
+6. All mutation subcommands are dry-run by default; `--commit` to land. `deploy` to production is a separate gate requiring explicit user consent (never part of auto-cutover).
 
 ## Operational Definition of Done
 - `preflight` succeeded.
@@ -66,6 +66,6 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 ## Hard Stop Conditions
 - Missing SSH key or unreachable host.
 - No backup path before deploy/migration.
-- `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` during convergence; PR state is metadata, commit reachability is the source of truth.
-- Any convergence attempt would reset `main` before preserving blacklisted work identity.
+- `ops/branch_audit.sh` reports `merged-pr-but-ahead`, `orphan-ahead`, or `stale-ahead` before a branch merge/prune; PR state is metadata, commit reachability is the source of truth.
+- Any operation would reset or force-update `main`; the worktree flow only fast-forward pushes, and `resolve` refuses to tear down unlanded work.
 - Any command resembles destructive wildcard cleanup.
