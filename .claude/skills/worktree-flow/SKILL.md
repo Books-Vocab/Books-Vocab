@@ -1,8 +1,8 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / gate / cutover / resolve）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。deploy 生產不含在內。"
+description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / cutover / resolve / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、primary 落後→sync-main、repo 手術→freeze）。"
 user-invocable: true
-version: 1.1.0
+version: 1.2.0
 ---
 
 # worktree-flow
@@ -67,9 +67,18 @@ ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
 ```
 先過 **landed-floor**（tree-diff 判分支是否已進 base）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。
 
+## 「需要 main」的任務路由
+
+宣稱「這要在 main 上做」時先問：**要的是 main 的內容還是身分？** 內容 → fresh worktree（更乾淨）。真需要 primary 的只有三類，各有原語：
+
+- **bootstrap 悖論**（primary checkout 過舊、連本工具鏈都沒有）→ 裸 `git worktree add -b <branch> <path> origin/main`（純 git 原語，不需任何 repo 工具）→ `cd <path>` → `ops/worktree_orchestrate.py adopt --intent "<why>"`（`--worktree` 預設 cwd）補登記 ledger，之後照常走 gate/cutover/resolve。
+- **primary 落後 origin**（工具鏈缺席、Xcode GUI 對著舊碼）→ `sync-main`（dry-run 預設）。護欄三綠才動：tracked-clean（untracked 不擋）＋ primary 在 main 上且無 merge/rebase 進行中 ＋ 嚴格落後（ancestor check）。分岔的 main **絕不** auto-merge/rebase——refusal 會指向 cutover。這是「絕不 ff 使用者 local main」鐵律的精確化：只做可證無損的移動。
+- **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/cutover/sync-main 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
+- **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → cutover 落地 → primary `git checkout --` 還原。primary 只允許「可再生」變更，絕不在 local main commit。
+
 ## 硬邊界
 
-- **deploy 生產（wordnexus.lol）是獨立閘、必徵使用者同意**——**不含在自動 cutover**。進 main ≠ 部署。要部署走 `devops` skill 並先取得明確 go（鐵律 7 生產禁令 + 熱路徑徵同意）。
+- **push=deploy 已上線（2026-07-10 授權全自動）**：cutover 進 main 後，felix 的 reconciler（launchd `com.kg.reconcile`，90s tick）偵測 `backend/**` 變更即自動部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）；非 backend 變更只 ff 自身、不碰生產。**因此 land backend 變更 = 部署生產**——cutover 前 gate 必須真實反映 backend 風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。
 - **不重造 gate**：`gate` 只路由到既有工具。要加可斷言的 gate → 改對應工具本身，不在 orchestrate 內判 pass/fail。
 - **動 agent-facing surface**（本 CLI/skill 本身）→ 同 PR 同步 `docs/reference/tech_index.md` / `product_surface.md`（見根 CLAUDE.md「改 user/agent-facing 介面」）。
 - 收尾照 `kg-receipt`：驗證輸出 + 交接點。工具摩擦記 tooling debt（鐵律 9）。
