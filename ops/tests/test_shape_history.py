@@ -271,6 +271,57 @@ class TestDueDistribution:
         assert near > far  # 遞減分佈：前半 horizon 多於後半
 
 
+class TestDueIntervalScatter:
+    """due 卡 interval 必須確定式散佈（防合成資料破綻：詞庫頂部 due 卡全群聚同一
+    interval）。散佈後 due 卡 last_dt 均勻落在 [最舊敘事日, anchor-3]，interval
+    跨越多個分桶（<7d / 7-30d / 30-90d）而非全部擠在窗口上界。"""
+
+    @staticmethod
+    def _due_intervals_days(shaped: dict, plan: dict) -> list[float]:
+        anchor = date.fromisoformat(plan["anchor_day"])
+        # due 卡的 next 落在 anchor 當地日（UTC ≤ anchor 00:00Z）；non-due 落 anchor+1↑
+        render_floor = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
+        out: list[float] = []
+        for card in shaped["cards"]:
+            r = card["review"]
+            if r["review_count"] <= 0 or card.get("is_archived"):
+                continue
+            nxt = datetime.fromisoformat(r["next_review_at"])
+            if nxt.tzinfo is None:
+                nxt = nxt.replace(tzinfo=timezone.utc)
+            if nxt < render_floor:
+                out.append(r["review_interval_hours"] / 24.0)
+        return out
+
+    @staticmethod
+    def _bucket(iv: float) -> str:
+        return "<7" if iv < 7 else "7-30" if iv < 30 else "30-90"
+
+    def test_synthetic_due_intervals_span_buckets(self):
+        # 大 streak 合成 spec：range 足夠讓 due 卡 interval 跨越 3 分桶。
+        import statistics
+        plan = _plan(current_streak_days=10, longest_streak_days=40,
+                     due_at_anchor={"primary": 6, "other": 3}, due_horizon_days=30)
+        spec = _spec(n_primary=80, n_other=20, n_new=2)
+        shaped = shape_history.shape(spec, plan)
+        ivs = self._due_intervals_days(shaped, plan)
+        assert len(ivs) == 9, ivs  # 6 primary + 3 other due
+        buckets = {self._bucket(v) for v in ivs}
+        assert len(buckets) >= 3, sorted(ivs)
+        assert statistics.pstdev(ivs) > 10, sorted(ivs)
+
+    def test_committed_due_intervals_scatter(self):
+        import statistics
+        spec = json.loads((MA_DIR / "marketing_account_spec.json").read_text("utf-8"))
+        plan = json.loads((MA_DIR / "history_plan.json").read_text("utf-8"))
+        reshaped = shape_history.shape(spec, plan)
+        ivs = self._due_intervals_days(reshaped, plan)
+        assert len(ivs) >= 8, ivs
+        buckets = {self._bucket(v) for v in ivs}
+        assert len(buckets) >= 3, sorted(ivs)
+        assert statistics.pstdev(ivs) > 10, sorted(ivs)
+
+
 class TestConservation:
     def test_counters_and_non_review_fields_preserved(self):
         original = _spec()
