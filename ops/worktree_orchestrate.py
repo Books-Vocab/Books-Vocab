@@ -32,6 +32,10 @@ Subcommands (the API a driving agent / the worktree-flow skill calls):
              --exclude-current means a preflight never proposes clearing itself.
   open       git worktree add (.claude/worktrees/<slug>, branch = <type>/<slug> where
              type is classify_intent(intent)) + registry register (born-registered).
+  adopt      register an ALREADY-existing worktree (bootstrap fallback: a bare
+             `git worktree add` needs none of this tooling — adopt afterwards from
+             inside). Registers the worktree ROOT; ledger + freeze lock anchor on the
+             TARGET's git-common-dir, never the process cwd.
   gate       IMPACT-BASED verification. Diffs the worktree against origin/main, routes
              each touched surface to its existing gate tool, runs them, aggregates a
              pass/warn/block verdict, and RECORDS it (keyed by worktree + HEAD sha) so
@@ -42,12 +46,21 @@ Subcommands (the API a driving agent / the worktree-flow skill calls):
              → ff push HEAD:main. A `warn` is advisory: it LANDS ("landed with
              warnings") — the driving agent owns a warn's disposition, so the tool must
              not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
-             (Landing into main is pre-authorized; DEPLOY to production is NOT part of
-             cutover and stays a separate, human-approved gate.) dry-run default.
+             (Landing into main is pre-authorized. Note push=deploy: the felix
+             reconciler auto-deploys backend/** changes that land on origin/main —
+             landing backend work IS deploying it.) dry-run default.
   resolve    landed-floor (refuse to force-discard a branch not yet in base, unless
              --force) → registry resolve <branch> merged → git worktree remove +
              branch -D (local, and origin if present) + drop the gate-record cache →
              ledger closed, no residue.
+  sync-main  guarded LOSSLESS ff of the PRIMARY checkout's local main to origin/main
+             (three-green: tracked-clean + on main with no merge/rebase in flight +
+             strictly behind). A diverged main is never auto-merged — land unique
+             commits via cutover. Cures primary-checkout rot; dry-run default.
+  freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
+             open/adopt/cutover/sync-main refuse; draining steps (resolve, sweep,
+             preflight, gate) stay allowed so the flow can be quiesced for repo
+             surgery (history rewrite, gc, shared hooks/config).
 
 Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused / partial).
 """
@@ -340,9 +353,12 @@ def _frozen(state: str | None) -> dict[str, Any] | None:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        data = json.loads(p.read_text())
     except (OSError, json.JSONDecodeError):
         return {"reason": f"unreadable freeze file at {p}", "frozen_at": None}
+    if not isinstance(data, dict):  # valid JSON but not ours — still fail closed
+        return {"reason": f"malformed freeze file at {p}", "frozen_at": None}
+    return data
 
 
 def _freeze_guard(state: str | None, step: str, as_json: bool) -> int | None:
@@ -521,28 +537,40 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     fallback: a bare `git worktree add` is a git primitive that needs none of this
     tooling, so when the invoking checkout predates the orchestrator (stale primary),
     open the worktree by hand and adopt it from inside. Delegates to the registry's
-    idempotent upsert — adopting twice refreshes, never duplicates."""
-    blocked = _freeze_guard(args.state, "adopt", args.json)
-    if blocked is not None:
-        return blocked
+    idempotent upsert — adopting twice refreshes, never duplicates.
+
+    Everything anchors on the TARGET, never the process cwd: the path registered is
+    the worktree's toplevel (a subdir invocation adopts the root), and the default
+    ledger + freeze lock derive from the target's git-common-dir (invoking from a
+    foreign cwd cannot write a stray ledger the flow never reads)."""
     worktree = _norm(args.worktree or os.getcwd())
     if not Path(worktree).is_dir():
         _emit({"schema": SCHEMA, "step": "adopt", "error": "worktree not found",
                "worktree": worktree}, args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
-    rc, gitdir = _git(["rev-parse", "--path-format=absolute", "--git-dir"], cwd=worktree)
+    rc, top = _git(["rev-parse", "--path-format=absolute", "--show-toplevel"],
+                   cwd=worktree)
     rc2, common = _git(["rev-parse", "--path-format=absolute", "--git-common-dir"],
                        cwd=worktree)
-    if rc != 0 or rc2 != 0:
+    if rc != 0 or rc2 != 0 or not top:
         _emit({"schema": SCHEMA, "step": "adopt", "error": "not a git worktree",
                "worktree": worktree}, args.json, f"✗ not a git worktree: {worktree}")
         return EXIT_USAGE
-    if _norm(gitdir) == _norm(common):
+    worktree = _norm(top)
+
+    rc, gitdir = _git(["rev-parse", "--path-format=absolute", "--git-dir"], cwd=worktree)
+    if rc != 0 or _norm(gitdir) == _norm(common):
         _emit({"schema": SCHEMA, "step": "adopt", "error": "refusing the primary "
                "working tree (main-first invariant)", "worktree": worktree}, args.json,
               f"✗ {worktree} is the primary working tree — adopt only linked worktrees")
         return EXIT_USAGE
+
+    state = args.state or str(Path(_norm(common)).parent / ".cache"
+                              / "worktree_registry.json")
+    blocked = _freeze_guard(state, "adopt", args.json)
+    if blocked is not None:
+        return blocked
 
     branch = _current_branch(worktree)
     if not branch:
@@ -551,15 +579,28 @@ def cmd_adopt(args: argparse.Namespace) -> int:
               f"✗ {worktree} is detached — check out a branch before adopting")
         return EXIT_USAGE
 
-    reg_rc, _ = _registry(["register", *_state_arg(args.state), "--path", worktree,
+    # open gets --base validation for free from `git worktree add`; adopt checks it
+    # itself rather than recording an unresolvable ref in the ledger.
+    rc, _ = _git(["rev-parse", "--verify", "-q", f"{args.base}^{{commit}}"],
+                 cwd=worktree)
+    if rc != 0:
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "base does not resolve",
+               "base": args.base}, args.json,
+              f"✗ --base {args.base!r} does not resolve in the target repo")
+        return EXIT_USAGE
+
+    reg_rc, _ = _registry(["register", "--state", state, "--path", worktree,
                            "--branch", branch, "--intent", args.intent, "--base", args.base])
+    ok = reg_rc == EXIT_OK
     payload = {"schema": SCHEMA, "step": "adopt", "branch": branch, "worktree": worktree,
-               "base": args.base, "intent": args.intent, "registered": reg_rc == EXIT_OK}
-    human = (f"✓ adopted worktree [{branch}] (base {args.base})\n"
+               "base": args.base, "intent": args.intent, "ledger": state,
+               "registered": ok}
+    human = (f"{'✓ adopted' if ok else '✗ adopt could NOT register'} worktree "
+             f"[{branch}] (base {args.base})\n"
              f"  path: {worktree}\n"
-             f"  {'registered in ledger' if reg_rc == EXIT_OK else '⚠ ledger register failed'}")
+             f"  ledger: {state}" + ("" if ok else "  — register failed"))
     _emit(payload, args.json, human)
-    return EXIT_OK if reg_rc == EXIT_OK else EXIT_BLOCK
+    return EXIT_OK if ok else EXIT_BLOCK
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
@@ -595,7 +636,21 @@ def cmd_freeze(args: argparse.Namespace) -> int:
         _, now_iso = wr.resolve_now(None)
         payload = {"schema": FREEZE_SCHEMA, "reason": args.reason, "frozen_at": now_iso}
         lock.parent.mkdir(parents=True, exist_ok=True)
-        lock.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        data = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+        if args.force:
+            lock.write_text(data)
+        else:
+            try:  # O_EXCL closes the check-then-write race between two sessions
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                raced = _frozen(args.state) or {}
+                _emit({"schema": FREEZE_SCHEMA, "action": "on", "error": "already "
+                       "frozen", "reason": raced.get("reason"),
+                       "frozen_at": raced.get("frozen_at")}, args.json,
+                      f"✗ already frozen — {raced.get('reason')}; --force to overwrite")
+                return EXIT_BLOCK
+            with os.fdopen(fd, "w") as fh:
+                fh.write(data)
         _emit({**payload, "action": "on"}, args.json,
               f"✓ frozen — {args.reason}\n  lock: {lock}")
         return EXIT_OK
@@ -939,8 +994,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "tooling — adopt afterwards from inside the checkout)")
     add_common(ad)
     add_base(ad)
-    ad.add_argument("--worktree", default=None, help="worktree path (default: cwd)")
-    ad.add_argument("--intent", default="adopted out-of-band worktree",
+    ad.add_argument("--worktree", default=None, help="worktree path (default: cwd; "
+                    "a subdir resolves to its worktree root)")
+    ad.add_argument("--intent", required=True,
                     help="why this worktree exists (recorded in the ledger)")
     ad.set_defaults(func=cmd_adopt)
 

@@ -718,7 +718,15 @@ def test_freeze_blocks_open_adopt_cutover_until_off(scratch):
                           "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
 
-    # resolve stays ALLOWED — surgery prep is about draining, not trapping
+    # resolve stays ALLOWED while frozen — surgery prep is about draining, not
+    # trapping. The pre-freeze worktree is landed (freshly forked from main, zero
+    # unique commits) so the landed-floor passes and the teardown must complete.
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["failures"] == 0
+    assert not Path(wt).exists()
+
     rc, _res = _run_json(["freeze", "off", "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK
     rc, _res = _run_json(["open", "--intent", "fix the reader crash",
@@ -842,3 +850,61 @@ def test_sync_main_refuses_when_primary_not_on_main(scratch):
         assert "sidetrack" in json.dumps(res)
     finally:
         _git(["checkout", "-q", "main"], repo)
+
+
+@gitmark
+def test_adopt_from_subdirectory_registers_the_worktree_root(scratch):
+    # review B1: cd <wt>/sub && adopt must register the worktree ROOT, not the subdir
+    # (a subdir path breaks all later path-addressed operations: resolve, sweep).
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    (wt / "sub").mkdir()
+    os.chdir(wt / "sub")
+    try:
+        rc, res = _run_json(["adopt", "--intent", "from a subdir", "--state", state,
+                             "--json"])
+    finally:
+        os.chdir(repo)
+    assert rc == MODULE.EXIT_OK
+    recs = json.loads(Path(state).read_text())["records"]
+    assert Path(recs[0]["path"]).resolve() == wt.resolve()
+
+
+@gitmark
+def test_adopt_anchors_default_ledger_at_target_not_process_cwd(scratch):
+    # review B2: invoked from OUTSIDE any repo with an explicit --worktree and no
+    # --state, the ledger must be derived from the TARGET's git-common-dir — not the
+    # process cwd (which would silently write a stray ledger the flow never reads).
+    tmp_path, repo, remote = scratch
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    outside = tmp_path / "not-a-repo"
+    outside.mkdir()
+    os.chdir(outside)
+    try:
+        rc, res = _run_json(["adopt", "--worktree", str(wt), "--intent", "from afar",
+                             "--json"])
+    finally:
+        os.chdir(repo)
+    assert rc == MODULE.EXIT_OK
+    ledger = repo / ".cache" / "worktree_registry.json"
+    assert ledger.exists()
+    recs = json.loads(ledger.read_text())["records"]
+    assert [r for r in recs if r["branch"] == "feat/oob"]
+    assert not (outside / ".cache").exists()
+    assert not (tmp_path / ".cache").exists()
+
+
+@gitmark
+def test_adopt_refuses_unresolvable_base(scratch):
+    # review N2: open gets ref validation for free from `git worktree add`; adopt
+    # must check --base itself instead of recording garbage in the ledger.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = tmp_path / "oob"
+    _git(["worktree", "add", "-b", "feat/oob", str(wt), "main"], repo)
+    rc, _res = _run_json(["adopt", "--worktree", str(wt), "--intent", "bad base",
+                          "--base", "no/such-ref", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE
