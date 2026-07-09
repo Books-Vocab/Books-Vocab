@@ -740,3 +740,105 @@ def test_freeze_on_twice_requires_force(scratch):
     assert rc == MODULE.EXIT_OK
     rc, st = _run_json(["freeze", "status", "--state", state, "--json"])
     assert st["reason"] == "second"
+
+
+# ============================================================================
+# INTEGRATION: sync-main (guarded ff of the PRIMARY checkout's local main)
+# ============================================================================
+def _advance_origin_main(tmp_path, repo, name, base="main"):
+    """Move origin/main one commit ahead WITHOUT touching the primary's main."""
+    wt = tmp_path / f"adv-{name}"
+    _git(["worktree", "add", "-b", f"adv-{name}", str(wt), base], repo)
+    (wt / f"{name}.txt").write_text("advance\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", f"advance: {name}"], wt)
+    _git(["push", "-q", "origin", f"adv-{name}:main"], wt)
+
+
+@gitmark
+def test_sync_main_noop_when_up_to_date(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, res = _run_json(["sync-main", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["verdict"] == "noop"
+
+
+@gitmark
+def test_sync_main_ff_when_strictly_behind(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_origin_main(tmp_path, repo, "one")
+    (repo / "stray-untracked.txt").write_text("untracked must not block\n")
+    before = _git(["rev-parse", "main"], repo)
+
+    # dry-run: reports the plan, moves nothing
+    rc, dry = _run_json(["sync-main", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert dry["verdict"] == "dry-run"
+    assert dry["commits"] == 1
+    assert _git(["rev-parse", "main"], repo) == before
+
+    rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["verdict"] == "ff"
+    assert _git(["rev-parse", "main"], repo) == _git(["rev-parse", "origin/main"], repo)
+    assert (repo / "one.txt").exists()  # working tree really moved
+    assert (repo / "stray-untracked.txt").exists()  # untouched
+
+
+@gitmark
+def test_sync_main_refuses_dirty_primary(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_origin_main(tmp_path, repo, "two")
+    (repo / "f").write_text("tracked modification\n")
+    rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "dirty" in json.dumps(res)
+    _git(["checkout", "--", "f"], repo)
+    rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and res["verdict"] == "ff"
+
+
+@gitmark
+def test_sync_main_refuses_diverged_main(scratch):
+    # local main holds a commit origin lacks — NEVER auto-merged/rebased away
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    (repo / "local-only.txt").write_text("unique local work\n")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "local unique"], repo)
+    # fork the advance from origin/main (NOT local main) so the histories truly split
+    _git(["fetch", "-q", "origin"], repo)
+    _advance_origin_main(tmp_path, repo, "three", base="origin/main")
+    rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "cutover" in json.dumps(res)  # points at the right recovery
+    # untouched: the unique commit is still local main's tip
+    assert (repo / "local-only.txt").exists()
+
+
+@gitmark
+def test_sync_main_refuses_when_frozen(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_origin_main(tmp_path, repo, "four")
+    rc, _ = _run_json(["freeze", "on", "--reason", "surgery", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, _res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+
+
+@gitmark
+def test_sync_main_refuses_when_primary_not_on_main(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_origin_main(tmp_path, repo, "five")
+    _git(["checkout", "-q", "-b", "sidetrack"], repo)
+    try:
+        rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "sidetrack" in json.dumps(res)
+    finally:
+        _git(["checkout", "-q", "main"], repo)
