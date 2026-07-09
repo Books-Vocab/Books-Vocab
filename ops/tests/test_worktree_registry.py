@@ -524,6 +524,84 @@ def test_json_mode_labels_and_reflects_execution(sweep_repo):
     assert all(step["ok"] for card in committed["executed"] for step in card["steps"])
 
 
+# ---- sweep --exclude-current: never self-clear the invoking worktree ----------
+def test_sweep_exclude_current_keeps_the_invoking_worktree(tmp_path):
+    """A detached, contained+clean worktree normally CLEARs as an orphan (shape b).
+    But when `sweep --exclude-current` is invoked FROM that worktree, the worktree
+    whose root is the caller's cwd must be force-KEPT (excluded) — so the P3
+    orchestrator can run a preflight sweep from any worktree without nuking itself.
+    Contrast: from the primary repo the same worktree still CLEARs."""
+    repo = tmp_path / "repo"
+    _init(repo)
+    _setup_origin(repo, tmp_path)
+    base_sha = _git(["rev-parse", "HEAD"], repo)
+    # a detached, contained, clean orphan worktree — normally CLEAR shape (b)
+    selfwt = tmp_path / "wt-self"
+    _git(["worktree", "add", "-q", "--detach", str(selfwt), base_sha], repo)
+    state = tmp_path / "reg.json"
+
+    # (1) baseline: swept FROM the primary repo, wt-self is a CLEAR candidate.
+    prev = Path.cwd()
+    os.chdir(repo)
+    try:
+        _, base_payload = _sweep_json(state)
+    finally:
+        os.chdir(prev)
+    assert any(c["path"] and os.path.realpath(c["path"]) == os.path.realpath(str(selfwt))
+               for c in base_payload["clear"]), "baseline: detached orphan should CLEAR from primary"
+
+    # (2) --exclude-current from INSIDE wt-self: it must be KEEP + excluded, never CLEAR.
+    os.chdir(selfwt)
+    try:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = MODULE.main(["sweep", "--state", str(state), "--at", FUTURE_AT,
+                              "--live-window", "0", "--no-fetch", "--json", "--exclude-current"])
+        payload = json.loads(buf.getvalue())
+    finally:
+        os.chdir(prev)
+    assert rc == MODULE.EXIT_OK
+    self_real = os.path.realpath(str(selfwt))
+    assert not any(c["path"] and os.path.realpath(c["path"]) == self_real
+                   for c in payload["clear"]), "excluded worktree must NOT be a CLEAR candidate"
+    excluded = [k for k in payload["keep"]
+                if k["path"] and os.path.realpath(k["path"]) == self_real]
+    assert excluded and excluded[0].get("excluded") is True, "self worktree must be KEEP + excluded=True"
+
+
+def test_sweep_exclude_current_still_clears_other_orphans(tmp_path):
+    """--exclude-current only shields the invoking worktree; OTHER orphan worktrees
+    still CLEAR. Guards against the flag over-excluding."""
+    repo = tmp_path / "repo"
+    _init(repo)
+    _setup_origin(repo, tmp_path)
+    base_sha = _git(["rev-parse", "HEAD"], repo)
+    selfwt = tmp_path / "wt-self"
+    otherwt = tmp_path / "wt-other"
+    _git(["worktree", "add", "-q", "--detach", str(selfwt), base_sha], repo)
+    _git(["worktree", "add", "-q", "--detach", str(otherwt), base_sha], repo)
+    state = tmp_path / "reg.json"
+
+    prev = Path.cwd()
+    os.chdir(selfwt)
+    try:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            MODULE.main(["sweep", "--state", str(state), "--at", FUTURE_AT,
+                         "--live-window", "0", "--no-fetch", "--json", "--exclude-current"])
+        payload = json.loads(buf.getvalue())
+    finally:
+        os.chdir(prev)
+    other_real = os.path.realpath(str(otherwt))
+    assert any(c["path"] and os.path.realpath(c["path"]) == other_real
+               for c in payload["clear"]), "a different orphan worktree must still CLEAR"
+
+
+def test_sweep_exclude_current_flag_defaults_false():
+    ns = MODULE.build_parser().parse_args(["sweep"])
+    assert ns.exclude_current is False
+
+
 # ---- ledger state machine: register / list / resolve -----------------------
 def test_register_list_resolve_roundtrip(tmp_path):
     state = tmp_path / "reg.json"

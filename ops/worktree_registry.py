@@ -369,11 +369,17 @@ def _subject(
     registry_status: str | None,
     protected: bool,
     protected_reason: str | None,
+    excluded: bool = False,
 ) -> dict[str, Any]:
     """Classify + safety-gate ONE subject via P1, attach a CONSERVATIVE disposition.
 
-    Safety floors (either forces KEEP):
+    Safety floors (any forces KEEP, in this precedence):
       protected            base branch / primary worktree — NEVER swept (hard rule).
+      excluded             the worktree the sweep was invoked FROM (--exclude-current):
+                           an orchestrator running a preflight sweep from inside a live
+                           worktree must never propose clearing itself. Highest KEEP
+                           floor after `protected` — applies even to an otherwise-CLEAR
+                           detached orphan whose root == the caller's cwd.
       unsafe_to_drop != None  live / dirty / unlanded / uncontained — dropping loses
                            work (P1 verdict; classify alone can orphan commits, so the
                            unsafe gate is mandatory).
@@ -398,6 +404,9 @@ def _subject(
     if protected:
         disposition = "KEEP"
         keep_reason = protected_reason or "base branch / primary worktree — never teardown"
+    elif excluded:
+        disposition = "KEEP"
+        keep_reason = "excluded: sweep invoked from this worktree (--exclude-current) — never self-clear"
     elif unsafe is not None:
         disposition = "KEEP"
         keep_reason = unsafe
@@ -434,6 +443,7 @@ def _subject(
         "untracked": not tracked,
         "registry_status": registry_status,
         "protected": bool(protected),
+        "excluded": bool(excluded),
         "unsafe": unsafe,
         "keep_reason": keep_reason,
         "disposition": disposition,
@@ -445,6 +455,8 @@ def gather_sweep(
     now_epoch: int,
     live_window: int,
     records: list[dict[str, Any]],
+    *,
+    exclude_path: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Reconcile the on-disk git reality against the active ledger.
 
@@ -455,6 +467,10 @@ def gather_sweep(
       stale_entries  active records whose worktree path no longer exists on disk AND
                      whose branch is NOT itself being cleared (a cleared dangling-landed
                      branch resolves to merged via nit1, not abandoned).
+
+    exclude_path   normalized path of the worktree the sweep was invoked FROM
+                   (--exclude-current). Its worktree subject is force-KEPT (excluded=True)
+                   so an orchestrator's preflight sweep never proposes clearing itself.
     """
     active = [r for r in records if r.get("status") == STATUS_ACTIVE]
     reg_paths = {_norm(r["path"]) for r in active if r.get("path")}
@@ -510,6 +526,7 @@ def gather_sweep(
             seen_branches.add(branch)
         is_primary = primary_path is not None and npath == primary_path
         protected, protected_reason = _protection(is_primary, branch)
+        excluded = exclude_path is not None and npath == exclude_path
         registered = npath in reg_paths or (branch is not None and branch in reg_branches)
         facts = build_facts(
             base, name=branch, detached=detached, worktree_path=path,
@@ -519,7 +536,7 @@ def gather_sweep(
         subjects.append(_subject(
             facts, kind="worktree", worktree_path=path, head_sha=wt.get("head"),
             tracked=registered, registry_status=_registry_status(branch, path),
-            protected=protected, protected_reason=protected_reason,
+            protected=protected, protected_reason=protected_reason, excluded=excluded,
         ))
 
     # 2. local branches with no worktree
@@ -796,7 +813,14 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     state = load_state(state_path)
     records: list[dict[str, Any]] = state["records"]
 
-    subjects, stale = gather_sweep(args.base, now_epoch, args.live_window, records)
+    # --exclude-current: never propose clearing the worktree the sweep runs FROM.
+    # The invoking worktree's root is `git rev-parse --show-toplevel` at cwd (= root
+    # here, since cmd_sweep uses cwd's git context throughout).
+    exclude_path = _norm(str(root)) if args.exclude_current else None
+
+    subjects, stale = gather_sweep(
+        args.base, now_epoch, args.live_window, records, exclude_path=exclude_path
+    )
     clears = [s for s in subjects if s["disposition"] == "CLEAR"]
     keeps = [s for s in subjects if s["disposition"] == "KEEP"]
     mode = "committed" if args.commit else "dry-run"
@@ -984,6 +1008,9 @@ def build_parser() -> argparse.ArgumentParser:
     add_state(sw)
     add_base(sw)
     sw.add_argument("--no-fetch", action="store_true", help="skip git fetch (offline / tests)")
+    sw.add_argument("--exclude-current", action="store_true",
+                    help="never propose clearing the worktree the sweep is invoked FROM "
+                         "(self-exclusion; lets the P3 orchestrator preflight from any worktree)")
     sw.add_argument("--commit", action="store_true", help="execute clearance (default: dry-run)")
     sw.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     sw.set_defaults(func=cmd_sweep)
