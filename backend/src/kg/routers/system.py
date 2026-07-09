@@ -17,6 +17,9 @@ _logger = logging.getLogger(__name__)
 VERSION_FILE = Path("/app/VERSION")
 
 # VERSION cannot change without a process restart, so read it once at import.
+# NOTE: ops/kg_reconcile.sh (the push=deploy reconciler) reads this value via
+# GET /api/system/info to confirm a deploy landed (reported version == target sha)
+# and to cross-check the felix backend/VERSION cursor against the live container.
 _VERSION: str = VERSION_FILE.read_text().strip() if VERSION_FILE.exists() else "unknown"
 
 _STARTED_AT: float = time.time()
