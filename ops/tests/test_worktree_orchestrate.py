@@ -908,3 +908,40 @@ def test_adopt_refuses_unresolvable_base(scratch):
     rc, _res = _run_json(["adopt", "--worktree", str(wt), "--intent", "bad base",
                           "--base", "no/such-ref", "--state", state, "--json"])
     assert rc == MODULE.EXIT_USAGE
+
+
+@gitmark
+def test_sync_main_refuses_merge_in_progress_even_with_clean_porcelain(scratch):
+    # review: MERGE_HEAD is the ONLY load-bearing guard for `merge --no-commit -s
+    # ours` (the ours strategy leaves porcelain clean, so the dirty check alone
+    # would wave it through).
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _git(["checkout", "-q", "-b", "side"], repo)
+    (repo / "side.txt").write_text("side\n")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "side work"], repo)
+    _git(["checkout", "-q", "main"], repo)
+    _git(["merge", "--no-commit", "--no-ff", "-s", "ours", "side"], repo)
+    assert not _git(["status", "--porcelain", "--untracked-files=no"], repo)
+    try:
+        rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "merge is in progress" in json.dumps(res)
+    finally:
+        _git(["merge", "--abort"], repo)
+        _git(["branch", "-D", "side"], repo)
+
+
+@gitmark
+def test_sync_main_refuses_when_fetch_fails(scratch):
+    # review: a dead origin must refuse, not report a stale-snapshot "noop"
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _git(["remote", "set-url", "origin", str(tmp_path / "gone.git")], repo)
+    try:
+        rc, res = _run_json(["sync-main", "--state", state, "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "fetch failed" in json.dumps(res)
+    finally:
+        _git(["remote", "set-url", "origin", str(remote)], repo)

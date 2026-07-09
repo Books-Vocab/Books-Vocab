@@ -696,7 +696,8 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
 
     cur = _current_branch(str(primary))
     if cur != local:
-        return _refuse(f"primary checkout is on {cur!r}, not {local!r} — sync-main "
+        where = "a detached HEAD" if cur is None else f"{cur!r}"
+        return _refuse(f"primary checkout is on {where}, not {local!r} — sync-main "
                        "only ever moves the base branch under the base checkout")
     rc, _ = _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=primary)
     if rc == 0:
@@ -713,21 +714,29 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
         return _refuse("primary working tree is dirty (tracked changes) — a ff moves "
                        "checked-out files; commit/evacuate or restore first")
 
-    _fetch()
-    rc, local_sha = _git(["rev-parse", local], cwd=primary)
-    rc2, base_sha = _git(["rev-parse", base], cwd=primary)
+    frc, fout = _fetch()
+    if frc != 0:
+        # syncing to a stale origin snapshot would report a false "noop"/"ff" —
+        # verification precedes claim, so an unreachable origin refuses outright.
+        return _refuse(f"fetch failed — cannot trust the local {base} snapshot: "
+                       f"{fout[:200]}")
+    # fully-qualified refs: a stray tag named `main` must never shadow the branch
+    local_ref = f"refs/heads/{local}"
+    base_ref = f"refs/remotes/{base}"
+    rc, local_sha = _git(["rev-parse", local_ref], cwd=primary)
+    rc2, base_sha = _git(["rev-parse", base_ref], cwd=primary)
     if rc != 0 or rc2 != 0:
-        return _refuse(f"cannot resolve {local!r}/{base!r}")
+        return _refuse(f"cannot resolve {local_ref!r}/{base_ref!r}")
     if local_sha == base_sha:
         _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "noop",
                "sha": local_sha[:9], "primary": str(primary)}, args.json,
               f"# sync-main: noop — {local} already at {local_sha[:9]}")
         return EXIT_OK
-    rc, _ = _git(["merge-base", "--is-ancestor", local, base], cwd=primary)
+    rc, _ = _git(["merge-base", "--is-ancestor", local_ref, base_ref], cwd=primary)
     if rc != 0:
         return _refuse(f"local {local} has commits {base} lacks — never auto-merged; "
                        "land them via cutover (or resolve the divergence by hand)")
-    _, count = _git(["rev-list", "--count", f"{local}..{base}"], cwd=primary)
+    _, count = _git(["rev-list", "--count", f"{local_ref}..{base_ref}"], cwd=primary)
 
     if not args.commit:
         _emit({"schema": SCHEMA, "step": "sync-main", "verdict": "dry-run",
@@ -737,10 +746,10 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
                f"{base_sha[:9]} ({count} commit(s))\n  (--commit to execute)"))
         return EXIT_OK
 
-    rc, out = _git(["merge", "--ff-only", base], cwd=primary)
+    rc, out = _git(["merge", "--ff-only", base_ref], cwd=primary)
     if rc != 0:
         return _refuse(f"git merge --ff-only failed: {out[:300]}")
-    rc, now_sha = _git(["rev-parse", local], cwd=primary)
+    rc, now_sha = _git(["rev-parse", local_ref], cwd=primary)
     if rc != 0 or now_sha != base_sha:
         return _refuse(f"post-ff verification failed: {local} is at "
                        f"{now_sha[:9] if rc == 0 else '?'}, expected {base_sha[:9]}")
