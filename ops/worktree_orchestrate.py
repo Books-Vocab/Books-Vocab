@@ -249,19 +249,27 @@ def aggregate_verdict(results: list[dict[str, Any]]) -> str:
 # IO layer — git + subprocess to the real gate tools.
 # ============================================================================
 def _git(args: list[str], cwd: Path | str | None = None) -> tuple[int, str]:
-    proc = subprocess.run(
-        ["git", *args], cwd=str(cwd) if cwd else None,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=str(cwd) if cwd else None,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        # cwd can legitimately vanish mid-teardown (resolve removes the worktree the
+        # caller stands in); a captured failure beats an unhandled traceback.
+        return 127, f"cwd unavailable: {exc}"
     out = proc.stdout.strip()
     if proc.returncode != 0 and proc.stderr.strip():
         out = (out + "\n" + proc.stderr.strip()).strip()
     return proc.returncode, out
 
 
-def repo_root() -> Path:
-    rc, out = _git(["rev-parse", "--show-toplevel"])
-    return Path(out) if rc == 0 else Path.cwd()
+def primary_root() -> Path:
+    """The MAIN working tree's root (dirname of the git common dir). Stable no matter
+    which linked worktree the process stands in — the only safe anchor for open's
+    worktree placement and for teardown commands that may remove the caller's own cwd
+    (resolve from inside the target worktree)."""
+    return wr.common_anchor()
 
 
 def _norm(p: str) -> str:
@@ -372,7 +380,7 @@ def _run_verified_against(worktree: str, files: list[str]) -> dict[str, Any]:
     return {"status": "pass", "rc": 0, "summary": f"verified_against reachable ({checked} checked)"}
 
 
-def _run_gate(spec: dict[str, Any], worktree: str, root: Path) -> dict[str, Any]:
+def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
     """Execute ONE planned gate against the worktree and return a result record."""
     name, level = spec["name"], spec["level"]
     result = {"name": name, "category": spec["category"], "level": level}
@@ -446,7 +454,7 @@ def cmd_open(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     branch = branch_for(args.intent, args.slug)
-    root = repo_root()
+    root = primary_root()
     path = root / ".claude" / "worktrees" / args.slug
     base = args.base
 
@@ -481,13 +489,12 @@ def cmd_gate(args: argparse.Namespace) -> int:
               args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
-    root = repo_root()
     changed = _changed_vs_base(worktree, args.base)
     plan = plan_gates(changed)
     results: list[dict[str, Any]] = []
     if not args.plan_only:
         for spec in plan:
-            results.append(_run_gate(spec, worktree, root))
+            results.append(_run_gate(spec, worktree))
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
     head = _head_sha(worktree)
@@ -610,7 +617,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                   f"✗ resolve refused: {reason}")
             return EXIT_BLOCK
 
-    root = repo_root()
+    # teardown MUST run from the primary root: step 1 removes the target worktree,
+    # which may be the very directory this process was invoked from.
+    root = primary_root()
     steps: list[dict[str, Any]] = []
 
     def _plan(label: str, gargs: list[str], cwd: Path) -> None:
