@@ -78,13 +78,12 @@ private struct StatsViewExpectedShape {
     let reviewRecords: Count
 }
 
-private enum StatsViewTime {
-    /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
-    /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
-    /// this group's reference PNGs drift on every capture). All review records and
-    /// the seeded summary derive from this anchor — precedent:
-    /// `VocabCalendarGridScenarios.fixedMonth()`.
-    static let fixedNow: Date = {
+/// Internal (not private) so unit tests can pin the anchor derivation.
+enum StatsViewTime {
+    /// Deterministic fallback anchor for seeds with no review events（statsEmpty）
+    /// — nothing to derive from, and wall-clock `Date()` would re-introduce
+    /// snapshot drift.
+    static let emptySeedFallback: Date = {
         var comps = DateComponents()
         comps.year = 2026
         comps.month = 6
@@ -92,6 +91,17 @@ private enum StatsViewTime {
         comps.hour = 12
         return Calendar.current.date(from: comps) ?? Date()
     }()
+
+    /// Frozen "today" so streak / heatmap / forecast snapshots stay stable across
+    /// catalog re-runs (the presenter is otherwise `Date()`-relative, which made
+    /// this group's reference PNGs drift on every capture). Derived from the
+    /// seed's latest review event (noon of that day): a hard-coded date left the
+    /// 「複習預測/今日到期」 cards permanently 0 once the seed narrative anchored
+    /// on a different day.
+    static func anchor(latestReviewedAt: Date?) -> Date {
+        guard let latest = latestReviewedAt else { return emptySeedFallback }
+        return Calendar.current.date(bySettingHour: 12, minute: 0, second: 0, of: latest) ?? latest
+    }
 }
 
 // MARK: - Scene harness
@@ -101,6 +111,7 @@ private enum StatsViewTime {
 private struct StatsViewScene: View {
     let container: ModelContainer
     let initialSummary: StatsPresentation.Summary
+    private let frozenStore: ReviewSettingsStore
 
     init(fixture: StatsViewFixture) {
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
@@ -124,13 +135,15 @@ private struct StatsViewScene: View {
                 fixtureID: fixture.vocabularyID
             )
 
+            let frozenNow = StatsViewTime.anchor(latestReviewedAt: records.map(\.reviewedAt).max())
             self.container = container
             self.initialSummary = StatsPresentation.buildSummary(
                 from: visibleEntries,
                 reviewRecords: records,
                 forecastDays: 14,
-                now: StatsViewTime.fixedNow
+                now: frozenNow
             )
+            self.frozenStore = Self.makeFrozenStore(now: frozenNow)
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for Stats View catalog: \(error)")
         }
@@ -149,18 +162,19 @@ private struct StatsViewScene: View {
         // `reviewSettingsStore.settings.reviewReferenceDate()` as "now", which is
         // live `Date()` unless progress is paused — that recompute would override
         // the frozen `initialSummary` and re-introduce date drift. Inject a paused
-        // store anchored at `fixedNow` so the live recompute is deterministic too.
-        .environment(\.reviewSettingsStore, StatsViewScene.frozenStore)
+        // store anchored at the seed-derived frozen now so the live recompute is
+        // deterministic too.
+        .environment(\.reviewSettingsStore, frozenStore)
     }
 
-    /// A paused `ReviewSettingsStore` whose reference date is pinned to
-    /// `StatsViewTime.fixedNow`, making the presenter's `@Query`-driven
+    /// A paused `ReviewSettingsStore` whose reference date is pinned to the
+    /// seed-derived frozen now, making the presenter's `@Query`-driven
     /// summary recompute deterministic across catalog runs.
-    private static let frozenStore: ReviewSettingsStore = {
+    private static func makeFrozenStore(now: Date) -> ReviewSettingsStore {
         var settings = ReviewSettings.default
         settings.isProgressPaused = true
-        settings.progressPausedAt = StatsViewTime.fixedNow
+        settings.progressPausedAt = now
         return ReviewSettingsStore(previewSettings: settings)
-    }()
+    }
 }
 #endif

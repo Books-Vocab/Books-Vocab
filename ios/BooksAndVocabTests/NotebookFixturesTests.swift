@@ -1,5 +1,6 @@
 #if DEBUG
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -147,6 +148,70 @@ import Testing
         try await FixtureDatasetStore.withTestingData(Self.marketingDemoData) {
             let model = NotebookFixtures.renderModel(for: .empty)
             #expect(model.notebooks.isEmpty)
+        }
+    }
+
+    @MainActor
+    @Test func notebookEntriesApplyOptionalReviewSchedulingSeed() async throws {
+        // Data-plane fix: notebook entry 可帶 optional review scheduling 欄位，
+        // materialize 進 VocabularyEntry 後 NotebookStatsCalculator 才能算出
+        // due/unlearned/reviewed 徽章與進度條；不帶欄位的 entry 行為不變。
+        var topLevel = try #require(try JSONSerialization.jsonObject(with: Self.marketingDemoData) as? [String: Any])
+        var notebookDomain = try #require(topLevel["notebook"] as? [String: Any])
+
+        // 先把所有 notebook entry 的 review 欄位拔掉（確定性 baseline），
+        // 再只給 populated.notebooks[0].entries[0] 注入 review scheduling。
+        for (fixtureID, rawSeed) in notebookDomain {
+            var seed = try #require(rawSeed as? [String: Any])
+            var notebooks = try #require(seed["notebooks"] as? [[String: Any]])
+            for rowIndex in notebooks.indices {
+                var entries = try #require(notebooks[rowIndex]["entries"] as? [[String: Any]])
+                for entryIndex in entries.indices {
+                    for key in ["reviewIntervalHours", "nextReviewAt", "lastReviewedAt", "reviewCount"] {
+                        entries[entryIndex].removeValue(forKey: key)
+                    }
+                }
+                notebooks[rowIndex]["entries"] = entries
+            }
+            seed["notebooks"] = notebooks
+            notebookDomain[fixtureID] = seed
+        }
+
+        var populated = try #require(notebookDomain[NotebookFixtureID.populated.rawValue] as? [String: Any])
+        var notebooks = try #require(populated["notebooks"] as? [[String: Any]])
+        var entries = try #require(notebooks[0]["entries"] as? [[String: Any]])
+        let word = try #require(entries[0]["word"] as? String)
+        let remoteId = try #require(notebooks[0]["remoteId"] as? String)
+        entries[0]["reviewCount"] = 4
+        entries[0]["reviewIntervalHours"] = 48.0
+        entries[0]["nextReviewAt"] = "2026-07-08T00:00:00Z"
+        entries[0]["lastReviewedAt"] = "2026-07-06T12:00:00Z"
+        notebooks[0]["entries"] = entries
+        populated["notebooks"] = notebooks
+        notebookDomain[NotebookFixtureID.populated.rawValue] = populated
+        topLevel["notebook"] = notebookDomain
+        let mutated = try JSONSerialization.data(withJSONObject: topLevel)
+
+        try await FixtureDatasetStore.withTestingData(mutated) {
+            let model = NotebookFixtures.renderModel(for: .populated)
+            let allEntries = try model.container.mainContext.fetch(FetchDescriptor<VocabularyEntry>())
+            let target = try #require(allEntries.first { $0.word == word && $0.notebookId == remoteId })
+
+            #expect(target.reviewCount == 4)
+            #expect(target.reviewIntervalHours == 48.0)
+            #expect(target.nextReviewAt == AppDateFormatters.parseISO8601("2026-07-08T00:00:00Z"))
+            #expect(target.lastReviewedAt == AppDateFormatters.parseISO8601("2026-07-06T12:00:00Z"))
+
+            // review 欄位缺席的 entry 行為不變：reviewCount 0 / lastReviewedAt nil。
+            let untouched = try #require(allEntries.first { $0.word != word && $0.notebookId == remoteId })
+            #expect(untouched.reviewCount == 0)
+            #expect(untouched.lastReviewedAt == nil)
+
+            // NotebookStatsCalculator 對 seeded scheduling 的判定：唯一 due 卡
+            // （其餘 entry reviewCount == 0 → unlearned，不吃牆鐘）。
+            let now = try #require(AppDateFormatters.parseISO8601("2026-07-09T00:00:00Z"))
+            let stats = NotebookStatsCalculator.compute(allEntries, pendingEntries: [], now: now)
+            #expect(stats[remoteId]?.dueCount == 1)
         }
     }
 

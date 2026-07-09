@@ -33,8 +33,9 @@ enum ReviewActivityLog {
 
     // MARK: - Queries (from SwiftData)
 
-    static func activity(for days: Int = 180, records: [ReviewRecord]) -> [String: Int] {
-        let cutoff = calendar.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+    /// `now` 可注入（catalog / 測試凍結時鐘）；預設牆鐘。
+    static func activity(for days: Int = 180, records: [ReviewRecord], now: Date = Date()) -> [String: Int] {
+        let cutoff = calendar.date(byAdding: .day, value: -days, to: now) ?? now
         let cutoffKey = dayFormatter.string(from: cutoff)
         var result: [String: Int] = [:]
         for record in records where record.dayKey >= cutoffKey {
@@ -44,18 +45,19 @@ enum ReviewActivityLog {
     }
 
     /// Compute both streaks in a single pass over the records (one `groupByDay`).
-    static func streaks(records: [ReviewRecord]) -> (current: Int, longest: Int) {
+    /// `now` 只影響 current streak 的錨點；longest 與時鐘無關。
+    static func streaks(records: [ReviewRecord], now: Date = Date()) -> (current: Int, longest: Int) {
         let grouped = groupByDay(records)
         return (
-            current: computeCurrentStreak(grouped: grouped),
+            current: computeCurrentStreak(grouped: grouped, now: now),
             longest: computeLongestStreak(grouped: grouped)
         )
     }
 
     // MARK: - Streak internals
 
-    private static func computeCurrentStreak(grouped: [String: Int]) -> Int {
-        let today = Date()
+    private static func computeCurrentStreak(grouped: [String: Int], now: Date) -> Int {
+        let today = now
         var streak = 0
         for offset in 0... {
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { break }
@@ -95,8 +97,8 @@ enum ReviewActivityLog {
         return longest
     }
 
-    static func reviewedToday(records: [ReviewRecord]) -> Int {
-        let todayKey = dayFormatter.string(from: Date())
+    static func reviewedToday(records: [ReviewRecord], now: Date = Date()) -> Int {
+        let todayKey = dayFormatter.string(from: now)
         return records.filter { $0.dayKey == todayKey }.count
     }
 

@@ -238,6 +238,15 @@ NOTEBOOK_CARD_STATE_KEYS = {
     "isActive",
 }
 NOTEBOOK_EDIT_STATE_KEYS = {"id", "mode", "name", "color", "coverPattern", "coverImageAssetRef"}
+# Optional review scheduling 欄位（Swift NotebookEntrySeed decodeIfPresent 對齊）：
+# baseline-kept notebook fixture 可不帶；帶了才餵 NotebookStatsCalculator 的
+# due/unlearned/reviewed 徽章與進度條。
+NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS = {
+    "reviewIntervalHours",
+    "nextReviewAt",
+    "lastReviewedAt",
+    "reviewCount",
+}
 NOTEBOOK_ENTRY_KEYS = {
     "word",
     "translation",
@@ -250,6 +259,7 @@ NOTEBOOK_ENTRY_KEYS = {
     "partOfSpeech",
     "bookTitle",
     "chapterTitle",
+    *NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS,
 }
 VOCABULARY_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "bookTitle", "entries", "reviewHistory"}
 REVIEW_DECK_SEED_KEYS = {"notebookRemoteId", "notebookName", "notebookSyncStatus", "entries"}
@@ -531,9 +541,17 @@ def _require_ref(ref: Any, *, prefix: str, refs: set[str], owner: str, label: st
     return value
 
 
-def _validate_exact_keys(value: Mapping[str, Any], *, expected: set[str], owner: str, label: str) -> None:
+def _validate_exact_keys(
+    value: Mapping[str, Any],
+    *,
+    expected: set[str],
+    optional: set[str] | None = None,
+    owner: str,
+    label: str,
+) -> None:
+    """`expected` 是允許的完整 key set；`optional`（⊆ expected）可缺席但不可未知。"""
     keys = set(value)
-    missing = sorted(expected - keys)
+    missing = sorted(expected - (optional or set()) - keys)
     extra = sorted(keys - expected)
     if missing or extra:
         raise UIWorldManifestError(f"{label} {owner} keys 不符合 UI World v2: extra={extra} missing={missing}")
@@ -758,7 +776,13 @@ def _validate_seed_graph_links(
 
 
 def _validate_notebook_entry(seed: Mapping[str, Any], *, owner: str, label: str) -> str:
-    _validate_exact_keys(seed, expected=NOTEBOOK_ENTRY_KEYS, owner=owner, label=label)
+    _validate_exact_keys(
+        seed,
+        expected=NOTEBOOK_ENTRY_KEYS,
+        optional=NOTEBOOK_ENTRY_OPTIONAL_REVIEW_KEYS,
+        owner=owner,
+        label=label,
+    )
     word = _ensure_str(seed.get("word"), field=f"{owner}.word", label=label).strip()
     _ensure_str(seed.get("translation"), field=f"{owner}.translation", label=label)
     _ensure_str(seed.get("context"), field=f"{owner}.context", label=label)
@@ -767,6 +791,14 @@ def _validate_notebook_entry(seed: Mapping[str, Any], *, owner: str, label: str)
         value = seed.get(field)
         if value is not None:
             _ensure_str(value, field=f"{owner}.{field}", label=label)
+    interval = seed.get("reviewIntervalHours")
+    if interval is not None and (isinstance(interval, bool) or not isinstance(interval, (int, float)) or interval < 0):
+        raise UIWorldManifestError(f"{label} {owner}.reviewIntervalHours must be null or a non-negative number")
+    for field in ("nextReviewAt", "lastReviewedAt"):
+        _validate_optional_iso8601(seed.get(field), owner=f"{owner}.{field}", label=label)
+    review_count = seed.get("reviewCount")
+    if review_count is not None and _ensure_int(review_count, field=f"{owner}.reviewCount", label=label) < 0:
+        raise UIWorldManifestError(f"{label} {owner}.reviewCount must be non-negative")
     _validate_vocabulary_row_state(seed, owner=owner, label=label)
     return word
 
