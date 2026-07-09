@@ -29,6 +29,7 @@ DEFAULT_TESTS=(
   deploy-smoke
   infra-health
   branch-audit
+  worktree-orchestrator
   review-audit
   capability-matrix
   ui-deadcode
@@ -81,6 +82,12 @@ run_one() {
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
+    worktree-orchestrator)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_worktree_orchestrate.py \
+        ops/tests/test_worktree_registry.py \
+        ops/tests/test_worktree_state.py
+      ;;
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_capability_matrix.py
