@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ops/
-verified_against: f0d37ca4
+verified_against: 8da8c5516
 -->
 # System Runbook
 
@@ -50,13 +50,15 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 4. Record incident summary and update runbook docs.
 
 ### C) Worktree Lifecycle
-Worktree health is a **process-internal invariant**, not a periodic cleanup chore. Isolated worktrees are driven by the `worktree-flow` skill orchestrating `ops/worktree_orchestrate.py` (`preflight` / `open` / `gate` / `cutover` / `resolve`); each worktree lands via `cutover` and self-cleans via `resolve`. (The former `converge` / `cleanup` / `promote` sweep methodology is retired — its function is now subsumed by this in-flow invariant.)
+Worktree health is a **process-internal invariant**, not a periodic cleanup chore. Isolated worktrees are driven by the `worktree-flow` skill orchestrating `ops/worktree_orchestrate.py` (`preflight` / `open` / `adopt` / `gate` / `cutover` / `resolve` / `sync-main` / `freeze`); each worktree lands via `cutover` and self-cleans via `resolve`. (The former `converge` / `cleanup` / `promote` sweep methodology is retired — its function is now subsumed by this in-flow invariant.)
 1. `preflight` = `git fetch` + `worktree_registry sweep` (conservative shapes only: dangling-landed / detached-orphan / registry-resolved). It collects crash residue left *outside* the flow; the base branch and the primary worktree are absolutely protected.
-2. `open` births the worktree + branch and registers it (registry born→resolved ledger + orphan sentinel).
+2. `open` births the worktree + branch and registers it (registry born→resolved ledger + orphan sentinel). `adopt` backfills the registration for a worktree created out-of-band (bootstrap fallback: a bare `git worktree add` needs no tooling); it registers the worktree root and anchors the ledger on the target's git-common-dir.
 3. `gate` diffs the worktree vs `origin/main`, routes changes to existing gate tools, and records a `verdict` bound to worktree + HEAD. `block` must be fixed; `warn` is advisory.
-4. `cutover` requires a **fresh non-block verdict** for the current HEAD, then fetch → rebase onto `origin/main` → ff-push `HEAD:main`. Landing in `main` ≠ deploying.
+4. `cutover` requires a **fresh non-block verdict** for the current HEAD, then fetch → rebase onto `origin/main` → ff-push `HEAD:main`. Push=deploy: the felix reconciler auto-deploys `backend/**` changes that land on `origin/main` (health gate + auto-rollback; see §Deploy) — landing backend work IS deploying it; non-backend landings never touch production.
 5. `resolve` enforces a **landed-floor** (unlanded branches are refused; `--force` to override), then registry-resolves, removes the worktree, deletes the branch (local + remote if present), and drops the gate-record cache.
-6. All mutation subcommands are dry-run by default; `--commit` to land. `deploy` to production is a separate gate requiring explicit user consent (never part of auto-cutover).
+6. `sync-main` = guarded **lossless** ff of the primary checkout's local `main` (refuses unless tracked-clean + on `main` with no merge/rebase in flight + strictly behind origin; a diverged main is never auto-merged — land unique commits via `cutover`). Cures primary-checkout rot (stale toolchain).
+7. `freeze on --reason <surgery>` = stop-the-world lock for repo surgery (history rewrite / aggressive gc / shared hooks-config): while frozen, `open`/`adopt`/`cutover`/`sync-main` refuse; draining steps (`resolve`/`sweep`/`preflight`/`gate`) stay allowed. Drain to zero active worktrees → back up refs → operate → verify → `freeze off`.
+8. All mutation subcommands are dry-run by default; `--commit` to land.
 
 ## Operational Definition of Done
 - `preflight` succeeded.

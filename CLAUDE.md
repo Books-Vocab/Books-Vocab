@@ -104,7 +104,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發到 merge 進 main | 隔離工作樹 intent→cutover 全流程，編排 `ops/worktree_orchestrate.py` 原語（preflight/open/gate/cutover/resolve）。工作樹健康是**流程內生不變式**：每條 worktree 完成即 cutover 即 resolve 即自清，preflight 的 sweep 收流程外的崩潰殘骸。（**已退役** `converge`/`promote`：其事後大掃除語意已被本流程完全 subsume。） |
+| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發到 merge 進 main；任務宣稱「需要在 main 上做」 | 隔離工作樹 intent→cutover 全流程，編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/cutover/resolve/sync-main/freeze）。工作樹健康是**流程內生不變式**：每條 worktree 完成即 cutover 即 resolve 即自清，preflight 的 sweep 收流程外的崩潰殘骸。「需要 main」路由：bootstrap 悖論→`adopt`、primary 落後→`sync-main`（受護欄無損 ff）、repo 手術→`freeze`。（**已退役** `converge`/`promote`：其事後大掃除語意已被本流程完全 subsume。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
