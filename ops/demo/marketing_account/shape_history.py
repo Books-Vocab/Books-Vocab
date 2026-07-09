@@ -285,9 +285,13 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     learned_primary = [c for c in learned if c["notebook"] == primary]
     learned_other = [c for c in learned if c["notebook"] != primary]
     days = narrative.narrative_days
-    if len(learned_primary) < len(days):
+    # due 卡被 _scatter_due 攤出 non_due 覆蓋池 → 每日覆蓋由 non_due 保證，
+    # 故前置檢查扣掉 due_primary（真實需求 = 非 due 的 primary 卡 ≥ 敘事日數）。
+    non_due_primary = len(learned_primary) - narrative.due_primary
+    if non_due_primary < len(days):
         raise HistoryShapeError(
-            f"primary notebook {primary!r} 已學卡 {len(learned_primary)} 張 < 敘事日數 "
+            f"primary notebook {primary!r} 非 due 已學卡 {non_due_primary} 張 "
+            f"（{len(learned_primary)} − due {narrative.due_primary}）< 敘事日數 "
             f"{len(days)}：無法保證每日覆蓋（調小 plan streak 參數或擴充 spec）")
 
     # -- 1. 先定 due 集合與所有 next（與敘事日無關，純 content hash） ---------- #
@@ -352,18 +356,57 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
 
     day_weights = [narrative.weights[d.weekday()] for d in days]
 
+    # -- 2a. due 卡確定式散佈：last_dt 均勻落在 [days[0], anchor-3]，使 interval ----
+    #    自然分佈（非全部擠在窗口上界）。first-fit 早日優先曾把所有 due 卡塞到
+    #    最舊敘事日 → interval 全群聚。改為預置散佈：按 content hash 排序後線性
+    #    映射到合法窗的等距目標日，逐張 _try_place（含 forbidden 迴避 + 目標日
+    #    撞牆時往鄰日退讓）。散佈後 due 卡已 _register，first-fit 只填 non-due。
+    def _search_order(count: int):
+        yield 0
+        for radius in range(1, count):
+            yield radius
+            yield -radius
+
+    def _scatter_due(group_due: list[dict[str, Any]], label: str) -> None:
+        if not group_due:
+            return
+        eligible = [d for d in days if d <= narrative.anchor - timedelta(days=3)]
+        if not eligible:
+            raise HistoryShapeError(f"{label} 無合法 due 敘事日（anchor-3 之前無敘事日）")
+        ranked = sorted(
+            group_due, key=lambda c: (_u64("duescatter", c["content"]), c["content"]))
+        n, m = len(ranked), len(eligible)
+        for k, card in enumerate(ranked):
+            # k ∈ [0,n-1] → 等距映射到 eligible index ∈ [0,m-1]（round-half-up）
+            target = 0 if n == 1 else (2 * k * (m - 1) + (n - 1)) // (2 * (n - 1))
+            placed = False
+            for delta in _search_order(m):
+                j = target + delta
+                if 0 <= j < m:
+                    last_dt = _try_place(card, eligible[j])
+                    if last_dt is not None:
+                        _register(card, last_dt, next_by_word[card["content"]])
+                        placed = True
+                        break
+            if not placed:
+                raise HistoryShapeError(
+                    f"{label} due 卡 {card['content']!r} 無合法敘事日可散佈"
+                    f"（{m} 個候選日全撞斷檔日）")
+
     def _assign(group: list[dict[str, Any]], minimum: int, label: str) -> None:
-        capacities = _largest_remainder(day_weights, len(group), minimum)
-        queue = sorted(group, key=lambda c: (_u64("day", c["content"]), c["content"]))
+        # due 卡已由 _scatter_due 預置 → 這裡只排 non-due（coverage 靠 non-due
+        # minimum 保證，due 卡是其所在日的額外事件，不減損任何敘事日覆蓋）。
+        non_due = [c for c in group if c["content"] not in due_words]
+        if minimum > 0 and len(non_due) < len(days):
+            raise HistoryShapeError(
+                f"{label} non-due 已學卡 {len(non_due)} 張 < 敘事日數 {len(days)}："
+                "無法保證每日覆蓋（調小 plan streak 參數或擴充 spec）")
+        capacities = _largest_remainder(day_weights, len(non_due), minimum)
+        queue = sorted(non_due, key=lambda c: (_u64("day", c["content"]), c["content"]))
         for d, cap in zip(days, capacities):
             for _ in range(cap):
                 placed_at = None
-                # due 卡只能落在 anchor-3 之前 → 早日優先消化 due 卡，
-                # 避免 first-fit 把它們擱淺到尾端不合法的日子。
-                order = sorted(
-                    range(len(queue)),
-                    key=lambda i: (queue[i]["content"] not in due_words, i))
-                for i in order:
+                for i in range(len(queue)):
                     last_dt = _try_place(queue[i], d)
                     if last_dt is not None:
                         _register(queue[i], last_dt, next_by_word[queue[i]["content"]])
@@ -377,6 +420,8 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         if queue:  # _largest_remainder 保證和相等，這裡防禦性檢查
             raise HistoryShapeError(f"{label} 有 {len(queue)} 張卡未分配到敘事日")
 
+    _scatter_due([c for c in learned_primary if c["content"] in due_words], "primary")
+    _scatter_due([c for c in learned_other if c["content"] in due_words], "other")
     _assign(learned_primary, minimum=1, label="primary")
     if learned_other:
         _assign(learned_other, minimum=0, label="other")
