@@ -723,3 +723,149 @@ def test_spec_mode_end_to_end_from_world_export(tmp_path):
     [(_, fresh)] = emit_ios._spec_artifacts(
         bundle, spec_path=spec_path, out_path=out_path)
     assert out_path.read_bytes() == fresh
+
+
+# --------------------------------------------------------------------------- #
+# review-clock freeze overlay（行銷帳號世界確定式凍結在 anchor）
+# --------------------------------------------------------------------------- #
+MARKETING_PLAN_PATH = DEMO_DIR / "marketing_account" / "history_plan.json"
+
+
+def _marketing_plan() -> dict:
+    return json.loads(MARKETING_PLAN_PATH.read_text(encoding="utf-8"))
+
+
+def _freeze_dt_from_plan(plan: dict):
+    from datetime import date, datetime, timedelta, timezone
+    anchor = date.fromisoformat(str(plan["anchor_day"]))
+    max_offset = max(plan["render_utc_offset_hours"])
+    base = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
+    return base + timedelta(hours=24 - max_offset) - timedelta(seconds=1)
+
+
+def test_review_clock_freeze_matches_known_marketing_epoch():
+    """marketing plan（anchor 2026-07-09、offsets [9,8]）→ 2026-07-09T14:59:59Z。"""
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    assert int(freeze.timestamp()) == 1783609199
+    assert freeze.isoformat() == "2026-07-09T14:59:59+00:00"
+
+
+def test_review_clock_freeze_overlays_both_stores(tmp_path):
+    """(a) emit with freeze → preferences 兩 store 都 paused@epoch（含新增 paused_at）。"""
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    epoch = int(freeze.timestamp())
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    [(_, content)] = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
+        review_clock_frozen_at=freeze)
+    doc = json.loads(content)
+    baseline = _baseline()
+    for store in ("userDefaults", "ubiquitousKeyValueStore"):
+        s = doc["preferences"][store]
+        assert s["review_settings_progress_paused"] is True
+        assert s["review_settings_progress_paused_at"] == epoch
+        assert s["review_settings_progress_updated_at"] == epoch
+        # 只有時鐘 key 偏離：其餘 key 與 baseline byte-equal
+        for k, v in baseline["preferences"][store].items():
+            if k in emit_ios.REVIEW_CLOCK_OVERLAY_KEYS:
+                continue
+            assert s[k] == v, f"non-clock preferences.{store}.{k} drifted"
+    # LWW：freeze epoch 晚於 baseline updated_at 故勝
+    assert epoch > baseline["preferences"]["userDefaults"]["review_settings_progress_updated_at"]
+
+
+def test_review_clock_unfrozen_preferences_byte_equal_baseline(tmp_path):
+    """(b) emit 無 freeze → preferences byte-equal baseline（回歸不破，向後相容）。"""
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    [(_, content)] = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
+    doc = json.loads(content)
+    assert doc["preferences"] == _baseline()["preferences"]
+
+
+def test_review_clock_validator_blocks_non_clock_preferences_drift(tmp_path):
+    """(c) validator 仍擋非時鐘 key 的 preferences 偏離（精準守住只有時鐘可變）。"""
+    bundle = sot.load_sot()
+    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    doc, _stats = emit_ios._build_spec_fixture_document(
+        bundle, spec, review_clock_frozen_at=freeze)
+    baseline = emit_ios._load_base_ui_world()
+    # 合法凍結世界 + 一個 rogue 非時鐘 preferences 改動 → 必 raise
+    tampered = dict(doc["preferences"])
+    ud = dict(tampered["userDefaults"])
+    ud["auto_sync_enabled"] = not ud["auto_sync_enabled"]
+    tampered["userDefaults"] = ud
+    doc = dict(doc)
+    doc["preferences"] = tampered
+    with pytest.raises(ValueError, match="non-clock preferences"):
+        emit_ios._validate_fixture_document(
+            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True)
+
+
+def test_review_clock_validator_blocks_rogue_added_preferences_key(tmp_path):
+    """(c') 新增非時鐘 preferences key 也要 raise（不可整域放行）。"""
+    bundle = sot.load_sot()
+    spec = spec_world.load_seed_spec(_write_spec(tmp_path, _small_spec()))
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    doc, _stats = emit_ios._build_spec_fixture_document(
+        bundle, spec, review_clock_frozen_at=freeze)
+    baseline = emit_ios._load_base_ui_world()
+    tampered = dict(doc["preferences"])
+    ud = dict(tampered["userDefaults"])
+    ud["rogue_injected_key"] = 42
+    tampered["userDefaults"] = ud
+    doc = dict(doc)
+    doc["preferences"] = tampered
+    with pytest.raises(ValueError, match="non-clock preferences"):
+        emit_ios._validate_fixture_document(
+            doc, baseline, spec_domains=emit_ios.SPEC_DOMAINS, review_clock_frozen=True)
+
+
+def test_review_clock_freeze_deterministic(tmp_path):
+    """(d) 同 plan 重跑 → 同 epoch、byte-stable。"""
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    first = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "a.json",
+        review_clock_frozen_at=freeze)[0][1]
+    second = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "b.json",
+        review_clock_frozen_at=freeze)[0][1]
+    assert first == second
+
+
+def test_emit_rejects_freeze_without_spec_mode(tmp_path):
+    """freeze 只在 spec 模式支援（baseline 模式傳入應 fail-loud）。"""
+    bundle = sot.load_sot()
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    with pytest.raises(ValueError, match="spec mode"):
+        emit_ios.emit(bundle, review_clock_frozen_at=freeze)
+
+
+def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
+    """build_demo emit-ios --plan → world 凍結；--plan 無 --spec 應報錯。"""
+    spec_path = _write_spec(tmp_path, _small_spec())
+    out_path = tmp_path / "frozen_cli.json"
+    rc = build_demo.main(["emit-ios", "--spec", str(spec_path),
+                          "--plan", str(MARKETING_PLAN_PATH),
+                          "--out", str(out_path), "--commit", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == 0, payload
+    assert out_path.exists()
+    epoch = int(_freeze_dt_from_plan(_marketing_plan()).timestamp())
+    doc = json.loads(out_path.read_text(encoding="utf-8"))
+    for store in ("userDefaults", "ubiquitousKeyValueStore"):
+        s = doc["preferences"][store]
+        assert s["review_settings_progress_paused"] is True
+        assert s["review_settings_progress_paused_at"] == epoch
+        assert s["review_settings_progress_updated_at"] == epoch
+
+    # --plan without --spec → error, non-zero
+    rc2 = build_demo.main(["emit-ios", "--plan", str(MARKETING_PLAN_PATH), "--json"])
+    payload2 = json.loads(capsys.readouterr().out)
+    assert rc2 == 1
+    assert "requires --spec" in payload2["error"]
