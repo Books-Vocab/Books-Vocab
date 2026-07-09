@@ -1,6 +1,6 @@
 """Unit tests for ops/lib/worktree_state.py — the pure worktree-health判定層.
 
-House pattern (mirrors ops/tests/test_converge_board.py): load the module under
+House pattern (mirrors the retired ops/tests/test_converge_board.py): load the module under
 test with importlib.spec_from_file_location and feed the pure functions a
 synthetic `facts` dict — exactly what the (future) IO layer would gather from
 read-only git. No git, no subprocess, no filesystem — pure.
@@ -151,7 +151,7 @@ def test_dirty_beats_looks_merged():
 
 
 def test_dirty_beats_detached_orphan():
-    # deliberate divergence from converge_board: a detached DIRTY worktree is
+    # deliberate divergence from the retired converge_board: a detached DIRTY worktree is
     # DIRTY (snapshot first), NOT ORPHAN — else its uncommitted work is lost.
     f = _facts(name=None, detached=True, dirty=True)
     assert classify(f) is State.DIRTY
