@@ -471,8 +471,21 @@ import Playbook
             "Knowledge Graph catalog must disable remote graph task"
         )
         #expect(
-            source.contains("summary.cardId"),
-            "Knowledge Graph catalog graph links must be derived from UI World graphLinksByKind"
+            source.contains("UIWorldGraphLinks.makeGraphLinks(from: visibleEntries"),
+            "Knowledge Graph catalog graph links must be derived via the shared UI World link builder"
+        )
+
+        // The shared builder (also consumed by Stats View 關聯圖) is where the
+        // graphLinksByKind derivation + integrity fail-fasts now live.
+        let linkBuilder = debugDirectory.appendingPathComponent("UIWorldGraphLinks.swift")
+        let builderSource = try String(contentsOf: linkBuilder, encoding: .utf8)
+        #expect(
+            builderSource.contains("graphLinksByKind") && builderSource.contains("summary.cardId"),
+            "UIWorldGraphLinks must derive links from UI World graphLinksByKind rows"
+        )
+        #expect(
+            builderSource.contains("preconditionFailure"),
+            "UIWorldGraphLinks must fail fast on dataset integrity violations"
         )
     }
 
@@ -649,6 +662,28 @@ import Playbook
         #expect(
             source.contains("FetchDescriptor<ReviewRecord>()"),
             "Stats View catalog must validate UI World reviewHistory materialized as ReviewRecord rows"
+        )
+
+        // 關聯圖 thumbnail wiring (mirrors the Knowledge Graph View contract):
+        // links must come from the UI World manifest via the shared builder,
+        // be injected through the DEBUG init with the remote task disabled,
+        // and the snapshot freezer must be conditionally armed off the SAME
+        // link array (isActive and injected state cannot diverge).
+        #expect(
+            source.contains("UIWorldGraphLinks.makeGraphLinks("),
+            "Stats View catalog graph links must be derived via the shared UI World link builder"
+        )
+        #expect(
+            source.contains("initialGraphLinks: graphLinks"),
+            "Stats View catalog must inject manifest-derived graph links"
+        )
+        #expect(
+            source.contains("shouldLoadGraphData: false"),
+            "Stats View catalog must disable the remote graph task"
+        )
+        #expect(
+            source.contains("CatalogGraphSnapshotScene(context: context, isActive: scene.hasGraphLinks)"),
+            "Stats View populated scene must arm the snapshot freezer iff the seed carries graph links"
         )
     }
 

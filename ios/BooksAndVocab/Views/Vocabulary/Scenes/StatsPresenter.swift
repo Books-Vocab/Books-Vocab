@@ -39,11 +39,17 @@ struct StatsPresenter: View {
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
+    /// Whether the graph `.task` may fetch links (demo/remote). Always true in
+    /// production; the DEBUG catalog init disables it and injects links
+    /// directly (mirrors `KnowledgeGraphView`'s DEBUG entry point).
+    private let shouldLoadGraphData: Bool
+
     init(
         filter: NotebookFilter = NotebookFilter(),
         initialSummary: StatsPresentation.Summary? = nil
     ) {
         self.filter = filter
+        self.shouldLoadGraphData = true
         _summary = State(initialValue: initialSummary)
         _contentReady = State(initialValue: initialSummary != nil)
         let cutoff = Self.sixMonthsAgo
@@ -53,6 +59,30 @@ struct StatsPresenter: View {
             order: .reverse
         )
     }
+
+#if DEBUG
+    /// Catalog/preview-only entry: injects the 關聯圖 card's links directly
+    /// (UI World manifest-derived) and disables the remote graph `.task`, so
+    /// snapshots never depend on network, demo mode, or auth session state.
+    init(
+        filter: NotebookFilter = NotebookFilter(),
+        initialSummary: StatsPresentation.Summary? = nil,
+        initialGraphLinks: [KGGraphLink],
+        shouldLoadGraphData: Bool
+    ) {
+        self.filter = filter
+        self.shouldLoadGraphData = shouldLoadGraphData
+        _summary = State(initialValue: initialSummary)
+        _contentReady = State(initialValue: initialSummary != nil)
+        _graphLinks = State(initialValue: initialGraphLinks)
+        let cutoff = Self.sixMonthsAgo
+        _reviewRecords = Query(
+            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
+            sort: \ReviewRecord.reviewedAt,
+            order: .reverse
+        )
+    }
+#endif
 
     var body: some View {
         VocabSceneShell(phase: currentPhase) {
@@ -110,6 +140,7 @@ struct StatsPresenter: View {
             // card add/remove, or manual retry. Long-term fix: promote
             // KGGraphLink to @Model so @Query observers across stats/graph/
             // word-detail views refresh automatically on any mutation.
+            guard shouldLoadGraphData else { return }
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {

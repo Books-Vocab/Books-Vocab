@@ -148,7 +148,7 @@ private let catalogSnapshotCompileFlagEnabled = false
         let armedBeforeMainPass = CatalogGraphSnapshotFreezer.armedCount
         try snapshot.run(with: mainPlaybook)
         // Anti-drift gate: a CatalogGraphSnapshotScene-wrapped scenario whose
-        // key is missing from webViewSnapshotScenarioKeys would arm a waiter
+        // key is missing from webViewSnapshotScenarios would arm a waiter
         // inside the main pass, wait out 30s, and silently write a blank
         // canvas. Fail loudly instead.
         let armedDuringMainPass = CatalogGraphSnapshotFreezer.armedCount - armedBeforeMainPass
@@ -156,7 +156,7 @@ private let catalogSnapshotCompileFlagEnabled = false
             throw WebViewSnapshotError(description: """
             \(armedDuringMainPass) CatalogGraphSnapshotScene waiter(s) armed inside the main \
             Snapshot.run pass — a web-view-backed scenario is missing from \
-            CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys and would render blank.
+            CatalogGraphSnapshotFreezer.webViewSnapshotScenarios and would render blank.
             """)
         }
         try await Self.renderWebViewScenarioPNGs(
@@ -200,18 +200,24 @@ private let catalogSnapshotCompileFlagEnabled = false
 
     // MARK: Web-view scenario pipeline
 
+    private typealias WebViewScenario = (
+        category: ScenarioCategory,
+        scenario: Scenario,
+        expectation: CatalogGraphSnapshotFreezer.WebViewArmingExpectation
+    )
+
     /// Splits the filtered playbook into the `Snapshot.run` set and the
-    /// WKWebView-backed set (`CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys`).
+    /// WKWebView-backed set (`CatalogGraphSnapshotFreezer.webViewSnapshotScenarios`).
     private static func splitWebViewScenarios(
         from playbook: Playbook
-    ) -> (main: Playbook, webView: [(category: ScenarioCategory, scenario: Scenario)]) {
+    ) -> (main: Playbook, webView: [WebViewScenario]) {
         let mainPlaybook = Playbook()
-        var webView: [(category: ScenarioCategory, scenario: Scenario)] = []
+        var webView: [WebViewScenario] = []
         for store in playbook.stores {
             for scenario in store.scenarios {
                 let key = "\(store.category.rawValue)/\(scenario.title.rawValue)"
-                if CatalogGraphSnapshotFreezer.webViewSnapshotScenarioKeys.contains(key) {
-                    webView.append((store.category, scenario))
+                if let expectation = CatalogGraphSnapshotFreezer.webViewSnapshotScenarios[key] {
+                    webView.append((store.category, scenario, expectation))
                 } else {
                     mainPlaybook.scenarios(of: store.category).add(scenario)
                 }
@@ -229,12 +235,14 @@ private let catalogSnapshotCompileFlagEnabled = false
     /// launch, unlike inside `Snapshot.run`'s spin loop), writing PNGs into the
     /// same `<device>/<category>/<scenario>.png` taxonomy as the main pass.
     ///
-    /// Freeze gate(false-green 防護): each capture must consume exactly one
-    /// `CatalogGraphSnapshotFreezer` freeze — otherwise the canvas is blank
-    /// (legend-only) and the run fails loudly instead of shipping it.
+    /// Freeze gate(false-green 防護), per `WebViewArmingExpectation`:
+    /// `.always` scenarios must arm and freeze exactly once per capture (a
+    /// removed wrapper fails loudly instead of silently shipping a blank
+    /// canvas); `.datasetDependent` scenarios must freeze every armed waiter
+    /// (zero armed / zero frozen is legal on link-less datasets).
     @MainActor
     private static func renderWebViewScenarioPNGs(
-        _ scenarios: [(category: ScenarioCategory, scenario: Scenario)],
+        _ scenarios: [WebViewScenario],
         devices: [SnapshotDevice],
         outputDirectory: URL
     ) async throws {
@@ -242,7 +250,7 @@ private let catalogSnapshotCompileFlagEnabled = false
         let fileManager = FileManager.default
 
         for device in devices {
-            for (category, scenario) in scenarios {
+            for (category, scenario, expectation) in scenarios {
                 let directoryURL = outputDirectory
                     .appendingPathComponent(device.name, isDirectory: true)
                     .appendingPathComponent(normalizeSnapshotName(category.rawValue), isDirectory: true)
@@ -256,18 +264,34 @@ private let catalogSnapshotCompileFlagEnabled = false
                 // pre-existing catalog-wide behavior (verified: light/dark PNG
                 // pairs are byte-identical in the `Snapshot.run` pass too), not
                 // something this async pass introduces or can locally fix.
+                let armedBefore = CatalogGraphSnapshotFreezer.armedCount
                 let freezesBefore = CatalogGraphSnapshotFreezer.freezeCount
                 let data: Data = await withCheckedContinuation { continuation in
                     SnapshotSupport.data(for: scenario, on: device, format: .png) { data in
                         continuation.resume(returning: data)
                     }
                 }
-                guard CatalogGraphSnapshotFreezer.freezeCount == freezesBefore + 1 else {
+                let armedDelta = CatalogGraphSnapshotFreezer.armedCount - armedBefore
+                let freezeDelta = CatalogGraphSnapshotFreezer.freezeCount - freezesBefore
+                let expectationSatisfied: Bool
+                switch expectation {
+                case .always:
+                    // Must arm and freeze exactly once — catches both "hook
+                    // never fired" and "wrapper removed while key stays listed"
+                    // (the latter would otherwise render blank via layer.render).
+                    expectationSatisfied = armedDelta == 1 && freezeDelta == 1
+                case .datasetDependent:
+                    // Every armed waiter must freeze; zero/zero is legal when
+                    // the dataset carries no links (empty card, no webview).
+                    expectationSatisfied = freezeDelta == armedDelta
+                }
+                guard expectationSatisfied else {
                     throw WebViewSnapshotError(description: """
                     web-view scenario '\(category.rawValue)/\(scenario.title.rawValue)' on device \
-                    '\(device.name)' completed without a graph freeze — the graph canvas would be \
-                    blank. Check CatalogGraphSnapshotScene wiring, the kgGraphWebViewInitHook path, \
-                    and graph.html readiness (settleGraphForSnapshot).
+                    '\(device.name)' (expectation: \(expectation)) armed \(armedDelta) snapshot \
+                    waiter(s) and produced \(freezeDelta) freeze(s) — the graph canvas would be \
+                    blank. Check CatalogGraphSnapshotScene wiring, the kgGraphWebViewInitHook \
+                    path, and graph.html readiness (settleGraphForSnapshot).
                     """)
                 }
                 try data.write(to: fileURL)

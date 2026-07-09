@@ -91,6 +91,60 @@ struct GraphSnapshotSettleTests {
         return positions
     }
 
+    private static let thumbnailPayload = """
+    {"nodes":[\
+    {"id":"a","word":"subtle","tier":"gradient","color":"#33AA55","ratio":0.2,"degree":2},\
+    {"id":"b","word":"nuance","tier":"gradient","color":"#AA3355","ratio":2.0,"degree":2},\
+    {"id":"c","word":"precise","tier":"gradient","color":"#5533AA","ratio":0.7,"degree":2}],\
+    "links":[\
+    {"id":"e1","source":"a","target":"b","kind":"contrasts_with"},\
+    {"id":"e2","source":"b","target":"c","kind":"shares_usage"}],\
+    "forces":{"repel":12,"linkDistance":12,"linkStrength":1.8,"centerStrength":0.2,\
+    "baseNodeRadius":4,"collideRadius":0,"linkThickness":0.8},\
+    "theme":{"mode":"dark","background":"transparent",\
+    "colors":{"gray":{"dark":"#888888","light":"#888888"}},\
+    "edges":{"contrasts_with":"#777777","shares_usage":"#777777"},\
+    "label":"#FFFFFF","labelShadow":"#000000"},\
+    "thumbnail":true}
+    """
+
+    /// Pins the thumbnail capture contract used by CatalogGraphSnapshotFreezer
+    /// for the Stats View 關聯圖 card:
+    /// 1. `GraphThumbnailCoordinator.onInitGraphApplied` fires (on main) only
+    ///    after `initGraph` actually ran in the web process — including the
+    ///    pending-payload flush path (payload sent before bridge `ready`).
+    /// 2. `settleGraphForSnapshot()` in thumbnail mode converges synchronously
+    ///    AND restores canvas opacity (initGraph hides a thumbnail canvas until
+    ///    the async sim converges — a rasterization taken before that would be
+    ///    transparent even with a settled layout).
+    @Test func thumbnailInitGraphHookFiresAndSettleRestoresCanvasOpacity() async throws {
+        let holder = GraphThumbnailHolder()
+        holder.webView.frame = CGRect(x: 0, y: 0, width: 320, height: 320)
+
+        @MainActor final class HookBox {
+            var received: WKWebView?
+        }
+        let box = HookBox()
+        holder.coordinator.onInitGraphApplied = { webView in
+            box.received = webView
+        }
+
+        // Sent before the bridge posts `ready` — exercises the pending flush.
+        holder.coordinator.sendInitGraph(Self.thumbnailPayload, webView: holder.webView)
+
+        for _ in 0..<200 where box.received == nil {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(box.received === holder.webView, "onInitGraphApplied must fire with the thumbnail webview after initGraph ran")
+
+        let settled = try await evaluate("settleGraphForSnapshot()", in: holder.webView)
+        #expect(settled as? Bool == true)
+        let opacity = try await evaluate("document.getElementById('g').style.opacity", in: holder.webView)
+        #expect(opacity as? String == "1", "thumbnail canvas must be visible after settle (initGraph hides it until convergence)")
+        let converged = try await evaluate("sim.alpha() <= sim.alphaMin()", in: holder.webView)
+        #expect(converged as? Bool == true)
+    }
+
     @Test func settleGraphForSnapshotConvergesSynchronouslyAndDeterministically() async throws {
         let webView = try makeGraphWebView()
         try await waitForGraphRuntime(in: webView)
