@@ -29,6 +29,8 @@ struct VocabularyListToolbar: ViewModifier {
                         .symbolEffect(.pulse, options: .repeating, isActive: isSyncing)
                     }
                     .accessibilityLabel("同步詞彙".localized)
+                    // 電腦模式 hover tooltip：與相鄰刷新鈕以文字明確區分「管理同步」vs「立即刷新」。
+                    .help("同步詞彙".localized)
                 }
 
                 #if targetEnvironment(macCatalyst)
@@ -40,6 +42,7 @@ struct VocabularyListToolbar: ViewModifier {
                     }
                     .accessibilityLabel("重新整理".localized)
                     .accessibilityIdentifier("vocab.refreshButton")
+                    .help("重新整理".localized)
                 }
                 #endif
 
