@@ -133,6 +133,7 @@ struct PodcastHomeView: View {
                     }
                     .accessibilityLabel(L10n.string("重新整理"))
                     .accessibilityIdentifier("podcast.refreshButton")
+                    .help(L10n.string("重新整理"))
                 }
             }
             #endif
