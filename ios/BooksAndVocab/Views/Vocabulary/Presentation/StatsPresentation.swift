@@ -80,7 +80,7 @@ enum StatsPresentation {
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
-        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords)
+        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords, now: now)
 
         // Compute adaptive heatmap thresholds from activity data
         let nonZeroCounts = activity.values.filter { $0 > 0 }.sorted()
@@ -94,11 +94,11 @@ enum StatsPresentation {
             heatmapThresholds = [p25, p50, p75]
         }
 
-        let streakResult = ReviewActivityLog.streaks(records: reviewRecords)
+        let streakResult = ReviewActivityLog.streaks(records: reviewRecords, now: now)
 
         return Summary(
             totalCards: synced.count,
-            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords),
+            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords, now: now),
             dueToday: forecastMap[todayKey] ?? 0,
             currentStreak: streakResult.current,
             longestStreak: streakResult.longest,

@@ -300,6 +300,61 @@ struct StatsPresenterTests {
         #expect(summary.reviewedToday == 3, "reviewedToday counts records, not days")
     }
 
+    // MARK: - Frozen clock (injected `now`)
+    //
+    // ReviewActivityLog 的 streaks / reviewedToday / activity 過去內部取
+    // `Date()`，使 `buildSummary(now:)` 的凍結時鐘只凍到 forecast——catalog
+    // 快照的 streak / 今日複習卡因牆鐘漂移。這批測試釘住 `now` 全鏈注入。
+
+    @Test func reviewedToday_countsRelativeToInjectedNow() {
+        // anchor 遠離牆鐘「今天」→ 若實作偷用 Date()，這裡數不到任何紀錄。
+        let anchor = day(-400)
+        let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
+
+        #expect(ReviewActivityLog.reviewedToday(records: records, now: anchor) == 1)
+        #expect(ReviewActivityLog.reviewedToday(records: records) == 0, "wall-clock default must not see a 400-day-old record")
+    }
+
+    @Test func streaks_currentStreakAnchorsOnInjectedNow() {
+        let anchor = day(-400)
+        let records = [
+            ReviewRecord(word: "a", entryID: nil, feedback: 1, reviewedAt: anchor),
+            ReviewRecord(
+                word: "b", entryID: nil, feedback: 1,
+                reviewedAt: Self.calendar.date(byAdding: .day, value: -1, to: anchor) ?? anchor
+            ),
+        ]
+
+        let frozen = ReviewActivityLog.streaks(records: records, now: anchor)
+        #expect(frozen.current == 2)
+        #expect(frozen.longest == 2)
+
+        let wallClock = ReviewActivityLog.streaks(records: records)
+        #expect(wallClock.current == 0, "a 400-day-old run must not count as current against the wall clock")
+        #expect(wallClock.longest == 2, "longest streak is clock-independent")
+    }
+
+    @Test func activity_cutoffAnchorsOnInjectedNow() {
+        let anchor = day(-400)
+        let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
+
+        let frozen = ReviewActivityLog.activity(for: 180, records: records, now: anchor)
+        #expect(frozen.values.reduce(0, +) == 1)
+
+        let wallClock = ReviewActivityLog.activity(for: 180, records: records)
+        #expect(wallClock.isEmpty, "a 400-day-old record is outside the wall-clock 180-day window")
+    }
+
+    @Test func buildSummary_threadsNowIntoActivityLog() {
+        let anchor = day(-400)
+        let records = [ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: anchor)]
+
+        let summary = StatsPresentation.buildSummary(from: [], reviewRecords: records, now: anchor)
+        #expect(summary.reviewedToday == 1)
+        #expect(summary.currentStreak == 1)
+        #expect(summary.activity.values.reduce(0, +) == 1)
+    }
+
     // MARK: - Activity map
 
     @Test func activity_aggregatesRecordsByDayKey() {
@@ -379,4 +434,29 @@ struct StatsPresenterTests {
         #expect(!isEmpty, "any card or review activity must push the scene into `.content`")
     }
 }
+
+#if DEBUG && canImport(Playbook)
+/// Pins `StatsViewTime.anchor` — the catalog Stats View frozen "today" must be
+/// derived from the seed's latest review event (寫死日期會讓「複習預測/今日到期」
+/// 在 seed 錨日移動後恆 0)。
+@Suite struct StatsViewSceneTimeTests {
+    @Test func anchorDerivesNoonOfLatestReviewedAt() throws {
+        let calendar = Calendar.current
+        let latest = try #require(calendar.date(from: DateComponents(year: 2026, month: 7, day: 9, hour: 3, minute: 17)))
+
+        let anchor = StatsViewTime.anchor(latestReviewedAt: latest)
+
+        let comps = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
+        #expect(comps.year == 2026)
+        #expect(comps.month == 7)
+        #expect(comps.day == 9)
+        #expect(comps.hour == 12)
+        #expect(comps.minute == 0)
+    }
+
+    @Test func anchorFallsBackDeterministicallyForEmptySeeds() {
+        #expect(StatsViewTime.anchor(latestReviewedAt: nil) == StatsViewTime.emptySeedFallback)
+    }
+}
+#endif
 #endif
