@@ -50,7 +50,8 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
   即容許 cross-seed 顯示 chips）。
 * 仍投影的 populated/dense fixtures 帶 catalog 端最低量斷言（vocabListPopulated
   ≥4、vocabListLong ≥40、statsPopulated ≥8 卡/≥12 事件、reviewCalendarDense
-  ≥70 事件、knowledgeGraphPopulated ≥3 卡/≥2 link、reviewDeck.phaseMulti ==3）：
+  ≥70 事件、knowledgeGraphPopulated = primary 全 active（與 statsPopulated 對齊，
+  全螢幕圖 = 縮圖放大版）、reviewDeck.phaseMulti ==3）：
   這是行銷 spec 的資料量責任，投影器不擋薄 spec（測試/沙盒 spec 合法），量不足
   時對應 catalog surface 會 fail-loud。
 * statsPopulated = primary 全 active 卡 + 全量合成事件（cap
@@ -80,7 +81,6 @@ _LINK_LABELS = {"shares_usage": "相關", "contrasts_with": "對比"}
 _TODAY_SESSION_MAX = 12      # todayReview 一場 session 的卡數上限
 _DECK_MULTI_MAX = 3          # reviewDeck.phaseMulti
 _LIST_LONG_MAX = 40          # vocabListLong（長列表捲動語意）
-_KG_GRAPH_MAX = 24           # knowledgeGraphPopulated（圖面可渲染上限）
 _STATS_ENTRIES_MAX = 8       # statsPopulated / shellNavigation entries
 _SYNCING_MAX = 5             # vocabListSyncing
 _PENDING_MIXED_MAX = 4       # syncPendingMixed
@@ -616,10 +616,6 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
             f"primary notebook {primary['name']!r} 沒有 active 卡，無法投影 review/session fixtures"
         )
     due = _due_order(active)
-    linked = [c for c in active if c["links"] or any(
-        lk["word"] == c["word"] for other in active for lk in other["links"])]
-    if not linked:
-        linked = active[:4]
 
     production_due = [c for c in due if c["mode"] == "production"]
     session = due[:_TODAY_SESSION_MAX]
@@ -680,7 +676,10 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         "syncPendingMixed": _vocab_seed(primary, mixed_entries, notebook_sync=0),
         "syncEmpty": _vocab_seed(primary, []),
         "archivedEmpty": _vocab_seed(primary, []),
-        "knowledgeGraphPopulated": _vocab_seed(primary, entries(linked[:_KG_GRAPH_MAX])),
+        # 全螢幕知識圖 = Stats 縮圖關聯圖的放大版：同 primary active 全集，
+        # 讓兩面自洽（縮圖 182 詞 → 點進去仍 182 詞的濃密圖）。舊 linked[:24]
+        # 窗口把跨窗 link 全過濾掉，只剩零星 3 節點，是行銷/QA 都不該有的空洞。
+        "knowledgeGraphPopulated": _vocab_seed(primary, entries(active)),
         "knowledgeGraphEmpty": _vocab_seed(primary, []),
         "shellNavigation": _vocab_seed(primary, entries(stats_cards), shell_history),
         "statsPopulated": _vocab_seed(primary, entries(active), stats_history),
