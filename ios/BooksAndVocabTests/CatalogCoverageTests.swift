@@ -652,8 +652,21 @@ import Playbook
             "Stats View catalog must source entries and review history from UI World vocabulary stats seeds"
         )
         #expect(
-            source.contains("UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)"),
+            source.contains("UITestFixtureSeed.insertVocabularySeed("),
             "Stats View catalog must materialize UI World vocabulary/review rows into SwiftData"
+        )
+        // Crash-fix contract: the async web-view pass renders this scene after
+        // ~1300 @Query scenes whose deallocated containers leave dangling
+        // observers; a committing save() here broadcasts NSManagedObjectContextDidSave
+        // and traps one of them (EXC_BREAKPOINT in _SwiftData_SwiftUI). The seed
+        // must stay pending-only — @Query/fetch still read pending inserts.
+        #expect(
+            source.contains("save: false"),
+            "Stats View webview-pass seed must stay pending-only (no broadcast didSave)"
+        )
+        #expect(
+            source.contains("autosaveEnabled = false"),
+            "Stats View container must disable autosave so pending inserts never re-broadcast didSave"
         )
         #expect(
             source.contains("visibleEntries = entries.filter(\\.shouldAppearInKnowledgeList)"),

@@ -148,7 +148,17 @@ private struct StatsViewScene: View {
                 for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
-            let entries = try UITestFixtureSeed.insertVocabularySeed(seed, into: container.mainContext)
+            // Seed as pending changes only (no broadcast NSManagedObjectContextDidSave).
+            // In the async catalog web-view pass this scene renders after the full
+            // ~1300-snapshot main pass, whose @Query scenes leave dangling observers
+            // once their ModelContainers deallocate; a committing save() here posts a
+            // process-wide didSave that those dangling observers trap on
+            // (EXC_BREAKPOINT in _SwiftData_SwiftUI). @Query and fetch both see pending
+            // inserts, so the stats + 關聯圖 render identically without the save.
+            container.mainContext.autosaveEnabled = false
+            let entries = try UITestFixtureSeed.insertVocabularySeed(
+                seed, into: container.mainContext, save: false
+            )
             let visibleEntries = entries.filter(\.shouldAppearInKnowledgeList)
             fixture.expected.visibleEntries.validate(
                 visibleEntries.count,
