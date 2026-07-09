@@ -10,6 +10,8 @@ struct VocabularyListToolbar: ViewModifier {
     let isSyncing: Bool
     let pendingCount: Int
     let onSync: () -> Void
+    /// 電腦模式（Catalyst）專用的一鍵刷新（取代無下拉的桌面）；iOS 不渲染。
+    var onRefresh: (() -> Void)? = nil
     let onExportCSV: () -> Void
     let onExportJSON: () -> Void
     let onExportAnki: () -> Void
@@ -27,7 +29,22 @@ struct VocabularyListToolbar: ViewModifier {
                         .symbolEffect(.pulse, options: .repeating, isActive: isSyncing)
                     }
                     .accessibilityLabel("同步詞彙".localized)
+                    // 電腦模式 hover tooltip：與相鄰刷新鈕以文字明確區分「管理同步」vs「立即刷新」。
+                    .help("同步詞彙".localized)
                 }
+
+                #if targetEnvironment(macCatalyst)
+                // 可見的桌面式刷新 affordance（Mac 無 pull-to-refresh）。走 ExplicitSync，
+                // 與書架 toolbar 鈕 / ⌘R 共用同一資格 gate + toast 回饋。
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: { onRefresh?() }) {
+                        VocabToolbarGlyph(systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("重新整理".localized)
+                    .accessibilityIdentifier("vocab.refreshButton")
+                    .help("重新整理".localized)
+                }
+                #endif
 
                 if hasSyncedEntries {
                     ToolbarItem(placement: .confirmationAction) {

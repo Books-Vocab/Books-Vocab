@@ -62,6 +62,17 @@ struct VocabularyListView: View {
             isSyncing: syncCoordinator.phase == .running,
             pendingCount: pendingCount,
             onSync: coordinator.presentSyncView,
+            onRefresh: {
+                Task {
+                    await ExplicitSync.run(
+                        kgService: kgService,
+                        isLoggedIn: authManager.isLoggedIn,
+                        isDemoMode: authManager.isDemoMode,
+                        container: modelContext.container,
+                        toastCoordinator: toastCoordinator
+                    )
+                }
+            },
             onExportCSV: { coordinator.exportCSV(entries: syncedEntries, toastCoordinator: toastCoordinator) },
             onExportJSON: { coordinator.exportJSON(entries: syncedEntries, toastCoordinator: toastCoordinator) },
             onExportAnki: { coordinator.exportAnki(entries: syncedEntries, toastCoordinator: toastCoordinator) },

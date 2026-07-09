@@ -86,7 +86,12 @@ extension View {
 
     @ViewBuilder
     func platformRefreshable(action: @escaping () async -> Void) -> some View {
+        #if targetEnvironment(macCatalyst)
+        // 電腦模式無下拉刷新手勢（不直覺）；桌面式刷新改由 toolbar 刷新鈕 / ⌘R 提供。
+        self
+        #else
         self.refreshable { await action() }
+        #endif
     }
 }
 

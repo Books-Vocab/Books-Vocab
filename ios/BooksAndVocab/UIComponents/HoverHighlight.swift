@@ -58,3 +58,18 @@ extension View {
         modifier(AppHoverRowTint(cornerRadius: cornerRadius))
     }
 }
+
+// MARK: - Pointer effect (chrome 控制項的桌面指標層)
+
+extension View {
+    /// 電腦模式(Mac Catalyst)/ iPad 觸控板:指標 hover 於可點控制項時套 UIKit pointer
+    /// effect —— 指標 morph 貼合元件形狀 + 系統 highlight,提示「這裡可互動」。這是
+    /// Catalyst 慣用的指標層(非 pointing-hand;`.pointerStyle` 在 Catalyst 不可用)。
+    /// 觸控 iPhone 無指標事件 → 系統自動 no-op,故不分流。
+    ///
+    /// 適用:chip / segment / pill / plain icon button 等 chrome 控制項。
+    /// (卡片走 `appHoverLift`;扁平 list row 走 `appHoverRowTint`。)
+    func appPointerHover(_ effect: HoverEffect = .highlight) -> some View {
+        hoverEffect(effect)
+    }
+}

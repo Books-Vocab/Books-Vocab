@@ -216,16 +216,15 @@ Scope: `ios/BooksAndVocab`
 ### Interaction — Hover / Pointer Layer
 
 主要檔案：
-- `ios/BooksAndVocab/UIComponents/HoverHighlight.swift` — 指標 hover 回饋 modifier
-- `ios/BooksAndVocab/Platform/MacColumnResizeCursor.swift` — Catalyst 欄寬游標（`UIPointerInteraction`）
+- `ios/BooksAndVocab/UIComponents/HoverHighlight.swift` — 指標 hover / pointer 回饋 modifier（`.appHoverLift` / `.appHoverRowTint` / `.appPointerHover`）
 
 核心元件：
 - `.appHoverLift(scale:)` — 卡片 hover 輕微 scale 浮起（預設 1.02）；卡片屬按鈕互動故 scale 合 Motion Contract，已 gate `accessibilityReduceMotion`。套用：`BookCard` / `PodcastSeriesCard` / `NotebookCard`。
 - `.appHoverRowTint(cornerRadius:)` — 扁平可點 list-row hover bg tint（`primaryText.opacity(0.05)`，只動 background）。套用：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `syncSummaryRow`。卡片型可點走 lift / `.liftable`，不重複 tint。
-- `MacColumnResizeCursor`（**Catalyst-only**）— `UIViewRepresentable` 包 `UIPointerInteraction` + `UIPointerStyle(shape: .verticalBeam(length:))`，疊到 `DraggableDivider`；`PassthroughPointerView` 對 `event.type == .touches` 的 hitTest 回 nil 讓拖曳/雙擊穿透，hover 才回 self，故游標與既有 `dragGesture` 並存。
+- `.appPointerHover(_:)` — chrome 控制項的桌面指標層：包 UIKit `.hoverEffect`（預設 `.highlight`），Catalyst / iPad 觸控板下指標 morph 貼合元件 + 系統 highlight，提示可互動。套用：`AppFilterChipBar` / `AppTabSelector` / `VocabSortPill` / `VocabReviewCTAPill` / `VocabChromeIconButton`。
 
 責任 / 邊界：
-- `.onHover` 在純觸控 iPhone 無指標事件自動 no-op，iPad 觸控板 + Mac 共益 → hover modifier **不**包 `#if`；唯欄寬游標走 `UIPointerInteraction` 故 `#if targetEnvironment(macCatalyst)`。
+- `.onHover` / `.hoverEffect` 在純觸控 iPhone 無指標事件自動 no-op，iPad 觸控板 + Mac 共益 → hover / pointer modifier **不**包 `#if`。`.pointerStyle`(iOS 18+) 在 Catalyst 不可用，故指標層走 `.hoverEffect`（UIKit pointer effect）而非自訂 cursor 形狀。
 
 ---
 
