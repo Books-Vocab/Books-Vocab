@@ -284,6 +284,22 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 > 版號 bump / `ios/x.y.z` tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`changelog`/`publish`，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`publish --yes` 才 commit+tag+push）。本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施——版號 tag 與出 build 互不依賴。注意目前無 tag-triggered CI，tag 僅為版本標記。
 
+### 版號命名決策（下一個 build 該叫什麼）
+
+兩個獨立計數器：`MARKETING_VERSION`（`x.y.z`，對使用者的版本故事）與 `CURRENT_PROJECT_VERSION`（build 號）。**build 號永遠全域單調 +1、絕不歸零**（工具 `release_bump.sh` 硬性 +1；防同號被 Apple 退。Apple 只要求「同 marketing 版號下 build 唯一」，全域遞增最省心）。marketing 版號怎麼跳看情境：
+
+| 情境 | marketing | build | 命令 |
+|---|---|---|---|
+| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | +1 | `release.sh bump-build ios [--yes]` → `ios_release.sh --upload` |
+| 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh bump ios <x.y.z> --yes` → `publish` → `ios_release.sh --upload` |
+| 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
+| 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
+
+- semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。
+- **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架 / 完成審查**。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`bump-build`，不動 marketing。
+
+> ⚠ **看發版狀態只信 App Store Connect / TestFlight（server 真相），別信 Xcode Organizer**。Organizer 只列 Xcode.app GUI 出的 archive（存 `~/Library/Developer/Xcode/Archives/`）；本 repo 走 CLI（`ios_release.sh` archive 到 `ios/build/`），CLI 出的 build **永遠不進 Organizer**——Organizer 停在最後一次 GUI 出包（1.6(3)/2026-04）不代表後續 build 遺失。TestFlight `asc.sh builds` 才是實況。
+
 ```bash
 ./ops/ios_ops.sh archive              # archive + export 出 .ipa（無對外副作用，預設）
 ./ops/ios_ops.sh archive --json       # machine-readable kg.ios.archive.v1
