@@ -7,6 +7,8 @@
 #   3. release_changelog.sh --help → exit 0 + 印出 用法
 #   4. podcast_upload.sh --help → exit 0 + 印出 Usage
 #   5. worktree_registry.py --help → exit 0 + 印出 orphan sentinel
+#   6. worktree_orchestrate.py --help → exit 0 + 列出 preflight/gate/cutover 子指令
+#   7. worktree_registry.py sweep --help → exit 0 + 揭示 --exclude-current 旗標
 
 set -o pipefail
 
@@ -77,6 +79,18 @@ section "worktree_registry help"
 out=$(run_help "ops/worktree_registry.py"); rc="${out%%|*}"; log="${out##*|}"
 assert_rc "worktree_registry help exits 0" 0 "$rc" "$log"
 assert_log_contains "worktree_registry help" "orphan sentinel" "$log"
+
+section "worktree_registry sweep --exclude-current surface"
+log="$TMPDIR/log_sweep_$RANDOM.txt"
+"$WORKTREE/ops/worktree_registry.py" sweep --help >"$log" 2>&1; rc=$?
+assert_rc "worktree_registry sweep help exits 0" 0 "$rc" "$log"
+assert_log_contains "worktree_registry sweep help" "--exclude-current" "$log"
+
+section "worktree_orchestrate help"
+out=$(run_help "ops/worktree_orchestrate.py"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "worktree_orchestrate help exits 0" 0 "$rc" "$log"
+assert_log_contains "worktree_orchestrate help" "preflight" "$log"
+assert_log_contains "worktree_orchestrate help" "cutover" "$log"
 
 echo ""
 echo "══════════════════════════════"
