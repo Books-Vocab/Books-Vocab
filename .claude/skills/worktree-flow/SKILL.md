@@ -2,7 +2,7 @@
 name: worktree-flow
 description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / gate / cutover / resolve）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。deploy 生產不含在內。"
 user-invocable: true
-version: 1.0.0
+version: 1.1.0
 ---
 
 # worktree-flow
@@ -51,21 +51,21 @@ ops/worktree_orchestrate.py gate --worktree <path> --json
 - `docs/**.md` → `docs_lint.sh --files` ＋ conflict-marker 掃描 ＋ `verified_against` 可達性
 - `backend/**.py` → 只跑 diff 內的**目標測試檔**；純 src 改動無目標測試 = **warn advisory**（不跑全套，全套有已知 pre-existing 假失敗）
 
-先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**verdict 非 pass 就回去修**（block 必修；warn 判斷）。iOS build/test 很耗時 → 背景執行、主線不阻塞（鐵律 5）。
+先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**block 必修**（回去修再重跑 gate）；**warn 是 advisory**——不擋 cutover，處置權在你（driving agent），land 時會標「landed with warnings」。iOS build/test 很耗時 → 背景執行、主線不阻塞（鐵律 5）。
 
-**e. pass 才 cutover**：
+**e. 非 block 才 cutover**：
 ```
 ops/worktree_orchestrate.py cutover --worktree <path> --json          # dry-run 預覽
 ops/worktree_orchestrate.py cutover --worktree <path> --commit --json # 進 main
 ```
-它**要求新鮮的 gate pass**（verdict==pass 且記錄的 HEAD == 當前 HEAD；stale 會被拒）→ fetch → rebase onto origin/main → **ff push HEAD:main**。進 main 已長期授權（不先問）。
+它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn} 且記錄的 HEAD == 當前 HEAD；stale/缺紀錄/block 會被拒）→ fetch → rebase onto origin/main → **ff push HEAD:main**。`warn` 會 land 並在輸出/JSON 標 `warnings: [<gate 名>]`（「landed with warnings」）。進 main 已長期授權（不先問）。
 
 **f. resolve — 清乾淨、登記閉環**：
 ```
 ops/worktree_orchestrate.py resolve --worktree <path> --json          # dry-run 看計畫
 ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
 ```
-= 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）。清完無殘骸。
+先過 **landed-floor**（tree-diff 判分支是否已進 base）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。
 
 ## 硬邊界
 
@@ -80,9 +80,9 @@ preflight ─▶ 讀地圖 ─▶ research? ──yes──▶ 直接做（不�
                           │no
                           ▼
               phased 拆 phase ─▶ open ─▶ [每 phase: 實作 + review N-1 + fetch/rebase]
-                          ─▶ gate(pass?) ──no──▶ 修
-                                   │yes
+                          ─▶ gate(block?) ──yes──▶ 修
+                                   │no（pass/warn）
                                    ▼
-                          cutover(進 main) ─▶ resolve(清乾淨)
+                          cutover(進 main) ─▶ resolve(landed-floor→清乾淨)
                           ┄┄┄ deploy 另議、必徵同意 ┄┄┄
 ```
