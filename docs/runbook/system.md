@@ -22,6 +22,7 @@ Provide one stable operations system so any agent can safely execute tasks from:
 
 ## Allowed Production Entrypoints
 - KG API: `ops/devops_kg_safe.sh`
+- Automated push=deploy reconciler (felix-local, launchd `com.kg.reconcile`): `ops/kg_reconcile.sh` — converges the prod container to `origin/main` on backend changes; shares `/tmp/kg-deploy.lock` with the manual deploy path, self-rolls-back + poisons a bad sha on health-gate failure. Enabled manually by the general manager; see `docs/sop/deploy.md` §push=deploy 自動 reconciler.
 - Global status: `ops/devops_kg_safe.sh status` + `ops/devops_kg_safe.sh health`
 - Compatibility status wrapper: `ops/status_all.sh`
 - Remote branch reachability audit: `ops/branch_audit.sh`

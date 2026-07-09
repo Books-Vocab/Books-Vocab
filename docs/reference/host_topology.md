@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ops/
   - docs/policy/
-verified_against: 20a22c64
+verified_against: 9dfe9ab43
 -->
 # Host Background (Single Source of Truth)
 
@@ -47,6 +47,7 @@ verified_against: 20a22c64
 - **CF zone**：`dd3884683faa95a0de686e8830d1d8ae`；NS `damien/gabriella.ns.cloudflare.com`；anycast IP `104.21.85.113` / `172.67.204.212`
 - **ingress**（remotely-managed，存 CF 端，非本地 yaml）：`wordnexus.lol → http://localhost:8000`，fallback `http_status:404`
 - **連接器常駐**：standby `/Library/LaunchDaemons/com.cloudflare.cloudflared.plist`（system daemon，`RunAtLoad` + `KeepAlive`，開機即起免登入）
+- **自動部署常駐**：standby `~/Library/LaunchAgents/com.kg.reconcile.plist`（per-user LaunchAgent，`StartInterval=90` 週期 poller、`RunAtLoad`、**不 KeepAlive**）跑 `ops/kg_reconcile.sh --once`，讓 `origin/main` 一前進（含 backend 變更）就自動收斂生產容器；與 `devops.sh` 人工 deploy 共用 `/tmp/kg-deploy.lock`。機制/path-filter/rollback+poison 見 [`docs/sop/deploy.md`](../sop/deploy.md) §push=deploy 自動 reconciler。（由總經理手動 bootstrap 啟用，非預設掛載。）
 - registrar = **Porkbun**（僅註冊；DNS 託管已移到 CF）
 - 直打 CF 邊緣驗服務本身（排除 DNS 干擾）：`curl --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info`
 

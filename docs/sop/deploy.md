@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: a67653fdf
+verified_against: 9dfe9ab43
 -->
 # 後端部署指南
 
@@ -56,6 +56,45 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 ```
 
 `version` 不等於 deploy sha = git pull 沒生效 / VERSION 沒寫 / 容器沒 `--build`。
+
+---
+
+## push=deploy 自動 reconciler（felix-local，launchd 週期）
+
+> **一句話**：`origin/main` 一前進（且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版，免人工 SSH。上面的 §標準部署流程仍是手動路徑；本段是它的自動化包裝，兩者**共用同一把 deploy 鎖**互斥。
+
+- **腳本**：`ops/kg_reconcile.sh`（`--once`／`--dry-run`／`--help`）。它**跑在 felix 本機**（不走 SSH，git/docker/curl 全本機）。一輪冪等 tick 跑完即退。
+- **驅動**：`ops/launchd/com.kg.reconcile.plist`（`StartInterval=90` 秒輪詢、`RunAtLoad`、**不 KeepAlive**、`ThrottleInterval=60`）。log → `~/Library/Logs/kg_reconcile.{out,err}.log`。
+- **收斂真相**：`deployed_sha` = felix `backend/VERSION`（容器 serving 版本）；`origin_sha` = `origin/main`。差異檔 = `git diff <deployed_sha>..origin/main`。
+
+### path-filter 判準（哪些變更才 rebuild）
+只有變更命中 backend 觸發正則才 `compose up --build`；否則只 `git pull --ff-only`（追 felix repo HEAD、含自我更新本腳本），**不動容器**。觸發集（錨定 `backend/`）：`src/`、`tests/`、`static/`、`pyproject.toml`、`pytest.ini`、`Dockerfile`、`docker-compose.yml`、`ops_{cli,analyze,edit}.py`、`{index,privacy,support,terms,guide}.html`。
+- **刻意排除 `backend/uv.lock`**：Dockerfile 走 `pip install .` 只讀 `pyproject.toml`、不消費 `uv.lock`，故「只改 uv.lock」不改 image；真正 dep 變更一定同時動 `pyproject.toml`（會觸發）。
+- **刻意排除**（皆不進 image）：`backend/.env*`、`backend/VERSION`、`backend/data/**`、`backend/certs/**`、`backend/scripts/**`、`backend/docs/**`、`ios/**`、`lab/**`、`docs/**`、`ops/**`、`design-system/**`。判準正本在 `ops/kg_reconcile.sh` 的 `BACKEND_TRIGGER_RE`。
+
+### rollback + poison 行為
+DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit fail）。任一失敗 → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0。
+
+### 與人工 deploy 共鎖
+DEPLOY 路徑用 `mkdir /tmp/kg-deploy.lock`（**與 `devops.sh` 的 `acquire_deploy_lock` 同一把**）。取不到鎖 = 有人工 deploy 進行中 → 本輪 `verdict=locked` exit 0 讓路，下一 tick 再收斂。反之 reconciler 持鎖時，人工 `devops.sh deploy` 會被同一把鎖擋住。
+
+### verdict（stdout 單行 JSON，schema `kg.deploy.reconcile.v1`）
+`verdict ∈ {noop, ff-only, deployed, rolled-back, poisoned-skip, locked, dry-run}`；欄位 `deployed_sha/origin_sha/backend_changed/ts`。人類進度/告警走 stderr。
+
+### 安全不變式
+絕不碰 `~/kg-data`（生產資料權威副本，已於 2026-06-16 搬出 git worktree，`reset --hard` 只作用 repo working tree）；絕不 `git clean`／不 reset 到未知 sha（只回 ROLLBACK_SHA）／不 `compose down`／不 prune／不 `rm -rf`；fetch/pull 一律 `--ff-only`，origin rewind 不 force、告警待人工。
+
+### 首次啟用（總經理手動；務必先 dry-run）
+```bash
+# felix 上，先 dry-run 驗（絕不 mutate，印出會做什麼 + JSON verdict）
+cd ~/project/kg && ops/kg_reconcile.sh --dry-run
+# 確認無誤後掛 launchd（跑在 auto-login session）
+cp ops/launchd/com.kg.reconcile.plist ~/Library/LaunchAgents/com.kg.reconcile.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.reconcile.plist
+# 停用
+launchctl bootout gui/$(id -u)/com.kg.reconcile
+```
+單元測試：`bash ops/tests/test_kg_reconcile.sh`（全離線、mock git/compose/curl/infra_health）。
 
 ---
 
