@@ -72,6 +72,7 @@ import worktree_registry as wr  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
+FREEZE_SCHEMA = "kg.worktree.freeze.v1"
 EXIT_OK = 0
 EXIT_USAGE = 64
 EXIT_BLOCK = 1
@@ -325,6 +326,38 @@ def _state_arg(state: str | None) -> list[str]:
     return ["--state", state] if state else []
 
 
+def _freeze_path(state: str | None) -> Path:
+    """The stop-the-world surgery lock, beside the ledger (same anchoring as the
+    gate-record cache) so every worktree sees the one lock."""
+    base_dir = Path(state).resolve().parent if state else wr.default_state_path().parent
+    return base_dir / "worktree_freeze.json"
+
+
+def _frozen(state: str | None) -> dict[str, Any] | None:
+    """The freeze payload if the flow is frozen, else None. An unreadable lock file
+    still counts as frozen — fail closed during surgery."""
+    p = _freeze_path(state)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"reason": f"unreadable freeze file at {p}", "frozen_at": None}
+
+
+def _freeze_guard(state: str | None, step: str, as_json: bool) -> int | None:
+    """EXIT_BLOCK if frozen (birth/landing steps only — draining steps like resolve
+    and sweep stay allowed so quiescing for surgery is possible), else None."""
+    frz = _frozen(state)
+    if frz is None:
+        return None
+    _emit({"schema": SCHEMA, "step": step, "error": "frozen",
+           "reason": frz.get("reason"), "frozen_at": frz.get("frozen_at")}, as_json,
+          f"✗ {step} refused: worktree flow is FROZEN — {frz.get('reason')} "
+          f"(since {frz.get('frozen_at')}); run `freeze off` to resume")
+    return EXIT_BLOCK
+
+
 def _gate_record_path(state: str | None, worktree: str) -> Path:
     """Where a gate verdict is recorded so cutover can read it — a per-machine cache
     beside the registry ledger, keyed by the worktree's normalized path."""
@@ -447,6 +480,9 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
 def cmd_open(args: argparse.Namespace) -> int:
     """git worktree add + registry register (born-registered)."""
+    blocked = _freeze_guard(args.state, "open", args.json)
+    if blocked is not None:
+        return blocked
     if not SLUG_RE.match(args.slug):
         _emit({"schema": SCHEMA, "step": "open", "error": "slug must be kebab-case "
                "([a-z0-9] words joined by '-')", "slug": args.slug}, args.json,
@@ -486,6 +522,9 @@ def cmd_adopt(args: argparse.Namespace) -> int:
     tooling, so when the invoking checkout predates the orchestrator (stale primary),
     open the worktree by hand and adopt it from inside. Delegates to the registry's
     idempotent upsert — adopting twice refreshes, never duplicates."""
+    blocked = _freeze_guard(args.state, "adopt", args.json)
+    if blocked is not None:
+        return blocked
     worktree = _norm(args.worktree or os.getcwd())
     if not Path(worktree).is_dir():
         _emit({"schema": SCHEMA, "step": "adopt", "error": "worktree not found",
@@ -521,6 +560,55 @@ def cmd_adopt(args: argparse.Namespace) -> int:
              f"  {'registered in ledger' if reg_rc == EXIT_OK else '⚠ ledger register failed'}")
     _emit(payload, args.json, human)
     return EXIT_OK if reg_rc == EXIT_OK else EXIT_BLOCK
+
+
+def cmd_freeze(args: argparse.Namespace) -> int:
+    """Stop-the-world surgery lock. `on` refuses new births/landings (open, adopt,
+    cutover) until `off`; draining steps (resolve, sweep, preflight, gate) stay
+    allowed so the flow can be quiesced for repo surgery (history rewrite, gc,
+    shared-config changes)."""
+    lock = _freeze_path(args.state)
+
+    if args.action == "status":
+        frz = _frozen(args.state)
+        payload = {"schema": FREEZE_SCHEMA, "action": "status", "frozen": frz is not None}
+        if frz:
+            payload.update({"reason": frz.get("reason"), "frozen_at": frz.get("frozen_at")})
+        human = (f"# freeze: FROZEN — {frz.get('reason')} (since {frz.get('frozen_at')})"
+                 if frz else "# freeze: not frozen")
+        _emit(payload, args.json, human)
+        return EXIT_OK
+
+    if args.action == "on":
+        if not args.reason:
+            _emit({"schema": FREEZE_SCHEMA, "action": "on", "error": "`on` requires "
+                   "--reason"}, args.json, "✗ freeze on requires --reason")
+            return EXIT_USAGE
+        existing = _frozen(args.state)
+        if existing is not None and not args.force:
+            _emit({"schema": FREEZE_SCHEMA, "action": "on", "error": "already frozen",
+                   "reason": existing.get("reason"),
+                   "frozen_at": existing.get("frozen_at")}, args.json,
+                  f"✗ already frozen — {existing.get('reason')} (since "
+                  f"{existing.get('frozen_at')}); --force to overwrite")
+            return EXIT_BLOCK
+        _, now_iso = wr.resolve_now(None)
+        payload = {"schema": FREEZE_SCHEMA, "reason": args.reason, "frozen_at": now_iso}
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        _emit({**payload, "action": "on"}, args.json,
+              f"✓ frozen — {args.reason}\n  lock: {lock}")
+        return EXIT_OK
+
+    # off — idempotent
+    was = lock.exists()
+    try:
+        lock.unlink()
+    except FileNotFoundError:
+        pass
+    _emit({"schema": FREEZE_SCHEMA, "action": "off", "was_frozen": was}, args.json,
+          "✓ thawed" if was else "✓ already thawed (no-op)")
+    return EXIT_OK
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -569,6 +657,9 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     HEAD:main. A `warn` verdict LANDS (its disposition belongs to the driving agent —
     the tool records it as "landed with warnings" but never blocks on it); only `block`
     (and a stale/absent verdict) refuses."""
+    blocked = _freeze_guard(args.state, "cutover", args.json)
+    if blocked is not None:
+        return blocked
     worktree = _norm(args.worktree)
     if not Path(worktree).is_dir():
         _emit({"schema": SCHEMA, "step": "cutover", "error": "worktree not found",
@@ -767,6 +858,17 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--intent", default="adopted out-of-band worktree",
                     help="why this worktree exists (recorded in the ledger)")
     ad.set_defaults(func=cmd_adopt)
+
+    fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
+                        "births/landings (open/adopt/cutover) until `off`; draining "
+                        "steps (resolve/sweep/preflight/gate) stay allowed")
+    add_common(fz)
+    fz.add_argument("action", choices=["on", "off", "status"])
+    fz.add_argument("--reason", default=None,
+                    help="why the flow is frozen (required for `on`)")
+    fz.add_argument("--force", action="store_true",
+                    help="overwrite an existing freeze (default: refuse, surface it)")
+    fz.set_defaults(func=cmd_freeze)
 
     ga = sub.add_parser("gate", help="impact-based verification; route changed files to "
                         "the existing gate tools + aggregate a verdict")
