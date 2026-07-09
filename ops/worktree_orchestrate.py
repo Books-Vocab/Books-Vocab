@@ -480,6 +480,49 @@ def cmd_open(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_adopt(args: argparse.Namespace) -> int:
+    """Register an ALREADY-existing worktree in the ledger. This is the bootstrap
+    fallback: a bare `git worktree add` is a git primitive that needs none of this
+    tooling, so when the invoking checkout predates the orchestrator (stale primary),
+    open the worktree by hand and adopt it from inside. Delegates to the registry's
+    idempotent upsert — adopting twice refreshes, never duplicates."""
+    worktree = _norm(args.worktree or os.getcwd())
+    if not Path(worktree).is_dir():
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "worktree not found",
+               "worktree": worktree}, args.json, f"✗ worktree not found: {worktree}")
+        return EXIT_USAGE
+
+    rc, gitdir = _git(["rev-parse", "--path-format=absolute", "--git-dir"], cwd=worktree)
+    rc2, common = _git(["rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       cwd=worktree)
+    if rc != 0 or rc2 != 0:
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "not a git worktree",
+               "worktree": worktree}, args.json, f"✗ not a git worktree: {worktree}")
+        return EXIT_USAGE
+    if _norm(gitdir) == _norm(common):
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "refusing the primary "
+               "working tree (main-first invariant)", "worktree": worktree}, args.json,
+              f"✗ {worktree} is the primary working tree — adopt only linked worktrees")
+        return EXIT_USAGE
+
+    branch = _current_branch(worktree)
+    if not branch:
+        _emit({"schema": SCHEMA, "step": "adopt", "error": "detached HEAD — the ledger "
+               "tracks branches", "worktree": worktree}, args.json,
+              f"✗ {worktree} is detached — check out a branch before adopting")
+        return EXIT_USAGE
+
+    reg_rc, _ = _registry(["register", *_state_arg(args.state), "--path", worktree,
+                           "--branch", branch, "--intent", args.intent, "--base", args.base])
+    payload = {"schema": SCHEMA, "step": "adopt", "branch": branch, "worktree": worktree,
+               "base": args.base, "intent": args.intent, "registered": reg_rc == EXIT_OK}
+    human = (f"✓ adopted worktree [{branch}] (base {args.base})\n"
+             f"  path: {worktree}\n"
+             f"  {'registered in ledger' if reg_rc == EXIT_OK else '⚠ ledger register failed'}")
+    _emit(payload, args.json, human)
+    return EXIT_OK if reg_rc == EXIT_OK else EXIT_BLOCK
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     """Impact-based verification: route changed files to the existing gate tools, run
     them, aggregate a verdict, and record it for cutover."""
@@ -714,6 +757,16 @@ def build_parser() -> argparse.ArgumentParser:
     op.add_argument("--intent", required=True, help="free-text intent (drives branch type)")
     op.add_argument("--slug", required=True, help="kebab-case slug for branch + path")
     op.set_defaults(func=cmd_open)
+
+    ad = sub.add_parser("adopt", help="register an ALREADY-existing worktree in the "
+                        "ledger (bootstrap fallback: bare `git worktree add` needs no "
+                        "tooling — adopt afterwards from inside the checkout)")
+    add_common(ad)
+    add_base(ad)
+    ad.add_argument("--worktree", default=None, help="worktree path (default: cwd)")
+    ad.add_argument("--intent", default="adopted out-of-band worktree",
+                    help="why this worktree exists (recorded in the ledger)")
+    ad.set_defaults(func=cmd_adopt)
 
     ga = sub.add_parser("gate", help="impact-based verification; route changed files to "
                         "the existing gate tools + aggregate a verdict")
