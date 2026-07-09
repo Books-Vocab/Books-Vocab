@@ -150,13 +150,22 @@ struct KGVocabView: View {
             selectedReviewStates: $selectedReviewStates,
             sortOption: $sortOption,
             onDismissBanner: { coordinator.dismissBanner() },
-            onRetryBanner: pendingDeletes.isEmpty ? nil : {
+            // 待刪除 banner → 重試刪除；refresh 錯誤 banner → 重試 forceRefresh。
+            // 兩者互斥（banner factory 優先序：待刪除 > 錯誤），可否重試由 banner.canRetry 決定顯示。
+            onRetryBanner: {
                 Task {
-                    await coordinator.retryPendingDeletes(
-                        pendingDeletes: pendingDeletes,
-                        kgService: kgService,
-                        modelContext: modelContext
-                    )
+                    if pendingDeletes.isEmpty {
+                        await coordinator.forceRefresh(
+                            kgService: kgService,
+                            modelContext: modelContext
+                        )
+                    } else {
+                        await coordinator.retryPendingDeletes(
+                            pendingDeletes: pendingDeletes,
+                            kgService: kgService,
+                            modelContext: modelContext
+                        )
+                    }
                 }
             },
             onRowTapped: { entryID in
@@ -247,34 +256,11 @@ struct KGVocabView: View {
     }
 
     private var bannerState: KGVocabPresenter.State.Banner? {
-        if !pendingDeletes.isEmpty {
-            return .init(
-                message: L10n.format("%@ 個單字刪除待同步", "\(pendingDeletes.count)"),
-                systemImage: "exclamationmark.triangle.fill",
-                tone: .warning,
-                canDismiss: false,
-                canRetry: true
-            )
-        }
-        if coordinator.errorMessage != nil {
-            return .init(
-                message: L10n.string("離線模式，同步失敗。請確認網路連線後重試"),
-                systemImage: "exclamationmark.triangle.fill",
-                tone: .warning,
-                canDismiss: true,
-                canRetry: false
-            )
-        }
-        if let message = coordinator.refreshSuccessMessage {
-            return .init(
-                message: message,
-                systemImage: "checkmark.circle.fill",
-                tone: .success,
-                canDismiss: true,
-                canRetry: false
-            )
-        }
-        return nil
+        return KGVocabBanner.make(
+            pendingDeleteCount: pendingDeletes.count,
+            error: coordinator.bannerError,
+            refreshSuccessMessage: coordinator.refreshSuccessMessage
+        )
     }
 
 

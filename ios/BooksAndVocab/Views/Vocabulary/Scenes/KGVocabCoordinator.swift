@@ -19,12 +19,18 @@ import SwiftUI
 @Observable @MainActor
 final class KGVocabCoordinator: KGVocabCoordinating {
     var isLoading = false
-    var errorMessage: String?
+    /// 錯誤 banner 的單一真相；`errorMessage` 由它衍生（保持 protocol / 既有讀者不變）。
+    /// banner 呈現交給純函式 `KGVocabBanner.make`，依實際 error 型別決定文案 / glyph / 可否重試。
+    var bannerError: KGVocabBannerError?
     var refreshSuccessMessage: String?
     var selectedEntry: VocabularyEntry?
 
+    /// 衍生自 `bannerError`。滿足 `KGVocabCoordinating.errorMessage` 唯讀契約，
+    /// 亦供 `KGVocabView` 的 empty-state / phase-change 判斷沿用。
+    var errorMessage: String? { bannerError?.message }
+
     func dismissBanner() {
-        errorMessage = nil
+        bannerError = nil
         refreshSuccessMessage = nil
     }
 
@@ -79,10 +85,11 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     ) async {
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
-            errorMessage = nil
+            bannerError = nil
             refreshSuccessMessage = L10n.string("單字庫已更新")
         } catch {
-            errorMessage = error.localizedDescription
+            // 依實際 error 型別分類，而非一律「離線模式」（見 KGVocabBanner）。
+            bannerError = KGVocabBannerErrorClassifier.refreshError(from: error)
             refreshSuccessMessage = nil
         }
     }
@@ -127,11 +134,13 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         modelContext.safeSave()
 
         if failedCount > 0 {
-            errorMessage = L10n.format("刪除失敗 %@ 筆，稍後將自動重試", "\(failedCount)")
+            bannerError = .pendingDeletesFailure(
+                message: L10n.format("刪除失敗 %@ 筆，稍後將自動重試", "\(failedCount)")
+            )
         } else {
             // 全數收斂成功 → 清空前次失敗殘留的 error banner，
             // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
-            errorMessage = nil
+            bannerError = nil
             refreshSuccessMessage = L10n.string("待刪除項目已同步")
         }
 
@@ -192,11 +201,13 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         if modelContext.safeSaveWithToast(toastCoordinator) {
             if failCount > 0 {
                 let successCount = entries.count - failCount
-                errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+                bannerError = .archivePartial(
+                    message: L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+                )
             } else {
                 // 全數封存成功 → 清空前次部分失敗殘留的 error banner，
                 // 對齊 loadInitialData / forceRefresh 成功路徑的清空慣例。
-                errorMessage = nil
+                bannerError = nil
                 refreshSuccessMessage = L10n.string("封存已同步")
                 toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }

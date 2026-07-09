@@ -7,12 +7,13 @@ import Testing
 struct KGVocabCoordinatorBannerTests {
     @Test func dismissBannerClearsErrorAndSuccessMessages() {
         let coordinator = KGVocabCoordinator()
-        coordinator.errorMessage = "offline"
+        coordinator.bannerError = .refresh(message: "offline", isRetryable: true, isNetworkRelated: true)
         coordinator.refreshSuccessMessage = "updated"
 
         coordinator.dismissBanner()
 
-        #expect(coordinator.errorMessage == nil)
+        #expect(coordinator.bannerError == nil)
+        #expect(coordinator.errorMessage == nil)  // 衍生自 bannerError
         #expect(coordinator.refreshSuccessMessage == nil)
     }
 }
