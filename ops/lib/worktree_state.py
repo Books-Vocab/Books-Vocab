@@ -20,7 +20,7 @@ the pure predicates consume them and the IO layer MUST populate both; the rest a
 ADVISORY (render/messaging) and optional:
 
   REQUIRED (consumed by predicates):
-    unique_commits, landed_in_base
+    unique_commits, landed_in_base, has_worktree
   ADVISORY (optional; NOT consumed by predicates — render/messaging only):
     ahead, has_origin
 
@@ -55,7 +55,10 @@ ADVISORY (render/messaging) and optional:
                                   None = unknown/unavailable.
   live_window_s     int         — a HEAD younger than this is treated as LIVE.
                                   Optional; defaults to LIVE_WINDOW_DEFAULT_S.
-  has_worktree      bool        — a checked-out worktree exists for this ref.
+  has_worktree      bool        — REQUIRED. A checked-out worktree exists for this
+                                  ref. Consumed by _is_live (LIVE requires it — a
+                                  worktree-less ref is never live) and by the
+                                  stub-orphan ownership check. Absent → treated False.
   has_origin        bool        — ADVISORY. An upstream tracking ref exists (for
                                   render/messaging; not read by the predicates).
   registered_active bool        — the active-worktree registry/ledger owns this
@@ -79,8 +82,11 @@ LIVE_WINDOW_DEFAULT_S = 7200
 class State(enum.Enum):
     """Health classification of one tracked worktree/branch.
 
-    LIVE      HEAD younger than live_window_s — a suspected running agent; never
-              touch (do not even snapshot: a racing worktree may be mid-write).
+    LIVE      A checked-out worktree whose HEAD is younger than live_window_s — a
+              suspected running agent; never touch (do not even snapshot: a racing
+              worktree may be mid-write). REQUIRES has_worktree: a dangling branch
+              (no worktree) is NEVER live however fresh its HEAD — a just-landed stub
+              ref stays reclaimable rather than being mis-shielded as a running agent.
     DIRTY     uncommitted worktree changes — reclaiming vaporizes them.
     ORPHAN    a detached worktree (no branch to act on), OR an unowned stub branch
               (not registered, no worktree) carrying no unique work — the orphan
@@ -116,9 +122,18 @@ def _live_window(facts: dict[str, Any]) -> int:
 
 
 def _is_live(facts: dict[str, Any]) -> bool:
-    """True when the HEAD commit is younger than the live window (agent likely
-    still running). Time was measured by the IO layer into `head_age_s`; this
-    function reads no clock. Unknown age (None) is never LIVE."""
+    """True when a checked-out worktree exists AND its HEAD commit is younger than
+    the live window (an agent is likely still working in it). BOTH are required:
+
+      * has_worktree — a dangling branch with no worktree is NEVER live, however
+        fresh its HEAD. A branch that just landed (a merge/squash gives it a recent
+        commit time) but has no worktree must stay reclaimable, not be shielded as a
+        running agent. Gating LIVE on has_worktree is the fix for that mis-shield.
+      * head_age_s < live_window_s — recency. Time was measured by the IO layer into
+        `head_age_s`; this function reads no clock. Unknown age (None) is never LIVE.
+    """
+    if not facts.get("has_worktree", False):
+        return False
     age = facts.get("head_age_s")
     if age is None:
         return False
@@ -162,8 +177,10 @@ def classify(facts: dict[str, Any]) -> State:
     """Map gathered facts to a health State. Pure; precedence is safety-critical.
 
     Precedence (checked top-down; first match wins):
-      1. LIVE     head_age_s < live_window_s. Dominates EVERYTHING — a running
-                  agent must never be reclaimed, snapshotted, or reshaped.
+      1. LIVE     a checked-out worktree with head_age_s < live_window_s. Dominates
+                  EVERYTHING — a running agent must never be reclaimed, snapshotted,
+                  or reshaped. A worktree-less ref is NEVER live (see _is_live), so a
+                  freshly landed dangling branch falls through to ORPHAN/MERGED.
       2. DIRTY    uncommitted changes. Dominates every recyclable verdict so
                   unsaved work is never dropped (incl. a detached dirty worktree,
                   which — unlike converge_board — is DIRTY here, not ORPHAN).

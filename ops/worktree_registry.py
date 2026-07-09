@@ -41,9 +41,24 @@ Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human)
   list       ledger + live classify of each record   (table / --json)
   resolve    death: strike a worktree active record  (--branch|--path --status)
   sweep      orphan sentinel: fetch → gather every worktree/branch fact → P1
-             classify + unsafe_to_drop → propose disposition. dry-run default;
-             --commit executes clearance (remote branch → worktree remove → local
-             branch), gated per-card by unsafe_to_drop.
+             classify + unsafe_to_drop → propose a CONSERVATIVE disposition. dry-run
+             default; --commit executes clearance (remote branch → worktree remove →
+             local branch), gated per-card by unsafe_to_drop.
+
+             Absolute protection (converge "main first, never teardown"): the base
+             branch (--base, default origin/main, incl. its local branch) and the
+             PRIMARY worktree (the main working tree / repo root) are NEVER CLEAR and
+             never receive a `branch -D` / `worktree remove` — hard-excluded before any
+             classify reasoning (see sweep_guards + _step_touches_protected).
+
+             CLEAR is confined to three shapes; everything else is KEEP:
+               (a) dangling landed branch — a branch, no worktree, landed+clean;
+               (b) orphan detached worktree — detached, contained-in-base, clean;
+               (c) registry-resolved subject — a record already merged/abandoned.
+             A landed branch that STILL has a checked-out worktree is KEPT (reclaimable,
+             awaiting resolve), never auto-cleared. On --commit, an ACTIVE record whose
+             subject was cleared resolves to *merged* (not abandoned); a record whose
+             worktree merely vanished is struck abandoned.
 
 Exit codes: 0 ok | 64 usage error | 1 partial failure (sweep --commit).
 """
@@ -249,6 +264,48 @@ def _worktrees() -> list[dict[str, Any]]:
     return worktrees
 
 
+# ---- sweep guards: base branch + primary worktree are NEVER swept ----------
+def sweep_guards(base: str) -> tuple[str | None, set[str]]:
+    """(primary_worktree_path_normalized, protected_branch_names) — the two things a
+    sweep must NEVER tear down (converge convention: "main first, never teardown").
+
+      * primary worktree = the MAIN working tree (the repo root), always the first
+        entry of `git worktree list`. Removing it destroys the repository; a running
+        session lives there. Never a CLEAR candidate, never `worktree remove`-d.
+      * base branch = the `--base` ref (and, since --base defaults to origin/main, the
+        LOCAL branch it tracks). Deleting it (`branch -D main`) is catastrophic. We
+        also protect whatever branch the primary worktree currently has checked out.
+
+    This is a hard, absolute exclusion applied BEFORE any classify/CLEAR reasoning."""
+    wts = _worktrees()
+    primary = _norm(wts[0]["path"]) if wts else None
+    protected: set[str] = set()
+    if base:
+        protected.add(base)
+        if "/" in base:               # origin/main -> also protect the local branch 'main'
+            protected.add(base.split("/", 1)[1])
+    if wts and wts[0].get("branch"):  # whatever the main working tree has checked out
+        protected.add(wts[0]["branch"])
+    return primary, protected
+
+
+def _step_touches_protected(
+    gargs: list[str], primary_path: str | None, protected_branches: set[str]
+) -> bool:
+    """Safety net: True if this git clearance step would delete the base branch or
+    remove the primary worktree. CLEAR never contains protected subjects, so this
+    should never fire — belt-and-suspenders so a bug upstream can never emit a
+    repository-destroying `branch -D main` / `worktree remove <repo>`."""
+    if gargs[:2] == ["branch", "-D"] and len(gargs) >= 3 and gargs[2] in protected_branches:
+        return True
+    if gargs[:2] == ["worktree", "remove"] and len(gargs) >= 3 and primary_path \
+            and _norm(gargs[2]) == primary_path:
+        return True
+    if gargs[:1] == ["push"] and "--delete" in gargs and gargs[-1] in protected_branches:
+        return True
+    return False
+
+
 # ============================================================================
 # facts assembly — gather read-only facts, defer EVERY verdict to P1.
 # ============================================================================
@@ -309,36 +366,77 @@ def _subject(
     worktree_path: str | None,
     head_sha: str | None,
     tracked: bool,
+    registry_status: str | None,
+    protected: bool,
+    protected_reason: str | None,
 ) -> dict[str, Any]:
-    """Classify + safety-gate ONE subject via P1, attach a sweep disposition.
+    """Classify + safety-gate ONE subject via P1, attach a CONSERVATIVE disposition.
 
-    disposition = CLEAR  ⟺ classify ∈ {MERGED, ORPHAN} AND unsafe_to_drop is None
-                = KEEP   otherwise (LIVE/DIRTY/ACTIVE/DIVERGED, or any unsafe reason).
-    Both contracts are checked (per P1's ORPHAN warning: classify alone can orphan
-    real commits — the unsafe gate is mandatory)."""
+    Safety floors (either forces KEEP):
+      protected            base branch / primary worktree — NEVER swept (hard rule).
+      unsafe_to_drop != None  live / dirty / unlanded / uncontained — dropping loses
+                           work (P1 verdict; classify alone can orphan commits, so the
+                           unsafe gate is mandatory).
+
+    Given a safe (unsafe is None), non-protected subject, CLEAR is confined to three
+    shapes; EVERYTHING else is KEEP:
+      (a) dangling landed branch   — a branch, no worktree, landed+clean.
+      (b) orphan detached worktree — detached, contained-in-base, clean.
+      (c) registry-resolved        — a record already resolved (merged/abandoned);
+                                     honoured even with an open worktree.
+    In particular a landed branch that STILL has a checked-out worktree is KEPT
+    (reclaimable, awaiting resolve) — never auto-cleared, lest an agent's live
+    worktree be removed out from under it."""
     state = ws.classify(facts)
     unsafe = ws.unsafe_to_drop(facts)
-    clearable = unsafe is None and state in (ws.State.MERGED, ws.State.ORPHAN)
-    label = facts.get("name")
+    name = facts.get("name")
+    has_wt = bool(facts.get("has_worktree"))
+    detached = bool(facts.get("detached"))
+    landed = bool(facts.get("landed_in_base"))
+
+    keep_reason: str | None = None
+    if protected:
+        disposition = "KEEP"
+        keep_reason = protected_reason or "base branch / primary worktree — never teardown"
+    elif unsafe is not None:
+        disposition = "KEEP"
+        keep_reason = unsafe
+    elif registry_status in RESOLVE_STATUS:
+        disposition = "CLEAR"                                   # (c) operator resolved it
+    elif detached and has_wt and landed:
+        disposition = "CLEAR"                                   # (b) contained detached orphan
+    elif (not has_wt) and landed and name is not None:
+        disposition = "CLEAR"                                   # (a) dangling landed branch
+    else:
+        disposition = "KEEP"
+        if landed and has_wt and name is not None:
+            keep_reason = "landed, reclaimable — resolve to clear (open worktree)"
+        else:
+            keep_reason = "not eligible for clearance (kept by default)"
+
+    label = name
     if label is None:
         label = f"(detached {(head_sha or '')[:8]})"
     return {
         "kind": kind,
-        "name": facts.get("name"),
+        "name": name,
         "label": label,
         "path": worktree_path,
         "state": state.value,
-        "landed": bool(facts.get("landed_in_base")),
+        "landed": landed,
         "dirty": bool(facts.get("dirty")),
-        "detached": bool(facts.get("detached")),
+        "detached": detached,
         "ahead": facts.get("ahead", 0),
         "behind": facts.get("behind", 0),
         "unique": facts.get("unique_commits", 0),
         "has_origin": bool(facts.get("has_origin")),
         "tracked": tracked,
         "untracked": not tracked,
+        "registry_status": registry_status,
+        "protected": bool(protected),
         "unsafe": unsafe,
-        "disposition": "CLEAR" if clearable else "KEEP",
+        "keep_reason": keep_reason,
+        "disposition": disposition,
     }
 
 
@@ -352,12 +450,48 @@ def gather_sweep(
 
     Returns (subjects, stale_entries):
       subjects       one card per worktree (branch or detached) + per worktree-less
-                     local branch, each with a CLEAR/KEEP disposition.
-      stale_entries  active records whose worktree path no longer exists on disk.
+                     local branch, each with a CLEAR/KEEP disposition. The base branch
+                     and primary worktree are always present but forced KEEP+protected.
+      stale_entries  active records whose worktree path no longer exists on disk AND
+                     whose branch is NOT itself being cleared (a cleared dangling-landed
+                     branch resolves to merged via nit1, not abandoned).
     """
     active = [r for r in records if r.get("status") == STATUS_ACTIVE]
     reg_paths = {_norm(r["path"]) for r in active if r.get("path")}
     reg_branches = {r["branch"] for r in active if r.get("branch")}
+
+    # resolved (merged/abandoned) records → registry_status for CLEAR shape (c).
+    resolved_by_branch: dict[str, str] = {}
+    resolved_by_path: dict[str, str] = {}
+    for r in records:
+        st = r.get("status")
+        if st in RESOLVE_STATUS:
+            if r.get("branch"):
+                resolved_by_branch[r["branch"]] = st
+            if r.get("path"):
+                resolved_by_path[_norm(r["path"])] = st
+
+    def _registry_status(name: str | None, path: str | None) -> str | None:
+        # an active record wins; else the branch/path's last resolved status, if any.
+        if (name is not None and name in reg_branches) or (path is not None and _norm(path) in reg_paths):
+            return STATUS_ACTIVE
+        if name is not None and name in resolved_by_branch:
+            return resolved_by_branch[name]
+        if path is not None and _norm(path) in resolved_by_path:
+            return resolved_by_path[_norm(path)]
+        return None
+
+    primary_path, protected_branches = sweep_guards(base)
+
+    def _protection(is_primary: bool, branch: str | None) -> tuple[bool, str | None]:
+        bits = []
+        if is_primary:
+            bits.append("primary worktree (main working tree)")
+        if branch is not None and branch in protected_branches:
+            bits.append(f"base branch {branch!r}")
+        if not bits:
+            return False, None
+        return True, " / ".join(bits) + " — never teardown (converge: main first)"
 
     subjects: list[dict[str, Any]] = []
     seen_branches: set[str] = set()
@@ -368,28 +502,31 @@ def gather_sweep(
         if wt.get("bare"):
             continue
         path = wt["path"]
-        seen_paths.add(_norm(path))
+        npath = _norm(path)
+        seen_paths.add(npath)
         branch = wt.get("branch")
         detached = bool(wt.get("detached"))
-        if branch == base:
-            continue  # the base checkout (main working tree) is never a sweep target
         if branch:
             seen_branches.add(branch)
-        registered = _norm(path) in reg_paths or (branch is not None and branch in reg_branches)
+        is_primary = primary_path is not None and npath == primary_path
+        protected, protected_reason = _protection(is_primary, branch)
+        registered = npath in reg_paths or (branch is not None and branch in reg_branches)
         facts = build_facts(
             base, name=branch, detached=detached, worktree_path=path,
             head_sha=wt.get("head"), now_epoch=now_epoch, live_window=live_window,
             registered_active=registered,
         )
         subjects.append(_subject(
-            facts, kind="worktree", worktree_path=path,
-            head_sha=wt.get("head"), tracked=registered,
+            facts, kind="worktree", worktree_path=path, head_sha=wt.get("head"),
+            tracked=registered, registry_status=_registry_status(branch, path),
+            protected=protected, protected_reason=protected_reason,
         ))
 
     # 2. local branches with no worktree
     for b in _local_branches():
-        if b == base or b in seen_branches:
+        if b in seen_branches:
             continue
+        protected, protected_reason = _protection(False, b)
         registered = b in reg_branches
         facts = build_facts(
             base, name=b, detached=False, worktree_path=None, head_sha=None,
@@ -397,13 +534,20 @@ def gather_sweep(
         )
         subjects.append(_subject(
             facts, kind="branch", worktree_path=None, head_sha=None, tracked=registered,
+            registry_status=_registry_status(b, None),
+            protected=protected, protected_reason=protected_reason,
         ))
 
-    # 3. stale registry entries — active record whose worktree path vanished
+    # 3. stale registry entries — active record whose worktree path vanished AND whose
+    #    branch is NOT being cleared (nit1: a cleared dangling-landed branch is resolved
+    #    to merged, so it must not be double-counted here and struck as abandoned).
+    cleared_branches = {s["name"] for s in subjects if s["disposition"] == "CLEAR" and s.get("name")}
     stale: list[dict[str, Any]] = []
     for r in active:
         p = r.get("path")
         if not p or _norm(p) in seen_paths:
+            continue
+        if r.get("branch") in cleared_branches:
             continue
         if not Path(p).exists():
             stale.append(r)
@@ -655,32 +799,35 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     subjects, stale = gather_sweep(args.base, now_epoch, args.live_window, records)
     clears = [s for s in subjects if s["disposition"] == "CLEAR"]
     keeps = [s for s in subjects if s["disposition"] == "KEEP"]
-    mode = "EXECUTE" if args.commit else "dry-run"
+    mode = "committed" if args.commit else "dry-run"
 
-    if args.json:
-        payload = {
-            "schema": SCHEMA, "mode": mode, "base": args.base,
-            "clear": clears, "keep": keeps,
-            "stale_entries": [
-                {"branch": r.get("branch"), "path": r.get("path"), "intent": r.get("intent")}
-                for r in stale
-            ],
-        }
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
-    else:
+    # Build the clearance plan up front. clears already excludes base/primary; this
+    # filter is a hard safety net so a repository-destroying step can never be emitted.
+    primary_path, protected_branches = sweep_guards(args.base)
+    plans: list[tuple[dict[str, Any], list[tuple[str, list[str], Path]]]] = []
+    for s in clears:
+        safe_steps = [
+            step for step in _clear_steps(s, root)
+            if not _step_touches_protected(step[1], primary_path, protected_branches)
+        ]
+        plans.append((s, safe_steps))
+
+    # ---- human tables first (printed before execution, non-json) ----------
+    if not args.json:
         print(f"# worktree sweep ({mode}, base={args.base}) — orphan sentinel\n")
         if keeps:
-            print("── KEEP (live / dirty / unlanded / unsafe) ──")
-            headers = ["subject", "state", "landed", "untracked", "reason"]
+            print("── KEEP (protected / live / dirty / unlanded / open-worktree) ──")
+            headers = ["subject", "state", "landed", "prot", "untracked", "reason"]
             rows = [[
                 s["label"], s["state"], "yes" if s["landed"] else "-",
+                "PROT" if s.get("protected") else "-",
                 "UNTRACKED" if s["untracked"] else "-",
-                s["unsafe"] or "-",
+                s.get("keep_reason") or s.get("unsafe") or "-",
             ] for s in keeps]
             print(_table(headers, rows))
             print()
         if clears:
-            print("── CLEAR (merged / orphan, safe to reclaim) ──")
+            print("── CLEAR (dangling-landed / detached-orphan / resolved) ──")
             headers = ["subject", "state", "untracked", "worktree"]
             rows = [[
                 s["label"], s["state"],
@@ -699,28 +846,76 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     # ---- execute / preview clearance -------------------------------------
     failures = 0
-    for s in clears:
+    executed: list[dict[str, Any]] = []
+    for s, safe_steps in plans:
         if not args.json:
             print(f"## clear {s['label']}  [{s['state']}]"
                   + ("  (UNTRACKED)" if s["untracked"] else ""))
-        for label, gargs, cwd in _clear_steps(s, root):
-            if not _exec_step(label, gargs, cwd, args.commit, quiet=args.json):
+        step_results = []
+        for label, gargs, cwd in safe_steps:
+            ok = _exec_step(label, gargs, cwd, args.commit, quiet=args.json)
+            step_results.append({"label": label, "cmd": "git " + " ".join(gargs), "ok": ok})
+            if not ok:
                 failures += 1
+        executed.append({"label": s["label"], "name": s.get("name"), "steps": step_results})
 
-    # ---- strike stale ledger entries -------------------------------------
-    if stale:
-        if args.commit:
-            for r in stale:
-                r["status"] = "abandoned"
+    # ---- ledger reconciliation (only on --commit) -------------------------
+    # nit1: an ACTIVE record whose subject was CLEARed resolves to *merged* — a
+    # successful landing/clearance. It must NOT later be struck as abandoned by the
+    # stale path just because its worktree is now gone.
+    cleared_branches = {s["name"] for s in clears if s.get("name")}
+    cleared_paths = {_norm(s["path"]) for s in clears if s.get("path")}
+    resolved_merged = 0
+    struck = 0
+    if args.commit:
+        for r in records:
+            if r.get("status") != STATUS_ACTIVE:
+                continue
+            if r.get("branch") in cleared_branches or (r.get("path") and _norm(r["path"]) in cleared_paths):
+                r["status"] = "merged"
                 r["resolved_at"] = now_iso
+                resolved_merged += 1
+        for r in stale:
+            if r.get("status") != STATUS_ACTIVE:   # skip any just flipped to merged
+                continue
+            r["status"] = "abandoned"
+            r["resolved_at"] = now_iso
+            struck += 1
+        if resolved_merged or struck:
             save_state(state_path, state)
-            if not args.json:
-                print(f"\n✓ struck {len(stale)} stale ledger entry(ies) -> abandoned")
-        elif not args.json:
-            print(f"\n# {len(stale)} stale ledger entry(ies) would be struck (--commit to write)")
 
-    if not args.commit and not args.json:
-        print("\n# dry-run only — re-run with --commit to execute clearance.")
+    if not args.json:
+        if struck:
+            print(f"\n✓ struck {struck} stale ledger entry(ies) -> abandoned")
+        elif stale:
+            print(f"\n# {len(stale)} stale ledger entry(ies) would be struck (--commit to write)")
+        if resolved_merged:
+            print(f"✓ resolved {resolved_merged} cleared record(s) -> merged")
+        if not args.commit:
+            print("\n# dry-run only — re-run with --commit to execute clearance.")
+
+    # ---- json (printed AFTER execution so committed mode reflects results) -
+    if args.json:
+        payload: dict[str, Any] = {
+            "schema": SCHEMA, "mode": mode, "base": args.base,
+            "clear": clears, "keep": keeps,
+            "stale_entries": [
+                {"branch": r.get("branch"), "path": r.get("path"), "intent": r.get("intent")}
+                for r in stale
+            ],
+            "plan": [
+                {"label": s["label"], "name": s.get("name"), "path": s.get("path"),
+                 "cmds": ["git " + " ".join(gargs) for (_lbl, gargs, _cwd) in safe_steps]}
+                for (s, safe_steps) in plans
+            ],
+        }
+        if args.commit:
+            payload["executed"] = executed
+            payload["failures"] = failures
+            payload["resolved_merged"] = resolved_merged
+            payload["struck_stale"] = struck
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+
     return EXIT_OK if failures == 0 else EXIT_PARTIAL
 
 
@@ -747,7 +942,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="override 'now' (ISO8601 or epoch seconds) — for tests/determinism")
 
     def add_base(sp: argparse.ArgumentParser) -> None:
-        sp.add_argument("--base", default="main", help="baseline ref (default: main)")
+        sp.add_argument(
+            "--base", default="origin/main",
+            help="baseline ref for containment (default: origin/main — the LOCAL base "
+                 "may lag origin, which would hide already-landed work; compare against "
+                 "the remote so a merged branch reads as landed)",
+        )
         sp.add_argument("--live-window", type=int, default=ws.LIVE_WINDOW_DEFAULT_S,
                         help=f"seconds; HEAD younger than this = live agent (default {ws.LIVE_WINDOW_DEFAULT_S})")
 
