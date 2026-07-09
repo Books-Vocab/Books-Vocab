@@ -72,10 +72,21 @@ extension UITestFixtureSeed {
         return entriesByWord
     }
 
+    /// - Parameter save: When `false`, leaves inserts as pending changes in
+    ///   `context` instead of committing via `ModelContext.save()`. SwiftData
+    ///   fetches (and `@Query`) include pending inserts, so an in-memory catalog
+    ///   scene still renders the seeded data — but no *broadcast*
+    ///   `NSManagedObjectContextDidSave` is posted. That broadcast is what a
+    ///   dangling `@Query` observer (from an earlier catalog scene whose
+    ///   ModelContainer was already deallocated) traps on during a full catalog
+    ///   run (`EXC_BREAKPOINT` in `_SwiftData_SwiftUI`). Pass `false` from
+    ///   snapshot scenes that seed after many other `@Query` scenes have
+    ///   rendered. See docs/sop/ios.md §Catalog Snapshot Export.
     @MainActor
     static func insertVocabularySeed(
         _ seed: UIWorldVocabularySeed,
-        into context: ModelContext
+        into context: ModelContext,
+        save: Bool = true
     ) throws -> [VocabularyEntry] {
         let notebook = Notebook(remoteId: seed.notebookRemoteId, name: seed.notebookName)
         notebook.syncStatus = seed.notebookSyncStatus
@@ -104,7 +115,9 @@ extension UITestFixtureSeed {
             context.insert(record)
         }
 
-        try context.save()
+        if save {
+            try context.save()
+        }
         return entries
     }
 

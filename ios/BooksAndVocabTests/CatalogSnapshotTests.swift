@@ -63,6 +63,29 @@ private let catalogSnapshotCompileFlagEnabled = false
         playbook.stores.reduce(into: 0) { $0 += $1.scenarios.count }
     }
 
+    /// Wall-time budget granted per `(scenario × device)` capture in the main
+    /// `Snapshot.run` pass. PlaybookSnapshot's `Snapshot` defaults to a flat
+    /// `timeout: 600`s for the *entire* run; a full catalog against a heavy
+    /// dataset (e.g. the marketing spec world — 600+ cards, saturated graph)
+    /// renders all 1300+ captures in ~770s and blew past that ceiling, so
+    /// `snapshot.run` threw `.timeout(600)` *after* producing every main-pass
+    /// PNG but *before* the web-view pass ran — silently dropping the 16 graph
+    /// PNGs. Measured ~0.58s/capture on iOS 26.4 sim; 2.0s gives >3x head-room
+    /// and, being derived from the resolved workload, keeps future catalog
+    /// growth from silently re-tripping the ceiling. This only raises the
+    /// *ceiling* — `Snapshot.run` still returns the instant its DispatchGroup
+    /// completes, so fast/scoped runs pay nothing.
+    static let snapshotSecondsPerCapture: TimeInterval = 2.0
+
+    /// Floor so scoped/tiny runs keep a sane budget instead of a near-zero one.
+    static let snapshotTimeoutFloor: TimeInterval = 600
+
+    /// Derives the main-pass `Snapshot` timeout from the actual workload.
+    static func snapshotTimeout(scenarioCount: Int, deviceCount: Int) -> TimeInterval {
+        let captures = max(0, scenarioCount) * max(0, deviceCount)
+        return max(snapshotTimeoutFloor, snapshotSecondsPerCapture * TimeInterval(captures))
+    }
+
     /// Scope 匹配零 scenario 時的 fail-fast。沒有這條,空 playbook 會在下游以
     /// 「catalog_index.json 不存在」(NSCocoaErrorDomain Code=4,輸出目錄從未建立)
     /// 冒出,完全看不出是 scope 打錯(category 名大小寫敏感,如 `Settings`≠`settings`)。
@@ -141,6 +164,10 @@ private let catalogSnapshotCompileFlagEnabled = false
             directory: outputDirectory,
             clean: true,
             format: .png,
+            timeout: Self.snapshotTimeout(
+                scenarioCount: Self.scopedScenarioCount(in: mainPlaybook),
+                deviceCount: deviceVariants.count
+            ),
             devices: deviceVariants
         )
 
@@ -308,6 +335,21 @@ private let catalogSnapshotCompileFlagEnabled = false
 
     private static func normalizeSnapshotName(_ string: String) -> String {
         string.components(separatedBy: snapshotNameNormalizationCharacters).joined(separator: "_")
+    }
+
+    @Test func snapshotTimeoutScalesWithWorkloadAndKeepsFloor() {
+        // Full catalog: 336 scenarios × 4 device variants. The heaviest
+        // observed full run (marketing spec world) rendered in ~770s and
+        // tripped PlaybookSnapshot's flat 600s default, aborting the main pass
+        // before the web-view pass ran. The derived budget must clear that
+        // wall time with margin so the graph PNGs are never dropped again.
+        let full = Self.snapshotTimeout(scenarioCount: 336, deviceCount: 4)
+        #expect(full == 336 * 4 * 2)            // 2688s
+        #expect(full > 770 * 2)                 // >2x the worst observed run
+        // Scoped / degenerate workloads never drop below the floor.
+        #expect(Self.snapshotTimeout(scenarioCount: 1, deviceCount: 1) == Self.snapshotTimeoutFloor)
+        #expect(Self.snapshotTimeout(scenarioCount: 0, deviceCount: 0) == Self.snapshotTimeoutFloor)
+        #expect(Self.snapshotTimeout(scenarioCount: -5, deviceCount: 4) == Self.snapshotTimeoutFloor)
     }
 
     @Test func parseListArgumentsReadsLaunchArgumentPairs() {
