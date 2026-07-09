@@ -667,3 +667,76 @@ def test_adopt_refuses_detached_worktree(scratch):
     rc, _res = _run_json(["adopt", "--worktree", str(wt), "--intent", "nope",
                           "--state", state, "--json"])
     assert rc == MODULE.EXIT_USAGE
+
+
+# ============================================================================
+# INTEGRATION: freeze (stop-the-world surgery lock)
+# ============================================================================
+@gitmark
+def test_freeze_status_and_reason_roundtrip(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, st = _run_json(["freeze", "status", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert st["frozen"] is False
+
+    rc, on = _run_json(["freeze", "on", "--reason", "history rewrite in progress",
+                        "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, st = _run_json(["freeze", "status", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert st["frozen"] is True
+    assert st["reason"] == "history rewrite in progress"
+
+    rc, _off = _run_json(["freeze", "off", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, st = _run_json(["freeze", "status", "--state", state, "--json"])
+    assert st["frozen"] is False
+
+
+@gitmark
+def test_freeze_blocks_open_adopt_cutover_until_off(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    # a live worktree from BEFORE the freeze, for the cutover/adopt probes
+    rc, opened = _run_json(["open", "--intent", "fix the reader crash",
+                            "--slug", "pre-freeze", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+
+    rc, _ = _run_json(["freeze", "on", "--reason", "surgery", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    rc, res = _run_json(["open", "--intent", "fix the reader crash",
+                         "--slug", "during-freeze", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "surgery" in json.dumps(res)
+    rc, _res = _run_json(["adopt", "--worktree", wt, "--intent", "nope",
+                          "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    rc, _res = _run_json(["cutover", "--worktree", wt, "--state", state,
+                          "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+
+    # resolve stays ALLOWED — surgery prep is about draining, not trapping
+    rc, _res = _run_json(["freeze", "off", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, _res = _run_json(["open", "--intent", "fix the reader crash",
+                          "--slug", "post-freeze", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+
+@gitmark
+def test_freeze_on_twice_requires_force(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, _ = _run_json(["freeze", "on", "--reason", "first", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, res = _run_json(["freeze", "on", "--reason", "second", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "first" in json.dumps(res)  # existing reason surfaced, not clobbered
+    rc, _ = _run_json(["freeze", "on", "--reason", "second", "--force",
+                       "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, st = _run_json(["freeze", "status", "--state", state, "--json"])
+    assert st["reason"] == "second"
