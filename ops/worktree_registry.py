@@ -10,7 +10,7 @@ it, and is *resolved* (cutover=merged, or dropped=abandoned). The registry is th
 reconciles the ledger against on-disk git reality and proposes what to reclaim —
 never destroying unlanded or unsaved work.
 
-Architecture (mirrors ops/converge_board.py, ops/ui_deadcode.py — three layers):
+Architecture (mirrors the retired ops/converge_board.py, ops/ui_deadcode.py — three layers):
   IO layer      read-only git fact gathering (NEVER mutates git except the explicit
                 `sweep --commit` clearance actions). fetch-first. Owns the ONE piece
                 of real judgement here: `landed_in_base` computed by TREE-DIFF.
@@ -21,8 +21,8 @@ Architecture (mirrors ops/converge_board.py, ops/ui_deadcode.py — three layers
 
 ⚠ TREE-DIFF CONTAINMENT (the whole point). `landed_in_base` answers "is this ref's
 net change already present in base?" It is computed by comparing trees, NOT by
-`git cherry` / patch-id. converge_board._cherry_unmerged uses `git cherry`, which
-goes WRONG after a rebase/squash (patch-ids drift) — reporting landed work as
+`git cherry` / patch-id. The retired converge_board._cherry_unmerged used `git cherry`, which
+went WRONG after a rebase/squash (patch-ids drift) — reporting landed work as
 unlanded or vice versa. This tool deliberately uses tree containment so a
 squash-merged branch (commit sha differs, content already in base) is correctly
 seen as landed. See `landed_in_base`.
@@ -45,7 +45,7 @@ Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human)
              default; --commit executes clearance (remote branch → worktree remove →
              local branch), gated per-card by unsafe_to_drop.
 
-             Absolute protection (converge "main first, never teardown"): the base
+             Absolute protection (the retired converge convention "main first, never teardown"): the base
              branch (--base, default origin/main, incl. its local branch) and the
              PRIMARY worktree (the main working tree / repo root) are NEVER CLEAR and
              never receive a `branch -D` / `worktree remove` — hard-excluded before any
@@ -163,7 +163,7 @@ def landed_in_base(base: str, ref: str) -> bool:
     """TREE-DIFF containment: is `ref`'s net change already present in `base`?
 
     NOT computed via `git cherry` / patch-id — those drift after a rebase/squash and
-    are the exact bug (converge_board._cherry_unmerged) this tool must not repeat.
+    are the exact bug (the retired converge_board._cherry_unmerged) this tool must not repeat.
 
     Method (fork-relative tree comparison):
       mb      = merge-base(base, ref)                      # the fork point
@@ -267,7 +267,7 @@ def _worktrees() -> list[dict[str, Any]]:
 # ---- sweep guards: base branch + primary worktree are NEVER swept ----------
 def sweep_guards(base: str) -> tuple[str | None, set[str]]:
     """(primary_worktree_path_normalized, protected_branch_names) — the two things a
-    sweep must NEVER tear down (converge convention: "main first, never teardown").
+    sweep must NEVER tear down (the retired converge convention: "main first, never teardown").
 
       * primary worktree = the MAIN working tree (the repo root), always the first
         entry of `git worktree list`. Removing it destroys the repository; a running
@@ -507,7 +507,7 @@ def gather_sweep(
             bits.append(f"base branch {branch!r}")
         if not bits:
             return False, None
-        return True, " / ".join(bits) + " — never teardown (converge: main first)"
+        return True, " / ".join(bits) + " — never teardown (main-first invariant)"
 
     subjects: list[dict[str, Any]] = []
     seen_branches: set[str] = set()

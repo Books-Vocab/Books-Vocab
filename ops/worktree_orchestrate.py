@@ -14,7 +14,7 @@ about how a gate decides pass/fail — the `gate` subcommand only *routes* chang
 files to the project's existing gate tools (ios_ops.sh / verify_design_system.sh /
 docs_lint.sh / pytest) and aggregates their verdicts.
 
-Architecture (mirrors worktree_registry.py / converge_board.py — three layers):
+Architecture (mirrors worktree_registry.py / the retired converge_board.py — three layers):
   IO layer      git + subprocess to the real gate tools. Side-effecting steps
                 (worktree add, rebase, push, worktree remove, branch -D) are gated
                 behind --commit; dry-run is the default for every mutation.

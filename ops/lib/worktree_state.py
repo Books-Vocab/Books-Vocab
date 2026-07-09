@@ -7,7 +7,7 @@ git, touches no filesystem and reads no clock — it consumes an already-gathere
 `facts` dict and nothing else. All git/IO (and the tree-diff below) belong to a
 separate IO layer that is NOT part of this stage.
 
-Design lineage: this is a精簡/rename of ops/converge_board.py's 7-state taxonomy,
+Design lineage: this is a distilled rename of the retired ops/converge_board.py's 7-state taxonomy,
 reshaped around two jobs — spotting *orphan sentinels* (worktrees/branches nobody
 owns) and closing the *registration loop* (is a ref still owned/active?) — while
 never mis-reclaiming a running or unsaved worktree.
@@ -43,9 +43,9 @@ ADVISORY (render/messaging) and optional:
                                   ⚠ CONTRACT: the IO layer MUST compute this by
                                   TREE-DIFF (compare the ref's cumulative tree vs
                                   base's tree). It is STRICTLY FORBIDDEN to derive
-                                  it from `git cherry` or patch-id: converge_board's
-                                  _cherry_unmerged uses `git cherry` for containment
-                                  and goes WRONG after a rebase (patch-ids drift),
+                                  it from `git cherry` or patch-id: the retired
+                                  converge_board's _cherry_unmerged used `git cherry`
+                                  for containment and went WRONG after a rebase (patch-ids drift),
                                   silently reporting landed work as unlanded (or the
                                   reverse). This lib deliberately consumes only the
                                   pre-computed tree-diff bool so that class of bug
@@ -183,7 +183,7 @@ def classify(facts: dict[str, Any]) -> State:
                   freshly landed dangling branch falls through to ORPHAN/MERGED.
       2. DIRTY    uncommitted changes. Dominates every recyclable verdict so
                   unsaved work is never dropped (incl. a detached dirty worktree,
-                  which — unlike converge_board — is DIRTY here, not ORPHAN).
+                  which — unlike the retired converge_board — is DIRTY here, not ORPHAN).
       3. ORPHAN   a detached worktree, or an unowned stub branch with no unique
                   work.
       then, by committed shape (has a branch, clean, not live):

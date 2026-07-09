@@ -8,7 +8,7 @@ P1 ops/lib/worktree_state.py and are unit-tested there):
      tree-diff correctly says landed.
   2. `sweep` — the orphan sentinel, in its CONSERVATIVE shape:
        * base branch + primary worktree are ABSOLUTELY protected (never CLEAR, never
-         a teardown command) — converge's "main first, never teardown".
+         a teardown command) — the retired converge's "main first, never teardown".
        * CLEAR is confined to three shapes: (a) a dangling landed branch with no
          worktree, (b) a contained+clean detached orphan worktree, (c) a subject a
          registry record already resolved (merged/abandoned). A landed branch that
