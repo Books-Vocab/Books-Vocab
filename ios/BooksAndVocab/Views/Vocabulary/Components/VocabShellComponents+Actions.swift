@@ -177,6 +177,7 @@ struct VocabReviewCTAPill: View {
             Capsule(style: .continuous)
                 .fill(appTheme.palette.brandHero)
         )
+        .appPointerHover()
     }
 }
 
@@ -208,6 +209,7 @@ struct VocabSortPill: View {
                     .fill(appSkin.palette.mutedFill)
             )
         }
+        .appPointerHover()
         .accessibilityLabel(L10n.format("排序方式：%@", sortOption.label))
         .accessibilityHint("點兩下切換排序".localized)
         .enableInjection()

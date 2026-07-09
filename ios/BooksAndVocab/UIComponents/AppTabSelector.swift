@@ -121,6 +121,7 @@ struct AppTabSelector<ID: Hashable>: View {
                     appChipLabel(option: option, isSelected: isSelected, style: style)
                 }
                 .buttonStyle(.plain)
+                .appPointerHover()
                 .accessibilityLabel(appChipAccessibilityLabel(option: option))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }

@@ -110,6 +110,7 @@ struct VocabChromeIconButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .appPointerHover()
         .accessibilityLabel(label ?? systemImage)
         .enableInjection()
     }
