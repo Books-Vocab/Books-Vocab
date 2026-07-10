@@ -1,0 +1,330 @@
+"""Phase 1b-ii: official-deck governance — git-SoT spec → emit into the global
+``shared_decks.db`` catalog, seedable + guest-browsable.
+
+Load-bearing invariants pinned here:
+* ``source`` / ``owner_id`` / ``visibility`` / ``status`` are SERVER-authoritative
+  — a spec that supplies ``source='community'`` / ``owner_id='attacker'`` is
+  still emitted as an official (badge-trusted) deck. The verified-tier badge is
+  a security property, so this gets a dedicated negative test.
+* ``content_guid`` covers (content, pos, mode, meaning) so homographs (``lead``
+  the metal vs the verb) do NOT collide into one card.
+* idempotency: re-emitting the same spec is a no-op (content_hash unchanged →
+  no version bump, no card proliferation); a content change mints a new version
+  and atomically flips ``current_version`` while the old version stays immutable.
+* ``--check`` round-trip self-consistency: a spec that cannot be faithfully
+  stored (colliding cards collapse under the guid UNIQUE) drifts → exit 1.
+* ``--commit`` snapshots the whole data-dir (backup_world) BEFORE writing.
+* end-to-end: a committed official deck is guest-browsable via GET /api/decks
+  with zero SRS leakage.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session, select
+
+from conftest import TEST_JWT_SECRET, _swap_settings
+from kg.shared_decks.store import SharedDeck, SharedDeckCard, SharedDeckStore
+
+# The official-deck emitter lives OUTSIDE backend/src (it is an ops tool), so
+# make its directory importable by bare name — the same trick build_demo.py uses
+# for its sibling emitters.
+_OPS_DIR = Path(__file__).resolve().parents[2] / "ops" / "official_decks"
+if str(_OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(_OPS_DIR))
+
+import build_official  # noqa: E402
+
+# The 7 SRS columns that must never surface in a shared card payload.
+_SRS_KEYS = {
+    "reviewIntervalHours", "review_interval_hours",
+    "nextReviewAt", "next_review_at",
+    "lastReviewedAt", "last_reviewed_at",
+    "reviewCount", "review_count",
+    "lapseCount", "lapse_count",
+    "reviewStreak", "review_streak",
+    "lastReviewFeedback", "last_review_feedback",
+}
+
+
+def _spec(deck_id="official-test", cards=None, **over):
+    base = {
+        "schema": "kg.official_deck.v1",
+        "deckId": deck_id,
+        "title": "Test Deck",
+        "description": "A test deck",
+        "category": "language",
+        "languagePair": "en-zh",
+        "tags": ["test", "starter"],
+        "color": "#3366FF",
+        "coverPattern": "waves",
+        "cards": cards if cards is not None else [
+            {"content": "apple", "pos": "noun", "meaning": "蘋果",
+             "examples": ["An apple a day."], "mode": "recognition"},
+            {"content": "book", "pos": "noun", "meaning": "書", "mode": "recognition"},
+        ],
+    }
+    base.update(over)
+    return base
+
+
+def _open(path):
+    store = SharedDeckStore(path)
+    return store
+
+
+def _card_rows(store, deck_id):
+    with Session(store.engine) as s:
+        return list(s.exec(select(SharedDeckCard).where(
+            SharedDeckCard.shared_deck_id == deck_id)).all())
+
+
+# ── store.publish_official: server-authoritative stamping ──────────────
+
+def test_publish_official_stamps_server_authoritative_fields(tmp_path):
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        result = store.publish_official(
+            deck_id="official-core",
+            title="Core",
+            category="language",
+            language_pair="en-zh",
+            tags=["core"],
+            cards=[
+                {"content": "apple", "pos": "noun", "meaning": "蘋果",
+                 "mode": "recognition"},
+                {"content": "book", "pos": "noun", "meaning": "書",
+                 "mode": "recognition"},
+            ],
+        )
+        with Session(store.engine) as s:
+            deck = s.get(SharedDeck, "official-core")
+        assert deck is not None
+        assert deck.source == "official"
+        assert deck.owner_id is None
+        assert deck.visibility == "official"
+        assert deck.status == "active"
+        assert deck.is_deleted is False
+        assert deck.current_version == 1
+        assert deck.card_count == 2
+        assert deck.title_nfc_lower == "core"
+        assert result["cardCount"] == 2
+    finally:
+        store.close()
+
+
+def test_publish_official_ignores_caller_supplied_source_and_owner(tmp_path):
+    """Badge trust: even if a spec smuggles source='community'/owner_id, the
+    emitted deck is official with owner_id NULL — the signature has no such
+    params, so the fields are structurally unreachable."""
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        spec = _spec(deck_id="official-x")
+        spec["source"] = "community"      # attacker attempt
+        spec["ownerId"] = "attacker-123"  # attacker attempt
+        build_official.emit(spec, commit=True, data_dir=tmp_path)
+        with Session(store.engine) as s:
+            deck = s.get(SharedDeck, "official-x")
+        assert deck.source == "official"
+        assert deck.owner_id is None
+        assert deck.visibility == "official"
+    finally:
+        store.close()
+
+
+# ── content_guid: homograph safety ─────────────────────────────────────
+
+def test_content_guid_covers_pos_and_meaning(tmp_path):
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        store.publish_official(
+            deck_id="d",
+            title="Homographs",
+            cards=[
+                {"content": "lead", "pos": "noun", "meaning": "鉛（金屬）",
+                 "mode": "recognition"},
+                {"content": "lead", "pos": "verb", "meaning": "帶領",
+                 "mode": "recognition"},
+            ],
+        )
+        rows = _card_rows(store, "d")
+        assert len(rows) == 2, "homographs must not collapse to one guid"
+        assert len({r.content_guid for r in rows}) == 2
+    finally:
+        store.close()
+
+
+def test_identical_cards_dedup_by_guid(tmp_path):
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        result = store.publish_official(
+            deck_id="d",
+            title="Dup",
+            cards=[
+                {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+                {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+            ],
+        )
+        # A collision under the guid UNIQUE must be absorbed, not crash.
+        assert result["cardCount"] == 1
+        assert len(_card_rows(store, "d")) == 1
+    finally:
+        store.close()
+
+
+# ── idempotency + versioning ───────────────────────────────────────────
+
+def test_reemit_same_spec_is_noop(tmp_path):
+    spec = _spec(deck_id="official-idem")
+    build_official.emit(spec, commit=True, data_dir=tmp_path)
+    second = build_official.emit(spec, commit=True, data_dir=tmp_path)
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        with Session(store.engine) as s:
+            deck = s.get(SharedDeck, "official-idem")
+        assert deck.current_version == 1, "re-emit must not bump version"
+        # No card proliferation: rows == card_count, not doubled.
+        assert len(_card_rows(store, "official-idem")) == deck.card_count == 2
+        assert second["result"]["action"] == "noop"
+    finally:
+        store.close()
+
+
+def test_content_change_bumps_version_and_flips_pointer(tmp_path):
+    spec = _spec(deck_id="official-ver")
+    build_official.emit(spec, commit=True, data_dir=tmp_path)
+    changed = _spec(deck_id="official-ver", cards=[
+        {"content": "apple", "pos": "noun", "meaning": "蘋果", "mode": "recognition"},
+        {"content": "cat", "pos": "noun", "meaning": "貓", "mode": "recognition"},
+        {"content": "dog", "pos": "noun", "meaning": "狗", "mode": "recognition"},
+    ])
+    result = build_official.emit(changed, commit=True, data_dir=tmp_path)
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        with Session(store.engine) as s:
+            deck = s.get(SharedDeck, "official-ver")
+        assert deck.current_version == 2
+        assert deck.card_count == 3
+        assert result["result"]["action"] == "versioned"
+        # Old version-1 cards are immutable — still present.
+        v1 = [r for r in _card_rows(store, "official-ver") if r.version == 1]
+        v2 = [r for r in _card_rows(store, "official-ver") if r.version == 2]
+        assert len(v1) == 2
+        assert len(v2) == 3
+    finally:
+        store.close()
+
+
+# ── --check round-trip self-consistency ────────────────────────────────
+
+def test_check_passes_for_clean_spec(tmp_path):
+    res = build_official.emit(_spec(), check=True)
+    assert res["drift"] is False
+
+
+def test_check_detects_drift_on_colliding_cards(tmp_path):
+    # Two cards identical in (content, pos, mode, meaning) collide to one guid
+    # → the stored deck cannot faithfully represent the spec-as-written → drift.
+    bad = _spec(cards=[
+        {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
+        {"content": "same", "pos": "noun", "meaning": "同", "mode": "recognition"},
+    ])
+    res = build_official.emit(bad, check=True)
+    assert res["drift"] is True
+
+
+def test_check_over_committed_specs_is_clean():
+    """Every git-committed official spec must round-trip cleanly (PR gate)."""
+    specs = build_official.discover_specs()
+    assert specs, "expected at least one committed official spec"
+    drift = []
+    for path in specs:
+        spec = json.loads(Path(path).read_text(encoding="utf-8"))
+        if build_official.emit(spec, check=True)["drift"]:
+            drift.append(path)
+    assert not drift, f"committed specs drift: {drift}"
+
+
+# ── dry-run purity + backup hook ───────────────────────────────────────
+
+def test_dry_run_writes_nothing(tmp_path):
+    res = build_official.emit(_spec(), commit=False, data_dir=tmp_path)
+    assert res["committed"] is False
+    assert not (tmp_path / "shared_decks.db").exists(), "dry-run must not touch disk"
+    assert res["cardCount"] == 2
+    assert res["contentHash"]
+
+
+def test_commit_calls_backup_world_before_writing(tmp_path):
+    build_official.emit(_spec(deck_id="official-bk"), commit=True, data_dir=tmp_path)
+    backups = list((tmp_path / "_ops_world_backups").glob("shared-decks-official__*.tar.gz"))
+    assert backups, "commit must snapshot the world before writing"
+
+
+# ── end-to-end: seeded official deck is guest-browsable ────────────────
+
+@pytest.fixture()
+def api(tmp_path):
+    (tmp_path / "users").mkdir()
+    _swap_settings(_settings(tmp_path))
+    yield SimpleNamespace(
+        client=TestClient(app, raise_server_exceptions=False),
+        data_dir=tmp_path,
+    )
+
+
+def _settings(tmp_path):
+    from kg.settings import KGSettings
+    return KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
+
+
+# Imported lazily so _swap_settings can rewire app state per test.
+from kg.api import app  # noqa: E402
+
+
+def test_seeded_official_deck_is_guest_browsable(api):
+    spec = _spec(deck_id="official-e2e", cards=[
+        {"content": "meticulous", "pos": "adjective", "meaning": "一絲不苟的",
+         "examples": ["a meticulous plan"], "mode": "recognition"},
+        {"content": "plain", "pos": "adjective", "meaning": "平凡的", "mode": "recognition"},
+    ])
+    build_official.emit(spec, commit=True, data_dir=api.data_dir)
+
+    r = api.client.get("/api/decks")  # NO auth header (guest)
+    assert r.status_code == 200, r.text
+    decks = r.json()["decks"]
+    deck = next((d for d in decks if d["deckId"] == "official-e2e"), None)
+    assert deck is not None, "official deck must be guest-browsable"
+    assert deck["isOfficial"] is True
+    assert deck["cardCount"] == 2
+
+    detail = api.client.get("/api/decks/official-e2e")
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert len(body["sampleCards"]) == 2
+    for card in body["sampleCards"]:
+        assert _SRS_KEYS.isdisjoint(card.keys()), f"SRS leaked: {_SRS_KEYS & card.keys()}"
+
+
+# ── CLI surface ────────────────────────────────────────────────────────
+
+def test_cli_emit_dry_run_json(tmp_path, capsys):
+    spec_path = tmp_path / "deck.json"
+    spec_path.write_text(json.dumps(_spec(deck_id="official-cli")), encoding="utf-8")
+    rc = build_official.main(["emit", str(spec_path), "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert out["mode"] == "dry-run"
+    assert out["committed"] is False
+
+
+def test_cli_check_all_committed_specs(capsys):
+    rc = build_official.main(["check", "--json"])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["drift"] is False
