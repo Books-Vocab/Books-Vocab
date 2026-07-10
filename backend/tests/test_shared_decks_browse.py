@@ -103,6 +103,32 @@ def test_private_and_community_decks_are_hidden(api):
     assert ids == ["deck_pub"]
 
 
+def test_unlisted_and_under_review_decks_are_hidden(api):
+    """§6.1: browse discovery must return zero rows for unlisted visibility and
+    under_review status; their detail/cards are 404 (no existence leak)."""
+    _insert_deck(api.store, "deck_pub2", "Public2", cards=[("a", "1")])
+    _insert_deck(api.store, "deck_unlisted", "Unlisted", visibility="unlisted", cards=[("b", "2")])
+    _insert_deck(api.store, "deck_review", "UnderReview", status="under_review", cards=[("c", "3")])
+    ids = [d["deckId"] for d in api.client.get("/api/decks").json()["decks"]]
+    assert ids == ["deck_pub2"]
+    assert api.client.get("/api/decks/deck_unlisted").status_code == 404
+    assert api.client.get("/api/decks/deck_review/cards").status_code == 404
+
+
+def test_cards_cursor_is_bound_to_deck_and_namespace(api):
+    _insert_deck(api.store, "deck_a", "A", cards=[(f"a{i}", str(i)) for i in range(3)])
+    _insert_deck(api.store, "deck_b", "B", cards=[(f"b{i}", str(i)) for i in range(3)])
+    # A list cursor (no "cards" namespace) is rejected by the cards endpoint.
+    list_cursor = api.client.get("/api/decks?limit=1").json()["nextCursor"]
+    assert list_cursor
+    assert api.client.get(f"/api/decks/deck_a/cards?cursor={list_cursor}").status_code == 400
+    # deck_a's cards cursor must not be accepted for deck_b, but is valid on deck_a.
+    a_cursor = api.client.get("/api/decks/deck_a/cards?limit=1").json()["nextCursor"]
+    assert a_cursor
+    assert api.client.get(f"/api/decks/deck_b/cards?cursor={a_cursor}").status_code == 400
+    assert api.client.get(f"/api/decks/deck_a/cards?cursor={a_cursor}").status_code == 200
+
+
 def test_deck_detail_returns_sample_cards_without_srs(api):
     _insert_deck(api.store, "deck_x", "Sampler",
                  cards=[("meticulous", "一絲不苟的"), ("plain", "平凡")])
