@@ -381,6 +381,31 @@ def test_homograph_collapse_fails_loud(tmp_path):
     assert cards.count() == 0
 
 
+# ── 6b. record_copy failure compensates the staged copy ────────────
+
+
+def test_record_copy_failure_compensates_staged_rows(tmp_path, monkeypatch):
+    """record_copy only converts an idempotency collision to False; any OTHER
+    fault (e.g. OperationalError: database is locked) escapes. The staged
+    notebook + cards are written BEFORE the copy_log, so an escaping record_copy
+    must still compensate — else they leak as invisible orphan rows forever."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    def boom(*a, **k):
+        raise RuntimeError("database is locked")  # a non-IntegrityError fault
+
+    monkeypatch.setattr(shared, "record_copy", boom)
+    with pytest.raises(RuntimeError, match="locked"):
+        _copy(shared, cards, nbs, user_dir)
+
+    # compensation erased the whole partial copy — no staged notebook, no cards,
+    # and no copy_log pointing at a phantom notebook.
+    assert list(nbs.all(include_deleted=True)) == []
+    assert cards.count() == 0
+    assert shared.get_copy_log("u1", "k1") is None
+
+
 # ── 7. download_count atomic increment (sequential) ────────────────
 
 

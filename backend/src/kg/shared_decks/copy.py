@@ -303,7 +303,18 @@ def _copy_locked(
     # a retry would mint a SECOND notebook (the duplicate idempotency exists to
     # prevent). With the log first, a crash before materialize self-heals — the
     # retry finds the log and _replay reveals the still-hidden notebook.
-    if not shared_store.record_copy(copier_id, idempotency_key, deck.id, version, nb.id):
+    try:
+        recorded = shared_store.record_copy(
+            copier_id, idempotency_key, deck.id, version, nb.id
+        )
+    except Exception:
+        # record_copy only converts an idempotency collision to False; any other
+        # fault (e.g. OperationalError: database is locked) escapes. The staged
+        # notebook + cards were written before this log row, so compensate before
+        # re-raising — otherwise they leak as invisible orphan rows forever.
+        _compensate(card_store, notebook_store, user_dir, nb.id)
+        raise
+    if not recorded:
         _compensate(card_store, notebook_store, user_dir, nb.id)
         winner = shared_store.get_copy_log(copier_id, idempotency_key)
         if winner is not None:
