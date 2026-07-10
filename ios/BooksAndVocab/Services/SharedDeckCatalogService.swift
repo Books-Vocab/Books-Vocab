@@ -133,18 +133,21 @@ final class SharedDeckCatalogService {
     /// `PodcastSyncService.syncAll`.
     ///
     /// Paging correctness is load-bearing: `reconcileLocalState` tombstones any
-    /// local deck absent from `summaries`, so `summaries` MUST be the union of
-    /// every page. A single-page fetch (the pre-Phase-2b bug) tombstoned every
-    /// official deck past page 1 once the central catalog exceeded one page. A
-    /// page fetch that throws mid-pagination aborts the whole pass
-    /// (`.listFetchFailed`) and skips reconcile — a partial set is not
-    /// authoritative and must never drive a mass-delete.
+    /// local deck absent from the reconciled set, so reconcile MUST see the union
+    /// of every page. A single-page fetch (the pre-Phase-2b bug) tombstoned every
+    /// official deck past page 1 once the central catalog exceeded one page.
+    /// Non-authoritative outcomes skip reconcile via TWO symmetric guards: a page
+    /// fetch that throws mid-pagination aborts the whole pass (`.listFetchFailed`,
+    /// no upsert, no reconcile); a pagination that stops abnormally (empty page
+    /// with a live cursor, or the `maxPages` cap) returns `truncated == true`, so
+    /// `applyCatalog` upserts what it fetched but skips reconcile. Either way a
+    /// partial set never drives a mass-delete.
     @MainActor
     @discardableResult
     func syncAll(context: ModelContext) async -> SyncOutcome {
-        let summaries: [SharedDeckSummary]
+        let collected: CatalogPageCollection
         do {
-            summaries = try await Self.collectAllPages { cursor in
+            collected = try await Self.collectAllPages { cursor in
                 var query = BrowseQuery.recency
                 query.cursor = cursor
                 return try await self.fetchDeckList(query: query)
@@ -157,10 +160,7 @@ final class SharedDeckCatalogService {
             AppCrashReporting.record(error, context: "shareddeck.sync.list")
             return .listFetchFailed
         }
-        for (index, summary) in summaries.enumerated() {
-            Self.upsertDeck(summary: summary, sortOrder: index, context: context)
-        }
-        Self.reconcileLocalState(serverSummaries: summaries, context: context)
+        Self.applyCatalog(collected, context: context)
         do {
             try context.save()
         } catch {
@@ -171,18 +171,55 @@ final class SharedDeckCatalogService {
         return .completed
     }
 
+    /// The union of decks paged from the browse catalog, plus whether pagination
+    /// drained authoritatively. `truncated` is `true` when pagination stopped
+    /// ABNORMALLY — a defensive empty page carrying a live cursor, or the
+    /// `maxPages` cap — instead of draining (`nextCursor == nil`). A truncated
+    /// union is a PARTIAL, non-authoritative set: `applyCatalog` still upserts the
+    /// decks it fetched (they are valid) but MUST skip reconcile. Reconciling
+    /// against a truncated set tombstones every deck past the truncation point —
+    /// the exact mass-delete class the throwing fetch path already guards, merely
+    /// relocated behind an (in practice unreachable) threshold. This flag closes
+    /// that asymmetry.
+    struct CatalogPageCollection {
+        var summaries: [SharedDeckSummary]
+        var truncated: Bool
+    }
+
+    /// Apply a fetched catalog collection to local SwiftData: upsert every fetched
+    /// deck (fixing sort order), then reconcile orphans ONLY when the collection
+    /// drained authoritatively. Returns whether reconcile ran (observability /
+    /// tests). A `truncated` collection skips reconcile so it never tombstones
+    /// decks past the truncation point.
+    @MainActor
+    @discardableResult
+    static func applyCatalog(_ collection: CatalogPageCollection, context: ModelContext) -> Bool {
+        for (index, summary) in collection.summaries.enumerated() {
+            upsertDeck(summary: summary, sortOrder: index, context: context)
+        }
+        guard !collection.truncated else {
+            AppLog.kg.warning("[SharedDeckSync] pagination truncated — non-authoritative partial set, skipping reconcile (avoid tombstoning decks past truncation)")
+            return false
+        }
+        reconcileLocalState(serverSummaries: collection.summaries, context: context)
+        return true
+    }
+
     /// Follow the keyset cursor across every browse page and return the union of
-    /// all decks. `fetchPage(cursor)` fetches one page (`nil` cursor = first
-    /// page). Pagination terminates when the server returns `nextCursor == nil`,
-    /// on a defensive empty page carrying a non-nil cursor, or at `maxPages`
-    /// (guards a degenerate / looping cursor — ~20/page × 50 = 1000-deck ceiling,
-    /// ample for a curated official catalog). A throwing `fetchPage` propagates:
-    /// the caller MUST treat a partial set as non-authoritative and skip
-    /// reconcile, else page-2+ decks would tombstone.
+    /// all decks plus a `truncated` flag. `fetchPage(cursor)` fetches one page
+    /// (`nil` cursor = first page). Pagination terminates when the server returns
+    /// `nextCursor == nil` (authoritative drain, `truncated == false`); or
+    /// ABNORMALLY on a defensive empty page carrying a non-nil cursor, or at
+    /// `maxPages` (a degenerate / looping cursor — ~20/page × 50 = 1000-deck
+    /// ceiling, ample for a curated official catalog) — both set `truncated ==
+    /// true`. A throwing `fetchPage` propagates: caller treats the throw as a
+    /// non-authoritative outcome and skips reconcile. The `truncated` flag makes
+    /// the two abnormal break paths SYMMETRIC with that throw — a partial set
+    /// (however it stopped) never drives a mass-delete.
     static func collectAllPages(
         maxPages: Int = 50,
         fetchPage: (_ cursor: String?) async throws -> SharedDeckListResponse
-    ) async rethrows -> [SharedDeckSummary] {
+    ) async rethrows -> CatalogPageCollection {
         var accumulated: [SharedDeckSummary] = []
         var cursor: String?
         var page = 0
@@ -191,17 +228,17 @@ final class SharedDeckCatalogService {
             accumulated.append(contentsOf: response.decks)
             page += 1
             cursor = response.nextCursor
-            if cursor == nil { break }
+            if cursor == nil { break }   // authoritative drain
             if response.decks.isEmpty {
-                AppLog.kg.warning("[SharedDeckSync] empty page with non-nil cursor — stop pagination (defensive)")
-                break
+                AppLog.kg.warning("[SharedDeckSync] empty page with non-nil cursor — stop pagination (defensive, non-authoritative)")
+                return CatalogPageCollection(summaries: accumulated, truncated: true)
             }
             if page >= maxPages {
-                AppLog.kg.warning("[SharedDeckSync] hit page cap \(maxPages) — stop pagination (possible cursor loop)")
-                break
+                AppLog.kg.warning("[SharedDeckSync] hit page cap \(maxPages) — stop pagination (possible cursor loop, non-authoritative)")
+                return CatalogPageCollection(summaries: accumulated, truncated: true)
             }
         }
-        return accumulated
+        return CatalogPageCollection(summaries: accumulated, truncated: false)
     }
 
     // MARK: - Upsert

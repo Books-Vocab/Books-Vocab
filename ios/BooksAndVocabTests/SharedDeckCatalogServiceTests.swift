@@ -167,7 +167,7 @@ struct SharedDeckCatalogServiceTests {
         let page0 = listPage(0..<20, nextCursor: "c1")   // full first page → more to come
         let page1 = listPage(20..<25, nextCursor: nil)   // deck "d24" lives ONLY here
         var seenCursors: [String?] = []
-        let all = try await SharedDeckCatalogService.collectAllPages { cursor in
+        let collected = try await SharedDeckCatalogService.collectAllPages { cursor in
             seenCursors.append(cursor)
             switch cursor {
             case .none: return page0
@@ -175,32 +175,97 @@ struct SharedDeckCatalogServiceTests {
             default: throw URLError(.badServerResponse)
             }
         }
-        #expect(all.count == 25)                          // union of both pages
-        #expect(all.contains { $0.deckId == "d24" })      // second-page deck present
-        #expect(seenCursors == [nil, "c1"])               // followed nextCursor
-        let ids = all.map(\.deckId)
-        #expect(Set(ids).count == ids.count)              // no duplicate ids across pages
+        #expect(collected.summaries.count == 25)                    // union of both pages
+        #expect(collected.summaries.contains { $0.deckId == "d24" }) // second-page deck present
+        #expect(collected.truncated == false)                       // drained via nil cursor → authoritative
+        #expect(seenCursors == [nil, "c1"])                         // followed nextCursor
+        let ids = collected.summaries.map(\.deckId)
+        #expect(Set(ids).count == ids.count)                        // no duplicate ids across pages
     }
 
     @Test func collectAllPages_single_page_stops_when_cursor_nil() async throws {
         var calls = 0
-        let all = try await SharedDeckCatalogService.collectAllPages { _ in
+        let collected = try await SharedDeckCatalogService.collectAllPages { _ in
             calls += 1
             return self.listPage(0..<3, nextCursor: nil)
         }
         #expect(calls == 1)          // nil cursor → exactly one fetch
-        #expect(all.count == 3)
+        #expect(collected.summaries.count == 3)
+        #expect(collected.truncated == false)   // drained authoritatively
     }
 
-    @Test func collectAllPages_caps_pages_on_looping_cursor() async throws {
-        // Degenerate server that never yields a nil cursor → must not loop forever.
+    @Test func collectAllPages_caps_pages_on_looping_cursor_marks_truncated() async throws {
+        // Degenerate server that never yields a nil cursor → must not loop forever,
+        // AND the partial union it returns must be flagged truncated (non-authoritative)
+        // so reconcile is skipped — else decks past the cap get mass-tombstoned.
         var calls = 0
-        let all = try await SharedDeckCatalogService.collectAllPages(maxPages: 3) { _ in
+        let collected = try await SharedDeckCatalogService.collectAllPages(maxPages: 3) { _ in
             calls += 1
             return SharedDeckListResponse(decks: [self.summary("d\(calls)")], nextCursor: "always")
         }
-        #expect(calls == 3)          // hard cap honoured
-        #expect(all.count == 3)
+        #expect(calls == 3)                      // hard cap honoured
+        #expect(collected.summaries.count == 3)
+        #expect(collected.truncated == true)     // cap hit → partial set is NON-authoritative
+    }
+
+    @Test func collectAllPages_empty_page_with_cursor_marks_truncated() async throws {
+        // A defensive empty page carrying a live cursor stops pagination — but the
+        // accumulated union is partial (page-2+ never fetched), so it MUST be flagged
+        // truncated, symmetric with the cap-hit and throwing-fetch paths.
+        let page0 = listPage(0..<20, nextCursor: "c1")            // real decks, more to come
+        let page1 = SharedDeckListResponse(decks: [], nextCursor: "c1")  // empty + live cursor
+        let collected = try await SharedDeckCatalogService.collectAllPages { cursor in
+            cursor == nil ? page0 : page1
+        }
+        #expect(collected.summaries.count == 20)   // still upserts what it fetched
+        #expect(collected.truncated == true)       // empty-with-cursor → NON-authoritative
+    }
+
+    // MARK: - applyCatalog: authoritative-vs-truncated reconcile gate
+    //
+    // syncAll delegates its post-fetch work to `applyCatalog`. A drained
+    // collection reconciles (tombstones absent decks); a truncated one upserts
+    // but MUST skip reconcile — the symmetry that closes the mass-delete class
+    // previously hidden behind the cap-hit / empty-page break paths.
+
+    @Test func applyCatalog_drained_reconciles_and_tombstones_absent_deck() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try ctx.save()
+
+        // Authoritative (not truncated) set that omits d2 → d2 must tombstone.
+        let ran = SharedDeckCatalogService.applyCatalog(
+            .init(summaries: [summary("d1")], truncated: false), context: ctx
+        )
+        try ctx.save()
+
+        #expect(ran == true)   // reconcile ran
+        let byId = Dictionary(uniqueKeysWithValues: try decks(ctx).map { ($0.remoteId, $0) })
+        #expect(byId["d2"]?.isSoftDeleted == true)
+    }
+
+    @Test func applyCatalog_truncated_skips_reconcile_and_keeps_absent_deck() throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        SharedDeckCatalogService.upsertDeck(summary: summary("d1"), sortOrder: 0, context: ctx)
+        SharedDeckCatalogService.upsertDeck(summary: summary("d2"), sortOrder: 1, context: ctx)
+        try ctx.save()
+
+        // Truncated set omitting d2: reconcile MUST be skipped so d2 survives.
+        // This is the nit-1 fix — the cap-hit / empty-page break paths used to
+        // feed this partial union to reconcile and tombstone d2.
+        let ran = SharedDeckCatalogService.applyCatalog(
+            .init(summaries: [summary("d1")], truncated: true), context: ctx
+        )
+        try ctx.save()
+
+        #expect(ran == false)   // reconcile skipped
+        let byId = Dictionary(uniqueKeysWithValues: try decks(ctx).map { ($0.remoteId, $0) })
+        #expect(byId["d2"]?.isSoftDeleted == false, "truncated set must not tombstone decks past the truncation point")
+        // The fetched deck is still upserted so the user sees what we did get.
+        #expect(byId["d1"]?.isSoftDeleted == false)
     }
 
     @Test func collectAllPages_propagates_mid_pagination_fetch_error() async {
@@ -225,17 +290,15 @@ struct SharedDeckCatalogServiceTests {
         let ctx = container.mainContext
         let page0 = listPage(0..<20, nextCursor: "c1")
         let page1 = listPage(20..<25, nextCursor: nil)
-        let summaries = try await SharedDeckCatalogService.collectAllPages { cursor in
+        let collected = try await SharedDeckCatalogService.collectAllPages { cursor in
             switch cursor {
             case .none: return page0
             case .some("c1"): return page1
             default: throw URLError(.badServerResponse)
             }
         }
-        for (i, s) in summaries.enumerated() {
-            SharedDeckCatalogService.upsertDeck(summary: s, sortOrder: i, context: ctx)
-        }
-        SharedDeckCatalogService.reconcileLocalState(serverSummaries: summaries, context: ctx)
+        #expect(collected.truncated == false)   // drained → authoritative → reconcile runs
+        SharedDeckCatalogService.applyCatalog(collected, context: ctx)
         try ctx.save()
 
         let all = try decks(ctx)
