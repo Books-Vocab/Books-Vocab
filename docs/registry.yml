@@ -358,11 +358,13 @@ documents:
     triggers:
       - explore_surface_changed
       - shared_deck_browse_changed
+      - shared_deck_copy_changed
       - explore_gate_changed
     sources:
       - ios/BooksAndVocab/Views/Explore/
       - ios/BooksAndVocab/Models/SharedDeck.swift
       - ios/BooksAndVocab/Services/SharedDeckCatalogService.swift
+      - ios/BooksAndVocab/Services/KGService+Decks.swift
 
   - id: sop.ui_design
     path: docs/sop/ui-design.md

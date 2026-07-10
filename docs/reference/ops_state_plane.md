@@ -17,7 +17,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: bb45e0f85
+verified_against: 888dde5f0
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -66,7 +66,7 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 
 支撐這條不變量的設計約束，**改任一面都必須守住**：
 
-- **欄位對稱**：export 導出的每個欄位，seed 必須吃得進去且無損落盤。現況全集 = notebooks(`name/color/cover_pattern/sort_order/is_default`) + cards(內容欄 + `root_form/inflections/is_archived` + review 7 計數器) + links(content 參照)。**給 Card/Notebook 加新欄位時，export 與 seed 要同 PR 對齊**，否則 roundtrip 靜默有損。
+- **欄位對稱**：export 導出的每個欄位，seed 必須吃得進去且無損落盤。現況全集 = notebooks(`name/color/cover_pattern/sort_order/is_default`) + cards(內容欄 + `root_form/inflections/is_archived` + review 7 計數器 + `source_shared_card_guid` omit-if-null) + links(content 參照)。**給 Card/Notebook 加新欄位時，export 與 seed 要同 PR 對齊**，否則 roundtrip 靜默有損。**Phase 2 shared-deck copy 的兩個對稱點**（`ops_world_export.py`↔`ops_edit_seed_commands.py`）：① card `source_shared_card_guid` 為 **omit-if-null**——export 只在非 NULL 時 emit key、seed 以 `key in c` 對稱吃進，organically-created / 前 shared-deck 的卡維持 NULL、byte-equal roundtrip 不破（exported field set 對這些卡不變）；② `is_staged`（複製中暫存本）**whitelisted out**——`_export_notebooks` 與 projection `_load_notebooks` 讀路徑在 `is_deleted=0` 之上再加 `is_staged=0`（column 存在才加，容忍 legacy DB 無此欄），staged 本永不進 export/projection，exported 欄位集本身不變。
 - **確定式排序不依賴不可重放值**：排序鍵禁用 created_at / 隨機 id（跨沙盒重放後會變）——notebooks 按 `(sort_order, name)`、cards 按 `(notebook name, content)`、links 按 `(notebook name, from, to, kind)`；datetime 一律正規化 aware UTC isoformat（寫面 naive/aware 落盤不一，export 統一）。
 - **review 雙形式**：seed 的 `review` 接 legacy `{state,interval,anchor?}`（語意態，anchor 推導時間，**行為凍結** —— `ops/demo/demo_dataset.json` 等既有消費者依賴）與計數器形式（7 欄直設；`review_count>0` 必帶 `last_reviewed_at`，並經 `synthesize_many` 合成 `review_events.db`，uuid5 event_id 去重冪等）。兩形式混用 fail-loud。export 一律產計數器形式。
 - **不可重放資料不進 payload**：孤兒卡（notebook 已刪）、斷鏈 link（端點卡已刪）走 stderr warning，stdout 維持純 spec JSON；active notebook 同名多本、卡 meaning 空白 → export fail-loud（seed 無法重放）。
