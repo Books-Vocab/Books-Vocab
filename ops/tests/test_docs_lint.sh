@@ -184,3 +184,64 @@ run_capture /tmp/kg_docs_lint_setext.out ./ops/docs_lint.sh --files "$setext_fix
 require_grep "ERROR: 0" /tmp/kg_docs_lint_setext.out
 cleanup_setext
 trap - EXIT
+
+# --- verified_against 可達性(anchor reachability) ---
+# 實戰事故:doc-sync 在 rebase 前 branch 取 anchor,rebase 後 hash 成 orphan,
+# gate 照綠(rev-parse 只驗 object 存在,不驗 HEAD 可達)。
+# 不變式 = reachable-from-HEAD(放行 worktree pre-cutover 指自身 branch commit 的合法情境)。
+anchor_fixture="docs/.lint_test_anchor.md"
+cleanup_anchor() { rm -f "$anchor_fixture"; }
+trap cleanup_anchor EXIT
+
+write_anchor_fixture() {
+  cat > "$anchor_fixture" <<ANCHOR_EOF
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/docs_lint.sh
+verified_against: $1
+-->
+# Anchor reachability fixture
+ANCHOR_EOF
+}
+
+# 1) orphan anchor:object 存在但不在 HEAD 祖先鏈 → 必須紅
+orphan_sha="$(git commit-tree "HEAD^{tree}" -m "docs_lint orphan anchor fixture")"
+if git merge-base --is-ancestor "$orphan_sha" HEAD; then
+  echo "fixture bug: orphan commit 竟然可達 HEAD: $orphan_sha" >&2
+  exit 1
+fi
+write_anchor_fixture "$orphan_sha"
+if ./ops/docs_lint.sh --files "$anchor_fixture" >/tmp/kg_docs_lint_orphan.out 2>&1; then
+  echo "docs_lint 未攔截 orphan verified_against(存在但 HEAD 不可達)" >&2
+  dump_file /tmp/kg_docs_lint_orphan.out
+  exit 1
+fi
+require_grep "不可達" /tmp/kg_docs_lint_orphan.out
+require_grep "re-anchor" /tmp/kg_docs_lint_orphan.out
+
+# 2) 不存在的 sha(object db fetch 不到)→ 同樣紅
+write_anchor_fixture "0000000000000000000000000000000000000000"
+if ./ops/docs_lint.sh --files "$anchor_fixture" >/tmp/kg_docs_lint_nonexistent.out 2>&1; then
+  echo "docs_lint 未攔截不存在的 verified_against sha" >&2
+  dump_file /tmp/kg_docs_lint_nonexistent.out
+  exit 1
+fi
+require_grep "不是有效 commit" /tmp/kg_docs_lint_nonexistent.out
+
+# 3) 可達 anchor(HEAD 自身 sha)→ 綠
+write_anchor_fixture "$(git rev-parse HEAD)"
+run_capture /tmp/kg_docs_lint_reachable.out ./ops/docs_lint.sh --files "$anchor_fixture"
+require_grep "ERROR: 0" /tmp/kg_docs_lint_reachable.out
+
+# 4) audit 模式:orphan anchor 降 WARN,不翻紅既有 debt
+write_anchor_fixture "$orphan_sha"
+run_capture /tmp/kg_docs_lint_audit_orphan.out ./ops/docs_lint.sh --audit
+require_grep "mode=audit" /tmp/kg_docs_lint_audit_orphan.out
+require_grep "ERROR: 0" /tmp/kg_docs_lint_audit_orphan.out
+require_grep "不可達" /tmp/kg_docs_lint_audit_orphan.out
+
+cleanup_anchor
+trap - EXIT

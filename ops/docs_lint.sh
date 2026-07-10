@@ -10,6 +10,8 @@
 #   6. audit 模式對非 archive doc 計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
 #      - 超過 STALE_THRESHOLD(預設 30)→ WARN
 #      - verified_against 不是有效 sha(且不是 frozen)→ ERROR
+#   7. verified_against 必須 reachable from HEAD(merge-base --is-ancestor);
+#      orphan(rebase 後舊 hash)在 gate/files 模式 ERROR,audit 模式降 WARN(不翻既有 debt)
 #
 # 用法:
 #   ops/docs_lint.sh                 # gate: registry + changed docs
@@ -42,7 +44,7 @@ FILE_ARGS=()
 GATE_BASE=""
 
 usage() {
-  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -399,9 +401,27 @@ while IFS= read -r f; do
   fi
 
   # Validate verified_against is real commit
-  if ! git rev-parse --verify "$verified^{commit}" >/dev/null 2>&1; then
-    echo "ERROR $f — verified_against 不是有效 commit: $verified"
+  if ! verified_sha=$(git rev-parse --verify --quiet "$verified^{commit}"); then
+    echo "ERROR $f — verified_against 不是有效 commit(object db 找不到): $verified"
+    echo "    修法: re-anchor 到當前 HEAD 可達的 code commit;rebase 後 anchor 必須重取"
     errors=$((errors+1))
+    continue
+  fi
+
+  # Anchor 可達性:rebase 後舊 hash 成 orphan(object 還在,但不在 HEAD 祖先鏈),
+  # 只驗 rev-parse 會假綠(事故: shared-decks Phase 2 doc-sync anchor 888dde5f0)。
+  # 不變式 = reachable-from-HEAD:worktree pre-cutover anchor 指 branch 自身 commit 合法
+  # (ff cutover 後自然 main 可達);rebase 後舊 hash 不可達 → 紅,強制 re-anchor。
+  # audit 模式降 WARN,避免把全 repo 既有 debt 翻紅(gate/files 才是 PR 硬閘)。
+  if ! git merge-base --is-ancestor "$verified_sha" HEAD 2>/dev/null; then
+    if [ "$MODE" = "audit" ]; then
+      echo "WARN  $f — verified_against 不可達(orphan,不在 HEAD 祖先鏈): $verified"
+      warnings=$((warnings+1))
+    else
+      echo "ERROR $f — verified_against 不可達(orphan,不在 HEAD 祖先鏈): $verified"
+      echo "    修法: re-anchor 到當前 HEAD 可達的 code commit;rebase 後 anchor 必須重取"
+      errors=$((errors+1))
+    fi
     continue
   fi
 
