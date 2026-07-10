@@ -21,6 +21,7 @@ from .routers import (
     notebook_router,
     pipeline_router,
     podcast_router,
+    shared_decks_router,
     static_pages_router,
     system_router,
     translate_router,
@@ -71,6 +72,7 @@ def build_domain_routers() -> tuple[APIRouter, ...]:
         auth_router,
         web_auth_router,
         podcast_router,
+        shared_decks_router,
     )
 
 

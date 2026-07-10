@@ -17,6 +17,7 @@ from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
 from .ops_shared import NOTEBOOK_FILE_SPECS
 from .review_events import ReviewEventStore
+from .shared_decks.store import SharedDeckStore
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,13 @@ def create_notebook_store(user_dir: Path) -> NotebookStore:
 def create_library_store(user_dir: Path) -> LibraryStore:
     key = f"library:{user_dir}"
     return _get_cached(key, lambda: LibraryStore(user_dir / "library.db"))
+
+
+def create_shared_deck_store(path: Path) -> SharedDeckStore:
+    # Global (not per-user) catalog: keyed on the absolute db path, so a single
+    # engine is shared process-wide rather than one per user.
+    key = f"shared_decks:{path}"
+    return _get_cached(key, lambda: SharedDeckStore(path))
 
 
 # Per-provider OpenAI-compatible client cache. Keyed by provider name so a

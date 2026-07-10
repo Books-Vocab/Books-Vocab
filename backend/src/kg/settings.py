@@ -99,6 +99,18 @@ class KGSettings:
     # enough to reject obvious abuse. Default 200 MiB.
     library_asset_max_bytes: int = 200 * 1024 * 1024
 
+    # Shared decks (Explore) — a single GLOBAL catalog store lives at
+    # ``data_dir/shared_decks.db`` (outside users/<uid>/). Only official decks
+    # exist in Phase 1-2; community publishing (the write path) is Phase 3 and
+    # is gated OFF here day one. Caps are wired now (forward-compat) so opening
+    # that path later needs no schema/settings change. See §6.5 of
+    # docs/plans/2026-07-09-shared-decks-library.md.
+    shared_decks_publish_enabled: bool = False
+    max_cards_per_deck: int = 2000
+    shared_decks_publish_rate_limit_per_day: int = 20
+    shared_decks_report_auto_hide_threshold: int = 5
+    shared_decks_rating_min_count_for_sort: int = 3
+
     @property
     def users_file(self) -> Path:
         return self.data_dir / "users.json"
@@ -110,6 +122,10 @@ class KGSettings:
     @property
     def podcasts_dir(self) -> Path:
         return self.data_dir / "podcasts"
+
+    @property
+    def shared_decks_path(self) -> Path:
+        return self.data_dir / "shared_decks.db"
 
     @property
     def app_store_notifications_file(self) -> Path:
@@ -212,4 +228,15 @@ def load_settings() -> KGSettings:
         library_bucket_region=os.getenv("LIBRARY_BUCKET_REGION", "ap-northeast-1"),
         library_bucket_endpoint_url=(os.getenv("LIBRARY_BUCKET_ENDPOINT_URL") or None),
         library_asset_max_bytes=_env_int("LIBRARY_ASSET_MAX_BYTES", 200 * 1024 * 1024),
+        shared_decks_publish_enabled=_env_truthy("SHARED_DECKS_PUBLISH_ENABLED"),
+        max_cards_per_deck=_env_int("MAX_CARDS_PER_DECK", 2000),
+        shared_decks_publish_rate_limit_per_day=_env_int(
+            "SHARED_DECKS_PUBLISH_RATE_LIMIT_PER_DAY", 20
+        ),
+        shared_decks_report_auto_hide_threshold=_env_int(
+            "SHARED_DECKS_REPORT_AUTO_HIDE_THRESHOLD", 5
+        ),
+        shared_decks_rating_min_count_for_sort=_env_int(
+            "SHARED_DECKS_RATING_MIN_COUNT_FOR_SORT", 3
+        ),
     )

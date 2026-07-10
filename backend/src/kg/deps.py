@@ -37,6 +37,7 @@ from .service_factories import (
     create_library_store,
     create_notebook_store,
     create_review_event_store,
+    create_shared_deck_store,
 )
 from .settings import KGSettings
 from .types import AdminGrantRecord, CardsById, StoredUserRecord, SubscriptionRecord, UserRecord, UsersPayload
@@ -166,6 +167,11 @@ def _notebook_store(user_dir: Path):
 
 def _library_store(user_dir: Path):
     return create_library_store(user_dir)
+
+
+def _shared_deck_store(settings: KGSettings):
+    # Global catalog (not per-user): resolves the single db path from settings.
+    return create_shared_deck_store(settings.shared_decks_path)
 
 
 def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
