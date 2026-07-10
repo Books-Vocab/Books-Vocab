@@ -9785,5 +9785,121 @@
       "summaryText": "網路連線中斷，請稍後再試。",
       "pendingRows": []
     }
+  },
+  "marketingCapture": {
+    "reviewClock": null,
+    "readerPassage": {
+      "bookTitle": "人物群像",
+      "activeWord": "engraved",
+      "activePartOfSpeech": "adj.",
+      "activeTranslation": "雕刻的",
+      "activeExplanation": "強調在堅硬表面上，透過刻劃留下圖案或文字，與印刷或繪製不同。",
+      "activeContext": "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+      "paragraphs": [
+        "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude. Patience, Vivenna told herself. It’s not her fault she’s so abrasive. “Ambush. accomplices. Something.",
+        "Then she was given a dose of unwanted Breath. Now she was confronted by the most unholy of abominations. Some were as modest as Vivenna’s and others even had muted colors—though these were usually accented by bright scarves or hats."
+      ],
+      "vocabWords": [
+        "abominations",
+        "abrasive",
+        "accented",
+        "accomplices"
+      ],
+      "activeWords": [
+        "engraved"
+      ]
+    },
+    "wordDetail": {
+      "notebookRemoteId": "spec-nb-1",
+      "notebookName": "人物群像",
+      "notebookSyncStatus": 1,
+      "bookTitle": "人物群像",
+      "entries": [
+        {
+          "word": "engraved",
+          "translation": "雕刻的",
+          "context": "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully **engraved** glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+          "explanation": "強調在堅硬表面上，透過刻劃留下圖案或文字，與印刷或繪製不同。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "人物群像",
+          "chapterTitle": null,
+          "kgCardId": "spec-nb1-card50",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "She approached the red and gold pavilion. The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully **engraved** glass cup filled with an icy red liquid. He looked much as he had before—the chiseled masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude."
+          ],
+          "collocations": [
+            "engraved glass",
+            "engraved jewelry",
+            "beautifully engraved"
+          ],
+          "rootForm": "engrave",
+          "inflections": [
+            "engraving",
+            "engraves",
+            "engrave"
+          ],
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false,
+          "reviewIntervalHours": 725.534167,
+          "nextReviewAt": "2026-07-26T07:34:37Z",
+          "lastReviewedAt": "2026-06-26T02:02:34Z",
+          "reviewCount": 3,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {
+            "shares_usage": [
+              {
+                "id": "spec-link-nb1-47",
+                "cardId": "spec-nb1-card27",
+                "word": "chiseled",
+                "kind": "shares_usage",
+                "label": "相關",
+                "confidence": 0.8,
+                "reason": "兩者都用於形容被雕刻或有雕刻痕跡的狀態。engraved 較為廣泛，可用於金屬、木頭等材質的雕刻；chiseled 則更常形容輪廓分明、線條銳利的雕刻效果，尤其用於形容人臉或身體的肌肉線條。",
+                "hidden": false
+              }
+            ]
+          }
+        },
+        {
+          "word": "chiseled",
+          "translation": "雕刻般的",
+          "context": "The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the **chiseled** masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude.",
+          "explanation": "形容臉部輪廓分明、線條銳利，如同用鑿子雕刻而成，常用於形容男性俊美的外貌。",
+          "partOfSpeech": "adj.",
+          "bookTitle": "人物群像",
+          "chapterTitle": null,
+          "kgCardId": "spec-nb1-card27",
+          "difficultyTier": "core",
+          "reviewMode": "recognition",
+          "reviewExamples": [
+            "The god she had seen before lounged inside, relaxing on a couch, sipping from a large, beautifully engraved glass cup filled with an icy red liquid. He looked much as he had before—the **chiseled** masculine features that she was already coming to associate with godhood, perfectly styled black hair, golden tan skin, and a distinctly blasé attitude."
+          ],
+          "collocations": [
+            "chiseled jawline",
+            "chiseled features",
+            "chiseled face"
+          ],
+          "rootForm": "chiseled",
+          "inflections": null,
+          "syncStatus": 1,
+          "actionType": "add",
+          "isArchived": false,
+          "isExcludedFromReader": false,
+          "reviewIntervalHours": 332.864444,
+          "nextReviewAt": "2026-07-15T06:00:28Z",
+          "lastReviewedAt": "2026-07-01T09:08:36Z",
+          "reviewCount": 3,
+          "reviewStreak": 3,
+          "lastReviewFeedbackRaw": 1,
+          "graphLinksByKind": {}
+        }
+      ],
+      "reviewHistory": []
+    }
   }
 }

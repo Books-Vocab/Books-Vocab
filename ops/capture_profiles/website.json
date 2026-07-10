@@ -9,8 +9,8 @@
     "groups": [],
     "scenarios": [
       "Knowledge Graph View/Populated graph",
-      "Vocabulary List View/Populated · mixed sync states",
-      "Today Review/Back",
+      "Vocabulary List View/Reviewed · Marketing",
+      "Word Detail · Sheet/Marketing",
       "Reader View · Chrome/Reading · Marketing Content"
     ]
   },
@@ -22,7 +22,7 @@
   "shots": [
     {
       "id": "vocab_list",
-      "sourceScenario": "Vocabulary List View/Populated · mixed sync states",
+      "sourceScenario": "Vocabulary List View/Reviewed · Marketing",
       "outputName": "final_vocab-list.png",
       "appearance": "light",
       "copy": {
@@ -32,7 +32,7 @@
     },
     {
       "id": "review_card",
-      "sourceScenario": "Today Review/Back",
+      "sourceScenario": "Word Detail · Sheet/Marketing",
       "outputName": "final_review-card.png",
       "appearance": "light",
       "copy": {

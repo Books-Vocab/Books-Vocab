@@ -32,6 +32,15 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "vocabulary",
     "reviewDeck",
     "syncPresenter",
+    # marketing-capture-only scene inputs（reviewClock + readerPassage）；非
+    # fixture-id-dict domain，故不列入 FIXTURE_DOMAIN_IDS，改由 _validate_marketing_capture 驗。
+    "marketingCapture",
+}
+MARKETING_CAPTURE_KEYS = {"reviewClock", "readerPassage", "wordDetail"}
+REVIEW_CLOCK_FIELD_KEYS = {"frozenNow", "frozenEpoch", "anchorDay", "source"}
+READER_PASSAGE_KEYS = {
+    "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
+    "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
 }
 FIXTURE_DOMAIN_IDS = {
     "auth": {"guest", "guestAuthenticating", "guestError", "signedIn", "settingsSignedIn", "longIdentity"},
@@ -1923,8 +1932,98 @@ def validate_fixture_dataset_file(path: Path, *, label: str = "UI World dataset"
     _validate_podcast(data, label=label)
     _validate_today_review(data, label=label)
     _validate_sync_presenter(data, label=label)
+    _validate_marketing_capture(data, label=label)
     _validate_cross_references(data, label=label)
     return dataset_id
+
+
+def _validate_marketing_capture(data: dict[str, Any], *, label: str) -> None:
+    """marketingCapture domain：reviewClock（凍結時鐘 or null）+ readerPassage
+    （reader 行銷段落）。QA scene 忽略此 domain；僅行銷 capture scene 讀取。"""
+    mc = _require_mapping(data.get("marketingCapture"), field="marketingCapture", label=label)
+    keys = set(mc)
+    if keys != MARKETING_CAPTURE_KEYS:
+        extra = sorted(keys - MARKETING_CAPTURE_KEYS)
+        missing = sorted(MARKETING_CAPTURE_KEYS - keys)
+        raise UIWorldManifestError(
+            f"{label} marketingCapture keys 不符: extra={extra} missing={missing}")
+
+    clock = mc["reviewClock"]
+    if clock is not None:
+        clock_map = _require_mapping(clock, field="marketingCapture.reviewClock", label=label)
+        ck = set(clock_map)
+        if ck != REVIEW_CLOCK_FIELD_KEYS:
+            extra = sorted(ck - REVIEW_CLOCK_FIELD_KEYS)
+            missing = sorted(REVIEW_CLOCK_FIELD_KEYS - ck)
+            raise UIWorldManifestError(
+                f"{label} marketingCapture.reviewClock keys 不符: extra={extra} missing={missing}")
+        frozen_now = _ensure_str(clock_map.get("frozenNow"),
+                                 field="marketingCapture.reviewClock.frozenNow", label=label)
+        try:
+            datetime.strptime(frozen_now, "%Y-%m-%dT%H:%M:%SZ")
+        except ValueError as exc:
+            raise UIWorldManifestError(
+                f"{label} marketingCapture.reviewClock.frozenNow 必須是 "
+                f"YYYY-MM-DDTHH:MM:SSZ: {frozen_now!r}") from exc
+        if not isinstance(clock_map.get("frozenEpoch"), int) or isinstance(clock_map.get("frozenEpoch"), bool):
+            raise UIWorldManifestError(
+                f"{label} marketingCapture.reviewClock.frozenEpoch 必須是整數")
+        anchor_day = _ensure_str(clock_map.get("anchorDay"),
+                                 field="marketingCapture.reviewClock.anchorDay", label=label)
+        try:
+            datetime.strptime(anchor_day, "%Y-%m-%d")
+        except ValueError as exc:
+            raise UIWorldManifestError(
+                f"{label} marketingCapture.reviewClock.anchorDay 必須是 YYYY-MM-DD: {anchor_day!r}") from exc
+        _ensure_str(clock_map.get("source"),
+                    field="marketingCapture.reviewClock.source", label=label)
+
+    passage = _require_mapping(mc["readerPassage"], field="marketingCapture.readerPassage", label=label)
+    pk = set(passage)
+    if pk != READER_PASSAGE_KEYS:
+        extra = sorted(pk - READER_PASSAGE_KEYS)
+        missing = sorted(READER_PASSAGE_KEYS - pk)
+        raise UIWorldManifestError(
+            f"{label} marketingCapture.readerPassage keys 不符: extra={extra} missing={missing}")
+    for str_field in ("bookTitle", "activeWord", "activeTranslation", "activeContext"):
+        _ensure_str(passage.get(str_field),
+                    field=f"marketingCapture.readerPassage.{str_field}", label=label)
+    paragraphs = _require_list(passage.get("paragraphs"),
+                               field="marketingCapture.readerPassage.paragraphs", label=label)
+    if not paragraphs or any(not isinstance(p, str) or not p.strip() for p in paragraphs):
+        raise UIWorldManifestError(
+            f"{label} marketingCapture.readerPassage.paragraphs 必須是非空 string list")
+    joined_tokens = {
+        token.strip().strip(",.;:!?“”‘’\"'")
+        for para in paragraphs for token in para.split()
+    }
+    active_words = _require_list(passage.get("activeWords"),
+                                 field="marketingCapture.readerPassage.activeWords", label=label)
+    vocab_words = _require_list(passage.get("vocabWords"),
+                                field="marketingCapture.readerPassage.vocabWords", label=label)
+    if active_words != [passage.get("activeWord")]:
+        raise UIWorldManifestError(
+            f"{label} marketingCapture.readerPassage.activeWords 必須是 [activeWord]")
+    for hl in (*active_words, *vocab_words):
+        if not isinstance(hl, str) or hl not in joined_tokens:
+            raise UIWorldManifestError(
+                f"{label} marketingCapture.readerPassage highlight {hl!r} 未出現在 paragraphs token")
+
+    # wordDetail = vocab-seed 形狀（entries[0]=聚焦字 + 關聯卡），graph link 自足解析。
+    wd = _require_mapping(mc["wordDetail"], field="marketingCapture.wordDetail", label=label)
+    entry_words: list[str] = []
+    entry_objs: list[dict[str, Any]] = []
+    for i, entry in enumerate(_require_list(
+            wd.get("entries"), field="marketingCapture.wordDetail.entries", label=label)):
+        entry_obj = _require_mapping(entry, field=f"marketingCapture.wordDetail.entries[{i}]", label=label)
+        entry_words.append(_validate_ui_world_entry(
+            entry_obj, owner=f"marketingCapture.wordDetail.entries[{i}]", label=label))
+        entry_objs.append(entry_obj)
+    if not entry_words:
+        raise UIWorldManifestError(f"{label} marketingCapture.wordDetail.entries 不可為空")
+    _validate_unique(entry_words, owner="marketingCapture.wordDetail.entries.word", label=label)
+    _validate_seed_graph_links(
+        entry_objs, set(entry_words), owner_prefix="marketingCapture.wordDetail", label=label)
 
 
 def main(argv: list[str] | None = None) -> int:

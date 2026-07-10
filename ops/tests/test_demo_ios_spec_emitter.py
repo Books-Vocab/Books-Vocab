@@ -251,8 +251,9 @@ def test_spec_mode_derives_spec_domains_and_keeps_baseline_domains(tmp_path):
     assert document["schema"] == "kg.fixture.dataset.v2"
     assert document["datasetID"].startswith("spec-")
 
-    # non-spec domains stay byte-equal to the baseline
-    for key in sorted(set(document) - {"datasetID", "auth", *SPEC_DOMAINS}):
+    # non-spec domains stay byte-equal to the baseline（marketingCapture 為 spec/plan
+    # 驅動 overlay，與 auth/datasetID 同排除）
+    for key in sorted(set(document) - {"datasetID", "auth", "marketingCapture", *SPEC_DOMAINS}):
         assert document[key] == baseline[key], f"domain {key} drifted from baseline"
 
     # identity overlay identical to baseline mode
@@ -568,6 +569,63 @@ def test_spec_mode_accepts_empty_link_reason(tmp_path):
     assert links["contrasts_with"][0]["reason"] == "對比"
 
 
+def test_reader_passage_projection_is_real_deterministic_and_highlights_match(tmp_path):
+    """reader passage 投影：欄位齊備、hero 是真實卡、highlight 詞真的出現在段落、
+    zero wall-clock 確定式（同 spec 重跑相等）。"""
+    spec = _small_spec()
+    passage = spec_world.derive_reader_passage(spec)
+    # 欄位契約
+    for key in ("bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
+                "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords"):
+        assert key in passage, key
+    assert passage["bookTitle"] == "Marketing Core"  # primary notebook 名
+    # small_spec 每卡 example = "The word **X** appears in a real sentence."
+    assert passage["activeWords"] == [passage["activeWord"]]
+    assert passage["activeWord"] in {"alpha", "bravo", "charlie"}
+    # active + vocab 高亮詞必須真的以 token 出現在段落（iOS tokenizer 才命中）
+    joined = " ".join(passage["paragraphs"])
+    tokens = {spec_world._bare_token(t) for t in joined.split()}
+    assert passage["activeWord"] in tokens
+    for w in passage["vocabWords"]:
+        assert w in tokens, f"vocab highlight {w!r} 未出現在段落"
+    # 段落不得含殘留 ** 標記
+    assert "**" not in joined
+    # activeContext = hero example 去標記全文
+    assert "**" not in passage["activeContext"]
+    assert passage["activeWord"] in {spec_world._bare_token(t) for t in passage["activeContext"].split()}
+    # 確定式
+    assert spec_world.derive_reader_passage(_small_spec()) == passage
+
+
+def test_reader_passage_fails_loud_without_highlightable_card():
+    """primary notebook 全無「單詞 + 單 token marker」卡 → fail-loud（不靜默降級）。"""
+    spec = _small_spec()
+    for card in spec["cards"]:
+        card["examples"] = ["no markers here at all"]  # 去掉 ** marker
+    with pytest.raises(spec_world.SpecWorldError, match="reader/wordDetail hero"):
+        spec_world.derive_reader_passage(spec)
+
+
+def test_word_detail_marketing_seed_is_spec_derived_and_link_self_contained(tmp_path):
+    """marketingCapture.wordDetail：spec-derived、entries[0]=聚焦字、graph link
+    target 在 seed 內自足（關聯詞可解析）。"""
+    seed = spec_world.derive_word_detail(_small_spec())
+    words = {e["word"] for e in seed["entries"]}
+    ids = {e["kgCardId"] for e in seed["entries"]}
+    assert seed["entries"], "wordDetailMarketing 必須有 entries"
+    focus = seed["entries"][0]
+    # small_spec: alpha 有 2 link（bravo/charlie）→ hero=alpha，關聯卡入 seed
+    assert focus["word"] == "alpha"
+    assert {"bravo", "charlie"} <= words
+    for entry in seed["entries"]:
+        for links in entry["graphLinksByKind"].values():
+            for link in links:
+                assert link["word"] in words, f"dangling link word {link['word']}"
+                assert link["cardId"] in ids, f"dangling link cardId {link['cardId']}"
+    # 確定式
+    assert spec_world.derive_word_detail(_small_spec()) == seed
+
+
 def test_spec_mode_graph_links_reference_target_kg_card_ids(tmp_path):
     content = _emit_spec_bytes(tmp_path, _small_spec())
     populated = json.loads(content)["vocabulary"]["vocabListPopulated"]
@@ -759,6 +817,67 @@ def _freeze_dt_from_plan(plan: dict):
     max_offset = max(plan["render_utc_offset_hours"])
     base = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
     return base + timedelta(hours=24 - max_offset) - timedelta(seconds=1)
+
+
+def test_marketing_capture_frozen_carries_review_clock_and_reader_passage(tmp_path):
+    """凍結 emit → marketingCapture.reviewClock = anchor 凍結時刻（= preferences
+    overlay epoch，單一 SoT）+ readerPassage 齊備。"""
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    epoch = int(freeze.timestamp())
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    [(_, content)] = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "frozen.json",
+        review_clock_frozen_at=freeze)
+    mc = json.loads(content)["marketingCapture"]
+    assert set(mc) == {"reviewClock", "readerPassage", "wordDetail"}
+    assert mc["wordDetail"]["entries"][0]["word"]  # 聚焦字非空
+    clock = mc["reviewClock"]
+    assert clock["frozenEpoch"] == epoch  # 與 preferences overlay 同一凍結時刻
+    assert clock["frozenNow"] == "2026-07-09T14:59:59Z"
+    assert clock["anchorDay"] == "2026-07-09"
+    assert clock["source"] == "history_plan.anchor_day"
+    passage = mc["readerPassage"]
+    assert passage["activeWord"] and passage["paragraphs"]
+    assert passage["activeWords"] == [passage["activeWord"]]
+
+
+def test_marketing_capture_unfrozen_review_clock_is_null(tmp_path):
+    """未凍結（無 plan）emit → reviewClock null（無 anchor 素材）、readerPassage 仍在。"""
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    [(_, content)] = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "unfrozen.json")
+    mc = json.loads(content)["marketingCapture"]
+    assert mc["reviewClock"] is None
+    assert mc["readerPassage"]["activeWord"]
+
+
+def test_review_clock_field_matches_preferences_overlay_epoch(tmp_path):
+    """reviewClock.frozenEpoch 必須 == preferences review-clock overlay 的 epoch
+    （防兩處錨日 drift；單一 SoT = plan freeze 時刻）。"""
+    freeze = _freeze_dt_from_plan(_marketing_plan())
+    spec_path = _write_spec(tmp_path, _small_spec())
+    bundle = sot.load_sot()
+    [(_, content)] = emit_ios._spec_artifacts(
+        bundle, spec_path=spec_path, out_path=tmp_path / "f.json",
+        review_clock_frozen_at=freeze)
+    doc = json.loads(content)
+    clock_epoch = doc["marketingCapture"]["reviewClock"]["frozenEpoch"]
+    for store in ("userDefaults", "ubiquitousKeyValueStore"):
+        assert doc["preferences"][store]["review_settings_progress_paused_at"] == clock_epoch
+
+
+def test_word_detail_marketing_emitted_and_word_detail_stays_baseline(tmp_path):
+    """emit 後：marketingCapture.wordDetail 為 spec-derived（entries[0]=hero）、
+    baseline-kept 的 vocabulary.wordDetail（ephemeral/terse QA pin）仍 byte-equal
+    baseline（未被 spec 投影污染，QA 不受影響）。"""
+    content = _emit_spec_bytes(tmp_path, _small_spec())
+    document = json.loads(content)
+    baseline = _baseline()
+    assert document["vocabulary"]["wordDetail"] == baseline["vocabulary"]["wordDetail"]
+    wdm = document["marketingCapture"]["wordDetail"]
+    assert wdm["entries"][0]["word"] == "alpha"  # hero = 共用 _marketing_hero
 
 
 def test_review_clock_freeze_matches_known_marketing_epoch():

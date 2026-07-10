@@ -111,7 +111,16 @@ FIXTURE_TOP_LEVEL_KEYS = {
     "vocabulary",
     "reviewDeck",
     "syncPresenter",
+    # marketing-capture-only scene inputs（QA scene 一律忽略整個 domain）：
+    # reviewClock（錨日凍結時鐘，plan 驅動）+ readerPassage（reader 行銷段落）+
+    # wordDetail（Word Detail 行銷 seed），皆 spec/plan 驅動。Swift
+    # FixtureDatasetStore.CodingKeys 需 Phase 2 加 `case marketingCapture` 才不會在
+    # decode 撞 unknown-top-level-key（見本檔 module docstring）。
+    "marketingCapture",
 }
+MARKETING_CAPTURE_KEYS = frozenset({"reviewClock", "readerPassage", "wordDetail"})
+REVIEW_CLOCK_FIELD_KEYS = frozenset(
+    {"frozenNow", "frozenEpoch", "anchorDay", "source"})
 IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "isLoggedIn",
     "userId",
@@ -222,6 +231,40 @@ def _overlay_review_clock(
     return preferences
 
 
+def _review_clock_field(frozen_at: "object") -> dict[str, Any]:
+    """把凍結時刻（datetime）攤成 reviewClock 顯式欄位。
+
+    frozenNow / frozenEpoch = 同一凍結時刻（= preferences review-clock overlay 的
+    epoch，單一 SoT）；anchorDay = 該時刻的 UTC 日（恆等於 plan.anchor_day，
+    因 freeze = anchor 00:00Z + (24-max_offset)h - 1s，落在 anchor 當日 UTC）。
+    """
+    from datetime import timezone
+
+    dt = frozen_at.astimezone(timezone.utc)  # type: ignore[attr-defined]
+    return {
+        "frozenNow": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "frozenEpoch": int(dt.timestamp()),
+        "anchorDay": dt.date().isoformat(),
+        "source": "history_plan.anchor_day",
+    }
+
+
+def _build_marketing_capture(
+    spec: dict[str, Any], *, review_clock_frozen_at: "object | None"
+) -> dict[str, Any]:
+    """marketingCapture domain：reviewClock（plan 凍結時鐘，未凍結時 null）
+    + readerPassage（reader 行銷段落）+ wordDetail（Word Detail 行銷 seed），
+    後二者 spec 驅動、恆存在於 spec 模式。"""
+    return {
+        "reviewClock": (
+            _review_clock_field(review_clock_frozen_at)
+            if review_clock_frozen_at is not None else None
+        ),
+        "readerPassage": spec_world.derive_reader_passage(spec),
+        "wordDetail": spec_world.derive_word_detail(spec),
+    }
+
+
 def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     identity = sot.identity
     baseline = _load_base_ui_world()
@@ -256,6 +299,8 @@ def _build_spec_fixture_document(
         merged.update(seeds)
         document[domain] = merged
     document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
+    document["marketingCapture"] = _build_marketing_capture(
+        spec, review_clock_frozen_at=review_clock_frozen_at)
     if review_clock_frozen_at is not None:
         document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
     _validate_fixture_document(
@@ -310,6 +355,42 @@ def _validate_review_clock_overlay(
             )
 
 
+def _validate_marketing_capture_field(
+    document: dict[str, Any], *, review_clock_frozen: bool
+) -> None:
+    """marketingCapture 結構把關（emit_ios 面；深度形狀驗證在 ui_world_manifest）。
+
+    keys 恆 == {reviewClock, readerPassage}；readerPassage keys 恆 == READER_PASSAGE_KEYS；
+    reviewClock 在凍結 emit 下必為完整 clock dict，否則允許 None（未凍結 spec 模式）
+    或 baseline 沿用的完整 clock dict（baseline 模式攜帶行銷世界的 clock）。
+    """
+    mc = document.get("marketingCapture")
+    if not isinstance(mc, dict) or set(mc) != MARKETING_CAPTURE_KEYS:
+        got = sorted(mc) if isinstance(mc, dict) else type(mc).__name__
+        raise ValueError(
+            f"marketingCapture keys must be {sorted(MARKETING_CAPTURE_KEYS)}, got {got}")
+    passage = mc["readerPassage"]
+    if not isinstance(passage, dict) or set(passage) != set(spec_world.READER_PASSAGE_KEYS):
+        got = sorted(passage) if isinstance(passage, dict) else type(passage).__name__
+        raise ValueError(
+            f"marketingCapture.readerPassage keys must be {sorted(spec_world.READER_PASSAGE_KEYS)}, "
+            f"got {got}")
+    word_detail = mc["wordDetail"]
+    if not isinstance(word_detail, dict) or not word_detail.get("entries"):
+        raise ValueError("marketingCapture.wordDetail must be a vocab seed with non-empty entries")
+    clock = mc["reviewClock"]
+    if review_clock_frozen:
+        if not isinstance(clock, dict) or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS):
+            raise ValueError(
+                "frozen emit requires marketingCapture.reviewClock with keys "
+                f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
+    elif clock is not None and (not isinstance(clock, dict)
+                               or set(clock) != set(REVIEW_CLOCK_FIELD_KEYS)):
+        raise ValueError(
+            "marketingCapture.reviewClock must be null or a full clock dict with keys "
+            f"{sorted(REVIEW_CLOCK_FIELD_KEYS)}")
+
+
 def _validate_fixture_document(
     document: dict[str, Any],
     baseline: dict[str, Any],
@@ -342,13 +423,17 @@ def _validate_fixture_document(
             f"{BASE_UI_WORLD_PATH} has invalid top-level keys extra={extra} missing={missing}"
         )
 
+    # marketingCapture 恆為 spec/plan 驅動（reviewClock 隨 plan、readerPassage 隨
+    # spec），永不對 baseline byte-equal；改由 _validate_marketing_capture_field 驗形狀。
     frozen_exclude = {"preferences"} if review_clock_frozen else set()
-    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"} - spec_domains - frozen_exclude):
+    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth", "marketingCapture"}
+                      - spec_domains - frozen_exclude):
         if document[key] != baseline[key]:
             raise ValueError(
                 "generated iOS UI World may only overlay identity-owned auth; "
                 f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
             )
+    _validate_marketing_capture_field(document, review_clock_frozen=review_clock_frozen)
     if review_clock_frozen:
         _validate_review_clock_overlay(document["preferences"], baseline["preferences"])
 
