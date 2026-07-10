@@ -119,7 +119,7 @@ def _notebook_entry(row: dict[str, Any]) -> dict[str, Any]:
 
 def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:
     feedback = row.get("last_review_feedback")
-    return {
+    entry: dict[str, Any] = {
         "content": row.get("content"),
         "pos": row.get("pos"),
         "meaning": row.get("meaning") or "",
@@ -142,6 +142,13 @@ def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:
             "last_review_feedback": int(feedback) if feedback is not None else -1,
         },
     }
+    # Provenance is omit-if-null, symmetric with _notebook_entry: cards predating
+    # shared decks (or created organically) carry NULL, so emitting the key would
+    # break the byte-equal roundtrip (§1.1). Set only by the Phase 2 copy path.
+    src_guid = row.get("source_shared_card_guid")
+    if src_guid is not None:
+        entry["source_shared_card_guid"] = src_guid
+    return entry
 
 
 def _export_links(

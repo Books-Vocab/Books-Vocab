@@ -21,9 +21,14 @@ from sqlalchemy import inspect
 from kg.api_models.notebook import NotebookResponse
 from kg.cards import CardStore
 from kg.notebook import NotebookStore
-from kg.ops_world_export import _notebook_entry
+from kg.ops_world_export import _card_entry, _notebook_entry
 
 _NB_BASE_KEYS = {"name", "color", "cover_pattern", "sort_order", "is_default"}
+_CARD_BASE_KEYS = {
+    "content", "pos", "meaning", "examples", "collocations", "note",
+    "difficulty", "mode", "root_form", "inflections", "notebook",
+    "is_archived", "review",
+}
 
 
 def _cols(engine, table: str) -> set[str]:
@@ -127,6 +132,25 @@ def test_notebook_entry_emits_set_provenance():
     assert set(entry) == _NB_BASE_KEYS | {"source_shared_deck_id", "source_version"}
 
 
+def test_card_entry_omits_null_provenance():
+    # A card that was created organically (no shared-deck origin) carries a NULL
+    # guid; export must omit the key entirely so specs predating shared decks
+    # round-trip byte-equal (§1.1). Symmetric with _notebook_entry.
+    row = {"content": "x", "meaning": "y", "mode": "recognition",
+           "source_shared_card_guid": None}
+    entry = _card_entry(row, "NB")
+    assert "source_shared_card_guid" not in entry
+    assert set(entry) == _CARD_BASE_KEYS
+
+
+def test_card_entry_emits_set_provenance():
+    row = {"content": "x", "meaning": "y", "mode": "recognition",
+           "source_shared_card_guid": "card-guid-123"}
+    entry = _card_entry(row, "NB")
+    assert entry["source_shared_card_guid"] == "card-guid-123"
+    assert set(entry) == _CARD_BASE_KEYS | {"source_shared_card_guid"}
+
+
 # ── seed ↔ export symmetry (integration, real CLI) ─────────────────
 
 _PROVENANCE_SPEC = {
@@ -171,3 +195,42 @@ def test_seed_export_notebook_provenance_roundtrips(tmp_path):
     r2 = _cli(str(tmp_path), "world-export", "u2")
     assert r2.returncode == 0, r2.stderr
     assert json.loads(r2.stdout)["notebooks"] == exported["notebooks"]
+
+
+_CARD_PROVENANCE_SPEC = {
+    "notebooks": [
+        {"name": "Copied Deck", "is_default": False},
+    ],
+    "cards": [
+        # A card stamped with shared-card provenance (Phase 2 copy sets this).
+        {"content": "meticulous", "meaning": "一絲不苟的", "notebook": "Copied Deck",
+         "source_shared_card_guid": "card-guid-abc"},
+        # An organically-created card in the same notebook: no provenance key.
+        {"content": "plain", "meaning": "平凡的", "notebook": "Copied Deck"},
+    ],
+}
+
+
+def test_seed_export_card_provenance_roundtrips(tmp_path):
+    """A card carrying source_shared_card_guid must round-trip losslessly, while
+    a sibling without it stays omit-if-null — the symmetry that keeps the copy
+    path's stamped provenance survivable through world-export → seed (§1.1)."""
+    assert _edit(str(tmp_path), "user-create", "u1", "--commit", "--json").returncode == 0
+    assert _seed(tmp_path, "u1", _CARD_PROVENANCE_SPEC, "--commit", "--json").returncode == 0
+
+    r = _cli(str(tmp_path), "world-export", "u1")
+    assert r.returncode == 0, r.stderr
+    exported = json.loads(r.stdout)
+    stamped = next(c for c in exported["cards"] if c["content"] == "meticulous")
+    assert stamped["source_shared_card_guid"] == "card-guid-abc"
+    plain = next(c for c in exported["cards"] if c["content"] == "plain")
+    assert "source_shared_card_guid" not in plain
+
+    # Replay into a fresh sandbox and re-export → byte-equal cards payload.
+    assert _edit(str(tmp_path), "user-create", "u2", "--commit", "--json").returncode == 0
+    p2 = tmp_path / "reexport-cards.json"
+    p2.write_text(json.dumps(exported, ensure_ascii=False), encoding="utf-8")
+    assert _edit(str(tmp_path), "seed", "u2", str(p2), "--commit", "--json").returncode == 0
+    r2 = _cli(str(tmp_path), "world-export", "u2")
+    assert r2.returncode == 0, r2.stderr
+    assert json.loads(r2.stdout)["cards"] == exported["cards"]

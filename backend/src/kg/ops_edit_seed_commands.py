@@ -335,6 +335,11 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 updates["inflections"] = c["inflections"] or []
             if "is_archived" in c:
                 updates["is_archived"] = bool(c["is_archived"])
+            # Provenance (omit-if-null): export only emits this when set, so
+            # `key in c` keeps seed↔export field-symmetric (§1.1 roundtrip). The
+            # Phase 2 copy path stamps it; specs without the key leave it NULL.
+            if "source_shared_card_guid" in c:
+                updates["source_shared_card_guid"] = c["source_shared_card_guid"]
             if "source" in c:
                 updates["source"] = _source_to_json(c.get("source"), "cards[].source")
             rv = c.get("review")
