@@ -126,15 +126,29 @@ final class SharedDeckCatalogService {
         case listFetchFailed
     }
 
-    /// Full sync: fetch the recency-sorted catalog, upsert into SwiftData, reconcile
-    /// orphans. Only the list fetch is fatal (an explicit refresh no-op); everything
-    /// else stays swallowed. Mirrors `PodcastSyncService.syncAll`.
+    /// Full sync: page through the ENTIRE recency-sorted catalog (following the
+    /// keyset cursor), upsert every deck into SwiftData, then reconcile orphans
+    /// **against the complete set**. Only the list fetch is fatal (an explicit
+    /// refresh no-op); everything else stays swallowed. Mirrors
+    /// `PodcastSyncService.syncAll`.
+    ///
+    /// Paging correctness is load-bearing: `reconcileLocalState` tombstones any
+    /// local deck absent from `summaries`, so `summaries` MUST be the union of
+    /// every page. A single-page fetch (the pre-Phase-2b bug) tombstoned every
+    /// official deck past page 1 once the central catalog exceeded one page. A
+    /// page fetch that throws mid-pagination aborts the whole pass
+    /// (`.listFetchFailed`) and skips reconcile — a partial set is not
+    /// authoritative and must never drive a mass-delete.
     @MainActor
     @discardableResult
     func syncAll(context: ModelContext) async -> SyncOutcome {
-        let response: SharedDeckListResponse
+        let summaries: [SharedDeckSummary]
         do {
-            response = try await fetchDeckList()
+            summaries = try await Self.collectAllPages { cursor in
+                var query = BrowseQuery.recency
+                query.cursor = cursor
+                return try await self.fetchDeckList(query: query)
+            }
         } catch is CancellationError {
             AppLog.kg.warning("[SharedDeckSync] list fetch cancelled")
             return .cancelled
@@ -143,7 +157,6 @@ final class SharedDeckCatalogService {
             AppCrashReporting.record(error, context: "shareddeck.sync.list")
             return .listFetchFailed
         }
-        let summaries = response.decks
         for (index, summary) in summaries.enumerated() {
             Self.upsertDeck(summary: summary, sortOrder: index, context: context)
         }
@@ -156,6 +169,39 @@ final class SharedDeckCatalogService {
         }
         NotificationCenter.default.post(name: .sharedDeckCatalogDidSync, object: nil)
         return .completed
+    }
+
+    /// Follow the keyset cursor across every browse page and return the union of
+    /// all decks. `fetchPage(cursor)` fetches one page (`nil` cursor = first
+    /// page). Pagination terminates when the server returns `nextCursor == nil`,
+    /// on a defensive empty page carrying a non-nil cursor, or at `maxPages`
+    /// (guards a degenerate / looping cursor — ~20/page × 50 = 1000-deck ceiling,
+    /// ample for a curated official catalog). A throwing `fetchPage` propagates:
+    /// the caller MUST treat a partial set as non-authoritative and skip
+    /// reconcile, else page-2+ decks would tombstone.
+    static func collectAllPages(
+        maxPages: Int = 50,
+        fetchPage: (_ cursor: String?) async throws -> SharedDeckListResponse
+    ) async rethrows -> [SharedDeckSummary] {
+        var accumulated: [SharedDeckSummary] = []
+        var cursor: String?
+        var page = 0
+        while true {
+            let response = try await fetchPage(cursor)
+            accumulated.append(contentsOf: response.decks)
+            page += 1
+            cursor = response.nextCursor
+            if cursor == nil { break }
+            if response.decks.isEmpty {
+                AppLog.kg.warning("[SharedDeckSync] empty page with non-nil cursor — stop pagination (defensive)")
+                break
+            }
+            if page >= maxPages {
+                AppLog.kg.warning("[SharedDeckSync] hit page cap \(maxPages) — stop pagination (possible cursor loop)")
+                break
+            }
+        }
+        return accumulated
     }
 
     // MARK: - Upsert
