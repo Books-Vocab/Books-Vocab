@@ -22,7 +22,7 @@ scope:
   - backend/src/kg/vocab_crud.py
   - backend/src/kg/vocab_handlers/intake.py
   - backend/src/kg/vocab_handlers/crud.py
-verified_against: 358087492
+verified_against: 888dde5f0
 -->
 # Sync Lifecycle
 
@@ -134,12 +134,12 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 - **不可逆 op（hard delete、create 新連結）**：不乾淨回滾，僅靠 barrier 的「可觀測 + re-raise」。
 - **notebook 隔離硬化（manual link）**：card store 為 per-user、graph 為 per-notebook，故 `create_manual_link` 必填 `notebook_id`，兩端卡片的 `notebook_id` 須等於之，否則以 `NotFoundError(404)` 拒絕（語意：該卡不存在於此 notebook），杜絕跨 notebook 連結。後端為權威；iOS `AddLinkSheet` 候選 filter 額外加 `notebookId == sourceEntry.notebookId` 做 defense-in-depth（#776，`backend/src/kg/vocab_graph_ops.py`）。
 
-## 共享牌組（Explore）與 sync 邊界（Phase 1）
+## 共享牌組（Explore）與 sync 邊界
 
 共享牌組庫（Explore）**不進**上述 `syncStatus × actionType` 狀態機：
 
 - **browse = guest-tolerant public GET**：`SharedDeckCatalogService`（`PodcastSyncService` analog）走 `/api/decks*` 唯讀 mirror，router 無 auth dependency、容忍過期 bearer→guest；upsert 進獨立 `SharedDeck @Model`（**非** `VocabularyEntry`/`Card`），**永不進 client outbox**，故不觸發 vocab 上傳/刪除轉移。reconcile 保 empty-response mass-delete guard（空 server list 視為非權威、不下 tombstone），與 podcast catalog 同範式。
-- **copy provenance（`source_shared_deck_id`/`source_version`/`source_shared_card_guid`）Phase 1 inert**：欄位已 day-one 建（`Card` / `Notebook` / `NotebookResponse` / iOS `Notebook @Model`），但 Phase 1 唯讀 browse **不 stamp**、pull-only。Phase 2 server-side copy 才寫入——屆時複製卡經**既有 incremental pull**（`?since`）作為已 synced server rows 落地，仍不進 outbox，故本狀態機結構性不受影響（詳見 `docs/plans/2026-07-09-shared-decks-library.md §4.1`）。
+- **copy provenance（`source_shared_deck_id`/`source_version`/`source_shared_card_guid`）**：欄位 day-one 建（`Card` / `Notebook` / `NotebookResponse` / iOS `Notebook @Model`）；browse（Phase 1）**不 stamp**、pull-only，**Phase 2 server-side copy 寫入**。契約結構在設計時已 anticipate、落地後不變：複製卡由 server 蓋 fresh `updated_at`，經**既有 incremental pull**（`?since` / post-copy notebook-first targeted pull）作為**已 synced server rows** 落地（**NO SRS / graph transport**——SRS 全新、graph link server 端 remap，皆不經 sync 傳輸），**永不進 outbox**，故本 `syncStatus × actionType` 狀態機結構性不受影響（詳見 `docs/plans/2026-07-09-shared-decks-library.md §4.1`）。
 
 ## Phase 2 之後的建議
 
