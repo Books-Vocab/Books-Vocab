@@ -114,10 +114,13 @@ class NotebookStore:
 
     def materialize(self, notebook_id: str) -> bool:
         """Lift the copy barrier: flip a staged (``is_deleted=True``) copy
-        notebook visible at the last moment. Returns True if a row was flipped."""
+        notebook visible. Idempotent — a no-op (no write, no ``updated_at`` bump)
+        when the notebook is already visible or absent, so a defensive
+        re-materialize on an idempotent-retry replay causes no sync churn.
+        Returns True only when a hidden row was actually revealed."""
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None:
+            if nb is None or not nb.is_deleted:
                 return False
             nb.is_deleted = False
             nb.updated_at = datetime.now(UTC)
