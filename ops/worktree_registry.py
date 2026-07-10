@@ -651,19 +651,34 @@ def cmd_register(args: argparse.Namespace) -> int:
 
     # upsert-by-branch/path among ACTIVE records (idempotent for the orchestrator):
     # a re-register of a live worktree refreshes its intent/base/path in place.
-    existing = next(
-        (r for r in records
-         if r.get("status") == STATUS_ACTIVE
-         and (r.get("branch") == args.branch or (r.get("path") and _norm(r["path"]) == _norm(path)))),
-        None,
-    )
-    if existing is not None:
-        existing.update({
+    #
+    # A branch-match and a DISTINCT path-match can BOTH be active (branch B_old lives
+    # at this path; branch B was checked out elsewhere). Updating only the first would
+    # leave two active records sharing one path. So collapse ALL matches: keep the
+    # first as the survivor, and terminally close the rest (displaced by a re-checkout
+    # — not merged, hence "abandoned") to hold the invariant "at most one active
+    # record per branch AND per path".
+    matches = [
+        r for r in records
+        if r.get("status") == STATUS_ACTIVE
+        and (r.get("branch") == args.branch
+             or (r.get("path") and _norm(r["path"]) == _norm(path)))
+    ]
+    if matches:
+        # the branch is the ledger's identity key, so the branch-match record is the
+        # survivor (this branch moved worktrees); whatever else held the target path
+        # is the displaced one. Falls back to the sole path-match when no branch-match.
+        rec = next((r for r in matches if r.get("branch") == args.branch), matches[0])
+        displaced = [r for r in matches if r is not rec]
+        rec.update({
             "path": path, "branch": args.branch,
             "intent": args.intent, "base": args.base,
         })
+        for d in displaced:
+            d["status"] = "abandoned"
+            d["resolved_at"] = now_iso
+            d["note"] = f"superseded by re-register of {args.branch} at {path}"
         verb = "updated"
-        rec = existing
     else:
         rec = {
             "path": path, "branch": args.branch, "intent": args.intent,
