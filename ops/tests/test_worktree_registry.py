@@ -630,6 +630,62 @@ def test_register_list_resolve_roundtrip(tmp_path):
     assert rec["resolved_at"].startswith("2026-07-09T12:00:00")
 
 
+def _active(records):
+    return [r for r in records if r.get("status") == "active"]
+
+
+def test_register_collapses_cross_match_no_two_active_share_a_path(tmp_path):
+    # A branch-match record and a DISTINCT path-match record can both be active at
+    # once (branch feat-p lives at wtA; a re-checkout put feat-q at wtB). Registering
+    # feat-q@wtA used to update only the FIRST match (feat-p, moving it to wtA),
+    # leaving feat-p@wtA and feat-q@wtA — two active records sharing one path, which
+    # `resolve --path` would double-kill. The upsert must collapse ALL matches so the
+    # invariant holds: at most one active record per branch AND per path.
+    state = tmp_path / "reg.json"
+    common = ["--state", str(state), "--at", "2026-07-09T12:00:00Z"]
+    wtA, wtB = str(tmp_path / "wtA"), str(tmp_path / "wtB")
+
+    assert MODULE.main(["register", *common, "--path", wtA, "--branch", "feat-p",
+                        "--intent", "p", "--base", "main"]) == 0
+    assert MODULE.main(["register", *common, "--path", wtB, "--branch", "feat-q",
+                        "--intent", "q", "--base", "main"]) == 0
+    # now register feat-q AT wtA: collides with feat-q by branch AND feat-p by path
+    assert MODULE.main(["register", *common, "--path", wtA, "--branch", "feat-q",
+                        "--intent", "q v2", "--base", "main"]) == 0
+
+    records = json.loads(state.read_text())["records"]
+    active = _active(records)
+    # exactly ONE active record survives, and it is feat-q at wtA
+    assert len(active) == 1
+    surv = active[0]
+    assert surv["branch"] == "feat-q"
+    assert MODULE._norm(surv["path"]) == MODULE._norm(wtA)
+    assert surv["intent"] == "q v2"
+    # no two active records ever share a path or a branch
+    assert len({MODULE._norm(r["path"]) for r in active}) == len(active)
+    assert len({r["branch"] for r in active}) == len(active)
+    # the displaced record is retained as history, terminally closed (not left active)
+    displaced = [r for r in records if r["branch"] == "feat-p"]
+    assert len(displaced) == 1
+    assert displaced[0]["status"] == "abandoned"
+    assert displaced[0]["resolved_at"] is not None
+
+
+def test_register_same_branch_moving_worktrees_leaves_one_active(tmp_path):
+    # feat-a moves from wtA to wtB (same branch, new path). Exactly one active record,
+    # relocated — the old path must not linger as a second active row.
+    state = tmp_path / "reg.json"
+    common = ["--state", str(state), "--at", "2026-07-09T12:00:00Z"]
+    wtA, wtB = str(tmp_path / "wtA"), str(tmp_path / "wtB")
+    assert MODULE.main(["register", *common, "--path", wtA, "--branch", "feat-a",
+                        "--intent", "a", "--base", "main"]) == 0
+    assert MODULE.main(["register", *common, "--path", wtB, "--branch", "feat-a",
+                        "--intent", "a", "--base", "main"]) == 0
+    active = _active(json.loads(state.read_text())["records"])
+    assert len(active) == 1
+    assert MODULE._norm(active[0]["path"]) == MODULE._norm(wtB)
+
+
 def test_resolve_missing_record_is_usage_error(tmp_path):
     state = tmp_path / "reg.json"
     rc = MODULE.main(["resolve", "--state", str(state), "--branch", "nope", "--status", "abandoned"])
