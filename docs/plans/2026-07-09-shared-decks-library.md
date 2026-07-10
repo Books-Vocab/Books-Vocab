@@ -330,6 +330,8 @@ Anki-informal：publish 當下 snapshot `publisher_display_name`，顯於卡，�
 
 ## 9. 分期 Roadmap
 
+> **執行時以 3-phase 濃縮版為準**：見 [`2026-07-09-shared-decks-3phase-plan.md`](2026-07-09-shared-decks-3phase-plan.md)（P0+P1→Phase 1、P2→Phase 2、P3+P4→Phase 3）。本節 5-phase 為原始細分，保留作架構推導脈絡；phase 邊界與 DoD 執行時按 3-phase 檔。
+
 依賴序：**P0 地基 → P1 唯讀官方 browse → P2 copy+分享 → P3 publish(unlisted-only) → P4 moderation+rating+public UGC flip**。每 Phase 獨立 commit+PR，標 TDD 起點與 DoD。
 
 ### Phase 0 — 全域 store + schema 地基（backend/ops/docs）
