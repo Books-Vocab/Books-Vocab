@@ -656,8 +656,12 @@ def cmd_register(args: argparse.Namespace) -> int:
     # at this path; branch B was checked out elsewhere). Updating only the first would
     # leave two active records sharing one path. So collapse ALL matches: keep the
     # first as the survivor, and terminally close the rest (displaced by a re-checkout
-    # — not merged, hence "abandoned") to hold the invariant "at most one active
-    # record per branch AND per path".
+    # — not merged, hence "abandoned"). This holds the invariant INDUCTIVELY: register
+    # is the sole creator of active records, so if it never lets the incoming branch
+    # OR path collide with a surviving active peer, then "at most one active record
+    # per branch AND per path" holds across the whole ledger. It only reconciles
+    # matches to THIS branch/path — an unrelated pre-existing collision is cleared when
+    # register next touches it, or by sweep.
     matches = [
         r for r in records
         if r.get("status") == STATUS_ACTIVE
