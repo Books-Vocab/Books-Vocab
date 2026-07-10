@@ -686,6 +686,42 @@ def test_register_same_branch_moving_worktrees_leaves_one_active(tmp_path):
     assert MODULE._norm(active[0]["path"]) == MODULE._norm(wtB)
 
 
+def test_ledger_lock_is_mutually_exclusive(tmp_path):
+    # Deterministic proof of the concurrency primitive: while the lock is held, a
+    # second acquire attempt (from an independent open file description) must fail,
+    # and it must free the moment the holder releases.
+    state = tmp_path / "reg.json"
+    assert MODULE._try_acquire_ledger_lock_nb(state) is True   # free before
+    with MODULE._ledger_lock(state):
+        assert MODULE._try_acquire_ledger_lock_nb(state) is False   # held → blocked
+    assert MODULE._try_acquire_ledger_lock_nb(state) is True   # released after
+
+
+def test_parallel_registers_do_not_lose_writes(tmp_path):
+    # The real hazard for parallel hands-off sessions: cmd_register is a
+    # read-modify-write of one shared JSON file. K OS processes registering distinct
+    # branches at once, unlocked, clobber each other (last-writer-wins). All K must
+    # survive — this is the lost-update regression the ledger lock exists to kill.
+    state = tmp_path / "reg.json"
+    K = 24
+    procs = [
+        subprocess.Popen(
+            [sys.executable, str(Path(MODULE.__file__)), "register",
+             "--state", str(state), "--at", "2026-07-09T12:00:00Z",
+             "--path", str(tmp_path / f"wt{i}"), "--branch", f"feat-{i}",
+             "--intent", "x", "--base", "main"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        for i in range(K)
+    ]
+    for p in procs:
+        assert p.wait(timeout=60) == 0
+    records = json.loads(state.read_text())["records"]
+    active = [r for r in records if r["status"] == "active"]
+    assert len(active) == K, f"lost updates: only {len(active)}/{K} survived"
+    assert {r["branch"] for r in active} == {f"feat-{i}" for i in range(K)}
+
+
 def test_resolve_missing_record_is_usage_error(tmp_path):
     state = tmp_path / "reg.json"
     rc = MODULE.main(["resolve", "--state", str(state), "--branch", "nope", "--status", "abandoned"])

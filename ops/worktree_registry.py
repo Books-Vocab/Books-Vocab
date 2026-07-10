@@ -66,10 +66,12 @@ Exit codes: 0 ok | 64 usage error | 1 partial failure (sweep --commit).
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import subprocess
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -586,8 +588,54 @@ def load_state(path: Path) -> dict[str, Any]:
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
+    # atomic: write a sibling temp then os.replace, so a reader (or a crash mid-write)
+    # never sees a half-written ledger — the swap is a single rename syscall.
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n")
+    body = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(body)
+    os.replace(tmp, path)
+
+
+@contextmanager
+def _ledger_lock(state_path: Path):
+    """Exclusive lock over one ledger's whole read-modify-write, so concurrent
+    register / resolve / sweep from parallel hands-off sessions cannot lose each
+    other's updates (the ledger is a shared JSON file; unlocked RMW is last-writer-
+    wins). An advisory flock on a sidecar `<ledger>.lock` — the kernel drops it when
+    the fd closes, so a crashed holder never leaves a stale lock (unlike an O_EXCL
+    marker file). Blocking acquire: the critical section is a small-JSON load+mutate+
+    save (sub-ms) and a dead holder auto-releases, so there is no deadlock to time
+    out. Advisory only — every WRITER must take it; load_state stays lock-free for
+    read-only callers, which the atomic save_state protects from torn reads."""
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _try_acquire_ledger_lock_nb(state_path: Path) -> bool:
+    """True if the ledger lock is currently free (non-blocking acquire+release),
+    False if another open file description holds it. Inspection/tests only — never a
+    substitute for holding `_ledger_lock` across a real read-modify-write."""
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return True
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(fd)
 
 
 # ============================================================================
@@ -1044,6 +1092,14 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "func", None):
         parser.print_help()
         return EXIT_USAGE
+    # Serialize the WRITERS over the shared ledger so parallel hands-off sessions
+    # cannot lose each other's updates (each mutator is a load→mutate→save RMW on one
+    # JSON file). Read-only commands (list) run lock-free — the atomic save_state
+    # keeps their reads from tearing. The lock spans the whole mutator, so its
+    # internal load_state/save_state are one indivisible critical section.
+    if args.func in (cmd_register, cmd_resolve, cmd_sweep):
+        with _ledger_lock(_state_path(args)):
+            return args.func(args)
     return args.func(args)
 
 
