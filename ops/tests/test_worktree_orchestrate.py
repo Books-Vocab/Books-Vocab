@@ -477,6 +477,31 @@ def test_cutover_dirty_refusal_caps_message_list_at_ten(scratch):
 
 
 @gitmark
+def test_cutover_dirty_refusal_unquotes_special_paths(scratch):
+    # git porcelain C-quotes unusual paths (`"my file.txt"`; octal-escaped UTF-8 for
+    # non-ASCII under default core.quotePath=true). dirty_files must carry the REAL
+    # paths — a literal-quoted/escaped entry is unusable to both machines and humans.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    names = ["my file.txt", "中文檔.txt"]
+    for n in names:
+        (repo / n).write_text("base\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "track special names"], repo)
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "dirty-quote",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    for n in names:
+        (repo / n).write_text("dirty\n")
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert sorted(cut["dirty_files"]) == sorted(names)   # unquoted, decoded paths
+    assert not any('"' in f or "\\" in f for f in cut["dirty_files"])
+
+
+@gitmark
 def test_cutover_merge_in_flight_refusal_names_next_step(scratch):
     # non-dirty refusals keep their reason but must also point at the next step.
     tmp_path, repo, remote = scratch
