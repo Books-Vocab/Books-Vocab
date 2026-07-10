@@ -86,7 +86,26 @@ def _build_parser() -> argparse.ArgumentParser:
             sp.add_argument(
                 "--out", metavar="PATH", default=None,
                 help="spec-mode output path for the generated UI World JSON")
+            sp.add_argument(
+                "--plan", metavar="PATH", default=None,
+                help="kg.history_plan.v1 input; freeze the review clock at the plan "
+                     "anchor (deterministic). Requires --spec.")
     return parser
+
+
+def _freeze_from_plan(plan_path: str) -> "object":
+    """Deterministic freeze instant = anchor 日在最大 render offset 下的末刻。
+
+    freeze = datetime(anchor_day) + timedelta(hours=24 - max(render_utc_offset_hours))
+             - timedelta(seconds=1)（UTC）。單一 source 自 plan，不 hardcode。
+    """
+    from datetime import date, datetime, timedelta, timezone
+
+    plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
+    anchor = date.fromisoformat(str(plan["anchor_day"]))
+    max_offset = max(plan["render_utc_offset_hours"])
+    base = datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc)
+    return base + timedelta(hours=24 - max_offset) - timedelta(seconds=1)
 
 
 def _emit_output(payload: dict, *, json_mode: bool) -> None:
@@ -109,6 +128,13 @@ def main(argv: list[str] | None = None) -> int:
                      json_mode=args.json)
         return 1
 
+    plan_path = getattr(args, "plan", None)
+    if plan_path is not None and getattr(args, "spec", None) is None:
+        _emit_output({"mode": "error", "target": args.target,
+                      "error": "--plan requires --spec (review-clock freeze is spec-mode only)"},
+                     json_mode=args.json)
+        return 1
+
     emit_fn = _EMITTERS[args.target]
     extra_kwargs: dict = {}
     if getattr(args, "spec", None) is not None or getattr(args, "out", None) is not None:
@@ -116,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         # only one of the pair is provided.
         extra_kwargs = {"spec_path": getattr(args, "spec", None),
                         "out_path": getattr(args, "out", None)}
+        if plan_path is not None:
+            extra_kwargs["review_clock_frozen_at"] = _freeze_from_plan(plan_path)
     try:
         result = emit_fn(sot, check=args.check, commit=args.commit, **extra_kwargs)
     except NotImplementedError as exc:

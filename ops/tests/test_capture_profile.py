@@ -17,9 +17,13 @@ build_ops_edit_commands = MODULE.build_ops_edit_commands
 build_world_diff_command = MODULE.build_world_diff_command
 build_render_command = MODULE.build_render_command
 build_snapshot_command = MODULE.build_snapshot_command
+build_emit_commands = MODULE.build_emit_commands
+emit_spec_world = MODULE.emit_spec_world
 load_profile = MODULE.load_profile
 build_expectation = MODULE.build_expectation
 CaptureProfileError = MODULE.CaptureProfileError
+
+MARKETING_ACCOUNT = ROOT / "ops" / "capture_profiles" / "marketing_account.json"
 
 
 def _assertion_is_subset(small, big, path=""):
@@ -283,3 +287,106 @@ def test_run_bridges_snapshot_outputs_into_render_inputs(monkeypatch, capsys, tm
     assert "--source-dir" in calls[-1]
     assert "--shots-json" in calls[-1]
     assert len(calls) == 2  # snapshot + render; dry-run 不實際 materialize
+
+
+# ---------------------------------------------------------------------------
+# spec-emit source mode（行銷帳號：spec→emit-ios on-demand，不 commit 生成 world）
+# ---------------------------------------------------------------------------
+
+
+def test_marketing_demo_stays_dataset_file_mode():
+    """既有 marketing_demo profile 仍走 dataset-file 模式（回歸基準不破壞）。"""
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+    assert profile.snapshot.source == "dataset-file"
+    assert profile.snapshot.dataset_file is not None
+    assert profile.snapshot.spec_file is None
+    assert profile.snapshot.plan_file is None
+    assert profile.materialize is not None
+    # dataset-file 模式仍導出 ops-edit 造景指令 + world-diff 驗證
+    assert build_ops_edit_commands(profile, commit=False)
+    assert build_world_diff_command(profile) is not None
+
+
+def test_load_spec_emit_profile_parses():
+    profile = load_profile(MARKETING_ACCOUNT)
+    assert profile.profile_id == "marketing_account"
+    # spec-emit 模式：materialize 缺席 → None，不污染 DB 造景面
+    assert profile.materialize is None
+    assert profile.snapshot.source == "spec-emit"
+    assert profile.snapshot.dataset_file is None
+    assert profile.snapshot.spec_file is not None
+    assert profile.snapshot.spec_file.name == "marketing_account_spec.json"
+    assert profile.snapshot.plan_file is not None
+    assert profile.snapshot.plan_file.name == "history_plan.json"
+    assert profile.render.source_mode == "snapshot-derived"
+    assert len(profile.shots) == 5
+    assert profile.shots[0].source_scenario == "Knowledge Graph View/Populated graph"
+    assert all(shot.copy_title and shot.copy_subtitle for shot in profile.shots)
+
+
+def test_spec_emit_suppresses_materialize_and_verify():
+    """materialize 缺席 → 不產 ops-edit 指令、不產 world-diff。"""
+    profile = load_profile(MARKETING_ACCOUNT)
+    assert build_ops_edit_commands(profile, commit=False) == []
+    assert build_ops_edit_commands(profile, commit=True) == []
+    assert build_world_diff_command(profile) is None
+
+
+def test_build_emit_commands_sequence(tmp_path: Path):
+    """導出 emit 指令序列：有 planFile → 先 shape_history 再 emit-ios，末命令寫 out。"""
+    profile = load_profile(MARKETING_ACCOUNT)
+    out = tmp_path / "ui_world.json"
+    commands = build_emit_commands(profile, out)
+    assert len(commands) == 2  # shape_history + emit-ios（planFile 存在）
+    shape_cmd, emit_cmd = commands
+    assert shape_cmd[1].endswith("shape_history.py")
+    assert str(profile.snapshot.spec_file) in shape_cmd
+    assert str(profile.snapshot.plan_file) in shape_cmd
+    assert "--out" in shape_cmd
+    assert emit_cmd[1].endswith("build_demo.py")
+    assert emit_cmd[2:4] == ["emit-ios", "--spec"]
+    assert "--out" in emit_cmd
+    assert str(out) in emit_cmd
+    assert "--commit" in emit_cmd
+    assert "--json" in emit_cmd
+    # 有 planFile → emit-ios 帶 --plan，把 review 時鐘凍結在 anchor
+    assert "--plan" in emit_cmd
+    assert emit_cmd[emit_cmd.index("--plan") + 1] == str(profile.snapshot.plan_file)
+
+
+def test_emit_spec_world_produces_valid_deterministic_world():
+    """實際 emit：world 過 manifest validate，datasetID 確定式（spec 內容 hash 派生）。"""
+    profile = load_profile(MARKETING_ACCOUNT)
+    world_path, results = emit_spec_world(profile)
+    assert world_path.exists()
+    # 每個 emit 子步驟 exit 0
+    assert all(step["exitCode"] == 0 for step in results)
+    doc = json.loads(world_path.read_text(encoding="utf-8"))
+    assert doc["schema"] == "kg.fixture.dataset.v2"
+    assert doc["datasetID"].startswith("spec-")
+    # 二次 emit → 同 datasetID（確定式）
+    world_path2, _ = emit_spec_world(profile)
+    doc2 = json.loads(world_path2.read_text(encoding="utf-8"))
+    assert doc2["datasetID"] == doc["datasetID"]
+
+
+def test_plan_spec_emit_outputs_emit_section():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "ops" / "capture_profile.py"), "plan", str(MARKETING_ACCOUNT)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["profile"] == "marketing_account"
+    assert payload["materialize"] is None
+    assert payload["verify"]["enabled"] is False
+    assert payload["snapshot"]["source"] == "spec-emit"
+    assert payload["snapshot"]["specFile"].endswith("marketing_account_spec.json")
+    assert payload["snapshot"]["planFile"].endswith("history_plan.json")
+    assert payload["emit"]["enabled"] is True
+    assert isinstance(payload["emit"]["commands"], list) and payload["emit"]["commands"]
+    assert len(payload["shots"]) == 5
+    assert payload["render"]["autoRunEligible"] is True

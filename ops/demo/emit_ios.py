@@ -124,6 +124,16 @@ IDENTITY_OWNED_SIGNED_IN_KEYS = {
     "authError",
     "isAuthenticating",
 }
+# Review-clock freeze overlay：行銷帳號的世界要確定式凍結在 anchor，注入後 review
+# 排程的「now」= progressPausedAt（iOS ReviewSettings.swift:131-132），不隨牆鐘漂移。
+# 這 3 個 ReviewSettings.Keys 是唯一允許偏離 baseline preferences 的 key，且對
+# userDefaults / ubiquitousKeyValueStore 兩 store 都套（LWW updated_at 對齊 paused_at）。
+REVIEW_CLOCK_OVERLAY_KEYS = frozenset({
+    "review_settings_progress_paused",
+    "review_settings_progress_paused_at",
+    "review_settings_progress_updated_at",
+})
+REVIEW_CLOCK_OVERLAY_STORES = ("userDefaults", "ubiquitousKeyValueStore")
 SPEC_DOMAINS = frozenset({"vocabulary", "notebook", "reviewDeck", "todayReview"})
 # spec 模式下四 domain 內仍沿用 baseline 的 fixture id。兩類：
 # (a) 帳號資料無關的 UI-chrome / gallery 語意；其中 notebook.readerPicker* 的
@@ -193,6 +203,25 @@ def _overlay_identity_auth(baseline_auth: dict[str, Any], identity: dict[str, An
     return auth
 
 
+def _overlay_review_clock(
+    baseline_preferences: dict[str, Any], frozen_at: "object"
+) -> dict[str, Any]:
+    """Overlay：把 review 時鐘凍結在 frozen_at（datetime）。兩 store 都 paused@epoch。
+
+    仿 `_overlay_identity_auth` 的定點 overlay 模式——只動 REVIEW_CLOCK_OVERLAY_KEYS，
+    其餘 preferences 原封不動。baseline 缺 review_settings_progress_paused_at → 新增。
+    """
+    epoch = int(frozen_at.timestamp())  # type: ignore[attr-defined]
+    preferences = dict(baseline_preferences)
+    for store in REVIEW_CLOCK_OVERLAY_STORES:
+        merged = dict(preferences[store])
+        merged["review_settings_progress_paused"] = True
+        merged["review_settings_progress_paused_at"] = epoch
+        merged["review_settings_progress_updated_at"] = epoch
+        preferences[store] = merged
+    return preferences
+
+
 def _build_fixture_document(sot: DemoSoT) -> dict[str, Any]:
     identity = sot.identity
     baseline = _load_base_ui_world()
@@ -210,9 +239,13 @@ def _spec_digest(spec: dict[str, Any]) -> str:
 
 
 def _build_spec_fixture_document(
-    sot: DemoSoT, spec: dict[str, Any]
+    sot: DemoSoT, spec: dict[str, Any], *, review_clock_frozen_at: "object | None" = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """spec 模式:baseline + 四 domain spec-derived merge + identity auth overlay。"""
+    """spec 模式:baseline + 四 domain spec-derived merge + identity auth overlay。
+
+    review_clock_frozen_at（datetime）非 None 時,額外對 preferences 套 review-clock
+    freeze overlay（凍結在 anchor 末刻）;None = 不凍,維持既有 byte-equal baseline 行為。
+    """
     baseline = _load_base_ui_world()
     derived, stats = spec_world.derive_domains(spec)
     document = dict(baseline)
@@ -223,7 +256,12 @@ def _build_spec_fixture_document(
         merged.update(seeds)
         document[domain] = merged
     document["auth"] = _overlay_identity_auth(baseline["auth"], sot.identity)
-    _validate_fixture_document(document, baseline, spec_domains=SPEC_DOMAINS)
+    if review_clock_frozen_at is not None:
+        document["preferences"] = _overlay_review_clock(baseline["preferences"], review_clock_frozen_at)
+    _validate_fixture_document(
+        document, baseline, spec_domains=SPEC_DOMAINS,
+        review_clock_frozen=review_clock_frozen_at is not None,
+    )
     return document, stats
 
 
@@ -238,17 +276,54 @@ def _load_base_ui_world() -> dict[str, Any]:
     return data
 
 
+def _validate_review_clock_overlay(
+    preferences: dict[str, Any], baseline_preferences: dict[str, Any]
+) -> None:
+    """review-clock freeze 模式:preferences 只允許在 REVIEW_CLOCK_OVERLAY_KEYS 偏離。
+
+    store set 不可變、不可刪 key;新增/改值的 key 必須全落在時鐘 overlay 白名單。
+    精準守住「只有時鐘 key 可變」,不整域放行。
+    """
+    if set(preferences) != set(baseline_preferences):
+        raise ValueError(
+            "review-clock freeze must not change preferences store set "
+            f"(got {sorted(preferences)}, baseline {sorted(baseline_preferences)})"
+        )
+    for store, base_store in baseline_preferences.items():
+        doc_store = preferences[store]
+        added = set(doc_store) - set(base_store)
+        removed = set(base_store) - set(doc_store)
+        if removed:
+            raise ValueError(
+                f"review-clock freeze must not remove preferences.{store} keys {sorted(removed)}"
+            )
+        if added - REVIEW_CLOCK_OVERLAY_KEYS:
+            raise ValueError(
+                f"review-clock freeze added non-clock preferences.{store} keys "
+                f"{sorted(added - REVIEW_CLOCK_OVERLAY_KEYS)}"
+            )
+        changed = {k for k in set(doc_store) & set(base_store) if doc_store[k] != base_store[k]}
+        disallowed = sorted(changed - REVIEW_CLOCK_OVERLAY_KEYS)
+        if disallowed:
+            raise ValueError(
+                f"review-clock freeze changed non-clock preferences.{store} keys {disallowed}"
+            )
+
+
 def _validate_fixture_document(
     document: dict[str, Any],
     baseline: dict[str, Any],
     *,
     spec_domains: frozenset[str] = frozenset(),
+    review_clock_frozen: bool = False,
 ) -> None:
     """Fail loud if generated demo stops being a UI World + identity overlay.
 
     `spec_domains`（spec 模式）內的 domain 允許內容偏離 baseline，但 fixture id
     key set 必須與 baseline 完全一致（Swift *FixtureID.allCases registry 契約），
     且 SPEC_BASELINE_KEPT_FIXTURES 列出的 UI-chrome fixture 必須 byte-equal。
+    `review_clock_frozen` 時 preferences 改由 _validate_review_clock_overlay 精準把關
+    （只允許時鐘 key 偏離），其餘 domain 仍須 byte-equal baseline。
     """
     top_level = set(document)
     if top_level != FIXTURE_TOP_LEVEL_KEYS:
@@ -267,12 +342,15 @@ def _validate_fixture_document(
             f"{BASE_UI_WORLD_PATH} has invalid top-level keys extra={extra} missing={missing}"
         )
 
-    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"} - spec_domains):
+    frozen_exclude = {"preferences"} if review_clock_frozen else set()
+    for key in sorted(FIXTURE_TOP_LEVEL_KEYS - {"datasetID", "auth"} - spec_domains - frozen_exclude):
         if document[key] != baseline[key]:
             raise ValueError(
                 "generated iOS UI World may only overlay identity-owned auth; "
                 f"domain {key!r} drifted from {BASE_UI_WORLD_PATH}"
             )
+    if review_clock_frozen:
+        _validate_review_clock_overlay(document["preferences"], baseline["preferences"])
 
     for domain in sorted(spec_domains):
         if set(document[domain]) != set(baseline[domain]):
@@ -343,25 +421,29 @@ def _artifacts(sot: DemoSoT) -> list[tuple[Path, bytes]]:
 
 
 def _spec_build(
-    sot: DemoSoT, *, spec_path: Path, out_path: Path
+    sot: DemoSoT, *, spec_path: Path, out_path: Path,
+    review_clock_frozen_at: "object | None" = None,
 ) -> tuple[Path, bytes, dict[str, Any], dict[str, Any], dict[str, Any]]:
     """spec 模式共用管線:載入 → 投影 → serialize → shared-validator 驗證。
 
     `_spec_artifacts`(測試 seam)與 `_emit_spec`(CLI)都走這一條,防兩路徑 drift。
     """
     spec = spec_world.load_seed_spec(Path(spec_path))
-    document, stats = _build_spec_fixture_document(sot, spec)
+    document, stats = _build_spec_fixture_document(
+        sot, spec, review_clock_frozen_at=review_clock_frozen_at)
     content = _json_bytes(document)
     _validate_fixture_json_bytes(content)
     return Path(out_path), content, document, stats, spec
 
 
 def _spec_artifacts(
-    sot: DemoSoT, *, spec_path: Path, out_path: Path
+    sot: DemoSoT, *, spec_path: Path, out_path: Path,
+    review_clock_frozen_at: "object | None" = None,
 ) -> list[tuple[Path, bytes]]:
     """spec 模式 artifact:回傳 (out_path, bytes)。"""
     out, content, _document, _stats, _spec = _spec_build(
-        sot, spec_path=spec_path, out_path=out_path)
+        sot, spec_path=spec_path, out_path=out_path,
+        review_clock_frozen_at=review_clock_frozen_at)
     return [(out, content)]
 
 
@@ -419,10 +501,12 @@ def _emit_spec(
     out_path: Path,
     check: bool,
     commit: bool,
+    review_clock_frozen_at: "object | None" = None,
 ) -> dict:
     """Spec 模式的 emit:輸出到呼叫者指定路徑，不碰 committed artifact。"""
     out, content, document, stats, spec = _spec_build(
-        sot, spec_path=spec_path, out_path=out_path)
+        sot, spec_path=spec_path, out_path=out_path,
+        review_clock_frozen_at=review_clock_frozen_at)
     staleness = spec_staleness_warning(spec)
     if staleness:
         print(staleness, file=sys.stderr)
@@ -476,6 +560,7 @@ def emit(
     commit: bool = False,
     spec_path: str | Path | None = None,
     out_path: str | Path | None = None,
+    review_clock_frozen_at: "object | None" = None,
 ) -> dict:
     """Emit the iOS UI World FixtureDatasetDocument JSON from the SoT.
 
@@ -491,6 +576,9 @@ def emit(
         spec_path: kg.seed_spec.v1 input — switches to SPEC MODE (see module
             docstring). Must be given together with out_path.
         out_path: spec-mode output path (never the committed generated artifact).
+        review_clock_frozen_at: datetime (spec mode only) — freeze the review
+            clock at this instant via a preferences overlay. None = no freeze
+            (backward-compatible; preferences stay byte-equal to baseline).
 
     Returns:
         A dict describing the action (paths written / drift verdict / deflate base64).
@@ -500,11 +588,13 @@ def emit(
             "spec mode requires BOTH --spec <kg.seed_spec.v1> and --out <path> "
             "(got only one of them)"
         )
+    if review_clock_frozen_at is not None and spec_path is None:
+        raise ValueError("review_clock_frozen_at is only supported in spec mode (needs --spec/--out)")
     if spec_path is not None:
         assert out_path is not None
         return _emit_spec(
             sot, spec_path=Path(spec_path), out_path=Path(out_path),
-            check=check, commit=commit,
+            check=check, commit=commit, review_clock_frozen_at=review_clock_frozen_at,
         )
 
     artifacts = _artifacts(sot)

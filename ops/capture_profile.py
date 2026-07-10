@@ -19,6 +19,13 @@ SAFE_WRAPPER = ROOT / "ops" / "devops_kg_safe.sh"
 IOS_OPS = ROOT / "ops" / "ios_ops.sh"
 PROMO_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "render_screenshots.py"
 FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_screenshots.py"
+BUILD_DEMO = ROOT / "ops" / "demo" / "build_demo.py"
+SHAPE_HISTORY = ROOT / "ops" / "demo" / "marketing_account" / "shape_history.py"
+
+# snapshot dataset 來源模式（tagged union on snapshot.source）
+SOURCE_DATASET_FILE = "dataset-file"  # 既有：吃預先 committed 的 UI World fixture
+SOURCE_SPEC_EMIT = "spec-emit"        # 新增：從 kg.seed_spec.v1 on-demand emit，不 commit 生成 world
+SNAPSHOT_SOURCES = {SOURCE_DATASET_FILE, SOURCE_SPEC_EMIT}
 
 # 純宣告轉換（不讀 DB），用來從 seed/steps 自動導出 world expectation。
 sys.path.insert(0, str(ROOT / "backend" / "src"))
@@ -50,10 +57,15 @@ class MaterializeConfig:
 
 @dataclass(frozen=True)
 class SnapshotConfig:
-    dataset_file: Path
+    source: str
     destination: str
     groups: list[str]
     scenarios: list[str]
+    # dataset-file 模式：預先存在的 UI World fixture 路徑。
+    dataset_file: Path | None = None
+    # spec-emit 模式：kg.seed_spec.v1 輸入（emit-ios --spec）+ 選配 kg.history_plan.v1。
+    spec_file: Path | None = None
+    plan_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -77,7 +89,7 @@ class ShotConfig:
 @dataclass(frozen=True)
 class CaptureProfile:
     profile_id: str
-    materialize: MaterializeConfig
+    materialize: MaterializeConfig | None
     snapshot: SnapshotConfig
     render: RenderConfig
     shots: list[ShotConfig]
@@ -109,21 +121,7 @@ def validate_fixture_dataset_file(path: Path) -> None:
         raise CaptureProfileError(str(exc)) from exc
 
 
-def load_profile(path: str | Path) -> CaptureProfile:
-    profile_path = _resolve_path(str(path))
-    if not profile_path.exists():
-        raise CaptureProfileError(f"profile 不存在: {profile_path}")
-    data = json.loads(profile_path.read_text())
-    if data.get("schema") != "kg.capture.profile.v1":
-        raise CaptureProfileError("schema 必須是 kg.capture.profile.v1")
-
-    materialize_raw = data.get("materialize")
-    if not isinstance(materialize_raw, dict):
-        raise CaptureProfileError("materialize 必須存在且為 object")
-    snapshot_raw = data.get("snapshot")
-    if not isinstance(snapshot_raw, dict):
-        raise CaptureProfileError("snapshot 必須存在且為 object")
-
+def _load_materialize(materialize_raw: dict[str, Any]) -> MaterializeConfig:
     steps: list[MaterializeStep] = []
     for index, step_raw in enumerate(_ensure_list(materialize_raw.get("steps"), field="materialize.steps")):
         if not isinstance(step_raw, dict):
@@ -146,16 +144,88 @@ def load_profile(path: str | Path) -> CaptureProfile:
         raise CaptureProfileError(f"seed file 不存在: {materialize.seed_file}")
     if materialize.expectation_file is not None and not materialize.expectation_file.exists():
         raise CaptureProfileError(f"expectation file 不存在: {materialize.expectation_file}")
+    return materialize
 
-    snapshot = SnapshotConfig(
-        dataset_file=_resolve_path(_ensure_str(snapshot_raw.get("datasetFile"), field="snapshot.datasetFile")),
+
+def _load_snapshot(source: str, snapshot_raw: dict[str, Any]) -> SnapshotConfig:
+    common = dict(
+        source=source,
         destination=_ensure_str(snapshot_raw.get("destination"), field="snapshot.destination"),
         groups=[str(item) for item in _ensure_list(snapshot_raw.get("groups"), field="snapshot.groups")],
         scenarios=[str(item) for item in _ensure_list(snapshot_raw.get("scenarios"), field="snapshot.scenarios")],
     )
-    if not snapshot.dataset_file.exists():
-        raise CaptureProfileError(f"dataset file 不存在: {snapshot.dataset_file}")
-    validate_fixture_dataset_file(snapshot.dataset_file)
+
+    if source == SOURCE_DATASET_FILE:
+        if snapshot_raw.get("specFile") is not None or snapshot_raw.get("planFile") is not None:
+            raise CaptureProfileError(
+                f"snapshot.source={SOURCE_DATASET_FILE} 不支援 specFile/planFile"
+            )
+        dataset_file = _resolve_path(_ensure_str(snapshot_raw.get("datasetFile"), field="snapshot.datasetFile"))
+        if not dataset_file.exists():
+            raise CaptureProfileError(f"dataset file 不存在: {dataset_file}")
+        validate_fixture_dataset_file(dataset_file)
+        return SnapshotConfig(**common, dataset_file=dataset_file)
+
+    # SOURCE_SPEC_EMIT：datasetFile 由 emit 產生（不預先存在）。
+    if snapshot_raw.get("datasetFile") is not None:
+        raise CaptureProfileError(
+            f"snapshot.source={SOURCE_SPEC_EMIT} 不接受 datasetFile（world 由 spec on-demand emit）"
+        )
+    spec_file = _resolve_path(_ensure_str(snapshot_raw.get("specFile"), field="snapshot.specFile"))
+    if not spec_file.exists():
+        raise CaptureProfileError(f"spec file 不存在: {spec_file}")
+    plan_file: Path | None = None
+    if snapshot_raw.get("planFile") is not None:
+        plan_file = _resolve_path(_ensure_str(snapshot_raw.get("planFile"), field="snapshot.planFile"))
+        if not plan_file.exists():
+            raise CaptureProfileError(f"plan file 不存在: {plan_file}")
+    if not BUILD_DEMO.exists():
+        raise CaptureProfileError(f"build_demo 不存在: {BUILD_DEMO}")
+    if plan_file is not None and not SHAPE_HISTORY.exists():
+        raise CaptureProfileError(f"shape_history 不存在: {SHAPE_HISTORY}")
+    return SnapshotConfig(**common, spec_file=spec_file, plan_file=plan_file)
+
+
+def load_profile(path: str | Path) -> CaptureProfile:
+    profile_path = _resolve_path(str(path))
+    if not profile_path.exists():
+        raise CaptureProfileError(f"profile 不存在: {profile_path}")
+    data = json.loads(profile_path.read_text())
+    if data.get("schema") != "kg.capture.profile.v1":
+        raise CaptureProfileError("schema 必須是 kg.capture.profile.v1")
+
+    snapshot_raw = data.get("snapshot")
+    if not isinstance(snapshot_raw, dict):
+        raise CaptureProfileError("snapshot 必須存在且為 object")
+
+    source = snapshot_raw.get("source", SOURCE_DATASET_FILE)
+    if source not in SNAPSHOT_SOURCES:
+        raise CaptureProfileError(
+            f"snapshot.source 必須是 {SOURCE_DATASET_FILE} 或 {SOURCE_SPEC_EMIT}"
+        )
+
+    # materialize：dataset-file 模式必填（DB 造景 + world-diff 交叉驗證）；
+    # spec-emit 模式由 spec↔fixture roundtrip 保證，materialize 可略（None）。
+    materialize_raw = data.get("materialize")
+    materialize: MaterializeConfig | None = None
+    if source == SOURCE_DATASET_FILE:
+        if not isinstance(materialize_raw, dict):
+            raise CaptureProfileError("materialize 必須存在且為 object")
+        materialize = _load_materialize(materialize_raw)
+    elif materialize_raw is not None:
+        # spec-emit 模式若提供 materialize，只接受空殼（無 uid/seedFile/steps）；
+        # 有實質 DB 造景欄位即為模式污染，fail-loud。
+        if not isinstance(materialize_raw, dict):
+            raise CaptureProfileError("materialize 必須是 object")
+        polluting = [k for k in ("uid", "seedFile", "expectationFile") if materialize_raw.get(k)]
+        if polluting or materialize_raw.get("steps"):
+            raise CaptureProfileError(
+                "spec-emit 模式不支援 materialize DB 造景（"
+                f"發現 {', '.join(polluting + (['steps'] if materialize_raw.get('steps') else []))}）；"
+                "spec-based 帳號的 roundtrip 由 spec↔fixture 保證"
+            )
+
+    snapshot = _load_snapshot(source, snapshot_raw)
 
     render_raw = data.get("render")
     if not isinstance(render_raw, dict):
@@ -213,6 +283,8 @@ def load_profile(path: str | Path) -> CaptureProfile:
 
 
 def build_ops_edit_commands(profile: CaptureProfile, *, commit: bool) -> list[list[str]]:
+    if profile.materialize is None:
+        return []
     commands = [
         [
             str(SAFE_WRAPPER),
@@ -237,7 +309,16 @@ def build_ops_edit_commands(profile: CaptureProfile, *, commit: bool) -> list[li
     return commands
 
 
-def build_snapshot_command(profile: CaptureProfile, *, reuse_build: bool) -> list[str]:
+def build_snapshot_command(
+    profile: CaptureProfile, *, reuse_build: bool, dataset_file: Path | None = None
+) -> list[str]:
+    # dataset-file 模式用 profile 內的 committed fixture；spec-emit 模式由呼叫者
+    # 傳入 on-demand emit 出的暫存 world 路徑。
+    resolved_dataset = dataset_file if dataset_file is not None else profile.snapshot.dataset_file
+    if resolved_dataset is None:
+        raise CaptureProfileError(
+            "snapshot 缺少 dataset 來源：spec-emit 模式需先 emit_spec_world 取得 world 路徑"
+        )
     command = [
         str(IOS_OPS),
         "catalog",
@@ -245,7 +326,7 @@ def build_snapshot_command(profile: CaptureProfile, *, reuse_build: bool) -> lis
         "--destination",
         profile.snapshot.destination,
         "--dataset-file",
-        str(profile.snapshot.dataset_file),
+        str(resolved_dataset),
     ]
     for group in profile.snapshot.groups:
         command.extend(["--group", group])
@@ -258,7 +339,7 @@ def build_snapshot_command(profile: CaptureProfile, *, reuse_build: bool) -> lis
 
 
 def build_world_diff_command(profile: CaptureProfile) -> list[str] | None:
-    if profile.materialize.expectation_file is None:
+    if profile.materialize is None or profile.materialize.expectation_file is None:
         return None
     return [
         str(SAFE_WRAPPER),
@@ -268,6 +349,85 @@ def build_world_diff_command(profile: CaptureProfile) -> list[str] | None:
         str(profile.materialize.expectation_file),
         "--json",
     ]
+
+
+def build_emit_commands(profile: CaptureProfile, out_path: Path) -> list[list[str]]:
+    """spec-emit 模式：導出「把 world emit 到 out_path」的確定式指令序列。
+
+    有 planFile → 先 shape_history 把 spec 依 history_plan 重錨到暫存 spec（冪等），
+    再 emit-ios 投影成 UI World；無 planFile → 直接 emit committed spec。全程走
+    capture_profile 自身的 uv-3.13 直譯器（stdlib + sibling 模組，無 backend 依賴）。
+    """
+    if profile.snapshot.source != SOURCE_SPEC_EMIT:
+        raise CaptureProfileError("build_emit_commands 僅適用 spec-emit 模式")
+    if profile.snapshot.spec_file is None:
+        raise CaptureProfileError("spec-emit 模式缺少 snapshot.specFile")
+
+    commands: list[list[str]] = []
+    spec_for_emit: Path = profile.snapshot.spec_file
+    plan_args: list[str] = []
+    if profile.snapshot.plan_file is not None:
+        reshaped_spec = out_path.parent / f"{out_path.stem}.spec.json"
+        commands.append([
+            sys.executable,
+            str(SHAPE_HISTORY),
+            str(profile.snapshot.spec_file),
+            str(profile.snapshot.plan_file),
+            "--out",
+            str(reshaped_spec),
+        ])
+        spec_for_emit = reshaped_spec
+        # 有 plan → 同時把 review 時鐘凍結在 anchor（emit-ios --plan），
+        # capture 出的世界不隨牆鐘漂移；freeze 為 plan 的確定式純函式。
+        plan_args = ["--plan", str(profile.snapshot.plan_file)]
+    commands.append([
+        sys.executable,
+        str(BUILD_DEMO),
+        "emit-ios",
+        "--spec",
+        str(spec_for_emit),
+        "--out",
+        str(out_path),
+        *plan_args,
+        "--commit",
+        "--json",
+    ])
+    return commands
+
+
+def emit_spec_world(profile: CaptureProfile) -> tuple[Path, list[dict[str, Any]]]:
+    """執行 spec-emit：產出暫存 UI World，過 manifest validate（fail-loud），回傳路徑。
+
+    暫存於 build/capture_profiles/emit-<id>-*/ui_world.json，不 commit 生成物；
+    world 由 spec（+plan）確定式派生（datasetID = spec 內容 hash），可復現。
+    """
+    if profile.snapshot.source != SOURCE_SPEC_EMIT:
+        raise CaptureProfileError("emit_spec_world 僅適用 spec-emit 模式")
+    capture_root = ROOT / "build" / "capture_profiles"
+    capture_root.mkdir(parents=True, exist_ok=True)
+    workdir = Path(tempfile.mkdtemp(prefix=f"emit-{profile.profile_id}-", dir=str(capture_root)))
+    world_path = workdir / "ui_world.json"
+
+    results: list[dict[str, Any]] = []
+    for command in build_emit_commands(profile, world_path):
+        result = run_command(command)
+        results.append(
+            {
+                "command": command,
+                "exitCode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+        )
+        if result.returncode != 0:
+            raise CaptureProfileError(
+                f"spec-emit 步驟失敗（exit {result.returncode}）: "
+                f"{result.stderr.strip() or result.stdout.strip() or command}"
+            )
+    if not world_path.exists():
+        raise CaptureProfileError(f"spec-emit 未產出 world: {world_path}")
+    validate_fixture_dataset_file(world_path)
+    return world_path, results
 
 
 def build_prepare_command(profile: CaptureProfile) -> list[str]:
@@ -320,6 +480,8 @@ def build_expectation(profile: CaptureProfile) -> dict[str, Any]:
     membership 不在斷言範圍（derive 不導 card.notebook），與 ops_world_diff 以 content
     為 card key 的 scope 一致。
     """
+    if profile.materialize is None:
+        raise CaptureProfileError("profile 無 materialize（spec-emit 模式），無法導出 expectation")
     seed = json.loads(profile.materialize.seed_file.read_text(encoding="utf-8"))
     steps = [{"subcommand": s.subcommand, "args": s.args} for s in profile.materialize.steps]
     return derive_expectation(seed, steps)
@@ -454,29 +616,46 @@ def frame_snapshot_sources(profile: CaptureProfile, snapshot_payload: dict[str, 
 
 def cmd_plan(profile: CaptureProfile) -> int:
     verify_command = build_world_diff_command(profile)
+    materialize_plan: dict[str, Any] | None = None
+    if profile.materialize is not None:
+        materialize_plan = {
+            "uid": profile.materialize.uid,
+            "seedFile": str(profile.materialize.seed_file),
+            "expectationFile": str(profile.materialize.expectation_file) if profile.materialize.expectation_file else None,
+            "steps": [
+                {"subcommand": "seed", "args": [profile.materialize.uid, str(profile.materialize.seed_file)]},
+                *[
+                    {"subcommand": step.subcommand, "args": [profile.materialize.uid, *step.args]}
+                    for step in profile.materialize.steps
+                ],
+            ],
+        }
+    emit_section: dict[str, Any] = {"enabled": False, "commands": None}
+    if profile.snapshot.source == SOURCE_SPEC_EMIT:
+        # plan 用代表性 out 路徑呈現指令（實際 run 時落在 build/capture_profiles/emit-*）。
+        placeholder = ROOT / "build" / "capture_profiles" / f"emit-{profile.profile_id}" / "ui_world.json"
+        emit_section = {
+            "enabled": True,
+            "specFile": str(profile.snapshot.spec_file),
+            "planFile": str(profile.snapshot.plan_file) if profile.snapshot.plan_file else None,
+            "commands": build_emit_commands(profile, placeholder),
+        }
     emit_json(
         {
             "schema": "kg.capture.run.v1",
             "action": "plan",
             "profile": profile.profile_id,
-            "materialize": {
-                "uid": profile.materialize.uid,
-                "seedFile": str(profile.materialize.seed_file),
-                "expectationFile": str(profile.materialize.expectation_file) if profile.materialize.expectation_file else None,
-                "steps": [
-                    {"subcommand": "seed", "args": [profile.materialize.uid, str(profile.materialize.seed_file)]},
-                    *[
-                        {"subcommand": step.subcommand, "args": [profile.materialize.uid, *step.args]}
-                        for step in profile.materialize.steps
-                    ],
-                ],
-            },
+            "materialize": materialize_plan,
             "verify": {
                 "enabled": verify_command is not None,
                 "command": verify_command,
             },
+            "emit": emit_section,
             "snapshot": {
-                "datasetFile": str(profile.snapshot.dataset_file),
+                "source": profile.snapshot.source,
+                "datasetFile": str(profile.snapshot.dataset_file) if profile.snapshot.dataset_file else None,
+                "specFile": str(profile.snapshot.spec_file) if profile.snapshot.spec_file else None,
+                "planFile": str(profile.snapshot.plan_file) if profile.snapshot.plan_file else None,
                 "destination": profile.snapshot.destination,
                 "groups": profile.snapshot.groups,
                 "scenarios": profile.snapshot.scenarios,
@@ -547,7 +726,13 @@ def cmd_materialize(profile: CaptureProfile, *, commit: bool) -> int:
 
 
 def cmd_snapshot(profile: CaptureProfile, *, reuse_build: bool) -> int:
-    command = build_snapshot_command(profile, reuse_build=reuse_build)
+    dataset_file: Path | None = None
+    emit_step: dict[str, Any] | None = None
+    if profile.snapshot.source == SOURCE_SPEC_EMIT:
+        world_path, emit_results = emit_spec_world(profile)
+        dataset_file = world_path
+        emit_step = {"world": str(world_path), "steps": emit_results}
+    command = build_snapshot_command(profile, reuse_build=reuse_build, dataset_file=dataset_file)
     result = run_command(command)
     payload = parse_json_stdout(result)
     emit_json(
@@ -557,6 +742,7 @@ def cmd_snapshot(profile: CaptureProfile, *, reuse_build: bool) -> int:
             "profile": profile.profile_id,
             "reuseBuild": reuse_build,
             "status": "ok" if result.returncode == 0 else "error",
+            "emit": emit_step,
             "command": command,
             "snapshot": payload,
             "stderr": result.stderr,
@@ -654,7 +840,32 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
         if verify_command is not None:
             verify_step = {"command": verify_command, "planned": True}
 
-    snapshot_command = build_snapshot_command(profile, reuse_build=reuse_build)
+    dataset_file: Path | None = None
+    emit_step: dict[str, Any] | None = None
+    if profile.snapshot.source == SOURCE_SPEC_EMIT:
+        try:
+            world_path, emit_results = emit_spec_world(profile)
+        except CaptureProfileError as exc:
+            emit_json(
+                {
+                    "schema": "kg.capture.run.v1",
+                    "action": "run",
+                    "profile": profile.profile_id,
+                    "commit": commit,
+                    "reuseBuild": reuse_build,
+                    "status": "error",
+                    "materialize": materialize_results,
+                    "verify": verify_step,
+                    "emit": {"status": "error", "error": str(exc)},
+                    "snapshot": None,
+                    "render": None,
+                }
+            )
+            return 1
+        dataset_file = world_path
+        emit_step = {"world": str(world_path), "steps": emit_results}
+
+    snapshot_command = build_snapshot_command(profile, reuse_build=reuse_build, dataset_file=dataset_file)
     snapshot_result = run_command(snapshot_command)
     snapshot_payload = parse_json_stdout(snapshot_result)
     prepare_step: dict[str, Any] | None = None
@@ -682,6 +893,7 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
                 "status": "error",
                 "materialize": materialize_results,
                 "verify": verify_step,
+                "emit": emit_step,
                 "snapshot": {
                     "command": snapshot_command,
                     "exitCode": snapshot_result.returncode,
@@ -712,6 +924,7 @@ def cmd_run(profile: CaptureProfile, *, commit: bool, reuse_build: bool) -> int:
             "status": "ok" if render_result.returncode == 0 else "error",
             "materialize": materialize_results,
             "verify": verify_step,
+            "emit": emit_step,
             "snapshot": {
                 "command": snapshot_command,
                 "exitCode": snapshot_result.returncode,
