@@ -23,7 +23,10 @@ day one so opening the community-UGC write path later needs no migration.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import secrets
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,6 +40,67 @@ from ..text_utils import normalize_nfc_lower
 # Discovery WHERE (browse + detail): a deck is publicly reachable only when all
 # three orthogonal axes clear. Official decks carry visibility='official'.
 _DISCOVERABLE_VISIBILITY = ("public", "official")
+
+# Deterministic namespace for shared-deck card identity. ``content_guid`` covers
+# (content, pos, mode, meaning) so homographs (``lead`` the metal vs the verb)
+# never collapse into a single card under uq_shared_deck_card_guid (§2.1).
+_CARD_GUID_NAMESPACE = uuid.UUID("7d1f4e2a-9c3b-5a86-b0d4-2f6e8c1a4b90")
+
+# The content-plane fields that make up a shared card. Deliberately excludes the
+# 7 SRS columns (which do not exist on shared_deck_card) and all timestamps.
+_CONTENT_PLANE_FIELDS = (
+    "content", "pos", "meaning", "examples", "collocations",
+    "note", "difficulty", "mode", "root_form", "inflections",
+)
+
+
+def card_content_guid(content: str, pos: str | None, mode: str, meaning: str) -> str:
+    """Stable per-card identity over the discriminating axes. Case/diacritic
+    folded on content+meaning; pos+mode kept verbatim so a homograph pair with
+    different part-of-speech resolves to two distinct guids."""
+    key = "|".join((
+        normalize_nfc_lower(content),
+        pos or "",
+        mode or "recognition",
+        normalize_nfc_lower(meaning),
+    ))
+    return str(uuid.uuid5(_CARD_GUID_NAMESPACE, key))
+
+
+def canonical_card(card: dict) -> dict:
+    """Normalize a content-plane card dict (snake_case) into a deterministic
+    shape used for hashing, insertion and round-trip projection. Carries the
+    derived ``content_guid`` so callers never recompute it inconsistently."""
+    content = str(card.get("content") or "")
+    meaning = str(card.get("meaning") or "")
+    pos = card.get("pos") or None
+    mode = card.get("mode") or "recognition"
+    return {
+        "content_guid": card_content_guid(content, pos, mode, meaning),
+        "content": content,
+        "pos": pos,
+        "meaning": meaning,
+        "examples": list(card.get("examples") or []),
+        "collocations": list(card.get("collocations") or []),
+        "note": card.get("note") or None,
+        "difficulty": card.get("difficulty"),
+        "mode": mode,
+        "root_form": card.get("root_form") or None,
+        "inflections": list(card.get("inflections") or []),
+    }
+
+
+def deck_content_hash(cards: list[dict]) -> str:
+    """SHA-256 over the content plane with deterministic ordering, excluding all
+    timestamps (§2.3). Same content → same hash → idempotent re-emit; a content
+    change flips the hash → new version. Input cards are snake_case dicts."""
+    canonical = sorted(
+        (canonical_card(c) for c in cards), key=lambda c: c["content_guid"]
+    )
+    blob = json.dumps(
+        canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _mint_deck_id() -> str:
@@ -282,6 +346,128 @@ class SharedDeckStore:
             stmt = stmt.order_by(SharedDeckCard.id).limit(limit)
             return list(session.exec(stmt).all())
 
+    # ── write side (official governance, Phase 1b-ii) ──────────────
+
+    def publish_official(
+        self,
+        *,
+        deck_id: str,
+        title: str,
+        cards: list[dict],
+        description: str | None = None,
+        category: str | None = None,
+        language_pair: str | None = None,
+        tags: list[str] | None = None,
+        color: str | None = None,
+        cover_pattern: str | None = None,
+        publisher_display_name: str | None = None,
+    ) -> dict:
+        """Idempotent upsert of one official deck.
+
+        ``source`` / ``owner_id`` / ``visibility`` / ``status`` are
+        **server-authoritative** — hard-coded here, never parameters — so a
+        curator spec cannot forge a verified badge (§3.3/§5.2). Re-emitting
+        identical content is a no-op (content_hash unchanged → no version bump,
+        no card proliferation); a content change mints a new version and
+        atomically flips ``current_version`` while the prior version's card rows
+        stay immutable (§2.3). Homograph-identical cards are deduped by
+        ``content_guid`` so the guid UNIQUE is never violated.
+        """
+        tags = list(tags or [])
+        canonical: dict[str, dict] = {}
+        for card in cards:
+            cc = canonical_card(card)
+            canonical.setdefault(cc["content_guid"], cc)  # first wins, deterministic
+        canonical_cards = list(canonical.values())
+        new_hash = deck_content_hash(canonical_cards)
+        now = datetime.now(UTC)
+
+        with Session(self.engine) as session:
+            deck = session.get(SharedDeck, deck_id)
+            if deck is None:
+                version = 1
+                deck = SharedDeck(id=deck_id)
+                session.add(deck)
+                self._write_version(session, deck_id, version, new_hash, canonical_cards)
+                action = "created"
+            else:
+                cur = session.get(SharedDeckVersion, (deck_id, deck.current_version))
+                if cur is not None and cur.content_hash == new_hash:
+                    version = deck.current_version
+                    action = "metadata" if self._metadata_differs(
+                        deck, title=title, description=description,
+                        category=category, language_pair=language_pair, tags=tags,
+                        color=color, cover_pattern=cover_pattern,
+                        publisher_display_name=publisher_display_name,
+                        card_count=len(canonical_cards),
+                    ) else "noop"
+                else:
+                    version = deck.current_version + 1
+                    self._write_version(session, deck_id, version, new_hash, canonical_cards)
+                    action = "versioned"
+
+            if action == "noop":
+                # A true no-op: nothing added/mutated, updated_at untouched.
+                return {"action": "noop", "deckId": deck_id, "version": version,
+                        "contentHash": new_hash, "cardCount": deck.card_count}
+
+            # Apply deck-level metadata and re-assert the server-authoritative
+            # axes (defensive: an official deck is always discoverable + trusted).
+            deck.title = title
+            deck.title_nfc_lower = normalize_nfc_lower(title)
+            deck.description = description
+            deck.category = category
+            deck.language_pair = language_pair
+            deck.tags = tags
+            deck.color = color
+            deck.cover_pattern = cover_pattern
+            deck.publisher_display_name = publisher_display_name
+            deck.source = "official"
+            deck.owner_id = None
+            deck.visibility = "official"
+            deck.status = "active"
+            deck.is_deleted = False
+            deck.current_version = version
+            deck.card_count = len(canonical_cards)
+            deck.updated_at = now
+            session.add(deck)
+            session.commit()
+            return {"action": action, "deckId": deck_id, "version": version,
+                    "contentHash": new_hash, "cardCount": len(canonical_cards)}
+
+    @staticmethod
+    def _write_version(
+        session: Session, deck_id: str, version: int, content_hash: str,
+        canonical_cards: list[dict],
+    ) -> None:
+        session.add(SharedDeckVersion(
+            shared_deck_id=deck_id, version=version, content_hash=content_hash))
+        for cc in canonical_cards:
+            session.add(SharedDeckCard(
+                shared_deck_id=deck_id, version=version,
+                content_guid=cc["content_guid"], content=cc["content"],
+                pos=cc["pos"], meaning=cc["meaning"], examples=cc["examples"],
+                collocations=cc["collocations"], note=cc["note"],
+                difficulty=cc["difficulty"], mode=cc["mode"],
+                root_form=cc["root_form"], inflections=cc["inflections"]))
+
+    @staticmethod
+    def _metadata_differs(
+        deck: SharedDeck, *, title, description, category, language_pair, tags,
+        color, cover_pattern, publisher_display_name, card_count,
+    ) -> bool:
+        return (
+            deck.title != title
+            or deck.description != description
+            or deck.category != category
+            or deck.language_pair != language_pair
+            or list(deck.tags or []) != list(tags or [])
+            or deck.color != color
+            or deck.cover_pattern != cover_pattern
+            or deck.publisher_display_name != publisher_display_name
+            or deck.card_count != card_count
+        )
+
 
 __all__ = [
     "SharedDeck",
@@ -291,4 +477,7 @@ __all__ = [
     "SharedDeckReport",
     "SharedDeckCopyLog",
     "SharedDeckStore",
+    "card_content_guid",
+    "canonical_card",
+    "deck_content_hash",
 ]

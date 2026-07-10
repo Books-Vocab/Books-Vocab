@@ -1,0 +1,55 @@
+{
+  "schema": "kg.official_deck.v1",
+  "deckId": "official-phrasal-verbs-essentials",
+  "title": "Essential Phrasal Verbs",
+  "description": "Common English phrasal verbs every learner meets (英→中).",
+  "category": "phrase",
+  "languagePair": "en-zh",
+  "tags": ["phrasal-verbs", "conversation"],
+  "color": "#10B981",
+  "coverPattern": "grid",
+  "cards": [
+    {
+      "content": "give up",
+      "pos": "phrase",
+      "meaning": "放棄",
+      "examples": ["Don't give up before you have really tried."],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "figure out",
+      "pos": "phrase",
+      "meaning": "弄清楚；想出",
+      "examples": ["It took me a while to figure out the bug."],
+      "collocations": ["figure out a solution"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "put off",
+      "pos": "phrase",
+      "meaning": "拖延；推遲",
+      "examples": ["They put off the meeting until Friday."],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "run into",
+      "pos": "phrase",
+      "meaning": "偶然遇到；碰上（問題）",
+      "examples": ["I ran into an old friend at the station."],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "carry out",
+      "pos": "phrase",
+      "meaning": "執行；實施",
+      "examples": ["The team carried out a series of experiments."],
+      "collocations": ["carry out a plan"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    }
+  ]
+}

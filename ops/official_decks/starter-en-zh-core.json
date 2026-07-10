@@ -1,0 +1,68 @@
+{
+  "schema": "kg.official_deck.v1",
+  "deckId": "official-starter-en-zh-core",
+  "title": "Everyday English Starter",
+  "description": "High-frequency everyday words for beginning learners (英→中).",
+  "category": "language",
+  "languagePair": "en-zh",
+  "tags": ["starter", "core", "beginner"],
+  "color": "#3B82F6",
+  "coverPattern": "waves",
+  "cards": [
+    {
+      "content": "meticulous",
+      "pos": "adjective",
+      "meaning": "一絲不苟的；極為謹慎的",
+      "examples": ["She kept meticulous records of every transaction."],
+      "collocations": ["meticulous attention to detail"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["meticulously"]
+    },
+    {
+      "content": "resilient",
+      "pos": "adjective",
+      "meaning": "有韌性的；能快速恢復的",
+      "examples": ["Children are remarkably resilient."],
+      "collocations": ["resilient economy"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["resilience"]
+    },
+    {
+      "content": "endeavor",
+      "pos": "noun",
+      "meaning": "努力；試圖",
+      "examples": ["Their endeavor to reduce waste paid off."],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "rootForm": "endeavor",
+      "inflections": ["endeavors", "endeavored"]
+    },
+    {
+      "content": "plain",
+      "pos": "adjective",
+      "meaning": "平凡的；樸素的；清楚的",
+      "examples": ["The instructions were written in plain language."],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "lead",
+      "pos": "noun",
+      "meaning": "鉛（金屬）",
+      "note": "與動詞 lead（帶領）同形異義，發音亦不同。",
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "lead",
+      "pos": "verb",
+      "meaning": "帶領；引導",
+      "examples": ["She will lead the team next quarter."],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["leads", "led", "leading"]
+    }
+  ]
+}
