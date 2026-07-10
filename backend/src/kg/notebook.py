@@ -155,16 +155,29 @@ class NotebookStore:
         with Session(self.engine) as session:
             return session.get(Notebook, notebook_id)
 
-    def all(self, include_deleted: bool = False) -> list[Notebook]:
-        """Visible notebooks. Excludes soft-deleted AND staged (copy-in-progress)
-        rows. ``include_deleted=True`` returns EVERYTHING — deleted and staged —
-        for teardown/leak-detection callers only."""
+    def all(
+        self, include_deleted: bool = False, *, include_staged: bool = False
+    ) -> list[Notebook]:
+        """Visible notebooks. Two ORTHOGONAL hide axes, defaulting off:
+
+        * ``include_deleted`` — add soft-delete tombstones (the full sync-down
+          list passes this so client deletions propagate). Staged rows stay
+          hidden regardless: a half-copied notebook must never reach the client.
+        * ``include_staged`` — expose copy-in-progress (``is_staged``) rows.
+          Teardown / leak-detection callers ONLY; never feed this to a client or
+          an export.
+
+        Conflating the two (a bare ``include_deleted=True`` that also revealed
+        staged) leaked copy-in-progress notebooks into the full-sync response."""
+        conditions = []
+        if not include_deleted:
+            conditions.append(Notebook.is_deleted.is_(False))
+        if not include_staged:
+            conditions.append(Notebook.is_staged.is_(False))
         with Session(self.engine) as session:
             statement = select(Notebook)
-            if not include_deleted:
-                statement = statement.where(
-                    Notebook.is_deleted.is_(False), Notebook.is_staged.is_(False)
-                )
+            if conditions:
+                statement = statement.where(*conditions)
             statement = statement.order_by(Notebook.sort_order, Notebook.created_at)
             return list(session.exec(statement).all())
 

@@ -136,7 +136,7 @@ def test_midcopy_crash_leaves_no_halfproduct(tmp_path):
 
     # compensation hard-deleted the partial notebook AND its cards — nothing,
     # not even a hidden barrier row, survives.
-    assert list(nbs.all(include_deleted=True)) == []
+    assert list(nbs.all(include_deleted=True, include_staged=True)) == []
     assert cards.count() == 0
 
 
@@ -312,6 +312,30 @@ def test_concurrent_same_user_copies_no_duplicate_active_name(tmp_path):
     assert len(nb_names) == len(set(nb_names)), nb_names
 
 
+def test_full_sync_list_excludes_staged_notebook(tmp_path):
+    """The full-sync notebook list — all(include_deleted=True), what
+    GET /api/notebooks (no cursor) sends to the client — must EXCLUDE staged
+    copy-in-progress notebooks. include_deleted carries soft-delete tombstones
+    for delete-propagation; staged is an orthogonal axis that only teardown /
+    leak-detection callers (include_staged=True) may see. Otherwise a half-copied
+    notebook surfaces on the client as a live notebook."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    nbs.create(name="Live Book")
+    nbs.create(name="Staged Copy", is_staged=True)
+    deleted = nbs.create(name="Deleted Book")
+    nbs.delete(deleted.id)
+
+    full = nbs.all(include_deleted=True)  # exactly what the full-sync router sends
+    names = {n.name for n in full}
+    assert "Staged Copy" not in names, "staged notebook leaked to full-sync client"
+    assert "Live Book" in names
+    assert "Deleted Book" in names  # tombstone still propagates
+
+    # leak-detection callers can still surface staged rows explicitly
+    everything = {n.name for n in nbs.all(include_deleted=True, include_staged=True)}
+    assert "Staged Copy" in everything
+
+
 def test_staged_notebook_excluded_from_world_export(tmp_path):
     """A copy-in-progress (staged) notebook must never leak into world-export.
     The raw-SQL readers filter is_deleted only, so moving the barrier to
@@ -377,7 +401,7 @@ def test_homograph_collapse_fails_loud(tmp_path):
     with pytest.raises(ConflictError):
         _copy(shared, cards, nbs, user_dir)
     # fail-loud rolls back — no partial notebook, no partial cards
-    assert list(nbs.all(include_deleted=True)) == []
+    assert list(nbs.all(include_deleted=True, include_staged=True)) == []
     assert cards.count() == 0
 
 
@@ -401,7 +425,7 @@ def test_record_copy_failure_compensates_staged_rows(tmp_path, monkeypatch):
 
     # compensation erased the whole partial copy — no staged notebook, no cards,
     # and no copy_log pointing at a phantom notebook.
-    assert list(nbs.all(include_deleted=True)) == []
+    assert list(nbs.all(include_deleted=True, include_staged=True)) == []
     assert cards.count() == 0
     assert shared.get_copy_log("u1", "k1") is None
 
