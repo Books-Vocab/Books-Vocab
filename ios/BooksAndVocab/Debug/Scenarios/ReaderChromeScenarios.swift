@@ -10,9 +10,12 @@ import SwiftUI
 /// Preview harness visibility lifted from `private` → `internal` in:
 /// - ReaderViewPresenter+Preview.swift (ReaderChromePreviewScene)
 ///
-/// Note: the harness renders synthetic block placeholders for page content
+/// Note: most scenarios render synthetic block placeholders for page content
 /// (no live publication / WKWebView), driving every state purely off
-/// `ReaderViewPresenterState`.
+/// `ReaderViewPresenterState`. The "Reading · Marketing Content" scenario is the
+/// exception: it renders native SwiftUI book prose (`pageContent: .prose`) so the
+/// App Store / website reader shot shows real book text — it is the capture
+/// source for `ops/capture_profiles/website.json`.
 enum ReaderChromeScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Reader View · Chrome") {
@@ -101,6 +104,25 @@ enum ReaderChromeScenarios {
                             bookTitle: "The Left Hand of Darkness"
                         ),
                         showsErrorCard: false
+                    )
+                }
+                .environmentObject(AppAppearanceStore.preview)
+            }
+
+            Scenario("Reading · Marketing Content", layout: .fill) {
+                AppThemeContainer {
+                    ReaderChromePreviewScene(
+                        state: ReaderViewPresenterState(
+                            paperColor: AppColors.paperSepiaDeep,
+                            isWebViewReady: true,
+                            loadingPhase: "開啟書本…",
+                            underlineProgress: nil,
+                            chrome: ReaderChromeState(header: .compact, overlay: .translation),
+                            totalProgression: 0.37,
+                            bookTitle: "The Left Hand of Darkness"
+                        ),
+                        showsErrorCard: false,
+                        pageContent: .prose
                     )
                 }
                 .environmentObject(AppAppearanceStore.preview)
