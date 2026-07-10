@@ -19,6 +19,7 @@ enum UITestFixture: Equatable {
     case searchVocabNotebook
     case readerRealBookLibrary
     case notebookReviewDeck
+    case notebookReviewDeckVaried
 
     var launchArgument: String {
         switch self {
@@ -44,6 +45,8 @@ enum UITestFixture: Equatable {
             return "-seedFixture:reader:realBookLibrary"
         case .notebookReviewDeck:
             return "-seedFixture:notebook:reviewDeck"
+        case .notebookReviewDeckVaried:
+            return "-seedFixture:notebook:reviewDeckVaried"
         }
     }
 }

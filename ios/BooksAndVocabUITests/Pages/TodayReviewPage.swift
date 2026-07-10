@@ -35,6 +35,14 @@ struct TodayReviewPage {
         element("todayReview.card.back")
     }
 
+    /// The "tap to expand" zone below the card (front stage only). Its
+    /// `frame.minY` is the top boundary of the region directly below the card
+    /// region; `expandZone.minY − cardFront.maxY` is the visible gap between the
+    /// card and the bottom expand hint.
+    var expandZone: XCUIElement {
+        element("todayReview.expandZone")
+    }
+
     // MARK: - Toolbar
 
     var rememberedButton: XCUIElement {
