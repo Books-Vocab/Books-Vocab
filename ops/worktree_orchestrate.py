@@ -342,10 +342,40 @@ def _main_advance_lock(primary: Path):
     return wr._ledger_lock(primary / ".cache" / "kg-main-advance")
 
 
+_C_ESCAPES = {"n": 0x0A, "t": 0x09, "r": 0x0D, "a": 0x07, "b": 0x08,
+              "f": 0x0C, "v": 0x0B, "\\": 0x5C, '"': 0x22}
+
+
+def _c_unquote(p: str) -> str:
+    """Undo git's C-style path quoting (core.quotePath): a path with spaces or
+    non-ASCII bytes arrives as `"..."` with `\\`-escapes and 3-digit octal UTF-8
+    byte sequences. Unwrapped paths pass through untouched."""
+    if not (len(p) >= 2 and p.startswith('"') and p.endswith('"')):
+        return p
+    body, out, i = p[1:-1], bytearray(), 0
+    while i < len(body):
+        c = body[i]
+        if c == "\\" and i + 1 < len(body):
+            if body[i + 1] in "01234567":
+                j = i + 2
+                while j < min(i + 4, len(body)) and body[j] in "01234567":
+                    j += 1
+                out.append(int(body[i + 1:j], 8) & 0xFF)
+                i = j
+                continue
+            out.append(_C_ESCAPES.get(body[i + 1], ord(body[i + 1])))
+            i += 2
+            continue
+        out.extend(c.encode("utf-8"))
+        i += 1
+    return out.decode("utf-8", errors="replace")
+
+
 def _porcelain_paths(out: str) -> list[str]:
-    """Pathnames from `git status --porcelain` output (renames report the new side).
-    No fixed-offset slicing: `_git` strips its output, which can eat the first line's
-    leading status column — split the 1-2 char XY field off instead."""
+    """Pathnames from `git status --porcelain` output (renames report the new side),
+    C-unquoted to real paths. No fixed-offset slicing: `_git` strips its output,
+    which can eat the first line's leading status column — split the 1-2 char XY
+    field off instead."""
     paths: list[str] = []
     for ln in out.splitlines():
         ln = ln.lstrip()
@@ -354,7 +384,7 @@ def _porcelain_paths(out: str) -> list[str]:
         p = ln.split(" ", 1)[1].lstrip()
         if " -> " in p:
             p = p.split(" -> ", 1)[1]
-        paths.append(p)
+        paths.append(_c_unquote(p))
     return paths
 
 
