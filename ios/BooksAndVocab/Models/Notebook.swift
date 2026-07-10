@@ -27,6 +27,16 @@ final class Notebook {
     var isSoftDeleted: Bool = false
     var syncStatus: Int = 0  // 0=pending, 1=synced
 
+    // MARK: - Shared-deck provenance（Explore copy 來源，v1 inert）
+    //
+    // 由 Explore「複製到我的牌組」（Phase 2）填入；本階段（唯讀 browse）不寫入，
+    // 僅隨後端 NotebookResponse（camelCase）跨裝置 round-trip（見 NotebookReconciler）。
+    // additive optional → SwiftData lightweight migration 安全，且避免 Phase 2 再遷一次。
+    /// 來源共享牌組 deckId（nil = 非複製自 Explore）。
+    var sourceSharedDeckId: String?
+    /// 複製當下的來源牌組 version（provenance；未來「有新版」anchor）。
+    var sourceVersion: Int?
+
     var isSynced: Bool { syncStatus == 1 }
 
     init(
