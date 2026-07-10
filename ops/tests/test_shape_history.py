@@ -229,6 +229,68 @@ class TestNarrative:
                 assert days[d] <= plan["daily_primary_events_max"]
 
 
+class TestFreshGreenCohort:
+    """fresh-green cohort：reviewed tab 頂端剛複習亮綠卡（ratio≈0）。
+
+    根因：reviewed tab 依 nextReviewAt 升冪排序，最短 next 的卡若 last_reviewed 老舊
+    則 ratio 高（琥珀），tab 全無綠。修：挑 primary learned 低 count 卡 last=anchor
+    貼近凍結 now、next=anchor+1..3（短 interval）→ 排最上且 ratio≈0（亮綠）。
+    """
+
+    FROZEN_NOW = datetime(2026, 7, 9, 14, 59, 59, tzinfo=timezone.utc)  # anchor 末刻
+
+    @staticmethod
+    def _fresh_primary(shaped: dict, primary: str, anchor: date,
+                       offset: timedelta = OFFSETS[0]) -> list[dict]:
+        out = []
+        for card in shaped["cards"]:
+            if card["notebook"] != primary or card.get("is_archived"):
+                continue
+            r = card["review"]
+            if r["review_count"] <= 0:
+                continue
+            last = datetime.fromisoformat(r["last_reviewed_at"])
+            nxt = datetime.fromisoformat(r["next_review_at"])
+            last_day = (last.astimezone(timezone.utc) + offset).date()
+            next_off = ((nxt.astimezone(timezone.utc) + offset).date() - anchor).days
+            if last_day == anchor and 1 <= next_off <= 3:
+                out.append(card)
+        return out
+
+    def test_fresh_green_cards_exist_on_committed_spec(self):
+        spec = json.loads((MA_DIR / "marketing_account_spec.json").read_text("utf-8"))
+        plan = json.loads((MA_DIR / "history_plan.json").read_text("utf-8"))
+        anchor = date.fromisoformat(plan["anchor_day"])
+        fresh = self._fresh_primary(spec, "人物群像", anchor)
+        assert len(fresh) >= 8, f"fresh-green 卡太少: {len(fresh)}"
+        for card in fresh:
+            r = card["review"]
+            iv = r["review_interval_hours"]
+            assert 12.0 <= iv <= 72.0, (card["content"], iv)  # 短 interval 12h..3d
+            last = datetime.fromisoformat(r["last_reviewed_at"])
+            ratio = (self.FROZEN_NOW - last.astimezone(timezone.utc)).total_seconds() / 3600 / iv
+            assert 0.0 <= ratio < 0.6, (card["content"], ratio)  # 凍結 now 下 ratio 低（綠）
+
+    def test_fresh_green_cards_from_synthetic_spec(self):
+        # count 1/2 卡在小 streak 也不會撞斷檔日 → 穩定形成 fresh cohort。
+        cards = [_card(f"low{i:03d}", "主本", count=1 + i % 2) for i in range(30)]
+        cards += [_card(f"hi{i:03d}", "主本", count=6) for i in range(20)]
+        cards += [_card(f"beta{i:03d}", "副本", count=4) for i in range(12)]
+        spec = {
+            "schema": "kg.seed_spec.v1",
+            "notebooks": [
+                {"name": "主本", "color": None, "cover_pattern": None,
+                 "sort_order": 0, "is_default": True},
+                {"name": "副本", "color": None, "cover_pattern": None,
+                 "sort_order": 1, "is_default": False},
+            ],
+            "cards": cards, "links": [],
+        }
+        shaped = shape_history.shape(spec, _plan())
+        fresh = self._fresh_primary(shaped, "主本", ANCHOR)
+        assert len(fresh) >= 5, f"synthetic fresh 太少: {len(fresh)}"
+
+
 class TestDueDistribution:
     def test_due_counts_by_group(self):
         plan = _plan()

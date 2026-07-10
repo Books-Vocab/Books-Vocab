@@ -55,8 +55,8 @@
     "review_count": 2,
     "review_streak": 2,
     "lapse_count": 0,
-    "review_interval_hours": 1100.668333,
-    "next_review_at": "2026-07-22T10:41:25+00:00",
+    "review_interval_hours": 1076.668333,
+    "next_review_at": "2026-07-21T10:41:25+00:00",
     "last_reviewed_at": "2026-06-06T14:01:19+00:00",
     "last_review_feedback": 1
    }
@@ -144,8 +144,8 @@
     "review_count": 8,
     "review_streak": 4,
     "lapse_count": 4,
-    "review_interval_hours": 693.126389,
-    "next_review_at": "2026-07-19T08:59:09+00:00",
+    "review_interval_hours": 669.126389,
+    "next_review_at": "2026-07-18T08:59:09+00:00",
     "last_reviewed_at": "2026-06-20T11:51:34+00:00",
     "last_review_feedback": 1
    }
@@ -208,9 +208,9 @@
     "review_count": 5,
     "review_streak": 2,
     "lapse_count": 1,
-    "review_interval_hours": 1110.422222,
-    "next_review_at": "2026-07-21T14:20:36+00:00",
-    "last_reviewed_at": "2026-06-05T07:55:16+00:00",
+    "review_interval_hours": 1089.265833,
+    "next_review_at": "2026-07-20T14:20:36+00:00",
+    "last_reviewed_at": "2026-06-05T05:04:39+00:00",
     "last_review_feedback": 1
    }
   },
@@ -3235,8 +3235,8 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1476.057222,
-    "next_review_at": "2026-07-17T02:18:53+00:00",
+    "review_interval_hours": 1452.057222,
+    "next_review_at": "2026-07-16T02:18:53+00:00",
     "last_reviewed_at": "2026-05-16T14:15:27+00:00",
     "last_review_feedback": 1
    }
@@ -3298,8 +3298,8 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1278.619444,
-    "next_review_at": "2026-07-23T10:33:04+00:00",
+    "review_interval_hours": 1254.619444,
+    "next_review_at": "2026-07-22T10:33:04+00:00",
     "last_reviewed_at": "2026-05-31T03:55:54+00:00",
     "last_review_feedback": 1
    }
@@ -4587,9 +4587,9 @@
     "review_count": 6,
     "review_streak": 3,
     "lapse_count": 2,
-    "review_interval_hours": 1221.625833,
+    "review_interval_hours": 1251.626389,
     "next_review_at": "2026-07-11T12:33:26+00:00",
-    "last_reviewed_at": "2026-05-21T14:55:53+00:00",
+    "last_reviewed_at": "2026-05-20T08:55:51+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4618,9 +4618,9 @@
     "review_count": 6,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 358.108889,
+    "review_interval_hours": 382.108889,
     "next_review_at": "2026-07-12T07:49:57+00:00",
-    "last_reviewed_at": "2026-06-27T09:43:25+00:00",
+    "last_reviewed_at": "2026-06-26T09:43:25+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4646,9 +4646,9 @@
     "review_count": 9,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 1924.157222,
+    "review_interval_hours": 1972.157222,
     "next_review_at": "2026-08-07T14:06:28+00:00",
-    "last_reviewed_at": "2026-05-19T09:57:02+00:00",
+    "last_reviewed_at": "2026-05-17T09:57:02+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4708,9 +4708,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1131.133056,
+    "review_interval_hours": 1179.133056,
     "next_review_at": "2026-07-29T12:41:36+00:00",
-    "last_reviewed_at": "2026-06-12T09:33:37+00:00",
+    "last_reviewed_at": "2026-06-10T09:33:37+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4736,9 +4736,9 @@
     "review_count": 7,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 1327.051944,
+    "review_interval_hours": 1375.051944,
     "next_review_at": "2026-07-20T13:23:09+00:00",
-    "last_reviewed_at": "2026-05-26T06:20:02+00:00",
+    "last_reviewed_at": "2026-05-24T06:20:02+00:00",
     "last_review_feedback": 0
    }
   },
@@ -4764,9 +4764,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1058.7625,
+    "review_interval_hours": 1082.7625,
     "next_review_at": "2026-07-26T10:09:20+00:00",
-    "last_reviewed_at": "2026-06-12T07:23:35+00:00",
+    "last_reviewed_at": "2026-06-11T07:23:35+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4828,9 +4828,9 @@
     "review_count": 3,
     "review_streak": 2,
     "lapse_count": 1,
-    "review_interval_hours": 652.5575,
-    "next_review_at": "2026-07-16T11:40:41+00:00",
-    "last_reviewed_at": "2026-06-19T07:07:14+00:00",
+    "review_interval_hours": 24.266944,
+    "next_review_at": "2026-07-10T12:37:00+00:00",
+    "last_reviewed_at": "2026-07-09T12:20:59+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4856,9 +4856,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1699.724167,
+    "review_interval_hours": 1723.724167,
     "next_review_at": "2026-07-19T07:59:37+00:00",
-    "last_reviewed_at": "2026-05-09T12:16:10+00:00",
+    "last_reviewed_at": "2026-05-08T12:16:10+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4886,9 +4886,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 669.641111,
+    "review_interval_hours": 693.641111,
     "next_review_at": "2026-07-19T11:04:24+00:00",
-    "last_reviewed_at": "2026-06-21T13:25:56+00:00",
+    "last_reviewed_at": "2026-06-20T13:25:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4918,9 +4918,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1852.980278,
+    "review_interval_hours": 1876.980278,
     "next_review_at": "2026-07-28T12:46:11+00:00",
-    "last_reviewed_at": "2026-05-12T07:47:22+00:00",
+    "last_reviewed_at": "2026-05-11T07:47:22+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4949,9 +4949,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1101.532778,
+    "review_interval_hours": 1220.899444,
     "next_review_at": "2026-07-11T11:52:31+00:00",
-    "last_reviewed_at": "2026-05-26T14:20:33+00:00",
+    "last_reviewed_at": "2026-05-21T14:58:33+00:00",
     "last_review_feedback": 1
    }
   },
@@ -4977,9 +4977,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1322.080556,
+    "review_interval_hours": 1370.080556,
     "next_review_at": "2026-07-27T07:08:05+00:00",
-    "last_reviewed_at": "2026-06-02T05:03:15+00:00",
+    "last_reviewed_at": "2026-05-31T05:03:15+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5005,9 +5005,9 @@
     "review_count": 8,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 1568.999722,
+    "review_interval_hours": 1592.999722,
     "next_review_at": "2026-07-20T12:50:56+00:00",
-    "last_reviewed_at": "2026-05-16T03:50:57+00:00",
+    "last_reviewed_at": "2026-05-15T03:50:57+00:00",
     "last_review_feedback": 0
    }
   },
@@ -5035,9 +5035,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 944.106389,
-    "next_review_at": "2026-08-03T14:26:41+00:00",
-    "last_reviewed_at": "2026-06-25T06:20:18+00:00",
+    "review_interval_hours": 45.731389,
+    "next_review_at": "2026-07-11T10:51:41+00:00",
+    "last_reviewed_at": "2026-07-09T13:07:48+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5063,9 +5063,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 847.259444,
+    "review_interval_hours": 895.259444,
     "next_review_at": "2026-07-12T14:38:56+00:00",
-    "last_reviewed_at": "2026-06-07T07:23:22+00:00",
+    "last_reviewed_at": "2026-06-05T07:23:22+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5095,9 +5095,9 @@
     "review_count": 8,
     "review_streak": 6,
     "lapse_count": 2,
-    "review_interval_hours": 1760.7725,
+    "review_interval_hours": 1784.7725,
     "next_review_at": "2026-07-31T11:04:58+00:00",
-    "last_reviewed_at": "2026-05-19T02:18:37+00:00",
+    "last_reviewed_at": "2026-05-18T02:18:37+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5159,9 +5159,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 662.140278,
+    "review_interval_hours": 686.140278,
     "next_review_at": "2026-07-14T03:27:31+00:00",
-    "last_reviewed_at": "2026-06-16T13:19:06+00:00",
+    "last_reviewed_at": "2026-06-15T13:19:06+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5223,9 +5223,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 1821.282778,
+    "review_interval_hours": 1845.282778,
     "next_review_at": "2026-07-30T01:40:10+00:00",
-    "last_reviewed_at": "2026-05-15T04:23:12+00:00",
+    "last_reviewed_at": "2026-05-14T04:23:12+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5254,9 +5254,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1290.892222,
+    "review_interval_hours": 1314.892222,
     "next_review_at": "2026-07-16T01:32:28+00:00",
-    "last_reviewed_at": "2026-05-23T06:38:56+00:00",
+    "last_reviewed_at": "2026-05-22T06:38:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5286,9 +5286,9 @@
     "review_count": 2,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 339.605556,
+    "review_interval_hours": 363.605556,
     "next_review_at": "2026-07-10T07:58:02+00:00",
-    "last_reviewed_at": "2026-06-26T04:21:42+00:00",
+    "last_reviewed_at": "2026-06-25T04:21:42+00:00",
     "last_review_feedback": 0
    }
   },
@@ -5314,9 +5314,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 1292.850556,
+    "review_interval_hours": 1340.850556,
     "next_review_at": "2026-07-10T10:34:04+00:00",
-    "last_reviewed_at": "2026-05-17T13:43:02+00:00",
+    "last_reviewed_at": "2026-05-15T13:43:02+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5403,9 +5403,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1969.563889,
+    "review_interval_hours": 1993.563889,
     "next_review_at": "2026-07-25T13:50:45+00:00",
-    "last_reviewed_at": "2026-05-04T12:16:55+00:00",
+    "last_reviewed_at": "2026-05-03T12:16:55+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5432,9 +5432,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1414.893889,
+    "review_interval_hours": 1438.893889,
     "next_review_at": "2026-07-16T03:43:09+00:00",
-    "last_reviewed_at": "2026-05-18T04:49:31+00:00",
+    "last_reviewed_at": "2026-05-17T04:49:31+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5462,9 +5462,9 @@
     "review_count": 8,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 959.8,
+    "review_interval_hours": 1011.269167,
     "next_review_at": "2026-08-01T07:30:18+00:00",
-    "last_reviewed_at": "2026-06-22T07:42:18+00:00",
+    "last_reviewed_at": "2026-06-20T04:14:09+00:00",
     "last_review_feedback": 0
    }
   },
@@ -5487,9 +5487,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1466.403889,
+    "review_interval_hours": 1490.403889,
     "next_review_at": "2026-07-13T14:31:15+00:00",
-    "last_reviewed_at": "2026-05-13T12:07:01+00:00",
+    "last_reviewed_at": "2026-05-12T12:07:01+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5516,9 +5516,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1651.312778,
+    "review_interval_hours": 1675.312778,
     "next_review_at": "2026-07-15T09:46:58+00:00",
-    "last_reviewed_at": "2026-05-07T14:28:12+00:00",
+    "last_reviewed_at": "2026-05-06T14:28:12+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5544,9 +5544,9 @@
     "review_count": 4,
     "review_streak": 2,
     "lapse_count": 2,
-    "review_interval_hours": 1381.765,
+    "review_interval_hours": 1429.765,
     "next_review_at": "2026-08-06T03:03:08+00:00",
-    "last_reviewed_at": "2026-06-09T13:17:14+00:00",
+    "last_reviewed_at": "2026-06-07T13:17:14+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5572,9 +5572,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1423.952778,
+    "review_interval_hours": 1447.952778,
     "next_review_at": "2026-07-12T12:40:04+00:00",
-    "last_reviewed_at": "2026-05-14T04:42:54+00:00",
+    "last_reviewed_at": "2026-05-13T04:42:54+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5604,9 +5604,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 1443.700833,
+    "review_interval_hours": 1467.700833,
     "next_review_at": "2026-07-26T07:34:19+00:00",
-    "last_reviewed_at": "2026-05-27T03:52:16+00:00",
+    "last_reviewed_at": "2026-05-26T03:52:16+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5725,9 +5725,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1482.536389,
+    "review_interval_hours": 1530.536389,
     "next_review_at": "2026-07-20T03:05:29+00:00",
-    "last_reviewed_at": "2026-05-19T08:33:18+00:00",
+    "last_reviewed_at": "2026-05-17T08:33:18+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5754,9 +5754,9 @@
     "review_count": 6,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 1797.328611,
-    "next_review_at": "2026-07-25T03:53:10+00:00",
-    "last_reviewed_at": "2026-05-11T06:33:27+00:00",
+    "review_interval_hours": 1821.328611,
+    "next_review_at": "2026-07-24T03:53:10+00:00",
+    "last_reviewed_at": "2026-05-09T06:33:27+00:00",
     "last_review_feedback": 0
    }
   },
@@ -5782,9 +5782,9 @@
     "review_count": 5,
     "review_streak": 3,
     "lapse_count": 1,
-    "review_interval_hours": 920.214722,
+    "review_interval_hours": 958.461667,
     "next_review_at": "2026-07-31T12:16:06+00:00",
-    "last_reviewed_at": "2026-06-23T04:03:13+00:00",
+    "last_reviewed_at": "2026-06-21T13:48:24+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5810,9 +5810,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1890.045278,
+    "review_interval_hours": 1914.045278,
     "next_review_at": "2026-07-31T07:19:52+00:00",
-    "last_reviewed_at": "2026-05-13T13:17:09+00:00",
+    "last_reviewed_at": "2026-05-12T13:17:09+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5838,9 +5838,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 471.306111,
+    "review_interval_hours": 495.306111,
     "next_review_at": "2026-07-20T02:09:52+00:00",
-    "last_reviewed_at": "2026-06-30T10:51:30+00:00",
+    "last_reviewed_at": "2026-06-29T10:51:30+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5866,9 +5866,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 534.600556,
+    "review_interval_hours": 558.600556,
     "next_review_at": "2026-07-13T11:20:11+00:00",
-    "last_reviewed_at": "2026-06-21T04:44:09+00:00",
+    "last_reviewed_at": "2026-06-20T04:44:09+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5922,9 +5922,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1474.540833,
+    "review_interval_hours": 1498.540833,
     "next_review_at": "2026-07-29T14:54:58+00:00",
-    "last_reviewed_at": "2026-05-29T04:22:31+00:00",
+    "last_reviewed_at": "2026-05-28T04:22:31+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5950,9 +5950,9 @@
     "review_count": 5,
     "review_streak": 1,
     "lapse_count": 1,
-    "review_interval_hours": 1625.894444,
+    "review_interval_hours": 1673.894444,
     "next_review_at": "2026-07-27T03:53:36+00:00",
-    "last_reviewed_at": "2026-05-20T09:59:56+00:00",
+    "last_reviewed_at": "2026-05-18T09:59:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -5982,9 +5982,9 @@
     "review_count": 6,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 1246.639722,
+    "review_interval_hours": 1270.639722,
     "next_review_at": "2026-07-25T11:00:22+00:00",
-    "last_reviewed_at": "2026-06-03T12:21:59+00:00",
+    "last_reviewed_at": "2026-06-02T12:21:59+00:00",
     "last_review_feedback": 0
    }
   },
@@ -6011,9 +6011,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 798.676111,
+    "review_interval_hours": 846.676111,
     "next_review_at": "2026-07-17T09:07:35+00:00",
-    "last_reviewed_at": "2026-06-14T02:27:01+00:00",
+    "last_reviewed_at": "2026-06-12T02:27:01+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6103,9 +6103,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 860.609167,
+    "review_interval_hours": 908.609167,
     "next_review_at": "2026-07-12T04:02:53+00:00",
-    "last_reviewed_at": "2026-06-06T07:26:20+00:00",
+    "last_reviewed_at": "2026-06-04T07:26:20+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6131,9 +6131,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 378.978889,
+    "review_interval_hours": 409.247222,
     "next_review_at": "2026-07-13T04:51:21+00:00",
-    "last_reviewed_at": "2026-06-27T09:52:37+00:00",
+    "last_reviewed_at": "2026-06-26T03:36:31+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6163,9 +6163,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 1412.422778,
+    "review_interval_hours": 1460.422778,
     "next_review_at": "2026-07-28T01:30:06+00:00",
-    "last_reviewed_at": "2026-05-30T05:04:44+00:00",
+    "last_reviewed_at": "2026-05-28T05:04:44+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6191,9 +6191,9 @@
     "review_count": 7,
     "review_streak": 3,
     "lapse_count": 2,
-    "review_interval_hours": 1435.716667,
+    "review_interval_hours": 1483.716667,
     "next_review_at": "2026-07-10T05:52:32+00:00",
-    "last_reviewed_at": "2026-05-11T10:09:32+00:00",
+    "last_reviewed_at": "2026-05-09T10:09:32+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6221,9 +6221,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1052.339722,
+    "review_interval_hours": 1100.339722,
     "next_review_at": "2026-07-11T07:21:55+00:00",
-    "last_reviewed_at": "2026-05-28T11:01:32+00:00",
+    "last_reviewed_at": "2026-05-26T11:01:32+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6282,9 +6282,9 @@
     "review_count": 8,
     "review_streak": 0,
     "lapse_count": 4,
-    "review_interval_hours": 1032.041944,
+    "review_interval_hours": 1056.041944,
     "next_review_at": "2026-07-18T08:57:09+00:00",
-    "last_reviewed_at": "2026-06-05T08:54:38+00:00",
+    "last_reviewed_at": "2026-06-04T08:54:38+00:00",
     "last_review_feedback": 0
    }
   },
@@ -6310,9 +6310,9 @@
     "review_count": 11,
     "review_streak": 3,
     "lapse_count": 6,
-    "review_interval_hours": 1416.7925,
+    "review_interval_hours": 1488.7925,
     "next_review_at": "2026-07-31T05:38:30+00:00",
-    "last_reviewed_at": "2026-06-02T04:50:57+00:00",
+    "last_reviewed_at": "2026-05-30T04:50:57+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6341,9 +6341,9 @@
     "review_count": 8,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 1587.233056,
+    "review_interval_hours": 1611.233056,
     "next_review_at": "2026-07-19T08:44:56+00:00",
-    "last_reviewed_at": "2026-05-14T05:30:57+00:00",
+    "last_reviewed_at": "2026-05-13T05:30:57+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6403,8 +6403,8 @@
     "review_count": 8,
     "review_streak": 5,
     "lapse_count": 3,
-    "review_interval_hours": 403.912778,
-    "next_review_at": "2026-07-26T03:52:18+00:00",
+    "review_interval_hours": 379.912778,
+    "next_review_at": "2026-07-25T03:52:18+00:00",
     "last_reviewed_at": "2026-07-09T07:57:32+00:00",
     "last_review_feedback": 1
    }
@@ -6432,9 +6432,9 @@
     "review_count": 6,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 859.799444,
+    "review_interval_hours": 907.799444,
     "next_review_at": "2026-07-13T10:36:41+00:00",
-    "last_reviewed_at": "2026-06-07T14:48:43+00:00",
+    "last_reviewed_at": "2026-06-05T14:48:43+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6460,9 +6460,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1101.8325,
+    "review_interval_hours": 1149.8325,
     "next_review_at": "2026-07-12T03:52:47+00:00",
-    "last_reviewed_at": "2026-05-27T06:02:50+00:00",
+    "last_reviewed_at": "2026-05-25T06:02:50+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6492,9 +6492,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 525.584167,
+    "review_interval_hours": 549.584167,
     "next_review_at": "2026-07-10T08:22:03+00:00",
-    "last_reviewed_at": "2026-06-18T10:47:00+00:00",
+    "last_reviewed_at": "2026-06-17T10:47:00+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6525,9 +6525,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 764.048056,
+    "review_interval_hours": 788.048056,
     "next_review_at": "2026-07-13T09:44:58+00:00",
-    "last_reviewed_at": "2026-06-11T13:42:05+00:00",
+    "last_reviewed_at": "2026-06-10T13:42:05+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6557,9 +6557,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 998.355556,
-    "next_review_at": "2026-08-05T04:58:23+00:00",
-    "last_reviewed_at": "2026-06-24T14:37:03+00:00",
+    "review_interval_hours": 17.586111,
+    "next_review_at": "2026-07-10T06:03:04+00:00",
+    "last_reviewed_at": "2026-07-09T12:27:54+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6588,9 +6588,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 722.785,
+    "review_interval_hours": 746.785,
     "next_review_at": "2026-07-24T04:53:49+00:00",
-    "last_reviewed_at": "2026-06-24T02:06:43+00:00",
+    "last_reviewed_at": "2026-06-23T02:06:43+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6619,9 +6619,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 803.391944,
+    "review_interval_hours": 838.033333,
     "next_review_at": "2026-07-12T12:28:28+00:00",
-    "last_reviewed_at": "2026-06-09T01:04:57+00:00",
+    "last_reviewed_at": "2026-06-07T14:26:28+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6650,9 +6650,9 @@
     "review_count": 4,
     "review_streak": 2,
     "lapse_count": 1,
-    "review_interval_hours": 1561.453333,
+    "review_interval_hours": 1609.453333,
     "next_review_at": "2026-07-26T08:22:52+00:00",
-    "last_reviewed_at": "2026-05-22T06:55:40+00:00",
+    "last_reviewed_at": "2026-05-20T06:55:40+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6682,9 +6682,9 @@
     "review_count": 3,
     "review_streak": 1,
     "lapse_count": 2,
-    "review_interval_hours": 574.967222,
+    "review_interval_hours": 598.967222,
     "next_review_at": "2026-07-12T05:40:59+00:00",
-    "last_reviewed_at": "2026-06-18T06:42:57+00:00",
+    "last_reviewed_at": "2026-06-17T06:42:57+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6710,9 +6710,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1683.696389,
+    "review_interval_hours": 1731.696389,
     "next_review_at": "2026-07-20T08:04:35+00:00",
-    "last_reviewed_at": "2026-05-11T04:22:48+00:00",
+    "last_reviewed_at": "2026-05-09T04:22:48+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6741,9 +6741,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 574.453611,
+    "review_interval_hours": 598.453611,
     "next_review_at": "2026-07-19T01:26:40+00:00",
-    "last_reviewed_at": "2026-06-25T02:59:27+00:00",
+    "last_reviewed_at": "2026-06-24T02:59:27+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6769,9 +6769,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 960.380833,
+    "review_interval_hours": 1008.380833,
     "next_review_at": "2026-07-15T06:38:31+00:00",
-    "last_reviewed_at": "2026-06-05T06:15:40+00:00",
+    "last_reviewed_at": "2026-06-03T06:15:40+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6797,9 +6797,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1530.951111,
+    "review_interval_hours": 1554.951111,
     "next_review_at": "2026-07-28T02:07:00+00:00",
-    "last_reviewed_at": "2026-05-25T07:09:56+00:00",
+    "last_reviewed_at": "2026-05-24T07:09:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6825,9 +6825,9 @@
     "review_count": 10,
     "review_streak": 5,
     "lapse_count": 4,
-    "review_interval_hours": 1066.254722,
+    "review_interval_hours": 1090.254722,
     "next_review_at": "2026-07-15T13:54:50+00:00",
-    "last_reviewed_at": "2026-06-01T03:39:33+00:00",
+    "last_reviewed_at": "2026-05-31T03:39:33+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6854,9 +6854,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 382.0575,
+    "review_interval_hours": 396.224444,
     "next_review_at": "2026-07-10T02:33:11+00:00",
-    "last_reviewed_at": "2026-06-24T04:29:44+00:00",
+    "last_reviewed_at": "2026-06-23T14:19:43+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6887,9 +6887,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1323.114167,
+    "review_interval_hours": 1467.114167,
     "next_review_at": "2026-07-10T09:56:55+00:00",
-    "last_reviewed_at": "2026-05-16T06:50:04+00:00",
+    "last_reviewed_at": "2026-05-10T06:50:04+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6919,9 +6919,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1015.353889,
+    "review_interval_hours": 1879.353889,
     "next_review_at": "2026-07-27T14:26:07+00:00",
-    "last_reviewed_at": "2026-06-15T07:04:53+00:00",
+    "last_reviewed_at": "2026-05-10T07:04:53+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6950,9 +6950,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1463.67,
-    "next_review_at": "2026-07-10T03:33:43+00:00",
-    "last_reviewed_at": "2026-05-10T03:53:31+00:00",
+    "review_interval_hours": 48.99,
+    "next_review_at": "2026-07-11T14:40:22+00:00",
+    "last_reviewed_at": "2026-07-09T13:40:58+00:00",
     "last_review_feedback": 1
    }
   },
@@ -6978,9 +6978,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1794.984722,
+    "review_interval_hours": 1818.984722,
     "next_review_at": "2026-07-22T07:21:23+00:00",
-    "last_reviewed_at": "2026-05-08T12:22:18+00:00",
+    "last_reviewed_at": "2026-05-07T12:22:18+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7007,9 +7007,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 923.475556,
-    "next_review_at": "2026-07-20T01:43:54+00:00",
-    "last_reviewed_at": "2026-06-11T14:15:22+00:00",
+    "review_interval_hours": 48.361667,
+    "next_review_at": "2026-07-11T14:58:54+00:00",
+    "last_reviewed_at": "2026-07-09T14:37:12+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7065,9 +7065,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1556.038611,
+    "review_interval_hours": 1580.038611,
     "next_review_at": "2026-07-18T02:29:06+00:00",
-    "last_reviewed_at": "2026-05-14T06:26:47+00:00",
+    "last_reviewed_at": "2026-05-13T06:26:47+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7095,9 +7095,9 @@
     "review_count": 8,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 351.876389,
+    "review_interval_hours": 375.876389,
     "next_review_at": "2026-07-13T02:23:19+00:00",
-    "last_reviewed_at": "2026-06-28T10:30:44+00:00",
+    "last_reviewed_at": "2026-06-27T10:30:44+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7123,9 +7123,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1282.125,
+    "review_interval_hours": 1354.125,
     "next_review_at": "2026-07-14T14:16:26+00:00",
-    "last_reviewed_at": "2026-05-22T04:08:56+00:00",
+    "last_reviewed_at": "2026-05-19T04:08:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7154,9 +7154,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1579.542222,
+    "review_interval_hours": 1603.542222,
     "next_review_at": "2026-07-30T07:13:59+00:00",
-    "last_reviewed_at": "2026-05-25T11:41:27+00:00",
+    "last_reviewed_at": "2026-05-24T11:41:27+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7185,9 +7185,9 @@
     "review_count": 5,
     "review_streak": 0,
     "lapse_count": 1,
-    "review_interval_hours": 905.941944,
+    "review_interval_hours": 929.941944,
     "next_review_at": "2026-07-28T01:18:49+00:00",
-    "last_reviewed_at": "2026-06-20T07:22:18+00:00",
+    "last_reviewed_at": "2026-06-19T07:22:18+00:00",
     "last_review_feedback": 0
    }
   },
@@ -7241,8 +7241,8 @@
     "review_count": 8,
     "review_streak": 4,
     "lapse_count": 4,
-    "review_interval_hours": 310.680556,
-    "next_review_at": "2026-07-19T10:57:55+00:00",
+    "review_interval_hours": 286.680556,
+    "next_review_at": "2026-07-18T10:57:55+00:00",
     "last_reviewed_at": "2026-07-06T12:17:05+00:00",
     "last_review_feedback": 1
    }
@@ -7269,9 +7269,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1418.608889,
-    "next_review_at": "2026-07-27T04:31:49+00:00",
-    "last_reviewed_at": "2026-05-29T01:55:17+00:00",
+    "review_interval_hours": 1442.608889,
+    "next_review_at": "2026-07-26T04:31:49+00:00",
+    "last_reviewed_at": "2026-05-27T01:55:17+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7301,9 +7301,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 631.553056,
-    "next_review_at": "2026-07-13T12:31:16+00:00",
-    "last_reviewed_at": "2026-06-17T04:58:05+00:00",
+    "review_interval_hours": 18.123611,
+    "next_review_at": "2026-07-10T08:45:16+00:00",
+    "last_reviewed_at": "2026-07-09T14:37:51+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7329,9 +7329,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1642.936944,
+    "review_interval_hours": 1666.936944,
     "next_review_at": "2026-07-31T12:13:31+00:00",
-    "last_reviewed_at": "2026-05-24T01:17:18+00:00",
+    "last_reviewed_at": "2026-05-23T01:17:18+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7359,9 +7359,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1289.276389,
+    "review_interval_hours": 1337.276389,
     "next_review_at": "2026-07-11T04:32:18+00:00",
-    "last_reviewed_at": "2026-05-18T11:15:43+00:00",
+    "last_reviewed_at": "2026-05-16T11:15:43+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7387,9 +7387,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 816.951944,
+    "review_interval_hours": 864.951944,
     "next_review_at": "2026-07-20T07:59:15+00:00",
-    "last_reviewed_at": "2026-06-16T07:02:08+00:00",
+    "last_reviewed_at": "2026-06-14T07:02:08+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7417,9 +7417,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1700.820556,
+    "review_interval_hours": 1748.820556,
     "next_review_at": "2026-07-30T01:29:58+00:00",
-    "last_reviewed_at": "2026-05-20T04:40:44+00:00",
+    "last_reviewed_at": "2026-05-18T04:40:44+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7446,9 +7446,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 495.939444,
+    "review_interval_hours": 519.939444,
     "next_review_at": "2026-07-13T01:26:13+00:00",
-    "last_reviewed_at": "2026-06-22T09:29:51+00:00",
+    "last_reviewed_at": "2026-06-21T09:29:51+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7510,9 +7510,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1532.903056,
+    "review_interval_hours": 1556.903056,
     "next_review_at": "2026-07-15T05:32:18+00:00",
-    "last_reviewed_at": "2026-05-12T08:38:07+00:00",
+    "last_reviewed_at": "2026-05-11T08:38:07+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7538,9 +7538,9 @@
     "review_count": 6,
     "review_streak": 3,
     "lapse_count": 3,
-    "review_interval_hours": 504.036389,
+    "review_interval_hours": 528.036389,
     "next_review_at": "2026-07-13T02:48:07+00:00",
-    "last_reviewed_at": "2026-06-22T02:45:56+00:00",
+    "last_reviewed_at": "2026-06-21T02:45:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7594,9 +7594,9 @@
     "review_count": 6,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 792.396389,
-    "next_review_at": "2026-07-11T12:44:01+00:00",
-    "last_reviewed_at": "2026-06-08T12:20:14+00:00",
+    "review_interval_hours": 816.396389,
+    "next_review_at": "2026-07-10T12:44:01+00:00",
+    "last_reviewed_at": "2026-06-06T12:20:14+00:00",
     "last_review_feedback": 0
    }
   },
@@ -7627,9 +7627,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 624.345556,
+    "review_interval_hours": 672.345556,
     "next_review_at": "2026-07-10T08:23:48+00:00",
-    "last_reviewed_at": "2026-06-14T08:03:04+00:00",
+    "last_reviewed_at": "2026-06-12T08:03:04+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7688,9 +7688,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 841.407222,
+    "review_interval_hours": 889.407222,
     "next_review_at": "2026-07-13T04:36:10+00:00",
-    "last_reviewed_at": "2026-06-08T03:11:44+00:00",
+    "last_reviewed_at": "2026-06-06T03:11:44+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7720,9 +7720,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1376.125278,
+    "review_interval_hours": 1448.125278,
     "next_review_at": "2026-07-29T11:04:03+00:00",
-    "last_reviewed_at": "2026-06-02T02:56:32+00:00",
+    "last_reviewed_at": "2026-05-30T02:56:32+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7752,9 +7752,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1799.913611,
-    "next_review_at": "2026-07-21T13:33:29+00:00",
-    "last_reviewed_at": "2026-05-07T13:38:40+00:00",
+    "review_interval_hours": 47.638056,
+    "next_review_at": "2026-07-11T14:34:37+00:00",
+    "last_reviewed_at": "2026-07-09T14:56:20+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7811,9 +7811,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1294.558056,
-    "next_review_at": "2026-08-01T07:16:49+00:00",
-    "last_reviewed_at": "2026-06-08T08:43:20+00:00",
+    "review_interval_hours": 46.075833,
+    "next_review_at": "2026-07-11T10:15:36+00:00",
+    "last_reviewed_at": "2026-07-09T12:11:03+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7840,9 +7840,9 @@
     "review_count": 2,
     "review_streak": 2,
     "lapse_count": 0,
-    "review_interval_hours": 828.241667,
-    "next_review_at": "2026-07-26T02:25:38+00:00",
-    "last_reviewed_at": "2026-06-21T14:11:08+00:00",
+    "review_interval_hours": 63.045278,
+    "next_review_at": "2026-07-12T03:45:29+00:00",
+    "last_reviewed_at": "2026-07-09T12:42:46+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7929,9 +7929,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1653.596944,
+    "review_interval_hours": 1725.596944,
     "next_review_at": "2026-07-30T12:33:40+00:00",
-    "last_reviewed_at": "2026-05-22T14:57:51+00:00",
+    "last_reviewed_at": "2026-05-19T14:57:51+00:00",
     "last_review_feedback": 1
    }
   },
@@ -7958,9 +7958,9 @@
     "review_count": 7,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 1629.783333,
+    "review_interval_hours": 1653.783333,
     "next_review_at": "2026-07-15T05:21:29+00:00",
-    "last_reviewed_at": "2026-05-08T07:34:29+00:00",
+    "last_reviewed_at": "2026-05-07T07:34:29+00:00",
     "last_review_feedback": 0
    }
   },
@@ -7987,9 +7987,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 1176.526389,
+    "review_interval_hours": 1200.526389,
     "next_review_at": "2026-07-14T10:30:08+00:00",
-    "last_reviewed_at": "2026-05-26T09:58:33+00:00",
+    "last_reviewed_at": "2026-05-25T09:58:33+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8016,8 +8016,8 @@
     "review_streak": 5,
     "lapse_count": 1,
     "review_interval_hours": 1419.233333,
-    "next_review_at": "2026-07-15T11:22:03+00:00",
-    "last_reviewed_at": "2026-05-17T08:08:03+00:00",
+    "next_review_at": "2026-07-14T11:22:03+00:00",
+    "last_reviewed_at": "2026-05-16T08:08:03+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8047,9 +8047,9 @@
     "review_count": 9,
     "review_streak": 1,
     "lapse_count": 4,
-    "review_interval_hours": 1080.311667,
+    "review_interval_hours": 1104.311667,
     "next_review_at": "2026-07-15T10:27:53+00:00",
-    "last_reviewed_at": "2026-05-31T10:09:11+00:00",
+    "last_reviewed_at": "2026-05-30T10:09:11+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8168,9 +8168,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 2071.630556,
+    "review_interval_hours": 2095.630556,
     "next_review_at": "2026-07-30T12:04:53+00:00",
-    "last_reviewed_at": "2026-05-05T04:27:03+00:00",
+    "last_reviewed_at": "2026-05-04T04:27:03+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8201,9 +8201,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1388.666944,
-    "next_review_at": "2026-07-27T05:47:25+00:00",
-    "last_reviewed_at": "2026-05-30T09:07:24+00:00",
+    "review_interval_hours": 1412.666944,
+    "next_review_at": "2026-07-26T05:47:25+00:00",
+    "last_reviewed_at": "2026-05-28T09:07:24+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8320,9 +8320,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 433.100278,
+    "review_interval_hours": 481.100278,
     "next_review_at": "2026-07-14T07:18:54+00:00",
-    "last_reviewed_at": "2026-06-26T06:12:53+00:00",
+    "last_reviewed_at": "2026-06-24T06:12:53+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8349,9 +8349,9 @@
     "review_count": 8,
     "review_streak": 5,
     "lapse_count": 3,
-    "review_interval_hours": 1684.259167,
+    "review_interval_hours": 1708.259167,
     "next_review_at": "2026-07-15T07:19:50+00:00",
-    "last_reviewed_at": "2026-05-06T03:04:17+00:00",
+    "last_reviewed_at": "2026-05-05T03:04:17+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8412,9 +8412,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1656.437778,
+    "review_interval_hours": 1680.437778,
     "next_review_at": "2026-07-20T06:12:46+00:00",
-    "last_reviewed_at": "2026-05-12T05:46:30+00:00",
+    "last_reviewed_at": "2026-05-11T05:46:30+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8440,9 +8440,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 763.810556,
+    "review_interval_hours": 787.810556,
     "next_review_at": "2026-07-21T02:18:08+00:00",
-    "last_reviewed_at": "2026-06-19T06:29:30+00:00",
+    "last_reviewed_at": "2026-06-18T06:29:30+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8472,9 +8472,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 762.185833,
+    "review_interval_hours": 810.185833,
     "next_review_at": "2026-07-11T06:55:38+00:00",
-    "last_reviewed_at": "2026-06-09T12:44:29+00:00",
+    "last_reviewed_at": "2026-06-07T12:44:29+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8500,9 +8500,9 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1004.722222,
+    "review_interval_hours": 1028.722222,
     "next_review_at": "2026-07-22T04:38:46+00:00",
-    "last_reviewed_at": "2026-06-10T07:55:26+00:00",
+    "last_reviewed_at": "2026-06-09T07:55:26+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8530,9 +8530,9 @@
     "review_count": 4,
     "review_streak": 2,
     "lapse_count": 2,
-    "review_interval_hours": 1565.974722,
+    "review_interval_hours": 1589.974722,
     "next_review_at": "2026-07-17T11:26:53+00:00",
-    "last_reviewed_at": "2026-05-13T05:28:24+00:00",
+    "last_reviewed_at": "2026-05-12T05:28:24+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8562,9 +8562,9 @@
     "review_count": 7,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 1275.121111,
+    "review_interval_hours": 1323.121111,
     "next_review_at": "2026-07-16T13:18:06+00:00",
-    "last_reviewed_at": "2026-05-24T10:10:50+00:00",
+    "last_reviewed_at": "2026-05-22T10:10:50+00:00",
     "last_review_feedback": 0
    }
   },
@@ -8590,9 +8590,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 913.036944,
+    "review_interval_hours": 961.036944,
     "next_review_at": "2026-07-18T05:45:18+00:00",
-    "last_reviewed_at": "2026-06-10T04:43:05+00:00",
+    "last_reviewed_at": "2026-06-08T04:43:05+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8618,9 +8618,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 1534.680833,
+    "review_interval_hours": 1558.680833,
     "next_review_at": "2026-07-11T03:54:08+00:00",
-    "last_reviewed_at": "2026-05-08T05:13:17+00:00",
+    "last_reviewed_at": "2026-05-07T05:13:17+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8679,9 +8679,9 @@
     "review_count": 8,
     "review_streak": 5,
     "lapse_count": 3,
-    "review_interval_hours": 1036.984444,
+    "review_interval_hours": 1084.984444,
     "next_review_at": "2026-07-24T10:39:00+00:00",
-    "last_reviewed_at": "2026-06-11T05:39:56+00:00",
+    "last_reviewed_at": "2026-06-09T05:39:56+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8763,9 +8763,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1633.458611,
+    "review_interval_hours": 1657.458611,
     "next_review_at": "2026-07-27T05:59:11+00:00",
-    "last_reviewed_at": "2026-05-20T04:31:40+00:00",
+    "last_reviewed_at": "2026-05-19T04:31:40+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8791,9 +8791,9 @@
     "review_count": 8,
     "review_streak": 6,
     "lapse_count": 2,
-    "review_interval_hours": 1056.683056,
+    "review_interval_hours": 1128.683056,
     "next_review_at": "2026-07-18T11:47:32+00:00",
-    "last_reviewed_at": "2026-06-04T11:06:33+00:00",
+    "last_reviewed_at": "2026-06-01T11:06:33+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8823,9 +8823,9 @@
     "review_count": 9,
     "review_streak": 6,
     "lapse_count": 2,
-    "review_interval_hours": 957.075,
+    "review_interval_hours": 974.490833,
     "next_review_at": "2026-07-25T04:56:31+00:00",
-    "last_reviewed_at": "2026-06-15T07:52:01+00:00",
+    "last_reviewed_at": "2026-06-14T14:27:04+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8855,9 +8855,9 @@
     "review_count": 5,
     "review_streak": 0,
     "lapse_count": 1,
-    "review_interval_hours": 1418.708889,
+    "review_interval_hours": 1466.708889,
     "next_review_at": "2026-08-03T14:35:21+00:00",
-    "last_reviewed_at": "2026-06-05T11:52:49+00:00",
+    "last_reviewed_at": "2026-06-03T11:52:49+00:00",
     "last_review_feedback": 0
    }
   },
@@ -8946,9 +8946,9 @@
     "review_count": 2,
     "review_streak": 2,
     "lapse_count": 0,
-    "review_interval_hours": 1568.377778,
+    "review_interval_hours": 1592.377778,
     "next_review_at": "2026-07-11T11:00:39+00:00",
-    "last_reviewed_at": "2026-05-07T02:37:59+00:00",
+    "last_reviewed_at": "2026-05-06T02:37:59+00:00",
     "last_review_feedback": 1
    }
   },
@@ -8977,9 +8977,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1342.693056,
+    "review_interval_hours": 1366.693056,
     "next_review_at": "2026-07-10T07:00:38+00:00",
-    "last_reviewed_at": "2026-05-15T08:19:03+00:00",
+    "last_reviewed_at": "2026-05-14T08:19:03+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9103,9 +9103,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1780.636944,
-    "next_review_at": "2026-07-18T10:07:46+00:00",
-    "last_reviewed_at": "2026-05-05T05:29:33+00:00",
+    "review_interval_hours": 64.782222,
+    "next_review_at": "2026-07-12T04:56:41+00:00",
+    "last_reviewed_at": "2026-07-09T12:09:45+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9163,9 +9163,9 @@
     "review_count": 6,
     "review_streak": 3,
     "lapse_count": 2,
-    "review_interval_hours": 673.618333,
+    "review_interval_hours": 696.0525,
     "next_review_at": "2026-07-21T05:21:50+00:00",
-    "last_reviewed_at": "2026-06-23T03:44:44+00:00",
+    "last_reviewed_at": "2026-06-22T05:18:41+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9195,9 +9195,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1248.958611,
+    "review_interval_hours": 1272.958611,
     "next_review_at": "2026-07-25T03:39:28+00:00",
-    "last_reviewed_at": "2026-06-03T02:41:57+00:00",
+    "last_reviewed_at": "2026-06-02T02:41:57+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9226,9 +9226,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1383.636389,
+    "review_interval_hours": 1431.636389,
     "next_review_at": "2026-08-07T05:55:02+00:00",
-    "last_reviewed_at": "2026-06-10T14:16:51+00:00",
+    "last_reviewed_at": "2026-06-08T14:16:51+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9254,9 +9254,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1465.853056,
+    "review_interval_hours": 1489.853056,
     "next_review_at": "2026-07-17T07:23:56+00:00",
-    "last_reviewed_at": "2026-05-17T05:32:45+00:00",
+    "last_reviewed_at": "2026-05-16T05:32:45+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9287,9 +9287,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 988.593056,
+    "review_interval_hours": 1036.593056,
     "next_review_at": "2026-07-11T08:49:58+00:00",
-    "last_reviewed_at": "2026-05-31T04:14:23+00:00",
+    "last_reviewed_at": "2026-05-29T04:14:23+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9315,9 +9315,9 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1205.556667,
+    "review_interval_hours": 1253.556667,
     "next_review_at": "2026-07-18T11:52:50+00:00",
-    "last_reviewed_at": "2026-05-29T06:19:26+00:00",
+    "last_reviewed_at": "2026-05-27T06:19:26+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9379,9 +9379,9 @@
     "review_count": 6,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1464.921944,
+    "review_interval_hours": 1488.921944,
     "next_review_at": "2026-07-15T05:06:43+00:00",
-    "last_reviewed_at": "2026-05-15T04:11:24+00:00",
+    "last_reviewed_at": "2026-05-14T04:11:24+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9410,9 +9410,9 @@
     "review_count": 3,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 475.808333,
-    "next_review_at": "2026-07-18T08:17:57+00:00",
-    "last_reviewed_at": "2026-06-28T12:29:27+00:00",
+    "review_interval_hours": 40.151944,
+    "next_review_at": "2026-07-11T06:26:21+00:00",
+    "last_reviewed_at": "2026-07-09T14:17:14+00:00",
     "last_review_feedback": 0
    }
   },
@@ -9441,9 +9441,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1373.016389,
-    "next_review_at": "2026-07-14T06:02:41+00:00",
-    "last_reviewed_at": "2026-05-18T01:01:42+00:00",
+    "review_interval_hours": 47.838333,
+    "next_review_at": "2026-07-11T12:06:03+00:00",
+    "last_reviewed_at": "2026-07-09T12:15:45+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9471,9 +9471,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 3,
-    "review_interval_hours": 720.038056,
+    "review_interval_hours": 792.038056,
     "next_review_at": "2026-07-17T08:05:27+00:00",
-    "last_reviewed_at": "2026-06-17T08:03:10+00:00",
+    "last_reviewed_at": "2026-06-14T08:03:10+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9563,9 +9563,9 @@
     "review_count": 10,
     "review_streak": 5,
     "lapse_count": 5,
-    "review_interval_hours": 1082.146667,
+    "review_interval_hours": 1095.363611,
     "next_review_at": "2026-07-12T05:29:14+00:00",
-    "last_reviewed_at": "2026-05-28T03:20:26+00:00",
+    "last_reviewed_at": "2026-05-27T14:07:25+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9594,9 +9594,9 @@
     "review_count": 3,
     "review_streak": 1,
     "lapse_count": 2,
-    "review_interval_hours": 639.835556,
-    "next_review_at": "2026-07-16T05:51:33+00:00",
-    "last_reviewed_at": "2026-06-19T14:01:25+00:00",
+    "review_interval_hours": 39.915278,
+    "next_review_at": "2026-07-11T05:23:25+00:00",
+    "last_reviewed_at": "2026-07-09T13:28:30+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9626,9 +9626,9 @@
     "review_count": 3,
     "review_streak": 2,
     "lapse_count": 1,
-    "review_interval_hours": 215.303889,
-    "next_review_at": "2026-07-11T09:33:20+00:00",
-    "last_reviewed_at": "2026-07-02T10:15:06+00:00",
+    "review_interval_hours": 71.126389,
+    "next_review_at": "2026-07-12T13:50:37+00:00",
+    "last_reviewed_at": "2026-07-09T14:43:02+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9659,9 +9659,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 281.986389,
+    "review_interval_hours": 305.986389,
     "next_review_at": "2026-07-11T02:46:09+00:00",
-    "last_reviewed_at": "2026-06-29T08:46:58+00:00",
+    "last_reviewed_at": "2026-06-28T08:46:58+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9716,9 +9716,9 @@
     "review_count": 2,
     "review_streak": 2,
     "lapse_count": 0,
-    "review_interval_hours": 1890.633889,
-    "next_review_at": "2026-07-21T02:05:51+00:00",
-    "last_reviewed_at": "2026-05-03T07:27:49+00:00",
+    "review_interval_hours": 15.978333,
+    "next_review_at": "2026-07-10T05:41:04+00:00",
+    "last_reviewed_at": "2026-07-09T13:42:22+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9744,9 +9744,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1617.291944,
+    "review_interval_hours": 1689.291944,
     "next_review_at": "2026-07-29T11:32:47+00:00",
-    "last_reviewed_at": "2026-05-23T02:15:16+00:00",
+    "last_reviewed_at": "2026-05-20T02:15:16+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9774,9 +9774,9 @@
     "review_count": 4,
     "review_streak": 0,
     "lapse_count": 1,
-    "review_interval_hours": 1225.001667,
+    "review_interval_hours": 1273.001667,
     "next_review_at": "2026-07-17T07:07:44+00:00",
-    "last_reviewed_at": "2026-05-27T06:07:38+00:00",
+    "last_reviewed_at": "2026-05-25T06:07:38+00:00",
     "last_review_feedback": 0
    }
   },
@@ -9804,9 +9804,9 @@
     "review_count": 12,
     "review_streak": 4,
     "lapse_count": 7,
-    "review_interval_hours": 1465.856389,
+    "review_interval_hours": 1489.856389,
     "next_review_at": "2026-07-16T12:22:59+00:00",
-    "last_reviewed_at": "2026-05-16T10:31:36+00:00",
+    "last_reviewed_at": "2026-05-15T10:31:36+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9834,9 +9834,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1467.646389,
-    "next_review_at": "2026-07-10T08:59:53+00:00",
-    "last_reviewed_at": "2026-05-10T05:21:06+00:00",
+    "review_interval_hours": 20.5075,
+    "next_review_at": "2026-07-10T10:28:32+00:00",
+    "last_reviewed_at": "2026-07-09T13:58:05+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9862,9 +9862,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 978.17,
+    "review_interval_hours": 1026.17,
     "next_review_at": "2026-07-11T05:17:07+00:00",
-    "last_reviewed_at": "2026-05-31T11:06:55+00:00",
+    "last_reviewed_at": "2026-05-29T11:06:55+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9891,9 +9891,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1343.186944,
+    "review_interval_hours": 1367.186944,
     "next_review_at": "2026-08-02T13:32:41+00:00",
-    "last_reviewed_at": "2026-06-07T14:21:28+00:00",
+    "last_reviewed_at": "2026-06-06T14:21:28+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9919,9 +9919,9 @@
     "review_count": 7,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 1902.553889,
+    "review_interval_hours": 1926.553889,
     "next_review_at": "2026-07-24T08:50:16+00:00",
-    "last_reviewed_at": "2026-05-06T02:17:02+00:00",
+    "last_reviewed_at": "2026-05-05T02:17:02+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9947,9 +9947,9 @@
     "review_count": 6,
     "review_streak": 5,
     "lapse_count": 1,
-    "review_interval_hours": 535.259722,
+    "review_interval_hours": 559.259722,
     "next_review_at": "2026-07-12T11:56:44+00:00",
-    "last_reviewed_at": "2026-06-20T04:41:09+00:00",
+    "last_reviewed_at": "2026-06-19T04:41:09+00:00",
     "last_review_feedback": 1
    }
   },
@@ -9980,9 +9980,9 @@
     "review_count": 7,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 266.741111,
+    "review_interval_hours": 290.741111,
     "next_review_at": "2026-07-11T05:26:24+00:00",
-    "last_reviewed_at": "2026-06-30T02:41:56+00:00",
+    "last_reviewed_at": "2026-06-29T02:41:56+00:00",
     "last_review_feedback": 0
    }
   },
@@ -10008,9 +10008,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 541.024167,
+    "review_interval_hours": 565.024167,
     "next_review_at": "2026-07-16T01:22:34+00:00",
-    "last_reviewed_at": "2026-06-23T12:21:07+00:00",
+    "last_reviewed_at": "2026-06-22T12:21:07+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10073,9 +10073,9 @@
     "review_count": 6,
     "review_streak": 4,
     "lapse_count": 2,
-    "review_interval_hours": 786.043056,
+    "review_interval_hours": 810.043056,
     "next_review_at": "2026-07-20T03:34:40+00:00",
-    "last_reviewed_at": "2026-06-17T09:32:05+00:00",
+    "last_reviewed_at": "2026-06-16T09:32:05+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10102,9 +10102,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1211.23,
+    "review_interval_hours": 1235.23,
     "next_review_at": "2026-07-23T14:46:49+00:00",
-    "last_reviewed_at": "2026-06-03T03:33:01+00:00",
+    "last_reviewed_at": "2026-06-02T03:33:01+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10135,9 +10135,9 @@
     "review_count": 7,
     "review_streak": 0,
     "lapse_count": 4,
-    "review_interval_hours": 906.238333,
+    "review_interval_hours": 978.238333,
     "next_review_at": "2026-07-12T04:02:10+00:00",
-    "last_reviewed_at": "2026-06-04T09:47:52+00:00",
+    "last_reviewed_at": "2026-06-01T09:47:52+00:00",
     "last_review_feedback": 0
    }
   },
@@ -10197,9 +10197,9 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 417.058889,
+    "review_interval_hours": 441.058889,
     "next_review_at": "2026-07-16T13:08:41+00:00",
-    "last_reviewed_at": "2026-06-29T04:05:09+00:00",
+    "last_reviewed_at": "2026-06-28T04:05:09+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10229,9 +10229,9 @@
     "review_count": 8,
     "review_streak": 5,
     "lapse_count": 3,
-    "review_interval_hours": 1212.334444,
+    "review_interval_hours": 1246.598333,
     "next_review_at": "2026-07-22T01:24:44+00:00",
-    "last_reviewed_at": "2026-06-01T13:04:40+00:00",
+    "last_reviewed_at": "2026-05-31T02:48:50+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10258,9 +10258,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 504.386389,
+    "review_interval_hours": 528.386389,
     "next_review_at": "2026-07-22T03:22:30+00:00",
-    "last_reviewed_at": "2026-07-01T02:59:19+00:00",
+    "last_reviewed_at": "2026-06-30T02:59:19+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10289,9 +10289,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 439.763611,
+    "review_interval_hours": 454.4625,
     "next_review_at": "2026-07-17T12:34:43+00:00",
-    "last_reviewed_at": "2026-06-29T04:48:54+00:00",
+    "last_reviewed_at": "2026-06-28T14:06:58+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10321,9 +10321,9 @@
     "review_count": 5,
     "review_streak": 1,
     "lapse_count": 1,
-    "review_interval_hours": 1826.924722,
+    "review_interval_hours": 1850.924722,
     "next_review_at": "2026-07-24T06:34:39+00:00",
-    "last_reviewed_at": "2026-05-09T03:39:10+00:00",
+    "last_reviewed_at": "2026-05-08T03:39:10+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10351,8 +10351,8 @@
     "review_streak": 2,
     "lapse_count": 2,
     "review_interval_hours": 1780.885,
-    "next_review_at": "2026-07-22T13:30:34+00:00",
-    "last_reviewed_at": "2026-05-09T08:37:28+00:00",
+    "next_review_at": "2026-07-21T13:30:34+00:00",
+    "last_reviewed_at": "2026-05-08T08:37:28+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10380,9 +10380,9 @@
     "review_count": 7,
     "review_streak": 1,
     "lapse_count": 2,
-    "review_interval_hours": 1374.811111,
-    "next_review_at": "2026-07-31T14:46:02+00:00",
-    "last_reviewed_at": "2026-06-04T07:57:22+00:00",
+    "review_interval_hours": 1422.811111,
+    "next_review_at": "2026-08-01T14:46:02+00:00",
+    "last_reviewed_at": "2026-06-03T07:57:22+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10408,9 +10408,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1459.997222,
+    "review_interval_hours": 1483.997222,
     "next_review_at": "2026-07-30T08:25:50+00:00",
-    "last_reviewed_at": "2026-05-30T12:26:00+00:00",
+    "last_reviewed_at": "2026-05-29T12:26:00+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10436,9 +10436,9 @@
     "review_count": 6,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 967.745,
+    "review_interval_hours": 991.745,
     "next_review_at": "2026-07-16T14:20:03+00:00",
-    "last_reviewed_at": "2026-06-06T06:35:21+00:00",
+    "last_reviewed_at": "2026-06-05T06:35:21+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10464,9 +10464,9 @@
     "review_count": 6,
     "review_streak": 3,
     "lapse_count": 2,
-    "review_interval_hours": 859.019444,
+    "review_interval_hours": 891.400833,
     "next_review_at": "2026-07-18T07:35:01+00:00",
-    "last_reviewed_at": "2026-06-12T12:33:51+00:00",
+    "last_reviewed_at": "2026-06-11T04:10:58+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10492,9 +10492,9 @@
     "review_count": 9,
     "review_streak": 6,
     "lapse_count": 3,
-    "review_interval_hours": 1373.477778,
+    "review_interval_hours": 1421.477778,
     "next_review_at": "2026-07-24T13:25:08+00:00",
-    "last_reviewed_at": "2026-05-28T07:56:28+00:00",
+    "last_reviewed_at": "2026-05-26T07:56:28+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10521,9 +10521,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1398.909167,
+    "review_interval_hours": 1446.909167,
     "next_review_at": "2026-07-22T10:42:42+00:00",
-    "last_reviewed_at": "2026-05-25T03:48:09+00:00",
+    "last_reviewed_at": "2026-05-23T03:48:09+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10549,9 +10549,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 633.730556,
+    "review_interval_hours": 650.767222,
     "next_review_at": "2026-07-24T12:54:13+00:00",
-    "last_reviewed_at": "2026-06-28T03:10:23+00:00",
+    "last_reviewed_at": "2026-06-27T10:08:11+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10606,9 +10606,9 @@
     "review_count": 6,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 1486.218889,
+    "review_interval_hours": 1510.218889,
     "next_review_at": "2026-07-24T06:37:29+00:00",
-    "last_reviewed_at": "2026-05-23T08:24:21+00:00",
+    "last_reviewed_at": "2026-05-22T08:24:21+00:00",
     "last_review_feedback": 0
    }
   },
@@ -10637,9 +10637,9 @@
     "review_count": 5,
     "review_streak": 1,
     "lapse_count": 3,
-    "review_interval_hours": 1039.156111,
+    "review_interval_hours": 1063.156111,
     "next_review_at": "2026-08-02T08:36:14+00:00",
-    "last_reviewed_at": "2026-06-20T01:26:52+00:00",
+    "last_reviewed_at": "2026-06-19T01:26:52+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10665,9 +10665,9 @@
     "review_count": 8,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 959.423889,
+    "review_interval_hours": 1007.423889,
     "next_review_at": "2026-07-16T09:22:27+00:00",
-    "last_reviewed_at": "2026-06-06T09:57:01+00:00",
+    "last_reviewed_at": "2026-06-04T09:57:01+00:00",
     "last_review_feedback": 0
    }
   },
@@ -10697,9 +10697,9 @@
     "review_count": 8,
     "review_streak": 0,
     "lapse_count": 3,
-    "review_interval_hours": 1034.202778,
+    "review_interval_hours": 1082.202778,
     "next_review_at": "2026-07-27T11:40:54+00:00",
-    "last_reviewed_at": "2026-06-14T09:28:44+00:00",
+    "last_reviewed_at": "2026-06-12T09:28:44+00:00",
     "last_review_feedback": 0
    }
   },
@@ -10730,9 +10730,9 @@
     "review_count": 5,
     "review_streak": 4,
     "lapse_count": 1,
-    "review_interval_hours": 1156.664722,
+    "review_interval_hours": 1180.664722,
     "next_review_at": "2026-07-11T09:17:16+00:00",
-    "last_reviewed_at": "2026-05-24T04:37:23+00:00",
+    "last_reviewed_at": "2026-05-23T04:37:23+00:00",
     "last_review_feedback": 1
    }
   },
@@ -10791,8 +10791,8 @@
     "review_count": 4,
     "review_streak": 3,
     "lapse_count": 1,
-    "review_interval_hours": 1152.544167,
-    "next_review_at": "2026-08-06T10:20:55+00:00",
+    "review_interval_hours": 1128.544167,
+    "next_review_at": "2026-08-05T10:20:55+00:00",
     "last_reviewed_at": "2026-06-19T09:48:16+00:00",
     "last_review_feedback": 1
    }
@@ -10878,8 +10878,8 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 1659.778333,
-    "next_review_at": "2026-07-20T08:10:25+00:00",
+    "review_interval_hours": 1635.778333,
+    "next_review_at": "2026-07-19T08:10:25+00:00",
     "last_reviewed_at": "2026-05-12T04:23:43+00:00",
     "last_review_feedback": 1
    }
@@ -11353,8 +11353,8 @@
     "review_count": 6,
     "review_streak": 0,
     "lapse_count": 2,
-    "review_interval_hours": 820.115,
-    "next_review_at": "2026-07-22T12:36:54+00:00",
+    "review_interval_hours": 796.115,
+    "next_review_at": "2026-07-21T12:36:54+00:00",
     "last_reviewed_at": "2026-06-18T08:30:00+00:00",
     "last_review_feedback": 0
    }
@@ -11439,8 +11439,8 @@
     "review_count": 11,
     "review_streak": 0,
     "lapse_count": 5,
-    "review_interval_hours": 1193.621944,
-    "next_review_at": "2026-07-23T01:58:58+00:00",
+    "review_interval_hours": 1169.621944,
+    "next_review_at": "2026-07-22T01:58:58+00:00",
     "last_reviewed_at": "2026-06-03T08:21:39+00:00",
     "last_review_feedback": 0
    }
@@ -14055,8 +14055,8 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1549.037778,
-    "next_review_at": "2026-07-24T01:10:19+00:00",
+    "review_interval_hours": 1525.037778,
+    "next_review_at": "2026-07-23T01:10:19+00:00",
     "last_reviewed_at": "2026-05-20T12:08:03+00:00",
     "last_review_feedback": 1
    }
@@ -14288,8 +14288,8 @@
     "review_count": 3,
     "review_streak": 3,
     "lapse_count": 0,
-    "review_interval_hours": 1536.996389,
-    "next_review_at": "2026-08-07T12:57:45+00:00",
+    "review_interval_hours": 1512.996389,
+    "next_review_at": "2026-08-06T12:57:45+00:00",
     "last_reviewed_at": "2026-06-04T11:57:58+00:00",
     "last_review_feedback": 1
    }
@@ -15383,8 +15383,8 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 743.160833,
-    "next_review_at": "2026-07-24T06:34:47+00:00",
+    "review_interval_hours": 719.160833,
+    "next_review_at": "2026-07-23T06:34:47+00:00",
     "last_reviewed_at": "2026-06-23T07:25:08+00:00",
     "last_review_feedback": 1
    }
@@ -16156,8 +16156,8 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1004.518056,
-    "next_review_at": "2026-07-29T08:15:59+00:00",
+    "review_interval_hours": 980.518056,
+    "next_review_at": "2026-07-28T08:15:59+00:00",
     "last_reviewed_at": "2026-06-17T11:44:54+00:00",
     "last_review_feedback": 1
    }
@@ -16615,8 +16615,8 @@
     "review_count": 5,
     "review_streak": 5,
     "lapse_count": 0,
-    "review_interval_hours": 91.063889,
-    "next_review_at": "2026-07-12T05:59:07+00:00",
+    "review_interval_hours": 67.063889,
+    "next_review_at": "2026-07-11T05:59:07+00:00",
     "last_reviewed_at": "2026-07-08T10:55:17+00:00",
     "last_review_feedback": 1
    }
@@ -16883,8 +16883,8 @@
     "review_count": 7,
     "review_streak": 5,
     "lapse_count": 2,
-    "review_interval_hours": 1435.695278,
-    "next_review_at": "2026-07-23T03:11:04+00:00",
+    "review_interval_hours": 1411.695278,
+    "next_review_at": "2026-07-22T03:11:04+00:00",
     "last_reviewed_at": "2026-05-24T07:29:21+00:00",
     "last_review_feedback": 1
    }
@@ -17774,8 +17774,8 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 1508.0275,
-    "next_review_at": "2026-07-28T05:16:26+00:00",
+    "review_interval_hours": 1484.0275,
+    "next_review_at": "2026-07-27T05:16:26+00:00",
     "last_reviewed_at": "2026-05-26T09:14:47+00:00",
     "last_review_feedback": 1
    }
@@ -17858,9 +17858,9 @@
     "review_count": 4,
     "review_streak": 4,
     "lapse_count": 0,
-    "review_interval_hours": 564.923889,
-    "next_review_at": "2026-07-30T03:53:27+00:00",
-    "last_reviewed_at": "2026-07-06T14:58:01+00:00",
+    "review_interval_hours": 545.071389,
+    "next_review_at": "2026-07-29T03:53:27+00:00",
+    "last_reviewed_at": "2026-07-06T10:49:10+00:00",
     "last_review_feedback": 1
    }
   },

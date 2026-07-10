@@ -67,6 +67,7 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,21 @@ _MIN_RECENT_GAP_HOURS = 8.0
 _MAX_GAP_HOURS = 24.0 * 30   # 單段間隔上限（30 天）
 _DATE_ADDED_LEAD_HOURS = 24.0  # dateAdded 至少早於最早 review 錨點 24h（卡先加入才被複習）
 _DATE_ADDED_FALLBACK_ANCHOR = "2026-01-01T00:00:00Z"  # spec 全無日期素材時的固定錨點
+
+# reader passage 投影（marketingCapture.readerPassage）：hero 卡 + 幾張同 notebook
+# 真實卡的 example 拼成閱讀頁；highlight 詞只取「單 token」的 **marker**，確保 iOS
+# ReaderProseTokenizer（以空白切詞、標點 trim）能真正命中並上高亮帶。
+_READER_SUPPORTING_MAX = 4     # hero 之外的 vocab-highlight 卡上限
+_READER_PARAGRAPH_COUNT = 2    # 段落數（對齊現行 ReaderMarketingProse 2 段版型）
+# reader passage 欄位契約（SoT；emit_ios / ui_world_manifest 驗證此鍵集）。
+READER_PASSAGE_KEYS = frozenset({
+    "bookTitle", "activeWord", "activePartOfSpeech", "activeTranslation",
+    "activeExplanation", "activeContext", "paragraphs", "vocabWords", "activeWords",
+})
+_MARKER_RE = re.compile(r"\*\*(.+?)\*\*")
+# ReaderProseTokenizer.matchTrim 的鏡像（ReaderViewPresenter+Preview.swift:143）：
+# 命中比對時 trim 的標點；投影端 marker/token 用同一組 trim 才能雙端一致。
+_TOKEN_TRIM = ",.;:!?“”‘’\"'"
 
 
 class SpecWorldError(ValueError):
@@ -595,6 +611,164 @@ def _today_session(queue: list[dict[str, Any]], *, nb_name: str, stage: str,
 
 
 # --------------------------------------------------------------------------- #
+# reader passage projection（marketingCapture.readerPassage）
+# --------------------------------------------------------------------------- #
+def _bare_token(word: str) -> str:
+    """對齊 ReaderProseTokenizer 的 match-trim：去頭尾標點後的裸詞（用於高亮比對）。"""
+    return word.strip().strip(_TOKEN_TRIM)
+
+
+def _marker_of(example: str) -> str | None:
+    """example 內 `**X**` 標記的裸詞；無標記或非單 token 回 None（多詞無法命中）。"""
+    m = _MARKER_RE.search(example)
+    if not m:
+        return None
+    inner = _bare_token(m.group(1))
+    if not inner or " " in inner:
+        return None  # 多詞 marker（如 "firm hand"）iOS 以空白切詞無法整段命中
+    return inner
+
+
+def _strip_markers(example: str) -> str:
+    """去掉 `**` 標記符，保留內文（閱讀頁顯示文字）。"""
+    return _MARKER_RE.sub(lambda mm: mm.group(1), example).strip()
+
+
+def _reader_candidates(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """可作 reader 高亮的卡：單詞 content、且首個 example 帶單 token `**marker**`。
+
+    回傳每張帶 `_prose`（去標記內文）與 `_marker`（裸高亮詞）的 dict。
+    """
+    out: list[dict[str, Any]] = []
+    for card in cards:
+        if card["is_archived"] or not card["examples"]:
+            continue
+        if " " in card["word"].strip():
+            continue  # 多詞卡（片語）iOS token 命中不了，不當高亮
+        example = card["examples"][0]
+        marker = _marker_of(example)
+        if marker is None:
+            continue
+        out.append({**card, "_prose": _strip_markers(example), "_marker": marker})
+    return out
+
+
+def _hero_rank(card: dict[str, Any]) -> tuple[Any, ...]:
+    """行銷 hero 卡的內容驅動排序 key（取 max）：有 graph link 者優先、去標記
+    example 越長越前、review_streak 高者優先、word 昇冪 tie-break。非硬編某字。"""
+    return (bool(card["links"]), len(card["_prose"]), card["review_streak"], card["word"])
+
+
+def _marketing_hero(world: dict[str, Any]) -> dict[str, Any]:
+    """跨 shot 共用的 hero 卡：primary active、單詞、example 帶單 token `**marker**`，
+    依 `_hero_rank` 取最佳。reader activeWord 與 wordDetail 聚焦字共用它 → 四圖敘事
+    一致（同一真實字），且完全內容驅動、零硬編。無合格卡則 fail-loud。"""
+    candidates = _reader_candidates(world["cards_by_nb"][world["primary"]["name"]])
+    if not candidates:
+        raise SpecWorldError(
+            f"primary notebook {world['primary']['name']!r} 無「單詞 + 單 token "
+            "**marker** example」的 active 卡，無法投影 reader/wordDetail hero"
+        )
+    return max(candidates, key=_hero_rank)
+
+
+def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
+    """seed spec → reader 行銷頁段落資料（純函式、確定式，零 wall-clock）。
+
+    取 primary notebook 的真實卡：hero 卡（剛點選、對應譯文 overlay，= 跨 shot 共用
+    _marketing_hero）+ 數張同 notebook 卡，各以其真實 example 拼成閱讀段落，高亮各卡
+    的 `**marker**` 詞。
+
+    欄位契約（供 Phase 2 iOS ReaderMarketingProse 資料化）：
+      bookTitle          str   來源本子名（spec 無書籍來源欄位，沿用 notebook 名）
+      activeWord         str   剛點選的字（= hero marker，落在 activeWords）
+      activePartOfSpeech str|null
+      activeTranslation  str   hero 卡譯文（翻譯 overlay 內容）
+      activeExplanation  str|null hero 卡釋義/語境說明
+      activeContext      str   hero example 去標記後全文（overlay 語境句）
+      paragraphs         [str] 去標記的真實段落（iOS 逐段 tokenize 上高亮帶）
+      vocabWords         [str] 段內其他真實高亮詞（已存詞底帶；order/dedupe 確定）
+      activeWords        [str] 剛點選詞（單一元素 = activeWord）
+    """
+    world = _normalize(spec)
+    primary = world["primary"]
+    candidates = _reader_candidates(world["cards_by_nb"][primary["name"]])
+    hero = _marketing_hero(world)  # 與 wordDetail 共用 → 四圖同一 hero 字
+    supporting = [c for c in candidates if c["word"] != hero["word"]][:_READER_SUPPORTING_MAX]
+
+    ordered = [hero, *supporting]
+    # 段落切分：把 ordered 的去標記 example 平均分進 _READER_PARAGRAPH_COUNT 段，
+    # hero 段永遠含 hero（第 0 段開頭），確保 activeWord 出現在段內。
+    n_para = min(_READER_PARAGRAPH_COUNT, len(ordered))
+    buckets: list[list[str]] = [[] for _ in range(n_para)]
+    for i, card in enumerate(ordered):
+        buckets[i % n_para].append(card["_prose"])
+    paragraphs = [" ".join(chunk) for chunk in buckets if chunk]
+
+    vocab_words: list[str] = []
+    seen: set[str] = set()
+    for card in supporting:
+        marker = card["_marker"]
+        if marker not in seen:
+            seen.add(marker)
+            vocab_words.append(marker)
+
+    return {
+        "bookTitle": primary["name"],
+        "activeWord": hero["_marker"],
+        "activePartOfSpeech": hero["pos"],
+        "activeTranslation": hero["translation"],
+        "activeExplanation": hero["note"],
+        "activeContext": hero["_prose"],
+        "paragraphs": paragraphs,
+        "vocabWords": vocab_words,
+        "activeWords": [hero["_marker"]],
+    }
+
+
+def _seed_entries(cards: list[dict[str, Any]], primary: dict[str, Any],
+                  **kw: Any) -> list[dict[str, Any]]:
+    """cards → 自足 vocabulary/reviewDeck entries（graphLinksByKind 只留 in-seed target）。"""
+    allowed = {c["word"] for c in cards}
+    return [_entry(c, nb_name=primary["name"], allowed_words=allowed, **kw) for c in cards]
+
+
+def derive_word_detail(spec: dict[str, Any]) -> dict[str, Any]:
+    """spec → `marketingCapture.wordDetail`（vocab-seed 形狀）：hero 卡（entries[0]=
+    聚焦字）+ 其 graph-link 目標卡（同 primary active），使 WordDetailSheet 的「關聯詞」
+    區塊在 seed 內自足解析。供 Phase 2「Word Detail · Sheet/Marketing」scene 以
+    entries[0] 為聚焦字；hero 與 reader activeWord 共用同一字（有合格 marker 卡時）→
+    四圖敘事一致；無 marker 卡的一般 spec 退取有 link 者、否則首張 active 卡。
+    """
+    world = _normalize(spec)
+    primary = world["primary"]
+    active = [c for c in world["cards_by_nb"][primary["name"]] if not c["is_archived"]]
+    if not active:
+        raise SpecWorldError(
+            f"primary notebook {primary['name']!r} 沒有 active 卡，無法投影 wordDetail")
+    by_word = {c["word"]: c for c in active}
+    candidates = _reader_candidates(world["cards_by_nb"][primary["name"]])
+    if candidates:  # 與 derive_reader_passage 同一 hero → 跨 shot 一致
+        hero_word = max(candidates, key=_hero_rank)["word"]
+    else:
+        linked = [c for c in active if c["links"]]
+        hero_word = (
+            max(linked, key=lambda c: (
+                len(c["examples"][0]) if c["examples"] else 0, c["review_streak"], c["word"]))["word"]
+            if linked else active[0]["word"]
+        )
+    hero = by_word[hero_word]  # 原始卡（帶完整 links）
+    linked_words = [lnk["word"] for lnk in hero["links"] if lnk["word"] in by_word]
+    seen = {hero["word"]}
+    seed_cards = [hero]
+    for word in linked_words:
+        if word not in seen:
+            seen.add(word)
+            seed_cards.append(by_word[word])
+    return _vocab_seed(primary, _seed_entries(seed_cards, primary))
+
+
+# --------------------------------------------------------------------------- #
 # public API
 # --------------------------------------------------------------------------- #
 def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
@@ -629,9 +803,7 @@ def derive_domains(spec: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dic
         force_mode = "production"
 
     def entries(cards: list[dict[str, Any]], **kw: Any) -> list[dict[str, Any]]:
-        allowed = {c["word"] for c in cards}
-        return [_entry(c, nb_name=primary["name"], allowed_words=allowed, **kw)
-                for c in cards]
+        return _seed_entries(cards, primary, **kw)
 
     syncing = active[:_SYNCING_MAX]
     syncing_split = (len(syncing) * 3) // 5

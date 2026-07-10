@@ -65,6 +65,14 @@ _REPAIR_HOUR_SALTS = 24           # archived forbidden-day 碰撞：先試時刻
 _REPAIR_DAY_DELTAS = (-1, -2, -3, -5, -8, -13)  # archived 再試往更早挪日
 _METRIC_WINDOW_DAYS = 183         # iOS Stats/ReviewCalendar @Query 6 個月 cutoff 鏡像
 
+# fresh-green cohort：讓 primary「已複習」tab 頂端出現剛複習的亮綠卡（ratio≈0），
+# 與既有琥珀卡交錯成綠→黃梯度。挑 primary learned 的低 review_count 卡（回推合成
+# 事件短、絕不跨斷檔日），last=anchor 貼近凍結 now（elapsed≈0）、next=anchor+1..3
+# （短 interval）→ 在 reviewed tab（依 nextReviewAt 升冪）排最前且 ratio≈0。
+_FRESH_GREEN_TARGET = 16          # 目標亮綠卡數
+_FRESH_MAX_REVIEW_COUNT = 3       # 只挑低 count 卡（回推事件短，不觸斷檔日）
+_FRESH_NEXT_DAYS = (1, 2, 3)      # next = anchor + 這些天（短 interval → 綠）
+
 
 class HistoryShapeError(Exception):
     pass
@@ -285,14 +293,6 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
     learned_primary = [c for c in learned if c["notebook"] == primary]
     learned_other = [c for c in learned if c["notebook"] != primary]
     days = narrative.narrative_days
-    # due 卡被 _scatter_due 攤出 non_due 覆蓋池 → 每日覆蓋由 non_due 保證，
-    # 故前置檢查扣掉 due_primary（真實需求 = 非 due 的 primary 卡 ≥ 敘事日數）。
-    non_due_primary = len(learned_primary) - narrative.due_primary
-    if non_due_primary < len(days):
-        raise HistoryShapeError(
-            f"primary notebook {primary!r} 非 due 已學卡 {non_due_primary} 張 "
-            f"（{len(learned_primary)} − due {narrative.due_primary}）< 敘事日數 "
-            f"{len(days)}：無法保證每日覆蓋（調小 plan streak 參數或擴充 spec）")
 
     # -- 1. 先定 due 集合與所有 next（與敘事日無關，純 content hash） ---------- #
     #    due 卡在錨日（當地日）任一 render 時刻都成立：next <= anchor 當地日 00:00
@@ -306,14 +306,74 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
 
     due_words = (_pick_due(learned_primary, narrative.due_primary, "primary")
                  | _pick_due(learned_other, narrative.due_other, "other"))
+
     due_day = narrative.anchor - timedelta(days=1)
     next_by_word: dict[str, datetime] = {
         word: _event_time(word + "#due", due_day, hour_lo=1, hour_hi=12)
         for word in due_words
     }
 
-    # 非 due：next 落 (anchor, anchor+horizon]，線性遞減分佈
-    non_due = [c for c in learned if c["content"] not in due_words]
+    # -- 1a. fresh-green cohort（primary 剛複習亮綠卡） ------------------------ #
+    #    從 primary learned 的低 count 卡（排除 due）確定式挑一批：last=anchor 貼近
+    #    凍結 now（hour 高段 → elapsed≈0）、next=anchor+1..3（interval 短）→ reviewed
+    #    tab 頂端亮綠。碰撞感知：若合成回推事件撞斷檔日就換 off/hour 鹽，全撞則放回
+    #    normal _assign（不強塞）。placed 者直接 register，_scatter_due/_assign 不再碰。
+    def _place_fresh(card: dict[str, Any]) -> tuple[datetime, datetime] | None:
+        word = card["content"]
+        r = card["review"]
+        chosen = _FRESH_NEXT_DAYS[_u64("freshnext", word) % len(_FRESH_NEXT_DAYS)]
+        for off in (chosen, *sorted(o for o in _FRESH_NEXT_DAYS if o != chosen)):
+            next_dt = _event_time(
+                word + f"#freshnext{off}", narrative.anchor + timedelta(days=off),
+                hour_lo=narrative.hour_lo, hour_hi=narrative.hour_hi)
+            for salt in range(_PLACE_HOUR_SALTS):
+                last_dt = _event_time(
+                    word + "#freshlast", narrative.anchor,
+                    hour_lo=max(narrative.hour_lo, narrative.hour_hi - 2),
+                    hour_hi=narrative.hour_hi, salt=salt)
+                interval = round((next_dt - last_dt).total_seconds() / 3600, 6)
+                if interval <= 0:
+                    continue
+                trial = {
+                    "content": word,
+                    "review_count": r["review_count"],
+                    "review_streak": r["review_streak"],
+                    "lapse_count": r["lapse_count"],
+                    "last_review_feedback": r["last_review_feedback"],
+                    "review_interval_hours": interval,
+                    "last_dt": last_dt,
+                }
+                if not (_synth_event_days(trial, narrative) & narrative.forbidden_days):
+                    return last_dt, next_dt
+        return None
+
+    fresh_pool = [c for c in learned_primary
+                  if c["content"] not in due_words
+                  and 1 <= c["review"]["review_count"] <= _FRESH_MAX_REVIEW_COUNT]
+    fresh_ranked = sorted(fresh_pool, key=lambda c: (_u64("fresh", c["content"]), c["content"]))
+    fresh_words: set[str] = set()
+    for card in fresh_ranked:
+        if len(fresh_words) >= _FRESH_GREEN_TARGET:
+            break
+        placed = _place_fresh(card)
+        if placed is None:
+            continue  # 全撞斷檔日 → 放回 normal _assign
+        last_dt, next_dt = placed
+        next_by_word[card["content"]] = next_dt
+        _register(card, last_dt, next_dt)
+        fresh_words.add(card["content"])
+
+    # 每日覆蓋由 non_due（扣掉 due + fresh）保證 → 前置檢查扣掉兩者。
+    non_due_primary = len(learned_primary) - narrative.due_primary - len(fresh_words)
+    if non_due_primary < len(days):
+        raise HistoryShapeError(
+            f"primary notebook {primary!r} 非 due/非 fresh 已學卡 {non_due_primary} 張 "
+            f"（{len(learned_primary)} − due {narrative.due_primary} − fresh {len(fresh_words)}）"
+            f"< 敘事日數 {len(days)}：無法保證每日覆蓋（調小 plan streak / fresh 參數或擴充 spec）")
+
+    # 非 due 且非 fresh：next 落 (anchor, anchor+horizon]，線性遞減分佈
+    non_due = [c for c in learned
+               if c["content"] not in due_words and c["content"] not in fresh_words]
     decay_weights = [float(narrative.horizon + 1 - k)
                      for k in range(1, narrative.horizon + 1)]
     offsets = _largest_remainder(decay_weights, len(non_due), 0)
@@ -394,9 +454,10 @@ def shape(spec: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
                     f"（{m} 個候選日全撞斷檔日）")
 
     def _assign(group: list[dict[str, Any]], minimum: int, label: str) -> None:
-        # due 卡已由 _scatter_due 預置 → 這裡只排 non-due（coverage 靠 non-due
-        # minimum 保證，due 卡是其所在日的額外事件，不減損任何敘事日覆蓋）。
-        non_due = [c for c in group if c["content"] not in due_words]
+        # due 卡已由 _scatter_due 預置、fresh 卡已釘 anchor → 這裡只排其餘 non-due
+        # （coverage 靠 non-due minimum 保證，due/fresh 是額外事件，不減損任何敘事日覆蓋）。
+        non_due = [c for c in group
+                   if c["content"] not in due_words and c["content"] not in fresh_words]
         if minimum > 0 and len(non_due) < len(days):
             raise HistoryShapeError(
                 f"{label} non-due 已學卡 {len(non_due)} 張 < 敘事日數 {len(days)}："
