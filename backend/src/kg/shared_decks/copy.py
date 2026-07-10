@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -41,11 +43,41 @@ from pathlib import Path
 from ..cards import CardStore
 from ..exceptions import ConflictError, NotFoundError
 from ..notebook import NotebookStore
-from .store import SharedDeckStore
+from .store import SharedDeck, SharedDeckStore
 
 _LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_TITLE = "Untitled Deck"
+
+# Per-user copy serialization (see _user_copy_lock). LRU-bounded so a burst of
+# distinct users cannot leak locks without limit — mirrors deps._USER_LOCKS.
+_USER_COPY_LOCKS: OrderedDict[str, threading.Lock] = OrderedDict()
+_USER_COPY_LOCKS_MUTEX = threading.Lock()
+_MAX_USER_COPY_LOCKS = 500
+
+
+def _user_copy_lock(user_dir: Path) -> threading.Lock:
+    """Per-user serialization lock for the copy critical section.
+
+    ``deps.get_user_lock`` is an ``asyncio.Lock`` serving the async pipeline; it
+    cannot serialize the copy handler, which is a SYNC endpoint running in
+    anyio's threadpool (concurrent same-user copies land on different threads).
+    This is the faithful threading translation of that same per-user pattern:
+    an LRU-bounded, mutex-guarded registry keyed by the user's dir (the mutated
+    resource). ``move_to_end`` on access keeps an in-flight lock recently-used
+    so it is never the eviction victim while still held.
+    """
+    key = str(Path(user_dir).resolve())
+    with _USER_COPY_LOCKS_MUTEX:
+        lock = _USER_COPY_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _USER_COPY_LOCKS[key] = lock
+            while len(_USER_COPY_LOCKS) > _MAX_USER_COPY_LOCKS:
+                _USER_COPY_LOCKS.popitem(last=False)
+        else:
+            _USER_COPY_LOCKS.move_to_end(key)
+        return lock
 
 
 @dataclass(frozen=True)
@@ -173,6 +205,40 @@ def copy_shared_deck(
     if deck is None:  # not discoverable → 404 (never leak hidden decks)
         raise NotFoundError("Deck", deck_id)
 
+    # Serialize per-user copies (see _user_copy_lock): the copy handler is a SYNC
+    # FastAPI endpoint, so two concurrent same-user copies run on separate
+    # threadpool threads. Without this lock they would both read the pre-create
+    # notebook snapshot, compute the SAME unique name, and both INSERT → two
+    # same-named active notebooks → world-export's name→id map collapses (§2 name
+    # uniqueness is mandatory). Held through materialize so the second copy sees
+    # the first's committed notebook and disambiguates to "X (2)".
+    with _user_copy_lock(user_dir):
+        return _copy_locked(
+            shared_store=shared_store, card_store=card_store,
+            notebook_store=notebook_store, user_dir=user_dir, deck=deck,
+            copier_id=copier_id, idempotency_key=idempotency_key,
+            notebook_name=notebook_name, now=now, _on_card=_on_card,
+        )
+
+
+def _copy_locked(
+    *,
+    shared_store: SharedDeckStore,
+    card_store: CardStore,
+    notebook_store: NotebookStore,
+    user_dir: Path,
+    deck: SharedDeck,
+    copier_id: str,
+    idempotency_key: str,
+    notebook_name: str | None,
+    now: datetime,
+    _on_card: Callable[[int], None] | None,
+) -> CopyOutcome:
+    """The per-user-serialized body of :func:`copy_shared_deck`, executed while
+    holding the per-user copy lock. ``deck`` is the already-resolved discoverable
+    deck; every user-dir mutation (name-compute → create → card copy →
+    record_copy → materialize) happens here so a concurrent same-user copy is
+    fully queued behind it."""
     # Idempotent replay: a prior copy with this key short-circuits (no new work,
     # no second download count) — transport-retry safety.
     prior = shared_store.get_copy_log(copier_id, idempotency_key)
