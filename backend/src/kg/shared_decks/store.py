@@ -46,14 +46,6 @@ _DISCOVERABLE_VISIBILITY = ("public", "official")
 # never collapse into a single card under uq_shared_deck_card_guid (§2.1).
 _CARD_GUID_NAMESPACE = uuid.UUID("7d1f4e2a-9c3b-5a86-b0d4-2f6e8c1a4b90")
 
-# The content-plane fields that make up a shared card. Deliberately excludes the
-# 7 SRS columns (which do not exist on shared_deck_card) and all timestamps.
-_CONTENT_PLANE_FIELDS = (
-    "content", "pos", "meaning", "examples", "collocations",
-    "note", "difficulty", "mode", "root_form", "inflections",
-)
-
-
 def card_content_guid(content: str, pos: str | None, mode: str, meaning: str) -> str:
     """Stable per-card identity over the discriminating axes. Case/diacritic
     folded on content+meaning; pos+mode kept verbatim so a homograph pair with
@@ -93,10 +85,17 @@ def canonical_card(card: dict) -> dict:
 def deck_content_hash(cards: list[dict]) -> str:
     """SHA-256 over the content plane with deterministic ordering, excluding all
     timestamps (§2.3). Same content → same hash → idempotent re-emit; a content
-    change flips the hash → new version. Input cards are snake_case dicts."""
-    canonical = sorted(
-        (canonical_card(c) for c in cards), key=lambda c: c["content_guid"]
-    )
+    change flips the hash → new version. Input cards are snake_case dicts.
+
+    Dedups by ``content_guid`` (first wins) BEFORE hashing so the hash matches
+    what ``publish_official`` actually stores — a spec with colliding cards
+    yields the same hash as its deduped form, keeping dry-run/commit consistent.
+    """
+    deduped: dict[str, dict] = {}
+    for c in cards:
+        cc = canonical_card(c)
+        deduped.setdefault(cc["content_guid"], cc)
+    canonical = sorted(deduped.values(), key=lambda c: c["content_guid"])
     blob = json.dumps(
         canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")
     )

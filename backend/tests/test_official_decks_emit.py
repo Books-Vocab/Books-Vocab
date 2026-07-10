@@ -220,6 +220,54 @@ def test_content_change_bumps_version_and_flips_pointer(tmp_path):
         store.close()
 
 
+def test_metadata_only_change_updates_in_place_without_version_bump(tmp_path):
+    """Same cards but changed title/tags → action='metadata': in-place update,
+    updated_at bumped, no new version, no card proliferation."""
+    spec = _spec(deck_id="official-meta")
+    build_official.emit(spec, commit=True, data_dir=tmp_path)
+    renamed = _spec(deck_id="official-meta", title="Renamed Deck", tags=["fresh"])
+    result = build_official.emit(renamed, commit=True, data_dir=tmp_path)
+    store = _open(tmp_path / "shared_decks.db")
+    try:
+        with Session(store.engine) as s:
+            deck = s.get(SharedDeck, "official-meta")
+        assert result["result"]["action"] == "metadata"
+        assert deck.current_version == 1, "metadata change must not bump version"
+        assert deck.title == "Renamed Deck"
+        assert deck.tags == ["fresh"]
+        assert deck.card_count == 2
+        assert len(_card_rows(store, "official-meta")) == 2, "no card proliferation"
+    finally:
+        store.close()
+
+
+def test_commit_writes_audit_entry(tmp_path):
+    build_official.emit(_spec(deck_id="official-audit"), commit=True, data_dir=tmp_path)
+    audit = tmp_path / "_ops_edit_audit.jsonl"
+    assert audit.exists(), "official injection must leave an audit trail"
+    entries = [json.loads(ln) for ln in audit.read_text().splitlines() if ln.strip()]
+    inj = [e for e in entries if e.get("schema") == "kg.official_deck_injection.v1"]
+    assert inj and inj[-1]["deckId"] == "official-audit"
+    assert inj[-1]["action"] == "created"
+    assert "contentHash" in inj[-1] and "ts" in inj[-1]
+
+
+def test_commit_result_surfaces_resolved_data_dir(tmp_path):
+    res = build_official.emit(_spec(deck_id="official-dd"), commit=True, data_dir=tmp_path)
+    assert res["dataDir"] == str(tmp_path)
+
+
+def test_invalid_category_is_rejected(tmp_path):
+    with pytest.raises(build_official.SpecError):
+        build_official.emit(_spec(category="not-an-enum"), commit=False, data_dir=tmp_path)
+
+
+def test_non_numeric_difficulty_is_rejected(tmp_path):
+    bad = _spec(cards=[{"content": "x", "meaning": "y", "difficulty": "hard"}])
+    with pytest.raises(build_official.SpecError):
+        build_official.emit(bad, commit=False, data_dir=tmp_path)
+
+
 # ── --check round-trip self-consistency ────────────────────────────────
 
 def test_check_passes_for_clean_spec(tmp_path):
