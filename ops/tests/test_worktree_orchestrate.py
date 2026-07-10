@@ -191,6 +191,87 @@ def test_gate_plan_backend_src_only_is_advisory_warn_not_full_suite():
     assert "backend-pytest" not in g
 
 
+def test_gate_plan_ops_test_file_runs_itself():
+    exists = {"ops/tests/test_capability_matrix.py"}.__contains__
+    gates = plan_gates(["ops/tests/test_capability_matrix.py"], ops_test_exists=exists)
+    g = _by_name(gates)
+    assert "ops-pytest" in g
+    spec = g["ops-pytest"]
+    assert spec["level"] == "block"
+    # runs from the worktree root (no cwd override) with the pinned uv invocation —
+    # ops tests are __file__-anchored, backend/uv.lock must not be touched
+    assert spec.get("cwd") is None
+    assert spec["cmd"][:7] == ["uv", "run", "--no-project", "--python", "3.13",
+                               "--with", "pytest"]
+    assert "ops/tests/test_capability_matrix.py" in spec["cmd"]
+    # targeted — never the whole ops/tests directory when every change maps to a test
+    assert "ops/tests" not in spec["cmd"]
+
+
+def test_gate_plan_ops_deleted_test_file_falls_back_not_pytest_args():
+    # a DELETED test file is in the diff too (git diff --name-only) — passing the
+    # gone path to pytest would exit 4 (file not found) and false-block; the
+    # existence check applies to changed test files as well, missing -> fallback
+    gates = plan_gates(["ops/tests/test_gone.py"], ops_test_exists=lambda rel: False)
+    spec = _by_name(gates)["ops-pytest"]
+    assert "ops/tests/test_gone.py" not in spec["cmd"]
+    assert "ops/tests" in spec["cmd"]
+
+
+def test_gate_plan_ops_src_with_matching_test_runs_it():
+    exists = {"ops/tests/test_worktree_orchestrate.py"}.__contains__
+    gates = plan_gates(["ops/worktree_orchestrate.py"], ops_test_exists=exists)
+    spec = _by_name(gates)["ops-pytest"]
+    assert "ops/tests/test_worktree_orchestrate.py" in spec["cmd"]
+    assert "ops/tests" not in spec["cmd"]
+
+
+def test_gate_plan_ops_lib_src_maps_by_basename():
+    exists = {"ops/tests/test_worktree_registry.py"}.__contains__
+    gates = plan_gates(["ops/lib/worktree_registry.py"], ops_test_exists=exists)
+    spec = _by_name(gates)["ops-pytest"]
+    assert "ops/tests/test_worktree_registry.py" in spec["cmd"]
+
+
+def test_gate_plan_ops_src_without_test_falls_back_to_whole_ops_tests():
+    # no matching ops/tests/test_X.py -> the whole ops/tests suite (which subsumes
+    # any targeted files, so the fallback replaces the target list)
+    gates = plan_gates(["ops/no_such_tool.py", "ops/tests/test_capability_matrix.py"],
+                       ops_test_exists=lambda rel: False)
+    spec = _by_name(gates)["ops-pytest"]
+    assert "ops/tests" in spec["cmd"]
+    assert "ops/tests/test_capability_matrix.py" not in spec["cmd"]
+
+
+def test_gate_plan_ops_src_default_predicate_is_conservative_fallback():
+    # without an injected existence predicate (pure layer: no IO), an ops src
+    # change cannot prove a matching test exists -> whole ops/tests
+    gates = plan_gates(["ops/worktree_orchestrate.py"])
+    spec = _by_name(gates)["ops-pytest"]
+    assert "ops/tests" in spec["cmd"]
+
+
+def test_gate_plan_ops_src_and_its_test_dedupes_target():
+    # the self-referential dogfood shape: tool + its test changed together
+    exists = {"ops/tests/test_worktree_orchestrate.py"}.__contains__
+    gates = plan_gates(["ops/worktree_orchestrate.py",
+                        "ops/tests/test_worktree_orchestrate.py"],
+                       ops_test_exists=exists)
+    spec = _by_name(gates)["ops-pytest"]
+    assert spec["cmd"].count("ops/tests/test_worktree_orchestrate.py") == 1
+    assert "ops/tests" not in spec["cmd"]
+
+
+def test_gate_plan_ops_shell_and_non_ops_select_no_ops_pytest():
+    # ops shell scripts are out of scope (no pytest counterpart); docs/backend
+    # changes must not leak into the ops route
+    assert plan_gates(["ops/devops_kg_safe.sh"]) == []
+    assert not any(n == "ops-pytest"
+                   for n in _names(plan_gates(["docs/reference/tech_index.md"])))
+    assert not any(n == "ops-pytest"
+                   for n in _names(plan_gates(["backend/tests/test_app.py"])))
+
+
 def test_gate_plan_neutral_file_selects_nothing():
     assert plan_gates(["README.md"]) == []
     assert plan_gates(["notes.txt"]) == []

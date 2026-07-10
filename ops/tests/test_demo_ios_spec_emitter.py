@@ -11,6 +11,7 @@ Covers the Phase 2/6 marketing-account projector:
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import os
@@ -682,7 +683,24 @@ def _run_backend_cli(script: str, argv: list[str], *, sandbox: str) -> subproces
     )
 
 
+@functools.lru_cache(maxsize=1)
+def _backend_cli_ready() -> bool:
+    """This e2e spawns backend CLIs with sys.executable, which needs the backend
+    deps installed. Under a bare pytest sandbox (`uv run --no-project --with pytest`
+    — e.g. the worktree gate's ops-pytest route) they are absent: probe once and
+    let the e2e SKIP instead of false-failing the whole suite. Full-fat coverage
+    runs via `uv run --project backend --with pytest pytest <this file>`."""
+    probe = subprocess.run(
+        [sys.executable, str(BACKEND_DIR / "ops_edit.py"), "--help"],
+        cwd=str(BACKEND_DIR), capture_output=True, text=True,
+    )
+    return probe.returncode == 0
+
+
 def test_spec_mode_end_to_end_from_world_export(tmp_path):
+    if not _backend_cli_ready():
+        pytest.skip("backend deps unavailable to sys.executable (sandbox pytest run) "
+                    "— run with `uv run --project backend --with pytest` for the e2e")
     identity = sot.load_identity()
     uid = identity["user_id"]
     with tempfile.TemporaryDirectory(prefix="kg-spec-e2e-") as sandbox:

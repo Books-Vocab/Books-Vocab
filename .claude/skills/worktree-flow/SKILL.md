@@ -54,6 +54,7 @@ ops/worktree_orchestrate.py gate --worktree <path> --json
 - design-system / tokens / 生成 CSS / `ios/**/Models|UIComponents/` → `verify_design_system.sh`
 - `docs/**.md` → `docs_lint.sh --files` ＋ conflict-marker 掃描 ＋ `verified_against` 可達性
 - `backend/**.py` → 只跑 diff 內的**目標測試檔**；純 src 改動無目標測試 = **warn advisory**（不跑全套，全套有已知 pre-existing 假失敗）
+- `ops/**.py` → `uv run --no-project --python 3.13 --with pytest pytest`（沙箱 uv，不碰 backend/uv.lock；block）：改 `ops/tests/test_X.py` 跑該檔；改 src（含 `ops/lib/`）跑對應 `ops/tests/test_<basename>`。每個 target 都做存在性檢查（以 worktree 為準：同 diff 新增的測試看得到、已刪除的不會塞給 pytest），**解析不到既存測試 = 跑整個 `ops/tests/`**（sandbox-unsafe 測試須自帶 dep-guard skip，前例見 `test_demo_ios_spec_emitter.py`）。`ops/*.sh` 無 pytest 對應，不選 gate
 
 先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**block 必修**（回去修再重跑 gate）；**warn 是 advisory**——不擋 cutover，處置權在你（driving agent），land 時會標「landed with warnings」。iOS build/test 很耗時 → 背景執行、主線不阻塞（鐵律 5）。
 
