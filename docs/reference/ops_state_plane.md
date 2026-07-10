@@ -17,7 +17,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: 5afba51d7
+verified_against: bb45e0f85
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -74,13 +74,13 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 - **review events 不在 export 範圍**：export 只涵蓋 cards.db 聚合；重放側由計數器重新合成逐筆事件（legacy seed 的世界本來就無事件，重放後會多出合成事件 —— 這是計數器形式的契約，不是 drift）。
 - **link 卡對唯一**：app 語意一對卡至多一條 active link（`add_link` 對既存 pair 拋 ConflictError）。legacy graph 同 pair 存多條時，export 確定式保留 sorted 首條、其餘 stderr warning 略過——照導會產出重放時被冪等吸收的 spec，roundtrip 破功（真實案例：000287 divisiveness↔division 雙向兩條）。
 - **export 恆唯讀、無 dry-run 語意**：`world-export` 是 ops-cli 讀面指令，沒有 `--commit` 旗標，任何模式下執行都只讀盤（測試以 cards.db sha 不變固化）；「dry-run 才安全」的心智模型不適用也不需要。
-- **下游消費者（Phase 2）**：`ops/demo/build_demo.py emit-ios --spec <export產物> --out <path>` 把 seed spec 投影成 iOS UI World v2 fixture（投影規則 SoT = `ops/demo/spec_world.py`）。給 export payload 加/改欄位時，除 seed 對稱外也要確認 spec 投影是否需要跟進（contract 見 `docs/reference/tech_index.md` fixture 契約段）。
+- **下游消費者（Phase 2）**：`ops/demo/build_demo.py emit-ios --spec <export產物> --out <path> [--plan <kg.history_plan.v1>]` 把 seed spec 投影成 iOS UI World v2 fixture（投影規則 SoT = `ops/demo/spec_world.py`）。`--plan`（需搭 `--spec`）額外把 review 時鐘凍結在 plan anchor 末刻＝`anchor_day + 24h − max(render_utc_offset) − 1s`，只動 3 個 `review_settings_progress_*` 鍵 × 兩 store（epoch int），其餘 domain byte-equal baseline；validator（`emit_ios._validate_review_clock_overlay`）鎖死只允許這 3 鍵偏離。給 export payload 加/改欄位時，除 seed 對稱外也要確認 spec 投影是否需要跟進（contract 見 `docs/reference/tech_index.md` fixture 契約段）。
 
 ## 2. capture_profile 抽象邊界宣告
 
-`kg.capture.profile.v1`(`ops/capture_profile.py`)是**疊在 `ops_edit` 之上的 manifest/orchestration 層**,不是平行系統。`build_ops_edit_commands`(`:201`)把 `materialize{uid,seedFile,steps[]}` 編譯成 `ops-edit seed` + steps 序列,繼承 dry-run/`--commit` gate。截圖(`shots/render/snapshot`)是它的**下游用途之一,不是它的定義**。
+`kg.capture.profile.v1`(`ops/capture_profile.py`)是**疊在 `ops_edit` 之上的 manifest/orchestration 層**,不是平行系統。`build_ops_edit_commands`(`:285`)把 `materialize{uid,seedFile,steps[]}` 編譯成 `ops-edit seed` + steps 序列,繼承 dry-run/`--commit` gate。**`snapshot.source=spec-emit` 模式 `materialize` 缺席**（world 由 `specFile`＋選配 `planFile` 確定式派生），改走 `build_emit_commands`(`:354`)/`emit_spec_world`(`:398`) on-demand emit 到 gitignored `build/capture_profiles/`,不繼承 ops-edit 寫入面。截圖(`shots/render/snapshot`)是它的**下游用途之一,不是它的定義**。
 
-`snapshot.datasetFile` 必須是完整 `kg.fixture.dataset.v2` UI World:`load_profile` 委派 `ops/ui_world_manifest.py` 驗證 top-level key set、`datasetID`、asset buckets(`books/audio/images/subtitles/text`)與每個 asset 的 `sourcePath/byteSize/sha256/installAs/contentType`;同時驗 settings auth/entitlements refs、runtime podcast audio/subtitle refs、reader/bookshelf book refs、notebook cover refs、preferred notebook refs,以及 Book `fileName/format` 對齊 asset `installAs/contentType`。source 檔缺失、byteSize/hash 漂移、跨引用缺失或 row↔asset 漂移都直接 fail-fast,不把錯誤延後到 simulator 或 renderer。
+`snapshot.source=dataset-file` 時 `snapshot.datasetFile` 必須是完整 `kg.fixture.dataset.v2` UI World（`source=spec-emit` 時 datasetFile 缺席，world 由 spec on-demand emit 為同 schema 產物，再走同一驗證）:`load_profile` 委派 `ops/ui_world_manifest.py` 驗證 top-level key set、`datasetID`、asset buckets(`books/audio/images/subtitles/text`)與每個 asset 的 `sourcePath/byteSize/sha256/installAs/contentType`;同時驗 settings auth/entitlements refs、runtime podcast audio/subtitle refs、reader/bookshelf book refs、notebook cover refs、preferred notebook refs,以及 Book `fileName/format` 對齊 asset `installAs/contentType`。source 檔缺失、byteSize/hash 漂移、跨引用缺失或 row↔asset 漂移都直接 fail-fast,不把錯誤延後到 simulator 或 renderer。
 
 **何時用 capture profile**:需要「造景 → verify(world-diff)→ snapshot → render」**可重現串接**、需要 derive-expectation 做 drift guard、或要進 CI/行銷流程的場景。
 
