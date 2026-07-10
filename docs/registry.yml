@@ -203,6 +203,7 @@ documents:
       - backend/src/kg/ops_world_diff.py
       - backend/src/kg/ops_world_export.py
       - ops/capture_profile.py
+      - ops/official_decks/
 
   - id: sop.doc_sync
     path: docs/sop/doc_sync.md
@@ -349,6 +350,19 @@ documents:
       - ios/BooksAndVocab/Services/KGService+Sync.swift
       - ios/BooksAndVocab/Services/KGService+Graph.swift
       - ios/BooksAndVocab/Services/VocabularyExporter.swift
+
+  - id: reference.feature_boundary.discover
+    path: docs/reference/feature_boundary/discover.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - explore_surface_changed
+      - shared_deck_browse_changed
+      - explore_gate_changed
+    sources:
+      - ios/BooksAndVocab/Views/Explore/
+      - ios/BooksAndVocab/Models/SharedDeck.swift
+      - ios/BooksAndVocab/Services/SharedDeckCatalogService.swift
 
   - id: sop.ui_design
     path: docs/sop/ui-design.md

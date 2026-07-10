@@ -105,5 +105,20 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 
 ③④⑤⑥ 不是待修 bug,是**疊 scenario/replay 層時要繞開或顯式處理**的已知地形。補坑優先序由實際 world-reset 需求決定,不為補而補。
 
+## 4. 官方牌組注入 emitter（build_official.py）入口偏差宣告
+
+共享牌組庫（Explore）的官方內容注入走**獨立 emitter** `ops/official_decks/build_official.py`，**不是** `ops_edit` subcommand——仿 `ops/demo/build_demo.py` 的 SoT→emit→`--check` drift-gate 範式（git-committed `kg.official_deck.v1` spec → emit 進全域 `shared_decks.db` catalog、`source='official'`/`owner_id=NULL`）。
+
+**為何不掛 `ops_edit`（入口偏差理由）**：
+
+- `ops_edit` 的 `EditContext` 假設 **per-user `user_dir`**（backup/verify/audit 全繞 `backup_user_dir`）；`shared_decks.db` 是 **root-level 全域 store**（OUTSIDE `users/<uid>/`），不在該 scope 內。`build_official.py` 改走 `backup_world`（label `shared-decks-official`，涵蓋 root-level DB）+ 手動 `append_audit`（schema `kg.official_deck_injection.v1`），複用 `EditContext` 的 dry-run 預設 / `--commit` gate 契約精神，但不硬套 per-user 假設。生產注入 approval-gated（U6 precedent），不 auto-deploy。
+- 對齊 `build_demo`：官方策展內容與 demo 帳號同屬「git-SoT → emit → `--check`」家族，語意一致、各自獨立 emitter，不與 `ops_edit` 的 per-user 讀寫雙面混淆。
+
+**notebook-scoped export projection（world-export 單 notebook 模式）—— Phase 1 deferred**：架構 SoT（`docs/plans/2026-07-09-shared-decks-library.md §5.3`）原列「world-export 新增單 notebook content-only 模式（strip SRS + force `is_default=false` + assert `card_count>0`）」作發布前置。Phase 1 **刻意不實作**：
+
+- 官方 spec 是 `kg.official_deck.v1`（直接描述 deck content plane），與 `world-export` 產出的 `kg.seed_spec.v1`（§1.1，整帳號 vocab 層 replay spec）**shape 不同**——不是免費 reuse。
+- curator 產 spec 是**一次性便利**（可 world-export 拋棄式 scratch 帳號、手動裁剪成 official spec 再 commit），**非 consumer-facing blocker**；不值得在 Phase 1 為它擴 `world-export` 投影面。
+- 要做時擴 `ops_world_export.py` 加 `--notebook <id>` content-only 模式，仍須守 §1.1 的欄位對稱與確定式排序不變量。
+
 ---
 相關:`tech_index.md`(指令/schema 速查)、`product_surface.md`(能力清單)、`docs/sop/architecture.md`(iOS↔backend storage)。
