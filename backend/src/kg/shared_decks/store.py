@@ -27,11 +27,16 @@ import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, UniqueConstraint
+from sqlalchemy import JSON, Column, UniqueConstraint, tuple_
 from sqlmodel import Field as SQLField
-from sqlmodel import SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from ..sqlite_utils import make_sqlite_engine
+from ..text_utils import normalize_nfc_lower
+
+# Discovery WHERE (browse + detail): a deck is publicly reachable only when all
+# three orthogonal axes clear. Official decks carry visibility='official'.
+_DISCOVERABLE_VISIBILITY = ("public", "official")
 
 
 def _mint_deck_id() -> str:
@@ -202,6 +207,80 @@ class SharedDeckStore:
         if self.engine is not None:
             self.engine.dispose()
             self.engine = None
+
+    # ── read side (Phase 1b browse) ────────────────────────────────
+
+    def get(self, deck_id: str) -> SharedDeck | None:
+        """Return a deck only if it is publicly discoverable; else ``None``
+        (the router maps that to 404, not leaking existence of hidden decks)."""
+        with Session(self.engine) as session:
+            deck = session.get(SharedDeck, deck_id)
+            if (
+                deck is None
+                or deck.is_deleted
+                or deck.status != "active"
+                or deck.visibility not in _DISCOVERABLE_VISIBILITY
+            ):
+                return None
+            return deck
+
+    def browse(
+        self,
+        *,
+        limit: int,
+        sort: str = "recency",
+        after: tuple[object, str] | None = None,
+        q: str | None = None,
+        category: str | None = None,
+        language_pair: str | None = None,
+        official: bool | None = None,
+    ) -> list[SharedDeck]:
+        """Keyset page of discoverable decks. ``after`` = ``(sort_value, id)`` of
+        the previous page's last row. ``sort`` ∈ {recency, alpha} — Phase 1 only
+        (popularity/rating have no data yet, so those sorts are withheld)."""
+        with Session(self.engine) as session:
+            stmt = select(SharedDeck).where(
+                SharedDeck.is_deleted == False,  # noqa: E712
+                SharedDeck.status == "active",
+                SharedDeck.visibility.in_(_DISCOVERABLE_VISIBILITY),
+            )
+            if q:
+                needle = normalize_nfc_lower(q).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                stmt = stmt.where(SharedDeck.title_nfc_lower.like(f"%{needle}%", escape="\\"))
+            if category:
+                stmt = stmt.where(SharedDeck.category == category)
+            if language_pair:
+                stmt = stmt.where(SharedDeck.language_pair == language_pair)
+            if official is True:
+                stmt = stmt.where(SharedDeck.source == "official")
+            elif official is False:
+                stmt = stmt.where(SharedDeck.source == "community")
+
+            if sort == "alpha":
+                key = tuple_(SharedDeck.title_nfc_lower, SharedDeck.id)
+                if after is not None:
+                    stmt = stmt.where(key > tuple_(after[0], after[1]))
+                stmt = stmt.order_by(SharedDeck.title_nfc_lower, SharedDeck.id)
+            else:  # recency (default): newest first, id as a total-order tiebreak
+                key = tuple_(SharedDeck.updated_at, SharedDeck.id)
+                if after is not None:
+                    stmt = stmt.where(key < tuple_(after[0], after[1]))
+                stmt = stmt.order_by(SharedDeck.updated_at.desc(), SharedDeck.id.desc())
+            return list(session.exec(stmt.limit(limit)).all())
+
+    def page_cards(
+        self, deck_id: str, *, version: int, limit: int, after: str | None = None
+    ) -> list[SharedDeckCard]:
+        """Keyset page of a deck version's cards, ordered by immutable card id."""
+        with Session(self.engine) as session:
+            stmt = select(SharedDeckCard).where(
+                SharedDeckCard.shared_deck_id == deck_id,
+                SharedDeckCard.version == version,
+            )
+            if after is not None:
+                stmt = stmt.where(SharedDeckCard.id > after)
+            stmt = stmt.order_by(SharedDeckCard.id).limit(limit)
+            return list(session.exec(stmt).all())
 
 
 __all__ = [
