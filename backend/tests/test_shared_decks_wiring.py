@@ -48,7 +48,7 @@ def test_deps_shared_deck_store_uses_settings_path(tmp_path):
         clear_store_cache()
 
 
-def test_shared_decks_router_is_mounted(tmp_path):
+def test_shared_decks_router_is_mounted():
     assert shared_decks_router in build_domain_routers()
 
 
