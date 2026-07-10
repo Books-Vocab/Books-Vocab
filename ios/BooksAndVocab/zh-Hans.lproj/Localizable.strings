@@ -1064,3 +1064,17 @@
 "explore.detail.cardsError" = "无法加载卡片";
 "explore.detail.missing.title" = "卡组不可用";
 "explore.detail.missing.description" = "此卡组可能已被移除。";
+/* Explore — 复制官方卡组到私人单词本（Phase 2c） */
+"explore.copy.cta" = "复制到我的单词本";
+"explore.copy.loginRequired" = "登录后即可复制到你的单词本";
+"explore.copy.inflight" = "正在复制…";
+"explore.copy.success" = "已复制到「%@」";
+"explore.copy.success.alreadyCopied" = "已在你的单词本中";
+"explore.copy.error.unauthorized" = "登录已过期，请重新登录";
+"explore.copy.error.offline" = "当前没有网络连接，请稍后再试";
+"explore.copy.error.generic" = "复制失败，请稍后再试";
+"explore.copy.toast.success" = "已复制到你的单词本";
+"explore.copy.sheet.title" = "复制到新单词本";
+"explore.copy.sheet.nameLabel" = "单词本名称";
+"explore.copy.sheet.confirm" = "创建并复制";
+"explore.copy.a11y.cta" = "把这个卡组复制到我的单词本";

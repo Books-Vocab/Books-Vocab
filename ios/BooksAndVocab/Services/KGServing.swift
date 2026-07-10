@@ -12,8 +12,18 @@ protocol BackgroundSyncing: AnyObject {
     func backgroundSync(container: ModelContainer) async
 }
 
+/// 共享牌組複製能力（窄協定）— 供 Explore 複製流程（`SharedDeckCopyController`）依賴
+/// 與 mock，比照 `BackgroundSyncing` 的能力切分。`KGServing` 細化此協定，故 `any
+/// KGServing` 可直接當 `any DeckCopying` 傳入複製 controller。
+protocol DeckCopying: AnyObject {
+    /// `POST /api/decks/{deckId}/copy`（需登入 CurrentUser）。`idempotencyKey` 讓
+    /// transport retry 安全 —— 同 key 永遠短路回同一 notebook，絕不重複複製。
+    /// `notebookName` 非 nil 時覆寫 server 自動命名（server 仍保證與活躍 notebook 名唯一）。
+    func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse
+}
+
 /// KGService 的行為契約
-protocol KGServing: BackgroundSyncing {
+protocol KGServing: BackgroundSyncing, DeckCopying {
     var serverURL: String { get set }
     var isConnected: Bool { get }
     var lastSyncDate: Date? { get }

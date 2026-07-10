@@ -1096,3 +1096,17 @@
 "explore.detail.cardsError" = "Couldn't load cards";
 "explore.detail.missing.title" = "Deck unavailable";
 "explore.detail.missing.description" = "This deck may have been removed.";
+/* Explore — copy an official deck into a private notebook (Phase 2c) */
+"explore.copy.cta" = "Copy to My Notebook";
+"explore.copy.loginRequired" = "Sign in to copy this to your notebook";
+"explore.copy.inflight" = "Copying…";
+"explore.copy.success" = "Copied to “%@”";
+"explore.copy.success.alreadyCopied" = "Already in your notebooks";
+"explore.copy.error.unauthorized" = "Your session expired. Please sign in again.";
+"explore.copy.error.offline" = "No internet connection. Please try again later.";
+"explore.copy.error.generic" = "Copy failed. Please try again later.";
+"explore.copy.toast.success" = "Copied to your notebook";
+"explore.copy.sheet.title" = "Copy to a New Notebook";
+"explore.copy.sheet.nameLabel" = "Notebook name";
+"explore.copy.sheet.confirm" = "Create & Copy";
+"explore.copy.a11y.cta" = "Copy this deck to my notebook";

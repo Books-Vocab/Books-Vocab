@@ -1063,3 +1063,17 @@
 "explore.detail.cardsError" = "カードを読み込めませんでした";
 "explore.detail.missing.title" = "デッキを利用できません";
 "explore.detail.missing.description" = "このデッキは削除された可能性があります。";
+/* Explore — 公式デッキを個人の単語帳にコピー（Phase 2c） */
+"explore.copy.cta" = "自分の単語帳にコピー";
+"explore.copy.loginRequired" = "ログインすると単語帳にコピーできます";
+"explore.copy.inflight" = "コピー中…";
+"explore.copy.success" = "「%@」にコピーしました";
+"explore.copy.success.alreadyCopied" = "すでに単語帳にあります";
+"explore.copy.error.unauthorized" = "セッションが切れました。もう一度ログインしてください。";
+"explore.copy.error.offline" = "インターネット接続がありません。後でもう一度お試しください。";
+"explore.copy.error.generic" = "コピーに失敗しました。後でもう一度お試しください。";
+"explore.copy.toast.success" = "単語帳にコピーしました";
+"explore.copy.sheet.title" = "新しい単語帳にコピー";
+"explore.copy.sheet.nameLabel" = "単語帳の名前";
+"explore.copy.sheet.confirm" = "作成してコピー";
+"explore.copy.a11y.cta" = "このデッキを自分の単語帳にコピー";

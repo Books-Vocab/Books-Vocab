@@ -248,3 +248,38 @@ struct SharedDeckCardsResponse: Codable {
     let cards: [SharedDeckCard]
     let nextCursor: String?
 }
+
+/// `POST /api/decks/{deckId}/copy` 回應（backend `DeckCopyResponse`，camelCase 直對）。
+/// `alreadyCopied == true` = server 依 idempotencyKey 短路回既有 notebook（transport
+/// retry / 遺失回應復原），非新複製。lenient decode：`alreadyCopied` 缺欄降級 false。
+struct DeckCopyResponse: Codable {
+    let notebookId: String
+    let notebookName: String
+    let deckId: String
+    let sourceVersion: Int
+    let cardCount: Int
+    let alreadyCopied: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case notebookId, notebookName, deckId, sourceVersion, cardCount, alreadyCopied
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        notebookId = try c.decode(String.self, forKey: .notebookId)
+        notebookName = try c.decode(String.self, forKey: .notebookName)
+        deckId = try c.decode(String.self, forKey: .deckId)
+        sourceVersion = try c.decodeIfPresent(Int.self, forKey: .sourceVersion) ?? 0
+        cardCount = try c.decodeIfPresent(Int.self, forKey: .cardCount) ?? 0
+        alreadyCopied = try c.decodeIfPresent(Bool.self, forKey: .alreadyCopied) ?? false
+    }
+
+    init(
+        notebookId: String, notebookName: String, deckId: String,
+        sourceVersion: Int = 0, cardCount: Int = 0, alreadyCopied: Bool = false
+    ) {
+        self.notebookId = notebookId; self.notebookName = notebookName
+        self.deckId = deckId; self.sourceVersion = sourceVersion
+        self.cardCount = cardCount; self.alreadyCopied = alreadyCopied
+    }
+}
