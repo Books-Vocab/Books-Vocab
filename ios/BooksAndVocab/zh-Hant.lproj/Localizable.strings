@@ -1079,3 +1079,17 @@
 "explore.detail.cardsError" = "無法載入卡片";
 "explore.detail.missing.title" = "牌組無法使用";
 "explore.detail.missing.description" = "這個牌組可能已被移除。";
+/* Explore — 複製官方牌組到私人單字本（Phase 2c） */
+"explore.copy.cta" = "複製到我的單字本";
+"explore.copy.loginRequired" = "登入後即可複製到你的單字本";
+"explore.copy.inflight" = "正在複製…";
+"explore.copy.success" = "已複製到「%@」";
+"explore.copy.success.alreadyCopied" = "已在你的單字本中";
+"explore.copy.error.unauthorized" = "登入已過期，請重新登入";
+"explore.copy.error.offline" = "目前沒有網路連線，請稍後再試";
+"explore.copy.error.generic" = "複製失敗，請稍後再試";
+"explore.copy.toast.success" = "已複製到你的單字本";
+"explore.copy.sheet.title" = "複製到新單字本";
+"explore.copy.sheet.nameLabel" = "單字本名稱";
+"explore.copy.sheet.confirm" = "建立並複製";
+"explore.copy.a11y.cta" = "複製這個牌組到我的單字本";

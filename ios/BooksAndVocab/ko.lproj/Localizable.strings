@@ -1064,3 +1064,17 @@
 "explore.detail.cardsError" = "카드를 불러올 수 없습니다";
 "explore.detail.missing.title" = "덱을 사용할 수 없습니다";
 "explore.detail.missing.description" = "이 덱은 삭제되었을 수 있습니다.";
+/* Explore — 공식 덱을 개인 단어장으로 복사 (Phase 2c) */
+"explore.copy.cta" = "내 단어장에 복사";
+"explore.copy.loginRequired" = "로그인하면 단어장에 복사할 수 있습니다";
+"explore.copy.inflight" = "복사 중…";
+"explore.copy.success" = "'%@'에 복사됨";
+"explore.copy.success.alreadyCopied" = "이미 단어장에 있습니다";
+"explore.copy.error.unauthorized" = "세션이 만료되었습니다. 다시 로그인해 주세요.";
+"explore.copy.error.offline" = "인터넷 연결이 없습니다. 나중에 다시 시도해 주세요.";
+"explore.copy.error.generic" = "복사에 실패했습니다. 나중에 다시 시도해 주세요.";
+"explore.copy.toast.success" = "단어장에 복사됨";
+"explore.copy.sheet.title" = "새 단어장에 복사";
+"explore.copy.sheet.nameLabel" = "단어장 이름";
+"explore.copy.sheet.confirm" = "만들고 복사";
+"explore.copy.a11y.cta" = "이 덱을 내 단어장에 복사";

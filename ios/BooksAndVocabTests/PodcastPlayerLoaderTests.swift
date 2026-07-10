@@ -87,6 +87,7 @@ private final class StubKGService: KGServing {
     func healthCheck() async {}
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
     func triggerPipeline(notebookId: String) async throws { fatalError("unused") }
+    func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse { fatalError("unused") }
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> Bool { fatalError("unused") }
     func fetchNotebooks() async throws -> [KGNotebook] { fatalError("unused") }
     func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
