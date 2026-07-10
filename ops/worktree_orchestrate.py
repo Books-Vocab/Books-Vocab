@@ -342,30 +342,65 @@ def _main_advance_lock(primary: Path):
     return wr._ledger_lock(primary / ".cache" / "kg-main-advance")
 
 
-def _primary_ff_ready(primary: Path, local: str) -> str | None:
-    """Refusal reason (or None) for advancing the primary checkout's local `main` by a
-    fast-forward. `main` is checked out in the primary, so a ff updates its working
-    tree — it must be on `local`, tracked-clean, with no merge/rebase in flight. Same
-    guard family as sync-main, in the local-integration direction."""
+def _porcelain_paths(out: str) -> list[str]:
+    """Pathnames from `git status --porcelain` output (renames report the new side).
+    No fixed-offset slicing: `_git` strips its output, which can eat the first line's
+    leading status column — split the 1-2 char XY field off instead."""
+    paths: list[str] = []
+    for ln in out.splitlines():
+        ln = ln.lstrip()
+        if not ln or " " not in ln:
+            continue
+        p = ln.split(" ", 1)[1].lstrip()
+        if " -> " in p:
+            p = p.split(" -> ", 1)[1]
+        paths.append(p)
+    return paths
+
+
+def _primary_ff_ready(primary: Path, local: str) -> tuple[str, dict[str, Any]] | None:
+    """Refusal `(reason, extra-json-fields)` (or None) for advancing the primary
+    checkout's local `main` by a fast-forward. `main` is checked out in the primary,
+    so a ff updates its working tree — it must be on `local`, tracked-clean, with no
+    merge/rebase in flight. Same guard family as sync-main, in the local-integration
+    direction. Every reason names its next step: with multiple sessions sharing the
+    repo a refusal is a coordination event, not a dead end."""
     cur = _current_branch(str(primary))
     if cur != local:
         where = "a detached HEAD" if cur is None else f"{cur!r}"
         return (f"primary checkout is on {where}, not {local!r} — cutover advances "
-                f"the local trunk under its own checkout")
+                f"the local trunk under its own checkout; put the primary back on "
+                f"{local!r} (its tenant may be mid-task — coordinate, don't force), "
+                f"then re-run cutover", {})
     rc, _ = _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=primary)
     if rc == 0:
-        return "a merge is in progress in the primary checkout"
+        return ("a merge is in progress in the primary checkout — let its tenant "
+                "conclude it (commit or `git merge --abort`), then re-run cutover", {})
     for probe in ("rebase-merge", "rebase-apply"):
         rc, p = _git(["rev-parse", "--path-format=absolute", "--git-path", probe],
                      cwd=primary)
         if rc == 0 and p and Path(p).exists():
-            return "a rebase is in progress in the primary checkout"
+            return ("a rebase is in progress in the primary checkout — let its tenant "
+                    "conclude it (`git rebase --continue`/`--abort`), then re-run "
+                    "cutover", {})
     rc, out = _git(["status", "--porcelain", "--untracked-files=no"], cwd=primary)
     if rc != 0:
-        return f"cannot read primary status: {out[:200]}"
+        return (f"cannot read primary status: {out[:200]} — inspect the primary "
+                f"checkout by hand, then re-run cutover", {})
     if out.strip():
-        return ("primary working tree is dirty (tracked changes) — a ff updates the "
-                "checked-out files; commit/evacuate or restore first")
+        files = _porcelain_paths(out)
+        shown = ", ".join(files[:10])
+        if len(files) > 10:
+            shown += f" … and {len(files) - 10} more"
+        return (
+            "primary working tree is dirty (tracked changes) — a ff updates the "
+            f"checked-out files\n  dirty: {shown}\n"
+            "  likely another session is working in the primary. Options: (a) use "
+            "the session-mgmt MCP — list_sessions to find running sessions on this "
+            "repo, send_message to ask the tenant to commit; (b) if the leftovers "
+            "are yours, commit them or evacuate them to a worktree. The gate verdict "
+            "is bound to the worktree HEAD and stays valid — once the primary is "
+            "clean, just re-run cutover", {"dirty_files": files})
     return None
 
 
@@ -1051,8 +1086,10 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     with _main_advance_lock(primary):
         guard = _primary_ff_ready(primary, local)
         if guard:
-            _emit({"schema": SCHEMA, "step": "cutover", "error": guard, "landed": False,
-                   "primary": str(primary)}, args.json, f"✗ cutover refused: {guard}")
+            reason, extra = guard
+            _emit({"schema": SCHEMA, "step": "cutover", "error": reason, "landed": False,
+                   "primary": str(primary), **extra}, args.json,
+                  f"✗ cutover refused: {reason}")
             return EXIT_BLOCK
         rrc, rout = _git(["rebase", local], cwd=worktree)
         if rrc != 0:

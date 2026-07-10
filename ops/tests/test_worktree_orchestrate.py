@@ -119,11 +119,23 @@ def test_gate_plan_ios_ui_change_selects_full_ios_set():
     assert "ios-build-catalyst" in names
     # a swift change -> quality impact is consulted
     assert "ios-quality-impact" in names
-    # a View -> UI-scoped test in addition to unit
     assert "ios-test-unit" in names
-    assert "ios-test-ui" in names
+    # a UI-source change with NO changed UITest file runs NO UI suite: the UI gate
+    # is impacted-scope (per changed *Tests.swift class) — the full --ui suite as a
+    # block gate false-blocks every iOS cutover on documented flaky tests.
+    assert not any(n.startswith("ios-test-ui") for n in names)
     # a pure-ios path is NOT a design-system change
     assert "design-system" not in names
+
+
+def test_gate_plan_changed_uitest_file_selects_its_ui_class():
+    gates = plan_gates(["ios/BooksAndVocabUITests/ReaderFlowTests.swift"])
+    names = _names(gates)
+    # only the impacted UI test CLASS runs (scoped --file, marketing_demo dataset)
+    assert "ios-test-ui:ReaderFlowTests" in names
+    # helper/page-object files are not test classes
+    gates = plan_gates(["ios/BooksAndVocabUITests/Pages/AppPage.swift"])
+    assert not any(n.startswith("ios-test-ui") for n in _names(gates))
 
 
 def test_gate_plan_ios_models_change_also_triggers_design_system():
@@ -405,8 +417,91 @@ def test_cutover_refused_when_primary_not_on_main(scratch):
                              "--commit", "--json"])
         assert rc == MODULE.EXIT_BLOCK
         assert "sidetrack" in json.dumps(cut) and cut["landed"] is False
+        # every refusal names its next step — here: put the primary back on main.
+        assert "re-run cutover" in cut["error"]
     finally:
         _git(["checkout", "-q", "main"], repo)
+
+
+@gitmark
+def test_cutover_dirty_refusal_is_actionable(scratch):
+    # a dirty-primary refusal must be ACTIONABLE for a concurrent-session agent:
+    # name the dirty files (machine-readable `dirty_files` + in-message list) and
+    # carry coordination guidance (find the co-tenant session, or evacuate your own
+    # residue) instead of a bare "dirty" that leaves the agent dead-waiting.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    (repo / "alpha.txt").write_text("base\n")
+    (repo / "beta.txt").write_text("base\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "track alpha/beta"], repo)
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "dirty-ux",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    (repo / "alpha.txt").write_text("another session's edit\n")
+    (repo / "beta.txt").write_text("another session's edit\n")
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK and cut["landed"] is False
+    assert sorted(cut["dirty_files"]) == ["alpha.txt", "beta.txt"]  # machine-readable
+    err = cut["error"]
+    assert "alpha.txt" in err and "beta.txt" in err                 # named in message
+    for cue in ("list_sessions", "send_message", "commit",          # coordination path
+                "gate verdict", "re-run cutover"):                  # verdict stays valid
+        assert cue in err, f"missing guidance cue {cue!r} in: {err}"
+
+
+@gitmark
+def test_cutover_dirty_refusal_caps_message_list_at_ten(scratch):
+    # the message stays readable (first 10 + "… and N more"); the JSON carries ALL.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    names = [f"trk{i:02d}.txt" for i in range(12)]
+    for n in names:
+        (repo / n).write_text("base\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "track 12 files"], repo)
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "dirty-cap",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    for n in names:
+        (repo / n).write_text("dirty\n")
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert sorted(cut["dirty_files"]) == sorted(names)   # JSON: complete list
+    assert cut["error"].count("trk") == 10               # message: capped at 10
+    assert "and 2 more" in cut["error"]
+
+
+@gitmark
+def test_cutover_merge_in_flight_refusal_names_next_step(scratch):
+    # non-dirty refusals keep their reason but must also point at the next step.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "merge-flight",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    # stage a merge-in-progress in the primary (MERGE_HEAD set)
+    _git(["checkout", "-q", "-b", "side"], repo)
+    (repo / "side.txt").write_text("side\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "side"], repo)
+    _git(["checkout", "-q", "main"], repo)
+    _git(["merge", "--no-commit", "--no-ff", "side"], repo)
+    try:
+        rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "merge is in progress" in cut["error"]
+        assert "re-run cutover" in cut["error"]
+    finally:
+        _git(["merge", "--abort"], repo)
+        _git(["branch", "-qD", "side"], repo)
 
 
 @gitmark
