@@ -42,11 +42,28 @@ def _sqlite_rows(db_path: Path, sql: str, params: tuple[Any, ...] = ()) -> list[
         conn.close()
 
 
+def _notebook_columns(db_path: Path) -> set[str]:
+    if not db_path.exists():
+        return set()
+    conn = sqlite3.connect(str(db_path))
+    try:
+        return {r[1] for r in conn.execute("PRAGMA table_info(notebook)")}
+    finally:
+        conn.close()
+
+
 def _load_notebooks(user_dir: Path) -> list[dict[str, Any]]:
+    db_path = user_dir / "notebooks.db"
+    # Exclude soft-deleted AND copy-in-progress (staged) notebooks. Filter on
+    # is_staged only when present — a legacy DB predating the migration has no
+    # staged rows, and a filter on a missing column would be a parse error.
+    where = "is_deleted = 0"
+    if "is_staged" in _notebook_columns(db_path):
+        where += " AND is_staged = 0"
     rows = _sqlite_rows(
-        user_dir / "notebooks.db",
+        db_path,
         "SELECT id, name, color, sort_order, is_default, cover_pattern "
-        "FROM notebook WHERE is_deleted = 0 ORDER BY sort_order, created_at, id",
+        f"FROM notebook WHERE {where} ORDER BY sort_order, created_at, id",
     )
     return rows
 
