@@ -92,7 +92,7 @@ import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 # Reuse P2 in-process — never re-implement register / resolve / sweep / state paths.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -190,6 +190,10 @@ def _is_backend_test(p: str) -> bool:
     return base.startswith("test_") or base.endswith("_test.py")
 
 
+def _is_ops_test(p: str) -> bool:
+    return p.startswith("ops/tests/") and p.rsplit("/", 1)[-1].startswith("test_")
+
+
 def _shell(name: str, category: str, cmd: list[str], level: str,
            cwd: str | None = None) -> dict[str, Any]:
     return {"name": name, "category": category, "kind": "shell",
@@ -202,7 +206,8 @@ def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, A
     return g
 
 
-def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
+def plan_gates(changed_files: list[str],
+               ops_test_exists: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
 
@@ -218,6 +223,20 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
       backend/**.py     -> targeted pytest on the changed TEST files; a src-only change
                            with no targeted test is a WARN advisory (never the full
                            suite — it carries known pre-existing false failures).
+      ops/**.py         -> targeted pytest via the pinned uv sandbox (`uv run
+                           --no-project --python 3.13 --with pytest` — never touching
+                           backend/uv.lock): a changed ops/tests/test_*.py runs itself;
+                           a changed src file runs its ops/tests/test_<basename>. EVERY
+                           target must pass `ops_test_exists` (a deleted test file is
+                           in the diff too — a gone path would make pytest exit 4);
+                           any changed ops .py that resolves to no existing test falls
+                           back to the whole ops/tests suite (which subsumes the
+                           targeted files, and which sandbox-unsafe tests must dep-guard
+                           with a skip — see test_demo_ios_spec_emitter). ops/*.sh have
+                           no pytest counterpart and select nothing here.
+                           `ops_test_exists` is injected by cmd_gate (anchored at the
+                           WORKTREE, so a test added in the same diff is seen); the pure
+                           default (None) cannot prove existence -> whole-suite fallback.
 
     Levels: `block` fails the verdict; `warn` is ADVISORY — it degrades the aggregate
     to `warn` but does NOT block cutover (a warn LANDS "with warnings"; its disposition
@@ -285,6 +304,25 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
                                    note="backend src changed but no targeted test in the diff — "
                                         "run the relevant tests manually (the full suite carries "
                                         "known pre-existing false failures)", files=backend))
+
+    ops_py = [p for p in changed_files if p.startswith("ops/") and p.endswith(".py")]
+    if ops_py:
+        exists = ops_test_exists or (lambda rel: False)
+        targets: set[str] = set()
+        fallback = False
+        for p in ops_py:
+            # a changed test file must ALSO prove existence: a DELETED test is in
+            # the diff too, and passing a gone path to pytest exits 4 -> false block
+            candidate = p if _is_ops_test(p) else f"ops/tests/test_{p.rsplit('/', 1)[-1]}"
+            if exists(candidate):
+                targets.add(candidate)
+            else:
+                fallback = True
+        # the whole-suite fallback subsumes every targeted file
+        selected = ["ops/tests"] if fallback else sorted(targets)
+        gates.append(_shell("ops-pytest", "ops",
+                            ["uv", "run", "--no-project", "--python", "3.13",
+                             "--with", "pytest", "pytest", "-q", *selected], "block"))
 
     return gates
 
@@ -1018,7 +1056,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     changed = _changed_vs_base(worktree, args.base)
-    plan = plan_gates(changed)
+    # anchor test-existence at the WORKTREE so a test file added in this very diff
+    # is seen (the primary checkout may not have it yet)
+    plan = plan_gates(changed,
+                      ops_test_exists=lambda rel: (Path(worktree) / rel).is_file())
     results: list[dict[str, Any]] = []
     if not args.plan_only:
         for spec in plan:
