@@ -58,6 +58,22 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.settings["account_long_identity"]?.reviewSettings != nil)
         #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
         #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
+
+        // Marketing capture domain (Phase 1 data plane): present with a real
+        // reader passage + Word Detail hero, but a null clock in the checked-in
+        // generated fixture (the frozen clock only lands in a marketing emit).
+        let marketing = try #require(document.marketingCapture, "generated demo must declare marketingCapture")
+        #expect(marketing.reviewClock == nil, "checked-in generated fixture must keep reviewClock null (frozen only at emit)")
+        let passage = try #require(marketing.readerPassage, "marketingCapture must declare readerPassage")
+        #expect(!passage.paragraphs.isEmpty)
+        #expect(passage.activeWords == [passage.activeWord])
+        // The active word must appear as a token in the passage (punctuation-trimmed).
+        let passageTokens = Set(passage.paragraphs.flatMap { $0.split(separator: " ") }
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ",.;:!?\u{201C}\u{201D}\u{2018}\u{2019}\"'")) })
+        #expect(passageTokens.contains(passage.activeWord), "active word must appear as a token in readerPassage")
+        let wordDetail = try #require(marketing.wordDetail, "marketingCapture must declare wordDetail")
+        #expect(wordDetail.entries.first?.word == passage.activeWord, "wordDetail hero must match the reader passage active word")
+
         try expectValidAssetManifest(document: document, dataset: "ios_fixture_dataset")
         expectUniqueInstallPaths(document: document, dataset: "ios_fixture_dataset")
         expectSettingsKeys(topLevel, dataset: "ios_fixture_dataset")

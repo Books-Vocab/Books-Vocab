@@ -75,6 +75,26 @@ enum VocabularyListViewScenarios {
                     expected: .visibleExactly(0)
                 )
             }
+            // Marketing capture source for `ops/capture_profiles/website.json`
+            // (vocab_list shot). Opens on the "已複習" tab with the review clock
+            // frozen at the marketing anchor day, so the fresh-green cohort Phase 1
+            // shaped (~16 low-count cards, ratio 0.001–0.038) sorts to the top of
+            // the tab and the progress bars read as a green→amber gradient instead
+            // of the flat all-expired list the default "複習優先" sort captured.
+            Scenario("Reviewed · Marketing", layout: .fill) {
+                // Force light: website.json marks this shot `appearance: light`, but
+                // AppThemeContainer(.system) otherwise follows the dark sim. Matches
+                // the reader marketing shot so the website set reads as one light
+                // family (the Knowledge Graph WKWebView stays its own dark viz).
+                VocabularyListViewScene(
+                    fixture: .reviewedMarketing,
+                    auth: .signedIn,
+                    expected: .visibleAtLeast(80),
+                    initialReviewStates: [.reviewed],
+                    reviewSettingsStore: VocabularyListViewScene.marketingFrozenStore
+                )
+                .environment(\.colorScheme, .light)
+            }
         }
     }
 }
@@ -87,6 +107,7 @@ private enum VocabularyListFixture {
     case long
     case empty
     case syncing
+    case reviewedMarketing
 
     var vocabularyID: UIWorldVocabularyFixtureID {
         switch self {
@@ -100,6 +121,10 @@ private enum VocabularyListFixture {
             return .vocabListEmpty
         case .syncing:
             return .vocabListSyncing
+        case .reviewedMarketing:
+            // Full active primary account (same projection as the KG populated
+            // graph), so the reviewed tab shows the whole learned cohort.
+            return .vocabListPopulated
         }
     }
 }
@@ -119,12 +144,19 @@ private struct VocabularyListViewScene: View {
     let auth: CatalogPreviewAuth
     let syncCoordinator: SyncCoordinator
     let notebookId: String
+    let initialReviewStates: Set<VocabularyReviewState>
+    /// Optional frozen review clock. `nil` keeps the env-default store; the
+    /// marketing scene injects a store paused at the marketing anchor day so the
+    /// reviewed-tab ratios (and thus row colours / sort) are deterministic.
+    let reviewSettingsStore: ReviewSettingsStore?
 
     init(
         fixture: VocabularyListFixture,
         auth authID: UIWorldAuthFixtureID,
         expected: VocabularyListExpectedShape,
-        syncPhase: SyncPhase = .ready
+        syncPhase: SyncPhase = .ready,
+        initialReviewStates: Set<VocabularyReviewState> = [],
+        reviewSettingsStore: ReviewSettingsStore? = nil
     ) {
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)
         let authSeed = FixtureDatasetStore.requireAuthSeed(for: authID)
@@ -143,6 +175,8 @@ private struct VocabularyListViewScene: View {
         } catch {
             preconditionFailure("Failed to materialize UI World vocabulary.\(fixture.vocabularyID.rawValue) for VocabularyListViewScenarios: \(error)")
         }
+        self.initialReviewStates = initialReviewStates
+        self.reviewSettingsStore = reviewSettingsStore
         // Pin the toolbar's `isSyncing` to what the scenario declares. The env
         // default is a fresh `.ready` coordinator; setting `.phase` directly
         // (no real pipeline kicked off) renders the active-sync glyph state
@@ -155,8 +189,12 @@ private struct VocabularyListViewScene: View {
     var body: some View {
         AppThemeContainer {
             NavigationStack {
-                VocabularyListView(notebookId: notebookId)
-                    .environment(\.catalogTaskPolicy, .disabled)
+                VocabularyListView(
+                    notebookId: notebookId,
+                    initialReviewStates: initialReviewStates
+                )
+                .environment(\.catalogTaskPolicy, .disabled)
+                .modifier(ReviewClockInjector(store: reviewSettingsStore))
             }
             .modelContainer(container)
             .environment(\.authManager, auth)
@@ -164,6 +202,28 @@ private struct VocabularyListViewScene: View {
         }
         .environmentObject(AppAppearanceStore.preview)
     }
+
+    /// QA fallback anchor (2026-06-01 12:00); overridden by the frozen marketing
+    /// clock when a marketing world is injected. Shared shape with the Knowledge
+    /// Graph scene so both marketing shots read the same anchor day.
+    private static let qaFallbackNow: Date = {
+        var comps = DateComponents()
+        comps.year = 2026
+        comps.month = 6
+        comps.day = 1
+        comps.hour = 12
+        guard let date = Calendar.current.date(from: comps) else {
+            preconditionFailure("Vocabulary marketing catalog fallback now date components are invalid")
+        }
+        return date
+    }()
+
+    static let marketingFrozenStore: ReviewSettingsStore = {
+        var settings = ReviewSettings.default
+        settings.isProgressPaused = true
+        settings.progressPausedAt = MarketingReviewClock.now(fallback: qaFallbackNow)
+        return ReviewSettingsStore(previewSettings: settings)
+    }()
 
     private static func validate(
         _ entries: [VocabularyEntry],
@@ -191,6 +251,21 @@ private struct VocabularyListViewScene: View {
             displayName: seed.displayName,
             userEmail: seed.email
         )
+    }
+}
+
+/// Injects a frozen `ReviewSettingsStore` only when the scenario supplies one,
+/// otherwise leaves the env-default store untouched (so the other Vocabulary
+/// List scenarios keep their wall-clock review state).
+private struct ReviewClockInjector: ViewModifier {
+    let store: ReviewSettingsStore?
+
+    func body(content: Content) -> some View {
+        if let store {
+            content.environment(\.reviewSettingsStore, store)
+        } else {
+            content
+        }
     }
 }
 #endif

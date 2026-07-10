@@ -29,6 +29,18 @@ enum WordDetailScenarios {
                     .environmentObject(AppAppearanceStore.preview)
                 }
             }
+            // Marketing capture source for `ops/capture_profiles/website.json`
+            // (review_card shot). Renders the full Word Detail card — definition,
+            // pronunciation, example, related words — content-vertically pinned to
+            // the top (unlike Today Review's fold, whose front card overlaps the
+            // answer). Driven by `marketingCapture.wordDetail`: entries[0] is the
+            // focused hero, the whole seed is `allEntries` so its graph links
+            // resolve to real related cards.
+            Scenario("Marketing", layout: .fill) {
+                MainActor.assumeIsolated {
+                    Self.marketingSheet()
+                }
+            }
         }
 
         // MARK: Card Document
@@ -89,6 +101,46 @@ enum WordDetailScenarios {
         return seed.entries.map {
             UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
         }
+    }
+
+    /// Materializes the marketing Word Detail seed (`marketingCapture.wordDetail`)
+    /// into `VocabularyEntry` models. `entries[0]` is the focused hero card; the
+    /// rest are its graph-link targets, so `WordDetailSheet(allEntries:)` resolves
+    /// the related-word links to real cards. Distinct from the `.wordDetail` QA
+    /// seed (ephemeral/terse), which the QA scenarios keep pinning.
+    @MainActor
+    private static func marketingEntries() -> [VocabularyEntry] {
+        guard let seed = FixtureDatasetStore.marketingCapture()?.wordDetail else {
+            preconditionFailure("marketingCapture.wordDetail is required for the Word Detail marketing catalog scene")
+        }
+        precondition(
+            !seed.entries.isEmpty,
+            "marketingCapture.wordDetail must declare at least one entry (the focused hero card)"
+        )
+        return seed.entries.map {
+            UITestFixtureSeed.makeVocabularyEntry(from: $0, notebookId: seed.notebookRemoteId)
+        }
+    }
+
+    /// Hoisted so the `Scenario` closure stays a single expression (multi-statement
+    /// closures inside `MainActor.assumeIsolated` break `Scenario` init overload
+    /// resolution). `entries[0]` is the hero; the whole seed is `allEntries`.
+    @MainActor
+    private static func marketingSheet() -> some View {
+        let entries = marketingEntries()
+        return AppThemeContainer {
+            // presentsEagerly: the catalog snapshot captures synchronously and
+            // does not await WordDetailSheet's deferred presentation `.task`, so
+            // seed the card presentation up front (otherwise the shot captures the
+            // "載入中" loading placeholder).
+            WordDetailSheet(entry: entries[0], allEntries: entries, presentsEagerly: true)
+        }
+        // Force light: website.json marks the review_card shot `appearance: light`;
+        // keeps the card a clean white surface, consistent with the reader/vocab
+        // marketing shots (AppThemeContainer(.system) would otherwise follow the
+        // dark sim).
+        .environment(\.colorScheme, .light)
+        .environmentObject(AppAppearanceStore.preview)
     }
 
     @MainActor
