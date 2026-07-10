@@ -30,33 +30,43 @@ Subcommands (the API a driving agent / the worktree-flow skill calls):
   preflight  fetch origin + `worktree_registry sweep --exclude-current` (clear crash
              residue; dry-run default, --commit executes). Safe from ANY worktree —
              --exclude-current means a preflight never proposes clearing itself.
+TOPOLOGY — local-main-centric. Local `main` is the trunk: worktrees fork from it and
+cutover fast-forwards it OFFLINE (no network, no deploy). origin/main is only a deploy
+target — `deploy` pushes local main to origin, and the felix reconciler turns that push
+into a production rollout. So local main runs ahead of origin by however many cutovers
+have landed since the last deploy; a push is a deliberate, batched release.
+
   open       git worktree add (.claude/worktrees/<slug>, branch = <type>/<slug> where
-             type is classify_intent(intent)) + registry register (born-registered).
+             type is classify_intent(intent)) forked from LOCAL `main` (offline) +
+             registry register (born-registered).
   adopt      register an ALREADY-existing worktree (bootstrap fallback: a bare
              `git worktree add` needs none of this tooling — adopt afterwards from
              inside). Registers the worktree ROOT; ledger + freeze lock anchor on the
              TARGET's git-common-dir, never the process cwd.
-  gate       IMPACT-BASED verification. Diffs the worktree against origin/main, routes
-             each touched surface to its existing gate tool, runs them, aggregates a
-             pass/warn/block verdict, and RECORDS it (keyed by worktree + HEAD sha) so
-             cutover can require a fresh pass. Runs the gates EXPLICITLY — the
-             .githooks pre-commit is best-effort only and must not be relied on.
+  gate       IMPACT-BASED verification. Diffs the worktree against its base (local
+             `main`), routes each touched surface to its existing gate tool, runs them,
+             aggregates a pass/warn/block verdict, and RECORDS it (keyed by worktree +
+             HEAD sha) so cutover can require a fresh pass. Runs the gates EXPLICITLY —
+             the .githooks pre-commit is best-effort only and must not be relied on.
   cutover    require a fresh NON-BLOCK gate verdict (verdict in {pass, warn} AND
-             recorded HEAD == current HEAD) → fetch → rebase worktree onto origin/main
-             → ff push HEAD:main. A `warn` is advisory: it LANDS ("landed with
+             recorded HEAD == current HEAD) → rebase worktree onto local `main` → ff
+             the primary checkout's local `main` to it (serialized by a lock; the
+             primary must be on main + tracked-clean, since a ff updates its files).
+             OFFLINE — no push, no deploy. A `warn` is advisory: it LANDS ("landed with
              warnings") — the driving agent owns a warn's disposition, so the tool must
              not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
-             (Landing into main is pre-authorized. Note push=deploy: the felix
-             reconciler auto-deploys backend/** changes that land on origin/main —
-             landing backend work IS deploying it.) dry-run default.
+             dry-run default.
   resolve    landed-floor (refuse to force-discard a branch not yet in base, unless
              --force) → registry resolve <branch> merged → git worktree remove +
              branch -D (local, and origin if present) + drop the gate-record cache →
              ledger closed, no residue.
   sync-main  guarded LOSSLESS ff of the PRIMARY checkout's local main to origin/main
              (three-green: tracked-clean + on main with no merge/rebase in flight +
-             strictly behind). A diverged main is never auto-merged — land unique
-             commits via cutover. Cures primary-checkout rot; dry-run default.
+             strictly behind). In the local-centric model local main normally runs
+             AHEAD of origin, so on the dev machine this is a noop; it earns its keep on
+             the felix deploy clone (whose main tracks origin) and after a fresh clone.
+             A diverged main is never auto-merged — land unique commits via cutover.
+             dry-run default.
   freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
              open/adopt/cutover/sync-main refuse; draining steps (resolve, sweep,
              preflight, gate) stay allowed so the flow can be quiesced for repo
@@ -90,7 +100,10 @@ EXIT_OK = 0
 EXIT_USAGE = 64
 EXIT_BLOCK = 1
 
-BASE_DEFAULT = "origin/main"
+# Local-main-centric topology: local `main` is the trunk. Worktrees fork from it and
+# cutover fast-forwards it OFFLINE — origin is only a deploy target (`deploy` pushes
+# local main to origin, which the felix reconciler turns into a production rollout).
+BASE_DEFAULT = "main"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 # The design-system impact surface: the EXACT pattern the pre-commit hook uses
@@ -292,6 +305,41 @@ def _norm(p: str) -> str:
 
 def _fetch(quiet: bool = True) -> tuple[int, str]:
     return _git(["fetch", "origin", "--prune"])
+
+
+def _main_advance_lock(primary: Path):
+    """Serialize local-`main` fast-forwards so two concurrent cutovers cannot race:
+    without it both would rebase onto main@X and the second's ff-only would fail (or
+    worse, interleave). Reuses the registry's reviewed flock primitive on a sidecar
+    beside the ledger (`.cache/`, gitignored, one per repo)."""
+    return wr._ledger_lock(primary / ".cache" / "kg-main-advance")
+
+
+def _primary_ff_ready(primary: Path, local: str) -> str | None:
+    """Refusal reason (or None) for advancing the primary checkout's local `main` by a
+    fast-forward. `main` is checked out in the primary, so a ff updates its working
+    tree — it must be on `local`, tracked-clean, with no merge/rebase in flight. Same
+    guard family as sync-main, in the local-integration direction."""
+    cur = _current_branch(str(primary))
+    if cur != local:
+        where = "a detached HEAD" if cur is None else f"{cur!r}"
+        return (f"primary checkout is on {where}, not {local!r} — cutover advances "
+                f"the local trunk under its own checkout")
+    rc, _ = _git(["rev-parse", "-q", "--verify", "MERGE_HEAD"], cwd=primary)
+    if rc == 0:
+        return "a merge is in progress in the primary checkout"
+    for probe in ("rebase-merge", "rebase-apply"):
+        rc, p = _git(["rev-parse", "--path-format=absolute", "--git-path", probe],
+                     cwd=primary)
+        if rc == 0 and p and Path(p).exists():
+            return "a rebase is in progress in the primary checkout"
+    rc, out = _git(["status", "--porcelain", "--untracked-files=no"], cwd=primary)
+    if rc != 0:
+        return f"cannot read primary status: {out[:200]}"
+    if out.strip():
+        return ("primary working tree is dirty (tracked changes) — a ff updates the "
+                "checked-out files; commit/evacuate or restore first")
+    return None
 
 
 def _changed_vs_base(worktree: str, base: str) -> list[str]:
@@ -510,7 +558,8 @@ def cmd_open(args: argparse.Namespace) -> int:
     path = root / ".claude" / "worktrees" / args.slug
     base = args.base
 
-    _fetch()  # base (origin/main) may have moved; fork from the fresh tip.
+    # local-centric: fork from the LOCAL trunk (default `main`) — offline, no fetch.
+    # origin is a deploy target, not the fork point.
     if path.exists():
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree path exists",
                "path": str(path)}, args.json, f"✗ worktree path already exists: {path}")
@@ -802,17 +851,19 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_cutover(args: argparse.Namespace) -> int:
-    """Require a fresh non-block gate verdict, then rebase onto origin/main and ff push
-    HEAD:main. A `warn` verdict LANDS (its disposition belongs to the driving agent —
-    the tool records it as "landed with warnings" but never blocks on it); only `block`
-    (and a stale/absent verdict) refuses."""
+    """Require a fresh non-block gate verdict, then integrate the worktree into the
+    LOCAL trunk: rebase onto local `main` and fast-forward the primary checkout's
+    `main` to it — OFFLINE, no push, no deploy. (Publishing to origin, and thereby
+    production, is the separate `deploy` step.) A `warn` verdict LANDS ("landed with
+    warnings" — its disposition belongs to the driving agent); only `block` (and a
+    stale/absent verdict) refuses."""
     blocked = _freeze_guard(args.state, "cutover", args.json)
     if blocked is not None:
         return blocked
     worktree = _norm(args.worktree)
     if not Path(worktree).is_dir():
         _emit({"schema": SCHEMA, "step": "cutover", "error": "worktree not found",
-               "pushed": False}, args.json, f"✗ worktree not found: {worktree}")
+               "landed": False}, args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
     rec_path = _gate_record_path(args.state, worktree)
@@ -837,41 +888,67 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             warnings = [g.get("name") for g in rec.get("gates", [])
                         if g.get("status") == "warn"]
     if refuse:
-        _emit({"schema": SCHEMA, "step": "cutover", "error": refuse, "pushed": False,
+        _emit({"schema": SCHEMA, "step": "cutover", "error": refuse, "landed": False,
                "worktree": worktree}, args.json, f"✗ cutover refused: {refuse}")
         return EXIT_BLOCK
 
-    _fetch()
-    # rebase onto the fresh base so the push is a clean fast-forward.
-    rrc, rout = _git(["rebase", args.base], cwd=worktree)
-    if rrc != 0:
-        _git(["rebase", "--abort"], cwd=worktree)
-        _emit({"schema": SCHEMA, "step": "cutover", "error": "rebase failed (aborted)",
-               "detail": rout, "pushed": False}, args.json,
-              f"✗ rebase onto {args.base} failed (aborted):\n{rout}")
-        return EXIT_BLOCK
-
-    sha = _head_sha(worktree)
-    target = args.base.split("/", 1)[1] if "/" in args.base else args.base
-    push_cmd = ["push", "origin", f"{sha}:{target}"]
+    local = args.base.split("/", 1)[1] if "/" in args.base else args.base
+    primary = primary_root()
+    wt_branch = _current_branch(worktree)
     warn_line = (f"\n  landed with warnings: {', '.join(warnings)}" if warnings else "")
+    if wt_branch is None:
+        _emit({"schema": SCHEMA, "step": "cutover", "error": "worktree is on a detached "
+               "HEAD — nothing to integrate", "landed": False, "worktree": worktree},
+              args.json, "✗ cutover refused: worktree is on a detached HEAD")
+        return EXIT_USAGE
+
     if not args.commit:
-        payload = {"schema": SCHEMA, "step": "cutover", "mode": "dry-run", "pushed": False,
-                   "sha": sha, "target": target, "verdict": verdict, "warnings": warnings,
-                   "cmd": "git " + " ".join(push_cmd)}
+        payload = {"schema": SCHEMA, "step": "cutover", "mode": "dry-run", "landed": False,
+                   "branch": wt_branch, "target": local, "verdict": verdict,
+                   "warnings": warnings}
         _emit(payload, args.json,
-              f"# cutover (dry-run)\n  would ff push {sha[:8]} -> {target}{warn_line}\n"
-              f"  git {' '.join(push_cmd)}\n  (--commit to push)")
+              f"# cutover (dry-run)\n  would rebase {wt_branch} onto {local}, then "
+              f"ff local {local} to it (offline — no push, no deploy){warn_line}\n"
+              f"  (--commit to land)")
         return EXIT_OK
 
-    prc, pout = _git(push_cmd, cwd=worktree)
-    payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed",
-               "pushed": prc == 0, "sha": sha, "target": target, "verdict": verdict,
-               "warnings": warnings, "detail": pout[:200]}
-    human = (f"✓ cutover: ff pushed {sha[:8]} -> {target}{warn_line}" if prc == 0
-             else f"✗ push failed:\n{pout}")
-    _emit(payload, args.json, human)
-    return EXIT_OK if prc == 0 else EXIT_BLOCK
+    # Serialize the trunk advance; rebase onto the CURRENT local trunk INSIDE the lock
+    # so a peer cutover that just advanced it is picked up (not raced past).
+    with _main_advance_lock(primary):
+        guard = _primary_ff_ready(primary, local)
+        if guard:
+            _emit({"schema": SCHEMA, "step": "cutover", "error": guard, "landed": False,
+                   "primary": str(primary)}, args.json, f"✗ cutover refused: {guard}")
+            return EXIT_BLOCK
+        rrc, rout = _git(["rebase", local], cwd=worktree)
+        if rrc != 0:
+            _git(["rebase", "--abort"], cwd=worktree)
+            _emit({"schema": SCHEMA, "step": "cutover", "error": "rebase failed (aborted)",
+                   "detail": rout, "landed": False}, args.json,
+                  f"✗ rebase onto {local} failed (aborted):\n{rout}")
+            return EXIT_BLOCK
+        sha = _head_sha(worktree)
+        # advance the local trunk by a ff-only merge IN the primary (main lives there).
+        mrc, mout = _git(["merge", "--ff-only", wt_branch], cwd=primary)
+        if mrc != 0:
+            _emit({"schema": SCHEMA, "step": "cutover", "error": f"ff of {local} failed: "
+                   f"{mout[:200]}", "landed": False}, args.json,
+                  f"✗ ff of local {local} failed:\n{mout}")
+            return EXIT_BLOCK
+        vrc, now = _git(["rev-parse", local], cwd=primary)
+        if vrc != 0 or now != sha:
+            _emit({"schema": SCHEMA, "step": "cutover", "error": "post-ff verification "
+                   f"failed: {local} is at {now[:8] if vrc == 0 else '?'}, expected "
+                   f"{sha[:8]}", "landed": False}, args.json, "✗ post-ff verification failed")
+            return EXIT_BLOCK
+
+    payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
+               "sha": sha, "target": local, "branch": wt_branch, "verdict": verdict,
+               "warnings": warnings}
+    _emit(payload, args.json,
+          f"✓ cutover: ff local {local} -> {sha[:8]} (offline; run `deploy` to "
+          f"publish){warn_line}")
+    return EXIT_OK
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
@@ -1014,7 +1091,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "no merge/rebase in flight, and strictly behind (lossless by "
                         "construction; dry-run default)")
     add_common(sm)
-    add_base(sm)
+    # sync-main is intrinsically origin→local, so its base is origin/* regardless of
+    # the local-centric BASE_DEFAULT the other primitives use.
+    sm.add_argument("--base", default="origin/main",
+                    help="upstream ref to catch local main up to (default: origin/main)")
     sm.add_argument("--commit", action="store_true",
                     help="execute the ff (default: dry-run)")
     sm.set_defaults(func=cmd_sync_main)
@@ -1039,8 +1119,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="print the selected gate plan without running anything")
     ga.set_defaults(func=cmd_gate)
 
-    co = sub.add_parser("cutover", help="require a fresh gate pass, rebase onto base, "
-                        "ff push HEAD:main (dry-run default)")
+    co = sub.add_parser("cutover", help="require a fresh gate pass, rebase onto local "
+                        "trunk, ff the primary's local main to it — offline, no deploy "
+                        "(dry-run default)")
     add_common(co)
     add_base(co)
     co.add_argument("--worktree", required=True, help="worktree path to cut over")

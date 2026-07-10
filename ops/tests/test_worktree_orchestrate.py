@@ -8,11 +8,12 @@ Two tiers, mirroring the rest of ops/tests:
      of gates selected for a given changed-file list can never silently drift. It
      never actually runs an iOS build.
   2. INTEGRATION (git-backed scratch repo): the full birth→cutover→resolve loop —
-     open (worktree add + registry register) → a mock work commit → gate (verdict
-     pass; no impact gates for a neutral file) → cutover (rebase + ff push to main)
-     → resolve (worktree remove + branch -D + ledger closure). Asserts the worktree
-     is gone, the branch is gone, origin/main advanced, and the ledger record reads
-     merged — i.e. NO residue.
+     open (worktree add off LOCAL main + registry register) → a mock work commit →
+     gate (verdict pass; no impact gates for a neutral file) → cutover (rebase onto
+     local main + ff the primary's LOCAL main, offline) → resolve (worktree remove +
+     branch -D + ledger closure). Asserts the worktree is gone, the branch is gone,
+     LOCAL main advanced (origin untouched — that is the separate deploy), and the
+     ledger record reads merged — i.e. NO residue.
 
 git-backed tests opt-skip if git is absent.
 """
@@ -227,6 +228,13 @@ def _origin_main_files(remote):
     return set(out.splitlines())
 
 
+def _local_main_files(repo):
+    # local-centric: cutover advances the PRIMARY's local main (origin is untouched
+    # until a separate deploy). Assert against the local trunk's tip tree.
+    out = _git(["ls-tree", "-r", "--name-only", "main"], repo)
+    return set(out.splitlines())
+
+
 @pytest.fixture
 def scratch(tmp_path):
     """A repo with a bare origin, main pushed. Chdir into the repo (the orchestrator
@@ -295,12 +303,12 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     gate_cache = MODULE._gate_record_path(state, wt)
     assert gate_cache.exists()
 
-    # --- cutover: rebase onto origin/main + ff push sha:main (--commit) ---
+    # --- cutover: rebase onto local main + ff the primary's local main (--commit) ---
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK
-    assert cut["pushed"] is True
-    # origin/main now carries the work
-    assert "notes.txt" in _origin_main_files(remote)
+    assert cut["landed"] is True
+    # local main now carries the work
+    assert "notes.txt" in _local_main_files(repo)
 
     # --- resolve: teardown worktree + branch, close the ledger ---
     rc, res = _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
@@ -315,6 +323,90 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
     assert recs["debug/reader-crash"]["status"] == "merged"
     assert recs["debug/reader-crash"]["resolved_at"] is not None
+
+
+def _advance_local_main(repo, name):
+    """Add a commit to LOCAL main that origin does not have (origin is never pushed)."""
+    (repo / f"{name}.txt").write_text("local-only\n")
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", f"local: {name}"], repo)
+
+
+@gitmark
+def test_open_forks_from_local_main_not_origin(scratch):
+    # local-centric: a commit that exists only on LOCAL main (origin never saw it) must
+    # be present in a freshly opened worktree — proving the fork point is local, offline.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _advance_local_main(repo, "localwork")
+    assert "localwork.txt" not in _origin_main_files(remote)   # origin is behind
+    rc, opened = _run_json(["open", "--intent", "build on local work",
+                            "--slug", "on-local", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    assert (Path(wt) / "localwork.txt").exists()               # forked from local main
+    assert opened["base"] == "main"
+
+
+@gitmark
+def test_cutover_advances_local_main_and_leaves_origin_untouched(scratch):
+    # the defining property of the local-centric model: cutover lands on LOCAL main,
+    # origin is NOT pushed (deploy is a separate step).
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do the thing", "--slug", "thing",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+    assert "notes.txt" in _local_main_files(repo)              # local trunk advanced
+    assert "notes.txt" not in _origin_main_files(remote)       # origin UNTOUCHED
+
+
+@gitmark
+def test_cutover_refused_when_primary_is_dirty(scratch):
+    # cutover ff's the primary's checked-out main, which updates its working tree — so
+    # a dirty primary (tracked changes) must refuse rather than clobber.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "doit",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    (repo / "f").write_text("dirtied the primary\n")            # tracked, uncommitted
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "dirty" in json.dumps(cut)
+    assert cut["landed"] is False
+    assert "notes.txt" not in _local_main_files(repo)          # trunk not advanced
+    _git(["checkout", "--", "f"], repo)                         # clean up → now it lands
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+
+
+@gitmark
+def test_cutover_refused_when_primary_not_on_main(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "doit2",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    _git(["checkout", "-q", "-b", "sidetrack"], repo)           # primary leaves main
+    try:
+        rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "sidetrack" in json.dumps(cut) and cut["landed"] is False
+    finally:
+        _git(["checkout", "-q", "main"], repo)
 
 
 @gitmark
@@ -334,9 +426,9 @@ def test_cutover_refused_without_a_passing_gate(scratch):
     # cutover WITHOUT running gate first -> refused (no verdict on file)
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
-    assert cut["pushed"] is False
-    # origin/main did NOT advance
-    assert "notes.txt" not in _origin_main_files(remote)
+    assert cut["landed"] is False
+    # local main did NOT advance
+    assert "notes.txt" not in _local_main_files(repo)
 
 
 @gitmark
@@ -360,7 +452,7 @@ def test_cutover_refused_when_gate_verdict_is_stale(scratch):
 
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
-    assert cut["pushed"] is False
+    assert cut["landed"] is False
 
 
 @gitmark
@@ -388,11 +480,11 @@ def test_cutover_lands_with_warn_verdict(scratch):
 
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK
-    assert cut["pushed"] is True
+    assert cut["landed"] is True
     assert cut["verdict"] == "warn"
     assert "backend-tests-advisory" in cut["warnings"]
-    # the work actually landed on origin/main
-    assert "backend/src/kg/app.py" in _origin_main_files(remote)
+    # the work actually landed on LOCAL main
+    assert "backend/src/kg/app.py" in _local_main_files(repo)
 
 
 @gitmark
@@ -425,8 +517,8 @@ def test_cutover_refused_when_gate_verdict_is_block(scratch):
 
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
-    assert cut["pushed"] is False
-    assert "docs/reference/x.md" not in _origin_main_files(remote)
+    assert cut["landed"] is False
+    assert "docs/reference/x.md" not in _local_main_files(repo)
 
 
 @gitmark
@@ -507,7 +599,7 @@ def test_resolve_from_inside_the_target_worktree_completes(scratch):
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
                          "--commit", "--json"])
     assert rc == MODULE.EXIT_OK
-    assert cut["pushed"] is True
+    assert cut["landed"] is True
     gate_cache = MODULE._gate_record_path(state, wt)
     assert gate_cache.exists()
 
@@ -576,7 +668,7 @@ def test_resolve_from_inside_without_state_flag_completes(scratch):
     assert rc == MODULE.EXIT_OK
     rc, cut = _run_json(["cutover", "--worktree", wt, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK
-    assert cut["pushed"] is True
+    assert cut["landed"] is True
     gate_cache = MODULE._gate_record_path(None, wt)
     assert gate_cache.exists()
 
