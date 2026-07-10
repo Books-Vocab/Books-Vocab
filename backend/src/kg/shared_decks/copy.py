@@ -253,10 +253,11 @@ def _copy_locked(
     unique_name = _unique_notebook_name(notebook_store, base_name)
 
     # Stage the notebook HIDDEN (barrier) with provenance; revealed only after
-    # every card lands + count-equality holds.
+    # every card lands + count-equality holds. is_staged (NOT is_deleted) is the
+    # barrier, so the reveal can never resurrect a user-deleted copy on replay.
     nb = notebook_store.create(
         name=unique_name, color=deck.color, cover_pattern=deck.cover_pattern,
-        source_shared_deck_id=deck.id, source_version=version, is_deleted=True,
+        source_shared_deck_id=deck.id, source_version=version, is_staged=True,
     )
 
     id_map: dict[str, str] = {}

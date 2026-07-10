@@ -31,6 +31,11 @@ class Notebook(SQLModel, table=True):
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     is_deleted: bool = SQLField(default=False)
+    # Copy-in-progress barrier (Phase 2 shared-deck copy). DISTINCT from
+    # is_deleted so a staged copy's reveal (materialize) can never be confused
+    # with — or resurrect — a real user soft-delete. Hidden from every
+    # visibility query until materialize flips it False (reveal-once).
+    is_staged: bool = SQLField(default=False)
     # Provenance (v1 inert): set when this notebook was copied from a shared
     # deck (Phase 2 copy). NULL for organically-created notebooks.
     source_shared_deck_id: str | None = None
@@ -56,6 +61,9 @@ class NotebookStore:
             "cover_pattern": "TEXT",
             "source_shared_deck_id": "TEXT",
             "source_version": "INTEGER",
+            # NOT NULL DEFAULT 0 so every pre-existing row backfills to False
+            # (a NULL would slip past `is_staged IS 0` and vanish from queries).
+            "is_staged": "INTEGER NOT NULL DEFAULT 0",
         }
         with self.engine.connect() as conn:
             existing = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(notebook)").fetchall()}
@@ -94,17 +102,18 @@ class NotebookStore:
         *,
         source_shared_deck_id: str | None = None,
         source_version: int | None = None,
-        is_deleted: bool = False,
+        is_staged: bool = False,
     ) -> Notebook:
         """Create a notebook. ``is_default`` is never set here (the model default
         is False), so a shared-deck copy is structurally guaranteed non-default.
-        The Phase 2 copy path passes ``is_deleted=True`` to stage the notebook
-        HIDDEN (the materialization barrier) plus the provenance columns, then
-        reveals it via :meth:`materialize` once every card has landed."""
+        The Phase 2 copy path passes ``is_staged=True`` to stage the notebook
+        HIDDEN (the materialization barrier, distinct from a user soft-delete)
+        plus the provenance columns, then reveals it via :meth:`materialize` once
+        every card has landed."""
         nb = Notebook(
             name=name, color=color, cover_pattern=cover_pattern,
             source_shared_deck_id=source_shared_deck_id,
-            source_version=source_version, is_deleted=is_deleted,
+            source_version=source_version, is_staged=is_staged,
         )
         with Session(self.engine) as session:
             session.add(nb)
@@ -113,16 +122,18 @@ class NotebookStore:
         return nb
 
     def materialize(self, notebook_id: str) -> bool:
-        """Lift the copy barrier: flip a staged (``is_deleted=True``) copy
-        notebook visible. Idempotent — a no-op (no write, no ``updated_at`` bump)
-        when the notebook is already visible or absent, so a defensive
-        re-materialize on an idempotent-retry replay causes no sync churn.
-        Returns True only when a hidden row was actually revealed."""
+        """Lift the copy barrier: flip a staged (``is_staged=True``) copy
+        notebook visible. Reveal-once — it ONLY ever clears ``is_staged`` and
+        NEVER touches ``is_deleted``, so a copy that was materialized and then
+        user-soft-deleted is never resurrected by a defensive re-materialize on
+        an idempotent-retry replay. Idempotent: a no-op (no write, no
+        ``updated_at`` bump) when the notebook is already revealed, user-deleted,
+        or absent. Returns True only when a staged row was actually revealed."""
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None or not nb.is_deleted:
+            if nb is None or not nb.is_staged:
                 return False
-            nb.is_deleted = False
+            nb.is_staged = False
             nb.updated_at = datetime.now(UTC)
             session.add(nb)
             session.commit()
@@ -145,17 +156,29 @@ class NotebookStore:
             return session.get(Notebook, notebook_id)
 
     def all(self, include_deleted: bool = False) -> list[Notebook]:
+        """Visible notebooks. Excludes soft-deleted AND staged (copy-in-progress)
+        rows. ``include_deleted=True`` returns EVERYTHING — deleted and staged —
+        for teardown/leak-detection callers only."""
         with Session(self.engine) as session:
             statement = select(Notebook)
             if not include_deleted:
-                statement = statement.where(Notebook.is_deleted.is_(False))
+                statement = statement.where(
+                    Notebook.is_deleted.is_(False), Notebook.is_staged.is_(False)
+                )
             statement = statement.order_by(Notebook.sort_order, Notebook.created_at)
             return list(session.exec(statement).all())
 
     def get_modified_since(self, since: datetime) -> list[Notebook]:
-        """Fetch all notebooks (including soft-deleted) modified after the given timestamp."""
+        """Notebooks modified after ``since`` for incremental sync-down. Includes
+        soft-deleted rows (so deletions propagate) but EXCLUDES staged copies —
+        a half-copied notebook must not surface on the client until materialize
+        reveals it (materialize bumps ``updated_at``, so the revealed copy is
+        picked up by the next delta)."""
         with Session(self.engine) as session:
-            statement = select(Notebook).where(Notebook.updated_at > since)
+            statement = select(Notebook).where(
+                Notebook.updated_at > since,
+                Notebook.is_staged.is_(False),
+            )
             return list(session.exec(statement).all())
 
     def update(self, notebook_id: str, **kwargs) -> Notebook | None:

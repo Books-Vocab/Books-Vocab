@@ -4,7 +4,7 @@
 `ops_world_projection`（state-diff 投影，**刻意只投影子集欄位**）不同，本模組導出
 seed 可**無損重放**的全欄位：
 
-* notebooks — name / color / cover_pattern / sort_order / is_default（排除 is_deleted）
+* notebooks — name / color / cover_pattern / sort_order / is_default（排除 is_deleted 與 is_staged 複製中暫存本）
 * cards — content / pos / meaning / examples / collocations / note / difficulty /
   mode / root_form / inflections / notebook(name 參照) / is_archived
   + review 計數器（review_count / review_streak / lapse_count /
@@ -88,8 +88,28 @@ def _ro_rows(db_path: Path, sql: str) -> list[dict[str, Any]]:
         conn.close()
 
 
+def _ro_has_column(db_path: Path, table: str, column: str) -> bool:
+    """Whether ``table.column`` exists (read-only PRAGMA). Lets the raw notebook
+    read tolerate a legacy DB predating the ``is_staged`` migration — a filter on
+    a missing column would be a parse error, not a no-op."""
+    if not db_path.exists():
+        return False
+    conn = connect_ro(db_path)
+    try:
+        return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
+    finally:
+        conn.close()
+
+
 def _export_notebooks(user_dir: Path) -> list[dict[str, Any]]:
-    rows = _ro_rows(user_dir / "notebooks.db", "SELECT * FROM notebook WHERE is_deleted = 0")
+    db_path = user_dir / "notebooks.db"
+    # Exclude soft-deleted AND copy-in-progress (staged) notebooks. is_staged is
+    # a later migration, so filter on it only when the column is present (a
+    # legacy DB with no staged rows is correct under is_deleted=0 alone).
+    where = "is_deleted = 0"
+    if _ro_has_column(db_path, "notebook", "is_staged"):
+        where += " AND is_staged = 0"
+    rows = _ro_rows(db_path, f"SELECT * FROM notebook WHERE {where}")
     rows.sort(key=lambda r: (int(r.get("sort_order") or 0), str(r.get("name") or "")))
     names = [str(r.get("name") or "") for r in rows]
     dupes = sorted({n for n in names if names.count(n) > 1})

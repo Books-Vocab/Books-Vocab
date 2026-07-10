@@ -181,24 +181,68 @@ def test_copy_idempotent_retry(tmp_path):
     assert shared.get("deck_a").download_count == 1
 
 
-def test_replay_self_heals_hidden_notebook(tmp_path):
+def test_replay_self_heals_staged_notebook(tmp_path, monkeypatch):
     """Crash-window recovery: a prior copy committed its idempotency log but
-    crashed before revealing the notebook (still is_deleted=True). A same-key
-    retry must reveal it via _replay — never mint a duplicate."""
+    crashed BEFORE revealing the notebook, leaving it staged (is_staged=True,
+    NOT user-deleted). A same-key retry reveals it via _replay — never a dup.
+
+    Staging uses a dedicated is_staged flag, never is_deleted, so materialize's
+    reveal can never be confused with (or resurrect) a real user soft-delete."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    # Inject a crash in the reveal window: materialize raises on the first copy,
+    # AFTER record_copy has committed the idempotency log (point of no return).
+    calls = {"n": 0}
+    real_materialize = nbs.materialize
+
+    def flaky(nid):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("injected crash before reveal")
+        return real_materialize(nid)
+
+    monkeypatch.setattr(nbs, "materialize", flaky)
+    with pytest.raises(RuntimeError, match="injected"):
+        _copy(shared, cards, nbs, user_dir, key="k1")
+
+    log = shared.get_copy_log("u1", "k1")
+    assert log is not None  # the crash was AFTER the point of no return
+    staged = nbs.get(log.result_notebook_id)
+    assert staged.is_staged is True
+    assert staged.is_deleted is False
+    assert log.result_notebook_id not in {n.id for n in nbs.all()}  # hidden
+
+    # same-key retry → _replay reveals via the real materialize, no second dup
+    o2 = _copy(shared, cards, nbs, user_dir, key="k1")
+    assert o2.already_copied is True
+    assert o2.notebook_id == log.result_notebook_id
+    nb = nbs.get(log.result_notebook_id)
+    assert nb.is_staged is False
+    assert nb.is_deleted is False
+    assert len([n for n in nbs.all() if not n.is_default]) == 1
+
+
+def test_replay_does_not_resurrect_user_deleted_notebook(tmp_path):
+    """is_deleted is NOT overloaded as the staging barrier: once a copy is
+    materialized and the user soft-deletes it, a same-key retry (cross-device
+    outbox replay against the permanent copy_log) must NOT revive it. materialize
+    only flips is_staged→False and never touches is_deleted, so a user-deleted
+    (is_staged=False, is_deleted=True) copy stays deleted."""
     user_dir, shared, cards, nbs = _stores(tmp_path)
     _publish_deck(shared)
     o1 = _copy(shared, cards, nbs, user_dir, key="k1")
 
-    # simulate the crash window: notebook hidden while the copy_log persists
-    assert nbs.delete(o1.notebook_id) is True
+    assert nbs.delete(o1.notebook_id) is True  # user soft-deletes the copy
     assert nbs.get(o1.notebook_id).is_deleted is True
 
-    o2 = _copy(shared, cards, nbs, user_dir, key="k1")
+    o2 = _copy(shared, cards, nbs, user_dir, key="k1")  # same-key retry
     assert o2.already_copied is True
     assert o2.notebook_id == o1.notebook_id
-    # revealed again, no second notebook minted
-    assert nbs.get(o1.notebook_id).is_deleted is False
-    assert len([n for n in nbs.all() if not n.is_default]) == 1
+    nb = nbs.get(o1.notebook_id)
+    assert nb.is_deleted is True  # stays deleted — NO resurrection
+    assert nb.is_staged is False
+    assert o1.notebook_id not in {n.id for n in nbs.all()}
 
 
 # ── 5b. concurrent same-user copies → serialized, no duplicate name ─
@@ -266,6 +310,54 @@ def test_concurrent_same_user_copies_no_duplicate_active_name(tmp_path):
     exported = json.loads(r.stdout)
     nb_names = [n["name"] for n in exported["notebooks"]]
     assert len(nb_names) == len(set(nb_names)), nb_names
+
+
+def test_staged_notebook_excluded_from_world_export(tmp_path):
+    """A copy-in-progress (staged) notebook must never leak into world-export.
+    The raw-SQL readers filter is_deleted only, so moving the barrier to
+    is_staged forces them to exclude is_staged too — else a half-copied notebook
+    pollutes a replayable world spec (and could inject a duplicate name)."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+    o1 = _copy(shared, cards, nbs, user_dir, key="k1")  # a real, visible copy
+
+    # a staged (copy-in-progress) notebook sitting in the DB, not yet revealed
+    nbs.create(name="Ghost Deck", is_staged=True)
+
+    r = _cli(str(tmp_path), "world-export", "u1")
+    assert r.returncode == 0, r.stderr
+    exported = json.loads(r.stdout)
+    names = [n["name"] for n in exported["notebooks"]]
+    assert "Ghost Deck" not in names, f"staged notebook leaked into export: {names}"
+    assert o1.notebook_name in names  # the materialized copy is present
+
+
+def test_world_export_tolerates_db_without_is_staged_column(tmp_path):
+    """A legacy notebooks.db predating the is_staged migration must still export
+    — the raw readers probe for the column and skip the filter when it is
+    absent (a WHERE on a missing column would be a hard parse error)."""
+    import sqlite3
+
+    user_dir = tmp_path / "users" / "u1"
+    user_dir.mkdir(parents=True)
+    conn = sqlite3.connect(str(user_dir / "notebooks.db"))
+    conn.execute(
+        "CREATE TABLE notebook (id TEXT PRIMARY KEY, name TEXT, color TEXT, "
+        "cover_pattern TEXT, sort_order INTEGER DEFAULT 0, "
+        "is_default INTEGER DEFAULT 0, created_at TEXT, updated_at TEXT, "
+        "is_deleted INTEGER DEFAULT 0)"  # NOTE: no is_staged column
+    )
+    conn.execute(
+        "INSERT INTO notebook (id, name, sort_order, is_default, is_deleted) "
+        "VALUES ('n1', 'Legacy Book', 0, 0, 0)"
+    )
+    conn.commit()
+    conn.close()
+
+    r = _cli(str(tmp_path), "world-export", "u1")
+    assert r.returncode == 0, r.stderr
+    names = [n["name"] for n in json.loads(r.stdout)["notebooks"]]
+    assert names == ["Legacy Book"]
 
 
 # ── 6. count-equality: NOCASE/NFC collapse fails loud ──────────────
