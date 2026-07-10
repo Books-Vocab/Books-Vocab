@@ -390,3 +390,80 @@ def test_plan_spec_emit_outputs_emit_section():
     assert isinstance(payload["emit"]["commands"], list) and payload["emit"]["commands"]
     assert len(payload["shots"]) == 5
     assert payload["render"]["autoRunEligible"] is True
+
+
+# ---------------------------------------------------------------------------
+# snapshot artifact 解析：slug 必須對齊 catalog 檔名規則（只空格→_，保留其他），
+# 且 App Store iPhone 直式圖必須選 iPhone portrait（非 iPad landscape）。
+# 迴歸來源：marketing_account pipeline 首次端到端跑，Vocab/Notebook 兩景 title
+# 含 middle-dot `·` 時 snapshot_slug（全非 alnum→_）產出 `Populated___...` 與
+# catalog 實際檔名 `Populated_·_...` 不符 → resolve missing。
+# ---------------------------------------------------------------------------
+
+snapshot_slug = MODULE.snapshot_slug
+resolve_shot_artifacts = MODULE.resolve_shot_artifacts
+
+
+def test_snapshot_slug_matches_catalog_filename_rule():
+    # catalog slug 實測規則（build/snapshots/catalog-*）：只把空格轉 _，保留其他所有
+    # 字元（middle-dot ·、括號、em-dash、加號、CJK 等）。
+    assert snapshot_slug("Populated · mixed sync states") == "Populated_·_mixed_sync_states"
+    assert snapshot_slug("Populated · multiple notebooks") == "Populated_·_multiple_notebooks"
+    assert snapshot_slug("Vocabulary List View") == "Vocabulary_List_View"
+    assert snapshot_slug("Badge stress (99+)") == "Badge_stress_(99+)"
+    assert snapshot_slug("Default (複習優先)") == "Default_(複習優先)"
+    assert snapshot_slug("Populated graph") == "Populated_graph"  # 無特殊字元不受影響
+    # . : / 也是 catalog 分隔符（CatalogSnapshotTests.swift:331 CharacterSet(".:/")）——
+    # 從真實 catalog 檔名反證：只 replace 空格會漏這三者。
+    assert snapshot_slug("Step 1 / Capture") == "Step_1___Capture"  # / + 空格
+    assert snapshot_slug("Half (0.5)") == "Half_(0_5)"  # . → _
+    assert snapshot_slug("Two speakers (current: 1)") == "Two_speakers_(current__1)"  # : → _
+
+
+def test_resolve_matches_special_char_scene_and_prefers_iphone_portrait():
+    profile = load_profile(MARKETING_ACCOUNT)
+    # 模擬真實 catalog 輸出：2 device × 2 appearance（iPad Pro 11 landscape 排序在
+    # iPhone 15 Pro portrait 之前，正是舊 resolve 誤選 iPad 的成因）。
+    devices = [
+        "iPad Pro 11 landscape (dark)",
+        "iPad Pro 11 landscape",
+        "iPhone 15 Pro portrait (dark)",
+        "iPhone 15 Pro portrait",
+    ]
+    scenes = {
+        "Knowledge Graph View": "Populated_graph",
+        "Vocabulary List View": "Populated_·_mixed_sync_states",
+        "Notebook List View": "Populated_·_multiple_notebooks",
+        "Stats View": "Populated",
+        "Today Review": "Back",
+    }
+    paths = [
+        f"/tmp/build/snapshots/{dev}/{cat.replace(' ', '_')}/{title}.png"
+        for dev in devices
+        for cat, title in scenes.items()
+    ]
+    resolved = resolve_shot_artifacts(profile, {"artifacts": {"paths": paths}})
+    assert len(resolved) == 5  # 全 5 shots 匹配（含含 · 的 Vocab/Notebook 兩景）
+    for r in resolved:
+        assert "iPhone" in r["rawPath"], f"{r['id']} 應選 iPhone，實得 {r['rawPath']}"
+        assert "landscape" not in r["rawPath"], f"{r['id']} 不應選 landscape"
+        assert "(dark)" not in r["rawPath"], f"{r['id']} light shot 不應選 dark"
+
+
+def test_resolve_marketing_demo_slash_and_middot_scenes():
+    # 迴歸：marketing_demo 的 `Welcome/Step 1 / Capture`（title 含 /）與
+    # `Bookshelf View/Populated · mixed formats`（含 ·）必須同時匹配 catalog 檔名。
+    # split("/",1) 後 title="Step 1 / Capture" → catalog "Step_1___Capture"。
+    profile = load_profile(ROOT / "ops" / "capture_profiles" / "marketing_demo.json")
+    files = {
+        "Bookshelf View": "Populated_·_mixed_formats",
+        "Today Review": "Front",
+        "Settings": "Subscribed_Active",
+        "Welcome": "Step_1___Capture",
+    }
+    paths = [
+        f"/tmp/build/snapshots/iPhone 15 Pro portrait/{cat.replace(' ', '_')}/{title}.png"
+        for cat, title in files.items()
+    ]
+    resolved = resolve_shot_artifacts(profile, {"artifacts": {"paths": paths}})
+    assert len(resolved) == 4  # 4 shots 全匹配（含 · 的 Bookshelf 與含 / 的 Welcome）

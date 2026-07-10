@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import re
 import subprocess
 import sys
 import tempfile
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -535,7 +536,12 @@ def should_prepare_cache(snapshot_result: subprocess.CompletedProcess[str], snap
 
 
 def snapshot_slug(raw: str) -> str:
-    return "".join(char if char.isalnum() else "_" for char in raw)
+    # 鏡像 catalog 的 PlaybookSnapshot.Snapshot.normalize（權威 SoT：
+    # ios/BooksAndVocabTests/CatalogSnapshotTests.swift:331-338）——把 `. : /` 與所有
+    # whitespace 當分隔符轉 _，保留其他所有字元（middle-dot ·、括號、em-dash、加號、
+    # hyphen、%、CJK 等）。舊版把所有非 alnum 轉 _，對含 ·／()等的 title 與 catalog
+    # 檔名不符 → resolve missing（只 replace 空格則對含 . : / 的 title 又會漏）。
+    return re.sub(r"[.:/\s]", "_", raw)
 
 
 def resolve_shot_artifacts(profile: CaptureProfile, snapshot_payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -548,11 +554,16 @@ def resolve_shot_artifacts(profile: CaptureProfile, snapshot_payload: dict[str, 
         except ValueError as exc:
             raise CaptureProfileError(f"shots.sourceScenario 格式必須是 Category/Title: {shot.source_scenario}") from exc
         suffix = f"/{snapshot_slug(category)}/{snapshot_slug(title)}.png"
-        match = next((path for path in artifact_paths if str(path).endswith(suffix)), None)
+        candidates = [path for path in artifact_paths if str(path).endswith(suffix)]
         if shot.appearance == "light":
-            match = next((path for path in artifact_paths if str(path).endswith(suffix) and "(dark)" not in str(path)), match)
+            candidates = [path for path in candidates if "(dark)" not in str(path)]
         else:
-            match = next((path for path in artifact_paths if str(path).endswith(suffix) and "(dark)" in str(path)), match)
+            candidates = [path for path in candidates if "(dark)" in str(path)]
+        # App Store iPhone 直式圖：偏好 iPhone portrait。catalog 固定渲染
+        # iPhone 15 Pro portrait + iPad Pro 11 landscape 兩 device，且 iPad landscape
+        # 排序在前——不加偏好會誤選橫向 iPad 圖套進直式框。退回任何符合外觀者。
+        portrait = [path for path in candidates if "iPhone" in str(path) and "landscape" not in str(path)]
+        match = next(iter(portrait or candidates), None)
         if match is None:
             missing.append(shot.source_scenario)
             continue

@@ -24,42 +24,30 @@ xcrun simctl io booted screenshot ~/Desktop/screenshot.png
 
 目前使用機型：**iPhone 17 Pro Max**（1320×2868px）
 
-## 2. 加上裝置外框（WithFrame API）
+## 2. 加上裝置外框（本地 iPhone frame 模板）
 
-**工具**：[WithFrame](https://withfra.me/shot) — 免費 web API，自動偵測裝置解析度套外框。
+> ⚠️ **WithFrame web API 已棄用**（2026-07-10）：`shot.withfra.me/new` 封 urllib UA→403、上傳格式從 SOP 記錄的 `POST /new`+`file` 變更→400，外部服務每次 refresh 都可能失效。改用 repo 內 checked-in 的 iPhone 裝置外框模板**本地 Pillow 合成**，完全自足、無外部依賴、可重現。
 
-### 上傳
+**工具**：`promotion/screenshots/scripts/frame_catalog_screenshots.py`
 
-```bash
-# 上傳截圖，取得 session page URL
-response=$(curl -s -F 'file=@screenshot.png' "https://shot.withfra.me/new")
-page_url=$(echo "$response" | grep -oE 'https://withfra\.me/s/[^ ]+')
-```
+**模板 asset**：
+- `promotion/screenshots/assets/iphone_frame.png` — 黑鈦邊框 + 動態島 + 透明圓角螢幕開口（RGBA）
+- `promotion/screenshots/assets/iphone_frame.json` — 螢幕開口幾何（`screen.left/top/right/bottom/cornerRadius`）
+- **重生模板**：`./promotion/screenshots/scripts/gen_iphone_frame.py`（一次性從 `sources/iphone-framed/01_vocab_list.png` 提取黑鈦邊框幾何 + 重繪動態島；改邊框/圓角/動態島調此 script 頂部常數後重跑）
 
-- 同一 session 的所有上傳共用同一個 page URL
-- 支援指定顏色：`?color=black`
+**合成邏輯**：截圖縮放到螢幕開口尺寸（1223×2657）→ 貼進開口位置 → 模板 overlay（邊框/圓角/動態島蓋最上）。輸出帶**手機形狀 alpha** 的 RGBA PNG，供 §3 render 以 alpha 生成手機形狀 drop shadow。
 
-### 下載帶框圖
+**呼叫**：由 `capture_profile.py` 的 `frame_snapshot_sources` 自動串接（`capture_profile run <profile>`），或獨立跑：
 
 ```bash
-# 從 page HTML 提取 S3 下載連結
-html=$(curl -s "$page_url")
-urls=$(echo "$html" | grep -oE 'https://withframe\.s3[^"]+' | sed 's/&#38;/\&/g' | sort -u)
-
-# 用時間戳配對檔案（每個時間戳可能有多種顏色，取第一個）
-url=$(echo "$urls" | grep "at%20HH.MM.SS" | head -1)
-curl -s -L -o framed.png "$url"
+./promotion/screenshots/scripts/frame_catalog_screenshots.py \
+  --shots-json <shots.json> --output-dir <framed dir>
 ```
-
-### 支援裝置（截至 2026-03）
-
-iPhone 8 ~ iPhone 16 Pro Max。iPhone 17 Pro Max 與 16 Pro Max 同解析度（1320×2868），可正常使用。
 
 ### 注意事項
 
-- S3 連結有效期 24 小時
-- 每個時間戳對應多個 UUID = 不同顏色版本
-- 帶框後圖片尺寸約 1320×2740（比原圖矮，因外框裁切）
+- 截圖必須是 **iPhone portrait**（比例 ~0.461）；非 iPhone portrait 來源 resize 會變形（script stderr warn）。`capture_profile.resolve_shot_artifacts` 已偏好 iPhone portrait 選圖（catalog 同時渲染 iPhone 15 Pro portrait + iPad Pro 11 landscape，需擇前者）。
+- 模板尺寸 1320×2740；合成輸出同尺寸，帶手機形狀 alpha。
 
 ---
 
@@ -230,12 +218,9 @@ for fname, title, subtitle in copies:
 
 ## 4. 文案清單
 
-| # | 畫面 | 大標題 | 副標題 |
-|---|------|--------|--------|
-| 1 | 生詞庫列表 | 你的單字，一目了然 | 自動追蹤學習進度，掌握每個單字的熟練狀態 |
-| 2 | 複習卡片 | 在原文語境中複習 | 釋義、發音、例句、關聯詞——一張卡片全掌握 |
-| 3 | 關聯圖 | 單字不再孤立 | 知識圖譜串起詞彙網絡，越讀越融會貫通 |
-| 4 | 閱讀器翻譯 | 閱讀中即查即學 | 輕觸生詞即時翻譯，閱讀不中斷、學習不費力 |
+App Store 5 張的定調文案（標題/副標）= `ops/capture_profiles/marketing_account.json` 的 `shots[].copy`（**SoT，勿在此複述**）：`knowledge_graph → vocab_list → notebook → stats → today_review`，前 3 張知識網絡/文學情感 hook、後 2 張效率/記憶科學。改文案改 profile，`capture_profile run` 自動疊上。
+
+> 歷史（milestone-4 前的舊 4 張，已被上述 5 張取代）：生詞庫列表 / 複習卡片 / 關聯圖 / 閱讀器翻譯。
 
 ---
 
@@ -244,8 +229,6 @@ for fname, title, subtitle in copies:
 | 問題 | 原因 | 解法 |
 |------|------|------|
 | ImageMagick 無法渲染中文字 | brew 版 freetype 不支援 macOS .ttc 系統字型 | 改用 Pillow |
-| WithFrame curl 下載到 HTML | API 回傳 session page URL，非直接圖片 | 解析 page HTML 提取 S3 signed URL |
-| S3 URL 含 `&#38;` | HTML entity 未轉義 | `sed 's/&#38;/\&/g'` |
-| 同一截圖多個 S3 UUID | 不同顏色外框版本 | 用時間戳配對，`head -1` 取第一個 |
-| deviceframe (npm) 只到 iPhone X | 套件過時 | 改用 WithFrame |
-| fastlane frameit 不支援 16/17 | 開源 issue 尚未合併 | 改用 WithFrame |
+| WithFrame web API 已死（2026-07-10） | 封 urllib UA→403、上傳格式從 `POST /new`+`file` 變更→400，外部 SPA 逆向不可靠 | 改本地 iPhone frame 模板合成（§2）；原 WithFrame 坑（S3 URL entity、多 UUID 顏色版）皆已無關 |
+| deviceframe (npm) 只到 iPhone X | 套件過時 | 改本地模板合成 |
+| fastlane frameit 不支援 16/17 | 開源 issue 尚未合併 | 改本地模板合成 |

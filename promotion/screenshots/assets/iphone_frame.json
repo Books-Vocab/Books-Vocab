@@ -1,0 +1,13 @@
+{
+  "screen": {
+    "left": 48,
+    "top": 41,
+    "right": 1271,
+    "bottom": 2698,
+    "cornerRadius": 155
+  },
+  "canvas": {
+    "w": 1320,
+    "h": 2740
+  }
+}
