@@ -101,6 +101,32 @@ def test_migration_is_idempotent(tmp_path):
         second.close()
 
 
+def test_load_bearing_constraints_exist(tmp_path):
+    """Concurrency correctness rests on 'a UNIQUE/PK catches IntegrityError,
+    not a threading.Lock' (§6.5). The Phase 3 write path depends on these —
+    assert they are actually built so a silent schema regression is caught."""
+    store = SharedDeckStore(tmp_path / "shared_decks.db")
+    try:
+        insp = inspect(store.engine)
+
+        def uniques(table: str) -> set[tuple[str, ...]]:
+            return {tuple(u["column_names"]) for u in insp.get_unique_constraints(table)}
+
+        def pk(table: str) -> set[str]:
+            return set(insp.get_pk_constraint(table)["constrained_columns"])
+
+        # Republish idempotency + per-deck/version card dedup.
+        assert ("owner_id", "source_notebook_id") in uniques("shared_deck")
+        assert ("shared_deck_id", "version", "content_guid") in uniques("shared_deck_card")
+        # Composite PKs on the version pointer + junction/log tables.
+        assert pk("shared_deck_version") == {"shared_deck_id", "version"}
+        assert pk("shared_deck_rating") == {"shared_deck_id", "user_id"}
+        assert pk("shared_deck_report") == {"shared_deck_id", "reporter_id"}
+        assert pk("shared_deck_copy_log") == {"copier_id", "idempotency_key"}
+    finally:
+        store.close()
+
+
 def test_shared_deck_index_columns_present(tmp_path):
     """The metadata plane carries the axes browse/search/moderation need."""
     store = SharedDeckStore(tmp_path / "shared_decks.db")
