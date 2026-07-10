@@ -241,8 +241,13 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
         gates.append(_shell("ios-test-unit", "ios",
                             ["ops/ios_ops.sh", "test", "--unit"], "block"))
         if any(_is_ui_path(p) for p in ios):
+            # ios_test.sh --ui requires a UI World dataset (it is the single
+            # source of truth for UI runs); without it the runner exits 1 on a
+            # usage error, which would false-block every iOS-UI cutover. Pin the
+            # committed default world.
             gates.append(_shell("ios-test-ui", "ios",
-                                ["ops/ios_ops.sh", "test", "--ui"], "block"))
+                                ["ops/ios_ops.sh", "test", "--ui",
+                                 "--dataset", "marketing_demo"], "block"))
 
     if ds:
         gates.append(_shell("design-system", "design-system",
