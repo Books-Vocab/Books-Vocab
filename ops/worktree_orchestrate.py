@@ -60,6 +60,11 @@ have landed since the last deploy; a push is a deliberate, batched release.
              --force) → registry resolve <branch> merged → git worktree remove +
              branch -D (local, and origin if present) + drop the gate-record cache →
              ledger closed, no residue.
+  deploy     publish the local trunk to origin — the ONE deliberate production touch.
+             Guarded ff push (primary on main, origin a strict ancestor of local, never
+             a force); noop when already published; surfaces the backend files in range
+             (a backend delta makes the felix reconciler run a health-gated rollout with
+             auto-rollback — deploy does not re-run that gate). dry-run default.
   sync-main  guarded LOSSLESS ff of the PRIMARY checkout's local main to origin/main
              (three-green: tracked-clean + on main with no merge/rebase in flight +
              strictly behind). In the local-centric model local main normally runs
@@ -105,6 +110,8 @@ EXIT_BLOCK = 1
 # local main to origin, which the felix reconciler turns into a production rollout).
 BASE_DEFAULT = "main"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# git's canonical empty-tree object — diff base for a first-ever publish (all files new)
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 # The design-system impact surface: the EXACT pattern the pre-commit hook uses
 # (.githooks/pre-commit DS_PATTERN). Reused verbatim so orchestrator routing and the
@@ -809,6 +816,107 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _backend_paths_in_range(primary: Path, lo: str, hi: str) -> list[str]:
+    """Changed files under backend/ across lo..hi (informational: which deploy would
+    trigger the felix reconciler's production rollout). The authoritative path filter
+    lives in kg_reconcile.sh; this is a heads-up, not a gate."""
+    rc, out = _git(["diff", "--name-only", f"{lo}..{hi}"], cwd=primary)
+    if rc != 0:
+        return []
+    return [ln for ln in out.splitlines() if ln.startswith("backend/")]
+
+
+def cmd_deploy(args: argparse.Namespace) -> int:
+    """Publish the local trunk to origin — the ONE deliberate production touch.
+
+    In the local-centric model local `main` runs ahead of origin; deploy pushes it so
+    the felix reconciler (watching origin/main) turns the backend delta into a rollout
+    with its own health gate + auto-rollback. This is the guarded, observable push:
+    refuse unless the primary is on `main` with origin a strict ANCESTOR of local
+    (a clean ff — never a force); noop when already published; surface the backend
+    files in range so the operator knows a production rollout is coming. dry-run
+    default. The reconciler owns the health gate/rollback — deploy does not re-run it;
+    `--watch` polls the public version endpoint until it converges (best-effort)."""
+    blocked = _freeze_guard(args.state, "deploy", args.json)
+    if blocked is not None:
+        return blocked
+
+    upstream = args.upstream
+    if not upstream.startswith("origin/"):
+        _emit({"schema": SCHEMA, "step": "deploy", "error": "upstream must be an "
+               "origin/* ref", "upstream": upstream}, args.json,
+              f"✗ upstream must be an origin/* ref, got {upstream!r}")
+        return EXIT_USAGE
+    local = upstream.split("/", 1)[1]
+    primary = primary_root()
+
+    def _refuse(reason: str) -> int:
+        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "refused",
+               "reason": reason, "primary": str(primary)}, args.json,
+              f"✗ deploy refused: {reason}")
+        return EXIT_BLOCK
+
+    cur = _current_branch(str(primary))
+    if cur != local:
+        where = "a detached HEAD" if cur is None else f"{cur!r}"
+        return _refuse(f"primary checkout is on {where}, not {local!r} — deploy "
+                       f"publishes the local trunk")
+
+    frc, fout = _fetch()
+    if frc != 0:
+        return _refuse(f"fetch failed — cannot compare against origin: {fout[:200]}")
+    local_ref = f"refs/heads/{local}"
+    rc, local_sha = _git(["rev-parse", local_ref], cwd=primary)
+    rc2, up_sha = _git(["rev-parse", upstream], cwd=primary)
+    if rc != 0:
+        return _refuse(f"cannot resolve local {local!r}")
+    if rc2 != 0:
+        up_sha = ""  # origin has no such branch yet — first publish
+    if up_sha and local_sha == up_sha:
+        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "noop",
+               "sha": local_sha[:9], "primary": str(primary)}, args.json,
+              f"# deploy: noop — origin already at {local_sha[:9]}")
+        return EXIT_OK
+    if up_sha:
+        anc, _ = _git(["merge-base", "--is-ancestor", upstream, local_ref], cwd=primary)
+        if anc != 0:
+            return _refuse(f"origin has commits local {local!r} lacks — reconcile "
+                           "first (sync-main / pull); deploy never force-pushes")
+    backend = _backend_paths_in_range(primary, upstream if up_sha else EMPTY_TREE, local_ref)
+    _, count = _git(["rev-list", "--count",
+                     (f"{upstream}..{local_ref}" if up_sha else local_ref)], cwd=primary)
+    rollout = "a PRODUCTION rollout (backend changed)" if backend else "no rollout (no backend change)"
+
+    if not args.commit:
+        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "dry-run",
+               "from": up_sha[:9] if up_sha else None, "to": local_sha[:9],
+               "commits": int(count or 0), "backend_files": backend,
+               "would_roll_out": bool(backend), "primary": str(primary)}, args.json,
+              (f"# deploy (dry-run)\n  would push {local} {local_sha[:9]} -> origin "
+               f"({count} commit(s)) → {rollout}\n"
+               + (f"  backend files: {', '.join(backend[:8])}"
+                  f"{' …' if len(backend) > 8 else ''}\n" if backend else "")
+               + "  (--commit to publish)"))
+        return EXIT_OK
+
+    prc, pout = _git(["push", "origin", f"{local_ref}:{local}"], cwd=primary)
+    if prc != 0:
+        return _refuse(f"git push failed: {pout[:300]}")
+    rc, now = _git(["rev-parse", upstream], cwd=primary)
+    if rc != 0 or now != local_sha:
+        return _refuse(f"post-push verification failed: {upstream} is at "
+                       f"{now[:9] if rc == 0 else '?'}, expected {local_sha[:9]}")
+    _emit({"schema": SCHEMA, "step": "deploy", "verdict": "pushed",
+           "to": local_sha[:9], "commits": int(count or 0), "backend_files": backend,
+           "rolled_out": bool(backend), "primary": str(primary)}, args.json,
+          (f"✓ deploy: pushed {local} -> origin {local_sha[:9]} ({count} commit(s)) → "
+           f"{rollout}\n"
+           + ("  the felix reconciler will build + health-gate + auto-rollback; "
+              "watch its verdict or wordnexus.lol version" if backend
+              else "  no reconciler rollout (origin advanced, backend unchanged)")))
+    return EXIT_OK
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     """Impact-based verification: route changed files to the existing gate tools, run
     them, aggregate a verdict, and record it for cutover."""
@@ -1098,6 +1206,17 @@ def build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--commit", action="store_true",
                     help="execute the ff (default: dry-run)")
     sm.set_defaults(func=cmd_sync_main)
+
+    dp = sub.add_parser("deploy", help="publish the local trunk to origin (the one "
+                        "deliberate production touch) — guarded ff push; the felix "
+                        "reconciler turns a backend delta into a health-gated rollout "
+                        "(dry-run default)")
+    add_common(dp)
+    dp.add_argument("--upstream", default="origin/main",
+                    help="origin ref to publish to (default: origin/main)")
+    dp.add_argument("--commit", action="store_true",
+                    help="execute the push (default: dry-run)")
+    dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
                         "births/landings (open/adopt/cutover) until `off`; draining "
