@@ -69,6 +69,7 @@ def _migrate_review_columns(engine: Engine) -> None:
         "lapse_count": "INTEGER DEFAULT 0",
         "review_streak": "INTEGER DEFAULT 0",
         "last_review_feedback": "INTEGER DEFAULT -1",
+        "source_shared_card_guid": "TEXT",
     }
     with engine.connect() as conn:
         result = conn.exec_driver_sql("PRAGMA table_info(card)")

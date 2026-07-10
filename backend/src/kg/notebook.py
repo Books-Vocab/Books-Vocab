@@ -31,6 +31,10 @@ class Notebook(SQLModel, table=True):
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     is_deleted: bool = SQLField(default=False)
+    # Provenance (v1 inert): set when this notebook was copied from a shared
+    # deck (Phase 2 copy). NULL for organically-created notebooks.
+    source_shared_deck_id: str | None = None
+    source_version: int | None = None
 
 
 class NotebookStore:
@@ -47,12 +51,22 @@ class NotebookStore:
         self._migrate_columns()
 
     def _migrate_columns(self) -> None:
+        # SQLModel create_all won't ALTER existing tables → add-if-missing.
+        added_cols = {
+            "cover_pattern": "TEXT",
+            "source_shared_deck_id": "TEXT",
+            "source_version": "INTEGER",
+        }
         with self.engine.connect() as conn:
             existing = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(notebook)").fetchall()}
-            if "cover_pattern" not in existing:
-                conn.exec_driver_sql("ALTER TABLE notebook ADD COLUMN cover_pattern TEXT")
+            changed = False
+            for col, decl in added_cols.items():
+                if col not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE notebook ADD COLUMN {col} {decl}")
+                    logger.info("migrated notebook: added %s column", col)
+                    changed = True
+            if changed:
                 conn.commit()
-                logger.info("migrated notebook: added cover_pattern column")
 
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""

@@ -21,6 +21,8 @@ def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:
         isDeleted=nb.is_deleted,
         cardCount=card_count,
         updatedAt=_dt_to_iso(nb.updated_at),
+        sourceSharedDeckId=nb.source_shared_deck_id,
+        sourceVersion=nb.source_version,
     )
 
 
