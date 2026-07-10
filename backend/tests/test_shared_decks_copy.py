@@ -201,6 +201,73 @@ def test_replay_self_heals_hidden_notebook(tmp_path):
     assert len([n for n in nbs.all() if not n.is_default]) == 1
 
 
+# ── 5b. concurrent same-user copies → serialized, no duplicate name ─
+
+
+def test_concurrent_same_user_copies_no_duplicate_active_name(tmp_path):
+    """Two concurrent same-user copies with DISTINCT idempotency keys (an iOS
+    double-tap mints two keys) must not each read the pre-create notebook
+    snapshot, pick the SAME unique name, and both INSERT → two same-named
+    active notebooks. That breaks world-export's name→id map (§2 name
+    uniqueness is mandatory). The per-user copy lock serializes them so the
+    second copy sees the first's materialized notebook and disambiguates."""
+    import threading
+
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    a_mid = threading.Event()   # A: inside its critical section (holds the lock)
+    a_go = threading.Event()    # main → A: you may finish
+    results: dict[str, object] = {}
+    errors: dict[str, BaseException] = {}
+
+    def a_on_card(i):
+        if i == 0:
+            a_mid.set()
+            # Hold INSIDE the copy critical section until released, so a
+            # concurrent same-user copy must queue behind us if the lock works.
+            assert a_go.wait(timeout=10)
+
+    def run_a():
+        try:
+            results["a"] = _copy(shared, cards, nbs, user_dir, key="ka", on_card=a_on_card)
+        except BaseException as exc:  # noqa: BLE001
+            errors["a"] = exc
+
+    def run_b():
+        try:
+            results["b"] = _copy(shared, cards, nbs, user_dir, key="kb")
+        except BaseException as exc:  # noqa: BLE001
+            errors["b"] = exc
+
+    ta = threading.Thread(target=run_a)
+    ta.start()
+    assert a_mid.wait(timeout=10), "copy A never entered its critical section"
+
+    tb = threading.Thread(target=run_b)
+    tb.start()
+    # B must block on the per-user lock while A holds it. Without the lock B
+    # would race to completion here (and pick the same name).
+    tb.join(timeout=0.5)
+    assert tb.is_alive(), "copy B was NOT serialized behind A (no per-user lock)"
+
+    a_go.set()
+    ta.join(timeout=10)
+    tb.join(timeout=10)
+    assert not errors, errors
+
+    names = {results["a"].notebook_name, results["b"].notebook_name}
+    assert len(names) == 2, f"duplicate active notebook name: {names}"
+    assert "Official Starter" in names  # first copy keeps the base title
+
+    # The real consequence: world-export must still produce a replayable spec.
+    r = _cli(str(tmp_path), "world-export", "u1")
+    assert r.returncode == 0, r.stderr
+    exported = json.loads(r.stdout)
+    nb_names = [n["name"] for n in exported["notebooks"]]
+    assert len(nb_names) == len(set(nb_names)), nb_names
+
+
 # ── 6. count-equality: NOCASE/NFC collapse fails loud ──────────────
 
 
