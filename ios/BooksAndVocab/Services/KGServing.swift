@@ -64,4 +64,7 @@ protocol KGServing: BackgroundSyncing, DeckCopying {
     func pushReviewQuietly(container: ModelContainer) async
     func clearLocalData(container: ModelContainer, reason: String) async
     func fetchQuota() async
+    /// 複製成功後把新 notebook + 其卡片針對性拉回本地（複用既有 sync 基建）。自我
+    /// 防禦、不 throw：pull 失敗僅記 log，卡片仍會在下次 backgroundSync 補齊。
+    func pullCopiedDeck(container: ModelContainer, notebookId: String) async
 }
