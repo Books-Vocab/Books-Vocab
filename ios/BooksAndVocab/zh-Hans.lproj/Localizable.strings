@@ -1031,3 +1031,36 @@
 "reader.font.crimsonPro" = "Crimson Pro";
 "reader.font.sans" = "无衬线";
 "reader.font.mono" = "等宽";
+
+/* i18n: Explore（共享卡组库）— Phase 1b 只读浏览 */
+"app.section.explore" = "探索";
+"explore.search.prompt" = "搜索卡组";
+"explore.refresh" = "刷新";
+"explore.retry" = "重试";
+"explore.sort.label" = "排序";
+"explore.sort.recency" = "最近更新";
+"explore.sort.alphabetical" = "名称";
+"explore.category.language" = "语言";
+"explore.category.exam" = "考试";
+"explore.category.phrase" = "短语";
+"explore.category.custom" = "自定义";
+"explore.empty.title" = "暂无卡组";
+"explore.empty.description" = "官方学习卡组会显示在这里。";
+"explore.empty.guidance" = "下拉刷新以同步卡组。";
+"explore.noResults.title" = "没有匹配的卡组";
+"explore.noResults.description" = "试试其他搜索或筛选。";
+"explore.noResults.clear" = "清除筛选";
+"explore.error.title" = "同步失败";
+"explore.error.description" = "暂时无法加载卡组目录。";
+"explore.error.guidance" = "请检查网络连接后重试。";
+"explore.loading.title" = "正在加载卡组";
+"explore.loading.description" = "正在获取最新卡组目录。";
+"explore.deck.a11y.official" = "官方";
+"explore.deck.a11y.downloads" = "下载 %@ 次";
+"explore.deck.a11y.rating" = "评分 %@，%@ 条评价";
+"explore.detail.sampleCards" = "示例卡片";
+"explore.detail.loadingCards" = "正在加载卡片…";
+"explore.detail.noCards" = "没有可预览的卡片。";
+"explore.detail.cardsError" = "无法加载卡片";
+"explore.detail.missing.title" = "卡组不可用";
+"explore.detail.missing.description" = "此卡组可能已被移除。";

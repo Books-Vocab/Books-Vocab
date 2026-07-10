@@ -1063,3 +1063,36 @@
 "reader.font.crimsonPro" = "Crimson Pro";
 "reader.font.sans" = "Sans";
 "reader.font.mono" = "Mono";
+
+/* i18n: Explore (shared decks library) — Phase 1b read-only browse */
+"app.section.explore" = "Explore";
+"explore.search.prompt" = "Search decks";
+"explore.refresh" = "Refresh";
+"explore.retry" = "Retry";
+"explore.sort.label" = "Sort";
+"explore.sort.recency" = "Recent";
+"explore.sort.alphabetical" = "A–Z";
+"explore.category.language" = "Language";
+"explore.category.exam" = "Exam";
+"explore.category.phrase" = "Phrases";
+"explore.category.custom" = "Custom";
+"explore.empty.title" = "No decks yet";
+"explore.empty.description" = "Official study decks will appear here.";
+"explore.empty.guidance" = "Pull to refresh to sync decks.";
+"explore.noResults.title" = "No matching decks";
+"explore.noResults.description" = "Try a different search or filter.";
+"explore.noResults.clear" = "Clear filters";
+"explore.error.title" = "Sync failed";
+"explore.error.description" = "Couldn't load the deck catalog.";
+"explore.error.guidance" = "Check your connection and try again.";
+"explore.loading.title" = "Loading decks";
+"explore.loading.description" = "Fetching the latest deck catalog.";
+"explore.deck.a11y.official" = "Official";
+"explore.deck.a11y.downloads" = "%@ downloads";
+"explore.deck.a11y.rating" = "rated %@, %@ ratings";
+"explore.detail.sampleCards" = "Sample cards";
+"explore.detail.loadingCards" = "Loading cards…";
+"explore.detail.noCards" = "No preview cards available.";
+"explore.detail.cardsError" = "Couldn't load cards";
+"explore.detail.missing.title" = "Deck unavailable";
+"explore.detail.missing.description" = "This deck may have been removed.";

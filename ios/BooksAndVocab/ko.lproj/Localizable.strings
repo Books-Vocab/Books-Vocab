@@ -1031,3 +1031,36 @@
 "reader.font.crimsonPro" = "Crimson Pro";
 "reader.font.sans" = "산세리프";
 "reader.font.mono" = "고정폭";
+
+/* i18n: Explore（공유 덱 라이브러리）— Phase 1b 읽기 전용 둘러보기 */
+"app.section.explore" = "둘러보기";
+"explore.search.prompt" = "덱 검색";
+"explore.refresh" = "새로고침";
+"explore.retry" = "다시 시도";
+"explore.sort.label" = "정렬";
+"explore.sort.recency" = "최근순";
+"explore.sort.alphabetical" = "이름순";
+"explore.category.language" = "언어";
+"explore.category.exam" = "시험";
+"explore.category.phrase" = "구문";
+"explore.category.custom" = "사용자 지정";
+"explore.empty.title" = "덱이 없습니다";
+"explore.empty.description" = "공식 학습 덱이 여기에 표시됩니다.";
+"explore.empty.guidance" = "아래로 당겨 덱을 동기화하세요.";
+"explore.noResults.title" = "일치하는 덱이 없습니다";
+"explore.noResults.description" = "다른 검색이나 필터를 시도해 보세요.";
+"explore.noResults.clear" = "필터 지우기";
+"explore.error.title" = "동기화 실패";
+"explore.error.description" = "덱 목록을 불러올 수 없습니다.";
+"explore.error.guidance" = "연결을 확인하고 다시 시도하세요.";
+"explore.loading.title" = "덱 불러오는 중";
+"explore.loading.description" = "최신 덱 목록을 가져오는 중입니다.";
+"explore.deck.a11y.official" = "공식";
+"explore.deck.a11y.downloads" = "다운로드 %@회";
+"explore.deck.a11y.rating" = "평점 %@, 평가 %@개";
+"explore.detail.sampleCards" = "샘플 카드";
+"explore.detail.loadingCards" = "카드 불러오는 중…";
+"explore.detail.noCards" = "미리 볼 카드가 없습니다.";
+"explore.detail.cardsError" = "카드를 불러올 수 없습니다";
+"explore.detail.missing.title" = "덱을 사용할 수 없습니다";
+"explore.detail.missing.description" = "이 덱은 삭제되었을 수 있습니다.";

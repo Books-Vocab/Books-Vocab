@@ -3,7 +3,7 @@ import Testing
 
 struct AppPrimarySectionTests {
     @Test func sectionOrderMatchesDesktopSidebarInformationArchitecture() {
-        #expect(AppPrimarySection.allCases == [.bookshelf, .podcasts, .notebooks, .overview])
+        #expect(AppPrimarySection.allCases == [.bookshelf, .podcasts, .notebooks, .overview, .explore])
     }
 
     @Test func sectionsExposeLocalizedTitleKeysAndSymbols() {
@@ -15,5 +15,7 @@ struct AppPrimarySectionTests {
         #expect(AppPrimarySection.notebooks.systemImage == "character.book.closed")
         #expect(AppPrimarySection.overview.titleKey == "app.section.overview")
         #expect(AppPrimarySection.overview.systemImage == "chart.bar")
+        #expect(AppPrimarySection.explore.titleKey == "app.section.explore")
+        #expect(AppPrimarySection.explore.systemImage == "sparkles")
     }
 }

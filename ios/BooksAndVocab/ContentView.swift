@@ -13,6 +13,7 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
     case podcasts
     case notebooks
     case overview
+    case explore
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
         case .podcasts: return "app.section.podcasts"
         case .notebooks: return "app.section.notebooks"
         case .overview: return "app.section.overview"
+        case .explore: return "app.section.explore"
         }
     }
 
@@ -31,21 +33,32 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
         case .podcasts: return "waveform"
         case .notebooks: return "character.book.closed"
         case .overview: return "chart.bar"
+        case .explore: return "sparkles"
         }
     }
 
     /// Sections the shell actually surfaces (iOS TabView + Catalyst sidebar).
-    /// Pure so the DEBUG-only podcast gate (`KGFeatureFlags.podcastEnabled`)
-    /// stays testable without conditional compilation at every switch site.
-    static func visibleCases(podcastEnabled: Bool) -> [AppPrimarySection] {
-        allCases.filter { podcastEnabled || $0 != .podcasts }
+    /// Pure so the DEBUG-only feature gates (`KGFeatureFlags.podcastEnabled` /
+    /// `.exploreEnabled`) stay testable without conditional compilation at every
+    /// switch site.
+    static func visibleCases(podcastEnabled: Bool, exploreEnabled: Bool) -> [AppPrimarySection] {
+        allCases.filter { section in
+            switch section {
+            case .podcasts: return podcastEnabled
+            case .explore: return exploreEnabled
+            default: return true
+            }
+        }
     }
 
     /// Normalizes a selection against the visible set — if a hidden section
     /// (e.g. `.podcasts` with the gate off) ever leaks into selection state,
     /// fall back to the default section instead of a blank detail pane.
-    static func resolvedSelection(_ selection: AppPrimarySection, podcastEnabled: Bool) -> AppPrimarySection {
-        visibleCases(podcastEnabled: podcastEnabled).contains(selection) ? selection : .bookshelf
+    static func resolvedSelection(
+        _ selection: AppPrimarySection, podcastEnabled: Bool, exploreEnabled: Bool
+    ) -> AppPrimarySection {
+        visibleCases(podcastEnabled: podcastEnabled, exploreEnabled: exploreEnabled)
+            .contains(selection) ? selection : .bookshelf
     }
 }
 
@@ -56,7 +69,10 @@ struct ContentView: View {
     @State private var selectedSection: AppPrimarySection = .bookshelf
 
     private var visibleSections: [AppPrimarySection] {
-        AppPrimarySection.visibleCases(podcastEnabled: KGFeatureFlags.podcastEnabled)
+        AppPrimarySection.visibleCases(
+            podcastEnabled: KGFeatureFlags.podcastEnabled,
+            exploreEnabled: KGFeatureFlags.exploreEnabled
+        )
     }
 
     // Why: Hot-reload hook. Release builds: LLVM-strip 成 no-op，零 runtime cost。
@@ -86,7 +102,8 @@ struct ContentView: View {
         .onAppear {
             selectedSection = AppPrimarySection.resolvedSelection(
                 selectedSection,
-                podcastEnabled: KGFeatureFlags.podcastEnabled
+                podcastEnabled: KGFeatureFlags.podcastEnabled,
+                exploreEnabled: KGFeatureFlags.exploreEnabled
             )
         }
         .animatePhaseChange(authManager.isDemoMode)
@@ -141,6 +158,12 @@ struct ContentView: View {
                 .tabItem { Label(L10n.string(AppPrimarySection.overview.titleKey), systemImage: AppPrimarySection.overview.systemImage) }
                 .accessibilityIdentifier("tab.overview")
                 .tag(AppPrimarySection.overview)
+            if visibleSections.contains(.explore) {
+                ExploreView()
+                    .tabItem { Label(L10n.string(AppPrimarySection.explore.titleKey), systemImage: AppPrimarySection.explore.systemImage) }
+                    .accessibilityIdentifier("tab.explore")
+                    .tag(AppPrimarySection.explore)
+            }
         }
         #endif
     }
@@ -158,11 +181,13 @@ struct ContentView: View {
             NotebookListView()
         case .overview:
             OverviewTab()
+        case .explore:
+            ExploreView()
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self, ReviewRecord.self], inMemory: true)
+        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self, ReviewRecord.self, SharedDeck.self], inMemory: true)
 }

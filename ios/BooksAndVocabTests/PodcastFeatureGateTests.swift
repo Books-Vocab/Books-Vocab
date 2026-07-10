@@ -19,23 +19,45 @@ struct PodcastFeatureGateTests {
     // MARK: - Section visibility
 
     @Test func visibleCasesExcludePodcastsWhenDisabled() {
-        #expect(AppPrimarySection.visibleCases(podcastEnabled: false) == [.bookshelf, .notebooks, .overview])
+        #expect(
+            AppPrimarySection.visibleCases(podcastEnabled: false, exploreEnabled: false)
+                == [.bookshelf, .notebooks, .overview]
+        )
     }
 
     @Test func visibleCasesKeepFullOrderWhenEnabled() {
-        #expect(AppPrimarySection.visibleCases(podcastEnabled: true) == AppPrimarySection.allCases)
+        #expect(
+            AppPrimarySection.visibleCases(podcastEnabled: true, exploreEnabled: true)
+                == AppPrimarySection.allCases
+        )
+    }
+
+    @Test func visibleCasesExcludeExploreWhenDisabled() {
+        #expect(
+            AppPrimarySection.visibleCases(podcastEnabled: true, exploreEnabled: false)
+                == [.bookshelf, .podcasts, .notebooks, .overview]
+        )
     }
 
     // MARK: - Selection fallback
 
     @Test func resolvedSelectionFallsBackToBookshelfWhenPodcastsHidden() {
-        #expect(AppPrimarySection.resolvedSelection(.podcasts, podcastEnabled: false) == .bookshelf)
+        #expect(
+            AppPrimarySection.resolvedSelection(.podcasts, podcastEnabled: false, exploreEnabled: true) == .bookshelf
+        )
+    }
+
+    @Test func resolvedSelectionFallsBackToBookshelfWhenExploreHidden() {
+        #expect(
+            AppPrimarySection.resolvedSelection(.explore, podcastEnabled: true, exploreEnabled: false) == .bookshelf
+        )
     }
 
     @Test func resolvedSelectionKeepsVisibleSections() {
-        #expect(AppPrimarySection.resolvedSelection(.podcasts, podcastEnabled: true) == .podcasts)
-        #expect(AppPrimarySection.resolvedSelection(.overview, podcastEnabled: false) == .overview)
-        #expect(AppPrimarySection.resolvedSelection(.notebooks, podcastEnabled: true) == .notebooks)
+        #expect(AppPrimarySection.resolvedSelection(.podcasts, podcastEnabled: true, exploreEnabled: true) == .podcasts)
+        #expect(AppPrimarySection.resolvedSelection(.overview, podcastEnabled: false, exploreEnabled: false) == .overview)
+        #expect(AppPrimarySection.resolvedSelection(.notebooks, podcastEnabled: true, exploreEnabled: true) == .notebooks)
+        #expect(AppPrimarySection.resolvedSelection(.explore, podcastEnabled: true, exploreEnabled: true) == .explore)
     }
 }
 
