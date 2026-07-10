@@ -28,8 +28,16 @@ def _b64u_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode(text + ("=" * ((-len(text)) % 4)))
 
 
+# Domain-separation tag folded into the HMAC input so this cursor's signature
+# can never be confused with any other HMAC that happens to share the server
+# secret (e.g. a JWT). The NUL terminator makes the prefix unambiguous.
+_CURSOR_DOMAIN = b"kg.shared_decks.cursor.v1\x00"
+
+
 def _sign(body: str, secret: str) -> str:
-    tag = hmac.new(secret.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest()
+    tag = hmac.new(
+        secret.encode("utf-8"), _CURSOR_DOMAIN + body.encode("ascii"), hashlib.sha256
+    ).digest()
     return _b64u_encode(tag)
 
 

@@ -141,7 +141,7 @@ def get_deck(request: Request, deck_id: str):
     has_more = len(cards) > _SAMPLE_CARDS
     cards = cards[:_SAMPLE_CARDS]
     cards_cursor = (
-        encode_cursor({"k": "cards", "id": cards[-1].id}, settings.jwt_secret)
+        encode_cursor({"k": "cards", "d": deck.id, "id": cards[-1].id}, settings.jwt_secret)
         if has_more and cards else None
     )
     return DeckDetailResponse(
@@ -166,6 +166,10 @@ def get_deck_cards(
     after = None
     if cursor:
         payload = decode_cursor(cursor, settings.jwt_secret)
+        # Bind the cursor to this endpoint (k) and deck (d): a list cursor or
+        # another deck's cards cursor is a 400, not a silently-accepted boundary.
+        if payload.get("k") != "cards" or payload.get("d") != deck.id:
+            raise BadRequestError("Invalid cursor")
         after = payload.get("id")
         if not isinstance(after, str):
             raise BadRequestError("Invalid cursor")
@@ -176,7 +180,7 @@ def get_deck_cards(
     has_more = len(cards) > limit
     cards = cards[:limit]
     next_cursor = (
-        encode_cursor({"k": "cards", "id": cards[-1].id}, settings.jwt_secret)
+        encode_cursor({"k": "cards", "d": deck.id, "id": cards[-1].id}, settings.jwt_secret)
         if has_more and cards else None
     )
     return DeckCardsResponse(cards=[_card(c) for c in cards], nextCursor=next_cursor)
