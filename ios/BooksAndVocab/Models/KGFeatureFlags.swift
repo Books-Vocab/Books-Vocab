@@ -57,6 +57,17 @@ enum KGFeatureFlags {
     static let podcastEnabled = false
     #endif
 
+    /// Whether the Explore（共享牌組庫）top-level section is surfaced (tab / Catalyst
+    /// sidebar row) **and** whether its guest-browse catalog sync may run. DEBUG-only
+    /// while the feature incubates —— Release ships without any Explore footprint
+    /// （browse 端點雖已上線，iOS 面待 copy/分享 Phase 2 齊備才對 Release 曝光）。
+    /// Compile-time constant so Release codepaths are strippable，鏡射 podcastEnabled。
+    #if DEBUG
+    static let exploreEnabled = true
+    #else
+    static let exploreEnabled = false
+    #endif
+
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the
     /// fields would be silently dropped; flip this when backend accepts them.

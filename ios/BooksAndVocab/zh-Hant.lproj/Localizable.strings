@@ -1046,3 +1046,36 @@
 "reader.font.crimsonPro" = "Crimson Pro";
 "reader.font.sans" = "無襯線";
 "reader.font.mono" = "等寬";
+
+/* i18n: Explore（共享牌組庫）— Phase 1b 唯讀瀏覽 */
+"app.section.explore" = "探索";
+"explore.search.prompt" = "搜尋牌組";
+"explore.refresh" = "重新整理";
+"explore.retry" = "重試";
+"explore.sort.label" = "排序";
+"explore.sort.recency" = "最近更新";
+"explore.sort.alphabetical" = "名稱";
+"explore.category.language" = "語言";
+"explore.category.exam" = "考試";
+"explore.category.phrase" = "片語";
+"explore.category.custom" = "自訂";
+"explore.empty.title" = "尚無牌組";
+"explore.empty.description" = "官方學習牌組會出現在這裡。";
+"explore.empty.guidance" = "下拉重新整理以同步牌組。";
+"explore.noResults.title" = "沒有符合的牌組";
+"explore.noResults.description" = "試試其他搜尋或篩選。";
+"explore.noResults.clear" = "清除篩選";
+"explore.error.title" = "同步失敗";
+"explore.error.description" = "目前無法載入牌組目錄。";
+"explore.error.guidance" = "請確認網路連線後重試。";
+"explore.loading.title" = "正在載入牌組";
+"explore.loading.description" = "正在取得最新牌組目錄。";
+"explore.deck.a11y.official" = "官方";
+"explore.deck.a11y.downloads" = "下載 %@ 次";
+"explore.deck.a11y.rating" = "評分 %@，%@ 則評分";
+"explore.detail.sampleCards" = "範例卡片";
+"explore.detail.loadingCards" = "正在載入卡片…";
+"explore.detail.noCards" = "沒有可預覽的卡片。";
+"explore.detail.cardsError" = "無法載入卡片";
+"explore.detail.missing.title" = "牌組無法使用";
+"explore.detail.missing.description" = "這個牌組可能已被移除。";

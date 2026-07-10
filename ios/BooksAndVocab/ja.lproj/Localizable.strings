@@ -1030,3 +1030,36 @@
 "reader.font.crimsonPro" = "Crimson Pro";
 "reader.font.sans" = "サンセリフ";
 "reader.font.mono" = "等幅";
+
+/* i18n: Explore（共有デッキライブラリ）— Phase 1b 閲覧のみ */
+"app.section.explore" = "見つける";
+"explore.search.prompt" = "デッキを検索";
+"explore.refresh" = "更新";
+"explore.retry" = "再試行";
+"explore.sort.label" = "並び替え";
+"explore.sort.recency" = "最近の更新";
+"explore.sort.alphabetical" = "名前順";
+"explore.category.language" = "言語";
+"explore.category.exam" = "試験";
+"explore.category.phrase" = "フレーズ";
+"explore.category.custom" = "カスタム";
+"explore.empty.title" = "デッキがありません";
+"explore.empty.description" = "公式の学習デッキがここに表示されます。";
+"explore.empty.guidance" = "引っ張って更新するとデッキを同期します。";
+"explore.noResults.title" = "一致するデッキがありません";
+"explore.noResults.description" = "別の検索や絞り込みをお試しください。";
+"explore.noResults.clear" = "絞り込みを解除";
+"explore.error.title" = "同期に失敗しました";
+"explore.error.description" = "デッキ一覧を読み込めませんでした。";
+"explore.error.guidance" = "接続を確認して再試行してください。";
+"explore.loading.title" = "デッキを読み込み中";
+"explore.loading.description" = "最新のデッキ一覧を取得しています。";
+"explore.deck.a11y.official" = "公式";
+"explore.deck.a11y.downloads" = "%@ 回ダウンロード";
+"explore.deck.a11y.rating" = "評価 %@、%@ 件";
+"explore.detail.sampleCards" = "サンプルカード";
+"explore.detail.loadingCards" = "カードを読み込み中…";
+"explore.detail.noCards" = "プレビューできるカードがありません。";
+"explore.detail.cardsError" = "カードを読み込めませんでした";
+"explore.detail.missing.title" = "デッキを利用できません";
+"explore.detail.missing.description" = "このデッキは削除された可能性があります。";
