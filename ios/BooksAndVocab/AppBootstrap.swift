@@ -19,7 +19,8 @@ enum AppBootstrap {
     /// 避免 6 處重複的型別清單彼此 drift。
     static let fullModelTypes: [any PersistentModel.Type] = [
         Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-        PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self
+        PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
+        SharedDeck.self
     ]
 
     @MainActor
@@ -43,7 +44,7 @@ enum AppBootstrap {
 
         let localConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, SharedDeck.self]),
             cloudKitDatabase: .none
         )
 

@@ -35,7 +35,8 @@ struct NotebookReconcilerTests {
         KGNotebook(
             id: id, name: name, color: nil, coverPattern: nil,
             sortOrder: 0, isDefault: isDefault, isDeleted: isDeleted,
-            cardCount: 0, updatedAt: nil
+            cardCount: 0, updatedAt: nil,
+            sourceSharedDeckId: nil, sourceVersion: nil
         )
     }
 

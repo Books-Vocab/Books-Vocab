@@ -51,6 +51,9 @@ enum NotebookReconciler {
                 l.sortOrder = r.sortOrder
                 l.isSoftDeleted = r.isDeleted
                 l.syncStatus = 1
+                // Explore copy provenance（v1 inert；跨裝置 round-trip）。
+                l.sourceSharedDeckId = r.sourceSharedDeckId
+                l.sourceVersion = r.sourceVersion
                 if wasAlive && r.isDeleted { tombstoned.insert(l.remoteId) }
             } else if !r.isDeleted {
                 let nb = Notebook(
@@ -62,6 +65,8 @@ enum NotebookReconciler {
                 nb.coverPattern = r.coverPattern
                 nb.sortOrder = r.sortOrder
                 nb.syncStatus = 1
+                nb.sourceSharedDeckId = r.sourceSharedDeckId
+                nb.sourceVersion = r.sourceVersion
                 modelContext.insert(nb)
             }
         }
