@@ -38,7 +38,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from kg.ops_edit_shared import backup_world
+from kg.ops_edit_shared import append_audit, backup_world
 from kg.shared_decks.store import (
     SharedDeckStore,
     canonical_card,
@@ -49,6 +49,8 @@ _HERE = Path(__file__).resolve().parent
 SPEC_SCHEMA = "kg.official_deck.v1"
 _DECK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 _BACKUP_LABEL = "shared-decks-official"
+# Coarse category enum (README-documented). Empty/None allowed (uncategorized).
+_CATEGORIES = frozenset({"language", "exam", "phrase", "custom"})
 
 
 class SpecError(ValueError):
@@ -75,13 +77,16 @@ def _normalize(spec: dict) -> dict:
     tags = spec.get("tags") or []
     if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
         raise SpecError("tags must be a list of strings")
+    category = _opt_str(spec.get("category"))
+    if category is not None and category not in _CATEGORIES:
+        raise SpecError(f"category must be one of {sorted(_CATEGORIES)} or null, got {category!r}")
     # NOTE: source / ownerId / visibility / status are deliberately NOT read —
     # they are server-authoritative in publish_official. A spec cannot inject them.
     return {
         "deck_id": deck_id,
         "title": title,
         "description": _opt_str(spec.get("description")),
-        "category": _opt_str(spec.get("category")),
+        "category": category,
         "language_pair": _opt_str(spec.get("languagePair")),
         "tags": [str(t) for t in tags],
         "color": _opt_str(spec.get("color")),
@@ -99,6 +104,10 @@ def _normalize_card(card: dict, index: int) -> dict:
     meaning = card.get("meaning")
     if not isinstance(meaning, str) or not meaning.strip():
         raise SpecError(f"card[{index}].meaning must be a non-empty string")
+    difficulty = card.get("difficulty")
+    # bool is an int subclass — reject it explicitly so `true` isn't stored as 1.0.
+    if difficulty is not None and (isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))):
+        raise SpecError(f"card[{index}].difficulty must be a number or null, got {difficulty!r}")
     return {
         "content": content,
         "pos": _opt_str(card.get("pos")),
@@ -106,7 +115,7 @@ def _normalize_card(card: dict, index: int) -> dict:
         "examples": _str_list(card.get("examples"), f"card[{index}].examples"),
         "collocations": _str_list(card.get("collocations"), f"card[{index}].collocations"),
         "note": _opt_str(card.get("note")),
-        "difficulty": card.get("difficulty"),
+        "difficulty": difficulty,
         "mode": _opt_str(card.get("mode")) or "recognition",
         "root_form": _opt_str(card.get("rootForm")),
         "inflections": _str_list(card.get("inflections"), f"card[{index}].inflections"),
@@ -176,9 +185,20 @@ def emit(
         verified = _verify(store, deck["deck_id"], result)
     finally:
         store.close()
+    # Audit trail: who injected which official deck, when (traceability of a
+    # production write — mirrors EditContext's append_audit for ops_edit).
+    append_audit(data_dir, {
+        "schema": "kg.official_deck_injection.v1",
+        "deckId": deck["deck_id"], "action": result["action"],
+        "version": result["version"], "contentHash": result["contentHash"],
+        "backup": str(backup),
+    })
     return {
-        "mode": "commit", "committed": True, "backup": str(backup),
-        "result": result, "verified": verified,
+        # ``dataDir`` is surfaced so an operator sees WHERE the write landed —
+        # when KG_DATA_DIR is unset this resolves to the live dev data dir, not
+        # a throwaway sandbox.
+        "mode": "commit", "committed": True, "dataDir": str(data_dir),
+        "backup": str(backup), "result": result, "verified": verified,
     }
 
 
