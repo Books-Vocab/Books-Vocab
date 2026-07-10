@@ -1037,3 +1037,94 @@ def test_sync_main_refuses_when_fetch_fails(scratch):
         assert "fetch failed" in json.dumps(res)
     finally:
         _git(["remote", "set-url", "origin", str(remote)], repo)
+
+
+# ============================================================================
+# INTEGRATION: deploy (publish local trunk to origin — the one production touch)
+# ============================================================================
+@gitmark
+def test_deploy_noop_when_origin_already_current(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, res = _run_json(["deploy", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["verdict"] == "noop"
+
+
+@gitmark
+def test_deploy_dry_run_reports_range_and_backend_rollout(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    # local main gets ahead with a backend change (origin is not pushed)
+    bp = repo / "backend" / "src" / "kg" / "app.py"
+    bp.parent.mkdir(parents=True, exist_ok=True)
+    bp.write_text("x = 1\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "backend change"], repo)
+
+    rc, dry = _run_json(["deploy", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert dry["verdict"] == "dry-run"
+    assert dry["commits"] == 1
+    assert dry["would_roll_out"] is True
+    assert "backend/src/kg/app.py" in dry["backend_files"]
+    # dry-run pushed nothing
+    assert "backend/src/kg/app.py" not in _origin_main_files(remote)
+
+
+@gitmark
+def test_deploy_commit_pushes_and_advances_origin(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    (repo / "docs.md").write_text("note\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "a docs-only change"], repo)
+
+    rc, res = _run_json(["deploy", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["verdict"] == "pushed"
+    assert res["rolled_out"] is False           # no backend in range
+    assert "docs.md" in _origin_main_files(remote)   # origin advanced
+
+
+@gitmark
+def test_deploy_refused_when_primary_not_on_main(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _git(["checkout", "-q", "-b", "sidetrack"], repo)
+    try:
+        rc, res = _run_json(["deploy", "--state", state, "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert "sidetrack" in json.dumps(res)
+    finally:
+        _git(["checkout", "-q", "main"], repo)
+
+
+@gitmark
+def test_deploy_refused_when_origin_diverged(scratch):
+    # origin holds a commit local main lacks -> deploy must refuse (never force-push)
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    # advance origin/main behind our back via a second clone
+    other = tmp_path / "other"
+    _git(["clone", "-q", str(remote), str(other)], tmp_path)
+    _git(["config", "user.email", "o@o"], other); _git(["config", "user.name", "o"], other)
+    (other / "remote-only.txt").write_text("from elsewhere\n")
+    _git(["add", "-A"], other); _git(["commit", "-qm", "remote-only"], other)
+    _git(["push", "-q", "origin", "main"], other)
+    # our local main also advances (diverging)
+    (repo / "local-only.txt").write_text("mine\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "local-only"], repo)
+
+    rc, res = _run_json(["deploy", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "reconcile" in json.dumps(res)
+
+
+@gitmark
+def test_deploy_refused_when_frozen(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    (repo / "x.txt").write_text("y\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "x"], repo)
+    _run_json(["freeze", "on", "--reason", "surgery", "--state", state, "--json"])
+    rc, res = _run_json(["deploy", "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
