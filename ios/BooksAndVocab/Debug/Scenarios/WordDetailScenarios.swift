@@ -16,7 +16,12 @@ enum WordDetailScenarios {
             Scenario("Rich entry", layout: .fill) {
                 MainActor.assumeIsolated {
                     AppThemeContainer {
-                        WordDetailSheet(entry: Self.entry(.rich), allEntries: Self.entries())
+                        // presentsEagerly: the catalog snapshot renders synchronously
+                        // and does not await WordDetailSheet's deferred presentation
+                        // `.task`, so seed the card up front (otherwise the shot
+                        // captures the "載入中" loading placeholder). Data still pins
+                        // the `.wordDetail` QA seed (ephemeral entry).
+                        WordDetailSheet(entry: Self.entry(.rich), allEntries: Self.entries(), presentsEagerly: true)
                     }
                     .environmentObject(AppAppearanceStore.preview)
                 }
@@ -24,7 +29,9 @@ enum WordDetailScenarios {
             Scenario("Minimal entry", layout: .fill) {
                 MainActor.assumeIsolated {
                     AppThemeContainer {
-                        WordDetailSheet(entry: Self.entry(.minimal), allEntries: Self.entries())
+                        // presentsEagerly: same catalog-snapshot seam as "Rich entry".
+                        // Data still pins the `.wordDetail` QA seed (terse entry).
+                        WordDetailSheet(entry: Self.entry(.minimal), allEntries: Self.entries(), presentsEagerly: true)
                     }
                     .environmentObject(AppAppearanceStore.preview)
                 }
