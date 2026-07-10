@@ -593,8 +593,13 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     body = json.dumps(state, indent=2, ensure_ascii=False) + "\n"
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(body)
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(body)
+        os.replace(tmp, path)
+    finally:
+        # a raise between write and replace would otherwise strand the temp; the
+        # replace consumes it on success, so this only fires on the failure path.
+        tmp.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -604,10 +609,12 @@ def _ledger_lock(state_path: Path):
     other's updates (the ledger is a shared JSON file; unlocked RMW is last-writer-
     wins). An advisory flock on a sidecar `<ledger>.lock` — the kernel drops it when
     the fd closes, so a crashed holder never leaves a stale lock (unlike an O_EXCL
-    marker file). Blocking acquire: the critical section is a small-JSON load+mutate+
-    save (sub-ms) and a dead holder auto-releases, so there is no deadlock to time
-    out. Advisory only — every WRITER must take it; load_state stays lock-free for
-    read-only callers, which the atomic save_state protects from torn reads."""
+    marker file). Blocking acquire with no timeout is safe: every writer's critical
+    section terminates (register/resolve are a small-JSON load+mutate+save; sweep also
+    runs git under the lock, so it can hold for seconds — still bounded), and a dead
+    holder auto-releases, so no deadlock can form. Advisory only — every WRITER must
+    take it; load_state stays lock-free for read-only callers, which the atomic
+    save_state protects from torn reads."""
     lock_path = state_path.with_name(state_path.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
