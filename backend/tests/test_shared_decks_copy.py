@@ -181,6 +181,26 @@ def test_copy_idempotent_retry(tmp_path):
     assert shared.get("deck_a").download_count == 1
 
 
+def test_replay_self_heals_hidden_notebook(tmp_path):
+    """Crash-window recovery: a prior copy committed its idempotency log but
+    crashed before revealing the notebook (still is_deleted=True). A same-key
+    retry must reveal it via _replay — never mint a duplicate."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+    o1 = _copy(shared, cards, nbs, user_dir, key="k1")
+
+    # simulate the crash window: notebook hidden while the copy_log persists
+    assert nbs.delete(o1.notebook_id) is True
+    assert nbs.get(o1.notebook_id).is_deleted is True
+
+    o2 = _copy(shared, cards, nbs, user_dir, key="k1")
+    assert o2.already_copied is True
+    assert o2.notebook_id == o1.notebook_id
+    # revealed again, no second notebook minted
+    assert nbs.get(o1.notebook_id).is_deleted is False
+    assert len([n for n in nbs.all() if not n.is_default]) == 1
+
+
 # ── 6. count-equality: NOCASE/NFC collapse fails loud ──────────────
 
 

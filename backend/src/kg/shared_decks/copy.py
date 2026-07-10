@@ -15,9 +15,11 @@ here so the router stays a thin adapter:
   a transport retry replays to the same notebook, never a duplicate.
 * **materialization barrier + compensating rollback**: cards.db / notebooks.db
   have no cross-file transaction, so the notebook is staged HIDDEN and revealed
-  only at the last moment; any mid-copy failure compensates (hard-deletes the
-  partial notebook + cards) and re-raises — no half-product survives even an
-  uncaught crash (the copy_log is written last, so a retry re-copies cleanly).
+  only after the idempotency log commits. Any pre-commit failure compensates
+  (hard-deletes the partial notebook + cards) and re-raises. The copy_log is the
+  point of no return: written BEFORE reveal, so a crash in the reveal window
+  self-heals — the retry finds the log and _replay reveals the still-hidden
+  notebook, never minting a duplicate.
 * **count-equality**: copied distinct cards == source snapshot, else fail-loud
   (a NOCASE/NFC collapse under the card table's per-notebook uniqueness — e.g. a
   homograph pair distinct only by pos/meaning — must not silently drop a card).
@@ -132,6 +134,10 @@ def _replay(
     log,
     deck_id: str,
 ) -> CopyOutcome:
+    # Defensive re-materialize: if a prior copy crashed in the window between
+    # record_copy (committed) and materialize, the notebook is still hidden. The
+    # retry that lands here reveals it — self-healing, and a no-op once visible.
+    notebook_store.materialize(log.result_notebook_id)
     nb = notebook_store.get(log.result_notebook_id)
     return CopyOutcome(
         notebook_id=log.result_notebook_id,
@@ -216,15 +222,20 @@ def copy_shared_deck(
 
         # No-op for official decks (zero links); seam kept honest for the future.
         _remap_graph_links(user_dir, nb.id, source_links=(), id_map=id_map)
-
-        # Reveal the barrier — the notebook becomes visible only now.
-        notebook_store.materialize(nb.id)
     except Exception:
+        # Everything above is pre-commit: no copy_log points at this notebook yet,
+        # so compensation can safely erase the whole partial copy.
         _compensate(card_store, notebook_store, user_dir, nb.id)
         raise
 
-    # Commit idempotency LAST. If a concurrent request with the same key won the
-    # race, roll our copy back and replay to theirs (never two notebooks).
+    # ── point of no return ─────────────────────────────────────────
+    # Commit the idempotency log BEFORE revealing the notebook. If a concurrent
+    # request with the same key won the race, roll OUR copy back and replay to
+    # theirs (never two notebooks). Ordering matters: were the notebook revealed
+    # first, a crash before record_copy would leave a visible copy with no log →
+    # a retry would mint a SECOND notebook (the duplicate idempotency exists to
+    # prevent). With the log first, a crash before materialize self-heals — the
+    # retry finds the log and _replay reveals the still-hidden notebook.
     if not shared_store.record_copy(copier_id, idempotency_key, deck.id, version, nb.id):
         _compensate(card_store, notebook_store, user_dir, nb.id)
         winner = shared_store.get_copy_log(copier_id, idempotency_key)
@@ -234,6 +245,10 @@ def copy_shared_deck(
         # it rather than pretend success.
         raise ConflictError("deck copy idempotency conflict could not be resolved")
 
+    # Post-commit finalizers — best-effort, never compensated (rolling back after
+    # the idempotency log is committed would strand its pointer). A crash here is
+    # recovered by the next retry via _replay.
+    notebook_store.materialize(nb.id)
     shared_store.increment_download_count(deck.id)
     return CopyOutcome(
         notebook_id=nb.id, notebook_name=unique_name, deck_id=deck.id,
