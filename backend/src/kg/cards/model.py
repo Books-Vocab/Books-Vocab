@@ -46,6 +46,10 @@ class Card(SQLModel, table=True):
     review_streak: int = SQLField(default=0)
     last_review_feedback: int = SQLField(default=-1)  # -1=none, 0=forgot, 1=remembered
 
+    # Provenance (v1 inert): content_guid of the shared_deck_card this card was
+    # copied from (Phase 2 copy stamps it). NULL for organically-created cards.
+    source_shared_card_guid: str | None = SQLField(default=None)
+
     def embed_text(self) -> str:
         """Text used for embedding."""
         return f"{self.content}: {self.meaning}"

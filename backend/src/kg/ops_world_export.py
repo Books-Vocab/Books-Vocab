@@ -100,13 +100,21 @@ def _export_notebooks(user_dir: Path) -> list[dict[str, Any]]:
 
 
 def _notebook_entry(row: dict[str, Any]) -> dict[str, Any]:
-    return {
+    entry: dict[str, Any] = {
         "name": row.get("name"),
         "color": row.get("color"),
         "cover_pattern": row.get("cover_pattern"),
         "sort_order": int(row.get("sort_order") or 0),
         "is_default": bool(row.get("is_default")),
     }
+    # Provenance is omit-if-null: specs predating shared decks carry no such
+    # key, so emitting null would break the byte-equal roundtrip (§1.1). When
+    # set (Phase 2 copy), export + seed stay field-symmetric.
+    src_deck = row.get("source_shared_deck_id")
+    if src_deck is not None:
+        entry["source_shared_deck_id"] = src_deck
+        entry["source_version"] = row.get("source_version")
+    return entry
 
 
 def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:

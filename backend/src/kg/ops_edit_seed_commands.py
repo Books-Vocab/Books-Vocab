@@ -267,6 +267,12 @@ def cmd_seed(args: argparse.Namespace) -> int:
                 nb_updates["cover_pattern"] = n["cover_pattern"]
             if "sort_order" in n:
                 nb_updates["sort_order"] = n["sort_order"]
+            # Provenance (omit-if-null): export only emits these when set, so
+            # `key in n` keeps seed↔export field-symmetric (§1.1 roundtrip).
+            if "source_shared_deck_id" in n:
+                nb_updates["source_shared_deck_id"] = n["source_shared_deck_id"]
+            if "source_version" in n:
+                nb_updates["source_version"] = n["source_version"]
             nb_store.update(nb_id, **nb_updates)
             name_to_id[name] = nb_id
             existing_ids.add(nb_id)
