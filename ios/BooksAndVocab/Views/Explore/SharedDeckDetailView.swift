@@ -20,6 +20,7 @@ struct SharedDeckDetailView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.networkMonitor) private var networkMonitor
     @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
 
     let deckId: String
@@ -105,6 +106,11 @@ struct SharedDeckDetailView: View {
                 copyStateView(previewCopyState, deck: deck)
             } else if !authManager.isLoggedIn {
                 loginRequiredCTA
+            } else if copyController.state == .idle && !networkMonitor.isConnected {
+                // Gate the START of a copy offline so a tap can't kick off an
+                // attempt that immediately fails. inflight/success/failure keep
+                // rendering their own state (a mid-flight drop still resolves).
+                offlineIdleCTA
             } else {
                 copyStateView(copyController.state, deck: deck)
             }
@@ -158,6 +164,21 @@ struct SharedDeckDetailView: View {
                 .foregroundStyle(appTheme.palette.tertiaryText)
         }
         .accessibilityIdentifier("explore.copy.loginRequired")
+    }
+
+    private var offlineIdleCTA: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+            Button {} label: {
+                Label(L10n.string("explore.copy.cta"), systemImage: "square.and.arrow.down.on.square")
+            }
+            .buttonStyle(.appAction(.primary))
+            .disabled(true)
+            .accessibilityHint(L10n.string("explore.copy.error.offline"))
+            Text(L10n.string("explore.copy.error.offline"))
+                .font(AppFonts.caption())
+                .foregroundStyle(appTheme.palette.tertiaryText)
+        }
+        .accessibilityIdentifier("explore.copy.offline")
     }
 
     private func copySuccessCard(_ outcome: SharedDeckCopyController.Outcome) -> some View {
