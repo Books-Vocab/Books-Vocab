@@ -22,7 +22,7 @@ scope:
   - backend/src/kg/vocab_crud.py
   - backend/src/kg/vocab_handlers/intake.py
   - backend/src/kg/vocab_handlers/crud.py
-verified_against: 888dde5f0
+verified_against: e14f295ad
 -->
 # Sync Lifecycle
 
