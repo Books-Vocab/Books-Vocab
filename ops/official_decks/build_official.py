@@ -44,6 +44,7 @@ from kg.shared_decks.store import (
     canonical_card,
     deck_content_hash,
 )
+from kg.text_utils import normalize_nfc
 
 _HERE = Path(__file__).resolve().parent
 SPEC_SCHEMA = "kg.official_deck.v1"
@@ -80,6 +81,8 @@ def _normalize(spec: dict) -> dict:
     category = _opt_str(spec.get("category"))
     if category is not None and category not in _CATEGORIES:
         raise SpecError(f"category must be one of {sorted(_CATEGORIES)} or null, got {category!r}")
+    cards = [_normalize_card(c, i) for i, c in enumerate(raw_cards)]
+    _assert_copyable(cards)
     # NOTE: source / ownerId / visibility / status are deliberately NOT read —
     # they are server-authoritative in publish_official. A spec cannot inject them.
     return {
@@ -91,8 +94,46 @@ def _normalize(spec: dict) -> dict:
         "tags": [str(t) for t in tags],
         "color": _opt_str(spec.get("color")),
         "cover_pattern": _opt_str(spec.get("coverPattern")),
-        "cards": [_normalize_card(c, i) for i, c in enumerate(raw_cards)],
+        "cards": cards,
     }
+
+
+def _nocase_key(content: str) -> str:
+    """The copier's per-notebook uniqueness key: NFC-normalized content compared
+    COLLATE NOCASE. SQLite NOCASE folds ONLY ASCII A-Z, so fold exactly that —
+    ``str.lower()`` would over-fold non-ASCII and flag pairs NOCASE keeps apart."""
+    return "".join(ch.lower() if "A" <= ch <= "Z" else ch for ch in normalize_nfc(content))
+
+
+def _assert_copyable(cards: list[dict]) -> None:
+    """Reject a deck the copier cannot store 1:1.
+
+    A private ``Card`` enforces ``UNIQUE(content COLLATE NOCASE, notebook_id)``,
+    so two cards whose content matches case-insensitively — even when distinct by
+    pos/mode/meaning (a homograph like ``Lead`` n. vs ``lead`` v.) — collapse
+    into ONE row on copy → ``copy_shared_deck``'s count-equality fails → every
+    copy 409s. ``shared_deck_card`` tolerates the pair (distinct content_guid),
+    so the collision is invisible to publish AND the round-trip check; it must be
+    caught here, at curation. Cards sharing a content_guid are deduped first
+    (they collapse to one ``shared_deck_card`` and never reach the copier as
+    two — mirrors ``publish_official``), so exact duplicates are NOT false-flagged."""
+    by_guid: dict[str, dict] = {}
+    for card in cards:
+        by_guid.setdefault(canonical_card(card)["content_guid"], card)
+    buckets: dict[str, list[dict]] = {}
+    for card in by_guid.values():
+        buckets.setdefault(_nocase_key(card["content"]), []).append(card)
+    collisions = [group for group in buckets.values() if len(group) > 1]
+    if collisions:
+        surfaces = "; ".join(
+            f"{c['content']!r} (pos={c['pos']!r}, mode={c['mode']!r})"
+            for group in collisions for c in group
+        )
+        raise SpecError(
+            "cards collide under the copier's case-insensitive uniqueness "
+            "(content COLLATE NOCASE) — a copy would drop cards and 409. "
+            f"Colliding surfaces: {surfaces}"
+        )
 
 
 def _normalize_card(card: dict, index: int) -> dict:

@@ -49,18 +49,11 @@
     },
     {
       "content": "lead",
-      "pos": "noun",
-      "meaning": "鉛（金屬）",
-      "note": "與動詞 lead（帶領）同形異義，發音亦不同。",
-      "difficulty": 0.4,
-      "mode": "recognition"
-    },
-    {
-      "content": "lead",
-      "pos": "verb",
-      "meaning": "帶領；引導",
+      "pos": "noun / verb",
+      "meaning": "（名詞）鉛（金屬）；（動詞）帶領、引導",
+      "note": "同形異義字：名詞 lead（鉛，發音 /lɛd/）與動詞 lead（帶領，發音 /liːd/）拼字相同、發音不同。單一單字本內同一拼字只能有一張卡，故合併為一張涵蓋兩義。",
       "examples": ["She will lead the team next quarter."],
-      "difficulty": 0.3,
+      "difficulty": 0.4,
       "mode": "recognition",
       "inflections": ["leads", "led", "leading"]
     }
