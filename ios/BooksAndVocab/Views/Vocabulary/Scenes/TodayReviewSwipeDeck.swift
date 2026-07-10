@@ -80,6 +80,14 @@ extension TodayReviewPresenter {
                     // promote 時 chrome 不換樹、無「裸卡 pop」。
                     frontCardChrome(content.card, interactive: isActive)
                 }
+                // FIX(review-flip-gap)：逐 slot 記實測 front 高度（active slot
+                // 恆 uncap → 量到自然高度）。`activeCardHeight` 讀 active slot 的值，
+                // 供非 active slot cap（見 VStack 的 .frame）。
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                    guard h > 0, slotFrontHeights.indices.contains(slot),
+                          abs(slotFrontHeights[slot] - h) > 0.5 else { return }
+                    slotFrontHeights[slot] = h
+                }
 
                 // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動
                 // 摺疊動畫。frame(height:0) 使摺疊時不佔 layout 空間，但 minHeight
@@ -94,8 +102,35 @@ extension TodayReviewPresenter {
                 .modifier(PaperFoldModifier(progress: slotShowsAnswer ? 1 : 0))
                 .frame(height: slotShowsAnswer ? nil : 0, alignment: .top)
                 .allowsHitTesting(slotShowsAnswer)
+                #if DEBUG
+                // gap 調查（answer 分量）：量 answer surface 經 frame(height:) clamp
+                // 後的真實高度。front 階段應恆 0；>0 = answer 未收乾淨（H2 撐高源）。
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                    logSlotGeometry(slot: slot, role: role, kind: "answer", word: content.card.word, height: h)
+                }
+                #endif
             }
+            // FIX(review-flip-gap)：非 active slot 的 layout 高度 cap 到 active 卡
+            // 高度，讓 ZStack(alignment:.top) 只由 active 卡決定高度、不被較高的背景
+            // 卡撐大。active slot 傳 nil（自然高度，反而定義 activeCardHeight）。
+            // 這一步就修好 layout 縫隙（fixed frame 對 parent 恆報 activeCardHeight）。
+            .frame(height: isActive ? nil : activeCardHeight, alignment: .top)
+            // 內容溢出收斂：多數較高背景卡（如 production 長例句）會被 ReviewFoldSurface
+            // 內部 .clipShape + cap frame 自然截斷、不溢出；但 fixedSize 內容（多行
+            // recognition 長單字）會堅持自然高度而溢出 frame 往下渲染。統一 clip 掉
+            // 非 active slot 超出 cap 的部分。active slot 給超大負 inset = 不裁切，
+            // 保留卡片陰影（appElevation）。value-conditional 單一 modifier → 不破壞
+            // Phase 4 常駐 slot 身分。
+            .clipShape(Rectangle().inset(by: isActive ? -3000 : 0))
             .geometryGroup()
+            #if DEBUG
+            // gap 調查（slot 整體）：量整個 slot VStack 的 layout 高度（transform 前）。
+            // 非 active slot 的 h 明顯 > active = 撐高 reviewCard ZStack、把 expand
+            // zone 下推 → 使用者看到的縫隙。role/word 指認撐高者，answer 分量判 H1/H2。
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                logSlotGeometry(slot: slot, role: role, kind: "slot", word: content.card.word, height: h)
+            }
+            #endif
             .animation((dismissPhase == .idle && !suppressFoldAnimation) ? AppMotion.reviewRevealSpring : nil,
                        value: slotShowsAnswer)
             // 姿態 = 純值 diff（modifier 結構固定）。順序對齊舊雙軌：
@@ -121,6 +156,21 @@ extension TodayReviewPresenter {
             #endif
         }
     }
+
+    #if DEBUG
+    /// Gap 調查儀器（DEBUG-only，RELEASE 零成本）。逐 slot 記 layout 高度，
+    /// 供離線比對「非 active slot 是否比 active 高 → 撐高 reviewCard ZStack →
+    /// 把 expand zone 下推 = 卡片與底部大縫隙」。
+    /// - kind=slot：整個 slot VStack 的 layout 高度。
+    /// - kind=answer：answer surface 經 frame(height:) clamp 後高度（front 應為 0）。
+    /// 不 gate、附完整相位脈絡（reveal/dismiss/off/idx），離線 grep 過濾 settled front。
+    func logSlotGeometry(slot: Int, role: TodayReviewCardSlotRole, kind: String, word: String, height: CGFloat) {
+        PerfLog.review.mark(
+            "gap.geom",
+            "slot=\(slot) role=\(role) kind=\(kind) w=\(word) h=\(String(format: "%.1f", height)) reveal=\(state.revealStage.rawValue) dismiss=\(dismissPhase == .idle ? 0 : 1) off=\(Int(swipeOffset)) idx=\(state.progressText)"
+        )
+    }
+    #endif
 
     // MARK: Swipe Gesture + Fling Animation
 

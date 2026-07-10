@@ -116,6 +116,28 @@ struct TodayReviewPresenter: View {
     ]
     // depth-2 殼層（第四層暗示）自己的持久旋轉 —— 殼層恆駐，不參與輪替。
     @State var deckShellRotation: Double = .random(in: -1.0...1.0)
+    // FIX(review-flip-gap)：卡片區是 `ZStack(alignment:.top)` 疊三個常駐 slot
+    // （Phase 4），ZStack 的 layout 高度 = 最高 slot。較高的背景卡（preview /
+    // underPreview，例如正面帶長例句的 production 卡或多行單字）會把 ZStack 撐高，
+    // 把其下方 sibling 的 expand zone 往下推 → 卡片與底部「點一下展開」出現大縫隙
+    // （洗牌換矮卡進 preview 窗即塌回，故洗牌能修）。修法：非 active slot 的 layout
+    // 高度一律 cap 到 active 卡的 front 高度，讓 ZStack 只由 active 卡決定高度。
+    // 逐 slot 記實測 front 高度（高度綁內容，非綁 role）；`activeCardHeight` 讀
+    // 目前 active slot 的值。active slot 恆 uncap → 量到自然高度；背景卡升 active 時
+    // 去除 cap 會觸發重量 → 自我校正，無 role 輪替 stale 問題、無 layout 回授迴圈。
+    @State var slotFrontHeights: [CGFloat] = Array(
+        repeating: TodayReviewMetrics.frontMinHeight,
+        count: TodayReviewCardSlotLayout.slotCount
+    )
+
+    /// 目前 active slot 的實測 front 高度（非 active slot cap 到此值）。
+    var activeCardHeight: CGFloat {
+        guard let activeSlot = state.slots.firstIndex(where: { $0.assignment.role == .active }),
+              slotFrontHeights.indices.contains(activeSlot) else {
+            return TodayReviewMetrics.frontMinHeight
+        }
+        return slotFrontHeights[activeSlot]
+    }
 
     // Back-content mount gate. Decoupled from `showsAnswer` so the heavy back
     // tree (CardDocumentView / CardRichTextRenderer / VocabTierLabel /
@@ -422,5 +444,8 @@ struct TodayReviewPresenter: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // gap 調查：UITest 讀此元件 frame.minY = expand zone 頂 = 卡片區底界，
+        // 與 todayReview.card.front.maxY 的差即使用者看到的「卡片↔底部縫隙」。
+        .accessibilityIdentifier("todayReview.expandZone")
     }
 }
