@@ -21,6 +21,10 @@ struct VocabularyListView: View {
     @Environment(\.catalogTaskPolicy) private var catalogTaskPolicy
 
     let notebookId: String
+    /// Initial review-state tab + sort forwarded to `KGVocabView`. Defaults keep
+    /// the shipped behaviour; the marketing catalog scene opens on "已複習".
+    let initialReviewStates: Set<VocabularyReviewState>
+    let initialSort: KGVocabSortOption
 
     @State var searchText = ""
     @State var debouncedSearchText = ""
@@ -37,8 +41,14 @@ struct VocabularyListView: View {
         notebooks.first(where: { $0.remoteId == notebookId })?.name ?? "單字本".localized
     }
 
-    init(notebookId: String = "default") {
+    init(
+        notebookId: String = "default",
+        initialReviewStates: Set<VocabularyReviewState> = [],
+        initialSort: KGVocabSortOption = .default
+    ) {
         self.notebookId = notebookId
+        self.initialReviewStates = initialReviewStates
+        self.initialSort = initialSort
         let nbId = notebookId
         _allEntries = Query(
             filter: #Predicate<VocabularyEntry> { $0.notebookId == nbId },

@@ -24,7 +24,8 @@ struct WordDetailSheet: View {
         wrapInNavigation: Bool = true,
         showsInlineChrome: Bool? = nil,
         onClose: (() -> Void)? = nil,
-        linkedCardStack: Binding<[VocabularyEntry]>? = nil
+        linkedCardStack: Binding<[VocabularyEntry]>? = nil,
+        presentsEagerly: Bool = false
     ) {
         self.entry = entry
         self.allEntries = allEntries
@@ -32,6 +33,15 @@ struct WordDetailSheet: View {
         self.showsInlineChrome = showsInlineChrome ?? wrapInNavigation
         self.onInlineClose = onClose
         self.externalLinkedCardStack = linkedCardStack
+        // Catalog / snapshot seam: seed the presentation synchronously so a
+        // `layer.render(in:)` snapshot captures the card, not the loading
+        // placeholder the deferred `.task` would still be showing. The live app
+        // keeps `presentsEagerly == false` and its brief loading→card fade.
+        if presentsEagerly {
+            let seeded = WordDetailSceneState()
+            seeded.refreshPresentation(for: entry, in: allEntries)
+            _state = State(initialValue: seeded)
+        }
     }
 
     var body: some View {

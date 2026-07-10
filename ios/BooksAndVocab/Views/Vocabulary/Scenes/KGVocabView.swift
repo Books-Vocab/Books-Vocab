@@ -31,8 +31,8 @@ struct KGVocabView: View {
     @Environment(\.authManager) private var authManager
 
     @State private var coordinator = KGVocabCoordinator()
-    @State private var selectedReviewStates: Set<VocabularyReviewState> = []
-    @State private var sortOption: KGVocabSortOption = .default
+    @State private var selectedReviewStates: Set<VocabularyReviewState>
+    @State private var sortOption: KGVocabSortOption
     @State private var selectionState = SelectionModeState()
     @State private var selectedRowID: UUID?
     @State private var loginGate = LoginGateState()
@@ -42,12 +42,19 @@ struct KGVocabView: View {
         searchText: Binding<String>,
         notebookId: String = "default",
         onEntrySelected: ((VocabularyEntry) -> Void)? = nil,
-        onStartReview: (([VocabularyEntry]) -> Void)? = nil
+        onStartReview: (([VocabularyEntry]) -> Void)? = nil,
+        initialReviewStates: Set<VocabularyReviewState> = [],
+        initialSort: KGVocabSortOption = .default
     ) {
         self._searchText = searchText
         self.notebookId = notebookId
         self.onEntrySelected = onEntrySelected
         self.onStartReview = onStartReview
+        // Seed the review-state tab + sort. Defaults preserve the shipped
+        // behaviour (no filter, review-priority sort); the marketing catalog
+        // scene opens on the "已複習" tab so the fresh-green cohort is on screen.
+        self._selectedReviewStates = State(initialValue: initialReviewStates)
+        self._sortOption = State(initialValue: initialSort)
         let nbId = notebookId
         // Notebook-scoped knowledge list. The isArchived guard (inside the shared
         // predicate) keeps archived words out of the KG list and out of

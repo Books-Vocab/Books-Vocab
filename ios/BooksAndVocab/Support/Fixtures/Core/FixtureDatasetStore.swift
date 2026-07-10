@@ -43,6 +43,11 @@ struct FixtureDatasetDocument: Decodable {
     let vocabulary: [String: UIWorldVocabularySeed]
     let reviewDeck: [String: UIWorldReviewDeckSeed]
     let syncPresenter: [String: UIWorldSyncPresenterSeed]
+    /// Marketing screenshot capture domain (Phase 1 data plane). Optional by
+    /// design: it is *not* a required v2 domain — even the checked-in fixtures
+    /// carry a null `reviewClock`, and it only turns fully frozen in a marketing
+    /// emit. Phase 2 catalog scenes read it to drive the website shots.
+    let marketingCapture: MarketingCaptureSeed?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case schema
@@ -61,6 +66,7 @@ struct FixtureDatasetDocument: Decodable {
         case vocabulary
         case reviewDeck
         case syncPresenter
+        case marketingCapture
     }
 
     /// Single source of truth for the top-level key set. Keyed decoding
@@ -103,7 +109,8 @@ struct FixtureDatasetDocument: Decodable {
         reader: [String: UIWorldReaderSeed] = [:],
         vocabulary: [String: UIWorldVocabularySeed] = [:],
         reviewDeck: [String: UIWorldReviewDeckSeed] = [:],
-        syncPresenter: [String: UIWorldSyncPresenterSeed] = [:]
+        syncPresenter: [String: UIWorldSyncPresenterSeed] = [:],
+        marketingCapture: MarketingCaptureSeed? = nil
     ) {
         self.schema = schema
         self.datasetID = datasetID
@@ -121,6 +128,7 @@ struct FixtureDatasetDocument: Decodable {
         self.vocabulary = vocabulary
         self.reviewDeck = reviewDeck
         self.syncPresenter = syncPresenter
+        self.marketingCapture = marketingCapture
     }
 
     init(from decoder: Decoder) throws {
@@ -176,6 +184,9 @@ struct FixtureDatasetDocument: Decodable {
         vocabulary = try container.decode([String: UIWorldVocabularySeed].self, forKey: .vocabulary)
         reviewDeck = try container.decode([String: UIWorldReviewDeckSeed].self, forKey: .reviewDeck)
         syncPresenter = try container.decode([String: UIWorldSyncPresenterSeed].self, forKey: .syncPresenter)
+        // Optional domain: absent (older QA worlds) or present-but-null-clock
+        // (checked-in baseline / generated demo) both decode fine.
+        marketingCapture = try container.decodeIfPresent(MarketingCaptureSeed.self, forKey: .marketingCapture)
 
         try validateKnownFixtureIDs(codingPath: container.codingPath)
         try Self.validatePreferenceKeys(preferences, codingPath: container.codingPath)
@@ -652,6 +663,161 @@ struct FixtureDatasetDocument: Decodable {
                 debugDescription: debugDescription
             )
         )
+    }
+}
+
+// MARK: - Marketing capture (Phase 1 data plane → Phase 2 catalog scenes)
+
+/// The `marketingCapture` top-level domain. Phase 1 emits this from the real
+/// marketing-account SoT so the four website screenshots render off real data:
+/// a frozen anchor-day clock (`reviewClock`), the reader passage projection
+/// (`readerPassage`), and the Word Detail seed (`wordDetail`).
+struct MarketingCaptureSeed: Codable, Equatable {
+    /// Anchor-day freeze clock. Null in QA / checked-in baseline worlds; a full
+    /// clock only in a frozen marketing emit. `frozenEpoch` (= preferences
+    /// `review_settings_progress_paused_at`) is the load-bearing field.
+    let reviewClock: MarketingReviewClockSeed?
+    /// Reader marketing passage (real book prose + highlight words).
+    let readerPassage: MarketingReaderPassageSeed?
+    /// Word Detail marketing seed — `entries[0]` is the focused hero card, the
+    /// rest are its graph-link targets. Reuses the vocabulary seed shape.
+    let wordDetail: UIWorldVocabularySeed?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case reviewClock
+        case readerPassage
+        case wordDetail
+    }
+
+    init(
+        reviewClock: MarketingReviewClockSeed? = nil,
+        readerPassage: MarketingReaderPassageSeed? = nil,
+        wordDetail: UIWorldVocabularySeed? = nil
+    ) {
+        self.reviewClock = reviewClock
+        self.readerPassage = readerPassage
+        self.wordDetail = wordDetail
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World marketingCapture contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reviewClock = try container.decodeIfPresent(MarketingReviewClockSeed.self, forKey: .reviewClock)
+        readerPassage = try container.decodeIfPresent(MarketingReaderPassageSeed.self, forKey: .readerPassage)
+        wordDetail = try container.decodeIfPresent(UIWorldVocabularySeed.self, forKey: .wordDetail)
+    }
+}
+
+/// Frozen review clock. All fields optional per the Phase 1 contract; a frozen
+/// emit populates every field, and `frozenEpoch` == preferences
+/// `review_settings_progress_paused_at`.
+struct MarketingReviewClockSeed: Codable, Equatable {
+    let frozenNow: String?
+    let frozenEpoch: Int?
+    let anchorDay: String?
+    let source: String?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case frozenNow
+        case frozenEpoch
+        case anchorDay
+        case source
+    }
+
+    init(frozenNow: String? = nil, frozenEpoch: Int? = nil, anchorDay: String? = nil, source: String? = nil) {
+        self.frozenNow = frozenNow
+        self.frozenEpoch = frozenEpoch
+        self.anchorDay = anchorDay
+        self.source = source
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World marketingCapture.reviewClock contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        frozenNow = try container.decodeIfPresent(String.self, forKey: .frozenNow)
+        frozenEpoch = try container.decodeIfPresent(Int.self, forKey: .frozenEpoch)
+        anchorDay = try container.decodeIfPresent(String.self, forKey: .anchorDay)
+        source = try container.decodeIfPresent(String.self, forKey: .source)
+    }
+}
+
+/// Reader marketing passage. `activeWord` is the just-tapped word tied to the
+/// translation overlay; it is guaranteed to appear as a token in `paragraphs`.
+/// `activeWords == [activeWord]`.
+struct MarketingReaderPassageSeed: Codable, Equatable {
+    let bookTitle: String
+    let activeWord: String
+    let activePartOfSpeech: String
+    let activeTranslation: String
+    let activeExplanation: String
+    let activeContext: String
+    let paragraphs: [String]
+    let vocabWords: [String]
+    let activeWords: [String]
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case bookTitle
+        case activeWord
+        case activePartOfSpeech
+        case activeTranslation
+        case activeExplanation
+        case activeContext
+        case paragraphs
+        case vocabWords
+        case activeWords
+    }
+
+    init(from decoder: Decoder) throws {
+        let rawContainer = try decoder.container(keyedBy: AnyCodingKey.self)
+        let unknownKeys = Set(rawContainer.allKeys.map(\.stringValue))
+            .subtracting(CodingKeys.allCases.map(\.rawValue))
+        guard unknownKeys.isEmpty else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "UI World marketingCapture.readerPassage contains unknown keys \(unknownKeys.sorted())"
+                )
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        for key in CodingKeys.allCases where !container.contains(key) {
+            throw DecodingError.keyNotFound(
+                key,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "UI World marketingCapture.readerPassage must explicitly declare \(key.rawValue)"
+                )
+            )
+        }
+        bookTitle = try container.decode(String.self, forKey: .bookTitle)
+        activeWord = try container.decode(String.self, forKey: .activeWord)
+        activePartOfSpeech = try container.decode(String.self, forKey: .activePartOfSpeech)
+        activeTranslation = try container.decode(String.self, forKey: .activeTranslation)
+        activeExplanation = try container.decode(String.self, forKey: .activeExplanation)
+        activeContext = try container.decode(String.self, forKey: .activeContext)
+        paragraphs = try container.decode([String].self, forKey: .paragraphs)
+        vocabWords = try container.decode([String].self, forKey: .vocabWords)
+        activeWords = try container.decode([String].self, forKey: .activeWords)
     }
 }
 
@@ -2288,6 +2454,15 @@ enum FixtureDatasetStore {
             preconditionFailure(seedResolutionFailureDescription(resolving: "the UI World document"))
         }
         return document
+    }
+
+    /// Safe (non-`require`) accessor for the marketing capture domain. Returns
+    /// nil when the UI World is absent/invalid or omits `marketingCapture`, so
+    /// marketing catalog scenes can fall back gracefully in bare previews / QA
+    /// worlds without a `preconditionFailure`.
+    static func marketingCapture() -> MarketingCaptureSeed? {
+        guard case let .loaded(document, _) = loadState() else { return nil }
+        return document.marketingCapture
     }
 
     /// Diagnostic for `require*Seed` / asset resolution failures. When the UI

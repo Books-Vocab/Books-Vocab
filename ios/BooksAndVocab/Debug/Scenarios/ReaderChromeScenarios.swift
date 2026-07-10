@@ -110,6 +110,12 @@ enum ReaderChromeScenarios {
             }
 
             Scenario("Reading · Marketing Content", layout: .fill) {
+                // Force light appearance so the translation card resolves to the
+                // light theme's white card. In the shipped reader the sepia paper
+                // is coupled to the light skin; capturing this scene in a dark sim
+                // otherwise renders a dark card over sepia paper — a combination
+                // that never occurs in the real app. `AppThemeContainer` derives
+                // its theme from `colorScheme`, so the injected `.light` wins.
                 AppThemeContainer {
                     ReaderChromePreviewScene(
                         state: ReaderViewPresenterState(
@@ -125,6 +131,7 @@ enum ReaderChromeScenarios {
                         pageContent: .prose
                     )
                 }
+                .environment(\.colorScheme, .light)
                 .environmentObject(AppAppearanceStore.preview)
             }
 

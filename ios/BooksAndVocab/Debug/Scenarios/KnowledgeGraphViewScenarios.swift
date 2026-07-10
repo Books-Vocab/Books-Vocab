@@ -155,17 +155,23 @@ private struct KnowledgeGraphViewScene: View {
         .environmentObject(AppAppearanceStore.preview)
     }
 
-    private static let fixedNow: Date = {
+    // QA fallback anchor (2026-06-01 12:00) for a non-marketing render. A frozen
+    // marketing world overrides it via `MarketingReviewClock` so the graph aligns
+    // to the anchor day: with a stale 38-days-early anchor every card is
+    // not-yet-due and every node renders green, flattening the ReviewGradient.
+    private static let qaFallbackNow: Date = {
         var comps = DateComponents()
         comps.year = 2026
         comps.month = 6
         comps.day = 1
         comps.hour = 12
         guard let date = Calendar.current.date(from: comps) else {
-            preconditionFailure("Knowledge Graph catalog fixedNow date components are invalid")
+            preconditionFailure("Knowledge Graph catalog fallback now date components are invalid")
         }
         return date
     }()
+
+    private static var fixedNow: Date { MarketingReviewClock.now(fallback: qaFallbackNow) }
 
     private static let frozenStore: ReviewSettingsStore = {
         var settings = ReviewSettings.default

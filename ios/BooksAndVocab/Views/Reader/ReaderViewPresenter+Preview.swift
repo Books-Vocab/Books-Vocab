@@ -38,18 +38,19 @@ struct ReaderChromePreviewScene: View {
             }
             .ignoresSafeArea()
         } translationPanel: {
+            let translation = Self.translationContent(for: pageContent)
             TranslationPanel(
-                word: "resilient",
+                word: translation.word,
                 result: TranslationResult(
-                    translation: "有韌性的；能快速恢復的",
-                    partOfSpeech: "adj.",
+                    translation: translation.translation,
+                    partOfSpeech: translation.partOfSpeech,
                     explanation: nil
                 ),
                 isLoading: false,
                 isSaved: true,
                 isLoggedIn: true,
                 isExpanded: true,
-                explanation: "在這段語境中指角色面對壓力後仍能迅速回到穩定狀態。",
+                explanation: translation.explanation,
                 isLoadingExplanation: false,
                 statusMessage: nil,
                 isExplanationOnly: false,
@@ -65,6 +66,35 @@ struct ReaderChromePreviewScene: View {
         } settingsPanel: {
             EmptyView()
         }
+    }
+
+    /// Translation-overlay content. For the marketing prose page it is driven by
+    /// `marketingCapture.readerPassage` (so the tapped word, its part of speech,
+    /// translation and explanation stay consistent with the highlighted word in
+    /// the prose). Every other (skeleton) scene keeps the original "resilient"
+    /// sample so QA overlay snapshots are unaffected.
+    struct MarketingTranslationContent {
+        let word: String
+        let partOfSpeech: String
+        let translation: String
+        let explanation: String
+    }
+
+    static func translationContent(for pageContent: ReaderPreviewPageContent) -> MarketingTranslationContent {
+        if pageContent == .prose, let passage = FixtureDatasetStore.marketingCapture()?.readerPassage {
+            return MarketingTranslationContent(
+                word: passage.activeWord,
+                partOfSpeech: passage.activePartOfSpeech,
+                translation: passage.activeTranslation,
+                explanation: passage.activeExplanation
+            )
+        }
+        return MarketingTranslationContent(
+            word: "resilient",
+            partOfSpeech: "adj.",
+            translation: "有韌性的；能快速恢復的",
+            explanation: "在這段語境中指角色面對壓力後仍能迅速回到穩定狀態。"
+        )
     }
 
     private var readingPreviewContent: some View {
@@ -252,26 +282,51 @@ struct ReaderMarketingProse: View {
     private static let activeOutlineWidth: CGFloat = 1
     private static let activeOutlineInset: CGFloat = 1.5
 
+    /// Resolved page content: real marketing prose (`marketingCapture.readerPassage`,
+    /// projected from real book cards by Phase 1) when a marketing world is
+    /// injected, otherwise the original literary fallback so a bare Xcode
+    /// #Preview stays self-contained. Highlight words come from the passage's
+    /// real card words; the tokenizer stays a pure, content-agnostic function.
+    struct Passage {
+        let paragraphs: [String]
+        let vocab: Set<String>
+        let active: Set<String>
+    }
+
     // Original literary prose (NOT copyrighted book text). "resilient" is the
-    // active word so the page reads as "just tapped 'resilient'" — matching the
-    // translation overlay, which translates that exact word.
-    private static let paragraphs: [String] = [
-        "The road north taught patience to anyone who traveled it alone. Snow settled in the hollows where the wind could not reach, and the quiet there felt so complete that a traveler might mistake it for solitude rather than mere absence.",
-        "She had learned, across many winters, to read the land the way others read a face. What looked barren often proved resilient in the end, holding its warmth close against the cold, waiting for a thaw it had every reason to trust would come."
-    ]
-    private static let vocabWords: Set<String> = ["solitude", "thaw"]
-    private static let activeWords: Set<String> = ["resilient"]
+    // active word so a bare #Preview page reads as "just tapped 'resilient'" —
+    // matching the fallback translation overlay.
+    private static let fallbackPassage = Passage(
+        paragraphs: [
+            "The road north taught patience to anyone who traveled it alone. Snow settled in the hollows where the wind could not reach, and the quiet there felt so complete that a traveler might mistake it for solitude rather than mere absence.",
+            "She had learned, across many winters, to read the land the way others read a face. What looked barren often proved resilient in the end, holding its warmth close against the cold, waiting for a thaw it had every reason to trust would come."
+        ],
+        vocab: ["solitude", "thaw"],
+        active: ["resilient"]
+    )
+
+    static var resolvedPassage: Passage {
+        guard let passage = FixtureDatasetStore.marketingCapture()?.readerPassage else {
+            return fallbackPassage
+        }
+        return Passage(
+            paragraphs: passage.paragraphs,
+            vocab: Set(passage.vocabWords),
+            active: Set(passage.activeWords)
+        )
+    }
 
     var body: some View {
+        let passage = Self.resolvedPassage
         VStack(alignment: .leading, spacing: Self.paragraphSpacing) {
-            ForEach(Array(Self.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+            ForEach(Array(passage.paragraphs.enumerated()), id: \.offset) { _, paragraph in
                 ReaderProseFlowLayout(spacing: Self.wordSpacing, lineSpacing: Self.lineSpacing) {
                     ForEach(
                         Array(
                             ReaderProseTokenizer.tokens(
                                 paragraph: paragraph,
-                                vocab: Self.vocabWords,
-                                active: Self.activeWords
+                                vocab: passage.vocab,
+                                active: passage.active
                             ).enumerated()
                         ),
                         id: \.offset
@@ -319,6 +374,9 @@ struct ReaderMarketingProse: View {
 }
 
 #Preview("Reader Chrome / Marketing Content") {
+    // Force light appearance: in the shipped reader the sepia paper is strongly
+    // coupled to the light skin, so the translation card must resolve to the
+    // light theme's white card (a dark card over sepia never occurs in-app).
     ReaderChromePreviewScene(
         state: .init(
             paperColor: AppColors.paperSepiaDeep,
@@ -332,6 +390,7 @@ struct ReaderMarketingProse: View {
         showsErrorCard: false,
         pageContent: .prose
     )
+    .environment(\.colorScheme, .light)
 }
 
 #Preview("Reader Chrome / Loading") {
