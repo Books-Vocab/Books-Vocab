@@ -21,12 +21,15 @@ from fastapi import APIRouter, Query, Request
 from ..api_models.decks import (
     DeckCard,
     DeckCardsResponse,
+    DeckCopyRequest,
+    DeckCopyResponse,
     DeckDetailResponse,
     DeckListResponse,
     DeckSummary,
 )
-from ..deps import _shared_deck_store
+from ..deps import CurrentUser, _card_store, _notebook_store, _shared_deck_store
 from ..exceptions import BadRequestError, NotFoundError
+from ..shared_decks.copy import copy_shared_deck
 from ..shared_decks.cursor import decode_cursor, encode_cursor
 from ..shared_decks.store import SharedDeck, SharedDeckCard
 from ..vocab_shared import _dt_to_iso
@@ -37,6 +40,7 @@ _DEFAULT_LIMIT = 20
 _MAX_LIMIT = 50
 _MAX_CARD_LIMIT = 100
 _SAMPLE_CARDS = 12
+_MAX_IDEMPOTENCY_KEY = 200
 _SORTS = {"recency", "alpha"}
 
 
@@ -184,3 +188,35 @@ def get_deck_cards(
         if has_more and cards else None
     )
     return DeckCardsResponse(cards=[_card(c) for c in cards], nextCursor=next_cursor)
+
+
+@router.post("/api/decks/{deck_id}/copy", response_model=DeckCopyResponse)
+def copy_deck(request: Request, deck_id: str, req: DeckCopyRequest, user: CurrentUser):
+    """Clone an official/public deck into the caller's private Notebook. All the
+    copy invariants (fresh SRS, unique name, monotonic timestamps, idempotency,
+    compensating rollback, count-equality, atomic download counter) live in
+    :func:`copy_shared_deck`; this handler only wires stores + validates input."""
+    key = (req.idempotencyKey or "").strip()
+    if not key or len(key) > _MAX_IDEMPOTENCY_KEY:
+        raise BadRequestError(
+            f"idempotencyKey required (1-{_MAX_IDEMPOTENCY_KEY} chars)"
+        )
+    settings = request.app.state.kg_settings
+    outcome = copy_shared_deck(
+        shared_store=_shared_deck_store(settings),
+        card_store=_card_store(user["dir"]),
+        notebook_store=_notebook_store(user["dir"]),
+        user_dir=user["dir"],
+        deck_id=deck_id,
+        copier_id=user["id"],
+        idempotency_key=key,
+        notebook_name=req.notebookName,
+    )
+    return DeckCopyResponse(
+        notebookId=outcome.notebook_id,
+        notebookName=outcome.notebook_name,
+        deckId=outcome.deck_id,
+        sourceVersion=outcome.source_version,
+        cardCount=outcome.card_count,
+        alreadyCopied=outcome.already_copied,
+    )

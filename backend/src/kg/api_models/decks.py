@@ -63,10 +63,34 @@ class DeckCardsResponse(BaseModel):
     nextCursor: str | None = None
 
 
+class DeckCopyRequest(BaseModel):
+    """Client-supplied copy request.
+
+    ``idempotencyKey`` makes a transport retry safe — the same key always
+    resolves to the same copied notebook, never a duplicate. ``notebookName``
+    optionally overrides the auto-derived name; the server still guarantees
+    uniqueness against the copier's active notebooks (world-export trap).
+    """
+
+    idempotencyKey: str
+    notebookName: str | None = None
+
+
+class DeckCopyResponse(BaseModel):
+    notebookId: str
+    notebookName: str
+    deckId: str
+    sourceVersion: int
+    cardCount: int
+    alreadyCopied: bool = False
+
+
 __all__ = [
     "DeckCard",
     "DeckSummary",
     "DeckListResponse",
     "DeckDetailResponse",
     "DeckCardsResponse",
+    "DeckCopyRequest",
+    "DeckCopyResponse",
 ]

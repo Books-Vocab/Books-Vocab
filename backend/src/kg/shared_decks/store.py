@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import JSON, Column, UniqueConstraint, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -344,6 +345,62 @@ class SharedDeckStore:
                 stmt = stmt.where(SharedDeckCard.id > after)
             stmt = stmt.order_by(SharedDeckCard.id).limit(limit)
             return list(session.exec(stmt).all())
+
+    def all_cards(self, deck_id: str, *, version: int) -> list[SharedDeckCard]:
+        """Full immutable snapshot of a deck version's cards (deterministic id
+        order). The copy path takes this snapshot once so ``len()`` is the
+        source-of-truth count for the count-equality assertion."""
+        with Session(self.engine) as session:
+            stmt = (
+                select(SharedDeckCard)
+                .where(
+                    SharedDeckCard.shared_deck_id == deck_id,
+                    SharedDeckCard.version == version,
+                )
+                .order_by(SharedDeckCard.id)
+            )
+            return list(session.exec(stmt).all())
+
+    # ── copy support (Phase 2) ─────────────────────────────────────
+
+    def get_copy_log(self, copier_id: str, idempotency_key: str) -> SharedDeckCopyLog | None:
+        """Look up a prior copy by its idempotency key (transport-retry replay)."""
+        with Session(self.engine) as session:
+            return session.get(SharedDeckCopyLog, (copier_id, idempotency_key))
+
+    def record_copy(
+        self,
+        copier_id: str,
+        idempotency_key: str,
+        source_shared_deck_id: str,
+        source_version: int,
+        result_notebook_id: str,
+    ) -> bool:
+        """Insert the idempotency log row. Returns ``True`` when recorded;
+        ``False`` when the ``(copier_id, idempotency_key)`` PK already exists —
+        a concurrent/duplicate copy won the race, so the caller replays to the
+        already-logged result instead of minting a second notebook."""
+        with Session(self.engine) as session:
+            session.add(SharedDeckCopyLog(
+                copier_id=copier_id, idempotency_key=idempotency_key,
+                source_shared_deck_id=source_shared_deck_id,
+                source_version=source_version, result_notebook_id=result_notebook_id))
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                return False
+            return True
+
+    def increment_download_count(self, deck_id: str) -> None:
+        """Atomic ``SET download_count = download_count + 1`` — never a Python
+        get-then-set, so concurrent copies can't lose an increment."""
+        with Session(self.engine) as session:
+            session.connection().exec_driver_sql(
+                "UPDATE shared_deck SET download_count = download_count + 1 WHERE id = ?",
+                (deck_id,),
+            )
+            session.commit()
 
     # ── write side (official governance, Phase 1b-ii) ──────────────
 

@@ -91,6 +91,94 @@ class CardMutationMixin:
             session.refresh(card)
         return card
 
+    def add_shared_copy(
+        self,
+        *,
+        content: str,
+        meaning: str,
+        pos: str | None,
+        examples: list[str] | None,
+        collocations: list[str] | None,
+        note: str | None,
+        difficulty: float | None,
+        mode: str,
+        root_form: str | None,
+        inflections: list[str] | None,
+        notebook_id: str,
+        updated_at: datetime,
+        source_shared_card_guid: str,
+    ) -> tuple[Card, bool]:
+        """Insert one card as a copy of a ``shared_deck_card`` (Phase 2 copy).
+
+        Unlike :meth:`add`, this carries the full content plane (``note`` /
+        ``difficulty`` too), an explicit strictly-monotonic ``updated_at`` (the
+        §4.4 sync-down timestamp-tie defense), and the
+        ``source_shared_card_guid`` provenance. SRS columns take their model
+        defaults (a fresh review schedule — the author's schedule cannot leak)
+        and the id is freshly minted.
+
+        Returns ``(card, created)``. ``created`` is ``False`` when a NOCASE/NFC
+        duplicate already occupies ``(content, notebook_id)`` — the copy
+        orchestrator treats that collapse as a fail-loud count mismatch rather
+        than a silently dropped card.
+        """
+        if not content or not content.strip():
+            raise ValueError("content must be non-empty")
+        norm = normalize_nfc(content)
+        with Session(self.engine) as session:
+            row = session.connection().exec_driver_sql(
+                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                (norm, notebook_id),
+            ).first()
+            if row:
+                return session.get(Card, row[0]), False  # type: ignore[return-value]
+
+            card = Card(
+                content=content,
+                content_nfc_lower=normalize_nfc_lower(content),
+                meaning=meaning,
+                pos=pos,
+                examples=examples or [],
+                collocations=collocations or [],
+                note=note,
+                difficulty=difficulty,
+                mode=mode,
+                root_form=root_form,
+                inflections=inflections or [],
+                notebook_id=notebook_id,
+                updated_at=updated_at,
+                source_shared_card_guid=source_shared_card_guid,
+            )
+            session.add(card)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                row = session.connection().exec_driver_sql(
+                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                    (norm, notebook_id),
+                ).first()
+                if row:
+                    return session.get(Card, row[0]), False  # type: ignore[return-value]
+                raise
+            session.refresh(card)
+        return card, True
+
+    def hard_delete_by_notebook(self, notebook_id: str) -> int:
+        """Physically delete every card in a notebook. Compensation-only (a
+        failed copy must leave no partial rows); ordinary deletes are soft.
+        Returns the number of rows removed."""
+        if not notebook_id:
+            return 0
+        with Session(self.engine) as session:
+            count = session.connection().exec_driver_sql(
+                "DELETE FROM card WHERE notebook_id = ?", (notebook_id,)
+            ).rowcount
+            session.commit()
+            return count
+
     def deduplicate(self, notebook_id: str | None = None) -> int:
         """Remove duplicate active cards (same content, case-insensitive).
 

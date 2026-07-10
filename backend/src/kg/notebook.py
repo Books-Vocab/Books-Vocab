@@ -86,13 +86,56 @@ class NotebookStore:
             session.refresh(nb)
             return nb
 
-    def create(self, name: str, color: str | None = None, cover_pattern: str | None = None) -> Notebook:
-        nb = Notebook(name=name, color=color, cover_pattern=cover_pattern)
+    def create(
+        self,
+        name: str,
+        color: str | None = None,
+        cover_pattern: str | None = None,
+        *,
+        source_shared_deck_id: str | None = None,
+        source_version: int | None = None,
+        is_deleted: bool = False,
+    ) -> Notebook:
+        """Create a notebook. ``is_default`` is never set here (the model default
+        is False), so a shared-deck copy is structurally guaranteed non-default.
+        The Phase 2 copy path passes ``is_deleted=True`` to stage the notebook
+        HIDDEN (the materialization barrier) plus the provenance columns, then
+        reveals it via :meth:`materialize` once every card has landed."""
+        nb = Notebook(
+            name=name, color=color, cover_pattern=cover_pattern,
+            source_shared_deck_id=source_shared_deck_id,
+            source_version=source_version, is_deleted=is_deleted,
+        )
         with Session(self.engine) as session:
             session.add(nb)
             session.commit()
             session.refresh(nb)
         return nb
+
+    def materialize(self, notebook_id: str) -> bool:
+        """Lift the copy barrier: flip a staged (``is_deleted=True``) copy
+        notebook visible at the last moment. Returns True if a row was flipped."""
+        with Session(self.engine) as session:
+            nb = session.get(Notebook, notebook_id)
+            if nb is None:
+                return False
+            nb.is_deleted = False
+            nb.updated_at = datetime.now(UTC)
+            session.add(nb)
+            session.commit()
+            return True
+
+    def hard_delete(self, notebook_id: str) -> bool:
+        """Physically remove a notebook row. Compensation-only — ordinary
+        deletes are soft (:meth:`delete`); this exists so a failed copy leaves no
+        trace. Returns True if a row was deleted."""
+        with Session(self.engine) as session:
+            nb = session.get(Notebook, notebook_id)
+            if nb is None:
+                return False
+            session.delete(nb)
+            session.commit()
+            return True
 
     def get(self, notebook_id: str) -> Notebook | None:
         with Session(self.engine) as session:
