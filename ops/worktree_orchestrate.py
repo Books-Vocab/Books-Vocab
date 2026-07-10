@@ -207,8 +207,10 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
     judgement the orchestrator owns; it never decides pass/fail itself.
 
       ios/**            -> ios_ops.sh build  AND  build --catalyst (sim green != Catalyst
-                           green) + quality impact (swift) + test --unit (+ --ui if a
-                           View/UI/nav path changed).
+                           green) + quality impact (swift) + test --unit. If UITest
+                           classes changed, also test --ui --file <class> per changed
+                           UITest (impacted-scope, --dataset marketing_demo) — NOT the
+                           whole --ui suite, which false-blocks on unrelated flaky tests.
       design-system/**  -> verify_design_system.sh   (tokens / generated CSS / Models /
       | tokens | *.css     UIComponents — the pre-commit DS_PATTERN, verbatim).
       docs/**.md        -> docs_lint.sh --files + conflict-marker scan + verified_against
@@ -241,13 +243,26 @@ def plan_gates(changed_files: list[str]) -> list[dict[str, Any]]:
         gates.append(_shell("ios-test-unit", "ios",
                             ["ops/ios_ops.sh", "test", "--unit"], "block"))
         if any(_is_ui_path(p) for p in ios):
-            # ios_test.sh --ui requires a UI World dataset (it is the single
-            # source of truth for UI runs); without it the runner exits 1 on a
-            # usage error, which would false-block every iOS-UI cutover. Pin the
-            # committed default world.
-            gates.append(_shell("ios-test-ui", "ios",
-                                ["ops/ios_ops.sh", "test", "--ui",
-                                 "--dataset", "marketing_demo"], "block"))
+            # Impacted-scope UI gate: run only the UI *test classes* that changed
+            # in this diff — NOT the whole --ui suite. The full suite as a block
+            # gate false-blocks every iOS cutover on unrelated, pre-existing/flaky
+            # UI tests (UI flakiness is well documented here), and costs ~tens of
+            # minutes. This mirrors ios-quality-impact's --files scoping.
+            # ios_test.sh --ui requires a UI World dataset (the SoT for UI runs);
+            # the committed default world is marketing_demo. Filter to *Tests.swift
+            # so page-object/helper files (e.g. AppPage.swift) are excluded.
+            # A UI-source change with no changed UITest is covered by build +
+            # unit + quality-impact; a full-suite run here would just reintroduce
+            # the flaky false-block.
+            ui_test_classes = sorted({
+                p.rsplit("/", 1)[-1].removesuffix(".swift")
+                for p in ios
+                if "UITests/" in p and p.endswith("Tests.swift")
+            })
+            for cls in ui_test_classes:
+                gates.append(_shell(f"ios-test-ui:{cls}", "ios",
+                                    ["ops/ios_ops.sh", "test", "--ui",
+                                     "--dataset", "marketing_demo", "--file", cls], "block"))
 
     if ds:
         gates.append(_shell("design-system", "design-system",
