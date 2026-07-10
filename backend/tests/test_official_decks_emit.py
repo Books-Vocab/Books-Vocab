@@ -286,6 +286,52 @@ def test_check_detects_drift_on_colliding_cards(tmp_path):
     assert res["drift"] is True
 
 
+# ── copyability: reject NOCASE-colliding homographs at curation ─────────
+
+def test_nocase_colliding_cards_rejected_as_uncopyable(tmp_path):
+    """A homograph pair distinct only by pos/meaning but sharing a
+    case-insensitive content ("Lead" n. vs "lead" v.) survives as two
+    shared_deck_card rows (distinct content_guid) yet COLLAPSES under the
+    copier's UNIQUE(content COLLATE NOCASE, notebook_id) → every copy 409s.
+    build_official must reject it at curation, in EVERY mode, not ship a dead
+    deck the round-trip check can't see."""
+    bad = _spec(cards=[
+        {"content": "Lead", "pos": "noun", "meaning": "鉛（金屬）", "mode": "recognition"},
+        {"content": "lead", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
+    ])
+    with pytest.raises(build_official.SpecError, match="(?i)case-insensitive|nocase|collide"):
+        build_official.emit(bad, check=True)
+    with pytest.raises(build_official.SpecError):
+        build_official.emit(bad, commit=False, data_dir=tmp_path)
+    with pytest.raises(build_official.SpecError):
+        build_official.emit(bad, commit=True, data_dir=tmp_path)
+    assert not (tmp_path / "shared_decks.db").exists(), "rejected spec must not write"
+
+
+def test_distinct_content_homograph_is_copyable(tmp_path):
+    """Distinct content strings (no NOCASE collision) copy 1:1 → allowed."""
+    ok = _spec(cards=[
+        {"content": "lead", "pos": "noun", "meaning": "鉛", "mode": "recognition"},
+        {"content": "leads", "pos": "verb", "meaning": "帶領", "mode": "recognition"},
+    ])
+    assert build_official.emit(ok, check=True)["drift"] is False
+
+
+def test_exact_duplicate_cards_not_flagged_by_copyability_guard(tmp_path):
+    """Two identical cards share ONE content_guid → they collapse to a single
+    shared_deck_card and copy 1:1, so the NOCASE copyability guard must NOT trip
+    (it dedups by guid first, exactly as publish_official does). Dry-run runs the
+    guard but not the round-trip --check (which separately flags redundant cards
+    as drift — a different gate)."""
+    dup = _spec(cards=[
+        {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+        {"content": "run", "pos": "verb", "meaning": "跑", "mode": "recognition"},
+    ])
+    res = build_official.emit(dup, commit=False, data_dir=tmp_path)
+    assert res["committed"] is False
+    assert res["cardCount"] == 1  # deduped by guid, no SpecError raised
+
+
 def test_check_over_committed_specs_is_clean():
     """Every git-committed official spec must round-trip cleanly (PR gate)."""
     specs = build_official.discover_specs()
