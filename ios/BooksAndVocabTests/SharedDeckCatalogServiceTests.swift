@@ -152,5 +152,98 @@ struct SharedDeckCatalogServiceTests {
         #expect(!url.contains("?"))
         #expect(url.hasSuffix("/api/decks"))
     }
+
+    // MARK: - Pagination (keyset cursor)
+    //
+    // `syncAll` must page the ENTIRE catalog before reconcile. Reconcile
+    // tombstones any local deck absent from the server set, so feeding it a
+    // single page (the pre-Phase-2b bug) mass-deletes every deck past page 1.
+
+    private func listPage(_ ids: Range<Int>, nextCursor: String?) -> SharedDeckListResponse {
+        SharedDeckListResponse(decks: ids.map { summary("d\($0)") }, nextCursor: nextCursor)
+    }
+
+    @Test func collectAllPages_follows_cursor_and_accumulates_every_page() async throws {
+        let page0 = listPage(0..<20, nextCursor: "c1")   // full first page → more to come
+        let page1 = listPage(20..<25, nextCursor: nil)   // deck "d24" lives ONLY here
+        var seenCursors: [String?] = []
+        let all = try await SharedDeckCatalogService.collectAllPages { cursor in
+            seenCursors.append(cursor)
+            switch cursor {
+            case .none: return page0
+            case .some("c1"): return page1
+            default: throw URLError(.badServerResponse)
+            }
+        }
+        #expect(all.count == 25)                          // union of both pages
+        #expect(all.contains { $0.deckId == "d24" })      // second-page deck present
+        #expect(seenCursors == [nil, "c1"])               // followed nextCursor
+        let ids = all.map(\.deckId)
+        #expect(Set(ids).count == ids.count)              // no duplicate ids across pages
+    }
+
+    @Test func collectAllPages_single_page_stops_when_cursor_nil() async throws {
+        var calls = 0
+        let all = try await SharedDeckCatalogService.collectAllPages { _ in
+            calls += 1
+            return self.listPage(0..<3, nextCursor: nil)
+        }
+        #expect(calls == 1)          // nil cursor → exactly one fetch
+        #expect(all.count == 3)
+    }
+
+    @Test func collectAllPages_caps_pages_on_looping_cursor() async throws {
+        // Degenerate server that never yields a nil cursor → must not loop forever.
+        var calls = 0
+        let all = try await SharedDeckCatalogService.collectAllPages(maxPages: 3) { _ in
+            calls += 1
+            return SharedDeckListResponse(decks: [self.summary("d\(calls)")], nextCursor: "always")
+        }
+        #expect(calls == 3)          // hard cap honoured
+        #expect(all.count == 3)
+    }
+
+    @Test func collectAllPages_propagates_mid_pagination_fetch_error() async {
+        // A page fetch that throws must propagate so `syncAll` returns
+        // `.listFetchFailed` and skips reconcile — a partial set is not
+        // authoritative and must never drive a mass-delete.
+        await #expect(throws: URLError.self) {
+            _ = try await SharedDeckCatalogService.collectAllPages { cursor in
+                if cursor == nil {
+                    return self.listPage(0..<20, nextCursor: "c1")   // page 1 OK, more to come
+                }
+                throw URLError(.timedOut)                            // page 2 fails
+            }
+        }
+    }
+
+    // Integration: page a 2-page catalog, then apply exactly what `syncAll`
+    // does post-fetch (upsert every accumulated deck + reconcile against the
+    // SAME full set). The second-page deck must survive — this is the bug fix.
+    @Test func multiPage_sync_keeps_second_page_deck_alive() async throws {
+        let container = try makeContainer()
+        let ctx = container.mainContext
+        let page0 = listPage(0..<20, nextCursor: "c1")
+        let page1 = listPage(20..<25, nextCursor: nil)
+        let summaries = try await SharedDeckCatalogService.collectAllPages { cursor in
+            switch cursor {
+            case .none: return page0
+            case .some("c1"): return page1
+            default: throw URLError(.badServerResponse)
+            }
+        }
+        for (i, s) in summaries.enumerated() {
+            SharedDeckCatalogService.upsertDeck(summary: s, sortOrder: i, context: ctx)
+        }
+        SharedDeckCatalogService.reconcileLocalState(serverSummaries: summaries, context: ctx)
+        try ctx.save()
+
+        let all = try decks(ctx)
+        let deckX = all.first { $0.remoteId == "d24" }    // page-2-only deck
+        #expect(deckX != nil)
+        #expect(deckX?.isSoftDeleted == false)            // NOT tombstoned
+        #expect(all.count == 25)                          // exactly one row per deck
+        #expect(all.filter { !$0.isSoftDeleted }.count == 25)
+    }
 }
 #endif
