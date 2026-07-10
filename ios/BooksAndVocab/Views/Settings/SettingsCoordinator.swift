@@ -110,7 +110,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         let store = ReviewSettingsStore.shared
         guard store.pauseClockSnapshot.updatedAt == nil else { return }
         _ = KGFeatureFlags.serverReviewClockLwwEnabled  // keep wired for future LWW flip
-        let pausedAt = clock.paused_at.flatMap { AppDateFormatters.iso8601.date(from: $0) }
+        let pausedAt = clock.paused_at.flatMap(AppDateFormatters.parseISO8601)
         store.applyServerPauseState(
             isPaused: clock.is_paused,
             pausedAt: clock.is_paused ? pausedAt : nil,
