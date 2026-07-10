@@ -73,7 +73,7 @@ have landed since the last deploy; a push is a deliberate, batched release.
              A diverged main is never auto-merged — land unique commits via cutover.
              dry-run default.
   freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
-             open/adopt/cutover/sync-main refuse; draining steps (resolve, sweep,
+             open/adopt/cutover/sync-main/deploy refuse; draining steps (resolve, sweep,
              preflight, gate) stay allowed so the flow can be quiesced for repo
              surgery (history rewrite, gc, shared hooks/config).
 
@@ -660,10 +660,10 @@ def cmd_adopt(args: argparse.Namespace) -> int:
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
-    """Stop-the-world surgery lock. `on` refuses new births/landings (open, adopt,
-    cutover) until `off`; draining steps (resolve, sweep, preflight, gate) stay
-    allowed so the flow can be quiesced for repo surgery (history rewrite, gc,
-    shared-config changes)."""
+    """Stop-the-world surgery lock. `on` refuses new births/landings/publishes (open,
+    adopt, cutover, sync-main, deploy) until `off`; draining steps (resolve, sweep,
+    preflight, gate) stay allowed so the flow can be quiesced for repo surgery (history
+    rewrite, gc, shared-config changes)."""
     lock = _freeze_path(args.state)
 
     if args.action == "status":
@@ -819,7 +819,10 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
 def _backend_paths_in_range(primary: Path, lo: str, hi: str) -> list[str]:
     """Changed files under backend/ across lo..hi (informational: which deploy would
     trigger the felix reconciler's production rollout). The authoritative path filter
-    lives in kg_reconcile.sh; this is a heads-up, not a gate."""
+    lives in kg_reconcile.sh; this is a heads-up, not a gate. This `backend/` prefix is
+    a SUPERSET of the reconciler's narrower regex (which excludes backend/docs, data,
+    VERSION, uv.lock, …) — so it can only OVER-warn ("rollout coming" when the
+    reconciler will no-op), never under-warn a real rollout."""
     rc, out = _git(["diff", "--name-only", f"{lo}..{hi}"], cwd=primary)
     if rc != 0:
         return []
@@ -902,10 +905,13 @@ def cmd_deploy(args: argparse.Namespace) -> int:
     prc, pout = _git(["push", "origin", f"{local_ref}:{local}"], cwd=primary)
     if prc != 0:
         return _refuse(f"git push failed: {pout[:300]}")
-    rc, now = _git(["rev-parse", upstream], cwd=primary)
-    if rc != 0 or now != local_sha:
-        return _refuse(f"post-push verification failed: {upstream} is at "
-                       f"{now[:9] if rc == 0 else '?'}, expected {local_sha[:9]}")
+    # verify against origin's ACTUAL ref (ls-remote), not the local remote-tracking ref
+    # git just wrote — an independent confirmation that the publish really took.
+    rc, ls = _git(["ls-remote", "origin", local], cwd=primary)
+    now = ls.split()[0] if rc == 0 and ls.strip() else ""
+    if now != local_sha:
+        return _refuse(f"post-push verification failed: origin {local} is at "
+                       f"{now[:9] if now else '?'}, expected {local_sha[:9]}")
     _emit({"schema": SCHEMA, "step": "deploy", "verdict": "pushed",
            "to": local_sha[:9], "commits": int(count or 0), "backend_files": backend,
            "rolled_out": bool(backend), "primary": str(primary)}, args.json,
@@ -1219,8 +1225,9 @@ def build_parser() -> argparse.ArgumentParser:
     dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
-                        "births/landings (open/adopt/cutover) until `off`; draining "
-                        "steps (resolve/sweep/preflight/gate) stay allowed")
+                        "births/landings/publishes (open/adopt/cutover/sync-main/"
+                        "deploy) until `off`; draining steps (resolve/sweep/preflight/"
+                        "gate) stay allowed")
     add_common(fz)
     fz.add_argument("action", choices=["on", "off", "status"])
     fz.add_argument("--reason", default=None,
@@ -1244,7 +1251,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(co)
     add_base(co)
     co.add_argument("--worktree", required=True, help="worktree path to cut over")
-    co.add_argument("--commit", action="store_true", help="execute the push (default: dry-run)")
+    co.add_argument("--commit", action="store_true",
+                    help="land the ff into local main (default: dry-run)")
     co.set_defaults(func=cmd_cutover)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "

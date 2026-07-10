@@ -26,7 +26,7 @@ version: 1.0.0
 | 成本 / 帳單 / drift | `billing` skill |
 | 用戶資料、圖譜、額度深度分析 | `data-analysis` skill |
 | bug / test failure / 異常行為 | `app-debug` skill |
-| 隔離工作樹 intent→dev→merge 進 main；「需要 main」任務（bootstrap 補登記/追平 local main/repo 手術鎖） | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/cutover/resolve/sync-main/freeze） |
+| 隔離工作樹 intent→dev→merge 進**本地** main→發布；「需要 main」任務（bootstrap 補登記/repo 手術鎖）；deploy 上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/cutover/resolve/deploy/sync-main/freeze；**本地 main 為主幹**，cutover 離線 ff 本地 main、deploy 才推 origin=部署） |
 | iOS build/test/release readiness | `./ops/ios_ops.sh commands --json`，再讀 `docs/sop/ios.md` |
 | docs impact / lint / registry | `kg-docs-control-plane` skill |
 | release version/changelog/tag | `./ops/release.sh status` |
