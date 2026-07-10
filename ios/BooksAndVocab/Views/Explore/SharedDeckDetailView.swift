@@ -207,12 +207,15 @@ struct SharedDeckDetailView: View {
     @MainActor
     private func performCopy(notebookName: String?) async {
         confirmedCopyName = notebookName
+        let container = modelContext.container
         await copyController.copy(
             deckId: deckId,
             notebookName: notebookName,
             using: kgService,
-            afterCopy: { _ in
-                // 2c-2（後續 commit）：copy 成功後針對性增量 pull 新 notebook + 卡片。
+            afterCopy: { resp in
+                // 針對性增量 pull：把新 notebook + 其卡片立即拉回本地，讓複製卡即時可
+                // 複習（不等背景全量 sync）。自我防禦、不 throw，故不影響 success 判定。
+                await kgService.pullCopiedDeck(container: container, notebookId: resp.notebookId)
             }
         )
         if case .success = copyController.state {
