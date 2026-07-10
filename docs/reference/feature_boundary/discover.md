@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocab/Views/Explore/
   - ios/BooksAndVocab/Models/SharedDeck.swift
   - ios/BooksAndVocab/Services/SharedDeckCatalogService.swift
-verified_against: 888dde5f0
+verified_against: e14f295ad
 -->
 # Explore (Shared Decks) Feature Boundary
 

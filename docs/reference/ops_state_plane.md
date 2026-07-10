@@ -17,7 +17,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: 888dde5f0
+verified_against: e14f295ad
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
