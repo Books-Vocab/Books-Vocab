@@ -25,6 +25,11 @@ struct AppPage {
         app.tabBars.buttons["總覽"]
     }
 
+    /// Explore（共享牌組庫）—— DEBUG-gated 第 5 個 tab（KGFeatureFlags.exploreEnabled）。
+    var exploreTab: XCUIElement {
+        app.tabBars.buttons["探索"]
+    }
+
     // MARK: - Global Overlays
 
     var offlineBanner: XCUIElement {
@@ -59,6 +64,12 @@ struct AppPage {
     func goToOverview(file: StaticString = #filePath, line: UInt = UInt(#line)) -> OverviewPage {
         overviewTab.tapWhenReady(file: file, line: line)
         return OverviewPage(app: app)
+    }
+
+    @discardableResult
+    func goToExplore(file: StaticString = #filePath, line: UInt = UInt(#line)) -> AppPage {
+        exploreTab.tapWhenReady(file: file, line: line)
+        return self
     }
 
     // MARK: - Assertions

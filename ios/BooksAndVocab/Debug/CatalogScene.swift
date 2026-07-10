@@ -55,6 +55,7 @@ struct CatalogScene: View {
     enum Feature: String {
         case reader, vocabulary, notebook, bookshelf, podcast
         case review, settings, monetization, onboarding, misc
+        case explore
     }
 
     /// Identity of a real, full app screen. Drives the catalog coverage + no-dup
@@ -68,6 +69,7 @@ struct CatalogScene: View {
         // pending coverage — authored in P3 (see Manifest.pendingCoverage)
         case podcastPlayer, podcastEpisodeList, notebookList
         case settingsAccountDetail, translationLanguageSettings, appStartupRecovery
+        case explore, sharedDeckDetail
         // NOTE: KGVocabView is never presented standalone — VocabularyListView's
         // logged-in path renders it — so it is covered by the .vocabularyList
         // screen surface + the "KG Vocab Presenter" component, not its own screen.
@@ -327,6 +329,8 @@ struct CatalogScene: View {
             .init(id: "settings", surfaces: [screen("Settings", .settings, .settings, SettingsPresenter.self)], register: SettingsScenarios.register),
             .init(id: "today_review", surfaces: [screen("Today Review", .review, .todayReview, TodayReviewPresenter.self)], register: TodayReviewScenarios.register),
             .init(id: "welcome", surfaces: [screen("Welcome", .onboarding, .welcome, WelcomeView.self)], register: WelcomeScenarios.register),
+            .init(id: "explore_view", surfaces: [screen("Explore View", .explore, .explore, ExploreView.self)], register: ExploreViewScenarios.register),
+            .init(id: "shared_deck_detail_view", surfaces: [screen("Shared Deck Detail View", .explore, .sharedDeckDetail, SharedDeckDetailView.self)], register: SharedDeckDetailViewScenarios.register),
         ]
 
         static var categoryNames: Set<String> {
