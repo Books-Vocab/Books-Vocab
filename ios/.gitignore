@@ -20,6 +20,9 @@ DerivedData/
 *.xccheckout
 *.xcuserstate
 
+## xcodebuild per-test-file compile artifacts (empty {} binary plists, never fixtures)
+*.swift.plist
+
 ## OS X
 .DS_Store
 build.log
