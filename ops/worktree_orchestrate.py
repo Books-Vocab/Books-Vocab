@@ -952,98 +952,142 @@ def _backend_paths_in_range(primary: Path, lo: str, hi: str) -> list[str]:
     return [ln for ln in out.splitlines() if ln.startswith("backend/")]
 
 
-def cmd_deploy(args: argparse.Namespace) -> int:
-    """Publish the local trunk to origin — the ONE deliberate production touch.
+def _guarded_advance(*, src_branch: str, dest_branch: str, production: bool, step: str,
+                     commit: bool, as_json: bool, state: str | None) -> int:
+    """Guarded fast-forward publish of local `src_branch` to `origin/dest_branch`.
 
-    In the local-centric model local `main` runs ahead of origin; deploy pushes it so
-    the felix reconciler (watching origin/main) turns the backend delta into a rollout
-    with its own health gate + auto-rollback. This is the guarded, observable push:
-    refuse unless the primary is on `main` with origin a strict ANCESTOR of local
-    (a clean ff — never a force); noop when already published; surface the backend
-    files in range so the operator knows a production rollout is coming. dry-run
-    default. The reconciler owns the health gate/rollback — deploy does not re-run it;
-    `--watch` polls the public version endpoint until it converges (best-effort)."""
-    blocked = _freeze_guard(args.state, "deploy", args.json)
+    The shared engine behind the two trunk-publish verbs of the three-plane model:
+      * `sync`   (backup plane): main → origin/main — a zero-side-effect mirror. The
+        reconciler does NOT watch origin/main, so this is pure backup.
+      * `deploy` (release plane): main → origin/prod — the felix reconciler watches
+        origin/prod and turns a backend delta into a health-gated production rollout
+        (its own auto-rollback). This is the ONE deliberate production touch.
+    Refuse unless the primary is checked out on `src_branch` with origin/`dest_branch`
+    a strict ANCESTOR of local (a clean ff — never a force); noop when already at the
+    same sha; first publish when origin/`dest_branch` is absent. dry-run default. When
+    `production`, surface the backend files coming in range so the operator knows a
+    rollout will fire."""
+    blocked = _freeze_guard(state, step, as_json)
     if blocked is not None:
         return blocked
 
-    upstream = args.upstream
-    if not upstream.startswith("origin/"):
-        _emit({"schema": SCHEMA, "step": "deploy", "error": "upstream must be an "
-               "origin/* ref", "upstream": upstream}, args.json,
-              f"✗ upstream must be an origin/* ref, got {upstream!r}")
-        return EXIT_USAGE
-    local = upstream.split("/", 1)[1]
     primary = primary_root()
 
     def _refuse(reason: str) -> int:
-        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "refused",
-               "reason": reason, "primary": str(primary)}, args.json,
-              f"✗ deploy refused: {reason}")
+        _emit({"schema": SCHEMA, "step": step, "verdict": "refused",
+               "reason": reason, "primary": str(primary)}, as_json,
+              f"✗ {step} refused: {reason}")
         return EXIT_BLOCK
 
     cur = _current_branch(str(primary))
-    if cur != local:
+    if cur != src_branch:
         where = "a detached HEAD" if cur is None else f"{cur!r}"
-        return _refuse(f"primary checkout is on {where}, not {local!r} — deploy "
+        return _refuse(f"primary checkout is on {where}, not {src_branch!r} — {step} "
                        f"publishes the local trunk")
 
     frc, fout = _fetch()
     if frc != 0:
         return _refuse(f"fetch failed — cannot compare against origin: {fout[:200]}")
-    local_ref = f"refs/heads/{local}"
-    rc, local_sha = _git(["rev-parse", local_ref], cwd=primary)
+    src_ref = f"refs/heads/{src_branch}"
+    upstream = f"origin/{dest_branch}"
+    rc, local_sha = _git(["rev-parse", src_ref], cwd=primary)
     rc2, up_sha = _git(["rev-parse", upstream], cwd=primary)
     if rc != 0:
-        return _refuse(f"cannot resolve local {local!r}")
+        return _refuse(f"cannot resolve local {src_branch!r}")
     if rc2 != 0:
         up_sha = ""  # origin has no such branch yet — first publish
     if up_sha and local_sha == up_sha:
-        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "noop",
-               "sha": local_sha[:9], "primary": str(primary)}, args.json,
-              f"# deploy: noop — origin already at {local_sha[:9]}")
+        _emit({"schema": SCHEMA, "step": step, "verdict": "noop",
+               "sha": local_sha[:9], "primary": str(primary)}, as_json,
+              f"# {step}: noop — origin/{dest_branch} already at {local_sha[:9]}")
         return EXIT_OK
     if up_sha:
-        anc, _ = _git(["merge-base", "--is-ancestor", upstream, local_ref], cwd=primary)
+        anc, _ = _git(["merge-base", "--is-ancestor", upstream, src_ref], cwd=primary)
         if anc != 0:
-            return _refuse(f"origin has commits local {local!r} lacks — reconcile "
-                           "first (sync-main / pull); deploy never force-pushes")
-    backend = _backend_paths_in_range(primary, upstream if up_sha else EMPTY_TREE, local_ref)
+            return _refuse(f"origin/{dest_branch} has commits local {src_branch!r} lacks "
+                           f"— reconcile first (sync-main / pull); {step} never force-pushes")
+    backend = (_backend_paths_in_range(primary, upstream if up_sha else EMPTY_TREE, src_ref)
+               if production else [])
     _, count = _git(["rev-list", "--count",
-                     (f"{upstream}..{local_ref}" if up_sha else local_ref)], cwd=primary)
-    rollout = "a PRODUCTION rollout (backend changed)" if backend else "no rollout (no backend change)"
+                     (f"{upstream}..{src_ref}" if up_sha else src_ref)], cwd=primary)
+    if production:
+        rollout = ("a PRODUCTION rollout (backend changed)" if backend
+                   else "no rollout (no backend change)")
+    else:
+        rollout = "no production effect (backup mirror)"
 
-    if not args.commit:
-        _emit({"schema": SCHEMA, "step": "deploy", "verdict": "dry-run",
-               "from": up_sha[:9] if up_sha else None, "to": local_sha[:9],
-               "commits": int(count or 0), "backend_files": backend,
-               "would_roll_out": bool(backend), "primary": str(primary)}, args.json,
-              (f"# deploy (dry-run)\n  would push {local} {local_sha[:9]} -> origin "
-               f"({count} commit(s)) → {rollout}\n"
+    if not commit:
+        payload: dict[str, Any] = {"schema": SCHEMA, "step": step, "verdict": "dry-run",
+                                   "from": up_sha[:9] if up_sha else None, "to": local_sha[:9],
+                                   "commits": int(count or 0), "primary": str(primary)}
+        if production:
+            payload["backend_files"] = backend
+            payload["would_roll_out"] = bool(backend)
+        _emit(payload, as_json,
+              (f"# {step} (dry-run)\n  would push {src_branch} {local_sha[:9]} -> "
+               f"origin/{dest_branch} ({count} commit(s)) → {rollout}\n"
                + (f"  backend files: {', '.join(backend[:8])}"
                   f"{' …' if len(backend) > 8 else ''}\n" if backend else "")
                + "  (--commit to publish)"))
         return EXIT_OK
 
-    prc, pout = _git(["push", "origin", f"{local_ref}:{local}"], cwd=primary)
+    prc, pout = _git(["push", "origin", f"{src_ref}:{dest_branch}"], cwd=primary)
     if prc != 0:
         return _refuse(f"git push failed: {pout[:300]}")
     # verify against origin's ACTUAL ref (ls-remote), not the local remote-tracking ref
     # git just wrote — an independent confirmation that the publish really took.
-    rc, ls = _git(["ls-remote", "origin", local], cwd=primary)
+    rc, ls = _git(["ls-remote", "origin", dest_branch], cwd=primary)
     now = ls.split()[0] if rc == 0 and ls.strip() else ""
     if now != local_sha:
-        return _refuse(f"post-push verification failed: origin {local} is at "
+        return _refuse(f"post-push verification failed: origin/{dest_branch} is at "
                        f"{now[:9] if now else '?'}, expected {local_sha[:9]}")
-    _emit({"schema": SCHEMA, "step": "deploy", "verdict": "pushed",
-           "to": local_sha[:9], "commits": int(count or 0), "backend_files": backend,
-           "rolled_out": bool(backend), "primary": str(primary)}, args.json,
-          (f"✓ deploy: pushed {local} -> origin {local_sha[:9]} ({count} commit(s)) → "
-           f"{rollout}\n"
+    payload = {"schema": SCHEMA, "step": step, "verdict": "pushed",
+               "to": local_sha[:9], "commits": int(count or 0), "primary": str(primary)}
+    if production:
+        payload["backend_files"] = backend
+        payload["rolled_out"] = bool(backend)
+    _emit(payload, as_json,
+          (f"✓ {step}: pushed {src_branch} -> origin/{dest_branch} {local_sha[:9]} "
+           f"({count} commit(s)) → {rollout}\n"
            + ("  the felix reconciler will build + health-gate + auto-rollback; "
-              "watch its verdict or wordnexus.lol version" if backend
-              else "  no reconciler rollout (origin advanced, backend unchanged)")))
+              "watch its verdict or wordnexus.lol version" if (production and backend)
+              else ("  no reconciler rollout (origin advanced, backend unchanged)" if production
+                    else "  backup only — the reconciler does not watch this ref"))))
     return EXIT_OK
+
+
+def _dest_from_upstream(upstream: str, step: str, as_json: bool) -> str | None:
+    """origin/<branch> → <branch>; emit a usage error and return None otherwise."""
+    if not upstream.startswith("origin/"):
+        _emit({"schema": SCHEMA, "step": step, "error": "upstream must be an origin/* ref",
+               "upstream": upstream}, as_json,
+              f"✗ upstream must be an origin/* ref, got {upstream!r}")
+        return None
+    return upstream.split("/", 1)[1]
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    """Backup plane: mirror the local trunk to origin/main (local→origin) — the
+    zero-side-effect backup. Distinct from `sync-main` (origin→local, catch a stale
+    checkout up). The reconciler watches origin/prod, not origin/main, so this push
+    has no production effect."""
+    dest = _dest_from_upstream(args.upstream, "sync", args.json)
+    if dest is None:
+        return EXIT_USAGE
+    return _guarded_advance(src_branch=BASE_DEFAULT, dest_branch=dest, production=False,
+                            step="sync", commit=args.commit, as_json=args.json, state=args.state)
+
+
+def cmd_deploy(args: argparse.Namespace) -> int:
+    """Release plane: advance origin/prod to the local trunk — the ONE deliberate
+    production touch. The felix reconciler (watching origin/prod) turns a backend delta
+    into a health-gated rollout with its own auto-rollback. Guarded ff push, dry-run
+    default; surfaces the backend files in range so a rollout is never a surprise."""
+    dest = _dest_from_upstream(args.upstream, "deploy", args.json)
+    if dest is None:
+        return EXIT_USAGE
+    return _guarded_advance(src_branch=BASE_DEFAULT, dest_branch=dest, production=True,
+                            step="deploy", commit=args.commit, as_json=args.json, state=args.state)
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -1341,21 +1385,33 @@ def build_parser() -> argparse.ArgumentParser:
                     help="execute the ff (default: dry-run)")
     sm.set_defaults(func=cmd_sync_main)
 
-    dp = sub.add_parser("deploy", help="publish the local trunk to origin (the one "
-                        "deliberate production touch) — guarded ff push; the felix "
-                        "reconciler turns a backend delta into a health-gated rollout "
-                        "(dry-run default)")
+    sy = sub.add_parser("sync", help="backup plane: mirror the local trunk to "
+                        "origin/main (local→origin) — a zero-side-effect backup. "
+                        "Distinct from sync-main (origin→local). The reconciler watches "
+                        "origin/prod, not origin/main, so this has no production effect "
+                        "(guarded ff, dry-run default)")
+    add_common(sy)
+    sy.add_argument("--upstream", default="origin/main",
+                    help="origin ref to mirror to (default: origin/main)")
+    sy.add_argument("--commit", action="store_true",
+                    help="execute the push (default: dry-run)")
+    sy.set_defaults(func=cmd_sync)
+
+    dp = sub.add_parser("deploy", help="release plane: advance origin/prod to the local "
+                        "trunk (the one deliberate production touch) — guarded ff push; "
+                        "the felix reconciler (watching origin/prod) turns a backend "
+                        "delta into a health-gated rollout (dry-run default)")
     add_common(dp)
-    dp.add_argument("--upstream", default="origin/main",
-                    help="origin ref to publish to (default: origin/main)")
+    dp.add_argument("--upstream", default="origin/prod",
+                    help="origin ref to publish to (default: origin/prod)")
     dp.add_argument("--commit", action="store_true",
                     help="execute the push (default: dry-run)")
     dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
                         "births/landings/publishes (open/adopt/cutover/sync-main/"
-                        "deploy) until `off`; draining steps (resolve/sweep/preflight/"
-                        "gate) stay allowed")
+                        "sync/deploy) until `off`; draining steps (resolve/sweep/"
+                        "preflight/gate) stay allowed")
     add_common(fz)
     fz.add_argument("action", choices=["on", "off", "status"])
     fz.add_argument("--reason", default=None,
