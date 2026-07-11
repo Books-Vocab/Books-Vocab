@@ -196,12 +196,14 @@ cmd_release() {
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
 
-  local branch curver cmpcur need_bump
+  local branch curver need_bump
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
   curver="$(current_version "$comp")"
-  cmpcur="$curver"; [[ "$cmpcur" =~ ^[0-9]+\.[0-9]+$ ]] && cmpcur="$cmpcur.0"
-  need_bump=0; [[ "$cmpcur" == "$v" ]] || need_bump=1
+  # need_bump 用 RAW 相等（與 cmd_tag 的 strict curver==v 檢查一致）：ios 慣用兩段 MARKETING_VERSION
+  # (如 2.0)，若用正規化相等判 2.0==2.0.0 會跳過 bump，但 cmd_tag strict 比較 raw 2.0≠2.0.0 反而
+  # abort。用 raw 判 → 2.0 vs 2.0.0 觸發 bump 寫成三段 → cmd_tag 一致通過。
+  need_bump=0; [[ "$curver" == "$v" ]] || need_bump=1
 
   echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
   echo "  計畫（dry-run 預設）："

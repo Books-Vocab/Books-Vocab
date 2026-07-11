@@ -393,7 +393,7 @@ new_scratch none
 MOCK_CURL="$(make_mock_curl "" "$SC")"
 out="$(run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
-[[ "$rc" -eq 0 ]] && ok "unseeded-prod: exit 0（fetch fatal 已容錯，不崩）" || bad "unseeded-prod: exit $rc（fetch 未容錯 → set -e 中止）"
+[[ "$rc" -eq 0 ]] && ok "unseeded-prod: exit 0（fetch fatal 已容錯，不崩）" || bad "unseeded-prod: exit ${rc}（fetch 未容錯 → set -e 中止）"
 [[ "$v" == "noop" ]] && ok "unseeded-prod: verdict noop（優雅落 unknown handler）" || bad "unseeded-prod: expected noop, got '$v' (out=$out)"
 [[ -n "$out" ]] && ok "unseeded-prod: 有 JSON verdict（輸出契約守住）" || bad "unseeded-prod: stdout 空（契約破）"
 [[ ! -s "$COMPOSELOG" ]] && ok "unseeded-prod: compose 未跑" || bad "unseeded-prod: compose 被觸發"
