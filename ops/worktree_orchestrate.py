@@ -30,11 +30,13 @@ Subcommands (the API a driving agent / the worktree-flow skill calls):
   preflight  fetch origin + `worktree_registry sweep --exclude-current` (clear crash
              residue; dry-run default, --commit executes). Safe from ANY worktree —
              --exclude-current means a preflight never proposes clearing itself.
-TOPOLOGY — local-main-centric. Local `main` is the trunk: worktrees fork from it and
-cutover fast-forwards it OFFLINE (no network, no deploy). origin/main is only a deploy
-target — `deploy` pushes local main to origin, and the felix reconciler turns that push
-into a production rollout. So local main runs ahead of origin by however many cutovers
-have landed since the last deploy; a push is a deliberate, batched release.
+TOPOLOGY — local-main-centric, three planes. Local `main` is the trunk: worktrees fork
+from it and cutover fast-forwards it OFFLINE (develop plane). `sync` mirrors local main
+to origin/main as a zero-side-effect backup (backup plane) — the reconciler does NOT
+watch origin/main. `deploy` advances origin/prod (release plane) — the felix reconciler
+watches origin/prod and turns a backend delta into a health-gated production rollout.
+So local main runs ahead of origin/main (backed up) and origin/prod (released) by however
+many cutovers have landed; deploy is the ONE deliberate production touch.
 
   open       git worktree add (.claude/worktrees/<slug>, branch = <type>/<slug> where
              type is classify_intent(intent)) forked from LOCAL `main` (offline) +
@@ -60,11 +62,16 @@ have landed since the last deploy; a push is a deliberate, batched release.
              --force) → registry resolve <branch> merged → git worktree remove +
              branch -D (local, and origin if present) + drop the gate-record cache →
              ledger closed, no residue.
-  deploy     publish the local trunk to origin — the ONE deliberate production touch.
-             Guarded ff push (primary on main, origin a strict ancestor of local, never
-             a force); noop when already published; surfaces the backend files in range
-             (a backend delta makes the felix reconciler run a health-gated rollout with
-             auto-rollback — deploy does not re-run that gate). dry-run default.
+  sync       BACKUP plane: mirror the local trunk to origin/main (local→origin) — a
+             zero-side-effect backup. Distinct from sync-main (origin→local). The
+             reconciler watches origin/prod, not origin/main, so this has no production
+             effect. Guarded ff push, dry-run default.
+  deploy     RELEASE plane: advance origin/prod to the local trunk — the ONE deliberate
+             production touch. Guarded ff push (primary on main, origin/prod a strict
+             ancestor of local, never a force); noop when already advanced; surfaces the
+             backend files in range (a backend delta makes the felix reconciler run a
+             health-gated rollout with auto-rollback — deploy does not re-run that gate).
+             dry-run default.
   sync-main  guarded LOSSLESS ff of the PRIMARY checkout's local main to origin/main
              (three-green: tracked-clean + on main with no merge/rebase in flight +
              strictly behind). In the local-centric model local main normally runs
@@ -73,7 +80,7 @@ have landed since the last deploy; a push is a deliberate, batched release.
              A diverged main is never auto-merged — land unique commits via cutover.
              dry-run default.
   freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
-             open/adopt/cutover/sync-main/deploy refuse; draining steps (resolve, sweep,
+             open/adopt/cutover/sync-main/sync/deploy refuse; draining steps (resolve, sweep,
              preflight, gate) stay allowed so the flow can be quiesced for repo
              surgery (history rewrite, gc, shared hooks/config).
 
