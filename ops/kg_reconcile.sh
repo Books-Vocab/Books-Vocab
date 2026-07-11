@@ -296,10 +296,14 @@ main() {
   fi
 
   # 1) fetch（dry-run 不動 .git，改用現有 refs 預覽）
+  #    容錯（不可省，set -e 下）：origin/prod 尚未 seed 時 `fetch origin prod` 會 fatal exit 128，
+  #    若直接 git_fetch 會在下方 unknown→noop 優雅處理「之前」就中止 main（無 JSON verdict、
+  #    launchd err log 噴、違反輸出契約）。故 fetch 失敗只告警不中止 → 落到 rev-parse origin/prod
+  #    →unknown→noop 的既有優雅路徑（首次啟用 seed 前、或網路異常皆適用）。
   if [[ "$dry_run" == "1" ]]; then
     log "[dry-run] would: git fetch origin prod"
   else
-    git_fetch
+    git_fetch || alert "fetch origin/prod 失敗（尚未 seed 或網路異常）——改用現有 tracking ref 判斷，缺則本輪 noop。"
   fi
 
   # 2) deployed_sha（容器版本真相）= backend/VERSION；origin_sha = origin/prod

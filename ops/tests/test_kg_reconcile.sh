@@ -384,6 +384,20 @@ v="$(get_verdict "$out")"
 [[ "$v" == "ff-only" ]] && ok "ff-only-no-write: verdict ff-only" || bad "ff-only-no-write: expected ff-only, got '$v' (out=$out)"
 [[ "$(cat "$VERSIONFILE")" == "$SHA_OLD" ]] && ok "ff-only-no-write: VERSION 游標未變（仍 ${SHA_OLD}）" || bad "ff-only-no-write: VERSION=$(cat "$VERSIONFILE") 被寫（§2.4 要求非 backend ff-only 不動游標）"
 
+section "origin/prod 未 seed（首次啟用前）→ 非 dry-run 優雅 noop 不崩（守輸出契約）"
+new_scratch none
+# 模擬 origin/prod 尚未 seed：刪 origin 的 prod + 本地 tracking ref。fetch origin prod 會 fatal，
+# 但容錯後應落到 rev-parse origin/prod→unknown→noop，而非 set -e 中止（回歸 IMPORTANT #1）。
+"$REALGIT" -C "$ORIGIN" update-ref -d refs/heads/prod 2>/dev/null || true
+"$REALGIT" -C "$REPO" update-ref -d refs/remotes/origin/prod 2>/dev/null || true
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$rc" -eq 0 ]] && ok "unseeded-prod: exit 0（fetch fatal 已容錯，不崩）" || bad "unseeded-prod: exit $rc（fetch 未容錯 → set -e 中止）"
+[[ "$v" == "noop" ]] && ok "unseeded-prod: verdict noop（優雅落 unknown handler）" || bad "unseeded-prod: expected noop, got '$v' (out=$out)"
+[[ -n "$out" ]] && ok "unseeded-prod: 有 JSON verdict（輸出契約守住）" || bad "unseeded-prod: stdout 空（契約破）"
+[[ ! -s "$COMPOSELOG" ]] && ok "unseeded-prod: compose 未跑" || bad "unseeded-prod: compose 被觸發"
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"
