@@ -95,6 +95,7 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 - **cutover 被 primary 髒態擋** → 髒檔多半是另一個 session（co-tenant）留的：用 session-mgmt MCP `list_sessions` 查同倉 running session → `send_message` 發協調請求（請其 commit 或說明佔用）。是自己的殘留就 commit 或撤到 worktree（見上方「需要 main」路由末條）。gate verdict 綁 worktree HEAD 仍有效——primary 乾淨後**直接重跑 cutover**，不必重跑 gate。
 - **政策**：primary 上工作**早 commit、常 commit**；agent 對 primary 是**過境不常駐**——別讓 uncommitted 改動在 primary 過夜擋別人的 cutover。
+- **協調信箱（被動通道，優先於 send_message）**：`<repo>/.cache/coordination/broadcast.md`（全員）與 `<repo>/.cache/coordination/<slug>.md`（點對點，slug=你的 worktree slug）。`.cache/` gitignored、不進版控。**讀時機**（每個節點順手 `cat`，無檔即略過）：open 後、gate 前、cutover 被 refuse 時、暫停/待命前。**寫**：對其他 session 的非急件協調（排程、讓路、注意事項）寫進對方 `<slug>.md` 或 broadcast，**送出即完成、不等回覆**；急件（要對方立刻停手）才用 `send_message`（每則會跳使用者確認框，host 硬閘、配置免不了——所以批次合併、能少則少）。過期訊息由寫入者自清（附日期，處理完即刪）。
 
 ## 硬邊界
 
