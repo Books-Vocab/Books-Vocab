@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 9dfe9ab43
+verified_against: 10586683d
 -->
 # 後端部署指南
 
@@ -19,7 +19,7 @@ verified_against: 9dfe9ab43
 - **Edge**: Cloudflare Tunnel（名 `kg-standby`，CF 邊緣終結 TLS）；**無 Caddy、不開 inbound 埠**
 - **Domain**: `wordnexus.lol`（CF DNS apex proxied CNAME → tunnel → standby localhost:8000）
 - **SSH**: `ssh chenliangyu@100.118.39.104`（主力機公鑰免密碼）
-- **primary 工作區**: `~/project/kg/backend`（git 同步，非 rsync）
+- **primary 工作區**: `~/project/kg/backend`（git 同步，非 rsync）。⚠ 三平面拓樸下**生產容器實際跑在專用 clone `~/kg-prod/backend`**（reconciler 盯 origin/prod、compose 從此 build）；`~/project/kg` 為 dev/resume-only。下方 §標準部署流程的手動路徑若要碰生產容器須在 `~/kg-prod/backend` 執行（同 project name 在 `~/project/kg` 跑 compose 會劫持生產容器）。三平面語意與切換 runbook 見 [`docs/sop/release.md`](release.md)
 - **rollback 伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`，IP `13.193.212.134`，SSH key `~/.secrets/lightsail_kg_prod`，工作區 `~/knowledge_graph_api`（容器 STOP）
 
 ---
@@ -59,17 +59,17 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 
 ---
 
-## push=deploy 自動 reconciler（felix-local，launchd 週期）
+## reconciler：release=deploy 自動收斂（felix-local，launchd 週期）
 
-> **一句話**：`origin/main` 一前進（且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版，免人工 SSH。上面的 §標準部署流程仍是手動路徑；本段是它的自動化包裝，兩者**共用同一把 deploy 鎖**互斥。
+> **一句話**：**`origin/prod`** 一前進（三平面 release 平面，只有 `deploy` 推進它；且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版，免人工 SSH。`origin/main` 已降為 backup 鏡像（`sync` 推），reconciler **不看 main**。上面的 §標準部署流程仍是手動路徑；本段是它的自動化包裝，兩者**共用同一把 deploy 鎖**互斥。三平面 develop/backup/release 動詞語意與首次 origin/main→origin/prod 切換 runbook 見 [`docs/sop/release.md`](release.md)。
 
-- **腳本**：`ops/kg_reconcile.sh`（`--once`／`--dry-run`／`--help`）。它**跑在 felix 本機**（不走 SSH，git/docker/curl 全本機）。一輪冪等 tick 跑完即退。
-- **驅動**：`ops/launchd/com.kg.reconcile.plist`（`StartInterval=90` 秒輪詢、`RunAtLoad`、**不 KeepAlive**、`ThrottleInterval=60`）。log → `~/Library/Logs/kg_reconcile.{out,err}.log`。
-- **收斂真相**：`deployed_sha` = felix `backend/VERSION`（容器 serving 版本）；`origin_sha` = `origin/main`。差異檔 = `git diff <deployed_sha>..origin/main`。
+- **腳本**：`ops/kg_reconcile.sh`（`--once`／`--dry-run`／`--help`）。它**跑在 felix 本機的專用生產 clone `~/kg-prod`**（由 launchd `KG_RECON_REPO` 指定；`~/project/kg` 為 dev/resume-only，reconciler 絕不碰）。不走 SSH，git/docker/curl 全本機；一輪冪等 tick 跑完即退。
+- **驅動**：`ops/launchd/com.kg.reconcile.plist`（`StartInterval=90` 秒輪詢、`RunAtLoad`、**不 KeepAlive**、`ThrottleInterval=60`；生產切換後 ProgramArguments 與 `KG_RECON_REPO` 皆指向 `~/kg-prod`）。log → `~/Library/Logs/kg_reconcile.{out,err}.log`。
+- **收斂真相**：`deployed_sha` = felix `backend/VERSION`（容器 serving 版本）；`origin_sha` = `origin/prod`。差異檔 = `git diff <deployed_sha>..origin/prod`。origin/prod 未 seed → 優雅 noop。
 - **crash-consistency 交叉驗證**（felix 無 UPS）：`backend/VERSION` 於 deploy 時 build/health 確認「之前」就寫入，若該窗口斷電/被 kill，VERSION 會宣稱 new 但容器實際仍 serving 舊 image。故每輪 tick 先用 live 容器自報 version（`localhost /api/system/info`）交叉驗證：與 `VERSION` 不符（或 `VERSION` 缺失/不可解析）且 live 版可解析 → **以 live 實際版為準**覆蓋 `deployed_sha` 並修正 `VERSION` 游標，從實際狀態重新收斂（自癒 crash-window drift、亦救 `VERSION` 遺失但容器健在）。VERSION 缺失且容器亦無回應 → 大聲告警 + no-op（等人工 seed，不做「驚訝的」rebuild）。
 
 ### path-filter 判準（哪些變更才 rebuild）
-只有變更命中 backend 觸發正則才 `compose up --build`；否則只 `git pull --ff-only`（追 felix repo HEAD、含自我更新本腳本），**不動容器**。觸發集（錨定 `backend/`）：`src/`、`tests/`、`static/`、`pyproject.toml`、`pytest.ini`、`Dockerfile`、`docker-compose.yml`、`ops_{cli,analyze,edit}.py`、`{index,privacy,support,terms,guide}.html`。
+只有變更命中 backend 觸發正則才 `compose up --build`；否則只 `git pull --ff-only origin prod`（追 felix repo HEAD、含 release 時自我更新本腳本），**不動容器**、**且刻意不寫 `backend/VERSION` 游標**（VERSION 只在真正 build 健康後才寫，代表容器 serving 版本；非 backend 變更沒重建容器，寫 VERSION 會謊報部署狀態）。觸發集（錨定 `backend/`）：`src/`、`tests/`、`static/`、`pyproject.toml`、`pytest.ini`、`Dockerfile`、`docker-compose.yml`、`ops_{cli,analyze,edit}.py`、`{index,privacy,support,terms,guide}.html`。
 - **刻意排除 `backend/uv.lock`**：Dockerfile 走 `pip install .` 只讀 `pyproject.toml`、不消費 `uv.lock`，故「只改 uv.lock」不改 image；真正 dep 變更一定同時動 `pyproject.toml`（會觸發）。
 - **刻意排除**（皆不進 image）：`backend/.env*`、`backend/VERSION`、`backend/data/**`、`backend/certs/**`、`backend/scripts/**`、`backend/docs/**`、`ios/**`、`lab/**`、`docs/**`、`ops/**`、`design-system/**`。判準正本在 `ops/kg_reconcile.sh` 的 `BACKEND_TRIGGER_RE`。
 
@@ -85,14 +85,16 @@ DEPLOY 路徑用 `mkdir /tmp/kg-deploy.lock`（**與 `devops.sh` 的 `acquire_de
 ### 安全不變式
 絕不碰 `~/kg-data`（生產資料權威副本，已於 2026-06-16 搬出 git worktree，`reset --hard` 只作用 repo working tree）；絕不 `git clean`／不 reset 到未知 sha（只回 ROLLBACK_SHA）／不 `compose down`／不 prune／不 `rm -rf`；fetch/pull 一律 `--ff-only`，origin rewind 不 force、告警待人工。
 
-### 首次啟用（總經理手動；務必先 dry-run）
+### 首次啟用 / origin/main→origin/prod 拓樸切換
+
+> **首次啟用是一次性拓樸遷移**（建生產 clone `~/kg-prod`、seed `origin/prod`、原地 recreate 容器、換 plist 指向 `~/kg-prod`），權威 step-by-step（P0–P5 + GO GATE + rollback）在 [`docs/sop/release.md`](release.md) §felix 生產切換。本段不重抄。
+
+已啟用後的日常 dry-run / 掛載 / 停用（在 `~/kg-prod`；務必先 dry-run，絕不 mutate）：
 ```bash
-# felix 上，先 dry-run 驗（絕不 mutate，印出會做什麼 + JSON verdict）
-cd ~/project/kg && ops/kg_reconcile.sh --dry-run
-# 確認無誤後掛 launchd（跑在 auto-login session）
-cp ops/launchd/com.kg.reconcile.plist ~/Library/LaunchAgents/com.kg.reconcile.plist
+# felix 上，先 dry-run 驗（印出會做什麼 + JSON verdict，必為 noop 除非 origin/prod 真前進）
+cd ~/kg-prod && KG_RECON_REPO=~/kg-prod ops/kg_reconcile.sh --dry-run
+# 掛載 / 停用 launchd（跑在 auto-login session）
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.reconcile.plist
-# 停用
 launchctl bootout gui/$(id -u)/com.kg.reconcile
 ```
 單元測試：`bash ops/tests/test_kg_reconcile.sh`（全離線、mock git/compose/curl/infra_health）。

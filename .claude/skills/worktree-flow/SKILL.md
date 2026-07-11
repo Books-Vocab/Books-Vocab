@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / cutover / resolve / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）與發布（deploy 把本地 main 推 origin = 觸發生產部署）。"
+description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
 user-invocable: true
 version: 2.0.0
 ---
@@ -13,7 +13,13 @@ version: 2.0.0
 
 ## 拓樸：本地 main 為主幹（core mental model）
 
-**本地 `main` 是主幹**，origin 只是部署目標。worktree 從**本地 main** 分出、cutover **離線 ff 本地 main**（不碰網路、不部署）。本地 main 因此會**超前 origin** 幾個到幾十個 commit——這是正常的，不是「腐爛」。要發布時才 `deploy`（把本地 main 推 origin），felix reconciler 看到 origin/main 前進、有 backend 變更就跑健康 gate 部署。**cutover = 落地（本地、免費、可逆）；deploy = 發布（唯一碰生產）**，兩者刻意分開。
+**本地 `main` 是主幹**，兩個 origin ref 是不同平面的目標。worktree 從**本地 main** 分出、cutover **離線 ff 本地 main**（不碰網路、不部署）。本地 main 因此會**超前 origin** 幾個到幾十個 commit——這是正常的，不是「腐爛」。三平面：
+
+- **develop = `cutover`**：worktree → 本地 main，離線、免費、可逆。
+- **backup = `sync`**：本地 main → **origin/main**（機外備份鏡像），**零生產副作用**——reconciler 不看 main，推幾次都無所謂。
+- **release = `deploy`**：本地 main → **origin/prod**，felix reconciler 盯 origin/prod、有 backend 變更就跑健康 gate 部署。**唯一碰生產。**
+
+**cutover = 落地、sync = 備份、deploy = 發布（唯一碰生產）**，三者刻意分開。動詞語意正本見 `docs/sop/release.md`。
 
 ## 流程（照序）
 
@@ -72,13 +78,21 @@ ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
 ```
 先過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。
 
-### 5. 要發布時才 deploy（唯一碰生產）
+### 5a. 隨手備份（sync，零生產副作用）
+本地 main 累積 cutover 後、想把碼推出機器**只為備份**（不上生產）時：
+```
+ops/worktree_orchestrate.py sync --json           # dry-run
+ops/worktree_orchestrate.py sync --commit --json  # 守護式 ff push 本地 main → origin/main
+```
+`sync` 走 **backup 平面**：把本地 main 鏡像到 **origin/main**，**reconciler 不看 main → 零生產副作用**，推幾次都無所謂。護欄同 deploy（primary 在 main、origin/main 為本地嚴格祖先、絕不 force），已同步則 noop。跟 `sync-main` 方向相反：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，剛 clone/felix 部署機用）。
+
+### 5b. 要上生產才 deploy（release 平面，唯一碰生產）
 本地 main 累積若干 cutover 後、**你決定要上生產**時：
 ```
 ops/worktree_orchestrate.py deploy --json           # dry-run：看會推幾個 commit、是否觸發 rollout
-ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → origin/main
+ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → origin/prod
 ```
-護欄：primary 在 `main` 上、origin 是本地的**嚴格祖先**（乾淨 ff，**絕不 force-push**；origin 分岔會拒並指向 sync-main/pull）；已同步則 noop。dry-run 會列出 range 內的 **backend 檔**——有 backend 變更 = felix reconciler 會跑**生產 rollout**（健康 gate + auto-rollback，deploy 不重跑）；純非 backend = 只前進 origin、不碰生產。**deploy 一律推整段 range，backend 偵測只是提示、不 gate push。** 發布是刻意動作——多個 cutover 可先攢著、一次 deploy 批次上線。
+護欄：primary 在 `main` 上、**origin/prod** 是本地的**嚴格祖先**（乾淨 ff，**絕不 force-push**；origin/prod 分岔會拒並指向 sync-main/pull）；已同步則 noop。dry-run 會列出 range 內的 **backend 檔**——有 backend 變更 = felix reconciler（盯 origin/prod）會跑**生產 rollout**（健康 gate + auto-rollback，deploy 不重跑）；純非 backend = 只前進 origin/prod、不碰生產。**deploy 一律推整段 range，backend 偵測只是提示、不 gate push。** 發布是刻意動作——多個 cutover 可先攢著、一次 deploy 批次上線。版號發布走 `ops/release.sh release <backend|ios>`（bump→tag→deploy/upload 統一入口，見 `docs/sop/release.md`）。
 
 ## 「需要 main」的任務路由
 
@@ -86,7 +100,7 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 - **bootstrap 悖論**（primary checkout 過舊、連本工具鏈都沒有）→ 裸 `git worktree add -b <branch> <path> origin/main`（純 git 原語，不需任何 repo 工具）→ `cd <path>` → `ops/worktree_orchestrate.py adopt --intent "<why>"`（`--worktree` 預設 cwd）補登記 ledger，之後照常走 gate/cutover/resolve。
 - **primary 落後 origin**（本地 main 反被 origin 超前——在本地為主模型下**不正常**，只發生在：剛 clone 的機器、或 felix 部署 clone 其 main 追 origin、或別台 push 了東西）→ `sync-main`（dry-run 預設）。護欄三綠才動：tracked-clean（untracked 不擋）＋ primary 在 main 上且無 merge/rebase 進行中 ＋ 嚴格落後 origin（ancestor check）。分岔的 main **絕不** auto-merge/rebase——refusal 指向 cutover。**注意方向**：sync-main 是 origin→本地（追上 origin）；日常開發機的本地 main 是超前 origin 的，sync-main 在那是 noop。
-- **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/cutover/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
+- **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/cutover/sync/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
 - **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → cutover 落地 → primary `git checkout --` 還原。primary 只允許「可再生」變更，絕不在 local main commit。
 
 ## 並發協調（多 session 常態）
@@ -99,7 +113,7 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 ## 硬邊界
 
-- **cutover 離線落地本地 main、不部署；deploy 才碰生產**：cutover 只前進**本地** main（免費、可逆、不碰網路）。生產部署發生在 `deploy` 把本地 main 推 origin 之後——felix reconciler（launchd `com.kg.reconcile`，90s tick）偵測 origin/main 前進且有 `backend/**` 變更即部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）。**因此「上生產」= 你刻意跑 `deploy`，不是每次 cutover。** deploy 前確保要發布的 backend 變更 gate 已真實反映風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。deploy 全自動授權（2026-07-10），但它是**唯一碰生產**的動作，寧可 dry-run 先看 range。
+- **cutover/sync 不碰生產；deploy 才碰生產（唯一）**：cutover 只前進**本地** main（免費、可逆、不碰網路）；`sync` 只把本地 main 鏡像到 **origin/main** 備份（reconciler 不看 main → 零生產副作用）。生產部署發生在 `deploy` 把本地 main 推 **origin/prod** 之後——felix reconciler（launchd `com.kg.reconcile`，90s tick，盯 origin/prod）偵測前進且有 `backend/**` 變更即部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）。**因此「上生產」= 你刻意跑 `deploy`（或 `release.sh release`），不是每次 cutover、也不是 sync。** deploy 前確保要發布的 backend 變更 gate 已真實反映風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。deploy/`release` 全自動授權（2026-07-10），但它是**唯一碰生產**的動作，寧可 dry-run 先看 range。
 - **不重造 gate**：`gate` 只路由到既有工具。要加可斷言的 gate → 改對應工具本身，不在 orchestrate 內判 pass/fail。
 - **動 agent-facing surface**（本 CLI/skill 本身）→ 同 PR 同步 `docs/reference/tech_index.md` / `product_surface.md`（見根 CLAUDE.md「改 user/agent-facing 介面」）。
 - 收尾照 `kg-receipt`：驗證輸出 + 交接點。工具摩擦記 tooling debt（鐵律 9）。
@@ -116,6 +130,7 @@ preflight ─▶ 讀地圖 ─▶ research? ──yes──▶ 直接做（不�
                     cutover(離線 ff 本地 main) ─▶ resolve(landed-floor→清乾淨)
                                    │
                           （攢數個 cutover）
+                                   ├──▶ sync --commit(push origin/main = 備份, 零生產)
                                    ▼
-                    deploy --commit(push origin = 觸發生產部署)
+                    deploy --commit(push origin/prod = 觸發生產部署)
 ```
