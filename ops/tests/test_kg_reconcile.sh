@@ -133,6 +133,11 @@ new_scratch() {
   "$REALGIT" -C "$REPO" remote add origin "$ORIGIN"
   "$REALGIT" -C "$REPO" push -qu origin main 2>/dev/null
   SHA_OLD="$("$REALGIT" -C "$REPO" rev-parse --short HEAD)"
+  # seed origin/prod = origin/main and check out prod — REPO mimics ~/kg-prod, the
+  # dedicated production clone the reconciler tracks (origin/prod, NOT origin/main).
+  "$REALGIT" -C "$REPO" branch prod
+  "$REALGIT" -C "$REPO" push -qu origin prod 2>/dev/null
+  "$REALGIT" -C "$REPO" checkout -q prod
 
   if [[ "$kind" != "none" ]]; then
     case "$kind" in
@@ -141,7 +146,8 @@ new_scratch() {
     esac
     "$REALGIT" -C "$REPO" add -A
     "$REALGIT" -C "$REPO" commit -qm change
-    "$REALGIT" -C "$REPO" push -q origin main 2>/dev/null
+    # the change lands on origin/prod (the release-plane ref); reconciler converges to it
+    "$REALGIT" -C "$REPO" push -q origin prod 2>/dev/null
     SHA_NEW="$("$REALGIT" -C "$REPO" rev-parse --short HEAD)"
     "$REALGIT" -C "$REPO" reset --hard -q "$SHA_OLD"
   else
@@ -347,6 +353,36 @@ v="$(get_verdict "$out")"
 grep -qi "serving" "$SC/crash.err" && ok "crash-window: 偵測 VERSION 與 live 不一致" || bad "crash-window: 未偵測不一致"
 [[ "$(cat "$VERSIONFILE")" == "$SHA_NEW" ]] && ok "crash-window: 重部署後 VERSION==$SHA_NEW" || bad "crash-window: VERSION=$(cat "$VERSIONFILE") != $SHA_NEW"
 grep -q 'up -d --build' "$COMPOSELOG" && ok "crash-window: compose up 重建" || bad "crash-window: compose 未跑"
+
+# ── 三平面解耦迴歸鎖：main 前進不觸發部署，reconciler 只看 origin/prod ──────────
+section "prod 落後 main（main 有 backend 前進）→ noop 且從不看 main（解耦迴歸鎖）"
+new_scratch none
+# 讓 origin/main 超前 origin/prod 一個 backend commit；origin/prod 仍 == deployed。
+# 舊模型（追 main）會在此部署；新模型（追 prod）必須 noop。
+"$REALGIT" -C "$REPO" checkout -q main
+echo "print(9)" >> "$REPO/backend/src/app.py"
+"$REALGIT" -C "$REPO" add -A
+"$REALGIT" -C "$REPO" commit -qm "main-only backend（不進 prod）"
+"$REALGIT" -C "$REPO" push -q origin main 2>/dev/null
+"$REALGIT" -C "$REPO" checkout -q prod
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "noop" ]] && ok "prod-behind-main: verdict noop（main 的 backend 不觸發部署）" || bad "prod-behind-main: expected noop, got '$v' (out=$out)"
+[[ ! -s "$COMPOSELOG" ]] && ok "prod-behind-main: compose 未跑" || bad "prod-behind-main: compose 被觸發（$(cat "$COMPOSELOG")）"
+if grep -qE "origin/main|origin main" "$GITLOG"; then
+  bad "prod-behind-main: reconciler 竟碰 main（$(grep -E 'origin/main|origin main' "$GITLOG" | head -1)）"
+else
+  ok "prod-behind-main: git.log 從不出現 main（reconciler 只 fetch/diff prod）"
+fi
+
+section "prod 前進純非 backend → ff-only 但 VERSION 游標未變（釘不寫游標決策）"
+new_scratch docs
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "ff-only" ]] && ok "ff-only-no-write: verdict ff-only" || bad "ff-only-no-write: expected ff-only, got '$v' (out=$out)"
+[[ "$(cat "$VERSIONFILE")" == "$SHA_OLD" ]] && ok "ff-only-no-write: VERSION 游標未變（仍 ${SHA_OLD}）" || bad "ff-only-no-write: VERSION=$(cat "$VERSIONFILE") 被寫（§2.4 要求非 backend ff-only 不動游標）"
 
 echo ""
 echo "══════════════════════════════"
