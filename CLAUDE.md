@@ -104,7 +104,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發到 merge 進**本地** main；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→cutover→deploy 全流程，編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/cutover/resolve/deploy/sync-main/freeze）。**拓樸=本地 main 為主幹**：worktree fork 自本地 main、cutover **離線 ff 本地 main**（不 push 不部署），本地 main 超前 origin；要上生產才 `deploy`（推 origin=觸發 felix reconciler 部署）。工作樹健康是**流程內生不變式**：每條完成即 cutover 即 resolve 即自清，preflight sweep 收流程外崩潰殘骸。「需要 main」路由：bootstrap 悖論→`adopt`、repo 手術→`freeze`、剛 clone/felix 部署機追 origin→`sync-main`。（**已退役** `converge`/`promote`。） |
+| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發到 merge 進**本地** main；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→cutover→deploy 全流程，編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/cutover/resolve/sync/deploy/sync-main/freeze）。**拓樸=本地 main 為主幹，三平面**：worktree fork 自本地 main、cutover=develop **離線 ff 本地 main**（不 push 不部署），本地 main 超前 origin；`sync`=backup（推 origin/main 備份、reconciler 不看 main=零生產副作用）；要上生產才 `deploy`=release（推 **origin/prod**=觸發 felix reconciler 部署，唯一碰生產），語意見 `docs/sop/release.md`。工作樹健康是**流程內生不變式**：每條完成即 cutover 即 resolve 即自清，preflight sweep 收流程外崩潰殘骸。「需要 main」路由：bootstrap 悖論→`adopt`、repo 手術→`freeze`、剛 clone/felix 部署機追 origin→`sync-main`。（**已退役** `converge`/`promote`。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
@@ -164,7 +164,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | backend 測試 / uv / provider registry / 任務派遣 | `docs/sop/backend.md` |
 | iOS 編譯 SOP / 模組速查 / Sentry iOS | `docs/sop/ios.md` |
 | 上架 App Store / 改文案 metadata / 查審查狀態 / 被拒處理 | `docs/sop/ios.md §發版` + `ops/asc.sh`(查詢/改文案)、`ops/ios_release.sh`(出 build) |
-| 版號發版 / bump / tag / changelog(api、ios) | `ops/release.sh`(`status`/`changelog`/`bump`/`publish`,單一入口);`/release` command 為薄路由 |
+| 版號發版 / bump / tag / changelog / 發布上生產(api、ios) | `ops/release.sh`(`status`/`changelog`/`bump`/`tag`(原 `publish`,推 origin main=標記非部署)/`release <backend\|ios>`(三平面統一發布,唯一碰生產),單一入口);三平面語意見 `docs/sop/release.md`;`/release` command 為薄路由 |
 | UI 規範 / Motion 契約 / Token 禁令 | `docs/sop/ui-design.md` |
 | iOS↔backend sync / 多帳戶隔離 / 架構脈絡 | `docs/sop/architecture.md` |
 | Claude Code Gateway | `docs/sop/claude-gateway.md` |
