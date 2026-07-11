@@ -1,15 +1,21 @@
 #!/bin/bash
-# kg_reconcile.sh — push=deploy 自動 reconciler（felix-local，launchd 週期驅動）
+# kg_reconcile.sh — release=deploy 自動 reconciler（felix-local，launchd 週期驅動）
 # =============================================================================
-# 一輪冪等 reconcile tick：讓 felix 生產容器 serving 的版本收斂到 origin/main。
+# 一輪冪等 reconcile tick：讓 felix 生產容器 serving 的版本收斂到 origin/prod。
 # 由 ops/launchd/com.kg.reconcile.plist 每 StartInterval 拉起跑一輪即退（非常駐
 # while-loop）。它就在 felix 上跑 → git / docker / curl 全走本機，不走 SSH。
 #
-# 收斂目標 = felix 生產容器 == origin/main：
+# 三平面模型：origin/prod = 「期望部署狀態」，只有 release 平面的 deploy 推進它
+# （見 worktree_orchestrate.py deploy）；origin/main 已降為 backup 鏡像（sync 推），
+# reconciler 不再看 main。故多數 tick 是 no-op（prod 只在刻意 release 時前進）。
+# 生產 checkout 走專用 clone ~/kg-prod（launchd 以 KG_RECON_REPO 指定；腳本內預設
+# 仍 ~/project/kg 讓人在 dev clone dry-run 最小驚訝）。
+#
+# 收斂目標 = felix 生產容器 == origin/prod：
 #   - 變更含 backend 觸發路徑 → git pull + 寫 VERSION + docker compose up --build +
 #     健康 gate（localhost + 外部 smoke + infra_health）；失敗自動 ROLLBACK 到部署前
 #     的 sha 並把該 origin sha 標 poison（cooldown 內不重試）。
-#   - 變更不含 backend → 只 git pull --ff-only（讓 felix repo HEAD 追上 origin，含
+#   - 變更不含 backend → 只 git pull --ff-only（讓 felix repo HEAD 追上 origin/prod，含
 #     自我更新本腳本），不 rebuild（容器仍舊 image，但無 backend 差異，正確）。
 #   - 無差異 → no-op。
 #
@@ -76,7 +82,7 @@ kg_reconcile.sh — push=deploy 自動 reconciler（一輪冪等 tick）
   --dry-run   印出「會做什麼」但絕不 pull/build/reset/寫任何檔（env KG_RECON_DRY_RUN=1 亦可）
   --help      本說明
 
-語意：讓 felix 生產容器 serving 的版本收斂到 origin/main。變更含 backend 觸發路徑才
+語意：讓 felix 生產容器 serving 的版本收斂到 origin/prod。變更含 backend 觸發路徑才
 rebuild（否則只 ff-only 追 repo）。部署失敗自動 rollback 到部署前 sha 並 poison 該 sha。
 stdout 印單行 JSON verdict（schema kg.deploy.reconcile.v1）；診斷走 stderr。
 USAGE
@@ -211,9 +217,9 @@ git_fetch() {
     "$KG_GIT" -C "$KG_RECON_REPO" \
       -c "credential.https://github.com.username=x-access-token" \
       -c "credential.helper=!f() { echo \"password=${GH_TOKEN}\"; }; f" \
-      fetch origin main >&2
+      fetch origin prod >&2
   else
-    "$KG_GIT" -C "$KG_RECON_REPO" fetch origin main >&2
+    "$KG_GIT" -C "$KG_RECON_REPO" fetch origin prod >&2
   fi
 }
 
@@ -221,15 +227,15 @@ git_fetch() {
 deploy_and_gate() {
   local rollback_sha="$1"    # DEPLOY 前捕捉的回滾錨點（= deployed_sha，已驗可解析）
 
-  # 1) ff-only pull（origin rewind 則不 force，告警 exit）
-  if ! "$KG_GIT" -C "$KG_RECON_REPO" pull --ff-only origin main >&2; then
-    alert "git pull --ff-only 失敗（origin 被 rewind 或非 ff）。不 force，需人工介入。"
+  # 1) ff-only pull（origin/prod rewind 則不 force，告警 exit）
+  if ! "$KG_GIT" -C "$KG_RECON_REPO" pull --ff-only origin prod >&2; then
+    alert "git pull --ff-only origin prod 失敗（origin/prod 被 rewind 或非 ff）。不 force，需人工介入。"
     exit 3
   fi
   local new_sha
   new_sha="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short HEAD)"
   printf '%s\n' "$new_sha" > "$KG_RECON_REPO/backend/VERSION"
-  log "→ DEPLOY: $rollback_sha → $new_sha，重建容器…"
+  log "→ DEPLOY: $rollback_sha → ${new_sha}，重建容器…"
 
   # 2) 重建並啟動（compose 失敗視為部署失敗 → rollback，不讓 set -e 直接中斷）
   local crc
@@ -291,20 +297,20 @@ main() {
 
   # 1) fetch（dry-run 不動 .git，改用現有 refs 預覽）
   if [[ "$dry_run" == "1" ]]; then
-    log "[dry-run] would: git fetch origin main"
+    log "[dry-run] would: git fetch origin prod"
   else
     git_fetch
   fi
 
-  # 2) deployed_sha（容器版本真相）= backend/VERSION；origin_sha = origin/main
+  # 2) deployed_sha（容器版本真相）= backend/VERSION；origin_sha = origin/prod
   #    註：`|| true` 不可省——set -euo pipefail 下 VERSION 缺檔會令 cat exit 1，經 pipefail
   #    傳播使賦值觸 errexit，下一行 `|| unknown` fallback 反成死碼（首次啟用/VERSION 遺失即崩）。
   DEPLOYED_SHA="$(cat "$KG_RECON_REPO/backend/VERSION" 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
   [[ -n "$DEPLOYED_SHA" ]] || DEPLOYED_SHA="unknown"
-  ORIGIN_SHA="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short origin/main 2>/dev/null || echo unknown)"
+  ORIGIN_SHA="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short origin/prod 2>/dev/null || echo unknown)"
 
   if [[ "$ORIGIN_SHA" == "unknown" ]]; then
-    alert "無法解析 origin/main（fetch 失敗或 ref 缺失），本輪 no-op。"
+    alert "無法解析 origin/prod（fetch 失敗或 ref 缺失；首次啟用需 seed origin/prod），本輪 no-op。"
     emit_verdict "noop"; exit 0
   fi
 
@@ -319,7 +325,7 @@ main() {
     live_ver="$(reconcile_live_version)"
     if [[ -n "$live_ver" && "$live_ver" != "$DEPLOYED_SHA" ]] \
        && "$KG_GIT" -C "$KG_RECON_REPO" rev-parse --verify --quiet "${live_ver}^{commit}" >/dev/null 2>&1; then
-      alert "VERSION 宣稱 deployed=$DEPLOYED_SHA 但容器實際 serving=$live_ver（疑上次部署寫 VERSION 後未完成即中斷）。以實際版為準重新收斂並修正游標。"
+      alert "VERSION 宣稱 deployed=$DEPLOYED_SHA 但容器實際 serving=${live_ver}（疑上次部署寫 VERSION 後未完成即中斷）。以實際版為準重新收斂並修正游標。"
       DEPLOYED_SHA="$live_ver"
       printf '%s\n' "$live_ver" > "$KG_RECON_REPO/backend/VERSION"
     fi
@@ -331,12 +337,12 @@ main() {
     emit_verdict "noop"; exit 0
   fi
 
-  # 3) 收斂判斷：deployed..origin/main 的變更檔
+  # 3) 收斂判斷：deployed..origin/prod 的變更檔
   local changed
-  changed="$("$KG_GIT" -C "$KG_RECON_REPO" diff --name-only "${DEPLOYED_SHA}..origin/main" -- . 2>/dev/null || true)"
+  changed="$("$KG_GIT" -C "$KG_RECON_REPO" diff --name-only "${DEPLOYED_SHA}..origin/prod" -- . 2>/dev/null || true)"
 
   if [[ -z "$changed" ]]; then
-    log "已同版（deployed=$DEPLOYED_SHA == origin=$ORIGIN_SHA），no-op。"
+    log "已同版（deployed=$DEPLOYED_SHA == origin=${ORIGIN_SHA}），no-op。"
     emit_verdict "noop"; exit 0
   fi
 
@@ -347,17 +353,23 @@ main() {
     BACKEND_CHANGED="false"
   fi
 
-  # 5) 不含 backend → 只 ff-only pull（追 repo HEAD，含自我更新本腳本），不 rebuild
+  # 5) 不含 backend → 只 ff-only pull（追 origin/prod，含自我更新本腳本），不 rebuild
+  #    ⚠ 刻意「不寫 VERSION」（勿順手修）：容器 /app/VERSION 是 bind-mount 即時反映 host，
+  #    但 system.py 於 import 時已快取 version，非重啟不更新自報值。若此路徑寫 VERSION=new，
+  #    下一 tick 的 crash-consistency 交叉驗證會看到 live(old) != VERSION(new) → 誤判 crash-
+  #    window 把 VERSION 覆寫回 old → 反覆。故只前進 repo、不動游標。代價：若 origin/prod 最後
+  #    一次前進為純非 backend，之後每 tick 重覆 emit ff-only（pull 為 no-op）—— prod 前進本就
+  #    罕見且多為 backend，此雜訊可忽略。
   if [[ "$BACKEND_CHANGED" == "false" ]]; then
     if [[ "$dry_run" == "1" ]]; then
-      log "[dry-run] would: git pull --ff-only origin main（追 $DEPLOYED_SHA → $ORIGIN_SHA，不 rebuild）"
+      log "[dry-run] would: git pull --ff-only origin prod（追 $DEPLOYED_SHA → ${ORIGIN_SHA}，不 rebuild）"
       emit_verdict "dry-run"; exit 0
     fi
-    log "非 backend 變更 → ff-only 追 repo（$DEPLOYED_SHA → $ORIGIN_SHA），不 rebuild。"
-    # 此路徑不持 deploy 鎖（僅追 repo，不 rebuild）→ 失敗可能是 origin rewind，也可能是與
+    log "非 backend 變更 → ff-only 追 repo（$DEPLOYED_SHA → ${ORIGIN_SHA}），不 rebuild。"
+    # 此路徑不持 deploy 鎖（僅追 repo，不 rebuild）→ 失敗可能是 origin/prod rewind，也可能是與
     # 人工 deploy 併發撞 git index.lock。兩者皆不 force：告警 exit，下一 tick 自然重試。
-    if ! "$KG_GIT" -C "$KG_RECON_REPO" pull --ff-only origin main >&2; then
-      alert "ff-only pull 失敗（origin 被 rewind 或 git 併發鎖）。不 force，本輪略過待下一 tick。"
+    if ! "$KG_GIT" -C "$KG_RECON_REPO" pull --ff-only origin prod >&2; then
+      alert "ff-only pull 失敗（origin/prod 被 rewind 或 git 併發鎖）。不 force，本輪略過待下一 tick。"
       exit 3
     fi
     emit_verdict "ff-only"; exit 0
@@ -373,7 +385,7 @@ main() {
 
   if [[ "$dry_run" == "1" ]]; then
     log "[dry-run] would: acquire lock $KG_LOCK_DIR"
-    log "[dry-run] would: git pull --ff-only origin main → 寫 backend/VERSION=$ORIGIN_SHA"
+    log "[dry-run] would: git pull --ff-only origin prod → 寫 backend/VERSION=$ORIGIN_SHA"
     log "[dry-run] would: (cd backend && $KG_COMPOSE up -d --build)"
     log "[dry-run] would: 健康 gate（localhost + 外部 smoke + infra_health）"
     log "[dry-run] would: 失敗則 rollback 到 $DEPLOYED_SHA + poison $ORIGIN_SHA"
