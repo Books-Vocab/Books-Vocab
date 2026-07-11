@@ -56,7 +56,7 @@ preflight() {
     echo "root      : $ROOT_DIR"
     echo "base      : $BASE"
     echo "server    : ${KG_SERVER:-chenliangyu@100.118.39.104} (standby/felix, via Tailscale)"
-    echo "remote    : ${KG_REMOTE_DIR:-~/project/kg/backend}"
+    echo "remote    : ${KG_REMOTE_DIR:-~/kg-prod/backend}"
     echo "data      : ${KG_REMOTE_DATA_DIR:-~/kg-data}"
     echo "ingress   : Cloudflare Tunnel (no Caddy on standby)"
     echo "domain    : $KG_PUBLIC_DOMAIN"

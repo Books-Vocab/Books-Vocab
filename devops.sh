@@ -15,7 +15,10 @@ set -euo pipefail
 # transport 走 Tailscale + 原生 sshd 公鑰（免密碼，default key，不再用 lightsail .pem）。
 # 拓撲正本：~/butler/docs/kg-backend-deployment.md；host/port 正本：docs/reference/host_topology.md。
 SERVER="${KG_SERVER:-chenliangyu@100.118.39.104}"
-REMOTE_DIR="${KG_REMOTE_DIR:-~/project/kg/backend}"
+# 生產 checkout = 專用 clone ~/kg-prod（追 origin/prod），與 reconciler 同一棵樹。
+# ⚠ 絕不指 ~/project/kg/backend（dev/resume-only）——同 compose project name `backend` 會
+# 讓手動 deploy 用 main tree 劫持生產容器。三平面拓樸見 docs/sop/release.md。
+REMOTE_DIR="${KG_REMOTE_DIR:-~/kg-prod/backend}"
 CONTAINER="knowledge-graph-api"
 # standby: 用戶資料在 ~/kg-data（搬出 git worktree），container 內 mount 為 /app/data。
 REMOTE_DATA_DIR="${KG_REMOTE_DATA_DIR:-~/kg-data}"

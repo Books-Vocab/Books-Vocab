@@ -523,6 +523,23 @@ documents:
       - backend/src/kg/ops_cli.py
       - ops/devops_kg_safe.sh
 
+  - id: sop.release
+    path: docs/sop/release.md
+    kind: sop
+    authority: derived
+    triggers:
+      - release_workflow_changed
+      - deploy_trigger_changed
+      - reconciler_ref_changed
+    sources:
+      - ops/release.sh
+      - ops/worktree_orchestrate.py
+      - ops/kg_reconcile.sh
+      - ops/ios_release.sh
+      - ops/launchd/com.kg.reconcile.plist
+      - .claude/skills/worktree-flow/
+      - .claude/skills/source-command-release/
+
   - id: runbook.system
     path: docs/runbook/system.md
     kind: runbook
