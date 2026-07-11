@@ -5,14 +5,21 @@
 # 寫入面（bump 改本地檔、publish push）一律 dry-run 預設、--yes 才落地（同 asc.sh set 紀律）。
 # 注意：目前無 tag-triggered CI workflow，tag 為「版本標記」，GitHub Release 須手動建。
 #
-# Usage:
-#   ./ops/release.sh status                     # 各 component 自上個 tag 以來的待發版 commit + 建議版號
-#   ./ops/release.sh changelog <api|ios>        # 印 markdown changelog 預覽（唯讀）
-#   ./ops/release.sh bump <api|ios> <x.y.z>     # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；預設 dry-run 印舊→新，--yes 才寫）
-#   ./ops/release.sh bump-build ios             # 只 +1 pbxproj CURRENT_PROJECT_VERSION、MARKETING_VERSION 不動（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
-#   ./ops/release.sh publish <api|ios> <x.y.z>  # commit 版號檔 + tag + push（預設 dry-run，--yes 才真送）
+# 三平面 release 平面入口。develop=cutover 進本地 main；backup=orchestrate sync 推 origin/main；
+# release=刻意發布。前後端共用 `release <backend|ios> <ver>`，底下各自機器（backend 推 origin/prod
+# →felix reconciler；ios→ios_release upload TestFlight）。tag 只做「版號標記」（push origin main=備份，
+# 非部署）。
 #
-# 全域 flag：--yes（bump 真寫 / publish 真送）  -h|--help
+# Usage:
+#   ./ops/release.sh status                      # 各 component 待發版 commit + released gap（本地唯讀）
+#   ./ops/release.sh changelog <api|ios>         # 印 markdown changelog 預覽（唯讀）
+#   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；dry-run 預設，--yes 才寫）
+#   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
+#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（版號標記+備份，非部署；dry-run 預設，--yes 才送）
+#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布：bump→tag→生產觸點（backend: deploy 推 origin/prod；ios: upload TestFlight）。須在 main。dry-run 預設
+#   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
+#
+# 全域 flag：--yes（bump/tag 真寫、release 真執行）  -h|--help
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
@@ -84,9 +91,23 @@ cmd_status() {
       printf '%s\n' "$commits" | head -15 | sed 's/^/     /'
       [[ "$n" -gt 15 ]] && echo "     … 還有 $((n-15)) 筆（完整清單見 ./ops/release.sh changelog ${c}）"
     fi
+    # released 面（本地唯讀；不碰遠端）：origin/prod tracking ref = 上次 fetch 的「期望部署狀態」
+    if [[ "$c" == api ]]; then
+      local prod_ref ahead_prod
+      prod_ref="$(git -C "$ROOT" rev-parse --short origin/prod 2>/dev/null || true)"
+      if [[ -n "$prod_ref" ]]; then
+        ahead_prod="$(git -C "$ROOT" rev-list --count origin/prod..main 2>/dev/null || echo '?')"
+        echo "   released：origin/prod=${prod_ref}；main 超前 prod ${ahead_prod} commit（release backend 才推 prod→部署）"
+      else
+        echo "   released：origin/prod 本地未知（尚未 seed 或未 fetch；見 docs/sop/release.md 切換）"
+      fi
+      echo "   live：curl -s https://wordnexus.lol/api/system/info（欲查生產實跑版本）"
+    else
+      echo "   live：./ops/asc.sh builds（TestFlight 最新 build）+ review-status"
+    fi
     echo
   done
-  echo "下一步：./ops/release.sh bump <c> <ver> --yes → changelog <c> → publish <c> <ver> --yes"
+  echo "下一步：./ops/release.sh bump <c> <ver> --yes → changelog <c> → release <backend|ios> <ver> --yes"
 }
 
 # ---- changelog：委派 primitive（唯讀） ----
@@ -120,9 +141,11 @@ cmd_bump_build() {
   fi
 }
 
-# ---- publish：commit 版號檔 + tag + push（dry-run 預設，--yes 才真送） ----
-cmd_publish() {
-  local c="${1:?用法: release.sh publish <api|ios> <x.y.z> [--yes]}" v="${2:-}"
+# ---- tag：commit 版號檔 + 打 tag + push origin main（版號標記+備份，非部署；dry-run 預設）----
+# 三平面：tag 是 release 平面的「版號標記」子步驟。它 push origin main = backup（reconciler 不看
+# main），不觸發生產。生產部署由 release <backend|ios> 的 deploy(prod)/upload 完成。（原名 publish）
+cmd_tag() {
+  local c="${1:?用法: release.sh tag <api|ios> <x.y.z> [--yes]}" v="${2:-}"
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
@@ -151,10 +174,60 @@ cmd_publish() {
     git -C "$ROOT" commit -m "ops: release $c $v"
     git -C "$ROOT" tag "$tag"
     git -C "$ROOT" push origin "$branch" "$tag"
-    echo "✓ 已 commit + tag ${tag} + 推送到 origin/${branch}（tag 為版本標記；無 tag-triggered CI，GitHub Release 須手動建）。"
+    echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記+備份；生產部署走 release <backend|ios>）。"
   else
     echo "[dry-run] 未送出。確認無誤後加 --yes 才會 commit + 打 tag + 推送 origin："
-    echo "  ./ops/release.sh publish $c $v --yes"
+    echo "  ./ops/release.sh tag $c $v --yes"
+  fi
+}
+
+# ---- release：前後端統一發布入口（bump→tag→生產觸點）。dry-run 預設，--yes 才執行 ----
+# backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
+# ios:     bump ios → tag ios → ios_release.sh --upload（archive + 上傳 TestFlight）
+# 須在 primary、on main（release 發布本地主幹；feature 改動先 cutover 進 main）。
+cmd_release() {
+  local target="${1:?用法: release.sh release <backend|ios> <x.y.z> [--yes]}" v="${2:-}"
+  local comp
+  case "$target" in
+    backend|api) comp=api ;;
+    ios)         comp=ios ;;
+    *) err "未知 target: ${target}（backend|ios）" ;;
+  esac
+  [[ -n "$v" ]] || err "請提供版本號 x.y.z"
+  valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+
+  local branch curver cmpcur need_bump
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
+  curver="$(current_version "$comp")"
+  cmpcur="$curver"; [[ "$cmpcur" =~ ^[0-9]+\.[0-9]+$ ]] && cmpcur="$cmpcur.0"
+  need_bump=0; [[ "$cmpcur" == "$v" ]] || need_bump=1
+
+  echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
+  echo "  計畫（dry-run 預設）："
+  if [[ $need_bump -eq 1 ]]; then echo "    1) bump ${comp} ${v}（檔內 ${curver} → ${v}）"; else echo "    1) bump 略過（檔內已 ${curver}）"; fi
+  echo "    2) tag ${comp} ${v}（commit 版號檔 + ${comp}/${v} tag + push origin main）"
+  if [[ "$comp" == api ]]; then
+    echo "    3) orchestrate deploy --commit（推 origin/prod → felix reconciler 部署 wordnexus.lol）⚠ 生產"
+  else
+    echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+  fi
+
+  if [[ $YES -ne 1 ]]; then
+    echo "[dry-run] 未執行。確認無誤後加 --yes："
+    echo "  ./ops/release.sh release ${target} ${v} --yes"
+    return 0
+  fi
+
+  # 執行：任一步失敗即 err 中止（cmd_bump/cmd_tag 讀全域 YES=1）
+  if [[ $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
+  cmd_tag "$comp" "$v"
+  if [[ "$comp" == api ]]; then
+    "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
+    echo "✓ release backend ${v}：已 tag + 推 origin/prod；felix reconciler 將健康 gate 部署。"
+  else
+    "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止"
+    echo "✓ release ios ${v}：已 tag + 上傳 TestFlight（GUI 綁 build 送審見 docs/sop/ios.md）。"
   fi
 }
 
@@ -176,7 +249,9 @@ case "${SUB:-}" in
   changelog) cmd_changelog ${ARGS[@]+"${ARGS[@]}"} ;;
   bump)      cmd_bump ${ARGS[@]+"${ARGS[@]}"} ;;
   bump-build) cmd_bump_build ${ARGS[@]+"${ARGS[@]}"} ;;
-  publish)   cmd_publish ${ARGS[@]+"${ARGS[@]}"} ;;
+  tag)       cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;
+  publish)   cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;   # 相容別名：publish → tag
+  release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
 esac

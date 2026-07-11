@@ -17,7 +17,7 @@ bash -n "$REL"   && ok "release.sh syntax" || fail_t "release.sh syntax error"
 
 # ── 2. 子命令 dispatch 齊全 ─────────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in status changelog bump bump-build publish; do
+for sub in status changelog bump bump-build tag publish release; do
   grep -qE "^[[:space:]]*$sub\)" "$REL" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -55,27 +55,41 @@ grep -q 'release_bump.sh' "$REL" \
 grep -q 'release_changelog.sh' "$REL" \
   && ok "changelog delegates to release_changelog.sh" || fail_t "release.sh not calling release_changelog.sh"
 
-# ── 5. publish 寫入 gate：dry-run 預設，--yes 才 push（對外副作用明示） ───────
-section "Publish gate (dry-run by default)"
+# ── 5. tag 寫入 gate：dry-run 預設，--yes 才 push（對外副作用明示） ───────────
+section "Tag gate (dry-run by default)"
 grep -q -- '--yes' "$REL" \
   && ok "has --yes confirm flag"            || fail_t "missing --yes flag"
 grep -qE 'YES=(0|"")|YES=$' "$REL" \
   && ok "YES defaults to off (dry-run)"     || fail_t "YES not defaulting to dry-run"
-pub_body="$(awk '/^cmd_publish\(\)/,/^}/' "$REL")"
+tag_body="$(awk '/^cmd_tag\(\)/,/^}/' "$REL")"
 # 真正的 push 標的＝`push origin`（script 用 git -C "$ROOT" push origin，dry-run 用中文「推送 origin」不撞）
-echo "$pub_body" | grep -q 'push origin' \
-  && ok "publish has real push origin"      || fail_t "publish missing push origin"
+echo "$tag_body" | grep -q 'push origin' \
+  && ok "tag has real push origin"          || fail_t "tag missing push origin"
 # 真正的 push/commit/tag 必須在 YES gate 之內
-echo "$pub_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]|if \[ "\$YES"' \
-  && ok "publish guards side-effects behind --yes" || fail_t "publish missing --yes guard"
+echo "$tag_body" | grep -qE 'if \[\[ \$YES -eq 1 \]\]|if \[ "\$YES"' \
+  && ok "tag guards side-effects behind --yes" || fail_t "tag missing --yes guard"
 # 負控（鎖不變量）：push origin 不可洩進 dry-run/else 分支 —— 否則無 --yes 也會推
-echo "$pub_body" | awk '/else/,/fi/' | grep -q 'push origin' \
+echo "$tag_body" | awk '/else/,/fi/' | grep -q 'push origin' \
   && fail_t "push origin leaked into dry-run branch (would push without --yes)" \
   || ok "dry-run branch contains no push origin"
 
 # ── 5b. detached HEAD 守衛（避免 push origin HEAD；review footgun 回歸） ──────
-echo "$pub_body" | grep -q 'detached HEAD' \
-  && ok "publish guards detached HEAD"      || fail_t "publish missing detached-HEAD guard (would push origin HEAD)"
+echo "$tag_body" | grep -q 'detached HEAD' \
+  && ok "tag guards detached HEAD"          || fail_t "tag missing detached-HEAD guard (would push origin HEAD)"
+
+# ── 5c. release 統一入口 gate：dry-run 預設、須在 main、委派 deploy/upload ────
+section "Release verb gate (unified backend/ios)"
+rel_body="$(awk '/^cmd_release\(\)/,/^}/' "$REL")"
+echo "$rel_body" | grep -q 'deploy --commit' \
+  && ok "release backend delegates to orchestrate deploy" || fail_t "release missing deploy delegation"
+echo "$rel_body" | grep -q 'ios_release.sh' \
+  && ok "release ios delegates to ios_release.sh --upload" || fail_t "release missing ios_release delegation"
+echo "$rel_body" | grep -qE 'branch.*== main|== main.*branch|"\$branch" == main' \
+  && ok "release guards on-main"            || fail_t "release missing on-main guard"
+# 負控：生產觸點（deploy/upload）不可洩進 dry-run 分支（--yes 前 return）
+echo "$rel_body" | awk '/YES -ne 1/,/return 0/' | grep -qE 'deploy --commit|--upload' \
+  && fail_t "production touch leaked into release dry-run branch" \
+  || ok "release dry-run branch contains no production touch"
 
 # ── 6. 版號格式守衛（x.y.z） ────────────────────────────────────────────────
 section "Version format guard"
