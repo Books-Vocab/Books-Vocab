@@ -1,20 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  KG push=deploy 自動 reconciler，跑在正式站常駐機 felix（macOS）。
+  KG release=deploy 自動 reconciler，跑在正式站常駐機 felix（macOS）。
   週期 poller：每 StartInterval 秒拉起 ops/kg_reconcile.sh --once 跑一輪冪等 tick 即退，
-  讓 origin/main 一前進（且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版。
+  讓 origin/prod 一前進（release 平面 deploy 推進；含 backend 變更）就自動把 wordnexus.lol
+  收斂到最新版。origin/main 已降為 backup 鏡像，reconciler 不看 main。
+
+  生產 checkout 走專用 clone ~/kg-prod（追 origin/prod）：ProgramArguments 指向它、
+  KG_RECON_REPO 亦指向它，compose 從 ~/kg-prod/backend build。~/project/kg 是 dev/resume-only，
+  reconciler 不碰。reconciler 腳本本身隨 ~/kg-prod 於 release 時 self-update（非每次 main push）。
 
   一次性冪等設計：**不要 KeepAlive**（那會 busy-loop 立即重拉，本腳本非常駐 while-loop）。
   StartInterval=90 秒輪詢；ThrottleInterval=60 保底避免異常快速重啟；RunAtLoad 開機即先跑一輪。
 
-  Deploy（由總經理手動啟用，首次務必先 dry-run 驗）：
+  首次切換（建 ~/kg-prod、seed origin/prod、原地 recreate 容器、換本 plist）流程見
+  docs/sop/release.md「felix 生產切換」段。啟用/停用：
     cp ops/launchd/com.kg.reconcile.plist ~/Library/LaunchAgents/com.kg.reconcile.plist
     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.reconcile.plist
+    停用：launchctl bootout gui/$(id -u)/com.kg.reconcile
   它是 LaunchAgent（per-user）：跑在 auto-login 的 chenliangyu session（docker/git 就緒）。
-  停用：launchctl bootout gui/$(id -u)/com.kg.reconcile
 
   PATH 必含 docker（OrbStack）+ git。與 devops.sh 人工 deploy 共用 /tmp/kg-deploy.lock 互斥。
-  安全契約與 path-filter 判準見 docs/sop/deploy.md §push=deploy 自動 reconciler。
+  安全契約與 path-filter 判準見 docs/sop/deploy.md §reconciler。
 -->
 <plist version="1.0">
 <dict>
