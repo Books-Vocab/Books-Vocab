@@ -1,6 +1,6 @@
 [project]
 name = "kg"
-version = "2.0.0"
+version = "2.0.1"
 description = "Knowledge Graph for Vocabulary Recall"
 # Pinned to 3.13: the project venv (backend/.venv, uv-managed) is cpython-3.13,
 # and `backend/.python-version` locks the interpreter `uv` picks when it has to
