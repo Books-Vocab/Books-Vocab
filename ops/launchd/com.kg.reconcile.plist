@@ -30,7 +30,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/chenliangyu/project/kg/ops/kg_reconcile.sh</string>
+        <string>/Users/chenliangyu/kg-prod/ops/kg_reconcile.sh</string>
         <string>--once</string>
     </array>
 
@@ -38,6 +38,8 @@
     <dict>
         <key>PATH</key>
         <string>/Users/chenliangyu/.orbstack/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+        <key>KG_RECON_REPO</key>
+        <string>/Users/chenliangyu/kg-prod</string>
     </dict>
 
     <key>StartInterval</key>
