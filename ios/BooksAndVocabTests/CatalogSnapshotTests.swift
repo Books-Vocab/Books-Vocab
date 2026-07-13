@@ -10,6 +10,10 @@
 
 #if DEBUG && canImport(Playbook)
 import Foundation
+import CryptoKit
+import ImageIO
+import UIKit
+import UniformTypeIdentifiers
 import Testing
 import Playbook
 import PlaybookSnapshot
@@ -22,6 +26,117 @@ private let catalogSnapshotCompileFlagEnabled = false
 #endif
 
 @Suite struct CatalogSnapshotTests {
+    private struct AppearanceDeviceVariant {
+        let family: String
+        let requestedStyle: UIUserInterfaceStyle
+        let device: SnapshotDevice
+
+        var requestedName: String {
+            Self.styleName(requestedStyle)
+        }
+
+        private static func styleName(_ style: UIUserInterfaceStyle) -> String {
+            switch style {
+            case .light: "light"
+            case .dark: "dark"
+            case .unspecified: "unspecified"
+            @unknown default: "unknown"
+            }
+        }
+    }
+
+    private final class AppearanceLedger: @unchecked Sendable {
+        struct Seed {
+            let captureID: String
+            let family: String
+            let device: String
+            let category: String
+            let scenario: String
+            let relPath: String
+            let requested: String
+            let appearanceSensitive: Bool
+        }
+
+        private let lock = NSLock()
+        private var seedsByID: [String: Seed] = [:]
+        private var actualByID: [String: String] = [:]
+        private var unidentifiedViews: [String] = []
+
+        func register(_ seed: Seed) {
+            lock.lock()
+            defer { lock.unlock() }
+            precondition(seedsByID[seed.captureID] == nil, "duplicate appearance capture ID: \(seed.captureID)")
+            seedsByID[seed.captureID] = seed
+        }
+
+        func recordActual(captureID: String, style: UIUserInterfaceStyle) {
+            lock.lock()
+            defer { lock.unlock() }
+            actualByID[captureID] = Self.styleName(style)
+        }
+
+        func recordUnidentifiedView(_ view: UIView) {
+            lock.lock()
+            defer { lock.unlock() }
+            unidentifiedViews.append(String(describing: type(of: view)))
+        }
+
+        func snapshot() -> (seeds: [Seed], actualByID: [String: String], unidentifiedViews: [String]) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (
+                seedsByID.values.sorted { $0.relPath < $1.relPath },
+                actualByID,
+                unidentifiedViews
+            )
+        }
+
+        private static func styleName(_ style: UIUserInterfaceStyle) -> String {
+            switch style {
+            case .light: "light"
+            case .dark: "dark"
+            case .unspecified: "unspecified"
+            @unknown default: "unknown"
+            }
+        }
+    }
+
+    private final class AppearanceProbeViewController: UIViewController {
+        override func loadView() {
+            let resolvedColor: UIColor
+            switch traitCollection.userInterfaceStyle {
+            case .light:
+                resolvedColor = .white
+            case .dark:
+                resolvedColor = .black
+            case .unspecified:
+                resolvedColor = .red
+            @unknown default:
+                resolvedColor = .red
+            }
+            let view = UIView()
+            view.backgroundColor = resolvedColor
+            self.view = view
+        }
+    }
+
+    private final class AppearanceStyleBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: UIUserInterfaceStyle = .unspecified
+
+        func set(_ style: UIUserInterfaceStyle) {
+            lock.lock()
+            defer { lock.unlock() }
+            stored = style
+        }
+
+        var value: UIUserInterfaceStyle {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+    }
+
     private struct ScopeFile: Decodable {
         let groups: [String]
         let scenarios: [String]
@@ -61,6 +176,55 @@ private let catalogSnapshotCompileFlagEnabled = false
 
     private static func scopedScenarioCount(in playbook: Playbook) -> Int {
         playbook.stores.reduce(into: 0) { $0 += $1.scenarios.count }
+    }
+
+    private static func appearancePinnedScenario(
+        _ scenario: Scenario,
+        requestedStyle: UIUserInterfaceStyle,
+        captureID: String
+    ) -> Scenario {
+        let content = scenario.content
+        return Scenario(
+            scenario.title,
+            layout: scenario.layout,
+            file: scenario.file,
+            line: scenario.line
+        ) { context in
+            let controller = content(context)
+            // ScenarioViewController reads `controller.view` immediately after
+            // this closure returns. Pin the controller before that first view
+            // load so SwiftUI/UIKit initialization cannot inherit simulator
+            // residue, then pin the root view as a second boundary.
+            controller.overrideUserInterfaceStyle = requestedStyle
+            let rootView = controller.view!
+            rootView.overrideUserInterfaceStyle = requestedStyle
+            rootView.accessibilityIdentifier = captureID
+            return controller
+        }
+    }
+
+    private static func catalogDeviceVariants() -> [AppearanceDeviceVariant] {
+        func makeVariants(base: SnapshotDevice) -> [AppearanceDeviceVariant] {
+            var light = base.style(.light)
+            // Preserve the established light directory name. The trait is now
+            // explicit even though the path remains backward-compatible.
+            light.name = base.name
+            return [
+                AppearanceDeviceVariant(
+                    family: base.name,
+                    requestedStyle: .light,
+                    device: light
+                ),
+                AppearanceDeviceVariant(
+                    family: base.name,
+                    requestedStyle: .dark,
+                    device: base.style(.dark)
+                ),
+            ]
+        }
+
+        return makeVariants(base: SnapshotDevice.iPhone15Pro(.portrait))
+            + makeVariants(base: SnapshotDevice.iPadPro11(.landscape))
     }
 
     /// Wall-time budget granted per `(scenario × device)` capture in the main
@@ -152,28 +316,31 @@ private let catalogSnapshotCompileFlagEnabled = false
 
         // 寬版規格參考（web 重寫的 responsive 標準答案）。Gallery/parity
         // 端以 review_manifest 的 devices 欄位區分，iPhone 仍為首選裝置。
-        let deviceVariants: [SnapshotDevice] = [
-            SnapshotDevice.iPhone15Pro(.portrait),
-            SnapshotDevice.iPhone15Pro(.portrait).style(.dark),
-            SnapshotDevice.iPadPro11(.landscape),
-            SnapshotDevice.iPadPro11(.landscape).style(.dark)
-        ]
+        let deviceVariants = Self.catalogDeviceVariants()
+        let appearanceLedger = AppearanceLedger()
         let (mainPlaybook, webViewScenarios) = Self.splitWebViewScenarios(from: playbook)
-
-        let snapshot = Snapshot(
-            directory: outputDirectory,
-            clean: true,
-            format: .png,
-            timeout: Self.snapshotTimeout(
-                scenarioCount: Self.scopedScenarioCount(in: mainPlaybook),
-                deviceCount: deviceVariants.count
-            ),
-            devices: deviceVariants
-        )
 
         let snapshotRunStart = CFAbsoluteTimeGetCurrent()
         let armedBeforeMainPass = CatalogGraphSnapshotFreezer.armedCount
-        try snapshot.run(with: mainPlaybook)
+        for (index, variant) in deviceVariants.enumerated() {
+            let pinnedPlaybook = Self.appearancePinnedPlaybook(
+                mainPlaybook,
+                variant: variant,
+                ledger: appearanceLedger
+            )
+            let snapshot = Snapshot(
+                directory: outputDirectory,
+                clean: index == 0,
+                format: .png,
+                timeout: Self.snapshotTimeout(
+                    scenarioCount: Self.scopedScenarioCount(in: pinnedPlaybook),
+                    deviceCount: 1
+                ),
+                devices: [variant.device],
+                viewPreprocessor: Self.appearanceViewPreprocessor(ledger: appearanceLedger)
+            )
+            try snapshot.run(with: pinnedPlaybook)
+        }
         // Anti-drift gate: a CatalogGraphSnapshotScene-wrapped scenario whose
         // key is missing from webViewSnapshotScenarios would arm a waiter
         // inside the main pass, wait out 30s, and silently write a blank
@@ -188,8 +355,9 @@ private let catalogSnapshotCompileFlagEnabled = false
         }
         try await Self.renderWebViewScenarioPNGs(
             webViewScenarios,
-            devices: deviceVariants,
-            outputDirectory: outputDirectory
+            variants: deviceVariants,
+            outputDirectory: outputDirectory,
+            appearanceLedger: appearanceLedger
         )
         let snapshotRunMs = Self.elapsedMilliseconds(since: snapshotRunStart)
 
@@ -200,11 +368,17 @@ private let catalogSnapshotCompileFlagEnabled = false
         // instead of guessing from transparent-margin pixels + title regex.
         let indexURL = outputDirectory.appendingPathComponent("catalog_index.json")
         try CatalogScene.Manifest.indexJSONData().write(to: indexURL)
+        let appearanceSidecarURL = try Self.writeAndValidateAppearanceSidecar(
+            ledger: appearanceLedger,
+            outputDirectory: outputDirectory,
+            provenance: .current()
+        )
 
         let testBodyMs = Self.elapsedMilliseconds(since: testBodyStart)
 
         print("KG catalog snapshots written to: \(outputDirectory.path)")
         print("KG catalog index written to: \(indexURL.path)")
+        print("KG catalog appearance sidecar written to: \(appearanceSidecarURL.path)")
         print(
             """
             KG catalog snapshot debug:
@@ -253,6 +427,356 @@ private let catalogSnapshotCompileFlagEnabled = false
         return (mainPlaybook, webView)
     }
 
+    private static func appearancePinnedPlaybook(
+        _ playbook: Playbook,
+        variant: AppearanceDeviceVariant,
+        ledger: AppearanceLedger
+    ) -> Playbook {
+        let pinned = Playbook()
+        for store in playbook.stores {
+            for scenario in store.scenarios {
+                let seed = appearanceSeed(
+                    category: store.category,
+                    scenario: scenario,
+                    variant: variant
+                )
+                ledger.register(seed)
+                pinned.scenarios(of: store.category).add(
+                    appearancePinnedScenario(
+                        scenario,
+                        requestedStyle: variant.requestedStyle,
+                        captureID: seed.captureID
+                    )
+                )
+            }
+        }
+        return pinned
+    }
+
+    private static func appearanceSeed(
+        category: ScenarioCategory,
+        scenario: Scenario,
+        variant: AppearanceDeviceVariant
+    ) -> AppearanceLedger.Seed {
+        let relPath = [
+            variant.device.name,
+            normalizeSnapshotName(category.rawValue),
+            normalizeSnapshotName(scenario.title.rawValue) + ".png",
+        ].joined(separator: "/")
+        let captureID = appearanceCaptureID(
+            requested: variant.requestedName,
+            relPath: relPath
+        )
+        return AppearanceLedger.Seed(
+            captureID: captureID,
+            family: variant.family,
+            device: variant.device.name,
+            category: category.rawValue,
+            scenario: scenario.title.rawValue,
+            relPath: relPath,
+            requested: variant.requestedName,
+            appearanceSensitive: isAppearanceSensitive(
+                category: category.rawValue,
+                scenario: scenario.title.rawValue
+            )
+        )
+    }
+
+    private static func appearanceCaptureID(requested: String, relPath: String) -> String {
+        let canonicalIdentity = "\(requested)|\(relPath)"
+        return "catalog-\(sha256(Data(canonicalIdentity.utf8)))"
+    }
+
+    /// External-appearance contract for App Store capture surfaces. Catalog
+    /// also contains scenarios that deliberately pin their own scheme (for
+    /// example Welcome/Step 3 / Dark), so layout cannot be used as a proxy.
+    private static let appearanceSensitiveScenarioKeys: Set<String> = [
+        "Knowledge Graph View/Populated graph",
+        "Vocabulary List View/Populated · mixed sync states",
+        "Notebook List View/Populated · multiple notebooks",
+        "Stats View/Populated",
+        "Today Review/Back",
+    ]
+
+    private static func isAppearanceSensitive(
+        category: String,
+        scenario: String
+    ) -> Bool {
+        appearanceSensitiveScenarioKeys.contains("\(category)/\(scenario)")
+    }
+
+    private static func appearanceViewPreprocessor(
+        ledger: AppearanceLedger
+    ) -> (UIView) -> UIView {
+        { view in
+            guard let captureID = view.accessibilityIdentifier, !captureID.isEmpty else {
+                ledger.recordUnidentifiedView(view)
+                return view
+            }
+            ledger.recordActual(
+                captureID: captureID,
+                style: view.traitCollection.userInterfaceStyle
+            )
+            return view
+        }
+    }
+
+    private struct AppearanceCaptureEvidence {
+        let captureID: String
+        let family: String
+        let device: String
+        let category: String
+        let scenario: String
+        let relPath: String
+        let requested: String
+        let actual: String
+        let appearanceSensitive: Bool
+        let pngSHA256: String
+        let pixelSHA256: String
+    }
+
+    private struct AppearanceCaptureProof: Encodable {
+        let id: String
+        let requestedAppearance: String
+        let actualAppearance: String
+        let pixelSHA256: String
+    }
+
+    private struct AppearanceVerdict: Encodable {
+        let status: String
+        let proofCount: Int
+    }
+
+    private struct AppearanceSidecar: Encodable {
+        let schema = "kg.catalog.appearance.v1"
+        let verdict: AppearanceVerdict
+        let sourceCommit: String
+        let datasetID: String
+        let datasetSHA256: String
+        let fixedClock: String
+        let observedAt: String
+        let captures: [AppearanceCaptureProof]
+    }
+
+    private struct AppearanceProvenance {
+        let sourceCommit: String
+        let datasetID: String
+        let datasetSHA256: String
+        let fixedClock: String
+        let observedAt: String
+
+        static func current() -> Self {
+            let environment = ProcessInfo.processInfo.environment
+            let summary = FixtureDatasetStore.debugSummary()
+            let datasetID = summary.components(separatedBy: " @ ").count == 2
+                ? summary.components(separatedBy: " @ ")[0]
+                : ""
+            return Self(
+                sourceCommit: environment["KG_REVIEW_SOURCE_COMMIT"] ?? "",
+                datasetID: datasetID,
+                datasetSHA256: environment["KG_FIXTURE_DATASET_SHA256"] ?? "",
+                fixedClock: FixtureDatasetStore.marketingCapture()?.reviewClock?.frozenNow ?? "",
+                observedAt: ISO8601DateFormatter().string(from: Date())
+            )
+        }
+    }
+
+    private struct AppearancePairKey: Hashable {
+        let family: String
+        let category: String
+        let scenario: String
+    }
+
+    private struct CatalogAppearanceError: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    private static func writeAndValidateAppearanceSidecar(
+        ledger: AppearanceLedger,
+        outputDirectory: URL,
+        provenance: AppearanceProvenance
+    ) throws -> URL {
+        let ledgerSnapshot = ledger.snapshot()
+        var issues = ledgerSnapshot.unidentifiedViews.map {
+            "snapshot view missing capture identity: \($0)"
+        }
+        if ledgerSnapshot.seeds.isEmpty {
+            issues.append("appearance proof must contain at least one capture")
+        }
+        if !isLowercaseHex(provenance.sourceCommit, count: 40) {
+            issues.append("appearance provenance sourceCommit must be a full lowercase git SHA")
+        }
+        if provenance.datasetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("appearance provenance datasetID must not be empty")
+        }
+        if !isLowercaseHex(provenance.datasetSHA256, count: 64) {
+            issues.append("appearance provenance datasetSHA256 must be a lowercase SHA-256")
+        }
+        if provenance.fixedClock.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("appearance provenance fixedClock must not be empty")
+        }
+        if provenance.observedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            issues.append("appearance provenance observedAt must not be empty")
+        }
+        var captures: [AppearanceCaptureEvidence] = []
+
+        for seed in ledgerSnapshot.seeds {
+            let actual = ledgerSnapshot.actualByID[seed.captureID] ?? "missing"
+            let fileURL = outputDirectory.appendingPathComponent(seed.relPath)
+            let pngDigest: String
+            let pixelDigest: String
+            if let data = try? Data(contentsOf: fileURL), let normalizedPixelDigest = pixelSHA256(data) {
+                pngDigest = sha256(data)
+                pixelDigest = normalizedPixelDigest
+            } else {
+                pngDigest = "missing"
+                pixelDigest = "missing"
+                issues.append("capture PNG missing or undecodable: \(seed.relPath)")
+            }
+            if actual != seed.requested {
+                issues.append(
+                    "appearance trait mismatch for \(seed.relPath): requested=\(seed.requested) actual=\(actual)"
+                )
+            }
+            captures.append(
+                AppearanceCaptureEvidence(
+                    captureID: seed.captureID,
+                    family: seed.family,
+                    device: seed.device,
+                    category: seed.category,
+                    scenario: seed.scenario,
+                    relPath: seed.relPath,
+                    requested: seed.requested,
+                    actual: actual,
+                    appearanceSensitive: seed.appearanceSensitive,
+                    pngSHA256: pngDigest,
+                    pixelSHA256: pixelDigest
+                )
+            )
+        }
+
+        var grouped: [AppearancePairKey: [String: AppearanceCaptureEvidence]] = [:]
+        for capture in captures {
+            let key = AppearancePairKey(
+                family: capture.family,
+                category: capture.category,
+                scenario: capture.scenario
+            )
+            grouped[key, default: [:]][capture.requested] = capture
+        }
+
+        let orderedKeys = grouped.keys.sorted {
+            ($0.family, $0.category, $0.scenario) < ($1.family, $1.category, $1.scenario)
+        }
+        for key in orderedKeys {
+            let variants = grouped[key] ?? [:]
+            let light = variants["light"]
+            let dark = variants["dark"]
+            let appearanceSensitive = light?.appearanceSensitive ?? dark?.appearanceSensitive ?? false
+            let pixelIdentical: Bool? = {
+                guard
+                    let light,
+                    let dark,
+                    light.pixelSHA256 != "missing",
+                    dark.pixelSHA256 != "missing"
+                else { return nil }
+                return light.pixelSHA256 == dark.pixelSHA256
+            }()
+
+            if appearanceSensitive, light == nil || dark == nil {
+                issues.append(
+                    "appearance-sensitive pair incomplete: \(key.family)/\(key.category)/\(key.scenario)"
+                )
+            }
+            if appearanceSensitive, pixelIdentical == true {
+                issues.append(
+                    "appearance-sensitive light/dark PNGs have identical normalized pixels: \(key.family)/\(key.category)/\(key.scenario)"
+                )
+            }
+        }
+
+        let proofs = captures.map {
+            AppearanceCaptureProof(
+                id: $0.captureID,
+                requestedAppearance: $0.requested,
+                actualAppearance: $0.actual,
+                pixelSHA256: $0.pixelSHA256
+            )
+        }
+
+        let sidecar = AppearanceSidecar(
+            verdict: AppearanceVerdict(
+                status: issues.isEmpty ? "pass" : "fail",
+                proofCount: proofs.count
+            ),
+            sourceCommit: provenance.sourceCommit,
+            datasetID: provenance.datasetID,
+            datasetSHA256: provenance.datasetSHA256,
+            fixedClock: provenance.fixedClock,
+            observedAt: provenance.observedAt,
+            captures: proofs
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let sidecarURL = outputDirectory.appendingPathComponent("catalog_appearance.json")
+        try encoder.encode(sidecar).write(to: sidecarURL, options: .atomic)
+
+        guard issues.isEmpty else {
+            throw CatalogAppearanceError(
+                description: "catalog appearance validation failed:\n- " + issues.joined(separator: "\n- ")
+            )
+        }
+        return sidecarURL
+    }
+
+    private static func isLowercaseHex(_ value: String, count: Int) -> Bool {
+        value.count == count && value.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
+    }
+
+    private static func sha256(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func pixelSHA256(_ encodedImageData: Data) -> String? {
+        guard
+            let source = CGImageSourceCreateWithData(encodedImageData as CFData, nil),
+            let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+            image.width > 0,
+            image.height > 0,
+            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+        else { return nil }
+
+        let width = image.width
+        let height = image.height
+        let bytesPerRow = width * 4
+        var rgba = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let drewImage = rgba.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(
+                data: bytes.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return false }
+            context.setBlendMode(.copy)
+            context.interpolationQuality = .none
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drewImage else { return nil }
+
+        var canonical = Data()
+        var widthBE = UInt64(width).bigEndian
+        var heightBE = UInt64(height).bigEndian
+        withUnsafeBytes(of: &widthBE) { canonical.append(contentsOf: $0) }
+        withUnsafeBytes(of: &heightBE) { canonical.append(contentsOf: $0) }
+        canonical.append(contentsOf: rgba)
+        return sha256(canonical)
+    }
+
     private struct WebViewSnapshotError: Error, CustomStringConvertible {
         let description: String
     }
@@ -270,14 +794,16 @@ private let catalogSnapshotCompileFlagEnabled = false
     @MainActor
     private static func renderWebViewScenarioPNGs(
         _ scenarios: [WebViewScenario],
-        devices: [SnapshotDevice],
-        outputDirectory: URL
+        variants: [AppearanceDeviceVariant],
+        outputDirectory: URL,
+        appearanceLedger: AppearanceLedger
     ) async throws {
         guard !scenarios.isEmpty else { return }
         let fileManager = FileManager.default
 
-        for device in devices {
+        for variant in variants {
             for (category, scenario, expectation) in scenarios {
+                let device = variant.device
                 let directoryURL = outputDirectory
                     .appendingPathComponent(device.name, isDirectory: true)
                     .appendingPathComponent(normalizeSnapshotName(category.rawValue), isDirectory: true)
@@ -286,17 +812,28 @@ private let catalogSnapshotCompileFlagEnabled = false
                     .appendingPathComponent(normalizeSnapshotName(scenario.title.rawValue))
                     .appendingPathExtension("png")
 
-                // NOTE: dark device variants currently follow the simulator's
-                // global appearance rather than the per-device trait — that is
-                // pre-existing catalog-wide behavior (verified: light/dark PNG
-                // pairs are byte-identical in the `Snapshot.run` pass too), not
-                // something this async pass introduces or can locally fix.
+                let seed = appearanceSeed(
+                    category: category,
+                    scenario: scenario,
+                    variant: variant
+                )
+                appearanceLedger.register(seed)
+                let pinnedScenario = appearancePinnedScenario(
+                    scenario,
+                    requestedStyle: variant.requestedStyle,
+                    captureID: seed.captureID
+                )
                 let armedBefore = CatalogGraphSnapshotFreezer.armedCount
                 let freezesBefore = CatalogGraphSnapshotFreezer.freezeCount
                 let data: Data = await withCheckedContinuation { continuation in
-                    SnapshotSupport.data(for: scenario, on: device, format: .png) { data in
-                        continuation.resume(returning: data)
-                    }
+                    SnapshotSupport.data(
+                        for: pinnedScenario,
+                        on: device,
+                        format: .png,
+                        viewPreprocessor: appearanceViewPreprocessor(ledger: appearanceLedger)
+                    ) { data in
+                            continuation.resume(returning: data)
+                        }
                 }
                 let armedDelta = CatalogGraphSnapshotFreezer.armedCount - armedBefore
                 let freezeDelta = CatalogGraphSnapshotFreezer.freezeCount - freezesBefore
@@ -363,6 +900,258 @@ private let catalogSnapshotCompileFlagEnabled = false
         )
         #expect(groups == ["Bookshelf View", "Today Review"])
         #expect(scenarios == ["Today Review/Front", "Bookshelf View/Populated · mixed formats"])
+    }
+
+    @Test @MainActor func appearanceSensitiveProbeProducesDistinctLightAndDarkPixels() async {
+        let scenario = Scenario("Appearance-sensitive probe", layout: .fixed(length: 64)) {
+            AppearanceProbeViewController()
+        }
+        let baseDevice = SnapshotDevice(
+            name: "Appearance Probe",
+            size: CGSize(width: 64, height: 64)
+        )
+
+        func capture(style: UIUserInterfaceStyle) async -> (data: Data, actual: UIUserInterfaceStyle) {
+            let device = baseDevice.style(style)
+            let pinned = Self.appearancePinnedScenario(
+                scenario,
+                requestedStyle: style,
+                captureID: style == .dark ? "probe-dark" : "probe-light"
+            )
+            let actualStyle = AppearanceStyleBox()
+            let data: Data = await withCheckedContinuation { continuation in
+                SnapshotSupport.data(
+                    for: pinned,
+                    on: device,
+                    format: .png,
+                    viewPreprocessor: { view in
+                        actualStyle.set(view.traitCollection.userInterfaceStyle)
+                        return view
+                    }
+                ) { data in
+                        continuation.resume(returning: data)
+                    }
+            }
+            return (data, actualStyle.value)
+        }
+
+        let light = await capture(style: .light)
+        let dark = await capture(style: .dark)
+        #expect(light.actual == .light)
+        #expect(dark.actual == .dark)
+        #expect(light.data != dark.data, "appearance-sensitive light/dark renders must not be byte-identical")
+    }
+
+    @Test func catalogDeviceVariantsDeclareExplicitAppearanceWithoutRenamingLightDirectories() {
+        let variants = Self.catalogDeviceVariants()
+        #expect(variants.count == 4)
+        #expect(variants.allSatisfy { $0.requestedStyle == .light || $0.requestedStyle == .dark })
+        #expect(variants.allSatisfy { $0.device.traitCollection.userInterfaceStyle == $0.requestedStyle })
+        #expect(variants.filter { $0.requestedStyle == .light }.allSatisfy { !$0.device.name.contains("(light)") })
+        #expect(
+            Self.isAppearanceSensitive(
+                category: "Knowledge Graph View",
+                scenario: "Populated graph"
+            )
+        )
+        #expect(
+            !Self.isAppearanceSensitive(
+                category: "Welcome",
+                scenario: "Step 3 / Dark"
+            ),
+            "fixed-scheme catalog scenarios must not be judged by global light/dark pair equality"
+        )
+
+        let identityInputs = [
+            ("light", "iPhone 15 Pro portrait/Knowledge Graph View/Populated graph.png"),
+            ("dark", "iPhone 15 Pro portrait (dark)/Knowledge Graph View/Populated graph.png"),
+            ("light", "iPad Pro 11 landscape/Knowledge Graph View/Populated graph.png"),
+            ("dark", "iPad Pro 11 landscape (dark)/Knowledge Graph View/Populated graph.png"),
+        ]
+        let captureIDs = identityInputs.map {
+            Self.appearanceCaptureID(requested: $0.0, relPath: $0.1)
+        }
+        #expect(Set(captureIDs).count == captureIDs.count, "appearance proof IDs must not collide")
+        #expect(
+            captureIDs.allSatisfy {
+                guard let first = $0.first, first.isLowercase || first.isNumber else { return false }
+                return $0.allSatisfy { character in
+                    character.isLowercase
+                        || character.isNumber
+                        || character == "."
+                        || character == "_"
+                        || character == "-"
+                }
+            },
+            "appearance proof IDs must satisfy ^[a-z0-9][a-z0-9._-]*$"
+        )
+        #expect(
+            Self.appearanceCaptureID(requested: "light", relPath: identityInputs[0].1) == captureIDs[0],
+            "appearance proof IDs must be deterministic"
+        )
+    }
+
+    @Test func appearanceSidecarRejectsTraitMismatchAndIdenticalSensitivePairs() throws {
+        let provenance = AppearanceProvenance(
+            sourceCommit: String(repeating: "a", count: 40),
+            datasetID: "appearance-test-world",
+            datasetSHA256: String(repeating: "b", count: 64),
+            fixedClock: "2026-07-13T08:00:00Z",
+            observedAt: "2026-07-13T08:01:00Z"
+        )
+
+        func png(color: UIColor, metadata: String) throws -> Data {
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
+            let image = renderer.image { context in
+                color.setFill()
+                context.cgContext.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+            }
+            let cgImage = try #require(image.cgImage)
+            let encoded = NSMutableData()
+            let destination = try #require(
+                CGImageDestinationCreateWithData(
+                    encoded,
+                    UTType.png.identifier as CFString,
+                    1,
+                    nil
+                )
+            )
+            let properties = [
+                kCGImagePropertyPNGDictionary: [
+                    kCGImagePropertyPNGDescription: metadata,
+                ],
+            ] as CFDictionary
+            CGImageDestinationAddImage(destination, cgImage, properties)
+            #expect(CGImageDestinationFinalize(destination))
+            return encoded as Data
+        }
+
+        func makeRoot(_ label: String) throws -> URL {
+            let root = FileManager.default.temporaryDirectory
+                .appendingPathComponent("catalog-appearance-\(label)-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            return root
+        }
+
+        func registerPair(
+            ledger: AppearanceLedger,
+            root: URL,
+            lightData: Data,
+            darkData: Data,
+            lightActual: UIUserInterfaceStyle = .light
+        ) throws {
+            for (requested, actual, data) in [
+                ("light", lightActual, lightData),
+                ("dark", UIUserInterfaceStyle.dark, darkData),
+            ] {
+                let relPath = "Probe \(requested)/Surface/State.png"
+                let captureID = "\(requested)|\(relPath)"
+                ledger.register(
+                    AppearanceLedger.Seed(
+                        captureID: captureID,
+                        family: "Probe",
+                        device: "Probe \(requested)",
+                        category: "Surface",
+                        scenario: "State",
+                        relPath: relPath,
+                        requested: requested,
+                        appearanceSensitive: true
+                    )
+                )
+                ledger.recordActual(captureID: captureID, style: actual)
+                let fileURL = root.appendingPathComponent(relPath)
+                try FileManager.default.createDirectory(
+                    at: fileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try data.write(to: fileURL)
+            }
+        }
+
+        let mismatchRoot = try makeRoot("trait-mismatch")
+        defer { try? FileManager.default.removeItem(at: mismatchRoot) }
+        let mismatchLedger = AppearanceLedger()
+        try registerPair(
+            ledger: mismatchLedger,
+            root: mismatchRoot,
+            lightData: try png(color: .white, metadata: "light"),
+            darkData: try png(color: .black, metadata: "dark"),
+            lightActual: .dark
+        )
+        #expect(throws: CatalogAppearanceError.self) {
+            try Self.writeAndValidateAppearanceSidecar(
+                ledger: mismatchLedger,
+                outputDirectory: mismatchRoot,
+                provenance: provenance
+            )
+        }
+        let mismatchSidecarData = try Data(
+            contentsOf: mismatchRoot.appendingPathComponent("catalog_appearance.json")
+        )
+        let mismatchSidecar = try #require(
+            JSONSerialization.jsonObject(with: mismatchSidecarData) as? [String: Any]
+        )
+        #expect(
+            Set(mismatchSidecar.keys) == [
+                "schema",
+                "verdict",
+                "sourceCommit",
+                "datasetID",
+                "datasetSHA256",
+                "fixedClock",
+                "observedAt",
+                "captures",
+            ],
+            "appearance sidecar must match the fail-closed gate consumer contract exactly"
+        )
+        let mismatchVerdict = try #require(mismatchSidecar["verdict"] as? [String: Any])
+        #expect(Set(mismatchVerdict.keys) == ["status", "proofCount"])
+        let mismatchCaptures = try #require(mismatchSidecar["captures"] as? [[String: Any]])
+        #expect(!mismatchCaptures.isEmpty)
+        #expect(
+            mismatchCaptures.allSatisfy {
+                Set($0.keys) == [
+                    "id",
+                    "requestedAppearance",
+                    "actualAppearance",
+                    "pixelSHA256",
+                ]
+            }
+        )
+
+        let emptyRoot = try makeRoot("empty-proof")
+        defer { try? FileManager.default.removeItem(at: emptyRoot) }
+        #expect(throws: CatalogAppearanceError.self) {
+            try Self.writeAndValidateAppearanceSidecar(
+                ledger: AppearanceLedger(),
+                outputDirectory: emptyRoot,
+                provenance: provenance
+            )
+        }
+
+        let identicalRoot = try makeRoot("identical-pair")
+        defer { try? FileManager.default.removeItem(at: identicalRoot) }
+        let identicalLedger = AppearanceLedger()
+        let identicalPixelsA = try png(color: .white, metadata: "encoding-a")
+        let identicalPixelsB = try png(color: .white, metadata: "encoding-b")
+        #expect(identicalPixelsA != identicalPixelsB)
+        #expect(
+            Self.pixelSHA256(identicalPixelsA) == Self.pixelSHA256(identicalPixelsB),
+            "pixel hashing must ignore PNG metadata and encoding differences"
+        )
+        try registerPair(
+            ledger: identicalLedger,
+            root: identicalRoot,
+            lightData: identicalPixelsA,
+            darkData: identicalPixelsB
+        )
+        #expect(throws: CatalogAppearanceError.self) {
+            try Self.writeAndValidateAppearanceSidecar(
+                ledger: identicalLedger,
+                outputDirectory: identicalRoot,
+                provenance: provenance
+            )
+        }
     }
 }
 
