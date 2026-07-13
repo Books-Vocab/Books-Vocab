@@ -15,17 +15,22 @@
 #   ./ops/release.sh changelog <api|ios>         # 印 markdown changelog 預覽（唯讀）
 #   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
-#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（版號標記+備份，非部署；dry-run 預設，--yes 才送）
-#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布：bump→tag→生產觸點（backend: deploy 推 origin/prod；ios: upload TestFlight）。須在 main。dry-run 預設
+#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（iOS 新版另須 --new-version-after-ready <previous>）
+#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布（iOS 新版須 --new-version-after-ready <previous>）。須在 main。dry-run 預設
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
-# 全域 flag：--yes（bump/tag 真寫、release 真執行）  -h|--help
+# 全域 flag：--yes（bump/tag 真寫、release 真執行）
+# iOS 新 marketing version attestation：--new-version-after-ready <previous-version>
+#   表示 operator 已從 ASC 確認 previous-version 完成審查；本 guard 不連網，只和 latest local ios/* tag 對證。
+#   未上架/被拒重送不可用此 flag，應走 bump-build ios + ios_release.sh --upload。
+# 其他：-h|--help
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
+NEW_VERSION_AFTER_READY=""
 
 err()  { echo "✗ $*" >&2; exit 1; }
 # 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail / ROOT= / YES= 洩進 help。
@@ -44,6 +49,17 @@ current_version() {  # 從版號檔讀目前 marketing 版本
 
 valid_semver() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 
+semver_gt() {
+  local rma rmi rpa pma pmi ppa
+  IFS=. read -r rma rmi rpa <<<"$1"
+  IFS=. read -r pma pmi ppa <<<"$2"
+  rma=$((10#$rma)); rmi=$((10#$rmi)); rpa=$((10#$rpa))
+  pma=$((10#$pma)); pmi=$((10#$pmi)); ppa=$((10#$ppa))
+  (( rma > pma ||
+     (rma == pma && rmi > pmi) ||
+     (rma == pma && rmi == pmi && rpa > ppa) ))
+}
+
 bump_semver() {  # $1=x.y.z  $2=major|minor|patch
   local IFS=.; read -r MA MI PA <<<"$1"
   case "$2" in
@@ -54,6 +70,27 @@ bump_semver() {  # $1=x.y.z  $2=major|minor|patch
 }
 
 last_tag() { git -C "$ROOT" tag -l "$(tag_prefix "$1")*" --sort=-v:refname 2>/dev/null | head -1; }
+
+# iOS marketing version 是否能前進的 server 真相只在 ASC；為避免把 release 綁死在網路/API，
+# 這裡要求 operator 用 typed attestation 明示已查證，並以 latest local ios/* tag 對證 previous version。
+# 它不宣稱離線驗出 READY_FOR_SALE，而是讓「新版本」不能從 semver 建議被默默推導。
+guard_ios_new_version() {
+  local requested="$1" previous_tag previous
+  previous_tag="$(last_tag ios)"
+  [[ -n "$previous_tag" ]] || err "找不到上一個 ios/* tag，無法離線對證新版本前序；先人工確認 release history"
+  previous="${previous_tag#ios/}"
+
+  [[ "$requested" != "$previous" ]] \
+    || err "${requested} 已是上一個 release tag；未上架/被拒同版重送請走 ./ops/release.sh bump-build ios --yes，再跑 ./ops/ios_release.sh --upload"
+  [[ -n "$NEW_VERSION_AFTER_READY" ]] \
+    || err "iOS 新 marketing version 須明示 --new-version-after-ready ${previous}（僅在 ASC 確認 ios/${previous} 已完成審查後使用）；未上架/被拒請走 bump-build ios"
+  valid_semver "$NEW_VERSION_AFTER_READY" \
+    || err "--new-version-after-ready 格式錯誤：${NEW_VERSION_AFTER_READY}（需 x.y.z）"
+  [[ "$NEW_VERSION_AFTER_READY" == "$previous" ]] \
+    || err "--new-version-after-ready ${NEW_VERSION_AFTER_READY} 與 latest local tag ${previous_tag} 不符；停止發版並重查 ASC/release history"
+  semver_gt "$requested" "$previous" \
+    || err "iOS 新 marketing version ${requested} 必須高於 latest local tag ${previous}；禁止倒退或重用已發布版號"
+}
 
 # ---- status：各 component 待發版總覽（唯讀） ----
 cmd_status() {
@@ -149,6 +186,11 @@ cmd_tag() {
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+  if [[ "$c" == ios ]]; then
+    guard_ios_new_version "$v"
+  elif [[ -n "$NEW_VERSION_AFTER_READY" ]]; then
+    err "--new-version-after-ready 只適用 iOS 新 marketing version"
+  fi
 
   local tp tag files curver branch
   tp="$(tag_prefix "$c")"; tag="${tp}${v}"
@@ -171,7 +213,12 @@ cmd_tag() {
 
   if [[ $YES -eq 1 ]]; then
     git -C "$ROOT" add -- "${files[@]}"
-    git -C "$ROOT" commit -m "ops: release $c $v"
+    if git -C "$ROOT" diff --cached --quiet -- "${files[@]}"; then
+      echo "  版號檔已在目前 HEAD，略過空 release commit；tag 將指向 $(git -C "$ROOT" rev-parse --short HEAD)"
+    else
+      # pathspec 鎖住 release files，避免把 operator 預先 staged 的無關變更一起提交。
+      git -C "$ROOT" commit -m "ops: release $c $v" -- "${files[@]}"
+    fi
     git -C "$ROOT" tag "$tag"
     git -C "$ROOT" push origin "$branch" "$tag"
     echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記+備份；生產部署走 release <backend|ios>）。"
@@ -195,6 +242,11 @@ cmd_release() {
   esac
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+  if [[ "$comp" == ios ]]; then
+    guard_ios_new_version "$v"
+  elif [[ -n "$NEW_VERSION_AFTER_READY" ]]; then
+    err "--new-version-after-ready 只適用 iOS 新 marketing version"
+  fi
 
   local branch curver need_bump
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
@@ -208,11 +260,12 @@ cmd_release() {
   echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
   echo "  計畫（dry-run 預設）："
   if [[ $need_bump -eq 1 ]]; then echo "    1) bump ${comp} ${v}（檔內 ${curver} → ${v}）"; else echo "    1) bump 略過（檔內已 ${curver}）"; fi
-  echo "    2) tag ${comp} ${v}（commit 版號檔 + ${comp}/${v} tag + push origin main）"
   if [[ "$comp" == api ]]; then
+    echo "    2) tag ${comp} ${v}（commit 版號檔 + ${comp}/${v} tag + push origin main）"
     echo "    3) orchestrate deploy --commit（推 origin/prod → felix reconciler 部署 wordnexus.lol）⚠ 生產"
   else
-    echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+    echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+    echo "    3) tag ${comp} ${v}（upload 成功後才 commit 版號檔 + ${comp}/${v} tag + push origin main）"
   fi
 
   if [[ $YES -ne 1 ]]; then
@@ -223,13 +276,14 @@ cmd_release() {
 
   # 執行：任一步失敗即 err 中止（cmd_bump/cmd_tag 讀全域 YES=1）
   if [[ $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
-  cmd_tag "$comp" "$v"
   if [[ "$comp" == api ]]; then
+    cmd_tag "$comp" "$v"
     "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
     echo "✓ release backend ${v}：已 tag + 推 origin/prod；felix reconciler 將健康 gate 部署。"
   else
     "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止"
-    echo "✓ release ios ${v}：已 tag + 上傳 TestFlight（GUI 綁 build 送審見 docs/sop/ios.md）。"
+    cmd_tag "$comp" "$v"
+    echo "✓ release ios ${v}：已上傳 TestFlight + tag（GUI 綁 build 送審見 docs/sop/ios.md）。"
   fi
 }
 
@@ -238,6 +292,9 @@ SUB=""; ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes)      YES=1; shift ;;
+    --new-version-after-ready)
+      [[ $# -ge 2 && -n "${2:-}" ]] || err "--new-version-after-ready 需要 previous-version（x.y.z）"
+      NEW_VERSION_AFTER_READY="$2"; shift 2 ;;
     -h|--help)  usage; exit 0 ;;
     -*)         err "unknown option: $1" ;;
     *)          if [[ -z "$SUB" ]]; then SUB="$1"; else ARGS+=("$1"); fi; shift ;;
