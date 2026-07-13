@@ -44,7 +44,7 @@ struct BooksAndVocabApp: App {
             AppCrashReporting.bootstrap()
         }
 
-        #if DEBUG
+        #if targetEnvironment(simulator)
         if AppRuntimeOptions.isUITesting(arguments: runtimeArguments) {
             if runtimeArguments.contains("-seedFixture:entitlements:pro") {
                 subscriptionManager = UITestSubscriptionManager.proAccess()

@@ -1,4 +1,4 @@
-#if DEBUG
+#if targetEnvironment(simulator)
 import Foundation
 import StoreKit
 
