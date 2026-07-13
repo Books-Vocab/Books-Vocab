@@ -21,7 +21,16 @@ def load_module(name: str, path: Path):
 entry_module = load_module("catalog_review_entry", ROOT / "ops" / "catalog_review_entry.py")
 
 
-def write_manifest(root: Path, name: str, *, total_images: int, continue_count: int, weak_count: int) -> None:
+def write_manifest(
+    root: Path,
+    name: str,
+    *,
+    total_images: int,
+    continue_count: int,
+    weak_count: int,
+    appearance_status: str = "pass",
+    run_status: str = "pass",
+) -> None:
     artifact_root = root / name
     artifact_root.mkdir(parents=True)
     (artifact_root / "review_manifest.json").write_text(
@@ -41,6 +50,40 @@ def write_manifest(root: Path, name: str, *, total_images: int, continue_count: 
                     "newSincePr878": False,
                 }
             ],
+        }),
+        encoding="utf-8",
+    )
+    (artifact_root / "catalog_appearance.json").write_text(
+        json.dumps({
+            "schema": "kg.catalog.appearance.v1",
+            "verdict": {"status": appearance_status, "proofCount": 1},
+            "sourceCommit": "a" * 40,
+            "datasetID": "marketing-account",
+            "datasetSHA256": "b" * 64,
+            "fixedClock": "2026-07-09T14:59:59Z",
+            "observedAt": "2026-07-13T09:25:00Z",
+            "captures": [{
+                "id": "reader-light",
+                "requestedAppearance": "light",
+                "actualAppearance": "light",
+                "pixelSHA256": "c" * 64,
+            }],
+        }),
+        encoding="utf-8",
+    )
+    (artifact_root / "catalog_run_receipt.json").write_text(
+        json.dumps({
+            "schema": "kg.ios.catalog.run_receipt.v1",
+            "status": run_status,
+            "sourceCommit": "a" * 40,
+            "datasetID": "marketing-account",
+            "datasetSHA256": "b" * 64,
+            "fixedClock": "2026-07-09T14:59:59Z",
+            "testExit": 0 if run_status == "pass" else 65,
+            "copyExit": 0,
+            "validationStatus": "ok",
+            "reviewStatus": "ok",
+            "appearanceStatus": "pass",
         }),
         encoding="utf-8",
     )
@@ -77,6 +120,88 @@ def test_choose_blessed_artifact_prefers_usable_over_empty_newer_artifact(tmp_pa
 
     assert blessed["name"] == "catalog-full-20260608-003356"
     assert blessed["isUsable"] is True
+
+
+def test_choose_blessed_artifact_rejects_newer_failed_appearance_proof(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(
+        tmp_path,
+        "catalog-full-20260608-999999",
+        total_images=1000,
+        continue_count=290,
+        weak_count=436,
+        appearance_status="fail",
+    )
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-003356"
+    rejected = next(item for item in artifacts if item["name"].endswith("999999"))
+    assert rejected["isUsable"] is False
+    assert rejected["appearanceProof"]["status"] == "block"
+
+
+def test_choose_blessed_artifact_rejects_missing_appearance_proof(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-999999", total_images=1000, continue_count=290, weak_count=436)
+    (tmp_path / "catalog-full-20260608-999999" / "catalog_appearance.json").unlink()
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-003356"
+
+
+def test_choose_blessed_artifact_never_returns_only_failed_candidate(tmp_path: Path):
+    write_manifest(
+        tmp_path,
+        "catalog-full-20260608-999999",
+        total_images=1000,
+        continue_count=290,
+        weak_count=436,
+        appearance_status="fail",
+    )
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+
+    try:
+        entry_module.choose_blessed_artifact(artifacts)
+    except SystemExit as exc:
+        assert str(exc) == "No usable review artifacts found under build/snapshots"
+    else:
+        raise AssertionError("failed appearance artifact became blessed")
+
+
+def test_choose_blessed_artifact_rejects_failed_run_even_with_valid_appearance(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(
+        tmp_path,
+        "catalog-full-20260608-999999",
+        total_images=1000,
+        continue_count=290,
+        weak_count=436,
+        run_status="block",
+    )
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-003356"
+    failed = next(item for item in artifacts if item["name"].endswith("999999"))
+    assert failed["isUsable"] is False
+    assert failed["runReceipt"]["status"] == "block"
+
+
+def test_choose_blessed_artifact_rejects_missing_run_receipt(tmp_path: Path):
+    write_manifest(tmp_path, "catalog-full-20260608-003356", total_images=1000, continue_count=290, weak_count=436)
+    write_manifest(tmp_path, "catalog-full-20260608-999999", total_images=1000, continue_count=290, weak_count=436)
+    (tmp_path / "catalog-full-20260608-999999" / "catalog_run_receipt.json").unlink()
+
+    artifacts = entry_module.collect_review_artifacts(tmp_path)
+    blessed = entry_module.choose_blessed_artifact(artifacts)
+
+    assert blessed["name"] == "catalog-full-20260608-003356"
 
 
 def test_collect_review_artifacts_ignores_bypass_roots(tmp_path: Path):

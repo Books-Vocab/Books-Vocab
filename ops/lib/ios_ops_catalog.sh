@@ -94,6 +94,41 @@ catalog_persist_workspace_artifact_json() {
     }'
 }
 
+catalog_write_run_receipt_json() {
+  local out_root="$1" source_commit="$2" dataset_id="$3" dataset_sha256="$4" fixed_clock="$5"
+  local test_exit="$6" copy_exit="$7" validation_status="$8" review_status="$9" appearance_status="${10}"
+  local status="block" receipt
+  if [[ "$test_exit" -eq 0 && "$copy_exit" -eq 0 && "$validation_status" != "error" && "$review_status" == "ok" && "$appearance_status" == "pass" ]]; then
+    status="pass"
+  fi
+  receipt="$(jq -n \
+    --arg status "$status" \
+    --arg sourceCommit "$source_commit" \
+    --arg datasetID "$dataset_id" \
+    --arg datasetSHA256 "$dataset_sha256" \
+    --arg fixedClock "$fixed_clock" \
+    --arg validationStatus "$validation_status" \
+    --arg reviewStatus "$review_status" \
+    --arg appearanceStatus "$appearance_status" \
+    --argjson testExit "$test_exit" \
+    --argjson copyExit "$copy_exit" \
+    '{
+      schema:"kg.ios.catalog.run_receipt.v1",
+      status:$status,
+      sourceCommit:$sourceCommit,
+      datasetID:$datasetID,
+      datasetSHA256:$datasetSHA256,
+      fixedClock:$fixedClock,
+      testExit:$testExit,
+      copyExit:$copyExit,
+      validationStatus:$validationStatus,
+      reviewStatus:$reviewStatus,
+      appearanceStatus:$appearanceStatus
+    }')"
+  printf '%s\n' "$receipt" >"$out_root/catalog_run_receipt.json"
+  printf '%s\n' "$receipt"
+}
+
 catalog_now_ms() {
   perl -MTime::HiRes=time -e 'printf "%.0f\n", time() * 1000'
 }
@@ -206,7 +241,7 @@ SWIFT
 }
 
 catalog_fixture_seed_snapshots() {
-  local container_root="$1"
+  local container_root="$1" source_commit="$2" dataset_id="$3" dataset_sha256="$4" fixed_clock="$5"
   local snapshot_root="$container_root/tmp/kg-catalog-snapshots"
   catalog_fixture_write_png "$snapshot_root/iPhone15Pro/Bookshelf/bookshelf-grid.png"
   catalog_fixture_write_png "$snapshot_root/iPhone15Pro/Today Review/review-card.png"
@@ -253,6 +288,33 @@ JSON
   "edges": []
 }
 JSON
+  local appearance_status observed_at bookshelf_sha review_sha
+  appearance_status="${KG_IOS_OPS_CATALOG_FIXTURE_APPEARANCE_STATUS:-pass}"
+  observed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  bookshelf_sha="$(shasum -a 256 "$snapshot_root/iPhone15Pro/Bookshelf/bookshelf-grid.png" | awk '{print $1}')"
+  review_sha="$(shasum -a 256 "$snapshot_root/iPhone15Pro/Today Review/review-card.png" | awk '{print $1}')"
+  jq -n \
+    --arg status "$appearance_status" \
+    --arg sourceCommit "$source_commit" \
+    --arg datasetID "$dataset_id" \
+    --arg datasetSHA256 "$dataset_sha256" \
+    --arg fixedClock "$fixed_clock" \
+    --arg observedAt "$observed_at" \
+    --arg bookshelfSHA "$bookshelf_sha" \
+    --arg reviewSHA "$review_sha" \
+    '{
+      schema:"kg.catalog.appearance.v1",
+      verdict:{status:$status,proofCount:2},
+      sourceCommit:$sourceCommit,
+      datasetID:$datasetID,
+      datasetSHA256:$datasetSHA256,
+      fixedClock:$fixedClock,
+      observedAt:$observedAt,
+      captures:[
+        {id:"fixture-bookshelf-light",requestedAppearance:"light",actualAppearance:"light",pixelSHA256:$bookshelfSHA},
+        {id:"fixture-review-dark",requestedAppearance:"dark",actualAppearance:"dark",pixelSHA256:$reviewSHA}
+      ]
+    }' >"$snapshot_root/catalog_appearance.json"
 }
 
 catalog_fixture_seed_cache() {
@@ -442,8 +504,60 @@ catalog_validate_dataset_file() {
   "$uv_bin" run --python 3.13 python "$ROOT/ops/ui_world_manifest.py" validate "$dataset_path" --label "Catalog UI World dataset" >/dev/null
 }
 
+catalog_dataset_sha256() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+catalog_dataset_id() {
+  jq -er '.datasetID | select(type == "string" and length > 0)' "$1"
+}
+
+catalog_dataset_fixed_clock() {
+  jq -r '.marketingCapture.reviewClock.frozenNow // empty' "$1"
+}
+
+catalog_source_commit() {
+  local commit
+  commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || return 1
+  [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s\n' "$commit"
+}
+
+catalog_validate_appearance_json() {
+  local sidecar_path="$1" source_commit="$2" dataset_id="$3" dataset_sha256="$4" fixed_clock="$5"
+  local uv_bin validation rc=0
+  uv_bin="$(catalog_uv_bin)"
+  validation="$(
+    "$uv_bin" run --python 3.13 python "$ROOT/ops/catalog_appearance_proof.py" \
+      "$sidecar_path" \
+      --source-commit "$source_commit" \
+      --dataset-id "$dataset_id" \
+      --dataset-sha256 "$dataset_sha256" \
+      --fixed-clock "$fixed_clock"
+  )" || rc=$?
+  if [[ -z "$validation" ]]; then
+    validation='{"status":"block","issues":[{"code":"appearance.validator","expected":"validator JSON","actual":"empty"}],"proofCount":0}'
+  fi
+  jq -n \
+    --arg path "$sidecar_path" \
+    --arg sourceCommit "$source_commit" \
+    --arg datasetID "$dataset_id" \
+    --arg datasetSHA256 "$dataset_sha256" \
+    --arg fixedClock "$fixed_clock" \
+    --argjson validatorExit "$rc" \
+    --argjson validation "$validation" \
+    '$validation + {
+      path:$path,
+      sourceCommit:$sourceCommit,
+      datasetID:$datasetID,
+      datasetSHA256:$datasetSHA256,
+      fixedClock:$fixedClock,
+      validatorExit:$validatorExit
+    }'
+}
+
 catalog_prepare_scoped_xctestrun() {
-  local base_xctestrun="$1" groups_csv="$2" scenarios_csv="$3" dataset_b64="$4" scoped_xctestrun="$5"
+  local base_xctestrun="$1" groups_csv="$2" scenarios_csv="$3" dataset_b64="$4" source_commit="$5" dataset_sha256="$6" scoped_xctestrun="$7"
   local args_json
   cp "$base_xctestrun" "$scoped_xctestrun"
   args_json="$(catalog_scope_command_args_json "$groups_csv" "$scenarios_csv")"
@@ -451,6 +565,10 @@ catalog_prepare_scoped_xctestrun() {
   catalog_upsert_plist_json "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.CommandLineArguments' "$args_json"
   catalog_ensure_plist_dict "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables'
   catalog_ensure_plist_dict "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables'
+  catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_REVIEW_SOURCE_COMMIT' "$source_commit"
+  catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_REVIEW_SOURCE_COMMIT' "$source_commit"
+  catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_FIXTURE_DATASET_SHA256' "$dataset_sha256"
+  catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_FIXTURE_DATASET_SHA256' "$dataset_sha256"
   if [[ -n "$groups_csv" ]]; then
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.EnvironmentVariables.KG_CATALOG_GROUPS' "$groups_csv"
     catalog_upsert_plist_string "$scoped_xctestrun" 'TestConfigurations.0.TestTargets.0.TestingEnvironmentVariables.KG_CATALOG_GROUPS' "$groups_csv"
@@ -814,9 +932,12 @@ cmd_catalog_snapshots_json() {
   local build_cmd="" scope_test_cmd="" use_cached_xctestrun=0 scope_requested=0
   local cache_key="" cache_status="not-applicable"
   local dataset_status="not-requested" dataset_rc=0 dataset_simulator_path="" dataset_b64=""
+  local dataset_id="" dataset_sha256="" dataset_fixed_clock="" source_commit=""
   local container_png_count=0 salvaged="false"
   local review_json='{"status":"skipped"}'
   local workspace_artifact_json='{"status":"skipped"}'
+  local appearance_json='{"status":"block","issues":[{"code":"appearance.not-validated","expected":"validated sidecar","actual":"not-run"}],"proofCount":0}'
+  local run_receipt_json='{"status":"block"}'
 
   wrapper_start_ms="$(catalog_now_ms)"
   generated_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
@@ -847,10 +968,23 @@ cmd_catalog_snapshots_json() {
     if ! catalog_validate_dataset_file "$dataset_path"; then
       dataset_rc=64
       dataset_status="invalid"
+    elif ! source_commit="$(catalog_source_commit)"; then
+      dataset_rc=65
+      dataset_status="source-commit-failed"
+    elif ! dataset_id="$(catalog_dataset_id "$dataset_path")"; then
+      dataset_rc=66
+      dataset_status="dataset-id-failed"
+    elif ! dataset_sha256="$(catalog_dataset_sha256 "$dataset_path")"; then
+      dataset_rc=67
+      dataset_status="dataset-sha256-failed"
     elif ! dataset_b64="$(catalog_dataset_base64 "$dataset_path")"; then
       dataset_rc=89
       dataset_status="encode-failed"
     else
+      dataset_fixed_clock="$(catalog_dataset_fixed_clock "$dataset_path")"
+      if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -z "$dataset_fixed_clock" ]]; then
+        dataset_fixed_clock="2026-07-13T08:00:00Z"
+      fi
       dataset_status="validated"
     fi
   fi
@@ -861,7 +995,7 @@ cmd_catalog_snapshots_json() {
     cache_key=""
     cache_status="not-applicable"
     fixture_root="$(mktemp -d)"
-    catalog_fixture_seed_snapshots "$fixture_root"
+    catalog_fixture_seed_snapshots "$fixture_root" "$source_commit" "$dataset_id" "$dataset_sha256" "$dataset_fixed_clock"
     container_data="$fixture_root"
     snapshot_source="$fixture_root/tmp/kg-catalog-snapshots"
     printf 'fixture xcodebuild test\n' >"$xcode_log"
@@ -890,7 +1024,7 @@ cmd_catalog_snapshots_json() {
         : >"$xcode_err"
         if [[ "$scope_requested" -eq 1 || -n "$dataset_b64" ]]; then
           run_xctestrun="$(dirname "$base_xctestrun")/$(basename "${base_xctestrun%.xctestrun}").scoped.xctestrun"
-          catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$run_xctestrun"
+          catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$source_commit" "$dataset_sha256" "$run_xctestrun"
         else
           run_xctestrun="$base_xctestrun"
         fi
@@ -916,7 +1050,7 @@ cmd_catalog_snapshots_json() {
             else
               if [[ "$scope_requested" -eq 1 || -n "$dataset_b64" ]]; then
                 run_xctestrun="$(dirname "$base_xctestrun")/$(basename "${base_xctestrun%.xctestrun}").scoped.xctestrun"
-                catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$run_xctestrun"
+                catalog_prepare_scoped_xctestrun "$base_xctestrun" "$groups_csv" "$scenarios_csv" "$dataset_b64" "$source_commit" "$dataset_sha256" "$run_xctestrun"
               else
                 run_xctestrun="$base_xctestrun"
               fi
@@ -1061,6 +1195,14 @@ cmd_catalog_snapshots_json() {
   validation_ms=$(( phase_end_ms - phase_start_ms ))
   catalog_trace_phase "validation" "done" "wallMs=$validation_ms status=$(jq -r '.status' <<<"$validation_json")"
 
+  appearance_json="$(catalog_validate_appearance_json \
+    "$out_root/catalog_appearance.json" \
+    "$source_commit" \
+    "$dataset_id" \
+    "$dataset_sha256" \
+    "$dataset_fixed_clock")"
+  catalog_trace_phase "appearance" "done" "status=$(jq -r '.status' <<<"$appearance_json") proofCount=$(jq -r '.proofCount' <<<"$appearance_json")"
+
   if [[ "$copy_rc" -eq 0 && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 ]]; then
     phase_start_ms="$(catalog_now_ms)"
     catalog_trace_phase "review" "start" "outRoot=$out_root"
@@ -1069,7 +1211,19 @@ cmd_catalog_snapshots_json() {
     catalog_trace_phase "review" "done" "wallMs=$(( phase_end_ms - phase_start_ms )) status=$(jq -r '.status' <<<"$review_json")"
   fi
 
-  if [[ "$persist_workspace_artifact" -eq 1 && "$copy_rc" -eq 0 && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 && "$(jq -r '.status' <<<"$review_json")" == "ok" ]]; then
+  run_receipt_json="$(catalog_write_run_receipt_json \
+    "$out_root" \
+    "$source_commit" \
+    "$dataset_id" \
+    "$dataset_sha256" \
+    "$dataset_fixed_clock" \
+    "$rc" \
+    "$copy_rc" \
+    "$(jq -r '.status' <<<"$validation_json")" \
+    "$(jq -r '.status' <<<"$review_json")" \
+    "$(jq -r '.status' <<<"$appearance_json")")"
+
+  if [[ "$persist_workspace_artifact" -eq 1 && "$(jq -r '.status' <<<"$run_receipt_json")" == "pass" && "$(jq -r '.pngCount // 0' <<<"$pngs_json")" -gt 0 ]]; then
     if [[ "$mode" != "fixture" || -n "${KG_IOS_OPS_CATALOG_PERSIST_ROOT:-}" ]]; then
     phase_start_ms="$(catalog_now_ms)"
     catalog_trace_phase "persist" "start" "source=$out_root"
@@ -1099,6 +1253,10 @@ cmd_catalog_snapshots_json() {
     --arg datasetRequestedPath "$dataset_path" \
     --arg datasetSimulatorPath "$dataset_simulator_path" \
     --arg datasetStatus "$dataset_status" \
+    --arg datasetID "$dataset_id" \
+    --arg datasetSHA256 "$dataset_sha256" \
+    --arg datasetFixedClock "$dataset_fixed_clock" \
+    --arg sourceCommit "$source_commit" \
     --argjson containerPngCount "$container_png_count" \
     --argjson salvaged "$salvaged" \
     --argjson reuseBuild "$reuse_build_only" \
@@ -1118,6 +1276,8 @@ cmd_catalog_snapshots_json() {
     --argjson copyExit "$copy_rc" \
     --argjson artifacts "$pngs_json" \
     --argjson validation "$validation_json" \
+    --argjson appearanceProof "$appearance_json" \
+    --argjson runReceipt "$run_receipt_json" \
     --argjson review "$review_json" \
     --argjson workspaceArtifact "$workspace_artifact_json" \
     --argjson simulator "$sim_payload" \
@@ -1132,6 +1292,7 @@ cmd_catalog_snapshots_json() {
         elif $copyExit != 0 then "error"
         elif ($artifacts.pngCount // 0) == 0 then "error"
         elif $validation.status == "error" then "error"
+        elif $appearanceProof.status != "pass" then "error"
         elif $workspaceArtifact.status == "error" then "error"
         elif $validation.status == "warn" or $review.status == "warn" then "warn"
         else "ok"
@@ -1145,7 +1306,11 @@ cmd_catalog_snapshots_json() {
       dataset:{
         requestedPath:(if $datasetRequestedPath == "" then null else $datasetRequestedPath end),
         simulatorPath:(if $datasetSimulatorPath == "" then null else $datasetSimulatorPath end),
-        status:$datasetStatus
+        status:$datasetStatus,
+        id:(if $datasetID == "" then null else $datasetID end),
+        sha256:(if $datasetSHA256 == "" then null else $datasetSHA256 end),
+        fixedClock:(if $datasetFixedClock == "" then null else $datasetFixedClock end),
+        sourceCommit:(if $sourceCommit == "" then null else $sourceCommit end)
       },
       scope:{
         groups:(if $groups == "" then [] else ($groups | split(",")) end),
@@ -1166,6 +1331,8 @@ cmd_catalog_snapshots_json() {
         validationMs:$validationMs
       },
       validation:$validation,
+      appearanceProof:$appearanceProof,
+      runReceipt:$runReceipt,
       review:$review,
       workspaceArtifact:$workspaceArtifact,
       cache:{
@@ -1206,6 +1373,8 @@ cmd_catalog_snapshots_json() {
         (if $testExit == 0 and $copyExit == 0 and ($artifacts.pngCount // 0) == 0 then [{key:"catalog-artifacts",status:"error",exitCode:null,error:"no-png-artifacts"}] else [] end)
         +
         (if $workspaceArtifact.status == "error" then [{key:"catalog-workspace-artifact",status:"error",exitCode:null,error:($workspaceArtifact.error // "workspace-artifact-persist-failed")}] else [] end)
+        +
+        (if $appearanceProof.status != "pass" then ($appearanceProof.issues | map({key:"catalog-appearance-proof",status:"error",exitCode:null,error:.code,expected:.expected,actual:.actual})) else [] end)
         +
         (if $validation.status == "error" then ($validation.errors | map({key:"catalog-validation",status:"error",exitCode:null,error:.})) else [] end)
       ),
@@ -1302,6 +1471,7 @@ cmd_catalog_snapshots() {
     "[ios][catalog] cache status=\(.cache.status) key=\(.cache.key // "") root=\(.cache.root // "")",
     "[ios][catalog] timings wrapperWallMs=\(.timings.wrapperWallMs) commandWallMs=\(.timings.commandWallMs) startupOverheadMs=\(.timings.startupOverheadMs) testBodyMs=\(.timings.testBodyMs) playbookBuildMs=\(.timings.playbookBuildMs) snapshotRunMs=\(.timings.snapshotRunMs) simulatorStatusMs=\(.timings.simulatorStatusMs) containerLookupMs=\(.timings.containerLookupMs) copyMs=\(.timings.copyMs) artifactIndexMs=\(.timings.artifactIndexMs) validationMs=\(.timings.validationMs)",
     "[ios][catalog] validation status=\(.validation.status) expectedScenarios=\(.validation.expectedScenarioCount // "") expectedPng=\(.validation.expectedPngCount // "") actualPng=\(.validation.actualPngCount) uniformImages=\(.validation.uniformImageCount) transparentImages=\(.validation.transparentImageCount // 0) width=\(.validation.minPixelWidth // "")-\(.validation.maxPixelWidth // "") height=\(.validation.minPixelHeight // "")-\(.validation.maxPixelHeight // "")",
+    "[ios][catalog] appearance status=\(.appearanceProof.status) proofCount=\(.appearanceProof.proofCount) path=\(.appearanceProof.path // "")",
     "[ios][catalog] review status=\(.review.status) html=\(.review.reviewHtml // "") manifest=\(.review.reviewManifest // "")",
     "[ios][catalog] workspaceArtifact status=\(.workspaceArtifact.status) root=\(.workspaceArtifact.artifactRoot // "")",
     "[ios][catalog] test exitCode=\(.test.exitCode) command=\"\(.test.command // "")\"",

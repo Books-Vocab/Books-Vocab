@@ -23,13 +23,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+OPS_DIR = Path(__file__).resolve().parent
+if str(OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(OPS_DIR))
+from catalog_appearance_proof import APPEARANCE_SCHEMA, validate_appearance_proof
+
 
 SPEC_SCHEMA = "kg.app_review.gate.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 DEMO_SCHEMA = "kg.app_review.demo_access.v1"
 URL_SCHEMA = "kg.app_review.url_checks.v1"
 ATTESTATION_SCHEMA = "kg.app_review.attestation.v1"
-APPEARANCE_SCHEMA = "kg.catalog.appearance.v1"
 REPORT_SCHEMA = "kg.app_review.gate_report.v1"
 BUNDLE_SCHEMA = "kg.app_review.reviewer_bundle.v1"
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1403,89 +1407,15 @@ def evaluate_gate(
     if appearance is None and not appearance_load_failed:
         _block(blocks, "appearance.missing", appearance_ref["path"], "missing")
     elif appearance is not None:
-        appearance_ok = _exact_keys(
+        appearance_validation = validate_appearance_proof(
             appearance,
-            {
-                "schema",
-                "verdict",
-                "sourceCommit",
-                "datasetID",
-                "datasetSHA256",
-                "fixedClock",
-                "observedAt",
-                "captures",
-            },
-            code="appearance.shape",
-            blocks=blocks,
+            source_commit=target["sourceCommit"],
+            dataset_id=target["datasetID"],
+            dataset_sha256=target["datasetSHA256"],
+            fixed_clock=((desired.get("capture") or {}).get("fixedClock")) if desired else None,
         )
-        if appearance.get("schema") != APPEARANCE_SCHEMA:
-            _block(blocks, "appearance.schema", APPEARANCE_SCHEMA, appearance.get("schema"))
-            appearance_ok = False
-        appearance_verdict = appearance.get("verdict") or {}
-        appearance_ok = _exact_keys(
-            appearance_verdict,
-            {"status", "proofCount"},
-            code="appearance.verdict.shape",
-            blocks=blocks,
-        ) and appearance_ok
-        captures = appearance.get("captures") if isinstance(appearance.get("captures"), list) else []
-        if (
-            appearance_verdict.get("status") != "pass"
-            or appearance_verdict.get("proofCount") != len(captures)
-            or not captures
-        ):
-            _block(
-                blocks,
-                "appearance.verdict",
-                {"status": "pass", "proofCount": ">0 == len(captures)"},
-                appearance_verdict,
-            )
-            appearance_ok = False
-        appearance_bindings = {
-            "sourceCommit": target["sourceCommit"],
-            "datasetID": target["datasetID"],
-            "datasetSHA256": target["datasetSHA256"],
-            "fixedClock": ((desired.get("capture") or {}).get("fixedClock")) if desired else None,
-        }
-        for field, expected in appearance_bindings.items():
-            if appearance.get(field) != expected:
-                _block(blocks, f"appearance.{field}", expected, appearance.get(field))
-                appearance_ok = False
-        capture_ids: list[str] = []
-        for index, capture in enumerate(captures):
-            appearance_ok = _exact_keys(
-                capture,
-                {"id", "requestedAppearance", "actualAppearance", "pixelSHA256"},
-                code=f"appearance.capture.{index}.shape",
-                blocks=blocks,
-            ) and appearance_ok
-            capture_id = capture.get("id") if isinstance(capture, dict) else None
-            if not isinstance(capture_id, str) or not _SAFE_ID_RE.fullmatch(capture_id):
-                _block(blocks, f"appearance.capture.{index}.id", "safe id", capture_id)
-                appearance_ok = False
-            else:
-                capture_ids.append(capture_id)
-            requested = capture.get("requestedAppearance") if isinstance(capture, dict) else None
-            actual = capture.get("actualAppearance") if isinstance(capture, dict) else None
-            if requested not in {"light", "dark"} or actual != requested:
-                _block(
-                    blocks,
-                    f"appearance.capture.{index}.appearance",
-                    {"requested": "light|dark", "actual": requested},
-                    {"requested": requested, "actual": actual},
-                )
-                appearance_ok = False
-            if not isinstance(capture, dict) or not isinstance(capture.get("pixelSHA256"), str) or not _SHA_RE.fullmatch(capture["pixelSHA256"]):
-                _block(
-                    blocks,
-                    f"appearance.capture.{index}.pixel-sha256",
-                    "64 lowercase hex",
-                    capture.get("pixelSHA256") if isinstance(capture, dict) else None,
-                )
-                appearance_ok = False
-        if len(set(capture_ids)) != len(captures):
-            _block(blocks, "appearance.capture-ids", "unique", capture_ids)
-            appearance_ok = False
+        for issue in appearance_validation["issues"]:
+            _block(blocks, issue["code"], issue["expected"], issue["actual"])
         fresh, reason = _fresh(
             appearance.get("observedAt"),
             observed_at=observed,
@@ -1494,7 +1424,6 @@ def evaluate_gate(
         )
         if not fresh:
             _block(blocks, "appearance.freshness", "fresh", reason)
-            appearance_ok = False
 
     pre_root = _pre_root(files)
     attestation_summaries: dict[str, Any] = {}
