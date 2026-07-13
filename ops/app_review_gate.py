@@ -68,6 +68,7 @@ _TARGET_KEYS = {
     "datasetSHA256",
     "desiredManifestSHA256",
     "screenshotDisplayType",
+    "demoAccountIdentitySHA256",
 }
 _REQUIRED_DESIRED_EVIDENCE = (
     "build-tuple",
@@ -204,7 +205,7 @@ def load_spec(path: Path) -> dict[str, Any]:
         raise GateError("gate spec target.platform must be IOS")
     if not _COMMIT_RE.fullmatch(target["sourceCommit"]):
         raise GateError("gate spec sourceCommit must be a full git SHA")
-    for key in ("datasetSHA256", "desiredManifestSHA256"):
+    for key in ("datasetSHA256", "desiredManifestSHA256", "demoAccountIdentitySHA256"):
         if not _SHA_RE.fullmatch(target[key]):
             raise GateError(f"gate spec target.{key} must be SHA-256")
 
@@ -511,7 +512,10 @@ def _load_live_bundle(
     if not isinstance(review_fields, dict) or set(review_fields) != _REVIEW_FIELDS:
         raise GateError("live mirror review fields do not match the redacted closed contract")
     for field, value in review_fields.items():
-        if not isinstance(value, dict) or set(value) != {"present", "fingerprint", "ref"}:
+        expected_keys = {"present", "fingerprint", "ref"}
+        if field == "demoAccountName":
+            expected_keys.add("identitySHA256")
+        if not isinstance(value, dict) or set(value) != expected_keys:
             raise GateError(f"live mirror review field is not safely redacted: {field}")
         if not isinstance(value.get("present"), bool):
             raise GateError(f"live mirror review field presence is unknown: {field}")
@@ -522,6 +526,14 @@ def _load_live_bundle(
             raise GateError(f"live mirror review field fingerprint is invalid: {field}")
         if not value["present"] and fingerprint is not None:
             raise GateError(f"live mirror absent review field has a fingerprint: {field}")
+        if field == "demoAccountName":
+            identity = value.get("identitySHA256")
+            if value["present"] and (
+                not isinstance(identity, str) or not _SHA_RE.fullmatch(identity)
+            ):
+                raise GateError("live mirror demo account identity fingerprint is invalid")
+            if not value["present"] and identity is not None:
+                raise GateError("live mirror absent demo account has an identity fingerprint")
         if not isinstance(value.get("ref"), str) or not value["ref"].startswith("asc://"):
             raise GateError(f"live mirror review field ref is invalid: {field}")
     for index, item in enumerate(screenshots.get("items") or []):
@@ -1274,7 +1286,7 @@ def evaluate_gate(
         demo_account = demo.get("account") or {}
         demo_shape_ok = _exact_keys(
             demo_account,
-            {"provenance", "accountRef", "credentialFingerprint", "entitlementSource"},
+            {"provenance", "accountRef", "accountIdentitySHA256", "entitlementSource"},
             code="demo.account.shape",
             blocks=blocks,
         ) and demo_shape_ok
@@ -1282,9 +1294,12 @@ def evaluate_gate(
         expected_account = {
             "provenance": "live-account",
             "accountRef": live_demo_account.get("ref"),
-            "credentialFingerprint": live_demo_account.get("fingerprint"),
+            "accountIdentitySHA256": live_demo_account.get("identitySHA256"),
             "entitlementSource": "live-backend",
         }
+        if live_demo_account.get("identitySHA256") != target["demoAccountIdentitySHA256"]:
+            _block(blocks, "demo.account.target-binding", target["demoAccountIdentitySHA256"], live_demo_account.get("identitySHA256"))
+            demo_shape_ok = False
         if demo_account != expected_account:
             _block(blocks, "demo.account.live-binding", expected_account, demo_account)
             demo_shape_ok = False
@@ -1604,10 +1619,17 @@ def evaluate_gate(
     raw_review = (live_body.get("reviewDetail") or {})
     safe_review_fields: dict[str, Any] = {}
     for field, value in (raw_review.get("fields") or {}).items():
-        if not isinstance(value, dict) or not set(value).issubset({"present", "fingerprint", "ref"}):
-            _block(blocks, f"live-mirror.review-detail.{field}.secret-shape", "present/fingerprint/ref only", sorted(value) if isinstance(value, dict) else type(value).__name__)
+        allowed_keys = {"present", "fingerprint", "ref"}
+        if field == "demoAccountName":
+            allowed_keys.add("identitySHA256")
+        if not isinstance(value, dict) or not set(value).issubset(allowed_keys):
+            _block(blocks, f"live-mirror.review-detail.{field}.secret-shape", sorted(allowed_keys), sorted(value) if isinstance(value, dict) else type(value).__name__)
             continue
-        safe_review_fields[field] = {key: value.get(key) for key in ("present", "fingerprint", "ref")}
+        safe_review_fields[field] = {
+            key: value.get(key)
+            for key in ("present", "fingerprint", "identitySHA256", "ref")
+            if key in allowed_keys
+        }
     screenshots = sorted(
         [item for item in ((live_body.get("screenshots") or {}).get("items") or []) if isinstance(item, dict)],
         key=lambda item: item.get("order") if isinstance(item.get("order"), int) else 10**9,

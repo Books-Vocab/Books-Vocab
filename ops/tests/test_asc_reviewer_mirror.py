@@ -350,6 +350,9 @@ def test_live_mirror_pins_reviewer_surface_and_redacts_review_secrets(tmp_path: 
     ]
     assert all(shot["liveBytes"]["sha256"] for shot in document["live"]["screenshots"]["items"])
     review = document["live"]["reviewDetail"]
+    assert review["fields"]["demoAccountName"]["identitySHA256"] == hashlib.sha256(
+        b"demo@example.com"
+    ).hexdigest()
     assert review["fields"]["demoAccountPassword"]["present"] is True
     assert review["fields"]["notes"]["present"] is True
     assert review["fields"]["demoAccountPassword"]["fingerprint"] != hashlib.sha256(
@@ -359,7 +362,23 @@ def test_live_mirror_pins_reviewer_surface_and_redacts_review_secrets(tmp_path: 
     serialized = mod.canonical_json_bytes(document).decode("utf-8")
     assert client.secret_password not in serialized
     assert client.secret_notes not in serialized
+    assert "demo@example.com" not in serialized
     assert "Bearer" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("raw", "normalized"),
+    [
+        ("  Demo@Example.COM\n", "demo@example.com"),
+        ("\u00a0DE\u0301MO@example.com\u3000", "démo@example.com"),
+        ("Straße@EXAMPLE.COM", "straße@example.com"),
+        (" İTEST@EXAMPLE.COM ", "i\u0307test@example.com"),
+    ],
+)
+def test_reviewer_username_identity_normalization_matches_ios_contract(raw: str, normalized: str):
+    mod = _load_module()
+
+    assert mod.normalized_reviewer_identity_sha256(raw) == hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def test_coherence_diff_reports_current_old4_vs_desired_new5_exactly(tmp_path: Path):

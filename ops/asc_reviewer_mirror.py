@@ -17,6 +17,7 @@ import re
 import shutil
 import sys
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,6 +103,12 @@ def canonical_json_bytes(value: dict[str, Any]) -> bytes:
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def normalized_reviewer_identity_sha256(value: str) -> str:
+    """Match iOS: trim Unicode whitespace, NFC, en_US_POSIX lowercase, UTF-8 SHA256."""
+    normalized = unicodedata.normalize("NFC", value.strip()).lower()
+    return _sha256(normalized.encode("utf-8"))
 
 
 def _md5(payload: bytes) -> str:
@@ -268,11 +275,14 @@ def _fingerprint_field(
 ) -> dict[str, Any]:
     present = value is not None and value != ""
     context = f"appStoreReviewDetails/{review_id or 'missing'}#{field}"
-    return {
+    document = {
         "present": present,
         "fingerprint": client.fingerprint_secret(context, str(value)) if present else None,
         "ref": f"asc://appStoreReviewDetails/{review_id or 'missing'}#{field}",
     }
+    if field == "demoAccountName":
+        document["identitySHA256"] = normalized_reviewer_identity_sha256(str(value)) if present else None
+    return document
 
 
 def _resolve_version_id(

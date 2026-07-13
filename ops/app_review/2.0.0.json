@@ -320,7 +320,7 @@
     "demoAccess": {
       "type": "demo-access",
       "authority": "exact-device live-account Release test",
-      "command": "./ops/app_review_evidence.py demo-run --spec ops/app_review/2.0.0.json --destination platform=iOS,id=<physical-UDID> --account-ref asc://review/2.0.0 --credential-fingerprint <demo-credential-sha256> --locale zh-Hant --timezone Asia/Taipei --out build/app-review/demo-access-2.0.0.json --commit"
+      "command": "./ops/app_review_evidence.py demo-run --spec ops/app_review/2.0.0.json --destination platform=iOS,id=<physical-UDID> --live-mirror-bundle build/app-review/live-asc-2.0.0-v3 --locale zh-Hant --timezone Asia/Taipei --out build/app-review/demo-access-2.0.0.json --commit"
     },
     "urlChecks": {
       "type": "url-checks",
@@ -385,6 +385,7 @@
     "bundleID": "com.Max0228.BooksBrowser",
     "datasetID": "spec-820aa288ffea",
     "datasetSHA256": "af9785bd5cc467ee3daa03a0b62bf53184906bc60303557d71bdcf8da7732610",
+    "demoAccountIdentitySHA256": "d76dd80a34e4dd248d18f6312fc9f608e922522625a84b8a90c5c4db4461ed21",
     "desiredManifestSHA256": "f549e8dc0e6f74d90ebd579b94954cb325f69d51a516a39e7afcc22e8a612821",
     "marketingVersion": "2.0.0",
     "platform": "IOS",

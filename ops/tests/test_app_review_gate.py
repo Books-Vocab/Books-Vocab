@@ -57,6 +57,7 @@ def _target() -> dict:
         "sourceCommit": "a" * 40,
         "datasetID": "dataset-1",
         "datasetSHA256": "b" * 64,
+        "demoAccountIdentitySHA256": "e" * 64,
         "screenshotDisplayType": "APP_IPHONE_65",
     }
 
@@ -252,7 +253,12 @@ def _write_fixture_world(tmp_path: Path) -> Path:
                     "contactPhone": {"present": True, "fingerprint": "3" * 64, "ref": "asc://review#phone"},
                     "contactEmail": {"present": True, "fingerprint": "4" * 64, "ref": "asc://review#email"},
                     "notes": {"present": True, "fingerprint": "d" * 64, "ref": "asc://review#notes"},
-                    "demoAccountName": {"present": True, "fingerprint": "e" * 64, "ref": "asc://review#name"},
+                    "demoAccountName": {
+                        "present": True,
+                        "fingerprint": "e" * 64,
+                        "identitySHA256": target["demoAccountIdentitySHA256"],
+                        "ref": "asc://review#name",
+                    },
                     "demoAccountPassword": {"present": True, "fingerprint": "f" * 64, "ref": "asc://review#password"},
                 },
             },
@@ -362,7 +368,7 @@ def _write_fixture_world(tmp_path: Path) -> Path:
         "account": {
             "provenance": "live-account",
             "accountRef": "asc://review#name",
-            "credentialFingerprint": "e" * 64,
+            "accountIdentitySHA256": target["demoAccountIdentitySHA256"],
             "entitlementSource": "live-backend",
         },
         "observedAt": "2026-07-13T09:15:00Z",
