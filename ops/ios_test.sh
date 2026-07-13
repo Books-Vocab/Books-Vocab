@@ -71,8 +71,7 @@ EVIDENCE_TIMEZONE=""
 EVIDENCE_APPEARANCE=""
 EVIDENCE_KIND="release-equivalent-simulator"
 LIVE_DEMO=0
-DEMO_ACCOUNT_REF=""
-DEMO_CREDENTIAL_FINGERPRINT=""
+DEMO_ACCOUNT_IDENTITY_SHA256=""
 
 build_ui_test_variant_id() {
   local parts=()
@@ -153,8 +152,7 @@ while [[ $# -gt 0 ]]; do
     --evidence-appearance) EVIDENCE_APPEARANCE="${2:?--evidence-appearance needs light or dark}"; shift 2 ;;
     --evidence-kind) EVIDENCE_KIND="${2:?--evidence-kind needs value}"; shift 2 ;;
     --live-demo) LIVE_DEMO=1; shift ;;
-    --demo-account-ref) DEMO_ACCOUNT_REF="${2:?--demo-account-ref needs a non-secret reference}"; shift 2 ;;
-    --demo-credential-fingerprint) DEMO_CREDENTIAL_FINGERPRINT="${2:?--demo-credential-fingerprint needs SHA256}"; shift 2 ;;
+    --live-demo-account-identity-sha256) DEMO_ACCOUNT_IDENTITY_SHA256="${2:?--live-demo-account-identity-sha256 needs SHA256}"; shift 2 ;;
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
@@ -168,12 +166,16 @@ if [[ "$EVIDENCE_KIND" == "exact-device" && ( "$DESTINATION_OVERRIDE" != *"platf
   exit 2
 fi
 if [[ "$LIVE_DEMO" -eq 1 ]]; then
-  if [[ "$CONFIGURATION" != "Release" || "$EVIDENCE_KIND" != "exact-device" || -z "$DEMO_ACCOUNT_REF" || ! "$DEMO_CREDENTIAL_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]; then
-    echo "[ios_test] error: --live-demo requires Release exact-device, account ref, and credential SHA256" >&2
+  if [[ "$TEST_SCOPE" != "ui" || "$CONFIGURATION" != "Release" || "$EVIDENCE_KIND" != "exact-device" || ! "$DEMO_ACCOUNT_IDENTITY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "[ios_test] error: --live-demo requires UI scope, Release exact-device, and normalized account identity SHA256" >&2
     exit 2
   fi
-  if [[ " ${SPECIFIC_TESTS[*]} " != *" testLiveDemoAccountHasProEntitlement "* ]]; then
-    echo "[ios_test] error: --live-demo requires testLiveDemoAccountHasProEntitlement" >&2
+  if [[ -n "$UI_FIXTURE_DATASET_NAME" || -n "$UI_FIXTURE_DATASET_FILE" ]]; then
+    echo "[ios_test] error: --live-demo cannot use fixture dataset" >&2
+    exit 2
+  fi
+  if [[ "${#SPECIFIC_TESTS[@]}" -ne 1 || "${SPECIFIC_TESTS[0]:-}" != "testLiveDemoAccountHasProEntitlement" ]]; then
+    echo "[ios_test] error: --live-demo runs only testLiveDemoAccountHasProEntitlement" >&2
     exit 2
   fi
 fi
@@ -932,18 +934,81 @@ should_rebuild_after_test_without_building_failure() {
 stage_fixture_dataset_xctestrun() {
   local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
-  local key=':TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64'
-  if ! /usr/libexec/PlistBuddy -c "Set $key $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" 2>/dev/null; then
-    /usr/libexec/PlistBuddy -c "Add $key string $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" || return 1
-  fi
-  # 舊 plaintext key 不可殘留（雙 key 同時存在 app 端 fail-loud）
-  /usr/libexec/PlistBuddy -c "Delete :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64" "$staged_path" 2>/dev/null || true
+  local env_root found=0
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    found=1
+    sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
+    /usr/libexec/PlistBuddy -c "Add $env_root dict" "$staged_path" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add $env_root:KG_FIXTURE_DATASET_DEFLATE_B64 string $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" || return 1
+  done < <(xctestrun_target_env_roots "$staged_path")
+  [[ "$found" -eq 1 ]]
+}
+
+xctestrun_target_env_roots() {
+  local path="$1" configuration=0 target
+  while /usr/libexec/PlistBuddy -c "Print :TestConfigurations:$configuration" "$path" >/dev/null 2>&1; do
+    target=0
+    while /usr/libexec/PlistBuddy -c "Print :TestConfigurations:$configuration:TestTargets:$target" "$path" >/dev/null 2>&1; do
+      printf ':TestConfigurations:%s:TestTargets:%s:TestingEnvironmentVariables\n' "$configuration" "$target"
+      target=$((target + 1))
+    done
+    configuration=$((configuration + 1))
+  done
+}
+
+sanitize_xctestrun_evidence_env_root() {
+  local path="$1" env_root="$2" key
+  for key in \
+    KG_LIVE_DEMO_RUN \
+    KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 \
+    KG_FIXTURE_DATASET_B64 \
+    KG_FIXTURE_DATASET_DEFLATE_B64; do
+    /usr/libexec/PlistBuddy -c "Delete $env_root:$key" "$path" 2>/dev/null || true
+  done
+}
+
+stage_live_demo_xctestrun() {
+  local base_path="$1" staged_path="$2"
+  cp "$base_path" "$staged_path" || return 1
+  local env_root found=0
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    found=1
+    sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
+    /usr/libexec/PlistBuddy -c "Add $env_root dict" "$staged_path" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add $env_root:KG_LIVE_DEMO_RUN string 1" "$staged_path" || return 1
+    /usr/libexec/PlistBuddy -c "Add $env_root:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 string $DEMO_ACCOUNT_IDENTITY_SHA256" "$staged_path" || return 1
+  done < <(xctestrun_target_env_roots "$staged_path")
+  [[ "$found" -eq 1 ]]
+}
+
+xctestrun_has_live_demo_env() {
+  local path="$1" env_root
+  while IFS= read -r env_root; do
+    if /usr/libexec/PlistBuddy -c "Print $env_root:KG_LIVE_DEMO_RUN" "$path" >/dev/null 2>&1 \
+      || /usr/libexec/PlistBuddy -c "Print $env_root:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256" "$path" >/dev/null 2>&1; then
+      return 0
+    fi
+  done < <(xctestrun_target_env_roots "$path")
+  return 1
 }
 
 run_xcodebuild_test_without_building_once() {
   local xctestrun_path="$1"
   local xcode_pid last_line current_line heartbeat_at tick_at emitted_this_loop now elapsed recent_event xcode_start_ms xcode_end_ms log_missing
-  if [[ -n "$UI_FIXTURE_DATASET_DEFLATE_B64" ]]; then
+  if [[ "$LIVE_DEMO" -eq 1 ]]; then
+    STAGED_DATASET_XCTESTRUN="${xctestrun_path%.xctestrun}_live_demo_$$.scoped.xctestrun"
+    if ! stage_live_demo_xctestrun "$xctestrun_path" "$STAGED_DATASET_XCTESTRUN"; then
+      echo "[ios_test] error: failed to stage live-demo identity into xctestrun" >&2
+      return 1
+    fi
+    xctestrun_path="$STAGED_DATASET_XCTESTRUN"
+    echo "[ios_test] live-demo runner contract staged: $(basename "$xctestrun_path")"
+  elif xctestrun_has_live_demo_env "$xctestrun_path"; then
+    echo "[ios_test] error: spoofed live-demo environment found outside --live-demo" >&2
+    return 1
+  elif [[ -n "$UI_FIXTURE_DATASET_DEFLATE_B64" ]]; then
     # 父 shell 先賦值 STAGED_DATASET_XCTESTRUN 再 cp：即使 staging 半途失敗，
     # cleanup trap 也能刪掉殘檔。.scoped.xctestrun 字尾使 ios_test_find_xctestrun
     # 永不撿到副本（SIGKILL 漏刪也不污染後續 discovery）；同 PID retry 時 cp
@@ -961,7 +1026,7 @@ run_xcodebuild_test_without_building_once() {
   xcode_start_ms="$(ios_test_now_ms)"
   KG_UI_TEST_APP_ARGS_JSON="$(ui_test_launch_args_json)" \
   KG_UI_TEST_SCREENSHOT_DIR="$UI_TEST_SCREENSHOT_DIR" \
-  xcodebuild test-without-building \
+  env -u KG_LIVE_DEMO_RUN -u KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 xcodebuild test-without-building \
     -xctestrun "$xctestrun_path" \
     -destination "$DESTINATION" \
     ${COVERAGE_XCODEBUILD_ARGS[@]+"${COVERAGE_XCODEBUILD_ARGS[@]}"} \
@@ -1664,8 +1729,7 @@ write_json_verdict() {
     --arg destination "$DESTINATION" \
     --arg osName "$os_name" \
     --arg networkMode "$network_mode" \
-    --arg demoAccountRef "$DEMO_ACCOUNT_REF" \
-    --arg demoCredentialFingerprint "$DEMO_CREDENTIAL_FINGERPRINT" \
+    --arg demoAccountIdentitySHA256 "$DEMO_ACCOUNT_IDENTITY_SHA256" \
     --argjson liveDemo "$LIVE_DEMO" \
     --argjson fixtureDataUsed "$fixture_data_used" \
     --arg elapsed "${ELAPSED}s" \
@@ -1724,7 +1788,8 @@ write_json_verdict() {
         timezone:(if $timezone == "" then null else $timezone end),
         appearance:(if $appearance == "" then null else $appearance end),
         networkMode:$networkMode,
-        fixtureDataUsed:$fixtureDataUsed
+        fixtureDataUsed:$fixtureDataUsed,
+        liveDemoAccountIdentitySHA256:(if $liveDemo == 1 then $demoAccountIdentitySHA256 else null end)
       },
       demoEvidence:(if $liveDemo == 1 then {
         evidenceProducer:"ops/ios_test.sh:live-demo",
@@ -1740,7 +1805,7 @@ write_json_verdict() {
         timezone:(if $timezone == "" then null else $timezone end),
         networkMode:$networkMode,
         fixtureDataUsed:$fixtureDataUsed,
-        account:{provenance:"live-account",accountRef:$demoAccountRef,credentialFingerprint:$demoCredentialFingerprint,entitlementSource:"live-backend"},
+        account:{provenance:"live-account",accountRef:null,accountIdentitySHA256:$demoAccountIdentitySHA256,entitlementSource:"live-backend"},
         observedAt:$finishedAt,
         login:(if $result == "ok" then "pass" else "fail" end),
         entitlements:(if $result == "ok" then ["pro"] else [] end)

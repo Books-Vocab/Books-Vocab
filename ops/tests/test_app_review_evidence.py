@@ -35,12 +35,15 @@ def base_spec(tmp_path: Path) -> dict:
     return {
         "schema": "kg.app_review.gate.v1",
         "target": {
+            "appID": "app-1",
+            "versionID": "version-1",
             "bundleID": "com.example.app",
             "marketingVersion": "2.0.0",
             "buildNumber": "6",
             "sourceCommit": "a" * 40,
             "datasetID": "world-1",
             "datasetSHA256": sha(dataset.read_bytes()),
+            "demoAccountIdentitySHA256": "d" * 64,
         },
         "artifacts": {
             "urlChecks": {"path": "url.json", "maxAgeHours": 12},
@@ -173,7 +176,7 @@ def test_demo_producer_rejects_fixture_masquerading_as_live_demo(tmp_path: Path)
         "account": {
             "provenance": "live-account",
             "accountRef": "asc://review#name",
-            "credentialFingerprint": "c" * 64,
+            "accountIdentitySHA256": "d" * 64,
             "entitlementSource": "live-backend",
         },
         "observedAt": "2026-07-13T09:05:00Z",
@@ -192,6 +195,104 @@ def test_demo_consumer_rejects_caller_magic_string_without_ios_owner(tmp_path: P
 
     with pytest.raises(evidence.EvidenceError, match="demo.producer"):
         evidence.produce_demo_access(spec, run, workspace_root=tmp_path)
+
+
+def test_public_cli_does_not_accept_caller_supplied_demo_receipts():
+    subparsers = next(
+        action for action in evidence.parser()._actions
+        if isinstance(action, evidence.argparse._SubParsersAction)
+    )
+
+    assert "demo" not in subparsers.choices
+
+
+def test_demo_identity_resolver_hash_closes_live_mirror_and_rejects_wrong_fingerprint(tmp_path: Path):
+    spec = base_spec(tmp_path)
+    bundle = tmp_path / "live"
+    bundle.mkdir()
+    audit = {
+        "schema": "kg.app_review.asc_audit.v1",
+        "live": {"appID": spec["target"].get("appID"), "version": {"id": spec["target"].get("versionID")}, "reviewDetail": {"fields": {
+            "demoAccountName": {"present": True, "identitySHA256": "d" * 64, "ref": "asc://review#name"}
+        }}},
+    }
+    audit_bytes = json.dumps(audit, sort_keys=True).encode()
+    (bundle / "audit.json").write_bytes(audit_bytes)
+    (bundle / "manifest.json").write_text(json.dumps({
+        "schema": "kg.app_review.asc_mirror_bundle.v1",
+        "files": [{"path": "audit.json", "byteSize": len(audit_bytes), "sha256": sha(audit_bytes)}],
+    }), encoding="utf-8")
+
+    identity = evidence.resolve_demo_identity(spec, bundle)
+    assert identity == {"accountRef": "asc://review#name", "identitySHA256": "d" * 64}
+    spec["target"]["demoAccountIdentitySHA256"] = "e" * 64
+    with pytest.raises(evidence.EvidenceError, match="demo.identity.spec-live"):
+        evidence.resolve_demo_identity(spec, bundle)
+
+
+@pytest.mark.parametrize("identity", [None, "not-a-sha", "A" * 64])
+def test_demo_producer_rejects_missing_or_malformed_identity(tmp_path: Path, identity: str | None):
+    spec = base_spec(tmp_path)
+    run = valid_run(tmp_path, spec)
+    run["options"]["liveDemoAccountIdentitySHA256"] = identity
+    run["demoEvidence"] = {
+        **run["options"],
+        "evidenceProducer": "ops/ios_test.sh:live-demo",
+        "evidenceKind": "exact-device",
+        "networkMode": "live",
+        "fixtureDataUsed": False,
+        "account": {
+            "provenance": "live-account",
+            "accountRef": "asc://review#name",
+            "accountIdentitySHA256": identity,
+            "entitlementSource": "live-backend",
+        },
+        "observedAt": "2026-07-13T09:05:00Z",
+        "login": "pass",
+        "entitlements": ["pro"],
+    }
+
+    with pytest.raises(evidence.EvidenceError, match="demo.account.identitySHA256"):
+        evidence.produce_demo_access(spec, run, workspace_root=tmp_path)
+
+
+def test_demo_producer_rejects_spoofed_receipt_identity(tmp_path: Path):
+    spec = base_spec(tmp_path)
+    run = valid_run(tmp_path, spec)
+    run["options"]["liveDemoAccountIdentitySHA256"] = "e" * 64
+    run["demoEvidence"] = {
+        **run["options"],
+        "evidenceProducer": "ops/ios_test.sh:live-demo",
+        "evidenceKind": "exact-device",
+        "networkMode": "live",
+        "fixtureDataUsed": False,
+        "account": {
+            "provenance": "live-account",
+            "accountRef": "asc://review#name",
+            "accountIdentitySHA256": "d" * 64,
+            "entitlementSource": "live-backend",
+        },
+        "observedAt": "2026-07-13T09:05:00Z",
+        "login": "pass",
+        "entitlements": ["pro"],
+    }
+
+    with pytest.raises(evidence.EvidenceError, match="demo.account.identity-receipt"):
+        evidence.produce_demo_access(spec, run, workspace_root=tmp_path)
+
+
+def test_demo_run_command_contains_only_fingerprint_not_raw_identity(tmp_path: Path):
+    command = evidence.build_demo_run_command(
+        workspace_root=tmp_path,
+        destination="platform=iOS,id=device-1",
+        account_identity_sha256="d" * 64,
+        locale="zh-Hant",
+        timezone_name="Asia/Taipei",
+    )
+
+    rendered = " ".join(command)
+    assert "--live-demo-account-identity-sha256 " + "d" * 64 in rendered
+    assert "demo@example.com" not in rendered
 
 
 def test_journey_rejects_artifact_outside_workspace(tmp_path: Path):

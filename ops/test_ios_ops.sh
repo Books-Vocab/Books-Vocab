@@ -1212,6 +1212,8 @@ ds_out="$("$WORKSPACE/ops/ios_test.sh" --ui --dataset marketing_demo --cache-sta
 ds_staged_value="$(
   bash -c '
     set -euo pipefail
+    eval "$(sed -n "/^xctestrun_target_env_roots()/,/^}/p" "$1")"
+    eval "$(sed -n "/^sanitize_xctestrun_evidence_env_root()/,/^}/p" "$1")"
     eval "$(sed -n "/^stage_fixture_dataset_xctestrun()/,/^}/p" "$1")"
     tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
     base="$tmp/base.xctestrun"
@@ -1229,6 +1231,84 @@ ds_staged_value="$(
 [[ "$ds_staged_value" == "aGVsbG8+Pz8rLz1aWg==" ]] \
   && ok "ios_test dataset staging upserts KG_FIXTURE_DATASET_DEFLATE_B64 into xctestrun copy (base64 +/= safe)" \
   || fail_t "ios_test dataset staging roundtrip: got '$ds_staged_value'"
+live_demo_env="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^xctestrun_target_env_roots()/,/^}/p" "$1")"
+    eval "$(sed -n "/^sanitize_xctestrun_evidence_env_root()/,/^}/p" "$1")"
+    eval "$(sed -n "/^stage_live_demo_xctestrun()/,/^}/p" "$1")"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    base="$tmp/base.xctestrun"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$base" >/dev/null 2>&1
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string spoof" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 string eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64 string hidden-plaintext" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets array" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string hidden-spoof" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64 string hidden-fixture" "$base"
+    DEMO_ACCOUNT_IDENTITY_SHA256="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    staged="$tmp/live.scoped.xctestrun"
+    stage_live_demo_xctestrun "$base" "$staged"
+    printf "%s|%s|%s" \
+      "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN" "$staged")" \
+      "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256" "$staged")" \
+      "$(plutil -convert json -o - "$staged" | jq -r '\''[.TestConfigurations[].TestTargets[].TestingEnvironmentVariables | ((.KG_LIVE_DEMO_RUN == "1") and (.KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 == "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") and (has("KG_FIXTURE_DATASET_B64") | not) and (has("KG_FIXTURE_DATASET_DEFLATE_B64") | not))] | all'\'')"
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$live_demo_env" == "1|dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|true" ]] \
+  && ok "ios_test live-demo staging overwrites spoof env with fingerprint-only contract" \
+  || fail_t "ios_test live-demo runner env contract invalid: $live_demo_env"
+live_demo_spoof_detected="$(
+  bash -c '
+    set -euo pipefail
+    eval "$(sed -n "/^xctestrun_target_env_roots()/,/^}/p" "$1")"
+    eval "$(sed -n "/^xctestrun_has_live_demo_env()/,/^}/p" "$1")"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    base="$tmp/base.xctestrun"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$base" >/dev/null 2>&1
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string 1" "$base"
+    xctestrun_has_live_demo_env "$base" && printf detected
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$live_demo_spoof_detected" == "detected" ]] \
+  && ok "ios_test detects spoofed live-demo env outside the authorized runner path" \
+  || fail_t "ios_test failed to detect spoofed live-demo xctestrun env"
+live_demo_missing_hash="$($WORKSPACE/ops/ios_test.sh --ui --configuration Release --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_missing_hash" == *"normalized account identity SHA256"* ]] \
+  && ok "ios_test rejects missing live-demo identity" || fail_t "ios_test accepted missing live-demo identity: $live_demo_missing_hash"
+live_demo_malformed_hash="$($WORKSPACE/ops/ios_test.sh --ui --configuration Release --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo --live-demo-account-identity-sha256 NOT-A-SHA testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_malformed_hash" == *"normalized account identity SHA256"* ]] \
+  && ok "ios_test rejects malformed live-demo identity" || fail_t "ios_test accepted malformed live-demo identity: $live_demo_malformed_hash"
+live_demo_unit_reject="$($WORKSPACE/ops/ios_test.sh --unit --configuration Release --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo --live-demo-account-identity-sha256 "$(printf 'd%.0s' {1..64})" testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_unit_reject" == *"requires UI scope"* ]] \
+  && ok "ios_test rejects live-demo env injection outside UI scope" || fail_t "ios_test accepted unit live-demo: $live_demo_unit_reject"
+live_demo_extra_test_reject="$($WORKSPACE/ops/ios_test.sh --ui --configuration Release --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo --live-demo-account-identity-sha256 "$(printf 'd%.0s' {1..64})" testLiveDemoAccountHasProEntitlement testOther 2>&1 || true)"
+[[ "$live_demo_extra_test_reject" == *"runs only testLiveDemoAccountHasProEntitlement"* ]] \
+  && ok "ios_test prevents live-demo env exposure to extra tests" || fail_t "ios_test exposed live-demo env to extra test: $live_demo_extra_test_reject"
+live_demo_simulator_reject="$($WORKSPACE/ops/ios_test.sh --ui --configuration Release --evidence-kind exact-device --destination 'platform=iOS Simulator,id=sim-1' --live-demo --live-demo-account-identity-sha256 "$(printf 'd%.0s' {1..64})" testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_simulator_reject" == *"requires --destination platform=iOS,id=<physical-UDID>"* ]] \
+  && ok "ios_test rejects simulator live-demo env injection" || fail_t "ios_test accepted simulator live-demo: $live_demo_simulator_reject"
+live_demo_reject="$($WORKSPACE/ops/ios_test.sh --ui --configuration Debug --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo --live-demo-account-identity-sha256 "$(printf 'd%.0s' {1..64})" testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_reject" == *"requires UI scope, Release exact-device"* ]] \
+  && ok "ios_test rejects Debug live-demo env injection" || fail_t "ios_test accepted Debug live-demo: $live_demo_reject"
+live_demo_fixture_reject="$($WORKSPACE/ops/ios_test.sh --ui --configuration Release --evidence-kind exact-device --destination 'platform=iOS,id=device-1' --live-demo --live-demo-account-identity-sha256 "$(printf 'd%.0s' {1..64})" --dataset marketing_demo testLiveDemoAccountHasProEntitlement 2>&1 || true)"
+[[ "$live_demo_fixture_reject" == *"cannot use fixture"* ]] \
+  && ok "ios_test rejects fixture-backed live-demo env injection" || fail_t "ios_test accepted fixture live-demo: $live_demo_fixture_reject"
 grep -q 'source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'kg_fixture_dataset_deflate_b64' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test produces dataset env via shared deflate lib" \

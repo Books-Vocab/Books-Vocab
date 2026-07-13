@@ -265,12 +265,16 @@ def produce_demo_access(spec: dict[str, Any], run: dict[str, Any], *, workspace_
     _require(account.get("provenance") == "live-account", "demo.account.provenance")
     _require(account.get("entitlementSource") == "live-backend", "demo.account.entitlement")
     _require(demo.get("login") == "pass" and "pro" in (demo.get("entitlements") or []), "demo.result")
+    identity_sha = str(account.get("accountIdentitySHA256") or "")
+    _require(bool(_SHA_RE.fullmatch(identity_sha)), "demo.account.identitySHA256")
+    _require(identity_sha == target.get("demoAccountIdentitySHA256"), "demo.account.identity-target")
+    _require(identity_sha == (run.get("options") or {}).get("liveDemoAccountIdentitySHA256"), "demo.account.identity-receipt")
     return {
         "schema": "kg.app_review.demo_access.v1",
         "evidenceKind": demo["evidenceKind"],
         "target": {"bundleId": demo["bundleID"], "marketingVersion": demo["marketingVersion"], "buildNumber": demo["buildNumber"], "sourceCommit": demo["sourceCommit"]},
         "execution": {key: demo[key] for key in ("configuration", "device", "os", "locale", "timezone", "networkMode", "fixtureDataUsed")},
-        "account": {key: account[key] for key in ("provenance", "accountRef", "credentialFingerprint", "entitlementSource")},
+        "account": {key: account[key] for key in ("provenance", "accountRef", "accountIdentitySHA256", "entitlementSource")},
         "observedAt": demo["observedAt"],
         "result": {"status": "pass", "login": "pass", "entitlements": demo["entitlements"], "testsExecuted": executed},
         "artifacts": artifacts,
@@ -313,19 +317,57 @@ def execute_journey_run(
     return result
 
 
-def execute_demo_run(
-    *, workspace_root: Path, destination: str, account_ref: str,
-    credential_fingerprint: str, locale: str, timezone_name: str,
-) -> dict[str, Any]:
-    command = [
+def resolve_demo_identity(spec: dict[str, Any], live_mirror_bundle: Path) -> dict[str, str]:
+    manifest = _load(live_mirror_bundle / "manifest.json")
+    _require(manifest.get("schema") == "kg.app_review.asc_mirror_bundle.v1", "demo.live-mirror.schema")
+    audit_entry = next((item for item in manifest.get("files") or [] if item.get("path") == "audit.json"), None)
+    _require(isinstance(audit_entry, dict), "demo.live-mirror.audit-entry")
+    audit_path = live_mirror_bundle / "audit.json"
+    _require(audit_path.is_file(), "demo.live-mirror.audit-missing")
+    audit_bytes = audit_path.read_bytes()
+    _require(audit_entry.get("byteSize") == len(audit_bytes) and audit_entry.get("sha256") == _sha(audit_bytes), "demo.live-mirror.audit-hash")
+    try:
+        audit = json.loads(audit_bytes)
+    except json.JSONDecodeError as exc:
+        raise EvidenceError("demo.live-mirror.audit-json") from exc
+    _require(isinstance(audit, dict) and audit.get("schema") == "kg.app_review.asc_audit.v1", "demo.live-mirror.audit-schema")
+    target = spec.get("target") or {}
+    live = audit.get("live") or {}
+    _require(live.get("appID") == target.get("appID"), "demo.live-mirror.app")
+    _require((live.get("version") or {}).get("id") == target.get("versionID"), "demo.live-mirror.version")
+    account = (((live.get("reviewDetail") or {}).get("fields") or {}).get("demoAccountName") or {})
+    identity_sha = str(account.get("identitySHA256") or "")
+    _require(bool(_SHA_RE.fullmatch(identity_sha)), "demo.identity.live")
+    _require(identity_sha == target.get("demoAccountIdentitySHA256"), "demo.identity.spec-live")
+    account_ref = account.get("ref")
+    _require(isinstance(account_ref, str) and bool(account_ref), "demo.identity.ref")
+    return {"accountRef": account_ref, "identitySHA256": identity_sha}
+
+
+def build_demo_run_command(
+    *, workspace_root: Path, destination: str, account_identity_sha256: str,
+    locale: str, timezone_name: str,
+) -> list[str]:
+    _require(bool(_SHA_RE.fullmatch(account_identity_sha256)), "demo.identity.sha256")
+    return [
         str(workspace_root / "ops" / "ios_ops.sh"), "test", "--ui",
         "--configuration", "Release", "--evidence-kind", "exact-device",
         "--destination", destination, "--live-demo",
-        "--demo-account-ref", account_ref,
-        "--demo-credential-fingerprint", credential_fingerprint,
+        "--live-demo-account-identity-sha256", account_identity_sha256,
         "--evidence-locale", locale, "--evidence-timezone", timezone_name,
         "--json", "testLiveDemoAccountHasProEntitlement",
     ]
+
+
+def execute_demo_run(
+    *, workspace_root: Path, destination: str, account_identity_sha256: str,
+    locale: str, timezone_name: str,
+) -> dict[str, Any]:
+    command = build_demo_run_command(
+        workspace_root=workspace_root, destination=destination,
+        account_identity_sha256=account_identity_sha256,
+        locale=locale, timezone_name=timezone_name,
+    )
     completed = subprocess.run(command, cwd=workspace_root, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
         raise EvidenceError(f"demo.runner.exit:{completed.returncode}")
@@ -587,17 +629,10 @@ def parser() -> argparse.ArgumentParser:
     journey_run.add_argument("--workspace-root", type=Path, default=Path("."))
     journey_run.add_argument("--out", type=Path)
     journey_run.add_argument("--commit", action="store_true")
-    demo = sub.add_parser("demo")
-    demo.add_argument("--spec", type=Path, required=True)
-    demo.add_argument("--run-json", type=Path, required=True)
-    demo.add_argument("--workspace-root", type=Path, default=Path("."))
-    demo.add_argument("--out", type=Path)
-    demo.add_argument("--commit", action="store_true")
     demo_run = sub.add_parser("demo-run")
     demo_run.add_argument("--spec", type=Path, required=True)
     demo_run.add_argument("--destination", required=True)
-    demo_run.add_argument("--account-ref", required=True)
-    demo_run.add_argument("--credential-fingerprint", required=True)
+    demo_run.add_argument("--live-mirror-bundle", type=Path, required=True)
     demo_run.add_argument("--locale", required=True)
     demo_run.add_argument("--timezone", required=True)
     demo_run.add_argument("--workspace-root", type=Path, default=Path("."))
@@ -660,16 +695,15 @@ def main(argv: list[str] | None = None) -> int:
             document = produce_journey(spec, args.journey_id, run, workspace_root=args.workspace_root)
             _write_or_print(document, args.out, args.commit)
             return 0
-        elif args.command == "demo":
-            document = produce_demo_access(spec, _load(args.run_json), workspace_root=args.workspace_root)
-            _write_or_print(document, args.out, args.commit)
-            return 0
         elif args.command == "demo-run":
+            identity = resolve_demo_identity(spec, args.live_mirror_bundle)
             run = execute_demo_run(
                 workspace_root=args.workspace_root.resolve(), destination=args.destination,
-                account_ref=args.account_ref, credential_fingerprint=args.credential_fingerprint,
+                account_identity_sha256=identity["identitySHA256"],
                 locale=args.locale, timezone_name=args.timezone,
             )
+            demo_account = ((run.get("demoEvidence") or {}).get("account") or {})
+            demo_account["accountRef"] = identity["accountRef"]
             document = produce_demo_access(spec, run, workspace_root=args.workspace_root)
             _write_or_print(document, args.out, args.commit)
             return 0
