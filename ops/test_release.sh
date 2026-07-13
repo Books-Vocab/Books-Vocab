@@ -48,10 +48,15 @@ echo "$ops_list" | grep -q '^release$' \
 echo "$ops_list" | grep -q '^podcast-ops$' \
   && ok "test_ops lists podcast-ops group" || fail_t "test_ops --list missing podcast-ops"
 
-# ── 4. release.sh 委派 primitives（不重造 bump/changelog 邏輯） ───────────────
-section "Delegates to primitives"
+# ── 4. release.sh 僅在非 API transaction 路徑委派 bump primitive ─────────────
+section "Primitive boundaries"
 grep -q 'release_bump.sh' "$REL" \
-  && ok "bump delegates to release_bump.sh"      || fail_t "release.sh not calling release_bump.sh"
+  && ok "dry-run/iOS bump paths retain release_bump primitive" \
+  || fail_t "release.sh lost release_bump primitive for non-transaction paths"
+grep -q 'prepare_api_version_transaction' "$REL" \
+  && grep -q 'commit_api_version_transaction' "$REL" \
+  && ok "API --yes bump is owned by bounded three-file transaction" \
+  || fail_t "release.sh missing API three-file transaction authority"
 grep -q 'release_changelog.sh' "$REL" \
   && ok "changelog delegates to release_changelog.sh" || fail_t "release.sh not calling release_changelog.sh"
 
@@ -76,6 +81,8 @@ echo "$tag_body" | awk '/else/,/fi/' | grep -q 'push origin' \
 # ── 5b. detached HEAD 守衛（避免 push origin HEAD；review footgun 回歸） ──────
 echo "$tag_body" | grep -q 'detached HEAD' \
   && ok "tag guards detached HEAD"          || fail_t "tag missing detached-HEAD guard (would push origin HEAD)"
+echo "$tag_body" | grep -q 'backend/uv.lock' \
+  && ok "api tag includes synchronized uv.lock" || fail_t "api tag would leave synchronized uv.lock uncommitted"
 
 # ── 5c. release 統一入口 gate：dry-run 預設、須在 main、委派 deploy/upload ────
 section "Release verb gate (unified backend/ios)"
@@ -179,6 +186,27 @@ TOML
 cat > "$TMP2/backend/src/kg/api.py" <<'PY'
 app = FastAPI(title="kg", version="0.1.0")
 PY
+cat > "$TMP2/backend/uv.lock" <<'LOCK'
+version = 1
+
+[[package]]
+name = "kg"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "kg"
+version = "8.8.8"
+source = { registry = "https://example.invalid/simple" }
+
+[[package]]
+name = "unrelated"
+version = "9.9.9"
+source = { registry = "https://example.invalid/simple" }
+LOCK
+cp "$TMP2/backend/uv.lock" "$TMP2/backend/uv.lock.before"
+chmod 0644 "$TMP2/backend/uv.lock"
+lock_mode_before="$(stat -f '%Lp' "$TMP2/backend/uv.lock" 2>/dev/null || stat -c '%a' "$TMP2/backend/uv.lock")"
 
 # 13a. dry-run（無 --yes）：exit 0、不改任何檔
 dry_out="$(KG_ROOT="$TMP2" bash "$BUMP" ios 9.9.1 2>&1)" \
@@ -204,6 +232,8 @@ KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 >/dev/null 2>&1 \
   && ok "release.sh bump（無 --yes）exits 0" || fail_t "release.sh bump dry-run exited non-zero"
 grep -q 'version = "0.1.0"' "$TMP2/backend/pyproject.toml" \
   && ok "release.sh bump（無 --yes）不寫檔" || fail_t "release.sh bump without --yes wrote files"
+cmp -s "$TMP2/backend/uv.lock.before" "$TMP2/backend/uv.lock" \
+  && ok "release.sh bump api dry-run leaves uv.lock untouched" || fail_t "release.sh bump api dry-run modified uv.lock"
 # 13d1. 多餘 positional 拒絕（不得靜默忽略）
 KG_ROOT="$TMP2" bash "$BUMP" ios 9.9.1 extra >/dev/null 2>&1 \
   && fail_t "extra positional silently accepted" || ok "bump 拒絕多餘 positional"
@@ -213,6 +243,196 @@ KG_ROOT="$TMP2" bash "$REL" bump api 0.2.0 --yes >/dev/null 2>&1 \
 grep -q 'version = "0.2.0"' "$TMP2/backend/pyproject.toml" \
   && grep -q 'version="0.2.0"' "$TMP2/backend/src/kg/api.py" \
   && ok "release.sh bump --yes writes both api version files" || fail_t "release.sh bump --yes did not write api files"
+editable_kg_version="$(awk 'BEGIN { RS="" } /name = "kg"/ && /source = \{ editable = "\." \}/ { if (match($0, /version = "[^"]+"/)) print substr($0, RSTART + 11, RLENGTH - 12) }' "$TMP2/backend/uv.lock")"
+registry_kg_version="$(awk 'BEGIN { RS="" } /name = "kg"/ && /source = \{ registry = / { if (match($0, /version = "[^"]+"/)) print substr($0, RSTART + 11, RLENGTH - 12) }' "$TMP2/backend/uv.lock")"
+unrelated_version="$(awk 'BEGIN { RS="" } /name = "unrelated"/ { if (match($0, /version = "[^"]+"/)) print substr($0, RSTART + 11, RLENGTH - 12) }' "$TMP2/backend/uv.lock")"
+[[ "$editable_kg_version" == "0.2.0" \
+   && "$registry_kg_version" == "8.8.8" \
+   && "$unrelated_version" == "9.9.9" ]] \
+  && ok "release.sh bump api updates only editable kg entry in uv.lock" \
+  || fail_t "uv.lock scope wrong: editable=$editable_kg_version registry=$registry_kg_version unrelated=$unrelated_version"
+lock_mode_after="$(stat -f '%Lp' "$TMP2/backend/uv.lock" 2>/dev/null || stat -c '%a' "$TMP2/backend/uv.lock")"
+[[ "$lock_mode_after" == "$lock_mode_before" ]] \
+  && ok "release.sh bump api preserves uv.lock mode" \
+  || fail_t "uv.lock mode changed: before=$lock_mode_before after=$lock_mode_after"
+
+# 13e. malformed lock preflight must be all-or-nothing: neither zero nor
+# duplicate editable kg entries may leave pyproject/api.py partially bumped.
+for lock_shape in zero duplicate; do
+  fx="$TMP2/failure-$lock_shape"
+  mkdir -p "$fx/backend/src/kg"
+  cat > "$fx/backend/pyproject.toml" <<'TOML'
+[project]
+version = "0.1.0"
+TOML
+  cat > "$fx/backend/src/kg/api.py" <<'PY'
+app = FastAPI(title="kg", version="0.1.0")
+PY
+  cat > "$fx/backend/uv.lock" <<'LOCK'
+version = 1
+
+[[package]]
+name = "unrelated"
+version = "9.9.9"
+source = { registry = "https://example.invalid/simple" }
+LOCK
+  if [[ "$lock_shape" == duplicate ]]; then
+    cat >> "$fx/backend/uv.lock" <<'LOCK'
+
+[[package]]
+name = "kg"
+version = "0.1.0"
+source = { editable = "." }
+
+[[package]]
+name = "kg"
+version = "0.1.0"
+source = { editable = "." }
+LOCK
+  fi
+  cp "$fx/backend/pyproject.toml" "$fx/backend/pyproject.toml.before"
+  cp "$fx/backend/src/kg/api.py" "$fx/backend/src/kg/api.py.before"
+  cp "$fx/backend/uv.lock" "$fx/backend/uv.lock.before"
+  malformed_rc=0
+  KG_ROOT="$fx" bash "$REL" bump api 0.2.0 --yes >/dev/null 2>&1 || malformed_rc=$?
+  [[ "$malformed_rc" -ne 0 \
+     && "$(cmp -s "$fx/backend/pyproject.toml.before" "$fx/backend/pyproject.toml"; echo $?)" -eq 0 \
+     && "$(cmp -s "$fx/backend/src/kg/api.py.before" "$fx/backend/src/kg/api.py"; echo $?)" -eq 0 \
+     && "$(cmp -s "$fx/backend/uv.lock.before" "$fx/backend/uv.lock"; echo $?)" -eq 0 \
+     && -z "$(find "$fx/backend" -name 'uv.lock.tmp.*' -print -quit)" ]] \
+    && ok "malformed uv.lock ($lock_shape editable entries) rejects before any version mutation" \
+    || fail_t "malformed uv.lock ($lock_shape) left a partial bump or temp file"
+done
+
+# 13f. A readonly destination must fail before any of the three version files
+# changes. The old order mutated pyproject/api.py first, then failed while
+# copying uv.lock, leaving a partial release bump behind.
+readonly_fx="$TMP2/failure-readonly"
+mkdir -p "$readonly_fx/backend/src/kg"
+cat > "$readonly_fx/backend/pyproject.toml" <<'TOML'
+[project]
+version = "0.1.0"
+TOML
+cat > "$readonly_fx/backend/src/kg/api.py" <<'PY'
+app = FastAPI(title="kg", version="0.1.0")
+PY
+cat > "$readonly_fx/backend/uv.lock" <<'LOCK'
+version = 1
+
+[[package]]
+name = "kg"
+version = "0.1.0"
+source = { editable = "." }
+LOCK
+for version_file in \
+  "$readonly_fx/backend/pyproject.toml" \
+  "$readonly_fx/backend/src/kg/api.py" \
+  "$readonly_fx/backend/uv.lock"; do
+  cp "$version_file" "$version_file.before"
+done
+chmod 0444 "$readonly_fx/backend/uv.lock"
+readonly_rc=0
+KG_ROOT="$readonly_fx" bash "$REL" bump api 0.2.0 --yes >/dev/null 2>&1 || readonly_rc=$?
+[[ "$readonly_rc" -ne 0 \
+   && "$(cmp -s "$readonly_fx/backend/pyproject.toml.before" "$readonly_fx/backend/pyproject.toml"; echo $?)" -eq 0 \
+   && "$(cmp -s "$readonly_fx/backend/src/kg/api.py.before" "$readonly_fx/backend/src/kg/api.py"; echo $?)" -eq 0 \
+   && "$(cmp -s "$readonly_fx/backend/uv.lock.before" "$readonly_fx/backend/uv.lock"; echo $?)" -eq 0 \
+   && -z "$(find "$readonly_fx/backend" -name '*.tmp.*' -print -quit)" ]] \
+  && ok "readonly API version destination rejects without a partial bump" \
+  || fail_t "readonly API version destination left a partial bump or temp file"
+chmod 0644 "$readonly_fx/backend/uv.lock"
+
+# 13g. Exercise the rollback path itself: fail the second candidate install
+# once through PATH, after slot 1 has already been atomically replaced.
+rollback_fx="$TMP2/failure-second-rename"
+mkdir -p "$rollback_fx/backend/src/kg" "$rollback_fx/fakebin"
+cat > "$rollback_fx/backend/pyproject.toml" <<'TOML'
+[project]
+version = "0.1.0"
+TOML
+cat > "$rollback_fx/backend/src/kg/api.py" <<'PY'
+app = FastAPI(title="kg", version="0.1.0")
+PY
+cat > "$rollback_fx/backend/uv.lock" <<'LOCK'
+version = 1
+
+[[package]]
+name = "kg"
+version = "0.1.0"
+source = { editable = "." }
+LOCK
+for version_file in \
+  "$rollback_fx/backend/pyproject.toml" \
+  "$rollback_fx/backend/src/kg/api.py" \
+  "$rollback_fx/backend/uv.lock"; do
+  cp "$version_file" "$version_file.before"
+done
+cat > "$rollback_fx/fakebin/mv" <<'SH'
+#!/bin/bash
+set -euo pipefail
+if [[ "${2:-}" == *.tmp.* ]]; then
+  count=0
+  [[ ! -f "$KG_FAKE_MV_STATE" ]] || count="$(<"$KG_FAKE_MV_STATE")"
+  count=$((count + 1))
+  printf '%s\n' "$count" > "$KG_FAKE_MV_STATE"
+  [[ "$count" -ne 2 ]] || exit 73
+fi
+exec /bin/mv "$@"
+SH
+chmod +x "$rollback_fx/fakebin/mv"
+rollback_rc=0
+rollback_out="$(PATH="$rollback_fx/fakebin:$PATH" \
+  KG_FAKE_MV_STATE="$rollback_fx/mv-count" \
+  KG_ROOT="$rollback_fx" \
+  bash "$REL" bump api 0.2.0 --yes 2>&1)" || rollback_rc=$?
+rollback_residue="$(find "$rollback_fx/backend" \( -name '*.tmp.*' -o -name '*.bak.*' \) -print -quit)"
+rollback_count="missing"
+[[ ! -f "$rollback_fx/mv-count" ]] || rollback_count="$(<"$rollback_fx/mv-count")"
+rollback_py_cmp="$(cmp -s "$rollback_fx/backend/pyproject.toml.before" "$rollback_fx/backend/pyproject.toml"; echo $?)"
+rollback_api_cmp="$(cmp -s "$rollback_fx/backend/src/kg/api.py.before" "$rollback_fx/backend/src/kg/api.py"; echo $?)"
+rollback_lock_cmp="$(cmp -s "$rollback_fx/backend/uv.lock.before" "$rollback_fx/backend/uv.lock"; echo $?)"
+[[ "$rollback_rc" -ne 0 \
+   && "$rollback_count" -eq 2 \
+   && "$rollback_py_cmp" -eq 0 \
+   && "$rollback_api_cmp" -eq 0 \
+   && "$rollback_lock_cmp" -eq 0 \
+   && -z "$rollback_residue" ]] \
+  && ok "second rename failure rolls back all three API version files" \
+  || fail_t "second rename rollback failed: rc=$rollback_rc mv_count=$rollback_count cmp=$rollback_py_cmp/$rollback_api_cmp/$rollback_lock_cmp residue=${rollback_residue:-none} out=$rollback_out"
+
+# 13h. A backup copy failure happens after mktemp has created the .bak path.
+# The failed slot must already belong to transaction cleanup.
+backup_fx="$TMP2/failure-backup-copy"
+mkdir -p "$backup_fx/backend/src/kg" "$backup_fx/fakebin"
+cp "$rollback_fx/backend/pyproject.toml.before" "$backup_fx/backend/pyproject.toml"
+cp "$rollback_fx/backend/src/kg/api.py.before" "$backup_fx/backend/src/kg/api.py"
+cp "$rollback_fx/backend/uv.lock.before" "$backup_fx/backend/uv.lock"
+for version_file in \
+  "$backup_fx/backend/pyproject.toml" \
+  "$backup_fx/backend/src/kg/api.py" \
+  "$backup_fx/backend/uv.lock"; do
+  cp "$version_file" "$version_file.before"
+done
+cat > "$backup_fx/fakebin/cp" <<'SH'
+#!/bin/bash
+set -euo pipefail
+[[ "${3:-}" != *.bak.* ]] || exit 74
+exec /bin/cp "$@"
+SH
+chmod +x "$backup_fx/fakebin/cp"
+backup_rc=0
+backup_out="$(PATH="$backup_fx/fakebin:$PATH" \
+  KG_ROOT="$backup_fx" \
+  bash "$REL" bump api 0.2.0 --yes 2>&1)" || backup_rc=$?
+backup_residue="$(find "$backup_fx/backend" \( -name '*.tmp.*' -o -name '*.bak.*' \) -print -quit)"
+[[ "$backup_rc" -ne 0 \
+   && "$(cmp -s "$backup_fx/backend/pyproject.toml.before" "$backup_fx/backend/pyproject.toml"; echo $?)" -eq 0 \
+   && "$(cmp -s "$backup_fx/backend/src/kg/api.py.before" "$backup_fx/backend/src/kg/api.py"; echo $?)" -eq 0 \
+   && "$(cmp -s "$backup_fx/backend/uv.lock.before" "$backup_fx/backend/uv.lock"; echo $?)" -eq 0 \
+   && -z "$backup_residue" ]] \
+  && ok "backup copy failure leaves no API mutation or transaction residue" \
+  || fail_t "backup copy failure cleanup failed: rc=$backup_rc residue=${backup_residue:-none} out=$backup_out"
+
 KG_ROOT="$TMP2" bash "$REL" bump ios 9.9.1 --yes >/dev/null 2>&1 \
   || fail_t "release.sh bump ios --yes failed"
 grep -q 'MARKETING_VERSION = 9.9.1;' "$TMP2/ios/BooksAndVocab.xcodeproj/project.pbxproj" \

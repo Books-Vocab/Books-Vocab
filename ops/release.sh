@@ -13,7 +13,7 @@
 # Usage:
 #   ./ops/release.sh status                      # 各 component 待發版 commit + released gap（本地唯讀）
 #   ./ops/release.sh changelog <api|ios>         # 印 markdown changelog 預覽（唯讀）
-#   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py / ios: pbxproj；dry-run 預設，--yes 才寫）
+#   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py+uv.lock / ios: pbxproj；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（iOS 新版另須 --new-version-after-ready <previous>）
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布（iOS 新版須 --new-version-after-ready <previous>）。須在 main。dry-run 預設
@@ -153,6 +153,130 @@ cmd_changelog() {
   "$ROOT/ops/release_changelog.sh" "$c"
 }
 
+# API release versions are one bounded three-file transaction. Each candidate
+# is prepared in its destination directory, validated, and mode-matched before
+# any tracked file changes. Renames are atomic per file; same-directory backups
+# let EXIT/signal handling roll back an unexpected later rename failure.
+API_VERSION_PATHS=()
+API_VERSION_CANDIDATES=()
+API_VERSION_BACKUPS=()
+API_VERSION_INSTALLED=0
+
+api_version_cleanup_temps() {
+  local path candidates backups
+  # macOS ships Bash 3.2, where expanding a declared-but-empty array under
+  # nounset raises instead of yielding zero words.
+  set +u
+  candidates=("${API_VERSION_CANDIDATES[@]}")
+  backups=("${API_VERSION_BACKUPS[@]}")
+  for path in "${candidates[@]}" "${backups[@]}"; do
+    [[ -n "$path" ]] && rm -f "$path"
+  done
+  set -u
+  API_VERSION_CANDIDATES=()
+  API_VERSION_BACKUPS=()
+}
+
+api_version_rollback() {
+  local i rollback_failed=0
+  for ((i=API_VERSION_INSTALLED-1; i>=0; i--)); do
+    mv -f "${API_VERSION_BACKUPS[$i]}" "${API_VERSION_PATHS[$i]}" || rollback_failed=1
+  done
+  API_VERSION_INSTALLED=0
+  api_version_cleanup_temps
+  [[ $rollback_failed -eq 0 ]] || echo "✗ API 版號 transaction rollback 失敗；請立即檢查三個版號檔" >&2
+}
+
+prepare_api_version_transaction() {
+  local v="$1" root="${KG_ROOT:-$ROOT}" path candidate mode i
+  API_VERSION_PATHS=(
+    "$root/backend/pyproject.toml"
+    "$root/backend/src/kg/api.py"
+    "$root/backend/uv.lock"
+  )
+  API_VERSION_CANDIDATES=()
+  API_VERSION_BACKUPS=()
+  API_VERSION_INSTALLED=0
+
+  # A readonly target is an operator-visible refusal, even though rename could
+  # technically replace it through a writable parent directory.
+  for path in "${API_VERSION_PATHS[@]}"; do
+    if [[ ! -f "$path" || ! -w "$path" || ! -w "$(dirname "$path")" ]]; then
+      api_version_cleanup_temps
+      err "API 版號檔不可寫，未修改任何檔案：${path#$root/}"
+    fi
+    if ! candidate="$(mktemp "${path}.tmp.XXXXXX")"; then
+      api_version_cleanup_temps
+      err "無法在版號檔旁建立 transaction candidate：${path#$root/}"
+    fi
+    API_VERSION_CANDIDATES+=("$candidate")
+  done
+
+  if ! KG_RELEASE_VERSION="$v" perl -0pe '
+    $n = s{^version = "[^"]+"$}{q{version = "} . $ENV{"KG_RELEASE_VERSION"} . q{"}}gme;
+    END { exit 1 unless $n == 1 }
+  ' "${API_VERSION_PATHS[0]}" > "${API_VERSION_CANDIDATES[0]}"; then
+    api_version_cleanup_temps
+    err "backend/pyproject.toml 必須恰有一個 project version entry"
+  fi
+  if ! KG_RELEASE_VERSION="$v" perl -0pe '
+    $n = s{version="[^"]*"}{q{version="} . $ENV{"KG_RELEASE_VERSION"} . q{"}}ge;
+    END { exit 1 unless $n == 1 }
+  ' "${API_VERSION_PATHS[1]}" > "${API_VERSION_CANDIDATES[1]}"; then
+    api_version_cleanup_temps
+    err "backend/src/kg/api.py 必須恰有一個 API version entry"
+  fi
+  if ! KG_RELEASE_VERSION="$v" perl -0pe '
+    $n = s{(^\[\[package\]\]\nname = "kg"\nversion = ")[^"]+("\nsource = \{ editable = "\." \}$)}
+           {$1 . $ENV{"KG_RELEASE_VERSION"} . $2}gme;
+    END { exit 1 unless $n == 1 }
+  ' "${API_VERSION_PATHS[2]}" > "${API_VERSION_CANDIDATES[2]}"; then
+    api_version_cleanup_temps
+    err "backend/uv.lock 必須恰有一個 editable kg package entry"
+  fi
+
+  for ((i=0; i<3; i++)); do
+    path="${API_VERSION_PATHS[$i]}"
+    mode="$(stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path")"
+    if ! chmod "$mode" "${API_VERSION_CANDIDATES[$i]}"; then
+      api_version_cleanup_temps
+      err "無法保留 API 版號檔 mode：${path#$root/}"
+    fi
+  done
+}
+
+commit_api_version_transaction() {
+  local i path backup
+  for ((i=0; i<3; i++)); do
+    path="${API_VERSION_PATHS[$i]}"
+    if ! backup="$(mktemp "${path}.bak.XXXXXX")"; then
+      api_version_cleanup_temps
+      err "無法建立 API 版號 transaction backup：${path#${KG_ROOT:-$ROOT}/}"
+    fi
+    # Cleanup owns the path as soon as mktemp creates it, including a later
+    # cp -p failure.
+    API_VERSION_BACKUPS+=("$backup")
+    if ! cp -p "$path" "$backup"; then
+      api_version_cleanup_temps
+      err "無法寫入 API 版號 transaction backup：${path#${KG_ROOT:-$ROOT}/}"
+    fi
+  done
+
+  trap 'api_version_rollback' EXIT
+  trap 'exit 1' HUP INT TERM
+  for ((i=0; i<3; i++)); do
+    # Count the current slot before mv so a signal in the tiny post-rename
+    # window still restores it. Restoring an unchanged slot is harmless.
+    API_VERSION_INSTALLED=$((i + 1))
+    if ! mv -f "${API_VERSION_CANDIDATES[$i]}" "${API_VERSION_PATHS[$i]}"; then
+      err "API 版號 transaction 寫入失敗；已回復先前檔案"
+    fi
+  done
+  API_VERSION_INSTALLED=0
+  trap - EXIT HUP INT TERM
+  api_version_cleanup_temps
+}
+
 # ---- bump：委派 primitive（本地檔案寫入；dry-run 預設，--yes 才寫） ----
 cmd_bump() {
   local c="${1:?用法: release.sh bump <api|ios> <x.y.z> [--yes]}" v="${2:-}"
@@ -160,7 +284,13 @@ cmd_bump() {
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
   if [[ $YES -eq 1 ]]; then
-    "$ROOT/ops/release_bump.sh" "$c" "$v" --yes
+    if [[ "$c" == api ]]; then
+      prepare_api_version_transaction "$v"
+      commit_api_version_transaction
+      echo "✓ API version transaction → ${v}（pyproject.toml + api.py + uv.lock）"
+    else
+      "$ROOT/ops/release_bump.sh" "$c" "$v" --yes
+    fi
   else
     "$ROOT/ops/release_bump.sh" "$c" "$v"
   fi
@@ -197,7 +327,7 @@ cmd_tag() {
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" != HEAD ]] || err "detached HEAD —— 先 checkout 一個分支再發版（避免 push origin HEAD）"
   case "$c" in
-    api) files=(backend/pyproject.toml backend/src/kg/api.py) ;;
+    api) files=(backend/pyproject.toml backend/src/kg/api.py backend/uv.lock) ;;
     ios) files=(ios/BooksAndVocab.xcodeproj/project.pbxproj) ;;
   esac
 
