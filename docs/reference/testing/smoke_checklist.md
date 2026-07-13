@@ -5,11 +5,17 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: f0d37ca4
+verified_against: 6ff5bcf10
 -->
 # iOS Smoke Test Checklist
 
 每次發版前 15 分鐘內跑完一輪。
+
+## 0. Release readiness
+
+- [ ] iOS 新 marketing version：ASC 已確認 previous version 完成審查；dry-run 使用 `release ios <new> --new-version-after-ready <previous>`
+- [ ] iOS 未上架／被拒重送：marketing version 不動，只跑 `bump-build ios`，不得使用 new-version attestation
+- [ ] release dry-run 的 iOS 順序為 bump→upload→tag；upload failure 不應留下新 release tag
 
 ## 1. 首次啟動與 Welcome
 
