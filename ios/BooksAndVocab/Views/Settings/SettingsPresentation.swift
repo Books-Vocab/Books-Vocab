@@ -1,4 +1,21 @@
 import Foundation
+import CryptoKit
+
+/// A one-way identity seam for exact-account UI evidence. The raw reviewer
+/// username never enters an accessibility identifier or test log.
+enum AccountIdentityFingerprint {
+    static func sha256(_ identity: String?) -> String? {
+        guard let identity else { return nil }
+        let normalized = identity
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .precomposedStringWithCanonicalMapping
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
+        guard !normalized.isEmpty else { return nil }
+        return SHA256.hash(data: Data(normalized.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+}
 
 struct SettingsPresenterState {
     struct AuthSection {
@@ -11,6 +28,7 @@ struct SettingsPresenterState {
         let isAuthenticating: Bool
         let iconBreathing: Bool
         let debug: DebugAuthSection?
+        var identityFingerprint: String? = nil
     }
 
     struct DebugAuthSection {

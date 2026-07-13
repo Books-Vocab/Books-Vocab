@@ -54,7 +54,8 @@ extension SettingsView {
                 authError: authManager.authError,
                 isAuthenticating: authManager.isAuthenticating,
                 iconBreathing: coordinator.iconBreathing,
-                debug: authDebugState
+                debug: authDebugState,
+                identityFingerprint: AccountIdentityFingerprint.sha256(authManager.userEmail)
             ),
             preferences: .init(
                 selectedLanguage: L10n.string(appLanguage.selection.titleKey),
