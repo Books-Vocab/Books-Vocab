@@ -1833,10 +1833,12 @@ struct FixtureDatasetStoreTests {
             #expect(entitlements.pro.is_active == true)
             #expect(entitlements.pro.status == "active")
 
+            #if targetEnvironment(simulator)
             let subscriptionManager = UITestSubscriptionManager.proAccess()
             #expect(subscriptionManager.entitlements.pro.is_active == true)
             #expect(subscriptionManager.entitlements.pro.plan_name == "Books & Vocab Pro")
             #expect(subscriptionManager.entitlements.pro.last_synced_at == "2026-06-10T00:00:00Z")
+            #endif
         }
     }
 
@@ -2067,6 +2069,7 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    #if targetEnvironment(simulator)
     @Test @MainActor func lockedKeychainAuthSeedRestoresPendingSessionState() throws {
         let auth = AuthManager.shared
         let previous = PersistedAuthSession(
@@ -2112,6 +2115,7 @@ struct FixtureDatasetStoreTests {
             #expect(auth.userEmail == "locked@example.com")
         }
     }
+    #endif
 
     @Test @MainActor func externalDatasetDeclaresAndAppliesPreferenceWorld() throws {
         let dataset = """

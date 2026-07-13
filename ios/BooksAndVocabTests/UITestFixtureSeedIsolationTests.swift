@@ -143,6 +143,62 @@ struct UITestFixtureSeedIsolationTests {
         )
     }
 
+    @Test func entitlementFixtureRemainsAvailableToReleaseEquivalentSimulatorRuns() throws {
+        let appSourceURL = Self.supportDirectory
+            .deletingLastPathComponent() // BooksAndVocab
+            .appendingPathComponent("BooksAndVocabApp.swift")
+        let managerSourceURL = Self.supportDirectory
+            .appendingPathComponent("UITestSubscriptionManager.swift")
+        let authManagerSourceURL = Self.supportDirectory
+            .deletingLastPathComponent() // BooksAndVocab
+            .appendingPathComponent("Services/AuthManager.swift")
+        let fixtureStoreTestsURL = Self.supportDirectory
+            .deletingLastPathComponent() // BooksAndVocab
+            .deletingLastPathComponent() // ios
+            .appendingPathComponent("BooksAndVocabTests/FixtureDatasetStoreTests.swift")
+        let appSource = try String(contentsOf: appSourceURL, encoding: .utf8)
+        let managerSource = try String(contentsOf: managerSourceURL, encoding: .utf8)
+        let authManagerSource = try String(contentsOf: authManagerSourceURL, encoding: .utf8)
+        let fixtureStoreTestsSource = try String(contentsOf: fixtureStoreTestsURL, encoding: .utf8)
+
+        #expect(
+            appSource.contains("#if targetEnvironment(simulator)\n        if AppRuntimeOptions.isUITesting"),
+            "explicit entitlement fixtures must use the real app root in Release-equivalent simulator runs"
+        )
+        #expect(
+            !appSource.contains("#if DEBUG\n        if AppRuntimeOptions.isUITesting"),
+            "DEBUG must not decide whether the app composition root honors an explicit entitlement fixture"
+        )
+        #expect(
+            managerSource.contains("#if targetEnvironment(simulator)"),
+            "the fixture subscription manager must be simulator-only so App Store device builds keep production StoreKit"
+        )
+        #expect(
+            !managerSource.contains("#if DEBUG"),
+            "the fixture manager must compile into Release-equivalent simulator builds"
+        )
+        #expect(
+            authManagerSource.contains("#if targetEnvironment(simulator)\n    func applyUITestPersistedSession"),
+            "the simulator-only auth fixture seam must compile into Release-equivalent simulator builds"
+        )
+        #expect(
+            !authManagerSource.contains("#if DEBUG\n    func applyUITestPersistedSession"),
+            "DEBUG must not decide whether explicit auth fixture state can be applied"
+        )
+        #expect(
+            fixtureStoreTestsSource.contains(
+                "#if targetEnvironment(simulator)\n            let subscriptionManager = UITestSubscriptionManager.proAccess()"
+            ),
+            "physical-device test builds must not reference the simulator-only subscription fixture"
+        )
+        #expect(
+            fixtureStoreTestsSource.contains(
+                "#if targetEnvironment(simulator)\n    @Test @MainActor func lockedKeychainAuthSeedRestoresPendingSessionState()"
+            ),
+            "physical-device test builds must not reference the simulator-only auth fixture seam"
+        )
+    }
+
     @Test func seedRefusesPersistentStore() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("seed-guard-\(UUID().uuidString).store")

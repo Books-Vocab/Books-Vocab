@@ -287,7 +287,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         authError = message
     }
 
-    #if DEBUG
+    #if targetEnvironment(simulator)
     func applyUITestPersistedSession(_ persisted: PersistedAuthSession) {
         applyPersistedSession(persisted)
     }
