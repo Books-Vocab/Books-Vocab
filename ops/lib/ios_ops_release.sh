@@ -204,8 +204,53 @@ workflow_summary_json_from_file() {
     }' "$steps_file"
 }
 
+app_review_latest_spec_path() {
+  find "$ROOT/ops/app_review" -maxdepth 1 -type f -name '[0-9]*.[0-9]*.[0-9]*.json' 2>/dev/null | sort -V | tail -n 1
+}
+
+app_review_workflow_gate_json() {
+  local spec_path fixture output rc=0
+  spec_path="$(app_review_latest_spec_path)"
+  fixture="${KG_IOS_OPS_APP_REVIEW_GATE_FIXTURE:-}"
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -z "$fixture" ]]; then
+    fixture="pass"
+  fi
+  if [[ "$fixture" == "pass" ]]; then
+    jq -n --arg spec "$spec_path" '{spec:$spec,verdict:{status:"pass",blockCount:0},blocks:[]}'
+    return 0
+  elif [[ "$fixture" == "block" ]]; then
+    jq -n --arg spec "$spec_path" '{spec:$spec,verdict:{status:"block",blockCount:1},blocks:[{code:"fixture.block",expected:"pass",actual:"block"}]}'
+    return 0
+  elif [[ "$fixture" == "missing" ]]; then
+    jq -n '{spec:null,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.spec.missing",expected:"ops/app_review/<latest>.json",actual:"missing"}]}'
+    return 0
+  elif [[ -n "$fixture" && -f "$fixture" ]]; then
+    if output="$(jq -c --arg spec "$spec_path" '. + {spec:$spec}' "$fixture" 2>/dev/null)" \
+      && jq -e '(.verdict.status == "pass" or .verdict.status == "block") and (.verdict.blockCount | type == "number") and (.blocks | type == "array")' >/dev/null 2>&1 <<<"$output"; then
+      printf '%s\n' "$output"
+    else
+      jq -n --arg spec "$spec_path" '{spec:$spec,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.report.invalid",expected:"typed App Review gate report",actual:"malformed"}]}'
+    fi
+    return 0
+  fi
+  if [[ -z "$spec_path" ]]; then
+    jq -n '{spec:null,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.spec.missing",expected:"ops/app_review/<latest>.json",actual:"missing"}]}'
+    return 0
+  fi
+  output="$("$(catalog_uv_bin)" run --python 3.13 python "$ROOT/ops/app_review_gate.py" dry-run --spec "$spec_path" --workspace-root "$ROOT" --observation-mode online)" || rc=$?
+  if [[ -z "$output" || ( "$rc" -ne 0 && "$rc" -ne 2 ) ]]; then
+    jq -n --arg spec "$spec_path" --argjson rc "$rc" '{spec:$spec,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.execution",expected:"valid gate report",actual:{exitCode:$rc}}]}'
+    return 0
+  fi
+  if jq -e '(.verdict.status == "pass" or .verdict.status == "block") and (.verdict.blockCount | type == "number") and (.blocks | type == "array")' >/dev/null 2>&1 <<<"$output"; then
+    jq --arg spec "$spec_path" '. + {spec:$spec}' <<<"$output"
+  else
+    jq -n --arg spec "$spec_path" '{spec:$spec,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.report.invalid",expected:"typed App Review gate report",actual:"malformed"}]}'
+  fi
+}
+
 write_workflow_release_steps_json() {
-  local out="$1" version="$2" build="$3" tf_latest="$4" archive_line="$5" archive_version="$6" archive_build="$7" asc_state="$8"
+  local out="$1" version="$2" build="$3" tf_latest="$4" archive_line="$5" archive_version="$6" archive_build="$7" asc_state="$8" app_review_gate="$9"
   emit_workflow_step_json "$out" 1 "preflight" "todo" "./ops/ios_ops.sh doctor" "readiness dashboard; fix status=block before upload"
   emit_workflow_step_json "$out" 2 "tests" "todo" "./ops/ios_ops.sh test --all-targets --timeout 1200" "prove unit+UI scheme behavior before release claim"
   emit_workflow_step_json "$out" 3 "build" "todo" "./ops/ios_ops.sh build" "compile gate; first screen shows xcresult warnings/errors"
@@ -245,7 +290,15 @@ write_workflow_release_steps_json() {
   fi
 
   emit_workflow_step_json "$out" 7 "metadata" "todo" "./ops/asc_text_bundle.py dump -o asc.json" "review/apply low-risk ASC text bundle; apply is dry-run unless --yes"
-  emit_workflow_step_json "$out" 8 "submit" "manual" "ASC GUI" "bind uploaded build, inspect screenshots/privacy/rejection notes, submit/resubmit"
+  local gate_status gate_spec gate_blocks
+  gate_status="$(jq -r '.verdict.status // "block"' <<<"$app_review_gate")"
+  gate_spec="$(jq -r '.spec // "ops/app_review/<latest>.json"' <<<"$app_review_gate")"
+  gate_blocks="$(jq -r '.verdict.blockCount // (.blocks | length) // 1' <<<"$app_review_gate")"
+  if [[ "$gate_status" == "pass" ]]; then
+    emit_workflow_step_json "$out" 8 "submit" "manual" "ASC GUI" "App Review evidence gate PASS; bind uploaded build and submit/resubmit"
+  else
+    emit_workflow_step_json "$out" 8 "submit" "block" "./ops/app_review_evidence.py status --spec $gate_spec" "App Review evidence gate BLOCK ($gate_blocks blocker(s)); produce required evidence before ASC GUI"
+  fi
 }
 
 cmd_sentry() {
@@ -367,7 +420,7 @@ cmd_doctor_json() {
 
 cmd_workflow_release() {
   local version build tf_latest archive_line archive_version archive_build asc_state
-  local steps summary
+  local steps summary app_review_gate
   read_project_settings version build
   tf_latest="$(read_testflight_latest_build)"
   archive_line="$(read_organizer_latest)"
@@ -382,7 +435,8 @@ cmd_workflow_release() {
   else
     asc_state="__ASC_TIMEOUT__"
   fi
-  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state"
+  app_review_gate="$(app_review_workflow_gate_json)"
+  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state" "$app_review_gate"
   jq -r '"[ios][workflow] step=\(.step) key=\(.key) status=\(.status) command=\"\(.command)\" note=\"\(.note)\""' "$steps"
   summary="$(workflow_summary_json_from_file "$steps")"
   echo "[ios][workflow] summary verdict=$(jq -r '.verdict' <<<"$summary") ready=$(jq -r '.counts.ready' <<<"$summary") todo=$(jq -r '.counts.todo' <<<"$summary") block=$(jq -r '.counts.block' <<<"$summary") warn=$(jq -r '.counts.warn' <<<"$summary") manual=$(jq -r '.counts.manual' <<<"$summary") total=$(jq -r '.counts.total' <<<"$summary")"
@@ -392,7 +446,7 @@ cmd_workflow_release() {
 
 cmd_workflow_release_json() {
   local version build tf_latest archive_line archive_version archive_build asc_state
-  local steps summary_json
+  local steps summary_json app_review_gate
   steps="$(mktemp)"
   trap 'rm -f "$steps"' RETURN
 
@@ -406,7 +460,8 @@ cmd_workflow_release_json() {
   else
     asc_state="__ASC_TIMEOUT__"
   fi
-  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state"
+  app_review_gate="$(app_review_workflow_gate_json)"
+  write_workflow_release_steps_json "$steps" "${version:-unknown}" "${build:-unknown}" "${tf_latest:-}" "$archive_line" "${archive_version:-}" "${archive_build:-}" "$asc_state" "$app_review_gate"
   summary_json="$(workflow_summary_json_from_file "$steps")"
 
   if ! jq -s \
@@ -416,12 +471,14 @@ cmd_workflow_release_json() {
     --arg version "${version:-unknown}" \
     --arg build "${build:-unknown}" \
     --argjson summary "$summary_json" \
+    --argjson appReviewGate "$app_review_gate" \
     '{
       schema:$schema,
       name:$name,
       mode:$mode,
       version:$version,
       build:$build,
+      appReviewGate:$appReviewGate,
       summary:$summary,
       steps:.
     }' "$steps"; then

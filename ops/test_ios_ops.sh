@@ -791,8 +791,20 @@ doctor_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" doctor)"
 echo "$doctor_text" | grep -Eq '^\[ios\]\[doctor\] summary verdict=(pass|warn|block) ok=' \
   && ok "doctor text reports readiness summary" || fail_t "doctor text missing summary: $doctor_text"
 workflow_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release --json)"
-echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and (.summary.verdict|inside("passwarnblock")) and .summary.counts.ready >= 1 and .summary.counts.todo >= 1 and .summary.counts.manual == 1 and (.summary.counts.ready + .summary.counts.todo + .summary.counts.block + .summary.counts.warn + .summary.counts.manual == .summary.counts.total) and .summary.counts.total == (.steps|length) and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
+echo "$workflow_json" | jq -e '.schema=="kg.ios.workflow.v1" and .appReviewGate.verdict.status=="pass" and (.summary.verdict|inside("passwarnblock")) and .summary.counts.ready >= 1 and .summary.counts.todo >= 1 and .summary.counts.manual == 1 and (.summary.counts.ready + .summary.counts.todo + .summary.counts.block + .summary.counts.warn + .summary.counts.manual == .summary.counts.total) and .summary.counts.total == (.steps|length) and (.steps|length == 8) and any(.steps[]; .key=="upload")' >/dev/null \
   && ok "workflow release --json parses with steps array" || fail_t "workflow release --json invalid: $workflow_json"
+workflow_review_block_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_APP_REVIEW_GATE_FIXTURE=block bash "$IOS_OPS" workflow release --json)"
+echo "$workflow_review_block_json" | jq -e --arg spec "$WORKSPACE/ops/app_review/2.0.0.json" '.appReviewGate.verdict.status=="block" and .summary.verdict=="block" and .summary.counts.manual==0 and .summary.counts.block >= 1 and ([.steps[] | select(.key=="submit" and .status=="block" and .command==("./ops/app_review_evidence.py status --spec " + $spec))] | length)==1 and ([.steps[] | select(.key=="submit" and .status=="manual")] | length)==0' >/dev/null \
+  && ok "workflow App Review BLOCK replaces manual-ready submit with one producer-status command" || fail_t "workflow bypassed App Review gate: $workflow_review_block_json"
+workflow_review_missing_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_APP_REVIEW_GATE_FIXTURE=missing bash "$IOS_OPS" workflow release --json)"
+echo "$workflow_review_missing_json" | jq -e '.summary.verdict=="block" and .appReviewGate.blocks[0].code=="gate.spec.missing" and any(.steps[]; .key=="submit" and .status=="block")' >/dev/null \
+  && ok "workflow missing App Review spec blocks submit" || fail_t "workflow ignored missing App Review gate: $workflow_review_missing_json"
+invalid_review_gate_fixture="$(mktemp)"
+printf '{not-json\n' >"$invalid_review_gate_fixture"
+workflow_review_invalid_json="$(KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_APP_REVIEW_GATE_FIXTURE="$invalid_review_gate_fixture" bash "$IOS_OPS" workflow release --json)"
+rm -f "$invalid_review_gate_fixture"
+echo "$workflow_review_invalid_json" | jq -e '.summary.verdict=="block" and .appReviewGate.blocks[0].code=="gate.report.invalid" and any(.steps[]; .key=="submit" and .status=="block")' >/dev/null \
+  && ok "workflow malformed App Review report fails closed as structured BLOCK" || fail_t "workflow malformed gate report escaped fail-closed handling: $workflow_review_invalid_json"
 workflow_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release)"
 echo "$workflow_text" | grep -Eq '^\[ios\]\[workflow\] summary verdict=(pass|warn|block) ready=' \
   && ok "workflow text reports aggregate summary" || fail_t "workflow text missing summary: $workflow_text"
@@ -934,6 +946,14 @@ echo "$monitor_probe" | grep -qE '^pid=[0-9]+$' \
   && ok "ios_build progress monitor returns PID from command substitution" || fail_t "ios_build progress monitor command substitution hung/failed: $monitor_probe"
 
 section "ios_test emits xcresult-first diagnostics"
+grep -q -- '--configuration) CONFIGURATION=' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q -- '-configuration "$CONFIGURATION"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q -- '--arg evidenceProducer "ops/ios_test.sh"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'evidenceProducer:\$evidenceProducer' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'sdk_suffix="iphoneos"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'os_name="iOS"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'testLiveDemoAccountHasProEntitlement' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test owns Release configuration and App Review provenance" || fail_t "ios_test lacks producer-owned Release provenance"
 grep -q -- '-resultBundlePath' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test emits xcresult bundle" || fail_t "ios_test missing -resultBundlePath"
 grep -q 'simulator ensure-booted' "$WORKSPACE/ops/ios_test.sh" \

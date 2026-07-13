@@ -19,6 +19,7 @@
 #   ./ops/ios_test.sh --coverage [--coverage-fail-under <percent>]
 #   ./ops/ios_test.sh --device <name|UDID>        # target a specific simulator (parallel agents)
 #   ./ops/ios_test.sh --destination '<xcodebuild destination>'   # full -destination override
+#   ./ops/ios_test.sh --configuration Release  # Release-equivalent build/test provenance
 #   ./ops/ios_test.sh --unit --lease              # auto-claim a pool simulator for this run (parallel agents)
 #   KG_IOS_TEST_ALLOW_SHARED_SIM=1 ./ops/ios_test.sh ...         # explicit opt-out for single-machine debugging
 #
@@ -61,6 +62,17 @@ UI_FIXTURE_DATASET_DEFLATE_B64=""
 STAGED_DATASET_XCTESTRUN=""
 UI_TEST_REVIEW_ROOT=""
 UI_TEST_REVIEW_HTML=""
+CONFIGURATION="Debug"
+EVIDENCE_FIXED_CLOCK=""
+EVIDENCE_DATASET_ID=""
+EVIDENCE_DATASET_SHA256=""
+EVIDENCE_LOCALE=""
+EVIDENCE_TIMEZONE=""
+EVIDENCE_APPEARANCE=""
+EVIDENCE_KIND="release-equivalent-simulator"
+LIVE_DEMO=0
+DEMO_ACCOUNT_REF=""
+DEMO_CREDENTIAL_FINGERPRINT=""
 
 build_ui_test_variant_id() {
   local parts=()
@@ -134,9 +146,37 @@ while [[ $# -gt 0 ]]; do
     --coverage-fail-under) COVERAGE_ENABLED=1; COVERAGE_FAIL_UNDER="$2"; shift 2 ;;
     --dataset) UI_FIXTURE_DATASET_NAME="${2:?--dataset needs value}"; shift 2 ;;
     --dataset-file) UI_FIXTURE_DATASET_FILE="${2:?--dataset-file needs value}"; shift 2 ;;
+    --configuration) CONFIGURATION="${2:?--configuration needs Debug or Release}"; shift 2 ;;
+    --fixed-clock) EVIDENCE_FIXED_CLOCK="${2:?--fixed-clock needs RFC3339 value}"; shift 2 ;;
+    --evidence-locale) EVIDENCE_LOCALE="${2:?--evidence-locale needs value}"; shift 2 ;;
+    --evidence-timezone) EVIDENCE_TIMEZONE="${2:?--evidence-timezone needs value}"; shift 2 ;;
+    --evidence-appearance) EVIDENCE_APPEARANCE="${2:?--evidence-appearance needs light or dark}"; shift 2 ;;
+    --evidence-kind) EVIDENCE_KIND="${2:?--evidence-kind needs value}"; shift 2 ;;
+    --live-demo) LIVE_DEMO=1; shift ;;
+    --demo-account-ref) DEMO_ACCOUNT_REF="${2:?--demo-account-ref needs a non-secret reference}"; shift 2 ;;
+    --demo-credential-fingerprint) DEMO_CREDENTIAL_FINGERPRINT="${2:?--demo-credential-fingerprint needs SHA256}"; shift 2 ;;
     *) SPECIFIC_TESTS+=("$1"); shift ;;
   esac
 done
+
+if [[ "$CONFIGURATION" != "Debug" && "$CONFIGURATION" != "Release" ]]; then
+  echo "[ios_test] error: --configuration must be Debug or Release" >&2
+  exit 2
+fi
+if [[ "$EVIDENCE_KIND" == "exact-device" && ( "$DESTINATION_OVERRIDE" != *"platform=iOS,"* || "$DESTINATION_OVERRIDE" == *"Simulator"* ) ]]; then
+  echo "[ios_test] error: --evidence-kind exact-device requires --destination platform=iOS,id=<physical-UDID>" >&2
+  exit 2
+fi
+if [[ "$LIVE_DEMO" -eq 1 ]]; then
+  if [[ "$CONFIGURATION" != "Release" || "$EVIDENCE_KIND" != "exact-device" || -z "$DEMO_ACCOUNT_REF" || ! "$DEMO_CREDENTIAL_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "[ios_test] error: --live-demo requires Release exact-device, account ref, and credential SHA256" >&2
+    exit 2
+  fi
+  if [[ " ${SPECIFIC_TESTS[*]} " != *" testLiveDemoAccountHasProEntitlement "* ]]; then
+    echo "[ios_test] error: --live-demo requires testLiveDemoAccountHasProEntitlement" >&2
+    exit 2
+  fi
+fi
 
 if [[ -n "$COVERAGE_FAIL_UNDER" && ! "$COVERAGE_FAIL_UNDER" =~ ^([0-9]+)(\.[0-9]+)?$ ]]; then
   echo "[ios_test] error: --coverage-fail-under must be numeric percent (0..100)" >&2
@@ -240,6 +280,7 @@ ios_test_build_cache_key() {
     printf 'arch=%s\n' "$(uname -m)"
     printf 'scope=%s\n' "$TEST_SCOPE"
     printf 'scheme=%s\n' "$TEST_SCHEME"
+    printf 'configuration=%s\n' "$CONFIGURATION"
     printf 'coverage=%s\n' "$COVERAGE_ENABLED"
     printf 'xcode=%s\n' "$xcode_version"
     # Hash all inputs in a single shasum process instead of one fork per file
@@ -285,12 +326,14 @@ ios_test_list_xctestrun_artifacts() {
 
 ios_test_cached_products_ready() {
   local xctestrun_path="$1"
-  local products_root app_bundle unit_bundle ui_bundle
+  local products_root app_bundle unit_bundle ui_bundle sdk_suffix
   [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
   products_root="$(dirname "$xctestrun_path")"
-  app_bundle="$products_root/Debug-iphonesimulator/BooksAndVocab.app"
+  sdk_suffix="iphonesimulator"
+  [[ "$DESTINATION" == *"platform=iOS,"* && "$DESTINATION" != *"Simulator"* ]] && sdk_suffix="iphoneos"
+  app_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocab.app"
   unit_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
-  ui_bundle="$products_root/Debug-iphonesimulator/BooksAndVocabUITests-Runner.app"
+  ui_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocabUITests-Runner.app"
   [[ -d "$app_bundle" ]] || return 1
   case "$TEST_SCOPE" in
     unit)
@@ -371,7 +414,7 @@ fi
 if [[ -n "$UI_FIXTURE_DATASET_NAME" ]]; then
   UI_FIXTURE_DATASET_FILE="$PROJECT_ROOT/ops/fixtures/ui_worlds/$UI_FIXTURE_DATASET_NAME.json"
 fi
-if [[ "$TEST_SCOPE" == "ui" && -z "$UI_FIXTURE_DATASET_FILE" && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
+if [[ "$TEST_SCOPE" == "ui" && -z "$UI_FIXTURE_DATASET_FILE" && "$LIVE_DEMO" -eq 0 && "$LIST_ONLY" -eq 0 && -z "$TEST_CACHE_ACTION" ]]; then
   echo "[ios_test] error: --ui requires --dataset <name> or --dataset-file <path> (UI World is the single source of truth)" >&2
   available_worlds="$(cd "$PROJECT_ROOT/ops/fixtures/ui_worlds" 2>/dev/null && ls -- *.json 2>/dev/null | sed 's/\.json$//' | paste -sd ' ' - || true)"
   echo "[ios_test] available datasets (ops/fixtures/ui_worlds/): ${available_worlds:-none}" >&2
@@ -395,6 +438,8 @@ if [[ -n "$UI_FIXTURE_DATASET_FILE" ]]; then
   if ! "$UV_BIN" run --python 3.13 python "$PROJECT_ROOT/ops/ui_world_manifest.py" validate "$UI_FIXTURE_DATASET_FILE" --label "UITest UI World dataset" >/dev/null; then
     exit 1
   fi
+  EVIDENCE_DATASET_ID="$(jq -r '.datasetID // empty' "$UI_FIXTURE_DATASET_FILE")"
+  EVIDENCE_DATASET_SHA256="$(shasum -a 256 "$UI_FIXTURE_DATASET_FILE" | awk '{print $1}')"
   # deflate+base64（非 plaintext base64）：>1MB world 會撐爆 spawn env block，
   # app 端會靜默看不到 dataset（見 ops/lib/fixture_dataset_env.sh）。
   if ! UI_FIXTURE_DATASET_DEFLATE_B64="$(kg_fixture_dataset_deflate_b64 "$UI_FIXTURE_DATASET_FILE")" \
@@ -1025,6 +1070,7 @@ rebuild_test_cache() {
   xcodebuild build-for-testing \
     -project "$XCODEPROJ" \
     -scheme "$TEST_SCHEME" \
+    -configuration "$CONFIGURATION" \
     -destination "$DESTINATION" \
     ${COVERAGE_XCODEBUILD_ARGS[@]+"${COVERAGE_XCODEBUILD_ARGS[@]}"} \
     -parallel-testing-enabled NO \
@@ -1573,6 +1619,20 @@ emit_ui_runner_lifecycle() {
 kg_ios_verdict_init test "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
+  local source_commit marketing_version build_number bundle_id started_at finished_at evidence_kind fixture_data_used os_name network_mode
+  source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  marketing_version="$(awk -F' = ' '/MARKETING_VERSION = /{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
+  build_number="$(awk -F' = ' '/CURRENT_PROJECT_VERSION = /{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
+  bundle_id="$(awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;/{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
+  started_at="$(date -u -r "$START" '+%Y-%m-%dT%H:%M:%SZ')"
+  finished_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  evidence_kind="$EVIDENCE_KIND"
+  fixture_data_used=false
+  [[ -n "$UI_FIXTURE_DATASET_FILE" ]] && fixture_data_used=true
+  os_name="iOS Simulator"
+  [[ "$DESTINATION" == *"platform=iOS,"* && "$DESTINATION" != *"Simulator"* ]] && os_name="iOS"
+  network_mode="fixture"
+  [[ "$LIVE_DEMO" -eq 1 ]] && network_mode="live"
   build_ui_test_review_page "$result"
   jq -nc \
     --arg schema "kg.ios.run-verdict.v1" \
@@ -1586,6 +1646,28 @@ write_json_verdict() {
     --argjson ts "$(date +%s)" \
     --argjson pid "$$" \
     --arg uiLaunchProfile "$UI_LAUNCH_PROFILE" \
+    --arg configuration "$CONFIGURATION" \
+    --arg evidenceProducer "ops/ios_test.sh" \
+    --arg sourceCommit "$source_commit" \
+    --arg marketingVersion "$marketing_version" \
+    --arg buildNumber "$build_number" \
+    --arg bundleID "$bundle_id" \
+    --arg datasetID "$EVIDENCE_DATASET_ID" \
+    --arg datasetSHA256 "$EVIDENCE_DATASET_SHA256" \
+    --arg fixedClock "$EVIDENCE_FIXED_CLOCK" \
+    --arg startedAt "$started_at" \
+    --arg finishedAt "$finished_at" \
+    --arg evidenceKind "$evidence_kind" \
+    --arg locale "$EVIDENCE_LOCALE" \
+    --arg timezone "$EVIDENCE_TIMEZONE" \
+    --arg appearance "$EVIDENCE_APPEARANCE" \
+    --arg destination "$DESTINATION" \
+    --arg osName "$os_name" \
+    --arg networkMode "$network_mode" \
+    --arg demoAccountRef "$DEMO_ACCOUNT_REF" \
+    --arg demoCredentialFingerprint "$DEMO_CREDENTIAL_FINGERPRINT" \
+    --argjson liveDemo "$LIVE_DEMO" \
+    --argjson fixtureDataUsed "$fixture_data_used" \
     --arg elapsed "${ELAPSED}s" \
     --arg executed "$executed" \
     --arg log "$TMPOUT" \
@@ -1623,8 +1705,46 @@ write_json_verdict() {
       caller:$caller,
       invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
       options:{
-        uiLaunchProfile:(if $uiLaunchProfile == "" then null else $uiLaunchProfile end)
+        uiLaunchProfile:(if $uiLaunchProfile == "" then null else $uiLaunchProfile end),
+        evidenceProducer:$evidenceProducer,
+        configuration:$configuration,
+        bundleID:$bundleID,
+        marketingVersion:$marketingVersion,
+        buildNumber:$buildNumber,
+        sourceCommit:$sourceCommit,
+        datasetID:(if $datasetID == "" then null else $datasetID end),
+        datasetSHA256:(if $datasetSHA256 == "" then null else $datasetSHA256 end),
+        fixedClock:(if $fixedClock == "" then null else $fixedClock end),
+        startedAt:$startedAt,
+        finishedAt:$finishedAt,
+        evidenceKind:$evidenceKind,
+        device:$destination,
+        os:$osName,
+        locale:(if $locale == "" then null else $locale end),
+        timezone:(if $timezone == "" then null else $timezone end),
+        appearance:(if $appearance == "" then null else $appearance end),
+        networkMode:$networkMode,
+        fixtureDataUsed:$fixtureDataUsed
       },
+      demoEvidence:(if $liveDemo == 1 then {
+        evidenceProducer:"ops/ios_test.sh:live-demo",
+        configuration:$configuration,
+        bundleID:$bundleID,
+        marketingVersion:$marketingVersion,
+        buildNumber:$buildNumber,
+        sourceCommit:$sourceCommit,
+        evidenceKind:$evidenceKind,
+        device:$destination,
+        os:$osName,
+        locale:(if $locale == "" then null else $locale end),
+        timezone:(if $timezone == "" then null else $timezone end),
+        networkMode:$networkMode,
+        fixtureDataUsed:$fixtureDataUsed,
+        account:{provenance:"live-account",accountRef:$demoAccountRef,credentialFingerprint:$demoCredentialFingerprint,entitlementSource:"live-backend"},
+        observedAt:$finishedAt,
+        login:(if $result == "ok" then "pass" else "fail" end),
+        entitlements:(if $result == "ok" then ["pro"] else [] end)
+      } else null end),
       elapsed:$elapsed,
       executed:(if $executed == "" then null else $executed end),
       device:(if $device == "" then null else $device end),
