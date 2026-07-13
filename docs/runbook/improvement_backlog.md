@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - .claude/agents/platform-steward.md
   - .claude/skills/kg-receipt/
-verified_against: d5542a1
+verified_against: 6ff5bcf10
 -->
 # 改善 Backlog（kaizen ledger）
 
@@ -65,3 +65,4 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0028 | 2026-07-09 | 行銷帳號 Phase5(時鐘凍結對抗驗證) | tool | med | fixed | iOS `SettingsCoordinator.applyServerReviewClock`(`SettingsCoordinator.swift:113`)用 strict `AppDateFormatters.iso8601`(要小數秒)解析伺服器 `paused_at`,而非旁邊的 `AppDateFormatters.parseISO8601` fallback(`AppDateFormatters.swift:56-57`)→ 缺小數秒的 `paused_at` 靜默回 nil → 凍結退回 wall-clock 卻仍報 is_paused=true(false-green)。本 session 注入用 `.000Z` 規避,但潛伏 bug 仍在。**已修復**:改用 `AppDateFormatters.parseISO8601`(小數秒優先 + 不含小數秒 fallback),對稱寫入側恆產小數秒;TDD 兩案回歸測試(有/無小數秒)。 | bb45e0f85(#981;rebase onto main 後 CI ui-quality-gate pass、squash merge) |
 | IMP-0029 | 2026-07-09 | 行銷帳號 Phase5(時鐘凍結對抗驗證) | arch | low | open | iOS 伺服器 review-clock push 只在 cold-start 套用(`SettingsCoordinator.swift:111` gate `pauseClockSnapshot.updatedAt == nil`)+ `KGFeatureFlags.serverReviewClockLwwEnabled` dead-`false`(`KGFeatureFlags.swift:27`)→ **任何曾本地 toggle 過複習時鐘的裝置,伺服器凍結會被忽略**。屬當前同步狀態的 by-design(LWW 未啟用),非 bug;行銷截圖走 catalog fixture(offline UserDefaults seed 恆套用)故不受影響。候選(產品決策):是否讓 server-authoritative review-clock LWW 出貨。 | —(by-design,待產品決策) |
 | IMP-0030 | 2026-07-10 | Explore P1 docs-sync | tool | med | open | `ios_test.sh --ui <bareMethod>`(裸方法名)對**不在** class `BooksAndVocabUITests` 的 UITest method 回 `tests=0` 卻 exit 0(**FALSE GREEN**):bare method 只在預設 suite 內解析,別的 UITest class(如 `ExploreNavigationUITests`)的 method 靜默零執行、假綠。workaround=用完整限定 `Class/method`。fix 候選:runner auto-resolve method→其所屬 class,或 `--help`/零匹配錯誤明示「bare method 僅限預設 suite,跨 class 用 Class/method」 | — |
+| IMP-0031 | 2026-07-13 | iOS 2.0.1 誤標事故 | cli | high | fixed | `release.sh` 把 iOS semver 建議當成可執行 release，未要求 previous marketing version 已完成審查的 typed attestation，且先 tag/push 再 upload；被拒中的 2.0.0 因而可被誤升 2.0.1，upload 失敗也會留下 false release marker | `6ff5bcf10`(離線 `--new-version-after-ready` guard + semver 單調性 + upload-before-tag + 71 斷言) |

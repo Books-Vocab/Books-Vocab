@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: 5d83b0697
+verified_against: 6ff5bcf10
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -30,19 +30,19 @@ verified_against: 5d83b0697
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff） | 無—離線可逆 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
-| `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + `api\|ios/x.y.z` + push origin main | 備份/標記，無生產 |
-| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | bump→tag→生產觸點 | **生產** |
+| `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + `api\|ios/x.y.z` + push origin main；iOS 新版須帶 `--new-version-after-ready <previous>` | 備份/標記，無生產 |
+| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy；iOS：bump→upload→tag | **生產** |
 
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
-- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。
+- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 也必須帶 typed attestation，不能繞過 release guard。
 - `release <backend|ios>` 須在 primary、on `main` 執行（發布本地主幹）。
 
 ## Release 流程
 
 **backend**（`release backend x.y.z`）＝ `bump api`（若版號檔≠x.y.z）→ `tag api x.y.z`（commit 版號 + `api/x.y.z` + push origin main）→ `orchestrate deploy --commit`（推 origin/prod → felix reconciler 健康 gate 部署 wordnexus.lol）。dry-run 預設，`--yes` 才執行。
 
-**ios**（`release ios x.y.z`）＝ `bump ios` → `tag ios x.y.z` → `ios_release.sh --upload`（archive + 上傳 TestFlight）。被拒重送同版走 `bump-build ios` + `ios_release.sh --upload`（見 ios.md），不走 release。
+**ios 新版本**（`release ios x.y.z --new-version-after-ready <previous>`）＝先確認 ASC 的 previous marketing version 已完成審查 → `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才 `tag ios x.y.z`。`<previous>` 必須等於 latest local `ios/*` tag，且新版本必須嚴格遞增；這是離線 typed attestation，不會連 ASC、也不宣稱自行驗出 `READY_FOR_SALE`。upload 失敗不留下 release commit/tag/push；若版號早已 commit，成功後直接 tag current HEAD。被拒或未上架的同版重送走 `bump-build ios` + `ios_release.sh --upload`（見 ios.md），不走 release、也不得使用 attestation flag。
 
 日常盤點：`ops/release.sh status`（各 component 待發版 commit + released gap；本地唯讀）。
 

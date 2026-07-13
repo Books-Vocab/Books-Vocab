@@ -92,7 +92,7 @@ ops/worktree_orchestrate.py sync --commit --json  # 守護式 ff push 本地 mai
 ops/worktree_orchestrate.py deploy --json           # dry-run：看會推幾個 commit、是否觸發 rollout
 ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → origin/prod
 ```
-護欄：primary 在 `main` 上、**origin/prod** 是本地的**嚴格祖先**（乾淨 ff，**絕不 force-push**；origin/prod 分岔會拒並指向 sync-main/pull）；已同步則 noop。dry-run 會列出 range 內的 **backend 檔**——有 backend 變更 = felix reconciler（盯 origin/prod）會跑**生產 rollout**（健康 gate + auto-rollback，deploy 不重跑）；純非 backend = 只前進 origin/prod、不碰生產。**deploy 一律推整段 range，backend 偵測只是提示、不 gate push。** 發布是刻意動作——多個 cutover 可先攢著、一次 deploy 批次上線。版號發布走 `ops/release.sh release <backend|ios>`（bump→tag→deploy/upload 統一入口，見 `docs/sop/release.md`）。
+護欄：primary 在 `main` 上、**origin/prod** 是本地的**嚴格祖先**（乾淨 ff，**絕不 force-push**；origin/prod 分岔會拒並指向 sync-main/pull）；已同步則 noop。dry-run 會列出 range 內的 **backend 檔**——有 backend 變更 = felix reconciler（盯 origin/prod）會跑**生產 rollout**（健康 gate + auto-rollback，deploy 不重跑）；純非 backend = 只前進 origin/prod、不碰生產。**deploy 一律推整段 range，backend 偵測只是提示、不 gate push。** 發布是刻意動作——多個 cutover 可先攢著、一次 deploy 批次上線。版號發布走 `ops/release.sh release <backend|ios>`（backend bump→tag→deploy；iOS bump→upload→tag，見 `docs/sop/release.md`）。
 
 ## 「需要 main」的任務路由
 

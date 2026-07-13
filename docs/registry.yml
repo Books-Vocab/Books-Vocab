@@ -539,6 +539,7 @@ documents:
       - ops/launchd/com.kg.reconcile.plist
       - .claude/skills/worktree-flow/
       - .claude/skills/source-command-release/
+      - .claude/commands/release.md
 
   - id: runbook.system
     path: docs/runbook/system.md
@@ -782,6 +783,7 @@ documents:
     sources:
       - ops/ios_build.sh
       - ops/ios_release.sh
+      - ops/release.sh
       - ios/BooksAndVocab.xcodeproj/
       - ios/ExportOptions.plist
       - ios/BooksAndVocab/Products.storekit
