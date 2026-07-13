@@ -22,6 +22,8 @@ PROMO_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "render_screensh
 FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_screenshots.py"
 BUILD_DEMO = ROOT / "ops" / "demo" / "build_demo.py"
 SHAPE_HISTORY = ROOT / "ops" / "demo" / "marketing_account" / "shape_history.py"
+REVIEWER_EVIDENCE = ROOT / "ops" / "reviewer_evidence.py"
+IOS_PROJECT_FILE = ROOT / "ios" / "BooksAndVocab.xcodeproj" / "project.pbxproj"
 
 # snapshot dataset 來源模式（tagged union on snapshot.source）
 SOURCE_DATASET_FILE = "dataset-file"  # 既有：吃預先 committed 的 UI World fixture
@@ -32,6 +34,11 @@ SNAPSHOT_SOURCES = {SOURCE_DATASET_FILE, SOURCE_SPEC_EMIT}
 sys.path.insert(0, str(ROOT / "backend" / "src"))
 sys.path.insert(0, str(ROOT / "ops"))
 from kg.ops_world_expectation import derive_expectation  # noqa: E402
+from reviewer_evidence import (  # noqa: E402
+    EvidenceError,
+    build_manifest as build_reviewer_evidence_manifest,
+    write_bundle as write_reviewer_evidence_bundle,
+)
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file as _validate_ui_world  # noqa: E402
 
 
@@ -625,6 +632,107 @@ def frame_snapshot_sources(profile: CaptureProfile, snapshot_payload: dict[str, 
     }
 
 
+def reviewer_render_spec(profile: CaptureProfile) -> dict[str, Any]:
+    """Normalize the render contract embedded in reviewer evidence."""
+    return {
+        "variant": profile.render.variant,
+        "target": profile.render.target,
+        "sourceMode": profile.render.source_mode,
+        "shots": [
+            {
+                "id": shot.shot_id,
+                "sourceScenario": shot.source_scenario,
+                "appearance": shot.appearance,
+                "outputName": shot.output_name,
+                "copy": {"title": shot.copy_title, "subtitle": shot.copy_subtitle},
+            }
+            for shot in profile.shots
+        ],
+    }
+
+
+def resolve_source_commit(ref: str) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+        cwd=str(ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    commit = result.stdout.strip()
+    if result.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise CaptureProfileError(
+            f"source commit 無法解析為完整 git commit: {ref}"
+        )
+    return commit
+
+
+def cmd_reviewer_evidence(
+    profile: CaptureProfile,
+    *,
+    profile_file: Path,
+    dataset_file: Path,
+    promotion_manifest_file: Path,
+    render_output_dir: Path,
+    bundle_dir: Path,
+    project_file: Path,
+    source_commit: str,
+    fixed_clock: str,
+    locale: str,
+    expect_marketing_version: str | None,
+    expect_build_number: str | None,
+    commit: bool,
+) -> int:
+    """Build or atomically write a deterministic App Review evidence bundle."""
+    try:
+        resolved_commit = resolve_source_commit(source_commit)
+        manifest = build_reviewer_evidence_manifest(
+            profile_file=profile_file,
+            profile_id=profile.profile_id,
+            dataset_file=dataset_file,
+            promotion_manifest_file=promotion_manifest_file,
+            project_file=project_file,
+            render_output_dir=render_output_dir,
+            render_spec=reviewer_render_spec(profile),
+            device_destination=profile.snapshot.destination,
+            locale=locale,
+            fixed_clock=fixed_clock,
+            source_commit=resolved_commit,
+            generator_files=[Path(__file__).resolve(), REVIEWER_EVIDENCE],
+            profile_validator=load_profile,
+            dataset_validator=validate_fixture_dataset_file,
+            expected_marketing_version=expect_marketing_version,
+            expected_build_number=expect_build_number,
+        )
+        if commit:
+            write_reviewer_evidence_bundle(
+                manifest,
+                bundle_dir=bundle_dir,
+                profile_file=profile_file,
+                dataset_file=dataset_file,
+                project_file=project_file,
+                promotion_manifest_file=promotion_manifest_file,
+                render_output_dir=render_output_dir,
+                profile_validator=load_profile,
+                dataset_validator=validate_fixture_dataset_file,
+            )
+    except EvidenceError as exc:
+        raise CaptureProfileError(str(exc)) from exc
+
+    emit_json(
+        {
+            "schema": "kg.capture.run.v1",
+            "action": "reviewer-evidence",
+            "profile": profile.profile_id,
+            "status": "written" if commit else "dry-run",
+            "commit": commit,
+            "bundle": str(bundle_dir),
+            "manifest": manifest,
+        }
+    )
+    return 0
+
+
 def cmd_plan(profile: CaptureProfile) -> int:
     verify_command = build_world_diff_command(profile)
     materialize_plan: dict[str, Any] | None = None
@@ -985,6 +1093,64 @@ def make_parser() -> argparse.ArgumentParser:
     derive.add_argument("--out", help="輸出路徑（預設 profile 的 expectationFile；未設則印 stdout）")
     derive.add_argument("--check", action="store_true", help="只驗現有 expectation 檔是否 stale，drift 回非零")
 
+    evidence = sub.add_parser(
+        "reviewer-evidence",
+        help="build a deterministic App Review reviewer-evidence manifest/bundle (dry-run by default)",
+        description=(
+            "Pin capture profile, validated UI World, actual Xcode build tuple, source commit, "
+            "fixed clock, device/locale, render spec, and output checksums. Dry-run by default; "
+            "add --commit to atomically write the bundle."
+        ),
+    )
+    evidence.add_argument("profile", help="kg.capture.profile.v1 file")
+    evidence.add_argument(
+        "--dataset-file", required=True,
+        help="exact kg.fixture.dataset.v2 UI World used for reviewer capture",
+    )
+    evidence.add_argument(
+        "--render-output-dir", required=True,
+        help="directory containing every profile shots[].outputName PNG",
+    )
+    evidence.add_argument(
+        "--promotion-manifest", required=True,
+        help=(
+            "generated kg.app_review.promotion_manifest.v1 JSON; legacy YAML and "
+            "unknown/skipped/stale evidence fail closed"
+        ),
+    )
+    evidence.add_argument(
+        "--bundle-dir", required=True,
+        help="destination bundle directory (not created without --commit)",
+    )
+    evidence.add_argument(
+        "--project-file", default=str(IOS_PROJECT_FILE),
+        help="Xcode project.pbxproj used to read the actual marketing/build tuple",
+    )
+    evidence.add_argument(
+        "--source-commit", default="HEAD",
+        help="git commit/ref to resolve and pin in provenance (default: HEAD)",
+    )
+    evidence.add_argument(
+        "--fixed-clock", required=True,
+        help="timezone-aware ISO8601 capture clock; required to prevent wall-clock drift",
+    )
+    evidence.add_argument(
+        "--locale", required=True,
+        help="pinned capture locale, for example zh-Hant",
+    )
+    evidence.add_argument(
+        "--expect-marketing-version",
+        help="fail closed unless the actual project MARKETING_VERSION matches",
+    )
+    evidence.add_argument(
+        "--expect-build-number",
+        help="fail closed unless the actual project CURRENT_PROJECT_VERSION matches",
+    )
+    evidence.add_argument(
+        "--commit", action="store_true",
+        help="atomically write inputs, outputs, and manifest.json (default is dry-run)",
+    )
+
     run = sub.add_parser("run")
     run.add_argument("profile")
     run.add_argument("--commit", action="store_true")
@@ -1011,6 +1177,22 @@ def main() -> int:
         if args.action == "derive-expectation":
             return cmd_derive_expectation(
                 profile, out=Path(args.out) if args.out else None, check=args.check
+            )
+        if args.action == "reviewer-evidence":
+            return cmd_reviewer_evidence(
+                profile,
+                profile_file=_resolve_path(args.profile),
+                dataset_file=_resolve_path(args.dataset_file),
+                promotion_manifest_file=_resolve_path(args.promotion_manifest),
+                render_output_dir=_resolve_path(args.render_output_dir),
+                bundle_dir=_resolve_path(args.bundle_dir),
+                project_file=_resolve_path(args.project_file),
+                source_commit=args.source_commit,
+                fixed_clock=args.fixed_clock,
+                locale=args.locale,
+                expect_marketing_version=args.expect_marketing_version,
+                expect_build_number=args.expect_build_number,
+                commit=args.commit,
             )
         if args.action == "run":
             return cmd_run(profile, commit=args.commit, reuse_build=args.reuse_build)
