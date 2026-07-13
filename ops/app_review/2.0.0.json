@@ -1,0 +1,338 @@
+{
+  "artifacts": {
+    "appearanceProof": {
+      "maxAgeHours": 24,
+      "path": "build/app-review/appearance/2.0.0.json",
+      "sha256": "pending"
+    },
+    "attestations": {
+      "agent": "build/app-review/attestations/2.0.0-agent.json",
+      "human": "build/app-review/attestations/2.0.0-human.json"
+    },
+    "demoAccess": {
+      "maxAgeHours": 12,
+      "path": "build/app-review/demo-access-2.0.0.json"
+    },
+    "desiredBundle": "build/app-review/desired-2.0.0/bundle",
+    "journeys": [
+      {
+        "id": "reader-import",
+        "maxAgeHours": 24,
+        "path": "build/app-review/journeys/2.0.0-reader-import.json"
+      },
+      {
+        "id": "knowledge-graph",
+        "maxAgeHours": 24,
+        "path": "build/app-review/journeys/2.0.0-knowledge-graph.json"
+      },
+      {
+        "id": "today-review",
+        "maxAgeHours": 24,
+        "path": "build/app-review/journeys/2.0.0-today-review.json"
+      },
+      {
+        "id": "account-pro",
+        "maxAgeHours": 12,
+        "path": "build/app-review/journeys/2.0.0-account-pro.json"
+      }
+    ],
+    "liveMirrorBundle": "build/app-review/live-asc-2.0.0-v3",
+    "urlChecks": {
+      "maxAgeHours": 12,
+      "path": "build/app-review/url-checks-2.0.0.json"
+    }
+  },
+  "claims": [
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "reader-import",
+      "id": "metadata.reader-import",
+      "journeyIDs": [
+        "reader-import"
+      ],
+      "statement": "Users can import EPUB, PDF, TXT, or Markdown and read the content.",
+      "surface": {
+        "kind": "metadata",
+        "ref": "description"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "knowledge-graph",
+      "id": "metadata.knowledge-graph",
+      "journeyIDs": [
+        "knowledge-graph"
+      ],
+      "statement": "Saved vocabulary can be viewed as a knowledge graph.",
+      "surface": {
+        "kind": "metadata",
+        "ref": "description"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "today-review",
+      "id": "metadata.today-review",
+      "journeyIDs": [
+        "today-review"
+      ],
+      "statement": "Today Review provides spaced repetition and learning progress.",
+      "surface": {
+        "kind": "metadata",
+        "ref": "description"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device"
+      ],
+      "entitlement": "pro",
+      "feature": "subscription",
+      "id": "metadata.pro-subscription",
+      "journeyIDs": [
+        "account-pro"
+      ],
+      "statement": "Books & Vocab Pro entitlement is delivered through App Store subscription state.",
+      "surface": {
+        "kind": "metadata",
+        "ref": "description"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "reader-vocabulary-review",
+      "id": "metadata.promotional-workflow",
+      "journeyIDs": [
+        "reader-import",
+        "knowledge-graph",
+        "today-review"
+      ],
+      "statement": "The promotional text's reader-to-vocabulary-to-review workflow is available.",
+      "surface": {
+        "kind": "metadata",
+        "ref": "promotionalText"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "live-demo"
+      ],
+      "entitlement": "pro",
+      "feature": "reviewer-demo-access",
+      "id": "review.demo-access",
+      "journeyIDs": [],
+      "statement": "The reviewer demo credentials log into a live account with the promised Pro entitlement.",
+      "surface": {
+        "kind": "review-notes",
+        "ref": "notes"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "knowledge-graph",
+      "id": "screenshot.knowledge-graph",
+      "journeyIDs": [
+        "knowledge-graph"
+      ],
+      "statement": "The knowledge graph screenshot and copy describe a reachable reviewer journey.",
+      "surface": {
+        "kind": "screenshot-copy",
+        "ref": "final_01_knowledge_graph.png"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "vocabulary",
+      "id": "screenshot.vocabulary",
+      "journeyIDs": [
+        "reader-import"
+      ],
+      "statement": "The vocabulary list screenshot and copy describe saved reading vocabulary.",
+      "surface": {
+        "kind": "screenshot-copy",
+        "ref": "final_02_vocab_list.png"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "notebook",
+      "id": "screenshot.notebook",
+      "journeyIDs": [
+        "reader-import"
+      ],
+      "statement": "The notebook screenshot and copy describe organizing saved vocabulary.",
+      "surface": {
+        "kind": "screenshot-copy",
+        "ref": "final_03_notebook.png"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "learning-stats",
+      "id": "screenshot.stats",
+      "journeyIDs": [
+        "today-review"
+      ],
+      "statement": "The stats screenshot and copy describe visible learning progress.",
+      "surface": {
+        "kind": "screenshot-copy",
+        "ref": "final_04_stats.png"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "exact-device",
+        "release-equivalent-simulator"
+      ],
+      "entitlement": "free",
+      "feature": "today-review",
+      "id": "screenshot.today-review",
+      "journeyIDs": [
+        "today-review"
+      ],
+      "statement": "The Today Review screenshot and copy describe the spaced-repetition journey.",
+      "surface": {
+        "kind": "screenshot-copy",
+        "ref": "final_05_today_review.png"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "live-url"
+      ],
+      "entitlement": "none",
+      "feature": "marketing-site",
+      "id": "website.marketing",
+      "journeyIDs": [],
+      "statement": "The marketing website is reachable at the URL shown to reviewers.",
+      "surface": {
+        "kind": "website",
+        "ref": "marketing"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "live-url"
+      ],
+      "entitlement": "none",
+      "feature": "support",
+      "id": "website.support",
+      "journeyIDs": [],
+      "statement": "The support page is reachable at the URL shown to reviewers.",
+      "surface": {
+        "kind": "website",
+        "ref": "support"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "live-url"
+      ],
+      "entitlement": "none",
+      "feature": "privacy",
+      "id": "website.privacy",
+      "journeyIDs": [],
+      "statement": "The privacy policy is reachable from the public website.",
+      "surface": {
+        "kind": "website",
+        "ref": "privacy"
+      }
+    },
+    {
+      "acceptedEvidenceKinds": [
+        "live-url"
+      ],
+      "entitlement": "none",
+      "feature": "legal",
+      "id": "website.terms",
+      "journeyIDs": [],
+      "statement": "The terms of use linked in App Store metadata are reachable.",
+      "surface": {
+        "kind": "website",
+        "ref": "terms"
+      }
+    }
+  ],
+  "freshness": {
+    "attestationMaxAgeHours": 24,
+    "liveMirrorMaxAgeHours": 12
+  },
+  "requiredLiveURLs": [
+    {
+      "claimIDs": [
+        "website.marketing"
+      ],
+      "id": "marketing",
+      "url": "https://wordnexus.lol/"
+    },
+    {
+      "claimIDs": [
+        "website.support"
+      ],
+      "id": "support",
+      "url": "https://wordnexus.lol/support.html"
+    },
+    {
+      "claimIDs": [
+        "website.privacy"
+      ],
+      "id": "privacy",
+      "url": "https://wordnexus.lol/privacy.html"
+    },
+    {
+      "claimIDs": [
+        "website.terms"
+      ],
+      "id": "terms",
+      "url": "https://wordnexus.lol/terms.html"
+    }
+  ],
+  "schema": "kg.app_review.gate.v1",
+  "target": {
+    "appID": "6759816274",
+    "buildID": "f5d44037-e7c0-431f-a4d0-1e7bb7ae5fb3",
+    "buildNumber": "6",
+    "bundleID": "com.Max0228.BooksBrowser",
+    "datasetID": "spec-820aa288ffea",
+    "datasetSHA256": "af9785bd5cc467ee3daa03a0b62bf53184906bc60303557d71bdcf8da7732610",
+    "desiredManifestSHA256": "f549e8dc0e6f74d90ebd579b94954cb325f69d51a516a39e7afcc22e8a612821",
+    "marketingVersion": "2.0.0",
+    "platform": "IOS",
+    "screenshotDisplayType": "APP_IPHONE_65",
+    "sourceCommit": "eeafc43423db7f1166576684e035ebe9c10b3907",
+    "versionID": "13c9c70a-1e87-4617-9ea9-5fcaac0c4925"
+  }
+}
