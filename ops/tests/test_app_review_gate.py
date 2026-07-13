@@ -474,10 +474,31 @@ def _write_fixture_world(tmp_path: Path) -> Path:
         "requiredLiveURLs": [
             {"id": "support", "url": "https://example.com/support", "claimIDs": ["website.support"]}
         ],
+        "producers": {
+            "desiredBundle": {"type": "desired-bundle", "authority": "repo", "command": "produce desired"},
+            "liveMirrorBundle": {"type": "asc-live-mirror", "authority": "asc-get", "command": "produce live"},
+            "journey.core": {"type": "ios-ui-journey", "authority": "ios-release-test", "command": "produce journey"},
+            "demoAccess": {"type": "demo-access", "authority": "live-demo", "command": "produce demo"},
+            "urlChecks": {"type": "url-checks", "authority": "https-get", "command": "produce urls"},
+            "appearanceProof": {"type": "catalog-appearance", "authority": "catalog-run", "command": "produce appearance"},
+            "attestation.human": {"type": "human-attestation", "authority": "release-owner", "command": "attest human"},
+            "attestation.agent": {"type": "agent-attestation", "authority": "gate-agent", "command": "attest agent"},
+        },
         "freshness": {"liveMirrorMaxAgeHours": 24, "attestationMaxAgeHours": 24},
     }
     _json(tmp_path / "spec.json", spec)
     return tmp_path / "spec.json"
+
+
+def test_gate_rejects_missing_typed_producer(tmp_path: Path):
+    mod = _load_module()
+    spec_path = _write_fixture_world(tmp_path)
+    spec = json.loads(spec_path.read_text())
+    spec["producers"].pop("journey.core")
+    _json(spec_path, spec)
+
+    with pytest.raises(mod.GateError, match="exactly cover"):
+        mod.load_spec(spec_path)
 
 
 def _attest(tmp_path: Path, root: str, actor_type: str) -> None:

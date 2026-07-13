@@ -45,6 +45,16 @@ _SURFACE_KINDS = {"metadata", "review-notes", "screenshot-copy", "website"}
 _JOURNEY_EVIDENCE_KINDS = {"exact-device", "release-equivalent-simulator"}
 _DEMO_EVIDENCE_KINDS = {"exact-device", "live-demo"}
 _CLAIM_EVIDENCE_KINDS = _JOURNEY_EVIDENCE_KINDS | _DEMO_EVIDENCE_KINDS | {"live-url"}
+_PRODUCER_TYPES = {
+    "desired-bundle",
+    "asc-live-mirror",
+    "ios-ui-journey",
+    "demo-access",
+    "url-checks",
+    "catalog-appearance",
+    "agent-attestation",
+    "human-attestation",
+}
 _TARGET_KEYS = {
     "appID",
     "bundleID",
@@ -182,7 +192,7 @@ def load_spec(path: Path) -> dict[str, Any]:
     spec, _ = _read_json(path, label="gate spec")
     if spec.get("schema") != SPEC_SCHEMA:
         raise GateError(f"gate spec schema must be {SPEC_SCHEMA}")
-    if set(spec) != {"schema", "target", "artifacts", "claims", "requiredLiveURLs", "freshness"}:
+    if set(spec) != {"schema", "target", "artifacts", "claims", "requiredLiveURLs", "freshness", "producers"}:
         raise GateError("gate spec top-level keys do not match the closed contract")
     target = spec.get("target")
     if not isinstance(target, dict) or set(target) != _TARGET_KEYS:
@@ -249,6 +259,30 @@ def load_spec(path: Path) -> dict[str, Any]:
         raise GateError("gate attestations must require human and agent")
     for actor, value in attestations.items():
         _relative_path(Path("."), value, label=f"attestation {actor}")
+
+    required_producer_ids = {
+        "desiredBundle",
+        "liveMirrorBundle",
+        "demoAccess",
+        "urlChecks",
+        "appearanceProof",
+        "attestation.human",
+        "attestation.agent",
+        *(f"journey.{journey_id}" for journey_id in journey_ids),
+    }
+    producers = spec.get("producers")
+    if not isinstance(producers, dict) or set(producers) != required_producer_ids:
+        raise GateError("gate producers must exactly cover every required artifact")
+    for producer_id, producer in producers.items():
+        if not isinstance(producer, dict) or set(producer) != {"type", "authority", "command"}:
+            raise GateError(f"producer {producer_id} keys do not match the closed contract")
+        if producer.get("type") not in _PRODUCER_TYPES:
+            raise GateError(f"producer {producer_id} type is invalid")
+        for field in ("authority", "command"):
+            if not isinstance(producer.get(field), str) or not producer[field]:
+                raise GateError(f"producer {producer_id}.{field} must be non-empty")
+    if producers["attestation.human"]["type"] != "human-attestation":
+        raise GateError("human attestation must declare human authority")
 
     claims = spec.get("claims")
     if not isinstance(claims, list) or not claims:
