@@ -12,9 +12,27 @@ import shlex
 import shutil
 from pathlib import Path
 
+OPS_DIR = Path(__file__).resolve().parent
+if str(OPS_DIR) not in sys.path:
+    sys.path.insert(0, str(OPS_DIR))
+from catalog_appearance_proof import load_and_validate_appearance_proof
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_ROOT = ROOT / "build" / "snapshots"
+RUN_RECEIPT_KEYS = {
+    "schema",
+    "status",
+    "sourceCommit",
+    "datasetID",
+    "datasetSHA256",
+    "fixedClock",
+    "testExit",
+    "copyExit",
+    "validationStatus",
+    "reviewStatus",
+    "appearanceStatus",
+}
 
 
 def resolve_review_html(root: Path) -> Path:
@@ -33,6 +51,36 @@ def load_manifest(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def validate_run_receipt(path: Path, *, appearance: dict | None) -> dict:
+    if not path.is_file():
+        return {"status": "block", "issues": ["run-receipt-missing"]}
+    try:
+        receipt = load_manifest(path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {"status": "block", "issues": ["run-receipt-invalid"]}
+    issues: list[str] = []
+    if not isinstance(receipt, dict) or set(receipt) != RUN_RECEIPT_KEYS:
+        issues.append("run-receipt-shape")
+    if receipt.get("schema") != "kg.ios.catalog.run_receipt.v1":
+        issues.append("run-receipt-schema")
+    if (
+        receipt.get("status") != "pass"
+        or receipt.get("testExit") != 0
+        or receipt.get("copyExit") != 0
+        or receipt.get("validationStatus") not in {"ok", "warn"}
+        or receipt.get("reviewStatus") != "ok"
+        or receipt.get("appearanceStatus") != "pass"
+    ):
+        issues.append("run-receipt-verdict")
+    if not isinstance(appearance, dict):
+        issues.append("run-receipt-appearance-missing")
+    else:
+        for key in ("sourceCommit", "datasetID", "datasetSHA256", "fixedClock"):
+            if receipt.get(key) != appearance.get(key):
+                issues.append(f"run-receipt-{key}")
+    return {"status": "pass" if not issues else "block", "issues": issues}
+
+
 def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
     # build/snapshots also hosts bypass artifacts (gallery-admin-preview carries
     # a usable manifest, catalog-converged-final exists too). Only
@@ -42,6 +90,16 @@ def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
     for manifest_path in sorted(snapshot_root.glob("catalog-full-*/review_manifest.json")):
         manifest = load_manifest(manifest_path)
         total_images = manifest.get("totalImages", 0)
+        appearance_path = manifest_path.parent / "catalog_appearance.json"
+        appearance_proof = load_and_validate_appearance_proof(appearance_path)
+        try:
+            appearance_document = load_manifest(appearance_path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            appearance_document = None
+        run_receipt = validate_run_receipt(
+            manifest_path.parent / "catalog_run_receipt.json",
+            appearance=appearance_document,
+        )
         artifacts.append({
             "name": manifest_path.parent.name,
             "root": manifest_path.parent,
@@ -53,7 +111,13 @@ def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
             "clusters": len({item["clusterID"] for item in manifest.get("items", [])}),
             "heroCandidates": sum(1 for item in manifest.get("items", []) if item.get("heroCandidate")),
             "newSincePr878": sum(1 for item in manifest.get("items", []) if item.get("newSincePr878")),
-            "isUsable": total_images > 0,
+            "appearanceProof": appearance_proof,
+            "runReceipt": run_receipt,
+            "isUsable": (
+                total_images > 0
+                and appearance_proof["status"] == "pass"
+                and run_receipt["status"] == "pass"
+            ),
         })
     return artifacts
 
@@ -61,8 +125,9 @@ def collect_review_artifacts(snapshot_root: Path = SNAPSHOT_ROOT) -> list[dict]:
 def choose_blessed_artifact(artifacts: list[dict]) -> dict:
     if not artifacts:
         raise SystemExit("No review artifacts found under build/snapshots")
-    usable = [item for item in artifacts if item["isUsable"]]
-    candidates = usable or artifacts
+    candidates = [item for item in artifacts if item["isUsable"]]
+    if not candidates:
+        raise SystemExit("No usable review artifacts found under build/snapshots")
     return max(
         candidates,
         key=lambda item: (
