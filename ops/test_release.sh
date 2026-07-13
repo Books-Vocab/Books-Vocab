@@ -260,6 +260,128 @@ KG_ROOT="$TMP3" bash "$REL" bump-build ios 9.9.1 >/dev/null 2>&1 \
 KG_ROOT="$TMP3" bash "$BUMP" api --build-only >/dev/null 2>&1 \
   && fail_t "release_bump --build-only api should be rejected" || ok "primitive 拒絕 api --build-only"
 
+# ── 15. iOS 新 marketing version：typed attestation + false-tag transaction guard ──
+section "iOS new-version attestation and false-tag guard"
+TMP4="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4"' EXIT
+
+make_ios_release_fixture() {
+  local fixture="$1" remote="$2"
+  mkdir -p "$fixture/ops" "$fixture/ios/BooksAndVocab.xcodeproj"
+  cp "$REL" "$BUMP" "$fixture/ops/"
+  cat > "$fixture/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
+/* app Debug */    MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 5;
+/* app Release */  MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 5;
+PBX
+  cat > "$fixture/ops/ios_release.sh" <<'STUB'
+#!/usr/bin/env bash
+root="$(cd "$(dirname "$0")/.." && pwd)"
+touch "$root/upload.called"
+echo "stub upload invoked" >&2
+exit "${STUB_UPLOAD_EXIT:-0}"
+STUB
+  chmod +x "$fixture/ops/ios_release.sh" "$fixture/ops/release_bump.sh"
+  git init -q -b main "$fixture"
+  git -C "$fixture" config user.name "Release Test"
+  git -C "$fixture" config user.email "release-test@example.invalid"
+  git -C "$fixture" add .
+  git -C "$fixture" commit -qm "fixture: ios 2.0.0"
+  git -C "$fixture" tag ios/2.0.0
+  git init -q --bare "$remote"
+  git -C "$fixture" remote add origin "$remote"
+  git -C "$fixture" push -q origin main ios/2.0.0
+}
+
+# 15a. 無明確 attestation：必須在 pbx/commit/tag/upload 之前 hard-stop。
+fx_a="$TMP4/no-attestation"; remote_a="$TMP4/no-attestation.git"
+make_ios_release_fixture "$fx_a" "$remote_a"
+head_a="$(git -C "$fx_a" rev-parse HEAD)"
+noatt_rc=0
+noatt_out="$(bash "$fx_a/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || noatt_rc=$?
+[[ "$noatt_rc" -ne 0 ]] \
+  && ok "new marketing version without attestation rejects" \
+  || fail_t "new marketing version without attestation unexpectedly succeeded"
+[[ "$(git -C "$fx_a" rev-parse HEAD)" == "$head_a" ]] \
+  && grep -q 'MARKETING_VERSION = 2.0.0;' "$fx_a/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ! git -C "$fx_a" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && ! git --git-dir="$remote_a" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && [[ ! -e "$fx_a/upload.called" ]] \
+  && ok "attestation rejection is pre-mutation (pbx/commit/tag/upload untouched)" \
+  || fail_t "attestation rejection happened after a mutation"
+echo "$noatt_out" | grep -q 'bump-build ios' \
+  && ok "missing-attestation error points rejected resubmits to bump-build" \
+  || fail_t "missing-attestation error lacks bump-build guidance: $noatt_out"
+
+# 15b. attested previous version 必須和 latest local tag 一致。
+fx_b="$TMP4/mismatch"; remote_b="$TMP4/mismatch.git"
+make_ios_release_fixture "$fx_b" "$remote_b"
+mismatch_rc=0
+mismatch_out="$(bash "$fx_b/ops/release.sh" release ios 2.0.1 --new-version-after-ready 1.9.9 --yes 2>&1)" || mismatch_rc=$?
+[[ "$mismatch_rc" -ne 0 ]] \
+  && echo "$mismatch_out" | grep -q 'ios/2.0.0' \
+  && ok "mismatched previous-ready version rejects with latest-tag evidence" \
+  || fail_t "mismatched previous-ready version was not actionably rejected: $mismatch_out"
+
+# 15c. 正確 attestation 後 upload 若失敗，不得留下 false release commit/tag/push。
+fx_c="$TMP4/upload-failure"; remote_c="$TMP4/upload-failure.git"
+make_ios_release_fixture "$fx_c" "$remote_c"
+head_c="$(git -C "$fx_c" rev-parse HEAD)"
+upload_rc=0
+upload_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || upload_rc=$?
+[[ "$upload_rc" -ne 0 && -e "$fx_c/upload.called" ]] \
+  && ok "attested release reaches upload and propagates upload failure" \
+  || fail_t "attested release did not exercise failing upload: $upload_out"
+[[ "$(git -C "$fx_c" rev-parse HEAD)" == "$head_c" ]] \
+  && ! git -C "$fx_c" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && ! git --git-dir="$remote_c" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && [[ "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$head_c" ]] \
+  && ok "upload failure leaves no false release commit/tag/push" \
+  || fail_t "upload failure left a false release commit/tag/push"
+
+# 15d. direct tag 也是外部 release marker，不得繞過同一 attestation guard。
+fx_d="$TMP4/direct-tag"; remote_d="$TMP4/direct-tag.git"
+make_ios_release_fixture "$fx_d" "$remote_d"
+head_d="$(git -C "$fx_d" rev-parse HEAD)"
+direct_rc=0
+direct_out="$(bash "$fx_d/ops/release.sh" bump ios 2.0.1 --yes 2>&1 && bash "$fx_d/ops/release.sh" tag ios 2.0.1 --yes 2>&1)" || direct_rc=$?
+[[ "$direct_rc" -ne 0 \
+   && "$(git -C "$fx_d" rev-parse HEAD)" == "$head_d" \
+   && ! -e "$fx_d/upload.called" ]] \
+  && ! git -C "$fx_d" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && ! git --git-dir="$remote_d" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && ok "direct iOS tag cannot bypass new-version attestation" \
+  || fail_t "direct iOS tag bypassed attestation: $direct_out"
+
+# 15e. 正確 previous attestation 也不能授權 semver 倒退。
+fx_e="$TMP4/downgrade"; remote_e="$TMP4/downgrade.git"
+make_ios_release_fixture "$fx_e" "$remote_e"
+head_e="$(git -C "$fx_e" rev-parse HEAD)"
+downgrade_rc=0
+downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --new-version-after-ready 2.0.0 --yes 2>&1)" || downgrade_rc=$?
+[[ "$downgrade_rc" -ne 0 \
+   && "$(git -C "$fx_e" rev-parse HEAD)" == "$head_e" \
+   && ! -e "$fx_e/upload.called" ]] \
+  && echo "$downgrade_out" | grep -q '高於.*2.0.0' \
+  && ok "iOS new marketing version must increase monotonically" \
+  || fail_t "iOS downgrade was not safely rejected: $downgrade_out"
+
+# 15f. 合法恢復：版號已在 HEAD、upload 成功時，跳過空 commit 並 tag/push current HEAD。
+fx_f="$TMP4/already-committed"; remote_f="$TMP4/already-committed.git"
+make_ios_release_fixture "$fx_f" "$remote_f"
+sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
+  "$fx_f/ios/BooksAndVocab.xcodeproj/project.pbxproj"
+git -C "$fx_f" add ios/BooksAndVocab.xcodeproj/project.pbxproj
+git -C "$fx_f" commit -qm "fixture: version already committed"
+committed_head="$(git -C "$fx_f" rev-parse HEAD)"
+committed_rc=0
+committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || committed_rc=$?
+[[ "$committed_rc" -eq 0 && -e "$fx_f/upload.called" \
+   && "$(git -C "$fx_f" rev-parse HEAD)" == "$committed_head" \
+   && "$(git -C "$fx_f" rev-parse refs/tags/ios/2.0.1)" == "$committed_head" \
+   && "$(git --git-dir="$remote_f" rev-parse refs/tags/ios/2.0.1)" == "$committed_head" \
+   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_head" ]] \
+  && ok "already-committed version uploads then tags/pushes current HEAD" \
+  || fail_t "already-committed version left a partial release: $committed_out"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
