@@ -177,6 +177,10 @@ struct SettingsAccountSection: View {
                 isProActive: subscription?.isActive ?? false
             )
         }
+        .accessibilityIdentifier(
+            state.identityFingerprint.map { "settings.account.identity.\($0)" }
+                ?? "settings.account.identity.unavailable"
+        )
     }
 
     private func subscriptionSummaryRow(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {

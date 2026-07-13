@@ -86,6 +86,11 @@ struct SettingsSubscriptionSection: View {
                 .accessibilityLabel(state.ctaTitle)
             }
             .settingsCard()
+            .accessibilityIdentifier(
+                state.isActive
+                    ? "settings.subscription.pro.active"
+                    : "settings.subscription.pro.inactive"
+            )
             .animatePhaseChange(state.badgeText)
             .animatePhaseChange(state.pricingUnavailableMessage)
 
