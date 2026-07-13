@@ -10,6 +10,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "asc_text_bundle.py"
 PUBLIC_WEB_BASE_URL = "https://wordnexus.lol"
@@ -219,3 +221,73 @@ def test_validate_changes_rejects_subscription_description_over_55_chars():
 
     errors = mod.validate_changes([change])
     assert errors == ["subscriptionLocalizations sub-loc-1 description is 56 chars; ASC max is 55"]
+
+
+def test_typed_read_client_hides_token_and_rejects_non_apple_asset_hosts():
+    mod = _load_module()
+    config = mod.ASCConfig(
+        key_id="key",
+        issuer_id="issuer",
+        key_dir=Path("/tmp"),
+        app_id="app",
+    )
+    client = mod.ASCReadClient(config=config, token="super-secret-token")
+
+    assert "super-secret-token" not in repr(client)
+    with pytest.raises(ValueError, match="mzstatic"):
+        client.get_asset_bytes("https://example.com/not-apple.png")
+
+
+def test_typed_read_client_applies_bounded_timeout(monkeypatch):
+    mod = _load_module()
+    config = mod.ASCConfig(
+        key_id="key",
+        issuer_id="issuer",
+        key_dir=Path("/tmp"),
+        app_id="app",
+    )
+    observed: dict[str, float] = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b"asset"
+
+    def fake_urlopen(_request, *, timeout):
+        observed["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    client = mod.ASCReadClient(config=config, token="secret", timeout_seconds=7.5)
+
+    assert client.get_asset_bytes("https://is1-ssl.mzstatic.com/image.png") == b"asset"
+    assert observed == {"timeout": 7.5}
+
+
+def test_typed_read_client_uses_keyed_context_bound_secret_fingerprints():
+    mod = _load_module()
+    config = mod.ASCConfig(
+        key_id="key",
+        issuer_id="issuer",
+        key_dir=Path("/tmp"),
+        app_id="app",
+    )
+    client = mod.ASCReadClient(
+        config=config,
+        token="secret-token",
+        fingerprint_key=b"secret-fingerprint-key",
+    )
+
+    password = "guessable-password"
+    first = client.fingerprint_secret("review/one#password", password)
+    second = client.fingerprint_secret("review/two#password", password)
+
+    assert first != second
+    assert first != mod.hashlib.sha256(password.encode()).hexdigest()
+    assert "secret-token" not in repr(client)
+    assert "secret-fingerprint-key" not in repr(client)

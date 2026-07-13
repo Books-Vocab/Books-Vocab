@@ -17,6 +17,8 @@ review, withdraw, upload screenshots, or change pricing/release controls.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import logging
 import json
 import os
@@ -25,7 +27,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -76,6 +78,58 @@ class ASCConfig:
 
 
 @dataclass(frozen=True)
+class ASCReadClient:
+    """Typed, read-only ASC transport shared by higher-level evidence tools."""
+
+    config: ASCConfig
+    token: str = field(repr=False)
+    timeout_seconds: float = 20.0
+    fingerprint_key: bytes = field(default=b"", repr=False)
+
+    @classmethod
+    def connect(
+        cls, config: ASCConfig, *, timeout_seconds: float = 20.0
+    ) -> "ASCReadClient":
+        p8 = _read_private_key(config)
+        return cls(
+            config=config,
+            token=_mint_token_with_key(config, p8),
+            timeout_seconds=timeout_seconds,
+            fingerprint_key=hashlib.sha256(p8.encode("utf-8")).digest(),
+        )
+
+    def get_json(self, path: str) -> dict[str, Any]:
+        if not path.startswith("/v1/"):
+            raise ValueError("ASC JSON path must start with /v1/")
+        return request_json(path, self.token, timeout_seconds=self.timeout_seconds)
+
+    def get_asset_bytes(self, url: str) -> bytes:
+        parsed = urllib.parse.urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if parsed.scheme != "https" or not (
+            hostname == "mzstatic.com" or hostname.endswith(".mzstatic.com")
+        ):
+            raise ValueError("ASC asset URL must be an HTTPS mzstatic.com URL")
+        try:
+            with urllib.request.urlopen(
+                urllib.request.Request(url, method="GET"),
+                timeout=self.timeout_seconds,
+            ) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            raise RuntimeError(f"ASC asset fetch failed: HTTP {exc.code}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError("ASC asset fetch failed: network") from exc
+
+    def fingerprint_secret(self, context: str, value: str) -> str:
+        """Return a stable keyed fingerprint without creating an offline verifier."""
+        if not self.fingerprint_key:
+            raise RuntimeError("ASC secret fingerprint key is unavailable")
+        payload = f"{context}\0{value}".encode("utf-8")
+        return hmac.new(self.fingerprint_key, payload, hashlib.sha256).hexdigest()
+
+
+@dataclass(frozen=True)
 class Change:
     method: str
     path: str
@@ -95,12 +149,14 @@ class Change:
         }
 
 
-def mint_token(config: ASCConfig) -> str:
+def _read_private_key(config: ASCConfig) -> str:
+    p8_path = config.key_dir.expanduser() / f"AuthKey_{config.key_id}.p8"
+    return p8_path.read_text(encoding="utf-8")
+
+
+def _mint_token_with_key(config: ASCConfig, p8: str) -> str:
     import jwt
 
-    p8_path = config.key_dir.expanduser() / f"AuthKey_{config.key_id}.p8"
-    with p8_path.open(encoding="utf-8") as f:
-        p8 = f.read()
     now = int(time.time())
     return jwt.encode(
         {"iss": config.issuer_id, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
@@ -110,14 +166,25 @@ def mint_token(config: ASCConfig) -> str:
     )
 
 
-def request_json(path: str, token: str, method: str = "GET", body: dict[str, Any] | None = None) -> dict[str, Any]:
+def mint_token(config: ASCConfig) -> str:
+    return _mint_token_with_key(config, _read_private_key(config))
+
+
+def request_json(
+    path: str,
+    token: str,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+    *,
+    timeout_seconds: float = 20.0,
+) -> dict[str, Any]:
     data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
     headers = {"Authorization": f"Bearer {token}"}
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(ASC_BASE + path, data=data, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
             raw = resp.read().decode("utf-8", "replace")
             return json.loads(raw) if raw.strip() else {"_ok": resp.status}
     except urllib.error.HTTPError as e:
