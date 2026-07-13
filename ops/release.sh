@@ -228,9 +228,9 @@ cmd_tag() {
   fi
 }
 
-# ---- release：前後端統一發布入口（bump→tag→生產觸點）。dry-run 預設，--yes 才執行 ----
+# ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
-# ios:     bump ios → tag ios → ios_release.sh --upload（archive + 上傳 TestFlight）
+# ios:     bump ios → ios_release.sh --upload（archive + 上傳 TestFlight）→ tag ios（upload failure 不留 false tag）
 # 須在 primary、on main（release 發布本地主幹；feature 改動先 cutover 進 main）。
 cmd_release() {
   local target="${1:?用法: release.sh release <backend|ios> <x.y.z> [--yes]}" v="${2:-}"
