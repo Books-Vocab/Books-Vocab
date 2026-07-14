@@ -784,6 +784,17 @@ documents:
       - ops/ios_build.sh
       - ops/ios_release.sh
       - ops/release.sh
+      - ops/ios_test.sh
+      - ops/app_review_evidence.py
+      - ops/app_review_gate.py
+      - ops/asc_reviewer_mirror.py
+      - ops/app_review/
+      - ops/lib/ios_ops_release.sh
+      - ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsView+State.swift
       - ios/BooksAndVocab.xcodeproj/
       - ios/ExportOptions.plist
       - ios/BooksAndVocab/Products.storekit
@@ -800,6 +811,14 @@ documents:
       - ios/BooksAndVocabUITests/
       - ios/BooksAndVocab/Support/UITestFixtureSeed*.swift
       - ops/ios_test.sh
+      - ops/app_review_evidence.py
+      - ops/asc_reviewer_mirror.py
+      - ops/app_review_gate.py
+      - ops/app_review/
+      - ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsPresentation.swift
+      - ios/BooksAndVocab/Views/Settings/SettingsView+State.swift
       - ops/uitest_review_page.py
       - ops/catalog_contact_sheet.py
       - ops/plain_deadzone_lint.sh
