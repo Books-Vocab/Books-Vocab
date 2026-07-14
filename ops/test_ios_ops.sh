@@ -1243,15 +1243,18 @@ live_demo_env="$(
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:BlueprintName string BooksAndVocabUITests" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string spoof" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 string eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:BlueprintName string BooksAndVocabTests" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64 string hidden-plaintext" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1 dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets array" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:BlueprintName string AnotherUITestTarget" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables dict" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string hidden-spoof" "$base"
     /usr/libexec/PlistBuddy -c "Add :TestConfigurations:1:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64 string hidden-fixture" "$base"
@@ -1261,12 +1264,42 @@ live_demo_env="$(
     printf "%s|%s|%s" \
       "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN" "$staged")" \
       "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256" "$staged")" \
-      "$(plutil -convert json -o - "$staged" | jq -r '\''[.TestConfigurations[].TestTargets[].TestingEnvironmentVariables | ((.KG_LIVE_DEMO_RUN == "1") and (.KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 == "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") and (has("KG_FIXTURE_DATASET_B64") | not) and (has("KG_FIXTURE_DATASET_DEFLATE_B64") | not))] | all'\'')"
+      "$(plutil -convert json -o - "$staged" | jq -r '\''[.TestConfigurations[].TestTargets[] | if .BlueprintName == "BooksAndVocabUITests" then ((.TestingEnvironmentVariables.KG_LIVE_DEMO_RUN == "1") and (.TestingEnvironmentVariables.KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 == "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") and (.TestingEnvironmentVariables | has("KG_FIXTURE_DATASET_B64") | not) and (.TestingEnvironmentVariables | has("KG_FIXTURE_DATASET_DEFLATE_B64") | not)) else (.TestingEnvironmentVariables | (has("KG_LIVE_DEMO_RUN") | not) and (has("KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256") | not) and (has("KG_FIXTURE_DATASET_B64") | not) and (has("KG_FIXTURE_DATASET_DEFLATE_B64") | not)) end] | all'\'')"
   ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
 )"
 [[ "$live_demo_env" == "1|dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|true" ]] \
-  && ok "ios_test live-demo staging overwrites spoof env with fingerprint-only contract" \
+  && ok "ios_test live-demo staging sanitizes all targets and injects only the dedicated UI target" \
   || fail_t "ios_test live-demo runner env contract invalid: $live_demo_env"
+live_demo_target_cardinality="$(
+  bash -c '
+    set -uo pipefail
+    eval "$(sed -n "/^xctestrun_target_env_roots()/,/^}/p" "$1")"
+    eval "$(sed -n "/^sanitize_xctestrun_evidence_env_root()/,/^}/p" "$1")"
+    eval "$(sed -n "/^stage_live_demo_xctestrun()/,/^}/p" "$1")"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    make_plist() {
+      local path="$1" first="$2" second="${3:-}"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$path" >/dev/null 2>&1
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$path"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$path"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$path"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:BlueprintName string $first" "$path"
+      [[ -z "$second" ]] || {
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1 dict" "$path"
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:BlueprintName string $second" "$path"
+      }
+    }
+    DEMO_ACCOUNT_IDENTITY_SHA256="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    make_plist "$tmp/missing.xctestrun" BooksAndVocabTests
+    stage_live_demo_xctestrun "$tmp/missing.xctestrun" "$tmp/missing.scoped.xctestrun"; missing_rc=$?
+    make_plist "$tmp/duplicate.xctestrun" BooksAndVocabUITests BooksAndVocabUITests
+    stage_live_demo_xctestrun "$tmp/duplicate.xctestrun" "$tmp/duplicate.scoped.xctestrun"; duplicate_rc=$?
+    printf "%s|%s" "$missing_rc" "$duplicate_rc"
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$live_demo_target_cardinality" == "1|1" ]] \
+  && ok "ios_test live-demo staging rejects zero or multiple dedicated UI targets" \
+  || fail_t "ios_test live-demo target cardinality was not fail-closed: $live_demo_target_cardinality"
 live_demo_spoof_detected="$(
   bash -c '
     set -euo pipefail
