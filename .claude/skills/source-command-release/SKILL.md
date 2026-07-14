@@ -60,6 +60,20 @@ Use this skill when the user asks to run the migrated source command `release`.
 
 實際出 build 與改 App Store 內容走獨立 ops 腳本：
 
+### App Store submit hard stop
+
+任何 iOS App Store **submit / resubmit**（包含人工 ASC GUI）前都必須重新跑以下 read-only 控制面；版本 spec 由 workflow 回傳值取得，**不得寫死 marketing version**：
+
+```bash
+./ops/ios_ops.sh workflow release --json
+./ops/app_review_evidence.py status --spec <workflow.appReviewGate.spec>
+./ops/ios_ops.sh gate release --json
+```
+
+- workflow 缺 spec、`appReviewGate.verdict.status != "pass"`、evidence `status != "pass"`，或 release gate `verdict != "pass"`，一律視為 **BLOCK**。
+- BLOCK 時只允許繼續跑 read-only `workflow` / `status` / `gate` 查詢，或照 evidence plan 的 typed producer 修補缺失／漂移／過期證據；**不得把人工 ASC GUI submit 當 fallback，也不得因使用者已登入就繞過 gate**。
+- 只有三者都 PASS，才可把 ASC GUI submit 作為人工下一步；這個 skill 與 `asc.sh` 都不代替操作者按下不可逆 submit。
+
 - 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
 - App Store Connect 全表面（查版本/審查/送審佇列/評論/訂閱/定價/發布方式，改文案/審查資訊/App 資訊/分類/年齡分級/EULA/訂閱/發布控制）→ `./ops/asc.sh`。唯讀：`versions`/`builds`/`info`/`metadata`/`review-status`/`review-detail`/`submissions`/`screenshots`/`categories`/`reviews`/`accessibility`/`subscriptions`/`iap`/`pricing`/`sub-offers`/`release-plan`。寫入（皆 dry-run 預設、`--yes` 才真送）：`set`/`set-review`/`set-appinfo`/`set-eula`/`set-content-rights`/`set-category`/`set-rating`/`reply-review`/`set-sub-name|desc|review-note|price`/`set-release-type`/`phased`。**刻意不做** submit-for-review。`asc.sh help` 看完整用法、`docs/sop/ios.md §發版` 看物件邊界
 - 被拒同 `MARKETING_VERSION` 重送、只 bump build number → `./ops/release.sh bump-build ios`（dry-run 印舊→新，`--yes` 才寫；不動 marketing 版號）
@@ -68,4 +82,5 @@ Use this skill when the user asks to run the migrated source command `release`.
 ## 鐵則
 
 - **絕不跳過使用者確認**（版號、changelog、`tag`/`release` --yes 三關都要）。`release` 碰生產，確認尤其不可省。
+- **App Review BLOCK 是 submit hard stop**：只能查狀態或修 typed evidence，不能手動 submit／resubmit。
 - `tag`/`release` 前 working tree 若有非版號檔的雜變更，先問使用者。
