@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocabUITests/
   - ios/BooksAndVocab/Support/
   - ops/
-verified_against: 1ecd9f6c
+verified_against: 9f4b94637
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -30,6 +30,9 @@ verified_against: 1ecd9f6c
 ```
 
 - JSON verdict 讀 `uiVisualReview{screenshotDir,contactSheet,quick4Sheet,visualReviewManifest,video,reviewRoot,reviewHtml}`；`null` = 沒有視覺證據 = 不算完成。`video` = 全程錄影（UI scope + 可解析 UDID 時自動錄，run 結束歸檔到 `build/snapshots/uitest-videos/`，verdict 指歸檔路徑）。`reviewHtml` = 本次 run 專屬 `build/snapshots/uitest-runs/<run>/UIreview.html`，直接把狀態、`lastRunAt`、step screenshots、contact sheets、video、log 與 manifest 收在同一頁；即使 0 screenshot 也會顯示 run metadata 與 artifact links。畫面行為爭議時先開它看整段流程，再抽幀看 tap 當下。每次 UI run 也會更新 workspace-level `build/snapshots/uitest-runs/index.json`（schema `kg.ios.uitest-review-workspace.v1`）與 `build/snapshots/uitest-runs/UIreview.html`，依 `flowId × variantId` 只保留最新一次 run、`lastRunAt`、log/video/run-page 連結；沒跑過的 flow 由 `uitest_review_workspace.py` 以 `never-run` pending card 呈現。`./start.sh` 會刷新並開這個 UITest workspace；catalog gallery 只能用 `./start.sh --catalog` 明確開啟，禁止 silent fallback。`flowId` 來自 `--file`/grep/scope，`variantId` 來自 dataset 或 launch profile。頂層 `device` = 本次 run 的 sim UDID（對 xcresult / log show 取證）。
+- App Review journey 只能由 `app_review_evidence.py journey-run` 啟動：它固定委派 `ios_ops.sh test --ui --configuration Release`，並要求 pinned dataset/fixed clock/locale/timezone/appearance。`ios_test.sh` 自己把 producer identity、configuration、build/source/dataset 與 execution provenance 寫入 verdict `options`；consumer 不接受 caller 另塞的 `releaseEvidence`。Release 與 Debug 的 build-for-testing cache key 分離。
+- Live demo access 只能由 `app_review_evidence.py demo-run --live-mirror-bundle <dir>` 啟動：destination 必須是 physical `platform=iOS,id=...`，底層 products 走 `Release-iphoneos`，不注入 UI World；producer 從 hash-closed ASC live mirror 的 normalized reviewer account 派生預期 SHA-256。`ios_test.sh` 先 sanitize/scan 所有 xctestrun configuration/target 的保留 live/fixture keys，再只對唯一 `BlueprintName=BooksAndVocabUITests` target 注入 live marker 與 account SHA（零個或多個匹配都 fail-closed）；host process 同時 unset 這些 keys，其他 test target 不得收到 live env。非-live run 若殘留或偽造 `KG_LIVE_DEMO_*` 會被拒絕。
+- 固定測試 `LiveDemoAccessUITests.testLiveDemoAccountHasProEntitlement` 會拒絕 Debug、simulator、缺 marker/hash、fixture args/env、backend override、錯誤／缺失 account 與 Free entitlement；通過條件是 Settings 暴露的 account identity SHA 等於 live mirror 且 live backend 顯示 Pro，之後 `ios_test.sh` 才產生綁同一 SHA 的 `demoEvidence`。這份機器證據不宣稱 fresh credential SSO；重新登入與 credential 可用性由 root-bound human attestation 證明。caller 自填 nested JSON 不能成為 live-demo 證據。
 - 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --lease --json`。它會展開 profile × dataset，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。

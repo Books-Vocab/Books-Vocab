@@ -6,7 +6,7 @@ scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 7b385ee5
+verified_against: 9f4b94637
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -74,7 +74,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | 腳本 / 指令 | DerivedData | 備註 |
 |---|---|---|
 | `ios_build.sh` build | `.cache/ios-build-derived-data`（共享） | 主修點 |
-| `ios_test.sh` build-for-testing | `.cache/ios-test-derived-data/<content-key>` | content-keyed warm cache |
+| `ios_test.sh` build-for-testing | `.cache/ios-test-derived-data/<content-key>` | content-keyed warm cache；key 明確包含 Debug/Release configuration，兩者不可共用 products |
 | `ios_test.sh` `test`（cache-miss 後備） | 同上 | 2026-06-09 補釘，原本漏到全域 |
 | `ios_test.sh` test-without-building | 走 `-xctestrun`（不編譯） | 免釘 |
 | `ios_release.sh` archive | `.cache/ios-release-derived-data`（共享） | 2026-06-09 補釘；與 Debug 分開避免互相 invalidate |

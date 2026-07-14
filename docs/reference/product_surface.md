@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: 6ff5bcf10
+verified_against: 9f4b94637
 -->
 # Implemented Product Surface
 
@@ -182,6 +182,7 @@ verified_against: 6ff5bcf10
 - `podcast_upload.sh`: `series_id` regex + `createdAt` idempotent + rsync `--partial-dir --delay-updates` 原子 + 遠端 `index.json` flock
 - **Podcast producer dashboard**(`lab/podcast/monitor/`,localhost:8765):workspace 列表 sidebar(search / 狀態 chip / sort recent⇄A→Z / mobile drawer,localStorage 持久)+ 每 workspace 富 summary(status `running|done|failed|awaiting|idle|fresh`、`milestones[]` 四產物關卡 + `gates[]` 兩道人工核准 gate 三態(passed/awaiting/pending)、progress、cost LLM/TTS split、episodes、last_updated、active_job 透過 `<ws>/.pipeline_job_id` sidecar 反查)+ 側欄進度改**三相雙閘軌**(PLAN/SCRIPT/AUDIO 三相條 + 兩 gate glyph,awaiting 琥珀脈動;subtitle 折進 audio 相細底線)+ 內嵌試聽(SRT chat-bubble 渲染:解析 `[Speaker]` 前綴將連續同講者 cue 合併成氣泡,兩位講者分左右兩色;每字 click-to-seek + 高亮同步保留)+ episode chip 顯示完整 TTS 模型 id(從 `ep_N_<variant>.meta.json` sidecar 讀;舊集數無 sidecar 時 fallback 為 `pro (?)` / `flash (?)` 表世代未知)+ LIVE ACTIVITY feed 把 `[...]` 方括號內容(TTS 情緒 tag / 集數清單)行內高亮成 badge + nav SETTINGS(⚙)面板(localStorage 持久,套用於下一條 pipeline,每旋鈕單一來源:PARALLEL workers(原 nav input 已收斂於此)、TTS MODEL 下拉(建立時凍結進 `.tts_model` sidecar、選非-3.1 family 顯示跨 family 風險紅字);spoiler 仍只在 NEW PODCAST modal)+ NEW PODCAST upload modal(可選 `tts_model`)+ UPLOAD / DELETE / RERUN-STAGE 動作 + **情境式推進鈕**(一顆鈕依狀態變身:awaiting→▶ APPROVE PLAN/SCRIPTS 寫 gate 標記續跑、idle/failed 有未完工→▶ RESUME 純 auto-resume、running→禁用、READY→隱藏)+ RECENT JOBS panel + PUBLISHED ON SERVER 遠端 series 管理(rm + index.json rebuild)。main 欄按 scope 分兩區:**THIS PODCAST**(選中 workspace:KPIs → stage 縱向 timeline → cost → episodes → live activity,band 顯示書名)與 **SERVER · all podcasts**(全域:recent jobs + published,recessed surface);stage 進度改縱向 timeline(spine dot + 連接線進度,running/failed 才顯 pill)。`./start.sh` 預設前景跑(`--bg` 給 pipeline.py auto-launch)
 - Post-deploy smoke verify: `system/info` + health + sentry test event
+- **App Review closed-world evidence workflow**：checked spec 明示每種 artifact 的 typed producer；read-only ASC live mirror、Release UI journeys、physical-device live demo（ASC 帳號 identity hash + live Pro）、URL／appearance proof 與 root-bound human/agent attestations 必須共同通過 `app_review_gate.py`。`ios_ops.sh workflow release --json` 內嵌 `appReviewGate`；非 PASS 時 submit step 只保留 evidence `status` 命令，PASS 後才顯示人工 ASC GUI submit。工具本身不 submit、withdraw、改 ASC metadata 或上傳截圖；技術命令與證據邊界見 `docs/reference/tech_index.md` 與 `docs/sop/ios.md`。
 - `backup_verify.sh`: restore drill + integrity check
 - pytest pinned in `pyproject.toml [dependency-groups].dev`(修 backend venv 無 pytest)
 - **跨平台設計系統地基**: `design-system/tokens.json`(**W3C DTCG 格式**,跨平台 token SoT)經兩條生成鏈出貨 — **Style Dictionary**(`npm run build`,`sd.config.mjs`)→ iOS `DesignTokens.swift`(scalar bridge,禁手改)+ **`ops/gen_web_tokens.py`** → web CSS(`design-system/dist/` + `backend/static/`)。手寫 primitives 源 `design-system/dist/kg-components.css`,複製進官網；已接線 scalar 群組(radius/spacing/type-scale/tracking/elevation,47 值)為 Figma→iOS 真注入,設計師 SOP 見 `docs/sop/figma-token-workflow.md`

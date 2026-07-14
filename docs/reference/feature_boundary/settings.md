@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 050f1862
+verified_against: 9f4b94637
 -->
 # Settings Feature Boundary
 
@@ -40,7 +40,7 @@ verified_against: 050f1862
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresentation.swift` | 170 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
+| `SettingsPresentation.swift` | 188 | `struct SettingsPresenterState` + `enum SubscriptionBadgeTone` + `struct SettingsPresenterActions`；`AccountIdentityFingerprint` 將 reviewer email 正規化（trim + NFC + POSIX lowercase）後做單向 SHA-256，供 exact-account UI evidence 使用；`PreferencesSection.reviewModeDisplayName(for:)` 組裝首頁複習節奏顯示；`BookSyncState.from(phase:)` 投影 CloudKitMirroringMonitor.phase（localOnly→nil 隱藏；failed 帶錯誤描述）|
 | `SubscriptionPresentation.swift` | 149 | `enum SubscriptionPresentation`：KGSubscriptionStatus → badge / tone / 摘要 / 詳情 / CTA / permissions UI 模型；`summary(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 切換 active 摘要文案（Release 用不含 Podcast 的版本）|
 | `SubscriptionPaywallFeatureCatalog.swift` | 123 | Free vs Pro 功能對照目錄（EPUB/PDF、AI 翻譯、同步、知識圖譜、複習、Podcast）；`descriptors(podcastEnabled:)` 於 gate off（Release，`KGFeatureFlags.podcastEnabled`）時移除 Podcast row（quota row 恆末位）；計算屬性支援語言即時切換 |
 | `SettingsMetrics.swift` | 14 | `enum AppSettingsMetrics`，Settings 專用版面常數（帳號 / 複習區塊間距與大小）|
@@ -49,8 +49,8 @@ verified_against: 050f1862
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsAccountSection.swift` | 420 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）|
-| `SettingsSubscriptionSection.swift` | 134 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）|
+| `SettingsAccountSection.swift` | 424 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
+| `SettingsSubscriptionSection.swift` | 139 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
 | `SettingsReviewSection.swift` | 334 | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
 | `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）|
 | `SettingsOtherSection.swift` | 227 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）|
@@ -96,6 +96,7 @@ verified_against: 050f1862
 
 - `SettingsCoordinator`：Settings 的導航與 side-effect state（optional integration sheet、subscription paywall、delete confirm、translation config、debug backend）；由 `SettingsView` 持有，不外洩
 - `SettingsPresenterState`：Presenter 接收的 UI 狀態快照，純值類型，可跨 layer 傳遞
+- `SettingsPresenterState.AuthSection.identityFingerprint`：只由 `authManager.userEmail` 派生；原始帳號不進 accessibility identifier 或 evidence attachment/log，UITest 以同一正規化規則的 SHA-256 驗證裝置登入者是否等於 ASC reviewer account（畫面可見 email 仍保有一般 accessibility）
 - `SettingsPresenterState.PreferencesSection.reviewModeDisplayName(for:)`：偏好首頁「複習節奏」摘要的單一組裝入口；未凍結顯示模式名，凍結時顯示 `已凍結 · <模式>`
 - `SettingsPresenterActions`：callback closure 集合，由 Container 注入，不持有 mutable state
 - 帳號刪除確認與 paywall 開關目前由 `SettingsCoordinator` / `SettingsView` 一起驅動；不直接散落到 section view
