@@ -213,6 +213,9 @@ def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, A
     return g
 
 
+_LIVE_ONLY_UITEST_CLASSES = {"LiveDemoAccessUITests"}
+
+
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
@@ -223,6 +226,9 @@ def plan_gates(changed_files: list[str],
                            classes changed, also test --ui --file <class> per changed
                            UITest (impacted-scope, --dataset marketing_demo) — NOT the
                            whole --ui suite, which false-blocks on unrelated flaky tests.
+                           A live-only exact-device class cannot truthfully execute in
+                           that fixture simulator route: compile it as Release iphoneos
+                           and emit a runtime-evidence advisory instead.
       design-system/**  -> verify_design_system.sh   (tokens / generated CSS / Models /
       | tokens | *.css     UIComponents — the pre-commit DS_PATTERN, verbatim).
       docs/**.md        -> docs_lint.sh --files + conflict-marker scan + verified_against
@@ -285,10 +291,29 @@ def plan_gates(changed_files: list[str],
                 for p in ios
                 if "UITests/" in p and p.endswith("Tests.swift")
             })
-            for cls in ui_test_classes:
+            live_only_classes = sorted(set(ui_test_classes) & _LIVE_ONLY_UITEST_CLASSES)
+            for cls in sorted(set(ui_test_classes) - _LIVE_ONLY_UITEST_CLASSES):
                 gates.append(_shell(f"ios-test-ui:{cls}", "ios",
                                     ["ops/ios_ops.sh", "test", "--ui",
                                      "--dataset", "marketing_demo", "--file", cls], "block"))
+            if live_only_classes:
+                gates.append(_shell(
+                    "ios-live-demo-uitest-compile", "ios",
+                    ["ops/ios_ops.sh", "test", "--ui", "--configuration", "Release",
+                     "--destination", "generic/platform=iOS", "--prepare-cache", "--json"],
+                    "block",
+                ))
+                gates.append(_internal(
+                    "ios-live-demo-runtime-advisory", "ios", "warn",
+                    note=("live-only UITest compiled for Release iphoneos; runtime was "
+                          "intentionally not executed with simulator/fixture evidence — "
+                          "App Review submission still requires app_review_evidence.py "
+                          "demo-run exact-device evidence"),
+                    files=[
+                        f"ios/BooksAndVocabUITests/{cls}.swift"
+                        for cls in live_only_classes
+                    ],
+                ))
 
     if ds:
         gates.append(_shell("design-system", "design-system",
