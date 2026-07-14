@@ -971,16 +971,24 @@ sanitize_xctestrun_evidence_env_root() {
 stage_live_demo_xctestrun() {
   local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
-  local env_root found=0
+  local env_root target_root blueprint_name live_env_root="" live_target_count=0
   while IFS= read -r env_root; do
     [[ -n "$env_root" ]] || continue
-    found=1
     sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
-    /usr/libexec/PlistBuddy -c "Add $env_root dict" "$staged_path" 2>/dev/null || true
-    /usr/libexec/PlistBuddy -c "Add $env_root:KG_LIVE_DEMO_RUN string 1" "$staged_path" || return 1
-    /usr/libexec/PlistBuddy -c "Add $env_root:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 string $DEMO_ACCOUNT_IDENTITY_SHA256" "$staged_path" || return 1
+    target_root="${env_root%:TestingEnvironmentVariables}"
+    blueprint_name="$(/usr/libexec/PlistBuddy -c "Print $target_root:BlueprintName" "$staged_path" 2>/dev/null || true)"
+    if [[ "$blueprint_name" == "BooksAndVocabUITests" ]]; then
+      live_target_count=$((live_target_count + 1))
+      live_env_root="$env_root"
+    fi
   done < <(xctestrun_target_env_roots "$staged_path")
-  [[ "$found" -eq 1 ]]
+  if [[ "$live_target_count" -ne 1 ]]; then
+    echo "[ios_test] error: live-demo xctestrun requires exactly one BooksAndVocabUITests target (found $live_target_count)" >&2
+    return 1
+  fi
+  /usr/libexec/PlistBuddy -c "Add $live_env_root dict" "$staged_path" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add $live_env_root:KG_LIVE_DEMO_RUN string 1" "$staged_path" || return 1
+  /usr/libexec/PlistBuddy -c "Add $live_env_root:KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256 string $DEMO_ACCOUNT_IDENTITY_SHA256" "$staged_path" || return 1
 }
 
 xctestrun_has_live_demo_env() {
