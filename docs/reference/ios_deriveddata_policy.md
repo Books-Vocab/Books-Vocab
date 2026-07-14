@@ -6,7 +6,7 @@ scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 9f4b94637
+verified_against: 30df7f5f1
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
