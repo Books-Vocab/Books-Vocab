@@ -138,6 +138,23 @@ def test_gate_plan_changed_uitest_file_selects_its_ui_class():
     assert not any(n.startswith("ios-test-ui") for n in _names(gates))
 
 
+def test_gate_plan_live_demo_uitest_compiles_for_device_but_never_runs_fixture_simulator():
+    gates = plan_gates(["ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift"])
+    by_name = _by_name(gates)
+
+    assert "ios-test-ui:LiveDemoAccessUITests" not in by_name
+    compile_gate = by_name["ios-live-demo-uitest-compile"]
+    assert compile_gate["level"] == "block"
+    assert compile_gate["cmd"] == [
+        "ops/ios_ops.sh", "test", "--ui", "--configuration", "Release",
+        "--destination", "generic/platform=iOS", "--prepare-cache", "--json",
+    ]
+    advisory = by_name["ios-live-demo-runtime-advisory"]
+    assert advisory["level"] == "warn"
+    assert advisory["kind"] == "internal"
+    assert "demo-run" in advisory["note"]
+
+
 def test_gate_plan_ios_models_change_also_triggers_design_system():
     # ios/BooksAndVocab/Models/ is inside the design-system pre-commit pattern
     # (token drift) — so a Models change fans out to BOTH the iOS gates and the
