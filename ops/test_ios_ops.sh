@@ -488,7 +488,9 @@ grep -q 'cmd_doctor_json' "$IOS_OPS_RELEASE_LIB" && grep -q 'kg.ios.doctor.v1' "
   && ok "doctor exposes machine-readable JSON schema" || fail_t "doctor missing JSON schema"
 grep -q 'doctor_readiness emit_readiness_json' "$IOS_OPS_RELEASE_LIB" \
   && ok "doctor JSON reuses readiness checks" || fail_t "doctor JSON does not reuse readiness checks"
-grep -q 'read_asc_version_state' <<<"$doctor_body" && grep -q 'waited >= 12' "$IOS_OPS_CORE_LIB" \
+grep -q 'read_asc_version_state' <<<"$doctor_body" \
+  && grep -q 'KG_IOS_OPS_CAPTURE_TIMEOUT_SECONDS="${KG_IOS_OPS_ASC_TIMEOUT_SECONDS:-12}"' "$IOS_OPS_CORE_LIB" \
+  && grep -q 'ios_ops_stream_capture workflow-asc-versions' "$IOS_OPS_CORE_LIB" \
   && ok "doctor bounds ASC version-state lookup" || fail_t "doctor missing bounded ASC version lookup"
 grep -q 'ExportOptions.plist' <<<"$doctor_body" \
   && ok "doctor checks export signing options" || fail_t "doctor missing ExportOptions check"
