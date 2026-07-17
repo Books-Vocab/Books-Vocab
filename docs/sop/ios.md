@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 4e2e89b55
+verified_against: 381b22910
 -->
 # Books & Vocab iOS 開發技能
 
@@ -83,7 +83,7 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 `ios_ops.sh status --json` 是更輕量的 quick summary：只回 `kg.ios.status.v1`，含 project version/build、Organizer latest archive 與 TestFlight latest build，不做 readiness/gate 判斷。適合 agent 第一輪只想知道「現在 local/Organizer/TestFlight 各是多少」時使用。
 
-`ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload；除了 project/Organizer/TestFlight/ASC state，也會自動讀 `ops/app_review/` 最新 semver spec 並執行本地 App Review gate。只有 gate PASS 時 submit step 才標 `manual`；gate BLOCK、spec 缺失或 gate 無法執行時，submit step 必為 `block`，唯一 next command 是 `./ops/app_review_evidence.py status --spec <latest>`。`--json` schema `kg.ios.workflow.v1` 另含 `appReviewGate`、`summary.verdict` 與 `summary.counts.ready|todo|block|warn|manual|total`。
+`ios_ops.sh workflow release` 是 read-only 發版操作編排:輸出 `[ios][workflow] step=N key=... status=todo|ready|block|warn|manual command="..." note="..."`。它不跑測試/編譯/archive/upload；除了 project settings、Organizer、TestFlight、ASC state，也會自動讀 `ops/app_review/` 最新 semver spec 並執行本地 App Review gate。這五個潛在慢來源都使用共用 visible runner，輸出與 timeout 契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為 SoT。只有 gate PASS 時 submit step 才標 `manual`；gate BLOCK、spec 缺失或 gate 無法執行時，submit step 必為 `block`，唯一 next command 是 `./ops/app_review_evidence.py status --spec <latest>`。`--json` schema 另含 `appReviewGate`、`summary.verdict` 與 `summary.counts.ready|todo|block|warn|manual|total`。
 
 `ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步。`block` 來自 readiness 或 workflow，其中包含 App Review evidence gate，所以缺 producer、缺/漂移/過期證據不能再以 GUI manual step 繞過。
 

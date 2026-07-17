@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 457b8ea74
+verified_against: 381b22910
 -->
 # Technical Reference Index
 
@@ -183,7 +183,7 @@ Container 內 ops-cli(`card-find`、`db-query`、`llm-errors`、`user-config <ui
 
 Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`worktree_orchestrate.py gate` 不得套一般 `marketing_demo` simulator fixture。block gate 固定跑 `ops/ios_ops.sh test --ui --configuration Release --destination 'generic/platform=iOS' --prepare-cache --json`，只證明 `Release-iphoneos` build-for-testing 可編譯；runtime 另回 warn advisory，送審前仍須由 `app_review_evidence.py demo-run` 產生 physical exact-device/live-backend evidence。
 
-`ops/lib/streaming_command.py` 是長時 child process 的 machine-output-safe runner：parent stdout 永不寫入，stderr 立即輸出 `start` / `spawned`、最長每 20 秒 `heartbeat`，每筆都含 phase、elapsed、PID、alive；child 正常 exit 時另寫 `done` + rc，且不回顯可能帶秘密的 raw argv。stdout/stderr 以獨立 reader 持續 drain，只保留 bounded tail，保留 child rc、signal 與分離 stderr 語意。child 另開 isolated session；parent 中斷會向上拋出，同時對整個 process group TERM，逾期 KILL，直接 child 先退出後仍補 group KILL，避免孫行程孤兒化或持有 inherited pipe。`worktree_orchestrate.py` 的所有 shell gate，以及潛在長時 mutation / network probe（fetch、worktree add/remove、rebase、merge、push、ls-remote、branch teardown、committed sweep）都必須走此 runner；只有本機、預期快速的 parsed-output probe 可走 silent capture。`app_review_evidence.py` 的 desired shape/build/bundle、journey、physical demo、gate evaluation亦使用同一原語。測試：`ops/tests/test_streaming_command.py`、`ops/tests/test_worktree_orchestrate.py`、`ops/tests/test_app_review_evidence.py`。
+`ops/lib/streaming_command.py` 是長時 child process 的 machine-output-safe runner，亦提供 shell control plane capture CLI：library runner 不寫 parent stdout；capture CLI 只把 captured child stdout 原樣轉送，所有 progress 固定寫 stderr。progress 立即輸出 `start` / `spawned`、最長每 20 秒 `heartbeat`，每筆都含 phase、elapsed、PID、alive；child 正常 exit 時另寫 `done` + rc，且不回顯可能帶秘密的 raw argv。stdout/stderr 以獨立 reader 持續 drain，只保留 bounded tail，保留 child rc、signal 與分離 stderr 語意。child 另開 isolated session；parent 中斷或 deadline timeout 會對整個 process group TERM，逾期 KILL，timeout 固定回 rc 124；即使直接 child 已先退出，只要孫程序仍持 inherited pipe 也會清掉整個 group。`worktree_orchestrate.py` 的所有 shell gate，以及潛在長時 mutation / network probe（fetch、worktree add/remove、rebase、merge、push、ls-remote、branch teardown、committed sweep）都必須走此 runner；只有本機、預期快速的 parsed-output probe 可走 silent capture。`app_review_evidence.py` 的 desired shape/build/bundle、journey、physical demo、gate evaluation亦使用同一原語；`ios_ops.sh workflow release` 的 project settings、Organizer、TestFlight、ASC versions、App Review gate 五個來源也由 `ios_ops_stream_capture` 接線，stdout 保持單一 workflow JSON。測試：`ops/tests/test_streaming_command.py`、`ops/tests/test_worktree_orchestrate.py`、`ops/tests/test_app_review_evidence.py`、`ops/tests/test_ios_ops_release_heartbeat.sh`。
 
 ## Web 設計系統(`design-system/`)
 
