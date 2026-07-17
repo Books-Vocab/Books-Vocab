@@ -129,6 +129,30 @@ def test_desired_pipeline_streams_every_subprocess_phase(tmp_path: Path, monkeyp
     assert calls == ["desired-shape", "desired-build", "desired-bundle"]
 
 
+def test_checked_spec_desired_manifest_anchor_matches_reproducible_bundle_without_self_reference(
+    tmp_path: Path,
+):
+    spec = json.loads((ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8"))
+    kwargs = {
+        "workspace_root": ROOT,
+        "profile_file": ROOT / "ops/capture_profiles/marketing_account.json",
+        "render_output_dir": ROOT / "promotion/screenshots/dist/app-store/iphone",
+        "bundle_dir": tmp_path / "bundle",
+        "fixed_clock": "2026-07-09T09:00:00Z",
+        "locale": "zh-Hant",
+    }
+
+    result = evidence.produce_desired_bundle(spec, commit=True, **kwargs)
+    manifest = result["manifest"]
+    actual = sha((tmp_path / "bundle/manifest.json").read_bytes())
+    changed_anchor = json.loads(json.dumps(spec))
+    changed_anchor["target"]["desiredManifestSHA256"] = "0" * 64
+    changed_result = evidence.produce_desired_bundle(changed_anchor, commit=False, **kwargs)
+
+    assert changed_result["manifest"] == manifest
+    assert spec["target"]["desiredManifestSHA256"] == actual
+
+
 def base_spec(tmp_path: Path) -> dict:
     dataset = tmp_path / "world.json"
     dataset.write_text(json.dumps({"datasetID": "world-1"}), encoding="utf-8")
