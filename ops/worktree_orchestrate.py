@@ -374,6 +374,11 @@ def aggregate_verdict(results: list[dict[str, Any]]) -> str:
 # IO layer — git + subprocess to the real gate tools.
 # ============================================================================
 def _git(args: list[str], cwd: Path | str | None = None) -> tuple[int, str]:
+    """Run a bounded, parsed-output git probe expected to finish quickly.
+
+    Potentially long or side-effecting git operations must use ``_git_mutation`` so
+    the operator sees start/spawned/heartbeat/done progress on stderr.
+    """
     try:
         proc = subprocess.run(
             ["git", *args], cwd=str(cwd) if cwd else None,
@@ -386,6 +391,39 @@ def _git(args: list[str], cwd: Path | str | None = None) -> tuple[int, str]:
     out = proc.stdout.strip()
     if proc.returncode != 0 and proc.stderr.strip():
         out = (out + "\n" + proc.stderr.strip()).strip()
+    return proc.returncode, out
+
+
+def _git_mutation(
+    args: list[str],
+    *,
+    cwd: Path | str,
+    label: str,
+    heartbeat_interval: float = 20.0,
+    capture_limit: int = 64 * 1024,
+) -> tuple[int, str]:
+    """Run a potentially long git operation with machine-output-safe progress.
+
+    ``label`` is a caller-owned semantic identifier. The raw argv is deliberately
+    never printed because git remotes and refspecs may contain credentials.
+    """
+    try:
+        proc = run_streamed_command(
+            ["git", *args],
+            cwd=cwd,
+            label_key="mutation",
+            label=label,
+            progress_prefix="[worktree][mutation]",
+            heartbeat_interval=heartbeat_interval,
+            capture_limit=capture_limit,
+            merge_stderr=False,
+        )
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        return 127, f"cwd unavailable: {exc}"
+    out = (proc.stdout or "").strip()
+    stderr = (proc.stderr or "").strip()
+    if proc.returncode != 0 and stderr:
+        out = (out + "\n" + stderr).strip()
     return proc.returncode, out
 
 
@@ -402,7 +440,9 @@ def _norm(p: str) -> str:
 
 
 def _fetch(quiet: bool = True) -> tuple[int, str]:
-    return _git(["fetch", "origin", "--prune"])
+    return _git_mutation(
+        ["fetch", "origin", "--prune"], cwd=primary_root(), label="fetch-origin",
+    )
 
 
 def _main_advance_lock(primary: Path):
@@ -526,7 +566,11 @@ def _current_branch(worktree: str) -> str | None:
 
 
 def _remote_branch_exists(name: str) -> bool:
-    rc, out = _git(["ls-remote", "--heads", "origin", name])
+    rc, out = _git_mutation(
+        ["ls-remote", "--heads", "origin", name],
+        cwd=primary_root(),
+        label="remote-branch-probe",
+    )
     return rc == 0 and bool(out.strip())
 
 
@@ -544,6 +588,49 @@ def _registry(argv: list[str]) -> tuple[int, dict[str, Any] | None]:
         except json.JSONDecodeError:
             payload = None
     return rc, payload
+
+
+def _registry_mutation(
+    argv: list[str],
+    *,
+    cwd: Path | str,
+    label: str,
+    heartbeat_interval: float = 20.0,
+) -> tuple[int, dict[str, Any] | None]:
+    """Run a registry action whose commit path may perform long git teardown.
+
+    stdout remains the registry's single JSON document; progress and registry
+    diagnostics are captured separately so the orchestrator's own JSON is pure.
+    """
+    proc = run_streamed_command(
+        [sys.executable, str(Path(__file__).resolve().with_name("worktree_registry.py")),
+         *argv],
+        cwd=cwd,
+        label_key="mutation",
+        label=label,
+        progress_prefix="[worktree][mutation]",
+        heartbeat_interval=heartbeat_interval,
+        capture_limit=64 * 1024,
+        merge_stderr=False,
+    )
+    text = (proc.stdout or "").strip()
+    payload: dict[str, Any] | None = None
+    if "--json" in argv and text:
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+    diagnostic = (proc.stderr or "").strip()
+    if proc.returncode != 0:
+        # Preserve the old route's visible failure evidence without writing it to
+        # parent stdout. The child argv is never echoed, and the bounded runner has
+        # already capped this stream; keep a smaller tail in the structured result.
+        safe_tail = diagnostic[-2000:]
+        if payload is None:
+            payload = {"error": "registry mutation failed"}
+        if safe_tail:
+            payload["detail"] = safe_tail
+    return proc.returncode, payload
 
 
 def _state_arg(state: str | None) -> list[str]:
@@ -709,7 +796,12 @@ def cmd_preflight(args: argparse.Namespace) -> int:
                   *_state_arg(args.state)]
     if args.commit:
         sweep_argv.append("--commit")
-    src, sweep = _registry(sweep_argv)
+    if args.commit:
+        src, sweep = _registry_mutation(
+            sweep_argv, cwd=primary_root(), label="preflight-sweep",
+        )
+    else:
+        src, sweep = _registry(sweep_argv)
     payload = {
         "schema": SCHEMA, "step": "preflight",
         "fetch": {"ok": frc == 0, "detail": fout[:200]},
@@ -749,7 +841,11 @@ def cmd_open(args: argparse.Namespace) -> int:
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree path exists",
                "path": str(path)}, args.json, f"✗ worktree path already exists: {path}")
         return EXIT_USAGE
-    rc, out = _git(["worktree", "add", "-b", branch, str(path), base], cwd=root)
+    rc, out = _git_mutation(
+        ["worktree", "add", "-b", branch, str(path), base],
+        cwd=root,
+        label="open-worktree-add",
+    )
     if rc != 0:
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree add failed",
                "detail": out}, args.json, f"✗ git worktree add failed:\n{out}")
@@ -980,7 +1076,11 @@ def cmd_sync_main(args: argparse.Namespace) -> int:
                f"{base_sha[:9]} ({count} commit(s))\n  (--commit to execute)"))
         return EXIT_OK
 
-    rc, out = _git(["merge", "--ff-only", base_ref], cwd=primary)
+    rc, out = _git_mutation(
+        ["merge", "--ff-only", base_ref],
+        cwd=primary,
+        label="sync-main-fast-forward",
+    )
     if rc != 0:
         return _refuse(f"git merge --ff-only failed: {out[:300]}")
     rc, now_sha = _git(["rev-parse", local_ref], cwd=primary)
@@ -1086,12 +1186,20 @@ def _guarded_advance(*, src_branch: str, dest_branch: str, production: bool, ste
                + "  (--commit to publish)"))
         return EXIT_OK
 
-    prc, pout = _git(["push", "origin", f"{src_ref}:{dest_branch}"], cwd=primary)
+    prc, pout = _git_mutation(
+        ["push", "origin", f"{src_ref}:{dest_branch}"],
+        cwd=primary,
+        label=f"{step}-push",
+    )
     if prc != 0:
         return _refuse(f"git push failed: {pout[:300]}")
     # verify against origin's ACTUAL ref (ls-remote), not the local remote-tracking ref
     # git just wrote — an independent confirmation that the publish really took.
-    rc, ls = _git(["ls-remote", "origin", dest_branch], cwd=primary)
+    rc, ls = _git_mutation(
+        ["ls-remote", "origin", dest_branch],
+        cwd=primary,
+        label=f"{step}-verify-remote",
+    )
     now = ls.split()[0] if rc == 0 and ls.strip() else ""
     if now != local_sha:
         return _refuse(f"post-push verification failed: origin/{dest_branch} is at "
@@ -1261,16 +1369,24 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                    "primary": str(primary), **extra}, args.json,
                   f"✗ cutover refused: {reason}")
             return EXIT_BLOCK
-        rrc, rout = _git(["rebase", local], cwd=worktree)
+        rrc, rout = _git_mutation(
+            ["rebase", local], cwd=worktree, label="cutover-rebase",
+        )
         if rrc != 0:
-            _git(["rebase", "--abort"], cwd=worktree)
+            _git_mutation(
+                ["rebase", "--abort"], cwd=worktree, label="cutover-rebase-abort",
+            )
             _emit({"schema": SCHEMA, "step": "cutover", "error": "rebase failed (aborted)",
                    "detail": rout, "landed": False}, args.json,
                   f"✗ rebase onto {local} failed (aborted):\n{rout}")
             return EXIT_BLOCK
         sha = _head_sha(worktree)
         # advance the local trunk by a ff-only merge IN the primary (main lives there).
-        mrc, mout = _git(["merge", "--ff-only", wt_branch], cwd=primary)
+        mrc, mout = _git_mutation(
+            ["merge", "--ff-only", wt_branch],
+            cwd=primary,
+            label="cutover-fast-forward",
+        )
         if mrc != 0:
             _emit({"schema": SCHEMA, "step": "cutover", "error": f"ff of {local} failed: "
                    f"{mout[:200]}", "landed": False}, args.json,
@@ -1328,6 +1444,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     def _plan(label: str, gargs: list[str], cwd: Path) -> None:
         steps.append({"label": label, "cmd": "git " + " ".join(gargs),
+                      "progress_label": "resolve-" + label.replace(" ", "-"),
                       "gargs": gargs, "cwd": str(cwd)})
 
     if Path(worktree).is_dir():
@@ -1350,7 +1467,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     results = []
     failures = 0
     for s in steps:
-        rc, out = _git(s["gargs"], cwd=Path(s["cwd"]))
+        rc, out = _git_mutation(
+            s["gargs"], cwd=Path(s["cwd"]), label=s["progress_label"],
+        )
         results.append({"label": s["label"], "cmd": s["cmd"], "ok": rc == 0,
                         "detail": out[:200] if rc != 0 else ""})
         if rc != 0:
