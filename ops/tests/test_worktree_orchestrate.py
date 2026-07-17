@@ -21,12 +21,14 @@ git-backed tests opt-skip if git is absent.
 from __future__ import annotations
 
 import importlib.util
+import ast
 import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import textwrap
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -367,6 +369,200 @@ def test_streamed_gate_runner_bounds_capture_and_preserves_nonzero_exit(tmp_path
     assert tail.endswith("END\n")
     assert "phase=done" in stderr.getvalue()
     assert "rc=7" in stderr.getvalue()
+
+
+def test_git_mutation_streams_semantic_progress_without_exposing_argv(
+    tmp_path, monkeypatch,
+):
+    """Silent git mutations heartbeat without leaking credential-shaped argv."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(textwrap.dedent("""\
+        #!/bin/sh
+        sleep 0.06
+        printf 'mutation-output\\n'
+    """))
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin}:{os.environ.get('PATH', '')}")
+
+    err = io.StringIO()
+    with redirect_stderr(err):
+        rc, output = MODULE._git_mutation(
+            ["push", "origin", "token=super-secret"],
+            cwd=tmp_path,
+            label="sync-push",
+            heartbeat_interval=0.01,
+        )
+
+    assert rc == 0
+    assert output == "mutation-output"
+    progress = err.getvalue()
+    assert "mutation=sync-push phase=start" in progress
+    assert "mutation=sync-push phase=spawned" in progress
+    assert "mutation=sync-push phase=heartbeat" in progress
+    assert "mutation=sync-push phase=done" in progress
+    assert "pid=" in progress and "alive=" in progress
+    assert "super-secret" not in progress
+
+
+def test_registry_mutation_keeps_json_parseable_and_progress_off_stdout(
+    tmp_path, monkeypatch,
+):
+    payload = {"schema": "kg.worktree.registry.v1", "clear": []}
+
+    def fake_stream(command, **kwargs):
+        assert kwargs["label"] == "preflight-sweep"
+        assert kwargs["merge_stderr"] is False
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "diagnostic")
+
+    monkeypatch.setattr(MODULE, "run_streamed_command", fake_stream)
+    rc, parsed = MODULE._registry_mutation(
+        ["sweep", "--commit", "--json"],
+        cwd=tmp_path,
+        label="preflight-sweep",
+    )
+
+    assert rc == 0
+    assert parsed == payload
+
+
+def test_registry_mutation_preserves_failure_diagnostic_without_stdout_pollution(
+    tmp_path, monkeypatch,
+):
+    def fake_stream(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, "", "sweep failed safely")
+
+    monkeypatch.setattr(MODULE, "run_streamed_command", fake_stream)
+    rc, parsed = MODULE._registry_mutation(
+        ["sweep", "--commit", "--json"],
+        cwd=tmp_path,
+        label="preflight-sweep",
+    )
+
+    assert rc == 1
+    assert parsed == {"error": "registry mutation failed", "detail": "sweep failed safely"}
+
+
+def test_committed_preflight_routes_sweep_through_observed_registry_runner(
+    tmp_path, monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(MODULE, "_fetch", lambda: (0, ""))
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        MODULE,
+        "_registry_mutation",
+        lambda argv, **kwargs: (calls.append((argv, kwargs)) or (0, {"clear": []})),
+    )
+    monkeypatch.setattr(
+        MODULE,
+        "_registry",
+        lambda argv: pytest.fail("committed sweep must not use silent in-process route"),
+    )
+    args = MODULE.argparse.Namespace(
+        commit=True, state=None, json=True, allow_offline=False,
+    )
+
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+        rc = MODULE.cmd_preflight(args)
+
+    assert rc == 0
+    assert len(calls) == 1
+    argv, kwargs = calls[0]
+    assert "--commit" in argv and "--json" in argv
+    assert kwargs == {"cwd": tmp_path, "label": "preflight-sweep"}
+    assert json.loads(stdout.getvalue())["sweep_rc"] == 0
+
+
+def test_remote_branch_probe_routes_ls_remote_through_observed_runner(
+    tmp_path, monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        MODULE,
+        "_git_mutation",
+        lambda argv, **kwargs: (calls.append((argv, kwargs)) or (0, "abc refs/heads/x")),
+    )
+    monkeypatch.setattr(
+        MODULE, "_git", lambda *args, **kwargs: pytest.fail("ls-remote must be observed"),
+    )
+
+    assert MODULE._remote_branch_exists("x") is True
+    assert calls == [
+        (["ls-remote", "--heads", "origin", "x"],
+         {"cwd": tmp_path, "label": "remote-branch-probe"}),
+    ]
+
+
+def test_committed_sync_routes_push_and_remote_verification_through_observed_runner(
+    tmp_path, monkeypatch,
+):
+    local_sha = "a" * 40
+    upstream_sha = "b" * 40
+    observed = []
+    monkeypatch.setattr(MODULE, "primary_root", lambda: tmp_path)
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *args: None)
+    monkeypatch.setattr(MODULE, "_current_branch", lambda path: "main")
+    monkeypatch.setattr(MODULE, "_fetch", lambda: (0, ""))
+
+    def fake_probe(argv, cwd=None):
+        if argv == ["rev-parse", "refs/heads/main"]:
+            return 0, local_sha
+        if argv == ["rev-parse", "origin/main"]:
+            return 0, upstream_sha
+        if argv[:2] == ["merge-base", "--is-ancestor"]:
+            return 0, ""
+        if argv[:2] == ["rev-list", "--count"]:
+            return 0, "1"
+        pytest.fail(f"unexpected silent probe: {argv}")
+
+    def fake_observed(argv, **kwargs):
+        observed.append((argv, kwargs["label"]))
+        if argv[0] == "push":
+            return 0, ""
+        if argv[0] == "ls-remote":
+            return 0, f"{local_sha}\trefs/heads/main"
+        pytest.fail(f"unexpected observed command: {argv}")
+
+    monkeypatch.setattr(MODULE, "_git", fake_probe)
+    monkeypatch.setattr(MODULE, "_git_mutation", fake_observed)
+    stdout = io.StringIO()
+    with redirect_stdout(stdout):
+        rc = MODULE._guarded_advance(
+            src_branch="main", dest_branch="main", production=False, step="sync",
+            commit=True, as_json=True, state=None,
+        )
+
+    assert rc == 0
+    assert observed == [
+        (["push", "origin", "refs/heads/main:main"], "sync-push"),
+        (["ls-remote", "origin", "main"], "sync-verify-remote"),
+    ]
+    assert json.loads(stdout.getvalue())["verdict"] == "pushed"
+
+
+def test_potentially_long_git_operations_never_use_silent_probe_runner():
+    """Static tripwire for every reviewed mutation family in this orchestrator."""
+    tree = ast.parse((ROOT / "ops" / "worktree_orchestrate.py").read_text())
+    forbidden = {
+        "fetch", "push", "rebase", "merge", "worktree", "branch", "ls-remote",
+    }
+    violations = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "_git" and node.args):
+            continue
+        argv = node.args[0]
+        if not (isinstance(argv, ast.List) and argv.elts
+                and isinstance(argv.elts[0], ast.Constant)):
+            continue
+        verb = argv.elts[0].value
+        if verb in forbidden:
+            violations.append((verb, node.lineno))
+    assert violations == []
 
 
 # ============================================================================
