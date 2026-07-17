@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - .claude/agents/platform-steward.md
   - .claude/skills/kg-receipt/
-verified_against: 4e2e89b55
+verified_against: 457b8ea74
 -->
 # 改善 Backlog（kaizen ledger）
 
@@ -71,3 +71,4 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0034 | 2026-07-14 | App Review 2.0.0 worktree gate | tool | med | fixed | 修改 `LiveDemoAccessUITests.swift` 時，cutover 原先誤套 Debug simulator + marketing fixture，與該測試的 Release / physical / no-fixture 契約必然衝突。現 live-only class 改走 Release generic-iOS compile gate，runtime evidence 明示交給 `app_review_evidence.py demo-run`。 | `534acb68a` |
 | IMP-0035 | 2026-07-14 | App Review 2.0.0 live runner review | tool | high | fixed | live-demo staging 曾把 account identity marker/hash 注入 xctestrun 的所有 test targets，權限面大於固定 live-only method。現先 sanitize/scan 每個 configuration/target，只注入唯一 `BlueprintName=BooksAndVocabUITests` target；0 或多個匹配在注入前 fail-closed，其他 target 保留 key-absent。 | `30df7f5f1` |
 | IMP-0036 | 2026-07-17 | App Review evidence worktree gate | cli | med | fixed | `worktree_orchestrate.py gate` 曾把每個 shell gate 的合併輸出靜默 capture 到結束；長 iOS/pytest gate 無 PID/heartbeat，操作者無法分辨排隊、執行或卡死。現共用 bounded streaming runner，stderr 有 start/spawn/20 秒 heartbeat（正常 exit 另有 done），JSON stdout 不受污染，中斷清整個 process group，並保留 merged tail、rc/signal 語意。 | `4e2e89b55`(gate heartbeat + bounded capture regressions) |
+| IMP-0037 | 2026-07-17 | worktree resolve 實測 | cli | high | fixed | committed `resolve` 的 `git worktree remove --force` 實測約 30 秒、CPU 約 40%，期間因 mutation 共用 silent `subprocess.run(PIPE)` 完全無輸出，操作者無法分辨忙碌或卡死；同一路徑也涵蓋 fetch/rebase/merge/push/branch teardown 與網路 probe。現所有潛在長時 mutation、`ls-remote` 與 committed sweep 統一走 bounded streaming runner，stderr 立即顯示安全語意 phase/PID/alive、最長每 20 秒 heartbeat、正常 exit done；JSON stdout、dry-run 與 failure detail 保持，raw argv 不顯示。 | `457b8ea74`(mutation heartbeat + caller-route/JSON/secret regression) |

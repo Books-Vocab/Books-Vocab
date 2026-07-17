@@ -66,6 +66,8 @@ ops/worktree_orchestrate.py gate --worktree <path> --json
 
 `gate` 執行每個實際 child gate 時，進度只寫 stderr：`start` / `spawned` / 每 20 秒 `heartbeat` 都帶 phase、elapsed、PID、alive；child 正常 exit 時另寫 `done` + rc，stdout 保持單一 `kg.worktree.gate.v1` JSON。progress 絕不回顯 raw argv（避免 token/password 洩漏）；中斷會向上拋出並終止整個 isolated child process group，不能只殺直接 child 留下孫行程。操作者不得把 stdout/stderr 合併後再解析 JSON，也不得用靜默 `capture_output` 旁路這個 runner。
 
+orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進度 runner；完整分類、輸出與保密契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為正本。
+
 **e. 非 block 才 cutover（離線落地本地 main）**：
 ```
 ops/worktree_orchestrate.py cutover --worktree <path> --json          # dry-run 預覽
