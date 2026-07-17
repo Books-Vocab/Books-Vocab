@@ -212,7 +212,8 @@ app_review_workflow_gate_json() {
   local spec_path fixture output rc=0
   spec_path="$(app_review_latest_spec_path)"
   fixture="${KG_IOS_OPS_APP_REVIEW_GATE_FIXTURE:-}"
-  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -z "$fixture" ]]; then
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -z "$fixture" \
+    && -z "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
     fixture="pass"
   fi
   if [[ "$fixture" == "pass" ]]; then
@@ -237,7 +238,13 @@ app_review_workflow_gate_json() {
     jq -n '{spec:null,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.spec.missing",expected:"ops/app_review/<latest>.json",actual:"missing"}]}'
     return 0
   fi
-  output="$("$(catalog_uv_bin)" run --python 3.13 python "$ROOT/ops/app_review_gate.py" dry-run --spec "$spec_path" --workspace-root "$ROOT" --observation-mode online)" || rc=$?
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -n "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
+    output="$(ios_ops_release_fixture_capture workflow-app-review-gate app-review-gate)" || rc=$?
+  else
+    output="$(ios_ops_stream_capture workflow-app-review-gate \
+      "$(catalog_uv_bin)" run --python 3.13 python "$ROOT/ops/app_review_gate.py" \
+      dry-run --spec "$spec_path" --workspace-root "$ROOT" --observation-mode online)" || rc=$?
+  fi
   if [[ -z "$output" || ( "$rc" -ne 0 && "$rc" -ne 2 ) ]]; then
     jq -n --arg spec "$spec_path" --argjson rc "$rc" '{spec:$spec,verdict:{status:"block",blockCount:1},blocks:[{code:"gate.execution",expected:"valid gate report",actual:{exitCode:$rc}}]}'
     return 0

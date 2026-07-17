@@ -199,3 +199,66 @@ def test_interrupt_during_spawned_progress_terminates_process_group(tmp_path: Pa
                 os.killpg(pids["child"], signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+def test_timeout_terminates_child_process_group(tmp_path: Path) -> None:
+    pid_file = tmp_path / "timeout-pids.json"
+    child_script = (
+        "import json,os,subprocess,sys,time; "
+        "grandchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+        "open(sys.argv[1],'w').write(json.dumps({'child':os.getpid(),'grandchild':grandchild.pid})); "
+        "time.sleep(60)"
+    )
+    pids: dict[str, int] = {}
+    try:
+        completed = run_streamed_command(
+            [sys.executable, "-c", child_script, str(pid_file)],
+            cwd=tmp_path,
+            label_key="source",
+            label="timeout-test",
+            progress_prefix="[test]",
+            heartbeat_interval=0.02,
+            timeout_seconds=0.1,
+        )
+        assert completed.returncode == 124
+        pids = json.loads(pid_file.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2
+        while any(_process_is_live(pid) for pid in pids.values()) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not any(_process_is_live(pid) for pid in pids.values())
+    finally:
+        for pid in pids.values():
+            if _process_is_live(pid):
+                os.kill(pid, signal.SIGKILL)
+
+
+def test_timeout_kills_grandchild_after_group_leader_exits(tmp_path: Path) -> None:
+    pid_file = tmp_path / "leader-exited-grandchild.pid"
+    child_script = (
+        "import subprocess,sys; "
+        "grandchild=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+        "open(sys.argv[1],'w').write(str(grandchild.pid))"
+    )
+    grandchild_pid = 0
+    try:
+        started = time.monotonic()
+        completed = run_streamed_command(
+            [sys.executable, "-c", child_script, str(pid_file)],
+            cwd=tmp_path,
+            label_key="source",
+            label="leader-exited-timeout-test",
+            progress_prefix="[test]",
+            heartbeat_interval=0.02,
+            timeout_seconds=0.1,
+        )
+        elapsed = time.monotonic() - started
+        assert completed.returncode == 124
+        assert elapsed < 1
+        grandchild_pid = int(pid_file.read_text(encoding="utf-8"))
+        deadline = time.monotonic() + 2
+        while _process_is_live(grandchild_pid) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not _process_is_live(grandchild_pid)
+    finally:
+        if grandchild_pid and _process_is_live(grandchild_pid):
+            os.kill(grandchild_pid, signal.SIGKILL)

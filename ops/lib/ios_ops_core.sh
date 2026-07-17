@@ -6,9 +6,48 @@ DEFAULT_SIMULATOR_NAME="${KG_IOS_DEFAULT_SIMULATOR_NAME:-iPhone 17 Pro Max}"
 DEFAULT_LOG_PREDICATE='process == "BooksAndVocab" OR subsystem BEGINSWITH "com.Max0228.BooksBrowser"'
 LOG_NOISE_REGEX='runningboard\.assertions\.webkit|RBSServiceErrorDomain|ProcessAssertion'
 
+ios_ops_stream_capture() {
+  local label="$1"
+  shift
+  local runner=(
+    python3 "$SCRIPT_DIR/lib/streaming_command.py"
+    --cwd "$ROOT"
+    --label "$label"
+    --heartbeat-interval "${KG_IOS_OPS_HEARTBEAT_INTERVAL:-20}"
+  )
+  if [[ -n "${KG_IOS_OPS_CAPTURE_TIMEOUT_SECONDS:-}" ]]; then
+    runner+=(--timeout-seconds "$KG_IOS_OPS_CAPTURE_TIMEOUT_SECONDS")
+  fi
+  "${runner[@]}" -- "$@"
+}
+
+ios_ops_release_fixture_capture() {
+  local label="$1" name="$2"
+  local fixture_dir="${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:?fixture dir required}"
+  local output="$fixture_dir/$name.stdout"
+  local delay_file="$fixture_dir/$name.delay"
+  local rc_file="$fixture_dir/$name.rc"
+  local log="$fixture_dir/invocations.log"
+  local delay="${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DELAY:-0}"
+  local rc=0
+  [[ -f "$delay_file" ]] && delay="$(<"$delay_file")"
+  [[ -f "$rc_file" ]] && rc="$(<"$rc_file")"
+  ios_ops_stream_capture "$label" bash -c '
+    sleep "$2"
+    printf "%s\n" "$4" >>"$3"
+    cat "$1"
+    exit "$5"
+  ' _ "$output" "$delay" "$log" "$name" "$rc" "${KG_IOS_OPS_RELEASE_SOURCE_SECRET_FIXTURE:-}"
+}
+
 read_project_settings() {
   local __version_var="$1" __build_var="$2" settings _version _build
-  settings="$(xcodebuild -project "$XCODEPROJ" -target "$SCHEME" -configuration Release -showBuildSettings 2>/dev/null || true)"
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -n "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
+    settings="$(ios_ops_release_fixture_capture workflow-project-settings project-settings)" || settings=""
+  else
+    settings="$(ios_ops_stream_capture workflow-project-settings \
+      xcodebuild -project "$XCODEPROJ" -target "$SCHEME" -configuration Release -showBuildSettings)" || settings=""
+  fi
   _version="$(awk -F' = ' '/ MARKETING_VERSION /{print $2; exit}' <<<"$settings" | tr -d '[:space:]')"
   _build="$(awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}' <<<"$settings" | tr -d '[:space:]')"
   printf -v "$__version_var" '%s' "$_version"
@@ -16,31 +55,35 @@ read_project_settings() {
 }
 
 read_organizer_latest() {
-  "$SCRIPT_DIR/ios_archive.sh" latest 2>/dev/null | tail -1 || true
+  local output
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -n "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
+    output="$(ios_ops_release_fixture_capture workflow-organizer-latest organizer-latest)" || output=""
+  else
+    output="$(ios_ops_stream_capture workflow-organizer-latest "$SCRIPT_DIR/ios_archive.sh" latest)" || output=""
+  fi
+  tail -1 <<<"$output"
 }
 
 read_testflight_latest_build() {
-  "$SCRIPT_DIR/asc.sh" builds 2>/dev/null | grep -Eo '[0-9]+' | tail -1 || true
+  local output
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -n "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
+    output="$(ios_ops_release_fixture_capture workflow-testflight-builds testflight-builds)" || output=""
+  else
+    output="$(ios_ops_stream_capture workflow-testflight-builds "$SCRIPT_DIR/asc.sh" builds)" || output=""
+  fi
+  grep -Eo '[0-9]+' <<<"$output" | tail -1 || true
 }
 
 read_asc_version_state() {
-  local tmp pid waited=0
-  tmp="$(mktemp)"
-  "$SCRIPT_DIR/asc.sh" versions >"$tmp" 2>/dev/null &
-  pid=$!
-  while kill -0 "$pid" 2>/dev/null; do
-    if (( waited >= 12 )); then
-      kill "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null || true
-      rm -f "$tmp"
-      return 124
-    fi
-    sleep 1
-    waited=$((waited + 1))
-  done
-  wait "$pid" 2>/dev/null || true
-  sed -n '/[^[:space:]]/p' "$tmp" | head -1
-  rm -f "$tmp"
+  local output
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -n "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
+    output="$(KG_IOS_OPS_CAPTURE_TIMEOUT_SECONDS="${KG_IOS_OPS_ASC_TIMEOUT_SECONDS:-12}" \
+      ios_ops_release_fixture_capture workflow-asc-versions asc-versions)" || return $?
+  else
+    output="$(KG_IOS_OPS_CAPTURE_TIMEOUT_SECONDS="${KG_IOS_OPS_ASC_TIMEOUT_SECONDS:-12}" \
+      ios_ops_stream_capture workflow-asc-versions "$SCRIPT_DIR/asc.sh" versions)" || return $?
+  fi
+  sed -n '/[^[:space:]]/p' <<<"$output" | head -1
 }
 
 read_xcode_version_text() {
@@ -152,7 +195,7 @@ capture_source_json() {
   rm -f "$tmp"
 }
 
-if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
+if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" && -z "${KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR:-}" ]]; then
   read_project_settings() {
     local __version_var="$1" __build_var="$2"
     printf -v "$__version_var" '%s' "1.6"
