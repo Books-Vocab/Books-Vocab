@@ -23,6 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.streaming_command import run_streamed_command  # noqa: E402
+
 
 URL_SCHEMA = "kg.app_review.url_checks.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
@@ -47,6 +50,24 @@ class EvidenceError(RuntimeError):
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _run_producer_command(
+    command: list[str],
+    *,
+    cwd: Path | str,
+    producer_name: str,
+    heartbeat_interval: float = 20.0,
+) -> subprocess.CompletedProcess[str]:
+    return run_streamed_command(
+        command,
+        cwd=cwd,
+        label_key="producer",
+        label=producer_name,
+        progress_prefix="[app-review][evidence]",
+        heartbeat_interval=heartbeat_interval,
+        merge_stderr=False,
+    )
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -306,7 +327,9 @@ def execute_journey_run(
     else:
         command.append("--lease")
     command.extend(["--json", *tests])
-    completed = subprocess.run(command, cwd=workspace_root, text=True, capture_output=True, check=False)
+    completed = _run_producer_command(
+        command, cwd=workspace_root, producer_name="journey-run",
+    )
     if completed.returncode != 0:
         raise EvidenceError(f"journey.runner.exit:{completed.returncode}")
     try:
@@ -368,7 +391,9 @@ def execute_demo_run(
         account_identity_sha256=account_identity_sha256,
         locale=locale, timezone_name=timezone_name,
     )
-    completed = subprocess.run(command, cwd=workspace_root, text=True, capture_output=True, check=False)
+    completed = _run_producer_command(
+        command, cwd=workspace_root, producer_name="demo-run",
+    )
     if completed.returncode != 0:
         raise EvidenceError(f"demo.runner.exit:{completed.returncode}")
     try:
@@ -419,8 +444,10 @@ def produce_desired_bundle(
             [sys.executable, str(shape), str(source_spec), str(history_plan), "--out", str(world_spec)],
             [sys.executable, str(build_demo), "emit-ios", "--spec", str(world_spec), "--out", str(dataset), "--plan", str(history_plan), "--commit", "--json"],
         ]
-        for command in commands:
-            completed = subprocess.run(command, cwd=workspace_root, text=True, capture_output=True, check=False)
+        for producer_name, command in zip(("desired-shape", "desired-build"), commands, strict=True):
+            completed = _run_producer_command(
+                command, cwd=workspace_root, producer_name=producer_name,
+            )
             if completed.returncode != 0:
                 raise EvidenceError(f"desired.generator.exit:{completed.returncode}")
         _require(_sha(dataset.read_bytes()) == target.get("datasetSHA256"), "desired.datasetSHA256")
@@ -463,7 +490,9 @@ def produce_desired_bundle(
         ]
         if commit:
             command.append("--commit")
-        completed = subprocess.run(command, cwd=workspace_root, text=True, capture_output=True, check=False)
+        completed = _run_producer_command(
+            command, cwd=workspace_root, producer_name="desired-bundle",
+        )
         if completed.returncode != 0:
             if commit:
                 shutil.rmtree(stage_root, ignore_errors=True)
@@ -566,7 +595,9 @@ def apply_gate_blocks(plan: dict[str, Any], gate: dict[str, Any]) -> dict[str, A
 
 def evaluate_gate(spec_path: Path, workspace_root: Path) -> dict[str, Any]:
     command = [sys.executable, str(Path(__file__).with_name("app_review_gate.py")), "dry-run", "--spec", str(spec_path), "--workspace-root", str(workspace_root), "--observation-mode", "online"]
-    completed = subprocess.run(command, text=True, capture_output=True, check=False)
+    completed = _run_producer_command(
+        command, cwd=workspace_root, producer_name="gate-evaluation",
+    )
     if completed.returncode not in {0, 2}:
         raise EvidenceError(f"gate.execution:{completed.returncode}")
     try:
