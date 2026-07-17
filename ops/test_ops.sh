@@ -123,6 +123,7 @@ run_one() {
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
+      ./ops/tests/test_ios_ops_release_heartbeat.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py

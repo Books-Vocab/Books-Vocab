@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import queue
 import signal
@@ -50,6 +51,7 @@ def run_streamed_command(
     heartbeat_interval: float = 20.0,
     capture_limit: int = 8 * 1024 * 1024,
     merge_stderr: bool = False,
+    timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a child with bounded capture and periodic progress on parent stderr.
 
@@ -61,6 +63,8 @@ def run_streamed_command(
         raise ValueError("heartbeat_interval must be positive")
     if capture_limit <= 0:
         raise ValueError("capture_limit must be positive")
+    if timeout_seconds is not None and timeout_seconds <= 0:
+        raise ValueError("timeout_seconds must be positive")
 
     print(
         f"{progress_prefix} {label_key}={label} phase=start elapsed=0.0s "
@@ -118,9 +122,13 @@ def run_streamed_command(
         tails = {stream_name: bytearray() for stream_name in streams}
         open_streams = set(streams)
         next_heartbeat = started + heartbeat_interval
+        deadline = started + timeout_seconds if timeout_seconds is not None else None
+        timed_out = False
         while open_streams:
             now = time.monotonic()
             timeout = max(0.001, next_heartbeat - now)
+            if deadline is not None:
+                timeout = min(timeout, max(0.001, deadline - now))
             try:
                 stream_name, chunk = chunks.get(timeout=timeout)
             except queue.Empty:
@@ -134,6 +142,13 @@ def run_streamed_command(
                     del tail[:-capture_limit]
 
             now = time.monotonic()
+            if deadline is not None and now >= deadline:
+                # The group leader may have exited while a descendant still
+                # owns inherited pipes. The open-stream deadline applies to
+                # the whole isolated process group, not just ``proc``.
+                _terminate_process_group(proc)
+                timed_out = True
+                deadline = None
             if now >= next_heartbeat and open_streams:
                 alive = str(proc.poll() is None).lower()
                 print(
@@ -144,6 +159,8 @@ def run_streamed_command(
                 )
                 next_heartbeat = now + heartbeat_interval
         returncode = proc.wait()
+        if timed_out:
+            returncode = 124
     except BaseException:
         _terminate_process_group(proc)
         for pipe in streams.values():
@@ -164,3 +181,36 @@ def run_streamed_command(
     stdout = tails["stdout"].decode("utf-8", errors="replace")
     stderr = None if merge_stderr else tails["stderr"].decode("utf-8", errors="replace")
     return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+
+def _capture_cli(argv: list[str] | None = None) -> int:
+    """Expose the runner to shell control planes without polluting stdout."""
+    parser = argparse.ArgumentParser(description="capture a command with visible progress")
+    parser.add_argument("--cwd", required=True)
+    parser.add_argument("--label", required=True)
+    parser.add_argument("--heartbeat-interval", type=float, default=20.0)
+    parser.add_argument("--timeout-seconds", type=float)
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args(argv)
+    command = args.command
+    if command[:1] == ["--"]:
+        command = command[1:]
+    if not command:
+        parser.error("a child command is required after --")
+
+    result = run_streamed_command(
+        command,
+        cwd=args.cwd,
+        label_key="source",
+        label=args.label,
+        progress_prefix="[ios][progress]",
+        heartbeat_interval=args.heartbeat_interval,
+        timeout_seconds=args.timeout_seconds,
+    )
+    sys.stdout.write(result.stdout)
+    sys.stdout.flush()
+    return result.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(_capture_cli())
