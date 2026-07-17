@@ -27,7 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -313,6 +313,60 @@ def test_verdict_warn_dominates_pass():
 def test_verdict_block_dominates_all():
     assert aggregate_verdict([{"status": "warn"}, {"status": "block"}]) == "block"
     assert aggregate_verdict([{"status": "pass"}, {"status": "block"}]) == "block"
+
+
+def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_path):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    command = [
+        sys.executable,
+        "-c",
+        "import time; print('first', flush=True); time.sleep(.08); print('last')",
+    ]
+
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        rc, tail = MODULE._run_streamed_command(
+            command,
+            cwd=tmp_path,
+            gate_name="slow-gate",
+            heartbeat_interval=0.02,
+        )
+
+    progress = stderr.getvalue()
+    assert rc == 0
+    assert stdout.getvalue() == ""
+    assert "gate=slow-gate phase=start" in progress
+    assert "phase=heartbeat" in progress
+    assert "elapsed=" in progress
+    assert "pid=" in progress
+    assert "alive=true" in progress
+    assert "phase=done" in progress
+    assert "rc=0" in progress
+    assert tail.splitlines()[-1] == "last"
+
+
+def test_streamed_gate_runner_bounds_capture_and_preserves_nonzero_exit(tmp_path):
+    stderr = io.StringIO()
+    command = [
+        sys.executable,
+        "-c",
+        "import sys; sys.stdout.write('x' * 200000 + '\\nEND\\n'); sys.exit(7)",
+    ]
+
+    with redirect_stderr(stderr):
+        rc, tail = MODULE._run_streamed_command(
+            command,
+            cwd=tmp_path,
+            gate_name="failing-gate",
+            heartbeat_interval=0.01,
+            capture_limit=4096,
+        )
+
+    assert rc == 7
+    assert len(tail.encode()) <= 4096
+    assert tail.endswith("END\n")
+    assert "phase=done" in stderr.getvalue()
+    assert "rc=7" in stderr.getvalue()
 
 
 # ============================================================================

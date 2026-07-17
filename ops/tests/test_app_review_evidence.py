@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import io
 import json
+import subprocess
 import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -27,6 +30,103 @@ evidence = load_module()
 
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def test_producer_runner_reports_progress_on_stderr_and_preserves_json_stdout(tmp_path: Path):
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    command = [
+        sys.executable,
+        "-c",
+        "import json,time; time.sleep(.08); print(json.dumps({'status':'pass'}))",
+    ]
+
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        completed = evidence._run_producer_command(
+            command,
+            cwd=tmp_path,
+            producer_name="desired-test",
+            heartbeat_interval=0.02,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout) == {"status": "pass"}
+    assert stdout.getvalue() == ""
+    progress = stderr.getvalue()
+    assert "producer=desired-test phase=start" in progress
+    assert "phase=heartbeat" in progress
+    assert "alive=true" in progress
+    assert "phase=done" in progress
+
+
+def test_journey_demo_and_gate_use_named_streaming_runner(tmp_path: Path, monkeypatch):
+    calls: list[str] = []
+
+    def fake_runner(command, *, cwd, producer_name, heartbeat_interval=20.0):
+        calls.append(producer_name)
+        payload = {"verdict": {}, "blocks": []} if producer_name == "gate-evaluation" else {"status": "pass"}
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr(evidence, "_run_producer_command", fake_runner)
+    evidence.execute_journey_run(
+        workspace_root=tmp_path,
+        dataset_file=tmp_path / "world.json",
+        fixed_clock="2026-07-13T08:00:00Z",
+        locale="zh-Hant",
+        timezone_name="Asia/Taipei",
+        appearance="light",
+        tests=["testCore"],
+    )
+    evidence.execute_demo_run(
+        workspace_root=tmp_path,
+        destination="platform=iOS,id=device",
+        account_identity_sha256="d" * 64,
+        locale="zh-Hant",
+        timezone_name="Asia/Taipei",
+    )
+    evidence.evaluate_gate(tmp_path / "spec.json", tmp_path)
+
+    assert calls == ["journey-run", "demo-run", "gate-evaluation"]
+
+
+def test_desired_pipeline_streams_every_subprocess_phase(tmp_path: Path, monkeypatch):
+    import capture_profile
+
+    profile_file = tmp_path / "profile.yml"
+    profile_file.write_text("profile", encoding="utf-8")
+    dataset_bytes = b'{"schema":"world"}\n'
+    spec = {
+        "target": {
+            "datasetSHA256": sha(dataset_bytes),
+            "sourceCommit": "a" * 40,
+            "marketingVersion": "2.0.0",
+            "buildNumber": "6",
+        }
+    }
+    profile = type("Profile", (), {"profile_id": "review"})()
+    monkeypatch.setattr(capture_profile, "load_profile", lambda _path: profile)
+    monkeypatch.setattr(capture_profile, "reviewer_render_spec", lambda _profile: {"shots": []})
+    calls: list[str] = []
+
+    def fake_runner(command, *, cwd, producer_name, heartbeat_interval=20.0):
+        calls.append(producer_name)
+        if producer_name == "desired-build":
+            Path(command[command.index("--out") + 1]).write_bytes(dataset_bytes)
+        return subprocess.CompletedProcess(command, 0, "{}", "")
+
+    monkeypatch.setattr(evidence, "_run_producer_command", fake_runner)
+    evidence.produce_desired_bundle(
+        spec,
+        workspace_root=tmp_path,
+        profile_file=profile_file,
+        render_output_dir=tmp_path / "renders",
+        bundle_dir=tmp_path / "bundle",
+        fixed_clock="2026-07-13T08:00:00Z",
+        locale="zh-Hant",
+        commit=False,
+    )
+
+    assert calls == ["desired-shape", "desired-build", "desired-bundle"]
 
 
 def base_spec(tmp_path: Path) -> dict:

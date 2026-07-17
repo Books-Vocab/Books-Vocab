@@ -104,6 +104,7 @@ from typing import Any, Callable
 # Reuse P2 in-process — never re-implement register / resolve / sweep / state paths.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worktree_registry as wr  # noqa: E402
+from lib.streaming_command import run_streamed_command  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
@@ -639,6 +640,27 @@ def _run_verified_against(worktree: str, files: list[str]) -> dict[str, Any]:
     return {"status": "pass", "rc": 0, "summary": f"verified_against reachable ({checked} checked)"}
 
 
+def _run_streamed_command(
+    command: list[str],
+    *,
+    cwd: Path | str,
+    gate_name: str,
+    heartbeat_interval: float = 20.0,
+    capture_limit: int = 64 * 1024,
+) -> tuple[int, str]:
+    completed = run_streamed_command(
+        command,
+        cwd=cwd,
+        label_key="gate",
+        label=gate_name,
+        progress_prefix="[worktree][gate]",
+        heartbeat_interval=heartbeat_interval,
+        capture_limit=capture_limit,
+        merge_stderr=True,
+    )
+    return completed.returncode, completed.stdout
+
+
 def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
     """Execute ONE planned gate against the worktree and return a result record."""
     name, level = spec["name"], spec["level"]
@@ -654,15 +676,16 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
 
     # shell gate — run the real tool. cwd is the worktree (or a subdir like backend).
     cwd = Path(worktree) / spec["cwd"] if spec.get("cwd") else Path(worktree)
-    proc = subprocess.run(spec["cmd"], cwd=str(cwd),
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    tail = "\n".join(proc.stdout.splitlines()[-3:]) if proc.stdout else ""
-    if proc.returncode == 0:
+    returncode, output = _run_streamed_command(
+        spec["cmd"], cwd=cwd, gate_name=name,
+    )
+    tail = "\n".join(output.splitlines()[-3:]) if output else ""
+    if returncode == 0:
         status = "pass"
     else:
         status = "block" if level == "block" else "warn"
-    result.update({"status": status, "rc": proc.returncode,
-                   "summary": f"exit {proc.returncode}" + (f": {tail}" if tail else "")})
+    result.update({"status": status, "rc": returncode,
+                   "summary": f"exit {returncode}" + (f": {tail}" if tail else "")})
     return result
 
 
