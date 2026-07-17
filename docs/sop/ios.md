@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 30df7f5f1
+verified_against: 4e2e89b55
 -->
 # Books & Vocab iOS 開發技能
 
@@ -88,6 +88,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 `ios_ops.sh gate release --json` 是 release hard-stop verdict:schema 為 `kg.ios.gate.v1`,重用 `doctor --json` + `workflow release --json`。exit code 固定為 `0=pass`、`1=warn`、`2=block`;`todo`/`manual` 會列入 `todos[]`/`manual[]` 供 agent 排下一步。`block` 來自 readiness 或 workflow，其中包含 App Review evidence gate，所以缺 producer、缺/漂移/過期證據不能再以 GUI manual step 繞過。
 
 `./ops/app_review_evidence.py plan|status --spec ops/app_review/<version>.json` 是送審證據控制面：兩者都逐筆列 artifact、typed producer、authority 與 next command；`plan` 驗 producer 宣告 shape 與 artifact 是否存在，`status` 才執行完整 gate 並回報實際 block reason。`desired` 從 tracked capture profile、tracked promotion PNG 與 deterministic UI World generator 重建 bundle，不依賴目的 bundle 內的輸入；它以 `--commit --bundle-dir` 寫本地 bundle，其餘 `urls|journey|journey-run|demo-run|appearance|attest` 由對應 producer 以 `--commit --out` 寫本地 evidence。`urls` 只做 spec 宣告 URL 的 HTTPS GET，拒 redirect/error 並記錄 body SHA；`journey-run` 固定呼叫 `ios_ops.sh test --ui --configuration Release`，`ios_test.sh` 在 verdict `options` 寫入 producer identity、實際 build/source/dataset/fixed-clock 與 execution 綁定，consumer 不接受 caller 自填 `releaseEvidence`；`appearance` 同時驗 catalog proof 與 run receipt 後才 stage spec 指定 artifact。
+
+證據控制面的長 child command 不得成為黑盒：desired shape/build/bundle、journey、physical demo 與 gate evaluation 都會把 `start` / `spawned` / 每 20 秒 `heartbeat` 寫到 stderr，每筆含 phase、elapsed、PID、alive；child 正常 exit 時另寫 `done` + rc，stdout 仍只輸出最終 JSON。中斷會向上拋出並清除整個 child process group。若 stderr 超過 20 秒無進度，視為 runner 缺陷，不得靜默等候或把它解讀為健康。
 
 ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bundle-dir <dir>` 取得：它只做 ASC GET 與 CDN image GET，原子寫本地 hash-closed bundle；review detail secrets 僅留 `present`、keyed-HMAC fingerprint 與 ASC ref，demo account name 另留正規化 identity SHA-256，不輸出帳號或密碼原文。`demo-run --live-mirror-bundle <dir>` 從這份 mirror 取得預期 account identity，固定走 physical `iphoneos` Release、無 fixture 的 `LiveDemoAccessUITests`；`ios_test.sh` 先對每個 xctestrun configuration/target 清除並掃描保留的 fixture/live keys，再只把 marker 與 identity SHA 注入唯一 `BlueprintName=BooksAndVocabUITests` target（找不到或多於一個都 fail-closed），禁止 live env 擴散到其他 test target。UITest 必須同時看見 `settings.account.identity.<same-sha>` 與 live backend Pro，receipt 再綁同一 SHA；這證明當下裝置帳號／entitlement，不宣稱已重新走 fresh SSO，後者由 root-bound human attestation 承擔。human 與 agent attestation 皆須綁 pre-attestation evidence root，且未過期才可過 gate。
 

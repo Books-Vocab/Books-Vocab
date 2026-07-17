@@ -70,6 +70,8 @@ Use this skill when the user asks to run the migrated source command `release`.
 ./ops/ios_ops.sh gate release --json
 ```
 
+上述 evidence producer（desired shape/build/bundle、journey、physical demo、gate evaluation）若啟動 child command，進度固定走 stderr：立即 `start` / `spawned`、最長每 20 秒 `heartbeat`，並回報 phase、elapsed、PID、alive；child 正常 exit 時另寫 `done` + rc，stdout 仍只能是一份 JSON。progress 不得回顯 raw argv；中斷會向上拋出並清掉整個 isolated child process group。看到 child 執行中但超過 20 秒沒有進度，視為工具缺陷，先停下來修 runner，不得靜默等待或把無輸出解讀成仍健康。
+
 - workflow 缺 spec、`appReviewGate.verdict.status != "pass"`、evidence `status != "pass"`，或 release gate `verdict != "pass"`，一律視為 **BLOCK**。
 - BLOCK 時只允許繼續跑 read-only `workflow` / `status` / `gate` 查詢，或照 evidence plan 的 typed producer 修補缺失／漂移／過期證據；**不得把人工 ASC GUI submit 當 fallback，也不得因使用者已登入就繞過 gate**。
 - 只有三者都 PASS，才可把 ASC GUI submit 作為人工下一步；這個 skill 與 `asc.sh` 都不代替操作者按下不可逆 submit。
