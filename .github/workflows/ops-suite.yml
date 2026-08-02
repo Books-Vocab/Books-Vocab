@@ -23,6 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # docs-lint verifies that every doc's verified_against commit is
+          # reachable from HEAD, which needs real history in the object db.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v6
       - name: Install ripgrep

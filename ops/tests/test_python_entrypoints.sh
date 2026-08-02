@@ -79,7 +79,7 @@ fi
 
 section "Executable Python entrypoints use uv shebang"
 bad_exec="$(
-  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm -u+x -print \
     | sort \
     | while IFS= read -r py; do
         first="$(head -1 "$py")"
@@ -96,7 +96,7 @@ fi
 
 section "Executable Python entrypoints avoid bare uv python"
 bad_uv_python="$(
-  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm -u+x -print \
     | sort \
     | while IFS= read -r py; do
         first="$(head -1 "$py")"
@@ -113,7 +113,7 @@ fi
 
 section "Executable Python entrypoints avoid absolute uv paths"
 bad_abs_uv="$(
-  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm +111 -print \
+  find "$ROOT/ops" -maxdepth 1 -type f -name '*.py' -perm -u+x -print \
     | sort \
     | while IFS= read -r py; do
         first="$(head -1 "$py")"
