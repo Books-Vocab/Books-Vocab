@@ -24,7 +24,6 @@ LINUX_GROUPS=(
   ui-token
   plain-deadzone
   ui-quality-plane
-  ui-quality-gate
   docs-lint
   python-entrypoints
   capability-matrix
@@ -35,6 +34,7 @@ LINUX_GROUPS=(
 # Everything else, each with the reason it cannot run on a linux CI runner.
 # A group without a reason is a silent coverage hole, so the reason is required.
 EXCLUDED_GROUPS=(
+  "ui-quality-gate|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
   "release|drives ops/release.sh against local tags and the iOS pbxproj"
   "ios-release|xcodebuild / Xcode toolchain"
   "ios-ops|xcodebuild + simulator"
