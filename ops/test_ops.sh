@@ -41,6 +41,7 @@ DEFAULT_TESTS=(
   plain-deadzone
   lint-baselines
   injection-lint
+  ops-ci-coverage
   ui-quality-plane
   ui-quality-gate
   visual-regression
@@ -112,6 +113,7 @@ run_one() {
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
+    ops-ci-coverage)    ./ops/tests/test_ops_ci_coverage.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     visual-regression)  ./ops/tests/test_visual_regression.sh ;;

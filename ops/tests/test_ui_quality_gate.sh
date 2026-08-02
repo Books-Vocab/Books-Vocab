@@ -234,6 +234,45 @@ else
   fail_t "slow execute missing hint: $OUT"
 fi
 
+
+# ── The three silent-green paths (2026-08-03) ──────────────────────────────
+section "Mode must be explicit"
+# `--dry-run` was declared default=True and never read; the real switch was
+# `--execute` being opt-in, so a caller that forgot it got a green no-op.
+rc=0; "$GATE" --files "$SAMPLE_FILE" --tier fast >/dev/null 2>&1 || rc=$?
+[[ "$rc" -eq 2 ]] && ok "bare invocation is a usage error (exit 2)" \
+  || fail_t "bare invocation exited $rc — a forgotten --execute still looks like a run"
+
+section "A warning may soften a green but never launder a red"
+_ds() { "$UV_BIN" run --python 3.13 python -c "
+import sys; sys.path.insert(0,'ops')
+import importlib.util as u
+s=u.spec_from_file_location('g','ops/ui_quality_gate.py'); m=u.module_from_spec(s); s.loader.exec_module(m)
+print(m.decide_status($1, $2))"; }
+[[ "$(_ds 1 "'w'")" == "failed" ]] && ok "rc=1 with a warning stays failed" \
+  || fail_t "a warning laundered a failing rc into warn — it drops out of summary.failed"
+[[ "$(_ds 0 "'w'")" == "warn"   ]] && ok "rc=0 with a warning is warn"   || fail_t "rc=0+warning did not yield warn"
+[[ "$(_ds 0 None)"  == "passed" ]] && ok "rc=0 without a warning passes" || fail_t "clean run did not pass"
+
+section "An unresolvable base is an error, not an empty diff"
+rc=0; ./ops/ui_quality_plane.py impact --since refs/heads/no-such-ref-xyz >/dev/null 2>&1 || rc=$?
+[[ "$rc" -ne 0 ]] && ok "unresolvable --since exits $rc" \
+  || fail_t "unresolvable --since exited 0 — 'cannot resolve' is again indistinguishable from 'nothing changed'"
+
+section "CI runs every mechanism, not a diff"
+grep -q -- '--all-mechanisms' .github/workflows/ui-quality-gate.yml \
+  && ok "workflow uses --all-mechanisms" \
+  || fail_t "workflow still scopes by diff; on push HEAD==origin/main so the range is empty and the gate is a no-op"
+out="$("$GATE" --tier fast --execute --all-mechanisms 2>&1 || true)"
+passed_n="$(sed -n 's/.*summary: planned=[0-9]* passed=\([0-9]*\).*/\1/p' <<<"$out" | head -1)"
+[[ "${passed_n:-0}" -ge 5 ]] && ok "--all-mechanisms executes ${passed_n} fast mechanism(s)" \
+  || fail_t "--all-mechanisms executed ${passed_n:-0} mechanisms — expected all five fast lints"
+
+section "ops suite has a CI execution surface"
+grep -rq 'test_ops.sh' .github/workflows/ \
+  && ok "a workflow runs ops/test_ops.sh" \
+  || fail_t "no workflow runs ops/test_ops.sh — regressions in the suite stay invisible (this is how two groups sat red)"
+
 echo ""
 echo "ui-quality-gate: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]

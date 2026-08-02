@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13
 """Typed, fail-closed producers and plan for App Review evidence.
 
 Network scope is HTTPS GET only.  The tool never writes App Store Connect and

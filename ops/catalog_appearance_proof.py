@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13
 """Closed contract validator for catalog appearance evidence.
 
 The iOS producer, catalog lifecycle, review selector, and App Review gate all

@@ -1,0 +1,33 @@
+name: ops-suite
+
+# ops/test_ops.sh 的 CI 執行面。
+#
+# 這是「讓其他修復保持修好」的那個 workflow。在它存在之前，ops 測試套件**沒有任何
+# 自動執行點**：`ops/tests/test_ui_quality_gate.sh` 紅了數週而沒有人接到通知，
+# ui-quality-gate 空轉兩個月也沒有任何測試發聲——因為偵測斷點的測試本身從來沒跑過。
+#
+# 只跑不需要 Xcode / 模擬器 / 網路的 group（LINUX_GROUPS）。需要 macOS 的 group
+# 由本機 cutover gate 負責；「新增 group 未分類」由 ops/tests/test_ops_ci_coverage.sh 擋。
+# 本地等價入口：./ops/test_ops.sh <group...>
+
+on:
+  push:
+    paths: &ops_paths
+      - 'ops/**'
+      - '.github/workflows/ops-suite.yml'
+  pull_request:
+    paths: *ops_paths
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install ripgrep
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Assert every group is classified
+        run: ./ops/tests/test_ops_ci_coverage.sh
+      - name: Run platform-independent ops groups
+        run: ./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups)

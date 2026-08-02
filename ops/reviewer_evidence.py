@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13
 """Deterministic App Review reviewer-evidence manifest and bundle primitives."""
 
 from __future__ import annotations
