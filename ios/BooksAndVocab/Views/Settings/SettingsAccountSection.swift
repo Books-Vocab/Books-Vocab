@@ -276,6 +276,7 @@ enum SettingsSocialKind {
 }
 
 struct SettingsSocialBadge: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let kind: SettingsSocialKind
 
@@ -302,6 +303,7 @@ struct SettingsSocialBadge: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private var backgroundColor: Color {

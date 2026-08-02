@@ -409,6 +409,7 @@ struct SharedDeckDetailView: View {
 // MARK: - Rating stars
 
 struct SharedDeckRatingStars: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let average: Double
     let count: Int
@@ -433,12 +434,14 @@ struct SharedDeckRatingStars: View {
             SharedDeckFormat.rating(average),
             SharedDeckFormat.compactNumber(count)
         ))
+        .enableInjection()
     }
 }
 
 // MARK: - Sample card preview row
 
 struct SharedDeckCardPreviewRow: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let card: SharedDeckCard
 
@@ -470,6 +473,7 @@ struct SharedDeckCardPreviewRow: View {
                 .fill(appTheme.palette.cardBackground)
         )
         .accessibilityElement(children: .combine)
+        .enableInjection()
     }
 }
 
