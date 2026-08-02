@@ -15,6 +15,7 @@ enum ReaderPreviewPageContent: Equatable {
 }
 
 struct ReaderChromePreviewScene: View {
+    @ObserveInjection private var inject
     let state: ReaderViewPresenterState
     let showsErrorCard: Bool
     var pageContent: ReaderPreviewPageContent = .skeleton
@@ -66,6 +67,7 @@ struct ReaderChromePreviewScene: View {
         } settingsPanel: {
             EmptyView()
         }
+        .enableInjection()
     }
 
     /// Translation-overlay content. For the marketing prose page it is driven by
@@ -252,6 +254,7 @@ struct ReaderProseFlowLayout: Layout {
 /// (non-copyrighted) literary text on the reader's sepia paper, in the reader's
 /// default serif (Cormorant Garamond), with saved-vocab highlighter bands.
 struct ReaderMarketingProse: View {
+    @ObserveInjection private var inject
     // Reader default body font (ReaderFont.serif → Cormorant Garamond) so the
     // shot matches the shipped reader default. Registered via ios/Info.plist UIAppFonts.
     private static let fontName = "CormorantGaramond-Regular"
@@ -341,6 +344,7 @@ struct ReaderMarketingProse: View {
         .padding(.horizontal, Self.horizontalInset)
         .padding(.bottom, Self.bottomInset)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .enableInjection()
     }
 
     @ViewBuilder

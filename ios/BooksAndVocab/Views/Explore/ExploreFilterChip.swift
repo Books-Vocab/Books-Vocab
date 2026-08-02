@@ -11,6 +11,7 @@ import SwiftUI
 
 /// 純視覺 label（供 chip 與 Menu label 共用）。
 struct ExploreFilterChipLabel: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let title: String
     var systemImage: String?
@@ -38,10 +39,12 @@ struct ExploreFilterChipLabel: View {
             Capsule(style: .continuous)
                 .fill(isSelected ? appTheme.palette.accent : appTheme.palette.mutedFill)
         )
+        .enableInjection()
     }
 }
 
 struct ExploreFilterChip: View {
+    @ObserveInjection private var inject
     let title: String
     var systemImage: String?
     let isSelected: Bool
@@ -60,6 +63,7 @@ struct ExploreFilterChip: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .enableInjection()
     }
 }
 #endif
