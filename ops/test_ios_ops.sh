@@ -952,7 +952,7 @@ grep -q -- '--configuration) CONFIGURATION=' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '-configuration "$CONFIGURATION"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q -- '--arg evidenceProducer "ops/ios_test.sh"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'evidenceProducer:\$evidenceProducer' "$WORKSPACE/ops/ios_test.sh" \
-  && grep -q 'sdk_suffix="iphoneos"' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -qE '^ios_test_sdk_suffix\(\)' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'os_name="iOS"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'testLiveDemoAccountHasProEntitlement' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test owns Release configuration and App Review provenance" || fail_t "ios_test lacks producer-owned Release provenance"
@@ -1427,6 +1427,88 @@ missing_diag_json="$("$IOS_DIAG" --kind test --xcresult "$ios_test_retry_tmp/Mis
 echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.log" '.schema=="kg.ios.diagnostics.v1" and .source=="raw-log-missing" and .result=="fail" and .counts.errors==0 and .logError=="log file not found: \($log)" and (.xcresultError|length > 0) and .artifacts.log==$log' >/dev/null \
   && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
+
+section "ios_test destination-aware cache readiness"
+# Regression for IMP-0033. `ios_test_cached_products_ready` keyed the SDK suffix
+# off a `platform=iOS,` substring — WITH a trailing comma — so the comma-less
+# `generic/platform=iOS` destination that the live-only Release compile gate
+# uses fell back to iphonesimulator, could never see its own Release-iphoneos
+# products, and reported productsReady:false on a complete cache. The sentinel
+# is written behind the same predicate, so that cache also stayed permanently
+# cold (a full Release rebuild every run).
+#
+# Hermetic: `--cache-status` never builds, so this fabricates the product layout
+# a real build-for-testing leaves behind. `generic/platform=iOS` and
+# `platform=iOS,id=<udid>` hash to the SAME cache key (platform token `ios`), so
+# one fabricated root probes both destinations.
+ios_cache_probe_root="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_cache_probe.XXXXXX")"
+ios_cache_status_json() {
+  KG_IOS_TEST_CACHE_ROOT="$ios_cache_probe_root" \
+    bash "$WORKSPACE/ops/ios_test.sh" --ui --configuration Release \
+      --destination "$1" --cache-status --json 2>/dev/null
+}
+ios_cache_derived_root="$(ios_cache_status_json 'generic/platform=iOS' \
+  | jq -r 'if type=="object" then .cache.derivedDataRoot else empty end' 2>/dev/null || true)"
+if [[ -z "$ios_cache_derived_root" ]]; then
+  # Stdout is not parseable as JSON at all — recover the root so the readiness
+  # assertions below still run, and let the purity assertion report the failure.
+  ios_cache_derived_root="$(ios_cache_status_json 'generic/platform=iOS' \
+    | sed -n 's/.*"derivedDataRoot": "\([^"]*\)".*/\1/p' | head -1)"
+fi
+[[ -n "$ios_cache_derived_root" ]] \
+  && ok "ios_test cache-status reports a derivedDataRoot" \
+  || fail_t "ios_test cache-status reported no derivedDataRoot"
+
+ios_cache_products="$ios_cache_derived_root/Build/Products"
+mkdir -p "$ios_cache_products/Release-iphoneos/BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest" \
+         "$ios_cache_products/Release-iphoneos/BooksAndVocabUITests-Runner.app"
+: > "$ios_cache_products/BooksAndVocabUITests_iphoneos26.0-arm64.xctestrun"
+: > "$ios_cache_derived_root/.kg-test-cache-complete"
+
+ios_cache_generic_raw="$(ios_cache_status_json 'generic/platform=iOS')"
+echo "$ios_cache_generic_raw" | jq -e '.schema=="kg.ios.test-cache.v1"' >/dev/null 2>&1 \
+  && ok "ios_test --cache-status --json keeps stdout pure JSON" \
+  || fail_t "ios_test --cache-status --json pollutes stdout: $(echo "$ios_cache_generic_raw" | head -1)"
+
+ios_cache_ready_for() {
+  ios_cache_status_json "$1" | sed -n '/^{/,$p' | jq -r '.cache.productsReady' 2>/dev/null
+}
+[[ "$(ios_cache_ready_for 'generic/platform=iOS')" == true ]] \
+  && ok "generic/platform=iOS sees its own Release-iphoneos products" \
+  || fail_t "generic/platform=iOS reports productsReady=false on a complete iphoneos cache (IMP-0033)"
+[[ "$(ios_cache_ready_for 'platform=iOS,id=00008140-000000000000001E')" == true ]] \
+  && ok "platform=iOS,id=<udid> sees the same Release-iphoneos products" \
+  || fail_t "exact-device destination lost iphoneos readiness"
+
+# Negative: iphoneos readiness must not be satisfiable by simulator products.
+rm -rf "$ios_cache_products/Release-iphoneos"
+mkdir -p "$ios_cache_products/Release-iphonesimulator/BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest" \
+         "$ios_cache_products/Release-iphonesimulator/BooksAndVocabUITests-Runner.app"
+[[ "$(ios_cache_ready_for 'generic/platform=iOS')" == false ]] \
+  && ok "generic/platform=iOS rejects iphonesimulator products" \
+  || fail_t "generic/platform=iOS accepted iphonesimulator products as iphoneos-ready"
+rm -rf "$ios_cache_probe_root"
+
+# `prepare` must never label a build "prepared" when the cache has no ready
+# products: the JSON verdict was self-contradicting AND exit 0, so the
+# live-only Release compile block gate (worktree_orchestrate.py) went green on
+# a cache that produced nothing.
+ios_prepare_status_fn="$(sed -n '/^ios_test_prepare_status()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$ios_prepare_status_fn" ]]; then
+  ios_prepare_ready="$(bash -lc "$ios_prepare_status_fn"$'\n''ios_test_prepare_status true')"
+  ios_prepare_unready="$(bash -lc "$ios_prepare_status_fn"$'\n''ios_test_prepare_status false')"
+  [[ "$ios_prepare_ready" == prepared ]] \
+    && ok "prepare reports 'prepared' when products are ready" \
+    || fail_t "prepare status for ready products invalid: $ios_prepare_ready"
+  [[ "$ios_prepare_unready" == error ]] \
+    && ok "prepare refuses 'prepared' when products are missing" \
+    || fail_t "prepare status for missing products invalid: $ios_prepare_unready"
+else
+  fail_t "ios_test has no ios_test_prepare_status seam — prepare status is still hardcoded (IMP-0033)"
+fi
+grep -qE 'print_cache_payload prepare "?\$\{?prepare_status' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "prepare payload derives its status from products readiness" \
+  || fail_t "prepare payload still hardcodes a literal status"
 
 echo ""
 echo "══════════════════════════════"

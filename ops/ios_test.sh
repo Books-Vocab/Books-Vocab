@@ -326,13 +326,29 @@ ios_test_list_xctestrun_artifacts() {
   find "$derived_data_root" -type f -name '*.xctestrun' | sort
 }
 
+# Device vs simulator is decided by the destination's PLATFORM, not by its
+# punctuation. The old predicate required a literal `platform=iOS,` — with the
+# trailing comma — so `generic/platform=iOS` (no comma; used by the live-only
+# Release compile gate and by ios_release.sh) silently fell through to the
+# simulator SDK. That was a two-way error: a complete Release-iphoneos cache
+# read as not-ready, AND Release-iphonesimulator products would have counted as
+# proof of a device build. Match `platform=iOS` anywhere and exclude Simulator,
+# which covers `generic/platform=iOS`, `platform=iOS,id=<udid>` and bare
+# `platform=iOS`, while `platform=iOS Simulator...` stays on the simulator SDK.
+ios_test_sdk_suffix() {
+  if [[ "$DESTINATION" == *"platform=iOS"* && "$DESTINATION" != *"Simulator"* ]]; then
+    printf 'iphoneos\n'
+  else
+    printf 'iphonesimulator\n'
+  fi
+}
+
 ios_test_cached_products_ready() {
   local xctestrun_path="$1"
   local products_root app_bundle unit_bundle ui_bundle sdk_suffix
   [[ -n "$xctestrun_path" && -f "$xctestrun_path" ]] || return 1
   products_root="$(dirname "$xctestrun_path")"
-  sdk_suffix="iphonesimulator"
-  [[ "$DESTINATION" == *"platform=iOS,"* && "$DESTINATION" != *"Simulator"* ]] && sdk_suffix="iphoneos"
+  sdk_suffix="$(ios_test_sdk_suffix)"
   app_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocab.app"
   unit_bundle="$app_bundle/PlugIns/BooksAndVocabTests.xctest"
   ui_bundle="$products_root/$CONFIGURATION-$sdk_suffix/BooksAndVocabUITests-Runner.app"
@@ -797,7 +813,11 @@ fi
 
 enforce_isolated_simulator_or_fail
 
-echo "[ios_test] caller=$CALLER scope=$TEST_SCOPE running ${#ONLY_FLAGS[@]} selector(s) (0=scheme all targets)..."
+# Progress line, not payload: under --json stdout carries exactly one JSON
+# document, so route the banner to stderr there (same contract the streaming
+# gate runners hold).
+printf '[ios_test] caller=%s scope=%s running %d selector(s) (0=scheme all targets)...\n' \
+  "$CALLER" "$TEST_SCOPE" "${#ONLY_FLAGS[@]}" >&"$(( JSON_MODE ? 2 : 1 ))"
 START=$(date +%s)
 START_MS="$(ios_test_now_ms)"
 BOOT_MS=0
@@ -829,8 +849,14 @@ ui_test_launch_args_json() {
   fi
 }
 
+# Truthful `prepare` verdict: the status label must be derived from whether the
+# cache actually holds ready products, never asserted independently of it.
+ios_test_prepare_status() {
+  if [[ "$1" == true ]]; then printf 'prepared\n'; else printf 'error\n'; fi
+}
+
 handle_cache_action() {
-  local cache_key derived_root xctestrun_path products_ready payload build_log build_result_dir build_result_bundle build_exit
+  local cache_key derived_root xctestrun_path products_ready payload build_log build_result_dir build_result_bundle build_exit prepare_status prepare_error_key prepare_error_message
   local action="$1"
   cache_key="$(ios_test_build_cache_key)"
   derived_root="$(ios_test_derived_data_root)"
@@ -867,7 +893,19 @@ handle_cache_action() {
           if ios_test_cache_is_complete "$xctestrun_path"; then
             products_ready=true
           fi
-          payload="$(print_cache_payload prepare prepared "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "" "" "$build_log" "$build_result_bundle")"
+          # A build that exits 0 but leaves the cache without ready products is
+          # NOT "prepared". Hardcoding the label made the JSON self-contradicting
+          # (status:"prepared" + productsReady:false) and — because only
+          # status=="error" exits non-zero — let the live-only Release compile
+          # BLOCK gate go green on a cache that produced nothing.
+          prepare_status="$(ios_test_prepare_status "$products_ready")"
+          prepare_error_key=""
+          prepare_error_message=""
+          if [[ "$prepare_status" != prepared ]]; then
+            prepare_error_key="cache-products-missing"
+            prepare_error_message="build-for-testing exited 0 but the $CONFIGURATION-$(ios_test_sdk_suffix) test products are incomplete"
+          fi
+          payload="$(print_cache_payload prepare "$prepare_status" "$cache_key" "$derived_root" "$xctestrun_path" "$products_ready" "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "$prepare_error_key" "$prepare_error_message" "$build_log" "$build_result_bundle")"
         else
           payload="$(print_cache_payload prepare error "$cache_key" "$derived_root" "$xctestrun_path" false "$BUILD_FOR_TESTING_MS" "$BOOT_MS" "build-for-testing" "prepare-cache-failed" "$build_log" "$build_result_bundle")"
         fi
@@ -1703,7 +1741,7 @@ write_json_verdict() {
   fixture_data_used=false
   [[ -n "$UI_FIXTURE_DATASET_FILE" ]] && fixture_data_used=true
   os_name="iOS Simulator"
-  [[ "$DESTINATION" == *"platform=iOS,"* && "$DESTINATION" != *"Simulator"* ]] && os_name="iOS"
+  [[ "$(ios_test_sdk_suffix)" == iphoneos ]] && os_name="iOS"
   network_mode="fixture"
   [[ "$LIVE_DEMO" -eq 1 ]] && network_mode="live"
   build_ui_test_review_page "$result"
