@@ -113,6 +113,39 @@ def test_branch_for_composes_type_and_slug():
 # ============================================================================
 # PURE: impact -> gate plan (the orchestrator's one real judgement)
 # ============================================================================
+def test_plan_is_never_empty():
+    """An empty plan is how "checked nothing" became indistinguishable from
+    "everything passed": aggregate_verdict([]) is pass. Make it unreachable."""
+    assert plan_gates([]) != []
+    assert "coverage" in _names(plan_gates([]))
+
+
+def test_unrouted_file_is_named_not_dropped():
+    cov = next(g for g in plan_gates(["lab/experiment.rb"]) if g["name"] == "coverage")
+    assert cov["uncovered"] == ["lab/experiment.rb"]
+
+
+def test_neutral_file_is_declared_with_a_reason():
+    cov = next(g for g in plan_gates(["README.md"]) if g["name"] == "coverage")
+    assert cov["uncovered"] == []
+    assert cov["neutral"] == [["README.md", "README.md"]]
+
+
+def test_coverage_partition_is_exact():
+    files = ["ios/BooksAndVocab/A.swift", "README.md", "lab/x.rb", "docs/reference/tech_index.md"]
+    cov = next(g for g in plan_gates(files) if g["name"] == "coverage")
+    parts = set(cov["covered"]) | {n[0] for n in cov["neutral"]} | set(cov["uncovered"])
+    assert parts == set(files)
+
+
+def test_no_neutral_rule_swallows_a_source_surface():
+    import re as _re
+    for probe in ("ios/BooksAndVocab/X.swift", "backend/src/kg/app.py",
+                  "ops/x.py", "ops/x.sh", "design-system/tokens.json"):
+        for pat, _reason in MODULE.NEUTRAL_RULES:
+            assert not (probe == pat or probe.startswith(pat)), f"{pat} swallows {probe}"
+
+
 def test_gate_plan_real_repo_plans_review_receipts():
     """Iron law 4's mechanical half must be planned for the real repo.
 
@@ -198,7 +231,7 @@ def test_gate_plan_ios_models_change_also_triggers_design_system():
 def test_gate_plan_design_system_only():
     gates = plan_gates(["design-system/tokens/color.json"])
     names = _names(gates)
-    assert names == {"design-system"}
+    assert names - {"coverage"} == {"design-system"}
     assert _by_name(gates)["design-system"]["level"] == "block"
 
 
@@ -311,17 +344,28 @@ def test_gate_plan_ops_src_and_its_test_dedupes_target():
 def test_gate_plan_ops_shell_and_non_ops_select_no_ops_pytest():
     # ops shell scripts are out of scope (no pytest counterpart); docs/backend
     # changes must not leak into the ops route
-    assert plan_gates(["ops/devops_kg_safe.sh"]) == []
+    # ops/*.sh has no pytest counterpart, but it is no longer silently dropped:
+    # the coverage gate names it (a real routing hole, IMP-tracked).
+    ops_sh = plan_gates(["ops/devops_kg_safe.sh"])
+    assert _names(ops_sh) == {"coverage"}
+    assert next(g for g in ops_sh if g["name"] == "coverage")["uncovered"] == [
+        "ops/devops_kg_safe.sh"]
     assert not any(n == "ops-pytest"
                    for n in _names(plan_gates(["docs/reference/tech_index.md"])))
     assert not any(n == "ops-pytest"
                    for n in _names(plan_gates(["backend/tests/test_app.py"])))
 
 
-def test_gate_plan_neutral_file_selects_nothing():
-    assert plan_gates(["README.md"]) == []
-    assert plan_gates(["notes.txt"]) == []
-    assert plan_gates([]) == []
+def test_gate_plan_neutral_file_selects_only_the_coverage_gate():
+    """Explicit contract update (2026-08-03): a neutral diff no longer yields an
+    EMPTY plan, because an empty plan is what made aggregate_verdict return pass
+    for having checked nothing. It now yields exactly the coverage bookkeeping
+    gate, which records why nothing else was selected."""
+    for files in (["README.md"], ["notes.txt"], []):
+        assert _names(plan_gates(files)) == {"coverage"}
+    # an unrouted extension is named rather than silently dropped
+    cov = next(g for g in plan_gates(["notes.txt"]) if g["name"] == "coverage")
+    assert cov["uncovered"] == ["notes.txt"]
 
 
 # ============================================================================
@@ -693,8 +737,14 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK
     assert gate["schema"] == "kg.worktree.gate.v1"
-    assert gate["verdict"] == "pass"
-    assert gate["gates"] == []
+    # Contract update (2026-08-03): the fixture's file is routed to no gate, so
+    # the always-planned coverage gate warns. `warn` still lands; what changed is
+    # that "nothing was checked" is now visible instead of reading as pass.
+    assert gate["verdict"] == "warn"
+    assert [g["name"] for g in gate["gates"] if g["status"] == "warn"] == ["coverage"]
+    # Only the coverage bookkeeping gate runs; an empty gate list is no longer
+    # reachable, which is the point (see test_plan_is_never_empty).
+    assert [g["name"] for g in gate["gates"]] == ["coverage"]
     assert "notes.txt" in gate["changed_files"]
     # gate wrote a verdict cache beside the ledger (nit3 will strike it on resolve).
     gate_cache = MODULE._gate_record_path(state, wt)
@@ -949,7 +999,11 @@ def test_cutover_refused_when_gate_verdict_is_stale(scratch):
     (Path(wt) / "notes.txt").write_text("v1\n")
     _git(["add", "-A"], wt); _git(["commit", "-qm", "v1"], wt)
     rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
-    assert gate["verdict"] == "pass"
+    # Contract update (2026-08-03): the fixture's file is routed to no gate, so
+    # the always-planned coverage gate warns. `warn` still lands; what changed is
+    # that "nothing was checked" is now visible instead of reading as pass.
+    assert gate["verdict"] == "warn"
+    assert [g["name"] for g in gate["gates"] if g["status"] == "warn"] == ["coverage"]
 
     # a NEW commit after the gate ran -> verdict is now stale
     (Path(wt) / "more.txt").write_text("v2\n")
