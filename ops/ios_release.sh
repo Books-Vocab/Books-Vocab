@@ -120,8 +120,28 @@ asc() {  # codemagic CLI wrapper（uvx，免 fastlane/ruby）
   return "$rc"
 }
 
+# Truthful top-level verdict: the label must be DERIVED from the stage evidence,
+# never asserted next to it. Until 2026-08-03 the export- and upload-failure
+# paths passed a literal "ok"/"0" while the process exited non-zero, so an agent
+# reading only the JSON saw a green release. Same shape as ios_test.sh's
+# `prepared` label before febc68ebb.
+ios_release_verdict_status() {
+  local archive="$1" export="$2" upload="$3"
+  case "fail" in
+    "$archive"|"$export"|"$upload") printf 'fail\n'; return 0 ;;
+  esac
+  printf 'ok\n'
+}
+
 write_json_verdict() {
-  local status="$1" exit_code="$2" archive_status="$3" export_status="$4" upload_status="$5"
+  local exit_code="$1" archive_status="$2" export_status="$3" upload_status="$4"
+  local status
+  status="$(ios_release_verdict_status "$archive_status" "$export_status" "$upload_status")"
+  # Exit code and verdict are two views of one fact; disagreement means a caller
+  # got it wrong, so fail closed rather than emit a self-contradicting document.
+  if [[ "$status" == "ok" && "$exit_code" != "0" ]]; then
+    status="fail"
+  fi
   jq -nc \
     --arg schema "kg.ios.archive.v1" \
     --arg status "$status" \
@@ -280,7 +300,7 @@ else
 fi
 if [[ $ARCHIVE_EXIT -ne 0 ]]; then
   echo "RESULT=fail EXIT=$ARCHIVE_EXIT caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
-  write_json_verdict "fail" "$ARCHIVE_EXIT" "fail" "skipped" "skipped"
+  write_json_verdict "$ARCHIVE_EXIT" "fail" "skipped" "skipped"
   echo "[release] ✗ archive failed (exit $ARCHIVE_EXIT, ${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE" >&2
   exit "$ARCHIVE_EXIT"
 fi
@@ -307,7 +327,7 @@ set -e
 if [[ $EXPORT_EXIT -ne 0 ]]; then
   cat "$EXPORT_LOG" >&2
   TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
-  write_json_verdict "ok" "0" "ok" "fail" "skipped"
+  write_json_verdict "$EXPORT_EXIT" "ok" "fail" "skipped"
   echo "[release] ✗ export failed (exit $EXPORT_EXIT) log=$EXPORT_LOG" >&2
   exit "$EXPORT_EXIT"
 fi
@@ -316,7 +336,7 @@ IPA="${ipas[0]:-}"
 EXPORT_MS="$(( $(now_ms) - START_EXPORT_MS ))"
 if [[ -z "$IPA" ]]; then
   TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
-  write_json_verdict "fail" "1" "ok" "fail" "skipped"
+  write_json_verdict "1" "ok" "fail" "skipped"
   echo "✗ export 未產出 .ipa" >&2
   exit 1
 fi
@@ -342,14 +362,14 @@ if [[ $DO_UPLOAD -eq 1 ]]; then
   UPLOAD_MS="$(( $(now_ms) - START_UPLOAD_MS ))"
   TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
   if [[ $UPLOAD_EXIT -ne 0 ]]; then
-    write_json_verdict "ok" "0" "ok" "ok" "fail"
+    write_json_verdict "$UPLOAD_EXIT" "ok" "ok" "fail"
     echo "[release] ✗ upload failed (exit $UPLOAD_EXIT) log=$UPLOAD_LOG" >&2
     exit "$UPLOAD_EXIT"
   fi
-  write_json_verdict "ok" "0" "ok" "ok" "ok"
+  write_json_verdict "0" "ok" "ok" "ok"
   echo "[release] ✓ uploaded — 數分鐘後於 TestFlight 顯示，processing 完才可送審"
 else
   TOTAL_MS="$(( $(now_ms) - START_TOTAL_MS ))"
-  write_json_verdict "ok" "0" "ok" "ok" "skipped"
+  write_json_verdict "0" "ok" "ok" "skipped"
   echo "[release] 完成 archive+export（未上傳）。要上 TestFlight 加 --upload。"
 fi
