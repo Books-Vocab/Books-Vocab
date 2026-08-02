@@ -286,66 +286,66 @@
       }
     }
   ],
-  "producers": {
-    "desiredBundle": {
-      "type": "desired-bundle",
-      "authority": "checked-in desired ASC manifest",
-      "command": "./ops/app_review_evidence.py desired --spec ops/app_review/2.0.0.json --profile ops/capture_profiles/marketing_account.json --render-output-dir promotion/screenshots/dist/app-store/iphone --bundle-dir build/app-review/desired-2.0.0/bundle --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --commit"
-    },
-    "liveMirrorBundle": {
-      "type": "asc-live-mirror",
-      "authority": "live App Store Connect GET",
-      "command": "./ops/asc_reviewer_mirror.py audit --desired-bundle build/app-review/desired-2.0.0/bundle --app-id 6759816274 --version-id 13c9c70a-1e87-4617-9ea9-5fcaac0c4925 --display-type APP_IPHONE_65 --bundle-dir build/app-review/live-asc-2.0.0-v3 --commit"
-    },
-    "journey.reader-import": {
-      "type": "ios-ui-journey",
-      "authority": "Release-equivalent iOS UI test run",
-      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id reader-import --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages --out build/app-review/journeys/2.0.0-reader-import.json --commit"
-    },
-    "journey.knowledge-graph": {
-      "type": "ios-ui-journey",
-      "authority": "Release-equivalent iOS UI test run",
-      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id knowledge-graph --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testTabSwitchingRendersRealContentAndPreservesState --out build/app-review/journeys/2.0.0-knowledge-graph.json --commit"
-    },
-    "journey.today-review": {
-      "type": "ios-ui-journey",
-      "authority": "Release-equivalent iOS UI test run",
-      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id today-review --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testNotebookReviewFlipAndGradingAdvanceQueue --out build/app-review/journeys/2.0.0-today-review.json --commit"
-    },
-    "journey.account-pro": {
-      "type": "ios-ui-journey",
-      "authority": "exact-device Release iOS UI test run",
-      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id account-pro --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --evidence-kind exact-device --destination platform=iOS,id=<physical-UDID> --test testProEntitlementUnlocksGatedPodcastEpisode --out build/app-review/journeys/2.0.0-account-pro.json --commit"
-    },
-    "demoAccess": {
-      "type": "demo-access",
-      "authority": "exact-device live-account Release test",
-      "command": "./ops/app_review_evidence.py demo-run --spec ops/app_review/2.0.0.json --destination platform=iOS,id=<physical-UDID> --live-mirror-bundle build/app-review/live-asc-2.0.0-v3 --locale zh-Hant --timezone Asia/Taipei --out build/app-review/demo-access-2.0.0.json --commit"
-    },
-    "urlChecks": {
-      "type": "url-checks",
-      "authority": "live HTTPS GET",
-      "command": "./ops/app_review_evidence.py urls --spec ops/app_review/2.0.0.json --out build/app-review/url-checks-2.0.0.json --commit"
-    },
-    "appearanceProof": {
-      "type": "catalog-appearance",
-      "authority": "validated pinned catalog run",
-      "command": "./ops/app_review_evidence.py appearance --spec ops/app_review/2.0.0.json --catalog-root <validated-catalog-root> --out build/app-review/appearance/2.0.0.json --commit"
-    },
-    "attestation.human": {
-      "type": "human-attestation",
-      "authority": "release owner",
-      "command": "./ops/app_review_evidence.py attest --actor human --subject <release-owner> --pre-root-sha256 <gate-pre-root> --observed-at <RFC3339> --expires-at <RFC3339> --spec ops/app_review/2.0.0.json --out build/app-review/attestations/2.0.0-human.json --commit"
-    },
-    "attestation.agent": {
-      "type": "agent-attestation",
-      "authority": "independent release gate agent",
-      "command": "./ops/app_review_evidence.py attest --actor agent --subject <independent-agent> --pre-root-sha256 <gate-pre-root> --observed-at <RFC3339> --expires-at <RFC3339> --spec ops/app_review/2.0.0.json --out build/app-review/attestations/2.0.0-agent.json --commit"
-    }
-  },
   "freshness": {
     "attestationMaxAgeHours": 24,
     "liveMirrorMaxAgeHours": 12
+  },
+  "producers": {
+    "appearanceProof": {
+      "authority": "validated pinned catalog run",
+      "command": "./ops/app_review_evidence.py appearance --spec ops/app_review/2.0.0.json --catalog-root <validated-catalog-root> --out build/app-review/appearance/2.0.0.json --commit",
+      "type": "catalog-appearance"
+    },
+    "attestation.agent": {
+      "authority": "independent release gate agent",
+      "command": "./ops/app_review_evidence.py attest --actor agent --subject <independent-agent> --pre-root-sha256 <gate-pre-root> --observed-at <RFC3339> --expires-at <RFC3339> --spec ops/app_review/2.0.0.json --out build/app-review/attestations/2.0.0-agent.json --commit",
+      "type": "agent-attestation"
+    },
+    "attestation.human": {
+      "authority": "release owner",
+      "command": "./ops/app_review_evidence.py attest --actor human --subject <release-owner> --pre-root-sha256 <gate-pre-root> --observed-at <RFC3339> --expires-at <RFC3339> --spec ops/app_review/2.0.0.json --out build/app-review/attestations/2.0.0-human.json --commit",
+      "type": "human-attestation"
+    },
+    "demoAccess": {
+      "authority": "exact-device live-account Release test",
+      "command": "./ops/app_review_evidence.py demo-run --spec ops/app_review/2.0.0.json --destination platform=iOS,id=<physical-UDID> --live-mirror-bundle build/app-review/live-asc-2.0.0-v3 --locale zh-Hant --timezone Asia/Taipei --out build/app-review/demo-access-2.0.0.json --commit",
+      "type": "demo-access"
+    },
+    "desiredBundle": {
+      "authority": "checked-in desired ASC manifest",
+      "command": "./ops/app_review_evidence.py desired --spec ops/app_review/2.0.0.json --profile ops/capture_profiles/marketing_account.json --render-output-dir promotion/screenshots/dist/app-store/iphone --bundle-dir build/app-review/desired-2.0.0/bundle --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --commit",
+      "type": "desired-bundle"
+    },
+    "journey.account-pro": {
+      "authority": "exact-device Release iOS UI test run",
+      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id account-pro --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --evidence-kind exact-device --destination platform=iOS,id=<physical-UDID> --test testProEntitlementUnlocksGatedPodcastEpisode --out build/app-review/journeys/2.0.0-account-pro.json --commit",
+      "type": "ios-ui-journey"
+    },
+    "journey.knowledge-graph": {
+      "authority": "Release-equivalent iOS UI test run",
+      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id knowledge-graph --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testTabSwitchingRendersRealContentAndPreservesState --out build/app-review/journeys/2.0.0-knowledge-graph.json --commit",
+      "type": "ios-ui-journey"
+    },
+    "journey.reader-import": {
+      "authority": "Release-equivalent iOS UI test run",
+      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id reader-import --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testReaderOpensRealBookShowsLibraryTranslationAndTurnsPages --out build/app-review/journeys/2.0.0-reader-import.json --commit",
+      "type": "ios-ui-journey"
+    },
+    "journey.today-review": {
+      "authority": "Release-equivalent iOS UI test run",
+      "command": "./ops/app_review_evidence.py journey-run --spec ops/app_review/2.0.0.json --journey-id today-review --dataset-file build/app-review/desired-2.0.0/bundle/inputs/ui_world.json --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --timezone Asia/Taipei --appearance light --test testNotebookReviewFlipAndGradingAdvanceQueue --out build/app-review/journeys/2.0.0-today-review.json --commit",
+      "type": "ios-ui-journey"
+    },
+    "liveMirrorBundle": {
+      "authority": "live App Store Connect GET",
+      "command": "./ops/asc_reviewer_mirror.py audit --desired-bundle build/app-review/desired-2.0.0/bundle --app-id 6759816274 --version-id 13c9c70a-1e87-4617-9ea9-5fcaac0c4925 --display-type APP_IPHONE_65 --bundle-dir build/app-review/live-asc-2.0.0-v3 --commit",
+      "type": "asc-live-mirror"
+    },
+    "urlChecks": {
+      "authority": "live HTTPS GET",
+      "command": "./ops/app_review_evidence.py urls --spec ops/app_review/2.0.0.json --out build/app-review/url-checks-2.0.0.json --commit",
+      "type": "url-checks"
+    }
   },
   "requiredLiveURLs": [
     {
@@ -386,7 +386,7 @@
     "datasetID": "spec-820aa288ffea",
     "datasetSHA256": "af9785bd5cc467ee3daa03a0b62bf53184906bc60303557d71bdcf8da7732610",
     "demoAccountIdentitySHA256": "d76dd80a34e4dd248d18f6312fc9f608e922522625a84b8a90c5c4db4461ed21",
-    "desiredManifestSHA256": "0a459350bda39bf1db78d794221bedaa5f1d468f1cff277c652e17a89828186d",
+    "desiredManifestSHA256": "2e33c7474f373d27c871c73ff7e0c912f93138ac316eb50f54fd31e0da2e0110",
     "marketingVersion": "2.0.0",
     "platform": "IOS",
     "screenshotDisplayType": "APP_IPHONE_65",
