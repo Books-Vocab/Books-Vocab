@@ -217,6 +217,44 @@ def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, A
 _LIVE_ONLY_UITEST_CLASSES = {"LiveDemoAccessUITests"}
 
 
+# Paths that legitimately select no gate, each with the reason. Deny-by-default:
+# anything matching neither a gate nor a rule here shows up as `uncovered`.
+# Kept as a module constant beside plan_gates (not a new yml) because it is the
+# complement of the same hand-written routing judgement, guarded by the same
+# contract tests. Rules are path patterns, never file enumerations, so a new file
+# under an already-declared tree needs no edit.
+NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
+    ("backups/", "本機備份產物，不影響任何 runtime 或 build"),
+    ("frozen/", "凍結快照，依定義不再變更行為"),
+    ("promotion/", "行銷素材產物，由 catalog/App Review 平面自行驗證"),
+    (".claude/", "agent skill / worktree 工作區文本，由 docs registry 涵蓋"),
+    ("README.md", "根層 prose，無機械 gate"),
+    (".gitignore", "不影響 runtime 或 build 行為"),
+)
+
+
+def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
+    """Split every changed file into covered / neutral / uncovered.
+
+    The point is visibility, not blocking: a routing hole must be nameable at
+    the moment it happens. `aggregate_verdict([])` returns pass for an empty
+    plan — correct for a pure function — so the fix is to make an empty plan
+    structurally impossible rather than to change what a verdict means.
+    """
+    neutral: list[list[str]] = []
+    uncovered: list[str] = []
+    for rel in changed_files:
+        if rel in covered:
+            continue
+        rule = next((rid for pat, rid in ((p, p) for p, _ in NEUTRAL_RULES)
+                     if rel == pat or rel.startswith(pat)), None)
+        if rule is not None:
+            neutral.append([rel, rule])
+        else:
+            uncovered.append(rel)
+    return {"covered": sorted(covered), "neutral": neutral, "uncovered": uncovered}
+
+
 def plan_gates(changed_files: list[str],
                ops_test_exists: Callable[[str], bool] | None = None,
                base: str | None = None) -> list[dict[str, Any]]:
@@ -392,6 +430,18 @@ def plan_gates(changed_files: list[str],
                             ["uv", "run", "--no-project", "--python", "3.13",
                              "--with", "pytest", "pytest", "-q", *selected], "block"))
 
+    covered: set[str] = set()
+    for bucket in (ios, ds, docs, backend, ops_py):
+        covered.update(bucket)
+    cov = _coverage(changed_files, covered)
+    note = "every changed file is routed to a gate or declared neutral"
+    if cov["uncovered"]:
+        note = ("no gate and no neutral rule covers: "
+                + ", ".join(cov["uncovered"][:5])
+                + (" …" if len(cov["uncovered"]) > 5 else ""))
+    # Always planned, so `plan` is never empty and aggregate_verdict's
+    # "pass (incl. empty)" branch is unreachable from cmd_gate.
+    gates.append(_internal("coverage", "meta", "warn", note=note, **cov))
     return gates
 
 
@@ -790,6 +840,21 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
     if spec["kind"] == "internal":
         if name == "docs-conflict-markers":
             result.update(_run_conflict_markers(worktree, spec["files"]))
+        elif name == "coverage":
+            # Bookkeeping, not policing: pass when every changed file is routed
+            # or declared, warn (never block) when something is unrouted. A
+            # permanently-warn gate would desensitise the warn signal, and a
+            # blocking one would force an exemption list — which is itself the
+            # next thing to rot.
+            unc = spec.get("uncovered") or []
+            result.update({
+                "status": "warn" if unc else "pass", "rc": 0,
+                "summary": (f"{len(unc)} changed file(s) covered by no gate: "
+                            + ", ".join(unc[:5]))
+                           if unc else
+                           (f"{len(spec.get('covered') or [])} covered, "
+                            f"{len(spec.get('neutral') or [])} neutral, 0 uncovered"),
+            })
         elif name == "docs-verified-against":
             result.update(_run_verified_against(worktree, spec["files"]))
         else:  # advisory-only gate (e.g. backend-tests-advisory)
