@@ -115,16 +115,23 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## 鐵律(全域,9 條,不可繞過)
 
-1. **TDD** — failing test → 紅 → 最小實作 → 綠。不可跳過。
-2. **驗證先於宣稱** — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
-3. **根因先於修復** — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
-4. **逐項 review,不批次** — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改。
-5. **長時操作背景執行且不可靜默** — 任何 `Agent()` 與耗時 Bash(`ios_ops.sh build`/`test`、backend `pytest`、deploy/rsync、長下載/install)一律 `run_in_background: true`。**主線不阻塞**,完成由 notification 觸發。背景 agent 啟動後立即回報 phase/agent id/status，driving agent 最長每 20 秒輪詢並提供可見進度；長 command 啟動後立即回報 phase/PID，執行中最長每 20 秒回 elapsed/PID/alive，正常結束時回 phase/duration/exit status。若既有工具沒有 heartbeat，先補工具或用外層監看補足，禁止讓使用者靠猜測判斷是否卡死。
-6. **主動查文檔(Doc Lookup Discipline)** — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
-7. **生產禁用指令** — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
-8. **禁止 iOS raw 中文字串** — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
+> **執行力標註（2026-08-03 起）**：每條標 `[machine]` / `[prompt]` / `[text-only]`。
+> agent 的偏執程度是照「宣稱的執行力」校準的——九條讀起來一樣硬，就會在其實沒人守的
+> 地方放鬆警戒。`[machine]` = 有工具會回非零擋下；`[prompt]` = 只在 agent/skill 檔的
+> 指示裡，靠自律；`[text-only]` = 只存在於本檔。**標註本身是可稽核的事實，不是評價**；
+> 執行點變了就同步改標註。
+
+
+1. **TDD** `[prompt]` — failing test → 紅 → 最小實作 → 綠。不可跳過。
+2. **驗證先於宣稱** `[machine]`(cutover 要求綁 HEAD 的新鮮非-block verdict:`worktree_orchestrate.py:cmd_cutover`;receipt 層仍是 `[prompt]`) — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
+3. **根因先於修復** `[prompt]` — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
+4. **逐項 review,不批次** `[machine]`(commit receipt 由 `ops/review_audit.sh` 在 cutover gate 驗;它只驗 trailer 存在且合法,不驗 review 品質——那部分是 `[prompt]`) — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改。
+5. **長時操作背景執行且不可靜默** `[machine]`(`ops/lib/streaming_command.py` 的 heartbeat 契約,worktree gate / app_review_evidence / ios_ops 共用;「所有 Agent() 背景化」那半條是 `[prompt]`) — 任何 `Agent()` 與耗時 Bash(`ios_ops.sh build`/`test`、backend `pytest`、deploy/rsync、長下載/install)一律 `run_in_background: true`。**主線不阻塞**,完成由 notification 觸發。背景 agent 啟動後立即回報 phase/agent id/status，driving agent 最長每 20 秒輪詢並提供可見進度；長 command 啟動後立即回報 phase/PID，執行中最長每 20 秒回 elapsed/PID/alive，正常結束時回 phase/duration/exit status。若既有工具沒有 heartbeat，先補工具或用外層監看補足，禁止讓使用者靠猜測判斷是否卡死。
+6. **主動查文檔(Doc Lookup Discipline)** `[text-only]` — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
+7. **生產禁用指令** `[machine]`(`ops/devops_kg_safe.sh:is_blocked_run`;注意 `ops-cli`/`ops-edit`/`container-script` 是 argv pass-through,不經此閘,安全model改由工具內部 dry-run/備份/verify 承擔) — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
+8. **禁止 iOS raw 中文字串** `[machine]`(CI `ui-quality-gate` + cutover `ui-quality-fast`,兩處皆 `--baseline-check`;baseline 自 2026-08-03 起為 0=零容忍,由 `ops/tests/test_lint_baselines.sh` 釘住不得鬆弛) — `Text("中文")` / `Button("中文")` / `.navigationTitle("中文")` 由 `ops/i18n_lint.sh` 擋。所有 user-facing 字串走 `L10n.string(_:)` / `L10n.format(_:_:)`。豁免用行內 `// i18n-allow: <reason>`(品牌名、人名、ASCII-only 技術 ID)。詳見 `docs/sop/i18n_lint.md`。
     - **(待 Phase 3.1 後生效)** Static `DateFormatter` / `RelativeDateTimeFormatter` / `NumberFormatter` 走 `LocaleAwareFormatter`。lint 現以 baseline 模式追蹤,strict 模式由 Phase 7.1 Xcode Run Script 啟用。
-9. **工具摩擦優先修工具** — 當 agent 使用既有工具完成工作流時遇到挫折、不順、輸出不自解、help 失準、入口漂移或會誘導繞路,先第一性原理判斷工具/文件/skill 哪裡壞。小問題可記入 receipt 的 tooling debt 並回到原目標；中大型問題或會導致誤判/繞過工具的問題,立即停下來修工具並驗證,再回到原本任務。
+9. **工具摩擦優先修工具** `[prompt]` — 當 agent 使用既有工具完成工作流時遇到挫折、不順、輸出不自解、help 失準、入口漂移或會誘導繞路,先第一性原理判斷工具/文件/skill 哪裡壞。小問題可記入 receipt 的 tooling debt 並回到原目標；中大型問題或會導致誤判/繞過工具的問題,立即停下來修工具並驗證,再回到原本任務。
 
 ## Commit / PR 政策
 

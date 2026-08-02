@@ -113,14 +113,41 @@ def test_branch_for_composes_type_and_slug():
 # ============================================================================
 # PURE: impact -> gate plan (the orchestrator's one real judgement)
 # ============================================================================
+def test_gate_plan_real_repo_plans_review_receipts():
+    """Iron law 4's mechanical half must be planned for the real repo.
+
+    The gate is skipped when ops/review_audit.sh is absent so synthetic fixture
+    repos still work; this pins that the skip cannot quietly become permanent.
+    """
+    gates = plan_gates(["README.md"], ops_test_exists=lambda rel: True, base="main")
+    g = next(x for x in gates if x["name"] == "review-receipts")
+    assert g["level"] == "block"
+    assert g["cmd"][:2] == ["ops/review_audit.sh", "--rev-range"]
+    # and absent when the tool is not there
+    assert "review-receipts" not in _names(
+        plan_gates(["README.md"], ops_test_exists=lambda rel: False, base="main"))
+
+
 def test_gate_plan_ios_ui_change_selects_full_ios_set():
     gates = plan_gates(["ios/BooksAndVocab/Reader/ReaderView.swift"])
     names = _names(gates)
     # sim green != Catalyst green -> both build variants
     assert "ios-build" in names
     assert "ios-build-catalyst" in names
-    # a swift change -> quality impact is consulted
-    assert "ios-quality-impact" in names
+    # a swift change -> the static lints actually RUN, as a block gate.
+    # `quality impact` used to sit here at warn level, but it delegates to
+    # ui_quality_plane's planner: every code path returns 0, so that gate was
+    # structurally incapable of failing. It printed which lints *would* apply
+    # and went green — the plan mistaken for the check.
+    assert "ui-quality-fast" in names
+    assert "ios-quality-impact" not in names
+    fast = next(g for g in gates if g["name"] == "ui-quality-fast")
+    assert fast["level"] == "block"
+    assert "--execute" in fast["cmd"]
+    # Seconds-scale lints must precede the minutes-scale build, or the feedback
+    # delay is swallowed by xcodebuild.
+    order = [g["name"] for g in gates]
+    assert order.index("ui-quality-fast") < order.index("ios-build")
     assert "ios-test-unit" in names
     # a UI-source change with NO changed UITest file runs NO UI suite: the UI gate
     # is impacted-scope (per changed *Tests.swift class) — the full --ui suite as a

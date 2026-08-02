@@ -64,7 +64,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-need_jq
+# jq is only used to build the --json payload; a text-mode run must not turn a
+# missing jq into a hard failure, or wiring this into the cutover gate would make
+# jq a hard dependency of every cutover.
+[[ "${JSON:-0}" -eq 1 ]] && need_jq
 
 if [[ -z "$REV_RANGE" ]]; then
   git rev-parse --verify "$BASE^{commit}" >/dev/null 2>&1 || die "base 不存在: $BASE"
