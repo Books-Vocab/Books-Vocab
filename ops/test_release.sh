@@ -121,9 +121,17 @@ bad_boundary="$(
 # ── 7. status / changelog 唯讀（不得碰遠端 / 不寫檔） ────────────────────────
 section "Read-only commands stay read-only"
 status_body="$(awk '/^cmd_status\(\)/,/^}/' "$REL")"
-echo "$status_body" | grep -qE 'git push|git commit|git tag ' \
+# 只看「被執行的」git 寫入，不看被印出來的字串：status 印 remediation 提示（例如
+# 誤標 tag 的刪除指令）是它的職責，不是副作用。先剔除 echo/printf 行再掃。
+status_exec_body() { echo "$status_body" | grep -vE '^[[:space:]]*(echo|printf)\b'; }
+status_exec_body | grep -qE 'git push|git commit|git tag ' \
   && fail_t "status has a write/remote op (must be read-only)" \
   || ok "status is read-only"
+# 守衛本身不得被上面的剔除規則掏空：植入一個真正的寫入語句必須仍被抓到。
+printf '%s\n' '  git push origin main' \
+  | grep -vE '^[[:space:]]*(echo|printf)\b' | grep -qE 'git push|git commit|git tag ' \
+  && ok "read-only guard still catches a real write op" \
+  || fail_t "read-only guard was defanged — a bare git push now slips through"
 
 # ── 8. 不謊稱 CI 自動發版（無 tag-triggered workflow，驗證先於宣稱） ─────────
 section "No false CI claim"
@@ -601,6 +609,41 @@ committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --new-version-aft
    && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_head" ]] \
   && ok "already-committed version uploads then tags/pushes current HEAD" \
   || fail_t "already-committed version left a partial release: $committed_out"
+
+# ── 版號漂移分類（ios/2.0.1 誤標事故：tag 高於檔內 = 版號被撤回，不是待對齊）──
+# 事故形狀：`ops: release ios 2.0.1` 打了 tag，其後 `ios: correct 2.0.0 build 6
+# resubmission` 把 MARKETING_VERSION 還原成 2.0.0，2.0.1 從未上架。留著的 tag 讓
+# last_tag 回 ios/2.0.1，於是 --new-version-after-ready 逼 operator attest 一個
+# 不存在的版本、且新版號被強制 > 2.0.1（2.0.1 永久燒掉）。舊的單一漂移警示只會
+# 說「發版前先 bump 對齊」——照做會復活被撤回的版號，方向剛好相反。
+drift_fn="$(sed -n '/^classify_version_drift()/,/^}/p' "$REL")"
+if [[ -n "$drift_fn" ]]; then
+  drift_probe() {
+    bash -lc "$(sed -n '/^valid_semver()/,/^}/p' "$REL")
+$(sed -n '/^semver_gt()/,/^}/p' "$REL")
+$drift_fn
+classify_version_drift '$1' '$2'"
+  }
+  [[ "$(drift_probe 2.0.0 2.0.0)" == none ]] \
+    && ok "drift: equal versions report none" || fail_t "drift equal invalid: $(drift_probe 2.0.0 2.0.0)"
+  [[ "$(drift_probe 2.0.0 2.0.1)" == ahead ]] \
+    && ok "drift: file ahead of tag is a pending bump" || fail_t "drift ahead invalid: $(drift_probe 2.0.0 2.0.1)"
+  [[ "$(drift_probe 2.0.1 2.0.0)" == mistagged ]] \
+    && ok "drift: tag ahead of file is a withdrawn version (mistagged)" \
+    || fail_t "drift mistagged invalid: $(drift_probe 2.0.1 2.0.0)"
+  [[ "$(drift_probe 2.0 2.0.0)" == none ]] \
+    && ok "drift: two-segment ios version normalizes before comparison" \
+    || fail_t "drift 2-seg normalization invalid: $(drift_probe 2.0 2.0.0)"
+  [[ "$(drift_probe '' 2.0.0)" == none ]] \
+    && ok "drift: unknown tag version stays quiet" || fail_t "drift empty-tag invalid: $(drift_probe '' 2.0.0)"
+else
+  fail_t "release.sh has no classify_version_drift seam (ios/2.0.1 mistag stays undiagnosed)"
+fi
+echo "$status_body" | grep -q 'classify_version_drift' \
+  && ok "status classifies drift instead of always advising a bump" \
+  || fail_t "status still emits a single undirected drift warning"
+echo "$status_body" | grep -q '誤標' \
+  && ok "status names the mistagged case" || fail_t "status has no mistagged branch"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

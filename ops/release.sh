@@ -60,6 +60,22 @@ semver_gt() {
      (rma == pma && rmi == pmi && rpa > ppa) ))
 }
 
+# 版號漂移有兩種形狀，補救方向剛好相反：
+#   ahead     — 檔內版號高於上個 tag：正常的「已 bump、未 tag」，發版前對齊即可。
+#   mistagged — 上個 tag 高於檔內版號：那個版號被**撤回**了（tag 打了，pbxproj /
+#               pyproject 隨後 revert 回去）。此時「先 bump 對齊」是錯誤指引，照做
+#               會復活一個刻意撤回的版號；而且留著誤標 tag 會讓 last_tag 說謊，
+#               `--new-version-after-ready` 於是逼 operator attest 一個從未上架的
+#               版本，新版號也被迫跳過它。正解是刪掉那個 tag。
+#               實例：ios/2.0.1（6821015a6 打 tag → f3499f3d4 還原成 2.0.0，2.0.1
+#               從未上架；2.0.0 才是 READY_FOR_SALE）。
+classify_version_drift() {  # $1=tag 版號 $2=檔內版號（呼叫端負責補成三段）
+  if [[ "$1" == "$2" ]]; then printf 'none\n'
+  elif ! valid_semver "$1" || ! valid_semver "$2"; then printf 'none\n'
+  elif semver_gt "$1" "$2"; then printf 'mistagged\n'
+  else printf 'ahead\n'; fi
+}
+
 bump_semver() {  # $1=x.y.z  $2=major|minor|patch
   local IFS=.; read -r MA MI PA <<<"$1"
   case "$2" in
@@ -116,11 +132,19 @@ cmd_status() {
     echo "■ $c  上個 tag：${lt:-（尚未發版）}  檔內版本：$curver"
     # 漂移警示：上個 tag 的版號與版號檔不一致（如 tag api/1.6.0 但 pyproject 0.1.0）→ 發版前先對齊。
     # 比較前把兩段版號（ios pbxproj 慣用 1.6）補成三段再比，避免「1.6 vs 1.6.0」恆觸發警報疲勞。
-    local cmpcur="$curver"
+    local cmpcur="$curver" drift
     [[ "$cmpcur" =~ ^[0-9]+\.[0-9]+$ ]] && cmpcur="$cmpcur.0"
-    if [[ -n "$lt" && "$basever" != "$cmpcur" ]]; then
-      echo "   ⚠ 版號漂移：上個 tag=${basever} 但檔內=${curver}（發版前先 bump 對齊）"
-    fi
+    drift=none
+    [[ -n "$lt" ]] && drift="$(classify_version_drift "$basever" "$cmpcur")"
+    case "$drift" in
+      ahead)
+        echo "   ⚠ 版號漂移：上個 tag=${basever} 但檔內=${curver}（發版前先 bump 對齊）" ;;
+      mistagged)
+        echo "   ⛔ 誤標 tag：${tp}${basever} 高於檔內 ${curver} — 該版號已被撤回，從未發布。"
+        echo "      留著它會讓 --new-version-after-ready 逼你 attest 一個不存在的版本，"
+        echo "      且新版號被迫跳過 ${basever}。正解是刪 tag（勿 bump 對齊）："
+        echo "      git push origin :refs/tags/${tp}${basever} && git tag -d ${tp}${basever}" ;;
+    esac
     if [[ "$n" -eq 0 ]]; then
       echo "   自上個 tag 無 $cp commit（無待發版）"
     else
