@@ -30,6 +30,7 @@ VIEWS_ROOT = ROOT / "ios/BooksAndVocab/Views"
 from _inject_shared import (  # noqa: E402
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
+    inject_package_linked,
     should_skip_path,
 )
 
@@ -198,8 +199,16 @@ def process_file(path: Path):
             "skip_body": skip_body,
         }
 
+    # `import Inject` is only correct when the Inject SPM package is actually
+    # linked. This repo provides @ObserveInjection / .enableInjection() from a
+    # local shim (ios/BooksAndVocab/Support/ObserveInjectionShim.swift) and links
+    # no such package, so emitting the import produced code that does not
+    # compile ("unable to resolve module dependency: 'Inject'") — every file this
+    # codemod touched was left unbuildable. Mirror injection_lint's rule and let
+    # the project's own linkage decide.
     needs_import = (
-        "import Inject" not in [l.strip() for l in lines]
+        inject_package_linked()
+        and "import Inject" not in [l.strip() for l in lines]
         and (obs_added or mod_added)
     )
 

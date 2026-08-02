@@ -23,17 +23,20 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import logging
+import os
 import sys
 from pathlib import Path
 
 VIEWS_ROOT = Path("ios/BooksAndVocab/Views")
-BASELINE_FILE = Path("ops/injection_baseline.txt")
+BASELINE_FILE = Path(os.environ.get("KG_INJECTION_BASELINE", "ops/injection_baseline.txt"))
 LOGGER = logging.getLogger(__name__)
 
 # View-injection grammar shared with the codemod (single source of truth).
 from _inject_shared import (  # noqa: E402
+    SHIM,
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
+    inject_package_linked,
     should_skip_path,
 )
 
@@ -48,9 +51,17 @@ def scan_file(path: Path) -> list[str]:
     has_observe = "@ObserveInjection" in text
     has_import = "import Inject" in text
 
-    # R3: import requirement
-    if has_observe and not has_import:
-        findings.append(f"{path}: missing `import Inject` despite @ObserveInjection usage")
+    # R3: the import must match what the project actually links (see
+    # inject_package_linked). Either direction is a compile-time fact, not a
+    # style preference.
+    if inject_package_linked():
+        if has_observe and not has_import:
+            findings.append(f"{path}: missing `import Inject` despite @ObserveInjection usage")
+    elif has_import:
+        findings.append(
+            f"{path}: `import Inject` does not compile — the Inject package is not linked; "
+            f"@ObserveInjection comes from {SHIM}"
+        )
 
     # R1: every qualifying View struct must be followed by @ObserveInjection
     for i, line in enumerate(lines):
@@ -147,7 +158,7 @@ def main() -> int:
         out_lines = [
             f"# injection_lint baseline — generated {today.isoformat()}",
             f"# sunset: {sunset.isoformat()}",
-            "# After sunset, --baseline-check warns even when count hasn't regressed.",
+            "# After sunset, --baseline-check FAILS even when count hasn't regressed.",
             "",
             *findings,
         ]
@@ -164,14 +175,28 @@ def main() -> int:
             for n in new:
                 print(f"  {n}", file=sys.stderr)
             return 1
-        if sunset and dt.date.today() > sunset:
+        # A grace period that never expires is not a grace period. Until
+        # 2026-08-03 an expired sunset printed a warning and still returned 0,
+        # so the checked-in sunset sat 21 days past its date with every gate
+        # green and nobody informed.
+        if sunset is None:
             print(
-                f"[injection_lint] WARN — baseline sunset {sunset.isoformat()} "
-                f"passed; outstanding baseline items should be resolved.",
+                "[injection_lint] FAIL — baseline has no valid `# sunset: YYYY-MM-DD` "
+                "header; debt without an expiry date is permanent by default. "
+                "Regenerate with --baseline.",
+                file=sys.stderr,
+            )
+            return 1
+        if dt.date.today() > sunset:
+            print(
+                f"[injection_lint] FAIL — baseline sunset {sunset.isoformat()} has passed; "
+                f"resolve the {len(baseline_items)} outstanding item(s), or make an explicit "
+                f"dated decision to extend and regenerate with --baseline.",
                 file=sys.stderr,
             )
             for item in sorted(baseline_items):
                 print(f"  {item}", file=sys.stderr)
+            return 1
         print(f"OK — {len(current)} findings (all within baseline of {len(baseline_items)}).")
         return 0
 

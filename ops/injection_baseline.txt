@@ -1,137 +1,44 @@
-# injection_lint baseline — generated 2026-06-13
-# sunset: 2026-07-13
+# injection_lint baseline — generated 2026-08-03
+# sunset: 2026-09-02
 # After sunset, --baseline-check warns even when count hasn't regressed.
 
-ios/BooksAndVocab/Views/Auth/LoginSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Bookshelf/BookshelfPreviews.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Bookshelf/BookshelfPreviews.swift:84: struct BookshelfFixtureLibraryScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Bookshelf/BookshelfView.swift:357: struct BookshelfLoadingOverlay: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Bookshelf/Components/BookCard.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Bookshelf/Components/BookCard.swift:206: struct ICloudProgressBadge: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastBadge.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastControlsView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastEpisodeListView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastEpisodeRow.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastHomeView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastNotebookPicker.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:4: struct PodcastPlayerLockedGateView: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:45: struct PodcastPlayerPreviewBanner: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastPlayerAccessSurface.swift:73: struct PodcastPlayerSettingsButton: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastPlayerScene.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Podcast/PodcastPlayerView.swift:5: struct PodcastPlayerView: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastProgressTicker.swift:16: struct PodcastProgressTicker: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastSentenceLevelView.swift:42: struct PodcastSentenceLevelView: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastSeriesCard.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastSeriesHero.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastSettingsPopover.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastShelf.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Podcast/PodcastSubtitleView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:18: struct PodcastTranscriptColumn: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Podcast/PodcastTranscriptColumn.swift:193: struct PodcastBubbleCell: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Podcast/PodcastTranscriptViewport.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/QuotaBar.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/QuotaBar.swift:51: struct QuotaBarPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/ReaderNotebookPicker.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/ReaderSelectionTile.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/ReaderSelectionTile.swift:32: struct ReaderSelectionTilePreview: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/ReaderSettingsPanel.swift:83: struct ReaderSettingsPanelPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/ReaderSettingsPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/ReaderStepControlButton.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/ReaderStepControlButton.swift:37: struct ReaderStepControlButtonPreview: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/ReaderView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/ReaderViewPresenter+Preview.swift:4: struct ReaderChromePreviewScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/ReaderViewPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/TOCView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/TOCView.swift:5: struct TOCView: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Reader/TOCView.swift:144: struct TOCViewPreviewScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/TranslationPanel.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Reader/TranslationPanel.swift:151: struct TranslationPanelPreviewScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Reader/TranslationVocabPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Reader/VocabHighlightColorPresetPicker.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsAccountDetailView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsAccountSection.swift:274: struct SettingsSocialBadge: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Settings/SettingsDebugBackendSection.swift:17: struct SettingsDebugBackendSection: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsDeleteAccountSheet.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Settings/SettingsOtherSection.swift:20: struct SettingsOtherSection: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsPreferencesSection.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsPresenter+Actions.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsPresenter+Components.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsPresenter+Controls.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Settings/SettingsPresenter+Preview.swift:37: struct SettingsFixtureScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Settings/SettingsReviewSection.swift:190: struct ParamRow: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Settings/SettingsSubscriptionSection.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SettingsView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/SubscriptionPaywallSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Settings/TranslationLanguageSettingsView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Startup/AppStartupRecoveryView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Subscription/SubscriptionViews.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:83: struct CardDocumentHeroBlock: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:146: struct CardDocumentExampleBlock: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:184: struct CardDocumentMeaningBlock: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:221: struct CardDocumentSourceBlock: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift:250: struct CardDocumentCollocationsBlock: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/CardSections.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/CollocationExplainSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift:359: struct EditorialCoverComposition: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCoverPatterns.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookFilterChip.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Components/NotebookHeaderPillLabel.swift:12: struct NotebookHeaderPillLabel: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/NotebookReviewActionBar.swift:13: struct NotebookReviewActionBar: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/ProgressCapsule.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/SelectionToolbar.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabActivityHeatmap.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabCalendarGrid.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabComponents.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabForecastChart.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabReviewBanner.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabSceneShell.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents+Actions.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents+Lists.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/VocabShellComponents.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Components/WordDetailComponents.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Components/WordDetailComponents.swift:113: struct ShimmerLine: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Components/WordRow.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/KnowledgeGraphView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/NotebookBindingList.swift:9: struct NotebookBindingList: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Overlay/LinkReasonSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Overlay/LinkedCardOverlayStack.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift:201: struct KGVocabRow: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift:220: struct KnowledgeGraphPresenterPreviewHarness: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift: arity mismatch — @ObserveInjection=3, .enableInjection()=2
-ios/BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewFoldSurface.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter+Preview.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/SyncPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPhaseView.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:39: struct ReviewTopBar: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:115: struct ReviewToolbarControls: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:493: struct ShortcutHintChip: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:518: struct ShortcutKeyCap: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter.swift: missing `import Inject` despite @ObserveInjection usage
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPreviewData.swift:32: struct TodayReviewFixtureScene: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/VocabularyListPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailPresenter.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/Scenes/WordEditSheet.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/SyncView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Vocabulary/VocabularyListView.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Welcome/DemoBanner.swift: missing `import Inject` despite @ObserveInjection usage
-ios/BooksAndVocab/Views/Welcome/WelcomeView.swift: missing `import Inject` despite @ObserveInjection usage
