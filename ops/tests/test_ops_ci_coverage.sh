@@ -34,6 +34,7 @@ LINUX_GROUPS=(
 # A group without a reason is a silent coverage hole, so the reason is required.
 EXCLUDED_GROUPS=(
   "docs-lint|many verified_against anchors point at pre-squash commits that never reached origin, so they resolve only from local dangling objects (IMP-0038)"
+  "gate-can-fail|its ui-quality-fast proof needs the same UI World assets as ui-quality-gate"
   "ui-quality-gate|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
   "release|drives ops/release.sh against local tags and the iOS pbxproj"
   "ios-release|xcodebuild / Xcode toolchain"

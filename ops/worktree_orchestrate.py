@@ -218,7 +218,8 @@ _LIVE_ONLY_UITEST_CLASSES = {"LiveDemoAccessUITests"}
 
 
 def plan_gates(changed_files: list[str],
-               ops_test_exists: Callable[[str], bool] | None = None) -> list[dict[str, Any]]:
+               ops_test_exists: Callable[[str], bool] | None = None,
+               base: str | None = None) -> list[dict[str, Any]]:
     """Route changed files to the project's EXISTING gate tools. This is the one real
     judgement the orchestrator owns; it never decides pass/fail itself.
 
@@ -259,20 +260,54 @@ def plan_gates(changed_files: list[str],
     neutral file selects nothing."""
     gates: list[dict[str, Any]] = []
 
+    # Iron law 4's mechanical half. review_audit only checks that each commit
+    # carries a `Reviewed-by:` or a whitelisted `Review-Exempt:` trailer — it
+    # cannot judge review quality, and the trailer is agent-authored. Its value
+    # is making the ABSENCE visible at the moment code lands: receipts ran at
+    # 100% over 07-13..07-17 and had decayed to 0% by 08-03 with nothing to
+    # notice. Scoped to this worktree's own commits, so it is amendable in
+    # seconds and cannot block on unrelated history.
+    # `ops_test_exists` is the module's worktree-anchored path probe
+    # (`(worktree / rel).is_file()`); synthetic fixture repos have no ops/ tree.
+    # test_gate_plan_real_repo_plans_review_receipts pins that the real repo does
+    # get this gate, so "file vanished" cannot silently drop it.
+    if base and (ops_test_exists is None or ops_test_exists("ops/review_audit.sh")):
+        gates.append(_shell("review-receipts", "meta",
+                            ["ops/review_audit.sh", "--rev-range", f"{base}..HEAD"],
+                            "block"))
+
     ios = [p for p in changed_files if p.startswith("ios/")]
     ds = [p for p in changed_files if DS_RE.search(p)]
     docs = [p for p in changed_files if p.startswith("docs/") and p.endswith(".md")]
     backend = [p for p in changed_files if p.startswith("backend/") and p.endswith(".py")]
 
     if ios:
+        # Static lints first: ~21s against minutes of xcodebuild, and a red here
+        # is far cheaper to act on than a red after two builds and a unit suite.
+        #
+        # This replaces `ios_ops.sh quality impact`, which sat at warn level and
+        # could not fail by construction: it routes to ui_quality_plane's
+        # PLANNER, whose every return is 0. It printed which lints would apply to
+        # the changed files and reported pass — the plan mistaken for the check.
+        # cutover is offline and never pushes, so it is the only gate on this
+        # path; CI cannot cover for it.
+        gates.append(_shell("ui-quality-fast", "ios",
+                            ["ops/ui_quality_gate.sh", "--tier", "fast",
+                             "--execute", "--all-mechanisms"], "block"))
         gates.append(_shell("ios-build", "ios", ["ops/ios_ops.sh", "build"], "block"))
         gates.append(_shell("ios-build-catalyst", "ios",
                             ["ops/ios_ops.sh", "build", "--catalyst"], "block"))
         swift = [p for p in ios if p.endswith(".swift")]
         if swift:
-            gates.append(_shell("ios-quality-impact", "ios",
-                                ["ops/ios_ops.sh", "quality", "impact", "--files",
-                                 *swift, "--json"], "warn"))
+            # Kept, but honestly named and honestly scoped: this reports the
+            # SLOW mechanisms the diff touches that cutover deliberately does
+            # not run (visual regression, catalog snapshots, UI flows). It is
+            # advisory because it is a cost/coverage trade, not a check.
+            gates.append(_internal("ui-quality-slow-pending", "ios", "warn",
+                                   note="slow UI mechanisms triggered by this diff were not "
+                                        "executed by cutover — run ops/ui_quality_gate.sh "
+                                        "--tier slow --execute-slow if this change needs them",
+                                   files=swift))
         gates.append(_shell("ios-test-unit", "ios",
                             ["ops/ios_ops.sh", "test", "--unit"], "block"))
         if any(_is_ui_path(p) for p in ios):
@@ -1266,7 +1301,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
     plan = plan_gates(changed,
-                      ops_test_exists=lambda rel: (Path(worktree) / rel).is_file())
+                      ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
+                      base=args.base)
     results: list[dict[str, Any]] = []
     if not args.plan_only:
         for spec in plan:
@@ -1283,6 +1319,21 @@ def cmd_gate(args: argparse.Namespace) -> int:
         rec_path = _gate_record_path(args.state, worktree)
         rec_path.parent.mkdir(parents=True, exist_ok=True)
         rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+
+    if getattr(args, "receipt_line", False):
+        # A receipt line the agent PASTES rather than recalls. Structured
+        # receipt fields that an agent types from memory are exactly as
+        # trustworthy as prose — a fabricated 64-hex digest is no harder to
+        # produce than "tests passed", and it removes the tonal tells that make
+        # prose lies detectable. This line cannot be produced without having run
+        # the gate, and the reader can `cat` the record path to check it.
+        counts = {}
+        for r in results:
+            counts[r["status"]] = counts.get(r["status"], 0) + 1
+        breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        print(f"gate={verdict} record={_gate_record_path(args.state, worktree)} "
+              f"head={head[:8]} gates={len(plan)} {breakdown}")
+        return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
 
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
              f"{len(plan)} gate(s))"]
@@ -1599,6 +1650,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_common(ga)
     add_base(ga)
     ga.add_argument("--worktree", required=True, help="worktree path to gate")
+    ga.add_argument("--receipt-line", action="store_true",
+                    help="emit one paste-ready receipt line instead of the report")
     ga.add_argument("--plan-only", action="store_true",
                     help="print the selected gate plan without running anything")
     ga.set_defaults(func=cmd_gate)

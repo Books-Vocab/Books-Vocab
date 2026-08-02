@@ -42,6 +42,7 @@ DEFAULT_TESTS=(
   lint-baselines
   injection-lint
   ops-ci-coverage
+  gate-can-fail
   ui-quality-plane
   ui-quality-gate
   visual-regression
@@ -114,6 +115,7 @@ run_one() {
     lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
     ops-ci-coverage)    ./ops/tests/test_ops_ci_coverage.sh ;;
+    gate-can-fail)      ./ops/tests/test_gate_can_fail.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     visual-regression)  ./ops/tests/test_visual_regression.sh ;;
