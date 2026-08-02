@@ -96,6 +96,45 @@ def get_impacted(root: Path, files: list[str] | None, since: str) -> list[dict]:
     return json.loads(proc.stdout)
 
 
+def all_mechanisms(root: Path) -> list[dict]:
+    """Every declared mechanism, ignoring which files changed.
+
+    The five static lints do not accept a file list — each one scans the whole
+    tree and compares against its baseline — so diff-scoping buys no scan cost
+    here, it only selects *which* lints run. For CI that trade is strictly bad:
+    it adds a base-resolution step that can fail (and did, silently, for two
+    months) in exchange for nothing. `.github/workflows/design-system.yml`
+    already takes this shape: run unconditionally, let `on: paths:` decide when.
+    """
+    proc = subprocess.run(
+        [sys.executable, "ops/ui_quality_plane.py", "list", "--json"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        print(f"[ui_quality_gate] plane list failed (rc={proc.returncode})", file=sys.stderr)
+        if proc.stderr:
+            print(proc.stderr, file=sys.stderr)
+        sys.exit(2)
+    mechs = json.loads(proc.stdout)
+    for mech in mechs:
+        mech.setdefault("matched", [])
+    return mechs
+
+
+def decide_status(rc: int, warning: str | None) -> str:
+    """A warning may soften a green, never launder a red.
+
+    `status = "warn"` used to be applied unconditionally when a mechanism
+    carried a warning, so a mechanism that genuinely failed (rc != 0) dropped
+    out of summary["failed"] and the gate returned 0.
+    """
+    if rc != 0:
+        return "failed"
+    return "warn" if warning else "passed"
+
+
 def tier_ok(layer: str, tier: str) -> bool:
     if tier == "all":
         return True
@@ -185,15 +224,26 @@ def main() -> int:
     parser.add_argument("--since", default="origin/main", help="git ref for changed files")
     parser.add_argument("--files", nargs="+", help="explicit changed files")
     parser.add_argument("--tier", choices=["fast", "slow", "all"], default="fast")
-    parser.add_argument("--dry-run", action="store_true", default=True, help="print plan without running (default)")
+    parser.add_argument("--dry-run", action="store_true", help="print plan without running")
     parser.add_argument("--execute", action="store_true", help="run gates (fast tier only by default)")
     parser.add_argument("--execute-slow", action="store_true", help="also run slow/expensive gates")
     parser.add_argument("--dataset", help="UI World name under ops/fixtures/ui_worlds/<name>.json for slow UI World gates")
     parser.add_argument("--dataset-file", help="UI World JSON path for slow UI World gates")
     parser.add_argument("--include-ci", action="store_true", help="include gates already wired to CI")
     parser.add_argument("--exclude", action="append", default=[], help="mechanism ids to skip")
+    parser.add_argument("--all-mechanisms", action="store_true",
+                        help="run every mechanism in the tier, ignoring which files changed (CI shape)")
     parser.add_argument("--json", action="store_true", help="emit JSON report")
     args = parser.parse_args()
+
+    # `--dry-run` was declared with default=True and then never read: the real
+    # switch was `--execute` being opt-in, so a caller that forgot it got a
+    # green no-op that looked like a run. Make the mode a decision, not a
+    # default.
+    if args.execute and args.dry_run:
+        parser.error("choose exactly one of --dry-run or --execute")
+    if not args.execute and not args.dry_run:
+        parser.error("choose exactly one of --dry-run or --execute")
 
     root = repo_root()
     if args.dataset and args.dataset_file:
@@ -207,7 +257,12 @@ def main() -> int:
         except UIWorldManifestError as exc:
             parser.error(str(exc))
     world_args = ui_world_args(args.dataset, args.dataset_file, root)
-    impacted = get_impacted(root, args.files, args.since)
+    if args.all_mechanisms:
+        if args.files:
+            parser.error("--all-mechanisms and --files are mutually exclusive")
+        impacted = all_mechanisms(root)
+    else:
+        impacted = get_impacted(root, args.files, args.since)
 
     excluded = set(args.exclude)
     results: list[dict] = []
@@ -281,9 +336,7 @@ def main() -> int:
             continue
 
         rc, stdout, stderr = run_mech(entrypoint, resolved_args, root)
-        status = "passed" if rc == 0 else "failed"
-        if warning:
-            status = "warn"
+        status = decide_status(rc, warning)
         results.append({
             **base_result,
             "status": status,

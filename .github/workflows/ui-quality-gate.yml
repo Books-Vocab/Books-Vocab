@@ -35,5 +35,11 @@ jobs:
         uses: astral-sh/setup-uv@v6
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
+      # --all-mechanisms, not a diff. The five fast lints each scan the whole
+      # tree against their baseline, so scoping by diff saved nothing and cost
+      # everything: `--since origin/main` on a shallow checkout resolved to an
+      # empty range, selected zero mechanisms and reported green on every run
+      # from 2026-06-14 to 2026-07-17. `on: paths:` above already decides when
+      # this job is relevant — same shape as design-system.yml.
       - name: Run UI quality fast gates
-        run: ./ops/ui_quality_gate.sh --tier fast --execute
+        run: ./ops/ui_quality_gate.sh --tier fast --execute --all-mechanisms

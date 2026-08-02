@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --python 3.13
 """Closed-world App Review gate and reviewer-visible HTML bundle.
 
 This tool is read-only with respect to App Store Connect. ``dry-run`` and

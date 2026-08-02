@@ -239,13 +239,27 @@ def changed_since(ref: str) -> list[str]:
     # index, worktree, and untracked changes — "what should I run before
     # committing" must see uncommitted edits too.
     def run_git(args: list[str]) -> str:
-        return subprocess.run(
+        # stderr is surfaced, not swallowed. The DEVNULL that used to sit here
+        # turned "this ref does not exist" into "nothing changed": the CI gate
+        # resolved --since origin/main on a shallow checkout, got an empty diff,
+        # selected zero mechanisms and reported green — every run from
+        # 2026-06-14 to 2026-07-17.
+        proc = subprocess.run(
             ["git", *args],
             check=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
-        ).stdout
+        )
+        if proc.returncode != 0 and proc.stderr.strip():
+            print(f"[ui_quality_plane] git {' '.join(args)}: {proc.stderr.strip()}", file=sys.stderr)
+        return proc.stdout
+
+    # Fail closed on an unresolvable base, exactly as ops/docs_impact.py:113 does
+    # for the same shape of function. An empty candidate set must mean "nothing
+    # changed", never "I could not work out what changed".
+    if not run_git(["rev-parse", "--verify", f"{ref}^{{commit}}"]).strip():
+        raise SystemExit(f"ERROR --since 不是有效 commit: {ref}")
 
     output = "\n".join(
         [
