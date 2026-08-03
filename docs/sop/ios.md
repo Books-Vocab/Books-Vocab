@@ -121,11 +121,20 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 ./ops/ios_ops.sh build                 # 預設 iPhone Simulator
 ./ops/ios_ops.sh build --catalyst      # Mac Catalyst（platform=macOS,variant=Mac Catalyst）
 ./ops/ios_ops.sh build --destination '<xcodebuild destination>'  # 自訂 destination
+./ops/ios_ops.sh build --catalyst --dry-run   # 只印實際要餵給 xcodebuild 的 argv，不編譯
 ```
 
 - Exit Code `0` → 編譯成功;仍看 `[ios][issues] warnings=...`，release 前不可無視新增 warnings
 - Exit Code 非 `0` → 第一屏 diagnostics 會列官方 `.xcresult` top errors/warnings + raw log path，進 Step 2
 - 動到三平台 navigation / Catalyst 專屬路徑時，`--catalyst` 與預設各跑一次驗證（`--timeout` 預設 600s）
+- `--dry-run` 印的 argv 與真實 build 消費的是**同一個陣列**（`ios_build.sh:xcodebuild_argv`），所以 plan 不可能與 run 分岔。它不寫 verdict，因此**與 `--json` 互斥**（否則會把上一次的 run 當成這次的結果回報）。
+
+#### `--catalyst` 一律不簽章編譯（IMP-0039）
+
+`--catalyst` 隱含 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`。它是 compile gate——「模擬器綠 ≠ Catalyst 綠」——而 macOS 沒有 `Mac Development` 憑證就拒絕簽章，只出 Apple Distribution 的機器永遠沒有那張。要求它等於讓 cutover 的 `ios-build-catalyst` block gate 結構上不可能綠。
+
+- 要覆寫必須**兩個一起帶**：`--extra-settings CODE_SIGNING_ALLOWED=YES --extra-settings CODE_SIGNING_REQUIRED=YES`（後到者勝）。只帶前者會留下 `CODE_SIGNING_REQUIRED=NO`，變成「嘗試簽章但簽不動也不失敗」——一道不可能紅的 gate，比原本更糟。
+- **已知覆蓋缺口（刻意接受）**：`ops/ios_release.sh` 的 archive 是 `-destination 'generic/platform=iOS'`，**本 repo 從不簽 Mac Catalyst 產物**。因此 Catalyst 的簽章 / entitlement-vs-profile 相容性（`app-sandbox`、`icloud-container-identifiers`、`applesignin`、`aps-environment`、`DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER` 的 bundle-id↔container 映射）目前**無處驗證**。接受理由：不以 Catalyst 出貨，且模擬器 `ios-build` gate 仍跑 `ProcessProductPackaging`，entitlements plist 本身壞掉照樣紅。要改成出貨 Catalyst，這個缺口必須先補。
 
 ### Step 2：還原案發現場
 

@@ -1510,6 +1510,66 @@ grep -qE 'print_cache_payload prepare "?\$\{?prepare_status' "$WORKSPACE/ops/ios
   && ok "prepare payload derives its status from products readiness" \
   || fail_t "prepare payload still hardcodes a literal status"
 
+section "Catalyst compile gate does not require a development signing identity"
+# `ios-build-catalyst` is a BLOCK cutover gate whose stated job is "sim green !=
+# Catalyst green" — a COMPILE check. Signability is orthogonal to compilability
+# and is proven elsewhere (ops/ios_release.sh archives with Apple Distribution).
+# Demanding a "Mac Development" certificate here made the gate unpassable on a
+# machine that has none, which is the mirror image of an unfailable gate: it
+# gives no signal and trains everyone to route around the red (IMP-0039).
+IOS_BUILD="$WORKSPACE/ops/ios_build.sh"
+plan_cat="$("$IOS_BUILD" --catalyst --dry-run 2>&1 || true)"
+plan_sim="$("$IOS_BUILD" --dry-run 2>&1 || true)"
+plan_override="$("$IOS_BUILD" --catalyst --extra-settings CODE_SIGNING_ALLOWED=YES --dry-run 2>&1 || true)"
+
+# `--dry-run` prints the SAME argv the real build consumes (xcodebuild_argv), so
+# these assertions bind the plumbing. The first draft of this block had a
+# separate printer, and review proved every assertion below stayed green after
+# the fix was reverted at the xcodebuild call site — measuring the printer, not
+# the pipe. The source pin at the end of this section keeps that shape honest.
+[[ "$plan_cat" == *"argv=platform=macOS,variant=Mac Catalyst"* ]] \
+  && ok "--catalyst resolves the Mac Catalyst destination" \
+  || fail_t "--catalyst --dry-run did not report the Catalyst destination: $plan_cat"
+[[ "$plan_cat" == *"argv=CODE_SIGNING_ALLOWED=NO"* ]] \
+  && ok "--catalyst compiles unsigned (no Mac Development cert needed)" \
+  || fail_t "--catalyst still demands a signing identity — the gate is unpassable without a cert"
+# Positive shape on purpose: "no 'lock acquired'" also holds for every error
+# path AND for a real build that times out waiting on a busy lock (10 min, then
+# exit 1, never printing it). `[ios_build]` is the first thing the real path
+# emits — before the lock wait — so its ABSENCE plus a real plan is the
+# discriminating pair. Without this the seam could regress into three genuine
+# builds fighting over /tmp/kg-ios-build.lock inside a second-scale unit suite.
+[[ "$plan_cat" != *"[ios_build]"* && "$plan_cat" == *"argv=build"* ]] \
+  && ok "--dry-run reports the plan without entering the build path" \
+  || fail_t "--dry-run entered the real build path or produced no plan: $plan_cat"
+# Discriminating: if signing-off were applied unconditionally the first two
+# assertions would pass while silently changing every simulator build too. The
+# `argv=` half keeps this from passing vacuously on an error string.
+[[ "$plan_sim" == *"argv=platform=iOS Simulator"* && "$plan_sim" != *"CODE_SIGNING"* ]] \
+  && ok "simulator builds are left untouched by the Catalyst signing rule" \
+  || fail_t "simulator build plan wrong or had signing settings injected: $plan_sim"
+# Caller intent wins: xcodebuild takes the last occurrence of a build setting.
+override_count="$(printf '%s\n' "$plan_override" | grep -c 'argv=CODE_SIGNING_ALLOWED=' || true)"
+override_tail="$(printf '%s\n' "$plan_override" | grep 'argv=CODE_SIGNING_ALLOWED=' | tail -1 || true)"
+[[ "$override_count" -ge 2 && "$override_tail" == "argv=CODE_SIGNING_ALLOWED=YES" ]] \
+  && ok "an explicit --extra-settings override outranks the Catalyst default" \
+  || fail_t "caller override did not land last (count=$override_count tail=$override_tail)"
+# --json pins a verdict path and reads it back; a plan writes none, so the pair
+# would report an earlier run as this invocation — exit 0 with no evidence.
+dryrun_json_rc=0
+KG_IOS_VERDICT_FILE="/tmp/kg-should-never-be-written.json" \
+  "$IOS_BUILD" --catalyst --dry-run >/dev/null 2>&1 || dryrun_json_rc=$?
+[[ "$dryrun_json_rc" -ne 0 && ! -f /tmp/kg-should-never-be-written.json ]] \
+  && ok "--dry-run refuses a pinned verdict path instead of reporting a stale run" \
+  || fail_t "--dry-run accepted --json semantics (rc=$dryrun_json_rc)"
+# Source pin: the plan is only load-bearing while the real invocation consumes
+# it. A hand-written flag list at the call site would restore the drift that
+# every assertion above is blind to.
+xcodebuild_call="$(grep -n 'xcodebuild "\${XCARGV\[@\]}"' "$WORKSPACE/ops/ios_build.sh" || true)"
+[[ -n "$xcodebuild_call" ]] \
+  && ok "the real build consumes xcodebuild_argv rather than an inline flag list" \
+  || fail_t "ops/ios_build.sh no longer invokes xcodebuild via XCARGV — plan and run can diverge again"
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"

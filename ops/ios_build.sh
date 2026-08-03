@@ -7,6 +7,7 @@
 #   ./ops/ios_build.sh --extra-settings KEY=VAL  # pass extra xcodebuild settings (repeatable)
 #   ./ops/ios_build.sh --swift6                  # shorthand: SWIFT_STRICT_CONCURRENCY=complete
 #   ./ops/ios_build.sh --configuration Release   # build configuration (default: Debug)
+#   ./ops/ios_build.sh --catalyst --dry-run      # print the resolved plan, run nothing
 #
 # How it works:
 #   1. Spin-waits to acquire an exclusive lock (shlock, macOS built-in)
@@ -24,18 +25,36 @@ POLL_INTERVAL=3
 DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
 CONFIGURATION='Debug'
 EXTRA_SETTINGS=()
+CATALYST=0
+DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --destination) DESTINATION="$2"; shift 2 ;;
-    --catalyst) DESTINATION='platform=macOS,variant=Mac Catalyst'; shift ;;
+    --catalyst) DESTINATION='platform=macOS,variant=Mac Catalyst'; CATALYST=1; shift ;;
     --configuration) CONFIGURATION="$2"; shift 2 ;;
     --extra-settings) EXTRA_SETTINGS+=("$2"); shift 2 ;;
     --swift6) EXTRA_SETTINGS+=("SWIFT_STRICT_CONCURRENCY=complete"); shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# Catalyst is a COMPILE gate ("sim green != Catalyst green"), and compilability
+# is orthogonal to signability: macOS refuses to code-sign without a "Mac
+# Development" identity, which a machine that only ships via Apple Distribution
+# never has. Requiring one here made `ios-build-catalyst` — a BLOCK cutover gate
+# — unpassable by construction, the mirror image of an unfailable gate: no
+# signal, and everyone learns to route around the red (IMP-0039). Real signing
+# is proven where it belongs, in ops/ios_release.sh's archive/export.
+# Composed here rather than at parse time so the caller's --extra-settings
+# always land LAST (xcodebuild takes the last occurrence) regardless of arg order.
+SETTINGS=()
+if [[ "$CATALYST" == "1" ]]; then
+  SETTINGS+=("CODE_SIGNING_ALLOWED=NO" "CODE_SIGNING_REQUIRED=NO")
+fi
+SETTINGS+=("${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"}")
 
 # Resolve project root from script location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -89,8 +108,40 @@ destination_simulator_name() {
 # First run has no baseline → raw counts only; after first build % is shown.
 BUILD_PROGRESS_BASELINE="$DERIVED_DATA_ROOT/kg_build.events_baseline"
 
-# shellcheck source=lib/ios_build_progress.sh
-source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# The ONE definition of what xcodebuild is invoked with. `--dry-run` prints it
+# and the real build consumes it, so "the plan" and "the run" cannot drift.
+# This shape was forced by review: with a separate printer, reverting the
+# Catalyst fix at the CALL SITE alone left every --dry-run assertion green —
+# the tests measured the printer, not the plumbing. `-resultBundlePath` is the
+# one parameterised element (its tempdir is only created after the lock).
+xcodebuild_argv() {  # $1 = result bundle path; empty omits the flag
+  local -a argv=(
+    -project "$XCODEPROJ"
+    -scheme BooksAndVocab
+    -configuration "$CONFIGURATION"
+    -destination "$DESTINATION"
+    -derivedDataPath "$DERIVED_DATA_ROOT"
+  )
+  [[ -n "${1:-}" ]] && argv+=(-resultBundlePath "$1")
+  argv+=("${SETTINGS[@]+"${SETTINGS[@]}"}" build)
+  printf '%s\n' "${argv[@]}"
+}
+
+# Report the resolved invocation without touching the lock, the simulator or
+# xcodebuild. Placed AFTER DerivedData resolution so the plan shows the real
+# cache root, and BEFORE the lock so inspecting a plan never blocks a build.
+if [[ "$DRY_RUN" == "1" ]]; then
+  # `--json` pins KG_IOS_VERDICT_FILE (ops/ios_ops.sh) and then reads that file
+  # back as this invocation's result. A plan writes no verdict, so the pair
+  # would report some earlier run as if it were this one — exit 0 with no
+  # evidence, which is the failure mode this branch exists to remove.
+  if [[ -n "${KG_IOS_VERDICT_FILE:-}" ]]; then
+    echo "error: --dry-run cannot be combined with --json (a plan produces no verdict)" >&2
+    exit 1
+  fi
+  xcodebuild_argv "" | sed 's/^/argv=/'
+  exit 0
+fi
 
 # --- Lock acquire (shlock spin-wait) ---
 MONITOR_PID=""
@@ -153,16 +204,11 @@ BUILD_START_S=$(date +%s)
 # compiled file (SwiftCompile/CompileC), which the progress monitor counts to
 # show %. All output still goes to $TMPOUT — stdout stays clean.
 MONITOR_PID=$(start_build_monitor "$TMPOUT" "$BUILD_PROGRESS_BASELINE" "[ios_build]" "$BUILD_START_S")
-xcodebuild \
-  -project "$XCODEPROJ" \
-  -scheme BooksAndVocab \
-  -configuration "$CONFIGURATION" \
-  -destination "$DESTINATION" \
-  -derivedDataPath "$DERIVED_DATA_ROOT" \
-  -resultBundlePath "$RESULT_BUNDLE" \
-  "${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"}" \
-  build \
-  >"$TMPOUT" 2>&1
+# Consume the same argv `--dry-run` prints. Do not inline the flags here: a
+# hand-written list is exactly what made the plan and the run divergible.
+XCARGV=()
+while IFS= read -r _argv_item; do XCARGV+=("$_argv_item"); done < <(xcodebuild_argv "$RESULT_BUNDLE")
+xcodebuild "${XCARGV[@]}" >"$TMPOUT" 2>&1
 EXIT_CODE=$?
 kill "$MONITOR_PID" 2>/dev/null || true
 wait "$MONITOR_PID" 2>/dev/null || true
