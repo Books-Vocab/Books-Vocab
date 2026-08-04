@@ -550,6 +550,9 @@ documents:
       - hard_stop_condition_changed
       - production_entrypoint_changed
     sources:
+      # repo-root，不在任何 ops/ glob 底下：少了它，改動生產部署命令本身完全不產生
+      # impact hint，而測它的 ops/test_devops.sh 反而會（IMP-0052 同一形狀的控制面版本）
+      - devops.sh
       - ops/devops_kg_safe.sh
       - ops/status_all.sh
       - ops/branch_audit.sh
@@ -832,6 +835,7 @@ documents:
       - migration_workflow_changed
       - env_surface_changed
     sources:
+      - devops.sh
       - ops/
       - "!ops/ios_release.sh"
       - "!ops/docs_lint.sh"
