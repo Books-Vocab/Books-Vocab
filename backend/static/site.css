@@ -288,13 +288,13 @@ body.kg-surface {
 .hero {
   flex: 0 0 auto;
   max-width: 48rem; margin: 0 auto;
-  padding: var(--sp-10) var(--page-h-padding) var(--sp-8);
+  padding: var(--sp-8) var(--page-h-padding) var(--sp-6);
   text-align: center;
 }
 .hero .page-eyebrow { color: var(--accent); }
 .hero__title {
   font-family: var(--site-serif);
-  font-size: 64px; line-height: 1.02;
+  font-size: clamp(2.75rem, 5.2vw, 3.5rem); line-height: 1.02;
   font-weight: 700;                       /* iOS hero ships untracked + bold (scan #5/#6) */
   color: var(--text-primary);
   margin: var(--sp-2) 0 var(--sp-3);
@@ -307,7 +307,7 @@ body.kg-surface {
 .hero__cta {
   display: flex; flex-wrap: wrap; gap: var(--sp-3);
   justify-content: center; align-items: center;
-  margin-top: var(--sp-6);
+  margin-top: var(--sp-5);
 }
 .hero__cta .kg-btn { font-size: var(--text-body); padding: var(--sp-3) var(--sp-6); }
 .hero__note {
@@ -319,78 +319,47 @@ body.kg-surface {
 /* Faint brand-hero wash behind the hero — stays inside the warm palette,
    landing-only (prose pages use .site-page, not .hero). */
 .hero { position: relative; isolation: isolate; }
+/* Full-bleed: the hero box is only 48rem wide, so an inset-0 gradient ends in a
+   hard vertical seam against the page background (visible in dark). */
 .hero::before {
-  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  content: ''; position: absolute; inset: 0 calc(50% - 50vw); z-index: -1; pointer-events: none;
   background: radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--brand-hero) 10%, transparent), transparent 60%);
 }
 
-/* --- Hero: showcase variant (copy left, token-rendered device mock right) --- */
+/* --- Hero: lockup variant (mark + wordmark, no device collage) -------------
+   The screenshots moved out entirely — .product-screens is the single place
+   the app is shown, so the first viewport is copy-only and stays short. */
 
-.hero--showcase {
-  display: grid;
-  grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
-  gap: var(--sp-8); align-items: center;
-  max-width: 72rem; text-align: left;
-  padding: var(--sp-6) var(--page-h-padding) var(--sp-5);
-  overflow-x: clip;
+.hero--lockup {
+  max-width: 48rem;
+  padding: var(--sp-7) var(--page-h-padding) var(--sp-6);
+  text-align: center;
 }
-.hero--showcase .hero__copy { display: flex; flex-direction: column; align-items: flex-start; }
-.hero--showcase .hero__tagline { margin-left: 0; max-width: 34rem; }
-.hero--showcase .hero__cta,
-.hero--showcase .hero__trust { justify-content: flex-start; }
+.hero--lockup .hero__copy { display: flex; flex-direction: column; align-items: center; }
+.hero--lockup .hero__tagline { max-width: 38rem; }
+
+/* Mark + wordmark on one baseline. The source PNG is a square app icon with an
+   opaque white bleed, so the squircle radius has to be applied here. */
+.hero__lockup {
+  display: flex; align-items: center; justify-content: center;
+  gap: var(--sp-4); flex-wrap: wrap;
+  margin: var(--sp-3) 0 var(--sp-3);
+}
+.hero__mark {
+  display: block; flex-shrink: 0;
+  width: clamp(3.25rem, 6.5vw, 4.25rem); height: auto;
+  aspect-ratio: 1;
+  border-radius: 22.5%;                   /* iOS icon corner ratio */
+  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
+  box-shadow: var(--elevation-z1);
+}
+.hero__lockup .hero__title { margin: 0; }
 
 /* Honest trust strip (formats + platform only — never a metric). */
 .hero__trust {
   list-style: none; display: flex; flex-wrap: wrap;
-  gap: var(--sp-2); margin-top: var(--sp-5); padding: 0;
+  gap: var(--sp-2); margin-top: var(--sp-4); padding: 0;
   justify-content: center;
-}
-
-/* Real app screenshots in the hero. Fixed dimensions keep the first viewport
-   stable; product truth comes from the shipped iPhone surfaces, not a mock. */
-.hero__visual {
-  position: relative;
-  min-height: 520px;
-  width: 100%;
-  overflow: hidden;
-}
-.hero-screen {
-  position: absolute;
-  margin: 0;
-  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
-}
-.hero-screen img {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 462 / 1000;
-  object-fit: cover;
-  object-position: top center;
-  border-radius: 30px;
-  border: 1px solid color-mix(in srgb, var(--card-border) 70%, transparent);
-  box-shadow: var(--elevation-z2);
-  background: var(--card-bg);
-}
-.hero-screen figcaption {
-  font-size: var(--text-caption2); font-weight: 700;
-  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-.hero-screen--primary {
-  width: 222px;
-  left: 50%; top: 0;
-  z-index: 3;
-  transform: translateX(-50%);
-}
-.hero-screen--secondary {
-  width: 168px;
-  right: 0; top: 58px;
-  z-index: 2;
-}
-.hero-screen--tertiary {
-  width: 168px;
-  left: 0; bottom: 0;
-  z-index: 1;
 }
 
 /* Token-rendered iPhone mock — illustrative, never a claimed screenshot.
@@ -470,30 +439,14 @@ body.kg-surface {
 }
 
 @media (max-width: 860px) {
-  .hero--showcase { grid-template-columns: 1fr; text-align: center; gap: var(--sp-5); }
-  .hero--showcase .hero__copy { align-items: center; }
-  .hero--showcase .hero__tagline { margin-inline: auto; }
-  .hero--showcase .hero__cta,
-  .hero--showcase .hero__trust { justify-content: center; }
-  .hero__title { font-size: 52px; }
-  .hero__visual { min-height: 390px; max-width: 26rem; margin-inline: auto; }
-  .hero-screen--primary { width: 172px; }
-  .hero-screen--secondary,
-  .hero-screen--tertiary { width: 132px; }
-  .hero-screen--secondary { top: 46px; }
   .device { width: min(220px, 54vw); }
 }
 @media (max-width: 600px) {
-  .hero--showcase { padding-top: var(--sp-4); padding-bottom: var(--sp-4); gap: var(--sp-4); }
-  .hero__title { font-size: 40px; }
+  .hero--lockup { padding-top: var(--sp-5); padding-bottom: var(--sp-5); }
+  .hero__lockup { gap: var(--sp-3); }
   .hero__tagline { font-size: var(--text-subhead); }
   .hero__cta { margin-top: var(--sp-4); }
   .hero__trust { margin-top: var(--sp-3); }
-  .hero__visual { min-height: 300px; max-width: 21rem; }
-  .hero-screen--primary { width: 132px; }
-  .hero-screen--secondary,
-  .hero-screen--tertiary { width: 104px; }
-  .hero-screen--secondary { top: 34px; }
   .device { width: min(155px, 40vw); }
 }
 
@@ -504,42 +457,44 @@ body.kg-surface {
 }
 
 .landing-section {
-  width: 100%; max-width: 60rem; margin: 0 auto;
-  padding: var(--sp-6) var(--page-h-padding) var(--sp-9);
+  width: 100%; max-width: 66rem; margin: 0 auto;
+  padding: var(--sp-5) var(--page-h-padding) var(--sp-7);
 }
+/* Three-up at desk width: six cards resolve to two tight rows instead of
+   three airy ones, which is where most of the page's dead height was. */
 .feature-grid {
-  display: grid; gap: var(--sp-4);
-  grid-template-columns: repeat(2, 1fr);
+  display: grid; gap: var(--sp-3);
+  grid-template-columns: repeat(3, 1fr);
 }
-.feature-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-6); }
+.feature-card { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-4); }
 /* iOS-style icon tile: accent glyph on an accent-subtle rounded square. */
 .feature-icon {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 2.75rem; height: 2.75rem; margin-bottom: var(--sp-2);
+  width: 2.25rem; height: 2.25rem; margin-bottom: var(--sp-1);
   border-radius: var(--radius-md);
   background: var(--accent-subtle); color: var(--accent);
 }
 .feature-icon svg {
-  width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor;
+  width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor;
   stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
 }
-.feature-eyebrow {
-  font-size: var(--text-caption); font-weight: 700;
-  letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
-  color: var(--accent);
-}
+@media (max-width: 860px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .feature-grid { grid-template-columns: 1fr; } }
 .feature-card h2 {
   font-family: var(--site-serif);
   font-size: var(--text-section-title); line-height: var(--leading-heading);
   font-weight: 700; color: var(--text-primary);
 }
-.feature-card p { color: var(--text-secondary); line-height: var(--leading-body); }
+.feature-card p {
+  color: var(--text-secondary); line-height: var(--leading-body);
+  font-size: var(--text-subhead);
+}
 
 /* --- How it works (3-step journey on a divider connector, not cards) -------- */
 
 .how-it-works {
   max-width: 60rem; margin: 0 auto;
-  padding: var(--sp-9) var(--page-h-padding) var(--sp-7);
+  padding: var(--sp-7) var(--page-h-padding) var(--sp-6);
   text-align: center;
 }
 .section-eyebrow {
@@ -550,121 +505,83 @@ body.kg-surface {
 .section-title {
   font-family: var(--site-serif); font-size: var(--text-h1);
   line-height: var(--leading-heading); font-weight: 700;
-  color: var(--text-primary); margin-bottom: var(--sp-8);
+  color: var(--text-primary); margin-bottom: var(--sp-6);
 }
 .steps {
   list-style: none; position: relative;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-6);
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-5);
 }
 .steps::before {
-  content: ''; position: absolute; top: 1.25rem; left: 14%; right: 14%;
+  content: ''; position: absolute; top: 1.125rem; left: 14%; right: 14%;
   height: 1px; background: var(--divider);
 }
 .step { display: flex; flex-direction: column; align-items: center; }
 .step__num {
   position: relative;
-  display: inline-flex; width: 2.5rem; height: 2.5rem;
+  display: inline-flex; width: 2.25rem; height: 2.25rem;
   align-items: center; justify-content: center;
   border-radius: var(--radius-pill);
   background: var(--accent-subtle); color: var(--accent);
-  font-family: var(--site-serif); font-size: var(--text-h2); font-weight: 700;
+  font-family: var(--site-serif); font-size: var(--text-section-title); font-weight: 700;
 }
 .step h3 {
   font-family: var(--site-serif); font-size: var(--text-section-title);
-  font-weight: 700; color: var(--text-primary); margin-top: var(--sp-3);
+  font-weight: 700; color: var(--text-primary); margin-top: var(--sp-2);
 }
 .step p { color: var(--text-secondary); font-size: var(--text-subhead); margin-top: var(--sp-1); max-width: 18rem; }
 @media (max-width: 640px) {
   .steps { grid-template-columns: 1fr; gap: var(--sp-5); }
-  .steps::before { top: 0; bottom: 0; left: 1.25rem; right: auto; width: 1px; height: auto; }
+  .steps::before { top: 0; bottom: 0; left: 1.125rem; right: auto; width: 1px; height: auto; }
 }
 
 /* --- Product screenshots (real iPhone surfaces, not illustrative mockups) ---- */
 
 .product-screens {
-  width: 100%; max-width: 72rem; margin: 0 auto;
-  padding: var(--sp-6) var(--page-h-padding) var(--sp-8);
+  width: 100%; max-width: 66rem; margin: 0 auto;
+  padding: var(--sp-5) var(--page-h-padding) var(--sp-7);
 }
 .product-screens__intro {
-  max-width: 42rem; margin: 0 auto var(--sp-6);
+  max-width: 42rem; margin: 0 auto var(--sp-5);
   text-align: center;
 }
 .product-screens .section-title { margin-bottom: 0; }
-.screen-rail {
+/* Two-up rows of prose. Replaces the four-device rail: no raster assets, and
+   each surface can now state what its screenshot used to only imply. */
+.surface-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--sp-4);
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-6);
 }
-.screen-card {
+.surface {
   min-width: 0;
-  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--divider);
 }
-.screen-card img {
-  display: block; width: 100%;
-  aspect-ratio: 1284 / 2778;
-  object-fit: cover; object-position: top center;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevation-z1);
-  background: var(--card-bg);
+.surface dt {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2);
+  font-size: var(--text-section-title); font-weight: 700;
+  font-family: var(--site-serif);
+  color: var(--text-primary);
 }
-.screen-card figcaption {
-  display: flex; flex-direction: column; gap: var(--sp-1);
-  min-height: 3.4rem;
-}
-.screen-card figcaption span {
+.surface__tag {
+  font-family: var(--font-sans);
   font-size: var(--text-caption2); font-weight: 700;
   letter-spacing: var(--tracking-uppercase); text-transform: uppercase;
   color: var(--accent);
 }
-.screen-card figcaption strong {
+.surface dd {
+  margin-top: var(--sp-1);
   font-size: var(--text-subhead); line-height: var(--leading-body);
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
-@media (max-width: 860px) {
-  .screen-rail {
-    display: flex;
-    overflow-x: auto;
-    gap: var(--sp-4);
-    padding-bottom: var(--sp-3);
-    scroll-snap-type: x proximity;
-    -webkit-overflow-scrolling: touch;
-  }
-  .screen-card {
-    flex: 0 0 min(16rem, 72vw);
-    scroll-snap-align: center;
-  }
-}
-
-/* --- Knowledge-graph showcase (signature feature, token-rendered SVG) ------- */
-
-.graph-showcase {
-  display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-8);
-  align-items: center; max-width: 60rem; margin: 0 auto;
-  padding: var(--sp-8) var(--page-h-padding);
-}
-.graph-showcase h2 {
-  font-family: var(--site-serif); font-size: var(--text-h2);
-  line-height: var(--leading-heading); font-weight: 700;
-  color: var(--text-primary); margin-block: var(--sp-2);
-}
-.graph-showcase p { color: var(--text-secondary); line-height: var(--leading-body); }
-/* SVG fills via CSS (NOT presentation attributes — var() is unreliable as an
-   attribute value; as CSS it resolves and stays theme-reactive). */
-.kg-graph { width: 100%; height: auto; }
-.kg-graph__edges { stroke: var(--card-border); stroke-width: 1.5; fill: none; }
-.kg-graph__nodes text { font-family: var(--font-sans); fill: var(--accent); }
-.kg-graph__nodes rect { fill: var(--accent-subtle); }
-.kg-graph__nodes .is-focus rect { fill: var(--brand-hero); }
-.kg-graph__nodes .is-focus text { fill: var(--on-brand-hero); }
-@media (max-width: 860px) {
-  .graph-showcase { grid-template-columns: 1fr; gap: var(--sp-5); }
+@media (max-width: 640px) {
+  .surface-grid { grid-template-columns: 1fr; }
 }
 
 .closing {
   flex: 0 0 auto;
   max-width: 40rem; margin: 0 auto;
-  padding: var(--sp-8) var(--page-h-padding) var(--sp-10);
+  padding: var(--sp-7) var(--page-h-padding) var(--sp-8);
   text-align: center;
 }
 .closing__title {
@@ -679,7 +596,6 @@ body.kg-surface {
 }
 @media (max-width: 640px) {
   .hero { padding-top: var(--sp-6); }
-  .hero__title { font-size: clamp(2.75rem, 11vw, 3.5rem); }
 }
 
 /* --- Footer ---------------------------------------------------------------- */
@@ -687,10 +603,10 @@ body.kg-surface {
 .site-footer {
   margin-top: auto;
   margin-inline: var(--page-h-padding);
-  padding: var(--sp-9) 0 var(--sp-6);
+  padding: var(--sp-7) 0 var(--sp-5);
   border-top: 1px solid var(--divider);
   display: grid; grid-template-columns: 1.4fr repeat(3, 1fr);
-  gap: var(--sp-7); align-items: start;
+  gap: var(--sp-6); align-items: start;
 }
 .footer-brand__name {
   font-family: var(--site-serif); font-size: var(--text-h2);
