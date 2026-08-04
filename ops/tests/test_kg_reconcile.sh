@@ -79,6 +79,19 @@ if [[ -n "\$SERVED" && "\$url" == *localhost* ]]; then
     exit 6
   fi
 fi
+# 外部：MOCK_EXTERNAL_FAIL_FIRST=<n> 讓前 n 次外部 /api/system/info 直接失敗。
+# 模擬的是**主機端對外連通性中斷**（2026-08-04 事故是 felix DNS 掛掉，同一秒 docker
+# build 也 `lookup auth.docker.io: no such host`），不是 tunnel 重連——後者會回帶
+# HTTP status 的 CF 錯誤頁，而事故拿到的是 exit 6 / HTTP=000（連回應都沒有）。
+# 已知**未**建模：時間。這裡計次不計時，且 harness 把 DELAY 釘成 0，所以綠燈只證明
+# 「重試了 N 次」，不證明「等得夠久」——而後者才是這條修法真正想買的東西。
+# 只挑外部主機名。用 *system/info* 比對的話 localhost 探針（KG_LOCAL_HEALTH_URL 也是
+# .../api/system/info）會一起被擋掉並混進計數；現在沒炸只是因為上面 SERVED 分支先 exit。
+if [[ -n "\${MOCK_EXTERNAL_FAIL_FIRST:-}" && "\$url" == *wordnexus.lol* && "\$url" == *system/info* ]]; then
+  n=\$(cat "$dir/external_calls" 2>/dev/null || echo 0)
+  n=\$((n+1)); echo "\$n" > "$dir/external_calls"
+  if (( n <= MOCK_EXTERNAL_FAIL_FIRST )); then exit 6; fi
+fi
 match_line=""
 while IFS= read -r line; do
   [[ -z "\$line" || "\$line" == \#* ]] && continue
@@ -292,6 +305,39 @@ grep -q "sha=$SHA_NEW user=reconciler" "$DEPLOYLOG" && ok "deployed: deploy.log 
 ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_NEW" ]] && ok "deployed: VERSION == new sha" || bad "deployed: VERSION=$ver_now != $SHA_NEW"
 
+section "外部 smoke 前兩次連不上 → 重試後仍 deployed（不得假回滾）"
+# IMP-0060，這是**生產實際發生過的事故**（2026-08-04 12:40Z）：容器 recreate 後
+# localhost 探針重試 5 次撐過了啟動，但 external_smoke_ok 只打**一次**，那一次落在
+# Cloudflare tunnel 還沒接回新 origin 的窗口內 → HTTP=000 → reason=smoke → 回滾。
+# 兩個探針對同一件事（服務剛起來需要幾秒）有不同的耐心，而只有其中一個有重試。
+# force-recreate 讓每次部署都會 recreate，於是這個原本偶發的失敗變成每次必中。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+# harness 把 KG_RECON_HEALTH_ATTEMPTS 釘在 2（跑得快），所以注入 1 次失敗＝落在預算內。
+out="$(MOCK_EXTERNAL_FAIL_FIRST=1 run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "deployed" ]] && ok "external flap: verdict deployed" || bad "external flap: expected deployed, got '$v' — 單次探針把 tunnel 重連當成部署失敗"
+[[ "$rc" -eq 0 ]] && ok "external flap: exit 0" || bad "external flap: exit $rc"
+grep -q "ROLLED_BACK" "$DEPLOYLOG" 2>/dev/null && bad "external flap: 假回滾了" || ok "external flap: 未回滾"
+ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
+[[ "$ext_calls" -ge 2 ]] && ok "external flap: 真的重試了（$ext_calls 次）" || bad "external flap: 只打了 $ext_calls 次 — 沒有重試，上面的綠是別的原因"
+
+section "外部 smoke 一直連不上 → 仍必須回滾（重試不得變成無條件放行）"
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_EXTERNAL_FAIL_FIRST=99 run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "external down: 仍回滾" || bad "external down: expected rolled-back, got '$v' — 重試把真失敗吃掉了"
+grep -q "reason=smoke" "$DEPLOYLOG" && ok "external down: 理由記成 smoke" || bad "external down: deploy.log 沒記 reason=smoke"
+
 section "backend change 但不動 image → 仍 deployed（不得假回滾）"
 # IMP-0056：`backend/docker-compose.yml` 的純註解改動命中 BACKEND_TRIGGER_RE，但不進
 # image、也不改變解析後的 config hash，所以 compose 不 recreate。健康 gate 比對容器
@@ -390,6 +436,30 @@ recreates="$(wc -l < "$RECREATELOG" 2>/dev/null | tr -d ' ' || echo 0)"
 [[ "$recreates" == "1" ]] && ok "build-fail: 僅回滾那次 recreate（部署那次 build 就死了）" || bad "build-fail: recreate x${recreates}（預期 1）"
 served_now="$(cat "$SERVEDFILE")"
 [[ "$served_now" == "$SHA_OLD" ]] && ok "build-fail: 容器停在舊版" || bad "build-fail: serving=$served_now != $SHA_OLD"
+
+section "回滾自己的 compose 失敗 → 必須說「回滾未生效」，不得說「雙壞」"
+# IMP-0060 的 C2，**生產實際發生過**：健康 gate 因主機 DNS 掛掉而假失敗 → 進回滾 →
+# 回滾的 `--build` 也因為同一個 DNS 取不到 registry metadata 而失敗 → 退出碼被整個丟棄
+# → git tree 與 VERSION 退回舊 sha，容器卻仍跑新版。接著舊版健康檢查當然不符，於是發出
+# 「生產可能雙壞」——語意相反的誤導告警。真相是回滾根本沒發生。
+#
+# 兩個失效**相關而非獨立**：gate 最容易假失敗的時候，正是回滾最不可能成功的時候。
+# 注意這個 seam（MOCK_COMPOSE_FAIL_NTH）**早就存在**，`=1` 測了部署 build 失敗，
+# 只是從來沒有人寫 `=2`。不是替身不夠忠實，是買好的儀器沒去讀。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|500|internal error
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+ERRLOG="$SC/recon.err"
+out="$(MOCK_COMPOSE_FAIL_NTH=2 run_recon --once 2>"$ERRLOG")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "rollback-build-fail: verdict rolled-back" || bad "rollback-build-fail: expected rolled-back, got '$v'"
+grep -q "回滾的 compose 失敗" "$ERRLOG" && ok "rollback-build-fail: 明確告知回滾未生效" || bad "rollback-build-fail: 回滾 compose 的退出碼被吞掉了 — 這正是生產當天發生的事"
+grep -q "生產可能雙壞" "$ERRLOG" && bad "rollback-build-fail: 仍發語意相反的『雙壞』告警" || ok "rollback-build-fail: 未發誤導的雙壞告警"
+served_now="$(cat "$SERVEDFILE")"
+[[ "$served_now" == "$SHA_NEW" ]] && ok "rollback-build-fail: 容器確實仍跑新版（與告警一致）" || bad "rollback-build-fail: serving=$served_now，告警與事實不符"
 
 section "回滾後容器起不來 → 必須發雙壞告警"
 # 這是上一條反向斷言的**正控**：先前只斷言「沒有雙壞告警」，把那個告警字串改名一樣全綠

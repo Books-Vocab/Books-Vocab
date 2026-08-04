@@ -54,8 +54,17 @@ KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 KG_LOCAL_HEALTH_URL="${KG_LOCAL_HEALTH_URL:-http://localhost:8000/api/system/info}"
 KG_LOCK_DIR="${KG_LOCK_DIR:-/tmp/kg-deploy.lock}"          # 與 devops.sh acquire_deploy_lock 同一把鎖
 KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH_TOKEN（私有 repo fetch）
-KG_RECON_HEALTH_ATTEMPTS="${KG_RECON_HEALTH_ATTEMPTS:-5}"  # localhost 健康輪詢次數
-KG_RECON_HEALTH_DELAY="${KG_RECON_HEALTH_DELAY:-3}"        # 每次間隔秒
+# 下面兩個 knob **兩個探針共用**（localhost 與 external）。刻意不分成兩組：多一組旋鈕
+# 就多一個會漂的地方。但要知道兩者等的不是同一件事——
+#   localhost：uvicorn 起來（實測 1.2s，秒級，與網路無關）
+#   external ：felix 對外連通性（2026-08-04 事故是主機 DNS 掛掉，中斷長度由日誌
+#              定界在 (0, ~90s]——下一個 90s tick 的 git fetch 才成功）
+# **預算算法取決於失敗是快還是慢**：`--max-time 10` 只在「連得上但回應慢」時被吃滿；
+# DNS `no such host` / connection refused 是**瞬間**返回，所以快失敗的總預算只有
+# (attempts-1) × delay。delay 從 3 提到 5 就是為了這個：快失敗預算 12s → 20s。
+# 誠實地說：**這仍蓋不住 ~90s 的 DNS 中斷**，殘餘風險見 IMP-0061。
+KG_RECON_HEALTH_ATTEMPTS="${KG_RECON_HEALTH_ATTEMPTS:-5}"  # 兩個健康探針的輪詢次數
+KG_RECON_HEALTH_DELAY="${KG_RECON_HEALTH_DELAY:-5}"        # 每次間隔秒（見上方預算算法）
 KG_RECON_POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"  # poison 冷卻秒（過後允許重試同 sha）
 KG_RECON_DRY_RUN="${KG_RECON_DRY_RUN:-0}"
 
@@ -159,22 +168,51 @@ localhost_health_ok() {
 # 外部 smoke 快子集（CF→tunnel→felix 全鏈）：
 #   /api/system/info 200 且 version==期望 sha；/api/health 401/403/200(存在即可)、
 #   404 跳過、000/500/其他判紅。
+#
+# **重試不是可選的**（IMP-0060，2026-08-04 生產實際事故）：這個探針原本只打一次，
+# 而同一個 gate 裡的 localhost 探針重試 5 次。單次那一發失敗 → reason=smoke → 回滾
+# 一個其實健康的部署（deploy.log 12:40:53Z）。
+#
+# **根因是 felix 主機端對外連通性（DNS）掛掉，不是 Cloudflare tunnel 在重連。**
+# 第一版註解寫成 tunnel 重連，被 review 用日誌否證，四項證據：
+#   ① 同一秒 docker build 也死在 `lookup auth.docker.io: no such host`——一個與
+#      tunnel、與本容器都無關的公網主機名。
+#   ② 拿到的是 `HTTP=000` 而不是 502/530/1033：tunnel 斷線時 Cloudflare edge 會回
+#      **帶 HTTP status 的**錯誤頁；000 表示 curl 根本沒拿到 HTTP 回應。
+#   ③ 容器 started_at=12:40:36、rollback compose 時間戳 12:40:39，中間還塞了一次
+#      localhost sleep——external 那一發只能是**瞬間**返回，不可能吃滿 --max-time 10。
+#   ④ 容器自始至終沒重啟過（uptime 連續），所以 tunnel 從來不需要「接回新 origin」。
+# 這個差別會改變修法尺寸，所以值得寫清楚：見上方 knob 段的快/慢失敗預算算法。
+#
+# **這條重試緩解但蓋不住該事故**：日誌把中斷長度定界在 (0, ~90s]（下一個 90s tick 的
+# git fetch 才成功），而快失敗的預算只有 (attempts-1)×delay = 20s。真正的解是「主機端
+# 連不出去」不該被判成「這次部署壞了」——那需要區分兩者，記為 IMP-0061。
 external_smoke_ok() {
   local want="$1" base="$KG_PUBLIC_URL"
-  local body code ver hcode
-  body="$("$CURL_BIN" -sS -o - -w $'\n%{http_code}' --max-time 10 "$base/api/system/info" 2>/dev/null || true)"
-  code="$(printf '%s\n' "$body" | tail -n1)"
-  body="$(printf '%s\n' "$body" | sed '$d')"
-  if [[ "$code" != "200" ]]; then log "  external /api/system/info HTTP=${code:-none} (expect 200)"; return 1; fi
-  ver="$(extract_version "$body")"
-  if [[ "$ver" != "$want" ]]; then log "  external version=${ver:-} != $want"; return 1; fi
-  hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || echo 000)"
-  case "$hcode" in
-    200|401|403) : ;;                                   # 存在 → ok
-    404) log "  external /api/health 404 → 跳過（非失敗）" ;;
-    *)   log "  external /api/health HTTP=$hcode → 判紅"; return 1 ;;   # 000/500/其他
-  esac
-  return 0
+  local attempts="$KG_RECON_HEALTH_ATTEMPTS" delay="$KG_RECON_HEALTH_DELAY"
+  local i body code ver hcode
+  for (( i=1; i<=attempts; i++ )); do
+    body="$("$CURL_BIN" -sS -o - -w $'\n%{http_code}' --max-time 10 "$base/api/system/info" 2>/dev/null || true)"
+    code="$(printf '%s\n' "$body" | tail -n1)"
+    body="$(printf '%s\n' "$body" | sed '$d')"
+    if [[ "$code" != "200" ]]; then
+      log "  external attempt $i/$attempts: /api/system/info HTTP=${code:-none} (expect 200)"
+    else
+      ver="$(extract_version "$body")"
+      if [[ "$ver" != "$want" ]]; then
+        log "  external attempt $i/$attempts: version=${ver:-} != $want"
+      else
+        hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || echo 000)"
+        case "$hcode" in
+          200|401|403) return 0 ;;                          # 存在 → ok
+          404) log "  external /api/health 404 → 跳過（非失敗）"; return 0 ;;
+          *)   log "  external attempt $i/$attempts: /api/health HTTP=$hcode" ;;   # 000/500/其他 → 再試
+        esac
+      fi
+    fi
+    if (( i < attempts )); then sleep "$delay"; fi
+  done
+  return 1
 }
 
 # 三段健康 gate；失敗設 HEALTH_FAIL_REASON=<health|smoke|infra> 並 return 1
@@ -291,10 +329,25 @@ deploy_and_gate() {
   #      != VERSION(old) 且 new 仍可解析 → **把游標寫回剛被回滾且被 poison 的那個 sha**，
   #      changed 變空 → noop 早退、poison 檢查走不到。deploy.log 記著 ROLLED_BACK、
   #      state 有 poison，游標卻宣告已收斂在該 sha 上——回滾在游標層被靜默撤銷。
-  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build --force-recreate ) >&2; set -e
+  # 回滾這一次 compose 的退出碼**必須看**（IMP-0060 的 C2）。原本整個丟棄，而
+  # 2026-08-04 事故當下它真的失敗了：`--build` 要向 registry 取 python:3.13-slim 的
+  # metadata，而主機 DNS 正掛著（`lookup auth.docker.io: no such host`）。後果是
+  # git tree 退回舊 sha、VERSION 寫成舊 sha、**容器仍跑著新版**——回滾根本沒發生。
+  #
+  # 兩個失效模式是**相關的不是獨立的**：健康 gate 最容易假失敗的時候（對外連通性壞），
+  # 正是回滾的 `--build` 最不可能成功的時候。所以這裡不能假設回滾一定會成功。
+  local rrc=0
+  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build --force-recreate ) >&2; rrc=$?; set -e
+  if (( rrc != 0 )); then
+    # 講清楚操作者該做什麼：不是「兩版都壞」，是「git 退了但容器沒退」。
+    alert "回滾的 compose 失敗 (exit $rrc)：git tree 與 VERSION 已回到 $rollback_sha，但**容器很可能仍跑著 $new_sha**。回滾未生效，需人工確認容器實跑版本再決定前進或後退。"
+  fi
   # 回滾後確認舊版健康（best-effort，不 gate verdict；連舊版都不健康則更大聲告警）
   if localhost_health_ok "$rollback_sha"; then
     log "  回滾後 localhost 健康確認：$rollback_sha OK"
+  elif (( rrc != 0 )); then
+    # 上面那條已經說明了原因，這裡不要再發一次語意相反的「雙壞」誤導告警。
+    log "  回滾後 localhost 仍非 $rollback_sha —— 與上方 compose 失敗一致，不重複告警。"
   else
     alert "回滾後舊版 $rollback_sha localhost 健康未確認 — 生產可能雙壞，需立即人工檢查。"
   fi
