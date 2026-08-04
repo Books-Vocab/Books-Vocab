@@ -252,8 +252,10 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
 # (IMP-0039). Naming them here keeps them in the `ops-shell-untested` advisory, which
 # says so out loud, instead of silently arming a gate nobody can pass.
 OPS_SHELL_UNROUTABLE_TESTS: dict[str, str] = {
-    "ops/test_ops.sh": "the aggregate runner — it invokes every group, takes over five "
-                       "minutes, and is red today via its devops group (IMP-0052)",
+    "ops/test_ops.sh": "the aggregate runner — it invokes every group, including the "
+                       "ones excluded from CI for needing local assets, so its colour is "
+                       "a property of the machine rather than of the change. Duration is "
+                       "the reason that holds everywhere: many minutes",
 }
 
 
@@ -491,7 +493,11 @@ def plan_gates(changed_files: list[str],
     # floor (needs only bash, so no machine skips it), the script's own test where one
     # resolves, and a named advisory for the rest — an enumerated hole beats an
     # anonymous one.
-    ops_sh = [p for p in changed_files if p.startswith("ops/") and p.endswith(".sh")]
+    # Repo-root scripts count too. The original `ops/`-prefixed filter quietly excluded
+    # `devops.sh` — the production deploy command, and the single shell script in the
+    # tree with the highest blast radius (IMP-0052).
+    ops_sh = [p for p in changed_files
+              if p.endswith(".sh") and (p.startswith("ops/") or "/" not in p)]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
         exists = ops_test_exists or (lambda rel: False)

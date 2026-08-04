@@ -403,16 +403,20 @@ def test_a_shell_script_with_no_test_is_named_rather_than_dropped():
 
 
 def test_the_aggregate_runner_is_never_armed_as_a_block_gate():
-    """`ops/test_ops.sh` invokes every group: over five minutes, and red today through
-    its devops group. Routing it would hand cutover a gate that can only ever be red —
-    the ios-build-catalyst pathology, which teaches people to leave the process. It goes
-    to the advisory WITH its reason instead, because a silent exclusion is how the next
-    person concludes the file is covered."""
+    """`ops/test_ops.sh` invokes every group, including the ones excluded from CI for
+    needing local assets, and takes many minutes. Routing it would hand cutover a gate
+    whose colour depends on the machine — the ios-build-catalyst pathology, which teaches
+    people to leave the process. It goes to the advisory WITH its reason instead, because
+    a silent exclusion is how the next person concludes the file is covered.
+
+    The reason is asserted by identity, not by keyword: pinning a literal like an IMP id
+    means the test breaks when the prose is corrected rather than when the behaviour is."""
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["ops/test_ops.sh"], ops_test_exists=real))
     assert not any(n.startswith("ops-shell:") for n in gates)
     note = gates["ops-shell-untested"]["note"]
-    assert "ops/test_ops.sh" in note and "IMP-0052" in note
+    assert "ops/test_ops.sh" in note
+    assert MODULE.OPS_SHELL_UNROUTABLE_TESTS["ops/test_ops.sh"] in note
     assert gates["ops-shell-syntax"]["files"] == ["ops/test_ops.sh"]
 
 
@@ -451,6 +455,74 @@ def test_shell_routing_resolves_against_the_real_repo():
     gates = _by_name(plan_gates(["ops/devops_kg_safe.sh"], ops_test_exists=real))
     assert "ops-shell:test_devops_safe_lightsail_guard.sh" in gates
     assert "ops-shell-untested" not in gates
+
+
+def test_a_repo_root_shell_script_is_routed_like_any_other():
+    """`devops.sh` is the production deploy command and lives at the repo root, so the
+    original `ops/`-prefixed filter skipped it entirely — the single highest-consequence
+    shell script in the tree was the one with no gate. Its test existed and had been red
+    for six weeks (IMP-0052); nothing was arranged to notice."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["devops.sh"], ops_test_exists=real))
+    assert gates["ops-shell:test_devops.sh"]["cmd"] == ["ops/test_devops.sh"]
+    assert gates["ops-shell:test_devops.sh"]["level"] == "block"
+    assert gates["ops-shell-syntax"]["files"] == ["devops.sh"]
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_a_repo_root_shell_script_with_no_test_lands_in_the_advisory():
+    """Widening the filter must not turn a routing hole into a silent pass: a root script
+    with no test still has to be named, exactly as an ops/ one would be."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["start.sh"], ops_test_exists=real))
+    assert not any(n.startswith("ops-shell:") for n in gates)
+    assert gates["ops-shell-untested"]["files"] == ["start.sh"]
+    assert gates["coverage"]["uncovered"] == []
+
+
+# (`gitmark` is defined further down, next to the integration tests that need it)
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
+def test_no_two_routable_shell_scripts_share_a_basename():
+    """`_ops_shell_test_candidates` keys on the basename alone, so two routable scripts
+    with the same name resolve to the same test file. Widening the filter to repo-root
+    scripts made that reachable: a future root `release.sh` would be "covered" by
+    `ops/test_release.sh` — the test for `ops/release.sh` — and its gate would go green
+    without executing a line of it. Nothing collides today; this pins that, because when
+    it does happen the misrouting is silent and looks exactly like real coverage.
+
+    If this test starts failing on the assert below because routing became path-aware,
+    the guard has been made redundant by a better fix — delete the test, don't patch it."""
+    # the trap itself, demonstrated rather than asserted from memory
+    assert (MODULE._ops_shell_test_candidates("release.sh")
+            == MODULE._ops_shell_test_candidates("ops/release.sh"))
+
+    out = subprocess.run(["git", "ls-files", "*.sh"], cwd=str(ROOT),
+                         capture_output=True, text=True, check=True)
+    routable = [p for p in out.stdout.split() if p.startswith("ops/") or "/" not in p]
+    # an empty list would make the loop below vacuously green
+    assert len(routable) > 20, f"git ls-files returned {len(routable)} — the probe is broken"
+
+    seen: dict[str, str] = {}
+    for p in routable:
+        base = p.rsplit("/", 1)[-1]
+        assert base not in seen, (
+            f"{p} and {seen[base]} share a basename, so both route to "
+            f"{MODULE._ops_shell_test_candidates(p)} — one would be gated by the "
+            f"other's test. Rename one, or make routing path-aware."
+        )
+        seen[base] = p
+
+    # Same defect, one hop further: OPS_SHELL_UNROUTABLE_TESTS is consulted for the
+    # changed script, never for the test it resolves to. A script named `ops.sh` would
+    # resolve to `ops/test_ops.sh` — the aggregate runner, declared unroutable precisely
+    # because arming it as a block gate is unacceptable — and be armed anyway.
+    for p in routable:
+        for cand in MODULE._ops_shell_test_candidates(p):
+            assert cand not in MODULE.OPS_SHELL_UNROUTABLE_TESTS, (
+                f"{p} resolves to {cand}, which OPS_SHELL_UNROUTABLE_TESTS declares "
+                f"must never be a gate ({MODULE.OPS_SHELL_UNROUTABLE_TESTS[cand]}) — "
+                f"the exclusion is keyed on the changed script, not on the target"
+            )
 
 
 def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):
