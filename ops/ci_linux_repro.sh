@@ -8,8 +8,12 @@
 # 誠實邊界（不要拿它當「CI 一定綠」的證明）：
 #   * 架構不同。本機多半是 arm64，GitHub runner 是 x86_64。
 #   * 這裡是 ubuntu:24.04 + workflow 自己裝的套件；ubuntu-latest runner image 另外
-#     預裝了數百個工具。**若某個 group 在這裡紅、在 CI 綠，通常代表它依賴一個
-#     workflow 沒有明講的預裝工具**——那是 workflow 該補的，不是這支該放寬的。
+#     預裝了數百個工具，**兩個方向都會咬人**：
+#       - 這裡紅、CI 綠 → 那個 group 依賴一個 workflow 沒明講的預裝工具。修 workflow。
+#       - 這裡綠、CI 紅 → runner 多裝的東西改變了行為。**實際發生過**：runner 有 swift
+#         但沒有 xcodebuild，而證偽器的「未遮蔽 baseline」原本只要求任一命令存在就開跑，
+#         於是 ios-ops / lldb-forensics 在 CI 兩條都紅。本機容器沒裝 swift，看不出來。
+#     所以本腳本綠**不等於** CI 綠；它排除的是可在 linux 上重現的那一類問題。
 #   * 網路可達性、runner 的 secrets、GITHUB_* env 都不在這裡。
 #
 # Usage:
