@@ -83,11 +83,18 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
   return 1
 }
 
-# Registry of proofs this run actually EXECUTED. The last section reconciles it against
-# what the table declares, so "declared but never written" and "written for a gate
-# nobody plans" are both loud.
+# Gates whose BOTH directions must stay executable here. A ratchet, in the same spirit
+# as the i18n baseline being pinned at 0: without it, the cheapest way past a failing
+# proof is to reclassify the gate as `expensive|journal` and delete the proof body, and
+# nothing would object. Downgrading one of these is then a deliberate, visible edit.
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers"
+
+# Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
+# journal-sourced green is real evidence but it is not an executed proof, and without
+# the tag it can stand in for one — declare `ios-build|expensive|cheap`, write no proof
+# body at all, and one historical pass in the journal satisfies the reconciliation.
 PROVEN=""
-record_proof() { PROVEN="$PROVEN $1:$2"; }
+record_proof() { PROVEN="$PROVEN $1:$2:$3"; }  # gate, direction, executed|journal
 
 # Both helpers REQUIRE a marker. A red asserted only on rc≠0 is how this file shipped a
 # proof that was really testing argument validation.
@@ -100,7 +107,7 @@ assert_red() {  # <gate> <expected marker> <output file> <rc>
     head -5 "$out" | sed 's/^/      /'
   else
     ok "$g goes red on a known-bad input, citing '$marker' (exit $rc)"
-    record_proof "$g" red
+    record_proof "$g" red executed
   fi
 }
 
@@ -114,7 +121,7 @@ assert_green() {  # <gate> <expected marker> <output file> <rc>
     head -5 "$out" | sed 's/^/      /'
   else
     ok "$g goes green on a known-good input, citing '$marker'"
-    record_proof "$g" green
+    record_proof "$g" green executed
   fi
 }
 
@@ -155,6 +162,10 @@ while IFS= read -r g; do
   [[ -n "$gnote" ]] || fail_t "$g: proof note is empty — an unexplained classification is a coverage hole"
   [[ "$red" == "cheap" ]] && declared_cheap="$declared_cheap $g:red"
   [[ "$green" == "cheap" ]] && declared_cheap="$declared_cheap $g:green"
+  case " $CHEAP_FLOOR " in
+    *" $g "*) [[ "$red" == "cheap" && "$green" == "cheap" ]] \
+      || fail_t "$g is in CHEAP_FLOOR but declared $red|$green — downgrading a gate out of executed proofs is exactly how a failing proof gets quietly retired" ;;
+  esac
 done <<<"$BLOCK_GATES"
 # Stale-entry check, mirroring test_ops_ci_coverage.sh's third assertion. Found a real
 # one on its first run: `coverage` was declared here while being a WARN gate, so it was
@@ -172,19 +183,38 @@ section "cheap proofs are executed in BOTH directions, not asserted"
 # Green FIRST, on the untouched tree, then the same command with one raw-CJK string
 # added. The pair is the point: only a gate that DISCRIMINATES passes both legs.
 UIQ=(./ops/ui_quality_gate.sh --tier fast --execute --all-mechanisms)
+# `sed -n '...p;q'` rather than `sed ... | head -1`: under `set -o pipefail` a closed
+# pipe makes sed exit 141, which `set -e` turns into a silent whole-script abort.
+summary_field() {  # <field> <file> -> the integer, or empty
+  sed -n "s/.*summary: .*$1=\([0-9]*\).*/\1/p;/summary: /q" "$2"
+}
 rc=0; "${UIQ[@]}" >"$TMP/uiq_clean.out" 2>&1 || rc=$?
 assert_green ui-quality-fast "failed=0" "$TMP/uiq_clean.out" "$rc"
 # exit 0 alone is satisfied by executing nothing at all — which is exactly how CI stayed
-# green for two months. Require the fast lints to have actually run.
-passed_n="$(sed -n 's/.*summary: planned=[0-9]* passed=\([0-9]*\).*/\1/p' "$TMP/uiq_clean.out" | head -1)"
-[[ "${passed_n:-0}" -ge 5 ]] \
-  && ok "ui-quality-fast's green executed ${passed_n} mechanisms (not a green no-op)" \
-  || fail_t "ui-quality-fast's green executed ${passed_n:-0} mechanisms — expected all five fast lints"
+# green for two months. Two independent guards against a green no-op:
+#   passed >= 5   a FLOOR (five fast lints today), not an exact count — a sixth mechanism
+#                 must not fail this, but a collapse to zero must.
+#   planned == 0  nothing was selected and then left unrun.
+# NOTE `planned` is a STATUS TALLY (mechanisms still in the `planned` state), not the
+# size of the plan — ui_quality_gate.py:352. So `planned=0` appears in a perfectly
+# healthy run as well as in the two-month idle one; only the whole tally being zero
+# meant "nothing selected". See IMP-0050.
+planned_n="$(summary_field planned "$TMP/uiq_clean.out")"
+passed_n="$(summary_field passed "$TMP/uiq_clean.out")"
+[[ "${passed_n:-0}" -ge 5 && "${planned_n:-0}" -eq 0 ]] \
+  && ok "ui-quality-fast's green executed ${passed_n} mechanisms with none left unrun (not a green no-op)" \
+  || fail_t "ui-quality-fast's green ran ${passed_n:-0} mechanisms with ${planned_n:-0} left merely planned — a green that skipped work is how CI idled for two months"
 
 printf 'import SwiftUI\n\nstruct KGCanFailProbe: View {\n    @ObserveInjection private var inject\n    var body: some View {\n        Text("紅燈探針")\n            .enableInjection()\n    }\n}\n' >"$PROBE"
 rc=0; "${UIQ[@]}" >"$TMP/uiq_probe.out" 2>&1 || rc=$?
 rm -f "$PROBE"
-assert_red ui-quality-fast "failed=1" "$TMP/uiq_probe.out" "$rc"
+assert_red ui-quality-fast "failed=1 " "$TMP/uiq_probe.out" "$rc"
+# marker is substring-matched, so keep the trailing space: bare "failed=1" also matches
+# "failed=13". Harmless at five mechanisms, a false green if this helper is ever reused.
+failed_n="$(summary_field failed "$TMP/uiq_probe.out")"
+[[ "${failed_n:-0}" -eq 1 ]] \
+  && ok "ui-quality-fast's red failed exactly the one lint the probe violates" \
+  || fail_t "ui-quality-fast's red reported ${failed_n:-0} failing mechanisms — expected exactly 1 (the raw-CJK lint)"
 
 # --- review-receipts ------------------------------------------------------------
 # KG_REVIEW_AUDIT_ROOT is REQUIRED, not stylistic: review_audit.sh cd's to its own repo
@@ -261,25 +291,27 @@ print(f"conflict-red status={bad['status']} summary={bad['summary']}")
 print(f"conflict-green status={good['status']} summary={good['summary']}")
 PY
 grep -q "conflict-red status=block" "$TMP/internal.out" \
-  && { ok "docs-conflict-markers goes red on a marker"; record_proof docs-conflict-markers red; } \
+  && { ok "docs-conflict-markers goes red on a marker"; record_proof docs-conflict-markers red executed; } \
   || fail_t "docs-conflict-markers did not block on a file containing a conflict marker"
 grep -q "conflict-green status=pass" "$TMP/internal.out" \
-  && { ok "docs-conflict-markers goes green on a clean doc"; record_proof docs-conflict-markers green; } \
+  && { ok "docs-conflict-markers goes green on a clean doc"; record_proof docs-conflict-markers green executed; } \
   || fail_t "docs-conflict-markers did not pass a doc with no markers"
 
 section "expensive gates: green read from recorded behaviour, never assumed"
-EXPENSIVE=""
+# TWO independent lists, derived from the two independent kinds. Deriving the journal
+# query from the RED kind (as this first shipped) leaves `red=cheap|green=journal`
+# checked by nothing at all: its green is neither executed here nor looked up.
+JOURNAL_GATES=""
 while IFS= read -r g; do
   [[ -z "$g" ]] && continue
   entry="$(proof_for "$g" || true)"
   [[ -z "$entry" ]] && continue
-  red="${entry%%|*}"; rest="${entry#*|}"; gnote="${rest#*|}"
-  [[ "$red" == "expensive" ]] || continue
-  EXPENSIVE="$EXPENSIVE $g"
-  note "$g — red not executed here: $gnote"
+  red="${entry%%|*}"; rest="${entry#*|}"; green="${rest%%|*}"; gnote="${rest#*|}"
+  [[ "$red" == "expensive" ]] && note "$g — red not executed here: $gnote"
+  [[ "$green" == "journal" ]] && JOURNAL_GATES="$JOURNAL_GATES $g"
 done <<<"$BLOCK_GATES"
 
-HIST_REPORT="$("$UV_BIN" run --no-project --python 3.13 python - $EXPENSIVE <<'PY'
+HIST_REPORT="$("$UV_BIN" run --no-project --python 3.13 python - $JOURNAL_GATES <<'PY'
 import importlib.util as u, json, sys
 s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
 m = u.module_from_spec(s); s.loader.exec_module(m)
@@ -293,7 +325,7 @@ if path.is_file():
             except json.JSONDecodeError:
                 pass
 for gate in sys.argv[1:]:
-    mine = [r for r in rows if r.get("base_name") == gate]
+    mine = [r for r in rows if r.get("base_name") == gate and r.get("level") == "block"]
     greens = [r for r in mine if r.get("status") == "pass"]
     heads = {r.get("head8") for r in mine}
     if greens:
@@ -310,9 +342,9 @@ while IFS= read -r line; do
     PROVEN\ *)
       g="$(cut -d' ' -f2 <<<"$line")"
       ok "${line#PROVEN }: green proven from gate history"
-      record_proof "$g" green ;;
+      record_proof "$g" green journal ;;
     NEVERGREEN\ *)
-      fail_t "${line#NEVERGREEN }: recorded repeatedly and NEVER once green — the ios-build-catalyst signature (a gate that can only block). Suspect the gate, not the change." ;;
+      fail_t "${line#NEVERGREEN }: recorded repeatedly at block level and NEVER once green — the ios-build-catalyst signature. Check whether this gate can pass at all before treating a red here as your change's fault." ;;
     UNPROVEN\ *)
       note "${line#UNPROVEN }: no recorded green on this machine yet (not a failure — a fresh clone knows nothing)" ;;
     HISTORY\ *) note "${line#HISTORY }" ;;
@@ -320,25 +352,25 @@ while IFS= read -r line; do
 done <<<"$HIST_REPORT"
 
 section "what is declared cheap was actually executed"
-# Reconciled in both directions. Without this, deleting a proof body silently downgrades
-# the table above into a list of intentions. Journal-sourced greens for expensive gates
-# are legitimate extras, so they are excluded from the "not declared cheap" side.
+# Reconciled in both directions, and the SOURCE is load-bearing on the `missing` side: a
+# journal-sourced green is real evidence of capability but it is not an executed proof,
+# so it must not be able to stand in for one. Without this, declaring a gate
+# `expensive|cheap`, writing no proof body, and having one historical pass in the journal
+# would satisfy the whole contract.
 missing=""
 for want in $declared_cheap; do
-  case " $PROVEN " in *" $want "*) ;; *) missing="$missing $want" ;; esac
+  case " $PROVEN " in *" $want:executed "*) ;; *) missing="$missing $want" ;; esac
 done
 extra=""
 for got in $PROVEN; do
+  [[ "${got##*:}" == "journal" ]] && continue     # journal greens are extras by design
+  entry="${got%:*}"
   case " $declared_cheap " in
-    *" $got "*) continue ;;
+    *" $entry "*) continue ;;
   esac
-  gate="${got%%:*}"
-  if [[ "${got##*:}" == "green" ]]; then
-    case " $EXPENSIVE " in *" $gate "*) continue ;; esac
-  fi
-  extra="$extra $got"
+  extra="$extra $entry"
 done
-[[ -z "$missing" ]] || fail_t "declared cheap but never executed:$missing"
+[[ -z "$missing" ]] || fail_t "declared cheap but never executed here:$missing"
 [[ -z "$extra" ]] || fail_t "executed a proof for something not declared cheap:$extra"
 [[ -z "$missing" && -z "$extra" ]] && ok "declared-cheap set matches executed set"
 
