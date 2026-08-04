@@ -222,10 +222,20 @@ _LIVE_ONLY_UITEST_CLASSES = {"LiveDemoAccessUITests"}
 
 # Shell tools whose test is named after what it exercises rather than after the file.
 # Convention (`ops/X.sh` -> `ops/tests/test_X.sh` or `ops/test_X.sh`) resolves most of
-# them; this is the remainder. A hand-written map is fine, an unverifiable one is not:
-# test_every_shell_test_alias_points_at_a_test_that_mentions_its_script requires each
-# target to exist, to actually mention the script it claims to cover, and to be
-# unreachable by convention — so an entry cannot sit here claiming coverage it lost.
+# them; this is the remainder.
+#
+# Every entry below was traced to a line that RUNS the script, not one that mentions it.
+# That distinction is the whole risk here, and inference from names is bad at it: of the
+# nine entries first written, two were false — test_ios_cache_evict.sh covers
+# lib/ios_cache_evict.sh rather than ios_clean_derived_data.sh, and test_release.sh only
+# `[[ -f ]]`-checks release_changelog.sh and greps release.sh for a mention of it, so a
+# release_changelog.sh gutted to `exit 0` would have passed a BLOCK gate.
+#
+# The contract test is a necessary condition, not a sufficient one: it requires the
+# target to exist, to mention the script, and to be unreachable by convention — the
+# release_changelog entry satisfied all three while covering nothing. Proving coverage
+# mechanically means mutating the script and requiring the target to go red; filed as
+# IMP-0055 rather than bolted on here.
 OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/devops_kg_safe.sh": "ops/tests/test_devops_safe_lightsail_guard.sh",
     "ops/install_lldb_forensics.sh": "ops/tests/test_lldb_crash_forensics.sh",
@@ -233,14 +243,25 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/ios_build.sh": "ops/test_ios_ops.sh",
     "ops/ios_archive.sh": "ops/test_ios_ops.sh",
     "ops/release_bump.sh": "ops/test_release.sh",
-    "ops/release_changelog.sh": "ops/test_release.sh",
     "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
+}
+
+# Test scripts that must NOT be routed as a block gate, each with the reason. A gate
+# that can only ever be red is as harmful as one that can only be green, in the other
+# direction: it blocks everyone and the only visible way past it is to leave the process
+# (IMP-0039). Naming them here keeps them in the `ops-shell-untested` advisory, which
+# says so out loud, instead of silently arming a gate nobody can pass.
+OPS_SHELL_UNROUTABLE_TESTS: dict[str, str] = {
+    "ops/test_ops.sh": "the aggregate runner — it invokes every group, takes over five "
+                       "minutes, and is red today via its devops group (IMP-0052)",
 }
 
 
 def _ops_shell_test_candidates(rel: str) -> list[str]:
     """Test files that could cover a changed shell script, most specific first."""
     base = rel.rsplit("/", 1)[-1]
+    if rel in OPS_SHELL_UNROUTABLE_TESTS:
+        return []
     if base.startswith("test_"):
         return [rel]  # a changed test script is its own gate
     alias = OPS_SHELL_TEST_ALIASES.get(rel)
@@ -487,10 +508,13 @@ def plan_gates(changed_files: list[str],
         for t in sorted(sh_targets):
             gates.append(_shell(f"ops-shell:{t.rsplit('/', 1)[-1]}", "ops", [t], "block"))
         if untested:
+            why = ", ".join(
+                f"{p} ({OPS_SHELL_UNROUTABLE_TESTS[p]})" if p in OPS_SHELL_UNROUTABLE_TESTS
+                else p
+                for p in untested)
             gates.append(_internal(
                 "ops-shell-untested", "ops", "warn",
-                note="no test file resolves for " + ", ".join(untested)
-                     + " — syntax is the only gate they get",
+                note=f"no test runs for {why} — syntax is the only gate they get",
                 files=untested))
 
     covered: set[str] = set()
@@ -885,10 +909,41 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
     return None
 
 
-def _never_green(state: str | None, base_name: str,
-                 min_attempts: int = 3, min_heads: int = 2) -> dict[str, int] | None:
-    """{attempts, heads, worktrees} when this gate has NEVER been recorded green at
-    BLOCK level and has been tried enough times to mean something; None otherwise.
+def gate_history_rows(state: str | None) -> list[dict[str, Any]]:
+    """Every parseable row of the journal.
+
+    A malformed line skips ITSELF, never the whole file. The journal is append-only and
+    never rotated, so one truncated write (disk full, SIGKILL mid-flush) would otherwise
+    disable every reader of it permanently and silently — the exact failure shape the
+    journal exists to find.
+    """
+    path = _gate_history_path(state)
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
+
+
+def gate_history_verdicts(state: str | None, base_names: list[str],
+                          min_attempts: int = 3,
+                          min_heads: int = 2) -> dict[str, dict[str, Any]]:
+    """Per capability: `proven` (recorded green at least once), `never-green` (tried
+    enough times, never once green) or `unproven` (too little history to say).
+
+    THE reader. `ops/tests/test_gate_can_fail.sh` calls this instead of parsing the
+    journal itself: two readers of one file are two chances to disagree, and they did
+    exactly that — the shell copy counted rows for gates that never started, which the
+    python side skips, so the same row could read "never green" in one place and "no
+    data" in the other.
 
     "Never green, ever" rather than "not green lately" on purpose: someone iterating on
     a genuinely broken build reds the same gate repeatedly, and a recency rule would cry
@@ -897,45 +952,43 @@ def _never_green(state: str | None, base_name: str,
     Only `level == "block"` rows count. The level is what makes a red consequential; a
     gate promoted from advisory to block would otherwise inherit the whole streak it
     accumulated while nobody was obliged to act on it, and trip on its first real block.
-
-    A malformed line skips ITSELF, never the whole file. The journal is append-only and
-    never rotated, so one truncated write (disk full, SIGKILL mid-flush) would otherwise
-    disable this detector permanently and silently — the exact failure shape it exists
-    to find. The shell reader in test_gate_can_fail.sh already does per-line recovery;
-    these two consumers must not disagree about the same file, and the tolerant one is
-    the safe side here.
     """
+    rows = gate_history_rows(state)
+    out: dict[str, dict[str, Any]] = {}
+    for name in base_names:
+        mine = [r for r in rows
+                if r.get("base_name") == name
+                and r.get("level") == "block"
+                # `executed is False` = the gate never started (spawn failure): not
+                # evidence in either direction. An ABSENT key is a row written before
+                # the field existed, i.e. a real run.
+                and r.get("executed") is not False]
+        greens = [r for r in mine if r.get("status") == "pass"]
+        heads = {r.get("head8") for r in mine}
+        if greens:
+            verdict = "proven"
+        elif len(mine) >= min_attempts and len(heads) >= min_heads:
+            verdict = "never-green"
+        else:
+            verdict = "unproven"
+        out[name] = {"verdict": verdict, "attempts": len(mine), "heads": len(heads),
+                     "worktrees": len({r.get("wt") for r in mine}),
+                     "last_green": greens[-1].get("ts") if greens else None}
+    return out
+
+
+def _never_green(state: str | None, base_name: str,
+                 min_attempts: int = 3, min_heads: int = 2) -> dict[str, int] | None:
+    """{attempts, heads, worktrees} when this gate has never been recorded green and has
+    been tried enough times to mean something; None otherwise. Bookkeeping, so it
+    swallows its own failures — a broken journal must not turn a green change red."""
     try:
-        path = _gate_history_path(state)
-        if not path.is_file():
-            return None
-        attempts, heads, worktrees = 0, set(), set()
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(row, dict) or row.get("base_name") != base_name:
-                continue
-            if row.get("level") != "block":
-                continue
-            if row.get("executed") is False:
-                # never started (spawn failure) — it is not evidence either way.
-                # Absent field = a row written before this existed, i.e. a real run.
-                continue
-            if row.get("status") == "pass":
-                return None
-            attempts += 1
-            heads.add(row.get("head8"))
-            worktrees.add(row.get("wt"))
-        if attempts >= min_attempts and len(heads) >= min_heads:
-            return {"attempts": attempts, "heads": len(heads),
-                    "worktrees": len(worktrees)}
+        v = gate_history_verdicts(state, [base_name], min_attempts, min_heads)[base_name]
     except Exception:  # noqa: BLE001
         return None
-    return None
+    if v["verdict"] != "never-green":
+        return None
+    return {"attempts": v["attempts"], "heads": v["heads"], "worktrees": v["worktrees"]}
 
 
 def _orchestrator_identity(worktree: str) -> dict[str, Any]:

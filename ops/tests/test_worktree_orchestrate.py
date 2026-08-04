@@ -402,10 +402,36 @@ def test_a_shell_script_with_no_test_is_named_rather_than_dropped():
     assert gates["coverage"]["uncovered"] == []
 
 
+def test_the_aggregate_runner_is_never_armed_as_a_block_gate():
+    """`ops/test_ops.sh` invokes every group: over five minutes, and red today through
+    its devops group. Routing it would hand cutover a gate that can only ever be red —
+    the ios-build-catalyst pathology, which teaches people to leave the process. It goes
+    to the advisory WITH its reason instead, because a silent exclusion is how the next
+    person concludes the file is covered."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["ops/test_ops.sh"], ops_test_exists=real))
+    assert not any(n.startswith("ops-shell:") for n in gates)
+    note = gates["ops-shell-untested"]["note"]
+    assert "ops/test_ops.sh" in note and "IMP-0052" in note
+    assert gates["ops-shell-syntax"]["files"] == ["ops/test_ops.sh"]
+
+
+def test_every_unroutable_test_declaration_still_names_a_real_file():
+    """A stale exclusion silently stops excluding anything, and reads as if it does."""
+    for rel, reason in MODULE.OPS_SHELL_UNROUTABLE_TESTS.items():
+        assert (ROOT / rel).is_file(), f"{rel} no longer exists"
+        assert reason.strip(), f"{rel} has no reason — an unexplained exclusion is a hole"
+
+
 def test_every_shell_test_alias_points_at_a_test_that_mentions_its_script():
     """A hand-written map is fine; an unverifiable one is not. Each alias must name a
     file that exists AND that actually references the script it claims to cover, so an
-    alias cannot keep claiming coverage after the test stops exercising it."""
+    alias cannot keep claiming coverage after the test stops exercising it.
+
+    NECESSARY, NOT SUFFICIENT — and the gap has already bitten: `release_changelog.sh ->
+    test_release.sh` passed every assertion here while the target only `[[ -f ]]`-checked
+    the script and grepped a DIFFERENT file for a mention of it. Mechanically proving
+    coverage means mutating the script and requiring the target to go red (IMP-0055)."""
     assert MODULE.OPS_SHELL_TEST_ALIASES, "the alias map is the fallback for name mismatches"
     for src, target in MODULE.OPS_SHELL_TEST_ALIASES.items():
         assert (ROOT / src).is_file(), f"alias source {src} no longer exists"
@@ -2423,6 +2449,37 @@ def test_a_gate_that_never_started_is_not_evidence_about_whether_it_can_pass(tmp
         MODULE._append_gate_history(state, str(tmp_path), head, orch, ran)
     assert MODULE._never_green(state, "docs-lint") == {
         "attempts": 3, "heads": 3, "worktrees": 1}
+
+
+def test_both_journal_consumers_read_it_through_the_same_function(tmp_path):
+    """`gate_history_verdicts` is THE reader. The shell side used to parse the journal
+    itself, and the two copies disagreed the moment `executed` was added: identical rows
+    read as "never green" in one and "no data" in the other."""
+    state = str(tmp_path / "reg.json")
+    orch = {"sha256": "a" * 64}
+    unexecuted = [{"name": "ios-build", "level": "block", "status": "block",
+                   "rc": 127, "executed": False}]
+    for head in ("11111111", "22222222", "33333333"):
+        MODULE._append_gate_history(state, str(tmp_path), head, orch, unexecuted)
+    v = MODULE.gate_history_verdicts(state, ["ios-build"])["ios-build"]
+    assert v == {"verdict": "unproven", "attempts": 0, "heads": 0,
+                 "worktrees": 0, "last_green": None}
+    assert len(MODULE.gate_history_rows(state)) == 3   # the rows ARE there, just mute
+
+    MODULE._append_gate_history(state, str(tmp_path), "44444444", orch,
+                                [{"name": "ios-build", "level": "block",
+                                  "status": "pass", "rc": 0}])
+    v = MODULE.gate_history_verdicts(state, ["ios-build"])["ios-build"]
+    assert v["verdict"] == "proven" and v["attempts"] == 1 and v["last_green"]
+
+
+def test_gate_can_fail_does_not_keep_its_own_copy_of_the_journal_reader():
+    """Pins the single-reader property itself. Without this, the duplicate simply comes
+    back the next time someone needs one more field out of the journal — which is how it
+    arrived the first time."""
+    src = (ROOT / "ops" / "tests" / "test_gate_can_fail.sh").read_text()
+    assert "gate_history_verdicts" in src, "the shell side must call the shared reader"
+    assert "json.loads" not in src, "a second journal parser has reappeared"
 
 
 def test_a_missing_warn_level_tool_stays_advisory(tmp_path):
