@@ -1055,9 +1055,20 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
 
     # shell gate — run the real tool. cwd is the worktree (or a subdir like backend).
     cwd = Path(worktree) / spec["cwd"] if spec.get("cwd") else Path(worktree)
-    returncode, output = _run_streamed_command(
-        spec["cmd"], cwd=cwd, gate_name=name,
-    )
+    try:
+        returncode, output = _run_streamed_command(
+            spec["cmd"], cwd=cwd, gate_name=name,
+        )
+    except OSError as exc:
+        # The router and the tools it routes to can be different generations
+        # (IMP-0045): a branch that deleted a script leaves a stale router still
+        # pointing at it. Letting this escape aborts the WHOLE run — every other
+        # gate's result is discarded and the operator gets a traceback naming
+        # subprocess.py rather than a gate. 127 is the shell's own "command not
+        # found", i.e. what running it by hand would report.
+        return {**result, "status": "block" if level == "block" else "warn", "rc": 127,
+                "summary": f"gate tool not runnable: {spec['cmd'][0]} "
+                           f"({type(exc).__name__}: {exc})"}
     tail = "\n".join(output.splitlines()[-3:]) if output else ""
     if returncode == 0:
         status = "pass"
