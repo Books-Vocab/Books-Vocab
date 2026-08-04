@@ -217,12 +217,14 @@ failed_n="$(summary_field failed "$TMP/uiq_probe.out")"
   || fail_t "ui-quality-fast's red reported ${failed_n:-0} failing mechanisms — expected exactly 1 (the raw-CJK lint)"
 
 # --- review-receipts ------------------------------------------------------------
-# KG_REVIEW_AUDIT_ROOT is REQUIRED, not stylistic: review_audit.sh cd's to its own repo
-# root (ops/review_audit.sh:21-22), so a subshell `cd "$TMP/repo"` is discarded and the
-# audit silently runs against KG's own history. That is what the previous version of this
-# proof did — it passed for as long as KG's recent commits lacked trailers, and turned
-# GREEN (i.e. broke) the day they all had them. A proof whose verdict depends on the
-# host repo instead of its fixture is not a proof.
+# KG_REVIEW_AUDIT_ROOT is kept EXPLICIT, not stylistic. review_audit.sh used to cd to
+# its own repo root unconditionally, so a subshell `cd "$TMP/repo"` was discarded and
+# the audit silently ran against KG's own history. That is what the previous version of
+# this proof did — it passed for as long as KG's recent commits lacked trailers, and
+# turned GREEN (i.e. stopped proving anything) the day they all had them. A proof whose
+# verdict depends on the host repo instead of its fixture is not a proof.
+# IMP-0049 made the caller's cwd the default, so `cd` would now work too; naming the
+# root anyway keeps this proof independent of that resolution order ever changing back.
 git init -q "$TMP/repo" 2>/dev/null
 git -C "$TMP/repo" config user.email t@t.test; git -C "$TMP/repo" config user.name T
 : >"$TMP/repo/a.txt"; git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -qm root

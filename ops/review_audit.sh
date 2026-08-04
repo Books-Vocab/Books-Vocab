@@ -12,14 +12,14 @@
 #   - exempt commit:     contains `Review-Exempt: <reason>`
 #   - allowed exemptions: trivial-typo | rename-only | format-only | generated-snapshot | single-line-small-file
 #
+# Audited repo: $KG_REVIEW_AUDIT_ROOT, else the git toplevel of the CALLER's cwd, else
+# the repo this script lives in. The chosen root is always echoed to stderr.
+#
 # Exit codes:
 #   0 = every audited commit is reviewed or validly exempted
 #   2 = at least one commit is missing a receipt or carries an invalid exemption
 
 set -euo pipefail
-
-ROOT="${KG_REVIEW_AUDIT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-cd "$ROOT"
 
 BASE="origin/main"
 REV_RANGE=""
@@ -68,6 +68,30 @@ done
 # missing jq into a hard failure, or wiring this into the cutover gate would make
 # jq a hard dependency of every cutover.
 [[ "${JSON:-0}" -eq 1 ]] && need_jq
+
+# Root resolution deliberately sits AFTER argument parsing: `--help` should neither
+# chdir nor emit anything, and `usage` reads "$0", which a prior cd can invalidate
+# when the script was invoked by a relative path from another directory.
+#
+# An interface that looks like it takes the caller's cwd and doesn't is one that
+# invites wrong calls. This used to cd to the SCRIPT's own repo unconditionally, so
+# `( cd elsewhere && review_audit.sh )` silently audited KG's own history — which is
+# exactly how test_gate_can_fail.sh's review-receipts red proof came to depend on
+# KG's recent commits instead of on its fixture, and rotted green when they all
+# gained trailers (IMP-0049). The script's repo remains the last resort so calling it
+# from outside any git repo still works.
+if [[ -n "${KG_REVIEW_AUDIT_ROOT:-}" ]]; then
+  ROOT="$KG_REVIEW_AUDIT_ROOT"
+elif ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" && [[ -n "$ROOT" ]]; then
+  :
+else
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+cd "$ROOT"
+ROOT="$(pwd -P)"
+# Never silent: which repo was audited is the one fact that made the wrong answer
+# survive undetected, and it costs one line to state.
+echo "review_audit: auditing $ROOT" >&2
 
 if [[ -z "$REV_RANGE" ]]; then
   git rev-parse --verify "$BASE^{commit}" >/dev/null 2>&1 || die "base 不存在: $BASE"
