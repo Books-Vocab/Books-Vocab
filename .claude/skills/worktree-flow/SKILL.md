@@ -53,8 +53,10 @@ git -C <path> rebase main
 
 **d. 全 phase 完 → gate**（impact-based，顯式跑；.githooks 只 best-effort，不可依賴）：
 ```
-ops/worktree_orchestrate.py gate --worktree <path> --json
+<path>/ops/worktree_orchestrate.py gate --worktree <path> --json
 ```
+**`gate` / `cutover` 一律用工作樹自己那份 orchestrator（上面的絕對路徑形式），不是裸 `ops/...`。** 理由：gate 的**工具**是以工作樹為 cwd 執行的，所以**路由規則必須同代**——從主 repo 跑會用主 repo 的規則去排一組分支版工具的 gate（實測排出 8 道 vs 分支的 11 道，輸出形狀完全相同）。工具現在會自己擋（sha256 不同即 refuse，判決紀錄也帶 orchestrator 身分、cutover 會核對），但正確形式仍是上面這行。
+
 它 diff `<path>` vs 本地 `main`，把改動路由到既有 gate 工具並彙總 `verdict`（block/warn/pass），把結果**記錄下來**（綁 worktree + HEAD sha）供 cutover 核對。impact→gate 對應：
 - `ios/**` → `ios_ops.sh build` **＋** `build --catalyst`（sim 綠 ≠ Catalyst 綠）＋ `quality impact`（swift）＋ `test --unit`；**動到一般 UITest 檔**則另加 `test --ui --file <該 UITest 類> --dataset marketing_demo`（**只跑受影響的 UI 測試類，非全套**——全套當 block 會被 codebase 已知 UI flaky 誤擋每次 iOS cutover）。`LiveDemoAccessUITests` 是 Release＋實機＋live backend 專用契約，cutover gate 只跑 Release iphoneos build-for-testing 編譯 gate 並明示 runtime advisory；不得拿 simulator/fixture 偽裝其 runtime evidence，送審前仍須走 App Review `demo-run`。
 - design-system / tokens / 生成 CSS / `ios/**/Models|UIComponents/` → `verify_design_system.sh`
@@ -70,16 +72,18 @@ orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進
 
 **e. 非 block 才 cutover（離線落地本地 main）**：
 ```
-ops/worktree_orchestrate.py cutover --worktree <path> --json          # dry-run 預覽
-ops/worktree_orchestrate.py cutover --worktree <path> --commit --json # ff 本地 main
+<path>/ops/worktree_orchestrate.py cutover --worktree <path> --json          # dry-run 預覽
+<path>/ops/worktree_orchestrate.py cutover --worktree <path> --commit --json # ff 本地 main
 ```
-它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn} 且記錄的 HEAD == 當前 HEAD；stale/缺紀錄/block 會被拒）→ rebase 上本地 `main` → 在 primary 上 **`git merge --ff-only` 前進本地 main**（受 per-repo 鎖序列化）。**離線、不 push、不部署。** 護欄：primary 必須在 `main` 上且 **tracked-clean、無 merge/rebase 進行中**（ff 會更新 primary 工作區）——髒了會被拒，先 commit/撤離。`warn` 會 land 並標 `warnings: [<gate 名>]`。落地本地 main 已長期授權（不先問）。
+它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn}、記錄的 HEAD == 當前 HEAD、且**產出該判決的 orchestrator == 工作樹現在這份**；stale/缺紀錄/block/換版本會被拒）→ rebase 上本地 `main` → 在 primary 上 **`git merge --ff-only` 前進本地 main**（受 per-repo 鎖序列化）。**離線、不 push、不部署。** 護欄：primary 必須在 `main` 上且 **tracked-clean、無 merge/rebase 進行中**（ff 會更新 primary 工作區）——髒了會被拒，先 commit/撤離。`warn` 會 land 並標 `warnings: [<gate 名>]`。落地本地 main 已長期授權（不先問）。
 
 **f. resolve — 清乾淨、登記閉環**：
 ```
 ops/worktree_orchestrate.py resolve --worktree <path> --json          # dry-run 看計畫
 ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
 ```
+（`resolve` 刻意用**主 repo** 那份，不比照 gate/cutover：它是拆除動作，會刪掉 `<path>` 本身，且不路由任何 gate。）
+
 先過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。
 
 ### 5a. 隨手備份（sync，零生產副作用）

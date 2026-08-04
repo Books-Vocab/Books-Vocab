@@ -1,16 +1,36 @@
 #!/usr/bin/env bash
-# Every block-level cutover gate must be provably able to go red.
+# Every block-level cutover gate must be provably able to go red AND green.
 #
-# 這是唯一能抓「檢查器根本不存在」的機制，而其他所有品質手段都抓不到：
-#   - `ios-quality-impact` 掛在 cutover 上，routed 到 ui_quality_plane 的**規劃器**，
-#     每條 return 都是 0 —— 結構上不可能失敗，卻叫 quality gate。
-#   - `.github/workflows/ui-quality-gate.yml` 連續兩個月 `planned=0` 回綠。
-#   - i18n baseline 停在 51 而實際 0，門檻在但形同虛設。
-# 三者的共同點是：沒有任何東西問過「餵它一個已知壞輸入，它會紅嗎」。
+# This is the only mechanism that catches "the checker isn't really there", and no
+# other quality measure catches it:
+#   - `ios-quality-impact` sat on cutover routed to ui_quality_plane's PLANNER, every
+#     return 0 — structurally incapable of failing, and called a quality gate.
+#   - `.github/workflows/ui-quality-gate.yml` returned green with `planned=0` for two
+#     straight months.
+#   - the i18n baseline sat at 51 while actual findings were 0 — a threshold in name.
+# Their common feature: nothing had ever asked "feed it a known-bad input, does it go
+# red?"
 #
-# 契約：plan_gates 能排出的每一道 level=block 的 gate，都必須在 PROOFS 裡有一筆
-# 「怎麼讓它紅」的證明。CHEAP 的當場跑；EXPENSIVE 的（xcodebuild 等）只登記證明
-# 途徑並在此註明未執行——**明示未跑，不假裝跑過**。
+# The mirror image is just as harmful, and this file used to miss it: `ios-build-catalyst`
+# answered "can it go red" perfectly while being able to go ONLY red (no signing identity
+# on this machine, exit 65 every time). It blocked every iOS cutover for two months, and
+# the only visible way past it was to leave the process. A gate is healthy when BOTH
+# directions are reachable — a green-only gate gives no signal, a red-only gate trains
+# everyone to route around it.
+#
+# Two further rules, both learned from defects found in this very file:
+#   1. A non-zero exit is NOT a proof. The old docs-lint proof passed an absolute temp
+#      path, which docs_lint.sh rejects as a usage error BEFORE reading a byte — deleting
+#      conflict-marker detection entirely would not have turned it red. So every executed
+#      proof must name the CAUSE it expects in the output.
+#   2. What is declared cheap must actually be executed. The final section fails if the
+#      set of executed proofs differs from the set declared cheap, in either direction.
+#
+# Expensive gates (xcodebuild, pytest suites) cannot be run both ways here. Their red
+# route is recorded and explicitly NOT executed; their green is read from the gate
+# history journal — real recorded behaviour, never an assumption. A gate that has been
+# tried repeatedly and has never once passed FAILS this test; a gate with no history on
+# this machine is reported as unproven, which is the honest state of a fresh clone.
 
 set -euo pipefail
 
@@ -29,29 +49,33 @@ note() { echo "  · $*"; }
 section() { echo ""; echo "── $* ──"; }
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+PROBE="ios/BooksAndVocab/Views/Settings/KGCanFailProbe.swift"
+DOCS_PROBE="docs/.gate_can_fail_probe.md"
+cleanup() { rm -rf "$TMP"; rm -f "$PROBE" "$DOCS_PROBE"; }
+trap cleanup EXIT
 
-# gate-name|kind|how it is proven to fail
-#   cheap     — proof is executed by this test
-#   expensive — proof route recorded; running it here would cost minutes of
-#               xcodebuild, so it is deliberately NOT executed
+# gate | red proof | green proof | note
+#   cheap     — executed by this file, in both directions, against the real tool
+#   expensive — running it here would cost minutes of xcodebuild / a full pytest suite
+#   journal   — green read from recorded gate history (.cache/worktree_gates/history.jsonl)
+# `note` is mandatory: an expensive classification without a stated route is a silent
+# coverage hole wearing a checkmark.
 PROOFS=(
-  "ui-quality-fast|cheap|inject a raw-CJK Text() and run the gate command"
-  "review-receipts|cheap|a commit without a Reviewed-by/Review-Exempt trailer"
-  "docs-lint|cheap|a doc with a conflict marker"
-  "ios-build|expensive|ops/test_ios_ops.sh covers xcodebuild failure propagation"
-  "ios-build-catalyst|expensive|same runner as ios-build"
-  "ios-test-unit|expensive|ops/tests/test_ios_run_verdict.sh false-green section"
-  "ios-test-ui|expensive|ops/tests/test_ios_run_verdict.sh false-green section"
-  "ios-live-demo-uitest-compile|expensive|Release iphoneos compile gate, see test_ios_ops.sh"
-  "design-system|expensive|ops/verify_design_system.sh has its own regression suite"
-  "backend-pytest|expensive|pytest's own non-zero exit"
-  "ops-pytest|expensive|pytest's own non-zero exit"
-  "docs-conflict-markers|cheap|internal gate, same fixture as docs-lint"
-  "coverage|cheap|internal gate"
+  "ui-quality-fast|cheap|cheap|raw-CJK Text() turns it red; the untouched tree is green"
+  "review-receipts|cheap|cheap|a commit with / without a Reviewed-by trailer"
+  "docs-lint|cheap|cheap|a doc with / without a conflict marker"
+  "docs-conflict-markers|cheap|cheap|internal gate, driven through its real function"
+  "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
+  "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
+  "ios-test-unit|expensive|journal|ops/tests/test_ios_run_verdict.sh false-green section"
+  "ios-test-ui|expensive|journal|ops/tests/test_ios_run_verdict.sh false-green section"
+  "ios-live-demo-uitest-compile|expensive|journal|Release iphoneos compile gate, see test_ios_ops.sh"
+  "design-system|expensive|journal|ops/verify_design_system.sh has its own regression suite"
+  "backend-pytest|expensive|journal|pytest's own non-zero exit"
+  "ops-pytest|expensive|journal|pytest's own non-zero exit"
 )
 
-proof_for() {  # $1 = gate name -> "kind|description" or empty
+proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
   local g="$1" e
   for e in "${PROOFS[@]}"; do
     [[ "${e%%|*}" == "$g" ]] && { printf '%s\n' "${e#*|}"; return 0; }
@@ -59,10 +83,45 @@ proof_for() {  # $1 = gate name -> "kind|description" or empty
   return 1
 }
 
-section "every block-level gate has a recorded way to fail"
+# Registry of proofs this run actually EXECUTED. The last section reconciles it against
+# what the table declares, so "declared but never written" and "written for a gate
+# nobody plans" are both loud.
+PROVEN=""
+record_proof() { PROVEN="$PROVEN $1:$2"; }
+
+# Both helpers REQUIRE a marker. A red asserted only on rc≠0 is how this file shipped a
+# proof that was really testing argument validation.
+assert_red() {  # <gate> <expected marker> <output file> <rc>
+  local g="$1" marker="$2" out="$3" rc="$4"
+  if [[ "$rc" -eq 0 ]]; then
+    fail_t "$g stayed green on a known-bad input"
+  elif ! grep -qF -- "$marker" "$out"; then
+    fail_t "$g exited $rc but not for the expected reason (no '$marker' in output) — a non-zero exit from a different cause is not a proof"
+    head -5 "$out" | sed 's/^/      /'
+  else
+    ok "$g goes red on a known-bad input, citing '$marker' (exit $rc)"
+    record_proof "$g" red
+  fi
+}
+
+assert_green() {  # <gate> <expected marker> <output file> <rc>
+  local g="$1" marker="$2" out="$3" rc="$4"
+  if [[ "$rc" -ne 0 ]]; then
+    fail_t "$g cannot go green on a known-good input (exit $rc) — a gate that only ever goes red blocks everything and teaches people to bypass the process"
+    tail -5 "$out" | sed 's/^/      /'
+  elif ! grep -qF -- "$marker" "$out"; then
+    fail_t "$g exited 0 but without '$marker' — a green no-op is not a green check"
+    head -5 "$out" | sed 's/^/      /'
+  else
+    ok "$g goes green on a known-good input, citing '$marker'"
+    record_proof "$g" green
+  fi
+}
+
+section "every block-level gate declares BOTH directions"
 BLOCK_GATES="$(
   "$UV_BIN" run --no-project --python 3.13 python - <<'PY'
-import importlib.util as u, pathlib
+import importlib.util as u
 s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
 m = u.module_from_spec(s); s.loader.exec_module(m)
 probes = [
@@ -83,27 +142,57 @@ print("\n".join(sorted(names)))
 PY
 )"
 [[ -n "$BLOCK_GATES" ]] || fail_t "enumerated zero block gates — the probe is broken, not the coverage"
+declared_cheap=""
 while IFS= read -r g; do
   [[ -z "$g" ]] && continue
-  if proof_for "$g" >/dev/null; then :; else
-    fail_t "$g is a block gate with no recorded proof that it can fail — add it to PROOFS"
+  if ! entry="$(proof_for "$g")"; then
+    fail_t "$g is a block gate with no declared proof — add it to PROOFS"
+    continue
   fi
+  red="${entry%%|*}"; rest="${entry#*|}"; green="${rest%%|*}"; gnote="${rest#*|}"
+  case "$red" in cheap|expensive) ;; *) fail_t "$g: red proof kind '$red' is not cheap|expensive" ;; esac
+  case "$green" in cheap|journal) ;; *) fail_t "$g: green proof kind '$green' is not cheap|journal" ;; esac
+  [[ -n "$gnote" ]] || fail_t "$g: proof note is empty — an unexplained classification is a coverage hole"
+  [[ "$red" == "cheap" ]] && declared_cheap="$declared_cheap $g:red"
+  [[ "$green" == "cheap" ]] && declared_cheap="$declared_cheap $g:green"
 done <<<"$BLOCK_GATES"
-(( fail == 0 )) && ok "all block gates declared: $(tr '\n' ' ' <<<"$BLOCK_GATES")"
+# Stale-entry check, mirroring test_ops_ci_coverage.sh's third assertion. Found a real
+# one on its first run: `coverage` was declared here while being a WARN gate, so it was
+# never enumerated and its declaration could never be validated by anything.
+for e in "${PROOFS[@]}"; do
+  g="${e%%|*}"
+  grep -qxF "$g" <<<"$BLOCK_GATES" \
+    || fail_t "$g is declared in PROOFS but plan_gates never produces it as a block gate — stale entry"
+done
+(( fail == 0 )) && ok "all block gates declared in both directions, no stale entries: $(tr '\n' ' ' <<<"$BLOCK_GATES")"
 
-section "cheap proofs are executed, not asserted"
+section "cheap proofs are executed in BOTH directions, not asserted"
 
-# ui-quality-fast: a raw-CJK string must turn the gate command red.
-PROBE="ios/BooksAndVocab/Views/Settings/KGCanFailProbe.swift"
-cleanup_probe() { rm -f "$PROBE"; }
-trap 'cleanup_probe; rm -rf "$TMP"' EXIT
+# --- ui-quality-fast ------------------------------------------------------------
+# Green FIRST, on the untouched tree, then the same command with one raw-CJK string
+# added. The pair is the point: only a gate that DISCRIMINATES passes both legs.
+UIQ=(./ops/ui_quality_gate.sh --tier fast --execute --all-mechanisms)
+rc=0; "${UIQ[@]}" >"$TMP/uiq_clean.out" 2>&1 || rc=$?
+assert_green ui-quality-fast "failed=0" "$TMP/uiq_clean.out" "$rc"
+# exit 0 alone is satisfied by executing nothing at all — which is exactly how CI stayed
+# green for two months. Require the fast lints to have actually run.
+passed_n="$(sed -n 's/.*summary: planned=[0-9]* passed=\([0-9]*\).*/\1/p' "$TMP/uiq_clean.out" | head -1)"
+[[ "${passed_n:-0}" -ge 5 ]] \
+  && ok "ui-quality-fast's green executed ${passed_n} mechanisms (not a green no-op)" \
+  || fail_t "ui-quality-fast's green executed ${passed_n:-0} mechanisms — expected all five fast lints"
+
 printf 'import SwiftUI\n\nstruct KGCanFailProbe: View {\n    @ObserveInjection private var inject\n    var body: some View {\n        Text("紅燈探針")\n            .enableInjection()\n    }\n}\n' >"$PROBE"
-rc=0; ./ops/ui_quality_gate.sh --tier fast --execute --all-mechanisms >/dev/null 2>&1 || rc=$?
-cleanup_probe
-[[ "$rc" -ne 0 ]] && ok "ui-quality-fast goes red on a raw-CJK string (exit $rc)" \
-  || fail_t "ui-quality-fast stayed green with a raw-CJK string in the tree"
+rc=0; "${UIQ[@]}" >"$TMP/uiq_probe.out" 2>&1 || rc=$?
+rm -f "$PROBE"
+assert_red ui-quality-fast "failed=1" "$TMP/uiq_probe.out" "$rc"
 
-# review-receipts: a commit without a trailer must be rejected.
+# --- review-receipts ------------------------------------------------------------
+# KG_REVIEW_AUDIT_ROOT is REQUIRED, not stylistic: review_audit.sh cd's to its own repo
+# root (ops/review_audit.sh:21-22), so a subshell `cd "$TMP/repo"` is discarded and the
+# audit silently runs against KG's own history. That is what the previous version of this
+# proof did — it passed for as long as KG's recent commits lacked trailers, and turned
+# GREEN (i.e. broke) the day they all had them. A proof whose verdict depends on the
+# host repo instead of its fixture is not a proof.
 git init -q "$TMP/repo" 2>/dev/null
 git -C "$TMP/repo" config user.email t@t.test; git -C "$TMP/repo" config user.name T
 : >"$TMP/repo/a.txt"; git -C "$TMP/repo" add -A; git -C "$TMP/repo" commit -qm root
@@ -111,24 +200,147 @@ git -C "$TMP/repo" branch -M main
 : >"$TMP/repo/b.txt"; git -C "$TMP/repo" add -A
 git -C "$TMP/repo" commit -qm "feat: no receipt at all"
 rc=0
-( cd "$TMP/repo" && "$WORKSPACE/ops/review_audit.sh" --rev-range main~1..HEAD ) >/dev/null 2>&1 || rc=$?
-[[ "$rc" -ne 0 ]] && ok "review-receipts rejects a trailer-less commit (exit $rc)" \
-  || fail_t "review-receipts accepted a commit with no Reviewed-by/Review-Exempt"
+( KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$WORKSPACE/ops/review_audit.sh" --rev-range main~1..HEAD ) \
+  >"$TMP/review_bad.out" 2>&1 || rc=$?
+assert_red review-receipts "[review][block]" "$TMP/review_bad.out" "$rc"
 
-# docs-lint: a conflict marker must be an ERROR.
-mkdir -p "$TMP/docs"
-printf '<!-- doc-meta -->\n<<<<<<< HEAD\nx\n' >"$TMP/conflict.md"
-rc=0; ./ops/docs_lint.sh --files "$TMP/conflict.md" >/dev/null 2>&1 || rc=$?
-[[ "$rc" -ne 0 ]] && ok "docs-lint goes red on a conflict marker (exit $rc)" \
-  || fail_t "docs-lint accepted a file containing a conflict marker"
+git -C "$TMP/repo" checkout -q -b clean main~1
+: >"$TMP/repo/c.txt"; git -C "$TMP/repo" add -A
+git -C "$TMP/repo" commit -qm "feat: with receipt
 
-section "expensive proofs are recorded, not silently skipped"
+Reviewed-by: gate-can-fail (positive control)"
+rc=0
+( KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$WORKSPACE/ops/review_audit.sh" --rev-range main~1..HEAD ) \
+  >"$TMP/review_ok.out" 2>&1 || rc=$?
+assert_green review-receipts "[review][ok]" "$TMP/review_ok.out" "$rc"
+
+# --- docs-lint ------------------------------------------------------------------
+# The fixture MUST live under docs/ and be a real doc: docs_lint.sh rejects any other
+# --files path as a usage error before reading it, which is how the previous version of
+# this proof passed while proving nothing.
+write_docs_probe() {  # $1 = body
+  cat >"$DOCS_PROBE" <<DOCEOF
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/docs_lint.sh
+verified_against: HEAD
+-->
+# gate-can-fail probe
+
+$1
+DOCEOF
+}
+write_docs_probe "plain prose, nothing wrong with it"
+rc=0; ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_ok.out" 2>&1 || rc=$?
+assert_green docs-lint "ERROR: 0" "$TMP/docs_ok.out" "$rc"
+
+write_docs_probe "$(printf '<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n')"
+rc=0; ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_bad.out" 2>&1 || rc=$?
+assert_red docs-lint "衝突標記" "$TMP/docs_bad.out" "$rc"
+rm -f "$DOCS_PROBE"
+
+# --- docs-conflict-markers ------------------------------------------------------
+# Decided inside the orchestrator, so drive the real function rather than a shell
+# entrypoint. Same discipline: both directions. (`coverage` is a WARN gate, not block,
+# so it is out of this file's contract; its two directions are pinned by
+# test_unrouted_file_is_named_not_dropped / test_coverage_partition_is_exact.)
+"$UV_BIN" run --no-project --python 3.13 python - >"$TMP/internal.out" 2>&1 <<'PY' || true
+import importlib.util as u, tempfile, pathlib
+s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
+m = u.module_from_spec(s); s.loader.exec_module(m)
+root = pathlib.Path(tempfile.mkdtemp())
+(root / "docs").mkdir()
+(root / "docs" / "bad.md").write_text("<!-- doc-meta -->\n<<<<<<< HEAD\nx\n")
+(root / "docs" / "good.md").write_text("<!-- doc-meta -->\nnothing to see\n")
+bad = m._run_conflict_markers(str(root), ["docs/bad.md"])
+good = m._run_conflict_markers(str(root), ["docs/good.md"])
+print(f"conflict-red status={bad['status']} summary={bad['summary']}")
+print(f"conflict-green status={good['status']} summary={good['summary']}")
+PY
+grep -q "conflict-red status=block" "$TMP/internal.out" \
+  && { ok "docs-conflict-markers goes red on a marker"; record_proof docs-conflict-markers red; } \
+  || fail_t "docs-conflict-markers did not block on a file containing a conflict marker"
+grep -q "conflict-green status=pass" "$TMP/internal.out" \
+  && { ok "docs-conflict-markers goes green on a clean doc"; record_proof docs-conflict-markers green; } \
+  || fail_t "docs-conflict-markers did not pass a doc with no markers"
+
+section "expensive gates: green read from recorded behaviour, never assumed"
+EXPENSIVE=""
 while IFS= read -r g; do
   [[ -z "$g" ]] && continue
-  p="$(proof_for "$g" || true)"
-  [[ "${p%%|*}" == "expensive" ]] && note "$g — not executed here: ${p#*|}"
+  entry="$(proof_for "$g" || true)"
+  [[ -z "$entry" ]] && continue
+  red="${entry%%|*}"; rest="${entry#*|}"; gnote="${rest#*|}"
+  [[ "$red" == "expensive" ]] || continue
+  EXPENSIVE="$EXPENSIVE $g"
+  note "$g — red not executed here: $gnote"
 done <<<"$BLOCK_GATES"
-ok "expensive proofs named explicitly (no silent coverage claim)"
+
+HIST_REPORT="$("$UV_BIN" run --no-project --python 3.13 python - $EXPENSIVE <<'PY'
+import importlib.util as u, json, sys
+s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
+m = u.module_from_spec(s); s.loader.exec_module(m)
+path = m._gate_history_path(None)
+rows = []
+if path.is_file():
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+for gate in sys.argv[1:]:
+    mine = [r for r in rows if r.get("base_name") == gate]
+    greens = [r for r in mine if r.get("status") == "pass"]
+    heads = {r.get("head8") for r in mine}
+    if greens:
+        print(f"PROVEN {gate} last-green={greens[-1]['ts']} attempts={len(mine)}")
+    elif len(mine) >= 3 and len(heads) >= 2:
+        print(f"NEVERGREEN {gate} attempts={len(mine)} heads={len(heads)}")
+    else:
+        print(f"UNPROVEN {gate} attempts={len(mine)}")
+print(f"HISTORY {path} exists={path.is_file()} rows={len(rows)}")
+PY
+)"
+while IFS= read -r line; do
+  case "$line" in
+    PROVEN\ *)
+      g="$(cut -d' ' -f2 <<<"$line")"
+      ok "${line#PROVEN }: green proven from gate history"
+      record_proof "$g" green ;;
+    NEVERGREEN\ *)
+      fail_t "${line#NEVERGREEN }: recorded repeatedly and NEVER once green — the ios-build-catalyst signature (a gate that can only block). Suspect the gate, not the change." ;;
+    UNPROVEN\ *)
+      note "${line#UNPROVEN }: no recorded green on this machine yet (not a failure — a fresh clone knows nothing)" ;;
+    HISTORY\ *) note "${line#HISTORY }" ;;
+  esac
+done <<<"$HIST_REPORT"
+
+section "what is declared cheap was actually executed"
+# Reconciled in both directions. Without this, deleting a proof body silently downgrades
+# the table above into a list of intentions. Journal-sourced greens for expensive gates
+# are legitimate extras, so they are excluded from the "not declared cheap" side.
+missing=""
+for want in $declared_cheap; do
+  case " $PROVEN " in *" $want "*) ;; *) missing="$missing $want" ;; esac
+done
+extra=""
+for got in $PROVEN; do
+  case " $declared_cheap " in
+    *" $got "*) continue ;;
+  esac
+  gate="${got%%:*}"
+  if [[ "${got##*:}" == "green" ]]; then
+    case " $EXPENSIVE " in *" $gate "*) continue ;; esac
+  fi
+  extra="$extra $got"
+done
+[[ -z "$missing" ]] || fail_t "declared cheap but never executed:$missing"
+[[ -z "$extra" ]] || fail_t "executed a proof for something not declared cheap:$extra"
+[[ -z "$missing" && -z "$extra" ]] && ok "declared-cheap set matches executed set"
 
 echo ""
 echo "gate-can-fail: $pass passed, $fail failed"
