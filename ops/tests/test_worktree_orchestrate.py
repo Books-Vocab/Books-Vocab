@@ -2081,13 +2081,10 @@ def test_a_gate_that_has_never_passed_says_so_at_the_moment_it_blocks(scratch):
     rc, opened = _run_json(["open", "--intent", "add a thing", "--slug", "nevergreen",
                             "--state", state, "--json"])
     wt = opened["path"]
-    # The fixture repo has no ops/ tree, and _run_gate raises rather than reporting when
-    # a routed-to tool is absent (filed as IMP-0047). Plant a stub so this test exercises
-    # the never-green annotation, not that hole.
-    stub = Path(wt) / "ops" / "docs_lint.sh"
-    stub.parent.mkdir(parents=True, exist_ok=True)
-    stub.write_text("#!/bin/sh\nexit 1\n")
-    stub.chmod(0o755)
+    # The fixture repo has no ops/ tree; docs-lint therefore routes to a tool that does
+    # not exist. Before IMP-0047 that raised and killed the whole run, so this test had
+    # to plant a stub to reach the never-green annotation at all. It now reports as a
+    # block, which is what a synthetic repo should look like — no stub needed.
     docs = Path(wt) / "docs"
     docs.mkdir()
     (docs / "x.md").write_text("<!-- doc-meta -->\n<<<<<<< HEAD\nours\n")
@@ -2244,3 +2241,26 @@ def test_a_broken_journal_is_reported_not_swallowed(scratch):
     assert gate["history_error"] and "IsADirectory" in gate["history_error"]
     rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
     assert "gate history not written" in text
+
+
+# ---------------------------------------------------------------------------
+# a routed-to tool that isn't there (IMP-0047)
+# ---------------------------------------------------------------------------
+def test_a_missing_gate_tool_is_a_readable_block_not_a_traceback(tmp_path):
+    """The router and the tools it routes to can be different generations (IMP-0045):
+    a branch that deletes a script leaves a stale router still pointing at it. Letting
+    FileNotFoundError escape costs more than readability — it aborts the whole run, so
+    every OTHER gate's result is lost too, and the operator is told nothing about which
+    gate died."""
+    spec = MODULE._shell("ghost", "ops", ["ops/definitely_not_here.sh"], "block")
+    result = MODULE._run_gate(spec, str(tmp_path))
+    assert result["status"] == "block"
+    assert result["rc"] == 127
+    assert "ops/definitely_not_here.sh" in result["summary"]
+
+
+def test_a_missing_warn_level_tool_stays_advisory(tmp_path):
+    """Level is the disposition; a missing tool must not promote an advisory into a
+    blocker (nor the reverse — see the rc!=0 branch it mirrors)."""
+    spec = MODULE._shell("ghost", "ops", ["ops/definitely_not_here.sh"], "warn")
+    assert MODULE._run_gate(spec, str(tmp_path))["status"] == "warn"
