@@ -414,8 +414,21 @@ cmd_deploy() {
 
   # ── Step 2: 重建並啟動容器 ──
   # src/ COPY 進 image（非 volume），改碼必 rebuild 才生效。data/ = ~/kg-data volume，不動。
+  #
+  # --force-recreate 不可省（2026-06-19 retarget 時掉過一次，紅了 6.5 週，見 IMP-0052）：
+  # VERSION 是 bind-mount（`./VERSION:/app/VERSION:ro`）而 routers/system.py 於 import
+  # 時就把它讀進 _VERSION 快取，所以自報版本只隨**行程重啟**改變（recreate 或 restart）。
+  # 檔案內容本身是即時的——但那**取決於沒人換掉 inode**：單檔 bind mount 綁的是 inode，
+  # Step 1 與 reconciler 都用 `> VERSION` 就地截斷；哪天改成 atomic write（mktemp && mv），
+  # 容器會永遠看著舊 inode，連 restart 都救不回來。
+  #
+  # Step 1 無條件寫 VERSION，但 `up -d --build` 只在 image 或解析後的 compose config
+  # hash 變了才 recreate——部署一個兩者都沒動的 commit（docs / ops / ios），就留下
+  # VERSION 宣稱 new、容器仍自報 old 的游標分岔。強制 recreate 換掉的是幾秒停機與前一顆容器的
+  # json-file log（`docker-logs` 查得到的範圍）；游標對齊餵著 smoke gate 與 Sentry release，
+  # 值這個價。ops/kg_reconcile.sh 的同一條命令另有取捨與一個已知缺口，見 IMP-0056。
   section "重新編譯並啟動容器"
-  run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
+  run_remote "cd $REMOTE_DIR && docker compose up -d --build --force-recreate 2>&1 | tail -20"
 
   # ── Step 3: 健康驗證（直連 standby localhost）──
   section "健康驗證"

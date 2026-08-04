@@ -175,9 +175,10 @@ python3 ops/data_inspect.py [command]
 
 ## Deploy 機制（standby）
 
-> ✅ `deploy` 已 retarget standby（2026-06-19）。**不再 rsync、不再 fast/full 偵測、不再 force-recreate**。
+> ✅ `deploy` 已 retarget standby（2026-06-19）。**不再 rsync、不再 fast/full 偵測**。
+> ⚠️ `--force-recreate` 在那次 retarget 一併掉了，實為回歸，已於 2026-08-04 回補（IMP-0052）：`/api/system/info` 的版本是 import 時快取的，不強制 recreate 就會出現 VERSION 宣稱新版、容器仍自報舊版的游標分岔。
 
-`deploy` 流程（透傳 `KG_SERVER`）：遠端 `git pull --ff-only` → 寫 `VERSION`（`git rev-parse --short HEAD`，`/api/system/info` 讀此）→ `docker compose up -d --build` → 容器內 health（`api/system/info`）→ 外部 smoke verify（公網三層，非通過自動中止）。
+`deploy` 流程（透傳 `KG_SERVER`）：遠端 `git pull --ff-only` → 寫 `VERSION`（`git rev-parse --short HEAD`，`/api/system/info` 讀此）→ `docker compose up -d --build --force-recreate` → 容器內 health（`api/system/info`）→ 外部 smoke verify（公網三層，非通過自動中止）。
 
 - **migration**：app 啟動自動跑（`migration_version` 暴露於 `/api/system/info`）；`migrate` 子命令降為手動 fallback，deploy 不再自動 migrate/backup。
 - `./ops/devops_kg_safe.sh restart` = `docker compose restart`（不 rebuild，程式碼未變時用；health 改打 `api/system/info`）。

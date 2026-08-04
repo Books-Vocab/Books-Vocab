@@ -13,11 +13,16 @@ services:
     volumes:
       - ${KG_DATA_DIR:-./data}:/app/data
       - ./certs:/app/certs:ro
-      # devops.sh cmd_deploy writes the deploy SHA to ./VERSION on host and
-      # rsyncs it to the remote. Mount it read-only so sentry_init._resolve_release()
-      # and /api/system/info can both report the deployed commit. Without this
-      # mount, /app/VERSION never exists inside the container and the Sentry
-      # release tag silently degrades to None.
+      # The deploy path writes the deploy SHA to ./VERSION on the deploy host —
+      # `devops.sh cmd_deploy` (manual) or `ops/kg_reconcile.sh` (the origin/prod
+      # reconciler). No rsync since the 2026-06-15 move to standby: both pull with
+      # git and write the file in place. Mount it read-only so
+      # sentry_init._resolve_release() and /api/system/info can both report the
+      # deployed commit. Without this mount, /app/VERSION never exists inside the
+      # container and the Sentry release tag silently degrades to None.
+      # NOTE: a single-file bind mount binds the INODE. Both writers truncate in
+      # place (`> VERSION`); switching either to an atomic write (mktemp && mv)
+      # would leave the container looking at the old inode forever.
       - ./VERSION:/app/VERSION:ro
     env_file:
       - .env
