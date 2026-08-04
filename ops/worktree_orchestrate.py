@@ -219,6 +219,33 @@ def _internal(name: str, category: str, level: str, **extra: Any) -> dict[str, A
 _LIVE_ONLY_UITEST_CLASSES = {"LiveDemoAccessUITests"}
 
 
+# Shell tools whose test is named after what it exercises rather than after the file.
+# Convention (`ops/X.sh` -> `ops/tests/test_X.sh` or `ops/test_X.sh`) resolves most of
+# them; this is the remainder. A hand-written map is fine, an unverifiable one is not:
+# test_every_shell_test_alias_points_at_a_test_that_mentions_its_script requires each
+# target to exist, to actually mention the script it claims to cover, and to be
+# unreachable by convention — so an entry cannot sit here claiming coverage it lost.
+OPS_SHELL_TEST_ALIASES: dict[str, str] = {
+    "ops/devops_kg_safe.sh": "ops/tests/test_devops_safe_lightsail_guard.sh",
+    "ops/install_lldb_forensics.sh": "ops/tests/test_lldb_crash_forensics.sh",
+    "ops/ios_test.sh": "ops/test_ios_test_discovery.sh",
+    "ops/ios_build.sh": "ops/test_ios_ops.sh",
+    "ops/ios_archive.sh": "ops/test_ios_ops.sh",
+    "ops/release_bump.sh": "ops/test_release.sh",
+    "ops/release_changelog.sh": "ops/test_release.sh",
+    "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
+}
+
+
+def _ops_shell_test_candidates(rel: str) -> list[str]:
+    """Test files that could cover a changed shell script, most specific first."""
+    base = rel.rsplit("/", 1)[-1]
+    if base.startswith("test_"):
+        return [rel]  # a changed test script is its own gate
+    alias = OPS_SHELL_TEST_ALIASES.get(rel)
+    return [c for c in (f"ops/tests/test_{base}", f"ops/test_{base}", alias) if c]
+
+
 # Paths that legitimately select no gate, each with the reason. Deny-by-default:
 # anything matching neither a gate nor a rule here shows up as `uncovered`.
 # Kept as a module constant beside plan_gates (not a new yml) because it is the
@@ -287,8 +314,11 @@ def plan_gates(changed_files: list[str],
                            any changed ops .py that resolves to no existing test falls
                            back to the whole ops/tests suite (which subsumes the
                            targeted files, and which sandbox-unsafe tests must dep-guard
-                           with a skip — see test_demo_ios_spec_emitter). ops/*.sh have
-                           no pytest counterpart and select nothing here.
+                           with a skip — see test_demo_ios_spec_emitter).
+      ops/**.sh         -> `bash -n` on every one of them (the only check that covers
+                           the ~1/3 with no test), plus the test that resolves for each
+                           by name or by OPS_SHELL_TEST_ALIASES; the remainder is named
+                           in a warn advisory rather than left anonymous.
                            `ops_test_exists` is injected by cmd_gate (anchored at the
                            WORKTREE, so a test added in the same diff is seen); the pure
                            default (None) cannot prove existence -> whole-suite fallback.
@@ -432,8 +462,38 @@ def plan_gates(changed_files: list[str],
                             ["uv", "run", "--no-project", "--python", "3.13",
                              "--with", "pytest", "pytest", "-q", *selected], "block"))
 
+    # Before 2026-08-04 a changed shell script selected NOTHING: `ops/devops_kg_safe.sh`
+    # is iron law 7's enforcement point and `ops/release.sh` is the only path to
+    # production, and both landed on nothing but the commit-trailer audit (IMP-0051).
+    # Three layers, because no single one covers the whole surface: a universal syntax
+    # floor (needs only bash, so no machine skips it), the script's own test where one
+    # resolves, and a named advisory for the rest — an enumerated hole beats an
+    # anonymous one.
+    ops_sh = [p for p in changed_files if p.startswith("ops/") and p.endswith(".sh")]
+    if ops_sh:
+        gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
+        exists = ops_test_exists or (lambda rel: False)
+        sh_targets: set[str] = set()
+        untested: list[str] = []
+        for p in ops_sh:
+            # existence is proven against the WORKTREE: a test added in this same diff
+            # is visible, and one deleted in it is not handed back to the runner
+            hit = next((c for c in _ops_shell_test_candidates(p) if exists(c)), None)
+            if hit:
+                sh_targets.add(hit)
+            else:
+                untested.append(p)
+        for t in sorted(sh_targets):
+            gates.append(_shell(f"ops-shell:{t.rsplit('/', 1)[-1]}", "ops", [t], "block"))
+        if untested:
+            gates.append(_internal(
+                "ops-shell-untested", "ops", "warn",
+                note="no test file resolves for " + ", ".join(untested)
+                     + " — syntax is the only gate they get",
+                files=untested))
+
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py):
+    for bucket in (ios, ds, docs, backend, ops_py, ops_sh):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
     note = "every changed file is routed to a gate or declared neutral"
@@ -980,6 +1040,29 @@ def _run_conflict_markers(worktree: str, files: list[str]) -> dict[str, Any]:
     return {"status": "pass", "rc": 0, "summary": "no conflict markers"}
 
 
+def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
+    """`bash -n` every changed shell script. The floor exists because it is the only
+    check that applies to ALL of them: roughly a third of ops/*.sh has no test of its
+    own, and before IMP-0051 a shell change selected no gate whatsoever."""
+    bad: list[str] = []
+    for rel in files:
+        fp = Path(worktree) / rel
+        if not fp.is_file():
+            continue  # deleted in this diff; routing to it would be a red for no reason
+        try:
+            proc = subprocess.run(["bash", "-n", str(fp)], capture_output=True,
+                                  text=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            bad.append(f"{rel}: {type(exc).__name__}")
+            continue
+        if proc.returncode != 0:
+            first = next((ln for ln in proc.stderr.splitlines() if ln.strip()), "")
+            bad.append(f"{rel}: {first.strip()}")
+    if bad:
+        return {"status": "block", "rc": 1,
+                "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
+    return {"status": "pass", "rc": 0, "summary": f"{len(files)} shell script(s) parse"}
+
 _VA_RE = re.compile(r"^\s*verified_against:\s*([0-9a-fA-F]{7,40})\s*$", re.MULTILINE)
 
 
@@ -1047,6 +1130,8 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
                            (f"{len(spec.get('covered') or [])} covered, "
                             f"{len(spec.get('neutral') or [])} neutral, 0 uncovered"),
             })
+        elif name == "ops-shell-syntax":
+            result.update(_run_shell_syntax(worktree, spec["files"]))
         elif name == "docs-verified-against":
             result.update(_run_verified_against(worktree, spec["files"]))
         else:  # advisory-only gate (e.g. backend-tests-advisory)
