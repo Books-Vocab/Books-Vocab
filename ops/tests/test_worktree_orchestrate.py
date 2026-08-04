@@ -342,19 +342,106 @@ def test_gate_plan_ops_src_and_its_test_dedupes_target():
     assert "ops/tests" not in spec["cmd"]
 
 
-def test_gate_plan_ops_shell_and_non_ops_select_no_ops_pytest():
-    # ops shell scripts are out of scope (no pytest counterpart); docs/backend
-    # changes must not leak into the ops route
-    # ops/*.sh has no pytest counterpart, but it is no longer silently dropped:
-    # the coverage gate names it (a real routing hole, IMP-tracked).
-    ops_sh = plan_gates(["ops/devops_kg_safe.sh"])
-    assert _names(ops_sh) == {"coverage"}
-    assert next(g for g in ops_sh if g["name"] == "coverage")["uncovered"] == [
-        "ops/devops_kg_safe.sh"]
+def test_gate_plan_ops_shell_selects_no_ops_pytest():
+    """Shell scripts have no pytest counterpart; docs/backend must not leak into the
+    ops route either."""
+    assert "ops-pytest" not in _names(plan_gates(["ops/devops_kg_safe.sh"]))
     assert not any(n == "ops-pytest"
                    for n in _names(plan_gates(["docs/reference/tech_index.md"])))
     assert not any(n == "ops-pytest"
                    for n in _names(plan_gates(["backend/tests/test_app.py"])))
+
+
+# ---------------------------------------------------------------------------
+# ops/**/*.sh routing (IMP-0051)
+#
+# Until 2026-08-04 a changed shell script selected NOTHING. `ops/devops_kg_safe.sh`
+# is iron law 7's enforcement point and `ops/release.sh` is the only path to
+# production; both landed on nothing but the commit-trailer audit.
+# ---------------------------------------------------------------------------
+def test_a_changed_shell_script_always_gets_at_least_a_syntax_floor():
+    """The floor has to be universal, because ~13 ops scripts have no test at all.
+    `bash -n` needs nothing but bash, so there is no machine where it is skipped."""
+    gates = _by_name(plan_gates(["ops/kg_backup.sh"], ops_test_exists=lambda rel: False))
+    assert gates["ops-shell-syntax"]["level"] == "block"
+    assert gates["ops-shell-syntax"]["files"] == ["ops/kg_backup.sh"]
+
+
+def test_a_changed_shell_script_runs_the_test_named_after_it():
+    gates = _by_name(plan_gates(["ops/docs_lint.sh"], ops_test_exists=lambda rel: True))
+    assert gates["ops-shell:test_docs_lint.sh"]["cmd"] == ["ops/tests/test_docs_lint.sh"]
+    assert gates["ops-shell:test_docs_lint.sh"]["level"] == "block"
+
+
+def test_a_changed_test_script_runs_itself():
+    gates = _by_name(plan_gates(["ops/tests/test_gate_can_fail.sh"],
+                                ops_test_exists=lambda rel: True))
+    assert gates["ops-shell:test_gate_can_fail.sh"]["cmd"] == ["ops/tests/test_gate_can_fail.sh"]
+
+
+def test_a_deleted_test_script_is_not_handed_back_to_the_runner():
+    """A deleted file is in the diff too. Routing to it would make the gate red for a
+    reason that has nothing to do with the change — the ops_py branch learned this the
+    same way (pytest exits 4 on a gone path)."""
+    gates = _by_name(plan_gates(["ops/tests/test_gate_can_fail.sh"],
+                                ops_test_exists=lambda rel: False))
+    assert not any(n.startswith("ops-shell:") for n in gates)
+    assert gates["ops-shell-untested"]["level"] == "warn"
+
+
+def test_a_shell_script_with_no_test_is_named_rather_than_dropped():
+    """The advisory is the point: `uncovered` said only that something was unrouted,
+    which is indistinguishable from a file nobody has classified yet. Naming the script
+    and the reason turns a routing hole into an enumerated one."""
+    gates = _by_name(plan_gates(["ops/kg_backup.sh"], ops_test_exists=lambda rel: False))
+    advisory = gates["ops-shell-untested"]
+    assert advisory["files"] == ["ops/kg_backup.sh"]
+    assert "ops/kg_backup.sh" in advisory["note"]
+    # and it is no longer reported as an unrouted file
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_every_shell_test_alias_points_at_a_test_that_mentions_its_script():
+    """A hand-written map is fine; an unverifiable one is not. Each alias must name a
+    file that exists AND that actually references the script it claims to cover, so an
+    alias cannot keep claiming coverage after the test stops exercising it."""
+    assert MODULE.OPS_SHELL_TEST_ALIASES, "the alias map is the fallback for name mismatches"
+    for src, target in MODULE.OPS_SHELL_TEST_ALIASES.items():
+        assert (ROOT / src).is_file(), f"alias source {src} no longer exists"
+        assert (ROOT / target).is_file(), f"alias target {target} no longer exists"
+        base = src.rsplit("/", 1)[-1]
+        assert base in (ROOT / target).read_text(errors="replace"), \
+            f"{target} never mentions {base} — the alias claims coverage it does not have"
+        # a name-mismatch alias is pointless if convention already resolves it
+        assert not (ROOT / f"ops/tests/test_{base}").is_file()
+        assert not (ROOT / f"ops/test_{base}").is_file()
+
+
+def test_shell_routing_resolves_against_the_real_repo():
+    """The lambda-True prober cannot reach the alias branch (convention always wins), so
+    the alias is exercised with a real existence probe or not at all."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["ops/devops_kg_safe.sh"], ops_test_exists=real))
+    assert "ops-shell:test_devops_safe_lightsail_guard.sh" in gates
+    assert "ops-shell-untested" not in gates
+
+
+def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):
+    good = tmp_path / "ops" / "fine.sh"
+    good.parent.mkdir(parents=True)
+    good.write_text("#!/usr/bin/env bash\necho ok\n")
+    assert MODULE._run_shell_syntax(str(tmp_path), ["ops/fine.sh"])["status"] == "pass"
+
+    bad = tmp_path / "ops" / "broken.sh"
+    bad.write_text("#!/usr/bin/env bash\nif [[ -z ]; then\n")
+    out = MODULE._run_shell_syntax(str(tmp_path), ["ops/fine.sh", "ops/broken.sh"])
+    assert out["status"] == "block"
+    assert "ops/broken.sh" in out["summary"]
+    assert "ops/fine.sh" not in out["summary"]
+
+
+def test_shell_syntax_gate_ignores_a_file_the_diff_deleted(tmp_path):
+    assert MODULE._run_shell_syntax(str(tmp_path), ["ops/gone.sh"])["status"] == "pass"
 
 
 def test_gate_plan_neutral_file_selects_only_the_coverage_gate():
