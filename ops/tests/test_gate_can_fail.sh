@@ -43,6 +43,7 @@ if [[ -z "$UV_BIN" ]]; then
 fi
 
 pass=0; fail=0
+executed_kind() { [[ "$1" == "cheap" || "$1" == "fixture" ]]; }
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 note() { echo "  · $*"; }
@@ -56,6 +57,11 @@ trap cleanup EXIT
 
 # gate | red proof | green proof | note
 #   cheap     — executed by this file, in both directions, against the real tool
+#   fixture   — executed here, but against a synthetic input rather than a production
+#               tool, because the gate has no fixed tool: `ops-shell` runs whichever
+#               script the diff routed to, so its contract is "run it, propagate its
+#               exit code", and that is what gets proven. The note must say why the
+#               production tool cannot serve.
 #   expensive — running it here would cost minutes of xcodebuild / a full pytest suite
 #   journal   — green read from recorded gate history (.cache/worktree_gates/history.jsonl)
 # `note` is mandatory: an expensive classification without a stated route is a silent
@@ -65,6 +71,8 @@ PROOFS=(
   "review-receipts|cheap|cheap|a commit with / without a Reviewed-by trailer"
   "docs-lint|cheap|cheap|a doc with / without a conflict marker"
   "docs-conflict-markers|cheap|cheap|internal gate, driven through its real function"
+  "ops-shell-syntax|cheap|cheap|a script that does not parse vs one that does"
+  "ops-shell|fixture|fixture|no fixed tool: the routed script IS the command, so what is provable here is the gate's contract — run it, propagate its exit code — driven through _run_gate against a script that exits 3"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
   "ios-test-unit|expensive|journal|ops/tests/test_ios_run_verdict.sh false-green section"
@@ -83,11 +91,12 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
   return 1
 }
 
-# Gates whose BOTH directions must stay executable here. A ratchet, in the same spirit
-# as the i18n baseline being pinned at 0: without it, the cheapest way past a failing
-# proof is to reclassify the gate as `expensive|journal` and delete the proof body, and
-# nothing would object. Downgrading one of these is then a deliberate, visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers"
+# Gates whose BOTH directions must stay executed here (cheap or fixture). A ratchet, in
+# the same spirit as the i18n baseline being pinned at 0: without it, the cheapest way
+# past a failing proof is to reclassify the gate as `expensive|journal` and delete the
+# proof body, and nothing would object. Downgrading one of these is then a deliberate,
+# visible edit.
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -137,7 +146,8 @@ probes = [
     ["ios/BooksAndVocabUITests/LiveDemoAccessUITests.swift"],
     ["docs/reference/tech_index.md"],
     ["backend/src/kg/app.py"], ["backend/tests/test_x.py"],
-    ["ops/worktree_orchestrate.py"], ["design-system/tokens.json"],
+    ["ops/worktree_orchestrate.py"], ["ops/docs_lint.sh"],
+    ["design-system/tokens.json"],
     ["README.md"],
 ]
 names = set()
@@ -157,13 +167,13 @@ while IFS= read -r g; do
     continue
   fi
   red="${entry%%|*}"; rest="${entry#*|}"; green="${rest%%|*}"; gnote="${rest#*|}"
-  case "$red" in cheap|expensive) ;; *) fail_t "$g: red proof kind '$red' is not cheap|expensive" ;; esac
-  case "$green" in cheap|journal) ;; *) fail_t "$g: green proof kind '$green' is not cheap|journal" ;; esac
+  case "$red" in cheap|fixture|expensive) ;; *) fail_t "$g: red proof kind '$red' is not cheap|fixture|expensive" ;; esac
+  case "$green" in cheap|fixture|journal) ;; *) fail_t "$g: green proof kind '$green' is not cheap|fixture|journal" ;; esac
   [[ -n "$gnote" ]] || fail_t "$g: proof note is empty — an unexplained classification is a coverage hole"
-  [[ "$red" == "cheap" ]] && declared_cheap="$declared_cheap $g:red"
-  [[ "$green" == "cheap" ]] && declared_cheap="$declared_cheap $g:green"
+  executed_kind "$red" && declared_cheap="$declared_cheap $g:red"
+  executed_kind "$green" && declared_cheap="$declared_cheap $g:green"
   case " $CHEAP_FLOOR " in
-    *" $g "*) [[ "$red" == "cheap" && "$green" == "cheap" ]] \
+    *" $g "*) { executed_kind "$red" && executed_kind "$green"; } \
       || fail_t "$g is in CHEAP_FLOOR but declared $red|$green — downgrading a gate out of executed proofs is exactly how a failing proof gets quietly retired" ;;
   esac
 done <<<"$BLOCK_GATES"
@@ -291,6 +301,30 @@ bad = m._run_conflict_markers(str(root), ["docs/bad.md"])
 good = m._run_conflict_markers(str(root), ["docs/good.md"])
 print(f"conflict-red status={bad['status']} summary={bad['summary']}")
 print(f"conflict-green status={good['status']} summary={good['summary']}")
+
+ops = root / "ops"
+ops.mkdir()
+(ops / "unparseable.sh").write_text("#!/usr/bin/env bash\nif [[ -z ]; then\n")
+(ops / "parseable.sh").write_text("#!/usr/bin/env bash\necho fine\n")
+sbad = m._run_shell_syntax(str(root), ["ops/unparseable.sh"])
+sgood = m._run_shell_syntax(str(root), ["ops/parseable.sh"])
+print(f"syntax-red status={sbad['status']} summary={sbad['summary']}")
+print(f"syntax-green status={sgood['status']} summary={sgood['summary']}")
+
+# ops-shell has no fixed tool — the routed script IS the command — so what is provable
+# is the gate's contract: run it, propagate its exit code. A script exiting 3 makes the
+# propagation itself the marker; a generic failure cannot produce that number.
+for name, body in (("routed_red.sh", "#!/bin/sh\necho probe-ran\nexit 3\n"),
+                   ("routed_green.sh", "#!/bin/sh\necho probe-ran\nexit 0\n")):
+    f = ops / name
+    f.write_text(body)
+    f.chmod(0o755)
+gbad = m._run_gate(m._shell("ops-shell:routed_red.sh", "ops",
+                            ["ops/routed_red.sh"], "block"), str(root))
+ggood = m._run_gate(m._shell("ops-shell:routed_green.sh", "ops",
+                             ["ops/routed_green.sh"], "block"), str(root))
+print(f"shell-red status={gbad['status']} rc={gbad['rc']}")
+print(f"shell-green status={ggood['status']} rc={ggood['rc']}")
 PY
 grep -q "conflict-red status=block" "$TMP/internal.out" \
   && { ok "docs-conflict-markers goes red on a marker"; record_proof docs-conflict-markers red executed; } \
@@ -298,6 +332,27 @@ grep -q "conflict-red status=block" "$TMP/internal.out" \
 grep -q "conflict-green status=pass" "$TMP/internal.out" \
   && { ok "docs-conflict-markers goes green on a clean doc"; record_proof docs-conflict-markers green executed; } \
   || fail_t "docs-conflict-markers did not pass a doc with no markers"
+
+# --- ops-shell-syntax -----------------------------------------------------------
+# The red must name the offending FILE, not merely exit non-zero: a syntax gate that
+# reports "something failed" is unactionable, and one that blocks on the wrong file is
+# worse than none.
+grep -q "syntax-red status=block" "$TMP/internal.out" && grep -q "unparseable.sh" "$TMP/internal.out" \
+  && { ok "ops-shell-syntax goes red on a script that does not parse, naming it"; record_proof ops-shell-syntax red executed; } \
+  || fail_t "ops-shell-syntax did not block (or did not name the file) on an unparseable script"
+grep -q "syntax-green status=pass" "$TMP/internal.out" \
+  && { ok "ops-shell-syntax goes green on a script that parses"; record_proof ops-shell-syntax green executed; } \
+  || fail_t "ops-shell-syntax did not pass a well-formed script"
+
+# --- ops-shell ------------------------------------------------------------------
+# rc=3 is the marker: it can only come from the routed script's own exit status, so a
+# gate that blocked for any other reason cannot satisfy this.
+grep -q "shell-red status=block rc=3" "$TMP/internal.out" \
+  && { ok "ops-shell propagates the routed script's failure (rc=3, not a generic red)"; record_proof ops-shell red fixture; } \
+  || fail_t "ops-shell did not block with the routed script's own exit code"
+grep -q "shell-green status=pass rc=0" "$TMP/internal.out" \
+  && { ok "ops-shell passes when the routed script succeeds"; record_proof ops-shell green fixture; } \
+  || fail_t "ops-shell did not pass a routed script that exits 0"
 
 section "expensive gates: green read from recorded behaviour, never assumed"
 # TWO independent lists, derived from the two independent kinds. Deriving the journal
@@ -361,7 +416,10 @@ section "what is declared cheap was actually executed"
 # would satisfy the whole contract.
 missing=""
 for want in $declared_cheap; do
-  case " $PROVEN " in *" $want:executed "*) ;; *) missing="$missing $want" ;; esac
+  case " $PROVEN " in
+    *" $want:executed "*|*" $want:fixture "*) ;;
+    *) missing="$missing $want" ;;
+  esac
 done
 extra=""
 for got in $PROVEN; do
