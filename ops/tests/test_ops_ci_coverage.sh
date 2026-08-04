@@ -64,22 +64,29 @@ LINUX_GROUPS=(
   review-flip-probe
 )
 
-# token|要從 PATH 拿掉的命令（空 = 這個 token 無法用 PATH 證偽）
+# token|要從 PATH 拿掉的命令|功能探針（皆空 = 這個 token 無法用 PATH 證偽）
 #
 # 封閉字彙表。空 denial set 的 token 是逃生口，新增前先問：真正的相依是磁碟資產、
 # 外部服務，還是其實只是一支沒人跑過的離線測試？
 #
+# **第三欄存在是因為「在 PATH 上」不等於「能用」。** 只裝了 Command Line Tools 的
+# macOS 上，xcode-select 的 shim 讓 xcodebuild/xcrun/swift/swiftc 四個名字全都
+# resolve 得到，但 `xcodebuild -version` 會吐
+# 「requires Xcode, but active developer directory is a CLT instance」。fleet 裡的
+# felix 正是這種機器：只看 command -v 的話，這裡會判定工具鏈齊全、跑一次注定失敗的
+# baseline，然後指控兩個其實健康的 group「已經紅了，先去修」。探針空 = 只驗存在。
+#
 # 曾經有過 bin-lldb（給 lldb-forensics 用）。證偽器當場否決：那支測試從不直接呼叫 lldb，
 # 它靠的是 xcrun。這段故事留成註解，不留成沒人用的活 token。
 DEP_TOKENS=(
-  "bin-xcode|xcodebuild xcrun swift swiftc"
-  "bin-ssh|ssh scp rsync"
-  "data-indexstore|"
-  "data-ui-world|"
-  "data-catalog-png|"
-  "data-git-history|"
-  "bsd-userland|"
-  "net-external|"
+  "bin-xcode|xcodebuild xcrun swift swiftc|xcodebuild -version"
+  "bin-ssh|ssh scp rsync|ssh -V"
+  "data-indexstore||"
+  "data-ui-world||"
+  "data-catalog-png||"
+  "data-git-history||"
+  "bsd-userland||"
+  "net-external||"
 )
 
 # 自我檢驗 fixture 用的 token。它是唯一允許「沒有任何排除引用」的 token——因為引用它的
@@ -111,7 +118,7 @@ if [[ "${1:-}" == "--print-linux-groups" ]]; then
   exit 0
 fi
 
-pass=0; fail=0; SEC_BASE=0
+pass=0; fail=0; skipped=0; SEC_BASE=0
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; SEC_BASE=$fail; }
@@ -212,12 +219,37 @@ fi
 
 # ── token 字彙 + 證偽 ────────────────────────────────────────────────────────
 
-token_denials() {  # token → denial set；未知 token 回 __UNKNOWN__
-  local want="$1" t
+token_denials() {  # token → denial set（第 2 欄）；未知 token 回 __UNKNOWN__
+  local want="$1" t rest
   for t in "${DEP_TOKENS[@]}"; do
-    [[ "${t%%|*}" == "$want" ]] && { printf '%s' "${t#*|}"; return 0; }
+    if [[ "${t%%|*}" == "$want" ]]; then rest="${t#*|}"; printf '%s' "${rest%%|*}"; return 0; fi
   done
   printf '__UNKNOWN__'
+}
+
+token_probe() {  # token → 功能探針（第 3 欄，可為空）
+  local want="$1" t rest
+  for t in "${DEP_TOKENS[@]}"; do
+    if [[ "${t%%|*}" == "$want" ]]; then rest="${t#*|}"; printf '%s' "${rest#*|}"; return 0; fi
+  done
+  printf ''
+}
+
+# token 指名的工具鏈在這台機器上「真的能用」嗎？名字 resolve 得到不算數（見 DEP_TOKENS
+# 註解的 CLT shim）。回 0 = 可用；回非 0 時把原因寫進 $TOOLCHAIN_WHY。
+TOOLCHAIN_WHY=""
+toolchain_usable() {
+  local tok="$1" denials probe b missing=""
+  denials="$(token_denials "$tok")"
+  for b in $denials; do command -v "$b" >/dev/null 2>&1 || missing="${missing:+$missing }$b"; done
+  if [[ -n "$missing" ]]; then TOOLCHAIN_WHY="[$missing] absent"; return 1; fi
+  probe="$(token_probe "$tok")"
+  if [[ -n "$probe" ]] && ! $probe >/dev/null 2>&1; then
+    TOOLCHAIN_WHY="[$denials] all resolve but \`$probe\` fails — present in name only"
+    return 1
+  fi
+  TOOLCHAIN_WHY=""
+  return 0
 }
 
 # 用 exit 127 的 stub 遮蔽 <denied> 裡的命令，再跑 <cmd...>，回傳它的 exit code。
@@ -256,6 +288,12 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
     fail_t "$g: expected group|token|reason, got '$e'"
   elif [[ "$(token_denials "$tok")" == "__UNKNOWN__" ]]; then
     fail_t "$g: token '$tok' is not in DEP_TOKENS — add it there (a visible edit) or pick an existing one"
+  elif [[ "$tok" == bin-* && -z "$(token_denials "$tok")" ]]; then
+    # `bin-*` 意思就是「這個相依是一支可以從 PATH 拿掉的命令」，denial set 空掉就自相矛盾。
+    # 擋在這裡是因為往下走會很難看：空 denial 讓 skip 條件不成立 → baseline 綠 → 遮蔽是
+    # 空的 no-op → 「survived denial」→ 指控一個健康的 group 理由造假。今天走不到（兩個
+    # bin-* token 都非空），但 DEP_TOKENS 的註解正好在鼓勵用空 denial 當逃生口。
+    fail_t "$g: token '$tok' is bin-* but names no command — a PATH-falsifiable token with an empty denial set is a contradiction; give it commands or use a data-*/net-* token"
   fi
 done
 ok_if_clean "all ${#EXCLUDED_GROUPS[@]} exclusion(s) carry a known token and a reason"
@@ -312,12 +350,16 @@ fixture_denials="$(token_denials "$FIXTURE_TOKEN")"
 # 那種情況下缺 ssh 只是「fixture 跑不動」，不該把整個 ops-ci-coverage 判紅——它同時是
 # 分類 gate，而分類 gate 跟 ssh 一點關係都沒有。相反地，只要有任何一個 bin-* 相依真的
 # 存在、證偽即將實跑，自我檢驗失效就是致命的，必須紅。
+# 判準必須跟下面那段的 skip 條件**同一個函式**，不是「長得像」。兩處判準不一致的話，
+# 這裡會宣告「證偽要跑了」而下面其實整段跳過——自我檢驗就白紅一場（reviewer 實測過
+# 這個分岔：把本段改回只看存在，就會在兩個 group 都跳過的機器上硬紅）。
 falsify_will_run=0
 for e in "${EXCLUDED_GROUPS[@]}"; do
   rest="${e#*|}"; tok="${rest%%|*}"
   [[ "$tok" == bin-* ]] || continue
-  d="$(token_denials "$tok")"; [[ "$d" == "__UNKNOWN__" ]] && continue
-  for b in $d; do command -v "$b" >/dev/null 2>&1 && falsify_will_run=1; done
+  [[ "${e%%|*}" == "ops-ci-coverage" ]] && continue   # 與下面的自指守衛對齊
+  [[ "$(token_denials "$tok")" == "__UNKNOWN__" ]] && continue
+  toolchain_usable "$tok" && falsify_will_run=1
 done
 if ! run_plain "$fx/honest.sh"; then
   if (( falsify_will_run == 0 )); then
@@ -354,14 +396,20 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
   [[ "$g" == "ops-ci-coverage" ]] && { fail_t "$g cannot falsify itself — the falsifier would re-invoke this script forever"; continue; }
   denials="$(token_denials "$tok")"
   [[ "$denials" == "__UNKNOWN__" ]] && continue
-  # 這台機器上一個都沒裝 → 遮蔽是 no-op，group 死掉跟 shim 無關，判它「證實」是恆真式。
-  # linux runner 上正是這個情況（沒有 xcodebuild），所以 ops-suite 綠燈**不**構成理由被
-  # 驗過的證據。明講並跳過，別讓恆真通過長得像證明。
-  installed=""
-  for b in $denials; do command -v "$b" >/dev/null 2>&1 && installed="${installed:+$installed }$b"; done
-  if [[ -z "$installed" ]]; then
-    echo "  · $g: skipped — none of [$denials] exist on this host, denial would be a no-op" >&2
+  # 前提是工具鏈**整組都在且真的能用**，不是任一個名字 resolve 得到。這條實驗的第一腿
+  # 是「未遮蔽必須綠」，而那只有在這台機器跑得動整組工具時才是公平的測試。少一件就不
+  # 公平：group 會因為缺的那件而紅，而「未遮蔽卻紅」會把它讀成「group 壞了，先修好」。
+  #
+  # 兩次都不是假想，兩次都是實測打出來的：
+  #   * GitHub 的 ubuntu runner **有 swift、沒有 xcodebuild**。舊版「任一個在就開跑」
+  #     讓 ios-ops / lldb-forensics 在 CI 兩條都紅，還叫人去修兩個好好的 group。
+  #   * 只裝 CLT 的 macOS（felix）四個名字**全都** resolve，`xcodebuild -version` 卻
+  #     報 CLT-instance 錯。只看 command -v 的版本在那台會犯一模一樣的錯。
+  # 半套工具鏈比完全沒有更會騙人：全都沒有時它至少誠實宣告跳過。
+  if ! toolchain_usable "$tok"; then
+    echo "  · $g: skipped — $TOOLCHAIN_WHY, so the undenied baseline cannot be a fair test here" >&2
     ok "$g: falsification skipped on this host (declared, not silently passed)"
+    skipped=$((skipped+1))
     continue
   fi
   echo "  … $g: baseline run (undenied)…" >&2
@@ -371,14 +419,19 @@ for e in "${EXCLUDED_GROUPS[@]}"; do
     fail_t "$g is already red WITHOUT denial, so its death proves nothing about '$tok' — fix the group first"
     continue
   fi
-  echo "  … $g: falsifying (denying:$installed)…" >&2
+  echo "  … $g: falsifying (denying:$denials)…" >&2
   if run_denied "$denials" ./ops/test_ops.sh "$g"; then
     fail_t "$g claims '$tok' but passed with [$denials] denied — the reason is false; move it to LINUX_GROUPS or state the real dependency"
   else
-    ok "$g passes undenied and dies without [$installed]"
+    ok "$g passes undenied and dies without [$denials]"
   fi
 done
 
 echo ""
-echo "ops-ci-coverage: $pass passed, $fail failed"
+# skip 要有自己的計數器。它被記成 pass，所以「整段跳過」與「整段真的驗過」收尾行一模一樣，
+# 而一次被繳械的跑，分數還會**比**一次抓到問題的跑高（reviewer 實測 14 passed 對 13 passed
+# 1 failed）。CI 上這個數字現在是 2/2——linux 沒有 Xcode，兩條 bin-* 排除都跳過，
+# **CI 實際證偽的排除數是 0**，唯一真的執行點是開發者本機的 macOS。IMP-0059 提的
+# expected-fail CI step 因此比當初寫下時更值得做。
+echo "ops-ci-coverage: $pass passed, $fail failed, $skipped falsification(s) skipped"
 [[ "$fail" -eq 0 ]]
