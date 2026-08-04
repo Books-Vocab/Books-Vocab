@@ -2360,6 +2360,17 @@ def test_a_broken_journal_is_reported_not_swallowed(scratch):
 # ---------------------------------------------------------------------------
 # a routed-to tool that isn't there (IMP-0047)
 # ---------------------------------------------------------------------------
+def _diagnosis(summary: str) -> str:
+    """The clause after the em dash — the ONLY part of a spawn-failure summary derived
+    from the exception. Everything before it is echoed from the spec, so asserting
+    `"<path>" in summary` proves nothing about what the OS actually reported: a mutant
+    that reports the command where the missing directory belongs still contains the
+    directory, in the `cwd=` segment."""
+    head, sep, tail = summary.partition("—")
+    assert sep, f"summary has no diagnosis clause: {summary}"
+    return tail.strip()
+
+
 def test_a_missing_gate_tool_is_a_readable_block_not_a_traceback(tmp_path):
     """The router and the tools it routes to can be different generations (IMP-0045):
     a branch that deletes a script leaves a stale router still pointing at it. Letting
@@ -2376,6 +2387,8 @@ def test_a_missing_gate_tool_is_a_readable_block_not_a_traceback(tmp_path):
     # by mutation — that assertion passed the whole suite against a stripped summary.
     assert result["summary"].startswith(
         "gate tool not runnable: cmd=ops/definitely_not_here.sh"), result["summary"]
+    assert _diagnosis(result["summary"]) == \
+        "FileNotFoundError on ops/definitely_not_here.sh"
 
 
 def test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool(tmp_path):
@@ -2387,9 +2400,12 @@ def test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool(tmp_path):
     tool.chmod(0o755)
     spec = MODULE._shell("ghost", "ops", ["ops/docs_lint.sh"], "block", cwd="backend")
     summary = MODULE._run_gate(spec, str(tmp_path))["summary"]
-    assert "cmd=ops/docs_lint.sh" in summary
-    assert "backend" in summary          # names what is actually absent
-    assert summary.startswith("gate tool not runnable: ")
+    assert summary.startswith("gate tool not runnable: cmd=ops/docs_lint.sh")
+    # `"backend" in summary` would pass against a mutant that reports the COMMAND here,
+    # because the code echoes `cwd=` from the spec and "backend" appears twice. Only the
+    # diagnosis clause comes from the exception, so only it can testify.
+    assert _diagnosis(summary) == f"FileNotFoundError on {tmp_path}/backend"
+    assert "docs_lint" not in _diagnosis(summary)
 
 
 def test_an_unexecutable_gate_tool_is_reported_the_same_way(tmp_path):
@@ -2403,6 +2419,9 @@ def test_an_unexecutable_gate_tool_is_reported_the_same_way(tmp_path):
         MODULE._shell("ghost", "ops", ["ops/noexec.sh"], "block"), str(tmp_path))
     assert result["status"] == "block" and result["executed"] is False
     assert result["summary"].startswith("gate tool not runnable: cmd=ops/noexec.sh")
+    # the OS names the command as GIVEN (relative), where the cwd case names an absolute
+    # directory — which is exactly the distinction the diagnosis clause has to carry
+    assert _diagnosis(result["summary"]) == "PermissionError on ops/noexec.sh"
 
 
 def test_a_machine_that_cannot_fork_is_not_blamed_on_the_tool(tmp_path, monkeypatch):
