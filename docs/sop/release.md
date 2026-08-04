@@ -33,6 +33,7 @@ verified_against: 6ff5bcf10
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + `api\|ios/x.y.z` + push origin main；iOS 新版須帶 `--new-version-after-ready <previous>` | 備份/標記，無生產 |
 | **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy；iOS：bump→upload→tag | **生產** |
 
+- **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
 - `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 也必須帶 typed attestation，不能繞過 release guard。

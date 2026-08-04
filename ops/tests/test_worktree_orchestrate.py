@@ -25,6 +25,7 @@ import ast
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1760,3 +1761,486 @@ def test_sync_refused_when_frozen(scratch):
     _run_json(["freeze", "on", "--reason", "surgery", "--state", state, "--json"])
     rc, res = _run_json(["sync", "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
+
+
+# ---------------------------------------------------------------------------
+# orchestrator provenance (IMP-0045)
+#
+# `gate` runs each shell gate with the WORKTREE as cwd, so the TOOLS come from the
+# worktree; `plan_gates` comes from whichever copy of this file the shell resolved.
+# Those can be different commits, and the verdict record said nothing about which one
+# produced it — so a lax-orchestrator green could be handed to a strict cutover at the
+# same HEAD and be accepted. Provenance binds the verdict to its verifier.
+# ---------------------------------------------------------------------------
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _run_text(argv):
+    """Run the CLI in HUMAN mode and return (rc, stdout). The text report is a
+    first-class surface: a field that exists only in --json is invisible to the agent
+    reading the terminal."""
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = MODULE.main(argv)
+    return rc, buf.getvalue()
+
+
+def _open_wt(state, slug="prov"):
+    rc, opened = _run_json(["open", "--intent", "add a thing", "--slug", slug,
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    return wt
+
+
+@gitmark
+def test_gate_record_carries_orchestrator_identity(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    orch = gate["orchestrator"]
+    assert orch["path"] == "ops/worktree_orchestrate.py"
+    assert _HEX64.match(orch["sha256"])
+    assert orch["resolved"] == str(Path(MODULE.__file__).resolve())
+
+
+@gitmark
+def test_gate_orchestrator_identity_is_null_when_worktree_has_no_copy(scratch):
+    """The synthetic fixture repo has no ops/ tree. Provenance must degrade to "cannot
+    compare" rather than inventing a mismatch — otherwise every existing test, and every
+    non-kg repo, would be refused."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    orch = gate["orchestrator"]
+    assert orch["worktree_copy_sha256"] is None
+    assert orch["matches_worktree_copy"] is None
+    assert orch["source"] == "invoked"
+
+
+@gitmark
+def test_gate_provenance_is_pinned_to_the_same_computation_on_every_surface(scratch):
+    """SOURCE PIN. A shared helper is not enough: someone can hand-write one output
+    surface and the shared-source assertions all stay green (learned the hard way —
+    reverting a call site while leaving a printer intact kept five assertions green).
+    So assert the JSON block IS the helper's output, AND that the human report and the
+    receipt line carry that same digest."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    expected = MODULE._orchestrator_identity(wt)
+    assert gate["orchestrator"] == expected
+
+    # The digest ALONE is not enough to pin: it reads the same whether the worktree
+    # agreed, had nothing to compare, or could not be read. Pin the rendered token.
+    token = f"{expected['sha256'][:8]} ({expected['source']})"
+    rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+    assert rc == MODULE.EXIT_OK
+    assert f"orchestrator={token}" in text.splitlines()[0]
+
+    rc, line = _run_text(["gate", "--worktree", wt, "--state", state, "--receipt-line"])
+    assert rc == MODULE.EXIT_OK
+    assert f"orch={token}" in line
+
+
+def _plant_orchestrator(wt, body: str | None = None):
+    """Give the scratch worktree its own copy of the orchestrator. `body=None` plants a
+    byte-identical copy (the common case: the branch did not touch the tool)."""
+    dst = Path(wt) / "ops" / "worktree_orchestrate.py"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if body is None:
+        shutil.copyfile(Path(MODULE.__file__).resolve(), dst)
+    else:
+        dst.write_text(body)
+    return dst
+
+
+@gitmark
+def test_gate_refuses_when_the_worktree_carries_a_different_orchestrator(scratch):
+    """The incident this exists for: `gate` run from the primary checkout against a
+    branch that changed the routing planned the OLD rule set and reported a green that
+    read exactly like the new one's."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    _plant_orchestrator(wt, "# a different orchestrator\n")
+
+    rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+    assert rc == MODULE.EXIT_USAGE
+    running = MODULE._orchestrator_identity(wt)
+    # both digests named, so the reader can tell WHICH two things disagree
+    assert running["sha256"][:8] in text
+    assert running["worktree_copy_sha256"][:8] in text
+    # and a remedy that can be pasted, not deduced
+    assert f"{wt}/ops/worktree_orchestrate.py" in text
+    # refusing must be free of side effects: no verdict may be recorded
+    assert not MODULE._gate_record_path(state, wt).exists()
+
+
+@gitmark
+def test_gate_does_not_refuse_a_byte_identical_worktree_orchestrator(scratch):
+    """The gate must be NARROW: it fires only when the branch actually modified the
+    tool. Refusing on a byte-identical copy would be pure friction — the plan is the
+    same plan — and friction is what teaches people to route around a gate."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    _plant_orchestrator(wt)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["orchestrator"]["matches_worktree_copy"] is True
+    assert gate["orchestrator"]["source"] == "worktree"
+
+
+@gitmark
+def test_cutover_refuses_a_verdict_produced_by_a_different_orchestrator(scratch):
+    """Defence in depth for a record that predates the gate-side refusal, or one that
+    was edited. Same family as the stale-HEAD refusal: a verdict is only usable if it
+    is bound BOTH to the code it judged and to the judge."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    _plant_orchestrator(wt)
+
+    rc, _ = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    rec_path = MODULE._gate_record_path(state, wt)
+    rec = json.loads(rec_path.read_text())
+    rec["orchestrator"]["sha256"] = "0" * 64
+    rec_path.write_text(json.dumps(rec))
+
+    rc, res = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert res["landed"] is False
+    assert "orchestrator" in res["error"]
+    assert "notes.txt" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_accepts_a_verdict_when_the_orchestrator_cannot_be_compared(scratch):
+    """No ops/ tree in the target (synthetic fixtures, any non-kg checkout) means
+    "cannot compare", which must not be reported as a mismatch — otherwise every such
+    caller is refused for a question that was never asked."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["orchestrator"]["worktree_copy_sha256"] is None
+
+    rc, res = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["landed"] is True
+
+
+# ---------------------------------------------------------------------------
+# gate history (IMP-0044)
+#
+# The per-worktree verdict file is a SINGLE file, overwritten on every gate run and
+# deleted by `resolve` ("zero residue"). So there is no record of how a gate has
+# BEHAVED over time — and "this gate has never once gone green" is the only signal that
+# separates a broken check from a broken change. `ios-build-catalyst` blocked every iOS
+# cutover for two months while passing "can it go red".
+# ---------------------------------------------------------------------------
+def _history_lines(state):
+    p = MODULE._gate_history_path(state)
+    if not p.exists():
+        return []
+    return [json.loads(ln) for ln in p.read_text().splitlines() if ln.strip()]
+
+
+@gitmark
+def test_gate_appends_one_history_line_per_executed_gate(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rows = _history_lines(state)
+    assert [r["gate"] for r in rows] == [g["name"] for g in gate["gates"]]
+    row = rows[0]
+    assert row["status"] == "warn" and row["level"] == "warn"
+    assert row["head8"] == gate["head_sha"][:8]
+    assert row["orch8"] == gate["orchestrator"]["sha256"][:8]
+    assert row["ts"].endswith("Z")
+
+
+@gitmark
+def test_gate_history_accumulates_and_survives_resolve(scratch):
+    """Teardown strikes the per-worktree verdict (that one describes a worktree that no
+    longer exists). The behavioural history must NOT go with it — deleting it would
+    erase exactly the evidence that proves a gate is capable of passing."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert len(_history_lines(state)) == 2
+
+    _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert res["gate_cache_removed"] is True
+    assert len(_history_lines(state)) == 2
+
+
+@gitmark
+def test_gate_survives_an_unwritable_history(scratch):
+    """Bookkeeping must never fail the caller — a gate that refuses because its own
+    logging broke would be a new way for a green change to read as red."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    # occupy the history path with a DIRECTORY: every append will raise
+    hist = MODULE._gate_history_path(state)
+    hist.parent.mkdir(parents=True, exist_ok=True)
+    hist.mkdir()
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["verdict"] == "warn"
+
+
+def _write_history(state, rows):
+    p = MODULE._gate_history_path(state)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def _row(base_name, status, head8, level="block", wt="0" * 16, gate=None):
+    return {"ts": "2026-08-03T00:00:00Z", "gate": gate or base_name,
+            "base_name": base_name, "status": status, "rc": 1, "level": level,
+            "head8": head8, "orch8": "abcdef01", "wt": wt}
+
+
+def test_never_green_fires_only_when_a_gate_has_never_passed(tmp_path):
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [_row("ios-build-catalyst", "block", h)
+                           for h in ("aaaaaaaa", "bbbbbbbb", "cccccccc")])
+    assert MODULE._never_green(state, "ios-build-catalyst") == {
+        "attempts": 3, "heads": 3, "worktrees": 1}
+
+
+def test_never_green_is_silenced_by_a_single_historical_pass(tmp_path):
+    """One green ever is enough: the gate is PROVEN capable, and later reds are the
+    change's problem, not the gate's."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [
+        _row("ios-build", "block", "aaaaaaaa"),
+        _row("ios-build", "pass", "bbbbbbbb"),
+        _row("ios-build", "block", "cccccccc"),
+        _row("ios-build", "block", "dddddddd"),
+    ])
+    assert MODULE._never_green(state, "ios-build") is None
+
+
+def test_never_green_ignores_a_single_head_streak(tmp_path):
+    """Someone hammering one broken commit is not evidence about the GATE."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [_row("ios-test-unit", "block", "aaaaaaaa")] * 5)
+    assert MODULE._never_green(state, "ios-test-unit") is None
+
+
+def test_never_green_needs_enough_attempts(tmp_path):
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [_row("docs-lint", "block", "aaaaaaaa"),
+                           _row("docs-lint", "block", "bbbbbbbb")])
+    assert MODULE._never_green(state, "docs-lint") is None
+
+
+def test_never_green_on_absent_history_is_silent(tmp_path):
+    """A fresh clone knows nothing; "no data" must never be reported as "never green"."""
+    assert MODULE._never_green(str(tmp_path / "reg.json"), "ios-build") is None
+
+
+@gitmark
+def test_a_gate_that_has_never_passed_says_so_at_the_moment_it_blocks(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "add a thing", "--slug", "nevergreen",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    # The fixture repo has no ops/ tree, and _run_gate raises rather than reporting when
+    # a routed-to tool is absent (filed as IMP-0047). Plant a stub so this test exercises
+    # the never-green annotation, not that hole.
+    stub = Path(wt) / "ops" / "docs_lint.sh"
+    stub.parent.mkdir(parents=True, exist_ok=True)
+    stub.write_text("#!/bin/sh\nexit 1\n")
+    stub.chmod(0o755)
+    docs = Path(wt) / "docs"
+    docs.mkdir()
+    (docs / "x.md").write_text("<!-- doc-meta -->\n<<<<<<< HEAD\nours\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "docs: conflicted"], wt)
+
+    rc, first = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    marker = _by_name(first["gates"])["docs-conflict-markers"]
+    assert "never green" not in marker["summary"]  # one attempt proves nothing
+
+    (docs / "y.md").write_text("<!-- doc-meta -->\n>>>>>>> theirs\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "docs: more conflict"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, third = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+
+    assert rc == MODULE.EXIT_BLOCK
+    marker = _by_name(third["gates"])["docs-conflict-markers"]
+    assert marker["never_green"] == {"attempts": 3, "heads": 2, "worktrees": 1}
+    assert "3 block attempt(s) across 2 HEAD(s) / 1 worktree(s)" in marker["summary"]
+    # A hypothesis, never a verdict — the data cannot distinguish a structurally-red
+    # gate from three honest reds while fixing a real bug.
+    assert "worth checking whether it can pass at all" in marker["summary"]
+    assert "suspect the gate" not in marker["summary"]
+
+
+@gitmark
+def test_an_unreadable_worktree_orchestrator_is_a_mismatch_not_an_absence(scratch):
+    """"Present but unreadable" must never render identically to "no ops/ tree at all".
+    If it did, the guard (`matches_worktree_copy is not False`) would wave it through —
+    reinstating the exact silent bypass this whole change exists to close, with a
+    different trigger."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    planted = _plant_orchestrator(wt)
+    planted.chmod(0o000)
+    try:
+        orch = MODULE._orchestrator_identity(wt)
+        assert orch["matches_worktree_copy"] is False        # fail CLOSED
+        assert orch["worktree_copy_sha256"] is None
+        assert orch["source"] == "unreadable"
+        assert "PermissionError" in orch["worktree_copy_error"]
+
+        rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+        assert rc == MODULE.EXIT_USAGE
+        assert "could not be read" in text
+    finally:
+        planted.chmod(0o644)
+
+
+@gitmark
+def test_absent_and_unreadable_orchestrators_do_not_render_identically(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    absent = MODULE._orchestrator_identity(wt)
+
+    planted = _plant_orchestrator(wt)
+    planted.chmod(0o000)
+    try:
+        unreadable = MODULE._orchestrator_identity(wt)
+    finally:
+        planted.chmod(0o644)
+    assert absent != unreadable
+    assert absent["matches_worktree_copy"] is None
+    assert unreadable["matches_worktree_copy"] is False
+
+
+def test_never_green_survives_one_corrupt_journal_line(tmp_path):
+    """The journal is append-only and never rotated, so a single truncated write (disk
+    full, SIGKILL mid-flush) must not disable the detector FOREVER, silently. That
+    failure shape is the one this whole mechanism exists to find."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [_row("ios-build-catalyst", "block", h)
+                           for h in ("aaaaaaaa", "bbbbbbbb", "cccccccc")])
+    p = MODULE._gate_history_path(state)
+    p.write_text('{"base_name": "ios-build-cat\n' + p.read_text() + '{"truncated')
+    assert MODULE._never_green(state, "ios-build-catalyst") == {
+        "attempts": 3, "heads": 3, "worktrees": 1}
+
+
+def test_never_green_counts_only_block_level_rows(tmp_path):
+    """A gate promoted from advisory to block would otherwise inherit the entire streak
+    it built up while nobody was obliged to act on it, and trip on its first real block."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [
+        _row("ui-quality-fast", "warn", "aaaaaaaa", level="warn"),
+        _row("ui-quality-fast", "warn", "bbbbbbbb", level="warn"),
+        _row("ui-quality-fast", "block", "cccccccc"),
+    ])
+    assert MODULE._never_green(state, "ui-quality-fast") is None
+
+
+def test_never_green_reports_how_many_worktrees_the_streak_spans(tmp_path):
+    """The journal is repo-wide, so three reds can be three unrelated worktrees. Say so,
+    rather than letting it read as one persistent failure."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [_row("ios-build", "block", h, wt=w) for h, w in
+                           (("aaaaaaaa", "w1"), ("bbbbbbbb", "w2"), ("cccccccc", "w3"))])
+    assert MODULE._never_green(state, "ios-build") == {
+        "attempts": 3, "heads": 3, "worktrees": 3}
+
+
+def test_never_green_folds_colon_suffixed_instances_into_one_capability(tmp_path):
+    """`ios-test-ui:<Class>` names are per-diff instances of ONE check. Without folding,
+    attempts never reach the threshold and the whole iOS UI family silently opts out —
+    and a green from any instance must silence the rest."""
+    state = str(tmp_path / "reg.json")
+    _write_history(state, [
+        _row("ios-test-ui", "block", "aaaaaaaa", gate="ios-test-ui:FooTests"),
+        _row("ios-test-ui", "block", "bbbbbbbb", gate="ios-test-ui:BarTests"),
+        _row("ios-test-ui", "block", "cccccccc", gate="ios-test-ui:BazTests"),
+    ])
+    assert MODULE._never_green(state, "ios-test-ui") == {
+        "attempts": 3, "heads": 3, "worktrees": 1}
+
+    _write_history(state, [
+        _row("ios-test-ui", "block", "aaaaaaaa", gate="ios-test-ui:FooTests"),
+        _row("ios-test-ui", "pass", "bbbbbbbb", gate="ios-test-ui:BarTests"),
+        _row("ios-test-ui", "block", "cccccccc", gate="ios-test-ui:FooTests"),
+    ])
+    assert MODULE._never_green(state, "ios-test-ui") is None
+
+
+@gitmark
+def test_history_rows_carry_the_folded_base_name(scratch):
+    """Pins the fold at the WRITE site too: recording the full instance name would make
+    every row its own capability and the threshold unreachable."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    MODULE._append_gate_history(state, wt, "f" * 40, {"sha256": "a" * 64}, [
+        {"name": "ios-test-ui:FooTests", "status": "block", "rc": 1, "level": "block"}])
+    row = _history_lines(state)[-1]
+    assert row["gate"] == "ios-test-ui:FooTests"
+    assert row["base_name"] == "ios-test-ui"
+
+
+@gitmark
+def test_a_broken_journal_is_reported_not_swallowed(scratch):
+    """A permanently unwritable journal and a fresh clone both look like "no history".
+    If they render identically, the detector can die with zero signal."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+    hist = MODULE._gate_history_path(state)
+    hist.parent.mkdir(parents=True, exist_ok=True)
+    hist.mkdir()
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["history_error"] and "IsADirectory" in gate["history_error"]
+    rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+    assert "gate history not written" in text

@@ -98,12 +98,14 @@ import re
 import subprocess
 import sys
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 # Reuse P2 in-process — never re-implement register / resolve / sweep / state paths.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worktree_registry as wr  # noqa: E402
+from lib.provenance import logical_tool_path, sha256_file  # noqa: E402
 from lib.streaming_command import run_streamed_command  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
@@ -768,6 +770,196 @@ def _gate_record_path(state: str | None, worktree: str) -> Path:
     return base_dir / "worktree_gates" / f"{key}.json"
 
 
+def _gate_history_path(state: str | None) -> Path:
+    """Append-only behavioural log of gate outcomes, beside the per-worktree verdicts.
+
+    The verdict file is one file per LIVE worktree, overwritten each run and struck on
+    resolve — by design, and correct for its job (cutover needs the current verdict, not
+    a museum). But it means nothing in the system can answer "has this gate EVER gone
+    green", which is the only question that separates a broken check from a broken
+    change. `ios-build-catalyst` could not go green on this machine for two months and
+    blocked every iOS cutover; each individual red looked like an ordinary failure.
+    """
+    return _gate_record_path(state, "").parent / "history.jsonl"
+
+
+def _append_gate_history(state: str | None, worktree: str, head: str,
+                         orch: dict[str, Any],
+                         results: list[dict[str, Any]]) -> str | None:
+    """One compact JSONL line per gate result. NEVER fails the caller — a gate that
+    refused because its own bookkeeping broke would be a fresh way to turn a green
+    change red. (Same hard rule as ops/lib/ios_run_metrics.sh.)
+
+    Returns the error string instead, so the caller can SAY that journaling is broken: a
+    permanently unwritable journal and a fresh clone otherwise look identical (both
+    "no history"), and a detector that can die with zero signal is the very disease
+    this journal exists to catch.
+    """
+    try:
+        path = _gate_history_path(state)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        wt_key = hashlib.sha256(_norm(worktree).encode()).hexdigest()[:16]
+        with path.open("a", encoding="utf-8") as fh:
+            for r in results:
+                fh.write(json.dumps({
+                    "ts": ts,
+                    "gate": r["name"],
+                    # colon-suffixed gates (ios-test-ui:<Class>) are per-diff instances
+                    # of ONE check; capability lives at the base name.
+                    "base_name": r["name"].split(":")[0],
+                    "status": r.get("status"),
+                    "rc": r.get("rc"),
+                    "level": r.get("level"),
+                    "head8": head[:8],
+                    "orch8": orch["sha256"][:8],
+                    "wt": wt_key,
+                }, ensure_ascii=False) + "\n")
+    except Exception as exc:  # noqa: BLE001 — bookkeeping is never load-bearing
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def _never_green(state: str | None, base_name: str,
+                 min_attempts: int = 3, min_heads: int = 2) -> dict[str, int] | None:
+    """{attempts, heads, worktrees} when this gate has NEVER been recorded green at
+    BLOCK level and has been tried enough times to mean something; None otherwise.
+
+    "Never green, ever" rather than "not green lately" on purpose: someone iterating on
+    a genuinely broken build reds the same gate repeatedly, and a recency rule would cry
+    wolf at them.
+
+    Only `level == "block"` rows count. The level is what makes a red consequential; a
+    gate promoted from advisory to block would otherwise inherit the whole streak it
+    accumulated while nobody was obliged to act on it, and trip on its first real block.
+
+    A malformed line skips ITSELF, never the whole file. The journal is append-only and
+    never rotated, so one truncated write (disk full, SIGKILL mid-flush) would otherwise
+    disable this detector permanently and silently — the exact failure shape it exists
+    to find. The shell reader in test_gate_can_fail.sh already does per-line recovery;
+    these two consumers must not disagree about the same file, and the tolerant one is
+    the safe side here.
+    """
+    try:
+        path = _gate_history_path(state)
+        if not path.is_file():
+            return None
+        attempts, heads, worktrees = 0, set(), set()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict) or row.get("base_name") != base_name:
+                continue
+            if row.get("level") != "block":
+                continue
+            if row.get("status") == "pass":
+                return None
+            attempts += 1
+            heads.add(row.get("head8"))
+            worktrees.add(row.get("wt"))
+        if attempts >= min_attempts and len(heads) >= min_heads:
+            return {"attempts": attempts, "heads": len(heads),
+                    "worktrees": len(worktrees)}
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def _orchestrator_identity(worktree: str) -> dict[str, Any]:
+    """WHO produced this verdict.
+
+    `_run_gate` executes every shell gate with the worktree as cwd, so the TOOLS being
+    routed to come from the worktree. `plan_gates` — the routing itself — comes from
+    whichever copy of this file the shell resolved from the caller's cwd. Those two can
+    be different commits: running `gate` from the primary checkout against a branch that
+    changed the routing silently plans the OLD rule set and records it in a shape
+    indistinguishable from the new one.
+
+    A content hash, not a git commit: a commit id would attribute an uncommitted edit to
+    the committed version, and an uncommitted edit is precisely when this matters.
+
+    Three states, deliberately distinct — collapsing any two reopens the bypass:
+      * no ops/ tree at all (synthetic fixtures, any non-kg checkout) -> None, "cannot
+        compare". This must NOT masquerade as a mismatch or every such caller is refused
+        for a question that was never asked.
+      * present and readable -> True/False on the digests.
+      * present but UNREADABLE -> False, fail closed. Reporting it as None would let the
+        guard wave it through, which is the same silent bypass with a new trigger.
+    """
+    running = Path(__file__).resolve()
+    wt_copy = Path(worktree) / "ops" / "worktree_orchestrate.py"
+    wt_sha: str | None = None
+    wt_error: str | None = None
+    if wt_copy.is_file():
+        try:
+            wt_sha = sha256_file(wt_copy)
+        except OSError as exc:
+            wt_error = f"{type(exc).__name__}: {exc}"
+    running_sha = sha256_file(running)
+    if wt_error is not None:
+        matches: bool | None = False
+        source = "unreadable"
+    elif wt_sha is None:
+        matches = None
+        source = "invoked"
+    else:
+        matches = wt_sha == running_sha
+        source = "worktree" if matches else "invoked"
+    return {
+        "path": logical_tool_path(running),
+        "resolved": str(running),
+        "sha256": running_sha,
+        "source": source,
+        "worktree_copy_sha256": wt_sha,
+        "worktree_copy_error": wt_error,
+        "matches_worktree_copy": matches,
+    }
+
+
+def _orch_token(record: dict[str, Any]) -> str:
+    """The one rendering of orchestrator identity, read back OUT of the record so the
+    human report and the receipt line cannot drift from the JSON that cutover reads.
+    Carries the source, not just the digest: a bare digest looks identical whether the
+    worktree agreed, had nothing to compare, or could not be read."""
+    o = record["orchestrator"]
+    return f"{o['sha256'][:8]} ({o['source']})"
+
+
+def _orchestrator_guard(orch: dict[str, Any], worktree: str, step: str, schema: str,
+                        as_json: bool) -> int | None:
+    """EXIT_USAGE when the running orchestrator is NOT the worktree's own copy.
+
+    Narrow by construction: `matches_worktree_copy` is False only when the branch
+    actually modified this tool. A byte-identical copy plans an identical set of gates,
+    so refusing there would be friction with no safety gain — and friction is what
+    teaches people to route around a gate. `None` (no ops/ tree to compare against)
+    is "cannot compare", never "mismatch".
+    """
+    if orch["matches_worktree_copy"] is not False:
+        return None
+    remedy = f"{worktree}/ops/worktree_orchestrate.py"
+    if orch.get("worktree_copy_error"):
+        what = (f"the worktree's own orchestrator at {remedy} could not be read "
+                f"({orch['worktree_copy_error']}), so this plan cannot be shown to come "
+                f"from the tree that is landing")
+    else:
+        what = (f"this orchestrator ({orch['sha256'][:8]}, {orch['resolved']}) is not the "
+                f"one in the worktree ({orch['worktree_copy_sha256'][:8]}, {remedy})")
+    reason = (
+        f"{what}. The gate TOOLS run from the worktree, so the routing must come from "
+        f"there too — otherwise the plan is a different generation from the tools it "
+        f"plans. Re-run as: {remedy}"
+    )
+    _emit({"schema": schema, "step": step, "error": "orchestrator mismatch",
+           "reason": reason, "orchestrator": orch}, as_json,
+          f"✗ {step} refused: {reason}")
+    return EXIT_USAGE
+
+
 # ---- internal gate runners -------------------------------------------------
 def _run_conflict_markers(worktree: str, files: list[str]) -> dict[str, Any]:
     hits = []
@@ -1362,6 +1554,11 @@ def cmd_gate(args: argparse.Namespace) -> int:
               args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
+    orch = _orchestrator_identity(worktree)
+    mismatch = _orchestrator_guard(orch, worktree, "gate", GATE_SCHEMA, args.json)
+    if mismatch is not None:
+        return mismatch
+
     changed = _changed_vs_base(worktree, args.base)
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
@@ -1375,12 +1572,38 @@ def cmd_gate(args: argparse.Namespace) -> int:
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
     head = _head_sha(worktree)
+    if not args.plan_only:
+        # History FIRST, so the never-green check below sees this run too: "never green
+        # in N attempts" is only honest if N includes the red being reported.
+        history_error = _append_gate_history(args.state, worktree, head, orch, results)
+        for r in results:
+            if r.get("status") != "block":
+                continue
+            streak = _never_green(args.state, r["name"].split(":")[0])
+            if streak is None:
+                continue
+            # Said at the moment of blocking, where it can still change what the reader
+            # does. Deliberately a HYPOTHESIS, not a verdict: an empty journal is every
+            # gate's starting state, so three reds while fixing a genuinely broken build
+            # look identical to a structurally-red gate. Asserting "the gate is at fault"
+            # would hand the reader a root cause the data cannot support (iron law 3).
+            # What the data does support is: nothing here has ever seen this gate pass.
+            r["never_green"] = streak
+            r["summary"] = (
+                f"{r.get('summary', '')} (no green ever recorded for this gate on this "
+                f"machine: {streak['attempts']} block attempt(s) across "
+                f"{streak['heads']} HEAD(s) / {streak['worktrees']} worktree(s) — worth "
+                f"checking whether it can pass at all before treating this as your bug)")
+
     record = {"schema": GATE_SCHEMA, "worktree": worktree, "base": args.base,
-              "head_sha": head, "changed_files": changed,
+              "head_sha": head, "orchestrator": orch, "changed_files": changed,
               "plan": [{"name": g["name"], "level": g["level"], "category": g["category"],
                         "cmd": g.get("cmd")} for g in plan],
               "gates": results, "verdict": verdict}
     if not args.plan_only:
+        # Non-blocking, but never silent: a permanently unwritable journal must not be
+        # indistinguishable from a machine that simply has no history yet.
+        record["history_error"] = history_error
         rec_path = _gate_record_path(args.state, worktree)
         rec_path.parent.mkdir(parents=True, exist_ok=True)
         rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
@@ -1397,16 +1620,19 @@ def cmd_gate(args: argparse.Namespace) -> int:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
         breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
         print(f"gate={verdict} record={_gate_record_path(args.state, worktree)} "
-              f"head={head[:8]} gates={len(plan)} {breakdown}")
+              f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown}")
         return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
 
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
-             f"{len(plan)} gate(s))"]
+             f"{len(plan)} gate(s))  orchestrator={_orch_token(record)}"]
     for r in results:
         mark = {"pass": "✓", "warn": "⚠", "block": "✗"}.get(r["status"], "?")
         lines.append(f"  {mark} {r['name']} [{r['status']}] — {r.get('summary','')}")
     if not plan:
         lines.append("  (no impact-based gates selected for these changes)")
+    if record.get("history_error"):
+        lines.append(f"  ! gate history not written ({record['history_error']}) — "
+                     f"never-green detection is blind until this is fixed")
     _emit(record, args.json, "\n".join(lines))
     if args.plan_only:
         return EXIT_OK
@@ -1429,6 +1655,11 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                "landed": False}, args.json, f"✗ worktree not found: {worktree}")
         return EXIT_USAGE
 
+    orch = _orchestrator_identity(worktree)
+    mismatch = _orchestrator_guard(orch, worktree, "cutover", SCHEMA, args.json)
+    if mismatch is not None:
+        return mismatch
+
     rec_path = _gate_record_path(args.state, worktree)
     head = _head_sha(worktree)
     refuse: str | None = None
@@ -1439,9 +1670,18 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     else:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
+        rec_orch = (rec.get("orchestrator") or {}).get("sha256")
+        wt_orch = orch["worktree_copy_sha256"]
         if rec.get("head_sha") != head:
             refuse = ("gate verdict is stale (recorded HEAD "
                       f"{str(rec.get('head_sha'))[:8]} != current {head[:8]}) — re-run `gate`")
+        elif wt_orch is not None and rec_orch != wt_orch:
+            # Same family as the stale-HEAD refusal: a verdict is usable only if it is
+            # bound BOTH to the code it judged and to the judge. head_sha alone cannot
+            # see this — the wrong orchestrator run at the SAME HEAD matches on head.
+            refuse = ("gate verdict came from a different orchestrator "
+                      f"({str(rec_orch)[:8]} != worktree's {wt_orch[:8]}) — re-run `gate` "
+                      f"with {worktree}/ops/worktree_orchestrate.py")
         elif verdict == "block":
             refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
         elif verdict not in ("pass", "warn"):
