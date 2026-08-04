@@ -90,6 +90,7 @@ Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused / pa
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import io
 import json
@@ -871,6 +872,10 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "status": r.get("status"),
                     "rc": r.get("rc"),
                     "level": r.get("level"),
+                    # False only for gates that never started (spawn failure). A row
+                    # for a check that did not run must not be usable as evidence
+                    # about whether that check can pass.
+                    "executed": r.get("executed", True),
                     "head8": head[:8],
                     "orch8": orch["sha256"][:8],
                     "wt": wt_key,
@@ -915,6 +920,10 @@ def _never_green(state: str | None, base_name: str,
             if not isinstance(row, dict) or row.get("base_name") != base_name:
                 continue
             if row.get("level") != "block":
+                continue
+            if row.get("executed") is False:
+                # never started (spawn failure) — it is not evidence either way.
+                # Absent field = a row written before this existed, i.e. a real run.
                 continue
             if row.get("status") == "pass":
                 return None
@@ -1149,11 +1158,30 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
         # (IMP-0045): a branch that deleted a script leaves a stale router still
         # pointing at it. Letting this escape aborts the WHOLE run — every other
         # gate's result is discarded and the operator gets a traceback naming
-        # subprocess.py rather than a gate. 127 is the shell's own "command not
-        # found", i.e. what running it by hand would report.
+        # subprocess.py rather than a gate.
+        #
+        # But OSError covers two very different stories and only one of them is
+        # about the tool. ENOENT/EACCES/ENOTDIR mean this really cannot be run —
+        # and `exc.filename` says WHICH path, because with spec["cwd"] set it is
+        # the missing directory, not the command. Everything else (EMFILE, ENOMEM,
+        # EAGAIN: a machine that cannot fork right now) says nothing about the tool
+        # at all, and claiming it does is iron law 3 inverted — an operator told
+        # "gate tool not runnable: ops/ios_ops.sh" goes hunting a stale router
+        # while the real problem is fd exhaustion in a sibling worktree.
+        if exc.errno in (errno.ENOENT, errno.EACCES, errno.ENOTDIR):
+            summary = (f"gate tool not runnable: cmd={spec['cmd'][0]} cwd={cwd} — "
+                       f"{type(exc).__name__} on {exc.filename or 'unknown path'}")
+        else:
+            summary = (f"gate could not be spawned (errno {exc.errno}): "
+                       f"cmd={spec['cmd'][0]} — {type(exc).__name__}: {exc}")
+        # `executed: False` is not cosmetic. Without it these rows enter the journal
+        # as ordinary block attempts, and `_never_green` — which reads level and
+        # status, never rc — counts three of them as evidence that the gate can
+        # never pass. The next genuine red then arrives carrying "no green ever
+        # recorded", steering the reader away from their own bug. rc alone cannot
+        # carry this: a tool that RAN and exited 127 is a real red.
         return {**result, "status": "block" if level == "block" else "warn", "rc": 127,
-                "summary": f"gate tool not runnable: {spec['cmd'][0]} "
-                           f"({type(exc).__name__}: {exc})"}
+                "executed": False, "summary": summary}
     tail = "\n".join(output.splitlines()[-3:]) if output else ""
     if returncode == 0:
         status = "pass"

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import importlib.util
 import ast
+import errno
 import io
 import json
 import os
@@ -2343,7 +2344,85 @@ def test_a_missing_gate_tool_is_a_readable_block_not_a_traceback(tmp_path):
     result = MODULE._run_gate(spec, str(tmp_path))
     assert result["status"] == "block"
     assert result["rc"] == 127
-    assert "ops/definitely_not_here.sh" in result["summary"]
+    assert result["executed"] is False
+    # startswith, not `in`: the exception's own repr already contains the path, so
+    # `"ops/... " in summary` is satisfied with the entire message deleted. Verified
+    # by mutation — that assertion passed the whole suite against a stripped summary.
+    assert result["summary"].startswith(
+        "gate tool not runnable: cmd=ops/definitely_not_here.sh"), result["summary"]
+
+
+def test_a_missing_gate_CWD_is_not_reported_as_a_missing_tool(tmp_path):
+    """With spec["cwd"] set, the OS names the missing DIRECTORY, not the command — so
+    a message built from the exception alone accuses a tool that is perfectly fine."""
+    tool = tmp_path / "ops" / "docs_lint.sh"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("#!/bin/sh\nexit 0\n")
+    tool.chmod(0o755)
+    spec = MODULE._shell("ghost", "ops", ["ops/docs_lint.sh"], "block", cwd="backend")
+    summary = MODULE._run_gate(spec, str(tmp_path))["summary"]
+    assert "cmd=ops/docs_lint.sh" in summary
+    assert "backend" in summary          # names what is actually absent
+    assert summary.startswith("gate tool not runnable: ")
+
+
+def test_an_unexecutable_gate_tool_is_reported_the_same_way(tmp_path):
+    """Pins the breadth downward: narrowing the handler to FileNotFoundError silently
+    reopens the hole for a script whose permission bit was lost."""
+    tool = tmp_path / "ops" / "noexec.sh"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("#!/bin/sh\nexit 0\n")
+    tool.chmod(0o644)
+    result = MODULE._run_gate(
+        MODULE._shell("ghost", "ops", ["ops/noexec.sh"], "block"), str(tmp_path))
+    assert result["status"] == "block" and result["executed"] is False
+    assert result["summary"].startswith("gate tool not runnable: cmd=ops/noexec.sh")
+
+
+def test_a_machine_that_cannot_fork_is_not_blamed_on_the_tool(tmp_path, monkeypatch):
+    """EMFILE/ENOMEM are OSErrors that say nothing about the tool. Asserting the strong
+    cause on weak evidence sends the operator hunting a stale router while a sibling
+    worktree leaks fds — this repo has already lived that failure once, as pty
+    exhaustion presenting as "the simulator is broken"."""
+    def boom(*a, **k):
+        raise OSError(errno.EMFILE, "Too many open files")
+    monkeypatch.setattr(MODULE, "_run_streamed_command", boom)
+    summary = MODULE._run_gate(
+        MODULE._shell("ghost", "ops", ["ops/ios_ops.sh"], "block"), str(tmp_path))["summary"]
+    assert "not runnable" not in summary
+    assert f"errno {errno.EMFILE}" in summary
+    assert "ops/ios_ops.sh" in summary
+
+
+def test_a_non_oserror_from_the_runner_still_propagates(tmp_path, monkeypatch):
+    """Pins the breadth upward: widening to `except Exception` would turn a genuine bug
+    in this module into a confident "gate tool not runnable" block."""
+    def boom(*a, **k):
+        raise ValueError("a bug in the runner, not a missing tool")
+    monkeypatch.setattr(MODULE, "_run_streamed_command", boom)
+    with pytest.raises(ValueError):
+        MODULE._run_gate(MODULE._shell("ghost", "ops", ["x"], "block"), str(tmp_path))
+
+
+def test_a_gate_that_never_started_is_not_evidence_about_whether_it_can_pass(tmp_path):
+    """`_never_green` reads level and status, never rc — so spawn failures would count
+    as block attempts and push a healthy gate over the 3-attempt threshold. The next
+    genuine red would then arrive carrying "no green ever recorded", which is exactly
+    the wrong hypothesis to hand someone."""
+    state = str(tmp_path / "reg.json")
+    unexecuted = [{"name": "docs-lint", "level": "block", "status": "block",
+                   "rc": 127, "executed": False}]
+    orch = {"sha256": "a" * 64}
+    for head in ("aaaaaaaa", "bbbbbbbb", "cccccccc"):
+        assert MODULE._append_gate_history(state, str(tmp_path), head, orch,
+                                           unexecuted) is None
+    assert MODULE._never_green(state, "docs-lint") is None
+
+    ran = [{"name": "docs-lint", "level": "block", "status": "block", "rc": 1}]
+    for head in ("dddddddd", "eeeeeeee", "ffffffff"):
+        MODULE._append_gate_history(state, str(tmp_path), head, orch, ran)
+    assert MODULE._never_green(state, "docs-lint") == {
+        "attempts": 3, "heads": 3, "worktrees": 1}
 
 
 def test_a_missing_warn_level_tool_stays_advisory(tmp_path):
