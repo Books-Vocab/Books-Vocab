@@ -12,7 +12,9 @@
 # 仍 ~/project/kg 讓人在 dev clone dry-run 最小驚訝）。
 #
 # 收斂目標 = felix 生產容器 == origin/prod：
-#   - 變更含 backend 觸發路徑 → git pull + 寫 VERSION + docker compose up --build +
+#   - 變更含 backend 觸發路徑 → git pull + 寫 VERSION + docker compose up --build
+#     --force-recreate（旗標不可省：健康 gate 比對容器自報版本，而容器自報的是 import
+#     時快取的 bind-mount VERSION，只隨行程重啟改變；見 deploy 區塊註解與 IMP-0056）+
 #     健康 gate（localhost + 外部 smoke + infra_health）；失敗自動 ROLLBACK 到部署前
 #     的 sha 並把該 origin sha 標 poison（cooldown 內不重試）。
 #   - 變更不含 backend → 只 git pull --ff-only（讓 felix repo HEAD 追上 origin/prod，含
@@ -238,8 +240,20 @@ deploy_and_gate() {
   log "→ DEPLOY: $rollback_sha → ${new_sha}，重建容器…"
 
   # 2) 重建並啟動（compose 失敗視為部署失敗 → rollback，不讓 set -e 直接中斷）
+  #
+  # `--force-recreate` 讓下面健康 gate 的**前提為真**，而不是碰運氣。gate 比對容器自報
+  # 版本與 $new_sha，但容器自報的是 bind-mount 進去的 backend/VERSION、且在 import 時
+  # 就快取——所以那個值只隨**行程重啟**改變。而 `up -d --build` 只在 image digest 或
+  # 解析後的 compose config hash 變了才 recreate：命中 BACKEND_TRIGGER_RE 卻不進 image
+  # 的改動（compose.yml 的註解、Dockerfile 的註解、pyproject 的 [tool.*]）兩者皆不變，
+  # 容器不重啟 → 自報舊版 → gate 判失敗 → 回滾 + poison + 告警。而 poison 只冷卻
+  # 3600 秒，冷卻完下一 tick 又看到 origin/prod 領先，於是**每小時重演一次**（IMP-0056）。
+  #
+  # 代價很小且只落在原本會炸的那條路上：image 真的變了時 compose 本來就會 recreate，
+  # 這個旗標是 no-op；只有「其實什麼都沒變」時才多付一次數秒重啟。手動 break-glass 路徑
+  # `devops.sh cmd_deploy` 早已這樣做（IMP-0052），兩條部署路徑本來就該同語意。
   local crc
-  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build ) >&2; crc=$?; set -e
+  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build --force-recreate ) >&2; crc=$?; set -e
 
   local ok=1
   if (( crc != 0 )); then
@@ -262,7 +276,22 @@ deploy_and_gate() {
   alert "部署健康 gate 失敗 (reason=$reason)，回滾 $new_sha → $rollback_sha"
   "$KG_GIT" -C "$KG_RECON_REPO" reset --hard "$rollback_sha" >&2
   printf '%s\n' "$rollback_sha" > "$KG_RECON_REPO/backend/VERSION"
-  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build ) >&2; set -e
+  # 這裡也必須 force。理由要寫成**不依賴進入路徑**的形式：回滾的職責是讓 git tree、
+  # VERSION 游標與跑著的容器三者一致，而唯一能無條件保證第三項的手段就是重建。
+  #
+  # （別把理由寫成「部署路徑剛剛 recreate 過所以容器已被動過」——進到這個區塊有兩條路，
+  #  `crc != 0`（build 就失敗）那條**根本沒 recreate 過**，前提在該入口為假。代價是那條
+  #  路現在會多付一次數秒重啟去重建一顆本來好好的容器；接受，因為改成有條件就等於重新
+  #  引入「我能預測 compose 會不會 recreate」這個假設，而 IMP-0056 整件事就是它被證偽。）
+  #
+  # 不 force 的後果實測有兩個，第二個比第一個嚴重：
+  #   ① 不進 image 的改動回滾時 image 一樣沒變 → 不 recreate → 容器仍自報 new_sha →
+  #      下面的 localhost_health_ok "$rollback_sha" 失敗 → 誤發「生產可能雙壞」最高級告警。
+  #   ② 下一 tick 的 crash-consistency 交叉驗證（見下方 live_ver 段）看到 live(new)
+  #      != VERSION(old) 且 new 仍可解析 → **把游標寫回剛被回滾且被 poison 的那個 sha**，
+  #      changed 變空 → noop 早退、poison 檢查走不到。deploy.log 記著 ROLLED_BACK、
+  #      state 有 poison，游標卻宣告已收斂在該 sha 上——回滾在游標層被靜默撤銷。
+  set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build --force-recreate ) >&2; set -e
   # 回滾後確認舊版健康（best-effort，不 gate verdict；連舊版都不健康則更大聲告警）
   if localhost_health_ok "$rollback_sha"; then
     log "  回滾後 localhost 健康確認：$rollback_sha OK"
@@ -390,7 +419,7 @@ main() {
   if [[ "$dry_run" == "1" ]]; then
     log "[dry-run] would: acquire lock $KG_LOCK_DIR"
     log "[dry-run] would: git pull --ff-only origin prod → 寫 backend/VERSION=$ORIGIN_SHA"
-    log "[dry-run] would: (cd backend && $KG_COMPOSE up -d --build)"
+    log "[dry-run] would: (cd backend && $KG_COMPOSE up -d --build --force-recreate)"
     log "[dry-run] would: 健康 gate（localhost + 外部 smoke + infra_health）"
     log "[dry-run] would: 失敗則 rollback 到 $DEPLOYED_SHA + poison $ORIGIN_SHA"
     emit_verdict "dry-run"; exit 0
