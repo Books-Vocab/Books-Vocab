@@ -121,7 +121,7 @@ launchctl bootout gui/$(id -u)/com.kg.reconcile
 
 舊 Lightsail `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate** → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**。
 
-> 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build --force-recreate` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate。**force-recreate 仍在**——2026-06-19 retarget 時掉了，紅了 6.5 週才被發現並回補（IMP-0052）。代價是不進 image 的 commit 也會斷幾秒、且前一顆容器的 json-file log（`docker-logs` 看得到的範圍）會消失；換的是版本游標與容器自報值一致，smoke gate 與 Sentry release tag 都靠它。
+> 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build --force-recreate` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate。**force-recreate 仍在**——2026-06-19 retarget 時掉了，紅了 6.5 週才被發現並回補（IMP-0052）。**自動路徑（`ops/kg_reconcile.sh`）2026-08-04 起同樣兩處都帶此旗標**（deploy 與 rollback），理由與代價相同；少了它會每小時假回滾一次（IMP-0056）。代價是不進 image 的 commit 也會斷幾秒、且前一顆容器的 json-file log（`docker-logs` 看得到的範圍）會消失；換的是版本游標與容器自報值一致，smoke gate 與 Sentry release tag 都靠它。
 
 部署完成後確認遠端版本：
 - `./devops.sh status` — 顯示部署版本 + 最近部署記錄
