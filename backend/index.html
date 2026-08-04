@@ -58,11 +58,15 @@
 
   <main id="main">
 
-    <!-- Hero — product-first: real app surfaces in the first viewport. -->
-    <header class="hero hero--showcase">
+    <!-- Hero — brand lockup only. The device shots live in .product-screens;
+         carrying them here too shipped the same three PNGs twice. -->
+    <header class="hero hero--lockup">
       <div class="hero__copy">
         <p class="page-eyebrow">iPhone · iPad · Mac Catalyst</p>
-        <h1 class="hero__title">Books &amp; Vocab</h1>
+        <div class="hero__lockup">
+          <img class="hero__mark" src="/static/img/icon-512.png" alt="" width="512" height="512" fetchpriority="high">
+          <h1 class="hero__title">Books &amp; Vocab</h1>
+        </div>
         <p class="hero__tagline">把閱讀變成你的詞彙引擎：在 EPUB / PDF / TXT / Markdown 裡選詞即查，自動整理單字本、知識圖譜、每日複習與 Podcast。</p>
         <div class="hero__cta">
           <a class="kg-btn kg-btn--appstore" href="https://apps.apple.com/app/id6759816274">
@@ -77,21 +81,6 @@
           <li><span class="kg-chip kg-chip--tint">Mac Catalyst</span></li>
         </ul>
       </div>
-
-      <div class="hero__visual" aria-label="Books &amp; Vocab 實際 iPhone 產品畫面">
-        <figure class="hero-screen hero-screen--primary">
-          <img src="/static/img/screenshots/iphone-reader.png" alt="Books &amp; Vocab iPhone 閱讀器實際畫面，選詞後顯示翻譯卡片" width="462" height="1000" fetchpriority="high">
-          <figcaption>Reader</figcaption>
-        </figure>
-        <figure class="hero-screen hero-screen--secondary">
-          <img src="/static/img/screenshots/iphone-vocab-list.png" alt="Books &amp; Vocab iPhone 單字本實際畫面" width="462" height="1000" loading="eager">
-          <figcaption>單字本</figcaption>
-        </figure>
-        <figure class="hero-screen hero-screen--tertiary">
-          <img src="/static/img/screenshots/iphone-review-card.png" alt="Books &amp; Vocab iPhone 每日複習實際畫面" width="462" height="1000" loading="eager">
-          <figcaption>每日複習</figcaption>
-        </figure>
-      </div>
     </header>
 
     <!-- How it works — a 3-step journey on a divider connector (not cards). -->
@@ -105,57 +94,36 @@
       </ol>
     </section>
 
-    <!-- Product surfaces — real iPhone captures from the shipped app flow. -->
-    <section class="product-screens reveal" aria-label="Books &amp; Vocab 實際 iPhone 介面">
+    <!-- Product surfaces — text-only. The device shots were removed; what they
+         claimed now has to be stated, so each surface carries its own detail. -->
+    <section class="product-screens reveal" aria-label="Books &amp; Vocab 介面總覽">
       <div class="product-screens__intro">
         <p class="section-eyebrow">Inside the app</p>
         <h2 class="section-title">不是另一套背單字工具，是你的閱讀工作流。</h2>
       </div>
-      <div class="screen-rail">
-        <figure class="screen-card">
-          <img src="/static/img/screenshots/iphone-reader.png" alt="Books &amp; Vocab iPhone 閱讀器畫面，選取 sprout 後顯示翻譯卡片" loading="lazy">
-          <figcaption><span>Reader</span><strong>閱讀中即查即學</strong></figcaption>
-        </figure>
-        <figure class="screen-card">
-          <img src="/static/img/screenshots/iphone-vocab-list.png" alt="Books &amp; Vocab iPhone 單字本列表，顯示學習狀態與複習進度" loading="lazy">
-          <figcaption><span>單字本</span><strong>進度、狀態、篩選都在同一處</strong></figcaption>
-        </figure>
-        <figure class="screen-card">
-          <img src="/static/img/screenshots/iphone-review-card.png" alt="Books &amp; Vocab iPhone 每日複習卡片，包含釋義、發音、例句與相關詞" loading="lazy">
-          <figcaption><span>每日複習</span><strong>在原文語境裡記住</strong></figcaption>
-        </figure>
-        <figure class="screen-card">
-          <img src="/static/img/screenshots/iphone-knowledge-graph.png" alt="Books &amp; Vocab iPhone 知識圖譜畫面，單字以關聯網絡呈現" loading="lazy">
-          <figcaption><span>知識圖譜</span><strong>讓詞與詞長出關係</strong></figcaption>
-        </figure>
-      </div>
+      <dl class="surface-grid">
+        <div class="surface">
+          <dt><span class="surface__tag">Reader</span>閱讀中即查即學</dt>
+          <dd>長按選詞跳出翻譯卡：釋義、詞性、發音與貼合上下文的語境解釋，讀不中斷。</dd>
+        </div>
+        <div class="surface">
+          <dt><span class="surface__tag">單字本</span>進度、狀態、篩選都在同一處</dt>
+          <dd>未學習 / 待複習 / 已複習三段狀態，每個字帶熟練度與下次到期時間，可依複習優先排序。</dd>
+        </div>
+        <div class="surface">
+          <dt><span class="surface__tag">每日複習</span>在原文語境裡記住</dt>
+          <dd>卡片正面是字、背面是你當初讀到的那一句；記得／忘記兩鍵重排間隔。</dd>
+        </div>
+        <div class="surface">
+          <dt><span class="surface__tag">知識圖譜</span>你的生詞不是孤立的清單</dt>
+          <dd>同義、詞根、搭配自動連成一張網，並以顏色標出安全／到期／逾期——記一個字就帶起一整串。</dd>
+        </div>
+      </dl>
     </section>
 
-    <!-- Signature feature — knowledge graph, a token-rendered illustrative viz. -->
-    <section class="graph-showcase reveal" aria-label="知識圖譜">
-      <div class="graph-showcase__text">
-        <p class="feature-eyebrow">詞庫</p>
-        <h2>你的生詞不是孤立的清單</h2>
-        <p>同義、詞根、主題自動連結成一張知識圖譜——看見詞與詞之間的脈絡，記一個字就帶起一整串。</p>
-      </div>
-      <div class="graph-showcase__viz">
-        <svg viewBox="0 0 480 320" class="kg-graph" role="img" aria-label="知識圖譜示意：以 serene 為中心，連結 tranquil、placid、calm、unruffled 等同義詞。">
-          <g class="kg-graph__edges">
-            <line x1="240" y1="160" x2="110" y2="70"></line>
-            <line x1="240" y1="160" x2="380" y2="80"></line>
-            <line x1="240" y1="160" x2="90" y2="240"></line>
-            <line x1="240" y1="160" x2="370" y2="250"></line>
-          </g>
-          <g class="kg-graph__nodes" font-size="17" font-weight="700" text-anchor="middle">
-            <g class="is-focus"><rect x="186" y="140" width="108" height="40" rx="20"></rect><text x="240" y="165">serene</text></g>
-            <g><rect x="56" y="50" width="108" height="38" rx="19"></rect><text x="110" y="74">tranquil</text></g>
-            <g><rect x="328" y="62" width="104" height="38" rx="19"></rect><text x="380" y="86">placid</text></g>
-            <g><rect x="44" y="222" width="92" height="38" rx="19"></rect><text x="90" y="246">calm</text></g>
-            <g><rect x="306" y="232" width="128" height="38" rx="19"></rect><text x="370" y="256">unruffled</text></g>
-          </g>
-        </svg>
-      </div>
-    </section>
+    <!-- The illustrative knowledge-graph SVG lived here. Removed with the device
+         shots: it restated the 知識圖譜 entry above and was the loosest block
+         on the page once the visuals came out. -->
 
     <!-- Remaining feature flow -->
     <section class="landing-section" aria-label="功能">
