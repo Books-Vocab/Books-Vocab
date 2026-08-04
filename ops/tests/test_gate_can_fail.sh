@@ -369,29 +369,24 @@ while IFS= read -r g; do
 done <<<"$BLOCK_GATES"
 
 HIST_REPORT="$("$UV_BIN" run --no-project --python 3.13 python - $JOURNAL_GATES <<'PY'
-import importlib.util as u, json, sys
+import importlib.util as u, sys
 s = u.spec_from_file_location("wo", "ops/worktree_orchestrate.py")
 m = u.module_from_spec(s); s.loader.exec_module(m)
+# ONE reader, in the module. A second copy here is a second chance to disagree about
+# the same file, and it did: this copy used to count rows for gates that never started
+# (spawn failures, `executed: false`), which the module skips — so one row could read
+# "never green" here and "no data" there.
 path = m._gate_history_path(None)
-rows = []
-if path.is_file():
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-for gate in sys.argv[1:]:
-    mine = [r for r in rows if r.get("base_name") == gate and r.get("level") == "block"]
-    greens = [r for r in mine if r.get("status") == "pass"]
-    heads = {r.get("head8") for r in mine}
-    if greens:
-        print(f"PROVEN {gate} last-green={greens[-1]['ts']} attempts={len(mine)}")
-    elif len(mine) >= 3 and len(heads) >= 2:
-        print(f"NEVERGREEN {gate} attempts={len(mine)} heads={len(heads)}")
+rows = m.gate_history_rows(None)
+skipped = [r for r in rows if r.get("executed") is False]
+for gate, v in m.gate_history_verdicts(None, sys.argv[1:]).items():
+    if v["verdict"] == "proven":
+        print(f"PROVEN {gate} last-green={v['last_green']} attempts={v['attempts']}")
+    elif v["verdict"] == "never-green":
+        print(f"NEVERGREEN {gate} attempts={v['attempts']} heads={v['heads']}")
     else:
-        print(f"UNPROVEN {gate} attempts={len(mine)}")
-print(f"HISTORY {path} exists={path.is_file()} rows={len(rows)}")
+        print(f"UNPROVEN {gate} attempts={v['attempts']}")
+print(f"HISTORY {path} exists={path.is_file()} rows={len(rows)} unexecuted-skipped={len(skipped)}")
 PY
 )"
 while IFS= read -r line; do
