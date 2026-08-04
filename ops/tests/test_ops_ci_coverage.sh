@@ -10,13 +10,32 @@
 # Usage:
 #   ./ops/tests/test_ops_ci_coverage.sh                     # assert classification is total
 #   ./ops/tests/test_ops_ci_coverage.sh --print-linux-groups # emit the CI group list
+#
+# ── 為什麼理由要帶 token（IMP-0054，2026-08-04）────────────────────────────────
+# 原本每筆排除只帶一段散文理由。「required reason」讓排除看起來被稽核過，但**沒有任何
+# 東西查過理由是否為真**，於是理由描述的是「被測工具」而不是「這支測試」——工具打 ssh，
+# 測試卻是注入 seam 的離線 stub。排除從 27 筆降到 14 筆，**收回 13 個 group**；
+# `ops/test_devops.sh` 就在其中一個裡紅了 6.5 週沒人知道（IMP-0052）。收回的依據不是
+# 讀理由，是在 runner 等價容器裡實跑（`ops/ci_linux_repro.sh`）：23/23 全綠。
+#
+# 所以理由現在必須挑一個 token，而 `bin-*` token 是**可證偽的**：把它宣稱的命令換成
+# exit 127 的 stub 再跑一次那個 group，還能綠 = 這個相依不存在 = 契約紅。`data-*` /
+# `net-external` 這幾個本質上無法用 PATH 證偽（相依的是磁碟上的資產或外部服務），
+# 它們是這條檢查的**逃生口**——所以字彙表是封閉清單：要新增逃生口得動這張表，那是一次
+# 看得見、會被 review 的編輯，不是一句誰都能寫的散文。
 
+# 這支在 macOS 上約 130 秒：`bin-*` 的證偽對每個 group 要先跑一次未遮蔽的 baseline
+# 再跑一次遮蔽的，而 ios-ops 單趟就近一分鐘。不是卡住。
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"   # cd 之前先釘死，供源碼自檢用
 cd "$WORKSPACE"
 
-# Groups that need nothing beyond python/uv, git, ripgrep and jq.
+# 這些 group 在 linux runner 上只需要 workflow 明講會裝的東西：
+# git / curl / uv（python）＋ `.github/workflows/ops-suite.yml` 的 apt 清單
+# （ripgrep、jq、sqlite3、python3、openssh-client）。**清單要跟 workflow 對齊**——
+# 這裡寫一份、workflow 裝另一份，就是再造一次「兩個平面各有意見」。
 LINUX_GROUPS=(
   lint-baselines
   injection-lint
@@ -28,38 +47,63 @@ LINUX_GROUPS=(
   capability-matrix
   worktree-orchestrator
   script-help
+  # ── 以下 13 筆原本被排除，理由經證偽實測不成立後收進來（IMP-0054）──
+  # 共通形狀：測試本身是注入 seam 的離線 stub，散文理由描述的是它所測的那支工具。
+  backup-verify
+  devops
+  deploy-smoke
+  infra-health
+  reconcile
+  branch-audit
+  review-audit
+  log-assert
+  ios-release
+  ios-run-verdict
+  ios-device-files
+  ios-device-logs
+  review-flip-probe
 )
 
-# Everything else, each with the reason it cannot run on a linux CI runner.
-# A group without a reason is a silent coverage hole, so the reason is required.
+# token|要從 PATH 拿掉的命令（空 = 這個 token 無法用 PATH 證偽）
+#
+# 封閉字彙表。空 denial set 的 token 是逃生口，新增前先問：真正的相依是磁碟資產、
+# 外部服務，還是其實只是一支沒人跑過的離線測試？
+#
+# 曾經有過 bin-lldb（給 lldb-forensics 用）。證偽器當場否決：那支測試從不直接呼叫 lldb，
+# 它靠的是 xcrun。這段故事留成註解，不留成沒人用的活 token。
+DEP_TOKENS=(
+  "bin-xcode|xcodebuild xcrun swift swiftc"
+  "bin-ssh|ssh scp rsync"
+  "data-indexstore|"
+  "data-ui-world|"
+  "data-catalog-png|"
+  "data-git-history|"
+  "bsd-userland|"
+  "net-external|"
+)
+
+# 自我檢驗 fixture 用的 token。它是唯一允許「沒有任何排除引用」的 token——因為引用它的
+# 是下面那兩個合成 fixture。具名例外，不是通則。
+FIXTURE_TOKEN="bin-ssh"
+
+# group|token|reason —— reason 說明「為什麼這個 token 擋住了 linux runner」。
 EXCLUDED_GROUPS=(
-  "docs-lint|many verified_against anchors point at pre-squash commits that never reached origin, so they resolve only from local dangling objects (IMP-0038)"
-  "gate-can-fail|its ui-quality-fast proof needs the same UI World assets as ui-quality-gate"
-  "ui-quality-gate|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
-  "release|drives ops/release.sh against local tags and the iOS pbxproj"
-  "ios-release|xcodebuild / Xcode toolchain"
-  "ios-ops|xcodebuild + simulator"
-  "ios-run-verdict|xcodebuild verdict files"
-  "ios-cache-evict|Xcode DerivedData layout"
-  "ios-test-discovery|xcodebuild test enumeration"
-  "ios-device-files|physical device / libimobiledevice"
-  "ios-device-logs|physical device / libimobiledevice"
-  "ui-deadcode|IndexStore produced by Xcode"
-  "ui-graph|IndexStore produced by Xcode"
-  "log-assert|macOS unified logging (/usr/bin/log)"
-  "review-probe|macOS simulator instrumentation"
-  "review-flip-probe|macOS simulator instrumentation"
-  "lldb-forensics|lldb / macOS crash reports"
-  "visual-regression|rendered catalog PNGs from a simulator run"
-  "catalog-review|rendered catalog PNGs from a simulator run"
-  "backup-verify|reaches the production host over ssh"
-  "devops|reaches the production host over ssh"
-  "deploy-smoke|reaches the production host over ssh"
-  "infra-health|reaches the production host over ssh"
-  "reconcile|reconciler fixtures assume the deploy host layout"
-  "branch-audit|needs an authenticated gh token"
-  "review-audit|needs an authenticated gh token"
-  "podcast-ops|lab/podcast toolchain + network TTS"
+  "docs-lint|data-git-history|many verified_against anchors point at pre-squash commits that never reached origin, so they resolve only from local dangling objects (IMP-0038)"
+  "gate-can-fail|data-ui-world|its ui-quality-fast proof needs the same UI World assets as ui-quality-gate"
+  "ui-quality-gate|data-ui-world|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
+  "release|data-git-history|drives ops/release.sh against local tags and the iOS pbxproj"
+  "ios-ops|bin-xcode|shells out to the Xcode toolchain for real (swift 2x) — dies with it denied"
+  "lldb-forensics|bin-xcode|shells out to xcrun 4x for real — dies with it denied. Tokened bin-lldb first; the falsifier rejected that on the spot (it never invokes lldb directly)"
+  "ui-deadcode|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
+  "ui-graph|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
+  "visual-regression|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
+  "catalog-review|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
+  "podcast-ops|net-external|lab/podcast toolchain + network TTS"
+  # ── 以下三筆是我先收進 CI、再被 ubuntu 容器實跑打回來的（review 提供 runner 等價環境）──
+  # 「二進位不缺」不等於「跑得起來」：前兩筆缺的是 GNU/BSD 語意差，第三筆缺的是資產。
+  "ios-cache-evict|bsd-userland|BSD-only date/stat: date -v -900H (test_ios_cache_evict.sh:35,117) and stat -f %m (:79). On GNU both fail, every mtime collapses to one instant and the LRU ordering under test evaporates — measured 10 passed / 10 failed on ubuntu (IMP-0058)"
+  "ios-test-discovery|bsd-userland|a grep piped into head -1 at test_ios_test_discovery.sh:312 — GNU grep dies on SIGPIPE and pipefail propagates 141, killing the script. 5/5 rc=141 on ubuntu vs 5/5 rc=0 on macOS (IMP-0058)"
+  "review-probe|data-ui-world|case 14 (test_review_probe.sh:133-145) resolves ops/fixtures/ui_worlds/marketing_demo.json:58, an absolute path to an UNTRACKED 16MB .m4a — the very dependency this table already excludes ui-quality-gate for. Admitting it while excluding ui-quality-gate was self-contradictory"
 )
 
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
@@ -67,10 +111,13 @@ if [[ "${1:-}" == "--print-linux-groups" ]]; then
   exit 0
 fi
 
-pass=0; fail=0
+pass=0; fail=0; SEC_BASE=0
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
-section() { echo ""; echo "── $* ──"; }
+section() { echo ""; echo "── $* ──"; SEC_BASE=$fail; }
+# 收尾摘要必須看**本段**有沒有失敗，不是全域計數器。用全域的話，前面任何一段紅了之後，
+# 後面每一段都只印標題不印任何結論——「這段全過」與「這段根本沒跑」在輸出上一模一樣。
+ok_if_clean() { (( fail == SEC_BASE )) && ok "$*" || true; }
 
 # DEFAULT_TESTS is the SoT for what the suite contains.
 DECLARED=()
@@ -99,7 +146,7 @@ for g in "${DECLARED[@]}"; do
     fail_t "$g is in both LINUX_GROUPS and EXCLUDED_GROUPS"
   fi
 done
-(( fail == 0 )) && ok "all ${#DECLARED[@]} group(s) classified"
+ok_if_clean "all ${#DECLARED[@]} group(s) classified"
 
 section "no classification refers to a group that no longer exists"
 for g in "${LINUX_GROUPS[@]}" "${EXCLUDED_GROUPS[@]%%|*}"; do
@@ -107,7 +154,230 @@ for g in "${LINUX_GROUPS[@]}" "${EXCLUDED_GROUPS[@]%%|*}"; do
   for d in "${DECLARED[@]}"; do [[ "$d" == "$g" ]] && found=1; done
   (( found == 1 )) || fail_t "$g is classified but not in DEFAULT_TESTS — stale entry"
 done
-ok "classification contains no stale entries"
+ok_if_clean "classification contains no stale entries"
+
+# ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
+# 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且（在 ops/ 下
+# 或在 repo root）」（worktree_orchestrate.py:plan_gates）；workflow 的 `ops/**`
+# 一條就涵蓋前半，後半沒有共同前綴，只能逐條列——所以它是會漂的那一半。
+# 漏一條的後果就是 IMP-0052 本身：本機 gate 擋得住、CI 完全看不到那支腳本。
+WF=".github/workflows/ops-suite.yml"
+section "the workflow triggers on every root script cutover routes"
+wf_paths=()
+while IFS= read -r pat; do wf_paths+=("$pat"); done < <(
+  awk '/paths: &ops_paths/,/^  pull_request:/' "$WF" \
+    | grep -oE "^ *- '[^']+'" | sed "s/^ *- '//;s/'\$//"
+)
+# 自測：解析不到 `ops/**` 就代表 awk 抓錯區塊，下面整段迴圈會變成恆真。
+# 先看筆數再展開——bash 3.2 配 `set -u` 展開空陣列是**crash** 不是空迴圈，
+# 那會讓這條「偵測探針壞掉」的檢查自己死在報告之前，並帶走後面所有 section。
+wf_has_ops=0
+if (( ${#wf_paths[@]} > 0 )); then
+  for p in "${wf_paths[@]}"; do [[ "$p" == 'ops/**' ]] && wf_has_ops=1; done
+fi
+if (( wf_has_ops == 0 )); then
+  fail_t "could not parse the paths anchor out of $WF (got ${#wf_paths[@]} entry/entries, none of them 'ops/**') — the probe is broken, not the workflow"
+else
+  root_sh=()
+  while IFS= read -r f; do root_sh+=("$f"); done < <(git ls-files '*.sh' | grep -v '/')
+  if (( ${#root_sh[@]} == 0 )); then
+    # 空清單會讓下面的迴圈零圈跑完然後印 ✓——「沒有東西違規」與「沒有東西被檢查」
+    # 在輸出上長得一模一樣。這是本輪反覆出現的那種假綠，明確擋掉。
+    fail_t "git ls-files found no tracked root shell script — the probe is broken (devops.sh at minimum should be there)"
+  else
+    missing=""
+    for f in "${root_sh[@]}"; do
+      listed=0
+      for p in "${wf_paths[@]}"; do [[ "$p" == "$f" ]] && listed=1; done
+      (( listed == 1 )) || missing="${missing:+$missing }$f"
+    done
+    if [[ -n "$missing" ]]; then
+      fail_t "cutover routes these root script(s) but $WF does not trigger on them: $missing"
+    else
+      ok "all ${#root_sh[@]} tracked root script(s) are in the workflow paths anchor"
+    fi
+  fi
+  # 反向：列了但檔案不存在 = 早已改名/刪除的死條目，會讓上面的檢查看起來很健康。
+  stale=""
+  for p in "${wf_paths[@]}"; do
+    [[ "$p" == *'*'* || "$p" == */* ]] && continue   # glob 與帶目錄的條目不在本檢查範圍
+    [[ -f "$p" ]] || stale="${stale:+$stale }$p"
+  done
+  if [[ -n "$stale" ]]; then
+    fail_t "$WF lists root path(s) that no longer exist: $stale"
+  else
+    ok "the workflow lists no root path that has disappeared"
+  fi
+fi
+
+# ── token 字彙 + 證偽 ────────────────────────────────────────────────────────
+
+token_denials() {  # token → denial set；未知 token 回 __UNKNOWN__
+  local want="$1" t
+  for t in "${DEP_TOKENS[@]}"; do
+    [[ "${t%%|*}" == "$want" ]] && { printf '%s' "${t#*|}"; return 0; }
+  done
+  printf '__UNKNOWN__'
+}
+
+# 用 exit 127 的 stub 遮蔽 <denied> 裡的命令，再跑 <cmd...>，回傳它的 exit code。
+# 遮蔽靠 PATH 前置，所以只擋得住「靠 PATH 解析」的呼叫；絕對路徑呼叫（/usr/bin/log）
+# 穿得過去——這個缺口**沒有補**，見下面 falsify 段的註解。
+#
+# GH_TOKEN/GITHUB_TOKEN 只在 denial set 含 gh 時才清：先前無條件清空，等於夾帶一道
+# 沒有任何 token 宣告的額外 denial，一個標 bin-xcode 的 group 若其實是死在缺 token，
+# 會被認證成 xcode 相依。
+run_denied() {
+  local denied="$1"; shift
+  local shim rc=0 b
+  shim="$(mktemp -d)"
+  for b in $denied; do
+    printf '#!/bin/sh\necho "DENIED: %s" >&2\nexit 127\n' "$b" >"$shim/$b"
+    chmod +x "$shim/$b"
+  done
+  # 目前**走不到**：唯二的 denial set 是 xcode 那組與 ssh 那組，都不含 gh。留著是因為
+  # 一旦有人加 `bin-gh`，少了這段，shim 會被一個仍然有效的 token 繞過去而假綠。
+  # 它是未來的保險，不是現在生效的保護——不要把它讀成後者。
+  if [[ " $denied " == *" gh "* ]]; then
+    PATH="$shim:$PATH" GH_TOKEN="" GITHUB_TOKEN="" "$@" >/dev/null 2>&1 || rc=$?
+  else
+    PATH="$shim:$PATH" "$@" >/dev/null 2>&1 || rc=$?
+  fi
+  rm -rf "$shim"
+  return "$rc"
+}
+
+run_plain() { "$@" >/dev/null 2>&1; }
+
+section "every exclusion carries a token from the closed vocabulary"
+for e in "${EXCLUDED_GROUPS[@]}"; do
+  g="${e%%|*}"; rest="${e#*|}"; tok="${rest%%|*}"; why="${rest#*|}"
+  if [[ "$tok" == "$rest" || -z "$why" || "$why" == "$tok" ]]; then
+    fail_t "$g: expected group|token|reason, got '$e'"
+  elif [[ "$(token_denials "$tok")" == "__UNKNOWN__" ]]; then
+    fail_t "$g: token '$tok' is not in DEP_TOKENS — add it there (a visible edit) or pick an existing one"
+  fi
+done
+ok_if_clean "all ${#EXCLUDED_GROUPS[@]} exclusion(s) carry a known token and a reason"
+
+# 這張表是**資料**，不該執行。反引號寫進雙引號陣列元素會被 bash 做命令替換：本檔第一版
+# 的理由裡引用了那條有問題的 grep 當例證，結果它真的被執行、真的吃到 SIGPIPE，
+# 整支腳本以 rc=141 死掉且一個字都沒印——正是那條理由描述的 bug。
+#
+# 檢查的對象必須是**原始碼文字**，不是陣列元素的值。`ARR=( "..." )` 是雙引號賦值，
+# bash 在**賦值當下**就做完命令替換，等迴圈讀到元素時反引號早被輸出取代——所以
+# 「檢查元素值」的版本對危險寫法永遠不會紅，只會對單引號（本來就無害）那種紅，
+# 極性是反的。這是 reviewer 用注入實測打掉的：注入的命令跑了，檢查照樣印 ✓。
+section "reason strings are inert data"
+danger=0
+while IFS= read -r srcline; do
+  if [[ "$srcline" == *'`'* || "$srcline" == *'$('* ]]; then
+    fail_t "table source executes at parse time (backtick or \$( ): ${srcline#"${srcline%%[![:space:]]*}"}"
+    danger=1
+  fi
+done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
+# 自測：解析不到表就代表 awk 抓錯範圍，上面的迴圈零圈跑完會長得像「沒有危險寫法」。
+tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
+if (( tbl_lines < 10 )); then
+  fail_t "only parsed $tbl_lines line(s) of the table literals out of $SELF — the probe is broken, not the table"
+elif (( danger == 0 )); then
+  ok "no line of the table literals ($tbl_lines) contains a backtick or \$("
+fi
+
+section "every token in the vocabulary is actually referenced"
+for t in "${DEP_TOKENS[@]}"; do
+  tok="${t%%|*}"; used=0
+  for e in "${EXCLUDED_GROUPS[@]}"; do
+    rest="${e#*|}"; [[ "${rest%%|*}" == "$tok" ]] && used=1
+  done
+  [[ "$tok" == "$FIXTURE_TOKEN" ]] && used=1   # 具名例外：自我檢驗 fixture 的 token
+  (( used == 1 )) || fail_t "token '$tok' is in DEP_TOKENS but no exclusion uses it — an unused escape hatch nobody reviews"
+done
+ok_if_clean "all ${#DEP_TOKENS[@]} token(s) are in use"
+
+# 證偽器自己也會壞，而且壞法是「永遠說相依存在」——那正好是靜悄悄放行所有假理由。
+# 先用合成 fixture 把兩個方向都釘住，再拿它去判真的 group。
+#
+# baseline 這一維不可省：只斷言「denial 下非零」分不出「shim 擋住了 ssh」與「這台機器
+# 根本沒有 ssh」。實測——把 PATH 前置改成後綴（denial 完全失效），在有 ssh 的機器上會被
+# 抓到，但把 /usr/bin/ssh 移走之後整支回 8 passed / 0 failed。
+section "the falsifier can tell a real dependency from a claimed one"
+fx="$(mktemp -d)"
+printf '#!/bin/sh\nexit 0\n' >"$fx/liar.sh"                    # 宣稱要 ssh，其實碰都沒碰
+printf '#!/bin/sh\nssh -V >/dev/null 2>&1\n' >"$fx/honest.sh"  # 真的靠 ssh
+chmod +x "$fx/liar.sh" "$fx/honest.sh"
+fixture_denials="$(token_denials "$FIXTURE_TOKEN")"
+# 這台機器上，下面那段證偽真的會跑到嗎？沒有任何 bin-* token 的命令存在（linux runner
+# 就是這樣：沒有 xcodebuild）→ 證偽整章都會 declared-skip，自我檢驗守的是空氣。
+# 那種情況下缺 ssh 只是「fixture 跑不動」，不該把整個 ops-ci-coverage 判紅——它同時是
+# 分類 gate，而分類 gate 跟 ssh 一點關係都沒有。相反地，只要有任何一個 bin-* 相依真的
+# 存在、證偽即將實跑，自我檢驗失效就是致命的，必須紅。
+falsify_will_run=0
+for e in "${EXCLUDED_GROUPS[@]}"; do
+  rest="${e#*|}"; tok="${rest%%|*}"
+  [[ "$tok" == bin-* ]] || continue
+  d="$(token_denials "$tok")"; [[ "$d" == "__UNKNOWN__" ]] && continue
+  for b in $d; do command -v "$b" >/dev/null 2>&1 && falsify_will_run=1; done
+done
+if ! run_plain "$fx/honest.sh"; then
+  if (( falsify_will_run == 0 )); then
+    echo "  · self-test skipped: no [$fixture_denials] on this host, and no bin-* dependency exists here either — nothing to falsify" >&2
+    ok "self-test declared-skipped (no falsification will run on this host)"
+  else
+    fail_t "this host cannot prove denial works: honest.sh fails even undenied (missing [$fixture_denials]?) — yet a real bin-* falsification is about to run, so every verdict below would be vacuous"
+  fi
+else
+  ok "baseline: the ssh fixture passes when nothing is denied"
+  if run_denied "$fixture_denials" "$fx/liar.sh"; then
+    ok "a group that survives denial is detected (would be flagged)"
+  else
+    fail_t "falsifier reported a dependency for a script that never calls ssh — it would flag nothing"
+  fi
+  if run_denied "$fixture_denials" "$fx/honest.sh"; then
+    fail_t "falsifier let a genuinely ssh-dependent script through as surviving — denial is not taking effect"
+  else
+    ok "a group that genuinely needs the binary still dies under denial"
+  fi
+fi
+rm -rf "$fx"
+
+# 已知未補的缺口，明寫出來而不是假裝有守：絕對路徑呼叫（ops/lib/ios_ops_logs.sh 的
+# /usr/bin/log 就是一例）穿得過 PATH 遮蔽。先前這裡有一條 grep 守衛，但它掃的是
+# ops/test_ops.sh——那只是 dispatcher，對任何 binary 都零命中，是一條寫著卻永遠不會響的
+# 檢查，比沒有更危險。要補得掃出 group 的真實命令鏈，屬 IMP-0059。
+section "no bin-* exclusion survives losing the binary it names"
+for e in "${EXCLUDED_GROUPS[@]}"; do
+  g="${e%%|*}"; rest="${e#*|}"; tok="${rest%%|*}"
+  [[ "$tok" == bin-* ]] || continue
+  # 自己不能證偽自己：下面是 `./ops/test_ops.sh "$g"`，$g 是本 group 就無限遞迴。
+  # 今天走不到（ops-ci-coverage 在 LINUX_GROUPS 裡），但那是一個單字的距離。
+  [[ "$g" == "ops-ci-coverage" ]] && { fail_t "$g cannot falsify itself — the falsifier would re-invoke this script forever"; continue; }
+  denials="$(token_denials "$tok")"
+  [[ "$denials" == "__UNKNOWN__" ]] && continue
+  # 這台機器上一個都沒裝 → 遮蔽是 no-op，group 死掉跟 shim 無關，判它「證實」是恆真式。
+  # linux runner 上正是這個情況（沒有 xcodebuild），所以 ops-suite 綠燈**不**構成理由被
+  # 驗過的證據。明講並跳過，別讓恆真通過長得像證明。
+  installed=""
+  for b in $denials; do command -v "$b" >/dev/null 2>&1 && installed="${installed:+$installed }$b"; done
+  if [[ -z "$installed" ]]; then
+    echo "  · $g: skipped — none of [$denials] exist on this host, denial would be a no-op" >&2
+    ok "$g: falsification skipped on this host (declared, not silently passed)"
+    continue
+  fi
+  echo "  … $g: baseline run (undenied)…" >&2
+  if ! run_plain ./ops/test_ops.sh "$g"; then
+    # 「非零」不等於「因為被 deny 而非零」。少了這一腿，一個壞掉的 group 會被永久認證成
+    # 合法排除、永遠不進 CI——IMP-0052 原封不動搬到上一層。
+    fail_t "$g is already red WITHOUT denial, so its death proves nothing about '$tok' — fix the group first"
+    continue
+  fi
+  echo "  … $g: falsifying (denying:$installed)…" >&2
+  if run_denied "$denials" ./ops/test_ops.sh "$g"; then
+    fail_t "$g claims '$tok' but passed with [$denials] denied — the reason is false; move it to LINUX_GROUPS or state the real dependency"
+  else
+    ok "$g passes undenied and dies without [$installed]"
+  fi
+done
 
 echo ""
 echo "ops-ci-coverage: $pass passed, $fail failed"

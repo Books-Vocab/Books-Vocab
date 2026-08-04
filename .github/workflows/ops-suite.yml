@@ -14,6 +14,10 @@ on:
   push:
     paths: &ops_paths
       - 'ops/**'
+      # repo-root 腳本。`devops.sh` 是生產部署命令，`ops/test_devops.sh` 測的就是它——
+      # 少了這一行，測試改動會觸發 workflow，被測的那支腳本改動卻不會（IMP-0052）。
+      - 'devops.sh'
+      - 'start.sh'
       - '.github/workflows/ops-suite.yml'
   pull_request:
     paths: *ops_paths
@@ -28,9 +32,17 @@ jobs:
           # reachable from HEAD, which needs real history in the object db.
           fetch-depth: 0
       - name: Install uv
+        # setup-uv v6 的 enable-cache 預設是 "auto"，在 GitHub-hosted runner 上等於開啟，
+        # 所以這裡不需要（也不該）顯式寫 enable-cache: true——那會讀起來像是這個 edit
+        # 帶來了加速，實際上什麼都沒改變。
         uses: astral-sh/setup-uv@v6
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      - name: Install tools the suite needs
+        # 明列，不靠 ubuntu-latest 碰巧預裝：runner image 的工具清單不是契約，而
+        # `ubuntu-latest` 是會動的標籤。實測（runner 等價容器）少了它們的後果——
+        # jq→ui-quality-plane/branch-audit/review-audit、sqlite3→backup-verify、
+        # python3→infra-health、ssh→證偽器自我檢驗。清單與
+        # ops/tests/test_ops_ci_coverage.sh 開頭那段註解是同一份，改一邊要改兩邊。
+        run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3 python3 openssh-client
       - name: Assert every group is classified
         run: ./ops/tests/test_ops_ci_coverage.sh
       - name: Run platform-independent ops groups
