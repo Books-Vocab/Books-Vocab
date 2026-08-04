@@ -34,7 +34,13 @@ grep -q 'require_local_files()' "$KG"    && ok "KG require_local_files()"    || 
 
 # ── 4. Deploy pipeline 結構 ────────────────────────────────────────────────
 section "Deploy pipeline"
-grep -q 'cmd_backup'       "$KG"    && ok "KG deploy calls cmd_backup"    || fail_t "KG deploy missing cmd_backup"
+# 2026-06-15 遷 standby 起 deploy 不再自動備份（備份走 launchd com.kg.backup 自己的
+# 排程，見 docs/sop/deploy.md §標準部署流程）。這裡原本斷言「deploy calls cmd_backup」，
+# 而它是被 devops.sh:594 的**函式定義**滿足的——全檔 grep 分不出定義與呼叫，所以語意
+# 整個反轉之後它照樣是綠的。改成對 cmd_deploy 函式範圍的斷言，兩個方向才都測得到。
+awk '/^cmd_deploy\(\)/,/^}$/' "$KG" | grep -q 'cmd_backup' \
+  && fail_t "KG deploy runs a backup inline — that moved to the com.kg.backup schedule" \
+  || ok "KG deploy does not back up inline (scheduled separately)"
 grep -q 'for i in $(seq 1' "$KG"    && ok "KG health retry loop"    || fail_t "KG health retry loop missing"
 grep -q 'local http_code'  "$KG"    && ok "KG http_code variable"    || fail_t "KG http_code variable missing"
 grep -q -- "--exclude='_ops_backups/'" "$KG" \
@@ -138,7 +144,12 @@ grep -q 'git rev-parse --short HEAD' "$KG" \
 grep -q 'VERSION' "$KG" \
   && ok "KG writes VERSION file" \
   || fail_t "KG missing VERSION file write"
-grep -q -- 'docker compose up -d --build --force-recreate' "$KG" \
+# 函式範圍 + 剝註解，兩者缺一不可。全檔 grep 會被兩種東西滿足：把正確命令寫進**註解**
+# （devops.sh:418-427 現在就有一整段在談這條命令），以及旗標搬到 cmd_restart 之類的
+# **別的函式**。回補旗標的那個 commit 順手加了註解，若沿用全檔 grep，等於一邊修回歸
+# 一邊為下一次同樣的回歸鋪好綠燈。
+awk '/^cmd_deploy\(\)/,/^}$/' "$KG" | grep -v '^[[:space:]]*#' \
+  | grep -q -- 'docker compose up -d --build --force-recreate' \
   && ok "KG deploy force-recreates container so VERSION is re-read" \
   || fail_t "KG deploy should force-recreate container after stamping VERSION"
 grep -q 'deploy.log' "$KG" \
@@ -333,37 +344,99 @@ printf '%s\n' "$*"
 STUBEOF
 chmod +x "$STUB_BASE"
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" caddy-status 2>/dev/null | tail -1)
-[[ "$typed_out" == 'run sudo systemctl status caddy' ]] \
-  && ok "caddy-status maps to fixed readonly command" \
-  || fail_t "caddy-status mapping drifted: $typed_out"
+# set -o pipefail 下 `$(wrapper ... | tail -1)` 的狀態是 **wrapper** 的狀態——tail 遮不住。
+# 某個 arm 一被刪掉，wrapper 就落到 usage 分支非零退出，賦值失敗，set -e 在下面的斷言
+# 之前殺掉整支腳本：輸出裡一個 ✗ 都沒有、後面的斷言連跑都沒跑，而那正是最需要診斷的
+# 時刻。
+#
+# 但 rc 不能只是「抓進來然後不看」——那是把大聲難看的偵測換成安靜的漏放（實測：arm 印出
+# 正確命令後 exit 3，整組全綠；改版前那個 mutant 反而是紅的）。非零一律回傳 `EXIT-<rc>`，
+# 六條 `==` 比較全部判紅，且 exit code 直接出現在診斷字串裡。
+#
+# 也不 `tail -1`：這六個 arm 的 stdout 恰好一行，比對**完整 stdout** 才釘得住「這個 typed
+# 命令只碰得到什麼」——只看最後一行的話，在正確命令之前多送一條 `run cat /etc/shadow`
+# 是綠的，而「縮 raw run surface」正是本段存在的理由。
+typed_all() {
+  local out rc=0
+  out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" "$@" 2>/dev/null) || rc=$?
+  (( rc == 0 )) || { printf 'EXIT-%d' "$rc"; return 0; }
+  printf '%s' "$out"
+}
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" caddyfile 2>/dev/null | tail -1)
-[[ "$typed_out" == 'run cat /etc/caddy/Caddyfile' ]] \
-  && ok "caddyfile maps to fixed readonly command" \
-  || fail_t "caddyfile mapping drifted: $typed_out"
+# caddy-status / caddyfile 保留舊名（agent 肌肉記憶 + docs/sop/debug.md 仍這樣寫），
+# 但 standby 遷 felix + Cloudflare Tunnel 後底下已無 Caddy：前者改探 cloudflared，
+# 後者根本沒有本地檔可讀（ingress 是 CF remotely-managed）。這兩條斷言在 2026-06-15
+# 之後就描述著一個不存在的世界，紅到 2026-08-04 才被看見（IMP-0053）。
+# 這是六條裡唯一用**前綴**比對的（fallback 訊息會變動，不宜整串釘死）。`!= *$'\n'*`
+# 不可省：`tail -1` 還在的時候，結尾那個 `*` 只吃得掉同一行的其餘部分；改成比對完整
+# stdout 之後，它吃掉的是**整個剩餘輸出含換行**——於是往這條 arm 後面追加任意遠端命令
+# 完全隱形，而那正是拿掉 tail -1 要修的東西（實測：改版前紅、改版後綠）。契約要講完整：
+# 這條 typed surface 只發**一條**遠端命令，且它以 pgrep cloudflared 開頭。
+typed_out=$(typed_all caddy-status)
+if [[ "$typed_out" == "run pgrep -lf 'cloudflared.*tunnel'"* \
+   && "$typed_out" != *caddy* && "$typed_out" != *$'\n'* ]]; then
+  ok "caddy-status probes the cloudflared tunnel (no Caddy on standby)"
+else
+  fail_t "caddy-status mapping drifted: $typed_out"
+fi
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-ps 2>/dev/null | tail -1)
+# caddyfile 是唯一「不打遠端」的 typed 指令：CF ingress 存在 Cloudflare 端，沒有本地
+# 檔案可 cat。契約因此是**不得發出任何 remote 命令**，並在 stderr 指向 ingress 正本。
+#
+# 兩者必須綁成一條，順序不可反：空 stdout 本身是**假證據**——arm 被刪掉、subcommand
+# 打錯、腳本提早 exit，stdout 一樣是空的。先用 stderr 的 SoT 指標證明這條 arm 真的跑過，
+# 「它沒發出遠端命令」才是關於被測路徑的斷言而非關於「什麼都沒發生」的同義反覆。
+# rc 要顯式接住：這是本組唯一不以 `| tail -1` 收尾的捕捉，而管線最後一段的 tail 恆 0，
+# 正是其他每一條被 set -e 放過的原因。少了 `|| rc=$?`，arm 一被刪掉 wrapper 就落到
+# usage 分支非零退出，`set -e` 在下面的 if 判斷**之前**就殺掉整支腳本——診斷訊息永遠
+# 印不出來，後面 8 條斷言連跑都沒跑，而且輸出裡一個 ✗ 都沒有。
+caddyfile_err_file="$(mktemp)"
+caddyfile_rc=0
+caddyfile_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" caddyfile 2>"$caddyfile_err_file") \
+  || caddyfile_rc=$?
+caddyfile_err=$(cat "$caddyfile_err_file"); rm -f "$caddyfile_err_file"
+if (( caddyfile_rc != 0 )); then
+  fail_t "caddyfile exited $caddyfile_rc — the arm is gone or broken: ${caddyfile_err:-(no stderr)}"
+elif [[ "$caddyfile_err" != *kg-backend-deployment.md* ]]; then
+  fail_t "caddyfile stopped naming the ingress SoT: $caddyfile_err"
+elif [[ "$caddyfile_err" == *'[Preflight]'* ]]; then
+  # 正面證據勝過「stdout 是空的」：只有 run_fixed_remote 會印 preflight banner，所以
+  # 把遠端輸出重導掉也逃不過——空 stdout 本身無法區分「沒打遠端」與「打了但沒回顯」。
+  fail_t "caddyfile reached the host — preflight banner present, so a remote command ran"
+elif [[ -n "$caddyfile_out" ]]; then
+  fail_t "caddyfile stdout must be empty, got: $caddyfile_out"
+else
+  ok "caddyfile issues no remote command, names the ingress SoT, and never preflights"
+fi
+
+typed_out=$(typed_all docker-ps)
 [[ "$typed_out" == 'run docker ps' ]] \
   && ok "docker-ps maps to fixed readonly command" \
   || fail_t "docker-ps mapping drifted: $typed_out"
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-logs 25 2>/dev/null | tail -1)
-[[ "$typed_out" == 'run docker logs knowledge-graph-api -n 25' ]] \
-  && ok "docker-logs maps to container log tail" \
+# 餵 7 而不是 25：預設是 100，但「寫死成 25」與「透傳 25」在只測 25 時無法區分——
+# 挑一個沒人會寫死的值，再補一條不帶參數的呼叫把預設本身釘住。
+typed_out=$(typed_all docker-logs 7)
+[[ "$typed_out" == 'run docker logs knowledge-graph-api -n 7' ]] \
+  && ok "docker-logs passes the caller's line count through" \
   || fail_t "docker-logs mapping drifted: $typed_out"
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" disk-usage 2>/dev/null | tail -1)
+typed_out=$(typed_all docker-logs)
+[[ "$typed_out" == 'run docker logs knowledge-graph-api -n 100' ]] \
+  && ok "docker-logs defaults to 100 lines" \
+  || fail_t "docker-logs default drifted: $typed_out"
+
+typed_out=$(typed_all disk-usage)
 [[ "$typed_out" == 'run df -h' ]] \
   && ok "disk-usage maps to df -h" \
   || fail_t "disk-usage mapping drifted: $typed_out"
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" memory-usage 2>/dev/null | tail -1)
+typed_out=$(typed_all memory-usage)
 [[ "$typed_out" == 'run free -m' ]] \
   && ok "memory-usage maps to free -m" \
   || fail_t "memory-usage mapping drifted: $typed_out"
 
-typed_out=$(KG_DEVOPS_BASE="$STUB_BASE" bash "$SAFE_KG" docker-stats 2>/dev/null | tail -1)
+typed_out=$(typed_all docker-stats)
 [[ "$typed_out" == 'run docker stats --no-stream' ]] \
   && ok "docker-stats maps to non-streaming stats" \
   || fail_t "docker-stats mapping drifted: $typed_out"

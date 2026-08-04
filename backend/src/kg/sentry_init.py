@@ -25,8 +25,9 @@ _initialized = False
 # authenticated request (hot path).
 _sentry_module: Any | None = None
 
-# Production: deploy.sh writes the deploy SHA to /app/VERSION (rsync'd into the
-# container). Acts as the last-resort release identifier when no env override
+# Production: the deploy path writes the deploy SHA to backend/VERSION on the
+# deploy host, bind-mounted to /app/VERSION (no rsync since the 2026-06-15 move
+# to standby). Acts as the last-resort release identifier when no env override
 # is present.
 _DEFAULT_VERSION_FILE = Path("/app/VERSION")
 

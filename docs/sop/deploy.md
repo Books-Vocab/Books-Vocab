@@ -4,6 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/
+  - devops.sh
   - ops/
 verified_against: 10586683d
 -->
@@ -11,7 +12,7 @@ verified_against: 10586683d
 
 > ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
 >
-> **狀態（2026-06-15 遷移，2026-06-19 wrapper retarget）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（無 Caddy / 無 inbound 埠）。Lightsail instance 已 terminate（僅作冷重建 rollback 備援）。`./ops/devops_kg_safe.sh deploy/restart/migrate/backup` 已 retarget standby（transport 變數 `KG_SERVER`/`KG_REMOTE_DIR`/`KG_REMOTE_DATA_DIR`，default felix；`KG_ALLOW_LIGHTSAIL` guard 已移除）；`deploy` = 遠端 `git pull --ff-only` + 寫 VERSION + `docker compose up -d --build` + health + smoke（§標準部署流程）。下方 §Lightsail rollback 段為冷重建歷史語境，保留供災難回滾。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)；服務層部署正本見 butler `~/butler/docs/kg-backend-deployment.md`。
+> **狀態（2026-06-15 遷移，2026-06-19 wrapper retarget）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（無 Caddy / 無 inbound 埠）。Lightsail instance 已 terminate（僅作冷重建 rollback 備援）。`./ops/devops_kg_safe.sh deploy/restart/migrate/backup` 已 retarget standby（transport 變數 `KG_SERVER`/`KG_REMOTE_DIR`/`KG_REMOTE_DATA_DIR`，default felix；`KG_ALLOW_LIGHTSAIL` guard 已移除）；`deploy` = 遠端 `git pull --ff-only` + 寫 VERSION + `docker compose up -d --build --force-recreate` + health + smoke（§標準部署流程）。下方 §Lightsail rollback 段為冷重建歷史語境，保留供災難回滾。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)；服務層部署正本見 butler `~/butler/docs/kg-backend-deployment.md`。
 
 ## 核心資訊
 
@@ -120,7 +121,7 @@ launchctl bootout gui/$(id -u)/com.kg.reconcile
 
 舊 Lightsail `deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build + **force-recreate** → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**。
 
-> 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate/force-recreate。
+> 現役 standby `deploy` 內部流程見上方 §標準部署流程：`git pull --ff-only` → 寫 VERSION → `docker compose up -d --build --force-recreate` → health（`api/system/info`）→ 外部 smoke verify；migration 由 app 啟動自動跑，deploy 不再自動 backup/migrate。**force-recreate 仍在**——2026-06-19 retarget 時掉了，紅了 6.5 週才被發現並回補（IMP-0052）。代價是不進 image 的 commit 也會斷幾秒、且前一顆容器的 json-file log（`docker-logs` 看得到的範圍）會消失；換的是版本游標與容器自報值一致，smoke gate 與 Sentry release tag 都靠它。
 
 部署完成後確認遠端版本：
 - `./devops.sh status` — 顯示部署版本 + 最近部署記錄
