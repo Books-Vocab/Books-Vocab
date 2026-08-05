@@ -152,6 +152,7 @@ mechanisms:
     docs:
       - docs/reference/catalog_scope.md
       - docs/sop/ios.md
+    notes: "FROZEN 2026-08-05 — catalog stopped expanding (still fully runnable). New screens do not get catalog surfaces; the UI World feeding it is frozen. Scope, red lines and un-freeze conditions: docs/reference/catalog_scope.md FROZEN section."
 
   - id: snapshot.catalog_coverage
     layer: state-snapshot
@@ -165,6 +166,7 @@ mechanisms:
       duplicate/undeclared taxonomy. Red at `ios_ops.sh test`.
     docs:
       - docs/reference/catalog_scope.md
+    notes: "FROZEN 2026-08-05 — the 76 source-text rules stay enforced for already-migrated scenarios (zero cost), but new scenarios are no longer required to join the UI World. See docs/reference/catalog_scope.md FROZEN section."
 
   - id: behavior.uitest_flows
     layer: behavior

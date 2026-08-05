@@ -160,16 +160,22 @@ documents:
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
 
+  # FROZEN 2026-08-05 — catalog 停止擴張（正本 = 本 doc 的 §FROZEN）。
+  # 移除 ios_surface_changed 與 Views/ source：凍結後「改一個 View」不再蘊含
+  # 「要更新 catalog scope」，留著只會讓 doc-sync agent 一直回頭改一份已凍結的
+  # 文檔。Debug/ 保留——真的動到展示廳本身仍該同步這份 SoT。
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
     kind: reference
     authority: SoT
     triggers:
       - catalog_scope_changed
-      - ios_surface_changed
     sources:
-      - ios/BooksAndVocab/Views/
       - ios/BooksAndVocab/Debug/
+      # 凍結期「不該被動」的三處：動了就該被指回 §FROZEN 重讀紅線。
+      - ops/fixtures/ui_worlds/
+      - ops/demo/
+      - ops/ui_world_manifest.py
 
   - id: reference.tech_index
     path: docs/reference/tech_index.md
