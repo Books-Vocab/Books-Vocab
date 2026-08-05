@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: 941fe100f
+verified_against: 9094a8326
 -->
 # UI Component & Pattern Inventory
 
