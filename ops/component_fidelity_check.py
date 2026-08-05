@@ -51,7 +51,7 @@ CONTRACT: dict[str, dict[str, str]] = {
         "box-shadow": "var(--elevation-z1)",
         "padding": "var(--card-padding)",
     },
-    # button ↔ iOS AppActionButtonStyle: AppRadius.md(8), subhead, .semibold (→700 on web,
+    # button ↔ iOS AppActionButtonStyle: AppRoundness.control（46pt 高 → r≈6.9；web 側維持絕對 8px）, subhead, .semibold (→700 on web,
     # ElmsSans ships 400/700 only). Press feedback intentionally uses the shared web
     # TapFeedback triplet (北極星 5 motion convergence), NOT AppActionButtonStyle's bespoke
     # 0.992/0.82 — so it is NOT pinned here.

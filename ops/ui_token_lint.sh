@@ -6,7 +6,7 @@
 #
 #   raw .padding(<number>)                   → AppSpacing.sN
 #   raw .shadow(...)                         → .appElevation(.zN)
-#   RoundedRectangle(cornerRadius: <number>) → AppRadius.*
+#   RoundedRectangle(cornerRadius: <number>) → AppRoundedRect(roundness: AppRoundness.*)
 #   .cornerRadius(<number>)                  → AppRadius.*
 #   raw hex color (Color(hex:/0xRRGGBB/#RGB) → AppColors.*
 #   .font(.system(size: <number>))           → AppFonts.*
