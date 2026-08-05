@@ -1115,31 +1115,51 @@ def _cmd_update(args) -> int:
     return 0
 
 
-def _git_head() -> str:
-    """Anchor on the merge-base with main, not on HEAD.
+def _doc_anchor() -> str:
+    """Resolve `verified_against` for the generated view.
 
-    HEAD is the wrong choice for a doc anchor on a branch: rebasing (adding
-    review trailers did exactly this) or squash-merging orphans every sha the
-    branch minted, and docs_lint then rejects the file for an unreachable
-    `verified_against`. That is IMP-0038's shape — ~10 docs anchored to commits
-    that never reached origin — and it is the stated reason docs-lint sits
-    outside the linux CI set. The merge-base survives both operations.
+    Anchored on the merge-base with **origin/main**, not on HEAD and not on
+    local main. Three separate ways to get this wrong, all of them silent, all
+    of them hit here:
+
+      * HEAD — rebasing (adding review trailers did exactly this) or
+        squash-merging orphans every sha the branch minted, and docs_lint then
+        rejects the file. That was the original bug.
+      * `git merge-base --short` — no such flag. The first attempt at the fix
+        raised CalledProcessError on every call and fell through to the next
+        candidate, so the function kept doing the thing its docstring said it
+        had stopped doing. A fix nobody verifies is a claim.
+      * local main — this repo's topology is local-main-as-trunk, so local main
+        runs AHEAD of origin (9 commits at the time of writing). An anchor
+        reachable from local main but not from origin/main is *precisely*
+        IMP-0038's definition: "錨點指向從未進入 origin 的 commit", which
+        passes here only because the local object still exists and fails in CI.
+
+    docs_lint checks reachability from HEAD, which every one of those wrong
+    answers satisfies — so nothing downstream would catch it. The candidates
+    below are ordered strongest-first and degradation is REPORTED on stderr
+    rather than silent, because an enumerated hole beats an anonymous one.
     """
-    for argv in (
-        # `git merge-base` has NO --short flag; passing one made this fall
-        # through to HEAD silently, so the fix was never in effect until a test
-        # asserted the anchor is an ancestor of HEAD.
-        ["git", "merge-base", "HEAD", "main"],
-        ["git", "rev-parse", "main"],
-        ["git", "rev-parse", "HEAD"],
-    ):
+    candidates = (
+        ("origin/main", ["git", "merge-base", "HEAD", "origin/main"]),
+        ("main", ["git", "merge-base", "HEAD", "main"]),
+        ("HEAD", ["git", "rev-parse", "HEAD"]),
+    )
+    for index, (label, argv) in enumerate(candidates):
         try:
             out = subprocess.run(argv, capture_output=True, text=True, check=True, cwd=ROOT)
-            value = out.stdout.strip()
-            if value:
-                return value[:9]
         except (OSError, subprocess.CalledProcessError):
             continue
+        value = out.stdout.strip()
+        if not value:
+            continue
+        if index:
+            print(
+                f"backlog: doc anchor fell back to merge-base with {label}; "
+                f"an anchor unreachable from origin/main is IMP-0038's shape",
+                file=sys.stderr,
+            )
+        return value[:9]
     return "unknown"
 
 
@@ -1170,7 +1190,7 @@ def _cmd_import(args) -> int:
 
 
 def _cmd_render(args) -> int:
-    verified = args.verified_against or _git_head()
+    verified = args.verified_against or _doc_anchor()
     text = render_view(args.store, verified_against=verified)
 
     if args.commit:
