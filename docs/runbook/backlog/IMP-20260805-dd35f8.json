@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-05",
+  "detail": "`ops/backlog.py update --detail` 是一個 argparse 收得下、`--help` 明列、但**永遠不可能生效**的旗標，而且失效是靜默的。`:973` 有 `p_update.add_argument(\"--detail\")`，`:1009` 也把 `args.detail` 傳下去，但 `_cmd_update`（`:1081-1085`）只從 `MUTABLE_FIELDS`（`:329-333`）取欄位，而 `detail` 刻意不在其中——`:322-327` 寫得很清楚且理由正當：`detail`/`source` 是 id digest 的輸入，改了會讓 id 與內容脫鉤。**問題不是不可變，是宣告與行為不一致。**\n\n兩種踩法，第二種才是危險的：\n① 只給 `--detail` → `nothing to change; pass at least one field`（exit 64）。訊息把「你給的欄位不可變」講成「你什麼都沒給」，指錯方向，但至少會紅。\n② `--detail` 併著任一可變欄位（我就是這樣：`--verdict` + `--verified-at` + `--detail`）→ **exit 0、印出成功的 changes diff、detail 被靜默丟棄**。我當下相信寫進去了，是回頭 `python3 -c` 讀檔比對長度才發現沒有（1903 字元原封不動）。若沒複查，我會回報一個不存在的內容。\n\n這正是本檔註解自己在點名的形狀——`:1076-1080` 寫著「a hand-written tuple happened to be a subset, so the dry-run path and the commit path agreed by coincidence... That is IMP-0040 shape inside the code that cites IMP-0040」。同一支檔案已經修過一次「兩份清單不一致」，但漏了**第三份**：argparse 的旗標集合。目前 `p_update` 宣告的旗標與 `MUTABLE_FIELDS` 沒有任何東西保證同步。\n\n修法（擇一，成本都 S）：① 刪掉 `--detail`，改在 `update` 的 help/epilog 明說「detail/source 不可變，改寫問題敘述＝另一筆 entry，請用 `add`」——`:322-327` 的正確理由目前只有讀原始碼的人看得到。② 保留旗標但改成明確拒絕：偵測到 `args.detail is not None` 就以非零退出並印那段理由。③ 加一條測試釘住「`p_update` 的每個非 `--store`/`--commit`/`--json` 旗標都在 `MUTABLE_FIELDS` 裡」，讓第三份清單也進同一個不變式；`ops/tests/test_backlog.py` 已有 update 相關案例可掛。",
+  "id": "IMP-20260805-dd35f8",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "debug/ios-version-sot 想把新查到的證據補進剛 filed 的 IMP-20260805-0fc07a 時踩到",
+  "status": "open",
+  "stream": "IMP"
+}
