@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from .api_models import VocabAddResponse, VocabEntry
-from .exceptions import ValidationError
+from .exceptions import ConflictError, ValidationError
 from .vocab_graph import embed_and_link_new_cards
 from .vocab_shared import (
     MAX_BATCH_SIZE,
@@ -85,6 +85,17 @@ def add_vocab_entries(
     # (cards.all() defaults to include_deleted=False, matching _build_content_lookup).
     existing_by_norm = _build_content_lookup(cards, notebook_id=notebook_id)
     existing = set(existing_by_norm.keys())
+
+    # Legacy intake must never surface a dictionary card id to clients that
+    # interpret every /api/vocab card as review-eligible. Fail the whole batch
+    # before any writes; promotion is the only supported dictionary→learning
+    # transition and preserves the card id explicitly.
+    if any(
+        getattr(existing_by_norm.get(_normalize_word(_clean_content(entry.word))), "card_role", "learning")
+        == "dictionary"
+        for entry in entries
+    ):
+        raise ConflictError("Existing dictionary card requires explicit promotion")
 
     created = 0
     skipped = 0

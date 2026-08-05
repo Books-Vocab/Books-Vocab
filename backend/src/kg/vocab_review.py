@@ -87,6 +87,8 @@ def push_review_states(
         if cards_by_word is None:
             cards_by_word = {}
             for card in cards_store.all(notebook_id=notebook_id):
+                if not getattr(card, "review_eligible", True):
+                    continue
                 cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
         return cards_by_word
 
@@ -100,7 +102,12 @@ def push_review_states(
         # Prefer card_id for precise matching; fall back to word matching.
         if entry.card_id:
             card = _cards_by_id.get(entry.card_id)
-            cards = [card] if card and not card.is_deleted else []
+            eligible = (
+                card is not None
+                and not card.is_deleted
+                and getattr(card, "review_eligible", True)
+            )
+            cards = [card] if eligible else []
         else:
             cards = _get_cards_by_word().get(_normalize_word(entry.word), [])
         if not cards:

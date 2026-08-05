@@ -11,6 +11,8 @@ from sqlmodel import Field as SQLField
 from sqlmodel import SQLModel
 
 CardMode = Literal["recognition", "production"]
+CardRole = Literal["learning", "dictionary"]
+PromotionState = Literal["idle", "queued", "running", "failed"]
 
 
 class Card(SQLModel, table=True):
@@ -49,6 +51,15 @@ class Card(SQLModel, table=True):
     # Provenance (v1 inert): content_guid of the shared_deck_card this card was
     # copied from (Phase 2 copy stamps it). NULL for organically-created cards.
     source_shared_card_guid: str | None = SQLField(default=None)
+
+    # Dictionary-card lifecycle. These axes are deliberately independent:
+    # role controls product treatment, review_eligible controls SRS, and
+    # reader_hidden is an explicit user preference shared by both roles.
+    card_role: str = SQLField(default="learning")
+    review_eligible: bool = SQLField(default=True)
+    reader_hidden: bool = SQLField(default=False)
+    promotion_state: str = SQLField(default="idle")
+    promoted_at: datetime | None = SQLField(default=None)
 
     def embed_text(self) -> str:
         """Text used for embedding."""

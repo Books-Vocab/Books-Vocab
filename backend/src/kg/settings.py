@@ -70,6 +70,14 @@ class KGSettings:
     max_batch_size: int = 500
     max_word_length: int = 200
 
+    # External lexical lookup is rollout-gated. Existing materialized cards are
+    # served independently of this flag in later phases; this only gates new
+    # provider search/fetch traffic.
+    dictionary_lookup_enabled: bool = False
+    dictionary_provider_default: str = "free_dictionary"
+    dictionary_cache_ttl_days: int = 30
+    dictionary_negative_cache_ttl_hours: int = 24
+
     # CORS
     cors_origins: tuple[str, ...] = _DEFAULT_CORS
 
@@ -213,6 +221,14 @@ def load_settings() -> KGSettings:
         free_daily_limit_usd=_env_float("FREE_DAILY_LIMIT_USD", 0.03),
         rate_limit_trusted_hops=_env_int("RATE_LIMIT_TRUSTED_HOPS", 1),
         judge_confidence_threshold=_env_float("JUDGE_CONFIDENCE_THRESHOLD", 0.7),
+        dictionary_lookup_enabled=_env_truthy("DICTIONARY_LOOKUP_ENABLED"),
+        dictionary_provider_default=os.getenv(
+            "DICTIONARY_PROVIDER_DEFAULT", "free_dictionary"
+        ),
+        dictionary_cache_ttl_days=_env_int("DICTIONARY_CACHE_TTL_DAYS", 30),
+        dictionary_negative_cache_ttl_hours=_env_int(
+            "DICTIONARY_NEGATIVE_CACHE_TTL_HOURS", 24
+        ),
         cors_origins=tuple(
             o.strip()
             for o in os.getenv(

@@ -17,6 +17,7 @@ from .admin_wiring import (
 from .routers import (
     auth_router,
     billing_router,
+    dictionary_router,
     library_router,
     notebook_router,
     pipeline_router,
@@ -64,6 +65,7 @@ def build_domain_routers() -> tuple[APIRouter, ...]:
         static_pages_router,
         user_router,
         billing_router,
+        dictionary_router,
         vocab_router,
         notebook_router,
         library_router,

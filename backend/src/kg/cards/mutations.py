@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from ..exceptions import ConflictError
 from ..text_utils import normalize_nfc, normalize_nfc_lower
 from .model import Card
 
@@ -35,6 +36,9 @@ class CardMutationMixin:
         inflections: list[str] | None = None,
         notebook_id: str = "default",
         source: str | None = None,
+        card_role: str = "learning",
+        review_eligible: bool = True,
+        reader_hidden: bool = False,
     ) -> Card:
         """Create and store a new card.
 
@@ -46,6 +50,8 @@ class CardMutationMixin:
         """
         if not content or not content.strip():
             raise ValueError("content must be non-empty")
+        if card_role not in {"learning", "dictionary"}:
+            raise ValueError("card_role must be learning or dictionary")
         norm = normalize_nfc(content)
         with Session(self.engine) as session:
             row = session.connection().exec_driver_sql(
@@ -54,7 +60,16 @@ class CardMutationMixin:
                 (norm, notebook_id),
             ).first()
             if row:
-                return session.get(Card, row[0])  # type: ignore[return-value]
+                existing = session.get(Card, row[0])
+                if (
+                    existing is not None
+                    and card_role == "learning"
+                    and getattr(existing, "card_role", "learning") == "dictionary"
+                ):
+                    raise ConflictError(
+                        "Existing dictionary card requires explicit promotion"
+                    )
+                return existing  # type: ignore[return-value]
 
             card = Card(
                 content=content,
@@ -68,6 +83,9 @@ class CardMutationMixin:
                 inflections=inflections or [],
                 notebook_id=notebook_id,
                 source=source,
+                card_role=card_role,
+                review_eligible=review_eligible,
+                reader_hidden=reader_hidden,
             )
             session.add(card)
             try:
@@ -86,7 +104,16 @@ class CardMutationMixin:
                     (norm, notebook_id),
                 ).first()
                 if row:
-                    return session.get(Card, row[0])  # type: ignore[return-value]
+                    existing = session.get(Card, row[0])
+                    if (
+                        existing is not None
+                        and card_role == "learning"
+                        and getattr(existing, "card_role", "learning") == "dictionary"
+                    ):
+                        raise ConflictError(
+                            "Existing dictionary card requires explicit promotion"
+                        )
+                    return existing  # type: ignore[return-value]
                 raise
             session.refresh(card)
         return card
