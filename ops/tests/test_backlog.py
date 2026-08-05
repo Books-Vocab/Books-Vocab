@@ -371,3 +371,81 @@ def test_app_stream_uses_its_own_categories(tmp_path):
 
     with pytest.raises(ValueError):
         BACKLOG.add_entry(store, **_entry_kwargs(stream="APP", category="cli"))
+
+
+# --------------------------------------------------------------------------
+# 8. update: the one mutation that overwrites, so dry-run by default
+# --------------------------------------------------------------------------
+
+def test_update_changes_status_and_resolution(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, status="open")
+
+    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="`abc1234`")
+
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    assert loaded["status"] == "fixed"
+    assert loaded["resolution"] == "`abc1234`"
+
+
+def test_update_does_not_change_the_id(tmp_path):
+    """The id digest covers only the fields that identify WHICH problem this is.
+    If triaging an entry moved its id, every cross-reference to it would rot and
+    the store would accumulate a fresh file per status change."""
+    store = tmp_path / "backlog"
+    entry = _add(store, status="open")
+
+    BACKLOG.update_entry(store, entry["id"], status="in-progress")
+
+    assert BACKLOG.load_entry(store, entry["id"])["id"] == entry["id"]
+    assert len(list(store.glob("*.json"))) == 1
+
+
+def test_update_leaves_untouched_fields_alone(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="the original finding", severity="high")
+
+    BACKLOG.update_entry(store, entry["id"], status="triaged")
+
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    assert loaded["detail"] == "the original finding"
+    assert loaded["severity"] == "high"
+
+
+def test_update_rejects_an_out_of_vocabulary_value_without_writing(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, status="open")
+    before = (store / f"{entry['id']}.json").read_bytes()
+
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], status="done")
+
+    assert (store / f"{entry['id']}.json").read_bytes() == before, (
+        "a rejected update still touched the file"
+    )
+
+
+def test_update_raises_for_unknown_id(tmp_path):
+    store = tmp_path / "backlog"
+    _add(store)
+    with pytest.raises(KeyError):
+        BACKLOG.update_entry(store, "IMP-0404", status="fixed")
+
+
+def test_update_can_set_verdict_fields(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+
+    BACKLOG.update_entry(store, entry["id"], verdict="CONFIRMED-OPEN", cost="M")
+
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    assert loaded["verdict"] == "CONFIRMED-OPEN"
+    assert loaded["cost"] == "M"
+
+
+def test_update_rejects_unknown_fields(tmp_path):
+    """Typos must not silently create a field nobody reads."""
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], statuss="fixed")
