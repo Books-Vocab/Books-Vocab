@@ -6,8 +6,8 @@
 //
 //  唯讀 mirror：guest browse（`optionallyAuthedData`）→ fetch list/detail → upsert 進
 //  獨立 `SharedDeck @Model` → reconcile orphans（**empty-response mass-delete guard**：
-//  空回應視為短暫 hiccup，不整片 tombstone）。browse 端點對 guest 開放，過期 token
-//  也容忍（`try?` 取 token），故開 Explore 時過期 session 不會觸發 401 登出。
+//  空回應視為短暫 hiccup，不整片 tombstone）。browse 端點對 guest 開放：無 token 者
+//  正常瀏覽，不觸發登入牆。**過期 token 並非真的被容忍**——見 `optionallyAuthedData`。
 //
 //  本階段（Phase 1b-iii 唯讀）封面走 procedural（NotebookCoverView），**無** 遠端封面
 //  下載/cache —— 因此不需 podcast 那套 cover 檔案 cache + logout purge。
@@ -37,8 +37,15 @@ final class SharedDeckCatalogService {
 
     /// Browse fetch that tolerates an anonymous (guest) caller. Attaches the Bearer
     /// token only when one is present — logged-out users still load the catalog.
-    /// `try?` on the token: a true guest has none; an expired one is swallowed here so
-    /// opening Explore never trips the 401→session-invalidation path (browse is public).
+    ///
+    /// **`try?` 只吞掉 throw，不撤銷副作用。** `currentAuthToken()` 對過期 token 會在
+    /// throw *之前*先設 `sessionExpiredReason` 並 `sessionInvalidator.logout(...)`
+    /// （`KGService.swift` 的 `token_expired_precheck`），所以 token 已過期的使用者
+    /// 開 Explore 會被登出並看到「登入已過期」alert——即使 browse 本身是公開的。
+    /// 不會迴圈（登出後 `.task(id: isLoggedIn)` 重跑，此時無 token → 乾淨 guest fetch），
+    /// 且冷啟動的 background sync 通常比 Explore 更早撞到同一個 pre-check，故實務傷害小。
+    /// 真正的修法是讓本函式繞過 `currentAuthToken()` 自行判斷過期——那會動到 auth 路徑，
+    /// 不併入 Release-flip 這個 change set：見 backlog APP-20260805-0049ac。
     static func optionallyAuthedData(from urlString: String, kgService: any KGServing) async throws -> Data {
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
         var request = URLRequest(url: url)
@@ -121,7 +128,11 @@ final class SharedDeckCatalogService {
     // MARK: - Sync outcome
 
     enum SyncOutcome: Equatable {
-        case completed
+        /// `catalogCount` = 本輪自 server 收齊的牌組數（**server 權威**）。刻意由此
+        /// 回傳而非讓 caller 讀 `@Query`：`applyCatalog` + `save()` 到 `@Query`
+        /// 重新求值之間沒有 await point，caller 在 `syncAll` 回來的當下讀到的是
+        /// **同步前**的值——冷啟動時系統性地是 0，正好是 telemetry 最需要準確的場景。
+        case completed(catalogCount: Int)
         case cancelled
         case listFetchFailed
     }
@@ -168,7 +179,7 @@ final class SharedDeckCatalogService {
             AppCrashReporting.record(error, context: "shareddeck.sync.save")
         }
         NotificationCenter.default.post(name: .sharedDeckCatalogDidSync, object: nil)
-        return .completed
+        return .completed(catalogCount: collected.summaries.count)
     }
 
     /// The union of decks paged from the browse catalog, plus whether pagination

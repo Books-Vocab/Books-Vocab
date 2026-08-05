@@ -389,6 +389,11 @@ struct SharedDeckDetailView: View {
             let detail = try await SharedDeckCatalogService(kgService: kgService)
                 .fetchDeckDetail(deckId: deckId)
             cardsState = detail.sampleCards.isEmpty ? .empty : .loaded(detail.sampleCards)
+            // 預覽成功呈現才算一次 preview——取消（畫面被換掉）與失敗都不計入漏斗，
+            // 否則 browse→preview 轉換率會被使用者根本沒看到的請求灌水。
+            AppAnalytics.track(.deckPreviewed(
+                deckId: deckId, sampleCardCount: detail.sampleCards.count
+            ))
         } catch is CancellationError {
             // torn down / superseded — leave state as-is
         } catch {
