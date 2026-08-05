@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "backlog 從手寫表遷成 one-file-per-entry store 之後，`docs/runbook/improvement_backlog.md` 變成 `kind: generated`，但**沒有任何東西擋住「view 裡有、store 裡沒有」的 entry 被無聲刪除**。實測（2026-08-06 收攏）：`feat/external-smoke-retry` fork 自遷移前的 origin/main，它新增的 IMP-0060/0061/0062 只存在於表格的三個 row；rebase 時該檔衝突，用 `backlog.py render` 重生解衝突 —— render 只認 store，三筆當場消失，連帶讓 `docs: file IMP-0062...` 變成空 commit 被 rebase 丟棄。**全程零訊號**：無衝突標記、row count 正常、`docs_lint` 0 ERROR、`rebase` rc=0、cutover gate 全綠。我是因為 rebase 後 commit 數從 5 掉到 4 才回頭查的，那是運氣不是機制。修法候選：① `backlog.py render` 在寫出前比對「輸入 view 裡出現的 id 集合」與 store 的 id 集合，有差集就拒絕並具名（render 目前根本不讀舊 view，所以要先讀）；② 更好的位置是 `docs_lint`：對 `kind: generated` 且有 `generator` 的檔，驗「重跑 generator 的產出 == 檔案現況」，這同時擋掉所有手改 generated 檔的情況，且 registry 已經宣告了 `generator` 欄位（見 IMP-20260805-462d28，那筆說的正是 generator 欄位沒有機器檢查）。此坑只對 fork 自遷移前的分支成立，但那類分支還存在，且同一形狀會在下一次「把手寫檔改成 generated」時重現。",
+  "id": "IMP-20260806-e06150",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "全域收攏：external-smoke-retry 的 rebase",
+  "status": "open",
+  "stream": "IMP"
+}
