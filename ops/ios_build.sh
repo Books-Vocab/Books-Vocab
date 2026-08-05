@@ -20,7 +20,15 @@
 set -euo pipefail
 
 LOCK_FILE="/tmp/kg-ios-build.lock"
-TIMEOUT=600
+# Lock spin-wait budget. `--timeout` still overrides per call; the env var exists
+# for callers that build their own argv and cannot pass flags — notably
+# `worktree_orchestrate.py gate`, which runs several lock-taking gates in
+# sequence. On a machine with a handful of active worktrees (they all share this
+# one lock, `ios_test.sh` included) 600s is routinely not enough, and the failure
+# is ugly: the run exits 1 having never reached xcodebuild, so it produces no
+# build log and no verdict file, and the gate records it as a `block`
+# indistinguishable from a genuine compile error.
+TIMEOUT="${KG_IOS_BUILD_LOCK_TIMEOUT:-600}"
 POLL_INTERVAL=3
 DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro Max'
 CONFIGURATION='Debug'

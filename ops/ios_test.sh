@@ -33,7 +33,10 @@
 set -euo pipefail
 
 LOCK_FILE="/tmp/kg-ios-build.lock"
-TIMEOUT=600
+# Shares the build lock with `ios_build.sh`, so it shares the same override:
+# `--timeout` per call, `KG_IOS_BUILD_LOCK_TIMEOUT` for callers that cannot pass
+# flags (see the note in ios_build.sh).
+TIMEOUT="${KG_IOS_BUILD_LOCK_TIMEOUT:-600}"
 POLL_INTERVAL=3
 DEFAULT_SIMULATOR='iPhone 17 Pro Max'
 DESTINATION=''            # resolved after arg parsing (see device resolution below)
