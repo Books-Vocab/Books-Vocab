@@ -39,6 +39,10 @@ struct Dirty: View {
             .background(RoundedRectangle(cornerRadius: 12))
             .foregroundColor(Color(hex: "#FF0000"))
             .font(.system(size: 17))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(Capsule(style: .continuous))
+            .overlay(AppRoundedRect(roundness: 0.15))
+            .mask(AppUnevenRoundedRect(topRoundness: 8, bottomRoundness: 0))
     }
 }
 SWIFT
@@ -55,7 +59,8 @@ struct Clean: View {
             .padding(.vertical, AppSpacing.s3)
             .padding(.horizontal, skin.spacing.microGap)
             .appElevation(.z1)
-            .background(RoundedRectangle(cornerRadius: AppRadius.card))
+            .background(AppRoundedRect(roundness: AppRoundness.card))
+            .clipShape(AppUnevenRoundedRect(topRoundness: skin.roundness.card, bottomRoundness: 0))
             .foregroundColor(AppColors.accent)
             .padding(3) // token-allow: intentional one-off hairline
             .padding(.bottom, 8) // token-allow: exempted directional one-off
@@ -112,6 +117,11 @@ echo "$out" | grep -q '.padding(.top, 9)'         && ok "padding caught .top raw
 echo "$out" | grep -q '.padding(.leading, -4)'    && ok "padding caught negative raw"    || fail_t "missed directional negative raw padding"
 
 # ── 4. Exclusions & exemptions produce no Clean/excluded findings ─────────────
+echo "$out" | grep -q 'raw-rounded-shape' && ok "raw RoundedRectangle/Capsule flagged" || fail_t "raw-rounded-shape rule never fired"
+echo "$out" | grep -q 'Capsule(style: .continuous)' && ok "Capsule(style:) caught (not just bare Capsule())" || fail_t "Capsule(style:) slipped through"
+echo "$out" | grep -q 'roundness: 0.15' && ok "bare t literal flagged" || fail_t "bare roundness literal missed"
+echo "$out" | grep -q 'topRoundness: 8' && ok "pt smuggled into topRoundness flagged" || fail_t "per-corner roundness label not covered"
+
 section "Exclusions & inline exemption"
 echo "$out" | grep -q 'Clean.swift'        && fail_t "Clean.swift wrongly flagged (token-form directional padding false-positive?)" || ok "Clean.swift not flagged"
 echo "$out" | grep -q 'DebugScratch.swift' && fail_t "Debug/ wrongly flagged"      || ok "Debug/ excluded"
