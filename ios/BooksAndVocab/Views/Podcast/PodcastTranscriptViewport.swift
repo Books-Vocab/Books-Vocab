@@ -263,9 +263,9 @@ struct PodcastTranscriptViewport: View {
                 .padding(.horizontal, AppSkin.baseSpacing.controlHorizontalPadding)
                 .padding(.vertical, AppSpacing.s2)
                 .background(
-                    Capsule()
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(skin.palette.cardBackground.opacity(0.96))
-                        .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
+                        .overlay(AppRoundedRect(roundness: AppRoundness.pill).stroke(skin.palette.cardBorder, lineWidth: 1))
                 )
         }
         .buttonStyle(.plain)

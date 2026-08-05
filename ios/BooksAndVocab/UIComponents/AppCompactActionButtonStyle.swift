@@ -26,10 +26,10 @@ struct AppCompactActionButtonStyle: ButtonStyle {
             .padding(.horizontal, AppSpacing.s3)
             .padding(.vertical, AppSpacing.s2)
             .background(
-                Capsule(style: .continuous).fill(palette.background)
+                AppRoundedRect(roundness: AppRoundness.pill).fill(palette.background)
             )
             .overlay(
-                Capsule(style: .continuous).stroke(palette.border, lineWidth: 1)
+                AppRoundedRect(roundness: AppRoundness.pill).stroke(palette.border, lineWidth: 1)
             )
             .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1)
             .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)

@@ -115,7 +115,8 @@ struct ShimmerLine: View {
     @State private var shimmerPhase = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppRadius.xs)
+        // 10pt 高的 skeleton bar — 與 `AppSkeletonLine` 同階，走 pill。
+        AppRoundedRect(roundness: AppRoundness.pill)
             .fill(appSkin.palette.tertiaryText.opacity(shimmerPhase ? 0.18 : 0.08))
             .frame(width: 140, height: 10)
             .frame(maxWidth: .infinity, alignment: .leading)

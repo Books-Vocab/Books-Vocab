@@ -18,8 +18,8 @@ struct AppSidebarRow: View {
     let isSelected: Bool
     let action: () -> Void
 
-    // hover tint 與 selection 背景共用同一 radius,避免疊起時雙圓角錯位。
-    private let cornerRadius = AppRadius.sm
+    // hover tint 與 selection 背景共用同一圓度,避免疊起時雙圓角錯位。
+    private let roundness = AppRoundness.control
 
     var body: some View {
         Button(action: action) {
@@ -42,10 +42,10 @@ struct AppSidebarRow: View {
             // 整列 hit-test:Spacer 撐滿 row 寬,contentShape 把撐開後的整個矩形納入點擊區。
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                AppRoundedRect(roundness: roundness)
                     .fill(appSkin.palette.primaryText.opacity(isSelected ? 0.08 : 0))
             )
-            .appHoverRowTint(cornerRadius: cornerRadius)
+            .appHoverRowTint(roundness: roundness)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

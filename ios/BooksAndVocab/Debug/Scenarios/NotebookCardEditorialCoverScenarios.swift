@@ -92,7 +92,7 @@ private struct EditorialCoverScene: View {
     var body: some View {
         AppThemeContainer {
             ZStack {
-                RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.card)
                     .fill(coverColor.opacity(0.35))
                 EditorialCoverComposition(
                     name: name,
@@ -103,7 +103,7 @@ private struct EditorialCoverScene: View {
                 )
             }
             .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .clipShape(AppRoundedRect(roundness: AppRoundness.card))
             .padding(AppSpacing.s4)
         }
         .environmentObject(AppAppearanceStore.preview)

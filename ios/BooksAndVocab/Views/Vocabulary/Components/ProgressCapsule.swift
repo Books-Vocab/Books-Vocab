@@ -12,10 +12,10 @@ struct ProgressCapsule: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(trackColor)
 
-                Capsule(style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(fillColor)
                     .frame(width: max(0, geo.size.width * min(1, max(0, progress))))
             }

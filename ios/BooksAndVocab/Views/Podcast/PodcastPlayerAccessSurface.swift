@@ -64,7 +64,9 @@ struct PodcastPlayerPreviewBanner: View {
         }
         .padding(.horizontal, skin.spacing.cardPadding)
         .padding(.vertical, skin.spacing.inlineGap)
-        .background(skin.palette.brandHero, in: RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        // 單列 banner，短邊是高度（compact action 鈕 ~32pt + 上下 inlineGap 8pt ≈ 48pt），
+        // 落 30–70pt 帶 → control。r 由 8 → 7.2。
+        .background(skin.palette.brandHero, in: AppRoundedRect(roundness: AppRoundness.control))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("podcast.preview.banner")
     }

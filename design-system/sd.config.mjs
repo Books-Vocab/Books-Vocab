@@ -151,6 +151,13 @@ export default {
           // Exclude colors and web-only tokens
           if (token.path[0] === 'color') return false;
           if (token.path[0] === 'web-only') return false;
+          // `radius.*` is absolute px for the web CSS only. iOS moved to the
+          // dimensionless `roundness.*` plane, and emitting the px group into
+          // Swift would leave a live re-entry path: someone could write
+          // `AppRoundedRect(roundness: DesignTokens.Radius.Scale.md)` and put an
+          // 8pt LENGTH into the t plane. The lint can't catch that (it only
+          // rejects bare numerals), so the fix is to stop emitting it at all.
+          if (token.path[0] === 'radius') return false;
           return true;
         },
       }],

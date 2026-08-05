@@ -179,7 +179,7 @@ struct KnowledgeGraphPresenter: View {
         VStack(alignment: .trailing, spacing: appSkin.spacing.tinyGap) {
             ReviewGradientBar()
                 .frame(width: 100, height: 5)
-                .clipShape(Capsule(style: .continuous))
+                .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
 
             HStack(spacing: 0) {
                 Text(KnowledgeGraphCopy.safeTitle)
@@ -205,11 +205,15 @@ struct KnowledgeGraphPresenter: View {
         }
         .padding(.horizontal, appSkin.spacing.inlineGap)
         .padding(.vertical, appSkin.spacing.microGap)
+        // 舊值是 `radii.chip`，但這裡不是 chip —— 是一塊 ~51pt 高的圖例面板
+        // （漸層條 + 兩行標籤 + padding）。chip 的語意對應 `pill`，套在這個尺寸上會
+        // 得到 r≈25pt 的膠囊，把面板讀成一顆藥丸。依短邊取 `control`（r≈7.7pt，
+        // 舊值 6pt）才守得住原本的視覺。
         .background(
-            RoundedRectangle(cornerRadius: appSkin.radii.chip, style: .continuous)
+            AppRoundedRect(roundness: appSkin.roundness.control)
                 .fill(appSkin.palette.cardBackground.opacity(0.85))
                 .overlay(
-                    RoundedRectangle(cornerRadius: appSkin.radii.chip, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         )

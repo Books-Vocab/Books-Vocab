@@ -163,14 +163,14 @@ struct PodcastBubbleSkin: Equatable {
     let tint: Color
     let primaryText: Color
     let secondaryText: Color
-    let cornerRadius: CGFloat
+    let roundness: CGFloat
     init(skin: AppSkin, slot: Int) {
         self.paletteBase = skin.palette.base
         self.slot = slot
         self.tint = PodcastSpeakerTint.color(for: slot, skin: skin)
         self.primaryText = skin.palette.primaryText
         self.secondaryText = skin.palette.secondaryText
-        self.cornerRadius = skin.radii.card
+        self.roundness = skin.roundness.card
     }
 
     static func == (l: PodcastBubbleSkin, r: PodcastBubbleSkin) -> Bool {
@@ -368,10 +368,10 @@ struct PodcastBubbleCell: View, Equatable {
         // instance → no structural swap to animate). (Earlier the whole block was left
         // un-animated to dodge a hitch, which made the bubble color hard-cut.)
         .background {
-            RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+            AppRoundedRect(roundness: skin.roundness)
                 .fill(bg)
                 .overlay {
-                    RoundedRectangle(cornerRadius: skin.cornerRadius, style: .continuous)
+                    AppRoundedRect(roundness: skin.roundness)
                         .stroke(
                             skin.tint.opacity(active ? 0.22 : 0.08),
                             lineWidth: active ? 1 : 0.8
@@ -390,7 +390,10 @@ struct PodcastBubbleCell: View, Equatable {
             ForEach(vocabHighlightIndices.sorted(), id: \.self) { index in
                 if let rect = rects[index] {
                     let bandHeight = rect.height * highlightPreferences.bandFraction
-                    RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
+                    // 色帶高度只有字高 32%（預設字級約 6-7pt，最大字級也 < 12pt），
+                    // 短邊遠小於 30pt → scale rule 落 pill；t=1 在此給出 r≈3.4，
+                    // 與舊 `AppRadius.xs`(4) 同一視覺量級。
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(
                             highlightPreferences.colorPreset
                                 .swiftUIColor(for: colorScheme)
@@ -433,7 +436,7 @@ struct PodcastBubbleCell: View, Equatable {
                 // leaving tail-exit, or entering head-enter.
                 let bars = relayBars(t: t, rects: rects)
                 ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
-                    Capsule()
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(skin.tint)
                         .frame(width: bar.width, height: 3)
                         // bottomY (word bottom) + 3pt offset + half the 3pt height.

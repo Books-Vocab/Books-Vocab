@@ -36,7 +36,7 @@ struct PodcastSeriesCard: View {
                         .font(AppFonts.caption2(weight: .bold))
                         .foregroundStyle(appTheme.palette.primaryText)
                         .padding(AppSpacing.s1)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                        .background(.ultraThinMaterial, in: AppRoundedRect(roundness: AppRoundness.pill))
                         .padding(AppSpacing.s2)
                 }
                 .overlay(alignment: .topLeading) {
@@ -45,7 +45,7 @@ struct PodcastSeriesCard: View {
                             .font(AppFonts.caption2(weight: .bold))
                             .foregroundStyle(appTheme.palette.accent)
                             .padding(AppSpacing.s1)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                            .background(.ultraThinMaterial, in: AppRoundedRect(roundness: AppRoundness.pill))
                             .padding(AppSpacing.s2)
                             .accessibilityLabel(L10n.string("已追蹤"))
                     }
@@ -81,7 +81,10 @@ struct PodcastSeriesCard: View {
         )
         .aspectRatio(2/3, contentMode: .fill)
         .frame(height: coverHeight)
-        .clipShape(RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous))
+        // 2:3 封面，短邊是寬度（210pt 高 → 140pt 寬）→ >70pt 落 card；沿用書封共用
+        // token（`coverRoundness` = card），podcast 封面與書封維持同一手感。
+        // r 由 10 → 10.5，正是 card=0.15 的校準來源。
+        .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
     }
 }
 #endif

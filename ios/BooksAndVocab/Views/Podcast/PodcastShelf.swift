@@ -75,7 +75,9 @@ struct PodcastContinueRailCard: View {
                 name: series.title
             )
             .frame(width: cardWidth, height: cardWidth)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            // 150pt 方形節目封面 —— 尺寸規則 >70pt 落 card（icon 保留給小方塊）。
+            // r 由 8 → 11.25。
+            .clipShape(AppRoundedRect(roundness: AppRoundness.card))
             .overlay(alignment: .bottomTrailing) { playDisc }
             .appElevation(.z1)
 

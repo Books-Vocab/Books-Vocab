@@ -60,8 +60,9 @@ enum ReaderMetrics {
 
     // MARK: - Quota bar
 
-    /// 額度進度條圓角(極小，無對應 AppRadius scale 值)
-    static let quotaBarCornerRadius: CGFloat = 1
+    /// 額度進度條圓度(無因次 t)。2pt 高的極細條 → pill;
+    /// r = 1 × 2/2 = 1，與舊的絕對 1pt 完全等值。
+    static let quotaBarRoundness: CGFloat = AppRoundness.pill
     /// 額度進度條高度
     static let quotaBarHeight: CGFloat = 2
     /// 額度進度條軌道(底層)透明度

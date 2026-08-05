@@ -67,7 +67,7 @@ struct ReviewTopBar: View, Equatable {
                 .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
                 .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
                 .background(
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.mutedFill)
                 )
                 .accessibilityIdentifier("todayReview.progressLabel")
@@ -86,7 +86,7 @@ struct ReviewTopBar: View, Equatable {
                 .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
                 .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
                 .background(
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.mutedFill)
                 )
             }
@@ -233,7 +233,7 @@ struct ReviewToolbarControls: View, Equatable {
                         .padding(.horizontal, TodayReviewMetrics.autoplaySpeedPillHorizontalPadding)
                         .frame(height: TodayReviewMetrics.autoplaySpeedPillHeight)
                         .background(
-                            Capsule(style: .continuous)
+                            AppRoundedRect(roundness: AppRoundness.pill)
                                 .fill(appSkin.palette.mutedFill)
                         )
                 }
@@ -284,7 +284,7 @@ struct ReviewToolbarControls: View, Equatable {
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if forgotButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .fill(appSkin.palette.destructive.opacity(forgotButtonGlow * 0.10))
                         .allowsHitTesting(false)
                 }
@@ -309,7 +309,7 @@ struct ReviewToolbarControls: View, Equatable {
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if rememberedButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .fill(appSkin.palette.success.opacity(rememberedButtonGlow * 0.10))
                         .allowsHitTesting(false)
                 }
@@ -440,10 +440,10 @@ extension TodayReviewPresenter {
         }
         .padding(appSkin.spacing.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+            AppRoundedRect(roundness: appSkin.roundness.card)
                 .fill(appSkin.palette.overlayFill)
                 .overlay(
-                    RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.card)
                         .stroke(appSkin.palette.cardBorder.opacity(0.55), lineWidth: 1)
                 )
                 .appElevation(.z3)
@@ -520,11 +520,11 @@ struct ShortcutHintChip: View {
         .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
         .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
         .background(
-            Capsule()
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(appSkin.palette.mutedFill.opacity(hint.isPrimary ? 0.95 : 0.72))
         )
         .overlay(
-            Capsule()
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .stroke(appSkin.palette.cardBorder.opacity(0.4), lineWidth: 1)
         )
     }
@@ -542,10 +542,10 @@ struct ShortcutKeyCap: View {
             .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
             .padding(.vertical, AppSpacing.s1)
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.pill)
                     .fill(appSkin.palette.cardBackground)
                     .overlay(
-                        RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                        AppRoundedRect(roundness: appSkin.roundness.pill)
                             .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
                     )
             )

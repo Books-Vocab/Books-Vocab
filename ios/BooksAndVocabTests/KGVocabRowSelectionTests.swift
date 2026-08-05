@@ -18,7 +18,8 @@ struct KGVocabRowSelectionTests {
         #expect(!KGVocabRowSelection.isHighlighted(rowID: selected, selectedRowID: nil, isSelecting: false))
     }
 
-    @Test func rowHoverAndSelectionUseTheSameCornerRadius() {
-        #expect(KGVocabRowChrome.hoverCornerRadius == AppRadius.sm)
+    @Test func rowHoverAndSelectionUseTheSameRoundness() {
+        // hover tint 的 modifier 預設也是 control —— 兩層若各自取值就會在同一列上畫出兩種圓角。
+        #expect(KGVocabRowChrome.hoverRoundness == AppRoundness.control)
     }
 }

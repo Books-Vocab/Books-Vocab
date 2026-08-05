@@ -16,11 +16,11 @@ struct SettingsStepperIconButton: View {
                 .foregroundStyle(enabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
                 .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
                 .background(
-                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .fill(appSkin.palette.pageBackground)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         }
@@ -61,7 +61,7 @@ private extension AppSectionCardStyle {
         .init(
             background: skin.palette.pageBackground,
             border: skin.palette.cardBorder,
-            cornerRadius: skin.radii.control,
+            roundness: skin.roundness.control,
             borderOpacity: 1,
             elevation: .z0
         )

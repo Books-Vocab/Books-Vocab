@@ -47,7 +47,7 @@ struct AppCard<Content: View>: View {
     }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
+        let shape = AppRoundedRect(roundness: AppRoundness.card)
         switch variant {
         case .elevated:
             content
@@ -89,7 +89,7 @@ struct AppTag: View {
             .padding(.vertical, AppTagMetrics.verticalPadding)
             .background(tone.opacity(colorScheme == .dark ? 0.18 : 0.08))
             .foregroundStyle(tone)
-            .clipShape(Capsule())
+            .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
     }
 }
 
@@ -105,7 +105,7 @@ struct GhostButtonStyle: ButtonStyle {
             .padding(.horizontal, AppGhostButtonMetrics.horizontalPadding)
             .padding(.vertical, AppGhostButtonMetrics.verticalPadding)
             .background(
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(tone.opacity(configuration.isPressed ? 0.08 : 0))
             )
             .opacity(configuration.isPressed ? 0.7 : 1.0)
@@ -124,7 +124,7 @@ extension ButtonStyle where Self == GhostButtonStyle {
 extension View {
     @ViewBuilder
     func compatibleGlass(
-        in shape: some Shape = Capsule(),
+        in shape: some Shape = AppRoundedRect(roundness: AppRoundness.pill),
         interactive: Bool = false
     ) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {

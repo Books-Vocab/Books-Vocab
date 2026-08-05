@@ -79,12 +79,15 @@ struct NotebookReviewActionBar: View {
         }
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, AppSpacing.s1)
+        // 容器與內含的 pill 同語言 — 對齊 `AppTabSelector` 的 container = pill 先例。
+        // 高度 ≈ 35pt（pill 27 + 上下 s1），pill 給 r≈17.5，最貼近改制前的 12pt 手感；
+        // card/control 會把它壓成方框，讀起來不再是「pill cluster 容器」。
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(skin.palette.mutedFill.opacity(0.5))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .stroke(skin.palette.divider, lineWidth: 1.5)
         )
     }

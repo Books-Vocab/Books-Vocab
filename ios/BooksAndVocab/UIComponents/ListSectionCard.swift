@@ -14,19 +14,14 @@ struct ListSectionCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
+        let shape = AppRoundedRect(roundness: AppRoundness.card)
         VStack(spacing: 0) { content }
             .padding(.vertical, skin.spacing.microGap)
-            .background(
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                    .fill(skin.palette.cardBackground)
-            )
+            .background(shape.fill(skin.palette.cardBackground))
             // clip 內容至圓角：caller 的 per-row 選中底色（方角矩形）在首/末列才不會
             // 溢出卡片圓角。stroke overlay 疊在 clip 之上，不受影響。
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                    .stroke(skin.palette.cardBorder, lineWidth: 0.5)
-            )
+            .clipShape(shape)
+            .overlay(shape.stroke(skin.palette.cardBorder, lineWidth: 0.5))
     }
 }
 

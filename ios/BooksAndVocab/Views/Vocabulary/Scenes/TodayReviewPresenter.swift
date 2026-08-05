@@ -435,7 +435,7 @@ struct TodayReviewPresenter: View {
     ) -> some View {
         Button(action: action) {
             VStack(spacing: 10) {
-                Capsule(style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(appSkin.palette.quaternaryTextFaint)
                     .frame(width: 56, height: 3)
                 Text(title)

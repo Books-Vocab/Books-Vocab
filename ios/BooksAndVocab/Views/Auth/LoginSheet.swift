@@ -147,10 +147,10 @@ struct LoginSheet: View {
         .padding(.horizontal, AppSpacing.s4)
         .padding(.vertical, AppSpacing.s2)
         .background(
-            RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+            AppRoundedRect(roundness: appSkin.roundness.control)
                 .fill(appSkin.palette.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         )

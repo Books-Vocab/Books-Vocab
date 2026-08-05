@@ -56,21 +56,15 @@ struct NotebookStackedCoverView: View {
                 name: name,
                 showsName: showsName
             )
-            .clipShape(UnevenRoundedRectangle(
-                topLeadingRadius: AppRadius.md,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: AppRadius.md,
-                style: .continuous
+            .clipShape(AppUnevenRoundedRect(
+                topRoundness: AppRoundness.card,
+                bottomRoundness: AppRoundness.none
             ))
             // Editorial hairline — 與 ghost 同 hairline 語言，撞 cream 背景時邊界不糊
             .overlay(
-                UnevenRoundedRectangle(
-                    topLeadingRadius: AppRadius.md,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: 0,
-                    topTrailingRadius: AppRadius.md,
-                    style: .continuous
+                AppUnevenRoundedRect(
+                    topRoundness: AppRoundness.card,
+                    bottomRoundness: AppRoundness.none
                 )
                 .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
             )
@@ -97,11 +91,11 @@ struct NotebookStackedCoverView: View {
         let baseDy = NotebookStackMetrics.layerOffsetY * CGFloat(depth)
         let jitter = NotebookStackMetrics.seedJitter(seed: seed, depth: depth)
 
-        RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+        AppRoundedRect(roundness: AppRoundness.card)
             .fill(NotebookStackMetrics.ghostPaperColor(depth: depth, scheme: colorScheme))
             // Editorial hairline — cream-on-cream 無邊讀不出層次
             .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.card)
                     .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
             )
             .padding(.horizontal, baseInset + jitter.dx)

@@ -59,7 +59,7 @@ private struct NotebookCoverGalleryScene: View {
             showsName: showsName
         )
         .frame(height: 96)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: AppRoundness.card))
     }
 
     private static func validate(_ notebooks: [Notebook]) {

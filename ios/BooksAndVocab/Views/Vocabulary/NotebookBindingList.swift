@@ -29,7 +29,7 @@ struct NotebookBindingList: View {
             onSelect(notebook)
         } label: {
             HStack(spacing: AppSpacing.s2) {
-                RoundedRectangle(cornerRadius: AppRadius.xs)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent) // token-allow: user notebook data color
                     .frame(width: 4, height: AppSpacing.s7)
 

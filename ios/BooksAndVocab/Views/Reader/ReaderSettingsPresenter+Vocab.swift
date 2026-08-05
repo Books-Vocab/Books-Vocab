@@ -13,7 +13,7 @@ extension ReaderSettingsPresenter {
         return VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 if chrome.showsDragHandle {
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                         .frame(
                             width: ReaderMetrics.settingsHandleWidth,
@@ -246,7 +246,7 @@ extension ReaderSettingsPresenter {
         .foregroundStyle(appSkin.palette.secondaryText)
         .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
         .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
-        .background(Capsule(style: .continuous).fill(appSkin.palette.mutedFill))
+        .background(AppRoundedRect(roundness: AppRoundness.pill).fill(appSkin.palette.mutedFill))
     }
 
     func vocabControlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -273,7 +273,7 @@ extension ReaderSettingsPresenter {
                     Rectangle()
                         .fill(appSkin.readerThemeSwatchColor(theme))
                         .frame(height: ReaderMetrics.vocabThemeSwatchHeight)
-                        .clipShape(Capsule(style: .continuous))
+                        .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)

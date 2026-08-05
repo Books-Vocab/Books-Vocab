@@ -32,7 +32,7 @@ struct TranslationVocabPresenter: View {
         return VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 if chrome.showsDragHandle {
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                         .frame(
                             width: ReaderMetrics.panelHandleWidth,
@@ -52,7 +52,7 @@ struct TranslationVocabPresenter: View {
             }
         }
         // Mochi 北極星 #3：shadow 收兩階 — z3 → z2,翻譯 panel 降低 floating 感,
-        // 但仍保留 panel handle 視覺辨識(VocabCard 內 Capsule)。
+        // 但仍保留 panel handle 視覺辨識(VocabCard 內的 pill handle)。
         .appElevation(.z2, direction: .up)
         .modifier(LargePanelModifier(apply: state.isPanelLarge && chrome == .bottomSheet))
         .enableInjection()

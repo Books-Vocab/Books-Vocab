@@ -7,7 +7,7 @@ extension AppSectionCardStyle {
         .init(
             background: theme.palette.cardBackground,
             border: theme.palette.cardBorder,
-            cornerRadius: AppShellMetrics.cardCornerRadius,
+            roundness: AppShellMetrics.cardRoundness,
             borderOpacity: 0.7,
             elevation: .z1
         )
@@ -17,7 +17,7 @@ extension AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
-            cornerRadius: skin.radii.card,
+            roundness: skin.roundness.card,
             borderOpacity: 0.7,
             elevation: .z1
         )
@@ -27,7 +27,7 @@ extension AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
-            cornerRadius: skin.radii.card,
+            roundness: skin.roundness.card,
             borderOpacity: 1,
             elevation: .z0
         )
@@ -40,7 +40,7 @@ extension AppSectionCardStyle {
         .init(
             background: theme.palette.cardBackground,
             border: .clear,
-            cornerRadius: AppShellMetrics.cardCornerRadius,
+            roundness: AppShellMetrics.cardRoundness,
             borderOpacity: 0,
             elevation: .z0
         )
@@ -51,7 +51,7 @@ extension AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: .clear,
-            cornerRadius: skin.radii.card,
+            roundness: skin.roundness.card,
             borderOpacity: 0,
             elevation: .z0
         )
@@ -62,7 +62,7 @@ extension AppSectionCardStyle {
         .init(
             background: .clear,
             border: .clear,
-            cornerRadius: AppShellMetrics.cardCornerRadius,
+            roundness: AppShellMetrics.cardRoundness,
             borderOpacity: 0,
             elevation: .z0
         )
@@ -90,7 +90,7 @@ extension AppSearchFieldStyle {
             clearButtonColor: theme.palette.quaternaryText,
             background: theme.palette.cardBackground,
             border: theme.palette.cardBorder,
-            cornerRadius: AppRadius.md - 2
+            roundness: AppRoundness.control
         )
     }
 
@@ -104,7 +104,7 @@ extension AppSearchFieldStyle {
             clearButtonColor: skin.palette.quaternaryText,
             background: skin.palette.mutedFill,
             border: skin.palette.divider,
-            cornerRadius: skin.radii.control
+            roundness: skin.roundness.control
         )
     }
 }

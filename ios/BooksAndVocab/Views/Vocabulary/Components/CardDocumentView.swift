@@ -291,14 +291,14 @@ struct CardDocumentCollocationsBlock: View {
             .padding(.horizontal, AppSpacing.s2)
             .padding(.vertical, AppSpacing.s1)
             .background(
-                Capsule().fill(
+                AppRoundedRect(roundness: AppRoundness.pill).fill(
                     hasExplanation
                         ? appSkin.palette.successBg
                         : appSkin.palette.divider.opacity(0.5)
                 )
             )
             .overlay {
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .stroke(
                         hasExplanation ? appSkin.palette.success.opacity(0.72) : .clear,
                         lineWidth: AppSpacing.hairline

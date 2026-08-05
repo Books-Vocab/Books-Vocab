@@ -131,11 +131,11 @@ enum ReviewFoldScenarios {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(
-            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
+            AppRoundedRect(roundness: skin.roundness.card)
                 .fill(skin.palette.cardBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
+            AppRoundedRect(roundness: skin.roundness.card)
                 .stroke(skin.palette.cardBorder, lineWidth: 1)
         )
     }

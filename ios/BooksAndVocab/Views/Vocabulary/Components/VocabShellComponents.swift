@@ -136,11 +136,11 @@ struct VocabChromeSurface<Content: View>: View {
     var body: some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(fill)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(border, lineWidth: 1)
             )
             .enableInjection()
@@ -188,7 +188,7 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
                     .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
                     .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
                     .background(
-                        Capsule(style: .continuous)
+                        AppRoundedRect(roundness: AppRoundness.pill)
                             .fill(appSkin.palette.mutedFill)
                     )
             }

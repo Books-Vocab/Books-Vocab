@@ -126,21 +126,19 @@ public enum DesignTokens {
             public static let panelReveal: String = "transform 0.3s ease-out, opacity 0.25s ease-out"
         }
     }
-    public enum Radius {
+    public enum Roundness {
         public enum Scale {
-            public static let lg: CGFloat = 12
-            public static let md: CGFloat = 8
+            public static let card: CGFloat = 0.15
+            public static let control: CGFloat = 0.3
+            public static let icon: CGFloat = 0.45
             public static let none: CGFloat = 0
-            public static let pill: CGFloat = 999
-            public static let sm: CGFloat = 6
-            public static let xl: CGFloat = 16
-            public static let xs: CGFloat = 4
+            public static let pill: CGFloat = 1
         }
         public enum Semantic {
-            public static let card: CGFloat = 8
-            public static let chip: CGFloat = 6
-            public static let control: CGFloat = 6
-            public static let overlay: CGFloat = 8
+            public static let card: CGFloat = 0.15
+            public static let control: CGFloat = 0.3
+            public static let icon: CGFloat = 0.45
+            public static let pill: CGFloat = 1
         }
     }
     public enum Space {
@@ -174,7 +172,6 @@ public enum DesignTokens {
             public static let compactChipPaddingV: CGFloat = 3
             public static let compactRowPaddingV: CGFloat = 10
             public static let controlGap: CGFloat = 10
-            public static let coverCornerRadius: CGFloat = 10
             public static let coverHeightCompact: CGFloat = 210
             public static let dividerAir: CGFloat = 16
             public static let emptyStateStack: CGFloat = 14

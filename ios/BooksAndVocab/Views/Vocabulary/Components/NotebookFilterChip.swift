@@ -30,7 +30,7 @@ struct NotebookFilterChip: View {
             .padding(.vertical, skin.spacing.chipVerticalPadding)
             .background(
                 filter.isFiltered ? skin.palette.accent.opacity(0.12) : skin.palette.mutedFill,
-                in: Capsule()
+                in: AppRoundedRect(roundness: AppRoundness.pill)
             )
         }
         .toastSheet(isPresented: $showPicker) {

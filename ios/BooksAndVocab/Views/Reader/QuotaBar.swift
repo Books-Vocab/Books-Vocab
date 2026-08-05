@@ -14,10 +14,10 @@ struct QuotaBar: View {
             if isLoggedIn {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: ReaderMetrics.quotaBarCornerRadius, style: .continuous)
+                        AppRoundedRect(roundness: ReaderMetrics.quotaBarRoundness)
                             .fill(barColor.opacity(ReaderMetrics.quotaBarTrackOpacity))
 
-                        RoundedRectangle(cornerRadius: ReaderMetrics.quotaBarCornerRadius, style: .continuous)
+                        AppRoundedRect(roundness: ReaderMetrics.quotaBarRoundness)
                             .fill(barColor.opacity(barOpacity))
                             .frame(width: geo.size.width * store.fraction)
                             .animateSpring(store.fraction)

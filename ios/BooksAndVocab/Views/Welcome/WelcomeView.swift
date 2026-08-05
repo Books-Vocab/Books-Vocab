@@ -119,11 +119,11 @@ struct WelcomeView: View {
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
         .padding(.vertical, AppBannerMetrics.verticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.control)
                 .fill(appTheme.palette.accent.opacity(AppBannerMetrics.backgroundOpacity))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.control)
                 .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: AppMetrics.dividerStandard)
         )
         .accessibilityElement(children: .combine)
@@ -132,7 +132,7 @@ struct WelcomeView: View {
     private var stepIndicator: some View {
         HStack(spacing: AppSpacing.s2) {
             ForEach(0..<pages.count, id: \.self) { index in
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(index == currentPage
                           ? appTheme.palette.accent
                           : appTheme.palette.secondaryText.opacity(AppWelcomeMetrics.stepIndicatorInactiveOpacity))

@@ -17,8 +17,6 @@ enum TodayReviewMetrics {
     static let tagHorizontalPadding: CGFloat = AppTagMetrics.horizontalPadding
     /// 字數徽章垂直 padding（對齊 AppTagMetrics）
     static let tagVerticalPadding: CGFloat = AppTagMetrics.verticalPadding
-    /// 字數徽章圓角
-    static let tagCornerRadius: CGFloat = 6
 
     // ── Opacity ─────────────────────────────────────────────────────
     /// 卡片邊框線條透明度（idle 狀態）
@@ -45,8 +43,16 @@ enum TodayReviewMetrics {
     static let swipeHintFontSize: CGFloat = 34
 
     // ── Fold Geometry ──────────────────────────────────────────────
-    /// 摺頁接合處的圓角（非首尾段的內側圓角）
-    static let foldJoinRadius: CGFloat = 4
+    /// 摺頁接合處的圓度（非首尾段的內側圓角）—— 無因次 t，非 pt。
+    ///
+    /// 刻意綁在 `card` 的一半：接縫是「同一張紙被摺過」的暗示，必須比外緣**明顯更方**
+    /// 才讀得出層次，但兩者要一起隨卡片尺寸縮放，否則卡一高就失去比例關係。
+    /// 綁定而非另取一個獨立常數，是為了讓外緣圓度日後調整時接縫自動跟上。
+    static let foldJoinRoundness: CGFloat = AppRoundness.card / 2
+    /// 摺頁卡四個角的共用基準（pt）。摺頁卡橫跨 front / answer 兩個 layout box，
+    /// 高度不同，所以圓角基準必須來自「這張卡」而不是「這一段」——否則同一條接縫的
+    /// 上下緣會算出不同半徑。取 front 段的設計高度當代表尺度。
+    static let foldRoundnessBasis: CGFloat = frontMinHeight
     /// 摺頁動畫的 Y 軸偏移量
     static let paperFoldOffsetY: CGFloat = 12
 
@@ -75,7 +81,7 @@ enum TodayReviewMetrics {
     static let toolbarHorizontalInset: CGFloat = 20
     static let toolbarVerticalInset: CGFloat = 12
 
-    // MARK: Fold layout(不與既有 foldJoinRadius / paperFoldOffsetY 幾何欄位合併)
+    // MARK: Fold layout(不與既有 foldJoinRoundness / paperFoldOffsetY 幾何欄位合併)
     static let foldPadding: CGFloat = 28
     static let foldSectionSpacing: CGFloat = 24
     static let foldHintBottomInset: CGFloat = 22

@@ -131,7 +131,7 @@ struct SettingsStatusBadge: View {
             .padding(.horizontal, appSkin.spacing.badgeHorizontalPadding)
             .padding(.vertical, appSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
-            .clipShape(Capsule())
+            .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
             .enableInjection()
     }
 }

@@ -94,8 +94,11 @@ struct VocabAccessoryIconButton: View {
                 .font(appSkin.typography.iconToolbar)
                 .foregroundStyle(tone)
                 .frame(width: appSkin.metrics.chromeButtonSize, height: appSkin.metrics.chromeButtonSize)
+                // 32×32 chrome 方鈕 — 走 control，r≈4.8。`icon` 階留給真正的圖片
+                // （app icon / 頭像），此處是 chrome 控制項，與 Settings 的 52pt 方鈕同族。
+                // pill 會讓它變成圓鈕，改變這顆 chrome 按鈕的既有語意。
                 .background(
-                    RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                    AppRoundedRect(roundness: appSkin.roundness.control)
                         .fill(background ?? appSkin.palette.mutedFill)
                 )
         }
@@ -175,7 +178,7 @@ struct VocabReviewCTAPill: View {
         .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
         .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
         .background(
-            Capsule(style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(appTheme.palette.brandHero)
         )
         .appPointerHover()
@@ -206,7 +209,7 @@ struct VocabSortPill: View {
             .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
             .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
             .background(
-                Capsule(style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(appSkin.palette.mutedFill)
             )
         }

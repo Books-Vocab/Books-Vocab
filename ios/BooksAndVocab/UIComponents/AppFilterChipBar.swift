@@ -28,7 +28,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
         }
         .padding(AppSpacing.tinyGap)
         .background(
-            RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
+            AppRoundedRect(roundness: style.containerRoundness)
                 .fill(style.containerBackground)
         )
     }

@@ -3,13 +3,13 @@
 //  Books & Vocab Tests
 //
 //  Pins the raw numeric values of the design-system tokens in `AppMetrics.swift`
-//  (`AppSpacing` 8pt grid, `AppRadius` scale, `AppElevation` depth language).
+//  (`AppSpacing` 8pt grid, `AppRoundness` scale, `AppElevation` depth language).
 //  These constants are referenced app-wide and a silent drift — e.g. nudging a
 //  radius from 8 to 7 or an elevation opacity during a "polish" pass — degrades
 //  visual consistency with no failing test and no obvious diff signal.
 //
 //  All expected values were read directly from `AppMetrics.swift` (the source of
-//  truth), NOT from any design doc — the docs are known to disagree on `AppRadius`.
+//  truth), NOT from any design doc.
 //
 
 import SwiftUI
@@ -57,25 +57,49 @@ import Testing
         #expect(zip(scale, scale.dropFirst()).allSatisfy { $0 < $1 })
     }
 
-    // MARK: - AppRadius
+    // MARK: - AppRoundness (dimensionless t, the live corner system)
 
-    @Test func radiusScaleIsPinned() async throws {
-        // Values read from AppMetrics.swift — the design doc is stale on these.
-        #expect(AppRadius.none == 0)
-        #expect(AppRadius.xs == 4)
-        #expect(AppRadius.sm == 6)
-        #expect(AppRadius.md == 8)
-        #expect(AppRadius.lg == 12)
-        #expect(AppRadius.xl == 16)
-        #expect(AppRadius.pill == 999)
+    @Test func roundnessScaleIsPinned() async throws {
+        #expect(AppRoundness.none == 0)
+        #expect(AppRoundness.card == 0.15)
+        #expect(AppRoundness.control == 0.30)
+        #expect(AppRoundness.icon == 0.45)
+        #expect(AppRoundness.pill == 1)
     }
 
-    @Test func radiusScaleIsMonotonicallyIncreasing() async throws {
+    @Test func roundnessScaleIsMonotonicallyIncreasing() async throws {
         let scale: [CGFloat] = [
-            AppRadius.none, AppRadius.xs, AppRadius.sm,
-            AppRadius.md, AppRadius.lg, AppRadius.xl, AppRadius.pill,
+            AppRoundness.none, AppRoundness.card,
+            AppRoundness.control, AppRoundness.icon, AppRoundness.pill,
         ]
         #expect(zip(scale, scale.dropFirst()).allSatisfy { $0 < $1 })
+    }
+
+    @Test func roundnessStaysInTheUnitInterval() async throws {
+        // t is dimensionless and normalised: 0 = square corner, 1 = radius eats
+        // half the minor axis. A value outside [0,1] means someone put a pt
+        // length in the roundness plane by mistake.
+        for t in [AppRoundness.none, AppRoundness.card, AppRoundness.control,
+                  AppRoundness.icon, AppRoundness.pill] {
+            #expect(t >= 0 && t <= 1)
+        }
+    }
+
+    @Test func skinRoundnessTracksTheScale() async throws {
+        let skin = AppSkin.themed(.light)
+        #expect(skin.roundness.card == AppRoundness.card)
+        #expect(skin.roundness.control == AppRoundness.control)
+        #expect(skin.roundness.icon == AppRoundness.icon)
+        #expect(skin.roundness.pill == AppRoundness.pill)
+    }
+
+    @Test func roundnessIsThemeInvariant() async throws {
+        let light = AppSkin.themed(.light).roundness
+        let dark = AppSkin.themed(.dark).roundness
+        #expect(light.card == dark.card)
+        #expect(light.control == dark.control)
+        #expect(light.icon == dark.icon)
+        #expect(light.pill == dark.pill)
     }
 
     // MARK: - AppElevation (z0 flush → z4 modal)

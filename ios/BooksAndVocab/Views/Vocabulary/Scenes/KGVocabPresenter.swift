@@ -7,7 +7,8 @@ enum KGVocabRowSelection {
 }
 
 enum KGVocabRowChrome {
-    static let hoverCornerRadius: CGFloat = AppRadius.sm
+    /// 列的 detail highlight 與 hover tint 共用同一個圓度，兩層必須完全重合。
+    static let hoverRoundness: CGFloat = AppRoundness.control
 }
 
 struct KGVocabPresenter: View {
@@ -240,11 +241,11 @@ struct KGVocabRow: View {
         .padding(.vertical, AppSpacing.s1)
         .background {
             if isHighlighted {
-                RoundedRectangle(cornerRadius: KGVocabRowChrome.hoverCornerRadius, style: .continuous)
+                AppRoundedRect(roundness: KGVocabRowChrome.hoverRoundness)
                     .fill(appSkin.palette.accent.opacity(0.08))
             }
         }
-        .appHoverRowTint(cornerRadius: KGVocabRowChrome.hoverCornerRadius)
+        .appHoverRowTint(roundness: KGVocabRowChrome.hoverRoundness)
         .padding(.horizontal, AppSpacing.s1)
         .accessibilityIdentifier("vocab.row.\(entry.word)")
         .transition(.listSwap)

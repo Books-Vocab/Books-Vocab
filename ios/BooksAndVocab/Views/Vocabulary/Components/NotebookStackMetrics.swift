@@ -7,7 +7,7 @@
 //  spacing/radius/elevation 數值先放 token namespace。
 //
 //  幾何由 plan「Notebook Editorial Stack」對齊：
-//  - 全層 corner radius 走 `AppRadius.md`
+//  - 全層圓度走 `AppRoundness.card`（半徑由 `AppRoundedRect` 依各層 box 導出）
 //  - 層間 dy = `AppSpacing.s1` (4pt)，dx = `AppSpacing.s1` (4pt) 單側
 //  - Ghost 改 cream paper（paperLight / paperSepia / paperSepiaDeep），
 //    不再用 brightness shift（取代 `deckColor`）

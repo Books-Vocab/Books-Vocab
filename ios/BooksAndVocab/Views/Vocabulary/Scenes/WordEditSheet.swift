@@ -69,10 +69,10 @@ struct WordEditSheet: View {
                 .padding(appSkin.spacing.inlineGap)
                 .frame(minHeight: 80)
                 .background(
-                    RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
+                    AppRoundedRect(roundness: AppShellMetrics.cardRoundness)
                         .fill(appSkin.palette.cardBackground)
                         .overlay(
-                            RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
+                            AppRoundedRect(roundness: AppShellMetrics.cardRoundness)
                                 .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
                         )
                 )

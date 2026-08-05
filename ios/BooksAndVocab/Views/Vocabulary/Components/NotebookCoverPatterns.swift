@@ -245,7 +245,7 @@ struct NotebookCoverView: View {
                 name: pattern.label
             )
             .frame(height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .clipShape(AppRoundedRect(roundness: AppRoundness.card))
         }
     }
     .padding()

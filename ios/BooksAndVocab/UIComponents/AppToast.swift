@@ -22,15 +22,15 @@ struct AppToast: View {
         .padding(.horizontal, AppSpacing.cardPadding)
         .padding(.vertical, AppSkin.baseSpacing.compactRowVerticalPadding)
         .background(
-            Capsule()
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(tintColor.opacity(0.12))
                 .overlay(
-                    Capsule()
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .strokeBorder(tintColor.opacity(0.18), lineWidth: AppMetrics.dividerStandard)
                 )
         )
         .background(
-            Capsule()
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(appTheme.palette.cardBackground)
         )
         .appElevation(.z2)

@@ -130,7 +130,8 @@ enum ReaderPresentationMetrics {
         static let blockSpacing: CGFloat = 18
         static let blockHeightTall: CGFloat = 12
         static let blockHeightShort: CGFloat = 10
-        static let blockCornerRadius: CGFloat = 4
+        /// 骨架文字條圓度(無因次 t)。條高 10–12pt，短邊遠小於 30pt → pill。
+        static let blockRoundness: CGFloat = AppRoundness.pill
         static let topInset: CGFloat = 120
         static let horizontalInset: CGFloat = 28
         static let bottomInset: CGFloat = 60

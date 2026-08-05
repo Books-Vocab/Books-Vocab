@@ -34,7 +34,7 @@ struct SettingsAccountSection: View {
             .overlay {
                 if state.isAuthenticating {
                     ZStack {
-                        RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                        AppRoundedRect(roundness: appSkin.roundness.card)
                             .fill(appSkin.palette.pageBackground.opacity(0.85))
                         VStack(spacing: appSkin.spacing.controlGap) {
                             ProgressView()
@@ -60,7 +60,9 @@ struct SettingsAccountSection: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 64, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: appSkin.spacing.controlHorizontalPadding, style: .continuous))
+                    // 這裡原本誤把 spacing token(controlHorizontalPadding = 14pt)當半徑用。
+                    // 正解是 app icon 語意：`icon` 0.45 在 64pt 方形得 r = 14.4，與誤用值等價。
+                    .clipShape(AppRoundedRect(roundness: appSkin.roundness.icon))
                     .opacity(state.iconBreathing ? 0.85 : 1.0)
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
@@ -262,7 +264,7 @@ struct SettingsProBadge: View {
         .padding(.horizontal, appSkin.spacing.badgeHorizontalPadding)
         .padding(.vertical, appSkin.spacing.chipVerticalPadding)
         .background(appSkin.palette.accent.opacity(0.12))
-        .clipShape(Capsule())
+        .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
         .accessibilityElement(children: .combine)
         .enableInjection()
     }

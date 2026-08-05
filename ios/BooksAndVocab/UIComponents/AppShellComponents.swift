@@ -5,7 +5,7 @@ enum AppShellMetrics {
     static let pageTopPadding = AppSpacing.s3
     static let pageBottomPadding = AppSpacing.s9
     static let sectionSpacing = AppSpacing.s6
-    static let cardCornerRadius = AppRadius.md
+    static let cardRoundness = AppRoundness.card
     static let cardPadding: CGFloat = 18
     static let toolbarBadgeHorizontalPadding: CGFloat = 5
     static let toolbarBadgeVerticalPadding: CGFloat = 2
@@ -14,7 +14,7 @@ enum AppShellMetrics {
 struct AppSectionCardStyle {
     let background: Color
     let border: Color
-    let cornerRadius: CGFloat
+    let roundness: CGFloat
     let borderOpacity: Double
     let elevation: AppElevation
 }
@@ -51,21 +51,13 @@ struct AppSectionCard<Content: View>: View {
 
     var body: some View {
         let style = customStyle ?? .themed(appTheme)
+        let shape = AppRoundedRect(roundness: style.roundness)
         content
             .padding(padding)
             .background(style.background)
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: style.cornerRadius,
-                    style: .continuous
-                )
-            )
+            .clipShape(shape)
             .overlay(
-                RoundedRectangle(
-                    cornerRadius: style.cornerRadius,
-                    style: .continuous
-                )
-                .stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
+                shape.stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
             )
             .appElevation(style.elevation)
     }
@@ -155,7 +147,7 @@ struct AppSearchFieldStyle {
     let clearButtonColor: Color
     let background: Color
     let border: Color
-    let cornerRadius: CGFloat
+    let roundness: CGFloat
 }
 
 struct AppSearchField: View {
@@ -195,11 +187,11 @@ struct AppSearchField: View {
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, AppSkin.baseSpacing.rowPadding)
         .background(
-            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+            AppRoundedRect(roundness: style.roundness)
                 .fill(style.background)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+            AppRoundedRect(roundness: style.roundness)
                 .stroke(style.border, lineWidth: 1)
         )
     }

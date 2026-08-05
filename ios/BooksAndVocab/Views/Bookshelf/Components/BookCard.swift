@@ -69,41 +69,33 @@ struct BookCard: View {
                 .resizable()
                 .aspectRatio(2/3, contentMode: .fill)
                 .frame(height: coverHeight)
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: AppBookshelfMetrics.coverCornerRadius,
-                        style: .continuous
-                    )
-                )
+                .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
                 .transition(.contentSwap)
         } else {
-            RoundedRectangle(
-                cornerRadius: AppBookshelfMetrics.coverCornerRadius,
-                style: .continuous
-            )
-            .fill(appTheme.palette.mutedFill)
-            .frame(height: coverHeight)
-            .overlay {
-                VStack(spacing: AppSpacing.s2) {
-                    Image(systemName: "book")
-                        .font(AppFonts.h1(weight: .regular))
-                        .foregroundStyle(appTheme.palette.tertiaryText)
-                    Text(book.title)
-                        .font(AppFonts.caption2())
-                        .foregroundStyle(appTheme.palette.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppBookshelfMetrics.placeholderTitleHorizontalPadding)
-                    if book.format != .epub {
-                        Text(book.format.rawValue.uppercased())
+            AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness)
+                .fill(appTheme.palette.mutedFill)
+                .frame(height: coverHeight)
+                .overlay {
+                    VStack(spacing: AppSpacing.s2) {
+                        Image(systemName: "book")
+                            .font(AppFonts.h1(weight: .regular))
+                            .foregroundStyle(appTheme.palette.tertiaryText)
+                        Text(book.title)
                             .font(AppFonts.caption2())
                             .foregroundStyle(appTheme.palette.secondaryText)
-                            .padding(.horizontal, AppSpacing.s1)
-                            .padding(.vertical, AppSpacing.microGap)
-                            .background(appTheme.palette.mutedFill)
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AppBookshelfMetrics.placeholderTitleHorizontalPadding)
+                        if book.format != .epub {
+                            Text(book.format.rawValue.uppercased())
+                                .font(AppFonts.caption2())
+                                .foregroundStyle(appTheme.palette.secondaryText)
+                                .padding(.horizontal, AppSpacing.s1)
+                                .padding(.vertical, AppSpacing.microGap)
+                                .background(appTheme.palette.mutedFill)
+                                .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -181,16 +173,16 @@ struct BookCard: View {
         let clamped = min(max(progress, 0), 1)
         return HStack(spacing: AppBookshelfMetrics.progressBarSpacing) {
             GeometryReader { geo in
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(appTheme.palette.mutedFill)
                     .overlay(alignment: .leading) {
-                        Capsule()
+                        AppRoundedRect(roundness: AppRoundness.pill)
                             .fill(appTheme.palette.accent)
                             .frame(width: geo.size.width * clamped)
                     }
             }
             .frame(height: AppBookshelfMetrics.progressBarHeight)
-            .clipShape(Capsule())
+            .clipShape(AppRoundedRect(roundness: AppRoundness.pill))
 
             Text("\(Int(clamped * 100))%")
                 .font(AppFonts.monoNumbers(size: 10))

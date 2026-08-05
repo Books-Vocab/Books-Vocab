@@ -14,6 +14,6 @@ struct AppHeroIcon: View {
             .resizable()
             .scaledToFit()
             .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.appIcon, style: .continuous))
+            .clipShape(AppRoundedRect(roundness: AppRoundness.icon))
     }
 }

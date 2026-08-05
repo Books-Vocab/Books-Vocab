@@ -33,7 +33,7 @@ struct AppSkeletonLine: View {
         // - light mode primaryText 偏黑，0.06-0.14 在白底清楚可見
         // - dark mode primaryText 偏白，0.06-0.14 在暗底清楚可見
         // 在兩 mode 自動 invert 對比，pulse 振幅一致。
-        RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
+        AppRoundedRect(roundness: AppRoundness.pill)
             .fill(appTheme.palette.primaryText.opacity(pulse ? 0.14 : 0.06))
             .frame(width: width, height: height)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
@@ -52,7 +52,7 @@ struct AppSkeletonCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: AppSpacing.s3) {
             if showAvatar {
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.icon)
                     .fill(appTheme.palette.mutedFill)
                     .frame(width: 44, height: 44)
             }
@@ -66,11 +66,11 @@ struct AppSkeletonCard: View {
         }
         .padding(AppSpacing.cardOuterPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.card)
                 .fill(appTheme.palette.cardBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.card)
                 .stroke(appTheme.palette.cardBorder, lineWidth: 1)
         )
     }

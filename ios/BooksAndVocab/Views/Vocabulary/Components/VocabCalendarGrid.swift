@@ -109,16 +109,18 @@ struct VocabCalendarGrid: View {
             }
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
+            // 日格是 aspectRatio(1) 的方形按鈕，7 欄下短邊 ≈47pt。
+            // control 給 r≈7（改制前 6），是四階裡唯一貼合的；pill 會把日格變成圓形。
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(isSelected ? appSkin.palette.mutedFill : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(count > 0 ? cellFill(count) : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 0.5)
             )
             // Unselected zero-activity cells paint only Color.clear fills, so

@@ -44,7 +44,7 @@ struct AppToolbarGlyph: View {
                     .padding(.horizontal, AppShellMetrics.toolbarBadgeHorizontalPadding)
                     .padding(.vertical, AppShellMetrics.toolbarBadgeVerticalPadding)
                     .background(
-                        Capsule(style: .continuous)
+                        AppRoundedRect(roundness: AppRoundness.pill)
                             .fill(style.badgeBackground)
                     )
             }
@@ -89,7 +89,7 @@ struct AppStateMessageStyle {
     let spacing: CGFloat
     let verticalPadding: CGFloat
     let horizontalPadding: CGFloat
-    let cornerRadius: CGFloat
+    let roundness: CGFloat
 }
 
 struct AppStateMessageContent<Accessory: View>: View {
@@ -179,9 +179,9 @@ struct AppStateMessageCard<Accessory: View>: View {
             .padding(.vertical, style.verticalPadding)
         }
         .background(style.background)
-        .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: style.roundness))
         .overlay(
-            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+            AppRoundedRect(roundness: style.roundness)
                 .stroke(style.border, lineWidth: 1)
         )
     }
@@ -202,7 +202,7 @@ extension AppStateMessageStyle {
             spacing: AppSpacing.s2,
             verticalPadding: 12,
             horizontalPadding: 14,
-            cornerRadius: AppRadius.md
+            roundness: AppRoundness.card
         )
     }
 
@@ -220,7 +220,10 @@ extension AppStateMessageStyle {
             spacing: AppSpacing.s2,
             verticalPadding: 12,
             horizontalPadding: 14,
-            cornerRadius: skin.radii.control
+            // 與上面的 themed() 同一個 token：兩個 factory 是同一個元件的兩種上色，
+            // 圓度沒有理由分家。舊值 6 vs 8 差 1.33×，若照舊值機械對應會變成
+            // control(.30) vs card(.15) 差 2×，反而把原本的小落差放大。
+            roundness: skin.roundness.card
         )
     }
 }

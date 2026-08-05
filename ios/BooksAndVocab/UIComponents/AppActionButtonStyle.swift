@@ -21,18 +21,12 @@ struct AppActionButtonStyle: ButtonStyle {
             .padding(.horizontal, AppSpacing.s4)
             .padding(.vertical, AppSpacing.actionButtonVerticalPadding)
             .background(
-                RoundedRectangle(
-                    cornerRadius: AppRadius.md,
-                    style: .continuous
-                )
-                .fill(palette.background)
+                AppRoundedRect(roundness: AppRoundness.control)
+                    .fill(palette.background)
             )
             .overlay(
-                RoundedRectangle(
-                    cornerRadius: AppRadius.md,
-                    style: .continuous
-                )
-                .stroke(palette.border, lineWidth: 1)
+                AppRoundedRect(roundness: AppRoundness.control)
+                    .stroke(palette.border, lineWidth: 1)
             )
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.992 : 1)

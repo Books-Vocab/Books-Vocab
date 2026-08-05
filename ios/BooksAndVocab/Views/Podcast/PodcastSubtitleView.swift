@@ -90,9 +90,9 @@ struct PodcastSubtitleView: View {
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, AppSpacing.s2)
         .background(
-            Capsule()
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(skin.palette.cardBackground.opacity(0.92))
-                .overlay(Capsule().stroke(skin.palette.cardBorder, lineWidth: 1))
+                .overlay(AppRoundedRect(roundness: AppRoundness.pill).stroke(skin.palette.cardBorder, lineWidth: 1))
         )
         .accessibilityIdentifier("podcast.subtitleLoading")
     }

@@ -54,7 +54,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
             reviewButton
         }
         .padding(skin.spacing.cardPadding)
-        .background(skin.palette.cardBackground, in: RoundedRectangle(cornerRadius: skin.radii.card))
+        .background(skin.palette.cardBackground, in: AppRoundedRect(roundness: skin.roundness.card))
         .enableInjection()
     }
 
