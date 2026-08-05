@@ -1409,3 +1409,141 @@ def test_saved_dictionary_routes_are_db_only_when_lookup_rollout_is_disabled(
     assert projection.status_code == 200, projection.text
     assert selected.status_code == 200, selected.text
     assert visibility.status_code == 200, visibility.text
+
+
+def test_disabled_rollout_finishes_an_interrupted_saga_but_still_blocks_new_ones(
+    isolated_api, monkeypatch
+):
+    """Rolling back mid-flight must not wedge a staged card.
+
+    The judge already ran and the card already holds the notebook's unique
+    content slot, so the flag has no new work left to stop — only a staged row
+    that ``get_saved_card`` refuses to return. Finishing it is the rollback
+    contract; admitting a *new* materialization is not.
+    """
+    import kg.routers.dictionary as dictionary_router
+
+    crashed = False
+
+    def crash_once(step):
+        nonlocal crashed
+        if step == "after_card_stage" and not crashed:
+            crashed = True
+            raise RuntimeError("injected crash")
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    service, cards, _graph, lexical, judge = _dictionary_service(
+        user_dir, crash_hook=crash_once
+    )
+    source = cards.add("summon", "召喚", notebook_id="default")
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_card_service",
+        lambda _user, _settings, **_kwargs: service,
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    sense = lexical.entry.senses[0]
+    payload = {
+        "sourceCardId": source.id,
+        "notebookId": "default",
+        "provider": lexical.entry.provider,
+        "entryKey": lexical.entry.entry_key,
+        "senseKey": sense.key,
+        "exampleKey": sense.examples[0].key,
+    }
+    first = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "resume-while-disabled"},
+        json=payload,
+    )
+    assert first.status_code == 500
+    assert judge.calls == 1
+    staged = cards.find_by_content(lexical.entry.word, notebook_id="default")
+    assert staged is not None
+    assert cards.get_dictionary_entry(staged.id).materialization_status == "staged"
+
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=False,
+    )
+    resumed = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "resume-while-disabled"},
+        json=payload,
+    )
+    assert resumed.status_code == 200, resumed.text
+    assert judge.calls == 1
+    assert cards.get_dictionary_entry(staged.id).materialization_status == "active"
+
+    fresh_start = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "new-while-disabled"},
+        json=payload,
+    )
+    assert fresh_start.status_code == 403
+
+
+def test_disabled_rollout_resume_serves_the_entry_from_cache_without_the_provider(
+    tmp_path,
+):
+    """Cache-only mode is what makes the resume above safe to admit.
+
+    Without it a rolled-back deployment could still reach the provider through
+    a resumed saga whose cached entry had expired.
+    """
+    from kg.exceptions import ForbiddenError
+    from kg.lexical import LexicalCache, LexicalService
+
+    entry = _lexical_entry()
+
+    class _ExplodingProvider:
+        provider_id = entry.provider
+        dictionary_id = entry.dictionary_id
+        schema_version = entry.schema_version
+        capabilities = __import__(
+            "kg.lexical", fromlist=["LexicalProviderCapabilities"]
+        ).LexicalProviderCapabilities(
+            exact_lookup=True,
+            autocomplete=False,
+            translations=True,
+            pronunciation=True,
+            cache_policy="persistent",
+        )
+
+        def search(self, *_args, **_kwargs):
+            raise AssertionError("cache-only lookup reached the provider")
+
+        def get_entry(self, *_args, **_kwargs):
+            raise AssertionError("cache-only lookup reached the provider")
+
+    cache = LexicalCache(tmp_path / "lexical_cache.db")
+    service = LexicalService(provider=_ExplodingProvider(), cache=cache)
+
+    with pytest.raises(ForbiddenError):
+        service.get_entry(
+            entry.provider,
+            entry.entry_key,
+            target_language="zh-Hant",
+            allow_provider=False,
+        )
+
+    cache.put(entry.provider, entry.word, entry.language, "zh-Hant", entry)
+    fresh = service.get_entry(
+        entry.provider, entry.entry_key, target_language="zh-Hant", allow_provider=False
+    )
+    assert fresh.cache_status == "fresh"
+    assert fresh.entry is not None and fresh.entry.entry_key == entry.entry_key
+
+    expired = LexicalCache(
+        tmp_path / "lexical_cache.db", positive_ttl=timedelta(seconds=-1)
+    )
+    expired.put(entry.provider, entry.word, entry.language, "zh-Hant", entry)
+    stale_service = LexicalService(provider=_ExplodingProvider(), cache=expired)
+    stale = stale_service.get_entry(
+        entry.provider, entry.entry_key, target_language="zh-Hant", allow_provider=False
+    )
+    assert stale.cache_status == "stale"
+    assert stale.entry is not None
