@@ -546,7 +546,7 @@
 "Demo 模式" = "Demo Mode";
 "了解更多" = "Learn More";
 "先體驗看看" = "Try It First";
-"左滑卡片即可封存。" = "Swipe left on a card to archive it.";
+"開啟單字詳情，點右上角的封存鈕即可收進這裡。" = "Open a word’s detail and tap the archive button to file it here.";
 "字母序" = "Alphabetical";
 "尚未取得訂閱方案，請稍後再試。" = "Subscription plans not yet loaded. Please try again later.";
 "已向 App Store 恢復購買，但後端尚未同步成功。請稍後再試。" = "Restore sent to the App Store, but backend sync has not completed. Please try again later.";

@@ -7,8 +7,12 @@ import SwiftData
 ///
 /// 既有慣例是每個測試檔各自寫一份 42 個成員的 `private final class StubKGService`
 /// （見 `PodcastPlayerLoaderTests` / `SettingsCoordinatorReviewClockTests`）。第四份
-/// 手抄本沒有意義，故此處抽成共用替身：預設全部 `fatalError("unused")`，被測方法改由
-/// **可注入的 handler** 決定行為。
+/// 手抄本沒有意義，故此處抽成共用替身：被測方法由**可注入的 handler** 決定行為，其餘
+/// 一律 `fatalError("unused")` —— 大聲失敗，好過讓沒預期到的呼叫靜默通過。
+///
+/// 例外（沿用既有 stub 慣例，回傳無害值而非 trap）：`backgroundSync` / `healthCheck` /
+/// `currentAuthToken` / `pushReviewQuietly` / `clearLocalData` / `fetchQuota` /
+/// `pullCopiedDeck`。這幾個是背景雜訊型呼叫，trap 它們會讓無關測試炸開。
 ///
 /// 關鍵設計：handler 讓替身能**模擬失敗**。若替身只會成功，rollback 這條失效路徑
 /// 就從模型裡消失了，測試會對它永遠綠燈。
