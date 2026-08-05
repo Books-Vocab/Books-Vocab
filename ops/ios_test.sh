@@ -237,6 +237,8 @@ fi
 source "$SCRIPT_DIR/lib/ios_test_discovery.sh"
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# shellcheck source=lib/ios_lock_wait.sh
+source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
 # shellcheck source=lib/ios_cache_evict.sh
 source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 # shellcheck source=lib/ios_test_video_archive.sh
@@ -677,27 +679,12 @@ LOCK_WAIT_MS=0
 acquire_build_lock() {
   [[ "$LOCK_HELD" -eq 1 ]] && return 0
   echo "[ios_test] caller=$CALLER waiting for build lock..."
-  local waited=0 lock_wait_start_ms holder_pid
+  local lock_wait_start_ms
   lock_wait_start_ms="$(ios_test_now_ms)"
-  while ! shlock -f "$LOCK_FILE" -p $$; do
-    holder_pid=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
-    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
-      # Re-check the lock still holds the SAME dead PID before stealing — another
-      # waiter may have acquired it fresh between our cat and rm (steal only our
-      # observed dead lock, never a live one).
-      if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$holder_pid" ]]; then
-        echo "[ios_test] stale lock (pid=$holder_pid dead), stealing"
-        rm -f "$LOCK_FILE"
-      fi
-      continue
-    fi
-    sleep "$POLL_INTERVAL"
-    waited=$((waited + POLL_INTERVAL))
-    if [[ $waited -ge $TIMEOUT ]]; then
-      echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for build lock" >&2
-      exit 1
-    fi
-  done
+  if ! kg_ios_wait_for_shlock "[ios_test]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep; then
+    echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for build lock" >&2
+    exit 1
+  fi
   LOCK_HELD=1
   LOCK_WAIT_MS=$(( LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
   echo "[ios_test] build lock acquired lockWaitMs=$LOCK_WAIT_MS"
@@ -759,27 +746,15 @@ device_lock_key() {
 acquire_test_device_lock() {
   [[ "$TEST_DEVICE_LOCK_HELD" -eq 1 ]] && return 0
   destination_requires_device_lock || return 0
-  local waited=0 lock_wait_start_ms holder_pid lock_key
+  local lock_wait_start_ms lock_key
   lock_key="$(device_lock_key)"
   TEST_DEVICE_LOCK_FILE="/tmp/kg-ios-test-device-${lock_key}.lock"
   echo "[ios_test] caller=$CALLER waiting for device lock selector=\"${SIMULATOR_BOOT_SELECTOR:-$DESTINATION}\"..."
   lock_wait_start_ms="$(ios_test_now_ms)"
-  while ! shlock -f "$TEST_DEVICE_LOCK_FILE" -p $$; do
-    holder_pid=$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")
-    if [[ -n "$holder_pid" ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
-      if [[ "$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")" == "$holder_pid" ]]; then
-        echo "[ios_test] stale device lock (pid=$holder_pid dead), stealing"
-        rm -f "$TEST_DEVICE_LOCK_FILE"
-      fi
-      continue
-    fi
-    sleep "$POLL_INTERVAL"
-    waited=$((waited + POLL_INTERVAL))
-    if [[ $waited -ge $TIMEOUT ]]; then
-      echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for device lock" >&2
-      exit 1
-    fi
-  done
+  if ! kg_ios_wait_for_shlock "[ios_test]" device "$TEST_DEVICE_LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep; then
+    echo "[ios_test] error: timed out after ${TIMEOUT}s waiting for device lock" >&2
+    exit 1
+  fi
   TEST_DEVICE_LOCK_HELD=1
   DEVICE_RUN_LOCK_WAIT_MS=$(( DEVICE_RUN_LOCK_WAIT_MS + ($(ios_test_now_ms) - lock_wait_start_ms) ))
   echo "[ios_test] device lock acquired deviceRunLockWaitMs=$DEVICE_RUN_LOCK_WAIT_MS"

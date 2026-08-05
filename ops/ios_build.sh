@@ -74,6 +74,8 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 兩支腳本長得夠像，肉眼 review 看不出差別。回歸由 ops/tests/test_lib_sourcing.sh 擋。
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# shellcheck source=lib/ios_lock_wait.sh
+source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
 # Optional run-metrics logging — additive, must never break the build.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
@@ -176,28 +178,11 @@ cleanup() {
 }
 
 echo "[ios_build] caller=$CALLER waiting for lock..."
-WAITED=0
 LOCK_WAIT_START_MS="$(ios_build_now_ms)"
-while ! shlock -f "$LOCK_FILE" -p $$; do
-  # Check if holder PID is still alive; if not, steal lock
-  HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
-  if [[ -n "$HOLDER_PID" ]] && ! kill -0 "$HOLDER_PID" 2>/dev/null; then
-    # Re-check the lock still holds the SAME dead PID before stealing — another
-    # waiter may have acquired it fresh between our cat and rm (steal only our
-    # observed dead lock, never a live one).
-    if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$HOLDER_PID" ]]; then
-      echo "[ios_build] stale lock (pid=$HOLDER_PID dead), stealing"
-      rm -f "$LOCK_FILE"
-    fi
-    continue
-  fi
-  if (( WAITED >= TIMEOUT )); then
-    echo "[ios_build] error: timed out after ${TIMEOUT}s waiting for lock (holder=$HOLDER_PID)" >&2
-    exit 1
-  fi
-  sleep "$POLL_INTERVAL"
-  WAITED=$(( WAITED + POLL_INTERVAL ))
-done
+if ! kg_ios_wait_for_shlock "[ios_build]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"; then
+  echo "[ios_build] error: timed out after ${TIMEOUT}s waiting for lock (holder=$KG_IOS_LOCK_HOLDER_PID)" >&2
+  exit 1
+fi
 trap cleanup EXIT
 LOCK_WAIT_MS=$(( $(ios_build_now_ms) - LOCK_WAIT_START_MS ))
 

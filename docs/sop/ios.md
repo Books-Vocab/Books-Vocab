@@ -79,6 +79,8 @@ Catalyst 是正式 target（Mac 走 Catalyst，非原生 macOS）。以下寫法
 
 原則:優先組合 Xcode 官方 CLI,不重造輪子。`ios_build.sh`/`ios_ops.sh build` 與 `ios_release.sh` archive 會產生 `-resultBundlePath <*.xcresult>`,再用 `xcrun xcresulttool get build-results` 抽 warnings/errors;`ios_test.sh` 會用 `xcrun xcresulttool get test-results summary/tests` 抽 executed/failures。raw xcodebuild log parser 只作 fallback。
 
+build/test/archive 共用 `/tmp/kg-ios-build.lock`；test 的 simulator execution 另有 per-device lock。所有 lock 排隊除記錄 `lockWaitMs` 外，會以 15 秒 cadence 輸出 `phase=lock-wait` heartbeat（留在最長 20 秒可見進度上限內），包含等待者 PID/alive 與 holder PID/alive。只看到 `waiting for ... lock` 後超過 20 秒沒有 heartbeat 是工具缺陷，不可把它解讀成正常排隊、手動刪 live lock，或繞過 `ios_ops.sh`。
+
 `ios_ops.sh doctor` 是 release readiness 儀表板:read-only 彙總 project `MARKETING_VERSION(CURRENT_PROJECT_VERSION)`、Organizer latest archive、TestFlight latest build、ASC version state、manual signing export options、StoreKit scheme/file、Sentry release wiring。ASC version-state 查詢有短 deadline，逾時只會 `status=warn`，不阻塞本機 readiness。`status=block` 代表發版前必修（例如 build number 未增加），`status=warn` 代表資訊缺失或 local artifact 落後。agent/CI 要少調用工具時用 `--json`，schema 為 `kg.ios.doctor.v1`，核心陣列是 `readiness[]`，且頂層直接內嵌同一份 `sentry: kg.ios.sentry.v1`，讓 readiness 與 wiring 摘要共用單一路徑。現在另外有 `summary.verdict` 與 `summary.counts.ok|warn|block|total`，文字模式也會固定印 `[ios][doctor] summary ...`，不必每次自己掃完整列 readiness item 才知道整體狀態。
 
 `ios_ops.sh status --json` 是更輕量的 quick summary：只回 `kg.ios.status.v1`，含 project version/build、Organizer latest archive 與 TestFlight latest build，不做 readiness/gate 判斷。適合 agent 第一輪只想知道「現在 local/Organizer/TestFlight 各是多少」時使用。
