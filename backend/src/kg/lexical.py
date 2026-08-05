@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -19,12 +20,29 @@ from pydantic import BaseModel, Field
 
 from .exceptions import ExternalServiceError, ForbiddenError, NotFoundError
 
+logger = logging.getLogger(__name__)
+
 MAX_SENSES = 20
 MAX_EXAMPLES_PER_SENSE = 5
 MAX_PAYLOAD_BYTES = 256 * 1024
 MAX_SENSE_DEPTH = 8
 MAX_SENSE_NODES = 200
 DEFAULT_PROVIDER_HOURLY_LIMIT = 950
+
+# Outcome vocabulary for `lexical_lookup_event`. `ops_cli.py dictionary-health`
+# is the only consumer; keep the two in step.
+LOOKUP_OUTCOMES = (
+    "fresh",  # cache hit, still inside the positive TTL
+    "stale",  # expired cache served because the provider was unreachable
+    "miss",  # provider fetched and cached a fresh entry
+    "negative",  # no such word (cached negative or a provider 404)
+    "throttled",  # our per-user request limiter refused admission
+    "rate_limited",  # the provider answered 429
+    "budget_exhausted",  # our own hourly provider budget refused admission
+    "error",  # any other provider failure
+    "blocked",  # cache-only lookup with nothing cached (rollout flag off)
+)
+LOOKUP_EVENT_RETENTION_DAYS = 14
 
 
 class LexicalAttribution(BaseModel):
@@ -417,6 +435,20 @@ class LexicalCache:
                 "CREATE INDEX IF NOT EXISTS ix_lexical_provider_request_window "
                 "ON lexical_provider_request(provider, requested_at)"
             )
+            conn.execute(
+                """CREATE TABLE IF NOT EXISTS lexical_lookup_event (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider TEXT NOT NULL,
+                    operation TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )"""
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at "
+                "ON lexical_lookup_event(created_at)"
+            )
 
     @staticmethod
     def query_key(provider: str, query: str, source_language: str, target_language: str) -> str:
@@ -486,6 +518,32 @@ class LexicalCache:
                 ),
             )
 
+    def record_lookup(
+        self, provider: str, operation: str, outcome: str, duration_ms: int
+    ) -> None:
+        """Append one lookup outcome for ops. Best effort — never fails a lookup.
+
+        Observability that can break the thing it observes is worse than none,
+        so every SQLite failure here is swallowed after logging. Rows older than
+        ``LOOKUP_EVENT_RETENTION_DAYS`` are pruned on write; the provider budget
+        caps insert volume at ~1k/hour, so the indexed delete stays cheap.
+        """
+        now = datetime.now(UTC)
+        cutoff = (now - timedelta(days=LOOKUP_EVENT_RETENTION_DAYS)).isoformat()
+        try:
+            with sqlite3.connect(self.path, timeout=5.0) as conn:
+                conn.execute(
+                    "INSERT INTO lexical_lookup_event("
+                    "provider, operation, outcome, duration_ms, created_at"
+                    ") VALUES (?, ?, ?, ?, ?)",
+                    (provider, operation, outcome, int(duration_ms), now.isoformat()),
+                )
+                conn.execute(
+                    "DELETE FROM lexical_lookup_event WHERE created_at < ?", (cutoff,)
+                )
+        except sqlite3.Error:
+            logger.warning("Dictionary lookup telemetry write failed", exc_info=True)
+
     def reserve_provider_request(self, provider: str, *, hourly_limit: int) -> bool:
         """Atomically reserve one upstream call across workers sharing this cache."""
         now = time.time()
@@ -514,6 +572,20 @@ class LexicalCache:
         return True
 
 
+def _failure_outcome(exc: BaseException) -> str:
+    """Classify a raised lookup into the `lexical_lookup_event` vocabulary."""
+    if isinstance(exc, ForbiddenError):
+        return "blocked"
+    if isinstance(exc, NotFoundError):
+        return "negative"
+    label = getattr(exc, "label", "")
+    if label == "dictionary_provider_rate_limited":
+        return "rate_limited"
+    if label == "dictionary_provider_hourly_limit":
+        return "budget_exhausted"
+    return "error"
+
+
 class LexicalService:
     def __init__(
         self,
@@ -540,7 +612,36 @@ class LexicalService:
                 "dictionary_provider_hourly_limit", headers={"Retry-After": "3600"}
             )
 
+    def _instrumented(self, operation: str, call) -> LexicalLookupResult:
+        """Record exactly one outcome + latency per admitted lookup."""
+        started = time.monotonic()
+        outcome = "error"
+        try:
+            result = call()
+            outcome = result.cache_status
+            return result
+        except BaseException as exc:  # noqa: BLE001 — re-raised; only classified
+            outcome = _failure_outcome(exc)
+            raise
+        finally:
+            self.cache.record_lookup(
+                self.provider.provider_id,
+                operation,
+                outcome,
+                round((time.monotonic() - started) * 1000),
+            )
+
     def search(
+        self, query: str, *, source_language: str, target_language: str
+    ) -> LexicalLookupResult:
+        return self._instrumented(
+            "search",
+            lambda: self._search(
+                query, source_language=source_language, target_language=target_language
+            ),
+        )
+
+    def _search(
         self, query: str, *, source_language: str, target_language: str
     ) -> LexicalLookupResult:
         cached = self.cache.get_query(
@@ -594,6 +695,26 @@ class LexicalService:
             raise NotFoundError("Dictionary entry", entry_key) from exc
         if source_language != "en" or target_language != "zh-Hant":
             raise NotFoundError("Dictionary entry", entry_key)
+        # Instrumentation starts only once the request is known well-formed —
+        # a malformed entry key is a client error, not a lookup outcome.
+        return self._instrumented(
+            "entry",
+            lambda: self._resolve_entry(
+                provider,
+                entry_key,
+                target_language=target_language,
+                allow_provider=allow_provider,
+            ),
+        )
+
+    def _resolve_entry(
+        self,
+        provider: str,
+        entry_key: str,
+        *,
+        target_language: str,
+        allow_provider: bool,
+    ) -> LexicalLookupResult:
         cached = self.cache.get_entry(provider, entry_key)
         if cached is not None and cached.fresh and cached.entry is not None:
             return LexicalLookupResult(entry=cached.entry, cache_status="fresh")
