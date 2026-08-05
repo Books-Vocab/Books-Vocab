@@ -1028,6 +1028,73 @@ rb_out="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rb_rc=$?
   && ok "resubmit refuses off main" || fail_t "resubmit ran off main: $rb_out"
 git -C "$fx_r" checkout -q main
 
+# ── 21. status 說實話：ios 專案版號 / build tag 對照；api 是否真的上生產 ────
+# 舊 status 對 ios 只印「上個 tag」與「檔內版本」，兩者都是 2.0.0 → 報「無漂移」，
+# 而那顆 tag 其實指著沒上架的 build 5 的 commit。版號字串相等不代表 tag 指對地方。
+section "status reports build-level truth, not just version strings"
+
+make_status_fixture() {  # $1=fixture  $2=marketing  $3=build
+  mkdir -p "$1/ops/lib" "$1/ios/BooksAndVocab.xcodeproj" "$1/backend/src/kg"
+  cp "$REL" "$1/ops/"
+  cp "$WORKSPACE/ops/lib/release_tags.sh" "$1/ops/lib/"
+  cat > "$1/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<PBX
+MARKETING_VERSION = $2; CURRENT_PROJECT_VERSION = $3;
+MARKETING_VERSION = $2; CURRENT_PROJECT_VERSION = $3;
+PBX
+  printf '[project]\nversion = "2.0.1"\n' > "$1/backend/pyproject.toml"
+  git init -q -b main "$1"
+  git -C "$1" config user.name "Release Test"
+  git -C "$1" config user.email "release-test@example.invalid"
+  git -C "$1" add .
+  git -C "$1" commit -qm "ios: fixture"
+}
+
+# 21a. 專案當下的 (version, build) 沒有 build tag → 具名警告。
+#      這是「這顆 build 沒被記錄」的唯一徵兆；沉默的話它就會像 2.0.0 那樣事後才被發現。
+fx_st="$TMP5/status-nobuildtag"
+make_status_fixture "$fx_st" 2.0.0 6
+git -C "$fx_st" tag ios/2.0.0
+st_out="$(bash "$fx_st/ops/release.sh" status 2>&1)"
+echo "$st_out" | grep -q 'MARKETING_VERSION=2.0.0' && echo "$st_out" | grep -q 'CURRENT_PROJECT_VERSION=6' \
+  && ok "status prints the project's marketing version and build number" \
+  || fail_t "status does not print (version, build): $st_out"
+echo "$st_out" | grep -q 'ios/2.0.0+6' \
+  && ok "status names the missing build tag for the current (version, build)" \
+  || fail_t "status is silent about the unrecorded build: $st_out"
+
+# 21b. build tag 存在 → 列出對照，且不再警告「沒有紀錄」。
+fx_st2="$TMP5/status-buildtags"
+make_status_fixture "$fx_st2" 2.0.0 6
+sealed_st="$(git -C "$fx_st2" rev-parse HEAD)"
+git -C "$fx_st2" tag ios/2.0.0
+git -C "$fx_st2" tag "ios/2.0.0+5"
+git -C "$fx_st2" tag "ios/2.0.0+6"
+st2_out="$(bash "$fx_st2/ops/release.sh" status 2>&1)"
+echo "$st2_out" | grep -q 'ios/2.0.0+5' && echo "$st2_out" | grep -q 'ios/2.0.0+6' \
+  && ok "status lists the known build tags" || fail_t "status does not list build tags: $st2_out"
+echo "$st2_out" | grep -q '沒有 build tag' \
+  && fail_t "status warns about a missing build tag that actually exists: $st2_out" \
+  || ok "status does not warn when the current build is recorded"
+
+# 21c. api：latest api/<ver> tag 是否已是 origin/prod 的祖先（= 該版號是否真的上生產）。
+fx_sp="$TMP5/status-prod"
+make_status_fixture "$fx_sp" 2.0.0 6
+git -C "$fx_sp" tag api/2.0.1
+prod_base="$(git -C "$fx_sp" rev-parse HEAD)"
+git -C "$fx_sp" update-ref refs/remotes/origin/prod "$prod_base"
+sp_out="$(bash "$fx_sp/ops/release.sh" status 2>&1)"
+echo "$sp_out" | grep -q 'api/2.0.1 已在 origin/prod' \
+  && ok "status says the api tag is already on origin/prod" \
+  || fail_t "status does not report api tag→prod ancestry: $sp_out"
+# 反向：prod 落後於 tag 時必須改口，否則上面那條可能是恆真字串。
+git -C "$fx_sp" commit -q --allow-empty -m "api: after prod"
+git -C "$fx_sp" tag -d api/2.0.1 >/dev/null
+git -C "$fx_sp" tag api/2.0.1
+sp2_out="$(bash "$fx_sp/ops/release.sh" status 2>&1)"
+echo "$sp2_out" | grep -q 'api/2.0.1 尚未進 origin/prod' \
+  && ok "status flips to 尚未進 origin/prod when the tag is not deployed" \
+  || fail_t "status reports prod ancestry as a constant: $sp2_out"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
