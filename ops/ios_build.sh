@@ -69,6 +69,16 @@ source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # Optional run-metrics logging — additive, must never break the build.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
+# Build progress heartbeat. NOT optional: `start_build_monitor` is called
+# unconditionally below, and without this source the call fails with
+# "command not found" — bash keeps going, MONITOR_PID ends up empty, and the
+# build runs completely silent for its full duration (the "compile events"
+# count in the success line comes out blank, which is the visible tell). That
+# leaves the operator guessing whether a multi-minute build is alive, which is
+# exactly what the heartbeat contract exists to prevent. `ios_test.sh` and
+# `ios_release.sh` have always sourced it; this script was the odd one out.
+# shellcheck source=lib/ios_build_progress.sh
+source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData policy: one shared, bounded cache anchored at the MAIN repo
