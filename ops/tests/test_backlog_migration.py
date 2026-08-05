@@ -556,3 +556,132 @@ def test_real_ledger_entries_pass_validation(tmp_path):
     BACKLOG.import_legacy(LEGACY_DOC.read_text(encoding="utf-8"), store)
 
     assert BACKLOG.validate_store(store) == []
+
+
+# ---------------------------------------------------------------------------
+# 5. the CLI layer — where "reported, never silent" actually reaches an operator
+# ---------------------------------------------------------------------------
+#
+# Every one of these was a surviving mutation before it existed. The module's
+# whole promise is that problems get REPORTED, and the place a report becomes
+# actionable is the exit code — problems printed to stdout with rc=0 are not
+# reported, they are decoration.
+
+
+def _write_table(tmp_path, *rows) -> Path:
+    doc = tmp_path / "ledger.md"
+    doc.write_text(_table(*rows), encoding="utf-8")
+    return doc
+
+
+def test_import_exits_nonzero_when_a_row_was_lost(tmp_path, capsys):
+    doc = _write_table(
+        tmp_path,
+        "| IMP-0001 | 2026-06-13 | ok | doc | low | fixed | fine | — |",
+        "| IMP-0002 | 2026-06-13 | broken |",
+    )
+    rc = BACKLOG.main(["import", "--store", str(tmp_path / "s"), "--from", str(doc), "--commit"])
+    assert rc == 2, "a lost row exited 0 — the operator has no signal at all"
+
+
+def test_import_exits_zero_on_a_clean_table(tmp_path):
+    """The green direction. Without it the exit code could be hardwired to 2."""
+    doc = _write_table(tmp_path, "| IMP-0001 | 2026-06-13 | ok | doc | low | fixed | fine | — |")
+    assert BACKLOG.main(["import", "--store", str(tmp_path / "s"), "--from", str(doc), "--commit"]) == 0
+
+
+def test_import_reports_a_row_the_store_refused(tmp_path):
+    """The `rejected-row` path — add_entry raising — had no test reaching it at
+    all, and it is the only backstop for a row whose columns passed the anchor
+    check but whose values the store rejects."""
+    doc = _write_table(
+        tmp_path, "| IMP-0001 | 2026/06/13 | ok | doc | low | fixed | fine | — |"
+    )
+    result = BACKLOG.import_legacy(doc.read_text(encoding="utf-8"), tmp_path / "s")
+    assert any(p["kind"] == "rejected-row" for p in result["problems"]), result["problems"]
+
+
+def test_validate_cli_exit_codes(tmp_path):
+    store = tmp_path / "s"
+    BACKLOG.add_entry(
+        store, stream="IMP", date="2026-08-05", source="t", category="cli",
+        severity="med", status="open", detail="d", resolution="",
+    )
+    assert BACKLOG.main(["validate", "--store", str(store)]) == 0
+
+    entry = next(store.glob("*.json"))
+    payload = json.loads(entry.read_text(encoding="utf-8"))
+    payload["status"] = "done"
+    entry.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    assert BACKLOG.main(["validate", "--store", str(store)]) == 2
+
+
+def test_validate_cli_flags_a_store_that_is_not_there(tmp_path):
+    """A typo'd --store used to be a green gate pointed at nothing."""
+    assert BACKLOG.main(["validate", "--store", str(tmp_path / "typo")]) == 2
+
+
+def test_update_dry_run_does_not_write(tmp_path):
+    """The headline contract of the update commit, previously asserted by no
+    test: making dry-run write left the whole suite green."""
+    store = tmp_path / "s"
+    entry = BACKLOG.add_entry(
+        store, stream="IMP", date="2026-08-05", source="t", category="cli",
+        severity="med", status="open", detail="d", resolution="",
+    )
+    path = store / f"{entry['id']}.json"
+    before = path.read_bytes()
+
+    assert BACKLOG.main(["update", "--store", str(store), entry["id"], "--status", "fixed"]) == 0
+    assert path.read_bytes() == before, "dry-run wrote to the store"
+
+    assert BACKLOG.main(
+        ["update", "--store", str(store), entry["id"], "--status", "fixed", "--commit"]
+    ) == 0
+    assert json.loads(path.read_text(encoding="utf-8"))["status"] == "fixed"
+
+
+def test_show_cli_reports_a_missing_entry(tmp_path):
+    store = tmp_path / "s"
+    BACKLOG.add_entry(
+        store, stream="IMP", date="2026-08-05", source="t", category="cli",
+        severity="med", status="open", detail="d", resolution="",
+    )
+    assert BACKLOG.main(["show", "--store", str(store), "IMP-0404"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# 6. an anchor that does not go through the parser
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
+def test_row_count_matches_a_count_taken_without_the_parser():
+    """The round-trip test compares parse(original) with parse(render(import)).
+    Both sides run through the SAME parser, so anything the parser drops is
+    dropped on both sides and the comparison still passes. This counts the rows
+    by hand instead, which is the one check the parser cannot satisfy by being
+    consistently wrong."""
+    text = LEGACY_DOC.read_text(encoding="utf-8")
+    by_hand = sum(1 for line in text.splitlines() if line.strip().startswith("| IMP-"))
+    rows, _ = BACKLOG.parse_legacy_table(text)
+    assert len(rows) == by_hand, f"parser produced {len(rows)} rows for {by_hand} IMP lines"
+
+
+def test_a_row_whose_id_is_malformed_is_reported_not_skipped():
+    """`_ID_RE` used to decide both 'is this a data row' and 'is this id valid',
+    so a bolded, mistyped, lowercased or link-wrapped id took the whole row with
+    it — detail and all — without a word."""
+    for bad_id in ("**IMP-0009**", "imp-0009", "IMP-9", "[IMP-0009](#x)"):
+        text = _table(f"| {bad_id} | 2026-06-13 | s | doc | low | open | real content | — |")
+        rows, problems = BACKLOG.parse_legacy_table(text)
+        assert rows == [], bad_id
+        assert [p["kind"] for p in problems] == ["unrecognised-id"], f"{bad_id}: {problems}"
+
+
+def test_the_date_must_sit_next_to_the_verdict():
+    """The adjacency is the entire reason the stamp regex is shaped as it is,
+    and loosening it left the suite green."""
+    fields, _ = BACKLOG.extract_verdict_fields(
+        "問題自 2026-06-13 起存在;後於 2026-08-05 驗證 CONFIRMED-OPEN"
+    )
+    assert fields["verified_at"] == "2026-08-05", "picked up a date from unrelated prose"
