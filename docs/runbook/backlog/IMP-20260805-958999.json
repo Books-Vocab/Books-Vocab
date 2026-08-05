@@ -1,0 +1,16 @@
+{
+  "category": "tool",
+  "cost": "S",
+  "date": "2026-08-05",
+  "detail": "`ops/gen_ios_baseline.sh:25` 統計 `async func`，但那不是合法的 Swift 語序（正確是 func x() async），所以該指標結構性恆為 0——committed 與重算輸出都是 0。這種「穩定地錯」的指標是等值型 drift check 抓不到的盲區：比對只會說兩邊一致，而兩邊一致地錯。與同輪那筆 generated 文檔缺 equality gate 是不同缺陷，故分開登記：那條是沒人檢查產物，本條是產物裡有個永遠不會變的假數字。",
+  "fix_site": "ops/gen_ios_baseline.sh:25",
+  "id": "IMP-20260805-958999",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/gen_ios_baseline.sh:25`，成本 S。驗收：改成能匹配真實語序的樣式後重算，輸出必須非 0（`ios/` 內確有 async 函式）。通則值得寫進哪份 SOP：任何「指標恆為某個值」都該先當 bug 假設，不是當事實。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}

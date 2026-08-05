@@ -1,0 +1,15 @@
+{
+  "category": "arch",
+  "cost": "M",
+  "date": "2026-08-05",
+  "detail": "「重新取證」目前是儀式不是機制。`17e2a5b2f`（2026-08-05 08:13）用五個唯讀 agent 對 25 筆未結案 entry 逐筆從當前程式碼重新推導，附跑過的命令與 file:line，產出 18 CONFIRMED-OPEN / 5 PARTIAL / 0 ALREADY-FIXED，並就地改寫 11 筆敘述錯誤的 entry——即第一手敘述的錯誤率量測值是 11/25。但那次 sweep 沒有留下任何機制：`backlog.py` 無 verify 子指令；無「這筆多久沒驗」的概念（只有 `verified_at` 一個日期，沒有東西會說它過期）；`list` 無 `--unverified`（要找沒驗過的得自己 `--json` 兜腳本）；無排程；不留驗證者身分與跑過的命令。**衰減一天內就看得到**：距那次 sweep 一天，30 筆未結案已有 7 筆從未被驗證，其中 IMP-0064 是 high。**而且 sweep 的範圍有結構性盲點**：只涵蓋未結案，fixed 從不回頭看——而 audit trail 恰恰是在結案之後才腐爛（分支結案後才刪、sha 結案後才被 rebase 孤立），同輪查到的四個 audit trail 受害者全部是 fixed。同一次 sweep 的 housekeeping 已經手動修過 IMP-0044/0045 的同型缺陷（分支名代 hash，回填 `2e83163d1` 與 `15a2777f3`），但沒留下機器檢查，於是另外四筆活到今天被撞見——手動稽核會漏，這是量測出來的不是推測。本條是其他所有 entry 的可信度上限：ledger 的價值等於它的內容今天還成立的機率。",
+  "id": "IMP-20260805-2834b2",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/backlog.py` 的 CLI 面（`list --unverified` 與某種 stale-days 判準）加一份把 sweep 形狀寫下來的 SOP，成本 M。與同輪那筆 validate 缺 audit-trail 檢查的分工要講清楚：那條驗「resolution 指得到東西」是靜態不變式，本條驗「entry 的主張今天還成立嗎」是週期性重新推導，兩者不可互相取代。驗收：`list --unverified` 能列出今天那 7 筆；且下一次 sweep 的範圍不得再結構性排除 fixed。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}

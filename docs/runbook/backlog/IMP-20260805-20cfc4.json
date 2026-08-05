@@ -1,0 +1,16 @@
+{
+  "category": "tool",
+  "cost": "S",
+  "date": "2026-08-05",
+  "detail": "`.githooks/pre-commit` 存在但沒有安裝：`git config --show-origin --get core.hooksPath` 指向 `.git/hooks`，而該目錄內沒有任何非 sample hook。因此本 checkout 的 design-system 本地 pre-commit 路徑是失效的，DS 覆蓋目前只靠 CI 加 worktree gate。宣稱存在但未接線的守衛比沒有守衛更糟：它會讓人以為那層防護在，於是不去補別的。",
+  "fix_site": ".githooks/pre-commit",
+  "id": "IMP-20260805-20cfc4",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `.githooks/` 與 repo 的環境 setup 說明，成本 S。驗收：`git config --get core.hooksPath` 回 `.githooks`，且故意違規的 staged 改動會被 pre-commit 擋下（兩腿都要跑，別只證它會綠）。未驗：felix 的 clone 與兩個 worktree 是否同樣未安裝。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}
