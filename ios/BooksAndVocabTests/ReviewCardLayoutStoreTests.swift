@@ -65,6 +65,11 @@ struct ReviewCardLayoutProfileTests {
 @MainActor
 struct ReviewCardLayoutStoreTests {
     private let key = "review_card_layout_profile_v1"
+    private let maximumSupportedUnixTimestamp: TimeInterval = 253_402_300_800
+    private let maximumLegacyUnixTimestamp: TimeInterval =
+        253_402_300_800 - (366 * 24 * 60 * 60)
+    private let maximumV2UnixTimestamp: TimeInterval =
+        253_402_300_800 - (24 * 60 * 60)
 
     private func makeDefaults() -> UserDefaults {
         let suite = "test.review-card-layout.\(UUID().uuidString)"
@@ -156,6 +161,213 @@ struct ReviewCardLayoutStoreTests {
         #expect(cloud.setCalls.isEmpty)
     }
 
+    @Test func greatestFiniteCloudTimestampFallsBackThenUpdateRepairsBothLayers() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        cloud.values[key] = try encodedEnvelope(
+            profile: customProfile(.graphLinks),
+            updatedAt: .greatestFiniteMagnitude
+        )
+        let store = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 800) }
+        )
+
+        #expect(store.profile == .default)
+
+        let changed = customProfile(.explanation)
+        store.update(changed)
+
+        let localJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == localJSON)
+        #expect(store.profile == changed)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
+        )
+        let timestamp = try #require(object["updatedAt"] as? Double)
+        #expect(timestamp.isFinite)
+        #expect(timestamp >= 0)
+        #expect(timestamp < maximumSupportedUnixTimestamp)
+    }
+
+    @Test func invalidCloudTimestampDoesNotBeatValidLocalAndResetRepairsBothLayers() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let local = customProfile(.collocations)
+        defaults.set(try encodedEnvelope(profile: local, updatedAt: 600), forKey: key)
+        cloud.values[key] = try encodedEnvelope(
+            profile: customProfile(.graphLinks),
+            updatedAt: .greatestFiniteMagnitude
+        )
+        let store = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 700) }
+        )
+
+        #expect(store.profile == local)
+
+        store.resetAll()
+
+        let localJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == localJSON)
+        #expect(store.profile == .default)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
+        )
+        let timestamp = try #require(object["updatedAt"] as? Double)
+        #expect(timestamp.isFinite)
+        #expect(timestamp < maximumSupportedUnixTimestamp)
+    }
+
+    @Test func v2ExtremeCloudTimestampFallsBackThenUpdateRepairsBothLayers() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        cloud.values[key] = try encodedEnvelope(
+            profile: customProfile(.graphLinks),
+            updatedAt: maximumSupportedUnixTimestamp.nextDown,
+            version: 2
+        )
+        let store = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 850) }
+        )
+
+        #expect(store.profile == .default)
+
+        let changed = customProfile(.explanation)
+        store.update(changed)
+
+        let localJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == localJSON)
+        #expect(store.profile == changed)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
+        )
+        let timestamp = try #require(object["updatedAt"] as? Double)
+        #expect(object["version"] as? Int == 2)
+        #expect(timestamp.isFinite)
+        #expect(timestamp == 850)
+        #expect(timestamp < maximumV2UnixTimestamp)
+    }
+
+    @Test func negativeTimestampIsCorruptAndDoesNotOverwriteOnStartup() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let invalidEnvelope = try encodedEnvelope(
+            profile: customProfile(.difficultyTier),
+            updatedAt: -1
+        )
+        cloud.values[key] = invalidEnvelope
+
+        let store = ReviewCardLayoutStore(defaults: defaults, cloud: cloud)
+
+        #expect(store.profile == .default)
+        #expect(defaults.string(forKey: key) == nil)
+        #expect(cloud.values[key] == invalidEnvelope)
+        #expect(cloud.setCalls.isEmpty)
+    }
+
+    @Test func unsupportedEdgeTimestampCannotOverwriteRepairWhenCloudReplaysIt() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let center = NotificationCenter()
+        let edgeTimestamp = maximumSupportedUnixTimestamp.nextDown.nextDown
+        let edgeEnvelope = try encodedEnvelope(
+            profile: customProfile(.example),
+            updatedAt: edgeTimestamp
+        )
+        cloud.values[key] = edgeEnvelope
+        let store = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 900) },
+            notificationCenter: center,
+            cloudNotificationObject: nil
+        )
+        #expect(store.profile == .default)
+
+        let changed = customProfile(.partOfSpeech)
+        store.update(changed)
+
+        let localJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == localJSON)
+        #expect(store.profile == changed)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
+        )
+        #expect(object["updatedAt"] as? Double == 900)
+
+        cloud.values[key] = edgeEnvelope
+        center.post(
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: nil,
+            userInfo: [NSUbiquitousKeyValueStoreChangedKeysKey: [key]]
+        )
+
+        #expect(store.profile == changed)
+        #expect(defaults.string(forKey: key) == localJSON)
+    }
+
+    @Test func supportedNearCeilingBumpsRemainMonotonicAndReloadable() throws {
+        let defaults = makeDefaults()
+        let cloud = ReviewCardLayoutCloudSpy()
+        let nearCeiling = maximumLegacyUnixTimestamp.nextDown
+        cloud.values[key] = try encodedEnvelope(
+            profile: customProfile(.example),
+            updatedAt: nearCeiling
+        )
+        let store = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 900) }
+        )
+        #expect(store.profile == customProfile(.example))
+
+        let changed = customProfile(.partOfSpeech)
+        store.update(changed)
+
+        let localJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == localJSON)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
+        )
+        let repairedTimestamp = try #require(object["updatedAt"] as? Double)
+        #expect(object["version"] as? Int == 2)
+        #expect(repairedTimestamp > nearCeiling)
+        #expect(repairedTimestamp == maximumLegacyUnixTimestamp)
+        #expect(repairedTimestamp < maximumSupportedUnixTimestamp)
+
+        let reloaded = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 900) }
+        )
+        #expect(reloaded.profile == changed)
+
+        let changedAgain = customProfile(.difficultyTier)
+        reloaded.update(changedAgain)
+
+        let twiceUpdatedJSON = try #require(defaults.string(forKey: key))
+        #expect(cloud.values[key] == twiceUpdatedJSON)
+        let twiceUpdatedObject = try #require(
+            JSONSerialization.jsonObject(with: Data(twiceUpdatedJSON.utf8)) as? [String: Any]
+        )
+        let twiceUpdatedTimestamp = try #require(twiceUpdatedObject["updatedAt"] as? Double)
+        #expect(twiceUpdatedObject["version"] as? Int == 2)
+        #expect(twiceUpdatedTimestamp > repairedTimestamp)
+        #expect(twiceUpdatedTimestamp < maximumSupportedUnixTimestamp)
+
+        let reloadedAgain = ReviewCardLayoutStore(
+            defaults: defaults,
+            cloud: cloud,
+            now: { Date(timeIntervalSince1970: 900) }
+        )
+        #expect(reloadedAgain.profile == changedAgain)
+    }
+
     @Test func updateWritesOneIdenticalVersionedEnvelopeToEachLayer() throws {
         let defaults = makeDefaults()
         let cloud = ReviewCardLayoutCloudSpy()
@@ -174,7 +386,7 @@ struct ReviewCardLayoutStoreTests {
         let object = try #require(
             JSONSerialization.jsonObject(with: Data(localJSON.utf8)) as? [String: Any]
         )
-        #expect(object["version"] as? Int == 1)
+        #expect(object["version"] as? Int == 2)
         #expect(object["updatedAt"] as? Double == 700)
         #expect(object["profile"] != nil)
     }
