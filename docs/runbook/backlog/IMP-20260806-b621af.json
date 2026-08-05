@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "`todayReviewStateFlushesAnswerOncePerCard`（`ios/BooksAndVocabTests/BooksAndVocabTests.swift`）的結構是 `flush → sleep(100ms) → 斷言已落盤`，而 flush 的本體跑在 `Task.detached(priority: .utility)`（`ReviewSessionPersistence.flushPendingAnswers`）。那個 sleep 斷言的是「這台機器夠快」，不是「寫入落地了」。**真正的傷害不是 flaky 本身，是它的失敗長相**：三個斷言全部回到初始值（`reviewCount→0`、`lastReviewFeedbackRaw→-1`、`records.count→0`），看起來像**資料完全沒落盤**，於是每一條踩到的分支都被當成打壞了持久化路徑。2026-08-05～06 一天內四條互不相干的分支各中一次（`feat/word-detail-actions`、`debug/ios-version-sot`、`debug/sync-latency-watermark`、`feat/dictionary-card-v1`），產生三份互相矛盾的書面歸因：「main 也許本來就是紅的」（實測 main 全綠 1758p）、「成因是機器負載」（實測低負載單獨跑仍紅，test body 0.218s）、「是這兩個新增 @Model 欄位讓 store 設定變慢」。**沒有一份猜對，因為失敗長相不指向時間。** 這個 sleep 本身很老，但它變成競態是後來「把持久化移出 per-flip 熱路徑、改成 detached 批次 flush」那次重構造成的——在那之前 submit 是同步寫入，sleep 無害。",
+  "id": "IMP-20260806-b621af",
+  "resolution": "`87a1332f2`。把固定 sleep 換成**有上限的條件等待**（400 × 25ms = 10s 天花板，輪詢 `context.fetch(FetchDescriptor<ReviewRecord>())` 直到非空）。刻意不採「把 sleep 調大」——那是拿慢換 flaky，負載一高照樣回歸；也刻意不接 `withCheckedContinuation` 到既有的 `onFinalize`/`onFailure` 接縫，因為兩個 callback 若都觸發會 double-resume 當場 crash，而輪詢完全不需要動生產碼（那條路徑當時正有多條分支在改）。**這個改法不會掩蓋真缺陷**：flush 若真的永遠不落地，迴圈仍會在有限時間內耗盡並讓測試紅。驗證：①正控 = main+本改動單跑該測試 `tests=1 passed=1`（174s）；②main+本改動全量 unit `1842 executed, all passed`（208s）；③決定性實驗 = 一直被冤枉的 `debug/sync-latency-watermark` rebase 到含本修正的 main 後，cutover gate 的 `ios-test-unit` **1858 executed, all passed**（578s），該分支就此洗清並落地。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "全域收攏：四條分支各被它擋一次",
+  "status": "fixed",
+  "stream": "IMP"
+}
