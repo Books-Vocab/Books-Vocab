@@ -29,11 +29,10 @@ ios/BooksAndVocab/Views/Vocabulary/Components/NotebookHeaderPillLabel.swift:12: 
 ios/BooksAndVocab/Views/Vocabulary/Components/NotebookReviewActionBar.swift:13: struct NotebookReviewActionBar: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Components/WordDetailComponents.swift:113: struct ShimmerLine: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/NotebookBindingList.swift:9: struct NotebookBindingList: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/KGVocabPresenter.swift:202: struct KGVocabRow: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift:224: struct KnowledgeGraphPresenterPreviewHarness: View missing @ObserveInjection
 ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift: arity mismatch — @ObserveInjection=3, .enableInjection()=2
 ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:40: struct ReviewTopBar: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:129: struct ReviewToolbarControls: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:508: struct ShortcutHintChip: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:533: struct ShortcutKeyCap: View missing @ObserveInjection
-ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPreviewData.swift:32: struct TodayReviewFixtureScene: View missing @ObserveInjection
+ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:142: struct ReviewToolbarControls: View missing @ObserveInjection
+ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:527: struct ShortcutHintChip: View missing @ObserveInjection
+ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+Toolbar.swift:552: struct ShortcutKeyCap: View missing @ObserveInjection
+ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPreviewData.swift:33: struct TodayReviewFixtureScene: View missing @ObserveInjection
