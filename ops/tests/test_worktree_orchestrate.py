@@ -498,6 +498,89 @@ def test_a_repo_root_shell_script_with_no_test_lands_in_the_advisory():
     assert gates["coverage"]["uncovered"] == []
 
 
+def test_ui_quality_plane_yml_routes_to_its_owner_tools():
+    """`ops/ui_quality_plane.yml` stopped being a mechanism *listing* on 2026-08-05: it
+    now carries the `run:` argv the UI quality gate actually executes (IMP-0041). A typo
+    in it silently shrinks what the gate runs — and until this routing existed, changing
+    it selected no gate at all, so nothing would say so."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["ops/ui_quality_plane.yml"], ops_test_exists=real))
+    assert gates["data-plane:ui_quality_plane.py"]["cmd"] == [
+        "ops/ui_quality_plane.py", "validate"]
+    assert gates["data-plane:ui_quality_plane.py"]["level"] == "block"
+    assert gates["data-plane:test_ui_quality_plane.sh"]["cmd"] == [
+        "ops/tests/test_ui_quality_plane.sh"]
+    assert "data-plane-unowned" not in gates
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_docs_registry_yml_routes_to_the_registry_lint():
+    """The docs control plane is a yml, so `docs/**.md` never covered it: the file that
+    decides which docs are gated was itself ungated."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["docs/registry.yml"], ops_test_exists=real))
+    assert gates["data-plane:docs_lint.sh"]["cmd"] == ["ops/docs_lint.sh", "--registry"]
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_the_same_tool_is_not_planned_twice_for_one_diff():
+    """Changing a yml AND the script that tests it must not run that script twice. The
+    shell router already selected `ops/tests/test_ui_quality_plane.sh`; the data-plane
+    router has to notice, or every such diff pays for a duplicate run and the operator
+    reads two verdicts for one fact."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = plan_gates(["ops/ui_quality_plane.yml", "ops/tests/test_ui_quality_plane.sh"],
+                       ops_test_exists=real)
+    runs = [g["cmd"] for g in gates if g.get("cmd") == ["ops/tests/test_ui_quality_plane.sh"]]
+    assert len(runs) == 1, [g["name"] for g in gates]
+
+
+def test_a_yaml_with_no_owner_tool_is_named_not_swallowed():
+    """Same shape as `ops-shell-untested`: an enumerated hole beats an anonymous one.
+    There is no universal syntax floor here the way `bash -n` is for shell — no YAML
+    parser ships with the stdlib, and hand-rolling one to gate on would make the gate's
+    verdict a property of my parser rather than of the file."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates([".github/workflows/ui-quality-gate.yml"],
+                                ops_test_exists=real))
+    assert gates["data-plane-unowned"]["files"] == [".github/workflows/ui-quality-gate.yml"]
+    assert gates["data-plane-unowned"]["level"] == "warn"
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_a_neutral_yaml_stays_neutral_and_is_not_named_twice():
+    """`promotion/` and `frozen/` already have a neutral rule. Routing yml must not
+    re-adopt them, or every marketing-manifest edit grows a warn that means nothing."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["promotion/screenshots/manifest.yml"],
+                                ops_test_exists=real))
+    assert "data-plane-unowned" not in gates
+    assert gates["coverage"]["uncovered"] == []
+    assert gates["coverage"]["neutral"] == [["promotion/screenshots/manifest.yml",
+                                             "promotion/"]]
+
+
+def test_a_deleted_data_plane_yml_does_not_route_to_a_tool_that_would_red():
+    """A deleted file is in the diff too. `ui_quality_plane.py validate` on a yml that is
+    gone exits non-zero, which reads as "your change is broken" rather than "you removed
+    the file" — the same false-red shape that made the ops-pytest existence probe
+    necessary (IMP-0045)."""
+    gone = lambda rel: rel != "ops/ui_quality_plane.yml"  # noqa: E731
+    gates = _by_name(plan_gates(["ops/ui_quality_plane.yml"], ops_test_exists=gone))
+    assert not any(n.startswith("data-plane:") for n in gates)
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_every_declared_data_plane_owner_exists_in_the_repo():
+    """The routing table names tools by path. A rename that misses this table produces a
+    gate that can only ever be red — the `ios-build-catalyst` failure mode, which blocked
+    every iOS cutover for two months before anyone read it as a tool problem."""
+    for target, owners in MODULE.DATA_PLANE_OWNERS.items():
+        assert (ROOT / target).is_file(), f"routed target missing: {target}"
+        for cmd in owners:
+            assert (ROOT / cmd[0]).is_file(), f"owner tool missing: {cmd[0]} (for {target})"
+
+
 # (`gitmark` is defined further down, next to the integration tests that need it)
 @pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
 def test_no_two_routable_shell_scripts_share_a_basename():
