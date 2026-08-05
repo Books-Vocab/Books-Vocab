@@ -80,8 +80,24 @@ def test_validate_accepts_all_repo_and_generated_ui_worlds():
         ("syncPresenter", "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift", "UIWorldSyncPresenterFixtureID"),
     ],
 )
-def test_fixture_domain_ids_match_swift_fixture_enums(domain: str, path: str, enum_name: str):
-    assert MODULE.FIXTURE_DOMAIN_IDS[domain] == _swift_fixture_ids(path, enum_name)
+def test_fixture_domain_ids_are_a_subset_of_swift_fixture_enums(domain: str, path: str, enum_name: str):
+    """FROZEN 2026-08-05 — 凍結前這裡是雙向 `==`（Python 鏡像必須等於 Swift enum），
+    那是「Swift 加一個 case，Python 常數就得跟著改」的跨語言稅，與 iOS 端那 6 個
+    world↔allCases 鎖同類（正本 docs/reference/catalog_scope.md §FROZEN）。
+
+    保留的方向是**健全性**那一邊：`FIXTURE_DOMAIN_IDS ⊆ Swift enum`。validator 拿
+    `FIXTURE_DOMAIN_IDS` 當 `known_ids` 做 subset 檢查來擋「world 宣告了 app 不認識的
+    fixture id」——若 Python 認得 Swift 不認得的 id，那道檢查就會放行一個渲染不出來的
+    world。反方向（Swift 有、Python 沒有）在凍結期只會讓 validator **保守地拒絕**一個
+    不該被新增的 id，那正是凍結想要的行為。
+
+    復業第一步＝改回 `==`；完整配方見正本。
+    """
+    swift_ids = _swift_fixture_ids(path, enum_name)
+    # 正控：沒有這行，下面的 subset 對空集合恆真（假綠）。
+    assert MODULE.FIXTURE_DOMAIN_IDS[domain], f"{domain} 的 Python 鏡像不該是空的"
+    assert swift_ids, f"{enum_name} 解析不到任何 case——解析器壞了，不是 enum 空了"
+    assert MODULE.FIXTURE_DOMAIN_IDS[domain] <= swift_ids
 
 
 @pytest.mark.parametrize(

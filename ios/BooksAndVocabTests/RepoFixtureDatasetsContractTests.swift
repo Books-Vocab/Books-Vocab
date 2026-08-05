@@ -47,17 +47,28 @@ struct RepoFixtureDatasetsContractTests {
         #expect(document.auth["signedIn"]?.isLoggedIn == true)
         #expect(document.auth["signedIn"]?.keychainTokenState == .available)
         #expect(document.entitlements["pro"]?.pro.is_active == true)
-        #expect(Set(document.bookshelf.keys) == Set(BookshelfFixtureID.allCases.map(\.rawValue)))
-        #expect(Set(document.podcast.keys) == Set(PodcastFixtureID.allCases.map(\.rawValue)))
-        #expect(Set(document.runtimePodcast.keys) == Set(UIWorldRuntimePodcastFixtureID.allCases.map(\.rawValue)))
-        #expect(Set(document.todayReview.keys) == Set(TodayReviewFixtureID.allCases.map(\.rawValue)))
+        // FROZEN 2026-08-05 — 這四行與下方 syncPresenter 那行，凍結前是雙向 `==`
+        // （generated world 必須等於 allCases），那是「加一個 FixtureID 就得回填
+        // world」的稅源。現只驗單向 isSubset：world 不得含 app 不認識的 key。
+        // 每行都配一個 non-empty 正控——沒有正控的 subset 對空集合恆真（假綠）。
+        // 復業第一步＝改回 `==`；完整配方見 docs/reference/catalog_scope.md §FROZEN。
+        #expect(!document.bookshelf.isEmpty)
+        #expect(Set(document.bookshelf.keys).isSubset(of: Set(BookshelfFixtureID.allCases.map(\.rawValue))))
+        #expect(!document.podcast.isEmpty)
+        #expect(Set(document.podcast.keys).isSubset(of: Set(PodcastFixtureID.allCases.map(\.rawValue))))
+        #expect(!document.runtimePodcast.isEmpty)
+        #expect(Set(document.runtimePodcast.keys).isSubset(of: Set(UIWorldRuntimePodcastFixtureID.allCases.map(\.rawValue))))
+        #expect(!document.todayReview.isEmpty)
+        #expect(Set(document.todayReview.keys).isSubset(of: Set(TodayReviewFixtureID.allCases.map(\.rawValue))))
         #expect(document.settings["preferences_auto_sync_off"] != nil)
         #expect(document.settings["preferences_logged_out_no_sync"] != nil)
         #expect(document.settings["subscription_free"]?.reviewSettings != nil)
         #expect(document.settings["preferences_auto_sync_off"]?.reviewSettings != nil)
         #expect(document.settings["account_long_identity"]?.reviewSettings != nil)
         #expect(document.settings["preferences_logged_out_no_sync"]?.reviewSettings != nil)
-        #expect(Set(document.syncPresenter.keys) == Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue)))
+        // FROZEN 2026-08-05（同上）— 見 docs/reference/catalog_scope.md §FROZEN。
+        #expect(!document.syncPresenter.isEmpty)
+        #expect(Set(document.syncPresenter.keys).isSubset(of: Set(UIWorldSyncPresenterFixtureID.allCases.map(\.rawValue))))
 
         // Marketing capture domain (Phase 1 data plane): present with a real
         // reader passage + Word Detail hero, but a null clock in the checked-in

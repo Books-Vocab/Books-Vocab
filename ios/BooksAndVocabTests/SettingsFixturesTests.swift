@@ -62,13 +62,20 @@ import Testing
         #expect(!registrySource.contains(".init("), "Settings fixture registry must not construct local seed data")
     }
 
-    @Test func repoAndGeneratedDatasetsDeclareEverySettingsFixture() throws {
+    @Test func repoAndGeneratedDatasetsDeclareNoUnknownSettingsFixtureKey() throws {
         let expected = Set(SettingsFixtureID.allCases.map(\.rawValue))
         let repoDocument = try FixtureDatasetStore.decode(Self.marketingDemoData)
         let generatedDocument = try FixtureDatasetStore.decode(Self.generatedDemoData)
 
-        #expect(Set(repoDocument.settings.keys) == expected)
-        #expect(Set(generatedDocument.settings.keys) == expected)
+        // FROZEN 2026-08-05 — 凍結前這兩行是雙向 `==`（world keys 必須等於 allCases），
+        // 那是「加一個 FixtureID 就得回填兩份 world」的稅源。現只驗單向：world 不得含
+        // app 不認識的 key（那種 key 永遠不會 render）。兩行各配一個 non-empty 正控——
+        // 沒有正控的 subset 對空集合恆真（假綠）。復業第一步＝改回 `==`，完整配方見正本。
+        // 正本 docs/reference/catalog_scope.md §FROZEN。
+        #expect(!repoDocument.settings.isEmpty)
+        #expect(Set(repoDocument.settings.keys).isSubset(of: expected))
+        #expect(!generatedDocument.settings.isEmpty)
+        #expect(Set(generatedDocument.settings.keys).isSubset(of: expected))
     }
 
     @Test func subscriptionFreeFixtureComesFromUIWorld() async throws {
