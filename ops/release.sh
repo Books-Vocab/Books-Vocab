@@ -75,15 +75,21 @@ valid_semver() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 ios_build_tag() { printf 'ios/%s+%s\n' "$1" "$2"; }   # `+` 在 git ref name 合法
 
 IOS_BUILD_TAG_STATE=""
-check_ios_build_tag() {  # $1=build tag；設 IOS_BUILD_TAG_STATE=new|idempotent，衝突則 err
-  local tag="$1" existing head_now
+# $1=build tag，其餘=本次會被 commit 的 pathspec。pathspec 由呼叫端傳入而不是在這裡再寫
+# 一次：這個判斷的意思是「接下來會不會生出新 commit」，唯有和 cmd_tag 真正 commit 的
+# 那組檔案是同一份，答案才有效。（重複實作正是 last_tag/changelog 那次事故的形狀。）
+check_ios_build_tag() {  # 設 IOS_BUILD_TAG_STATE=new|idempotent，衝突則 err
+  local tag="$1"; shift
+  local existing head_now
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
   if [[ -z "$existing" ]]; then IOS_BUILD_TAG_STATE=new; return 0; fi
   head_now="$(git -C "$ROOT" rev-parse HEAD)"
-  # 冪等只在「tag 已指向 HEAD 且版號檔沒有待 commit 的改動」時成立：pbxproj 還髒代表
-  # 接下來會生出新 commit，那顆 tag 就會落在不同 commit 上，屬於下面的歧義。
-  if [[ "$existing" == "$head_now" ]] \
-     && git -C "$ROOT" diff --quiet HEAD -- ios/BooksAndVocab.xcodeproj/project.pbxproj; then
+  # 冪等只在「tag 已指向 HEAD 且這些檔案沒有待 commit 的改動」時成立：還髒代表接下來會
+  # 生出新 commit，那顆 tag 就會落在不同 commit 上，屬於下面的歧義。
+  # 已量測（別再重推一次）：`diff --quiet HEAD -- <path>` 對 staged-only、unstaged-only，
+  # 以及「git rm --cached 後檔案仍在磁碟上」三種狀態都回非零＝髒。最後那種曾被懷疑會被
+  # 誤判成乾淨而留下錯誤 tag，實測 rc=1，不成立。
+  if [[ "$existing" == "$head_now" ]] && git -C "$ROOT" diff --quiet HEAD -- "$@"; then
     IOS_BUILD_TAG_STATE=idempotent; return 0
   fi
   err "build tag ${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，但本次要封的是另一顆 commit。
@@ -92,8 +98,12 @@ check_ios_build_tag() {  # $1=build tag；設 IOS_BUILD_TAG_STATE=new|idempotent
    若是既有那顆的補封，請確認哪顆 commit 才是上傳的那顆再人工處理 tag。"
 }
 
+# 非 x.y.z 一律 err，不回「不大於」。回 false 會讓 guard 用錯誤的理由拒絕、讓
+# ios_pending_versions 靜默略過一筆——兩者都是把壞輸入變成看似正常的答案。
 semver_gt() {
   local rma rmi rpa pma pmi ppa
+  valid_semver "$1" && valid_semver "$2" \
+    || err "semver_gt 收到非 x.y.z 的版本：'$1' vs '$2'（呼叫端應先 valid_semver）"
   IFS=. read -r rma rmi rpa <<<"$1"
   IFS=. read -r pma pmi ppa <<<"$2"
   rma=$((10#$rma)); rmi=$((10#$rmi)); rpa=$((10#$rpa))
@@ -153,6 +163,9 @@ ios_pending_versions() {  # $1=已上架版本 $2=本次要發的版本 → 印�
     valid_semver "$ver" || continue
     [[ "$ver" != "$requested" ]] || continue
     semver_gt "$ver" "$shipped" || continue
+    # 只看「夾在已上架與本次之間」的版本。高於 requested 的 build tag（例如已經在跑
+    # 3.0.0 的實驗）不是被跳過的版本，把它算進來會用 2.0.1 事故的說詞擋一件沒發生的事。
+    semver_gt "$requested" "$ver" || continue
     case " $out " in *" $ver "*) ;; *) out="${out:+$out }$ver" ;; esac
   done <<< "$all"
   printf '%s\n' "$out"
@@ -175,7 +188,7 @@ guard_ios_new_version() {
 
   pending="$(ios_pending_versions "$shipped" "$requested")"
   [[ -z "$pending" ]] || err "以下版本出過 build、但沒有上架 tag，狀態未確認：${pending}
-   （build tag：$(git -C "$ROOT" tag -l 'ios/*+*' | tr '\n' ' '))
+   （build tag：$(git -C "$ROOT" tag -l 'ios/*+*' | tr '\n' ' ')）
    跳過它去發 ${requested}，正是 ios/2.0.1 事故的形狀：2.0.0 還在審就先 bump 了下一版。
    先跑 ./ops/release.sh shipped ios 確認上架版本；若該版確實沒上架，請走 resubmit ios 重送，不要跳過。"
 }
@@ -476,7 +489,7 @@ cmd_tag() {
       [[ "$build" =~ ^[0-9]+$ ]] \
         || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION（app target 結構異常）：'${build}'"
       tag="$(ios_build_tag "$v" "$build")"
-      check_ios_build_tag "$tag"
+      check_ios_build_tag "$tag" "${files[@]}"
       ;;
   esac
   curver="$(current_version "$c")"
@@ -497,6 +510,7 @@ cmd_tag() {
     fi
     if [[ "$IOS_BUILD_TAG_STATE" == idempotent ]]; then
       echo "  ${tag} 已指向 $(git -C "$ROOT" rev-parse --short HEAD)，略過重複 tag（仍會確保推上 origin）"
+      echo "  （中斷後補跑請用 tag，不要用 release/resubmit —— 那會再 upload 一次，被 TestFlight 擋下）"
     else
       git -C "$ROOT" tag "$tag"
     fi
@@ -631,7 +645,7 @@ cmd_resubmit() {
 
   cmd_bump_build ios
   # 與 cmd_release 同理：封不下去就別送。TestFlight upload 不可逆。
-  check_ios_build_tag "$(ios_build_tag "$curver" "$(current_build)")"
+  check_ios_build_tag "$(ios_build_tag "$curver" "$(current_build)")" ios/BooksAndVocab.xcodeproj/project.pbxproj
   "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止（pbxproj 已 bump 但未 commit/tag）"
   IOS_SAME_VERSION_RESUBMIT=1
   cmd_tag ios "$curver"
@@ -695,7 +709,7 @@ cmd_release() {
     # build tag 衝突要在 upload **之前**發現。TestFlight upload 不可逆，而 cmd_tag 的
     # 拒絕發生在 upload 之後——那等於先送出一顆我們已經知道封不下去的 archive。
     # bump 已經跑完，pbxproj 此刻帶的就是本次 archive 的 (version, build)。
-    check_ios_build_tag "$(ios_build_tag "$v" "$(current_build)")"
+    check_ios_build_tag "$(ios_build_tag "$v" "$(current_build)")" ios/BooksAndVocab.xcodeproj/project.pbxproj
     "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止"
     cmd_tag "$comp" "$v"
     echo "✓ release ios ${v}：已上傳 TestFlight + tag（GUI 綁 build 送審見 docs/sop/ios.md）。"
