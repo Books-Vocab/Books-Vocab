@@ -115,15 +115,10 @@ enum ReaderPresentationMetrics {
     }
 
     enum Header {
-        static let compactSpacing: CGFloat = 8
-        static let contentHorizontalInsetExpanded: CGFloat = 14
-        static let contentVerticalInset: CGFloat = 10
         static let outerHorizontalInset: CGFloat = 20
         static let outerTopInset: CGFloat = 8
         static let titleMaxWidth: CGFloat = 160
         static let titleMaxWidthRegular: CGFloat = 300
-        static let compactProgressInsetHorizontal: CGFloat = 10
-        static let compactProgressInsetVertical: CGFloat = 8
     }
 
     enum Preview {
