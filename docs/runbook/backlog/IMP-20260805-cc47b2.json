@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "pbxproj 缺一支結構 lint：斷言 MARKETING_VERSION / CURRENT_PROJECT_VERSION 各恰好出現兩次、且只出現在 project-level build config 區塊。fe4a82355 把版號提升到 project level、刪掉六個 target-level 覆寫，但現有守衛全是 value-level：(1) BundleVersionConsistencyTests 比對「值相同」，若有人用相同字面值把 target-level 覆寫加回來，測試照樣綠，檔案又回到兩份可再次分岔的值；(2) ops/release_bump.sh 的錨定 sed 只擋「不同值」的覆寫，相同值一樣會被掃到（ops/test_release.sh §12 已明文標註這個守不住的形狀）；(3) UITests bundle 完全沒有對應守衛，且不能靠複製那個 Swift 測試解決——UI test 的 Bundle.main 是 XCTRunner，不是 app。結構 lint 是唯一能同時關掉這三個缺口的儀器。",
+  "id": "IMP-20260805-cc47b2",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "ios-version-sot worktree（release.sh 語意改造時，review agent 指出新 Swift 守衛是 value-level）",
+  "status": "open",
+  "stream": "IMP"
+}
