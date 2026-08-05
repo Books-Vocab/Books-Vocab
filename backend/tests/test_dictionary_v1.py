@@ -1720,3 +1720,49 @@ def test_per_user_throttle_refusals_are_recorded_for_ops(isolated_api, monkeypat
     assert admitted.status_code == 200, admitted.text
     assert refused.status_code == 429
     assert [e["outcome"] for e in _lookup_events(cache_path)] == ["miss", "throttled"]
+
+
+def test_cached_negative_is_not_reported_as_a_provider_call(tmp_path):
+    """A cached "no such word" costs nothing upstream; counting it as a miss
+    would make the cache look useless exactly when it is doing its job."""
+    from kg.lexical import LexicalCache, LexicalProviderCapabilities, LexicalService
+
+    entry = _lexical_entry()
+
+    class _CountingProvider:
+        provider_id = entry.provider
+        dictionary_id = entry.dictionary_id
+        schema_version = entry.schema_version
+        capabilities = LexicalProviderCapabilities(
+            exact_lookup=True,
+            autocomplete=False,
+            translations=True,
+            pronunciation=True,
+            cache_policy="persistent",
+        )
+
+        def __init__(self):
+            self.calls = 0
+
+        def search(self, *_args, **_kwargs):
+            self.calls += 1
+            return None
+
+        def get_entry(self, *_args, **_kwargs):
+            return self.search()
+
+    provider = _CountingProvider()
+    cache_path = tmp_path / "lexical_cache.db"
+    service = LexicalService(provider=provider, cache=LexicalCache(cache_path))
+
+    first = service.search("zzznotaword", source_language="en", target_language="zh-Hant")
+    second = service.search("zzznotaword", source_language="en", target_language="zh-Hant")
+
+    assert provider.calls == 1
+    assert first.cache_status == second.cache_status == "negative", (
+        "the client-facing cacheStatus contract must not change"
+    )
+    assert [e["outcome"] for e in _lookup_events(cache_path)] == [
+        "negative",
+        "negative_cached",
+    ]

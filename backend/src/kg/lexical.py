@@ -32,15 +32,27 @@ DEFAULT_PROVIDER_HOURLY_LIMIT = 950
 # Outcome vocabulary for `lexical_lookup_event`. `ops_cli.py dictionary-health`
 # is the only consumer; keep the two in step.
 LOOKUP_OUTCOMES = (
-    "fresh",  # cache hit, still inside the positive TTL
+    "fresh",  # cache hit, still inside the positive TTL — no provider call
+    "negative_cached",  # cached "no such word" — no provider call
     "stale",  # expired cache served because the provider was unreachable
     "miss",  # provider fetched and cached a fresh entry
-    "negative",  # no such word (cached negative or a provider 404)
+    "negative",  # provider answered "no such word"
     "throttled",  # our per-user request limiter refused admission
     "rate_limited",  # the provider answered 429
     "budget_exhausted",  # our own hourly provider budget refused admission
     "error",  # any other provider failure
     "blocked",  # cache-only lookup with nothing cached (rollout flag off)
+)
+# Served without touching the provider — the numerator of `cache_hit_rate`.
+CACHE_SERVED_OUTCOMES = ("fresh", "negative_cached")
+# Admitted but the provider plane failed or refused. `stale` belongs here: it is
+# a provider failure the user simply did not see.
+LOOKUP_FAILURE_OUTCOMES = (
+    "stale",
+    "rate_limited",
+    "budget_exhausted",
+    "error",
+    "blocked",
 )
 LOOKUP_EVENT_RETENTION_DAYS = 14
 
@@ -394,6 +406,11 @@ class CachedLexicalValue(BaseModel):
 class LexicalLookupResult(BaseModel):
     entry: LexicalEntry | None
     cache_status: Literal["miss", "fresh", "stale", "negative"]
+    # Internal only — never serialized to clients (the routers build their own
+    # response models field-by-field). `cache_status` cannot answer "did this
+    # burn a provider call?" because a cached negative and a provider 404 are
+    # both `negative`, and conflating them makes a cache hit look like a miss.
+    provider_called: bool = True
 
 
 class LexicalCache:
@@ -618,7 +635,11 @@ class LexicalService:
         outcome = "error"
         try:
             result = call()
-            outcome = result.cache_status
+            outcome = (
+                "negative_cached"
+                if result.cache_status == "negative" and not result.provider_called
+                else result.cache_status
+            )
             return result
         except BaseException as exc:  # noqa: BLE001 — re-raised; only classified
             outcome = _failure_outcome(exc)
@@ -651,12 +672,15 @@ class LexicalService:
             return LexicalLookupResult(
                 entry=cached.entry,
                 cache_status="fresh" if cached.entry is not None else "negative",
+                provider_called=False,
             )
         try:
             self._reserve_provider_request()
         except ExternalServiceError:
             if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(entry=cached.entry, cache_status="stale")
+                return LexicalLookupResult(
+                    entry=cached.entry, cache_status="stale", provider_called=False
+                )
             raise
         try:
             entry = self.provider.search(
@@ -717,16 +741,22 @@ class LexicalService:
     ) -> LexicalLookupResult:
         cached = self.cache.get_entry(provider, entry_key)
         if cached is not None and cached.fresh and cached.entry is not None:
-            return LexicalLookupResult(entry=cached.entry, cache_status="fresh")
+            return LexicalLookupResult(
+                entry=cached.entry, cache_status="fresh", provider_called=False
+            )
         if not allow_provider:
             if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(entry=cached.entry, cache_status="stale")
+                return LexicalLookupResult(
+                    entry=cached.entry, cache_status="stale", provider_called=False
+                )
             raise ForbiddenError("Dictionary lookup is disabled")
         try:
             self._reserve_provider_request()
         except ExternalServiceError:
             if cached is not None and cached.entry is not None:
-                return LexicalLookupResult(entry=cached.entry, cache_status="stale")
+                return LexicalLookupResult(
+                    entry=cached.entry, cache_status="stale", provider_called=False
+                )
             raise
         try:
             entry = self.provider.get_entry(entry_key, target_language=target_language)
