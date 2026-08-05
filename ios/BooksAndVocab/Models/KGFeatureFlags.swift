@@ -58,15 +58,14 @@ enum KGFeatureFlags {
     #endif
 
     /// Whether the Explore（共享牌組庫）top-level section is surfaced (tab / Catalyst
-    /// sidebar row) **and** whether its guest-browse catalog sync may run. DEBUG-only
-    /// while the feature incubates —— Release ships without any Explore footprint
-    /// （browse 端點雖已上線，iOS 面待 copy/分享 Phase 2 齊備才對 Release 曝光）。
-    /// Compile-time constant so Release codepaths are strippable，鏡射 podcastEnabled。
-    #if DEBUG
+    /// sidebar row) **and** whether its guest-browse catalog sync may run.
+    ///
+    /// **Release-flipped 2026-08-05**（執行長決策）：browse + copy 兩段對外曝光。
+    /// 前置條件皆已滿足——後端 `/api/decks` 已在生產、官方目錄已注入內容（三個牌組，
+    /// 非佔位樣本）、browse/preview/copy telemetry 已補齊。ShareLink deep-link 分享
+    /// **刻意不在本次範圍**：它需要 Apple portal 的 Associated Domains + AASA 部署到
+    /// wordnexus.lol，屬獨立的基建決策，而 Explore 不依賴它即完整可用。
     static let exploreEnabled = true
-    #else
-    static let exploreEnabled = false
-    #endif
 
     /// Whether to include `source_lang` / `target_lang` in VocabularyEntry
     /// upload payloads. Backend currently has `extra='ignore'` so adding the

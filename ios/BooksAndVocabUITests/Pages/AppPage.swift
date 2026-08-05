@@ -25,7 +25,7 @@ struct AppPage {
         app.tabBars.buttons["總覽"]
     }
 
-    /// Explore（共享牌組庫）—— DEBUG-gated 第 5 個 tab（KGFeatureFlags.exploreEnabled）。
+    /// Explore（共享牌組庫）—— 第 5 個 tab（`KGFeatureFlags.exploreEnabled`，2026-08-05 起 Release 亦開）。
     var exploreTab: XCUIElement {
         app.tabBars.buttons["探索"]
     }

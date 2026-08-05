@@ -15,9 +15,10 @@ verified_against: e14f295ad
 > （endpoint / DTO / store 見 `docs/reference/tech_index.md`）。**禁用 `library` 一詞**
 > —— 那是 EPUB/PDF 書庫（Bookshelf），命名碰撞會混淆。
 >
-> **Phase 1–2（本切片）**：guest 瀏覽 / 預覽官方策展牌組（Phase 1）＋**複製官方牌組
-> 進私人 Notebook 即時複習**（Phase 2）。Explore section 由 `KGFeatureFlags.exploreEnabled`
-> **DEBUG-only** gate—— Release build 不曝光，待 Release-flip（telemetry 補齊）。
+> **Phase 1–2（已落地）**：guest 瀏覽 / 預覽官方策展牌組（Phase 1）＋**複製官方牌組
+> 進私人 Notebook 即時複習**（Phase 2）。`KGFeatureFlags.exploreEnabled` **自 2026-08-05
+> 起恆為 `true`**（Release 亦曝光）——前置條件皆已滿足：`/api/decks` 在生產、官方目錄
+> 已注入實質內容、browse/preview/copy telemetry 齊備。
 > publish / rate / report 與 ShareLink deep-link 分享一律 Phase 2/3 fast-follow，見「範圍邊界」。
 
 ## 檔案清冊
@@ -27,7 +28,7 @@ verified_against: e14f295ad
 | 檔案 | 說明 |
 |------|------|
 | `ContentView.swift` | `enum AppPrimarySection` 加 `case explore`（`titleKey="app.section.explore"`、`systemImage="sparkles"`）。gate 走 `visibleCases(podcastEnabled:exploreEnabled:)`；iOS TabView 分支 render `ExploreView()`（`accessibilityIdentifier("tab.explore")`）+ macCatalyst `NavigationSplitView` sectionContent 分支（Catalyst parity 必驗）。 |
-| `Models/KGFeatureFlags.swift` | `static let exploreEnabled`：**compile-time `#if DEBUG` 常數**（DEBUG→`true`、Release→`false`）。整個 Explore 面在 Release 零曝光；測試 `AppPrimarySectionTests`。 |
+| `Models/KGFeatureFlags.swift` | `static let exploreEnabled`：compile-time 常數，**2026-08-05 起恆 `true`**（原為 `#if DEBUG` gate）。Explore 面在所有 configuration 曝光；gate 語意測試 `PodcastFeatureGateTests`（參數化 `visibleCases` / `resolvedSelection`，不綁 flag 實值）。 |
 
 ### Model Layer（唯讀 mirror）
 
@@ -70,17 +71,18 @@ verified_against: e14f295ad
 - **改 browse / sync 邏輯** → `Services/SharedDeckCatalogService.swift`（reconcile 純邏輯保 empty-response guard；`syncAll` 全目錄分頁保截斷對稱化）。
 - **改複製流程（copy）** → client 走 `Views/Explore/SharedDeckCopyController.swift` + `Services/KGService+Decks.swift`（stable idempotencyKey、post-copy notebook-first targeted pull）；server-side clone 不變量與 `POST /api/decks/{deckId}/copy` 見 `docs/reference/tech_index.md`。**官方牌組可複製性**由 emitter curation guard `_assert_copyable` 在 emit 前把關（擋同 deck 內 NOCASE 同形字碰撞，否則 copy 端撞私人 `Card` `UNIQUE(content COLLATE NOCASE, notebook_id)` 致 count mismatch）——見 `docs/reference/tech_index.md` `build_official.py` 條目。
 - **改後端 endpoint / DTO / store / env** → 見 `docs/reference/tech_index.md`（`/api/decks` router、`shared_decks.db` 6 表、DTO、cursor、caps env、`Notebook.is_staged` copy barrier）。
+- **改 telemetry** → 事件定義在 `Services/AppAnalytics.swift`（`AnalyticsEvent` 的 Explore 段 + `SessionMetrics` 四個 deck counter + `SessionSnapshot.logSummary`），掛點只有三處：`ExploreView.syncCatalog`（browse）、`SharedDeckDetailView.load`（preview，**僅成功呈現才計**）、`SharedDeckCopyController.copy`（copy 成功/失敗 + Sentry breadcrumb）。**隱私線**：`deckId` 是 server 鑄造的公開識別碼可 `.public`；使用者搜尋字串**只上報 `hasQuery` 布林、絕不上報內容**。失敗分類走 `SharedDeckCopyController.failureReason`（ASCII 穩定值，與 i18n 的 `message(for:)` 刻意分開）。測試 `ExploreTelemetryTests`（聚合斷言用獨立 `SessionMetrics()` 實例，不碰 `.shared`，避免與並行 suite 互相污染）。
 - **i18n 鐵律 8**：新 View 零 raw 中文；`app.section.explore` + 所有 Explore/preview keys 進全 5 lproj。使用者供給的 deck title / authorLabel 是 runtime 資料（i18n 覆蓋外）。
 
 ## 範圍邊界（Phase 分期）
 
 | 能力 | Phase | 狀態 |
 |------|-------|------|
-| guest 瀏覽 / 預覽官方牌組（唯讀）| 1 | ✅ 本切片 |
-| Explore section Release 曝光 | 2 | ⏳ DEBUG-gated（`exploreEnabled`）|
-| 複製官方牌組進私人 Notebook（copy）+ destination picker + 即時複習 | 2 | ✅ 本切片 |
-| ShareLink deep-link 分享 | 2 | ⏳ fast-follow（deferred、out-of-scope）|
-| `deck_browse` / `deck_preview` / `deck_copy` telemetry 事件 | 2 | ⏳ 未實作（Release-flip 補）|
+| guest 瀏覽 / 預覽官方牌組（唯讀）| 1 | ✅ 已落地 |
+| Explore section Release 曝光 | 2 | ✅ 2026-08-05 flip（`exploreEnabled` 不再 `#if DEBUG`）|
+| 複製官方牌組進私人 Notebook（copy）+ destination picker + 即時複習 | 2 | ✅ 已落地 |
+| ShareLink deep-link 分享 | 2 | ⏳ fast-follow（deferred、out-of-scope）——需 Apple portal Associated Domains + AASA 部署，屬獨立基建決策 |
+| `deckBrowsed` / `deckPreviewed` / `deckCopyCompleted` / `deckCopyFailed` telemetry 事件 | 2 | ✅ 已落地（`AppAnalytics` + `SessionMetrics` 聚合 + copy 路徑 Sentry breadcrumb）|
 | Card / Notebook provenance stamp（`sourceSharedDeckId/Version` + `source_shared_card_guid`）| 2 | ✅ 本切片（copy 落地即 stamp）|
 | PublishSheet / 「我發布的牌組」/ rating / report UI | 3 | 🔒 UGC，需執行長 go |
 

@@ -2,8 +2,8 @@
 //  ExploreNavigationUITests.swift
 //  Books & Vocab UI Tests
 //
-//  Explore（共享牌組庫）頂層 tab 的導航 + a11y 可達性 smoke。第 5 個 DEBUG-gated
-//  tab（KGFeatureFlags.exploreEnabled）必須：出現在 tab bar、可進入並被選中、進入後
+//  Explore（共享牌組庫）頂層 tab 的導航 + a11y 可達性 smoke。第 5 個 tab
+//  （KGFeatureFlags.exploreEnabled，2026-08-05 起 Release 亦開）必須：出現在 tab bar、可進入並被選中、進入後
 //  section chrome（導航列「探索」）渲染。內容依賴目錄同步（UI-test dummy 伺服器 →
 //  空/錯誤態），故此測只驗導航可達 + a11y 骨架，不斷言牌組內容。
 //
@@ -21,7 +21,7 @@ final class ExploreNavigationUITests: UITestCase {
         try step("explore-tab-visible", app: app) {
             XCTAssertTrue(
                 shell.exploreTab.waitForExistence(timeout: 10),
-                "Explore tab (探索) should be visible in a DEBUG build (exploreEnabled == true)"
+                "Explore tab (探索) should be visible whenever exploreEnabled == true"
             )
         }
 
