@@ -122,6 +122,18 @@ def _require_enabled(settings: KGSettings) -> None:
         raise ForbiddenError("Dictionary lookup is disabled")
 
 
+class _CacheOnlyLexicalService:
+    """Finishes an interrupted saga from cache while the rollout flag is off."""
+
+    def __init__(self, inner: LexicalService) -> None:
+        self._inner = inner
+
+    def get_entry(self, provider: str, entry_key: str, *, target_language: str):
+        return self._inner.get_entry(
+            provider, entry_key, target_language=target_language, allow_provider=False
+        )
+
+
 def _admit(user_id: str) -> None:
     if not dictionary_rate_limiter.admit(user_id):
         raise DictionaryRateLimitError(
@@ -158,13 +170,19 @@ def _dictionary_card_service(
     notebook_id: str = "default",
     validate_notebook: bool = False,
     require_mutation_dependencies: bool = False,
+    lexical_cache_only: bool = False,
 ) -> DictionaryCardService:
     if validate_notebook:
         validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
+    lexical: LexicalService | _CacheOnlyLexicalService | None = None
+    if require_mutation_dependencies:
+        lexical = _lexical_service(settings)
+        if lexical_cache_only:
+            lexical = _CacheOnlyLexicalService(lexical)
     return DictionaryCardService(
         cards=_card_store(user["dir"]),
         graph=_graph_store(user["dir"], notebook_id=notebook_id),
-        lexical=_lexical_service(settings) if require_mutation_dependencies else None,
+        lexical=lexical,
         judge=_manual_judge(user, notebook_id) if require_mutation_dependencies else None,
         graph_resolver=lambda resolved_notebook_id: _graph_store(
             user["dir"], notebook_id=resolved_notebook_id
@@ -447,12 +465,15 @@ def materialize_dictionary_link(
     )
     if replay is not None:
         return replay
-    _require_enabled(settings)
+    # Ledger-only read: no provider, no quota. It runs before the rollout gate
+    # so a mid-flight rollback finishes its staged card instead of wedging it.
     resumes_after_judge = has_persisted_materialize_judgement(
         cards=_card_store(user["dir"]),
         idempotency_key=idempotency_key,
         request_values=request_values,
     )
+    if not resumes_after_judge:
+        _require_enabled(settings)
     quota = None if resumes_after_judge else _check_quota(user, "manual_link", response)
     result = _dictionary_card_service(
         user,
@@ -460,6 +481,7 @@ def materialize_dictionary_link(
         notebook_id=body.notebook_id,
         validate_notebook=True,
         require_mutation_dependencies=True,
+        lexical_cache_only=not settings.dictionary_lookup_enabled,
     ).materialize_and_link(
         idempotency_key=idempotency_key,
         source_card_id=body.source_card_id,
