@@ -17,7 +17,7 @@ bash -n "$REL"   && ok "release.sh syntax" || fail_t "release.sh syntax error"
 
 # ── 2. 子命令 dispatch 齊全 ─────────────────────────────────────────────────
 section "Subcommand dispatch"
-for sub in status changelog bump bump-build tag publish release; do
+for sub in status changelog bump bump-build tag publish release shipped resubmit; do
   grep -qE "^[[:space:]]*$sub\)" "$REL" \
     && ok "dispatch: $sub" || fail_t "dispatch missing: $sub"
 done
@@ -961,6 +961,72 @@ gb_out="$(KG_ASC_SHIPPED_CMD="$fx_sg/asc-stub.sh" bash "$fx_sg/ops/release.sh" s
 [[ "$gb_rc" -ne 0 && -z "$(git -C "$fx_sg" tag -l 'ios/*' | grep -v '+' || true)" ]] \
   && ok "malformed ASC response is rejected before any tag is written" \
   || fail_t "malformed ASC response was accepted: $gb_out"
+
+# ── 20. resubmit ios：同版號、新 build 的重送 ───────────────────────────────
+# 這條路徑（bump-build + ios_release.sh --upload）原本**完全不留任何紀錄**——沒有
+# commit、沒有 tag，這正是 ios/2.0.0 指向 build 5 而實際上架 build 6 的成因。
+# 它現在和 release 對稱：upload 成功才封版，失敗不留 false marker。
+section "resubmit ios seals the same-version rebuild"
+
+# 20a. dry-run 預設：不 upload、不改檔，且要印出將產生的 build number。
+fx_r="$TMP5/resubmit"; remote_r="$TMP5/resubmit.git"
+make_ios_release_fixture "$fx_r" "$remote_r"
+head_r="$(git -C "$fx_r" rev-parse HEAD)"
+rdry_rc=0
+rdry="$(bash "$fx_r/ops/release.sh" resubmit ios 2>&1)" || rdry_rc=$?
+[[ "$rdry_rc" -eq 0 && ! -e "$fx_r/upload.called" ]] \
+  && ok "resubmit dry-run exits 0 without uploading" || fail_t "resubmit dry-run misbehaved: $rdry"
+grep -q 'CURRENT_PROJECT_VERSION = 5;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+  && ok "resubmit dry-run leaves pbxproj untouched" || fail_t "resubmit dry-run wrote pbxproj"
+echo "$rdry" | grep -q 'ios/2.0.0+6' \
+  && ok "resubmit dry-run names the build tag it will create" \
+  || fail_t "resubmit dry-run does not preview the build tag: $rdry"
+
+# 20b. --yes：build +1、marketing 不動、封 ios/2.0.0+6，且不得產生上架 tag。
+rres_rc=0
+rres="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rres_rc=$?
+sealed_r="$(git -C "$fx_r" rev-parse HEAD)"
+[[ "$rres_rc" -eq 0 && -e "$fx_r/upload.called" ]] \
+  && ok "resubmit uploads" || fail_t "resubmit did not upload: $rres"
+[[ "$(grep -c 'CURRENT_PROJECT_VERSION = 6;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
+   && "$(grep -c 'MARKETING_VERSION = 2.0.0;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 ]] \
+  && ok "resubmit bumps build only, marketing version untouched" \
+  || fail_t "resubmit changed the marketing version"
+[[ "$sealed_r" != "$head_r" \
+   && "$(git -C "$fx_r" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$sealed_r" \
+   && "$(git --git-dir="$remote_r" rev-parse -q --verify 'refs/tags/ios/2.0.0+6^{commit}' 2>/dev/null)" == "$sealed_r" ]] \
+  && ok "resubmit seals ios/2.0.0+6 at the new commit and pushes it" \
+  || fail_t "resubmit did not seal the rebuild: $rres"
+# 上架 tag 必須還是原本那顆：重送不代表上架。
+[[ "$(git -C "$fx_r" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$head_r" ]] \
+  && ok "resubmit does not touch the shipped tag" || fail_t "resubmit moved ios/2.0.0"
+
+# 20c. upload 失敗 → 不留 commit / tag / push（與 release 同一條不變式）。
+fx_rf="$TMP5/resubmit-failure"; remote_rf="$TMP5/resubmit-failure.git"
+make_ios_release_fixture "$fx_rf" "$remote_rf"
+head_rf="$(git -C "$fx_rf" rev-parse HEAD)"
+rf_rc=0
+rf_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_rf/ops/release.sh" resubmit ios --yes 2>&1)" || rf_rc=$?
+[[ "$rf_rc" -ne 0 && -e "$fx_rf/upload.called" \
+   && "$(git -C "$fx_rf" rev-parse HEAD)" == "$head_rf" \
+   && -z "$(git -C "$fx_rf" tag -l 'ios/2.0.0+6')" \
+   && -z "$(git --git-dir="$remote_rf" tag -l 'ios/2.0.0+6')" ]] \
+  && ok "failed resubmit upload leaves no commit/tag/push" \
+  || fail_t "failed resubmit left a false marker: $rf_out"
+
+# 20d. api 拒絕，且指路。
+ra_rc=0
+ra_out="$(bash "$fx_r/ops/release.sh" resubmit api --yes 2>&1)" || ra_rc=$?
+[[ "$ra_rc" -ne 0 ]] && echo "$ra_out" | grep -q 'ios' \
+  && ok "resubmit api is rejected with guidance" || fail_t "resubmit api not rejected: $ra_out"
+
+# 20e. 須在 main（與 release 同一條前提：發布的是本地主幹）。
+git -C "$fx_r" checkout -q -b side
+rb_rc=0
+rb_out="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rb_rc=$?
+[[ "$rb_rc" -ne 0 ]] && echo "$rb_out" | grep -q 'main' \
+  && ok "resubmit refuses off main" || fail_t "resubmit ran off main: $rb_out"
+git -C "$fx_r" checkout -q main
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

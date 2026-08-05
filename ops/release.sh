@@ -18,6 +18,7 @@
 #   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（ios 封的是 ios/<x.y.z>+<build>）
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布。須在 main。dry-run 預設
 #   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
+#   ./ops/release.sh resubmit ios                # 同版號、新 build 重送：bump-build → upload → 封 ios/<x.y.z>+<build>（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
 #
@@ -38,6 +39,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
 SHIPPED_COMMIT=""
+IOS_SAME_VERSION_RESUBMIT=0
 
 # shellcheck source=lib/release_tags.sh
 . "$ROOT/ops/lib/release_tags.sh"
@@ -410,7 +412,10 @@ cmd_tag() {
   tag_prefix "$c" >/dev/null
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
-  if [[ "$c" == ios ]]; then
+  # resubmit 走的是「同一個 marketing version 的下一顆 build」，而 guard_ios_new_version
+  # 專門擋「換版號」——套在重送上會擋掉唯一正確的那條路。用明示的內部旗標開洞，而不是
+  # 把 guard 改成可有可無：預設一定跑，只有 cmd_resubmit 會關掉它。
+  if [[ "$c" == ios && $IOS_SAME_VERSION_RESUBMIT -eq 0 ]]; then
     guard_ios_new_version "$v"
   fi
 
@@ -553,6 +558,52 @@ cmd_shipped() {
   fi
 }
 
+# ---- resubmit：同版號、新 build 的重送（App Review 被拒 / 未上架就要換 binary）----
+# 這條路徑原本是 `bump-build ios --yes` + `ios_release.sh --upload` 兩步手動，**不留任何
+# 紀錄**：沒有 release commit、沒有 tag。ios/2.0.0 指著 build 5 的 commit、實際上架的卻是
+# 五天後的 build 6，成因就是這裡——腳本從來沒有詞彙描述「同版號的第 N 顆 build」。
+# 與 cmd_release 對稱：bump → upload → 封版；upload 失敗不留 commit/tag/push。
+cmd_resubmit() {
+  local target="${1:?用法: release.sh resubmit ios [--yes]}"
+  [[ "$target" == ios ]] \
+    || err "resubmit 只支援 ios（api 沒有 build number 概念；改版號用 ./ops/release.sh bump api <x.y.z>）"
+  [[ $# -le 1 ]] || err "多餘參數：${*:2}（resubmit 不吃版本號——版號不變才叫重送）"
+
+  local branch curver curbuild newbuild
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == main ]] \
+    || err "resubmit 須在 main 執行（目前 ${branch}）—— 它發布本地主幹；feature 改動先 cutover 進 main"
+  curver="$(current_version ios)"
+  valid_semver "$curver" \
+    || err "pbxproj 的 MARKETING_VERSION 是 '${curver}'，不是 x.y.z —— 先跑 ./ops/release.sh bump ios <x.y.z> --yes 對齊成三段"
+  curbuild="$(current_build)"
+  [[ "$curbuild" =~ ^[0-9]+$ ]] || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION：'${curbuild}'"
+  newbuild=$((curbuild + 1))
+
+  echo "resubmit ios ${curver}  build ${curbuild} → ${newbuild}  branch=${branch}"
+  echo "  計畫（dry-run 預設）："
+  echo "    1) bump-build ios（CURRENT_PROJECT_VERSION ${curbuild} → ${newbuild}；MARKETING_VERSION 不動）"
+  echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
+  echo "    3) commit 版號檔 + $(ios_build_tag "$curver" "$newbuild") + push origin ${branch}"
+  echo "  ios/${curver}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
+
+  if [[ $YES -ne 1 ]]; then
+    echo "[dry-run] 未執行。確認無誤後加 --yes："
+    echo "  ./ops/release.sh resubmit ios --yes"
+    return 0
+  fi
+
+  cmd_bump_build ios
+  # 與 cmd_release 同理：封不下去就別送。TestFlight upload 不可逆。
+  check_ios_build_tag "$(ios_build_tag "$curver" "$(current_build)")"
+  "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止（pbxproj 已 bump 但未 commit/tag）"
+  IOS_SAME_VERSION_RESUBMIT=1
+  cmd_tag ios "$curver"
+  IOS_SAME_VERSION_RESUBMIT=0
+  echo "✓ resubmit ios ${curver} build ${newbuild}：已上傳 TestFlight + 封版 tag。"
+  echo "  過審上架後記得跑 ./ops/release.sh shipped ios --yes 補上上架 tag。"
+}
+
 # ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
 # ios:     bump ios → ios_release.sh --upload（archive + 上傳 TestFlight）→ tag ios（upload failure 不留 false tag）
@@ -645,6 +696,7 @@ case "${SUB:-}" in
   tag)       cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;
   publish)   cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;   # 相容別名：publish → tag
   shipped)   cmd_shipped ${ARGS[@]+"${ARGS[@]}"} ;;
+  resubmit)  cmd_resubmit ${ARGS[@]+"${ARGS[@]}"} ;;
   release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
