@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "**`$VAR` 緊接全形標點在 UTF-8 LC_CTYPE 下會被 bash 吃掉變數名**：`\"已回到 $sha，但…\"` → `sha\\xEF: unbound variable` → `set -u` 當場殺掉腳本。C locale 下同一行完全正常，所以**開發機測不出來、換個環境才炸**。實測矩陣：我的 shell（LC_CTYPE unset）過／gate runner（`streaming_command` 設 `LC_CTYPE=C.UTF-8`）死／felix launchd（未設 locale）過／人在 Terminal.app（UTF-8）**死**。發現方式是 IMP-0060 的 cutover gate 紅而我手跑綠——**gate 比我嚴格**，這次是工具救了我，不是工具騙我。全 repo 9 處，8 處改 `${VAR}`（`frozen/` 具名不動），**全部落在錯誤路徑**：`ops/asc.sh:118`、`ops/ios_release.sh:56/227` 對操作者是真的壞的——偏偏在「已經出事、正要印原因」時把診斷換成一行 unbound variable。**掃描器自己就是它要抓的那個 bug**：第一版用 `grep -P`（macOS BSD grep 沒有這旗標）配 `2>/dev/null`，每個檔案都 invalid-option 失敗、輸出全空、報 ✓——**沉默被當成沒有違規**，靠 mutation test 才抓到（塞真違規進樹仍全綠）。改用兩種 grep 都吃的 ERE 交替，並加正控：先證明它抓得到已知違規、且不誤報 `${VAR}`，它的沉默才有意義。豁免具名化（註解行 + `# fw-allow: <理由>`，比照 i18n lint）。",
+  "id": "IMP-0062",
+  "resolution": "`b3f6db9e1`",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0060 的 cutover gate",
+  "status": "fixed",
+  "stream": "IMP"
+}
