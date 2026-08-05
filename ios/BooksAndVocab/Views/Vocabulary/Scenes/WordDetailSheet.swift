@@ -4,6 +4,7 @@ import SwiftData
 struct WordDetailSheet: View {
     @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.detailRouter) private var detailRouter
     @Environment(\.modelContext) private var modelContext
@@ -59,7 +60,25 @@ struct WordDetailSheet: View {
                     onClose: showsInlineChrome ? { handleClose() } : nil,
                     onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
-                    onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
+                    onToggleExcludeFromReader: {
+                        let previous = entry.isExcludedFromReader
+                        let previousPending = entry.readerVisibilitySyncPending
+                        entry.queueReaderVisibility(!previous)
+                        do {
+                            try modelContext.save()
+                            Task {
+                                try? await kgService.flushReaderVisibilityOutbox(
+                                    container: modelContext.container
+                                )
+                            }
+                        } catch {
+                            entry.restoreReaderVisibilityAfterSaveFailure(
+                                previousHidden: previous,
+                                previousPending: previousPending
+                            )
+                            state.reportReaderVisibilitySaveFailure()
+                        }
+                    },
                     onToggleArchive: offersLifecycleActions ? { handleToggleArchive() } : nil,
                     onDelete: offersLifecycleActions ? { isConfirmingDelete = true } : nil,
                     onAddLink: { showAddLink = true },
@@ -122,10 +141,7 @@ struct WordDetailSheet: View {
         .toastSheet(isPresented: $showAddLink) {
             AddLinkSheet(
                 sourceEntry: entry,
-                allEntries: allEntries,
-                onSelect: { target in
-                    state.addLink(target: target, to: entry, kgService: kgService)
-                }
+                allEntries: allEntries
             )
         }
         .enableInjection()

@@ -197,7 +197,7 @@ struct TodayReviewView: View {
                 AddLinkSheet(
                     sourceEntry: entry,
                     allEntries: allEntries,
-                    onSelect: { target in handleAddLink(target, for: entry) }
+                    onLinked: { state.rebuildCacheForEntry(entry) }
                 )
             }
         }
@@ -329,29 +329,6 @@ struct TodayReviewView: View {
         }
     }
     #endif
-
-    private func handleAddLink(_ target: VocabularyEntry, for entry: VocabularyEntry) {
-        guard let fromId = entry.kgCardId else { return }
-        guard let pending = VocabularyGraphLinkMutation.beginManualLink(from: entry, to: target) else { return }
-        let notebookId = entry.notebookId
-
-        state.rebuildCacheForEntry(entry)
-
-        Task {
-            do {
-                let link = try await kgService.createManualLink(
-                    fromId: fromId,
-                    toId: pending.targetCardId,
-                    notebookId: notebookId
-                )
-                VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: entry)
-                state.rebuildCacheForEntry(entry)
-            } catch {
-                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: entry)
-                state.rebuildCacheForEntry(entry)
-            }
-        }
-    }
 
     @discardableResult
     private func perform(_ intent: ReviewIntent) -> Bool {

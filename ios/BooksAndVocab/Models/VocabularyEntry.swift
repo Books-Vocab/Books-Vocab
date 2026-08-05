@@ -65,6 +65,9 @@ final class VocabularyEntry {
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
     var isExcludedFromReader: Bool = false
+    /// Durable optimistic outbox bit. While true, sync must not overwrite the
+    /// local reader visibility intent with an older server projection.
+    var readerVisibilitySyncPending: Bool = false
 
     // Dictionary-card lifecycle. Stored raw strings preserve lightweight
     // migration for existing SwiftData rows and keep unknown future values
@@ -266,6 +269,21 @@ extension VocabularyEntry {
         if isFailed {
             syncState = .pending
         }
+    }
+
+    func queueReaderVisibility(_ hidden: Bool) {
+        isExcludedFromReader = hidden
+        readerVisibilitySyncPending = true
+    }
+
+    /// Restores the complete durable outbox state when the local SwiftData
+    /// save for an optimistic visibility toggle fails.
+    func restoreReaderVisibilityAfterSaveFailure(
+        previousHidden: Bool,
+        previousPending: Bool
+    ) {
+        isExcludedFromReader = previousHidden
+        readerVisibilitySyncPending = previousPending
     }
 
     var reviewMode: VocabularyCardMode {

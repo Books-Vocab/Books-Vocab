@@ -8,6 +8,12 @@
 import Foundation
 
 extension KGService {
+    /// Foundation converts `httpBody` into a private stream before handing a
+    /// request to a custom URLProtocol. Preserve the original bytes as an
+    /// NSURLProtocol property so injected transports can inspect the same
+    /// payload without changing anything sent over the wire.
+    static let requestBodyURLProtocolPropertyKey = "KGServiceRequestBody"
+
     /// Build the request URL from `baseURL` + `path` + `queryItems`, percent-encoding
     /// any literal `+` in a query value to `%2B`.
     ///
@@ -39,6 +45,7 @@ extension KGService {
         method: String = "GET",
         queryItems: [URLQueryItem]? = nil,
         body: Data? = nil,
+        headers: [String: String] = [:],
         retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
@@ -56,7 +63,20 @@ extension KGService {
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        for (name, value) in headers {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         request.httpBody = body
+        if let body {
+            let mutableRequest = (request as NSURLRequest).mutableCopy()
+                as! NSMutableURLRequest
+            URLProtocol.setProperty(
+                body,
+                forKey: Self.requestBodyURLProtocolPropertyKey,
+                in: mutableRequest
+            )
+            request = mutableRequest as URLRequest
+        }
         let requestID = RequestObservation.attachRequestID(to: &request)
 
         var lastError: Error?
@@ -76,7 +96,7 @@ extension KGService {
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
 
-                let (data, response) = try await sharedURLSession.data(for: request)
+                let (data, response) = try await urlSession.data(for: request)
 
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw KGError.serverError("Invalid response from \(path)")
@@ -201,12 +221,13 @@ extension KGService {
         method: String = "GET",
         queryItems: [URLQueryItem]? = nil,
         body: Data? = nil,
+        headers: [String: String] = [:],
         retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> T {
         let (data, httpResponse) = try await authenticatedRequest(
             path: path, method: method, queryItems: queryItems,
-            body: body, retryPolicy: retryPolicy, onRetry: onRetry
+            body: body, headers: headers, retryPolicy: retryPolicy, onRetry: onRetry
         )
         guard (200...299).contains(httpResponse.statusCode) else {
             throw KGError.httpError(

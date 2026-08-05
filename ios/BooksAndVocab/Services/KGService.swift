@@ -53,6 +53,9 @@ final class KGService: KGServing, LocalDataClearing {
     @ObservationIgnored
     let userConfigClient: any KGUserConfigRemoteHandling
 
+    @ObservationIgnored
+    let urlSession: URLSession
+
     var serverURL: String {
         get { Self.getServerURL() }
         set { Self.setServerURL(newValue) }
@@ -104,6 +107,12 @@ final class KGService: KGServing, LocalDataClearing {
         _isPushingReviewEvents = false
         _reviewEventPushLock.unlock()
     }
+    @ObservationIgnored
+    private let _readerVisibilityFlushLock = NSLock()
+    @ObservationIgnored
+    private var _isFlushingReaderVisibility = false
+    @ObservationIgnored
+    private var _readerVisibilityFlushRequested = false
 
     /// Thread-safe check-and-set for background sync guard.
     /// Returns `true` if sync was successfully claimed (caller should proceed).
@@ -183,6 +192,38 @@ final class KGService: KGServing, LocalDataClearing {
         if _pullChainTailID == id { _pullChainTail = nil }
     }
 
+    func claimReaderVisibilityFlush() -> Bool {
+        _readerVisibilityFlushLock.lock()
+        defer { _readerVisibilityFlushLock.unlock() }
+        if _isFlushingReaderVisibility {
+            _readerVisibilityFlushRequested = true
+            return false
+        }
+        _isFlushingReaderVisibility = true
+        _readerVisibilityFlushRequested = false
+        return true
+    }
+
+    /// Completes one serialized pass. If a toggle arrived during the pass,
+    /// keeps ownership so the caller can immediately coalesce the latest value.
+    func finishReaderVisibilityFlushPass() -> Bool {
+        _readerVisibilityFlushLock.lock()
+        defer { _readerVisibilityFlushLock.unlock() }
+        if _readerVisibilityFlushRequested {
+            _readerVisibilityFlushRequested = false
+            return true
+        }
+        _isFlushingReaderVisibility = false
+        return false
+    }
+
+    func abortReaderVisibilityFlush() {
+        _readerVisibilityFlushLock.lock()
+        _isFlushingReaderVisibility = false
+        _readerVisibilityFlushRequested = false
+        _readerVisibilityFlushLock.unlock()
+    }
+
     var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
@@ -200,11 +241,13 @@ final class KGService: KGServing, LocalDataClearing {
     init(
         authSession: any AuthSessionProviding = MainActor.assumeIsolated({ AuthManager.shared }),
         sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared }),
-        userConfigClient: any KGUserConfigRemoteHandling = KGUserConfigClient()
+        userConfigClient: any KGUserConfigRemoteHandling = KGUserConfigClient(),
+        urlSession: URLSession = sharedURLSession
     ) {
         self.authSession = authSession
         self.sessionInvalidator = sessionInvalidator
         self.userConfigClient = userConfigClient
+        self.urlSession = urlSession
     }
 
     // MARK: - Auth Helper

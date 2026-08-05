@@ -46,7 +46,7 @@ protocol DeckCopying: AnyObject {
 }
 
 /// KGService 的行為契約
-protocol KGServing: BackgroundSyncing, DeckCopying {
+protocol KGServing: BackgroundSyncing, DeckCopying, DictionaryServing {
     var serverURL: String { get set }
     var isConnected: Bool { get }
     var lastSyncDate: Date? { get }
