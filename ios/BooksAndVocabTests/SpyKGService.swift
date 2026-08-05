@@ -67,7 +67,7 @@ final class SpyKGService: KGServing {
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
         notebookId: String?
-    ) async throws -> Bool { fatalError("unused") }
+    ) async throws -> KGPullOutcome { fatalError("unused") }
     func fetchNotebooks() async throws -> [KGNotebook] { fatalError("unused") }
     func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook {
         fatalError("unused")
