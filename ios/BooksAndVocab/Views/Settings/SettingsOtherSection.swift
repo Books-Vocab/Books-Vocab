@@ -95,32 +95,49 @@ struct SettingsOtherSection: View {
         Button {
             actions.resync()
         } label: {
-            AppKeyValueRow(
-                icon: "arrow.triangle.2.circlepath",
-                label: "同步狀態".localized,
-                style: .settings(appSkin)
-            ) {
-                if summary.isSyncing {
-                    HStack(spacing: appSkin.spacing.inlineGap) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.accent)
-                            .rotationEffect(.degrees(syncRotation))
-                            .onAppear {
-                                withAnimation(AppMotion.breathing) {
-                                    syncRotation = 360
+            // Two lines, matching bookSyncRow: the trailing slot is a single
+            // truncating line, so the last-sync time gets its own caption row
+            // instead of being the third `·` segment that always fell off.
+            VStack(spacing: 0) {
+                AppKeyValueRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    label: "同步狀態".localized,
+                    style: .settings(appSkin)
+                ) {
+                    if summary.isSyncing {
+                        HStack(spacing: appSkin.spacing.inlineGap) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.accent)
+                                .rotationEffect(.degrees(syncRotation))
+                                .onAppear {
+                                    withAnimation(AppMotion.breathing) {
+                                        syncRotation = 360
+                                    }
                                 }
-                            }
-                            .onDisappear { syncRotation = 0 }
-                        Text("同步中…".localized)
-                            .font(appSkin.typography.caption)
-                            .foregroundStyle(appSkin.palette.secondaryText)
+                                .onDisappear { syncRotation = 0 }
+                            Text("同步中…".localized)
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.secondaryText)
+                        }
+                    } else {
+                        SettingsStatusSummaryValue(
+                            text: summary.summaryText,
+                            color: summary.isConnected ? appSkin.palette.success : appTheme.palette.warning
+                        )
                     }
-                } else {
-                    SettingsStatusSummaryValue(
-                        text: summary.summaryText,
-                        color: summary.isConnected ? appSkin.palette.success : appTheme.palette.warning
-                    )
+                }
+
+                // Omitted entirely when this device has never completed a sync —
+                // better a missing line than a fabricated time.
+                if let lastSyncedText = summary.lastSyncedText, !summary.isSyncing {
+                    Text(lastSyncedText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(1)
+                        .padding(.horizontal, appSkin.spacing.cardPadding)
+                        .padding(.bottom, appSkin.spacing.tinyGap)
                 }
             }
             .appHoverRowTint()
@@ -130,6 +147,8 @@ struct SettingsOtherSection: View {
         }
         .buttonStyle(.plain)
         .disabled(summary.isSyncing)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("settings.syncSummary")
     }
 
     // MARK: - iCloud 書庫同步列

@@ -432,7 +432,7 @@ SETTINGS_REVIEW_KEYS = {
     "autoplaySpeed",
     "autoplaySoundEnabled",
 }
-SETTINGS_SYNC_SUMMARY_KEYS = {"isConnected", "isSyncing", "summaryText"}
+SETTINGS_SYNC_SUMMARY_KEYS = {"isConnected", "isSyncing", "summaryText", "lastSyncedText"}
 SETTINGS_ABOUT_KEYS = {"version", "developerName"}
 SETTINGS_DANGER_KEYS = {"isDeletingAccount"}
 SETTINGS_BOOK_SYNC_KEYS = {"text", "detail", "tone"}
@@ -1064,6 +1064,11 @@ def _validate_settings_seed(seed: Mapping[str, Any], *, owner: str, label: str) 
         _ensure_bool(sync_obj.get("isConnected"), field=f"{owner}.syncSummary.isConnected", label=label)
         _ensure_bool(sync_obj.get("isSyncing"), field=f"{owner}.syncSummary.isSyncing", label=label)
         _ensure_string(sync_obj.get("summaryText"), field=f"{owner}.syncSummary.summaryText", label=label)
+        # Nullable: a device that has never synced (or is offline) has no
+        # last-sync time, and the row omits the line rather than inventing one.
+        _validate_nullable_string(
+            sync_obj.get("lastSyncedText"), owner=f"{owner}.syncSummary.lastSyncedText", label=label
+        )
     about = _require_mapping(seed.get("about"), field=f"{owner}.about", label=label)
     _validate_exact_keys(about, expected=SETTINGS_ABOUT_KEYS, owner=f"{owner}.about", label=label)
     _ensure_str(about.get("version"), field=f"{owner}.about.version", label=label)

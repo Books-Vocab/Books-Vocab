@@ -90,7 +90,14 @@ struct SettingsPresenterState {
     struct SyncSummaryState {
         let isConnected: Bool
         let isSyncing: Bool
+        /// Connection + card count. Kept to two segments so it fits the row's
+        /// single trailing line; anything longer is truncated with no way for
+        /// the user to see what was cut.
         let summaryText: String
+        /// "Last synced …", rendered on its own line below the row. It used to
+        /// be a third segment of `summaryText` and was therefore always the
+        /// part that fell off the end.
+        let lastSyncedText: String?
     }
 
     /// CloudKit 書庫同步狀態列（CloudKitMirroringMonitor.phase 的 UI 投影）。

@@ -406,7 +406,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 剛剛"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛"
       },
       "bookSync": {
         "text": "已同步",
@@ -534,7 +535,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 剛剛"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛"
       },
       "bookSync": {
         "text": "已同步",
@@ -615,7 +617,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 剛剛"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛"
       },
       "bookSync": {
         "text": "已同步",
@@ -696,7 +699,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 剛剛"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛"
       },
       "bookSync": {
         "text": "已同步",
@@ -765,7 +769,8 @@
       "syncSummary": {
         "isConnected": false,
         "isSyncing": false,
-        "summaryText": "離線"
+        "summaryText": "離線",
+        "lastSyncedText": null
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -831,7 +836,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 剛剛"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 剛剛"
       },
       "about": {
         "version": "1.1.0 (42)",
@@ -897,7 +903,8 @@
       "syncSummary": {
         "isConnected": true,
         "isSyncing": false,
-        "summaryText": "已連線 · 128 張 · 10 分鐘前"
+        "summaryText": "已連線 · 128 張",
+        "lastSyncedText": "上次同步 10 分鐘前"
       },
       "bookSync": {
         "text": "同步異常",
@@ -959,7 +966,8 @@
       "syncSummary": {
         "isConnected": false,
         "isSyncing": false,
-        "summaryText": "離線"
+        "summaryText": "離線",
+        "lastSyncedText": null
       },
       "about": {
         "version": "1.1.0 (42)",

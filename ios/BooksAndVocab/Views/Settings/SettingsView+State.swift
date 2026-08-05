@@ -30,16 +30,23 @@ extension SettingsView {
         return kgService.serverCardCount
     }
 
+    /// Connection + card count only. The last-sync time lives on its own line
+    /// (`lastSyncedText`): as a third `·` segment here it never fit the row's
+    /// single trailing line and was always the part that got truncated away.
     var syncSummaryText: String {
         if !kgService.isConnected { return "離線".localized }
         var parts: [String] = ["已連線".localized]
         if displayCardCount > 0 {
             parts.append(L10n.format("%@ 張", "\(displayCardCount)"))
         }
-        if let lastSync = kgService.lastSyncDate?.formatted(.relative(presentation: .named)) {
-            parts.append(lastSync)
-        }
         return parts.joined(separator: " · ")
+    }
+
+    /// `nil` until this device completes a sync — the row then simply omits the
+    /// line rather than claiming a time it does not have.
+    var lastSyncedText: String? {
+        guard let lastSync = kgService.lastSyncDate else { return nil }
+        return L10n.format("上次同步 %@", lastSync.formatted(.relative(presentation: .named)))
     }
 
     var presenterState: SettingsPresenterState {
@@ -104,7 +111,8 @@ extension SettingsView {
                 ? .init(
                     isConnected: kgService.isConnected,
                     isSyncing: coordinator.isResyncing,
-                    summaryText: syncSummaryText
+                    summaryText: syncSummaryText,
+                    lastSyncedText: lastSyncedText
                 )
                 : nil,
             // 書庫綁 Apple ID 不綁 app 帳號 — 不掛 isLoggedIn gate。
