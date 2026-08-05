@@ -17,9 +17,6 @@ enum AppMetrics {
     /// 2026-05 user feedback 收緊到 16pt — iPhone 列表頁 32pt 過鬆。
     static let dividerAirMargin: CGFloat = DesignTokens.Space.Semantic.dividerAir
 
-    // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
-    static let glassStrokeOpacity: Double = 0.12
-
     // ── Control Dimensions ──────────────────────────────────────────────────────
     static let iconButtonSize: CGFloat = 52
 
