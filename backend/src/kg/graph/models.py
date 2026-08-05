@@ -43,3 +43,13 @@ class CandidatePair(BaseModel):
     to_id: str
     similarity: float  # embedding similarity score
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class GraphCardLifecycleSnapshot(BaseModel):
+    """Exact graph state owned by one card before a lifecycle mutation."""
+
+    card_id: str
+    links: list[GraphLink] = Field(default_factory=list)
+    candidates: list[CandidatePair] = Field(default_factory=list)
+    pending_judge: bool = False
+    blocked_pairs: list[tuple[str, str]] = Field(default_factory=list)
