@@ -10,52 +10,620 @@
   "coverPattern": "waves",
   "cards": [
     {
-      "content": "meticulous",
-      "pos": "adjective",
-      "meaning": "一絲不苟的；極為謹慎的",
-      "examples": ["She kept meticulous records of every transaction."],
-      "collocations": ["meticulous attention to detail"],
-      "difficulty": 0.6,
+      "content": "become",
+      "pos": "verb",
+      "meaning": "變成；成為",
+      "examples": ["She became a teacher after graduating."],
+      "collocations": ["become popular", "become clear"],
+      "difficulty": 0.2,
       "mode": "recognition",
-      "inflections": ["meticulously"]
+      "inflections": ["becomes", "became", "becoming"]
     },
     {
-      "content": "resilient",
-      "pos": "adjective",
-      "meaning": "有韌性的；能快速恢復的",
-      "examples": ["Children are remarkably resilient."],
-      "collocations": ["resilient economy"],
-      "difficulty": 0.5,
+      "content": "decide",
+      "pos": "verb",
+      "meaning": "決定；下定決心",
+      "examples": ["We decided to leave early."],
+      "collocations": ["decide to do", "decide on something"],
+      "difficulty": 0.2,
       "mode": "recognition",
-      "inflections": ["resilience"]
+      "inflections": ["decides", "decided", "deciding"]
     },
     {
-      "content": "endeavor",
+      "content": "explain",
+      "pos": "verb",
+      "meaning": "解釋；說明",
+      "examples": ["Could you explain this word to me?"],
+      "collocations": ["explain why", "explain clearly"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["explains", "explained", "explaining"]
+    },
+    {
+      "content": "improve",
+      "pos": "verb",
+      "meaning": "改善；進步",
+      "examples": ["Reading every day will improve your vocabulary."],
+      "collocations": ["improve quickly", "improve the situation"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["improves", "improved", "improving"]
+    },
+    {
+      "content": "notice",
+      "pos": "verb",
+      "meaning": "注意到；察覺",
+      "examples": ["I didn't notice the sign at first."],
+      "collocations": ["notice a difference", "hardly notice"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["notices", "noticed", "noticing"]
+    },
+    {
+      "content": "prepare",
+      "pos": "verb",
+      "meaning": "準備；預備",
+      "examples": ["He is preparing dinner for the family."],
+      "collocations": ["prepare for an exam", "prepare a meal"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["prepares", "prepared", "preparing"]
+    },
+    {
+      "content": "suggest",
+      "pos": "verb",
+      "meaning": "建議；提議",
+      "examples": ["She suggested taking the earlier train."],
+      "collocations": ["suggest an idea", "strongly suggest"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["suggests", "suggested", "suggesting"]
+    },
+    {
+      "content": "understand",
+      "pos": "verb",
+      "meaning": "理解；明白",
+      "examples": ["I don't understand the question."],
+      "collocations": ["fully understand", "understand the reason"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["understands", "understood", "understanding"]
+    },
+    {
+      "content": "worry",
+      "pos": "verb",
+      "meaning": "擔心；煩惱",
+      "examples": ["Don't worry about the test."],
+      "collocations": ["worry about", "worry too much"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["worries", "worried", "worrying"]
+    },
+    {
+      "content": "borrow",
+      "pos": "verb",
+      "meaning": "借入；借用",
+      "note": "borrow 是「向別人借進來」；lend 是「借出去給別人」，方向相反。",
+      "examples": ["May I borrow your pen?"],
+      "collocations": ["borrow money", "borrow a book"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["borrows", "borrowed", "borrowing"]
+    },
+    {
+      "content": "describe",
+      "pos": "verb",
+      "meaning": "描述；形容",
+      "examples": ["Can you describe what you saw?"],
+      "collocations": ["describe in detail", "hard to describe"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["describes", "described", "describing"]
+    },
+    {
+      "content": "accept",
+      "pos": "verb",
+      "meaning": "接受；認可",
+      "examples": ["She accepted the job offer."],
+      "collocations": ["accept an invitation", "widely accepted"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["accepts", "accepted", "accepting"]
+    },
+    {
+      "content": "compare",
+      "pos": "verb",
+      "meaning": "比較；對照",
+      "examples": ["Compare the two photos and find the difference."],
+      "collocations": ["compare with", "compare prices"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["compares", "compared", "comparing"]
+    },
+    {
+      "content": "arrive",
+      "pos": "verb",
+      "meaning": "抵達；到達",
+      "note": "arrive at 用於小地點（車站、機場）；arrive in 用於大地點（城市、國家）。",
+      "examples": ["The train arrives at nine."],
+      "collocations": ["arrive on time", "arrive at the airport"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["arrives", "arrived", "arriving"]
+    },
+    {
+      "content": "choose",
+      "pos": "verb",
+      "meaning": "選擇；挑選",
+      "examples": ["You can choose any seat you like."],
+      "collocations": ["choose between", "choose carefully"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["chooses", "chose", "chosen", "choosing"]
+    },
+    {
+      "content": "believe",
+      "pos": "verb",
+      "meaning": "相信；認為",
+      "examples": ["I believe she is telling the truth."],
+      "collocations": ["believe in", "hard to believe"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["believes", "believed", "believing"]
+    },
+    {
+      "content": "continue",
+      "pos": "verb",
+      "meaning": "繼續；持續",
+      "examples": ["The rain continued all afternoon."],
+      "collocations": ["continue to do", "continue working"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["continues", "continued", "continuing"]
+    },
+    {
+      "content": "avoid",
+      "pos": "verb",
+      "meaning": "避免；避開",
+      "note": "後面接動詞要用 -ing：avoid doing，不說 avoid to do。",
+      "examples": ["Try to avoid the traffic at rush hour."],
+      "collocations": ["avoid doing", "avoid trouble"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["avoids", "avoided", "avoiding"]
+    },
+    {
+      "content": "expect",
+      "pos": "verb",
+      "meaning": "預期；期待",
+      "examples": ["We expect the package to arrive tomorrow."],
+      "collocations": ["expect a reply", "as expected"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["expects", "expected", "expecting"]
+    },
+    {
+      "content": "allow",
+      "pos": "verb",
+      "meaning": "允許；准許",
+      "examples": ["Pets aren't allowed in this building."],
+      "collocations": ["allow someone to do", "not allowed"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["allows", "allowed", "allowing"]
+    },
+    {
+      "content": "advice",
       "pos": "noun",
-      "meaning": "努力；試圖",
-      "examples": ["Their endeavor to reduce waste paid off."],
-      "difficulty": 0.5,
+      "meaning": "建議；忠告",
+      "note": "不可數名詞，不說 an advice；要計數用 a piece of advice。動詞形是 advise。",
+      "examples": ["She gave me some good advice about the interview."],
+      "collocations": ["give advice", "a piece of advice", "take someone's advice"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "chance",
+      "pos": "noun",
+      "meaning": "機會；可能性",
+      "examples": ["This is your last chance to sign up."],
+      "collocations": ["have a chance", "by chance", "a good chance"],
+      "difficulty": 0.2,
       "mode": "recognition",
-      "rootForm": "endeavor",
-      "inflections": ["endeavors", "endeavored"]
+      "inflections": ["chances"]
+    },
+    {
+      "content": "customer",
+      "pos": "noun",
+      "meaning": "顧客；客戶",
+      "examples": ["The shop treats every customer well."],
+      "collocations": ["regular customer", "customer service"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["customers"]
+    },
+    {
+      "content": "effort",
+      "pos": "noun",
+      "meaning": "努力；辛勞",
+      "examples": ["It took a lot of effort to finish on time."],
+      "collocations": ["make an effort", "worth the effort"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["efforts"]
+    },
+    {
+      "content": "experience",
+      "pos": "noun",
+      "meaning": "經驗；體驗",
+      "note": "表「經驗累積」時不可數（work experience）；表「一次經歷」時可數（a great experience）。",
+      "examples": ["She has five years of teaching experience."],
+      "collocations": ["work experience", "a great experience"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["experiences"]
+    },
+    {
+      "content": "habit",
+      "pos": "noun",
+      "meaning": "習慣",
+      "examples": ["Reading before bed is a good habit."],
+      "collocations": ["a good habit", "break a habit"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["habits"]
+    },
+    {
+      "content": "journey",
+      "pos": "noun",
+      "meaning": "旅程；行程",
+      "examples": ["The journey to the island takes two hours."],
+      "collocations": ["a long journey", "safe journey"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["journeys"]
+    },
+    {
+      "content": "mistake",
+      "pos": "noun",
+      "meaning": "錯誤；過失",
+      "examples": ["Everyone makes mistakes when learning."],
+      "collocations": ["make a mistake", "by mistake"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["mistakes"]
+    },
+    {
+      "content": "opinion",
+      "pos": "noun",
+      "meaning": "意見；看法",
+      "examples": ["In my opinion, the first plan is better."],
+      "collocations": ["in my opinion", "a strong opinion"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["opinions"]
+    },
+    {
+      "content": "purpose",
+      "pos": "noun",
+      "meaning": "目的；用途",
+      "examples": ["The purpose of this meeting is to plan the trip."],
+      "collocations": ["on purpose", "the main purpose"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["purposes"]
+    },
+    {
+      "content": "reason",
+      "pos": "noun",
+      "meaning": "理由；原因",
+      "examples": ["There is no reason to be nervous."],
+      "collocations": ["the reason for", "for some reason"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["reasons"]
+    },
+    {
+      "content": "result",
+      "pos": "noun",
+      "meaning": "結果；成果",
+      "examples": ["The results of the test come out on Friday."],
+      "collocations": ["as a result", "the final result"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["results"]
+    },
+    {
+      "content": "weather",
+      "pos": "noun",
+      "meaning": "天氣",
+      "note": "不可數名詞，不說 a weather；問天氣說 What is the weather like?",
+      "examples": ["The weather is warm and sunny today."],
+      "collocations": ["bad weather", "weather forecast"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "neighbor",
+      "pos": "noun",
+      "meaning": "鄰居",
+      "note": "美式拼法 neighbor；英式拼法 neighbour。",
+      "examples": ["Our neighbor helped us move the sofa."],
+      "collocations": ["next-door neighbor", "friendly neighbor"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["neighbors"]
+    },
+    {
+      "content": "knowledge",
+      "pos": "noun",
+      "meaning": "知識；學識",
+      "note": "不可數名詞，沒有複數 knowledges；單獨使用不加 a，但有形容詞修飾時可說 a deep/good knowledge of something。",
+      "examples": ["He has a deep knowledge of local history."],
+      "collocations": ["general knowledge", "knowledge of"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "situation",
+      "pos": "noun",
+      "meaning": "情況；處境",
+      "examples": ["The situation improved after the meeting."],
+      "collocations": ["a difficult situation", "handle the situation"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["situations"]
+    },
+    {
+      "content": "language",
+      "pos": "noun",
+      "meaning": "語言",
+      "examples": ["She speaks three languages fluently."],
+      "collocations": ["learn a language", "native language"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["languages"]
+    },
+    {
+      "content": "example",
+      "pos": "noun",
+      "meaning": "例子；範例",
+      "examples": ["Give me an example of what you mean."],
+      "collocations": ["for example", "a good example"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["examples"]
+    },
+    {
+      "content": "message",
+      "pos": "noun",
+      "meaning": "訊息；留言",
+      "examples": ["I left a message on her desk."],
+      "collocations": ["send a message", "leave a message"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["messages"]
+    },
+    {
+      "content": "price",
+      "pos": "noun",
+      "meaning": "價格；價錢",
+      "examples": ["The price of coffee went up again."],
+      "collocations": ["a fair price", "at a low price"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["prices"]
+    },
+    {
+      "content": "afraid",
+      "pos": "adjective",
+      "meaning": "害怕的；恐懼的",
+      "note": "不放在名詞前，說 She is afraid，不說 an afraid girl。",
+      "examples": ["He is afraid of heights."],
+      "collocations": ["afraid of", "I am afraid so"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "busy",
+      "pos": "adjective",
+      "meaning": "忙碌的；繁忙的",
+      "examples": ["The street is busy on weekends."],
+      "collocations": ["busy with", "a busy day"],
+      "difficulty": 0.1,
+      "mode": "recognition",
+      "inflections": ["busier", "busiest"]
+    },
+    {
+      "content": "careful",
+      "pos": "adjective",
+      "meaning": "小心的；仔細的",
+      "examples": ["Be careful with the hot pan."],
+      "collocations": ["be careful", "careful attention"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["carefully"]
+    },
+    {
+      "content": "comfortable",
+      "pos": "adjective",
+      "meaning": "舒適的；自在的",
+      "examples": ["This chair is very comfortable."],
+      "collocations": ["feel comfortable", "comfortable shoes"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["comfortably"]
+    },
+    {
+      "content": "common",
+      "pos": "adjective",
+      "meaning": "常見的；普遍的",
+      "examples": ["This is a common mistake among learners."],
+      "collocations": ["common sense", "have in common"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["commonly"]
+    },
+    {
+      "content": "crowded",
+      "pos": "adjective",
+      "meaning": "擁擠的；人多的",
+      "examples": ["The train was crowded this morning."],
+      "collocations": ["a crowded street", "get crowded"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "empty",
+      "pos": "adjective",
+      "meaning": "空的；空蕩的",
+      "examples": ["The bottle is empty."],
+      "collocations": ["an empty room", "empty space"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "expensive",
+      "pos": "adjective",
+      "meaning": "昂貴的",
+      "examples": ["That restaurant is too expensive for us."],
+      "collocations": ["very expensive", "expensive taste"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "famous",
+      "pos": "adjective",
+      "meaning": "著名的；有名的",
+      "examples": ["The city is famous for its night market."],
+      "collocations": ["famous for", "world famous"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "friendly",
+      "pos": "adjective",
+      "meaning": "友善的；親切的",
+      "note": "以 -ly 結尾但是形容詞，不是副詞。",
+      "examples": ["The staff here are very friendly."],
+      "collocations": ["friendly to", "a friendly smile"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["friendlier", "friendliest"]
+    },
+    {
+      "content": "important",
+      "pos": "adjective",
+      "meaning": "重要的",
+      "examples": ["It is important to sleep well."],
+      "collocations": ["extremely important", "an important decision"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["importantly"]
+    },
+    {
+      "content": "popular",
+      "pos": "adjective",
+      "meaning": "受歡迎的；流行的",
+      "examples": ["This song is popular with teenagers."],
+      "collocations": ["popular with", "become popular"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "quiet",
+      "pos": "adjective",
+      "meaning": "安靜的；寧靜的",
+      "note": "注意與 quite（相當地）拼字相近但意思不同。",
+      "examples": ["Please keep quiet in the library."],
+      "collocations": ["keep quiet", "a quiet street"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["quietly"]
+    },
+    {
+      "content": "similar",
+      "pos": "adjective",
+      "meaning": "相似的；類似的",
+      "examples": ["The two designs look very similar."],
+      "collocations": ["similar to", "in a similar way"],
+      "difficulty": 0.3,
+      "mode": "recognition",
+      "inflections": ["similarly"]
+    },
+    {
+      "content": "strange",
+      "pos": "adjective",
+      "meaning": "奇怪的；陌生的",
+      "examples": ["There is a strange noise coming from the kitchen."],
+      "collocations": ["a strange feeling", "strange to say"],
+      "difficulty": 0.2,
+      "mode": "recognition",
+      "inflections": ["strangely"]
+    },
+    {
+      "content": "useful",
+      "pos": "adjective",
+      "meaning": "有用的；有幫助的",
+      "examples": ["This app is useful for learning vocabulary."],
+      "collocations": ["useful for", "a useful tool"],
+      "difficulty": 0.2,
+      "mode": "recognition"
     },
     {
       "content": "plain",
       "pos": "adjective",
       "meaning": "平凡的；樸素的；清楚的",
       "examples": ["The instructions were written in plain language."],
+      "collocations": ["plain English", "in plain sight"],
       "difficulty": 0.3,
       "mode": "recognition"
     },
     {
-      "content": "lead",
-      "pos": "noun / verb",
-      "meaning": "（名詞）鉛（金屬）；（動詞）帶領、引導",
-      "note": "同形異義字：名詞 lead（鉛，發音 /lɛd/）與動詞 lead（帶領，發音 /liːd/）拼字相同、發音不同。單一單字本內同一拼字只能有一張卡，故合併為一張涵蓋兩義。",
-      "examples": ["She will lead the team next quarter."],
-      "difficulty": 0.4,
-      "mode": "recognition",
-      "inflections": ["leads", "led", "leading"]
+      "content": "almost",
+      "pos": "adverb",
+      "meaning": "幾乎；差不多",
+      "examples": ["We are almost there."],
+      "collocations": ["almost always", "almost every day"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "already",
+      "pos": "adverb",
+      "meaning": "已經",
+      "examples": ["She has already finished her homework."],
+      "collocations": ["already done", "already know"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "probably",
+      "pos": "adverb",
+      "meaning": "大概；很可能",
+      "examples": ["It will probably rain later."],
+      "collocations": ["probably not", "most probably"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "recently",
+      "pos": "adverb",
+      "meaning": "最近；近來",
+      "examples": ["I have recently started learning Japanese."],
+      "collocations": ["until recently", "recently published"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "enough",
+      "pos": "adverb",
+      "meaning": "足夠地；充分地",
+      "note": "修飾形容詞或副詞時放在後面：good enough，不說 enough good。",
+      "examples": ["This box isn't big enough."],
+      "collocations": ["good enough", "old enough to"],
+      "difficulty": 0.3,
+      "mode": "recognition"
     }
   ]
 }

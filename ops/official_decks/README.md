@@ -9,6 +9,23 @@ it. This mirrors the `ops/demo/build_demo.py` pattern: **spec is SoT → emit �
 Authority: `docs/plans/2026-07-09-shared-decks-library.md` §5 (governance),
 §2.1 (`content_guid`), §2.3 (versioning), §3.5 (global-store backup).
 
+## Committed specs
+
+| spec | deckId | cards | category | scope |
+|---|---|---:|---|---|
+| `starter-en-zh-core.json` | `official-starter-en-zh-core` | 61 | `language` | A1–B1 everyday high-frequency (verbs / nouns / adjectives / adverbs) |
+| `phrasal-verbs-essentials.json` | `official-phrasal-verbs-essentials` | 55 | `phrase` | common phrasal verbs, each noting separability |
+| `exam-core-en-zh.json` | `official-exam-core-en-zh` | 56 | `exam` | academic & test-prep high-yield vocabulary |
+
+Grown from 5-card placeholders to shippable content on 2026-08-05, ahead of the
+`KGFeatureFlags.exploreEnabled` Release flip — an empty (or 10-card) catalog is
+worse than no tab at all. The three decks deliberately populate three distinct
+`category` values so the Explore filter chips have something to filter.
+
+**Adding a deck:** author the JSON by hand (these are the template), run `emit
+<spec> --json` to validate, then `check --json` to prove round-trip fidelity over
+every committed spec. Keep meanings in **繁體中文** — this is user-facing官方 content.
+
 ## Emitter
 
 Run via uv from the backend venv (needs the `kg` package on path):
@@ -87,8 +104,8 @@ the sandbox PR gate (§5.3 a).
 - **Notebook-scoped world-export projection (§5.3)** — a "single notebook" mode
   of `ops_world_export` to project one throwaway-account notebook into a
   content-only spec. **Deferred by design:** (a) it is curator *convenience*, not
-  a consumer blocker — Phase 1 official specs are hand-authored (see the two
-  committed examples); (b) `world-export` emits `kg.seed_spec.v1`
+  a consumer blocker — official specs are hand-authored (see the committed
+  specs); (b) `world-export` emits `kg.seed_spec.v1`
   (notebooks/cards/links with review counters), a **different shape** from
   `kg.official_deck.v1`, so it is not a drop-in producer and would still need a
   seed-spec→official-deck transformer; (c) `ops_world_export` underpins the

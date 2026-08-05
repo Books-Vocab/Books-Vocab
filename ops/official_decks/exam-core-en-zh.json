@@ -1,0 +1,587 @@
+{
+  "schema": "kg.official_deck.v1",
+  "deckId": "official-exam-core-en-zh",
+  "title": "Exam Core Vocabulary",
+  "description": "High-yield academic and test-prep words for intermediate learners (英→中).",
+  "category": "exam",
+  "languagePair": "en-zh",
+  "tags": ["exam", "academic", "intermediate"],
+  "color": "#8B5CF6",
+  "coverPattern": "dots",
+  "cards": [
+    {
+      "content": "meticulous",
+      "pos": "adjective",
+      "meaning": "一絲不苟的；極為謹慎的",
+      "examples": ["She kept meticulous records of every transaction."],
+      "collocations": ["meticulous attention to detail", "meticulous planning"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["meticulously"]
+    },
+    {
+      "content": "resilient",
+      "pos": "adjective",
+      "meaning": "有韌性的；能快速恢復的",
+      "examples": ["Children are remarkably resilient."],
+      "collocations": ["resilient economy", "emotionally resilient"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["resilience"]
+    },
+    {
+      "content": "endeavor",
+      "pos": "noun",
+      "meaning": "努力；試圖",
+      "note": "美式拼法 endeavor；英式拼法 endeavour。也可當動詞用。",
+      "examples": ["Their endeavor to reduce waste paid off."],
+      "collocations": ["a joint endeavor", "human endeavor"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["endeavors", "endeavored"]
+    },
+    {
+      "content": "significant",
+      "pos": "adjective",
+      "meaning": "顯著的；重大的",
+      "examples": ["The study found a significant difference between the groups."],
+      "collocations": ["significant impact", "statistically significant"],
+      "difficulty": 0.4,
+      "mode": "recognition",
+      "inflections": ["significantly", "significance"]
+    },
+    {
+      "content": "substantial",
+      "pos": "adjective",
+      "meaning": "大量的；可觀的",
+      "examples": ["The project received substantial funding."],
+      "collocations": ["substantial evidence", "a substantial increase"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["substantially"]
+    },
+    {
+      "content": "consistent",
+      "pos": "adjective",
+      "meaning": "一致的；始終如一的",
+      "note": "常接 with：consistent with the findings。",
+      "examples": ["Her performance has been consistent all season."],
+      "collocations": ["consistent with", "consistent results"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["consistently", "consistency"]
+    },
+    {
+      "content": "adequate",
+      "pos": "adjective",
+      "meaning": "足夠的；適當的",
+      "note": "語氣偏中性，意指「剛好夠」，不含讚美。",
+      "examples": ["The room has adequate lighting for reading."],
+      "collocations": ["adequate supply", "adequate preparation"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["adequately"]
+    },
+    {
+      "content": "feasible",
+      "pos": "adjective",
+      "meaning": "可行的；行得通的",
+      "examples": ["The plan is technically feasible but expensive."],
+      "collocations": ["economically feasible", "a feasible option"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["feasibility"]
+    },
+    {
+      "content": "ambiguous",
+      "pos": "adjective",
+      "meaning": "模稜兩可的；含糊的",
+      "examples": ["The wording of the contract is ambiguous."],
+      "collocations": ["ambiguous language", "deliberately ambiguous"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["ambiguity", "ambiguously"]
+    },
+    {
+      "content": "inevitable",
+      "pos": "adjective",
+      "meaning": "不可避免的；必然的",
+      "examples": ["Some delay was inevitable given the weather."],
+      "collocations": ["inevitable consequence", "seem inevitable"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["inevitably"]
+    },
+    {
+      "content": "controversial",
+      "pos": "adjective",
+      "meaning": "有爭議的",
+      "examples": ["The decision remains controversial among researchers."],
+      "collocations": ["highly controversial", "a controversial topic"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["controversy"]
+    },
+    {
+      "content": "comprehensive",
+      "pos": "adjective",
+      "meaning": "全面的；徹底的",
+      "note": "注意與 comprehensible（可理解的）不同。",
+      "examples": ["The report offers a comprehensive review of the field."],
+      "collocations": ["comprehensive analysis", "comprehensive coverage"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["comprehensively"]
+    },
+    {
+      "content": "crucial",
+      "pos": "adjective",
+      "meaning": "關鍵的；至關重要的",
+      "examples": ["Timing is crucial in this experiment."],
+      "collocations": ["a crucial role", "crucial to success"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["crucially"]
+    },
+    {
+      "content": "explicit",
+      "pos": "adjective",
+      "meaning": "明確的；清楚表明的",
+      "note": "反義詞 implicit（隱含的）。",
+      "examples": ["The instructions were explicit about the deadline."],
+      "collocations": ["explicit permission", "make it explicit"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["explicitly"]
+    },
+    {
+      "content": "arbitrary",
+      "pos": "adjective",
+      "meaning": "任意的；武斷的",
+      "examples": ["The cutoff point seems arbitrary."],
+      "collocations": ["an arbitrary decision", "arbitrary rules"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["arbitrarily"]
+    },
+    {
+      "content": "vulnerable",
+      "pos": "adjective",
+      "meaning": "脆弱的；易受傷害的",
+      "note": "常接 to：vulnerable to attack。",
+      "examples": ["Older systems are vulnerable to this kind of error."],
+      "collocations": ["vulnerable to", "vulnerable groups"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["vulnerability"]
+    },
+    {
+      "content": "sufficient",
+      "pos": "adjective",
+      "meaning": "充分的；足夠的",
+      "examples": ["We do not have sufficient data to conclude."],
+      "collocations": ["sufficient evidence", "sufficient time"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["sufficiently"]
+    },
+    {
+      "content": "prominent",
+      "pos": "adjective",
+      "meaning": "顯著的；傑出的",
+      "examples": ["She is a prominent figure in the field."],
+      "collocations": ["a prominent role", "prominent position"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["prominence"]
+    },
+    {
+      "content": "subsequent",
+      "pos": "adjective",
+      "meaning": "後續的；隨後的",
+      "examples": ["Subsequent studies confirmed the finding."],
+      "collocations": ["subsequent years", "subsequent to"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["subsequently"]
+    },
+    {
+      "content": "diverse",
+      "pos": "adjective",
+      "meaning": "多樣的；各式各樣的",
+      "examples": ["The team comes from diverse backgrounds."],
+      "collocations": ["culturally diverse", "a diverse range"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["diversity"]
+    },
+    {
+      "content": "analyze",
+      "pos": "verb",
+      "meaning": "分析",
+      "note": "美式拼法 analyze；英式拼法 analyse。名詞是 analysis（複數 analyses）。",
+      "examples": ["We analyzed the survey responses by age group."],
+      "collocations": ["analyze data", "analyze the results"],
+      "difficulty": 0.4,
+      "mode": "recognition",
+      "inflections": ["analyzes", "analyzed", "analyzing"]
+    },
+    {
+      "content": "demonstrate",
+      "pos": "verb",
+      "meaning": "證明；示範",
+      "examples": ["The results demonstrate a clear trend."],
+      "collocations": ["demonstrate that", "demonstrate ability"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["demonstrates", "demonstrated", "demonstrating"]
+    },
+    {
+      "content": "indicate",
+      "pos": "verb",
+      "meaning": "顯示；表明",
+      "examples": ["The data indicate a steady decline."],
+      "collocations": ["indicate that", "clearly indicate"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["indicates", "indicated", "indicating"]
+    },
+    {
+      "content": "establish",
+      "pos": "verb",
+      "meaning": "建立；確立",
+      "examples": ["The company was established in 1998."],
+      "collocations": ["establish a relationship", "well established"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["establishes", "established", "establishing"]
+    },
+    {
+      "content": "acquire",
+      "pos": "verb",
+      "meaning": "取得；習得",
+      "examples": ["Children acquire language remarkably fast."],
+      "collocations": ["acquire skills", "acquire knowledge"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["acquires", "acquired", "acquiring"]
+    },
+    {
+      "content": "assess",
+      "pos": "verb",
+      "meaning": "評估；評量",
+      "examples": ["The teacher assesses progress every term."],
+      "collocations": ["assess the risk", "assess performance"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["assesses", "assessed", "assessment"]
+    },
+    {
+      "content": "conduct",
+      "pos": "verb",
+      "meaning": "進行；執行",
+      "note": "當名詞時意思是「行為、品行」，名詞重音在前、動詞重音在後。",
+      "examples": ["They conducted a survey of 500 students."],
+      "collocations": ["conduct research", "conduct an interview"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["conducts", "conducted", "conducting"]
+    },
+    {
+      "content": "emphasize",
+      "pos": "verb",
+      "meaning": "強調；著重",
+      "note": "美式 emphasize；英式 emphasise。名詞是 emphasis。",
+      "examples": ["He emphasized the importance of practice."],
+      "collocations": ["emphasize the need", "strongly emphasize"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["emphasizes", "emphasized", "emphasis"]
+    },
+    {
+      "content": "illustrate",
+      "pos": "verb",
+      "meaning": "說明；舉例闡明",
+      "examples": ["This case illustrates the problem well."],
+      "collocations": ["illustrate a point", "illustrate how"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["illustrates", "illustrated", "illustration"]
+    },
+    {
+      "content": "interpret",
+      "pos": "verb",
+      "meaning": "解讀；口譯",
+      "examples": ["The findings can be interpreted in two ways."],
+      "collocations": ["interpret data", "interpret the results"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["interprets", "interpreted", "interpretation"]
+    },
+    {
+      "content": "modify",
+      "pos": "verb",
+      "meaning": "修改；調整",
+      "examples": ["We modified the design after the feedback."],
+      "collocations": ["modify a plan", "slightly modified"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["modifies", "modified", "modification"]
+    },
+    {
+      "content": "obtain",
+      "pos": "verb",
+      "meaning": "獲得；取得",
+      "note": "比 get 正式，常見於學術與正式書面語。",
+      "examples": ["Permission must be obtained in advance."],
+      "collocations": ["obtain permission", "obtain results"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["obtains", "obtained", "obtaining"]
+    },
+    {
+      "content": "eliminate",
+      "pos": "verb",
+      "meaning": "消除；排除",
+      "examples": ["The new process eliminates most of the waste."],
+      "collocations": ["eliminate the risk", "eliminate errors"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["eliminates", "eliminated", "elimination"]
+    },
+    {
+      "content": "contribute",
+      "pos": "verb",
+      "meaning": "貢獻；促成",
+      "note": "常接 to：contribute to the problem。",
+      "examples": ["Several factors contributed to the delay."],
+      "collocations": ["contribute to", "contribute significantly"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["contributes", "contributed", "contribution"]
+    },
+    {
+      "content": "reveal",
+      "pos": "verb",
+      "meaning": "揭露；顯示",
+      "examples": ["The report revealed several weaknesses."],
+      "collocations": ["reveal the truth", "reveal that"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["reveals", "revealed", "revealing"]
+    },
+    {
+      "content": "maintain",
+      "pos": "verb",
+      "meaning": "維持；主張",
+      "examples": ["It is hard to maintain focus for three hours."],
+      "collocations": ["maintain quality", "maintain a balance"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["maintains", "maintained", "maintenance"]
+    },
+    {
+      "content": "anticipate",
+      "pos": "verb",
+      "meaning": "預期；預料",
+      "examples": ["We did not anticipate such a strong response."],
+      "collocations": ["anticipate problems", "as anticipated"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["anticipates", "anticipated", "anticipation"]
+    },
+    {
+      "content": "attribute",
+      "pos": "verb",
+      "meaning": "歸因於；歸咎於",
+      "note": "常接 to：attribute the success to teamwork。當名詞時重音在前，意思是「特質」。",
+      "examples": ["She attributes her progress to daily practice."],
+      "collocations": ["attribute to", "widely attributed"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["attributes", "attributed", "attribution"]
+    },
+    {
+      "content": "implement",
+      "pos": "verb",
+      "meaning": "實施；執行",
+      "examples": ["The school implemented a new grading system."],
+      "collocations": ["implement a policy", "implement changes"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["implements", "implemented", "implementation"]
+    },
+    {
+      "content": "undertake",
+      "pos": "verb",
+      "meaning": "著手進行；承擔",
+      "examples": ["The lab undertook a two-year study."],
+      "collocations": ["undertake a project", "undertake research"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["undertakes", "undertook", "undertaken"]
+    },
+    {
+      "content": "approach",
+      "pos": "noun",
+      "meaning": "方法；途徑",
+      "note": "也可當動詞用，意思是「接近、著手處理」。",
+      "examples": ["This approach saves both time and money."],
+      "collocations": ["a new approach", "approach to learning"],
+      "difficulty": 0.4,
+      "mode": "recognition",
+      "inflections": ["approaches"]
+    },
+    {
+      "content": "evidence",
+      "pos": "noun",
+      "meaning": "證據",
+      "note": "不可數名詞，不說 an evidence；要計數用 a piece of evidence。",
+      "examples": ["There is little evidence to support that claim."],
+      "collocations": ["strong evidence", "evidence for"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "factor",
+      "pos": "noun",
+      "meaning": "因素；要素",
+      "examples": ["Cost is the deciding factor here."],
+      "collocations": ["a key factor", "contributing factor"],
+      "difficulty": 0.4,
+      "mode": "recognition",
+      "inflections": ["factors"]
+    },
+    {
+      "content": "consequence",
+      "pos": "noun",
+      "meaning": "後果；結果",
+      "examples": ["He accepted the consequences of his choice."],
+      "collocations": ["serious consequences", "as a consequence"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["consequences", "consequently"]
+    },
+    {
+      "content": "assumption",
+      "pos": "noun",
+      "meaning": "假設；臆測",
+      "examples": ["The model rests on a questionable assumption."],
+      "collocations": ["make an assumption", "underlying assumption"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["assumptions"]
+    },
+    {
+      "content": "criterion",
+      "pos": "noun",
+      "meaning": "標準；準則",
+      "note": "單數是 criterion，複數是 criteria。不說 a criteria。",
+      "examples": ["The applicants met all the criteria."],
+      "collocations": ["selection criteria", "meet the criteria"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["criteria"]
+    },
+    {
+      "content": "hypothesis",
+      "pos": "noun",
+      "meaning": "假說；假設",
+      "note": "複數是 hypotheses，重音在第二音節。",
+      "examples": ["The experiment tested a simple hypothesis."],
+      "collocations": ["test a hypothesis", "support the hypothesis"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["hypotheses"]
+    },
+    {
+      "content": "implication",
+      "pos": "noun",
+      "meaning": "含意；影響",
+      "examples": ["The findings have important implications for policy."],
+      "collocations": ["policy implications", "wider implications"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["implications"]
+    },
+    {
+      "content": "perspective",
+      "pos": "noun",
+      "meaning": "觀點；角度",
+      "examples": ["Try to see it from her perspective."],
+      "collocations": ["from a different perspective", "a fresh perspective"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["perspectives"]
+    },
+    {
+      "content": "tendency",
+      "pos": "noun",
+      "meaning": "傾向；趨勢",
+      "examples": ["There is a tendency to overestimate progress."],
+      "collocations": ["a tendency to", "a growing tendency"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["tendencies"]
+    },
+    {
+      "content": "framework",
+      "pos": "noun",
+      "meaning": "架構；框架",
+      "examples": ["The paper proposes a new theoretical framework."],
+      "collocations": ["a legal framework", "within the framework of"],
+      "difficulty": 0.6,
+      "mode": "recognition",
+      "inflections": ["frameworks"]
+    },
+    {
+      "content": "constraint",
+      "pos": "noun",
+      "meaning": "限制；約束",
+      "examples": ["Time constraints forced us to simplify the design."],
+      "collocations": ["budget constraints", "under time constraints"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["constraints"]
+    },
+    {
+      "content": "phenomenon",
+      "pos": "noun",
+      "meaning": "現象",
+      "note": "複數是 phenomena。不說 a phenomena。",
+      "examples": ["Scientists still cannot explain the phenomenon."],
+      "collocations": ["a natural phenomenon", "a global phenomenon"],
+      "difficulty": 0.7,
+      "mode": "recognition",
+      "inflections": ["phenomena"]
+    },
+    {
+      "content": "outcome",
+      "pos": "noun",
+      "meaning": "結果；成效",
+      "examples": ["The outcome depends on how early we start."],
+      "collocations": ["a positive outcome", "learning outcomes"],
+      "difficulty": 0.5,
+      "mode": "recognition",
+      "inflections": ["outcomes"]
+    },
+    {
+      "content": "nevertheless",
+      "pos": "adverb",
+      "meaning": "儘管如此；然而",
+      "note": "書面語轉折詞，語氣比 but 正式。",
+      "examples": ["The evidence is thin; nevertheless, the idea is worth testing."],
+      "difficulty": 0.6,
+      "mode": "recognition"
+    },
+    {
+      "content": "furthermore",
+      "pos": "adverb",
+      "meaning": "此外；而且",
+      "note": "書面語遞進詞，用於補充論點。",
+      "examples": ["Furthermore, the cost would be far lower."],
+      "difficulty": 0.6,
+      "mode": "recognition"
+    }
+  ]
+}

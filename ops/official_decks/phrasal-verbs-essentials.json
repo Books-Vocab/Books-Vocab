@@ -13,7 +13,9 @@
       "content": "give up",
       "pos": "phrase",
       "meaning": "放棄",
+      "note": "可分離：give it up。受詞是代名詞時必須放中間。",
       "examples": ["Don't give up before you have really tried."],
+      "collocations": ["give up smoking", "never give up"],
       "difficulty": 0.3,
       "mode": "recognition"
     },
@@ -21,8 +23,9 @@
       "content": "figure out",
       "pos": "phrase",
       "meaning": "弄清楚；想出",
+      "note": "可分離：figure it out。",
       "examples": ["It took me a while to figure out the bug."],
-      "collocations": ["figure out a solution"],
+      "collocations": ["figure out a solution", "figure out how to"],
       "difficulty": 0.4,
       "mode": "recognition"
     },
@@ -30,7 +33,9 @@
       "content": "put off",
       "pos": "phrase",
       "meaning": "拖延；推遲",
+      "note": "可分離：put it off。",
       "examples": ["They put off the meeting until Friday."],
+      "collocations": ["put off a decision"],
       "difficulty": 0.4,
       "mode": "recognition"
     },
@@ -38,7 +43,9 @@
       "content": "run into",
       "pos": "phrase",
       "meaning": "偶然遇到；碰上（問題）",
+      "note": "不可分離：run into someone，不說 run someone into。",
       "examples": ["I ran into an old friend at the station."],
+      "collocations": ["run into trouble", "run into problems"],
       "difficulty": 0.4,
       "mode": "recognition"
     },
@@ -46,8 +53,500 @@
       "content": "carry out",
       "pos": "phrase",
       "meaning": "執行；實施",
+      "note": "可分離：carry it out。",
       "examples": ["The team carried out a series of experiments."],
-      "collocations": ["carry out a plan"],
+      "collocations": ["carry out a plan", "carry out research"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "look for",
+      "pos": "phrase",
+      "meaning": "尋找",
+      "note": "不可分離。強調「找的過程」；find 強調「找到的結果」。",
+      "examples": ["I'm looking for my keys."],
+      "collocations": ["look for a job", "look for help"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "look after",
+      "pos": "phrase",
+      "meaning": "照顧；照料",
+      "note": "不可分離。",
+      "examples": ["Could you look after my cat this weekend?"],
+      "collocations": ["look after children", "look after yourself"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "look up",
+      "pos": "phrase",
+      "meaning": "查詢（字典、資料）",
+      "note": "可分離：look it up。查單字就用這個。",
+      "examples": ["Look up the word if you don't know it."],
+      "collocations": ["look up a word", "look up information"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "look forward to",
+      "pos": "phrase",
+      "meaning": "期待；盼望",
+      "note": "to 是介系詞，後面接名詞或動名詞：look forward to seeing you，不說 to see。",
+      "examples": ["I look forward to hearing from you."],
+      "collocations": ["look forward to meeting", "look forward to the weekend"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "find out",
+      "pos": "phrase",
+      "meaning": "查明；發現（資訊）",
+      "note": "可分離：find it out。指得知事實，非找到實物。",
+      "examples": ["I need to find out when the shop opens."],
+      "collocations": ["find out the truth", "find out more"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "turn on",
+      "pos": "phrase",
+      "meaning": "打開（電器、開關）",
+      "note": "可分離：turn it on。",
+      "examples": ["Please turn on the light."],
+      "collocations": ["turn on the TV", "turn on the tap"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "turn off",
+      "pos": "phrase",
+      "meaning": "關掉（電器、開關）",
+      "note": "可分離：turn it off。",
+      "examples": ["Remember to turn off the air conditioner."],
+      "collocations": ["turn off the light", "turn off notifications"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "turn down",
+      "pos": "phrase",
+      "meaning": "拒絕；調低（音量）",
+      "note": "可分離：turn it down。兩個意思都常用。",
+      "examples": ["She turned down the offer."],
+      "collocations": ["turn down an offer", "turn down the volume"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "turn up",
+      "pos": "phrase",
+      "meaning": "出現；調高（音量）",
+      "note": "可分離（調高義）：turn it up。出現義不及物。",
+      "examples": ["He turned up an hour late."],
+      "collocations": ["turn up late", "turn up the heat"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "pick up",
+      "pos": "phrase",
+      "meaning": "撿起；接（人）；學會",
+      "note": "可分離：pick it up。三個常用義：拿起東西、開車接人、順帶學會（pick up a language）。",
+      "examples": ["I will pick you up at the airport."],
+      "collocations": ["pick up the phone", "pick up a habit"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "get up",
+      "pos": "phrase",
+      "meaning": "起床；起身",
+      "examples": ["I get up at seven every morning."],
+      "collocations": ["get up early", "get up late"],
+      "difficulty": 0.2,
+      "mode": "recognition"
+    },
+    {
+      "content": "get along",
+      "pos": "phrase",
+      "meaning": "相處融洽",
+      "note": "常接 with：get along with someone。",
+      "examples": ["She gets along well with her colleagues."],
+      "collocations": ["get along with", "get along fine"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "get over",
+      "pos": "phrase",
+      "meaning": "克服；從（病痛、打擊）中恢復",
+      "note": "不可分離。",
+      "examples": ["It took him weeks to get over the flu."],
+      "collocations": ["get over a cold", "get over a breakup"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "get back",
+      "pos": "phrase",
+      "meaning": "返回；取回",
+      "examples": ["I will call you when I get back."],
+      "collocations": ["get back home", "get back to work"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "give in",
+      "pos": "phrase",
+      "meaning": "屈服；讓步",
+      "note": "不可分離。與 give up（放棄）不同：give in 是向壓力妥協。",
+      "examples": ["After hours of arguing, he finally gave in."],
+      "collocations": ["give in to pressure"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "take off",
+      "pos": "phrase",
+      "meaning": "脫掉；（飛機）起飛",
+      "note": "可分離（脫掉義）：take it off。起飛義不及物。",
+      "examples": ["The plane takes off in ten minutes."],
+      "collocations": ["take off your shoes", "take off on time"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "take over",
+      "pos": "phrase",
+      "meaning": "接管；接手",
+      "examples": ["She took over the project last month."],
+      "collocations": ["take over a company", "take over the role"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "take care of",
+      "pos": "phrase",
+      "meaning": "照顧；處理",
+      "examples": ["He takes care of the paperwork."],
+      "collocations": ["take care of yourself", "take care of the details"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "bring up",
+      "pos": "phrase",
+      "meaning": "提起（話題）；養育",
+      "note": "可分離：bring it up。",
+      "examples": ["Don't bring up that topic at dinner."],
+      "collocations": ["bring up a question", "bring up children"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "call off",
+      "pos": "phrase",
+      "meaning": "取消",
+      "note": "可分離：call it off。",
+      "examples": ["They called off the concert because of the storm."],
+      "collocations": ["call off a meeting", "call off the search"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "come across",
+      "pos": "phrase",
+      "meaning": "偶然發現；給人某種印象",
+      "note": "不可分離。",
+      "examples": ["I came across an old photo while cleaning."],
+      "collocations": ["come across as friendly"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "come up with",
+      "pos": "phrase",
+      "meaning": "想出；提出",
+      "note": "不可分離，三個字一起用。",
+      "examples": ["She came up with a clever solution."],
+      "collocations": ["come up with an idea", "come up with a plan"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "go on",
+      "pos": "phrase",
+      "meaning": "繼續；發生",
+      "examples": ["What is going on here?"],
+      "collocations": ["go on talking", "go on for hours"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "go through",
+      "pos": "phrase",
+      "meaning": "經歷；仔細檢查",
+      "note": "不可分離。",
+      "examples": ["She went through a difficult year."],
+      "collocations": ["go through the list", "go through hard times"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "point out",
+      "pos": "phrase",
+      "meaning": "指出；指明",
+      "note": "可分離：point it out。",
+      "examples": ["He pointed out several errors in the report."],
+      "collocations": ["point out a mistake", "point out that"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "set up",
+      "pos": "phrase",
+      "meaning": "設立；架設；安排",
+      "note": "可分離：set it up。",
+      "examples": ["They set up a small studio downtown."],
+      "collocations": ["set up a meeting", "set up an account"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "work out",
+      "pos": "phrase",
+      "meaning": "解決；順利進行；健身",
+      "note": "可分離（解決義）：work it out。健身義不及物。",
+      "examples": ["Everything worked out in the end."],
+      "collocations": ["work out a problem", "work out at the gym"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "check out",
+      "pos": "phrase",
+      "meaning": "查看；退房；結帳",
+      "note": "可分離（查看義）：check it out。",
+      "examples": ["Check out this new app."],
+      "collocations": ["check out a book", "check out of a hotel"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "fill in",
+      "pos": "phrase",
+      "meaning": "填寫（表格）；代班",
+      "note": "可分離：fill it in。美式常說 fill out。",
+      "examples": ["Please fill in this form."],
+      "collocations": ["fill in a form", "fill in for someone"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "hand in",
+      "pos": "phrase",
+      "meaning": "繳交；上交",
+      "note": "可分離：hand it in。",
+      "examples": ["Hand in your homework before Friday."],
+      "collocations": ["hand in an assignment", "hand in your resignation"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "keep up",
+      "pos": "phrase",
+      "meaning": "跟上；維持",
+      "note": "跟上義常接 with：keep up with the class。",
+      "examples": ["It is hard to keep up with the news."],
+      "collocations": ["keep up with", "keep up the good work"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "break down",
+      "pos": "phrase",
+      "meaning": "故障；情緒崩潰；拆解分析",
+      "note": "拆解分析義可分離：break it down。故障與情緒崩潰義不及物。",
+      "examples": ["My car broke down on the highway."],
+      "collocations": ["break down in tears", "break down the cost"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "break up",
+      "pos": "phrase",
+      "meaning": "分手；解散",
+      "examples": ["They broke up after three years."],
+      "collocations": ["break up with someone"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "grow up",
+      "pos": "phrase",
+      "meaning": "長大；成長",
+      "note": "不及物，不能接受詞。",
+      "examples": ["She grew up in a small town."],
+      "collocations": ["grow up fast", "when I grow up"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "show up",
+      "pos": "phrase",
+      "meaning": "出現；現身",
+      "examples": ["He didn't show up for the interview."],
+      "collocations": ["show up on time", "show up late"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "end up",
+      "pos": "phrase",
+      "meaning": "最終變成；最後落得",
+      "note": "後面常接 -ing 或形容詞：end up paying more。",
+      "examples": ["We ended up staying an extra night."],
+      "collocations": ["end up doing", "end up with"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "hang out",
+      "pos": "phrase",
+      "meaning": "閒晃；消磨時間（口語）",
+      "examples": ["We hang out at the café after class."],
+      "collocations": ["hang out with friends"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "hang up",
+      "pos": "phrase",
+      "meaning": "掛斷電話；掛起",
+      "note": "可分離：hang it up。",
+      "examples": ["She hung up before I could answer."],
+      "collocations": ["hang up the phone", "hang up your coat"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "put up with",
+      "pos": "phrase",
+      "meaning": "忍受；容忍",
+      "note": "不可分離，三個字一起用。",
+      "examples": ["I can't put up with this noise any longer."],
+      "collocations": ["put up with the heat"],
+      "difficulty": 0.6,
+      "mode": "recognition"
+    },
+    {
+      "content": "count on",
+      "pos": "phrase",
+      "meaning": "依靠；指望",
+      "note": "不可分離。",
+      "examples": ["You can count on me."],
+      "collocations": ["count on someone", "count on support"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "deal with",
+      "pos": "phrase",
+      "meaning": "處理；應付",
+      "note": "不可分離。",
+      "examples": ["We need to deal with this issue today."],
+      "collocations": ["deal with a problem", "deal with customers"],
+      "difficulty": 0.4,
+      "mode": "recognition"
+    },
+    {
+      "content": "focus on",
+      "pos": "phrase",
+      "meaning": "專注於；聚焦",
+      "note": "不可分離。",
+      "examples": ["Let's focus on the main question."],
+      "collocations": ["focus on details", "focus on results"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "depend on",
+      "pos": "phrase",
+      "meaning": "取決於；依賴",
+      "note": "不可分離。It depends. 是常見口語回答。",
+      "examples": ["The answer depends on the context."],
+      "collocations": ["depend on the situation", "depend on someone"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "give back",
+      "pos": "phrase",
+      "meaning": "歸還",
+      "note": "可分離：give it back。",
+      "examples": ["Please give back the book when you finish."],
+      "collocations": ["give back the money"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "throw away",
+      "pos": "phrase",
+      "meaning": "丟棄；扔掉",
+      "note": "可分離：throw it away。",
+      "examples": ["Don't throw away those notes."],
+      "collocations": ["throw out the trash", "throw away a chance"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "cut down",
+      "pos": "phrase",
+      "meaning": "減少；砍倒",
+      "note": "減少義常接 on：cut down on sugar。",
+      "examples": ["He is trying to cut down on coffee."],
+      "collocations": ["cut down on spending"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "hold on",
+      "pos": "phrase",
+      "meaning": "稍等；抓緊",
+      "examples": ["Hold on a second, I'm almost ready."],
+      "collocations": ["hold on tight", "hold on a moment"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "sign up",
+      "pos": "phrase",
+      "meaning": "報名；註冊",
+      "note": "常接 for：sign up for a course。",
+      "examples": ["I signed up for the morning class."],
+      "collocations": ["sign up for a newsletter"],
+      "difficulty": 0.3,
+      "mode": "recognition"
+    },
+    {
+      "content": "make up",
+      "pos": "phrase",
+      "meaning": "編造；和好；構成",
+      "note": "可分離（編造義）：make it up。",
+      "examples": ["He made up an excuse."],
+      "collocations": ["make up a story", "make up for lost time"],
+      "difficulty": 0.5,
+      "mode": "recognition"
+    },
+    {
+      "content": "stand out",
+      "pos": "phrase",
+      "meaning": "突出；顯眼",
+      "note": "不及物。",
+      "examples": ["Her design really stands out."],
+      "collocations": ["stand out from the crowd"],
       "difficulty": 0.5,
       "mode": "recognition"
     }
