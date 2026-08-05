@@ -64,6 +64,7 @@ git -C <path> rebase main
 - `backend/**.py` → 只跑 diff 內的**目標測試檔**；純 src 改動無目標測試 = **warn advisory**（不跑全套，全套有已知 pre-existing 假失敗）
 - `ops/**.py` → `uv run --no-project --python 3.13 --with pytest pytest`（沙箱 uv，不碰 backend/uv.lock；block）：改 `ops/tests/test_X.py` 跑該檔；改 src（含 `ops/lib/`）跑對應 `ops/tests/test_<basename>`。每個 target 都做存在性檢查（以 worktree 為準：同 diff 新增的測試看得到、已刪除的不會塞給 pytest），**解析不到既存測試 = 跑整個 `ops/tests/`**（sandbox-unsafe 測試須自帶 dep-guard skip，前例見 `test_demo_ios_spec_emitter.py`）
 - `ops/**.sh` → 三層（IMP-0051）：① `ops-shell-syntax`＝對每個改動的腳本跑 `bash -n`（block，只需 bash，沒有機器會靜默跳過——約 1/3 的 ops 腳本根本沒有自己的測試，這是它們唯一拿得到的檢查）；② `ops-shell:<test>`＝該腳本自己的測試（block），依慣例 `ops/tests/test_X.sh` → `ops/test_X.sh` 解析，名字對不上者查 `OPS_SHELL_TEST_ALIASES`，存在性一律以 worktree 為準；③ `ops-shell-untested`＝**具名**列出解析不到測試的腳本（warn）。**這條路由讓 `ops/tests/test_gate_can_fail.sh` 第一次有了自動觸發點**——改它就會跑它
+- `**.yml` / `**.yaml` → `data-plane:<工具>`＝`DATA_PLANE_OWNERS` 宣告的 owner 工具（block）：`ops/ui_quality_plane.yml` → 它的 `validate` ＋ `ops/tests/test_ui_quality_plane.sh`；`docs/registry.yml` → `docs_lint.sh --registry`。無 owner 者由 `data-plane-unowned` **具名**列出（warn）。**這裡刻意沒有 `bash -n` 那種通用語法底線**——stdlib 沒有 YAML parser，而 orchestrator 是零依賴（bootstrap 悖論要求它在工具鏈之前就能跑），自己手刻一個會讓判決變成「我的 parser 的性質」而非檔案的性質。`NEUTRAL_RULES` 樹下的 yml（`promotion/`、`frozen/`）維持 neutral，不重新收編
 
 先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**block 必修**（回去修再重跑 gate）；**warn 是 advisory**——不擋 cutover，處置權在你（driving agent），land 時會標「landed with warnings」。
 
