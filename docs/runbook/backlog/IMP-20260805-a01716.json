@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-05",
+  "detail": "Explore 漏斗的 preview 段只記成功、不記失敗，導致 browse→preview 轉換率無法分辨「使用者沒點任何牌組」與「點了但預覽載入失敗」。SharedDeckDetailView.load() 的 error arm 目前只寫 AppLog.kg.warning + 設 .error 態，沒有 analytics 事件——這正是本次 telemetry 在 copy 段刻意消除的盲點（deckCopyFailed），preview 段卻留著。修法：加 deckPreviewFailed(deckId:reason:)，reason 複用 SharedDeckCopyController.failureReason(for:)，並補 SessionMetrics 的 _deckPreviewFailures 保持與 copy 對稱（count = 嘗試數、failures 另計）。刻意不併進 2026-08-05 的 Release-flip change set：那是 addition 而非 defect，而該 change set 的 telemetry 面已經過 review，臨時加新事件會引入未經 review 的新面。",
+  "id": "IMP-20260805-a01716",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "Explore Release-flip Phase 2 review（telemetry）",
+  "status": "open",
+  "stream": "IMP"
+}

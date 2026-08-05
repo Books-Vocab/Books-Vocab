@@ -1,0 +1,14 @@
+{
+  "category": "correctness",
+  "date": "2026-08-05",
+  "detail": "瀏覽公開牌組目錄不該讓任何人登出。SharedDeckCatalogService.optionallyAuthedData 的設計意圖是 auth-optional（有 token 就掛、沒有就當 guest），但它取 token 的方式是 try? await kgService.currentAuthToken()，而該函式在判定過期時會先設 sessionExpiredReason + 呼叫 sessionInvalidator.logout，才 throw。try? 只吞例外，副作用已經發生。修法：讓 optionallyAuthedData 繞過 currentAuthToken()，直接讀 authSession.token 並自行 JWTExpiry.isExpired 判斷，過期就當 guest 送出、不觸發 invalidation（需在 KGServing 協定加一個不帶副作用的取 token 入口）。不併進 2026-08-05 的 Release-flip change set，因為那會動到 auth 路徑、風險面與該次改動無關。緩解事實：不會迴圈（登出後 .task(id: isLoggedIn) 重跑會走乾淨 guest 路徑），且冷啟動的 background sync 通常比 Explore 更早撞到同一個 pre-check，所以邊際傷害小。現況已在 optionallyAuthedData 的註解上寫明，不留假不變式。",
+  "id": "APP-20260805-0049ac",
+  "repro": "token 過期（JWTExpiry.isExpired 為真、margin 60s）後開啟 App 並點進「探索」分頁：Explore 的 .task → syncCatalog → optionallyAuthedData → currentAuthToken() 的 token_expired_precheck 先做 sessionInvalidator.logout 再 throw，try? 只吞 throw、不撤銷副作用 → 使用者被登出並看到「您的登入已過期，請重新登入」alert。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Explore Release-flip Phase 3 review（blast-radius）",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
