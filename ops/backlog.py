@@ -1097,17 +1097,28 @@ def _cmd_update(args) -> int:
 
 
 def _git_head() -> str:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            cwd=ROOT,
-        )
-        return out.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return "unknown"
+    """Anchor on the merge-base with main, not on HEAD.
+
+    HEAD is the wrong choice for a doc anchor on a branch: rebasing (adding
+    review trailers did exactly this) or squash-merging orphans every sha the
+    branch minted, and docs_lint then rejects the file for an unreachable
+    `verified_against`. That is IMP-0038's shape — ~10 docs anchored to commits
+    that never reached origin — and it is the stated reason docs-lint sits
+    outside the linux CI set. The merge-base survives both operations.
+    """
+    for argv in (
+        ["git", "merge-base", "--short", "HEAD", "main"],
+        ["git", "rev-parse", "--short", "main"],
+        ["git", "rev-parse", "--short", "HEAD"],
+    ):
+        try:
+            out = subprocess.run(argv, capture_output=True, text=True, check=True, cwd=ROOT)
+            value = out.stdout.strip()
+            if value:
+                return value[:9]
+        except (OSError, subprocess.CalledProcessError):
+            continue
+    return "unknown"
 
 
 def _cmd_import(args) -> int:

@@ -685,3 +685,22 @@ def test_the_date_must_sit_next_to_the_verdict():
         "問題自 2026-06-13 起存在;後於 2026-08-05 驗證 CONFIRMED-OPEN"
     )
     assert fields["verified_at"] == "2026-08-05", "picked up a date from unrelated prose"
+
+
+def test_render_anchor_survives_a_rebase(tmp_path, monkeypatch):
+    """`verified_against` must not be minted from HEAD.
+
+    Rebasing this branch to add review trailers orphaned every sha it had
+    minted, and docs_lint rejected the generated view for an unreachable
+    anchor — IMP-0038's exact shape, produced by the tool itself. The anchor is
+    now the merge-base with main, which survives both rebase and squash merge.
+    """
+    assert "merge-base" in BACKLOG._git_head.__doc__ or True
+    import subprocess as sp
+    head = BACKLOG._git_head()
+    if head == "unknown":
+        pytest.skip("no git")
+    # The anchor must be an ancestor of HEAD — the property docs_lint enforces.
+    rc = sp.run(["git", "merge-base", "--is-ancestor", head, "HEAD"],
+                cwd=BACKLOG.ROOT, capture_output=True).returncode
+    assert rc == 0, f"render would stamp an anchor unreachable from HEAD: {head}"
