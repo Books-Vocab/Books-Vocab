@@ -1,5 +1,9 @@
 """spec_world.py — kg.seed_spec.v1 → UI World v2 四 domain 的確定式投影（純函式）。
 
+FROZEN 2026-08-05 — 停止擴張，不停止運作。凍結範圍與理由見
+`docs/reference/catalog_scope.md` §FROZEN。投影規則不再隨 iOS seed 演進同步；
+本檔仍可跑，送審與行銷截圖要用時直接呼叫即可。要復業先讀該節，別直接改。
+
 行銷帳號系統 Phase 2/6：`ops_cli world-export` 導出的 seed spec（Phase 1，
 backend/src/kg/ops_world_export.py）→ iOS UI World v2 fixture 的
 vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的

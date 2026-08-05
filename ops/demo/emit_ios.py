@@ -1,5 +1,14 @@
 """Emitter: demo SoT -> iOS UI World FixtureDatasetDocument.
 
+FROZEN 2026-08-05 — 停止擴張，不停止運作。凍結範圍與理由見
+`docs/reference/catalog_scope.md` §FROZEN。本檔邏輯完好、隨時可跑（送審 desired
+bundle 仍經 `ops/app_review_evidence.py` 走這條路），但**不再隨 iOS seed 演進同步**：
+復業時跑 spec 模式會噴 `spec 錨日 ... 距今 N 天（> 48h）` 的 staleness WARN——**那是預期的**，
+解法就是先跑（同樣凍結的）`marketing_account/shape_history.py` 重新錨定再 emit。
+不新增 domain、不加 seed 欄位、不重生 generated world。要復業先讀該節。
+`--check` drift gate 與 `ops/tests/test_demo_ios_emitter.py` **刻意保留**——凍結期
+它們的角色從「逼你同步」變成「守衛」：誰偷改這條凍結的投影鏈，它會紅。
+
 Phase B implementation. Mirrors the Phase-A mapping contract below, byte-for-byte
 deterministic so `--check` is a true drift gate.
 
