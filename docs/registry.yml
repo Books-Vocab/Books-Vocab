@@ -120,6 +120,7 @@ documents:
       - "!backend/src/kg/llm/providers.py"
       - "!backend/src/kg/routers/*.py"
       - docs/runbook/
+      - "!docs/runbook/backlog/"
 
   - id: reference.product_surface
     path: docs/reference/product_surface.md
@@ -581,10 +582,12 @@ documents:
       - improvement_resolved
       - kaizen_loop_changed
     sources:
+      # `sources` on a generated entry means "inputs whose change requires
+      # regeneration". render_view() reads the store and this script, nothing
+      # else — the steward agent and the receipt skill were listed here from the
+      # hand-maintained era and would emit a guaranteed no-op regeneration hint.
       - docs/runbook/backlog/
       - ops/backlog.py
-      - .claude/agents/platform-steward.md
-      - .claude/skills/kg-receipt/
 
   - id: sop.review_discipline
     path: docs/sop/review_discipline.md
@@ -926,6 +929,7 @@ documents:
       - "!ops/plain_deadzone_baseline.txt"
       - "!ops/gen_web_tokens.py"
       - docs/runbook/
+      - "!docs/runbook/backlog/"
 
   - id: generated.ios_baseline
     path: docs/snapshot/ios_baseline.md

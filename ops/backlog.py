@@ -91,6 +91,27 @@ APP_ONLY_FIELDS = ("surface", "repro", "build")
 # stamp. Optional on every entry; see extract_verdict_fields().
 VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
 
+# Closed vocabulary, same principle as stream/category/severity/status. Without
+# it prose misfires land in the field unchallenged: `已於 2026-07-31 驗證 CI 綠`
+# yields verdict "CI". `_recover_overflowing_row` already anchors on controlled
+# vocabularies; this is the same rule applied where it was missing.
+VERDICTS = (
+    "CONFIRMED-OPEN",
+    "PARTIAL",
+    "MISSTATED",
+    "ALREADY-FIXED",
+    "OBSOLETE",
+)
+_DUPLICATE_VERDICT_PREFIX = "DUPLICATE-OF-"
+
+# An entry id must be usable as a bare filename. Unvalidated, `--date 2026/08/05`
+# writes <store>/IMP-2026/08/05-<hash>.json — a real subdirectory that
+# store.glob("*.json") never sees, so `list` and `validate` both report an empty,
+# healthy store while the entry sits on disk. `--id ../escaped` writes outside
+# the store entirely. Both returned rc=0 before this guard.
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
 
 class BacklogError(Exception):
     """Raised for usage errors that should exit 64 rather than traceback."""
@@ -198,7 +219,9 @@ def validate_store(store: Path) -> list[dict]:
     store = Path(store)
     problems: list[dict] = []
     if not store.exists():
-        return problems
+        # A typo'd --store used to report "0 problems, exit 0" — a green gate
+        # pointed at nothing. Absence is a finding, not a clean bill of health.
+        return [{"kind": "store-missing", "path": str(store)}]
 
     for path in sorted(store.glob("*.json")):
         try:
@@ -235,6 +258,7 @@ def add_entry(
     build: str | None = None,
     entry_id: str | None = None,
     verdict_fields: dict | None = None,
+    overwrite: bool = False,
 ) -> dict:
     """Create one entry file and return the entry.
 
@@ -264,23 +288,72 @@ def add_entry(
         if value:
             payload[field] = value
 
+    if not _DATE_RE.match(date or ""):
+        raise ValueError(f"date must be YYYY-MM-DD, got {date!r}")
+
     payload["id"] = entry_id or make_entry_id(
         stream=stream, date=date, source=source, detail=detail
     )
+    if not _SAFE_ID_RE.match(payload["id"]):
+        raise ValueError(f"unusable entry id (must be a bare filename): {payload['id']!r}")
 
     problems = validate_entry(payload, entry_id=payload["id"])
     if problems:
         raise ValueError(f"invalid entry: {problems}")
 
-    _write_atomic(entry_path(store, payload["id"]), _dumps(payload))
+    path = entry_path(store, payload["id"])
+    if path.exists() and not overwrite:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing == payload:
+            return payload  # genuinely idempotent: nothing to write
+        # Silent clobber is the failure this refuses. Ids are content-derived,
+        # so re-filing text that was later triaged re-mints the SAME id and
+        # would reset status/resolution with no diff to notice and rc=0. Only
+        # `import_legacy` passes overwrite=True, and it merges first.
+        raise ValueError(
+            f"{payload['id']} already exists with different content; "
+            f"use `update` to change it (differing: "
+            f"{sorted(k for k in set(existing) | set(payload) if existing.get(k) != payload.get(k))})"
+        )
+
+    _write_atomic(path, _dumps(payload))
     return payload
 
 
-MUTABLE_FIELDS = ("status", "severity", "resolution", "detail", "source", "category") + (
-    "surface",
-    "repro",
-    "build",
-) + VERDICT_FIELDS
+# `detail` and `source` are NOT here: they are digest inputs (make_entry_id), so
+# editing them decouples the id from the content it is derived from. Nothing
+# recomputes the digest, so the drift is permanent and invisible — and then
+# re-filing the original wording re-mints the same id and overwrites the triaged
+# entry. A reworded problem statement is a different entry; file it, don't
+# mutate this one.
+MUTABLE_FIELDS = (
+    ("status", "severity", "resolution", "category")
+    + APP_ONLY_FIELDS
+    + VERDICT_FIELDS
+)
+
+
+def _merged_and_validated(payload: dict, changes: dict, entry_id: str) -> dict:
+    """The single predicate both `update_entry` and the CLI dry-run run through.
+
+    Two copies of this used to exist and the dry-run copy omitted the
+    unknown-field check, so a preview could print a clean diff and the identical
+    command with --commit could exit 64.
+    """
+    unknown = [field for field in changes if field not in MUTABLE_FIELDS]
+    if unknown:
+        raise ValueError(f"unknown field(s): {unknown}; mutable: {sorted(MUTABLE_FIELDS)}")
+
+    updated = dict(payload)
+    for field, value in changes.items():
+        if value is None:
+            continue
+        updated[field] = value
+
+    problems = validate_entry(updated, entry_id=entry_id)
+    if problems:
+        raise ValueError(f"invalid update: {problems}")
+    return updated
 
 
 def update_entry(store: Path, entry_id: str, **changes) -> dict:
@@ -296,23 +369,9 @@ def update_entry(store: Path, entry_id: str, **changes) -> dict:
     exists to remove.
     """
     payload = load_entry(store, entry_id)
-
-    unknown = [field for field in changes if field not in MUTABLE_FIELDS]
-    if unknown:
-        raise ValueError(f"unknown field(s): {unknown}; mutable: {sorted(MUTABLE_FIELDS)}")
-
-    updated = dict(payload)
-    for field, value in changes.items():
-        if value is None:
-            continue
-        updated[field] = value
-
-    problems = validate_entry(updated, entry_id=entry_id)
-    if problems:
-        # Validate BEFORE writing, so a rejected update leaves the file exactly
-        # as it was rather than half-applied.
-        raise ValueError(f"invalid update: {problems}")
-
+    # Validate BEFORE writing, so a rejected update leaves the file exactly as
+    # it was rather than half-applied.
+    updated = _merged_and_validated(payload, changes, entry_id)
     _write_atomic(entry_path(store, entry_id), _dumps(updated))
     return updated
 
@@ -429,16 +488,46 @@ def _recover_overflowing_row(raw_cells: list[str]) -> list[str] | None:
     return head + [detail, resolution]
 
 
+def _anchors_ok(cells: list[str]) -> bool:
+    """Do the three closed-vocabulary columns line up?
+
+    This is what tells a data row from a header, a separator, or prose — and it
+    is applied to EVERY row, not just overflowing ones. Restricting it to the
+    overflow branch meant a row whose columns had shifted took the happy path
+    with no check at all.
+    """
+    if len(cells) < len(LEGACY_COLUMNS):
+        return False
+    known_categories = {c for cats in CATEGORIES.values() for c in cats}
+    return (
+        cells[3] in known_categories
+        and cells[4] in SEVERITIES
+        and cells[5] in STATUSES
+    )
+
+
 def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
     """Parse the legacy 8-column ledger table.
 
-    Returns (rows, problems). A row that cannot be understood goes into
-    `problems` and is never silently discarded: a migration that quietly loses
-    four entries out of 59 is indistinguishable from one that worked.
+    Returns (rows, problems). A row that looks like data but cannot be read is
+    REPORTED; it is never silently dropped. That distinction used to be carried
+    by `_ID_RE` alone, which conflated "is this a data row" with "is this id
+    well-formed" and therefore swallowed `**IMP-0009**`, `imp-0009`, `IMP-9` and
+    `[IMP-0009](#anchor)` without a word — detail and all.
 
-    APP-* rows are skipped rather than reported. The legacy table predates the
-    APP stream entirely, so an APP row can only come from the *generated* view's
-    own second table, which has a different column set.
+    Row identification is now the vocabulary anchor (category/severity/status),
+    which is independent of the id, so a malformed id is a finding rather than a
+    reason to look away.
+
+    KNOWN LIMIT, stated rather than papered over: a row that is short by one
+    column AND carries one unescaped `|` lands on exactly 8 cells with valid
+    anchors, and is indistinguishable from a good row. The real IMP-0017 was
+    caught only because `||` is two pipes (8 -> 10). An enumerated hole beats an
+    anonymous one.
+
+    APP-* rows are skipped rather than reported: the legacy table predates the
+    APP stream, so an APP row can only come from the generated view's own second
+    table, which has a different column set.
     """
     rows: list[dict] = []
     problems: list[dict] = []
@@ -448,10 +537,37 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
         if not line.startswith("|"):
             continue
         raw_cells = _split_row_raw(line)
-        if not raw_cells or not _ID_RE.match(_clean(raw_cells[0])):
-            continue  # header, separator, or a prose table
+        if not raw_cells:
+            continue
         cells = [_clean(c) for c in raw_cells]
+
+        looks_like_id = bool(_ID_RE.match(cells[0]))
+        if not _anchors_ok(cells):
+            # Not a data row — unless its first cell claims to be one, in which
+            # case the columns are shifted or the row is truncated.
+            if looks_like_id:
+                problems.append(
+                    {
+                        "kind": "malformed-row",
+                        "id": cells[0],
+                        "line": lineno,
+                        "columns": len(cells),
+                        "expected": len(LEGACY_COLUMNS),
+                    }
+                )
+            continue
+
         if cells[0].startswith("APP-"):
+            continue
+        if not looks_like_id:
+            problems.append(
+                {
+                    "kind": "unrecognised-id",
+                    "id": cells[0],
+                    "line": lineno,
+                    "note": "row has valid category/severity/status but its id is not an entry id",
+                }
+            )
             continue
 
         if len(cells) > len(LEGACY_COLUMNS):
@@ -474,25 +590,13 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
                     "id": cells[0],
                     "line": lineno,
                     "note": "unescaped '|' in a cell; detail rejoined using the "
-                    "controlled-vocabulary columns as anchors — verify the "
-                    "detail/resolution boundary",
+                    "controlled-vocabulary columns as anchors. The anchors prove "
+                    "columns 0-5 did not shift; they CANNOT tell whether the stray "
+                    "pipe fell in detail or in resolution, so verify that boundary "
+                    "by hand.",
                 }
             )
-        elif len(cells) < len(LEGACY_COLUMNS):
-            problems.append(
-                {
-                    "kind": "malformed-row",
-                    "id": cells[0],
-                    "line": lineno,
-                    "columns": len(cells),
-                    "expected": len(LEGACY_COLUMNS),
-                }
-            )
-            continue
 
-        # No `_recovered` marker on the row itself: the problem list already
-        # names it, and an extra key here would make a recovered row compare
-        # unequal to its own re-parsed render.
         row = dict(zip(LEGACY_COLUMNS, cells))
         if row["resolution"] == _EMPTY_CELL:
             row["resolution"] = ""
@@ -501,84 +605,109 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
     return rows, problems
 
 
-# ---------------------------------------------------------------------------
-# verdict stamps
-# ---------------------------------------------------------------------------
-#
-# The 2026-08-05 re-verification sweep encoded its results as a convention
-# inside the resolution cell:
-#
-#   —(YYYY-MM-DD 驗證 <VERDICT>;落點 `file:line`,成本 <S|M|L|S–M>,測試…)
-#
-# Promoting those to real fields is the point of having a store. Extraction is
-# ADDITIVE and LOSSLESS — `resolution` keeps the original text verbatim and
-# remains authoritative — so a stamp this parser does not recognise costs an
-# empty field and a named report, never a lost sentence.
-
 # The stamp is the ADJACENCY `YYYY-MM-DD 驗證 <VERDICT>`, matched as one unit.
+# Anchoring the date on `—(` lost IMP-0029, whose stamp opens with prose.
 #
-# Two bugs came from not doing this. Anchoring the date on `—(` missed
-# IMP-0029, whose stamp starts with prose (`—(by-design,待產品決策;2026-08-05
-# 驗證 …`) — the date is regular only relative to 驗證, not to the bracket. And
-# gating extraction on "does the text contain 驗證" reported three entries as
-# having unreadable stamps when they simply mention the word in prose: a
-# keyword standing in for the structure, which is the same proxy mistake this
-# module refuses to make elsewhere.
-#
-# Digits belong in the verdict token: `DUPLICATE-OF-IMP-0042` ends in an id, and
-# without them the pattern stops before the digits and fails its own lookahead.
-_STAMP_RE = re.compile(
-    r"(\d{4}-\d{2}-\d{2})\s*驗證\s+([A-Z][A-Z0-9-]*)(?=[;,:，、。\s)]|$)"
-)
-_DUPLICATE_RE = re.compile(r"^DUPLICATE-OF-(IMP-\d+)$")
-# `成本 S–M` uses an EN DASH (U+2013). Splitting on `-` would report `S` and
-# silently halve the estimate, so the range is matched whole.
+# The verdict token is checked against a CLOSED VOCABULARY rather than against
+# punctuation that happens to follow it. The punctuation lookahead this replaces
+# had two failures, both reachable in the existing corpus:
+#   * `驗證 CONFIRMED-OPEN——說明` matched nothing AND reported nothing. `——`
+#     already appears in this ledger (IMP-0021's `成本 S–M——M 的部分是…`), so
+#     that shape was luck, not design.
+#   * `DUPLICATE-OF-IMP-20260805-abc123` matched nothing, because ids minted by
+#     this very module end in lowercase hex, which `[A-Z0-9-]` excludes — the
+#     module was incompatible with its own id format.
+_STAMP_HEAD_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*驗證\s*")
+_VERDICT_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9-]*")
+
+# `成本 S–M` uses an EN DASH. Splitting on `-` would report `S` and silently
+# halve the estimate.
 _COST_RE = re.compile(r"成本\s*([SML](?:[–-][SML])?)")
-_FIX_SITE_RE = re.compile(r"落點\s*`([^`]+)`")
-_FIX_SITE_PRESENT_RE = re.compile(r"落點\s*")
+_COST_PRESENT_RE = re.compile(r"成本")
+_FIX_SITE_RE = re.compile(r"`([^`]+)`")
+_FIX_SITE_HEAD_RE = re.compile(r"落點")
+# A fix site has to look like one. IMP-0021's stamp yields `:738-741` — a bare
+# line range whose filename lives in another column — and `見上一列` passes a
+# purely syntactic backtick check too. Both become paths that readers trust.
+_FIX_SITE_SHAPE_RE = re.compile(r"[/\\]|\.(py|sh|swift|yml|yaml|json|md|ts|js)\b|^\w[\w.-]*:\d")
+
+
+def _single_or_miss(field: str, values: list[str], misses: list[dict]):
+    """Take a value only when the text offers exactly one candidate.
+
+    First-match-wins is how `決策成本 S,出貨成本 L` became cost `S` — the same
+    direction of error as splitting `S–M` on the hyphen. 7 of the 10 real 落點
+    cells name more than one site, and IMP-0057's second one is annotated
+    必須同步 in the prose; dropping it without a word is the loss this module
+    refuses everywhere else.
+    """
+    unique = list(dict.fromkeys(values))
+    if len(unique) == 1:
+        return unique[0]
+    if len(unique) > 1:
+        misses.append({"field": field, "reason": f"{len(unique)} candidates, ambiguous", "values": unique})
+    return None
 
 
 def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
     """Pull the structured stamp out of a resolution cell.
 
-    Returns (fields, misses). `misses` names each field that looked present but
-    could not be read confidently — the caller reports those rather than
-    guessing, because a guessed `fix_site` becomes a path that later readers
-    trust.
+    Returns (fields, misses). Extraction is ADDITIVE and LOSSLESS: `resolution`
+    keeps the original text verbatim and stays authoritative, so anything this
+    cannot read confidently costs an empty field and a NAMED report — never a
+    lost sentence.
 
-    `needs_test` is deliberately NOT extracted: the sweep recorded testing
-    intent in free prose with no consistent encoding, and deriving a boolean
-    from the presence of the word 測試 would be a proxy standing in for the
-    property rather than the property itself.
+    `needs_test` is deliberately not extracted: the sweep recorded testing intent
+    in free prose with no consistent encoding, and deriving a boolean from the
+    presence of the word 測試 would be a proxy standing in for the property.
     """
     fields: dict = {}
     misses: list[dict] = []
 
     text = resolution or ""
-    stamp = _STAMP_RE.search(text)
-    if not stamp:
-        # No stamp. Either a plain commit hash (the majority) or prose that
-        # happens to use the word 驗證. Neither is a miss, and reporting them
-        # would bury the real ones in noise.
+    head = _STAMP_HEAD_RE.search(text)
+    if not head:
+        # No stamp: a plain commit hash (the majority) or prose using the word
+        # 驗證. Neither is a miss, and reporting them buries the real ones.
         return fields, misses
 
-    fields["verified_at"] = stamp.group(1)
-    verdict = stamp.group(2).rstrip("-")
-    fields["verdict"] = verdict
-    duplicate = _DUPLICATE_RE.match(verdict)
-    if duplicate:
-        fields["duplicate_of"] = duplicate.group(1)
+    token_match = _VERDICT_TOKEN_RE.match(text, head.end())
+    token = token_match.group(0).rstrip("-") if token_match else ""
 
-    cost_match = _COST_RE.search(text)
-    if cost_match:
-        fields["cost"] = cost_match.group(1)
+    if token in VERDICTS:
+        fields["verdict"] = token
+    elif token.startswith(_DUPLICATE_VERDICT_PREFIX):
+        target = token[len(_DUPLICATE_VERDICT_PREFIX):]
+        if _ID_RE.match(target):
+            fields["verdict"] = token
+            fields["duplicate_of"] = target
+        else:
+            misses.append({"field": "verdict", "reason": f"duplicate target is not an entry id: {target!r}"})
+    else:
+        # Reachable and previously SILENT: dropping the old 驗證 keyword gate
+        # killed the false positives and the true reports together.
+        misses.append({"field": "verdict", "reason": f"unrecognised verdict token: {token!r}"})
 
-    fix_match = _FIX_SITE_RE.search(text)
-    if fix_match:
-        fields["fix_site"] = fix_match.group(1)
-    elif _FIX_SITE_PRESENT_RE.search(text):
-        # `落點` followed by free prose has no delimiter that can be trusted.
-        misses.append({"field": "fix_site", "reason": "落點 present but not a backticked token"})
+    if "verdict" in fields:
+        fields["verified_at"] = head.group(1)
+
+    cost = _single_or_miss("cost", _COST_RE.findall(text), misses)
+    if cost:
+        fields["cost"] = cost
+    elif _COST_PRESENT_RE.search(text) and not any(m["field"] == "cost" for m in misses):
+        # `各 S` and `成本 高` both state a cost this pattern cannot read. The
+        # previous version reported neither, so "24 of 25 have a cost" quietly
+        # meant "24 readable + 1 written in a form we ignore".
+        misses.append({"field": "cost", "reason": "成本 present but not in the S/M/L form"})
+
+    fix_head = _FIX_SITE_HEAD_RE.search(text)
+    if fix_head:
+        candidates = [c for c in _FIX_SITE_RE.findall(text[fix_head.end():]) if _FIX_SITE_SHAPE_RE.search(c)]
+        site = _single_or_miss("fix_site", candidates, misses)
+        if site:
+            fields["fix_site"] = site
+        elif not candidates:
+            misses.append({"field": "fix_site", "reason": "落點 present but no backticked path-shaped token"})
 
     return fields, misses
 
@@ -602,9 +731,29 @@ def import_legacy(text: str, store: Path) -> dict:
         verdict_fields, misses = extract_verdict_fields(row["resolution"])
         for miss in misses:
             problems.append({"kind": "stamp-not-read", "id": row["id"], **miss})
+
+        # Merge, don't rebuild. add_entry() composes a payload from scratch, so
+        # a rerun used to silently erase every field set through `update` —
+        # surface/repro/build and any hand-set verdict fields. The importer is
+        # advertised as safe to rerun, which made that erasure worse than a
+        # crash: the tool that says "rerun me freely" was the one discarding
+        # work. Fields the legacy table owns are overwritten; everything else
+        # is carried forward.
+        try:
+            carried = load_entry(store, row["id"])
+        except KeyError:
+            carried = {}
+        for field in VERDICT_FIELDS:
+            if field in carried and field not in verdict_fields:
+                verdict_fields[field] = carried[field]
+
         try:
             add_entry(
                 store,
+                overwrite=True,
+                surface=carried.get("surface"),
+                repro=carried.get("repro"),
+                build=carried.get("build"),
                 entry_id=row["id"],
                 stream=row["id"].split("-", 1)[0],
                 date=row["date"],
@@ -649,7 +798,7 @@ verified_against: {verified_against}
 > `docs/runbook/backlog/*.json` 產生，手改會被下一次 render 覆蓋。
 > 要改請用 `ops/backlog.py update <id>`；要新增用 `ops/backlog.py add`。
 
-> 自我提升迴圈的 **SoT**：所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
+> 自我提升迴圈的登記處。**SoT 是 `docs/runbook/backlog/`**，本檔是它的 render。所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
 > 「app 實際使用」問題（`APP-*`）的 open 問題單一登記處。
 > 原則見**鐵律9**（摩擦優先修工具）、分級見 `kg-router`「Tool Friction」、
 > 表態見 `kg-receipt`「Tooling Debt」——本文**不複述**，只負責**持久化、追蹤、收斂**。
@@ -670,6 +819,9 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 - `severity`：`low` / `med` / `high`
 - `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
 - 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
+- **resolution hash 慣例**：PR 合併前為 branch-local；若該 PR 採 **squash merge**，合併後由
+  `platform-steward` 更新為 squashed hash，維持 audit trail 不斷。**不得以分支名代替 hash**
+  ——分支刪掉之後那筆 resolution 就再也指不到任何東西
 """
 
 _IMP_INTRO = """
@@ -902,10 +1054,14 @@ def _cmd_validate(args) -> int:
 
 
 def _cmd_update(args) -> int:
+    # Derived from MUTABLE_FIELDS, not a second hand-written list. The previous
+    # hand-written tuple happened to be a subset, so the dry-run path and the
+    # commit path agreed by coincidence: adding one parser flag produced a clean
+    # dry-run followed by an exit-64 --commit. That is IMP-0040's shape inside
+    # the code that cites IMP-0040.
     changes = {
         field: getattr(args, field, None)
-        for field in ("status", "severity", "category", "resolution", "detail",
-                      "verdict", "cost", "fix_site", "verified_at")
+        for field in MUTABLE_FIELDS
         if getattr(args, field, None) is not None
     }
     if not changes:
@@ -921,12 +1077,9 @@ def _cmd_update(args) -> int:
     if args.commit:
         after = update_entry(args.store, args.id, **changes)
     else:
-        # Validate the same way the real path does, so a dry-run that prints a
-        # diff cannot be followed by a --commit that fails.
-        after = {**before, **changes}
-        problems = validate_entry(after, entry_id=args.id)
-        if problems:
-            raise ValueError(f"invalid update: {problems}")
+        # Same predicate as the real path — including the unknown-field check,
+        # which the previous dry-run skipped.
+        after = _merged_and_validated(before, changes, args.id)
 
     diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
     if args.json:
