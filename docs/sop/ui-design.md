@@ -21,7 +21,7 @@ Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、bo
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
-| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRoundness`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast） |
+| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRoundness`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast）。⚠️ 系統 bar 的**材質**不在此列——那歸平台，見北極星 #1；app 這層管的是 tint / 字型 / 自繪 chrome |
 | Vocabulary Skin | `VocabSkin`（Palette / Typography / Spacing） | Vocabulary feature 所有 View |
 | Reader | `ReaderContentStyle` | EPUB/PDF reader 內容樣式 |
 
@@ -35,9 +35,37 @@ Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、bo
 
 KG UI 對齊 [mochi.cards](https://mochi.cards/docs/api/) editorial 質感。以下五條為 hard rule，新 view / refactor PR 違反 → review block。
 
-1. **單色頁面、無 chrome 分隔**　top toolbar、tab bar、content 共用 `pageBackground`。禁止用 navigation chrome 改色分區（toolbar bg ≠ content bg 屬違反）。
-2. **border 退場、divider 進場**　list cards 預設無 border。分區走 `hr-style divider`（hairline + `AppMetrics.dividerAirMargin = 16` 上下 margin）+ 留白。例外：modal / popover / sticky group 必須有邊界，可保留 border。
-3. **shadow 收到 z0 / z1 兩階**　list / resting cards 用 z0（無 shadow，純背景區分）或 z1（極輕）。z2 以上保留給 sheet / drawer / modal / overlay。禁止 raw `.shadow(...)`，一律走 `.appElevation(.zN)`。
+1. **內容層單色、系統 chrome 的材質不歸 app 管**　`pageBackground` 是**內容層**的唯一底色；禁止用自繪背景在內容區做分區。**系統 bar（nav bar / tab bar / toolbar item）的材質由平台決定**，目視在 Xcode 26 build 上是浮動膠囊 tab bar、玻璃 toolbar 膠囊與 bar 後的 scroll-edge 模糊——那是平台外觀，不是違反本條。
+   - **禁止**對系統 bar 疊自訂 `.background` 或第二層 `glassEffect`。要調整走 `.toolbarBackground` 這類系統 API —— **但它的正當用途是可見度 / scheme（`.hidden` / `.visible` / `.toolbarColorScheme`），不是拿自己的顏色去換掉平台材質**。`.toolbarBackground(<某個色>, for: .navigationBar)` 正好是「用系統 API 做出舊規則要擋的東西」，本條**照樣擋**。（現行 `ios/` 對它有 **0 個 callsite**，沒有前例可援引。）
+   - **本條約束的是系統 bar；自繪 in-content bar 另有一道門檻。** 已認可的既有案例如 `TodayReviewMetrics` 的 `topBar*Inset`（見 `docs/reference/feature_boundary/vocabulary.md`）照常用 token。但**新開一個自繪 bar 之前必須先說明「系統 bar 為什麼做不到」**——「想要不同外觀」不算理由。這個 carve-out 不是自我標記就能進的：把自繪的東西叫做 in-content 並不讓它離開本條。
+   - ⚠️ **不要再把 transparent appearance proxy 當成「遵守本條」的手段，它沒有在做事**；也**不要**為了拿玻璃而刪它，刪掉會同時失去襯線標題**與 tab bar item 的 10pt 字級**（`AppFonts.configureGlobalAppearance()`）。依據與其邊界見下方實測註。
+
+> **實測註（2026-08-06）** — 量到的範圍要跟結論一起讀，別外推。
+> **量測環境**：Xcode 26.4（iOS 26 SDK —— Liquid Glass 採用是 **SDK-gated**，所以這欄是
+> 關鍵變因，不是背景資訊）、iOS 26.4 simulator、iPhone 17 Pro Max、light mode、
+> 兩個畫面（A = Settings sheet inline title 已捲動，zh-Hant；B = Notebooks large title
+> 捲到頂，en）。
+> **三個變體**：v1 = 掛 `configureWithTransparentBackground()`（現行生產碼）、
+> v2 = 掛不呼叫任何 `configureWith*` 的裸 appearance、v3 = 完全不掛 proxy。
+> **量到什麼**
+> - **背景（null result）**：v1 / v2 / v3 三者 nav bar 背景**逐像素相同**（含 bar 後有內容
+>   模糊的區域）；`UITabBarAppearance` 有無 `configureWithDefaultBackground()`，
+>   tab bar 膠囊背景亦**逐像素相同**。
+> - **字型（positive result）**：v1 vs v3 標題字形 **2,312 px**（畫面 A）、**18,394 px**（畫面 B）；
+>   v1 vs v2 僅 **16 px**、max channel delta 3 —— 即 antialias 噪訊，視為相同（只在畫面 A 量過）。
+>   換句話說：**掛 proxy 就有襯線、不掛就沒有；而掛哪一種 proxy 不影響背景。**
+> - 這個 null result **只證明 proxy 的背景設定不改 bar 背景**，不證明 bar 渲染成什麼——
+>   「是玻璃」來自**目視**，不是這個 diff。
+> **未測**：dark mode、Mac Catalyst、iPad / regular size class、
+> `compactAppearance` / `compactScrollEdgeAppearance`（生產碼在 `AppFonts.swift:302-305`
+> 四個 slot 都掛，但上述兩畫面只走到 `standardAppearance` 與 `scrollEdgeAppearance`；
+> 橫置 iPhone / compact height 未測）、
+> `UINavigationBarAppearance.configureWithDefaultBackground()`（現行碼從未執行到它——
+> `makeNavBarAppearances()` 造的 `opaque` 變體在 `AppFonts.swift:301` 被 `_` 丟棄）、
+> 以及 `buttonAppearance` / `shadowColor` / `backIndicatorImage` 等其餘 `UIBarAppearance` 屬性。
+> 要據此做更大的決定，先把缺的格子補測。
+2. **border 退場、divider 進場**　list cards 預設無 border。分區走 `hr-style divider`（hairline + `AppMetrics.dividerAirMargin = 16` 上下 margin）+ 留白。例外：modal / popover / sticky group 必須有邊界，可保留 border。**玻璃自帶邊緣高光，不要再對玻璃元件描邊**——這是本條的延伸，不是例外。
+3. **shadow 收到 z0 / z1 兩階**　list / resting cards 用 z0（無 shadow，純背景區分）或 z1（極輕）。z2 以上保留給 sheet / drawer / modal / overlay。禁止 raw `.shadow(...)`，一律走 `.appElevation(.zN)`。**玻璃元件不加 elevation**——系統的玻璃已含分層陰影，疊上去會髒。
 4. **單一強調色策略**　全 app 強調色只有以下軸線，禁止為了好看引入新色：
    - `brandHero` 奶黃 — 日常 CTA（既有）
    - `accent` Morandi grey-blue — 連結 / info / 被動裝飾（既有）

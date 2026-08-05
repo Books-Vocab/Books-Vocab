@@ -67,9 +67,9 @@ Scope: `ios/BooksAndVocab`
 
 對齊 `docs/sop/ui-design.md` 的 Mochi 化北極星：
 
-- [ ] 頁面 bg 與 toolbar / tab bar 是否同色？（避免 chrome 改色分區）
-- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 16` 的 hr-style divider？
-- [ ] shadow 是否限制在 z0 / z1（list/resting）或 z3+（modal/overlay）？無 raw `.shadow(...)`？
+- [ ] 內容層是否單色 `pageBackground`？**系統 bar**（nav/tab/toolbar）是否放手交給平台——沒有自繪 `.background`、沒有第二層 `glassEffect`？（自繪的 in-content bar 不適用本項，照常用 token）
+- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 16` 的 hr-style divider？**玻璃元件是否沒有多描一圈邊？**
+- [ ] shadow 是否限制在 z0 / z1（list/resting）或 z2 以上（sheet/drawer/modal/overlay）？無 raw `.shadow(...)`？**玻璃元件是否沒有多疊 `.appElevation`？**
 - [ ] 強調色是否限制在四軸（`brandHero` / `ctaCritical` / `accent` / `inlineCode`）內？無第五色亂入？
 - [ ] 非按鈕互動是否只動 bg-color / opacity，無 transform？
 
