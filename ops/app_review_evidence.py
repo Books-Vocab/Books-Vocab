@@ -30,6 +30,7 @@ from lib.streaming_command import run_streamed_command  # noqa: E402
 URL_SCHEMA = "kg.app_review.url_checks.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 PLAN_SCHEMA = "kg.app_review.evidence_plan.v1"
+PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _PRODUCER_TYPES = {
@@ -68,6 +69,34 @@ def _run_producer_command(
         heartbeat_interval=heartbeat_interval,
         merge_stderr=False,
     )
+
+
+def _materialize_tracked_file(
+    *, workspace_root: Path, commit: str, rel_path: str, destination: Path,
+) -> Path:
+    """Write `rel_path` exactly as recorded at `commit` — never the working tree.
+
+    Evidence that names a commit must contain that commit's bytes.  Reading the
+    working tree instead lets a bundle claim one commit while carrying another's
+    files, so every failure here is terminal: there is no fall back to the
+    checkout, because that fall back is the defect this function exists to close.
+    """
+    _require(bool(_COMMIT_RE.fullmatch(commit)), f"desired.sourceCommit.format:{commit!r}")
+    reachable = subprocess.run(
+        ["git", "-C", str(workspace_root), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"],
+        capture_output=True, text=True, check=False,
+    )
+    if reachable.returncode != 0:
+        raise EvidenceError(f"desired.sourceCommit.unreachable:{commit}")
+    blob = subprocess.run(
+        ["git", "-C", str(workspace_root), "cat-file", "blob", f"{commit}:{rel_path}"],
+        capture_output=True, check=False,
+    )
+    if blob.returncode != 0:
+        raise EvidenceError(f"desired.sourceCommit.path-missing:{commit}:{rel_path}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(blob.stdout)
+    return destination
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -432,6 +461,14 @@ def produce_desired_bundle(
     render_spec = capture.reviewer_render_spec(profile)
     with tempfile.TemporaryDirectory(prefix="kg-app-review-desired-") as raw_tmp:
         temp = Path(raw_tmp)
+        # Resolve the pinned source first: an unusable sourceCommit must stop the
+        # run before any generator burns time producing evidence nothing can sign.
+        project_file = _materialize_tracked_file(
+            workspace_root=workspace_root,
+            commit=str(target.get("sourceCommit") or ""),
+            rel_path=PROJECT_FILE_REL,
+            destination=temp / "source" / Path(PROJECT_FILE_REL).name,
+        )
         world_spec = temp / "ui_world.spec.json"
         dataset = temp / "ui_world.json"
         generated_outputs = temp / "outputs"
@@ -483,7 +520,7 @@ def produce_desired_bundle(
             sys.executable, str(workspace_root / "ops/capture_profile.py"), "reviewer-evidence", str(profile_file),
             "--dataset-file", str(dataset), "--render-output-dir", str(generated_outputs),
             "--promotion-manifest", str(promotion_path), "--bundle-dir", str(staged_bundle),
-            "--project-file", str(workspace_root / "ios/BooksAndVocab.xcodeproj/project.pbxproj"),
+            "--project-file", str(project_file),
             "--source-commit", str(target.get("sourceCommit")), "--fixed-clock", fixed_clock,
             "--locale", locale, "--expect-marketing-version", str(target.get("marketingVersion")),
             "--expect-build-number", str(target.get("buildNumber")),
