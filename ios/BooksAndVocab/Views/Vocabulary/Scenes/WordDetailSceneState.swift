@@ -29,6 +29,10 @@ final class WordDetailSceneState {
         /// Reader 可見度切換。自成一類而非併入 `.link`：它與知識連結無關，
         /// 併進去會讓一次成功的連結操作清掉使用者還沒讀到的可見度錯誤。
         case readerVisibility
+        /// 字典卡改選義項／例句。同理自成一類：它既不是連結也不是封存。
+        case selection
+        /// 刪除（字典卡）。與 `.archive` 分開——封存成功不該清掉刪除失敗的訊息。
+        case delete
     }
 
     /// Reader 可見度存檔失敗的回報入口。`setActionError` 是 private（刻意的——
@@ -90,7 +94,7 @@ final class WordDetailSceneState {
                 refreshPresentation(for: entry, in: allEntries)
             } catch {
                 guard generation == selectionGeneration else { return }
-                linkError = L10n.string("dictionary.selection.error")
+                setActionError(L10n.string("dictionary.selection.error"), kind: .selection)
             }
         }
     }
@@ -209,7 +213,7 @@ final class WordDetailSceneState {
                 try modelContext.save()
                 onSuccess()
             } catch {
-                linkError = L10n.string("dictionary.archive.error")
+                setActionError(L10n.string("dictionary.archive.error"), kind: .archive)
             }
         }
     }
@@ -233,7 +237,7 @@ final class WordDetailSceneState {
                 try modelContext.save()
                 onSuccess()
             } catch {
-                linkError = L10n.string("dictionary.delete.error")
+                setActionError(L10n.string("dictionary.delete.error"), kind: .delete)
             }
         }
     }
