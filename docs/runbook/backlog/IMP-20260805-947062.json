@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "`ops/tests/test_ops_ci_coverage.sh` 只驗 group→分類，從不驗 file→group，所以「測試檔存在但沒有任何 group 跑得到」是結構性偵測不到的。實測（2026-08-05, HEAD fd1109ca4）：`git ls-files ops/tests/test_* ops/test_*` 得 75 支 tracked 測試檔，`ops/test_ops.sh` 的 `run_one` 只提到 56 支，**19 支對每一個 group 都不可達**：test_app_review_evidence.py / test_app_review_gate.py / test_apply_curation.py / test_asc_reviewer_mirror.py / test_capture_profile.py / test_catalog_appearance_proof.py / test_contact_sheet.py / test_demo_ios_emitter.py / test_demo_ios_spec_emitter.py / test_devops_safe_lightsail_guard.sh / test_frame_catalog.py / test_provenance.py / test_render_fit.py / test_reviewer_evidence.py / test_shape_history.py / test_streaming_command.py / test_ui_world_manifest.py / test_uitest_flow_matrix.py / test_uitest_review_page.py。CI 不補這個洞：`.github/workflows/ops-suite.yml:49` 跑的是 `./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups)`，沒有任何 wholesale `pytest ops/tests/`。唯一會碰到它們的是 cutover gate 的 `ops/**.py` → `ops/tests/test_<basename>` 路由，而那只在該支 source 進了 diff 時才觸發——**改別的檔就永遠不跑**。其中兩支的份量：`test_streaming_command.py` 守的是鐵律 5 的 heartbeat 契約（標 `[machine]`），`test_app_review_gate.py` 守的是送審 gate。本輪 `ops/tests/test_backlog.py` 與 `test_backlog_migration.py` 也在這個洞裡（已於同 commit 註冊成 `backlog` group，故不在上表）。修法：`test_ops_ci_coverage.sh` 補一條反向 section——列舉 tracked 測試檔、對照 `run_one` 可達集合、差集非空即 fail，並比照 EXCLUDED_GROUPS 給一張具名豁免表（每筆附理由），讓「刻意不進套件」與「忘了註冊」在資料上分得開。注意 IMP-20260805-8c0081 是本條的一個 instance，但它點名的 `ops/tests/test_catalog_scene_expectations.py` 今天 `git ls-files` 與磁碟上皆不存在，該筆宜連帶重新取證。",
+  "id": "IMP-20260805-947062",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "worktree backlog-immutable-flag-refusal（修 --detail 靜默吞旗標時撞到）",
+  "status": "open",
+  "stream": "IMP"
+}

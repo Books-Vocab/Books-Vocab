@@ -2,11 +2,15 @@
   "category": "cli",
   "date": "2026-08-05",
   "detail": "`ops/backlog.py update --detail` 是一個 argparse 收得下、`--help` 明列、但**永遠不可能生效**的旗標，而且失效是靜默的。`:973` 有 `p_update.add_argument(\"--detail\")`，`:1009` 也把 `args.detail` 傳下去，但 `_cmd_update`（`:1081-1085`）只從 `MUTABLE_FIELDS`（`:329-333`）取欄位，而 `detail` 刻意不在其中——`:322-327` 寫得很清楚且理由正當：`detail`/`source` 是 id digest 的輸入，改了會讓 id 與內容脫鉤。**問題不是不可變，是宣告與行為不一致。**\n\n兩種踩法，第二種才是危險的：\n① 只給 `--detail` → `nothing to change; pass at least one field`（exit 64）。訊息把「你給的欄位不可變」講成「你什麼都沒給」，指錯方向，但至少會紅。\n② `--detail` 併著任一可變欄位（我就是這樣：`--verdict` + `--verified-at` + `--detail`）→ **exit 0、印出成功的 changes diff、detail 被靜默丟棄**。我當下相信寫進去了，是回頭 `python3 -c` 讀檔比對長度才發現沒有（1903 字元原封不動）。若沒複查，我會回報一個不存在的內容。\n\n這正是本檔註解自己在點名的形狀——`:1076-1080` 寫著「a hand-written tuple happened to be a subset, so the dry-run path and the commit path agreed by coincidence... That is IMP-0040 shape inside the code that cites IMP-0040」。同一支檔案已經修過一次「兩份清單不一致」，但漏了**第三份**：argparse 的旗標集合。目前 `p_update` 宣告的旗標與 `MUTABLE_FIELDS` 沒有任何東西保證同步。\n\n修法（擇一，成本都 S）：① 刪掉 `--detail`，改在 `update` 的 help/epilog 明說「detail/source 不可變，改寫問題敘述＝另一筆 entry，請用 `add`」——`:322-327` 的正確理由目前只有讀原始碼的人看得到。② 保留旗標但改成明確拒絕：偵測到 `args.detail is not None` 就以非零退出並印那段理由。③ 加一條測試釘住「`p_update` 的每個非 `--store`/`--commit`/`--json` 旗標都在 `MUTABLE_FIELDS` 裡」，讓第三份清單也進同一個不變式；`ops/tests/test_backlog.py` 已有 update 相關案例可掛。",
+  "duplicate_of": "IMP-20260805-1be2c6",
+  "fix_site": "ops/backlog.py:_cmd_update + build_parser 的 update subparser",
   "id": "IMP-20260805-dd35f8",
-  "resolution": "",
+  "resolution": "`feat/backlog-immutable-flag-refusal`（尚未 cutover，hash 待收斂 agent rebase 後補）。`--detail` 改成**具名拒絕**而非靜默丟棄：`_cmd_update` 進門先掃 `REFUSED_UPDATE_FIELDS`，命中即 exit 64、指名旗標、指向 `--resolution`，並明說 nothing was written（整個 invocation 一起拒絕，不會套用可變的那一半）。留著旗標而不刪，是因為 argparse 的 unrecognized arguments 雖然夠大聲，卻不會告訴你更正該寫去哪，而這正是敘述寫錯時大家會伸手去按的旗標。`DIGEST_FIELDS = tuple(inspect.signature(make_entry_id).parameters)` 直接讀簽章，不另抄字面清單。同一道失步的另一半也補了：`--surface`/`--repro`/`--build`/`--duplicate-of` 在 MUTABLE_FIELDS 裡、`add` 有、`update` 卻沒有，其中 `duplicate_of` 過去只有 legacy importer 的 verdict 解析碰得到。`ops/tests/test_backlog.py` 本來就有 `test_every_update_flag_reaches_a_field_and_every_field_has_a_flag` 守著雙向不變式，只是把這兩個洞列成 `_KNOWN_UNWIRED_FLAGS` / `_KNOWN_FLAGLESS_FIELDS` 豁免並註明「刪掉豁免就是這些修正自我證明的方式」——兩個豁免皆已刪除，右側改讀模組常數，新豁免無法再以字面值夾帶。另新增行為測試（帶 `--detail` 必須非零退出、訊息含 `--detail` 與 `--resolution`、store 位元組不變）。驗證：`uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_backlog.py ops/tests/test_backlog_migration.py` → 95 passed。順帶發現這兩支測試檔對每一個 test_ops.sh group 都不可達（本機全量與 CI 都不跑），已註冊成 `backlog` group；同形狀的孤兒測試檔另有 19 支，另立 IMP-20260805-947062。",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "debug/ios-version-sot 想把新查到的證據補進剛 filed 的 IMP-20260805-0fc07a 時踩到",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-IMP-20260805-1be2c6",
+  "verified_at": "2026-08-05"
 }
