@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-06",
+  "detail": "VocabularyEntry.swift:28 的註解「#Index back behind #available when iOS 17 support is dropped」條件現在成立了——地板已抬到 26.0，#Index（需 iOS 18+）可無條件使用。註解本身已過期，且它指向一個現在可以動手的改動。",
+  "id": "IMP-20260806-cbaca8",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "deployment target 26.0 bump（feat/reader-liquid-glass Phase 1）",
+  "status": "open",
+  "stream": "IMP"
+}

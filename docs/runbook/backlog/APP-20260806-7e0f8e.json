@@ -1,0 +1,14 @@
+{
+  "category": "correctness",
+  "date": "2026-08-06",
+  "detail": "抬 IPHONEOS_DEPLOYMENT_TARGET 到 26.0 後叫醒一條 deprecation：AuthManager+Apple.swift:137 的 UIWindow(frame: .zero)，iOS 26 起建議改 init(windowScene:)。那是 Sign in with Apple 找不到 UIWindowScene 時的 fail-soft 分支。不擋 build（無 warnings-as-errors），但從此常駐每次 build 的警告清單，build 警告數 11→12。deprecation 警告只在 deployment target >= 該版本時浮出，所以在抬地板前看不到。",
+  "id": "APP-20260806-7e0f8e",
+  "repro": "./ops/ios_ops.sh build 後 grep 'deprecated in iOS 26.0'",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "deployment target 26.0 bump（feat/reader-liquid-glass Phase 1）",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}
