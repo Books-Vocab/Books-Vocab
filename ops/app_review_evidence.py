@@ -30,8 +30,11 @@ from lib.streaming_command import run_streamed_command  # noqa: E402
 URL_SCHEMA = "kg.app_review.url_checks.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 PLAN_SCHEMA = "kg.app_review.evidence_plan.v1"
+ANCHOR_SCHEMA = "kg.app_review.anchor_refresh.v1"
 PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
 _REGULAR_FILE_MODES = {"100644", "100755"}
+_ANCHOR_FIELD = "desiredManifestSHA256"
+_ANCHOR_RE = re.compile(r'("desiredManifestSHA256"\s*:\s*)"([0-9a-f]{64})"')
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _PRODUCER_TYPES = {
@@ -561,6 +564,68 @@ def produce_desired_bundle(
         return document
 
 
+def rewrite_anchor(spec_text: str, new_anchor: str) -> tuple[str, str]:
+    """Swap the one anchor literal in `spec_text`; return (updated text, old value).
+
+    Textual on purpose.  Re-serializing the parsed document would let key order,
+    indentation or number formatting ride along under a commit that claims to
+    have moved one hash, so the substitution is verified twice instead: exactly
+    one literal matched, and the reparsed document differs from the original in
+    that field alone.
+    """
+    _require(bool(_SHA_RE.fullmatch(new_anchor)), f"anchor.value:{new_anchor!r}")
+    matches = _ANCHOR_RE.findall(spec_text)
+    _require(len(matches) == 1, f"anchor.occurrences:{len(matches)}")
+    old_anchor = matches[0][1]
+    updated = _ANCHOR_RE.sub(lambda match: f'{match.group(1)}"{new_anchor}"', spec_text, count=1)
+    expected = json.loads(spec_text)
+    _require(isinstance(expected.get("target"), dict), "anchor.target")
+    expected["target"][_ANCHOR_FIELD] = new_anchor
+    _require(json.loads(updated) == expected, "anchor.collateral-change")
+    _require(len(updated) == len(spec_text), "anchor.length-drift")
+    return updated, old_anchor
+
+
+def refresh_desired_anchor(
+    spec_path: Path, *, workspace_root: Path, profile_file: Path,
+    render_output_dir: Path, fixed_clock: str, locale: str, commit: bool,
+) -> dict[str, Any]:
+    """Recompute target.desiredManifestSHA256 from a rebuilt bundle and write it back.
+
+    This is the only sanctioned way to move that anchor.  Updating it by hand is
+    how an anchor rots: it is the single thing that speaks when the evidence
+    drifts, and hand-editing it is indistinguishable from silencing it.
+
+    The value is measured from a bundle published into a temp directory — the
+    same bytes the gate hashes — rather than derived from the returned manifest,
+    so the number written back is one that was actually observed on disk.
+    """
+    spec = _load(spec_path)
+    spec_text = spec_path.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="kg-app-review-anchor-") as raw_tmp:
+        bundle_dir = Path(raw_tmp) / "bundle"
+        produce_desired_bundle(
+            spec, workspace_root=workspace_root, profile_file=profile_file,
+            render_output_dir=render_output_dir, bundle_dir=bundle_dir,
+            fixed_clock=fixed_clock, locale=locale, commit=True,
+        )
+        measured = _sha((bundle_dir / "manifest.json").read_bytes())
+    updated, old_anchor = rewrite_anchor(spec_text, measured)
+    changed = old_anchor != measured
+    if changed and commit:
+        spec_path.write_text(updated, encoding="utf-8")
+    return {
+        "schema": ANCHOR_SCHEMA,
+        "spec": str(spec_path),
+        "field": f"target.{_ANCHOR_FIELD}",
+        "old": old_anchor,
+        "new": measured,
+        "changed": changed,
+        "commit": commit,
+        "status": "current" if not changed else ("written" if commit else "dry-run"),
+    }
+
+
 def produce_attestation(spec: dict[str, Any], *, actor: str, subject: str, root_sha256: str, observed_at: str, expires_at: str) -> dict[str, Any]:
     _require(actor in {"human", "agent"}, "attestation.actor")
     _require(bool(_SHA_RE.fullmatch(root_sha256)), "attestation.root")
@@ -687,6 +752,24 @@ def parser() -> argparse.ArgumentParser:
     desired.add_argument("--locale", required=True)
     desired.add_argument("--workspace-root", type=Path, default=Path("."))
     desired.add_argument("--commit", action="store_true")
+    refresh = sub.add_parser(
+        "refresh-anchor",
+        help=(
+            "rebuild the desired bundle and write its manifest sha256 back to "
+            "target.desiredManifestSHA256 (dry-run unless --commit); the only "
+            "sanctioned way to move that anchor"
+        ),
+    )
+    refresh.add_argument("--spec", type=Path, required=True)
+    refresh.add_argument("--profile", type=Path, required=True)
+    refresh.add_argument("--render-output-dir", type=Path, required=True)
+    refresh.add_argument("--fixed-clock", required=True)
+    refresh.add_argument("--locale", required=True)
+    refresh.add_argument("--workspace-root", type=Path, default=Path("."))
+    refresh.add_argument(
+        "--commit", action="store_true",
+        help="write the spec; without it the old->new comparison is printed and nothing is written",
+    )
     urls = sub.add_parser("urls")
     urls.add_argument("--spec", type=Path, required=True)
     urls.add_argument("--observed-at")
@@ -751,6 +834,15 @@ def main(argv: list[str] | None = None) -> int:
             document = produce_desired_bundle(
                 spec, workspace_root=args.workspace_root.resolve(), profile_file=args.profile.resolve(),
                 render_output_dir=args.render_output_dir.resolve(), bundle_dir=args.bundle_dir,
+                fixed_clock=args.fixed_clock, locale=args.locale, commit=args.commit,
+            )
+            print(json.dumps(document, ensure_ascii=False, sort_keys=True))
+            return 0
+        elif args.command == "refresh-anchor":
+            document = refresh_desired_anchor(
+                args.spec, workspace_root=args.workspace_root.resolve(),
+                profile_file=args.profile.resolve(),
+                render_output_dir=args.render_output_dir.resolve(),
                 fixed_clock=args.fixed_clock, locale=args.locale, commit=args.commit,
             )
             print(json.dumps(document, ensure_ascii=False, sort_keys=True))
