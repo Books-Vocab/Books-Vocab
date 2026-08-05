@@ -38,14 +38,16 @@ struct BackgroundSyncActorTests {
     private func makeCard(
         id: String = "c1",
         content: String,
-        sourceJSON: String?
+        sourceJSON: String?,
+        lastReviewedAt: String? = nil
     ) throws -> KGCard {
         let sourceFragment = sourceJSON.map { ",\"source\":\($0)" } ?? ""
+        let reviewFragment = lastReviewedAt.map { ",\"lastReviewedAt\":\"\($0)\"" } ?? ""
         let json = """
         {"id":"\(id)","content":"\(content)","meaning":"meaning-\(content)",
          "pos":null,"difficulty":null,"difficultyTier":null,"note":null,
          "collocations":[],"examples":["an example"],"mode":"recognition",
-         "isDeleted":false,"notebookId":"default"\(sourceFragment)}
+         "isDeleted":false,"notebookId":"default"\(sourceFragment)\(reviewFragment)}
         """.data(using: .utf8)!
         return try JSONDecoder().decode(KGCard.self, from: json)
     }
@@ -510,6 +512,185 @@ struct BackgroundSyncActorTests {
         let item = try #require(try await actor.buildReviewEventsPushPayload().first)
         #expect(item.card_id == "card-legacy")          // fallback 反查解出
         #expect(item.interval_after == nil)             // legacy 無 SRS 快照
+    }
+
+    // MARK: - Review-state push watermark
+
+    /// Every synced card's SRS state was re-sent on every sync (644 cards in
+    /// production) even when nothing had been reviewed since the last push.
+    /// Once acknowledged, a card stays out of the payload until it is reviewed.
+    @Test func buildReviewStatePushPayload_skipsCardsAcknowledgedSinceTheirLastReview() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let reviewedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let settled = VocabularyEntry(word: "settled", translation: "m", context: "c", bookTitle: "B")
+        settled.markSynced()
+        settled.lastReviewedAt = reviewedAt
+        settled.reviewStateSyncedAt = reviewedAt.addingTimeInterval(60)   // acked after the review
+        context.insert(settled)
+
+        let reviewedSince = VocabularyEntry(word: "reviewed-since", translation: "m", context: "c", bookTitle: "B")
+        reviewedSince.markSynced()
+        reviewedSince.lastReviewedAt = reviewedAt.addingTimeInterval(120) // reviewed after the ack
+        reviewedSince.reviewStateSyncedAt = reviewedAt.addingTimeInterval(60)
+        context.insert(reviewedSince)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let payload = try await actor.buildReviewStatePushPayload()
+
+        #expect(payload.map { $0["word"] as? String } == ["reviewed-since"])
+    }
+
+    /// A card the server has never been told about must be sent at least once,
+    /// even if it was never reviewed — the backend schedules from `next_review_at`.
+    @Test func buildReviewStatePushPayload_sendsNeverAcknowledgedCardsOnce() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let never = VocabularyEntry(word: "never-acked", translation: "m", context: "c", bookTitle: "B")
+        never.markSynced()                       // no lastReviewedAt, no reviewStateSyncedAt
+        context.insert(never)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        #expect(try await actor.buildReviewStatePushPayload().count == 1)
+
+        try await actor.markReviewStatesPushed(upTo: Date())
+        #expect(try await actor.buildReviewStatePushPayload().isEmpty)
+    }
+
+    /// A review that lands *during* the push must stay dirty: the boundary is
+    /// captured before the payload is built, so anything newer is not acked.
+    @Test func markReviewStatesPushed_leavesReviewsNewerThanTheBoundaryDirty() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let boundary = Date(timeIntervalSince1970: 1_800_000_000)
+
+        let inFlight = VocabularyEntry(word: "reviewed-mid-push", translation: "m", context: "c", bookTitle: "B")
+        inFlight.markSynced()
+        inFlight.lastReviewedAt = boundary.addingTimeInterval(5)   // reviewed after the boundary
+        context.insert(inFlight)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.markReviewStatesPushed(upTo: boundary)
+
+        #expect(try await actor.buildReviewStatePushPayload().count == 1)
+    }
+
+    /// Server-authoritative state is already on the server; accepting it must
+    /// not leave the card queued to push that same state straight back.
+    @Test func pullCardsToLocal_serverWinsMarksReviewStateAcknowledged() async throws {
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let card = try makeCard(id: "c-srs", content: "acked", sourceJSON: nil, lastReviewedAt: "2027-01-15T10:00:00Z")
+
+        _ = try await actor.pullCardsToLocal(fetchedCards: [card], isIncremental: true, progress: { _, _, _ in })
+
+        #expect(try await actor.buildReviewStatePushPayload().isEmpty)
+    }
+
+    // MARK: - Push watermark
+
+    /// The payload must carry only events the server has not acknowledged.
+    ///
+    /// Without a watermark the client re-uploaded its entire review history on
+    /// every sync — measured in production at 9,542 events / ~3.4MB / 10
+    /// sequential PATCHes, 15.4s of a 17s sync, with the server skipping 100%
+    /// of them.
+    @Test func buildReviewEventsPushPayload_skipsAlreadyPushedRecords() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        let pushed = ReviewRecord(word: "settled", entryID: nil, feedback: 1)
+        pushed.pushedAt = Date(timeIntervalSince1970: 1_800_000_000)
+        context.insert(pushed)
+
+        let pending = ReviewRecord(word: "fresh", entryID: nil, feedback: 1)
+        context.insert(pending)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let payload = try await actor.buildReviewEventsPushPayload()
+
+        #expect(payload.map(\.word_snapshot) == ["fresh"])
+    }
+
+    /// A newly created review is pending until a push acknowledges it.
+    @Test func reviewRecord_startsUnpushed() throws {
+        #expect(ReviewRecord(word: "brand-new", entryID: nil, feedback: 1).pushedAt == nil)
+    }
+
+    /// Marking is per-batch, so a batch that fails (e.g. the 429 the old
+    /// 10-request burst provoked) must not un-acknowledge the batches that
+    /// already landed — and must not acknowledge the ones that did not.
+    @Test func markReviewEventsPushed_marksOnlyTheGivenIds() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+
+        let landed = ReviewRecord(word: "landed", entryID: nil, feedback: 1)
+        landed.id = UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000001")!
+        context.insert(landed)
+        let stranded = ReviewRecord(word: "stranded", entryID: nil, feedback: 1)
+        stranded.id = UUID(uuidString: "AAAAAAAA-0000-0000-0000-000000000002")!
+        context.insert(stranded)
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        try await actor.markReviewEventsPushed(eventIDs: [landed.id.uuidString])
+
+        let remaining = try await actor.buildReviewEventsPushPayload()
+        #expect(remaining.map(\.word_snapshot) == ["stranded"])
+    }
+
+    /// Batches drain oldest-first so a partially-pushed history advances
+    /// monotonically instead of re-shuffling on every attempt.
+    @Test func buildReviewEventsPushPayload_isOrderedByReviewedAt() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        for (word, offset) in [("third", 300.0), ("first", 100.0), ("second", 200.0)] {
+            context.insert(ReviewRecord(
+                word: word,
+                entryID: nil,
+                feedback: 1,
+                reviewedAt: Date(timeIntervalSince1970: 1_800_000_000 + offset)
+            ))
+        }
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let payload = try await actor.buildReviewEventsPushPayload()
+
+        #expect(payload.map(\.word_snapshot) == ["first", "second", "third"])
+    }
+
+    /// An event pulled *from* the server is already on the server. Leaving it
+    /// unmarked would make the next sync push the whole pulled history straight
+    /// back — the watermark would never drain on a device that pulls history.
+    @Test func mergeReviewEvents_marksRemoteEventsAsAlreadyPushed() async throws {
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = KGReviewEventPayload(
+            event_id: "BBBBBBBB-0000-0000-0000-000000000001",
+            card_id: "card-remote",
+            word_snapshot: "remote",
+            notebook_id: "default",
+            feedback: 1,
+            reviewed_at: "2027-01-15T10:00:00Z",
+            created_at: "2027-01-15T10:00:00Z"
+        )
+
+        try await actor.mergeReviewEvents([remote])
+
+        // Assert the record exists *and* is marked. An empty payload alone is
+        // also what "the merge inserted nothing" looks like, so that assertion
+        // by itself would go green on a regression in the insert path.
+        let context = ModelContext(container)
+        let stored = try #require(try context.fetch(FetchDescriptor<ReviewRecord>()).first)
+        #expect(stored.word == "remote")
+        #expect(stored.pushedAt != nil)
+        #expect(try await actor.buildReviewEventsPushPayload().isEmpty)
     }
 
     @Test func mergeReviewEvents_fixatesRemoteCardIdAndSRS() async throws {

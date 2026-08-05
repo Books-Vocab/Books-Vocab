@@ -64,6 +64,12 @@ extension KGService {
     private static let reviewEventPushBatchSize = 1000
 
     func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) {
+        guard claimReviewEventPush() else {
+            AppLog.kg.info("pushReviewEvents skipped: another push already in flight")
+            return (0, 0)
+        }
+        defer { releaseReviewEventPush() }
+
         let actor = BackgroundSyncActor(modelContainer: container)
         let payload = try await actor.buildReviewEventsPushPayload()
         guard !payload.isEmpty else { return (0, 0) }
@@ -84,6 +90,22 @@ extension KGService {
                 method: "PATCH",
                 body: try JSONEncoder().encode(["entries": batch])
             )
+            // Every entry must land in exactly one of the server's two buckets.
+            // `PushResponse` ignores unknown keys, so if the server ever grows a
+            // third outcome (a rejected list, a validation-tolerant mode), this
+            // loop would mark the rejected rows as pushed and lose them with no
+            // trace. Refuse to acknowledge a batch we cannot account for.
+            guard result.inserted + result.skipped == batch.count else {
+                throw KGError.serverError(
+                    "review-events push returned \(result.inserted) inserted + \(result.skipped) skipped for \(batch.count) entries; not acknowledging an unaccounted batch"
+                )
+            }
+            // Acknowledge per batch, not once at the end. The batches are the
+            // unit the server actually accepted, so a later batch throwing
+            // (offline, 401, or the 429 this very burst used to provoke) must
+            // still leave the landed ones marked — that is what lets a large
+            // legacy history drain across syncs instead of restarting each time.
+            try await actor.markReviewEventsPushed(eventIDs: batch.map(\.event_id))
             totalInserted += result.inserted
             totalSkipped += result.skipped
         }

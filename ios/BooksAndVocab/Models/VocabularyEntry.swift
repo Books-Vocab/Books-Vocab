@@ -63,6 +63,26 @@ final class VocabularyEntry {
     var reviewStreak: Int = 0
     var lastReviewFeedbackRaw: Int = -1
 
+    /// When this card's SRS state was last accepted by the backend.
+    ///
+    /// Without it the client had no way to tell "the server already has this
+    /// schedule" from "this changed", so every sync re-sent every synced card's
+    /// review state (644 cards in production) for the server to compare and
+    /// mostly discard. Optional so existing rows arrive as `nil` and are sent
+    /// once — the backend schedules from `next_review_at`, so a card it has
+    /// never heard about must still be reported at least once.
+    var reviewStateSyncedAt: Date?
+
+    /// Whether the backend is missing this card's current SRS state.
+    ///
+    /// Compares against `lastReviewedAt ?? dateAdded`, the same instant the push
+    /// payload sends as `last_reviewed_at`, so "what we told the server" and
+    /// "what we compare against" cannot drift apart.
+    var needsReviewStatePush: Bool {
+        guard let syncedAt = reviewStateSyncedAt else { return true }
+        return (lastReviewedAt ?? dateAdded) > syncedAt
+    }
+
     var notebookId: String = "default"
     var bookId: UUID?
     var isDemoEntry: Bool = false

@@ -14,6 +14,9 @@ extension KGService {
 
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) {
         let actor = BackgroundSyncActor(modelContainer: container)
+        // Captured before the payload is built so a review landing mid-request
+        // stays dirty rather than being acknowledged as already-sent.
+        let boundary = Date()
         let payload = try await actor.buildReviewStatePushPayload()
         guard !payload.isEmpty else { return (0, 0) }
 
@@ -27,7 +30,8 @@ extension KGService {
             method: "PATCH",
             body: try JSONSerialization.data(withJSONObject: ["entries": payload])
         )
-        AppLog.kg.info("pushReviewStates: updated=\(result.updated), skipped=\(result.skipped)")
+        try await actor.markReviewStatesPushed(upTo: boundary)
+        AppLog.kg.info("pushReviewStates: sent=\(payload.count), updated=\(result.updated), skipped=\(result.skipped)")
         return (result.updated, result.skipped)
     }
 
@@ -178,6 +182,7 @@ extension KGService {
         ActiveNotebookStore.shared.clear()
         defaults.removeObject(forKey: NotebookFilter.storageKey)
         lastSyncDate = nil
+        Self.persistLastSyncDate(nil)
         serverCardCount = 0
     }
 
@@ -335,7 +340,9 @@ extension KGService {
 
         if failureMessages.isEmpty {
             lastBackgroundSyncError = nil
-            lastSyncDate = .now
+            let syncedAt = Date()
+            lastSyncDate = syncedAt
+            Self.persistLastSyncDate(syncedAt)
             AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.end.success")
         } else {
             lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failureMessages.joined(separator: ", "))
