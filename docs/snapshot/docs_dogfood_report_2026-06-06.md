@@ -6,7 +6,7 @@ scope:
   - docs/
   - ops/docs_impact.py
   - ops/docs_lint.sh
-verified_against: e237d84f
+verified_against: b14385b76
 -->
 # Docs Dogfood Report — 2026-06-06
 

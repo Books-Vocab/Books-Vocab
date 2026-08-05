@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/data        # 2026-06-16 起 live data 移出 git worktree → felix ~/kg-data（由 KG_DATA_DIR 指向）
-verified_against: d67bed12
+verified_against: 21ed42281
 -->
 # Backup 策略總覽
 

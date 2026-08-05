@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - lab/llm_eval/
-verified_against: df2a59d5
+verified_against: 2c661f326
 -->
 # LLM Eval Workbench
 
