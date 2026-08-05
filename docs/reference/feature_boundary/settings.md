@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 30df7f5f1
+verified_against: cf5dd5df5
 -->
 # Settings Feature Boundary
 
@@ -52,7 +52,7 @@ verified_against: 30df7f5f1
 | `SettingsAccountSection.swift` | 424 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
 | `SettingsSubscriptionSection.swift` | 139 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
 | `SettingsReviewSection.swift` | 334 | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
-| `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）|
+| `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）與 UI「聲音回饋」「觸覺回饋」本機開關 |
 | `SettingsOtherSection.swift` | 227 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）|
 | `SettingsDebugBackendSection.swift` | 128 | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct）|
 
@@ -72,6 +72,15 @@ verified_against: 30df7f5f1
 | `SubscriptionPaywallCopy.swift` | 115 | paywall 文案解析（帳單金額 / 試用 / CTA / footer）；對齊 App Store 3.1.2(c) 合規敏感字串 |
 | `SettingsDeleteAccountCopy.swift` | 53 | 刪帳工作流文案（後果列表 / 確認勾選 / 倒數 / 確認字串）|
 | `SettingsAccountCopy.swift` | 25 | 帳號區塊文案常數（登入 / 驗證 / 訂閱狀態 / Pro 標籤）|
+| `FeedbackSettingsCopy.swift` | 9 | UI 聲音／觸覺回饋設定列文案 |
+
+### Feedback Dependencies
+
+| 檔案 | 說明 |
+|------|------|
+| `ios/BooksAndVocab/Models/FeedbackSettings.swift` | `FeedbackSettingsStore`：裝置本機聲音／觸覺回饋偏好；不控制 TTS 或 Podcast |
+| `ios/BooksAndVocab/Services/FeedbackAudioService.swift` | 短促非語音 UI 音效播放器；不取代 `SpeechService` 或 `PodcastAudioEngine` |
+| `ios/BooksAndVocab/UIComponents/FeedbackModifiers.swift` | `AppFeedbackEvent` 與 `appFeedback` modifier；集中 gate haptic 與 UI sound |
 
 ### Debug 工具
 

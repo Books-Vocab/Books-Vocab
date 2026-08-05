@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/
-verified_against: 41aafedc
+verified_against: cf5dd5df5
 -->
 # UI State Matrix
 
@@ -138,7 +138,7 @@ Scope: `ios/BooksAndVocab`
 | Back | `revealStage == .back` | answer fold | 已覆蓋 |
 | Details | `revealStage == .details` | detail fold | 已覆蓋 |
 | Completion | `currentCard == nil` | completion empty state | 已覆蓋 |
-| Remembered / forgot feedback | submit action | haptic + card swap | 已覆蓋 |
+| Remembered / forgot feedback | submit action | sound feedback（可關閉）+ haptic（可關閉）+ card swap | 已覆蓋 |
 | Save failure / persistence failure | `modelContext.save()` 失敗 | `onSaveFailure` → `toast.error(L10n.string("todayReview.saveFailure"))` | 已覆蓋 |
 
 ---
@@ -149,6 +149,14 @@ Scope: `ios/BooksAndVocab`
 - `ios/BooksAndVocab/Views/Settings/SettingsView.swift`
 - `ios/BooksAndVocab/Views/Settings/SettingsPresenter.swift`
 - `ios/BooksAndVocab/Views/Settings/SettingsCoordinator.swift`
+
+### UI Feedback Preferences
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Sound feedback on/off | `FeedbackSettingsStore.soundFeedbackEnabled` | Settings 偏好列；`appFeedback` 播放短促非語音 UI 音效 | 已覆蓋 |
+| Haptic feedback on/off | `FeedbackSettingsStore.hapticFeedbackEnabled` | Settings 偏好列；`appFeedback` gate `.sensoryFeedback` | 已覆蓋 |
+| Content audio isolation | TTS / Podcast event | 維持各自既有服務與設定，不受 UI feedback switches 影響 | 已覆蓋 |
 
 ### Auth / Account State
 
