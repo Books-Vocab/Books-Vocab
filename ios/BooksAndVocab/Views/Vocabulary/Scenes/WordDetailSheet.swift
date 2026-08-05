@@ -67,11 +67,11 @@ struct WordDetailSheet: View {
                     }
                 )
                 .overlay(alignment: .top) {
-                    if let linkError = state.linkError {
+                    if let actionError = state.actionError {
                         AppBanner(
-                            message: linkError,
+                            message: actionError,
                             systemImage: "exclamationmark.triangle",
-                            onDismiss: { state.dismissLinkError() }
+                            onDismiss: { state.dismissActionError() }
                         )
                         .padding(.top, AppSpacing.s1)
                     }
