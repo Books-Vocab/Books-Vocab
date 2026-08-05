@@ -21,7 +21,6 @@
 #   ./ops/release.sh resubmit ios                # 同版號、新 build 重送：bump-build → upload → 封 ios/<x.y.z>+<build>（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
-#
 # iOS 版號的兩種 tag（語意不同，別混）：
 #   ios/<x.y.z>          該 marketing version **上架 App Store** 的那顆 commit。
 #                        只由 `shipped ios` 依 ASC 驗證後物化；immutable，不移動。
@@ -31,6 +30,7 @@
 # `--new-version-after-ready` 已移除：ios/<x.y.z> 現在代表上架，tag 存在本身就是證據。
 #
 # 全域 flag：--yes（bump/tag 真寫、release/shipped/resubmit 真執行）
+#           --commit <sha>（僅 shipped：build tag 不存在時人工指定封版 commit；會標記為人工斷言）
 # 其他：-h|--help
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
