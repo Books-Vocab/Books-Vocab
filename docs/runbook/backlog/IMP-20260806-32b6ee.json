@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "rebase 孤兒 anchor 會**安靜累積**，因為偵測它的檢查在兩種模式下嚴重度不同：`docs_lint` 的 `verified_against` 可達性檢查在 files/gate 模式是 ERROR，在 audit(`--all`) 模式刻意降成 WARN（設計理由正當：不讓健康稽核把既有 debt 變成 block）。後果是乾淨的 main 跑預設 `docs_lint` 什麼都不驗（沒有 changed docs），跑 `--all` 只看到 WARN，於是孤兒只有在「有人剛好動到那份文檔」時才會以 ERROR 現身並當場擋住那個人——這正是 2026-08-05 一個下午三條獨立分支各被自己的 anchor 咬一次的原因（IMP-20260805-9bb2d2 記的是單次現象，本筆記的是**累積機制**）。2026-08-06 實測全 repo 有 **15 份**孤兒，來自數次歷史 rebase（單一顆 `f0d37ca4` 就影響 5 份）。**可機械化的修法已驗證**：15 顆孤兒每一顆都在 main 上有 `git patch-id --stable` 完全相同的可達 commit（它們就是同一批 commit 被 rebase 後的新 sha），所以「孤兒 → 可達等價物」的重取是可自動化且不需要重新驗證文檔內容的。建議做成 `ops/docs_lint.sh --reanchor`（或獨立小工具）：只在 patch-id 相等時才改，映射不成立就具名報錯而非猜。",
+  "id": "IMP-20260806-32b6ee",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "全域收攏：reader-liquid-glass 指出一份，查下去是十五份",
+  "status": "open",
+  "stream": "IMP"
+}
