@@ -1,0 +1,16 @@
+{
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-05",
+  "detail": "schema 稱 `resolution` 為「可回溯的關鍵欄」並明令不得以分支名代替 hash，但 `validate_entry`（:190-215）只驗必填欄存在與 stream/category/severity/status 詞彙——`status: fixed` 配空的、純散文的、或分支名的 resolution 一律 0 problems。同族第三個洞：`verdict` 是宣告過的閉集（`VERDICTS`），但只在 extractor 裡被守；`update <id> --verdict TOTALLY-BOGUS --commit` 實測 rc=0 落地，validate 仍報 0 problems。**受害者四筆不是兩筆**（判準取 `docs_lint.sh` 的兩段式：`rev-parse --verify <sha>^{commit}` 再 `merge-base --is-ancestor <sha> HEAD`，看 resolution 位置 0 的 sha；34 筆 fixed 中 30 清 4 紅）：IMP-0005（`813356b1`，物件根本不在 odb）、IMP-0063（位置 0 是分支名 `feat/freeze-ui-world`，分支已刪）、IMP-0001（`7c95a02`）與 IMP-0002（`3671b89`）——**物件存在但不是 HEAD 或 origin/main 的祖先**，PR #968 被 rebase-merge 遺下的 dangling commit。後兩筆是主線用 `git cat-file -e` 掃描漏掉的，因為該呼叫對 dangling object 回 0；那是同一輪裡我第二次被自己寫的偵測器騙（第一次是 incidental hash 滿足 any 斷言）。**四筆全部可救、無永久損失**：IMP-0001 到 `98aa04fe6`、IMP-0002 到 `fc2c7d454`（`git patch-id --stable` 位元組相同，確定）；IMP-0005 到 `52a89295a`（寫入該 hash 的 commit `a52519c4c` 的直接父，其 docs_lint 改動與 detail 逐字相符，極高信心；literal 字串本身確定不可復原）；IMP-0063 從來沒有 squash，工作以五個普通 commit 落地（`e1164bc3f` `59376883e` `e2e343a14` `8e5e79a9e` `f918d6ecc`）。**另一條 prose-only 不變式也已破**：platform-steward 的「open 無 next action」在 IMP-0064、IMP-0065、IMP-20260805-afc14b 三筆為空，而其餘 27 筆未結案有 26 筆是破折號開頭的 next action，慣例明確且可機器化。（反之 wont-fix 須附理由 3/3 成立、未破，原始框架的推測被證偽。）**而且 `validate` 根本沒有自動呼叫者**：`.github/workflows/` 與 `ops/*.sh` 全無，只有 `ops/tests/test_backlog.py` import 該模組——所以不是「機器面只到詞彙為止」，是機器面根本沒被排程。散文欄位的可檢查性上限就是位置啟發式：位置 0 規則實測 33/34 成立，但它表達不了 IMP-0063 的五個 sha，遇到 resolution 以重新取證戳記開頭就崩，且 IMP-0028 那筆裸的未加反引號 sha 會逼 regex 放寬到重新引入歧義。",
+  "fix_site": "ops/backlog.py:190-215",
+  "id": "IMP-20260805-9a51e9",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/backlog.py:190-215`，成本 M（約 40 行驗證加一次 git shell-out，對一個目前純檔案系統、測試無 git fixture 的模組是新相依；回填 7 個檔；CI 接線一行）。**設計**：加專用結構化欄位 `fixed_by: [sha,…]`，沿用 VERDICT_FIELDS 的附加式前例，resolution 原文仍權威——incidental hash 永遠進不了 `fixed_by`。每個 status 各有規則：fixed 要 `fixed_by` 非空且每個 sha 可解析並為 HEAD 祖先；wont-fix 要非空理由且不得是裸 sha；open/triaged/in-progress 要非空 next action 且 `fixed_by` 必須空（未完成卻指著 commit 是 status 說謊）。**參考系是 HEAD 不是 origin/main，這是刻意偏離 `docs/sop/doc_sync.md:25-27`**：錨點指向後方的 base，`fixed_by` 指向改動本身；實測本地 main 超前 origin 27 個 commit，IMP-0063 那五顆全在超前段，用 origin/main 判會把正確答案在建檔當天判紅。`--is-ancestor <sha> origin/main` 只能當 WARN（意為尚未推送）。復用 `ops/docs_lint.sh:403-426` 的兩段式機制，但**不可**復用 `:417-419` 的 audit 降級——那正是讓 IMP-0038 的 22 個孤兒錨點本機綠而 CI 紅的東西。**不設 grandfather list**：四筆全可解，約 20 分鐘機械回填，留清單等於複製 IMP-0038 已失敗的手動 re-bump 待辦。驗收：`./ops/backlog.py validate` 今天 0 problems rc=0；檢查落地後、回填前必須 7 problems（4 筆 resolution-not-traceable 加 3 筆 open-without-next-action），回填後回 0。負控證明 incidental-hash 洞已關：IMP-0063 的 resolution 仍含可達的 `0c9e3b7c` 但 `fixed_by` 空，必須仍紅。未驗：34 次 git shell-out 的 validate 執行成本；`813356b1` 是否存活於他機 clone。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}

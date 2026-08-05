@@ -1,0 +1,16 @@
+{
+  "category": "cli",
+  "cost": "S",
+  "date": "2026-08-05",
+  "detail": "`ops/backlog.py` 的 `update` parser 與 `MUTABLE_FIELDS` 雙向失步，危險的是靜默那向。`--detail`（:973）有 flag 但 `detail` 刻意不在 `MUTABLE_FIELDS`（:329-334，它是 `make_entry_id` 的 digest 輸入）；`_cmd_update`（:1081-1085）只從 `MUTABLE_FIELDS` 組 changes，於是 `update <id> --status fixed --detail NEW --commit` 會 rc=0、status 落地、detail 靜默丟棄，`--json` 的 `changes` 連提都不提（實測並由主線複驗）。單獨給 `--detail` 則 rc=64 印「nothing to change; pass at least one field」——明明給了欄位。反方向：`surface`/`repro`/`build`/`duplicate_of` 在 `MUTABLE_FIELDS` 卻無 flag（`--duplicate-of` 走 argparse rc=2）。**不是 class**：掃過 ops/ 全部 argparse CLI，此機制全 repo 僅一處；8 個「dest 沒人讀」疑似點逐一手驗全為互斥群組預設值或跨模組委派——原始框架推測這是個類別，證據不支持。**修法有陷阱**：只把拒絕放進 `_merged_and_validated` 是 no-op，predicate 收不到 CLI 從沒傳給它的值，必須同時把 `_cmd_update` 的收集面擴成 MUTABLE + IMMUTABLE；widen 後 dry-run 分支（:1101）是裸呼叫，要確認 `main()` 對該例外型別回 64 而非 traceback。**保留 flag 而非刪除**：刪掉走 argparse rc=2，與本檔 rc=64 的 usage-error 慣例（:117）不一致（IMP-0042 正是講 exit code 家族碎裂），且 argparse 不會教「detail 是 digest 輸入、改寫敘述等於另一筆」，也修不到 Python API 把 immutable 誤報成 unknown field。諷刺：引進 `--detail` 的 commit `1fd402912` 標題是 refuse fields nobody reads。",
+  "fix_site": "ops/backlog.py:1081-1085",
+  "id": "IMP-20260805-1be2c6",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/backlog.py:1081-1085`，成本 S。驗收：`uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_backlog.py`（實測 33 passed / 1.51s，即 cutover gate 的呼叫式）加一條 set-equality 結構測試，把 update parser 的 dest 集合釘死等於 MUTABLE ∪ IMMUTABLE ∪ {id,store,commit,json,help}——set 相等而非子集，才能同時關掉兩個方向。未驗：修好後 `--json` 拒絕路徑該吐什麼；是否有本檔外的呼叫者用 `update_entry(detail=...)`。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}

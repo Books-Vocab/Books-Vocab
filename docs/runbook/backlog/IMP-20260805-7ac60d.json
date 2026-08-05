@@ -1,0 +1,16 @@
+{
+  "category": "doc",
+  "cost": "S",
+  "date": "2026-08-05",
+  "detail": "APP stream 有完整 schema、專屬詞彙、專屬欄位與指定 owner，但沒有任何路由把工作導進去。`.claude/skills/kg-receipt/SKILL.md:21,54` 兩處「Tooling Debt 強制表態」條款都硬寫 `--stream IMP`；`CLAUDE.md`、`docs/sop/agent_org.md`、`kg-router` 完全不提 APP；`.claude/agents/platform-steward.md:16` 把 APP owner 指給 `ios-engineer` 與 `backend-engineer`，而這兩個 agent 檔案裡「backlog」出現 0 次。測試面 `test_backlog.py` 與 `test_backlog_migration.py` 有 17 處 APP，但全部走 Python API `add_entry`，零測試走 CLI 的 APP 路徑。**病因要寫對**：APP stream 誕生於 `e644791b2`（2026-08-05 08:14:40），零筆是「還沒開張」不是「久置腐朽」——原始框架寫成 dead surface 已被證偽，這條記下來以免下一個人重犯同一個推論。與同輪的 APP round-trip bug 是兩個關注點：那條是碼的缺陷，本條是路由缺口，owner 不同。",
+  "fix_site": ".claude/skills/kg-receipt/SKILL.md:21",
+  "id": "IMP-20260805-7ac60d",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `.claude/skills/kg-receipt/SKILL.md:21,54` 與兩個 Line agent 檔，成本 S。驗收是判斷不是命令：任一 Line agent 讀完自己的 agent 檔後，知道 APP entry 存在、知道什麼該進 APP、知道怎麼開。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}

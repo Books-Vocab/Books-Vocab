@@ -1,0 +1,16 @@
+{
+  "category": "arch",
+  "cost": "M",
+  "date": "2026-08-05",
+  "detail": "`docs/registry.yml` 的 `generator:` 是全 registry 唯一宣告了「可機器檢查關係」的欄位，而 `ops/docs_lint.sh:180-188` 對 `kind: generated` 只驗兩件事：`generator:` 非空、該檔存在。**產物與產生器輸出的關係從未被評估**。兩份 registry 宣告的 generated 文檔皆無 equality gate，其中一份已嚴重腐爛：`docs/snapshot/ios_baseline.md` 實測 Swift 總行數 64988 → 75554（+16.3%）、檔案數 435 → 494、`@MainActor` 208 → 292、Top-10 表 10 行全錯；它宣稱的第一名 `Views/Podcast/PodcastSentenceLevelView.swift` 已不存在，真正的第一名 `Support/Fixtures/Core/FixtureDatasetStore.swift`（2659 行）完全沒出現；錨點 `3e0973170` 停在 2026-06-09，其後 250 個 commit 動過 `ios/BooksAndVocab`。（相對地 backlog view 本身零 drift——原始框架把矛頭指向安全的那份，真正爛的是被當註腳的那份。）**這是未套用的能力，不是缺失的能力**：`ops/gen_web_tokens.py --check` 與 `ops/gen_figma_sets.py --check` 早就是同一個 idiom，接進 `ops/verify_design_system.sh:37-38`，再進 design-system CI 與 cutover block gate。**兩個修的人必踩的坑**：其一，`ops/gen_ios_baseline.sh:6,27` 無條件寫檔，接進任何 gate 前必須先反轉成 stdout-by-default，否則 gate 會把它正在檢查的檔案改成通過，並弄髒 cutover 的乾淨樹前提；其二，兩個 generator 都把 HEAD sha 與日期烤進產物，整檔 diff 會變成一個時鐘，每天自己轉紅、一週內被關掉，只能比對 `<!-- doc-meta -->` 區塊之後的本文。**別假設會拿到 CI 覆蓋**：沒有任何 workflow 呼叫 `docs_lint.sh`，且 docs-lint group 在 `ops/tests/test_ops_ci_coverage.sh:98` 被具名排除（理由掛 IMP-0038），所以修完只有 worktree gate 加手動。另：`ops/docs_lint.sh` 的 WARN 不是全然沉默——`--files docs/snapshot/ios_baseline.md` 會印 STALE（250 個 commit 動到 scope，閾值 30），但那是 exit 0 的新鮮度代理，不是等值檢查。",
+  "fix_site": "ops/docs_lint.sh:180-188",
+  "id": "IMP-20260805-462d28",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/docs_lint.sh:180-188`——在 registry 抽取器加 `check:` 欄，跑它並要求 exit 0，且對宣告 generated 卻沒有 `check:` 的 entry 直接 ERROR，讓這個洞由構造關上而不是靠記得。成本 M（docs_lint 接線與兩行 registry 是 S；M 來自給 `gen_ios_baseline.sh` 一個不寫檔的模式，以及重生那份 250 個 commit 陳舊的 baseline 需要人看過才落地）。gate 成本實測 +0.9s（backlog render 0.21s、baseline 重算 0.67s、docs_lint --registry 現況 0.18s）。驗收：`./ops/docs_lint.sh --registry` 今天印 REGISTRY OK: 47 documents 且 rc=0，而 ios_baseline 全錯；修後必須 rc=1 並具名該筆，重生後才回 0。相依：IMP-0066 未解前拿不到 CI 覆蓋。)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "backlog CLI 稽核（5-agent deep dive）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
+}
