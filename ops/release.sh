@@ -17,6 +17,7 @@
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（ios 封的是 ios/<x.y.z>+<build>）
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布。須在 main。dry-run 預設
+#   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
 #
@@ -36,6 +37,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
+SHIPPED_COMMIT=""
 
 # shellcheck source=lib/release_tags.sh
 . "$ROOT/ops/lib/release_tags.sh"
@@ -465,6 +467,92 @@ cmd_tag() {
   fi
 }
 
+# ---- shipped：把「上架」這個事實從 ASC 取回，join build tag，物化成 ios/<x.y.z> ----
+# 這是驗證式，不是背書式：repo 不宣稱它不擁有的事實。
+#   誰上架了      → ASC（唯一權威，且只保留當前一筆 → 只能現在問，不快取成 repo 內的事實）
+#   誰產生了它    → repo 的 build tag（Apple 會銷毀這個資訊）
+#   ios/<x.y.z>   → 上兩者的 join，只在確認上架後才落地
+#
+# KG_ASC_SHIPPED_CMD 是唯一注入點（測試以 stub 覆寫，整節離線可跑）。
+# 契約：stdout 一行 "<marketing-version> <build-number>"；非零 exit = 查不到。
+asc_shipped_pair() {
+  if [[ -n "${KG_ASC_SHIPPED_CMD:-}" ]]; then
+    "$KG_ASC_SHIPPED_CMD"
+  else
+    "$ROOT/ops/asc_shipped.py"
+  fi
+}
+
+cmd_shipped() {
+  local target="${1:?用法: release.sh shipped ios [--commit <sha>] [--yes]}"
+  [[ "$target" == ios ]] \
+    || err "shipped 只支援 ios（api 的「已上生產」看 origin/prod，見 ./ops/release.sh status）"
+  [[ $# -le 1 ]] || err "多餘參數：${*:2}（版本與 build 由 ASC 決定，不從命令列接受）"
+
+  local pair="" rc=0 ver build btag commit vtag existing manual=0 short_commit
+  pair="$(asc_shipped_pair)" || rc=$?
+  [[ "$rc" -eq 0 && -n "$pair" ]] \
+    || err "查不到 App Store 上架版本（ASC 查詢失敗、憑證/網路不可用，或目前沒有 READY_FOR_SALE）。
+   不降級成猜測：修好連線後重跑，或人工確認後用 --commit <sha> 指定。"
+  read -r ver build _rest <<<"$pair"
+  valid_semver "$ver" \
+    || err "ASC 回的 versionString 不是 x.y.z：'${ver}'——不拿它去組 tag 名"
+  [[ "$build" =~ ^[0-9]+$ ]] \
+    || err "ASC 回的 build number 不是數字：'${build}'——不拿它去組 tag 名"
+
+  btag="$(ios_build_tag "$ver" "$build")"
+  if [[ -n "$SHIPPED_COMMIT" ]]; then
+    commit="$(git -C "$ROOT" rev-parse -q --verify "${SHIPPED_COMMIT}^{commit}")" \
+      || err "--commit ${SHIPPED_COMMIT} 不是有效的 commit"
+    manual=1
+  else
+    commit="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${btag}^{commit}" || true)"
+    [[ -n "$commit" ]] || err "App Store 上架的是 ${ver} build ${build}，但 repo 裡沒有 ${btag}。
+   這顆 build 沒有留下 build→commit 紀錄（多半發版於本機制上線前）。Apple 只保留當前
+   版本、不留歷史，所以這個對應關係已無法自動重建：人工判定後用
+   ./ops/release.sh shipped ios --commit <sha> --yes 指定。"
+  fi
+  short_commit="$(git -C "$ROOT" rev-parse --short "$commit")"
+
+  vtag="ios/${ver}"
+  existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${vtag}^{commit}" || true)"
+  if [[ -n "$existing" ]]; then
+    if [[ "$existing" == "$commit" ]]; then
+      echo "✓ ${vtag} 已指向 ${short_commit}，與 ASC 一致，無需變更。"
+      return 0
+    fi
+    # 一個 released marketing version 最終只會有一顆上架 build（Apple 規則：released
+    # 之後要再發必須提高 marketing version），所以這個 tag 天生 immutable。工具不移動它。
+    err "${vtag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，但 ASC 說上架的是 ${short_commit}。
+   上架 tag 是 immutable 的，本工具不移動它——兩者之一是錯的，需要人工裁決。
+   確認舊 tag 是錯的之後：
+     git tag -d ${vtag} && git push origin :refs/tags/${vtag}
+   再重跑 ./ops/release.sh shipped ios --yes"
+  fi
+
+  echo "App Store 上架版本=${ver}  build=${build}"
+  echo "  ASC 來源：${KG_ASC_SHIPPED_CMD:-ops/asc_shipped.py}"
+  if [[ $manual -eq 1 ]]; then
+    echo "  ⚠ commit 由 --commit 人工指定：${short_commit}（這是人工斷言，不是查證出來的 join）"
+  else
+    echo "  commit 來自 build tag ${btag}：${short_commit}"
+  fi
+  echo "  將建立上架 tag：${vtag} → ${short_commit}"
+
+  if [[ $YES -eq 1 ]]; then
+    git -C "$ROOT" tag "$vtag" "$commit"
+    if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+      git -C "$ROOT" push origin "$vtag"
+      echo "✓ 已建立 ${vtag} 並推送 origin（另一台 clone 需要同一份紀錄）。"
+    else
+      echo "✓ 已建立 ${vtag}（無 origin remote，未推送）。"
+    fi
+  else
+    echo "[dry-run] 未建立。確認無誤後加 --yes："
+    echo "  ./ops/release.sh shipped ios${SHIPPED_COMMIT:+ --commit $SHIPPED_COMMIT} --yes"
+  fi
+}
+
 # ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
 # ios:     bump ios → ios_release.sh --upload（archive + 上傳 TestFlight）→ tag ios（upload failure 不留 false tag）
@@ -538,6 +626,9 @@ while [[ $# -gt 0 ]]; do
    只能請 operator 背書；現在該 tag 由 ./ops/release.sh shipped ios 依 ASC 驗證後才產生，
    tag 存在本身就是上架證據，guard 直接檢查、不需要 attestation。
    同版號、新 build 的重送改走 ./ops/release.sh resubmit ios。" ;;
+    --commit)
+      [[ $# -ge 2 && -n "${2:-}" ]] || err "--commit 需要一個 commit-ish"
+      SHIPPED_COMMIT="$2"; shift 2 ;;
     -h|--help)  usage; exit 0 ;;
     -*)         err "unknown option: $1" ;;
     *)          if [[ -z "$SUB" ]]; then SUB="$1"; else ARGS+=("$1"); fi; shift ;;
@@ -553,6 +644,7 @@ case "${SUB:-}" in
   bump-build) cmd_bump_build ${ARGS[@]+"${ARGS[@]}"} ;;
   tag)       cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;
   publish)   cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;   # 相容別名：publish → tag
+  shipped)   cmd_shipped ${ARGS[@]+"${ARGS[@]}"} ;;
   release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;

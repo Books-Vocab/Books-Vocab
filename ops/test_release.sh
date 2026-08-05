@@ -862,6 +862,106 @@ echo "$cl_out" | grep -q 'after shipping' \
   && ok "changelog still lists commits made after the released tag" \
   || fail_t "changelog silently emptied itself (no error, just no content): $cl_out"
 
+# ── 19. shipped ios：驗證式物化上架 tag（非背書式） ─────────────────────────
+# 「哪顆 build 上架了」的 owner 是 ASC，「哪顆 commit 產生它」的 owner 是 repo。
+# shipped 做的是這兩者的 join，而且只在確認上架後才物化成 ios/<x.y.z>。
+# ASC 查詢走 KG_ASC_SHIPPED_CMD 注入點，所以這一整節離線可跑、不碰網路與憑證。
+section "shipped ios materializes the shipped tag from ASC + build tag"
+
+make_shipped_fixture() {  # $1=fixture $2=remote $3=stub 印出的內容 $4=stub exit code
+  make_ios_release_fixture "$1" "$2"
+  git -C "$1" tag -d ios/2.0.0 >/dev/null      # 上架 tag 由 shipped 產生，不預設存在
+  cat > "$1/asc-stub.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "$3"
+exit ${4:-0}
+STUB
+  chmod +x "$1/asc-stub.sh"
+}
+
+# 19a. dry-run 預設：查得到、也 join 得到，但沒有 --yes 就不得建立 tag。
+fx_s="$TMP5/shipped"; remote_s="$TMP5/shipped.git"
+make_shipped_fixture "$fx_s" "$remote_s" "2.0.0 6"
+sealed_s="$(git -C "$fx_s" rev-parse HEAD)"
+git -C "$fx_s" tag "ios/2.0.0+6"
+dry_rc=0
+dry_s="$(KG_ASC_SHIPPED_CMD="$fx_s/asc-stub.sh" bash "$fx_s/ops/release.sh" shipped ios 2>&1)" || dry_rc=$?
+[[ "$dry_rc" -eq 0 ]] && ok "shipped dry-run exits 0" || fail_t "shipped dry-run exited $dry_rc: $dry_s"
+[[ -z "$(git -C "$fx_s" tag -l 'ios/2.0.0')" ]] \
+  && ok "shipped dry-run creates no tag" || fail_t "shipped dry-run created a tag"
+echo "$dry_s" | grep -q -- '--yes' \
+  && ok "shipped dry-run points to --yes" || fail_t "shipped dry-run does not mention --yes: $dry_s"
+
+# 19b. --yes：ios/2.0.0 落在 build tag 指的那顆 commit 上，並推 origin。
+yes_rc=0
+yes_s="$(KG_ASC_SHIPPED_CMD="$fx_s/asc-stub.sh" bash "$fx_s/ops/release.sh" shipped ios --yes 2>&1)" || yes_rc=$?
+[[ "$(git -C "$fx_s" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$sealed_s" \
+   && "$(git --git-dir="$remote_s" rev-parse -q --verify 'refs/tags/ios/2.0.0^{commit}' 2>/dev/null)" == "$sealed_s" ]] \
+  && ok "shipped joins (version, build) to the sealing commit and pushes" \
+  || fail_t "shipped tag wrong or unpushed: $yes_s"
+
+# 19c. 冪等：再跑一次是 noop，不是錯誤（tag 已與 ASC 一致）。
+again_rc=0
+again_s="$(KG_ASC_SHIPPED_CMD="$fx_s/asc-stub.sh" bash "$fx_s/ops/release.sh" shipped ios --yes 2>&1)" || again_rc=$?
+[[ "$again_rc" -eq 0 && "$(git -C "$fx_s" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$sealed_s" ]] \
+  && ok "re-running shipped against an already-correct tag is a noop" \
+  || fail_t "second shipped run failed or moved the tag: $again_s"
+
+# 19d. 上架 tag 已存在但指向別顆 commit → 不移動。immutable 是這個 tag 的全部價值：
+#      一個 released marketing version 只會有一顆上架 build，所以歧義必須人工裁決。
+fx_sm="$TMP5/shipped-mismatch"; remote_sm="$TMP5/shipped-mismatch.git"
+make_shipped_fixture "$fx_sm" "$remote_sm" "2.0.0 6"
+wrong_sm="$(git -C "$fx_sm" rev-parse HEAD)"
+git -C "$fx_sm" tag "ios/2.0.0" "$wrong_sm"
+git -C "$fx_sm" commit -q --allow-empty -m "ios: the real sealing commit"
+right_sm="$(git -C "$fx_sm" rev-parse HEAD)"
+git -C "$fx_sm" tag "ios/2.0.0+6" "$right_sm"
+mm_rc=0
+mm_out="$(KG_ASC_SHIPPED_CMD="$fx_sm/asc-stub.sh" bash "$fx_sm/ops/release.sh" shipped ios --yes 2>&1)" || mm_rc=$?
+[[ "$mm_rc" -ne 0 && "$(git -C "$fx_sm" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$wrong_sm" ]] \
+  && echo "$mm_out" | grep -q 'tag -d ios/2.0.0' \
+  && ok "shipped refuses to move an existing shipped tag and prints the manual remediation" \
+  || fail_t "shipped moved or silently accepted a conflicting shipped tag: $mm_out"
+
+# 19e. 沒有對應 build tag（發版於本機制上線前）→ 明確說「沒有紀錄」，不猜。
+fx_sn="$TMP5/shipped-norecord"; remote_sn="$TMP5/shipped-norecord.git"
+make_shipped_fixture "$fx_sn" "$remote_sn" "2.0.0 6"
+nr_rc=0
+nr_out="$(KG_ASC_SHIPPED_CMD="$fx_sn/asc-stub.sh" bash "$fx_sn/ops/release.sh" shipped ios --yes 2>&1)" || nr_rc=$?
+[[ "$nr_rc" -ne 0 && -z "$(git -C "$fx_sn" tag -l 'ios/2.0.0')" ]] \
+  && echo "$nr_out" | grep -q -- '--commit' \
+  && ok "missing build tag: refuses and offers the manual --commit escape hatch" \
+  || fail_t "missing build tag was not actionably refused: $nr_out"
+
+# 19f. --commit 人工覆寫可用，但必須把「這是人工斷言」印出來——它繞過的正是查證。
+manual_sn="$(git -C "$fx_sn" rev-parse HEAD)"
+man_rc=0
+man_out="$(KG_ASC_SHIPPED_CMD="$fx_sn/asc-stub.sh" bash "$fx_sn/ops/release.sh" shipped ios --commit "$manual_sn" --yes 2>&1)" || man_rc=$?
+[[ "$(git -C "$fx_sn" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$manual_sn" ]] \
+  && ok "--commit override lands the shipped tag" || fail_t "--commit override did not tag: $man_out"
+echo "$man_out" | grep -q '人工' \
+  && ok "--commit override announces it is a human assertion, not a verified join" \
+  || fail_t "--commit override does not flag itself as manual: $man_out"
+
+# 19g. ASC 查不到（斷網 / 憑證壞 / 無 READY_FOR_SALE）→ 硬停，不得降級成猜測。
+fx_sf="$TMP5/shipped-ascfail"; remote_sf="$TMP5/shipped-ascfail.git"
+make_shipped_fixture "$fx_sf" "$remote_sf" "" 1
+git -C "$fx_sf" tag "ios/2.0.0+6"
+af_rc=0
+af_out="$(KG_ASC_SHIPPED_CMD="$fx_sf/asc-stub.sh" bash "$fx_sf/ops/release.sh" shipped ios --yes 2>&1)" || af_rc=$?
+[[ "$af_rc" -ne 0 && -z "$(git -C "$fx_sf" tag -l 'ios/2.0.0')" ]] \
+  && ok "ASC lookup failure refuses instead of falling back to a guess" \
+  || fail_t "ASC failure produced a tag anyway: $af_out"
+
+# 19h. ASC 回傳格式不合 → 同樣硬停（別把垃圾字串寫進 tag 名）。
+fx_sg="$TMP5/shipped-garbage"; remote_sg="$TMP5/shipped-garbage.git"
+make_shipped_fixture "$fx_sg" "$remote_sg" "not-a-version xyz"
+gb_rc=0
+gb_out="$(KG_ASC_SHIPPED_CMD="$fx_sg/asc-stub.sh" bash "$fx_sg/ops/release.sh" shipped ios --yes 2>&1)" || gb_rc=$?
+[[ "$gb_rc" -ne 0 && -z "$(git -C "$fx_sg" tag -l 'ios/*' | grep -v '+' || true)" ]] \
+  && ok "malformed ASC response is rejected before any tag is written" \
+  || fail_t "malformed ASC response was accepted: $gb_out"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
