@@ -24,6 +24,7 @@ import argparse
 import datetime as dt
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -117,6 +118,30 @@ def collect_findings() -> list[str]:
     return findings
 
 
+_LINE_KEYED = re.compile(r"^(?P<path>[^:]+):\d+: (?P<rest>.*)$")
+
+
+def identity(finding: str) -> str:
+    """Baseline identity with the line number stripped.
+
+    Findings used to be diffed verbatim against the baseline, so a refactor that
+    merely added or removed lines *above* an already-known offender re-reported
+    it as NEW. A 96-file corner-radius migration produced 5 such phantom
+    regressions — all of them structs that were already in the baseline and had
+    not been touched, just pushed up by 8 lines.
+
+    That failure mode is worse than noise: it trains people to regenerate the
+    baseline to get green, which silently absorbs genuine new debt at the same
+    time. ops/ui_token_lint.py already solved this by keying on
+    `<relpath>::<pattern>::<snippet>` instead of the line; this mirrors it.
+
+    The baseline FILE keeps its line numbers — they are useful to a human
+    reading it — they are just not part of the comparison key.
+    """
+    m = _LINE_KEYED.match(finding)
+    return f"{m.group('path')}: {m.group('rest')}" if m else finding
+
+
 def read_baseline() -> tuple[set[str], dt.date | None]:
     if not BASELINE_FILE.exists():
         return set(), None
@@ -169,7 +194,8 @@ def main() -> int:
     if args.baseline_check:
         baseline_items, sunset = read_baseline()
         current = set(findings)
-        new = sorted(current - baseline_items)
+        known = {identity(b) for b in baseline_items}
+        new = sorted(f for f in findings if identity(f) not in known)
         if new:
             print(f"[injection_lint] REGRESSION — {len(new)} new findings:", file=sys.stderr)
             for n in new:
