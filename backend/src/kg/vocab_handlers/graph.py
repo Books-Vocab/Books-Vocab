@@ -17,17 +17,23 @@ def get_graph_links_response(
     user: dict[str, Any],
     *,
     graph_store_factory: GraphStoreFactory,
+    card_store_factory: CardStoreFactory | None = None,
     notebook_store_factory: NotebookStoreFactory | None = None,
     notebook_id: str = "default",
+    include_dictionary: bool = False,
 ) -> list[GraphLinkResponse]:
     stores = _resolve_stores(
         user,
         notebook_id,
-        card_store_factory=lambda _path: None,
+        card_store_factory=card_store_factory or (lambda _path: None),
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return graph_links_payload(graph=stores.graph)
+    return graph_links_payload(
+        graph=stores.graph,
+        cards_store=stores.cards if card_store_factory is not None else None,
+        include_dictionary=include_dictionary,
+    )
 
 
 def create_manual_link_response(

@@ -54,10 +54,27 @@ def embed_and_link_new_cards(
         graph.add_pending_judge(embedded_ids)
 
 
-def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
+def graph_links_payload(
+    *, graph: Any, cards_store: Any | None = None, include_dictionary: bool = False,
+) -> list[GraphLinkResponse]:
     """Build graph links response from active links."""
+    active_links = [link for link in graph.all_links() if link.status == "active"]
+    cards_by_id: dict[str, Any] = {}
+    if cards_store is not None and not include_dictionary:
+        endpoint_ids = {
+            card_id for link in active_links for card_id in (link.from_id, link.to_id)
+        }
+        cards_by_id = cards_store.get_batch(endpoint_ids)
     links = []
-    for link in graph.all_links():
+    for link in active_links:
+        if cards_store is not None and not include_dictionary:
+            from_card = cards_by_id.get(link.from_id)
+            to_card = cards_by_id.get(link.to_id)
+            if (
+                (from_card is not None and getattr(from_card, "card_role", "learning") != "learning")
+                or (to_card is not None and getattr(to_card, "card_role", "learning") != "learning")
+            ):
+                continue
         if link.status != "active":
             continue
         links.append(

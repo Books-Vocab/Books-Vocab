@@ -86,6 +86,7 @@ class CardQueryMixin:
         after: tuple[datetime, str] | None,
         include_deleted: bool,
         notebook_id: str | None,
+        card_role: str | None = None,
     ) -> list[Card]:
         """Return at most ``limit`` cards ordered by the composite cursor
         ``(updated_at, id)`` using a row-value comparison.
@@ -108,6 +109,8 @@ class CardQueryMixin:
                 statement = statement.where(Card.is_deleted.is_(False))
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
+            if card_role is not None:
+                statement = statement.where(Card.card_role == card_role)
             if after is not None:
                 statement = statement.where(
                     tuple_(Card.updated_at, Card.id) > tuple_(after[0], after[1])
@@ -115,12 +118,19 @@ class CardQueryMixin:
             statement = statement.order_by(Card.updated_at, Card.id).limit(limit)
             return list(session.exec(statement).all())
 
-    def get_modified_since(self, since: datetime, notebook_id: str | None = None) -> list[Card]:
+    def get_modified_since(
+        self,
+        since: datetime,
+        notebook_id: str | None = None,
+        card_role: str | None = None,
+    ) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
         with Session(self.engine) as session:
             statement = select(Card).where(Card.updated_at > since)
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
+            if card_role is not None:
+                statement = statement.where(Card.card_role == card_role)
             return list(session.exec(statement).all())
 
     def count(self, notebook_id: str | None = None) -> int:

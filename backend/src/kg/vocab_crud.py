@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol
@@ -19,6 +20,22 @@ from .vocab_shared import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _accepts_card_role(callable_obj: Any) -> bool:
+    """Compatibility seam for lightweight test/third-party CardStore fakes.
+
+    The production CardStore supports SQL-level role filtering. Older protocol
+    implementations do not; those are filtered after their bounded read.
+    """
+    try:
+        parameters = inspect.signature(callable_obj).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == "card_role" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
 
 
 def encode_cursor(cursor: tuple[datetime, str] | None) -> str | None:
@@ -59,7 +76,9 @@ def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
     return (parsed, card_id)
 
 
-def _resolve_with_neighbours(cards: list[Any], graph: Any, cards_store: Any) -> dict[str, Any]:
+def _resolve_with_neighbours(
+    cards: list[Any], graph: Any, cards_store: Any, *, include_reference_links: bool = False,
+) -> dict[str, Any]:
     """Build the ``cards_by_id`` map for a page: the page's own cards plus the
     graph neighbours (on other pages / soft-deleted) needed to render links.
 
@@ -79,7 +98,14 @@ def _resolve_with_neighbours(cards: list[Any], graph: Any, cards_store: Any) -> 
             if other_id not in by_id:
                 neighbour_ids.add(other_id)
     if neighbour_ids:
-        by_id |= cards_store.get_batch(neighbour_ids)
+        neighbours = cards_store.get_batch(neighbour_ids)
+        if not include_reference_links:
+            neighbours = {
+                card_id: card
+                for card_id, card in neighbours.items()
+                if getattr(card, "card_role", "learning") == "learning"
+            }
+        by_id |= neighbours
     return by_id
 
 
@@ -145,16 +171,38 @@ def list_vocab_cards(
         naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
         # Incremental: fetch the modified set (already bounded), then order and
         # slice it by the same cursor so since + full-sync paginate identically.
-        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
+        modified_fn = cards_store.get_modified_since
+        if _accepts_card_role(modified_fn):
+            modified = modified_fn(
+                naive_since, notebook_id=notebook_id, card_role="learning"
+            )
+        else:
+            modified = [
+                card
+                for card in modified_fn(naive_since, notebook_id=notebook_id)
+                if getattr(card, "card_role", "learning") == "learning"
+            ]
         modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
         if after is not None:
             modified = [c for c in modified if (c.updated_at, c.id) > after]
         cards = modified[:limit]
     else:
         # Full sync: DB-bounded page (no full-table materialisation).
-        cards = cards_store.page_cards(
-            limit=limit, after=after, include_deleted=False, notebook_id=notebook_id
+        page_fn = cards_store.page_cards
+        kwargs = dict(
+            limit=limit,
+            after=after,
+            include_deleted=False,
+            notebook_id=notebook_id,
         )
+        if _accepts_card_role(page_fn):
+            cards = page_fn(**kwargs, card_role="learning")
+        else:
+            cards = [
+                card
+                for card in page_fn(**kwargs)
+                if getattr(card, "card_role", "learning") == "learning"
+            ]
 
     cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)
     responses = [card_response_builder(card, graph, cards_by_id) for card in cards]
@@ -165,7 +213,7 @@ def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None)
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
-    if not card:
+    if not card or getattr(card, "card_role", "learning") != "learning":
         raise NotFoundError("Word", word)
     return card
 
@@ -186,7 +234,7 @@ def lookup_vocab_word(
         linked_id = link.from_id if link.to_id == card.id else link.to_id
         if linked_id not in cards_by_id:
             linked_card = cards_store.get(linked_id)
-            if linked_card:
+            if linked_card and getattr(linked_card, "card_role", "learning") == "learning":
                 cards_by_id[linked_id] = linked_card
 
     return card_response_builder(card, graph, cards_by_id)
@@ -342,6 +390,11 @@ def _batch_apply(
     failed: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
+    lookup = {
+        key: card
+        for key, card in lookup.items()
+        if getattr(card, "card_role", "learning") == "learning"
+    }
     seen_words_by_key: dict[str, set[str]] = {}
     outcome_by_key: dict[str, tuple[str, VocabCard | None]] = {}
 

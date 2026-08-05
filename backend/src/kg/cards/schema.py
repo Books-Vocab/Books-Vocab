@@ -8,6 +8,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from ..text_utils import normalize_nfc_lower
+from .dictionary_models import DictionaryEntry, LexicalOperation
 from .model import Card
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 def init_schema(engine: Engine) -> None:
     """Create the card table, run migrations and ensure all indexes exist."""
-    Card.metadata.create_all(engine, tables=[Card.__table__], checkfirst=True)
+    Card.metadata.create_all(
+        engine,
+        tables=[Card.__table__, DictionaryEntry.__table__, LexicalOperation.__table__],
+        checkfirst=True,
+    )
     _migrate_review_columns(engine)
     _migrate_content_nfc_lower(engine)
     _create_indexes(engine)
@@ -70,6 +75,11 @@ def _migrate_review_columns(engine: Engine) -> None:
         "review_streak": "INTEGER DEFAULT 0",
         "last_review_feedback": "INTEGER DEFAULT -1",
         "source_shared_card_guid": "TEXT",
+        "card_role": "TEXT NOT NULL DEFAULT 'learning'",
+        "review_eligible": "INTEGER NOT NULL DEFAULT 1",
+        "reader_hidden": "INTEGER NOT NULL DEFAULT 0",
+        "promotion_state": "TEXT NOT NULL DEFAULT 'idle'",
+        "promoted_at": "TIMESTAMP",
     }
     with engine.connect() as conn:
         result = conn.exec_driver_sql("PRAGMA table_info(card)")
