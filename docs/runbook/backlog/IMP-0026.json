@@ -4,7 +4,7 @@
   "date": "2026-07-09",
   "detail": "`ops-cli world-diff` 硬性要求 `schema==kg.ops_world_expectation.v1`(`ops_world_diff.py:18`),無法驗「帳號 == seed_spec」(注入格式是 `kg.seed_spec.v1`)。缺一個 first-class「reshape 是否精確落地」檢查,只能靠 `world-export` + 外部 normalized diff 橋接(本 session 自寫 python 比對)。候選:教 world-diff(或新 world-verify)吃 seed_spec,或 seed/clone-demo 自吐比對 verdict。**2026-08-05 取證**:`ops_world_diff.py:9 SPEC_SCHEMA` + `:18-19` 硬檢查仍在;`ops_cli.py world-diff --help` 的 spec 參數明寫只吃 `kg.ops_world_expectation.v1`;`ops_cli.py --help` 無 `world-verify`。**另一半零件已存在**:`ops_world_export.py:37 SEED_SPEC_SCHEMA = \"kg.seed_spec.v1\"` + `:232 export_seed_spec`。",
   "id": "IMP-0026",
-  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_diff.py:13 load_expectation` 接受兩種 schema,seed_spec 走 normalize 後比對——直接複用 `export_seed_spec` 對 actual 端做同構投影是最短路徑;成本 M,測試 `backend/tests/test_ops_world_expectation.py`。**與 IMP-0024 同一工項**,見該條)",
+  "resolution": "—(2026-08-05 執行長裁決：走 **(b) 嚴格模式**（檢查「有沒有多出來的」），理由「agentic coding 要比人更嚴格的測試」。明確**否決 (a) 便宜接法**——`diff_world_state` 是 subset-by-construction，只迭代預期項目、永遠不回報多出來的 card/notebook，所以 (a) 對本條起因的重複卡片 false-green（IMP-0024）完全無效，做了等於白做。落點 `ops/ops_world_diff.py` 的比對方向與 review-counter transform 建模。)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "行銷帳號 Phase5(驗證)",

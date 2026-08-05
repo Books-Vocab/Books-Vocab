@@ -3,7 +3,7 @@
   "date": "2026-07-09",
   "detail": "iOS 伺服器 review-clock push 只在 cold-start 套用(`SettingsCoordinator.swift:111` gate `pauseClockSnapshot.updatedAt == nil`)+ `KGFeatureFlags.serverReviewClockLwwEnabled` dead-`false`(`KGFeatureFlags.swift:27`)→ **任何曾本地 toggle 過複習時鐘的裝置,伺服器凍結會被忽略**。屬當前同步狀態的 by-design(LWW 未啟用),非 bug;行銷截圖走 catalog fixture(offline UserDefaults seed 恆套用)故不受影響。候選(產品決策):是否讓 server-authoritative review-clock LWW 出貨。**2026-08-05 取證 + 範圍更正**:兩處行號仍精確;旗標全 repo 僅 3 處提及(宣告 `:27`、doc comment `:34`、`SettingsCoordinator.swift:112` 的 `_ =` 丟棄式讀取),無任何分支消費 → dead-`false` 確認。**但這不是單一 surface 的決策**:`KGFeatureFlags.swift:20/27/35/44` 有 4 個同形 dead-`false` 旗標(`serverTranslationLwwEnabled`/`serverReviewClockLwwEnabled`/`serverReviewModeLwwEnabled`/`serverVocabUiLwwEnabled`),且 `applyServerReviewMode` 帶同一句 `snapshot.updatedAt == nil` 註解——實為 **4 個 sync surface 的同一個決策**。",
   "id": "IMP-0029",
-  "resolution": "—(by-design,待產品決策;2026-08-05 驗證 CONFIRMED-OPEN,範圍由 1 擴為 4 surface;決策成本 S,出貨成本 L=後端需為 4 個 config 持久化並回傳 `updated_at`)",
+  "resolution": "—(2026-08-05 執行長裁決：**伺服器為主**，但範圍限縮到本條的四個 flag。**裁決理由已修正**（原提「iCloud 只存大檔案、設定不佔後端空間」與事實不符：實測 `AppAppearanceMode.swift:82`／`ReaderSettings.swift:246` 正是走 `NSUbiquitousKeyValueStore` 的設定，而書籍走 CloudKit+SwiftData，是另一套；且設定僅數百 bytes，空間從來不是本題的軸）。**真正的理由兩條**：① 身分——iCloud KVS 綁 Apple ID，後端綁 KG 帳號，本專案有多帳戶隔離，同機切帳號時 KVS 設定不會跟著換，等於把甲的設定套到乙身上；② 可觀測性——設定在後端則 `ops_cli` 查得到、debug 得到，在 KVS 則完全不可見。**明確不做**：既有的外觀／閱讀器 KVS 設定不遷移（純本機體感、不影響資料正確性，遷移風險大於收益，且會造成三套並存）。前置仍是後端持久化並回傳 updated_at；離線改設定的 LWW 時鐘偏移風險已知並接受。)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "行銷帳號 Phase5(時鐘凍結對抗驗證)",
