@@ -2,11 +2,15 @@
   "category": "cli",
   "date": "2026-08-05",
   "detail": "ops/backlog.py update 會靜默吞掉 --detail 與 --source。兩者刻意不可變（它們是 make_entry_id 的 digest 輸入，MUTABLE_FIELDS 註解說明得很清楚，設計是對的），但 argparse 仍然宣告了 --detail（p_update.add_argument）。結果是：帶 --detail 呼叫會回 exit 0 與一個看起來成功的 changes dict，只是裡面沒有 detail——除非呼叫端事後 show 一次比對，否則會相信更正已落地。實測就發生了：我以為改掉了一段錯誤的問題陳述，實際上原文原封不動留著。建議 update 在收到 --detail/--source 時直接非零退出並提示『改用 add 開新條目』，或至少從 parser 移除該旗標。靜默接受不可變欄位，比不接受更危險。",
+  "duplicate_of": "IMP-20260805-1be2c6",
+  "fix_site": "ops/backlog.py:_cmd_update + build_parser 的 update subparser",
   "id": "IMP-20260805-24146e",
-  "resolution": "",
+  "resolution": "`feat/backlog-immutable-flag-refusal`（尚未 cutover，hash 待收斂 agent rebase 後補）。`--detail` 改成**具名拒絕**而非靜默丟棄：`_cmd_update` 進門先掃 `REFUSED_UPDATE_FIELDS`，命中即 exit 64、指名旗標、指向 `--resolution`，並明說 nothing was written（整個 invocation 一起拒絕，不會套用可變的那一半）。留著旗標而不刪，是因為 argparse 的 unrecognized arguments 雖然夠大聲，卻不會告訴你更正該寫去哪，而這正是敘述寫錯時大家會伸手去按的旗標。`DIGEST_FIELDS = tuple(inspect.signature(make_entry_id).parameters)` 直接讀簽章，不另抄字面清單。同一道失步的另一半也補了：`--surface`/`--repro`/`--build`/`--duplicate-of` 在 MUTABLE_FIELDS 裡、`add` 有、`update` 卻沒有，其中 `duplicate_of` 過去只有 legacy importer 的 verdict 解析碰得到。`ops/tests/test_backlog.py` 本來就有 `test_every_update_flag_reaches_a_field_and_every_field_has_a_flag` 守著雙向不變式，只是把這兩個洞列成 `_KNOWN_UNWIRED_FLAGS` / `_KNOWN_FLAGLESS_FIELDS` 豁免並註明「刪掉豁免就是這些修正自我證明的方式」——兩個豁免皆已刪除，右側改讀模組常數，新豁免無法再以字面值夾帶。另新增行為測試（帶 `--detail` 必須非零退出、訊息含 `--detail` 與 `--resolution`、store 位元組不變）。驗證：`uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_backlog.py ops/tests/test_backlog_migration.py` → 95 passed。順帶發現這兩支測試檔對每一個 test_ops.sh group 都不可達（本機全量與 CI 都不跑），已註冊成 `backlog` group；同形狀的孤兒測試檔另有 19 支，另立 IMP-20260805-947062。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "worktree feat/word-detail-actions",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "DUPLICATE-OF-IMP-20260805-1be2c6",
+  "verified_at": "2026-08-05"
 }
