@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "docs_impact.py --since <rev> 用的是 two-dot(`<rev>..HEAD`,--help 也這樣寫)。在**已分岔**的 worktree 分支上——本 repo 的常態,因為本地 main 會在 worktree 開著時繼續前進——`--since main` 等同 `git diff main HEAD`,於是 **main 自己的 commit 也被算成本次改動**(方向相反)。實測:本分支只碰 26 個檔,`--since main` 報 changed=48,多出來的 22 個是 main 領先 merge-base 的 5 個 commit 帶進來的(.claude/agents/platform-steward.md、19 個不相干的 IMP-*.json…),並據此點名 sop.agent_org 等 doc 為候選。後果是 impact hints 的訊噪比在最需要它的場景下降,而多出來的 row 長得跟真的一模一樣——agent 只能靠逐一回頭讀 diff 才分得出來,正是這個工具本來要省掉的工。CLAUDE.md 與 docs/sop/doc_sync.md 都教 `--since <base>`,而 `main` 是最自然的填法,所以這不是誤用而是介面預設值選錯。修法擇一:(a) --since 對 <rev> 改用 `<rev>...HEAD` 三點(取 merge-base),(b) 保留 two-dot 但偵測到 <rev> 不是 HEAD 祖先時 stderr 警告並建議 merge-base,(c) 加 --since-merge-base。(a) 最合語意——使用者問的一直是「我這條分支改了什麼」。",
+  "id": "IMP-20260805-e98982",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "docs-steward 在 worktree 分支上跑 ./ops/docs_impact.py --since main 判斷影響面",
+  "status": "open",
+  "stream": "IMP"
+}
