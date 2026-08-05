@@ -299,6 +299,22 @@ struct ExploreView: View {
         if syncFailed && showToastOnFailure {
             toastCoordinator.warning(L10n.string("explore.error.title"))
         }
+        // 取消 = 畫面被換掉或登入態切換，使用者沒看到目錄 → 不計入漏斗分母。browse 是
+        // 分母，灌水會直接壓低 browse→preview 轉換率。與 `SharedDeckDetailView.load()`
+        // 對 CancellationError 的處置同一條線。
+        guard outcome != .cancelled else { return }
+        // `deckCount` 取 **server 回的目錄大小**，不是 `filteredDecks.count`：後者讀
+        // `@Query`，而 `syncAll` 回來到 `@Query` 重新求值之間沒有 await point，冷啟動
+        // 時會系統性讀到同步前的 0——正是新用戶 session 最需要準確的地方。fetch 失敗
+        // 走這裡時為 0（畫面是 error 態或本機快取），分析端據此區分。
+        // 搜尋字串內容絕不上報，只上報「有沒有在搜」。
+        let catalogCount: Int
+        if case .completed(let count) = outcome { catalogCount = count } else { catalogCount = 0 }
+        AppAnalytics.track(.deckBrowsed(
+            deckCount: catalogCount,
+            hasQuery: filter.isSearching,
+            isFiltered: filter.hasActiveFilters
+        ))
     }
 
     @MainActor

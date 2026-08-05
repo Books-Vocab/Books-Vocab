@@ -40,6 +40,15 @@ enum AnalyticsEvent {
     case backgroundSyncTriggered
     case backgroundSyncCompleted(durationMs: Int, success: Bool)
 
+    // — Explore（共享牌組庫）—
+    // browse → preview → copy 三段漏斗。`deckId` 是 server 鑄造的**官方公開識別碼**
+    // （非使用者資料）故可 `.public`；使用者輸入的搜尋字串**絕不記錄內容**，只記
+    // `hasQuery` 布林——鏡射 translation 事件用 `redactedTextSummary` 的同一條隱私線。
+    case deckBrowsed(deckCount: Int, hasQuery: Bool, isFiltered: Bool)
+    case deckPreviewed(deckId: String, sampleCardCount: Int)
+    case deckCopyCompleted(deckId: String, cardCount: Int, alreadyCopied: Bool, durationMs: Int)
+    case deckCopyFailed(deckId: String, reason: String)
+
     enum TranslationType: String {
         case quick
         case phrase
@@ -191,6 +200,35 @@ enum AppAnalytics {
                 message: "event=background_sync_completed duration_ms=\(durationMs) success=\(success)"
             )
             logger.info("event=background_sync_completed duration_ms=\(durationMs) success=\(success)")
+
+        // — Explore（共享牌組庫）—
+        case .deckBrowsed(let deckCount, let hasQuery, let isFiltered):
+            recordObservation(
+                level: .info,
+                message: "event=deck_browsed deck_count=\(deckCount) has_query=\(hasQuery) filtered=\(isFiltered)"
+            )
+            logger.info("event=deck_browsed deck_count=\(deckCount) has_query=\(hasQuery) filtered=\(isFiltered)")
+
+        case .deckPreviewed(let deckId, let sampleCardCount):
+            recordObservation(
+                level: .info,
+                message: "event=deck_previewed deck_id=\(deckId) sample_card_count=\(sampleCardCount)"
+            )
+            logger.info("event=deck_previewed deck_id=\(deckId, privacy: .public) sample_card_count=\(sampleCardCount)")
+
+        case .deckCopyCompleted(let deckId, let cardCount, let alreadyCopied, let durationMs):
+            recordObservation(
+                level: .info,
+                message: "event=deck_copy_completed deck_id=\(deckId) card_count=\(cardCount) already_copied=\(alreadyCopied) duration_ms=\(durationMs)"
+            )
+            logger.info("event=deck_copy_completed deck_id=\(deckId, privacy: .public) card_count=\(cardCount) already_copied=\(alreadyCopied) duration_ms=\(durationMs)")
+
+        case .deckCopyFailed(let deckId, let reason):
+            recordObservation(
+                level: .warning,
+                message: "event=deck_copy_failed deck_id=\(deckId) reason=\(reason)"
+            )
+            logger.warning("event=deck_copy_failed deck_id=\(deckId, privacy: .public) reason=\(reason, privacy: .public)")
         }
 
         SessionMetrics.shared.record(event)
@@ -223,8 +261,18 @@ final class SessionMetrics: @unchecked Sendable {
     private var _reviewForgot = 0
     private var _reviewSessionsCompleted = 0
     private var _reviewSessionsAbandoned = 0
+    private var _deckBrowseCount = 0
+    private var _deckPreviewCount = 0
+    private var _deckCopyCount = 0
+    private var _deckCopyFailures = 0
 
     private init() {}
+
+    /// Test-only 逃生口。聚合計數器是全域可變狀態，測試共用 `.shared` 必被並行 suite
+    /// 污染——`SharedDeckCopyControllerTests` 現在會在複製成功/失敗時 track，而
+    /// `BooksAndVocabTests` 直接對 `.shared` 呼叫 `reset()`。用具名 factory 而非放寬
+    /// `init`，是為了讓生產程式碼**無法**不小心建出第二個實例，且 grep 得到。
+    static func makeIsolatedForTesting() -> SessionMetrics { SessionMetrics() }
 
     func record(_ event: AnalyticsEvent) {
         lock.lock()
@@ -247,6 +295,17 @@ final class SessionMetrics: @unchecked Sendable {
         case .reviewSessionEnded(_, _, let completed, _):
             if completed { _reviewSessionsCompleted += 1 }
             else { _reviewSessionsAbandoned += 1 }
+        case .deckBrowsed:
+            _deckBrowseCount += 1
+        case .deckPreviewed:
+            _deckPreviewCount += 1
+        case .deckCopyCompleted:
+            // copy 計數語意鏡射 translation：`_deckCopyCount` 是**嘗試**數，失敗另計，
+            // 故失敗率 = failures / count 而非 failures / (count + failures)。
+            _deckCopyCount += 1
+        case .deckCopyFailed:
+            _deckCopyCount += 1
+            _deckCopyFailures += 1
         default:
             break
         }
@@ -267,7 +326,11 @@ final class SessionMetrics: @unchecked Sendable {
             reviewRemembered: _reviewRemembered,
             reviewForgot: _reviewForgot,
             reviewSessionsCompleted: _reviewSessionsCompleted,
-            reviewSessionsAbandoned: _reviewSessionsAbandoned
+            reviewSessionsAbandoned: _reviewSessionsAbandoned,
+            deckBrowseCount: _deckBrowseCount,
+            deckPreviewCount: _deckPreviewCount,
+            deckCopyCount: _deckCopyCount,
+            deckCopyFailures: _deckCopyFailures
         )
     }
 
@@ -284,6 +347,10 @@ final class SessionMetrics: @unchecked Sendable {
         _reviewForgot = 0
         _reviewSessionsCompleted = 0
         _reviewSessionsAbandoned = 0
+        _deckBrowseCount = 0
+        _deckPreviewCount = 0
+        _deckCopyCount = 0
+        _deckCopyFailures = 0
     }
 }
 
@@ -298,9 +365,16 @@ struct SessionSnapshot {
     let reviewForgot: Int
     let reviewSessionsCompleted: Int
     let reviewSessionsAbandoned: Int
+    let deckBrowseCount: Int
+    let deckPreviewCount: Int
+    let deckCopyCount: Int
+    let deckCopyFailures: Int
 
     func logSummary() {
-        guard translationCount > 0 || syncCount > 0 || reviewCardsTotal > 0 else { return }
+        // deck 計數也算「這個 session 有事發生」——否則純逛 Explore 的 session 靜默無
+        // summary。preview 必須列入：deep-link 落地後 preview-without-browse 就是可達的。
+        guard translationCount > 0 || syncCount > 0 || reviewCardsTotal > 0
+                || deckBrowseCount > 0 || deckPreviewCount > 0 || deckCopyCount > 0 else { return }
         let message = """
             event=session_summary \
             translations=\(translationCount) \
@@ -312,7 +386,11 @@ struct SessionSnapshot {
             review_remembered=\(reviewRemembered) \
             review_forgot=\(reviewForgot) \
             review_sessions_completed=\(reviewSessionsCompleted) \
-            review_sessions_abandoned=\(reviewSessionsAbandoned)
+            review_sessions_abandoned=\(reviewSessionsAbandoned) \
+            deck_browses=\(deckBrowseCount) \
+            deck_previews=\(deckPreviewCount) \
+            deck_copies=\(deckCopyCount) \
+            deck_copy_failures=\(deckCopyFailures)
             """
         AppAnalytics.recordObservation(level: .info, message: message)
         AppAnalytics.logger.info("""
@@ -326,7 +404,11 @@ struct SessionSnapshot {
             review_remembered=\(reviewRemembered) \
             review_forgot=\(reviewForgot) \
             review_sessions_completed=\(reviewSessionsCompleted) \
-            review_sessions_abandoned=\(reviewSessionsAbandoned)
+            review_sessions_abandoned=\(reviewSessionsAbandoned) \
+            deck_browses=\(deckBrowseCount) \
+            deck_previews=\(deckPreviewCount) \
+            deck_copies=\(deckCopyCount) \
+            deck_copy_failures=\(deckCopyFailures)
             """)
     }
 }

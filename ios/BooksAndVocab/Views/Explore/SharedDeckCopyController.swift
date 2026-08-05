@@ -72,6 +72,12 @@ final class SharedDeckCopyController {
         let key = idempotencyKey ?? makeKey()
         idempotencyKey = key
         state = .inflight
+        let startedAt = Date()
+        AppCrashReporting.addBreadcrumb(
+            category: "explore",
+            message: "deck copy started",
+            data: ["deck_id": deckId, "named_destination": notebookName != nil]
+        )
         do {
             let resp = try await service.copyDeck(
                 deckId: deckId, idempotencyKey: key, notebookName: notebookName
@@ -84,10 +90,38 @@ final class SharedDeckCopyController {
                 cardCount: resp.cardCount,
                 alreadyCopied: resp.alreadyCopied
             ))
+            AppAnalytics.track(.deckCopyCompleted(
+                deckId: deckId,
+                cardCount: resp.cardCount,
+                alreadyCopied: resp.alreadyCopied,
+                durationMs: Int(Date().timeIntervalSince(startedAt) * 1000)
+            ))
         } catch {
             AppLog.kg.warning("[Explore] deck copy failed for \(deckId): \(error.localizedDescription)")
             state = .failure(Self.message(for: error))
+            // reason 是**錯誤分類**（非 localized 訊息、非 error 內容），故可 `.public`
+            // 進 log 與 Sentry；使用者資料與 token 不在其中。
+            let reason = Self.failureReason(for: error)
+            AppAnalytics.track(.deckCopyFailed(deckId: deckId, reason: reason))
+            AppCrashReporting.addBreadcrumb(
+                category: "explore",
+                message: "deck copy failed",
+                level: .warning,
+                data: ["deck_id": deckId, "reason": reason]
+            )
         }
+    }
+
+    /// 錯誤 → 穩定的分類字串。與 `message(for:)` 的使用者訊息平行但**刻意分開**：
+    /// 一個給人看（已 i18n、會隨文案改動），一個給 telemetry 聚合（ASCII、穩定、
+    /// 可跨版本比對）。共用同一組判別條件。
+    static func failureReason(for error: Error) -> String {
+        if let kg = error as? KGError, case .unauthorized = kg { return "unauthorized" }
+        if let urlError = error as? URLError,
+           [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost].contains(urlError.code) {
+            return "offline"
+        }
+        return "generic"
     }
 
     /// 錯誤 → user-facing 訊息映射。以 error type 判別（不依賴 NetworkMonitor 單例，
