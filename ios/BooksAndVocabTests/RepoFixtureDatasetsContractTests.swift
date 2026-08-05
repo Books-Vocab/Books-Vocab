@@ -898,7 +898,7 @@ struct RepoFixtureDatasetsContractTests {
             "autoplaySpeed",
             "autoplaySoundEnabled",
         ]
-        let syncSummaryKeys: Set<String> = ["isConnected", "isSyncing", "summaryText"]
+        let syncSummaryKeys: Set<String> = ["isConnected", "isSyncing", "summaryText", "lastSyncedText"]
         let aboutKeys: Set<String> = ["version", "developerName"]
         let dangerKeys: Set<String> = ["isDeletingAccount"]
         let bookSyncKeys: Set<String> = ["text", "detail", "tone"]

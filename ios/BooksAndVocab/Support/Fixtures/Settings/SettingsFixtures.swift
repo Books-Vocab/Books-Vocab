@@ -284,11 +284,16 @@ struct SettingsFixtureSeed: Codable {
         let isConnected: Bool
         let isSyncing: Bool
         let summaryText: String
+        /// Nullable, but the key must still be declared — the seed's contract is
+        /// that every field is explicit, so a new presenter field cannot drift
+        /// out of the fixture surface unnoticed.
+        let lastSyncedText: String?
 
         enum CodingKeys: String, CodingKey, CaseIterable {
             case isConnected
             case isSyncing
             case summaryText
+            case lastSyncedText
         }
 
         init(from decoder: Decoder) throws {
@@ -302,6 +307,7 @@ struct SettingsFixtureSeed: Codable {
             isConnected = try container.decode(Bool.self, forKey: .isConnected)
             isSyncing = try container.decode(Bool.self, forKey: .isSyncing)
             summaryText = try container.decode(String.self, forKey: .summaryText)
+            lastSyncedText = try container.decodeIfPresent(String.self, forKey: .lastSyncedText)
         }
     }
 
@@ -609,7 +615,12 @@ private enum SettingsFixtureAdapter {
                 )
             },
             syncSummary: seed.syncSummary.map {
-                .init(isConnected: $0.isConnected, isSyncing: $0.isSyncing, summaryText: $0.summaryText)
+                .init(
+                    isConnected: $0.isConnected,
+                    isSyncing: $0.isSyncing,
+                    summaryText: $0.summaryText,
+                    lastSyncedText: $0.lastSyncedText
+                )
             },
             bookSync: seed.bookSync.map {
                 .init(text: $0.text, detail: $0.detail, tone: makeBookSyncTone($0.tone))

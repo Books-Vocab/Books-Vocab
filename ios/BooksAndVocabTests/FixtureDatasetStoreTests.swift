@@ -2721,7 +2721,8 @@ struct FixtureDatasetStoreTests {
               "syncSummary": {
                 "isConnected": true,
                 "isSyncing": false,
-                "summaryText": "已連線 · 240 張 · 剛剛"
+                "summaryText": "已連線 · 240 張",
+                "lastSyncedText": "上次同步 剛剛"
               },
               "reviewSettings": null,
               "bookSync": null,
@@ -3043,7 +3044,8 @@ struct FixtureDatasetStoreTests {
               "syncSummary": {
                 "isConnected": true,
                 "isSyncing": false,
-                "summaryText": "已連線"\(syncSummaryExtraFields)
+                "summaryText": "已連線",
+                "lastSyncedText": null\(syncSummaryExtraFields)
               },
               "reviewSettings": {
                 "mode": "lenient",
