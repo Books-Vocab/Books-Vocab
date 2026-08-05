@@ -58,6 +58,7 @@ DEFAULT_TESTS=(
   ios-device-logs
   ios-test-discovery
   script-help
+  lib-sourcing
   podcast-ops
 )
 
@@ -147,6 +148,7 @@ run_one() {
     ios-device-logs)    ./ops/tests/test_ios_device_logs.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     script-help)        ./ops/tests/test_script_help.sh ;;
+    lib-sourcing)       ./ops/tests/test_lib_sourcing.sh ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/test_podcast_ops.py \
