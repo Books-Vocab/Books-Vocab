@@ -152,7 +152,7 @@ extension GraphWebView {
     ) -> String {
         let mode = colorScheme == .dark ? "dark" : "light"
 
-        let tierNames = ["gray", "archived"]
+        let tierNames = ["gray", "dictionary", "archived"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
             let hex = tierHexes[tierName] ?? "#888888" // token-allow: web graph payload fallback color
@@ -165,6 +165,7 @@ extension GraphWebView {
             let color: String?
             let ratio: Double?
             let degree: Int
+            let badge: String?
         }
         struct LinkPayload: Encodable {
             let id, source, target, kind: String
@@ -187,7 +188,11 @@ extension GraphWebView {
         }
 
         let nodePayloads = nodes.map {
-            NodePayload(id: $0.id, word: $0.word, tier: $0.tier ?? "unknown", color: $0.colorHex, ratio: $0.ratio, degree: $0.degree)
+            NodePayload(
+                id: $0.id, word: $0.word, tier: $0.tier ?? "unknown",
+                color: $0.colorHex, ratio: $0.ratio, degree: $0.degree,
+                badge: $0.badgeSystemImage == nil ? nil : "▣"
+            )
         }
         let linkPayloads = edges.map {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
@@ -237,7 +242,7 @@ extension GraphWebView {
         nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge]
     ) -> String {
         let nodeSig = nodes.map { node -> String in
-            "\(node.id)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(node.degree)"
+            "\(node.id)|\(node.tier ?? "-")|\(node.colorHex ?? "-")|\(node.degree)|\(node.badgeSystemImage ?? "-")"
         }.joined(separator: ";")
         let edgeSig = edges.map { "\($0.id)|\($0.from)|\($0.to)|\($0.kind)" }
             .joined(separator: ";")

@@ -76,6 +76,8 @@ final class VocabularyEntry {
     var reviewEligible: Bool = true
     var promotionStateRaw: String = VocabularyPromotionState.idle.rawValue
     var promotedAt: Date?
+    var promotionErrorCode: String?
+    var promotionRetryable: Bool = false
 
     // Provider-neutral dictionary snapshot/provenance. The normalized payload
     // remains JSON so provider schema growth doesn't require a SwiftData model
@@ -274,6 +276,23 @@ extension VocabularyEntry {
     func queueReaderVisibility(_ hidden: Bool) {
         isExcludedFromReader = hidden
         readerVisibilitySyncPending = true
+    }
+
+    /// Applies a server-supplied `readerHidden` — but never over an unflushed
+    /// local intent.
+    ///
+    /// `readerHidden` is its own dimension (never derived from `cardRole`), and
+    /// the durable outbox is what makes a reader toggle survive a failed push.
+    /// A projection that lands between the optimistic toggle and its successful
+    /// flush still carries the OLD server value, so writing it back unguarded
+    /// silently rewinds the toggle the user just made — and, because the row now
+    /// agrees with the server, `markReaderVisibilitySynced` would drop the queued
+    /// edit too. Every projection applier must route through here; both the sync
+    /// actor and the detail scene apply the same card shape, and duplicating the
+    /// guard is exactly how one of them loses it.
+    func applyServerReaderVisibility(_ readerHidden: Bool?) {
+        guard let readerHidden, !readerVisibilitySyncPending else { return }
+        isExcludedFromReader = readerHidden
     }
 
     /// Restores the complete durable outbox state when the local SwiftData

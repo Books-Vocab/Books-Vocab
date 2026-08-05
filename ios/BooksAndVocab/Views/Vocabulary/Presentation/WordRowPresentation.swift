@@ -30,6 +30,12 @@ extension VocabularyEntry {
             leadingToneValue = .tertiary
             trailingLabelText = nil
             trailingToneValue = nil
+        } else if cardRole == .dictionary {
+            wordTone = .secondary
+            leadingImage = "book.closed"
+            leadingToneValue = .tertiary
+            trailingLabelText = nil
+            trailingToneValue = nil
         } else {
             wordTone = .primary
             leadingImage = nil
@@ -45,9 +51,11 @@ extension VocabularyEntry {
             isStrikethrough: isDelete,
             partOfSpeech: partOfSpeech,
             translation: translation.nilIfBlank,
-            bookTitle: showsSourceContext ? bookTitle.nilIfBlank : nil,
+            bookTitle: showsSourceContext
+                ? (cardRole == .dictionary ? L10n.string("dictionary.cardSource") : bookTitle.nilIfBlank)
+                : nil,
             chapterTitle: showsSourceContext ? chapterTitle.nilIfBlank : nil,
-            difficultyTier: showsDifficultyTier ? difficultyTier.nilIfBlank : nil,
+            difficultyTier: showsDifficultyTier && reviewEligible ? difficultyTier.nilIfBlank : nil,
             reviewProgress: reviewProgressData(
                 showsReviewProgress: showsReviewProgress,
                 isDelete: isDelete,
@@ -67,7 +75,7 @@ extension VocabularyEntry {
         isDelete: Bool,
         now: Date
     ) -> (text: String, tone: WordRow.ViewData.Tone)? {
-        guard showsReviewState, !isDelete else { return nil }
+        guard showsReviewState, !isDelete, reviewEligible else { return nil }
 
         switch reviewState(at: now) {
         case .unlearned:
@@ -84,7 +92,7 @@ extension VocabularyEntry {
         isDelete: Bool,
         now: Date
     ) -> VocabReviewProgress? {
-        guard showsReviewProgress, !isDelete else { return nil }
+        guard showsReviewProgress, !isDelete, reviewEligible else { return nil }
 
         switch reviewState(at: now) {
         case .unlearned:

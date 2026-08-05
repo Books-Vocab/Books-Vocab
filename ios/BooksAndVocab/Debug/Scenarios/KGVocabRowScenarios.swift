@@ -106,6 +106,7 @@ private struct KGVocabRowScene: View {
         AppThemeContainer {
             KGVocabRow(
                 entry: entry,
+                allowsSelection: true,
                 isSelecting: isSelecting,
                 isSelected: isSelected,
                 isHighlighted: isHighlighted,

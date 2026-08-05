@@ -594,9 +594,7 @@ actor BackgroundSyncActor {
         let role = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .learning
         entry.cardRole = role
         entry.reviewEligible = card.reviewEligible ?? (role == .learning)
-        if let readerHidden = card.readerHidden, !entry.readerVisibilitySyncPending {
-            entry.isExcludedFromReader = readerHidden
-        }
+        entry.applyServerReaderVisibility(card.readerHidden)
         entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
         entry.promotedAt = card.promotedAt.flatMap(Self.parseISO8601)
     }
@@ -642,6 +640,8 @@ actor BackgroundSyncActor {
         entry.dictionaryLicenseURL = lexical.licenseUrl
         entry.dictionaryAttributionText = lexical.attributionText
         entry.dictionaryFetchedAt = Self.parseISO8601(lexical.fetchedAt)
+        entry.promotionErrorCode = projection.promotionErrorCode
+        entry.promotionRetryable = projection.promotionRetryable
 
         if let sense = lexical.senses.first(where: { $0.id == projection.selectedSenseKey }) {
             entry.partOfSpeech = sense.partOfSpeech ?? entry.partOfSpeech

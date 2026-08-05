@@ -325,7 +325,8 @@ function drawFull() {
             // Shadow pass
             ctx.fillStyle = labelShadowColor;
             ctx.globalAlpha = 0.6 * opacity;
-            ctx.fillText(d.word, d.x + 1, d.y + r + 4);
+            const label = d.badge ? `${d.badge} ${d.word}` : d.word;
+            ctx.fillText(label, d.x + 1, d.y + r + 4);
 
             // Main pass (cached rgba)
             const labelAlpha = baseMul * opacity;
@@ -334,7 +335,7 @@ function drawFull() {
             if (!rgba) { rgba = hexToRGBA(labelColor, labelAlpha); _rgbaCache.set(cacheKey, rgba); }
             ctx.fillStyle = rgba;
             ctx.globalAlpha = 1;
-            ctx.fillText(d.word, d.x, d.y + r + 3);
+            ctx.fillText(label, d.x, d.y + r + 3);
         }
     }
 

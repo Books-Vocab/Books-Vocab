@@ -14,6 +14,7 @@ struct WordDetailSheet: View {
     @State private var isEditing = false
     @State private var showAddLink = false
     @State private var isConfirmingDelete = false
+    @State private var showDictionaryDeleteConfirmation = false
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -90,7 +91,36 @@ struct WordDetailSheet: View {
                     },
                     onUnhideLink: { link in
                         state.unhideLink(link, from: entry, allEntries: allEntries, kgService: kgService)
-                    }
+                    },
+                    onSelectDictionary: entry.dictionaryPayloadJSON == nil ? nil : { sense, example in
+                        state.selectDictionary(
+                            sense: sense,
+                            example: example,
+                            for: entry,
+                            allEntries: allEntries,
+                            kgService: kgService,
+                            modelContext: modelContext
+                        )
+                    },
+                    onPromote: entry.cardRole == .dictionary ? {
+                        state.promoteDictionary(
+                            entry,
+                            allEntries: allEntries,
+                            kgService: kgService,
+                            modelContext: modelContext
+                        )
+                    } : nil,
+                    onArchiveDictionary: entry.cardRole == .dictionary ? {
+                        state.archiveDictionary(
+                            entry,
+                            kgService: kgService,
+                            modelContext: modelContext,
+                            onSuccess: handleClose
+                        )
+                    } : nil,
+                    onDeleteDictionary: entry.cardRole == .dictionary ? {
+                        showDictionaryDeleteConfirmation = true
+                    } : nil
                 )
                 .overlay(alignment: .top) {
                     if let actionError = state.actionError {
@@ -114,7 +144,7 @@ struct WordDetailSheet: View {
             }
         }
         .animation(AppMotion.contentFade, value: state.presenterState != nil)
-        .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
+        .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)|\(entry.cardRoleRaw)|\(entry.promotionStateRaw)|\(entry.dictionarySelectedSenseKey ?? "")|\(entry.dictionarySelectedExampleKey ?? "")") {
             // Yield once so SwiftUI can render the loading placeholder before
             // we run the (lightweight but synchronous) presentation computation.
             await Task.yield()
@@ -143,6 +173,23 @@ struct WordDetailSheet: View {
                 sourceEntry: entry,
                 allEntries: allEntries
             )
+        }
+        .confirmationDialog(
+            L10n.string("dictionary.delete.confirm.title"),
+            isPresented: $showDictionaryDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.string("dictionary.delete.action"), role: .destructive) {
+                state.deleteDictionary(
+                    entry,
+                    kgService: kgService,
+                    modelContext: modelContext,
+                    onSuccess: handleClose
+                )
+            }
+            Button(L10n.string("dictionary.delete.cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.string("dictionary.delete.confirm.message"))
         }
         .enableInjection()
     }

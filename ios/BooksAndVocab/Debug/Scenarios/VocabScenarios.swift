@@ -84,32 +84,6 @@ enum VocabScenarios {
             Scenario("No candidates", layout: .fill) {
                 AddLinkSheetScene(fixture: .noCandidates)
             }
-            Scenario("Dictionary loading", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryLoading)
-            }
-            Scenario("Dictionary result", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryResult)
-            }
-            Scenario("Dictionary empty", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryEmpty)
-            }
-            Scenario("Dictionary error", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryError)
-            }
-            Scenario("Dictionary stale", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryStale)
-            }
-            Scenario("Long content", layout: .fill) {
-                AddLinkSheetScene(fixture: .longContent)
-            }
-            Scenario("Narrow width", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryResult)
-                    .frame(width: 320)
-            }
-            Scenario("Accessibility 3", layout: .fill) {
-                AddLinkSheetScene(fixture: .dictionaryResult)
-                    .dynamicTypeSize(.accessibility3)
-            }
         }
     }
 }
@@ -133,12 +107,6 @@ private enum VocabLinkedCardFixture {
 private enum VocabAddLinkFixture {
     case withCandidates
     case noCandidates
-    case dictionaryLoading
-    case dictionaryResult
-    case dictionaryEmpty
-    case dictionaryError
-    case dictionaryStale
-    case longContent
 
     var sourceIndex: Int {
         0
@@ -148,32 +116,8 @@ private enum VocabAddLinkFixture {
         switch self {
         case .withCandidates:
             return [3, 4, 5]
-        case .noCandidates, .dictionaryLoading, .dictionaryResult,
-             .dictionaryEmpty, .dictionaryError, .dictionaryStale, .longContent:
+        case .noCandidates:
             return []
-        }
-    }
-
-    var query: String {
-        switch self {
-        case .withCandidates, .noCandidates: return ""
-        case .longContent: return "antidisestablishmentarianism"
-        default: return "lucid"
-        }
-    }
-
-    var searchPhase: DictionarySearchPhase {
-        switch self {
-        case .withCandidates, .noCandidates: return .idle
-        case .dictionaryLoading: return .loading
-        case .dictionaryResult:
-            return .result(VocabDictionaryEntryFixture.standard, cacheStatus: "fresh")
-        case .dictionaryEmpty: return .empty
-        case .dictionaryError: return .failed(.rateLimited)
-        case .dictionaryStale:
-            return .result(VocabDictionaryEntryFixture.standard, cacheStatus: "stale")
-        case .longContent:
-            return .result(VocabDictionaryEntryFixture.longContent, cacheStatus: "fresh")
         }
     }
 }
@@ -208,24 +152,22 @@ private struct LinkedCardOverlayScene: View {
 private struct AddLinkSheetScene: View {
     let source: VocabularyEntry
     let candidates: [VocabularyEntry]
-    private let fixture: VocabAddLinkFixture
 
     init(fixture: VocabAddLinkFixture) {
         let payload = MainActor.assumeIsolated {
             Self.payload(for: fixture)
         }
-        self.fixture = fixture
         source = payload.source
         candidates = payload.candidates
     }
 
     var body: some View {
         AppThemeContainer {
+            // AddLinkSheet reads `\.modelContext` for the dictionary
+            // materialization path, so the scene must supply a container.
             AddLinkSheet(
                 sourceEntry: source,
-                allEntries: candidates + [source],
-                initialQuery: fixture.query,
-                initialSearchPhase: fixture.searchPhase
+                allEntries: candidates + [source]
             )
             .modelContainer(
                 for: [VocabularyEntry.self, ReviewRecord.self],
@@ -243,40 +185,6 @@ private struct AddLinkSheetScene: View {
     }
 }
 
-private enum VocabDictionaryEntryFixture {
-    static let standard = decode(Self.standardJSON)
-    static let longContent = decode(Self.longContentJSON)
-
-    private static func decode(_ json: String) -> LexicalEntry {
-        do {
-            return try JSONDecoder().decode(LexicalEntry.self, from: Data(json.utf8))
-        } catch {
-            preconditionFailure("Invalid Add Link catalog lexical fixture: \(error)")
-        }
-    }
-
-    private static let standardJSON = #"""
-    {
-      "provider":"free_dictionary","dictionary_id":"wiktionary-en","schema_version":"1",
-      "entry_key":"en.bHVjaWQ","word":"lucid","language":"en","pronunciations":["/ˈluːsɪd/"],"forms":[],
-      "senses":[{"key":"sense_1","part_of_speech":"adjective","definition":"Expressed clearly and easy to understand.",
-      "examples":[{"key":"example_1","text":"The explanation was lucid and persuasive."}],"translations":[],"synonyms":[],"antonyms":[]}],
-      "attribution":{"provider":"free_dictionary","source_url":"https://en.wiktionary.org/wiki/lucid","license_name":"CC BY-SA 4.0","license_url":"https://creativecommons.org/licenses/by-sa/4.0/","attribution_text":"Wiktionary contributors"},
-      "fetched_at":"2026-08-05T00:00:00Z","truncated":false
-    }
-    """#
-
-    private static let longContentJSON = #"""
-    {
-      "provider":"free_dictionary","dictionary_id":"wiktionary-en","schema_version":"1",
-      "entry_key":"en.long","word":"antidisestablishmentarianism","language":"en","pronunciations":["/ˌæn.ti.dɪs.ɪˌstæb.lɪʃ.mənˈteə.ri.ə.nɪ.zəm/"],"forms":[],
-      "senses":[{"key":"sense_long","part_of_speech":"a deliberately long catalog-only part-of-speech label","definition":"A deliberately extended definition used to verify that exceptionally long provider content truncates without displacing controls or breaking the rhythm of the result list.",
-      "examples":[{"key":"example_long","text":"This intentionally oversized example sentence verifies multi-line truncation when dictionary content is substantially longer than ordinary reading material and the available row width is constrained."}],"translations":[],"synonyms":[],"antonyms":[]}],
-      "attribution":{"provider":"free_dictionary","source_url":"https://en.wiktionary.org/wiki/antidisestablishmentarianism","license_name":"Creative Commons Attribution-ShareAlike 4.0 International","license_url":"https://creativecommons.org/licenses/by-sa/4.0/","attribution_text":"A deliberately long attribution supplied by Wiktionary contributors for catalog stress verification"},
-      "fetched_at":"2026-08-05T00:00:00Z","truncated":false
-    }
-    """#
-}
 
 private enum VocabManifestEntries {
     private static func seed() -> UIWorldVocabularySeed {

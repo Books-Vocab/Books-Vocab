@@ -37,10 +37,6 @@ final class AddLinkCoordinator {
     private var materializeKey: String?
     private var materializeRequest: DictionaryMaterializeLinkRequest?
 
-    init(initialSearchPhase: DictionarySearchPhase = .idle) {
-        searchPhase = initialSearchPhase
-    }
-
     nonisolated static func localCandidates(
         query: String,
         sourceEntry: VocabularyEntry,

@@ -105,7 +105,25 @@ struct ArchivedVocabSheet: View {
     private func handleUnarchive(_ entry: VocabularyEntry) {
         Task {
             do {
-                try await kgService.archiveCard(word: entry.word, archived: false, notebookId: entry.notebookId)
+                if entry.cardRole == .dictionary {
+                    guard let cardID = entry.kgCardId else {
+                        throw KGError.serverError("Dictionary card has no server id")
+                    }
+                    let card = try await kgService.archiveDictionaryCard(
+                        cardId: cardID,
+                        archived: false,
+                        notebookId: entry.notebookId
+                    )
+                    guard card.isArchived == false else {
+                        throw KGError.serverError("Dictionary card remained archived")
+                    }
+                } else {
+                    try await kgService.archiveCard(
+                        word: entry.word,
+                        archived: false,
+                        notebookId: entry.notebookId
+                    )
+                }
                 entry.isArchived = false
                 if modelContext.safeSaveWithToast(toastCoordinator) {
                     toastCoordinator.success("已取消封存".localized)

@@ -19,17 +19,11 @@ struct AddLinkSheet: View {
     init(
         sourceEntry: VocabularyEntry,
         allEntries: [VocabularyEntry],
-        initialQuery: String = "",
-        initialSearchPhase: DictionarySearchPhase = .idle,
         onLinked: @escaping () -> Void = {}
     ) {
         self.sourceEntry = sourceEntry
         self.allEntries = allEntries
         self.onLinked = onLinked
-        _searchText = State(initialValue: initialQuery)
-        _coordinator = State(
-            initialValue: AddLinkCoordinator(initialSearchPhase: initialSearchPhase)
-        )
     }
 
     private var filteredEntries: [VocabularyEntry] {
