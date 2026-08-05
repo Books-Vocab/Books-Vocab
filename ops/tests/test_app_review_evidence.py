@@ -89,44 +89,177 @@ def test_journey_demo_and_gate_use_named_streaming_runner(tmp_path: Path, monkey
     assert calls == ["journey-run", "demo-run", "gate-evaluation"]
 
 
-def test_desired_pipeline_streams_every_subprocess_phase(tmp_path: Path, monkeypatch):
+PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+
+
+def checked_spec() -> dict:
+    return json.loads((ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8"))
+
+
+def blob_bytes(commit: str, rel_path: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), "cat-file", "blob", f"{commit}:{rel_path}"],
+        capture_output=True,
+        check=True,
+    ).stdout
+
+
+def stub_desired_pipeline(monkeypatch, *, dataset_bytes: bytes) -> tuple[list[str], dict]:
+    """Fake every subprocess of the desired pipeline; git sourcing stays real."""
     import capture_profile
 
-    profile_file = tmp_path / "profile.yml"
-    profile_file.write_text("profile", encoding="utf-8")
-    dataset_bytes = b'{"schema":"world"}\n'
-    spec = {
-        "target": {
-            "datasetSHA256": sha(dataset_bytes),
-            "sourceCommit": "a" * 40,
-            "marketingVersion": "2.0.0",
-            "buildNumber": "6",
-        }
-    }
     profile = type("Profile", (), {"profile_id": "review"})()
     monkeypatch.setattr(capture_profile, "load_profile", lambda _path: profile)
     monkeypatch.setattr(capture_profile, "reviewer_render_spec", lambda _profile: {"shots": []})
     calls: list[str] = []
+    captured: dict = {}
 
     def fake_runner(command, *, cwd, producer_name, heartbeat_interval=20.0):
         calls.append(producer_name)
         if producer_name == "desired-build":
             Path(command[command.index("--out") + 1]).write_bytes(dataset_bytes)
+        if producer_name == "desired-bundle":
+            project_file = Path(command[command.index("--project-file") + 1])
+            captured["projectFile"] = project_file
+            captured["projectBytes"] = project_file.read_bytes()
         return subprocess.CompletedProcess(command, 0, "{}", "")
 
     monkeypatch.setattr(evidence, "_run_producer_command", fake_runner)
-    evidence.produce_desired_bundle(
-        spec,
-        workspace_root=tmp_path,
-        profile_file=profile_file,
-        render_output_dir=tmp_path / "renders",
-        bundle_dir=tmp_path / "bundle",
-        fixed_clock="2026-07-13T08:00:00Z",
-        locale="zh-Hant",
-        commit=False,
-    )
+    return calls, captured
+
+
+def desired_kwargs(tmp_path: Path) -> dict:
+    profile_file = tmp_path / "profile.yml"
+    profile_file.write_text("profile", encoding="utf-8")
+    return {
+        "workspace_root": ROOT,
+        "profile_file": profile_file,
+        "render_output_dir": tmp_path / "renders",
+        "bundle_dir": tmp_path / "bundle",
+        "fixed_clock": "2026-07-13T08:00:00Z",
+        "locale": "zh-Hant",
+        "commit": False,
+    }
+
+
+def synthetic_spec(dataset_bytes: bytes, source_commit: str) -> dict:
+    return {
+        "target": {
+            "datasetSHA256": sha(dataset_bytes),
+            "sourceCommit": source_commit,
+            "marketingVersion": "2.0.0",
+            "buildNumber": "6",
+        }
+    }
+
+
+def test_desired_pipeline_streams_every_subprocess_phase(tmp_path: Path, monkeypatch):
+    dataset_bytes = b'{"schema":"world"}\n'
+    spec = synthetic_spec(dataset_bytes, checked_spec()["target"]["sourceCommit"])
+    calls, _ = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
+
+    evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
 
     assert calls == ["desired-shape", "desired-build", "desired-bundle"]
+
+
+def test_desired_bundle_reads_project_file_from_source_commit_not_worktree(
+    tmp_path: Path, monkeypatch
+):
+    source_commit = checked_spec()["target"]["sourceCommit"]
+    dataset_bytes = b'{"schema":"world"}\n'
+    spec = synthetic_spec(dataset_bytes, source_commit)
+    calls, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
+
+    evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
+
+    assert calls == ["desired-shape", "desired-build", "desired-bundle"]
+    assert captured["projectBytes"] == blob_bytes(source_commit, PROJECT_FILE_REL)
+    assert captured["projectFile"].resolve() != (ROOT / PROJECT_FILE_REL).resolve()
+
+
+def test_desired_bundle_project_bytes_ignore_worktree_edits(tmp_path: Path, monkeypatch):
+    """The property the git sourcing buys: unrelated pbxproj edits cannot move it."""
+    source_commit = checked_spec()["target"]["sourceCommit"]
+    dataset_bytes = b'{"schema":"world"}\n'
+    spec = synthetic_spec(dataset_bytes, source_commit)
+    _, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
+    worktree_project = ROOT / PROJECT_FILE_REL
+    original = worktree_project.read_bytes()
+
+    try:
+        evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
+        before = captured["projectBytes"]
+        worktree_project.write_bytes(original + b"// drift probe\n")
+        evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
+        after = captured["projectBytes"]
+    finally:
+        worktree_project.write_bytes(original)
+
+    assert sha(before) == sha(after)
+    assert sha(before) == sha(blob_bytes(source_commit, PROJECT_FILE_REL))
+
+
+def test_desired_bundle_refuses_unreachable_source_commit(tmp_path: Path, monkeypatch):
+    """Negative control: no silent fall back to the worktree file."""
+    dataset_bytes = b'{"schema":"world"}\n'
+    spec = synthetic_spec(dataset_bytes, "0" * 40)
+    calls, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
+
+    with pytest.raises(evidence.EvidenceError) as raised:
+        evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
+
+    assert "0" * 40 in str(raised.value)
+    assert calls == []
+    assert "projectBytes" not in captured
+
+
+def test_desired_bundle_refuses_non_sha_source_commit(tmp_path: Path, monkeypatch):
+    dataset_bytes = b'{"schema":"world"}\n'
+    calls, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
+
+    for bogus in ("", "HEAD", "main", "60b7030e"):
+        with pytest.raises(evidence.EvidenceError):
+            evidence.produce_desired_bundle(
+                synthetic_spec(dataset_bytes, bogus), **desired_kwargs(tmp_path)
+            )
+
+    assert calls == []
+    assert "projectBytes" not in captured
+
+
+def test_materialize_tracked_file_refuses_path_absent_at_commit(tmp_path: Path):
+    head = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    destination = tmp_path / "materialized"
+
+    with pytest.raises(evidence.EvidenceError) as raised:
+        evidence._materialize_tracked_file(
+            workspace_root=ROOT,
+            commit=head,
+            rel_path="ios/BooksAndVocab.xcodeproj/does-not-exist.pbxproj",
+            destination=destination,
+        )
+
+    assert "does-not-exist.pbxproj" in str(raised.value)
+    assert not destination.exists()
+
+
+def test_materialize_tracked_file_writes_blob_bytes_verbatim(tmp_path: Path):
+    source_commit = checked_spec()["target"]["sourceCommit"]
+    destination = tmp_path / "nested" / "project.pbxproj"
+
+    written = evidence._materialize_tracked_file(
+        workspace_root=ROOT,
+        commit=source_commit,
+        rel_path=PROJECT_FILE_REL,
+        destination=destination,
+    )
+
+    assert written == destination
+    assert destination.read_bytes() == blob_bytes(source_commit, PROJECT_FILE_REL)
 
 
 def test_checked_spec_desired_manifest_anchor_matches_reproducible_bundle_without_self_reference(
