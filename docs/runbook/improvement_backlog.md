@@ -113,6 +113,7 @@ owner = `platform-steward`。andon 規則見 `kg-receipt`「Tooling Debt」。
 | IMP-20260805-355016 | 2026-08-05 | backlog store review | arch | low | open | `ops/backlog.py` 的 generated view 刻意維持 legacy 8 欄，因為「產出的 view 仍可被 importer 讀回」＝遷移可逆。代價是 `verdict`/`verified_at`/`cost`/`fix_site` 四個一級欄位在表格裡看不到，只有 `show` 與 `--json` 拿得到。曾嘗試加寬到 12 欄，當場打破 4 條 round-trip 測試，已撤回。 | — 兩者目前不可兼得。候選：view 分兩張表（8 欄主表維持可逆 + verdict 摘要表），或 importer 學會寬表。記錄取捨以免下一個人重試一次加寬。 |
 | IMP-20260805-3df783 | 2026-08-05 | backlog store review | tool | med | open | `ops/backlog.py` 的 `parse_legacy_table` 對「少一欄 + 一個未跳脫 `\|`」結構性不可偵測：兩個錯誤相消後剛好落在 8 欄，vocabulary anchor（cells[3][4][5]）照樣通過，於是走 happy path、detail 被截斷、尾巴變 resolution、零回報。真實 IMP-0017 被抓到純粹因為 `\|\|` 是兩個 pipe（8→10 欄）。復原啟發式的資訊上限同源：anchor 能證 cells[0..5] 未位移，證不了 stray pipe 落在 detail 還是 resolution。 | — 遷移後風險降低（view 已是產出、cell 一律跳脫，test_generated_view_needs_no_recovery 釘住零復原），但 importer 仍是任何舊格式表格的入口。候選：resolution 欄形狀檢查當第二錨點。 |
 | IMP-20260805-718e75 | 2026-08-05 | backlog store review | tool | med | open | `ops/backlog.py` 的 `extract_verdict_fields` 抽不到「未使用『成本』二字」的成本敘述（實例：IMP-0048 寫 `各 S`），且無任何回報路徑——`_COST_PRESENT_RE` 偵測的是關鍵字「成本」而不是「這段文字有沒有陳述成本」。更該記的是原始誤判：本工具的 commit message 曾宣稱「IMP-0048 沒寫成本，這是查過的不是假設的」，而那個「查證」查的正是關鍵字。同族的 `落點` 有 present-but-unreadable 的具名回報，`成本` 沒有，屬不對稱。 | — 候選：對「有戳記但無 cost」回報 `cost-absent` 讓缺席可見；或接受無法偵測並在 --help 具名此洞。優先度低（唯一已知實例是 IMP-0048），但不可退化成靜默。 |
+| IMP-20260805-afc14b | 2026-08-05 | 查『2.0.0 之後改了什麼』時發現：tag ios/2.0.0 指向 build 5 的 commit，實際上架的是 5 天後的 build 6 | tool | med | open | release.sh 的 tag 記的是『bump 版號那一刻』，不是『哪顆 archive 上架了』。iOS 真實形狀是一個 marketing version 底下 N 顆 build、只有一顆會上架,腳本無詞彙表達,故任一次重送(同版號、新 build)必然讓 tag 脫鉤。95ece259d 已補 classify_version_drift() 分辨 ahead/mistagged,但它比對的是版號『字串』:今天 status 報無漂移(tag 2.0.0 = 檔內 2.0.0),而 ios/2.0.0 仍指著落後上架二進位檔 5 天、28 個 ios: commit 的 commit。repo 內無任何地方記錄 build number → 封版 commit,要知道『商店裡跑的是哪個 commit』只能靠考古(pbxproj 的 MARKETING_VERSION 編輯時戳 + asc.sh submissions 的送審時戳夾擠)。提案:ios_release.sh 出 archive 時把 build number → commit sha 落成可查紀錄(或 release.sh 提供 shipped-commit 查詢),讓 tag 的語意缺口有替代 SoT。 | — |
 
 ## APP — app 實際使用問題
 
@@ -123,4 +124,4 @@ platform-steward 的 triage 失效。
 | id | date | source | surface | category | severity | status | detail | repro | build | resolution |
 |---|---|---|---|---|---|---|---|---|---|---|
 
-<!-- 66 IMP + 0 APP entries -->
+<!-- 67 IMP + 0 APP entries -->

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "release.sh 的 tag 記的是『bump 版號那一刻』，不是『哪顆 archive 上架了』。iOS 真實形狀是一個 marketing version 底下 N 顆 build、只有一顆會上架,腳本無詞彙表達,故任一次重送(同版號、新 build)必然讓 tag 脫鉤。95ece259d 已補 classify_version_drift() 分辨 ahead/mistagged,但它比對的是版號『字串』:今天 status 報無漂移(tag 2.0.0 = 檔內 2.0.0),而 ios/2.0.0 仍指著落後上架二進位檔 5 天、28 個 ios: commit 的 commit。repo 內無任何地方記錄 build number → 封版 commit,要知道『商店裡跑的是哪個 commit』只能靠考古(pbxproj 的 MARKETING_VERSION 編輯時戳 + asc.sh submissions 的送審時戳夾擠)。提案:ios_release.sh 出 archive 時把 build number → commit sha 落成可查紀錄(或 release.sh 提供 shipped-commit 查詢),讓 tag 的語意缺口有替代 SoT。",
+  "id": "IMP-20260805-afc14b",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "查『2.0.0 之後改了什麼』時發現：tag ios/2.0.0 指向 build 5 的 commit，實際上架的是 5 天後的 build 6",
+  "status": "open",
+  "stream": "IMP"
+}
