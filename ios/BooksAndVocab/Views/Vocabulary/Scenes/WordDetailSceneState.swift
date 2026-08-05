@@ -134,8 +134,20 @@ final class WordDetailSceneState {
                 }
                 for attempt in 0..<maxPollAttempts {
                     try await Task.sleep(for: pollDelays[min(attempt, pollDelays.count - 1)])
+                    // Selection intent version at the moment this poll goes out. A
+                    // response that predates a newer selection carries the sense the
+                    // user has already moved off, and a full apply would silently
+                    // rewind it — the same class of amnesia as a stale projection
+                    // overwriting an unflushed reader-visibility edit. When the
+                    // generation moved, take only what this poll is actually for:
+                    // the promotion fields.
+                    let generation = selectionGeneration
                     let projection = try await kgService.fetchDictionaryCard(cardId: cardID)
-                    try applyDictionaryProjection(projection, to: entry, modelContext: modelContext)
+                    if generation == selectionGeneration {
+                        try applyDictionaryProjection(projection, to: entry, modelContext: modelContext)
+                    } else {
+                        try applyPromotionFields(from: projection, to: entry, modelContext: modelContext)
+                    }
                     refreshPresentation(for: entry, in: allEntries)
                     if projection.card.cardRole == VocabularyCardRole.learning.rawValue
                         || ![VocabularyPromotionState.queued.rawValue, VocabularyPromotionState.running.rawValue]
@@ -407,14 +419,7 @@ final class WordDetailSceneState {
         // Reader visibility is an independent dimension with a durable outbox —
         // never derived from role, never overwritten while an edit is unflushed.
         entry.applyServerReaderVisibility(card.readerHidden)
-        entry.cardRole = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .dictionary
-        entry.reviewEligible = card.reviewEligible ?? false
-        entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
-        if let promotedAt = card.promotedAt {
-            entry.promotedAt = ISO8601DateFormatter().date(from: promotedAt)
-        }
-        entry.promotionErrorCode = projection.promotionErrorCode
-        entry.promotionRetryable = projection.promotionRetryable
+        assignPromotionFields(from: projection, to: entry)
         let lexicalData = try JSONEncoder().encode(lexical)
         entry.dictionaryPayloadJSON = String(data: lexicalData, encoding: .utf8)
         entry.dictionaryProvider = lexical.provider
@@ -434,5 +439,36 @@ final class WordDetailSceneState {
             }
         }
         try modelContext.save()
+    }
+
+    /// The subset a promotion poll is entitled to write when its response is
+    /// older than the local selection intent: role / review eligibility /
+    /// promotion status only. Everything else in a projection (meaning, pos,
+    /// examples, context, the selected sense + example keys) is derived from the
+    /// server-side selection, so a stale response would rewind the user's pick.
+    private func applyPromotionFields(
+        from projection: KGDictionaryCardProjection,
+        to entry: VocabularyEntry,
+        modelContext: ModelContext
+    ) throws {
+        assignPromotionFields(from: projection, to: entry)
+        try modelContext.save()
+    }
+
+    /// Shared by the full projection apply and the narrow promotion-only apply so
+    /// the two can never drift into disagreeing about what "promotion state" is.
+    private func assignPromotionFields(
+        from projection: KGDictionaryCardProjection,
+        to entry: VocabularyEntry
+    ) {
+        let card = projection.card
+        entry.cardRole = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .dictionary
+        entry.reviewEligible = card.reviewEligible ?? false
+        entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
+        if let promotedAt = card.promotedAt {
+            entry.promotedAt = ISO8601DateFormatter().date(from: promotedAt)
+        }
+        entry.promotionErrorCode = projection.promotionErrorCode
+        entry.promotionRetryable = projection.promotionRetryable
     }
 }

@@ -132,13 +132,24 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         }
     }
 
+    /// 待刪除 banner 的「重試」= outbox 的**第二條** drain。
+    ///
+    /// 它必須與 `SyncCoordinator.startSync` 用同一套 role 分流：legacy 的
+    /// `batchDeleteCards` / `deleteCard` 以 `(word, notebookId)` 定位卡片，
+    /// 而 server 那側的 content lookup 只認 `card_role == "learning"`
+    /// （`vocab_crud.py` 的 `_batch_apply` / `_resolve_card_or_raise`）。字典卡
+    /// 送進去只有兩種下場：落 `not_found` bucket → 本地把它當「刪除意圖已達成」
+    /// 而 hard-delete，server 上的卡 / graph link / archive refcount 卻全都還在
+    /// （永久分岔）；或 per-word fallback 永遠 404 → 卡在 failed+delete 反覆彈同
+    /// 一個壞掉的 banner。字典卡一律走 `deleteDictionaryCard(cardId:notebookId:)`。
     func retryPendingDeletes(
         pendingDeletes: [VocabularyEntry],
         kgService: any KGServing,
         modelContext: ModelContext
     ) async {
         var failedCount = 0
-        let grouped = Dictionary(grouping: pendingDeletes, by: \.notebookId)
+        let (learningDeletes, dictionaryDeletes) = SyncCoordinator.partitionDeletesByRole(pendingDeletes)
+        let grouped = Dictionary(grouping: learningDeletes, by: \.notebookId)
 
         for (nbId, entries) in grouped {
             let words = entries.map(\.word)
@@ -167,6 +178,22 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                     }
                 }
             }
+        }
+
+        if !dictionaryDeletes.isEmpty {
+            // Peers = 全部本地 row，不是 outbox：持有指向該字典卡的 link 的那張卡
+            // 通常自己是 synced，只掃 outbox 會漏掉它、留下懸空的邊（同
+            // `SyncCoordinator.startSync` 的理由）。
+            let peers = (try? modelContext.fetch(FetchDescriptor<VocabularyEntry>()))
+                ?? pendingDeletes
+            let outcome = await SyncCoordinator.drainDictionaryDeletes(
+                dictionaryDeletes,
+                peers: peers,
+                modelContext: modelContext
+            ) { cardID, notebookID in
+                try await kgService.deleteDictionaryCard(cardId: cardID, notebookId: notebookID)
+            }
+            failedCount += outcome.failedWords.count
         }
 
         modelContext.safeSave()

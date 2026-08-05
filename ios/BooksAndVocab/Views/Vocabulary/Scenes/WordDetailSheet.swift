@@ -92,7 +92,7 @@ struct WordDetailSheet: View {
                     onUnhideLink: { link in
                         state.unhideLink(link, from: entry, allEntries: allEntries, kgService: kgService)
                     },
-                    onSelectDictionary: entry.dictionaryPayloadJSON == nil ? nil : { sense, example in
+                    onSelectDictionary: !DictionaryDetailPresentation.allowsSelection(for: entry) ? nil : { sense, example in
                         state.selectDictionary(
                             sense: sense,
                             example: example,

@@ -47,6 +47,16 @@ struct DictionaryDetailPresentation: Equatable {
         )
     }
 
+    /// 是否該提供「選這個義項 / 釘這個例句」的入口。
+    ///
+    /// 只有還是字典卡時才有意義：server 對已升級成 learning 的卡拒絕改 selection
+    /// （`cards/dictionary_store.py` 拋 ConflictError），所以在 promoted card 上
+    /// 留著這些按鈕，唯一可能的結局是每按必錯的 toast。payload 缺席（從未帶回
+    /// lexical entry）同樣沒得選。
+    static func allowsSelection(for entry: VocabularyEntry) -> Bool {
+        entry.cardRole == .dictionary && entry.dictionaryPayloadJSON != nil
+    }
+
     var shareText: String {
         let lines: [String?] = [
             word,

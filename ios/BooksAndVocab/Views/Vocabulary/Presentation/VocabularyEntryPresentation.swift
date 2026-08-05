@@ -31,6 +31,17 @@ enum VocabularyEntryPresentation {
         }
     }
 
+    /// 多選模式下實際可被選取的 row id。
+    ///
+    /// 字典卡不參與批次刪除 / 封存，所以「全選」只挑得動 learning row。**同一份
+    /// 集合必須同時餵給 `selectAll` 與 `updateVisibleCount`** —— 兩邊各自算一次
+    /// 就會分岔：在「全部」tab 上只要畫面有任何一張字典卡，`isAllSelected`
+    /// （`selectedIDs.count == visibleCount`）永遠不成立，toolbar 只會一直提供
+    /// 「全選」，使用者按不到「取消全選」。
+    static func selectableIDs(in entries: [VocabularyEntry]) -> [UUID] {
+        entries.filter { $0.cardRole == .learning }.map(\.id)
+    }
+
     /// Single-pass partition of knowledge entries into review-state buckets.
     /// Returns counts and the filtered+sorted list for the selected state.
     struct ClassifiedResult {
