@@ -151,6 +151,7 @@ struct BooksAndVocabApp: App {
             rootView
                 .environmentObject(appLanguage)
                 .environment(\.reviewSettingsStore, ReviewSettingsStore.shared)
+                .environment(\.feedbackSettingsStore, FeedbackSettingsStore.shared)
                 .preferredColorScheme(appearanceStore.resolvedColorScheme)
                 .environment(\.authManager, authManager)
                 .environment(\.kgService, kgService)
@@ -176,6 +177,7 @@ struct BooksAndVocabApp: App {
                 .environment(\.syncCoordinator, syncCoordinator)
                 .environment(\.quotaStore, QuotaStore.shared)
                 .environment(\.speechService, SpeechService.shared)
+                .environment(\.feedbackAudioService, FeedbackAudioService.shared)
                 .environment(\.toastCoordinator, toastCoordinator)
                 .environment(\.appCommandCoordinator, appCommandCoordinator)
                 .toastOverlay()

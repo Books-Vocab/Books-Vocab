@@ -1102,3 +1102,5 @@
 "explore.copy.sheet.nameLabel" = "單字本名稱";
 "explore.copy.sheet.confirm" = "建立並複製";
 "explore.copy.a11y.cta" = "複製這個牌組到我的單字本";
+"聲音回饋" = "聲音回饋";
+"觸覺回饋" = "觸覺回饋";

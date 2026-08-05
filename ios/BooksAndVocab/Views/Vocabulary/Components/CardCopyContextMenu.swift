@@ -24,7 +24,7 @@ private struct CardCopyContextMenu: ViewModifier {
                     toastCoordinator.success("已複製".localized)
                 }
             }
-            .sensoryFeedback(.success, trigger: copyTrigger)
+            .appFeedback(.success, trigger: copyTrigger)
     }
 }
 

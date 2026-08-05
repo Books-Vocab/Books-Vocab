@@ -47,6 +47,14 @@ struct SettingsSheetPage {
         app.staticTexts["settings.preferences.translationLanguageValue"]
     }
 
+    var soundFeedbackToggle: XCUIElement {
+        app.switches["settings.preferences.soundFeedbackToggle"]
+    }
+
+    var hapticFeedbackToggle: XCUIElement {
+        app.switches["settings.preferences.hapticFeedbackToggle"]
+    }
+
     // MARK: - Review rhythm section (pushed)
 
     var pauseReviewClockToggle: XCUIElement {

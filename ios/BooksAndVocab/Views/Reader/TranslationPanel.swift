@@ -71,7 +71,9 @@ struct TranslationPanel: View {
     var body: some View {
         interactivePanelContent
             .transition(.readerPanelReveal)
-            .sensoryFeedback(.success, trigger: isSaved)
+            .appFeedback(.success, trigger: isSaved) { oldValue, newValue in
+                !oldValue && newValue
+            }
             .onChange(of: isLoading) { _, new in
                 if new { elapsedTime = 0 }
             }
@@ -149,6 +151,7 @@ struct TranslationPanel: View {
 }
 
 struct TranslationPanelPreviewScene: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     var isExpanded: Bool
     var isExplanationOnly: Bool
@@ -199,6 +202,7 @@ struct TranslationPanelPreviewScene: View {
                 .padding(.horizontal)
             }
         }
+        .enableInjection()
     }
 }
 

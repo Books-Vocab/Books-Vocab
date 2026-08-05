@@ -68,7 +68,9 @@ extension SettingsView {
                 autoSyncEnabled: autoSyncSettingsStore.isEnabled,
                 showAutoSync: authManager.isLoggedIn,
                 autoLinkEnabled: autoLinkSettingsStore.isEnabled,
-                showAutoLink: authManager.isLoggedIn
+                showAutoLink: authManager.isLoggedIn,
+                soundFeedbackEnabled: feedbackSettingsStore.soundFeedbackEnabled,
+                hapticFeedbackEnabled: feedbackSettingsStore.hapticFeedbackEnabled
             ),
             kg: authManager.isLoggedIn
                 ? .init(
@@ -172,7 +174,9 @@ extension SettingsView {
                         toastCoordinator: toastCoordinator
                     )
                 }
-            }
+            },
+            toggleSoundFeedback: { feedbackSettingsStore.setSoundFeedbackEnabled($0) },
+            toggleHapticFeedback: { feedbackSettingsStore.setHapticFeedbackEnabled($0) }
         )
     }
 

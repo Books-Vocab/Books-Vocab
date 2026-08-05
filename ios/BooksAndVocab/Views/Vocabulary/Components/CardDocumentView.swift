@@ -85,6 +85,7 @@ struct CardDocumentHeroBlock: View {
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
+    @State private var speakTrigger = false
     let hero: CardDocumentHero
 
     var body: some View {
@@ -111,12 +112,12 @@ struct CardDocumentHeroBlock: View {
                     HStack(spacing: appSkin.spacing.heroBaselineGap) {
                         Button {
                             speechService.speak(hero.word)
-                            copyTrigger.toggle()
+                            speakTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")
                                 .font(appSkin.typography.iconSmall)
                                 .foregroundStyle(appSkin.palette.secondaryText)
-                                .symbolEffect(.bounce, value: copyTrigger)
+                                .symbolEffect(.bounce, value: speakTrigger)
                                 .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
                         }
@@ -139,11 +140,13 @@ struct CardDocumentHeroBlock: View {
                 toastCoordinator.success("已複製".localized)
             }
         }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+        .appFeedback(.selection, trigger: speakTrigger)
+        .appFeedback(.success, trigger: copyTrigger)
     }
 }
 
 struct CardDocumentExampleBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
@@ -178,10 +181,12 @@ struct CardDocumentExampleBlock: View {
             }
         }
         .cardCopyContextMenu(paragraph.plainText)
+        .enableInjection()
     }
 }
 
 struct CardDocumentMeaningBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let meaning: CardDocumentMeaning
     var compact: Bool = false
@@ -215,10 +220,12 @@ struct CardDocumentMeaningBlock: View {
             }
         }
         .cardCopyContextMenu(copyText)
+        .enableInjection()
     }
 }
 
 struct CardDocumentSourceBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let source: CardDocumentSource
 
@@ -244,10 +251,12 @@ struct CardDocumentSourceBlock: View {
             .foregroundStyle(appSkin.palette.secondaryText)
         }
         .cardCopyContextMenu(copyText)
+        .enableInjection()
     }
 }
 
 struct CardDocumentCollocationsBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let items: [String]
     var compact: Bool = false
@@ -271,6 +280,7 @@ struct CardDocumentCollocationsBlock: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private func collocationPill(_ item: String) -> some View {
