@@ -3,11 +3,47 @@ tier: reference
 authority: SoT
 update_trigger: code-change
 scope:
-  - ios/BooksAndVocab/Views/
   - ios/BooksAndVocab/Debug/
-verified_against: 307dee7c
+verified_against: 0c9e3b7c
 -->
 # KG iOS Catalog Scope Bible (SoT)
+
+## ⛔ FROZEN 2026-08-05 — Catalog / UI World 停止擴張
+
+**決策**：不再大改 UI 風格、不再重做行銷截圖，故本平面**停止擴張**（不是停止運作）。Catalog 展示廳、`marketing_demo.json`、投影鏈全部原地保留且可正常跑；停掉的是「每加一個畫面就要同步七個面」的義務。
+
+**量測依據**（2026-08-05，過去 90 天）：2381 個 commit 中 175 個（7.4%）落在本平面，其中 `ops/demo` 投影鏈佔 77 個——而它的活消費者只有行銷截圖與 App Store 送審，一年跑個位數次。另實測 catalog 對 `Views/` 的**真連坐率僅 2.6%**（76 個 View commit 中只有 2 個被迫改 `Debug/`，且都是全專案改名這種操作）——所以 **catalog 不移除**，它本身不是負擔，一直餵它才是。
+
+### 凍結期紅線（違反會紅，不是建議）
+
+1. **新畫面不進 catalog**，**且不新增 `CatalogScene.ScreenID` case**。要看畫面直接開模擬器。
+   —— 只加 View **不動 `Debug/`** 是機械上完全綠的路徑（`CatalogCoverageTests` 的覆蓋契約以 `ScreenID.allCases` 為軸，不會反推「app 有這畫面所以 catalog 必須有」）。但**加了 `ScreenID` case 卻不註冊 surface 會立刻紅**：`CatalogScene.Manifest.pendingCoverage` 目前是空集合（`CatalogScene.swift:132`），沒有緩衝區。
+2. **不新增 `*FixtureID` case。凍結期就是不加**——沒有「只加一個地方」的捷徑。
+   本次解除的只有 **world ↔ allCases** 這一種鎖（iOS 側 6 個測試函式、15 條斷言，加 Python 側 `test_fixture_domain_ids_are_a_subset_of_swift_fixture_enums`）。**破戒的話下列四處仍會擋你**——列在這裡是為了誠實與復業者，不是使用指南：
+   - `ops/ui_world_manifest.py:45` 的 `FIXTURE_DOMAIN_IDS` / `PREFERENCE_DOMAIN_KEYS`（Python 側硬編碼鏡像）。**validator 本身一行沒動、也不該動**——它是唯一擋 invalid world 進 simulator 的護欄（`:690` 對 world 出現不認識的 id 直接 `raise`；`ios_test.sh --ui` / `catalog snapshots` / `ui_quality_gate.py` / `uitest_flow_matrix.py` 四個入口都先跑它）。
+     本次只把**它的 parity 測試**從雙向 `==` 放寬成 `FIXTURE_DOMAIN_IDS ⊆ Swift enum`。保留的是健全性方向（Python 絕不可認得 Swift 不認得的 id，否則護欄會放行渲染不出來的 world）；拿掉的反方向只會讓 validator 對「凍結期本來就不該新增的 id」**更保守地拒絕**。
+     實務後果：在 `marketing_demo.json` 加一個新 fixture key，validator 會以 `... have no matching app fixture ID` **exit 64** 擋下——**這是預期行為，不是 bug**。要真的加，`FIXTURE_DOMAIN_IDS` 得一起改。`PREFERENCE_DOMAIN_KEYS` 的雙向 `==`（`test_preference_domain_keys_match_swift_preferences_seed`）**未放寬**，因為新增可 seed 的 preference key 本身就是 UI World 擴張。
+   - `NotebookFixtures.surfaces(for:)` / `tags(for:)` 的 exhaustive switch —— 一般 Swift 列舉窮盡性。
+   - `*FixturesTests.xxxFixtureRegistryExposesPreviewAndCatalogScenarios` 的 registry key ↔ 硬編碼清單比對（實測會紅，見 `NotebookFixturesTests.swift:34,42`）—— 它守的是 surface 分派沒被誤改，與 world 無關。
+   - `ops/demo/generated/ios_fixture_dataset.json` 已不再被 `==` 強制同步，但 `emit-ios --check` 的 byte drift gate 仍在（見下，凍結期它是守衛）。
+3. **不對 `UIWorld*Seed` struct 加必填欄位**——一律 optional 帶 default。凍結的 world 缺 key 會讓 Swift decode 直接炸。
+4. **不改 `marketing_demo.json` 的 `datasetID`**。`ops/app_review/2.0.0.json` 釘死 `spec-820aa288ffea` + SHA256，改了送審證據鏈就斷。
+5. **已入會的 22 個 scenario 不退回 local literal**。退回等於復業時要重做一遍。
+
+### 本次實際解除了什麼
+
+- **6 處雙向 parity 改單向**：5 個 `*FixturesTests.repoAndGeneratedDatasetsDeclareEvery*` 與 `RepoFixtureDatasetsContractTests.generatedDemoDatasetDecodes` 的 `==` 改為 `isSubset`。world 仍不得含 app 不認識的 key（那種 key 永遠不會 render），但 app 的 FixtureID 不再強制回填兩份 world。
+- **`ops/demo/*` 投影鏈加 FROZEN 標頭，測試一個都沒 skip**。實測 **88 passed / 1 skipped / 3.7s**（sandbox route `uv run --no-project`，被 skip 的正是最重的 backend e2e）；**full-fat route（`backend/ uv run pytest`，e2e 真的跑）是 80 passed / 18s**。兩條都便宜，而且全掃過零時鐘 / 零日期 / 零隨機依賴（唯一牆鐘讀取在 `emit_ios.py:571`，可注入、只印 stderr、不進 bytes、`--check` 不走它），所以凍結後不需維護就會一直綠——skip 掉是用零節省換走保護。`emit-ios --check` 的 byte drift gate 在凍結期角色反轉：從「逼你同步」變成「守衛」，誰偷改凍結的投影鏈它會紅。
+
+### 下面那 30+ 條契約還算數嗎
+
+**算，但語意變了**：它們現在描述的是**已入會 scenario 的現況**（回答「這個 scenario 的資料從哪來」），不再是「新 scenario 必須這樣做」的指令。
+
+### 復業條件
+
+下列任一成立就回來讀這節：要送審新版本、要重做行銷截圖、要大改 UI 風格、需要新的 catalog surface。復業 = 6 處 `isSubset` 改回 `==` + 移除 FROZEN 標頭 + 跑 `ops/demo/build_demo.py emit-ios --check` 確認投影鏈未腐。
+
+---
 
 > 第一性原理 litmus：catalog 的原子 = **「手機會看到的視圖」+「其必要組件」**。使用者的眼睛會落在它上面嗎？會 → IN；那是工程基質 → OUT。borderline 寧可 OUT，但**只有確認 OUT 才 CUT** —— 既有 manifest surface 一律先驗 callsite 再裁決。
 >
@@ -35,6 +71,8 @@ verified_against: 307dee7c
 
 ### 計數契約（可復現）
 **「必要組件」= 有自身 sourceFile + 多於一個可區分狀態 + 使用者可指名的具名視圖物件**。凡「以 scenario 覆蓋為畫面狀態」「折入母視圖狀態」者**不計入組件數**，僅作母視圖的 state 列出。主表中被計數者標 `[組件]`，折入者標 `(折入狀態)`。
+
+> ⛔ **以下所有「契約」段落適用檔頭 §FROZEN 的語意轉換**：它們描述**已入會 scenario 的現況**，不是新 scenario 的義務。
 
 ### Preview auth 契約（無 fallback）
 Catalog scenario 可用 DEBUG-only `CatalogPreviewAuth` 注入登入狀態，但不得由 `isLoggedIn` 推導假 user/token/name/email。logged-in scenario 必須明示 `userId` / `token` / `displayName` / `userEmail`；logged-out scenario 必須明示 nil。`CatalogCoverageTests.catalogPreviewAuthDoesNotFallbackToImplicitUserState` 直接掃 Debug source，擋短式 constructor、preview fallback literal 與 `displayName ??` / `userEmail ??` 類型的隱式補值。
