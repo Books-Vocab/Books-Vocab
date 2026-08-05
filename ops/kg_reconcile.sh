@@ -242,7 +242,7 @@ deploy_and_gate() {
   # 2) 重建並啟動（compose 失敗視為部署失敗 → rollback，不讓 set -e 直接中斷）
   #
   # `--force-recreate` 讓下面健康 gate 的**前提為真**，而不是碰運氣。gate 比對容器自報
-  # 版本與 $new_sha，但容器自報的是 bind-mount 進去的 backend/VERSION、且在 import 時
+  # 版本與 ${new_sha}，但容器自報的是 bind-mount 進去的 backend/VERSION、且在 import 時
   # 就快取——所以那個值只隨**行程重啟**改變。而 `up -d --build` 只在 image digest 或
   # 解析後的 compose config hash 變了才 recreate：命中 BACKEND_TRIGGER_RE 卻不進 image
   # 的改動（compose.yml 的註解、Dockerfile 的註解、pyproject 的 [tool.*]）兩者皆不變，

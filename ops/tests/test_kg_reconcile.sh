@@ -314,7 +314,7 @@ grep -q "ROLLED_BACK" "$DEPLOYLOG" 2>/dev/null && bad "no-image change: deploy.l
 ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_NEW" ]] && ok "no-image change: VERSION == new sha" || bad "no-image change: VERSION=$ver_now != $SHA_NEW"
 served_now="$(cat "$SERVEDFILE")"
-[[ "$served_now" == "$SHA_NEW" ]] && ok "no-image change: 容器實際 serving 新 sha" || bad "no-image change: serving=$served_now != $SHA_NEW（容器沒被 recreate）"
+[[ "$served_now" == "$SHA_NEW" ]] && ok "no-image change: 容器實際 serving 新 sha" || bad "no-image change: serving=$served_now != ${SHA_NEW}（容器沒被 recreate）"
 
 section "backend change + smoke 失敗 → rolled-back"
 new_scratch backend
@@ -355,7 +355,7 @@ v="$(get_verdict "$out")"
 [[ "$v" == "rolled-back" ]] && ok "no-image rollback: verdict rolled-back" || bad "no-image rollback: expected rolled-back, got '$v'"
 [[ "$rc" -ne 0 ]] && ok "no-image rollback: exit non-zero ($rc)" || bad "no-image rollback: 回滾卻 exit 0"
 served_now="$(cat "$SERVEDFILE")"
-[[ "$served_now" == "$SHA_OLD" ]] && ok "no-image rollback: 容器實際回到舊版" || bad "no-image rollback: serving=$served_now != $SHA_OLD（回滾沒 recreate，會誤發雙壞告警）"
+[[ "$served_now" == "$SHA_OLD" ]] && ok "no-image rollback: 容器實際回到舊版" || bad "no-image rollback: serving=$served_now != ${SHA_OLD}（回滾沒 recreate，會誤發雙壞告警）"
 # 正控：先證明這個探針**看得到**告警，否則下面那條「沒有雙壞告警」跟「根本沒接到 stderr」
 # 長得一模一樣。
 grep -q "ALERT: 部署健康 gate 失敗" "$ERRLOG" && ok "no-image rollback: 探針讀得到告警（正控）" || bad "no-image rollback: 連預期中的 gate 失敗告警都沒讀到 — 探針壞了，不是行為對了"
@@ -365,7 +365,7 @@ section "每一個 compose 呼叫都必須 force-recreate（字面防護）"
 # 行為斷言更強，但 IMP-0052 當年是靠**字面**斷言抓到的：`devops.sh` 掉了同一個旗標，
 # 紅了 6.5 週。兩條部署路徑既然同語意，就配同形的防護。
 # 用「所有呼叫點」而非「第 N 行」，新增第三個呼叫點會自動被涵蓋；dry-run 的預覽字串
-# 也含 $KG_COMPOSE，所以這條同時釘住「預覽不得少報那個會造成停機的旗標」。
+# 也含 ${KG_COMPOSE}，所以這條同時釘住「預覽不得少報那個會造成停機的旗標」。
 naked="$(grep -n '\$KG_COMPOSE up -d --build' "$RECON" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v -- '--force-recreate' || true)"
 [[ -z "$naked" ]] && ok "所有 compose 呼叫與 dry-run 預覽都帶 --force-recreate" || bad "有 compose 呼叫沒帶 --force-recreate: $naked"
 # 自測：探針要真的找得到呼叫點，否則上面是空迴圈式的全綠。
@@ -387,7 +387,7 @@ v="$(get_verdict "$out")"
 [[ "$v" == "rolled-back" ]] && ok "build-fail: verdict rolled-back" || bad "build-fail: expected rolled-back, got '$v'"
 grep -q "reason=build" "$DEPLOYLOG" && ok "build-fail: 理由記成 build" || bad "build-fail: deploy.log 沒記 reason=build"
 recreates="$(wc -l < "$RECREATELOG" 2>/dev/null | tr -d ' ' || echo 0)"
-[[ "$recreates" == "1" ]] && ok "build-fail: 僅回滾那次 recreate（部署那次 build 就死了）" || bad "build-fail: recreate x$recreates（預期 1）"
+[[ "$recreates" == "1" ]] && ok "build-fail: 僅回滾那次 recreate（部署那次 build 就死了）" || bad "build-fail: recreate x${recreates}（預期 1）"
 served_now="$(cat "$SERVEDFILE")"
 [[ "$served_now" == "$SHA_OLD" ]] && ok "build-fail: 容器停在舊版" || bad "build-fail: serving=$served_now != $SHA_OLD"
 
