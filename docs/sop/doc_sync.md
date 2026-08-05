@@ -38,6 +38,7 @@ verified_against: 0c9e3b7c
      assert run(["git","merge-base","--is-ancestor", anchor, "origin/main"]).returncode == 0
      ```
      **判準會活得比實作久,所以這裡寫判準不寫實作**——指某支「照抄它」正是上述三次錯誤的載體。
+   - **正控本身不得在缺少驗證對象時靜默 skip**。`if not has_origin_main: skip()` 讀起來合理(沒有 origin 就驗不了),但**缺 origin/main 的環境正是降級會發生的環境**——沒有 origin 的 clone、fetch 過期的機器、淺 clone 的 CI。於是斷言在最需要它的地方消失,而套件仍全綠。要嘛讓它**紅**並明說「此環境無法驗證錨點,先 `git fetch origin`」,要嘛把 skip **計數並在總結印出**,**不要讓它變成沉默**。這與上面兩條同源:三者都是「檢查存在但在該響的時候不可能響」。
 5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,並用 `docs_impact.py` 印出 registry impact hints 供 reviewer 檢查；當 gate 偵測到 impact hints 時,也會直接提示 `./ops/docs_impact.py --since <base> --explain` 這條 follow-up 命令,方便追 suppression 細節，並明示「下面的 frontmatter checks 只覆蓋目前 checkout 裡有變更的 docs；non-doc 變更要以上方 impact hints 判讀」。`docs_lint.sh` 現在也會直接補一條 heuristic: `impact hints = sync candidates, STALE = freshness risk`，降低把 hint 當 hard requirement 的誤讀。若這次完全沒有 docs 被選進 lint,gate 也會直說,避免把 `no docs selected` 誤讀成工具無結論。impact hints 第一版 warn-only,不會因既有全 repo doc debt 失敗。
    需要全 repo 健康盤點時才跑 `./ops/docs_lint.sh --audit` 或 `--all`；audit 會暴露歷史 invalid anchor / stale debt,不得把既有 audit debt 當成本次 doc-sync 失敗。
    要盤點控制平面覆蓋率時跑 `./ops/docs_registry_coverage.py`；human output 會優先分 `active_unregistered`(應補進 registry 的活文檔)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt),並明示 backlog 只屬資訊、不屬日常 gate；不再重複把 backlog 傾倒成 generic `UNREGISTERED` 清單。`--help` 也會直接說 `--strict` 只對 active debt 失敗。`--strict` 只會因尚未登記的 active docs 失敗,用來追 registry coverage debt,不是日常 PR gate。
