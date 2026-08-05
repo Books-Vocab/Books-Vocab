@@ -91,6 +91,24 @@ APP_ONLY_FIELDS = ("surface", "repro", "build")
 # stamp. Optional on every entry; see extract_verdict_fields().
 VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
 
+# The groom stamp. `verdict` answers "is this problem still real?"; these answer
+# a different question the ledger could not express — "has anyone worked out HOW
+# to fix it?" Both were being written by the same sweep into the same two
+# fields, so the owner could not tell a re-checked claim from an investigated
+# one, which is the whole reason this exists.
+#
+# `plan` is held to a stated bar: concrete enough that a small model can execute
+# it without re-deriving anything. That bar is prose and cannot be machine-
+# checked, but its PRECONDITIONS can — see _check_groom(). A badge whose
+# preconditions nobody verifies decays into the "reason field nobody reads"
+# failure this repo has already paid for twice.
+GROOM_FIELDS = ("plan", "acceptance", "groomed_at", "groomed_by")
+
+# Claiming the badge requires all of these to be non-empty. `fix_site` is in the
+# list and not in GROOM_FIELDS because it predates this and is shared with the
+# verdict stamp: a plan that cannot name where to change is not a plan.
+GROOM_REQUIRES = ("plan", "acceptance", "fix_site")
+
 # Closed vocabulary, same principle as stream/category/severity/status. Without
 # it prose misfires land in the field unchallenged: `已於 2026-07-31 驗證 CI 綠`
 # yields verdict "CI". `_recover_overflowing_row` already anchors on controlled
@@ -187,6 +205,32 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     return problems
 
 
+def _check_groom(payload: dict) -> list[dict]:
+    """A groom claim must carry the work that makes it true.
+
+    The badge is only useful if it cannot be applied cheaply: the queue it
+    feeds (`list --ungroomed`) is exactly the set of entries nobody has worked
+    out, so one entry wearing the badge without a plan quietly removes itself
+    from the work queue while adding nothing.
+    """
+    if not (payload.get("groomed_by") or payload.get("groomed_at")):
+        return []  # not claimed — nothing to hold it to
+
+    problems: list[dict] = []
+    for field in GROOM_REQUIRES:
+        if not str(payload.get(field, "")).strip():
+            problems.append({"kind": f"groom-claim-without-{field}", "field": field})
+    if not str(payload.get("groomed_by", "")).strip():
+        # Anonymous grooming cannot be audited or re-run; naming the mechanism
+        # is what lets a later reader judge how much the badge is worth.
+        problems.append({"kind": "groom-claim-without-groomer"})
+    if not _DATE_RE.match(str(payload.get("groomed_at", ""))):
+        # Without a date the badge cannot go stale, and a badge that never
+        # expires is a claim about code that has since moved.
+        problems.append({"kind": "groom-claim-bad-date", "value": payload.get("groomed_at")})
+    return problems
+
+
 def validate_entry(payload: dict, *, entry_id: str | None = None) -> list[dict]:
     problems: list[dict] = []
 
@@ -211,6 +255,8 @@ def validate_entry(payload: dict, *, entry_id: str | None = None) -> list[dict]:
         for field in APP_ONLY_FIELDS:
             if payload.get(field):
                 problems.append({"kind": "app-field-on-imp-entry", "field": field})
+
+    problems.extend(_check_groom(payload))
 
     return problems
 
@@ -330,6 +376,7 @@ MUTABLE_FIELDS = (
     ("status", "severity", "resolution", "category")
     + APP_ONLY_FIELDS
     + VERDICT_FIELDS
+    + GROOM_FIELDS
 )
 
 
@@ -415,7 +462,12 @@ def list_entries(
     stream: str | None = None,
     severity: str | None = None,
     category: str | None = None,
+    groomed: bool = False,
+    ungroomed: bool = False,
 ) -> list[dict]:
+    if groomed and ungroomed:
+        raise BacklogError("--groomed and --ungroomed are mutually exclusive")
+
     wanted = {
         "status": status,
         "stream": stream,
@@ -427,6 +479,12 @@ def list_entries(
         for payload in _iter_entries(store)
         if all(value is None or payload.get(field) == value for field, value in wanted.items())
     ]
+    # The badge, not the date, is the predicate: validate_entry() refuses a
+    # groomed_at without a groomer, so the two cannot disagree on a valid store.
+    if groomed:
+        hits = [payload for payload in hits if payload.get("groomed_by")]
+    if ungroomed:
+        hits = [payload for payload in hits if not payload.get("groomed_by")]
     return sorted(hits, key=_sort_key)
 
 
@@ -826,6 +884,13 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 {verdicts}，或
   `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
   讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
+- **梳理戳記**（`plan` / `acceptance` / `groomed_at` / `groomed_by`）：與上面的重新取證欄位
+  回答**不同問題**——`verdict` 答「這問題還在嗎」，梳理戳記答「**修法想清楚了嗎**」。
+  兩者曾被同一次 sweep 寫進同一組欄位，於是「哪些已經被深度論證過」無法從資料回答，
+  這組欄位就是為此而存在。`plan` 的標準是**小模型照著就能執行、不需要再自行推導**；
+  這條標準是散文、無法機器驗，但它的**前提可以**：宣告 `groomed_by` 就必須同時有
+  `plan`、`acceptance`（該紅轉綠的那條命令）與 `fix_site`，否則 `validate` 直接紅。
+  查未梳理的佇列用 `ops/backlog.py list --ungroomed`
 """
 
 _IMP_INTRO = """
@@ -899,6 +964,12 @@ def render_view(store: Path, *, verified_against: str) -> str:
     out += _IMP_INTRO + "\n" + _render_table(imp, LEGACY_COLUMNS)
     out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
     out += f"\n<!-- {len(imp)} IMP + {len(app)} APP entries -->\n"
+    # Not a table column: the view is pinned at the legacy 8 columns so the
+    # importer can still read it back. A count is enough to notice the queue
+    # growing; `list --ungroomed` is where you act on it.
+    open_entries = [e for e in imp + app if e.get("status") not in ("fixed", "wont-fix")]
+    groomed = sum(1 for e in open_entries if e.get("groomed_by"))
+    out += f"<!-- groom: {groomed}/{len(open_entries)} unresolved entries have a fix plan -->\n"
     return out
 
 
@@ -949,6 +1020,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument("--stream", choices=STREAMS)
     p_list.add_argument("--severity", choices=SEVERITIES)
     p_list.add_argument("--category")
+    p_list.add_argument(
+        "--ungroomed",
+        action="store_true",
+        help="only entries nobody has worked out a fix plan for (the groom queue)",
+    )
+    p_list.add_argument(
+        "--groomed", action="store_true", help="only entries carrying a groom stamp"
+    )
     p_list.add_argument("--json", action="store_true")
 
     p_show = sub.add_parser("show", help="show one entry")
@@ -975,6 +1054,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--cost")
     p_update.add_argument("--fix-site", dest="fix_site")
     p_update.add_argument("--verified-at", dest="verified_at")
+    p_update.add_argument(
+        "--plan",
+        help="how to fix it, concrete enough for a small model to execute without re-deriving",
+    )
+    p_update.add_argument("--acceptance", help="the command that must go red before / green after")
+    p_update.add_argument("--groomed-at", dest="groomed_at", help="YYYY-MM-DD")
+    p_update.add_argument(
+        "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
+    )
     p_update.add_argument("--commit", action="store_true")
     p_update.add_argument("--json", action="store_true")
 
@@ -1028,6 +1116,8 @@ def _cmd_list(args) -> int:
         stream=args.stream,
         severity=args.severity,
         category=args.category,
+        groomed=args.groomed,
+        ungroomed=args.ungroomed,
     )
     if args.json:
         print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries}, ensure_ascii=False))
@@ -1050,7 +1140,7 @@ def _cmd_show(args) -> int:
     if args.json:
         print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry}, ensure_ascii=False))
         return 0
-    for field in REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS:
+    for field in REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")
     return 0

@@ -40,6 +40,13 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 `CONFIRMED-OPEN` / `PARTIAL` / `MISSTATED` / `ALREADY-FIXED` / `OBSOLETE`，或
   `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
   讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
+- **梳理戳記**（`plan` / `acceptance` / `groomed_at` / `groomed_by`）：與上面的重新取證欄位
+  回答**不同問題**——`verdict` 答「這問題還在嗎」，梳理戳記答「**修法想清楚了嗎**」。
+  兩者曾被同一次 sweep 寫進同一組欄位，於是「哪些已經被深度論證過」無法從資料回答，
+  這組欄位就是為此而存在。`plan` 的標準是**小模型照著就能執行、不需要再自行推導**；
+  這條標準是散文、無法機器驗，但它的**前提可以**：宣告 `groomed_by` 就必須同時有
+  `plan`、`acceptance`（該紅轉綠的那條命令）與 `fix_site`，否則 `validate` 直接紅。
+  查未梳理的佇列用 `ops/backlog.py list --ungroomed`
 
 ## IMP — 工具 / CLI / 文檔 / 架構摩擦
 
@@ -134,3 +141,4 @@ platform-steward 的 triage 失效。
 |---|---|---|---|---|---|---|---|---|---|---|
 
 <!-- 76 IMP + 0 APP entries -->
+<!-- groom: 0/39 unresolved entries have a fix plan -->
