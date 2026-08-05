@@ -103,20 +103,22 @@ section "Version format guard"
 grep -qE '\[0-9\]\+\\?\.\[0-9\]|[0-9]+\.[0-9]+\.[0-9]+' "$REL" \
   && ok "validates semver x.y.z"            || fail_t "no semver format guard"
 
-# ── 6b. Bash set -u + non-ASCII boundary regression guard ───────────────────
-section "Bash variable braces before non-ASCII"
-bad_boundary="$(
-  rg -n '\$[A-Za-z_][A-Za-z0-9_]*[^[:ascii:]]' "$WORKSPACE/ops" "$WORKSPACE/devops.sh" \
-    -g '*.sh' \
-    -g '!asc.sh' \
-    -g '!test_asc.sh' \
-    -g '!ios_release.sh' \
-    -g '!test_ios_release.sh' \
-    || true
-)"
-[[ -z "$bad_boundary" ]] \
-  && ok "no unbraced shell vars before non-ASCII in non-ASC ops" \
-  || fail_t "unbraced shell vars before non-ASCII:\n$bad_boundary"
+# ── 6b. (retired) Bash set -u + non-ASCII boundary guard ───────────────────
+# This check now has exactly one owner: `ops/tests/test_script_help.sh`. The copy
+# that used to live here was strictly worse and disagreed with it in production:
+#   * it matched `$VAR<non-ASCII>` anywhere, including inside `#` comments — bash
+#     never expands those, so it flagged the comment in kg_reconcile.sh that
+#     *documents* this very hazard (main was red on exactly that, 2026-08-06);
+#   * it had no exemption mechanism, so there was no way to say "this is the
+#     documentation of the rule" (`# fw-allow: <reason>` is the owner's);
+#   * it had no positive control, so if `rg`'s pattern ever stopped matching it
+#     would have gone quietly green forever — the owner asserts on a fixture
+#     first and refuses to report a clean tree if it scanned < 10 files;
+#   * its coverage was a hardcoded `-g '!...'` exclusion list; the owner walks
+#     `git ls-files '*.sh'`, which is strictly broader (it covers devops.sh and
+#     the ASC scripts this one excluded).
+# Two implementations of one rule cannot stay in agreement, and the one without a
+# positive control is the one you cannot trust when they disagree.
 
 # ── 7. status / changelog 唯讀（不得碰遠端 / 不寫檔） ────────────────────────
 section "Read-only commands stay read-only"
