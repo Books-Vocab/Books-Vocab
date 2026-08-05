@@ -402,8 +402,15 @@ def plan_gates(changed_files: list[str],
                                         "executed by cutover — run ops/ui_quality_gate.sh "
                                         "--tier slow --execute-slow if this change needs them",
                                    files=swift))
+        # `--lease` claims a pool simulator for the run and releases it on exit.
+        # Without it these runs contend for the single default device ("iPhone 17
+        # Pro Max"), whose lock has a 600s ceiling — with several worktrees under
+        # gate at once that ceiling is reached routinely, and the timeout surfaces
+        # as rc=1, i.e. indistinguishable from a real test failure. A cutover gate
+        # that turns red because a *neighbour* was testing is worse than a slow
+        # one: it trains the operator to disbelieve the gate.
         gates.append(_shell("ios-test-unit", "ios",
-                            ["ops/ios_ops.sh", "test", "--unit"], "block"))
+                            ["ops/ios_ops.sh", "test", "--unit", "--lease"], "block"))
         if any(_is_ui_path(p) for p in ios):
             # Impacted-scope UI gate: run only the UI *test classes* that changed
             # in this diff — NOT the whole --ui suite. The full suite as a block
@@ -424,7 +431,7 @@ def plan_gates(changed_files: list[str],
             live_only_classes = sorted(set(ui_test_classes) & _LIVE_ONLY_UITEST_CLASSES)
             for cls in sorted(set(ui_test_classes) - _LIVE_ONLY_UITEST_CLASSES):
                 gates.append(_shell(f"ios-test-ui:{cls}", "ios",
-                                    ["ops/ios_ops.sh", "test", "--ui",
+                                    ["ops/ios_ops.sh", "test", "--ui", "--lease",
                                      "--dataset", "marketing_demo", "--file", cls], "block"))
             if live_only_classes:
                 gates.append(_shell(

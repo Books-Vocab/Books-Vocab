@@ -192,6 +192,24 @@ def test_gate_plan_ios_ui_change_selects_full_ios_set():
     assert "design-system" not in names
 
 
+def test_gate_plan_ios_test_gates_lease_a_pool_simulator():
+    """Both iOS test gates must pass `--lease`.
+
+    Without it they contend for the single default simulator, whose device lock
+    has a 600s ceiling. Under concurrent worktrees that ceiling is hit routinely
+    and `ios_test.sh` exits 1 — identical, from the gate's side, to a genuine
+    test failure. Observed 2026-08-05: `ios-test-ui:ExploreNavigationUITests`
+    blocked a cutover with `timed out after 600s waiting for device lock`,
+    having never reached a single test. Nothing else pins this flag, so removing
+    it would leave the whole suite green.
+    """
+    unit = _by_name(plan_gates(["ios/BooksAndVocab/Views/Explore/ExploreView.swift"]))["ios-test-unit"]
+    assert "--lease" in unit["cmd"], unit["cmd"]
+
+    ui = _by_name(plan_gates(["ios/BooksAndVocabUITests/ReaderFlowTests.swift"]))["ios-test-ui:ReaderFlowTests"]
+    assert "--lease" in ui["cmd"], ui["cmd"]
+
+
 def test_gate_plan_changed_uitest_file_selects_its_ui_class():
     gates = plan_gates(["ios/BooksAndVocabUITests/ReaderFlowTests.swift"])
     names = _names(gates)
