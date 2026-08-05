@@ -37,8 +37,14 @@ LAYERS = {
 }
 GATES = {"ci", "test_ops", "ios-test", "xcode", "manual"}
 REQUIRED_KEYS = {"id", "layer", "entrypoint", "gate", "triggers", "verdict", "docs"}
-KNOWN_KEYS = REQUIRED_KEYS | {"regression", "notes"}
+KNOWN_KEYS = REQUIRED_KEYS | {"regression", "notes", "run", "requires"}
 LIST_KEYS = {"triggers", "docs"}
+
+# External resources a mechanism needs before its command means anything. The
+# runner owns the behaviour per resource (fail, or degrade with a warning);
+# this set is what makes `requires:` a closed vocabulary instead of free text,
+# and ops/ui_quality_gate.py imports it rather than keeping a second copy.
+RESOURCES = {"ui-world", "injection-baseline"}
 
 
 def repo_root() -> Path:
@@ -201,6 +207,27 @@ def cmd_validate(root: Path, mechanisms: list[dict], version: str) -> int:
             value = mech.get(key)
             if value is not None and (not isinstance(value, list) or not value):
                 errors.append(f"{mid}: `{key}` must be a non-empty list")
+
+        # A mechanism the plane declares but cannot say how to run resolved to
+        # no command in the runner, was recorded as unrun, and never counted as
+        # failed — so forgetting to register one left the gate green (IMP-0041).
+        # `run:` may be empty (entrypoint takes no arguments); it may not be
+        # absent on a gate this plane owns.
+        if gate == "manual" and "run" not in mech:
+            errors.append(f"{mid}: gate=manual but no `run:` — nothing can execute it")
+        run = mech.get("run")
+        if run is not None and not isinstance(run, list):
+            errors.append(f"{mid}: `run` must be a list of arguments")
+        requires = mech.get("requires")
+        if requires is not None:
+            if not isinstance(requires, list) or not requires:
+                errors.append(f"{mid}: `requires` must be a non-empty list")
+            else:
+                for res in requires:
+                    if res not in RESOURCES:
+                        errors.append(
+                            f"{mid}: unknown required resource {res!r} (allowed: {sorted(RESOURCES)})"
+                        )
 
         entrypoint = mech.get("entrypoint", "")
         if entrypoint and not (root / entrypoint).exists():
