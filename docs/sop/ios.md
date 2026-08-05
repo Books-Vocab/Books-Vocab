@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 381b22910
+verified_against: 0a90b4f8e
 -->
 # Books & Vocab iOS 開發技能
 
@@ -299,7 +299,9 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基建，**無需手動匯入 Apple Distribution 憑證**（cert/profile 已一次性建置，含重建步驟見 `~/.secrets/apple/README.md`）。
 
-> 版號 bump / `ios/x.y.z` tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`changelog`/`tag`(原名 `publish`，別名保留)，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`tag --yes` 才 commit+tag+push origin main）。`tag` 只推 origin main（版本標記，**非部署**）；新 marketing version 的 `tag` / `release` 都須帶 `--new-version-after-ready <previous>`，表示 operator 已從 ASC 確認 previous version 完成審查。工具只離線對證 latest local `ios/*` tag，不自行連 ASC。`release ios` 的順序是 bump→upload→tag，upload 失敗不留下 false release marker。本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
+> 版號 bump / tag / changelog 走 **`ops/release.sh`**（`status`/`bump`/`bump-build`/`changelog`/`tag`(原名 `publish`，別名保留)/`release`/`resubmit`/`shipped`，單一入口；寫入面一律 dry-run 預設——`bump --yes` 才改版號檔、`tag --yes` 才 commit+tag+push origin main）。`tag` 只推 origin main（版本標記，**非部署**）。
+>
+> **iOS 有兩種 tag，語意不同**：`ios/<x.y.z>` = 該 marketing version **上架 App Store** 的那顆 commit，**只由 `release.sh shipped ios` 依 ASC 查證後物化**、immutable；`ios/<x.y.z>+<build>` = 該 (version, build) 的**封版** commit（只代表出過 archive），由 `tag`/`release`/`resubmit` 產生。`--new-version-after-ready` **已移除**——上架 tag 存在本身就是證據，新版 guard 改為直接讀 repo 的 tag 自行檢查（須有上架 tag、嚴格遞增、不得跳過「有 build tag 卻無上架 tag」的版本）。`release ios` / `resubmit ios` 的順序是 bump→upload→封 build tag，upload 失敗不留下 commit/tag/push。**誰擁有哪個版號事實、怎麼查，SoT 表在 `docs/sop/release.md`。** 本節的 `ios_release.sh`（出 build）與 `asc.sh`（App Store 文案/查詢）是**正交**設施。注意目前無 tag-triggered CI，tag 僅為版本標記。三平面語意見 `docs/sop/release.md`。
 
 ### 版號命名決策（下一個 build 該叫什麼）
 
@@ -307,13 +309,14 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 
 | 情境 | marketing | build | 命令 |
 |---|---|---|---|
-| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | +1 | `release.sh bump-build ios [--yes]` → `ios_release.sh --upload` |
-| 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --new-version-after-ready <previous> --yes`（bump→upload→tag）；或拆步先 bump/upload，再以同 flag `tag ios <x.y.z> --yes` |
+| 同版**未上架/被拒重送**（還在同一輪審查，只換 binary 給審查員） | **不動** | +1 | `release.sh resubmit ios [--yes]`（bump-build→upload→封 `ios/<x.y.z>+<build>`） |
+| 已上架後**新版本**：純修 bug | patch（第三位+1，如 2.0.0→2.0.1） | +1 | `release.sh release ios <x.y.z> --yes`（bump→upload→封 build tag）；或拆步先 bump/upload，再 `tag ios <x.y.z> --yes` |
 | 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
 | 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
 
 - semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。
-- **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架 / 完成審查**。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`bump-build`，不動 marketing；只有 ASC 確認完成審查後，才可把 previous version 填進 `--new-version-after-ready`。
+- **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架**（這條準則沒變，變的是怎麼落實它）。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`resubmit ios`，不動 marketing。**這個判斷現在由工具做，不由 operator 打字背書**：上架事實靠 `release.sh shipped ios --yes` 從 ASC 查證後物化成 `ios/<x.y.z>`，`release ios` 的 guard 再讀它。所以**上架後第一件事就是補跑 `shipped ios --yes`**——沒補，下一版會被 guard 正確地擋下來。
+- **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 commit 產生」，而 **Apple 不保留這個資訊**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在封版當下捕捉，**事後無法重建**。`release.sh status` 會在目前的 (version, build) 沒有 build tag 時具名警告；看到就別直接 `ios_release.sh --upload`，走 `release ios` / `resubmit ios` 讓它封版。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」（`ios/1.6.0` 上架的是哪顆 build 已永久不可考）。
 
 > ⚠ **看發版狀態只信 App Store Connect / TestFlight（server 真相），別信 Xcode Organizer**。Organizer 只列 Xcode.app GUI 出的 archive（存 `~/Library/Developer/Xcode/Archives/`）；本 repo 走 CLI（`ios_release.sh` archive 到 `ios/build/`），CLI 出的 build **永遠不進 Organizer**——Organizer 停在最後一次 GUI 出包（1.6(3)/2026-04）不代表後續 build 遺失。TestFlight `asc.sh builds` 才是實況。
 
