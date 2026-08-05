@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-05",
+  "detail": "GraphEventStore.insert_many still does one session.get(GraphEvent, event_id) per entry (backend/src/kg/graph_event_log.py:134) — the exact twin of the per-entry existence check just batched out of ReviewEventStore.insert_many. Both ledgers deliberately share sqlite_ledger.py (normalize_last_ingested / next_ingested_at) precisely so they do not drift; fixing only the review-events half re-introduces the divergence that module exists to prevent. Lower urgency than the review-events case because graph events are server-emitted (graph_history_synth.py, sot_history_migrate.py) rather than re-sent wholesale by a watermark-less client — but sot_history_migrate backfill batches can be large. Fix: mirror _existing_event_ids (chunked IN, chunk under SQLite's pre-3.32 999-variable ceiling) plus the in-loop known-ids add that preserves the intra-batch duplicate guard.",
+  "id": "IMP-20260805-352def",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "code review of the review-event push-watermark fix (debug/sync-latency-watermark)",
+  "status": "open",
+  "stream": "IMP"
+}

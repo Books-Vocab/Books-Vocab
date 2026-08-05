@@ -24,6 +24,10 @@ from .sqlite_ledger import (
     now_utc as _now,
 )
 
+# Ids per ``IN`` clause when checking which events the store already has. Kept
+# below SQLite's pre-3.32 default limit of 999 bound variables per statement.
+_EXISTS_QUERY_CHUNK = 500
+
 
 class ReviewEvent(SQLModel, table=True):
     """One immutable review event, keyed by the client-generated event id."""
@@ -112,6 +116,28 @@ class ReviewEventStore:
                 f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)"
             )
 
+    def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
+        """Return which of ``event_ids`` this store already holds.
+
+        A client without a push watermark re-sends its whole review history every
+        sync, so this lookup runs over thousands of ids that are all already
+        present. One ``session.get`` per id turned that into thousands of point
+        queries; one ``IN`` per chunk cuts that by the chunk size (9,542 ids: 20
+        queries instead of 9,542). The chunk stays under SQLite's pre-3.32
+        999-variable ceiling so the query never has to care which SQLite the host
+        shipped — and production really does send ~1000 events per PATCH, so the
+        multi-chunk path is live, not hypothetical.
+        """
+        known: set[str] = set()
+        for start in range(0, len(event_ids), _EXISTS_QUERY_CHUNK):
+            chunk = event_ids[start : start + _EXISTS_QUERY_CHUNK]
+            known.update(
+                session.exec(
+                    select(ReviewEvent.event_id).where(ReviewEvent.event_id.in_(chunk))
+                ).all()
+            )
+        return known
+
     def insert_many(self, entries: list[ReviewEventEntry]) -> dict[str, int]:
         inserted = 0
         skipped = 0
@@ -122,9 +148,12 @@ class ReviewEventStore:
             last_ingested = normalize_last_ingested(
                 session.exec(select(func.max(ReviewEvent.ingested_at))).one()
             )
+            # Pre-fetched ids only cover what was already committed. The loop adds
+            # each accepted id so a repeated event_id *inside* one payload is still
+            # skipped — the per-entry `session.get` used to catch that via autoflush.
+            known_ids = self._existing_event_ids(session, [e.event_id for e in entries])
             for entry in entries:
-                existing = session.get(ReviewEvent, entry.event_id)
-                if existing is not None:
+                if entry.event_id in known_ids:
                     skipped += 1
                     continue
                 reviewed_at = _parse_required_timestamp(entry.reviewed_at, "reviewed_at")
@@ -151,6 +180,7 @@ class ReviewEventStore:
                         is_synthetic=entry.is_synthetic,
                     )
                 )
+                known_ids.add(entry.event_id)
                 inserted += 1
             session.commit()
         return {"inserted": inserted, "skipped": skipped}
