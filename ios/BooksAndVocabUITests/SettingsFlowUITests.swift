@@ -94,6 +94,29 @@ final class SettingsFlowUITests: UITestCase {
             )
         }
 
+        try step("feedback-preferences-toggle", app: app) {
+            guard settings.soundFeedbackToggle.waitUntilExists(timeout: 5),
+                  settings.hapticFeedbackToggle.waitUntilExists(timeout: 5) else {
+                captureStep("no-feedback-toggles", app: app)
+                XCTFail("settings home must expose sound and haptic feedback toggles")
+                return
+            }
+
+            settings.soundFeedbackToggle.scrollIntoView()
+            XCTAssertTrue(settings.soundFeedbackToggle.waitUntilValueEquals("0", timeout: 3))
+            settings.soundFeedbackToggle.tapWhenReady()
+            XCTAssertTrue(settings.soundFeedbackToggle.waitUntilValueEquals("1", timeout: 3))
+            settings.soundFeedbackToggle.tapWhenReady()
+            XCTAssertTrue(settings.soundFeedbackToggle.waitUntilValueEquals("0", timeout: 3))
+
+            settings.hapticFeedbackToggle.scrollIntoView()
+            XCTAssertTrue(settings.hapticFeedbackToggle.waitUntilValueEquals("1", timeout: 3))
+            settings.hapticFeedbackToggle.tapWhenReady()
+            XCTAssertTrue(settings.hapticFeedbackToggle.waitUntilValueEquals("0", timeout: 3))
+            settings.hapticFeedbackToggle.tapWhenReady()
+            XCTAssertTrue(settings.hapticFeedbackToggle.waitUntilValueEquals("1", timeout: 3))
+        }
+
         // 複習節奏: freeze the review clock + switch mode, then verify the home
         // summary reflects BOTH (real state propagation through the store).
         try step("review-rhythm-opened", app: app) {

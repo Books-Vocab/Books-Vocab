@@ -286,7 +286,7 @@ struct TodayReviewPresenter: View {
             .onChange(of: state.progressText) { _, _ in
                 if lastAutoplaySpokenCardKey != nil { lastAutoplaySpokenCardKey = nil }
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
+            .appFeedback(.impactLight, trigger: flingHapticTrigger)
             .animation(AppMotion.panelState, value: isHelpPresented)
         }
         .task {
@@ -422,7 +422,7 @@ struct TodayReviewPresenter: View {
             Spacer()
         }
         .padding(.horizontal, appSkin.metrics.cardBlockPadding)
-        .sensoryFeedback(.success, trigger: celebrationTriggered)
+        .appFeedback(.success, trigger: celebrationTriggered) { _, newValue in newValue }
     }
 
     func revealExpandZone(

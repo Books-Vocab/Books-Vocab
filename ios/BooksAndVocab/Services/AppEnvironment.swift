@@ -82,6 +82,10 @@ private struct SpeechServiceKey: EnvironmentKey {
     static let defaultValue: any Speaking = SpeechService.shared
 }
 
+private struct FeedbackAudioServiceKey: EnvironmentKey {
+    static let defaultValue: FeedbackAudioService = .shared
+}
+
 enum CatalogTaskPolicy: Equatable {
     case live
     case disabled
@@ -140,6 +144,10 @@ extension EnvironmentValues {
     var speechService: any Speaking {
         get { self[SpeechServiceKey.self] }
         set { self[SpeechServiceKey.self] = newValue }
+    }
+    var feedbackAudioService: FeedbackAudioService {
+        get { self[FeedbackAudioServiceKey.self] }
+        set { self[FeedbackAudioServiceKey.self] = newValue }
     }
     var catalogTaskPolicy: CatalogTaskPolicy {
         get { self[CatalogTaskPolicyKey.self] }

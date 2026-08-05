@@ -83,6 +83,8 @@ struct SettingsPresenterState {
         // 預設值讓既有建構處(fixtures / scenarios)免改;登入才顯示(語意在後端 pipeline)。
         var autoLinkEnabled: Bool = true
         var showAutoLink: Bool = false
+        var soundFeedbackEnabled: Bool = false
+        var hapticFeedbackEnabled: Bool = true
     }
 
     struct SyncSummaryState {
@@ -185,4 +187,6 @@ struct SettingsPresenterActions {
     let exportVocabularyCSV: () -> Void
     // 預設 no-op 讓既有建構處(preview / scenarios)免改。
     var toggleAutoLink: (Bool) -> Void = { _ in }
+    var toggleSoundFeedback: (Bool) -> Void = { _ in }
+    var toggleHapticFeedback: (Bool) -> Void = { _ in }
 }

@@ -1119,3 +1119,5 @@
 "explore.copy.sheet.nameLabel" = "Notebook name";
 "explore.copy.sheet.confirm" = "Create & Copy";
 "explore.copy.a11y.cta" = "Copy this deck to my notebook";
+"聲音回饋" = "Sound feedback";
+"觸覺回饋" = "Haptic feedback";

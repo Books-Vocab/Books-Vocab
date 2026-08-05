@@ -89,6 +89,38 @@ struct SettingsPreferencesSection: View {
                 }
                 .accessibilityIdentifier("settings.preferences.reviewRhythmRow")
 
+                SettingsDivider()
+
+                AppKeyValueRow(
+                    icon: "speaker.wave.2",
+                    label: FeedbackSettingsCopy.soundTitle,
+                    style: .settings(appSkin)
+                ) {
+                    Toggle(FeedbackSettingsCopy.soundTitle, isOn: Binding(
+                        get: { state.soundFeedbackEnabled },
+                        set: { actions.toggleSoundFeedback($0) }
+                    ))
+                    .labelsHidden()
+                    .tint(appSkin.palette.accent)
+                    .accessibilityIdentifier("settings.preferences.soundFeedbackToggle")
+                }
+
+                SettingsDivider()
+
+                AppKeyValueRow(
+                    icon: "hand.tap",
+                    label: FeedbackSettingsCopy.hapticTitle,
+                    style: .settings(appSkin)
+                ) {
+                    Toggle(FeedbackSettingsCopy.hapticTitle, isOn: Binding(
+                        get: { state.hapticFeedbackEnabled },
+                        set: { actions.toggleHapticFeedback($0) }
+                    ))
+                    .labelsHidden()
+                    .tint(appSkin.palette.accent)
+                    .accessibilityIdentifier("settings.preferences.hapticFeedbackToggle")
+                }
+
                 if state.showAutoSync {
                     SettingsDivider()
 

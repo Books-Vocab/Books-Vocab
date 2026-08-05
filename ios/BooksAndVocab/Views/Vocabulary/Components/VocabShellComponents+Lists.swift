@@ -166,7 +166,7 @@ struct VocabActionButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
             .animation(AppMotion.pressFeedback, value: configuration.isPressed)
-            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
+            .appFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {

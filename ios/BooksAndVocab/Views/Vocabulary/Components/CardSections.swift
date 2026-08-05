@@ -81,7 +81,7 @@ struct CardFormsSection: View {
                 toastCoordinator.success(CardSectionsCopy.copiedTitle)
             }
         }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+        .appFeedback(.success, trigger: copyTrigger)
         .enableInjection()
     }
 }

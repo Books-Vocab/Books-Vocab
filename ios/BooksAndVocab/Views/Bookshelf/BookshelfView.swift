@@ -395,7 +395,7 @@ struct BookshelfCardButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)
             .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1)
             .animation(AppMotion.TapFeedback.animation, value: configuration.isPressed)
-            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
+            .appFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
     }
 }
 

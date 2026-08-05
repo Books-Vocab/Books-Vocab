@@ -91,9 +91,9 @@ struct SyncPresenter: View {
         .animatePhaseChange(state.summaryText.isEmpty)
         .navigationTitle("同步".localized)
         .inlineNavigationBarTitle()
-        .sensoryFeedback(.success, trigger: state.phase == .completed)
-        .sensoryFeedback(.warning, trigger: state.failureKind == .partial)
-        .sensoryFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled)
+        .appFeedback(.success, trigger: state.phase == .completed) { _, newValue in newValue }
+        .appFeedback(.warning, trigger: state.failureKind == .partial) { _, newValue in newValue }
+        .appFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled) { _, newValue in newValue }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("關閉".localized) { dismiss() }

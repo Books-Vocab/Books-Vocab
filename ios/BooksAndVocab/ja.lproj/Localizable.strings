@@ -1086,3 +1086,5 @@
 "explore.copy.sheet.nameLabel" = "単語帳の名前";
 "explore.copy.sheet.confirm" = "作成してコピー";
 "explore.copy.a11y.cta" = "このデッキを自分の単語帳にコピー";
+"聲音回饋" = "サウンドフィードバック";
+"觸覺回饋" = "触覚フィードバック";

@@ -1087,3 +1087,5 @@
 "explore.copy.sheet.nameLabel" = "단어장 이름";
 "explore.copy.sheet.confirm" = "만들고 복사";
 "explore.copy.a11y.cta" = "이 덱을 내 단어장에 복사";
+"聲音回饋" = "사운드 피드백";
+"觸覺回饋" = "햅틱 피드백";
