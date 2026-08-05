@@ -85,7 +85,17 @@ bump_semver() {  # $1=x.y.z  $2=major|minor|patch
   esac
 }
 
-last_tag() { git -C "$ROOT" tag -l "$(tag_prefix "$1")*" --sort=-v:refname 2>/dev/null | head -1; }
+# `git tag -l "<prefix>*"` 的 `*` 會跨 `/` 比對，所以 ios/2.0.0+6 這種 build tag 也在
+# glob 內，且 `--sort=-v:refname` 把它排在 ios/2.0.0 之上。last_tag 的語意是「最新的
+# **released marketing version**」——被 build tag 頂掉的話，guard、status 的待發版 range
+# 與 changelog 全會改讀一個不代表上架的東西。故只認恰好 <prefix>x.y.z 的形狀。
+# `|| true`：沒有任何 released tag 是正常狀態（首發、或只有 build tag），呼叫端在 set -e
+# 下用 lt="$(last_tag …)" 接，grep 的非零 exit 會讓它中止而不是走「尚未發版」分支。
+last_tag() {
+  local tp; tp="$(tag_prefix "$1")"
+  git -C "$ROOT" tag -l "${tp}*" --sort=-v:refname 2>/dev/null \
+    | grep -E "^${tp}[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true
+}
 
 # iOS marketing version 是否能前進的 server 真相只在 ASC；為避免把 release 綁死在網路/API，
 # 這裡要求 operator 用 typed attestation 明示已查證，並以 latest local ios/* tag 對證 previous version。
