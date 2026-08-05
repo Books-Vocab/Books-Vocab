@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 198402dc7
+verified_against: f25fd2ed6
 -->
 # Books & Vocab Architecture (Offline-First & Multi-User)
 

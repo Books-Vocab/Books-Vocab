@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocab/Models/ReaderSettings.swift
   - ios/BooksAndVocab/Models/VocabHighlightPreferences.swift
   - ios/BooksAndVocab/Views/Reader/
-verified_against: 198402dc7
+verified_against: f25fd2ed6
 -->
 # Reader Feature Boundary
 

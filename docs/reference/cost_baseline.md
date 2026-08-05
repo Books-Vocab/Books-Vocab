@@ -6,7 +6,7 @@ scope:
   - .claude/skills/billing/
   - docs/sop/cost_review.md
   - backend/src/kg/llm/providers.py
-verified_against: 198402dc7
+verified_against: f25fd2ed6
 -->
 # Cost Baseline (Single Source of Truth)
 

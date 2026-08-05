@@ -6,7 +6,7 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: 198402dc7
+verified_against: f25fd2ed6
 -->
 # 後端部署指南
 
