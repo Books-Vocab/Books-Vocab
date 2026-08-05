@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: 0c9e3b7c8
+verified_against: 3c6cd0688
 -->
 # Vocabulary Feature Boundary
 
@@ -59,7 +59,7 @@ verified_against: 0c9e3b7c8
 | `Scenes/TodayReviewSessionState.swift` | 64 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定 |
 | `Scenes/TodayReviewSessionPersistenceController.swift` | 73 | `struct TodayReviewSessionPersistenceController`，封裝 queue persistence metadata / snapshot / deferred flush；讓 `TodayReviewState` 不直接操作 `ReviewSessionPersistence` |
 | `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
-| `Scenes/TodayReviewAutoplayController.swift` | 87 | `@MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration |
+| `Scenes/TodayReviewAutoplayController.swift` | 128 | `@Observable @MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration。**`@Observable` 是契約不是風格**：4 個 playback 狀態由 `TodayReviewState` 的 computed property 投影給 `TodayReviewView.body` 讀，型別若無 registrar 則切 autoplay 不會 invalidate view（開啟方向被 loop 的 `session` mutation 延遲自癒、關閉方向永不自癒 → 播放列永久卡住）。把持有它的 `let` 改成 `var` 不能代替。`task` 必須 `@ObservationIgnored`（每卡 restart loop = 每卡兩次假通知）。由 `TodayReviewAutoplayObservationTests` 釘住 |
 | `Scenes/TodayReviewCollocationState.swift` | 29 | `struct TodayReviewCollocationState`，封裝 collocation explanation 的 scene-local mirror 與 entry mutation；讓 `TodayReviewView` 不再直接持有 explanation mirror / save 流程 |
 | `Scenes/WordDetailSceneState.swift` | 193 | `@Observable @MainActor final class WordDetailSceneState`，封裝 presenterState、`actionError`（原 `linkError`，現為所有卡片層級動作共用的單一 banner）與 link / archive mutation orchestration；讓 `WordDetailSheet` 退回 scene 組裝與 routing。**共用 banner 的生命週期規則**：每個動作起手 `beginAction()` 清空，否則失敗訊息會活過後續的成功動作。`setArchived` 是 async（對齊 `KGVocabCoordinator.handleBatchArchive`），失敗回捲採 compare-and-swap + `!entry.isDeleted` 守衛——await 期間背景 pull 可能帶回權威值並 `markSynced()`，無條件寫回會用舊值蓋掉新鮮值且不再推送 |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
@@ -165,7 +165,7 @@ verified_against: 0c9e3b7c8
 - `TodayReviewSessionState`：純 session/navigation state，僅 `TodayReviewState` 持有
 - `TodayReviewSessionPersistenceController`：session persistence helper，僅 `TodayReviewState` 持有
 - `TodayReviewCardCache`：TodayReview rich-card cache helper，僅 `TodayReviewState` 持有
-- `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有
+- `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有；狀態被投影給 view，故必須維持 `@Observable`
 - `TodayReviewCollocationState`：collocation explanation substate，僅 `TodayReviewState` 持有
 - `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
