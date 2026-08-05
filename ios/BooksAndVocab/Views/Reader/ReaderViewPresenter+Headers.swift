@@ -64,10 +64,10 @@ struct ReaderTopChrome: View, Equatable {
             Spacer(minLength: AppSpacing.s2)
 
             HStack(spacing: AppSpacing.s1) {
-                toolButton("list.bullet", "目錄".localized, onShowTableOfContents)
-                toolButton("textformat.size", "閱讀設定".localized, onShowReaderSettings)
-                toolButton("text.book.closed", "選擇單字本".localized, onShowNotebookPicker)
-                toolButton("chevron.up", "收起標題列".localized, onCollapseHeader)
+                toolButton("list.bullet", L10n.string("目錄"), onShowTableOfContents)
+                toolButton("textformat.size", L10n.string("閱讀設定"), onShowReaderSettings)
+                toolButton("text.book.closed", L10n.string("選擇單字本"), onShowNotebookPicker)
+                toolButton("chevron.up", L10n.string("收起標題列"), onCollapseHeader)
                     .appFloatingChromeMorph(id: "more", in: glass)
             }
         }
@@ -75,14 +75,14 @@ struct ReaderTopChrome: View, Equatable {
 
     private var backButton: some View {
         AppFloatingChromeButton(
-            accessibilityLabel: "書庫".localized,
+            accessibilityLabel: L10n.string("書庫"),
             accessibilityIdentifier: "reader.header.backButton",
             action: onDismiss
         ) {
             HStack(spacing: AppSpacing.s1) {
                 Image(systemName: "chevron.left")
                     .font(appSkin.typography.iconToolbar)
-                Text("書庫".localized)
+                Text(L10n.string("書庫"))
                     .font(appSkin.typography.body.weight(.semibold))
                     // 直排修法之二：不讓 label 在壓縮情境下換行。repo 的 Component
                     // Hard Rules 本就要求，這裡是補上而非新增約束。
@@ -122,7 +122,7 @@ struct ReaderTopChrome: View, Equatable {
             }
 
             AppFloatingChromeButton(
-                accessibilityLabel: "展開標題列".localized,
+                accessibilityLabel: L10n.string("展開標題列"),
                 accessibilityIdentifier: "reader.header.expandButton",
                 action: onExpandHeader
             ) {
