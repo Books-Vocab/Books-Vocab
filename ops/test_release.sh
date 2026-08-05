@@ -497,8 +497,10 @@ TMP4="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4"' EXIT
 
 make_ios_release_fixture() {
   local fixture="$1" remote="$2"
-  mkdir -p "$fixture/ops" "$fixture/ios/BooksAndVocab.xcodeproj"
+  mkdir -p "$fixture/ops/lib" "$fixture/ios/BooksAndVocab.xcodeproj"
   cp "$REL" "$BUMP" "$fixture/ops/"
+  # release.sh source 它；漏了會在 fixture 裡變成「找不到 release_last_tag」而非測到行為。
+  cp "$WORKSPACE/ops/lib/release_tags.sh" "$fixture/ops/lib/"
   cat > "$fixture/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
 /* app Debug */    MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 5;
 /* app Release */  MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 5;
@@ -689,21 +691,13 @@ echo "$status_body" | grep -q '誤標' \
 # 讓 guard / status / changelog range 全部改讀一個不是「已上架版本」的東西。
 section "last_tag recognizes only the released x.y.z shape"
 
-# 單行與多行函式都能抽（last_tag 從單行長成多行時測試不得默默失效）。
-extract_fn() {
-  awk -v fn="$1" '
-    index($0, fn "(") == 1 { print; if ($0 ~ /\}[[:space:]]*$/) exit; inside=1; next }
-    inside { print; if ($0 ~ /^\}/) exit }
-  ' "$REL"
-}
-
+# 直接對規則的 owner 取證，不再從 release.sh 抽函式體：抽取式 probe 只證明「那段程式碼
+# 這樣寫」，證不到任何呼叫端——所以它可以在 release_changelog.sh 靜默壞掉時全綠。
+# 呼叫端由下面的 status 斷言與 §18 的 changelog 斷言各自覆蓋。
 last_tag_probe() {  # $1=fixture root  $2=component
   bash -c "set -euo pipefail
-ROOT='$1'
-err() { echo \"✗ \$*\" >&2; exit 1; }
-$(extract_fn tag_prefix)
-$(extract_fn last_tag)
-last_tag '$2'"
+. '$WORKSPACE/ops/lib/release_tags.sh'
+release_last_tag '$2' '$1'"
 }
 
 TMP5="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$TMP5"' EXIT
@@ -744,6 +738,20 @@ lt_empty="$(last_tag_probe "$fx_lt_empty" ios)" || empty_rc=$?
 [[ "$empty_rc" -eq 0 && -z "$lt_empty" ]] \
   && ok "last_tag with build tags but no released tag returns empty and exits 0" \
   || fail_t "last_tag build-tag-only repo: rc=$empty_rc out='${lt_empty}' (would abort status under set -e)"
+
+# 呼叫端取證：release.sh status 必須報 released tag，而不是排在它前面的 build tag。
+mkdir -p "$fx_lt/ops/lib" "$fx_lt/ios/BooksAndVocab.xcodeproj" "$fx_lt/backend/src/kg"
+cp "$REL" "$fx_lt/ops/"
+cp "$WORKSPACE/ops/lib/release_tags.sh" "$fx_lt/ops/lib/"
+cat > "$fx_lt/ios/BooksAndVocab.xcodeproj/project.pbxproj" <<'PBX'
+MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;
+MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;
+PBX
+printf '[project]\nversion = "2.0.1"\n' > "$fx_lt/backend/pyproject.toml"
+status_fx="$(bash "$fx_lt/ops/release.sh" status 2>&1)"
+echo "$status_fx" | grep -E '^■ ios' | grep -q 'ios/2.0.0+6' \
+  && fail_t "status reports the build tag as the last released version: $(echo "$status_fx" | grep -E '^■ ios')" \
+  || ok "status caller reports the released tag, not the build tag"
 
 # ── 17. build tag：(version, build) → 封版 commit ───────────────────────────
 # Apple 只保留「當前」appStoreVersion，versionString 是可變欄位，build number 每個
@@ -812,6 +820,41 @@ idem_out="$(bash "$fx_bi/ops/release.sh" tag ios 2.0.1 --yes 2>&1)" || idem_rc=$
    && "$(git --git-dir="$remote_bi" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$sealed_bi" ]] \
   && ok "re-sealing the same (version, build) at the same commit is a noop that still pushes" \
   || fail_t "idempotent re-tag failed: rc=$idem_rc out=$idem_out"
+
+# ── 18. changelog 也吃同一條「released tag」規則 ────────────────────────────
+# §16 只證明了 release.sh 裡的 last_tag 函式，證不到任何呼叫端——而 release_changelog.sh
+# 帶著同一段邏輯的第二份逐字副本。build tag 一存在，`changelog ios` 就靜默錨在它上面、
+# 把整份 changelog 清空（無錯誤訊息），而 status 的結尾提示正是 bump → changelog → release。
+# 兩份實作就是這次事故的根因，所以除了行為，也釘住「不得再有第三份」。
+section "changelog shares the released-tag rule (no second implementation)"
+CHANGELOG="$WORKSPACE/ops/release_changelog.sh"
+TAGLIB="$WORKSPACE/ops/lib/release_tags.sh"
+
+[[ -f "$TAGLIB" ]] \
+  && ok "ops/lib/release_tags.sh exists (single owner of the tag rule)" \
+  || fail_t "ops/lib/release_tags.sh missing — release.sh and release_changelog.sh still carry two copies"
+grep -q 'git tag -l' "$CHANGELOG" \
+  && fail_t "release_changelog.sh still enumerates tags itself (second implementation of the released-tag rule)" \
+  || ok "release_changelog.sh no longer enumerates tags itself"
+
+fx_cl="$TMP5/changelog"
+mkdir -p "$fx_cl/ops/lib"
+cp "$CHANGELOG" "$fx_cl/ops/"
+[[ ! -f "$TAGLIB" ]] || cp "$TAGLIB" "$fx_cl/ops/lib/"
+git init -q -b main "$fx_cl"
+git -C "$fx_cl" config user.name "Release Test"
+git -C "$fx_cl" config user.email "release-test@example.invalid"
+git -C "$fx_cl" commit -q --allow-empty -m "ios: before shipping"
+git -C "$fx_cl" tag ios/2.0.0
+git -C "$fx_cl" commit -q --allow-empty -m "ios: 新增 after shipping"
+git -C "$fx_cl" tag "ios/2.0.0+6"          # build tag 指向較新的 commit
+cl_out="$(bash "$fx_cl/ops/release_changelog.sh" ios 2>&1)"
+echo "$cl_out" | grep -q '自 ios/2\.0\.0[^+]' && ! echo "$cl_out" | grep -q '2\.0\.0+6' \
+  && ok "changelog anchors on the released tag, not the build tag" \
+  || fail_t "changelog anchored on a build tag: $cl_out"
+echo "$cl_out" | grep -q 'after shipping' \
+  && ok "changelog still lists commits made after the released tag" \
+  || fail_t "changelog silently emptied itself (no error, just no content): $cl_out"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
