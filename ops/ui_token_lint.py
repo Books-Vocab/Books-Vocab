@@ -5,8 +5,9 @@ Every visual constant in the iOS app must flow through a design token:
 
   raw `.padding(<number>)`                  → AppSpacing.sN
   raw `.shadow(...)`                        → .appElevation(.zN)
-  RoundedRectangle(cornerRadius: <number>)  → AppRadius.*
-  `.cornerRadius(<number>)`                 → AppRadius.*
+  RoundedRectangle(...) / Capsule(...)      → AppRoundedRect(roundness:)
+  raw `cornerRadius: <number>`              → AppRoundness.* (dimensionless t)
+  bare number in a `*[Rr]oundness:` arg     → AppRoundness.*
   raw hex color (Color(hex:/0xRRGGBB/#RGB)  → AppColors.*
   `.font(.system(size: <number>))`          → AppFonts.*
 
@@ -79,9 +80,31 @@ PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
         "use .appElevation(.zN)",
     ),
     (
+        # Absolute pt radii. The corner system is dimensionless now: radius is
+        # derived from the shape's own box at render time.
         "radius",
         re.compile(r"RoundedRectangle\(\s*cornerRadius:\s*-?\d|\.cornerRadius\(\s*-?\d"),
-        "use AppRadius.*",
+        "use AppRoundedRect(roundness: AppRoundness.*)",
+    ),
+    (
+        # AppRoundedRect is the single entry point for rounded rectangles.
+        # Reaching for the raw SwiftUI shapes bypasses the roundness plane, so
+        # they need an explicit `// token-allow:` justification.
+        "raw-rounded-shape",
+        re.compile(r"\b(?:Uneven)?RoundedRectangle\(|\bCapsule\("),
+        "use AppRoundedRect / AppUnevenRoundedRect",
+    ),
+    (
+        # A bare number in the roundness plane means someone put a pt length
+        # where a dimensionless t belongs — the exact confusion this system exists
+        # to remove. `roundness: 0` and `roundness: 1` are the honest endpoints
+        # and stay legal; anything else must name a token.
+        # `\w*[Rr]oundness:` so the per-corner labels (`topRoundness:` /
+        # `bottomRoundness:`) are covered too — a plain `roundness:` match is
+        # case-sensitive and would sail straight past them.
+        "roundness",
+        re.compile(r"\w*[Rr]oundness:\s*(?!0\s*[),])(?!1\s*[),])-?\d"),
+        "use AppRoundness.* (t is dimensionless, not pt)",
     ),
     (
         "color",
@@ -130,6 +153,37 @@ class Finding:
         return f"{self.rel}:{self.lineno}: [{self.pattern}] {self.snippet}  → {self.hint}"
 
 
+def _strip_comment(line: str) -> str:
+    """Drop a trailing `//` comment so prose can name the very APIs the rules ban.
+
+    Without this, any migration note or doc comment mentioning e.g.
+    `RoundedRectangle` is flagged, which pressures authors into rewording
+    accurate comments to appease the linter — the tool bending the work instead
+    of the other way round.
+
+    `//` inside a string literal is not a comment, so quotes are tracked. Swift
+    string interpolation and multi-line strings are not modelled: this is a
+    line-based linter and the rules only ever match code-shaped text, so the
+    residual risk is a missed finding inside an interpolated segment, never a
+    false positive.
+    """
+    in_string = False
+    escaped = False
+    for idx, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string and ch == "/" and line[idx + 1: idx + 2] == "/":
+            return line[:idx]
+    return line
+
+
 def scan_file(path: Path, rel: str) -> list[Finding]:
     findings: list[Finding] = []
     try:
@@ -140,8 +194,11 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
     for i, line in enumerate(lines, start=1):
         if ALLOW_MARKER in line:
             continue
+        code = _strip_comment(line)
+        if not code.strip():
+            continue
         for pid, rx, hint in PATTERNS:
-            if rx.search(line):
+            if rx.search(code):
                 findings.append(Finding(rel, i, pid, hint, line))
     return findings
 

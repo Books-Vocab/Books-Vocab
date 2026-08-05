@@ -10,11 +10,11 @@ so cross-platform drift can never merge silently.
 Coverage — EVERY token carrying a `$swift` provenance key is checked:
   AppColors    primitive palette (rgb literals) + vocab-highlight CSS strings
   AppTheme     per-theme surfaces / text / borders (rgb + Color.black/white.opacity)
-  AppMetrics   AppSpacing scale, AppRadius scale, AppElevation z0..z4, AppMotion
+  AppMetrics   AppSpacing scale, AppRoundness scale, AppElevation z0..z4, AppMotion
                durations / timingCurve control points, TapFeedback scalars
   AppFonts     TypeScale ramp, Tracking scale
   AppSkin      baseTypography sizes, baseSpacing / baseMetrics (incl. labelTracking),
-               baseRadii refs
+               baseRoundness refs
   UIComponents AppTagMetrics chip padding + AppTag fill opacity (AppSurface.swift),
                AppShellMetrics (toolbar badge padding)
   Scenes       TodayReviewMetrics (progressBarGap, …)
@@ -162,10 +162,11 @@ def parse_struct_init(filename: str, var_name: str) -> dict[str, float]:
             for m in re.finditer(r"(\w+):\s*(" + _FLOAT + r")\b", body)}
 
 
-def parse_base_radii(filename: str = "AppSkin+BaseValues.swift") -> dict[str, str]:
-    """`label: AppRadius.X` from `static let baseRadii = Radii(...)` -> label -> 'X'."""
-    body = _enum_body(_read(filename), r"static let baseRadii\s*=\s*Radii\(", "(", ")")
-    return {m.group(1): m.group(2) for m in re.finditer(r"(\w+):\s*AppRadius\.(\w+)", body)}
+def parse_base_roundness(filename: str = "AppSkin+BaseValues.swift") -> dict[str, str]:
+    """`label: AppRoundness.X` from `static let baseRoundness = Roundness(...)`
+    -> label -> 'X'."""
+    body = _enum_body(_read(filename), r"static let baseRoundness\s*=\s*Roundness\(", "(", ")")
+    return {m.group(1): m.group(2) for m in re.finditer(r"(\w+):\s*AppRoundness\.(\w+)", body)}
 
 
 def parse_string_lets(filename: str) -> dict[str, str]:
@@ -322,6 +323,12 @@ def _dtcg_s(spec: dict) -> float:
     return float(spec["$value"].rstrip("s"))
 
 
+def _dtcg_num(spec: dict) -> float:
+    """Unitless `$type: number` tokens (roundness t). The value is a bare JSON
+    number, not a suffixed string, so the px/s strippers would blow up on it."""
+    return float(spec["$value"])
+
+
 def _dtcg_rgb(spec: dict) -> tuple[float, float, float]:
     val = spec["$value"]
     if val.startswith("#"):
@@ -359,14 +366,14 @@ def check() -> list[str]:
     colors = parse_app_colors()
     theme = parse_app_theme()
     spacing = parse_scale("AppMetrics.swift", "AppSpacing", dt)
-    radius = parse_scale("AppMetrics.swift", "AppRadius", dt)
+    roundness = parse_scale("AppMetrics.swift", "AppRoundness", dt)
     typescale = parse_scale("AppFonts.swift", "TypeScale", dt)
     skin_type = parse_app_skin_typography()
     elevation = parse_elevation(dt)
     tracking = parse_scale("AppFonts.swift", "Tracking", dt)
     base_spacing = parse_struct_init("AppSkin+BaseValues.swift", "baseSpacing")
     base_metrics = parse_struct_init("AppSkin+BaseValues.swift", "baseMetrics")
-    base_radii = parse_base_radii()
+    base_roundness = parse_base_roundness()
     app_metrics = parse_scale("AppMetrics.swift", "AppMetrics", dt)
     color_strings = parse_string_lets("AppColors.swift")
     motion = parse_motion(dt)
@@ -448,12 +455,19 @@ def check() -> list[str]:
             if sw_name not in swift:
                 errors.append(f"{label}.{key}: {sym} not found")
                 continue
-            json_val = _dtcg_px(spec) if key_field == "px" else _dtcg_s(spec)
+            if key_field == "px":
+                json_val = _dtcg_px(spec)
+            elif key_field == "num":
+                json_val = _dtcg_num(spec)
+            else:
+                json_val = _dtcg_s(spec)
             if not _eq(json_val, swift[sw_name]):
                 errors.append(f"{label}.{key}: JSON {json_val} != Swift {sym} {swift[sw_name]}")
 
     check_scale("space.scale", tokens["space"]["scale"], spacing, "AppSpacing.")
-    check_scale("radius.scale", tokens["radius"]["scale"], radius, "AppRadius.")
+    # radius.* has no Swift side any more — it is the web CSS plane only.
+    check_scale("roundness.scale", tokens["roundness"]["scale"], roundness,
+                "AppRoundness.", key_field="num")
 
     # type.scale spans two provenance namespaces: the formal AppFonts.TypeScale
     # ramp and the bespoke AppSkin.Typography vocab sizes.
@@ -524,15 +538,20 @@ def check() -> list[str]:
         elif not _eq(_dtcg_px(spec), table[name]):
             errors.append(f"type.tracking.{key}: JSON {_dtcg_px(spec)} != Swift {sym} {table[name]}")
 
-    # 7) semantic radius refs (AppSkin baseRadii -> AppRadius.X)
-    for key, spec in tokens["radius"]["semantic"].items():
+    # 7) semantic roundness refs (AppSkin baseRoundness -> AppRoundness.X)
+    #
+    # `radius.semantic` deliberately has NO Swift binding any more: iOS moved to
+    # the dimensionless roundness plane, while the web CSS still consumes
+    # --radius-card / --radius-control / --radius-pill as absolute px. Those
+    # entries are web-only and are pinned by ops/component_fidelity_check.py.
+    for key, spec in tokens["roundness"]["semantic"].items():
         if key.startswith("$") or "$swift" not in spec:
             continue
         name = spec["$swift"].split(".")[-1]
-        if name not in base_radii:
-            errors.append(f"radius.semantic.{key}: {spec['$swift']} not found")
-        elif base_radii[name] != _dtcg_ref(spec):
-            errors.append(f"radius.semantic.{key}: JSON ref '{_dtcg_ref(spec)}' != Swift {spec['$swift']} AppRadius.{base_radii[name]}")
+        if name not in base_roundness:
+            errors.append(f"roundness.semantic.{key}: {spec['$swift']} not found")
+        elif base_roundness[name] != _dtcg_ref(spec):
+            errors.append(f"roundness.semantic.{key}: JSON ref '{_dtcg_ref(spec)}' != Swift {spec['$swift']} AppRoundness.{base_roundness[name]}")
 
     # 8) vocab-highlight verbatim CSS strings (AppColors.*CSS)
     for thm, spec in tokens["color"]["vocab-highlight"].items():
