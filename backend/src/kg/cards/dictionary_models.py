@@ -39,3 +39,24 @@ class LexicalOperation(SQLModel, table=True):
     response_json: str | None = None
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class DictionaryPromotionJob(SQLModel, table=True):
+    """Durable one-per-card promotion work item.
+
+    The card row remains the client-facing lifecycle source of truth; this row
+    carries worker recovery/error state that must survive process restarts.
+    """
+
+    __tablename__ = "dictionary_promotion_jobs"
+
+    card_id: str = SQLField(primary_key=True)
+    status: str = SQLField(default="queued")
+    attempt_count: int = SQLField(default=0)
+    error_code: str | None = None
+    retryable: bool | None = None
+    worker_id: str | None = None
+    queued_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))

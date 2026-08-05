@@ -14,7 +14,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .api_models.graph import GraphLinkResponse
-from .cards.dictionary_models import DictionaryEntry, LexicalOperation
+from .cards.dictionary_models import (
+    DictionaryEntry,
+    DictionaryPromotionJob,
+    LexicalOperation,
+)
 from .cards.model import Card
 from .exceptions import ConflictError, NotFoundError
 from .graph import LinkKind
@@ -56,6 +60,8 @@ class SavedDictionaryCard(_CamelModel):
     selected_sense_key: str
     selected_example_key: str
     materialization_status: str
+    promotion_error_code: str | None = None
+    promotion_retryable: bool | None = None
 
     @property
     def reader_hidden(self) -> bool:
@@ -104,13 +110,19 @@ def _card_node(card: Card) -> DictionaryCardNode:
     )
 
 
-def _saved(card: Card, sidecar: DictionaryEntry) -> SavedDictionaryCard:
+def _saved(
+    card: Card,
+    sidecar: DictionaryEntry,
+    job: DictionaryPromotionJob | None = None,
+) -> SavedDictionaryCard:
     return SavedDictionaryCard(
         card=_card_node(card),
         entry=LexicalEntry.model_validate_json(sidecar.payload_json),
         selected_sense_key=sidecar.selected_sense_key,
         selected_example_key=sidecar.selected_example_key,
         materialization_status=sidecar.materialization_status,
+        promotion_error_code=job.error_code if job is not None else None,
+        promotion_retryable=job.retryable if job is not None else None,
     )
 
 
@@ -188,7 +200,7 @@ class DictionaryCardService:
             or sidecar.materialization_status != "active"
         ):
             raise NotFoundError("Dictionary card", card_id)
-        return _saved(card, sidecar)
+        return _saved(card, sidecar, self.cards.get_dictionary_promotion_job(card_id))
 
     def list_projection(
         self,
@@ -209,10 +221,13 @@ class DictionaryCardService:
         )
         page = rows[:limit]
         links_by_card = self._links_for_projection(page)
+        jobs_by_card = self.cards.get_dictionary_promotion_jobs(
+            {card.id for card, _sidecar in page}
+        )
         items = [
             DictionaryProjectionItem(
                 card=_card_node(card),
-                dictionary=_saved(card, sidecar),
+                dictionary=_saved(card, sidecar, jobs_by_card.get(card.id)),
                 reader_hidden=card.reader_hidden,
                 links=links_by_card.get(card.id, []),
             )

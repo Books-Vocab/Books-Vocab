@@ -8,7 +8,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from ..text_utils import normalize_nfc_lower
-from .dictionary_models import DictionaryEntry, LexicalOperation
+from .dictionary_models import DictionaryEntry, DictionaryPromotionJob, LexicalOperation
 from .model import Card
 
 logger = logging.getLogger(__name__)
@@ -18,10 +18,16 @@ def init_schema(engine: Engine) -> None:
     """Create the card table, run migrations and ensure all indexes exist."""
     Card.metadata.create_all(
         engine,
-        tables=[Card.__table__, DictionaryEntry.__table__, LexicalOperation.__table__],
+        tables=[
+            Card.__table__,
+            DictionaryEntry.__table__,
+            LexicalOperation.__table__,
+            DictionaryPromotionJob.__table__,
+        ],
         checkfirst=True,
     )
     _migrate_review_columns(engine)
+    _migrate_dictionary_promotion_jobs(engine)
     _migrate_content_nfc_lower(engine)
     _create_indexes(engine)
 
@@ -94,6 +100,26 @@ def _migrate_review_columns(engine: Engine) -> None:
                     else:
                         logger.error("Migration failed for column %s: %s", col_name, exc, exc_info=True)
                         raise
+        conn.commit()
+
+
+def _migrate_dictionary_promotion_jobs(engine: Engine) -> None:
+    """Keep pre-release promotion job tables forward-compatible."""
+    with engine.connect() as conn:
+        columns = {
+            row[1]
+            for row in conn.exec_driver_sql(
+                "PRAGMA table_info(dictionary_promotion_jobs)"
+            )
+        }
+        if columns and "worker_id" not in columns:
+            try:
+                conn.exec_driver_sql(
+                    "ALTER TABLE dictionary_promotion_jobs ADD COLUMN worker_id TEXT"
+                )
+            except OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
         conn.commit()
 
 
