@@ -530,8 +530,8 @@ noatt_out="$(bash "$fx_a/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || noatt
   || fail_t "new marketing version without attestation unexpectedly succeeded"
 [[ "$(git -C "$fx_a" rev-parse HEAD)" == "$head_a" ]] \
   && grep -q 'MARKETING_VERSION = 2.0.0;' "$fx_a/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
-  && ! git -C "$fx_a" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
-  && ! git --git-dir="$remote_a" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && [[ -z "$(git -C "$fx_a" tag -l 'ios/2.0.1*')" ]] \
+  && [[ -z "$(git --git-dir="$remote_a" tag -l 'ios/2.0.1*')" ]] \
   && [[ ! -e "$fx_a/upload.called" ]] \
   && ok "attestation rejection is pre-mutation (pbx/commit/tag/upload untouched)" \
   || fail_t "attestation rejection happened after a mutation"
@@ -559,8 +559,8 @@ upload_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 
   && ok "attested release reaches upload and propagates upload failure" \
   || fail_t "attested release did not exercise failing upload: $upload_out"
 [[ "$(git -C "$fx_c" rev-parse HEAD)" == "$head_c" ]] \
-  && ! git -C "$fx_c" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
-  && ! git --git-dir="$remote_c" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && [[ -z "$(git -C "$fx_c" tag -l 'ios/2.0.1*')" ]] \
+  && [[ -z "$(git --git-dir="$remote_c" tag -l 'ios/2.0.1*')" ]] \
   && [[ "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$head_c" ]] \
   && ok "upload failure leaves no false release commit/tag/push" \
   || fail_t "upload failure left a false release commit/tag/push"
@@ -574,8 +574,8 @@ direct_out="$(bash "$fx_d/ops/release.sh" bump ios 2.0.1 --yes 2>&1 && bash "$fx
 [[ "$direct_rc" -ne 0 \
    && "$(git -C "$fx_d" rev-parse HEAD)" == "$head_d" \
    && ! -e "$fx_d/upload.called" ]] \
-  && ! git -C "$fx_d" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
-  && ! git --git-dir="$remote_d" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && [[ -z "$(git -C "$fx_d" tag -l 'ios/2.0.1*')" ]] \
+  && [[ -z "$(git --git-dir="$remote_d" tag -l 'ios/2.0.1*')" ]] \
   && ok "direct iOS tag cannot bypass new-version attestation" \
   || fail_t "direct iOS tag bypassed attestation: $direct_out"
 
@@ -604,8 +604,8 @@ committed_rc=0
 committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || committed_rc=$?
 [[ "$committed_rc" -eq 0 && -e "$fx_f/upload.called" \
    && "$(git -C "$fx_f" rev-parse HEAD)" == "$committed_head" \
-   && "$(git -C "$fx_f" rev-parse refs/tags/ios/2.0.1)" == "$committed_head" \
-   && "$(git --git-dir="$remote_f" rev-parse refs/tags/ios/2.0.1)" == "$committed_head" \
+   && "$(git -C "$fx_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_head" \
+   && "$(git --git-dir="$remote_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_head" \
    && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_head" ]] \
   && ok "already-committed version uploads then tags/pushes current HEAD" \
   || fail_t "already-committed version left a partial release: $committed_out"
@@ -706,6 +706,74 @@ lt_empty="$(last_tag_probe "$fx_lt_empty" ios)" || empty_rc=$?
 [[ "$empty_rc" -eq 0 && -z "$lt_empty" ]] \
   && ok "last_tag with build tags but no released tag returns empty and exits 0" \
   || fail_t "last_tag build-tag-only repo: rc=$empty_rc out='${lt_empty}' (would abort status under set -e)"
+
+# ── 17. build tag：(version, build) → 封版 commit ───────────────────────────
+# Apple 只保留「當前」appStoreVersion，versionString 是可變欄位，build number 每個
+# marketing version 重新計數。所以「哪顆 commit 產生了哪顆 build」這個事實只有 repo
+# 能保存，而且必須在出 archive 的當下捕捉——事後無從重建（ios/2.0.0 指向 build 5 的
+# commit、實際上架 build 6 的事故，就是靠 pbxproj 編輯時戳夾送審時戳硬反推出來的）。
+section "iOS build tag records which commit produced (version, build)"
+
+# 17a. release ios 成功後封的是 ios/<ver>+<build>，且**不得**順手打 ios/<ver>：
+#      後者是「已上架」的斷言，upload 完成的那一刻沒有任何人知道它會不會過審。
+fx_bt="$TMP5/build-tag"; remote_bt="$TMP5/build-tag.git"
+make_ios_release_fixture "$fx_bt" "$remote_bt"
+bt_rc=0
+bt_out="$(bash "$fx_bt/ops/release.sh" release ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || bt_rc=$?
+bt_head="$(git -C "$fx_bt" rev-parse HEAD)"
+[[ "$bt_rc" -eq 0 && -e "$fx_bt/upload.called" ]] \
+  && ok "release ios uploads and completes" || fail_t "release ios failed: $bt_out"
+[[ "$(git -C "$fx_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$bt_head" ]] \
+  && ok "build tag ios/2.0.1+6 seals the commit that produced the archive" \
+  || fail_t "no ios/2.0.1+6 build tag at the sealing commit: $bt_out"
+git -C "$fx_bt" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
+  && fail_t "release minted ios/2.0.1 — repo claimed a shipped fact it cannot know at upload time" \
+  || ok "release does not mint the shipped tag it cannot know yet"
+[[ "$(git --git-dir="$remote_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$bt_head" ]] \
+  && ok "build tag is pushed to origin (the other clone needs the same record)" \
+  || fail_t "build tag stayed local"
+
+# 17b. 同一 (version, build) 從兩顆不同 commit 出 archive = 真歧義，必須 refuse，
+#      而且要在 upload 之前——TestFlight upload 不可逆，先確定封得下去再送。
+fx_bc="$TMP5/build-tag-conflict"; remote_bc="$TMP5/build-tag-conflict.git"
+make_ios_release_fixture "$fx_bc" "$remote_bc"
+sealed_bc="$(git -C "$fx_bc" rev-parse HEAD)"
+git -C "$fx_bc" tag "ios/2.0.1+6"
+conflict_rc=0
+conflict_out="$(bash "$fx_bc/ops/release.sh" release ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || conflict_rc=$?
+[[ "$conflict_rc" -ne 0 ]] \
+  && ok "conflicting build tag is refused" || fail_t "conflicting build tag was silently accepted: $conflict_out"
+[[ ! -e "$fx_bc/upload.called" ]] \
+  && ok "conflict refusal happens before the irreversible upload" \
+  || fail_t "uploaded to TestFlight before discovering we could not seal the result"
+[[ "$(git -C "$fx_bc" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$sealed_bc" \
+   && "$(git -C "$fx_bc" rev-parse HEAD)" == "$sealed_bc" ]] \
+  && ok "conflict leaves the existing build tag and HEAD untouched" \
+  || fail_t "conflict moved the existing build tag or HEAD"
+# 這條斷言必須綁在**同一行**同時出現 tag 名與既有 commit：只 grep 短 sha 會被 git 的
+# push range 行（`84b9bb5..312e381 main -> main`）滿足，於是在完全沒有拒絕訊息時也變綠。
+echo "$conflict_out" | grep -q "ios/2.0.1+6.*$(git -C "$fx_bc" rev-parse --short "$sealed_bc")" \
+  && ok "conflict error names both the build tag and the commit it already points at" \
+  || fail_t "conflict error is not actionable (no single line naming tag + existing commit): $conflict_out"
+
+# 17c. 冪等：同一 (version, build) 已封在這顆 commit → noop，不是錯誤。
+#      重跑一次收尾（例如 push 中斷後補跑）不該逼人手動刪 tag。
+fx_bi="$TMP5/build-tag-idempotent"; remote_bi="$TMP5/build-tag-idempotent.git"
+make_ios_release_fixture "$fx_bi" "$remote_bi"
+bash "$fx_bi/ops/release.sh" bump ios 2.0.1 --yes >/dev/null 2>&1 \
+  || fail_t "idempotent fixture bump failed"
+git -C "$fx_bi" add ios/BooksAndVocab.xcodeproj/project.pbxproj
+git -C "$fx_bi" commit -qm "ios: seal 2.0.1 build 6"
+sealed_bi="$(git -C "$fx_bi" rev-parse HEAD)"
+git -C "$fx_bi" tag "ios/2.0.1+6"
+idem_rc=0
+idem_out="$(bash "$fx_bi/ops/release.sh" tag ios 2.0.1 --new-version-after-ready 2.0.0 --yes 2>&1)" || idem_rc=$?
+[[ "$idem_rc" -eq 0 \
+   && "$(git -C "$fx_bi" rev-parse HEAD)" == "$sealed_bi" \
+   && "$(git -C "$fx_bi" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$sealed_bi" \
+   && "$(git --git-dir="$remote_bi" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$sealed_bi" ]] \
+  && ok "re-sealing the same (version, build) at the same commit is a noop that still pushes" \
+  || fail_t "idempotent re-tag failed: rc=$idem_rc out=$idem_out"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
