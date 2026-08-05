@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-05",
+  "detail": "worktree-flow skill 寫「所有 mutation 子指令 dry-run 預設，--commit 才落地」，但 worktree_orchestrate.py open 沒有 --commit 參數（直接落地）。照 skill 字面下 --commit 會得到 argparse error: unrecognized arguments。preflight/resolve/sync/deploy 確實有 --commit，只有 open（與 adopt？）是例外。修 skill 文字或補 open 的 no-op --commit。",
+  "id": "IMP-20260805-a95e23",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "worktree-flow skill",
+  "status": "open",
+  "stream": "IMP"
+}

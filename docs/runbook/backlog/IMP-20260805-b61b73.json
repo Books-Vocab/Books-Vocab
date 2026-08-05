@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "ios_test.sh --lease 每次配到不同的 pool simulator，而 DerivedData 路徑以 destination 為 key（.cache/ios-test-derived-data/<sha>）。結果：每一輪 --lease 執行都拿到冷的 DerivedData，冷編 720 個 Swift 檔約 761s。實測同一個工作樹連續兩次 --lease 產生兩個 1.2G/1.6G 的獨立快取，第二次完全沒有沿用第一次的成果。對 agent 的 TDD 迴圈（改一行→重跑）是致命的：每次迭代 13 分鐘。變通是 --device <固定UDID> + KG_IOS_TEST_ALLOW_SHARED_SIM=1，但那就放棄了 --lease 的並行安全。建議：DerivedData 的 key 不要綁 destination（同一 arch 的 simulator 產物可共用），或 --lease 在同一工作樹內維持 sticky device。",
+  "id": "IMP-20260805-b61b73",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "roundness-single-dof worktree, TDD loop",
+  "status": "open",
+  "stream": "IMP"
+}

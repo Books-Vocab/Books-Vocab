@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-05",
+  "detail": "microGap 同名不同值：AppSpacing.microGap = DesignTokens.Space.Scale.micro = 2（17 個檔使用）vs AppSkin.baseSpacing.microGap = 6（19 個檔使用）。用量幾乎對半分，兩者都活著。後果：讀碼時無法從 .microGap 判斷實際間距，AppTabSelector 的實際高度因此在 37 或 46.5pt 之間無法靜態斷定。建議擇一改名（例如 skin 那個改 rowMicroGap）讓名字重新具備判別力。",
+  "id": "IMP-20260805-b7783c",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "圓角系統盤點時實測",
+  "status": "open",
+  "stream": "IMP"
+}

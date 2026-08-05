@@ -5,14 +5,14 @@ update_trigger: sop-change
 scope:
   - design-system/
   - ops/
-verified_against: f0d37ca4
+verified_against: 6cf407a5
 -->
 # Figma Token Studio Workflow（零基礎 solo 設計師接 tokens.json）
 
 把 `design-system/tokens.json`（W3C DTCG 格式）接進 Figma 的 **Tokens Studio for Figma** plugin，讓設計師能在 Figma 裡視覺化、調整 design token，再回流到 repo。本檔給**完全沒用過 Figma** 的單人開發者，照步驟做即可。
 
 > **先理解權威方向（接線後分兩種，不可混淆）**：
-> - **已接線 scalar 群組**（`AppRadius` / `AppSpacing` scale / `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation` / `AppMotion` 的 duration·spring·tap-feedback）：這些 Swift 值已改為**引用 `DesignTokens.*`**（由 tokens.json 生成）。方向是 **tokens.json（Figma）→ `npm run build` 重生 `DesignTokens.swift` → iOS 消費**。在 Figma 改這些值、跑 build、**重編 app 即生效**，不必手改 Swift。
+> - **已接線 scalar 群組**（`AppRoundness` / `AppSpacing` scale / `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation` / `AppMotion` 的 duration·spring·tap-feedback）：這些 Swift 值已改為**引用 `DesignTokens.*`**（由 tokens.json 生成）。方向是 **tokens.json（Figma）→ `npm run build` 重生 `DesignTokens.swift` → iOS 消費**。在 Figma 改這些值、跑 build、**重編 app 即生效**，不必手改 Swift。
 > - **未接線群組**（**全部顏色** `AppColors`/`AppTheme`、`AppMotion` 的 easing/transition 與無 token 對應的 spring 成員、`LineSpacing`、`AppSkin` 組合層）：仍是**手寫 Swift literal 為 SoT**，tokens.json 鏡像之。Figma 改這些**不會自動生效**，須手動改對應 Swift 再讓 drift check 對齊。
 > 兩種 regime 都由 `ops/token_drift_check.py` 守：已接線者驗「iOS 的 `DesignTokens.*` 引用解析值 == tokens.json」，未接線者驗「iOS literal == tokens.json」。顏色刻意未接（精確 float + `WCAGContrastTests` 釘死對比值，須逐值證明無損才接）。
 
@@ -150,7 +150,7 @@ ops/verify_design_system.sh   # 一支跑齊所有 guard
 ### 5b. 哪些 Figma 改動會自動生效、哪些要手動
 `DesignTokens.swift` 由 Style Dictionary 從 tokens.json 生成（`CGFloat`/`Double`/`String` 常數）。iOS runtime 對它的採用是**漸進**的：
 
-- **已接線（Figma 真注入）**：`AppRadius` / `AppSpacing` scale（`s1`–`s10`/`hairline`/`micro`/`tiny`）/ `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation`（z0–z4 opacity·blur·y）/ `AppMotion` duration（quick·control·chip·progress·indicator·breathing·subtle-breath）·spring（**全部具參數 spring**：standard·emphasized·press·content-reveal·modal-swap·relaxed·button·review-reveal·review-navigation·swipe-snap-back·swipe-fling·swipe-tracking·feedback-button·celebration-bounce·sheet-content-appear·tap-feedback 的 response/damping，含 `interactiveSpring`）·`TapFeedback`（scaleDown·opacityDip）已改為引用 `DesignTokens.*`。在 Figma 改這些 → Push → `npm run build` 重生 `DesignTokens.swift` → **重編 app 即生效**，無需手改 Swift。
+- **已接線（Figma 真注入）**：`AppRoundness`（無因次 t，`roundness.*`）/ `AppSpacing` scale（`s1`–`s10`/`hairline`/`micro`/`tiny`）/ `AppFonts.TypeScale` / `AppFonts.Tracking` / `AppElevation`（z0–z4 opacity·blur·y）/ `AppMotion` duration（quick·control·chip·progress·indicator·breathing·subtle-breath）·spring（**全部具參數 spring**：standard·emphasized·press·content-reveal·modal-swap·relaxed·button·review-reveal·review-navigation·swipe-snap-back·swipe-fling·swipe-tracking·feedback-button·celebration-bounce·sheet-content-appear·tap-feedback 的 response/damping，含 `interactiveSpring`）·`TapFeedback`（scaleDown·opacityDip）已改為引用 `DesignTokens.*`。在 Figma 改這些 → Push → `npm run build` 重生 `DesignTokens.swift` → **重編 app 即生效**，無需手改 Swift。
 - **未接線（仍須手動）**：**全部顏色**（`AppColors` 原色 + `AppTheme` 三主題語意色，精確 float + `WCAGContrastTests` 釘死對比，刻意不自動接）、`AppMotion` 的 **easing**（tokens 是 cubic-bezier 字串，iOS `timingCurve` 收 4×Double + 無對應的 duration，型別不橋接）/ **transition**（複合 `AnyTransition`）/ `systemSpring`·`feedbackPulse`（`Animation.spring()` 平台預設、無顯式參數可入 token）、`AppFonts.LineSpacing`（與 web `type.leading` 語意不同）、`AppSkin` 組合層。改這些須**手動改對應 Swift**，再讓 drift check 確認 tokens.json 對齊。
 - 因此本檔流程價值：對已接線 scalar 是**真正的 Figma→iOS 注入**；對未接線群組是**視覺化探索 + 提案值 + 版本化回 repo**。無論哪種，PR 內 `ops/verify_design_system.sh` 必須綠。
 

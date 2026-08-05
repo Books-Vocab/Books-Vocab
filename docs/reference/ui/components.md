@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: 050f1862
+verified_against: 6cf407a5
 -->
 # UI Component & Pattern Inventory
 
@@ -57,12 +57,12 @@ Scope: `ios/BooksAndVocab`
 - `AppActionButtonStyle`
 - `AppCard`
 - `AppTag`
-- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 掛在**內容流頂端**（清單/表單上方，隨內容捲動）而非 panel 內 transient 訊息。**視覺契約（2026-08 重新設計）**：連續圓角（`AppShellMetrics.cardCornerRadius`）+ 語意背景 token（`successBg` / `warningBg`）+ `primaryText` 文字（tone 色只染 icon，沿用 `AppOfflineBanner` 的 AAA 對比結論）+ `.appElevation(.z0)`，**無 border、無底部 hairline**；action glyph 維持 caption 大小但 hit target 為 44pt。舊版是方角滿版色塊 + 底部 hairline，那是 chrome 語彙、夾在圓角卡片之間割裂（違反 Mochi 北極星 1/2）。屬 App Shell 層，只吃 `AppTheme`/`AppFonts`/`AppMetrics`，不碰 `appSkin`
+- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 掛在**內容流頂端**（清單/表單上方，隨內容捲動）而非 panel 內 transient 訊息。**視覺契約（2026-08 重新設計）**：連續圓角（`AppRoundness.control` —— banner 被 `minHeight` 釘在 44pt，是控制項尺度而非卡片尺度）+ 語意背景 token（`successBg` / `warningBg`）+ `primaryText` 文字（tone 色只染 icon，沿用 `AppOfflineBanner` 的 AAA 對比結論）+ `.appElevation(.z0)`，**無 border、無底部 hairline**；action glyph 維持 caption 大小但 hit target 為 44pt。舊版是方角滿版色塊 + 底部 hairline，那是 chrome 語彙、夾在圓角卡片之間割裂（違反 Mochi 北極星 1/2）。屬 App Shell 層，只吃 `AppTheme`/`AppFonts`/`AppMetrics`，不碰 `appSkin`
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
 - `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；`AppSkeletonCard` 已被 `VocabSceneShell` list 場景採用（1 處），`AppSkeletonLine` 目前僅 def + `AppSkeletonCard` 內部組合 + preview 使用（無外部直接 callsite）；新 loading state 應改用此元件而非自製 placeholder
-- `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRadius.sm` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
+- `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRoundness.control` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
 
 主導航 pattern：
 - `ContentView` 以 `AppPrimarySection` 定義全 app 一級資訊架構（DEBUG：書庫 → 播客 → 單字本 → 總覽；Release：無播客——`AppPrimarySection.visibleCases(podcastEnabled:)` 依 `KGFeatureFlags.podcastEnabled` 過濾，見 `tech_index.md`）。iPhone / iPad 保留 `TabView`；Mac Catalyst 走 `NavigationSplitView` + `.sidebar` list，將主區切換移到左側側欄，避免桌面版沿用手機底部分頁。Catalyst 不用 `List(selection:)`（iOS SDK availability unavailable），改以 sidebar `AppSidebarRow`（見上）+ `selectedSection` 狀態維持選取背景。
@@ -189,7 +189,7 @@ Scope: `ios/BooksAndVocab`
 
 主要檔案：
 - `ios/BooksAndVocab/Networking/RetryPolicy.swift`
-- `ios/BooksAndVocab/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRadius / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
+- `ios/BooksAndVocab/Models/AppMetrics.swift` — AppMetrics / AppSpacing / AppRoundness / AppElevation / AppMotion / ElevationDirection（無 AppLayout — readable-width 由 `WordDetailPresenter` local `maxContentWidth=640` 控）
 - `ios/BooksAndVocab/Models/AppFonts.swift` — AppFonts.serif/sans/mono + TypeScale(caption2/caption/subhead/body/h2/h1/hero) + Tracking + LineSpacing
 - `ios/BooksAndVocab/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
 - `ios/BooksAndVocab/Models/AppTheme.swift` — `@Environment(\.appTheme)` 注入點，Palette/Typography 三組（light/dark/highContrast）
@@ -197,7 +197,8 @@ Scope: `ios/BooksAndVocab`
 核心元件 / token：
 - `RetryPolicy` — 網路重試策略，實作指數退避（exponential backoff）+ Retry-After header 解析；所有 authenticated request 統一使用，不各自硬編 retry 邏輯
 - `AppSpacing` — 8pt grid 語意 token（s0–s7 + `cardOuterPadding/innerGap/sectionGap`），取代 raw padding magic number
-- `AppRadius` — 4 主階圓角（`xs/sm/md/lg`）+ `pill`，禁用鄰近半階值
+- `AppRoundness` — 無因次圓度 t（`none=0 / card=.15 / control=.30 / icon=.45 / pill=1`）。半徑不是常數，由 `AppRoundedRect` 於 render 當下從元件自身 box 導出：`r = t · min(W,H) / 2`
+- `AppRoundedRect` / `AppUnevenRoundedRect`（`ios/BooksAndVocab/UIComponents/AppRoundedRect.swift`）— 全 app 圓角矩形的唯一入口。`Shape` + `InsettableShape`，`.inset(by:)` 給出真正的 concentric 巢狀（`r_inner = r_outer − d`），所以 `.strokeBorder` 與容器內嵌不需再手算 `±2`。t=1 端點是 `.continuous` 方圓，**不是**正圓或圓弧膠囊
 - `AppElevation` — z0–z4 shadow token + `.appElevation(.zN)` modifier；dark mode 自動加強 opacity（**live：~24 callsites**，全 app shadow 唯一入口 — AppSurface / AppToast / Card / cover / overlay 等）
 - `AppMotion` — 動畫語意層 token（`emphasizedDecelerate/Accelerate`、`subtleBreath`、`panelState`、`feedbackPulse`、`phaseChange`、`shimmer`、`TapFeedback` triplet）
 - Animation convenience methods — `View.animatePhaseChange()`、`View.animateFeedback()` 等擴充，將常用 `withAnimation` 組合收斂為語意化呼叫
@@ -220,7 +221,7 @@ Scope: `ios/BooksAndVocab`
 
 核心元件：
 - `.appHoverLift(scale:)` — 卡片 hover 輕微 scale 浮起（預設 1.02）；卡片屬按鈕互動故 scale 合 Motion Contract，已 gate `accessibilityReduceMotion`。套用：`BookCard` / `PodcastSeriesCard` / `NotebookCard`。
-- `.appHoverRowTint(cornerRadius:)` — 扁平可點 list-row hover bg tint（`primaryText.opacity(0.05)`，只動 background）。套用：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `syncSummaryRow`。卡片型可點走 lift / `.liftable`，不重複 tint。
+- `.appHoverRowTint(roundness:)` — 扁平可點 list-row hover bg tint（`primaryText.opacity(0.05)`，只動 background）。套用：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `syncSummaryRow`。卡片型可點走 lift / `.liftable`，不重複 tint。
 - `.appPointerHover(_:)` — chrome 控制項的桌面指標層：包 UIKit `.hoverEffect`（預設 `.highlight`），Catalyst / iPad 觸控板下指標 morph 貼合元件 + 系統 highlight，提示可互動。套用：`AppFilterChipBar` / `AppTabSelector` / `VocabSortPill` / `VocabReviewCTAPill` / `VocabChromeIconButton`。
 
 責任 / 邊界：
