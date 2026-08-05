@@ -168,10 +168,34 @@ if jq -e '.results | type == "array"' <<<"$JSON" >/dev/null 2>&1; then
 else
   fail_t "JSON missing results array: $JSON"
 fi
-if jq -e '.summary.planned > 0' <<<"$JSON" >/dev/null 2>&1; then
-  ok "JSON summary.planned > 0"
+if jq -e '.summary.unrun > 0' <<<"$JSON" >/dev/null 2>&1; then
+  ok "JSON summary.unrun > 0"
 else
-  fail_t "JSON summary.planned not positive"
+  fail_t "JSON summary.unrun not positive"
+fi
+
+section "'nothing was selected' has its own word"
+# `planned=0` used to mean both "everything ran" and "nothing matched" — the
+# latter is exactly the string CI printed while it no-op'd for two months
+# (IMP-0050). `selected` is the plan size and cannot be confused with a
+# healthy run; `unrun` counts mechanisms that stayed unexecuted.
+if jq -e '(.summary | has("planned")) | not' <<<"$JSON" >/dev/null 2>&1; then
+  ok "summary no longer carries the overloaded 'planned' key"
+else
+  fail_t "summary still has 'planned' — the ambiguous token is back"
+fi
+ALL_JSON="$($GATE --tier fast --dry-run --all-mechanisms --include-ci --json 2>/dev/null)"
+DECLARED_N="$(./ops/ui_quality_plane.py list --json 2>/dev/null | jq 'length')"
+if jq -e --argjson n "$DECLARED_N" '.summary.selected == $n' <<<"$ALL_JSON" >/dev/null 2>&1; then
+  ok "--all-mechanisms selects every declared mechanism ($DECLARED_N)"
+else
+  fail_t "selected != the $DECLARED_N mechanisms the plane declares: $(jq -c '.summary' <<<"$ALL_JSON")"
+fi
+NONE_JSON="$($GATE --files "$NOIMPACT_FILE" --tier all --dry-run --json 2>/dev/null)"
+if jq -e '.summary.selected == 0' <<<"$NONE_JSON" >/dev/null 2>&1; then
+  ok "a no-trigger file selects 0 mechanisms — distinguishable from a healthy run"
+else
+  fail_t "no-trigger file did not report selected=0: $(jq -c '.summary' <<<"$NONE_JSON")"
 fi
 
 section "Missing injection baseline is handled gracefully"
@@ -264,7 +288,7 @@ grep -q -- '--all-mechanisms' .github/workflows/ui-quality-gate.yml \
   && ok "workflow uses --all-mechanisms" \
   || fail_t "workflow still scopes by diff; on push HEAD==origin/main so the range is empty and the gate is a no-op"
 out="$("$GATE" --tier fast --execute --all-mechanisms 2>&1 || true)"
-passed_n="$(sed -n 's/.*summary: planned=[0-9]* passed=\([0-9]*\).*/\1/p' <<<"$out" | head -1)"
+passed_n="$(sed -n 's/.*summary: selected=[0-9]* unrun=[0-9]* passed=\([0-9]*\).*/\1/p' <<<"$out" | head -1)"
 [[ "${passed_n:-0}" -ge 5 ]] && ok "--all-mechanisms executes ${passed_n} fast mechanism(s)" \
   || fail_t "--all-mechanisms executed ${passed_n:-0} mechanisms — expected all five fast lints"
 

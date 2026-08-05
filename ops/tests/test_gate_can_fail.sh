@@ -204,16 +204,20 @@ assert_green ui-quality-fast "failed=0" "$TMP/uiq_clean.out" "$rc"
 # green for two months. Two independent guards against a green no-op:
 #   passed >= 5   a FLOOR (five fast lints today), not an exact count — a sixth mechanism
 #                 must not fail this, but a collapse to zero must.
-#   planned == 0  nothing was selected and then left unrun.
-# NOTE `planned` is a STATUS TALLY (mechanisms still in the `planned` state), not the
-# size of the plan — ui_quality_gate.py:352. So `planned=0` appears in a perfectly
-# healthy run as well as in the two-month idle one; only the whole tally being zero
-# meant "nothing selected". See IMP-0050.
-planned_n="$(summary_field planned "$TMP/uiq_clean.out")"
+#   unrun == 0    everything that was selected actually executed.
+#   selected > 0  the plan was not empty to begin with.
+# The third guard is new and is the one the two-month idle run needed: `selected` is the
+# plan size, so "nothing was selected" now has its own field instead of being inferred
+# from the whole tally reading zero. It used to be impossible to state — the only
+# available key, `planned`, was a status tally that read `0` in a healthy run too
+# (IMP-0050). Asserting it here means a future collapse to an empty plan fails loudly
+# rather than presenting as a clean green.
+unrun_n="$(summary_field unrun "$TMP/uiq_clean.out")"
+selected_n="$(summary_field selected "$TMP/uiq_clean.out")"
 passed_n="$(summary_field passed "$TMP/uiq_clean.out")"
-[[ "${passed_n:-0}" -ge 5 && "${planned_n:-0}" -eq 0 ]] \
-  && ok "ui-quality-fast's green executed ${passed_n} mechanisms with none left unrun (not a green no-op)" \
-  || fail_t "ui-quality-fast's green ran ${passed_n:-0} mechanisms with ${planned_n:-0} left merely planned — a green that skipped work is how CI idled for two months"
+[[ "${passed_n:-0}" -ge 5 && "${unrun_n:-0}" -eq 0 && "${selected_n:-0}" -gt 0 ]] \
+  && ok "ui-quality-fast's green selected ${selected_n} and executed ${passed_n} mechanisms with none left unrun (not a green no-op)" \
+  || fail_t "ui-quality-fast's green selected ${selected_n:-0}, ran ${passed_n:-0}, left ${unrun_n:-0} unrun — a green that skipped work is how CI idled for two months"
 
 printf 'import SwiftUI\n\nstruct KGCanFailProbe: View {\n    @ObserveInjection private var inject\n    var body: some View {\n        Text("紅燈探針")\n            .enableInjection()\n    }\n}\n' >"$PROBE"
 rc=0; "${UIQ[@]}" >"$TMP/uiq_probe.out" 2>&1 || rc=$?
