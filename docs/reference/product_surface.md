@@ -43,6 +43,7 @@ verified_against: 0c9e3b7c8
 - **Vocab list 效能** + 空態 CTA
 - **Reader error retry**: publication / PDF / translation / explain
 - **Word detail share button**: plain text via ShareLink
+- **Word detail 卡片生命週期動作**（封存 / 解除封存 / 刪除）：先前只能「關掉詳情 → 長按單字列進選取模式 → 底部工具列」。現依可逆性分層——封存在標題列單擊切換（`archivebox` ⇄ `archivebox.fill`，成功後**不關 sheet**，再按一次即解除封存，toggle 自身即 undo），未同步卡不顯示（server 以 word+notebookId 定址，必 404）；刪除在內容最底的「卡片管理」區，`confirmationDialog` **指名損失**（「刪除「abate」？複習紀錄與 3 條知識連結會一併移除，無法復原。」），確認後軟刪 + dismiss。封存為 server-authoritative（失敗完整回捲），刪除為 local-first（`queueDelete`，離線可用）。連結卡疊層（`LinkedCardOverlayStack`）為唯讀 peek，兩者皆不提供
 - **Design system v2**: `AppCompactActionButtonStyle` + `AppOfflineBanner` + `AppSkeleton` primitives;`AppSpacing`/`Radius`/`Elevation` z0-z4 / `Layout`/`Motion` (emphasizedDecelerate / Accelerate / subtleBreath) + `TapFeedback` token;brand hero indigo + state bgs + display1/2 serif;paper-tone shadow 0.18;raw transitions 已全數消除
 - **State matrix error states**: notebook list / podcast list / bookshelf / translation settings / today review failure feedback
 - **Sentry crash reporting**: opt-in via Info.plist `SentryDSN` + auth scrubbing + frame locals dropped + breadcrumb across services + `KGService` iOS HTTP breadcrumb

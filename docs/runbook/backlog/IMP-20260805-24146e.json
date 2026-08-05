@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-05",
+  "detail": "ops/backlog.py update 會靜默吞掉 --detail 與 --source。兩者刻意不可變（它們是 make_entry_id 的 digest 輸入，MUTABLE_FIELDS 註解說明得很清楚，設計是對的），但 argparse 仍然宣告了 --detail（p_update.add_argument）。結果是：帶 --detail 呼叫會回 exit 0 與一個看起來成功的 changes dict，只是裡面沒有 detail——除非呼叫端事後 show 一次比對，否則會相信更正已落地。實測就發生了：我以為改掉了一段錯誤的問題陳述，實際上原文原封不動留著。建議 update 在收到 --detail/--source 時直接非零退出並提示『改用 add 開新條目』，或至少從 parser 移除該旗標。靜默接受不可變欄位，比不接受更危險。",
+  "id": "IMP-20260805-24146e",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "worktree feat/word-detail-actions",
+  "status": "open",
+  "stream": "IMP"
+}

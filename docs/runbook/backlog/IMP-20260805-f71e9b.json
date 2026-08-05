@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-05",
+  "detail": "ios_test.sh 的 heartbeat 只在 build-for-testing 之後才開始跳。新工作樹的冷編譯要 4-8 分鐘，這段期間 stdout 完全靜默（實測 258s 內 0 bytes），而這正是最需要脈搏的時候——agent 無法分辨『還在編譯』與『卡死』，只能自己在外層包 pgrep 監看。建議把 heartbeat 提前到 build-for-testing 階段，沿用同一個 streaming_command 契約（phase/elapsed/PID/alive）。",
+  "id": "IMP-20260805-f71e9b",
+  "resolution": "誤判，不成立。原始 detail 指控 ios_test.sh 在 build-for-testing 期間不跳 heartbeat；實際上它全程都跳，靜默是呼叫端自己接了 tail 造成的緩衝。detail 是 entry id 的 digest 輸入故不可改，依工具設計改以新條目承載正確問題陳述：IMP-20260805-dd7238。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "worktree feat/word-detail-actions（單字詳情封存/刪除）",
+  "status": "wont-fix",
+  "stream": "IMP"
+}
