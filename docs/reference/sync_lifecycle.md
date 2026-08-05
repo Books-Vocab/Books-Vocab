@@ -81,6 +81,12 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 2. 若遠端卡片存在且未刪除，合併內容後呼叫 `markSynced()`
 3. 若遠端回傳 soft delete，本地直接刪除
 
+**merge 回報實際變動量**（`BackgroundSyncActor.PullResult` → `KGPullOutcome`）：pull 回傳 `inserted` / `updated` / `deleted` 三個計數，`hasChanges` 即三者之和 > 0。UI 憑此區分「同步真的改了東西」與「同步跑完、什麼都沒變」。
+
+- `updated` 只計**使用者可見內容**真的不同的詞條，判準集中在純函式 `BackgroundSyncActor.contentDiffers(card:from:)`（translation / pos / note / difficultyTier / inflections / collocations / examples / mode / graphLinks / isArchived / notebookId / book source）。
+- **複習狀態刻意不算變動**（`lastReviewedAt` / `reviewCount` / `nextReviewAt` / `streak` / `lapse`）。它每次複習都由本機推上去、下一輪 incremental pull 再原樣拉回；若計入，任何一次複習後的同步都會被判為「單字庫有變化」——這正是要避免的假陽性。
+- SwiftData 對屬性是「指派即髒」，所以判準必須在覆寫欄位**之前**取樣，事後問 `hasChanges` 得不到答案。
+
 ### 批次刪除 / 封存回應的三個 bucket：`*_words` / `not_found` / `failed`
 
 batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/vocab/batch-archive`）回傳**三個互斥清單**（後端 `kg/vocab_crud.py`）：
@@ -108,6 +114,14 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 5. **`not_found` 不是失敗**（見上節）— 已不存在於 server 的字本地直接收斂，不進此重試迴圈；反之 batch 回應的 `failed` bucket 才是 server 端 graph 操作失敗（卡片仍在），須進此重試迴圈
 
 ## 同步觸發鏈
+
+### `pullCardsToLocal` single-flight（所有 pull 路徑共用）
+
+vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-refresh、錯誤 banner 的重試、`SyncCoordinator` 的 pipeline 輪詢、以及 `backgroundSync`。過去只有 `backgroundSync` 有 claim 鎖，其餘各跑各的——生產日誌可見同一個 `?since=` cursor 被兩個請求同時帶出去（兩輪在對方寫回 boundary 前各自讀了同一個值）。現在 `KGService.pullCardsToLocal` 是一層 single-flight wrapper：
+
+- **同 `notebookId` 的併發呼叫合流**到同一輪 pull，只發一次 `GET /api/vocab`；合流者拿到結果，但 progress 回呼只給發起者。
+- 實際工作跑在 **unstructured `Task`** 裡，因此**不繼承呼叫端的取消**。從 `.task` / `.refreshable` 發起的 pull 不會因為 view 重繪或離場而被砍掉——那正是舊行為把 `URLError.cancelled`(-999) 一路包成 `KGError.networkError`、在使用者面前顯示「網路錯誤：已取消」的成因。
+- 取消不是失敗：`authenticatedRequest` 把 -999 轉成 `CancellationError`，`backgroundSync` 的 phase 回報略過它，單字本 banner 也不因它改變畫面。
 
 `KGService.backgroundSync` 是共用 resync 入口，由以下觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。其執行序：
 
