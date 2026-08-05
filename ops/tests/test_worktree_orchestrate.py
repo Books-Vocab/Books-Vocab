@@ -505,10 +505,10 @@ def test_ui_quality_plane_yml_routes_to_its_owner_tools():
     it selected no gate at all, so nothing would say so."""
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["ops/ui_quality_plane.yml"], ops_test_exists=real))
-    assert gates["data-plane:ui_quality_plane.py"]["cmd"] == [
+    assert gates["data-plane:ops/ui_quality_plane.py"]["cmd"] == [
         "ops/ui_quality_plane.py", "validate"]
-    assert gates["data-plane:ui_quality_plane.py"]["level"] == "block"
-    assert gates["data-plane:test_ui_quality_plane.sh"]["cmd"] == [
+    assert gates["data-plane:ops/ui_quality_plane.py"]["level"] == "block"
+    assert gates["data-plane:ops/tests/test_ui_quality_plane.sh"]["cmd"] == [
         "ops/tests/test_ui_quality_plane.sh"]
     assert "data-plane-unowned" not in gates
     assert gates["coverage"]["uncovered"] == []
@@ -519,7 +519,7 @@ def test_docs_registry_yml_routes_to_the_registry_lint():
     decides which docs are gated was itself ungated."""
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["docs/registry.yml"], ops_test_exists=real))
-    assert gates["data-plane:docs_lint.sh"]["cmd"] == ["ops/docs_lint.sh", "--registry"]
+    assert gates["data-plane:ops/docs_lint.sh"]["cmd"] == ["ops/docs_lint.sh", "--registry"]
     assert gates["coverage"]["uncovered"] == []
 
 
@@ -568,23 +568,40 @@ def test_a_deleted_data_plane_yml_does_not_route_to_a_tool_that_would_red():
     gone = lambda rel: rel != "ops/ui_quality_plane.yml"  # noqa: E731
     gates = _by_name(plan_gates(["ops/ui_quality_plane.yml"], ops_test_exists=gone))
     assert not any(n.startswith("data-plane:") for n in gates)
+    # …and it must still be NAMED. Skipping the validator while counting the file as
+    # covered would make `coverage` report "every changed file is routed to a gate" about
+    # a file nothing looked at — strictly worse than the anonymous hole this replaced.
+    assert gates["data-plane-deleted"]["files"] == ["ops/ui_quality_plane.yml"]
+    assert gates["data-plane-deleted"]["level"] == "warn"
     assert gates["coverage"]["uncovered"] == []
 
 
-def test_no_two_data_plane_owners_share_a_tool_basename():
-    """Gate names are `data-plane:<tool basename>`, so two owners whose tools differ only
-    by directory produce two gates with ONE name — and `_by_name`-style lookup, the JSON
-    plan, and the history journal all key on that name. Nothing collides today; this pins
-    it, because when it happens the second gate's verdict quietly overwrites the first's
-    and the plan still looks complete. Same trap the shell router already guards
-    (test_no_two_routable_shell_scripts_share_a_basename), reached by a different route."""
-    seen: dict[str, str] = {}
+def test_no_two_data_plane_owners_produce_the_same_gate_name():
+    """Gate names key the plan JSON, the result lookup and the history journal, so a
+    duplicate name means the second verdict overwrites the first while the plan still
+    reads complete. Naming by tool PATH removes the directory-collision route; what is
+    left is one tool invoked with two different argv (a future `docs_lint.sh --files`
+    beside `--registry`), which this catches and the basename version did not."""
+    seen: dict[str, list[str]] = {}
     for target, owners in MODULE.DATA_PLANE_OWNERS.items():
         for cmd in owners:
-            base = cmd[0].rsplit("/", 1)[-1]
-            assert base not in seen or seen[base] == cmd[0], (
-                f"gate name collision: {cmd[0]} (for {target}) and {seen[base]}")
-            seen[base] = cmd[0]
+            name = f"data-plane:{cmd[0]}"
+            assert name not in seen or seen[name] == list(cmd), (
+                f"gate name collision on {name}: {list(cmd)} (for {target}) "
+                f"and {seen[name]}")
+            seen[name] = list(cmd)
+
+
+def test_data_plane_commands_are_spelled_repo_relative():
+    """`./ops/x.sh` and `ops/x.sh` name the same file — `ROOT / "./ops/x.sh"` exists, so
+    the existence contract test passes either way — but they are different strings, and
+    the dedup against the shell router is exact list equality. One `./` and the same
+    script runs twice under two names, with nothing to say so."""
+    for target, owners in MODULE.DATA_PLANE_OWNERS.items():
+        for cmd in owners:
+            tool = cmd[0]
+            assert not tool.startswith(("./", "/")), f"{tool} (for {target})"
+            assert "/" in tool, f"{tool} (for {target}) is not repo-relative"
 
 
 def test_every_declared_data_plane_owner_exists_in_the_repo():
