@@ -26,6 +26,7 @@ struct SettingsPresenter: View {
     @State private var showSubscriptionDetail = false
     @State private var showTranslationLanguage = false
     @State private var showReviewSection = false
+    @State private var showReviewCardLayout = false
 
     var body: some View {
         NavigationStack {
@@ -69,6 +70,9 @@ struct SettingsPresenter: View {
                     onPauseChanged: onPauseReviewClockChanged,
                     onModeChanged: onReviewModeChanged
                 )
+            }
+            .navigationDestination(isPresented: $showReviewCardLayout) {
+                ReviewCardLayoutEditor()
             }
             .navigationDestination(isPresented: $showAccountDetail) {
                 SettingsAccountDetailView(
@@ -126,7 +130,8 @@ struct SettingsPresenter: View {
             state: state.preferences,
             actions: actions,
             onShowTranslationLanguage: { showTranslationLanguage = true },
-            onShowReviewSettings: { showReviewSection = true }
+            onShowReviewSettings: { showReviewSection = true },
+            onShowReviewCardLayout: { showReviewCardLayout = true }
         )
     }
 

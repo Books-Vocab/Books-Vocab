@@ -323,6 +323,13 @@ final class TodayReviewState {
         autoplay.stop()
     }
 
+    /// Pause because a modal took over the card (the layout editor). Deliberately
+    /// does NOT auto-resume on dismiss — the user came to change the card, so they
+    /// decide when it starts moving again.
+    func pauseAutoPlayForModalInterruption() {
+        autoplay.pauseForInterruption()
+    }
+
     func changeAutoplaySpeed(to speed: AutoplaySpeed) {
         autoplay.changeSpeed(to: speed, restartLoop: { [weak self] in self?.startAutoPlayLoop() })
     }

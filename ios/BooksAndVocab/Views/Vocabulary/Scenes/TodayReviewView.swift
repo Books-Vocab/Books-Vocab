@@ -71,6 +71,10 @@ struct TodayReviewView: View {
 
     @State private var isHelpPresented = false
     @State private var showAddLink = false
+    @State private var showLayoutEditor = false
+    /// Captured when the entry is tapped so the editor opens on the mode of the
+    /// card actually on screen, not on whatever is current when the sheet builds.
+    @State private var layoutEditorMode: VocabularyCardMode = .recognition
     @State private var explainSheetItem: CollocationExplainItem? = nil
     #if targetEnvironment(macCatalyst)
     @State private var hasConsumedShortcutHint = false
@@ -124,6 +128,13 @@ struct TodayReviewView: View {
             onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
             onChangeAutoPlaySpeed: { perform(.changeAutoplaySpeed) },
             onToggleAutoPlaySound: { perform(.toggleAutoplaySound) },
+            onAdjustLayout: {
+                layoutEditorMode = state.currentEntry?.reviewMode ?? .recognition
+                // Autoplay would keep flipping cards under the sheet; pause first
+                // and leave it paused afterwards.
+                state.pauseAutoPlayForModalInterruption()
+                showLayoutEditor = true
+            },
             onDetailTap: { perform(.showDetail) },
             onToggleHelp: { perform(.showHelp) },
             onExplainCollocation: { collocation in
@@ -200,6 +211,15 @@ struct TodayReviewView: View {
                     onLinked: { state.rebuildCacheForEntry(entry) }
                 )
             }
+        }
+        .toastSheet(isPresented: $showLayoutEditor) {
+            // Writes straight through to the shared store, so the card behind the
+            // sheet re-lays out live. Nothing here touches reveal stage, current
+            // index or session persistence.
+            ReviewCardLayoutEditorSheet(
+                initialMode: layoutEditorMode,
+                onDone: { showLayoutEditor = false }
+            )
         }
         .toastSheet(item: $explainSheetItem) { item in
             CollocationExplainSheet(

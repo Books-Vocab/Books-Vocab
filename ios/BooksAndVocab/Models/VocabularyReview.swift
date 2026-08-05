@@ -13,7 +13,7 @@ enum ReviewFeedback: Int, Codable {
     case remembered = 1
 }
 
-enum VocabularyCardMode: String, Codable {
+enum VocabularyCardMode: String, Codable, CaseIterable {
     case recognition
     case production
 

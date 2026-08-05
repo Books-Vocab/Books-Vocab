@@ -21,12 +21,13 @@ enum TodayReviewPresenterPreviewData {
         onToggleAutoPlayPause: () -> Void,
         onChangeAutoPlaySpeed: () -> Void,
         onToggleAutoPlaySound: () -> Void,
+        onAdjustLayout: () -> Void,
         onDetailTap: () -> Void,
         onToggleHelp: () -> Void,
         onExplainCollocation: (String) -> Void,
         onViewCollocationExplanation: (String) -> Void,
         onDeleteCollocationExplanation: (String) -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
 }
 
 struct TodayReviewFixtureScene: View {
@@ -50,6 +51,7 @@ struct TodayReviewFixtureScene: View {
                 onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
                 onChangeAutoPlaySpeed: cb.onChangeAutoPlaySpeed,
                 onToggleAutoPlaySound: cb.onToggleAutoPlaySound,
+                onAdjustLayout: cb.onAdjustLayout,
                 onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
                 onExplainCollocation: cb.onExplainCollocation,
                 onViewCollocationExplanation: cb.onViewCollocationExplanation,

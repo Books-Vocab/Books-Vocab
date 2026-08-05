@@ -153,6 +153,9 @@ struct TodayReviewPresenter: View {
     let onToggleAutoPlayPause: () -> Void
     let onChangeAutoPlaySpeed: () -> Void
     let onToggleAutoPlaySound: () -> Void
+    /// Opens the shared review-card layout editor. The owner pauses autoplay and
+    /// presents; the presenter only reports the intent.
+    let onAdjustLayout: () -> Void
     let onDetailTap: () -> Void
     let onToggleHelp: () -> Void
     let onExplainCollocation: (String) -> Void

@@ -3,10 +3,14 @@ import SwiftUI
 struct SettingsPreferencesSection: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.reviewCardLayoutStore) private var reviewCardLayoutStore
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
     let onShowTranslationLanguage: () -> Void
     let onShowReviewSettings: () -> Void
+    /// Card presentation, deliberately its own row rather than a page inside
+    /// 複習節奏 — that page owns SRS scheduling rules, not what a card looks like.
+    var onShowReviewCardLayout: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
@@ -120,6 +124,22 @@ struct SettingsPreferencesSection: View {
                     .tint(appSkin.palette.accent)
                     .accessibilityIdentifier("settings.preferences.hapticFeedbackToggle")
                 }
+
+                SettingsDivider()
+
+                // 複習卡片
+                SettingsNavigationRow(
+                    icon: "rectangle.split.2x1",
+                    label: "複習卡片",
+                    action: onShowReviewCardLayout
+                ) {
+                    SettingsStatusValue(
+                        text: L10n.string(ReviewCardLayoutSummary.titleKey(for: reviewCardLayoutStore.profile)),
+                        color: appSkin.palette.secondaryText
+                    )
+                    .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
+                }
+                .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
 
                 if state.showAutoSync {
                     SettingsDivider()
