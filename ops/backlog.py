@@ -575,6 +575,21 @@ def _anchors_ok(cells: list[str]) -> bool:
     )
 
 
+def _app_anchors_ok(cells: list[str]) -> bool:
+    """The APP table's version of `_anchors_ok`.
+
+    Same idea, three columns to the right: the APP shape inserts `surface` at
+    index 3, so its category/severity/status land on 4/5/6.
+    """
+    if len(cells) < len(APP_COLUMNS):
+        return False
+    return (
+        cells[4] in CATEGORIES["APP"]
+        and cells[5] in SEVERITIES
+        and cells[6] in STATUSES
+    )
+
+
 def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
     """Parse the legacy 8-column ledger table.
 
@@ -611,6 +626,25 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
         cells = [_clean(c) for c in raw_cells]
 
         looks_like_id = bool(_ID_RE.match(cells[0]))
+
+        # Before the IMP anchor gate, not after it. `_anchors_ok` is IMP-shaped,
+        # so an APP row — which carries three extra columns — can never satisfy
+        # it; checking `APP-` afterwards made that skip unreachable and reported
+        # every APP row as malformed. Still anchor-checked in its own shape, so
+        # this stays a skip of rows we understand, not a blanket drop.
+        if cells[0].startswith("APP-"):
+            if not _app_anchors_ok(cells):
+                problems.append(
+                    {
+                        "kind": "malformed-row",
+                        "id": cells[0],
+                        "line": lineno,
+                        "columns": len(cells),
+                        "expected": len(APP_COLUMNS),
+                    }
+                )
+            continue
+
         if not _anchors_ok(cells):
             # Not a data row — unless its first cell claims to be one, in which
             # case the columns are shifted or the row is truncated.
@@ -626,8 +660,6 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
                 )
             continue
 
-        if cells[0].startswith("APP-"):
-            continue
         if not looks_like_id:
             problems.append(
                 {
