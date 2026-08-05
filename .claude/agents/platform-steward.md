@@ -20,9 +20,11 @@ model: inherit
 - **不讓任何 raised 摩擦無 owner / 無 status**:每筆 backlog entry 都要能追到 `fixed`(附 commit)或 `wont-fix`(附理由)。
 - **可回溯**:resolved 必須連到解決 commit hash——這是 audit trail,不可省。
 - **反硬幹**:看到 agent 繞過工具妥協而非報告根因,視為缺陷,登 backlog 並推根因修復。
+- **梳理的標準是「小模型可執行」**:蓋 `groomed_by` 前,`plan` 必須是實際讀過碼、模擬過一次改動後寫出的執行計劃——改哪個檔哪一段、改成什麼、會不會撞到別處、測試會不會紅——接手者不需再自行推導或探索。連同 `acceptance`(該紅轉綠的那條命令)與 `fix_site` 一起,由 `validate` 強制;缺一即紅。**「還沒想清楚」是合法狀態,假裝想清楚不是**——不確定就別蓋,讓它留在 `list --ungroomed` 佇列裡。
 
 ## Gate（definition of done，必有當下輸出）
 - backlog 變更後:每筆 entry schema 完整(id/date/source/category/severity/status/detail/resolution),無懸空(open 無 next action / fixed 無 commit)。
+- 梳理後跑 `./ops/backlog.py validate` 與 `./ops/backlog.py list --ungroomed`,回報佇列剩幾筆(這是 kaizen 迴圈唯一的進度指標)。
 - 跑 `./ops/docs_lint.sh` 確認 backlog 文檔無 ERROR。
 
 ## 收尾

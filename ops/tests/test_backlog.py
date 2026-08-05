@@ -449,3 +449,116 @@ def test_update_rejects_unknown_fields(tmp_path):
     entry = _add(store)
     with pytest.raises(ValueError):
         BACKLOG.update_entry(store, entry["id"], statuss="fixed")
+
+
+# --------------------------------------------------------------------------
+# 8. groom stamp: "this entry has been worked out, not just filed"
+#
+# The ledger accumulated two different kinds of confidence under one stamp:
+# a re-verification sweep ("the claim still holds") and an entry born from a
+# deep dive ("this was investigated at birth"). Both wrote the same
+# verdict/verified_at, so the one question the owner actually asks — which of
+# these has someone worked out how to fix? — was unanswerable from the data.
+#
+# The groom stamp answers it, and is deliberately expensive to claim: an entry
+# is groomed only when it carries a fix plan concrete enough to hand to a small
+# model, the acceptance command that must flip, and the site to change. A badge
+# whose preconditions nobody checks is the "reason field nobody reads" failure
+# this repo has already been bitten by.
+# --------------------------------------------------------------------------
+
+
+def _groom_kwargs(**overrides):
+    base = dict(
+        plan="1. open ops/x.py:10  2. replace the whitelist with the tuple  3. run the test",
+        acceptance="pytest -q ops/tests/test_x.py::test_y",
+        fix_site="ops/x.py:10",
+        groomed_at="2026-08-05",
+        groomed_by="workflow:groom@v1",
+    )
+    base.update(overrides)
+    return base
+
+
+def test_a_fully_groomed_entry_validates(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
+    assert BACKLOG.validate_store(store) == []
+
+
+@pytest.mark.parametrize("missing", ["plan", "acceptance", "fix_site"])
+def test_groom_stamp_is_refused_without_the_work_it_claims(tmp_path, missing):
+    """Claiming groomed without the artifact that makes it groomed is the lie
+    this field exists to prevent."""
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    before = (store / f"{entry['id']}.json").read_bytes()
+
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(**{missing: ""}))
+
+    assert (store / f"{entry['id']}.json").read_bytes() == before
+
+
+def test_groom_stamp_needs_a_named_groomer_and_a_real_date(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(groomed_by=""))
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(groomed_at="5 Aug"))
+
+
+def test_validate_catches_a_groom_claim_written_straight_into_the_file(tmp_path):
+    """The store is a directory of JSON; a hand-edit can bypass update()."""
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    path = store / f"{entry['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["groomed_by"] = "me, honest"
+    payload["groomed_at"] = "2026-08-05"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    kinds = {p["kind"] for p in BACKLOG.validate_store(store)}
+    assert "groom-claim-without-plan" in kinds
+
+
+def test_list_ungroomed_is_the_queue_of_entries_nobody_has_worked_out(tmp_path):
+    store = tmp_path / "backlog"
+    raw = _add(store, detail="filed in a hurry")
+    done = _add(store, detail="worked out end to end")
+    BACKLOG.update_entry(store, done["id"], **_groom_kwargs())
+
+    ungroomed = [e["id"] for e in BACKLOG.list_entries(store, ungroomed=True)]
+    assert ungroomed == [raw["id"]]
+
+    groomed = [e["id"] for e in BACKLOG.list_entries(store, groomed=True)]
+    assert groomed == [done["id"]]
+
+
+def test_ungroomed_filter_composes_with_the_others(tmp_path):
+    store = tmp_path / "backlog"
+    _add(store, detail="low one", severity="low")
+    wanted = _add(store, detail="high one", severity="high")
+    hits = BACKLOG.list_entries(store, ungroomed=True, severity="high")
+    assert [e["id"] for e in hits] == [wanted["id"]]
+
+
+# Every flag on `update` must actually reach the field it names. A flag whose
+# dest is filtered out by the collection whitelist is accepted and then
+# discarded: `--detail X --status Y --commit` exits 0 having dropped X.
+# The exemptions below are the two known holes, each already filed; deleting an
+# exemption is how those fixes prove themselves.
+_UPDATE_PLUMBING = {"id", "store", "commit", "json", "help"}
+_KNOWN_UNWIRED_FLAGS = {"detail"}                                  # IMP-20260805-1be2c6
+_KNOWN_FLAGLESS_FIELDS = {"surface", "repro", "build", "duplicate_of"}  # IMP-20260805-1be2c6
+
+
+def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
+    sub = BACKLOG.build_parser()._subparsers._group_actions[0].choices["update"]
+    dests = {a.dest for a in sub._actions} - _UPDATE_PLUMBING
+    mutable = set(BACKLOG.MUTABLE_FIELDS)
+
+    assert dests - mutable == _KNOWN_UNWIRED_FLAGS, "a new flag is silently dropped"
+    assert mutable - dests == _KNOWN_FLAGLESS_FIELDS, "a mutable field has no way in"
