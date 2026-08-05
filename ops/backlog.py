@@ -43,12 +43,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
+DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 
 SCHEMA = "kg.backlog.entry.v1"
 
@@ -317,6 +321,280 @@ def list_entries(
 
 
 # ---------------------------------------------------------------------------
+# legacy table import
+# ---------------------------------------------------------------------------
+
+LEGACY_COLUMNS = ("id", "date", "source", "category", "severity", "status", "detail", "resolution")
+
+_ID_RE = re.compile(r"^(?:IMP|APP)-(?:\d{4}|\d{8}-[0-9a-f]{6})$")
+
+_EMPTY_CELL = "—"
+
+
+def _split_row_raw(line: str) -> list[str]:
+    """Split a markdown table row on UNESCAPED pipes, WITHOUT cleaning cells.
+
+    IMP-0023's detail contains a literal `\\|\\| true`. Splitting on a naive `|`
+    tears that row into the wrong number of columns, which either drops the
+    entry or shifts every field after it by one — silently, in both cases.
+
+    Cells come back raw because recovery (below) has to rejoin them, and
+    stripping first would silently eat the whitespace around an unescaped pipe:
+    `` `|| true` `` would come back as `` `||true` ``.
+    """
+    parts = re.split(r"(?<!\\)\|", line.strip())
+    if parts and not parts[0].strip():
+        parts = parts[1:]
+    if parts and not parts[-1].strip():
+        parts = parts[:-1]
+    return parts
+
+
+def _clean(cell: str) -> str:
+    return cell.strip().replace("\\|", "|")
+
+
+def _recover_overflowing_row(raw_cells: list[str]) -> list[str] | None:
+    """Rebuild a row that has too many columns because a cell contains an
+    unescaped `|`.
+
+    Anchored on the three controlled-vocabulary columns (category, severity,
+    status) plus the id, all of which are short and closed sets. If those line
+    up, everything between `status` and the final column is the detail, which is
+    the only free-prose field long enough to attract stray pipes. If they do not
+    line up we return None and the caller reports the row rather than guessing —
+    an enumerated hole beats an anonymous one.
+    """
+    if len(raw_cells) <= len(LEGACY_COLUMNS):
+        return None
+
+    head = [_clean(c) for c in raw_cells[:6]]
+    known_categories = {c for cats in CATEGORIES.values() for c in cats}
+    if head[3] not in known_categories or head[4] not in SEVERITIES or head[5] not in STATUSES:
+        return None
+
+    detail = _clean("|".join(raw_cells[6:-1]))
+    resolution = _clean(raw_cells[-1])
+    return head + [detail, resolution]
+
+
+def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
+    """Parse the legacy 8-column ledger table.
+
+    Returns (rows, problems). A row that cannot be understood goes into
+    `problems` and is never silently discarded: a migration that quietly loses
+    four entries out of 59 is indistinguishable from one that worked.
+
+    APP-* rows are skipped rather than reported. The legacy table predates the
+    APP stream entirely, so an APP row can only come from the *generated* view's
+    own second table, which has a different column set.
+    """
+    rows: list[dict] = []
+    problems: list[dict] = []
+
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        raw_cells = _split_row_raw(line)
+        if not raw_cells or not _ID_RE.match(_clean(raw_cells[0])):
+            continue  # header, separator, or a prose table
+        cells = [_clean(c) for c in raw_cells]
+        if cells[0].startswith("APP-"):
+            continue
+
+        if len(cells) > len(LEGACY_COLUMNS):
+            rebuilt = _recover_overflowing_row(raw_cells)
+            if rebuilt is None:
+                problems.append(
+                    {
+                        "kind": "malformed-row",
+                        "id": cells[0],
+                        "line": lineno,
+                        "columns": len(cells),
+                        "expected": len(LEGACY_COLUMNS),
+                    }
+                )
+                continue
+            cells = rebuilt
+            problems.append(
+                {
+                    "kind": "recovered-row",
+                    "id": cells[0],
+                    "line": lineno,
+                    "note": "unescaped '|' in a cell; detail rejoined using the "
+                    "controlled-vocabulary columns as anchors — verify the "
+                    "detail/resolution boundary",
+                }
+            )
+        elif len(cells) < len(LEGACY_COLUMNS):
+            problems.append(
+                {
+                    "kind": "malformed-row",
+                    "id": cells[0],
+                    "line": lineno,
+                    "columns": len(cells),
+                    "expected": len(LEGACY_COLUMNS),
+                }
+            )
+            continue
+
+        # No `_recovered` marker on the row itself: the problem list already
+        # names it, and an extra key here would make a recovered row compare
+        # unequal to its own re-parsed render.
+        row = dict(zip(LEGACY_COLUMNS, cells))
+        if row["resolution"] == _EMPTY_CELL:
+            row["resolution"] = ""
+        rows.append(row)
+
+    return rows, problems
+
+
+def import_legacy(text: str, store: Path) -> dict:
+    """Import the legacy table into the store. Re-runnable and idempotent.
+
+    Re-runnable is a hard requirement, not a nicety: the source table is still
+    being edited by other sessions while this migration is in flight, so the
+    real import runs last, against a file that moved underneath it. Ids are
+    carried over verbatim — the table cross-references them in prose ("see
+    IMP-0052"), and renumbering would break every one of those references.
+
+    Entries already in the store that are absent from the table are left alone,
+    so importing the IMP table never disturbs APP entries filed via `add`.
+    """
+    rows, problems = parse_legacy_table(text)
+    imported = 0
+
+    for row in rows:
+        try:
+            add_entry(
+                store,
+                entry_id=row["id"],
+                stream=row["id"].split("-", 1)[0],
+                date=row["date"],
+                source=row["source"],
+                category=row["category"],
+                severity=row["severity"],
+                status=row["status"],
+                detail=row["detail"],
+                resolution=row["resolution"],
+            )
+        except ValueError as exc:
+            # Record and keep going. Dying mid-import would leave a partial
+            # store, which is worse than a complete store plus a problem list.
+            problems.append({"kind": "rejected-row", "id": row["id"], "error": str(exc)})
+            continue
+        imported += 1
+
+    return {"imported": imported, "problems": problems}
+
+
+# ---------------------------------------------------------------------------
+# generated view
+# ---------------------------------------------------------------------------
+
+# `tier: runbook` and not `tier: generated`: `generated` is a registry *kind*
+# (docs/registry.yml), while the frontmatter `tier` is checked against
+# docs_lint.sh's VALID_TIERS, which has no such value. The precedent is
+# docs/snapshot/ios_baseline.md — tier: snapshot in the doc, kind: generated in
+# the registry.
+_VIEW_HEADER = """<!-- doc-meta
+tier: runbook
+authority: generated
+update_trigger: machine-generated
+scope:
+  - docs/runbook/backlog/
+verified_against: {verified_against}
+-->
+# 改善 Backlog（kaizen ledger）
+
+> ⚠️ **GENERATED — 不要手改這個檔。** 內容由 `ops/backlog.py render` 從
+> `docs/runbook/backlog/*.json` 產生，手改會被下一次 render 覆蓋。
+> 要改請用 `ops/backlog.py update <id>`；要新增用 `ops/backlog.py add`。
+
+> 自我提升迴圈的 **SoT**：所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
+> 「app 實際使用」問題（`APP-*`）的 open 問題單一登記處。
+> 原則見**鐵律9**（摩擦優先修工具）、分級見 `kg-router`「Tool Friction」、
+> 表態見 `kg-receipt`「Tooling Debt」——本文**不複述**，只負責**持久化、追蹤、收斂**。
+
+## 為什麼是一筆一檔
+
+receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 raised 問題
+**進 git、可回溯、有 owner、追到 resolved**。
+
+存成 `docs/runbook/backlog/<id>.json`（一筆一檔）而非單一表格，是因為單一表格
+在多 agent 並發下必然衝突：每次 append 都打同一段行區，而流水號 id 跨 worktree
+必撞（檔案在 merge 前彼此看不見）。IMP-0017 自己記著已經撞過兩次。
+
+## Entry schema
+
+- `status`：`open` → `triaged` → `in-progress` → `fixed` / `wont-fix`（附理由）
+- `category`：IMP 為 `tool` / `cli` / `doc` / `arch`；APP 為 `ux` / `correctness` / `perf` / `data` / `content`
+- `severity`：`low` / `med` / `high`
+- `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
+- 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
+"""
+
+_IMP_INTRO = """
+## IMP — 工具 / CLI / 文檔 / 架構摩擦
+
+owner = `platform-steward`。andon 規則見 `kg-receipt`「Tooling Debt」。
+"""
+
+_APP_INTRO = """
+## APP — app 實際使用問題
+
+owner = 對應 Line 部門（`ios-engineer` / `backend-engineer`）。
+與 IMP 分流的理由：分類詞彙、owner、發現途徑都不同，混在同一條 queue 會讓
+platform-steward 的 triage 失效。
+"""
+
+
+def _cell(value: str) -> str:
+    """Make a value safe to sit inside a markdown table cell."""
+    text = str(value or "")
+    text = text.replace("\n", " ").replace("\r", " ")
+    return text.replace("|", "\\|")
+
+
+def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
+    head = "| " + " | ".join(columns) + " |\n"
+    sep = "|" + "|".join("---" for _ in columns) + "|\n"
+    body = ""
+    for entry in entries:
+        cells = [_cell(entry.get(col, "")) or _EMPTY_CELL for col in columns]
+        body += "| " + " | ".join(cells) + " |\n"
+    return head + sep + body
+
+
+APP_COLUMNS = (
+    "id",
+    "date",
+    "source",
+    "surface",
+    "category",
+    "severity",
+    "status",
+    "detail",
+    "repro",
+    "build",
+    "resolution",
+)
+
+
+def render_view(store: Path, *, verified_against: str) -> str:
+    """Render the human-readable view of the store. Deterministic."""
+    imp = list_entries(store, stream="IMP")
+    app = list_entries(store, stream="APP")
+
+    out = _VIEW_HEADER.format(verified_against=verified_against)
+    out += _IMP_INTRO + "\n" + _render_table(imp, LEGACY_COLUMNS)
+    out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
+    out += f"\n<!-- {len(imp)} IMP + {len(app)} APP entries -->\n"
+    return out
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -373,6 +651,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_validate = sub.add_parser("validate", help="schema-check every entry")
     _add_store_arg(p_validate)
     p_validate.add_argument("--json", action="store_true")
+
+    p_import = sub.add_parser(
+        "import",
+        help="import the legacy markdown table into the store (re-runnable, idempotent)",
+    )
+    _add_store_arg(p_import)
+    p_import.add_argument("--from", dest="source_doc", type=Path, default=DEFAULT_VIEW)
+    p_import.add_argument("--commit", action="store_true", help="actually write (default: dry-run)")
+    p_import.add_argument("--json", action="store_true")
+
+    p_render = sub.add_parser("render", help="regenerate the human-readable view from the store")
+    _add_store_arg(p_render)
+    p_render.add_argument("--out", type=Path, default=DEFAULT_VIEW)
+    p_render.add_argument("--verified-against", help="commit sha for doc-meta (default: HEAD)")
+    p_render.add_argument("--commit", action="store_true", help="actually write (default: stdout)")
+    p_render.add_argument("--json", action="store_true")
 
     return parser
 
@@ -452,6 +746,66 @@ def _cmd_validate(args) -> int:
     return 2 if problems else 0
 
 
+def _git_head() -> str:
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=ROOT,
+        )
+        return out.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def _cmd_import(args) -> int:
+    text = args.source_doc.read_text(encoding="utf-8")
+
+    if not args.commit:
+        # Dry-run into a throwaway store so the reported counts come from the
+        # real code path rather than a separate estimate that could disagree.
+        with tempfile.TemporaryDirectory() as tmp:
+            result = import_legacy(text, Path(tmp) / "backlog")
+        result["mode"] = "dry-run"
+    else:
+        result = import_legacy(text, args.store)
+        result["mode"] = "commit"
+
+    result["source"] = str(args.source_doc)
+    if args.json:
+        print(json.dumps({"schema": "kg.backlog.import.v1", **result}, ensure_ascii=False))
+    else:
+        print(f"[{result['mode']}] imported {result['imported']} entries from {args.source_doc}")
+        for problem in result["problems"]:
+            print(f"  {problem['kind']}: {problem.get('id', '?')} — {problem.get('note', problem)}")
+    # Recovered rows are advisory; only rows that could not be taken are a
+    # failure, because those are entries that would vanish.
+    lost = [p for p in result["problems"] if p["kind"] in ("malformed-row", "rejected-row")]
+    return 2 if lost else 0
+
+
+def _cmd_render(args) -> int:
+    verified = args.verified_against or _git_head()
+    text = render_view(args.store, verified_against=verified)
+
+    if args.commit:
+        _write_atomic(args.out, text)
+        if args.json:
+            print(
+                json.dumps(
+                    {"schema": "kg.backlog.render.v1", "out": str(args.out), "bytes": len(text)},
+                    ensure_ascii=False,
+                )
+            )
+        else:
+            print(f"wrote {args.out} ({len(text)} bytes, verified_against={verified})")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     handlers = {
@@ -459,6 +813,8 @@ def main(argv: list[str] | None = None) -> int:
         "list": _cmd_list,
         "show": _cmd_show,
         "validate": _cmd_validate,
+        "import": _cmd_import,
+        "render": _cmd_render,
     }
     try:
         return handlers[args.command](args)
