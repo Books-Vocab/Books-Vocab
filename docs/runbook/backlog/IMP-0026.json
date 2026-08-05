@@ -1,12 +1,15 @@
 {
   "category": "cli",
+  "cost": "M",
   "date": "2026-07-09",
-  "detail": "`ops-cli world-diff` 硬性要求 `schema==kg.ops_world_expectation.v1`(`ops_world_diff.py:18`),無法驗「帳號 == seed_spec」(注入格式是 `kg.seed_spec.v1`)。缺一個 first-class「reshape 是否精確落地」檢查,只能靠 `world-export` + 外部 normalized diff 橋接(本 session 自寫 python 比對)。候選:教 world-diff(或新 world-verify)吃 seed_spec,或 seed/clone-demo 自吐比對 verdict。",
+  "detail": "`ops-cli world-diff` 硬性要求 `schema==kg.ops_world_expectation.v1`(`ops_world_diff.py:18`),無法驗「帳號 == seed_spec」(注入格式是 `kg.seed_spec.v1`)。缺一個 first-class「reshape 是否精確落地」檢查,只能靠 `world-export` + 外部 normalized diff 橋接(本 session 自寫 python 比對)。候選:教 world-diff(或新 world-verify)吃 seed_spec,或 seed/clone-demo 自吐比對 verdict。**2026-08-05 取證**:`ops_world_diff.py:9 SPEC_SCHEMA` + `:18-19` 硬檢查仍在;`ops_cli.py world-diff --help` 的 spec 參數明寫只吃 `kg.ops_world_expectation.v1`;`ops_cli.py --help` 無 `world-verify`。**另一半零件已存在**:`ops_world_export.py:37 SEED_SPEC_SCHEMA = \"kg.seed_spec.v1\"` + `:232 export_seed_spec`。",
   "id": "IMP-0026",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_diff.py:13 load_expectation` 接受兩種 schema,seed_spec 走 normalize 後比對——直接複用 `export_seed_spec` 對 actual 端做同構投影是最短路徑;成本 M,測試 `backend/tests/test_ops_world_expectation.py`。**與 IMP-0024 同一工項**,見該條)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "行銷帳號 Phase5(驗證)",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

@@ -1,12 +1,15 @@
 {
   "category": "cli",
+  "cost": "S",
   "date": "2026-07-09",
-  "detail": "`devops.sh cmd_backup`(line 596)無條件用 GNU-rsync 專屬旗標 `rsync -az --delete --info=progress2 --human-readable`,macOS 內建 openrsync 不支援 `--info=progress2`(`unrecognized option`)→ 從 oscar 跑 `devops_kg_safe.sh backup` 直接失敗、備份命令不可用。候選:偵測 rsync flavor(GNU vs openrsync)擇旗標,或改用兩者皆支援的 `--progress`,或該旗標包 `|| true` 降級。",
+  "detail": "`devops.sh cmd_backup`(`devops.sh:611-612`,建檔時記 line 596)無條件用 GNU-rsync 專屬旗標 `rsync -az --delete --info=progress2 --human-readable`,macOS 內建 openrsync 不支援 `--info=progress2`(`unrecognized option`)→ 從 oscar 跑 `devops_kg_safe.sh backup` 直接失敗、備份命令不可用。候選:偵測 rsync flavor(GNU vs openrsync)擇旗標,或改用兩者皆支援的 `--progress`,或該旗標包 `|| true` 降級。**2026-08-05 實測確認**:本機 `/usr/bin/rsync` = `openrsync: protocol version 29`(自稱 rsync 2.6.9 compatible),`rsync -n -a --info=progress2` 立即回 `unrecognized option`;`devops_kg_safe.sh:157` 把 `backup` 直接轉發,故 oscar 端不可用成立。**修時必連測試一起改**:`ops/test_devops.sh:50-53` 現硬 grep `--info=progress2`,單改工具會把它弄紅。",
   "id": "IMP-0023",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `devops.sh:611-612`,成本 S;與 IMP-0058 同根因=無 userland 可攜性契約,`ops/release.sh:264` 的 `stat -f … || stat -c …` 是共用範式)",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "行銷帳號 Phase5(backup)",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

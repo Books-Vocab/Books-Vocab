@@ -1,12 +1,15 @@
 {
   "category": "tool",
+  "cost": "M",
   "date": "2026-07-10",
-  "detail": "`ios_test.sh --ui <bareMethod>`(裸方法名)對**不在** class `BooksAndVocabUITests` 的 UITest method 回 `tests=0` 卻 exit 0(**FALSE GREEN**):bare method 只在預設 suite 內解析,別的 UITest class(如 `ExploreNavigationUITests`)的 method 靜默零執行、假綠。workaround=用完整限定 `Class/method`。fix 候選:runner auto-resolve method→其所屬 class,或 `--help`/零匹配錯誤明示「bare method 僅限預設 suite,跨 class 用 Class/method」",
+  "detail": "`ios_test.sh --ui <bareMethod>`(裸方法名)對**不在** class `BooksAndVocabUITests` 的 UITest method 靜默零執行(bare method 只在預設 suite 內解析,別的 UITest class 如 `ExploreNavigationUITests` 命中不了)。**2026-08-05 更正:原記的「回 tests=0 卻 exit 0 = FALSE GREEN」已不成立**——`ops/ios_test.sh:1904-1913` 的 false-green guard(`TEST SUCCEEDED` 且 `count_executed_tests`==0 → 印 `✗ FALSE GREEN` 並 exit 1)由 `4930a1e37`(2026-06-03)引入,**早於本條目建檔的 2026-07-10 整整一個月**,故條目自始即誤述現況。實測(`--list` dry-run):bare `testExploreTabShowsSections` → `-only-testing:BooksAndVocabUITests/BooksAndVocabUITests/…`(錯 class),限定 `ExploreNavigationUITests/testExploreTabShowsSections` → 正確;成因在 `:527-534`,非 `Class/method` 形式即硬拼 `$TEST_TARGET/$TEST_TARGET/$t`。現況實為**人體工學**:白跑一整輪 build+test 才在尾端紅,且訊息只說 stale/bogus `-only-testing`、不指向 bare-method 規則。workaround=用完整限定 `Class/method`。fix 候選:runner auto-resolve method→其所屬 class,或 `--help`/零匹配錯誤明示「bare method 僅限預設 suite,跨 class 用 Class/method」",
   "id": "IMP-0030",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 PARTIAL:假綠已被 guard 攔,人體工學仍 open,detail 已改寫;落點 `ios_test.sh:527-534` 改走 `lib/ios_test_discovery.sh` 反查所屬 container、零匹配即刻 exit 1,把成本從一整輪 xcodebuild 降到 parse 時;成本 M,測試斷言 `--list` 下 bare method 解析到 `ExploreNavigationUITests`;與 IMP-0017/0043 同檔建議同 PR)",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "Explore P1 docs-sync",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "PARTIAL",
+  "verified_at": "2026-08-05"
 }

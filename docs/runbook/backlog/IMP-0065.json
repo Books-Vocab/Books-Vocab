@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-05",
+  "detail": "**`review_audit.sh` 的五個合法豁免裡,`single-line-small-file` 是結構性壞的一條。** 它量的是換行符位置,不是改動大小——在由長 table row / 長設定行構成的檔案裡(`improvement_backlog.md` 97+ 列、`docs/registry.yml`、`ops/ui_quality_plane.yml`),「一行」與語意重量**零相關**。**實際咬到的案例就是本次**:我對 `improvement_backlog.md` 做了一段頒布全 repo 規則的語意重寫,diff 顯示 1 行(純粹是 markdown table row 的排版產物),我據此填了 `Review-Exempt: single-line-small-file`。**沒有任何工具會擋**——`review_audit.sh` 只驗 trailer 存在且合法,不驗內容是否真的符合(鐵律 4 的機器面到此為止)。我自己抓出來改派 reviewer,而該 review 在那「一行」裡挖出 3 個實質 BLOCK,判定自我驗證。其餘四條豁免(`trivial-typo`/`format-only`/`rename-only`/`generated-snapshot`)**定義上改變不了任何人的行動,維持正當**,不要矯枉過正到每個 typo 都送審。下一步:把該條收窄成「單行 **且** 不含規範性語句(必須/禁止/應/通則/規則)」,或換成語意判準「這段文字錯了,讀者會照著做錯事嗎」。",
+  "id": "IMP-0065",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "IMP-0063 的錨點改寫 review",
+  "status": "open",
+  "stream": "IMP"
+}

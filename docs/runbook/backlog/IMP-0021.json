@@ -1,12 +1,12 @@
 {
   "category": "tool",
   "date": "2026-07-09",
-  "detail": "`ui_world_manifest.py` 對 vocabulary/reviewDeck 的 graphLinksByKind **link 元素**無 schema 驗證（只驗頂層 Mapping[str→list]）:非 str word/cardId 或非 mapping link 會雙層靜默放行,Swift decode 才炸;todayReview link 已有 `_validate_today_review_link` 全鍵驗證,建議比照補上",
+  "detail": "`ui_world_manifest.py` 對 vocabulary/reviewDeck 的 graphLinksByKind **link 元素**無 schema 驗證（只驗頂層 Mapping[str→list]）:非 str word/cardId 或非 mapping link 會雙層靜默放行,Swift decode 才炸;todayReview link 已有 `_validate_today_review_link` 全鍵驗證,建議比照補上。**2026-08-05 取證**:`ui_world_manifest.py:738-741` 只做 `_require_mapping`+`_ensure_str(kind)`+`_require_list(links)`,完全不碰 list 元素;第二層 `:765-773 _validate_seed_graph_links` 的 `if not isinstance(link, Mapping): continue` 再靜默放行(該處註解已自承是本條目)。對照組 `:1126-1140` → `:1095-1105` 現成(exact keys、6 個 str 欄、kind 對齊 bucket、confidence ∈[0,1]、hidden bool)。活體證偽(in-memory,未寫檔):把 `marketing_demo.json` 首筆 vocabulary 的 graphLinksByKind 換成 `{'related': [12345, 'not-a-mapping', {'word': None}]}` 呼叫 `_validate_ui_world_entry` → **ACCEPTED,無例外**",
   "id": "IMP-0021",
-  "resolution": "",
+  "resolution": "**frozen: UI World / catalog 一致性平面已凍結（2026-08-05，見 IMP-0063）**。**理由修正(reviewer 實測推翻我的原始理由)**:原本寫「world 不再改」是錯的——world 有兩種,repo world(`marketing_demo.json`)確實凍結,但 **spec-mode world 每次送審都重生**(`ops/app_review_evidence.py:445` 呼叫 `emit-ios --spec`,而 §FROZEN 自己就寫「送審仍經這條路」),所以 `spec_world.py` 的 graphLinksByKind 投影在唯一被保留的活動中**仍會執行**,該洞仍可觸發。維持 wont-fix 的**正確**理由是:該投影是確定式的,且輸出受 baseline byte-lock(`emit-ios --check`)約束,實際風險低。復業時**必須**重開此條。",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "spec_world 修復 review(5a25ae6ac)",
-  "status": "open",
+  "status": "wont-fix",
   "stream": "IMP"
 }
