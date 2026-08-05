@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "UI 測試以在地化 a11y label 選取 chrome 按鈕（TodayReviewPage.closeButton = app.buttons[\"關閉今日複習\"]）在兩種情況下必然壞：① label 隨狀態翻轉的按鈕（播放鍵在「開啟/關閉自動播放」之間切換，狀態切換那一刻選不到——bb02ed3e1 第一版就死在這，已改用 todayReview.autoplayToggle identifier）；② 改文案或跑非 zh-Hant locale。建議把 VocabChromeIconButton 加上 identifier 參數，讓 chrome 按鈕一律有穩定 identifier，並把既有 label 選取點（closeButton 等）遷移過去。",
+  "id": "IMP-20260805-57630a",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "TodayReviewAutoplayChromeUITests 撰寫過程",
+  "status": "open",
+  "stream": "IMP"
+}

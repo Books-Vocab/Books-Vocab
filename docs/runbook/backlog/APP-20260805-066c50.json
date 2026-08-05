@@ -1,0 +1,14 @@
+{
+  "category": "correctness",
+  "date": "2026-08-05",
+  "detail": "ReaderTranslationHandler.lastLookup 標了 @ObservationIgnored（:57），卻被三個 view body 直接讀作 retry 按鈕的顯示條件（ReaderView+Panels.swift:160,163、PDFReaderView.swift:214,217、PodcastPlayerScene.swift:370,374）。目前不會炸只因為條件另一半 translationErrorMessage 是 tracked，且 lastLookup 只在 lookup 起頭被賦值、從不設回 nil。一旦加入 nil 清理，retry 按鈕會殘留且點下去打錯模式。與 3c6cd0688 同型（狀態被投影給 view 卻不在 observation 圖上）。",
+  "id": "APP-20260805-066c50",
+  "repro": "在 ReaderTranslationHandler 加入任何把 lastLookup 設回 nil 的清理（例如 dismiss panel 時），再讓翻譯失敗一次",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "autoplay observation 修復時的全 app 同型缺陷稽核",
+  "status": "open",
+  "stream": "APP",
+  "surface": "reader"
+}

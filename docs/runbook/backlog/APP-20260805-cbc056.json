@@ -1,0 +1,14 @@
+{
+  "category": "correctness",
+  "date": "2026-08-05",
+  "detail": "PodcastPlayerViewModel.visibleSentences（:478-480）直接回傳非 observable 的 PodcastSubtitleEngine.sentences，而 viewModel 以 private let 持有它（:130）。目前不會炸只因為唯一 mutator applySubtitle 在下一行必寫 tracked 的 subtitleState，且唯一消費者 PodcastSubtitleView 在同一個 body 裡同時讀了兩者——屬「靠同幀 tracked 屬性遮蔽」的巧合正確。任一邊被拆走，字幕就會停在舊集數。與 3c6cd0688 修掉的 TodayReview autoplay 是同一型缺陷（@Observable owner 投影不可觀察的 helper）。修法比照：讓 PodcastSubtitleEngine 成為 @Observable，或把 sentences 鏡射進 viewModel 的 tracked var。",
+  "id": "APP-20260805-cbc056",
+  "repro": "把 PodcastSubtitleView 的 visibleSentences 與 subtitleState 拆到不同 view body（例如把 sentences 傳給子 view、或把 subtitleState overlay 抽出）後切換集數",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "autoplay observation 修復時的全 app 同型缺陷稽核",
+  "status": "open",
+  "stream": "APP",
+  "surface": "podcast"
+}
