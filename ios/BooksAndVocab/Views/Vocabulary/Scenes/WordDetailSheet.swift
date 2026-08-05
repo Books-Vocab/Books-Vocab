@@ -20,7 +20,6 @@ struct WordDetailSheet: View {
     private let wrapInNavigation: Bool
     private let showsInlineChrome: Bool
     private let onInlineClose: (() -> Void)?
-    private let onDeleted: (() -> Void)?
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
     init(
@@ -29,7 +28,6 @@ struct WordDetailSheet: View {
         wrapInNavigation: Bool = true,
         showsInlineChrome: Bool? = nil,
         onClose: (() -> Void)? = nil,
-        onDeleted: (() -> Void)? = nil,
         linkedCardStack: Binding<[VocabularyEntry]>? = nil,
         presentsEagerly: Bool = false
     ) {
@@ -38,7 +36,6 @@ struct WordDetailSheet: View {
         self.wrapInNavigation = wrapInNavigation
         self.showsInlineChrome = showsInlineChrome ?? wrapInNavigation
         self.onInlineClose = onClose
-        self.onDeleted = onDeleted
         self.externalLinkedCardStack = linkedCardStack
         // Catalog / snapshot seam: seed the presentation synchronously so a
         // `layer.render(in:)` snapshot captures the card, not the loading
@@ -64,8 +61,8 @@ struct WordDetailSheet: View {
                     onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
-                    onToggleArchive: { handleToggleArchive() },
-                    onDelete: { isConfirmingDelete = true },
+                    onToggleArchive: offersLifecycleActions ? { handleToggleArchive() } : nil,
+                    onDelete: offersLifecycleActions ? { isConfirmingDelete = true } : nil,
                     onAddLink: { showAddLink = true },
                     onDeleteLink: { link in
                         state.deleteLink(link, from: entry, allEntries: allEntries, kgService: kgService)
@@ -139,6 +136,14 @@ struct WordDetailSheet: View {
         externalLinkedCardStack ?? $localLinkedCardStack
     }
 
+    /// 封存與刪除只在「本 sheet 自己擁有 chrome」的宿主出現，兩者同進同退。
+    ///
+    /// 唯一 `showsInlineChrome == false` 的宿主是 `LinkedCardOverlayStack`——它自繪
+    /// header，所以標題列的封存鈕在那裡根本不會被渲染。若不一併把刪除關掉，那個「點連結
+    /// 進來看一眼」的疊層就會變成**只能刪、不能封存**：風險軸完全相反。從同一個旗標推導，
+    /// 兩者就不會靠紀律各自漂移。要在那裡管理這張卡，正常開啟它即可。
+    private var offersLifecycleActions: Bool { showsInlineChrome }
+
     private var shouldUseLinkedOverlayStack: Bool {
         // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
         guard externalLinkedCardStack == nil else { return false }
@@ -170,11 +175,7 @@ struct WordDetailSheet: View {
         if modelContext.safeSaveWithToast(toastCoordinator) {
             toastCoordinator.success(WordDetailCopy.deleted)
         }
-        if let onDeleted {
-            onDeleted()
-        } else {
-            handleClose()
-        }
+        handleClose()
     }
 
     private func handleClose() {
