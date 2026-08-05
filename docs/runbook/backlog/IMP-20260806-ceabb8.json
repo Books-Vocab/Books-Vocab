@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-06",
+  "detail": "`ops/worktree_orchestrate.py` 的模組 docstring 寫「Side-effecting steps (worktree add, rebase, push, worktree remove, branch -D) are gated behind --commit; dry-run is the default for every mutation」，worktree-flow skill 也寫「所有 mutation 子指令 dry-run 預設，`--commit` 才落地」。但 `open` **沒有 `--commit` 旗標**，直接落地建工作樹。實測 `open ... --commit` → `error: unrecognized arguments: --commit`（exit 2）。這不是大問題（open 是 additive、可 `resolve` 回收），但它讓「照 skill 抄指令」的 agent 第一步就吃一個 usage error，而且會讓人懷疑自己是不是記錯了整個 dry-run 契約。修法二選一：給 `open` 一個 no-op 相容的 `--commit`，或把 docstring/skill 的「every mutation」改成具名清單並註明 open 例外與理由。",
+  "id": "IMP-20260806-ceabb8",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "全域收攏：開 worktree 時",
+  "status": "open",
+  "stream": "IMP"
+}
