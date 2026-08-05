@@ -562,3 +562,24 @@ def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
 
     assert dests - mutable == _KNOWN_UNWIRED_FLAGS, "a new flag is silently dropped"
     assert mutable - dests == _KNOWN_FLAGLESS_FIELDS, "a mutable field has no way in"
+
+
+def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_path):
+    """A re-import must not erase work done through `update`.
+
+    The table owns eight columns; anything else on disk is there because a
+    maintainer put it there. This was fixed once for surface/repro/build and
+    then reintroduced for the groom fields — carrying a hand-listed set of
+    field names is the shape of the bug, so the contract is stated as
+    "everything the table does not own" rather than as another list.
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], verdict="PARTIAL", **_groom_kwargs())
+
+    rendered = BACKLOG.render_view(store, verified_against="deadbeef")
+    BACKLOG.import_legacy(rendered, store)
+
+    loaded = BACKLOG.load_entry(store, entry["id"])
+    for field in BACKLOG.GROOM_FIELDS + ("verdict",):
+        assert loaded.get(field), f"{field} was erased by a re-import"

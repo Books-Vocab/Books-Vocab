@@ -304,6 +304,7 @@ def add_entry(
     build: str | None = None,
     entry_id: str | None = None,
     verdict_fields: dict | None = None,
+    extra: dict | None = None,
     overwrite: bool = False,
 ) -> dict:
     """Create one entry file and return the entry.
@@ -336,6 +337,16 @@ def add_entry(
 
     if not _DATE_RE.match(date or ""):
         raise ValueError(f"date must be YYYY-MM-DD, got {date!r}")
+
+    # Fields the caller carried forward from an entry already on disk. Kept
+    # deliberately generic: the previous version named the field families it
+    # knew about, so every new family had to remember to add itself here — and
+    # the groom stamp did not, which meant a re-import silently ate every plan
+    # written by the grooming sweep. Whatever is already composed above wins;
+    # everything else survives.
+    for field, value in (extra or {}).items():
+        if field not in payload and value not in (None, ""):
+            payload[field] = value
 
     payload["id"] = entry_id or make_entry_id(
         stream=stream, date=date, source=source, detail=detail
@@ -801,17 +812,18 @@ def import_legacy(text: str, store: Path) -> dict:
             carried = load_entry(store, row["id"])
         except KeyError:
             carried = {}
-        for field in VERDICT_FIELDS:
-            if field in carried and field not in verdict_fields:
-                verdict_fields[field] = carried[field]
+        # Everything the legacy table does NOT own survives the round trip.
+        # Stating it as "not owned by the table" rather than as a list of field
+        # names is the point: a list has to be maintained, and the two times it
+        # was not, real work was erased with rc=0 and no report.
+        legacy_owned = set(LEGACY_COLUMNS) | {"schema", "stream"}
+        carried_extra = {k: v for k, v in carried.items() if k not in legacy_owned}
 
         try:
             add_entry(
                 store,
                 overwrite=True,
-                surface=carried.get("surface"),
-                repro=carried.get("repro"),
-                build=carried.get("build"),
+                extra=carried_extra,
                 entry_id=row["id"],
                 stream=row["id"].split("-", 1)[0],
                 date=row["date"],
