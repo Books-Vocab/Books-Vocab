@@ -31,6 +31,82 @@ struct ReviewCardContentAvailability: Equatable {
         case .graphLinks: graphLinks
         }
     }
+
+    /// Availability of the review card's optional blocks.
+    ///
+    /// `graphLinks` is unconditionally available: with no links the section renders
+    /// the add-link affordance, which is the ONLY way to create the first link from
+    /// the review card. Filtering it out on an empty link set silently removes that
+    /// entry point — the shipped card has always drawn one or the other.
+    static func forReviewCard(
+        partOfSpeech: String?,
+        difficultyTier: String?,
+        exampleCount: Int,
+        explanationParagraphCount: Int,
+        collocationCount: Int
+    ) -> Self {
+        Self(
+            partOfSpeech: partOfSpeech?.isEmpty == false,
+            difficultyTier: difficultyTier?.isEmpty == false,
+            example: exampleCount > 0,
+            explanation: explanationParagraphCount > 0,
+            collocations: collocationCount > 0,
+            graphLinks: true
+        )
+    }
+}
+
+/// The card region's vertical budget, derived once from the `GeometryReader`
+/// height that wraps it.
+///
+/// The raw height is NOT the room a face has: the region pads itself
+/// (`cardTopInset` / `cardBottomInset`), and while the front is showing the
+/// reveal affordance holds a hard floor as a layout sibling BELOW the card. Every
+/// consumer — the solver's `viewportHeight`, the face's scroll clamp, the back
+/// face's remainder, and the expand zone's own `minHeight` — reads this one value,
+/// so the budget the solver believes is the space the picture actually leaves.
+struct ReviewCardViewport: Equatable {
+    /// Raw `GeometryReader` height of the card region.
+    let containerHeight: CGFloat
+
+    init(containerHeight: CGFloat) {
+        self.containerHeight = containerHeight
+    }
+
+    /// What is left after the card region's own outer insets.
+    var contentHeight: CGFloat {
+        max(
+            containerHeight - TodayReviewMetrics.cardTopInset - TodayReviewMetrics.cardBottomInset,
+            0
+        )
+    }
+
+    /// What the reveal affordance holds below the card. The presenter feeds this
+    /// same value to the zone's `minHeight`, so the reserve and the drawn floor are
+    /// one number by construction.
+    ///
+    /// Capped at half the region: the zone is an affordance and the card is the
+    /// content, so on a region too short for the 180pt floor (landscape, split
+    /// view) the zone gives way rather than starving the card to nothing. On every
+    /// normal portrait size the cap is inactive and the floor/ratio stands.
+    var revealZoneReserve: CGFloat {
+        let desired = max(
+            containerHeight * TodayReviewMetrics.frontHeightRatio,
+            TodayReviewMetrics.revealZoneMinHeight
+        )
+        return min(desired, contentHeight / 2)
+    }
+
+    /// What the front face may occupy. Deliberately constant across reveal stages:
+    /// the zone collapses on reveal, but letting the budget grow there would
+    /// re-solve the front layout in the middle of the flip.
+    var frontHeight: CGFloat { max(contentHeight - revealZoneReserve, 0) }
+
+    /// What the back face may occupy once the front fold has taken its measured
+    /// share of the same content height.
+    func backHeight(frontOccupied: CGFloat) -> CGFloat {
+        ReviewCardLayoutSolver.remainingHeight(viewport: contentHeight, occupied: frontOccupied)
+    }
 }
 
 struct ReviewCardRenderPlan: Equatable {
@@ -299,6 +375,41 @@ enum ReviewCardLayoutSolver {
 
     static func visibleCollocationLimit(lineLimit: Int?) -> Int? {
         lineLimit == 1 ? 1 : nil
+    }
+
+    // MARK: Natural-tier parity with the shipped card
+    //
+    // The card that ships today draws the back document with `compact: true`:
+    // meaning paragraphs clamped to 3 lines, collocations clamped to 2 rows, and an
+    // example that expanded into whatever space was left. Those are this renderer's
+    // NATURAL tier — not an already-compacted one — otherwise the untouched default
+    // profile would start looser than the picture it is meant to reproduce and only
+    // reach it after the ladder ran.
+
+    /// Explanation lines at each tier. Natural is the shipped 3-line clamp.
+    static func explanationLineLimit(policyLineLimit: Int?) -> Int {
+        policyLineLimit ?? 3
+    }
+
+    /// Collocation rows at each tier. Natural is the shipped 2-row flow cap.
+    static func collocationRowLimit(lineLimit: Int?) -> Int {
+        lineLimit == 1 ? 1 : 2
+    }
+
+    /// Natural example truncation. The back face used to expand the sentence into
+    /// the free space it measured; the solver owns that space now, so natural back =
+    /// no truncation and the ladder clamps it. The front kept the static skin radius.
+    static func naturalExampleRadius(for face: ReviewCardFace, staticRadius: Int) -> Int? {
+        switch face {
+        case .front: staticRadius
+        case .back: nil
+        }
+    }
+
+    /// The answer's section rule under the word — drawn only when a field follows it,
+    /// exactly as the shipped card did (it never trailed the card with a bare line).
+    static func drawsAnswerDivider(fields: [ReviewCardField]) -> Bool {
+        !fields.isEmpty
     }
 
     static func missingMeasurementLevels(

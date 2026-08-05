@@ -24,10 +24,10 @@ extension TodayReviewPresenter {
         showsAnswer: Bool,
         interactive: Bool,
         borderOpacity: Double,
-        availableHeight: CGFloat
+        viewport: ReviewCardViewport
     ) -> some View {
         let card = currentCard.card
-        let layout = reviewCardLayout(for: currentCard, face: .front, availableHeight: availableHeight)
+        let layout = reviewCardLayout(for: currentCard, face: .front, availableHeight: viewport.frontHeight)
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
         if interactive, let clock = TodayReviewState.flingClock {
             PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
@@ -40,7 +40,7 @@ extension TodayReviewPresenter {
             frontFaceContent(
                 currentCard,
                 layout: layout,
-                availableHeight: availableHeight,
+                viewport: viewport,
                 measuresSections: interactive
             )
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -64,13 +64,11 @@ extension TodayReviewPresenter {
     private func frontFaceContent(
         _ currentCard: TodayReviewPresenterState.CurrentCard,
         layout: ReviewCardLayoutSolver.Result,
-        availableHeight: CGFloat,
+        viewport: ReviewCardViewport,
         measuresSections: Bool
     ) -> some View {
-        let maxHeight = max(
-            availableHeight - TodayReviewMetrics.cardTopInset - TodayReviewMetrics.cardBottomInset,
-            1
-        )
+        // Same number the solver was handed — the clamp and the budget are one value.
+        let maxHeight = max(viewport.frontHeight, 1)
         if layout.requiresScrollFallback {
             ScrollView(.vertical) {
                 reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
@@ -154,7 +152,12 @@ extension TodayReviewPresenter {
             }
 
             ForEach(plan.front.fields, id: \.self) { field in
-                reviewOptionalField(field, currentCard: currentCard, policy: layout.policy(for: .field(field)))
+                reviewOptionalField(
+                    field,
+                    currentCard: currentCard,
+                    face: .front,
+                    policy: layout.policy(for: .field(field))
+                )
                     .background {
                         if measuresSections {
                             reviewMeasurementProbes(
@@ -187,7 +190,7 @@ extension TodayReviewPresenter {
     /// TodayReviewPresenter.updateBackContentMount。
     func answerFoldSurface(
         _ currentCard: TodayReviewPresenterState.CurrentCard,
-        availableHeight: CGFloat,
+        viewport: ReviewCardViewport,
         mounted: Bool
     ) -> some View {
         let card = currentCard.card
@@ -209,7 +212,7 @@ extension TodayReviewPresenter {
                     // Identifier on the MOUNTED branch only: UI tests read
                     // `todayReview.card.back`.exists as the real flip-state
                     // signal (the folded stub deliberately carries none).
-                    combinedAnswerContent(currentCard, availableHeight: availableHeight)
+                    combinedAnswerContent(currentCard, viewport: viewport)
                         .accessibilityIdentifier("todayReview.card.back")
                 } else {
                     let _ = PerfLog.review.mark("back.stub", "w=\(card.word)")
@@ -225,22 +228,21 @@ extension TodayReviewPresenter {
         }
     }
 
-    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
+    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, viewport: ReviewCardViewport) -> some View {
         let card = currentCard.card
         let _ = PerfLog.render.tick(
             "todayReview.answer.surface",
             "mode=\(card.reviewMode.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
         )
         let plan = reviewCardRenderPlan(for: currentCard)
-        let backAvailableHeight = ReviewCardLayoutSolver.remainingHeight(
-            viewport: availableHeight,
-            occupied: activeCardHeight + TodayReviewMetrics.stackLayerMicroOffset
+        // The outer insets are already out of `contentHeight`, so the front's
+        // measured height is the only thing left to subtract — counting the insets
+        // twice was the other half of the disagreeing-budget defect.
+        let backAvailableHeight = viewport.backHeight(
+            frontOccupied: activeCardHeight + TodayReviewMetrics.stackLayerMicroOffset
         )
         let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
-        let maxHeight = max(
-            backAvailableHeight - TodayReviewMetrics.cardTopInset - TodayReviewMetrics.cardBottomInset,
-            1
-        )
+        let maxHeight = max(backAvailableHeight, 1)
         return Group {
             if layout.requiresScrollFallback {
                 ScrollView(.vertical) { answerContent(currentCard, plan: plan, layout: layout) }
@@ -266,18 +268,27 @@ extension TodayReviewPresenter {
         // Same rule as the front face: draw the gap the solver charged.
         VStack(alignment: .leading, spacing: layout.sectionSpacing) {
 
-            Group {
-                if card.reviewMode == .production {
-                    Text(card.word)
-                } else {
-                    Text(card.translation)
+            // Answer word + its section rule form ONE core section: the rule is the
+            // core's own chrome (as on the shipped card), so it is measured with the
+            // core rather than competing with the profile's fields for a slot.
+            VStack(alignment: .leading, spacing: layout.sectionSpacing) {
+                Group {
+                    if card.reviewMode == .production {
+                        Text(card.word)
+                    } else {
+                        Text(card.translation)
+                    }
+                }
+                .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
+                .foregroundStyle(appSkin.palette.primaryText)
+                .lineLimit(3)
+                .minimumScaleFactor(0.65)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if ReviewCardLayoutSolver.drawsAnswerDivider(fields: plan.back.fields) {
+                    CardSectionDivider(horizontalPadding: 0)
                 }
             }
-            .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-            .foregroundStyle(appSkin.palette.primaryText)
-            .lineLimit(3)
-            .minimumScaleFactor(0.65)
-            .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 recordReviewSectionHeight(
                     height,
@@ -289,7 +300,12 @@ extension TodayReviewPresenter {
             }
 
             ForEach(plan.back.fields, id: \.self) { field in
-                reviewOptionalField(field, currentCard: currentCard, policy: layout.policy(for: .field(field)))
+                reviewOptionalField(
+                    field,
+                    currentCard: currentCard,
+                    face: .back,
+                    policy: layout.policy(for: .field(field))
+                )
                     .background {
                         reviewMeasurementProbes(
                             field,
@@ -373,10 +389,14 @@ extension TodayReviewPresenter {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(L10n.string("vocab.card.addLink"))
+            .accessibilityIdentifier("todayReview.card.addLink")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Shown by the graph-links section when the card has no links yet. It is the
+    /// only place the review card can create its first link, which is why the
+    /// section is always *available* even though its content is empty.
     private var addLinkPrompt: some View {
         Button(action: onAddLink) {
             HStack(spacing: appSkin.spacing.inlineGap) {
@@ -388,6 +408,7 @@ extension TodayReviewPresenter {
             .foregroundStyle(appSkin.palette.tertiaryText)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("todayReview.card.addLink")
     }
 
     // MARK: - Render Plan / Adaptive Layout
@@ -399,13 +420,12 @@ extension TodayReviewPresenter {
         return .make(
             profile: reviewCardLayoutStore.profile,
             mode: card.reviewMode,
-            availability: .init(
-                partOfSpeech: card.partOfSpeech?.isEmpty == false,
-                difficultyTier: card.difficultyTier?.isEmpty == false,
-                example: !card.examples.isEmpty,
-                explanation: !currentCard.backDocument.meaningParagraphs().isEmpty,
-                collocations: !card.collocations.isEmpty,
-                graphLinks: !currentCard.linkGroups.isEmpty
+            availability: .forReviewCard(
+                partOfSpeech: card.partOfSpeech,
+                difficultyTier: card.difficultyTier,
+                exampleCount: card.examples.count,
+                explanationParagraphCount: currentCard.backDocument.meaningParagraphs().count,
+                collocationCount: card.collocations.count
             )
         )
     }
@@ -498,6 +518,7 @@ extension TodayReviewPresenter {
                 reviewOptionalField(
                     field,
                     currentCard: currentCard,
+                    face: face,
                     policy: .measurementProbe(for: field, level: level)
                 )
                 .fixedSize(horizontal: false, vertical: true)
@@ -521,6 +542,7 @@ extension TodayReviewPresenter {
     private func reviewOptionalField(
         _ field: ReviewCardField,
         currentCard: TodayReviewPresenterState.CurrentCard,
+        face: ReviewCardFace,
         policy: ReviewCardLayoutSolver.Policy
     ) -> some View {
         let card = currentCard.card
@@ -532,7 +554,11 @@ extension TodayReviewPresenter {
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }
         case .difficultyTier:
-            if let tier = card.difficultyTier { VocabTierLabel(tier: tier) }
+            // Trailing-aligned, as the tier pill has always hugged the card's edge.
+            if let tier = card.difficultyTier {
+                VocabTierLabel(tier: tier)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         case .example:
             if let example = card.examples.first {
                 CardRichTextRenderer.text(
@@ -549,38 +575,38 @@ extension TodayReviewPresenter {
                         underlineOpacity: appSkin.highlight.underlineOpacity
                     ),
                     mode: .cloze,
-                    truncateAroundMarkedWordRadius: policy.exampleRadius ?? appSkin.metrics.exampleTruncateRadius,
+                    truncateAroundMarkedWordRadius: policy.exampleRadius
+                        ?? ReviewCardLayoutSolver.naturalExampleRadius(
+                            for: face,
+                            staticRadius: appSkin.metrics.exampleTruncateRadius
+                        ),
                     targetWord: card.word
                 )
                 .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             }
         case .explanation:
-            let paragraphs = currentCard.backDocument.meaningParagraphs()
-            if let lineLimit = policy.lineLimit {
-                CardRichTextRenderer.text(
-                    ReviewCardExplanationContent.rawMarkdown(from: paragraphs),
-                    style: CardRichTextStyle(
-                        font: appSkin.typography.body,
-                        textColor: appSkin.palette.secondaryText,
-                        highlightColor: appSkin.palette.highlightMark,
-                        italic: false,
-                        underlineHighlights: false,
-                        useBackgroundMark: false,
-                        highlightWeight: appSkin.highlight.fontWeight,
-                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
-                        underlineOpacity: appSkin.highlight.underlineOpacity
-                    )
+            // One globally-limited rich text rather than per-paragraph clamps: the
+            // solver budgets one section, so one clamp must own the whole block.
+            // Natural is the shipped 3-line / 5pt compact meaning presentation.
+            CardRichTextRenderer.text(
+                ReviewCardExplanationContent.rawMarkdown(
+                    from: currentCard.backDocument.meaningParagraphs()
+                ),
+                style: CardRichTextStyle(
+                    font: appSkin.typography.body,
+                    textColor: appSkin.palette.secondaryText,
+                    highlightColor: appSkin.palette.highlightMark,
+                    italic: false,
+                    underlineHighlights: false,
+                    useBackgroundMark: false,
+                    highlightWeight: appSkin.highlight.fontWeight,
+                    backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                    underlineOpacity: appSkin.highlight.underlineOpacity
                 )
-                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
-                .lineLimit(lineLimit)
-            } else {
-                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
-                    ForEach(paragraphs) { paragraph in
-                        CardInlineText(paragraph: paragraph, style: .body)
-                            .lineSpacing(appSkin.metrics.paragraphLineSpacing)
-                    }
-                }
-            }
+            )
+            .lineSpacing(TodayReviewMetrics.foldMeaningLineSpacing)
+            .lineLimit(ReviewCardLayoutSolver.explanationLineLimit(policyLineLimit: policy.lineLimit))
+            .fixedSize(horizontal: false, vertical: true)
         case .collocations:
             let visible: [String] = if let limit = ReviewCardLayoutSolver.visibleCollocationLimit(
                 lineLimit: policy.lineLimit
@@ -592,7 +618,8 @@ extension TodayReviewPresenter {
             VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
                 CardDocumentCollocationsBlock(
                     items: visible,
-                    compact: policy.lineLimit != nil,
+                    compact: true,
+                    maxRows: ReviewCardLayoutSolver.collocationRowLimit(lineLimit: policy.lineLimit),
                     explanations: collocationExplanations,
                     onExplain: onExplainCollocation,
                     onView: onViewCollocationExplanation,
@@ -605,7 +632,13 @@ extension TodayReviewPresenter {
                 }
             }
         case .graphLinks:
-            reviewLinkStrip(currentCard.linkGroups, presentation: policy.graphLinkPresentation ?? .twoPerGroup)
+            // No links yet → the add-link prompt, never nothing: this is the only
+            // place the review card can start a link from.
+            if currentCard.linkGroups.isEmpty {
+                addLinkPrompt
+            } else {
+                reviewLinkStrip(currentCard.linkGroups, presentation: policy.graphLinkPresentation ?? .twoPerGroup)
+            }
         }
     }
 

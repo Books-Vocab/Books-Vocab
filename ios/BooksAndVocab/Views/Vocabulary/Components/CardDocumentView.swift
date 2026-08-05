@@ -260,16 +260,21 @@ struct CardDocumentCollocationsBlock: View {
     @Environment(\.appSkin) private var appSkin
     let items: [String]
     var compact: Bool = false
+    /// Explicit row cap. `nil` keeps the historical rule (compact = 2 rows, full =
+    /// unlimited); the review card passes its solved tier instead.
+    var maxRows: Int? = nil
     var explanations: [String: String] = [:]
     var onExplain: ((String) -> Void)? = nil
     var onView: ((String) -> Void)? = nil
     var onDelete: ((String) -> Void)? = nil
 
+    private var effectiveMaxRows: Int? { maxRows ?? (compact ? 2 : nil) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
 
-            CollocationFlowLayout(spacing: appSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
+            CollocationFlowLayout(spacing: appSkin.metrics.cardBlockInnerGap, maxRows: effectiveMaxRows) {
                 // Identify pills by content, not position: the FlowLayout still
                 // places subviews in source order (unchanged), so offscreen-place
                 // logic is unaffected — this only stops an offscreen pill from being

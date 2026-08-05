@@ -47,7 +47,7 @@ extension TodayReviewPresenter {
     // 若 device probe 顯示 preview 合成成本回升，A=per-slot 固定 .drawingGroup、
     // B=維持移除，以 settle.frames/fling.frames 對比定案。
     @ViewBuilder
-    func cardSlotView(slot: Int, availableHeight: CGFloat) -> some View {
+    func cardSlotView(slot: Int, viewport: ReviewCardViewport) -> some View {
         if slot < state.slots.count, let content = state.slots[slot].card {
             let role = state.slots[slot].assignment.role
             let isActive = role == .active
@@ -74,7 +74,7 @@ extension TodayReviewPresenter {
                     showsAnswer: slotShowsAnswer,
                     interactive: isActive,
                     borderOpacity: borderOpacity,
-                    availableHeight: availableHeight
+                    viewport: viewport
                 )
                 .overlay(alignment: .topTrailing) {
                     // chrome 常駐於每個 slot（裝飾），只有 active 可點 —
@@ -96,7 +96,7 @@ extension TodayReviewPresenter {
                 // 恆摺疊（slotShowsAnswer == false）。
                 answerFoldSurface(
                     content,
-                    availableHeight: availableHeight,
+                    viewport: viewport,
                     mounted: isActive && backContentMounted
                 )
                 .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
