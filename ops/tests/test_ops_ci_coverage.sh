@@ -48,6 +48,7 @@ LINUX_GROUPS=(
   worktree-orchestrator
   script-help
   lib-sourcing
+  backlog
   # ── 以下 13 筆原本被排除，理由經證偽實測不成立後收進來（IMP-0054）──
   # 共通形狀：測試本身是注入 seam 的離線 stub，散文理由描述的是它所測的那支工具。
   backup-verify
