@@ -94,6 +94,27 @@ ops-cli trends [--window N]                # 全域監控:errors/llm-fail/active
 ops-cli llm-errors [--window N] [--uid all|<uid>]  # 真火監控——真實 LLM 基礎設施失敗(429/5xx/timeout)逐日+分類
                                            # by_class/by_provider/by_status 排名 + recent 最近 10 筆
                                            # 預設 window=14d;uid=all 看全體,uid=<id> 看單用戶
+ops-cli dictionary-health [--window <hours>]  # 字典全域面(讀 lexical_cache.db,不分用戶)
+                                           # cache 組成 positive/negative/fresh/expired + 上游每小時預算餘裕
+                                           # lookups.by_outcome 印全套詞彙(零顯示 0 而非消失)+ p50/p95/max 延遲
+                                           # 三種 429 分開:throttled=我方 per-user 限流 / rate_limited=上游 429
+                                           #              / budget_exhausted=我方每小時預算擋下
+                                           # ⚠ 這三種只在「沒有可用快取」時記到自己名下。手上有 entry 時
+                                           #    (lexical.py `_search`/`_resolve_entry` 的 except 分支)一律降級回
+                                           #    cache_status=stale,所以 budget_exhausted/rate_limited=0 不代表
+                                           #    沒發生節流——快取愈溫愈會被吸收進 stale。stale 竄高就交叉看
+                                           #    provider_budget 餘裕,別直接歸咎上游。failure_rate 不受影響
+                                           #    (stale 本來就在分子裡)。
+                                           # 回滾後看 by_outcome 的 blocked 是否如預期出現
+ops-cli dictionary-cards [uid]             # 字典卡面(預設 all;讀 users/<uid>/cards.db)
+                                           # 字典卡數 + active/archived/deleted/reader_hidden 拆分、staged sidecar
+                                           # totals.operations_in_flight = lexical_operations status≠completed
+                                           #   → **不歸零就是 materialize saga 卡死的簽名**,回滾後必看
+                                           # totals.promotion_failures + 逐筆 error_code/retryable/attempt
+                                           # ⚠ 明示的 uid 打錯時 totals 全零但 exit 0——先確認 totals.users>0 再讀數字
+
+# ⚠ 字典的 runbook 一律走上面兩個 typed 子指令,**禁止用 db-query 手拼 SQL 當正式流程**
+#   (見 docs/reference/tech_index.md;回滾檢查清單見 docs/sop/deploy.md「字典卡（V1）rollout 開關」)。
 
 # 統一輸出契約：以上所有 data-query 命令（analyze 除外，它是人讀報告）皆支援 --json，
 #   吐結構化結果供 agent 機讀；db-query 的 --json 可置於 SQL 前後皆可。
