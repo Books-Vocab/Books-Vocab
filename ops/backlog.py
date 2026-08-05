@@ -87,6 +87,10 @@ REQUIRED_FIELDS = (
 # `surface` means someone filed an app problem into the tooling stream.
 APP_ONLY_FIELDS = ("surface", "repro", "build")
 
+# Structured results of a re-verification sweep, extracted from the resolution
+# stamp. Optional on every entry; see extract_verdict_fields().
+VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
+
 
 class BacklogError(Exception):
     """Raised for usage errors that should exit 64 rather than traceback."""
@@ -270,6 +274,47 @@ def add_entry(
 
     _write_atomic(entry_path(store, payload["id"]), _dumps(payload))
     return payload
+
+
+MUTABLE_FIELDS = ("status", "severity", "resolution", "detail", "source", "category") + (
+    "surface",
+    "repro",
+    "build",
+) + VERDICT_FIELDS
+
+
+def update_entry(store: Path, entry_id: str, **changes) -> dict:
+    """Change fields on an existing entry, in place, keeping its id.
+
+    The id digest deliberately covers only the fields that identify WHICH
+    problem this is, so triaging never moves an entry: if it did, every
+    cross-reference would rot and the store would grow a fresh file per status
+    change.
+
+    Unknown field names are refused rather than stored. A typo that silently
+    created a field nobody reads is the quiet half of the drift this store
+    exists to remove.
+    """
+    payload = load_entry(store, entry_id)
+
+    unknown = [field for field in changes if field not in MUTABLE_FIELDS]
+    if unknown:
+        raise ValueError(f"unknown field(s): {unknown}; mutable: {sorted(MUTABLE_FIELDS)}")
+
+    updated = dict(payload)
+    for field, value in changes.items():
+        if value is None:
+            continue
+        updated[field] = value
+
+    problems = validate_entry(updated, entry_id=entry_id)
+    if problems:
+        # Validate BEFORE writing, so a rejected update leaves the file exactly
+        # as it was rather than half-applied.
+        raise ValueError(f"invalid update: {problems}")
+
+    _write_atomic(entry_path(store, entry_id), _dumps(updated))
+    return updated
 
 
 def load_entry(store: Path, entry_id: str) -> dict:
@@ -538,9 +583,6 @@ def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
     return fields, misses
 
 
-VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
-
-
 def import_legacy(text: str, store: Path) -> dict:
     """Import the legacy table into the store. Re-runnable and idempotent.
 
@@ -747,6 +789,24 @@ def build_parser() -> argparse.ArgumentParser:
     _add_store_arg(p_validate)
     p_validate.add_argument("--json", action="store_true")
 
+    p_update = sub.add_parser(
+        "update",
+        help="change fields on an existing entry (DRY-RUN by default, --commit to land)",
+    )
+    _add_store_arg(p_update)
+    p_update.add_argument("id")
+    p_update.add_argument("--status", choices=STATUSES)
+    p_update.add_argument("--severity", choices=SEVERITIES)
+    p_update.add_argument("--category")
+    p_update.add_argument("--resolution")
+    p_update.add_argument("--detail")
+    p_update.add_argument("--verdict")
+    p_update.add_argument("--cost")
+    p_update.add_argument("--fix-site", dest="fix_site")
+    p_update.add_argument("--verified-at", dest="verified_at")
+    p_update.add_argument("--commit", action="store_true")
+    p_update.add_argument("--json", action="store_true")
+
     p_import = sub.add_parser(
         "import",
         help="import the legacy markdown table into the store (re-runnable, idempotent)",
@@ -841,6 +901,48 @@ def _cmd_validate(args) -> int:
     return 2 if problems else 0
 
 
+def _cmd_update(args) -> int:
+    changes = {
+        field: getattr(args, field, None)
+        for field in ("status", "severity", "category", "resolution", "detail",
+                      "verdict", "cost", "fix_site", "verified_at")
+        if getattr(args, field, None) is not None
+    }
+    if not changes:
+        print("nothing to change; pass at least one field", file=sys.stderr)
+        return 64
+
+    try:
+        before = load_entry(args.store, args.id)
+    except KeyError:
+        print(f"no such entry: {args.id}", file=sys.stderr)
+        return 1
+
+    if args.commit:
+        after = update_entry(args.store, args.id, **changes)
+    else:
+        # Validate the same way the real path does, so a dry-run that prints a
+        # diff cannot be followed by a --commit that fails.
+        after = {**before, **changes}
+        problems = validate_entry(after, entry_id=args.id)
+        if problems:
+            raise ValueError(f"invalid update: {problems}")
+
+    diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
+    if args.json:
+        print(json.dumps(
+            {"schema": "kg.backlog.update.v1",
+             "mode": "commit" if args.commit else "dry-run",
+             "id": args.id, "changes": diff}, ensure_ascii=False))
+    else:
+        print(f"[{'commit' if args.commit else 'dry-run'}] {args.id}")
+        for field, change in diff.items():
+            print(f"  {field}: {str(change['from'])[:60]!r} -> {str(change['to'])[:60]!r}")
+        if not args.commit:
+            print("  (dry-run — pass --commit to land)")
+    return 0
+
+
 def _git_head() -> str:
     try:
         out = subprocess.run(
@@ -908,6 +1010,7 @@ def main(argv: list[str] | None = None) -> int:
         "list": _cmd_list,
         "show": _cmd_show,
         "validate": _cmd_validate,
+        "update": _cmd_update,
         "import": _cmd_import,
         "render": _cmd_render,
     }
