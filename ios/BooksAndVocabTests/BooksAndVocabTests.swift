@@ -296,10 +296,24 @@ struct BooksAndVocabTests {
         // The batched flush (driven by the view's onDisappear in production) is what
         // reaches the store — and it must stay idempotent: exactly one record per card.
         state.flushPendingAnswers(container: container, reviewSettings: .default)
-        try await Task.sleep(for: .milliseconds(100))
+        // The flush body runs on `Task.detached(priority: .utility)` (see
+        // ReviewSessionPersistence.flushPendingAnswers), so a fixed `sleep(100ms)`
+        // asserts "this machine was fast enough", not "the write landed". Three
+        // unrelated branches were blocked by that race in one day, and the failure
+        // reads as data loss (all three assertions come back empty) rather than as a
+        // timing problem, which is why it kept getting attributed to the branch.
+        //
+        // Wait for the store to actually hold the record instead, with a ceiling: a
+        // flush that never lands still fails, in bounded time, so this hides no real
+        // regression — it only stops the test from asserting on the scheduler.
+        var records: [ReviewRecord] = []
+        for _ in 0..<400 {                                  // ceiling: 400 * 25ms = 10s
+            records = try context.fetch(FetchDescriptor<ReviewRecord>())
+            if !records.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
 
         let entry = try context.fetch(FetchDescriptor<VocabularyEntry>()).first { $0.kgCardId == "card-lucid" }
-        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
 
         #expect(entry?.reviewCount == 1)
         #expect(entry?.lastReviewFeedbackRaw == ReviewFeedback.remembered.rawValue)
