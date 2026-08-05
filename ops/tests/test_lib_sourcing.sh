@@ -23,13 +23,17 @@ cd "$ROOT"
 # source 語句。理由是實際寫法五花八門且都合法：`source "$PROGRESS_LIB"`（路徑存在變數
 # 裡）、在 `bash -lc '…'` 字串內 source（探針測試）、經另一個 lib 轉包。逐行解析會把這
 # 些判成缺 source，而假陽性多到一定程度，這條測試就會被關掉。
-# 代價是「只在註解裡提到」也會被放行——換來的是它對真正的失效模式仍然靈敏：
-# ios_build.sh 從頭到尾沒有出現過 ios_build_progress.sh 這個字串。
+# **註解不算數**：`source "$SCRIPT_DIR/lib/x.sh"` 上面幾乎都跟著一行
+# `# shellcheck source=lib/x.sh`，兩行是同一個單位、被當成一體編輯。只認全檔字串的話，
+# 刪掉 source 卻留著 shellcheck 那行——正是最可能發生的手滑——會讓這條測試保持全綠，
+# 也就是它誕生的那個 bug 本身溜過去。實測 ops/ 下目前沒有任何腳本「只在註解裡提到」某個
+# lib，所以排除註解行零假陽性。
 mentions_lib() {  # $1=腳本  $2=lib 檔名
-  grep -qE "lib/$2" "$1"
+  grep -qE "^[^#]*lib/$2" "$1"
 }
 
-call_re() { printf '(^|[;&|(`]|\\$\\()[[:space:]]*%s([[:space:]]|$)' "$1"; }
+# 命令位置：行首、管線/替換/邏輯運算子之後，或緊跟在 if/while/until/then/else/do/! 之後。
+call_re() { printf '(^|[;&|(`]|\\$\\()[[:space:]]*((if|while|until|then|else|do|!)[[:space:]]+)*%s([[:space:]]|$)' "$1"; }
 
 fail=0
 hits=""
@@ -49,7 +53,7 @@ for lib in ops/lib/*.sh; do
       # 不是漏 source。它自己就說清楚了，所以放行。
       hits="$(grep -nE "$(call_re "$fn")" "$script" | grep -vE "type[[:space:]]+${fn}[[:space:]]*>" || true)"
       if [[ -n "$hits" ]]; then
-        echo "✗ ${script} 呼叫 ${fn}()，但全檔沒有提到 ops/lib/${libname}"
+        echo "✗ ${script} 呼叫 ${fn}()，但沒有任何非註解行提到 ops/lib/${libname}"
         printf '%s\n' "$hits" | head -3 | sed 's/^/    /'
         fail=$((fail + 1))
       fi
@@ -71,8 +75,15 @@ if [[ "$probe_ok" -ne 1 ]]; then
   fail=$((fail + 1))
 fi
 
+# 兩個 for glob 任一打錯，迴圈就一次都不跑，而結果是一行「通過」。負控只驗了兩個述詞
+# 本身會不會判斷，沒有驗到 harness 有沒有真的走過任何組合——這條補上那半。
+if [[ "$checked" -lt 100 ]]; then
+  echo "✗ 只檢查了 ${checked} 組 (entrypoint, lib fn)，遠低於預期——掃描範圍壞了，這次綠燈不算數"
+  fail=$((fail + 1))
+fi
+
 if [[ "$fail" -ne 0 ]]; then
-  echo "✗ test_lib_sourcing: ${fail} 處未 source 的 lib 函式呼叫"
+  echo "✗ test_lib_sourcing: ${fail} 處問題"
   exit 1
 fi
 echo "✓ test_lib_sourcing: ${checked} 組 (entrypoint, lib fn) 檢查通過，負控雙向有效"
