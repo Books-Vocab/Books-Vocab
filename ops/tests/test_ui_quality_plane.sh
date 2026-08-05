@@ -261,7 +261,7 @@ mechanisms:
     entrypoint: ops/test_ops.sh
     gate: manual
     run:
-    - --baseline-check
+  - --baseline-check
     triggers:
       - ios/
     verdict: "exit code"
