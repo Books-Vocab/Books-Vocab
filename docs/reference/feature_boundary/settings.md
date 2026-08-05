@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: cf5dd5df5
+verified_against: 941fe100f
 -->
 # Settings Feature Boundary
 
@@ -30,7 +30,7 @@ verified_against: cf5dd5df5
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsPresenter.swift` | 146 | `struct SettingsPresenter: View`，主佈局；`otherSection` 委派 `SettingsOtherSection`、debug 區委派 `SettingsDebugBackendSection`。**Stack 約束**：section 一律 child View struct，不得寫成 computed property 內聯回 body（真機 Debug 1MB main stack overflow，2026-06-11 定讞；見 `SettingsOtherSection.swift` 檔頭）|
+| `SettingsPresenter.swift` | 151 | `struct SettingsPresenter: View`，主佈局；`otherSection` 委派 `SettingsOtherSection`、debug 區委派 `SettingsDebugBackendSection`。**Stack 約束**：section 一律 child View struct，不得寫成 computed property 內聯回 body（真機 Debug 1MB main stack overflow，2026-06-11 定讞；見 `SettingsOtherSection.swift` 檔頭）。持有「複習卡片」的 `navigationDestination`，目的地是 Vocabulary feature 的 `ReviewCardLayoutEditor`（同一個 View struct 也被複習畫面的 sheet 用，Settings 不自建一份）|
 | `SettingsPresenter+Actions.swift` | 438 | 複合互動元件庫（最大檔案）：`SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` / `SettingsFeaturePanel` / `SettingsPlanComparisonTable` / `SettingsSubscriptionFeatureList` / `SettingsSelectableRow` / `SettingsSelectionTile` / `SettingsCompactActionButton` |
 | `SettingsPresenter+Components.swift` | 192 | 微元件庫：`SettingsSectionHeader` / SectionFooter / 分隔線 / MenuValue / TitleSubtitleStack / StatusBadge / StatusValue / StatusSummaryValue（純展示，零互動邏輯）|
 | `SettingsPresenter+Controls.swift` | 116 | 控件樣式層：StepperIconButton、card / button chrome / text input 修飾符、LabeledInputField |
@@ -52,7 +52,7 @@ verified_against: cf5dd5df5
 | `SettingsAccountSection.swift` | 424 | `struct SettingsAccountSection: View` + `SettingsAuthSummary`，帳號卡片區塊（Google / Apple / 手動登入、Pro 標籤、驗證中遮蔽層）；summary row 的 accessibility identifier 只用 `settings.account.identity.<sha256>`（缺 identity 時為 `.unavailable`）。畫面仍可顯示可存取的 email；live evidence 不註冊完整 app tree，也不把 raw account 寫入 attachment/log |
 | `SettingsSubscriptionSection.swift` | 139 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
 | `SettingsReviewSection.swift` | 334 | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
-| `SettingsPreferencesSection.swift` | 145 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）與 UI「聲音回饋」「觸覺回饋」本機開關 |
+| `SettingsPreferencesSection.swift` | 197 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）、UI「聲音回饋」「觸覺回饋」本機開關，以及 **「複習卡片」列**（`rectangle.split.2x1` → `ReviewCardLayoutEditor`，列尾摘要由 `ReviewCardLayoutSummary.titleKey(for:)` 給 預設／自訂）。**刻意與「複習節奏」分成兩列**：複習節奏那頁擁有 SRS 排程規則，卡片長什麼樣不屬於它 |
 | `SettingsOtherSection.swift` | 227 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）|
 | `SettingsDebugBackendSection.swift` | 128 | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct）|
 
@@ -107,6 +107,7 @@ verified_against: cf5dd5df5
 - `SettingsPresenterState`：Presenter 接收的 UI 狀態快照，純值類型，可跨 layer 傳遞
 - `SettingsPresenterState.AuthSection.identityFingerprint`：只由 `authManager.userEmail` 派生；原始帳號不進 accessibility identifier 或 evidence attachment/log，UITest 以同一正規化規則的 SHA-256 驗證裝置登入者是否等於 ASC reviewer account（畫面可見 email 仍保有一般 accessibility）
 - `SettingsPresenterState.PreferencesSection.reviewModeDisplayName(for:)`：偏好首頁「複習節奏」摘要的單一組裝入口；未凍結顯示模式名，凍結時顯示 `已凍結 · <模式>`
+- **複習卡片版面 profile 不進 `SettingsPresenterState`**：`SettingsPreferencesSection` 直接讀 `@Environment(\.reviewCardLayoutStore)`（owner 為 Vocabulary feature 的 `ReviewCardLayoutStore`，見 `feature_boundary/vocabulary.md`）。理由是複習畫面會即時改它——把它快照進 presenter state 只會多一份會過期的副本。摘要文案唯一入口 `ReviewCardLayoutSummary.titleKey(for:)`，判定為兩模式四面全深比較
 - `SettingsPresenterActions`：callback closure 集合，由 Container 注入，不持有 mutable state
 - 帳號刪除確認與 paywall 開關目前由 `SettingsCoordinator` / `SettingsView` 一起驅動；不直接散落到 section view
 

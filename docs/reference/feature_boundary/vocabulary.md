@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: f25fd2ed6
+verified_against: 941fe100f
 -->
 # Vocabulary Feature Boundary
 
@@ -48,19 +48,19 @@ verified_against: f25fd2ed6
 | `Scenes/SyncPresenter+Preview.swift` | 290 | 同步 preview 資料 |
 | `Scenes/StatsPresenter.swift` | 520 | 統計畫面佈局；forecast 與 graph thumbnail 使用 review pause reference date |
 | `Scenes/ReviewCalendarPresenter.swift` | 255 | 複習日曆佈局 |
-| `Scenes/TodayReviewPresenter.swift` | 454 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀 |
-| `Scenes/TodayReviewPresenter+CardContent.swift` | 293 | 卡片內容 extension；翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
-| `Scenes/TodayReviewPresenter+Toolbar.swift` | 551 | toolbar extension；autoplay controls 含聲音開關。播放鍵的可按性 = `isAutoPlaying || canAutoplay`：**守衛只擋開始、不擋停止**，否則就重造 autoplay 出不去的 bug |
+| `Scenes/TodayReviewPresenter.swift` | 425 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀；由 `@Environment(\.reviewCardLayoutStore)` 讀 profile 供卡片動態排版 |
+| `Scenes/TodayReviewPresenter+CardContent.swift` | 673 | 卡片內容 extension；**profile-driven 動態佈局的渲染端**——依 `ReviewCardRenderPlan` 決定各欄位出現在哪一面、把三層量測（natural / intermediate / compact）餵給 `ReviewCardLayoutSolver`、按解出的 policy 畫（例句 radius、解釋行數、搭配詞列數、知識連結 presentation、section spacing）。翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
+| `Scenes/TodayReviewPresenter+Toolbar.swift` | 573 | toolbar extension；autoplay controls 含聲音開關。播放鍵的可按性 = `isAutoPlaying || canAutoplay`：**守衛只擋開始、不擋停止**，否則就重造 autoplay 出不去的 bug；其 identifier 固定為 `todayReview.autoplayToggle`（a11y label 會隨播放狀態翻轉，靠 label 選取會在切換瞬間選不到）。版面編輯器入口（`rectangle.split.2x1`）與 autoplay 播放/暫停的 language-independent identifier（`todayReview.autoplay.playing|paused`）皆在此，入口與其他 chrome 共用 `isCardInteractive` 鎖 |
 
 ### State Layer（狀態定義）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/TodayReviewState.swift` | 604 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration、review intent gating 與 collocation substate，同時把 queue+reveal 導航委派 `TodayReviewSessionState` |
+| `Scenes/TodayReviewState.swift` | 612 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration、review intent gating 與 collocation substate，同時把 queue+reveal 導航委派 `TodayReviewSessionState` |
 | `Scenes/TodayReviewSessionState.swift` | 78 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定，以及 `canAutoplay`（loop 每圈只有翻面與推進兩種動作，兩者皆不可能＝死路，播放鍵須停用而非沉默 no-op） |
 | `Scenes/TodayReviewSessionPersistenceController.swift` | 73 | `struct TodayReviewSessionPersistenceController`，封裝 queue persistence metadata / snapshot / deferred flush；讓 `TodayReviewState` 不直接操作 `ReviewSessionPersistence` |
-| `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
-| `Scenes/TodayReviewAutoplayController.swift` | 128 | `@Observable @MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration。**`@Observable` 是契約不是風格**：4 個 playback 狀態由 `TodayReviewState` 的 computed property 投影給 `TodayReviewView.body` 讀，型別若無 registrar 則切 autoplay 不會 invalidate view（開啟方向被 loop 的 `session` mutation 延遲自癒、關閉方向永不自癒 → 播放列永久卡住）。把持有它的 `let` 改成 `var` 不能代替。`task` 必須 `@ObservationIgnored`（每卡 restart loop = 每卡兩次假通知）。由 `TodayReviewAutoplayObservationTests` 釘住 |
+| `Scenes/TodayReviewCardCache.swift` | 98 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild。**fling 每幀不得重建 `CardDocument` 或重走 paragraphs**——欄位資料在此預先整理好，只在 profile / 寬度 / Dynamic Type / 卡片 identity 改變時才重算（原 `PostExampleMetrics` 已隨動態佈局移除） |
+| `Scenes/TodayReviewAutoplayController.swift` | 137 | `@Observable @MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task。**`@Observable` 是契約不是風格**：4 個 playback 狀態由 `TodayReviewState` 的 computed property 投影給 `TodayReviewView.body` 讀，型別若無 registrar 則切 autoplay 不會 invalidate view（開啟方向被 loop 的 `session` mutation 延遲自癒、關閉方向永不自癒 → 播放列永久卡住）。把持有它的 `let` 改成 `var` 不能代替。`task` 必須 `@ObservationIgnored`（每卡 restart loop = 每卡兩次假通知）。`pauseForInterruption()` 只暫停不啟動且**刻意不自動恢復**。由 `TodayReviewAutoplayObservationTests` 釘住 |
 | `Scenes/TodayReviewCollocationState.swift` | 29 | `struct TodayReviewCollocationState`，封裝 collocation explanation 的 scene-local mirror 與 entry mutation；讓 `TodayReviewView` 不再直接持有 explanation mirror / save 流程 |
 | `Scenes/WordDetailSceneState.swift` | 193 | `@Observable @MainActor final class WordDetailSceneState`，封裝 presenterState、`actionError`（原 `linkError`，現為所有卡片層級動作共用的單一 banner）與 link / archive mutation orchestration；讓 `WordDetailSheet` 退回 scene 組裝與 routing。**共用 banner 的生命週期規則**：每個動作起手 `beginAction()` 清空，否則失敗訊息會活過後續的成功動作。`setArchived` 是 async（對齊 `KGVocabCoordinator.handleBatchArchive`），失敗回捲採 compare-and-swap + `!entry.isDeleted` 守衛——await 期間背景 pull 可能帶回權威值並 `markSynced()`，無條件寫回會用舊值蓋掉新鮮值且不再推送 |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
@@ -91,12 +91,14 @@ verified_against: f25fd2ed6
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `Scenes/KGVocabView.swift` | 348 | `struct KGVocabView: View`，Books & Vocab 詞彙列表場景；持有 `selectedRowID` 以在 desktop 三欄工作流中保留「目前右側 detail 對應哪一列」的中欄視覺狀態，filtered rows 移除該 id 時自動清空。整頁 error state 與離線 banner 都用固定重試文案，避免把低階 error message 直接暴露到 UI；分類/sort 使用 review pause reference date |
-| `Scenes/TodayReviewView.swift` | 414 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage`；scene 組裝、sheet/shortcut chrome、外部 env wiring |
+| `Scenes/TodayReviewView.swift` | 441 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage`；scene 組裝、sheet/shortcut chrome、外部 env wiring。版面編輯器掛在此的 `.toastSheet`：開啟時**先擷取當下卡片的 mode**（不是 sheet build 時的 current）、暫停 autoplay，關閉只翻 presentation flag，**不碰 reveal stage / currentIndex / session 持久化** |
 | `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
-| `Scenes/TodayReviewSwipeDeck.swift` | 253 | swipe deck：常駐三 card slot 組裝（`cardSlotView`/`deckDepthShell` 恆駐 depth-2）+ swipe gesture + fling settle 機械（settle 只重隨機被回收 slot 的 rotation） |
+| `Scenes/TodayReviewSwipeDeck.swift` | 299 | swipe deck：常駐三 card slot 組裝（`cardSlotView`/`deckDepthShell` 恆駐 depth-2）+ swipe gesture + fling settle 機械（settle 只重隨機被回收 slot 的 rotation）。fling 期間置 `dismissPhase == .animatingOut`，卡片離場後才清——`isCardInteractive` 因此涵蓋整個 fling/推進窗口 |
 | `Scenes/TodayReviewCardSlot.swift` | 181 | Phase 4 常駐三 slot 純邏輯（slot = index % 3，active/preview/underPreview/hidden）：`TodayReviewCardSlotLayout`（role 指派 + 統一線性 depth transform/borderOpacity 純函數）+ `TodayReviewCardSlotModel`；settle = transaction 內三向 role 輪替、存活 slot 零內容 diff |
 | `Scenes/TodayReviewPreviewData.swift` | 253 | preview 資料 |
-| `Scenes/TodayReviewMetrics.swift` | 103 | TodayReview feature-local 版面 metrics(`static let`,~44 個) |
+| `Scenes/TodayReviewMetrics.swift` | 109 | TodayReview feature-local 版面 metrics(`static let`,~44 個)。動態佈局新增三顆共用 token：`foldSectionSpacingCompact`（精簡最後一階的 section 間距）、`foldMeaningLineSpacing`（等同卡片一直在畫的 5pt，預設佈局要重現現況就必須同號）、`revealZoneMinHeight`（「點一下展開」區的高度下限，solver 從正面預算扣的與畫面讓出的是同一顆） |
+| `Scenes/ReviewCardLayout.swift` | 451 | **動態佈局的純值層**（無 SwiftUI import）：`ReviewCardFace` / `ReviewCardContentAvailability`（可用性與 profile 分離——缺資料只是本次不畫，不從使用者的偏好裡刪掉；`graphLinks` 恆可用，因為空連結時畫的是加連結入口，濾掉等於拿走唯一入口）/ `ReviewCardViewport`（容器高度 → contentHeight / revealZoneReserve / frontHeight / backHeight 的**單一來源**，正面預算刻意不隨 reveal 階段變動）/ `ReviewCardRenderPlan`（profile × mode × availability → 兩面欄位）/ `ReviewCardChrome`（padding 與 solver 扣的 inset 同一份）/ `ReviewCardLayoutSolver`（**O(fields) 純函式，每個 section 最多走訪一次、不留狀態**，固定精簡順序見下方「動態佈局契約」）|
+| `Scenes/ReviewCardLayoutEditor.swift` | 260 | `struct ReviewCardLayoutEditor: View` + `ReviewCardLayoutEditorSheet`。**一個 View struct 供兩個入口共用**（複習 toolbar sheet + Settings navigation destination），只有外殼 chrome 不同；**不得 inline 回 presenter body**（真機 Debug 1MB main stack，同 `SettingsPresenter` 約束）。直寫 `ReviewCardLayoutStore`、不持 draft，所以卡片與編輯器不可能各說各話；勾選走 `ReviewCardField.toggling` 重排回 `canonicalOrder`（開關是可見性決定，永遠不是排序決定）|
 | `Scenes/TodayReviewSessionSnapshotStore.swift` | 122 | `TodayReviewState` session snapshot 持久化 |
 | `Scenes/ReviewFoldSurface.swift` | 108 | `struct ReviewFoldSurface` + `ReviewFoldChevronPill` |
 | `Scenes/ReviewScoringState.swift` | 56 | 複習評分子狀態 |
@@ -124,7 +126,7 @@ verified_against: f25fd2ed6
 | `Components/VocabSceneShell.swift` | 157 | `VocabSceneShell<Content>` + `VocabScenePhase`,統一 vocabulary 四態容器(loading / loadingSkeleton / empty / error / content)；error phase 可帶 description，retry action 維持 owner 注入 |
 | `Components/WordRow.swift` | 254 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status；原專屬 stress baseline 隨 Notebook Detail catalog surface 於 catalog scope campaign 1b 一併 CUT，尚無替代具名 surface，視需要列入後續 MISSING 補拍） |
 | `Components/VocabReviewBanner.swift` | 159 | `struct VocabReviewBanner<FilterContent>: View`。完整 hero CTA(cardBackground + title + stats + button)，**僅** NotebookListView 使用作為 primary entry point。VocabularyListView 詳情頁不再渲染此 banner — CTA 改走 `VocabReviewCTAPill` 內嵌於 chip+sort 列。 |
-| `Components/CardDocumentView.swift` | 486 | card document 主 View；重型 card document render path 含 `PerfLog` tick |
+| `Components/CardDocumentView.swift` | 505 | card document 主 View；重型 card document render path 含 `PerfLog` tick |
 | `Components/CardRichTextRenderer.swift` | 418 | rich text renderer；render path 含 `PerfLog` tick |
 | `Components/CardSections.swift` | 298 | card 各 section 元件 |
 | `Components/CardDocumentBuilder.swift` | 92 | `CardDocument` builder |
@@ -161,6 +163,7 @@ verified_against: f25fd2ed6
 - **新增可復用元件** → `Components/VocabShellComponents*.swift`（shell 級）或 `Components/VocabComponents.swift`（skin 級）
 - **新增場景** → `Scenes/` 新增 View + Presenter + Coordinator，並在對應 container 的 Sheets extension 掛載
 - **新增 design token** → `ios/BooksAndVocab/Models/AppSkin.swift`（全 app 共用；禁止在 feature 檔案裡硬編碼顏色/間距）
+- **改複習卡片版面** → 先讀下方「動態佈局契約」。新增可選欄位＝改 `ReviewCardField`（含 `canonicalOrder`、`titleKey`/`captionKey` 與五個 lproj）+ `ReviewCardContentAvailability` + solver 的精簡階梯 + renderer；**版面幾何一律新增 `TodayReviewMetrics` token，不得在 solver 或 renderer 任一側寫死數字**——兩邊算的必須是同一顆
 
 ## State 邊界
 
@@ -169,6 +172,8 @@ verified_against: f25fd2ed6
 - `TodayReviewSessionPersistenceController`：session persistence helper，僅 `TodayReviewState` 持有
 - `TodayReviewCardCache`：TodayReview rich-card cache helper，僅 `TodayReviewState` 持有
 - `TodayReviewAutoplayController`：autoplay helper，僅 `TodayReviewState` 持有；狀態被投影給 view，故必須維持 `@Observable`
+- `ReviewCardLayoutStore`（`ios/BooksAndVocab/Models/ReviewCardLayoutProfile.swift`，**Model 層、非本 feature 私有**）：複習卡片版面 profile 的唯一 owner。**只有一個 `EnvironmentKey`（`\.reviewCardLayoutStore`，`defaultValue = .shared`）**，app code 從不注入第二個 store——覆寫只出現在 `#Preview` 與測試。所以複習畫面改的與 Settings 顯示的必然是同一個物件；`ReviewCardLayoutSummary.titleKey` 的 預設／自訂 判定是**兩模式四面全深比較**（synthesized `Equatable`），不是只看目前這面
+- `ReviewCardLayoutSolver` / `ReviewCardViewport` / `ReviewCardRenderPlan`：純值型，**不得持有狀態、不得引入 SwiftUI**；solver 必須維持 O(fields)（最多六欄）且每個 section 只走訪一次——它跑在翻卡/fling 路徑上
 - `TodayReviewCollocationState`：collocation explanation substate，僅 `TodayReviewState` 持有
 - `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
@@ -186,6 +191,17 @@ verified_against: f25fd2ed6
 - 列表 filter（全部／學習／字典）與排序在 `KGVocabCoordinator` / `KGVocabPresenter`；字典卡詳情走 `WordDetailSceneState` + `DictionaryDetailPresentation`，**不共用**單字卡的編輯面（字典卡不可改 meaning／note）。
 - 「轉換成單字卡」只能由字典卡詳情明示觸發，UI 呈現 `queued` / `running` / `failed` / success 四態；失敗仍是字典卡、可重試。**無 learning → dictionary 降級路徑**，UI 不得提供。
 - 同一 notebook 內同一正規化單字只能有一張 active card：已有 learning card 直接連結不降級；已有 dictionary card 重用既有卡與既有選定義項，**不靜默換例句**。
+## 動態佈局契約（複習卡片）
+
+改 `ReviewCardLayout.swift` / `TodayReviewPresenter+CardContent.swift` 前必讀。**版面規則**（前五條）由 `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutStoreTests` / `ReviewCardLayoutEditorTests` 釘住；**效能那條沒有單元測試守得住**，它的量測面是 `./ops/review_flip_probe.sh`，而該 gate **目前是紅的**（見該條）。
+
+- **固定精簡順序，不可改動**：① 例句縮到目標詞前後各 3 詞 → ② 解釋降 2 行、再降 1 行 → ③ 搭配詞 2 列降 1 列（以 +N 表示）→ ④ 知識連結每組 2 項降 1 項、再降單列摘要 +N → ⑤ **最後才**降 section spacing 與 fold padding（走 `foldSectionSpacingCompact`，不是就地寫死）。
+- **不會被自動隱藏的東西**：題目、答案、詞性、難度。使用者勾選的長內容至少保留 minimal 摘要；只有 Accessibility Dynamic Type 下連 minimal 都放不下，才啟用垂直捲動（`requiresScrollFallback`）。
+- **natural 這一層就是「目前出貨的卡片」**：解釋 3 行、搭配詞 2 列、背面例句不截斷。若把它們當成「已經壓過的一層」，未動過的預設 profile 會比它要重現的畫面更鬆，得等階梯跑完才回到原樣。
+- **正面預算不預留反面高度**，且不隨 reveal 階段變動（展開時區塊收合，但讓預算長大會在翻卡中途重解正面）。反面拿的是「同一份 contentHeight 扣掉正面實際佔用」——inset 只扣一次。
+- **一份 chrome、一份 spacing**：solver 扣的 `chromeHeight` 由 `ReviewCardChrome.verticalInset(for:)` 給，renderer 畫的 padding 也由它給；solver 解出的 `sectionSpacing` 直接回傳給 renderer 畫，renderer 不得自己從 token 再推一次。
+- **效能（目標，尚未達成 —— `review_flip_probe` 紅燈中）**：欄位資料在 `TodayReviewCardCache` 預先整理；fling 每幀不得重建 `CardDocument` 或重新遍歷 paragraphs。只有 profile / 寬度 / Dynamic Type / 卡片 identity 改變才重算（量測 cache key = `ReviewCardMeasurementKey`）。反面重內容維持 reveal 才 mount、collapse 動畫結束才 unmount。
+  **已知缺口**：`reviewMeasurementProbes` 為了取三層高度，會在卡片內渲染**隱藏的量測副本**（每欄最多 3 份，六欄最多 18 份），而 cache key 含 `cardKey`（word + dateAdded）→ **每換一張卡就整批重量測，而且落在推進那一幀**。「只在 identity 改變時重算」在逐卡推進的情境下＝每張卡都重算。量測證據：`./ops/review_flip_probe.sh --simulator --release --dataset-file ops/fixtures/ui_worlds/marketing_demo.json --flips 30` 在 `3222aec3a`（solver 上線前）為 p95 16.667ms / 0 stalls，在 `7099f803f`（solver 上線）之後起 p95 33–34ms / stalls 7 之 30。修的方向是把量測移出關鍵幀（沿用 `TodayReviewCardCache` 既有的 prewarm window 預熱下一張），而不是放寬門檻。
 
 ## 共用依賴
 

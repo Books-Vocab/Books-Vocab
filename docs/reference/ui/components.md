@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: f25fd2ed6
+verified_against: 941fe100f
 -->
 # UI Component & Pattern Inventory
 
@@ -122,6 +122,7 @@ Scope: `ios/BooksAndVocab`
 - `EditorialCoverComposition`(private in `NotebookCard.swift`) — **live**：D1 editorial cover overlay，由 `coverArea` 以 `.overlay` 套在 cover view 之上（grid + hero 兩 style 皆套），跟外層 `rotationEffect` 一起旋轉。內容:serif name 左上(grid 22pt / hero 32pt)+ hairline rule(cover 寬 ×0.25)+ `N 詞` 右下(cardCount > 0)+ 3pt spine(grid && isActive)。cover view 以 `showsName: false` 把 name 渲染交給此 overlay。
 - `VocabReviewCTAPill` — 用於 detail 頁(KGVocabPresenter)與 **NotebookListView 頂部 section header**(D4 editorial),brandHero 奶黃 capsule + onBrandHero 前景。Both 同視覺族群,page-level 標題不需卡片框包裹。
 - `VocabReviewBanner` — **(已從 NotebookListView 解除引用)** 元件保留於 codebase 作 future use / preview;NotebookListView 現走 page section header `今日複習` + `VocabReviewCTAPill` 取代。
+- `ReviewCardLayoutEditor`（`Views/Vocabulary/Scenes/ReviewCardLayoutEditor.swift`）— **跨 feature 共用的設定頁 View struct**：複習畫面 toolbar 以 `ReviewCardLayoutEditorSheet` 包成 sheet，Settings ▸ 偏好 以 `navigationDestination` 直接 push 同一個 struct，**兩邊只有外殼 chrome 不同、頁面本體零複製**。用的是 Settings 層元件（`SettingsSectionHeader` / `SettingsSectionFooter` / `SettingsDivider` / `.settingsCard()` / `AppKeyValueRow`），所以在 Settings 裡看起來就是原生一頁。**不得 inline 回任何 presenter body**（真機 Debug 1MB main stack，同 `SettingsPresenter` 的 stack 約束）。**新增跨 feature 共用設定頁時照此抄**：頁面本體是獨立 top-level struct，入口各自包 chrome。
 
 責任：
 - vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層、graph thumbnail
@@ -387,6 +388,26 @@ Scope: `ios/BooksAndVocab`
 
 規則：
 - phase 與 row reveal 要分開，不能混用同一動畫
+
+### 8. Adaptive Field Pattern（使用者選欄位 → 版面自己讓路）
+
+用途：
+- 讓使用者勾選要顯示哪些資訊欄位，而版面在空間不足時**逐級退讓**而非硬截或爆版
+- 目前唯一實作：複習卡片（`ReviewCardLayoutProfile` × `ReviewCardLayoutSolver` × `TodayReviewPresenter+CardContent`）
+
+三個角色，職責不可混：
+- **profile（持久偏好）** — 使用者勾了什麼。與「這張卡有沒有這筆資料」正交：缺資料只是本次不畫（`ReviewCardContentAvailability`），**永遠不從偏好裡刪掉**
+- **solver（純值）** — 拿三層量測（natural / intermediate / compact）與一個高度預算，解出每欄的 policy。O(fields)、無狀態、不 import SwiftUI
+- **renderer（畫）** — 只照 policy 畫，**不自己再從 token 推一次幾何**；solver 扣的 chrome/spacing 與 renderer 畫的必須是同一顆 token
+
+規則：
+- **固定精簡順序，寫死在 solver 裡**，不是「哪個最大就砍哪個」——順序可預期，使用者才學得會版面會怎麼變（順序與豁免欄位見 `feature_boundary/vocabulary.md` §動態佈局契約）
+- **natural = 目前出貨的樣子**。若把既有的截斷當成「已經壓過一層」，未動過的預設會比它要重現的畫面更鬆
+- 核心欄位（題目 / 答案）是**模式語意不是可選欄位**：不進可勾選陣列，在編輯器畫成鎖定列
+- 編輯器**直寫 store、不持 draft**，背後的畫面即時重排；退無可退才捲動，不靜默隱藏使用者親手勾的東西
+
+代表畫面：
+- `ReviewCardLayoutEditor`（編輯端）＋ TodayReview 卡片正反面（渲染端）
 
 ---
 

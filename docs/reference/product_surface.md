@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: f25fd2ed6
+verified_against: 941fe100f
 -->
 # Implemented Product Surface
 
@@ -27,7 +27,8 @@ verified_against: f25fd2ed6
 - **Graph links**: hide/unhide + bilateral optimistic sync
 - **Toast notification system**: capsule toast + sheet overlay
 - **Graph thumbnail** + health blob
-- **Today review**: 4-state phase matrix + `PostExampleMetrics` + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習;**跨裝置同步** UserDefaults + iCloud KV(updatedAt LWW 整組原子)+ 登入經 `GET/PUT /api/user/config` 的 `review_clock` push/fetch、push 失敗 rollback、server cold-start wins,對標翻譯語言) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ **複習模式 + 自訂 SRS 參數跨裝置同步**（mode/relaxed-intensive-custom 與 5 個自訂間隔參數三層 UserDefaults + iCloud KV(updatedAt LWW 整組原子) + 登入經 `review_mode` push/fetch、push 失敗 rollback、server cold-start wins，對標 pause clock，確保跨裝置 SRS 間隔一致） + 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
+- **Today review**: 4-state phase matrix + 跨裝置保存完整複習事件，月曆與每日明細顯示真實 `ReviewRecord` + Settings「凍結複習時鐘」(due/reviewed 計算、notebook CTA、stats forecast、graph ratio/row progress 使用 paused reference date;已到期卡仍可手動複習;**跨裝置同步** UserDefaults + iCloud KV(updatedAt LWW 整組原子)+ 登入經 `GET/PUT /api/user/config` 的 `review_clock` push/fetch、push 失敗 rollback、server cold-start wins,對標翻譯語言) + autoplay 聲音開關（首次預設開啟、記住上次選擇、答案揭露後才朗讀單字）+ **複習模式 + 自訂 SRS 參數跨裝置同步**（mode/relaxed-intensive-custom 與 5 個自訂間隔參數三層 UserDefaults + iCloud KV(updatedAt LWW 整組原子) + 登入經 `review_mode` push/fetch、push 失敗 rollback、server cold-start wins，對標 pause clock，確保跨裝置 SRS 間隔一致） + 洗牌順序持久化（per-user + queue fingerprint，KG card id 優先、local UUID fallback，新卡附加尾端）
+- **複習卡片版面自訂（全域 profile）**：辨識／產出兩模式 × 正面／背面共四張臉，各自獨立勾選六個可選欄位（詞性 / 難度 / 知識連結 / 例句 / 解釋 / 搭配詞）。**題目與答案是模式語意、不可關閉**（辨識＝正面英文·背面翻譯，產出反之），在編輯器顯示為鎖定列。**預設值精確重現既有卡片**（辨識正面＝詞性；產出正面＝詞性＋例句；兩模式背面＝難度·知識連結·例句·解釋·搭配詞）。**兩個入口共用同一個 `ReviewCardLayoutEditor` 頁**：複習畫面 toolbar（`rectangle.split.2x1`，沿用 `isCardInteractive` 鎖故不會在 fling/推進中開啟；開啟前暫停 autoplay 且**刻意不自動恢復**；關閉不動 reveal stage / currentIndex）與 設定 ▸ 偏好 ▸「複習卡片」（獨立 navigation destination，列尾顯示 預設／自訂）。編輯器直寫共享 store、不持 draft，卡片在 sheet 後即時重排。跨裝置走 UserDefaults + iCloud KV（key `review_card_layout_profile_v1`，envelope v2 + updatedAt LWW 整組原子，時戳上下界防呆：寫不回讀的值一律不寫），**不經後端**。卡片依 profile 動態排版，壓縮順序固定為 natural → intermediate → compact → 垂直捲動（例句縮到目標詞前後 3 詞 → 解釋 2 行再 1 行 → 搭配詞 2 列降 1 列以 +N 表示 → 知識連結每組 2 項降 1 項再降單列摘要 +N → 最後才收 section spacing / fold padding）；題目·答案·詞性·難度**永不自動隱藏**，勾選的長內容至少保留 minimal 摘要，只有 Accessibility Dynamic Type 下連 minimal 都放不下才啟用捲動
 - **Stats overview**: `StatsPresenter` full state matrix
 - **Settings + account deletion**: paywall Free/Pro 對照 + 安全確認 + Pro badge + CSV export via `VocabularyExporter` + review progress pause/freeze toggle；設定首頁「複習節奏」列在 progress paused 時顯示 `已凍結 · <模式>`，detail 仍由既有「暫停進度」toggle 控制；**「自動連結」toggle**（登入顯示）控制 backend judge pipeline 是否自動建立知識圖譜連結——關閉時新單字仍 enrich+embed 並排入待判集合、重開續判不丟失；本地 UserDefaults 快取 + 後端 `auto_link` group（`updated_at` 真 LWW，push 失敗 rollback 含原時戳）；**iCloud 書庫同步狀態列**（CloudKitMirroringMonitor.phase 投影：確認中／還原中／同步異常帶錯誤描述／已同步；書庫綁 Apple ID 故不掛登入 gate，localOnly 整列隱藏）；**UI 聲音回饋與觸覺回饋開關**（本機 `FeedbackSettingsStore`，短促非語音音效由 `FeedbackAudioService` 播放，既有 haptic 經 `appFeedback` 統一 gate；不影響 TTS / Podcast 內容聲音）
 - **Onboarding**: empty-state login entry points + Welcome 3-step walkthrough (sticky login CTA)
@@ -141,7 +142,7 @@ verified_against: f25fd2ed6
 - Session persistence
 - Notebook orphan defense: `resolveNotebookId` + `sanitizeOutbox` + `triggerPipelinesIsolated`
 - `PodcastVocabContext` + `ReaderTranslationHandler` + `ReaderVocabularyCapture`
-- `QuotaStore` + `KGError`/`RetryPolicy` + TodayReview `PostExampleMetrics`
+- `QuotaStore` + `KGError`/`RetryPolicy` + TodayReview 卡片版面（`ReviewCardLayoutStoreTests` / `ReviewCardRenderPlanTests` / `ReviewCardBudgetParityTests` / `ReviewCardLayoutEditorTests`）
 - State matrix error states: notebook / podcast / bookshelf / translation settings / today review
 
 ## Ops

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/
-verified_against: f25fd2ed6
+verified_against: 941fe100f
 -->
 # UI State Matrix
 
@@ -166,6 +166,30 @@ Scope: `ios/BooksAndVocab`
 | Completion | `currentCard == nil` | completion empty state | 已覆蓋 |
 | Remembered / forgot feedback | submit action | sound feedback（可關閉）+ haptic（可關閉）+ card swap | 已覆蓋 |
 | Save failure / persistence failure | `modelContext.save()` 失敗 | `onSaveFailure` → `toast.error(L10n.string("todayReview.saveFailure"))` | 已覆蓋 |
+| 卡片版面：自然放得下 | `totalHeight <= available`（natural 層） | 各欄位全長呈現＝出貨既有卡片視覺 | 已覆蓋 |
+| 卡片版面：逐級精簡 | `totalHeight > available` | 依固定順序退讓（例句 radius → 解釋 2/1 行 → 搭配詞 2/1 列 +N → 連結 2/1 項 + 單列摘要 +N → 最後才收 spacing/padding） | 已覆蓋 |
+| 卡片版面：minimal 仍溢出 | `requiresScrollFallback`（多見於 Accessibility Dynamic Type） | 該面改垂直捲動；**不隱藏使用者勾選的欄位** | 已覆蓋 |
+| 卡片版面：欄位資料缺席 | `ReviewCardContentAvailability` 該欄為 false | 本次不畫，**profile 不變**（下張卡有資料就回來）；`graphLinks` 恆可用——無連結時畫加連結入口 | 已覆蓋 |
+| 卡片版面：正面／反面預算 | 正面階段常駐 reveal zone | 正面預算＝contentHeight − revealZoneReserve 且不隨 reveal 階段變動；反面拿正面實佔後的餘額 | 已覆蓋 |
+| 版面編輯器入口不可用 | `!isCardInteractive`（fling / 推進中） | toolbar 鈕點擊 no-op（與 shuffle / prev / next 同一把鎖） | 已覆蓋 |
+| 開編輯器時 autoplay 正在播 | tap 入口 | `pauseForInterruption()` 暫停；**關閉後不自動恢復**（`todayReview.autoplay.paused` identifier 可判讀） | 已覆蓋 |
+
+### Review Card Layout Editor State（`ReviewCardLayoutEditor`）
+
+兩個入口共用同一頁：複習 toolbar sheet（`ReviewCardLayoutEditorSheet`）與 設定 ▸ 偏好 ▸ 複習卡片（`navigationDestination`）。
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Mode = 辨識 / 產出 | `modePicker` 分段選擇 | 兩模式各自獨立的欄位配置；由複習畫面進入時預選**畫面上那張卡的模式** | 已覆蓋 |
+| Face = 正面 / 背面 | `facePicker` 分段選擇 | 切換編輯中的那一面；預覽區同步 | 已覆蓋 |
+| Locked core row | 恆常 | `lock.fill` 鎖定列（正面＝題目、背面＝答案），**無 toggle 可關**；模式語意非 profile 欄位 | 已覆蓋 |
+| 欄位開 / 關 | `toggle.<field>` | 開啟時重排回 `canonicalOrder`（不是附加到尾端）；直寫 store，背後卡片即時重排 | 已覆蓋 |
+| 該面零可選欄位 | `activeFields.isEmpty` | 預覽區顯示空狀態說明（`reviewCardLayout.preview.empty`）＋鎖定列仍在——卡片不會變成空白 | 已覆蓋 |
+| Settings 摘要：預設 | `profile == .default`（兩模式四面全深比較） | 偏好列尾顯示「預設」 | 已覆蓋 |
+| Settings 摘要：自訂 | 任一模式任一面與預設不同 | 偏好列尾顯示「自訂」 | 已覆蓋 |
+| Reset 目前模式 | `reset.currentMode` | 只還原當前模式兩面，另一模式不動 | 已覆蓋 |
+| Reset 全部 | `reset.all`（destructive） | 兩模式四面全還原成預設 | 已覆蓋 |
+| 跨裝置衝突 | iCloud KV 外部變更通知 | updatedAt LWW 整組原子取代；時戳不可信（非有限 / 超界 / 版本不明）時整包忽略，不半套 | 已覆蓋 |
 
 ---
 
