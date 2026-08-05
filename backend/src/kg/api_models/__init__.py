@@ -29,9 +29,16 @@ from kg.api_models.billing import (
 from kg.api_models.cards import CardLinkSummaryResponse, CardResponse
 from kg.api_models.common import VocabSource, _normalize_context
 from kg.api_models.dictionary import (
+    DictionaryCardNode,
     DictionaryEntryResponse,
+    DictionaryMaterializeRequest,
+    DictionaryProjectionItem,
     DictionarySearchHit,
     DictionarySearchResponse,
+    DictionarySelectionRequest,
+    MaterializeLinkResult,
+    ReaderVisibilityRequest,
+    SavedDictionaryCard,
 )
 from kg.api_models.graph import AutoLinkConfig, GraphLinkResponse, ManualLinkRequest
 from kg.api_models.library import (
@@ -124,13 +131,18 @@ __all__ = [
     "DeleteBookResponse",
     "DeleteWordResponse",
     "DictionaryEntryResponse",
+    "DictionaryCardNode",
+    "DictionaryMaterializeRequest",
+    "DictionaryProjectionItem",
     "DictionarySearchHit",
     "DictionarySearchResponse",
+    "DictionarySelectionRequest",
     "EntitlementsResponse",
     "ExplainResponse",
     "GraphLinkResponse",
     "HealthResponse",
     "ManualLinkRequest",
+    "MaterializeLinkResult",
     "NotebookCreateRequest",
     "NotebookResponse",
     "NotebookUpdateRequest",
@@ -152,6 +164,8 @@ __all__ = [
     "ReviewStateEntry",
     "ReviewStatePushRequest",
     "ReviewStatePushResponse",
+    "ReaderVisibilityRequest",
+    "SavedDictionaryCard",
     "SubscriptionStatusResponse",
     "TranslateRequest",
     "TranslationLanguageConfig",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -45,6 +46,44 @@ def _provider_payload(word: str = "invoke") -> dict:
             },
         },
     }
+
+
+def _lexical_entry(word: str = "invoke"):
+    from kg.lexical import FreeDictionaryProvider
+
+    provider = FreeDictionaryProvider(
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _request: httpx.Response(200, json=_provider_payload(word))
+            )
+        )
+    )
+    return provider.search(word, source_language="en", target_language="zh-Hant")
+
+
+class _CanonicalLexical:
+    def __init__(self, entry):
+        self.entry = entry
+        self.calls = 0
+
+    def get_entry(self, provider, entry_key, *, target_language="zh-Hant"):
+        from kg.lexical import LexicalLookupResult
+
+        self.calls += 1
+        assert provider == self.entry.provider
+        assert entry_key == self.entry.entry_key
+        return LexicalLookupResult(entry=self.entry, cache_status="fresh")
+
+
+class _Judge:
+    def __init__(self):
+        self.calls = 0
+
+    def evaluate(self, *_args, **_kwargs):
+        from kg.judge.models import Judgement
+
+        self.calls += 1
+        return Judgement(link="shares_usage", confidence=1.0, reason="same context")
 
 
 def test_card_schema_migrates_dictionary_fields_and_defaults_old_cards(tmp_path):
@@ -155,8 +194,19 @@ def test_graph_links_projection_defaults_learning_only_and_opt_in_is_complete(tm
     cards = CardStore(tmp_path / "cards.db")
     first = cards.add("one", "一", notebook_id="default")
     second = cards.add("two", "二", notebook_id="default")
-    reference = cards.add(
-        "invoke", "援引", notebook_id="default", card_role="dictionary", review_eligible=False
+    entry = _lexical_entry()
+    sense = entry.senses[0]
+    reference, _ = cards.stage_dictionary_card(
+        entry=entry,
+        notebook_id="default",
+        sense_key=sense.key,
+        example_key=sense.examples[0].key,
+    )
+    cards.begin_lexical_operation("graph-projection", "fixture")
+    cards.activate_dictionary_entry_and_complete_operation(
+        card_id=reference.id,
+        idempotency_key="graph-projection",
+        response_json="{}",
     )
     graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
     graph.add_link(first.id, second.id, LinkKind.SHARES_USAGE, 1.0, "learning")
@@ -641,6 +691,7 @@ def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(
     monkeypatch.setattr(dictionary_router, "_lexical_service", lambda _settings: service)
     monkeypatch.setattr(dictionary_rate_limiter, "limit", 3)
     dictionary_rate_limiter.reset()
+    dictionary_router.dictionary_lookup_leases.reset()
     isolated_api.client.app.state.kg_settings = replace(
         isolated_api.client.app.state.kg_settings,
         dictionary_lookup_enabled=True,
@@ -663,6 +714,10 @@ def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(
         f"/api/dictionary/entries/free_dictionary/{entry_key}?target_lang=zh-Hant",
         headers=isolated_api.headers,
     )
+    actually_limited = isolated_api.client.get(
+        f"/api/dictionary/entries/free_dictionary/{entry_key}?target_lang=zh-Hant",
+        headers=isolated_api.headers,
+    )
     unsupported_source = isolated_api.client.get(
         "/api/dictionary/search?q=invoke&source_lang=fr&target_lang=zh-Hant",
         headers=isolated_api.headers,
@@ -674,10 +729,81 @@ def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(
 
     assert detail.status_code == 200
     assert unsupported_entry_language.status_code == 404
-    assert limited.status_code == 429
-    assert limited.headers["Retry-After"] == "60"
+    assert limited.status_code == 200
+    assert actually_limited.status_code == 429
+    assert actually_limited.headers["Retry-After"] == "60"
     assert unsupported_source.status_code == 422
     assert unsupported_target.status_code == 422
+
+
+def test_explicit_dictionary_search_and_its_first_detail_share_one_admission(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+    from kg.lexical import FreeDictionaryProvider, LexicalCache, LexicalService, dictionary_rate_limiter
+
+    provider = FreeDictionaryProvider(
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(200, json=_provider_payload()))
+        )
+    )
+    service = LexicalService(
+        provider=provider,
+        cache=LexicalCache(isolated_api.data_dir / "lexical_cache-admission.db"),
+    )
+    monkeypatch.setattr(dictionary_router, "_lexical_service", lambda _settings: service)
+    monkeypatch.setattr(dictionary_rate_limiter, "limit", 1)
+    dictionary_rate_limiter.reset()
+    dictionary_router.dictionary_lookup_leases.reset()
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+
+    search = isolated_api.client.get(
+        "/api/dictionary/search?q=invoke&source_lang=en&target_lang=zh-Hant",
+        headers=isolated_api.headers,
+    )
+    entry_key = search.json()["hits"][0]["entryKey"]
+    first_detail = isolated_api.client.get(
+        f"/api/dictionary/entries/free_dictionary/{entry_key}",
+        headers=isolated_api.headers,
+    )
+    abusive_repeat = isolated_api.client.get(
+        f"/api/dictionary/entries/free_dictionary/{entry_key}",
+        headers=isolated_api.headers,
+    )
+
+    assert search.status_code == 200
+    assert first_detail.status_code == 200
+    assert abusive_repeat.status_code == 429
+
+
+def test_dictionary_entry_endpoint_returns_404_for_cached_negative_lookup(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+    from kg.lexical import FreeDictionaryProvider, LexicalCache, LexicalService
+
+    service = LexicalService(
+        provider=FreeDictionaryProvider(
+            client=httpx.Client(
+                transport=httpx.MockTransport(lambda _request: httpx.Response(404))
+            )
+        ),
+        cache=LexicalCache(isolated_api.data_dir / "lexical-cache-negative-entry.db"),
+    )
+    monkeypatch.setattr(dictionary_router, "_lexical_service", lambda _settings: service)
+    dictionary_router.dictionary_lookup_leases.reset()
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    response = isolated_api.client.get(
+        "/api/dictionary/entries/free_dictionary/en.bWlzc2luZw",
+        headers=isolated_api.headers,
+    )
+    assert response.status_code == 404
 
 
 def test_legacy_vocab_add_conflicts_without_leaking_existing_dictionary_id(tmp_path):
@@ -708,3 +834,578 @@ def test_legacy_vocab_add_conflicts_without_leaking_existing_dictionary_id(tmp_p
     with pytest.raises(ConflictError):
         cards.add("invoke", "調用", notebook_id="default")
     assert cards.get(reference.id).card_role == "dictionary"
+
+
+def _dictionary_service(tmp_path, *, entry=None, crash_hook=None):
+    from kg.dictionary_cards import DictionaryCardService
+    from kg.graph import GraphStore
+
+    cards = CardStore(tmp_path / "cards.db")
+    graph = GraphStore(
+        tmp_path / "graph.json", tmp_path / "candidates.json", tmp_path / "blocked.json"
+    )
+    lexical = _CanonicalLexical(entry or _lexical_entry())
+    judge = _Judge()
+    service = DictionaryCardService(
+        cards=cards, graph=graph, lexical=lexical, judge=judge, crash_hook=crash_hook
+    )
+    return service, cards, graph, lexical, judge
+
+
+def _materialize_request(source_id: str, entry, **overrides):
+    sense = entry.senses[0]
+    values = {
+        "source_card_id": source_id,
+        "notebook_id": "default",
+        "provider": entry.provider,
+        "entry_key": entry.entry_key,
+        "sense_key": sense.key,
+        "example_key": sense.examples[0].key,
+    }
+    values.update(overrides)
+    return values
+
+
+def test_dictionary_materialize_link_fresh_replay_and_reuse_pinned_selection(tmp_path):
+    service, cards, graph, lexical, judge = _dictionary_service(tmp_path)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    request = _materialize_request(source.id, lexical.entry)
+
+    fresh = service.materialize_and_link(idempotency_key="op-1", **request)
+    replay = service.materialize_and_link(idempotency_key="op-1", **request)
+    reused = service.materialize_and_link(
+        idempotency_key="op-2",
+        **{**request, "sense_key": "stale-client-sense", "example_key": "stale-client-example"},
+    )
+
+    target = cards.get(fresh.target_card.id)
+    assert target is not None
+    assert (target.card_role, target.review_eligible, target.reader_hidden) == (
+        "dictionary", False, False
+    )
+    assert fresh.created_card is True and fresh.created_link is True and fresh.replayed is False
+    assert replay.target_card.id == fresh.target_card.id and replay.replayed is True
+    assert reused.target_card.id == fresh.target_card.id
+    assert reused.created_card is False and reused.created_link is False
+    assert graph.find_link_between(source.id, target.id).id == fresh.link.id
+    assert len(list(cards.all())) == 2
+    assert judge.calls == 2
+    assert lexical.calls == 2
+
+    detail = service.get_saved_card(target.id)
+    assert detail.selected_sense_key == lexical.entry.senses[0].key
+    assert detail.selected_example_key == lexical.entry.senses[0].examples[0].key
+    assert detail.entry.attribution.license_name == "CC BY-SA 4.0"
+    assert detail.materialization_status == "active"
+
+
+def test_dictionary_materialize_reuses_learning_card_without_sidecar_or_demotion(tmp_path):
+    service, cards, graph, lexical, _judge = _dictionary_service(tmp_path)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    learning = cards.add("invoke", "援引（已學習）", notebook_id="default")
+
+    result = service.materialize_and_link(
+        idempotency_key="learning-reuse",
+        **_materialize_request(source.id, lexical.entry),
+    )
+
+    assert result.target_card.id == learning.id
+    assert result.created_card is False and result.created_link is True
+    assert cards.get(learning.id).card_role == "learning"
+    assert cards.get_dictionary_entry(learning.id) is None
+    assert graph.find_link_between(source.id, learning.id) is not None
+
+
+def test_dictionary_materialize_rejects_idempotency_mismatch_self_and_cross_notebook(tmp_path):
+    from kg.exceptions import ConflictError, NotFoundError
+
+    service, cards, _graph, lexical, _judge = _dictionary_service(tmp_path)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    request = _materialize_request(source.id, lexical.entry)
+    service.materialize_and_link(idempotency_key="same-key", **request)
+
+    with pytest.raises(ConflictError):
+        service.materialize_and_link(
+            idempotency_key="same-key", **{**request, "example_key": "different"}
+        )
+    self_service, _, _, self_lexical, _ = _dictionary_service(
+        tmp_path, entry=_lexical_entry("summon")
+    )
+    with pytest.raises(ConflictError):
+        self_service.materialize_and_link(
+            idempotency_key="self-link",
+            **_materialize_request(source.id, self_lexical.entry),
+        )
+
+    foreign = cards.add("foreign", "外部", notebook_id="other")
+    with pytest.raises(NotFoundError):
+        service.materialize_and_link(
+            idempotency_key="cross-notebook",
+            **_materialize_request(foreign.id, lexical.entry),
+        )
+
+
+@pytest.mark.parametrize("crash_step", ["after_card_stage", "after_graph_write", "after_touch"])
+def test_dictionary_materialize_crash_recovery_converges(tmp_path, crash_step):
+    crashed = False
+
+    def crash_hook(step):
+        nonlocal crashed
+        if step == crash_step and not crashed:
+            crashed = True
+            raise RuntimeError("injected crash")
+
+    service, cards, graph, lexical, _judge = _dictionary_service(
+        tmp_path, crash_hook=crash_hook
+    )
+    source = cards.add("summon", "召喚", notebook_id="default")
+    request = _materialize_request(source.id, lexical.entry)
+    with pytest.raises(RuntimeError, match="injected crash"):
+        service.materialize_and_link(idempotency_key="recover", **request)
+
+    assert service.list_projection(notebook_id="default", limit=100).items == []
+    from kg.vocab_graph import graph_links_payload
+    assert graph_links_payload(
+        graph=graph, cards_store=cards, include_dictionary=True
+    ) == []
+
+    result = service.materialize_and_link(idempotency_key="recover", **request)
+    assert result.replayed is False
+    assert len([c for c in cards.all() if c.content.casefold() == "invoke"]) == 1
+    assert len(graph.all_links()) == 1
+    assert service.get_saved_card(result.target_card.id).materialization_status == "active"
+    assert service.get_operation("recover").status == "completed"
+
+
+def test_dictionary_selection_visibility_and_incremental_projection(tmp_path):
+    from kg.exceptions import ConflictError
+    from kg.lexical import LexicalExample, LexicalSense
+
+    entry = _lexical_entry()
+    second = LexicalSense(
+        key="sense_second",
+        part_of_speech="verb",
+        definition="To cite as authority.",
+        examples=[LexicalExample(key="example_second", text="Counsel invoked precedent.")],
+        translations=["援引"],
+    )
+    entry.senses.append(second)
+    service, cards, _graph, lexical, _judge = _dictionary_service(tmp_path, entry=entry)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    result = service.materialize_and_link(
+        idempotency_key="select", **_materialize_request(source.id, lexical.entry)
+    )
+    before = cards.get(result.target_card.id).updated_at
+
+    selected = service.update_selection(
+        result.target_card.id,
+        sense_key=second.key,
+        example_key=second.examples[0].key,
+    )
+    hidden = service.set_reader_visibility(result.target_card.id, reader_hidden=True)
+
+    assert selected.selected_sense_key == second.key
+    assert selected.selected_example_key == second.examples[0].key
+    assert hidden.reader_hidden is True
+    updated = cards.get(result.target_card.id)
+    assert updated.meaning == "援引"
+    assert updated.examples == ["Counsel invoked precedent."]
+    assert updated.updated_at > before
+
+    projection = service.list_projection(notebook_id="default", limit=100)
+    assert [item.card.id for item in projection.items] == [result.target_card.id]
+    assert projection.items[0].reader_hidden is True
+    assert projection.items[0].dictionary.selected_example_key == "example_second"
+
+    cards.update(result.target_card.id, card_role="learning")
+    with pytest.raises(ConflictError):
+        service.update_selection(
+            result.target_card.id,
+            sense_key=entry.senses[0].key,
+            example_key=entry.senses[0].examples[0].key,
+        )
+
+
+def test_dictionary_materialize_concurrent_same_request_converges(tmp_path):
+    service, cards, graph, lexical, _judge = _dictionary_service(tmp_path)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    request = _materialize_request(source.id, lexical.entry)
+    results = []
+    errors = []
+
+    def worker():
+        try:
+            results.append(
+                service.materialize_and_link(idempotency_key="concurrent", **request)
+            )
+        except Exception as exc:  # pragma: no cover
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    target_ids = {result.target_card.id for result in results}
+    assert len(target_ids) == 1
+    assert sum(result.replayed for result in results) == 1
+    assert len(graph.all_links()) == 1
+
+
+def test_dictionary_saved_card_api_contract_and_rollout_read_availability(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+
+    entry = _lexical_entry()
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    service, cards, _graph, lexical, _judge = _dictionary_service(user_dir, entry=entry)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_card_service",
+        lambda _user, _settings, **_kwargs: service,
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    sense = lexical.entry.senses[0]
+    payload = {
+        "sourceCardId": source.id,
+        "notebookId": "default",
+        "provider": lexical.entry.provider,
+        "entryKey": lexical.entry.entry_key,
+        "senseKey": sense.key,
+        "exampleKey": sense.examples[0].key,
+    }
+    created = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-op"},
+        json=payload,
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["createdCard"] is True
+    assert body["targetCard"]["cardRole"] == "dictionary"
+    assert body["dictionaryCard"]["dictionary"]["selectedExampleKey"] == sense.examples[0].key
+    card_id = body["targetCard"]["id"]
+
+    # Rollback flag only stops new materialization/search; saved reads and edits remain.
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=False,
+    )
+    detail = isolated_api.client.get(
+        f"/api/dictionary/cards/{card_id}", headers=isolated_api.headers
+    )
+    projection = isolated_api.client.get(
+        "/api/dictionary-cards?notebook_id=default", headers=isolated_api.headers
+    )
+    visibility = isolated_api.client.patch(
+        f"/api/cards/{card_id}/reader-visibility",
+        headers=isolated_api.headers,
+        json={"readerHidden": True},
+    )
+    selection = isolated_api.client.patch(
+        f"/api/dictionary/cards/{card_id}/selection",
+        headers=isolated_api.headers,
+        json={"senseKey": sense.key, "exampleKey": sense.examples[0].key},
+    )
+
+    assert detail.status_code == 200
+    assert detail.json()["selectedExampleKey"] == sense.examples[0].key
+    assert detail.json()["entry"]["attribution"]["license_name"] == "CC BY-SA 4.0"
+    assert projection.status_code == 200 and projection.json()[0]["card"]["id"] == card_id
+    assert visibility.status_code == 200 and visibility.json()["readerHidden"] is True
+    assert selection.status_code == 200
+
+    replay_while_disabled = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-op"},
+        json=payload,
+    )
+    mismatch_while_disabled = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-op"},
+        json={**payload, "exampleKey": "different-request"},
+    )
+    assert replay_while_disabled.status_code == 200
+    assert replay_while_disabled.json()["replayed"] is True
+    assert mismatch_while_disabled.status_code == 409
+
+    disabled_create = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-op-2"},
+        json=payload,
+    )
+    assert disabled_create.status_code == 403
+
+    import kg.deps_quota as deps_quota
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    monkeypatch.setattr(
+        deps_quota,
+        "_check_quota",
+        lambda *_args, **_kwargs: pytest.fail("completed replay reached quota admission"),
+    )
+    replay_without_quota = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "api-op"},
+        json=payload,
+    )
+    assert replay_without_quota.status_code == 200
+
+
+def test_dictionary_materialize_api_requires_idempotency_key_and_rejects_hash_mismatch(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    service, cards, _graph, lexical, _judge = _dictionary_service(user_dir)
+    source = cards.add("summon", "召喚", notebook_id="default")
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_card_service",
+        lambda _user, _settings, **_kwargs: service,
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    sense = lexical.entry.senses[0]
+    payload = {
+        "sourceCardId": source.id,
+        "notebookId": "default",
+        "provider": lexical.entry.provider,
+        "entryKey": lexical.entry.entry_key,
+        "senseKey": sense.key,
+        "exampleKey": sense.examples[0].key,
+    }
+    missing = isolated_api.client.post(
+        "/api/graph/links/from-dictionary", headers=isolated_api.headers, json=payload
+    )
+    first = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "same-api-key"},
+        json=payload,
+    )
+    mismatch = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "same-api-key"},
+        json={**payload, "exampleKey": "not-the-same-request"},
+    )
+    replay = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "same-api-key"},
+        json=payload,
+    )
+
+    assert missing.status_code == 422
+    assert first.status_code == 200
+    assert mismatch.status_code == 409
+    assert replay.status_code == 200 and replay.json()["replayed"] is True
+
+
+def test_dictionary_projection_cursor_tombstone_role_transfer_and_notebook_isolation(tmp_path):
+    from kg.dictionary_cards import DictionaryCardService
+    from kg.exceptions import BadRequestError
+    from kg.graph import GraphStore
+
+    cards = CardStore(tmp_path / "cards.db")
+    graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
+    service = DictionaryCardService(
+        cards=cards,
+        graph=graph,
+        lexical=_CanonicalLexical(_lexical_entry()),
+        judge=_Judge(),
+    )
+
+    created = []
+    for index, (word, notebook_id) in enumerate(
+        [("invoke", "default"), ("evoke", "default"), ("cite", "other")]
+    ):
+        entry = _lexical_entry(word)
+        sense = entry.senses[0]
+        card, was_created = cards.stage_dictionary_card(
+            entry=entry,
+            notebook_id=notebook_id,
+            sense_key=sense.key,
+            example_key=sense.examples[0].key,
+        )
+        assert was_created is True
+        key = f"projection-{index}"
+        cards.begin_lexical_operation(key, f"hash-{index}")
+        cards.activate_dictionary_entry_and_complete_operation(
+            card_id=card.id,
+            idempotency_key=key,
+            response_json="{}",
+        )
+        created.append(card)
+
+    first = service.list_projection(notebook_id="default", limit=1)
+    second = service.list_projection(
+        notebook_id="default", limit=1, cursor=first.next_cursor
+    )
+    assert len(first.items) == len(second.items) == 1
+    assert first.items[0].card.id != second.items[0].card.id
+    assert second.next_cursor is None
+
+    watermark = max(cards.get(created[0].id).updated_at, cards.get(created[1].id).updated_at)
+    cards.update(created[0].id, card_role="learning", review_eligible=True)
+    cards.delete(created[1].id)
+    delta = service.list_projection(
+        notebook_id="default", limit=10, since=watermark
+    )
+    assert {item.card.id for item in delta.items} == {created[0].id, created[1].id}
+    assert any(item.card.card_role == "learning" for item in delta.items)
+    assert any(item.card.is_deleted for item in delta.items)
+    assert created[2].id not in {item.card.id for item in delta.items}
+
+    with pytest.raises(BadRequestError):
+        service.list_projection(notebook_id="default", limit=10, cursor="not-a-cursor")
+
+
+def test_dictionary_materialize_api_rejects_foreign_notebook_before_provider_call(isolated_api):
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    response = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "foreign-notebook"},
+        json={
+            "sourceCardId": "missing",
+            "notebookId": "not-owned",
+            "provider": "free_dictionary",
+            "entryKey": "en.aW52b2tl",
+            "senseKey": "sense",
+            "exampleKey": "example",
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_dictionary_saga_retry_with_persisted_judgement_skips_quota_readmission(
+    isolated_api, monkeypatch
+):
+    import kg.deps_quota as deps_quota
+    import kg.routers.dictionary as dictionary_router
+
+    crashed = False
+
+    def crash_once(step):
+        nonlocal crashed
+        if step == "after_card_stage" and not crashed:
+            crashed = True
+            raise RuntimeError("injected crash")
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    service, cards, _graph, lexical, judge = _dictionary_service(
+        user_dir, crash_hook=crash_once
+    )
+    source = cards.add("summon", "召喚", notebook_id="default")
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_card_service",
+        lambda _user, _settings, **_kwargs: service,
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    sense = lexical.entry.senses[0]
+    payload = {
+        "sourceCardId": source.id,
+        "notebookId": "default",
+        "provider": lexical.entry.provider,
+        "entryKey": lexical.entry.entry_key,
+        "senseKey": sense.key,
+        "exampleKey": sense.examples[0].key,
+    }
+    first = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "resume-after-judge"},
+        json=payload,
+    )
+    assert first.status_code == 500
+    assert judge.calls == 1
+
+    monkeypatch.setattr(
+        deps_quota,
+        "_check_quota",
+        lambda *_args, **_kwargs: pytest.fail("resumable saga reached quota admission"),
+    )
+    resumed = isolated_api.client.post(
+        "/api/graph/links/from-dictionary",
+        headers={**isolated_api.headers, "Idempotency-Key": "resume-after-judge"},
+        json=payload,
+    )
+    assert resumed.status_code == 200, resumed.text
+    assert judge.calls == 1
+    assert service.get_operation("resume-after-judge").status == "completed"
+
+
+def test_saved_dictionary_routes_are_db_only_when_lookup_rollout_is_disabled(
+    isolated_api, monkeypatch
+):
+    import kg.routers.dictionary as dictionary_router
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    cards = dictionary_router._card_store(user_dir)
+    entry = _lexical_entry()
+    sense = entry.senses[0]
+    card, _ = cards.stage_dictionary_card(
+        entry=entry,
+        notebook_id="default",
+        sense_key=sense.key,
+        example_key=sense.examples[0].key,
+    )
+    cards.begin_lexical_operation("db-only-fixture", "fixture")
+    cards.activate_dictionary_entry_and_complete_operation(
+        card_id=card.id,
+        idempotency_key="db-only-fixture",
+        response_json="{}",
+    )
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=False,
+        dictionary_provider_default="unavailable-provider",
+    )
+    monkeypatch.setattr(
+        dictionary_router,
+        "_lexical_service",
+        lambda _settings: pytest.fail("saved route constructed lexical provider"),
+    )
+    monkeypatch.setattr(
+        dictionary_router,
+        "_manual_judge",
+        lambda *_args, **_kwargs: pytest.fail("saved route constructed manual judge"),
+    )
+
+    detail = isolated_api.client.get(
+        f"/api/dictionary/cards/{card.id}", headers=isolated_api.headers
+    )
+    projection = isolated_api.client.get(
+        "/api/dictionary-cards?notebook_id=default", headers=isolated_api.headers
+    )
+    selected = isolated_api.client.patch(
+        f"/api/dictionary/cards/{card.id}/selection",
+        headers=isolated_api.headers,
+        json={"senseKey": sense.key, "exampleKey": sense.examples[0].key},
+    )
+    visibility = isolated_api.client.patch(
+        f"/api/cards/{card.id}/reader-visibility",
+        headers=isolated_api.headers,
+        json={"readerHidden": True},
+    )
+
+    assert detail.status_code == 200, detail.text
+    assert projection.status_code == 200, projection.text
+    assert selected.status_code == 200, selected.text
+    assert visibility.status_code == 200, visibility.text

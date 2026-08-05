@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..sqlite_utils import make_sqlite_engine
 from .model import Card
+from .dictionary_store import DictionaryCardStoreMixin
 from .mutations import CardMutationMixin
 from .query import CardQueryMixin
 from .schema import init_schema
@@ -14,7 +15,7 @@ from .schema import init_schema
 logger = logging.getLogger(__name__)
 
 
-class CardStore(CardQueryMixin, CardMutationMixin):
+class CardStore(CardQueryMixin, CardMutationMixin, DictionaryCardStoreMixin):
     """SQLite-based card storage using SQLModel."""
 
     def __init__(self, path: Path) -> None:
