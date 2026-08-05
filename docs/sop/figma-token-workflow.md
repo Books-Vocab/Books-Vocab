@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - design-system/
   - ops/
-verified_against: 6cf407a5
+verified_against: c5d81fe35
 -->
 # Figma Token Studio Workflow（零基礎 solo 設計師接 tokens.json）
 
