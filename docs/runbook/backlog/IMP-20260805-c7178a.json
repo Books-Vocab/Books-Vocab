@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-05",
+  "detail": "IMP-20260805-0fc07a 只把 **一個** bundle 輸入綁回它宣稱的 commit（pbxproj）。同一個「宣稱 commit／實讀工作樹」錯配仍存在於其餘輸入與下一層工具，而且 gate 不驗這條不變式，所以它現在是 [prompt] 不是 [machine]。\n\n**(1) 其餘五個 desired bundle 輸入仍讀工作樹**（`ops/app_review_evidence.py:produce_desired_bundle()`）：capture profile（`--profile` 傳進來的路徑，寫進 manifest `capture.profile.sha256`）、render PNG（`--render-output-dir` 底下的檔，寫進 `outputs[].sha256`）、兩支 demo generator（`ops/demo/marketing_account/shape_history.py`、`ops/demo/build_demo.py`，以工作樹版本執行）、以及 `generator_files=[capture_profile.py, reviewer_evidence.py]`（`ops/capture_profile.py` → `ops/reviewer_evidence.py` 的 `provenance.generators[].sha256`）。任何一支在 sourceCommit 之後被改，bundle 就再次「宣稱是那顆 commit 的證據、裝著 HEAD 的東西」，只是這次沒有錨點會叫——因為錨點本身就是這些輸入的函數，它會跟著一起漂。\n\n**(2) 下一層工具的預設值就是原缺陷**：`ops/capture_profile.py` 的 `reviewer-evidence` 子指令，`--project-file` 預設 `IOS_PROJECT_FILE`（工作樹路徑），`--source-commit` 預設 `HEAD`。任何人直接跑 `capture_profile.py reviewer-evidence --source-commit <sha>` 而不給 `--project-file`，就完整重現 0fc07a。不變式現在住在 caller 裡，不在那支「鑄造這個宣稱」的工具裡。\n\n**(3) gate 不驗這條不變式**：`ops/app_review_gate.py` 只驗 bundle 內部一致性（檔案 bytes vs manifest digest），沒有任何 git 呼叫。用舊程式產的 bundle、或走 (2) 的路徑產的 bundle，一樣通過。要變成 [machine]，gate 需斷言 `build.project.sha256 == sha256(git cat-file blob <source.commit>:<pbxproj>)`（以及推廣到其他輸入）。\n\n**(4) 同形問題在 iOS 那側**：`ops/ios_test.sh:1734-1737` 把 `git rev-parse HEAD` 寫進 run verdict 的 `sourceCommit`，同時用 awk 從**工作樹** pbxproj 取 marketingVersion/buildNumber/bundleID，且不檢查 tree 是否 dirty。`produce_journey`（`ops/app_review_evidence.py`）接著要求它等於 `spec.target.sourceCommit`——於是一個 dirty build 會被歸給一顆乾淨的 commit。`ops/lib/ios_ops_catalog.sh:519-525` 同形。\n\n**方向（未實作，需先定範圍）**：把 `_materialize_tracked_file()` 推廣成「所有 commit-pinned 輸入都從那顆 commit 取」；generator 腳本要不要也 pin 是真的取捨（pin 了就得用歷史版本執行，行為可能與現行不同），需要決定而不是照抄。gate 那條斷言相對單純且收益最大，可先做。ios_test.sh 那條至少該加 dirty-tree 檢查。",
+  "id": "IMP-20260805-c7178a",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-20260805-0fc07a 修復後的殘留範圍，由該修復的 code review 量出（review 的 findings 5/6/7）",
+  "status": "open",
+  "stream": "IMP"
+}
