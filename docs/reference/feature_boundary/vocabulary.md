@@ -47,16 +47,16 @@ verified_against: 3c6cd0688
 | `Scenes/SyncPresenter+Preview.swift` | 290 | 同步 preview 資料 |
 | `Scenes/StatsPresenter.swift` | 520 | 統計畫面佈局；forecast 與 graph thumbnail 使用 review pause reference date |
 | `Scenes/ReviewCalendarPresenter.swift` | 255 | 複習日曆佈局 |
-| `Scenes/TodayReviewPresenter.swift` | 336 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀 |
+| `Scenes/TodayReviewPresenter.swift` | 454 | 今日複習主佈局；翻卡路徑含 `PerfLog` render/layout tick，autoplay 答案揭露後朗讀 |
 | `Scenes/TodayReviewPresenter+CardContent.swift` | 293 | 卡片內容 extension；翻卡 front/back surface 與 radius 計算含 `PerfLog` instrumentation |
-| `Scenes/TodayReviewPresenter+Toolbar.swift` | 457 | toolbar extension；autoplay controls 含聲音開關 |
+| `Scenes/TodayReviewPresenter+Toolbar.swift` | 551 | toolbar extension；autoplay controls 含聲音開關。播放鍵的可按性 = `isAutoPlaying || canAutoplay`：**守衛只擋開始、不擋停止**，否則就重造 autoplay 出不去的 bug |
 
 ### State Layer（狀態定義）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/TodayReviewState.swift` | 579 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration、review intent gating 與 collocation substate，同時把 queue+reveal 導航委派 `TodayReviewSessionState` |
-| `Scenes/TodayReviewSessionState.swift` | 64 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定 |
+| `Scenes/TodayReviewState.swift` | 604 | `@Observable @MainActor final class TodayReviewState`，複習場景 owner；持有 scoring / persistence / analytics / cache orchestration、review intent gating 與 collocation substate，同時把 queue+reveal 導航委派 `TodayReviewSessionState` |
+| `Scenes/TodayReviewSessionState.swift` | 78 | `struct TodayReviewSessionState<Entry>`，純 session/navigation domain state；封裝 queue / currentIndex / revealStage / shuffle / next / previous / completion 判定，以及 `canAutoplay`（loop 每圈只有翻面與推進兩種動作，兩者皆不可能＝死路，播放鍵須停用而非沉默 no-op） |
 | `Scenes/TodayReviewSessionPersistenceController.swift` | 73 | `struct TodayReviewSessionPersistenceController`，封裝 queue persistence metadata / snapshot / deferred flush；讓 `TodayReviewState` 不直接操作 `ReviewSessionPersistence` |
 | `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
 | `Scenes/TodayReviewAutoplayController.swift` | 128 | `@Observable @MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration。**`@Observable` 是契約不是風格**：4 個 playback 狀態由 `TodayReviewState` 的 computed property 投影給 `TodayReviewView.body` 讀，型別若無 registrar 則切 autoplay 不會 invalidate view（開啟方向被 loop 的 `session` mutation 延遲自癒、關閉方向永不自癒 → 播放列永久卡住）。把持有它的 `let` 改成 `var` 不能代替。`task` 必須 `@ObservationIgnored`（每卡 restart loop = 每卡兩次假通知）。由 `TodayReviewAutoplayObservationTests` 釘住 |
