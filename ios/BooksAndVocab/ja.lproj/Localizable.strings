@@ -1045,7 +1045,7 @@
 "explore.category.custom" = "カスタム";
 "explore.empty.title" = "デッキがありません";
 "explore.empty.description" = "公式の学習デッキがここに表示されます。";
-"explore.empty.guidance" = "引っ張って更新するとデッキを同期します。";
+"explore.empty.guidance" = "更新するとデッキを同期します。";
 "explore.noResults.title" = "一致するデッキがありません";
 "explore.noResults.description" = "別の検索や絞り込みをお試しください。";
 "explore.noResults.clear" = "絞り込みを解除";

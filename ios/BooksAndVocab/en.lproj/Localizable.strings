@@ -1078,7 +1078,7 @@
 "explore.category.custom" = "Custom";
 "explore.empty.title" = "No decks yet";
 "explore.empty.description" = "Official study decks will appear here.";
-"explore.empty.guidance" = "Pull to refresh to sync decks.";
+"explore.empty.guidance" = "Refresh to sync decks.";
 "explore.noResults.title" = "No matching decks";
 "explore.noResults.description" = "Try a different search or filter.";
 "explore.noResults.clear" = "Clear filters";

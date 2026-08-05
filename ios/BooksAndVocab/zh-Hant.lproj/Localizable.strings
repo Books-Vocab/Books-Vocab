@@ -1061,7 +1061,7 @@
 "explore.category.custom" = "自訂";
 "explore.empty.title" = "尚無牌組";
 "explore.empty.description" = "官方學習牌組會出現在這裡。";
-"explore.empty.guidance" = "下拉重新整理以同步牌組。";
+"explore.empty.guidance" = "重新整理即可同步牌組。";
 "explore.noResults.title" = "沒有符合的牌組";
 "explore.noResults.description" = "試試其他搜尋或篩選。";
 "explore.noResults.clear" = "清除篩選";

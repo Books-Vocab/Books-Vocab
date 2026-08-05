@@ -16,6 +16,13 @@ struct PodcastFeatureGateTests {
         #endif
     }
 
+    /// Explore 自 2026-08-05 起在**所有** configuration 曝光（原為 `#if DEBUG`）。
+    /// 這條的用途是防回退：下面那些 visibility 測試全部傳明確 boolean，不讀旗標實值，
+    /// 所以有人把 `#if DEBUG` 加回去時整個套件仍會全綠——除了這一條。
+    @Test func exploreFlagIsOnInEveryConfiguration() {
+        #expect(KGFeatureFlags.exploreEnabled)
+    }
+
     // MARK: - Section visibility
 
     @Test func visibleCasesExcludePodcastsWhenDisabled() {

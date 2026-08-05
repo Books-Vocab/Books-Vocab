@@ -1046,7 +1046,7 @@
 "explore.category.custom" = "사용자 지정";
 "explore.empty.title" = "덱이 없습니다";
 "explore.empty.description" = "공식 학습 덱이 여기에 표시됩니다.";
-"explore.empty.guidance" = "아래로 당겨 덱을 동기화하세요.";
+"explore.empty.guidance" = "새로 고침하면 덱이 동기화됩니다.";
 "explore.noResults.title" = "일치하는 덱이 없습니다";
 "explore.noResults.description" = "다른 검색이나 필터를 시도해 보세요.";
 "explore.noResults.clear" = "필터 지우기";

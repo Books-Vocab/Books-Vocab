@@ -38,9 +38,9 @@ enum AppPrimarySection: String, CaseIterable, Identifiable, Equatable {
     }
 
     /// Sections the shell actually surfaces (iOS TabView + Catalyst sidebar).
-    /// Pure so the DEBUG-only feature gates (`KGFeatureFlags.podcastEnabled` /
-    /// `.exploreEnabled`) stay testable without conditional compilation at every
-    /// switch site.
+    /// Pure so the feature gates (`KGFeatureFlags.podcastEnabled` — still DEBUG-only;
+    /// `.exploreEnabled` — Release-on since 2026-08-05) stay testable without
+    /// conditional compilation at every switch site.
     static func visibleCases(podcastEnabled: Bool, exploreEnabled: Bool) -> [AppPrimarySection] {
         allCases.filter { section in
             switch section {

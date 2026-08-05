@@ -47,6 +47,18 @@ verified_against: 6ff5bcf10
 - [ ] 複習按鈕觸發 TodayReview
 - [ ] 滑動歸類正常（認識 / 模糊 / 不認識）
 
+## 4b. Explore（共享牌組庫）
+
+> 2026-08-05 起 `exploreEnabled` 在 Release 亦為 true，Release shell 因此多一個頂層 tab。
+> 空目錄是可能的出貨狀態（官方牌組注入是獨立的 approval-gated 步驟），故空狀態必驗。
+
+- [ ] 「探索」tab 出現在 tab bar，可進入且被選中
+- [ ] **未登入**也能瀏覽目錄（不跳登入牆、不出現錯誤橫幅）
+- [ ] 目錄為空時顯示**空狀態**（不是錯誤態）；有牌組時 grid 正常渲染
+- [ ] 點入牌組 detail：卡數 / 範例卡 / 官方 badge 顯示
+- [ ] 未登入時複製 CTA 停用並說明原因；登入後可複製進指定單字本，卡片即時可複習
+- [ ] macOS（Catalyst）側邊欄同樣有「探索」，工具列刷新鈕可用
+
 ## 5. 登入 / 訂閱 / 刪帳號
 
 - [ ] 設定頁登入（Google / Apple）
