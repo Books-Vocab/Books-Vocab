@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "build_official.py 的 check gate 對「新 spec 忘了 git add」結構上無感：discover_specs() 是 _HERE.glob('*.json')，掃檔案系統而非 git index。後果是 worktree 裡 check 三個 spec 全綠、commit 完的 tree 只有兩個，而 tests/test_official_decks_emit.py 走同一個 discover_specs()，一樣假綠。curator 新增官方牌組時漏 git add，本機與 CI 都不會紅，要等生產注入才發現 spec 不存在。本次 exam-core-en-zh.json 就是靠人工 review 抓到的（已補 add）。建議：check 增一道 git-tracked 檢查（untracked 的 spec 至少 warn、CI 模式 exit 1），或 discover_specs 在 CI 模式下改以 git ls-files 為來源。",
+  "id": "IMP-20260805-679442",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Explore Release-flip Phase 1 review（official deck 內容擴充）",
+  "status": "open",
+  "stream": "IMP"
+}
