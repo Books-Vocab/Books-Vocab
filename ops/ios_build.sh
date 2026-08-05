@@ -59,6 +59,13 @@ SETTINGS+=("${EXTRA_SETTINGS[@]+"${EXTRA_SETTINGS[@]}"}")
 # Resolve project root from script location
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# 必須在第一個 start_build_monitor 呼叫之前 source。少了這行不會炸——兩個呼叫點都在
+# `set +e` 區段內——而是無聲降級：整場 build 沒有 heartbeat，收尾印出空的
+# `( compile events)`，progress baseline 也永遠寫不進去。ios_test.sh 一直有 source，
+# 兩支腳本長得夠像，肉眼 review 看不出差別。回歸由 ops/tests/test_lib_sourcing.sh 擋。
+# shellcheck source=lib/ios_build_progress.sh
+source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # Optional run-metrics logging — additive, must never break the build.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
