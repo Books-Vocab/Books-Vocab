@@ -138,9 +138,9 @@ struct SettingsDeleteAccountSheet: View {
             }
             .padding(appSkin.spacing.cardPadding)
             .background(appSkin.palette.destructiveBg)
-            .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous))
+            .clipShape(AppRoundedRect(roundness: appSkin.roundness.card))
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.card)
                     .stroke(appSkin.palette.destructive.opacity(0.22), lineWidth: 1)
             )
         }
@@ -224,9 +224,9 @@ struct SettingsDeleteAccountSheet: View {
                     .appSettingsTextInputStyle(alignment: .leading)
                     .padding(appSkin.spacing.cardPadding)
                     .background(appSkin.palette.pageBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous))
+                    .clipShape(AppRoundedRect(roundness: appSkin.roundness.control))
                     .overlay(
-                        RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                        AppRoundedRect(roundness: appSkin.roundness.control)
                             .stroke(
                                 confirmTextMatches
                                     ? appSkin.palette.success

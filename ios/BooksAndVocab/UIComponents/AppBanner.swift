@@ -10,7 +10,7 @@
 //  卡片。舊版把它畫成整條方角色塊 + 底部一條 hairline：那是 chrome 的語彙，違反
 //  Mochi 北極星 1（單色頁面、無 chrome 分隔）與 2（border 退場、divider 進場），
 //  夾在圓角卡片之間像另一個 app 掉進來的元件。現在它跟鄰居講同一種話：
-//    - 連續圓角，半徑取 App Shell 的 `AppShellMetrics.cardCornerRadius`
+//    - 連續圓角，圓度取 `AppRoundness.control`（44pt 高＝控制項尺度，見下方註解）
 //    - 背景走語意 token `successBg` / `warningBg`（本身已是疊在 pageBackground 上的
 //      低濃度 tint），不再自行乘 opacity 生一個 off-token 的顏色
 //    - 文字用 `primaryText` —— 沿用 `AppOfflineBanner` 已驗證的對比結論（tint 底 +
@@ -93,12 +93,11 @@ struct AppBanner: View {
         .padding(.vertical, AppBannerMetrics.verticalPadding)
         .frame(minHeight: AppBannerMetrics.minHeight)
         .background(toneBackground)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: AppShellMetrics.cardCornerRadius,
-                style: .continuous
-            )
-        )
+        // 圓度取 control 而非 card：banner 高度被 `minHeight` 釘在 44pt，是控制項尺度，
+        // 不是卡片尺度。比例制下同一個 token 在不同尺寸給出不同半徑——card(.15) 在 44pt
+        // 上只有 3.3pt，會比鄰居的卡片明顯方。要「跟鄰居講同一種話」在比例制下是
+        // 挑同一個**尺度**的 token，不是挑同一個名字。
+        .clipShape(AppRoundedRect(roundness: AppRoundness.control))
         .appElevation(.z0)
         .transition(.bannerReveal)
     }

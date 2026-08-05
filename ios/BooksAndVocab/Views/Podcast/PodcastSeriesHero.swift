@@ -30,7 +30,9 @@ struct PodcastSeriesHero: View {
                         name: series.title
                     )
                     .frame(width: coverSize, height: coverSize)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                    // 136pt 方形節目封面 —— 尺寸規則 >70pt 落 card（不是 icon，icon 保留
+                    // 給小尺寸 app-icon 式方塊）。r 由 8 → 10.2，與書封同一手感。
+                    .clipShape(AppRoundedRect(roundness: AppRoundness.card))
                     .appElevation(.z3)
                 }
 
@@ -221,7 +223,7 @@ struct PodcastContinueCard: View {
         }
         .padding(skin.spacing.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.card)
                 .fill(skin.palette.cardBackground)
         )
         .appElevation(.z1)

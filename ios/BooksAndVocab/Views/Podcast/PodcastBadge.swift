@@ -11,7 +11,7 @@ struct PodcastBadge: View {
             .padding(.horizontal, skin.spacing.chipHorizontalPadding)
             .padding(.vertical, skin.spacing.chipVerticalPadding)
             .background(
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(skin.palette.mutedFill.opacity(0.85))
             )
             .padding(skin.spacing.cardPadding / 2)

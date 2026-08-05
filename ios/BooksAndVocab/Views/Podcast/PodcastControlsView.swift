@@ -93,20 +93,20 @@ struct PodcastControlsView: View {
         GeometryReader { geo in
             let w = geo.size.width
             ZStack(alignment: .leading) {
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(skin.palette.progressBarBackground)
                     .frame(height: PodcastPlayerMetrics.seekBarTrackHeight)
                 // Buffered overlay — sits between background and accent so it
                 // reads as "已下載但未播" (industry-standard YouTube/Spotify
                 // pattern). Uses the accent color at low opacity to stay
                 // visually subordinate to the actual progress.
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(skin.palette.accent.opacity(0.25))
                     .frame(width: bufferedWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
                     // Non-bouncy token: springs wobble on frequent KVO updates
                     // from loadedTimeRanges.
                     .animation(AppMotion.controlEaseOut, value: viewModel.bufferedEnd)
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(skin.palette.accent)
                     .frame(width: progressWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
                 Circle()

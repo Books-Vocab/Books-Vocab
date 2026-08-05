@@ -22,10 +22,10 @@ extension TodayReviewPresenter {
         let rotation = deckShellRotation
         let opacity = state.remainingCount >= 3 ? 0.35 : 0
 
-        return RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+        return AppRoundedRect(roundness: appSkin.roundness.card)
             .fill(appSkin.palette.cardBackground)
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.card)
                     .stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
             )
             .appElevation(.z1)

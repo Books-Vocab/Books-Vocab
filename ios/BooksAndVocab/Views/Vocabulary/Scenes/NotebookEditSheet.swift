@@ -70,7 +70,7 @@ struct NotebookEditSheet: View {
                         name: name.isEmpty ? NotebookEditCopy.previewTitle : name
                     )
                     .frame(height: 100)
-                    .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
+                    .clipShape(AppRoundedRect(roundness: skin.roundness.card))
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                 }
 
@@ -182,12 +182,12 @@ struct NotebookEditSheet: View {
         let color = NotebookPalette.color(for: selectedColor)
         VStack(spacing: AppSpacing.s1) {
             ZStack {
-                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.control)
                     .fill(patternId == nil ? skin.palette.mutedFill : color)
                     .frame(width: 48, height: 36)
                 if let pid = patternId, let p = NotebookCoverPattern(rawValue: pid) {
                     p.patternOverlay(size: CGSize(width: 48, height: 36))
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                        .clipShape(AppRoundedRect(roundness: AppRoundness.control))
                 }
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")

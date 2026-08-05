@@ -38,15 +38,19 @@ struct ReviewFoldSurface<Content: View>: View {
             .enableInjection()
     }
 
-    private var shape: UnevenRoundedRectangle {
-        let topR = (position == .single || position == .top) ? appSkin.radii.card : TodayReviewMetrics.foldJoinRadius
-        let botR = (position == .single || position == .bottom) ? appSkin.radii.card : TodayReviewMetrics.foldJoinRadius
-        return UnevenRoundedRectangle(
-            topLeadingRadius: topR,
-            bottomLeadingRadius: botR,
-            bottomTrailingRadius: botR,
-            topTrailingRadius: topR,
-            style: .continuous
+    /// 外緣走卡片圓度、接縫走 `foldJoinRoundness`；左右恆對稱，故只有 top / bottom 兩個自由度。
+    ///
+    /// 基準明確釘在 `foldRoundnessBasis`，**不用各段自己的 box**：摺頁卡是「一張卡
+    /// 切成 front(≥120) + answer(≥188) 兩段」，兩段高度不同。若各自導出，同一條接縫
+    /// 的上下緣會是 4.5 vs 7.05pt、整張卡的上下外緣會是 9.0 vs 14.1pt——單一物件的角
+    /// 自己對不上。共用基準讓四個角回到舊碼那種天生對稱。
+    private var shape: AppUnevenRoundedRect {
+        let top = (position == .single || position == .top) ? appSkin.roundness.card : TodayReviewMetrics.foldJoinRoundness
+        let bottom = (position == .single || position == .bottom) ? appSkin.roundness.card : TodayReviewMetrics.foldJoinRoundness
+        return AppUnevenRoundedRect(
+            topRoundness: top,
+            bottomRoundness: bottom,
+            basis: TodayReviewMetrics.foldRoundnessBasis
         )
     }
 }
@@ -66,17 +70,17 @@ struct ReviewFoldChevronPill: View {
                 .foregroundStyle(appSkin.palette.tertiaryText.opacity(0.78))
                 .frame(width: 34, height: 18)
                 .background(
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.cardBackground.opacity(0.94))
                 )
                 .overlay(
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .stroke(appSkin.palette.divider.opacity(0.58), lineWidth: AppSpacing.hairline)
                 )
                 .frame(width: 48, height: TodayReviewMetrics.chevronButtonSize)
         }
         .buttonStyle(.plain)
-        .contentShape(Capsule())
+        .contentShape(AppRoundedRect(roundness: AppRoundness.pill))
         .accessibilityLabel(accessibilityLabel)
         .enableInjection()
     }

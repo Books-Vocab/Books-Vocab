@@ -31,8 +31,10 @@ struct AppTabSelectorStyle {
     let selectedOuterBorder: Color
     let unselectedOuterBorder: Color
     let containerBackground: Color
-    let controlRadius: CGFloat
-    let containerRadius: CGFloat
+    /// 容器圓度。chip 本身恆為 `AppRoundness.pill`（見 `appChipLabel`），容器同樣走
+    /// pill 即自動同心 —— 半徑由各自的 box 導出，容器高度只比 chip 多兩倍 padding，
+    /// 兩者半徑差恰等於該 padding。舊版靠 `±2` / `+4` 手算補償，在相對圓角下已無必要。
+    let containerRoundness: CGFloat
     let outerBorderInset: CGFloat
 }
 
@@ -78,7 +80,7 @@ func appChipLabel<ID: Hashable>(
                 .padding(.horizontal, AppSkin.baseSpacing.compactChipHorizontalPadding)
                 .padding(.vertical, AppSpacing.microGap)
                 .background(
-                    Capsule(style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
                 )
         }
@@ -87,15 +89,15 @@ func appChipLabel<ID: Hashable>(
     .padding(.horizontal, AppSpacing.s2)
     .padding(.vertical, AppSpacing.s2)
     .background(
-        Capsule(style: .continuous)
+        AppRoundedRect(roundness: AppRoundness.pill)
             .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
     )
     .overlay(
-        Capsule(style: .continuous)
+        AppRoundedRect(roundness: AppRoundness.pill)
             .stroke(isSelected ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
     )
     .overlay(
-        Capsule(style: .continuous)
+        AppRoundedRect(roundness: AppRoundness.pill)
         .stroke(
             isSelected ? style.selectedOuterBorder : style.unselectedOuterBorder,
             lineWidth: 0.8
@@ -128,7 +130,7 @@ struct AppTabSelector<ID: Hashable>: View {
         }
         .padding(AppSpacing.tinyGap)
         .background(
-            RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
+            AppRoundedRect(roundness: style.containerRoundness)
                 .fill(style.containerBackground)
         )
     }
@@ -153,8 +155,7 @@ extension AppTabSelectorStyle {
             selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
             unselectedOuterBorder: theme.palette.divider.opacity(0.45),
             containerBackground: theme.palette.pageBackground,
-            controlRadius: AppRadius.md - 2,
-            containerRadius: AppRadius.md + 2,
+            containerRoundness: AppRoundness.pill,
             outerBorderInset: 3
         )
     }
@@ -177,8 +178,7 @@ extension AppTabSelectorStyle {
             selectedOuterBorder: .clear,
             unselectedOuterBorder: .clear,
             containerBackground: skin.palette.stageBackground,
-            controlRadius: skin.radii.control,
-            containerRadius: skin.radii.control + 4,
+            containerRoundness: skin.roundness.pill,
             outerBorderInset: 0
         )
     }

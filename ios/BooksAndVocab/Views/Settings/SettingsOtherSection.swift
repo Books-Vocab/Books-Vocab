@@ -192,10 +192,10 @@ struct SettingsOtherSection: View {
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(quotaBarColor.opacity(0.15))
 
-                    RoundedRectangle(cornerRadius: AppRadius.hairline, style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(quotaBarColor)
                         .frame(width: geo.size.width * quotaStore.fraction)
                         .animateSpring(quotaStore.fraction)

@@ -63,12 +63,11 @@ extension AppSkin {
 
     // MARK: - Radii / Spacing / Metrics base values
 
-    static let baseRadii = Radii(
-        card: AppRadius.md,
-        overlay: AppRadius.md,
-        control: AppRadius.sm,
-        chip: AppRadius.sm,
-        tiny: AppRadius.sm
+    static let baseRoundness = Roundness(
+        card: AppRoundness.card,
+        control: AppRoundness.control,
+        icon: AppRoundness.icon,
+        pill: AppRoundness.pill
     )
 
     static let baseSpacing = Spacing(

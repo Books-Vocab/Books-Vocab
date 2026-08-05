@@ -172,7 +172,7 @@ struct AppStartupRecoveryView: View {
             .padding(AppSpacing.s4)
             .background(
                 appTheme.palette.cardBackground,
-                in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                in: AppRoundedRect(roundness: AppRoundness.control)
             )
             .transition(.overlayFade)
 
@@ -220,10 +220,10 @@ struct AppStartupRecoveryView: View {
                 .padding(AppSpacing.s4)
                 .background(
                     appTheme.palette.cardBackground,
-                    in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                    in: AppRoundedRect(roundness: AppRoundness.card)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                    AppRoundedRect(roundness: AppRoundness.card)
                         .stroke(appTheme.palette.cardBorder, lineWidth: 1)
                 }
         }
@@ -252,10 +252,10 @@ struct AppStartupRecoveryView: View {
         .padding(AppSpacing.s4)
         .background(
             appTheme.palette.cardBackground,
-            in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+            in: AppRoundedRect(roundness: AppRoundness.control)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.control)
                 .stroke(fg.opacity(0.32), lineWidth: 1)
         }
         .transition(.overlayFade)

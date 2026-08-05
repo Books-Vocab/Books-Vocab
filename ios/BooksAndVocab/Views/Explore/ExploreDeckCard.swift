@@ -45,7 +45,7 @@ struct ExploreDeckCard: View {
         )
         .aspectRatio(2/3, contentMode: .fill)
         .frame(height: coverHeight)
-        .clipShape(RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
     }
 
     private var officialBadge: some View {
@@ -53,7 +53,7 @@ struct ExploreDeckCard: View {
             .font(AppFonts.caption2(weight: .bold))
             .foregroundStyle(appTheme.palette.accent)
             .padding(AppSpacing.s1)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+            .background(.ultraThinMaterial, in: AppRoundedRect(roundness: AppRoundness.pill))
             .padding(AppSpacing.s2)
             .accessibilityHidden(true)   // 已折進整卡 a11y label
     }

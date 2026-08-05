@@ -116,7 +116,7 @@ struct SettingsDebugBackendSection: View {
                 }
                 .padding(appSkin.spacing.cardPadding)
                 .background(appSkin.palette.stageBackground)
-                .clipShape(RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous))
+                .clipShape(AppRoundedRect(roundness: AppShellMetrics.cardRoundness))
 
                 Text("預覽內容已脫敏；完整內容仍以本機 os.Logger 為主。".localized)
                     .font(appSkin.typography.caption)

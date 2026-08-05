@@ -36,7 +36,7 @@ struct ExploreFilterChipLabel: View {
         .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, AppSpacing.s1)
         .background(
-            Capsule(style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.pill)
                 .fill(isSelected ? appTheme.palette.accent : appTheme.palette.mutedFill)
         )
         .enableInjection()

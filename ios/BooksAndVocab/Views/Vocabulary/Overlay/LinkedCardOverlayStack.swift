@@ -61,9 +61,9 @@ struct LinkedCardOverlayStack: View {
             maxHeight: max(420, 620 - CGFloat(index) * AppOverlayMetrics.linkedCardLayerShrinkStep)
         )
         .background(appSkin.palette.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: appSkin.roundness.card))
         .overlay(
-            RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+            AppRoundedRect(roundness: appSkin.roundness.card)
                 .stroke(appSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .appElevation(.z4)

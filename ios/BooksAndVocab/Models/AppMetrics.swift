@@ -139,7 +139,7 @@ extension AnyTransition {
 }
 
 // MARK: - 8pt grid spacing / radius scale / elevation language
-// 所有元件一律使用此 namespace（AppSpacing / AppRadius / AppElevation）。
+// 所有元件一律使用此 namespace（AppSpacing / AppRoundness / AppElevation）。
 
 /// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
 enum AppSpacing {
@@ -172,19 +172,32 @@ enum AppSpacing {
     static let actionButtonVerticalPadding: CGFloat = 13
 }
 
-/// Radius scale — 收斂到 4 主階 + hairline + pill。新元件不使用 7/9/13/14/18 等鄰近半階值。
-// Notion-inspired：俐落小角半徑 — 控制元件 ~4-6、卡片 ~8、modal ~16。
-enum AppRadius {
-    static let none: CGFloat = DesignTokens.Radius.Scale.none
-    static let xs: CGFloat = DesignTokens.Radius.Scale.xs
-    static let sm: CGFloat = DesignTokens.Radius.Scale.sm
-    static let md: CGFloat = DesignTokens.Radius.Scale.md
-    static let lg: CGFloat = DesignTokens.Radius.Scale.lg
-    static let xl: CGFloat = DesignTokens.Radius.Scale.xl
-    static let appIcon: CGFloat = 18
-    static let hairline: CGFloat = 1.5
-    /// Capsule / pill — 直接用 `Capsule()` shape 即可，此值為 RoundedRectangle 場合的 fallback
-    static let pill: CGFloat = DesignTokens.Radius.Scale.pill
+/// Roundness scale —— 全 app 圓角的唯一參數面。
+///
+/// 值是**無因次**的圓度 `t ∈ [0, 1]`，不是長度。實際半徑由 `AppRoundedRect`
+/// 在 render 當下從元件自己的 box 導出：`r = t · min(W, H) / 2`。
+///
+/// 只有五個名字，刻意不再細分：`0 / .15 / .30 / .45 / 1`。
+/// 三個等距 0.15 階之後直接跳到端點，是為了讓整個系統背得起來。
+///
+/// 三個校準點來自現況實測，不是配出來的數字：
+/// - `card` 0.15 → 書封短邊是 grid 欄寬（`.adaptive(150...200)`），iPhone 實測
+///   155–165pt，得 r ≈ 11.7–12.3。舊值是絕對 10pt，所以**比舊的圓約 20%**，不是等值
+/// - `control` 0.30 → 搜尋框 39pt 高得到 r=5.9（舊 `AppRadius.sm` = 6）
+/// - `icon` 0.45 → `AppHeroIcon` 80×80 得到 r=18（舊 `AppRadius.appIcon` = 18），
+///   同時等於 Apple app icon 的 22.5% 邊長比，也是 web `site.css` 用的值
+enum AppRoundness {
+    /// 直角
+    static let none: CGFloat = DesignTokens.Roundness.Scale.none
+    /// 卡片 / 清單 / 面板 / sheet / 書封
+    static let card: CGFloat = DesignTokens.Roundness.Scale.card
+    /// 按鈕 / 輸入框 / 列選取 / tab / toolbar
+    static let control: CGFloat = DesignTokens.Roundness.Scale.control
+    /// app icon / 方形頭像 / glyph tile
+    static let icon: CGFloat = DesignTokens.Roundness.Scale.icon
+    /// chip / tag / badge / toast / 進度條 / skeleton bar。
+    /// t=1 端點刻意**不**退化成正圓或圓弧膠囊——曲率全程 `.continuous`，端點是方圓。
+    static let pill: CGFloat = DesignTokens.Roundness.Scale.pill
 }
 
 /// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。

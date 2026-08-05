@@ -145,11 +145,11 @@ struct SettingsCompactActionButton: View {
             .padding(.horizontal, AppSpacing.s3)
             .padding(.vertical, appSkin.spacing.rowPadding)
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(appSkin.palette.pageBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(appSkin.palette.cardBorder, lineWidth: 1)
             )
             .buttonStyle(.plain)
@@ -186,9 +186,9 @@ struct SettingsFeaturePanel<Content: View>: View {
         content
             .padding(appSkin.spacing.cardPadding)
             .background(appSkin.palette.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous))
+            .clipShape(AppRoundedRect(roundness: appSkin.roundness.card))
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.card)
                     .stroke(borderTone, lineWidth: 1)
             )
             .enableInjection()
@@ -423,11 +423,11 @@ struct SettingsSelectionTile<Content: View>: View {
             .padding(.horizontal, appSkin.spacing.controlHorizontalPadding)
             .padding(.vertical, appSkin.spacing.controlHorizontalPadding)
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(
                         isSelected ? appSkin.palette.cardBorder : appSkin.palette.divider.opacity(0.4),
                         lineWidth: 1

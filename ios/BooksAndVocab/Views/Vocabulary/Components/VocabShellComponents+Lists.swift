@@ -156,11 +156,11 @@ struct VocabActionButtonStyle: ButtonStyle {
             .padding(.horizontal, appSkin.spacing.actionButtonHorizontalPadding)
             .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(palette.background)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(palette.border, lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.96 : 1)

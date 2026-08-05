@@ -81,7 +81,8 @@ struct VocabForecastChart: View {
                 Spacer(minLength: 0)
 
                 if bucket.count > 0 {
-                    RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
+                    // 柱寬 = columnWidth × 0.5（14 bucket 下 ≈12pt）＝短邊，落在 pill 階。
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(index == 0
                               ? AppColors.chartHighlight
                               : AppColors.chartHighlight.opacity(0.35))
@@ -142,7 +143,7 @@ struct VocabForecastChart: View {
             .padding(.horizontal, appSkin.spacing.microGap)
             .padding(.vertical, AppSpacing.microGap)
             .background(
-                RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(appSkin.palette.cardBackground)
                     .appElevation(.z1)
             )

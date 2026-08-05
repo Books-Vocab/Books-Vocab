@@ -5,7 +5,7 @@
 //  統一的 Header pill 視覺規格 — 給 NotebookListView Today Review action bar
 //  三 pill（CTA / filter / plus）共用,確保高度與 padding 完全一致,僅差別在「填色 + 長度」。
 //  不含 Button — caller 自行用 Button / Menu 包裹,讓 Menu label 場景也能套用。
-//  形狀：Capsule;高度 ≈ 27pt (約原 22pt × 1.2)。
+//  形狀：`AppRoundness.pill` 方圓;高度 ≈ 27pt (約原 22pt × 1.2)。
 
 import SwiftUI
 
@@ -22,7 +22,7 @@ struct NotebookHeaderPillLabel<Content: View>: View {
             .padding(.horizontal, AppSpacing.s2 + 2)   // 10pt
             .padding(.vertical, AppSpacing.s2 - AppSpacing.hairline)
             .frame(minWidth: 32)
-            .background(Capsule(style: .continuous).fill(fillColor))
+            .background(AppRoundedRect(roundness: AppRoundness.pill).fill(fillColor))
     }
 }
 

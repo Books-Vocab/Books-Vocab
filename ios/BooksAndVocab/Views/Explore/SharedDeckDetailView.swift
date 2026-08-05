@@ -201,7 +201,7 @@ struct SharedDeckDetailView: View {
         .padding(AppSpacing.s3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.control)
                 .fill(appTheme.palette.cardBackground)
         )
         .accessibilityElement(children: .combine)
@@ -275,7 +275,7 @@ struct SharedDeckDetailView: View {
             coverImagePath: nil,
             name: deck.title
         )
-        .clipShape(RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: AppBookshelfMetrics.coverRoundness))
         .appElevation(.z0)
         .accessibilityHidden(true)
     }
@@ -474,7 +474,7 @@ struct SharedDeckCardPreviewRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppSpacing.s3)
         .background(
-            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+            AppRoundedRect(roundness: AppRoundness.control)
                 .fill(appTheme.palette.cardBackground)
         )
         .accessibilityElement(children: .combine)

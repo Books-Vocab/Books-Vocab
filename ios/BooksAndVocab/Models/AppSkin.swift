@@ -147,14 +147,19 @@ struct AppSkin {
         let settingsAdjustLarge: Font
     }
 
-    /// 圓角語意 token —— 值一律取自 AppRadius scale。
-    /// 名稱保留語意層：card·overlay=md(12) / control·chip·tiny=sm(8)。
-    struct Radii {
+    /// 圓角語意 token —— 值一律取自 `AppRoundness` scale。
+    ///
+    /// 存的是**無因次**圓度 `t ∈ [0, 1]`，不是長度；實際半徑由 `AppRoundedRect`
+    /// 在 render 當下算出（`r = t · min(W, H) / 2`）。四個語意名對應四個 t：
+    /// card=.15 / control=.30 / icon=.45 / pill=1。
+    ///
+    /// 舊的 `Radii`（card·overlay / control·chip·tiny）已收斂：overlay 併入 card、
+    /// chip·tiny 併入 pill——實測顯示它們的實際圓度本來就分別落在同一階。
+    struct Roundness {
         let card: CGFloat
-        let overlay: CGFloat
         let control: CGFloat
-        let chip: CGFloat
-        let tiny: CGFloat
+        let icon: CGFloat
+        let pill: CGFloat
     }
 
     struct Spacing {
@@ -262,7 +267,7 @@ struct AppSkin {
 
     let palette: Palette
     let typography: Typography
-    let radii: Radii
+    let roundness: Roundness
     let spacing: Spacing
     let metrics: Metrics
     let highlight: HighlightConfig
@@ -319,7 +324,7 @@ extension AppSkin {
                 readerThemeDarkSwatch: AppSkinColors.readerThemeDarkSwatch
             ),
             typography: baseTypography,
-            radii: baseRadii,
+            roundness: baseRoundness,
             spacing: baseSpacing,
             metrics: baseMetrics,
             highlight: .default

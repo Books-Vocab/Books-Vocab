@@ -95,13 +95,13 @@ extension ReaderViewPresenter {
     ) -> some View {
         HStack(spacing: 10) {
             ZStack(alignment: .leading) {
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(trackColor)
                     .frame(
                         width: ReaderPresentationMetrics.Overlay.progressBarWidth,
                         height: ReaderPresentationMetrics.Overlay.progressBarHeight
                     )
-                Capsule()
+                AppRoundedRect(roundness: AppRoundness.pill)
                     .fill(fillColor)
                     .frame(
                         width: max(

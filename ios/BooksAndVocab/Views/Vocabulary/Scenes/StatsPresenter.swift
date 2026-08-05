@@ -314,7 +314,7 @@ struct StatsPresenter: View {
                 }
                 .padding(.horizontal, appSkin.spacing.inlineGap)
                 .padding(.vertical, appSkin.spacing.microGap)
-                .background(appSkin.palette.warningBg, in: Capsule())
+                .background(appSkin.palette.warningBg, in: AppRoundedRect(roundness: AppRoundness.pill))
                 .foregroundStyle(appSkin.palette.warning)
             }
             .buttonStyle(.plain)
@@ -416,7 +416,7 @@ struct StatsPresenter: View {
         return VStack(spacing: 0) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: AppRadius.hairline)
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(LinearGradient(
                             stops: stops,
                             startPoint: .leading,

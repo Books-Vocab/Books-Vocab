@@ -180,7 +180,7 @@ struct NotebookCard: View {
         }
         .frame(height: 72)
         .background(skin.palette.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
+        .clipShape(AppRoundedRect(roundness: skin.roundness.card))
         // 北極星二:list card 預設無 border。視覺分區改靠卡片間留白
         // (editorialGridSpacing)+ cover↔metadata 內部垂直 0.5pt rule(書背隱喻,保留)。
         // 卡片底色 `cardBackground` 與 `pageBackground` 不同色,單色頁面仍可區分。
@@ -277,9 +277,13 @@ struct NotebookCard: View {
                     showsName: false
                 )
                 .aspectRatio(coverAspectRatio, contentMode: .fill)
-                .clipShape(UnevenRoundedRectangle(
-                    topLeadingRadius: skin.radii.card,
-                    topTrailingRadius: skin.radii.card
+                // 只圓上緣 — 與下方 metadata 黏合。
+                // ⚠️ 舊碼是 SwiftUI 原生的 uneven 圓角矩形但漏了 `style:`，預設落回
+                // `.circular`，所以這裡的角一直是圓弧而非方圓；`AppUnevenRoundedRect`
+                // 內部恆用 `.continuous`，換過來同時修掉這個沉默的不一致。
+                .clipShape(AppUnevenRoundedRect(
+                    topRoundness: skin.roundness.card,
+                    bottomRoundness: AppRoundness.none
                 ))
             }
         }

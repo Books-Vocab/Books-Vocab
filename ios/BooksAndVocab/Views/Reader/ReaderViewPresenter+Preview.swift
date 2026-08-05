@@ -123,7 +123,7 @@ struct ReaderChromePreviewScene: View {
     private var skeletonPageContent: some View {
         VStack(alignment: .leading, spacing: ReaderPresentationMetrics.Preview.blockSpacing) {
             ForEach(0..<8, id: \.self) { index in
-                RoundedRectangle(cornerRadius: ReaderPresentationMetrics.Preview.blockCornerRadius, style: .continuous)
+                AppRoundedRect(roundness: ReaderPresentationMetrics.Preview.blockRoundness)
                     .fill(Color.primary.opacity(index == 2 ? ReaderPresentationMetrics.Preview.textBlockEmphasisOpacity : ReaderPresentationMetrics.Preview.textBlockBaseOpacity))
                     .frame(height: index.isMultiple(of: 3) ? ReaderPresentationMetrics.Preview.blockHeightTall : ReaderPresentationMetrics.Preview.blockHeightShort)
                     .padding(.trailing, CGFloat(index % 3) * ReaderPresentationMetrics.Preview.trailingStep)
@@ -275,13 +275,19 @@ struct ReaderMarketingProse: View {
         .swiftUIColor(for: .light)
         .opacity(VocabHighlightPreferences.defaultOpacity)
     private static let bandFraction = CGFloat(VocabHighlightPreferences.defaultBandFraction)
-    private static let bandCornerRadius: CGFloat = 3
+    // 色帶高 = fontSize(20) × 32% ≈ 6.4pt，短邊遠小於 30pt → pill（r ≈ 3.2，
+    // 與舊的絕對 3pt 同值）。
+    private static let bandRoundness: CGFloat = AppRoundness.pill
     private static let bandOverhang: CGFloat = 2
 
     // Active (just-tapped) word outline — mirrors ReaderContentStyle sepia.activeOutline
     // "1px solid rgba(126, 96, 66, 0.34)" with a 1.5px outline-offset.
     private static let activeOutline = Color(red: 126.0 / 255, green: 96.0 / 255, blue: 66.0 / 255).opacity(0.34)
-    private static let activeCornerRadius: CGFloat = 4
+    // 選中詞外框：框住單一詞，短邊 = 行高 ≈ 24pt（短詞則是字寬，更小），
+    // 依尺寸規則 ≲30pt → pill。注意這條外框原本是為了鏡射 WebView CSS 的
+    // `ReaderContentStyle.activeBorderRadius = 4`（CSS 不在圓度系統內、刻意不動），
+    // 改 pill 後兩者不再等值 —— 見交接說明。
+    private static let activeRoundness: CGFloat = AppRoundness.control
     private static let activeOutlineWidth: CGFloat = 1
     private static let activeOutlineInset: CGFloat = 1.5
 
@@ -362,7 +368,7 @@ struct ReaderMarketingProse: View {
             base
                 .background(alignment: .bottom) { highlightBand }
                 .overlay(
-                    RoundedRectangle(cornerRadius: Self.activeCornerRadius, style: .continuous)
+                    AppRoundedRect(roundness: Self.activeRoundness)
                         .inset(by: -Self.activeOutlineInset)
                         .stroke(Self.activeOutline, lineWidth: Self.activeOutlineWidth)
                 )
@@ -370,7 +376,7 @@ struct ReaderMarketingProse: View {
     }
 
     private var highlightBand: some View {
-        RoundedRectangle(cornerRadius: Self.bandCornerRadius, style: .continuous)
+        AppRoundedRect(roundness: Self.bandRoundness)
             .fill(Self.bandColor)
             .frame(height: Self.fontSize * Self.bandFraction)
             .padding(.horizontal, -Self.bandOverhang)

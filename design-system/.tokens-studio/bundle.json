@@ -320,12 +320,6 @@
           "$description": "BookCard / PodcastSeriesCard 封面 compact 高（AppBookshelfMetrics.coverHeightCompact）",
           "$swift": "AppBookshelfMetrics.coverHeightCompact"
         },
-        "cover-corner-radius": {
-          "$type": "dimension",
-          "$value": "10px",
-          "$description": "BookCard 封面圓角（AppBookshelfMetrics.coverCornerRadius；異於 --radius-lg=12）",
-          "$swift": "AppBookshelfMetrics.coverCornerRadius"
-        },
         "placeholder-title-padding-h": {
           "$type": "dimension",
           "$value": "12px",
@@ -457,70 +451,59 @@
         "none": {
           "$type": "dimension",
           "$value": "0px",
-          "$description": "AppRadius.none",
-          "$swift": "AppRadius.none"
+          "$description": "web-only：--radius-none。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "xs": {
           "$type": "dimension",
           "$value": "4px",
-          "$description": "AppRadius.xs",
-          "$swift": "AppRadius.xs"
+          "$description": "web-only：--radius-xs。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "sm": {
           "$type": "dimension",
           "$value": "6px",
-          "$description": "AppRadius.sm",
-          "$swift": "AppRadius.sm"
+          "$description": "web-only：--radius-sm。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "md": {
           "$type": "dimension",
           "$value": "8px",
-          "$description": "AppRadius.md",
-          "$swift": "AppRadius.md"
+          "$description": "web-only：--radius-md。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "lg": {
           "$type": "dimension",
           "$value": "12px",
-          "$description": "AppRadius.lg",
-          "$swift": "AppRadius.lg"
+          "$description": "web-only：--radius-lg。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "xl": {
           "$type": "dimension",
           "$value": "16px",
-          "$description": "AppRadius.xl",
-          "$swift": "AppRadius.xl"
+          "$description": "web-only：--radius-xl。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         },
         "pill": {
           "$type": "dimension",
           "$value": "999px",
-          "$description": "AppRadius.pill",
-          "$swift": "AppRadius.pill"
+          "$description": "web-only：--radius-pill。iOS 已移除 AppRadius，圓角全走 roundness.* 的無因次 t；這組 px 只餵 backend/static/kg-*.css。"
         }
       },
       "semantic": {
         "card": {
           "$type": "dimension",
           "$value": "{radius.scale.md}",
-          "$description": "AppSkin.baseRadii.card",
-          "$swift": "AppSkin.baseRadii.card"
+          "$description": "web-only：--radius-card，由 backend/static/kg-components.css 消費，並由 ops/component_fidelity_check.py 釘住。iOS 已改走 roundness.* 的無因次 t。"
         },
         "overlay": {
           "$type": "dimension",
           "$value": "{radius.scale.md}",
-          "$description": "AppSkin.baseRadii.overlay",
-          "$swift": "AppSkin.baseRadii.overlay"
+          "$description": "web-only：--radius-overlay。目前 backend/static/ 下**無任何消費者**，僅 dist/kg-tokens.css 宣告；保留待清。iOS 已改走 roundness.*。"
         },
         "control": {
           "$type": "dimension",
           "$value": "{radius.scale.sm}",
-          "$description": "AppSkin.baseRadii.control",
-          "$swift": "AppSkin.baseRadii.control"
+          "$description": "web-only：--radius-control，由 backend/static/kg-components.css 消費，並由 ops/component_fidelity_check.py 釘住。iOS 已改走 roundness.* 的無因次 t。"
         },
         "chip": {
           "$type": "dimension",
           "$value": "{radius.scale.sm}",
-          "$description": "AppSkin.baseRadii.chip",
-          "$swift": "AppSkin.baseRadii.chip"
+          "$description": "web-only：--radius-chip，web CSS 有消費但 component_fidelity_check.py **未**釘住（.kg-chip 選的是 --radius-pill）。iOS 已改走 roundness.*。"
         }
       }
     },

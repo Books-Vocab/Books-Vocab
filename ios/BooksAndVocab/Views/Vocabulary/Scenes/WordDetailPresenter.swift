@@ -183,7 +183,7 @@ struct WordDetailPresenter: View {
                             .padding(.horizontal, AppSpacing.s2)
                             .padding(.vertical, AppSpacing.s1)
                             .background(
-                                Capsule()
+                                AppRoundedRect(roundness: AppRoundness.pill)
                                     .fill(appSkin.palette.divider.opacity(0.5))
                             )
                             .contextMenu {
@@ -231,7 +231,7 @@ struct WordDetailPresenter: View {
                 .padding(.horizontal, AppSpacing.s2)
                 .padding(.vertical, AppSpacing.s1)
                 .background(
-                    Capsule()
+                    AppRoundedRect(roundness: AppRoundness.pill)
                         .fill(appSkin.palette.buttonIdleFill)
                 )
             }

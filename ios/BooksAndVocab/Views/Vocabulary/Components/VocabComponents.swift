@@ -36,10 +36,10 @@ private struct VocabCardBackgroundModifier: ViewModifier {
         content
             .padding(appSkin.spacing.cardPadding)
             .background(
-                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                AppRoundedRect(roundness: appSkin.roundness.card)
                     .fill(appSkin.palette.cardBackground)
                     .overlay(
-                        RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                        AppRoundedRect(roundness: appSkin.roundness.card)
                             .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                     )
             )
@@ -66,7 +66,7 @@ struct VocabToneChip: View {
             .padding(.vertical, appSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.08))
             .clipShape(
-                Capsule(style: .continuous)
+                AppRoundedRect(roundness: AppRoundness.pill)
             )
             .accessibilityLabel("語氣標記".localized)
             .enableInjection()
@@ -88,7 +88,7 @@ struct VocabTierLabel: View {
             .background(
                 Group {
                     if prominent {
-                        Capsule(style: .continuous)
+                        AppRoundedRect(roundness: AppRoundness.pill)
                             .fill(appSkin.tierColor(for: tier).opacity(0.08))
                     }
                 }
@@ -221,10 +221,10 @@ struct VocabReviewProgressBar: View {
                     GeometryReader { proxy in
                         let clampedFraction = min(ratio, 1.0)
                         ZStack(alignment: .leading) {
-                            Capsule(style: .continuous)
+                            AppRoundedRect(roundness: AppRoundness.pill)
                                 .fill(appSkin.palette.progressBarBackground)
 
-                            Capsule(style: .continuous)
+                            AppRoundedRect(roundness: AppRoundness.pill)
                                 .fill(ReviewGradient.color(for: ratio))
                                 .frame(width: max(6, proxy.size.width * clampedFraction))
                                 .animateControl(ratio)
