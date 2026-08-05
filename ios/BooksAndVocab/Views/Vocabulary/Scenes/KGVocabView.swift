@@ -138,6 +138,9 @@ struct KGVocabView: View {
                 count: VocabularyEntryPresentation.filterByRole(syncedEntries, filter: filter).count
             )
         }
+        // 多選只挑得動 learning row；`selectAll` 與 `updateVisibleCount` 必須吃
+        // 同一份集合，否則 isAllSelected 在混合清單上永遠不成立（見 selectableIDs）。
+        let selectableIDs = VocabularyEntryPresentation.selectableIDs(in: filteredEntries)
         let reviewCTA: KGVocabPresenter.State.ReviewCTA? = {
             guard let handler = onStartReview else { return nil }
             guard c.dueCount > 0 || c.unlearnedCount > 0 else { return nil }
@@ -224,7 +227,7 @@ struct KGVocabView: View {
             selectionState.exit()
             if role == .dictionary { sortOption = .default }
         }
-        .onChange(of: filteredEntries.count) { _, newCount in
+        .onChange(of: selectableIDs.count) { _, newCount in
             selectionState.updateVisibleCount(newCount)
         }
         .onChange(of: filteredEntries.map(\.id)) { _, ids in
@@ -242,11 +245,7 @@ struct KGVocabView: View {
                         if selectionState.isAllSelected {
                             selectionState.deselectAll()
                         } else {
-                            selectionState.selectAll(
-                                filteredEntries
-                                    .filter { $0.cardRole == .learning }
-                                    .map(\.id)
-                            )
+                            selectionState.selectAll(selectableIDs)
                         }
                     }
                 }
