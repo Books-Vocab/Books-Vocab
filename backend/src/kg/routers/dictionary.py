@@ -10,6 +10,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, Header, Query, Request, Response
 
 from ..api_models import (
+    DictionaryArchiveRequest,
     DictionaryEntryResponse,
     DictionaryMaterializeRequest,
     DictionaryProjectionItem,
@@ -346,6 +347,44 @@ def update_dictionary_selection(
     return _dictionary_card_service(user, settings).update_selection(
         card_id, sense_key=body.sense_key, example_key=body.example_key
     )
+
+
+@router.patch(
+    "/api/dictionary/cards/{card_id}/archive", response_model=DictionaryCardNode
+)
+def archive_dictionary_card(
+    card_id: str,
+    body: DictionaryArchiveRequest,
+    request: Request,
+    user: CurrentUser,
+):
+    settings: KGSettings = request.app.state.kg_settings
+    return _dictionary_card_service(
+        user,
+        settings,
+        notebook_id=body.notebook_id,
+        validate_notebook=True,
+    ).set_archived(
+        card_id,
+        notebook_id=body.notebook_id,
+        archived=body.archived,
+    )
+
+
+@router.delete("/api/dictionary/cards/{card_id}", response_model=DictionaryCardNode)
+def delete_dictionary_card(
+    card_id: str,
+    request: Request,
+    user: CurrentUser,
+    notebook_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
+):
+    settings: KGSettings = request.app.state.kg_settings
+    return _dictionary_card_service(
+        user,
+        settings,
+        notebook_id=notebook_id,
+        validate_notebook=True,
+    ).soft_delete(card_id, notebook_id=notebook_id)
 
 
 @router.patch("/api/cards/{card_id}/reader-visibility", response_model=DictionaryCardNode)

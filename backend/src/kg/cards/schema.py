@@ -8,7 +8,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 
 from ..text_utils import normalize_nfc_lower
-from .dictionary_models import DictionaryEntry, DictionaryPromotionJob, LexicalOperation
+from .dictionary_models import (
+    DictionaryArchiveLinkCause,
+    DictionaryEntry,
+    DictionaryLifecycleState,
+    DictionaryPromotionJob,
+    LexicalOperation,
+)
 from .model import Card
 
 logger = logging.getLogger(__name__)
@@ -20,7 +26,9 @@ def init_schema(engine: Engine) -> None:
         engine,
         tables=[
             Card.__table__,
+            DictionaryArchiveLinkCause.__table__,
             DictionaryEntry.__table__,
+            DictionaryLifecycleState.__table__,
             LexicalOperation.__table__,
             DictionaryPromotionJob.__table__,
         ],

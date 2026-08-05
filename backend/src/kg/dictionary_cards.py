@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import threading
 from collections.abc import Callable
 from datetime import datetime
@@ -21,9 +22,11 @@ from .cards.dictionary_models import (
 )
 from .cards.model import Card
 from .exceptions import ConflictError, NotFoundError
-from .graph import LinkKind
+from .graph import GraphCardLifecycleSnapshot, GraphLifecycleRollbackError, LinkKind
 from .judge.models import Judgement
 from .lexical import LexicalEntry
+
+logger = logging.getLogger(__name__)
 
 
 def _to_camel(value: str) -> str:
@@ -296,6 +299,116 @@ class DictionaryCardService:
 
     def set_reader_visibility(self, card_id: str, *, reader_hidden: bool) -> DictionaryCardNode:
         return _card_node(self.cards.set_reader_hidden(card_id, reader_hidden))
+
+    def set_archived(
+        self,
+        card_id: str,
+        *,
+        notebook_id: str,
+        archived: bool,
+    ) -> DictionaryCardNode:
+        action = "archive" if archived else "unarchive"
+        with self._lock:
+            graph = self.graph_resolver(notebook_id)
+            snapshot = graph.capture_card_lifecycle_snapshot(card_id)
+            incident_ids = {link.id for link in snapshot.links}
+            active_ids = {link.id for link in snapshot.links if link.status == "active"}
+            if archived:
+                managed_ids = self.cards.dictionary_managed_archive_link_ids(
+                    notebook_id=notebook_id
+                )
+                cause_link_ids = active_ids | (incident_ids & managed_ids)
+                graph_link_ids = active_ids
+            else:
+                cause_link_ids = self.cards.dictionary_archive_link_ids(card_id)
+                graph_link_ids = set()
+            plan = self.cards.begin_dictionary_lifecycle(
+                card_id,
+                notebook_id=notebook_id,
+                action=action,
+                graph_snapshot_json=snapshot.model_dump_json(),
+                graph_link_ids=graph_link_ids,
+                cause_link_ids=cause_link_ids,
+            )
+            if not plan.needs_graph:
+                return _card_node(plan.card)
+            self.crash_hook("after_lifecycle_card_commit")
+            durable_snapshot = GraphCardLifecycleSnapshot.model_validate_json(
+                plan.graph_snapshot_json
+            )
+            try:
+                graph.apply_card_lifecycle(
+                    durable_snapshot,
+                    action=action,
+                    link_ids=set(plan.link_ids),
+                    cards_store=self.cards,
+                    source="manual",
+                )
+            except GraphLifecycleRollbackError:
+                logger.exception(
+                    "Graph rollback incomplete for dictionary card %s; plan retained",
+                    card_id,
+                )
+                raise
+            except Exception:
+                logger.error(
+                    "Graph operation failed for dictionary card %s", card_id, exc_info=True
+                )
+                self.cards.rollback_dictionary_lifecycle(card_id, action=action)
+                raise
+            return _card_node(
+                self.cards.complete_dictionary_lifecycle(card_id, action=action)
+            )
+
+    def soft_delete(
+        self,
+        card_id: str,
+        *,
+        notebook_id: str,
+    ) -> DictionaryCardNode:
+        action = "delete"
+        with self._lock:
+            graph = self.graph_resolver(notebook_id)
+            snapshot = graph.capture_card_lifecycle_snapshot(card_id)
+            plan = self.cards.begin_dictionary_lifecycle(
+                card_id,
+                notebook_id=notebook_id,
+                action=action,
+                graph_snapshot_json=snapshot.model_dump_json(),
+                graph_link_ids={
+                    link.id for link in snapshot.links if link.status == "active"
+                },
+                cause_link_ids=set(),
+            )
+            if not plan.needs_graph:
+                return _card_node(plan.card)
+            self.crash_hook("after_lifecycle_card_commit")
+            durable_snapshot = GraphCardLifecycleSnapshot.model_validate_json(
+                plan.graph_snapshot_json
+            )
+            try:
+                graph.apply_card_lifecycle(
+                    durable_snapshot,
+                    action=action,
+                    link_ids=set(plan.link_ids),
+                    cards_store=self.cards,
+                    source="manual",
+                )
+            except GraphLifecycleRollbackError:
+                logger.exception(
+                    "Graph rollback incomplete for dictionary card %s; plan retained",
+                    card_id,
+                )
+                raise
+            except Exception:
+                logger.error(
+                    "Graph operation failed for dictionary card %s", card_id, exc_info=True
+                )
+                self.cards.rollback_dictionary_lifecycle(card_id, action=action)
+                raise
+            return _card_node(
+                self.cards.complete_dictionary_lifecycle(card_id, action=action)
+            )
 
     def materialize_and_link(
         self,

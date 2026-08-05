@@ -60,3 +60,34 @@ class DictionaryPromotionJob(SQLModel, table=True):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class DictionaryLifecycleState(SQLModel, table=True):
+    """Durable card/graph saga state for archive and soft-delete actions.
+
+    The card row and pending plan commit in one SQLite transaction.  Graph JSON
+    files are reconciled afterwards; a process crash leaves ``pending_action``
+    intact so a same-state retry can finish the exact saved plan.
+    """
+
+    __tablename__ = "dictionary_lifecycle_state"
+
+    card_id: str = SQLField(primary_key=True)
+    notebook_id: str
+    pending_action: str | None = None
+    graph_snapshot_json: str | None = None
+    pending_link_ids_json: str = "[]"
+    pending_cause_link_ids_json: str = "[]"
+    card_before_archived: bool = False
+    card_before_deleted: bool = False
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+
+
+class DictionaryArchiveLinkCause(SQLModel, table=True):
+    """One archived endpoint's durable cause for keeping a graph link deprecated."""
+
+    __tablename__ = "dictionary_archive_link_cause"
+
+    card_id: str = SQLField(primary_key=True)
+    link_id: str = SQLField(primary_key=True)
+    notebook_id: str

@@ -50,6 +50,13 @@ class ReaderVisibilityRequest(BaseModel):
     reader_hidden: bool = Field(alias="readerHidden")
 
 
+class DictionaryArchiveRequest(BaseModel):
+    archived: bool
+    notebook_id: str = Field(
+        alias="notebookId", min_length=1, pattern=r"^[A-Za-z0-9_-]{1,64}$"
+    )
+
+
 class DictionaryPromotionResponse(BaseModel):
     cardId: str
     cardRole: str
@@ -59,6 +66,7 @@ class DictionaryPromotionResponse(BaseModel):
 
 __all__ = [
     "DictionaryCardNode",
+    "DictionaryArchiveRequest",
     "DictionaryEntryResponse",
     "DictionaryMaterializeRequest",
     "DictionaryProjectionItem",

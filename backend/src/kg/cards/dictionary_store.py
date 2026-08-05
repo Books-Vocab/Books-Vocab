@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -11,7 +12,13 @@ from sqlmodel import Session, select
 from ..exceptions import ConflictError, NotFoundError
 from ..lexical import LexicalEntry
 from ..text_utils import normalize_nfc, normalize_nfc_lower
-from .dictionary_models import DictionaryEntry, DictionaryPromotionJob, LexicalOperation
+from .dictionary_models import (
+    DictionaryArchiveLinkCause,
+    DictionaryEntry,
+    DictionaryLifecycleState,
+    DictionaryPromotionJob,
+    LexicalOperation,
+)
 from .model import Card
 
 
@@ -33,6 +40,15 @@ class PromotionClaim:
     card: Card
     dictionary: DictionaryEntry
     job: DictionaryPromotionJob
+
+
+@dataclass(frozen=True)
+class DictionaryLifecyclePlan:
+    card: Card
+    action: str
+    graph_snapshot_json: str
+    link_ids: frozenset[str]
+    needs_graph: bool
 
 
 class PromotionLeaseLost(RuntimeError):
@@ -68,6 +84,247 @@ def _owns_promotion_claim(
 class DictionaryCardStoreMixin:
     """Dictionary-only read/write methods. Requires ``self.engine``."""
 
+    @staticmethod
+    def _require_dictionary_lifecycle_card(
+        session: Session,
+        card_id: str,
+        *,
+        notebook_id: str,
+    ) -> Card:
+        """Resolve a notebook-owned, durable dictionary card for mutation.
+
+        The retained sidecar is part of the resource identity even after a soft
+        delete.  Role and promotion checks live in the same SQLite transaction
+        as the state change so a promotion worker cannot race a lifecycle write.
+        """
+        card = session.get(Card, card_id)
+        sidecar = session.get(DictionaryEntry, card_id)
+        if (
+            card is None
+            or card.notebook_id != notebook_id
+            or sidecar is None
+            or sidecar.materialization_status != "active"
+        ):
+            raise NotFoundError("Dictionary card", card_id)
+        if card.card_role != "dictionary":
+            raise ConflictError(
+                "A promoted learning card cannot use dictionary lifecycle actions"
+            )
+        if card.promotion_state in {"queued", "running"}:
+            raise ConflictError(
+                "Dictionary promotion must finish before a lifecycle action"
+            )
+        return card
+
+    def begin_dictionary_lifecycle(
+        self,
+        card_id: str,
+        *,
+        notebook_id: str,
+        action: str,
+        graph_snapshot_json: str,
+        graph_link_ids: set[str],
+        cause_link_ids: set[str],
+    ) -> DictionaryLifecyclePlan:
+        """Atomically claim a card mutation and persist its graph reconciliation plan."""
+        if action not in {"archive", "unarchive", "delete"}:
+            raise ValueError(f"Unsupported dictionary lifecycle action: {action}")
+        with Session(self.engine) as session:
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            card = self._require_dictionary_lifecycle_card(
+                session, card_id, notebook_id=notebook_id
+            )
+            state = session.get(DictionaryLifecycleState, card_id)
+            if state is not None and state.pending_action is not None:
+                if state.pending_action != action:
+                    raise ConflictError(
+                        "A dictionary lifecycle reconciliation is already pending"
+                    )
+                saved_links = frozenset(json.loads(state.pending_link_ids_json))
+                saved_snapshot = state.graph_snapshot_json
+                if saved_snapshot is None:
+                    raise ConflictError("Pending dictionary lifecycle plan is incomplete")
+                session.commit()
+                session.refresh(card)
+                return DictionaryLifecyclePlan(
+                    card=card,
+                    action=action,
+                    graph_snapshot_json=saved_snapshot,
+                    link_ids=saved_links,
+                    needs_graph=True,
+                )
+
+            if action != "delete" and card.is_deleted:
+                raise NotFoundError("Dictionary card", card_id)
+            desired_already_applied = (
+                (action == "archive" and card.is_archived)
+                or (action == "unarchive" and not card.is_archived)
+                or (action == "delete" and card.is_deleted)
+            )
+            if desired_already_applied:
+                session.commit()
+                session.refresh(card)
+                return DictionaryLifecyclePlan(
+                    card=card,
+                    action=action,
+                    graph_snapshot_json=graph_snapshot_json,
+                    link_ids=frozenset(),
+                    needs_graph=False,
+                )
+
+            now = datetime.now(UTC)
+            if state is None:
+                state = DictionaryLifecycleState(
+                    card_id=card_id,
+                    notebook_id=notebook_id,
+                )
+            state.pending_action = action
+            state.graph_snapshot_json = graph_snapshot_json
+            pending_causes: set[str] = set()
+            if action == "archive":
+                for link_id in cause_link_ids:
+                    key = (card_id, link_id)
+                    if session.get(DictionaryArchiveLinkCause, key) is None:
+                        session.add(
+                            DictionaryArchiveLinkCause(
+                                card_id=card_id,
+                                link_id=link_id,
+                                notebook_id=notebook_id,
+                            )
+                        )
+                        pending_causes.add(link_id)
+            elif action == "unarchive":
+                causes = list(
+                    session.exec(
+                        select(DictionaryArchiveLinkCause).where(
+                            DictionaryArchiveLinkCause.card_id == card_id,
+                            DictionaryArchiveLinkCause.notebook_id == notebook_id,
+                        )
+                    ).all()
+                )
+                for cause in causes:
+                    session.delete(cause)
+                    pending_causes.add(cause.link_id)
+                session.flush()
+                graph_link_ids = {
+                    link_id
+                    for link_id in pending_causes
+                    if session.exec(
+                        select(DictionaryArchiveLinkCause).where(
+                            DictionaryArchiveLinkCause.link_id == link_id,
+                            DictionaryArchiveLinkCause.notebook_id == notebook_id,
+                        )
+                    ).first()
+                    is None
+                }
+            state.pending_link_ids_json = json.dumps(sorted(graph_link_ids))
+            state.pending_cause_link_ids_json = json.dumps(sorted(pending_causes))
+            state.card_before_archived = card.is_archived
+            state.card_before_deleted = card.is_deleted
+            state.updated_at = now
+
+            if action == "archive":
+                card.is_archived = True
+            elif action == "unarchive":
+                card.is_archived = False
+            else:
+                card.is_deleted = True
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            session.add(card)
+            session.add(state)
+            session.commit()
+            session.refresh(card)
+            return DictionaryLifecyclePlan(
+                card=card,
+                action=action,
+                graph_snapshot_json=graph_snapshot_json,
+                link_ids=frozenset(graph_link_ids),
+                needs_graph=True,
+            )
+
+    def complete_dictionary_lifecycle(
+        self,
+        card_id: str,
+        *,
+        action: str,
+    ) -> Card:
+        """Mark a pending graph plan complete and retain archive link lineage."""
+        with Session(self.engine) as session:
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            card = session.get(Card, card_id)
+            state = session.get(DictionaryLifecycleState, card_id)
+            if card is None or state is None or state.pending_action != action:
+                raise ConflictError("Dictionary lifecycle plan is no longer pending")
+            state.pending_action = None
+            state.graph_snapshot_json = None
+            state.pending_link_ids_json = "[]"
+            state.pending_cause_link_ids_json = "[]"
+            state.updated_at = datetime.now(UTC)
+            session.add(state)
+            session.commit()
+            session.refresh(card)
+            return card
+
+    def rollback_dictionary_lifecycle(self, card_id: str, *, action: str) -> Card:
+        """Restore the card half after graph snapshot rollback succeeded."""
+        with Session(self.engine) as session:
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            card = session.get(Card, card_id)
+            state = session.get(DictionaryLifecycleState, card_id)
+            if card is None or state is None or state.pending_action != action:
+                raise ConflictError("Dictionary lifecycle plan is no longer pending")
+            card.is_archived = state.card_before_archived
+            card.is_deleted = state.card_before_deleted
+            card.updated_at = _monotonic_now(card.updated_at, datetime.now(UTC))
+            pending_causes = set(json.loads(state.pending_cause_link_ids_json))
+            if action == "archive":
+                for link_id in pending_causes:
+                    cause = session.get(DictionaryArchiveLinkCause, (card_id, link_id))
+                    if cause is not None:
+                        session.delete(cause)
+            elif action == "unarchive":
+                for link_id in pending_causes:
+                    if session.get(DictionaryArchiveLinkCause, (card_id, link_id)) is None:
+                        session.add(
+                            DictionaryArchiveLinkCause(
+                                card_id=card_id,
+                                link_id=link_id,
+                                notebook_id=state.notebook_id,
+                            )
+                        )
+            state.pending_action = None
+            state.graph_snapshot_json = None
+            state.pending_link_ids_json = "[]"
+            state.pending_cause_link_ids_json = "[]"
+            state.updated_at = datetime.now(UTC)
+            session.add(card)
+            session.add(state)
+            session.commit()
+            session.refresh(card)
+            return card
+
+    def dictionary_archive_link_ids(self, card_id: str) -> set[str]:
+        with Session(self.engine) as session:
+            return {
+                cause.link_id
+                for cause in session.exec(
+                    select(DictionaryArchiveLinkCause).where(
+                        DictionaryArchiveLinkCause.card_id == card_id
+                    )
+                ).all()
+            }
+
+    def dictionary_managed_archive_link_ids(self, *, notebook_id: str) -> set[str]:
+        with Session(self.engine) as session:
+            return {
+                cause.link_id
+                for cause in session.exec(
+                    select(DictionaryArchiveLinkCause).where(
+                        DictionaryArchiveLinkCause.notebook_id == notebook_id
+                    )
+                ).all()
+            }
+
     def get_dictionary_entry(self, card_id: str) -> DictionaryEntry | None:
         with Session(self.engine) as session:
             return session.get(DictionaryEntry, card_id)
@@ -100,19 +357,25 @@ class DictionaryCardStoreMixin:
         """
         now = datetime.now(UTC)
         with Session(self.engine) as session:
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
             card = session.get(Card, card_id)
             sidecar = session.get(DictionaryEntry, card_id)
             if (
                 card is None
-                or card.is_deleted
                 or sidecar is None
                 or sidecar.materialization_status != "active"
             ):
                 raise NotFoundError("Dictionary card", card_id)
+            if card.is_deleted:
+                raise ConflictError("Deleted dictionary cards cannot be promoted")
             if card.card_role == "learning":
                 return PromotionEnqueueResult(card=card, already_promoted=True)
             if card.card_role != "dictionary":
                 raise ConflictError("Unsupported card role for promotion")
+            if card.is_archived:
+                raise ConflictError(
+                    "Archived dictionary cards must be restored before promotion"
+                )
 
             job = session.get(DictionaryPromotionJob, card_id)
             if card.promotion_state in {"queued", "running"}:
