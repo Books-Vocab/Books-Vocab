@@ -70,9 +70,12 @@ bump_api() {
 bump_ios() {
   local pbxproj="$KG_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 
-  # 只改「主 app target」，以其『當前版號值』為錨：避免全域 sed 波及測試 bundle
-  # （BooksAndVocabTests/UITests 各有獨立 MARKETING_VERSION/CURRENT_PROJECT_VERSION，不上架，不該被拖著走）。
-  # 主 app 的當前值＝檔內第一個（與 release.sh current_version 的 grep -m1 同口徑）。
+  # 以『當前版號值』為錨，只命中帶該值的那幾行，而不是全域 sed 掃 MARKETING_VERSION。
+  # 注意語意在 2026-08 變了：版號已提升到 **project-level build settings**，六個
+  # target-level 覆寫全數刪除，所以檔內這兩個 key 各恰好出現兩次（Debug + Release），
+  # 測試 bundle 改為**繼承**——它們現在會跟著一起前進，這是刻意的（版號只有一個 owner）。
+  # 錨定仍然保留：它擋的是「有人日後把某個 target-level 覆寫加回來」時的誤傷。
+  # 當前值＝檔內第一個（與 release.sh current_version 的 grep -m1 同口徑）。
   local cur_mv cur_build new_build
   cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')
   cur_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
@@ -80,7 +83,7 @@ bump_ios() {
   [[ -n "$cur_mv" && -n "$cur_build" ]] || { echo "✗ 讀不到 app target 當前版號（pbxproj 結構異常）" >&2; exit 1; }
 
   echo "將改 ios/BooksAndVocab.xcodeproj/project.pbxproj："
-  echo "  MARKETING_VERSION ${cur_mv} → ${VERSION}（僅 app target，測試 bundle 不動）"
+  echo "  MARKETING_VERSION ${cur_mv} → ${VERSION}（project-level；測試 bundle 依繼承跟進）"
   echo "  CURRENT_PROJECT_VERSION ${cur_build} → ${new_build}"
   [[ $YES -eq 1 ]] || return 0
 
@@ -92,15 +95,15 @@ bump_ios() {
   local count
   count=$(grep -c "MARKETING_VERSION = $VERSION;" "$pbxproj")
   [[ "$count" -ge 1 ]] || { echo "✗ MARKETING_VERSION 更新失敗（錨值 $cur_mv 未命中）" >&2; exit 1; }
-  echo "✓ MARKETING_VERSION → ${VERSION}（app target ${count} 處；測試 bundle 不動）"
+  echo "✓ MARKETING_VERSION → ${VERSION}（${count} 處；測試 bundle 依繼承跟進）"
   echo "✓ CURRENT_PROJECT_VERSION → $new_build"
 }
 
 bump_ios_build() {
   local pbxproj="$KG_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 
-  # 同 bump_ios 的 target 定位邏輯：主 app 當前值＝檔內第一個，以「= 當前值;」錨定
-  # 只命中 app target（Debug+Release 兩處），測試 bundle 不動；MARKETING_VERSION 完全不碰。
+  # 同 bump_ios 的錨定邏輯：當前值＝檔內第一個，以「= 當前值;」錨定，命中 project-level
+  # 的 Debug+Release 兩處；測試 bundle 依繼承跟進。MARKETING_VERSION 完全不碰。
   local cur_mv cur_build new_build
   cur_mv=$(grep -o 'MARKETING_VERSION = [^;]*' "$pbxproj" | head -1 | sed 's/MARKETING_VERSION = //')
   cur_build=$(grep -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$pbxproj" | head -1 | grep -o '[0-9]*')
@@ -108,7 +111,7 @@ bump_ios_build() {
   new_build=$((cur_build + 1))
 
   echo "將改 ios/BooksAndVocab.xcodeproj/project.pbxproj："
-  echo "  CURRENT_PROJECT_VERSION ${cur_build} → ${new_build}（僅 app target，測試 bundle 不動）"
+  echo "  CURRENT_PROJECT_VERSION ${cur_build} → ${new_build}（project-level；測試 bundle 依繼承跟進）"
   echo "  MARKETING_VERSION ${cur_mv} 不動（同版重送只 bump build）"
   [[ $YES -eq 1 ]] || return 0
 
@@ -117,7 +120,7 @@ bump_ios_build() {
   local count
   count=$(grep -c "CURRENT_PROJECT_VERSION = $new_build;" "$pbxproj")
   [[ "$count" -ge 1 ]] || { echo "✗ CURRENT_PROJECT_VERSION 更新失敗（錨值 $cur_build 未命中）" >&2; exit 1; }
-  echo "✓ CURRENT_PROJECT_VERSION → ${new_build}（app target ${count} 處；MARKETING_VERSION 不動）"
+  echo "✓ CURRENT_PROJECT_VERSION → ${new_build}（${count} 處；MARKETING_VERSION 不動）"
 }
 
 case "$COMPONENT" in

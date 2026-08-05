@@ -155,8 +155,14 @@ section "Status truncates long commit list"
 echo "$status_body" | grep -q 'head -15' \
   && ok "status caps commit list (head -15)" || fail_t "status dumps full commit wall (no truncation)"
 
-# ── 12. release_bump.sh ios 只改主 app target（dogfood A-F1：全域 sed 波及測試 bundle） ──
-section "bump ios scopes to app target only"
+# ── 12. release_bump.sh ios 的 sed 必須錨定，不得全域掃 ────────────────────
+# 2026-08 起版號提升到 project-level build settings，六個 target-level 覆寫已刪除，所以
+# 真實 pbxproj 裡這兩個 key 各只剩兩行、測試 bundle 靠繼承跟進。這個 fixture 因此**不再
+# 是現況的縮影**，而是一個刻意保留的反例：檔內存在「不同值的同名 key」時，錨定的 sed
+# 不得掃到它。這條守的是「日後有人把某個 target-level 覆寫加回來」的誤傷面。
+# 注意它守不住的形狀：覆寫若加回**相同字面值**，錨定 sed 一樣會命中——那要靠 pbxproj
+# 結構 lint（已記 backlog），不是這條。
+section "bump ios sed stays anchored (never sweeps the file)"
 BUMP="$WORKSPACE/ops/release_bump.sh"
 # 結構：不得殘留無錨點的全域 sed（[^;]* 不綁當前值＝會掃中所有 target）
 grep -q 'MARKETING_VERSION = \[\^;\]\*/MARKETING_VERSION' "$BUMP" \
@@ -175,9 +181,9 @@ KG_ROOT="$TMP" bash "$BUMP" ios 9.9.1 --yes >/dev/null 2>&1 || fail_t "bump ios 
 got_app="$(grep -c 'MARKETING_VERSION = 9.9.1;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 got_test="$(grep -c 'MARKETING_VERSION = 1.2.0;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
 got_build="$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$TMP/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)"
-[[ "$got_app" -eq 2 ]]  && ok "app MARKETING_VERSION → 9.9.1 (2 處)"      || fail_t "app bump wrong count: $got_app"
-[[ "$got_test" -eq 2 ]] && ok "test bundle MARKETING_VERSION 不動 (still 1.2.0 ×2)" || fail_t "test bundle was clobbered: 1.2.0 count=$got_test"
-[[ "$got_build" -eq 2 ]] && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)"   || fail_t "app build bump wrong count: $got_build"
+[[ "$got_app" -eq 2 ]]  && ok "anchored MARKETING_VERSION → 9.9.1 (2 處)" || fail_t "app bump wrong count: $got_app"
+[[ "$got_test" -eq 2 ]] && ok "differently-valued MARKETING_VERSION untouched (still 1.2.0 ×2)" || fail_t "sed swept a differently-valued line: 1.2.0 count=$got_test"
+[[ "$got_build" -eq 2 ]] && ok "anchored CURRENT_PROJECT_VERSION → 8 (2 處)" || fail_t "app build bump wrong count: $got_build"
 
 # ── 13. bump 寫入 gate：dry-run 預設、--yes 才寫（對齊 publish / asc.sh set 慣例） ──
 section "Bump gate (dry-run by default)"
@@ -471,11 +477,11 @@ KG_ROOT="$TMP3" bash "$REL" bump-build ios --yes >/dev/null 2>&1 \
   || fail_t "release.sh bump-build ios --yes failed"
 bb_pbx="$TMP3/ios/BooksAndVocab.xcodeproj/project.pbxproj"
 [[ "$(grep -c 'CURRENT_PROJECT_VERSION = 8;' "$bb_pbx" || true)" -eq 2 ]] \
-  && ok "app CURRENT_PROJECT_VERSION → 8 (2 處)" || fail_t "app build bump wrong count"
+  && ok "anchored CURRENT_PROJECT_VERSION → 8 (2 處)" || fail_t "app build bump wrong count"
 [[ "$(grep -c 'MARKETING_VERSION = 9.9;' "$bb_pbx" || true)" -eq 2 ]] \
   && ok "MARKETING_VERSION 不動 (still 9.9 ×2)" || fail_t "MARKETING_VERSION was touched by bump-build"
 [[ "$(grep -c 'CURRENT_PROJECT_VERSION = 1;' "$bb_pbx" || true)" -eq 2 ]] \
-  && ok "test bundle build 不動 (still 1 ×2)" || fail_t "test bundle build was clobbered"
+  && ok "differently-valued CURRENT_PROJECT_VERSION untouched (still 1 ×2)" || fail_t "sed swept a differently-valued line"
 # 14c. api 拒絕（api 無 build number 概念），錯誤訊息給可行動指引
 bb_api="$(KG_ROOT="$TMP3" bash "$REL" bump-build api 2>&1)" \
   && fail_t "bump-build api should be rejected" \

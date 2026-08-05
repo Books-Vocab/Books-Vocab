@@ -216,7 +216,9 @@ write_json_verdict() {
 # ---- build number guard（僅上傳前；archive 不受限但傳會被 Apple 拒重）----
 guard_build_number() {
   local local_build latest_tf
-  # -target（非 -scheme）只回 app target 的 build settings；-scheme 會混入 Tests target 的 1
+  # 保留 -target（非 -scheme）：版號 2026-08 提升到 project level 後，「-scheme 會混入
+  # Tests target 的 1」這個 hazard 已經不存在了，但 -target 仍然是對的選擇——它不依賴
+  # scheme 由哪些 target 組成，所以日後有人改 scheme 組成也不會動到這裡的答案。別「簡化」成 -scheme。
   local_build="$(xcodebuild -project "$XCODEPROJ" -target "$SCHEME" \
       -configuration "$CONFIGURATION" -showBuildSettings 2>/dev/null \
       | awk -F' = ' '/ CURRENT_PROJECT_VERSION /{print $2; exit}' | tr -d '[:space:]')"
