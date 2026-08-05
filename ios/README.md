@@ -63,7 +63,8 @@ BooksAndVocab/
 ├── Services/
 │   ├── TranslationService.swift   # AI 翻譯（後端 API）
 │   ├── KGService.swift            # KG 伺服器通訊（health check / batch add / background pipeline / pull & merge）
-│   ├── DictionaryService.swift    # Free Dictionary API（IPA 音標）
+│   ├── KGService+Dictionary.swift # 字典卡 API（搜尋 / entry / 卡 CRUD / promote）
+│   │                              # ※ iOS 不直連字典 provider：授權、快取、上游配額全在 backend
 │   └── SpeechService.swift        # 單字朗讀（AVSpeechSynthesizer）
 │
 ├── Views/

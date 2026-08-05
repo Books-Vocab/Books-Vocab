@@ -6,7 +6,7 @@ scope:
   - .claude/skills/billing/
   - docs/sop/cost_review.md
   - backend/src/kg/llm/providers.py
-verified_against: 0cea7f67b
+verified_against: 198402dc7
 -->
 # Cost Baseline (Single Source of Truth)
 
@@ -54,6 +54,19 @@ curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range
 ```
 
 Service mapping(call_type → service):`backend/src/kg/admin_cost_summary.py:_SERVICE_MAP` SoT,目前 `translate / judge / pipeline / other`。
+
+### 字典查詢不是 LLM 成本(2026-08)
+
+**`/api/dictionary/search` 與 `/api/dictionary/entries/*` 完全不經 LLM,不寫 `token_usage`,不扣 daily quota。** 它們打的是免費的 FreeDictionary(Wiktionary,CC BY-SA 4.0),成本是**上游配額而非金錢**——1000 calls/hour/IP,我方以 `lexical_provider_request` 原子預約 + 950 上限自我節流,並以 `lexical_cache.db` 跨用戶共用快取(正向 30 天/負向 24 小時)攤薄。因此「字典用量暴增」在本文件的 §1/§2 表上**看不到任何數字變化**,這是預期行為,不是漏記。
+
+字典功能裡真正花錢的只有兩處,兩者都已走既有 `TrackedLLM` 歸因,無需新 call_type:
+
+| 動作 | call_type | 何時發生 |
+|---|---|---|
+| materialize 建卡並連結 | `judge_manual` | `POST /api/graph/links/from-dictionary`,每次新建(replay / crash 續跑不重扣) |
+| 轉換成單字卡 | `enrich` | `POST /api/dictionary/cards/{id}/promote`,每次成功或失敗的嘗試 |
+
+上游配額與快取健康看 `ops_cli.py dictionary-health`(**不是** billing skill 的守備範圍——那裡只認金錢)。
 
 ## 3. 預算上限與告警閾值
 

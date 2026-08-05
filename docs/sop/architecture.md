@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 057badaaf
+verified_against: 198402dc7
 -->
 # Books & Vocab Architecture (Offline-First & Multi-User)
 
@@ -30,6 +30,8 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | 帳號 / session | Backend auth + Keychain token | Keychain session cache | 登出 / token invalidation 必須清本機 user-scoped projection |
 | Vocabulary card / graph links / notebook assignment | Backend card / graph / notebook stores | `VocabularyEntry` projection + outbox | 本地新增、刪除、hide/unhide 先 optimistic，再同步收斂 |
 | Review state | Backend card review fields | `VocabularyEntry` review fields projection | LWW 以 `last_reviewed_at` 判定 |
+| Dictionary card（`cardRole='dictionary'`） | Backend card store + `dictionary_entry` sidecar | 獨立 projection（`/api/dictionary-cards`）+ 離線 entry payload | **provider 只在後端**：授權、快取 TTL、每小時上游預算全歸 backend（`lexical_cache.db`），iOS 只吃已正規化的 payload、從不直連字典 provider。離線閱讀靠 sidecar 內的完整 entry，不靠再查一次 |
+| Dictionary lookup cache / provider budget | Backend `lexical_cache.db`（跨用戶全域） | 不投影 | 跨用戶共用快取是**授權與成本**的必要條件（每用戶各自快取會把上游 1000/hr/IP 預算燒光）。觀測入口 `ops_cli.py dictionary-health` |
 | Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client UUID 冪等；日曆與每日明細讀事件鏡像 |
 | Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
 | Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |

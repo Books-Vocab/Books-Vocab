@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocab/Models/ReaderSettings.swift
   - ios/BooksAndVocab/Models/VocabHighlightPreferences.swift
   - ios/BooksAndVocab/Views/Reader/
-verified_against: 07130a3a1
+verified_against: 198402dc7
 -->
 # Reader Feature Boundary
 
@@ -103,6 +103,14 @@ EPUB/TXT/MD 走 `ReaderView`（Readium），`.pdf` 走獨立 `PDFReaderView`（`
 - **新增 Readium 功能** → Integration Layer（`ReadiumNavigatorCoordinator+*.swift`）
 - **新增面板** → Feature Panels 新增檔案 + 在 `ReaderView+Panels.swift` 加 slot
 - **新增 callback** → `ReaderView+Handlers.swift`
+
+## 生字高亮 eligibility（字典卡 V1 起的硬性契約）
+
+Reader（與 Podcast 字幕）的高亮集合**只由三個條件決定**：未 delete ∧ 未 archive ∧ `readerHidden == false`。
+
+- **禁止用 `cardRole` 推導高亮**。字典卡（`cardRole == "dictionary"`）預設 `readerHidden == false`，因此**預設參與高亮**，即使它永不進複習與統計。三個維度（`cardRole` / `reviewEligible` / `readerHidden`）彼此獨立，見 `docs/reference/card_format.md`。
+- 高亮集合的重算觸發改由 `VocabularyHighlightSignature.make(entries:notebookId:)` 驅動（`ReaderView.swift`）——只數 `allVocabulary.count` 會漏掉「數量沒變但 eligibility 變了」的情況（例如切 `readerHidden` 或 archive），造成高亮與資料脫節。
+- 使用者切換單張卡的高亮走 `PATCH /api/cards/{id}/reader-visibility`，client 端經 outbox 補送（見 `docs/reference/sync_lifecycle.md`）。
 
 ## State 邊界
 
