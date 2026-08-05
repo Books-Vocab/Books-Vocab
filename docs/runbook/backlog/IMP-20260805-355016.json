@@ -3,7 +3,7 @@
   "date": "2026-08-05",
   "detail": "`ops/backlog.py` 的 generated view 刻意維持 legacy 8 欄，因為「產出的 view 仍可被 importer 讀回」＝遷移可逆。代價是 `verdict`/`verified_at`/`cost`/`fix_site` 四個一級欄位在表格裡看不到，只有 `show` 與 `--json` 拿得到。曾嘗試加寬到 12 欄，當場打破 4 條 round-trip 測試，已撤回。",
   "id": "IMP-20260805-355016",
-  "resolution": "— 兩者目前不可兼得。候選：view 分兩張表（8 欄主表維持可逆 + verdict 摘要表），或 importer 學會寬表。記錄取捨以免下一個人重試一次加寬。",
+  "resolution": "—(2026-08-05 執行長裁決：選 **(a) 放棄「產出可被 importer 讀回」這個性質**，表格需要加欄就加。依據：該性質今天已經半破——APP 半邊的 render 產物根本 import 不回來（IMP-20260805-f4ec99 實測 rc=2），且 GROOM_FIELDS 從未進入 view。與同輪 IMP-20260805-3df783 的降級裁決一致：importer 既然只讀自己產的檔，可逆性就不再是需要花成本保住的性質。落點 `ops/backlog.py` 的 `LEGACY_COLUMNS` 渲染與 `_recover_overflowing_row` 的存廢。)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "backlog store review",

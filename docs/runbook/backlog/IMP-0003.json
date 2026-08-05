@@ -3,7 +3,7 @@
   "date": "2026-06-13",
   "detail": "`docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 **6** 條 exact 誤報(`via=CLAUDE.md`;2026-08-05 實跑 `docs_impact.py --files CLAUDE.md` → `impacts=6`,建檔時記 5);來源是 `docs/registry.yml:218,235,436,564,590,604` 六個 doc 把 CLAUDE.md 列進 `sources`。hint≠命令故不阻擋,但每次需人工判讀。**`!path`/`!glob` 排除機制已存在**(`ops/docs_impact.py:158-170`)卻救不了本案:`source_matches`(`:127-134`)三種語義(fnmatch / 前綴 / 相等)全部以整檔為最小粒度,表達不了「CLAUDE.md 的某一節」;section-anchor 零實作(registry 無任何 `*.md#anchor` 形式 source)",
   "id": "IMP-0003",
-  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;候選 A=`docs_impact.py:127-134`+registry 支援 `CLAUDE.md#<heading-slug>`,成本 M 且 `--files` 模式拿不到 diff hunk、降級語義需先定;候選 B=把 `via=CLAUDE.md` 的 exact 降判為 broad,成本 S。兩者皆需正反例測試)",
+  "resolution": "—(2026-08-05 裁決（總經理自決，執行長授權）：**接受這 6 行雜訊，不修**。它是 warn-only、severity low、不擋任何 gate；唯一的真修法要在 `docs/registry.yml` 引進 section-anchor 來源文法並在 `ops/docs_impact.py` 加 hunk→heading 對映，而 `--files` 模式結構上拿不到 diff，降級語義是控制面契約的定義問題。為一個不擋事的提示花 M 去擴充控制面文法不划算。狀態改 wont-fix 前先確認是否有人依賴該 hint。)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "docs-steward 首測",
