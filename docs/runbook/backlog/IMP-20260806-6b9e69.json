@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "ReviewCardLayoutStore 的 profile 存在 UserDefaults + iCloud KVS，不在 UI World seed 裡（該 schema 自 2026-08-05 FROZEN），所以它跨 app relaunch 存活、在同一次 --ui run 內於測試方法之間洩漏。ReviewCardLayoutEditorUITests 目前靠自己先按 reset-all 取得 baseline 來自保。若未來 UI World 解凍，應加一個 preferences domain 承載 review_card_layout_profile_v1，讓 UI 測試不必靠 in-test reset。",
+  "id": "IMP-20260806-6b9e69",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "Phase C review card layout editor (feat/review-card-layout-editor)",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "Today Review 卡片對 UI test 幾乎不可觀測：front fold 在 container 上掛 .accessibilityLabel，SwiftUI 因此把整個正面併成單一 a11y element，並把 todayReview.card.front 這個 identifier 重複掛在 2-3 個 ~36pt 的巢狀 button 上。結果是 (a) 卡片上實際渲染了哪些欄位無法斷言、(b) 量到的 card 高度是 36pt 而非卡片框、(c) 已由截圖證實發生的 relayout，expandZone.frame.minY 完全不動。本輪因此只能改用『設定頁摘要 + 截圖』間接證明 profile 有到 UI。同一件事也讓 VoiceOver 讀不到背面的知識連結／搭配詞／新增連結按鈕。建議：給卡片一組可定址的 per-face 結構（或 children: .contain），一次修好 a11y 與可測性。量測記錄留在 ios/BooksAndVocabUITests/Pages/TodayReviewPage.swift 檔內註解。",
+  "id": "IMP-20260806-3e18b5",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Phase C review card layout editor (feat/review-card-layout-editor)",
+  "status": "open",
+  "stream": "IMP"
+}
