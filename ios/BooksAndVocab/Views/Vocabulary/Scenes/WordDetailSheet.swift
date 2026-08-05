@@ -7,7 +7,6 @@ struct WordDetailSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.detailRouter) private var detailRouter
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var state = WordDetailSceneState()
     @State private var localLinkedCardStack: [VocabularyEntry] = []
