@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "ios_test.sh 的 simulator device lock 在多 worktree 並發下成為 cutover 的實質瓶頸，且失敗訊息不指向真因。實測同一份 iOS 輸入（該分支 ios/ 變動檔數為 0，且 ios-build 與 ios-build-catalyst 皆綠）在同一台機器上三種結果：早上綠 60.6s；負載升高後紅 947s 並在 log 出現 'Keychain OSStatus -25291 無鑰匙圈可用'；再跑則 'timed out after 600s waiting for device lock selector=iPhone 17 Pro Max'。同一條測試在另一條不含本分支任何測試檔的分支 feat/word-detail-actions 上同樣紅，故非本分支所致。真因是同機多 session（實測 worktree 由 3 個增為 8 個、load average 曾達 64）競用單一模擬器裝置與 keychain。代價：block 級 gate 的紅綠變成機器狀態的函數而非改動的函數，正是 IMP-0039 描述的『只能紅的 gate 和只能綠的 gate 一樣有害』。候選：device lock 逾時訊息列出持鎖者 caller/PID 與等待佇列；per-worktree 模擬器 clone；或把 device-lock 逾時與 keychain 降級歸類為 infrastructure-unavailable 而非 test-failure，讓 cutover 能分辨『測試紅』與『測不成』。",
+  "id": "IMP-20260805-5a3b26",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "ios-test-unit 在 8 個並發 worktree 的機器上連兩種形狀失敗",
+  "status": "open",
+  "stream": "IMP"
+}
