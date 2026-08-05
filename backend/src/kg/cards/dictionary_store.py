@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -11,8 +11,32 @@ from sqlmodel import Session, select
 from ..exceptions import ConflictError, NotFoundError
 from ..lexical import LexicalEntry
 from ..text_utils import normalize_nfc, normalize_nfc_lower
-from .dictionary_models import DictionaryEntry, LexicalOperation
+from .dictionary_models import DictionaryEntry, DictionaryPromotionJob, LexicalOperation
 from .model import Card
+
+
+def _monotonic_now(previous: datetime, now: datetime) -> datetime:
+    """Keep incremental-sync timestamps strictly increasing within a row."""
+    if previous.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    return max(now, previous + timedelta(microseconds=1))
+
+
+@dataclass(frozen=True)
+class PromotionEnqueueResult:
+    card: Card
+    already_promoted: bool
+
+
+@dataclass(frozen=True)
+class PromotionClaim:
+    card: Card
+    dictionary: DictionaryEntry
+    job: DictionaryPromotionJob
+
+
+class PromotionLeaseLost(RuntimeError):
+    """A recovered/retried job no longer belongs to this worker attempt."""
 
 
 def _selected(entry: LexicalEntry, sense_key: str, example_key: str):
@@ -25,6 +49,22 @@ def _selected(entry: LexicalEntry, sense_key: str, example_key: str):
     return sense, example
 
 
+def _owns_promotion_claim(
+    card: Card,
+    job: DictionaryPromotionJob,
+    *,
+    worker_id: str | None,
+    attempt_count: int,
+) -> bool:
+    return (
+        card.card_role == "dictionary"
+        and card.promotion_state == "running"
+        and job.status == "running"
+        and job.worker_id == worker_id
+        and job.attempt_count == attempt_count
+    )
+
+
 class DictionaryCardStoreMixin:
     """Dictionary-only read/write methods. Requires ``self.engine``."""
 
@@ -32,6 +72,232 @@ class DictionaryCardStoreMixin:
         with Session(self.engine) as session:
             return session.get(DictionaryEntry, card_id)
 
+    def get_dictionary_promotion_job(self, card_id: str) -> DictionaryPromotionJob | None:
+        with Session(self.engine) as session:
+            return session.get(DictionaryPromotionJob, card_id)
+
+    def get_dictionary_promotion_jobs(
+        self, card_ids: set[str]
+    ) -> dict[str, DictionaryPromotionJob]:
+        if not card_ids:
+            return {}
+        with Session(self.engine) as session:
+            return {
+                job.card_id: job
+                for job in session.exec(
+                    select(DictionaryPromotionJob).where(
+                        DictionaryPromotionJob.card_id.in_(card_ids)
+                    )
+                ).all()
+            }
+
+    def enqueue_dictionary_promotion(self, card_id: str) -> PromotionEnqueueResult:
+        """Durably queue an idle/failed dictionary card.
+
+        Repeated requests while queued/running are no-ops. A promoted learning
+        card is recognized by its retained dictionary sidecar and reports
+        ``already_promoted`` without creating a second job/card.
+        """
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            sidecar = session.get(DictionaryEntry, card_id)
+            if (
+                card is None
+                or card.is_deleted
+                or sidecar is None
+                or sidecar.materialization_status != "active"
+            ):
+                raise NotFoundError("Dictionary card", card_id)
+            if card.card_role == "learning":
+                return PromotionEnqueueResult(card=card, already_promoted=True)
+            if card.card_role != "dictionary":
+                raise ConflictError("Unsupported card role for promotion")
+
+            job = session.get(DictionaryPromotionJob, card_id)
+            if card.promotion_state in {"queued", "running"}:
+                if job is None:
+                    raise ConflictError("Promotion state is missing its durable job")
+                return PromotionEnqueueResult(card=card, already_promoted=False)
+
+            if card.promotion_state not in {"idle", "failed"}:
+                raise ConflictError("Invalid dictionary promotion state")
+            card.promotion_state = "queued"
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            if job is None:
+                job = DictionaryPromotionJob(
+                    card_id=card_id,
+                    status="queued",
+                    queued_at=now,
+                    updated_at=now,
+                )
+            else:
+                job.status = "queued"
+                job.error_code = None
+                job.retryable = None
+                job.queued_at = now
+                job.started_at = None
+                job.finished_at = None
+                job.updated_at = now
+            session.add(card)
+            session.add(job)
+            session.commit()
+            session.refresh(card)
+            return PromotionEnqueueResult(card=card, already_promoted=False)
+
+    def recover_orphaned_dictionary_promotion(
+        self, card_id: str, *, current_worker_id: str
+    ) -> bool:
+        """Requeue a running job owned by a previous server generation."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            job = session.get(DictionaryPromotionJob, card_id)
+            if card is None or job is None:
+                return False
+            if (
+                card.card_role != "dictionary"
+                or card.promotion_state != "running"
+                or job.status != "running"
+                or job.worker_id == current_worker_id
+            ):
+                return False
+            card.promotion_state = "queued"
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            job.status = "queued"
+            job.worker_id = None
+            job.started_at = None
+            job.updated_at = now
+            session.add(card)
+            session.add(job)
+            session.commit()
+            return True
+
+    def claim_dictionary_promotion(
+        self, card_id: str, *, worker_id: str | None = None
+    ) -> PromotionClaim | None:
+        """Atomically claim a queued promotion; return ``None`` if not queued."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            sidecar = session.get(DictionaryEntry, card_id)
+            job = session.get(DictionaryPromotionJob, card_id)
+            if card is None or sidecar is None or job is None:
+                raise NotFoundError("Dictionary promotion", card_id)
+            if card.promotion_state != "queued" or job.status != "queued":
+                return None
+            if card.card_role != "dictionary" or card.review_eligible is not False:
+                raise ConflictError("Only review-ineligible dictionary cards can be claimed")
+            card.promotion_state = "running"
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            job.status = "running"
+            job.attempt_count += 1
+            job.worker_id = worker_id
+            job.started_at = now
+            job.finished_at = None
+            job.updated_at = now
+            session.add(card)
+            session.add(job)
+            session.commit()
+            session.refresh(card)
+            session.refresh(sidecar)
+            session.refresh(job)
+            return PromotionClaim(card=card, dictionary=sidecar, job=job)
+
+    def complete_dictionary_promotion(
+        self,
+        card_id: str,
+        *,
+        worker_id: str | None,
+        attempt_count: int,
+        meaning: str,
+        pos: str | None,
+        note: str | None,
+        collocations: list[str],
+        difficulty: float,
+    ) -> Card:
+        """Commit Stage A content, role transfer, and fresh SRS in one tx."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            sidecar = session.get(DictionaryEntry, card_id)
+            job = session.get(DictionaryPromotionJob, card_id)
+            if card is None or sidecar is None or job is None:
+                raise NotFoundError("Dictionary promotion", card_id)
+            if not _owns_promotion_claim(
+                card,
+                job,
+                worker_id=worker_id,
+                attempt_count=attempt_count,
+            ):
+                raise PromotionLeaseLost(card_id)
+
+            card.meaning = meaning
+            card.pos = pos
+            card.note = note
+            card.collocations = list(collocations)
+            card.difficulty = difficulty
+            card.card_role = "learning"
+            card.review_eligible = True
+            card.promotion_state = "idle"
+            card.promoted_at = now
+            card.review_interval_hours = 12.0
+            card.next_review_at = None
+            card.last_reviewed_at = None
+            card.review_count = 0
+            card.lapse_count = 0
+            card.review_streak = 0
+            card.last_review_feedback = -1
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            job.status = "completed"
+            job.error_code = None
+            job.retryable = None
+            job.worker_id = None
+            job.finished_at = now
+            job.updated_at = now
+            session.add(card)
+            session.add(job)
+            session.commit()
+            session.refresh(card)
+            return card
+
+    def fail_dictionary_promotion(
+        self,
+        card_id: str,
+        *,
+        worker_id: str | None,
+        attempt_count: int,
+        error_code: str,
+        retryable: bool,
+    ) -> Card:
+        """Record a classified Stage A failure without altering card content."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            job = session.get(DictionaryPromotionJob, card_id)
+            if card is None or job is None:
+                raise NotFoundError("Dictionary promotion", card_id)
+            if not _owns_promotion_claim(
+                card,
+                job,
+                worker_id=worker_id,
+                attempt_count=attempt_count,
+            ):
+                raise PromotionLeaseLost(card_id)
+            card.review_eligible = False
+            card.promotion_state = "failed"
+            card.updated_at = _monotonic_now(card.updated_at, now)
+            job.status = "failed"
+            job.error_code = error_code
+            job.retryable = retryable
+            job.worker_id = None
+            job.finished_at = now
+            job.updated_at = now
+            session.add(card)
+            session.add(job)
+            session.commit()
+            session.refresh(card)
+            return card
     def get_active_dictionary_card_ids(self, card_ids: set[str]) -> set[str]:
         if not card_ids:
             return set()
@@ -75,7 +341,7 @@ class DictionaryCardStoreMixin:
                 if operation.request_hash != request_hash:
                     raise ConflictError(
                         "Idempotency-Key was already used with a different request"
-                    )
+                    ) from None
                 return operation
             session.refresh(operation)
             return operation

@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from functools import lru_cache
-from datetime import datetime
-from pathlib import Path
 import threading
 import time
+from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Header, Query, Request, Response
 
 from ..api_models import (
     DictionaryEntryResponse,
     DictionaryMaterializeRequest,
     DictionaryProjectionItem,
+    DictionaryPromotionResponse,
     DictionarySearchHit,
     DictionarySearchResponse,
     DictionarySelectionRequest,
@@ -27,6 +28,10 @@ from ..dictionary_cards import (
     completed_materialize_replay,
     has_persisted_materialize_judgement,
 )
+from ..dictionary_promotion import (
+    DictionaryPromotionService,
+    promotion_enrichment_from_result,
+)
 from ..exceptions import BadRequestError, ForbiddenError, KGError
 from ..lexical import (
     FreeDictionaryProvider,
@@ -34,8 +39,8 @@ from ..lexical import (
     LexicalService,
     dictionary_rate_limiter,
 )
-from ..settings import KGSettings
 from ..notebook import validate_notebook_access
+from ..settings import KGSettings
 
 router = APIRouter(tags=["dictionary"])
 
@@ -166,6 +171,72 @@ def _dictionary_card_service(
     )
 
 
+def _dictionary_promotion_service(user: dict) -> DictionaryPromotionService:
+    """Wire the durable promotion worker to existing enrichment/pipeline code."""
+    from ..deps import _embedding_store, logger
+    from ..deps_quota import _is_pro
+    from ..difficulty import get_zipf
+    from ..enrich import enrich_cards_stream
+    from ..graph import LinkKind
+    from ..llm.providers import provider_for
+    from ..pipeline_service.steps import _step_embed_and_judge
+    from ..service_factories import create_client
+    from ..tracked_llm import TrackedLLM
+    from ..vocab_shared import _normalize_pos
+
+    cards = _card_store(user["dir"])
+
+    async def enrich_one(target):
+        provider = provider_for("enrich")
+        llm = TrackedLLM(
+            create_client(provider),
+            user["id"],
+            provider=provider,
+            enforce_quota=True,
+            is_pro=_is_pro(user),
+        )
+        result = None
+        async for message in enrich_cards_stream(
+            llm,
+            [target],
+            batch_size=1,
+            max_workers=1,
+            model=provider.chat_model,
+        ):
+            if message.get("status") == "error":
+                raise RuntimeError("Dictionary promotion enrichment failed")
+            for item in message.get("results") or []:
+                if item.get("word", "").casefold() == target.content.casefold():
+                    result = item
+        if result is None:
+            raise ValueError("Dictionary promotion enrichment returned no matching word")
+        return promotion_enrichment_from_result(
+            target,
+            result,
+            normalize_pos=_normalize_pos,
+        )
+
+    async def stage_b(promoted):
+        await _step_embed_and_judge(
+            user["id"],
+            user,
+            card_store_factory=_card_store,
+            graph_store_factory=_graph_store,
+            embedding_store_factory=_embedding_store,
+            client_factory=create_client,
+            logger=logger,
+            link_kind_enum=LinkKind,
+            notebook_id=promoted.notebook_id,
+        )
+
+    return DictionaryPromotionService(
+        cards=cards,
+        enrich=enrich_one,
+        difficulty=lambda word: get_zipf(word),
+        stage_b=stage_b,
+    )
+
+
 def _parse_since(value: str | None) -> datetime | None:
     if value is None:
         return None
@@ -287,6 +358,27 @@ def update_reader_visibility(
     settings: KGSettings = request.app.state.kg_settings
     return _dictionary_card_service(user, settings).set_reader_visibility(
         card_id, reader_hidden=body.reader_hidden
+    )
+
+
+@router.post(
+    "/api/dictionary/cards/{card_id}/promote",
+    response_model=DictionaryPromotionResponse,
+)
+async def promote_dictionary_card(
+    card_id: str,
+    background_tasks: BackgroundTasks,
+    user: CurrentUser,
+):
+    service = _dictionary_promotion_service(user)
+    result = service.request(card_id)
+    if not result.already_promoted:
+        background_tasks.add_task(service.run, card_id)
+    return DictionaryPromotionResponse(
+        cardId=result.card_id,
+        cardRole=result.card_role,
+        promotionState=result.promotion_state,
+        alreadyPromoted=result.already_promoted,
     )
 
 

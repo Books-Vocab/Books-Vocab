@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..lexical import LexicalAttribution, LexicalEntry
 from ..dictionary_cards import (
     DictionaryCardNode,
     DictionaryProjectionItem,
     MaterializeLinkResult,
     SavedDictionaryCard,
 )
+from ..lexical import LexicalAttribution, LexicalEntry
 
 
 class DictionarySearchHit(BaseModel):
@@ -50,11 +50,19 @@ class ReaderVisibilityRequest(BaseModel):
     reader_hidden: bool = Field(alias="readerHidden")
 
 
+class DictionaryPromotionResponse(BaseModel):
+    cardId: str
+    cardRole: str
+    promotionState: str
+    alreadyPromoted: bool
+
+
 __all__ = [
     "DictionaryCardNode",
     "DictionaryEntryResponse",
     "DictionaryMaterializeRequest",
     "DictionaryProjectionItem",
+    "DictionaryPromotionResponse",
     "DictionarySearchHit",
     "DictionarySearchResponse",
     "DictionarySelectionRequest",
