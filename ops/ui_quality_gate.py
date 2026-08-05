@@ -348,8 +348,15 @@ def main() -> int:
             "warning": warning,
         })
 
+    # `selected` is the plan size; `unrun` counts mechanisms that stayed
+    # unexecuted. They used to be one key called `planned`, which read like a
+    # plan size but was a status count — so a healthy run printed `planned=0`
+    # and so did a run that matched nothing at all. That second reading is the
+    # signature CI printed while it no-op'd for two months (IMP-0050), and no
+    # field distinguished the two. `selected=0` now says it on its own.
     summary = {
-        "planned": sum(1 for r in results if r["status"] == "planned"),
+        "selected": len(impacted),
+        "unrun": sum(1 for r in results if r["status"] == "planned"),
         "passed": sum(1 for r in results if r["status"] == "passed"),
         "failed": sum(1 for r in results if r["status"] == "failed"),
         "warn": sum(1 for r in results if r["status"] == "warn"),
@@ -371,7 +378,7 @@ def main() -> int:
             print("no UI quality mechanisms triggered")
         for r in results:
             print(f"{r['id']:<40} {human_summary(r)}")
-        print(f"summary: planned={summary['planned']} passed={summary['passed']} failed={summary['failed']} warn={summary['warn']} skipped={summary['skipped']}")
+        print(f"summary: selected={summary['selected']} unrun={summary['unrun']} passed={summary['passed']} failed={summary['failed']} warn={summary['warn']} skipped={summary['skipped']}")
 
     if summary["failed"] > 0:
         return 1
