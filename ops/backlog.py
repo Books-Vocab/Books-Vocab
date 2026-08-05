@@ -814,14 +814,18 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 
 ## Entry schema
 
-- `status`：`open` → `triaged` → `in-progress` → `fixed` / `wont-fix`（附理由）
-- `category`：IMP 為 `tool` / `cli` / `doc` / `arch`；APP 為 `ux` / `correctness` / `perf` / `data` / `content`
-- `severity`：`low` / `med` / `high`
+- `status`：{statuses}（`wont-fix` 須在 resolution 附理由）
+- `category`：IMP 為 {imp_categories}；APP 為 {app_categories}
+- `severity`：{severities}
 - `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
 - 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
 - **resolution hash 慣例**：PR 合併前為 branch-local；若該 PR 採 **squash merge**，合併後由
   `platform-steward` 更新為 squashed hash，維持 audit trail 不斷。**不得以分支名代替 hash**
   ——分支刪掉之後那筆 resolution 就再也指不到任何東西
+- **重新取證欄位**（由 resolution 的 `—(YYYY-MM-DD 驗證 <VERDICT>…)` 戳記抽出，抽取為
+  **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 {verdicts}，或
+  `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
+  讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
 """
 
 _IMP_INTRO = """
@@ -856,6 +860,12 @@ def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
     return head + sep + body
 
 
+# The rendered table deliberately stays at the legacy 8 columns. Widening it to
+# show the verdict fields broke the property reviewers valued most: the
+# generated view can still be read back by the importer, so the migration is
+# reversible. `show` and the schema section surface those fields instead — a
+# cosmetic column is not worth trading reversibility for.
+
 APP_COLUMNS = (
     "id",
     "date",
@@ -876,7 +886,16 @@ def render_view(store: Path, *, verified_against: str) -> str:
     imp = list_entries(store, stream="IMP")
     app = list_entries(store, stream="APP")
 
-    out = _VIEW_HEADER.format(verified_against=verified_against)
+    out = _VIEW_HEADER.format(
+        verified_against=verified_against,
+        # Interpolated, not restated: a hand-copied vocabulary in the doc that
+        # documents the vocabulary is the drift this store was built to remove.
+        imp_categories=" / ".join(f"`{c}`" for c in CATEGORIES["IMP"]),
+        app_categories=" / ".join(f"`{c}`" for c in CATEGORIES["APP"]),
+        statuses=" → ".join(f"`{s}`" for s in STATUSES),
+        severities=" / ".join(f"`{s}`" for s in SEVERITIES),
+        verdicts=" / ".join(f"`{v}`" for v in VERDICTS),
+    )
     out += _IMP_INTRO + "\n" + _render_table(imp, LEGACY_COLUMNS)
     out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
     out += f"\n<!-- {len(imp)} IMP + {len(app)} APP entries -->\n"
@@ -1031,7 +1050,7 @@ def _cmd_show(args) -> int:
     if args.json:
         print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry}, ensure_ascii=False))
         return 0
-    for field in REQUIRED_FIELDS + APP_ONLY_FIELDS:
+    for field in REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")
     return 0
@@ -1107,9 +1126,12 @@ def _git_head() -> str:
     outside the linux CI set. The merge-base survives both operations.
     """
     for argv in (
-        ["git", "merge-base", "--short", "HEAD", "main"],
-        ["git", "rev-parse", "--short", "main"],
-        ["git", "rev-parse", "--short", "HEAD"],
+        # `git merge-base` has NO --short flag; passing one made this fall
+        # through to HEAD silently, so the fix was never in effect until a test
+        # asserted the anchor is an ancestor of HEAD.
+        ["git", "merge-base", "HEAD", "main"],
+        ["git", "rev-parse", "main"],
+        ["git", "rev-parse", "HEAD"],
     ):
         try:
             out = subprocess.run(argv, capture_output=True, text=True, check=True, cwd=ROOT)

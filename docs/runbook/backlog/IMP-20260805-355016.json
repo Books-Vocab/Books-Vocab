@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-05",
+  "detail": "`ops/backlog.py` 的 generated view 刻意維持 legacy 8 欄，因為「產出的 view 仍可被 importer 讀回」＝遷移可逆。代價是 `verdict`/`verified_at`/`cost`/`fix_site` 四個一級欄位在表格裡看不到，只有 `show` 與 `--json` 拿得到。曾嘗試加寬到 12 欄，當場打破 4 條 round-trip 測試，已撤回。",
+  "id": "IMP-20260805-355016",
+  "resolution": "— 兩者目前不可兼得。候選：view 分兩張表（8 欄主表維持可逆 + verdict 摘要表），或 importer 學會寬表。記錄取捨以免下一個人重試一次加寬。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "backlog store review",
+  "status": "open",
+  "stream": "IMP"
+}

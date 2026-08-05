@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "`ops/backlog.py` 的 `parse_legacy_table` 對「少一欄 + 一個未跳脫 `|`」結構性不可偵測：兩個錯誤相消後剛好落在 8 欄，vocabulary anchor（cells[3][4][5]）照樣通過，於是走 happy path、detail 被截斷、尾巴變 resolution、零回報。真實 IMP-0017 被抓到純粹因為 `||` 是兩個 pipe（8→10 欄）。復原啟發式的資訊上限同源：anchor 能證 cells[0..5] 未位移，證不了 stray pipe 落在 detail 還是 resolution。",
+  "id": "IMP-20260805-3df783",
+  "resolution": "— 遷移後風險降低（view 已是產出、cell 一律跳脫，test_generated_view_needs_no_recovery 釘住零復原），但 importer 仍是任何舊格式表格的入口。候選：resolution 欄形狀檢查當第二錨點。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "backlog store review",
+  "status": "open",
+  "stream": "IMP"
+}
