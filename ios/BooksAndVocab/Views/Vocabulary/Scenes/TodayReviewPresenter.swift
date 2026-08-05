@@ -68,6 +68,9 @@ struct TodayReviewPresenterState {
     let slots: [TodayReviewCardSlotModel]
     let revealStage: TodayReviewRevealStage
     let canShuffle: Bool
+    /// autoplay 還有事可做嗎(見 `TodayReviewSessionState.canAutoplay`)。false 時
+    /// 播放鍵變淡並停用——沉默地拒絕會製造另一顆死按鈕,那正是本次要修掉的東西。
+    let canAutoplay: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
     let remainingCount: Int

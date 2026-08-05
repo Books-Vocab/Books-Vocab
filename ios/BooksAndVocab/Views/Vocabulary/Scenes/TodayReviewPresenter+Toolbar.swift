@@ -16,6 +16,7 @@ import SwiftUI
 struct ReviewTopBarModel: Equatable {
     var progressText: String
     var canShuffle: Bool
+    var canAutoplay: Bool
     var isAutoPlaying: Bool
     var isCardInteractive: Bool
 }
@@ -47,6 +48,15 @@ struct ReviewTopBar: View, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model == rhs.model
+    }
+
+    /// 播放中永遠可按(要能停);沒在播時,只有 autoplay 還有事可做才可按。
+    /// 比照同列 shuffle chip 的 `canShuffle` 前例:停用 + 變淡,而不是沉默 no-op。
+    private var isAutoplayActionable: Bool { model.isAutoPlaying || model.canAutoplay }
+
+    private var autoplayTone: Color? {
+        if model.isAutoPlaying { return appSkin.palette.accent }
+        return isAutoplayActionable ? nil : appSkin.palette.quaternaryText
     }
 
     var body: some View {
@@ -87,10 +97,11 @@ struct ReviewTopBar: View, Equatable {
 
             VocabChromeIconButton(
                 systemImage: model.isAutoPlaying ? "play.circle.fill" : "play.circle",
-                tone: model.isAutoPlaying ? appSkin.palette.accent : nil,
+                tone: autoplayTone,
                 label: L10n.string(model.isAutoPlaying ? "vocab.chromeIcon.todayReview.autoplay.on" : "vocab.chromeIcon.todayReview.autoplay.off"),
                 action: onToggleAutoPlay
             )
+            .disabled(!isAutoplayActionable)
 
             #if targetEnvironment(macCatalyst)
             VocabChromeIconButton(
@@ -328,6 +339,7 @@ extension TodayReviewPresenter {
             model: ReviewTopBarModel(
                 progressText: state.progressText,
                 canShuffle: state.canShuffle,
+                canAutoplay: state.canAutoplay,
                 isAutoPlaying: state.isAutoPlaying,
                 isCardInteractive: isCardInteractive
             ),

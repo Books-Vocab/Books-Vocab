@@ -14,6 +14,7 @@ struct ReviewChromeSliceTests {
     private static let topBarModel = ReviewTopBarModel(
         progressText: "1 / 8",
         canShuffle: true,
+        canAutoplay: true,
         isAutoPlaying: false,
         isCardInteractive: true
     )
