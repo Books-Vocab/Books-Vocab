@@ -355,8 +355,7 @@ private enum TodayReviewFixtureAdapter {
         return .init(
             card: card,
             linkGroups: linkGroups,
-            backDocument: backDoc,
-            postExampleMetrics: .from(backDoc)
+            backDocument: backDoc
         )
     }
 }
