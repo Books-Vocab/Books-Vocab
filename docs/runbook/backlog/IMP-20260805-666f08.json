@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "`plan_gates` 的 gate 去重是**命令列表完全相等**,看不見語意重疊。`ops/docs_lint.sh:300` 在分派 mode 之前就無條件呼叫 `validate_registry`,所以同時改到 `docs/registry.yml` 與任一 `docs/*.md` 的 diff 會同時排出 `[\"ops/docs_lint.sh\",\"--files\",…]` 與 `[\"ops/docs_lint.sh\",\"--registry\"]`,registry 被驗兩次、操作者為同一個事實讀到兩個 verdict——正是 `test_the_same_tool_is_not_planned_twice_for_one_diff` 想擋的形狀,只是走了那把 key 涵蓋不到的路。",
+  "id": "IMP-20260805-666f08",
+  "resolution": "候選:① 讓 data-plane 路由在 docs bucket 已排出 `docs_lint.sh` 時跳過 `--registry`(需表達「這條命令被另一條涵蓋」的關係,不只相等);② 或把 `--registry` 的涵蓋關係寫進 `DATA_PLANE_OWNERS` 的資料形狀。成本 S,但要先決定去重的語意是「相同命令」還是「相同斷言」。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "yml 路由 commit 的 review（nit）",
+  "status": "open",
+  "stream": "IMP"
+}

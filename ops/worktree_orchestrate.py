@@ -577,19 +577,28 @@ def plan_gates(changed_files: list[str],
         present = ops_test_exists or (lambda rel: True)
         planned_cmds = [g["cmd"] for g in gates if g.get("cmd")]
         unowned: list[str] = []
+        deleted: list[str] = []
         for p in data_yml:
             owners = DATA_PLANE_OWNERS.get(p)
             if not owners:
                 unowned.append(p)
                 continue
             if not present(p):
-                continue  # deleted in this diff: running its validator is a false red
+                # deleted in this diff: running its validator is a false red. But
+                # skipping silently while still counting the file as covered would make
+                # `coverage` say "every changed file is routed" about a file nothing
+                # looked at — the exact anonymous hole this router exists to close.
+                deleted.append(p)
+                continue
             for cmd in owners:
                 if cmd in planned_cmds:
                     continue  # the shell router already selected this exact run
                 planned_cmds.append(cmd)
-                gates.append(_shell(f"data-plane:{cmd[0].rsplit('/', 1)[-1]}",
-                                    "data", list(cmd), "block"))
+                # Named by TOOL PATH, not basename: the name is the key for the plan
+                # JSON, the result lookup and the history journal, and two owners whose
+                # tools differ only by directory would otherwise overwrite each other's
+                # verdict while the plan still read complete.
+                gates.append(_shell(f"data-plane:{cmd[0]}", "data", list(cmd), "block"))
         if unowned:
             gates.append(_internal(
                 "data-plane-unowned", "data", "warn",
@@ -597,6 +606,13 @@ def plan_gates(changed_files: list[str],
                       + " — declare one in DATA_PLANE_OWNERS or accept that a typo "
                         "in it lands unchallenged"),
                 files=unowned))
+        if deleted:
+            gates.append(_internal(
+                "data-plane-deleted", "data", "warn",
+                note=("deleted in this diff, so its owner tool was NOT run: "
+                      + ", ".join(deleted)
+                      + " — check by hand that nothing still reads it"),
+                files=deleted))
 
     covered: set[str] = set()
     for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml):

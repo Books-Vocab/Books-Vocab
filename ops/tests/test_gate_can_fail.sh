@@ -73,6 +73,7 @@ PROOFS=(
   "docs-conflict-markers|cheap|cheap|internal gate, driven through its real function"
   "ops-shell-syntax|cheap|cheap|a script that does not parse vs one that does"
   "ops-shell|fixture|fixture|no fixed tool: the routed script IS the command, so what is provable here is the gate's contract — run it, propagate its exit code — driven through _run_gate against a script that exits 3"
+  "data-plane|fixture|fixture|no fixed tool either: the yml's declared owner IS the command (DATA_PLANE_OWNERS), so what is provable here is that this family propagates its owner's exit code — driven through _run_gate against an owner that exits 4"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
   "ios-test-unit|expensive|journal|ops/tests/test_ios_run_verdict.sh false-green section"
@@ -96,7 +97,7 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
 # past a failing proof is to reclassify the gate as `expensive|journal` and delete the
 # proof body, and nothing would object. Downgrading one of these is then a deliberate,
 # visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell"
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -148,6 +149,7 @@ probes = [
     ["backend/src/kg/app.py"], ["backend/tests/test_x.py"],
     ["ops/worktree_orchestrate.py"], ["ops/docs_lint.sh"],
     ["design-system/tokens.json"],
+    ["ops/ui_quality_plane.yml"],
     ["README.md"],
 ]
 names = set()
@@ -329,6 +331,22 @@ ggood = m._run_gate(m._shell("ops-shell:routed_green.sh", "ops",
                              ["ops/routed_green.sh"], "block"), str(root))
 print(f"shell-red status={gbad['status']} rc={gbad['rc']}")
 print(f"shell-green status={ggood['status']} rc={ggood['rc']}")
+
+# data-plane has no fixed tool either — the yml's declared owner IS the command — so the
+# provable contract is the same shape, and it is asserted separately because the family
+# is separate: a future change that stops _shell-ing these would leave ops-shell green.
+# Exit 4 (not 3) so a copy-paste of the shell marker cannot satisfy this one.
+for name, body in (("owner_red.sh", "#!/bin/sh\necho owner-ran\nexit 4\n"),
+                   ("owner_green.sh", "#!/bin/sh\necho owner-ran\nexit 0\n")):
+    f = ops / name
+    f.write_text(body)
+    f.chmod(0o755)
+dbad = m._run_gate(m._shell("data-plane:ops/owner_red.sh", "data",
+                            ["ops/owner_red.sh"], "block"), str(root))
+dgood = m._run_gate(m._shell("data-plane:ops/owner_green.sh", "data",
+                             ["ops/owner_green.sh"], "block"), str(root))
+print(f"data-plane-red status={dbad['status']} rc={dbad['rc']}")
+print(f"data-plane-green status={dgood['status']} rc={dgood['rc']}")
 PY
 grep -q "conflict-red status=block" "$TMP/internal.out" \
   && { ok "docs-conflict-markers goes red on a marker"; record_proof docs-conflict-markers red executed; } \
@@ -357,6 +375,14 @@ grep -q "shell-red status=block rc=3" "$TMP/internal.out" \
 grep -q "shell-green status=pass rc=0" "$TMP/internal.out" \
   && { ok "ops-shell passes when the routed script succeeds"; record_proof ops-shell green fixture; } \
   || fail_t "ops-shell did not pass a routed script that exits 0"
+
+# --- data-plane -----------------------------------------------------------------
+grep -q "data-plane-red status=block rc=4" "$TMP/internal.out" \
+  && { ok "data-plane propagates the owner tool's failure (rc=4, not a generic red)"; record_proof data-plane red fixture; } \
+  || fail_t "data-plane did not block with the owner tool's own exit code"
+grep -q "data-plane-green status=pass rc=0" "$TMP/internal.out" \
+  && { ok "data-plane passes when the owner tool succeeds"; record_proof data-plane green fixture; } \
+  || fail_t "data-plane did not pass an owner tool that exits 0"
 
 section "expensive gates: green read from recorded behaviour, never assumed"
 # TWO independent lists, derived from the two independent kinds. Deriving the journal
