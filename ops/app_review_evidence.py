@@ -1,8 +1,11 @@
 #!/usr/bin/env -S uv run --python 3.13
 """Typed, fail-closed producers and plan for App Review evidence.
 
-Network scope is HTTPS GET only.  The tool never writes App Store Connect and
-only writes local evidence when ``--commit`` is explicit.
+Network scope is HTTPS GET only.  The tool never writes App Store Connect, and
+writes locally only when ``--commit`` is explicit.  Note that ``refresh-anchor``
+is the one subcommand whose ``--commit`` writes the *spec* rather than evidence:
+the spec is the baseline evidence is compared against, so that write moves the
+thing that judges, not the thing being judged.
 """
 
 from __future__ import annotations
@@ -581,9 +584,28 @@ def rewrite_anchor(spec_text: str, new_anchor: str) -> tuple[str, str]:
     expected = json.loads(spec_text)
     _require(isinstance(expected.get("target"), dict), "anchor.target")
     expected["target"][_ANCHOR_FIELD] = new_anchor
+    # This reparse is the guard that actually holds. The regex only narrows the
+    # candidates; cases like an uppercase digest in target, or a same-named key
+    # in a sibling object, reach here still wrong and die on this line.
     _require(json.loads(updated) == expected, "anchor.collateral-change")
-    _require(len(updated) == len(spec_text), "anchor.length-drift")
     return updated, old_anchor
+
+
+def _write_text_atomically(path: Path, text: str) -> None:
+    """Replace `path` by rename, never by truncating it in place.
+
+    The spec is the one git-tracked control-plane file this module writes, and
+    it was the only write here lacking the atomicity the bundle publisher
+    already has.  A crash mid-write left a truncated gate input behind.
+    """
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False,
+    ) as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+        staged = Path(handle.name)
+    os.replace(staged, path)
 
 
 def refresh_desired_anchor(
@@ -602,6 +624,10 @@ def refresh_desired_anchor(
     """
     spec = _load(spec_path)
     spec_text = spec_path.read_text(encoding="utf-8")
+    # Every precondition rewrite_anchor enforces is decidable from the text
+    # alone, so decide them now: a spec this function could never rewrite should
+    # not cost a full bundle rebuild to discover that.
+    rewrite_anchor(spec_text, "0" * 64)
     with tempfile.TemporaryDirectory(prefix="kg-app-review-anchor-") as raw_tmp:
         bundle_dir = Path(raw_tmp) / "bundle"
         produce_desired_bundle(
@@ -610,10 +636,15 @@ def refresh_desired_anchor(
             fixed_clock=fixed_clock, locale=locale, commit=True,
         )
         measured = _sha((bundle_dir / "manifest.json").read_bytes())
+    # The rebuild takes seconds, and the text captured before it is what gets
+    # written back. Anyone who edited the spec meanwhile would have their edit
+    # silently reverted, so refuse instead.
+    if spec_path.read_text(encoding="utf-8") != spec_text:
+        raise EvidenceError("anchor.spec-changed-during-rebuild")
     updated, old_anchor = rewrite_anchor(spec_text, measured)
     changed = old_anchor != measured
     if changed and commit:
-        spec_path.write_text(updated, encoding="utf-8")
+        _write_text_atomically(spec_path, updated)
     return {
         "schema": ANCHOR_SCHEMA,
         "spec": str(spec_path),

@@ -6,6 +6,7 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -316,12 +317,35 @@ def test_rewrite_anchor_requires_exactly_one_anchor_literal():
         evidence.rewrite_anchor('{"target": {}}\n', "b" * 64)
 
 
+def test_rewrite_anchor_does_not_reformat_a_non_canonical_spec():
+    """The reason this is textual: re-serializing would silently recanonicalize."""
+    non_canonical = (
+        '{\n'
+        '    "target": {\n'
+        '        "zzz": "trailing key out of sort order",\n'
+        '        "desiredManifestSHA256": "' + "a" * 64 + '",\n'
+        '        "appID": "6759816274"\n'
+        '    },\n'
+        '    "schema": "kg.app_review.gate.v1"\n'
+        '}\n'
+    )
+
+    updated, old = evidence.rewrite_anchor(non_canonical, "b" * 64)
+
+    assert old == "a" * 64
+    # Byte-exact except the digest: key order, 4-space indent and layout survive.
+    assert updated == non_canonical.replace("a" * 64, "b" * 64)
+
+
 def stub_bundle(monkeypatch, manifest_bytes: bytes) -> list[bool]:
     """Stand in for the real rebuild; record whether it was asked to publish."""
     published: list[bool] = []
 
     def fake_bundle(spec, *, bundle_dir, commit, **_kwargs):
         published.append(commit)
+        # The rebuild must stay inside a temp dir; without this the stub would
+        # happily accept an implementation that published into the repo.
+        assert tempfile.gettempdir() in str(bundle_dir.resolve())
         bundle_dir.mkdir(parents=True, exist_ok=True)
         (bundle_dir / "manifest.json").write_bytes(manifest_bytes)
         return {"manifest": {}}
@@ -396,6 +420,80 @@ def test_refresh_anchor_reports_current_and_writes_nothing_when_already_correct(
     assert report["changed"] is False
     assert report["status"] == "current"
     assert spec_path.read_text(encoding="utf-8") == current
+
+
+def test_refresh_anchor_rejects_an_unrewritable_spec_before_rebuilding(
+    tmp_path: Path, monkeypatch
+):
+    """A spec that can never be rewritten must not cost a full rebuild first."""
+    original = (ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8")
+    doubled = original.replace(
+        '"schema": "kg.app_review.gate.v1"',
+        '"decoy": {"desiredManifestSHA256": "' + "c" * 64 + '"},\n  "schema": "kg.app_review.gate.v1"',
+    )
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(doubled, encoding="utf-8")
+    published = stub_bundle(monkeypatch, b'{"schema":"x"}\n')
+
+    with pytest.raises(evidence.EvidenceError, match=r"anchor\.occurrences:2"):
+        evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert published == []
+    assert spec_path.read_text(encoding="utf-8") == doubled
+
+
+def test_refresh_anchor_refuses_to_revert_an_edit_made_during_the_rebuild(
+    tmp_path: Path, monkeypatch
+):
+    spec_path, stale = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    concurrent = stale.replace('"appID": "6759816274"', '"appID": "9999999999"')
+
+    def racing_bundle(spec, *, bundle_dir, commit, **_kwargs):
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        (bundle_dir / "manifest.json").write_bytes(manifest_bytes)
+        spec_path.write_text(concurrent, encoding="utf-8")  # another writer lands
+        return {"manifest": {}}
+
+    monkeypatch.setattr(evidence, "produce_desired_bundle", racing_bundle)
+
+    with pytest.raises(evidence.EvidenceError, match=r"anchor\.spec-changed-during-rebuild"):
+        evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert spec_path.read_text(encoding="utf-8") == concurrent  # their edit survives
+
+
+def test_refresh_anchor_commit_replaces_the_spec_by_rename(tmp_path: Path, monkeypatch):
+    """Crash-safety is not unit-testable, so pin the mechanism that supplies it.
+
+    This asserts *how* the write happens, not the property it buys. A no-staging-
+    file assertion cannot tell an atomic rename from an in-place truncation —
+    both leave a tidy directory — so without this, reverting to write_text()
+    goes unnoticed.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    destinations: list[str] = []
+    real_replace = evidence.os.replace
+
+    def recording_replace(src, dst, **kwargs):
+        destinations.append(str(dst))
+        return real_replace(src, dst, **kwargs)
+
+    monkeypatch.setattr(evidence.os, "replace", recording_replace)
+
+    evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert destinations == [str(spec_path)]
+
+
+def test_refresh_anchor_commit_leaves_no_staging_file_behind(tmp_path: Path, monkeypatch):
+    spec_path, _ = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+
+    evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert sorted(p.name for p in tmp_path.iterdir() if p.is_file()) == ["spec.json"]
 
 
 def test_refresh_anchor_cli_is_wired_and_dry_run_by_default(tmp_path: Path, monkeypatch, capsys):
