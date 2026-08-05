@@ -8,6 +8,7 @@ scope:
   - backend/src/kg/ops_cli_app.py
   - backend/src/kg/ops_cli_parser.py
   - backend/src/kg/ops_cli_queries.py
+  - backend/src/kg/ops_cli_dictionary.py
   - backend/src/kg/ops_edit_app.py
   - backend/src/kg/ops_edit_commands.py
   - backend/src/kg/ops_edit_parser.py
@@ -17,7 +18,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: 0c9e3b7c
+verified_against: 198402dc7
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -30,7 +31,7 @@ verified_against: 0c9e3b7c
 兩面**物理隔離、無 schema version；public wrapper 與實作模組已拆開**:
 
 - 寫面 `backend/ops_edit.py` 現在只是 thin wrapper；真正的 command dispatch 在 `backend/src/kg/ops_edit_app.py` + `ops_edit_parser.py` + `ops_edit_commands.py`。實際落地仍走 app per-user store（`CardStore` / `NotebookStore` / `GraphStore`），複用 NFC/dedup/graph merge，不重刻資料寫路徑。
-- 讀面 `backend/ops_cli.py` 也是 thin wrapper；真正的 readonly control plane 在 `backend/src/kg/ops_cli_app.py`，再拆成 `ops_cli_parser.py` / `ops_cli_queries.py` / `ops_cli_observability.py` / `ops_cli_costs.py` / `ops_cli_shared.py`。query 已不再塞在單一大檔，但仍是獨立於寫面的讀取邏輯。
+- 讀面 `backend/ops_cli.py` 也是 thin wrapper；真正的 readonly control plane 在 `backend/src/kg/ops_cli_app.py`，再拆成 `ops_cli_parser.py` / `ops_cli_queries.py` / `ops_cli_observability.py` / `ops_cli_costs.py` / `ops_cli_dictionary.py` / `ops_cli_shared.py`。query 已不再塞在單一大檔，但仍是獨立於寫面的讀取邏輯。**`ops_cli_dictionary.py` 沒有寫面對偶**（字典卡的建立/轉換只能經 API saga，不從 ops 直寫），故不適用下方的雙面對齊契約；它讀兩處：全域 `lexical_cache.db` 與 per-user `cards.db` 的字典 sidecar，缺表一律回 0 而非 traceback（要能對字典功能之前的舊 DB 跑）。
 - state-diff 的投影面 `project_user_world`（`ops_world_projection.py`）仍是**第三條獨立讀盤路徑**：cards 走 `_load_cards` 動態 SELECT，graph 走 `_load_graphs` 直讀 `graph_*.json`，刻意繞過 GraphStore 快取。
 - seed-replay 的導出面 `export_seed_spec`（`ops_world_export.py`，`ops-cli world-export`）是**第四條獨立讀盤路徑**：與 projection 不同，它導出 seed 可**無損重放**的全欄位（含 review 計數器），`connect_ro` + 直讀 `graph_*.json`。它的對齊契約不是 expectation diff，而是 roundtrip 不變量（見 §1.1）。
 
