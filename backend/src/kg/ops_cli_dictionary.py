@@ -27,6 +27,7 @@ from kg.lexical import (
     LOOKUP_FAILURE_OUTCOMES,
     LOOKUP_OUTCOMES,
 )
+from kg.cards.model import PROMOTION_STATE_FAILED
 from kg.ops_shared import connect_ro, data_dir, emit_json, print_table, resolve_uid
 
 
@@ -286,8 +287,9 @@ def _user_dictionary_report(uid: str, cards_db) -> dict:
         if _has_table(conn, "dictionary_promotion_jobs"):
             for card_id, error_code, retryable, attempts in conn.execute(
                 "SELECT card_id, error_code, retryable, attempt_count "
-                "FROM dictionary_promotion_jobs WHERE status = 'failed' "
-                "ORDER BY updated_at DESC"
+                "FROM dictionary_promotion_jobs WHERE status = ? "
+                "ORDER BY updated_at DESC",
+                (PROMOTION_STATE_FAILED,),
             ):
                 promotion_failures.append(
                     {
