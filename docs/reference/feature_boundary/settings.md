@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: 941fe100f
+verified_against: 9094a8326
 -->
 # Settings Feature Boundary
 
