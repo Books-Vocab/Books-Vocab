@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: 935fb9d2e
+verified_against: 0a90b4f8e
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -23,6 +23,30 @@ verified_against: 935fb9d2e
 
 **唯一碰生產 = `deploy`（backend）/ `release`（前後端統一）。** `sync` 只是備份，push 幾次都無所謂。
 
+## 版號事實 SoT 表（iOS）
+
+「哪個版號說法可信」只有一個答法：先問**這是哪一個事實**，再看誰是它的 owner。四個事實各有唯一 owner，任一份文檔、腳本輸出或人的記憶都不是。
+
+| # | 事實 | 唯一 owner | 怎麼查 | 誰寫進去 |
+|---|---|---|---|---|
+| ① | **我要發什麼版號 / build** | `ios/BooksAndVocab.xcodeproj/project.pbxproj` 的 `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION`（**project-level build settings**；target-level override 已全數刪除，測試 bundle 靠繼承，見 `fe4a82355`）。backend 對應面是 `backend/pyproject.toml` | `./ops/release.sh status` 的「專案版號」行 | `release.sh bump ios` / `bump-build ios`（委派 `release_bump.sh`） |
+| ② | **(version, build) 由哪顆 commit 產生** | repo 的 **build tag** `ios/<x.y.z>+<build>`。immutable；同一 marketing version 下可多顆並存（`2.0.0+5` 與 `2.0.0+6` 同時為真） | `git tag -l 'ios/*+*'`；`./ops/release.sh status` 的「build tag 對照」表 | `release.sh tag ios` / `release ios` / `resubmit ios`，在 upload 成功後封版 |
+| ③ | **哪顆 build 上架了** | **App Store Connect，唯一權威**。**不快取成 repo 內的事實**——只能在需要時現查 | `./ops/asc_shipped.py`（stdout 一行 `<version> <build>`；查不到就非零退出，不猜）；旁證 `./ops/asc.sh versions` / `review-status` / `builds` | Apple。我們只讀 |
+| ④ | **某 marketing version 上架的是哪顆 commit** | **版本級 tag** `ios/<x.y.z>` — 就是 ②③ 的 join | `git rev-list -n1 ios/<x.y.z>`；`./ops/release.sh status` 的「已上架 tag」行 | **只有** `./ops/release.sh shipped ios --yes`，在 ASC 查證後物化。immutable，工具不移動；衝突一律 refuse 交人裁決 |
+
+**為什麼非拆成四格不可**：ASC 對這個 app 只保留**一筆** `appStoreVersions` 記錄，`versionString` 是可變欄位、已被原地改寫七次（1.4→1.5→1.6→2.0.0→2.0.1→2.0.0），而 build number 每個 marketing version 重新計數（`build 1` 在本 app 歷史裡出現過六次）。**Apple 不保留歷史**，於是「(version, build) 由哪顆 commit 產生」這個事實**只有 repo 能保存，而且必須在封版當下捕捉——事後無法重建**（2.0.0 那次的重建靠夾擠 pbxproj 編輯時戳與送審時戳，是考古不是查詢）。②③ 分開存、④ 只當 join，就是為了讓任何一邊都不宣稱它不擁有的事實。設計理由正本見 `075673f79` / `fcd523434` 的 commit message。
+
+**由此推出的兩條規則**（工具已實作，不靠自律）：
+- `ios/<x.y.z>` 的存在**本身就是上架證據**，所以新版 guard 是真檢查而非 operator 背書：須有上架 tag、新版須嚴格遞增、且**不得跳過「有 build tag 但沒有上架 tag」的版本**（後者正是 ios/2.0.1 事故的形狀）。舊的 `--new-version-after-ready <previous>` typed attestation **已移除**，傳入會 hard-error 並指向替代路徑。
+- `tag ios` / `release ios` / `resubmit ios` **不產生** `ios/<x.y.z>`。upload 完成的那一刻沒有人知道會不會過審。
+
+### 機制上線前的舊 tag：刻意不重新詮釋
+
+`ios/<x.y.z>` 的現行語意自 `075673f79` 起才成立。在那之前 `tag ios` 打在 bump 的那一刻，意思是「這裡把版號改成了 x.y.z」，**與上架無關**。既有兩顆舊 tag 因此不能照新語意讀，且兩顆都已推上 origin：
+
+- **`ios/1.6.0`**（`cddef104a`）— 舊語意的 bump 點，**不代表上架**。1.6 底下 Apple 端存在四顆 build（1/2/3/4，2026-08-05 查證），而 ASC 只留當前那一筆 version 記錄、1.6 的那筆早被改寫掉，**哪顆 build 上架了現在已不可考**。因此這顆 tag **刻意不重新詮釋、不移動、不刪除**——這是「repo 不宣稱它不擁有的事實」的實例。唯一能把它升格成合格 ④ 的路是人工判定後 `shipped ios --commit <sha>`，而該路徑會把結果明確標記為「人工斷言，不是查證出來的 join」；在沒人能判定的今天，維持現狀勝過造一個看起來權威的答案。
+- **`ios/2.0.0`**（`caacbb2db`）— 同為舊語意，且**已知指錯**：指向 build 5 的封版 commit，實際上架的是 28 個 `ios:` commit、五天之後的 build 6。與 1.6.0 不同，這次的對應關係被考古出來了，但**重新指向一顆已推出去的 tag 是人的決定、不是工具的**，故仍待人工裁決。`shipped ios` 遇到這種矛盾會 refuse 並印出精確補救指令（刪本地 + 刪 origin + 重跑），絕不自行移動。
+
 ## 動詞對照
 
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
@@ -30,22 +54,29 @@ verified_against: 935fb9d2e
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff） | 無—離線可逆 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
-| `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + `api\|ios/x.y.z` + push origin main；iOS 新版須帶 `--new-version-after-ready <previous>` | 備份/標記，無生產 |
-| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy；iOS：bump→upload→tag | **生產** |
+| `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
+| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy；iOS：bump→upload→封 build tag | **生產** |
+| `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔、本地 main | marketing 版號不動，build +1→upload→封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
+| `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
-- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 也必須帶 typed attestation，不能繞過 release guard。
-- `release <backend|ios>` 須在 primary、on `main` 執行（發布本地主幹）。
+- `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過。
+- `release <backend|ios>` / `resubmit ios` 須在 primary、on `main` 執行（發布本地主幹）。`shipped ios` 只讀 ASC + 打 tag，不受此限。
+- `changelog ios` 的區間錨在**上架 tag**、不是 build tag——這條規則的單一 owner 是 `ops/lib/release_tags.sh`（`release_last_tag`），`release.sh` 與 `release_changelog.sh` 共用同一份。曾各持一份副本，只改一邊的後果是 changelog 靜默錨到 build tag、印出「無變更」（`47e9fea97`）。
 
 ## Release 流程
 
 **backend**（`release backend x.y.z`）＝ `bump api`（若版號檔≠x.y.z）→ `tag api x.y.z`（commit 版號 + `api/x.y.z` + push origin main）→ `orchestrate deploy --commit`（推 origin/prod → felix reconciler 健康 gate 部署 wordnexus.lol）。dry-run 預設，`--yes` 才執行。
 
-**ios 新版本**（`release ios x.y.z --new-version-after-ready <previous>`）＝先確認 ASC 的 previous marketing version 已完成審查 → `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才 `tag ios x.y.z`。`<previous>` 必須等於 latest local `ios/*` tag，且新版本必須嚴格遞增；這是離線 typed attestation，不會連 ASC、也不宣稱自行驗出 `READY_FOR_SALE`。upload 失敗不留下 release commit/tag/push；若版號早已 commit，成功後直接 tag current HEAD。被拒或未上架的同版重送走 `bump-build ios` + `ios_release.sh --upload`（見 ios.md），不走 release、也不得使用 attestation flag。
+**ios 新版本**（`release ios x.y.z`）＝ `guard_ios_new_version`（讀 repo 的上架 tag 與 build tag，見上方兩條規則；**無 flag、無 operator 背書**）→ `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才封 `ios/x.y.z+<build>` + push。upload 失敗不留下 commit/tag/push；封版 tag 若已存在於**另一顆** commit 則在 upload **之前**就拒絕（同一顆 commit 且 pbxproj 乾淨＝重跑，noop）。
 
-日常盤點：`ops/release.sh status`（各 component 待發版 commit + released gap；本地唯讀）。
+**ios 同版重送**（`resubmit ios`）＝ App Review 被拒／尚未上架就要換 binary：`bump-build ios`（marketing 不動、build +1）→ `--upload` → 封 `ios/x.y.z+<build>` + push。這條路徑以前是兩步手動且**不留任何紀錄**，正是 `ios/2.0.0` 脫鉤的成因（`888967dd9`）。
+
+**ios 上架後**（`shipped ios --yes`）＝ 向 ASC 查 `READY_FOR_SALE` 的 (version, build) → join 對應的 build tag → 物化 `ios/<x.y.z>` 並推 origin。任何歧義都 refuse 不猜：ASC 不可達／無 `READY_FOR_SALE`／多筆 `READY_FOR_SALE`／版號或 build 格式不對／找不到 build tag／`ios/<x.y.z>` 已存在於不同 commit。找不到 build tag 時唯一逃生口是 `--commit <sha>`，輸出會標記「這是人工斷言，不是查證出來的 join」。已一致時為 noop，可排程或在中斷後重跑。
+
+日常盤點：`ops/release.sh status`（各 component 待發版 commit + released gap + 專案版號 + build tag 對照；本地唯讀）。status 的 ios 段會在「目前的 (version, build) 沒有 build tag」時具名警告——那是「一顆 build 出去了卻沒留紀錄」唯一看得見的症狀。
 
 ## felix reconciler（release=deploy 自動收斂）
 
