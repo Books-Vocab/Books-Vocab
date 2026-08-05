@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.13"
+# ///
 """Backlog store — one file per entry, so N agents can file issues in parallel.
 
 WHY THIS SHAPE
