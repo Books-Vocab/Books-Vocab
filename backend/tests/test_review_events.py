@@ -274,3 +274,69 @@ def test_legacy_store_without_ingested_at_is_migrated(tmp_path):
 
     assert [event.event_id for event in pulled] == ["legacy-1"]
     assert cursor is not None
+
+
+def _count_reviewevent_selects(store: ReviewEventStore, entries: list[ReviewEventEntry]) -> int:
+    """Run push_review_events and return how many SELECTs touched the events table."""
+    from sqlalchemy import event as sa_event
+
+    table = ReviewEvent.__tablename__
+    seen: list[str] = []
+
+    def _before(conn, cursor, statement, parameters, context, executemany):
+        normalized = " ".join(statement.split()).lower()
+        if normalized.startswith("select") and table in normalized:
+            seen.append(normalized)
+
+    sa_event.listen(store.engine, "before_cursor_execute", _before)
+    try:
+        push_review_events(entries, event_store=store)
+    finally:
+        sa_event.remove(store.engine, "before_cursor_execute", _before)
+    return len(seen)
+
+
+def test_duplicate_push_existence_check_does_not_scale_with_batch_size(tmp_path):
+    """Re-pushing an already-stored history must not cost one SELECT per event.
+
+    The iOS client has no push watermark yet, so every sync re-sends the entire
+    review history; a per-entry ``session.get`` turned that into thousands of
+    point queries that all resolve to "already have it". The existence check
+    must be batched, so the statement count stays flat as the batch grows.
+    """
+    small = [_event(f"small-{i}") for i in range(20)]
+    large = [_event(f"large-{i}") for i in range(200)]
+
+    small_store = ReviewEventStore(tmp_path / "small.db")
+    large_store = ReviewEventStore(tmp_path / "large.db")
+    push_review_events(small, event_store=small_store)
+    push_review_events(large, event_store=large_store)
+
+    small_selects = _count_reviewevent_selects(small_store, small)
+    large_selects = _count_reviewevent_selects(large_store, large)
+
+    assert small_selects <= 4, f"even a 20-event batch issued {small_selects} SELECTs"
+    # 10x the entries must not mean 10x the queries.
+    assert large_selects - small_selects <= 2, (
+        f"existence check scales with batch size: {small_selects} -> {large_selects}"
+    )
+
+
+def test_duplicate_event_id_within_one_batch_is_skipped(tmp_path):
+    """Batching the existence check must not lose the intra-batch duplicate guard.
+
+    The per-entry ``session.get`` caught a repeated event_id inside a single
+    payload via autoflush. A pre-fetched id set only knows what was already
+    committed, so the batch loop has to track ids it just added.
+    """
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    first = _event("evt-dup", word="first")
+    second = _event("evt-dup", word="second")
+
+    assert push_review_events([first, second], event_store=store) == {
+        "inserted": 1,
+        "skipped": 1,
+    }
+
+    pulled, _cursor = pull_review_events(since=None, event_store=store)
+    assert [event.word_snapshot for event in pulled] == ["first"]
