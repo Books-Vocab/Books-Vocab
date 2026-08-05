@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "An interrupted build-for-testing leaves a DerivedData cache that PASSES ios_test_cache_is_complete (ops/ios_test.sh:376), and the next run then hangs forever. Observed: .cache/ios-test-derived-data/<hash>/Build/Products/Debug-iphonesimulator/ held BooksAndVocab.app (with binary) and the .xctestrun file, but NO .xctest bundle. The next invocation took the double-checked-locking cache-hit path (ops/ios_test.sh:1160), skipped the rebuild, and launched 'xcodebuild test-without-building' against an .xctestrun pointing at a missing test bundle. xcodebuild then sat for 17+ minutes emitting only 'IDERunDestination: Supported platforms for the buildables in the current scheme is empty', ran 0 tests, and never errored; the run log's mtime froze while ios_test heartbeats kept printing 'still running (pid=...)'. Two defects: (1) the sentinel + ios_test_cached_products_ready gate does not actually require the scope's .xctest bundle to exist, so a partial cache reads as complete; (2) test-without-building against a missing bundle must fail fast rather than hang — add a pre-flight existence check on the TestHostPath/TestBundlePath in the resolved .xctestrun before invoking xcodebuild. Workaround used: rm -rf the partial hash dir and re-run.",
+  "id": "IMP-20260805-770638",
+  "resolution": "WITHDRAWN — filed on a false premise. I concluded 'partial cache, no .xctest bundle' from a glob of only the top level of Build/Products/Debug-iphonesimulator/. A unit-test bundle is hosted inside the app, at BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest — it was there the whole time (40MB binary, correct mtime). ios_test_cache_is_complete was right to accept that cache; I deleted a good one and paid a 228s rebuild for nothing. The real hang reproduces with a freshly built, complete cache, so it is not cache-completeness at all: xcodebuild test-without-building against the leased pool simulator sits with 0 tests executed, emitting only 'IDERunDestination: Supported platforms for the buildables in the current scheme is empty', log mtime frozen. Suspected wedged simulator after runs were killed mid-test against that device. The heartbeat-observability half of this remains valid and is tracked separately as IMP-20260805-fee5a4.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "ios_ops.sh test --unit runs from debug/sync-latency-watermark, 2026-08-05",
+  "status": "wont-fix",
+  "stream": "IMP"
+}

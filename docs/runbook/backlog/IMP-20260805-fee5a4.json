@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "ios_test heartbeats report wrapper liveness, not test progress, so a dead or stalled test host is indistinguishable from a slow one. Hit twice in one session: (a) the test host died with 'Fatal error: UI World failed to load' at 15:13:59 and xcodebuild hung on the dead process for 18 more minutes; (b) a partial-cache run (IMP-20260805-770638) ran 0 tests and hung 17 minutes. In both cases the heartbeat kept printing 'still running (NNNs, pid=..., log=...) — last: xcodebuild still running' the whole time. The signal that actually distinguished stalled from working was the run log's mtime: frozen while the elapsed counter climbed. Fix: have the heartbeat carry log-file staleness — e.g. 'still running (600s, log idle 480s)' — and optionally hard-fail after a configurable idle threshold with the last log lines. Cheap, and it turns an invisible hang into a self-describing one. Also consider surfacing a fatal error found in the log immediately rather than waiting for xcodebuild to notice.",
+  "id": "IMP-20260805-fee5a4",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "ios_ops.sh test runs from debug/sync-latency-watermark, 2026-08-05",
+  "status": "open",
+  "stream": "IMP"
+}

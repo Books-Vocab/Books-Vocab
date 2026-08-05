@@ -22,7 +22,7 @@ scope:
   - backend/src/kg/vocab_crud.py
   - backend/src/kg/vocab_handlers/intake.py
   - backend/src/kg/vocab_handlers/crud.py
-verified_against: e14f295ad
+verified_against: 49943a929
 -->
 # Sync Lifecycle
 
@@ -128,6 +128,18 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 0. **logout-cleanup gate**（claim 鎖成功後、任何 sync 工作前）— `await sessionInvalidator.waitForPendingLocalDataCleanup()`。詳見下節「logout-cleanup gate 不變式」。
 1. vocab pull / push（本文上述狀態流轉）
 2. **podcast catalog**（Phase 3，序執行於 vocab pull 後）— `PodcastSyncService.syncAll` 併入 backgroundSync，使 podcast catalog 共用上述所有觸發；自我防禦、不 throw，失敗僅記 log 不影響 vocab。**不變式**：空 server list（`/api/podcasts` 回 `[]`）視為非權威，reconcile **不**對 series/episode 下 tombstone（避免 S3 index 短暫讀不到時 mass soft-delete）。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`。
+
+## 複習事件上傳水位（review-event push watermark）
+
+複習事件（`ReviewRecord` → `PATCH /api/vocab/review-events`）是 **append-only 帳本**，不進上述 `syncStatus × actionType` 狀態機；它自己的收斂條件是**水位**而非狀態轉移。
+
+- **水位欄位（不變式）**：`ReviewRecord.pushedAt: Date?`。`nil` = 尚欠伺服器。`buildReviewEventsPushPayload` 只取 `pushedAt == nil`，並依 `reviewedAt` 遞增排序。
+- **為何需要**：後端以 `event_id` 去重，client 端若無水位就無法區分「已上傳」與「新事件」，只能整份重送。2026-08-05 生產實測（帳號 000287）：9,542 筆事件、約 3.4MB、10 次序列 PATCH，佔一次同步 17s 中的 15.4s，伺服器每次皆回 `inserted=0, skipped=9542`。
+- **逐批確認（不變式）**：`pushReviewEvents` 在**每個 batch 回應後**立即 `markReviewEventsPushed`，不是整輪結束才記。batch 才是伺服器實際接受的單位；後續 batch 失敗（離線 / 401 / 此突發自身觸發的 429）不可回退已落地的批次——這正是大量歷史事件能**跨多次同步分批排空**而非每次從頭的原因。
+- **拉回即已確認（不變式）**：`mergeReviewEvents` 對插入的遠端事件直接寫 `pushedAt`。它來自伺服器就已在伺服器上；不標記會讓下一次推送把整份拉回的歷史原樣送回，水位永遠排不空。
+- **遷移策略（刻意不 backfill）**：欄位為 optional，既有列一律以 `nil` 進場、在升級後第一次同步完整排空一次——成本恰等於舊行為，且不可能把「其實從未上傳成功」的事件誤標為已上傳。之後穩態為 ~0。
+
+伺服器端對應：`ReviewEventStore.insert_many` 以分塊 `IN` 查詢一次取回已存在的 `event_id`（chunk 500，低於 SQLite 3.32 前 999 個繫結變數上限），取代逐筆 `session.get`。同一批 payload 內重複的 `event_id` 由迴圈內累加的 id 集合擋下（舊版靠 autoflush，改批次取回後必須顯式維持）。
 
 ## logout-cleanup gate 不變式（重登↔sync 競態防線）
 
