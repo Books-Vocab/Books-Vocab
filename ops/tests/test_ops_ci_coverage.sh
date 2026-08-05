@@ -236,7 +236,7 @@ token_probe() {  # token → 功能探針（第 3 欄，可為空）
 }
 
 # token 指名的工具鏈在這台機器上「真的能用」嗎？名字 resolve 得到不算數（見 DEP_TOKENS
-# 註解的 CLT shim）。回 0 = 可用；回非 0 時把原因寫進 $TOOLCHAIN_WHY。
+# 註解的 CLT shim）。回 0 = 可用；回非 0 時把原因寫進 ${TOOLCHAIN_WHY}。
 TOOLCHAIN_WHY=""
 toolchain_usable() {
   local tok="$1" denials probe b missing=""
