@@ -270,6 +270,29 @@ def _ops_shell_test_candidates(rel: str) -> list[str]:
     return [c for c in (f"ops/tests/test_{base}", f"ops/test_{base}", alias) if c]
 
 
+# Data-plane control files (yml/yaml) that own an executable contract, and the tools
+# that assert it. Until 2026-08-05 a yml selected NOTHING, which was defensible while
+# `ops/ui_quality_plane.yml` merely LISTED mechanisms — but IMP-0041 moved the argv the
+# UI quality gate executes into that file, so a typo there now silently shrinks what the
+# gate runs, and `docs/registry.yml` decides which docs are linted at all. Both are
+# reachable only through a tool; neither is reachable through `docs/**.md` or `ops/**.py`.
+#
+# There is deliberately no universal syntax floor here, unlike `bash -n` for shell: no
+# YAML parser ships with the stdlib, and this orchestrator is zero-dependency on purpose
+# (it has to run in the bootstrap case where the checkout predates the toolchain).
+# Hand-rolling a parser to gate on would make the verdict a property of that parser.
+# Unowned yml is therefore NAMED in a warn, not silently swallowed.
+DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
+    "ops/ui_quality_plane.yml": (
+        ["ops/ui_quality_plane.py", "validate"],
+        ["ops/tests/test_ui_quality_plane.sh"],
+    ),
+    "docs/registry.yml": (
+        ["ops/docs_lint.sh", "--registry"],
+    ),
+}
+
+
 # Paths that legitimately select no gate, each with the reason. Deny-by-default:
 # anything matching neither a gate nor a rule here shows up as `uncovered`.
 # Kept as a module constant beside plan_gates (not a new yml) because it is the
@@ -286,6 +309,13 @@ NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
 )
 
 
+def _neutral_rule(rel: str) -> str | None:
+    """The declared reason this path may select no gate, or None. Shared with the yml
+    router so a tree that is already neutral is not re-adopted and warned about twice."""
+    return next((pat for pat, _ in NEUTRAL_RULES
+                 if rel == pat or rel.startswith(pat)), None)
+
+
 def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
     """Split every changed file into covered / neutral / uncovered.
 
@@ -299,8 +329,7 @@ def _coverage(changed_files: list[str], covered: set[str]) -> dict[str, Any]:
     for rel in changed_files:
         if rel in covered:
             continue
-        rule = next((rid for pat, rid in ((p, p) for p, _ in NEUTRAL_RULES)
-                     if rel == pat or rel.startswith(pat)), None)
+        rule = _neutral_rule(rel)
         if rule is not None:
             neutral.append([rel, rule])
         else:
@@ -346,6 +375,11 @@ def plan_gates(changed_files: list[str],
                            `ops_test_exists` is injected by cmd_gate (anchored at the
                            WORKTREE, so a test added in the same diff is seen); the pure
                            default (None) cannot prove existence -> whole-suite fallback.
+      **.yml | **.yaml  -> the tool that asserts it, per DATA_PLANE_OWNERS (ui_quality
+                           _plane.yml -> its validate + its test; registry.yml ->
+                           docs_lint.sh --registry). No universal syntax floor exists
+                           the way `bash -n` does, so anything with no owner is NAMED in
+                           a warn. Files under a NEUTRAL_RULES tree stay neutral.
 
     Levels: `block` fails the verdict; `warn` is ADVISORY — it degrades the aggregate
     to `warn` but does NOT block cutover (a warn LANDS "with warnings"; its disposition
@@ -530,8 +564,42 @@ def plan_gates(changed_files: list[str],
                 note=f"no test runs for {why} — syntax is the only gate they get",
                 files=untested))
 
+    # yml/yaml control files. Neutral trees (promotion/, frozen/) are excluded up front:
+    # they already have a declared reason to select nothing, and re-adopting them would
+    # grow a warn on every marketing-manifest edit — a warn that always fires is a warn
+    # nobody reads.
+    data_yml = [p for p in changed_files
+                if p.endswith((".yml", ".yaml")) and _neutral_rule(p) is None]
+    if data_yml:
+        # `None` (no probe injected) means assume-present, matching review-receipts
+        # above; the ops_sh default is the opposite because there a missing test is a
+        # meaningful verdict rather than a missing prerequisite.
+        present = ops_test_exists or (lambda rel: True)
+        planned_cmds = [g["cmd"] for g in gates if g.get("cmd")]
+        unowned: list[str] = []
+        for p in data_yml:
+            owners = DATA_PLANE_OWNERS.get(p)
+            if not owners:
+                unowned.append(p)
+                continue
+            if not present(p):
+                continue  # deleted in this diff: running its validator is a false red
+            for cmd in owners:
+                if cmd in planned_cmds:
+                    continue  # the shell router already selected this exact run
+                planned_cmds.append(cmd)
+                gates.append(_shell(f"data-plane:{cmd[0].rsplit('/', 1)[-1]}",
+                                    "data", list(cmd), "block"))
+        if unowned:
+            gates.append(_internal(
+                "data-plane-unowned", "data", "warn",
+                note=("no tool asserts " + ", ".join(unowned)
+                      + " — declare one in DATA_PLANE_OWNERS or accept that a typo "
+                        "in it lands unchallenged"),
+                files=unowned))
+
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py, ops_sh):
+    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
     note = "every changed file is routed to a gate or declared neutral"
