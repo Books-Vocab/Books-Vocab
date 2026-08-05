@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "doc 的 <!-- doc-meta --> verified_against 若在 worktree 內錨到分支自己的 commit sha，該 sha 會被 cutover 前的 rebase orphan 掉，docs_lint 隨後以 ERROR 拒收，變成 cutover 的 block。這個坑 ops/backlog.py 的 render --help 已經具名警告過（--verified-against 預設取 merge-base with origin/main 而非 HEAD，docstring 花一整段解釋 rebase 會 orphan），但那個知識只存在於 backlog.py 內部；一般文檔作者手寫 frontmatter 時沒有任何守衛或提示。2026-08-05 一個下午內三條獨立分支各踩一次。",
+  "id": "IMP-20260805-9bb2d2",
+  "resolution": "尚未修。可能方向：(a) docs_lint 在偵測到 orphan anchor 時直接建議一個 origin 可達的替代 sha（現在只說「re-anchor 到 HEAD 可達的 code commit」，但 HEAD 可達不等於 origin 可達，本地 main 超前 origin 數十顆時照做仍會紅）；(b) 提供 ops 入口一鍵 re-anchor 指定檔案；(c) 在 worktree open 時就把 doc-meta 的 anchor 慣例寫進提示。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "收尾 session：同一個 verified_against orphan 錯誤在三條分支各出現一次（word-detail-actions 的 product_surface.md 與 feature_boundary/vocabulary.md、sync-latency-watermark 的 sync_lifecycle.md）",
+  "status": "open",
+  "stream": "IMP"
+}
