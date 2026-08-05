@@ -102,6 +102,9 @@ struct ReviewTopBar: View, Equatable {
                 action: onToggleAutoPlay
             )
             .disabled(!isAutoplayActionable)
+            // 穩定 identifier:此鍵的 a11y label 會隨播放狀態在「開啟/關閉自動播放」
+            // 之間翻轉,UI 測試若靠 label 選取就會在狀態切換的那一刻選不到。
+            .accessibilityIdentifier("todayReview.autoplayToggle")
 
             #if targetEnvironment(macCatalyst)
             VocabChromeIconButton(
