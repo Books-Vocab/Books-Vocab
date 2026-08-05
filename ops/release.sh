@@ -15,14 +15,20 @@
 #   ./ops/release.sh changelog <api|ios>         # 印 markdown changelog 預覽（唯讀）
 #   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py+uv.lock / ios: pbxproj；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
-#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（iOS 新版另須 --new-version-after-ready <previous>）
-#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布（iOS 新版須 --new-version-after-ready <previous>）。須在 main。dry-run 預設
+#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（ios 封的是 ios/<x.y.z>+<build>）
+#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布。須在 main。dry-run 預設
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
-# 全域 flag：--yes（bump/tag 真寫、release 真執行）
-# iOS 新 marketing version attestation：--new-version-after-ready <previous-version>
-#   表示 operator 已從 ASC 確認 previous-version 完成審查；本 guard 不連網，只和 latest local ios/* tag 對證。
-#   未上架/被拒重送不可用此 flag，應走 bump-build ios + ios_release.sh --upload。
+#
+# iOS 版號的兩種 tag（語意不同，別混）：
+#   ios/<x.y.z>          該 marketing version **上架 App Store** 的那顆 commit。
+#                        只由 `shipped ios` 依 ASC 驗證後物化；immutable，不移動。
+#   ios/<x.y.z>+<build>  該 (version, build) 的封版 commit。由 tag/release/resubmit 產生；
+#                        immutable，同版可多顆並存（Apple 的 build number 每個版本重新計數，
+#                        單獨沒有意義，必須成對）。
+# `--new-version-after-ready` 已移除：ios/<x.y.z> 現在代表上架，tag 存在本身就是證據。
+#
+# 全域 flag：--yes（bump/tag 真寫、release/shipped/resubmit 真執行）
 # 其他：-h|--help
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
@@ -30,7 +36,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
-NEW_VERSION_AFTER_READY=""
 
 err()  { echo "✗ $*" >&2; exit 1; }
 # 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail / ROOT= / YES= 洩進 help。
@@ -95,9 +100,9 @@ semver_gt() {
 #   ahead     — 檔內版號高於上個 tag：正常的「已 bump、未 tag」，發版前對齊即可。
 #   mistagged — 上個 tag 高於檔內版號：那個版號被**撤回**了（tag 打了，pbxproj /
 #               pyproject 隨後 revert 回去）。此時「先 bump 對齊」是錯誤指引，照做
-#               會復活一個刻意撤回的版號；而且留著誤標 tag 會讓 last_tag 說謊，
-#               `--new-version-after-ready` 於是逼 operator attest 一個從未上架的
-#               版本，新版號也被迫跳過它。正解是刪掉那個 tag。
+#               會復活一個刻意撤回的版號；而且留著誤標 tag 會讓 last_tag 說謊——
+#               新語意下 ios/<x.y.z> 宣稱「已上架」，一個從未上架的版號掛著這種
+#               tag，會讓 guard 以它為基準，新版號也被迫跳過它。正解是刪掉那個 tag。
 #               實例：ios/2.0.1（6821015a6 打 tag → f3499f3d4 還原成 2.0.0，2.0.1
 #               從未上架；2.0.0 才是 READY_FOR_SALE）。
 classify_version_drift() {  # $1=tag 版號 $2=檔內版號（呼叫端負責補成三段）
@@ -128,25 +133,42 @@ last_tag() {
     | grep -E "^${tp}[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true
 }
 
-# iOS marketing version 是否能前進的 server 真相只在 ASC；為避免把 release 綁死在網路/API，
-# 這裡要求 operator 用 typed attestation 明示已查證，並以 latest local ios/* tag 對證 previous version。
-# 它不宣稱離線驗出 READY_FOR_SALE，而是讓「新版本」不能從 semver 建議被默默推導。
-guard_ios_new_version() {
-  local requested="$1" previous_tag previous
-  previous_tag="$(last_tag ios)"
-  [[ -n "$previous_tag" ]] || err "找不到上一個 ios/* tag，無法離線對證新版本前序；先人工確認 release history"
-  previous="${previous_tag#ios/}"
+# 出過 build、但還沒有上架 tag 的 marketing version。build tag 讓這件事第一次可檢查：
+# 在此之前 repo 完全不記錄「某版出過 archive」，所以「跳過一個還沒上架的版本」只能靠人記得。
+ios_pending_versions() {  # $1=已上架版本 $2=本次要發的版本 → 印出待確認版本（空白分隔）
+  local shipped="$1" requested="$2" all line ver out=""
+  all="$(git -C "$ROOT" tag -l 'ios/*+*')" || err "無法列出 ios build tag（git 失敗）"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    ver="${line#ios/}"; ver="${ver%%+*}"
+    valid_semver "$ver" || continue
+    [[ "$ver" != "$requested" ]] || continue
+    semver_gt "$ver" "$shipped" || continue
+    case " $out " in *" $ver "*) ;; *) out="${out:+$out }$ver" ;; esac
+  done <<< "$all"
+  printf '%s\n' "$out"
+}
 
-  [[ "$requested" != "$previous" ]] \
-    || err "${requested} 已是上一個 release tag；未上架/被拒同版重送請走 ./ops/release.sh bump-build ios --yes，再跑 ./ops/ios_release.sh --upload"
-  [[ -n "$NEW_VERSION_AFTER_READY" ]] \
-    || err "iOS 新 marketing version 須明示 --new-version-after-ready ${previous}（僅在 ASC 確認 ios/${previous} 已完成審查後使用）；未上架/被拒請走 bump-build ios"
-  valid_semver "$NEW_VERSION_AFTER_READY" \
-    || err "--new-version-after-ready 格式錯誤：${NEW_VERSION_AFTER_READY}（需 x.y.z）"
-  [[ "$NEW_VERSION_AFTER_READY" == "$previous" ]] \
-    || err "--new-version-after-ready ${NEW_VERSION_AFTER_READY} 與 latest local tag ${previous_tag} 不符；停止發版並重查 ASC/release history"
-  semver_gt "$requested" "$previous" \
-    || err "iOS 新 marketing version ${requested} 必須高於 latest local tag ${previous}；禁止倒退或重用已發布版號"
+# ios/<x.y.z> 現在的語意是「這個 marketing version 上架 App Store 的那顆 commit」，由
+# `shipped ios` 依 ASC 驗證後才物化。所以**它存在本身就是上架證據**，這個 guard 不再需要
+# operator 的 typed attestation（`--new-version-after-ready` 因此被移除），而是真的在檢查。
+guard_ios_new_version() {
+  local requested="$1" shipped_tag shipped pending
+  shipped_tag="$(last_tag ios)"
+  [[ -n "$shipped_tag" ]] || err "找不到任何已上架 tag ios/<x.y.z>（build tag 不算——那只代表出過 archive）。
+   無從判斷 ${requested} 是不是真的往前。先跑 ./ops/release.sh shipped ios 從 ASC 確認目前上架的版本。"
+  shipped="${shipped_tag#ios/}"
+
+  [[ "$requested" != "$shipped" ]] \
+    || err "${requested} 已經上架（${shipped_tag}）；同版號、新 build 的重送請走 ./ops/release.sh resubmit ios --yes"
+  semver_gt "$requested" "$shipped" \
+    || err "iOS 新 marketing version ${requested} 必須高於已上架的 ${shipped}；禁止倒退或重用已發布版號"
+
+  pending="$(ios_pending_versions "$shipped" "$requested")"
+  [[ -z "$pending" ]] || err "以下版本出過 build、但沒有上架 tag，狀態未確認：${pending}
+   （build tag：$(git -C "$ROOT" tag -l 'ios/*+*' | tr '\n' ' '))
+   跳過它去發 ${requested}，正是 ios/2.0.1 事故的形狀：2.0.0 還在審就先 bump 了下一版。
+   先跑 ./ops/release.sh shipped ios 確認上架版本；若該版確實沒上架，請走 resubmit ios 重送，不要跳過。"
 }
 
 # ---- status：各 component 待發版總覽（唯讀） ----
@@ -182,7 +204,7 @@ cmd_status() {
         echo "   ⚠ 版號漂移：上個 tag=${basever} 但檔內=${curver}（發版前先 bump 對齊）" ;;
       mistagged)
         echo "   ⛔ 誤標 tag：${tp}${basever} 高於檔內 ${curver} — 該版號已被撤回，從未發布。"
-        echo "      留著它會讓 --new-version-after-ready 逼你 attest 一個不存在的版本，"
+        echo "      留著它等於宣稱一個從未上架的版號已上架，guard 會以它為基準，"
         echo "      且新版號被迫跳過 ${basever}。正解是刪 tag（勿 bump 對齊）："
         echo "      git push origin :refs/tags/${tp}${basever} && git tag -d ${tp}${basever}" ;;
     esac
@@ -383,8 +405,6 @@ cmd_tag() {
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
   if [[ "$c" == ios ]]; then
     guard_ios_new_version "$v"
-  elif [[ -n "$NEW_VERSION_AFTER_READY" ]]; then
-    err "--new-version-after-ready 只適用 iOS 新 marketing version"
   fi
 
   local tp tag files curver branch build
@@ -456,8 +476,6 @@ cmd_release() {
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
   if [[ "$comp" == ios ]]; then
     guard_ios_new_version "$v"
-  elif [[ -n "$NEW_VERSION_AFTER_READY" ]]; then
-    err "--new-version-after-ready 只適用 iOS 新 marketing version"
   fi
 
   local branch curver need_bump
@@ -510,8 +528,11 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes)      YES=1; shift ;;
     --new-version-after-ready)
-      [[ $# -ge 2 && -n "${2:-}" ]] || err "--new-version-after-ready 需要 previous-version（x.y.z）"
-      NEW_VERSION_AFTER_READY="$2"; shift 2 ;;
+      # 靜默忽略是最糟的下場：operator 以為自己還在背書，實際上那個字串已不影響任何判斷。
+      err "--new-version-after-ready 已移除。它存在的理由是舊 ios/<x.y.z> tag 不代表上架，
+   只能請 operator 背書；現在該 tag 由 ./ops/release.sh shipped ios 依 ASC 驗證後才產生，
+   tag 存在本身就是上架證據，guard 直接檢查、不需要 attestation。
+   同版號、新 build 的重送改走 ./ops/release.sh resubmit ios。" ;;
     -h|--help)  usage; exit 0 ;;
     -*)         err "unknown option: $1" ;;
     *)          if [[ -z "$SUB" ]]; then SUB="$1"; else ARGS+=("$1"); fi; shift ;;
