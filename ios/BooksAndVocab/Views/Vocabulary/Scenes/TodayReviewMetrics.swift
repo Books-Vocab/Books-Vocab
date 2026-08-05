@@ -52,7 +52,14 @@ enum TodayReviewMetrics {
     /// 摺頁卡四個角的共用基準（pt）。摺頁卡橫跨 front / answer 兩個 layout box，
     /// 高度不同，所以圓角基準必須來自「這張卡」而不是「這一段」——否則同一條接縫的
     /// 上下緣會算出不同半徑。取 front 段的設計高度當代表尺度。
-    static let foldRoundnessBasis: CGFloat = frontMinHeight
+    ///
+    /// 值原本寫成 `frontMinHeight`（= 120）。本分支的動態佈局把 front 段高度改成
+    /// `containerHeight * frontHeightRatio`（`ReviewCardLayout.swift:94`），該常數隨之刪除，
+    /// 於是這行 rebase 後失去參照（git 沒有產生衝突：兩邊改的是不相鄰的行）。
+    /// 這裡**原值內聯**而非改綁其他常數，是為了讓摺頁圓角算出的結果與 main 逐像素相同
+    /// ——這是 merge 修復，不是設計變更。動態佈局是否該讓這個基準也跟著卡片實際高度走，
+    /// 是另一個問題，留給版面那條線判斷。
+    static let foldRoundnessBasis: CGFloat = 120
     /// 摺頁動畫的 Y 軸偏移量
     static let paperFoldOffsetY: CGFloat = 12
 
