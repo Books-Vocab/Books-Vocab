@@ -168,6 +168,63 @@ mechanisms:
 YML
 expect_reject "$TMP/empty_triggers.yml" "empty triggers list"
 
+# A mechanism the plane declares but no runner can execute used to be silent:
+# ui_quality_gate.py kept its own hand-written command tables, so a mechanism
+# added here and forgotten there resolved to no command, was recorded as
+# `planned`, and never counted as failed — the gate stayed green (IMP-0041).
+# The command belongs to the mechanism, so declare it here and let validate
+# refuse a manual gate that cannot state how to run.
+write_fixture "$TMP/manual_without_run.yml" <<'YML'
+version: 1
+mechanisms:
+  - id: norun.tool
+    layer: static-code
+    entrypoint: ops/test_ops.sh
+    gate: manual
+    triggers:
+      - ios/
+    verdict: "exit code"
+    docs:
+      - docs/sop/ios.md
+YML
+expect_reject "$TMP/manual_without_run.yml" "manual gate with no run:"
+
+write_fixture "$TMP/unknown_requires.yml" <<'YML'
+version: 1
+mechanisms:
+  - id: needs.tool
+    layer: static-code
+    entrypoint: ops/test_ops.sh
+    gate: manual
+    run:
+      - --strict
+    requires:
+      - no-such-resource
+    triggers:
+      - ios/
+    verdict: "exit code"
+    docs:
+      - docs/sop/ios.md
+YML
+expect_reject "$TMP/unknown_requires.yml" "requires: an unknown resource"
+
+section "The real plane states how to run every gate it owns"
+# The whole point of moving the tables out of the runner: this assertion is
+# only possible because the plane now carries `run:`.
+PLANE_JSON="$("${PLANE[@]}" list --json 2>/dev/null)"
+missing_run="$(jq -r '[.[] | select(.gate == "manual") | select(has("run") | not) | .id] | join(", ")' <<<"$PLANE_JSON")"
+if [[ -z "$missing_run" ]]; then
+  ok "every manual-gate mechanism declares run:"
+else
+  fail_t "manual mechanisms with no run: $missing_run — these resolve to no command and stay unrun without failing"
+fi
+ui_world_n="$(jq -r '[.[] | select((.requires // []) | index("ui-world"))] | length' <<<"$PLANE_JSON")"
+if [[ "$ui_world_n" -eq 3 ]]; then
+  ok "three mechanisms declare requires: ui-world"
+else
+  fail_t "expected 3 ui-world mechanisms, plane declares $ui_world_n"
+fi
+
 write_fixture "$TMP/missing_doc.yml" <<'YML'
 version: 1
 mechanisms:
