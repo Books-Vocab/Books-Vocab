@@ -1405,10 +1405,54 @@ def test_saved_dictionary_routes_are_db_only_when_lookup_rollout_is_disabled(
         json={"readerHidden": True},
     )
 
+    # `promote` resolves through `_dictionary_promotion_service`, a *different*
+    # constructor from the three routes above — nothing else in this suite
+    # exercises it with the flag off, so a guard added there would ship unseen.
+    # Stub the service so the assertion is about admission, not about enrich.
+    from kg.dictionary_promotion import PromotionRequestResult
+
+    class _StubPromotionService:
+        def request(self, card_id):
+            return PromotionRequestResult(
+                card_id=card_id,
+                card_role="dictionary",
+                promotion_state="queued",
+                already_promoted=False,
+            )
+
+        async def run(self, _card_id):
+            return None
+
+    monkeypatch.setattr(
+        dictionary_router,
+        "_dictionary_promotion_service",
+        lambda _user: _StubPromotionService(),
+    )
+    promoted = isolated_api.client.post(
+        f"/api/dictionary/cards/{card.id}/promote", headers=isolated_api.headers
+    )
+
+    # archive → delete on the same card, in that order: deploy.md promises a
+    # rolled-back deployment can still unwind an existing card, and delete is
+    # the terminal step of that unwind.
+    archived = isolated_api.client.patch(
+        f"/api/dictionary/cards/{card.id}/archive",
+        headers=isolated_api.headers,
+        json={"archived": True, "notebookId": "default"},
+    )
+    deleted = isolated_api.client.delete(
+        f"/api/dictionary/cards/{card.id}",
+        headers=isolated_api.headers,
+        params={"notebook_id": "default"},
+    )
+
     assert detail.status_code == 200, detail.text
     assert projection.status_code == 200, projection.text
     assert selected.status_code == 200, selected.text
     assert visibility.status_code == 200, visibility.text
+    assert promoted.status_code == 200, promoted.text
+    assert archived.status_code == 200, archived.text
+    assert deleted.status_code == 200, deleted.text
 
 
 def test_disabled_rollout_finishes_an_interrupted_saga_but_still_blocks_new_ones(
