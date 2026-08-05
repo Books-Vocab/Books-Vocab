@@ -178,26 +178,44 @@ def test_desired_bundle_reads_project_file_from_source_commit_not_worktree(
     assert captured["projectFile"].resolve() != (ROOT / PROJECT_FILE_REL).resolve()
 
 
+def scratch_repo(tmp_path: Path, *, content: bytes) -> tuple[Path, str]:
+    """A throwaway git repo, so drift probes never touch the shared checkout."""
+    root = tmp_path / "scratch-repo"
+    (root / PROJECT_FILE_REL).parent.mkdir(parents=True)
+    (root / PROJECT_FILE_REL).write_bytes(content)
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "-c", "init.defaultBranch=main", "init", "-q"], check=True, capture_output=True)
+    subprocess.run([*git, "add", PROJECT_FILE_REL], check=True, capture_output=True)
+    subprocess.run(
+        [*git, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "pin"],
+        check=True, capture_output=True,
+    )
+    commit = subprocess.run(
+        [*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return root, commit
+
+
 def test_desired_bundle_project_bytes_ignore_worktree_edits(tmp_path: Path, monkeypatch):
     """The property the git sourcing buys: unrelated pbxproj edits cannot move it."""
-    source_commit = checked_spec()["target"]["sourceCommit"]
+    pinned = b"// pinned\nMARKETING_VERSION = 2.0.0;\nCURRENT_PROJECT_VERSION = 6;\n"
+    root, commit = scratch_repo(tmp_path, content=pinned)
     dataset_bytes = b'{"schema":"world"}\n'
-    spec = synthetic_spec(dataset_bytes, source_commit)
+    spec = synthetic_spec(dataset_bytes, commit)
     _, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
-    worktree_project = ROOT / PROJECT_FILE_REL
-    original = worktree_project.read_bytes()
+    kwargs = desired_kwargs(tmp_path) | {"workspace_root": root}
+    edited = pinned + b"// unrelated working-tree edit\n"
 
-    try:
-        evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
-        before = captured["projectBytes"]
-        worktree_project.write_bytes(original + b"// drift probe\n")
-        evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
-        after = captured["projectBytes"]
-    finally:
-        worktree_project.write_bytes(original)
+    evidence.produce_desired_bundle(spec, **kwargs)
+    before = captured["projectBytes"]
+    (root / PROJECT_FILE_REL).write_bytes(edited)
+    evidence.produce_desired_bundle(spec, **kwargs)
+    after = captured["projectBytes"]
 
-    assert sha(before) == sha(after)
-    assert sha(before) == sha(blob_bytes(source_commit, PROJECT_FILE_REL))
+    # Positive control first: without a real edit, the silence below proves nothing.
+    assert (root / PROJECT_FILE_REL).read_bytes() == edited
+    assert before == pinned
+    assert after == pinned
 
 
 def test_desired_bundle_refuses_unreachable_source_commit(tmp_path: Path, monkeypatch):
