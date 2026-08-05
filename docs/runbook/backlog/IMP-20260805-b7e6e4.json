@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "ops/i18n_lint.sh 的 XCSTRINGS 變數指向 ios/BooksAndVocab/Localization/Localizable.xcstrings，該檔不存在（該目錄只有 L10n.swift）。實際的在地化正本是五個 <locale>.lproj/Localizable.strings。變數目前沒有被 --baseline-check 路徑用到所以不會炸，但它會誤導下一個讀這支腳本的人以為專案已遷到 String Catalog。刪掉或改指真實路徑。",
+  "id": "IMP-20260805-b7e6e4",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "worktree feat/word-detail-actions",
+  "status": "open",
+  "stream": "IMP"
+}

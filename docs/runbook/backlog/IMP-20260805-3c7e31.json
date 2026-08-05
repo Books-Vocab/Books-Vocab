@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-05",
+  "detail": "worktree-flow skill 要求 gate/cutover 用工作樹自己那份 orchestrator 的絕對路徑，但沒警告『其他所有 repo-relative 指令』的同類陷阱。實測中 Bash 的 cwd 會在呼叫之間漂回 primary checkout，導致 'git status --porcelain' 回報乾淨（稽核到錯的 repo）、'git add <path>' 報 pathspec 不存在、'./ops/i18n_lint.sh' 可能驗到主 checkout 而非工作樹——三者都不會報錯，只會靜默給出對錯誤 repo 的答案，而 gate 綠燈會讓人以為驗過了。建議在 skill 的『硬邊界』段加一條：工作樹內一律 'git -C <path>' 與絕對路徑，別依賴 cwd 持久性。",
+  "id": "IMP-20260805-3c7e31",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "worktree feat/word-detail-actions",
+  "status": "open",
+  "stream": "IMP"
+}

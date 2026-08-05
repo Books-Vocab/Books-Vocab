@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: e1536ac8
+verified_against: 0d097332
 -->
 # Vocabulary Feature Boundary
 
@@ -40,7 +40,7 @@ verified_against: e1536ac8
 | `Scenes/PendingVocabPresenter.swift` | 106 | `struct PendingVocabPresenter: View` + `PendingVocabPresenterState` |
 | `Scenes/KGVocabPresenter.swift` | 345 | Books & Vocab 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 357 | 知識圖譜佈局 |
-| `Scenes/WordDetailPresenter.swift` | 274 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆 |
+| `Scenes/WordDetailPresenter.swift` | 345 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆。**卡片生命週期動作依成本分層**：封存在標題列（`archivebox` ⇄ `archivebox.fill` 單擊切換，`canArchive` 對未同步卡收起——`archiveCard` 以 word+notebookId 定址伺服器，未同步必 404）；刪除壓在內容最底的 `cardManagementSection`，與卡片隔一條 `AppAirDivider`，並收編原本孤懸的「閱讀時不標記此單字」toggle |
 | `Scenes/SyncPresenter.swift` | 228 | 同步主佈局 |
 | `Scenes/SyncPresenter+Header.swift` | 95 | 同步 header |
 | `Scenes/SyncPresenter+ActionArea.swift` | 86 | 同步 action 區域 |
@@ -61,7 +61,7 @@ verified_against: e1536ac8
 | `Scenes/TodayReviewCardCache.swift` | 92 | `struct TodayReviewCardCache`，封裝 current/next card cache、prewarm window 與 rebuild；讓 `TodayReviewState` 不再直接持有 rich card build 細節 |
 | `Scenes/TodayReviewAutoplayController.swift` | 87 | `@MainActor final class TodayReviewAutoplayController`，封裝 autoplay playback state / settings persistence / loop task；讓 `TodayReviewState` 只保留 navigation side effect orchestration |
 | `Scenes/TodayReviewCollocationState.swift` | 29 | `struct TodayReviewCollocationState`，封裝 collocation explanation 的 scene-local mirror 與 entry mutation；讓 `TodayReviewView` 不再直接持有 explanation mirror / save 流程 |
-| `Scenes/WordDetailSceneState.swift` | 119 | `@Observable @MainActor final class WordDetailSceneState`，封裝 presenterState、link error 與 link mutation orchestration；讓 `WordDetailSheet` 退回 scene 組裝與 routing |
+| `Scenes/WordDetailSceneState.swift` | 193 | `@Observable @MainActor final class WordDetailSceneState`，封裝 presenterState、`actionError`（原 `linkError`，現為所有卡片層級動作共用的單一 banner）與 link / archive mutation orchestration；讓 `WordDetailSheet` 退回 scene 組裝與 routing。**共用 banner 的生命週期規則**：每個動作起手 `beginAction()` 清空，否則失敗訊息會活過後續的成功動作。`setArchived` 是 async（對齊 `KGVocabCoordinator.handleBatchArchive`），失敗回捲採 compare-and-swap + `!entry.isDeleted` 守衛——await 期間背景 pull 可能帶回權威值並 `markSynced()`，無條件寫回會用舊值蓋掉新鮮值且不再推送 |
 | `Presentation/ReviewSessionStore.swift` | 117 | `struct ReviewSessionStore`，複習 session order 持久化；使用 `kg:<cardId>` / `local:<uuid>` persistence id、user scope 與 queue fingerprint |
 
 ### Domain Layer（純規則 / mutation helper）
@@ -102,7 +102,8 @@ verified_against: e1536ac8
 | `Scenes/SelectionModeState.swift` | 47 | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | 64 | `struct OverviewTab: View`，Vocab 入口 overview tab |
 | `Scenes/AddLinkSheet.swift` | 121 | `struct AddLinkSheet: View`，KG 手動加連線 sheet |
-| `Scenes/WordDetailSheet.swift` | 128 | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link orchestration 委派 `WordDetailSceneState` |
+| `Scenes/WordDetailSheet.swift` | 197 | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link / archive orchestration 委派 `WordDetailSceneState`。封存後**刻意不 dismiss**（圖示翻轉即回饋兼 undo，故不需要帶動作的 undo toast——`AppToastCoordinator` 也只吃 message/style/duration）；刪除走 `confirmationDialog` 並**指名損失**（連結數取自 presenterState），確認後 `queueDelete` + dismiss。`offersLifecycleActions` 由 `showsInlineChrome` 推導：唯一為 false 的宿主 `LinkedCardOverlayStack` 自繪 header，封存鈕本就不渲染，若不一併關掉刪除，該疊層會變成「只能刪不能封存」 |
+| `Scenes/WordDetailCopy.swift` | 25 | `enum WordDetailCopy`，詳情頁文案（慣例對齊 `NotebookListCopy`）。`deleteMessage(linkCount:)` 依連結數分流，無連結時不印「0 條」 |
 | `Scenes/WordEditSheet.swift` | 105 | `struct WordEditSheet: View` |
 | `Scenes/ArchivedVocabSheet.swift` | 118 | `struct ArchivedVocabSheet: View` |
 | `GraphWebView.swift` | 281 | `struct GraphWebView: UIViewRepresentable` + `GraphForces` |
