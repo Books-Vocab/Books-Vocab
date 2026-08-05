@@ -645,6 +645,68 @@ echo "$status_body" | grep -q 'classify_version_drift' \
 echo "$status_body" | grep -q '誤標' \
   && ok "status names the mistagged case" || fail_t "status has no mistagged branch"
 
+# ── 16. last_tag 只認 released 形狀（build tag 不得污染） ────────────────────
+# `git tag -l "ios/*"` 的 `*` 會跨 `/` 比對，而 `--sort=-v:refname` 把 ios/2.0.0+6
+# 排在 ios/2.0.0 之上。所以一旦開始記 build tag，未收緊的 last_tag 會回 build tag，
+# 讓 guard / status / changelog range 全部改讀一個不是「已上架版本」的東西。
+section "last_tag recognizes only the released x.y.z shape"
+
+# 單行與多行函式都能抽（last_tag 從單行長成多行時測試不得默默失效）。
+extract_fn() {
+  awk -v fn="$1" '
+    index($0, fn "(") == 1 { print; if ($0 ~ /\}[[:space:]]*$/) exit; inside=1; next }
+    inside { print; if ($0 ~ /^\}/) exit }
+  ' "$REL"
+}
+
+last_tag_probe() {  # $1=fixture root  $2=component
+  bash -c "set -euo pipefail
+ROOT='$1'
+err() { echo \"✗ \$*\" >&2; exit 1; }
+$(extract_fn tag_prefix)
+$(extract_fn last_tag)
+last_tag '$2'"
+}
+
+TMP5="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$TMP5"' EXIT
+fx_lt="$TMP5/last-tag"
+mkdir -p "$fx_lt"
+git init -q -b main "$fx_lt"
+git -C "$fx_lt" config user.name "Release Test"
+git -C "$fx_lt" config user.email "release-test@example.invalid"
+git -C "$fx_lt" commit -q --allow-empty -m "fixture"
+for t in ios/1.6.0 ios/2.0.0 ios/2.0.0+5 ios/2.0.0+6 api/2.0.1; do
+  git -C "$fx_lt" tag "$t"
+done
+
+# 負控先行：確認未收緊的 glob 真的會撈到 build tag，否則下面那條測試沒在測東西。
+[[ "$(git -C "$fx_lt" tag -l 'ios/*' --sort=-v:refname | head -1)" == "ios/2.0.0+6" ]] \
+  && ok "raw ios/* glob does rank the build tag first (guard is load-bearing)" \
+  || fail_t "fixture does not reproduce build-tag pollution — the last_tag test proves nothing"
+
+lt_ios="$(last_tag_probe "$fx_lt" ios)"
+[[ "$lt_ios" == "ios/2.0.0" ]] \
+  && ok "last_tag ios skips build tags and returns ios/2.0.0" \
+  || fail_t "last_tag ios returned '${lt_ios}' (build tag leaked into released-version lookup)"
+lt_api="$(last_tag_probe "$fx_lt" api)"
+[[ "$lt_api" == "api/2.0.1" ]] \
+  && ok "last_tag api unaffected" || fail_t "last_tag api returned '${lt_api}'"
+
+# 沒有任何 released tag 時必須「回空且 exit 0」：呼叫端在 set -e 下用 lt="$(last_tag …)"，
+# 一個非零 exit 會讓 status 整個中斷，而不是走「（尚未發版）」分支。
+fx_lt_empty="$TMP5/last-tag-empty"
+mkdir -p "$fx_lt_empty"
+git init -q -b main "$fx_lt_empty"
+git -C "$fx_lt_empty" config user.name "Release Test"
+git -C "$fx_lt_empty" config user.email "release-test@example.invalid"
+git -C "$fx_lt_empty" commit -q --allow-empty -m "fixture"
+git -C "$fx_lt_empty" tag "ios/2.0.0+6"
+empty_rc=0
+lt_empty="$(last_tag_probe "$fx_lt_empty" ios)" || empty_rc=$?
+[[ "$empty_rc" -eq 0 && -z "$lt_empty" ]] \
+  && ok "last_tag with build tags but no released tag returns empty and exits 0" \
+  || fail_t "last_tag build-tag-only repo: rc=$empty_rc out='${lt_empty}' (would abort status under set -e)"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
