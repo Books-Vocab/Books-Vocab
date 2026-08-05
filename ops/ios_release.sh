@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 KEY_PATH="$HOME/.secrets/apple/AuthKey_${KEY_ID}.p8"
-[[ -f "$KEY_PATH" ]] || { echo "✗ API key not found: $KEY_PATH（見 ~/.secrets/apple/README.md）" >&2; exit 1; }
+[[ -f "$KEY_PATH" ]] || { echo "✗ API key not found: ${KEY_PATH}（見 ~/.secrets/apple/README.md）" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -228,7 +228,7 @@ guard_build_number() {
   echo "[release] local build=$local_build  TestFlight latest=$latest_tf"
   if [[ -n "$local_build" && -n "$latest_tf" && "$local_build" =~ ^[0-9]+$ && "$latest_tf" =~ ^[0-9]+$ ]]; then
     if (( local_build <= latest_tf )); then
-      echo "✗ build $local_build 已存在於 TestFlight（latest=$latest_tf）。先 bump CURRENT_PROJECT_VERSION 再 --upload。" >&2
+      echo "✗ build $local_build 已存在於 TestFlight（latest=${latest_tf}）。先 bump CURRENT_PROJECT_VERSION 再 --upload。" >&2
       exit 1
     fi
   fi
