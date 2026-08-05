@@ -479,7 +479,10 @@ def test_update_refuses_a_digest_field_instead_of_silently_dropping_it(tmp_path,
         ]
     )
 
-    assert rc != 0, "passing --detail exited 0 while dropping the flag"
+    # 64, not merely non-zero: this file's usage-error convention, and the
+    # fragmented exit-code families (IMP-0042) are exactly why the flag was
+    # kept and refused rather than deleted. Pin the contract the change claims.
+    assert rc == 64, f"passing --detail should be a usage error, got rc={rc}"
     err = capsys.readouterr().err
     assert "--detail" in err, f"the refusal does not name the flag: {err!r}"
     assert "--resolution" in err, f"the refusal does not name the way out: {err!r}"
@@ -501,6 +504,30 @@ def test_refused_update_fields_are_exactly_the_digest_inputs_the_cli_exposes():
     """
     assert set(BACKLOG.REFUSED_UPDATE_FIELDS) <= set(BACKLOG.DIGEST_FIELDS)
     assert not set(BACKLOG.DIGEST_FIELDS) & set(BACKLOG.MUTABLE_FIELDS)
+
+
+def test_every_field_named_in_digest_fields_actually_changes_the_id():
+    """DIGEST_FIELDS is read off the signature, and a signature is a proxy.
+
+    What actually decides the id is the join inside `make_entry_id`'s body, so
+    a parameter that is declared but not hashed would leave DIGEST_FIELDS
+    naming it anyway — and the refusal message would then assert it is "an
+    input make_entry_id hashes" in the one message whose entire job is to
+    explain that invariant. Adding such a parameter passes every name-level
+    check, so the name-level checks cannot be what guards this.
+
+    Perturbing each named field and demanding the id move pins the behaviour
+    rather than the spelling: it catches a field that drifts out of the digest
+    just as well as one that was never in it.
+    """
+    base = {"stream": "IMP", "date": "2026-08-05", "source": "test", "detail": "a problem"}
+    baseline = BACKLOG.make_entry_id(**base)
+
+    for field in BACKLOG.DIGEST_FIELDS:
+        perturbed = {**base, field: f"{base.get(field, '')}-perturbed"}
+        assert BACKLOG.make_entry_id(**perturbed) != baseline, (
+            f"{field!r} is named in DIGEST_FIELDS but the digest ignores it"
+        )
 
 
 # --------------------------------------------------------------------------
