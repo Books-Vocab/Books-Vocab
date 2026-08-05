@@ -47,7 +47,38 @@ current_version() {  # 從版號檔讀目前 marketing 版本
   esac
 }
 
+current_build() {  # iOS app target 的 CURRENT_PROJECT_VERSION（主 app＝檔內第一個，同 release_bump.sh 口徑）
+  grep -m1 -o 'CURRENT_PROJECT_VERSION = [0-9]*' "$ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj" \
+    | sed -E 's/.*= *//'
+}
+
 valid_semver() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
+# ---- build tag：(marketing version, build number) → 封版 commit ----
+# Apple 端沒有這個事實可查：appStoreVersions 只留「當前」一筆，versionString 是可變欄位
+# （1.4→1.5→…→2.0.0 反覆改寫同一筆記錄），build number 又每個 marketing version 重新
+# 計數。所以「哪顆 commit 產生了哪顆 build」只有 repo 知道，且必須在出 archive 的當下
+# 捕捉——事後無從重建。這個 tag 是 immutable 的：同一 (version, build) 不會有第二顆
+# archive，若真有，那是必須人工釐清的歧義，不是可覆蓋的重複。
+ios_build_tag() { printf 'ios/%s+%s\n' "$1" "$2"; }   # `+` 在 git ref name 合法
+
+IOS_BUILD_TAG_STATE=""
+check_ios_build_tag() {  # $1=build tag；設 IOS_BUILD_TAG_STATE=new|idempotent，衝突則 err
+  local tag="$1" existing head_now
+  existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+  if [[ -z "$existing" ]]; then IOS_BUILD_TAG_STATE=new; return 0; fi
+  head_now="$(git -C "$ROOT" rev-parse HEAD)"
+  # 冪等只在「tag 已指向 HEAD 且版號檔沒有待 commit 的改動」時成立：pbxproj 還髒代表
+  # 接下來會生出新 commit，那顆 tag 就會落在不同 commit 上，屬於下面的歧義。
+  if [[ "$existing" == "$head_now" ]] \
+     && git -C "$ROOT" diff --quiet HEAD -- ios/BooksAndVocab.xcodeproj/project.pbxproj; then
+    IOS_BUILD_TAG_STATE=idempotent; return 0
+  fi
+  err "build tag ${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，但本次要封的是另一顆 commit。
+   同一 (version, build) 從兩顆不同 commit 出過 archive = 真正的歧義，不靜默覆蓋。
+   若這次是新的 archive，先 ./ops/release.sh bump-build ios --yes 取得新 build number；
+   若是既有那顆的補封，請確認哪顆 commit 才是上傳的那顆再人工處理 tag。"
+}
 
 semver_gt() {
   local rma rmi rpa pma pmi ppa
@@ -356,24 +387,37 @@ cmd_tag() {
     err "--new-version-after-ready 只適用 iOS 新 marketing version"
   fi
 
-  local tp tag files curver branch
-  tp="$(tag_prefix "$c")"; tag="${tp}${v}"
+  local tp tag files curver branch build
+  IOS_BUILD_TAG_STATE=""   # 每次呼叫重新判定，不吃上一次的殘值
+  tp="$(tag_prefix "$c")"
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" != HEAD ]] || err "detached HEAD —— 先 checkout 一個分支再發版（避免 push origin HEAD）"
   case "$c" in
-    api) files=(backend/pyproject.toml backend/src/kg/api.py backend/uv.lock) ;;
-    ios) files=(ios/BooksAndVocab.xcodeproj/project.pbxproj) ;;
+    api)
+      files=(backend/pyproject.toml backend/src/kg/api.py backend/uv.lock)
+      tag="${tp}${v}"
+      # preflight
+      git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
+        && err "tag $tag 已存在（重複發版？換版號或先刪 tag）"
+      ;;
+    ios)
+      files=(ios/BooksAndVocab.xcodeproj/project.pbxproj)
+      # iOS 這裡封的是 (version, build)，不是 ios/<x.y.z>。後者代表「上架」，而 upload
+      # 完成的那一刻沒有任何人知道它會不會過審——那個 tag 由 `shipped ios` 依 ASC 物化。
+      build="$(current_build)"
+      [[ "$build" =~ ^[0-9]+$ ]] \
+        || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION（app target 結構異常）：'${build}'"
+      tag="$(ios_build_tag "$v" "$build")"
+      check_ios_build_tag "$tag"
+      ;;
   esac
-
-  # preflight
-  git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null \
-    && err "tag $tag 已存在（重複發版？換版號或先刪 tag）"
   curver="$(current_version "$c")"
   [[ "$curver" == "$v" ]] || err "版號檔目前是 ${curver}，非 ${v} —— 先跑 ./ops/release.sh bump ${c} ${v} --yes"
 
   echo "component=$c  version=$v  tag=$tag  branch=$branch"
   echo "  將 commit 的檔：${files[*]}"
   echo "  commit message：ops: release $c $v"
+  [[ "$c" != ios ]] || echo "  ios/${v}（上架標記）不在此步驟產生 —— 過審後跑 ./ops/release.sh shipped ios"
 
   if [[ $YES -eq 1 ]]; then
     git -C "$ROOT" add -- "${files[@]}"
@@ -383,7 +427,11 @@ cmd_tag() {
       # pathspec 鎖住 release files，避免把 operator 預先 staged 的無關變更一起提交。
       git -C "$ROOT" commit -m "ops: release $c $v" -- "${files[@]}"
     fi
-    git -C "$ROOT" tag "$tag"
+    if [[ "$IOS_BUILD_TAG_STATE" == idempotent ]]; then
+      echo "  ${tag} 已指向 $(git -C "$ROOT" rev-parse --short HEAD)，略過重複 tag（仍會確保推上 origin）"
+    else
+      git -C "$ROOT" tag "$tag"
+    fi
     git -C "$ROOT" push origin "$branch" "$tag"
     echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記+備份；生產部署走 release <backend|ios>）。"
   else
@@ -429,7 +477,8 @@ cmd_release() {
     echo "    3) orchestrate deploy --commit（推 origin/prod → felix reconciler 部署 wordnexus.lol）⚠ 生產"
   else
     echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
-    echo "    3) tag ${comp} ${v}（upload 成功後才 commit 版號檔 + ${comp}/${v} tag + push origin main）"
+    echo "    3) tag ${comp} ${v}（upload 成功後才 commit 版號檔 + ios/${v}+<build> build tag + push origin main）"
+    echo "    ios/${v}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
   fi
 
   if [[ $YES -ne 1 ]]; then
@@ -445,6 +494,10 @@ cmd_release() {
     "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
     echo "✓ release backend ${v}：已 tag + 推 origin/prod；felix reconciler 將健康 gate 部署。"
   else
+    # build tag 衝突要在 upload **之前**發現。TestFlight upload 不可逆，而 cmd_tag 的
+    # 拒絕發生在 upload 之後——那等於先送出一顆我們已經知道封不下去的 archive。
+    # bump 已經跑完，pbxproj 此刻帶的就是本次 archive 的 (version, build)。
+    check_ios_build_tag "$(ios_build_tag "$v" "$(current_build)")"
     "$ROOT/ops/ios_release.sh" --upload || err "ios_release --upload 失敗，中止"
     cmd_tag "$comp" "$v"
     echo "✓ release ios ${v}：已上傳 TestFlight + tag（GUI 綁 build 送審見 docs/sop/ios.md）。"
