@@ -64,7 +64,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         isLoading = true
         defer { isLoading = false }
 
-        await pullAndApplyResult(kgService: kgService, modelContext: modelContext)
+        await pullAndApplyResult(trigger: .automatic, kgService: kgService, modelContext: modelContext)
     }
 
     func forceRefresh(
@@ -75,22 +75,60 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         defer { isLoading = false }
 
         async let health: Void = kgService.healthCheck()
-        await pullAndApplyResult(kgService: kgService, modelContext: modelContext)
+        await pullAndApplyResult(trigger: .explicit, kgService: kgService, modelContext: modelContext)
         await health
     }
 
+    /// 誰發起了這次同步 —— 決定「沒有變化」時要不要出聲。
+    ///
+    /// 對齊 `ExplicitSync` 已經定下的全 app 政策：**自動同步成功靜默、顯式同步成功回饋**。
+    /// 使用者主動下拉需要知道手勢生效了；每次進頁面自動跑的那輪則不該搶版面。
+    enum RefreshTrigger {
+        /// 進入單字本時 `.task` 自動觸發。
+        case automatic
+        /// 使用者下拉刷新 / 按重試 / 空狀態 CTA。
+        case explicit
+    }
+
     private func pullAndApplyResult(
+        trigger: RefreshTrigger,
         kgService: any KGServing,
         modelContext: ModelContext
     ) async {
         do {
-            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
+            let outcome = try await kgService.pullCardsToLocal(
+                container: modelContext.container, progress: nil, notebookId: nil
+            )
+            // 同步本身刻意不可取消（跑在 KGService 的 unstructured Task 裡，已付出的
+            // round trip 一定寫完）；可取消的是**等待的這一端**。使用者已經離開畫面時
+            // 就別再改它的 banner ——「等待者」與「工作」在此分道。
+            try Task.checkCancellation()
             bannerError = nil
-            refreshSuccessMessage = L10n.string("單字庫已更新")
+            refreshSuccessMessage = Self.successMessage(for: outcome, trigger: trigger)
+        } catch is CancellationError {
+            // 換頁、view 重建、或這一輪被取代。那是生命週期事件，不是故障：使用者什麼
+            // 都沒做錯，網路也沒壞。保持畫面原狀（不覆寫既有 banner、不謊報網路錯誤）。
+            // 資料不會因此漏掉——pull 已在背景跑完並寫入。
+            AppLog.kg.info("vocab refresh cancelled (trigger=\(String(describing: trigger))) — banner untouched")
         } catch {
             // 依實際 error 型別分類，而非一律「離線模式」（見 KGVocabBanner）。
             bannerError = KGVocabBannerErrorClassifier.refreshError(from: error)
             refreshSuccessMessage = nil
+        }
+    }
+
+    /// 成功同步後該說什麼（`nil` = 什麼都不說）。
+    ///
+    /// 純函式，可單元測試。三條規則：
+    /// 1. 真的有變化 → 一律報「已更新」，不分觸發來源。
+    /// 2. 沒有變化 + 自動觸發 → **靜默**。這是原本每次進單字本都彈「單字庫已更新」的修正：
+    ///    那則提示與實際同步結果無關，出現得太廉價，久了就沒人看。
+    /// 3. 沒有變化 + 顯式觸發 → 回「已是最新」。使用者主動下拉，沉默會讓人以為刷新沒生效。
+    static func successMessage(for outcome: KGPullOutcome, trigger: RefreshTrigger) -> String? {
+        if outcome.hasChanges { return L10n.string("單字庫已更新") }
+        switch trigger {
+        case .automatic: return nil
+        case .explicit: return L10n.string("單字庫已是最新")
         }
     }
 

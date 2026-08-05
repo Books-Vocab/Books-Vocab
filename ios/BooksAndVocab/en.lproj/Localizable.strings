@@ -224,6 +224,10 @@
 "點擊收合" = "Tap to collapse";
 "點擊翻面" = "Tap to flip";
 "%@ 個單字刪除待同步" = "%@ pending deletions to sync";
+"單字庫已更新" = "Vocabulary updated";
+"單字庫已是最新" = "Vocabulary is up to date";
+"待刪除項目已同步" = "Pending deletions synced";
+"封存已同步" = "Archive synced";
 "%@ 個待處理動作" = "%@ pending actions";
 "%@ 個連結" = "%@ links";
 "%@ 張" = "%@ cards";

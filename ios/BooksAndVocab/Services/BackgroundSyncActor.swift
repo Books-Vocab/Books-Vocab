@@ -23,8 +23,72 @@ actor BackgroundSyncActor {
     /// advance the incremental boundary in that case, so the next sync runs a
     /// full sync again and retries the cleanup. It is always `false` for
     /// incremental syncs and for full syncs whose cleanup ran normally.
+    ///
+    /// The three counters describe what the merge actually changed in the local
+    /// store. They exist so the UI can tell "your vocabulary changed" apart from
+    /// "the sync ran and found nothing new" — a distinction the old `Bool` return
+    /// could not express, which is why every visit to a notebook announced
+    /// "單字庫已更新" even when the merge was a no-op.
     struct PullResult: Sendable {
         var orphanCleanupBlocked: Bool
+        /// Cards present on the server but not locally → newly inserted entries.
+        var inserted: Int = 0
+        /// Existing entries whose **user-visible content** actually differed from
+        /// the server payload. Review state is deliberately excluded — see
+        /// `contentDiffers(card:from:)`.
+        var updated: Int = 0
+        /// Entries removed by a remote soft-delete or by full-sync orphan cleanup.
+        var deleted: Int = 0
+
+        /// Did this merge change anything a user could notice in their vocabulary?
+        var changedEntryCount: Int { inserted + updated + deleted }
+        var hasChanges: Bool { changedEntryCount > 0 }
+    }
+
+    /// Does `card` carry content that differs from what `entry` already holds?
+    ///
+    /// Pure + static so the "did anything really change" decision is unit-testable
+    /// without a ModelContainer, and so the merge loop and the tests can never
+    /// drift apart on what "changed" means.
+    ///
+    /// **Review state is excluded on purpose.** `lastReviewedAt` / `reviewCount` /
+    /// `nextReviewAt` round-trip through the server on every review: this device
+    /// pushes them, the next incremental pull hands them straight back, and the
+    /// card's `updated_at` moves. Counting those as a change would make the
+    /// "vocabulary updated" signal fire after every single review session — the
+    /// exact false positive this comparison exists to prevent. What is compared is
+    /// the card's *content*: the things a user reads on the row and in the detail
+    /// sheet.
+    static func contentDiffers(card: KGCard, from entry: VocabularyEntry) -> Bool {
+        // The merge ends with `markSynced()`, which sets `syncState = .synced`.
+        // For an entry that was still `pending`/`failed`, that flip is the most
+        // user-visible change of all: `shouldAppearInKnowledgeList` requires
+        // `isSynced`, so the row *appears in the list* — even when every content
+        // field already matched. Comparing content alone would report「已是最新」
+        // while new rows materialised on screen.
+        if !entry.isSynced { return true }
+        if entry.translation != card.meaning { return true }
+        if entry.partOfSpeech != card.pos { return true }
+        if entry.explanation != card.note { return true }
+        if entry.difficultyTier != card.difficultyTier { return true }
+        if entry.inflections != (card.inflections ?? []) { return true }
+        if entry.collocations != (card.collocations ?? []) { return true }
+        if entry.reviewExamples != card.examples { return true }
+        if entry.reviewMode != (VocabularyCardMode(rawValue: card.mode) ?? .recognition) { return true }
+        if entry.graphLinksByKind != (card.linksByKind ?? [:]) { return true }
+        if entry.isArchived != (card.isArchived ?? false) { return true }
+        if let cardNotebookId = card.notebookId, entry.notebookId != cardNotebookId { return true }
+        // `source` only ever *backfills* a book title (applySource refuses to
+        // clobber a known title with an empty server one), so compare it the same
+        // way: a difference counts only when the server actually supplies one.
+        if let source = card.source, source.type == "book",
+           let title = source.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            if entry.bookTitle != title { return true }
+            let chapter = source.chapter?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if entry.chapterTitle != ((chapter?.isEmpty == false) ? chapter : nil) { return true }
+        }
+        return false
     }
 
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
@@ -51,6 +115,11 @@ actor BackgroundSyncActor {
         // Keep track of fetched card keys to detect orphans later
         var fetchedCardKeys = Set<String>()
 
+        // What this merge actually changed — drives the "vocabulary updated" signal.
+        var insertedCount = 0
+        var updatedCount = 0
+        var deletedCount = 0
+
         // 1. Merge into local DB
         let totalCards = fetchedCards.count
         for (index, card) in fetchedCards.enumerated() {
@@ -66,12 +135,21 @@ actor BackgroundSyncActor {
                 if card.isDeleted == true {
                     AppLog.sync.info("Remote soft-delete received: \(existingEntry.word)")
                     modelContext.delete(existingEntry)
+                    deletedCount += 1
                     continue
                 }
 
                 if existingEntry.syncAction == .delete {
                     // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
                 } else {
+                    // Snapshot the verdict *before* the assignments below overwrite the
+                    // fields it compares. SwiftData marks a property dirty on assignment
+                    // regardless of whether the value differs, so `hasChanges` cannot
+                    // answer this question after the fact.
+                    if Self.contentDiffers(card: card, from: existingEntry) {
+                        updatedCount += 1
+                    }
+
                     // Update existing record
                     existingEntry.translation = card.meaning
                     existingEntry.partOfSpeech = card.pos
@@ -126,6 +204,7 @@ actor BackgroundSyncActor {
 
                 modelContext.insert(newEntry)
                 localDict[mergeKey] = newEntry
+                insertedCount += 1
             }
         }
 
@@ -157,6 +236,7 @@ actor BackgroundSyncActor {
                     orphanedWords.append(entry.word)
                     modelContext.delete(entry)
                 }
+                deletedCount += orphanedWords.count
                 if !orphanedWords.isEmpty {
                     AppLog.sync.warning("Orphan cleanup removed \(orphanedWords.count) entries: \(orphanedWords.prefix(20).joined(separator: ", "))\(orphanedWords.count > 20 ? "..." : "")")
                 }
@@ -164,8 +244,13 @@ actor BackgroundSyncActor {
         }
 
         try modelContext.save()
-        AppLog.sync.info("pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards.")
-        return PullResult(orphanCleanupBlocked: orphanCleanupBlocked)
+        AppLog.sync.info("pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards (inserted=\(insertedCount) updated=\(updatedCount) deleted=\(deletedCount)).")
+        return PullResult(
+            orphanCleanupBlocked: orphanCleanupBlocked,
+            inserted: insertedCount,
+            updated: updatedCount,
+            deleted: deletedCount
+        )
     }
 
     /// Deletes the app-account-scoped local SwiftData state — vocabulary, review

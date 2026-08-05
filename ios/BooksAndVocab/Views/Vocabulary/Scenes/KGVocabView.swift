@@ -245,10 +245,12 @@ struct KGVocabView: View {
                 title: "無法載入單字".localized,
                 systemImage: "exclamationmark.triangle",
                 description: "請確認網路連線後重試".localized,
+                // 使用者按的「重試」是顯式動作，走 forceRefresh —— 與下拉刷新、banner
+                // 重試、空狀態 CTA 同一條路。走 loadInitialData 會被歸類為 automatic，
+                // 於是「重試成功但沒有變化」時整個畫面靜默無回應。
                 retryAction: {
                     Task {
-                        await coordinator.loadInitialData(
-                            authManager: authManager,
+                        await coordinator.forceRefresh(
                             kgService: kgService,
                             modelContext: modelContext
                         )

@@ -1,6 +1,29 @@
 import Foundation
 import SwiftData
 
+/// 一次 `pullCardsToLocal` 的結果。
+///
+/// 取代原本的裸 `Bool`（只表達 pipeline pending），因為呼叫端需要區分的其實是兩件
+/// 獨立的事：**伺服器還在算嗎**（決定要不要再輪詢）與 **本地單字庫真的變了嗎**
+/// （決定要不要跟使用者說「已更新」）。裸 `Bool` 表達不了後者，於是 UI 只能無條件
+/// 報「單字庫已更新」——每次進單字本都彈一次、即使那輪 merge 是 no-op。
+struct KGPullOutcome: Sendable, Equatable {
+    /// 伺服器 `X-Pipeline-Pending: true` — AI pipeline 仍在處理，值得稍後再拉一次。
+    var pipelinePending: Bool
+    /// 這輪 merge 實際新增的詞條數。
+    var inserted: Int = 0
+    /// 這輪 merge 實際更新（使用者可見內容真的不同）的詞條數；**不含複習狀態**。
+    var updated: Int = 0
+    /// 這輪 merge 實際刪除（remote soft-delete 或 orphan cleanup）的詞條數。
+    var deleted: Int = 0
+
+    /// 使用者可感知的變動筆數。
+    var changedEntryCount: Int { inserted + updated + deleted }
+    var hasChanges: Bool { changedEntryCount > 0 }
+
+    static let unchanged = KGPullOutcome(pipelinePending: false)
+}
+
 /// 背景同步能力（窄協定）— 供顯式同步 UI（書架 pull-to-refresh / Mac toolbar /
 /// ⌘R menu）依賴與 mock。比照 `LocalDataClearing` 的能力切分：consumer 只需這兩個
 /// 成員，無謂背 `KGServing` 全表。`KGServing` 細化此協定，故 `any KGServing` 可直接
@@ -35,7 +58,7 @@ protocol KGServing: BackgroundSyncing, DeckCopying {
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
     func triggerPipeline(notebookId: String) async throws
     @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> Bool
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome
     func fetchNotebooks() async throws -> [KGNotebook]
     func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook
     func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook

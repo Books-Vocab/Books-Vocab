@@ -118,6 +118,17 @@ extension KGService {
             } catch let error as KGError {
                 throw error // non-retryable KGError propagates immediately
             } catch let error as URLError {
+                // -999 `cancelled` is never a transport fault: URLSession only
+                // produces it when the request was cancelled, which for these
+                // `async` calls means the enclosing Swift task was cancelled.
+                // Reporting it as `KGError.networkError` put a lifecycle event
+                // (view teardown, a superseded refresh) in front of the user as
+                // "網路錯誤：已取消" — complete with a wifi-slash glyph and a retry
+                // button whose retry raced into the same cancellation. Rethrowing
+                // as `CancellationError` puts it in the category the rest of the
+                // codebase already filters on (Sentry filters, sync phase
+                // reporting, the vocab banner).
+                if error.code == .cancelled { throw CancellationError() }
                 lastError = KGError.networkError(underlying: error)
                 Self.recordHTTPBreadcrumb(
                     url: url,

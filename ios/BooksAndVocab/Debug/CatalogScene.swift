@@ -189,7 +189,11 @@ struct CatalogScene: View {
             .init(id: "notebook_edit", surfaces: [block("Notebook Edit", .notebook, NotebookEditSheet.self)], register: NotebookEditSheetScenarios.register),
             .init(
                 id: "banners",
-                surfaces: [block("Banners · Review", .misc), block("Banners · Demo", .misc, DemoBanner.self)],
+                surfaces: [
+                    block("Banners · App", .misc, AppBanner.self),
+                    block("Banners · Review", .misc),
+                    block("Banners · Demo", .misc, DemoBanner.self)
+                ],
                 register: BannerScenarios.register
             ),
             .init(id: "sync", surfaces: [block("Sync", .review, SyncPresenter.self)], register: SyncScenarios.register),
