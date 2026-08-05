@@ -1,8 +1,13 @@
 {
+  "acceptance": "./ops/tests/test_review_audit.sh",
   "category": "doc",
   "date": "2026-08-05",
   "detail": "**`review_audit.sh` 的五個合法豁免裡,`single-line-small-file` 是結構性壞的一條。** 它量的是換行符位置,不是改動大小——在由長 table row / 長設定行構成的檔案裡(`improvement_backlog.md` 97+ 列、`docs/registry.yml`、`ops/ui_quality_plane.yml`),「一行」與語意重量**零相關**。**實際咬到的案例就是本次**:我對 `improvement_backlog.md` 做了一段頒布全 repo 規則的語意重寫,diff 顯示 1 行(純粹是 markdown table row 的排版產物),我據此填了 `Review-Exempt: single-line-small-file`。**沒有任何工具會擋**——`review_audit.sh` 只驗 trailer 存在且合法,不驗內容是否真的符合(鐵律 4 的機器面到此為止)。我自己抓出來改派 reviewer,而該 review 在那「一行」裡挖出 3 個實質 BLOCK,判定自我驗證。其餘四條豁免(`trivial-typo`/`format-only`/`rename-only`/`generated-snapshot`)**定義上改變不了任何人的行動,維持正當**,不要矯枉過正到每個 typo 都送審。下一步:把該條收窄成「單行 **且** 不含規範性語句(必須/禁止/應/通則/規則)」,或換成語意判準「這段文字錯了,讀者會照著做錯事嗎」。",
+  "fix_site": "ops/review_audit.sh:113",
+  "groomed_at": "2026-08-05",
+  "groomed_by": "workflow:groom@v1",
   "id": "IMP-0065",
+  "plan": "前提（已讀碼確認）：ops/review_audit.sh:110-119 的 is_allowed_exemption 只比對字串白名單，主迴圈 :144-155 只看 trailer 存不存在、合不合法，全程沒有讀過 diff 一個 byte——所以五條豁免沒有任何一條被驗證，single-line-small-file 只是其中最容易被誤用的那條。\n1. ops/review_audit.sh：is_allowed_exemption 保持只做白名單比對（其他四條維持現狀，entry 明講不要矯枉過正）。另加新函式 single_line_exemption_holds <sha>，放在 is_allowed_exemption 之後：\n   (a) merge commit 直接不成立——git rev-list --parents -n 1 <sha> 的欄位數大於 2 就回非零（merge 不可能是單行改動）。\n   (b) 行數：git show --numstat --format= <sha>，把每列的 added 與 deleted 加總，總和大於 1 就回非零；欄位是 - （binary）也回非零。\n   (c) 規範性語彙：git show --unified=0 --format= <sha> 取出以 + 開頭、且不是 +++ 的行，用 grep -Eq 比對 必須|禁止|不得|一律|通則|規則|規範|應該|應當|MUST|NEVER|ALWAYS，命中就回非零。刻意不收單獨的「應」字：對應／供應／回應／因應會大量誤判，而誤判的代價是逼一個 typo 去送 review。\n2. 主迴圈 :144-155 的 elif 分支：review_exempt 等於 single-line-small-file 時，除了白名單還要 single_line_exemption_holds \"$sha\" 為真；不成立則 status=invalid-exemption、level=block、note 要說出是哪一項不成立（多行 / 規範性語彙 / merge），沿用既有的 invalid_exemption_count 與 block_count，不新增 status 值（JSON schema kg.review_audit.v1 的取值集合不變）。\n3. 測試加在 ops/tests/test_review_audit.sh，沿用既有 fixture（setup_repo :14-27、commit_with_message :29-38；後者每次新增一個單行檔案，正好是 1 added line）：(a) 單行且非規範文字 + Review-Exempt: single-line-small-file → ok；(b) 單行但內容含「必須」 → block 且 status=invalid-exemption；(c) 兩行改動 + 同一豁免 → block；(d) 既有的 Review-Exempt: trivial-typo 那筆仍然 ok（證明只收窄了一條）。先寫測試看紅再改實作。\n4. 新增 commit 會改變既有的 jq 摘要斷言（:70-80 的 total==4 / ok==2 / block==2 / reviewed==1 / exempt==1 / missing==1 / invalidExemption==1），要一併更新成新數字，否則會被誤讀成本次改動打壞了統計。\n5. 同 PR 同步三處 agent-facing 文字（KG CLAUDE.md 的 Scope 規則要求）：ops/review_audit.sh:13 的 usage 註解、docs/sop/review_discipline.md:48 的白名單列、docs/reference/tech_index.md:134 的 review_audit.sh 條目——都要寫明 single-line-small-file 現在是被機器驗證的（行數上限 1 且不得含規範性語彙），其餘四條仍只驗 trailer。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
