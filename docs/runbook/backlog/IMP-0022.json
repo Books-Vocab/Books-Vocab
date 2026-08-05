@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-09",
+  "detail": "felix 生產後端 git HEAD 靜默落後 origin/main 80 commits(0cea7f67 vs main),無任何告警。stale 容器的 `ops-edit seed` 舊碼**靜默丟棄** spec 的 counter-form 複習日期(review_count>0=0、next_review_at 全 null)、不合成 review_events(heatmap/streak=0)、不做 is_default→default remap(多殘留空 notebook)——差點注入「看起來全新未使用」的行銷帳號。本 session 已 deploy felix→main(0611f3ca)解當下阻塞,但**監控 gap 仍在**。候選:`devops_kg_safe.sh health` 加「commits behind main」metric + warn 閾值,讓生產漂移顯式化。",
+  "id": "IMP-0022",
+  "resolution": "—(deploy 0611f3ca 解當下;monitoring 候選未做)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "行銷帳號 Phase5(felix 漂移)",
+  "status": "open",
+  "stream": "IMP"
+}

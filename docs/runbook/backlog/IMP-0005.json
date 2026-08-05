@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-06-13",
+  "detail": "`docs_lint.sh` 不接受裸 doc 路徑當位置參數(`docs_lint.sh foo.md` → Unknown arg),已加可接受裸路徑並保留清楚提示",
+  "id": "IMP-0005",
+  "resolution": "`813356b1`",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "kaizen-loop review gate",
+  "status": "fixed",
+  "stream": "IMP"
+}

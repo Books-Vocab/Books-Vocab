@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-14",
+  "detail": "live-demo staging 曾把 account identity marker/hash 注入 xctestrun 的所有 test targets，權限面大於固定 live-only method。現先 sanitize/scan 每個 configuration/target，只注入唯一 `BlueprintName=BooksAndVocabUITests` target；0 或多個匹配在注入前 fail-closed，其他 target 保留 key-absent。",
+  "id": "IMP-0035",
+  "resolution": "`30df7f5f1`",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "App Review 2.0.0 live runner review",
+  "status": "fixed",
+  "stream": "IMP"
+}

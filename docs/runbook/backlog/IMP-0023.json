@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-09",
+  "detail": "`devops.sh cmd_backup`(line 596)無條件用 GNU-rsync 專屬旗標 `rsync -az --delete --info=progress2 --human-readable`,macOS 內建 openrsync 不支援 `--info=progress2`(`unrecognized option`)→ 從 oscar 跑 `devops_kg_safe.sh backup` 直接失敗、備份命令不可用。候選:偵測 rsync flavor(GNU vs openrsync)擇旗標,或改用兩者皆支援的 `--progress`,或該旗標包 `|| true` 降級。",
+  "id": "IMP-0023",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "行銷帳號 Phase5(backup)",
+  "status": "open",
+  "stream": "IMP"
+}

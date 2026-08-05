@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "同一堵簽章牆在 test route 上還在：`ops/ios_test.sh` 記載可用 `--destination` 跑 Mac Catalyst，但沒有對應的不簽章規則，下一個跑 Catalyst 測試的 agent 會撞到一模一樣的 exit 65。目前無 gate 走這條，故列 low。下一步：`ios_test.sh` 偵測 Catalyst destination 時比照 `ios_build.sh` 帶 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`，或明確擋下並指向 IMP-0039 的說明。",
+  "id": "IMP-0043",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "IMP-0039 的 review",
+  "status": "open",
+  "stream": "IMP"
+}

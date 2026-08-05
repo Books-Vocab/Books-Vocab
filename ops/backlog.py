@@ -989,15 +989,25 @@ def _cmd_render(args) -> int:
 
     if args.commit:
         _write_atomic(args.out, text)
+        # len(text) is CHARACTERS. This ledger is mostly CJK, where that
+        # undercounts bytes by ~3x — the first render reported "35867 bytes" for
+        # a 54724-byte file, which reads exactly like a third of the content
+        # went missing. Report what the label claims.
+        size = len(text.encode("utf-8"))
         if args.json:
             print(
                 json.dumps(
-                    {"schema": "kg.backlog.render.v1", "out": str(args.out), "bytes": len(text)},
+                    {
+                        "schema": "kg.backlog.render.v1",
+                        "out": str(args.out),
+                        "bytes": size,
+                        "characters": len(text),
+                    },
                     ensure_ascii=False,
                 )
             )
         else:
-            print(f"wrote {args.out} ({len(text)} bytes, verified_against={verified})")
+            print(f"wrote {args.out} ({size} bytes, verified_against={verified})")
     else:
         sys.stdout.write(text)
     return 0

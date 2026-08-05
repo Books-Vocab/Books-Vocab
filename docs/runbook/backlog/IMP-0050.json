@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`ops/ui_quality_gate.py:352` 的 `planned` 是**狀態計數**（仍停在 `planned` 狀態、沒被執行的機制數），不是「計畫了幾道」。所以健康的一次 `--all-mechanisms` 執行印的是 `summary: planned=0 passed=5 failed=0` —— 而 **`planned=0` 正是 CI 空轉兩個月的招牌字串**（那次是五個計數**全部**為 0）。同一個 token 同時代表「一切都跑完了」與「什麼都沒選到」，欄位名長得像 plan size。本輪寫斷言時我自己就讀錯了一次，寫成 `passed == planned` 而在真實輸出上炸掉。下一步：`planned` 改名為 `unrun`（或 `deferred`），另加真正的 `selected` = `len(impacted)`，讓「什麼都沒選到」有專屬且不可能與健康態混淆的表示；`--json` 的 `summary` 同步。",
+  "id": "IMP-0050",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0044 實作中撞到",
+  "status": "open",
+  "stream": "IMP"
+}

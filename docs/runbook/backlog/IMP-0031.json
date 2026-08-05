@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-13",
+  "detail": "`release.sh` 把 iOS semver 建議當成可執行 release，未要求 previous marketing version 已完成審查的 typed attestation，且先 tag/push 再 upload；被拒中的 2.0.0 因而可被誤升 2.0.1，upload 失敗也會留下 false release marker",
+  "id": "IMP-0031",
+  "resolution": "`6ff5bcf10`(離線 `--new-version-after-ready` guard + semver 單調性 + upload-before-tag + 71 斷言)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "iOS 2.0.1 誤標事故",
+  "status": "fixed",
+  "stream": "IMP"
+}

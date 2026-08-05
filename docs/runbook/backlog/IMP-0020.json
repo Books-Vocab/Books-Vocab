@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-08",
+  "detail": "`catalog snapshots --reuse-build` 在「cache hit 但 test run 失敗」時回 `status:\"cache-miss\"`,語意誤導（實為 run failure）",
+  "id": "IMP-0020",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "deflate 修復(c272101c9)",
+  "status": "open",
+  "stream": "IMP"
+}

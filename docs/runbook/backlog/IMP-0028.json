@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-09",
+  "detail": "iOS `SettingsCoordinator.applyServerReviewClock`(`SettingsCoordinator.swift:113`)用 strict `AppDateFormatters.iso8601`(要小數秒)解析伺服器 `paused_at`,而非旁邊的 `AppDateFormatters.parseISO8601` fallback(`AppDateFormatters.swift:56-57`)→ 缺小數秒的 `paused_at` 靜默回 nil → 凍結退回 wall-clock 卻仍報 is_paused=true(false-green)。本 session 注入用 `.000Z` 規避,但潛伏 bug 仍在。**已修復**:改用 `AppDateFormatters.parseISO8601`(小數秒優先 + 不含小數秒 fallback),對稱寫入側恆產小數秒;TDD 兩案回歸測試(有/無小數秒)。",
+  "id": "IMP-0028",
+  "resolution": "bb45e0f85(#981;rebase onto main 後 CI ui-quality-gate pass、squash merge)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "行銷帳號 Phase5(時鐘凍結對抗驗證)",
+  "status": "fixed",
+  "stream": "IMP"
+}

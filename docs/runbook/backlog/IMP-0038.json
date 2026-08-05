@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-03",
+  "detail": "約 10 份 doc 的 `verified_against` 錨點指向 **從未進入 origin 的 pre-squash commit**（`docs/policy/safety.md` f0d37ca4、多份 `feature_boundary/*` …）。本機能過 `docs_lint` 只是因為本地 dangling object 仍在，CI 上（即使 `fetch-depth: 0`）一律解析失敗。Doc Tier 契約要求錨點「main 可達」，故這是實質假綠而非 CI 怪癖。`docs-lint` 因此暫時排除於 linux CI set。下一步：逐份把錨點 bump 到 main 可達 commit，然後把 group 移回 `LINUX_GROUPS`。",
+  "id": "IMP-0038",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "harness 可信度改造 Phase 1",
+  "status": "open",
+  "stream": "IMP"
+}

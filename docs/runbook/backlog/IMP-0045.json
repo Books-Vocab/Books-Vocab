@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`worktree_orchestrate.py gate` 跑哪套規則**取決於從哪個 cwd 呼叫**：從主 repo 呼叫用 main 版工具（本次排 8 道），從工作樹呼叫用分支版（排 11 道，多 `review-receipts`/`ui-quality-fast`/`coverage`）。兩者輸出格式完全相同，**沒有任何欄位標示這份判決出自哪一版 orchestrator**，實測會讓人把舊規則的全綠誤讀為新規則的全綠。下一步：`kg.worktree.gate.v1` 加 orchestrator provenance（工具檔的 commit/sha256 + 解析到的路徑），並在文字報告首行印出來。",
+  "id": "IMP-0045",
+  "resolution": "`feat/gate-provenance-bidirectional`。**原條目低估了嚴重度**：這不只是「看不出來」，是**繞過**——`cmd_cutover` 只核對 `head_sha` 與 `verdict`，所以「主 repo 跑 gate（舊規則全綠）→ 工作樹跑 cutover（新規則）」會被接受。根因是 `_run_gate` 以 worktree 為 cwd 執行 gate **工具**，但 `plan_gates`（路由）來自呼叫端 cwd 解析到的那份 `.py`。修法：`ops/lib/provenance.py`（tool-identity hashing 的 SoT）+ `_orchestrator_identity` 寫進 `kg.worktree.gate.v1`、文字報告首行與 `--receipt-line` 皆印 `<sha8> (<source>)`；`gate`/`cutover` 在 worktree 副本 sha256 與執行中這份**不同**時 refuse，位元組相同則放行（閘門只在分支真的改了本工具時觸發）；cutover 另核對紀錄的 orchestrator 是否等於 worktree 現行副本。review 抓到「存在但讀不到」原本與「不存在」渲染完全相同、會讓 guard 放行，已改為第三態 fail-closed。skill/SoT 同步改用 `<worktree>/ops/worktree_orchestrate.py` 形式，讓 refuse 落在正道之外。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0039 收尾觀察",
+  "status": "fixed",
+  "stream": "IMP"
+}

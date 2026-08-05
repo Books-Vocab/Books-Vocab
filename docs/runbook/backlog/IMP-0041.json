@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`ops/ui_quality_gate.py:46-66` 的 `FAST_COMMANDS`/`SLOW_COMMANDS`/`UI_WORLD_REQUIRED` 是**第二份手寫 mechanism id 清單**，與 `ops/ui_quality_plane.yml` 無交叉驗證：yml 新增機制但忘了在 runner 登記 → `resolve_args` 回 (None,None) → status=`planned` → 不計入 failed → gate 全綠。違反 CLAUDE.md「SoT 零重複鐵則」。下一步：把命令併進 yml 成 `run:`/`requires:` 欄位，`cmd_validate` 對 `gate: manual` 而無 `run:` 報 ERROR，runner 改讀 yml 且讀不到即 failed（非 planned）。",
+  "id": "IMP-0041",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "harness 可信度改造 Phase 3.1（未完成）",
+  "status": "open",
+  "stream": "IMP"
+}

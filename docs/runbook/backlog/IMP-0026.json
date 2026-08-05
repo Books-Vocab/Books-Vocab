@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-09",
+  "detail": "`ops-cli world-diff` 硬性要求 `schema==kg.ops_world_expectation.v1`(`ops_world_diff.py:18`),無法驗「帳號 == seed_spec」(注入格式是 `kg.seed_spec.v1`)。缺一個 first-class「reshape 是否精確落地」檢查,只能靠 `world-export` + 外部 normalized diff 橋接(本 session 自寫 python 比對)。候選:教 world-diff(或新 world-verify)吃 seed_spec,或 seed/clone-demo 自吐比對 verdict。",
+  "id": "IMP-0026",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "行銷帳號 Phase5(驗證)",
+  "status": "open",
+  "stream": "IMP"
+}

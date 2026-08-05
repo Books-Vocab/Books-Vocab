@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`ios-build-catalyst` 是 cutover 的 **block** gate，但本機**結構性不可能通過**：`No \"Mac Development\" signing certificate matching team ID XNSH5U9FNV`。未改動的 main 亦然（exit 65）。一道環境上不可能綠的 block gate 與一道不可能紅的 gate 同樣有害，方向相反——它讓每個 iOS cutover 都被擋，而唯一的出路是繞過流程。原本列的兩個選項（裝憑證／降為 warn）都沒採用：**採第三案**——該 gate 宣稱驗的是編譯（\"sim green != Catalyst green\"），而編譯與簽章正交，故 `--catalyst` 改為隱含不簽章編譯。已知覆蓋缺口（本 repo 從不簽 Catalyst 產物，故 entitlement-vs-profile 相容性無處驗證）已在 `docs/sop/ios.md` §Step 1 具名接受。",
+  "id": "IMP-0039",
+  "resolution": "`19f70c4e4`（branch-local；`--catalyst` 隱含 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`，plan/run 共用 `xcodebuild_argv`）",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "harness 可信度改造 Phase 2",
+  "status": "fixed",
+  "stream": "IMP"
+}

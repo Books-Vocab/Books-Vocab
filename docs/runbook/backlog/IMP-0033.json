@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-14",
+  "detail": "`ios_ops.sh test --ui --configuration Release --destination generic/platform=iOS --prepare-cache --json` 曾在 xcodebuild exit 0、iphoneos xctestrun 與兩個 `.app` 都存在時，同份 JSON 回 `status:\"prepared\"` 與 `productsReady:false`。根因＝readiness predicate 以 `platform=iOS,`（**帶逗號**）判 device SDK，comma-less 的 `generic/platform=iOS` 落回 iphonesimulator。調查發現嚴重度高於原評：**雙向錯誤**（iphonesimulator 產物會被當成 device build 的證據）、sentinel 走同一 predicate 故該 cache 永久冷、且 `prepare` 硬寫 `\"prepared\"` 而只有 `status==\"error\"` 才 exit 1 → `worktree_orchestrate` 的 live-only Release compile **block** gate 在「build exit 0 但零產物」時仍綠（假綠）。順帶修 `--json` 下 progress banner 污染 stdout。",
+  "id": "IMP-0033",
+  "resolution": "`febc68ebb`(`ios_test_sdk_suffix` seam + `ios_test_prepare_status` 導出 status + stdout 純度 + hermetic iphoneos fixture 迴歸；365 passed/0 failed)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "App Review 2.0.0 Release iphoneos compile gate",
+  "status": "fixed",
+  "stream": "IMP"
+}

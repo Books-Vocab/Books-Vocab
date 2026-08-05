@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`_run_gate` 對**路由到但不存在的工具**是 raise 而非回報：`worktree_orchestrate.py:836` 直接 `run_streamed_command`，缺檔時 `FileNotFoundError` 打穿整個 `gate`，吐 traceback 而不是一道 block 判決。這正是 IMP-0045 那類「router 與被路由工具不同代」的下游症狀（分支刪了某腳本、主 repo 的 router 仍指向它）——IMP-0045 的 guard 擋掉了主因，但工具消失的失敗模式仍應是**可讀的 block**，不是 crash。實測：合成 fixture repo 無 `ops/` 樹時，`docs-lint` gate 讓整個 `cmd_gate` 拋例外（測試裡靠植入 stub 繞開）。下一步：`_run_gate` 捕捉 `OSError`，回 `{\"status\": \"block\", \"rc\": 127, \"summary\": \"gate tool not found: <cmd[0]>\"}`，並補一條測試。",
+  "id": "IMP-0047",
+  "resolution": "`a8e6a18a6`+`a366b89a3`(review 修正)。`_run_gate` 捕捉 `OSError` 回可讀 block(rc 127)而非讓例外打穿整個 `cmd_gate`——後者會連帶丟掉**其他每一道 gate 的結果**。review 抓到兩個真問題:①原斷言 `\"<cmd>\" in summary` 被**例外自己的 repr** 滿足,把整段 prefix 刪掉全套仍 129 passed → 改 `startswith`,並補「cwd 缺失」案例(該情況下 OS 指的是缺的**目錄**不是命令,舊訊息會指錯對象);②rc 127 的 spawn 失敗會寫進 journal 當 block attempt,而 `_never_green` 只讀 level/status 不讀 rc → 三次缺檔就讓**下一次真正的紅**繼承「這道 gate 從沒綠過」的錯誤假設。修法是 row 加 `executed: false` 並在 `_never_green` 跳過(rc 扛不了這語意:真的跑完再 exit 127 是真紅)。另依 `exc.errno` 分流:ENOENT/EACCES/ENOTDIR 才說「tool not runnable」,EMFILE/ENOMEM 這類改說「could not be spawned (errno N)」不對工具下判斷。 **第二輪 review 再抓到同族第三例**:修①時寫的新斷言 `\"backend\" in summary` 被程式自己回顯的 `cwd=` 段滿足,「把缺的目錄講成命令」與「整段診斷刪掉」兩個 mutant 皆存活 143 tests → 改為只斷言破折號後那段（唯一來自例外的部分）並加反向斷言（cwd 案例的診斷不得出現命令名），修於 `4b88c563e`。**三輪都是同一個形狀:`in` 斷言碰到的是輸出裡的某個代理物,不是被測的那條路徑。**",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0044 實作中撞到",
+  "status": "fixed",
+  "stream": "IMP"
+}

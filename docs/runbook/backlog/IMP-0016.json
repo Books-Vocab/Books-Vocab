@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-08",
+  "detail": "Card/Notebook schema 變更無 lint 抓「export/seed 未同 PR 對齊」→ roundtrip 靜默有損;現靠 ops_state_plane §1.1 紀律 + roundtrip 測試抓 export 側漏導。符合 gate 刻意延後政策([[ops-gate-enforcement-deferred-by-design]]),升級訊號=同錯第三次",
+  "id": "IMP-0016",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "Phase 1 review(world-export)",
+  "status": "open",
+  "stream": "IMP"
+}

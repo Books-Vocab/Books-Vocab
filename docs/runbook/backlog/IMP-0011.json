@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-08",
+  "detail": "`ios_test.sh --ui` 缺 dataset 錯誤不列可用清單,需二次查找",
+  "id": "IMP-0011",
+  "resolution": "`27d61ecb5`+`d56efeabe`(錯誤附 ui_worlds 名單+set -e 防死+迴歸)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "iOS 2.0.0 發版檢討",
+  "status": "fixed",
+  "stream": "IMP"
+}

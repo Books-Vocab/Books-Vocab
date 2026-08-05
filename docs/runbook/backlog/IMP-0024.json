@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-09",
+  "detail": "`ops-edit seed` 為 additive-upsert,`CardStore.add` 查重綁 `notebook_id`(`cards/mutations.py:51-55`)→ 對「卡已存在但在別的 notebook」會**新增重複卡**而非搬移;把一個既有帳號 reshape 成 spec(結構不同時)會造大量重複卡且 verify_fn 報綠(false-green)。現只能靠「seed 一個 throwaway scratch → clone-demo 原子替換」的迂迴。候選:`ops-edit seed --replace <uid> <spec>`——單一 EditContext 內先 wipe 整層 vocab(複用 clone-demo 的 `_is_vocab_file` 移除,含 review_events.db)再 seed,self-verifying,把 spec→exact-state 收成一個原語。",
+  "id": "IMP-0024",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "行銷帳號 Phase5(reshape 機制)",
+  "status": "open",
+  "stream": "IMP"
+}

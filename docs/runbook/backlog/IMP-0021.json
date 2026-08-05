@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-09",
+  "detail": "`ui_world_manifest.py` 對 vocabulary/reviewDeck 的 graphLinksByKind **link 元素**無 schema 驗證（只驗頂層 Mapping[str→list]）:非 str word/cardId 或非 mapping link 會雙層靜默放行,Swift decode 才炸;todayReview link 已有 `_validate_today_review_link` 全鍵驗證,建議比照補上",
+  "id": "IMP-0021",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "spec_world 修復 review(5a25ae6ac)",
+  "status": "open",
+  "stream": "IMP"
+}

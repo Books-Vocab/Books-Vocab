@@ -573,14 +573,16 @@ documents:
 
   - id: runbook.improvement_backlog
     path: docs/runbook/improvement_backlog.md
-    kind: runbook
-    authority: SoT
+    kind: generated
+    authority: generated
+    generator: ops/backlog.py
     triggers:
       - improvement_filed
       - improvement_resolved
       - kaizen_loop_changed
     sources:
-      - docs/runbook/improvement_backlog.md
+      - docs/runbook/backlog/
+      - ops/backlog.py
       - .claude/agents/platform-steward.md
       - .claude/skills/kg-receipt/
 

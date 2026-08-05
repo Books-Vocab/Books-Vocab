@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-06-13",
+  "detail": "agent 檔寫「依 kg-receipt 格式」但未給欄位指標,靠 brief 餵",
+  "id": "IMP-0001",
+  "resolution": "`7c95a02`(補欄位指標)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "docs-steward 首測",
+  "status": "fixed",
+  "stream": "IMP"
+}

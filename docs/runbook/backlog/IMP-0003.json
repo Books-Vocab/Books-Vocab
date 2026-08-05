@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-06-13",
+  "detail": "`docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 5 條 exact 誤報(`via=CLAUDE.md`);hint≠命令故不阻擋,但每次需人工判讀",
+  "id": "IMP-0003",
+  "resolution": "open — 候選 enhancement:registry 對 CLAUDE.md source 加 section-anchor 機制",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "docs-steward 首測",
+  "status": "triaged",
+  "stream": "IMP"
+}

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`ops/tests/test_ui_quality_gate.sh:177-203` 用 `mv` 把**已版控**的 `ops/injection_baseline.txt` 搬走再還原，只靠 `trap restore EXIT` 復原。程序被 SIGKILL 或機器掉電落在中間 → 工作樹少一個已版控檔案，而測試本身不會說。同檔其他測試已改用 `KG_INJECTION_BASELINE` 環境變數重導（`ops/tests/test_lint_baselines.sh:51-55` 是範例）。下一步：讓 `ui_quality_gate.sh` 尊重既有的 baseline 環境變數覆寫，測試改用環境變數，`mv` 整段刪掉。 **2026-08-04 實際發生(嚴重度 low→med)**:本輪一個 repo-root `git add -A` 撞上「baseline 被搬走」的時窗，git 直接把缺席 staged 進 commit `400bd6c5f`,`ops/injection_baseline.txt` 就這樣從分支上消失,由 `9037aca00` 還原(內容與 main 位元組相同)。**原條目假設的觸發是 SIGKILL 落在 mv 與 trap 之間,但一次普通的並發 `git add -A` 就足夠,且兩邊都不會出聲**。",
+  "id": "IMP-0048",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0044 的 review 面",
+  "status": "open",
+  "stream": "IMP"
+}
