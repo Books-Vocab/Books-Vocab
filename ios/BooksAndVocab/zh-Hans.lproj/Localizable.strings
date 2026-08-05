@@ -1135,3 +1135,35 @@
 "dictionary.delete.cancel" = "取消";
 "dictionary.delete.confirm.title" = "删除词典卡片？";
 "dictionary.delete.confirm.message" = "这会移除已保存的词典卡片及其链接。";
+
+/* MARK: - Review card layout editor */
+"複習卡片" = "复习卡片";
+"reviewCardLayout.title" = "复习卡片";
+"reviewCardLayout.mode.section" = "卡片模式";
+"reviewCardLayout.face.front" = "正面";
+"reviewCardLayout.face.back" = "背面";
+"reviewCardLayout.preview.title" = "预览";
+"reviewCardLayout.preview.empty" = "这一面只显示固定栏位。";
+"reviewCardLayout.locked.prompt" = "题目";
+"reviewCardLayout.locked.answer" = "答案";
+"reviewCardLayout.locked.caption" = "固定显示";
+"reviewCardLayout.fields.section" = "可选栏位";
+"reviewCardLayout.field.partOfSpeech" = "词性";
+"reviewCardLayout.field.partOfSpeech.caption" = "例如 n.、v.";
+"reviewCardLayout.field.difficultyTier" = "难度";
+"reviewCardLayout.field.difficultyTier.caption" = "单词的难易度标签";
+"reviewCardLayout.field.graphLinks" = "知识连结";
+"reviewCardLayout.field.graphLinks.caption" = "相关单词，以及新增连结的入口";
+"reviewCardLayout.field.example" = "例句";
+"reviewCardLayout.field.example.caption" = "收录这个词时的原文句子";
+"reviewCardLayout.field.explanation" = "解释";
+"reviewCardLayout.field.explanation.caption" = "释义与说明";
+"reviewCardLayout.field.collocations" = "搭配词";
+"reviewCardLayout.field.collocations.caption" = "常见的搭配用法";
+"reviewCardLayout.reset" = "恢复默认";
+"reviewCardLayout.reset.currentMode" = "恢复「%@」默认";
+"reviewCardLayout.reset.all" = "恢复全部默认";
+"reviewCardLayout.footer" = "空间不够时，卡片会先精简例句、解释与搭配词；题目、答案、词性与难度不会被隐藏。";
+"todayReview.layoutEditor.open" = "调整复习卡片";
+"settings.reviewCardLayout.default" = "默认";
+"settings.reviewCardLayout.custom" = "自定义";

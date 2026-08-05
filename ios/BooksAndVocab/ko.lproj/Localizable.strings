@@ -1135,3 +1135,35 @@
 "dictionary.delete.cancel" = "취소";
 "dictionary.delete.confirm.title" = "사전 카드를 삭제할까요?";
 "dictionary.delete.confirm.message" = "저장된 사전 카드와 연결이 제거됩니다.";
+
+/* MARK: - Review card layout editor */
+"複習卡片" = "복습 카드";
+"reviewCardLayout.title" = "복습 카드";
+"reviewCardLayout.mode.section" = "카드 종류";
+"reviewCardLayout.face.front" = "앞면";
+"reviewCardLayout.face.back" = "뒷면";
+"reviewCardLayout.preview.title" = "미리보기";
+"reviewCardLayout.preview.empty" = "이 면에는 고정 항목만 표시됩니다.";
+"reviewCardLayout.locked.prompt" = "문제";
+"reviewCardLayout.locked.answer" = "정답";
+"reviewCardLayout.locked.caption" = "항상 표시";
+"reviewCardLayout.fields.section" = "선택 항목";
+"reviewCardLayout.field.partOfSpeech" = "품사";
+"reviewCardLayout.field.partOfSpeech.caption" = "예: n., v.";
+"reviewCardLayout.field.difficultyTier" = "난이도";
+"reviewCardLayout.field.difficultyTier.caption" = "단어의 난이도 라벨";
+"reviewCardLayout.field.graphLinks" = "지식 링크";
+"reviewCardLayout.field.graphLinks.caption" = "관련 단어와 링크 추가 입구";
+"reviewCardLayout.field.example" = "예문";
+"reviewCardLayout.field.example.caption" = "이 단어를 저장한 원문 문장";
+"reviewCardLayout.field.explanation" = "설명";
+"reviewCardLayout.field.explanation.caption" = "뜻과 보충 설명";
+"reviewCardLayout.field.collocations" = "연어";
+"reviewCardLayout.field.collocations.caption" = "자주 쓰이는 조합";
+"reviewCardLayout.reset" = "기본값으로";
+"reviewCardLayout.reset.currentMode" = "「%@」기본값으로";
+"reviewCardLayout.reset.all" = "전체 기본값으로";
+"reviewCardLayout.footer" = "공간이 부족하면 예문, 설명, 연어 순으로 줄입니다. 문제·정답·품사·난이도는 숨기지 않습니다.";
+"todayReview.layoutEditor.open" = "복습 카드 조정";
+"settings.reviewCardLayout.default" = "기본";
+"settings.reviewCardLayout.custom" = "사용자 지정";

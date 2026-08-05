@@ -12,6 +12,57 @@ enum ReviewCardField: String, CaseIterable, Codable, Hashable {
     case explanation
     case collocations
     case graphLinks
+
+    /// The single agreed row order — prompt/answer, then metadata, links, example,
+    /// explanation, collocations. The editor lists rows in it and the card renders
+    /// in it, so a face read in the editor is the face drawn on the card.
+    static let canonicalOrder: [ReviewCardField] = [
+        .partOfSpeech, .difficultyTier, .graphLinks, .example, .explanation, .collocations
+    ]
+
+    var titleKey: String {
+        switch self {
+        case .partOfSpeech: "reviewCardLayout.field.partOfSpeech"
+        case .difficultyTier: "reviewCardLayout.field.difficultyTier"
+        case .example: "reviewCardLayout.field.example"
+        case .explanation: "reviewCardLayout.field.explanation"
+        case .collocations: "reviewCardLayout.field.collocations"
+        case .graphLinks: "reviewCardLayout.field.graphLinks"
+        }
+    }
+
+    var captionKey: String {
+        switch self {
+        case .partOfSpeech: "reviewCardLayout.field.partOfSpeech.caption"
+        case .difficultyTier: "reviewCardLayout.field.difficultyTier.caption"
+        case .example: "reviewCardLayout.field.example.caption"
+        case .explanation: "reviewCardLayout.field.explanation.caption"
+        case .collocations: "reviewCardLayout.field.collocations.caption"
+        case .graphLinks: "reviewCardLayout.field.graphLinks.caption"
+        }
+    }
+
+    /// Enabling re-sorts into `canonicalOrder` rather than appending: a toggle is a
+    /// visibility decision, never a reordering one, so a face can't drift into an
+    /// order the editor has no way to show.
+    static func toggling(
+        _ field: ReviewCardField,
+        in fields: [ReviewCardField],
+        isOn: Bool
+    ) -> [ReviewCardField] {
+        guard isOn else { return fields.filter { $0 != field } }
+        guard !fields.contains(field) else { return fields }
+        let enabled = Set(fields + [field])
+        return canonicalOrder.filter(enabled.contains)
+    }
+}
+
+/// Settings shows one word for a whole profile. Kept a pure function so the row
+/// and its test read the same rule.
+enum ReviewCardLayoutSummary {
+    static func titleKey(for profile: ReviewCardLayoutProfile) -> String {
+        profile == .default ? "settings.reviewCardLayout.default" : "settings.reviewCardLayout.custom"
+    }
 }
 
 struct ReviewCardModeLayout: Equatable {

@@ -20,6 +20,35 @@ struct TodayReviewPage {
         app.buttons["關閉今日複習"]
     }
 
+    /// Top-bar entry to the shared review-card layout editor (between autoplay
+    /// and close).
+    var layoutEditorButton: XCUIElement {
+        element("todayReview.layoutEditor.open")
+    }
+
+    /// Autoplay play/pause control, identified by STATE rather than its localized
+    /// label — `…autoplay.paused` exists only while autoplay is paused.
+    var autoplayPausedButton: XCUIElement {
+        element("todayReview.autoplay.paused")
+    }
+
+    var autoplayPlayingButton: XCUIElement {
+        element("todayReview.autoplay.playing")
+    }
+
+    /// Top-bar autoplay toggle.
+    var autoplayToggleButton: XCUIElement {
+        element("todayReview.autoplayToggle")
+    }
+
+    // NOTE (measured 2026-08-06, not assumed): the front fold applies
+    // `.accessibilityLabel` to its container, so SwiftUI publishes the face as ONE
+    // combined element AND repeats `todayReview.card.front` on 2–3 nested buttons
+    // whose frames are ~36pt. Neither the rendered fields nor the card box height
+    // is therefore readable from a UI test, and `expandZone.frame.minY` did not
+    // move across a confirmed relayout. Do not add geometry assertions on this
+    // card without first re-checking those facts.
+
     // MARK: - Card
 
     /// Front fold surface (the tappable word side). Exists for the whole

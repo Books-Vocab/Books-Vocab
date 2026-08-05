@@ -38,6 +38,16 @@ struct SettingsSheetPage {
         app.staticTexts["settings.preferences.reviewRhythmValue"]
     }
 
+    /// 複習卡片 row — card presentation, deliberately separate from 複習節奏.
+    var reviewCardLayoutRow: XCUIElement {
+        app.buttons["settings.preferences.reviewCardLayoutRow"]
+    }
+
+    /// Trailing summary of the 複習卡片 row ("預設" / "自訂").
+    var reviewCardLayoutValue: XCUIElement {
+        app.staticTexts["settings.preferences.reviewCardLayoutValue"]
+    }
+
     var translationLanguageRow: XCUIElement {
         app.buttons["settings.preferences.translationLanguageRow"]
     }

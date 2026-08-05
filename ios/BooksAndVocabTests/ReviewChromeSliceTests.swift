@@ -36,9 +36,11 @@ struct ReviewChromeSliceTests {
     )
 
     private static func makeTopBar(model: ReviewTopBarModel = topBarModel,
-                                   onShuffle: @escaping () -> Void = {}) -> ReviewTopBar {
+                                   onShuffle: @escaping () -> Void = {},
+                                   onAdjustLayout: @escaping () -> Void = {}) -> ReviewTopBar {
         ReviewTopBar(model: model, onShuffle: onShuffle,
-                     onToggleAutoPlay: {}, onToggleHelp: {}, onClose: {})
+                     onToggleAutoPlay: {}, onAdjustLayout: onAdjustLayout,
+                     onToggleHelp: {}, onClose: {})
     }
 
     private static func makeControls(model: ReviewToolbarModel = toolbarModel,
@@ -69,6 +71,18 @@ struct ReviewChromeSliceTests {
 
     @Test func toolbarControlsStoredStateIsModelClosuresOrWrappers() {
         expectOnlyModelClosuresAndWrappers(Self.makeControls())
+    }
+
+    /// The layout-editor entry is an intent closure, so it must not participate in
+    /// `==` — and its gate (`isCardInteractive`) must already be a model field, or
+    /// the button would keep an interactive state the chrome skipped re-rendering.
+    @Test func layoutEditorActionStaysOutsideTheEqualitySlice() {
+        #expect(Self.makeTopBar() == Self.makeTopBar(onAdjustLayout: { _ = 1 }))
+
+        var locked = Self.topBarModel
+        locked.isCardInteractive = false
+        #expect(Self.makeTopBar() != Self.makeTopBar(model: locked))
+        expectOnlyModelClosuresAndWrappers(Self.makeTopBar(onAdjustLayout: { _ = 1 }))
     }
 
     @Test func equalityComparesModelAndIgnoresClosures() {

@@ -43,6 +43,7 @@ struct ReviewTopBar: View, Equatable {
     let model: ReviewTopBarModel
     let onShuffle: () -> Void
     let onToggleAutoPlay: () -> Void
+    let onAdjustLayout: () -> Void
     let onToggleHelp: () -> Void
     let onClose: () -> Void
 
@@ -105,6 +106,18 @@ struct ReviewTopBar: View, Equatable {
             // 穩定 identifier:此鍵的 a11y label 會隨播放狀態在「開啟/關閉自動播放」
             // 之間翻轉,UI 測試若靠 label 選取就會在狀態切換的那一刻選不到。
             .accessibilityIdentifier("todayReview.autoplayToggle")
+            // Layout editor sits between autoplay and close. Gated on the same
+            // `isCardInteractive` lock the rest of the chrome uses, so it cannot
+            // open mid-fling / mid-advance.
+            VocabChromeIconButton(
+                systemImage: "rectangle.split.2x1",
+                label: L10n.string("todayReview.layoutEditor.open"),
+                action: {
+                    guard model.isCardInteractive else { return }
+                    onAdjustLayout()
+                }
+            )
+            .accessibilityIdentifier("todayReview.layoutEditor.open")
 
             #if targetEnvironment(macCatalyst)
             VocabChromeIconButton(
@@ -199,6 +212,11 @@ struct ReviewToolbarControls: View, Equatable {
                         )
                 }
                 .accessibilityLabel(L10n.string(model.isAutoPlayPaused ? "todayReview.autoplay.playpause.play" : "todayReview.autoplay.playpause.pause"))
+                // Language-independent state probe: the label is localized, the
+                // identifier is not, so UI tests can assert paused-ness directly.
+                .accessibilityIdentifier(model.isAutoPlayPaused
+                    ? "todayReview.autoplay.paused"
+                    : "todayReview.autoplay.playing")
 
                 Button {
                     guard model.isCardInteractive else { return }
@@ -348,6 +366,7 @@ extension TodayReviewPresenter {
             ),
             onShuffle: onShuffle,
             onToggleAutoPlay: onToggleAutoPlay,
+            onAdjustLayout: onAdjustLayout,
             onToggleHelp: onToggleHelp,
             onClose: onClose
         )

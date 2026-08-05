@@ -55,6 +55,15 @@ final class TodayReviewAutoplayController {
         }
     }
 
+    /// Pause for a modal interruption (the layout editor). Never *starts* playback —
+    /// a stopped autoplay stays stopped — and deliberately does not auto-resume:
+    /// the user chose to change the card, so they resume when they are ready.
+    func pauseForInterruption() {
+        guard isPlaying, !isPaused else { return }
+        isPaused = true
+        cancelLoopTask()
+    }
+
     func stop() {
         // 在 Observation 世界裡,冪等必須包含「不發通知」:`TodayReviewView.onDisappear`
         // 對從未用過 autoplay 的 session 也會呼叫這裡,而那正是 dismiss 動畫那幾格——
