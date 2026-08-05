@@ -724,3 +724,50 @@ def test_doc_anchor_is_reachable_from_origin_main():
     rc = sp.run(["git", "merge-base", "--is-ancestor", anchor, "origin/main"],
                 cwd=BACKLOG.ROOT, capture_output=True).returncode
     assert rc == 0, f"anchor {anchor} is not reachable from origin/main — IMP-0038's shape"
+
+
+def _app_row(**overrides) -> str:
+    """One rendered APP row, in the generated view's 11-column APP shape."""
+    cells = {
+        "id": "APP-20260101-abcdef",
+        "date": "2026-01-01",
+        "source": "review",
+        "surface": "vocabulary",
+        "category": "correctness",
+        "severity": "med",
+        "status": "open",
+        "detail": "browsing the public catalogue must not log anyone out",
+        "repro": "open Explore with an expired token",
+        "build": "—",
+        "resolution": "—",
+    }
+    cells.update(overrides)
+    return "| " + " | ".join(cells[c] for c in BACKLOG.APP_COLUMNS) + " |"
+
+
+def test_app_row_from_generated_view_is_skipped_not_reported():
+    """An APP row is not a malformed IMP row.
+
+    The APP table carries three extra columns (surface/repro/build), so its
+    controlled-vocabulary anchors sit at different indices than the IMP table's.
+    `_anchors_ok` is IMP-shaped, so an APP row can never satisfy it — which made
+    the `APP-` skip that sits behind that gate unreachable, and reported the
+    first APP entry ever written as a malformed row.
+    """
+    rows, problems = BACKLOG.parse_legacy_table(_app_row())
+    assert problems == [], f"a well-formed APP row was reported: {problems}"
+    assert rows == [], "an APP row must not be imported into the IMP table"
+
+
+def test_malformed_app_row_is_still_reported():
+    """Skipping APP rows must not become a silent drop.
+
+    The parser's whole discipline is that a row it cannot read is REPORTED, never
+    dropped. A blanket `startswith("APP-")` skip would satisfy the test above
+    while quietly swallowing a genuinely broken APP row.
+    """
+    broken = _app_row(severity="nonsense")
+    rows, problems = BACKLOG.parse_legacy_table(broken)
+    assert rows == []
+    assert [p["kind"] for p in problems] == ["malformed-row"]
+    assert problems[0]["id"] == "APP-20260101-abcdef"
