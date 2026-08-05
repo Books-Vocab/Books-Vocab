@@ -18,6 +18,11 @@ struct TodayReviewSessionState<Entry> {
     var remainingCount: Int { max(queue.count - currentIndex - 1, 0) }
     var isComplete: Bool { currentIndex >= queue.count }
 
+    /// autoplay 是否還有事可做。loop 每一圈只有兩種動作:翻面(需要 `.front`)與
+    /// 推進(需要 `canGoNext`)。兩者皆不可能時開播,只會睡完 stayDelay 再自殺——
+    /// 對使用者就是「播放列閃一下就退回去」的死按鈕。
+    var canAutoplay: Bool { !isComplete && (canGoNext || revealStage == .front) }
+
     @discardableResult
     mutating func advanceReveal() -> Bool {
         guard revealStage == .front else { return false }

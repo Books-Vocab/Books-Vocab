@@ -291,6 +291,9 @@ private enum TodayReviewFixtureAdapter {
             slots: slots,
             revealStage: seed.revealStage,
             canShuffle: seed.canShuffle,
+            // 對齊 `TodayReviewSessionState.canAutoplay`：靜態 fixture 不表示
+            // 已結束的 session，故只需「還能推進 or 還能翻面」這兩項。
+            canAutoplay: seed.canGoNext || seed.revealStage == .front,
             canGoPrevious: seed.canGoPrevious,
             canGoNext: seed.canGoNext,
             remainingCount: seed.remainingCount,

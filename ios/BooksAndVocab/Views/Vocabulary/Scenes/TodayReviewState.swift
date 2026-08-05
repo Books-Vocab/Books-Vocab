@@ -122,6 +122,7 @@ final class TodayReviewState {
     var revealStage: TodayReviewRevealStage { session.revealStage }
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] { cardCache.storage }
     var currentCollocationExplanations: [String: String] { collocationState.explanations }
+    var canAutoplay: Bool { session.canAutoplay }
     var isAutoPlaying: Bool { autoplay.isPlaying }
     var isAutoPlayPaused: Bool { autoplay.isPaused }
     var autoplaySpeed: AutoplaySpeed { autoplay.speed }
@@ -142,6 +143,7 @@ final class TodayReviewState {
             slots: slotModels,
             revealStage: revealStage,
             canShuffle: session.canShuffle,
+            canAutoplay: canAutoplay,
             canGoPrevious: session.canGoPrevious,
             canGoNext: session.canGoNext,
             remainingCount: session.remainingCount,
@@ -307,6 +309,8 @@ final class TodayReviewState {
     // MARK: - Autoplay
 
     func toggleAutoPlay() {
+        // 守衛只擋「開始」:已在播放時必須永遠能停,否則就是重造 autoplay 出不去的 bug。
+        guard isAutoPlaying || canAutoplay else { return }
         autoplay.togglePlayback(restartLoop: { [weak self] in self?.startAutoPlayLoop() })
     }
 
@@ -387,6 +391,7 @@ final class TodayReviewState {
             return true
 
         case .toggleAutoplay:
+            guard isAutoPlaying || canAutoplay else { return false }
             toggleAutoPlay()
             return true
 
