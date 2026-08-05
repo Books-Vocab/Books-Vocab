@@ -172,8 +172,12 @@ struct TodayReviewPresenter: View {
                     topBar
 
                     GeometryReader { geo in
+                        // One viewport value owns the card region's arithmetic: the
+                        // insets drawn below, the reveal zone's floor, and every
+                        // budget the solver is handed all come from here.
+                        let viewport = ReviewCardViewport(containerHeight: geo.size.height)
                         VStack(spacing: 0) {
-                            reviewCard(currentCard, availableHeight: geo.size.height)
+                            reviewCard(currentCard, viewport: viewport)
                                 .padding(.horizontal, TodayReviewMetrics.cardHorizontalInset)
                                 .padding(.top, TodayReviewMetrics.cardTopInset)
                                 .padding(.bottom, TodayReviewMetrics.cardBottomInset)
@@ -185,7 +189,7 @@ struct TodayReviewPresenter: View {
                             let zoneActive = state.revealStage == .front
                             revealExpandZone(
                                 title: L10n.string("點一下展開"),
-                                minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
+                                minHeight: viewport.revealZoneReserve,
                                 action: onAdvanceReveal
                             )
                             .frame(height: zoneActive ? nil : 0, alignment: .top)
@@ -331,7 +335,7 @@ struct TodayReviewPresenter: View {
 
     // MARK: - Card
 
-    func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
+    func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard, viewport: ReviewCardViewport) -> some View {
         let card = currentCard.card
         let _ = PerfLog.render.tick(
             "todayReview.card.body",
@@ -355,9 +359,9 @@ struct TodayReviewPresenter: View {
             // depth-2 殼層 — 純裝飾常駐節點（卡不足以 opacity 隱藏，不結構移除）。
             deckDepthShell(height: activeCardHeight)
 
-            cardSlotView(slot: 0, availableHeight: availableHeight)
-            cardSlotView(slot: 1, availableHeight: availableHeight)
-            cardSlotView(slot: 2, availableHeight: availableHeight)
+            cardSlotView(slot: 0, viewport: viewport)
+            cardSlotView(slot: 1, viewport: viewport)
+            cardSlotView(slot: 2, viewport: viewport)
         }
         .onAppear {
             guard introProgress < 1 else { return }

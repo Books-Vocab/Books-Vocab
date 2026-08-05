@@ -88,6 +88,9 @@ enum TodayReviewMetrics {
     /// 卡片正反面畫，共用同一顆 token）。
     static let foldSectionSpacingCompact: CGFloat = AppSpacing.s2
     static let foldHintBottomInset: CGFloat = 22
+    /// 複習卡解釋段落的行距。等同 `CardDocumentMeaningBlock(compact: true)` 一直
+    /// 在畫的值 —— 預設佈局要重現目前畫面，這顆就必須是同一個數字。
+    static let foldMeaningLineSpacing: CGFloat = 5
 
     // MARK: Card / Action min size
     static let answerMinHeight: CGFloat = 188
@@ -96,6 +99,10 @@ enum TodayReviewMetrics {
 
     // MARK: Height ratio / Swipe geometry
     static let frontHeightRatio: CGFloat = 0.22
+    /// 「點一下展開」區塊的高度下限。它是**卡片下方的 layout 兄弟**，正面階段
+    /// 恆佔這麼多空間 —— `ReviewCardViewport` 用同一顆 token 從正面預算扣掉它，
+    /// 所以 solver 相信的高度就是畫面真的讓出來的高度。
+    static let revealZoneMinHeight: CGFloat = 180
     static let swipeThreshold: CGFloat = 100
     static let swipeMaxRotation: Double = 12
     static let swipeOpacityFloor: Double = 0.3
