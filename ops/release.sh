@@ -201,7 +201,9 @@ cmd_status() {
     basever="${lt#"$tp"}"; [[ -n "$basever" ]] || basever="$curver"
     if valid_semver "$basever"; then sv="$(bump_semver "$basever" "$suggest")"; else sv="（首發，參考檔內 ${curver}）"; fi
 
-    echo "■ $c  上個 tag：${lt:-（尚未發版）}  檔內版本：$curver"
+    local lt_label="上個 tag"
+    [[ "$c" != ios ]] || lt_label="已上架 tag"
+    echo "■ $c  ${lt_label}：${lt:-（尚未發版）}  檔內版本：$curver"
     # 漂移警示：上個 tag 的版號與版號檔不一致（如 tag api/1.6.0 但 pyproject 0.1.0）→ 發版前先對齊。
     # 比較前把兩段版號（ios pbxproj 慣用 1.6）補成三段再比，避免「1.6 vs 1.6.0」恆觸發警報疲勞。
     local cmpcur="$curver" drift
@@ -231,12 +233,46 @@ cmd_status() {
       if [[ -n "$prod_ref" ]]; then
         ahead_prod="$(git -C "$ROOT" rev-list --count origin/prod..main 2>/dev/null || echo '?')"
         echo "   released：origin/prod=${prod_ref}；main 超前 prod ${ahead_prod} commit（release backend 才推 prod→部署）"
+        # tag 存在 ≠ 該版號上了生產：tag 只推 origin/main（備份），部署看的是 origin/prod。
+        if [[ -n "$lt" ]]; then
+          if git -C "$ROOT" merge-base --is-ancestor "$lt" origin/prod 2>/dev/null; then
+            echo "   ${lt} 已在 origin/prod（該版號已上生產）"
+          else
+            echo "   ${lt} 尚未進 origin/prod（版號已標記，但沒部署）"
+          fi
+        fi
       else
         echo "   released：origin/prod 本地未知（尚未 seed 或未 fetch；見 docs/sop/release.md 切換）"
       fi
       echo "   live：curl -s https://wordnexus.lol/api/system/info（欲查生產實跑版本）"
     else
+      # 版號字串相等不代表 tag 指對地方：2.0.0 事故時 status 報「無漂移」（tag 2.0.0 =
+      # 檔內 2.0.0），而那顆 tag 指著沒上架的 build 5 的 commit。build tag 是唯一能讓
+      # 「這顆 build 有沒有被記錄」變成可見狀態的東西，所以在這裡攤開。
+      local curbuild btag_now build_tags
+      curbuild="$(current_build)"
+      echo "   專案版號：MARKETING_VERSION=${curver}  CURRENT_PROJECT_VERSION=${curbuild}"
+      build_tags="$(git -C "$ROOT" tag -l 'ios/*+*' --sort=-v:refname | tr '\n' ' ')"
+      if [[ -n "${build_tags// /}" ]]; then
+        echo "   build tag 對照："
+        git -C "$ROOT" tag -l 'ios/*+*' --sort=-v:refname \
+          | while IFS= read -r bt; do
+              [[ -n "$bt" ]] || continue
+              echo "     ${bt} → $(git -C "$ROOT" rev-parse --short "${bt}^{commit}")"
+            done
+      else
+        echo "   build tag 對照：（無）"
+      fi
+      if valid_semver "$curver" && [[ "$curbuild" =~ ^[0-9]+$ ]]; then
+        btag_now="$(ios_build_tag "$curver" "$curbuild")"
+        if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/${btag_now}^{commit}" >/dev/null; then
+          echo "   ⚠ 目前的 (${curver}, build ${curbuild}) 沒有 build tag ${btag_now}"
+          echo "     = 這顆 build 若出過 archive，沒有留下 build→commit 紀錄（Apple 不留歷史，事後無法重建）"
+          echo "     出 build 請走 ./ops/release.sh release ios <x.y.z> 或 resubmit ios，它們會封版"
+        fi
+      fi
       echo "   live：./ops/asc.sh builds（TestFlight 最新 build）+ review-status"
+      echo "   上架後：./ops/release.sh shipped ios --yes（依 ASC 物化 ios/<x.y.z>）"
     fi
     echo
   done
