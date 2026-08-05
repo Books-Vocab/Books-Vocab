@@ -1,0 +1,15 @@
+{
+  "build": "feat/review-card-layout-editor rebased onto main 4749a4ec3",
+  "category": "correctness",
+  "date": "2026-08-06",
+  "detail": "The review card front puts .accessibilityLabel on its container, so SwiftUI merges the whole face into ONE accessibility element and repeats the same identifier on several nested ~36pt buttons. Two consequences, one of them a live user-facing regression. (1) VoiceOver can no longer reach the back face's knowledge links and collocations — the branch found this itself and recorded it in ace62906e. (2) TodayReviewGapUITests can no longer measure the card: its query now resolves a nested element, so it reports cardH=19.7-36.0 and gap=185-295pt against a 44pt threshold, on all 8 fixture cards. Attribution is settled, not inferred: main PASSES this test 1/1 (measured); the branch fails it identically BEFORE and AFTER the rebase (gaps 196.4 / 185.6 / 294.8 / 200.4 value-for-value), so the merge contributes nothing; and the step screenshots show the card rendering full-size with its bottom edge directly above the expand zone, ~10pt away — there is NO visual gap. The serious part is not the red: it is that this test was added by cf82380db ('fix TodayReview flip-card detaching from expand zone') as the regression test for that exact defect, and it is now blind. It cannot distinguish 'card attached' from 'card detached', so the guard that commit installed is effectively disabled while still appearing to exist.",
+  "id": "APP-20260806-761370",
+  "repro": "./ops/ios_ops.sh test --ui --lease --timeout 1800 --dataset marketing_demo --file ios/BooksAndVocabUITests/TodayReviewGapUITests.swift",
+  "resolution": "Fix the accessibility structure in production, not the test. The container's .accessibilityLabel is what merges the face; the branch treated the merging as unwanted friction rather than intent (ace62906e), so restoring addressable children should be an improvement for both VoiceOver and the test. Options: .accessibilityElement(children: .contain) on the card container, or move the label onto an inner element so the container stays queryable — either way verify with VoiceOver semantics, not just by making the gap test green again. Until then main carries a red TodayReviewGapUITests. Deliberately NOT fixed during convergence: it changes VoiceOver reading semantics in someone else's feature with no a11y test to verify against, which is not a merge repair.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "convergence line, landing feat/review-card-layout-editor",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
