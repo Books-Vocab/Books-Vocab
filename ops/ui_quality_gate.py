@@ -32,6 +32,7 @@ if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file
+from ui_quality_plane import RESOURCES as PLANE_RESOURCES
 
 FAST_LAYERS = {"static-code", "static-value"}
 SLOW_LAYERS = {
@@ -43,27 +44,24 @@ SLOW_LAYERS = {
     "cross-platform",
 }
 
-FAST_COMMANDS: dict[str, list[str]] = {
-    "static.ui_token": ["--baseline-check"],
-    "static.plain_deadzone": ["--baseline-check"],
-    "static.i18n": ["--baseline-check"],
-    "static.catalyst": ["--strict"],
-}
+# What to run a mechanism with lives on the mechanism, in
+# ops/ui_quality_plane.yml. This file used to keep its own tables of the same
+# fact, so a mechanism added to the plane and forgotten here resolved to no
+# command and was quietly recorded as unrun — which is not a failure, so the
+# gate stayed green (IMP-0041).
+#
+# What stays here is the *behaviour* per required resource, which is genuinely
+# runner-side. The set of resource names is imported rather than restated, and
+# the check below refuses to start if the plane grows a resource this runner
+# does not handle — an enumerated hole instead of a silent one.
+UNRUNNABLE = object()
 
-SLOW_COMMANDS: dict[str, list[str]] = {
-    "structure.ui_deadcode": ["--strict"],
-    "structure.ui_graph": ["--json"],
-    "snapshot.catalog": ["catalog", "snapshots"],
-    "behavior.uitest_flows": ["--ui", "--lease"],
-    "perf.review_flip_probe": ["--flips", "30"],
-    "visual.catalog_regression": ["--auto"],
-}
-
-UI_WORLD_REQUIRED = {
-    "snapshot.catalog",
-    "behavior.uitest_flows",
-    "perf.review_flip_probe",
-}
+HANDLED_RESOURCES = {"ui-world", "injection-baseline"}
+if HANDLED_RESOURCES != PLANE_RESOURCES:
+    raise SystemExit(
+        "ui_quality_gate: resource vocabulary drift — plane declares "
+        f"{sorted(PLANE_RESOURCES)}, runner handles {sorted(HANDLED_RESOURCES)}"
+    )
 
 
 def repo_root() -> Path:
@@ -173,23 +171,36 @@ def resolve_dataset_path(dataset: str | None, dataset_file: str | None, root: Pa
 
 
 def resolve_args(
-    mech_id: str,
-    layer: str,
+    mech: dict,
     root: Path,
     world_args: list[str] | None,
-) -> tuple[list[str] | None, str | None]:
-    """Return ([args], warning) for a mechanism. None args means dry-run only."""
-    if mech_id in FAST_COMMANDS:
-        return FAST_COMMANDS[mech_id], None
-    if mech_id == "static.injection":
-        return injection_args(root)
-    if mech_id in SLOW_COMMANDS:
-        if mech_id in UI_WORLD_REQUIRED:
+) -> tuple[list[str] | None | object, str | None]:
+    """Return (args, warning) for a mechanism, reading the plane's `run:`.
+
+    Three outcomes, deliberately distinct:
+      UNRUNNABLE — the plane declares no command. A defect, not a deferral.
+      None       — a declared requirement is not satisfied right now.
+      [args]     — runnable.
+    """
+    if "run" not in mech:
+        return UNRUNNABLE, "plane declares no `run:` for this mechanism — nothing can execute it"
+    resolved = list(mech.get("run") or [])
+    warning: str | None = None
+    for resource in mech.get("requires") or []:
+        if resource == "ui-world":
             if world_args is None:
                 return None, "requires --dataset <name> or --dataset-file <path> (UI World SoT)"
-            return [*SLOW_COMMANDS[mech_id], *world_args], None
-        return SLOW_COMMANDS[mech_id], None
-    return None, None
+            resolved = [*resolved, *world_args]
+        elif resource == "injection-baseline":
+            fallback, warn = injection_args(root)
+            if warn:
+                resolved, warning = fallback, warn
+        else:
+            # Unreachable while the import-time check above holds; kept so a
+            # drift that slips past it still fails loudly rather than running
+            # the command with its requirement unmet.
+            return UNRUNNABLE, f"unknown required resource {resource!r}"
+    return resolved, warning
 
 
 def run_mech(entrypoint: str, args: list[str], root: Path) -> tuple[int, str, str]:
@@ -295,7 +306,23 @@ def main() -> int:
             results.append({**base_result, "status": "skipped", "reason": f"layer={layer} not in tier={args.tier}"})
             continue
 
-        resolved_args, warning = resolve_args(mech_id, layer, root, world_args)
+        resolved_args, warning = resolve_args(mech, root, world_args)
+
+        if resolved_args is UNRUNNABLE:
+            # Not `unrun`: unrun is a deferral and does not fail the gate, which
+            # is precisely how an unregistered mechanism used to pass (IMP-0041).
+            results.append({
+                **base_result,
+                "status": "failed",
+                "command": entrypoint,
+                "args": [],
+                "rc": 2,
+                "stdout": "",
+                "stderr": warning or "",
+                "warning": warning,
+            })
+            continue
+
         command = " ".join(shlex.quote(p) for p in [entrypoint, *(resolved_args or [])])
 
         if resolved_args is None or (layer not in FAST_LAYERS and not args.execute_slow):
@@ -304,7 +331,7 @@ def main() -> int:
                     "[ui_quality_gate] hint: slow gates stay planned; add --execute-slow to run them",
                     file=sys.stderr,
                 )
-            if resolved_args is None and mech_id in UI_WORLD_REQUIRED and args.execute and args.execute_slow:
+            if resolved_args is None and args.execute and args.execute_slow:
                 results.append({
                     **base_result,
                     "status": "failed",

@@ -186,10 +186,22 @@ else
 fi
 ALL_JSON="$($GATE --tier fast --dry-run --all-mechanisms --include-ci --json 2>/dev/null)"
 DECLARED_N="$(./ops/ui_quality_plane.py list --json 2>/dev/null | jq 'length')"
-if jq -e --argjson n "$DECLARED_N" '.summary.selected == $n' <<<"$ALL_JSON" >/dev/null 2>&1; then
+# The floor matters: both sides of the comparison come from the same
+# `ui_quality_plane.py list --json` call, so on an empty plane DECLARED_N=0,
+# selected=0, and the equality would hold while nothing whatsoever was
+# selected — the exact reading this change exists to make impossible.
+if jq -e --argjson n "$DECLARED_N" '.summary.selected == $n and $n >= 5' <<<"$ALL_JSON" >/dev/null 2>&1; then
   ok "--all-mechanisms selects every declared mechanism ($DECLARED_N)"
 else
   fail_t "selected != the $DECLARED_N mechanisms the plane declares: $(jq -c '.summary' <<<"$ALL_JSON")"
+fi
+# The one non-tautological property here: the five status tallies must
+# partition the plan. If a mechanism were ever dropped between `impacted` and
+# `results`, selected would exceed the sum and nothing else would notice.
+if jq -e '.summary | .selected == (.unrun + .passed + .failed + .warn + .skipped)' <<<"$ALL_JSON" >/dev/null 2>&1; then
+  ok "the status tallies partition the plan"
+else
+  fail_t "tallies do not sum to selected — a mechanism went missing: $(jq -c '.summary' <<<"$ALL_JSON")"
 fi
 NONE_JSON="$($GATE --files "$NOIMPACT_FILE" --tier all --dry-run --json 2>/dev/null)"
 if jq -e '.summary.selected == 0' <<<"$NONE_JSON" >/dev/null 2>&1; then
@@ -197,6 +209,41 @@ if jq -e '.summary.selected == 0' <<<"$NONE_JSON" >/dev/null 2>&1; then
 else
   fail_t "no-trigger file did not report selected=0: $(jq -c '.summary' <<<"$NONE_JSON")"
 fi
+
+section "A mechanism nothing can run fails the gate, it does not sit unrun"
+# The defect this whole change exists for (IMP-0041): the runner kept its own
+# command table, so a mechanism declared in the plane but absent from that
+# table resolved to no command, was recorded as unrun, and unrun is not
+# counted as failed — the gate returned 0. validate now refuses such a
+# mechanism, but the runner must not depend on validate having been run: an
+# unrunnable mechanism reaching the runner is a failure, not a deferral.
+# Cleaned up inline, deliberately not via `trap ... EXIT`: bash keeps one EXIT
+# trap and the next section installs its own to put a *version-controlled*
+# baseline back (see IMP-0048). Registering a second one here would silently
+# replace it and leave the tracked file moved aside.
+GHOST_DIR="$(mktemp -d)"
+UNRUNNABLE="$GHOST_DIR/unrunnable.yml"
+cat >"$UNRUNNABLE" <<'YML'
+version: 1
+mechanisms:
+  - id: static.ghost
+    layer: static-code
+    entrypoint: ops/test_ops.sh
+    gate: manual
+    triggers:
+      - ios/
+    verdict: "exit code"
+    docs:
+      - docs/sop/ios.md
+YML
+rc=0
+GHOST_JSON="$(KG_UI_PLANE_FILE="$UNRUNNABLE" $GATE --tier fast --execute --all-mechanisms --json 2>/dev/null)" || rc=$?
+if [[ "$rc" -ne 0 ]] && jq -e '.summary.failed == 1 and .summary.unrun == 0' <<<"$GHOST_JSON" >/dev/null 2>&1; then
+  ok "an unrunnable mechanism is failed (rc=$rc), not parked as unrun"
+else
+  fail_t "unrunnable mechanism did not fail the gate: rc=$rc summary=$(jq -c '.summary' <<<"$GHOST_JSON" 2>/dev/null)"
+fi
+rm -rf "$GHOST_DIR"
 
 section "Missing injection baseline is handled gracefully"
 # Move the real baseline aside, run execute, then restore.

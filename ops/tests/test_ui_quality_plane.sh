@@ -208,6 +208,18 @@ mechanisms:
 YML
 expect_reject "$TMP/unknown_requires.yml" "requires: an unknown resource"
 
+section "impact and list describe the same mechanism"
+# `impact` hand-projected five keys and dropped the rest, so the gate — which
+# reads `impact` — saw mechanisms with no `run:` while `list` showed it. Two
+# views of one record must not disagree about what the record contains.
+IMPACT_ONE="$("${PLANE[@]}" impact --json --files ios/BooksAndVocab/Views/Foo.swift 2>/dev/null | jq -c '.[0] | del(.matched)')"
+LIST_ONE="$("${PLANE[@]}" list --json 2>/dev/null | jq -c --arg id "$(jq -r '.id' <<<"$IMPACT_ONE")" '.[] | select(.id == $id)')"
+if [[ -n "$IMPACT_ONE" && "$IMPACT_ONE" == "$LIST_ONE" ]]; then
+  ok "impact and list agree field-for-field on $(jq -r '.id' <<<"$IMPACT_ONE")"
+else
+  fail_t "impact and list disagree — impact=$IMPACT_ONE list=$LIST_ONE"
+fi
+
 section "The real plane states how to run every gate it owns"
 # The whole point of moving the tables out of the runner: this assertion is
 # only possible because the plane now carries `run:`.
@@ -218,12 +230,45 @@ if [[ -z "$missing_run" ]]; then
 else
   fail_t "manual mechanisms with no run: $missing_run — these resolve to no command and stay unrun without failing"
 fi
-ui_world_n="$(jq -r '[.[] | select((.requires // []) | index("ui-world"))] | length' <<<"$PLANE_JSON")"
-if [[ "$ui_world_n" -eq 3 ]]; then
-  ok "three mechanisms declare requires: ui-world"
+# Identity, not count: three mechanisms wired to the wrong ids would satisfy a
+# count and the failure message could not say which.
+ui_world_ids="$(jq -r '[.[] | select((.requires // []) | index("ui-world")) | .id] | sort | join(",")' <<<"$PLANE_JSON")"
+if [[ "$ui_world_ids" == "behavior.uitest_flows,perf.review_flip_probe,snapshot.catalog" ]]; then
+  ok "the UI World dependency sits on exactly the three mechanisms that take a dataset"
 else
-  fail_t "expected 3 ui-world mechanisms, plane declares $ui_world_n"
+  fail_t "requires: ui-world is on [$ui_world_ids]"
 fi
+
+# `run: []` means "declared, takes no arguments" and must stay distinguishable
+# from "not declared" — the whole `missing_run` check above rests on it, and it
+# only ever exercises manual gates, so the one genuinely empty run: in the real
+# plane (value.design_system, gate: ci) is never covered by it.
+if jq -e '.[] | select(.id == "value.design_system") | has("run") and (.run | length == 0)' <<<"$PLANE_JSON" >/dev/null 2>&1; then
+  ok "an empty run: parses as declared-with-no-arguments, not as absent"
+else
+  fail_t "value.design_system lost the distinction between empty run: and no run:"
+fi
+
+# A 2-space list item is legal YAML that this parser does not support. It used
+# to fall through and leave the key empty; for `run:` that reads as "takes no
+# arguments" and the runner would execute the entrypoint bare — several lints
+# exit 0 when given no flags, so the gate would run, pass, and check nothing.
+write_fixture "$TMP/shallow_list.yml" <<'YML'
+version: 1
+mechanisms:
+  - id: shallow.tool
+    layer: static-code
+    entrypoint: ops/test_ops.sh
+    gate: manual
+    run:
+    - --baseline-check
+    triggers:
+      - ios/
+    verdict: "exit code"
+    docs:
+      - docs/sop/ios.md
+YML
+expect_reject "$TMP/shallow_list.yml" "a list item this parser cannot read"
 
 write_fixture "$TMP/missing_doc.yml" <<'YML'
 version: 1
