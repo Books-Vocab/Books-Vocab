@@ -411,7 +411,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 2. 到 ASC GUI「App 審查 → 解決中心」讀 Apple 的拒絕理由（API 讀不到）。
 3. **掃殘留**：被拒功能名若已移除，`asc.sh metadata` + `review-detail` + app 副標全 grep 一遍確認 0 命中；`asc.sh screenshots` 列出截圖、fetch 縮圖目視無殘影。
 4. **查備註是否過期**：`asc.sh review-detail` 的 notes 常沿用上一輪舊文（KG 實例曾停在 3.1.2(c) EULA 而非當輪原因）；重送時若需更新送審備註，直接 `asc.sh set-review notes "..."`（dry-run 看舊→新，`--yes` 才寫）對應「本輪」原因；向審查員對話回覆仍須 GUI 解決中心。
-5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ `./ops/release.sh bump-build ios --yes` 只 bump `CURRENT_PROJECT_VERSION`（同 `MARKETING_VERSION` 重送只 bump build、不動 marketing 版號；dry-run 預設先看舊→新。`asc.sh builds` 確認新 build > TestFlight 現值即無衝突）→ `ios_release.sh --upload` → GUI 把新 build 綁上該版本 → 重送。
+5. 改 code/文案（`asc.sh set …` 或改 app 碼）→ **`./ops/release.sh resubmit ios`（dry-run 先看計畫，`--yes` 才執行）**：bump `CURRENT_PROJECT_VERSION`（`MARKETING_VERSION` 不動）→ `ios_release.sh --upload` → commit 版號檔 + 封 `ios/<x.y.z>+<build>` + push → GUI 把新 build 綁上該版本 → 重送。**別再手跑 `bump-build ios --yes` + `ios_release.sh --upload`**：那條路徑不留 commit、不留 tag、status 也看不見，`ios/2.0.0` 與實際上架 binary 脫鉤就是這樣來的（`888967dd9`）。upload 前的 build number 衝突與封版 tag 衝突都由 `resubmit` 自己擋，失敗不留 commit/tag/push。
 6. 加密合規順手：本專案 `GENERATE_INFOPLIST_FILE = YES`（無 source Info.plist），故設 build setting `INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO`（多數 app 免出口加密，省每次上傳被問）。
 
 #### 已知缺口（待辦，本輪未工具化）
