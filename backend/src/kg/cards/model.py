@@ -13,6 +13,10 @@ from sqlmodel import SQLModel
 CardMode = Literal["recognition", "production"]
 CardRole = Literal["learning", "dictionary"]
 PromotionState = Literal["idle", "queued", "running", "failed"]
+#: 轉卡失敗態的唯一字面來源。與 `error_signals.PIPELINE_FAILURE_STATUS` **恰好同字串但
+#: 不是同一件事**——那是 pipeline 的業務失敗，這是轉單字卡 job 的狀態機。查詢端引用本常數
+#: 而非貼字面，也不要改去引用 error_signals，那會把兩台無關的狀態機綁在一起。
+PROMOTION_STATE_FAILED: PromotionState = "failed"
 
 
 class Card(SQLModel, table=True):
