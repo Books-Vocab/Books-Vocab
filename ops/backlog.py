@@ -230,6 +230,7 @@ def add_entry(
     repro: str | None = None,
     build: str | None = None,
     entry_id: str | None = None,
+    verdict_fields: dict | None = None,
 ) -> dict:
     """Create one entry file and return the entry.
 
@@ -251,6 +252,11 @@ def add_entry(
         "resolution": resolution,
     }
     for field, value in (("surface", surface), ("repro", repro), ("build", build)):
+        if value:
+            payload[field] = value
+    for field, value in (verdict_fields or {}).items():
+        if field not in VERDICT_FIELDS:
+            raise ValueError(f"unknown verdict field: {field}")
         if value:
             payload[field] = value
 
@@ -450,6 +456,91 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
     return rows, problems
 
 
+# ---------------------------------------------------------------------------
+# verdict stamps
+# ---------------------------------------------------------------------------
+#
+# The 2026-08-05 re-verification sweep encoded its results as a convention
+# inside the resolution cell:
+#
+#   —(YYYY-MM-DD 驗證 <VERDICT>;落點 `file:line`,成本 <S|M|L|S–M>,測試…)
+#
+# Promoting those to real fields is the point of having a store. Extraction is
+# ADDITIVE and LOSSLESS — `resolution` keeps the original text verbatim and
+# remains authoritative — so a stamp this parser does not recognise costs an
+# empty field and a named report, never a lost sentence.
+
+# The stamp is the ADJACENCY `YYYY-MM-DD 驗證 <VERDICT>`, matched as one unit.
+#
+# Two bugs came from not doing this. Anchoring the date on `—(` missed
+# IMP-0029, whose stamp starts with prose (`—(by-design,待產品決策;2026-08-05
+# 驗證 …`) — the date is regular only relative to 驗證, not to the bracket. And
+# gating extraction on "does the text contain 驗證" reported three entries as
+# having unreadable stamps when they simply mention the word in prose: a
+# keyword standing in for the structure, which is the same proxy mistake this
+# module refuses to make elsewhere.
+#
+# Digits belong in the verdict token: `DUPLICATE-OF-IMP-0042` ends in an id, and
+# without them the pattern stops before the digits and fails its own lookahead.
+_STAMP_RE = re.compile(
+    r"(\d{4}-\d{2}-\d{2})\s*驗證\s+([A-Z][A-Z0-9-]*)(?=[;,:，、。\s)]|$)"
+)
+_DUPLICATE_RE = re.compile(r"^DUPLICATE-OF-(IMP-\d+)$")
+# `成本 S–M` uses an EN DASH (U+2013). Splitting on `-` would report `S` and
+# silently halve the estimate, so the range is matched whole.
+_COST_RE = re.compile(r"成本\s*([SML](?:[–-][SML])?)")
+_FIX_SITE_RE = re.compile(r"落點\s*`([^`]+)`")
+_FIX_SITE_PRESENT_RE = re.compile(r"落點\s*")
+
+
+def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
+    """Pull the structured stamp out of a resolution cell.
+
+    Returns (fields, misses). `misses` names each field that looked present but
+    could not be read confidently — the caller reports those rather than
+    guessing, because a guessed `fix_site` becomes a path that later readers
+    trust.
+
+    `needs_test` is deliberately NOT extracted: the sweep recorded testing
+    intent in free prose with no consistent encoding, and deriving a boolean
+    from the presence of the word 測試 would be a proxy standing in for the
+    property rather than the property itself.
+    """
+    fields: dict = {}
+    misses: list[dict] = []
+
+    text = resolution or ""
+    stamp = _STAMP_RE.search(text)
+    if not stamp:
+        # No stamp. Either a plain commit hash (the majority) or prose that
+        # happens to use the word 驗證. Neither is a miss, and reporting them
+        # would bury the real ones in noise.
+        return fields, misses
+
+    fields["verified_at"] = stamp.group(1)
+    verdict = stamp.group(2).rstrip("-")
+    fields["verdict"] = verdict
+    duplicate = _DUPLICATE_RE.match(verdict)
+    if duplicate:
+        fields["duplicate_of"] = duplicate.group(1)
+
+    cost_match = _COST_RE.search(text)
+    if cost_match:
+        fields["cost"] = cost_match.group(1)
+
+    fix_match = _FIX_SITE_RE.search(text)
+    if fix_match:
+        fields["fix_site"] = fix_match.group(1)
+    elif _FIX_SITE_PRESENT_RE.search(text):
+        # `落點` followed by free prose has no delimiter that can be trusted.
+        misses.append({"field": "fix_site", "reason": "落點 present but not a backticked token"})
+
+    return fields, misses
+
+
+VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
+
+
 def import_legacy(text: str, store: Path) -> dict:
     """Import the legacy table into the store. Re-runnable and idempotent.
 
@@ -466,6 +557,9 @@ def import_legacy(text: str, store: Path) -> dict:
     imported = 0
 
     for row in rows:
+        verdict_fields, misses = extract_verdict_fields(row["resolution"])
+        for miss in misses:
+            problems.append({"kind": "stamp-not-read", "id": row["id"], **miss})
         try:
             add_entry(
                 store,
@@ -478,6 +572,7 @@ def import_legacy(text: str, store: Path) -> dict:
                 status=row["status"],
                 detail=row["detail"],
                 resolution=row["resolution"],
+                verdict_fields=verdict_fields,
             )
         except ValueError as exc:
             # Record and keep going. Dying mid-import would leave a partial
