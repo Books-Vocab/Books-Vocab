@@ -141,4 +141,4 @@ platform-steward 的 triage 失效。
 |---|---|---|---|---|---|---|---|---|---|---|
 
 <!-- 76 IMP + 0 APP entries -->
-<!-- groom: 0/39 unresolved entries have a fix plan -->
+<!-- groom: 18/39 unresolved entries have a fix plan -->
