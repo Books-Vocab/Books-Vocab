@@ -217,6 +217,8 @@ struct ReviewCardLayoutEditor: View {
 /// Sheet shell for the review-screen entry. The editor page itself is shared with
 /// Settings; only the chrome (stack + dismiss) differs.
 struct ReviewCardLayoutEditorSheet: View {
+    @ObserveInjection private var inject
+
     let initialMode: VocabularyCardMode
     let onDone: () -> Void
 
@@ -231,6 +233,7 @@ struct ReviewCardLayoutEditorSheet: View {
                     }
                 }
         }
+        .enableInjection()
     }
 }
 
