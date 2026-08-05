@@ -8,11 +8,25 @@ final class WordDetailSceneState {
     /// 詳情頁單一錯誤 banner 的來源。原名 `linkError`，在封存進入本場景後改為泛稱
     /// ——同一條 banner 服務所有卡片層級動作，不再只服務知識連結。
     ///
-    /// **生命週期規則**：每個動作起手一律 `beginAction()` 清空。一條共用 banner 若只寫不清，
-    /// 失敗訊息會活過後續的成功動作——封存失敗 → 再按一次成功 → 圖示已翻成 `archivebox.fill`
-    /// 但 banner 還掛著「封存失敗」；跨領域更糟，「隱藏連結失敗」會壓在一次成功的封存上，
-    /// 使用者無從分辨它在講哪個動作。
+    /// **生命週期規則**：錯誤帶 `ActionKind`，成功時**只清掉同類動作**留下的訊息。
+    ///
+    /// 兩個方向都要防，而且它們互相拉扯：
+    /// - 只寫不清 → 失敗訊息活過後續的成功動作（封存失敗 → 再按一次成功 → 圖示已翻成
+    ///   `archivebox.fill`，banner 還掛著「封存失敗」）。
+    /// - 每個動作起手就無差別清空 → 反而**吃掉使用者還沒讀的錯誤**。連結操作是
+    ///   fire-and-forget：dispatch 時清、completion 時才寫，所以「刪除連結失敗」（已靜靜
+    ///   回捲、列自己長回來，訊息是唯一的解釋）會被隨後一次成功的封存抹掉。
+    ///
+    /// 依 kind 配對就沒有這個取捨：封存成功只清封存的錯，連結成功只清連結的錯。
     var actionError: String?
+
+    /// `actionError` 的來源分類。單槽 banner 沒有它就無法分辨「這則訊息是誰留的」。
+    private var actionErrorKind: ActionKind?
+
+    enum ActionKind: Equatable {
+        case archive
+        case link
+    }
 
     /// 封存的 in-flight 旗標。放在狀態物件而非 view，是為了讓這個單元自己安全：
     /// 若只靠呼叫端記得加 guard，兩次重疊呼叫會交錯（A 樂觀 true → B 樂觀 false →
@@ -33,11 +47,19 @@ final class WordDetailSceneState {
 
     func dismissActionError() {
         actionError = nil
+        actionErrorKind = nil
     }
 
-    /// 每個卡片層級動作的起手式：清掉上一個動作留下的錯誤，讓 banner 永遠只描述最近一次動作。
-    private func beginAction() {
+    private func setActionError(_ message: String, kind: ActionKind) {
+        actionError = message
+        actionErrorKind = kind
+    }
+
+    /// 成功收尾時呼叫：**只**清掉同類動作留下的錯誤，別類的留著給它自己的主人處理。
+    private func clearActionError(for kind: ActionKind) {
+        guard actionErrorKind == kind else { return }
         actionError = nil
+        actionErrorKind = nil
     }
 
     /// 封存 / 解除封存這張卡。
@@ -57,7 +79,6 @@ final class WordDetailSceneState {
     ) async {
         let previous = entry.isArchived
         guard previous != archived, !isSettingArchived else { return }
-        beginAction()
         isSettingArchived = true
         defer { isSettingArchived = false }
 
@@ -71,20 +92,27 @@ final class WordDetailSceneState {
                 notebookId: entry.notebookId
             )
             modelContext.safeSave()
+            clearActionError(for: .archive)
         } catch {
             AppLog.kg.error("setArchived(\(archived)) failed '\(word)': \(error.localizedDescription)")
-            actionError = archived
-                ? L10n.string("封存失敗")
-                : L10n.string("解除封存失敗")
+            setActionError(
+                archived ? L10n.string("封存失敗") : L10n.string("解除封存失敗"),
+                kind: .archive
+            )
 
-            // 這張卡可能在 await 期間被硬刪（BackgroundSyncActor / SyncCoordinator 都有
-            // 這條路徑），碰已失效的 model 會 trap。
+            // 淺層防護：這張卡可能在 await 期間被硬刪（BackgroundSyncActor /
+            // SyncCoordinator 都有這條路徑）。**不是保證**——`SyncCoordinator` 明寫
+            // `PersistentModel.isDeleted` 不可當 save 後的生命週期契約（有回歸測試釘住），
+            // 所以這裡擋得掉常見情形，擋不掉全部。
             guard !entry.isDeleted else { return }
 
             // Compare-and-swap 而非無條件寫回：await 期間背景 pull 可能帶回權威值並
-            // markSynced()。若那時無條件寫回 `previous`，就會用舊值蓋掉新鮮的權威值，
-            // 而且因為已 markSynced 不會再推上去——正好製造出這段註解宣稱要防止的
-            // 「卡片自己復活」。只有在世界仍停在我們樂觀寫入的狀態時才回捲。
+            // markSynced()，無條件寫回 `previous` 會用舊值蓋掉新鮮值且不再推送。
+            //
+            // **殘留窗口（ABA，已知未解）**：若伺服器其實套用成功但回應遺失，而同期 pull
+            // 剛好寫回同一個值，這個比較分不出「還停在我們的樂觀值」與「pull 剛寫了同值」，
+            // 仍會回捲成本地與伺服器分歧。要真解需要版本標記而非值比較。窗口窄（遺失回應
+            // ＋同期 pull），且嚴格優於無條件寫回，故先收斂到此。
             guard entry.isArchived == archived else { return }
             entry.isArchived = previous
             // 回捲這一側才是真正需要顯式存檔的分支：它要把樂觀值從磁碟上撤下來。
@@ -108,7 +136,6 @@ final class WordDetailSceneState {
     ) {
         guard let fromId = entry.kgCardId else { return }
         guard let pending = VocabularyGraphLinkMutation.beginManualLink(from: entry, to: target) else { return }
-        beginAction()
         let notebookId = entry.notebookId
 
         Task { @MainActor in
@@ -119,9 +146,10 @@ final class WordDetailSceneState {
                     notebookId: notebookId
                 )
                 VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: entry)
+                clearActionError(for: .link)
             } catch {
                 VocabularyGraphLinkMutation.rollbackManualLink(pending, on: entry)
-                actionError = L10n.string("新增連結失敗")
+                setActionError(L10n.string("新增連結失敗"), kind: .link)
             }
         }
     }
@@ -132,7 +160,6 @@ final class WordDetailSceneState {
         allEntries: [VocabularyEntry],
         kgService: any KGServing
     ) {
-        beginAction()
         let notebookId = entry.notebookId
         let peer = linkedEntry(for: link, from: entry, in: allEntries)
         let removed = VocabularyGraphLinkMutation.removeLink(link, from: entry, peer: peer)
@@ -140,9 +167,10 @@ final class WordDetailSceneState {
         Task { @MainActor in
             do {
                 try await kgService.deleteLink(linkId: link.id, notebookId: notebookId)
+                clearActionError(for: .link)
             } catch {
                 VocabularyGraphLinkMutation.rollbackLinkRemoval(removed, source: entry, peer: peer)
-                actionError = L10n.string("刪除連結失敗")
+                setActionError(L10n.string("刪除連結失敗"), kind: .link)
             }
         }
     }
@@ -172,7 +200,6 @@ final class WordDetailSceneState {
         allEntries: [VocabularyEntry],
         kgService: any KGServing
     ) {
-        beginAction()
         let notebookId = entry.notebookId
         let peer = linkedEntry(for: link, from: entry, in: allEntries)
         VocabularyGraphLinkMutation.setHidden(hidden, for: link, source: entry, peer: peer)
@@ -184,9 +211,10 @@ final class WordDetailSceneState {
                 } else {
                     try await kgService.unhideLink(linkId: link.id, notebookId: notebookId)
                 }
+                clearActionError(for: .link)
             } catch {
                 VocabularyGraphLinkMutation.setHidden(!hidden, for: link, source: entry, peer: peer)
-                actionError = hidden ? L10n.string("隱藏連結失敗") : L10n.string("恢復連結失敗")
+                setActionError(hidden ? L10n.string("隱藏連結失敗") : L10n.string("恢復連結失敗"), kind: .link)
             }
         }
     }

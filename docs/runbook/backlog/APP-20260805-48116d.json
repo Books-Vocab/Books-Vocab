@@ -1,0 +1,14 @@
+{
+  "category": "content",
+  "date": "2026-08-05",
+  "detail": "行銷素材 final_review-card.png 下次重生成時會多一列紅色「刪除」。Debug scenario 'Word Detail · Sheet/Marketing'（WordDetailScenarios.swift:143）用預設 wrapInNavigation:true → offersLifecycleActions 為真 → 新增的卡片管理區連同 destructive 色的刪除列一起入鏡，而該 shot 被 ops/capture_profiles/website.json 的 review_card 引用，文案是「釋義、發音、例句、關聯詞——一張卡片全掌握」。不會自動發布（capture 需手動重跑），所以現行線上資產不受影響；但下一次重生成會靜默換掉一張已上線的圖。決定時機：要嘛給 marketing scenario 一個不含生命週期動作的呈現路徑，要嘛接受並更新文案。",
+  "id": "APP-20260805-48116d",
+  "repro": "跑 website capture profile 的 review_card shot，比對 final_review-card.png",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "worktree feat/word-detail-actions（code review 指出）",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}

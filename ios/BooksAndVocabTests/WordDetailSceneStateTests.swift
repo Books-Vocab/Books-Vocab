@@ -169,6 +169,63 @@ struct WordDetailSceneStateTests {
         #expect(state.actionError != nil)
     }
 
+    /// CAS 的「不回捲」分支：await 期間背景 pull 帶回權威值（值已不等於我們的樂觀寫入），
+    /// 此時回捲會用舊值蓋掉新鮮值且不再推送。用 handler 在拋錯前改值即可確定性驅動。
+    @Test func setArchived_doesNotRollBackWhenValueChangedDuringFlight() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.notebookId = "nb-1"
+        context.insert(entry)
+
+        let spy = SpyKGService()
+        spy.archiveCardHandler = { _ in
+            // 模擬背景 pull 在 in-flight 期間寫入權威值 false
+            entry.isArchived = false
+            throw TestFailure.offline
+        }
+        let state = WordDetailSceneState()
+
+        await state.setArchived(true, for: entry, kgService: spy, modelContext: context)
+
+        #expect(entry.isArchived == false, "值已被他人改動時不可回捲")
+        #expect(state.actionError != nil)
+    }
+
+    /// CAS 的「要回捲」分支，並補上 commit message 稱為「載重側」的持久化斷言。
+    @Test func setArchived_rollbackPersistsWhenValueUntouched() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.notebookId = "nb-1"
+        context.insert(entry)
+
+        let spy = SpyKGService()
+        spy.archiveCardHandler = { _ in throw TestFailure.offline }
+        let state = WordDetailSceneState()
+
+        await state.setArchived(true, for: entry, kgService: spy, modelContext: context)
+
+        #expect(entry.isArchived == false)
+        #expect(context.hasChanges == false, "回捲側要把樂觀值從磁碟撤下來")
+    }
+
+    /// 跨領域：連結操作留下的錯誤**不可**被一次成功的封存抹掉——連結失敗會靜靜回捲，
+    /// 那則訊息是使用者唯一的解釋；封存的成功則自帶圖示回饋。
+    @Test func setArchived_successDoesNotClearLinkError() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.notebookId = "nb-1"
+        context.insert(entry)
+
+        let spy = SpyKGService()
+        let state = WordDetailSceneState()
+        state.actionError = "刪除連結失敗"   // 模擬 link writer 留下的訊息（kind = nil，非 .archive）
+
+        await state.setArchived(true, for: entry, kgService: spy, modelContext: context)
+
+        #expect(entry.isArchived)
+        #expect(state.actionError == "刪除連結失敗", "封存成功不得吃掉別類動作的錯誤")
+    }
+
     // MARK: - Helpers
 
     private enum TestFailure: Error {
