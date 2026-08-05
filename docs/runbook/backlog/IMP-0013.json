@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-08",
+  "detail": "api 元件版號分叉:tag api/1.6.0 vs pyproject 0.1.0,339 筆 commit 未發版(版本真相兩處互相矛盾)",
+  "id": "IMP-0013",
+  "resolution": "`208e41437`(bump+tag api/2.0.0,漂移清零)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "版本控制盤點",
+  "status": "fixed",
+  "stream": "IMP"
+}

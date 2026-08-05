@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-10",
+  "detail": "`ios_test.sh --ui <bareMethod>`(裸方法名)對**不在** class `BooksAndVocabUITests` 的 UITest method 回 `tests=0` 卻 exit 0(**FALSE GREEN**):bare method 只在預設 suite 內解析,別的 UITest class(如 `ExploreNavigationUITests`)的 method 靜默零執行、假綠。workaround=用完整限定 `Class/method`。fix 候選:runner auto-resolve method→其所屬 class,或 `--help`/零匹配錯誤明示「bare method 僅限預設 suite,跨 class 用 Class/method」",
+  "id": "IMP-0030",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Explore P1 docs-sync",
+  "status": "open",
+  "stream": "IMP"
+}

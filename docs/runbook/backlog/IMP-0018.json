@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-08",
+  "detail": "`ui_world_manifest.py validate` 與 Swift decoder 有 nullability gap:todayReview `dateAdded` null 過 validator 卻在 app preconditionFailure——validator 應對齊 Swift date 非空要求",
+  "id": "IMP-0018",
+  "resolution": "`6a9761d5e`(validator dateAdded 必填 + spec_world 非空導出)；`5a25ae6ac` 追加 graph link in-seed 驗證（同類 nullability/dangling gap）",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "deflate 修復(c272101c9)",
+  "status": "fixed",
+  "stream": "IMP"
+}

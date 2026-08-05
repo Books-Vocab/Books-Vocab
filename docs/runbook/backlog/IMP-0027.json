@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-09",
+  "detail": "行銷 spec provenance 曾未 pin，無機制保證「重建／注入的 artifact == 被審核的 artifact」。現由 tracked source spec + history plan 重建，要求生成 dataset SHA 精確等於 release spec，reviewer bundle 再封閉綁定 profile / dataset / render spec / 每張輸出 digest；live-demo identity 另沿 spec→ASC mirror→runner→receipt 同一 SHA 收斂，故不另開重複的 closed-world debt。",
+  "id": "IMP-0027",
+  "resolution": "`98ec95539`(typed producer + exact reviewer-bundle closure)+`4d320ff5b`(live identity closure)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "行銷帳號 Phase5(provenance)",
+  "status": "fixed",
+  "stream": "IMP"
+}

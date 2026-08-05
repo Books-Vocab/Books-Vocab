@@ -89,4 +89,4 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 - **小 / 中大** → 依 `kg-router`「Tool Friction」分級走對應動作(小=記錄續做 / 中大=停手修工具;鐵律9)。
 - **結構 / 架構級**(本手冊新增的第三級,前兩級之外)→ 不自決,**升級回上一階**(必要時到執行長,見 CLAUDE.md 組織模型升級觸發)。
 
-凡非當場修掉者一律進 `docs/runbook/improvement_backlog.md`,owner=`platform-steward` 追到 resolved。
+凡非當場修掉者一律經 `ops/backlog.py add` 進 `docs/runbook/backlog/`(一筆一檔的 SoT),owner=`platform-steward` 追到 resolved。

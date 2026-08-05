@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-09",
+  "detail": "無 `ops-edit user-delete` 原語 → reshape 用的 throwaway scratch 帳號(及一般 demo 帳號)會殘留在 users.json(`_` 前綴者 `is_real_user=False` 自動隱藏於 fleet-overview,但實體條目仍在),只能靠手寫 scoped script 清(本 session 即如此)。候選:`ops-edit user-delete <uid>`(移 user dir + users.json 條目 + email/subscription index scrub,dry-run 預設、寫前自動備份)。",
+  "id": "IMP-0025",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "行銷帳號 Phase5(scratch 清理)",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-03",
+  "detail": "`worktree_orchestrate.py gate --receipt-line` 是**互斥的輸出模式**，不是附加輸出（`cmd_gate` 照常跑完 `for spec in plan: _run_gate(...)`，只換 print 格式）。重跑本身是刻意的——那行的價值就是「沒跑過就產不出來」，讀快取會讓陳舊 record 可被貼上。問題在於拿不到「報告 + receipt 行」的**單次**執行，所以照工作流（先看結果再產 receipt）必付兩倍完整 gate 時間；本次實測第二次呼叫 3 分鐘未完成。下一步：正常（非 `--json`）報告結尾**恆印**那一行，`--receipt-line` 退化為「只印那行」的靜音模式。",
+  "id": "IMP-0046",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "IMP-0039 收尾觀察",
+  "status": "open",
+  "stream": "IMP"
+}

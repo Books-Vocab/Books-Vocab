@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-07-08",
+  "detail": "`docs/sop/ios.md` §UI World dataset 契約為單行 ~4000 字牆,知識密度高但不可讀不可維護;候選:結構化為表格+分節",
+  "id": "IMP-0012",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "iOS 2.0.0 發版檢討",
+  "status": "open",
+  "stream": "IMP"
+}

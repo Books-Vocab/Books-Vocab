@@ -508,14 +508,28 @@ def test_real_ledger_parses_with_no_losses(tmp_path):
     ids = [r["id"] for r in rows]
     assert len(ids) == len(set(ids)), "duplicate ids in the source ledger"
 
-    # Recovery must be NAMED, never silent. The shipped ledger has at least one
-    # row whose detail contains an unescaped `|` (IMP-0017 writes `|| true`
-    # where IMP-0023 wrote `\|\| true`), so the table has been quietly rendering
-    # that row wrong for as long as it has existed.
-    recovered = [p["id"] for p in problems if p["kind"] == "recovered-row"]
-    assert "IMP-0017" in recovered, (
-        f"expected IMP-0017 to need recovery; recovered={recovered}"
-    )
+    # Recovery, if it happens at all, must be NAMED rather than silent. The
+    # hand-maintained table needed it (IMP-0017 wrote `|| true` where IMP-0023
+    # wrote `\|\| true`, so that row was silently ten columns wide for as long
+    # as the table existed). Once the file is generated, `render` escapes cells
+    # and recovery should never fire again — so this asserts the invariant, not
+    # the transient fact, and holds on both sides of the migration.
+    for problem in problems:
+        assert problem["kind"] == "recovered-row", f"unexpected problem: {problem}"
+        assert problem.get("id"), "a recovery must name the row it repaired"
+
+
+@pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
+def test_generated_view_needs_no_recovery():
+    """The post-migration invariant: a rendered view is escaped correctly, so
+    round-tripping it is clean. If this ever goes red, `render` has started
+    re-creating the damage the importer was built to repair."""
+    text = LEGACY_DOC.read_text(encoding="utf-8")
+    if "GENERATED" not in text.upper():
+        pytest.skip("ledger has not been migrated to the generated view yet")
+
+    _, problems = BACKLOG.parse_legacy_table(text)
+    assert problems == [], f"the generated view does not round-trip cleanly: {problems}"
 
 
 @pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")

@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-07-09",
+  "detail": "iOS 伺服器 review-clock push 只在 cold-start 套用(`SettingsCoordinator.swift:111` gate `pauseClockSnapshot.updatedAt == nil`)+ `KGFeatureFlags.serverReviewClockLwwEnabled` dead-`false`(`KGFeatureFlags.swift:27`)→ **任何曾本地 toggle 過複習時鐘的裝置,伺服器凍結會被忽略**。屬當前同步狀態的 by-design(LWW 未啟用),非 bug;行銷截圖走 catalog fixture(offline UserDefaults seed 恆套用)故不受影響。候選(產品決策):是否讓 server-authoritative review-clock LWW 出貨。",
+  "id": "IMP-0029",
+  "resolution": "—(by-design,待產品決策)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "行銷帳號 Phase5(時鐘凍結對抗驗證)",
+  "status": "open",
+  "stream": "IMP"
+}

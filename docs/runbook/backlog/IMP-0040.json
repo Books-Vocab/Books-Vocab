@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-03",
+  "detail": "`worktree-flow` skill 宣稱「所有 mutation 子指令 dry-run 預設、`--commit` 才落地」，但 `worktree_orchestrate.py open` 沒有 `--commit` 旗標、直接落地。第一次照文檔呼叫即撞到 usage error。下一步：修文檔措辭（列出例外），或給 `open` 加上 dry-run 語意。",
+  "id": "IMP-0040",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "harness 可信度改造（開場）",
+  "status": "open",
+  "stream": "IMP"
+}

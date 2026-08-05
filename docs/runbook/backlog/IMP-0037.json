@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-17",
+  "detail": "committed `resolve` 的 `git worktree remove --force` 實測約 30 秒、CPU 約 40%，期間因 mutation 共用 silent `subprocess.run(PIPE)` 完全無輸出，操作者無法分辨忙碌或卡死；同一路徑也涵蓋 fetch/rebase/merge/push/branch teardown 與網路 probe。現所有潛在長時 mutation、`ls-remote` 與 committed sweep 統一走 bounded streaming runner，stderr 立即顯示安全語意 phase/PID/alive、最長每 20 秒 heartbeat、正常 exit done；JSON stdout、dry-run 與 failure detail 保持，raw argv 不顯示。",
+  "id": "IMP-0037",
+  "resolution": "`457b8ea74`(mutation heartbeat + caller-route/JSON/secret regression)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "worktree resolve 實測",
+  "status": "fixed",
+  "stream": "IMP"
+}

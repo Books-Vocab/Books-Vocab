@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-07-08",
+  "detail": "升級觸發清單漏「執行中發現 human-only 動作」,blocker 批到 receipt 才告知(ASC 403 損失 40 min 可平行人工時間)",
+  "id": "IMP-0007",
+  "resolution": "`9a8209a4c`(agent_org.md 補即時升級觸發)+`fbf2221cb`(review 修正)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "iOS 2.0.0 發版檢討",
+  "status": "fixed",
+  "stream": "IMP"
+}

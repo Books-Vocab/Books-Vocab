@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-07-08",
+  "detail": "委派無成本下限,trivial 工作也燒全套 agent+receipt",
+  "id": "IMP-0008",
+  "resolution": "`9a8209a4c`(agent_org.md 補 trivial 門檻)+`fbf2221cb`(trivial vs 豁免釐清)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "iOS 2.0.0 發版檢討",
+  "status": "fixed",
+  "stream": "IMP"
+}

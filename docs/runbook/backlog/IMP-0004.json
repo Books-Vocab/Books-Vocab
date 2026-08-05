@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-06-13",
+  "detail": "首次 `uv run` 觸發 .venv bootstrap(~100MB),新 worktree / CI 首跑有感",
+  "id": "IMP-0004",
+  "resolution": "正常行為,快取後即解;不修",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "backend-engineer smoke",
+  "status": "wont-fix",
+  "stream": "IMP"
+}

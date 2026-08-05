@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-07-08",
+  "detail": "`ios_test.sh` 在 set -e + pipefail 下任何內部管線非零會**靜默中止且 exit 0**（cleanup trap 吞 exit code、無錯誤輸出）——cache-key 缺檔觸發點已修（`4d11a11d2`），但「mute rc-0 abort」這一類故障模式仍在:任何未 `|| true` 防護的管線都可能無聲假綠。候選:EXIT trap 保留原 exit code + set -e 中止時印 stderr 診斷行（兩度撞號:原 IMP-0013→改 0014 又撞 release 盤點→定 0017）",
+  "id": "IMP-0017",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "ops-engineer（spec 投影 Phase 2）",
+  "status": "open",
+  "stream": "IMP"
+}

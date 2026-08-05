@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-03",
+  "detail": "exit code 有兩個互斥家族：家族1 `0/1/2=pass/warn/block`（`ios.gate`/`branch_audit`/`review_audit`/`docs_lint`）與家族2 `0=pass,2=block,1=工具錯誤`（app_review 全家）。決定性理由：這些腳本跑在 `set -euo pipefail` 下，未捕捉的中途失敗天然 exit 1，所以家族1 讓「腳本半路死掉」與「乾淨判 warn」不可區分——同一種病換一層。裁定應為 `0=pass/1=tool error/2=block/3=warn/64=usage`。遷移成本經查證極低（branch_audit/review_audit 的 exit code 無機器消費者；worktree 測試幾乎全用符號常數）。附帶：sha256 五份、canonical JSON 四份（`ops/demo/emit_ios.py:280` separators 不同導致 hash 不相容）、ISO8601 三份、原子寫檔四份，應抽進 `ops/lib/`。",
+  "id": "IMP-0042",
+  "resolution": "— （2026-08-03 補：`ops/lib/provenance.py` 已建立為 tool-identity hashing 的 SoT，是 sha256 抽取的指定落點。實際 streaming-sha256 副本是 `ops/reviewer_evidence.py:32` 與 `ops/ui_world_manifest.py:515`；`ops/capture_profile.py` **沒有**副本，它是 import 的——遷移前先核對清單。）",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "harness 可信度改造 Phase 5（未完成）",
+  "status": "open",
+  "stream": "IMP"
+}

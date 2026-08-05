@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-04",
+  "detail": "證偽器有兩個**結構性**限制，已在程式碼註解裡明講而非假裝有守，但都該補。① **絕對路徑穿透**：PATH 遮蔽擋不住 `/usr/bin/log` 這類寫法（`ops/lib/ios_ops_logs.sh:67,90`、`ops/ios_device_logs.sh:88` 就是），原本有一條 grep 守衛但它掃的是 `ops/test_ops.sh`——那只是 dispatcher，對任何 binary 都零命中，是一條寫著卻永遠不會響的檢查，已刪。要補得從 `test_ops.sh` 的 case arm 解出 group 的真實命令鏈再掃。② **逃生口管的是 token 集合不是指派**：11 條排除裡 9 條走不可證偽 token，把 `bin-xcode` 改成 `data-indexstore` 是一個單字 diff，證偽器立刻不再碰它且沒有任何檢查會出聲；而指派**確實會錯**——`review-probe` 這輪就被我指派成可進 CI，實際上它相依的正是本表已經用來排除 `ui-quality-gate` 的那份 UI World 資產。制度化的解法是把「產生這條 PR 的那個實驗」變成 CI step：以 **expected-fail** 跑 `EXCLUDED_GROUPS`，某條排除竟然在 ubuntu 上**通過** → gate 紅、訊息「這條排除是假的，收進 LINUX_GROUPS」。對 `data-*` / `net-external` 一樣有效、不需要 PATH 把戲，成本低（linux 上 ios-ops / lldb-forensics 各約 1 秒就死）。**但它自己有 C3 同型的弱點**：group 因別的原因失敗一樣會「確認」排除，所以訊息要寫成假設不是判決。",
+  "id": "IMP-0059",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0054 的 review",
+  "status": "open",
+  "stream": "IMP"
+}

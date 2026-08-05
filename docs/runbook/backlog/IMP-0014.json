@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-07-08",
+  "detail": "同版重送(被拒後最高頻操作)無 build-only bump typed 入口,須手改 pbxproj",
+  "id": "IMP-0014",
+  "resolution": "`9578d9cb0`+`2cd12c8de`(release.sh bump-build ios,dry-run 預設+11 斷言+docs 同步)",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "版本控制盤點",
+  "status": "fixed",
+  "stream": "IMP"
+}
