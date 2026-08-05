@@ -368,6 +368,129 @@ def test_app_entries_render_in_their_own_section(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 3b. verdict stamps promoted to first-class fields
+# ---------------------------------------------------------------------------
+#
+# The 2026-08-05 re-verification sweep encoded its results as a convention
+# inside the resolution cell:
+#
+#   —(YYYY-MM-DD 驗證 <VERDICT>;落點 `file:line`,成本 <S|M|L>,測試…)
+#
+# Promoting those to real fields is the point of having a store at all. But the
+# extraction is ADDITIVE and LOSSLESS: `resolution` keeps the original text
+# verbatim and stays authoritative, so a stamp the parser does not recognise
+# costs an empty field and a named report — never a lost sentence.
+
+
+def test_verdict_and_date_are_extracted():
+    stamp = "—(2026-08-05 驗證 CONFIRMED-OPEN;成本 M=純文編排)"
+    fields, misses = BACKLOG.extract_verdict_fields(stamp)
+
+    assert fields["verified_at"] == "2026-08-05"
+    assert fields["verdict"] == "CONFIRMED-OPEN"
+    assert fields["cost"] == "M"
+    assert misses == []
+
+
+@pytest.mark.parametrize("sep", [";", ",", ":"])
+def test_verdict_survives_all_three_separators_seen_in_the_data(sep):
+    """The sweep used `;`, `,` and `:` interchangeably after the verdict —
+    CONFIRMED-OPEN;候選, CONFIRMED-OPEN,detail 兩處失準, PARTIAL:症狀真."""
+    fields, _ = BACKLOG.extract_verdict_fields(f"—(2026-08-05 驗證 PARTIAL{sep}症狀真)")
+    assert fields["verdict"] == "PARTIAL"
+
+
+def test_en_dash_cost_range_is_kept_whole():
+    """`成本 S–M` uses an EN DASH, not a hyphen. Splitting on `-` would report
+    cost `S` and silently halve the estimate."""
+    fields, _ = BACKLOG.extract_verdict_fields("—(2026-08-05 驗證 CONFIRMED-OPEN;成本 S–M——M 的部分是…)")
+    assert fields["cost"] == "S–M"
+
+
+def test_duplicate_verdict_keeps_the_id_it_points_at():
+    fields, _ = BACKLOG.extract_verdict_fields("—(2026-08-05 驗證 DUPLICATE-OF-IMP-0042)")
+    assert fields["verdict"] == "DUPLICATE-OF-IMP-0042"
+    assert fields["duplicate_of"] == "IMP-0042"
+
+
+def test_fix_site_is_taken_only_when_it_is_a_backticked_token():
+    fields, misses = BACKLOG.extract_verdict_fields(
+        "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_export.py:140` 上方加模組級 X)"
+    )
+    assert fields["fix_site"] == "ops_world_export.py:140"
+    assert misses == []
+
+
+def test_unbackticked_fix_site_is_reported_not_guessed():
+    """`落點` followed by free prose has no delimiter that can be trusted.
+    Guessing where it ends would put arbitrary prose into a field that later
+    readers treat as a path."""
+    fields, misses = BACKLOG.extract_verdict_fields(
+        "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 大概在 export 那一帶,成本 S)"
+    )
+    assert "fix_site" not in fields
+    assert any(m["field"] == "fix_site" for m in misses)
+    assert fields["cost"] == "S", "one unparseable field must not abort the others"
+
+
+def test_stamp_is_found_when_it_starts_with_prose():
+    """IMP-0029's real shape. The date is regular relative to 驗證, not to the
+    opening bracket — anchoring on `—(` silently loses the date on entries whose
+    resolution opens with a note."""
+    fields, misses = BACKLOG.extract_verdict_fields(
+        "—(by-design,待產品決策;2026-08-05 驗證 CONFIRMED-OPEN,範圍由 1 擴為 4 surface;決策成本 S)"
+    )
+    assert fields["verified_at"] == "2026-08-05"
+    assert fields["verdict"] == "CONFIRMED-OPEN"
+
+
+def test_prose_mentioning_the_word_is_not_treated_as_a_stamp():
+    """Three real entries (IMP-0018/0054/0056) mention 驗證 in prose without
+    carrying a stamp. Gating on the bare keyword reported all three as having
+    unreadable stamps — a keyword standing in for the structure, which is the
+    same proxy error the module refuses to make elsewhere."""
+    fields, misses = BACKLOG.extract_verdict_fields(
+        "`330b87fad`。reviewer 用兩-tick 探針實測驗證出回滾不 recreate,故改走 force-recreate。"
+    )
+    assert fields == {}
+    assert misses == [], f"prose mention produced noise: {misses}"
+
+
+def test_no_stamp_extracts_nothing_and_reports_nothing():
+    """Resolutions that are plain commit hashes are the majority; they must not
+    generate noise."""
+    fields, misses = BACKLOG.extract_verdict_fields("`8aeb9e54b`。裁定：reconciler 是例行部署 SoT")
+    assert fields == {}
+    assert misses == []
+
+
+def test_extraction_never_mutates_the_resolution(tmp_path):
+    """The lossless half of the contract."""
+    store = tmp_path / "backlog"
+    original = "—(2026-08-05 驗證 PARTIAL:症狀真、機制原述為錯已改寫;落點 `ios_test.sh:790`,成本 S)"
+    BACKLOG.import_legacy(
+        _table(f"| IMP-0030 | 2026-07-10 | sweep | tool | med | open | a false green | {original} |"),
+        store,
+    )
+
+    entry = BACKLOG.load_entry(store, "IMP-0030")
+    assert entry["resolution"] == original, "resolution must survive verbatim"
+    assert entry["verdict"] == "PARTIAL"
+    assert entry["fix_site"] == "ios_test.sh:790"
+
+
+def test_needs_test_is_deliberately_not_extracted():
+    """`測試` appears in free prose with no consistent encoding. Deriving a
+    boolean from the presence of the word would be a proxy standing in for the
+    property — the exact shape that survived three review rounds in IMP-0047.
+    The prose stays in `resolution`; no field is invented."""
+    fields, _ = BACKLOG.extract_verdict_fields(
+        "—(2026-08-05 驗證 CONFIRMED-OPEN;成本 S,測試加在 `ops/test_ios_ops.sh:375-378`)"
+    )
+    assert "needs_test" not in fields
+
+
+# ---------------------------------------------------------------------------
 # 4. against the real ledger currently in the repo
 # ---------------------------------------------------------------------------
 
