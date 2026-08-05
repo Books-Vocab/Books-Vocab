@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/
-verified_against: cf5dd5df5
+verified_against: 198402dc7
 -->
 # UI State Matrix
 
@@ -101,6 +101,32 @@ Scope: `ios/BooksAndVocab`
 | Populated list | `rows.count > 0` | list card + rows | 已覆蓋 |
 | Pending delete retry | pending deletes + error | banner retry action | 已覆蓋 |
 | Background refresh success | `loadInitialData` 成功 | 無明確 success UI | 缺口 |
+
+### Dictionary Card State（V1）
+
+主要檔案：`Scenes/AddLinkSheet.swift` + `Scenes/AddLinkCoordinator.swift`（建卡流程）、`Scenes/WordDetailSheet.swift` + `Scenes/WordDetailSceneState.swift` + `Presentation/DictionaryDetailPresentation.swift`（詳情與 promotion）。
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| List filter：全部／學習／字典 | `KGVocabCoordinator` roleFilter | segmented filter + 排序 | 已覆蓋 |
+| 字典搜尋 idle | 尚未輸入 | 提示文案 | 已覆蓋 |
+| 字典搜尋 loading | 送出查詢中 | progress | 已覆蓋 |
+| 字典搜尋無結果 | `hits.isEmpty` | empty state | 已覆蓋 |
+| 字典搜尋被限流 | 429 | 稍後再試文案（`Retry-After` 60s） | 已覆蓋 |
+| 字典查詢已關閉 | rollout flag off → 403 | 功能暫不可用文案 | 已覆蓋 |
+| 義項／例句選取 | 展開 entry | sense/example picker | 已覆蓋 |
+| 建卡並連結成功 | materialize 200 | targeted upsert + 關閉 sheet | 已覆蓋 |
+| 重用既有卡 | notebook 內已有同字 | 直接連結，不換選定例句 | 已覆蓋 |
+| Detail：離線 payload | 進入字典卡詳情 | 義項／例句切換 + 來源與授權 + 分享 | 已覆蓋 |
+| Promotion queued / running | `promotionState` | 進行中指示，動作禁用 | 已覆蓋 |
+| Promotion failed | `promotionState == .failed` | 錯誤 + 重試（仍是字典卡） | 已覆蓋 |
+| Promotion success | role 轉 `learning` | 卡片切到學習面 | 已覆蓋 |
+| Reader 高亮開關 | `readerHidden` toggle | 立即生效 + outbox 補送 | 已覆蓋 |
+| Graph：dictionary badge / 次級節點 | node `cardRole` | badge + 次級樣式 + 導航 | 已覆蓋 |
+
+判斷：
+- 這面的 state 幾乎全部由後端狀態驅動，UI 不得自行推導——特別是**不能用 `cardRole` 推導 Reader 高亮**（見 `feature_boundary/reader.md`）
+- promotion 是唯一的 role 轉移入口，且單向；UI 不提供降級
 
 ### Sync State
 

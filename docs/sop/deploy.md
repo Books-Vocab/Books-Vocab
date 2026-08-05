@@ -6,7 +6,7 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: 8aeb9e54b
+verified_against: 198402dc7
 -->
 # 後端部署指南
 
@@ -238,6 +238,21 @@ scp -i ~/.ssh/lightsail_kg_prod ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.1
 ./devops.sh deploy
 ```
 **注意**：`.env` 變動不能只 `restart`，容器讀不到新值。
+
+### 字典卡（V1）rollout 開關
+
+四個 env（`settings.py`；索引見 `docs/reference/tech_index.md §Environment Variables`）：
+
+| Env | 預設 | 作用 |
+|---|---|---|
+| `DICTIONARY_LOOKUP_ENABLED` | `false` | **rollout kill switch**。上線用 `true` 打開，出事設回 `false` 即止血 |
+| `DICTIONARY_PROVIDER_DEFAULT` | `free_dictionary` | 非此值一律 403（Cambridge 是保留 seam，無持久化授權，不可開） |
+| `DICTIONARY_CACHE_TTL_DAYS` | `30` | 正向快取 TTL |
+| `DICTIONARY_NEGATIVE_CACHE_TTL_HOURS` | `24` | 負向（查無此字）快取 TTL |
+
+**關掉旗標的語意（重要，別誤判成全功能下線）**：只擋**新搜尋 / 新 entry 讀取 / 新 materialization**。既有字典卡的 detail、增量 projection、選定義項變更、archive、delete、reader-visibility、promotion **一律照常可用**——這是刻意的：把既有卡鎖成孤兒比讓功能繼續讀更糟。已在飛行中的 materialization（judge 已跑完、卡已 staged）也允許續完，且續完時 lexical 依賴降為 cache-only，回滾中的部署不會打到 provider。契約由 `backend/tests/test_dictionary_v1.py` 釘住。
+
+**回滾後檢查**：`ops_cli.py dictionary-cards --json` 看 `totals.operations_in_flight` 是否收斂到 0（不歸零＝有 saga 卡住）、`totals.promotion_failures` 有無累積；`ops_cli.py dictionary-health --json` 看 `lookups.by_outcome` 的 `blocked` 是否如預期出現。
 
 ### Secret 加密金鑰（`SECRET_ENC_KEY`）與 JWT_SECRET 輪換
 

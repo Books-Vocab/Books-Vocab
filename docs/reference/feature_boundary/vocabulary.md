@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: 3c6cd0688
+verified_against: 198402dc7
 -->
 # Vocabulary Feature Boundary
 
@@ -30,7 +30,8 @@ verified_against: 3c6cd0688
 | `VocabularyListCoordinator.swift` | 59 | `@Observable @MainActor final class VocabularyListCoordinator` |
 | `KnowledgeGraphCoordinator.swift` | 80 | `@Observable @MainActor final class KnowledgeGraphCoordinator` |
 | `Scenes/KGVocabCoordinator.swift` | 204 | `@Observable @MainActor final class KGVocabCoordinator`，batch delete / archive 收斂集中於 coordinator；archive 的本地可收斂集合為 `updated_words ∪ not_found`，`failed` 才保留重試 |
-| `Scenes/SyncCoordinator.swift` | 506 | `@Observable @MainActor final class SyncCoordinator`，含 `PipelineStep` / `SyncPhase` / `SyncFailureKind` |
+| `Scenes/SyncCoordinator.swift` | 672 | `@Observable @MainActor final class SyncCoordinator`，含 `PipelineStep` / `SyncPhase` / `SyncFailureKind`；字典卡走**獨立 projection**（`/api/dictionary-cards`）與 vocab projection 併行收斂 |
+| `Scenes/AddLinkCoordinator.swift` | 282 | `@Observable @MainActor final class AddLinkCoordinator`，Add Link 的字典區流程：搜尋 → 選義項/例句 → materialize（stable `Idempotency-Key`）→ targeted upsert，含 transport race 收斂 |
 
 ### Presenter Layer（純 UI 呈現）
 
@@ -74,13 +75,14 @@ verified_against: 3c6cd0688
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Presentation/VocabularyEntryPresentation.swift` | 211 | `enum VocabularyEntryPresentation`，詞條 UI 模型 |
+| `Presentation/VocabularyEntryPresentation.swift` | 201 | `enum VocabularyEntryPresentation`，詞條 UI 模型 |
 | `Presentation/WordRowPresentation.swift` | 138 | 詞列行 UI 模型；review state/relative label/progress 支援注入 `now` |
 | `Presentation/WordDetailPresentation.swift` | 122 | `enum WordDetailPresentation`，詞條詳情 UI 模型 |
 | `Presentation/CardPresentation.swift` | 148 | `struct CardPresentation` + `CardLinkGroupPresentation` |
-| `Presentation/KnowledgeGraphPresentation.swift` | 183 | `KnowledgeGraphNode` / `KnowledgeGraphEdge` / `KnowledgeGraphTheme` / `enum KnowledgeGraphPresentation` |
+| `Presentation/KnowledgeGraphPresentation.swift` | 203 | `KnowledgeGraphNode` / `KnowledgeGraphEdge` / `KnowledgeGraphTheme` / `enum KnowledgeGraphPresentation` |
 | `Presentation/StatsPresentation.swift` | 99 | `enum StatsPresentation`；`buildSummary(..., now:)` 支援 frozen review clock |
 | `Presentation/KGVocabSortOption.swift` | 28 | `enum KGVocabSortOption` |
+| `Presentation/DictionaryDetailPresentation.swift` | 113 | `enum DictionaryDetailPresentation`，字典卡詳情 UI 模型：離線 payload 的義項／例句投影、來源與授權標示、分享文字組裝 |
 
 ### Scenes（獨立場景 View）
 
@@ -101,8 +103,9 @@ verified_against: 3c6cd0688
 | `Scenes/ReviewSessionPersistence.swift` | 271 | 複習 session 落地/恢復邏輯 |
 | `Scenes/SelectionModeState.swift` | 47 | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | 64 | `struct OverviewTab: View`，Vocab 入口 overview tab |
-| `Scenes/AddLinkSheet.swift` | 121 | `struct AddLinkSheet: View`，KG 手動加連線 sheet |
-| `Scenes/WordDetailSheet.swift` | 197 | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link / archive orchestration 委派 `WordDetailSceneState`。封存後**刻意不 dismiss**（圖示翻轉即回饋兼 undo，故不需要帶動作的 undo toast——`AppToastCoordinator` 也只吃 message/style/duration）；刪除走 `confirmationDialog` 並**指名損失**（連結數取自 presenterState），確認後 `queueDelete` + dismiss。`offersLifecycleActions` 由 `showsInlineChrome` 推導：唯一為 false 的宿主 `LinkedCardOverlayStack` 自繪 header，封存鈕本就不渲染，若不一併關掉刪除，該疊層會變成「只能刪不能封存」 |
+| `Scenes/AddLinkSheet.swift` | 313 | `struct AddLinkSheet: View`，KG 手動加連線 sheet；含字典區（搜尋 / 義項與例句選取 / 建卡並連結），流程狀態委派 `AddLinkCoordinator` |
+| `Scenes/AddLinkCoordinator.swift` | 282 | `@Observable` 加連線流程狀態機；本地候選與字典搜尋共用一條 `searchGeneration` stale-guard，manual link 的 begin/create/commit 亦在此 |
+| `Scenes/WordDetailSheet.swift` | 269 | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link / archive orchestration 委派 `WordDetailSceneState`。封存後**刻意不 dismiss**（圖示翻轉即回饋兼 undo）；刪除走 `confirmationDialog` 並**指名損失**（連結數取自 presenterState），確認後 `queueDelete` + dismiss；字典卡另有 `showDictionaryDeleteConfirmation` 一條分流。`offersLifecycleActions` 由 `showsInlineChrome` 推導：唯一為 false 的宿主 `LinkedCardOverlayStack` 自繪 header，封存鈕本就不渲染，若不一併關掉刪除，該疊層會變成「只能刪不能封存」 |
 | `Scenes/WordDetailCopy.swift` | 25 | `enum WordDetailCopy`，詳情頁文案（慣例對齊 `NotebookListCopy`）。`deleteMessage(linkCount:)` 依連結數分流，無連結時不印「0 條」 |
 | `Scenes/WordEditSheet.swift` | 105 | `struct WordEditSheet: View` |
 | `Scenes/ArchivedVocabSheet.swift` | 118 | `struct ArchivedVocabSheet: View` |
@@ -174,6 +177,15 @@ verified_against: 3c6cd0688
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
 - Presentation models（`Presentation/`）：純值類型，可跨 layer 傳遞，但不持有 mutable state
 - **容器↔單字本綁定 scope**（`NotebookBindable`，`ios/BooksAndVocab/Models/NotebookBindable.swift`）：每本書（`Book`）/ 每個 podcast 系列（`PodcastSeries`）綁定**恰好一本真實單字本**，開啟時以最近使用的真實本 seed 固化（`ensureBoundNotebook` + `canSeedBinding` gate：seed 須在 live 清單內已 settle，擋未同步 `"default"` sentinel）。固化後選詞 / highlight / cache scope 一律認 `resolvedNotebookId` 綁定本，**不再隨全域 active 漂移、無 magic 預設本**。`preferredNotebookId` 為純本機偏好；`resolvedNotebookId` 的 `?? activeNotebookId` 僅防禦性 last-resort（未經開啟流程就讀取），非主路徑。綁定本被刪除時由各 picker 的 `sanitizeStaleBoundNotebook` 清 nil、下次開啟 re-seed
+
+## 字典卡邊界（V1）
+
+字典卡住在本 feature，但**三個維度彼此獨立、不得互推**（欄位定義見 `docs/reference/card_format.md`，狀態流轉見 `docs/reference/sync_lifecycle.md`）：
+
+- `cardRole` 決定它出不出現在一般 vocab 面與 pipeline；`reviewEligible` 決定它進不進複習與統計（字典卡恆 false）；`readerHidden` 決定 Reader／Podcast 高亮。**禁止用 `cardRole` 推導高亮**——高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `readerHidden == false`」。
+- 列表 filter（全部／學習／字典）與排序在 `KGVocabCoordinator` / `KGVocabPresenter`；字典卡詳情走 `WordDetailSceneState` + `DictionaryDetailPresentation`，**不共用**單字卡的編輯面（字典卡不可改 meaning／note）。
+- 「轉換成單字卡」只能由字典卡詳情明示觸發，UI 呈現 `queued` / `running` / `failed` / success 四態；失敗仍是字典卡、可重試。**無 learning → dictionary 降級路徑**，UI 不得提供。
+- 同一 notebook 內同一正規化單字只能有一張 active card：已有 learning card 直接連結不降級；已有 dictionary card 重用既有卡與既有選定義項，**不靜默換例句**。
 
 ## 共用依賴
 

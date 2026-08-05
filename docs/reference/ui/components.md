@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: c5d81fe35
+verified_against: 198402dc7
 -->
 # UI Component & Pattern Inventory
 
@@ -116,6 +116,7 @@ Scope: `ios/BooksAndVocab`
 - `VocabTimelineRow`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
+- **字典卡（V1）沒有引入新的 UI primitive**：列表 filter 走 `VocabTabSelector`、字典搜尋走 `VocabSearchField` + `VocabStateMessageCard`、Dictionary Detail 與 promotion 狀態走 `VocabCard` / `VocabSectionHeader` / `VocabInlineActionButton` / `VocabToneChip`（badge），空/錯誤態走 `VocabEmptyStateContent` 與 `VocabSceneShell`。新增的只有非 UI 的 `Presentation/DictionaryDetailPresentation.swift`（資料轉換）與 `Scenes/AddLinkCoordinator.swift`（流程狀態）。**要加字典相關 UI 時先回來看這行，別另造一套 chip / card。**
 - `GraphThumbnailWebView` — `UIViewRepresentable` 小型圖譜預覽（iOS / Catalyst 共用，無原生 macOS `NSViewRepresentable` 分支），用於 StatsPresenter
 - `NotebookStackedCoverView` — Editorial 立體堆卡（**目前由 Bookshelf / Podcast / EditSheet preview 使用,NotebookCard book-row 不再用**）：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt / `patternOpacity` 0.12）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）；`showsName: Bool = true` opt-in 開關
 - `EditorialCoverComposition`(private in `NotebookCard.swift`) — **live**：D1 editorial cover overlay，由 `coverArea` 以 `.overlay` 套在 cover view 之上（grid + hero 兩 style 皆套），跟外層 `rotationEffect` 一起旋轉。內容:serif name 左上(grid 22pt / hero 32pt)+ hairline rule(cover 寬 ×0.25)+ `N 詞` 右下(cardCount > 0)+ 3pt spine(grid && isActive)。cover view 以 `showsName: false` 把 name 渲染交給此 overlay。

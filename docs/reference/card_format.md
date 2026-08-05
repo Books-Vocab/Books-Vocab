@@ -4,7 +4,7 @@ authority: SoT
 update_trigger: code-change
 scope:
   - backend/src/kg/
-verified_against: 3e0973170
+verified_against: 198402dc7
 -->
 # Card 欄位格式規範
 
@@ -18,6 +18,22 @@ verified_against: 3e0973170
 | `examples` | | 例句，用 `**word**` 標記目標詞 | `The lawyer **invoked** the law.` |
 | `collocations` | | 常見搭配 | `invoke a law` |
 | `mode` | | `recognition`（預設）或 `production` | `recognition` |
+
+### 字典卡欄位（V1，`card` 表；CSV 不含這些欄）
+
+字典卡與單字卡同住 `card` 表、同享 notebook 唯一性，靠下列欄位分流。**三個維度彼此獨立，不得用 `card_role` 推導其他兩個**——這是 V1 的硬性不變式。
+
+| 欄位 | 型別/預設 | 語意 |
+|------|-----------|------|
+| `card_role` | `TEXT NOT NULL DEFAULT 'learning'` | `learning`（單字卡）或 `dictionary`（字典卡）。決定它出不出現在一般 vocab 面與 enrich/embed/judge pipeline |
+| `review_eligible` | `INTEGER NOT NULL DEFAULT 1` | 是否參與複習與統計。字典卡恆 `0`，**永不**進 today review / stats |
+| `reader_hidden` | `INTEGER NOT NULL DEFAULT 0` | Reader / Podcast 高亮的**唯一**排除旗標。高亮 eligibility 固定為「未 delete ∧ 未 archive ∧ `reader_hidden=0`」，字典卡預設參與高亮 |
+| `promotion_state` | `TEXT NOT NULL DEFAULT 'idle'` | `idle` / `queued` / `running` / `failed`。字典卡轉單字卡的 client-facing 生命週期真相；worker 側的 error/retry 狀態在 `dictionary_promotion_jobs` |
+| `promoted_at` | `TIMESTAMP`（nullable） | 成功轉為 `learning` 的時刻 |
+
+轉換只有一個方向：字典卡經明示 promote → enrich 成功才切 `learning` 並 `review_eligible=1`；enrich 失敗仍是字典卡、可重試。**不支援 learning → dictionary 降級。**
+
+離線 entry payload、選定 sense/example、provider 授權資訊不在 `card` 表，而在 sidecar `dictionary_entry`（見 `tech_index.md`）。
 
 ## Mode 說明
 
