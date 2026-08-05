@@ -31,6 +31,7 @@ URL_SCHEMA = "kg.app_review.url_checks.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 PLAN_SCHEMA = "kg.app_review.evidence_plan.v1"
 PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+_REGULAR_FILE_MODES = {"100644", "100755"}
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _PRODUCER_TYPES = {
@@ -71,6 +72,17 @@ def _run_producer_command(
     )
 
 
+def _git(workspace_root: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess:
+    """Run git, turning a missing binary into the typed error the CLI contract expects."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(workspace_root), *args],
+            capture_output=True, text=text, check=False,
+        )
+    except OSError as exc:
+        raise EvidenceError(f"desired.git.unavailable:{exc}") from exc
+
+
 def _materialize_tracked_file(
     *, workspace_root: Path, commit: str, rel_path: str, destination: Path,
 ) -> Path:
@@ -80,18 +92,22 @@ def _materialize_tracked_file(
     working tree instead lets a bundle claim one commit while carrying another's
     files, so every failure here is terminal: there is no fall back to the
     checkout, because that fall back is the defect this function exists to close.
+
+    The tree entry is checked before its content because ``git cat-file blob``
+    exits 0 on a symlink and hands back the link *target* — bytes that would be
+    written out as if they were the project file.
     """
     _require(bool(_COMMIT_RE.fullmatch(commit)), f"desired.sourceCommit.format:{commit!r}")
-    reachable = subprocess.run(
-        ["git", "-C", str(workspace_root), "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"],
-        capture_output=True, text=True, check=False,
-    )
-    if reachable.returncode != 0:
+    if _git(workspace_root, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
         raise EvidenceError(f"desired.sourceCommit.unreachable:{commit}")
-    blob = subprocess.run(
-        ["git", "-C", str(workspace_root), "cat-file", "blob", f"{commit}:{rel_path}"],
-        capture_output=True, check=False,
-    )
+    # --full-tree pins the path to the repo root regardless of the caller's cwd.
+    entry = _git(workspace_root, "ls-tree", "--full-tree", commit, "--", rel_path)
+    if entry.returncode != 0 or not entry.stdout.strip():
+        raise EvidenceError(f"desired.sourceCommit.path-missing:{commit}:{rel_path}")
+    mode, kind, _rest = entry.stdout.split(maxsplit=2)
+    if kind != "blob" or mode not in _REGULAR_FILE_MODES:
+        raise EvidenceError(f"desired.sourceCommit.not-regular-file:{commit}:{rel_path}:{mode}:{kind}")
+    blob = _git(workspace_root, "cat-file", "blob", f"{commit}:{rel_path}", text=False)
     if blob.returncode != 0:
         raise EvidenceError(f"desired.sourceCommit.path-missing:{commit}:{rel_path}")
     destination.parent.mkdir(parents=True, exist_ok=True)

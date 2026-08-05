@@ -178,22 +178,28 @@ def test_desired_bundle_reads_project_file_from_source_commit_not_worktree(
     assert captured["projectFile"].resolve() != (ROOT / PROJECT_FILE_REL).resolve()
 
 
+def commit_all(root: Path) -> str:
+    git = ["git", "-C", str(root)]
+    subprocess.run([*git, "add", "-A"], check=True, capture_output=True)
+    subprocess.run(
+        [*git, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "pin"],
+        check=True, capture_output=True,
+    )
+    return subprocess.run(
+        [*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
 def scratch_repo(tmp_path: Path, *, content: bytes) -> tuple[Path, str]:
     """A throwaway git repo, so drift probes never touch the shared checkout."""
     root = tmp_path / "scratch-repo"
     (root / PROJECT_FILE_REL).parent.mkdir(parents=True)
     (root / PROJECT_FILE_REL).write_bytes(content)
-    git = ["git", "-C", str(root)]
-    subprocess.run([*git, "-c", "init.defaultBranch=main", "init", "-q"], check=True, capture_output=True)
-    subprocess.run([*git, "add", PROJECT_FILE_REL], check=True, capture_output=True)
     subprocess.run(
-        [*git, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "pin"],
+        ["git", "-C", str(root), "-c", "init.defaultBranch=main", "init", "-q"],
         check=True, capture_output=True,
     )
-    commit = subprocess.run(
-        [*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True,
-    ).stdout.strip()
-    return root, commit
+    return root, commit_all(root)
 
 
 def test_desired_bundle_project_bytes_ignore_worktree_edits(tmp_path: Path, monkeypatch):
@@ -224,10 +230,11 @@ def test_desired_bundle_refuses_unreachable_source_commit(tmp_path: Path, monkey
     spec = synthetic_spec(dataset_bytes, "0" * 40)
     calls, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
 
-    with pytest.raises(evidence.EvidenceError) as raised:
+    # match= pins the cause: a well-formed but absent SHA must fail on
+    # reachability, not get absorbed by the format guard that also mentions it.
+    with pytest.raises(evidence.EvidenceError, match=r"sourceCommit\.unreachable"):
         evidence.produce_desired_bundle(spec, **desired_kwargs(tmp_path))
 
-    assert "0" * 40 in str(raised.value)
     assert calls == []
     assert "projectBytes" not in captured
 
@@ -237,13 +244,44 @@ def test_desired_bundle_refuses_non_sha_source_commit(tmp_path: Path, monkeypatc
     calls, captured = stub_desired_pipeline(monkeypatch, dataset_bytes=dataset_bytes)
 
     for bogus in ("", "HEAD", "main", "60b7030e"):
-        with pytest.raises(evidence.EvidenceError):
+        with pytest.raises(evidence.EvidenceError, match=r"sourceCommit\.format"):
             evidence.produce_desired_bundle(
                 synthetic_spec(dataset_bytes, bogus), **desired_kwargs(tmp_path)
             )
 
     assert calls == []
     assert "projectBytes" not in captured
+
+
+def test_materialize_tracked_file_rejects_non_regular_tree_entry(tmp_path: Path):
+    """`git cat-file blob` exits 0 on a symlink and returns the link target."""
+    root, _ = scratch_repo(tmp_path, content=b"pinned\n")
+    linked = root / PROJECT_FILE_REL
+    linked.unlink()
+    linked.symlink_to("../../../etc/hosts")
+    commit = commit_all(root)
+    destination = tmp_path / "materialized"
+
+    with pytest.raises(evidence.EvidenceError, match=r"sourceCommit\.not-regular-file"):
+        evidence._materialize_tracked_file(
+            workspace_root=root, commit=commit,
+            rel_path=PROJECT_FILE_REL, destination=destination,
+        )
+
+    assert not destination.exists()
+
+
+def test_materialize_tracked_file_reports_absent_git_as_typed_error(tmp_path: Path, monkeypatch):
+    def missing_git(*_args, **_kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "git")
+
+    monkeypatch.setattr(evidence.subprocess, "run", missing_git)
+
+    with pytest.raises(evidence.EvidenceError, match=r"git\.unavailable"):
+        evidence._materialize_tracked_file(
+            workspace_root=ROOT, commit="a" * 40,
+            rel_path=PROJECT_FILE_REL, destination=tmp_path / "materialized",
+        )
 
 
 def test_materialize_tracked_file_refuses_path_absent_at_commit(tmp_path: Path):
