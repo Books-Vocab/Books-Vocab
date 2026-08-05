@@ -4,11 +4,11 @@
   "date": "2026-08-03",
   "detail": "`ops/ui_quality_gate.py:46-66` 的 `FAST_COMMANDS`/`SLOW_COMMANDS`/`UI_WORLD_REQUIRED` 是**第二份手寫 mechanism id 清單**，與 `ops/ui_quality_plane.yml` 無交叉驗證：yml 新增機制但忘了在 runner 登記 → `resolve_args` 回 (None,None) → status=`planned` → 不計入 failed → gate 全綠。違反 CLAUDE.md「SoT 零重複鐵則」。下一步：把命令併進 yml 成 `run:`/`requires:` 欄位，`cmd_validate` 對 `gate: manual` 而無 `run:` 報 ERROR，runner 改讀 yml 且讀不到即 failed（非 planned）。**2026-08-05 取證**(描述精確到行號全對):三張表 `:46-66` 仍硬編(FAST 4/SLOW 6/UI_WORLD 3,合計登記 11),yml 13 個 mechanism 且 `grep 'run:'` **零命中**;`ui_quality_plane.py:39-41 REQUIRED_KEYS` 無 `run` 概念,`cmd_validate`(`:172-219`)對「`gate: manual` 卻無 `run:`」無從得知;`resolve_args`(`:181-192`)末行 `return None, None`,`:300-325` 把 `None` 直接寫成 `status=planned`。in-memory 探針 `resolve_args('static.brand_new_lint', …)` → `(None, None)` 重現。零交叉檢查測試(`grep 'FAST_COMMANDS|resolve_args' ops/tests/*.sh` 零命中)。",
   "id": "IMP-0041",
-  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;成本 M=三檔連動+13 筆 yml;測試:`test_ui_quality_plane.sh` 加「manual 無 run 必紅」、`test_ui_quality_gate.sh` 加「yml 注入假 mechanism → gate rc≠0」。**與 IMP-0050 同檔同路徑的入口與出口**:本條修完 0050 的危險自動消失,但 0050 的改名獨立有價值,故不合併、建議同 PR 出)",
+  "resolution": "48eec9e9a（2026-08-05 梳理時發現已修：`FAST_COMMANDS`/`SLOW_COMMANDS`/`UI_WORLD_REQUIRED` 三張手寫表已從 `ops/ui_quality_gate.py` 消失，命令改由 `ops/ui_quality_plane.yml` 的 `run:` 欄提供，讀不到即 failed 而非 planned——正是本條指定的下一步。實測 grep 三個常數名皆零命中，commit 對 HEAD 可達。）",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "harness 可信度改造 Phase 3.1（未完成）",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
   "verdict": "CONFIRMED-OPEN",
   "verified_at": "2026-08-05"
