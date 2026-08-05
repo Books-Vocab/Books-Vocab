@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "UITestWaits.scrollIntoView() (ios/BooksAndVocabUITests/Helpers/UITestWaits.swift:72-78) calls swipeUp() on the ELEMENT it is trying to reveal. That only works while the element is partially visible; once it is fully offscreen XCTest fails the swipe outright with 'Failed to unable to perform Swipe up on \"<id>\" Button: visible frame is empty, which may happen if the element is offscreen.' The helper's name promises the opposite — it reads as the thing you call precisely BECAUSE the element is offscreen — and its own XCTAssert message ('Element remained non-hittable after scrolling') describes a failure mode it never reaches in that case. Hit while landing feat/review-card-layout-editor: merging main's sound/haptic rows above the branch's review-card row pushed that row fully below the fold, and the obvious fix (scrollIntoView) failed in a way that looks like a product bug rather than a helper limitation. Existing callers (SettingsSheetPage.openReviewRhythm / openTranslationLanguage, SettingsFlowUITests) survive only because their targets happen to be partially visible; they are one added row away from the same failure. LiveDemoAccessUITests:128-130 already works around it by following scrollIntoView() with a bare app.swipeUp().",
+  "id": "IMP-20260806-71e6c6",
+  "resolution": "Make scrollIntoView() scroll the CONTAINER, not the element: resolve the nearest ancestor scroll view (or fall back to app.swipeUp()) and loop on the target's isHittable, keeping the existing deadline and final assert. That subsumes the LiveDemoAccessUITests workaround and makes the helper honest about its name. Worked around locally for now by adding SettingsSheetPage.openReviewCardLayout(), which swipes the app until the row is hittable — deliberately NOT changing the shared helper mid-convergence, since it would alter behaviour for every existing caller with no way to re-verify them all tonight.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "convergence line, fixing a UI test after merging two branches' Settings rows",
+  "status": "open",
+  "stream": "IMP"
+}
