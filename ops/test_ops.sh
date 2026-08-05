@@ -143,7 +143,12 @@ run_one() {
     review-flip-probe)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_review_flip_probe_report.py
       ;;
-    lldb-forensics)     ./ops/tests/test_lldb_crash_forensics.sh ;;
+    # 真 lldb 那支必須排第一：ops-ci-coverage 的證偽器靠「遮蔽 xcrun → 這個 group 必死」
+    # 認定它的 bin-xcode 相依，而 timeout 守衛用假 lldb、遮蔽 xcrun 也照樣綠。
+    lldb-forensics)
+      ./ops/tests/test_lldb_crash_forensics.sh &&
+      ./ops/tests/test_lldb_forensics_timeout.sh
+      ;;
     ios-device-files)   ./ops/tests/test_ios_device_files.sh ;;
     ios-device-logs)    ./ops/tests/test_ios_device_logs.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
