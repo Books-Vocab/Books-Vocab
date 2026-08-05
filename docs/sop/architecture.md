@@ -17,7 +17,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 - **Device cache**：可刪可重建的媒體、封面、subtitle、下載音訊、書籍檔案副本。
 - **Local-only ephemeral state**：單次 session、debug、尚未決定是否同步的 UI 暫態。
 
-**平台**：iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
+**平台**：iOS 26+ / iPadOS 26+ / Mac Catalyst（macOS 26.0+，`SUPPORTS_MACCATALYST`，非原生 macOS — 核心依賴 Readium 僅 iOS）
 
 **Client 端**：iOS / Mac Catalyst app；官網由 backend static pages 服務
 

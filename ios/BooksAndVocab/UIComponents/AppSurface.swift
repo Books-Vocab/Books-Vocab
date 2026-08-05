@@ -119,26 +119,6 @@ extension ButtonStyle where Self == GhostButtonStyle {
     }
 }
 
-// MARK: - compatibleGlass (toolbar-only)
-
-extension View {
-    @ViewBuilder
-    func compatibleGlass(
-        in shape: some Shape = AppRoundedRect(roundness: AppRoundness.pill),
-        interactive: Bool = false
-    ) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            let g: Glass = interactive ? .regular.interactive() : .regular
-            self.glassEffect(g, in: shape)
-        } else {
-            self.background(
-                shape.fill(.ultraThinMaterial)
-                    .overlay(shape.stroke(Color.primary.opacity(AppMetrics.glassStrokeOpacity), lineWidth: 1))
-            )
-        }
-    }
-}
-
 #Preview("AppCard variants") {
     AppThemeContainer {
         AppCardPreview()

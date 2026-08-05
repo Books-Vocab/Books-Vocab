@@ -14,7 +14,7 @@ verified_against: 0c9e3b7c8
 - **專案路徑**: `ios/BooksAndVocab.xcodeproj`
 - **Scheme**: `BooksAndVocab`
 - **工作目錄**: repo root（`~/kg/`）
-- **Destinations**: iOS 17+ / iPadOS 17+ / Mac Catalyst（macOS 15.0+，非原生 macOS）
+- **Destinations**: iOS 26+ / iPadOS 26+ / Mac Catalyst（macOS 26.0+，非原生 macOS）
 - **平台抽象**: `Platform/PlatformRepresentable.swift`、`Platform/PlatformCompatibility.swift`
 
 ---
