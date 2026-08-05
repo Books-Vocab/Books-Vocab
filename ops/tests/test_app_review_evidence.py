@@ -284,6 +284,145 @@ def test_materialize_tracked_file_reports_absent_git_as_typed_error(tmp_path: Pa
         )
 
 
+# ── anchor refresh: the only sanctioned way to move target.desiredManifestSHA256 ──
+
+
+def test_rewrite_anchor_changes_exactly_one_field_and_one_line():
+    text = (ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8")
+
+    updated, old = evidence.rewrite_anchor(text, "b" * 64)
+
+    assert old == json.loads(text)["target"]["desiredManifestSHA256"]
+    assert json.loads(updated)["target"]["desiredManifestSHA256"] == "b" * 64
+    restored = json.loads(updated)
+    restored["target"]["desiredManifestSHA256"] = old
+    assert restored == json.loads(text)
+    differing = [
+        pair for pair in zip(text.splitlines(), updated.splitlines(), strict=True)
+        if pair[0] != pair[1]
+    ]
+    assert len(differing) == 1
+
+
+def test_rewrite_anchor_rejects_a_value_that_is_not_a_sha256():
+    text = (ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8")
+
+    with pytest.raises(evidence.EvidenceError, match=r"anchor\.value"):
+        evidence.rewrite_anchor(text, "not-a-digest")
+
+
+def test_rewrite_anchor_requires_exactly_one_anchor_literal():
+    with pytest.raises(evidence.EvidenceError, match=r"anchor\.occurrences"):
+        evidence.rewrite_anchor('{"target": {}}\n', "b" * 64)
+
+
+def stub_bundle(monkeypatch, manifest_bytes: bytes) -> list[bool]:
+    """Stand in for the real rebuild; record whether it was asked to publish."""
+    published: list[bool] = []
+
+    def fake_bundle(spec, *, bundle_dir, commit, **_kwargs):
+        published.append(commit)
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        (bundle_dir / "manifest.json").write_bytes(manifest_bytes)
+        return {"manifest": {}}
+
+    monkeypatch.setattr(evidence, "produce_desired_bundle", fake_bundle)
+    return published
+
+
+def anchor_kwargs(tmp_path: Path) -> dict:
+    return {
+        "workspace_root": ROOT,
+        "profile_file": ROOT / "ops/capture_profiles/marketing_account.json",
+        "render_output_dir": tmp_path / "renders",
+        "fixed_clock": "2026-07-09T09:00:00Z",
+        "locale": "zh-Hant",
+    }
+
+
+def stale_spec(tmp_path: Path) -> tuple[Path, str]:
+    original = (ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8")
+    stale = original.replace(json.loads(original)["target"]["desiredManifestSHA256"], "0" * 64)
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(stale, encoding="utf-8")
+    return spec_path, stale
+
+
+def test_refresh_anchor_writes_nothing_without_commit(tmp_path: Path, monkeypatch):
+    spec_path, stale = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    published = stub_bundle(monkeypatch, manifest_bytes)
+
+    report = evidence.refresh_desired_anchor(spec_path, commit=False, **anchor_kwargs(tmp_path))
+
+    assert report["old"] == "0" * 64
+    assert report["new"] == sha(manifest_bytes)
+    assert report["changed"] is True
+    assert report["status"] == "dry-run"
+    assert spec_path.read_text(encoding="utf-8") == stale
+    assert published == [True]  # measured from a published bundle, not a re-serialization
+
+
+def test_refresh_anchor_commit_moves_only_the_anchor(tmp_path: Path, monkeypatch):
+    spec_path, stale = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    stub_bundle(monkeypatch, manifest_bytes)
+
+    report = evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    landed = spec_path.read_text(encoding="utf-8")
+    assert report["status"] == "written"
+    assert json.loads(landed)["target"]["desiredManifestSHA256"] == sha(manifest_bytes)
+    reverted = json.loads(landed)
+    reverted["target"]["desiredManifestSHA256"] = "0" * 64
+    assert reverted == json.loads(stale)
+    assert len(landed) == len(stale)
+
+
+def test_refresh_anchor_reports_current_and_writes_nothing_when_already_correct(
+    tmp_path: Path, monkeypatch
+):
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    original = (ROOT / "ops/app_review/2.0.0.json").read_text(encoding="utf-8")
+    current = original.replace(
+        json.loads(original)["target"]["desiredManifestSHA256"], sha(manifest_bytes)
+    )
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(current, encoding="utf-8")
+    stub_bundle(monkeypatch, manifest_bytes)
+
+    report = evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert report["changed"] is False
+    assert report["status"] == "current"
+    assert spec_path.read_text(encoding="utf-8") == current
+
+
+def test_refresh_anchor_cli_is_wired_and_dry_run_by_default(tmp_path: Path, monkeypatch, capsys):
+    spec_path, stale = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    stub_bundle(monkeypatch, manifest_bytes)
+
+    code = evidence.main([
+        "refresh-anchor",
+        "--spec", str(spec_path),
+        "--profile", str(ROOT / "ops/capture_profiles/marketing_account.json"),
+        "--render-output-dir", str(tmp_path / "renders"),
+        "--fixed-clock", "2026-07-09T09:00:00Z",
+        "--locale", "zh-Hant",
+        "--workspace-root", str(ROOT),
+    ])
+
+    document = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert document["schema"] == "kg.app_review.anchor_refresh.v1"
+    assert document["field"] == "target.desiredManifestSHA256"
+    assert document["old"] == "0" * 64
+    assert document["new"] == sha(manifest_bytes)
+    assert document["commit"] is False
+    assert spec_path.read_text(encoding="utf-8") == stale
+
+
 def test_materialize_tracked_file_refuses_path_absent_at_commit(tmp_path: Path):
     head = subprocess.run(
         ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
