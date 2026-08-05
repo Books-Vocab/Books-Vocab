@@ -134,8 +134,13 @@ class _CacheOnlyLexicalService:
         )
 
 
-def _admit(user_id: str) -> None:
+def _admit(service: LexicalService, user_id: str, operation: str) -> None:
     if not dictionary_rate_limiter.admit(user_id):
+        # Recorded here because the limiter refuses before LexicalService runs;
+        # user-facing 429s would otherwise be invisible to `dictionary-health`.
+        service.cache.record_lookup(
+            service.provider.provider_id, operation, "throttled", 0
+        )
         raise DictionaryRateLimitError(
             "Dictionary search rate limit exceeded", headers={"Retry-After": "60"}
         )
@@ -275,8 +280,9 @@ def search_dictionary(
 ):
     settings: KGSettings = request.app.state.kg_settings
     _require_enabled(settings)
-    _admit(user["id"])
-    result = _lexical_service(settings).search(
+    service = _lexical_service(settings)
+    _admit(service, user["id"], "search")
+    result = service.search(
         q, source_language=source_lang, target_language=target_lang
     )
     hits: list[DictionarySearchHit] = []
@@ -312,11 +318,10 @@ def get_dictionary_entry(
 ):
     settings: KGSettings = request.app.state.kg_settings
     _require_enabled(settings)
+    service = _lexical_service(settings)
     if not dictionary_lookup_leases.consume(user["id"], provider, entry_key):
-        _admit(user["id"])
-    result = _lexical_service(settings).get_entry(
-        provider, entry_key, target_language=target_lang
-    )
+        _admit(service, user["id"], "entry")
+    result = service.get_entry(provider, entry_key, target_language=target_lang)
     return DictionaryEntryResponse(entry=result.entry, cacheStatus=result.cache_status)
 
 
