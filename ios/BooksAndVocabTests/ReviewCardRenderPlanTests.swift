@@ -1,0 +1,324 @@
+import Foundation
+import Testing
+@testable import BooksAndVocab
+
+struct ReviewCardRenderPlanTests {
+    private let all = ReviewCardContentAvailability(
+        partOfSpeech: true,
+        difficultyTier: true,
+        example: true,
+        explanation: true,
+        collocations: true,
+        graphLinks: true
+    )
+
+    @Test func defaults_preserve_the_phase_a_face_order() {
+        let plan = ReviewCardRenderPlan.make(
+            profile: .default,
+            mode: .recognition,
+            availability: all
+        )
+        #expect(plan.coreIsLocked)
+        #expect(plan.front.fields == [.partOfSpeech])
+        #expect(plan.back.fields == [.difficultyTier, .graphLinks, .example, .explanation, .collocations])
+    }
+
+    @Test func arbitrary_order_is_preserved_without_mutating_the_profile() {
+        let profile = ReviewCardLayoutProfile(
+            recognition: .init(front: [.graphLinks, .example], back: [.example, .partOfSpeech]),
+            production: .init(front: [], back: [])
+        )
+        let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
+
+        #expect(plan.front.fields == [.graphLinks, .example])
+        #expect(plan.back.fields == [.example, .partOfSpeech])
+        #expect(profile.recognition.front == [.graphLinks, .example])
+        #expect(profile.recognition.back == [.example, .partOfSpeech])
+    }
+
+    @Test func unavailable_optional_fields_are_filtered_per_face() {
+        let profile = ReviewCardLayoutProfile(
+            recognition: .init(front: [.partOfSpeech, .example, .collocations], back: [.difficultyTier, .graphLinks]),
+            production: .init(front: [], back: [])
+        )
+        let plan = ReviewCardRenderPlan.make(
+            profile: profile,
+            mode: .recognition,
+            availability: .init(partOfSpeech: false, difficultyTier: true, example: false, explanation: false, collocations: false, graphLinks: false)
+        )
+
+        #expect(plan.front.fields.isEmpty)
+        #expect(plan.back.fields == [.difficultyTier])
+    }
+
+    @Test func a_field_can_render_on_both_faces() {
+        let profile = ReviewCardLayoutProfile(
+            recognition: .init(front: [.example], back: [.example]),
+            production: .init(front: [], back: [])
+        )
+        let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
+
+        #expect(plan.front.fields == [.example])
+        #expect(plan.back.fields == [.example])
+    }
+}
+
+struct ReviewCardLayoutSolverTests {
+    private let fields: [ReviewCardField] = [.example, .explanation, .collocations, .graphLinks]
+
+    private func input(height: CGFloat) -> ReviewCardLayoutSolver.Input {
+        .init(
+            fields: fields,
+            measurements: [
+                .core: .init(naturalHeight: 120, compactHeight: 120),
+                .example: .init(naturalHeight: 100, compactHeight: 42),
+                .explanation: .init(naturalHeight: 66, intermediateHeight: 44, compactHeight: 22),
+                .collocations: .init(naturalHeight: 64, intermediateHeight: 48, compactHeight: 32),
+                .graphLinks: .init(naturalHeight: 72, intermediateHeight: 48, compactHeight: 20)
+            ],
+            viewportHeight: height,
+            chromeHeight: 0,
+            minimumHeight: 80,
+            sectionSpacing: 0,
+            compactSectionSpacing: 0
+        )
+    }
+
+    @Test func height_is_monotonic_and_minimum_does_not_stack_on_core() {
+        let roomy = ReviewCardLayoutSolver.solve(input(height: 500))
+        let constrained = ReviewCardLayoutSolver.solve(input(height: 280))
+
+        #expect(roomy.cardHeight >= constrained.cardHeight)
+        #expect(constrained.cardHeight <= 280)
+        #expect(constrained.cardHeight >= 80)
+        #expect(roomy.policy(for: .core).isVisible)
+    }
+
+    @Test func compacts_in_the_required_priority_order() {
+        #expect(ReviewCardLayoutSolver.solve(input(height: 500)).policy(for: .explanation).lineLimit == nil)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 360)).policy(for: .example).exampleRadius == 3)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 360)).policy(for: .explanation).lineLimit == 2)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 320)).policy(for: .explanation).lineLimit == 1)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 310)).policy(for: .collocations).lineLimit == 2)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 290)).policy(for: .collocations).lineLimit == 1)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 270)).policy(for: .graphLinks).graphLinkPresentation == .onePerGroup)
+        let graphSummary = ReviewCardLayoutSolver.solve(input(height: 260)).policy(for: .graphLinks)
+        #expect(graphSummary.graphLinkPresentation == .summary)
+        #expect(graphSummary.height == 20)
+        #expect(ReviewCardLayoutSolver.solve(input(height: 220)).usesCompactSpacing)
+    }
+
+    @Test func one_line_collocation_tier_caps_visible_pills_to_one() {
+        #expect(ReviewCardLayoutSolver.visibleCollocationLimit(lineLimit: nil) == nil)
+        #expect(ReviewCardLayoutSolver.visibleCollocationLimit(lineLimit: 2) == nil)
+        #expect(ReviewCardLayoutSolver.visibleCollocationLimit(lineLimit: 1) == 1)
+    }
+
+    @Test func back_face_budget_subtracts_the_visible_front_face() {
+        #expect(ReviewCardLayoutSolver.remainingHeight(viewport: 640, occupied: 180) == 460)
+        #expect(ReviewCardLayoutSolver.remainingHeight(viewport: 120, occupied: 180) == 0)
+    }
+
+    @Test func compact_first_pass_still_requests_all_measurement_tiers() {
+        #expect(ReviewCardLayoutSolver.missingMeasurementLevels(
+            hasNatural: false,
+            hasIntermediate: false,
+            hasCompact: false
+        ) == [.natural, .intermediate, .compact])
+        #expect(ReviewCardLayoutSolver.missingMeasurementLevels(
+            hasNatural: true,
+            hasIntermediate: true,
+            hasCompact: true
+        ).isEmpty)
+    }
+
+    @Test func explanation_paragraphs_form_one_globally_limited_rich_text_field() {
+        let paragraphs = [
+            CardDocumentParagraph(inlines: [.text("first")]),
+            CardDocumentParagraph(inlines: [.mark("second")])
+        ]
+        #expect(ReviewCardExplanationContent.rawMarkdown(from: paragraphs) == "first\n**second**")
+    }
+
+    @Test func tiny_viewport_exposes_scroll_instead_of_hiding_core() {
+        let result = ReviewCardLayoutSolver.solve(input(height: 40))
+        #expect(result.requiresScrollFallback)
+        #expect(result.policy(for: .core).isVisible)
+        #expect(result.cardHeight == 80)
+    }
+
+    @Test func measured_accessibility_height_triggers_scroll_fallback() {
+        let result = ReviewCardLayoutSolver.solve(.init(
+            fields: [],
+            measurements: [.core: .init(naturalHeight: 360)],
+            viewportHeight: 300,
+            chromeHeight: 0,
+            minimumHeight: 0,
+            sectionSpacing: 0,
+            compactSectionSpacing: 0
+        ))
+
+        #expect(result.requiresScrollFallback)
+        #expect(result.cardHeight == 300)
+        #expect(result.policy(for: .core).height == 360)
+    }
+
+    @Test func compact_spacing_is_applied_per_section_gap() {
+        let result = ReviewCardLayoutSolver.solve(.init(
+            fields: [.example, .explanation],
+            measurements: [
+                .core: .init(naturalHeight: 120),
+                .example: .init(naturalHeight: 100, compactHeight: 42),
+                .explanation: .init(naturalHeight: 66, intermediateHeight: 44, compactHeight: 22)
+            ],
+            viewportHeight: 210,
+            chromeHeight: 0,
+            minimumHeight: 0,
+            sectionSpacing: 24,
+            compactSectionSpacing: 8
+        ))
+
+        #expect(result.usesCompactSpacing)
+        #expect(result.cardHeight == 200)
+        #expect(!result.requiresScrollFallback)
+    }
+
+    @Test func front_and_back_select_the_same_semantic_section_spacing() {
+        #expect(ReviewCardLayoutSolver.sectionSpacing(
+            usesCompactSpacing: false,
+            natural: 24,
+            compact: 8
+        ) == 24)
+        #expect(ReviewCardLayoutSolver.sectionSpacing(
+            usesCompactSpacing: true,
+            natural: 24,
+            compact: 8
+        ) == 8)
+    }
+
+    /// Every section sits at its floor (natural == compact), so field compaction can
+    /// absorb nothing and section spacing is the only variable left.
+    private func spacingInput(
+        fields: [ReviewCardField],
+        viewportHeight: CGFloat,
+        perSectionHeight: CGFloat = 40
+    ) -> ReviewCardLayoutSolver.Input {
+        let sections = [ReviewCardLayoutSolver.Section.core] + fields.map(ReviewCardLayoutSolver.Section.field)
+        let measurements = Dictionary(uniqueKeysWithValues: sections.map { section in
+            (section, ReviewCardLayoutSolver.Measurement(
+                naturalHeight: perSectionHeight,
+                compactHeight: perSectionHeight
+            ))
+        })
+        return .init(
+            fields: fields,
+            measurements: measurements,
+            viewportHeight: viewportHeight,
+            chromeHeight: 0,
+            minimumHeight: 0,
+            sectionSpacing: 24,
+            compactSectionSpacing: 8
+        )
+    }
+
+    @Test func result_publishes_the_exact_spacing_the_renderer_must_draw() {
+        let roomy = ReviewCardLayoutSolver.solve(spacingInput(fields: [.example], viewportHeight: 500))
+        #expect(!roomy.usesCompactSpacing)
+        #expect(roomy.sectionSpacing == 24)
+
+        let tight = ReviewCardLayoutSolver.solve(spacingInput(fields: [.example], viewportHeight: 100))
+        #expect(tight.usesCompactSpacing)
+        #expect(tight.sectionSpacing == 8)
+        // 40 + 40 content plus the single 8pt gap the renderer is told to draw.
+        #expect(tight.cardHeight == 88)
+    }
+
+    @Test func compact_spacing_saving_scales_with_the_gap_count() {
+        let spacingDelta: CGFloat = 24 - 8
+
+        // Two sections → one gap → the 24→8 delta is saved once (104 natural → 88).
+        let oneGap = ReviewCardLayoutSolver.solve(spacingInput(fields: [.example], viewportHeight: 100))
+        let oneGapNaturalHeight: CGFloat = 104
+        #expect(oneGap.usesCompactSpacing)
+        #expect(oneGapNaturalHeight - oneGap.cardHeight == spacingDelta * 1)
+
+        // Four sections → three gaps → the same delta must save 3×, never a constant
+        // (232 natural → 184). A fixed saving would land this at 216.
+        let threeGaps = ReviewCardLayoutSolver.solve(
+            spacingInput(fields: [.example, .explanation, .collocations], viewportHeight: 200)
+        )
+        let threeGapsNaturalHeight: CGFloat = 232
+        #expect(threeGaps.usesCompactSpacing)
+        #expect(threeGapsNaturalHeight - threeGaps.cardHeight == spacingDelta * 3)
+    }
+
+    @Test func presenter_front_slots_do_not_boot_from_the_back_face_minimum() {
+        #expect(TodayReviewPresenter.initialFrontSlotHeight == 0)
+        #expect(TodayReviewPresenter.initialFrontSlotHeight != TodayReviewMetrics.answerMinHeight)
+    }
+
+    @Test func non_active_slot_height_does_not_influence_active_shell_height() {
+        #expect(ReviewCardLayoutSolver.activeShellHeight(
+            heights: [600, 210, 700],
+            activeIndex: 1
+        ) == 210)
+        #expect(ReviewCardLayoutSolver.activeShellHeight(
+            heights: [600, 210, 700],
+            activeIndex: nil
+        ) == 0)
+    }
+}
+
+/// The renderer and the solver must not be able to disagree about the card's own
+/// chrome and gaps: whatever the view pads, the solver subtracts, from one token set.
+struct ReviewCardChromeContractTests {
+
+    @Test func face_chrome_matches_the_padding_the_renderer_draws() {
+        #expect(ReviewCardChrome.padding == TodayReviewMetrics.foldPadding)
+        #expect(ReviewCardChrome.extraTopInset(for: .back) == 0)
+        #expect(ReviewCardChrome.extraTopInset(for: .front) == TodayReviewMetrics.foldHintBottomInset)
+
+        for face in [ReviewCardFace.front, .back] {
+            #expect(ReviewCardChrome.verticalInset(for: face)
+                == ReviewCardChrome.padding * 2 + ReviewCardChrome.extraTopInset(for: face))
+        }
+    }
+
+    @Test func front_budget_reserves_the_fold_hint_inset_the_renderer_draws() {
+        func solved(_ face: ReviewCardFace) -> ReviewCardLayoutSolver.Result {
+            ReviewCardLayoutSolver.solve(.init(
+                face: face,
+                fields: [.example, .explanation],
+                measurements: [
+                    .core: .init(naturalHeight: 200),
+                    .example: .init(naturalHeight: 200),
+                    .explanation: .init(naturalHeight: 200)
+                ],
+                viewportHeight: 300,
+                minimumHeight: 0
+            ))
+        }
+
+        let front = solved(.front)
+        let back = solved(.back)
+        #expect(front.cardHeight == 300 - ReviewCardChrome.verticalInset(for: .front))
+        #expect(back.cardHeight == 300 - ReviewCardChrome.verticalInset(for: .back))
+        #expect(back.cardHeight - front.cardHeight == TodayReviewMetrics.foldHintBottomInset)
+    }
+
+    @Test func face_bound_input_binds_the_tokens_the_renderer_draws() {
+        let input = ReviewCardLayoutSolver.Input(
+            face: .back,
+            fields: [],
+            measurements: [:],
+            viewportHeight: 400,
+            minimumHeight: 0
+        )
+        #expect(input.chromeHeight == ReviewCardChrome.verticalInset(for: .back))
+        #expect(input.sectionSpacing == TodayReviewMetrics.foldSectionSpacing)
+        #expect(input.compactSectionSpacing == TodayReviewMetrics.foldSectionSpacingCompact)
+        // The compact tier stays a named token and keeps today's rendered value.
+        #expect(TodayReviewMetrics.foldSectionSpacingCompact < TodayReviewMetrics.foldSectionSpacing)
+        #expect(TodayReviewMetrics.foldSectionSpacingCompact == AppSpacing.s2)
+    }
+}

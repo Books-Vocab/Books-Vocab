@@ -7,7 +7,6 @@ extension TodayReviewPresenter {
     // MARK: Dimensions
 
     var reviewCardPadding: CGFloat { TodayReviewMetrics.foldPadding }
-    var frontCardHeight: CGFloat { TodayReviewMetrics.frontMinHeight }
     var answerCardHeight: CGFloat { TodayReviewMetrics.answerMinHeight }
 
     /// 右上角 chrome（喇叭 + 詳情）兩顆 44pt HIG 觸控框 + 中間 inlineGap 的總寬，
@@ -21,11 +20,14 @@ extension TodayReviewPresenter {
     /// `TodayReviewCardSlotLayout.borderOpacity` 內插（0.45 → 0.72），promote
     /// 翻面時邊框零 pop。`todayReview.card.front` a11y 識別子只掛在 active slot。
     func frontFoldSurface(
-        _ card: CardPresentation,
+        _ currentCard: TodayReviewPresenterState.CurrentCard,
         showsAnswer: Bool,
         interactive: Bool,
-        borderOpacity: Double
+        borderOpacity: Double,
+        availableHeight: CGFloat
     ) -> some View {
+        let card = currentCard.card
+        let layout = reviewCardLayout(for: currentCard, face: .front, availableHeight: availableHeight)
         let _ = PerfLog.render.tick("todayReview.front.surface", "mode=\(card.reviewMode.rawValue)")
         if interactive, let clock = TodayReviewState.flingClock {
             PerfLog.review.mark("front.gap", "w=\(card.word) \(PerfChannel.ms(since: clock))ms (fling->current-front body)")
@@ -35,19 +37,54 @@ extension TodayReviewPresenter {
             position: showsAnswer ? .top : .single,
             borderOpacity: borderOpacity
         ) {
-            Button(action: onAdvanceReveal) {
-                reviewCardFront(card)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .frame(minHeight: frontCardHeight, alignment: .topLeading)
-            }
-            .buttonStyle(.plain)
+            frontFaceContent(
+                currentCard,
+                layout: layout,
+                availableHeight: availableHeight,
+                measuresSections: interactive
+            )
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(minHeight: frontCardHeight, alignment: .topLeading)
+            .frame(minHeight: layout.cardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
-            .disabled(showsAnswer || !interactive || !isCardInteractive)
+            .onTapGesture {
+                guard !showsAnswer, interactive, isCardInteractive else { return }
+                onAdvanceReveal()
+            }
             .accessibilityIdentifier(interactive ? "todayReview.card.front" : "")
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
             .accessibilityHint(showsAnswer || !interactive ? "" : "點一下翻轉卡片".localized)
+            .accessibilityAction {
+                guard !showsAnswer, interactive, isCardInteractive else { return }
+                onAdvanceReveal()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func frontFaceContent(
+        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        layout: ReviewCardLayoutSolver.Result,
+        availableHeight: CGFloat,
+        measuresSections: Bool
+    ) -> some View {
+        let maxHeight = max(
+            availableHeight - TodayReviewMetrics.cardTopInset - TodayReviewMetrics.cardBottomInset,
+            1
+        )
+        if layout.requiresScrollFallback {
+            ScrollView(.vertical) {
+                reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
+            }
+                .frame(maxHeight: maxHeight)
+        } else {
+            ViewThatFits(in: .vertical) {
+                reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
+                    .fixedSize(horizontal: false, vertical: true)
+                ScrollView(.vertical) {
+                    reviewCardFront(currentCard, layout: layout, measuresSections: measuresSections)
+                }
+            }
+            .frame(maxHeight: maxHeight)
         }
     }
 
@@ -75,9 +112,16 @@ extension TodayReviewPresenter {
         .allowsHitTesting(interactive)
     }
 
-    func reviewCardFront(_ card: CardPresentation) -> some View {
+    func reviewCardFront(
+        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        layout: ReviewCardLayoutSolver.Result,
+        measuresSections: Bool
+    ) -> some View {
+        let card = currentCard.card
+        let plan = reviewCardRenderPlan(for: currentCard)
         let _ = PerfLog.review.mark("front.body", "w=\(card.word) reveal=\(state.revealStage)")
-        return VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
+        // Spacing comes from the solver's own arithmetic, never re-derived here.
+        return VStack(alignment: .leading, spacing: layout.sectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 switch card.reviewMode {
                 case .recognition:
@@ -94,42 +138,46 @@ extension TodayReviewPresenter {
                         .minimumScaleFactor(0.75)
                 }
 
-                if let pos = card.partOfSpeech {
-                    Text(pos)
-                        .font(appSkin.typography.body)
-                        .foregroundStyle(appSkin.palette.tertiaryText)
-                }
             }
             // 右上角 chrome（喇叭 / 詳情）是 overlay（必須在 reveal Button 外才能獨立點），
             // 故在單字列保留其寬度的 trailing 空間，長詞（如 "be eaten alive"）在碰到
             // 圖示前先縮放 / 換行，不被擋字。
             .padding(.trailing, frontChromeReserveWidth)
-
-            if card.reviewMode == .production, let example = card.examples.first {
-                CardRichTextRenderer.text(
-                    example,
-                    style: CardRichTextStyle(
-                        font: appSkin.typography.example,
-                        textColor: appSkin.palette.secondaryText,
-                        highlightColor: appSkin.palette.highlightMark,
-                        italic: true,
-                        underlineHighlights: appSkin.highlight.showUnderline,
-                        useBackgroundMark: appSkin.highlight.showBackground,
-                        highlightWeight: appSkin.highlight.fontWeight,
-                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
-                        underlineOpacity: appSkin.highlight.underlineOpacity
-                    ),
-                    mode: .cloze,
-                    truncateAroundMarkedWordRadius: appSkin.metrics.exampleTruncateRadius,
-                    targetWord: card.word
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                recordReviewSectionHeight(
+                    height,
+                    currentCard: currentCard,
+                    face: .front,
+                    section: .core,
+                    level: .natural
                 )
-                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
+            }
+
+            ForEach(plan.front.fields, id: \.self) { field in
+                reviewOptionalField(field, currentCard: currentCard, policy: layout.policy(for: .field(field)))
+                    .background {
+                        if measuresSections {
+                            reviewMeasurementProbes(
+                                field,
+                                currentCard: currentCard,
+                                face: .front
+                            )
+                        }
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        recordReviewSectionHeight(
+                            height,
+                            currentCard: currentCard,
+                            face: .front,
+                            section: .field(field),
+                            level: layout.policy(for: .field(field)).measurementLevel
+                        )
+                    }
             }
         }
-        .padding(reviewCardPadding)
-        .padding(.top, TodayReviewMetrics.foldHintBottomInset)
+        .reviewCardFaceChrome(.front)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(minHeight: frontCardHeight, alignment: .topLeading)
+        .frame(minHeight: layout.cardHeight, alignment: .topLeading)
     }
 
     // MARK: Combined Answer Surface
@@ -183,18 +231,40 @@ extension TodayReviewPresenter {
             "todayReview.answer.surface",
             "mode=\(card.reviewMode.rawValue) blocks=\(currentCard.backDocument.blocks.count)"
         )
-        let hasLinks = !currentCard.linkGroups.isEmpty
-        let exampleRadius = answerExampleRadius(
-            containerHeight: availableHeight,
-            currentCard: currentCard
+        let plan = reviewCardRenderPlan(for: currentCard)
+        let backAvailableHeight = ReviewCardLayoutSolver.remainingHeight(
+            viewport: availableHeight,
+            occupied: activeCardHeight + TodayReviewMetrics.stackLayerMicroOffset
         )
-        return VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
-            HStack(spacing: 6) {
-                Spacer()
-                if let tier = card.difficultyTier {
-                    VocabTierLabel(tier: tier)
+        let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
+        let maxHeight = max(
+            backAvailableHeight - TodayReviewMetrics.cardTopInset - TodayReviewMetrics.cardBottomInset,
+            1
+        )
+        return Group {
+            if layout.requiresScrollFallback {
+                ScrollView(.vertical) { answerContent(currentCard, plan: plan, layout: layout) }
+                    .frame(maxHeight: maxHeight)
+            } else {
+                ViewThatFits(in: .vertical) {
+                    answerContent(currentCard, plan: plan, layout: layout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ScrollView(.vertical) { answerContent(currentCard, plan: plan, layout: layout) }
                 }
+                .frame(maxHeight: maxHeight)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func answerContent(
+        _ currentCard: TodayReviewPresenterState.CurrentCard,
+        plan: ReviewCardRenderPlan,
+        layout: ReviewCardLayoutSolver.Result
+    ) -> some View {
+        let card = currentCard.card
+        // Same rule as the front face: draw the gap the solver charged.
+        VStack(alignment: .leading, spacing: layout.sectionSpacing) {
 
             Group {
                 if card.reviewMode == .production {
@@ -208,35 +278,47 @@ extension TodayReviewPresenter {
             .lineLimit(3)
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
-
-            CardSectionDivider(horizontalPadding: 0)
-            if hasLinks {
-                reviewLinkStrip(currentCard.linkGroups)
-            } else {
-                addLinkPrompt
-            }
-
-            if !currentCard.backDocument.blocks.isEmpty {
-                CardDocumentView(
-                    document: currentCard.backDocument,
-                    truncateRadius: exampleRadius,
-                    targetWord: card.word,
-                    compact: true,
-                    collocationExplanations: collocationExplanations,
-                    onExplainCollocation: onExplainCollocation,
-                    onViewCollocationExplanation: onViewCollocationExplanation,
-                    onDeleteCollocationExplanation: onDeleteCollocationExplanation
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                recordReviewSectionHeight(
+                    height,
+                    currentCard: currentCard,
+                    face: .back,
+                    section: .core,
+                    level: .natural
                 )
             }
+
+            ForEach(plan.back.fields, id: \.self) { field in
+                reviewOptionalField(field, currentCard: currentCard, policy: layout.policy(for: .field(field)))
+                    .background {
+                        reviewMeasurementProbes(
+                            field,
+                            currentCard: currentCard,
+                            face: .back
+                        )
+                    }
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        recordReviewSectionHeight(
+                            height,
+                            currentCard: currentCard,
+                            face: .back,
+                            section: .field(field),
+                            level: layout.policy(for: .field(field)).measurementLevel
+                        )
+                    }
+            }
         }
-        .padding(reviewCardPadding)
+        .reviewCardFaceChrome(.back)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(minHeight: answerCardHeight, alignment: .topLeading)
+        .frame(minHeight: layout.cardHeight, alignment: .topLeading)
     }
 
     // MARK: Link Strip
 
-    func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {
+    func reviewLinkStrip(
+        _ groups: [TodayReviewPresenterState.LinkGroup],
+        presentation: ReviewCardLayoutSolver.GraphLinkPresentation = .twoPerGroup
+    ) -> some View {
         HStack(alignment: .top, spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "paperclip")
                 .font(appSkin.typography.iconTiny)
@@ -250,7 +332,14 @@ extension TodayReviewPresenter {
                             .font(appSkin.typography.caption)
                             .foregroundStyle(appSkin.palette.tertiaryText)
 
-                        ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                        let shownItems: [KGCardLinkSummary] = {
+                            switch presentation {
+                            case .twoPerGroup: Array(group.items.prefix(2))
+                            case .onePerGroup: Array(group.items.prefix(1))
+                            case .summary: []
+                            }
+                        }()
+                        ForEach(Array(shownItems.enumerated()), id: \.element.id) { index, item in
                             Button { onLinkTap(item) } label: {
                                 Text(item.word)
                                     .font(appSkin.typography.monoEmphasis)
@@ -258,15 +347,16 @@ extension TodayReviewPresenter {
                             }
                             .buttonStyle(.plain)
 
-                            if index < group.items.count - 1 {
+                            if index < shownItems.count - 1 {
                                 Text("|")
                                     .font(appSkin.typography.caption)
                                     .foregroundStyle(appSkin.palette.quaternaryText)
                             }
                         }
 
-                        if group.overflowCount > 0 {
-                            Text("+\(group.overflowCount)")
+                        let overflow = group.overflowCount + max(group.items.count - shownItems.count, 0)
+                        if overflow > 0 {
+                            Text("+\(overflow)")
                                 .font(appSkin.typography.caption)
                                 .foregroundStyle(appSkin.palette.quaternaryText)
                         }
@@ -300,58 +390,223 @@ extension TodayReviewPresenter {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Dynamic Example Budget
-    //
-    // 演算法：「中心展開填充」
-    // 1. 從容器可用高度扣除 front card + padding → 得到答案卡上限
-    // 2. 遍歷 backDocument 實際 blocks 計算佔用高度（含 VStack spacing）
-    // 3. 剩餘空間 → 例句可用高度
-    // 4. 可用高度 ÷ 行高 × 每行詞數 → 總詞預算 → truncateRadius
-    //    radius 越大，以單字為中心向前後展開越多上下文
-    //    空間不足時自動收縮，空間充裕時自然展開更多內容
+    // MARK: - Render Plan / Adaptive Layout
 
-    func answerExampleRadius(
-        containerHeight: CGFloat,
-        currentCard: TodayReviewPresenterState.CurrentCard
-    ) -> Int {
-        let measured = PerfLog.layout.measure(
-            "todayReview.answerExampleRadius",
-            "blocks=\(currentCard.backDocument.blocks.count)"
-        ) {
-        // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
-        let answerBudget = containerHeight
-            - TodayReviewMetrics.cardTopInset
-            - TodayReviewMetrics.cardBottomInset
-            - frontCardHeight
+    private func reviewCardRenderPlan(
+        for currentCard: TodayReviewPresenterState.CurrentCard
+    ) -> ReviewCardRenderPlan {
+        let card = currentCard.card
+        return .make(
+            profile: reviewCardLayoutStore.profile,
+            mode: card.reviewMode,
+            availability: .init(
+                partOfSpeech: card.partOfSpeech?.isEmpty == false,
+                difficultyTier: card.difficultyTier?.isEmpty == false,
+                example: !card.examples.isEmpty,
+                explanation: !currentCard.backDocument.meaningParagraphs().isEmpty,
+                collocations: !card.collocations.isEmpty,
+                graphLinks: !currentCard.linkGroups.isEmpty
+            )
+        )
+    }
 
-        // ② combinedAnswerContent 固定元素
-        let gap = TodayReviewMetrics.foldSectionSpacing
-        var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
-            + TodayReviewMetrics.chevronButtonSize / 2                     // chevron pill 佔位
-            + 20 + gap                                                          // tier label row
-            + 36 + gap                                                          // word / translation
-            + AppMetrics.dividerThin + gap                                      // CardSectionDivider (always shown)
-            + 24 + gap                                                          // link strip / addLinkPrompt + gap
+    private func reviewCardLayout(
+        for currentCard: TodayReviewPresenterState.CurrentCard,
+        face: ReviewCardFace,
+        availableHeight: CGFloat
+    ) -> ReviewCardLayoutSolver.Result {
+        let plan = reviewCardRenderPlan(for: currentCard)
+        let fields = face == .front ? plan.front.fields : plan.back.fields
+        let defaults: [ReviewCardLayoutSolver.Section: ReviewCardLayoutSolver.Measurement] = [
+            .core: .init(naturalHeight: face == .front ? 112 : 132),
+            .field(.partOfSpeech): .init(naturalHeight: 22),
+            .field(.difficultyTier): .init(naturalHeight: 24),
+            .field(.example): .init(naturalHeight: 88, compactHeight: 44),
+            .field(.explanation): .init(naturalHeight: 66, intermediateHeight: 44, compactHeight: 22),
+            .field(.collocations): .init(naturalHeight: 64, intermediateHeight: 48, compactHeight: 32),
+            .field(.graphLinks): .init(naturalHeight: 72, intermediateHeight: 48, compactHeight: 20)
+        ]
+        let sections = [ReviewCardLayoutSolver.Section.core] + fields.map(ReviewCardLayoutSolver.Section.field)
+        let measurements = Dictionary(uniqueKeysWithValues: sections.map { section in
+            let key = reviewMeasurementKey(for: currentCard, face: face, section: section)
+            let fallback = defaults[section] ?? .init(naturalHeight: 0)
+            return (section, ReviewCardLayoutSolver.Measurement(
+                naturalHeight: reviewNaturalSectionHeights[key] ?? fallback.naturalHeight,
+                intermediateHeight: reviewIntermediateSectionHeights[key] ?? fallback.intermediateHeight,
+                compactHeight: reviewCompactSectionHeights[key] ?? fallback.compactHeight
+            ))
+        })
+        return ReviewCardLayoutSolver.solve(.init(
+            face: face,
+            fields: fields,
+            measurements: measurements,
+            viewportHeight: availableHeight,
+            minimumHeight: face == .front ? 0 : answerCardHeight
+        ))
+    }
 
-        // ③ Post-example blocks — pre-computed in CurrentCard, O(1) lookup
-        coreHeight += currentCard.postExampleMetrics.totalHeight(gap: gap)
+    private func reviewMeasurementKey(
+        for currentCard: TodayReviewPresenterState.CurrentCard,
+        face: ReviewCardFace,
+        section: ReviewCardLayoutSolver.Section
+    ) -> ReviewCardMeasurementKey {
+        ReviewCardMeasurementKey(
+            cardKey: "\(currentCard.card.dateAdded.timeIntervalSinceReferenceDate)-\(currentCard.card.word)",
+            face: face,
+            section: section,
+            widthBucket: Int(containerWidth.rounded()),
+            dynamicType: String(describing: dynamicTypeSize)
+        )
+    }
 
-        // ④ 例句可用高度
-        let exampleBudget = max(answerBudget - coreHeight, 0)
-
-        // ⑤ 高度 → 行數 → 詞數 → radius
-        let lineHeight: CGFloat = 22
-        let textWidth = containerWidth
-            - TodayReviewMetrics.cardHorizontalInset * 2
-            - reviewCardPadding * 2
-        let wordsPerLine = max(Int(textWidth / 62), 4)
-        let lines = Int(exampleBudget / lineHeight)
-        let totalWords = lines * wordsPerLine
-
-        // 半徑 = 總預算的一半（前後各 radius 個詞），最小 3 保證可讀性
-        return max(totalWords / 2, 3)
+    private func recordReviewSectionHeight(
+        _ height: CGFloat,
+        currentCard: TodayReviewPresenterState.CurrentCard,
+        face: ReviewCardFace,
+        section: ReviewCardLayoutSolver.Section,
+        level: ReviewCardLayoutSolver.MeasurementLevel
+    ) {
+        guard height > 0 else { return }
+        let key = reviewMeasurementKey(for: currentCard, face: face, section: section)
+        switch level {
+        case .natural:
+            guard abs((reviewNaturalSectionHeights[key] ?? 0) - height) > 0.5 else { return }
+            reviewNaturalSectionHeights[key] = height
+        case .intermediate:
+            guard abs((reviewIntermediateSectionHeights[key] ?? 0) - height) > 0.5 else { return }
+            reviewIntermediateSectionHeights[key] = height
+        case .compact:
+            guard abs((reviewCompactSectionHeights[key] ?? 0) - height) > 0.5 else { return }
+            reviewCompactSectionHeights[key] = height
         }
-        return measured.value
+    }
+
+    @ViewBuilder
+    private func reviewMeasurementProbes(
+        _ field: ReviewCardField,
+        currentCard: TodayReviewPresenterState.CurrentCard,
+        face: ReviewCardFace
+    ) -> some View {
+        let key = reviewMeasurementKey(for: currentCard, face: face, section: .field(field))
+        let levels = ReviewCardLayoutSolver.missingMeasurementLevels(
+            hasNatural: reviewNaturalSectionHeights[key] != nil,
+            hasIntermediate: reviewIntermediateSectionHeights[key] != nil,
+            hasCompact: reviewCompactSectionHeights[key] != nil
+        )
+        ZStack(alignment: .topLeading) {
+            ForEach(levels, id: \.self) { level in
+                reviewOptionalField(
+                    field,
+                    currentCard: currentCard,
+                    policy: .measurementProbe(for: field, level: level)
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .hidden()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    recordReviewSectionHeight(
+                        height,
+                        currentCard: currentCard,
+                        face: face,
+                        section: .field(field),
+                        level: level
+                    )
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func reviewOptionalField(
+        _ field: ReviewCardField,
+        currentCard: TodayReviewPresenterState.CurrentCard,
+        policy: ReviewCardLayoutSolver.Policy
+    ) -> some View {
+        let card = currentCard.card
+        switch field {
+        case .partOfSpeech:
+            if let partOfSpeech = card.partOfSpeech {
+                Text(partOfSpeech)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+            }
+        case .difficultyTier:
+            if let tier = card.difficultyTier { VocabTierLabel(tier: tier) }
+        case .example:
+            if let example = card.examples.first {
+                CardRichTextRenderer.text(
+                    example,
+                    style: CardRichTextStyle(
+                        font: appSkin.typography.example,
+                        textColor: appSkin.palette.secondaryText,
+                        highlightColor: appSkin.palette.highlightMark,
+                        italic: true,
+                        underlineHighlights: appSkin.highlight.showUnderline,
+                        useBackgroundMark: appSkin.highlight.showBackground,
+                        highlightWeight: appSkin.highlight.fontWeight,
+                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                        underlineOpacity: appSkin.highlight.underlineOpacity
+                    ),
+                    mode: .cloze,
+                    truncateAroundMarkedWordRadius: policy.exampleRadius ?? appSkin.metrics.exampleTruncateRadius,
+                    targetWord: card.word
+                )
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
+            }
+        case .explanation:
+            let paragraphs = currentCard.backDocument.meaningParagraphs()
+            if let lineLimit = policy.lineLimit {
+                CardRichTextRenderer.text(
+                    ReviewCardExplanationContent.rawMarkdown(from: paragraphs),
+                    style: CardRichTextStyle(
+                        font: appSkin.typography.body,
+                        textColor: appSkin.palette.secondaryText,
+                        highlightColor: appSkin.palette.highlightMark,
+                        italic: false,
+                        underlineHighlights: false,
+                        useBackgroundMark: false,
+                        highlightWeight: appSkin.highlight.fontWeight,
+                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                        underlineOpacity: appSkin.highlight.underlineOpacity
+                    )
+                )
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
+                .lineLimit(lineLimit)
+            } else {
+                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
+                    ForEach(paragraphs) { paragraph in
+                        CardInlineText(paragraph: paragraph, style: .body)
+                            .lineSpacing(appSkin.metrics.paragraphLineSpacing)
+                    }
+                }
+            }
+        case .collocations:
+            let visible: [String] = if let limit = ReviewCardLayoutSolver.visibleCollocationLimit(
+                lineLimit: policy.lineLimit
+            ) {
+                Array(card.collocations.prefix(limit))
+            } else {
+                card.collocations
+            }
+            VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
+                CardDocumentCollocationsBlock(
+                    items: visible,
+                    compact: policy.lineLimit != nil,
+                    explanations: collocationExplanations,
+                    onExplain: onExplainCollocation,
+                    onView: onViewCollocationExplanation,
+                    onDelete: onDeleteCollocationExplanation
+                )
+                if policy.summarizesOverflow, card.collocations.count > visible.count {
+                    Text("+\(card.collocations.count - visible.count)")
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                }
+            }
+        case .graphLinks:
+            reviewLinkStrip(currentCard.linkGroups, presentation: policy.graphLinkPresentation ?? .twoPerGroup)
+        }
     }
 
     // MARK: Fonts
@@ -370,4 +625,16 @@ extension TodayReviewPresenter {
         return appSkin.typography.reviewWord
     }
 
+}
+
+// MARK: - Face Chrome
+
+extension View {
+    /// The only place a review card face pads its content. `ReviewCardChrome` hands
+    /// the identical numbers to the solver as `chromeHeight`, so the budget and the
+    /// drawn inset move together or not at all.
+    func reviewCardFaceChrome(_ face: ReviewCardFace) -> some View {
+        padding(ReviewCardChrome.padding)
+            .padding(.top, ReviewCardChrome.extraTopInset(for: face))
+    }
 }

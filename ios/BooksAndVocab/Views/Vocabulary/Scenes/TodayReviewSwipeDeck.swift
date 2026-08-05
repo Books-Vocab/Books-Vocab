@@ -15,7 +15,7 @@ extension TodayReviewPresenter {
     /// （idle layer opacity ≈ 0.44）且 rotation 與殼層不同，仍有微量透出，
     /// 為已知取捨（量級遠小於修掉的 depth-1 整卡 pop；殘餘 hitch 候選點）。
     /// 卡不足以 opacity 0 隱藏，不做 `if` 結構移除 —— settle 幀不付 insert/remove。
-    func deckDepthShell() -> some View {
+    func deckDepthShell(height: CGFloat) -> some View {
         let effectiveDepth: CGFloat = 2
         let scale: CGFloat = 1.0 - effectiveDepth * TodayReviewCardSlotLayout.stackDepthScaleStep
         let yOff: CGFloat = effectiveDepth * TodayReviewCardSlotLayout.stackDepthYStep
@@ -29,7 +29,7 @@ extension TodayReviewPresenter {
                     .stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
             )
             .appElevation(.z1)
-            .frame(height: frontCardHeight)
+            .frame(height: height)
             .scaleEffect(scale)
             .offset(y: yOff)
             .rotationEffect(.degrees(rotation), anchor: .center)
@@ -70,10 +70,11 @@ extension TodayReviewPresenter {
 
             VStack(spacing: 0) {
                 frontFoldSurface(
-                    content.card,
+                    content,
                     showsAnswer: slotShowsAnswer,
                     interactive: isActive,
-                    borderOpacity: borderOpacity
+                    borderOpacity: borderOpacity,
+                    availableHeight: availableHeight
                 )
                 .overlay(alignment: .topTrailing) {
                     // chrome 常駐於每個 slot（裝飾），只有 active 可點 —
@@ -147,13 +148,6 @@ extension TodayReviewPresenter {
             .allowsHitTesting(isActive)
             .accessibilityHidden(!isActive)
             .simultaneousGesture(swipeDragGesture)
-            #if targetEnvironment(macCatalyst)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard isActive, isCardInteractive, state.revealStage == .front else { return }
-                onAdvanceReveal()
-            }
-            #endif
         }
     }
 

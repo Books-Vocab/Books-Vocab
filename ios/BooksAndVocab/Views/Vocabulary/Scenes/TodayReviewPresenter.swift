@@ -10,55 +10,10 @@ struct TodayReviewPresenterState {
         let overflowCount: Int
     }
 
-    /// Pre-computed layout metrics for blocks after the first `.example` in backDocument.
-    /// Separates the gap-dependent count from fixed heights so `answerExampleRadius`
-    /// doesn't need to iterate blocks every frame.
-    struct PostExampleMetrics {
-        /// Total fixed height from post-example blocks (excluding gap contributions).
-        let fixedHeight: CGFloat
-        /// Number of gap units needed (one per post-example block).
-        let gapCount: Int
-
-        func totalHeight(gap: CGFloat) -> CGFloat {
-            fixedHeight + CGFloat(gapCount) * gap
-        }
-
-        /// Iterate backDocument blocks once, returning pre-computed metrics.
-        static func from(_ backDoc: CardDocument) -> PostExampleMetrics {
-            var fixedHeight: CGFloat = 0
-            var gapCount = 0
-            var seenExample = false
-            for block in backDoc.blocks {
-                switch block {
-                case .example:
-                    seenExample = true
-                case .divider:
-                    if seenExample { fixedHeight += AppMetrics.dividerThin; gapCount += 1 }
-                case .meaning(let meaning):
-                    if seenExample {
-                        // fixedSize: 每段最多 3 行（lineLimit），多段累加
-                        let lineCount = meaning.paragraphs.count * 3
-                        fixedHeight += CGFloat(lineCount) * 22; gapCount += 1
-                    }
-                case .collocations(let items):
-                    if seenExample {
-                        let rows = max(1, (items.count + 1) / 2)
-                        fixedHeight += CGFloat(rows) * 32; gapCount += 1
-                    }
-                default:
-                    if seenExample { fixedHeight += 30; gapCount += 1 }
-                }
-            }
-            return .init(fixedHeight: fixedHeight, gapCount: gapCount)
-        }
-    }
-
     struct CurrentCard {
         let card: CardPresentation
         let linkGroups: [LinkGroup]
         let backDocument: CardDocument
-        /// Pre-computed post-example block metrics — avoids re-iterating blocks every frame.
-        let postExampleMetrics: PostExampleMetrics
     }
 
     let progressText: String
@@ -88,12 +43,15 @@ struct TodayReviewPresenterState {
 // MARK: - Presenter
 
 struct TodayReviewPresenter: View {
+    static let initialFrontSlotHeight: CGFloat = 0
+
     @ObserveInjection private var inject
     // internal — extension files 需要存取
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.appSkin) var appSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.speechService) var speechService
+    @Environment(\.reviewCardLayoutStore) var reviewCardLayoutStore
     // 自主量測 probe（-reviewProbe）— 一般啟動恆為 nil，.task 直接 return。
     @Environment(\.reviewProbeDriver) private var reviewProbeDriver
 
@@ -129,17 +87,23 @@ struct TodayReviewPresenter: View {
     // 目前 active slot 的值。active slot 恆 uncap → 量到自然高度；背景卡升 active 時
     // 去除 cap 會觸發重量 → 自我校正，無 role 輪替 stale 問題、無 layout 回授迴圈。
     @State var slotFrontHeights: [CGFloat] = Array(
-        repeating: TodayReviewMetrics.frontMinHeight,
+        repeating: TodayReviewPresenter.initialFrontSlotHeight,
         count: TodayReviewCardSlotLayout.slotCount
     )
+    @State var reviewNaturalSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    @State var reviewIntermediateSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    @State var reviewCompactSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
 
     /// 目前 active slot 的實測 front 高度（非 active slot cap 到此值）。
     var activeCardHeight: CGFloat {
         guard let activeSlot = state.slots.firstIndex(where: { $0.assignment.role == .active }),
               slotFrontHeights.indices.contains(activeSlot) else {
-            return TodayReviewMetrics.frontMinHeight
+            return Self.initialFrontSlotHeight
         }
-        return slotFrontHeights[activeSlot]
+        return ReviewCardLayoutSolver.activeShellHeight(
+            heights: slotFrontHeights,
+            activeIndex: activeSlot
+        )
     }
 
     // Back-content mount gate. Decoupled from `showsAnswer` so the heavy back
@@ -389,7 +353,7 @@ struct TodayReviewPresenter: View {
         // promote / 連續堆疊機制見 TodayReviewCardSlot.swift。
         return ZStack(alignment: .top) {
             // depth-2 殼層 — 純裝飾常駐節點（卡不足以 opacity 隱藏，不結構移除）。
-            deckDepthShell()
+            deckDepthShell(height: activeCardHeight)
 
             cardSlotView(slot: 0, availableHeight: availableHeight)
             cardSlotView(slot: 1, availableHeight: availableHeight)

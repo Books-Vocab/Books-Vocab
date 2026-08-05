@@ -84,10 +84,12 @@ enum TodayReviewMetrics {
     // MARK: Fold layout(不與既有 foldJoinRoundness / paperFoldOffsetY 幾何欄位合併)
     static let foldPadding: CGFloat = 28
     static let foldSectionSpacing: CGFloat = 24
+    /// 精簡流程最後一階：section 間距降到此值（`ReviewCardLayoutSolver` 算、
+    /// 卡片正反面畫，共用同一顆 token）。
+    static let foldSectionSpacingCompact: CGFloat = AppSpacing.s2
     static let foldHintBottomInset: CGFloat = 22
 
     // MARK: Card / Action min size
-    static let frontMinHeight: CGFloat = 120
     static let answerMinHeight: CGFloat = 188
     static let actionMinWidth: CGFloat = 92
     static let chevronButtonSize: CGFloat = 30

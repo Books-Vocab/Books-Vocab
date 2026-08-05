@@ -33,12 +33,10 @@ struct TodayReviewCardCache {
             )
         }
         let backDocument = card.document.reviewBackSubset()
-        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDocument)
         storage[entry.id] = .init(
             card: card,
             linkGroups: compactGroups,
-            backDocument: backDocument,
-            postExampleMetrics: metrics
+            backDocument: backDocument
         )
     }
 
@@ -91,12 +89,10 @@ struct TodayReviewCardCache {
             )
         }
         let backDocument = card.document.reviewBackSubset()
-        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDocument)
         return .init(
             card: card,
             linkGroups: compactGroups,
-            backDocument: backDocument,
-            postExampleMetrics: metrics
+            backDocument: backDocument
         )
     }
 }
