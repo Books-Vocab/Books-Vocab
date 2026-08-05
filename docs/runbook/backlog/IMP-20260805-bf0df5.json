@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "stage_live_demo_xctestrun enumerates xctestrun target roots through process substitution while the loop body rewrites the same plist with PlistBuddy. The producer intermittently misses the second target, so a duplicate BooksAndVocabUITests target returns success instead of fail-closed. Serial 10-run repro produced 1|0 twice and 1|1 eight times; the full fixture suite passed once then failed 1/378 on the next run.",
+  "id": "IMP-20260805-bf0df5",
+  "resolution": "Owner: platform-steward after IMP-20260805-953840 review. Next action: snapshot env-root paths before any plist mutation in both live-demo and fixture staging, add deterministic regression for enumeration-before-mutation, then rerun ops/test_ios_ops.sh.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "heartbeat regression gate: ops/test_ios_ops.sh live-demo target cardinality probe",
+  "status": "triaged",
+  "stream": "IMP"
+}

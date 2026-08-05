@@ -62,6 +62,8 @@ METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 # shellcheck source=lib/ios_build_progress.sh
 source "$SCRIPT_DIR/lib/ios_build_progress.sh"
+# shellcheck source=lib/ios_lock_wait.sh
+source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
 # shellcheck source=lib/ios_run_verdict.sh
 source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
 kg_ios_verdict_init archive "$ROOT"
@@ -237,23 +239,10 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$ROOT" branch --show-current 2>/dev/null ||
 cleanup() { rm -f "$LOCK_FILE"; }
 START_TOTAL_MS="$(now_ms)"
 echo "[release] caller=$CALLER waiting for lock..."
-WAITED=0
-while ! shlock -f "$LOCK_FILE" -p $$; do
-  HOLDER_PID=$(cat "$LOCK_FILE" 2>/dev/null || echo "")
-  if [[ -n "$HOLDER_PID" ]] && ! kill -0 "$HOLDER_PID" 2>/dev/null; then
-    if [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$HOLDER_PID" ]]; then
-      echo "[release] stale lock (pid=$HOLDER_PID dead), stealing"
-      rm -f "$LOCK_FILE"
-    fi
-    continue
-  fi
-  if (( WAITED >= TIMEOUT )); then
-    echo "[release] error: timed out after ${TIMEOUT}s waiting for lock (holder=$HOLDER_PID)" >&2
-    exit 1
-  fi
-  sleep "$POLL_INTERVAL"
-  WAITED=$(( WAITED + POLL_INTERVAL ))
-done
+if ! kg_ios_wait_for_shlock "[release]" archive "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"; then
+  echo "[release] error: timed out after ${TIMEOUT}s waiting for lock (holder=$KG_IOS_LOCK_HOLDER_PID)" >&2
+  exit 1
+fi
 trap cleanup EXIT
 LOCK_WAIT_MS="$(( $(now_ms) - START_TOTAL_MS ))"
 echo "[release] lock acquired by $CALLER (pid=$$)"

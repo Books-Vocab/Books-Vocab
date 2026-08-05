@@ -1,0 +1,18 @@
+{
+  "acceptance": "bash ops/test_ios_ops.sh -> 382 passed, 0 failed",
+  "category": "tool",
+  "cost": "S",
+  "date": "2026-08-05",
+  "detail": "All four handwritten iOS shlock waits (ios_test build/device, ios_build, ios_release) emit only entry/acquired/timeout; a live ios_ops test waited over two minutes with no progress after the first line. This violates the repository's <=20s visible-progress contract and makes an alive queued process indistinguishable from a hang, encouraging agents to bypass or kill typed iOS tooling.",
+  "fix_site": "ops/lib/ios_lock_wait.sh + ios_build.sh/ios_test.sh/ios_release.sh",
+  "id": "IMP-20260805-953840",
+  "plan": "Use ops/lib/ios_lock_wait.sh as the common shlock acquisition primitive. Emit 15-second phase=lock-wait heartbeats with waiter/holder liveness; preserve stale-steal and each caller original timeout boundary. Fixture four caller kinds with fake shlock/sleep and assert only 15s/30s emissions through 33s, acquire-stop, dead/invalid holder.",
+  "resolution": "Owner: platform-steward in debug/ios-lock-wait-heartbeat. Next action: add a fixture regression that proves each wait emits holder PID/alive heartbeat within the contract, then patch all four spin loops and run ops/docs/worktree gates.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "andon:/root/ios_lock_heartbeat; live review-card-layout-editor ios_ops test lock wait",
+  "status": "in-progress",
+  "stream": "IMP",
+  "verdict": "CONFIRMED",
+  "verified_at": "2026-08-05"
+}

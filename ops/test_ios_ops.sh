@@ -13,6 +13,7 @@ IOS_OPS_CATALOG_LIB="$WORKSPACE/ops/lib/ios_ops_catalog.sh"
 IOS_OPS_RELEASE_LIB="$WORKSPACE/ops/lib/ios_ops_release.sh"
 IOS_OPS_COMMANDS_LIB="$WORKSPACE/ops/lib/ios_ops_commands.sh"
 IOS_OPS_CORE_LIB="$WORKSPACE/ops/lib/ios_ops_core.sh"
+IOS_LOCK_WAIT_LIB="$WORKSPACE/ops/lib/ios_lock_wait.sh"
 IOS_ARCHIVE="$WORKSPACE/ops/ios_archive.sh"
 IOS_DIAG="$WORKSPACE/ops/ios_diagnostics.py"
 
@@ -22,7 +23,7 @@ fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; }
 
 section "Syntax and executable bits"
-for f in "$IOS_OPS" "$IOS_OPS_CORE_LIB" "$IOS_OPS_XCODE_LIB" "$IOS_OPS_LOGS_LIB" "$IOS_OPS_RUNS_LIB" "$IOS_OPS_SNAPSHOT_LIB" "$IOS_OPS_SIMULATOR_LIB" "$IOS_OPS_CATALOG_LIB" "$IOS_OPS_RELEASE_LIB" "$IOS_OPS_COMMANDS_LIB" "$IOS_ARCHIVE" "$IOS_DIAG"; do
+for f in "$IOS_OPS" "$IOS_OPS_CORE_LIB" "$IOS_OPS_XCODE_LIB" "$IOS_OPS_LOGS_LIB" "$IOS_OPS_RUNS_LIB" "$IOS_OPS_SNAPSHOT_LIB" "$IOS_OPS_SIMULATOR_LIB" "$IOS_OPS_CATALOG_LIB" "$IOS_OPS_RELEASE_LIB" "$IOS_OPS_COMMANDS_LIB" "$IOS_LOCK_WAIT_LIB" "$IOS_ARCHIVE" "$IOS_DIAG"; do
   [[ -f "$f" ]] && ok "$(basename "$f") exists" || fail_t "$(basename "$f") missing"
 done
 bash -n "$IOS_OPS" && ok "ios_ops.sh syntax" || fail_t "ios_ops.sh syntax"
@@ -35,6 +36,7 @@ bash -n "$IOS_OPS_SIMULATOR_LIB" && ok "ios_ops_simulator.sh syntax" || fail_t "
 bash -n "$IOS_OPS_CATALOG_LIB" && ok "ios_ops_catalog.sh syntax" || fail_t "ios_ops_catalog.sh syntax"
 bash -n "$IOS_OPS_RELEASE_LIB" && ok "ios_ops_release.sh syntax" || fail_t "ios_ops_release.sh syntax"
 bash -n "$IOS_OPS_COMMANDS_LIB" && ok "ios_ops_commands.sh syntax" || fail_t "ios_ops_commands.sh syntax"
+bash -n "$IOS_LOCK_WAIT_LIB" && ok "ios_lock_wait.sh syntax" || fail_t "ios_lock_wait.sh syntax"
 bash -n "$IOS_ARCHIVE" && ok "ios_archive.sh syntax" || fail_t "ios_archive.sh syntax"
 grep -q 'source "$SCRIPT_DIR/lib/ios_ops_core.sh"' "$IOS_OPS" \
   && ok "ios_ops sources core lib" || fail_t "ios_ops does not source core lib"
@@ -914,6 +916,106 @@ echo "$json_out" | grep -q '"version":"1.6"' && ok "archive latest --json includ
 echo "$json_out" | grep -q '"build":"4"' && ok "archive latest --json includes build" || fail_t "archive json missing build"
 
 section "ios_build emits diagnostics"
+lock_heartbeat_probe="$(
+  bash -c '
+    set -euo pipefail
+    source "'"$IOS_LOCK_WAIT_LIB"'"
+    previous=0
+    for elapsed in 3 6 9 12 15 18 21 24 27 30 33; do
+      kg_ios_lock_wait_heartbeat "[probe]" build "$elapsed" "$previous" "$$"
+      previous="$elapsed"
+    done
+  '
+)"
+[[ "$(printf '%s\n' "$lock_heartbeat_probe" | wc -l | tr -d ' ')" == "2" ]] \
+  && [[ "$(sed -n '1p' <<<"$lock_heartbeat_probe")" =~ ^\[probe\]\ phase=lock-wait\ kind=build\ elapsed=15s\ pid=[0-9]+\ alive=true\ holderPid=[0-9]+\ holderAlive=true$ ]] \
+  && [[ "$(sed -n '2p' <<<"$lock_heartbeat_probe")" =~ ^\[probe\]\ phase=lock-wait\ kind=build\ elapsed=30s\ pid=[0-9]+\ alive=true\ holderPid=[0-9]+\ holderAlive=true$ ]] \
+  && ok "iOS lock wait heartbeat emits only at 15s cadence inside the 20s ceiling" \
+  || fail_t "iOS lock wait heartbeat boundary/provenance wrong: $lock_heartbeat_probe"
+lock_wait_fixture="$(
+  bash -c '
+    set -euo pipefail
+    source "'"$IOS_LOCK_WAIT_LIB"'"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    sleep() { :; }
+    for spec in "[ios_build]|build" "[ios_test]|build" "[ios_test]|device" "[release]|archive"; do
+      prefix="${spec%%|*}"; kind="${spec#*|}"; attempts=0; lock="$tmp/$kind-${RANDOM}.lock"
+      shlock() {
+        attempts=$((attempts + 1))
+        if (( attempts <= 11 )); then printf "%s\n" "$$" >"$lock"; return 1; fi
+        printf "%s\n" "$4" >"$lock"; return 0
+      }
+      kg_ios_wait_for_shlock "$prefix" "$kind" "$lock" "$$" 60 3
+      printf "ACQUIRED kind=%s attempts=%s waited=%s\n" "$kind" "$attempts" "$KG_IOS_LOCK_WAIT_SECONDS"
+    done
+  '
+)"
+for fixture_kind in build device archive; do
+  grep -qE "phase=lock-wait kind=${fixture_kind} elapsed=15s .*holderAlive=true" <<<"$lock_wait_fixture" \
+    && grep -qE "phase=lock-wait kind=${fixture_kind} elapsed=30s .*holderAlive=true" <<<"$lock_wait_fixture" \
+    && ok "held ${fixture_kind} lock emits 15s/30s heartbeats" \
+    || fail_t "held ${fixture_kind} lock heartbeat missing: $lock_wait_fixture"
+done
+[[ "$(grep -c '^ACQUIRED ' <<<"$lock_wait_fixture")" -eq 4 ]] \
+  && [[ "$(grep -c 'elapsed=33s' <<<"$lock_wait_fixture")" -eq 0 ]] \
+  && ok "all four wait paths acquire after heartbeats and stop emitting" \
+  || fail_t "held-lock fixture acquire/stop contract wrong: $lock_wait_fixture"
+lock_holder_edge_probe="$(
+  bash -c '
+    set -euo pipefail
+    source "'"$IOS_LOCK_WAIT_LIB"'"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    sleep() { :; }
+    for holder in 999999999 invalid-pid; do
+      attempts=0; lock="$tmp/$holder.lock"
+      shlock() {
+        attempts=$((attempts + 1))
+        if (( attempts == 1 )); then printf "%s\n" "$holder" >"$lock"; return 1; fi
+        printf "%s\n" "$4" >"$lock"; return 0
+      }
+      kg_ios_wait_for_shlock "[edge]" build "$lock" "$$" 6 3
+      printf "EDGE holder=%s attempts=%s owner=%s\n" "$holder" "$attempts" "$(cat "$lock")"
+    done
+  '
+)"
+[[ "$(grep -c 'stale lock kind=build .*alive=false; stealing' <<<"$lock_holder_edge_probe")" -eq 2 ]] \
+  && [[ "$(grep -c '^EDGE .* attempts=2 owner=[0-9]' <<<"$lock_holder_edge_probe")" -eq 2 ]] \
+  && ok "dead and invalid holder locks are stolen, then acquired by the waiter" \
+  || fail_t "dead/invalid holder behavior regressed: $lock_holder_edge_probe"
+lock_timeout_probe="$(
+  bash -c '
+    set -euo pipefail
+    source "'"$IOS_LOCK_WAIT_LIB"'"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    sleep() { :; }
+    for mode in pre-sleep post-sleep; do
+      attempts=0; lock="$tmp/$mode.lock"
+      shlock() {
+        attempts=$((attempts + 1))
+        if (( attempts < 3 )); then printf "%s\n" "$$" >"$lock"; return 1; fi
+        printf "%s\n" "$4" >"$lock"; return 0
+      }
+      rc=0
+      kg_ios_wait_for_shlock "[timeout]" build "$lock" "$$" 6 3 "$mode" || rc=$?
+      printf "TIMEOUT mode=%s rc=%s attempts=%s\n" "$mode" "$rc" "$attempts"
+    done
+  '
+)"
+grep -q '^TIMEOUT mode=pre-sleep rc=0 attempts=3$' <<<"$lock_timeout_probe" \
+  && grep -q '^TIMEOUT mode=post-sleep rc=1 attempts=2$' <<<"$lock_timeout_probe" \
+  && ok "build/release and test preserve their original timeout boundary semantics" \
+  || fail_t "lock timeout boundary semantics drifted: $lock_timeout_probe"
+grep -Fq 'kg_ios_wait_for_shlock "[ios_build]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -Fq 'POLL_INTERVAL=3' "$WORKSPACE/ops/ios_build.sh" \
+  && ! grep -Fq 'kg_ios_wait_for_shlock "[ios_build]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep' "$WORKSPACE/ops/ios_build.sh" \
+  && grep -Fq 'kg_ios_wait_for_shlock "[ios_test]" build "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -Fq 'kg_ios_wait_for_shlock "[ios_test]" device "$TEST_DEVICE_LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -Fq 'POLL_INTERVAL=3' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -Fq 'kg_ios_wait_for_shlock "[release]" archive "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL"' "$WORKSPACE/ops/ios_release.sh" \
+  && grep -Fq 'POLL_INTERVAL=3' "$WORKSPACE/ops/ios_release.sh" \
+  && ! grep -Fq 'kg_ios_wait_for_shlock "[release]" archive "$LOCK_FILE" "$$" "$TIMEOUT" "$POLL_INTERVAL" post-sleep' "$WORKSPACE/ops/ios_release.sh" \
+  && ok "all four lock callers pin owner, timeout, 3s poll, and timeout mode" \
+  || fail_t "iOS lock caller signature drifted (build/archive pre-sleep; test build/device post-sleep)"
 grep -q 'ios_diagnostics.py' "$WORKSPACE/ops/ios_build.sh" \
   && ok "ios_build calls diagnostics parser" || fail_t "ios_build missing diagnostics parser"
 grep -q 'kg_ios_build.*log' "$WORKSPACE/ops/ios_build.sh" \
