@@ -141,6 +141,21 @@ def parse_plane(path: Path) -> tuple[str, list[dict]]:
                 if st.startswith("- ") and ind >= 6:
                     items.append(strip_scalar(st[2:]))
                     i += 1
+                elif st.startswith("- ") and ind > 2:
+                    # Legal YAML, unsupported by this parser: a 2-to-5 space
+                    # list item used to fall through to `break` and leave the
+                    # key as []. Harmless while every list had to be non-empty
+                    # — but `run:` may legitimately be empty, so a mis-indented
+                    # command list would read as "declared, takes no arguments"
+                    # and the runner would execute the entrypoint bare. Several
+                    # of these lints default to reporting and exiting 0 when
+                    # given no flags, so that is a gate that runs, passes, and
+                    # checks nothing: strictly worse than the unregistered
+                    # mechanism this plane exists to catch (IMP-0041).
+                    raise SystemExit(
+                        f"ERROR: {path}:{i + 1}: list item under `{key}:` is indented {ind} "
+                        f"space(s); this parser requires 6. Refusing to read it as an empty list."
+                    )
                 else:
                     break
             current[key] = items
@@ -304,15 +319,13 @@ def cmd_impact(mechanisms: list[dict], files: list[str], as_json: bool) -> int:
     for mech in mechanisms:
         hits = matched_files(mech, files)
         if hits:
-            impacted.append(
-                {
-                    "id": mech.get("id", ""),
-                    "layer": mech.get("layer", ""),
-                    "gate": mech.get("gate", ""),
-                    "entrypoint": mech.get("entrypoint", ""),
-                    "matched": hits,
-                }
-            )
+            # The whole mechanism, not a hand-picked subset. This projection
+            # listed five keys and silently dropped the rest, so a consumer
+            # reading `impact` saw a different mechanism than one reading
+            # `list` — `run:` vanished on exactly the path the gate uses.
+            # Enumerating fields here is the same duplicated-truth defect the
+            # runner's command tables were (IMP-0041), one layer down.
+            impacted.append({**mech, "matched": hits})
     if as_json:
         print(json.dumps(impacted, ensure_ascii=False, indent=2))
         return 0
