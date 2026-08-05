@@ -451,6 +451,58 @@ def test_update_rejects_unknown_fields(tmp_path):
         BACKLOG.update_entry(store, entry["id"], statuss="fixed")
 
 
+def test_update_refuses_a_digest_field_instead_of_silently_dropping_it(tmp_path, capsys):
+    """`--detail` parsed, printed in --help, and did nothing. Exit 0.
+
+    `detail` is a digest input, so its absence from MUTABLE_FIELDS is correct.
+    The bug was that `_cmd_update` derives its change set from MUTABLE_FIELDS
+    and therefore never read `args.detail` — the flag was accepted, ignored,
+    and the command reported success with a changes dict that simply omitted
+    it. Three separate entries were filed for this (IMP-20260805-24146e /
+    -1be2c6 / -dd35f8) and a groom plan that leaned on the flag was rejected
+    three times before anyone checked whether the flag worked at all.
+
+    A no-op that exits 0 is worse than an error: the caller's next move is to
+    verify something else. So the refusal must be loud, must name the flag, and
+    must say where a correction actually belongs.
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="the original wording", status="open")
+
+    rc = BACKLOG.main(
+        [
+            "update", entry["id"],
+            "--store", str(store),
+            "--status", "fixed",
+            "--detail", "a rewording nobody asked for",
+            "--commit",
+        ]
+    )
+
+    assert rc != 0, "passing --detail exited 0 while dropping the flag"
+    err = capsys.readouterr().err
+    assert "--detail" in err, f"the refusal does not name the flag: {err!r}"
+    assert "--resolution" in err, f"the refusal does not name the way out: {err!r}"
+
+    # Refused as a unit: the mutable half must not land either, or the caller
+    # is left with a half-applied command that also printed an error.
+    after = BACKLOG.load_entry(store, entry["id"])
+    assert after["detail"] == "the original wording"
+    assert after["status"] == "open"
+
+
+def test_refused_update_fields_are_exactly_the_digest_inputs_the_cli_exposes():
+    """The refusal list is not an opinion — it is the digest signature.
+
+    `make_entry_id` hashes stream/date/source/detail, so those are the fields
+    an update can never touch. Anything the CLI refuses must be one of them,
+    and nothing in that set may also be mutable, or the id would decouple from
+    the content it is derived from.
+    """
+    assert set(BACKLOG.REFUSED_UPDATE_FIELDS) <= set(BACKLOG.DIGEST_FIELDS)
+    assert not set(BACKLOG.DIGEST_FIELDS) & set(BACKLOG.MUTABLE_FIELDS)
+
+
 # --------------------------------------------------------------------------
 # 8. groom stamp: "this entry has been worked out, not just filed"
 #
@@ -548,11 +600,14 @@ def test_ungroomed_filter_composes_with_the_others(tmp_path):
 # Every flag on `update` must actually reach the field it names. A flag whose
 # dest is filtered out by the collection whitelist is accepted and then
 # discarded: `--detail X --status Y --commit` exits 0 having dropped X.
-# The exemptions below are the two known holes, each already filed; deleting an
-# exemption is how those fixes prove themselves.
+#
+# This carried two exemptions for the two known holes (IMP-20260805-1be2c6),
+# on the theory that deleting an exemption is how the fix proves itself. Both
+# are now deleted: `--detail` is a declared refusal rather than an unwired
+# flag, and surface/repro/build/duplicate_of have flags. What is left is the
+# contract with no escape hatch — the right-hand sides are read from the module
+# rather than restated, so a new exemption cannot be smuggled in as a literal.
 _UPDATE_PLUMBING = {"id", "store", "commit", "json", "help"}
-_KNOWN_UNWIRED_FLAGS = {"detail"}                                  # IMP-20260805-1be2c6
-_KNOWN_FLAGLESS_FIELDS = {"surface", "repro", "build", "duplicate_of"}  # IMP-20260805-1be2c6
 
 
 def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
@@ -560,8 +615,10 @@ def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
     dests = {a.dest for a in sub._actions} - _UPDATE_PLUMBING
     mutable = set(BACKLOG.MUTABLE_FIELDS)
 
-    assert dests - mutable == _KNOWN_UNWIRED_FLAGS, "a new flag is silently dropped"
-    assert mutable - dests == _KNOWN_FLAGLESS_FIELDS, "a mutable field has no way in"
+    assert dests - mutable == set(BACKLOG.REFUSED_UPDATE_FIELDS), (
+        "a flag on `update` neither writes a mutable field nor is refused by name"
+    )
+    assert mutable - dests == set(), "a mutable field has no way in"
 
 
 def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_path):

@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import re
 import os
@@ -154,6 +155,11 @@ def make_entry_id(*, stream: str, date: str, source: str, detail: str) -> str:
     payload = "\x1f".join([stream, date, source, detail]).encode("utf-8")
     digest = hashlib.sha256(payload).hexdigest()[:6]
     return f"{stream}-{date.replace('-', '')}-{digest}"
+
+
+# Read off the digest signature rather than restated as a literal: the one list
+# that must never disagree with `make_entry_id` is the list of what it hashes.
+DIGEST_FIELDS = tuple(inspect.signature(make_entry_id).parameters)
 
 
 def entry_path(store: Path, entry_id: str) -> Path:
@@ -389,6 +395,21 @@ MUTABLE_FIELDS = (
     + VERDICT_FIELDS
     + GROOM_FIELDS
 )
+
+# Digest fields the `update` parser still accepts — solely so that reaching for
+# one gets a named refusal that says where the correction belongs.
+#
+# `--detail` used to be accepted and then dropped on the floor: `_cmd_update`
+# derives its change set from MUTABLE_FIELDS, so the flag parsed, was never
+# read, and the command exited 0 printing a changes dict that just omitted it.
+# Three entries were filed for that one flag, and a groom plan built on it was
+# rejected three times before anyone tested the flag itself.
+#
+# Deleting the flag would also stop the silence — argparse would say
+# "unrecognized arguments" — but it would not say where a correction goes, and
+# this is the flag people reach for when an entry's wording turns out wrong.
+# The answer is `--resolution`, so the refusal has to be the thing that says it.
+REFUSED_UPDATE_FIELDS = ("detail",)
 
 
 def _merged_and_validated(payload: dict, changes: dict, entry_id: str) -> dict:
@@ -1093,11 +1114,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--severity", choices=SEVERITIES)
     p_update.add_argument("--category")
     p_update.add_argument("--resolution")
-    p_update.add_argument("--detail")
+    p_update.add_argument(
+        "--detail",
+        help="REFUSED: a digest input. Corrections go in --resolution; a reworded "
+        "problem is a new entry (`add`). Kept on the parser so the attempt gets "
+        "an answer instead of 'unrecognized arguments'",
+    )
     p_update.add_argument("--verdict")
     p_update.add_argument("--cost")
     p_update.add_argument("--fix-site", dest="fix_site")
     p_update.add_argument("--verified-at", dest="verified_at")
+    # The other half of the same drift the refusal above fixes: these are in
+    # MUTABLE_FIELDS and `add` offers them, but `update` never did — so an APP
+    # entry filed without a repro could only get one by hand-editing the JSON,
+    # which is the failure this store exists to remove. `duplicate_of` was
+    # reachable only through the legacy importer's verdict parsing, so
+    # `--verdict DUPLICATE-OF-<id>` set the verdict and left the field empty.
+    p_update.add_argument("--surface", help="APP only: reader/vocabulary/notebook/...")
+    p_update.add_argument("--repro", help="APP only: how to reproduce")
+    p_update.add_argument("--build", help="APP only: build the problem was seen on")
+    p_update.add_argument(
+        "--duplicate-of",
+        dest="duplicate_of",
+        help="entry id this turned out to duplicate; pair with --verdict DUPLICATE-OF-<id>",
+    )
     p_update.add_argument(
         "--plan",
         help="how to fix it, concrete enough for a small model to execute without re-deriving",
@@ -1216,6 +1256,24 @@ def _cmd_update(args) -> int:
     # commit path agreed by coincidence: adding one parser flag produced a clean
     # dry-run followed by an exit-64 --commit. That is IMP-0040's shape inside
     # the code that cites IMP-0040.
+    refused = [f for f in REFUSED_UPDATE_FIELDS if getattr(args, f, None) is not None]
+    if refused:
+        # Before anything else, and covering the whole invocation: a command
+        # that applied its mutable half and complained about the rest would
+        # leave the caller guessing which half landed.
+        flags = ", ".join(f"--{f}" for f in refused)
+        print(
+            f"{flags} cannot be changed: {', '.join(DIGEST_FIELDS)} are the inputs "
+            f"make_entry_id hashes, so editing one would decouple {args.id} from the "
+            f"content its id is derived from.\n"
+            f"  correcting the record  -> put the correction in --resolution\n"
+            f"  a different problem    -> file it with `add`; a reworded problem "
+            f"statement is a different entry\n"
+            f"nothing was written.",
+            file=sys.stderr,
+        )
+        return 64
+
     changes = {
         field: getattr(args, field, None)
         for field in MUTABLE_FIELDS
