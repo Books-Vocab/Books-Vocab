@@ -571,6 +571,22 @@ def test_a_deleted_data_plane_yml_does_not_route_to_a_tool_that_would_red():
     assert gates["coverage"]["uncovered"] == []
 
 
+def test_no_two_data_plane_owners_share_a_tool_basename():
+    """Gate names are `data-plane:<tool basename>`, so two owners whose tools differ only
+    by directory produce two gates with ONE name — and `_by_name`-style lookup, the JSON
+    plan, and the history journal all key on that name. Nothing collides today; this pins
+    it, because when it happens the second gate's verdict quietly overwrites the first's
+    and the plan still looks complete. Same trap the shell router already guards
+    (test_no_two_routable_shell_scripts_share_a_basename), reached by a different route."""
+    seen: dict[str, str] = {}
+    for target, owners in MODULE.DATA_PLANE_OWNERS.items():
+        for cmd in owners:
+            base = cmd[0].rsplit("/", 1)[-1]
+            assert base not in seen or seen[base] == cmd[0], (
+                f"gate name collision: {cmd[0]} (for {target}) and {seen[base]}")
+            seen[base] = cmd[0]
+
+
 def test_every_declared_data_plane_owner_exists_in_the_repo():
     """The routing table names tools by path. A rename that misses this table produces a
     gate that can only ever be red — the `ios-build-catalyst` failure mode, which blocked
