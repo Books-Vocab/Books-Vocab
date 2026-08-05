@@ -33,8 +33,45 @@ extension KGService {
 
     // MARK: - Offline KG Sync logic
 
+    /// Pull server cards into the local store, serialized against other pulls.
+    ///
+    /// Two properties this wrapper buys, both of which the bare implementation
+    /// lacked:
+    ///
+    /// 1. **Serialization.** A pull waits for any pull already in flight before
+    ///    issuing its own `GET /api/vocab`, so no two requests go out carrying
+    ///    the same `?since=` cursor and the same payload is never merged twice.
+    ///    Every caller still gets its own request — see `KGService.enqueuePull`
+    ///    for why sharing one response would be wrong.
+    ///
+    /// 2. **Immunity to view lifecycle.** The work runs in an unstructured `Task`,
+    ///    which inherits priority and actor context but *not* cancellation. A pull
+    ///    started from `.task`/`.refreshable` therefore survives the view being
+    ///    torn down or re-rendered mid-flight. That teardown used to cancel the
+    ///    in-flight `URLSession` request, surface `-999` as "網路錯誤：已取消", and
+    ///    throw away a sync that had already paid for its round trip.
+    ///
+    /// The caller's own cancellation is honoured at the boundary instead: callers
+    /// that go away stop waiting (see the `Task.checkCancellation` in
+    /// `KGVocabCoordinator`), while the sync itself runs to completion.
     @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> Bool {
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> KGPullOutcome {
+        let task = enqueuePull { predecessor, pullID in
+            Task {
+                defer { self.finishPull(id: pullID) }
+                // Wait out the predecessor, but never inherit its fate: a failed
+                // or cancelled earlier pull must not fail this one. `result`
+                // swallows both outcomes by construction.
+                _ = await predecessor?.result
+                return try await self.performPullCardsToLocal(
+                    container: container, progress: progress, notebookId: notebookId
+                )
+            }
+        }
+        return try await task.value
+    }
+
+    private func performPullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome {
         progress?(L10n.string("正在下載單字..."), 0, 0)
 
         let defaults = UserDefaults.standard
@@ -116,7 +153,12 @@ extension KGService {
         }
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
-        return httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true"
+        return KGPullOutcome(
+            pipelinePending: httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true",
+            inserted: pullResult.inserted,
+            updated: pullResult.updated,
+            deleted: pullResult.deleted
+        )
     }
 
     func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
@@ -161,29 +203,45 @@ extension KGService {
         let message: String
     }
 
+    /// Outcome of one `backgroundSync` phase. `cancelled` is tracked separately
+    /// from `failures` because a cancelled leg is neither a success nor a
+    /// failure — see `backgroundSync`'s terminal handling.
+    private struct SyncPhaseOutcome {
+        var failures: [SyncPhaseFailure] = []
+        var cancelled = false
+    }
+
     private func processSyncPhase(
         results: [Result<Void, Error>],
         labels: [String],
         container: ModelContainer
-    ) async -> [SyncPhaseFailure]? {
-        var failures: [SyncPhaseFailure] = []
+    ) async -> SyncPhaseOutcome? {
+        var outcome = SyncPhaseOutcome()
         for (result, label) in zip(results, labels) {
             guard case .failure(let error) = result else { continue }
+            // A cancelled leg is not a failed leg — reporting it would put
+            // "背景同步部分失敗" in front of a user whose only crime was leaving the
+            // screen. But it is not a *successful* leg either, so it is recorded
+            // rather than dropped: the caller must not go on to claim the round
+            // succeeded (that would toast「同步完成」for work that never ran).
+            if error is CancellationError {
+                AppLog.kg.info("backgroundSync \(label) cancelled")
+                outcome.cancelled = true
+                continue
+            }
             if error is KGError, case KGError.unauthorized = error {
                 await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
                 lastBackgroundSyncError = L10n.string("登入已過期")
                 return nil
             }
             AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
-            if !(error is CancellationError) {
-                AppCrashReporting.record(error, context: "kg.sync.\(label)")
-            }
-            failures.append(SyncPhaseFailure(
+            AppCrashReporting.record(error, context: "kg.sync.\(label)")
+            outcome.failures.append(SyncPhaseFailure(
                 label: label,
                 message: SyncFailurePresentation.message(label: label, error: error)
             ))
         }
-        return failures
+        return outcome
     }
 
     func backgroundSync(container: ModelContainer) async {
@@ -220,17 +278,19 @@ extension KGService {
         AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
         var failureMessages: [String] = []
         var failureLabels: [String] = []
+        var wasCancelled = false
 
         // Phase 1: push review states & review events in parallel
         async let pushReviewResult = Self.captureResult { _ = try await self.pushReviewStates(container: container) }
         async let pushEventsResult = Self.captureResult { _ = try await self.pushReviewEvents(container: container) }
 
         let pushResults = await [pushReviewResult, pushEventsResult]
-        if let pushFailures = await processSyncPhase(
+        if let pushOutcome = await processSyncPhase(
             results: pushResults, labels: ["pushReview", "pushReviewEvents"], container: container
         ) {
-            failureMessages.append(contentsOf: pushFailures.map(\.message))
-            failureLabels.append(contentsOf: pushFailures.map(\.label))
+            failureMessages.append(contentsOf: pushOutcome.failures.map(\.message))
+            failureLabels.append(contentsOf: pushOutcome.failures.map(\.label))
+            wasCancelled = wasCancelled || pushOutcome.cancelled
         } else {
             return
         }
@@ -240,12 +300,27 @@ extension KGService {
         async let pullEventsResult = Self.captureResult { try await self.pullReviewEvents(container: container) }
 
         let pullResults = await [pullCardsResult, pullEventsResult]
-        if let pullFailures = await processSyncPhase(
+        if let pullOutcome = await processSyncPhase(
             results: pullResults, labels: ["pull", "pullReviewEvents"], container: container
         ) {
-            failureMessages.append(contentsOf: pullFailures.map(\.message))
-            failureLabels.append(contentsOf: pullFailures.map(\.label))
+            failureMessages.append(contentsOf: pullOutcome.failures.map(\.message))
+            failureLabels.append(contentsOf: pullOutcome.failures.map(\.label))
+            wasCancelled = wasCancelled || pullOutcome.cancelled
         } else {
+            return
+        }
+
+        // Cancelled = the round never finished, so it is neither success nor
+        // failure. Returning here keeps `lastSyncDate` where it was and leaves
+        // `lastBackgroundSyncError` nil; `ExplicitSync` reads `Task.isCancelled`
+        // to know it must stay silent rather than toast「同步完成」for a sync that
+        // was abandoned. Nothing is lost — a cancelled pull never advanced its
+        // cursor, so the next round redoes exactly this work.
+        if wasCancelled {
+            AppLog.kg.info("backgroundSync ended cancelled — lastSyncDate not advanced")
+            AppCrashReporting.addBreadcrumb(
+                category: "sync", message: "sync.end.cancelled", level: .info
+            )
             return
         }
 

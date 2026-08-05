@@ -314,7 +314,7 @@ final class SyncCoordinator: SyncCoordinating {
                         }
                         self.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
-                }, notebookId: nil)
+                }, notebookId: nil).pipelinePending
 
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
@@ -322,7 +322,7 @@ final class SyncCoordinator: SyncCoordinating {
                     self.updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
-                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
+                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil).pipelinePending
                 }
 
                 // Also pull review events from server

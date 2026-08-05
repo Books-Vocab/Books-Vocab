@@ -33,6 +33,16 @@ enum ExplicitSync {
         guard isLoggedIn, !isDemoMode else { return }
 
         await kgService.backgroundSync(container: container)
+
+        // 使用者中途離開（下拉刷新的 task 被取消）：那一輪並未跑完，既不該報成功也
+        // 不該報失敗——直接閉嘴。少了這道檢查，被取消的同步會因為
+        // `lastBackgroundSyncError == nil` 而彈出綠色「同步完成」，替一輪根本沒推也
+        // 沒拉的同步背書。`backgroundSync` 對應地也不推進 `lastSyncDate`。
+        if Task.isCancelled {
+            AppLog.kg.info("ExplicitSync cancelled — suppressing outcome toast")
+            return
+        }
+
         if let error = kgService.lastBackgroundSyncError {
             kgService.lastBackgroundSyncError = nil  // read-then-clear（見上）
             toastCoordinator.warning(error)

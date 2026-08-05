@@ -63,6 +63,68 @@ final class KGService: KGServing, LocalDataClearing {
         _isBackgroundSyncing = false
     }
 
+    // MARK: - Pull serialization
+
+    /// Serialization chain for `pullCardsToLocal`.
+    ///
+    /// Production logs showed the same pull firing repeatedly within seconds —
+    /// twice with an *identical* `?since=` cursor, proving two pulls read the
+    /// same incremental boundary before either wrote it back. Five call sites
+    /// reach this pull (view `.task`, pull-to-refresh, the sync sheet's pipeline
+    /// poll, `backgroundSync`, the retry banner) and only `backgroundSync` had a
+    /// guard, so they raced each other into duplicate server work and duplicate
+    /// merges of the same payload.
+    ///
+    /// **Serialize, don't coalesce.** Making late callers share the earlier
+    /// call's response would be cheaper but wrong: several callers need data
+    /// *newer than their own action*. The sync sheet pulls right after uploading
+    /// words and reads `X-Pipeline-Pending` off that response to decide whether
+    /// to keep waiting for AI content — handing it a response fetched before the
+    /// upload would answer "nothing pending" and silently skip the wait. Chaining
+    /// instead gives every caller its own request, issued after the previous
+    /// pull persisted its cursor, so no two requests carry the same `?since=`.
+    ///
+    /// The chain is global rather than per-notebook because the cursor it
+    /// protects (`SyncKeys.incrementalBoundary`) is a single global key.
+    @ObservationIgnored
+    private let _pullLock = NSLock()
+    /// Tail of the chain: the most recently enqueued pull. A new pull awaits it
+    /// before starting, then becomes the tail itself.
+    @ObservationIgnored
+    private var _pullChainTail: Task<KGPullOutcome, Error>?
+    @ObservationIgnored
+    private var _pullChainSeq: UInt64 = 0
+    @ObservationIgnored
+    private var _pullChainTailID: UInt64 = 0
+
+    /// Enqueue a pull behind any pull already in flight.
+    ///
+    /// `makeTask` receives the predecessor to await (`nil` when the chain is
+    /// idle) and this pull's id for retirement. Both the read of the old tail and
+    /// the write of the new one happen under one lock, so two callers arriving
+    /// together are ordered rather than parallel. `makeTask` only constructs a
+    /// `Task` — no suspension — so the lock is held for a few instructions.
+    func enqueuePull(
+        makeTask: (_ predecessor: Task<KGPullOutcome, Error>?, _ id: UInt64) -> Task<KGPullOutcome, Error>
+    ) -> Task<KGPullOutcome, Error> {
+        _pullLock.lock()
+        defer { _pullLock.unlock() }
+        _pullChainSeq &+= 1
+        let id = _pullChainSeq
+        let task = makeTask(_pullChainTail, id)
+        _pullChainTail = task
+        _pullChainTailID = id
+        return task
+    }
+
+    /// Retire a finished pull. Keyed by id so a late finisher never clears a
+    /// successor that has already taken over as the tail.
+    func finishPull(id: UInt64) {
+        _pullLock.lock()
+        defer { _pullLock.unlock() }
+        if _pullChainTailID == id { _pullChainTail = nil }
+    }
+
     var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
