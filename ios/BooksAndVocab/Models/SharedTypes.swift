@@ -82,6 +82,85 @@ struct KGCard: Codable, Identifiable {
     let lapseCount: Int?
     let reviewStreak: Int?
     let lastReviewFeedback: Int?
+    // Dictionary-card fields are optional for backward compatibility with
+    // legacy `/api/vocab` payloads.
+    let cardRole: String?
+    let reviewEligible: Bool?
+    let readerHidden: Bool?
+    let promotionState: String?
+    let promotedAt: String?
+}
+
+// MARK: - Dictionary cards
+
+struct LexicalPronunciation: Codable, Equatable, Identifiable {
+    let id: String
+    let ipa: String?
+    let dialect: String?
+}
+
+struct LexicalExample: Codable, Equatable, Identifiable {
+    let id: String
+    let text: String
+}
+
+struct LexicalSense: Codable, Equatable, Identifiable {
+    let id: String
+    let partOfSpeech: String?
+    let definition: String
+    let translations: [String]
+    let examples: [LexicalExample]
+    let synonyms: [String]
+    let antonyms: [String]
+}
+
+/// Provider-neutral lexical snapshot returned by KG backend. iOS never
+/// decodes a provider's native JSON shape directly.
+struct LexicalEntry: Codable, Equatable, Identifiable {
+    let provider: String
+    let dictionaryId: String
+    let entryKey: String
+    let schemaVersion: Int
+    let word: String
+    let sourceLanguage: String
+    let targetLanguage: String
+    let pronunciations: [LexicalPronunciation]
+    let senses: [LexicalSense]
+    let forms: [String]
+    let sourceUrl: String
+    let licenseName: String
+    let licenseUrl: String
+    let attributionText: String
+    let fetchedAt: String
+    let truncated: Bool
+
+    var id: String { "\(provider):\(entryKey)" }
+}
+
+struct LexicalSearchHit: Codable, Equatable, Identifiable {
+    let provider: String
+    let entryKey: String
+    let word: String
+    let partOfSpeech: [String]
+    let preview: String?
+    let sourceUrl: String
+    let attributionText: String
+    let cacheStatus: String?
+
+    var id: String { "\(provider):\(entryKey)" }
+}
+
+struct LexicalSearchResponse: Codable, Equatable {
+    let hits: [LexicalSearchHit]
+    let cacheStatus: String?
+}
+
+struct KGDictionaryCardProjection: Codable {
+    let card: KGCard
+    let dictionaryEntry: LexicalEntry
+    let selectedSenseKey: String
+    let selectedExampleKey: String
+    let materializationStatus: String
 }
 
 struct KGNotebook: Codable, Identifiable {

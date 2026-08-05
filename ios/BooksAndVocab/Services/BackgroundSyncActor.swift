@@ -162,6 +162,7 @@ actor BackgroundSyncActor {
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.isArchived = card.isArchived ?? false
+                    Self.applyDictionaryLifecycle(from: card, into: existingEntry)
                     if let cardNotebookId = card.notebookId {
                         existingEntry.notebookId = cardNotebookId
                     }
@@ -196,6 +197,7 @@ actor BackgroundSyncActor {
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.isArchived = card.isArchived ?? false
+                Self.applyDictionaryLifecycle(from: card, into: newEntry)
                 newEntry.notebookId = card.notebookId ?? notebookId
                 newEntry.markSynced()
 
@@ -353,7 +355,7 @@ actor BackgroundSyncActor {
         let entries = try modelContext.fetch(descriptor).filter(\.needsReviewStatePush)
 
         var payload: [[String: Any]] = []
-        for entry in entries {
+        for entry in entries where entry.reviewEligible {
             let lastReviewed = entry.lastReviewedAt ?? entry.dateAdded
             var item: [String: Any] = [
                 "word": entry.word,
@@ -445,6 +447,17 @@ actor BackgroundSyncActor {
         entry.chapterTitle = (chapter?.isEmpty == false) ? chapter : nil
     }
 
+    private static func applyDictionaryLifecycle(from card: KGCard, into entry: VocabularyEntry) {
+        let role = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .learning
+        entry.cardRole = role
+        entry.reviewEligible = card.reviewEligible ?? (role == .learning)
+        if let readerHidden = card.readerHidden {
+            entry.isExcludedFromReader = readerHidden
+        }
+        entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
+        entry.promotedAt = card.promotedAt.flatMap(Self.parseISO8601)
+    }
+
     // MARK: - Review State Merge Helper
 
     /// Observability counter for the equal-instant (serverLast == localLast)
@@ -509,8 +522,21 @@ extension BackgroundSyncActor {
         guard !records.isEmpty else { return [] }
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         let entriesByID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let entriesByCardID = Dictionary(
+            uniqueKeysWithValues: entries.compactMap { entry in
+                entry.kgCardId.map { ($0, entry) }
+            }
+        )
 
-        return records.map { record in
+        return records.compactMap { record in
+            // Events created by current clients always carry entryID and a
+            // fixated card ID. Filter any event whose associated local card is
+            // review-ineligible. Unknown legacy orphans remain uploadable: no
+            // local row means eligibility cannot be inferred safely.
+            let associatedEntry = record.entryID.flatMap { entriesByID[$0] }
+                ?? record.kgCardId.flatMap { entriesByCardID[$0] }
+            guard associatedEntry?.reviewEligible != false else { return nil }
+
             // 優先用複習當下固化在事件上的 kgCardId(自包含,不退化)。只有 legacy 紀錄
             // (固化前)才回退舊的 entryID→entry→kgCardId 三段反查 —— 卡若已離場仍會是
             // nil,但那是固化上線前的歷史殘留,新事件不再受此影響。

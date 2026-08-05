@@ -3,6 +3,26 @@ import Foundation
 import SwiftData
 import os
 
+enum VocabularyHighlightSignature {
+    /// Stable signature for the effective, notebook-scoped highlight set.
+    /// Role/review eligibility intentionally do not participate: dictionary
+    /// cards highlight exactly like learning cards unless explicitly hidden.
+    static func make(entries: [VocabularyEntry], notebookId: String?) -> String {
+        let words = entries.lazy
+            .filter { entry in
+                guard entry.shouldAppearInReader else { return false }
+                return notebookId.map { entry.notebookId == $0 } ?? true
+            }
+            .flatMap { entry -> [String] in
+                var forms = Set([entry.word.lowercased()])
+                forms.formUnion(entry.inflections.map { $0.lowercased() })
+                if let root = entry.rootForm?.lowercased() { forms.insert(root) }
+                return Array(forms)
+            }
+        return ([notebookId ?? "*"] + Set(words).sorted()).joined(separator: "\u{1F}")
+    }
+}
+
 @MainActor
 protocol VocabularyContextStore: VocabularyContextProtocol {
     var vocabulary: [VocabularyEntry] { get }

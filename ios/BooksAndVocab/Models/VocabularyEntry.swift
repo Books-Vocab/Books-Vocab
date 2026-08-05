@@ -20,6 +20,18 @@ enum VocabularySyncAction: String, Codable {
     case edit
 }
 
+enum VocabularyCardRole: String, Codable, CaseIterable {
+    case learning
+    case dictionary
+}
+
+enum VocabularyPromotionState: String, Codable, CaseIterable {
+    case idle
+    case queued
+    case running
+    case failed
+}
+
 /// 生詞條目 — 記錄使用者在閱讀中查詢的單字/短語
 @Model
 final class VocabularyEntry {
@@ -53,6 +65,29 @@ final class VocabularyEntry {
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
     var isExcludedFromReader: Bool = false
+
+    // Dictionary-card lifecycle. Stored raw strings preserve lightweight
+    // migration for existing SwiftData rows and keep unknown future values
+    // fail-soft through the typed accessors below.
+    var cardRoleRaw: String = VocabularyCardRole.learning.rawValue
+    var reviewEligible: Bool = true
+    var promotionStateRaw: String = VocabularyPromotionState.idle.rawValue
+    var promotedAt: Date?
+
+    // Provider-neutral dictionary snapshot/provenance. The normalized payload
+    // remains JSON so provider schema growth doesn't require a SwiftData model
+    // migration for every optional lexical field.
+    var dictionaryPayloadJSON: String?
+    var dictionaryProvider: String?
+    var dictionaryId: String?
+    var dictionaryEntryKey: String?
+    var dictionarySelectedSenseKey: String?
+    var dictionarySelectedExampleKey: String?
+    var dictionarySourceURL: String?
+    var dictionaryLicenseName: String?
+    var dictionaryLicenseURL: String?
+    var dictionaryAttributionText: String?
+    var dictionaryFetchedAt: Date?
 
     // Local spaced-review state
     var reviewIntervalHours: Double = VocabularyReviewPolicy.initialIntervalHours
@@ -118,8 +153,20 @@ final class VocabularyEntry {
     var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
     var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
     var shouldAppearInReader: Bool { syncAction != .delete && !isArchived && !isExcludedFromReader }
+    var shouldAppearInReview: Bool { shouldAppearInKnowledgeList && reviewEligible }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
     var shouldAppearInArchiveList: Bool { isSynced && syncAction != .delete && isArchived }
+    var effectiveDateAdded: Date { promotedAt ?? dateAdded }
+
+    var cardRole: VocabularyCardRole {
+        get { VocabularyCardRole(rawValue: cardRoleRaw) ?? .learning }
+        set { cardRoleRaw = newValue.rawValue }
+    }
+
+    var promotionState: VocabularyPromotionState {
+        get { VocabularyPromotionState(rawValue: promotionStateRaw) ?? .idle }
+        set { promotionStateRaw = newValue.rawValue }
+    }
 
     /// Shared `#Predicate` for SwiftData `@Query` knowledge-list call sites.
     /// `#Predicate` can't reference the `shouldAppearInKnowledgeList` computed

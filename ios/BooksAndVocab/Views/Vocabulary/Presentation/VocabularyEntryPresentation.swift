@@ -53,7 +53,7 @@ enum VocabularyEntryPresentation {
         var reviewed: [VocabularyEntry] = []
 
         for entry in entries {
-            guard entry.shouldAppearInKnowledgeList else { continue }
+            guard entry.shouldAppearInReview else { continue }
             switch entry.reviewState(at: now) {
             case .due: due.append(entry)
             case .unlearned: unlearned.append(entry)
@@ -88,9 +88,12 @@ enum VocabularyEntryPresentation {
                 $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
             }
         case .dateAdded:
-            return base.sorted { $0.dateAdded > $1.dateAdded }
+            return base.sorted { $0.effectiveDateAdded > $1.effectiveDateAdded }
         case .difficulty:
             return base.sorted { lhs, rhs in
+                if lhs.reviewEligible != rhs.reviewEligible {
+                    return lhs.reviewEligible
+                }
                 let lhsTier = tierPriority(lhs.difficultyTier)
                 let rhsTier = tierPriority(rhs.difficultyTier)
                 if lhsTier != rhsTier { return lhsTier < rhsTier }
@@ -118,6 +121,15 @@ enum VocabularyEntryPresentation {
     }
 
     static func compareKnowledgeEntries(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry, now: Date) -> Bool {
+        if lhs.reviewEligible != rhs.reviewEligible {
+            return lhs.reviewEligible
+        }
+        if !lhs.reviewEligible {
+            if lhs.effectiveDateAdded != rhs.effectiveDateAdded {
+                return lhs.effectiveDateAdded > rhs.effectiveDateAdded
+            }
+            return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+        }
         if reviewPriority(lhs.reviewState(at: now)) != reviewPriority(rhs.reviewState(at: now)) {
             return reviewPriority(lhs.reviewState(at: now)) < reviewPriority(rhs.reviewState(at: now))
         }
