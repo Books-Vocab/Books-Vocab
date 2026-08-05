@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "heartbeat 契約只證明『程序存在』，不證明『程序在前進』——`ops/lib/streaming_command.py` 每 20 秒回 alive=true，一顆卡死的 child 與一顆忙碌的 child 在輸出上完全一樣。實例：lldb-forensics 那顆掛 4541s 期間 heartbeat 全程健康（c6f5e3 已用『每個呼叫點自帶預算』在該支測試上局部解決，但那是逐點補丁不是契約）。可行判準：child 的累積 CPU 時間（`ps -o time`）或 stdout/stderr 累積 bytes 在連續 N 個 heartbeat 之間完全不動時，把 heartbeat 行標成 stalled=true 並讓呼叫端有機會設上限。動之前要先量『正常但安靜』的 gate 有多少（純等鎖、純下載慢），否則會造出一堆假 stalled。落點 `ops/lib/streaming_command.py`，共用面（worktree gate / app_review_evidence / ios_ops 都吃），改動要連 `ops/tests/test_streaming_command.py` 一起；注意 2026-08-05 另有 debug/ios-lock-wait-heartbeat 工作樹在改 heartbeat 相鄰面，先確認不重疊。",
+  "id": "IMP-20260805-bc8315",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-20260805-c6f5e3 修復時刻意留下的第三項",
+  "status": "open",
+  "stream": "IMP"
+}
