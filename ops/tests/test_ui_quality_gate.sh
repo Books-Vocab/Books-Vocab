@@ -210,6 +210,19 @@ else
   fail_t "no-trigger file did not report selected=0: $(jq -c '.summary' <<<"$NONE_JSON")"
 fi
 
+section "--include-ci stays green on a clean tree"
+# The plane requires `run:` only of the gates it owns (`gate: manual`), and
+# some others cannot have one — snapshot.catalog_coverage's entrypoint is a
+# Swift test file that `ios_ops.sh test` enforces. Failing those here would
+# make validate and the runner disagree about the same file and turn a
+# documented flag permanently red on an unmodified checkout.
+CI_JSON="$($GATE --tier all --dry-run --all-mechanisms --include-ci --json 2>/dev/null)"
+if jq -e '.summary.failed == 0' <<<"$CI_JSON" >/dev/null 2>&1; then
+  ok "--include-ci reports no failures on the real plane"
+else
+  fail_t "--include-ci fails on a clean tree: $(jq -c '[.results[] | select(.status=="failed") | .id]' <<<"$CI_JSON")"
+fi
+
 section "A mechanism nothing can run fails the gate, it does not sit unrun"
 # The defect this whole change exists for (IMP-0041): the runner kept its own
 # command table, so a mechanism declared in the plane but absent from that

@@ -141,7 +141,11 @@ def parse_plane(path: Path) -> tuple[str, list[dict]]:
                 if st.startswith("- ") and ind >= 6:
                     items.append(strip_scalar(st[2:]))
                     i += 1
-                elif st.startswith("- ") and ind > 2:
+                elif st.startswith("- ") and ind == 2 and st[2:].lstrip().startswith("id:"):
+                    # The mechanisms sequence itself sits at indent 2, so this
+                    # ends the list and starts the next mechanism.
+                    break
+                elif st.startswith("- "):
                     # Legal YAML, unsupported by this parser: a 2-to-5 space
                     # list item used to fall through to `break` and leave the
                     # key as []. Harmless while every list had to be non-empty

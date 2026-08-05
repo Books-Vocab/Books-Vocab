@@ -308,6 +308,22 @@ def main() -> int:
 
         resolved_args, warning = resolve_args(mech, root, world_args)
 
+        if resolved_args is UNRUNNABLE and gate != "manual":
+            # The plane only requires `run:` of the gates it owns (`gate:
+            # manual`); `cmd_validate` exempts the rest, and some of them
+            # cannot have one — snapshot.catalog_coverage's entrypoint is a
+            # Swift test file enforced by `ios_ops.sh test`. Failing them here
+            # would make the validator and the runner disagree about the same
+            # file and turn `--include-ci` permanently red on a clean tree.
+            results.append({
+                **base_result,
+                "status": "planned",
+                "command": entrypoint,
+                "args": [],
+                "warning": f"no `run:`; gate={gate} runs it elsewhere",
+            })
+            continue
+
         if resolved_args is UNRUNNABLE:
             # Not `unrun`: unrun is a deferral and does not fail the gate, which
             # is precisely how an unregistered mechanism used to pass (IMP-0041).
