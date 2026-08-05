@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "cutover gate 的 child tool 以工作樹為 cwd 執行，但部分 ops 測試（test_ios_ops.sh 的 release/TestFlight 相關案例）會讀主 repo 的 git tag 狀態。gate 執行期間若有人在主 repo 建立/刪除 tag（例如跑 release.sh shipped ios），該道 gate 會以 rc=1 收場，在 gate 眼中與真的測試失敗無從分辨——與 IMP-20260805-5a3b26 的 device-lock 形狀同類：紅綠是機器狀態的函數。實測：2026-08-05 批次 gate 中 test_ios_ops.sh 回 passed 371 failed 1，同一份輸入單獨重跑 exit 0、371 全綠，隔離重跑 gate 亦 rc=0。",
+  "id": "IMP-20260805-4ec901",
+  "resolution": "尚未修。可能方向：gate 對會讀 repo-global 狀態（tag/ref）的 child 明示標記，或在 gate 期間取一次 tag 快照並讓測試讀快照，或至少讓 orchestrator 在偵測到 gate 執行期間 refs 有變動時把該 verdict 標為 inconclusive 而非 block。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "收尾 session 批次 gate：同一道 ops-shell:test_ios_ops.sh 在有並發 tag 手術時 rc=1、無並發時 rc=0",
+  "status": "open",
+  "stream": "IMP"
+}
