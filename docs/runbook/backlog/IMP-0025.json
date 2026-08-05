@@ -1,12 +1,16 @@
 {
   "category": "cli",
+  "cost": "M",
   "date": "2026-07-09",
-  "detail": "無 `ops-edit user-delete` 原語 → reshape 用的 throwaway scratch 帳號(及一般 demo 帳號)會殘留在 users.json(`_` 前綴者 `is_real_user=False` 自動隱藏於 fleet-overview,但實體條目仍在),只能靠手寫 scoped script 清(本 session 即如此)。候選:`ops-edit user-delete <uid>`(移 user dir + users.json 條目 + email/subscription index scrub,dry-run 預設、寫前自動備份)。",
+  "detail": "無 `ops-edit user-delete` 原語 → reshape 用的 throwaway scratch 帳號(及一般 demo 帳號)會殘留在 users.json(`_` 前綴者 `is_real_user=False` 自動隱藏於 fleet-overview,但實體條目仍在),只能靠手寫 scoped script 清(本 session 即如此)。候選:`ops-edit user-delete <uid>`(移 user dir + users.json 條目 + email/subscription index scrub,dry-run 預設、寫前自動備份)。**2026-08-05 取證**:`ops_edit.py --help` 列 20 個子指令(user-create/card-add/card-update/card-set-review/card-delete/card-import/notebook-create/user-config-set/link-add/link-delete/seed/clone-demo/world-snapshot/world-restore/list-backups/restore/notebook-update/notebook-delete/card-move/link-list/link-update),**無 `user-delete`**。",
+  "fix_site": "backend/tests/test_ops_edit_user_commands_unit.py",
   "id": "IMP-0025",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;落點新 `cmd_user_delete`+parser,寫前備份沿用既有 world-snapshot,成本 M,測試 `backend/tests/test_ops_edit_user_commands_unit.py`。**不併入 0024/0026**:無共用程式碼,是 reshape 流程的收尾清理,可獨立出貨;若 0024 的 `--replace` 落地,本條的觸發源(throwaway scratch)會消失、降為一般 demo 清理需求)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "行銷帳號 Phase5(scratch 清理)",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

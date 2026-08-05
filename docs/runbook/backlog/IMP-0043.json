@@ -1,12 +1,16 @@
 {
   "category": "tool",
+  "cost": "S",
   "date": "2026-08-03",
-  "detail": "同一堵簽章牆在 test route 上還在：`ops/ios_test.sh` 記載可用 `--destination` 跑 Mac Catalyst，但沒有對應的不簽章規則，下一個跑 Catalyst 測試的 agent 會撞到一模一樣的 exit 65。目前無 gate 走這條，故列 low。下一步：`ios_test.sh` 偵測 Catalyst destination 時比照 `ios_build.sh` 帶 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`，或明確擋下並指向 IMP-0039 的說明。",
+  "detail": "同一堵簽章牆在 test route 上還在：`ops/ios_test.sh` 記載可用 `--destination` 跑 Mac Catalyst，但沒有對應的不簽章規則，下一個跑 Catalyst 測試的 agent 會撞到一模一樣的 exit 65。目前無 gate 走這條，故列 low。下一步：`ios_test.sh` 偵測 Catalyst destination 時比照 `ios_build.sh` 帶 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`，或明確擋下並指向 IMP-0039 的說明。**2026-08-05 取證**:`grep -c CODE_SIGNING ops/ios_test.sh` → **0**(全檔無任何簽章旗標,也無 `--catalyst` 旗標,只有 `:135` 的 `--destination` 全覆寫);而 `:276` 註解自己把 Catalyst 當合法用法寫進 cache key 語意。對照範式 `ios_build.sh:54-56`(理由在 `:48-53`),`docs/sop/ios.md:137` 另記「本 repo 從不簽 Catalyst 產物」。**未實跑 xcodebuild**(唯讀紀律),故 exit 65 屬推論;旗標缺席是實測的。",
+  "fix_site": "ios_test.sh:135",
   "id": "IMP-0043",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ios_test.sh:135` parse 後 + xcodebuild 呼叫點 `:1077`/`:1185`,成本 S,測試用 `--list`/dry-run 斷言 Catalyst destination 下 settings 含該兩旗標;與 IMP-0017/0030 同檔,單獨開 PR 不划算)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "IMP-0039 的 review",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

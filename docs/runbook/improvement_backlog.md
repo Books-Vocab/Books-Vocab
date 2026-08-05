@@ -1,40 +1,49 @@
 <!-- doc-meta
 tier: runbook
-authority: SoT
-update_trigger: manual
+authority: generated
+update_trigger: machine-generated
 scope:
-  - .claude/agents/platform-steward.md
-  - .claude/skills/kg-receipt/
-verified_against: febc68ebb
+  - docs/runbook/backlog/
+verified_against: 0c9e3b7c8
 -->
 # 改善 Backlog（kaizen ledger）
 
-> 自我提升迴圈的 **SoT**:所有「工具 / CLI / 文檔 / 架構」摩擦的 open 問題單一登記處。
-> 原則見**鐵律9**(摩擦優先修工具)、分級見 `kg-router`「Tool Friction」、表態見 `kg-receipt`「Tooling Debt」——本文**不複述**,只負責**持久化、追蹤、收斂**。
+> ⚠️ **GENERATED — 不要手改這個檔。** 內容由 `ops/backlog.py render` 從
+> `docs/runbook/backlog/*.json` 產生，手改會被下一次 render 覆蓋。
+> 要改請用 `ops/backlog.py update <id>`；要新增用 `ops/backlog.py add`。
 
-## 為什麼存在
+> 自我提升迴圈的登記處。**SoT 是 `docs/runbook/backlog/`**，本檔是它的 render。所有「工具 / CLI / 文檔 / 架構」摩擦（`IMP-*`）與
+> 「app 實際使用」問題（`APP-*`）的 open 問題單一登記處。
+> 原則見**鐵律9**（摩擦優先修工具）、分級見 `kg-router`「Tool Friction」、
+> 表態見 `kg-receipt`「Tooling Debt」——本文**不複述**，只負責**持久化、追蹤、收斂**。
 
-receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 raised 問題**進 git、可回溯、有 owner、追到 resolved**,杜絕 agent 無聲妥協(硬幹)。owner = `platform-steward`(Staff)。
+## 為什麼是一筆一檔
 
-## Andon — 任何節點怎麼提一筆
+receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 raised 問題
+**進 git、可回溯、有 owner、追到 resolved**。
 
-1. 撞到摩擦 → 先第一性原理判根因(鐵律9),分級(kg-router「Tool Friction」)。
-2. 在 receipt 表態(規則見 `kg-receipt`「Tooling Debt」)。
-3. 非 trivial 且未當場修掉 → 由上一階 / `platform-steward` 追加一列到下表。
-4. 中大型 / 結構級 → 不只登記:停手修工具,或升級上一階(鐵律9 + `docs/sop/agent_org.md`「反硬幹升級階梯」)。
+存成 `docs/runbook/backlog/<id>.json`（一筆一檔）而非單一表格，是因為單一表格
+在多 agent 並發下必然衝突：每次 append 都打同一段行區，而流水號 id 跨 worktree
+必撞（檔案在 merge 前彼此看不見）。IMP-0017 自己記著已經撞過兩次。
 
 ## Entry schema
 
-- `status`: `open` → `triaged` → `in-progress` → `fixed` / `wont-fix`(附理由)
-- `category`: `tool` / `cli` / `doc` / `arch`
-- `severity`: `low` / `med` / `high`
-- `resolution`: 解決 commit hash,或 wont-fix 理由(這是「可回溯」的關鍵欄)
-- resolution hash 慣例:PR 合併前為 branch-local;若該 PR 採 **squash merge**,合併後由 `platform-steward` 更新為 squashed hash,維持 audit trail 不斷。**不得以分支名代替 hash**——分支會被刪,hash 不會(2026-08-05 稽核發現 IMP-0044/0045 曾如此,已回填)。
-- **未結條目的 `resolution` 慣例**(2026-08-05 補成文,原為事實慣例):填 `—`,其後可用半形括號附註「當下已知的部分緩解 / 待決事項 / 驗證戳記」,格式 `—(…)`。**不得**把 status 值寫進本欄。驗證戳記格式:`—(YYYY-MM-DD 驗證 <verdict>;落點…,成本 S/M/L…)`,verdict ∈ `CONFIRMED-OPEN` / `PARTIAL` / `MISSTATED` / `ALREADY-FIXED` / `OBSOLETE` / `DUPLICATE-OF-IMP-xxxx`。
+- `status`：`open` → `triaged` → `in-progress` → `fixed` → `wont-fix`（`wont-fix` 須在 resolution 附理由）
+- `category`：IMP 為 `tool` / `cli` / `doc` / `arch`；APP 為 `ux` / `correctness` / `perf` / `data` / `content`
+- `severity`：`low` / `med` / `high`
+- `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
+- 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
+- **resolution hash 慣例**：PR 合併前為 branch-local；若該 PR 採 **squash merge**，合併後由
+  `platform-steward` 更新為 squashed hash，維持 audit trail 不斷。**不得以分支名代替 hash**
+  ——分支刪掉之後那筆 resolution 就再也指不到任何東西
+- **重新取證欄位**（由 resolution 的 `—(YYYY-MM-DD 驗證 <VERDICT>…)` 戳記抽出，抽取為
+  **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 `CONFIRMED-OPEN` / `PARTIAL` / `MISSTATED` / `ALREADY-FIXED` / `OBSOLETE`，或
+  `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
+  讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
 
-## Ledger
+## IMP — 工具 / CLI / 文檔 / 架構摩擦
 
-> **2026-08-05 全表驗證盤點**:對當時 25 筆未結條目(24 open + 1 triaged)逐筆取證,五組唯讀 agent 平行執行。結果:**無一筆已死**(零 ALREADY-FIXED / 零 OBSOLETE),但 **11 筆敘述失準**已就地改寫——多為「條目寫的成因或數字經不起當下複查」,其中 IMP-0030 的假綠自建檔起就已被 `4930a1e37` 攔下、IMP-0017 的成因(cleanup trap 吞 exit code)在 bash 語意上不成立、IMP-0042 的家族分類六項有四項錯、IMP-0038 的規模低估一倍(10→22)。**每筆未結條目的 resolution 欄現帶 `—(YYYY-MM-DD 驗證 …)` 戳記**,含 verdict / 落點 file:line / 成本 / 是否需自帶測試 / 與他條的相依。**跨條相依三則(動手前必讀)**:① 修 IMP-0057 會放大 IMP-0055(新路由的檔會被純靜態 grep 判成 covered),應先落 0055 的覆蓋驗證器;② IMP-0024+0026 是同一工項(共用 `kg.seed_spec.v1`,`export_seed_spec` 同時是 normalizer 與驗收器),分開做會做兩次同樣的 normalize;③ IMP-0041 與 IMP-0050 是同一路徑的入口與出口,保留兩 id 但應同 PR 出,先做 0050 讓 0041 的驗收訊號清楚。同根因可同批:{0023,0058}(userland 可攜性)、{0017,0030,0043}(同為 `ios_test.sh`)、{0016,0021}(world schema 驗證漏斗)。
+owner = `platform-steward`。andon 規則見 `kg-receipt`「Tooling Debt」。
 
 | id | date | source | category | severity | status | detail | resolution |
 |---|---|---|---|---|---|---|---|
@@ -101,3 +110,17 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 | IMP-0064 | 2026-08-05 | IMP-0063 凍結驗收時的差分量測 | tool | high | open | **`ios_ops.sh catalog snapshots` 在 main 上已經是壞的——「看畫面」目前半殘,而這正是 IMP-0063 決定要保住的東西。** 症狀:`exitCode=65`,app 端 `VocabularyListViewScenarios.swift:241` 的 `preconditionFailure`(「UI World vocabulary.<id> must declare N visible vocabulary entries, got M」)。後果分兩層:245 張 surface PNG 仍被 salvage 機制撈回(所以「看單張圖」還能用),但 `catalog_index.json` 沒產出 → `UIreview.html` gallery 渲染失敗(`review-render-failed`),且 `catalog_appearance.json` proofCount=0 → `catalog-appearance-proof` error=`appearance.missing`。**歸因已用差分證明,不是推論**:在乾淨的 `main`(`0c9e3b7c8`, 工作區乾淨)跑同一條指令得到**完全相同**的 `pngCount=245` + `exitCode=65` + `appearance.missing`;而 `feat/freeze-ui-world` 對 `ios/BooksAndVocab/`(app target,含 `Debug/` 與 `ops/fixtures/ui_worlds/`)是**逐位元零 diff**,該次執行又是 `-only-testing:BooksAndVocabTests/CatalogSnapshotTests`,本分支改動的測試型別根本沒被執行。**與凍結無關,凍結也沒讓它變糟**——但凍結的前提之一是「catalog 還能看畫面」,所以這條該修。下一步:讀 `VocabularyListViewScenarios.swift:230-245` 的 `VocabularyListExpectedShape` 期望值,對照 `marketing_demo.json` 的 `vocabulary.vocabList*` seed 實際可見筆數(`shouldAppearInKnowledgeList` 過濾後),判斷是 seed 漂移還是期望值寫死過時。**注意這條與凍結紅線的交互**:修法若需要改 world,受 §FROZEN 紅線 2 約束(validator 會擋新 fixture key);但「改既有 seed 的 entry 內容以修復既有 bug」不算擴張,不受紅線限制。 | — |
 | IMP-0065 | 2026-08-05 | IMP-0063 的錨點改寫 review | doc | low | open | **`review_audit.sh` 的五個合法豁免裡,`single-line-small-file` 是結構性壞的一條。** 它量的是換行符位置,不是改動大小——在由長 table row / 長設定行構成的檔案裡(`improvement_backlog.md` 97+ 列、`docs/registry.yml`、`ops/ui_quality_plane.yml`),「一行」與語意重量**零相關**。**實際咬到的案例就是本次**:我對 `improvement_backlog.md` 做了一段頒布全 repo 規則的語意重寫,diff 顯示 1 行(純粹是 markdown table row 的排版產物),我據此填了 `Review-Exempt: single-line-small-file`。**沒有任何工具會擋**——`review_audit.sh` 只驗 trailer 存在且合法,不驗內容是否真的符合(鐵律 4 的機器面到此為止)。我自己抓出來改派 reviewer,而該 review 在那「一行」裡挖出 3 個實質 BLOCK,判定自我驗證。其餘四條豁免(`trivial-typo`/`format-only`/`rename-only`/`generated-snapshot`)**定義上改變不了任何人的行動,維持正當**,不要矯枉過正到每個 typo 都送審。下一步:把該條收窄成「單行 **且** 不含規範性語句(必須/禁止/應/通則/規則)」,或換成語意判準「這段文字錯了,讀者會照著做錯事嗎」。 | — |
 | IMP-0066 | 2026-08-05 | IMP-0063 的錨點改寫 review | tool | med | open | **`verified_against` 可達性的判準與守衛都不對,IMP-0038 只涵蓋其中一半。**(刻意不改 IMP-0038 本體——那是它的欄位,且 `site/text-first-compact` 正在重寫該列;此處記錄供其 owner 吸收。) 三件事:① **判準錯**:`ops/docs_lint.sh:418-421` 驗的是 **HEAD 可達**,而 CI 解析的是 **origin/main 可達**。本 repo 本地 main 超前 origin(實測 `origin/main...main` = `0 9`),兩者不等價 → 分支本地必綠、CI 全紅,**實測規模:50 份 doc 帶 sha 錨點,其中 21 份對 `origin/main` 不可達**(reviewer 獨立盤點得同一數字);IMP-0038 建檔時記「約 10 份」是低估一倍以上——正確數字由 `site/text-first-compact` 的 `a45e26e6e` 寫回該條本體,此處不複述。這正是 IMP-0038 至今 open 且 `docs-lint` 被排除於 linux CI 的機制原因。把判準改成 `origin/main` 可達**就是 IMP-0038 的出場條件**。② **另一種假綠,與 IMP-0038 不同型**:3 份 doc 寫的是**字面** `verified_against: HEAD`(`docs/plans/2026-05-23-notebook-editorial-stack.md`、`docs/specs/2026-05-23-notebook-editorial-cover-design.md`、`docs/specs/2026-05-23-notebook-editorial-stack-design.md`)——自我滿足的錨點,**任何可達性檢查都永遠判不了它**。③ **正控斷言在缺少驗證對象時靜默 skip,而那正是它該響的環境**(由 `feat/backlog-store` 回報,已獨立複驗):`ops/tests/test_backlog_migration.py:721-726` 的 origin-可達正控被 `pytest.skip("no origin/main")` 守著——**沒有 `origin/main` 的環境(未 fetch 的 clone、淺 clone 的 CI)正是 `_doc_anchor()` 會降級成 local main 的環境**,於是斷言在最需要它的地方消失、套件仍全綠。**這是「檢查存在但在該響的時候不可能響」的第四個變體**(前三個:IMP-0044 gate 只能紅不能綠、IMP-0059 一條寫著卻永不會響的檢查、IMP-0056 測試替身比真實依賴仁慈——三次是隔數週各自被發現的)。同類還有本條 ② 的字面 `verified_against: HEAD`:不是值錯,是**那個位置的檢查在結構上不可能紅**。通則已寫進 `docs/sop/doc_sync.md` §步驟 4。下一步:該 skip 改成紅並明示 `git fetch origin`,或至少計數並在總結印出。④ **規則的 owner 文檔自己違反規則**:`docs/sop/doc_sync.md` 的 `verified_against: f0d37ca4` 對 main 與 origin/main **皆不可達**。已於本 commit bump 到 `0c9e3b7c` 並把判準寫進該檔。 | ④ 已修(`f918d6ecc`)。③ 的通則已寫進 `docs/sop/doc_sync.md`,實例待 `feat/backlog-store` 處理。①② 待 IMP-0038 的 owner 吸收。 |
+| IMP-20260805-355016 | 2026-08-05 | backlog store review | arch | low | open | `ops/backlog.py` 的 generated view 刻意維持 legacy 8 欄，因為「產出的 view 仍可被 importer 讀回」＝遷移可逆。代價是 `verdict`/`verified_at`/`cost`/`fix_site` 四個一級欄位在表格裡看不到，只有 `show` 與 `--json` 拿得到。曾嘗試加寬到 12 欄，當場打破 4 條 round-trip 測試，已撤回。 | — 兩者目前不可兼得。候選：view 分兩張表（8 欄主表維持可逆 + verdict 摘要表），或 importer 學會寬表。記錄取捨以免下一個人重試一次加寬。 |
+| IMP-20260805-3df783 | 2026-08-05 | backlog store review | tool | med | open | `ops/backlog.py` 的 `parse_legacy_table` 對「少一欄 + 一個未跳脫 `\|`」結構性不可偵測：兩個錯誤相消後剛好落在 8 欄，vocabulary anchor（cells[3][4][5]）照樣通過，於是走 happy path、detail 被截斷、尾巴變 resolution、零回報。真實 IMP-0017 被抓到純粹因為 `\|\|` 是兩個 pipe（8→10 欄）。復原啟發式的資訊上限同源：anchor 能證 cells[0..5] 未位移，證不了 stray pipe 落在 detail 還是 resolution。 | — 遷移後風險降低（view 已是產出、cell 一律跳脫，test_generated_view_needs_no_recovery 釘住零復原），但 importer 仍是任何舊格式表格的入口。候選：resolution 欄形狀檢查當第二錨點。 |
+| IMP-20260805-718e75 | 2026-08-05 | backlog store review | tool | med | open | `ops/backlog.py` 的 `extract_verdict_fields` 抽不到「未使用『成本』二字」的成本敘述（實例：IMP-0048 寫 `各 S`），且無任何回報路徑——`_COST_PRESENT_RE` 偵測的是關鍵字「成本」而不是「這段文字有沒有陳述成本」。更該記的是原始誤判：本工具的 commit message 曾宣稱「IMP-0048 沒寫成本，這是查過的不是假設的」，而那個「查證」查的正是關鍵字。同族的 `落點` 有 present-but-unreadable 的具名回報，`成本` 沒有，屬不對稱。 | — 候選：對「有戳記但無 cost」回報 `cost-absent` 讓缺席可見；或接受無法偵測並在 --help 具名此洞。優先度低（唯一已知實例是 IMP-0048），但不可退化成靜默。 |
+
+## APP — app 實際使用問題
+
+owner = 對應 Line 部門（`ios-engineer` / `backend-engineer`）。
+與 IMP 分流的理由：分類詞彙、owner、發現途徑都不同，混在同一條 queue 會讓
+platform-steward 的 triage 失效。
+
+| id | date | source | surface | category | severity | status | detail | repro | build | resolution |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+<!-- 66 IMP + 0 APP entries -->

@@ -1,12 +1,14 @@
 {
   "category": "cli",
   "date": "2026-06-13",
-  "detail": "`docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 5 條 exact 誤報(`via=CLAUDE.md`);hint≠命令故不阻擋,但每次需人工判讀",
+  "detail": "`docs_impact.py` 對 CLAUDE.md 純政策段新增穩定產生 **6** 條 exact 誤報(`via=CLAUDE.md`;2026-08-05 實跑 `docs_impact.py --files CLAUDE.md` → `impacts=6`,建檔時記 5);來源是 `docs/registry.yml:218,235,436,564,590,604` 六個 doc 把 CLAUDE.md 列進 `sources`。hint≠命令故不阻擋,但每次需人工判讀。**`!path`/`!glob` 排除機制已存在**(`ops/docs_impact.py:158-170`)卻救不了本案:`source_matches`(`:127-134`)三種語義(fnmatch / 前綴 / 相等)全部以整檔為最小粒度,表達不了「CLAUDE.md 的某一節」;section-anchor 零實作(registry 無任何 `*.md#anchor` 形式 source)",
   "id": "IMP-0003",
-  "resolution": "open — 候選 enhancement:registry 對 CLAUDE.md source 加 section-anchor 機制",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN;候選 A=`docs_impact.py:127-134`+registry 支援 `CLAUDE.md#<heading-slug>`,成本 M 且 `--files` 模式拿不到 diff hunk、降級語義需先定;候選 B=把 `via=CLAUDE.md` 的 exact 降判為 broad,成本 S。兩者皆需正反例測試)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "docs-steward 首測",
   "status": "triaged",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

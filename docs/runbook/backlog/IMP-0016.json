@@ -1,12 +1,15 @@
 {
   "category": "tool",
+  "cost": "S",
   "date": "2026-07-08",
-  "detail": "Card/Notebook schema 變更無 lint 抓「export/seed 未同 PR 對齊」→ roundtrip 靜默有損;現靠 ops_state_plane §1.1 紀律 + roundtrip 測試抓 export 側漏導。符合 gate 刻意延後政策([[ops-gate-enforcement-deferred-by-design]]),升級訊號=同錯第三次",
+  "detail": "Card/Notebook schema 變更無 lint 抓「export/seed 未同 PR 對齊」→ roundtrip 靜默有損;**2026-08-05 更正**:原記「roundtrip 測試抓 export 側漏導」已被證偽——`backend/tests/test_ops_world_export.py:344 test_seed_export_seed_export_is_fixpoint` 的不變量是 `export_a == export_b`,schema 新增欄位而 `ops_world_export.py:140 _card_entry` 未跟進時,兩次 export 同樣缺該欄仍 byte-equal → 綠。`:247` 是 `SELECT * FROM card`,欄位取捨全在手寫 dict,無任何欄位集枚舉。roundtrip 真正抓得到的是**反方向**(export 吐出 seed 吃不進的欄位)與排序不確定性,不是本條目要防的方向。故目前唯一防線是 `docs/reference/ops_state_plane.md:69` 的散文紀律。另:原引的 `[[ops-gate-enforcement-deferred-by-design]]` 指向 agent memory 條目而非 repo 內文檔(全 repo 僅本行出現,docs_lint 亦無 wikilink 解析),該豁免主張在 repo 稽核面不可驗證。升級訊號=同錯第三次",
   "id": "IMP-0016",
-  "resolution": "",
+  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN,detail 兩處失準已改寫;落點 `ops_world_export.py:140` 上方加模組級 `EXPORTED_CARD_FIELDS`+`EXPORT_IGNORED_CARD_COLUMNS`(含理由字串),測試斷言 `PRAGMA table_info(card) - IGNORED == EXPORTED`,新欄位未分類即紅,notebook 同法;成本 S,測試進 `backend/tests/test_ops_world_export.py` 另開 `TestFieldSymmetry`)",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "Phase 1 review(world-export)",
   "status": "open",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-05"
 }

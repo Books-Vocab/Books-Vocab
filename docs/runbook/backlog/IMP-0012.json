@@ -1,12 +1,12 @@
 {
   "category": "doc",
   "date": "2026-07-08",
-  "detail": "`docs/sop/ios.md` §UI World dataset 契約為單行 ~4000 字牆,知識密度高但不可讀不可維護;候選:結構化為表格+分節",
+  "detail": "`docs/sop/ios.md` §UI World dataset 契約為單行 **7371 字元**牆(`docs/sop/ios.md:181`,次長行的 10 倍;建檔時記 ~4000,至 2026-08-05 已再長近一倍),多主題混塞(v2 schema 契約 / DEFLATE 注入機制 / 六個以上 fixture registry 必填欄位 / fail-hard 條件)全用「;」串成一行,知識密度高但不可讀不可維護;候選:拆成 schema 契約、注入機制、各 domain 必填欄位(表格)、fail-hard 條件四節",
   "id": "IMP-0012",
-  "resolution": "",
+  "resolution": "**frozen: UI World / catalog 一致性平面已凍結（2026-08-05，見 IMP-0063）**。UI World 自該日起停止擴張,那段契約不再演進,重構它只是把一段不會再被讀來指導動作的文字排版得好看一點。復業（送審 / 重做行銷截圖 / 大改 UI 風格）時重開此條。",
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "iOS 2.0.0 發版檢討",
-  "status": "open",
+  "status": "wont-fix",
   "stream": "IMP"
 }
