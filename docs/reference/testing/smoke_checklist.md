@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 0a90b4f8e
+verified_against: 0c9e3b7c8
 -->
 # iOS Smoke Test Checklist
 

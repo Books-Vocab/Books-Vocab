@@ -7,7 +7,7 @@ scope:
   - backend/
   - ops/
   - lab/
-verified_against: 0a90b4f8e
+verified_against: 0c9e3b7c8
 -->
 # Implemented Product Surface
 
