@@ -151,20 +151,22 @@ final class SyncCoordinator: SyncCoordinating {
                 // Tombstone defense: sanitize 對 orphan-delete 走 modelContext.delete()，
                 // 但舊物件引用上的 PersistentModel.isDeleted 不可作為 save 後契約。
                 // downstream filters 用 sanitize 本輪回傳的 stable entry ids 排除幽靈 entry。
-                let deletes = pendingEntries.filter {
+                let queuedDeletes = pendingEntries.filter {
                     !sanitizedDeletedEntryIds.contains($0.id)
                         && $0.syncAction == .delete
                         && $0.shouldUploadOnNextSync
                 }
+                // 字典卡不能走 legacy word-based delete — 見 partitionDeletesByRole。
+                let (deletes, dictionaryDeletes) = Self.partitionDeletesByRole(queuedDeletes)
                 let adds = pendingEntries.filter {
                     !sanitizedDeletedEntryIds.contains($0.id)
                         && $0.syncAction == .add
                         && $0.shouldUploadOnNextSync
                 }
 
-                if !deletes.isEmpty {
-                    self.updateStep("upload_delete", status: .running, total: deletes.count)
-                    deletes.forEach { $0.prepareForRetryAttempt() }
+                if !queuedDeletes.isEmpty {
+                    self.updateStep("upload_delete", status: .running, total: queuedDeletes.count)
+                    queuedDeletes.forEach { $0.prepareForRetryAttempt() }
 
                     // Group by notebook and batch-delete
                     let groupedDeletes = Dictionary(grouping: deletes, by: \.notebookId)
@@ -181,7 +183,7 @@ final class SyncCoordinator: SyncCoordinating {
                             )
                             deleted += outcome.deleted
                             failedWords.append(contentsOf: outcome.failedWords)
-                            self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
+                            self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
                         } catch {
                             // Batch failed — fallback to per-word delete
                             if Task.isCancelled { break }
@@ -191,7 +193,7 @@ final class SyncCoordinator: SyncCoordinating {
                                     try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
                                     modelContext.delete(entry)
                                     deleted += 1
-                                    self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
+                                    self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
                                 } catch {
                                     if Task.isCancelled { break }
                                     entry.markSyncFailed()
@@ -201,6 +203,26 @@ final class SyncCoordinator: SyncCoordinating {
                             }
                         }
                     }
+
+                    if !dictionaryDeletes.isEmpty && !Task.isCancelled {
+                        // Peers = every local row, not just the outbox: a card holding a
+                        // link to the deleted dictionary node is usually itself synced,
+                        // so `pendingEntries` would miss it and leave a dangling edge
+                        // until some later pull happened to refresh that row.
+                        let peers = (try? modelContext.fetch(FetchDescriptor<VocabularyEntry>()))
+                            ?? pendingEntries
+                        let outcome = await Self.drainDictionaryDeletes(
+                            dictionaryDeletes,
+                            peers: peers,
+                            modelContext: modelContext
+                        ) { cardID, notebookID in
+                            try await kgService.deleteDictionaryCard(cardId: cardID, notebookId: notebookID)
+                        }
+                        deleted += outcome.deleted
+                        failedWords.append(contentsOf: outcome.failedWords)
+                        self.updateStep("upload_delete", status: .running, current: deleted, total: queuedDeletes.count)
+                    }
+
                     if !failedWords.isEmpty { encounteredFailure = true }
                     modelContext.safeSave()
 
@@ -217,7 +239,7 @@ final class SyncCoordinator: SyncCoordinating {
                             "upload_delete",
                             status: .error,
                             current: deleted,
-                            total: deletes.count,
+                            total: queuedDeletes.count,
                             detail: L10n.format("部分失敗: %@", failedWords.joined(separator: ", "))
                         )
                     }
@@ -488,6 +510,90 @@ final class SyncCoordinator: SyncCoordinating {
             }
         }
         return (deleted, failedWords)
+    }
+
+    /// 依 `cardRole` 把 outbox 內的 pending delete 切成兩條互斥路徑。
+    ///
+    /// Reader / PDF / 詞庫列表的「移除」一律只做 `queueDelete()`，把實際
+    /// 傳輸交給這條 outbox drain — 也就是說 drain 是唯一知道「這張卡該打哪個
+    /// endpoint」的地方。Legacy 的 `batchDeleteCards` / `deleteCard` 以
+    /// `(word, notebookId)` 定位卡片，對字典卡是錯的路徑：它不會做 graph link
+    /// rollback、不碰 archive refcount，刪完 server 上還留著指向已刪節點的邊。
+    /// 字典卡必須走 `deleteDictionaryCard(cardId:notebookId:)`。
+    ///
+    /// 分流只看 `cardRole`，不看 `kgCardId` — 沒有 cardId 的字典卡代表從未上傳，
+    /// 由 `drainDictionaryDeletes` 就地本地收斂，不該偷渡回 legacy 路徑。
+    nonisolated static func partitionDeletesByRole(
+        _ entries: [VocabularyEntry]
+    ) -> (learning: [VocabularyEntry], dictionary: [VocabularyEntry]) {
+        var learning: [VocabularyEntry] = []
+        var dictionary: [VocabularyEntry] = []
+        for entry in entries {
+            if entry.cardRole == .dictionary {
+                dictionary.append(entry)
+            } else {
+                learning.append(entry)
+            }
+        }
+        return (learning, dictionary)
+    }
+
+    /// 排掉字典卡的 pending delete。抽成 static 讓測試與 production 共用同一份
+    /// 邏輯（比照 `applyBatchDeleteResponse` / `triggerPipelinesIsolated`）。
+    ///
+    /// - server 回的 tombstone 必須 `isDeleted == true` 才算成功；否則視為失敗
+    ///   保留重試，不可只因 HTTP 200 就本地收斂。
+    /// - 成功才做本地收斂：移除 entry **並**把 peer 上指向該 cardId 的 link
+    ///   summary 一併清掉（server 端 rollback 的本地鏡像）。失敗是 no-op —
+    ///   entry 與 link 都留著，否則一次網路錯誤就讓本地與 server 永久分岔。
+    /// - 沒有 `kgCardId` = 從未上傳，server 無物可刪，直接本地收斂。
+    @discardableResult
+    static func drainDictionaryDeletes(
+        _ entries: [VocabularyEntry],
+        peers: [VocabularyEntry],
+        modelContext: ModelContext,
+        delete: (_ cardID: String, _ notebookID: String) async throws -> KGCard
+    ) async -> (deleted: Int, failedWords: [String]) {
+        var deleted = 0
+        var failedWords: [String] = []
+        for entry in entries {
+            if Task.isCancelled { break }
+            guard let cardID = entry.kgCardId, !cardID.isEmpty else {
+                modelContext.delete(entry)
+                deleted += 1
+                continue
+            }
+            do {
+                let tombstone = try await delete(cardID, entry.notebookId)
+                guard tombstone.isDeleted == true else {
+                    throw KGError.serverError("Dictionary delete response was not a tombstone")
+                }
+                purgeGraphLinks(toCardID: cardID, in: peers)
+                modelContext.delete(entry)
+                deleted += 1
+            } catch {
+                if Task.isCancelled { break }
+                entry.markSyncFailed()
+                failedWords.append(entry.word)
+            }
+        }
+        return (deleted, failedWords)
+    }
+
+    /// 本地 graph rollback：把所有 peer 上指向 `cardID` 的 link summary 移除，
+    /// 空掉的 kind group 一併收掉（比照 `VocabularyEntry.mutateLink` 的收斂）。
+    static func purgeGraphLinks(toCardID cardID: String, in entries: [VocabularyEntry]) {
+        for entry in entries {
+            var groups = entry.graphLinksByKind
+            var changed = false
+            for (kind, links) in groups {
+                let remaining = links.filter { $0.cardId != cardID }
+                guard remaining.count != links.count else { continue }
+                changed = true
+                groups[kind] = remaining.isEmpty ? nil : remaining
+            }
+            if changed { entry.graphLinksByKind = groups }
+        }
     }
 
     /// startSync add-path 的 batchAdd 回應收斂。抽成 static 純函式讓測試與

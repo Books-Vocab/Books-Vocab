@@ -44,6 +44,188 @@ final class WordDetailSceneState {
     /// A 成功、B 失敗 → B 回捲寫回 true，而伺服器上是 false）。
     private var isSettingArchived = false
 
+    /// Monotonic token for sense/example selection. The selection endpoint is a
+    /// plain request/response with no ordering guarantee, so a slow earlier
+    /// response can land after a fast later one and repin the sense the user
+    /// already moved off. Only the response whose token still matches the latest
+    /// intent may touch the model (mirrors `AddLinkCoordinator.searchGeneration`).
+    @ObservationIgnored private var selectionGeneration = 0
+    @ObservationIgnored private var selectionTask: Task<Void, Never>?
+    @ObservationIgnored private var promotionTask: Task<Void, Never>?
+
+    /// Default polling schedule for a promotion. The last delay repeats until
+    /// `defaultMaxPollAttempts` is spent — see `promoteDictionary`.
+    /// `nonisolated` because both are used as default arguments, which are
+    /// evaluated at the (nonisolated) call site.
+    nonisolated static let defaultPromotionPollDelays: [Duration] = [
+        .milliseconds(350), .milliseconds(700), .seconds(1), .seconds(2),
+    ]
+    /// Hard ceiling on polls for one promotion. Bounds the worst case at roughly
+    /// 40s of the schedule above, after which the UI must show a named,
+    /// retryable timeout instead of a spinner that never resolves.
+    nonisolated static let defaultMaxPollAttempts = 20
+
+    func selectDictionary(
+        sense: LexicalSense,
+        example: LexicalExample?,
+        for entry: VocabularyEntry,
+        allEntries: [VocabularyEntry],
+        kgService: any DictionaryServing,
+        modelContext: ModelContext
+    ) {
+        guard let cardID = entry.kgCardId,
+              let selectedExample = example ?? sense.examples.first else { return }
+        selectionGeneration += 1
+        let generation = selectionGeneration
+        selectionTask = Task { @MainActor in
+            do {
+                let projection = try await kgService.updateDictionarySelection(
+                    cardId: cardID,
+                    senseKey: sense.id,
+                    exampleKey: selectedExample.id
+                )
+                // Stale response: a newer selection already owns this card.
+                guard generation == selectionGeneration else { return }
+                try applyDictionaryProjection(projection, to: entry, modelContext: modelContext)
+                refreshPresentation(for: entry, in: allEntries)
+            } catch {
+                guard generation == selectionGeneration else { return }
+                linkError = L10n.string("dictionary.selection.error")
+            }
+        }
+    }
+
+    /// Kicks off promotion and polls until the card converges — but only within
+    /// a bounded budget.
+    ///
+    /// `pollDelays` is a schedule, not the budget: the final delay repeats so a
+    /// slow-but-alive backend keeps being polled at a sane cadence. `maxPollAttempts`
+    /// is the budget. Exhausting it is a real outcome the user must be able to act
+    /// on, so it lands on `.failed` + `DictionaryPromotionFailure.timeoutErrorCode`
+    /// + retryable — which renders the named timeout copy and a Retry button.
+    /// Silently falling out of the loop (the previous behaviour) left `promotionState`
+    /// stuck at `queued`/`running` and the spinner spinning forever.
+    func promoteDictionary(
+        _ entry: VocabularyEntry,
+        allEntries: [VocabularyEntry],
+        kgService: any DictionaryServing,
+        modelContext: ModelContext,
+        pollDelays: [Duration] = WordDetailSceneState.defaultPromotionPollDelays,
+        maxPollAttempts: Int = WordDetailSceneState.defaultMaxPollAttempts
+    ) {
+        guard let cardID = entry.kgCardId,
+              entry.promotionState != .queued,
+              entry.promotionState != .running else { return }
+        entry.promotionState = .queued
+        entry.promotionErrorCode = nil
+        entry.promotionRetryable = false
+        try? modelContext.save()
+        refreshPresentation(for: entry, in: allEntries)
+
+        promotionTask = Task { @MainActor in
+            do {
+                _ = try await kgService.promoteDictionaryCard(cardId: cardID)
+                guard !pollDelays.isEmpty, maxPollAttempts > 0 else {
+                    failPromotion(
+                        entry, allEntries: allEntries, modelContext: modelContext,
+                        code: DictionaryPromotionFailure.timeoutErrorCode
+                    )
+                    return
+                }
+                for attempt in 0..<maxPollAttempts {
+                    try await Task.sleep(for: pollDelays[min(attempt, pollDelays.count - 1)])
+                    let projection = try await kgService.fetchDictionaryCard(cardId: cardID)
+                    try applyDictionaryProjection(projection, to: entry, modelContext: modelContext)
+                    refreshPresentation(for: entry, in: allEntries)
+                    if projection.card.cardRole == VocabularyCardRole.learning.rawValue
+                        || ![VocabularyPromotionState.queued.rawValue, VocabularyPromotionState.running.rawValue]
+                            .contains(projection.card.promotionState ?? "") {
+                        return
+                    }
+                }
+                failPromotion(
+                    entry, allEntries: allEntries, modelContext: modelContext,
+                    code: DictionaryPromotionFailure.timeoutErrorCode
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                failPromotion(
+                    entry, allEntries: allEntries, modelContext: modelContext,
+                    code: "transport_error"
+                )
+            }
+        }
+    }
+
+    private func failPromotion(
+        _ entry: VocabularyEntry,
+        allEntries: [VocabularyEntry],
+        modelContext: ModelContext,
+        code: String
+    ) {
+        entry.promotionState = .failed
+        entry.promotionErrorCode = code
+        entry.promotionRetryable = true
+        try? modelContext.save()
+        refreshPresentation(for: entry, in: allEntries)
+    }
+
+    #if DEBUG
+    /// Awaits the newest selection / promotion task so tests observe a settled
+    /// model instead of racing the unstructured Task these methods spawn.
+    func waitForSelectionForTesting() async { await selectionTask?.value }
+    func waitForPromotionForTesting() async { await promotionTask?.value }
+    #endif
+
+    func archiveDictionary(
+        _ entry: VocabularyEntry,
+        kgService: any DictionaryServing,
+        modelContext: ModelContext,
+        onSuccess: @escaping () -> Void
+    ) {
+        guard let cardID = entry.kgCardId else { return }
+        Task { @MainActor in
+            do {
+                let card = try await kgService.archiveDictionaryCard(
+                    cardId: cardID, archived: true, notebookId: entry.notebookId
+                )
+                guard card.isArchived == true else {
+                    throw KGError.serverError("Dictionary card was not archived")
+                }
+                entry.isArchived = true
+                try modelContext.save()
+                onSuccess()
+            } catch {
+                linkError = L10n.string("dictionary.archive.error")
+            }
+        }
+    }
+
+    func deleteDictionary(
+        _ entry: VocabularyEntry,
+        kgService: any DictionaryServing,
+        modelContext: ModelContext,
+        onSuccess: @escaping () -> Void
+    ) {
+        guard let cardID = entry.kgCardId else { return }
+        Task { @MainActor in
+            do {
+                let card = try await kgService.deleteDictionaryCard(
+                    cardId: cardID, notebookId: entry.notebookId
+                )
+                guard card.isDeleted == true else {
+                    throw KGError.serverError("Dictionary delete response was not a tombstone")
+                }
+                modelContext.delete(entry)
+                try modelContext.save()
+                onSuccess()
+            } catch {
+                linkError = L10n.string("dictionary.delete.error")
+            }
+        }
+    }
+
     func refreshPresentation(
         for entry: VocabularyEntry,
         in allEntries: [VocabularyEntry]
@@ -203,5 +385,54 @@ final class WordDetailSceneState {
                 setActionError(hidden ? L10n.string("隱藏連結失敗") : L10n.string("恢復連結失敗"), kind: .link)
             }
         }
+    }
+
+    private func applyDictionaryProjection(
+        _ projection: KGDictionaryCardProjection,
+        to entry: VocabularyEntry,
+        modelContext: ModelContext
+    ) throws {
+        let card = projection.card
+        let lexical = projection.dictionaryEntry
+        entry.word = card.content
+        entry.translation = card.meaning
+        entry.partOfSpeech = card.pos
+        entry.explanation = card.note
+        entry.difficultyTier = card.difficultyTier
+        entry.inflections = card.inflections ?? []
+        entry.collocations = card.collocations ?? []
+        entry.reviewExamples = card.examples
+        entry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
+        entry.isArchived = card.isArchived ?? entry.isArchived
+        // Reader visibility is an independent dimension with a durable outbox —
+        // never derived from role, never overwritten while an edit is unflushed.
+        entry.applyServerReaderVisibility(card.readerHidden)
+        entry.cardRole = VocabularyCardRole(rawValue: card.cardRole ?? "") ?? .dictionary
+        entry.reviewEligible = card.reviewEligible ?? false
+        entry.promotionState = VocabularyPromotionState(rawValue: card.promotionState ?? "") ?? .idle
+        if let promotedAt = card.promotedAt {
+            entry.promotedAt = ISO8601DateFormatter().date(from: promotedAt)
+        }
+        entry.promotionErrorCode = projection.promotionErrorCode
+        entry.promotionRetryable = projection.promotionRetryable
+        let lexicalData = try JSONEncoder().encode(lexical)
+        entry.dictionaryPayloadJSON = String(data: lexicalData, encoding: .utf8)
+        entry.dictionaryProvider = lexical.provider
+        entry.dictionaryId = lexical.dictionaryId
+        entry.dictionaryEntryKey = lexical.entryKey
+        entry.dictionarySelectedSenseKey = projection.selectedSenseKey
+        entry.dictionarySelectedExampleKey = projection.selectedExampleKey
+        entry.dictionarySourceURL = lexical.sourceUrl
+        entry.dictionaryLicenseName = lexical.licenseName
+        entry.dictionaryLicenseURL = lexical.licenseUrl
+        entry.dictionaryAttributionText = lexical.attributionText
+        entry.dictionaryFetchedAt = ISO8601DateFormatter().date(from: lexical.fetchedAt)
+        if let sense = lexical.senses.first(where: { $0.id == projection.selectedSenseKey }) {
+            entry.partOfSpeech = sense.partOfSpeech ?? entry.partOfSpeech
+            if let example = sense.examples.first(where: { $0.id == projection.selectedExampleKey }) {
+                entry.context = example.text
+            }
+        }
+        try modelContext.save()
     }
 }

@@ -32,6 +32,7 @@ struct KGVocabView: View {
 
     @State private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewStates: Set<VocabularyReviewState>
+    @State private var selectedRoleFilter: VocabularyRoleFilter
     @State private var sortOption: KGVocabSortOption
     @State private var selectionState = SelectionModeState()
     @State private var selectedRowID: UUID?
@@ -44,6 +45,7 @@ struct KGVocabView: View {
         onEntrySelected: ((VocabularyEntry) -> Void)? = nil,
         onStartReview: (([VocabularyEntry]) -> Void)? = nil,
         initialReviewStates: Set<VocabularyReviewState> = [],
+        initialRoleFilter: VocabularyRoleFilter = .all,
         initialSort: KGVocabSortOption = .default
     ) {
         self._searchText = searchText
@@ -54,6 +56,7 @@ struct KGVocabView: View {
         // behaviour (no filter, review-priority sort); the marketing catalog
         // scene opens on the "已複習" tab so the fresh-green cohort is on screen.
         self._selectedReviewStates = State(initialValue: initialReviewStates)
+        self._selectedRoleFilter = State(initialValue: initialRoleFilter)
         self._sortOption = State(initialValue: initialSort)
         let nbId = notebookId
         // Notebook-scoped knowledge list. The isArchived guard (inside the shared
@@ -69,9 +72,15 @@ struct KGVocabView: View {
 
     var body: some View {
         let n = reviewSettingsStore.settings.reviewReferenceDate()
-        let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: syncedEntries, now: n)
+        let roleFiltered = VocabularyEntryPresentation.filterByRole(
+            syncedEntries, filter: selectedRoleFilter
+        )
+        let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: roleFiltered, now: n)
+        let selectedEntries = selectedReviewStates.isEmpty
+            ? roleFiltered
+            : c.mergedBucket(for: selectedReviewStates)
         let filtered = VocabularyEntryPresentation.sortAndFilter(
-            c.mergedBucket(for: selectedReviewStates),
+            selectedEntries,
             searchText: searchText,
             sortOption: sortOption,
             now: n
@@ -122,6 +131,13 @@ struct KGVocabView: View {
                 count: c.count(for: state)
             )
         }
+        let roleOptions = VocabularyRoleFilter.allCases.map { filter in
+            VocabTabOption(
+                id: filter,
+                title: filter.title,
+                count: VocabularyEntryPresentation.filterByRole(syncedEntries, filter: filter).count
+            )
+        }
         let reviewCTA: KGVocabPresenter.State.ReviewCTA? = {
             guard let handler = onStartReview else { return nil }
             guard c.dueCount > 0 || c.unlearnedCount > 0 else { return nil }
@@ -138,6 +154,7 @@ struct KGVocabView: View {
 
         let state = KGVocabPresenter.State(
             banner: bannerState,
+            roleOptions: roleOptions,
             reviewStateOptions: tabOptions,
             rows: filteredEntries.map {
                 KGVocabPresenter.State.RowItem(id: $0.id, entry: $0)
@@ -154,6 +171,7 @@ struct KGVocabView: View {
 
         return KGVocabPresenter(
             state: state,
+            selectedRoleFilter: $selectedRoleFilter,
             selectedReviewStates: $selectedReviewStates,
             sortOption: $sortOption,
             onDismissBanner: { coordinator.dismissBanner() },
@@ -201,6 +219,11 @@ struct KGVocabView: View {
         .onChange(of: selectedReviewStates) { _, _ in
             selectionState.exit()
         }
+        .onChange(of: selectedRoleFilter) { _, role in
+            selectedReviewStates = []
+            selectionState.exit()
+            if role == .dictionary { sortOption = .default }
+        }
         .onChange(of: filteredEntries.count) { _, newCount in
             selectionState.updateVisibleCount(newCount)
         }
@@ -219,7 +242,11 @@ struct KGVocabView: View {
                         if selectionState.isAllSelected {
                             selectionState.deselectAll()
                         } else {
-                            selectionState.selectAll(filteredEntries.map(\.id))
+                            selectionState.selectAll(
+                                filteredEntries
+                                    .filter { $0.cardRole == .learning }
+                                    .map(\.id)
+                            )
                         }
                     }
                 }

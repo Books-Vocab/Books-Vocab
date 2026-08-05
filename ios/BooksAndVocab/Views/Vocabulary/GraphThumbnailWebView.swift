@@ -115,8 +115,10 @@ extension GraphThumbnailWebView {
         hasher.combine(colorScheme == .dark)
         for n in nodes {
             hasher.combine(n.id)
+            hasher.combine(n.tier)
             hasher.combine(n.colorHex)
             hasher.combine(n.degree)
+            hasher.combine(n.badgeSystemImage)
         }
         hasher.combine(edges.count)
         let sig = "\(hasher.finalize())"
@@ -129,7 +131,7 @@ extension GraphThumbnailWebView {
                                       theme: KnowledgeGraphTheme, colorScheme: ColorScheme) -> String {
         struct NodePayload: Encodable {
             let id: String; let word: String; let tier: String
-            let color: String?; let ratio: Double?; let degree: Int
+            let color: String?; let ratio: Double?; let degree: Int; let badge: String?
         }
         struct LinkPayload: Encodable {
             let id: String; let source: String; let target: String; let kind: String
@@ -148,12 +150,13 @@ extension GraphThumbnailWebView {
         let mode = colorScheme == .dark ? "dark" : "light"
         let nodePayloads = nodes.map {
             NodePayload(id: $0.id, word: $0.word, tier: $0.tier ?? "unknown",
-                        color: $0.colorHex, ratio: $0.ratio, degree: $0.degree)
+                        color: $0.colorHex, ratio: $0.ratio, degree: $0.degree,
+                        badge: $0.badgeSystemImage == nil ? nil : "▣")
         }
         let linkPayloads = edges.map {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
         }
-        let tierNames = ["gray", "archived"]
+        let tierNames = ["gray", "dictionary", "archived"]
         let colorPairs = tierNames.reduce(into: [String: TierPair]()) { result, name in
             let hex = theme.tierHexes[name] ?? "#888888" // token-allow: web graph payload fallback color
             result[name] = TierPair(dark: hex, light: hex)

@@ -22,7 +22,18 @@ enum WordDetailPresentation {
                         effectiveLookup[link.cardId] == nil ? nil : link.cardId
                     }
             ),
-            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil
+            reviewProgress: entry.shouldAppearInReview ? reviewProgress(for: entry) : nil,
+            dictionary: DictionaryDetailPresentation.make(from: entry).map {
+                WordDetailPresenter.State.DictionaryState(
+                    detail: $0,
+                    cardRole: entry.cardRole,
+                    promotionState: entry.promotionState,
+                    promotionFailure: entry.promotionState == .failed
+                        ? DictionaryPromotionFailure.classify(code: entry.promotionErrorCode)
+                        : nil,
+                    promotionRetryable: entry.promotionRetryable
+                )
+            }
         )
     }
 

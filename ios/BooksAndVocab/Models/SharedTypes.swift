@@ -355,11 +355,14 @@ struct KGDictionaryCardProjection: Decodable {
     let selectedSenseKey: String
     let selectedExampleKey: String
     let materializationStatus: String
+    let promotionErrorCode: String?
+    let promotionRetryable: Bool
     let links: [KGGraphLink]
 
     enum CodingKeys: String, CodingKey {
         case card, dictionaryEntry, entry, dictionary
-        case selectedSenseKey, selectedExampleKey, materializationStatus, links
+        case selectedSenseKey, selectedExampleKey, materializationStatus
+        case promotionErrorCode, promotionRetryable, links
     }
 
     init(from decoder: Decoder) throws {
@@ -370,6 +373,8 @@ struct KGDictionaryCardProjection: Decodable {
             selectedSenseKey = nested.selectedSenseKey
             selectedExampleKey = nested.selectedExampleKey
             materializationStatus = nested.materializationStatus
+            promotionErrorCode = nested.promotionErrorCode
+            promotionRetryable = nested.promotionRetryable ?? false
             links = try values.decodeIfPresent([KGGraphLink].self, forKey: .links) ?? []
             return
         }
@@ -379,6 +384,8 @@ struct KGDictionaryCardProjection: Decodable {
         selectedSenseKey = try values.decode(String.self, forKey: .selectedSenseKey)
         selectedExampleKey = try values.decode(String.self, forKey: .selectedExampleKey)
         materializationStatus = try values.decode(String.self, forKey: .materializationStatus)
+        promotionErrorCode = try values.decodeIfPresent(String.self, forKey: .promotionErrorCode)
+        promotionRetryable = try values.decodeIfPresent(Bool.self, forKey: .promotionRetryable) ?? false
         links = try values.decodeIfPresent([KGGraphLink].self, forKey: .links) ?? []
     }
 
@@ -388,6 +395,8 @@ struct KGDictionaryCardProjection: Decodable {
         let selectedSenseKey: String
         let selectedExampleKey: String
         let materializationStatus: String
+        let promotionErrorCode: String?
+        let promotionRetryable: Bool?
     }
 }
 

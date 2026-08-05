@@ -1,8 +1,34 @@
 import Foundation
 
+enum VocabularyRoleFilter: String, CaseIterable, Identifiable {
+    case all
+    case learning
+    case dictionary
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: L10n.string("dictionary.filter.all")
+        case .learning: L10n.string("dictionary.filter.learning")
+        case .dictionary: L10n.string("dictionary.filter.dictionary")
+        }
+    }
+}
+
 enum VocabularyEntryPresentation {
     static func pendingEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
         entries.filter(\.shouldUploadOnNextSync)
+    }
+
+    static func filterByRole(
+        _ entries: [VocabularyEntry], filter: VocabularyRoleFilter
+    ) -> [VocabularyEntry] {
+        switch filter {
+        case .all: entries
+        case .learning: entries.filter { $0.cardRole == .learning }
+        case .dictionary: entries.filter { $0.cardRole == .dictionary }
+        }
     }
 
     /// Single-pass partition of knowledge entries into review-state buckets.

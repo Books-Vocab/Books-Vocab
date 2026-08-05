@@ -19,6 +19,11 @@ struct DictionaryReaderVisibilityRequest: Encodable, Equatable {
     let readerHidden: Bool
 }
 
+struct DictionaryArchiveRequest: Encodable, Equatable {
+    let archived: Bool
+    let notebookId: String
+}
+
 struct DictionaryMaterializeLinkResponse: Decodable {
     let targetCard: KGCard
     let dictionaryCard: KGDictionaryCardProjection?
@@ -74,6 +79,8 @@ protocol DictionaryServing: AnyObject {
         cardId: String, senseKey: String, exampleKey: String
     ) async throws -> KGDictionaryCardProjection
     func promoteDictionaryCard(cardId: String) async throws -> DictionaryPromotionResponse
+    func archiveDictionaryCard(cardId: String, archived: Bool, notebookId: String) async throws -> KGCard
+    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard
     func updateReaderVisibility(cardId: String, readerHidden: Bool) async throws -> KGCard
     func flushReaderVisibilityOutbox(container: ModelContainer) async throws
 }
@@ -99,6 +106,12 @@ extension DictionaryServing {
     }
     func promoteDictionaryCard(cardId: String) async throws -> DictionaryPromotionResponse {
         throw KGError.serverError("Dictionary promotion unavailable")
+    }
+    func archiveDictionaryCard(cardId: String, archived: Bool, notebookId: String) async throws -> KGCard {
+        throw KGError.serverError("Dictionary archive unavailable")
+    }
+    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard {
+        throw KGError.serverError("Dictionary deletion unavailable")
     }
     func updateReaderVisibility(cardId: String, readerHidden: Bool) async throws -> KGCard {
         throw KGError.serverError("Reader visibility unavailable")
@@ -199,6 +212,30 @@ extension KGService {
             DictionaryPromotionResponse.self,
             path: "api/dictionary/cards/\(cardId)/promote",
             method: "POST",
+            retryPolicy: .none
+        )
+    }
+
+    func archiveDictionaryCard(
+        cardId: String, archived: Bool, notebookId: String
+    ) async throws -> KGCard {
+        try await authenticatedDecode(
+            KGCard.self,
+            path: "api/dictionary/cards/\(cardId)/archive",
+            method: "PATCH",
+            body: try JSONEncoder().encode(
+                DictionaryArchiveRequest(archived: archived, notebookId: notebookId)
+            ),
+            retryPolicy: .none
+        )
+    }
+
+    func deleteDictionaryCard(cardId: String, notebookId: String) async throws -> KGCard {
+        try await authenticatedDecode(
+            KGCard.self,
+            path: "api/dictionary/cards/\(cardId)",
+            method: "DELETE",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
             retryPolicy: .none
         )
     }

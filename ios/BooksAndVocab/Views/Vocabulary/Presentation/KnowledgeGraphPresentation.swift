@@ -7,6 +7,20 @@ struct KnowledgeGraphNode: Identifiable, Equatable {
     let colorHex: String?
     let ratio: Double?
     let degree: Int
+    let badgeSystemImage: String?
+
+    init(
+        id: String, word: String, tier: String?, colorHex: String?,
+        ratio: Double?, degree: Int, badgeSystemImage: String? = nil
+    ) {
+        self.id = id
+        self.word = word
+        self.tier = tier
+        self.colorHex = colorHex
+        self.ratio = ratio
+        self.degree = degree
+        self.badgeSystemImage = badgeSystemImage
+    }
 }
 
 struct KnowledgeGraphEdge: Identifiable, Equatable {
@@ -47,6 +61,10 @@ enum KnowledgeGraphPresentation {
             let nodeRatio: Double?
             if entry.isArchived {
                 return nil
+            } else if entry.cardRole == .dictionary {
+                tier = "dictionary"
+                colorHex = nil
+                nodeRatio = nil
             } else if entry.reviewCount == 0 {
                 tier = "gray"
                 colorHex = nil
@@ -64,7 +82,8 @@ enum KnowledgeGraphPresentation {
                 tier: tier,
                 colorHex: colorHex,
                 ratio: nodeRatio,
-                degree: degree
+                degree: degree,
+                badgeSystemImage: entry.cardRole == .dictionary ? "book.closed" : nil
             )
         }
     }
@@ -98,6 +117,7 @@ enum KnowledgeGraphPresentation {
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [
                 "gray": cssHex(skin.palette.quaternaryText),
+                "dictionary": cssHex(skin.palette.tertiaryText),
                 "archived": cssHex(skin.palette.quaternaryText)
             ],
             edgeHexes: [

@@ -17,6 +17,14 @@ struct WordDetailPresenter: View {
             let text: String
         }
 
+        struct DictionaryState: Equatable {
+            let detail: DictionaryDetailPresentation
+            let cardRole: VocabularyCardRole
+            let promotionState: VocabularyPromotionState
+            let promotionFailure: DictionaryPromotionFailure?
+            let promotionRetryable: Bool
+        }
+
         let title: String
         let systemImage: String
         let card: CardPresentation
@@ -24,6 +32,11 @@ struct WordDetailPresenter: View {
         let metadataItems: [MetadataItem]
         let navigableLinkCardIDs: Set<String>
         let reviewProgress: VocabReviewProgress?
+        let dictionary: DictionaryState?
+
+        var shareText: String {
+            dictionary?.detail.shareText ?? card.document.plainTextExport()
+        }
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -49,6 +62,10 @@ struct WordDetailPresenter: View {
     let onDeleteLink: ((KGCardLinkSummary) -> Void)?
     let onHideLink: ((KGCardLinkSummary) -> Void)?
     let onUnhideLink: ((KGCardLinkSummary) -> Void)?
+    let onSelectDictionary: ((LexicalSense, LexicalExample?) -> Void)?
+    let onPromote: (() -> Void)?
+    let onArchiveDictionary: (() -> Void)?
+    let onDeleteDictionary: (() -> Void)?
 
     var body: some View {
         Group {
@@ -61,7 +78,7 @@ struct WordDetailPresenter: View {
                         trailing: {
                             archiveButton
                             shareButton
-                            if let onEdit {
+                            if let onEdit, state.dictionary?.cardRole != .dictionary {
                                 VocabChromeIconButton(systemImage: "pencil", label: "編輯".localized, action: onEdit)
                             }
                         }
@@ -99,6 +116,12 @@ struct WordDetailPresenter: View {
                 VStack(alignment: .leading, spacing: 0) {
                     CardDocumentView(document: state.card.document)
 
+                    if let dictionary = state.dictionary {
+                        CardSectionDivider()
+                        dictionarySection(dictionary)
+                            .padding(appSkin.metrics.cardBlockPadding)
+                    }
+
                     if !state.card.forms.isEmpty {
                         CardSectionDivider()
                         CardFormsSection(
@@ -131,6 +154,13 @@ struct WordDetailPresenter: View {
             if hasCardManagement {
                 cardManagementSection
                     .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+            }
+
+
+            if let dictionary = state.dictionary, dictionary.cardRole == .dictionary {
+                dictionaryActions(dictionary)
+                    .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                    .padding(.top, appSkin.metrics.cardBlockInnerGap)
             }
 
             Spacer()
@@ -311,7 +341,7 @@ struct WordDetailPresenter: View {
 
     @ViewBuilder
     private var shareButton: some View {
-        ShareLink(item: state.card.document.plainTextExport(), subject: Text(state.title)) {
+        ShareLink(item: state.shareText, subject: Text(state.title)) {
             VocabChromeSurface(
                 fill: appSkin.palette.cardBackground,
                 border: appSkin.palette.cardBorder
@@ -324,6 +354,171 @@ struct WordDetailPresenter: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("分享".localized)
+    }
+
+    @ViewBuilder
+    private func dictionarySection(_ dictionary: State.DictionaryState) -> some View {
+        if dictionary.cardRole == .learning {
+            DisclosureGroup(L10n.string("dictionary.detail.provenance")) {
+                dictionaryContent(dictionary.detail)
+                    .padding(.top, appSkin.metrics.cardBlockInnerGap)
+            }
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.secondaryText)
+        } else {
+            dictionaryContent(dictionary.detail)
+        }
+    }
+
+    private func dictionaryContent(_ detail: DictionaryDetailPresentation) -> some View {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                if !detail.pronunciations.isEmpty {
+                    Text(detail.pronunciations.joined(separator: " · "))
+                        .font(appSkin.typography.monoBody)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                }
+                Spacer()
+                if let partOfSpeech = detail.selectedSense.partOfSpeech {
+                    Text(partOfSpeech)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                }
+            }
+
+            dictionarySense(detail.selectedSense, selectedExample: detail.selectedExample, isSelected: true)
+
+            ForEach(detail.otherSenses) { sense in
+                dictionarySense(sense, selectedExample: nil, isSelected: false)
+            }
+
+            if !detail.translations.isEmpty {
+                dictionaryValueGroup(
+                    title: L10n.string("dictionary.detail.translations"),
+                    values: detail.translations
+                )
+            }
+            if !detail.forms.isEmpty {
+                dictionaryValueGroup(
+                    title: L10n.string("dictionary.detail.forms"),
+                    values: detail.forms
+                )
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.s1) {
+                CardSectionLabel(
+                    title: L10n.string("dictionary.detail.source"),
+                    systemImage: "checkmark.seal"
+                )
+                Text(detail.provenance.attributionText)
+                Text(detail.provenance.provider)
+                Text(detail.provenance.licenseName)
+                if let url = URL(string: detail.provenance.sourceURL) {
+                    Link(L10n.string("dictionary.detail.openSource"), destination: url)
+                }
+            }
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.tertiaryText)
+        }
+    }
+
+    private func dictionarySense(
+        _ sense: LexicalSense,
+        selectedExample: LexicalExample?,
+        isSelected: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s1) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(sense.definition)
+                    .font(appSkin.typography.body)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "pin.fill")
+                        .foregroundStyle(appSkin.palette.accent)
+                        .accessibilityLabel(L10n.string("dictionary.detail.selectedSense"))
+                } else if let onSelectDictionary {
+                    Button(L10n.string("dictionary.detail.select")) {
+                        onSelectDictionary(sense, sense.examples.first)
+                    }
+                    .buttonStyle(.vocabAction(.neutral))
+                }
+            }
+
+            ForEach(sense.examples) { example in
+                let isPinnedExample = isSelected && selectedExample?.id == example.id
+                Button {
+                    onSelectDictionary?(sense, example)
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s1) {
+                        Text(example.text)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                            .multilineTextAlignment(.leading)
+                        if isPinnedExample {
+                            Image(systemName: "pin.fill")
+                                .font(appSkin.typography.iconTiny)
+                                .foregroundStyle(appSkin.palette.accent)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(onSelectDictionary == nil || isPinnedExample)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func dictionaryValueGroup(title: String, values: [String]) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.s1) {
+            Text(title)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+            Text(values.joined(separator: " · "))
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.secondaryText)
+        }
+    }
+
+    private func dictionaryActions(_ dictionary: State.DictionaryState) -> some View {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+            switch dictionary.promotionState {
+            case .queued, .running:
+                HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(L10n.string("dictionary.promotion.running"))
+                }
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .accessibilityIdentifier("dictionary.promotion.progress")
+            case .failed:
+                Text(dictionary.promotionFailure?.message ?? L10n.string("dictionary.promotion.error.unknown"))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.destructive)
+                if dictionary.promotionRetryable, let onPromote {
+                    Button(L10n.string("dictionary.promotion.retry"), action: onPromote)
+                        .buttonStyle(.vocabAction(.primary))
+                }
+            case .idle:
+                if let onPromote {
+                    Button(L10n.string("dictionary.promotion.action"), action: onPromote)
+                        .buttonStyle(.vocabAction(.primary))
+                }
+            }
+
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                if let onArchiveDictionary {
+                    Button(L10n.string("notebook.toolbar.archive"), action: onArchiveDictionary)
+                        .buttonStyle(.vocabAction(.neutral))
+                }
+                if let onDeleteDictionary {
+                    Button(L10n.string("dictionary.delete.action"), role: .destructive, action: onDeleteDictionary)
+                        .buttonStyle(.vocabAction(.destructive))
+                }
+            }
+        }
     }
 
     private func excludeFromReaderToggle(onToggle: @escaping () -> Void) -> some View {

@@ -54,6 +54,7 @@ struct KGVocabPresenter: View {
         }
 
         let banner: Banner?
+        let roleOptions: [VocabTabOption<VocabularyRoleFilter>]
         let reviewStateOptions: [VocabTabOption<VocabularyReviewState>]
         let rows: [RowItem]
         let emptyState: EmptyState
@@ -62,6 +63,9 @@ struct KGVocabPresenter: View {
 
         init(
             banner: Banner?,
+            roleOptions: [VocabTabOption<VocabularyRoleFilter>] = VocabularyRoleFilter.allCases.map {
+                VocabTabOption(id: $0, title: $0.title, count: 0)
+            },
             reviewStateOptions: [VocabTabOption<VocabularyReviewState>],
             rows: [RowItem],
             emptyState: EmptyState,
@@ -69,6 +73,7 @@ struct KGVocabPresenter: View {
             selectedRowID: UUID? = nil
         ) {
             self.banner = banner
+            self.roleOptions = roleOptions
             self.reviewStateOptions = reviewStateOptions
             self.rows = rows
             self.emptyState = emptyState
@@ -78,6 +83,7 @@ struct KGVocabPresenter: View {
     }
 
     let state: State
+    @Binding var selectedRoleFilter: VocabularyRoleFilter
     @Binding var selectedReviewStates: Set<VocabularyReviewState>
     @Binding var sortOption: KGVocabSortOption
     let onDismissBanner: (() -> Void)?
@@ -91,7 +97,10 @@ struct KGVocabPresenter: View {
         VStack(alignment: .leading, spacing: 0) {
             // Pinned filter bar — stays visible while scrolling
             VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
-                VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
+                VocabTabSelector(options: state.roleOptions, selection: $selectedRoleFilter)
+                if selectedRoleFilter != .dictionary {
+                    VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
+                }
                 HStack(spacing: appSkin.spacing.inlineGap) {
                     Spacer()
                     VocabSortPill(sortOption: $sortOption)
@@ -143,6 +152,7 @@ struct KGVocabPresenter: View {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
                                 KGVocabRow(
                                     entry: item.entry,
+                                    allowsSelection: item.entry.cardRole == .learning,
                                     isSelecting: selectionState.isSelecting,
                                     isSelected: selectionState.selectedIDs.contains(item.id),
                                     isHighlighted: KGVocabRowSelection.isHighlighted(
@@ -152,14 +162,17 @@ struct KGVocabPresenter: View {
                                     ),
                                     onTap: {
                                         if selectionState.isSelecting {
-                                            selectionState.toggle(item.id)
+                                            if item.entry.cardRole == .learning {
+                                                selectionState.toggle(item.id)
+                                            }
                                         } else {
                                             onRowTapped(item.id)
                                         }
                                     },
                                     onToggleSelection: { selectionState.toggle(item.id) },
                                     onLongPress: {
-                                        if !selectionState.isSelecting {
+                                        if !selectionState.isSelecting,
+                                           item.entry.cardRole == .learning {
                                             onLongPress(item.id)
                                         }
                                     }
@@ -200,10 +213,12 @@ struct KGVocabPresenter: View {
 /// 2. 不在 row 內部掛 `.animateSpring(selectionState.isSelecting)`，500+ rows 時可省下 500+ 個 animation observer。
 ///    動畫由父層容器（`LazyVStack`）統一驅動。
 struct KGVocabRow: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     let entry: VocabularyEntry
+    let allowsSelection: Bool
     let isSelecting: Bool
     let isSelected: Bool
     let isHighlighted: Bool
@@ -214,7 +229,7 @@ struct KGVocabRow: View {
     var body: some View {
         let reviewNow = reviewSettingsStore.settings.reviewReferenceDate()
         HStack(spacing: appSkin.spacing.inlineGap) {
-            if isSelecting {
+            if isSelecting && allowsSelection {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(appSkin.typography.iconMedium)
                     .foregroundStyle(
@@ -249,6 +264,7 @@ struct KGVocabRow: View {
         .padding(.horizontal, AppSpacing.s1)
         .accessibilityIdentifier("vocab.row.\(entry.word)")
         .transition(.listSwap)
+        .enableInjection()
     }
 }
 
@@ -324,6 +340,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.populatedState,
+            selectedRoleFilter: .constant(.all),
             selectedReviewStates: .constant([]),
             sortOption: .constant(.default),
             onDismissBanner: {},
@@ -341,6 +358,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.emptyState,
+            selectedRoleFilter: .constant(.all),
             selectedReviewStates: .constant([.reviewed]),
             sortOption: .constant(.alphabetical),
             onDismissBanner: nil,
