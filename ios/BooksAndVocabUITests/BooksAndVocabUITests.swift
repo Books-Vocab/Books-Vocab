@@ -112,7 +112,11 @@ final class BooksAndVocabUITests: UITestCase {
 
     @MainActor
     func testBookshelfToReaderNavigation() throws {
-        let app = launchApp(extraArgs: ["-seedFixture:bookshelf:withBooksLibrary"])
+        // `BookshelfFixtureID` 是 String-raw enum，rawValue 為 snake_case
+        // (`with_books_library`)。這裡原本傳 case 名稱 `withBooksLibrary`，
+        // `BookshelfFixtureID(rawValue:)` 解不出來 → `failFixtureSeed` 直接 trap，
+        // app 在 `BooksAndVocabApp.init()` 就崩，測試從未真的跑到書架。
+        let app = launchApp(extraArgs: ["-seedFixture:bookshelf:with_books_library"])
 
         let bookshelf = AppPage(app: app).goToBookshelf()
         guard let reader = bookshelf.tapFirstBook() else {

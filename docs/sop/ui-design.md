@@ -90,7 +90,7 @@ KG 的 Mac 支援走 **Mac Catalyst**（`SUPPORTS_MACCATALYST = YES`），**非�
 
 - `.appHoverLift()`：卡片 hover 時輕微 scale 浮起（1.02）。卡片屬按鈕互動，scale 合 Motion Contract；已 gate `accessibilityReduceMotion`（Reduce Motion 退回無 transform）。
 - `.appHoverRowTint()`：扁平可點 list-row hover 時 bg tint（`primaryText.opacity(0.05)`，只動 background，合「非按鈕互動禁 transform」）。卡片型可點走 `.appHoverLift` / 既有 `.liftable`，不重複套 tint。
-- `.appPointerHover(_:)`：chrome 控制項（chip / segment / pill / plain icon button）的桌面指標層，包 UIKit `.hoverEffect`（預設 `.highlight`）。Catalyst / iPad 觸控板下指標 morph 貼合元件 + 系統 highlight。`.pointerStyle`(iOS 18+) 在 Catalyst 不可用，故用 `.hoverEffect` 而非自訂 cursor 形狀（Catalyst 慣用指標層，非 pointing-hand）。套用：`AppFilterChipBar` / `AppTabSelector` / `VocabSortPill` / `VocabReviewCTAPill` / `VocabChromeIconButton`。
+- `.appPointerHover(_:)`：chrome 控制項（chip / segment / pill / plain icon button）的桌面指標層，包 UIKit `.hoverEffect`（預設 `.highlight`）。Catalyst / iPad 觸控板下指標 morph 貼合元件 + 系統 highlight。`.pointerStyle`(iOS 18+) 在 Catalyst 不可用，故用 `.hoverEffect` 而非自訂 cursor 形狀（Catalyst 慣用指標層，非 pointing-hand）。套用：`AppFilterChipBar` / `AppTabSelector` / `VocabSortPill` / `VocabReviewCTAPill` / `VocabChromeIconButton` / `AppFloatingChromeButton`。
 - **不分流**：`.onHover` / `.hoverEffect` 在純觸控 iPhone 無指標事件自動 no-op，iPad 觸控板 + Mac Catalyst 共益，故 hover / pointer modifier **不**包 `#if`。
 
 ---
@@ -137,7 +137,6 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
 |------|------|
 | `overlayFade` | scrim、暫時性 overlay、toolbar 進出 |
 | `readerPanelReveal` | 底部 panel / drawer 進出 |
-| `headerSwap` | header compact / expanded swap |
 | `feedbackBadge` | saved / success 類 badge |
 | `linkedOverlayCard` | linked card 疊層卡片 |
 | `modalSwap` | 同區塊登入/登出、模式切換 |

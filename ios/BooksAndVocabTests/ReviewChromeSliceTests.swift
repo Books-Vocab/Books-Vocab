@@ -35,6 +35,20 @@ struct ReviewChromeSliceTests {
         swipeIntensity: 0
     )
 
+    private static let readerChromeModel = ReaderTopChromeModel(
+        isExpanded: true,
+        bookTitle: "Moby-Dick",
+        totalProgression: 0.562,
+        titleMaxWidth: 160
+    )
+
+    private static func makeReaderTopChrome(model: ReaderTopChromeModel = readerChromeModel,
+                                            onDismiss: @escaping () -> Void = {}) -> ReaderTopChrome {
+        ReaderTopChrome(model: model, onDismiss: onDismiss,
+                        onShowTableOfContents: {}, onShowReaderSettings: {},
+                        onShowNotebookPicker: {}, onCollapseHeader: {}, onExpandHeader: {})
+    }
+
     private static func makeTopBar(model: ReviewTopBarModel = topBarModel,
                                    onShuffle: @escaping () -> Void = {},
                                    onAdjustLayout: @escaping () -> Void = {}) -> ReviewTopBar {
@@ -83,6 +97,19 @@ struct ReviewChromeSliceTests {
         locked.isCardInteractive = false
         #expect(Self.makeTopBar() != Self.makeTopBar(model: locked))
         expectOnlyModelClosuresAndWrappers(Self.makeTopBar(onAdjustLayout: { _ = 1 }))
+    }
+
+    @Test func readerTopChromeStoredStateIsModelClosuresOrWrappers() {
+        expectOnlyModelClosuresAndWrappers(Self.makeReaderTopChrome())
+    }
+
+    /// Reader chrome 沿用同一契約：它疊在 WKWebView 上、翻頁與拖曳期間都在畫面上，
+    /// 一個裸值欄位漏進去就是每幀重新求值整條 header。
+    @Test func readerTopChromeEqualityComparesModelAndIgnoresClosures() {
+        var collapsed = Self.readerChromeModel
+        collapsed.isExpanded = false
+        #expect(Self.makeReaderTopChrome() == Self.makeReaderTopChrome(onDismiss: { _ = 1 }))
+        #expect(Self.makeReaderTopChrome() != Self.makeReaderTopChrome(model: collapsed))
     }
 
     @Test func equalityComparesModelAndIgnoresClosures() {

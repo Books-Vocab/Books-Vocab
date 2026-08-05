@@ -108,7 +108,6 @@ enum AppMotion {
 extension AnyTransition {
     static let overlayFade = AnyTransition.opacity
     static let readerPanelReveal = AnyTransition.move(edge: .bottom).combined(with: .opacity)
-    static let headerSwap = AnyTransition.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity)
     static let feedbackBadge = AnyTransition.scale(scale: 0.8).combined(with: .opacity)
     static let linkedOverlayCard = AnyTransition.scale(scale: 0.96).combined(with: .opacity)
     static let modalSwap = AnyTransition.asymmetric(

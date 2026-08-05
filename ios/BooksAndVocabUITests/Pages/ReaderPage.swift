@@ -6,8 +6,21 @@ struct ReaderPage {
 
     // MARK: - Chrome
 
+    /// Reader hides the system navigation bar (ReaderView.swift), so the old
+    /// `app.navigationBars.buttons.firstMatch` could never resolve — the bar is
+    /// not in the hierarchy at all. Anchored to the chrome's own identifiers.
+    ///
+    /// The reader opens in the COMPACT chrome state (`ReaderChromeState.header`
+    /// defaults to `.compact`), which shows only the progress badge and the
+    /// expand button — there is no back button until the header is expanded.
+    /// So "is the reader active" must be asked of the chrome root, not the back
+    /// button, and `goBack()` has to expand first.
+    var expandHeaderButton: XCUIElement {
+        app.buttons["reader.header.expandButton"]
+    }
+
     var backButton: XCUIElement {
-        app.navigationBars.buttons.firstMatch
+        app.buttons["reader.header.backButton"]
     }
 
     var translationPanel: XCUIElement {
@@ -80,6 +93,10 @@ struct ReaderPage {
 
     @discardableResult
     func goBack(file: StaticString = #filePath, line: UInt = UInt(#line)) -> BookshelfPage {
+        // compact 狀態沒有返回鍵，得先展開。已展開時 expand 按鈕不存在，直接按返回。
+        if !backButton.exists, expandHeaderButton.waitForExistence(timeout: 5) {
+            expandHeaderButton.tapWhenReady(file: file, line: line)
+        }
         backButton.tapWhenReady(file: file, line: line)
         return BookshelfPage(app: app)
     }
@@ -87,6 +104,16 @@ struct ReaderPage {
     // MARK: - Assertions
 
     func assertIsActive(file: StaticString = #filePath, line: UInt = UInt(#line)) {
-        backButton.assertExists(timeout: 5, file: file, line: line)
+        // 兩個 chrome 狀態各有一顆必然存在的按鈕：compact = expand、expanded = back。
+        // 不要在 chrome root 掛 identifier——實測 SwiftUI 會把它往下推、蓋掉子按鈕
+        // 自己的 id（a11y 樹裡 expand 按鈕變成 identifier: 'reader.header'）。
+        let anyChromeButton = app.buttons.matching(
+            NSPredicate(format: "identifier IN %@",
+                        ["reader.header.expandButton", "reader.header.backButton"])
+        ).firstMatch
+        if !anyChromeButton.waitForExistence(timeout: 5) {
+            XCTFail("reader chrome not found. Accessibility tree:\n\(app.debugDescription)",
+                    file: file, line: line)
+        }
     }
 }

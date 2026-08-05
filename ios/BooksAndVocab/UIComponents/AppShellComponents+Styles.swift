@@ -46,16 +46,6 @@ extension AppSectionCardStyle {
         )
     }
 
-    /// `.flat` 的 Vocab skin 版本。
-    static func flatVocab(_ skin: AppSkin) -> AppSectionCardStyle {
-        .init(
-            background: skin.palette.cardBackground,
-            border: .clear,
-            roundness: skin.roundness.card,
-            borderOpacity: 0,
-            elevation: .z0
-        )
-    }
 
     /// `.flat` 的「完全透明」版 — 連 background 都不上，只佔 layout，給「就坐在 page bg 上」的場景用。
     static var ghostFlat: AppSectionCardStyle {
