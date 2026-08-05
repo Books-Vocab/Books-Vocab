@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-05",
+  "detail": "`plan_gates` 對 `**.yml` / `**.yaml` **選不出任何 gate**,與 IMP-0051(`ops/**/*.sh`)完全同型。在 IMP-0041 之前這還說得過去——`ops/ui_quality_plane.yml` 那時只是「機制清單」;IMP-0041 把 UI quality gate **實際執行的 argv** 搬進該檔之後,一個 typo 就會靜默縮小 gate 跑的範圍,而沒有任何機制會說話。`docs/registry.yml` 是同一形狀往上一層:它決定哪些 doc 被 lint,自己卻既不在 `docs/**.md` 也不在 `ops/**.py` 的路由裡。",
+  "id": "IMP-20260805-879150",
+  "resolution": "`DATA_PLANE_OWNERS` 宣告 owner 工具(`ui_quality_plane.yml` → 它的 `validate` ＋ `ops/tests/test_ui_quality_plane.sh`;`registry.yml` → `docs_lint.sh --registry`),gate 名 `data-plane:<工具 basename>`,無 owner 者 `data-plane-unowned` 具名 warn。**刻意不做通用語法底線**(對比 `bash -n`):stdlib 無 YAML parser 且 orchestrator 零依賴,手刻會讓判決變成 parser 的性質。落地前先在乾淨樹上證明三個 owner 命令當下皆綠(`validate` rc=0、`docs_lint --registry` rc=0、`test_ui_quality_plane.sh` 25 passed),避免 `ios-build-catalyst` 那種只能紅的 gate。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "`freeze-ui-world` cutover 的 `coverage` warn 具名指出",
+  "status": "fixed",
+  "stream": "IMP"
+}
