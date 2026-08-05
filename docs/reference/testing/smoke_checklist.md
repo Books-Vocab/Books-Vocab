@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 6ff5bcf10
+verified_against: 0a90b4f8e
 -->
 # iOS Smoke Test Checklist
 
@@ -13,9 +13,11 @@ verified_against: 6ff5bcf10
 
 ## 0. Release readiness
 
-- [ ] iOS 新 marketing version：ASC 已確認 previous version 完成審查；dry-run 使用 `release ios <new> --new-version-after-ready <previous>`
-- [ ] iOS 未上架／被拒重送：marketing version 不動，只跑 `bump-build ios`，不得使用 new-version attestation
-- [ ] release dry-run 的 iOS 順序為 bump→upload→tag；upload failure 不應留下新 release tag
+- [ ] iOS 新 marketing version：`./ops/release.sh release ios <new>` dry-run 通過。guard 直接讀 repo 的上架 tag / build tag 自行檢查，**沒有 attestation flag 可帶**（`--new-version-after-ready` 已移除，傳了會 hard-error）；被擋就代表真的有版本狀態未確認，先跑 `./ops/release.sh shipped ios`
+- [ ] iOS 未上架／被拒重送：marketing version 不動，走 `./ops/release.sh resubmit ios`（bump-build→upload→封 build tag），不走 `release`
+- [ ] release / resubmit dry-run 的 iOS 順序為 bump→upload→封 `ios/<x.y.z>+<build>`；upload failure 不應留下 commit/tag/push
+- [ ] `./ops/release.sh status` 的 ios 段沒有「目前的 (version, build) 沒有 build tag」警告（有＝這顆 build 出去了卻沒留 build→commit 紀錄，事後不可重建）
+- [ ] 上架後補跑 `./ops/release.sh shipped ios --yes`，依 ASC 物化 `ios/<x.y.z>`（版號事實 owner 表見 `docs/sop/release.md`）
 
 ## 1. 首次啟動與 Welcome
 
