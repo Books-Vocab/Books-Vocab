@@ -10,6 +10,64 @@ import SwiftData
 
 extension KGService {
 
+    private static let readerVisibilityMigrationKey = "kg_dictionary_reader_visibility_migrated_v1"
+
+    /// Flush reader visibility before any pull. Local intent remains durable on
+    /// failure and `BackgroundSyncActor` refuses to overwrite it with the
+    /// server projection until the exact desired value is acknowledged.
+    func flushReaderVisibilityOutbox(container: ModelContainer) async throws {
+        guard claimReaderVisibilityFlush() else { return }
+        let actor = BackgroundSyncActor(modelContainer: container)
+        do {
+            repeat {
+                if !UserDefaults.standard.bool(forKey: Self.readerVisibilityMigrationKey) {
+                    try await actor.markLegacyHiddenCardsForReaderVisibilityMigration()
+                }
+                let edits = try await actor.pendingReaderVisibilityEdits()
+                for edit in edits {
+                    do {
+                        _ = try await updateReaderVisibility(
+                            cardId: edit.cardID,
+                            readerHidden: edit.hidden
+                        )
+                        try await actor.markReaderVisibilitySynced(
+                            cardID: edit.cardID,
+                            hidden: edit.hidden
+                        )
+                    } catch KGError.httpError(let statusCode, _) where statusCode == 404 {
+                        // Rolling backend: preserve the durable intent without
+                        // blocking legacy vocab sync. A later sync retries it.
+                        UserDefaults.standard.set(
+                            true, forKey: Self.readerVisibilityMigrationKey
+                        )
+                        abortReaderVisibilityFlush()
+                        return
+                    }
+                }
+                UserDefaults.standard.set(true, forKey: Self.readerVisibilityMigrationKey)
+            } while finishReaderVisibilityFlushPass()
+        } catch {
+            abortReaderVisibilityFlush()
+            throw error
+        }
+    }
+
+    func pullDictionaryCardsToLocal(
+        container: ModelContainer,
+        since: String?,
+        notebookId: String?
+    ) async throws {
+        let actor = BackgroundSyncActor(modelContainer: container)
+        var cursor: String?
+        repeat {
+            let page = try await fetchDictionaryCards(
+                since: since, notebookId: notebookId, cursor: cursor
+            )
+            try await actor.upsertDictionaryProjections(page.cards)
+            cursor = page.nextCursor
+        } while cursor != nil
+    }
+
     // MARK: - Push Review State
 
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) {
@@ -115,6 +173,10 @@ extension KGService {
         // Bug A fix: 記錄邊界在發起請求前，避免 pull 期間新增的卡片被跳過
         let pullBoundary = Date().timeIntervalSince1970
 
+        // Preserve a user's local visibility choice across the server-authority
+        // migration before either projection can overwrite it.
+        try await flushReaderVisibilityOutbox(container: container)
+
         let (data, httpResponse) = try await authenticatedRequest(
             path: "api/vocab",
             queryItems: queryItems.isEmpty ? nil : queryItems
@@ -142,6 +204,20 @@ extension KGService {
             },
             notebookId: notebookId ?? "default"
         )
+
+        do {
+            try await pullDictionaryCardsToLocal(
+                container: container,
+                since: isIncremental
+                    ? AppDateFormatters.iso8601.string(from: Date(timeIntervalSince1970: lastSyncMillis))
+                    : nil,
+                notebookId: notebookId
+            )
+        } catch KGError.httpError(let statusCode, _) where statusCode == 404 {
+            // Rolling-upgrade compatibility: legacy backend has no dictionary
+            // projection yet. Learning-card sync remains available.
+            AppLog.sync.info("Dictionary projection unavailable on legacy backend")
+        }
 
         // Orphan cleanup leak fix: when a full sync's orphan cleanup was
         // blocked by the mass-deletion safety valve, the local store still

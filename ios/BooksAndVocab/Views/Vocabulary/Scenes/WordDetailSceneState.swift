@@ -26,6 +26,17 @@ final class WordDetailSceneState {
     enum ActionKind: Equatable {
         case archive
         case link
+        /// Reader 可見度切換。自成一類而非併入 `.link`：它與知識連結無關，
+        /// 併進去會讓一次成功的連結操作清掉使用者還沒讀到的可見度錯誤。
+        case readerVisibility
+    }
+
+    /// Reader 可見度存檔失敗的回報入口。`setActionError` 是 private（刻意的——
+    /// 每則訊息都必須帶 kind），而這個失敗發生在 `WordDetailSheet` 的 closure 裡，
+    /// 所以需要一個帶 kind 的公開入口；直接寫 `actionError` 會留下**上一則錯誤的
+    /// kind**，讓後續同類的成功把這則訊息誤清掉。
+    func reportReaderVisibilitySaveFailure() {
+        setActionError(L10n.string("readerVisibility.saveFailed"), kind: .readerVisibility)
     }
 
     /// 封存的 in-flight 旗標。放在狀態物件而非 view，是為了讓這個單元自己安全：
@@ -127,31 +138,6 @@ final class WordDetailSceneState {
     ) -> VocabularyEntry? {
         let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
         return entry.linkedEntry(for: link, lookup: lookup)
-    }
-
-    func addLink(
-        target: VocabularyEntry,
-        to entry: VocabularyEntry,
-        kgService: any KGServing
-    ) {
-        guard let fromId = entry.kgCardId else { return }
-        guard let pending = VocabularyGraphLinkMutation.beginManualLink(from: entry, to: target) else { return }
-        let notebookId = entry.notebookId
-
-        Task { @MainActor in
-            do {
-                let link = try await kgService.createManualLink(
-                    fromId: fromId,
-                    toId: pending.targetCardId,
-                    notebookId: notebookId
-                )
-                VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: entry)
-                clearActionError(for: .link)
-            } catch {
-                VocabularyGraphLinkMutation.rollbackManualLink(pending, on: entry)
-                setActionError(L10n.string("新增連結失敗"), kind: .link)
-            }
-        }
     }
 
     func deleteLink(

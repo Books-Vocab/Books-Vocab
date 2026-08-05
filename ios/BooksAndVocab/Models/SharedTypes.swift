@@ -56,7 +56,7 @@ struct KGCardLinkSummary: Codable, Identifiable, Equatable {
     }
 }
 
-struct KGCard: Codable, Identifiable {
+struct KGCard: Decodable, Identifiable {
     let id: String
     let content: String
     let meaning: String
@@ -89,19 +89,77 @@ struct KGCard: Codable, Identifiable {
     let readerHidden: Bool?
     let promotionState: String?
     let promotedAt: String?
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, content, meaning, pos, difficulty, difficultyTier, note, collocations
+        case examples, mode, isDeleted, isArchived, inflections, linksByKind, notebookId
+        case source, updatedAt, reviewIntervalHours, nextReviewAt, lastReviewedAt
+        case reviewCount, lapseCount, reviewStreak, lastReviewFeedback, cardRole
+        case reviewEligible, readerHidden, promotionState, promotedAt, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        content = try values.decode(String.self, forKey: .content)
+        meaning = try values.decodeIfPresent(String.self, forKey: .meaning) ?? ""
+        pos = try values.decodeIfPresent(String.self, forKey: .pos)
+        difficulty = try values.decodeIfPresent(Double.self, forKey: .difficulty)
+        difficultyTier = try values.decodeIfPresent(String.self, forKey: .difficultyTier)
+        note = try values.decodeIfPresent(String.self, forKey: .note)
+        collocations = try values.decodeIfPresent([String].self, forKey: .collocations)
+        examples = try values.decodeIfPresent([String].self, forKey: .examples) ?? []
+        mode = try values.decodeIfPresent(String.self, forKey: .mode)
+            ?? VocabularyCardMode.recognition.rawValue
+        isDeleted = try values.decodeIfPresent(Bool.self, forKey: .isDeleted)
+        isArchived = try values.decodeIfPresent(Bool.self, forKey: .isArchived)
+        inflections = try values.decodeIfPresent([String].self, forKey: .inflections)
+        linksByKind = try values.decodeIfPresent([String: [KGCardLinkSummary]].self, forKey: .linksByKind)
+        notebookId = try values.decodeIfPresent(String.self, forKey: .notebookId)
+        source = try values.decodeIfPresent(KGVocabSource.self, forKey: .source)
+        updatedAt = try values.decodeIfPresent(String.self, forKey: .updatedAt)
+        reviewIntervalHours = try values.decodeIfPresent(Double.self, forKey: .reviewIntervalHours)
+        nextReviewAt = try values.decodeIfPresent(String.self, forKey: .nextReviewAt)
+        lastReviewedAt = try values.decodeIfPresent(String.self, forKey: .lastReviewedAt)
+        reviewCount = try values.decodeIfPresent(Int.self, forKey: .reviewCount)
+        lapseCount = try values.decodeIfPresent(Int.self, forKey: .lapseCount)
+        reviewStreak = try values.decodeIfPresent(Int.self, forKey: .reviewStreak)
+        lastReviewFeedback = try values.decodeIfPresent(Int.self, forKey: .lastReviewFeedback)
+        cardRole = try values.decodeIfPresent(String.self, forKey: .cardRole)
+        reviewEligible = try values.decodeIfPresent(Bool.self, forKey: .reviewEligible)
+        readerHidden = try values.decodeIfPresent(Bool.self, forKey: .readerHidden)
+        promotionState = try values.decodeIfPresent(String.self, forKey: .promotionState)
+        promotedAt = try values.decodeIfPresent(String.self, forKey: .promotedAt)
+        createdAt = try values.decodeIfPresent(String.self, forKey: .createdAt)
+    }
 }
 
 // MARK: - Dictionary cards
 
-struct LexicalPronunciation: Codable, Equatable, Identifiable {
-    let id: String
-    let ipa: String?
-    let dialect: String?
-}
-
 struct LexicalExample: Codable, Equatable, Identifiable {
     let id: String
     let text: String
+
+    enum CodingKeys: String, CodingKey { case id, key, text }
+
+    init(id: String, text: String) {
+        self.id = id
+        self.text = text
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(String.self, forKey: .id)
+            ?? values.decode(String.self, forKey: .key)
+        text = try values.decode(String.self, forKey: .text)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(text, forKey: .text)
+    }
 }
 
 struct LexicalSense: Codable, Equatable, Identifiable {
@@ -112,6 +170,70 @@ struct LexicalSense: Codable, Equatable, Identifiable {
     let examples: [LexicalExample]
     let synonyms: [String]
     let antonyms: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, key, partOfSpeech, part_of_speech, definition, translations
+        case examples, synonyms, antonyms
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(String.self, forKey: .id)
+            ?? values.decode(String.self, forKey: .key)
+        partOfSpeech = try values.decodeIfPresent(String.self, forKey: .partOfSpeech)
+            ?? values.decodeIfPresent(String.self, forKey: .part_of_speech)
+        definition = try values.decode(String.self, forKey: .definition)
+        translations = try values.decodeIfPresent([String].self, forKey: .translations) ?? []
+        examples = try values.decodeIfPresent([LexicalExample].self, forKey: .examples) ?? []
+        synonyms = try values.decodeIfPresent([String].self, forKey: .synonyms) ?? []
+        antonyms = try values.decodeIfPresent([String].self, forKey: .antonyms) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encodeIfPresent(partOfSpeech, forKey: .partOfSpeech)
+        try values.encode(definition, forKey: .definition)
+        try values.encode(translations, forKey: .translations)
+        try values.encode(examples, forKey: .examples)
+        try values.encode(synonyms, forKey: .synonyms)
+        try values.encode(antonyms, forKey: .antonyms)
+    }
+}
+
+struct LexicalAttribution: Codable, Equatable {
+    let provider: String
+    let sourceURL: String
+    let licenseName: String
+    let licenseURL: String
+    let attributionText: String
+
+    enum CodingKeys: String, CodingKey {
+        case provider, sourceURL, source_url, licenseName, license_name
+        case licenseURL, license_url, attributionText, attribution_text
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try values.decode(String.self, forKey: .provider)
+        sourceURL = try values.decodeIfPresent(String.self, forKey: .sourceURL)
+            ?? values.decode(String.self, forKey: .source_url)
+        licenseName = try values.decodeIfPresent(String.self, forKey: .licenseName)
+            ?? values.decode(String.self, forKey: .license_name)
+        licenseURL = try values.decodeIfPresent(String.self, forKey: .licenseURL)
+            ?? values.decode(String.self, forKey: .license_url)
+        attributionText = try values.decodeIfPresent(String.self, forKey: .attributionText)
+            ?? values.decode(String.self, forKey: .attribution_text)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(provider, forKey: .provider)
+        try values.encode(sourceURL, forKey: .sourceURL)
+        try values.encode(licenseName, forKey: .licenseName)
+        try values.encode(licenseURL, forKey: .licenseURL)
+        try values.encode(attributionText, forKey: .attributionText)
+    }
 }
 
 /// Provider-neutral lexical snapshot returned by KG backend. iOS never
@@ -120,11 +242,11 @@ struct LexicalEntry: Codable, Equatable, Identifiable {
     let provider: String
     let dictionaryId: String
     let entryKey: String
-    let schemaVersion: Int
+    let schemaVersion: String
     let word: String
     let sourceLanguage: String
-    let targetLanguage: String
-    let pronunciations: [LexicalPronunciation]
+    let targetLanguage: String?
+    let pronunciations: [String]
     let senses: [LexicalSense]
     let forms: [String]
     let sourceUrl: String
@@ -135,32 +257,138 @@ struct LexicalEntry: Codable, Equatable, Identifiable {
     let truncated: Bool
 
     var id: String { "\(provider):\(entryKey)" }
+
+    enum CodingKeys: String, CodingKey {
+        case provider, dictionaryId, dictionary_id, entryKey, entry_key
+        case schemaVersion, schema_version, word, language, sourceLanguage
+        case targetLanguage, pronunciations, senses, forms, attribution
+        case sourceUrl, licenseName, licenseUrl, attributionText, fetchedAt
+        case fetched_at, truncated
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try values.decode(String.self, forKey: .provider)
+        dictionaryId = try values.decodeIfPresent(String.self, forKey: .dictionaryId)
+            ?? values.decode(String.self, forKey: .dictionary_id)
+        entryKey = try values.decodeIfPresent(String.self, forKey: .entryKey)
+            ?? values.decode(String.self, forKey: .entry_key)
+        if let stringVersion = try? values.decode(String.self, forKey: .schemaVersion) {
+            schemaVersion = stringVersion
+        } else if let stringVersion = try? values.decode(String.self, forKey: .schema_version) {
+            schemaVersion = stringVersion
+        } else if let intVersion = try? values.decode(Int.self, forKey: .schemaVersion) {
+            schemaVersion = String(intVersion)
+        } else {
+            schemaVersion = "1"
+        }
+        word = try values.decode(String.self, forKey: .word)
+        sourceLanguage = try values.decodeIfPresent(String.self, forKey: .sourceLanguage)
+            ?? values.decodeIfPresent(String.self, forKey: .language) ?? "en"
+        targetLanguage = try values.decodeIfPresent(String.self, forKey: .targetLanguage)
+        pronunciations = try values.decodeIfPresent([String].self, forKey: .pronunciations) ?? []
+        senses = try values.decodeIfPresent([LexicalSense].self, forKey: .senses) ?? []
+        forms = try values.decodeIfPresent([String].self, forKey: .forms) ?? []
+        if let nested = try values.decodeIfPresent(LexicalAttribution.self, forKey: .attribution) {
+            sourceUrl = nested.sourceURL
+            licenseName = nested.licenseName
+            licenseUrl = nested.licenseURL
+            attributionText = nested.attributionText
+        } else {
+            sourceUrl = try values.decode(String.self, forKey: .sourceUrl)
+            licenseName = try values.decode(String.self, forKey: .licenseName)
+            licenseUrl = try values.decode(String.self, forKey: .licenseUrl)
+            attributionText = try values.decode(String.self, forKey: .attributionText)
+        }
+        fetchedAt = try values.decodeIfPresent(String.self, forKey: .fetchedAt)
+            ?? values.decode(String.self, forKey: .fetched_at)
+        truncated = try values.decodeIfPresent(Bool.self, forKey: .truncated) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(provider, forKey: .provider)
+        try values.encode(dictionaryId, forKey: .dictionaryId)
+        try values.encode(entryKey, forKey: .entryKey)
+        try values.encode(schemaVersion, forKey: .schemaVersion)
+        try values.encode(word, forKey: .word)
+        try values.encode(sourceLanguage, forKey: .sourceLanguage)
+        try values.encodeIfPresent(targetLanguage, forKey: .targetLanguage)
+        try values.encode(pronunciations, forKey: .pronunciations)
+        try values.encode(senses, forKey: .senses)
+        try values.encode(forms, forKey: .forms)
+        try values.encode(sourceUrl, forKey: .sourceUrl)
+        try values.encode(licenseName, forKey: .licenseName)
+        try values.encode(licenseUrl, forKey: .licenseUrl)
+        try values.encode(attributionText, forKey: .attributionText)
+        try values.encode(fetchedAt, forKey: .fetchedAt)
+        try values.encode(truncated, forKey: .truncated)
+    }
 }
 
-struct LexicalSearchHit: Codable, Equatable, Identifiable {
+struct DictionarySearchHit: Codable, Equatable, Identifiable {
     let provider: String
+    let dictionaryId: String
     let entryKey: String
     let word: String
-    let partOfSpeech: [String]
-    let preview: String?
-    let sourceUrl: String
-    let attributionText: String
-    let cacheStatus: String?
+    let language: String
+    let partsOfSpeech: [String]
+    let hasExamples: Bool
+    let attribution: LexicalAttribution
 
     var id: String { "\(provider):\(entryKey)" }
 }
 
-struct LexicalSearchResponse: Codable, Equatable {
-    let hits: [LexicalSearchHit]
-    let cacheStatus: String?
+struct DictionarySearchResponse: Codable, Equatable {
+    let hits: [DictionarySearchHit]
+    let cacheStatus: String
 }
 
-struct KGDictionaryCardProjection: Codable {
+struct DictionaryEntryResponse: Codable, Equatable {
+    let entry: LexicalEntry
+    let cacheStatus: String
+}
+
+struct KGDictionaryCardProjection: Decodable {
     let card: KGCard
     let dictionaryEntry: LexicalEntry
     let selectedSenseKey: String
     let selectedExampleKey: String
     let materializationStatus: String
+    let links: [KGGraphLink]
+
+    enum CodingKeys: String, CodingKey {
+        case card, dictionaryEntry, entry, dictionary
+        case selectedSenseKey, selectedExampleKey, materializationStatus, links
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        if let nested = try values.decodeIfPresent(SavedDictionaryPayload.self, forKey: .dictionary) {
+            card = try values.decodeIfPresent(KGCard.self, forKey: .card) ?? nested.card
+            dictionaryEntry = nested.entry
+            selectedSenseKey = nested.selectedSenseKey
+            selectedExampleKey = nested.selectedExampleKey
+            materializationStatus = nested.materializationStatus
+            links = try values.decodeIfPresent([KGGraphLink].self, forKey: .links) ?? []
+            return
+        }
+        card = try values.decode(KGCard.self, forKey: .card)
+        dictionaryEntry = try values.decodeIfPresent(LexicalEntry.self, forKey: .dictionaryEntry)
+            ?? values.decode(LexicalEntry.self, forKey: .entry)
+        selectedSenseKey = try values.decode(String.self, forKey: .selectedSenseKey)
+        selectedExampleKey = try values.decode(String.self, forKey: .selectedExampleKey)
+        materializationStatus = try values.decode(String.self, forKey: .materializationStatus)
+        links = try values.decodeIfPresent([KGGraphLink].self, forKey: .links) ?? []
+    }
+
+    private struct SavedDictionaryPayload: Decodable {
+        let card: KGCard
+        let entry: LexicalEntry
+        let selectedSenseKey: String
+        let selectedExampleKey: String
+        let materializationStatus: String
+    }
 }
 
 struct KGNotebook: Codable, Identifiable {
