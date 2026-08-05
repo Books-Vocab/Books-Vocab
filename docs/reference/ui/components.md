@@ -57,7 +57,7 @@ Scope: `ios/BooksAndVocab`
 - `AppActionButtonStyle`
 - `AppCard`
 - `AppTag`
-- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 是全畫面頂端固定欄而非 panel 內 transient 訊息
+- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 掛在**內容流頂端**（清單/表單上方，隨內容捲動）而非 panel 內 transient 訊息。**視覺契約（2026-08 重新設計）**：連續圓角（`AppShellMetrics.cardCornerRadius`）+ 語意背景 token（`successBg` / `warningBg`）+ `primaryText` 文字（tone 色只染 icon，沿用 `AppOfflineBanner` 的 AAA 對比結論）+ `.appElevation(.z0)`，**無 border、無底部 hairline**；action glyph 維持 caption 大小但 hit target 為 44pt。舊版是方角滿版色塊 + 底部 hairline，那是 chrome 語彙、夾在圓角卡片之間割裂（違反 Mochi 北極星 1/2）。屬 App Shell 層，只吃 `AppTheme`/`AppFonts`/`AppMetrics`，不碰 `appSkin`
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
