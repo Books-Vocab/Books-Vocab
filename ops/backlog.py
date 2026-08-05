@@ -1090,7 +1090,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_render = sub.add_parser("render", help="regenerate the human-readable view from the store")
     _add_store_arg(p_render)
     p_render.add_argument("--out", type=Path, default=DEFAULT_VIEW)
-    p_render.add_argument("--verified-against", help="commit sha for doc-meta (default: HEAD)")
+    p_render.add_argument(
+        "--verified-against",
+        help="commit sha for doc-meta (default: merge-base with origin/main — NOT HEAD; "
+             "see _doc_anchor, a branch sha gets orphaned by rebase)",
+    )
     p_render.add_argument("--commit", action="store_true", help="actually write (default: stdout)")
     p_render.add_argument("--json", action="store_true")
 
