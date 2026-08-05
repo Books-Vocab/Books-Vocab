@@ -283,7 +283,8 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - **既有 paused session**（事發當下沒裝）：lldb console 跑 `command script import <repo>/ops/lldb_crash_forensics.py` 再 `kgdump`。
 - **dump 內容**：stop reason、stack region（bounds/size/headroom）、**全量 frame 表含 fp 差分 frame size**（stack overflow 直接點名誰吃 stack）、frame 0 registers、其他 thread top frames。`LATEST.txt` 恆指最新。
 - **判讀備忘**：`___chkstk_darwin` + `EXC_BAD_ACCESS code=2` + 位址貼近 region base = stack overflow；真機 main thread stack **1MB**、sim（macOS process）**8MB** —— sim 永遠測不出真機 stack overflow。breakpoint stop 不會觸發 dump；任意 stop 點可 `kgdump` 手動取證。
-- **測試**：`ops/tests/test_lldb_crash_forensics.sh`（自動 dump / 全量 frame / fp 差分 / breakpoint 不誤觸 / kgdump）。
+- **測試**：`ops/tests/test_lldb_crash_forensics.sh`（自動 dump / 全量 frame / fp 差分 / breakpoint 不誤觸 / kgdump）+ `ops/tests/test_lldb_forensics_timeout.sh`（有界性守衛）。
+- **手跑 lldb 取證時務必帶 `-k quit`**：`lldb --batch` 遇 crash 會回到互動 prompt 不退（dump 其實早就寫好了），非互動情境下會直接掛住。測試裡四顆 lldb 都帶它，另有 180s 預算兜底。
 
 **debugger 不在場**（直跑 app / TestFlight / 使用者日用）時 crash 落 `.ips` 在裝置上，lldb 管線抓不到 —— 走 `ops/ios_device_logs.sh`（pymobiledevice3 經 uvx，免安裝）：
 
