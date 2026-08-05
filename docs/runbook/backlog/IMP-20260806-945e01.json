@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "worktree_orchestrate.py runs gate BEFORE the rebase that cutover then performs, so for any branch behind main the verdict is bound to a tree that never lands. Measured tonight: feat/dictionary-card-v1 was 58 commits behind (153 ios/ files changed on main since its fork, incl. c5d81fe35 roundness single-DOF over 89 files), feat/review-card-layout-editor 48 behind, feat/reader-liquid-glass 12 behind. The failure is silent and looks like success: cutover requires a fresh non-block verdict whose recorded HEAD == current HEAD, and that check passes because the HEAD did not change — only the base did. Concretely, TodayReviewAutoplayChromeUITests.swift does not exist in the dictionary worktree at all (it entered main via bb02ed3e1 after the fork), so a --grep selecting three UI classes silently matched two; a gate green on that tree says nothing about the three-class tree that actually lands.",
+  "id": "IMP-20260806-945e01",
+  "resolution": "Options, cheapest first: (a) gate refuses (or loudly warns) when merge-base(main, worktree) != main, naming the commit count and changed-file count; (b) gate rebases onto main first and binds the verdict to the rebased HEAD; (c) cutover re-checks that the post-rebase tree equals the gated tree and re-gates if not. (a) alone would have caught all three cases tonight.",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "convergence line, landing 3 long-lived branches",
+  "status": "open",
+  "stream": "IMP"
+}
