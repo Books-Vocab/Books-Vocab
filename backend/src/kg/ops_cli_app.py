@@ -2,6 +2,7 @@
 """Thin aggregation layer for the readonly ops CLI."""
 
 from .ops_cli_costs import cmd_cost, cmd_cost_overview, cmd_fleet_overview
+from .ops_cli_dictionary import cmd_dictionary_cards, cmd_dictionary_health
 from .ops_cli_observability import cmd_llm_errors, cmd_timeseries, cmd_trends
 from .ops_cli_parser import build_parser, main
 from .ops_cli_queries import (
@@ -44,6 +45,8 @@ __all__ = [
     "cmd_cost",
     "cmd_cost_overview",
     "cmd_db_query",
+    "cmd_dictionary_cards",
+    "cmd_dictionary_health",
     "cmd_fleet_overview",
     "cmd_llm_errors",
     "cmd_quota_overview",

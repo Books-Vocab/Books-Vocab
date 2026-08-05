@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .ops_cli_costs import cmd_cost, cmd_cost_overview, cmd_fleet_overview
+from .ops_cli_dictionary import cmd_dictionary_cards, cmd_dictionary_health
 from .ops_cli_observability import cmd_llm_errors, cmd_timeseries, cmd_trends
 from .ops_cli_queries import (
     cmd_active_users,
@@ -124,6 +125,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--window", type=int, default=14, help="天數（預設 14，上限 90）")
     p.add_argument("--uid", default="all", help="限定單一用戶（預設 all）")
     p.set_defaults(func=cmd_llm_errors)
+
+    p = sub.add_parser(
+        "dictionary-health",
+        parents=[jp],
+        help="字典 provider / cache 健康 + lookup outcome（fresh/miss/stale/throttled/429/error + latency）",
+    )
+    p.add_argument(
+        "--window",
+        type=int,
+        default=24,
+        help="lookup ledger 回看小時數（預設 24；ledger 只保留 14 天）",
+    )
+    p.set_defaults(func=cmd_dictionary_health)
+
+    p = sub.add_parser(
+        "dictionary-cards",
+        parents=[jp],
+        help="字典卡數 / staged materialization saga / promotion 失敗盤點",
+    )
+    p.add_argument("uid", nargs="?", default="all", help="User ID（預設 all）")
+    p.set_defaults(func=cmd_dictionary_cards)
 
     return parser
 
