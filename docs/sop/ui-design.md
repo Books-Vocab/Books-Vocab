@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
-verified_against: f0d37ca4
+verified_against: 6cf407a5
 -->
 # Books & Vocab UI Design System
 
@@ -21,7 +21,7 @@ Books & Vocab 使用 Notion-inspired 的 design token 系統（純淨表面、bo
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
-| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRadius`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast） |
+| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRoundness`/`AppElevation`/`AppMotion`/`ElevationDirection`） | 全 app chrome（toolbar、tab、banner、toast） |
 | Vocabulary Skin | `VocabSkin`（Palette / Typography / Spacing） | Vocabulary feature 所有 View |
 | Reader | `ReaderContentStyle` | EPUB/PDF reader 內容樣式 |
 
@@ -147,8 +147,13 @@ Books & Vocab 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.e
   回到 `docs/sop/ios.md`
 - 若是要理解 UI 為何出現在某個資料流程中：
   回到 `docs/sop/architecture.md`
-- 若是要新增 spacing/radius/elevation 數值：
-  先在 `AppSpacing` / `AppRadius` / `AppElevation` 加 token，不可在 view 寫 magic number
+- 若是要新增 spacing/elevation 數值：
+  先在 `AppSpacing` / `AppElevation` 加 token，不可在 view 寫 magic number
+- 若是要決定某個元件的圓角：
+  **不要新增 token** —— 圓角只有五階（見下方 `AppRoundness`）。照**尺度規則**挑：
+  短邊 ≲30pt → `pill`；30–70pt → `control`；>70pt → `card`；方形圖示 → `icon`。
+  尺度規則優先於角色名稱：比例制下同一個 token 在 44pt 與 227pt 上分別是 3.3pt 與 17pt，
+  所以「它是一張卡片」不足以決定用 `card`，得先看它多大
 
 ---
 
@@ -159,7 +164,8 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 | Token tier | 內容 | 採用率 |
 |-----------|------|--------|
 | `AppSpacing` | 8pt grid：`s0=0/s1=4/s2=8/.../s7=64`、`hairline=1`；語意 alias `cardOuterPadding/innerGap/sectionGap` | 部分 — 新元件已切，舊 view 仍多 raw 數字 |
-| `AppRadius` | `xs=4/sm=8/md=12/lg=16/xl=24/pill=999`；禁用鄰近半階值（7/9/13/14/18） | 部分 |
+| `AppRoundness` | **無因次圓度 t**：`none=0 / card=.15 / control=.30 / icon=.45 / pill=1`。實際半徑由 `AppRoundedRect` 在 render 當下算出：`r = t · min(W,H) / 2`。圓角一律走 `AppRoundedRect(roundness:)` / `AppUnevenRoundedRect(top:bottom:)`，**不得**直接用 `RoundedRectangle` / `Capsule()`（`ops/ui_token_lint.py` 會擋，例外需行內 `// token-allow:`） | **live — 全 app 圓角唯一入口** |
+| ~~`AppRadius`~~ | **已刪除**（連 `DesignTokens.Radius` 也不再輸出到 Swift）。舊值 `xs=4/sm=6/md=8/lg=12/xl=16/pill=999`；本表過去寫的 `sm=8/md=12/lg=16/xl=24` 從來就是錯的，比實際碼大一階。`radius.*` 現為純 web token，只餵 `backend/static/kg-*.css` | 不存在 |
 | `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.zN)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **live — 全 app shadow 唯一入口，~24 callsites**（AppSurface / AppToast / Card / cover / overlay / 各 presenter）。raw `.shadow(...)` 一律改走此 token。 |
 | `AppFonts.hero` / `TypeScale.hero` | 40pt serif hero typography（`TypeScale`：caption2/caption/subhead/body/h2/h1/hero，無 display1/2）；`AppFonts.hero(weight:)` 取用 | 視場景使用 |
 | `AppFonts.Tracking` / `LineSpacing` | letter-spacing / 行高 token | 部分 |

@@ -1,0 +1,14 @@
+{
+  "category": "correctness",
+  "date": "2026-08-05",
+  "detail": "todayReviewStateFlushesAnswerOncePerCard 在全量套件下偶發失敗（reviewCount→0、lastReviewFeedbackRaw→-1、records.count→0，即 flushPendingAnswers 的寫入尚未落到 store），單獨跑則 1/1 通過。測試在 flushPendingAnswers 後用 try await Task.sleep(for: .milliseconds(100)) 等待非同步落盤，全量套件下機器負載較高時 100ms 不夠，屬時間相依的假失敗。證據：該測試與 TodayReviewState.swift 皆不在本次圓角改動的 diff 內（已對 merge-base 1e00e8a4 驗證），且 main 新增的 8 個 commit 對 TodayReviewState 的修改只涉及 autoplay gating，與 flush 無關。建議把 sleep 改成輪詢等待條件（例如 poll 直到 records.count==1 或逾時），不要靠固定睡眠。",
+  "id": "APP-20260805-fb19ce",
+  "repro": "./ops/ios_ops.sh test --unit（全量 1818 測）會偶發失敗；單獨 -g todayReviewStateFlushesAnswerOncePerCard 則穩定通過",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "roundness-single-dof 全量 unit gate",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
