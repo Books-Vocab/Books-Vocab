@@ -241,7 +241,10 @@ struct PodcastPlayerScene: View {
 #endif
             loadEpisode()
         }
-        .onChange(of: allVocabulary.count) { _, _ in
+        .onChange(of: VocabularyHighlightSignature.make(
+            entries: allVocabulary,
+            notebookId: loadedSeries?.resolvedNotebookId
+        )) { _, _ in
             translationHandler.loadLookedUpWords(from: allVocabulary, notebookId: loadedSeries?.resolvedNotebookId)
         }
         .onAppear {

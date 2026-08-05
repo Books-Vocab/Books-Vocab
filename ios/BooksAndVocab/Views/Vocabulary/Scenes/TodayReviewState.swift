@@ -68,13 +68,14 @@ final class TodayReviewState {
         // decides whether killing the throwaway needs full ownership injection or just a
         // lazy `start()`. DispatchTime captures match the existing `_initStart` precedent.
         let _tLoad = DispatchTime.now()
+        let reviewEntries = entries.filter(\.shouldAppearInReview)
         let ordered = ReviewSessionStore.loadOrder(
-            availableEntries: entries,
+            availableEntries: reviewEntries,
             userID: currentUserID,
             // Today Review restores an unfinished queue even if sync added or removed cards
             // since the shuffle was saved; new cards are appended and missing cards filtered.
             allowPartialQueue: true
-        ) ?? entries
+        ) ?? reviewEntries
         let _msLoad = PerfChannel.ms(since: _tLoad)
         let _tRestore = DispatchTime.now()
         let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
@@ -112,7 +113,7 @@ final class TodayReviewState {
         prewarmCardWindow()
         let _msPrewarm = PerfChannel.ms(since: _tPrewarm)
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
-        PerfLog.review.mark("state.init", "inst=#\(instanceSeq) entries=\(entries.count) all=\(allEntries.count) queue=\(ordered.count) load=\(String(format: "%.1f", _msLoad)) restore=\(String(format: "%.1f", _msRestore)) lookup=\(String(format: "%.1f", _msLookup)) prewarm=\(String(format: "%.1f", _msPrewarm)) total=\(PerfChannel.ms(since: _initStart))ms")
+        PerfLog.review.mark("state.init", "inst=#\(instanceSeq) entries=\(reviewEntries.count) all=\(allEntries.count) queue=\(ordered.count) load=\(String(format: "%.1f", _msLoad)) restore=\(String(format: "%.1f", _msRestore)) lookup=\(String(format: "%.1f", _msLookup)) prewarm=\(String(format: "%.1f", _msPrewarm)) total=\(PerfChannel.ms(since: _initStart))ms")
     }
 
     // MARK: - Computed (State Projection)

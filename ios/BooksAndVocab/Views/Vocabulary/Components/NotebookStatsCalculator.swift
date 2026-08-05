@@ -26,12 +26,14 @@ enum NotebookStatsCalculator {
         var result: [String: NotebookStats] = [:]
         for entry in entries {
             result[entry.notebookId, default: NotebookStats()].cardCount += 1
-            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
-                result[entry.notebookId, default: NotebookStats()].dueCount += 1
-            } else if entry.reviewCount == 0 {
-                result[entry.notebookId, default: NotebookStats()].unlearnedCount += 1
-            } else {
-                result[entry.notebookId, default: NotebookStats()].reviewedCount += 1
+            if entry.reviewEligible {
+                if entry.reviewCount > 0 && entry.nextReviewAt <= now {
+                    result[entry.notebookId, default: NotebookStats()].dueCount += 1
+                } else if entry.reviewCount == 0 {
+                    result[entry.notebookId, default: NotebookStats()].unlearnedCount += 1
+                } else {
+                    result[entry.notebookId, default: NotebookStats()].reviewedCount += 1
+                }
             }
             let activity = entry.lastReviewedAt ?? entry.dateAdded
             if result[entry.notebookId]?.lastActivity == nil || activity > result[entry.notebookId]!.lastActivity! {
@@ -52,7 +54,7 @@ enum NotebookStatsCalculator {
     ) -> (due: [VocabularyEntry], unlearned: [VocabularyEntry]) {
         var due: [VocabularyEntry] = []
         var unlearned: [VocabularyEntry] = []
-        for entry in entries where filter.matches(entry.notebookId) {
+        for entry in entries where filter.matches(entry.notebookId) && entry.reviewEligible {
             if entry.reviewCount > 0 && entry.nextReviewAt <= now {
                 due.append(entry)
             } else if entry.reviewCount == 0 {
