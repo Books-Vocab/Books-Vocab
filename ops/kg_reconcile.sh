@@ -340,7 +340,11 @@ deploy_and_gate() {
   set +e; ( cd "$KG_RECON_REPO/backend" && $KG_COMPOSE up -d --build --force-recreate ) >&2; rrc=$?; set -e
   if (( rrc != 0 )); then
     # 講清楚操作者該做什麼：不是「兩版都壞」，是「git 退了但容器沒退」。
-    alert "回滾的 compose 失敗 (exit $rrc)：git tree 與 VERSION 已回到 $rollback_sha，但**容器很可能仍跑著 $new_sha**。回滾未生效，需人工確認容器實跑版本再決定前進或後退。"
+    # `${VAR}` 的大括號不是風格，是必要：`$rollback_sha，` 這種「變數緊接全形標點」
+    # 會讓 bash 把標點的首個 byte 吃進變數名 → `unbound variable` → set -u 當場殺掉
+    # 腳本，連 verdict 都來不及印。只在沒有 LANG 的環境（例如 gate 的 subprocess
+    # runner）才發作，互動 shell 測不出來——本輪就是這樣紅在 gate、綠在我手上。
+    alert "回滾的 compose 失敗 (exit ${rrc})：git tree 與 VERSION 已回到 ${rollback_sha}，但**容器很可能仍跑著 ${new_sha}**。回滾未生效，需人工確認容器實跑版本再決定前進或後退。"
   fi
   # 回滾後確認舊版健康（best-effort，不 gate verdict；連舊版都不健康則更大聲告警）
   if localhost_health_ok "$rollback_sha"; then

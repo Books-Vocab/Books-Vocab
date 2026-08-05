@@ -115,7 +115,7 @@ asc() {  # codemagic CLI wrapper（auth flag 放在 subcommand 之後）
   return "$rc"
 }
 
-require_key() { [[ -f "$KEY_PATH" ]] || err "API key not found: $KEY_PATH（見 ~/.secrets/apple/README.md）"; }
+require_key() { [[ -f "$KEY_PATH" ]] || err "API key not found: ${KEY_PATH}（見 ~/.secrets/apple/README.md）"; }
 
 raw() {  # codemagic 暴露不到的唯讀 raw GET；JWT + 依賴宣告都在 asc_get.py（uv shebang），不污染本檔
   ASC_KEY_ID="$KEY_ID" ASC_ISSUER_ID="$ISSUER_ID" ASC_KEY_DIR="$ASC_KEY_DIR" \
@@ -346,7 +346,7 @@ cmd_set_review() {
   if [[ -z "$rid" ]]; then
     # 把 raw GET 的 _httpError 帶進訊息：401/權限 與「真的沒有 reviewDetail」才分得開（不再同訊息）
     local httperr; httperr="$(printf '%s' "$rd" | jq -r 'if has("_httpError") then "（API HTTP \(._httpError)：\(._detail.errors[0].detail // ._detail.reason // "?")）" else "" end')"
-    err "版本 $vlabel 無 appStoreReviewDetail$httperr（版本狀態可能不可編輯，或尚未建立審查資訊）"
+    err "版本 $vlabel 無 appStoreReviewDetail${httperr}（版本狀態可能不可編輯，或尚未建立審查資訊）"
   fi
   old="$(printf '%s' "$rd" | jq -r --arg k "$jkey" '.data.attributes[$k] // "（空）"')"
 

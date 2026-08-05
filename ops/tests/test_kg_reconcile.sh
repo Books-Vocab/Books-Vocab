@@ -81,8 +81,11 @@ if [[ -n "\$SERVED" && "\$url" == *localhost* ]]; then
 fi
 # 外部：MOCK_EXTERNAL_FAIL_FIRST=<n> 讓前 n 次外部 /api/system/info 直接失敗。
 # 模擬的是**主機端對外連通性中斷**（2026-08-04 事故是 felix DNS 掛掉，同一秒 docker
-# build 也 `lookup auth.docker.io: no such host`），不是 tunnel 重連——後者會回帶
+# build 也在 auth.docker.io 上吐 no-such-host），不是 tunnel 重連——後者會回帶
 # HTTP status 的 CF 錯誤頁，而事故拿到的是 exit 6 / HTTP=000（連回應都沒有）。
+# 注意：本段在 **unquoted heredoc** 內，反引號會在寫檔當下被當成命令替換執行。
+# 引用含反引號的日誌時一律改寫成純文字——這個坑今天已經咬過兩次（EXCLUDED_GROUPS
+# 那次直接讓整支腳本 rc=141 一個字都沒印）。
 # 已知**未**建模：時間。這裡計次不計時，且 harness 把 DELAY 釘成 0，所以綠燈只證明
 # 「重試了 N 次」，不證明「等得夠久」——而後者才是這條修法真正想買的東西。
 # 只挑外部主機名。用 *system/info* 比對的話 localhost 探針（KG_LOCAL_HEALTH_URL 也是
@@ -459,7 +462,7 @@ v="$(get_verdict "$out")"
 grep -q "回滾的 compose 失敗" "$ERRLOG" && ok "rollback-build-fail: 明確告知回滾未生效" || bad "rollback-build-fail: 回滾 compose 的退出碼被吞掉了 — 這正是生產當天發生的事"
 grep -q "生產可能雙壞" "$ERRLOG" && bad "rollback-build-fail: 仍發語意相反的『雙壞』告警" || ok "rollback-build-fail: 未發誤導的雙壞告警"
 served_now="$(cat "$SERVEDFILE")"
-[[ "$served_now" == "$SHA_NEW" ]] && ok "rollback-build-fail: 容器確實仍跑新版（與告警一致）" || bad "rollback-build-fail: serving=$served_now，告警與事實不符"
+[[ "$served_now" == "$SHA_NEW" ]] && ok "rollback-build-fail: 容器確實仍跑新版（與告警一致）" || bad "rollback-build-fail: serving=${served_now}，告警與事實不符"
 
 section "回滾後容器起不來 → 必須發雙壞告警"
 # 這是上一條反向斷言的**正控**：先前只斷言「沒有雙壞告警」，把那個告警字串改名一樣全綠
