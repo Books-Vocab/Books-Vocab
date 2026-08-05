@@ -252,7 +252,12 @@ struct WordDetailPresenter: View {
     /// 反覆掃過的區域，等於訓練手指伸進一個會咬人的鄰居旁邊。
     @ViewBuilder
     private var cardManagementSection: some View {
-        AppAirDivider()
+        // divider 只在真的有破壞性動作要被分隔出來時才畫。連結卡疊層（唯一沒有生命週期
+        // 動作的宿主）只剩那顆勾選框，不該因為這次改動被塞進一個沒有內容的分區——
+        // 它原本就只是貼在卡片下方的一列。
+        if onDelete != nil {
+            AppAirDivider()
+        }
 
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             if let onToggleExcludeFromReader {
@@ -332,7 +337,7 @@ struct WordDetailPresenter: View {
                             : appSkin.palette.tertiaryText
                     )
 
-                Text("閱讀時不標記此單字".localized)
+                Text(WordDetailCopy.excludeFromReader)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }

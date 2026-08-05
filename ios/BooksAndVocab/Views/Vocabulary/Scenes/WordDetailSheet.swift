@@ -13,7 +13,6 @@ struct WordDetailSheet: View {
     @State private var isEditing = false
     @State private var showAddLink = false
     @State private var isConfirmingDelete = false
-    @State private var isArchiving = false
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -154,8 +153,8 @@ struct WordDetailSheet: View {
     /// toggle 自己就是 undo，所以不需要帶動作按鈕的 undo toast（`AppToastCoordinator`
     /// 也只吃 message/style/duration，沒有 action）。失敗訊息走既有的 `actionError` banner。
     private func handleToggleArchive() {
-        guard !isArchiving else { return }
-        isArchiving = true
+        // 重入防護在 `WordDetailSceneState.isSettingArchived`，不在這裡：放狀態物件才
+        // 涵蓋所有呼叫端，view 端再複製一份只會變成兩個要一起推理的旗標。
         Task { @MainActor in
             await state.setArchived(
                 !entry.isArchived,
@@ -163,15 +162,25 @@ struct WordDetailSheet: View {
                 kgService: kgService,
                 modelContext: modelContext
             )
-            isArchiving = false
         }
     }
 
     /// 刪除是 local-first 軟刪（`queueDelete` 排進 outbox，離線可用），與封存的
     /// server-authoritative 語意相反 —— 所以這裡不需要回捲，但需要關掉 sheet：
     /// 讓使用者盯著一張已經不存在的卡是最糟的收尾。
+    ///
+    /// **未同步的卡要硬刪、不能排 outbox**（形狀照 `VocabularyContextStore.deleteEntry`）：
+    /// `queueDelete` 只是把 syncAction 標成 delete 等下次同步推上去，但伺服器上根本沒有
+    /// 這張卡，那次呼叫必然打空。雖然 `SyncCoordinator` 的 `not_found` 分支最後會收斂，
+    /// 中間卻留著一筆假的「待刪除」掛在 outbox（SyncView 看得見），離線時無限期滯留。
+    /// 本檔的封存路徑已經對 `isSynced` 做過同一個判斷（`canArchive`），不可逆的這一半
+    /// 沒有理由不做。
     private func handleDelete() {
-        entry.queueDelete()
+        if entry.isSynced {
+            entry.queueDelete()
+        } else {
+            modelContext.delete(entry)
+        }
         if modelContext.safeSaveWithToast(toastCoordinator) {
             toastCoordinator.success(WordDetailCopy.deleted)
         }
