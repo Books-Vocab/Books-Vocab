@@ -88,10 +88,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let customSummary = settings.reviewCardLayoutValue.label
         XCTAssertFalse(customSummary.isEmpty)
 
-        // main 的「聲音回饋」「觸覺回饋」兩列排在本列之前（合併後才成立），
-        // 偏好區因此變長、本列落到摺線下。`tapWhenReady` 只等 hittable 不捲動。
-        settings.reviewCardLayoutRow.scrollIntoView()
-        settings.reviewCardLayoutRow.tapWhenReady()
+        settings.openReviewCardLayout()
         XCTAssertTrue(editor.waitUntilVisible())
         XCTAssertTrue(
             editor.isOn("graphLinks"),
