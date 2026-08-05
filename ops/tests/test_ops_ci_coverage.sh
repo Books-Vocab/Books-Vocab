@@ -64,6 +64,11 @@ LINUX_GROUPS=(
   ios-device-files
   ios-device-logs
   review-flip-probe
+  # ── IMP-0038：排除理由是「anchor 指向從未進 origin 的 pre-squash commit，只能從
+  #    本地 dangling object 解析」。2026-08-06 收攏後 179 顆 commit 已 sync 到
+  #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
+  #    可達 —— 那個理由現在是假的，所以收進來。
+  docs-lint
 )
 
 # token|要從 PATH 拿掉的命令|功能探針（皆空 = 這個 token 無法用 PATH 證偽）
@@ -97,7 +102,6 @@ FIXTURE_TOKEN="bin-ssh"
 
 # group|token|reason —— reason 說明「為什麼這個 token 擋住了 linux runner」。
 EXCLUDED_GROUPS=(
-  "docs-lint|data-git-history|many verified_against anchors point at pre-squash commits that never reached origin, so they resolve only from local dangling objects (IMP-0038)"
   "gate-can-fail|data-ui-world|its ui-quality-fast proof needs the same UI World assets as ui-quality-gate"
   "ui-quality-gate|data-ui-world|its --dataset assertions load a UI World whose assets are absolute local paths (lab/podcast workspaces)"
   "release|data-git-history|drives ops/release.sh against local tags and the iOS pbxproj"
