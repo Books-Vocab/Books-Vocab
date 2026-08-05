@@ -259,7 +259,11 @@ def validate_entry(payload: dict, *, entry_id: str | None = None) -> list[dict]:
 
     if payload.get("stream") == "IMP":
         for field in APP_ONLY_FIELDS:
-            if payload.get(field):
+            # Presence, not truthiness: `update --surface ""` used to slip an
+            # empty APP-only key onto an IMP entry and still validate clean,
+            # because "" is falsy. `add` never produces that shape (it skips
+            # empty values), so nothing in the store relies on the looser test.
+            if field in payload:
                 problems.append({"kind": "app-field-on-imp-entry", "field": field})
 
     problems.extend(_check_groom(payload))
@@ -1262,7 +1266,11 @@ def _cmd_update(args) -> int:
         # that applied its mutable half and complained about the rest would
         # leave the caller guessing which half landed.
         flags = ", ".join(f"--{f}" for f in refused)
+        # Mode-prefixed like every other output of this command: without it the
+        # dry-run and --commit forms produced byte-identical text, so the reader
+        # could not tell from the output which one they had just run.
         print(
+            f"[{'commit' if args.commit else 'dry-run'}] "
             f"{flags} cannot be changed: {', '.join(DIGEST_FIELDS)} are the inputs "
             f"make_entry_id hashes, so editing one would decouple {args.id} from the "
             f"content its id is derived from.\n"
