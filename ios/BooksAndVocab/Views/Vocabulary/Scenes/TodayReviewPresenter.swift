@@ -43,9 +43,10 @@ struct TodayReviewPresenterState {
 // MARK: - Presenter
 
 struct TodayReviewPresenter: View {
+    @ObserveInjection private var inject
+
     static let initialFrontSlotHeight: CGFloat = 0
 
-    @ObserveInjection private var inject
     // internal — extension files 需要存取
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.appSkin) var appSkin
