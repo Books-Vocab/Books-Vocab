@@ -31,6 +31,7 @@ DEFAULT_TESTS=(
   reconcile
   branch-audit
   worktree-orchestrator
+  backlog
   review-audit
   capability-matrix
   ui-deadcode
@@ -94,6 +95,13 @@ run_one() {
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_worktree_registry.py \
         ops/tests/test_worktree_state.py
+      ;;
+    backlog)
+      # Both files are stdlib-only on purpose, so they run under the same
+      # --no-project sandbox as the cutover gate uses.
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_backlog.py \
+        ops/tests/test_backlog_migration.py
       ;;
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     capability-matrix)
