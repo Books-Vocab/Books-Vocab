@@ -68,6 +68,7 @@
 "升級為 Pro" = "Upgrade to Pro";
 "向心力" = "Center Force";
 "封存" = "Archive";
+"封存失敗" = "Archive failed";
 "尚未登入" = "Not Signed In";
 "尚未登入帳號" = "Not signed in";
 "匯入" = "Import";
@@ -813,6 +814,7 @@
 "解碼錯誤：%@" = "Decoding error: %@";
 "解釋失敗" = "Failed to explain";
 "解除封存失敗：%@" = "Failed to unarchive: %@";
+"解除封存失敗" = "Unarchive failed";
 "訂閱記錄（App Store 訂閱請另行至設定取消）" = "Subscription records (cancel App Store subscriptions in Settings)";
 "設為使用中" = "Set as active";
 "試用" = "Trial";

@@ -1,10 +1,13 @@
 import Foundation
 import Observation
+import SwiftData
 
 @Observable @MainActor
 final class WordDetailSceneState {
     var presenterState: WordDetailPresenter.State?
-    var linkError: String?
+    /// 詳情頁單一錯誤 banner 的來源。原名 `linkError`，在封存進入本場景後改為泛稱
+    /// ——同一條 banner 服務所有卡片層級動作，不再只服務知識連結。
+    var actionError: String?
 
     func refreshPresentation(
         for entry: VocabularyEntry,
@@ -18,8 +21,43 @@ final class WordDetailSceneState {
         )
     }
 
-    func dismissLinkError() {
-        linkError = nil
+    func dismissActionError() {
+        actionError = nil
+    }
+
+    /// 封存 / 解除封存這張卡。
+    ///
+    /// 形狀對齊同檔的 `setLinkHidden`：先樂觀翻轉、再打伺服器、失敗回捲。與連結操作
+    /// 不同的是本方法是 `async` 而非 fire-and-forget `Task {}` —— 呼叫端（詳情頁的封存
+    /// 鈕）需要知道何時結束才能收掉 in-flight 狀態，且 `KGVocabCoordinator.handleBatchArchive`
+    /// 已是 async，兩條封存路徑保持同一種可等待語意。
+    ///
+    /// 封存是 server-authoritative（無離線 outbox 動作），所以失敗必須完整回捲：
+    /// 本機留著「已封存」而伺服器沒有，下次 pull 就會把卡片翻回來。
+    func setArchived(
+        _ archived: Bool,
+        for entry: VocabularyEntry,
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async {
+        let previous = entry.isArchived
+        guard previous != archived else { return }
+        entry.isArchived = archived
+
+        do {
+            try await kgService.archiveCard(
+                word: entry.word,
+                archived: archived,
+                notebookId: entry.notebookId
+            )
+            modelContext.safeSave()
+        } catch {
+            entry.isArchived = previous
+            AppLog.kg.error("setArchived(\(archived)) failed '\(entry.word)': \(error.localizedDescription)")
+            actionError = archived
+                ? L10n.string("封存失敗")
+                : L10n.string("解除封存失敗")
+        }
     }
 
     func linkedEntry(
@@ -50,7 +88,7 @@ final class WordDetailSceneState {
                 VocabularyGraphLinkMutation.commitManualLink(pending, result: link, on: entry)
             } catch {
                 VocabularyGraphLinkMutation.rollbackManualLink(pending, on: entry)
-                linkError = "新增連結失敗".localized
+                actionError = "新增連結失敗".localized
             }
         }
     }
@@ -70,7 +108,7 @@ final class WordDetailSceneState {
                 try await kgService.deleteLink(linkId: link.id, notebookId: notebookId)
             } catch {
                 VocabularyGraphLinkMutation.rollbackLinkRemoval(removed, source: entry, peer: peer)
-                linkError = "刪除連結失敗".localized
+                actionError = "刪除連結失敗".localized
             }
         }
     }
@@ -113,7 +151,7 @@ final class WordDetailSceneState {
                 }
             } catch {
                 VocabularyGraphLinkMutation.setHidden(!hidden, for: link, source: entry, peer: peer)
-                linkError = hidden ? "隱藏連結失敗".localized : "恢復連結失敗".localized
+                actionError = hidden ? "隱藏連結失敗".localized : "恢復連結失敗".localized
             }
         }
     }
