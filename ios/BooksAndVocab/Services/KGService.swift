@@ -16,6 +16,31 @@ final class KGService: KGServing, LocalDataClearing {
         static let reviewEventPullBoundary = "kg_review_events_since"
         static let payloadVersion = "kg_review_payload_version"
         static let currentPayloadVersion = 1
+        /// Last successful device sync, persisted so Settings can still answer
+        /// "when did this last sync?" after a cold start. Held in memory only,
+        /// it read as "never synced" on every launch until the first sync of
+        /// that session finished.
+        static let lastSyncDate = "kg_last_sync_date"
+    }
+
+    /// Persist the last successful sync instant. `nil` clears it (logout /
+    /// account switch), so the next account never inherits the previous one's
+    /// timestamp.
+    static func persistLastSyncDate(_ date: Date?, defaults: UserDefaults = .standard) {
+        guard let date else {
+            defaults.removeObject(forKey: SyncKeys.lastSyncDate)
+            return
+        }
+        defaults.set(date.timeIntervalSince1970, forKey: SyncKeys.lastSyncDate)
+    }
+
+    static func loadPersistedLastSyncDate(defaults: UserDefaults = .standard) -> Date? {
+        // `double(forKey:)` returns 0 for a missing key, which would render as
+        // 1970 — an absent timestamp must stay absent, not become a wrong one.
+        guard defaults.object(forKey: SyncKeys.lastSyncDate) != nil else { return nil }
+        let seconds = defaults.double(forKey: SyncKeys.lastSyncDate)
+        guard seconds > 0 else { return nil }
+        return Date(timeIntervalSince1970: seconds)
     }
 
     @ObservationIgnored
@@ -34,7 +59,7 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     var isConnected: Bool = false
-    var lastSyncDate: Date?
+    var lastSyncDate: Date? = KGService.loadPersistedLastSyncDate()
     var serverCardCount: Int = 0
     var sessionExpiredReason: String?
 
@@ -46,6 +71,39 @@ final class KGService: KGServing, LocalDataClearing {
     private let _backgroundSyncLock = NSLock()
     @ObservationIgnored
     private var _isBackgroundSyncing = false
+
+    /// Serialises review-event pushes across the two entry points that reach
+    /// them: `backgroundSync` (behind `claimBackgroundSync`) and
+    /// `SyncCoordinator.startSync`, which calls `pushReviewEvents` directly and
+    /// so was never covered by that lock. Production logs showed both running at
+    /// once (two client ports interleaving PATCHes) and doubling the burst
+    /// against a 60-request/minute budget.
+    ///
+    /// Deliberately its own lock rather than widening `claimBackgroundSync`:
+    /// the explicit user-initiated sync must not be silently downgraded because
+    /// a background sync holds that claim.
+    @ObservationIgnored
+    private let _reviewEventPushLock = NSLock()
+    @ObservationIgnored
+    private var _isPushingReviewEvents = false
+
+    /// Returns `true` when the caller owns the review-event push. A `false`
+    /// return means another push is already in flight; with the `pushedAt`
+    /// watermark in place that push covers this caller's events too, so
+    /// skipping loses nothing.
+    func claimReviewEventPush() -> Bool {
+        _reviewEventPushLock.lock()
+        defer { _reviewEventPushLock.unlock() }
+        guard !_isPushingReviewEvents else { return false }
+        _isPushingReviewEvents = true
+        return true
+    }
+
+    func releaseReviewEventPush() {
+        _reviewEventPushLock.lock()
+        _isPushingReviewEvents = false
+        _reviewEventPushLock.unlock()
+    }
 
     /// Thread-safe check-and-set for background sync guard.
     /// Returns `true` if sync was successfully claimed (caller should proceed).

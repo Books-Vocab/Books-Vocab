@@ -339,12 +339,18 @@ actor BackgroundSyncActor {
         AppLog.sync.info("Cleared \(entries.count) stale synced entries on startup.")
     }
 
-    /// Build the payload for pushing review states to the backend.
+    /// Build the payload for pushing review states to the backend — only the
+    /// cards whose SRS state the backend does not already have.
+    ///
+    /// `needsReviewStatePush` is evaluated in Swift rather than in the fetch
+    /// predicate because it compares two of the entry's own optional dates,
+    /// which `#Predicate` does not express. The fetch is local and bounded by
+    /// the library size; the payload and the round trip were the expensive part.
     func buildReviewStatePushPayload() throws -> [[String: Any]] {
         let descriptor = FetchDescriptor<VocabularyEntry>(
             predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
-        let entries = try modelContext.fetch(descriptor)
+        let entries = try modelContext.fetch(descriptor).filter(\.needsReviewStatePush)
 
         var payload: [[String: Any]] = []
         for entry in entries {
@@ -365,6 +371,26 @@ actor BackgroundSyncActor {
             payload.append(item)
         }
         return payload
+    }
+
+    /// Record that the backend accepted the review states we sent.
+    ///
+    /// `boundary` is captured *before* the payload is built, so a review that
+    /// lands while the request is in flight stays dirty and goes out next sync
+    /// instead of being silently acknowledged as already-sent.
+    func markReviewStatesPushed(upTo boundary: Date) throws {
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
+        )
+        var marked = 0
+        for entry in try modelContext.fetch(descriptor) where entry.needsReviewStatePush {
+            guard (entry.lastReviewedAt ?? entry.dateAdded) <= boundary else { continue }
+            entry.reviewStateSyncedAt = boundary
+            marked += 1
+        }
+        guard marked > 0 else { return }
+        try modelContext.save()
+        AppLog.sync.info("markReviewStatesPushed: acknowledged \(marked) card review states")
     }
 
     func distinctNotebookIds() throws -> [String] {
@@ -450,6 +476,17 @@ actor BackgroundSyncActor {
             entry.lapseCount = max(entry.lapseCount, card.lapseCount ?? 0)
             entry.reviewStreak = max(entry.reviewStreak, card.reviewStreak ?? 0)
             entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
+            // Server won, so the server already has this state — queuing it for
+            // push would send its own data back to it on the next sync.
+            //
+            // Acknowledge at `serverLast`, not `.now`: `needsReviewStatePush`
+            // compares against `lastReviewedAt`, which was just set to
+            // `serverLast`, so this settles the card regardless of how the
+            // device clock compares to the server's. Using `.now` left any card
+            // whose server timestamp ran ahead of the device clock permanently
+            // dirty — re-pushed on every sync, which is the bug this whole
+            // change exists to kill.
+            entry.reviewStateSyncedAt = serverLast
         } else if localLast > serverLast {
             AppLog.sync.info("Review merge: local wins for '\(entry.word)' (local=\(AppDateFormatters.iso8601.string(from: localLast)), server=\(serverLastStr)), local review preserved")
         }
@@ -457,9 +494,17 @@ actor BackgroundSyncActor {
 }
 
 extension BackgroundSyncActor {
-    /// Build append-only review event payloads from local ReviewRecord rows.
+    /// Build append-only review event payloads for the events the server has not
+    /// acknowledged yet (`pushedAt == nil`), oldest first.
+    ///
+    /// The ordering makes a partially-drained history advance monotonically:
+    /// batches are cut from this array, so a failed batch leaves a stable
+    /// oldest-first remainder instead of re-shuffling on the next attempt.
     func buildReviewEventsPushPayload() throws -> [KGReviewEventPayload] {
-        let descriptor = FetchDescriptor<ReviewRecord>()
+        let descriptor = FetchDescriptor<ReviewRecord>(
+            predicate: #Predicate<ReviewRecord> { $0.pushedAt == nil },
+            sortBy: [SortDescriptor(\.reviewedAt, order: .forward)]
+        )
         let records = try modelContext.fetch(descriptor)
         guard !records.isEmpty else { return [] }
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
@@ -495,6 +540,44 @@ extension BackgroundSyncActor {
                 streak_after: record.streakAfter,
                 lapse_after: record.lapseAfter
             )
+        }
+    }
+
+    /// Record that the backend accepted these events, so later syncs stop
+    /// re-sending them. Called per batch: a batch that fails must not
+    /// acknowledge itself, and must not un-acknowledge earlier batches.
+    func markReviewEventsPushed(eventIDs: [String], at instant: Date = .now) throws {
+        guard !eventIDs.isEmpty else { return }
+        let ids = eventIDs.compactMap(UUID.init(uuidString:))
+        guard !ids.isEmpty else { return }
+
+        // Fetch the batch's own rows, not every pending row: this runs once per
+        // batch, so re-scanning the whole pending set each time would make the
+        // one-time drain of a large legacy history quadratic — on the very sync
+        // this change exists to speed up.
+        let descriptor = FetchDescriptor<ReviewRecord>(
+            predicate: #Predicate<ReviewRecord> { ids.contains($0.id) }
+        )
+        var marked = 0
+        for record in try modelContext.fetch(descriptor) where record.pushedAt == nil {
+            record.pushedAt = instant
+            marked += 1
+        }
+        if marked > 0 {
+            try modelContext.save()
+        }
+        // The watermark's two failure directions are both silent: mark nothing
+        // and the client re-sends forever (no fix); mark everything and events
+        // never reach the server (data loss). This count mismatch is the only
+        // signal that the fetch above stopped matching what was actually sent,
+        // so it must not pass quietly. A re-sent already-acked event is the one
+        // benign case — the server dedupes it and it is already marked.
+        if marked != ids.count {
+            AppLog.sync.error(
+                "markReviewEventsPushed: acknowledged \(marked) of \(ids.count) sent events — the rest were already marked, or the watermark query stopped matching"
+            )
+        } else {
+            AppLog.sync.info("markReviewEventsPushed: acknowledged \(marked) review events")
         }
     }
 
@@ -539,6 +622,10 @@ extension BackgroundSyncActor {
             )
             record.id = eventID
             record.notebookId = event.notebook_id
+            // It came from the server, so it is already on the server. Leaving it
+            // unmarked would make the next push send the entire pulled history
+            // straight back and the watermark would never drain.
+            record.pushedAt = .now
             modelContext.insert(record)
             existingIDs.insert(eventID)
             inserted += 1

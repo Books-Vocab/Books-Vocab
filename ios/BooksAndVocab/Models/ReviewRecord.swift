@@ -35,6 +35,17 @@ final class ReviewRecord {
     var streakAfter: Int?
     var lapseAfter: Int?
 
+    /// When the backend acknowledged this event. `nil` = still owed to the server.
+    ///
+    /// Review events are append-only and de-duplicated server-side by `event_id`,
+    /// so without this watermark the client had no way to tell "already uploaded"
+    /// from "new" and re-sent its entire history every sync (production: 9,542
+    /// events, ~3.4MB, 10 sequential PATCHes, 15.4s of a 17s sync, all skipped
+    /// server-side). Optional so the schema change is a lightweight migration:
+    /// existing rows arrive as `nil` and drain in one final full push, which is
+    /// exactly the old cost and cannot lose an event that never made it up.
+    var pushedAt: Date?
+
     init(
         word: String,
         entryID: UUID?,

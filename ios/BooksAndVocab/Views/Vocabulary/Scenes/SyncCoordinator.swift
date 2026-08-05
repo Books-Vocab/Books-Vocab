@@ -68,6 +68,14 @@ enum SyncTerminalOutcome: Equatable {
     case fullFailure
 }
 
+/// 等待伺服器 AI pipeline 收尾的重試間隔（秒），前密後疏。
+///
+/// 舊版是固定 10s × 3。pipeline 多數時候在數秒內就好了,固定 10s 代表**已經好了
+/// 也要再等滿 10 秒**才會看到——使用者感受到的「Pending 很久」有一大半是這段空等,
+/// 不是伺服器真的還在算。前密後疏讓常見的快路徑 1 秒就收斂,慢路徑仍有 15s 總預算
+/// (舊版 30s)可等。
+let syncPipelinePendingBackoffSeconds: [Double] = [1, 2, 4, 8]
+
 /// 純函式:由三個訊號決定 sync 終態。見 `SyncTerminalOutcome`。
 /// `wasCancelled` 一律壓過其他訊號(含 catch path 拋的 `CancellationError`)。
 func syncTerminalOutcome(
@@ -316,11 +324,17 @@ final class SyncCoordinator: SyncCoordinating {
                     }
                 }, notebookId: nil).pipelinePending
 
+                let backoff = syncPipelinePendingBackoffSeconds
                 var retryCount = 0
-                while pipelinePending && retryCount < 3 {
+                while pipelinePending && retryCount < backoff.count {
+                    let waitSeconds = backoff[retryCount]
                     retryCount += 1
-                    self.updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
-                    try await Task.sleep(for: .seconds(10))
+                    self.updateStep(
+                        "pull",
+                        status: .running,
+                        detail: L10n.format("等待 AI 處理完成（%@/%@）...", "\(retryCount)", "\(backoff.count)")
+                    )
+                    try await Task.sleep(for: .seconds(waitSeconds))
                     if Task.isCancelled { break }
                     pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil).pipelinePending
                 }
