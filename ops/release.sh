@@ -37,6 +37,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 YES=0
 
+# shellcheck source=lib/release_tags.sh
+. "$ROOT/ops/lib/release_tags.sh"
+
 err()  { echo "✗ $*" >&2; exit 1; }
 # 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail / ROOT= / YES= 洩進 help。
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
@@ -121,16 +124,18 @@ bump_semver() {  # $1=x.y.z  $2=major|minor|patch
   esac
 }
 
-# `git tag -l "<prefix>*"` 的 `*` 會跨 `/` 比對，所以 ios/2.0.0+6 這種 build tag 也在
-# glob 內，且 `--sort=-v:refname` 把它排在 ios/2.0.0 之上。last_tag 的語意是「最新的
-# **released marketing version**」——被 build tag 頂掉的話，guard、status 的待發版 range
-# 與 changelog 全會改讀一個不代表上架的東西。故只認恰好 <prefix>x.y.z 的形狀。
-# `|| true`：沒有任何 released tag 是正常狀態（首發、或只有 build tag），呼叫端在 set -e
-# 下用 lt="$(last_tag …)" 接，grep 的非零 exit 會讓它中止而不是走「尚未發版」分支。
+# 「最新的 released marketing version tag」的實作在 ops/lib/release_tags.sh —— 與
+# release_changelog.sh 共用同一份。`git tag -l "<prefix>*"` 的 `*` 會跨 `/` 比對，所以
+# build tag 也落在 glob 內，且 `--sort=-v:refname` 把 ios/2.0.0+6 排在 ios/2.0.0 之上；
+# 兩邊各自維護一份收緊規則，就是「只修了其中一份」那類事故的溫床。
 last_tag() {
-  local tp; tp="$(tag_prefix "$1")"
-  git -C "$ROOT" tag -l "${tp}*" --sort=-v:refname 2>/dev/null \
-    | grep -E "^${tp}[0-9]+\.[0-9]+\.[0-9]+$" | head -1 || true
+  local out rc=0
+  out="$(release_last_tag "$1" "$ROOT")" || rc=$?
+  case "$rc" in
+    0) printf '%s\n' "$out" ;;
+    1) err "未知 component: $1（api|ios）" ;;
+    *) err "無法列出 $1 的 tag（git 失敗）—— 不把它當成「尚未發版」處理" ;;
+  esac
 }
 
 # 出過 build、但還沒有上架 tag 的 marketing version。build tag 讓這件事第一次可檢查：

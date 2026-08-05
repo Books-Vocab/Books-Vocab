@@ -20,15 +20,20 @@ COMPONENT="${1:?用法: ops/release_changelog.sh <api|ios>}"
 KG_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$KG_ROOT"
 
-# 決定 tag prefix 和 commit prefix
+# 決定 commit prefix
 case "$COMPONENT" in
-  api)  TAG_PREFIX="api/"; COMMIT_PREFIX="api:" ;;
-  ios)  TAG_PREFIX="ios/"; COMMIT_PREFIX="ios:" ;;
+  api)  COMMIT_PREFIX="api:" ;;
+  ios)  COMMIT_PREFIX="ios:" ;;
   *)    echo "✗ 未知 component: $COMPONENT" >&2; exit 1 ;;
 esac
 
-# 找最近的同類 tag
-LAST_TAG=$(git tag -l "${TAG_PREFIX}*" --sort=-v:refname 2>/dev/null | head -1)
+# 找最近的 released tag。規則的 owner 是 ops/lib/release_tags.sh，不在這裡再抄一份：
+# 這裡曾經有一份逐字副本，release.sh 那份收緊成「只認 <prefix>x.y.z」時漏了它，於是
+# 只要存在 ios/<ver>+<build> build tag，changelog 就靜默錨在 build tag 上印「無變更」。
+# shellcheck source=lib/release_tags.sh
+. "$KG_ROOT/ops/lib/release_tags.sh"
+LAST_TAG="$(release_last_tag "$COMPONENT" "$KG_ROOT")" \
+  || { echo "✗ 無法列出 ${COMPONENT} 的 tag（git 失敗）" >&2; exit 1; }
 
 if [ -z "${LAST_TAG:-}" ]; then
   RANGE=""
