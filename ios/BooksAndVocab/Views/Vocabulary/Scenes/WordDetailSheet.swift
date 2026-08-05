@@ -6,16 +6,21 @@ struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kgService) private var kgService
     @Environment(\.detailRouter) private var detailRouter
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var state = WordDetailSceneState()
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
     @State private var showAddLink = false
+    @State private var isConfirmingDelete = false
+    @State private var isArchiving = false
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
     private let wrapInNavigation: Bool
     private let showsInlineChrome: Bool
     private let onInlineClose: (() -> Void)?
+    private let onDeleted: (() -> Void)?
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
     init(
@@ -24,6 +29,7 @@ struct WordDetailSheet: View {
         wrapInNavigation: Bool = true,
         showsInlineChrome: Bool? = nil,
         onClose: (() -> Void)? = nil,
+        onDeleted: (() -> Void)? = nil,
         linkedCardStack: Binding<[VocabularyEntry]>? = nil,
         presentsEagerly: Bool = false
     ) {
@@ -32,6 +38,7 @@ struct WordDetailSheet: View {
         self.wrapInNavigation = wrapInNavigation
         self.showsInlineChrome = showsInlineChrome ?? wrapInNavigation
         self.onInlineClose = onClose
+        self.onDeleted = onDeleted
         self.externalLinkedCardStack = linkedCardStack
         // Catalog / snapshot seam: seed the presentation synchronously so a
         // `layer.render(in:)` snapshot captures the card, not the loading
@@ -50,11 +57,15 @@ struct WordDetailSheet: View {
                 WordDetailPresenter(
                     state: presenterState,
                     isExcludedFromReader: entry.isExcludedFromReader,
+                    isArchived: entry.isArchived,
+                    canArchive: entry.isSynced,
                     showsChrome: showsInlineChrome,
                     onClose: showsInlineChrome ? { handleClose() } : nil,
                     onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
+                    onToggleArchive: { handleToggleArchive() },
+                    onDelete: { isConfirmingDelete = true },
                     onAddLink: { showAddLink = true },
                     onDeleteLink: { link in
                         state.deleteLink(link, from: entry, allEntries: allEntries, kgService: kgService)
@@ -102,6 +113,16 @@ struct WordDetailSheet: View {
         .toastSheet(isPresented: $isEditing) {
             WordEditSheet(entry: entry)
         }
+        .confirmationDialog(
+            WordDetailCopy.deleteTitle(word: entry.word),
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(WordDetailCopy.delete, role: .destructive) { handleDelete() }
+            Button(WordDetailCopy.cancel, role: .cancel) {}
+        } message: {
+            Text(WordDetailCopy.deleteMessage(linkCount: state.presenterState?.card.totalLinkCount ?? 0))
+        }
         .toastSheet(isPresented: $showAddLink) {
             AddLinkSheet(
                 sourceEntry: entry,
@@ -122,6 +143,38 @@ struct WordDetailSheet: View {
         // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
         guard externalLinkedCardStack == nil else { return false }
         return wrapInNavigation || detailRouter == nil
+    }
+
+    /// 封存後**刻意不關 sheet**：圖示翻成 `archivebox.fill`，再按一次就是解除封存。
+    /// toggle 自己就是 undo，所以不需要帶動作按鈕的 undo toast（`AppToastCoordinator`
+    /// 也只吃 message/style/duration，沒有 action）。失敗訊息走既有的 `actionError` banner。
+    private func handleToggleArchive() {
+        guard !isArchiving else { return }
+        isArchiving = true
+        Task { @MainActor in
+            await state.setArchived(
+                !entry.isArchived,
+                for: entry,
+                kgService: kgService,
+                modelContext: modelContext
+            )
+            isArchiving = false
+        }
+    }
+
+    /// 刪除是 local-first 軟刪（`queueDelete` 排進 outbox，離線可用），與封存的
+    /// server-authoritative 語意相反 —— 所以這裡不需要回捲，但需要關掉 sheet：
+    /// 讓使用者盯著一張已經不存在的卡是最糟的收尾。
+    private func handleDelete() {
+        entry.queueDelete()
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success(WordDetailCopy.deleted)
+        }
+        if let onDeleted {
+            onDeleted()
+        } else {
+            handleClose()
+        }
     }
 
     private func handleClose() {

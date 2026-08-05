@@ -32,11 +32,19 @@ struct WordDetailPresenter: View {
     let state: State
     /// Live value（非 `state` 快照）— 由 `@Bindable entry` 直讀,確保勾選即時翻轉視覺。
     let isExcludedFromReader: Bool
+    /// 同為 live value。封存後 sheet 刻意不關,靠這顆圖示翻轉當回饋 **兼** undo 入口
+    /// ——再按一次就是解除封存,所以不需要帶動作的 undo toast（AppToastCoordinator 也沒有）。
+    let isArchived: Bool
+    /// 尚未同步的卡不給封存:`archiveCard` 以 word + notebookId 打伺服器,server 上還
+    /// 沒有這張卡就會 404。與其讓它失敗再回捲,不如不顯示。
+    let canArchive: Bool
     let showsChrome: Bool
     let onClose: (() -> Void)?
     let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
     let onToggleExcludeFromReader: (() -> Void)?
+    let onToggleArchive: (() -> Void)?
+    let onDelete: (() -> Void)?
     let onAddLink: (() -> Void)?
     let onDeleteLink: ((KGCardLinkSummary) -> Void)?
     let onHideLink: ((KGCardLinkSummary) -> Void)?
@@ -51,6 +59,7 @@ struct WordDetailPresenter: View {
                         systemImage: state.systemImage,
                         onClose: { onClose?() },
                         trailing: {
+                            archiveButton
                             shareButton
                             if let onEdit {
                                 VocabChromeIconButton(systemImage: "pencil", label: "編輯".localized, action: onEdit)
@@ -119,10 +128,9 @@ struct WordDetailPresenter: View {
             }
             .padding(appSkin.metrics.cardBlockPadding)
 
-            if let onToggleExcludeFromReader {
-                excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
+            if hasCardManagement {
+                cardManagementSection
                     .padding(.horizontal, appSkin.metrics.cardBlockPadding)
-                    .padding(.top, appSkin.metrics.cardBlockInnerGap)
             }
 
             Spacer()
@@ -230,6 +238,70 @@ struct WordDetailPresenter: View {
         }
         .font(appSkin.typography.caption)
         .foregroundStyle(appSkin.palette.quaternaryText)
+    }
+
+    private var hasCardManagement: Bool {
+        onToggleExcludeFromReader != nil || onDelete != nil
+    }
+
+    /// 卡片生命週期控制區。刻意壓在內容最底、與卡片之間隔一條 `AppAirDivider`
+    /// （hairline + 32pt margin，北極星二：border 退場、divider 進場）。
+    ///
+    /// 為什麼不跟封存並排在標題列：三個動作的可逆性差了兩個量級。封存完全可逆、頻率最高，
+    /// 值得標題列的單擊成本；刪除不可逆且會連帶帶走複習紀錄與知識連結，把它放進閱讀時
+    /// 反覆掃過的區域，等於訓練手指伸進一個會咬人的鄰居旁邊。
+    @ViewBuilder
+    private var cardManagementSection: some View {
+        AppAirDivider()
+
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+            if let onToggleExcludeFromReader {
+                excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
+            }
+
+            if let onDelete {
+                managementRow(
+                    title: WordDetailCopy.delete,
+                    systemImage: "trash",
+                    tone: appSkin.palette.destructive,
+                    action: onDelete
+                )
+            }
+        }
+    }
+
+    private func managementRow(
+        title: String,
+        systemImage: String,
+        tone: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                Image(systemName: systemImage)
+                    .font(appSkin.typography.body)
+                Text(title)
+                    .font(appSkin.typography.caption)
+            }
+            .foregroundStyle(tone)
+            // 只擴垂直觸控目標到 HIG 44pt 下限,不往右吃滿整列 —— 破壞性動作不該有
+            // 一條橫跨整個寬度的熱區。
+            .frame(minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var archiveButton: some View {
+        if canArchive, let onToggleArchive {
+            VocabChromeIconButton(
+                systemImage: isArchived ? "archivebox.fill" : "archivebox",
+                label: isArchived ? WordDetailCopy.unarchive : WordDetailCopy.archive,
+                action: onToggleArchive
+            )
+            .animateContentFade(isArchived)
+        }
     }
 
     @ViewBuilder
