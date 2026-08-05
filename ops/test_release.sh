@@ -1095,6 +1095,20 @@ echo "$sp2_out" | grep -q 'api/2.0.1 尚未進 origin/prod' \
   && ok "status flips to 尚未進 origin/prod when the tag is not deployed" \
   || fail_t "status reports prod ancestry as a constant: $sp2_out"
 
+# ── 22. pending 版本的上界（review 找到） ───────────────────────────────────
+section "pending-version bounds"
+
+# 22b. 高於本次版本的 build tag 不是「被跳過的版本」。把它算進 pending，會用 2.0.1
+#      事故的說詞去擋一件根本沒發生的事。
+fx_ub="$TMP5/pending-upper"; remote_ub="$TMP5/pending-upper.git"
+make_ios_release_fixture "$fx_ub" "$remote_ub"
+git -C "$fx_ub" tag "ios/3.0.0+1"          # 另一條線的實驗性 build，與本次無關
+ub_rc=0
+ub_out="$(bash "$fx_ub/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || ub_rc=$?
+[[ "$ub_rc" -eq 0 && -n "$(git -C "$fx_ub" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "a build tag above the requested version does not block the release" \
+  || fail_t "3.0.0 build tag blocked an unrelated 2.0.1 release: $ub_out"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
