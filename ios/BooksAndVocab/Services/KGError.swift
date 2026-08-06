@@ -69,6 +69,17 @@ enum SyncFailurePresentation {
         }
     }
 
+    /// 只取「為什麼失敗」，不帶「哪個操作失敗」的前綴。
+    ///
+    /// 給逐步同步清單用：那一列本身就是操作名，`message(label:error:)` 的
+    /// 「『下載單字』失敗：…」在該處會把操作名說第二遍。更重要的是它擋住了
+    /// `error.localizedDescription` 這條捷徑——後者對 `CancellationError` 會吐
+    /// 英文的「The operation couldn't be completed.」，對 `KGError.httpError`
+    /// 會把內部 path（"GET api/vocab failed"）漏到使用者眼前。
+    static func reason(for error: Error) -> String {
+        reasonTitle(for: error)
+    }
+
     private static func reasonTitle(for error: Error) -> String {
         if let kgError = error as? KGError {
             return reasonTitle(for: kgError)

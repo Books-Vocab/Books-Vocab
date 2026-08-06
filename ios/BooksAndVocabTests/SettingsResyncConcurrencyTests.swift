@@ -1,0 +1,250 @@
+//
+//  SettingsResyncConcurrencyTests.swift
+//  Books & Vocab Tests
+//
+//  `SettingsCoordinator.resync` 的兩個契約：
+//
+//  1. **額度與連線檢查是併發的**，不是兩趟序列往返。用重疊探針驗——量時間會 flaky，
+//     問「對方在不在裡面」不會。
+//  2. **它把 backgroundSync 的事件餵進 SyncProgressStore，而且順序不亂。** reporter
+//     走 AsyncStream 就是為了這個：每個事件開一個 `Task { @MainActor in }` 不保證
+//     順序，計數器會彈回。這裡直接把亂序來源（多條腿併發送事件）造出來檢查。
+//
+//  podcast 那條腿的併發**沒有**在這裡測：`runPodcastLeg` 直接 new
+//  `PodcastSyncService`，要驗它得讓單元測試打真網路。那條的驗收在 kg-pool-2 對
+//  felix 生產 log 的端到端量測（podcast 段 6.1s → 2.5s 以下）。這裡誠實留白，
+//  不用一個假的替身假裝測過了。
+//
+
+import Foundation
+import SwiftData
+import Testing
+@testable import BooksAndVocab
+
+@MainActor
+struct SettingsResyncConcurrencyTests {
+
+    // MARK: - Mocks
+
+    private final class MockAuth: AuthManaging {
+        var isLoggedIn: Bool = true
+        var userId: String? = "test_user"
+        var token: String? = "test_token"
+        var displayName: String?
+        var userEmail: String?
+        var avatarURL: URL?
+        var authError: String?
+        var isAuthenticating: Bool = false
+        var isDemoMode: Bool = false
+
+        func enterDemoMode(modelContainer: ModelContainer) {}
+        func exitDemoMode(modelContainer: ModelContainer) {}
+        func refreshSessionIfNeeded() {}
+        func login(userId: String, token: String) {}
+        func login(customToken: String) async {}
+        func logout(modelContainer: ModelContainer?, reason: String) {}
+        func loginWithGoogle(modelContainer: ModelContainer?) {}
+        func loginWithApple(modelContainer: ModelContainer?) {}
+    }
+
+    /// 記錄「誰在裡面」的重疊探針。兩支互相看得到對方 → 它們併發。
+    /// 各自先 yield 一次讓對方有機會進來；若是序列的，第一支跑完時第二支還沒開始，
+    /// `sawPeer` 永遠是 false。
+    private actor OverlapProbe {
+        private var inFlight: Set<String> = []
+        private(set) var sawPeer: Set<String> = []
+        private(set) var order: [String] = []
+
+        func enter(_ name: String) {
+            inFlight.insert(name)
+            order.append("enter:\(name)")
+        }
+
+        func observePeers(_ name: String) {
+            if inFlight.subtracting([name]).isEmpty == false { sawPeer.insert(name) }
+        }
+
+        func leave(_ name: String) {
+            inFlight.remove(name)
+            order.append("leave:\(name)")
+        }
+    }
+
+    private final class ProbeKGService: KGServing {
+        var lastBackgroundSyncError: String?
+        var serverURL: String = "https://example.com"
+        var isConnected: Bool = true
+        var lastSyncDate: Date?
+        var serverCardCount: Int = 0
+        var sessionExpiredReason: String?
+
+        let probe = OverlapProbe()
+        /// backgroundSync 要送出的事件；測試用它模擬多條腿發出的回報。
+        var eventsToEmit: [SyncProgressEvent] = []
+
+        func backgroundSync(container: ModelContainer) async {}
+
+        func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async {
+            for event in eventsToEmit { progress?(event) }
+        }
+
+        func healthCheck() async { await run("health") }
+        func fetchQuota() async { await run("quota") }
+
+        private func run(_ name: String) async {
+            await probe.enter(name)
+            // 兩次 yield：第一次讓對方有機會被排進來，第二次讓對方的 enter 生效。
+            await Task.yield()
+            await Task.yield()
+            await probe.observePeers(name)
+            await probe.leave(name)
+        }
+
+        // MARK: 其餘成員維持 fatalError stub（對齊 StubKGService 慣例）
+        func currentAuthToken() async throws -> String { "t" }
+        func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
+        func triggerPipeline(notebookId: String) async throws {}
+        func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome { .unchanged }
+        func fetchNotebooks() async throws -> [KGNotebook] { [] }
+        func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
+        func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook { fatalError("unused") }
+        func deleteNotebook(id: String) async throws {}
+        func fetchUserConfig() async throws -> KGUserConfig { fatalError("unused") }
+        func fetchEntitlements() async throws -> KGEntitlements { fatalError("unused") }
+        func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements { fatalError("unused") }
+        func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig { fatalError("unused") }
+        func updateReviewClockConfig(_ reviewClock: KGReviewClockConfig) async throws -> KGUserConfig { fatalError("unused") }
+        func updateReviewModeConfig(_ reviewMode: KGReviewModeConfig) async throws -> KGUserConfig { fatalError("unused") }
+        func updateVocabUIConfig(_ vocabUI: KGVocabUIConfig) async throws -> KGUserConfig { fatalError("unused") }
+        func updateAutoLinkConfig(_ autoLink: KGAutoLinkConfig) async throws -> KGUserConfig { fatalError("unused") }
+        func deleteAccount() async throws {}
+        func pullGraphLinks() async throws -> [KGGraphLink] { [] }
+        func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink { fatalError("unused") }
+        func deleteLink(linkId: String, notebookId: String) async throws {}
+        func hideLink(linkId: String, notebookId: String) async throws {}
+        func unhideLink(linkId: String, notebookId: String) async throws {}
+        func deleteCard(word: String, notebookId: String) async throws {}
+        func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse { fatalError("unused") }
+        func archiveCard(word: String, archived: Bool, notebookId: String) async throws {}
+        func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse { fatalError("unused") }
+        func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) { (0, 0) }
+        func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int) { (0, 0) }
+        func pullReviewEvents(container: ModelContainer) async throws {}
+        func pushReviewQuietly(container: ModelContainer) async {}
+        func clearLocalData(container: ModelContainer, reason: String) async {}
+        func pullCopiedDeck(container: ModelContainer, notebookId: String) async {}
+        func copyDeck(deckId: String, idempotencyKey: String, notebookName: String?) async throws -> DeckCopyResponse { fatalError("unused") }
+        // `DictionaryServing` 整組走 protocol extension 的預設實作（全部 throw
+        // "unavailable"），這裡不覆寫。
+    }
+
+    private static func makeContainer() -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try! ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            PodcastSeries.self, PodcastEpisode.self,
+            configurations: config
+        )
+    }
+
+    // MARK: - Tests
+
+    @Test("額度與連線檢查併發，不是兩趟序列往返")
+    func quotaAndHealthOverlap() async {
+        let coordinator = SettingsCoordinator()
+        let service = ProbeKGService()
+
+        // container 必須用 local 撐住：`resync` 會走 `modelContext.container
+        // .mainContext.save()`，容器若是暫時值，那句在 SwiftData 內部直接 SIGTRAP。
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: MockAuth(), kgService: service, modelContext: container.mainContext
+        )
+
+        let sawPeer = await service.probe.sawPeer
+        #expect(sawPeer == ["health", "quota"],
+                "兩支都要看見對方在裡面；序列執行時 sawPeer 會是空的。實際：\(sawPeer)")
+    }
+
+    @Test("resync 把 backgroundSync 的事件依序餵進 store，計數器不倒退")
+    func progressEventsReachTheStoreInOrder() async {
+        let coordinator = SettingsCoordinator()
+        let service = ProbeKGService()
+        service.eventsToEmit = [
+            .started(.push),
+            .finished(.push, status: .done, detail: "p"),
+            .started(.pull),
+            .advanced(.pull, current: 10, total: 100, detail: "a"),
+            .advanced(.pull, current: 80, total: 100, detail: "b"),
+            .finished(.pull, status: .done, detail: "q")
+        ]
+
+        // container 必須用 local 撐住：`resync` 會走 `modelContext.container
+        // .mainContext.save()`，容器若是暫時值，那句在 SwiftData 內部直接 SIGTRAP。
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: MockAuth(), kgService: service, modelContext: container.mainContext
+        )
+
+        let steps = coordinator.syncProgress.steps
+        #expect(steps.map(\.id) == KGService.syncStepIDs().map(\.rawValue) + ["status"])
+        #expect(steps.first(where: { $0.id == "push" })?.status == .done)
+        #expect(steps.first(where: { $0.id == "pull" })?.status == .done)
+        #expect(steps.first(where: { $0.id == "pull" })?.current == 80,
+                "advanced 事件必須依序抵達；亂序時 80 會被 10 蓋掉")
+        #expect(steps.first(where: { $0.id == "status" })?.status == .done,
+                "額度與連線那一列由 resync 自己收尾")
+    }
+
+    @Test("成功一輪收在 .completed 且進度條走到滿")
+    func successfulRoundCompletes() async {
+        let coordinator = SettingsCoordinator()
+        let service = ProbeKGService()
+
+        // container 必須用 local 撐住：`resync` 會走 `modelContext.container
+        // .mainContext.save()`，容器若是暫時值，那句在 SwiftData 內部直接 SIGTRAP。
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: MockAuth(), kgService: service, modelContext: container.mainContext
+        )
+
+        #expect(coordinator.syncProgress.phase == .completed)
+        #expect(coordinator.syncProgress.fraction == 1.0)
+    }
+
+    @Test("backgroundSync 回報錯誤時收在 .failed，且不把沒跑的步驟刷成綠勾")
+    func failedRoundDoesNotFakeCompletion() async {
+        let coordinator = SettingsCoordinator()
+        let service = ProbeKGService()
+        service.lastBackgroundSyncError = "部分失敗"
+        service.eventsToEmit = [.finished(.push, status: .error, detail: "boom")]
+
+        // container 必須用 local 撐住：`resync` 會走 `modelContext.container
+        // .mainContext.save()`，容器若是暫時值，那句在 SwiftData 內部直接 SIGTRAP。
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: MockAuth(), kgService: service, modelContext: container.mainContext
+        )
+
+        #expect(coordinator.syncProgress.phase == .failed)
+        #expect(coordinator.syncProgress.fraction < 1.0)
+        #expect(coordinator.syncProgress.steps.first(where: { $0.id == "pull" })?.status == .waiting,
+                "沒跑到的步驟不得被收尾邏輯打勾")
+    }
+
+    @Test("demo 模式與登出一律 no-op，連進度都不該開始")
+    func resyncIsNoOpWithoutARealSession() async {
+        let demoAuth = MockAuth()
+        demoAuth.isDemoMode = true
+        let coordinator = SettingsCoordinator()
+
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: demoAuth, kgService: ProbeKGService(),
+            modelContext: container.mainContext
+        )
+
+        #expect(coordinator.syncProgress.phase == .ready)
+        #expect(coordinator.syncProgress.steps.isEmpty)
+    }
+}

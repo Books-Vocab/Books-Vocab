@@ -75,13 +75,18 @@ struct KGServiceSyncReportingTests {
     @Test("有變更時三種變動一起計數")
     func pullDetailCountsEveryKindOfChange() {
         let detail = KGService.pullDetail(inserted: 2, updated: 3, deleted: 1)
-        #expect(detail == L10n.format("更新 %@ 筆", "6"))
+        #expect(detail == L10n.format("同步 %@ 筆", "6"))
         #expect(detail != L10n.string("已是最新"))
     }
 
-    @Test("push 的筆數是兩腿相加")
-    func pushDetailSumsBothLegs() {
-        #expect(KGService.pushDetail(states: 4, events: 7) == L10n.format("已送出 %@ 筆", "11"))
+    @Test("push 的筆數含 skipped —— 只算 updated/inserted 的話，伺服器全判重複的重送會顯示 0 筆")
+    func pushDetailCountsSkippedToo() {
+        // 複習紀錄重送那個 bug 的真實形狀：送出 9,580 筆，伺服器全部去重。
+        let repush = KGService.pushDetail(states: (updated: 0, skipped: 0), events: (inserted: 0, skipped: 9580))
+        #expect(repush == L10n.format("已送出 %@ 筆", "9580"),
+                "這一列的存在意義就是讓這種重送現形")
+        #expect(KGService.pushDetail(states: (updated: 4, skipped: 1), events: (inserted: 7, skipped: 2))
+            == L10n.format("已送出 %@ 筆", "14"))
     }
 
     // MARK: - 事件對映
@@ -105,7 +110,9 @@ struct KGServiceSyncReportingTests {
         let event = KGService.legFinishedEvent(
             .reviewEvents, result: Result<Void, Error>.failure(Boom()), detail: "d"
         )
-        #expect(event == .finished(.reviewEvents, status: .error, detail: "boom"))
+        #expect(event == .finished(.reviewEvents, status: .error,
+                                   detail: SyncFailurePresentation.reason(for: Boom())),
+                "detail 必須走本地化的 reason，不是 error.localizedDescription")
     }
 
     @Test("push 兩腿都成功才寫筆數")
@@ -114,7 +121,7 @@ struct KGServiceSyncReportingTests {
             states: .success((updated: 2, skipped: 0)),
             events: .success((inserted: 5, skipped: 1))
         )
-        #expect(event == .finished(.push, status: .done, detail: L10n.format("已送出 %@ 筆", "7")))
+        #expect(event == .finished(.push, status: .done, detail: L10n.format("已送出 %@ 筆", "8")))
     }
 
     @Test("push 任一腿失敗就整列失敗——兩個位置分別驗，避免只守住其中一個")
@@ -123,13 +130,15 @@ struct KGServiceSyncReportingTests {
             states: .failure(Boom()),
             events: .success((inserted: 5, skipped: 0))
         )
-        #expect(statesFailed == .finished(.push, status: .error, detail: "boom"))
+        #expect(statesFailed == .finished(.push, status: .error,
+                                          detail: SyncFailurePresentation.reason(for: Boom())))
 
         let eventsFailed = KGService.pushFinishedEvent(
             states: .success((updated: 2, skipped: 0)),
             events: .failure(Boom())
         )
-        #expect(eventsFailed == .finished(.push, status: .error, detail: "boom"))
+        #expect(eventsFailed == .finished(.push, status: .error,
+                                          detail: SyncFailurePresentation.reason(for: Boom())))
     }
 
     @Test("podcast 四種結果各自對映；flag 關著（nil）不得畫成失敗")
@@ -195,7 +204,13 @@ struct KGServiceSyncReportingTests {
     // MARK: - 端到端：縫真的接上了
 
     @Test("未登入跑一輪：reporter 收到開場與終態事件，順序與實際執行一致")
-    func reporterReceivesEventsFromARealRound() async {
+    func reporterReceivesEventsFromARealRound() async throws {
+        // `backgroundSync` 在離線時什麼事件都不發就 return（那是刻意的：離線不該
+        // 產生錯誤日誌）。斷網的 runner 上這條測試會穩定失敗而且看起來像真 bug，
+        // 所以明講前提而不是假裝沒有。本測試零網路呼叫——`currentAuthToken()` 在
+        // 組出任何 URLRequest 之前就因 nil token 丟 unauthorized，兩條 push 腿也
+        // 因空 payload 早退——它只需要 reachability 是 true。
+        try #require(NetworkMonitor.shared.isConnected, "此測試需要 reachability 為 true（不打網路，只是 backgroundSync 的離線 guard 會先擋下整輪）")
         let (service, _) = Self.makeService()
         // reporter 從非結構化 Task 被呼叫，收集器必須自帶同步。
         let collector = EventCollector()
@@ -211,12 +226,32 @@ struct KGServiceSyncReportingTests {
         // 否則那兩列會永遠停在轉圈。
         #expect(events.contains { if case .finished(.pull, .error, _) = $0 { return true }; return false },
                 "pull 失敗後沒有補發終態，UI 會卡在 running：\(events)")
-        #expect(events.contains { if case .finished(.dictionary, .error, _) = $0 { return true }; return false })
+        // `.dictionary` 這一輪從沒 started 過（401 發生在 `api/vocab` 那個 GET，
+        // 遠早於字典卡投影），所以它不該收到任何事件——維持 waiting 的灰列才誠實。
+        // 硬補一個 `.error` 會讓它的權重被算滿，第一步就死的一輪顯示 80%。
+        #expect(!events.contains { if case .finished(.dictionary, _, _) = $0 { return true }; return false },
+                "沒開始過的步驟不該有終態事件：\(events)")
         // 401 早退：podcast 那一段根本沒跑到，不得有它的事件。
         #expect(!events.contains { if case .started(.podcast) = $0 { return true }; return false })
     }
 
-    @Test("不傳 reporter 的既有 caller 一切照舊，不會因為缺少回報而改變行為")
+    @Test("只實作單參數版的既有 conformer，經協定呼叫雙參數版仍會被叫到")
+    func legacyConformerStillReceivesTheCall() async {
+        // 這是「縫的形狀」唯一會無聲壞掉的環節：若日後把雙參數版移出協定，
+        // 呼叫會靜態綁到 extension default，所有只實作單參數版的 mock 就此收不到
+        // ——而每個 mock 的 body 都是空的，沒有任何測試會變紅。
+        final class OneArgOnly: BackgroundSyncing {
+            var lastBackgroundSyncError: String?
+            private(set) var calls = 0
+            func backgroundSync(container: ModelContainer) async { calls += 1 }
+        }
+        let legacy = OneArgOnly()
+        let syncing: any BackgroundSyncing = legacy
+        await syncing.backgroundSync(container: Self.makeContainer(), progress: { _ in })
+        #expect(legacy.calls == 1, "protocol extension 的預設實作必須轉呼單參數版")
+    }
+
+    @Test("不傳 reporter 的既有 caller 一切照舊")
     func legacyCallerStillWorksWithoutReporter() async {
         let (service, invalidator) = Self.makeService()
         await service.backgroundSync(container: Self.makeContainer())
