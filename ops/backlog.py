@@ -1018,6 +1018,34 @@ APP_COLUMNS = (
 )
 
 
+def view_entry_ids(text: str) -> set[str]:
+    """Every entry id sitting in the FIRST cell of a table row of a view.
+
+    Deliberately NOT `parse_legacy_table`, which is the obvious reuse and the
+    wrong one: it skips every `APP-` row by design, so on the real ledger it
+    reports 129 rows for 138 entries. A guard built on it would be blind to the
+    whole APP stream — exactly half of what it is meant to protect. Only the id
+    column is needed here, so this borrows `_split_row_raw` / `_clean` /
+    `_ID_RE` and nothing else.
+
+    The enumerated hole, stated rather than papered over: a first cell that
+    does not match `_ID_RE` is not seen. That is the same set of rows
+    `parse_legacy_table` reports as `unrecognised-id`.
+    """
+    ids: set[str] = set()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            continue
+        cells = _split_row_raw(line)
+        if not cells:
+            continue
+        first = _clean(cells[0])
+        if _ID_RE.match(first):
+            ids.add(first)
+    return ids
+
+
 def render_view(store: Path, *, verified_against: str) -> str:
     """Render the human-readable view of the store. Deterministic."""
     imp = list_entries(store, stream="IMP")
@@ -1175,6 +1203,17 @@ def build_parser() -> argparse.ArgumentParser:
              "see _doc_anchor, a branch sha gets orphaned by rebase)",
     )
     p_render.add_argument("--commit", action="store_true", help="actually write (default: stdout)")
+    p_render.add_argument(
+        "--allow-drop",
+        dest="allow_drop",
+        nargs="+",
+        metavar="ID",
+        default=[],
+        help="ids you accept deleting: render refuses to write a view that loses an "
+             "entry the current --out has and the store does not (they are named on "
+             "stderr; copy them here). Named, not a bare flag, so a bypass cannot be "
+             "reached for without reading what it drops",
+    )
     p_render.add_argument("--json", action="store_true")
 
     return parser
@@ -1396,9 +1435,95 @@ def _cmd_import(args) -> int:
     return 2 if lost else 0
 
 
+def _read_outgoing_view(path: Path) -> str | None:
+    """The view about to be replaced, or None if there is nothing to replace.
+
+    Raised as a BacklogError rather than let through: adding this read means
+    `--out` can now fail to be read, and a UnicodeDecodeError is not something
+    main()'s handler catches, so a caller who pointed --out at a non-view would
+    get a traceback where they used to get a file.
+    """
+    if not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BacklogError(
+            f"cannot read the current {path} to check what a render would delete "
+            f"({exc.__class__.__name__}); --out must point at a rendered view. "
+            f"Nothing was written."
+        ) from exc
+
+
 def _cmd_render(args) -> int:
     verified = args.verified_against or _doc_anchor()
     text = render_view(args.store, verified_against=verified)
+
+    # Diffed against the text about to be WRITTEN, not against the store's id
+    # set: what has to survive is the artifact. Comparing to the store would
+    # wave through an entry that render_view itself failed to emit, and today
+    # the two sets happen to agree, so that mistake would look correct.
+    outgoing = _read_outgoing_view(args.out)
+    dropped = (
+        [] if outgoing is None else sorted(view_entry_ids(outgoing) - view_entry_ids(text))
+    )
+    authorised = set(args.allow_drop)
+    unauthorised = [entry_id for entry_id in dropped if entry_id not in authorised]
+
+    if dropped:
+        # Both paths speak. The defect being fixed is silence, so `--allow-drop`
+        # buys permission, not quiet.
+        refusing = bool(unauthorised) and args.commit
+        named = unauthorised if refusing else dropped
+        lines = [
+            f"{'REFUSED' if refusing else 'WARNING'}: {', '.join(named)} "
+            f"{'appears' if len(named) == 1 else 'appear'} in {args.out} but not in "
+            f"the store; writing deletes {'it' if len(named) == 1 else 'them'}."
+        ]
+        if refusing:
+            # Routed by stream, because the two recovery routes are not
+            # interchangeable: `import` parses the legacy IMP table and skips
+            # every APP row, so offering it for an APP id would hand the caller
+            # a command that exits 0 and restores nothing — this defect again,
+            # one layer down.
+            if any(entry_id.startswith("IMP-") for entry_id in named):
+                lines.append(
+                    f"  lost IMP rows      -> ops/backlog.py import --from {args.out} --commit"
+                )
+            if any(entry_id.startswith("APP-") for entry_id in named):
+                lines.append(
+                    "  lost APP rows      -> not recoverable that way (the importer reads "
+                    "the IMP table only); re-file with `ops/backlog.py add`"
+                )
+            lines.append("  the loss is meant  -> --allow-drop " + " ".join(named))
+            lines.append("nothing was written.")
+        elif not args.commit:
+            # A dry-run neither writes nor drops, whatever --allow-drop says, so
+            # it must not report a deletion it is not performing.
+            lines.append(
+                "nothing was written (dry-run); --commit would "
+                + ("drop them." if not unauthorised else "be refused unless --allow-drop names them.")
+            )
+        else:
+            lines.append("dropping them as authorised by --allow-drop.")
+        print("\n".join(lines), file=sys.stderr)
+
+    if unauthorised and args.commit:
+        # 2, not 64: 64 is this file's usage-error code (`_cmd_update`), while 2
+        # is what `import` and `validate` return when data would be lost.
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "schema": "kg.backlog.render.v1",
+                        "out": str(args.out),
+                        "written": False,
+                        "dropped": unauthorised,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        return 2
 
     if args.commit:
         _write_atomic(args.out, text)
