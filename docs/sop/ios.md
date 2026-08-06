@@ -204,9 +204,12 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 | `0` | 測試全綠 | `ok` |
 | `1` | 測試有紅 / false-green（編譯成功但 0 test 執行）| `fail` |
 | `65` | **建置/編譯失敗**（xcodebuild 原生碼，與「測試紅」可區分）| `inconclusive` |
-| 其他非零 | inconclusive（infra 異常等）；絕不會以 0 偽綠收場 | `inconclusive` |
+| `128+N`（`143`=SIGTERM、`129`=SIGHUP、`130`=SIGINT）| **被訊號中止**：cleanup 已跑一次（鎖與租借模擬器已釋放），中斷點之後的步驟未執行 | 無 verdict（run 未完成）|
+| 其他非零 | inconclusive（infra 異常等）| `inconclusive` |
 
 看到 `65` = 程式碼編不過，去看 `[ios][error] category=compiler` 那行真錯誤，**不是** runner 壞。
+
+**訊號中止不再以 0 偽綠收場（2026-08-06 起）。** 在此之前 `ios_test.sh` 用 `trap cleanup EXIT INT TERM` 綁訊號卻不 re-raise：實測被 SIGTERM 打中後，它跑完 cleanup、**從中斷點繼續往下執行**、印出完整正常輸出、最後 `exit 0`，且 cleanup 又在 EXIT 再跑一次。危險的是後半段——cleanup 已釋放 `/tmp/kg-ios-build.lock` 與租借模擬器，實測留下 **19.35 秒「鎖已釋放但行程仍在寫共享 DerivedData」** 的視窗；`ops/lib/streaming_command.py` 對逾時 child 送 SIGTERM 後要等 5 秒才升級 SIGKILL，正好落在這個視窗裡。現由 `ops/lib/ios_signal_traps.sh` 保證 cleanup 恰好一次並以 128+N 死亡（同一探針量到 0 個 lockless 取樣、訊號後 0.71 秒死亡）。看到 `143` 就是**有人／有東西砍了這個 run**，不是測試結果，別當紅也別當綠——重跑。回歸：`ops/tests/test_ios_signal_traps.sh`。
 
 **`cache.status` — 自我描述，不用再交叉比對 `buildForTestingMs`：**
 
