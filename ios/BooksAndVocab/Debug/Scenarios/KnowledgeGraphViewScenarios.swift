@@ -54,9 +54,13 @@ private enum KnowledgeGraphViewFixture {
     var expected: ExpectedShape {
         switch self {
         case .populated:
-            // 全螢幕知識圖 = Stats 縮圖關聯圖的放大版（primary 全 active）。floor
-            // 拉高到行銷 spec 的密度量級，擋掉舊 linked[:24] 窗口只剩 3 節點的空洞回退。
-            return .init(visibleEntries: .atLeast(80), graphLinks: .atLeast(50), graphNodes: .atLeast(80), graphEdges: .atLeast(50))
+            // 全螢幕知識圖 = Stats 縮圖關聯圖的放大版（primary 全 active）。
+            // 門檻對齊凍結 world：`vocabulary.knowledgeGraphPopulated` 是 4 筆
+            // entry、兩對雙向 link（4 條）→ 4 節點 4 邊。原本 (80,50,80,50) 是
+            // 行銷密度時代的 floor，凍結後補資料等於繼續餵 catalog（違反
+            // catalog_scope.md §FROZEN 紅線），所以改斷言不改 world。對帳測試：
+            // ops/tests/test_catalog_scene_expectations.py
+            return .init(visibleEntries: .atLeast(4), graphLinks: .atLeast(4), graphNodes: .atLeast(4), graphEdges: .atLeast(4))
         case .loggedOutEmpty:
             return .init(visibleEntries: .exactly(0), graphLinks: .exactly(0), graphNodes: .exactly(0), graphEdges: .exactly(0))
         }

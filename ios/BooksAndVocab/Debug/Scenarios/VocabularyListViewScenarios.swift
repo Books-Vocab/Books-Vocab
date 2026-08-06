@@ -86,10 +86,15 @@ enum VocabularyListViewScenarios {
                 // AppThemeContainer(.system) otherwise follows the dark sim. Matches
                 // the reader marketing shot so the website set reads as one light
                 // family (the Knowledge Graph WKWebView stays its own dark viz).
+                // 門檻對齊凍結 world：`vocabulary.vocabListPopulated` 只有 5 筆
+                // entry、4 筆可見。原本的 80 是行銷密度時代的宣告，凍結後補資料
+                // 等於繼續餵 catalog（違反 catalog_scope.md §FROZEN 紅線），所以
+                // 改的是斷言不是 world。對帳測試：
+                // ops/tests/test_catalog_scene_expectations.py
                 VocabularyListViewScene(
                     fixture: .reviewedMarketing,
                     auth: .signedIn,
-                    expected: .visibleAtLeast(80),
+                    expected: .visibleAtLeast(4),
                     initialReviewStates: [.reviewed],
                     reviewSettingsStore: VocabularyListViewScene.marketingFrozenStore
                 )
