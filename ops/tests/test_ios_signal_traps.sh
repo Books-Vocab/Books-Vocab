@@ -19,25 +19,53 @@
 #   4. An UNinterrupted run must still exit 0 with cleanup run once — this is
 #      what falsifies an "always self-kill" or "never run cleanup" fake fix.
 #
-# A2 is the load-bearing assertion, not A3. Measured on bash 3.2.57/darwin: a
-# bare `trap cleanup EXIT` already dies 129 with cleanup once under SIGHUP, so
-# A3 passes even against the pre-fix shape — only the TERM case discriminates.
-# A3 pins the explicit HUP handler in place; it does not prove the fix.
+# WHICH ASSERTION PROVES WHAT (measured, not assumed — bash 3.2.57/darwin):
+#   * A2 (SIGTERM) is load-bearing. A3 (SIGHUP) is NOT: a bare `trap cleanup
+#     EXIT` already dies 129 with cleanup once under SIGHUP, so A3 stays green
+#     even with `trap "kg_on_signal HUP" HUP` deleted from the lib outright
+#     (verified by mutation). A3 is kept as a status/cleanup guard only — the
+#     assertion that actually pins the explicit HUP handler is F3, which reads
+#     the handler's own diagnostic off stderr. Nothing but kg_on_signal can
+#     produce that line: bash's implicit EXIT-on-fatal-signal path is silent,
+#     and bash's own "Hangup: 1" goes to the HARNESS's stderr, not the victim's.
+#   * Section D is a live control: it runs the OLD trap shape through the SAME
+#     fixture and requires it to still show rc=0 / cleanup twice / RESUMED. If
+#     the fixture ever stops delivering signals (CI timing, a bash change), D
+#     goes red instead of A silently going green for the wrong reason.
+#   * Section E is the hostile-stderr matrix. It uses REAL unwritable
+#     descriptors, never a mock, because the whole defect is that the real
+#     condition behaves differently from a simulated one.
+#   * F4/F6 prove the process was KILLED BY the signal rather than calling
+#     `exit 128+N`. Producer of that string: the harness's own bash, printing a
+#     job-status line derived from the kernel wait status when it reaps a
+#     WIFSIGNALED child. Measured: present for a real re-raise, ABSENT for an
+#     `exit 143` victim — so it discriminates, which plain rc=143 cannot.
 #
-# Section D is a live control: it runs the OLD trap shape through the SAME
-# fixture and requires it to still show rc=0 / cleanup twice / RESUMED. If the
-# fixture ever stops delivering signals (CI timing, a bash change), D goes red
-# instead of A silently going green for the wrong reason.
+# COUNTING CLEANUPS — why an exact sentinel and not `wc -l`:
+# When a bash builtin's write FAILS, the bytes stay in bash's stdio buffer and
+# are flushed into the NEXT file opened on that fd. So in sections E/G the
+# handler's diagnostic — which never reached the closed/broken stderr — is
+# flushed into $MARKER when cleanup opens it, and `wc -l` would count it as an
+# extra cleanup. Measured on bash 3.2.57. RUN_CLEANUPS therefore counts only
+# lines equal to the sentinel `cleaned`, which only cleanup() can write.
 #
-# Deliberately NOT tested: SIGINT. A background child of a non-interactive shell
-# has SIGINT set to SIG_IGN, so the harness cannot deliver it; the victim just
-# finishes normally and the case would be green for the wrong reason. The lib
-# still installs an INT handler for interactive/foreground use.
+# Deliberately NOT tested:
+#   * SIGINT. A background child of a non-interactive shell has SIGINT set to
+#     SIG_IGN, so the harness cannot deliver it; the victim just finishes
+#     normally and the case would be green for the wrong reason. The lib still
+#     installs an INT handler for interactive/foreground use.
+#   * A pty whose master was closed (the `ssh -t` drop). Its write fails with an
+#     error return, which is the SAME code path as E1/E2's EBADF — the handler
+#     either survives a failed write or it does not. Building a real pty here
+#     would add a dependency without adding a distinct failure mode.
 #
-# NOT REGISTERED YET: `ops/test_ops.sh` and `ops/tests/test_ops_ci_coverage.sh`
-# are owned by another change this round, so this file has no `ios-signal-traps`
-# group yet. Run it directly (`./ops/tests/test_ios_signal_traps.sh`) until the
-# group is wired up.
+# REGISTERED: `ops/test_ops.sh:54` declares the `ios-signal-traps` group and
+# `ops/tests/test_ops_ci_coverage.sh:53` puts it in LINUX_GROUPS, so CI runs
+# this file. That wiring landed in the same batch as this header; an earlier
+# draft said NOT REGISTERED and was already false by the time it shipped.
+# What that means for section B: it guards the ios_test.sh wiring and CI now
+# executes it unconditionally, so a future edit reverting that wiring is
+# caught by CI, not only by the cutover gate that routes on this path.
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -55,9 +83,10 @@ cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT
 
 # ── fixture ───────────────────────────────────────────────────────────────────
-# Two victims with IDENTICAL bodies, differing only in how the traps are armed:
-# the lib under test vs. the pre-fix shape. Both append to $MARKER from cleanup
-# and print RESUMED only if execution survives the interruption point.
+# Victims with IDENTICAL bodies, differing only in how the traps are armed (the
+# lib under test vs. the pre-fix shape) or in how cleanup behaves. All append
+# the sentinel `cleaned` to $MARKER from cleanup, and print RESUMED only if
+# execution survives the interruption point.
 cat >"$TMP/victim_lib.sh" <<EOF
 set -euo pipefail
 source "$LIB"
@@ -77,30 +106,77 @@ echo RESUMED
 exit 0
 EOF
 
-# run_victim <victim-file> <signal|""> <sleep-seconds>
-# Sets RUN_RC / RUN_CLEANUPS / RUN_OUT.
+# Cleanup that reports failure. Releasing a lock can fail for real (a stale NFS
+# handle, a vanished lockdir). It must not cost us the re-raise: `set -e` in the
+# caller plus an &&-list in the lib would abort the handler at that point.
+cat >"$TMP/victim_cleanupfails.sh" <<EOF
+set -euo pipefail
+source "$LIB"
+cleanup() { echo cleaned >> "\$MARKER"; return 3; }
+kg_install_signal_traps cleanup
+sleep "\$SLEEP"
+echo RESUMED
+exit 0
+EOF
+
+# A non-ios caller: the diagnostic tag must not be hardcoded to [ios_test], or
+# the lib cannot be reused by the other scripts carrying this same trap shape.
+cat >"$TMP/victim_tagged.sh" <<EOF
+set -euo pipefail
+source "$LIB"
+cleanup() { echo cleaned >> "\$MARKER"; }
+kg_install_signal_traps cleanup kg_reconcile
+sleep "\$SLEEP"
+echo RESUMED
+exit 0
+EOF
+
+# run_victim <victim-file> <signal|""> <sleep-seconds> [stderr-mode]
+# stderr-mode: split (default) | closed | deadpipe
+#   split    — fd 2 to its own file, so RUN_ERR proves the diagnostic went to
+#              STDERR and RUN_OUT proves it did not pollute stdout (ios_test.sh
+#              --json must emit a single JSON document on stdout).
+#   closed   — `2>&-`. Writes fail EBADF. Real, not simulated.
+#   deadpipe — fd 2 is a pipe whose reader has already exited, so writes raise
+#              SIGPIPE. Built with process substitution: both pipe ends exist at
+#              fork time, so there is no open() race. (A FIFO would block on
+#              open-for-write until a reader appears — measured, and the reason
+#              this is not a mkfifo.)
+# Sets RUN_RC / RUN_CLEANUPS / RUN_OUT / RUN_ERR / RUN_PID / RUN_WAITMSG.
 # bash defers a trapped signal until the foreground child (here `sleep`)
 # returns, so each signal case costs ≈SLEEP seconds; 2s is enough.
 run_victim() {
-  local victim="$1" sig="$2" slp="$3"
-  local tag marker out pid rc=0
+  local victim="$1" sig="$2" slp="$3" mode="${4:-split}"
+  local tag marker out err wmsg pid rc=0
   tag="$(date +%s)-$$-${RANDOM}"
   marker="$TMP/marker.$tag"; out="$TMP/out.$tag"
-  : >"$marker"; : >"$out"
+  err="$TMP/err.$tag";       wmsg="$TMP/wait.$tag"
+  : >"$marker"; : >"$out"; : >"$err"; : >"$wmsg"
 
-  MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>&1 &
+  case "$mode" in
+    split)    MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>"$err" & ;;
+    closed)   MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2>&-     & ;;
+    deadpipe) MARKER="$marker" SLEEP="$slp" bash "$victim" >"$out" 2> >(exit 0) & ;;
+    *) echo "FATAL: run_victim bad stderr-mode '$mode'" >&2; exit 1 ;;
+  esac
   pid=$!
   if [[ -n "$sig" ]]; then
     sleep 0.3
     kill -s "$sig" "$pid" 2>/dev/null || true
   fi
-  # `wait` on a signalled job makes bash print "Terminated: 15" / "Hangup: 1" to
-  # stderr. Cosmetic; drop it so the report stays readable.
-  { wait "$pid" || rc=$?; } 2>/dev/null
+  # `wait` on a job killed by a signal makes bash print "Terminated: 15" /
+  # "Hangup: 1" — a job-status line derived from the kernel wait status. Capture
+  # it (F4/F6 assert on it) instead of discarding it. LC_ALL=C so a localised
+  # bash cannot silently change the wording.
+  { LC_ALL=C wait "$pid" || rc=$?; } 2>"$wmsg"
 
   RUN_RC="$rc"
-  RUN_CLEANUPS="$(wc -l <"$marker" | tr -d ' ')"
+  RUN_PID="$pid"
+  # Exact sentinel, not `wc -l` — see "COUNTING CLEANUPS" in the header.
+  RUN_CLEANUPS="$(grep -c '^cleaned$' "$marker" || true)"
   RUN_OUT="$(cat "$out")"
+  RUN_ERR="$(cat "$err")"
+  RUN_WAITMSG="$(cat "$wmsg")"
 }
 
 expect_run() { # <label> <expected-rc> <expected-cleanups> <resumed:yes|no>
@@ -139,7 +215,9 @@ section "B. ops/ios_test.sh wiring"
 IOS_TEST="$WORKSPACE/ops/ios_test.sh"
 grep -qF 'source "$SCRIPT_DIR/lib/ios_signal_traps.sh"' "$IOS_TEST" \
   && ok "B1 ios_test.sh sources the lib" || fail_t "B1 ios_test.sh does not source the lib"
-grep -qE '^[[:space:]]*kg_install_signal_traps cleanup[[:space:]]*$' "$IOS_TEST" \
+# The optional trailing word is the diagnostic tag (kg_install_signal_traps
+# <cleanup-fn> [tag]); the anchors still exclude comment lines and prose.
+grep -qE '^[[:space:]]*kg_install_signal_traps cleanup([[:space:]]+[A-Za-z0-9_.-]+)?[[:space:]]*$' "$IOS_TEST" \
   && ok "B2 ios_test.sh installs the traps via the lib" \
   || fail_t "B2 ios_test.sh has no executable kg_install_signal_traps line"
 grep -q 'trap cleanup EXIT INT TERM' "$IOS_TEST" \
@@ -160,6 +238,67 @@ section "C. self-checks"
 section "D. control (pre-fix trap shape must still misbehave)"
 run_victim "$TMP/victim_oldshape.sh" TERM 2
 expect_run "D1 old shape under SIGTERM" 0 2 yes
+
+# ── E. hostile stderr: a failed diagnostic must not take the handler down ─────
+# The handler's first act is to announce itself on fd 2. Under `set -e` — which
+# ops/ios_test.sh sets and trap handlers inherit — an unguarded write that FAILS
+# aborts the handler before `trap - EXIT` and the re-raise, so the process never
+# dies with 128+N. Both conditions below are what an ssh drop to the standby
+# build host actually leaves behind, and docs/sop/ios.md maps the resulting
+# rc=1 to "test failure" — a diagnostic naming the wrong cause.
+section "E. hostile stderr (fd 2 genuinely unwritable)"
+run_victim "$TMP/victim_lib.sh" TERM 2 closed
+expect_run "E1 SIGTERM, stderr closed (2>&-)" 143 1 no
+
+run_victim "$TMP/victim_lib.sh" HUP 2 closed
+expect_run "E2 SIGHUP, stderr closed (2>&-)" 129 1 no
+
+run_victim "$TMP/victim_lib.sh" TERM 2 deadpipe
+expect_run "E3 SIGTERM, stderr = pipe with no reader" 143 1 no
+
+run_victim "$TMP/victim_lib.sh" HUP 2 deadpipe
+expect_run "E4 SIGHUP, stderr = pipe with no reader" 129 1 no
+
+# ── F. the diagnostic and the re-raise are real, not decorative ───────────────
+section "F. diagnostic and re-raise"
+run_victim "$TMP/victim_lib.sh" TERM 2
+[[ "$RUN_ERR" == *"aborted by SIGTERM pid=$RUN_PID"* ]] \
+  && ok "F1 handler announced SIGTERM on stderr, in the signalled process" \
+  || fail_t "F1 no 'aborted by SIGTERM pid=$RUN_PID' on stderr (got: ${RUN_ERR:-<empty>})"
+[[ "$RUN_OUT" != *"aborted by"* ]] \
+  && ok "F2 the diagnostic stayed off stdout" \
+  || fail_t "F2 the diagnostic leaked onto stdout (breaks --json)"
+[[ "$RUN_WAITMSG" == *[Tt]erminated* ]] \
+  && ok "F4 process was KILLED BY SIGTERM, not exit 143" \
+  || fail_t "F4 no kernel signal-death evidence; an 'exit 143' fake would look identical in rc alone"
+
+run_victim "$TMP/victim_lib.sh" HUP 2
+# This — not A3 — is what pins `trap "kg_on_signal HUP" HUP` in the lib. Delete
+# that trap and bash's implicit EXIT-on-fatal-signal still yields 129/cleanup×1,
+# but it is silent, so this assertion goes red.
+[[ "$RUN_ERR" == *"aborted by SIGHUP pid=$RUN_PID"* ]] \
+  && ok "F3 explicit HUP handler ran (its diagnostic is the only producer)" \
+  || fail_t "F3 no 'aborted by SIGHUP pid=$RUN_PID' on stderr (got: ${RUN_ERR:-<empty>})"
+[[ "$RUN_WAITMSG" == *[Hh]angup* ]] \
+  && ok "F6 process was KILLED BY SIGHUP, not exit 129" \
+  || fail_t "F6 no kernel signal-death evidence for SIGHUP"
+
+run_victim "$TMP/victim_tagged.sh" TERM 2
+[[ "$RUN_ERR" == *"[kg_reconcile] aborted by SIGTERM"* ]] \
+  && ok "F5 diagnostic tag is caller-supplied, so the lib is reusable" \
+  || fail_t "F5 tag not honoured (got: ${RUN_ERR:-<empty>})"
+
+# ── G. a cleanup that FAILS must not cost the re-raise ────────────────────────
+# `[[ -n "$fn" ]] && "$fn"` makes the cleanup call the final command of an
+# &&-list, which `set -e` does NOT exempt. A cleanup returning non-zero then
+# aborts the handler and the process exits with the cleanup's status instead of
+# 128+N — the same class of silent failure as section E.
+section "G. failing cleanup"
+run_victim "$TMP/victim_cleanupfails.sh" TERM 2
+expect_run "G1 SIGTERM with cleanup returning 3" 143 1 no
+
+run_victim "$TMP/victim_cleanupfails.sh" "" 0
+expect_run "G2 clean run with cleanup returning 3" 0 1 yes
 
 echo ""
 echo "passed: $pass  failed: $fail"

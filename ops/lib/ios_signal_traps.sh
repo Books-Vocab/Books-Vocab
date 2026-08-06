@@ -37,29 +37,89 @@
 #     released. Dying by re-raising the same signal — rather than `exit N` —
 #     keeps the kernel-level "killed by signal N" fact intact for the parent.
 #   * an uninterrupted run is untouched: normal exit status, cleanup once.
+#   * NOTHING inside the handler may break the two guarantees above. The handler
+#     is the last code that runs; a failure in it is unrecoverable and silent.
+#     See "THE HANDLER MUST BE UNKILLABLE" below — this is where the first cut
+#     of this lib was wrong.
+#
+# THE HANDLER MUST BE UNKILLABLE
+# Callers run under `set -euo pipefail`, and trap handlers INHERIT it. Anything
+# in the handler that can fail therefore aborts it before the re-raise, and the
+# 128+N contract silently does not happen. Two real ways that bites, both
+# measured on bash 3.2.57 against a victim identical but for the handler shape:
+#
+#   1. THE DIAGNOSTIC. An unguarded `echo "..." >&2` is not safe: fd 2 is not
+#      guaranteed writable at abort time — that is precisely when ssh has just
+#      dropped. Measured, SIGTERM delivered in every cell:
+#        fd 2 closed (2>&-, write fails EBADF)      bare echo -> rc 1   (want 143)
+#        fd 2 = pipe whose reader exited (SIGPIPE)  bare echo -> rc 141 (want 143)
+#      For SIGHUP the pipe case is strictly WORSE than having no handler at all
+#      (129 -> 141), which would have defeated the reason the HUP trap exists.
+#      `echo ... >&2 || true` is NOT sufficient: it fixes the EBADF cell but not
+#      the pipe cell, because SIGPIPE kills the shell mid-`echo`, before `||`
+#      is ever reached (measured: still 141). The write must therefore happen in
+#      a SUBSHELL, so SIGPIPE kills the subshell and the handler survives.
+#      A subshell also contains a second hazard: when a builtin's write FAILS,
+#      bash keeps the bytes in its stdio buffer and flushes them into the NEXT
+#      file opened on that fd — so an undelivered diagnostic would otherwise
+#      reappear inside whatever file cleanup writes to next.
+#
+#   2. THE CLEANUP CALL. `[[ -n "$fn" ]] && "$fn"` puts the call at the END of
+#      an &&-list, and `set -e` exempts every command in an &&-list EXCEPT that
+#      final one. So a cleanup returning non-zero — a stale lockdir, a vanished
+#      leased simulator — aborted the handler and the process exited with the
+#      cleanup's status (measured: rc=3) instead of 143. Releasing a lock is
+#      exactly the kind of thing that fails for real, so the call is made from
+#      an `if` body and its status is reported but not allowed to propagate.
 #
 # HUP is trapped explicitly even though the EXIT-trap fallback above already
 # handles it: it buys the `aborted by SIGHUP` diagnostic (ssh drops to the
 # standby build host are otherwise silent) and states the contract in the code
 # rather than relying on bash's implicit EXIT-on-fatal-signal behaviour. It does
-# NOT fix a lock leak — there was none on the HUP path.
+# NOT fix a lock leak — there was none on the HUP path. That diagnostic is the
+# ONLY observable difference between having the HUP trap and not having it, so
+# it is what the regression suite asserts on (test F3); the exit status alone
+# cannot tell the two apart.
 #
 # Callers must define their cleanup function BEFORE calling
-# kg_install_signal_traps, and pass its name:
+# kg_install_signal_traps, and pass its name. The optional second argument is
+# the tag used in the diagnostic, for callers that are not ios_test.sh:
 #     cleanup() { ...; }
-#     kg_install_signal_traps cleanup
+#     kg_install_signal_traps cleanup            # -> "[ios_test] aborted by ..."
+#     kg_install_signal_traps cleanup kg_reconcile
 # Regression: ops/tests/test_ios_signal_traps.sh
 
 KG_SIGNAL_CLEANUP_FN=""
 KG_SIGNAL_CLEANUP_DONE=0
+KG_SIGNAL_TAG="ios_test"
+
+# kg_signal_note <message...>
+# Write a diagnostic that CANNOT take the caller down, however broken fd 2 is.
+# The subshell absorbs SIGPIPE (dead reader) and contains the stdio buffer of a
+# failed write; `|| true` absorbs a non-zero status (EBADF, EIO on a closed pty)
+# under `set -e`. Always returns 0. See "THE HANDLER MUST BE UNKILLABLE".
+kg_signal_note() {
+  ( echo "$*" >&2 ) || true
+  return 0
+}
 
 # Idempotent cleanup gate. Bound to EXIT and called from the signal path, so it
-# must tolerate being reached twice. `[[ ... ]] && cmd` mid-function does not
-# trip `set -e` — it is not the final command of the function.
+# must tolerate being reached twice, and must not propagate a cleanup failure:
+# on the signal path that would cost us the re-raise, and on the normal path it
+# would turn a passing run red on a lock-release hiccup. The failure is reported
+# instead of swallowed.
 kg_run_cleanup_once() {
-  [[ "$KG_SIGNAL_CLEANUP_DONE" -eq 1 ]] && return 0
+  if [[ "$KG_SIGNAL_CLEANUP_DONE" -eq 1 ]]; then
+    return 0
+  fi
   KG_SIGNAL_CLEANUP_DONE=1
-  [[ -n "$KG_SIGNAL_CLEANUP_FN" ]] && "$KG_SIGNAL_CLEANUP_FN"
+  if [[ -n "$KG_SIGNAL_CLEANUP_FN" ]]; then
+    local crc=0
+    "$KG_SIGNAL_CLEANUP_FN" || crc=$?
+    if [[ "$crc" -ne 0 ]]; then
+      kg_signal_note "[$KG_SIGNAL_TAG] cleanup ${KG_SIGNAL_CLEANUP_FN}() exited $crc"
+    fi
+  fi
   return 0
 }
 
@@ -70,16 +130,17 @@ kg_run_cleanup_once() {
 # re-raise does not terminate us.
 kg_on_signal() {
   local sig="$1"
-  echo "[ios_test] aborted by SIG$sig pid=$$" >&2
+  kg_signal_note "[$KG_SIGNAL_TAG] aborted by SIG$sig pid=$$"
   kg_run_cleanup_once
   trap - EXIT "$sig"
   kill -s "$sig" "$$"
   exit $(( 128 + $(kill -l "$sig") ))
 }
 
-# kg_install_signal_traps <cleanup-function-name>
+# kg_install_signal_traps <cleanup-function-name> [diagnostic-tag]
 kg_install_signal_traps() {
   KG_SIGNAL_CLEANUP_FN="${1:?cleanup function required}"
+  KG_SIGNAL_TAG="${2:-ios_test}"
   KG_SIGNAL_CLEANUP_DONE=0
   trap kg_run_cleanup_once EXIT
   trap "kg_on_signal INT" INT
