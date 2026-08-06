@@ -30,7 +30,7 @@ verified_against: c907585a0
 | `VocabularyListCoordinator.swift` | 59 | `@Observable @MainActor final class VocabularyListCoordinator` |
 | `KnowledgeGraphCoordinator.swift` | 80 | `@Observable @MainActor final class KnowledgeGraphCoordinator` |
 | `Scenes/KGVocabCoordinator.swift` | 204 | `@Observable @MainActor final class KGVocabCoordinator`，batch delete / archive 收斂集中於 coordinator；archive 的本地可收斂集合為 `updated_words ∪ not_found`，`failed` 才保留重試 |
-| `Scenes/SyncCoordinator.swift` | 672 | `@Observable @MainActor final class SyncCoordinator`，含 `PipelineStep` / `SyncPhase` / `SyncFailureKind`；字典卡走**獨立 projection**（`/api/dictionary-cards`）與 vocab projection 併行收斂 |
+| `Scenes/SyncCoordinator.swift` | 662 | `@Observable @MainActor final class SyncCoordinator`，含 `SyncFailureKind`；`PipelineStep` / `SyncPhase` 已移至 `Services/SyncProgress.swift`（設定頁的逐步同步進度共用同一組型別）；字典卡走**獨立 projection**（`/api/dictionary-cards`）與 vocab projection 併行收斂 |
 | `Scenes/AddLinkCoordinator.swift` | 282 | `@Observable @MainActor final class AddLinkCoordinator`，Add Link 的字典區流程：搜尋 → 選義項/例句 → materialize（stable `Idempotency-Key`）→ targeted upsert，含 transport race 收斂 |
 
 ### Presenter Layer（純 UI 呈現）
