@@ -345,8 +345,8 @@ FOREIGN_CLASS="${FOREIGN%%|*}"; FOREIGN_ID="${FOREIGN##*|}"; FOREIGN_BARE="${FOR
 if [[ -n "$FOREIGN_CLASS" && -n "$FOREIGN_BARE" && "$FOREIGN_CLASS" != "BooksAndVocabUITests" ]]; then
   BARE_OUT="$("$IOS_TEST" --ui --list "$FOREIGN_BARE" 2>/dev/null)" || BARE_OUT=""
   grep -qxF -- "-only-testing:BooksAndVocabUITests/$FOREIGN_CLASS/$FOREIGN_ID" <<<"$BARE_OUT" \
-    && ok "裸 $FOREIGN_BARE → $FOREIGN_CLASS（非 target 同名 class）" \
-    || fail_t "裸方法未解析到自身容器 $FOREIGN_CLASS，實得：$BARE_OUT"
+    && ok "裸 $FOREIGN_BARE → ${FOREIGN_CLASS}（非 target 同名 class）" \
+    || fail_t "裸方法未解析到自身容器 ${FOREIGN_CLASS}，實得：$BARE_OUT"
   PT_OUT="$("$IOS_TEST" --ui --list "$FOREIGN_CLASS/$FOREIGN_ID" 2>/dev/null)" || PT_OUT=""
   grep -qxF -- "-only-testing:BooksAndVocabUITests/$FOREIGN_CLASS/$FOREIGN_ID" <<<"$PT_OUT" \
     && ok "明確 Class/method 直通不變" || fail_t "Class/method 直通壞了：$PT_OUT"
@@ -408,7 +408,7 @@ if [[ -n "$DEMO_METHOD" && -n "$DEMO_CLASS" ]]; then
     --list "$DEMO_METHOD" 2>/dev/null)" || DEMO_OUT=""
   grep -qxF -- "-only-testing:BooksAndVocabUITests/$DEMO_CLASS/$DEMO_METHOD" <<<"$DEMO_OUT" \
     && ok "取證命令選到 $DEMO_CLASS/$DEMO_METHOD" \
-    || fail_t "取證命令未選到 $DEMO_CLASS（0 匹配 = 送審證據什麼都沒證明），實得：$DEMO_OUT"
+    || fail_t "取證命令未選到 ${DEMO_CLASS}（0 匹配 = 送審證據什麼都沒證明），實得：$DEMO_OUT"
   # 缺陷簽章本身：這條若哪天 class == target 就退化成恆真，故明寫出來。
   [[ "$DEMO_CLASS" != "BooksAndVocabUITests" ]] \
     && ok "取證測試確實不住在 target 同名 class（本條非恆真）" \
