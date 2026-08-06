@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksAndVocab/UIComponents/
   - ios/BooksAndVocab/Views/
-verified_against: c907585a0
+verified_against: dcb7b705f
 -->
 # UI Component & Pattern Inventory
 
@@ -62,6 +62,7 @@ Scope: `ios/BooksAndVocab`
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
 - `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
+- `SyncStepStatusIcon`（`UIComponents/SyncStepStatusIcon.swift`）— `PipelineStep.StepStatus` 的六態符號（waiting `circle` / running `ProgressView` / retry `arrow.triangle.2.circlepath` + repeating scale / done `checkmark.circle.fill` + bounce / skipped `minus.circle.fill` / error `xmark.circle.fill`），色彩全走 `appSkin.palette`。同檔另附 `StepStatus.detailColor(_:)`——detail 文字色與符號同一組語意，刻意放在一起免得漂移。**兩個消費者**：詞庫頁同步畫面（`SyncPresenter` 已改為委派）與設定頁的逐步同步進度（`SettingsSyncProgressPanel`）。抽出的理由是**對稱的成本**：同一狀態在兩處長得不一樣是使用者學兩次的成本，複製一份 switch 則是下次加狀態時漏改一處的成本。**要加第七個狀態就改這裡**，不要在消費者端各自 switch
 - `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；`AppSkeletonCard` 已被 `VocabSceneShell` list 場景採用（1 處），`AppSkeletonLine` 目前僅 def + `AppSkeletonCard` 內部組合 + preview 使用（無外部直接 callsite）；新 loading state 應改用此元件而非自製 placeholder
 - `AppSidebarRow` — Catalyst 側邊欄列（`ContentView` `NavigationSplitView` sidebar 用），取代系統 `.listStyle(.sidebar)` 預設樣式（系統半透明材質 + 系統藍選取色與 app Notion 風割裂）。整列可點（`HStack` + `Spacer` 撐滿 + `.contentShape(Rectangle())` 把整矩形納入 hit-test，水平 padding 由元件內 `appSkin` token 控不靠 List inset）；走 appSkin typography/spacing/palette，選取/未選以灰階配色（`secondaryText`→`primaryText`）+ `primaryText.opacity(0.08)` 自繪 `AppRoundness.control` 圓角背景區分（自訂字體 ElmsSans 不響應 `.fontWeight`，故以配色而非字重表達選取）；hover 走既有 `.appHoverRowTint`；a11y icon `accessibilityHidden` + row 掛 `accessibilityLabel` + selected 加 `.isSelected`；selection 由 caller 自管 `@State`，不用 `List(selection:)`
 

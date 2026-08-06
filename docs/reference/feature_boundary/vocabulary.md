@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
-verified_against: c907585a0
+verified_against: dcb7b705f
 -->
 # Vocabulary Feature Boundary
 
@@ -42,7 +42,7 @@ verified_against: c907585a0
 | `Scenes/KGVocabPresenter.swift` | 345 | Books & Vocab 詞彙列表佈局；`KGVocabRowSelection` 控制 row detail highlight，selection mode 期間 suppress highlight，避免 detail selection 與 batch selection 混淆；row review progress 使用 review pause reference date |
 | `Scenes/KnowledgeGraphPresenter.swift` | 357 | 知識圖譜佈局 |
 | `Scenes/WordDetailPresenter.swift` | 345 | `struct WordDetailPresenter: View`；`WordDetailInspectorMetrics` 將右側 inspector 內容限寬 320–640pt，metadata footer 走 `CollocationFlowLayout` capsule flow，避免桌面窄欄 HStack 擠爆。**卡片生命週期動作依成本分層**：封存在標題列（`archivebox` ⇄ `archivebox.fill` 單擊切換，`canArchive` 對未同步卡收起——`archiveCard` 以 word+notebookId 定址伺服器，未同步必 404）；刪除壓在內容最底的 `cardManagementSection`，與卡片隔一條 `AppAirDivider`，並收編原本孤懸的「閱讀時不標記此單字」toggle |
-| `Scenes/SyncPresenter.swift` | 228 | 同步主佈局 |
+| `Scenes/SyncPresenter.swift` | 209 | 同步主佈局；`statusSymbol(for:)` / `detailColor(for:)` 已改為委派共用的 `SyncStepStatusIcon`（`UIComponents/`），不再自持一份六態 switch —— 設定頁的逐步同步進度是第二個消費者，見 `docs/reference/ui/components.md` |
 | `Scenes/SyncPresenter+Header.swift` | 95 | 同步 header |
 | `Scenes/SyncPresenter+ActionArea.swift` | 86 | 同步 action 區域 |
 | `Scenes/SyncPresenter+Preview.swift` | 290 | 同步 preview 資料 |
