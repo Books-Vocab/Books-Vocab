@@ -4,11 +4,11 @@
   "detail": "健康 gate 把**主機端連不出去**判成**這次部署壞了**，兩者不是同一件事。2026-08-04 事故裡 felix 的 DNS 掛了，容器與 tunnel 都好端端的，使用者也拿得到服務，但 gate 從 felix 內部量測外部可達性、量不到就回滾——回滾本身還因為同一個網路問題而失敗（見 IMP-0060）。重試只是把窗口從 0s 拉到 20s，而觀測到的中斷長度上界是 ~90s，所以這是緩解不是解。**方向（需定論，不要照抄）**：① external smoke 失敗改判 `warn` 而非 `block`——部署照樣落地，但發告警要人看（風險：真的壞掉時不自動回滾）；② 先分辨失敗種類——`HTTP=000`/DNS 失敗 = 我這台量不到，`5xx`/CF 錯誤頁 = 服務真的壞了，只有後者觸發回滾；③ 從**第二個地點**量（oscar 或 CF 自己的 health check），別讓「被測者」與「量測者」是同一台機器。②看起來最對稱且成本最低，但需要確認 CF tunnel 各種故障模式實際回什麼 code——那份對照表現在沒人有。",
   "fix_site": "ops/kg_reconcile.sh:external_smoke_ok + run_health_gate",
   "id": "IMP-0061",
-  "resolution": "被 review 判 BLOCK 後重開：原 resolution 宣稱「放行 unreachable 後 gate 退化成 localhost+infra_health，皆純本機、免疫同一場斷網」是**假的**——infra_health.sh:40 的 PROBE_URL 預設就是同一個對外 URL、非 200 一律 crit(:186)→exit 2，於是 kg_reconcile.sh 照樣把主機端斷網翻成 reason=infra + 回滾 + poison，只是把回滾理由從 smoke 換成 infra；同一輪 tick 還會先發「故不回滾」再發「回滾」兩則矛盾 ALERT。修法已在工作樹完成但**尚未 commit**：run_health_gate 改吃 infra_health --json 並看它「為什麼 crit」——把 KG_HEALTH_PROBE_URL 釘成 smoke 剛探過的同一個 URL，唯一 crit 是 http_probe 且本輪 EXTERNAL_SMOKE_CLASS=unreachable 才視為同一場斷網不回滾；其餘任何 crit(容器/磁碟/tunnel/憑證/host_collect)照舊回滾，JSON 讀不懂則 fail-closed 回滾。另修 review D3(external_smoke_ok 內不可能點燃的 saw_response 守衛，已刪)與 D5(dry-run 預覽仍描述舊二分語意，已補三分類)。測試側根因是替身忠實度：infra_mock 原本只有 exit 0，把「同一場斷網會讓這關也 crit」從模型裡刪掉，現已改成真的去打同一個 URL 並吐同形 JSON；另補齊 smoke 四個取值(n/a/ok/bad 原本零斷言，review D2)。紅→綠 131/20 → 151/0，五組突變反控全紅，並以**真的** infra_health.sh 端到端重放 review 的證據 2：rolled-back/reason=infra/poison → deployed/smoke=unverified/無 poison。**尚未完成故不標 fixed**：修法未 commit，verified_at 無法指向含此修法的 commit，且需重新 review。範圍外未修：review D4 = infra_health.sh:115 的 `|| echo 000` 雙 000 bug，實測已污染機讀契約(\"value\":\"000000\",\"raw\":000000)，該檔不在本次 scope。殘餘風險：若同一場故障連 SSH 收集也打掛(host_collect crit)則 fail-closed 回滾——刻意如此，因為那時沒有任何獨立證據可歸因；實務上 devops.sh 走 Tailscale IP(chenliangyu@100.118.39.104)不經 DNS，2026-08-04 那種形狀不會命中。",
+  "resolution": "—(fixed by `7416c1ef3`+`41e48dc9a`+`1954a9b2d`)run_health_gate 改讀 `infra_health --json` 並判斷越線的是哪個 key:唯有本輪 EXTERNAL_SMOKE_CLASS=unreachable 且唯一 crit key 是 http_probe 才視為同一場斷網而不回滾,其餘 crit 照舊回滾,JSON 讀不懂 fail-closed 回滾;KG_HEALTH_PROBE_URL 釘死使兩關問同一個 URL。根因是測試替身忠實度(infra_mock 原本只 exit,把「同一場斷網會讓這關也 crit」從模型裡刪掉)。驗證 `test_ops.sh reconcile` 151 passed(先只改測試為 131/20),另以真 infra_health 端到端重放。未做:`ops/infra_health.sh:115` 的雙 000 bug 已實測污染機讀契約但不在此 scope。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "IMP-0060 的 review",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verified_at": ""
+  "verified_at": "2026-08-06"
 }
