@@ -46,6 +46,8 @@ version: 1.0.0
 ./ops/docs_lint.sh --registry
 ```
 
+`--registry` 現在也會實跑每筆 `kind: generated` 的 `check:` 命令(缺 `check:` 直接 ERROR)。這是新的轉紅來源:改到 `ios/BooksAndVocab/` 或 `docs/runbook/backlog/*.json` 而沒重生對應產物,docs gate 就會紅並具名該筆 + 印出重生命令。而且 `validate_registry` 是無條件呼叫,不限 `--registry` 模式。
+
 全 repo 健康盤點才用：
 
 ```bash

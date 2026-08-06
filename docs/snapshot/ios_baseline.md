@@ -4,7 +4,7 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksAndVocab
-verified_against: 7156ddef0
+verified_against: 8f9776de8
 -->
 
 # iOS Frontend Baseline

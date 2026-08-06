@@ -129,7 +129,7 @@ validate_registry() {
   awk '
     function flush() {
       if (id != "") {
-        print "ENTRY\t" id "\t" path "\t" kind "\t" generator
+        print "ENTRY\t" id "\t" path "\t" kind "\t" generator "\t" check
       }
     }
     /^  - id:[[:space:]]*/ {
@@ -139,6 +139,7 @@ validate_registry() {
       path=""
       kind=""
       generator=""
+      check=""
       next
     }
     id != "" && /^    path:[[:space:]]*/ {
@@ -156,12 +157,17 @@ validate_registry() {
       sub(/^    generator:[[:space:]]*/, "", generator)
       next
     }
+    id != "" && /^    check:[[:space:]]*/ {
+      check=$0
+      sub(/^    check:[[:space:]]*/, "", check)
+      next
+    }
     END { flush() }
   ' "$reg" > "$entries_tmp"
 
   reg_bad=0
   entry_count=0
-  while IFS="$(printf '\t')" read -r tag id path kind generator; do
+  while IFS="$(printf '\t')" read -r tag id path kind generator check; do
     [ "$tag" = "ENTRY" ] || continue
     entry_count=$((entry_count+1))
     if [ -z "$id" ] || [ -z "$path" ] || [ -z "$kind" ]; then
@@ -183,6 +189,20 @@ validate_registry() {
         reg_bad=$((reg_bad+1))
       elif [ ! -f "$generator" ]; then
         echo "ERROR registry — $id generator 不存在: $generator"
+        reg_bad=$((reg_bad+1))
+      fi
+      # generator: 只證明「有人宣稱這檔是產生出來的」。真正可機器檢查的關係是
+      # 產物 == generator 輸出，那個關係在此之前從來沒被評估過——一份 generated
+      # 文檔可以腐爛到面目全非而這裡照樣回綠（IMP-20260805-462d28）。
+      # 缺 check: 直接 ERROR，讓這個洞由構造關上，而不是靠下一個人記得。
+      if [ -z "$check" ]; then
+        echo "ERROR registry — $id kind=generated 但缺 check(產物等值檢查命令)"
+        reg_bad=$((reg_bad+1))
+      # `</dev/null` 不是噪音，不要刪：這個 while 迴圈的 stdin 是 ${entries_tmp}（見迴圈尾），
+      # 任何繼承 stdin 的子命令都會吃掉尚未讀取的 registry entry。症狀是後面幾筆 entry
+      # 神秘消失、entry_count 少掉，而 rc 仍是 0——正是本 gate 存在要擋的那類錯誤。
+      elif ! sh -c "$check" </dev/null >/dev/null 2>&1; then
+        echo "ERROR registry — $id 產物與 generator 輸出不一致: $path(跑 $check 看差異)"
         reg_bad=$((reg_bad+1))
       fi
     fi

@@ -23,7 +23,7 @@ verified_against: 7b4dee42
 
 不派（避免 review 通膨）：
 - 純 typo / 重命名 / 自動格式化
-- 機器產出 snapshot（`ios_baseline.md` 由 `gen_ios_baseline.sh` 出）
+- 機器產出 snapshot（`ios_baseline.md` 由 `gen_ios_baseline.sh --write` 出）
 - 單行 fix 且該檔 ≤30 行
 
 `phased` skill 已在第 N phase（N≥2）強制背景派 review 審 N-1 phase；本 SOP 把同樣模式擴到 phased 以外的場景。

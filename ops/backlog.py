@@ -1214,6 +1214,12 @@ def build_parser() -> argparse.ArgumentParser:
              "stderr; copy them here). Named, not a bare flag, so a bypass cannot be "
              "reached for without reading what it drops",
     )
+    p_render.add_argument(
+        "--check",
+        action="store_true",
+        help="compare the on-disk view against a fresh render; exit 1 if stale "
+             "(wired into docs/registry.yml's `check:` for runbook.improvement_backlog)",
+    )
     p_render.add_argument("--json", action="store_true")
 
     return parser
@@ -1455,9 +1461,42 @@ def _read_outgoing_view(path: Path) -> str | None:
         ) from exc
 
 
+def _strip_doc_meta(text: str) -> str:
+    """Drop the leading `<!-- doc-meta ... -->` block, if present.
+
+    This is what keeps `render --check` from being a CLOCK. The block carries
+    `verified_against`, which `_doc_anchor()` resolves to the merge-base with
+    **origin/main** — so it moves whenever origin/main moves, with no change to
+    a single backlog entry. A whole-file compare would therefore turn red on
+    other people's pushes and get switched off within a week.
+
+    Nothing else is normalized away: every table row, the `<!-- N IMP + M APP
+    entries -->` counter and the groom footer are all downstream of
+    docs/runbook/backlog/*.json and stay inside the comparison.
+    """
+    if not text.startswith("<!-- doc-meta"):
+        return text
+    _, sep, rest = text.partition("\n-->\n")
+    return rest if sep else text
+
+
 def _cmd_render(args) -> int:
     verified = args.verified_against or _doc_anchor()
     text = render_view(args.store, verified_against=verified)
+
+    if args.check:
+        if args.commit:
+            print("--check 與 --commit 互斥", file=sys.stderr)
+            return 64
+        if not args.out.exists():
+            print(f"STALE {args.out} 不存在(跑: ./ops/backlog.py render --commit)")
+            return 1
+        on_disk = args.out.read_text(encoding="utf-8")
+        if _strip_doc_meta(on_disk) != _strip_doc_meta(text):
+            print(f"STALE {args.out} — 內容與 store 不一致(跑: ./ops/backlog.py render --commit)")
+            return 1
+        print(f"{args.out} is up to date.")
+        return 0
 
     # Diffed against the text about to be WRITTEN, not against the store's id
     # set: what has to survive is the artifact. Comparing to the store would
