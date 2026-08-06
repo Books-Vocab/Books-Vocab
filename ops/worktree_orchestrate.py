@@ -639,11 +639,35 @@ def plan_gates(changed_files: list[str],
     # to read that line. Meanwhile the generated VIEW is machine-checked (registry
     # `check:` -> render --check). The tool guaranteed the table matched the store
     # and guaranteed nothing about whether the store was true.
+    # Top level only: `validate_store` globs `*.json` non-recursively, so a nested
+    # path would be routed, counted as covered, and never actually read — a vacuous
+    # pass one directory deeper than the one this route guards.
     backlog_entries = [p for p in changed_files
-                       if p.startswith(BACKLOG_STORE_DIR) and p.endswith(".json")]
-    if backlog_entries:
+                       if p.startswith(BACKLOG_STORE_DIR)
+                       and p.endswith(".json")
+                       and "/" not in p[len(BACKLOG_STORE_DIR):]]
+    # Keyed on the VALIDATOR too, not just the data. Otherwise the checker can change
+    # without anyone running it against real entries: a commit touching only
+    # ops/backlog.py passes ops-pytest on its own fixtures, cuts over green, and can
+    # leave the whole store invalid — after which the next unrelated agent to edit any
+    # entry eats problems they did not cause, which is how a gate earns a reputation
+    # for false alarms and gets muted. IMP-20260805-9a51e9 schedules exactly this: its
+    # plan states the real store must go to 7 problems the moment its checks land.
+    if backlog_entries or "ops/backlog.py" in changed_files:
         gates.append(_shell("backlog-validate", "data",
                             ["ops/backlog.py", "validate"], "block"))
+    if backlog_entries:
+        # `validate` answers "is each entry well-formed"; it says NOTHING about whether
+        # the generated view still matches the store. Mutating the store stales the
+        # view, and that is the most-hit trap in this repo today. Without this, a
+        # store-only diff would report "every changed file is routed" while the one
+        # thing that actually breaks in that diff shape goes unwatched — strictly worse
+        # than before this route existed, when `coverage` at least NAMED the file.
+        # registry `check:` for runbook.improvement_backlog is `render --check`.
+        registry_cmd = ["ops/docs_lint.sh", "--registry"]
+        if registry_cmd not in [g["cmd"] for g in gates if g.get("cmd")]:
+            gates.append(_shell(f"data-plane:{registry_cmd[0]}", "data",
+                                registry_cmd, "block"))
 
     covered: set[str] = set()
     for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml, backlog_entries):
