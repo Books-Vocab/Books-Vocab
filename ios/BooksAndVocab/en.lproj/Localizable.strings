@@ -1199,3 +1199,11 @@
 "todayReview.layoutEditor.open" = "Adjust review card";
 "settings.reviewCardLayout.default" = "Default";
 "settings.reviewCardLayout.custom" = "Custom";
+
+/* Settings — 逐步同步進度列 */
+"送出複習紀錄" = "Upload review records";
+"下載單字卡" = "Download vocabulary cards";
+"下載字典卡" = "Download dictionary cards";
+"下載複習紀錄" = "Download review records";
+"更新 Podcast 目錄" = "Update podcast catalog";
+"額度與連線" = "Quota and connection";

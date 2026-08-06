@@ -1167,3 +1167,11 @@
 "todayReview.layoutEditor.open" = "복습 카드 조정";
 "settings.reviewCardLayout.default" = "기본";
 "settings.reviewCardLayout.custom" = "사용자 지정";
+
+/* Settings — 逐步同步進度列 */
+"送出複習紀錄" = "복습 기록 업로드";
+"下載單字卡" = "단어 카드 다운로드";
+"下載字典卡" = "사전 카드 다운로드";
+"下載複習紀錄" = "복습 기록 다운로드";
+"更新 Podcast 目錄" = "팟캐스트 목록 업데이트";
+"額度與連線" = "사용량 및 연결";

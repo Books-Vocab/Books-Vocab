@@ -1166,3 +1166,11 @@
 "todayReview.layoutEditor.open" = "復習カードを調整";
 "settings.reviewCardLayout.default" = "デフォルト";
 "settings.reviewCardLayout.custom" = "カスタム";
+
+/* Settings — 逐步同步進度列 */
+"送出複習紀錄" = "復習記録をアップロード";
+"下載單字卡" = "単語カードをダウンロード";
+"下載字典卡" = "辞書カードをダウンロード";
+"下載複習紀錄" = "復習記録をダウンロード";
+"更新 Podcast 目錄" = "ポッドキャスト一覧を更新";
+"額度與連線" = "利用枠と接続";

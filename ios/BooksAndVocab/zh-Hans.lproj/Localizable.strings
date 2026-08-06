@@ -1167,3 +1167,11 @@
 "todayReview.layoutEditor.open" = "调整复习卡片";
 "settings.reviewCardLayout.default" = "默认";
 "settings.reviewCardLayout.custom" = "自定义";
+
+/* Settings — 逐步同步進度列 */
+"送出複習紀錄" = "发送复习记录";
+"下載單字卡" = "下载单词卡";
+"下載字典卡" = "下载词典卡";
+"下載複習紀錄" = "下载复习记录";
+"更新 Podcast 目錄" = "更新播客目录";
+"額度與連線" = "额度与连接";
