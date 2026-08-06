@@ -12,6 +12,18 @@ verified_against: 0c9e3b7c
 
 **決策**：不再大改 UI 風格、不再重做行銷截圖，故本平面**停止擴張**（不是停止運作）。Catalog 展示廳、`marketing_demo.json`、投影鏈全部原地保留且可正常跑；停掉的是「每加一個畫面就要同步七個面」的義務。
 
+### 2026-08-06 追加裁決 — gallery 退出消費路徑
+
+**gallery 不再有讀者**（執行長原話：產出的一堆圖我也不太會看）。catalog 的目標從此是**保持可用但不使用**：不主動跑、不看圖、**完全停止擴張**；`ios_ops.sh catalog snapshots` 仍須跑得動——那是下方「復業條件」的前提，不是日常能力。**「給我看畫面」的預設答案改成在模擬器實跑 app**（`docs/sop/ios.md`），不再是 Read catalog PNG。
+
+三個直接後果，寫下來免得下一位以為是疏漏：
+
+1. **本平面的 backlog 條目一律以「復業保險」定優先序，不以「日常能力」**。凍結前 IMP-0064 被判 high 的理由是「看畫面半殘」，那個消費者已經沒有了。
+2. **沒有任何 gate 會週期性證明它還活著**——`ops/ui_quality_plane.yml` 的 `snapshot.catalog` 與 `visual.catalog_regression` 都是 `gate: manual`，`snapshot.catalog_coverage` 掛在 `ios-test` 但只是零成本的 source-text 規則。所以它壞掉會等到下次有人要跑才發現。**這是接受的成本**（實例：2026-08-05 驗到 exit 65，到 08-06 才修，中間沒有任何訊號）。
+3. **對齊凍結 world 的斷言修正算「維持可用」，不算餵它**；補 world 資料才算餵它，仍受紅線 1、2 約束。
+
+**凍結當下它其實是壞的**：`VocabularyListViewScenarios` 與 `KnowledgeGraphViewScenarios` 的數量門檻停在行銷密度時代（80 / 50），而凍結 world 只供得起 4，於是每趟 `catalog snapshots` 都在 scene 建構期 `preconditionFailure`（exitCode=65）。2026-08-06 已把兩處門檻對齊為 4，並補上純 Python 對帳測試 `ops/tests/test_catalog_scene_expectations.py`（group `catalog-scene-expectations`，在 CI 的 `LINUX_GROUPS` 內）——Swift 的 precondition 只有跑得動模擬器時才會講話，而凍結期沒人會跑模擬器，所以守衛必須搬到 Linux 上跑得動的地方。見 backlog IMP-0064。
+
 **量測依據**（2026-08-05，過去 90 天）：2381 個 commit 中 175 個（7.4%）落在本平面，其中 `ops/demo` 投影鏈佔 77 個——而它的活消費者只有行銷截圖與 App Store 送審，一年跑個位數次。另實測 catalog 對 `Views/` 的**真連坐率僅 2.6%**（76 個 View commit 中只有 2 個被迫改 `Debug/`，且都是全專案改名這種操作）——所以 **catalog 不移除**，它本身不是負擔，一直餵它才是。
 
 ### 凍結期紅線（違反會紅，不是建議）
