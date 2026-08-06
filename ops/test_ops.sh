@@ -48,6 +48,7 @@ DEFAULT_TESTS=(
   ui-quality-gate
   visual-regression
   catalog-review
+  catalog-scene-expectations
   docs-lint
   ios-ops
   ios-run-verdict
@@ -132,6 +133,10 @@ run_one() {
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/tests/test_catalog_review.py \
         ops/tests/test_catalog_review_entry.py
+      ;;
+    catalog-scene-expectations)
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
+        ops/tests/test_catalog_scene_expectations.py
       ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh

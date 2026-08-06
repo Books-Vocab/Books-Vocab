@@ -174,7 +174,7 @@ mechanisms:
     docs:
       - docs/reference/catalog_scope.md
       - docs/sop/ios.md
-    notes: "FROZEN 2026-08-05 — catalog stopped expanding (still fully runnable). New screens do not get catalog surfaces; the UI World feeding it is frozen. Scope, red lines and un-freeze conditions: docs/reference/catalog_scope.md FROZEN section."
+    notes: "FROZEN 2026-08-05, gallery retired as a consumer 2026-08-06 — keep it runnable, do not run it. New screens do not get catalog surfaces; the UI World feeding it is frozen. Nothing runs this periodically (gate: manual), so breakage surfaces only when someone next needs it — accepted cost, not an oversight (it sat broken with exitCode=65 from 2026-08-05 until IMP-0064 landed on 08-06). Scene count thresholds are reconciled against the frozen world by the pure-Python group `catalog-scene-expectations`. Scope, red lines and un-freeze conditions: docs/reference/catalog_scope.md FROZEN section."
 
   - id: snapshot.catalog_coverage
     layer: state-snapshot
