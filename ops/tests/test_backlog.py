@@ -667,3 +667,303 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
     loaded = BACKLOG.load_entry(store, entry["id"])
     for field in BACKLOG.GROOM_FIELDS + ("verdict",):
         assert loaded.get(field), f"{field} was erased by a re-import"
+
+
+# --------------------------------------------------------------------------
+# 9. render: the view is an output, but it is not a blank slate
+#
+# The measured incident (IMP-20260806-e06150): a branch forked before the
+# store migration carried IMP-0060/0061/0062 as table rows only. The file
+# conflicted on rebase, the conflict was "resolved" by regenerating the view,
+# and all three entries were deleted — rc=0, stderr empty, byte count of the
+# same order, docs_lint 0 ERROR, cutover gate green. `_cmd_render` never read
+# its own --out, so "the store is the SoT" silently meant "anything the store
+# has not heard of does not exist".
+# --------------------------------------------------------------------------
+
+_VIEW_ONLY_IMP_ROW = (
+    "| IMP-0060 | 2026-06-01 | pre-migration branch | tool | high | open "
+    "| only ever existed as a table row | — |\n"
+)
+_VIEW_ONLY_APP_ROW = (
+    "| APP-20260601-aaaaaa | 2026-06-01 | pre-migration branch | reader | ux | high "
+    "| open | only ever existed as a table row | — | — | — |\n"
+)
+
+
+def _render_argv(store: Path, out: Path, *extra: str) -> list[str]:
+    # --verified-against is pinned so the command never shells out to git for
+    # the doc anchor; the anchor is not what these tests are about.
+    return [
+        "render", "--store", str(store), "--out", str(out),
+        "--verified-against", "deadbeef", *extra,
+    ]
+
+
+@pytest.mark.parametrize(
+    "row,lost_id",
+    [
+        (_VIEW_ONLY_IMP_ROW, "IMP-0060"),
+        # Not a duplicate of the IMP case: `parse_legacy_table` skips every
+        # APP- row by design (it returns 129 rows for the real ledger's 138
+        # entries), so a guard built on the parser that is already in this file
+        # passes the IMP case and is blind to the entire APP stream.
+        (_VIEW_ONLY_APP_ROW, "APP-20260601-aaaaaa"),
+    ],
+)
+def test_render_refuses_to_delete_an_entry_that_only_exists_in_the_outgoing_view(
+    tmp_path, capsys, row, lost_id
+):
+    store = tmp_path / "backlog"
+    _add(store, detail="an entry that does live in the store")
+    out = tmp_path / "improvement_backlog.md"
+
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    capsys.readouterr()
+
+    out.write_text(out.read_text(encoding="utf-8") + row, encoding="utf-8")
+    before = out.read_bytes()
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    err = capsys.readouterr().err
+
+    # Byte equality, not `lost_id in out.read_text()`: what has to be proven is
+    # that NOTHING was written, not that one substring happened to survive.
+    assert out.read_bytes() == before, f"{lost_id} was silently deleted from the view"
+    assert rc == 2, f"render exited {rc} after refusing to drop {lost_id}"
+    assert lost_id in err, f"the refusal does not name the lost entry: {err!r}"
+
+
+def test_render_refusal_names_what_disappears_and_only_that(tmp_path, capsys):
+    """Row counts are not the check; id SETS are.
+
+    In the incident the row count stayed plausible. Here the outgoing view and
+    the new text have the SAME number of rows — one entry left, one arrived —
+    so a length comparison, or a `!=` on the text, cannot tell the two apart.
+    """
+    store = tmp_path / "backlog"
+    survivor = _add(store, detail="present in both")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW, encoding="utf-8")
+    capsys.readouterr()
+
+    arrival = _add(store, detail="filed after that view was rendered")
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    err = capsys.readouterr().err
+
+    assert rc == 2
+    assert "IMP-0060" in err
+    # The discriminating half: an id that is arriving is not an id that is
+    # leaving. A message that lists every id it saw would satisfy the assertion
+    # above while proving nothing about the comparison.
+    assert arrival["id"] not in err, f"the refusal blames an incoming entry: {err!r}"
+    assert survivor["id"] not in err, f"the refusal blames a surviving entry: {err!r}"
+
+
+def test_render_writes_when_the_same_entries_come_out_different(tmp_path, capsys):
+    """A view that changes without losing an id is the normal case.
+
+    This is what separates an id-set guard from `old_text != new_text`: the
+    file must still be regenerated after `update` edits a row in place.
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="before the update", status="open")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    before = out.read_bytes()
+
+    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="abc1234")
+    capsys.readouterr()
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    err = capsys.readouterr().err
+
+    assert rc == 0, f"render refused a view that loses nothing: {err!r}"
+    assert out.read_bytes() != before, "render did not regenerate the view"
+    assert "fixed" in out.read_text(encoding="utf-8")
+    assert err == "", f"render complained about a lossless rewrite: {err!r}"
+
+
+def test_render_writes_when_the_store_has_grown(tmp_path, capsys):
+    store = tmp_path / "backlog"
+    _add(store, detail="the first one")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    _add(store, detail="the second one")
+    capsys.readouterr()
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    assert rc == 0, f"render refused a superset: {capsys.readouterr().err!r}"
+
+
+def test_render_writes_when_there_is_no_outgoing_view_to_lose(tmp_path, capsys):
+    store = tmp_path / "backlog"
+    _add(store, detail="bootstrapping a fresh view")
+    out = tmp_path / "nested" / "improvement_backlog.md"
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    assert rc == 0, f"render refused to create a view: {capsys.readouterr().err!r}"
+    assert out.exists()
+
+
+def test_allow_drop_authorises_only_the_ids_it_names(tmp_path, capsys):
+    """The escape hatch has to exist — the store has no `delete`, so removing
+    an entry means `rm`-ing its file, and without a hatch every later render
+    would be refused forever.
+
+    It is a named list rather than a bare `--allow-drop` on purpose: the whole
+    entry is about a deletion nobody had to state out loud, and a blanket
+    bypass flag is the same silence one flag later. Naming the ids costs a
+    copy-paste from the refusal message, which is exactly the reading the
+    incident skipped.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    out.write_text(
+        out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW + _VIEW_ONLY_APP_ROW,
+        encoding="utf-8",
+    )
+    before = out.read_bytes()
+    capsys.readouterr()
+
+    # Authorising one of the two is not authorising both.
+    rc = BACKLOG.main(_render_argv(store, out, "--commit", "--allow-drop", "IMP-0060"))
+    err = capsys.readouterr().err
+    assert rc == 2, "a partial authorisation let an unnamed entry through"
+    assert out.read_bytes() == before
+    assert "APP-20260601-aaaaaa" in err
+    assert "IMP-0060" not in err, f"an authorised id is still being refused: {err!r}"
+
+    rc = BACKLOG.main(
+        _render_argv(
+            store, out, "--commit", "--allow-drop", "IMP-0060", "APP-20260601-aaaaaa"
+        )
+    )
+    err = capsys.readouterr().err
+    assert rc == 0, f"the escape hatch did not open: {err!r}"
+    assert "IMP-0060" not in out.read_text(encoding="utf-8"), "the drop was not applied"
+    # Authorised is not the same as unremarked: the defect being fixed is
+    # silence, so the taken path still says what it took.
+    assert "IMP-0060" in err and "APP-20260601-aaaaaa" in err, (
+        f"--allow-drop deleted entries without naming them: {err!r}"
+    )
+
+
+def test_the_refusal_does_not_offer_a_recovery_that_cannot_work(tmp_path, capsys):
+    """A refusal that hands out a broken recovery command is the same defect
+    one layer down: `import` reads the legacy IMP table and skips every APP
+    row, so "recover it with `import`" would have the operator run a command
+    that exits 0 and brings nothing back.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_APP_ROW, encoding="utf-8")
+    capsys.readouterr()
+
+    # Measured here rather than assumed from the docstring of the parser: the
+    # advice is only wrong if `import` really cannot bring this row back.
+    BACKLOG.import_legacy(out.read_text(encoding="utf-8"), store)
+    with pytest.raises(KeyError):
+        BACKLOG.load_entry(store, "APP-20260601-aaaaaa")
+
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 2
+    err = capsys.readouterr().err
+    # `backlog.py import`, not the bare word "import": the message is allowed
+    # to say WHY the importer cannot do it, and matching "importer" would have
+    # this assertion fail on the sentence that makes it true.
+    assert "backlog.py import" not in err, f"the refusal offers `import` for an APP row: {err!r}"
+    assert "ops/backlog.py add" in err, f"the refusal offers no way back at all: {err!r}"
+
+    # The other half of the routing: an IMP row IS importable, so the same
+    # message must offer it. Without this, deleting the IMP branch entirely
+    # would still pass.
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW, encoding="utf-8")
+    capsys.readouterr()
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 2
+    err = capsys.readouterr().err
+    assert f"backlog.py import --from {out} --commit" in err, (
+        f"the refusal does not offer the recovery that does work: {err!r}"
+    )
+
+
+def test_render_dry_run_warns_without_failing(tmp_path, capsys):
+    """Dry-run cannot lose anything — it writes nothing — so it reports and
+    exits 0, keeping `render` usable as a generator whose stdout can be diffed
+    against the file on disk (that comparison is IMP-20260805-462d28's job).
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW, encoding="utf-8")
+    before = out.read_bytes()
+    capsys.readouterr()
+
+    rc = BACKLOG.main(_render_argv(store, out))
+    captured = capsys.readouterr()
+
+    assert rc == 0
+    assert out.read_bytes() == before, "a dry-run wrote to --out"
+    assert "IMP-0060" in captured.err, "dry-run hid the divergence it can see"
+    assert captured.out.startswith("<!-- doc-meta"), "dry-run stopped emitting the view"
+
+
+def test_render_json_reports_that_it_wrote_nothing(tmp_path, capsys):
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit", "--json")) == 0
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW, encoding="utf-8")
+    capsys.readouterr()
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit", "--json"))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["written"] is False
+    assert payload["dropped"] == ["IMP-0060"]
+    assert "bytes" not in payload, "a refusal reported a size for a file it did not write"
+
+
+def test_render_names_an_unreadable_out_instead_of_a_traceback(tmp_path, capsys):
+    """The guard reads --out, so --out can now fail to be read. A caller who
+    pointed --out at something that is not a view gets a named error, not a
+    UnicodeDecodeError escaping through main()."""
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "not-a-view.bin"
+    out.write_bytes(b"\xff\xfe\x00\x01")
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    err = capsys.readouterr().err
+
+    assert rc == 64, "an unreadable --out is a usage error, not a data-loss refusal"
+    assert str(out) in err
+    assert out.read_bytes() == b"\xff\xfe\x00\x01", "render wrote over a file it could not read"
+
+
+def test_view_entry_ids_sees_both_streams(tmp_path):
+    """The helper the guard is built on, asserted directly.
+
+    `parse_legacy_table` is the tempting reuse and it is the wrong one: it
+    returns rows for IMP only. Rendering a store with one entry of each stream
+    and asking the two functions the same question makes that divergence a
+    test rather than a comment.
+    """
+    store = tmp_path / "backlog"
+    imp = _add(store, stream="IMP", detail="a tool problem")
+    app = _add(store, stream="APP", detail="a reader problem", surface="reader")
+    text = BACKLOG.render_view(store, verified_against="deadbeef")
+
+    assert BACKLOG.view_entry_ids(text) == {imp["id"], app["id"]}
+
+    rows, _ = BACKLOG.parse_legacy_table(text)
+    assert {r["id"] for r in rows} == {imp["id"]}, (
+        "parse_legacy_table started reporting APP rows; if that is intended, "
+        "re-check whether view_entry_ids still needs to exist separately"
+    )
