@@ -3,16 +3,25 @@
 #
 # Usage:
 #   ./ops/ios_test.sh                             # run ALL tests in BooksAndVocabTests
-#   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests (method names)
+#   ./ops/ios_test.sh testName1 testName2 ...     # run specific tests. A BARE method name is
+#                                                 # reverse-looked-up to its OWN class/@Suite
+#                                                 # container by scanning the current scope's
+#                                                 # test dir (Swift Testing ids keep their
+#                                                 # signature); zero matches exit 1 at PARSE
+#                                                 # time instead of wasting a build+test round.
+#                                                 # The scan is non-recursive — tests in a
+#                                                 # SUBDIRECTORY are not found; pass the
+#                                                 # `Class/method` form, which is always a
+#                                                 # pass-through, unchecked escape hatch.
 #   ./ops/ios_test.sh -g "notebook"               # grep: run tests whose METHOD name OR
 #                                                 # suite/container name (@Suite struct / class)
 #                                                 # matches — `-g FooTests` runs the whole suite.
 #                                                 # File names are NOT matched; repeat -g to OR
 #                                                 # patterns together.
 #   ./ops/ios_test.sh --file FooTests             # .swift suffix optional; bare type name also works
-#   ./ops/ios_test.sh --ui testLaunchShowsPrimaryTabs
+#   ./ops/ios_test.sh --ui testLaunchShowsAllTabs
 #   ./ops/ios_test.sh --launch-benchmark
-#   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsPrimaryTabs
+#   ./ops/ios_test.sh --ui --ui-launch-profile ui-smoke testLaunchShowsAllTabs
 #   ./ops/ios_test.sh --ui --dataset <name>       # inject ops/fixtures/ui_worlds/<name>.json into the app (KG_FIXTURE_DATASET_DEFLATE_B64)
 #   ./ops/ios_test.sh --ui --dataset-file <path>  # same, arbitrary dataset path
 #   ./ops/ios_test.sh --all-targets               # run scheme test action, including UI tests
@@ -533,10 +542,26 @@ elif [[ -n "$GREP_PATTERN" ]]; then
 elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
   for t in "${SPECIFIC_TESTS[@]}"; do
     if [[ "$t" == */* ]]; then
+      # 明確 Class/method 一律直通：呼叫者得以指向 awk discovery 看不到的東西。
       ONLY_FLAGS+=("-only-testing:$TEST_TARGET/$t")
-    else
-      ONLY_FLAGS+=("-only-testing:$TEST_TARGET/$TEST_TARGET/$t")
+      continue
     fi
+    # 裸方法名反查自身容器。硬拼 $TEST_TARGET/$TEST_TARGET/ 會讓所有不住在
+    # 「與 target 同名 class」裡的測試 0 匹配，Swift Testing 還會缺簽名——兩者
+    # 都要跑完一整輪 build+test 才被尾端 zero-executed guard 抓到。
+    resolved=()
+    while IFS= read -r flag; do
+      [[ -n "$flag" ]] && resolved+=("$flag")
+    done < <(discover_only_flags "$TEST_DIR" "^${t}$" "$TEST_TARGET")
+    if [[ ${#resolved[@]} -eq 0 ]]; then
+      echo "[ios_test] no test method named '$t' under $TEST_DIR ($TEST_TARGET)" >&2
+      echo "[ios_test] 裸方法名會掃描該 scope 的 test 目錄反查所屬 class/@Suite 容器；跨 scope 請加 --ui/--unit，或直接給 Class/method。" >&2
+      exit 1
+    fi
+    # 名字撞到 class/@Suite 容器名時會整包命中該 suite（與 -g 的語意一致）。
+    # bash 3.2 + set -u：空陣列展開會 unbound variable，故下一行必須留在 -eq 0 之後。
+    [[ ${#resolved[@]} -gt 1 ]] && echo "[ios_test] note: '$t' 命中 ${#resolved[@]} 個 selector，全部納入" >&2
+    ONLY_FLAGS+=("${resolved[@]}")
   done
 elif [[ "$TEST_SCOPE" != "all" ]]; then
   ONLY_FLAGS+=("-only-testing:$TEST_TARGET")
