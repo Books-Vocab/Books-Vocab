@@ -230,10 +230,8 @@ section "A mechanism nothing can run fails the gate, it does not sit unrun"
 # counted as failed — the gate returned 0. validate now refuses such a
 # mechanism, but the runner must not depend on validate having been run: an
 # unrunnable mechanism reaching the runner is a failure, not a deferral.
-# Cleaned up inline, deliberately not via `trap ... EXIT`: bash keeps one EXIT
-# trap and the next section installs its own to put a *version-controlled*
-# baseline back (see IMP-0048). Registering a second one here would silently
-# replace it and leave the tracked file moved aside.
+# The ghost plane lives in a temp dir and is `rm -rf`'d inline at the end of
+# this section; nothing here touches the working tree.
 GHOST_DIR="$(mktemp -d)"
 UNRUNNABLE="$GHOST_DIR/unrunnable.yml"
 cat >"$UNRUNNABLE" <<'YML'
@@ -259,32 +257,78 @@ fi
 rm -rf "$GHOST_DIR"
 
 section "Missing injection baseline is handled gracefully"
-# Move the real baseline aside, run execute, then restore.
-BASE="ops/injection_baseline.txt"
-MOVED=""
-if [[ -f "$BASE" ]]; then
-  MOVED="$(mktemp)"
-  mv "$BASE" "$MOVED"
+# "Missing" is staged by pointing the gate at a path that does not exist, via
+# the same KG_INJECTION_BASELINE seam ops/injection_lint.py already reads. The
+# version-controlled ops/injection_baseline.txt is never touched.
+#
+# It used to be `mv`d aside for the length of this section and put back by a
+# `trap ... EXIT`. On 2026-08-04 a concurrent repo-root `git add -A` landed
+# inside that window and staged the absence: 400bd6c5f committed the file away,
+# 9037aca00 put it back. A restoring trap is not a transaction — the tracked
+# file has to stay on disk *while* the gate runs, which is what the watcher
+# below measures rather than assumes (IMP-0048).
+TRACKED_BASELINE="ops/injection_baseline.txt"
+MISSING_BASELINE="$(mktemp -u)"
+
+# Checking the tracked file after the gate returns is precisely what the old
+# EXIT trap already delivered, so it would prove nothing. Snapshot it, then
+# `cmp` the live path against that snapshot every 100ms for as long as the gate
+# runs. A typo'd path cannot pass quietly: the snapshot `cp` fails and every
+# sample is a violation. A watcher that never ran cannot pass either — the
+# sample count is asserted non-zero. The iteration cap makes an orphaned
+# watcher (suite SIGKILLed) expire on its own; it only ever reads.
+WATCH_SNAPSHOT="$(mktemp)"
+WATCH_SAMPLES="$(mktemp)"
+WATCH_RUNNING="$(mktemp)"
+if ! cp "$TRACKED_BASELINE" "$WATCH_SNAPSHOT"; then
+  fail_t "$TRACKED_BASELINE is not on disk before this section starts — nothing below can mean anything"
 fi
-restore() {
-  if [[ -n "$MOVED" && -f "$MOVED" ]]; then
-    mv "$MOVED" "$BASE"
-  fi
-}
-trap restore EXIT
-OUT="$($GATE --files "$SAMPLE_FILE" --tier fast --execute 2>&1)"
+(
+  n=0
+  while [[ -e "$WATCH_RUNNING" && "$n" -lt 3000 ]]; do
+    if cmp -s "$TRACKED_BASELINE" "$WATCH_SNAPSHOT"; then
+      echo intact >>"$WATCH_SAMPLES"
+    else
+      echo VIOLATION >>"$WATCH_SAMPLES"
+    fi
+    n=$((n + 1))
+    sleep 0.1
+  done
+) &
+WATCH_PID=$!
+
+OUT="$(KG_INJECTION_BASELINE="$MISSING_BASELINE" $GATE --files "$SAMPLE_FILE" --tier fast --execute 2>&1)"
 RC=$?
+
+rm -f "$WATCH_RUNNING"
+wait "$WATCH_PID" 2>/dev/null || true
+SAMPLES="$(wc -l <"$WATCH_SAMPLES" | tr -d ' ')"
+VIOLATIONS="$(grep -c VIOLATION "$WATCH_SAMPLES" || true)"
+
 if [[ "$RC" -eq 0 ]]; then
   ok "execute fast tier still exits 0 when injection baseline missing"
 else
   fail_t "execute fast tier failed with missing injection baseline: $OUT"
 fi
-if grep -qi 'injection_baseline\|missing baseline\|WARN' <<<"$OUT"; then
-  ok "output warns about missing injection baseline"
+# Anchored on the static.injection row, deliberately not a bare /WARN/: the
+# summary line always prints a `warn=<n>` counter, so `grep -qi WARN` matches
+# `warn=0` even when the mechanism hard-failed and reported zero warnings.
+if grep -qE '^static\.injection +\[WARN\].*--report' <<<"$OUT"; then
+  ok "gate degrades static.injection to --report and marks the row WARN"
 else
-  fail_t "no warning about missing injection baseline: $OUT"
+  fail_t "static.injection did not degrade to a warned --report: $OUT"
 fi
-restore
+if [[ "$SAMPLES" -gt 0 && "$VIOLATIONS" -eq 0 ]]; then
+  ok "tracked injection baseline stayed byte-identical throughout the run ($SAMPLES samples)"
+else
+  fail_t "tracked $TRACKED_BASELINE changed while the gate ran: $VIOLATIONS/$SAMPLES samples violated"
+fi
+if cmp -s "$TRACKED_BASELINE" "$WATCH_SNAPSHOT"; then
+  ok "tracked injection baseline is untouched after the run"
+else
+  fail_t "$TRACKED_BASELINE differs from its pre-section snapshot — this test modified a version-controlled file"
+fi
+rm -f "$WATCH_SNAPSHOT" "$WATCH_SAMPLES"
 
 section "--tier all dry-run includes fast and slow"
 OUT="$($GATE --files "$SAMPLE_FILE" --tier all --dry-run 2>&1)"

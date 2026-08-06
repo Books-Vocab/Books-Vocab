@@ -142,11 +142,32 @@ def tier_ok(layer: str, tier: str) -> bool:
 
 
 def injection_args(root: Path) -> tuple[list[str], str | None]:
-    baseline = root / "ops" / "injection_baseline.txt"
+    """Decide --baseline-check vs --report, honouring the lint layer's override.
+
+    KG_INJECTION_BASELINE has always been read by ops/injection_lint.py, but
+    this runner used to hardcode the path. The two then disagreed: the parent
+    planned --baseline-check against the tracked file while the child resolved
+    a different (or absent) baseline from the environment and read every
+    finding as a regression — a split brain that surfaced only as a bare rc=1.
+    Because the override could not reach this function, the only way to stage a
+    missing baseline was to `mv` the *version-controlled* ops/injection_baseline.txt
+    aside, and a concurrent `git add -A` once committed that absence (IMP-0048).
+
+    run_mech below deliberately passes no env=, so the child inherits ours, and
+    injection_lint.sh cds to the same repo root — a relative override therefore
+    resolves identically on both sides. Do not convert that call to an explicit
+    env dict: it would drop PATH/UV_BIN and injection_lint.sh would lose uv.
+    """
+    override = os.environ.get("KG_INJECTION_BASELINE")
+    if override:
+        candidate = Path(override)
+        baseline = candidate if candidate.is_absolute() else root / candidate
+    else:
+        baseline = root / "ops" / "injection_baseline.txt"
     if baseline.exists():
         return ["--baseline-check"], None
     return ["--report"], (
-        "ops/injection_baseline.txt missing; running --report only. "
+        f"{baseline} missing; running --report only. "
         "Run `ops/injection_lint.sh --baseline` to establish a baseline."
     )
 
