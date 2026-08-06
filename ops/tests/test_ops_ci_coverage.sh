@@ -69,6 +69,10 @@ LINUX_GROUPS=(
   #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
   #    可達 —— 那個理由現在是假的，所以收進來。
   docs-lint
+  # 純 Python：讀 ops/fixtures/ui_worlds/marketing_demo.json 與兩支 Debug scene
+  # 的原始碼字面量做對帳，不需要模擬器（那正是它存在的理由——Swift 端的
+  # precondition 只有跑得動 simulator 時才會講話）。
+  catalog-scene-expectations
 )
 
 # token|要從 PATH 拿掉的命令|功能探針（皆空 = 這個 token 無法用 PATH 證偽）
