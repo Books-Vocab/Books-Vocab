@@ -6,7 +6,7 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: f25fd2ed6
+verified_against: 0d4b435e9
 -->
 # 後端部署指南
 
@@ -75,15 +75,36 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 - **刻意排除**（皆不進 image）：`backend/.env*`、`backend/VERSION`、`backend/data/**`、`backend/certs/**`、`backend/scripts/**`、`backend/docs/**`、`ios/**`、`lab/**`、`docs/**`、`ops/**`、`design-system/**`。判準正本在 `ops/kg_reconcile.sh` 的 `BACKEND_TRIGGER_RE`。
 
 ### rollback + poison 行為
-DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit fail）。任一失敗 → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0，且**回滾自己那次 compose 的退出碼會被檢查**——失敗時發的是「回滾未生效，容器很可能仍跑新版」而不是「生產可能雙壞」（後者只在回滾真的跑完、舊版卻起不來時才發）。
+DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit fail）。localhost 或 infra 失敗、以及**外部 smoke 判 `bad`** → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0，且**回滾自己那次 compose 的退出碼會被檢查**——失敗時發的是「回滾未生效，容器很可能仍跑新版」而不是「生產可能雙壞」（後者只在回滾真的跑完、舊版卻起不來時才發）。
 
-**兩個健康探針都會重試**，共用 `KG_RECON_HEALTH_ATTEMPTS`（預設 5）與 `KG_RECON_HEALTH_DELAY`（預設 5s）。預算算法看**失敗是快是慢**：`--max-time 10` 只在「連得上但回應慢」時吃滿；DNS `no such host` 之類是瞬間返回，所以快失敗的總預算只有 `(attempts-1) × delay` = 20s。這個區別是 2026-08-04 事故的核心（IMP-0060）：external 探針當時**完全沒有重試**，一發打在 felix 主機 DNS 中斷的窗口上就回滾了一個健康的部署。**已知殘餘**：20s 蓋不住觀測到上界 ~90s 的主機端連通性中斷；把「我這台量不到」與「服務真的壞了」分開判，屬 IMP-0061。
+**外部 smoke 是三分類，不是二分類（IMP-0061）**。判準：**回滾只有在證據指控被部署的那份 code 時才正當**，而走到這一步 localhost 已經證明新 sha 起來了、正在 serving。
+
+| class | 什麼情況 | 結果 |
+|---|---|---|
+| `ok` | info 對齊且 `/api/health` 回 200/401/403（404 視為跳過） | 通過 |
+| `bad` | **拿得到 HTTP 回應**但不合格——5xx、版本不符、CF 錯誤頁（502/530/1033 皆算） | 回滾 + poison + ALERT，**行為不變** |
+| `unreachable` | **每次嘗試都拿不到任何 HTTP 回應**（`HTTP=000`／DNS 失敗／連不出去） | **不回滾**：部署照常落地、不寫 poison，發 ALERT 要人從第二個地點確認，並在 verdict 與 `backups/deploy.log` 記 `smoke=unverified` |
+
+`unreachable` 不回滾有兩個獨立理由：① 沒有任何證據指控這份 code，「我這台量不到」與「服務真的壞了」不是同一件事；② 回滾要跑 `--build`，而 2026-08-04 事故裡它正是被同一場 DNS 故障弄死的（IMP-0060 C2）——**兩個失效是相關的**，gate 最容易假失敗的時候正是回滾最不可能成功的時候。放行後 gate 退化成 localhost + infra_health，兩者純本機、免疫於同一場斷網。刻意**只問「到底有沒有拿到回應」，不問是幾號**，所以不需要「CF tunnel 各種故障回什麼 code」那份對照表。
+
+⚠ `smoke=unverified` 的落地**必須有人看**：stderr ALERT 只是次要通知（沒人保證有人在讀 launchd err log），持久可 grep 的證據是 `backups/deploy.log` 那行與 verdict 的 `smoke` 欄位。查最近有沒有這種落地：`grep 'smoke=unverified' backups/deploy.log`。
+
+**兩個健康探針都會重試**，共用 `KG_RECON_HEALTH_ATTEMPTS`（預設 5）與 `KG_RECON_HEALTH_DELAY`（預設 5s）。預算算法看**失敗是快是慢**：`--max-time 10` 只在「連得上但回應慢」時吃滿；DNS `no such host` 之類是瞬間返回，所以快失敗的總預算只有 `(attempts-1) × delay` = 20s。這個區別是 2026-08-04 事故的核心（IMP-0060）：external 探針當時**完全沒有重試**，一發打在 felix 主機 DNS 中斷的窗口上就回滾了一個健康的部署。20s 仍蓋不住觀測到上界 ~90s 的主機端連通性中斷，但自 IMP-0061 起**那不再是風險，只是延遲**：預算用盡後的結論已從「回滾」改成「落地 + `smoke=unverified` + 告警」（見上方三分類表）。所以這兩個 knob 現在買的是「多等一下也許就驗到了」，不是「賭中斷有多長」。
 
 ### 與人工 deploy 共鎖
 DEPLOY 路徑用 `mkdir /tmp/kg-deploy.lock`（**與 `devops.sh` 的 `acquire_deploy_lock` 同一把**）。取不到鎖 = 有人工 deploy 進行中 → 本輪 `verdict=locked` exit 0 讓路，下一 tick 再收斂。反之 reconciler 持鎖時，人工 `devops.sh deploy` 會被同一把鎖擋住。
 
 ### verdict（stdout 單行 JSON，schema `kg.deploy.reconcile.v1`）
-`verdict ∈ {noop, ff-only, deployed, rolled-back, poisoned-skip, locked, dry-run}`；欄位 `deployed_sha/origin_sha/backend_changed/ts`。人類進度/告警走 stderr。
+`verdict ∈ {noop, ff-only, deployed, rolled-back, poisoned-skip, locked, dry-run}`；欄位 `deployed_sha/origin_sha/backend_changed/smoke/ts`。人類進度/告警走 stderr。
+
+`smoke ∈ {n/a, ok, unverified, bad}`（IMP-0061 新增）——外部 smoke 這一關的結果，語意刻意與 `verdict` 正交：
+
+| 值 | 意思 |
+|---|---|
+| `n/a` | 外部 smoke 沒跑到（`noop`/`ff-only`/`locked`/`dry-run`，或 gate 在 localhost/build 階段就先失敗） |
+| `ok` | 驗過且通過 |
+| `unverified` | 跑了、預算用盡，但**全程沒拿到任何 HTTP 回應** → 判 host 端斷網，照樣落地（`verdict=deployed`） |
+| `bad` | 跑了、拿得到回應但不合格 → 回滾（`verdict=rolled-back`，`deploy.log` 記 `reason=smoke`） |
 
 ### 安全不變式
 絕不碰 `~/kg-data`（生產資料權威副本，已於 2026-06-16 搬出 git worktree，`reset --hard` 只作用 repo working tree）；絕不 `git clean`／不 reset 到未知 sha（只回 ROLLBACK_SHA）／不 `compose down`／不 prune／不 `rm -rf`；fetch/pull 一律 `--ff-only`，origin rewind 不 force、告警待人工。

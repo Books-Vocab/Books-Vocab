@@ -2,11 +2,13 @@
   "category": "arch",
   "date": "2026-08-04",
   "detail": "健康 gate 把**主機端連不出去**判成**這次部署壞了**，兩者不是同一件事。2026-08-04 事故裡 felix 的 DNS 掛了，容器與 tunnel 都好端端的，使用者也拿得到服務，但 gate 從 felix 內部量測外部可達性、量不到就回滾——回滾本身還因為同一個網路問題而失敗（見 IMP-0060）。重試只是把窗口從 0s 拉到 20s，而觀測到的中斷長度上界是 ~90s，所以這是緩解不是解。**方向（需定論，不要照抄）**：① external smoke 失敗改判 `warn` 而非 `block`——部署照樣落地，但發告警要人看（風險：真的壞掉時不自動回滾）；② 先分辨失敗種類——`HTTP=000`/DNS 失敗 = 我這台量不到，`5xx`/CF 錯誤頁 = 服務真的壞了，只有後者觸發回滾；③ 從**第二個地點**量（oscar 或 CF 自己的 health check），別讓「被測者」與「量測者」是同一台機器。②看起來最對稱且成本最低，但需要確認 CF tunnel 各種故障模式實際回什麼 code——那份對照表現在沒人有。",
+  "fix_site": "ops/kg_reconcile.sh:external_smoke_ok + run_health_gate",
   "id": "IMP-0061",
-  "resolution": "",
+  "resolution": "採方向②（分辨失敗種類），但判準不是列舉故障碼，而是「到底有沒有拿到任何 HTTP 回應」——所以刻意不需要那份沒人有的 CF tunnel 故障碼對照表。external_smoke_ok 改吐三分類 EXTERNAL_SMOKE_CLASS：ok / bad（拿得到 HTTP 回應但不合格，含 5xx 與 CF 502/530/1033 錯誤頁）→ 回滾+poison 行為完全不變 / unreachable（每次嘗試都拿不到任何回應）→ 不回滾，落地並記 smoke=unverified 於 verdict 與 backups/deploy.log，另發 ALERT。判準：回滾只有在證據指控被部署的 code 時才正當，而 localhost 探針此刻已證明新 sha 健康在跑；且回滾要跑的 --build 會被同一場斷網弄死（IMP-0060 C2），兩個失效相關而非獨立。放行後 gate 退化成 localhost+infra_health，皆純本機、免疫同一場斷網。未採①（smoke 全改 warn，會連真壞掉都不回滾）與③（第二地點量測，需 oscar/CF 佈線，破壞 felix-local 自足）。TDD 紅→綠：只改測試時新段落 20 紅（兩種 shape 皆紅、兩條正控保持綠），修完 reconcile 127 passed/0 failed（baseline 103）。兩組反控：刪 bad 分類 → 15 紅（證明非「smoke 從此不擋」）；分類器只認空字串 → silent shape 全綠而 code000 shape 10 紅（證明替身忠實度不可省）。關鍵發現：真 curl 連不出去時會把 000 印在 stdout 再 exit 6，舊 mock 靜默 exit 6，故舊替身會讓錯的實作拿到全綠——已補 mock 忠實度並讓測試對兩種 shape 各跑一次。verdict 新增 smoke 欄位（n/a|ok|unverified|bad）。殘餘：全球性 DNS 失效時會落地而非回滾（判定正確，回滾治不了 DNS）；smoke=unverified 的 stderr ALERT 是否真有人看未經確認，故落地證據同時寫進 deploy.log 與 verdict。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "IMP-0060 的 review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verified_at": "1aaadfdb7"
 }
