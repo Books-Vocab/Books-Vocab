@@ -848,12 +848,62 @@ def _primary_ff_ready(primary: Path, local: str) -> tuple[str, dict[str, Any]] |
 
 def _changed_vs_base(worktree: str, base: str) -> list[str]:
     """Committed files the worktree's HEAD changed relative to base (merge-base diff:
-    `git diff --name-only base...HEAD`). This is what a cutover would land."""
+    `git diff --name-only base...HEAD`). This is the PATCH a cutover would land — which
+    equals the TREE the gates execute against only while the base is already contained
+    in HEAD; `_base_containment` is what makes that precondition true."""
     rc, out = _git(["diff", "--name-only", f"{base}...HEAD"], cwd=worktree)
     if rc != 0:
         # base unresolved (e.g. no origin/main locally) — fall back to two-dot.
         rc, out = _git(["diff", "--name-only", f"{base}..HEAD"], cwd=worktree)
     return [ln for ln in out.splitlines() if ln]
+
+
+def _local_trunk(base: str) -> str:
+    """The LOCAL branch a cutover rebases onto. `--base` may be spelled `origin/main`,
+    but the ref a cutover actually integrates against is always the local trunk. gate
+    and cutover must measure containment against the SAME ref, or the check drifts
+    away from the thing it protects."""
+    return base.split("/", 1)[1] if "/" in base else base
+
+
+def _base_containment(worktree: str, base: str) -> dict[str, Any] | None:
+    """None when `base`'s tip is already an ancestor of the worktree HEAD — i.e. the
+    tree that was gated IS the tree a cutover lands, because the rebase is then a
+    no-op. Otherwise the drift, MEASURED: how many commits, and which files base
+    gained since the fork point.
+
+    The missing half of iron law 2's machine enforcement (IMP-20260806-945e01).
+    `head_sha` binds a verdict to the code the gate READ; nothing bound it to the code
+    it lands ALONGSIDE. A branch behind base passes the stale-HEAD check BY
+    CONSTRUCTION — the HEAD did not move, only the base did — and cutover then rebases
+    onto a tree the gate never saw."""
+    rc, _ = _git(["merge-base", "--is-ancestor", base, "HEAD"], cwd=worktree)
+    if rc == 0:
+        return None
+    _, tip = _git(["rev-parse", base], cwd=worktree)
+    if rc != 1:
+        # 128 = unresolvable ref / unreadable repo. NOT the same as "behind": report
+        # the inability to verify rather than inventing a count, and still refuse —
+        # "cannot check" must never render as "checked and fine".
+        return {"base_ref": base, "base_sha": tip, "behind_commits": None,
+                "base_changed_files": [], "containment_error": f"git rc={rc}"}
+    _, n = _git(["rev-list", "--count", f"HEAD..{base}"], cwd=worktree)
+    _, files = _git(["diff", "--name-only", f"HEAD...{base}"], cwd=worktree)
+    return {"base_ref": base, "base_sha": tip,
+            "behind_commits": int(n) if n.isdigit() else None,
+            "base_changed_files": [ln for ln in files.splitlines() if ln]}
+
+
+def _behind_base_refusal(worktree: str, trunk: str, drift: dict[str, Any]) -> str:
+    if drift.get("containment_error"):
+        return (f"cannot verify that {trunk} is contained in the worktree HEAD "
+                f"({drift['containment_error']}) — refusing rather than binding a "
+                f"verdict to a tree that may not be the one that lands")
+    return (f"worktree is behind {trunk} ({drift['behind_commits']} commit(s), "
+            f"{len(drift['base_changed_files'])} file(s) changed on {trunk} since the "
+            f"fork) — cutover rebases onto {trunk} first, so the gated tree is NOT the "
+            f"tree that lands. Run `git -C {worktree} rebase {trunk}`, then re-run "
+            f"`gate`")
 
 
 def _head_sha(worktree: str) -> str:
@@ -1883,6 +1933,22 @@ def cmd_gate(args: argparse.Namespace) -> int:
     if mismatch is not None:
         return mismatch
 
+    if not args.plan_only:
+        # Cheap half of the base binding: refuse before spending a gate run (an iOS gate
+        # is tens of minutes) on a tree that cannot land as-gated. `--plan-only` runs
+        # nothing and records nothing, so it stays usable as the preview the message
+        # below points at.
+        trunk = _local_trunk(args.base)
+        drift = _base_containment(worktree, trunk)
+        if drift is not None:
+            msg = (f"{_behind_base_refusal(worktree, trunk, drift)} — gating this tree "
+                   f"would bind a verdict to code cutover will not land. `--plan-only` "
+                   f"still previews the routing")
+            _emit({"schema": GATE_SCHEMA, "step": "gate", "error": msg,
+                   "worktree": worktree, "base": args.base, **drift}, args.json,
+                  f"✗ gate refused: {msg}")
+            return EXIT_BLOCK
+
     changed = _changed_vs_base(worktree, args.base)
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
@@ -1984,16 +2050,20 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     if mismatch is not None:
         return mismatch
 
+    local = _local_trunk(args.base)
     rec_path = _gate_record_path(args.state, worktree)
     head = _head_sha(worktree)
     refuse: str | None = None
+    refuse_extra: dict[str, Any] = {}
     verdict: str | None = None
+    gated_head: str | None = None
     warnings: list[str] = []
     if not rec_path.exists():
         refuse = "no gate verdict on record — run `gate` first"
     else:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
+        gated_head = rec.get("head_sha")
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
         if rec.get("head_sha") != head:
@@ -2014,12 +2084,22 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             # a warn LANDS; surface which gates warned so the record is explicit.
             warnings = [g.get("name") for g in rec.get("gates", [])
                         if g.get("status") == "warn"]
+    if not refuse:
+        # Ordering is deliberate: the stale-HEAD / wrong-orchestrator / block refusals
+        # still win when they apply — they are the more specific diagnosis. This one
+        # sits in the SHARED chain, so it is visible in dry-run as well as --commit.
+        # The helper's failure key is `containment_error`, not `error`, so **spreading
+        # it cannot clobber the refusal prose.
+        drift = _base_containment(worktree, local)
+        if drift is not None:
+            refuse_extra = drift
+            refuse = _behind_base_refusal(worktree, local, drift)
     if refuse:
         _emit({"schema": SCHEMA, "step": "cutover", "error": refuse, "landed": False,
-               "worktree": worktree}, args.json, f"✗ cutover refused: {refuse}")
+               "worktree": worktree, **refuse_extra}, args.json,
+              f"✗ cutover refused: {refuse}")
         return EXIT_BLOCK
 
-    local = args.base.split("/", 1)[1] if "/" in args.base else args.base
     primary = primary_root()
     wt_branch = _current_branch(worktree)
     warn_line = (f"\n  landed with warnings: {', '.join(warnings)}" if warnings else "")
@@ -2061,6 +2141,22 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                   f"✗ rebase onto {local} failed (aborted):\n{rout}")
             return EXIT_BLOCK
         sha = _head_sha(worktree)
+        if gated_head is not None and sha != gated_head:
+            # Terminal invariant, and the only one a race cannot dodge: the containment
+            # check above runs OUTSIDE this lock, so a peer cutover can advance the trunk
+            # in between — and the rebase is deliberately taken against the CURRENT trunk.
+            # Whatever the cause, a rebase that moved HEAD produced a tree no gate ever
+            # judged. Refuse BEFORE the trunk advances; nothing has landed. The worktree
+            # is left rebased (that is the remedy anyway) and its verdict is now honestly
+            # stale, so the next cutover refuses on head_sha until `gate` is re-run.
+            msg = (f"the rebase onto {local} moved HEAD ({gated_head[:8]} -> {sha[:8]}) "
+                   f"— the trunk advanced after the verdict was checked, so the tree "
+                   f"that would land is not the tree that was gated. The worktree is "
+                   f"now rebased: re-run `gate`, then `cutover`")
+            _emit({"schema": SCHEMA, "step": "cutover", "error": msg, "landed": False,
+                   "worktree": worktree, "gated_sha": gated_head, "rebased_sha": sha,
+                   "target": local}, args.json, f"✗ cutover refused: {msg}")
+            return EXIT_BLOCK
         # advance the local trunk by a ff-only merge IN the primary (main lives there).
         mrc, mout = _git_mutation(
             ["merge", "--ff-only", wt_branch],

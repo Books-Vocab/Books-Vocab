@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -1094,9 +1094,15 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
 
 
 def _advance_local_main(repo, name):
-    """Add a commit to LOCAL main that origin does not have (origin is never pushed)."""
+    """Add a commit to LOCAL main that origin does not have (origin is never pushed).
+
+    Stages the one file BY NAME, not `add -A`: worktrees live under the primary's own
+    `.claude/worktrees/`, and `add -A` in the primary commits each of them to main as a
+    gitlink. That artifact is invisible to assertions about the trunk's own files, but
+    it shows up verbatim in any measurement of what the base gained since a fork.
+    """
     (repo / f"{name}.txt").write_text("local-only\n")
-    _git(["add", "-A"], repo)
+    _git(["add", f"{name}.txt"], repo)
     _git(["commit", "-qm", f"local: {name}"], repo)
 
 
@@ -1399,6 +1405,186 @@ def test_cutover_refused_when_gate_verdict_is_block(scratch):
     assert rc == MODULE.EXIT_BLOCK
     assert cut["landed"] is False
     assert "docs/reference/x.md" not in _local_main_files(repo)
+
+
+# --- IMP-20260806-945e01: the verdict must be bound to the tree that LANDS ---------
+# `head_sha` pins a verdict to the code the gate READ. Nothing pinned it to the code
+# it lands ALONGSIDE. cutover's first act is `rebase <local trunk>`, so for a branch
+# behind the trunk the gate judges a tree that never lands — and the stale-HEAD guard
+# cannot see it, because the HEAD did not move, only the base did.
+
+
+@gitmark
+def test_gate_refuses_to_judge_a_tree_that_is_behind_base(scratch):
+    # The cheap half: refuse BEFORE spending a gate run on a tree that cannot land.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "behind2",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    _advance_local_main(repo, "peer")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert gate["behind_commits"] == 1
+    assert gate["base_changed_files"] == ["peer.txt"]
+    # refused BEFORE running anything: no verdict cached for a later cutover to consume
+    assert not MODULE._gate_record_path(state, wt).exists()
+
+
+@gitmark
+def test_gate_plan_only_still_previews_a_behind_tree(scratch):
+    # --plan-only runs no gate and writes no verdict, so it must stay usable as the
+    # preview the refusal message points at (a refusal whose own advice is blocked is
+    # a lie).
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "behind3",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    _advance_local_main(repo, "peer")
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state,
+                          "--plan-only", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["verdict"] == "planned"
+
+
+@gitmark
+def test_cutover_refused_when_the_base_moved_under_a_fresh_verdict(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "behind",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK and gate["verdict"] == "warn"
+    gated_head = gate["head_sha"]
+
+    _advance_local_main(repo, "peer")
+    # WHO PRODUCED THE REFUSAL: pin that the stale-HEAD guard CANNOT be what fires —
+    # the worktree HEAD is byte-identical to the one the verdict recorded.
+    assert _git(["rev-parse", "HEAD"], wt) == gated_head
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert cut["behind_commits"] == 1
+    assert cut["base_changed_files"] == ["peer.txt"]
+    assert "peer.txt" in _local_main_files(repo)       # the peer's work is still there
+    assert "notes.txt" not in _local_main_files(repo)  # ours did NOT land
+
+
+@gitmark
+def test_cutover_dry_run_also_refuses_when_the_base_moved(scratch):
+    # A refusal that only exists under --commit teaches the dry-run to lie: the dry-run
+    # is what an agent reads to decide whether cutover is ready.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "behind-dry",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    _advance_local_main(repo, "peer")
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert cut["behind_commits"] == 1
+
+
+@gitmark
+def test_cutover_refuses_when_the_rebase_moves_head_off_the_gated_sha(scratch,
+                                                                      monkeypatch):
+    # The window the pre-flight containment check cannot close: a peer cutover lands on
+    # local main AFTER the check and BEFORE the rebase (the rebase is deliberately taken
+    # inside the trunk lock, against the CURRENT trunk). Injected at the lock seam —
+    # real git, real rebase, no fake for the thing under test. The terminal invariant:
+    # the sha that lands must be the sha that was gated.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "raced",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    gated_head = gate["head_sha"]
+
+    real_lock = MODULE._main_advance_lock
+
+    @contextmanager
+    def racing_lock(primary):
+        with real_lock(primary):
+            _advance_local_main(repo, "peer")   # a peer landed inside the window
+            yield
+
+    monkeypatch.setattr(MODULE, "_main_advance_lock", racing_lock)
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert cut["gated_sha"] == gated_head
+    assert cut["rebased_sha"] != gated_head
+    assert "notes.txt" not in _local_main_files(repo)  # main did NOT advance
+    assert "peer.txt" in _local_main_files(repo)       # the peer's work is intact
+
+
+@gitmark
+def test_behind_base_refusal_renders_in_human_mode_too(scratch):
+    # The refusal must be legible without --json: an operator reading the terminal is
+    # the reader most likely to act on it, and a guard that only speaks JSON reads as
+    # silence to them. Also pins that stdout carries the human line INSTEAD of JSON.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "behind-human",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    _advance_local_main(repo, "peer")
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = MODULE.main(["cutover", "--worktree", wt, "--state", state, "--commit"])
+    out = buf.getvalue()
+    assert rc == MODULE.EXIT_BLOCK
+    assert out.startswith("✗ cutover refused:")
+    assert "1 commit(s), 1 file(s) changed on main" in out
+    assert f"git -C {wt} rebase main" in out        # the remedy is spelled out verbatim
+    with pytest.raises(json.JSONDecodeError):       # human mode, not a JSON dump
+        json.loads(out)
+
+
+@gitmark
+def test_landed_sha_equals_gated_sha_when_base_is_contained(scratch):
+    # The property the guard buys, stated positively: with the base already contained,
+    # cutover's rebase is a no-op, so the sha that LANDS is the sha that was GATED.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix thing", "--slug", "same",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "notes.txt"], wt); _git(["commit", "-qm", "work"], wt)
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+    assert cut["sha"] == gate["head_sha"]
 
 
 @gitmark
