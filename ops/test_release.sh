@@ -1180,7 +1180,7 @@ CONV_WANT=da0f51f32aabbccddeeff00112233445566778899
 
 rc=0; out="$(conv_run "$(conv_stub hit '200|{"version":"da0f51f32"}')" 5 "wait_for_rollout $CONV_WANT")" || rc=$?
 [[ $rc -eq 0 ]] && ok "wait_for_rollout: 線上已是目標 sha → rc 0" \
-                || fail_t "wait_for_rollout: 已收斂卻 rc=$rc（$out）"
+                || fail_t "wait_for_rollout: 已收斂卻 rc=${rc}（${out}）"
 
 rc=0; out="$(conv_run "$(conv_stub miss '200|{"version":"0c9e3b7c"}')" 2 "wait_for_rollout $CONV_WANT")" || rc=$?
 [[ $rc -ne 0 ]] && ok "wait_for_rollout: 停在舊 sha 到逾時 → 非零（不謊報成功）" \
@@ -1197,7 +1197,7 @@ rc=0; out="$(conv_run "$(conv_stub short '200|{"version":"d"}')" 2 "wait_for_rol
 
 rc=0; out="$(conv_run "$(conv_stub building '200|{"version":"0c9e3b7c"}' '200|{"version":"0c9e3b7c"}' '200|{"version":"da0f51f32"}')" 8 "wait_for_rollout $CONV_WANT")" || rc=$?
 [[ $rc -eq 0 ]] && ok "build 中先舊後新 → 最終 rc 0（不早退）" \
-                || fail_t "先舊後新卻 rc=$rc（$out）"
+                || fail_t "先舊後新卻 rc=${rc}（${out}）"
 
 # 找不到 reconciler 時必須 err，不得靜默當成「不用等」
 fx_norecon="$TMP6/norecon"; mkdir -p "$fx_norecon/ops"
@@ -1205,7 +1205,7 @@ cp "$REL" "$fx_norecon/ops/release.sh"
 cp -R "$WORKSPACE/ops/lib" "$fx_norecon/ops/lib"
 rc=0; out="$(bash -c "source '$fx_norecon/ops/release.sh'; set +e; echo backend/src/a.py | paths_trigger_rollout" 2>&1)" || rc=$?
 [[ $rc -ne 0 ]] && ok "kg_reconcile.sh 不存在 → err，不靜默降級成「不用等」" \
-                || fail_t "reconciler 缺席卻靜默回答（rc=$rc）：$out"
+                || fail_t "reconciler 缺席卻靜默回答（rc=${rc}）：$out"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
