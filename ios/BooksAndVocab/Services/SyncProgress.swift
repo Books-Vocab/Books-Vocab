@@ -190,6 +190,13 @@ final class SyncProgressStore {
         case .finished(let id, let status, let detail):
             assert(status.isTerminal, "`.finished` 只接受終態；\(status) 會讓 finish(.completed) 稍後靜默改寫它")
             mutate(id) { step in
+                // 第一個終態說了算，與 `.advanced` 的守衛對稱。
+                //
+                // 具體會咬人的情況：單字卡 merge 成功、字典卡投影拋非 404。
+                // `performPullCardsToLocal` 內部已經發過 `.finished(.pull, .done,
+                // "同步 6 筆")`，外層的失敗補救接著又發一次 `.finished(.pull, .error)`
+                // —— 卡片明明已經寫進本地庫了，那一列卻從綠翻紅。
+                guard !step.status.isTerminal else { return }
                 step.status = status
                 if !detail.isEmpty { step.detail = detail }
                 if step.endTime == nil { step.endTime = Date() }

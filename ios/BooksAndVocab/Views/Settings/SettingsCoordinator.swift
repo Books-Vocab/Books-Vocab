@@ -36,6 +36,9 @@ final class SettingsCoordinator: SettingsCoordinating {
     var observationTotalCount = 0
     var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
     var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
+    /// 這一輪同步的逐步進度。`isResyncing` 只回答「在不在跑」；這個回答「跑到哪」。
+    /// 兩者並存而非取代：`isResyncing` 同時守著重入 guard 與按鈕 disabled。
+    let syncProgress = SyncProgressStore()
     init() {
         #if DEBUG
         debugLocalServerURL = KGService.getDebugLocalServerURL()
@@ -377,14 +380,48 @@ final class SettingsCoordinator: SettingsCoordinating {
         guard !isResyncing else { return }
         isResyncing = true
         defer { isResyncing = false }
-        await kgService.backgroundSync(container: modelContext.container)
+
+        // 進度模型：宣告 backgroundSync 會跑的步驟 + 本函式自己收尾的那一列。
+        // UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
+        syncProgress.begin(stepIDs: KGService.syncStepIDs() + [.status])
+
+        // reporter 走 AsyncStream 而不是每個事件開一個 `Task { @MainActor in }`。
+        // 後者**不保證順序**——事件從多條併行的腿發出，各自排進 MainActor 佇列後
+        // 到達順序就散了，計數器會肉眼可見地彈回。store 內部雖有單調守衛擋著，
+        // 但那是防線不是設計；`continuation.yield` 是 FIFO，讓「送出順序 = 套用
+        // 順序」在正常路徑上就成立。
+        let (events, continuation) = AsyncStream<SyncProgressEvent>.makeStream()
+        let pump = Task { @MainActor [syncProgress] in
+            for await event in events { syncProgress.apply(event) }
+        }
+
+        await kgService.backgroundSync(container: modelContext.container) { event in
+            continuation.yield(event)
+        }
         do {
             try modelContext.container.mainContext.save()
         } catch {
             AppLog.kg.error("resync mainContext save failed: \(error.localizedDescription)")
         }
-        await kgService.healthCheck()
-        await kgService.fetchQuota()
+
+        // 額度與連線檢查併發。兩者都是唯讀 GET、彼此無依賴，序列跑純粹是多一趟
+        // 往返的等待。
+        //
+        // **刻意不把它們拉進 backgroundSync 一起併發。** 它們寫的是 `KGService`
+        // 的 observable 屬性（isConnected / serverCardCount / quota），而
+        // `KGService` 是 `@Observable` 但不是 `@MainActor`。三條腿同時寫同一個
+        // observation registrar 是為了省約 100ms 去換一個真實的 data race——
+        // 這一輪真正的 6 秒在 podcast，那筆已經收掉了。
+        continuation.yield(.started(.status))
+        async let health: Void = kgService.healthCheck()
+        async let quota: Void = kgService.fetchQuota()
+        _ = await (health, quota)
+        continuation.yield(.finished(.status, status: .done, detail: ""))
+
+        continuation.finish()
+        await pump.value
+        syncProgress.finish(kgService.lastBackgroundSyncError == nil ? .completed : .failed)
+
         refreshObservationPreview()
     }
 

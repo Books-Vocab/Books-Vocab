@@ -160,7 +160,7 @@ extension KGService {
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
         notebookId: String?,
-        reporter: SyncProgressReporting? = nil
+        reporter: SyncProgressReporting?
     ) async throws -> KGPullOutcome {
         progress?(L10n.string("正在下載單字..."), 0, 0)
 
@@ -254,10 +254,16 @@ extension KGService {
             // projection yet. Learning-card sync remains available.
             AppLog.sync.info("Dictionary projection unavailable on legacy backend")
             reporter?(.finished(.dictionary, status: .skipped, detail: L10n.string("此伺服器尚未提供字典卡")))
+        } catch is CancellationError {
+            // 取消不畫紅叉（與 `legFinishedEvent` 同一條契約）。走 generic catch 的話
+            // 除了誤標失敗，`CancellationError().localizedDescription` 還會把英文的
+            // "The operation couldn't be completed." 原封送上 zh-Hant / ja / ko 的設定頁。
+            reporter?(.finished(.dictionary, status: .skipped, detail: ""))
+            throw CancellationError()
         } catch {
             // 非 404 一律往外拋（維持既有語意：字典卡壞掉 = 整條 pull 失敗）。
             // 先回報再 rethrow，否則這一列會停在 running 直到下一輪覆寫。
-            reporter?(.finished(.dictionary, status: .error, detail: error.localizedDescription))
+            reporter?(.finished(.dictionary, status: .error, detail: SyncFailurePresentation.reason(for: error)))
             throw error
         }
 
@@ -337,16 +343,23 @@ extension KGService {
     }
 
     /// `.pull` 完成列的說明文字。無變更時明講「已是最新」——留白會讓使用者以為
-    /// 那一步沒跑完。
+    /// 那一步沒跑完。用「同步」而不是「更新」：這個數字含新增與刪除，只刪了 3 張卡
+    /// 的一輪寫「更新 3 筆」是錯的。
     static func pullDetail(inserted: Int, updated: Int, deleted: Int) -> String {
         let changed = inserted + updated + deleted
         guard changed > 0 else { return L10n.string("已是最新") }
-        return L10n.format("更新 %@ 筆", "\(changed)")
+        return L10n.format("同步 %@ 筆", "\(changed)")
     }
 
-    /// `.push` 完成列的說明文字。0 筆是常態（沒有待送出的東西），照實寫。
-    static func pushDetail(states: Int, events: Int) -> String {
-        L10n.format("已送出 %@ 筆", "\(states + events)")
+    /// `.push` 完成列的說明文字。
+    ///
+    /// **算的是「送出了幾筆」，不是「伺服器接受了幾筆」。** 兩者都要含 `skipped`：
+    /// 伺服器端去重把重複的算 skipped，只看 updated / inserted 的話，複習紀錄
+    /// 重送那個 bug（每輪重推 9,580 筆、伺服器全判重複）會顯示「已送出 0 筆」——
+    /// 跟修好之前一模一樣，這一列就白加了。
+    static func pushDetail(states: (updated: Int, skipped: Int), events: (inserted: Int, skipped: Int)) -> String {
+        let sent = states.updated + states.skipped + events.inserted + events.skipped
+        return L10n.format("已送出 %@ 筆", "\(sent)")
     }
 
     /// 一般單腿的收尾事件：成功 `.done`、取消 `.skipped`、其餘 `.error`。
@@ -365,7 +378,7 @@ extension KGService {
         case .failure(let error) where error is CancellationError:
             return .finished(id, status: .skipped, detail: "")
         case .failure(let error):
-            return .finished(id, status: .error, detail: error.localizedDescription)
+            return .finished(id, status: .error, detail: SyncFailurePresentation.reason(for: error))
         }
     }
 
@@ -381,7 +394,7 @@ extension KGService {
         guard case .success(let e) = events else {
             return legFinishedEvent(.push, result: events, detail: "")
         }
-        return .finished(.push, status: .done, detail: pushDetail(states: s.updated, events: e.inserted))
+        return .finished(.push, status: .done, detail: pushDetail(states: s, events: e))
     }
 
     /// podcast 那一列的收尾。
@@ -502,6 +515,19 @@ extension KGService {
         var failureLabels: [String] = []
         var wasCancelled = false
 
+        // Podcast catalog 從整輪的最前面就起跑，與底下整條 vocab 管線併行。
+        //
+        // 它以前排在最後、序列執行，而 2026-08-06 的生產量測說那是整輪 7.55s 裡的
+        // 6.08s（81%）——同時資料量只有約 7 KB。貴的是往返次數不是位元組，而那些
+        // 往返完全不需要等 vocab。兩邊零欄位重疊（PodcastSeries/Episode/Progress
+        // vs VocabularyEntry/ReviewRecord），沒有任何理由讓它們互等。
+        //
+        // 用 `async let` 而不是 Task：早退路徑（401 / cancelled）離開 scope 時，
+        // 結構化併發會自動取消並等待這個 child，不會留下背景在跑的孤兒。
+        async let podcastLeg = Self.runPodcastLeg(
+            container: container, kgService: self, progress: progress
+        )
+
         // Phase 1: push review states & review events in parallel
         progress?(.started(.push))
         async let pushReviewResult = Self.captureResult { try await self.pushReviewStates(container: container) }
@@ -522,6 +548,21 @@ extension KGService {
         }
 
         // Phase 2: pull cards & review events in parallel (after push completes)
+        //
+        // **push → pull 必須序列。** pull 會把伺服器的 `lastReviewedAt` 寫回本地；
+        // 先拉再送會讓「還沒送出」的基準被覆蓋掉（7a8352f27 有測試釘住）。
+        //
+        // **單字卡 pull 與字典卡 pull 也必須序列，這點違反直覺所以寫下來。**
+        // `BackgroundSyncActor` 是 `@ModelActor`，但它在 12 個 call site 各自 init，
+        // 每個實例有自己的 `ModelContext` —— actor 隔離只序列化「對同一實例」的呼叫，
+        // 不會序列化兩個不同實例。而 `pullCardsToLocal` 與 `upsertDictionaryProjections`
+        // 都 fetch 全部 `VocabularyEntry`、都寫 translation / explanation / isArchived
+        // / cardRole / markSynced() 這幾乎相同的一組欄位。併發的後果具體有五個：
+        // 兩個 context 的 lost update、同一 mergeKey 重複插入、mass-deletion 安全閥
+        // 讀到會動的分母（而它決定 incrementalBoundary 要不要前進）、
+        // `reviewMergeEqualInstantConflicts` 這個 nonisolated(unsafe) static 的真實
+        // data race，以及 `SyncKeys.incrementalBoundary` 是單一全域 key（`enqueuePull`
+        // 全域序列化的原因也在此）。所以字典卡留在 pull 內部序列跑，不要「順手併發」。
         //
         // `.pull` 與 `.dictionary` 的收尾事件由 `performPullCardsToLocal` 內部發出
         // （字典卡投影是它的一段，見那支的說明）；這裡只負責開場與失敗時的補救。
@@ -545,11 +586,21 @@ extension KGService {
         let pullCards = await pullCardsResult
         let pullEvents = await pullEventsResult
         let pullResults = [pullCards.map { _ in () }, pullEvents.map { _ in () }]
-        // 失敗時 `.pull` / `.dictionary` 可能停在 running（內部的收尾事件沒走到）。
-        // 這兩個補發是冪等的：成功路徑上 store 已收到終態，`.error` 只在真的失敗時發。
-        if case .failure(let error) = pullCards, !(error is CancellationError) {
-            progress?(.finished(.pull, status: .error, detail: error.localizedDescription))
-            progress?(.finished(.dictionary, status: .error, detail: error.localizedDescription))
+        // 失敗時 `.pull` 停在 running（內部的收尾事件沒走到），這裡補一個終態。
+        //
+        // **取消也要補。** `KGService+Request` 會把 URLError -999 轉成
+        // `CancellationError`，所以 `api/vocab` 這個 GET 真的產得出取消；漏掉這條
+        // 分支的話 `.pull` 會停在轉圈，而 `wasCancelled` 早退後再也不會有事件來救它。
+        //
+        // **`.dictionary` 不補。** 它的 do/catch 涵蓋了自己 started 之後的每一條
+        // 出口，所以它要嘛已終態、要嘛從沒開始過——沒開始過的是 `.waiting`（灰列），
+        // 不會轉圈。硬補一個 `.error` 只會讓「單字卡第一步就死」的那一輪憑空把
+        // 字典卡的權重算滿，進度條顯示 80%。store 端的「首個終態說了算」讓成功路徑
+        // 上這裡的重複發送無害，但無害不等於該發。
+        if case .failure(let error) = pullCards {
+            progress?(error is CancellationError
+                ? .finished(.pull, status: .skipped, detail: "")
+                : .finished(.pull, status: .error, detail: SyncFailurePresentation.reason(for: error)))
         }
         progress?(Self.legFinishedEvent(.reviewEvents, result: pullEvents, detail: ""))
         if let pullOutcome = await processSyncPhase(
@@ -576,16 +627,18 @@ extension KGService {
             return
         }
 
-        // Phase 3: podcast catalog（序執行於 vocab pull 之後）。
-        // 把 podcast catalog 同步併入 backgroundSync，使其共用所有既有 resync 觸發
-        // （post-login / scenePhase→active / ⌘R menu / Settings 手動同步），補上
-        // 「Mac Catalyst 下 .refreshable 下拉不可用、BookshelfView .task 每 view identity
-        // 僅跑一次」造成的書架 podcast 區塊一旦未載入便無法復原的缺口。
-        // syncAll 內部自我防禦（list fetch 失敗即 skip、空回傳不刪 series），不 throw；
-        // 失敗僅記 log，不影響 vocab 結果。token 過期已在前面 vocab pull 的 401 分支提早 return。
-        progress?(.started(.podcast))
-        let podcastOutcome = await syncPodcastCatalog(container: container)
-        progress?(Self.podcastFinishedEvent(podcastOutcome))
+        // 收 podcast 那條併行的腿。它從整輪最前面就在跑（見上方 `async let`），
+        // 到這裡多半早就結束了 —— 這行只是把它的結果取回來畫那一列。
+        //
+        // 為什麼 podcast 屬於 backgroundSync 而不是書架自己的 .task：它要共用全部
+        // 四個既有觸發（post-login / scenePhase→active / ⌘R menu / Settings 手動），
+        // 補上「Mac Catalyst 下 .refreshable 不可用、BookshelfView .task 每 view
+        // identity 只跑一次」造成的、書架 podcast 區塊一旦沒載入就無法復原的缺口。
+        //
+        // syncAll 自我防禦（list fetch 失敗即 skip、空回傳不刪 series），不 throw。
+        await podcastLeg
+        // 早退路徑（401 / wasCancelled）不會走到這裡，那時 `async let` 的隱式取消
+        // 會把這條腿收掉——podcast 目錄同步是冪等的，取消一次沒有任何後果。
 
         if failureMessages.isEmpty {
             lastBackgroundSyncError = nil
@@ -604,15 +657,36 @@ extension KGService {
         }
     }
 
-    /// Podcast catalog 同步 helper。`PodcastSyncService.syncAll` 為 `@MainActor`，
-    /// 需以 main-actor `ModelContext` 呼叫（沿用 `BookshelfView` 既有契約：傳 mainContext，
-    /// upsert 在 main actor、@Query 直接取得更新）。整段標 @MainActor 使
-    /// `container.mainContext` 存取合法。
+    /// 併行的 podcast 目錄腿：開場事件 → 同步 → 收尾事件，整包給一個 `async let`。
+    ///
+    /// `PodcastSyncService.syncAll` 是 `@MainActor`，需以 main-actor `ModelContext`
+    /// 呼叫（沿用 `BookshelfView` 既有契約：傳 mainContext，upsert 在 main actor、
+    /// @Query 直接拿到更新）。整段標 `@MainActor` 使 `container.mainContext` 合法。
+    ///
+    /// 為什麼是 `static` 且顯式收 `kgService`：`async let` 的 initializer 會被當成
+    /// `@Sendable` 閉包檢查，隱式捕捉 `self` 會把整個 `KGService` 拖進去。
+    ///
+    /// Release（`podcastEnabled == false`）連 `.started` 都不發 —— 那一列根本不在
+    /// `syncStepIDs()` 宣告的清單裡，發了 store 也會丟棄，但不發更誠實。
     @MainActor
-    private func syncPodcastCatalog(container: ModelContainer) async -> PodcastSyncService.SyncOutcome? {
-        await Self.runPodcastCatalogSyncIfEnabled {
-            await PodcastSyncService(kgService: self).syncAll(context: container.mainContext)
+    private static func runPodcastLeg(
+        container: ModelContainer,
+        kgService: KGService,
+        progress: SyncProgressReporting?
+    ) async {
+        guard KGFeatureFlags.podcastEnabled else { return }
+        // 沒有 session 就不抓目錄。podcast browse 端點確實收 guest，但 backgroundSync
+        // 只在登入狀態下被觸發——這裡看到 nil token 代表 session 已經死了，這一趟
+        // 注定白跑。以前它排在 vocab pull 的 401 早退之後，等於被那個 return 順手
+        // 擋掉；現在它跑在最前面，就得自己擋。讀 `authSession.token` 而不是呼叫
+        // `currentAuthToken()`：後者對過期 token 會觸發 logout，拿它當前置檢查
+        // 等於偷偷改了 session 失效的時機。
+        guard await kgService.authSession.token != nil else { return }
+        progress?(.started(.podcast))
+        let outcome = await runPodcastCatalogSyncIfEnabled {
+            await PodcastSyncService(kgService: kgService).syncAll(context: container.mainContext)
         }
+        progress?(podcastFinishedEvent(outcome))
     }
 
     /// Feature-gate seam for the podcast catalog leg of `backgroundSync`.
