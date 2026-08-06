@@ -1,0 +1,15 @@
+{
+  "build": "sim build 2026-08-06 06:18 (main 917ad3e4b)",
+  "category": "perf",
+  "date": "2026-08-06",
+  "detail": "review-event watermark 落地後，冷啟動 backgroundSync 仍回報 duration_ms=7773，但所有有 log 的工作在 trigger 後 1.1s 就結束（11:05:07.496 triggered → 11:05:08.567 最後一條 Sync log → 11:05:15.269 completed），中間 6.7s 完全沒有任何 log。排水那輪同形狀：11:04:09.8 推完 → 11:04:21.8 才 completed，尾巴約 12s。也就是 15.4s 的 review-event push 拿掉之後，下一個瓶頸不是 review events，而是這段沒有儀器的尾巴。使用者手動 resync（11:04:25 / 11:04:36）只花 0.75s / 1.05s，所以這段尾巴看起來只出現在冷啟動路徑。先補 log 讓它可歸因，再談優化。",
+  "id": "APP-20260806-c48a11",
+  "repro": "kg-pool-2 冷啟動 app → 讀 log stream 的 background_sync_triggered → background_sync_completed duration_ms",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "kg-pool-2 上驗證 7a8352f27 watermark 時的旁證",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
