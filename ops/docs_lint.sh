@@ -198,6 +198,18 @@ validate_registry() {
       if [ -z "$check" ]; then
         echo "ERROR registry — $id kind=generated 但缺 check(產物等值檢查命令)"
         reg_bad=$((reg_bad+1))
+      # 「非空字串 + 今天 exit 0」只證明有人打了字。`check: true` 通過；把鄰居 entry 的
+      # check 複製過來也通過——被驗的會是別人的產物或什麼都不是，而 gate 照樣回綠
+      # （IMP-20260805-462d28 review D2）。要求 check 字串裡出現本 entry 的 path，把
+      # 「這條命令在檢查哪個檔」變成結構上可讀、可比對的事實。附帶效果：複製貼上的 check
+      # 帶著別人的 path 必然被擋，所以不需要另外驗「check 字串不得重複」。
+      # 這是**必要非充分**條件——它擋不住「有指名 path 但無條件回 0」的裝飾品；那個失效
+      # 模式由 ops/tests/test_docs_lint_generated_check.sh case 7（逐筆弄髒真產物、要求
+      # docs_lint 具名轉紅）負責。兩者缺一，這個 gate 就退回靠信仰。
+      elif ! printf '%s' "$check" | grep -qF -- "$path"; then
+        echo "ERROR registry — $id check 未指名 path: ${path}（check=${check}）"
+        echo "    修法: 把 $path 當參數/比對目標寫進 check 命令，否則無從得知它在驗哪個檔"
+        reg_bad=$((reg_bad+1))
       # `</dev/null` 不是噪音，不要刪：這個 while 迴圈的 stdin 是 ${entries_tmp}（見迴圈尾），
       # 任何繼承 stdin 的子命令都會吃掉尚未讀取的 registry entry。症狀是後面幾筆 entry
       # 神秘消失、entry_count 少掉，而 rc 仍是 0——正是本 gate 存在要擋的那類錯誤。
