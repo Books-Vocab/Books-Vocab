@@ -55,6 +55,8 @@ verified_against: 0c9e3b7c
 
 下列任一成立就回來讀這節：要送審新版本、要重做行銷截圖、要大改 UI 風格、需要新的 catalog surface。復業 = 6 處 `isSubset` 改回 `==` + 移除 FROZEN 標頭 + 跑 `ops/demo/build_demo.py emit-ios --check` 確認投影鏈未腐。
 
+**復業第 0 步：先解 `IMP-20260806-2782f0`。** 2026-08-06 實測 `catalog snapshots` 仍是 exitCode=65——不是 scene 門檻（那條已於本日修好），是 appearance proof 要求 provenance `fixedClock` 非空，而凍結 world 的 `marketingCapture.reviewClock` 刻意是 null。**產物本身是全的**（1404 PNG、`catalog_index.json`、`UIreview.html` 都產得出來），紅的是退出碼與 appearance 證據。這條早於凍結（gate 於 2026-07-13 加），即 catalog 在這個 world 上從來沒綠過；刻意不在凍結期修，因為修它要決定「catalog 這次跑的凍結時鐘由誰當家」，而那個值會進送審證據，屬於復業時該一起想的事。**修法禁用「補 world 資料」**——那等於餵已凍結的 catalog。
+
 ---
 
 > 第一性原理 litmus：catalog 的原子 = **「手機會看到的視圖」+「其必要組件」**。使用者的眼睛會落在它上面嗎？會 → IN；那是工程基質 → OUT。borderline 寧可 OUT，但**只有確認 OUT 才 CUT** —— 既有 manifest surface 一律先驗 callsite 再裁決。

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "凍結 world 宣告 `marketingCapture.reviewClock: null`（`FixtureDatasetStore.swift:48` 的註解明說這是預期形狀），但 catalog 的 appearance proof 要求 provenance `fixedClock` 非空——於是 `ios_ops.sh catalog snapshots` 永遠 exitCode=65。鏈路：`CatalogSnapshotTests.swift:578` 取 `FixtureDatasetStore.marketingCapture()?.reviewClock?.frozenNow ?? \"\"` → 空字串 → `:615` 記 issue「appearance provenance fixedClock must not be empty」；`ops/catalog_appearance_proof.py:113` 同步報 `appearance.fixedClock.format`，`catalog_appearance.json` 落地為 `fixedClock: \"\"` / `verdict.status: fail`。**2026-08-06 實測**（HEAD f80517ec8，scene 門檻已對齊）：pngCount=1404、catalog_index.json 與 UIreview.html 都產出（review status=ok），唯一剩下的紅就是這條，且它早於凍結（該 gate 2026-07-13 fa8413586 加）——**catalog 在這個 world 上從來沒綠過**。根因不是「忘了填」而是**這個值沒有 owner**：world 刻意 null、真正的凍結時鐘在 Swift scene 側（`VocabularyListViewScene.marketingFrozenStore`、KG scene 的 `fixedNow`）、proof 要求非空，三方沒有共同真相。**修法禁用「補 world 資料」**（等於餵已凍結的 catalog，違反 catalog_scope.md §FROZEN 紅線）；候選是讓 proof 從 scene 實際使用的 frozen anchor 取值並與 `catalog_run_receipt.json` 的 fixedClock 對齊（`app_review_evidence.py:468` 比對的是 proof 與 receipt 兩造一致，不是比對某個釘死字面值；送審 spec 釘的 datasetID 是 `spec-820aa288ffea`，與 catalog 用的 marketing_demo 不同 dataset，故耦合在共用程式碼而非資料）。**驗收必須是 catalog exit 0，不能只看單元測試綠**（要再跑一次約 8 分鐘的 snapshots）。",
+  "id": "IMP-20260806-2782f0",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "IMP-0064 修好後第一次跑完整 catalog snapshots 才露出",
+  "status": "open",
+  "stream": "IMP"
+}

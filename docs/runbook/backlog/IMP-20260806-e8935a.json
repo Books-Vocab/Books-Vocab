@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-06",
+  "detail": "`docs/reference/catalog_scope.md` §FROZEN 的「停止擴張」目前只有 `[prompt]` 執行力，而 2026-08-06 執行長又重申了一次「完全停止擴張」——一條被重申但沒有閘的規則值得一個閘。**兩條紅線的實際執行力**：① 紅線 1「新畫面不進 catalog、不新增 `ScreenID` case」——只有「加了 case 卻不註冊 surface」會被 `CatalogCoverageTests` 擋（`CatalogScene.Manifest.pendingCoverage` 是空集合），**兩邊都加齊照樣全綠**；② 「不再餵既有 scenario」——完全無閘。**實測（凍結 commit e2e343a14 = 2026-08-05 之後兩天）**：4 個 commit 動到 `ios/BooksAndVocab/Debug/`，其中 `718be2203` 對 Debug/ +100 行、`f0a846cc0` +109 行、`ec5243aba` 新增 `case .noCandidates`（另淨刪 96 行）。沒有新增 `ScreenID` case（最後一次是 2026-07-10 `1c4e31bb4`，凍結前），所以紅線 1 未被違反，但「不再餵它」這半條正在持續發生——而 IMP-0063 的量測結論正是「catalog 本身不是負擔，一直餵它才是」。**候選閘**：把 `CatalogScene.ScreenID.allCases` 的數量與 `Debug/Scenarios/` 的檔案清單釘進 baseline（範式照 `ops/tests/test_lint_baselines.sh`：凍結期只准降不准升，要升就得同時改 baseline 並在 commit 說明理由），或在 CI 對 `Debug/` 的 diff 出具名 warn。**先確認取捨**：新增 scenario 與「修既有 scenario 讓它跟上 view 改動」在 diff 上不易區分，閘設太緊會把後者也擋掉——所以行數 baseline 可能比檔案清單更糟，建議先只釘 `ScreenID.allCases` 數量與 `Debug/Scenarios/*.swift` 的檔名集合。",
+  "id": "IMP-20260806-e8935a",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "2026-08-06 gallery 退出消費裁決的落地稽核",
+  "status": "open",
+  "stream": "IMP"
+}
