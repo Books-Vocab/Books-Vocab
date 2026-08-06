@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "infra_health.sh:78 用 BSD 的 `date -j -f` 解析 docker 的 State.StartedAt，但那個時戳是 UTC，而 `date -j -f` 依本機時區解讀 → container_uptime_s 被灌水，誤差正好等於本機 UTC 偏移（CST 即 +8h）。實測：容器 StartedAt=2026-08-06T03:40:51Z（部署後 90 秒），health 卻回報「容器運行時長 8h 1m」。修法：改用 UTC 解析（`date -u -j -f`）。\n\n這條指標 status 恆為 ok、不 gate，所以沒有生產風險——但它壞掉的方向正好抵消它存在的唯一理由：程式碼註解寫明它是「可佐證『重啟 0 次但剛起來』的判讀」，而現在「剛起來」的容器看起來已經跑了八小時。operator 最需要它的時刻就是部署後那幾分鐘，也正是它最會騙人的時刻。\n\n同行的 fallback（解析失敗時代入 NOW）會讓 uptime 顯示 0，是靜默降級；方向安全，但仍不該無聲。",
+  "id": "IMP-20260806-e4988a",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "2.0.2 部署後看 health 時發現數字不對",
+  "status": "open",
+  "stream": "IMP"
+}
