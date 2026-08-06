@@ -32,7 +32,15 @@ BACKLOG = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = BACKLOG
 SPEC.loader.exec_module(BACKLOG)
 
-LEGACY_DOC = ROOT / "docs" / "runbook" / "improvement_backlog.md"
+# FROZEN corpus, not the live view. These tests exercise `import_legacy`, whose job
+# since IMP-20260805-3df783 is reading HISTORICAL 8-column ledgers — so their input
+# must be a historical 8-column ledger. Pointing them at
+# docs/runbook/improvement_backlog.md was always a latent bug: that file is a
+# generated artifact, and the moment IMP-20260805-355016 widened it to 12 columns
+# five of these tests failed for a reason that had nothing to do with the parser.
+# The fixture is the real ledger as of main@25dcc67b4 (141 IMP rows of real prose,
+# unescaped pipes and CJK) — the corpus these tests were actually written against.
+LEGACY_DOC = ROOT / "ops" / "tests" / "fixtures" / "legacy_ledger_8col.md"
 
 
 HEADER = (
@@ -97,25 +105,6 @@ def test_em_dash_prefix_with_content_is_not_empty():
     assert rows[0]["resolution"] == "—(deploy 0611f3ca 解當下)"
 
 
-def test_unescaped_pipe_is_recovered_with_whitespace_intact():
-    """The real IMP-0017 shape: an unescaped `||` inside the detail, which
-    splits the row into 10 columns.
-
-    The whitespace assertion is the point. Cleaning each cell before rejoining
-    would silently turn `|| true` into `||true` — text that survives the count
-    check and looks fine, which is the worst kind of loss."""
-    text = _table(
-        "| IMP-0017 | 2026-07-08 | spec | tool | med | open | "
-        "any pipeline not guarded by `|| true` can go silently green | — |"
-    )
-    rows, problems = BACKLOG.parse_legacy_table(text)
-
-    assert len(rows) == 1
-    assert rows[0]["detail"] == "any pipeline not guarded by `|| true` can go silently green"
-    assert [p["kind"] for p in problems] == ["recovered-row"]
-    assert problems[0]["id"] == "IMP-0017"
-
-
 def test_recovery_refuses_when_the_anchor_columns_do_not_line_up():
     """Recovery is only licensed when the controlled-vocabulary columns confirm
     the shape. Otherwise report — guessing at the boundary would corrupt fields
@@ -127,26 +116,6 @@ def test_recovery_refuses_when_the_anchor_columns_do_not_line_up():
 
     assert rows == []
     assert [p["kind"] for p in problems] == ["malformed-row"]
-
-
-def test_recovered_row_round_trips_cleanly_afterwards(tmp_path):
-    """Once recovered and stored, rendering must ESCAPE the pipes so the next
-    parse needs no recovery at all — otherwise the damage is re-created on every
-    render and the recovery warning never goes away."""
-    store = tmp_path / "backlog"
-    BACKLOG.import_legacy(
-        _table(
-            "| IMP-0017 | 2026-07-08 | spec | tool | med | open | "
-            "guard it with `|| true` | — |"
-        ),
-        store,
-    )
-
-    rendered = BACKLOG.render_view(store, verified_against="abc1234")
-    rows, problems = BACKLOG.parse_legacy_table(rendered)
-
-    assert problems == [], f"render re-introduced the damage: {problems}"
-    assert rows[0]["detail"] == "guard it with `|| true`"
 
 
 def test_malformed_row_is_reported_not_dropped():
@@ -261,21 +230,34 @@ def test_import_does_not_delete_entries_absent_from_the_table(tmp_path):
 # 3. round trip — the actual acceptance condition
 # ---------------------------------------------------------------------------
 
-def test_render_round_trips_every_field(tmp_path):
+def test_render_no_longer_round_trips_and_says_so(tmp_path):
+    """The view is deliberately NOT importable any more (IMP-20260805-355016).
+
+    This test used to assert the opposite. It is inverted rather than deleted
+    because the property was load-bearing for a year and its absence must be
+    asserted, not merely un-asserted: a silent return to an importable view would
+    otherwise go unnoticed until someone re-imported a 12-column table and got
+    the mangled rows that motivated retiring `_recover_overflowing_row`.
+
+    What replaces it as the safety net: entries are one-file-per-entry in the
+    store, and `view_entry_ids` (NOT `parse_legacy_table`) is what the render
+    drop-guard reads.
+    """
     store = tmp_path / "backlog"
     text = _table(
         "| IMP-0001 | 2026-06-13 | review gate | doc | low | fixed | it lied | `7c95a02` |",
         r"| IMP-0023 | 2026-07-09 | backup | cli | med | open | wrap it in `\|\| true` | — |",
-        "| IMP-0052 | 2026-08-04 | probe | tool | high | wont-fix | flag went missing | reasoned away |",
     )
     BACKLOG.import_legacy(text, store)
-
     rendered = BACKLOG.render_view(store, verified_against="deadbeef")
-    reparsed, problems = BACKLOG.parse_legacy_table(rendered)
 
-    assert problems == []
-    original, _ = BACKLOG.parse_legacy_table(text)
-    assert {r["id"]: r for r in reparsed} == {r["id"]: r for r in original}
+    reparsed, problems = BACKLOG.parse_legacy_table(rendered)
+    assert reparsed == [], "the view became importable again — see the docstring"
+    assert {p["kind"] for p in problems} == {"malformed-row"}
+    assert "NOT importable" in problems[0]["note"], problems[0]
+
+    # the ids are still readable, by the reader that is actually used
+    assert BACKLOG.view_entry_ids(rendered) == {"IMP-0001", "IMP-0023"}
 
 
 def test_render_is_deterministic(tmp_path):
@@ -533,18 +515,23 @@ def test_generated_view_needs_no_recovery():
 
 
 @pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
-def test_real_ledger_survives_a_full_round_trip(tmp_path):
+def test_real_ledger_import_still_works_even_though_render_does_not(tmp_path):
+    """The half of the property that is KEPT: `import` still reads the historical
+    8-column ledger. Only the render direction was given up.
+
+    Without this, retiring the round-trip tests would have quietly retired the
+    importer's real regression coverage too.
+    """
     store = tmp_path / "backlog"
     text = LEGACY_DOC.read_text(encoding="utf-8")
 
-    BACKLOG.import_legacy(text, store)
-    rendered = BACKLOG.render_view(store, verified_against="deadbeef")
+    result = BACKLOG.import_legacy(text, store)
+    original, orig_problems = BACKLOG.parse_legacy_table(text)
 
-    original, _ = BACKLOG.parse_legacy_table(text)
-    reparsed, problems = BACKLOG.parse_legacy_table(rendered)
-
-    assert problems == []
-    assert {r["id"]: r for r in reparsed} == {r["id"]: r for r in original}
+    assert orig_problems == [], f"the historical ledger stopped parsing: {orig_problems}"
+    assert original, "parsed zero rows from the real ledger — the probe is broken"
+    stored = {e["id"] for e in BACKLOG.list_entries(store)}
+    assert {r["id"] for r in original} <= stored
 
 
 @pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")

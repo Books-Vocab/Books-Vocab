@@ -115,7 +115,7 @@ GROOM_REQUIRES = ("plan", "acceptance", "fix_site")
 
 # Closed vocabulary, same principle as stream/category/severity/status. Without
 # it prose misfires land in the field unchallenged: `已於 2026-07-31 驗證 CI 綠`
-# yields verdict "CI". `_recover_overflowing_row` already anchors on controlled
+# yields verdict "CI". `_anchors_ok` already gates rows on controlled
 # vocabularies; this is the same rule applied where it was missing.
 VERDICTS = (
     "CONFIRMED-OPEN",
@@ -533,6 +533,21 @@ def list_entries(
 
 LEGACY_COLUMNS = ("id", "date", "source", "category", "severity", "status", "detail", "resolution")
 
+# What the VIEW renders. Superset of LEGACY_COLUMNS, which stays exactly as it is
+# because `parse_legacy_table` still has to read historical 8-column files.
+#
+# The view used to be pinned at the legacy 8 so that the importer could read its own
+# output back — "migration is reversible". The executive ruling of 2026-08-05
+# (IMP-20260805-355016) abandoned that property: it was already half-broken, since the
+# APP half of the render has never been importable (IMP-20260805-f4ec99 measured rc=2),
+# and the importer's only input is a file this module produced. Reversibility stopped
+# being worth paying for the moment the migration finished.
+#
+# `plan` / `acceptance` deliberately stay out: the largest plan in the real store is
+# 57KB and a markdown table cell is not where that goes. The footer's groom counter
+# answers "how many have a plan"; `show` and `--json` answer "what is it".
+VIEW_IMP_COLUMNS = LEGACY_COLUMNS + ("verdict", "verified_at", "cost", "fix_site")
+
 _ID_RE = re.compile(r"^(?:IMP|APP)-(?:\d{4}|\d{8}-[0-9a-f]{6})$")
 
 _EMPTY_CELL = "—"
@@ -559,30 +574,6 @@ def _split_row_raw(line: str) -> list[str]:
 
 def _clean(cell: str) -> str:
     return cell.strip().replace("\\|", "|")
-
-
-def _recover_overflowing_row(raw_cells: list[str]) -> list[str] | None:
-    """Rebuild a row that has too many columns because a cell contains an
-    unescaped `|`.
-
-    Anchored on the three controlled-vocabulary columns (category, severity,
-    status) plus the id, all of which are short and closed sets. If those line
-    up, everything between `status` and the final column is the detail, which is
-    the only free-prose field long enough to attract stray pipes. If they do not
-    line up we return None and the caller reports the row rather than guessing —
-    an enumerated hole beats an anonymous one.
-    """
-    if len(raw_cells) <= len(LEGACY_COLUMNS):
-        return None
-
-    head = [_clean(c) for c in raw_cells[:6]]
-    known_categories = {c for cats in CATEGORIES.values() for c in cats}
-    if head[3] not in known_categories or head[4] not in SEVERITIES or head[5] not in STATUSES:
-        return None
-
-    detail = _clean("|".join(raw_cells[6:-1]))
-    resolution = _clean(raw_cells[-1])
-    return head + [detail, resolution]
 
 
 def _anchors_ok(cells: list[str]) -> bool:
@@ -619,7 +610,23 @@ def _app_anchors_ok(cells: list[str]) -> bool:
 
 
 def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
-    """Parse the legacy 8-column ledger table.
+    """Parse a HISTORICAL 8-column ledger table.
+
+    SCOPE, deliberately narrowed (IMP-20260805-3df783, executive ruling
+    2026-08-05): this reads ledgers in the legacy 8-column format only. It does
+    NOT read the current generated view — that renders 12 columns since
+    IMP-20260805-355016 and is refused row-by-row with a named cause. It makes no
+    promise about hand-written or externally-produced tables either; the previous
+    contract implied it could rescue those, and the rescue heuristic
+    (`_recover_overflowing_row`) has been retired because its only remaining input
+    was a file it corrupted.
+
+    Why narrowing was the right answer rather than hardening: `import` has zero
+    automatic callers in this repo, the migration it existed for is finished
+    (entries are one-file-per-entry under the store), and every input it will ever
+    see again is a frozen historical file. A parser that promises to handle
+    arbitrary markdown has to guess at ambiguous rows; one that reads a known
+    format can refuse instead. Reading the view is `view_entry_ids`.
 
     Returns (rows, problems). A row that looks like data but cannot be read is
     REPORTED; it is never silently dropped. That distinction used to be carried
@@ -700,31 +707,31 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
             continue
 
         if len(cells) > len(LEGACY_COLUMNS):
-            rebuilt = _recover_overflowing_row(raw_cells)
-            if rebuilt is None:
-                problems.append(
-                    {
-                        "kind": "malformed-row",
-                        "id": cells[0],
-                        "line": lineno,
-                        "columns": len(cells),
-                        "expected": len(LEGACY_COLUMNS),
-                    }
-                )
-                continue
-            cells = rebuilt
+            # Refuse, never repair. This used to call `_recover_overflowing_row`,
+            # which rejoined an over-wide row by assuming the excess came from an
+            # unescaped `|` inside `detail`. That assumption held only while the
+            # view WAS the legacy 8 columns. Since IMP-20260805-355016 the view
+            # renders 12, and the heuristic then produces a confidently wrong row:
+            # measured, `detail` swallowed resolution/verdict/verified_at/cost and
+            # `resolution` became the fix_site — and because a row came back,
+            # `import_legacy` would have written that over a good entry.
+            #
+            # An over-wide row is not damage to repair; it is a file from the wrong
+            # era. Say so, and name the likely cause rather than guessing at cells.
             problems.append(
                 {
-                    "kind": "recovered-row",
+                    "kind": "malformed-row",
                     "id": cells[0],
                     "line": lineno,
-                    "note": "unescaped '|' in a cell; detail rejoined using the "
-                    "controlled-vocabulary columns as anchors. The anchors prove "
-                    "columns 0-5 did not shift; they CANNOT tell whether the stray "
-                    "pipe fell in detail or in resolution, so verify that boundary "
-                    "by hand.",
+                    "columns": len(cells),
+                    "expected": len(LEGACY_COLUMNS),
+                    "note": "too many columns. `import` reads the LEGACY 8-column "
+                    "table only; the current generated view is wider and is "
+                    "deliberately NOT importable (IMP-20260805-355016 / -3df783). "
+                    "Entries are one-file-per-entry under the store — read those.",
                 }
             )
+            continue
 
         row = dict(zip(LEGACY_COLUMNS, cells))
         if row["resolution"] == _EMPTY_CELL:
@@ -1061,12 +1068,11 @@ def render_view(store: Path, *, verified_against: str) -> str:
         severities=" / ".join(f"`{s}`" for s in SEVERITIES),
         verdicts=" / ".join(f"`{v}`" for v in VERDICTS),
     )
-    out += _IMP_INTRO + "\n" + _render_table(imp, LEGACY_COLUMNS)
+    out += _IMP_INTRO + "\n" + _render_table(imp, VIEW_IMP_COLUMNS)
     out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
     out += f"\n<!-- {len(imp)} IMP + {len(app)} APP entries -->\n"
-    # Not a table column: the view is pinned at the legacy 8 columns so the
-    # importer can still read it back. A count is enough to notice the queue
-    # growing; `list --ungroomed` is where you act on it.
+    # Not a table column: `plan` is prose measured in tens of kilobytes. A count is
+    # enough to notice the queue growing; `list --ungroomed` is where you act on it.
     open_entries = [e for e in imp + app if e.get("status") not in ("fixed", "wont-fix")]
     groomed = sum(1 for e in open_entries if e.get("groomed_by"))
     out += f"<!-- groom: {groomed}/{len(open_entries)} unresolved entries have a fix plan -->\n"
@@ -1187,10 +1193,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_import = sub.add_parser(
         "import",
-        help="import the legacy markdown table into the store (re-runnable, idempotent)",
+        help="import a HISTORICAL 8-column ledger table into the store "
+             "(re-runnable, idempotent; NOT the current view)",
+        description="Reads the legacy 8-column ledger format only. The generated "
+                    "view is wider and is deliberately not importable "
+                    "(IMP-20260805-355016 / -3df783) — the store, not the view, is "
+                    "the authority. `--from` is required: it used to default to the "
+                    "generated view, which since the widening can only ever fail.",
     )
     _add_store_arg(p_import)
-    p_import.add_argument("--from", dest="source_doc", type=Path, default=DEFAULT_VIEW)
+    p_import.add_argument("--from", dest="source_doc", type=Path, required=True,
+                          help="path to a historical 8-column ledger table")
     p_import.add_argument("--commit", action="store_true", help="actually write (default: dry-run)")
     p_import.add_argument("--json", action="store_true")
 
