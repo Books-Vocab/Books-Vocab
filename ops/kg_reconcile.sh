@@ -226,11 +226,14 @@ external_smoke_ok() {
         log "  external attempt $i/$attempts: version=${ver:-} != $want"
       else
         # `|| true` + 補預設，不用 `|| echo 000`：後者在真 curl 失敗時會把 curl 自己印的
-        # "000" 與 echo 的 "000" **接起來**變成 "000000"（實測），既讓日誌印出無意義的
-        # HTTP=000000，也讓下面 `!= "000"` 的見證判斷失準。
+        # "000" 與 echo 的 "000" **接起來**變成 "000000"（實測），讓日誌印出無意義的
+        # HTTP=000000。同款 bug 亦存在於 ops/infra_health.sh:115，那支還會把 "000000"
+        # 寫進 --json 的機讀 value（IMP-0061 review D4；不在本檔 scope，已另記）。
         hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || true)"
         [[ -n "$hcode" ]] || hcode="000"
-        if [[ "$hcode" != "000" ]]; then saw_response=1; fi
+        # 這裡刻意**沒有**「hcode != 000 → saw_response=1」：能走到這支探針的唯一條件是
+        # 上面 code=="200"，而迴圈開頭那行早已因此把 saw_response 設為 1。那個守衛點不燃，
+        # 留著只會讓人誤以為 /api/health 也是見證來源之一（IMP-0061 review D3）。
         case "$hcode" in
           200|401|403) EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;                          # 存在 → ok
           404) log "  external /api/health 404 → 跳過（非失敗）"; EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;
@@ -256,6 +259,44 @@ external_smoke_ok() {
 HEALTH_FAIL_REASON=""
 EXTERNAL_SMOKE_CLASS=""      # ok | unreachable | bad（由 external_smoke_ok 設）
 SMOKE_STATE="n/a"            # 進 verdict 與 deploy.log：n/a | ok | unverified | bad
+
+# 從 infra_health --json 抽出 status=="crit" 的 metric key（每行一個）。
+# 只用 tr/sed：本腳本的 zero-dependency 契約是 bash/git/curl，不得為了解析 JSON 引入
+# jq/python。infra_health 的一筆 metric = 一個 {...}，且 key 恆在 status 之前
+# （ops/infra_health.sh:208 的 printf 順序），故先按 '{' 切行再逐行抽。
+infra_crit_keys() {
+  printf '%s' "$1" | tr '{' '\n' \
+    | sed -n 's/.*"key":"\([^"]*\)".*"status":"crit".*/\1/p'
+}
+
+# infra_health 的 CRIT 是否**完全可歸因於同一場斷網**——即它只是「這台機器連不出去」
+# 的第二個症狀，而不是關於這次部署或這台機器的新證據。
+#
+# 為什麼需要這個判斷：external_smoke_ok 放行 unreachable 之後，infra_health 會用**同一個
+# 外部 URL** 再問一次同一個問題（ops/infra_health.sh:40 PROBE_URL、:186 非 200 一律 crit、
+# :227 crit→exit 2）。只看它的 exit code，主機端斷網就會原封不動地變成 reason=infra +
+# 回滾 + poison——理由換了個字，行為與修法前一模一樣，而且同一輪 tick 會先發「故不回滾」
+# 再發「回滾」兩則互相矛盾的 ALERT（IMP-0061 review D1 實測）。
+#
+# 兩個條件都成立才算同一場斷網：
+#   ① 本輪外部 smoke 已**獨立且重試到預算用盡**地證明拿不到任何 HTTP 回應（unreachable）；
+#   ② infra_health 唯一越線的指標就是它自己那支對外 HTTPS 探針（key=http_probe），
+#      而呼叫端把 KG_HEALTH_PROBE_URL 釘成 smoke 剛探過的同一個 URL，所以「同一個問題被
+#      問了兩次」是結構上為真，不是靠兩邊預設值碰巧相同。
+# 其餘任何 crit（容器不見了/磁碟爆了/記憶體/tunnel 掛了/憑證過期/host 指標收不到…）都是
+# 關於這台機器或這個服務的真證據 → 照舊擋下並回滾。**斷網不是 infra 這一關的免死金牌**，
+# 否則就是用一個更大的洞蓋掉小洞。
+# 抽不出任何 crit key（JSON 壞掉/版本不合/被替換）→ 無法歸因就不放行（fail-closed）：
+# 「看不懂」絕不等於「沒問題」。
+infra_crit_is_same_outage() {
+  local crit_keys
+  [[ "$EXTERNAL_SMOKE_CLASS" == "unreachable" ]] || return 1
+  crit_keys="$(infra_crit_keys "$1")"
+  # 恰好一個且就是它：多筆會帶換行，字串比對自然不等；空字串（讀不懂）也不等。
+  [[ "$crit_keys" == "http_probe" ]] || return 1
+  return 0
+}
+
 run_health_gate() {
   local new="$1"
   if ! localhost_health_ok "$new"; then HEALTH_FAIL_REASON="health"; return 1; fi
@@ -265,8 +306,9 @@ run_health_gate() {
   #   ② 不可靠：回滾要跑 `--build`，而 2026-08-04 事故裡它正是被同一個 DNS 故障弄死的
   #      （IMP-0060 C2）。兩個失效是**相關的**——gate 最容易假失敗的時候，正是回滾最
   #      不可能成功的時候。對相關失效做自動補償，只會把一個問題變成兩個。
-  # 放行後 gate 退化成 localhost + infra_health，兩者都純本機、免疫於同一場斷網——
-  # 這才是「落地是安全的」這句話的根據，而不是賭。
+  # 放行後 gate 退化成 localhost + infra_health。**注意 infra_health 並不純本機**：它自己
+  # 也會從這台機器打同一個外部 URL，非 200 一律 crit（見下方 infra 段與 infra_crit_is_same_outage）。
+  # 第一版註解寫成「兩者純本機、免疫於同一場斷網」是錯的，而且錯得剛好讓 D1 看不見。
   if external_smoke_ok "$new"; then
     SMOKE_STATE="ok"
   elif [[ "$EXTERNAL_SMOKE_CLASS" == "unreachable" ]]; then
@@ -275,12 +317,27 @@ run_health_gate() {
   else
     SMOKE_STATE="bad"; HEALTH_FAIL_REASON="smoke"; return 1
   fi
-  local ih
-  set +e; "$KG_INFRA_HEALTH" >/dev/null 2>&1; ih=$?; set -e
+  # infra_health：改吃 --json 並**看它為什麼 crit**，不是只看 exit code。理由與判準寫在
+  # infra_crit_is_same_outage 上方。KG_HEALTH_PROBE_URL 在這裡釘死，讓「它探的就是 smoke
+  # 剛探過的那個 URL」成為結構事實而非對預設值的假設（ops/infra_health.sh:40 讀這個 env）。
+  local ih ih_json
+  set +e
+  ih_json="$(KG_HEALTH_PROBE_URL="${KG_PUBLIC_URL}/api/system/info" "$KG_INFRA_HEALTH" --json 2>/dev/null)"
+  ih=$?
+  set -e
   case "$ih" in
     0) : ;;                                             # ok
     1) log "  infra_health WARN (exit 1) — 記警告仍 pass" ;;
-    *) HEALTH_FAIL_REASON="infra"; log "  infra_health CRIT (exit $ih)"; return 1 ;;   # 2=crit
+    *)                                                  # 2=crit
+      if infra_crit_is_same_outage "$ih_json"; then
+        log "  infra_health CRIT (exit ${ih})，唯一越線的是它自己那支對外探針 http_probe"
+        alert "infra_health 同樣 CRIT，但唯一越線的指標是它自己那支對外 HTTPS 探針（${KG_PUBLIC_URL}/api/system/info，與剛才的外部 smoke 同一個 URL、同一場斷網）；host 其餘指標正常，localhost 已證明 ${new} 健康在跑。故**同樣不回滾**，本次仍記 smoke=unverified。"
+      else
+        HEALTH_FAIL_REASON="infra"
+        log "  infra_health CRIT (exit ${ih}) crit keys: $(infra_crit_keys "$ih_json" | tr '\n' ' ')"
+        return 1
+      fi
+      ;;
   esac
   return 0
 }
@@ -538,8 +595,11 @@ main() {
     log "[dry-run] would: acquire lock $KG_LOCK_DIR"
     log "[dry-run] would: git pull --ff-only origin prod → 寫 backend/VERSION=$ORIGIN_SHA"
     log "[dry-run] would: (cd backend && $KG_COMPOSE up -d --build --force-recreate)"
-    log "[dry-run] would: 健康 gate（localhost + 外部 smoke + infra_health）"
-    log "[dry-run] would: 失敗則 rollback 到 $DEPLOYED_SHA + poison $ORIGIN_SHA"
+    # 三分類要在 dry-run 這一面也看得見：操作者在這裡預覽「會發生什麼」，而「量不到會
+    # 落地並記 unverified」是本腳本最反直覺的一條行為，藏起來等於沒有（review D5）。
+    log "[dry-run] would: 健康 gate（localhost → 外部 smoke 三分類 → infra_health）"
+    log "[dry-run] would: 外部 smoke 拿得到 HTTP 回應但不合格（bad），或 infra_health 有 http_probe 以外的 crit → rollback 到 ${DEPLOYED_SHA} + poison ${ORIGIN_SHA}"
+    log "[dry-run] would: 外部 smoke 全程拿不到任何回應（unreachable，= 這台機器連不出去）→ 照樣落地，記 smoke=unverified 於 verdict 與 deploy.log 並告警，不 rollback；此時 infra_health 若只有 http_probe crit 也一併視為同一場斷網"
     emit_verdict "dry-run"; exit 0
   fi
 
