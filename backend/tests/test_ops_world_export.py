@@ -383,3 +383,211 @@ class TestRoundtrip:
         assert cards_b["wince"]["review"]["next_review_at"] is not None
         # 世界 B 由計數器合成了逐筆 review events（A 是 legacy seed，無事件）。
         assert len(_review_event_rows(dd_b, uid_b)) == 3  # meticulous 2 + wince 1
+
+
+# ── 欄位對稱守恆（IMP-0016） ───────────────────────────────────────
+#
+# 本檔其餘測試（含 TestRoundtrip 的 byte-equal fixpoint）都是**自證迴圈**：
+# 不變量是 `export_a == export_b`，而兩份 export 都出自同一個手寫 `_card_entry`。
+# 一個 export 從不吐出的欄位，是一個測試永遠不會想念的欄位 —— 新增 DB 欄位而
+# 沒在 export 面表態時，roundtrip 依然 byte-equal 全綠，資料靜默消失。
+#
+# 下面這組測試把「權威」搬到 export 之外，串成兩條互不重疊的鏈：
+#   MODEL（Card/Notebook SQLModel）→ 宣告（EXPORTED/IGNORED 常數）→ EMITTER（export stdout）
+# 任何一段斷掉就紅。斷言的每個字串都由 export 以外的來源產生。
+
+
+def _expected_payload_shape(declared: dict) -> tuple[set[str], dict[str, set[str]]]:
+    """宣告的 payload 路徑 → (頂層鍵集, {巢狀 group: 子鍵集})。
+
+    路徑深度只支援 1（頂層鍵）與 2（單層巢狀，如 review block）；出現更深的
+    路徑代表 payload 形狀變了而這個 helper 沒跟上，直接 fail 而非默默略過。
+    """
+    top: set[str] = set()
+    nested: dict[str, set[str]] = {}
+    for col, path in declared.items():
+        assert isinstance(path, tuple) and 1 <= len(path) <= 2, \
+            f"{col} 的 payload 路徑深度未支援：{path!r}"
+        top.add(path[0])
+        if len(path) == 2:
+            nested.setdefault(path[0], set()).add(path[1])
+    return top, nested
+
+
+# 每個「宣告有導出」的欄位都被填成非預設值的 spec —— omit-if-null 的欄位
+# （source / source_shared_card_guid / notebook provenance）唯有如此才會現身，
+# payload 才可能與宣告集完全對齊。
+_MAX_SPEC = {
+    "notebooks": [{
+        "name": "Full", "color": "#abcdef", "cover_pattern": "grid", "sort_order": 3,
+        "source_shared_deck_id": "deck-xyz", "source_version": 7,
+    }],
+    "cards": [{
+        "content": "exhaustive", "meaning": "詳盡的", "pos": "adj.",
+        "examples": ["An **exhaustive** list."], "collocations": ["exhaustive search"],
+        "note": "note-md", "difficulty": 3.25, "mode": "production",
+        "root_form": "exhaust", "inflections": ["exhaustive", "exhaustively"],
+        "is_archived": True, "notebook": "Full",
+        "source": {"type": "book", "title": "Demo Book", "chapter": "Chapter 1"},
+        "source_shared_card_guid": "guid-abc",
+        "review": {
+            "review_count": 5, "review_streak": 3, "lapse_count": 1,
+            "review_interval_hours": 48.0,
+            "next_review_at": "2026-06-13T00:00:00+00:00",
+            "last_reviewed_at": "2026-06-11T00:00:00+00:00",
+            "last_review_feedback": 1,
+        },
+    }],
+}
+
+
+class TestFieldSymmetry:
+    def test_card_columns_are_all_classified(self):
+        """鏈的第一段：MODEL → 宣告。新增 Card 欄位而未表態即紅。
+
+        權威是 `Card.__table__`（SQLModel 定義），不是 export 的輸出。
+        """
+        from kg.cards.model import Card
+        from kg.ops_world_export import (
+            EXPORT_IGNORED_CARD_COLUMNS,
+            EXPORTED_CARD_COLUMNS,
+        )
+
+        model_cols = set(Card.__table__.columns.keys())
+        exported = set(EXPORTED_CARD_COLUMNS)
+        ignored = set(EXPORT_IGNORED_CARD_COLUMNS)
+        assert exported & ignored == set(), \
+            f"同時宣告導出與忽略：{sorted(exported & ignored)}"
+        assert model_cols == exported | ignored, (
+            f"未分類欄位={sorted(model_cols - (exported | ignored))} / "
+            f"幽靈宣告={sorted((exported | ignored) - model_cols)}"
+        )
+        # 忽略理由不得空白 —— 沒人寫得出理由的欄位不該被靜默丟掉。
+        assert all(str(v).strip() for v in EXPORT_IGNORED_CARD_COLUMNS.values())
+
+    def test_notebook_columns_are_all_classified(self):
+        """鏈的第一段（notebook 側）。"""
+        from kg.notebook import Notebook
+        from kg.ops_world_export import (
+            EXPORT_IGNORED_NOTEBOOK_COLUMNS,
+            EXPORTED_NOTEBOOK_COLUMNS,
+        )
+
+        model_cols = set(Notebook.__table__.columns.keys())
+        exported = set(EXPORTED_NOTEBOOK_COLUMNS)
+        ignored = set(EXPORT_IGNORED_NOTEBOOK_COLUMNS)
+        assert exported & ignored == set(), \
+            f"同時宣告導出與忽略：{sorted(exported & ignored)}"
+        assert model_cols == exported | ignored, (
+            f"未分類欄位={sorted(model_cols - (exported | ignored))} / "
+            f"幽靈宣告={sorted((exported | ignored) - model_cols)}"
+        )
+        assert all(str(v).strip() for v in EXPORT_IGNORED_NOTEBOOK_COLUMNS.values())
+
+    def test_model_columns_match_on_disk_schema(self, tmp_path):
+        """把「MODEL 是權威」這個前提本身驗掉。
+
+        上面兩條拿 SQLModel 當權威；這條確認真的落盤的 schema 與 model 一致
+        （lazy-ALTER 遷移只加 model 裡有的欄位）。若哪天遷移加了 model 沒有的
+        欄位，上面的守恆就會漏掉它 —— 這條會先紅。
+        """
+        from kg.cards.model import Card
+        from kg.notebook import Notebook
+
+        uid = _mk_user(tmp_path)
+        assert _seed(tmp_path, uid, _MAX_SPEC, "--commit", "--json").returncode == 0
+        for db_name, table, model in (
+            ("cards.db", "card", Card),
+            ("notebooks.db", "notebook", Notebook),
+        ):
+            conn = sqlite3.connect(str(tmp_path / "users" / uid / db_name))
+            disk = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            conn.close()
+            assert disk, f"{db_name} 未建 {table} 表，測試失去意義"
+            assert disk == set(model.__table__.columns.keys()), (
+                f"{table} 落盤 schema 與 model 不符："
+                f"盤有 model 無={sorted(disk - set(model.__table__.columns.keys()))} / "
+                f"model 有盤無={sorted(set(model.__table__.columns.keys()) - disk)}"
+            )
+
+    def test_declared_export_paths_match_payload(self, tmp_path):
+        """鏈的第二段：宣告 → EMITTER。
+
+        宣告「有導出」卻沒真的導（死宣告），或 export 吐出未宣告的鍵，都紅。
+        少了這條，EXPORTED_* 只是註解：把新欄位塞進 EXPORTED 卻不改
+        `_card_entry`，第一段測試照樣綠，資料照樣掉。
+        """
+        from kg.ops_world_export import (
+            EXPORTED_CARD_COLUMNS,
+            EXPORTED_NOTEBOOK_COLUMNS,
+        )
+
+        uid = _mk_user(tmp_path)
+        assert _seed(tmp_path, uid, _MAX_SPEC, "--commit", "--json").returncode == 0
+        out = _export(tmp_path, uid)
+
+        card_top, card_nested = _expected_payload_shape(EXPORTED_CARD_COLUMNS)
+        nb_top, nb_nested = _expected_payload_shape(EXPORTED_NOTEBOOK_COLUMNS)
+        assert nb_nested == {}, "notebook payload 目前無巢狀 group"
+
+        # 任何 entry 都不得吐出未宣告的鍵（omit-if-null 允許少，不允許多）。
+        for c in out["cards"]:
+            assert set(c) <= card_top, f"未宣告的 card 鍵：{sorted(set(c) - card_top)}"
+        for n in out["notebooks"]:
+            assert set(n) <= nb_top, f"未宣告的 notebook 鍵：{sorted(set(n) - nb_top)}"
+
+        # 欄位填滿的那筆必須恰好吐出全部宣告鍵（沒有死宣告）。
+        card = {c["content"]: c for c in out["cards"]}["exhaustive"]
+        assert set(card) == card_top, \
+            f"宣告有導但沒導={sorted(card_top - set(card))} / 多導={sorted(set(card) - card_top)}"
+        for group, keys in card_nested.items():
+            assert set(card[group]) == keys, \
+                f"{group} block：缺={sorted(keys - set(card[group]))} / 多={sorted(set(card[group]) - keys)}"
+        nb = {n["name"]: n for n in out["notebooks"]}["Full"]
+        assert set(nb) == nb_top, \
+            f"宣告有導但沒導={sorted(nb_top - set(nb))} / 多導={sorted(set(nb) - nb_top)}"
+
+    def test_card_source_survives_roundtrip(self, tmp_path):
+        """IMP-0016 已經在發生的那筆損失：reader 來源脈絡（VocabSource）。
+
+        刻意不 import 任何新常數 —— 這條必須因**行為**而紅。最後一句直讀世界 B
+        的 SQLite，不看 export 自己的回顯，杜絕自證。
+        """
+        src = {"type": "book", "title": "Demo Book", "chapter": "Chapter 1"}
+        dd_a = tmp_path / "a"
+        dd_b = tmp_path / "b"
+        dd_a.mkdir()
+        dd_b.mkdir()
+        uid_a = _mk_user(dd_a, "src-a")
+        uid_b = _mk_user(dd_b, "src-b")
+        spec = {"cards": [{"content": "w", "meaning": "m", "source": src}]}
+        assert _seed(dd_a, uid_a, spec, "--commit", "--json").returncode == 0
+        assert _card_row(dd_a, uid_a, "w")["source"], "前提不成立：seed 沒把 source 寫進世界 A"
+
+        r_a = _export_raw(dd_a, uid_a)
+        assert r_a.returncode == 0, r_a.stderr
+        card = {c["content"]: c for c in json.loads(r_a.stdout)["cards"]}["w"]
+        assert "source" in card, "export 丟掉 cards[].source（IMP-0016 的靜默有損）"
+        assert card["source"] == src
+
+        replay = dd_b / "replay.json"
+        replay.write_text(r_a.stdout, encoding="utf-8")
+        assert _edit(str(dd_b), "seed", uid_b, str(replay), "--commit", "--json").returncode == 0
+        r_b = _export_raw(dd_b, uid_b)
+        assert r_b.returncode == 0, r_b.stderr
+        assert r_b.stdout == r_a.stdout, "byte-equal fixpoint 破了"
+        assert json.loads(_card_row(dd_b, uid_b, "w")["source"]) == src, \
+            "重放後的世界 B 盤上沒有 source —— snapshot/restore 有損"
+
+    def test_omit_if_null_keeps_sparse_cards_lean(self, tmp_path):
+        """反向護欄：沒有 source 的卡不得多出 null 鍵。
+
+        無條件 emit 會讓既有無 source 的 spec 多一個鍵，破 byte-equal roundtrip；
+        這條把「omit-if-null」釘成契約而非巧合。
+        """
+        uid = _mk_user(tmp_path)
+        assert _seed(tmp_path, uid, _RICH_SPEC, "--commit", "--json").returncode == 0
+        out = _export(tmp_path, uid)
+        for c in out["cards"]:
+            assert "source" not in c, f"{c['content']} 不該有 source 鍵"
+            assert "source_shared_card_guid" not in c

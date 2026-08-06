@@ -37,9 +37,11 @@ vocabulary / notebook / reviewDeck / todayReview 四個 domain。Phase 4 的
 * datetime 一律正規化為 `YYYY-MM-DDTHH:MM:SSZ`（截去微秒）：iOS
   `AppDateFormatters.parseISO8601`（ISO8601DateFormatter）對 6 位小數秒不保證
   可解析，秒級 Z 格式是雙端最穩交集。
-* spec 無書籍來源欄位（kg.seed_spec.v1 不含 source）→ bookTitle 用 notebook 名
-  （validator 要求非空字串）、context 缺 example 時 fallback 為 word 本身、
-  chapterTitle 一律 null（明示、非省略）。
+* bookTitle 用 notebook 名（validator 要求非空字串）、context 缺 example 時
+  fallback 為 word 本身、chapterTitle 一律 null（明示、非省略）。
+  註：`kg.seed_spec.v1` 的 `cards[].source`（VocabSource，omit-if-null）自
+  IMP-0016 起會出現在 world-export 產出的 spec 裡，但本模組**刻意不消費**它——
+  改用 source.title 當 bookTitle 會動到 UI 可見字串，屬另一件事。
 * todayReview 卡片 dateAdded：Swift TodayReviewCardSeed.dateAdded 是非 optional
   Date → 必須確定式導出非空值（規則見 `_card_date_added` docstring；缺料逐級
   fallback 到 `_DATE_ADDED_FALLBACK_ANCHOR` 固定錨點，禁 Date.now / 隨機）。
@@ -461,7 +463,7 @@ def _entry(card: dict[str, Any], *, nb_name: str, sync_status: int = 1,
         "context": card["examples"][0] if card["examples"] else card["word"],
         "explanation": card["note"],
         "partOfSpeech": card["pos"],
-        "bookTitle": nb_name,  # spec 無書籍來源欄位；validator 要求非空 → 用 notebook 名
+        "bookTitle": nb_name,  # validator 要求非空 → 用 notebook 名（刻意不吃 cards[].source）
         "chapterTitle": None,
         "kgCardId": card["kg_card_id"],
         "difficultyTier": card["difficulty_tier"],
@@ -684,7 +686,7 @@ def derive_reader_passage(spec: dict[str, Any]) -> dict[str, Any]:
     的 `**marker**` 詞。
 
     欄位契約（供 Phase 2 iOS ReaderMarketingProse 資料化）：
-      bookTitle          str   來源本子名（spec 無書籍來源欄位，沿用 notebook 名）
+      bookTitle          str   來源本子名（沿用 notebook 名，不吃 spec 的 cards[].source）
       activeWord         str   剛點選的字（= hero marker，落在 activeWords）
       activePartOfSpeech str|null
       activeTranslation  str   hero 卡譯文（翻譯 overlay 內容）
