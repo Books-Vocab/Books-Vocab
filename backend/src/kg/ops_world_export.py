@@ -6,10 +6,16 @@ seed 可**無損重放**的全欄位：
 
 * notebooks — name / color / cover_pattern / sort_order / is_default（排除 is_deleted 與 is_staged 複製中暫存本）
 * cards — content / pos / meaning / examples / collocations / note / difficulty /
-  mode / root_form / inflections / notebook(name 參照) / is_archived
+  mode / root_form / inflections / notebook(name 參照) / is_archived /
+  source(VocabSource JSON，omit-if-null)
   + review 計數器（review_count / review_streak / lapse_count /
   review_interval_hours / next_review_at / last_reviewed_at / last_review_feedback）
 * links — from / to（card content 參照）/ kind / confidence / reason / notebook
+
+欄位取捨不是散文紀律：`EXPORTED_CARD_COLUMNS` / `EXPORT_IGNORED_CARD_COLUMNS`
+（notebook 同名兩式）把「哪欄有導、哪欄刻意不導及其理由」寫成可斷言集合，由
+`tests/test_ops_world_export.py::TestFieldSymmetry` 對 Card/Notebook model 守恆
+——**給 model 加欄位而沒在那裡表態就會紅**（IMP-0016）。
 
 唯讀紀律：SQLite 一律 `connect_ro`（mode=ro URI），graph 直讀 `graph_*.json`；
 **不** import 任何開檔即寫的 store（`NotebookStore.__init__` 會 create_all DDL）
@@ -101,6 +107,94 @@ def _ro_has_column(db_path: Path, table: str, column: str) -> bool:
         conn.close()
 
 
+# ── 導出欄位分類（IMP-0016）────────────────────────────────────────
+#
+# 下面兩對常數是「哪個 DB 欄位有沒有導出」的唯一可斷言來源，就放在兩個 entry
+# builder 正上方 —— 改 emitter 的人一定會看見它們。
+#
+# 為什麼需要：本檔的 roundtrip 契約（seed→export→seed→export 兩份相等）是個
+# **自證迴圈**，兩份 export 都出自同一個手寫 dict。export 從不吐出的欄位，
+# roundtrip 永遠不會想念 —— 給 Card/Notebook 加一欄而忘了在此表態，資料靜默
+# 消失而測試全綠。這四個常數把「表態」變成強制動作。
+#
+# **禁止**從 SQLModel / PRAGMA 反射產生這些集合：那會讓宣告恆等於現實，
+# lint 淪為 tautology，等於沒有防線。必須手寫，讓新增欄位卡在紅燈上。
+#
+# 由 `tests/test_ops_world_export.py::TestFieldSymmetry` 兩面守恆：
+#   1. 對 MODEL：EXPORTED | IGNORED 恰等於 `Card` / `Notebook` 的欄位集。
+#   2. 對 EMITTER：EXPORTED 的每條 payload 路徑真的出現在 export 輸出裡，
+#      且 export 不吐出未宣告的鍵。
+#
+# EXPORTED_* 的值是該欄位在 payload 裡的路徑（tuple，長度 1 = 頂層鍵，
+# 長度 2 = 單層巢狀）；IGNORED 的值是**不導的理由**，空字串不被接受。
+
+EXPORTED_NOTEBOOK_COLUMNS: dict[str, tuple[str, ...]] = {
+    "name": ("name",),
+    "color": ("color",),
+    "cover_pattern": ("cover_pattern",),
+    "sort_order": ("sort_order",),
+    "is_default": ("is_default",),
+    # omit-if-null（僅 Phase 2 copy 蓋章的本才有）。
+    "source_shared_deck_id": ("source_shared_deck_id",),
+    "source_version": ("source_version",),
+}
+
+EXPORT_IGNORED_NOTEBOOK_COLUMNS: dict[str, str] = {
+    "id": "內部 join key；payload 一律以 name 參照",
+    "created_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
+    "updated_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
+    "is_deleted": "查詢過濾條件，非可重放值（軟刪本不進 payload）",
+    "is_staged": "複製中暫存本的屏障；staged 本整筆不導（見 _export_notebooks）",
+}
+
+EXPORTED_CARD_COLUMNS: dict[str, tuple[str, ...]] = {
+    "content": ("content",),
+    "pos": ("pos",),
+    "meaning": ("meaning",),
+    "examples": ("examples",),
+    "collocations": ("collocations",),
+    "note": ("note",),
+    "difficulty": ("difficulty",),
+    "mode": ("mode",),
+    "root_form": ("root_form",),
+    "inflections": ("inflections",),
+    # notebook_id 以 notebook name 表達（id 跨沙盒不穩定）。
+    "notebook_id": ("notebook",),
+    "is_archived": ("is_archived",),
+    # VocabSource JSON，omit-if-null。
+    "source": ("source",),
+    # review 計數器收在巢狀 block。
+    "review_interval_hours": ("review", "review_interval_hours"),
+    "next_review_at": ("review", "next_review_at"),
+    "last_reviewed_at": ("review", "last_reviewed_at"),
+    "review_count": ("review", "review_count"),
+    "lapse_count": ("review", "lapse_count"),
+    "review_streak": ("review", "review_streak"),
+    "last_review_feedback": ("review", "last_review_feedback"),
+    # omit-if-null（僅 Phase 2 copy 蓋章的卡才有）。
+    "source_shared_card_guid": ("source_shared_card_guid",),
+}
+
+EXPORT_IGNORED_CARD_COLUMNS: dict[str, str] = {
+    "id": "內部 join key；payload 一律以 content 參照",
+    "created_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
+    "updated_at": "store 自動戳，跨沙盒重放必變，導出會破 byte-equal",
+    "is_deleted": "查詢過濾條件，非可重放值（軟刪卡不進 payload）",
+    "content_nfc_lower": "content 的衍生索引，由寫面自動維護",
+    # ── 以下 5 欄：seed 今日沒有攝入面 ──────────────────────────────
+    # 列在這裡＝**明示承認 snapshot/restore 會丟掉它們**，不是宣稱無害。
+    # §1.1 欄位對稱要求「export 吐出的每個欄位 seed 都要吃得進去」，硬導會讓
+    # export A 吐鍵 → seed B 忽略 → export B 缺鍵 → byte-equal fixpoint 破。
+    # 要真正保住這幾欄，得先擴 seed 的攝入面（另一條 entry，非本條範圍）。
+    "card_role": "seed 無攝入面；由 spec 重建的世界會回退 learning（已知有損）",
+    "review_eligible": "seed 無攝入面；重建後回退 True（已知有損）",
+    "reader_hidden": "seed 無攝入面；重建後回退 False —— 這是**使用者意圖**，"
+                     "是這批裡最該優先補攝入面的一欄（已知有損）",
+    "promotion_state": "轉卡 job 狀態機，pipeline 衍生態，非可重放值",
+    "promoted_at": "轉卡 job 時戳，pipeline 衍生態，非可重放值",
+}
+
+
 def _export_notebooks(user_dir: Path) -> list[dict[str, Any]]:
     db_path = user_dir / "notebooks.db"
     # Exclude soft-deleted AND copy-in-progress (staged) notebooks. is_staged is
@@ -168,6 +262,13 @@ def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:
     src_guid = row.get("source_shared_card_guid")
     if src_guid is not None:
         entry["source_shared_card_guid"] = src_guid
+    # source（VocabSource JSON）同樣 omit-if-null：無 source 的 spec 不得多出
+    # null 鍵，否則既有世界的 byte-equal roundtrip 破功（§1.1）。json.loads 不加
+    # try/except 是刻意的 —— 生產讀路徑 `vocab_shared.py` 解同一欄同樣無防護，
+    # export 與之對稱，不新增一類失敗行為。
+    raw_source = row.get("source")
+    if raw_source:
+        entry["source"] = json.loads(raw_source)
     return entry
 
 
