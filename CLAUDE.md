@@ -189,7 +189,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 - **contract / reference / policy** — 活契約或索引。改相關語意 surface 必**同 PR** 更新對應 doc(routers / DB / env / iOS feature scope / CSV schema / host topology / safety),並把 `verified_against` 指到 main 可達 code commit。標 **(SoT)** 者衝突時權威。
 - **sop**(`docs/sop/*`) — SOP 流程變了才更新;不是 code-as-doc。
-- **generated** — registry 必須宣告 `generator`;產物不手改。
+- **generated** — registry 必須宣告 `generator` **與 `check`**(等值檢查命令,產物 != generator 輸出就 exit 1);產物不手改。缺 `check` 是 `docs_lint.sh --registry` 的 ERROR——`generator` 只宣告「這是產物」,`check` 才讓那個宣告可被機器驗證。
 - **snapshot**(`docs/snapshot/*`) — 機器生成或 dated。讀前看 `verified_against`,**可能已過時**。
 - **policy**(`docs/policy/*`) — 動之前需明確決策,PR 必須說明改動原因。
 - **archive**(`docs/archive/*`) — 凍結歷史 strategy/audit,**不更新、不引用**。需要當前狀態請讀對應 sop / reference。
@@ -206,5 +206,5 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
 - `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
-- iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改)
+- iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh --write` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改;預設是印 stdout,`--write` 才落檔)
 - PR 開出前跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 PR gate

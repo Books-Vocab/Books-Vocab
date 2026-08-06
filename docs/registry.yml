@@ -577,6 +577,7 @@ documents:
     kind: generated
     authority: generated
     generator: ops/backlog.py
+    check: ./ops/backlog.py render --check
     triggers:
       - improvement_filed
       - improvement_resolved
@@ -936,6 +937,7 @@ documents:
     kind: generated
     authority: generated
     generator: ops/gen_ios_baseline.sh
+    check: ./ops/gen_ios_baseline.sh --check
     triggers:
       - ios_large_refactor
     sources:

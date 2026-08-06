@@ -1,4 +1,22 @@
 #!/usr/bin/env bash
+# gen_ios_baseline.sh — 產生 docs/snapshot/ios_baseline.md（registry entry: generated.ios_baseline）
+#
+# 用法:
+#   ops/gen_ios_baseline.sh          # 印到 stdout（預設，不寫檔）
+#   ops/gen_ios_baseline.sh --write  # 寫入 docs/snapshot/ios_baseline.md
+#   ops/gen_ios_baseline.sh --check  # 比對磁碟產物與現算輸出，不一致印 STALE 並 exit 1
+#
+# 為什麼預設不再寫檔：--check 由 docs/registry.yml 的 `check:` 欄接進 docs_lint.sh 的
+# registry gate。若本腳本仍無條件寫檔，gate 會把它正在檢查的那個檔改成通過（自己把自己
+# 轉綠），並弄髒 cutover 依賴的乾淨樹前提。
+#
+# --check 比對前會濾掉兩個「時鐘」：整段 <!-- doc-meta -->（內含每次 commit 都會變的
+# verified_against）與 `基線日期:`（每天都會變）。不濾就會做出一個每天自轉紅、一週內被
+# 關掉的 gate。濾掉的僅此兩者；所有實質度量（Top-10、總行數、檔案數、Preview 覆蓋、
+# @MainActor / async func 計數）都仍在比對範圍內。
+#
+# STALE / up to date 的用語沿用 ops/gen_web_tokens.py 既有 idiom（印出該跑哪條命令）。
+
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -6,6 +24,18 @@ IOS_DIR="$REPO_ROOT/ios/BooksAndVocab"
 OUTPUT="$REPO_ROOT/docs/snapshot/ios_baseline.md"
 COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 DATE="$(date +%Y-%m-%d)"
+
+usage() { sed -n '2,19p' "$0"; }
+
+MODE=stdout
+for arg in "$@"; do
+  case "$arg" in
+    --write) MODE=write ;;
+    --check) MODE=check ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
+  esac
+done
 
 # 1. Top 10 by line count
 TOP10=$(find "$IOS_DIR" -name "*.swift" -exec wc -l {} + \
@@ -41,7 +71,9 @@ MAIN_ACTOR=$({ grep -rh "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null 
 # `var sleep: (Duration) async -> Void` (323, i.e. 33 wrong).
 ASYNC_FUNC=$({ grep -rE "func [^{]*\)[[:space:]]*async|^[[:space:]]*\)[[:space:]]*async" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
 
-cat > "$OUTPUT" << EOF
+# 命令替換會吃掉尾端換行，所以之後一律用 printf '%s\n' "$BODY" 輸出，
+# 檔尾才會是既有 committed 檔一樣的單一 \n。
+BODY="$(cat << EOF
 <!-- doc-meta
 tier: snapshot
 authority: derived
@@ -83,5 +115,36 @@ $TOP10
 | @MainActor | $MAIN_ACTOR |
 | async func | $ASYNC_FUNC |
 EOF
+)"
 
-echo "Generated: $OUTPUT (verified_against: $COMMIT_SHA)"
+# 濾掉兩個時鐘：doc-meta 整段 + 基線日期。其餘一律保留。
+normalize() {
+  awk '
+    NR==1 && $0=="<!-- doc-meta" { m=1; next }
+    m && $0=="-->"               { m=0; next }
+    m                            { next }
+    /^基線日期: /                { next }
+    { print }
+  '
+}
+
+case "$MODE" in
+  stdout)
+    printf '%s\n' "$BODY"
+    ;;
+  write)
+    printf '%s\n' "$BODY" > "$OUTPUT"
+    echo "Generated: $OUTPUT (verified_against: $COMMIT_SHA)"
+    ;;
+  check)
+    if [ ! -f "$OUTPUT" ]; then
+      echo "STALE $OUTPUT 不存在(跑: ./ops/gen_ios_baseline.sh --write)"
+      exit 1
+    fi
+    if ! diff -q <(printf '%s\n' "$BODY" | normalize) <(normalize < "$OUTPUT") >/dev/null; then
+      echo "STALE $OUTPUT — 內容與 generator 輸出不一致(跑: ./ops/gen_ios_baseline.sh --write)"
+      exit 1
+    fi
+    echo "$OUTPUT is up to date."
+    ;;
+esac

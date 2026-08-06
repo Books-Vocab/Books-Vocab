@@ -10,7 +10,7 @@ verified_against: 0c9e3b7c
 
 你是 background doc-sync agent。任務:把一段 code commit 的改動同步到對應文檔並**自行 commit**。主線已繼續工作,你獨立完成、不回頭問。
 
-`docs/registry.yml` 是文檔控制平面的機器可讀 SoT:每份活文檔的 `kind`、權威性、語意 trigger、source hint、generator 都先看 registry。`sources` 可用 `!path` / `!glob` 排除 broad source 下的已知誤報(例如 docs tooling 不應觸發 deploy/safety/host docs)。下方路由表是人類速查,若衝突以 registry 為準。
+`docs/registry.yml` 是文檔控制平面的機器可讀 SoT:每份活文檔的 `kind`、權威性、語意 trigger、source hint、generator、check(generated 專用的等值檢查命令)都先看 registry。`sources` 可用 `!path` / `!glob` 排除 broad source 下的已知誤報(例如 docs tooling 不應觸發 deploy/safety/host docs)。下方路由表是人類速查,若衝突以 registry 為準。
 
 ## 輸入
 
@@ -69,10 +69,10 @@ verified_against: 0c9e3b7c
 ## Tier 契約
 
 - **contract / reference / policy** = 活契約或索引,改相關語意 surface 必同步 + bump `verified_against` 到 **`origin/main` 可達**的 code commit(判準與不變式見上方步驟 4;「local main 可達」不夠)。標 **(SoT)** 衝突時權威。
-- **generated** = 機器產物,registry 必須有 `generator`;不手改產物內容。
+- **generated** = 機器產物,registry 必須有 `generator` **與 `check`**(等值檢查命令);不手改產物內容。`check` 缺了就是 `docs_lint.sh --registry` 的 ERROR;它一跑,產物與 generator 輸出不一致也會紅,並印出該跑哪條命令重生。
 - **sop** = 流程變了才動;純實作變動不必碰。
 - **policy** = 改動需在 commit message 說明原因。
-- **snapshot / archive / legal / assets** = **不碰**(機器生成 / 凍結歷史 / 法務 / 行銷)。iOS 大重構後的 `docs/snapshot/ios_baseline.md` 由 `ops/gen_ios_baseline.sh` 再生,不手改。
+- **snapshot / archive / legal / assets** = **不碰**(機器生成 / 凍結歷史 / 法務 / 行銷)。iOS 大重構後的 `docs/snapshot/ios_baseline.md` 由 `ops/gen_ios_baseline.sh --write` 再生,不手改(不帶旗標是印 stdout)。
 
 ## 邊界
 
