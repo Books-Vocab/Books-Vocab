@@ -6,7 +6,7 @@ scope:
   - backend/
   - devops.sh
   - ops/
-verified_against: dcb7b705f
+verified_against: c7a0b2bf5
 -->
 # 後端部署指南
 
@@ -75,7 +75,7 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 - **刻意排除**（皆不進 image）：`backend/.env*`、`backend/VERSION`、`backend/data/**`、`backend/certs/**`、`backend/scripts/**`、`backend/docs/**`、`ios/**`、`lab/**`、`docs/**`、`ops/**`、`design-system/**`。判準正本在 `ops/kg_reconcile.sh` 的 `BACKEND_TRIGGER_RE`。
 
 ### rollback + poison 行為
-DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit fail）。localhost 或 infra 失敗、以及**外部 smoke 判 `bad`** → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0，且**回滾自己那次 compose 的退出碼會被檢查**——失敗時發的是「回滾未生效，容器很可能仍跑新版」而不是「生產可能雙壞」（後者只在回滾真的跑完、舊版卻起不來時才發）。
+DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit **原則上** fail，唯一例外見下段）。localhost 失敗、infra 失敗、以及**外部 smoke 判 `bad`** → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0，且**回滾自己那次 compose 的退出碼會被檢查**——失敗時發的是「回滾未生效，容器很可能仍跑新版」而不是「生產可能雙壞」（後者只在回滾真的跑完、舊版卻起不來時才發）。
 
 **外部 smoke 是三分類，不是二分類（IMP-0061）**。判準：**回滾只有在證據指控被部署的那份 code 時才正當**，而走到這一步 localhost 已經證明新 sha 起來了、正在 serving。
 
@@ -85,7 +85,9 @@ DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/sys
 | `bad` | **拿得到 HTTP 回應**但不合格——5xx、版本不符、CF 錯誤頁（502/530/1033 皆算） | 回滾 + poison + ALERT，**行為不變** |
 | `unreachable` | **每次嘗試都拿不到任何 HTTP 回應**（`HTTP=000`／DNS 失敗／連不出去） | **不回滾**：部署照常落地、不寫 poison，發 ALERT 要人從第二個地點確認，並在 verdict 與 `backups/deploy.log` 記 `smoke=unverified` |
 
-`unreachable` 不回滾有兩個獨立理由：① 沒有任何證據指控這份 code，「我這台量不到」與「服務真的壞了」不是同一件事；② 回滾要跑 `--build`，而 2026-08-04 事故裡它正是被同一場 DNS 故障弄死的（IMP-0060 C2）——**兩個失效是相關的**，gate 最容易假失敗的時候正是回滾最不可能成功的時候。放行後 gate 退化成 localhost + infra_health，兩者純本機、免疫於同一場斷網。刻意**只問「到底有沒有拿到回應」，不問是幾號**，所以不需要「CF tunnel 各種故障回什麼 code」那份對照表。
+`unreachable` 不回滾有兩個獨立理由：① 沒有任何證據指控這份 code，「我這台量不到」與「服務真的壞了」不是同一件事；② 回滾要跑 `--build`，而 2026-08-04 事故裡它正是被同一場 DNS 故障弄死的（IMP-0060 C2）——**兩個失效是相關的**，gate 最容易假失敗的時候正是回滾最不可能成功的時候。放行後 gate 剩下 localhost 與 `infra_health`，而**`infra_health` 並不純本機**——它自己也會從這台機器打同一個對外 URL（`ops/infra_health.sh:40` 的 `PROBE_URL`，非 200 一律 crit、crit 即 exit 2），所以它對同一場斷網**沒有免疫力**。刻意**只問「到底有沒有拿到回應」，不問是幾號**，所以不需要「CF tunnel 各種故障回什麼 code」那份對照表。
+
+**infra_health 的 CRIT 不再一律回滾（IMP-0061 review D1）**。`run_health_gate` 改吃 `infra_health --json` 並**看它為什麼 crit**，不是只看 exit code；呼叫時把 `KG_HEALTH_PROBE_URL` 釘成 smoke 剛探過的同一個 URL，讓「同一個問題被問了兩次」是結構事實而非對預設值的假設。放行條件是**兩個都成立**：① 本輪 `EXTERNAL_SMOKE_CLASS == unreachable`（外部 smoke 已獨立、重試到預算用盡地證明拿不到任何 HTTP 回應）；② crit 的 metric key **恰好只有 `http_probe` 一個**。此時發 ALERT、仍記 `smoke=unverified`、**不回滾**。其餘任何 crit（容器不見了／磁碟爆了／記憶體／tunnel 掛了／憑證過期／host 指標收不到…）都是關於這台機器或這個服務的真證據，**照舊回滾 + poison**——斷網不是 infra 這關的免死金牌。JSON 抽不出任何 crit key（壞掉／版本不合／被替換）→ **fail-closed 回滾**：「看不懂」不等於「沒問題」。少了這個判準，主機端斷網會原封不動地變成 `reason=infra` + 回滾 + poison（行為與修法前一模一樣，只是換了個理由字串），而且同一輪 tick 會先發「故不回滾」再發「回滾」兩則互相矛盾的 ALERT。判準正本 `ops/kg_reconcile.sh` 的 `infra_crit_is_same_outage`。
 
 ⚠ `smoke=unverified` 的落地**必須有人看**：stderr ALERT 只是次要通知（沒人保證有人在讀 launchd err log），持久可 grep 的證據是 `backups/deploy.log` 那行與 verdict 的 `smoke` 欄位。查最近有沒有這種落地：`grep 'smoke=unverified' backups/deploy.log`。
 
