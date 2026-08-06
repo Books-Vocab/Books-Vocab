@@ -73,6 +73,22 @@ LINUX_GROUPS=(
   # 的原始碼字面量做對帳，不需要模擬器（那正是它存在的理由——Swift 端的
   # precondition 只有跑得動 simulator 時才會講話）。
   catalog-scene-expectations
+  # ── IMP-20260805-947062 收編的 4 個 group ──────────────────────────────────
+  # 全都跑在 --no-project sandbox（stdlib + pytest），逐支在 macOS 實測過。
+  streaming-command
+  app-review
+  demo-data
+  # catalog-render 的 linux 判決**未實測**：本機沒有 docker，跑不了
+  # ops/ci_linux_repro.sh。放這裡是因為手上證據不支持排除——它讀的三個資產
+  # （iphone_frame.png/.json、sources/iphone-framed/01_vocab_list.png）都是 tracked，
+  # 拿的 pillow 走 `uv run --with pillow`，而 CI 既然跑得動 `uv run --with pytest`
+  # 就有同一條 PyPI 路徑；四支測試都沒有 /System/Library、字型、sips、xcrun 之類的
+  # macOS 專屬相依（實際 grep 過）。
+  # 刻意**不**借 data-catalog-png 排除：那個 token 的意思是「只有模擬器跑得出來的
+  # PNG」，這裡的是 tracked 資產，借用等於寫一個假理由——正是 IMP-0054 砍掉 13 個
+  # group 的那種病。真在 runner 上紅了，帶著實測訊息移進 EXCLUDED_GROUPS 或補一個
+  # 誠實的新 token，那是一行的距離。
+  catalog-render
 )
 
 # token|要從 PATH 拿掉的命令|功能探針（皆空 = 這個 token 無法用 PATH 證偽）
@@ -123,6 +139,18 @@ EXCLUDED_GROUPS=(
   "review-probe|data-ui-world|case 14 (test_review_probe.sh:133-145) resolves ops/fixtures/ui_worlds/marketing_demo.json:58, an absolute path to an UNTRACKED 16MB .m4a — the very dependency this table already excludes ui-quality-gate for. Admitting it while excluding ui-quality-gate was self-contradictory"
 )
 
+# path|reason —— tracked test files that intentionally belong to no group.
+#
+# 只有兩欄，不是三欄。EXCLUDED_GROUPS 的 token 欄之所以存在，是因為 `bin-*` 可以用 PATH
+# 證偽；「這個檔不是測試」沒有任何對應的證偽器，加一欄 token 只會讓豁免**看起來**被稽核過
+# 而其實沒有——那正是 header（14-25 行）記載的 IMP-0054 罪狀。這張表的機器可查性來自
+# 下面那段的 stale / overlap 斷言：名字必須是 tracked 檔，且不得同時被某個 group 跑到。
+#
+# 「它紅了所以豁免」不是這張表的用途。那是本表要殺的靜默綠本身。
+UNGROUPED_TESTS=(
+  "ops/test_ops.sh|the aggregate dispatcher itself, not a test — ops/worktree_orchestrate.py:OPS_SHELL_UNROUTABLE_TESTS states the same exemption for the cutover plane"
+)
+
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
   printf '%s\n' "${LINUX_GROUPS[@]}"
   exit 0
@@ -137,9 +165,15 @@ section() { echo ""; echo "── $* ──"; SEC_BASE=$fail; }
 ok_if_clean() { (( fail == SEC_BASE )) && ok "$*" || true; }
 
 # DEFAULT_TESTS is the SoT for what the suite contains.
+#
+# 註解要剝掉再讀。原版直接把陣列裡的每一行當 group 名，於是在 DEFAULT_TESTS 裡寫一行
+# 註解說明「這批 group 為什麼存在」會讓那行**變成一個假 group**，然後被下一段指控
+# 未分類——實測過：4 行註解 = 4 筆 unclassified。這等於用工具行為禁止在唯一的 group
+# SoT 旁邊留下理由，而下一個註冊 group 的人正需要那個位置。group 名不含 '#'，所以
+# 從 '#' 砍到行尾對整行註解與行尾註解都成立。
 DECLARED=()
 while IFS= read -r line; do DECLARED+=("$line"); done < <(
-  awk '/^DEFAULT_TESTS=\(/{flag=1;next} /^\)/{flag=0} flag {gsub(/[[:space:]]/,"");if($0!="")print}' ops/test_ops.sh
+  awk '/^DEFAULT_TESTS=\(/{flag=1;next} /^\)/{flag=0} flag {sub(/#.*/,"");gsub(/[[:space:]]/,"");if($0!="")print}' ops/test_ops.sh
 )
 
 section "DEFAULT_TESTS is readable"
@@ -172,6 +206,50 @@ for g in "${LINUX_GROUPS[@]}" "${EXCLUDED_GROUPS[@]%%|*}"; do
   (( found == 1 )) || fail_t "$g is classified but not in DEFAULT_TESTS — stale entry"
 done
 ok_if_clean "classification contains no stale entries"
+
+# ── file→group 反向覆蓋 ──────────────────────────────────────────────────────
+# 上面三段驗的全是 group→分類：每個 group 都被分類、沒有分類指向死 group。**沒有一段
+# 列舉過檔案**，所以「測試檔存在但沒有任何 group 跑得到」在結構上偵測不到，這正是
+# IMP-20260805-947062：19 支 tracked 測試檔對每個 group 都不可達，其中
+# test_streaming_command.py 是鐵律 5 heartbeat 契約唯一的 `[machine]` 守衛、
+# test_app_review_gate.py 守送審。**從不執行的守衛跟永遠通過的守衛在輸出上無法區分。**
+section "every tracked test file is reachable from some group"
+# run_one 是「某個 group 實際 EXECUTE 什麼」的 SoT。先剝註解再比對：在註解裡提到一個
+# 路徑不是執行，少了這道 sed，任何人都能靠寫一行註解讓這條檢查閉嘴。
+REACHABLE=(); TRACKED=()
+while IFS= read -r l; do REACHABLE+=("$l"); done < <(
+  awk '/^run_one\(\) \{/{f=1} f{print} f&&/^\}/{exit}' ops/test_ops.sh \
+    | sed 's/[[:space:]]*#.*$//' \
+    | grep -oE 'ops/(tests/)?test_[A-Za-z0-9_]+\.(sh|py)' | sort -u
+)
+while IFS= read -r l; do TRACKED+=("$l"); done < <(git ls-files 'ops/tests/test_*' 'ops/test_*' | sort -u)
+
+# 兩道探針自檢，比照 192 / 199 行：少了它們，改個名字就能讓整段恆真地綠。
+# bash 3.2 配 set -u 展開空陣列是 crash 不是空迴圈，所以筆數要先看再展開。
+if (( ${#TRACKED[@]} == 0 )); then
+  fail_t "git ls-files found no tracked ops test file — the probe is broken, not the suite"
+elif (( ${#REACHABLE[@]} == 0 )); then
+  fail_t "parsed 0 test paths out of run_one — the probe is broken, not the dispatcher"
+else
+  for f in "${TRACKED[@]}"; do
+    reach=0
+    for r in "${REACHABLE[@]}"; do [[ "$r" == "$f" ]] && reach=1; done
+    exempt=0
+    for u in "${UNGROUPED_TESTS[@]}"; do [[ "${u%%|*}" == "$f" ]] && exempt=1; done
+    if (( reach + exempt == 0 )); then
+      fail_t "$f is reachable from no group — register it in ops/test_ops.sh run_one, or name it in UNGROUPED_TESTS with a reason"
+    elif (( reach + exempt == 2 )); then
+      fail_t "$f is both run by a group and named exempt — pick one"
+    fi
+  done
+  # 反向 stale，比照 164-170 行：改名後留下的豁免是一支永久的消音器。
+  for u in "${UNGROUPED_TESTS[@]}"; do
+    p="${u%%|*}"; found=0
+    for f in "${TRACKED[@]}"; do [[ "$f" == "$p" ]] && found=1; done
+    (( found == 1 )) || fail_t "$p is named exempt but is not a tracked test file — stale entry"
+  done
+  ok_if_clean "all ${#TRACKED[@]} tracked test file(s) are reachable or named-exempt"
+fi
 
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
 # 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且（在 ops/ 下
@@ -323,9 +401,9 @@ while IFS= read -r srcline; do
     fail_t "table source executes at parse time (backtick or \$( ): ${srcline#"${srcline%%[![:space:]]*}"}"
     danger=1
   fi
-done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
+done < <(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF")
 # 自測：解析不到表就代表 awk 抓錯範圍，上面的迴圈零圈跑完會長得像「沒有危險寫法」。
-tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
+tbl_lines="$(awk '/^(EXCLUDED_GROUPS|DEP_TOKENS|UNGROUPED_TESTS)=\(/{f=1;next} f&&/^\)/{f=0} f' "$SELF" | grep -c . || true)"
 if (( tbl_lines < 10 )); then
   fail_t "only parsed $tbl_lines line(s) of the table literals out of $SELF — the probe is broken, not the table"
 elif (( danger == 0 )); then

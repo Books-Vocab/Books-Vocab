@@ -62,6 +62,14 @@ DEFAULT_TESTS=(
   script-help
   lib-sourcing
   podcast-ops
+  # ── IMP-20260805-947062：以下 4 個 group 收編原本對每個 group 都不可達的 19 支
+  #    測試檔。反向覆蓋由 ops/tests/test_ops_ci_coverage.sh 的
+  #    「every tracked test file is reachable from some group」把關——新增測試檔
+  #    卻忘了註冊，那段會指名它並回非零。
+  streaming-command
+  app-review
+  demo-data
+  catalog-render
 )
 
 OPTIONAL_TESTS=(
@@ -85,6 +93,9 @@ run_one() {
     backup-verify)      ./ops/tests/test_backup_verify.sh ;;
     devops)
       ./ops/test_devops.sh &&
+      # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
+      # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
+      ./ops/tests/test_devops_safe_lightsail_guard.sh &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
@@ -172,6 +183,40 @@ run_one() {
         ops/test_podcast_ops.py \
         ops/tests/test_podcast_backfill_disk.py \
         ops/tests/test_podcast_cover_publish.py
+      ;;
+    # ── IMP-20260805-947062 收編的 4 個 group ────────────────────────────────
+    # 全部跑在 backlog case 那個 --no-project sandbox 裡：這 18 支只 import stdlib
+    # ＋ pytest，逐支實測過不需要 --project backend。
+    streaming-command)
+      # 鐵律 5 heartbeat 契約唯一的 [machine] 守衛，先前從不執行。
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_streaming_command.py
+      ;;
+    app-review)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_app_review_evidence.py \
+        ops/tests/test_app_review_gate.py \
+        ops/tests/test_reviewer_evidence.py \
+        ops/tests/test_asc_reviewer_mirror.py \
+        ops/tests/test_provenance.py
+      ;;
+    demo-data)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_demo_ios_emitter.py \
+        ops/tests/test_demo_ios_spec_emitter.py \
+        ops/tests/test_shape_history.py \
+        ops/tests/test_apply_curation.py \
+        ops/tests/test_capture_profile.py \
+        ops/tests/test_ui_world_manifest.py \
+        ops/tests/test_uitest_flow_matrix.py \
+        ops/tests/test_uitest_review_page.py
+      ;;
+    catalog-render)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_catalog_appearance_proof.py \
+        ops/tests/test_contact_sheet.py \
+        ops/tests/test_frame_catalog.py \
+        ops/tests/test_render_fit.py
       ;;
     asc)
       ./ops/test_asc.sh
