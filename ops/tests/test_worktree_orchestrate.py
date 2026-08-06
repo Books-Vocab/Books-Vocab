@@ -140,6 +140,43 @@ def test_coverage_partition_is_exact():
     assert parts == set(files)
 
 
+def test_backlog_entry_change_selects_validate():
+    """The kaizen ledger is a data plane with no gate (IMP-20260805-9a51e9).
+
+    `backlog.py validate` exists and has ZERO automatic callers: not CI, not any
+    ops/*.sh, not this orchestrator. Measured today — the only mention outside its
+    own tests is a prose line in .claude/agents/platform-steward.md, i.e. it runs
+    only if an agent happens to read that line and choose to. Meanwhile the
+    generated VIEW is machine-checked (registry `check:` -> render --check), so
+    the tool guarantees the table matches the store and guarantees nothing about
+    whether the store is true.
+
+    Block, not warn: a malformed entry is a defect, and the check cannot go red
+    just because you used the tool correctly — `add`/`update` only ever write
+    schema-valid entries, and view staleness is render --check's job, not this
+    one's. A gate that reds on correct use is the shape that gets muted.
+    """
+    gates = plan_gates(["docs/runbook/backlog/IMP-0001.json"])
+    g = _by_name(gates).get("backlog-validate")
+    assert g is not None, f"no backlog-validate gate; planned: {_names(gates)}"
+    assert g["level"] == "block", g
+    assert g["cmd"][:2] == ["ops/backlog.py", "validate"], g["cmd"]
+
+
+def test_backlog_entry_is_not_reported_uncovered():
+    cov = next(g for g in plan_gates(["docs/runbook/backlog/IMP-0001.json"])
+               if g["name"] == "coverage")
+    assert cov["uncovered"] == [], cov["uncovered"]
+
+
+def test_backlog_validate_does_not_swallow_unrelated_json():
+    """Anti-over-reach. The route keys on the store directory, not on `.json`
+    anywhere under docs/ — otherwise an unrelated data file would select a
+    validator that knows nothing about it and pass vacuously."""
+    gates = plan_gates(["docs/reference/some_other_data.json"])
+    assert "backlog-validate" not in _names(gates)
+
+
 def test_no_neutral_rule_swallows_a_source_surface():
     import re as _re
     for probe in ("ios/BooksAndVocab/X.swift", "backend/src/kg/app.py",
