@@ -288,6 +288,8 @@ def _ops_shell_test_candidates(rel: str) -> list[str]:
 # (it has to run in the bootstrap case where the checkout predates the toolchain).
 # Hand-rolling a parser to gate on would make the verdict a property of that parser.
 # Unowned yml is therefore NAMED in a warn, not silently swallowed.
+BACKLOG_STORE_DIR = "docs/runbook/backlog/"
+
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     "ops/ui_quality_plane.yml": (
         ["ops/ui_quality_plane.py", "validate"],
@@ -620,8 +622,31 @@ def plan_gates(changed_files: list[str],
                       + " — check by hand that nothing still reads it"),
                 files=deleted))
 
+    # The kaizen ledger. One file per entry under a fixed directory, so the route
+    # keys on that directory rather than on `.json` under docs/ — a `.json` route
+    # would hand unrelated data files to a validator that knows nothing about them
+    # and pass vacuously, which is the failure this router exists to prevent.
+    #
+    # `validate` reads the WHOLE store, not just the changed entries: it is a
+    # store-level invariant check, so a deleted entry needs no special case (unlike
+    # DATA_PLANE_OWNERS above, where each file has its own validator and a deletion
+    # would be a false red).
+    #
+    # Why this route did not exist until now (IMP-20260805-9a51e9): `validate` has
+    # had ZERO automatic callers since it was written — not CI, not any ops/*.sh,
+    # not this file. Its only mention outside its own tests is a prose instruction
+    # in .claude/agents/platform-steward.md, so it ran only when an agent happened
+    # to read that line. Meanwhile the generated VIEW is machine-checked (registry
+    # `check:` -> render --check). The tool guaranteed the table matched the store
+    # and guaranteed nothing about whether the store was true.
+    backlog_entries = [p for p in changed_files
+                       if p.startswith(BACKLOG_STORE_DIR) and p.endswith(".json")]
+    if backlog_entries:
+        gates.append(_shell("backlog-validate", "data",
+                            ["ops/backlog.py", "validate"], "block"))
+
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml):
+    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml, backlog_entries):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
     note = "every changed file is routed to a gate or declared neutral"

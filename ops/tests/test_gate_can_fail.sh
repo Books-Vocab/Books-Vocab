@@ -73,6 +73,7 @@ PROOFS=(
   "docs-conflict-markers|cheap|cheap|internal gate, driven through its real function"
   "ops-shell-syntax|cheap|cheap|a script that does not parse vs one that does"
   "ops-shell|fixture|fixture|no fixed tool: the routed script IS the command, so what is provable here is the gate's contract — run it, propagate its exit code — driven through _run_gate against a script that exits 3"
+  "backlog-validate|cheap|cheap|an isolated store copy with a bad severity + a missing required field, vs the same copy untouched"
   "data-plane|fixture|fixture|no fixed tool either: the yml's declared owner IS the command (DATA_PLANE_OWNERS), so what is provable here is that this family propagates its owner's exit code — driven through _run_gate against an owner that exits 4"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
@@ -150,6 +151,7 @@ probes = [
     ["ops/worktree_orchestrate.py"], ["ops/docs_lint.sh"],
     ["design-system/tokens.json"],
     ["ops/ui_quality_plane.yml"],
+    ["docs/runbook/backlog/IMP-0001.json"],
     ["README.md"],
 ]
 names = set()
@@ -289,6 +291,29 @@ write_docs_probe "$(printf '<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> other\n
 rc=0; ./ops/docs_lint.sh --files "$DOCS_PROBE" >"$TMP/docs_bad.out" 2>&1 || rc=$?
 assert_red docs-lint "衝突標記" "$TMP/docs_bad.out" "$rc"
 rm -f "$DOCS_PROBE"
+
+# --- backlog-validate -----------------------------------------------------------
+# Isolated store copy in BOTH directions, deliberately: the gate runs
+# `backlog.py validate` against the real store, but proving CAPABILITY must not be
+# coupled to the real store's health — otherwise a genuine ledger defect would be
+# reported here as "the gate cannot fail", which is the wrong diagnosis attached to
+# the wrong owner. Whether the real store is clean is the cutover gate's job.
+BL_STORE="$TMP/backlog_store"
+mkdir -p "$BL_STORE"
+cp docs/runbook/backlog/IMP-0001.json "$BL_STORE/"
+rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_ok.out" 2>&1 || rc=$?
+assert_green backlog-validate "0 problems" "$TMP/bl_ok.out" "$rc"
+
+"$UV_BIN" run --no-project --python 3.13 python - "$BL_STORE/IMP-0001.json" <<'BLPY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["severity"] = "catastrophic"   # outside the declared vocabulary
+del d["detail"]                  # required field
+json.dump(d, open(p, "w"), ensure_ascii=False)
+BLPY
+rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_bad.out" 2>&1 || rc=$?
+assert_red backlog-validate "bad-severity" "$TMP/bl_bad.out" "$rc"
 
 # --- docs-conflict-markers ------------------------------------------------------
 # Decided inside the orchestrator, so drive the real function rather than a shell
