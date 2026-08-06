@@ -2,7 +2,8 @@
 # test_ui_quality_gate.sh — behavior tests for ops/ui_quality_gate.sh.
 #
 # Covers: dry-run plan, execute fast static gates, tier filtering, JSON report,
-# and graceful handling of a missing injection baseline.
+# and the two non-symmetric answers to a missing injection baseline (bootstrap
+# degrade vs. caller error).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -256,7 +257,23 @@ else
 fi
 rm -rf "$GHOST_DIR"
 
-section "Missing injection baseline is handled gracefully"
+section "A named-but-missing injection baseline is a caller error, not a degrade"
+# The two directions are deliberately NOT symmetric:
+#
+#   KG_INJECTION_BASELINE unset and no baseline on disk → bootstrap. Nobody has
+#     run `--baseline` yet, so --report with a warning (exit 0) is the only thing
+#     left to offer.
+#   KG_INJECTION_BASELINE set to a path that is not there → the caller named that
+#     path. A typo, or a stale export from an earlier session. Degrading *here* is
+#     a silent green: --report always exits 0 and `warn` is excluded from
+#     summary.failed, so the gate returns 0 with injection enforcement switched
+#     off. `ui_quality_gate.sh --tier fast --execute` is a **block**-level cutover
+#     gate (ops/worktree_orchestrate.py:428) and a pre-commit hook
+#     (.githooks/pre-commit:43); both inherit the caller's environment, and
+#     cutover is offline so CI cannot cover for it. One stale export would have
+#     disabled the lint everywhere without a word — and this is the variable the
+#     docs now tell people to reach for. It has to be red.
+#
 # "Missing" is staged by pointing the gate at a path that does not exist, via
 # the same KG_INJECTION_BASELINE seam ops/injection_lint.py already reads. The
 # version-controlled ops/injection_baseline.txt is never touched.
@@ -297,26 +314,61 @@ fi
 ) &
 WATCH_PID=$!
 
-OUT="$(KG_INJECTION_BASELINE="$MISSING_BASELINE" $GATE --files "$SAMPLE_FILE" --tier fast --execute 2>&1)"
+# The enforcing shape, unscoped: the same fast tier cutover and the pre-commit
+# hook run. Deliberately not narrowed with --exclude — the failed set is asserted
+# to be *exactly* static.injection below, so the non-zero exit is attributable to
+# this mechanism rather than to some other lint happening to be red.
+JSON="$(KG_INJECTION_BASELINE="$MISSING_BASELINE" $GATE --files "$SAMPLE_FILE" --tier fast --execute --json 2>/dev/null)"
 RC=$?
+# Human mode, narrowed to the one row under test so it costs a process start
+# rather than another full lint sweep. A refusal has to be legible to whoever
+# typed the bad path, not just to jq.
+ROW_OUT="$(KG_INJECTION_BASELINE="$MISSING_BASELINE" $GATE --files "$SAMPLE_FILE" --tier fast --execute \
+  --exclude static.ui_token --exclude static.plain_deadzone --exclude static.i18n --exclude static.catalyst 2>&1)"
+# KG_INJECTION_BASELINE= (empty) is the split-brain input: the parent used to
+# read it with `if override:` and fall back to the tracked file while the child
+# read `os.environ.get(..., default)`, resolved Path("") to the repo root, and
+# died with IsADirectoryError. Dry-run is enough — the refusal is decided before
+# the mode branch, and no child should be started at all.
+EMPTY_JSON="$(KG_INJECTION_BASELINE= $GATE --files "$SAMPLE_FILE" --tier fast --dry-run --json 2>/dev/null)"
+EMPTY_RC=$?
 
 rm -f "$WATCH_RUNNING"
 wait "$WATCH_PID" 2>/dev/null || true
 SAMPLES="$(wc -l <"$WATCH_SAMPLES" | tr -d ' ')"
 VIOLATIONS="$(grep -c VIOLATION "$WATCH_SAMPLES" || true)"
 
-if [[ "$RC" -eq 0 ]]; then
-  ok "execute fast tier still exits 0 when injection baseline missing"
+FAILED_IDS="$(jq -c '[.results[] | select(.status=="failed") | .id]' <<<"$JSON" 2>/dev/null)"
+if [[ "$RC" -ne 0 ]] && [[ "$FAILED_IDS" == '["static.injection"]' ]]; then
+  ok "a stale KG_INJECTION_BASELINE export fails the gate (rc=$RC), and static.injection is the only thing failing it"
 else
-  fail_t "execute fast tier failed with missing injection baseline: $OUT"
+  fail_t "gate exited $RC with failed=$FAILED_IDS summary=$(jq -c '.summary' <<<"$JSON" 2>/dev/null) — a caller-named baseline that is not there must not pass; --report always exits 0 and warn is not counted in summary.failed"
 fi
-# Anchored on the static.injection row, deliberately not a bare /WARN/: the
-# summary line always prints a `warn=<n>` counter, so `grep -qi WARN` matches
-# `warn=0` even when the mechanism hard-failed and reported zero warnings.
-if grep -qE '^static\.injection +\[WARN\].*--report' <<<"$OUT"; then
-  ok "gate degrades static.injection to --report and marks the row WARN"
+# The mechanism row, not the summary: `warn=0`/`failed=1` counters in the
+# summary line can satisfy a loose grep on a run where the mechanism did the
+# opposite of what is claimed.
+if jq -e '.results[] | select(.id=="static.injection")
+          | .status=="failed" and .rc==2 and (.args|length)==0
+            and (.command|contains("--report")|not)' <<<"$JSON" >/dev/null 2>&1; then
+  ok "static.injection refused to run (rc=2, no args) instead of degrading to an always-exit-0 --report"
 else
-  fail_t "static.injection did not degrade to a warned --report: $OUT"
+  fail_t "static.injection row was $(jq -c '.results[]|select(.id=="static.injection")|{status,rc,command,warning}' <<<"$JSON" 2>/dev/null) — a warning must not launder a red one level up"
+fi
+# Anchored on the static.injection row, deliberately not a bare /FAIL/ or
+# /KG_INJECTION_BASELINE/: both appear elsewhere in the output. The matched text
+# is human_summary's rendering of the refusal's own warning — if the child had
+# merely exited 1 the row would read `[FAIL] ops/injection_lint.sh
+# --baseline-check (rc=1)` and name nothing.
+if grep -qE '^static\.injection +\[FAIL\].*KG_INJECTION_BASELINE' <<<"$ROW_OUT"; then
+  ok "the human row says FAIL and names the variable that caused it"
+else
+  fail_t "static.injection's row does not explain the refusal: $(grep -E '^static\.injection' <<<"$ROW_OUT")"
+fi
+if [[ "$EMPTY_RC" -ne 0 ]] && jq -e '.results[] | select(.id=="static.injection")
+          | .status=="failed" and (.command|contains("--baseline-check")|not)' <<<"$EMPTY_JSON" >/dev/null 2>&1; then
+  ok "an empty KG_INJECTION_BASELINE is refused by the parent (rc=$EMPTY_RC), not planned as a --baseline-check the child resolves to the repo root"
+else
+  fail_t "empty override: rc=$EMPTY_RC row=$(jq -c '.results[]|select(.id=="static.injection")|{status,rc,command}' <<<"$EMPTY_JSON" 2>/dev/null) — parent and child disagree on the same variable again (IsADirectoryError)"
 fi
 if [[ "$SAMPLES" -gt 0 && "$VIOLATIONS" -eq 0 ]]; then
   ok "tracked injection baseline stayed byte-identical throughout the run ($SAMPLES samples)"
@@ -329,6 +381,106 @@ else
   fail_t "$TRACKED_BASELINE differs from its pre-section snapshot — this test modified a version-controlled file"
 fi
 rm -f "$WATCH_SNAPSHOT" "$WATCH_SAMPLES"
+
+# The bootstrap direction cannot be staged through the CLI without taking the
+# tracked baseline off disk, which is the thing IMP-0048 exists to stop. Ask the
+# decision function itself instead, in a root that has no baseline — that keeps
+# "degrade" and "refuse" pinned as two different answers rather than one.
+_inj() { # <root> — prints "<resolved args|UNRUNNABLE>|<warn|nowarn>" for the ambient env
+  "$UV_BIN" run --python 3.13 python -c "
+import sys
+from pathlib import Path
+import importlib.util as u
+s=u.spec_from_file_location('g','ops/ui_quality_gate.py'); m=u.module_from_spec(s); s.loader.exec_module(m)
+a,w=m.injection_args(Path(sys.argv[1]))
+print(('UNRUNNABLE' if a is m.UNRUNNABLE else ' '.join(a)) + '|' + ('warn' if w else 'nowarn'))" "$1"
+}
+EMPTY_ROOT="$(mktemp -d)"
+[[ "$(unset KG_INJECTION_BASELINE; _inj "$EMPTY_ROOT")" == "--report|warn" ]] \
+  && ok "unset + no baseline anywhere → --report with a warning (bootstrap keeps its exit 0)" \
+  || fail_t "the bootstrap degrade is gone: an unset variable in a tree with no baseline must still offer --report, not refuse"
+[[ "$(unset KG_INJECTION_BASELINE; _inj "$ROOT")" == "--baseline-check|nowarn" ]] \
+  && ok "unset + tracked baseline present → --baseline-check, no warning (bit-identical to before the override existed)" \
+  || fail_t "the default path regressed: an unset variable on this repo must enforce"
+[[ "$( (export KG_INJECTION_BASELINE="$MISSING_BASELINE"; _inj "$ROOT") )" == "UNRUNNABLE|warn" ]] \
+  && ok "set + missing → UNRUNNABLE with a warning (caller error)" \
+  || fail_t "a named-but-missing baseline did not resolve to UNRUNNABLE"
+[[ "$( (export KG_INJECTION_BASELINE=""; _inj "$ROOT") )" == "UNRUNNABLE|warn" ]] \
+  && ok "set-but-empty → UNRUNNABLE, the same answer the child's Path('') deserves" \
+  || fail_t "empty override took the parent's fallback while the child takes the repo root — the split brain is back"
+[[ "$( (export KG_INJECTION_BASELINE="$TRACKED_BASELINE"; _inj "$ROOT") )" == "--baseline-check|nowarn" ]] \
+  && ok "a relative override resolves against the repo root, the cwd injection_lint.sh cds to" \
+  || fail_t "a relative override does not resolve like the child's"
+rmdir "$EMPTY_ROOT"
+
+# Everything above is parent-side. If ops/injection_lint.py stopped honouring the
+# variable, or drifted to a different default, the parent alone would still print
+# exactly what those assert and every one of them would stay green.
+CONTRACT="$("$UV_BIN" run --python 3.13 python - <<'PY'
+import os, sys
+from pathlib import Path
+import importlib.util as u
+sys.path.insert(0, "ops")
+def load(name, path):
+    s = u.spec_from_file_location(name, path)
+    m = u.module_from_spec(s)
+    s.loader.exec_module(m)
+    return m
+os.environ.pop("KG_INJECTION_BASELINE", None)
+gate = load("g", "ops/ui_quality_gate.py")
+lint = load("l1", "ops/injection_lint.py")
+os.environ["KG_INJECTION_BASELINE"] = "/tmp/kg-parent-child-contract-probe.txt"
+lint2 = load("l2", "ops/injection_lint.py")
+print("%s|%s|%s|%s" % (
+    Path(gate.DEFAULT_INJECTION_BASELINE) == lint.BASELINE_FILE,
+    lint2.BASELINE_FILE == Path("/tmp/kg-parent-child-contract-probe.txt"),
+    gate.DEFAULT_INJECTION_BASELINE,
+    lint.BASELINE_FILE,
+))
+PY
+)"
+IFS='|' read -r SAME_DEFAULT CHILD_HONOURS GATE_DEFAULT LINT_DEFAULT <<<"$CONTRACT"
+if [[ "$SAME_DEFAULT" == "True" && "$CHILD_HONOURS" == "True" ]]; then
+  ok "parent and child read the same variable and the same default ($GATE_DEFAULT)"
+else
+  fail_t "parent/child baseline contract broken — gate default '$GATE_DEFAULT' vs lint '$LINT_DEFAULT', child honours override: '$CHILD_HONOURS' (raw: $CONTRACT)"
+fi
+
+# A refusal must not be re-labelled on its way out. main() forgives an
+# unrunnable mechanism when `gate != manual`, because the plane only requires
+# `run:` of the gates it owns and some CI-side entrypoints cannot have one. That
+# forgiveness is keyed on the *reason* — no `run:` — and a mechanism that has a
+# `run:` and is unrunnable for a different reason (this caller error) would
+# otherwise be filed as planned under the warning "no `run:`; gate=ci runs it
+# elsewhere", which is both green and untrue.
+GHOST2_DIR="$(mktemp -d)"
+cat >"$GHOST2_DIR/ci_injection.yml" <<'YML'
+version: 1
+mechanisms:
+  - id: static.ghost_ci_injection
+    layer: static-code
+    entrypoint: ops/injection_lint.sh
+    gate: ci
+    run:
+      - --baseline-check
+    requires:
+      - injection-baseline
+    triggers:
+      - ios/
+    verdict: "exit code"
+    docs:
+      - docs/sop/ios.md
+YML
+rc=0
+GHOST2_JSON="$(KG_UI_PLANE_FILE="$GHOST2_DIR/ci_injection.yml" KG_INJECTION_BASELINE="$MISSING_BASELINE" \
+  $GATE --tier fast --dry-run --include-ci --all-mechanisms --json 2>/dev/null)" || rc=$?
+if [[ "$rc" -ne 0 ]] && jq -e '.results[] | select(.id=="static.ghost_ci_injection")
+        | .status=="failed" and (.warning|contains("no `run:`")|not)' <<<"$GHOST2_JSON" >/dev/null 2>&1; then
+  ok "a caller error on a non-manual gate stays failed (rc=$rc) instead of being re-labelled 'no \`run:\`'"
+else
+  fail_t "ghost ci mechanism: rc=$rc row=$(jq -c '.results[]|select(.id=="static.ghost_ci_injection")|{status,warning}' <<<"$GHOST2_JSON" 2>/dev/null)"
+fi
+rm -rf "$GHOST2_DIR"
 
 section "--tier all dry-run includes fast and slow"
 OUT="$($GATE --files "$SAMPLE_FILE" --tier all --dry-run 2>&1)"

@@ -56,6 +56,16 @@ SLOW_LAYERS = {
 # does not handle — an enumerated hole instead of a silent one.
 UNRUNNABLE = object()
 
+# Stated here rather than branched on, because ops/injection_lint.py:32 states
+# exactly the same thing — `os.environ.get("KG_INJECTION_BASELINE",
+# "ops/injection_baseline.txt")`. Reading the variable with `if override:`
+# instead made the two disagree on one input: for KG_INJECTION_BASELINE= (empty)
+# the parent fell back to the tracked file and planned --baseline-check while the
+# child resolved Path("") to the repo root and died with IsADirectoryError. The
+# only way two processes cannot disagree about a path is to resolve it the same
+# way, default included.
+DEFAULT_INJECTION_BASELINE = "ops/injection_baseline.txt"
+
 HANDLED_RESOURCES = {"ui-world", "injection-baseline"}
 if HANDLED_RESOURCES != PLANE_RESOURCES:
     raise SystemExit(
@@ -141,8 +151,28 @@ def tier_ok(layer: str, tier: str) -> bool:
     return layer in SLOW_LAYERS
 
 
-def injection_args(root: Path) -> tuple[list[str], str | None]:
-    """Decide --baseline-check vs --report, honouring the lint layer's override.
+def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
+    """Decide --baseline-check vs --report vs refuse, per KG_INJECTION_BASELINE.
+
+    Three outcomes, and the asymmetry between the last two is the whole point:
+
+      [--baseline-check]   the baseline is a readable file. Enforce.
+      [--report] + warning KG_INJECTION_BASELINE is UNSET and the tracked
+                           default is absent. Nobody has bootstrapped a baseline
+                           yet, so a degraded report is the only thing left to
+                           offer. Still exit 0.
+      UNRUNNABLE + warning the caller NAMED a path and it is not a readable
+                           file. A typo, or a stale export from an earlier
+                           session — not a bootstrap. Degrading here would be a
+                           silent green: --report always exits 0 and `warn` is
+                           excluded from summary["failed"], so the gate returns
+                           0 with this lint switched off. This command is a
+                           block-level cutover gate (ops/worktree_orchestrate.py)
+                           and a pre-commit hook, both of which inherit the
+                           caller's environment, and cutover is offline so CI
+                           cannot cover for it. decide_status forbids exactly
+                           this shape one level down; a runner that launders it
+                           one level up gains nothing.
 
     KG_INJECTION_BASELINE has always been read by ops/injection_lint.py, but
     this runner used to hardcode the path. The two then disagreed: the parent
@@ -158,14 +188,24 @@ def injection_args(root: Path) -> tuple[list[str], str | None]:
     resolves identically on both sides. Do not convert that call to an explicit
     env dict: it would drop PATH/UV_BIN and injection_lint.sh would lose uv.
     """
-    override = os.environ.get("KG_INJECTION_BASELINE")
-    if override:
-        candidate = Path(override)
-        baseline = candidate if candidate.is_absolute() else root / candidate
-    else:
-        baseline = root / "ops" / "injection_baseline.txt"
-    if baseline.exists():
+    raw = os.environ.get("KG_INJECTION_BASELINE", DEFAULT_INJECTION_BASELINE)
+    named_by_caller = "KG_INJECTION_BASELINE" in os.environ
+    candidate = Path(raw)
+    baseline = candidate if candidate.is_absolute() else root / candidate
+    # is_file(), not exists(): a directory is not a baseline the child could
+    # read, and `KG_INJECTION_BASELINE=` resolving to the repo root is precisely
+    # how the child used to die (IsADirectoryError). Whatever this rejects, the
+    # child would have rejected louder and later.
+    if baseline.is_file():
         return ["--baseline-check"], None
+    if named_by_caller:
+        return UNRUNNABLE, (
+            f"KG_INJECTION_BASELINE={raw!r} resolves to {baseline}, which is not a readable "
+            f"file. Point it at an existing baseline, or unset it to use "
+            f"{DEFAULT_INJECTION_BASELINE}. Refusing rather than degrading to --report: "
+            "--report always exits 0, so a stale export would silently disable this lint "
+            "on a gate that blocks cutover."
+        )
     return ["--report"], (
         f"{baseline} missing; running --report only. "
         "Run `ops/injection_lint.sh --baseline` to establish a baseline."
@@ -214,6 +254,8 @@ def resolve_args(
             resolved = [*resolved, *world_args]
         elif resource == "injection-baseline":
             fallback, warn = injection_args(root)
+            if fallback is UNRUNNABLE:
+                return UNRUNNABLE, warn
             if warn:
                 resolved, warning = fallback, warn
         else:
@@ -247,6 +289,12 @@ def human_summary(r: dict) -> str:
     if r["status"] == "passed":
         return f"[PASS] {r['command']}"
     if r["status"] == "failed":
+        # A failure that carries a warning is one the runner refused to start,
+        # so rc alone names nothing the caller can act on — the reason lives in
+        # the warning, and printing only the rc sends them to read the child's
+        # (empty) output instead of their own environment.
+        if r.get("warning"):
+            return f"[FAIL] {r['command']} (rc={r['rc']}) — {r['warning']}"
         return f"[FAIL] {r['command']} (rc={r['rc']})"
     return f"[UNKNOWN] {r['status']}"
 
@@ -329,13 +377,19 @@ def main() -> int:
 
         resolved_args, warning = resolve_args(mech, root, world_args)
 
-        if resolved_args is UNRUNNABLE and gate != "manual":
+        if resolved_args is UNRUNNABLE and gate != "manual" and "run" not in mech:
             # The plane only requires `run:` of the gates it owns (`gate:
             # manual`); `cmd_validate` exempts the rest, and some of them
             # cannot have one — snapshot.catalog_coverage's entrypoint is a
             # Swift test file enforced by `ios_ops.sh test`. Failing them here
             # would make the validator and the runner disagree about the same
             # file and turn `--include-ci` permanently red on a clean tree.
+            #
+            # Keyed on the *reason*, not just on the gate: a mechanism that has
+            # a `run:` and is unrunnable for some other reason (an unresolvable
+            # required resource, e.g. a caller-named baseline that is not there)
+            # would otherwise be filed as planned under the warning "no `run:`;
+            # gate=ci runs it elsewhere" — green, and untrue.
             results.append({
                 **base_result,
                 "status": "planned",
