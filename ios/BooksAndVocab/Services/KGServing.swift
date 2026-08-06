@@ -33,6 +33,19 @@ protocol BackgroundSyncing: AnyObject {
     /// consumer 須 read-then-clear（見 `ExplicitSync` / `BooksAndVocabApp` scenePhase）。
     var lastBackgroundSyncError: String? { get set }
     func backgroundSync(container: ModelContainer) async
+    /// 逐步回報版本。`progress` 收到的事件描述「哪一步、走到哪」，供設定頁把單一
+    /// 「同步中…」攤成逐步清單 + 進度條。
+    ///
+    /// 之所以是**額外一支**而不是給既有那支加參數：加參數會讓每個 mock 都得改
+    /// 簽名，而它們一個都不關心進度。下面的預設實作把 reporter 丟掉並轉呼無參數
+    /// 版，所以既有 conformance 零改動；只有真的會回報的 `KGService` 自己覆寫。
+    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async
+}
+
+extension BackgroundSyncing {
+    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async {
+        await backgroundSync(container: container)
+    }
 }
 
 /// 共享牌組複製能力（窄協定）— 供 Explore 複製流程（`SharedDeckCopyController`）依賴

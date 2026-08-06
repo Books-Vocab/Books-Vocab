@@ -1,0 +1,244 @@
+import Foundation
+import SwiftData
+import Testing
+@testable import BooksAndVocab
+
+/// `backgroundSync` 的進度回報縫，以及它底下那段從來沒有測試守著的失敗分類。
+///
+/// 兩件事被釘在這裡：
+///
+/// 1. **事件對映是純函式。** 每一列的終態（done / skipped / error）與說明文字都由
+///    `KGService` 的 static helper 決定，測試直接餵 `Result` 進去看事件出來，
+///    不必跑一輪真同步。這也是唯一能窮舉「取消不畫紅叉」這類分支的辦法。
+/// 2. **`processSyncPhase` 的三條分支**——401 短路、取消不算失敗、部分失敗聚合——
+///    在此之前一個測試都沒有。它決定使用者看到「登入已過期」、「背景同步部分失敗」
+///    還是什麼都不看到，卻只靠人眼守著。
+@MainActor
+struct KGServiceSyncReportingTests {
+
+    private final class RecordingInvalidator: SessionInvalidating {
+        private(set) var events: [String] = []
+        func logout(modelContainer: ModelContainer?, reason: String) {
+            events.append("logout_\(reason)")
+        }
+        func waitForPendingLocalDataCleanup() async {
+            events.append("wait_for_cleanup")
+        }
+    }
+
+    private final class NilTokenSession: AuthSessionProviding {
+        var isLoggedIn: Bool { true }
+        var token: String? { nil }
+    }
+
+    /// 空 in-memory 容器：push payload 為空不打網路；pull 在取得 token 前就因
+    /// nil token 走 unauthorized 早退 —— 全程無真網路呼叫。
+    private static func makeContainer() -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try! ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            PodcastSeries.self, PodcastEpisode.self,
+            configurations: config
+        )
+    }
+
+    private static func makeService() -> (KGService, RecordingInvalidator) {
+        let invalidator = RecordingInvalidator()
+        let service = KGService(authSession: NilTokenSession(), sessionInvalidator: invalidator)
+        return (service, invalidator)
+    }
+
+    private struct Boom: Error, LocalizedError {
+        var errorDescription: String? { "boom" }
+    }
+
+    // MARK: - 步驟宣告
+
+    @Test("宣告的步驟清單與實際會跑的段落一致，podcast 只在 flag 開時出現")
+    func stepIDsFollowFeatureFlag() {
+        #expect(KGService.syncStepIDs(podcastEnabled: false) == [.push, .pull, .dictionary, .reviewEvents])
+        #expect(KGService.syncStepIDs(podcastEnabled: true) == [.push, .pull, .dictionary, .reviewEvents, .podcast])
+    }
+
+    @Test("宣告清單不含 .status —— 那一列由設定頁的 resync 自己補，不屬於 backgroundSync")
+    func stepIDsExcludeStatusLeg() {
+        #expect(!KGService.syncStepIDs(podcastEnabled: true).contains(.status))
+    }
+
+    // MARK: - 說明文字
+
+    @Test("無變更時明講「已是最新」，不留白")
+    func pullDetailSpellsOutNoChange() {
+        #expect(KGService.pullDetail(inserted: 0, updated: 0, deleted: 0) == L10n.string("已是最新"))
+    }
+
+    @Test("有變更時三種變動一起計數")
+    func pullDetailCountsEveryKindOfChange() {
+        let detail = KGService.pullDetail(inserted: 2, updated: 3, deleted: 1)
+        #expect(detail == L10n.format("更新 %@ 筆", "6"))
+        #expect(detail != L10n.string("已是最新"))
+    }
+
+    @Test("push 的筆數是兩腿相加")
+    func pushDetailSumsBothLegs() {
+        #expect(KGService.pushDetail(states: 4, events: 7) == L10n.format("已送出 %@ 筆", "11"))
+    }
+
+    // MARK: - 事件對映
+
+    @Test("成功 → done")
+    func successMapsToDone() {
+        let event = KGService.legFinishedEvent(.reviewEvents, result: .success(()), detail: "d")
+        #expect(event == .finished(.reviewEvents, status: .done, detail: "d"))
+    }
+
+    @Test("取消 → skipped，不畫紅叉")
+    func cancellationMapsToSkipped() {
+        let event = KGService.legFinishedEvent(
+            .reviewEvents, result: Result<Void, Error>.failure(CancellationError()), detail: "d"
+        )
+        #expect(event == .finished(.reviewEvents, status: .skipped, detail: ""))
+    }
+
+    @Test("真失敗 → error，並帶上錯誤描述")
+    func failureMapsToError() {
+        let event = KGService.legFinishedEvent(
+            .reviewEvents, result: Result<Void, Error>.failure(Boom()), detail: "d"
+        )
+        #expect(event == .finished(.reviewEvents, status: .error, detail: "boom"))
+    }
+
+    @Test("push 兩腿都成功才寫筆數")
+    func pushFinishedCountsOnlyWhenBothSucceed() {
+        let event = KGService.pushFinishedEvent(
+            states: .success((updated: 2, skipped: 0)),
+            events: .success((inserted: 5, skipped: 1))
+        )
+        #expect(event == .finished(.push, status: .done, detail: L10n.format("已送出 %@ 筆", "7")))
+    }
+
+    @Test("push 任一腿失敗就整列失敗——兩個位置分別驗，避免只守住其中一個")
+    func pushFinishedFailsWhenEitherLegFails() {
+        let statesFailed = KGService.pushFinishedEvent(
+            states: .failure(Boom()),
+            events: .success((inserted: 5, skipped: 0))
+        )
+        #expect(statesFailed == .finished(.push, status: .error, detail: "boom"))
+
+        let eventsFailed = KGService.pushFinishedEvent(
+            states: .success((updated: 2, skipped: 0)),
+            events: .failure(Boom())
+        )
+        #expect(eventsFailed == .finished(.push, status: .error, detail: "boom"))
+    }
+
+    @Test("podcast 四種結果各自對映；flag 關著（nil）不得畫成失敗")
+    func podcastOutcomeMapping() {
+        #expect(KGService.podcastFinishedEvent(.completed) == .finished(.podcast, status: .done, detail: ""))
+        #expect(KGService.podcastFinishedEvent(nil) == .finished(.podcast, status: .done, detail: ""))
+        #expect(KGService.podcastFinishedEvent(.cancelled) == .finished(.podcast, status: .skipped, detail: ""))
+        #expect(KGService.podcastFinishedEvent(.listFetchFailed)
+            == .finished(.podcast, status: .error, detail: L10n.string("目錄讀取失敗")))
+    }
+
+    // MARK: - processSyncPhase：401 / 取消 / 部分失敗
+
+    @Test("401 回 nil 通知 caller 直接 return，並把訊息換成「登入已過期」")
+    func unauthorizedShortCircuits() async {
+        let (service, _) = Self.makeService()
+        let outcome = await service.processSyncPhase(
+            results: [.failure(KGError.unauthorized)],
+            labels: ["pull"],
+            container: Self.makeContainer()
+        )
+        #expect(outcome == nil, "401 必須讓 backgroundSync 立刻 return，而不是繼續跑後面的 phase")
+        #expect(service.lastBackgroundSyncError == L10n.string("登入已過期"))
+    }
+
+    @Test("取消不算失敗，但也不算成功：記在 cancelled、不進 failures")
+    func cancellationIsNeitherSuccessNorFailure() async {
+        let (service, _) = Self.makeService()
+        let outcome = await service.processSyncPhase(
+            results: [.failure(CancellationError())],
+            labels: ["pull"],
+            container: Self.makeContainer()
+        )
+        #expect(outcome?.cancelled == true)
+        #expect(outcome?.failures.isEmpty == true, "取消若被計為失敗，離開畫面就會彈「背景同步部分失敗」")
+        #expect(service.lastBackgroundSyncError == nil)
+    }
+
+    @Test("部分失敗只收真正失敗的那幾腿，成功的不入列")
+    func partialFailureAggregatesOnlyRealFailures() async {
+        let (service, _) = Self.makeService()
+        let outcome = await service.processSyncPhase(
+            results: [.success(()), .failure(Boom()), .failure(CancellationError())],
+            labels: ["pushReview", "pull", "pullReviewEvents"],
+            container: Self.makeContainer()
+        )
+        #expect(outcome?.failures.map(\.label) == ["pull"])
+        #expect(outcome?.cancelled == true)
+    }
+
+    @Test("401 壓過同一批裡的其他失敗——先看到的失敗不得讓 401 被吞掉")
+    func unauthorizedWinsOverOtherFailures() async {
+        let (service, _) = Self.makeService()
+        let outcome = await service.processSyncPhase(
+            results: [.failure(Boom()), .failure(KGError.unauthorized)],
+            labels: ["pushReview", "pull"],
+            container: Self.makeContainer()
+        )
+        #expect(outcome == nil)
+        #expect(service.lastBackgroundSyncError == L10n.string("登入已過期"))
+    }
+
+    // MARK: - 端到端：縫真的接上了
+
+    @Test("未登入跑一輪：reporter 收到開場與終態事件，順序與實際執行一致")
+    func reporterReceivesEventsFromARealRound() async {
+        let (service, _) = Self.makeService()
+        // reporter 從非結構化 Task 被呼叫，收集器必須自帶同步。
+        let collector = EventCollector()
+        await service.backgroundSync(container: Self.makeContainer()) { event in
+            collector.record(event)
+        }
+        let events = collector.snapshot()
+
+        #expect(events.first == .started(.push), "第一件事必須是 push 開跑，實際：\(events)")
+        #expect(events.contains(.started(.pull)))
+        #expect(events.contains(.started(.reviewEvents)))
+        // nil token → pull 走 unauthorized；.pull 與 .dictionary 都必須拿到終態，
+        // 否則那兩列會永遠停在轉圈。
+        #expect(events.contains { if case .finished(.pull, .error, _) = $0 { return true }; return false },
+                "pull 失敗後沒有補發終態，UI 會卡在 running：\(events)")
+        #expect(events.contains { if case .finished(.dictionary, .error, _) = $0 { return true }; return false })
+        // 401 早退：podcast 那一段根本沒跑到，不得有它的事件。
+        #expect(!events.contains { if case .started(.podcast) = $0 { return true }; return false })
+    }
+
+    @Test("不傳 reporter 的既有 caller 一切照舊，不會因為缺少回報而改變行為")
+    func legacyCallerStillWorksWithoutReporter() async {
+        let (service, invalidator) = Self.makeService()
+        await service.backgroundSync(container: Self.makeContainer())
+        #expect(invalidator.events.first == "wait_for_cleanup")
+    }
+}
+
+/// `backgroundSync` 的 reporter 會從多個 child task 呼叫。用鎖包住陣列，
+/// 否則這個測試自己就是 data race——而 race 的測試會以「偶爾綠」的形式說謊。
+private final class EventCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [SyncProgressEvent] = []
+
+    func record(_ event: SyncProgressEvent) {
+        lock.lock()
+        defer { lock.unlock() }
+        events.append(event)
+    }
+
+    func snapshot() -> [SyncProgressEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+        return events
+    }
+}

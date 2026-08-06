@@ -126,14 +126,22 @@ struct PodcastDataLayerGateTests {
 
     @Test func backgroundCatalogSyncSkippedWhenDisabled() async {
         var ran = false
-        await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: false) { ran = true }
+        let outcome = await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: false) {
+            ran = true
+            return .completed
+        }
         #expect(!ran)
+        #expect(outcome == nil, "沒跑就沒有結果可回報；nil 讓 UI 知道這一列根本不存在")
     }
 
     @Test func backgroundCatalogSyncRunsWhenEnabled() async {
         var ran = false
-        await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: true) { ran = true }
+        let outcome = await KGService.runPodcastCatalogSyncIfEnabled(podcastEnabled: true) {
+            ran = true
+            return .listFetchFailed
+        }
         #expect(ran)
+        #expect(outcome == .listFetchFailed, "結果必須原封傳回，否則 podcast 那一列永遠紅不起來")
     }
 }
 
