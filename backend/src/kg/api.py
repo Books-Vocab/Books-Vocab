@@ -71,7 +71,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Knowledge Graph API",
-        version="2.0.1",
+        version="2.0.2",
         lifespan=build_app_lifespan_from_dependencies(
             dependencies=AppLifespanDependencies(
                 settings=settings,
