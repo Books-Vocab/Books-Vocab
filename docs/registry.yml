@@ -577,7 +577,9 @@ documents:
     kind: generated
     authority: generated
     generator: ops/backlog.py
-    check: ./ops/backlog.py render --check
+    # `--out` 帶的就是本 entry 的 path，不是裝飾：docs_lint 要求 check 字串指名自己的
+    # path，而這裡的 path 是命令真正的比對目標——指到別的檔就會拿別的產物去比而轉紅。
+    check: ./ops/backlog.py render --check --out docs/runbook/improvement_backlog.md
     triggers:
       - improvement_filed
       - improvement_resolved
@@ -937,7 +939,13 @@ documents:
     kind: generated
     authority: generated
     generator: ops/gen_ios_baseline.sh
-    check: ./ops/gen_ios_baseline.sh --check
+    # 與上一筆的形狀不同是有原因的：gen_ios_baseline.sh 沒有 `--out`（產物路徑寫死在
+    # 腳本裡，多給參數會 exit 2），所以改成斷言它的成功訊息**指名了這個檔**。
+    # 這條 grep 不是套話：把 path 換成別人的，命令就轉紅（複製貼上的 check 因此擋得住）；
+    # drift 時腳本印的是 STALE 而不是 "is up to date."，一樣轉紅。
+    # 後續改善（不在本次 scope）：給 gen_ios_baseline.sh 一個 `--out`，就能收斂成上一筆
+    # 那種以參數表達的形狀，不必依賴訊息用字。
+    check: ./ops/gen_ios_baseline.sh --check | grep -q "docs/snapshot/ios_baseline.md is up to date."
     triggers:
       - ios_large_refactor
     sources:
