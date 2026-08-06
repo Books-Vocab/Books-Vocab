@@ -1182,3 +1182,11 @@
 "todayReview.layoutEditor.open" = "調整複習卡片";
 "settings.reviewCardLayout.default" = "預設";
 "settings.reviewCardLayout.custom" = "自訂";
+
+/* Settings — 逐步同步進度列 */
+"送出複習紀錄" = "送出複習紀錄";
+"下載單字卡" = "下載單字卡";
+"下載字典卡" = "下載字典卡";
+"下載複習紀錄" = "下載複習紀錄";
+"更新 Podcast 目錄" = "更新 Podcast 目錄";
+"額度與連線" = "額度與連線";

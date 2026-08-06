@@ -14,32 +14,8 @@ import TipKit
     func resetForRetry(deleteCount: Int, addCount: Int)
 }
 
-struct PipelineStep: Identifiable {
-    let id: String
-    let label: String
-    var status: StepStatus = .waiting
-    var current: Int = 0
-    var total: Int = 0
-    var detail: String = ""
-    var startTime: Date?
-    var endTime: Date?
-
-    enum StepStatus {
-        case waiting
-        case running
-        case retry
-        case done
-        case skipped
-        case error
-    }
-}
-
-enum SyncPhase {
-    case ready
-    case running
-    case completed
-    case failed
-}
+// `PipelineStep` / `SyncPhase` 已搬到 `Services/SyncProgress.swift`——設定頁的
+// 逐步同步進度共用同一組型別與同一套呈現，不該為此 import 詞庫頁這條管線。
 
 enum SyncFailureKind {
     case partial
