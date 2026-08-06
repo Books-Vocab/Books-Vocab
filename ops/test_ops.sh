@@ -51,6 +51,7 @@ DEFAULT_TESTS=(
   catalog-scene-expectations
   docs-lint
   gen-ios-baseline
+  ios-signal-traps
   ios-ops
   ios-run-verdict
   ios-cache-evict
@@ -154,9 +155,13 @@ run_one() {
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh
       ./ops/tests/test_docs_lint.sh
+      ./ops/tests/test_docs_lint_generated_check.sh
       ;;
     gen-ios-baseline)
       ./ops/tests/test_gen_ios_baseline.sh
+      ;;
+    ios-signal-traps)
+      ./ops/tests/test_ios_signal_traps.sh
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
