@@ -98,7 +98,7 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
 # past a failing proof is to reclassify the gate as `expensive|journal` and delete the
 # proof body, and nothing would object. Downgrading one of these is then a deliberate,
 # visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane"
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -298,20 +298,44 @@ rm -f "$DOCS_PROBE"
 # coupled to the real store's health — otherwise a genuine ledger defect would be
 # reported here as "the gate cannot fail", which is the wrong diagnosis attached to
 # the wrong owner. Whether the real store is clean is the cutover gate's job.
+# The fixture is written from a LITERAL here, never copied out of the tracked store.
+# Copying would make this proof's GREEN direction a property of the host repo: the
+# entry it copied (IMP-0001) is one of the four IMP-20260805-9a51e9 names as carrying
+# an unreachable resolution sha, so the moment that traceability check lands this
+# section would report "backlog-validate cannot go green" — the wrong diagnosis
+# attached to the wrong owner. It would also make a `cp` of a since-deleted entry
+# abort the whole script under `set -euo pipefail`, silently skipping every proof
+# below. Same rule the review-receipts section states: a proof whose verdict depends
+# on the host repo instead of its fixture is not a proof.
 BL_STORE="$TMP/backlog_store"
 mkdir -p "$BL_STORE"
-cp docs/runbook/backlog/IMP-0001.json "$BL_STORE/"
+write_backlog_entry() {  # $1 = severity, $2 = "with-detail" | "no-detail"
+  "$UV_BIN" run --no-project --python 3.13 python - "$BL_STORE/IMP-9001.json" "$1" "$2" <<'BLPY'
+import json, sys
+path, severity, detail_mode = sys.argv[1], sys.argv[2], sys.argv[3]
+entry = {
+    "schema": "kg.backlog.entry.v1", "id": "IMP-9001", "stream": "IMP",
+    "date": "2026-01-01", "source": "gate-can-fail fixture", "category": "tool",
+    "severity": severity, "status": "open",
+    "detail": "synthetic fixture entry — never read by anything but this proof",
+    "resolution": "—",
+}
+if detail_mode == "no-detail":
+    del entry["detail"]
+json.dump(entry, open(path, "w"), ensure_ascii=False)
+BLPY
+}
+write_backlog_entry low with-detail
 rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_ok.out" 2>&1 || rc=$?
 assert_green backlog-validate "0 problems" "$TMP/bl_ok.out" "$rc"
+# assert_green matches with `grep -F`, so the marker "0 problems" is also satisfied by
+# "10 problems". Harmless today because rc is checked first, but the marker's whole job
+# is to catch a future "printed problems yet exited 0" regression, at which point both
+# halves would fail together. Pin the whole line.
+grep -qx "0 problems" "$TMP/bl_ok.out" \
+  || fail_t "backlog-validate green marker matched as a substring, not as the whole line"
 
-"$UV_BIN" run --no-project --python 3.13 python - "$BL_STORE/IMP-0001.json" <<'BLPY'
-import json, sys
-p = sys.argv[1]
-d = json.load(open(p))
-d["severity"] = "catastrophic"   # outside the declared vocabulary
-del d["detail"]                  # required field
-json.dump(d, open(p, "w"), ensure_ascii=False)
-BLPY
+write_backlog_entry catastrophic no-detail   # outside vocabulary + missing required field
 rc=0; ./ops/backlog.py validate --store "$BL_STORE" >"$TMP/bl_bad.out" 2>&1 || rc=$?
 assert_red backlog-validate "bad-severity" "$TMP/bl_bad.out" "$rc"
 

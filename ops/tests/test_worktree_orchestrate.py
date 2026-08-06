@@ -169,6 +169,52 @@ def test_backlog_entry_is_not_reported_uncovered():
     assert cov["uncovered"] == [], cov["uncovered"]
 
 
+def test_backlog_entry_change_also_checks_the_generated_view():
+    """A store-only diff must not report "everything routed" while the thing that
+    actually breaks in that diff shape goes unwatched.
+
+    `validate` checks entry schema; it says nothing about whether the generated
+    view still matches the store. Mutating the store stales the view, and that is
+    the single most-hit trap in this repo today. Before this route existed,
+    `coverage` at least NAMED the json as uncovered; marking it covered by a gate
+    that deliberately ignores view freshness would be a net loss.
+
+    `docs_lint.sh --registry` runs registry `check:`, which for
+    runbook.improvement_backlog is `backlog.py render --check`.
+    """
+    gates = _by_name(plan_gates(["docs/runbook/backlog/IMP-0001.json"]))
+    g = gates.get("data-plane:ops/docs_lint.sh")
+    assert g is not None, f"view freshness unguarded; planned: {sorted(gates)}"
+    assert g["level"] == "block", g
+    assert "--registry" in g["cmd"], g["cmd"]
+
+
+def test_changing_the_validator_itself_validates_the_store():
+    """Keying only on the store lets the validator change without anyone running
+    it against real data.
+
+    Concretely scheduled, not hypothetical: IMP-20260805-9a51e9 plans to add
+    traceability checks and states outright that the real store must go to 7
+    problems the moment they land. That commit touches only ops/backlog.py and its
+    tests -> ops-pytest passes on its own fixtures -> cutover green -> the store is
+    globally invalid, and the next unrelated agent to touch any entry eats 7
+    problems they did not cause. That is the "red on correct use -> gate gets
+    muted" shape this route exists to avoid.
+    """
+    gates = _by_name(plan_gates(["ops/backlog.py"]))
+    assert "backlog-validate" in gates, sorted(gates)
+
+
+def test_backlog_route_does_not_claim_paths_the_validator_never_reads():
+    """`validate_store` globs `*.json` at the top level only (non-recursive), so a
+    nested path would be routed, counted as covered, and never actually read — a
+    vacuous pass one directory deeper than the one the route already guards."""
+    gates = plan_gates(["docs/runbook/backlog/sub/nested.json"])
+    assert "backlog-validate" not in _names(gates)
+    cov = next(g for g in gates if g["name"] == "coverage")
+    assert cov["uncovered"] == ["docs/runbook/backlog/sub/nested.json"], cov
+
+
 def test_backlog_validate_does_not_swallow_unrelated_json():
     """Anti-over-reach. The route keys on the store directory, not on `.json`
     anywhere under docs/ — otherwise an unrelated data file would select a
