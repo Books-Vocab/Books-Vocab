@@ -239,10 +239,9 @@ def _remote_branch_exists(name: str, remote: str = "origin") -> bool:
     return rc == 0 and bool(out.strip())
 
 
-def _worktrees() -> list[dict[str, Any]]:
-    """Parse `git worktree list --porcelain` into records with keys
-    path / head / branch (short) / detached / bare."""
-    out = _git(["worktree", "list", "--porcelain"])
+def parse_worktree_porcelain(out: str) -> list[dict[str, Any]]:
+    """Pure parser for `git worktree list --porcelain` — split out so the record
+    shape can be asserted on a string literal instead of a real repo."""
     worktrees: list[dict[str, Any]] = []
     cur: dict[str, Any] = {}
     for line in out.splitlines():
@@ -261,9 +260,28 @@ def _worktrees() -> list[dict[str, Any]]:
             cur["detached"] = True
         elif line == "bare":
             cur["bare"] = True
+        elif line == "prunable" or line.startswith("prunable "):
+            cur["prunable"] = line[len("prunable "):] or "prunable"
+        elif line == "locked" or line.startswith("locked "):
+            # a locked worktree is exempt from `git worktree prune` even when broken,
+            # so "broken" and "reapable" are not the same question
+            cur["locked"] = line[len("locked "):] or "locked"
     if cur:
         worktrees.append(cur)
     return worktrees
+
+
+def _worktrees() -> list[dict[str, Any]]:
+    """Parse `git worktree list --porcelain` into records with keys
+    path / head / branch (short) / detached / bare / prunable.
+
+    `prunable` carries git's own reason string (e.g. "gitdir file points to
+    non-existent location") and is the signal that a worktree's administrative link
+    is broken while its directory survives — an interrupted teardown. It is recorded
+    because git's answer here stays truthful when `rev-parse` no longer is: repository
+    discovery walks UP out of a `.git`-less directory and reports the ENCLOSING
+    checkout instead (see worktree_orchestrate._worktree_entry)."""
+    return parse_worktree_porcelain(_git(["worktree", "list", "--porcelain"]))
 
 
 # ---- sweep guards: base branch + primary worktree are NEVER swept ----------
@@ -297,12 +315,27 @@ def _step_touches_protected(
     """Safety net: True if this git clearance step would delete the base branch or
     remove the primary worktree. CLEAR never contains protected subjects, so this
     should never fire — belt-and-suspenders so a bug upstream can never emit a
-    repository-destroying `branch -D main` / `worktree remove <repo>`."""
-    if gargs[:2] == ["branch", "-D"] and len(gargs) >= 3 and gargs[2] in protected_branches:
-        return True
-    if gargs[:2] == ["worktree", "remove"] and len(gargs) >= 3 and primary_path \
-            and _norm(gargs[2]) == primary_path:
-        return True
+    repository-destroying `branch -D main` / `worktree remove <repo>`.
+
+    The subject is located by skipping option tokens rather than by index. Reading a
+    fixed `gargs[2]` made this silently blind to `worktree remove --force <primary>`
+    — it inspected the string `--force` — which is precisely the argv shape the
+    orchestrator's resolve emits, so the one caller most in need of the net was the
+    one it did not cover."""
+    def _subject(argv: list[str], start: int) -> str | None:
+        for tok in argv[start:]:
+            if not tok.startswith("-"):
+                return tok
+        return None
+
+    if gargs[:2] == ["branch", "-D"]:
+        subject = _subject(gargs, 2)
+        if subject is not None and subject in protected_branches:
+            return True
+    if gargs[:2] == ["worktree", "remove"]:
+        subject = _subject(gargs, 2)
+        if subject is not None and primary_path and _norm(subject) == primary_path:
+            return True
     if gargs[:1] == ["push"] and "--delete" in gargs and gargs[-1] in protected_branches:
         return True
     return False

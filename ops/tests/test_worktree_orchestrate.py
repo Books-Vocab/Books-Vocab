@@ -1500,6 +1500,325 @@ def test_resolve_from_inside_the_target_worktree_completes(scratch):
     assert recs["debug/inside-resolve"]["status"] == "merged"
 
 
+def _cripple_worktree(wt):
+    """Reproduce the observed partial teardown (IMP-20260806-1359bd step 1).
+
+    `git worktree remove --force` unlinks the worktree's `.git` file EARLY, then
+    spends however long it takes to rm the tree itself (19 GB of iOS DerivedData in
+    the incident). Interrupted in that window — a caller timeout — the directory
+    survives with no `.git`, and git marks the entry `prunable`."""
+    (Path(wt) / ".git").unlink()
+
+
+def _landed_worktree(tmp_path, repo, state, slug):
+    """open -> work -> gate -> cutover: a worktree whose branch IS landed, i.e. one
+    that resolve's landed-floor will happily wave through to teardown."""
+    rc, opened = _run_json(["open", "--intent", f"fix {slug}", "--slug", slug,
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("did the thing\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    rc, _ = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+    return wt, opened["branch"]
+
+
+def _targets_a_protected_branch(payload, base="main"):
+    """Any planned OR executed git step in a resolve payload that would delete the
+    base branch, locally or on the remote."""
+    steps = list(payload.get("plan") or []) + list(payload.get("executed") or [])
+    bad = {f"git branch -D {base}", f"git push origin --delete {base}"}
+    return [s["cmd"] for s in steps if s.get("cmd") in bad]
+
+
+@gitmark
+def test_resolve_after_a_partial_teardown_never_retargets_the_base_branch(scratch):
+    # IMP-20260806-1359bd, the whole incident in one test.
+    #
+    # Root cause: resolve derived the branch with `git rev-parse --abbrev-ref HEAD`
+    # run with cwd=<worktree>. With the worktree's `.git` gone, git's repository
+    # DISCOVERY WALKS UP the directory tree, finds the primary repo (worktrees live
+    # at <repo>/.claude/worktrees/<slug>), and answers with the PRIMARY's branch —
+    # `main`. resolve then planned `branch -D main` and `push origin --delete main`.
+    # Only git's own refusals (main was checked out; main is the remote's default
+    # branch) stopped it. Neither refusal belongs to this tool.
+    #
+    # The authoritative answer was available the whole time: `git worktree list
+    # --porcelain` still reports `branch refs/heads/<the real branch>` for a
+    # prunable entry. Note the landed-floor cannot help here — it is asked about
+    # `main`, and `main` is trivially landed in `main`.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "partial-teardown")
+
+    _cripple_worktree(wt)
+    # git itself really does misreport here — asserted against git directly rather
+    # than through MODULE._current_branch, so that hardening that helper later as
+    # defence-in-depth improves the tool instead of breaking this test.
+    assert _git(["rev-parse", "--abbrev-ref", "HEAD"], wt) == "main"
+    # ...while git's worktree list still knows the truth
+    assert any(w.get("branch") == branch and MODULE._norm(w["path"]) == MODULE._norm(wt)
+               for w in MODULE.wr._worktrees())
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state, "--json"])
+    assert _targets_a_protected_branch(res) == [], (
+        f"dry-run planned a base-branch deletion: {res}")
+    assert res.get("branch") != "main"
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert _targets_a_protected_branch(res) == [], (
+        f"resolve EXECUTED a base-branch deletion: {res}")
+    assert res.get("branch") != "main"
+    # the repository survived — these are the two things git refused for us before
+    assert "main" in _local_branches(repo)
+    assert "main" in _local_branches(remote)
+
+
+@gitmark
+def test_resolve_refuses_when_asked_to_delete_the_base_branch_outright(scratch):
+    # Guard (b), independent of path resolution: `branch -D main` is never a
+    # legitimate resolve outcome, so an explicit --branch main must be refused
+    # rather than merely refused downstream by git. The registry already owns this
+    # invariant for sweep (worktree_registry.sweep_guards / _step_touches_protected);
+    # resolve simply did not consult it.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, _branch = _landed_worktree(tmp_path, repo, state, "explicit-base")
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--branch", "main",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, res
+    # assert the decision, not a prose substring, and not the mere ABSENCE of a plan
+    # key — on a refusal payload neither `plan` nor `executed` exists, so
+    # _targets_a_protected_branch() would be vacuously satisfied here.
+    assert res.get("reason_code") == "branch-contradicts-git", res
+    assert "main" in _local_branches(repo)
+    assert "main" in _local_branches(remote)
+    # refused BEFORE mutating: the worktree is untouched
+    assert Path(wt).is_dir()
+
+
+@gitmark
+def test_resolve_stops_when_no_authority_vouches_for_the_named_branch(scratch):
+    # Guard (c). The tool ALREADY printed "no active registry record for branch=main"
+    # during the incident — it had detected that its target was wrong and walked into
+    # the destructive steps anyway. A detected anomaly must halt before mutation.
+    #
+    # Asserted on an UNPROTECTED branch on purpose, so neither guard (a) nor (b) can
+    # be what stops it: --branch names a real branch that git does not associate with
+    # this path and that the ledger holds no active record for. The old code took the
+    # explicit --branch at face value, and the landed-floor waves a landed branch
+    # through, so this deleted a bystander branch outright.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, _branch = _landed_worktree(tmp_path, repo, state, "wrong-branch")
+    _git(["branch", "feat/someone-elses-work"], repo)   # landed (it IS main), unprotected
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--branch", "feat/someone-elses-work",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, res
+    assert "feat/someone-elses-work" in _local_branches(repo)
+    assert Path(wt).is_dir()
+
+
+@gitmark
+def test_resolve_proceeds_when_only_the_ledger_vouches(scratch):
+    # The other side of the corroboration rule, so it cannot degenerate into "any
+    # explicit --branch is refused": when the ledger DOES hold an active record for
+    # the named branch, that is a sufficient authority on its own.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "ledger-vouches")
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--branch", branch,
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, res
+    assert branch not in _local_branches(repo)
+
+
+@gitmark
+def test_resolve_of_a_live_worktree_survives_an_already_closed_ledger(scratch):
+    # Regression guard for the rule's SHAPE. Requiring an active ledger record
+    # unconditionally would look like a tighter safety net and would in fact strand
+    # every interrupted teardown: resolve strikes the ledger BEFORE the git steps, so
+    # by the time a run is interrupted the record is already closed. Finishing that
+    # run is precisely what IMP-20260806-1359bd asks for, so git's worktree list must
+    # be sufficient on its own.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "closed-ledger")
+    ledger = json.loads(Path(state).read_text())
+    for r in ledger["records"]:
+        r["status"] = "merged"
+    Path(state).write_text(json.dumps(ledger))
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, res
+    assert res["branch"] == branch
+    assert branch not in _local_branches(repo)
+    assert not Path(wt).exists()
+
+
+@gitmark
+def test_resolve_finishes_an_interrupted_teardown_instead_of_stranding_it(scratch):
+    # The flip side of guard (a): re-running resolve after a partial teardown is a
+    # LEGITIMATE intent — the operator wants the teardown finished. Refusing to
+    # misfire is necessary but not sufficient; the tool must still converge on zero
+    # residue, targeting the branch git's worktree list names.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "finish-teardown")
+    _cripple_worktree(wt)
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, res
+    assert res["branch"] == branch
+    assert branch not in _local_branches(repo)
+    assert not Path(wt).exists()
+    # git no longer carries a stale entry for it
+    assert all(MODULE._norm(w["path"]) != MODULE._norm(wt)
+               for w in MODULE.wr._worktrees())
+    recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
+    assert recs[branch]["status"] == "merged"
+
+
+@gitmark
+def test_resolve_protects_the_trunk_even_under_a_different_base(scratch):
+    # The protected set used to be derived SOLELY from --base (plus the primary's
+    # current checkout), so it was a floor the caller could lower. Executed during
+    # review: with the primary checked out off main and `--base origin/prod` — a real
+    # ref in this repo's release plane, so a plausible copy-paste — `main` was absent
+    # from the protected set and `git branch -D main` SUCCEEDED. Only the bare repo's
+    # HEAD protection stopped the remote half, which is exactly the external net this
+    # entry exists to stop relying on.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _git(["push", "-q", "origin", "main:prod"], repo)
+    # a primary parked elsewhere (repo surgery / hotfix / bisect), and a worktree that
+    # has the trunk itself checked out. Order matters: main must be free first.
+    _git(["checkout", "-q", "-b", "staging"], repo)
+    mainwt = tmp_path / "mainwt"
+    _git(["worktree", "add", "-q", str(mainwt), "main"], repo)
+
+    rc, res = _run_json(["resolve", "--worktree", str(mainwt), "--base", "origin/prod",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, res
+    assert res.get("reason_code") == "protected-branch", res
+    assert "main" in _local_branches(repo)
+    assert "main" in _local_branches(remote)
+
+
+@gitmark
+def test_resolve_refuses_when_git_contradicts_the_named_branch(scratch):
+    # Executed during review: with two live worktrees, targeting alpha's PATH while
+    # naming bravo's BRANCH tore down alpha and deleted origin/<bravo>. The ledger
+    # vouched — because the record that matched belonged to a different path — and
+    # `branch -D` was refused only by git's "used by worktree at ...".
+    #
+    # The structural error was collapsing "git has no information" and "git actively
+    # contradicts you" into one condition. The second is strictly worse.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    alpha, _ = _landed_worktree(tmp_path, repo, state, "alpha")
+    rc, bravo_opened = _run_json(["open", "--intent", "second stream", "--slug", "bravo",
+                                  "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    bravo_branch = bravo_opened["branch"]
+    _git(["push", "-q", "origin", bravo_branch], repo)
+    assert bravo_branch in _local_branches(remote)
+
+    rc, res = _run_json(["resolve", "--worktree", alpha, "--branch", bravo_branch,
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, res
+    assert res.get("reason_code") == "branch-contradicts-git", res
+    # neither worktree touched, and bravo's remote branch survives
+    assert Path(alpha).is_dir()
+    assert Path(bravo_opened["path"]).is_dir()
+    assert bravo_branch in _local_branches(repo)
+    assert bravo_branch in _local_branches(remote)
+
+
+@gitmark
+def test_resolve_reclaims_the_directory_when_git_has_lost_the_entry(scratch):
+    # Silent false success, found in review: with the admin entry already gone (an
+    # errored `worktree remove` drops it, and so does any prune elsewhere in the repo)
+    # no directory-removal step was planned at all, yet resolve reported failures: 0
+    # and exited 0 — while the whole tree, 19 GB of it in the incident's shape, stayed
+    # on disk. The ledger still records the path, so the branch is derivable and the
+    # directory is reclaimable.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "lost-entry")
+    _cripple_worktree(wt)
+    _git(["worktree", "prune"], repo)                 # admin entry gone, tree remains
+    assert Path(wt).is_dir()
+    assert all(MODULE._norm(w["path"]) != MODULE._norm(wt)
+               for w in MODULE.wr._worktrees())
+
+    rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, res
+    assert res["branch"] == branch                    # derived from the ledger, not HEAD
+    assert not Path(wt).exists(), "reported success while leaving the tree behind"
+    assert branch not in _local_branches(repo)
+
+
+@gitmark
+def test_resolve_aborts_the_remaining_steps_when_a_critical_one_fails(scratch):
+    # The other half of the incident's trace: `worktree remove --force` returned 128
+    # and the loop ran `branch -D` and `push origin --delete` anyway. Correct targeting
+    # makes those harmless; it does not make "carry on after a destructive step failed"
+    # correct. Here the directory removal is made to fail (its parent is read-only), so
+    # the admin strike and the branch deletions must not proceed.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt, branch = _landed_worktree(tmp_path, repo, state, "critical-abort")
+    _cripple_worktree(wt)
+    parent = Path(wt).parent
+    parent.chmod(0o500)                               # rm cannot unlink inside it
+    try:
+        rc, res = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    finally:
+        parent.chmod(0o700)
+
+    assert rc == MODULE.EXIT_BLOCK, res
+    assert res["aborted_after"] == "remove leftover worktree directory", res
+    ran = [r["cmd"] for r in res["executed"]]
+    assert not any("branch -D" in c for c in ran), ran
+    assert not any("--delete" in c for c in ran), ran
+    assert branch in _local_branches(repo)
+
+
+@gitmark
+def test_resolve_refuses_a_path_that_is_not_a_registered_worktree(scratch):
+    # The general form of the walk-up bug: ANY directory inside the repo answers
+    # `rev-parse --abbrev-ref HEAD` with the enclosing checkout's branch. Only paths
+    # git actually lists as worktrees may be resolved.
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    stray = repo / "not-a-worktree"
+    stray.mkdir()
+
+    rc, res = _run_json(["resolve", "--worktree", str(stray), "--state", state,
+                         "--commit", "--json"])
+    # EXIT_USAGE, not EXIT_BLOCK: this is "you pointed me at the wrong thing", the
+    # same class as cutover's own not-a-worktree and detached-HEAD refusals. The
+    # safety refusals (protected branch, primary worktree, contradiction) are the
+    # ones that carry EXIT_BLOCK.
+    assert rc == MODULE.EXIT_USAGE, res
+    assert res.get("reason_code") == "not-a-worktree", res
+    assert "main" in _local_branches(repo)
+
+
 @gitmark
 def test_open_from_inside_another_worktree_anchors_at_primary_root(scratch):
     # Regression: open used repo_root() (cwd's toplevel), so opening from inside a
