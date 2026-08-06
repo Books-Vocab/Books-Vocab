@@ -22,7 +22,7 @@ scope:
   - backend/src/kg/vocab_crud.py
   - backend/src/kg/vocab_handlers/intake.py
   - backend/src/kg/vocab_handlers/crud.py
-verified_against: f25fd2ed6
+verified_against: dcb7b705f
 -->
 # Sync Lifecycle
 
@@ -126,8 +126,10 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 `KGService.backgroundSync` 是共用 resync 入口，由以下觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。其執行序：
 
 0. **logout-cleanup gate**（claim 鎖成功後、任何 sync 工作前）— `await sessionInvalidator.waitForPendingLocalDataCleanup()`。詳見下節「logout-cleanup gate 不變式」。
-1. vocab pull / push（本文上述狀態流轉）
-2. **podcast catalog**（Phase 3，序執行於 vocab pull 後）— `PodcastSyncService.syncAll` 併入 backgroundSync，使 podcast catalog 共用上述所有觸發；自我防禦、不 throw，失敗僅記 log 不影響 vocab。**不變式**：空 server list（`/api/podcasts` 回 `[]`）視為非權威，reconcile **不**對 series/episode 下 tombstone（避免 S3 index 短暫讀不到時 mass soft-delete）。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`。
+1. vocab push → vocab pull（本文上述狀態流轉）。**push → pull 必須序列**（pull 會把伺服器的 `lastReviewedAt` 寫回本地，先拉再送會覆蓋掉「還沒送出」的基準）。
+2. **podcast catalog** — 自整輪最前面就與第 1 條**併行**（2026-08-06 起；原為序執行於 vocab pull 之後）。共用 backgroundSync 的所有觸發；自我防禦、不 throw。詳見 `docs/reference/feature_boundary/podcast.md §同步觸發`（含空 server list 非權威的 tombstone 不變式、以及它併行後必須自帶的 session 前置檢查）。
+
+**併行邊界（不變式，違反會靜默損毀資料）**：可併行的只有「零欄位重疊」的腿——podcast catalog（`PodcastSeries`/`Episode`/`Progress`）與 vocab 管線（`VocabularyEntry`/`ReviewRecord`）互不相交，故安全。**單字卡 pull 與字典卡投影則必須維持序列**，即使 `BackgroundSyncActor` 是 `@ModelActor` 也一樣：它在多個 call site 各自 `init`，actor 隔離只序列化「對同一實例」的呼叫。兩者都 fetch 全部 `VocabularyEntry`、都寫幾乎相同的一組欄位，併發會得到 lost update / 同 mergeKey 重複插入 / mass-deletion 安全閥讀到會動的分母 / 單一全域 `SyncKeys.incrementalBoundary`。逐項理由寫在 `KGService+Sync.swift:backgroundSync` 的註解裡，**要改併行結構前先讀它**。
 
 ## 複習事件上傳水位（review-event push watermark）
 

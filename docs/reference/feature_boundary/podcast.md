@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Podcast/
-verified_against: 050f1862
+verified_against: dcb7b705f
 -->
 # Podcast Feature Boundary
 
@@ -62,21 +62,37 @@ verified_against: 050f1862
 |------|------|
 | `PodcastAssetPreloader.swift` | @MainActor singleton；warm AVFoundation HTTP/2 連線（tap-on-row + bookshelf-appear）；LRU-5, 60s TTL；失敗即 evict |
 | `PodcastDownloadManager.swift` | @MainActor @Observable singleton；URLSession.background 跑離線下載；落地 `episode.localAudioPath`（Documents/podcast-downloads/<seriesId>/<remoteId>.mp3）；progress / failed 由 `@Query` 觀察。`configure(podcastEnabled:)` 於 gate off（Release）時拒收 ModelContainer，manager 保持 inert（測試 `PodcastDownloadManagerGateTests`）|
-| `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後以 bounded concurrency 跑 `cacheCoverIfNeeded`，把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>_<v>.png`（legacy 無 `?v=` 時退 `<sid>.png`）→ 寫 `PodcastSeries.coverImagePath`（HTTP 2xx + `image/png` + PNG magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪當前 path/legacy `<sid>.png`，避免 stale 快取永久渲染且不以 prefix 誤刪其他 `_` series；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除 disk + memory cover cache。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（Phase 3，序執行於 vocab pull 後，見 §同步觸發） |
+| `PodcastSyncService.swift` | @MainActor；`syncAll(context:)` 拉取後端 podcast catalog 並 upsert series/episode。**自我防禦**：list fetch 失敗即 skip、空 server list（`/api/podcasts` 回 `[]`，S3 index.json 短暫讀不到時）視為非權威 → reconcile 跳過 series tombstone（不 soft-delete），對稱 episode 層 empty-episodes 守衛、不 throw。**封面快取**：upsert 後以 bounded concurrency 跑 `cacheCoverIfNeeded`，把 `coverImageURL`（有值才）認證下載成 `Documents/podcast-covers/<sid>_<v>.png`（legacy 無 `?v=` 時退 `<sid>.png`）→ 寫 `PodcastSeries.coverImagePath`（HTTP 2xx + `image/png` + PNG magic 守門、best-effort、失敗退程序化封面、不 abort sync）；**server 撤回封面**（`coverImageURL` 轉 nil/空）時 `upsertSeries` 清掉 `coverImagePath` + best-effort 刪當前 path/legacy `<sid>.png`，避免 stale 快取永久渲染且不以 prefix 誤刪其他 `_` series；`LocalDataCleanerService.purgePodcastCovers` 於 logout/account-switch 清除 disk + memory cover cache。**觸發來源**：`PodcastHomeView` `.task`/`.refreshable` + `KGService.backgroundSync`（與 vocab 管線併行的 podcast leg，見 §同步觸發）。**請求形狀見下方 §catalog 請求形狀** |
+
+### catalog 請求形狀（2026-08-06 起：穩態 1 趟）
+
+`syncAll` 以前對每個 series 各發一次 detail 請求且序列等待（1 + N 趟）。現在改成 **1 趟清單 + 只抓「內容指紋變了」的 detail**，且那些 detail 併發抓（滑動視窗上限 3，形狀沿用同檔 `cacheCovers`，避免目錄長大時對後端 stampede）。**穩態成本 = 1 趟**；有變更時 1 + 併發抓變動者；首裝 1 + 併發 N。**後端零改動**。
+
+- **指紋不是只有 `updatedAt`**：`PodcastSyncService.fingerprint` 涵蓋 `updatedAt` + `coverImageURL` + `title` + `totalDurationSec` + `episodeCount`，欄位間以 U+001F 分隔避免互相冒充；落地在 `PodcastSeries.remoteFingerprint`（nil = 舊列或伺服器沒給 → 一律重抓）。判準是「`index.json` 會投影、而我們又會 render 的每個欄位」，因為發布工具**會在不 bump `updatedAt` 的前提下改內容**（見下方 §metadata.json contract 的封面條目）。
+- **`PodcastSeriesSummary.updatedAt` 一直都在清單裡**，只是這個型別以前沒解它。`index.json` 是 `metadata.json` 的機械式投影（見 `ops/podcast_upload.sh`），所以清單天生帶著與 detail 相同的時戳。
+- **刻意不走「把 detail 內嵌進 list」**：`episodes[].subtitleContent` 是整份 inline SRT（實測 165–212 KB/集），內嵌會把 7 KB 的回應變成數 MB，在行動網路上是用頻寬換往返。
+- **重抓判準**（`needsDetailFetch`，逐條有測試 `PodcastCatalogSkipTests`）：沒見過 / 被 tombstone 過 / 伺服器沒給 `updatedAt` / 指紋不同 → 抓。**指紋相同但本機 episode 數與 `episodeCount` 對不上也抓**——這是完整性檢查不是快取檢查，上一輪可能只寫了一半，只看指紋會讓該 series 永遠卡在半套資料。
+- **封面改由清單驅動**（不再只看這輪抓到的 detail），讓跳過的 series 也有機會補上它上次沒下載成功的封面；已快取者 `cacheCoverIfNeeded` 直接早退、零網路。
+- **已知盲點**：若發布工具改了 episode *內部*欄位卻既不 bump `updatedAt` 也不動 `index.json`，清單上沒有任何差異，客戶端無從察覺。這只能由工具側解——`ops/podcast_preview_backfill.py` 原本正是這個形狀，已於同一批改成會 bump（契約見 `docs/reference/tech_index.md`）。
 
 ### 同步觸發
 
 podcast catalog 同步現有兩條觸發鏈：
 
 1. **PodcastHomeView 局部觸發** — `.task(id: authManager.isLoggedIn)`（登入狀態翻轉時同步）+ `.refreshable`（下拉重試）。首頁以 `PodcastHomePhase` 區分 loading / error / empty / content。
-2. **`KGService.backgroundSync` Phase 3**（`KGService+Sync.swift`，序執行於 vocab pull 之後）— 共用所有既有 resync 觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。補上局部 task/refresh 沒跑到時 podcast catalog 仍可由全域同步復原的路徑（書為本地 `@Query` 故恆在）。token 過期已由 vocab pull 的 401 分支提早 return。**Release gate**：整條 catalog leg（list fetch + 封面下載）經 `KGService.runPodcastCatalogSyncIfEnabled` seam——`KGFeatureFlags.podcastEnabled == false`（Release）時在建構 `PodcastSyncService` 前 early-return，零 podcast 網路/磁碟活動（測試 `PodcastDataLayerGateTests`；logout cleanup 刻意不 gate，清舊 build 殘檔）。
+2. **`KGService.backgroundSync` 的併行 podcast leg**（`KGService+Sync.swift:runPodcastLeg`）— 共用所有既有 resync 觸發：post-login / scenePhase→active / ⌘R menu / Settings 手動同步。補上局部 task/refresh 沒跑到時 podcast catalog 仍可由全域同步復原的路徑（書為本地 `@Query` 故恆在）。**Release gate**：整條 catalog leg（list fetch + 封面下載）經 `KGService.runPodcastCatalogSyncIfEnabled` seam——`KGFeatureFlags.podcastEnabled == false`（Release）時在建構 `PodcastSyncService` 前 early-return，零 podcast 網路/磁碟活動（測試 `PodcastDataLayerGateTests`；logout cleanup 刻意不 gate，清舊 build 殘檔）。
+
+   **2026-08-06 起改為與整條 vocab 管線併行**（`async let`，起跑於整輪最前面；原為序執行於 vocab pull 之後）。動機是量測：生產一輪 7.55s 裡 6.08s 在這條腿，而資料量僅約 7 KB——貴的是往返次數，且那些往返不需要等 vocab。用 `async let` 而非 `Task`：401 / cancelled 早退離開 scope 時，結構化併發自動取消並等待，不留孤兒（catalog 同步冪等，取消無後果）。**這筆成本 Release 從來不付**（leg 受 `podcastEnabled` gate），修它是為了不污染我們自己的量測與 debug 體感。
+   - **併行後它必須自帶 session 前置檢查。** 以前它排在 vocab pull 的 401 早退之後、被那個 return 順手擋掉；跑在最前面就沒有那道保護。判定讀 `authSession.token` 並**自行判 expiry**，不呼 `currentAuthToken()`——後者對過期 token 會觸發 logout 與本地資料清除，拿它當前置檢查等於繞過 `waitForPendingLocalDataCleanup()`（000287 事故的防線），而 `PodcastSyncService` 全檔沒有取消檢查，寫入階段會在清除之後才落地。
+   - **失敗只染紅設定頁的那一列，不進 `failureMessages`。** 進去會讓整輪判定為部分失敗、`lastSyncDate` 不前進、彈出「背景同步部分失敗」——讓 catalog 的一次 hiccup 凍住「上次同步時間」是明確的退步。逐步清單已提供該有的可見性。
 
 ### metadata.json contract
 
 - `episodes[].subtitleContent: String?` 由 `ops/podcast_upload.sh` 嵌入；iOS `PodcastEpisode.inlineSubtitle` 直接消費，跳過 `/api/podcasts/{sid}/{ep}/subtitle` fetch
 - `episodes[].localAudioPath: String?` (SwiftData only, 不在後端 JSON) — 由 DownloadManager 填寫；PlayerView 認到即用 file:// URL 跳過認證
-- `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover?v=<sha16>`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。backend 忽略 query 仍 proxy 同一張 `<sid>/cover.png`；iOS 用 `v` token 命名本地快取，替換既有封面可於下次 catalog sync 自動刷新，否則退 `color`/`coverPattern` 程序化封面
-- `episodes[ep1].previewAvailable: Bool` + `previewDurationSec: Int`（free-tier 試聽，**僅 ep_01**）：`ops/podcast_upload.sh` 對 ep_01 以 `ffmpeg -t 180 -c copy` stream-copy 出 `ep_01/preview.<fmt>`（同 container/codec、無損）並寫此二欄；既有 series 由 `ops/podcast_preview_backfill.py`（bucket-driven、audio-decoupled、dry-run 預設 / `--execute` / `--check` drift）回填。backend `audio` 端點對 free tier 服務此 `preview.<fmt>` 物件（見 `tech_index.md` podcast_access），**不**對完整檔做 byte 截斷（progressive MP4 單 moov 宣告全長，截 byte 會讓 AVPlayer 報錯而非乾淨停止）。preview 欄位在 `episodes` 內，`index.json` 會 strip，故不影響 series-list view
+- `coverImageURL: String?` 由 `ops/podcast_upload.sh`（full publish）**或** `ops/podcast_cover_publish.py`（封面重發布,audio-decoupled）寫入（`cover` stage 有產 `cover.png` → `/api/podcasts/{sid}/cover?v=<sha16>`，否則 `null`）；也在 `index.json` series entry（series list 即可顯示封面）。backend 忽略 query 仍 proxy 同一張 `<sid>/cover.png`；iOS 用 `v` token 命名本地快取，否則退 `color`/`coverPattern` 程序化封面。
+  **替換既有封面仍可於下次 catalog sync 自動刷新** —— 這條在 detail-fetch 改成指紋跳過之後**依然成立，但成立的理由換了**，值得寫死免得下次有人「優化」指紋欄位時弄壞它：`podcast_cover_publish.py` 換 `coverImageURL`（新 `?v=`）並重建 `index.json`，卻**刻意不 bump `updatedAt`**，所以只比時戳的話新封面永遠到不了已安裝的裝置。現在能刷新，是因為 `coverImageURL` 本身就在指紋裡（見上方 §catalog 請求形狀）→ 指紋不同 → 重抓 detail → `upsertSeries` 寫新 URL → `cacheCoverIfNeeded` 見到新 `v` token 才下載。**「封面清單改由 summary 驅動」救不了它**：`cacheCoverIfNeeded` 讀的是**本機**那一列的 `coverImageURL`，沒有 detail 重抓就永遠是舊值。**把 `coverImageURL` 移出指紋 = 封面永久凍結。**
+- `episodes[ep1].previewAvailable: Bool` + `previewDurationSec: Int`（free-tier 試聽，**僅 ep_01**）：`ops/podcast_upload.sh` 對 ep_01 以 `ffmpeg -t 180 -c copy` stream-copy 出 `ep_01/preview.<fmt>`（同 container/codec、無損）並寫此二欄；既有 series 由 `ops/podcast_preview_backfill.py`（bucket-driven、audio-decoupled、dry-run 預設 / `--execute` / `--check` drift）回填。backend `audio` 端點對 free tier 服務此 `preview.<fmt>` 物件（見 `tech_index.md` podcast_access），**不**對完整檔做 byte 截斷（progressive MP4 單 moov 宣告全長，截 byte 會讓 AVPlayer 報錯而非乾淨停止）。preview 欄位本身在 `episodes` 內、`index.json` 會 strip，故不出現在 series-list view；但**回填工具現在會另外 bump `updatedAt` 並 patch 這一筆的 index entry**，否則指紋不變、客戶端跳過 detail、回填的 preview 永遠到不了已安裝的裝置（工具契約見 `docs/reference/tech_index.md`）
 
 ### Sub-views（UI 元件）
 

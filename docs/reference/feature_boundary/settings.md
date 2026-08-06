@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Settings/
-verified_against: c907585a0
+verified_against: dcb7b705f
 -->
 # Settings Feature Boundary
 
@@ -24,7 +24,7 @@ verified_against: c907585a0
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsCoordinator.swift` | 413 | `@Observable @MainActor final class SettingsCoordinator: SettingsCoordinating`。導航 / sheet 狀態（paywall、刪帳確認、翻譯語言）+ 非同步協調（loadData、resync、deleteAccount、後端切換、樂觀寫＋後端推送＋失敗回滾）+ connectionPulse / iconBreathing 動畫脈搏 + 觀測事件預覽緩衝 |
+| `SettingsCoordinator.swift` | 458 | `@Observable @MainActor final class SettingsCoordinator: SettingsCoordinating`。導航 / sheet 狀態（paywall、刪帳確認、翻譯語言）+ 非同步協調（loadData、resync、deleteAccount、後端切換、樂觀寫＋後端推送＋失敗回滾）+ connectionPulse / iconBreathing 動畫脈搏 + 觀測事件預覽緩衝 + 持有 `syncProgress: SyncProgressStore`（見下 §同步進度）|
 
 ### Presenter Layer（純 UI 呈現）
 
@@ -53,7 +53,8 @@ verified_against: c907585a0
 | `SettingsSubscriptionSection.swift` | 139 | `struct SettingsSubscriptionSection: View`，訂閱方案詳情區塊（方案 / 徽章 / 來源 / 管理方式 / 恢復購買）；card 以 `settings.subscription.pro.active|inactive` 暴露實際 presenter entitlement，供 exact-device App Review probe 判讀 |
 | `SettingsReviewSection.swift` | 334 | `struct SettingsReviewSection: View`，複習節奏詳情頁：progress pause/freeze toggle、複習模式、自訂 SRS 參數；樂觀寫＋後端推送＋失敗回滾 |
 | `SettingsPreferencesSection.swift` | 197 | `struct SettingsPreferencesSection: View`，偏好設定區塊；含「自動連結」toggle（登入顯示，串後端 `auto_link` config group，控制 judge pipeline 自動建立連結）、UI「聲音回饋」「觸覺回饋」本機開關，以及 **「複習卡片」列**（`rectangle.split.2x1` → `ReviewCardLayoutEditor`，列尾摘要由 `ReviewCardLayoutSummary.titleKey(for:)` 給 預設／自訂）。**刻意與「複習節奏」分成兩列**：複習節奏那頁擁有 SRS 排程規則，卡片長什麼樣不屬於它 |
-| `SettingsOtherSection.swift` | 227 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）|
+| `SettingsOtherSection.swift` | 269 | `struct SettingsOtherSection: View`，「其他」區塊：sync status 摘要 row + **iCloud 書庫同步狀態列**（綁 Apple ID 不掛登入 gate）+ quota row + external action row（吸收原 `SettingsPresenter+Quota.swift`）。同步中時 sync row 底下展開 `SettingsSyncProgressPanel`（見下 §同步進度）；panel 放在 Button **外面**——整段同步期間 Button 是 disabled 的，包進去等於把活的進度顯示塞進死的控制項 |
+| `SettingsSyncProgressPanel.swift` | 105 | `struct SettingsSyncProgressPanel: View`（+ private `SettingsSyncProgressBar` / `SettingsSyncStepRow`）：同步中展開的總進度條 + 逐步清單。進度條形狀**刻意照抄同 section 的 `quotaRow`**（兩層 pill `AppRoundedRect`、高 3）——設定頁只該有一種進度條長相。狀態符號走共用 `SyncStepStatusIcon`（`UIComponents/`，與詞庫頁同步畫面同一組視覺語言，見 `docs/reference/ui/components.md`）。**三個 struct 各自獨立、不得內聯回 `SettingsOtherSection`**（同下方 stack 約束）|
 | `SettingsDebugBackendSection.swift` | 128 | `struct SettingsDebugBackendSection: View`（DEBUG only），debug backend 切換區塊（前身 `SettingsPresenter+Debug.swift`，改 inline extension → 獨立 struct）|
 
 ### Sheet / Detail Views
@@ -110,6 +111,17 @@ verified_against: c907585a0
 - **複習卡片版面 profile 不進 `SettingsPresenterState`**：`SettingsPreferencesSection` 直接讀 `@Environment(\.reviewCardLayoutStore)`（owner 為 Vocabulary feature 的 `ReviewCardLayoutStore`，見 `feature_boundary/vocabulary.md`）。理由是複習畫面會即時改它——把它快照進 presenter state 只會多一份會過期的副本。摘要文案唯一入口 `ReviewCardLayoutSummary.titleKey(for:)`，判定為兩模式四面全深比較
 - `SettingsPresenterActions`：callback closure 集合，由 Container 注入，不持有 mutable state
 - 帳號刪除確認與 paywall 開關目前由 `SettingsCoordinator` / `SettingsView` 一起驅動；不直接散落到 section view
+
+### 同步進度（`SyncProgressStore`）
+
+`SettingsCoordinator.syncProgress` 持有，`SettingsView` 以 `.environment(\.syncProgressStore, …)` 注入，`SettingsOtherSection` 以 `@Environment` 讀。型別本身（含 `SyncStepID` / `SyncProgressEvent` 與單調、加權等不變式）owner 是 `ios/BooksAndVocab/Services/SyncProgress.swift`，此處只記 Settings 側的邊界：
+
+- **走 environment 而不是塞進 `SettingsPresenterState`**：一輪同步會寫這個 store 幾十次。放進 presenter state 會讓整個設定頁跟著重算；走 environment 才能只驅動 sync row 底下那個葉節點（`PodcastProgressTicker` 的同一個模式，見 `feature_boundary/podcast.md`）。
+- **`isSyncing` 與 store 並存、不互相取代**：`isSyncing` 回答「在不在跑」（同時守著重入 guard 與按鈕 disabled），store 回答「跑到哪」。
+- **步驟清單由服務宣告，UI 不猜**：`KGService.syncStepIDs()` + coordinator 自己收尾的 `.status` 一列。UI 必須先知道完整清單才畫得出「還沒輪到」的灰列與正確的進度條分母。
+- **reporter 走 `AsyncStream` 而不是每事件一個 `Task { @MainActor in }`**：後者不保證順序，計數器會肉眼可見地彈回。store 內部的單調守衛是防線不是設計。
+- **終態取自 `backgroundSync` 回傳的 `SyncRoundOutcome`，不讀 `lastBackgroundSyncError`**：`.didNotRun` 直接 `reset()` 收合、不宣稱任何事（理由見 `docs/reference/tech_index.md` 的 `BackgroundSyncing` 條目）。
+- **`AppMotion`**：展開/收合共用一條 `phaseChange`（`lastSyncedText` 同時淡回來 = 一次過渡而非兩段接力），進場 transition 用 `statusRowReveal`——`docs/sop/ui-design.md` 把這兩個 token 指名給 Settings / Sync 且規定不混用。
 
 ## 現況判讀
 
