@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: 0c9e3b7c8
+verified_against: 931536ed7
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -55,7 +55,7 @@ verified_against: 0c9e3b7c8
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
-| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy；iOS：bump→upload→封 build tag | **生產** |
+| **`release`** | `ops/release.sh release <backend\|ios> <v>` | 版號檔、本地 main | backend：bump→tag→deploy→**等收斂**；iOS：bump→upload→封 build tag | **生產** |
 | `resubmit ios` | `ops/release.sh resubmit ios` | 版號檔、本地 main | marketing 版號不動，build +1→upload→封 `ios/x.y.z+<build>` | **外部**—TestFlight 上傳不可逆 |
 | `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
@@ -68,7 +68,22 @@ verified_against: 0c9e3b7c8
 
 ## Release 流程
 
-**backend**（`release backend x.y.z`）＝ `bump api`（若版號檔≠x.y.z）→ `tag api x.y.z`（commit 版號 + `api/x.y.z` + push origin main）→ `orchestrate deploy --commit`（推 origin/prod → felix reconciler 健康 gate 部署 wordnexus.lol）。dry-run 預設，`--yes` 才執行。
+**backend**（`release backend x.y.z`）＝ `bump api`（若版號檔≠x.y.z）→ `tag api x.y.z`（commit 版號 + `api/x.y.z` + push origin main）→ `orchestrate deploy --commit`（推 origin/prod → felix reconciler 健康 gate 部署 wordnexus.lol）→ **等生產收斂**。dry-run 預設，`--yes` 才執行。
+
+### 為什麼 backend 多了第四步「等收斂」
+
+`deploy` 只保證 **origin/prod 前進**——那是「我要求什麼」，不是「線上跑什麼」。真正的部署由 felix reconciler 非同步完成，失敗會自動回滾 + poison（冷卻 3600s），而它唯一的聲音是 felix 本機的 `~/Library/Logs/kg_reconcile.err.log`：沒有 push、沒有 mail、felix-status dashboard 也沒有 reconciler 面板。在 push 完就印 ✓，等於把「已回滾」宣告成「已發布」（鐵律 2）。
+
+所以 `release backend` 在 deploy 之後守著看：輪詢 `https://wordnexus.lol/api/system/info`，直到自報 `version` 是本次 sha 的前綴才宣稱成功；逾時（預設 480s）非零退出，並印出實際觀測到的線上版本與查 reconciler log 的指令。
+
+兩個容易踩的點，都已寫進實作與 `ops/test_release.sh`：
+
+- **要不要等，用 `kg_reconcile.sh` 的 `paths_need_deploy` 判，不另寫一份正則。** `orchestrate deploy` 顯示的 `backend files` 是 `backend/` 前綴，刻意是 reconciler 那條窄正則的**超集**（只會 over-warn）。若拿它來決定等不等，range 內只有 `backend/uv.lock` 這種情況就會去等一場永遠不會發生的 rollout，然後假紅。
+- **prefix 比對有 7 字元下限。** reconciler 寫進 `backend/VERSION` 的是 `git rev-parse --short`，長度隨 repo 成長變動，所以只能比前綴；沒有下限的話，一個回傳 `"d"` 的壞掉端點會命中任何以 d 開頭的 sha，把「壞掉」讀成「收斂」。
+
+逾時**不代表**部署失敗——可能仍在 build。三種可能（仍在 build／gate 失敗已回滾／reconciler 停擺）由 `~/Library/Logs/kg_reconcile.{err,out}.log` 區分，錯誤訊息會印出這兩條指令。此時**不要重跑 `release`**：版號 tag 已存在，重跑會被 tag preflight 擋下；直接查 reconciler。
+
+env knob：`KG_RELEASE_WAIT_SECS`（預設 480）、`KG_RELEASE_POLL_SECS`（10）、`KG_PUBLIC_URL`。要「推了就走、不等」請直接用 `orchestrate deploy --commit`——那條路本來就不等，語意上也誠實。
 
 **ios 新版本**（`release ios x.y.z`）＝ `guard_ios_new_version`（讀 repo 的上架 tag 與 build tag，見上方兩條規則；**無 flag、無 operator 背書**）→ `bump ios` → `ios_release.sh --upload`（archive + 上傳 TestFlight）→ upload 成功後才封 `ios/x.y.z+<build>` + push。upload 失敗不留下 commit/tag/push；封版 tag 若已存在於**另一顆** commit 則在 upload **之前**就拒絕（同一顆 commit 且 pbxproj 乾淨＝重跑，noop）。
 

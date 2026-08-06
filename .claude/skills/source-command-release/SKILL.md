@@ -49,12 +49,12 @@ Use this skill when the user asks to run the migrated source command `release`.
 
 4b. **release**（三平面統一發布，**碰生產、須使用者明確同意**；dry-run 預設）：
    ```bash
-   ./ops/release.sh release backend <x.y.z>       # dry-run：bump→tag→deploy
+   ./ops/release.sh release backend <x.y.z>       # dry-run：bump→tag→deploy→等收斂
    ./ops/release.sh release backend <x.y.z> --yes # 執行
    ./ops/release.sh release ios <x.y.z>           # dry-run：bump→upload→封 ios/<x.y.z>+<build>
    ./ops/release.sh release ios <x.y.z> --yes     # 執行
    ```
-   - `release backend`：bump→tag→`deploy`（推 **origin/prod** → felix reconciler 健康 gate 部署 wordnexus.lol）。
+   - `release backend`：bump→tag→`deploy`（推 **origin/prod** → felix reconciler 健康 gate 部署 wordnexus.lol）→ **等生產收斂**（輪詢 `/api/system/info` 直到自報 version == 本次 sha；逾時 480s 非零退出並指向 reconciler log）。**逾時不要重跑 `release`**——版號 tag 已存在會被擋，直接查 reconciler。
    - `release ios`：`guard_ios_new_version` 先檢查「存在上架 tag `ios/<x.y.z>`、新版嚴格遞增、且不跳過任何有 build tag 卻無上架 tag 的版本」；再 bump→`ios_release.sh --upload`→成功後才封 build tag/push。**被 guard 擋下不是可繞過的手續**——它擋的是 ios/2.0.1 事故的形狀（上一版還在審就先 bump 過去），先跑 `shipped ios` 把上架事實補進 repo。
    - 執行 `release` 前**不可先跑 4a tag-only**；否則 release 會因 build tag 已存在於另一顆 commit 而拒絕。
    三平面 develop/backup/release 動詞語意與切換 runbook 見 `docs/sop/release.md`。
