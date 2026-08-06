@@ -31,7 +31,14 @@ final class PodcastSeries {
     /// 認此綁定本 —— 一個系列只歸屬一本單字本。見 NotebookBindable。
     var preferredNotebookId: String?
     var createdAt: Date = Date()
+    /// **本機**的最後更新時間（每次 upsert 都寫 `Date()`）。不是伺服器的時戳。
     var updatedAt: Date = Date()
+    /// 伺服器 `index.json` / `metadata.json` 的 `updatedAt` 原字串，當作內容指紋。
+    ///
+    /// 存原字串而不是解析成 `Date`：這個值唯一的用途是與下一次的清單逐字比對，
+    /// 解析只會引入時區與小數秒的歧義，卻換不到任何東西。nil = 舊版寫入的列
+    /// （或伺服器沒給），一律視為需要重抓。
+    var remoteUpdatedAt: String?
     @Attribute(originalName: "isDeleted")
     var isSoftDeleted: Bool = false
 
