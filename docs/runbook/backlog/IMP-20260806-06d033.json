@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "UI test pool 的 kg-pool-2（14A23ED5）登著生產帳號 000287.04e2…0228，LocalStore 存了 9,580 筆真實 ReviewRecord。ios_test.sh --ui 會把 pool sim 當可拋棄資源使用，而 UI-test fixture 有清空 app 容器的前例（見 uitest-fixture-device-store-wipe 教訓）。目前沒有任何機制阻止一次 --ui 執行清掉這份資料，也沒有任何檢查會在 pool sim 登著生產帳號時警告。需要：① pool sim 啟動前偵測 KGUserId 是否為生產帳號並拒絕/警告；② 或讓 fixture 只對標記過的 disposable 容器動手。",
+  "id": "IMP-20260806-06d033",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "追查 review-event 同步慢時發現",
+  "status": "open",
+  "stream": "IMP"
+}
