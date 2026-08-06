@@ -17,6 +17,7 @@
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（ios 封的是 ios/<x.y.z>+<build>）
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布。須在 main。dry-run 預設
+#                                                # backend 會等生產收斂（線上 version == 本次 sha）才宣稱成功
 #   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
 #   ./ops/release.sh resubmit ios                # 同版號、新 build 重送：bump-build → upload → 封 ios/<x.y.z>+<build>（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
@@ -32,14 +33,29 @@
 # 全域 flag：--yes（bump/tag 真寫、release/shipped/resubmit 真執行）
 #           --commit <sha>（僅 shipped：build tag 不存在時人工指定封版 commit；會標記為人工斷言）
 # 其他：-h|--help
+# env knob：KG_RELEASE_WAIT_SECS（預設 480）/ KG_RELEASE_POLL_SECS（10）/ KG_PUBLIC_URL
+#           —— release backend 收斂等待的上限與輪詢間隔。設 0 秒不會關閉等待，只會讓它
+#           立刻逾時；真要跳過請直接用 `orchestrate deploy --commit`（那條路本來就不等）。
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# BASH_SOURCE 而非 $0：本檔會被 ops/tests/test_release.sh source 以取純函式，而 source
+# 時 $0 是呼叫端的路徑 → ROOT 解成 ops/ 自己 → 下面那行 lib 就找不到。用 BASH_SOURCE
+# 兩種情境都對。
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 YES=0
 SHIPPED_COMMIT=""
 IOS_SAME_VERSION_RESUBMIT=0
+
+# ── 部署收斂 seam（測試注入；預設即生產）──────────────────────────────────
+CURL_BIN="${CURL_BIN:-curl}"
+KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
+# 480s：backend image rebuild 實測 2-3 分，加上 reconciler 最多 90s tick 延遲與三段
+# 健康 gate（含 external smoke 的重試預算）。抓兩倍餘裕，寧可等也不要在還在 build 時
+# 就宣告失敗——假紅會讓下一個人學會忽略這個閘。
+KG_RELEASE_WAIT_SECS="${KG_RELEASE_WAIT_SECS:-480}"
+KG_RELEASE_POLL_SECS="${KG_RELEASE_POLL_SECS:-10}"
 
 # shellcheck source=lib/release_tags.sh
 . "$ROOT/ops/lib/release_tags.sh"
@@ -658,6 +674,66 @@ cmd_resubmit() {
 # backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
 # ios:     bump ios → ios_release.sh --upload（archive + 上傳 TestFlight）→ tag ios（upload failure 不留 false tag）
 # 須在 primary、on main（release 發布本地主幹；feature 改動先 cutover 進 main）。
+# ---- 部署收斂閘（release backend 的最後一哩）----------------------------------
+# deploy 只保證 origin/prod 前進——那是「我要求什麼」，不是「線上跑什麼」。真正的部署
+# 由 felix reconciler 非同步做，失敗會自動回滾 + poison，而它唯一的聲音是 felix 本機的
+# ~/Library/Logs/kg_reconcile.err.log。在此直接印 ✓ 等於把「已回滾」宣告成「已發布」，
+# 是鐵律 2 的正面違反。所以推完守著看，直到線上自報版本 == 推出去的 sha，或逾時。
+
+# 這次 range 會不會真的觸發 rollout。**刻意委派 kg_reconcile.sh 的 paths_need_deploy**
+# 而不是在這裡再寫一份正則：兩份判定必然漂移，而漂移的後果是這個閘等一場永遠不會發生
+# 的 rollout（例如 range 內只有 backend/uv.lock —— orchestrate 的 `backend/` 前綴會
+# 報「有 backend 變更」，但 reconciler 的正則不收 uv.lock，只 ff-only 不重建）。
+# 用 subshell source 取純函式，隔離它的全域（它會設 CURL_BIN / KG_PUBLIC_URL 等同名變數）。
+paths_trigger_rollout() {
+  # 找不到 reconciler 就 err，不靜默當成「不用等」：那會讓這個閘在最需要它的時候
+  # （工具被搬動／檔名改了）安靜消失，而症狀是「release 又變回推完就 ✓」——沒人會發現。
+  [[ -f "$ROOT/ops/kg_reconcile.sh" ]] \
+    || err "找不到 $ROOT/ops/kg_reconcile.sh —— 收斂判定的正則來源不見了，拒絕用猜的代替"
+  ( source "$ROOT/ops/kg_reconcile.sh" >/dev/null 2>&1; paths_need_deploy )
+}
+
+# 線上自報版本；非 200 或抽不到一律回空字串（空 ≠ 收斂，呼叫端據此繼續等）。
+live_version() {
+  local body code
+  body="$("$CURL_BIN" -sS -o - -w $'\n%{http_code}' --max-time 10 \
+          "$KG_PUBLIC_URL/api/system/info" 2>/dev/null || true)"
+  code="$(printf '%s\n' "$body" | tail -n1)"
+  body="$(printf '%s\n' "$body" | sed '$d')"
+  [[ "$code" == "200" ]] || return 0
+  printf '%s' "$body" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+}
+
+# 輪詢到線上版本 == want（reconciler 寫的是 `git rev-parse --short`，長度隨 repo 變，
+# 故比 prefix 而非全等）。**下限 7 字元**：沒有這道下限，任何回傳 "d" 的壞掉端點都會
+# 命中一個以 d 開頭的 sha，把「壞掉」讀成「收斂」。
+wait_for_rollout() {
+  local want="$1" deadline now ver last="__none__"
+  deadline=$(( $(date +%s) + KG_RELEASE_WAIT_SECS ))
+  echo "  等 felix reconciler 收斂（最長 ${KG_RELEASE_WAIT_SECS}s：90s tick + image rebuild + 三段健康 gate）…"
+  while :; do
+    ver="$(live_version)"
+    if [[ ${#ver} -ge 7 && "$want" == "$ver"* ]]; then
+      echo "✓ 生產已收斂：${KG_PUBLIC_URL} 自報 version=${ver}"
+      return 0
+    fi
+    if [[ "$ver" != "$last" ]]; then
+      echo "    [$(date '+%H:%M:%S')] 線上 version=${ver:-<不可達>}（期望 ${want:0:12}…）"
+      last="$ver"
+    fi
+    now="$(date +%s)"
+    (( now < deadline )) || break
+    sleep "$KG_RELEASE_POLL_SECS"
+  done
+  echo "✗ 逾時 ${KG_RELEASE_WAIT_SECS}s：線上仍是 version=${ver:-<不可達>}，期望 ${want:0:12}…" >&2
+  echo "  origin/prod 已前進（push 本身已用 ls-remote 驗過），但 reconciler 沒把它變成線上版本。" >&2
+  echo "  三種可能：仍在 build／健康 gate 失敗已自動回滾（會 poison 該 sha，冷卻 3600s 後才重試）／reconciler 停擺。" >&2
+  echo "  查真相：" >&2
+  echo "    ./ops/devops_kg_safe.sh run \"tail -40 ~/Library/Logs/kg_reconcile.err.log\"" >&2
+  echo "    ./ops/devops_kg_safe.sh run \"tail -5  ~/Library/Logs/kg_reconcile.out.log\"" >&2
+  return 1
+}
+
 cmd_release() {
   local target="${1:?用法: release.sh release <backend|ios> <x.y.z> [--yes]}" v="${2:-}"
   local comp
@@ -687,6 +763,9 @@ cmd_release() {
   if [[ "$comp" == api ]]; then
     echo "    2) tag ${comp} ${v}（commit 版號檔 + ${comp}/${v} tag + push origin main）"
     echo "    3) orchestrate deploy --commit（推 origin/prod → felix reconciler 部署 wordnexus.lol）⚠ 生產"
+    echo "    4) 等生產收斂：輪詢 ${KG_PUBLIC_URL}/api/system/info 直到 version == 本次 sha"
+    echo "       （最長 ${KG_RELEASE_WAIT_SECS}s，逾時非零退出並指向 reconciler log；"
+    echo "        range 內無 reconciler 觸發路徑時自動跳過）"
   else
     echo "    2) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
     echo "    3) tag ${comp} ${v}（upload 成功後才 commit 版號檔 + ios/${v}+<build> build tag + push origin main）"
@@ -703,8 +782,33 @@ cmd_release() {
   if [[ $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
   if [[ "$comp" == api ]]; then
     cmd_tag "$comp" "$v"
+    # rollout 判定要在 deploy **之前**取 range：deploy 一旦推上去，origin/prod 就等於
+    # HEAD，range 歸零，事後再問「這次會不會 rollout」已經沒得問。
+    local prod_before head_after rollout=0
+    git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
+    prod_before="$(git -C "$ROOT" rev-parse --verify --quiet origin/prod || true)"
+    head_after="$(git -C "$ROOT" rev-parse HEAD)"
+    if [[ -n "$prod_before" ]]; then
+      # 寫成 `if <pipeline>; then` 而不是 `<pipeline> && rollout=1`：後者在 set -e 下，
+      # 當 pipeline 為假時會讓整個 if 區塊以非零收尾，行為取決於 bash 版本對「compound
+      # 命令作為最後一條命令」的處理。放進 if 的條件位置，語意上明確豁免。
+      if git -C "$ROOT" diff --name-only "${prod_before}..${head_after}" -- . 2>/dev/null \
+         | paths_trigger_rollout; then
+        rollout=1
+      fi
+    else
+      # origin/prod 尚未 seed：首次啟用走 docs/sop/release.md 的 P1-P5 人工流程，
+      # 這裡不猜也不等。
+      echo "  ⚠ origin/prod 尚未存在（首次啟用）—— 跳過收斂等待，見 docs/sop/release.md §felix 生產切換"
+    fi
     "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
-    echo "✓ release backend ${v}：已 tag + 推 origin/prod；felix reconciler 將健康 gate 部署。"
+    if [[ $rollout -eq 1 ]]; then
+      wait_for_rollout "$head_after" \
+        || err "release backend ${v}：origin/prod 已前進，但生產未收斂（見上）。版號 tag 已存在，修好後不要重跑 release —— 直接查 reconciler，必要時 ./ops/devops_kg_safe.sh deploy。"
+      echo "✓ release backend ${v}：已 tag + 推 origin/prod + **生產收斂確認**。"
+    else
+      echo "✓ release backend ${v}：已 tag + 推 origin/prod（range 內無 reconciler 觸發路徑 → 不會 rollout，無需等待）。"
+    fi
   else
     # build tag 衝突要在 upload **之前**發現。TestFlight upload 不可逆，而 cmd_tag 的
     # 拒絕發生在 upload 之後——那等於先送出一顆我們已經知道封不下去的 archive。
@@ -715,6 +819,11 @@ cmd_release() {
     echo "✓ release ios ${v}：已上傳 TestFlight + tag（GUI 綁 build 送審見 docs/sop/ios.md）。"
   fi
 }
+
+# ---- 全域 flag 解析 + dispatcher ----
+# 整段包在 BASH_SOURCE guard 內（同 ops/kg_reconcile.sh 的慣例）：讓 ops/tests/test_release.sh
+# 能 source 本檔取純函式而不觸發 dispatcher。刻意不重新縮排，保住 git blame。
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 
 # ---- 全域 flag 解析（subcommand 前後皆可） ----
 SUB=""; ARGS=()
@@ -751,3 +860,5 @@ case "${SUB:-}" in
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
 esac
+
+fi

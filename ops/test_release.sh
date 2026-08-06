@@ -1111,6 +1111,102 @@ ub_out="$(bash "$fx_ub/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || ub_rc=$
   && ok "a build tag above the requested version does not block the release" \
   || fail_t "3.0.0 build tag blocked an unrelated 2.0.1 release: $ub_out"
 
+# ── 部署收斂閘：release backend 的第四步 ─────────────────────────────────────
+# 這段是**行為**測試（真的執行函式），與本檔其餘 grep 式結構測試並存。放進同一個檔案
+# 是刻意的：gate 對 shell 腳本的測試解析是「ops/tests/test_<base> 優先於 ops/test_<base>，
+# 取第一個存在者」（worktree_orchestrate.py `_ops_shell_test_candidates`）。另開一份
+# ops/tests/test_release.sh 會把本檔整份從 gate 上擠下去——140 個 case 靜默失效，而
+# 輸出看起來一樣綠。一個腳本一個測試檔。
+#
+# 被測的是 d156c6c28 加的收斂閘：deploy 只保證 origin/prod 前進，真正的部署由 felix
+# reconciler 非同步做且失敗會自動回滾，所以「什麼時候可以說成功」必須被釘住。
+section "Deploy convergence gate (release backend 第四步)"
+
+TMP6="$(mktemp -d)"; trap 'rm -rf "$TMP" "$TMP2" "$TMP3" "$TMP4" "$TMP5" "$TMP6"' EXIT
+
+# curl stub：每次呼叫吃 responses 檔的下一行 `CODE|BODY`，用完停在最後一行。
+conv_stub() {
+  local name="$1"; shift
+  local resp="$TMP6/resp_$name" script="$TMP6/curl_$name.sh" cursor="$TMP6/cur_$name"
+  printf '%s\n' "$@" > "$resp"; echo 0 > "$cursor"
+  cat >"$script" <<STUB
+#!/usr/bin/env bash
+i=\$(cat "$cursor"); n=\$(wc -l < "$resp" | tr -d ' ')
+i=\$(( i + 1 )); (( i > n )) && i=\$n
+echo "\$i" > "$cursor"
+line="\$(sed -n "\${i}p" "$resp")"
+printf '%s\n%s' "\${line#*|}" "\${line%%|*}"
+STUB
+  chmod +x "$script"; printf '%s' "$script"
+}
+
+# 在乾淨子 shell 內 source release.sh 取純函式（本檔自身帶 set -e，故子 shell 內關掉，
+# 讓「預期失敗」的 case 能被斷言而不是中止測試）。
+conv_run() { CURL_BIN="$1" KG_RELEASE_POLL_SECS=1 KG_RELEASE_WAIT_SECS="$2" \
+             bash -c "source '$REL'; set +e; $3" 2>&1; }
+
+# source 本身不得觸發 dispatcher（BASH_SOURCE guard 在，才有上面這些 case）
+guard_rc=0; guard_out="$(bash -c "source '$REL'" 2>&1)" || guard_rc=$?
+[[ $guard_rc -eq 0 && -z "$guard_out" ]] \
+  && ok "source release.sh 不執行 dispatcher（BASH_SOURCE guard）" \
+  || fail_t "source release.sh 有輸出/非零：rc=$guard_rc out=${guard_out:0:120}"
+
+# paths_trigger_rollout：委派 reconciler 的正則。uv.lock 那條是關鍵——orchestrate 的
+# `backend/` 前綴是超集，拿它決定等不等會去等一場永遠不會發生的 rollout，然後假紅。
+conv_paths() {  # <label> <yes|no> <paths...>
+  local label="$1" expect="$2"; shift 2
+  local got
+  got="$(conv_run "" 5 "printf '%s\n' $(printf '%q ' "$@") | paths_trigger_rollout && echo yes || echo no")"
+  [[ "$got" == "$expect" ]] && ok "paths_trigger_rollout: $label → $expect" \
+                            || fail_t "paths_trigger_rollout: $label → 得到 '$got'，期望 $expect"
+}
+conv_paths "backend/src"          yes backend/src/kg/api.py
+conv_paths "backend/tests"        yes backend/tests/test_x.py
+conv_paths "pyproject（版號 bump）" yes backend/pyproject.toml
+conv_paths "只有 uv.lock"          no  backend/uv.lock
+conv_paths "只有 docs"             no  docs/sop/release.md
+conv_paths "只有 ios"              no  ios/BooksAndVocab/App.swift
+conv_paths "uv.lock + src 混合"     yes backend/uv.lock backend/src/kg/api.py
+
+# live_version：抽不到一律空字串（空 ≠ 收斂），不猜
+got="$(conv_run "$(conv_stub ok200 '200|{"version":"0c9e3b7c"}')" 5 'live_version')"
+[[ "$got" == "0c9e3b7c" ]] && ok "live_version: 200 抽出 version" || fail_t "live_version: 200 得到 '$got'"
+got="$(conv_run "$(conv_stub e500 '500|upstream error')" 5 'live_version')"
+[[ -z "$got" ]] && ok "live_version: 500 → 空字串" || fail_t "live_version: 500 得到 '$got'"
+got="$(conv_run "$(conv_stub e000 '000|')" 5 'live_version')"
+[[ -z "$got" ]] && ok "live_version: 不可達 → 空字串" || fail_t "live_version: 不可達得到 '$got'"
+
+CONV_WANT=da0f51f32aabbccddeeff00112233445566778899
+
+rc=0; out="$(conv_run "$(conv_stub hit '200|{"version":"da0f51f32"}')" 5 "wait_for_rollout $CONV_WANT")" || rc=$?
+[[ $rc -eq 0 ]] && ok "wait_for_rollout: 線上已是目標 sha → rc 0" \
+                || fail_t "wait_for_rollout: 已收斂卻 rc=$rc（$out）"
+
+rc=0; out="$(conv_run "$(conv_stub miss '200|{"version":"0c9e3b7c"}')" 2 "wait_for_rollout $CONV_WANT")" || rc=$?
+[[ $rc -ne 0 ]] && ok "wait_for_rollout: 停在舊 sha 到逾時 → 非零（不謊報成功）" \
+                || fail_t "wait_for_rollout: 未收斂卻 rc=0 —— 這正是本閘存在的理由"
+grep -q 'kg_reconcile.err.log' <<<"$out" && ok "逾時輸出指向 reconciler log（可行動）" \
+                                         || fail_t "逾時輸出沒說去哪看真相：$out"
+grep -q '0c9e3b7c' <<<"$out" && ok "逾時輸出帶上實際觀測到的線上版本" \
+                             || fail_t "逾時輸出沒說線上目前是什麼版本"
+
+# 負控：沒有 7 字元下限的話，任何回傳 "d" 的壞掉端點都會命中以 d 開頭的 sha
+rc=0; out="$(conv_run "$(conv_stub short '200|{"version":"d"}')" 2 "wait_for_rollout $CONV_WANT")" || rc=$?
+[[ $rc -ne 0 ]] && ok "過短字串不算 prefix 命中（壞掉 ≠ 收斂）" \
+                || fail_t "'d' 被當成 $CONV_WANT 的前綴 —— 假綠"
+
+rc=0; out="$(conv_run "$(conv_stub building '200|{"version":"0c9e3b7c"}' '200|{"version":"0c9e3b7c"}' '200|{"version":"da0f51f32"}')" 8 "wait_for_rollout $CONV_WANT")" || rc=$?
+[[ $rc -eq 0 ]] && ok "build 中先舊後新 → 最終 rc 0（不早退）" \
+                || fail_t "先舊後新卻 rc=$rc（$out）"
+
+# 找不到 reconciler 時必須 err，不得靜默當成「不用等」
+fx_norecon="$TMP6/norecon"; mkdir -p "$fx_norecon/ops"
+cp "$REL" "$fx_norecon/ops/release.sh"
+cp -R "$WORKSPACE/ops/lib" "$fx_norecon/ops/lib"
+rc=0; out="$(bash -c "source '$fx_norecon/ops/release.sh'; set +e; echo backend/src/a.py | paths_trigger_rollout" 2>&1)" || rc=$?
+[[ $rc -ne 0 ]] && ok "kg_reconcile.sh 不存在 → err，不靜默降級成「不用等」" \
+                || fail_t "reconciler 缺席卻靜默回答（rc=$rc）：$out"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
