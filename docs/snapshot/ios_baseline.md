@@ -28,7 +28,7 @@ verified_against: dcb7b705f
 | 612 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 | 601 | `Models/SharedTypes.swift` |
 
-總 Swift 行數: 81296 / 507 檔案
+總 Swift 行數: 81305 / 507 檔案
 
 ---
 
