@@ -689,6 +689,12 @@ _VIEW_ONLY_APP_ROW = (
     "| APP-20260601-aaaaaa | 2026-06-01 | pre-migration branch | reader | ux | high "
     "| open | only ever existed as a table row | — | — | — |\n"
 )
+# Not a duplicate of the two above: this id IS in the store. What it is missing
+# from is the text render is about to write. See the diff-base test below.
+_UNRENDERED_IMP_ROW = (
+    "| IMP-0099 | 2026-06-01 | a newer tool sharing this store | tool | high | open "
+    "| in the store, in the view, and not in what render emits | — |\n"
+)
 
 
 def _render_argv(store: Path, out: Path, *extra: str) -> list[str]:
@@ -835,7 +841,14 @@ def test_allow_drop_authorises_only_the_ids_it_names(tmp_path, capsys):
     assert rc == 2, "a partial authorisation let an unnamed entry through"
     assert out.read_bytes() == before
     assert "APP-20260601-aaaaaa" in err
-    assert "IMP-0060" not in err, f"an authorised id is still being refused: {err!r}"
+    # Scoped to the REFUSED header, not the whole stream. At whole-stderr
+    # granularity this assertion forbids the authorised id from appearing in
+    # the remedy line too — i.e. it pins the remedy to printing a flag that
+    # drops the authorisation you just gave (the loop measured in D1 of the
+    # review of IMP-20260806-e06150). What has to be true is narrower: the
+    # sentence that says what is REFUSED must not blame an authorised id.
+    header = err.splitlines()[0]
+    assert "IMP-0060" not in header, f"an authorised id is still being refused: {header!r}"
 
     rc = BACKLOG.main(
         _render_argv(
@@ -850,6 +863,61 @@ def test_allow_drop_authorises_only_the_ids_it_names(tmp_path, capsys):
     assert "IMP-0060" in err and "APP-20260601-aaaaaa" in err, (
         f"--allow-drop deleted entries without naming them: {err!r}"
     )
+
+
+def _remedy_flag_ids(err: str) -> list[str]:
+    """The ids the refusal's own remedy line tells you to pass to --allow-drop.
+
+    Read out of the message rather than reconstructed from the test's own
+    knowledge: the thing under test is what the operator is TOLD to type, so
+    building the flag from the ids the test happens to know would test nothing.
+    """
+    marker = "--allow-drop "
+    for line in err.splitlines():
+        if marker in line:
+            return line.split(marker, 1)[1].split()
+    raise AssertionError(f"the refusal printed no --allow-drop remedy at all: {err!r}")
+
+
+def test_following_the_remedy_line_converges_instead_of_ping_ponging(tmp_path, capsys):
+    """`--allow-drop`'s help says the ids are named on stderr, copy them here.
+    So the remedy line has to print the COMPLETE flag, not the remainder.
+
+    Printing only the not-yet-authorised ids makes the documented workflow a
+    closed loop: authorise A, get told to authorise B, do that, and B's run has
+    dropped A's authorisation, so it tells you to authorise A again. Measured on
+    the shipped code as a 3-step cycle. This drives the loop instead of matching
+    a string: it types what it was told to type and asserts the second attempt
+    lands.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    out.write_text(
+        out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW + _VIEW_ONLY_APP_ROW,
+        encoding="utf-8",
+    )
+    before = out.read_bytes()
+    capsys.readouterr()
+
+    # Step 1: the operator authorises one of the two, as an operator reading a
+    # refusal that names one id would.
+    assert BACKLOG.main(_render_argv(store, out, "--commit", "--allow-drop", "IMP-0060")) == 2
+    told_to_type = _remedy_flag_ids(capsys.readouterr().err)
+    assert out.read_bytes() == before
+
+    # Step 2: type exactly that. One step, not a cycle.
+    rc = BACKLOG.main(_render_argv(store, out, "--commit", "--allow-drop", *told_to_type))
+    err = capsys.readouterr().err
+
+    assert rc == 0, (
+        f"the remedy line said `--allow-drop {' '.join(told_to_type)}` and following it "
+        f"was refused again — the advice does not converge: {err!r}"
+    )
+    # The artifact, not the exit code: both rows really left.
+    written = out.read_text(encoding="utf-8")
+    assert "IMP-0060" not in written and "APP-20260601-aaaaaa" not in written
 
 
 def test_the_refusal_does_not_offer_a_recovery_that_cannot_work(tmp_path, capsys):
@@ -926,8 +994,91 @@ def test_render_json_reports_that_it_wrote_nothing(tmp_path, capsys):
 
     assert rc == 2
     assert payload["written"] is False
-    assert payload["dropped"] == ["IMP-0060"]
+    # `dropped` is what this run DELETED, and a refusal deleted nothing.
+    # Carrying the at-risk ids under that key made the payload contradict
+    # itself: `written:false` next to `dropped:["IMP-0060"]` reads as a
+    # deletion that happened.
+    assert payload["dropped"] == [], "a refusal reported a deletion it did not perform"
+    assert payload["refused"] == ["IMP-0060"], "the refusal payload does not say what stopped it"
     assert "bytes" not in payload, "a refusal reported a size for a file it did not write"
+
+
+def test_the_json_refusal_hands_back_the_whole_flag_not_the_remainder(tmp_path, capsys):
+    """The machine channel needs the same complete `--allow-drop` set the stderr
+    remedy line prints; otherwise a machine caller authorising one id at a time
+    walks the same cycle as a human (see the remedy-line test above).
+
+    `refused` and `would_drop` are therefore different questions: what blocked
+    this run, and the full set a write would delete.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit", "--json")) == 0
+    out.write_text(
+        out.read_text(encoding="utf-8") + _VIEW_ONLY_IMP_ROW + _VIEW_ONLY_APP_ROW,
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    rc = BACKLOG.main(
+        _render_argv(store, out, "--commit", "--json", "--allow-drop", "IMP-0060")
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 2
+    assert payload["refused"] == ["APP-20260601-aaaaaa"]
+    assert payload["would_drop"] == ["APP-20260601-aaaaaa", "IMP-0060"], (
+        "the JSON refusal reports only the remainder, so authorising from it cannot converge"
+    )
+
+    # Drive it: the set the payload handed back is the set that works.
+    rc = BACKLOG.main(
+        _render_argv(store, out, "--commit", "--json", "--allow-drop", *payload["would_drop"])
+    )
+    assert rc == 0, "following the JSON payload's own would_drop was refused again"
+
+
+def test_json_records_the_deletion_it_was_authorised_to_perform(tmp_path, capsys):
+    """An authorised deletion must not be invisible in the machine channel.
+
+    The contract is one machine-readable JSON object on stdout with progress on
+    stderr, so a caller that reads only stdout is a supported caller. Emitting a
+    payload shape-identical to a clean render after permanently deleting rows
+    re-creates the exact defect IMP-20260806-e06150 is about — silence — in the
+    channel designated as authoritative.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="stays in the store")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit", "--json")) == 0
+    clean = json.loads(capsys.readouterr().out)
+
+    out.write_text(out.read_text(encoding="utf-8") + _VIEW_ONLY_APP_ROW, encoding="utf-8")
+    capsys.readouterr()
+
+    rc = BACKLOG.main(
+        _render_argv(store, out, "--commit", "--json", "--allow-drop", "APP-20260601-aaaaaa")
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    # The premise, measured: the deletion really happened, so there is
+    # something for the payload to be silent about.
+    assert "APP-20260601-aaaaaa" not in out.read_text(encoding="utf-8")
+
+    assert payload["dropped"] == ["APP-20260601-aaaaaa"], (
+        "a permanent deletion left no record in the machine-authoritative channel"
+    )
+    assert clean["dropped"] == [], "a clean render claimed to have deleted something"
+    # The distinguishing half: a key that only appears when it has news is the
+    # same silence one level down — a reader with no reason to look for it
+    # never learns it exists. The two write payloads must be the same shape and
+    # differ in the VALUE.
+    assert set(clean) == set(payload), (
+        f"the deleting render and the clean render are not the same shape: "
+        f"{sorted(set(clean) ^ set(payload))}"
+    )
 
 
 def test_render_names_an_unreadable_out_instead_of_a_traceback(tmp_path, capsys):
@@ -945,6 +1096,72 @@ def test_render_names_an_unreadable_out_instead_of_a_traceback(tmp_path, capsys)
     assert rc == 64, "an unreadable --out is a usage error, not a data-loss refusal"
     assert str(out) in err
     assert out.read_bytes() == b"\xff\xfe\x00\x01", "render wrote over a file it could not read"
+
+
+def test_the_guard_diffs_against_the_text_it_will_write_not_the_store(tmp_path, capsys):
+    """The one load-bearing choice in the guard, made falsifiable.
+
+    `dropped` is `view_entry_ids(outgoing) - view_entry_ids(text)`. The obvious
+    alternative is `... - {e["id"] for e in list_entries(store)}`, and on today's
+    ledger the two sets agree, so the wrong one looks right. They come apart
+    wherever `render_view` declines to emit something the store holds: it asks
+    for `stream="IMP"` and `stream="APP"` only, while an unfiltered
+    `list_entries` returns everything on disk.
+
+    Such an entry — here, one filed under a stream this version does not render,
+    which is what a store shared with a newer tool looks like from here — is in
+    the store and NOT in the outgoing text. Diffed against the store it is not
+    at risk and the row is deleted with rc=0 and an empty stderr: the original
+    incident exactly. Diffed against the text, the row is what has to survive.
+
+    Stated rather than hidden: `validate` calls this store unhealthy, and that
+    is the point rather than a flaw in the setup. On a store every entry of
+    which renders, the two diff bases agree — which is exactly why the wrong
+    one looks right. A guard against data loss earns its keep in the states the
+    happy path does not produce, so it has to hold while the store is in one.
+    """
+    store = tmp_path / "backlog"
+    _add(store, detail="an entry both diff bases agree about")
+    out = tmp_path / "improvement_backlog.md"
+    assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
+    capsys.readouterr()
+
+    BACKLOG.entry_path(store, "IMP-0099").write_text(
+        json.dumps(
+            {
+                "id": "IMP-0099",
+                "stream": "OPS",  # not in STREAMS, so render_view never asks for it
+                "date": "2026-06-01",
+                "source": "a newer tool sharing this store",
+                "category": "cli",
+                "severity": "high",
+                "status": "open",
+                "detail": "in the store, in the view, and not in what render emits",
+                "resolution": "",
+            }
+        ),
+        encoding="utf-8",
+    )
+    out.write_text(out.read_text(encoding="utf-8") + _UNRENDERED_IMP_ROW, encoding="utf-8")
+    before = out.read_bytes()
+
+    # The premise, measured rather than asserted from this docstring: the two
+    # candidate diff bases really do disagree about IMP-0099. Without this the
+    # test could pass on a store where they agree and prove nothing.
+    assert "IMP-0099" in {entry["id"] for entry in BACKLOG.list_entries(store)}
+    assert "IMP-0099" not in BACKLOG.view_entry_ids(
+        BACKLOG.render_view(store, verified_against="deadbeef")
+    ), "render_view emits this stream after all; pick another entry render will not emit"
+    # And the honesty check on the paragraph above: this store IS one `validate`
+    # rejects. Measured here so nobody has to take the docstring's word for it.
+    assert [p for p in BACKLOG.validate_store(store) if p.get("kind") == "bad-stream"]
+
+    rc = BACKLOG.main(_render_argv(store, out, "--commit"))
+    err = capsys.readouterr().err
+
+    assert out.read_bytes() == before, "IMP-0099 was silently deleted from the view"
+    assert rc == 2, f"render exited {rc} on a row only the outgoing text protects"
+    assert "IMP-0099" in err, f"the refusal does not name the row it saved: {err!r}"
 
 
 def test_view_entry_ids_sees_both_streams(tmp_path):

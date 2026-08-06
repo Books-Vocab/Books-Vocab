@@ -1210,9 +1210,10 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ID",
         default=[],
         help="ids you accept deleting: render refuses to write a view that loses an "
-             "entry the current --out has and the store does not (they are named on "
-             "stderr; copy them here). Named, not a bare flag, so a bypass cannot be "
-             "reached for without reading what it drops",
+             "entry the current --out has and the new render does not emit (the "
+             "refusal names the COMPLETE set to pass here — on stderr, and as "
+             "`would_drop` under --json; copy it as printed). Named, not a bare flag, "
+             "so a bypass cannot be reached for without reading what it drops",
     )
     p_render.add_argument(
         "--check",
@@ -1534,7 +1535,12 @@ def _cmd_render(args) -> int:
                     "  lost APP rows      -> not recoverable that way (the importer reads "
                     "the IMP table only); re-file with `ops/backlog.py add`"
                 )
-            lines.append("  the loss is meant  -> --allow-drop " + " ".join(named))
+            # `dropped`, not `named`: the header answers "what stopped this
+            # run", the remedy answers "what do I type". Printing the remainder
+            # here made the documented copy-paste workflow a closed loop —
+            # authorising IMP then pasting the APP-only flag re-exposes IMP, and
+            # round it goes. The flag is absolute, so it has to be complete.
+            lines.append("  the loss is meant  -> --allow-drop " + " ".join(dropped))
             lines.append("nothing was written.")
         elif not args.commit:
             # A dry-run neither writes nor drops, whatever --allow-drop says, so
@@ -1557,7 +1563,15 @@ def _cmd_render(args) -> int:
                         "schema": "kg.backlog.render.v1",
                         "out": str(args.out),
                         "written": False,
-                        "dropped": unauthorised,
+                        # Three different questions, so three keys. `dropped`
+                        # used to carry `unauthorised`, which made the payload
+                        # contradict itself: nothing was deleted here at all.
+                        "dropped": [],
+                        "refused": unauthorised,
+                        # The COMPLETE --allow-drop set, matching the stderr
+                        # remedy line. Handing back only `refused` would walk a
+                        # machine caller into the same loop a human had.
+                        "would_drop": dropped,
                     },
                     ensure_ascii=False,
                 )
@@ -1577,8 +1591,20 @@ def _cmd_render(args) -> int:
                     {
                         "schema": "kg.backlog.render.v1",
                         "out": str(args.out),
+                        "written": True,
                         "bytes": size,
                         "characters": len(text),
+                        # Unconditional, including the empty list. Under `--json`
+                        # stdout is the machine channel (plain `render` puts the
+                        # view itself there instead), and an authorised
+                        # deletion used to leave a payload byte-identical in
+                        # shape to a clean render — the silence this whole entry
+                        # is about, re-created one channel over. A key that
+                        # appears only when it has news does not fix that: a
+                        # reader with no reason to look for it never learns it
+                        # exists. Always present, so `if payload["dropped"]` is
+                        # a check a caller can actually write.
+                        "dropped": dropped,
                     },
                     ensure_ascii=False,
                 )
