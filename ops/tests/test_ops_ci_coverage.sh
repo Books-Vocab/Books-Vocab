@@ -218,6 +218,12 @@ ok_if_clean "classification contains no stale entries"
 section "every tracked test file is reachable from some group"
 # run_one 是「某個 group 實際 EXECUTE 什麼」的 SoT。先剝註解再比對：在註解裡提到一個
 # 路徑不是執行，少了這道 sed，任何人都能靠寫一行註解讓這條檢查閉嘴。
+#
+# **已知邊界（IMP-20260806-79f81c）**：run_one 也包含 OPTIONAL_TESTS 的 case，所以
+# 「只被 optional group 跑得到」的檔案在這裡算綠，但它不在預設套件也不在 CI——是原本
+# 那個洞的弱化版，不是零覆蓋。今天有兩支處在這個狀態（ops/test_asc.sh、
+# ops/tests/test_asc_text_bundle.py，都只掛在 asc）。沒有一併收緊是因為那會牽動
+# 「asc 該不該進預設套件」這個獨立決策，不該夾帶進覆蓋率修補。別把這段讀成全覆蓋。
 REACHABLE=(); TRACKED=()
 while IFS= read -r l; do REACHABLE+=("$l"); done < <(
   awk '/^run_one\(\) \{/{f=1} f{print} f&&/^\}/{exit}' ops/test_ops.sh \

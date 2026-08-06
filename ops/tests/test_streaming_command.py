@@ -218,7 +218,13 @@ def test_timeout_terminates_child_process_group(tmp_path: Path) -> None:
             label="timeout-test",
             progress_prefix="[test]",
             heartbeat_interval=0.02,
-            timeout_seconds=0.1,
+            # 這個預算不能貼著跑：下面 assert 之前要先讀 pid_file，而那要求 child 在
+            # timeout 開火**之前**已經生出 grandchild 直譯器並寫完檔。實測那段要
+            # 92-97ms（load average 20 的機器上，2026-08-06），原本的 0.1s 只剩
+            # 3-8ms 餘裕 = 擲硬幣：機器閒時綠、有負載時 FileNotFoundError。
+            # child 寫完後 sleep(60)，所以放寬預算不會讓 timeout 失去意義——它照樣
+            # 在行程還活著時開火，被斷言的契約（逾時殺整個 process group）一字未改。
+            timeout_seconds=1.5,
         )
         assert completed.returncode == 124
         pids = json.loads(pid_file.read_text(encoding="utf-8"))
@@ -249,11 +255,16 @@ def test_timeout_kills_grandchild_after_group_leader_exits(tmp_path: Path) -> No
             label="leader-exited-timeout-test",
             progress_prefix="[test]",
             heartbeat_interval=0.02,
-            timeout_seconds=0.1,
+            # 同上：child 要先 spawn grandchild 並寫檔（實測 92-97ms）才輪得到下面
+            # 讀 pid_file，0.1s 沒有餘裕。grandchild sleep(60)，所以 timeout 照樣
+            # 在它活著時開火。
+            timeout_seconds=1.5,
         )
         elapsed = time.monotonic() - started
         assert completed.returncode == 124
-        assert elapsed < 1
+        # 界線跟著預算走：這條要擋的是「等完 grandchild 的 60s 才回來」，不是
+        # 卡死一個特定毫秒數。1.5s 預算 + 收屍時間仍遠低於 5s。
+        assert elapsed < 5
         grandchild_pid = int(pid_file.read_text(encoding="utf-8"))
         deadline = time.monotonic() + 2
         while _process_is_live(grandchild_pid) and time.monotonic() < deadline:
