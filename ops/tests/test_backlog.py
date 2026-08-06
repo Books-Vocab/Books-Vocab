@@ -1179,8 +1179,83 @@ def test_view_entry_ids_sees_both_streams(tmp_path):
 
     assert BACKLOG.view_entry_ids(text) == {imp["id"], app["id"]}
 
+    # `parse_legacy_table` now reads NOTHING out of the current view: the view
+    # renders more columns than the legacy table it parses (IMP-20260805-355016).
+    # That answers this test's original question — view_entry_ids does not merely
+    # still need to exist separately, it is now the ONLY reader of the view, which
+    # is why the render drop-guard was built on it rather than on the parser.
     rows, _ = BACKLOG.parse_legacy_table(text)
-    assert {r["id"] for r in rows} == {imp["id"]}, (
-        "parse_legacy_table started reporting APP rows; if that is intended, "
-        "re-check whether view_entry_ids still needs to exist separately"
+    assert rows == [], (
+        "parse_legacy_table can read the current view again; if that is intended, "
+        "re-check the drop-guard, which assumes view_entry_ids is the only reader"
     )
+
+
+# ---------------------------------------------------------------------------
+# IMP-20260805-355016 — the view carries the re-verification fields
+# ---------------------------------------------------------------------------
+def test_view_shows_the_reverification_fields(tmp_path):
+    """The four first-class fields the ruling names were invisible in the table.
+
+    They were withheld for one reason, stated in render_view's own comment: keep
+    the view importable. The executive ruling of 2026-08-05 abandoned that
+    property outright ("表格需要加欄就加"), on the grounds that it was already
+    half-broken — the APP half of the render has never been importable
+    (IMP-20260805-f4ec99, measured rc=2) — and that the importer only ever reads
+    files this module itself produced.
+
+    `plan`/`acceptance` deliberately stay OUT: the largest plan in the real store
+    is 57KB, and a table cell is not where that belongs. The groom counter in the
+    footer already answers "how many have a plan".
+    """
+    store = tmp_path / "s"
+    store.mkdir()
+    BACKLOG.add_entry(
+        store, stream="IMP", date="2026-01-01", source="probe", category="tool",
+        severity="med", detail="a probe entry", status="open",
+    )
+    eid = next(iter(BACKLOG.list_entries(store)))["id"]
+    BACKLOG.update_entry(store, eid, verdict="CONFIRMED-OPEN",
+                         verified_at="2026-01-02", cost="M",
+                         fix_site="ops/backlog.py:1")
+    view = BACKLOG.render_view(store, verified_against="deadbeef")
+    header = view.split("\n| id ")[0] if "\n| id " in view else view
+    for field in ("verdict", "verified_at", "cost", "fix_site"):
+        assert field in view, f"{field} is still invisible in the rendered view"
+    # and the values, not just the column names
+    for value in ("CONFIRMED-OPEN", "2026-01-02", "ops/backlog.py:1"):
+        assert value in view, f"{value} missing from the view"
+
+
+def test_import_refuses_the_widened_view_instead_of_recovering_it(tmp_path):
+    """Widening the view gave `_recover_overflowing_row` an input it must not touch.
+
+    Measured before this guard: parsing a rendered 12-column view produced ONE row
+    with kind `recovered-row` — `detail` had swallowed resolution/verdict/
+    verified_at/cost, and `resolution` had become the fix_site. A `problems` entry
+    was emitted, but `import_legacy` still had a row to write, so a re-import would
+    have overwritten good entries with mangled prose.
+
+    Recovery existed to rescue hand-written tables containing an unescaped pipe.
+    After the 2026-08-05 rulings the importer's only input is this module's own
+    machine-escaped output, so that input surface is gone (IMP-20260805-3df783),
+    and the same heuristic now actively corrupts the one file it will ever see.
+    A refusal that names the file is the only safe answer: too many columns is not
+    a row to be repaired, it is a file from the wrong era.
+    """
+    store = tmp_path / "s"
+    store.mkdir()
+    BACKLOG.add_entry(store, stream="IMP", date="2026-01-01", source="probe",
+                      category="tool", severity="med",
+                      detail="detail with | a pipe", status="open")
+    eid = next(iter(BACKLOG.list_entries(store)))["id"]
+    BACKLOG.update_entry(store, eid, verdict="CONFIRMED-OPEN",
+                         verified_at="2026-01-02", cost="M",
+                         fix_site="ops/backlog.py:1")
+    view = BACKLOG.render_view(store, verified_against="deadbeef")
+
+    rows, problems = BACKLOG.parse_legacy_table(view)
+    assert rows == [], f"a widened-view row was parsed anyway: {rows}"
+    kinds = {p.get("kind") for p in problems}
+    assert "recovered-row" not in kinds, "the widened view was 'recovered' into a mangled row"
+    assert kinds, "the row vanished with no problem reported — silence is the defect"
