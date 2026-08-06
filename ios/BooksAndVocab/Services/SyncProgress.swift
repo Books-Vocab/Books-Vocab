@@ -165,17 +165,30 @@ final class SyncProgressStore {
 
         case .advanced(let id, let current, let total, let detail):
             mutate(id) { step in
-                // 單調守衛。回報來自非結構化 Task，到達順序無保證；晚到的較小
-                // current 會讓 UI 的計數器動畫彈回。`total` 變了代表換了一批
-                // 工作（換頁 / 換階段），這時較小的 current 是合法的新起點。
-                guard !(current < step.current && total == step.total) else { return }
+                // 兩道守衛，對應兩種「回報晚到」的後果。回報來自非結構化 Task，
+                // 到達順序沒有保證（呼叫端若走 AsyncStream 就有序，但 store 不能
+                // 假設呼叫端做對了）。
+                //
+                // 1. 已終結的步驟不得復活。晚到的 advanced 會把綠勾打回轉圈，
+                //    而 endTime 還留著——一個「執行中」的列顯示著已完成時長。
+                guard !step.status.isTerminal else { return }
+                // 2. current 不得倒退。**刻意不看 total**：早先版本允許「total 變了
+                //    就接受較小的 current」，那個例外反而是漏洞——亂序到達時它正好
+                //    放行會讓計數器彈回的那些事件（5/20 → 90/100 → 6/20），而
+                //    fraction 的單調 clamp 會把中間那個虛高值永久釘住，之後真實
+                //    推進到 100% 條也不會再動。要重設一個步驟只有一條路：`.started`。
+                guard current >= step.current else { return }
                 step.status = .running
-                step.current = current
                 step.total = total
+                // total > 0 時把 current 夾住。不夾的話 model 與 view 會各自解讀：
+                // completion() 這邊 min(1,…) 當它是 100%，SyncPresenter 那邊照印
+                // 「90/20」。要夾就在入口夾一次。
+                step.current = total > 0 ? min(current, total) : current
                 if !detail.isEmpty { step.detail = detail }
             }
 
         case .finished(let id, let status, let detail):
+            assert(status.isTerminal, "`.finished` 只接受終態；\(status) 會讓 finish(.completed) 稍後靜默改寫它")
             mutate(id) { step in
                 step.status = status
                 if !detail.isEmpty { step.detail = detail }
@@ -184,18 +197,27 @@ final class SyncProgressStore {
         }
     }
 
-    /// 收尾。`.completed` 代表這一輪真的整輪跑完，殘留未回報的步驟一律收成
-    /// `.done`——它們確實跑過了，只是沒有值得回報的細節。`.failed` 則不美化：
-    /// 沒跑到的維持 waiting，進度條也不強制拉滿。
+    /// 收尾。
+    ///
+    /// `.completed` 下殘留的非終態步驟分兩種，**不能一律打勾**：
+    /// - `.running` / `.retry` = 確實跑過了，只是沒發收尾事件 → `.done`。
+    /// - `.waiting` = 從頭到尾沒被回報過 → `.skipped`（presenter 畫 `minus.circle.fill`）。
+    ///   把它打成綠勾是實打實的謊：宣告了某一步卻整輪沒跑，使用者會看到
+    ///   「更新 Podcast 目錄 ✓」而那件事根本沒發生。
+    ///
+    /// `.failed` 則完全不美化：沒跑到的維持 waiting，進度條也不強制拉滿。
     func finish(_ terminal: SyncPhase) {
         phase = terminal
         if terminal == .completed {
             for index in steps.indices where !steps[index].status.isTerminal {
-                steps[index].status = .done
+                steps[index].status = steps[index].status == .waiting ? .skipped : .done
                 if steps[index].endTime == nil { steps[index].endTime = Date() }
             }
         }
         recomputeFraction()
+        // 整輪完成就是 100%，即使步驟清單是空的（`recomputeFraction` 對空清單
+        // 沒有分母可算，會原地留住上一個值 —— 一輪已完成的同步顯示 0% 是壞的）。
+        if terminal == .completed { fraction = 1 }
     }
 
     /// 回到未開始狀態。設定頁在收合動畫結束後呼叫，避免下一次展開閃出上一輪殘影。

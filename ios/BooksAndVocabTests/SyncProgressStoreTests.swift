@@ -54,15 +54,47 @@ struct SyncProgressStoreTests {
         #expect(pull.detail == "a", "被丟棄的回報不得留下它的 detail")
     }
 
-    @Test("total 改變代表換了一批工作，較小的 current 這時必須被接受")
-    func advanceAcceptedWhenTotalChanges() {
+    @Test("total 改變不構成倒退的豁免——這是舊守衛的漏洞，亂序到達時它正好放行最糟的那些事件")
+    func totalChangeDoesNotExcuseARewind() {
         let store = makeStore([.pull])
         store.apply(.started(.pull))
         store.apply(.advanced(.pull, current: 90, total: 100, detail: "a"))
-        store.apply(.advanced(.pull, current: 5, total: 20, detail: "next page"))
+        store.apply(.advanced(.pull, current: 5, total: 20, detail: "late page 1"))
+
+        #expect(store.steps[0].current == 90, "5/20 晚到會讓計數器從 90 彈回 5")
+        #expect(store.steps[0].total == 100)
+    }
+
+    @Test("current 前進時 total 的更新會跟著生效")
+    func advanceAcceptsGrowingCountWithNewTotal() {
+        let store = makeStore([.pull])
+        store.apply(.started(.pull))
+        store.apply(.advanced(.pull, current: 0, total: 0, detail: "connecting"))
+        store.apply(.advanced(.pull, current: 5, total: 20, detail: "merging"))
 
         #expect(store.steps[0].current == 5)
         #expect(store.steps[0].total == 20)
+    }
+
+    @Test("current 超過 total 時在入口就夾住，不讓 view 印出 90/20")
+    func currentIsClampedToTotal() {
+        let store = makeStore([.pull])
+        store.apply(.started(.pull))
+        store.apply(.advanced(.pull, current: 90, total: 20, detail: ""))
+
+        #expect(store.steps[0].current == 20)
+    }
+
+    @Test("已終結的步驟不會被晚到的 advanced 復活")
+    func terminalStepIsNotRevivedByLateAdvance() {
+        let store = makeStore([.pull])
+        store.apply(.started(.pull))
+        store.apply(.advanced(.pull, current: 10, total: 20, detail: ""))
+        store.apply(.finished(.pull, status: .done, detail: "done"))
+        store.apply(.advanced(.pull, current: 12, total: 20, detail: "late"))
+
+        #expect(store.steps[0].status == .done, "綠勾被打回轉圈，而 endTime 還留著")
+        #expect(store.steps[0].detail == "done")
     }
 
     @Test("started 會把該步驟歸零，讓重跑不受上一段的守衛擋住")
@@ -103,14 +135,17 @@ struct SyncProgressStoreTests {
         #expect(atHalf < 1.0)
     }
 
-    @Test("fraction 單調不減，即使步驟狀態被亂序覆寫")
+    @Test("fraction 單調不減，即使步驟被 .started 合法重跑")
     func fractionNeverDecreases() {
         let store = makeStore([.pull, .status])
         store.apply(.finished(.pull, status: .done, detail: ""))
         let peak = store.fraction
+        // `.started` 是唯一的合法重設路徑（retry），列本身確實會回到 running——
+        // 但整輪「已經走了多遠」不該倒退。
         store.apply(.started(.pull))
 
         #expect(store.fraction >= peak)
+        #expect(store.steps[0].status == .running, "retry 必須看得出來在重跑")
     }
 
     @Test("終態三種都算完成：done / skipped / error 都把該步驟的權重計滿")
@@ -119,20 +154,33 @@ struct SyncProgressStoreTests {
             let store = makeStore([.pull, .status])
             store.apply(.finished(.pull, status: status, detail: ""))
             #expect(store.steps[0].status == status)
-            #expect(store.fraction == SyncStepID.pull.weight
-                / (SyncStepID.pull.weight + SyncStepID.status.weight))
+            // 期望值寫字面量而不是從 SyncStepID.weight 推導：從實作自己的表推導
+            // 等於整張權重表換掉這條也不會紅。pull=4、status=1 → 4/5。
+            #expect(abs(store.fraction - 0.8) < 1e-9)
         }
     }
 
-    @Test("finish(.completed) 把 fraction 收到 1，殘留未回報的步驟收成 done")
-    func completedFinishesEveryStep() {
-        let store = makeStore([.push, .pull])
+    @Test("finish(.completed) 收到 1；跑過的收成 done，從未開始的收成 skipped 而不是假綠")
+    func completedDistinguishesRanFromNeverRan() {
+        let store = makeStore([.push, .pull, .podcast])
         store.apply(.finished(.push, status: .done, detail: ""))
+        store.apply(.started(.pull))          // 跑了但沒發收尾事件
+        // .podcast 從頭到尾沒被回報
         store.finish(.completed)
 
         #expect(store.phase == .completed)
         #expect(store.fraction == 1.0)
-        #expect(store.steps.allSatisfy { $0.status == .done })
+        #expect(store.steps[1].status == .done)
+        #expect(store.steps[2].status == .skipped, "宣告了卻整輪沒跑的步驟打綠勾＝對使用者說謊")
+    }
+
+    @Test("空步驟清單完成時 fraction 仍是 1，不會停在 0%")
+    func completedWithNoStepsStillReadsFull() {
+        let store = SyncProgressStore()
+        store.begin(stepIDs: [])
+        store.finish(.completed)
+
+        #expect(store.fraction == 1.0)
     }
 
     @Test("finish(.failed) 不偽造完成：未跑完的步驟維持原狀，fraction 不強制拉滿")
