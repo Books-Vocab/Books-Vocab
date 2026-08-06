@@ -55,6 +55,31 @@ def _card_row(dd: Path, uid: str, content: str) -> dict | None:
     return dict(row) if row else None
 
 
+def _notebook_row(dd: Path, uid: str, name: str) -> dict | None:
+    db = dd / "users" / uid / "notebooks.db"
+    conn = sqlite3.connect(str(db))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM notebook WHERE name = ? AND is_deleted = 0", (name,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _write_card_source(dd: Path, uid: str, content: str, raw: str) -> None:
+    """直接把 cards.db 的 source 欄位寫成指定原始字串。
+
+    存在理由：本檔其餘測試的 source 全部經 `ops_edit seed` 產生，而 seed 用
+    `model_dump_json(exclude_none=True)` 落盤 —— 那是**多個寫面之一**。生產寫面
+    （`vocab_intake.py`）不帶 exclude_none，還可能是舊資料/人工修過的字串。
+    只用 seed 建資料的測試，看不見 export 對「非 seed 寫面」的行為。
+    """
+    conn = sqlite3.connect(str(dd / "users" / uid / "cards.db"))
+    conn.execute("UPDATE card SET source = ? WHERE content = ?", (raw, content))
+    conn.commit()
+    conn.close()
+
+
 def _review_event_rows(dd: Path, uid: str) -> list[dict]:
     db = dd / "users" / uid / "review_events.db"
     if not db.exists():
@@ -591,3 +616,164 @@ class TestFieldSymmetry:
         for c in out["cards"]:
             assert "source" not in c, f"{c['content']} 不該有 source 鍵"
             assert "source_shared_card_guid" not in c
+
+
+# ── 非 seed 寫面 / 稀疏欄位（IMP-0016 review 補洞） ─────────────────
+#
+# 上面整組（含 _MAX_SPEC 那條宣告↔payload 對齊）有兩個共同盲點：
+#   1. 所有資料都經 `ops_edit seed` 產生 —— 於是只驗到 export 對**自己那個
+#      寫面**的行為。DB 欄位的字串是誰寫的？生產是 `vocab_intake.py` 的
+#      `model_dump_json()`（不帶 exclude_none），seed 是 `_source_to_json` 的
+#      `model_dump_json(exclude_none=True)`。同一份資料兩種形，只用後者建資料
+#      的測試，看不見前者。
+#   2. `_MAX_SPEC` 把每個 optional 欄位一次填滿 —— 於是「A 欄的 emit 被 B 欄
+#      的存在條件夾帶」這種錯（宣告說各自導出，實作卻綁在一起）完全隱形。
+#
+# 下面這組刻意反著建資料：非 seed 寫面 + 只填單一稀疏欄位。
+
+
+class TestForeignWriterAndSparseShapes:
+    def test_production_shaped_source_canonicalizes_and_roundtrips(self, tmp_path):
+        """生產寫面（不帶 exclude_none）寫下的 source 必須 roundtrip 成 fixpoint。
+
+        `vocab_intake.py` 存的是 `{"type":...,"title":...,"url":null,...}`，seed 存
+        的是去 null 版。export 若原樣回顯 DB 字串，export A 帶 null 鍵 → seed B
+        去 null → export B 少鍵 → §1.1 的 seed→export→seed→export 相等破功，
+        且對「每張有 source 的真實卡」都破（VocabSource 三個 optional 欄位，任何
+        具體來源必留至少一個 null）。
+
+        斷言的 RHS 全部由 **MODEL**（VocabSource）產生，不是 export 的回顯。
+        """
+        from kg.api_models.common import VocabSource
+
+        src = VocabSource(type="book", title="Demo Book", chapter="Chapter 1")
+        production_raw = src.model_dump_json()  # vocab_intake.py 的寫法
+        canonical_raw = src.model_dump_json(exclude_none=True)  # seed 的落盤形
+        # 前提：兩個寫面真的不同形，否則本測試沒有測到東西。
+        assert '"url":null' in production_raw
+        assert production_raw != canonical_raw
+        # 第二種「非 seed 形」：鍵序被打亂（舊資料 / 人工修過）。
+        scrambled_raw = '{"chapter":"Chapter 2","title":"Other Book","type":"book"}'
+        scrambled_canonical = VocabSource(
+            type="book", title="Other Book", chapter="Chapter 2"
+        ).model_dump_json(exclude_none=True)
+
+        dd_a = tmp_path / "a"
+        dd_b = tmp_path / "b"
+        dd_a.mkdir()
+        dd_b.mkdir()
+        uid_a = _mk_user(dd_a, "prod-a")
+        uid_b = _mk_user(dd_b, "prod-b")
+        spec = {"cards": [
+            {"content": "w", "meaning": "m"},
+            {"content": "s", "meaning": "m2"},
+        ]}
+        assert _seed(dd_a, uid_a, spec, "--commit", "--json").returncode == 0
+        _write_card_source(dd_a, uid_a, "w", production_raw)
+        _write_card_source(dd_a, uid_a, "s", scrambled_raw)
+        assert _card_row(dd_a, uid_a, "w")["source"] == production_raw
+        assert _card_row(dd_a, uid_a, "s")["source"] == scrambled_raw
+
+        r_a = _export_raw(dd_a, uid_a)
+        assert r_a.returncode == 0, r_a.stderr
+        cards_a = {c["content"]: c for c in json.loads(r_a.stdout)["cards"]}
+        # export 必須吐出「seed 會落盤的那個形」——去 null、鍵序依 model 宣告。
+        assert cards_a["w"]["source"] == src.model_dump(exclude_none=True)
+        assert json.dumps(cards_a["w"]["source"], separators=(",", ":")) == canonical_raw
+        assert json.dumps(cards_a["s"]["source"], separators=(",", ":")) == scrambled_canonical
+
+        replay = dd_b / "replay.json"
+        replay.write_text(r_a.stdout, encoding="utf-8")
+        assert _edit(str(dd_b), "seed", uid_b, str(replay), "--commit", "--json").returncode == 0
+        r_b = _export_raw(dd_b, uid_b)
+        assert r_b.returncode == 0, r_b.stderr
+        assert r_b.stdout == r_a.stdout, "生產寫面的 source 破了 byte-equal fixpoint"
+        # 決定性斷言直讀世界 B 的盤，不看 export 自己的回顯。
+        assert _card_row(dd_b, uid_b, "w")["source"] == canonical_raw
+        assert _card_row(dd_b, uid_b, "s")["source"] == scrambled_canonical
+
+    def test_unreplayable_source_warns_and_keeps_snapshot_obtainable(self, tmp_path):
+        """壞掉的 source 欄位：降級成 warning + 略過該欄位，不炸掉整份 snapshot。
+
+        這是**刻意的取捨**（backup/restore 面）：
+        * 原樣回顯 → seed 重放時整份 spec 被拒，備份等於不可用；
+        * 整份 abort（raise）→ 一列壞資料讓 5000 張健康卡都備份不到；
+        * 略過該欄位 + stderr 具名 warning → stdout 仍是可重放的純 spec JSON，
+          損失可見。與本模組既有契約一致（孤兒卡 / 壞 link / 壞 graph 檔皆如此）。
+        絕不接受的是**未捕捉例外**：exit 1 + 0 byte stdout + raw traceback。
+        """
+        uid = _mk_user(tmp_path)
+        bad = {
+            "notjson": "definitely not json",
+            "notobject": "[1, 2]",
+            "badschema": '{"type": "pdf", "title": "X"}',  # type 不在 Literal 內
+            "badurl": '{"type": "web", "url": "javascript:alert(1)"}',
+        }
+        spec = {"cards": [{"content": c, "meaning": "m"} for c in bad]}
+        assert _seed(tmp_path, uid, spec, "--commit", "--json").returncode == 0
+        for content, raw in bad.items():
+            _write_card_source(tmp_path, uid, content, raw)
+
+        r = _export_raw(tmp_path, uid)
+        assert r.returncode == 0, f"一列壞資料不該讓整個帳號導不出來：{r.stderr}"
+        assert "Traceback" not in r.stderr, "必須是具名 warning，不是未捕捉例外"
+        out = json.loads(r.stdout)  # stdout 仍是純 spec JSON
+        cards = {c["content"]: c for c in out["cards"]}
+        for content in bad:
+            assert content in cards, "只略過壞欄位，不略過整張卡"
+            assert "source" not in cards[content]
+            assert cards[content]["meaning"] == "m", "卡的其餘欄位必須完好"
+            assert content in r.stderr, f"warning 必須具名是哪張卡：{r.stderr}"
+            assert "source" in r.stderr
+
+        # 產出的 spec 必須真的可被 seed 重放（不是「看起來像 spec」）。
+        dd_b = tmp_path / "b"
+        dd_b.mkdir()
+        uid_b = _mk_user(dd_b, "warn-b")
+        replay = dd_b / "replay.json"
+        replay.write_text(r.stdout, encoding="utf-8")
+        r_seed = _edit(str(dd_b), "seed", uid_b, str(replay), "--commit", "--json")
+        assert r_seed.returncode == 0, r_seed.stdout + r_seed.stderr
+
+    def test_notebook_provenance_columns_emit_independently(self, tmp_path):
+        """宣告說 source_version 是獨立導出欄位 —— 稀疏世界必須證明它真的是。
+
+        `_MAX_SPEC` 兩欄同時填滿，看不出實作把 source_version 的 emit 綁在
+        source_shared_deck_id 上；seed 側兩欄各自獨立攝入（`"source_version" in n`），
+        所以綁在一起＝宣告說謊 ＋ 該值靜默消失。
+        """
+        dd_a = tmp_path / "a"
+        dd_b = tmp_path / "b"
+        dd_a.mkdir()
+        dd_b.mkdir()
+        uid_a = _mk_user(dd_a, "sparse-a")
+        uid_b = _mk_user(dd_b, "sparse-b")
+        spec = {"notebooks": [
+            {"name": "VersionOnly", "sort_order": 1, "source_version": 7},
+            {"name": "DeckOnly", "sort_order": 2, "source_shared_deck_id": "deck-solo"},
+        ]}
+        assert _seed(dd_a, uid_a, spec, "--commit", "--json").returncode == 0
+        # 前提直讀盤：世界 A 真的是「只有一欄」的形狀。
+        row_v = _notebook_row(dd_a, uid_a, "VersionOnly")
+        row_d = _notebook_row(dd_a, uid_a, "DeckOnly")
+        assert (row_v["source_version"], row_v["source_shared_deck_id"]) == (7, None)
+        assert (row_d["source_version"], row_d["source_shared_deck_id"]) == (None, "deck-solo")
+
+        r_a = _export_raw(dd_a, uid_a)
+        assert r_a.returncode == 0, r_a.stderr
+        nbs = {n["name"]: n for n in json.loads(r_a.stdout)["notebooks"]}
+        assert nbs["VersionOnly"].get("source_version") == 7, \
+            "宣告有導 source_version，稀疏本卻沒導出（靜默有損）"
+        assert "source_shared_deck_id" not in nbs["VersionOnly"]
+        assert nbs["DeckOnly"].get("source_shared_deck_id") == "deck-solo"
+        assert "source_version" not in nbs["DeckOnly"]
+
+        replay = dd_b / "replay.json"
+        replay.write_text(r_a.stdout, encoding="utf-8")
+        assert _edit(str(dd_b), "seed", uid_b, str(replay), "--commit", "--json").returncode == 0
+        r_b = _export_raw(dd_b, uid_b)
+        assert r_b.returncode == 0, r_b.stderr
+        assert r_b.stdout == r_a.stdout, "稀疏 provenance 破了 byte-equal fixpoint"
+        # 決定性斷言直讀世界 B 的盤。
+        assert _notebook_row(dd_b, uid_b, "VersionOnly")["source_version"] == 7
+        assert _notebook_row(dd_b, uid_b, "DeckOnly")["source_shared_deck_id"] == "deck-solo"

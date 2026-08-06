@@ -7,7 +7,7 @@ seed 可**無損重放**的全欄位：
 * notebooks — name / color / cover_pattern / sort_order / is_default（排除 is_deleted 與 is_staged 複製中暫存本）
 * cards — content / pos / meaning / examples / collocations / note / difficulty /
   mode / root_form / inflections / notebook(name 參照) / is_archived /
-  source(VocabSource JSON，omit-if-null)
+  source(VocabSource，omit-if-null，一律正規化成 seed 的落盤形；見 `_canonical_source`)
   + review 計數器（review_count / review_streak / lapse_count /
   review_interval_hours / next_review_at / last_reviewed_at / last_review_feedback）
 * links — from / to（card content 參照）/ kind / confidence / reason / notebook
@@ -18,8 +18,13 @@ seed 可**無損重放**的全欄位：
 ——**給 model 加欄位而沒在那裡表態就會紅**（IMP-0016）。
 
 唯讀紀律：SQLite 一律 `connect_ro`（mode=ro URI），graph 直讀 `graph_*.json`；
-**不** import 任何開檔即寫的 store（`NotebookStore.__init__` 會 create_all DDL）
-或 log 單例。
+不觸發任何 store 的建檔副作用（`NotebookStore.__init__` 會 create_all DDL），
+也不碰 log 單例。`VocabSource` 是刻意的例外：export 與 seed 必須共用同一個
+source 權威，各自手寫一份欄位表就是保證會漂移的兩份真相。**但要誠實**：
+`from .api_models.common import VocabSource` 會連帶執行 `api_models/__init__`，
+實測把 kg 模組數從 3 拉到 53，其中包含 `kg.cards.store` / `kg.graph.store`——
+所以「store 模組不在 import 圖裡」是**假的**，成立的是「import 期零寫入」
+（實測 KG_DATA_DIR 與 cwd 皆無檔案生成）。ops_cli 程序內邊際成本實測 40ms。
 
 確定式：排序不依賴 created_at / 隨機 id（seed 重放到新沙盒後再 export 仍相等）——
 notebooks 按 (sort_order, name)、cards 按 (notebook name, content)、links 按
@@ -37,6 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .api_models.common import VocabSource
 from .ops_edit_shared import user_dir_for
 from .ops_shared import connect_ro, data_dir
 
@@ -77,7 +83,7 @@ def _json_list(raw: Any) -> list[Any]:
         return raw
     try:
         val = json.loads(raw)
-    except (TypeError, json.JSONDecodeError):
+    except (TypeError, ValueError):  # UnicodeDecodeError/JSONDecodeError ⊂ ValueError
         return []
     return val if isinstance(val, list) else []
 
@@ -224,14 +230,65 @@ def _notebook_entry(row: dict[str, Any]) -> dict[str, Any]:
     # Provenance is omit-if-null: specs predating shared decks carry no such
     # key, so emitting null would break the byte-equal roundtrip (§1.1). When
     # set (Phase 2 copy), export + seed stay field-symmetric.
-    src_deck = row.get("source_shared_deck_id")
-    if src_deck is not None:
-        entry["source_shared_deck_id"] = src_deck
-        entry["source_version"] = row.get("source_version")
+    #
+    # 每欄**各自**判斷，不夾帶：EXPORTED_NOTEBOOK_COLUMNS 宣告兩者是獨立導出
+    # 欄位，seed 也各自攝入（`ops_edit_seed_commands` 的 `"source_version" in n`）。
+    # 曾經把 source_version 綁在 source_shared_deck_id 的 if 裡 —— 宣告因而說謊，
+    # 且 deck_id 為 NULL 而 source_version 有值的本會靜默丟值（IMP-0016 review）。
+    for col in ("source_shared_deck_id", "source_version"):
+        val = row.get(col)
+        if val is not None:
+            entry[col] = val
     return entry
 
 
-def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:
+def _canonical_source(raw: Any, content: str, warnings: list[str]) -> dict[str, Any] | None:
+    """`card.source` 原始字串 → seed 落盤形的 VocabSource dict；不可重放則 None + warning。
+
+    **為什麼要正規化而非原樣回顯**：這欄有兩個寫面，形狀不同 ——
+      * 生產 `vocab_intake.py`：`entry.source.model_dump_json()`，**保留 null 鍵**；
+      * seed `ops_edit_support._source_to_json`：`model_dump_json(exclude_none=True)`。
+    原樣回顯生產寫面的字串，export A 會多出 `"url": null`、seed B 落盤時去掉它、
+    export B 就少一個鍵 —— §1.1 的 seed→export→seed→export 相等對**每張真實有
+    source 的卡**破功（VocabSource 三個 optional 欄位，任何具體來源必留至少一個
+    null：book→url、web→chapter）。故一律過 VocabSource 收斂到 seed 會落盤的那個
+    形（去 null、鍵序依 model 宣告、丟未知鍵），export 與 seed 共用同一個權威。
+
+    **壞資料的取捨（backup/restore 面，刻意決定）**：略過該欄位 + 具名 warning，
+    該卡其餘欄位照導。被否決的兩個選項：
+      * 原樣回顯 → seed 重放整份 spec 被拒，備份等於不可用；
+      * raise / 未捕捉例外 → 一列壞資料讓整個帳號導不出來（0 byte stdout），
+        backup 面最糟的失敗模式。
+    略過讓 stdout 維持**可重放的**純 spec JSON、損失在 stderr 具名可見，與本模組
+    對孤兒卡 / 壞 link / 壞 graph 檔的既有契約一致。此路徑今日無寫面會踩到（兩個
+    寫面都先過 VocabSource 驗證），是防禦性的。
+    """
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str | bytes) else raw
+    except (TypeError, ValueError):  # UnicodeDecodeError/JSONDecodeError ⊂ ValueError
+        warnings.append(f"card {content!r} 的 source 不是合法 JSON，略過該欄位（卡的其餘欄位照導）")
+        return None
+    if not isinstance(parsed, dict):
+        warnings.append(f"card {content!r} 的 source 不是 JSON object，略過該欄位（卡的其餘欄位照導）")
+        return None
+    try:
+        return VocabSource(**parsed).model_dump(exclude_none=True)
+    except (TypeError, ValueError) as exc:  # pydantic ValidationError ⊂ ValueError
+        reason = str(exc).splitlines()[0]
+        warnings.append(
+            f"card {content!r} 的 source 不符 VocabSource schema（seed 重放會被拒）"
+            f"，略過該欄位：{reason}"
+        )
+        return None
+
+
+def _card_entry(
+    row: dict[str, Any], notebook_name: str, warnings: list[str] | None = None
+) -> dict[str, Any]:
+    """單張卡 → payload entry。`warnings` 省略時丟棄警告（僅供直呼 helper 的單元
+    測試；正式路徑一律由 `export_seed_spec` 傳入，警告要走到 stderr）。"""
     feedback = row.get("last_review_feedback")
     entry: dict[str, Any] = {
         "content": row.get("content"),
@@ -262,13 +319,13 @@ def _card_entry(row: dict[str, Any], notebook_name: str) -> dict[str, Any]:
     src_guid = row.get("source_shared_card_guid")
     if src_guid is not None:
         entry["source_shared_card_guid"] = src_guid
-    # source（VocabSource JSON）同樣 omit-if-null：無 source 的 spec 不得多出
-    # null 鍵，否則既有世界的 byte-equal roundtrip 破功（§1.1）。json.loads 不加
-    # try/except 是刻意的 —— 生產讀路徑 `vocab_shared.py` 解同一欄同樣無防護，
-    # export 與之對稱，不新增一類失敗行為。
-    raw_source = row.get("source")
-    if raw_source:
-        entry["source"] = json.loads(raw_source)
+    # source（VocabSource）同樣 omit-if-null：無 source 的 spec 不得多出 null 鍵，
+    # 否則既有世界的 byte-equal roundtrip 破功（§1.1）。值本身的正規化與壞資料
+    # 取捨見 `_canonical_source`。
+    source = _canonical_source(row.get("source"), str(row.get("content")),
+                               warnings if warnings is not None else [])
+    if source is not None:
+        entry["source"] = source
     return entry
 
 
@@ -358,7 +415,7 @@ def export_seed_spec(uid: str, *, data_root: Path | None = None) -> tuple[dict[s
         if not str(row.get("meaning") or "").strip():
             # seed 預驗拒絕空 meaning；此卡不可重放，fail-loud 讓 operator 先修資料。
             raise WorldExportError(f"card {row.get('content')!r} meaning 空白，seed 不可重放；先修資料再導出")
-        cards.append(_card_entry(row, nb_name))
+        cards.append(_card_entry(row, nb_name, warnings))
         card_content_by_id[str(row.get("id"))] = str(row.get("content"))
     cards.sort(key=lambda c: (c["notebook"], c["content"]))
 
