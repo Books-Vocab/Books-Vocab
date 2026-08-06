@@ -1207,3 +1207,8 @@
 "下載複習紀錄" = "Download review records";
 "更新 Podcast 目錄" = "Update podcast catalog";
 "額度與連線" = "Quota and connection";
+"此伺服器尚未提供字典卡" = "This server has no dictionary cards yet";
+"已是最新" = "Already up to date";
+"更新 %@ 筆" = "%@ updated";
+"已送出 %@ 筆" = "%@ uploaded";
+"目錄讀取失敗" = "Could not load catalog";
