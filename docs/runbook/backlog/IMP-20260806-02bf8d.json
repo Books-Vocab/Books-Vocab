@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "./ops/devops_kg_safe.sh backup 在 oscar（macOS）上必定失敗：它把 --info=progress2 --human-readable 傳給 rsync，而 macOS 內建的是 openrsync，不支援這兩個旗標 → 直接印 usage 並結束。輸出前兩行是正常的 preflight 與『▶ 本地冷快照（pull from standby）』，看起來像開始工作了，接著才噴 usage，所以很容易被讀成『跑完了』。實測 exit 立即（11:35:22 起、11:35:22 止，0 秒）。影響：部署前的本地冷快照這條路在主力機上根本不存在，而它正是 operator 最會在高風險部署前想抓的那一份。災難復原目前實際靠的是 felix 上的每日 S3 備份（com.kg.backup → kg_backup.sh，2026-08-06 03:01Z 成功，729896960 bytes，有記 sha256），那條是好的。修法二選一：① 偵測 rsync 實作（rsync --version | grep -q openrsync）後改用相容旗標或走 tar over ssh（CLAUDE.md 已記 openrsync 的 push 坑，同一個根因）；② 若冷快照非必要，讓它明確拒絕並指向 S3 備份，而不是印 usage。無論哪條，都不該讓一個備份指令用『印出 usage』當作失敗訊號。",
+  "id": "IMP-20260806-02bf8d",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "2.0.2 部署前想做冷快照時撞到",
+  "status": "open",
+  "stream": "IMP"
+}
