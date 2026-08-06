@@ -784,27 +784,36 @@ cmd_release() {
     cmd_tag "$comp" "$v"
     # rollout 判定要在 deploy **之前**取 range：deploy 一旦推上去，origin/prod 就等於
     # HEAD，range 歸零，事後再問「這次會不會 rollout」已經沒得問。
-    local prod_before head_after rollout=0
+    # rollout 判定的兩端都必須是**實際的** origin/prod：起點在 deploy 前讀，終點在
+    # deploy 後讀。刻意不用「deploy 前的 local HEAD」當終點——同倉並發是常態，別的
+    # session 的 cutover 可能在 tag 與 deploy 之間 ff 了本地 main，那時 deploy 推出去的
+    # 就不是我們手上那顆，拿舊 sha 去等會等到一個永遠不會出現的版本然後假紅。
+    local prod_before prod_after rollout=0
     git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
     prod_before="$(git -C "$ROOT" rev-parse --verify --quiet origin/prod || true)"
-    head_after="$(git -C "$ROOT" rev-parse HEAD)"
-    if [[ -n "$prod_before" ]]; then
-      # 寫成 `if <pipeline>; then` 而不是 `<pipeline> && rollout=1`：後者在 set -e 下，
-      # 當 pipeline 為假時會讓整個 if 區塊以非零收尾，行為取決於 bash 版本對「compound
-      # 命令作為最後一條命令」的處理。放進 if 的條件位置，語意上明確豁免。
-      if git -C "$ROOT" diff --name-only "${prod_before}..${head_after}" -- . 2>/dev/null \
-         | paths_trigger_rollout; then
-        rollout=1
-      fi
-    else
-      # origin/prod 尚未 seed：首次啟用走 docs/sop/release.md 的 P1-P5 人工流程，
-      # 這裡不猜也不等。
-      echo "  ⚠ origin/prod 尚未存在（首次啟用）—— 跳過收斂等待，見 docs/sop/release.md §felix 生產切換"
-    fi
+
     "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
+
+    git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
+    prod_after="$(git -C "$ROOT" rev-parse --verify --quiet origin/prod || true)"
+    if [[ -z "$prod_after" ]]; then
+      # deploy 剛回報成功卻讀不到 origin/prod：不裝作知道，也不靜默跳過等待。
+      err "deploy 回報成功但讀不到 origin/prod —— 拒絕在看不見目標的情況下宣稱發布完成。先 git fetch origin prod 查狀態。"
+    fi
+    if [[ -z "$prod_before" ]]; then
+      # origin/prod 首次 seed：走 docs/sop/release.md §felix 生產切換的人工流程，
+      # 這裡沒有可比的起點，不猜也不等。
+      echo "  ⚠ origin/prod 先前不存在（首次 seed）—— 跳過收斂等待，見 docs/sop/release.md §felix 生產切換"
+    elif git -C "$ROOT" diff --name-only "${prod_before}..${prod_after}" -- . 2>/dev/null \
+         | paths_trigger_rollout; then
+      # 寫成 `elif <pipeline>` 而不是 `<pipeline> && rollout=1`：後者在 set -e 下，
+      # pipeline 為假時會讓整個區塊以非零收尾。放在條件位置語意上明確豁免。
+      rollout=1
+    fi
+
     if [[ $rollout -eq 1 ]]; then
-      wait_for_rollout "$head_after" \
-        || err "release backend ${v}：origin/prod 已前進，但生產未收斂（見上）。版號 tag 已存在，修好後不要重跑 release —— 直接查 reconciler，必要時 ./ops/devops_kg_safe.sh deploy。"
+      wait_for_rollout "$prod_after" \
+        || err "release backend ${v}：origin/prod 已前進，但生產未收斂（見上）。版號 tag 已存在，**不要重跑 release**（會被 tag preflight 擋）—— 直接查 reconciler。"
       echo "✓ release backend ${v}：已 tag + 推 origin/prod + **生產收斂確認**。"
     else
       echo "✓ release backend ${v}：已 tag + 推 origin/prod（range 內無 reconciler 觸發路徑 → 不會 rollout，無需等待）。"
