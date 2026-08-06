@@ -110,9 +110,11 @@ struct KGServiceSyncReportingTests {
         let event = KGService.legFinishedEvent(
             .reviewEvents, result: Result<Void, Error>.failure(Boom()), detail: "d"
         )
+        // 期望值寫成 L10n key 的值而不是 `reason(for:)` 的回傳——後者兩邊呼叫同一支，
+        // 那支回空字串或原始 key 時測試照樣綠。Boom 是未知型別 → reason.unknown。
         #expect(event == .finished(.reviewEvents, status: .error,
-                                   detail: SyncFailurePresentation.reason(for: Boom())),
-                "detail 必須走本地化的 reason，不是 error.localizedDescription")
+                                   detail: L10n.string("sync.failure.reason.unknown")),
+                "detail 必須走本地化的 reason，不是 error.localizedDescription（那會吐英文系統字串）")
     }
 
     @Test("push 兩腿都成功才寫筆數")
@@ -131,14 +133,14 @@ struct KGServiceSyncReportingTests {
             events: .success((inserted: 5, skipped: 0))
         )
         #expect(statesFailed == .finished(.push, status: .error,
-                                          detail: SyncFailurePresentation.reason(for: Boom())))
+                                          detail: L10n.string("sync.failure.reason.unknown")))
 
         let eventsFailed = KGService.pushFinishedEvent(
             states: .success((updated: 2, skipped: 0)),
             events: .failure(Boom())
         )
         #expect(eventsFailed == .finished(.push, status: .error,
-                                          detail: SyncFailurePresentation.reason(for: Boom())))
+                                          detail: L10n.string("sync.failure.reason.unknown")))
     }
 
     @Test("podcast 四種結果各自對映；flag 關著（nil）不得畫成失敗")
@@ -231,7 +233,10 @@ struct KGServiceSyncReportingTests {
         // 硬補一個 `.error` 會讓它的權重被算滿，第一步就死的一輪顯示 80%。
         #expect(!events.contains { if case .finished(.dictionary, _, _) = $0 { return true }; return false },
                 "沒開始過的步驟不該有終態事件：\(events)")
-        // 401 早退：podcast 那一段根本沒跑到，不得有它的事件。
+        // podcast 這一輪不該有任何事件。擋住它的**不是** 401 早退（那條腿現在從
+        // 整輪最前面就起跑），而是 runPodcastLeg 自己的 token guard——NilTokenSession
+        // 沒有 token。這也是本測試零網路的原因；有人日後給這個 harness 一個真 token，
+        // 它就會開始打真的 GET /api/podcasts。
         #expect(!events.contains { if case .started(.podcast) = $0 { return true }; return false })
     }
 

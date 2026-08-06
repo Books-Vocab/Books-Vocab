@@ -34,20 +34,23 @@ struct PodcastCatalogSkipTests {
     // 隔離（整個 struct 是 @MainActor）會讓它們無法從 `fetchDetailsConcurrently`
     // 的 @Sendable 閉包裡呼叫。
     nonisolated private static func summary(
-        id: String = "s1", updatedAt: String? = "2026-06-03T03:35:52+00:00", episodeCount: Int? = 2
+        id: String = "s1", updatedAt: String? = "2026-06-03T03:35:52+00:00",
+        episodeCount: Int? = 2, coverImageURL: String? = nil, title: String? = nil
     ) -> PodcastSeriesSummary {
         PodcastSeriesSummary(
-            id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil,
-            coverImageURL: nil, totalDurationSec: nil, episodeCount: episodeCount, updatedAt: updatedAt
+            id: id, title: title ?? id, author: nil, hostNames: nil, color: nil, coverPattern: nil,
+            coverImageURL: coverImageURL, totalDurationSec: nil,
+            episodeCount: episodeCount, updatedAt: updatedAt
         )
     }
 
     nonisolated private static func detail(
-        id: String = "s1", updatedAt: String? = "2026-06-03T03:35:52+00:00", episodes: Int = 2
+        id: String = "s1", updatedAt: String? = "2026-06-03T03:35:52+00:00",
+        episodes: Int = 2, coverImageURL: String? = nil
     ) -> PodcastSeriesDetail {
         PodcastSeriesDetail(
             id: id, title: id, author: nil, hostNames: nil, color: nil, coverPattern: nil,
-            coverImageURL: nil, totalDurationSec: nil,
+            coverImageURL: coverImageURL, totalDurationSec: nil,
             episodes: (1...max(1, episodes)).map {
                 PodcastEpisodeDetail(
                     episodeNumber: $0, title: "ep\($0)", durationSec: 10,
@@ -71,7 +74,8 @@ struct PodcastCatalogSkipTests {
         PodcastSyncService.upsertSeries(detail: Self.detail(), context: context)
         let local = PodcastSyncService.localSeriesIndex(context: context)["s1"]
 
-        #expect(local?.remoteUpdatedAt == "2026-06-03T03:35:52+00:00", "upsert 必須把指紋寫下來，否則永遠跳不過")
+        #expect(local?.remoteFingerprint == PodcastSyncService.fingerprint(of: Self.summary()),
+                "upsert 寫下的指紋必須與清單算出來的相等，否則永遠跳不過")
         #expect(!PodcastSyncService.needsDetailFetch(summary: Self.summary(), local: local))
     }
 
@@ -105,6 +109,43 @@ struct PodcastCatalogSkipTests {
 
         #expect(PodcastSyncService.needsDetailFetch(summary: Self.summary(episodeCount: 8), local: local),
                 "只看指紋的話這個 series 會永遠卡在半套資料")
+    }
+
+    @Test("只換封面（伺服器刻意不 bump updatedAt）也要重抓")
+    func coverOnlyChangeIsFetched() {
+        let context = Self.makeContext()
+        PodcastSyncService.upsertSeries(detail: Self.detail(coverImageURL: nil), context: context)
+        let local = PodcastSyncService.localSeriesIndex(context: context)["s1"]
+
+        // `ops/podcast_cover_publish.py` 換掉 coverImageURL、重建 index.json，
+        // 但明文「updatedAt is deliberately NOT bumped」。只比 updatedAt 的話這張
+        // 新封面永遠不會落地——而且連「封面清單改由 summary 驅動」都救不了它，
+        // 因為 cacheCoverIfNeeded 讀的是本機那一列的 coverImageURL。
+        #expect(PodcastSyncService.needsDetailFetch(
+            summary: Self.summary(coverImageURL: "/api/podcasts/s1/cover?v=abc"), local: local
+        ), "新上的封面永遠不會落到已安裝的裝置上")
+    }
+
+    @Test("標題改了也要重抓——指紋不能只看時戳")
+    func titleChangeIsFetched() {
+        let context = Self.makeContext()
+        PodcastSyncService.upsertSeries(detail: Self.detail(), context: context)
+        let local = PodcastSyncService.localSeriesIndex(context: context)["s1"]
+
+        #expect(PodcastSyncService.needsDetailFetch(
+            summary: Self.summary(title: "改過的標題"), local: local
+        ))
+    }
+
+    @Test("指紋的欄位彼此不會互相冒充（分隔符沒被拼接吃掉）")
+    func fingerprintFieldsCannotImpersonateEachOther() {
+        let a = PodcastSyncService.fingerprint(
+            updatedAt: "ab", coverImageURL: "c", title: "t", totalDurationSec: nil, episodeCount: nil
+        )
+        let b = PodcastSyncService.fingerprint(
+            updatedAt: "a", coverImageURL: "bc", title: "t", totalDurationSec: nil, episodeCount: nil
+        )
+        #expect(a != b, "沒有分隔符的話這兩組會拼出同一個字串")
     }
 
     @Test("被 tombstone 過的 series 復活時要重抓，才拿得回 episodes")

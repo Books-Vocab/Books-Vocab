@@ -81,11 +81,27 @@ struct SettingsResyncConcurrencyTests {
         let probe = OverlapProbe()
         /// backgroundSync 要送出的事件；測試用它模擬多條腿發出的回報。
         var eventsToEmit: [SyncProgressEvent] = []
+        /// 從**兩個併發 task** 交錯送出，模擬 pull 腿與 reviewEvents 腿同時回報。
+        /// 單一同步迴圈證明不了 AsyncStream 的順序保證——那種順序是發送端給的。
+        var concurrentEventLegs: [[SyncProgressEvent]] = []
+        var outcome: SyncRoundOutcome = .completed
 
         func backgroundSync(container: ModelContainer) async {}
 
-        func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async {
+        @discardableResult
+        func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome {
             for event in eventsToEmit { progress?(event) }
+            await withTaskGroup(of: Void.self) { group in
+                for leg in concurrentEventLegs {
+                    group.addTask {
+                        for event in leg {
+                            progress?(event)
+                            await Task.yield()
+                        }
+                    }
+                }
+            }
+            return outcome
         }
 
         func healthCheck() async { await run("health") }
@@ -170,13 +186,21 @@ struct SettingsResyncConcurrencyTests {
     func progressEventsReachTheStoreInOrder() async {
         let coordinator = SettingsCoordinator()
         let service = ProbeKGService()
-        service.eventsToEmit = [
-            .started(.push),
-            .finished(.push, status: .done, detail: "p"),
-            .started(.pull),
-            .advanced(.pull, current: 10, total: 100, detail: "a"),
-            .advanced(.pull, current: 80, total: 100, detail: "b"),
-            .finished(.pull, status: .done, detail: "q")
+        service.eventsToEmit = [.started(.push), .finished(.push, status: .done, detail: "p")]
+        // 兩條腿併發送事件——這才是 AsyncStream 要對付的亂序來源。pull 那條的
+        // current 必須嚴格遞增抵達，否則計數器會彈回。
+        service.concurrentEventLegs = [
+            [
+                .started(.pull),
+                .advanced(.pull, current: 10, total: 100, detail: "a"),
+                .advanced(.pull, current: 40, total: 100, detail: "b"),
+                .advanced(.pull, current: 80, total: 100, detail: "c"),
+                .finished(.pull, status: .done, detail: "q")
+            ],
+            [
+                .started(.reviewEvents),
+                .finished(.reviewEvents, status: .done, detail: "r")
+            ]
         ]
 
         // container 必須用 local 撐住：`resync` 會走 `modelContext.container
@@ -192,6 +216,8 @@ struct SettingsResyncConcurrencyTests {
         #expect(steps.first(where: { $0.id == "pull" })?.status == .done)
         #expect(steps.first(where: { $0.id == "pull" })?.current == 80,
                 "advanced 事件必須依序抵達；亂序時 80 會被 10 蓋掉")
+        #expect(steps.first(where: { $0.id == "reviewEvents" })?.status == .done,
+                "另一條併發腿的事件不得被 pull 那條擠掉")
         #expect(steps.first(where: { $0.id == "status" })?.status == .done,
                 "額度與連線那一列由 resync 自己收尾")
     }
@@ -216,7 +242,7 @@ struct SettingsResyncConcurrencyTests {
     func failedRoundDoesNotFakeCompletion() async {
         let coordinator = SettingsCoordinator()
         let service = ProbeKGService()
-        service.lastBackgroundSyncError = "部分失敗"
+        service.outcome = .failed
         service.eventsToEmit = [.finished(.push, status: .error, detail: "boom")]
 
         // container 必須用 local 撐住：`resync` 會走 `modelContext.container
@@ -230,6 +256,26 @@ struct SettingsResyncConcurrencyTests {
         #expect(coordinator.syncProgress.fraction < 1.0)
         #expect(coordinator.syncProgress.steps.first(where: { $0.id == "pull" })?.status == .waiting,
                 "沒跑到的步驟不得被收尾邏輯打勾")
+    }
+
+    @Test("被別的 round 佔著 claim（.didNotRun）→ 面板收合，不得宣稱 100% 完成")
+    func abandonedRoundDoesNotClaimSuccess() async {
+        let coordinator = SettingsCoordinator()
+        let service = ProbeKGService()
+        // `claimBackgroundSync()` 失敗那條出口在 `lastBackgroundSyncError` 被重置
+        // **之前**就 return，所以那個全域欄位留著上一輪的 nil。舊寫法會據此判定
+        // 「成功」，於是一輪什麼都沒做的同步顯示 100% 完成。取消那條路徑同理。
+        service.outcome = .didNotRun
+        service.lastBackgroundSyncError = nil
+
+        let container = Self.makeContainer()
+        await coordinator.resync(
+            authManager: MockAuth(), kgService: service, modelContext: container.mainContext
+        )
+
+        #expect(coordinator.syncProgress.phase == .ready)
+        #expect(coordinator.syncProgress.fraction == 0)
+        #expect(coordinator.syncProgress.steps.isEmpty, "什麼都沒做的一輪不該留下任何綠勾")
     }
 
     @Test("demo 模式與登出一律 no-op，連進度都不該開始")

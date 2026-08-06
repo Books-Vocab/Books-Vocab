@@ -353,10 +353,16 @@ extension KGService {
 
     /// `.push` 完成列的說明文字。
     ///
-    /// **算的是「送出了幾筆」，不是「伺服器接受了幾筆」。** 兩者都要含 `skipped`：
-    /// 伺服器端去重把重複的算 skipped，只看 updated / inserted 的話，複習紀錄
-    /// 重送那個 bug（每輪重推 9,580 筆、伺服器全判重複）會顯示「已送出 0 筆」——
-    /// 跟修好之前一模一樣，這一列就白加了。
+    /// **兩腿都含 `skipped`。** 伺服器端去重把重複的算 skipped，只看
+    /// updated / inserted 的話，複習紀錄重送那個 bug（每輪重推 9,580 筆、伺服器全判
+    /// 重複）會顯示「已送出 0 筆」——跟修好之前一模一樣，這一列就白加了。
+    ///
+    /// 誠實的邊界：這是**伺服器回報的帳**，不是本機 payload 的筆數。
+    /// `pushReviewEvents` 兩者相等（它自己 assert `inserted + skipped ==
+    /// batch.count`）；`pushReviewStates` 沒有那道 assert，伺服器若靜默丟棄列，
+    /// 這個數字會少報。另外 `pushReviewEvents` 在 `claimReviewEventPush()` 失敗時
+    /// 回 `(0, 0)`——那是「延後」不是「沒東西可送」，這一列會寫 0 筆。
+    /// 兩者都不值得為了顯示而改動 push 的回傳契約。
     static func pushDetail(states: (updated: Int, skipped: Int), events: (inserted: Int, skipped: Int)) -> String {
         let sent = states.updated + states.skipped + events.inserted + events.skipped
         return L10n.format("已送出 %@ 筆", "\(sent)")
@@ -479,11 +485,14 @@ extension KGService {
         await backgroundSync(container: container, progress: nil)
     }
 
-    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async {
+    @discardableResult
+    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome {
         // 防止併發：快速前景/背景切換可能觸發多個 sync task
         guard claimBackgroundSync() else {
+            // **這條出口在 `lastBackgroundSyncError` 被重置之前**，所以呼叫端若去讀
+            // 那個全域欄位，讀到的是上一輪的殘值。回 `.didNotRun` 是唯一誠實的答案。
             AppLog.kg.info("backgroundSync skipped: already in progress")
-            return
+            return .didNotRun
         }
         defer { releaseBackgroundSync() }
 
@@ -507,7 +516,7 @@ extension KGService {
         guard NetworkMonitor.shared.isConnected else {
             AppLog.kg.info("backgroundSync skipped: offline")
             lastBackgroundSyncError = L10n.string("目前沒有網路連線，背景同步已跳過")
-            return
+            return .didNotRun
         }
 
         AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
@@ -517,10 +526,15 @@ extension KGService {
 
         // Podcast catalog 從整輪的最前面就起跑，與底下整條 vocab 管線併行。
         //
-        // 它以前排在最後、序列執行，而 2026-08-06 的生產量測說那是整輪 7.55s 裡的
+        // 它以前排在最後、序列執行，而 2026-08-06 的量測說那是整輪 7.55s 裡的
         // 6.08s（81%）——同時資料量只有約 7 KB。貴的是往返次數不是位元組，而那些
         // 往返完全不需要等 vocab。兩邊零欄位重疊（PodcastSeries/Episode/Progress
         // vs VocabularyEntry/ReviewRecord），沒有任何理由讓它們互等。
+        //
+        // **那筆 6.08s 目前只有開發者在付。** 這條腿受 `KGFeatureFlags.podcastEnabled`
+        // 管，Release 是 false，所以上架版本從來沒付過、也不會因此變快。修它的理由
+        // 是：它污染我們自己的量測與 debug 體感，而且 podcast 一旦開放就直接變成
+        // 使用者問題。
         //
         // 用 `async let` 而不是 Task：早退路徑（401 / cancelled）離開 scope 時，
         // 結構化併發會自動取消並等待這個 child，不會留下背景在跑的孤兒。
@@ -544,7 +558,7 @@ extension KGService {
             failureLabels.append(contentsOf: pushOutcome.failures.map(\.label))
             wasCancelled = wasCancelled || pushOutcome.cancelled
         } else {
-            return
+            return .failed  // 401：processSyncPhase 已設「登入已過期」
         }
 
         // Phase 2: pull cards & review events in parallel (after push completes)
@@ -610,7 +624,7 @@ extension KGService {
             failureLabels.append(contentsOf: pullOutcome.failures.map(\.label))
             wasCancelled = wasCancelled || pullOutcome.cancelled
         } else {
-            return
+            return .failed  // 401：同上
         }
 
         // Cancelled = the round never finished, so it is neither success nor
@@ -624,7 +638,7 @@ extension KGService {
             AppCrashReporting.addBreadcrumb(
                 category: "sync", message: "sync.end.cancelled", level: .info
             )
-            return
+            return .didNotRun
         }
 
         // 收 podcast 那條併行的腿。它從整輪最前面就在跑（見上方 `async let`），
@@ -646,6 +660,7 @@ extension KGService {
             lastSyncDate = syncedAt
             Self.persistLastSyncDate(syncedAt)
             AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.end.success")
+            return .completed
         } else {
             lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failureMessages.joined(separator: ", "))
             AppCrashReporting.addBreadcrumb(
@@ -654,6 +669,7 @@ extension KGService {
                 level: .warning,
                 data: ["failures": failureLabels]
             )
+            return .failed
         }
     }
 
@@ -675,13 +691,21 @@ extension KGService {
         progress: SyncProgressReporting?
     ) async {
         guard KGFeatureFlags.podcastEnabled else { return }
-        // 沒有 session 就不抓目錄。podcast browse 端點確實收 guest，但 backgroundSync
-        // 只在登入狀態下被觸發——這裡看到 nil token 代表 session 已經死了，這一趟
-        // 注定白跑。以前它排在 vocab pull 的 401 早退之後，等於被那個 return 順手
-        // 擋掉；現在它跑在最前面，就得自己擋。讀 `authSession.token` 而不是呼叫
-        // `currentAuthToken()`：後者對過期 token 會觸發 logout，拿它當前置檢查
-        // 等於偷偷改了 session 失效的時機。
-        guard await kgService.authSession.token != nil else { return }
+        // 沒有**有效** session 就不抓目錄。以前這條腿排在 vocab pull 的 401 早退
+        // 之後，等於被那個 return 順手擋掉；現在它跑在最前面，就得自己擋。
+        //
+        // **過期也要擋，不能只擋 nil。** 只檢查 `token != nil` 會被過期 JWT 穿過去，
+        // 而下游 `PodcastSyncService.optionallyAuthedData` 會呼 `currentAuthToken()`
+        // ——那支對過期 token 會**觸發 logout 與本地資料清除**，而且 `try?` 會把拋出
+        // 吞掉、請求照發。後果是三重的：(1) 那趟注定白跑的 GET 還是發了；(2) logout
+        // 從 t≈0 就啟動，繞過 backgroundSync 開頭那道
+        // `waitForPendingLocalDataCleanup()`（它存在的唯一理由就是不讓 sync 與清除
+        // 重疊——2026-06-09 000287 事故）；(3) `PodcastSyncService` 全檔沒有任何
+        // 取消檢查，所以它的寫入階段會在清除之後才落地，把剛被刪掉的列寫回去。
+        //
+        // 在這裡自己判 expiry（純讀，無副作用），過期就當作沒 session。
+        guard let token = await kgService.authSession.token,
+              !JWTExpiry.isExpired(token) else { return }
         progress?(.started(.podcast))
         let outcome = await runPodcastCatalogSyncIfEnabled {
             await PodcastSyncService(kgService: kgService).syncAll(context: container.mainContext)

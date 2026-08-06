@@ -72,6 +72,10 @@ struct SettingsView: View {
             debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions
         )
+        // 逐步同步進度。走 environment 而不是往 presenter state 塞欄位：這個 store
+        // 在一輪同步裡會被寫幾十次，讓它只驅動「同步狀態」那一列底下的葉節點，
+        // 不讓整個設定頁跟著重算（`PodcastProgressTicker` 的同一個模式）。
+        .environment(\.syncProgressStore, coordinator.syncProgress)
         .task(id: authManager.isLoggedIn) {
             await coordinator.loadData(authManager: authManager, kgService: kgService)
             if authManager.isLoggedIn {

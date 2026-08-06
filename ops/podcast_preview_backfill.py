@@ -17,15 +17,30 @@ already-published series is S3) and, for each series:
   3. PUT ``<sid>/ep_01/preview.<fmt>``                  — a *new* key; nothing
      points at it until step 4, so no client-visible side effect yet.
   4. read-modify-write ``<sid>/metadata.json`` setting episode 1's
-     ``previewAvailable=true`` + ``previewDurationSec`` — a single-object atomic
-     PUT. ``updatedAt`` is deliberately NOT bumped so re-runs stay byte-identical
-     (idempotent).
+     ``previewAvailable=true`` + ``previewDurationSec`` **and bumping
+     ``updatedAt``** — a single-object atomic PUT.
+  5. patch that same ``updatedAt`` into this series' entry in ``index.json``.
 
-``index.json`` is NOT rebuilt: preview fields live *inside* the episode list,
-which the series-list index strips, so the catalog view is unaffected. Touching
-only ``<sid>/ep_01/preview.*`` + ``<sid>/metadata.json`` means this tool can
-never drop or disturb another series (mirrors the audio-decoupled discipline of
-``podcast_cover_publish.py``).
+Why 4 bumps ``updatedAt`` and 5 exists at all (changed 2026-08-06). Both used to
+be deliberately skipped, on the reasoning that preview fields live *inside* the
+episode list — which the series-list index strips — so the catalog view was
+unaffected. That reasoning stopped holding the day the iOS client started
+**caching on the catalog fingerprint**: it now skips the per-series detail fetch
+when nothing in ``index.json`` changed. A content mutation with no visible
+signal is therefore invisible *forever* — the backfilled preview would never
+reach an already-installed device, which is the entire population this tool
+exists to serve.
+
+Idempotency is preserved, just moved: ``backfill_series`` returns ``already``
+and writes nothing when the preview object and the metadata flag are both
+present, so a re-run still touches zero bytes. Only a run that genuinely
+publishes something bumps the stamp.
+
+``index.json`` is **patched, not rebuilt**: step 5 rewrites only this series'
+entry, leaving every other entry byte-identical. Touching only
+``<sid>/ep_01/preview.*`` + ``<sid>/metadata.json`` + one index entry means this
+tool still can never drop or disturb another series (mirrors the audio-decoupled
+discipline of ``podcast_cover_publish.py``, which rebuilds the whole index).
 
 Atomicity = ordering: step 3 (preview object) before step 4 (the metadata flag
 that makes it authoritative) makes every interruption a safe state — re-run
@@ -54,6 +69,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Must match backend podcast_access.FREE_PREVIEW_EP_NUM + PREVIEW_SECONDS in
@@ -187,10 +203,21 @@ def _probe_duration(path: Path) -> int:
     return 0
 
 
-def patch_preview_meta(meta: dict, *, duration_sec: int) -> dict:
-    """Return a copy of metadata with episode PREVIEW_EP_NUM's preview fields set.
-    All other fields (createdAt, episode list order, other episodes) preserved
-    verbatim; updatedAt NOT bumped (idempotent re-runs)."""
+def utc_stamp() -> str:
+    """``updatedAt`` in the same shape the publisher writes (ISO8601, UTC)."""
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def patch_preview_meta(meta: dict, *, duration_sec: int, stamp: str) -> dict:
+    """Return a copy of metadata with episode PREVIEW_EP_NUM's preview fields set
+    and ``updatedAt`` bumped to ``stamp``.
+
+    All other fields (createdAt, episode list order, other episodes) are
+    preserved verbatim. The stamp bump is what makes the change visible to a
+    client that caches on the catalog fingerprint — see the module docstring.
+    Idempotency lives in ``backfill_series``' ``already`` short-circuit, not in
+    byte-identical rewrites.
+    """
     out = dict(meta)
     episodes = [dict(e) for e in out.get("episodes", [])]
     found = False
@@ -203,7 +230,25 @@ def patch_preview_meta(meta: dict, *, duration_sec: int) -> dict:
     if not found:
         raise ValueError(f"metadata has no episode {PREVIEW_EP_NUM} to mark previewable")
     out["episodes"] = episodes
+    out["updatedAt"] = stamp
     return out
+
+
+def patch_index_stamp(index: list, *, series_id: str, stamp: str) -> tuple[list, bool]:
+    """Return (index, changed) with only ``series_id``'s ``updatedAt`` rewritten.
+
+    Patches rather than rebuilds: every other entry stays byte-identical, so this
+    tool keeps its "can never disturb another series" property. Returns
+    ``changed=False`` when the series has no index entry — that is a real
+    inconsistency (published metadata, absent from the catalog) and the caller
+    warns rather than inventing an entry from partial data.
+    """
+    out = [dict(e) if isinstance(e, dict) else e for e in index]
+    for entry in out:
+        if isinstance(entry, dict) and entry.get("id") == series_id:
+            entry["updatedAt"] = stamp
+            return out, True
+    return out, False
 
 
 def backfill_series(s3, *, bucket: str, series_id: str, dry_run: bool = True) -> str:
@@ -232,12 +277,29 @@ def backfill_series(s3, *, bucket: str, series_id: str, dry_run: bool = True) ->
         raise ValueError(f"{series_id}: {audio_key} not in bucket")
 
     preview_body, duration = make_preview_bytes(audio_body, fmt)
+    stamp = utc_stamp()
     # 3. preview object first — new key, metadata not pointing at it yet.
     _put(s3, bucket, preview_key, preview_body, _AUDIO_CT[fmt], dry_run=dry_run)
     # 4. metadata flag — the visibility flip. Atomic single-object replace.
-    patched = patch_preview_meta(meta, duration_sec=duration)
+    patched = patch_preview_meta(meta, duration_sec=duration, stamp=stamp)
     body = json.dumps(patched, ensure_ascii=False, indent=2).encode("utf-8")
     _put(s3, bucket, f"{series_id}/metadata.json", body, _JSON_CT, dry_run=dry_run)
+    # 5. index entry — the only thing an already-installed client will ever see.
+    #    Ordering mirrors step 3→4: the authoritative object lands first, the
+    #    pointer that advertises it lands second, so every interruption is a
+    #    safe state that a re-run drives forward.
+    index = _get_json(s3, bucket, "index.json")
+    if isinstance(index, list):
+        patched_index, changed = patch_index_stamp(index, series_id=series_id, stamp=stamp)
+        if changed:
+            index_body = json.dumps(patched_index, ensure_ascii=False, indent=2).encode("utf-8")
+            _put(s3, bucket, "index.json", index_body, _JSON_CT, dry_run=dry_run)
+        else:
+            print(f"  ⚠ {series_id} has no index.json entry — catalog fingerprint NOT bumped; "
+                  "installed clients will not see this preview until the series is republished",
+                  file=sys.stderr)
+    else:
+        print("  ⚠ index.json missing/malformed — catalog fingerprint NOT bumped", file=sys.stderr)
     return "published"
 
 

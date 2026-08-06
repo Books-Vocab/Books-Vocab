@@ -21,6 +21,9 @@ struct SettingsOtherSection: View {
     @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
     @Environment(\.quotaStore) var quotaStore
+    /// 高頻 observable 隔離在葉節點讀取（`PodcastProgressTicker` 模式）：同步一輪
+    /// 會寫進 store 幾十次，讓它只驅動這一小塊，不讓整個設定頁跟著重算。
+    @Environment(\.syncProgressStore) var syncProgress
 
     private struct ExternalActionItem: Identifiable {
         let icon: String
@@ -92,6 +95,26 @@ struct SettingsOtherSection: View {
     // MARK: - Sync Summary Row
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
+        VStack(spacing: 0) {
+            syncSummaryButton(summary)
+
+            // 逐步清單 + 進度條。放在 Button **外面**：它有自己的無障礙語意，
+            // 而且整段同步期間 Button 是 disabled 的，包進去等於把一個活的進度
+            // 顯示塞進一個死的控制項裡。
+            if summary.isSyncing && !syncProgress.steps.isEmpty {
+                SettingsSyncProgressPanel(
+                    steps: syncProgress.steps,
+                    fraction: syncProgress.fraction
+                )
+                .transition(.statusRowReveal)
+            }
+        }
+        // 展開與收合共用這一條。收合時 `lastSyncedText` 那一行同時淡回來
+        // （它本來就以 `isSyncing` 為條件），所以整段是一次過渡而不是兩段接力。
+        .animation(AppMotion.phaseChange, value: summary.isSyncing)
+    }
+
+    private func syncSummaryButton(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
         Button {
             actions.resync()
         } label: {

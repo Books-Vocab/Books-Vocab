@@ -85,6 +85,19 @@ struct SyncProgressStoreTests {
         #expect(store.steps[0].current == 20)
     }
 
+    @Test("第一個終態說了算：成功收尾後晚到的 error 不得把綠翻紅")
+    func firstTerminalWins() {
+        let store = makeStore([.pull])
+        store.apply(.started(.pull))
+        // 真實序列：pullCardsToLocal 內部在單字卡 merge 成功後發 done，
+        // 接著字典卡投影拋非 404，外層的失敗補救又發一次 error。
+        store.apply(.finished(.pull, status: .done, detail: "同步 6 筆"))
+        store.apply(.finished(.pull, status: .error, detail: "伺服器錯誤"))
+
+        #expect(store.steps[0].status == .done, "卡片已經寫進本地庫了，那一列不該翻紅")
+        #expect(store.steps[0].detail == "同步 6 筆")
+    }
+
     @Test("已終結的步驟不會被晚到的 advanced 復活")
     func terminalStepIsNotRevivedByLateAdvance() {
         let store = makeStore([.pull])
