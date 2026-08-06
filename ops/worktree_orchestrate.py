@@ -58,10 +58,15 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              warnings") — the driving agent owns a warn's disposition, so the tool must
              not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
              dry-run default.
-  resolve    landed-floor (refuse to force-discard a branch not yet in base, unless
-             --force) → registry resolve <branch> merged → git worktree remove +
-             branch -D (local, and origin if present) + drop the gate-record cache →
-             ledger closed, no residue.
+  resolve    target identity FIRST (the branch comes from `git worktree list
+             --porcelain`, never from a `rev-parse` that would walk up into the
+             enclosing checkout; base/trunk/other-worktree branches and the primary
+             are refused outright) → landed-floor (refuse to force-discard a branch
+             not yet in base, unless --force) → registry resolve <branch> merged →
+             git worktree remove (preceded by a streamed `rm -rf` when the entry is
+             prunable, i.e. an earlier teardown was interrupted) + branch -D (local,
+             and origin if present) + drop the gate-record cache → ledger closed, no
+             residue. Fail-fast: a failed critical step aborts the rest.
   sync       BACKUP plane: mirror the local trunk to origin/main (local→origin) — a
              zero-side-effect backup. Distinct from sync-main (origin→local). The
              reconciler watches origin/prod, not origin/main, so this has no production
@@ -96,6 +101,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from contextlib import redirect_stdout
@@ -696,6 +702,32 @@ def _git_mutation(
     return proc.returncode, out
 
 
+def _rmtree_streamed(path: str) -> tuple[int, str]:
+    """Remove a directory tree under the same visible-progress contract as every
+    other long operation (iron law 5).
+
+    Deliberately NOT `shutil.rmtree`: the tree this removes is a worktree's, and in
+    the incident that meant 19 GB of iOS DerivedData taking minutes. An in-process
+    rmtree emits nothing for that whole window — exactly the silence the heartbeat
+    contract forbids, and the silence that got the original run killed by a caller
+    timeout, which is what manufactured the ambiguous state in the first place."""
+    try:
+        proc = run_streamed_command(
+            ["rm", "-rf", "--", path],
+            cwd=primary_root(),
+            label_key="mutation",
+            label="resolve-remove-leftover-directory",
+            progress_prefix="[worktree][mutation]",
+            heartbeat_interval=20.0,
+            capture_limit=64 * 1024,
+            merge_stderr=False,
+        )
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        return 127, f"cwd unavailable: {exc}"
+    stderr = (proc.stderr or "").strip()
+    return proc.returncode, stderr
+
+
 def primary_root() -> Path:
     """The MAIN working tree's root (dirname of the git common dir). Stable no matter
     which linked worktree the process stands in — the only safe anchor for open's
@@ -832,6 +864,24 @@ def _head_sha(worktree: str) -> str:
 def _current_branch(worktree: str) -> str | None:
     rc, out = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=worktree)
     return out if rc == 0 and out != "HEAD" else None
+
+
+def _worktree_entry(worktree: str) -> dict[str, Any] | None:
+    """This path's `git worktree list --porcelain` record, or None if git does not
+    list it as a worktree at all.
+
+    This is the ONLY admissible path→branch answer for teardown. `_current_branch`
+    is not: git's repository discovery WALKS UP from its cwd, so a directory whose
+    `.git` has been removed — an interrupted `worktree remove`, whose first act is
+    to unlink that file — answers with the ENCLOSING checkout's branch. Worktrees
+    live at <repo>/.claude/worktrees/<slug>, so the enclosing checkout is the
+    primary and the answer is `main`. The worktree list has no such fallback: it
+    still names the real branch and flags the entry `prunable`."""
+    target = _norm(worktree)
+    for w in wr._worktrees():
+        if _norm(w["path"]) == target:
+            return w
+    return None
 
 
 def _remote_branch_exists(name: str) -> bool:
@@ -2038,16 +2088,218 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _active_ledger_records(state: str | None, branch: str) -> list[dict[str, Any]]:
+    """Active ledger records naming this BRANCH. Read-only — the write is still the
+    registry's own `resolve`.
+
+    Deliberately not "…or this path", unlike the registry's own resolve selector: the
+    question a teardown asks is "does an authority vouch for deleting THIS BRANCH",
+    and a record that merely proves the path is registered answers a different one.
+    Matching on path lets a worktree's own registration vouch for deleting an
+    unrelated branch named on the command line."""
+    path = Path(state).resolve() if state else wr.default_state_path()
+    try:
+        data = wr.load_state(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    return [r for r in data.get("records", [])
+            if r.get("status") == wr.STATUS_ACTIVE and r.get("branch") == branch]
+
+
+def _ledger_branches_for_path(state: str | None, worktree: str) -> list[str]:
+    """Every branch the ledger has ever recorded at this path, any status.
+
+    Status-blind on purpose: this is a DERIVATION source of last resort, not an
+    authorisation. It covers the states where git's admin entry is gone but the
+    path is still real — `worktree remove` erroring partway drops the entry anyway,
+    and any `git worktree prune` in the repo (including one issued for an unrelated
+    worktree) removes it. Without this the operator's only recourse would be to
+    hand-type --branch, which is the guess this change exists to eliminate."""
+    path = Path(state).resolve() if state else wr.default_state_path()
+    try:
+        data = wr.load_state(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+    target = _norm(worktree)
+    seen: list[str] = []
+    for r in data.get("records", []):
+        if r.get("path") and _norm(r["path"]) == target and r.get("branch"):
+            if r["branch"] not in seen:
+                seen.append(r["branch"])
+    return seen
+
+
+def _protected_branches(base: str, target: str | None) -> tuple[str | None, set[str]]:
+    """The registry's protected set, widened by terms that do NOT depend on `--base`.
+
+    `wr.sweep_guards` derives everything from `--base` plus the primary's current
+    checkout, so `--base origin/prod` while the primary sits on some other branch
+    leaves `main` unprotected — and a resolve then deletes local `main` outright.
+    Measured, not hypothesised. A floor that a caller-supplied flag can lower is not
+    a floor, so three base-independent terms are added:
+
+      * the local trunk (`BASE_DEFAULT`) — in this repo's local-main-centric topology
+        deleting it is never a legitimate outcome, whatever `--base` says;
+      * the remote's default branch, read from `origin/HEAD`;
+      * every branch checked out in any OTHER worktree — which internalises a refusal
+        we were previously outsourcing to git ("cannot delete branch used by worktree
+        at …"). The target's own branch is excluded because removing its worktree
+        first is exactly how a legitimate teardown frees it."""
+    primary_path, protected = wr.sweep_guards(base)
+    protected.add(BASE_DEFAULT)
+    rc, ref = _git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"],
+                   cwd=primary_root())
+    if rc == 0 and ref:
+        protected.add(ref.rsplit("/", 1)[-1])
+    norm_target = _norm(target) if target else None
+    for w in wr._worktrees():
+        if w.get("branch") and _norm(w["path"]) != norm_target:
+            protected.add(w["branch"])
+    return primary_path, protected
+
+
+def _rm_target_vetted(worktree: str, state: str | None) -> bool:
+    """Whether this path may be handed to a recursive delete.
+
+    `git worktree remove` validates before deleting — that validation is why the
+    incident's re-run got rc=128 instead of destroying anything. A raw recursive
+    delete has none, and git will list an ADOPTED worktree at an arbitrary path
+    anywhere on the filesystem. So the target must either live under this repo's
+    worktree root, or be a path the ledger itself recorded."""
+    root = _norm(str(primary_root() / ".claude" / "worktrees"))
+    if _norm(worktree).startswith(root + os.sep):
+        return True
+    return bool(_ledger_branches_for_path(state, worktree))
+
+
+# Refusal codes, and the exit status each carries. Misuse ("you pointed me at the
+# wrong thing") stays EXIT_USAGE; a safety refusal ("what you asked for is not a
+# legitimate outcome") is EXIT_BLOCK. Emitted as `reason_code` beside the prose so a
+# caller can switch on the decision instead of grepping a sentence that will be
+# reworded.
+RESOLVE_REFUSALS = {
+    "not-a-worktree": EXIT_USAGE,
+    "detached-head": EXIT_USAGE,
+    "ambiguous-ledger": EXIT_USAGE,
+    "protected-branch": EXIT_BLOCK,
+    "primary-worktree": EXIT_BLOCK,
+    "branch-contradicts-git": EXIT_BLOCK,
+    "uncorroborated-branch": EXIT_BLOCK,
+    "rm-target-unvetted": EXIT_BLOCK,
+    "unsafe-step": EXIT_BLOCK,
+}
+
+
+def _resolve_target(worktree: str, explicit: str | None, base: str, state: str | None
+                    ) -> tuple[str | None, dict[str, Any] | None, str | None, str | None]:
+    """(branch, git worktree entry, refusal code, reason) — the single chokepoint
+    every teardown target passes through. NEVER falls back to the invoking cwd's HEAD.
+
+    The protected set comes from the registry's own `sweep_guards`, which already
+    owns the invariant "the base branch and the primary worktree are never torn
+    down". Sweep consulted it; resolve did not, which is how a mis-derived branch
+    reached `branch -D main` and `push origin --delete main` with nothing but git's
+    external refusals in the way (IMP-20260806-1359bd)."""
+    entry = _worktree_entry(worktree)
+    # git CONTRADICTING the caller is categorically worse than git having nothing to
+    # say, and the two must not collapse into one condition. When they do, a ledger
+    # record belonging to a DIFFERENT worktree can vouch for the branch named here:
+    # `resolve --worktree <alpha> --branch <bravo's branch>` then tears down alpha
+    # and deletes bravo's remote branch, with only git's "cannot delete branch used
+    # by worktree at …" standing in the way of the local half. No ledger record from
+    # elsewhere may override git's direct statement about THIS path.
+    if entry is not None and explicit and entry.get("branch") \
+            and entry["branch"] != explicit:
+        return None, entry, "branch-contradicts-git", (
+            f"git says {worktree} is on {entry['branch']!r}, not {explicit!r} — "
+            "refusing to tear down one worktree while deleting another's branch. "
+            "Drop --branch to target what git names.")
+    branch = explicit
+    if not branch:
+        if entry is not None:
+            if entry.get("detached") or not entry.get("branch"):
+                return None, entry, "detached-head", (
+                    f"{worktree} has a detached HEAD — there is no branch to resolve; "
+                    "pass --branch to name one explicitly")
+            branch = entry["branch"]
+        else:
+            # git no longer lists the path; fall back to what the ledger recorded FOR
+            # THIS PATH. Never to `rev-parse`, whose answer here is the enclosing
+            # checkout's branch.
+            candidates = _ledger_branches_for_path(state, worktree)
+            if len(candidates) == 1:
+                branch = candidates[0]
+            elif len(candidates) > 1:
+                return None, None, "ambiguous-ledger", (
+                    f"the ledger records more than one branch at {worktree} "
+                    f"({', '.join(candidates)}) — pass --branch to disambiguate")
+            else:
+                return None, None, "not-a-worktree", (
+                    f"{worktree} is not a git worktree and the ledger has never "
+                    "recorded one there — refusing to guess its branch, because "
+                    "asking a directory for its HEAD answers with the ENCLOSING "
+                    "checkout's branch (the primary's, for anything under the repo). "
+                    "Pass --branch to name the target explicitly.")
+
+    primary_path, protected = _protected_branches(base, worktree)
+    if primary_path is None:
+        # A real repo always lists at least the primary worktree. An empty list means
+        # the probe failed, and `sweep_guards` cannot distinguish that from "nothing
+        # is protected" — so treat it as unknown and fail closed rather than tear
+        # down against an empty protected set.
+        return None, entry, "not-a-worktree", (
+            "cannot enumerate this repository's worktrees — refusing to tear anything "
+            "down while the protected set is unknown")
+    if branch in protected:
+        return None, entry, "protected-branch", (
+            f"branch {branch!r} is protected — it is the base branch or the primary "
+            "worktree's checked-out branch, and deleting it is never a resolve "
+            "outcome (registry sweep_guards)")
+    if _norm(worktree) == primary_path:
+        return None, entry, "primary-worktree", (
+            f"{worktree} is the PRIMARY worktree — removing it destroys the repository")
+    return branch, entry, None, None
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     """Landed-floor guard, then registry resolve merged → worktree remove + branch -D
     (local + remote) + drop the gate-record cache."""
     worktree = _norm(args.worktree)
-    branch = args.branch or (_current_branch(worktree) if Path(worktree).is_dir() else None)
-    if not branch:
-        _emit({"schema": SCHEMA, "step": "resolve", "error": "cannot determine branch "
-               "(pass --branch, or point --worktree at a live worktree)"}, args.json,
-              "✗ cannot determine branch — pass --branch or a live --worktree")
-        return EXIT_USAGE
+
+    def _refuse(code: str, reason: str, **extra: Any) -> int:
+        _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
+               "reason_code": code, "reason": reason, "branch": extra.pop("branch", None),
+               "worktree": worktree, **extra},
+              args.json, f"✗ resolve refused [{code}]: {reason}")
+        return RESOLVE_REFUSALS[code]
+
+    branch, entry, code, reason = _resolve_target(worktree, args.branch, args.base,
+                                                  args.state)
+    if code:
+        return _refuse(code, reason, branch=args.branch)
+
+    # CORROBORATION: the target must be vouched for by at least one authority — git's
+    # worktree list, or an active ledger record. In the incident neither named it:
+    # the list did not map that path to `main`, and the ledger said "no active record
+    # for branch=main" — which the tool PRINTED and then ignored. Requiring only ONE
+    # of the two is deliberate: after an interrupted teardown the ledger is already
+    # closed (it is struck before the git steps), so a ledger-AND rule would strand
+    # every re-run, and the whole point of that re-run is to finish the job.
+    #
+    # Note this refusal deliberately does NOT tell the operator to run `adopt`: adopt
+    # resolves its target through `--show-toplevel`, which for a .git-less directory
+    # answers with the primary and makes adopt refuse. It is a dead end for exactly
+    # the degraded worktrees that reach this line.
+    corroborated_by_git = bool(entry and entry.get("branch") == branch)
+    corroborated_by_ledger = bool(_active_ledger_records(args.state, branch)) or \
+        branch in _ledger_branches_for_path(args.state, worktree)
+    if not corroborated_by_git and not corroborated_by_ledger:
+        return _refuse("uncorroborated-branch",
+                       f"no authority vouches for branch {branch!r} at {worktree} — git "
+                       "does not map that path to that branch and the ledger has never "
+                       "recorded it there. Point --worktree at the real path, or drop "
+                       "--branch and let git's worktree list name the target.",
+                       branch=branch)
 
     # nit2 LANDED FLOOR: resolve is a force-discard (worktree remove --force + branch -D).
     # Called out of order (before cutover) it would vaporize unlanded work. Refuse a
@@ -2072,16 +2324,74 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     gate_cache = _gate_record_path(args.state, worktree)
     steps: list[dict[str, Any]] = []
 
-    def _plan(label: str, gargs: list[str], cwd: Path) -> None:
+    def _plan(label: str, gargs: list[str], cwd: Path, *, critical: bool = False) -> None:
         steps.append({"label": label, "cmd": "git " + " ".join(gargs),
                       "progress_label": "resolve-" + label.replace(" ", "-"),
-                      "gargs": gargs, "cwd": str(cwd)})
+                      "gargs": gargs, "cwd": str(cwd), "critical": critical})
 
-    if Path(worktree).is_dir():
-        _plan("remove worktree", ["worktree", "remove", "--force", worktree], root)
+    # Teardown shape depends on whether git's administrative link is intact.
+    #
+    # A `prunable` entry is the fossil of an interrupted `worktree remove --force`:
+    # that command unlinks the worktree's `.git` FIRST and only then rm's the tree,
+    # so a caller timeout during a slow removal (19 GB of DerivedData, in the
+    # incident) leaves the directory standing with a broken link. `worktree remove`
+    # answers rc=128 on such an entry — but MEASURED: once the directory itself is
+    # gone it succeeds again, rc=0, and removes only that one entry.
+    #
+    # That measurement is why there is no `git worktree prune` here. Prune has no
+    # path filter: in a repo with two independently broken worktrees, one prune
+    # reaps BOTH. Since concurrent sessions are this repo's normal mode, a routine
+    # resolve would silently destroy a sibling session's only remaining path->branch
+    # record — the very information whose loss caused this incident. `worktree
+    # remove` addresses exactly one path, so the healthy and the degraded paths end
+    # up on the same targeted command.
+    #
+    # ORDER IS THE RESILIENCE: the slow, resumable step (rm -rf) runs while the
+    # admin entry still holds the path->branch mapping, and the cheap administrative
+    # strike runs last. Reversed, an interruption in between would leave a directory
+    # nothing can attribute to a branch.
+    def _plan_rm() -> None:
+        steps.append({"label": "remove leftover worktree directory",
+                      "cmd": f"rm -rf {worktree}",
+                      "progress_label": "resolve-remove-leftover-directory",
+                      "rmtree": worktree, "critical": True})
+
+    if entry is not None:
+        if entry.get("prunable") and Path(worktree).is_dir():
+            _plan_rm()
+        _plan("remove worktree", ["worktree", "remove", "--force", worktree], root,
+              critical=True)
+    elif Path(worktree).is_dir():
+        # git no longer lists the path — an errored `worktree remove` drops the admin
+        # entry anyway, and any prune in the repo removes it — but the directory is
+        # still on disk. `worktree remove` has nothing left to act on, so without this
+        # branch resolve reported `failures: 0` and exited 0 while leaving the whole
+        # tree behind: a silent false success, and 19 GB of it in the incident's shape.
+        _plan_rm()
+
+    if any(s.get("rmtree") for s in steps) and not _rm_target_vetted(worktree, args.state):
+        return _refuse("rm-target-unvetted",
+                       f"{worktree} is neither under this repo's worktree root nor a "
+                       "path the ledger recorded — refusing to delete it recursively",
+                       branch=branch)
+
     _plan("delete local branch", ["branch", "-D", branch], root)
     if _remote_branch_exists(branch):
         _plan("delete remote branch", ["push", "origin", "--delete", branch], root)
+
+    # Belt-and-suspenders, same net the registry's sweep clearance runs: no planned
+    # step may delete a protected branch or remove the primary worktree. _resolve_target
+    # already makes that unrepresentable; this catches a future bug upstream of it.
+    primary_path, protected = _protected_branches(args.base, worktree)
+    unsafe = [s["cmd"] for s in steps if s.get("gargs")
+              and wr._step_touches_protected(s["gargs"], primary_path, protected)]
+    # the recursive delete carries no argv, so the registry predicate cannot see it
+    unsafe += [s["cmd"] for s in steps if s.get("rmtree")
+               and primary_path and _norm(s["rmtree"]) == primary_path]
+    if unsafe:
+        return _refuse("unsafe-step",
+                       "planned a repository-destroying step — refusing: "
+                       + "; ".join(unsafe), branch=branch, unsafe=unsafe)
 
     if not args.commit:
         payload = {"schema": SCHEMA, "step": "resolve", "mode": "dry-run", "branch": branch,
@@ -2094,16 +2404,36 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     # ledger closure first (idempotent even if the git teardown partially failed before).
     _registry(["resolve", *_state_arg(args.state), "--branch", branch, "--status", "merged"])
+    # FAIL-FAST on the steps later ones depend on. Half of the incident lived here:
+    # `worktree remove --force` returned 128 and the loop went on to run `branch -D`
+    # and `push origin --delete` anyway. Correct targeting makes those two harmless;
+    # it does not make "keep going after a destructive step failed" correct. It also
+    # matters for the new rm: if the directory removal fails, continuing would strike
+    # the admin entry and leave a directory nothing can attribute to a branch — the
+    # unrecoverable version of the state this whole change exists to make recoverable.
     results = []
     failures = 0
+    aborted_after = None
     for s in steps:
-        rc, out = _git_mutation(
-            s["gargs"], cwd=Path(s["cwd"]), label=s["progress_label"],
-        )
-        results.append({"label": s["label"], "cmd": s["cmd"], "ok": rc == 0,
-                        "detail": out[:200] if rc != 0 else ""})
-        if rc != 0:
+        if s.get("rmtree"):
+            rc, out = _rmtree_streamed(s["rmtree"])
+        else:
+            rc, out = _git_mutation(
+                s["gargs"], cwd=Path(s["cwd"]), label=s["progress_label"],
+            )
+        ok = rc == 0
+        results.append({"label": s["label"], "cmd": s["cmd"], "ok": ok,
+                        "detail": out[:200] if not ok else ""})
+        if not ok:
             failures += 1
+            if s.get("critical"):
+                aborted_after = s["label"]
+                skipped = [t["label"] for t in steps[steps.index(s) + 1:]]
+                results.append({"label": "aborted", "cmd": "", "ok": False,
+                                "detail": f"skipped after a failed critical step: "
+                                          f"{', '.join(skipped)}" if skipped else
+                                          "no remaining steps"})
+                break
 
     # nit3 ZERO RESIDUE: also drop this worktree's gate-record cache (the per-machine
     # verdict file gate wrote beside the ledger). Otherwise a stale verdict lingers
@@ -2118,6 +2448,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
                "resolved": "merged", "executed": results, "failures": failures,
+               "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed}
     human = ["# resolve (committed): ledger -> merged"]
     for r in results:

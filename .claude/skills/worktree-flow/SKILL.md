@@ -85,10 +85,16 @@ orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進
 ```
 ops/worktree_orchestrate.py resolve --worktree <path> --json          # dry-run 看計畫
 ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
+# --branch 只在 git 已經不認得該路徑（admin entry 沒了）且 ledger 也查不到時才需要，
+# 而且它不會放寬任何護欄：git 若對該路徑報出不同分支，帶 --branch 一律被拒。
 ```
 （`resolve` 刻意用**主 repo** 那份，不比照 gate/cutover：它是拆除動作，會刪掉 `<path>` 本身，且不路由任何 gate。）
 
-先過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove` + `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。
+先定 **目標身分**：branch 一律取自 `git worktree list --porcelain`，**絕不**問 `rev-parse`——worktree 的 `.git` 一旦消失（`worktree remove` 會先刪它、再慢慢 rm 樹，中途被 timeout 砍就是這個狀態），git 的 repo discovery 會**往上走**找到 primary、回答 `main`，而 porcelain 仍誠實報出真分支＋`prunable`（IMP-20260806-1359bd：曾因此排出 `branch -D main` 與 `push origin --delete main`，只被 git 自己的拒絕擋下）。
+
+再過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove`（entry 若是 `prunable`，先跑帶 heartbeat 的 `rm -rf` 把樹清掉，`worktree remove` 才有辦法成功）+ `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。**critical step 失敗即停**，不再往下跑刪分支（payload 帶 `aborted_after`）。
+
+**被拒時看 `reason_code`，別讀散文**：`not-a-worktree` / `detached-head` / `ambiguous-ledger` = **EXIT_USAGE(64)**，你指錯路徑或該路徑需要 `--branch` 才有辦法指名；`protected-branch` / `primary-worktree` / `branch-contradicts-git` / `uncorroborated-branch` / `rm-target-unvetted` / `unsafe-step` = **EXIT_BLOCK(1)**，安全拒絕，改指令沒用，先確認你要拆的到底是哪一個 worktree。`--force` **只**降 landed-floor，**不**降任何身分護欄。**不要因為被拒就去跑 `git worktree prune`**：那會刪掉 admin entry＝該路徑唯一的 path→branch 復原資訊（也會連帶收掉其他 session 中斷 teardown 的 entry），之後只剩手打 `--branch`；正解是把 `--worktree` 指到對的路徑。`adopt` 也救不了這個狀態（它經 `--show-toplevel` 解析，對 `.git` 已消失的目錄會解到 primary 然後拒絕）。
 
 **唯一刻意留下的檔案**：同目錄的 `.cache/worktree_gates/history.jsonl`（append-only gate 行為日誌，per-machine、gitignored、`resolve` 不刪，有測試釘住）。它是「這道 gate 曾經綠過嗎」的唯一資料來源——刪掉等於讓 never-green 偵測失憶。**別把它當殘骸清掉。**
 

@@ -752,3 +752,71 @@ def test_list_json_reports_live_state_for_active(sweep_repo):
     assert "live_state" in recs["landed-wt"]
     # ghost record's worktree is gone -> worktree_present False
     assert recs["ghost"]["worktree_present"] is False
+
+
+# ---- porcelain parsing + the protected-step predicate ----------------------
+# Split out as a pure function so the record shape can be asserted on a string
+# literal: proving `prunable` survives parsing needed a real repo, a real
+# `worktree add` and a real `.git` unlink before this.
+
+PORCELAIN = """\
+worktree /repo
+HEAD 1111111111111111111111111111111111111111
+branch refs/heads/main
+
+worktree /repo/.claude/worktrees/broken
+HEAD 2222222222222222222222222222222222222222
+branch refs/heads/feat/broken
+prunable gitdir file points to non-existent location
+
+worktree /repo/.claude/worktrees/locked-broken
+HEAD 3333333333333333333333333333333333333333
+branch refs/heads/feat/locked
+locked parked on an unmounted volume
+
+worktree /repo/.claude/worktrees/loose
+HEAD 4444444444444444444444444444444444444444
+detached
+"""
+
+
+def test_porcelain_parse_keeps_the_prunable_reason():
+    # `prunable` is the ONLY signal distinguishing "this path's admin link is broken"
+    # from "this path is healthy" once the worktree's .git file is gone — the state in
+    # which `rev-parse` starts answering with the enclosing checkout's branch.
+    wts = MODULE.parse_worktree_porcelain(PORCELAIN)
+    assert [w["path"] for w in wts] == [
+        "/repo", "/repo/.claude/worktrees/broken",
+        "/repo/.claude/worktrees/locked-broken", "/repo/.claude/worktrees/loose"]
+    assert wts[0].get("prunable") is None
+    assert wts[1]["prunable"] == "gitdir file points to non-existent location"
+    assert wts[1]["branch"] == "feat/broken"
+
+
+def test_porcelain_parse_separates_locked_from_prunable():
+    # A locked worktree is exempt from `git worktree prune` even when broken, so
+    # "broken" and "reapable" are different questions and must stay different fields.
+    wts = MODULE.parse_worktree_porcelain(PORCELAIN)
+    locked = wts[2]
+    assert locked["locked"] == "parked on an unmounted volume"
+    assert locked.get("prunable") is None
+    assert wts[3]["detached"] is True and "branch" not in wts[3]
+
+
+def test_protected_step_predicate_sees_past_option_flags():
+    # Regression: the predicate read a fixed gargs[2], which for the orchestrator's
+    # actual argv is the string "--force". The one caller most in need of the net was
+    # therefore the one it silently did not cover.
+    primary = MODULE._norm("/repo")
+    protected = {"main"}
+    assert MODULE._step_touches_protected(
+        ["worktree", "remove", "--force", "/repo"], primary, protected) is True
+    assert MODULE._step_touches_protected(
+        ["worktree", "remove", "/repo"], primary, protected) is True
+    assert MODULE._step_touches_protected(
+        ["worktree", "remove", "--force", "/repo/.claude/worktrees/x"],
+        primary, protected) is False
+    assert MODULE._step_touches_protected(
+        ["branch", "-D", "main"], primary, protected) is True
+    assert MODULE._step_touches_protected(
+        ["push", "origin", "--delete", "main"], primary, protected) is True
