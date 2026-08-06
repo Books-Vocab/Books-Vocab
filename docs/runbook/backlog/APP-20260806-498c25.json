@@ -1,0 +1,15 @@
+{
+  "build": "main @ 917ad3e4b, Debug, iPhone 17 Pro Max (F068B3D8) iOS 26.4",
+  "category": "correctness",
+  "date": "2026-08-06",
+  "detail": "切換 app 語言在 Debug build 必崩。根因在 ios/BooksAndVocab/Models/AppLanguage.swift 的 AppLanguageStore.setLanguage(_:) 尾端 Task { try Tips.resetDatastore() }：TipKit 規定 resetDatastore() 要在 Tips.configure() 之前呼叫，之後呼叫就 throw；catch 內的 #if DEBUG 只用 XCTestConfigurationFilePath 豁免 XCTest，所以開發者跑 Debug build 一定觸發 assertionFailure。crash backtrace 逐格吻合：assertionFailure → closure #1 in AppLanguageStore.setLanguage(_:)。兩種組態都錯：Debug 是正常使用者操作直接硬崩；Release 則 assertionFailure 被編掉→reset 靜默失敗→已渲染的 TipKit 文案停在舊語言，正好是那段 Task 上方註解自稱要避免的事。修法需決定把 reset 移到 launch 時 Tips.configure() 之前（以 pending 語言變更旗標驅動），或拿掉 assertion 並改為真正處理失敗。注意偏好讀取順序是 cloud.string(forKey:) ?? defaults.string(forKey:)，NSUbiquitousKeyValueStore 為權威，若動到持久化順序需一併考慮。",
+  "id": "APP-20260806-498c25",
+  "repro": "Settings → 語言 → 選任一其他語言。app 立即 SIGTRAP（EXC_BREAKPOINT）。重現兩次：10:39:45、10:51。crash 落 ~/Library/Logs/DiagnosticReports/BooksAndVocab-*.ips，faulting thread 非 main（com.apple.root.user-initiated-qos.cooperative）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "手動實跑 main 驗證 Reader glass 時撞到（模擬器 iPhone 17 Pro Max / iOS 26.4）",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}
