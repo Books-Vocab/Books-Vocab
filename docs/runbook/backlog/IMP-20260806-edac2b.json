@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "UI World fixture reader:realBookLibrary 一啟動就 abort，導致任何依賴它的 UI test 無法起 app。位置 ios/BooksAndVocab/Support/UITestFixtureSeed+Reader.swift:108 的 resolveReaderFixture(from:)：guard bookURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL 失敗並 preconditionFailure。但錯誤訊息印出來的 path 就是 <container>/Documents/Books/reader-real-book.epub，**完全符合這條 guard 自己宣稱的要求**——它拒絕了一個滿足條件的輸入。未驗證的推測：deletingLastPathComponent() 產生尾斜線而 documentDirectory+appendingPathComponent(\"Books\") 沒有，standardizedFileURL 不正規化尾斜線，於是兩個指向同一目錄的 URL 字串比對不相等。修之前先印兩邊 absoluteString 確認機制，再改成正規化比較（比 .path，或讓兩邊走同一套建構）而非裸 URL 相等。另需查清是否有現行 UI test 在跑這個 fixture——若有且 CI 是綠的，就與本觀測矛盾，要先解釋再動手。重現：source ops/lib/fixture_dataset_env.sh; export SIMCTL_CHILD_KG_FIXTURE_DATASET_DEFLATE_B64=$(kg_fixture_dataset_deflate_b64 ops/fixtures/ui_worlds/marketing_demo.json); xcrun simctl launch <udid> com.Max0228.BooksBrowser -ui-testing -seedFixture:reader:realBookLibrary。訊息不在 .ips，要 xcrun simctl spawn <udid> log show --last 5m --predicate 'process == \"BooksAndVocab\"' 才撈得到。",
+  "id": "IMP-20260806-edac2b",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "手動用 -seedFixture:reader:realBookLibrary 起 app 時撞到（模擬器 iPhone 17 Pro Max / iOS 26.4）",
+  "status": "open",
+  "stream": "IMP"
+}
