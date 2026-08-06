@@ -330,6 +330,93 @@ grep -q "available datasets" <<<"$DS_ERR" && grep -q "marketing_demo" <<<"$DS_ER
   && ok "錯誤列出可用 dataset 名單（含 marketing_demo）" \
   || fail_t "錯誤未列可用 dataset: $DS_ERR"
 
+# ── 14. 裸方法名必須反查自身容器（IMP-0030）──────────────────────────────────
+# 舊行為：非 `Class/method` 形式即硬拼 `$TEST_TARGET/$TEST_TARGET/$t`，把每個測試都
+# 掛到「與 target 同名的 class」下。凡不住在該 class 的測試 → selector 0 匹配，
+# 而 parse 期照樣 exit 0，要跑完一整輪 build+test 才被尾端 zero-executed guard 抓到。
+section "bare method name resolves to its own container"
+UI_DIR="$WORKSPACE/ios/BooksAndVocabUITests"
+# 自我發現一個「容器 != BooksAndVocabUITests」的 UITest 方法（硬編會隨測試樹漂移）。
+# 先整包收進變數再 awk：`producer | awk '...exit'` 會給 producer SIGPIPE，
+# 在 `set -o pipefail` 下傳出 141 直接殺掉本腳本（IMP-0058 同一類地雷）。
+UI_FLAGS="$(discover_only_flags "$UI_DIR" "" "BooksAndVocabUITests")"
+FOREIGN="$(awk -F/ 'NF>=3 && $2 != "BooksAndVocabUITests" { print $2 "|" $3; exit }' <<<"$UI_FLAGS")"
+FOREIGN_CLASS="${FOREIGN%%|*}"; FOREIGN_ID="${FOREIGN##*|}"; FOREIGN_BARE="${FOREIGN_ID%%(*}"
+if [[ -n "$FOREIGN_CLASS" && -n "$FOREIGN_BARE" && "$FOREIGN_CLASS" != "BooksAndVocabUITests" ]]; then
+  BARE_OUT="$("$IOS_TEST" --ui --list "$FOREIGN_BARE" 2>/dev/null)" || BARE_OUT=""
+  grep -qxF -- "-only-testing:BooksAndVocabUITests/$FOREIGN_CLASS/$FOREIGN_ID" <<<"$BARE_OUT" \
+    && ok "裸 $FOREIGN_BARE → $FOREIGN_CLASS（非 target 同名 class）" \
+    || fail_t "裸方法未解析到自身容器 $FOREIGN_CLASS，實得：$BARE_OUT"
+  PT_OUT="$("$IOS_TEST" --ui --list "$FOREIGN_CLASS/$FOREIGN_ID" 2>/dev/null)" || PT_OUT=""
+  grep -qxF -- "-only-testing:BooksAndVocabUITests/$FOREIGN_CLASS/$FOREIGN_ID" <<<"$PT_OUT" \
+    && ok "明確 Class/method 直通不變" || fail_t "Class/method 直通壞了：$PT_OUT"
+else
+  fail_t "找不到容器非 BooksAndVocabUITests 的 UITest 方法（FOREIGN='$FOREIGN'）"
+fi
+
+# ── 15. 不存在的裸方法名必須在 parse 期失敗（不得白跑一輪 build+test）─────────
+section "unknown bare method fails at parse time"
+BOGUS_ERR="$("$IOS_TEST" --ui --list zzzNoSuchBareMethodZzz 2>&1 >/dev/null)" && BOGUS_RC=0 || BOGUS_RC=$?
+[[ "$BOGUS_RC" -ne 0 ]] && ok "不存在的裸方法 exit 非 0" \
+  || fail_t "不存在的裸方法竟 exit 0（0 匹配的 selector 會被當成有效輸入送進 xcodebuild）"
+# 只讀 stderr（`2>&1 >/dev/null`）：stdout 上任何含斜線的 selector 都不得滿足這條。
+grep -q "Class/method" <<<"$BOGUS_ERR" \
+  && ok "錯誤訊息指向 bare-method / Class/method 規則" \
+  || fail_t "錯誤訊息未指向 bare-method 規則：$BOGUS_ERR"
+
+# ── 16. Swift Testing 裸方法名必須帶簽名（無括號 id → xcodebuild 0 匹配）──────
+section "bare Swift Testing method carries its signature"
+UNIT_DIR="$WORKSPACE/ios/BooksAndVocabTests"
+UNIT_FLAGS="$(discover_only_flags "$UNIT_DIR" "" "BooksAndVocabTests")"
+SWIFT_PAIR="$(awk -F/ 'NF>=3 && $3 ~ /\(\)$/ { print $2 "|" $3; exit }' <<<"$UNIT_FLAGS")"
+SWIFT_CLASS="${SWIFT_PAIR%%|*}"; SWIFT_FN="${SWIFT_PAIR##*|}"; SWIFT_BARE="${SWIFT_FN%%(*}"
+if [[ -n "$SWIFT_CLASS" && -n "$SWIFT_BARE" ]]; then
+  SW_OUT="$("$IOS_TEST" --list "$SWIFT_BARE" 2>/dev/null)" || SW_OUT=""
+  grep -qxF -- "-only-testing:BooksAndVocabTests/$SWIFT_CLASS/$SWIFT_FN" <<<"$SW_OUT" \
+    && ok "裸 $SWIFT_BARE → 帶簽名 $SWIFT_FN" \
+    || fail_t "Swift Testing 裸名未帶簽名（xcodebuild 會 0 匹配），實得：$SW_OUT"
+else
+  fail_t "找不到 Swift Testing (@Test) 方法（SWIFT_PAIR='$SWIFT_PAIR'）"
+fi
+
+# ── 17. App Review live-demo 取證的實際命令形狀必須選到真的測試（IMP-0030）────
+# 這條守的是 submission gate：ops/app_review_evidence.py 的 build_demo_run_command
+# 以「裸方法名」呼叫 runner。期望值兩端都獨立於 ios_test.sh 與 discovery lib：
+# 方法名讀自 caller 原始碼，class 名讀自 Swift 原始碼（本地 awk 反查最近的
+# column-0 型別宣告），所以這條不可能被 runner 自己的輸出或本檔的 argv 滿足。
+section "App Review live-demo command shape selects a real test"
+DEMO_METHOD="$(awk -F'"' '/"--json", *"test/ { print $4; exit }' "$WORKSPACE/ops/app_review_evidence.py")"
+DEMO_HITS="$(grep -rl "func ${DEMO_METHOD}(" "$UI_DIR" 2>/dev/null || true)"
+DEMO_FILE="$(awk 'NR==1 { print; exit }' <<<"$DEMO_HITS")"
+DEMO_CLASS=""
+[[ -n "$DEMO_METHOD" && -n "$DEMO_FILE" ]] && DEMO_CLASS="$(awk -v fn="$DEMO_METHOD" '
+  /^(final[ \t]+)?(public[ \t]+)?(class|struct|actor)[ \t]+[A-Za-z0-9_]+/ {
+    name = $0
+    sub(/^.*(class|struct|actor)[ \t]+/, "", name)
+    sub(/[^A-Za-z0-9_].*$/, "", name)
+    c = name
+    next
+  }
+  $0 ~ ("func[ \t]+" fn "[ \t]*\\(") { print c; exit }
+' "$DEMO_FILE")"
+if [[ -n "$DEMO_METHOD" && -n "$DEMO_CLASS" ]]; then
+  DEMO_SHA="$(printf 'd%.0s' {1..64})"
+  DEMO_OUT="$("$IOS_TEST" --ui --configuration Release --evidence-kind exact-device \
+    --destination 'platform=iOS,id=IMP0030-PLACEHOLDER' --live-demo \
+    --live-demo-account-identity-sha256 "$DEMO_SHA" \
+    --evidence-locale en_US --evidence-timezone UTC \
+    --list "$DEMO_METHOD" 2>/dev/null)" || DEMO_OUT=""
+  grep -qxF -- "-only-testing:BooksAndVocabUITests/$DEMO_CLASS/$DEMO_METHOD" <<<"$DEMO_OUT" \
+    && ok "取證命令選到 $DEMO_CLASS/$DEMO_METHOD" \
+    || fail_t "取證命令未選到 $DEMO_CLASS（0 匹配 = 送審證據什麼都沒證明），實得：$DEMO_OUT"
+  # 缺陷簽章本身：這條若哪天 class == target 就退化成恆真，故明寫出來。
+  [[ "$DEMO_CLASS" != "BooksAndVocabUITests" ]] \
+    && ok "取證測試確實不住在 target 同名 class（本條非恆真）" \
+    || fail_t "取證測試已搬進 BooksAndVocabUITests，本節失去鑑別力，需改測試樹或改斷言"
+else
+  fail_t "無法從 caller/Swift 原始碼推導取證身分（method='$DEMO_METHOD' file='$DEMO_FILE' class='$DEMO_CLASS'）"
+fi
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
