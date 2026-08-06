@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "ops/gen_ios_baseline.sh 有兩處『今天剛好還是對的』的計數脆弱點,都屬於『數字會靜默算錯』這一類,現況實測皆無影響故未在 958999 一併修:(1) TOTAL_LINES 用 `find … -exec wc -l {} + | tail -1`,當 find 因 ARG_MAX 分批 exec 時 wc 會吐出多行 total,tail -1 只取最後一批 → 總行數靜默少算。今天 507 檔 / 30301 bytes vs ARG_MAX 1048576,約 34 倍餘裕,只吐 1 行 total,三種算法(tail -1 / cat|wc -l / awk 加總)皆為 81296,所以現在是對的。(2) TOP10 用 `grep -v \"total\"` 濾掉 wc 的合計行,但那是無錨點子字串比對,任何路徑含小寫 total 的 .swift 都會被踢出 Top-10 排行;今天 ios/BooksAndVocab 下 0 個這種路徑。",
+  "id": "IMP-20260806-64a603",
+  "resolution": "建議一起修(S):TOTAL_LINES 改 `awk '$2!=\"total\"{s+=$1} END{print s}'` 逐檔加總(同時解決分批與單檔無 total 行兩種邊界);TOP10 的 `grep -v \"total\"` 改成錨定合計行(例如 ` total$`)。兩者今天都無法寫出會紅的測試(實測影響為 0),所以要嘛接受用合成 fixture 驗,要嘛當 robustness 改動直接改並用現有 gen-ios-baseline group 守住輸出不變。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "IMP-20260805-958999 收尾時順手稽核 gen_ios_baseline.sh 其餘 counter",
+  "status": "open",
+  "stream": "IMP"
+}

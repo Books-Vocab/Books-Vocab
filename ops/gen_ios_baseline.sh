@@ -21,8 +21,25 @@ VIEWS_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" 2>/d
 PREVIEW_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" -exec grep -l "#Preview" {} \; 2>/dev/null | wc -l | tr -d ' ')
 
 # 4. Concurrency stats
-MAIN_ACTOR=$({ grep -r "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
-ASYNC_FUNC=$({ grep -r "async func" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
+#
+# Both counters are grep approximations of "what a Swift lexer would see". Their residual
+# error was measured on 2026-08-06 against a lexer that strips comments/strings and walks
+# balanced parens; the numbers below are that measurement, not an estimate. Re-measure
+# before widening either pattern — see ops/tests/test_gen_ios_baseline.sh.
+#
+# `@MainActor` also shows up in doc comments *discussing* isolation; that is prose, not an
+# annotation. Dropping lines whose first non-space token is `//` landed exactly on the
+# lexer's count (298 raw -> 252). Uncovered: block comments and string literals (0 today).
+MAIN_ACTOR=$({ grep -rh "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | { grep -v "^[[:space:]]*//" || true; } | wc -l | tr -d ' ')
+# Swift word order is `func f() async`, never the literal `async func` — the old pattern
+# was structurally 0 forever while the tree held 290 declarations (IMP-20260805-958999).
+# Two arms: same-line signatures, plus the lines that close a multi-line signature with
+# `) async`. Measured 292 vs a lexer's 290. The 2 extras are non-async funcs taking an
+# `@escaping () async ->` parameter; the anchored arm was verified *set-equal* to the
+# lexer's 71 multi-line declarations (no misses, no extras). Do NOT relax the second arm
+# to a bare `\) async`: unanchored it also swallows closure-typed properties such as
+# `var sleep: (Duration) async -> Void` (323, i.e. 33 wrong).
+ASYNC_FUNC=$({ grep -rE "func [^{]*\)[[:space:]]*async|^[[:space:]]*\)[[:space:]]*async" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
 
 cat > "$OUTPUT" << EOF
 <!-- doc-meta

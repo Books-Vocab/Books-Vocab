@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "ops/gen_ios_baseline.sh 的 ASYNC_FUNC / MAIN_ACTOR 修好後仍是 grep 近似,不是 Swift lexer,殘餘誤差已量測(2026-08-06,對照一支會剝除註解/字串並走平衡括號的 lexer):ASYNC_FUNC 292 vs 真值 290 —— 多算的 2 筆是『本身不 async、但參數帶 @escaping () async -> 的 func』(ios/BooksAndVocab/Platform/PlatformCompatibility.swift:88、Views/Reader/ReadiumNavigatorSupport.swift:16);MAIN_ACTOR 252 與 lexer 完全一致。另有兩個目前實測 0 次的洞:/* 區塊註解 */ 內行首的 `) async` 會被第二條 arm 誤收(單行 // 註解不會,已驗),字串字面量內的 @MainActor / ) async 也無法排除。要 100% 精確就得從 grep 換成會剝註解與字串的 tokenizer,那是換工具不是改 pattern,故獨立登記。",
+  "id": "IMP-20260806-d78bf7",
+  "resolution": "不急:誤差率 0.7%(2/292),且方向已知(只多不少)。真要做就別再堆 regex —— 應改為一支小 lexer(剝 // 與 /* */ 註解、字串字面量含 \"\"\" 與 #\"\"# 與 \\() 後走平衡括號找 func 的參數列,判斷右括號後第一個 token 是不是 async)。現有 ops/tests/test_gen_ios_baseline.sh 的 fixture(正例 5、負例 0、@MainActor 2)可直接沿用當回歸,再補區塊註解與字串的負例即可。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "IMP-20260805-958999 修 async func counter 時實測到的殘餘誤差",
+  "status": "open",
+  "stream": "IMP"
+}
