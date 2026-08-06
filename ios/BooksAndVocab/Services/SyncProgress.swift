@@ -246,7 +246,9 @@ final class SyncProgressStore {
         if terminal == .completed { fraction = 1 }
     }
 
-    /// 回到未開始狀態。設定頁在收合動畫結束後呼叫，避免下一次展開閃出上一輪殘影。
+    /// 回到未開始狀態。設定頁在 `.didNotRun` 那條路徑上呼叫——它與收合是**同一個
+    /// transaction**（不是動畫結束後的回呼），所以清空與收合一起被 `phaseChange`
+    /// 動畫涵蓋，不會先閃一下空清單再收。
     func reset() {
         steps = []
         phase = .ready

@@ -123,6 +123,7 @@ extension AppSkin {
         accessoryTopOffset: 10,
         overlayHorizontalInset: 20,
         syncOverlayInset: 32,
+        statusIconColumn: 14,
         overlayVerticalInset: 20,
         summaryHorizontalInset: 24,
         chromeButtonSize: 32,

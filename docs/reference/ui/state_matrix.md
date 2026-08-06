@@ -228,7 +228,7 @@ Scope: `ios/BooksAndVocab`
 | Offline | `kg.isConnected == false` | offline label | 已覆蓋 |
 | Last sync available | `lastSyncDescription != nil` | row reveal | 已覆蓋 |
 | Sync idle（收合） | `!syncSummary.isSyncing` | sync row 摘要 + `lastSyncedText` | 已覆蓋 |
-| Sync in progress（展開） | `syncSummary.isSyncing && !syncProgress.steps.isEmpty` | sync row 底下展開 `SettingsSyncProgressPanel`（總進度條 + 逐步清單），以 `AppMotion.phaseChange` 收合、`lastSyncedText` 同步淡回 | 已覆蓋（catalog `Settings Sections · Other`）|
+| Sync in progress（展開） | `syncSummary.isSyncing && !syncProgress.steps.isEmpty` | sync row 底下展開 `SettingsSyncProgressPanel`（總進度條 + 逐步清單），以 `AppMotion.phaseChange` 收合、`lastSyncedText` 同步淡回 | `#Preview`（catalog 凍結期不新增 surface，見 `docs/reference/catalog_scope.md` §FROZEN 紅線 1）|
 | 單步：waiting / running / retry / done / skipped / error | `PipelineStep.status` | `SyncStepStatusIcon` 六態符號 + detail 文字（running 且 `total > 0` 時顯示 `current/total` 計數器）| 已覆蓋 |
 | Sync round did-not-run | `SyncRoundOutcome.didNotRun`（離線 / 被另一輪佔著 claim / 中途取消）| `store.reset()` → 面板直接收合，**不宣稱完成也不宣稱失敗** | 已覆蓋 |
 | Debug backend mode | debug section | local / prod switch | 已覆蓋 |

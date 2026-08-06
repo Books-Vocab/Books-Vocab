@@ -452,23 +452,34 @@ final class PodcastSyncService {
     /// 那個新封面永遠不會落到已安裝的裝置上——而 `cacheCoverIfNeeded` 讀的是**本機**
     /// 那一列的 `coverImageURL`，所以連「封面清單改由 summary 驅動」都救不了它。
     ///
-    /// 因此指紋涵蓋 `index.json` 會投影、而我們又會 render 的每個欄位。多比幾個字串
-    /// 的成本是零，漏比一個欄位的成本是一個永遠修不好的畫面。
+    /// 因此指紋涵蓋 `index.json` 會投影、而 `upsertSeries` 會寫下的每個欄位。多比
+    /// 幾個字串的成本是零，漏比一個欄位的成本是一個永遠修不好的畫面。
+    /// 指紋涵蓋的欄位 = **`upsertSeries` 會寫進 `PodcastSeries` 的每一個伺服器欄位**。
+    /// 那個對應是刻意的：任何在指紋外的欄位，只要發布工具改了它而不 bump
+    /// `updatedAt`，就會永久不同步。`hostNames` / `color` / `coverPattern` 今天
+    /// 沒有工具會那樣改，但把它們留在外面就是在賭下一支工具不會。
     nonisolated static func fingerprint(
         updatedAt: String?,
         coverImageURL: String?,
         title: String,
         totalDurationSec: Double?,
-        episodeCount: Int?
+        episodeCount: Int?,
+        hostNames: [String]?,
+        color: String?,
+        coverPattern: String?
     ) -> String {
         // U+001F unit separator：不會出現在任何一個欄位裡，所以不同的欄位組合
-        // 不可能拼出同一個字串。
+        // 不可能拼出同一個字串。`String(Double)` 走 `Double.description`，恆為
+        // `.` 小數點、與 locale 無關——用 `"\(value)"` 進格式化路徑才會有事。
         [
             updatedAt ?? "",
             coverImageURL ?? "",
             title,
             totalDurationSec.map { String($0) } ?? "",
-            episodeCount.map(String.init) ?? ""
+            episodeCount.map(String.init) ?? "",
+            (hostNames ?? []).joined(separator: "\u{1E}"),
+            color ?? "",
+            coverPattern ?? ""
         ].joined(separator: "\u{1F}")
     }
 
@@ -476,7 +487,8 @@ final class PodcastSyncService {
         fingerprint(
             updatedAt: summary.updatedAt, coverImageURL: summary.coverImageURL,
             title: summary.title, totalDurationSec: summary.totalDurationSec,
-            episodeCount: summary.episodeCount
+            episodeCount: summary.episodeCount, hostNames: summary.hostNames,
+            color: summary.color, coverPattern: summary.coverPattern
         )
     }
 
@@ -484,7 +496,8 @@ final class PodcastSyncService {
         fingerprint(
             updatedAt: detail.updatedAt, coverImageURL: detail.coverImageURL,
             title: detail.title, totalDurationSec: detail.totalDurationSec,
-            episodeCount: detail.episodes.count
+            episodeCount: detail.episodes.count, hostNames: detail.hostNames,
+            color: detail.color, coverPattern: detail.coverPattern
         )
     }
 

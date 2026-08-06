@@ -1212,3 +1212,11 @@
 "同步 %@ 筆" = "%@ cards synced";
 "已送出 %@ 筆" = "%@ uploaded";
 "目錄讀取失敗" = "Could not load catalog";
+
+/* Settings — 逐步同步進度的 VoiceOver 播報 */
+"同步進度" = "Sync progress";
+"等待中" = "Waiting";
+"進行中" = "In progress";
+"已完成" = "Done";
+"已略過" = "Skipped";
+"失敗" = "Failed";
