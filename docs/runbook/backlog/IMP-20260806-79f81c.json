@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-06",
+  "detail": "file→group 反向覆蓋（IMP-20260805-947062 於 `ops/tests/test_ops_ci_coverage.sh` 新增的 section）判定「可達」的定義是**出現在 `run_one` 裡的任一 case**，而 `run_one` 同時包含 `OPTIONAL_TESTS`（`asc` / `release-surfaces`）。因此「只被 optional group 跑得到」的檔案會被判為綠，但它**不在預設套件、也不在 CI**——那正是原本那個洞的弱化版本，只是不再是零覆蓋而已。2026-08-06 實測，今天剛好有兩支處在這個狀態：`ops/test_asc.sh` 與 `ops/tests/test_asc_text_bundle.py`，兩者在 `run_one` 中各只出現 1 次且都在 `asc)` case，而 `./ops/test_ops.sh --list | grep -c \"^asc$\"` = 0（asc 不在 DEFAULT_TESTS）。當時沒有一併收緊，是因為把判準改成「必須可達自某個 DEFAULT_TESTS group」會立刻讓這兩支變紅，而該不該把 `asc` 收進預設套件（它是 App Store Connect surface，離線與否要實測）是一個獨立決策，不該夾帶在覆蓋率修補裡。修法方向：把可達集合改成只解析 DEFAULT_TESTS 涵蓋得到的 case，並為 optional-only 的檔案在 `UNGROUPED_TESTS` 之外另立一張具名表（或直接把 asc 收進預設套件並實測其離線性）。在那之前，本條就是這道檢查已知且刻意的邊界，寫在這裡以免被誤讀成全覆蓋。",
+  "id": "IMP-20260806-79f81c",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "worktree ops-test-coverage（修 IMP-20260805-947062 時，我自己新增的檢查刻意留下的邊界）",
+  "status": "open",
+  "stream": "IMP"
+}
