@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 0c9e3b7c8
+verified_against: 917ad3e4b
 -->
 # Books & Vocab iOS 開發技能
 
@@ -276,6 +276,39 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - 不用 build 代替 test;build 只證明可編譯,不證明行為。
 - 看到 tool failure / inconclusive / false green 先修 runner 或 invocation,不要將就。
 - 長 UI permutations 正常會跑數分鐘;依 heartbeat 判斷進度,不要因短期無 test case output 就殺掉。
+
+### 在模擬器上實跑 app 看畫面（人工／agent 自檢視覺）
+
+自動化測試證明不了的東西（材質、glass、動畫手感）只能實跑。這條路有四個會讓你**看到舊畫面卻毫無警訊**的坑。
+
+**1. `.app` 不在 Xcode 的 DerivedData。** `ios_build.sh` 用 `-derivedDataPath $PROJECT_ROOT/.cache/ios-build-derived-data`（worktree 下走 git-common-dir 的同名路徑），build log 自己會印 `derivedDataRoot=`。`~/Library/Developer/Xcode/DerivedData/` 是 Xcode GUI 建的，可能停在數天前。
+
+```bash
+find .cache/ios-build-derived-data -name BooksAndVocab.app -path "*Debug-iphonesimulator*"
+```
+
+**2. 驗「裝對版本」只看 `BooksAndVocab.debug.dylib` 的 mtime。** Xcode 16+ 的 debug-dylib 機制下 app code 在這顆 dylib，主執行檔 `BooksAndVocab` 只是 launcher，比對它會誤判。裝完先把 mtime 對 `git log -1 --format=%ad -- <你改的檔>`，再開始判讀畫面——舊 build 會正常啟動、正常渲染、什麼都不喊，唯一破綻是日期。
+
+**3. 換 build 用 `simctl install` 覆蓋，不要 `uninstall`。** uninstall 會連 data container 一起刪（書庫／登入／語言／閱讀進度），而這些用 fixture 重建的成本遠高於省下的那一步。
+
+**4. 偏好設定的真相來源是 iCloud KVS，不是 app 的 plist。** `AppLanguageStore` 等偏好讀 `cloud.string(forKey:) ?? defaults.string(forKey:)`（`ios/BooksAndVocab/Services/CloudPreferencesSync.swift` = `NSUbiquitousKeyValueStore`），所以直接改 `<container>/Library/Preferences/<bundleid>.plist` **不會生效**，且該值不在 `<device>/data` 底下（grep 不到）。要改就走 app 自己的 Settings UI（同時寫 defaults + KVS）。懷疑某條 preference path 沒被讀時，設一個明顯不同的第三值重啟做差別測試，比逐一猜 key 快。
+
+**從外部手動觸發 UI fixture**（不經 `ios_test.sh`）要自己注入 UI World：`simulator launch` 不帶 env，得改用 simctl 並以 `SIMCTL_CHILD_` 前綴傳遞。
+
+```bash
+source ops/lib/fixture_dataset_env.sh
+export SIMCTL_CHILD_KG_FIXTURE_DATASET_DEFLATE_B64="$(kg_fixture_dataset_deflate_b64 ops/fixtures/ui_worlds/marketing_demo.json)"
+xcrun simctl launch --terminate-running-process <udid> com.Max0228.BooksBrowser \
+  -ui-testing -seedFixture:bookshelf:with_books_library
+```
+
+**fixture 失敗是 `preconditionFailure`（SIGTRAP），而訊息不在 `.ips`**（crash report 的 `asi` 是空的，只有 backtrace 符號）。要撈訊息：
+
+```bash
+xcrun simctl spawn <udid> log show --last 5m --style compact --predicate 'process == "BooksAndVocab"'
+```
+
+**併發**：`kg-pool-*` 是 `ios_ops.sh simulator lease` 的 test 專用 pool，可能正被別的 session 佔用（同時期會看到 `BooksAndVocabUITests-Runner` 的 crash log）。自己看畫面請挑 pool 以外的獨立裝置。
 
 ## 真機 / 本機 crash 自動取證（lldb stop-hook）
 
