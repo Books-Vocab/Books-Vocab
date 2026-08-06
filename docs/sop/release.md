@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: 931536ed7
+verified_against: 0d4b435e9
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -95,7 +95,7 @@ env knob：`KG_RELEASE_WAIT_SECS`（預設 480）、`KG_RELEASE_POLL_SECS`（10�
 
 ## felix reconciler（release=deploy 自動收斂）
 
-`ops/kg_reconcile.sh`（launchd `com.kg.reconcile`，90s tick，跑在 felix 專用生產 clone `~/kg-prod`）盯 **`origin/prod`**：一前進且含 backend 觸發路徑 → `git pull --ff-only origin prod` + 寫 `backend/VERSION` + `docker compose up -d --build --force-recreate` + 健康 gate（localhost + 外部 smoke + infra）；失敗自動 rollback + poison（**rollback 那次也 force-recreate**）。`--force-recreate` 不是可省的：健康 gate 比對容器自報版本，而容器自報的是 bind-mount 進去、於 import 快取的 `backend/VERSION`，只隨行程重啟改變；而 `up -d --build` 只在 image digest 或解析後 compose config hash 變了才 recreate。命中觸發卻不進 image 的改動（compose.yml 註解、Dockerfile 註解、pyproject `[tool.*]`）兩者皆不變 → 容器不重啟 → 自報舊版 → gate 判失敗 → 回滾 + poison + 告警，而 poison 只冷卻 3600 秒，**於是每小時重演一次**（IMP-0056）。非 backend 變更只 ff-only 追 repo（**刻意不寫 VERSION 游標**，見 kg_reconcile.sh §2.4 註解）。origin/prod 未 seed → 優雅 noop（不崩）。
+`ops/kg_reconcile.sh`（launchd `com.kg.reconcile`，90s tick，跑在 felix 專用生產 clone `~/kg-prod`）盯 **`origin/prod`**：一前進且含 backend 觸發路徑 → `git pull --ff-only origin prod` + 寫 `backend/VERSION` + `docker compose up -d --build --force-recreate` + 健康 gate（localhost + 外部 smoke + infra）；失敗自動 rollback + poison（**rollback 那次也 force-recreate**）。唯一例外：外部 smoke **全程拿不到任何 HTTP 回應**（felix 對外斷網，非服務回 5xx）不算失敗——部署照常落地並記 `smoke=unverified` + 告警，不回滾、不 poison（IMP-0061；判準與三分類表見 `docs/sop/deploy.md` §rollback + poison 行為）。`--force-recreate` 不是可省的：健康 gate 比對容器自報版本，而容器自報的是 bind-mount 進去、於 import 快取的 `backend/VERSION`，只隨行程重啟改變；而 `up -d --build` 只在 image digest 或解析後 compose config hash 變了才 recreate。命中觸發卻不進 image 的改動（compose.yml 註解、Dockerfile 註解、pyproject `[tool.*]`）兩者皆不變 → 容器不重啟 → 自報舊版 → gate 判失敗 → 回滾 + poison + 告警，而 poison 只冷卻 3600 秒，**於是每小時重演一次**（IMP-0056）。非 backend 變更只 ff-only 追 repo（**刻意不寫 VERSION 游標**，見 kg_reconcile.sh §2.4 註解）。origin/prod 未 seed → 優雅 noop（不崩）。
 
 - **desired/actual 配對**：`origin/prod` = 期望部署狀態（release 推進）；`backend/VERSION`（felix-local git sha）= 實際部署狀態（reconciler 寫）；`/api/system/info` 回報實跑版供交叉驗證。
 - **生產 clone `~/kg-prod` 專屬**：compose 從 `~/kg-prod/backend` build。`~/project/kg` 是 dev/resume-only，**永不在其 backend 跑 compose**（同 project name `backend` 會劫持生產容器）。`devops.sh`/`devops_kg_safe.sh` 的 `KG_REMOTE_DIR` 預設已指 `~/kg-prod/backend`。
