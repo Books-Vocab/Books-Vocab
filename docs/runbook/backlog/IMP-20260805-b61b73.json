@@ -3,10 +3,10 @@
   "date": "2026-08-05",
   "detail": "ios_test.sh --lease 每次配到不同的 pool simulator，而 DerivedData 路徑以 destination 為 key（.cache/ios-test-derived-data/<sha>）。結果：每一輪 --lease 執行都拿到冷的 DerivedData，冷編 720 個 Swift 檔約 761s。實測同一個工作樹連續兩次 --lease 產生兩個 1.2G/1.6G 的獨立快取，第二次完全沒有沿用第一次的成果。對 agent 的 TDD 迴圈（改一行→重跑）是致命的：每次迭代 13 分鐘。變通是 --device <固定UDID> + KG_IOS_TEST_ALLOW_SHARED_SIM=1，但那就放棄了 --lease 的並行安全。建議：DerivedData 的 key 不要綁 destination（同一 arch 的 simulator 產物可共用），或 --lease 在同一工作樹內維持 sticky device。",
   "id": "IMP-20260805-b61b73",
-  "resolution": "",
+  "resolution": "—(2026-08-06 前提被證偽,不修)本條的機制敘述今天實測不成立:`ios_test.sh:274-303` 的 `ios_test_build_cache_key` 抽的是 `platform_token`,不是 device。同一行 sed 對三個 destination 實跑(`platform=iOS Simulator,id=AAAA-1111` / `id=BBBB-2222` / `name=iPhone 17 Pro`)全部得到 `iOS Simulator`=同一把 key;`:275-281` 的註解逐字寫著「Key on platform+arch, NOT the specific device name/UDID」,落於 `6461e583c`(2026-06-09),`merge-base --is-ancestor` 確認為 HEAD 祖先——**比本條建檔(2026-08-05)早兩個月**。故本條提的修法(別用 destination 當 DerivedData key)是 no-op。症狀本身仍可能被觀察到,但成因不同且是**刻意**的:同一把 key 另外折入 `ios_test_build_input_paths` 全部 ios/**.swift/.plist 的 shasum(`:262-272`),所以任何一行 TDD 編輯都會換一個 cache dir 而冷 build;`:1128` 稱之為 this exact (content-keyed) cache,`:1125-1127` 記著驅動它的 94G 磁碟塞爆事故。要重開請針對 content-keying 的取捨另立新條,別沿用本條的錯誤機制敘述。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "roundness-single-dof worktree, TDD loop",
-  "status": "open",
+  "status": "wont-fix",
   "stream": "IMP"
 }
