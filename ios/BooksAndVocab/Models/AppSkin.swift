@@ -216,6 +216,9 @@ struct AppSkin {
         let accessoryTopOffset: CGFloat
         let overlayHorizontalInset: CGFloat
         let syncOverlayInset: CGFloat
+        /// 狀態符號欄的固定寬度。六種同步步驟符號寬度不一（`ProgressView` 尤其），
+        /// 固定欄寬才能讓它們對齊同一條軸線。這是**尺寸**不是間距，所以住在 metrics。
+        let statusIconColumn: CGFloat
         let overlayVerticalInset: CGFloat
         let summaryHorizontalInset: CGFloat
         let chromeButtonSize: CGFloat

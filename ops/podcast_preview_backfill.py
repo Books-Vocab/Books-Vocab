@@ -251,6 +251,47 @@ def patch_index_stamp(index: list, *, series_id: str, stamp: str) -> tuple[list,
     return out, False
 
 
+def index_needs_stamp(index, *, series_id: str, meta: dict) -> bool:
+    """True iff this series' index entry advertises a different ``updatedAt``
+    than its metadata does.
+
+    A malformed/absent index, or an absent entry, returns False: there is
+    nothing this tool can safely repair there (inventing a catalog entry from
+    partial data is worse than the stale stamp), and the caller's warning path
+    already surfaces it.
+    """
+    if not isinstance(index, list):
+        return False
+    want = meta.get("updatedAt")
+    if not want:
+        return False
+    for entry in index:
+        if isinstance(entry, dict) and entry.get("id") == series_id:
+            return entry.get("updatedAt") != want
+    return False
+
+
+def _put_index_stamp(s3, *, bucket: str, index, series_id: str, stamp: str, dry_run: bool) -> None:
+    """Step 5: patch this series' ``updatedAt`` into index.json.
+
+    Loud on both failure shapes — a missing entry or an unreadable index means
+    the preview stays invisible to installed clients, which is silent data loss
+    from the user's point of view, not a cosmetic warning.
+    """
+    if not isinstance(index, list):
+        print("  ⚠ index.json missing/malformed — catalog fingerprint NOT bumped",
+              file=sys.stderr)
+        return
+    patched_index, changed = patch_index_stamp(index, series_id=series_id, stamp=stamp)
+    if not changed:
+        print(f"  ⚠ {series_id} has no index.json entry — catalog fingerprint NOT bumped; "
+              "installed clients will not see this preview until the series is republished",
+              file=sys.stderr)
+        return
+    body = json.dumps(patched_index, ensure_ascii=False, indent=2).encode("utf-8")
+    _put(s3, bucket, "index.json", body, _JSON_CT, dry_run=dry_run)
+
+
 def backfill_series(s3, *, bucket: str, series_id: str, dry_run: bool = True) -> str:
     """Generate + publish the preview for one series. Returns a state string:
     ``published`` / ``already`` (skipped — preview present + metadata flagged).
@@ -268,7 +309,24 @@ def backfill_series(s3, *, bucket: str, series_id: str, dry_run: bool = True) ->
     ep1 = next((e for e in meta.get("episodes", []) if e.get("episodeNumber") == PREVIEW_EP_NUM), None)
     meta_flagged = bool(ep1 and ep1.get("previewAvailable"))
     if _key_exists(s3, bucket, preview_key) and meta_flagged:
-        print("  already published (preview + metadata in sync)")
+        # Preview + metadata are in sync, but the *index* may not be. Two ways
+        # to get here with a stale index, and both leave the preview invisible
+        # to every already-installed device:
+        #   - the pre-2026-08-06 tool published this series and never touched
+        #     index.json at all (this is the entire back catalogue);
+        #   - a run crashed between step 4 and step 5.
+        # Short-circuiting on the old two-condition check would make those
+        # states permanently unrecoverable — no re-run, no --force, no
+        # --check would ever notice. So the index is part of "already".
+        index = _get_json(s3, bucket, "index.json")
+        if index_needs_stamp(index, series_id=series_id, meta=meta):
+            print("  preview already published but index.json stamp is stale — repairing")
+            _put_index_stamp(
+                s3, bucket=bucket, index=index, series_id=series_id,
+                stamp=str(meta.get("updatedAt") or utc_stamp()), dry_run=dry_run,
+            )
+            return "reindexed"
+        print("  already published (preview + metadata + index in sync)")
         return "already"
 
     audio_key = f"{series_id}/ep_{PREVIEW_EP_NUM:02d}/audio.{fmt}"
@@ -288,18 +346,10 @@ def backfill_series(s3, *, bucket: str, series_id: str, dry_run: bool = True) ->
     #    Ordering mirrors step 3→4: the authoritative object lands first, the
     #    pointer that advertises it lands second, so every interruption is a
     #    safe state that a re-run drives forward.
-    index = _get_json(s3, bucket, "index.json")
-    if isinstance(index, list):
-        patched_index, changed = patch_index_stamp(index, series_id=series_id, stamp=stamp)
-        if changed:
-            index_body = json.dumps(patched_index, ensure_ascii=False, indent=2).encode("utf-8")
-            _put(s3, bucket, "index.json", index_body, _JSON_CT, dry_run=dry_run)
-        else:
-            print(f"  ⚠ {series_id} has no index.json entry — catalog fingerprint NOT bumped; "
-                  "installed clients will not see this preview until the series is republished",
-                  file=sys.stderr)
-    else:
-        print("  ⚠ index.json missing/malformed — catalog fingerprint NOT bumped", file=sys.stderr)
+    _put_index_stamp(
+        s3, bucket=bucket, index=_get_json(s3, bucket, "index.json"),
+        series_id=series_id, stamp=stamp, dry_run=dry_run,
+    )
     return "published"
 
 
@@ -320,9 +370,14 @@ def check(s3, *, bucket: str, series_ids: list[str]) -> dict:
       - preview_without_flag:  preview object in S3 but metadata not flagged
                                (step 4 never completed)
       - flag_without_preview:  metadata flagged but no preview object (→ free 404)
+      - index_stale:           published, but index.json still advertises the old
+                               ``updatedAt`` — clients that cache on the catalog
+                               fingerprint never refetch, so the preview exists
+                               and is invisible at the same time
       - missing:               neither (needs backfill)
     """
     rows = {}
+    index = _get_json(s3, bucket, "index.json")
     for sid in series_ids:
         meta = _get_json(s3, bucket, f"{sid}/metadata.json")
         if not isinstance(meta, dict):
@@ -337,7 +392,14 @@ def check(s3, *, bucket: str, series_ids: list[str]) -> dict:
         ep1 = next((e for e in meta.get("episodes", []) if e.get("episodeNumber") == PREVIEW_EP_NUM), None)
         flagged = bool(ep1 and ep1.get("previewAvailable"))
         has_obj = _key_exists(s3, bucket, f"{sid}/ep_{PREVIEW_EP_NUM:02d}/preview.{fmt}")
-        if flagged and has_obj:
+        if flagged and has_obj and index_needs_stamp(index, series_id=sid, meta=meta):
+            # Preview published, metadata flagged, but the catalog still
+            # advertises the old stamp — clients that cache on the catalog
+            # fingerprint will never refetch, so the preview is published and
+            # invisible at the same time. Without this branch the report would
+            # call that "in_sync".
+            state = "index_stale"
+        elif flagged and has_obj:
             state = "in_sync"
         elif has_obj and not flagged:
             state = "preview_without_flag"
@@ -347,7 +409,7 @@ def check(s3, *, bucket: str, series_ids: list[str]) -> dict:
             state = "missing"
         rows[sid] = state
     drift = {s: st for s, st in rows.items()
-             if st in ("preview_without_flag", "flag_without_preview", "missing")}
+             if st in ("preview_without_flag", "flag_without_preview", "missing", "index_stale")}
     return {"states": rows, "drift": drift, "in_sync": not drift}
 
 
@@ -399,7 +461,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     dry_run = not args.execute
-    summary = {"published": [], "already": [], "failed": {}}
+    summary = {"published": [], "reindexed": [], "already": [], "failed": {}}
     for sid in series_ids:
         print(f"▶ preview: {sid}")
         try:

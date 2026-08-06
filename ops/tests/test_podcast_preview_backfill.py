@@ -120,3 +120,33 @@ class TestUtcStamp:
         assert stamp.endswith("+00:00")
         assert "T" in stamp
         assert "." not in stamp, "小數秒會讓指紋比對多一個無謂的變異來源"
+
+
+class TestIndexNeedsStamp:
+    """`already` 短路的判準。少了這一條，舊版工具回填過的整批 series 永遠拿不到
+    index bump —— 而那正是這支工具服務的全部人口。"""
+
+    def test_stale_index_entry_is_reported(self):
+        meta = _meta(updated="NEW")
+        index = [{"id": "s1", "updatedAt": "OLD"}]
+        assert mod.index_needs_stamp(index, series_id="s1", meta=meta) is True
+
+    def test_matching_stamp_is_not_reported(self):
+        meta = _meta(updated="SAME")
+        index = [{"id": "s1", "updatedAt": "SAME"}]
+        assert mod.index_needs_stamp(index, series_id="s1", meta=meta) is False
+
+    def test_absent_entry_is_not_a_repairable_state(self):
+        """憑殘缺資料補一筆 catalog entry，比留著陳舊時戳危險。"""
+        meta = _meta(updated="NEW")
+        assert mod.index_needs_stamp([{"id": "other"}], series_id="s1", meta=meta) is False
+
+    def test_malformed_index_is_not_a_repairable_state(self):
+        meta = _meta(updated="NEW")
+        assert mod.index_needs_stamp(None, series_id="s1", meta=meta) is False
+        assert mod.index_needs_stamp({"not": "a list"}, series_id="s1", meta=meta) is False
+
+    def test_metadata_without_a_stamp_cannot_drive_a_repair(self):
+        meta = _meta()
+        del meta["updatedAt"]
+        assert mod.index_needs_stamp([{"id": "s1", "updatedAt": "OLD"}], series_id="s1", meta=meta) is False

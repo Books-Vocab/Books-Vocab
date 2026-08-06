@@ -140,10 +140,12 @@ struct PodcastCatalogSkipTests {
     @Test("指紋的欄位彼此不會互相冒充（分隔符沒被拼接吃掉）")
     func fingerprintFieldsCannotImpersonateEachOther() {
         let a = PodcastSyncService.fingerprint(
-            updatedAt: "ab", coverImageURL: "c", title: "t", totalDurationSec: nil, episodeCount: nil
+            updatedAt: "ab", coverImageURL: "c", title: "t", totalDurationSec: nil,
+            episodeCount: nil, hostNames: nil, color: nil, coverPattern: nil
         )
         let b = PodcastSyncService.fingerprint(
-            updatedAt: "a", coverImageURL: "bc", title: "t", totalDurationSec: nil, episodeCount: nil
+            updatedAt: "a", coverImageURL: "bc", title: "t", totalDurationSec: nil,
+            episodeCount: nil, hostNames: nil, color: nil, coverPattern: nil
         )
         #expect(a != b, "沒有分隔符的話這兩組會拼出同一個字串")
     }

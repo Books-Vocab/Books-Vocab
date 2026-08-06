@@ -4,8 +4,8 @@
 //
 //  `SettingsCoordinator.resync` 的兩個契約：
 //
-//  1. **額度與連線檢查是併發的**，不是兩趟序列往返。用重疊探針驗——量時間會 flaky，
-//     問「對方在不在裡面」不會。
+//  1. **額度與連線檢查是併發的**，不是兩趟序列往返。用重疊探針量「同時在裡面的
+//     最大人數」——量時間會 flaky，量 peak 不會，而且它與排程順序無關。
 //  2. **它把 backgroundSync 的事件餵進 SyncProgressStore，而且順序不亂。** reporter
 //     走 AsyncStream 就是為了這個：每個事件開一個 `Task { @MainActor in }` 不保證
 //     順序，計數器會彈回。這裡直接把亂序來源（多條腿併發送事件）造出來檢查。
@@ -47,27 +47,26 @@ struct SettingsResyncConcurrencyTests {
         func loginWithApple(modelContainer: ModelContainer?) {}
     }
 
-    /// 記錄「誰在裡面」的重疊探針。兩支互相看得到對方 → 它們併發。
-    /// 各自先 yield 一次讓對方有機會進來；若是序列的，第一支跑完時第二支還沒開始，
-    /// `sawPeer` 永遠是 false。
+    /// 重疊探針：記錄「同時在裡面的最大人數」。
+    ///
+    /// **不記錄「誰看見了誰」。** 那個版本對排程順序敏感——先進的那支 observe 時
+    /// 看得到後進者，後進者 observe 時先進者可能已經離開，於是 `sawPeer` 只收到
+    /// 一半，測試以「實作是序列的」的形式紅掉，而實作其實是併發的。peak 是
+    /// 順序無關的同一個性質：peak == 2 就是「某個瞬間兩支都在裡面」，而序列執行
+    /// 的 peak 恆為 1。（同一個形狀在 `PodcastCatalogSkipTests.ConcurrencyTracker`
+    /// 已經穩定跑過。）
     private actor OverlapProbe {
-        private var inFlight: Set<String> = []
-        private(set) var sawPeer: Set<String> = []
-        private(set) var order: [String] = []
+        private var inFlight = 0
+        private(set) var peak = 0
+        private(set) var visited: Set<String> = []
 
         func enter(_ name: String) {
-            inFlight.insert(name)
-            order.append("enter:\(name)")
+            inFlight += 1
+            peak = max(peak, inFlight)
+            visited.insert(name)
         }
 
-        func observePeers(_ name: String) {
-            if inFlight.subtracting([name]).isEmpty == false { sawPeer.insert(name) }
-        }
-
-        func leave(_ name: String) {
-            inFlight.remove(name)
-            order.append("leave:\(name)")
-        }
+        func leave() { inFlight -= 1 }
     }
 
     private final class ProbeKGService: KGServing {
@@ -109,11 +108,11 @@ struct SettingsResyncConcurrencyTests {
 
         private func run(_ name: String) async {
             await probe.enter(name)
-            // 兩次 yield：第一次讓對方有機會被排進來，第二次讓對方的 enter 生效。
+            // 兩次 yield：留給對方被排進來並跑到自己 enter 的機會。序列實作下，
+            // 第一支會在第二支開始前就 leave，peak 停在 1。
             await Task.yield()
             await Task.yield()
-            await probe.observePeers(name)
-            await probe.leave(name)
+            await probe.leave()
         }
 
         // MARK: 其餘成員維持 fatalError stub（對齊 StubKGService 慣例）
@@ -177,9 +176,10 @@ struct SettingsResyncConcurrencyTests {
             authManager: MockAuth(), kgService: service, modelContext: container.mainContext
         )
 
-        let sawPeer = await service.probe.sawPeer
-        #expect(sawPeer == ["health", "quota"],
-                "兩支都要看見對方在裡面；序列執行時 sawPeer 會是空的。實際：\(sawPeer)")
+        let peak = await service.probe.peak
+        let visited = await service.probe.visited
+        #expect(visited == ["health", "quota"], "兩支都要真的跑到")
+        #expect(peak == 2, "某個瞬間兩支都要在裡面；序列執行時 peak 恆為 1。實際：\(peak)")
     }
 
     @Test("resync 把 backgroundSync 的事件依序餵進 store，計數器不倒退")
