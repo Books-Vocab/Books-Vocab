@@ -12,7 +12,7 @@ extension Notification.Name {
 
 // MARK: - API Response Models
 
-struct PodcastSeriesSummary: Codable {
+struct PodcastSeriesSummary: Codable, Sendable {
     let id: String
     let title: String
     let author: String?
@@ -22,9 +22,16 @@ struct PodcastSeriesSummary: Codable {
     let coverImageURL: String?
     let totalDurationSec: Double?
     let episodeCount: Int?
+    /// 伺服器的內容指紋。**一直都在清單裡**，只是這個型別以前沒解它。
+    ///
+    /// `index.json` 是 `metadata.json` 的機械式投影（去掉 episodes、補上
+    /// episodeCount，見 `ops/podcast_upload.sh`），所以清單天生帶著和 detail
+    /// 一樣的 `updatedAt`。2026-08-06 對生產驗過：四個 series 全部有值。
+    /// 這一個欄位就是「不必抓 detail 也知道它沒變」的全部依據。
+    let updatedAt: String?
 }
 
-struct PodcastSeriesDetail: Codable {
+struct PodcastSeriesDetail: Codable, Sendable {
     let id: String
     let title: String
     let author: String?
@@ -38,7 +45,7 @@ struct PodcastSeriesDetail: Codable {
     let updatedAt: String?
 }
 
-struct PodcastEpisodeDetail: Codable {
+struct PodcastEpisodeDetail: Codable, Sendable {
     let episodeNumber: Int
     let title: String
     let durationSec: Double
@@ -355,26 +362,49 @@ final class PodcastSyncService {
             AppCrashReporting.record(error, context: "podcast.sync.list")
             return .listFetchFailed
         }
-        var details: [String: PodcastSeriesDetail] = [:]
-        var coverSeriesIds: [String] = []
-        for summary in summaries {
+        // 只抓「內容指紋變了」的 series，而且併發抓。
+        //
+        // 舊版對每個 series 各發一次請求、序列等待：2026-08-06 生產量測 7.55s 的
+        // 整輪同步裡有 6.08s 在這個迴圈，而四個 series 的資料總量只有約 7 KB。
+        // 貴的是往返次數，不是位元組——每多一個 series，每次同步就多約 1.5 秒。
+        //
+        // **刻意不走「把 detail 內嵌進 list」那條路。** `episodes[].subtitleContent`
+        // 是整份 inline SRT（實測 165–212 KB／集，8 集的 metadata.json ≈ 1.4 MB），
+        // 而 `app_middleware.py` 沒掛 GZipMiddleware。內嵌會把 7 KB 的回應變成數 MB，
+        // 用頻寬換往返，在行動網路上是虧的。
+        //
+        // 穩態成本因此是 **1 趟**（只有清單），不是 1+N。
+        let localIndex = Self.localSeriesIndex(context: context)
+        let stale = summaries.filter {
+            Self.needsDetailFetch(summary: $0, local: localIndex[$0.id])
+        }
+        if stale.count < summaries.count {
+            AppLog.kg.info("[PodcastSync] detail fetch skipped for \(summaries.count - stale.count)/\(summaries.count) unchanged series")
+        }
+        let fetched = await Self.fetchDetailsConcurrently(seriesIds: stale.map(\.id)) { [kgService] seriesId in
             do {
-                let detail = try await fetchSeriesDetail(seriesId: summary.id)
-                details[summary.id] = detail
-                Self.upsertSeries(detail: detail, context: context)
-                if !(detail.coverImageURL ?? "").isEmpty {
-                    coverSeriesIds.append(summary.id)
-                }
+                return try await PodcastSyncService(kgService: kgService).fetchSeriesDetail(seriesId: seriesId)
             } catch {
-                AppLog.kg.warning("[PodcastSync] detail fetch failed for \(summary.id): \(error.localizedDescription)")
+                AppLog.kg.warning("[PodcastSync] detail fetch failed for \(seriesId): \(error.localizedDescription)")
                 if !(error is CancellationError) {
                     AppCrashReporting.record(error, context: "podcast.sync.detail")
                 }
+                return nil
             }
         }
-        // Best-effort remote-cover downloads into the local cache. Bounded
-        // concurrency avoids first-sync waterfall latency without stampeding
-        // the backend when the catalog grows.
+        // upsert 留在 MainActor 上依序做（SwiftData 契約），只有網路那段併發。
+        var details: [String: PodcastSeriesDetail] = [:]
+        for summary in summaries {
+            guard let detail = fetched[summary.id] else { continue }
+            details[summary.id] = detail
+            Self.upsertSeries(detail: detail, context: context)
+        }
+        // 封面改由**清單**驅動而非只看這輪抓到的 detail：跳過的 series 也該有機會
+        // 補上它上次沒下載成功的封面。已快取者 `cacheCoverIfNeeded` 直接早退，
+        // 不產生任何網路請求。
+        let coverSeriesIds = summaries
+            .filter { !($0.coverImageURL ?? "").isEmpty }
+            .map(\.id)
         await Self.cacheCovers(seriesIds: coverSeriesIds) { seriesId in
             await Self.cacheCoverIfNeeded(seriesId: seriesId, context: context, kgService: self.kgService)
         }
@@ -404,6 +434,61 @@ final class PodcastSyncService {
         // across a background upsert, so their `.task(id:)` won't re-fire.
         NotificationCenter.default.post(name: .podcastCatalogDidSync, object: nil)
         return .completed
+    }
+
+    // MARK: - 降趟：只抓變更過的 series
+
+    @MainActor
+    static func localSeriesIndex(context: ModelContext) -> [String: PodcastSeries] {
+        let all = (try? context.fetch(FetchDescriptor<PodcastSeries>())) ?? []
+        return Dictionary(all.map { ($0.remoteId, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// 這個 series 需不需要重抓 detail。
+    ///
+    /// 每一條 `true` 都是「省下這一趟會出錯」的具體情況，不是保守而已：
+    /// - **沒見過** → 本機根本沒有 episodes。
+    /// - **被 tombstone 過** → 復活時要把 episodes 拿回來。
+    /// - **伺服器沒給指紋** → 沒有依據就不省。舊 series 或手工 metadata 會這樣。
+    /// - **指紋不同** → 內容真的變了。
+    /// - **episode 數對不上** → 上一輪可能只寫了一半（中途取消 / 被 kill）。這條是
+    ///   完整性檢查，不是快取檢查：指紋相同但本機只有 3 集而伺服器說 8 集時，
+    ///   靠指紋就會永遠卡在半套狀態。
+    @MainActor
+    static func needsDetailFetch(summary: PodcastSeriesSummary, local: PodcastSeries?) -> Bool {
+        guard let local else { return true }
+        if local.isSoftDeleted { return true }
+        guard let remote = summary.updatedAt, !remote.isEmpty else { return true }
+        guard local.remoteUpdatedAt == remote else { return true }
+        if let expected = summary.episodeCount, local.episodes.count != expected { return true }
+        return false
+    }
+
+    /// 併發抓 detail，滑動視窗上限與 `cacheCovers` 同一套形狀（同檔 :243）——
+    /// 不重造，也不無上限併發（目錄長大時會變成對後端的 stampede）。
+    static func fetchDetailsConcurrently(
+        seriesIds: [String],
+        maxConcurrent: Int = 3,
+        fetch: @escaping @Sendable (String) async -> PodcastSeriesDetail?
+    ) async -> [String: PodcastSeriesDetail] {
+        guard !seriesIds.isEmpty else { return [:] }
+        let limit = max(1, min(maxConcurrent, seriesIds.count))
+        var results: [String: PodcastSeriesDetail] = [:]
+        await withTaskGroup(of: (String, PodcastSeriesDetail?).self) { group in
+            var iterator = seriesIds.makeIterator()
+            for _ in 0..<limit {
+                if let seriesId = iterator.next() {
+                    group.addTask { (seriesId, await fetch(seriesId)) }
+                }
+            }
+            while let (seriesId, detail) = await group.next() {
+                if let detail { results[seriesId] = detail }
+                if let next = iterator.next() {
+                    group.addTask { (next, await fetch(next)) }
+                }
+            }
+        }
+        return results
     }
 
     @MainActor
@@ -441,6 +526,11 @@ final class PodcastSyncService {
         series.totalDurationSec = detail.totalDurationSec ?? 0
         series.episodeCount = detail.episodes.count
         series.updatedAt = Date()
+        // 內容指紋。**寫在 episodes 迴圈之前**沒關係（同一個 MainActor 交易，
+        // 要嘛全寫要嘛全不寫），但如果之後有人把 episode upsert 拆成非同步的，
+        // 這行就必須移到最後——指紋先落地、episodes 沒落地，等於永久跳過重抓。
+        // `needsDetailFetch` 的 episode 數檢查是這條的第二道防線。
+        series.remoteUpdatedAt = detail.updatedAt
         // Resurrect: if server brings a previously-tombstoned series back, clear flag.
         if series.isSoftDeleted { series.isSoftDeleted = false }
 
