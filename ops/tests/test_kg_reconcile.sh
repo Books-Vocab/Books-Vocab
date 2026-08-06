@@ -152,6 +152,7 @@ new_scratch() {
   IMAGECHANGED="$SC/image_changed"  # 存在 = 這次改動真的動到 image / 解析後 compose config
   RECREATELOG="$SC/recreate.log"    # 每次真的 recreate 記一行（與「版本變了」分開觀測）
   CONTAINER_DEAD="$SC/container_dead"  # 存在 = recreate 後容器起不來（用來測雙壞告警）
+  INFRALOG="$SC/infra.log"          # infra_health 替身每次被呼叫記一行（含它自己探到的 code）
   LOCK="$SC/deploy.lock"
   mkdir -p "$BIN" "$SC/backups"
 
@@ -235,10 +236,50 @@ if [[ "\$*" == *--force-recreate* || -f "$IMAGECHANGED" ]]; then
 fi
 exit 0
 EOF
-  # infra_health stub: exit code 由 env 控制
-  cat >"$BIN/infra_mock.sh" <<'EOF'
+  # infra_health stub：**忠實度是承重的，不是裝飾**。
+  #
+  # 舊版只有一行 `exit "${MOCK_INFRA_EXIT:-0}"`，於是「同一場斷網會讓這一關也 crit」
+  # 這件事在測試世界裡根本不存在——而真的 ops/infra_health.sh 會用**同一個外部 URL**
+  # 再打一次（:40 PROBE_URL 預設 = 公開網域/api/system/info）、非 200 一律 crit（:186）、
+  # crit → exit 2（:227）。結果是外部 smoke 這一關放行了 unreachable，下一關照樣把主機端
+  # 斷網翻譯成 reason=infra + 回滾 + poison。替身比真實依賴仁慈 = 把待測的失效模式從模型
+  # 裡刪掉，這正是 IMP-0056 記過一次、IMP-0061 review D1 又抓到一次的同一課題。
+  #
+  # 所以這裡照真的做：真的去打那個 URL（走同一支 mock curl）、真的照 200 判 ok/crit、
+  # 真的吐同形 JSON（key/label/value/raw/status + overall），exit 0/1/2 同語意。
+  # 旋鈕只保留兩個，且都對應真實世界存在的形狀：
+  #   MOCK_INFRA_EXTRA_CRIT=<container|ingress>  http_probe **以外**的真 crit（機器真的壞了）
+  #   MOCK_INFRA_MALFORMED=1                     crit 但 stdout 不是 JSON（版本不合／被換掉）
+  # 呼叫紀錄寫 $INFRALOG，讓「這一關真的跑了、真的 crit 了」可以被正控斷言，而不是靠推測。
+  cat >"$BIN/infra_mock.sh" <<EOF
 #!/usr/bin/env bash
-exit "${MOCK_INFRA_EXIT:-0}"
+set -uo pipefail
+json=0; [[ "\${1:-}" == "--json" ]] && json=1
+probe_url="\${KG_HEALTH_PROBE_URL:-\${KG_PUBLIC_URL:-https://wordnexus.lol}/api/system/info}"
+pinned=no; [[ -n "\${KG_HEALTH_PROBE_URL:-}" ]] && pinned=yes
+code="\$("\${CURL_BIN:-curl}" -sS -o /dev/null -w '%{http_code}' --max-time 10 "\$probe_url" 2>/dev/null || true)"
+[[ -n "\$code" ]] || code="000"
+hst=crit; [[ "\$code" == "200" ]] && hst=ok
+extra="\${MOCK_INFRA_EXTRA_CRIT:-}"
+overall=ok
+[[ "\$hst" == "crit" ]] && overall=crit
+[[ -n "\$extra" ]] && overall=crit
+printf 'call probe_url=%s pinned=%s http_code=%s http_probe=%s extra_crit=%s overall=%s\n' \\
+  "\$probe_url" "\$pinned" "\$code" "\$hst" "\${extra:-none}" "\$overall" >> "$INFRALOG"
+st_of() { if [[ "\$extra" == "\$1" ]]; then printf crit; else printf ok; fi; }
+if (( json == 1 )); then
+  if [[ "\${MOCK_INFRA_MALFORMED:-0}" == "1" ]]; then
+    printf 'infra_health: not json at all\n'
+  else
+    printf '{"overall":"%s","domain":"test","metrics":[' "\$overall"
+    printf '{"key":"host_collect","label":"Host","value":"ok","raw":null,"status":"ok"}'
+    printf ',{"key":"container","label":"Container","value":"running","raw":null,"status":"%s"}' "\$(st_of container)"
+    printf ',{"key":"ingress","label":"Tunnel","value":"active","raw":null,"status":"%s"}' "\$(st_of ingress)"
+    printf ',{"key":"http_probe","label":"HTTPS","value":"%s","raw":%s,"status":"%s"}' "\$code" "\$code" "\$hst"
+    printf ']}\n'
+  fi
+fi
+case "\$overall" in ok) exit 0;; warn) exit 1;; crit) exit 2;; esac
 EOF
   chmod +x "$BIN/git_mock.sh" "$BIN/compose_mock.sh" "$BIN/infra_mock.sh"
 }
@@ -293,6 +334,9 @@ out="$(run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
 [[ "$v" == "noop" ]] && ok "verdict noop" || bad "expected noop, got '$v' (out=$out)"
 [[ "$rc" -eq 0 ]] && ok "noop exit 0" || bad "noop exit $rc"
+# smoke 欄位是**發佈出去的機讀契約**（docs/reference/tech_index.md、docs/sop/deploy.md），
+# 四個取值就要四條斷言。原本只釘 unverified，於是把 "n/a"/"ok"/"bad" 改成垃圾字串照樣全綠。
+grep -q '"smoke":"n/a"' <<<"$out" && ok "noop: smoke=n/a（沒進 gate 的路徑）" || bad "noop: smoke 欄位不是 n/a (out=$out)"
 [[ ! -s "$COMPOSELOG" ]] && ok "noop: compose not called" || bad "noop: compose called ($(cat "$COMPOSELOG"))"
 grep -q "pull" "$GITLOG" && bad "noop: git pull called" || ok "noop: git pull not called"
 
@@ -322,8 +366,11 @@ v="$(get_verdict "$out")"
 compose_ups="$(grep -c 'up -d --build' "$COMPOSELOG" 2>/dev/null || echo 0)"
 [[ "$compose_ups" -eq 1 ]] && ok "deployed: compose up --build once" || bad "deployed: compose up x$compose_ups"
 grep -q "sha=$SHA_NEW user=reconciler" "$DEPLOYLOG" && ok "deployed: deploy.log line" || bad "deployed: deploy.log missing"
+grep -q '"smoke":"ok"' <<<"$out" && ok "deployed: smoke=ok（外部真的驗過了）" || bad "deployed: smoke 欄位不是 ok (out=$out)"
 ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_NEW" ]] && ok "deployed: VERSION == new sha" || bad "deployed: VERSION=$ver_now != $SHA_NEW"
+# 正控：這一關真的跑過，且它探的是**與外部 smoke 同一個 URL**（歸因規則的整個支點）。
+grep -q "overall=ok" "$INFRALOG" && ok "deployed: infra_health 真的跑了且判 ok（正控）" || bad "deployed: infra_health 沒被呼叫或沒判 ok（$(cat "$INFRALOG" 2>/dev/null)）"
 
 section "外部 smoke 前兩次連不上 → 重試後仍 deployed（不得假回滾）"
 # IMP-0060，這是**生產實際發生過的事故**（2026-08-04 12:40Z）：容器 recreate 後
@@ -388,10 +435,69 @@ EOF
   # 只認 `ALERT: ` 前綴（alert() 是唯一產生者），不要只 grep「外部 smoke」——那個詞在
   # dry-run 預覽字串裡也有，會被別的用途的同形 token 滿足。
   grep -q "ALERT: 外部 smoke" "$ERRLOG" && ok "host-outage[$shape]: 發了「量不到」告警要人看" || bad "host-outage[$shape]: 靜靜落地，沒有任何告警"
+  # ── review D1：放行 unreachable 之後，**下一關會用同一個 URL 再問一次同一個問題** ──
+  # 正控先行：證明 infra_health 這一關真的跑了、且真的因為那支對外探針而 crit。
+  # 少了這兩條，下面「沒有 reason=infra」與「這一關根本沒被呼叫」長得一模一樣。
+  grep -q "http_probe=crit" "$INFRALOG" && ok "host-outage[$shape]: infra_health 的對外探針真的 crit 了（正控）" || bad "host-outage[$shape]: infra 替身沒 crit — 替身比真實依賴仁慈，D1 的失效模式又被刪掉了（$(cat "$INFRALOG" 2>/dev/null)）"
+  grep -q "overall=crit" "$INFRALOG" && ok "host-outage[$shape]: infra_health 整體 CRIT（exit 2）仍照樣落地（正控）" || bad "host-outage[$shape]: infra_health 沒判 CRIT，這條綠是別的原因"
+  # 「同一個 URL」不能是註解裡的假設：reconciler 必須把 KG_HEALTH_PROBE_URL 釘成
+  # 自己剛剛探過的那個，歸因才是結構上為真而非碰巧預設值相同。
+  grep -q "pinned=yes" "$INFRALOG" && ok "host-outage[$shape]: reconciler 有把 infra 探針 URL 釘成同一個" || bad "host-outage[$shape]: infra 探針 URL 沒被釘（歸因只是碰巧靠預設值相同）"
+  grep -q "probe_url=https://wordnexus.lol/api/system/info" "$INFRALOG" && ok "host-outage[$shape]: 釘的正是外部 smoke 那個 URL" || bad "host-outage[$shape]: infra 探針打的是別的 URL（$(cat "$INFRALOG" 2>/dev/null)）"
+  grep -q "reason=infra" "$DEPLOYLOG" 2>/dev/null && bad "host-outage[$shape]: 回滾理由只是從 smoke 換成 infra — 同一個主機端問題，同一個回滾" || ok "host-outage[$shape]: 沒有把主機端問題翻譯成 reason=infra"
   # 預算真的被吃完才宣告 unverified；否則「有人把探針整個刪掉」也會產生一樣的綠。
   ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
   [[ "$ext_calls" -ge 2 ]] && ok "host-outage[$shape]: 探針真的重試到預算用盡（$ext_calls 次）" || bad "host-outage[$shape]: 只打了 $ext_calls 次 — 沒重試就宣告量不到"
 done
+
+section "斷網當下 infra_health 另有 http_probe 以外的 crit → 仍必須回滾（不得把整關關掉）"
+# 上一段放行的**只能是**「同一場斷網的第二個症狀」。如果 infra_health 還告訴你容器不見了
+# ／磁碟爆了／tunnel 掛了，那是關於這台機器與這個服務的真證據，與能不能連出去無關——
+# 放行它等於把 infra 這一關整個關掉，那不是修 D1，是用更大的洞蓋掉小洞。
+# 這一段與上一段合起來才有判別力：同一場斷網、兩個相反的結論。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+ERRLOG="$SC/recon.err"
+out="$(MOCK_EXTERNAL_FAIL_FIRST=99 MOCK_INFRA_EXTRA_CRIT=container run_recon --once 2>"$ERRLOG")"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "infra-real-crit: 仍回滾" || bad "infra-real-crit: expected rolled-back, got '$v' — 斷網變成 infra 這關的免死金牌 (out=$out)"
+grep -q "reason=infra" "$DEPLOYLOG" && ok "infra-real-crit: 理由記成 infra" || bad "infra-real-crit: deploy.log 沒記 reason=infra（$(cat "$DEPLOYLOG" 2>/dev/null)）"
+grep -q "^poison $SHA_NEW " "$STATE" && ok "infra-real-crit: poison 寫入" || bad "infra-real-crit: poison missing"
+grep -q "extra_crit=container" "$INFRALOG" && ok "infra-real-crit: 替身真的多吐了一個 crit（正控）" || bad "infra-real-crit: 替身沒注入 extra crit，這條紅/綠都不算數"
+
+section "外部 smoke 綠但 infra_health CRIT → 回滾 reason=infra（既有行為不得被放寬）"
+# infra 這條分支原本**零覆蓋**（舊替身恆 exit 0），所以「修 D1 時不小心把 infra 全放行」
+# 不會有任何測試反對。先把既有正確行為釘住，再談例外。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_INFRA_EXTRA_CRIT=ingress run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "infra-crit-smoke-ok: 回滾" || bad "infra-crit-smoke-ok: expected rolled-back, got '$v' (out=$out)"
+[[ "$rc" -ne 0 ]] && ok "infra-crit-smoke-ok: exit 非 0" || bad "infra-crit-smoke-ok: exit 0"
+grep -q "reason=infra" "$DEPLOYLOG" && ok "infra-crit-smoke-ok: 理由記成 infra" || bad "infra-crit-smoke-ok: 沒記 reason=infra"
+grep -q '"smoke":"ok"' <<<"$out" && ok "infra-crit-smoke-ok: smoke 仍記 ok（外部確實驗過，壞的是別的）" || bad "infra-crit-smoke-ok: smoke 欄位失真 (out=$out)"
+
+section "infra_health CRIT 但 JSON 讀不懂 → 無法歸因 → 照舊回滾（fail-closed）"
+# 歸因規則的前提是「讀得懂它為什麼 crit」。讀不懂就不准放行——否則 infra_health 換版、
+# 被替換、或吐了非預期輸出，就會靜悄悄地變成「什麼都不擋」。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(MOCK_EXTERNAL_FAIL_FIRST=99 MOCK_INFRA_MALFORMED=1 run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "rolled-back" ]] && ok "infra-unparseable: 讀不懂就不放行" || bad "infra-unparseable: expected rolled-back, got '$v' — 看不懂被當成沒問題 (out=$out)"
+grep -q "reason=infra" "$DEPLOYLOG" && ok "infra-unparseable: 理由記成 infra" || bad "infra-unparseable: 沒記 reason=infra"
 
 section "外部回得了 HTTP 但 /api/health 5xx → 仍必須回滾（重試不得變成無條件放行）"
 # 這一段原本注入 MOCK_EXTERNAL_FAIL_FIRST=99（＝完全連不上）來釘「重試不得變成無條件
@@ -449,6 +555,7 @@ compose_ups="$(grep -c 'up -d --build' "$COMPOSELOG" 2>/dev/null || echo 0)"
 [[ "$compose_ups" -eq 2 ]] && ok "rolled-back: compose up twice (deploy+rollback)" || bad "rolled-back: compose up x$compose_ups"
 grep -q "^poison $SHA_NEW " "$STATE" && ok "rolled-back: poison written for new sha" || bad "rolled-back: poison missing"
 grep -q "ROLLED_BACK from=$SHA_NEW to=$SHA_OLD reason=smoke" "$DEPLOYLOG" && ok "rolled-back: deploy.log ROLLED_BACK" || bad "rolled-back: deploy.log ROLLED_BACK missing"
+grep -q '"smoke":"bad"' <<<"$out" && ok "rolled-back: smoke=bad（拿得到回應但不合格）" || bad "rolled-back: smoke 欄位不是 bad (out=$out)"
 ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_OLD" ]] && ok "rolled-back: VERSION back to old sha" || bad "rolled-back: VERSION=$ver_now != $SHA_OLD"
 
