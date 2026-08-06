@@ -444,22 +444,70 @@ final class PodcastSyncService {
         return Dictionary(all.map { ($0.remoteId, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
+    /// 內容指紋。**不是只有 `updatedAt`。**
+    ///
+    /// 發布工具會在不 bump `updatedAt` 的前提下改動內容：
+    /// `ops/podcast_cover_publish.py:109` 換掉 `coverImageURL` 並重建 `index.json`，
+    /// 但明文寫著「updatedAt is deliberately NOT bumped」。只比 `updatedAt` 的話，
+    /// 那個新封面永遠不會落到已安裝的裝置上——而 `cacheCoverIfNeeded` 讀的是**本機**
+    /// 那一列的 `coverImageURL`，所以連「封面清單改由 summary 驅動」都救不了它。
+    ///
+    /// 因此指紋涵蓋 `index.json` 會投影、而我們又會 render 的每個欄位。多比幾個字串
+    /// 的成本是零，漏比一個欄位的成本是一個永遠修不好的畫面。
+    nonisolated static func fingerprint(
+        updatedAt: String?,
+        coverImageURL: String?,
+        title: String,
+        totalDurationSec: Double?,
+        episodeCount: Int?
+    ) -> String {
+        // U+001F unit separator：不會出現在任何一個欄位裡，所以不同的欄位組合
+        // 不可能拼出同一個字串。
+        [
+            updatedAt ?? "",
+            coverImageURL ?? "",
+            title,
+            totalDurationSec.map { String($0) } ?? "",
+            episodeCount.map(String.init) ?? ""
+        ].joined(separator: "\u{1F}")
+    }
+
+    nonisolated static func fingerprint(of summary: PodcastSeriesSummary) -> String {
+        fingerprint(
+            updatedAt: summary.updatedAt, coverImageURL: summary.coverImageURL,
+            title: summary.title, totalDurationSec: summary.totalDurationSec,
+            episodeCount: summary.episodeCount
+        )
+    }
+
+    nonisolated static func fingerprint(of detail: PodcastSeriesDetail) -> String {
+        fingerprint(
+            updatedAt: detail.updatedAt, coverImageURL: detail.coverImageURL,
+            title: detail.title, totalDurationSec: detail.totalDurationSec,
+            episodeCount: detail.episodes.count
+        )
+    }
+
     /// 這個 series 需不需要重抓 detail。
     ///
     /// 每一條 `true` 都是「省下這一趟會出錯」的具體情況，不是保守而已：
     /// - **沒見過** → 本機根本沒有 episodes。
     /// - **被 tombstone 過** → 復活時要把 episodes 拿回來。
-    /// - **伺服器沒給指紋** → 沒有依據就不省。舊 series 或手工 metadata 會這樣。
-    /// - **指紋不同** → 內容真的變了。
-    /// - **episode 數對不上** → 上一輪可能只寫了一半（中途取消 / 被 kill）。這條是
-    ///   完整性檢查，不是快取檢查：指紋相同但本機只有 3 集而伺服器說 8 集時，
-    ///   靠指紋就會永遠卡在半套狀態。
+    /// - **伺服器沒給 `updatedAt`** → 指紋失去它最主要的成分，不省。
+    /// - **指紋不同** → 內容真的變了（含只換封面那種不 bump 時戳的變更）。
+    /// - **episode 數對不上** → 本機是半套。這條是完整性檢查而不是快取檢查：
+    ///   指紋相同但本機只有 3 集而伺服器說 8 集時，靠指紋就會永遠卡在半套狀態。
+    ///
+    /// **已知盲點（需要工具側配合，不是這裡能解的）**：若發布工具改了 episode
+    /// *內部*的欄位（例如 `previewAvailable`）卻既不 bump `updatedAt` 也不重建
+    /// `index.json`，清單上不會有任何差異，客戶端無從察覺。
+    /// `ops/podcast_preview_backfill.py` 本來就是這樣，已在同一批改成會 bump。
     @MainActor
     static func needsDetailFetch(summary: PodcastSeriesSummary, local: PodcastSeries?) -> Bool {
         guard let local else { return true }
         if local.isSoftDeleted { return true }
-        guard let remote = summary.updatedAt, !remote.isEmpty else { return true }
-        guard local.remoteUpdatedAt == remote else { return true }
+        guard let stamp = summary.updatedAt, !stamp.isEmpty else { return true }
+        guard local.remoteFingerprint == fingerprint(of: summary) else { return true }
         if let expected = summary.episodeCount, local.episodes.count != expected { return true }
         return false
     }
@@ -526,11 +574,11 @@ final class PodcastSyncService {
         series.totalDurationSec = detail.totalDurationSec ?? 0
         series.episodeCount = detail.episodes.count
         series.updatedAt = Date()
-        // 內容指紋。**寫在 episodes 迴圈之前**沒關係（同一個 MainActor 交易，
-        // 要嘛全寫要嘛全不寫），但如果之後有人把 episode upsert 拆成非同步的，
-        // 這行就必須移到最後——指紋先落地、episodes 沒落地，等於永久跳過重抓。
-        // `needsDetailFetch` 的 episode 數檢查是這條的第二道防線。
-        series.remoteUpdatedAt = detail.updatedAt
+        // 內容指紋。這整支是同步的 `@MainActor`，中間沒有 suspension point，
+        // 所以「指紋落地但 episodes 沒落地」今天不可能發生。**但如果之後有人把
+        // episode upsert 拆成 async，這行就必須移到最後**——否則會永久跳過重抓。
+        // `needsDetailFetch` 的 episode 數檢查是那時的第二道防線。
+        series.remoteFingerprint = Self.fingerprint(of: detail)
         // Resurrect: if server brings a previously-tombstoned series back, clear flag.
         if series.isSoftDeleted { series.isSoftDeleted = false }
 

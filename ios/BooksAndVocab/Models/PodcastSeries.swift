@@ -33,12 +33,14 @@ final class PodcastSeries {
     var createdAt: Date = Date()
     /// **本機**的最後更新時間（每次 upsert 都寫 `Date()`）。不是伺服器的時戳。
     var updatedAt: Date = Date()
-    /// 伺服器 `index.json` / `metadata.json` 的 `updatedAt` 原字串，當作內容指紋。
+    /// 伺服器這個 series 的**內容指紋**（見 `PodcastSyncService.fingerprint`）。
     ///
-    /// 存原字串而不是解析成 `Date`：這個值唯一的用途是與下一次的清單逐字比對，
-    /// 解析只會引入時區與小數秒的歧義，卻換不到任何東西。nil = 舊版寫入的列
-    /// （或伺服器沒給），一律視為需要重抓。
-    var remoteUpdatedAt: String?
+    /// 不只是 `updatedAt`：`ops/podcast_cover_publish.py` 會換掉 `coverImageURL`
+    /// 並重建 `index.json`，但**刻意不 bump `updatedAt`**。只比 `updatedAt` 的話，
+    /// 新上的封面永遠不會落到已安裝的裝置上。所以指紋涵蓋清單裡每個我們會 render
+    /// 的欄位。存字串而不是解析：這個值唯一的用途是與下一次的清單逐字比對。
+    /// nil = 舊版寫入的列（或伺服器沒給），一律視為需要重抓。
+    var remoteFingerprint: String?
     @Attribute(originalName: "isDeleted")
     var isSoftDeleted: Bool = false
 

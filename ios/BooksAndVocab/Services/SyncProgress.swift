@@ -120,6 +120,25 @@ enum SyncProgressEvent: Sendable, Equatable {
 /// 測試因此零影響。
 typealias SyncProgressReporting = @Sendable (SyncProgressEvent) -> Void
 
+/// 一輪 `backgroundSync` 的結果。
+///
+/// **為什麼需要這個型別，而不是讀 `lastBackgroundSyncError`**：那個欄位是四個
+/// trigger 共用的全域，它答不出「**這一輪**發生了什麼」。兩個具體的錯法：
+/// - scenePhase 觸發的同步正在跑（一輪約數秒），使用者這時打開設定頁按同步 →
+///   `claimBackgroundSync()` 失敗、整支在重置該欄位之前就 return。呼叫端讀到的是
+///   **上一輪**留下的值：nil 就報成功（一輪什麼都沒做的同步顯示 100% 完成），
+///   非 nil 就報失敗。
+/// - 中途取消刻意讓該欄位維持 nil（「既非成功也非失敗」），呼叫端一樣會讀成成功。
+enum SyncRoundOutcome: Sendable, Equatable {
+    /// 整輪跑完，每一條腿都沒有真正的失敗。
+    case completed
+    /// 至少一條腿真的失敗了（不含取消）。
+    case failed
+    /// 這一輪什麼都沒做——離線、被另一輪佔著 claim、或中途取消。
+    /// **不是成功也不是失敗**：UI 該直接收合，不宣稱任何事。
+    case didNotRun
+}
+
 // MARK: - Store
 
 /// 同步進度的唯一狀態載體。

@@ -395,7 +395,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             for await event in events { syncProgress.apply(event) }
         }
 
-        await kgService.backgroundSync(container: modelContext.container) { event in
+        let outcome = await kgService.backgroundSync(container: modelContext.container) { event in
             continuation.yield(event)
         }
         do {
@@ -405,13 +405,13 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
 
         // 額度與連線檢查併發。兩者都是唯讀 GET、彼此無依賴，序列跑純粹是多一趟
-        // 往返的等待。
+        // 往返的等待；它們寫的欄位互不相交（healthCheck → isConnected /
+        // serverCardCount，fetchQuota → QuotaStore），所以這兩條併發是安全的。
         //
-        // **刻意不把它們拉進 backgroundSync 一起併發。** 它們寫的是 `KGService`
-        // 的 observable 屬性（isConnected / serverCardCount / quota），而
-        // `KGService` 是 `@Observable` 但不是 `@MainActor`。三條腿同時寫同一個
-        // observation registrar 是為了省約 100ms 去換一個真實的 data race——
-        // 這一輪真正的 6 秒在 podcast，那筆已經收掉了。
+        // **但刻意不把它們再拉進 backgroundSync 一起三方併發。** 那時 `serverCardCount`
+        // 會與 pull 撞在一起，而 `KGService` 是 `@Observable` 卻不是 `@MainActor`
+        // ——為了省約 100ms 去換一個真實的 data race 不划算。這一輪真正的 6 秒在
+        // podcast，那筆已經收掉了。
         continuation.yield(.started(.status))
         async let health: Void = kgService.healthCheck()
         async let quota: Void = kgService.fetchQuota()
@@ -420,7 +420,15 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         continuation.finish()
         await pump.value
-        syncProgress.finish(kgService.lastBackgroundSyncError == nil ? .completed : .failed)
+
+        // 終態取自這一輪自己的回報，**不是** `lastBackgroundSyncError`。那是四個
+        // trigger 共用的全域欄位，對「被別的 round 佔著 claim 所以什麼都沒做」與
+        // 「跑到一半被取消」這兩條路徑，它會讓面板宣稱 100% 完成。
+        switch outcome {
+        case .completed: syncProgress.finish(.completed)
+        case .failed:    syncProgress.finish(.failed)
+        case .didNotRun: syncProgress.reset()  // 直接收合，不宣稱任何事
+        }
 
         refreshObservationPreview()
     }

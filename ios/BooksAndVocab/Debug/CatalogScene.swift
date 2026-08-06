@@ -279,6 +279,7 @@ struct CatalogScene: View {
                 surfaces: [
                     block("Settings Sections · Review", .settings, SettingsReviewSection.self),
                     block("Settings Sections · Preferences", .settings, SettingsPreferencesSection.self),
+                    block("Settings Sections · Other", .settings, SettingsOtherSection.self),
                 ],
                 register: SettingsSectionsScenarios.register
             ),

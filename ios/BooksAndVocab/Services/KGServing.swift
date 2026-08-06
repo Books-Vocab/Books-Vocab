@@ -39,12 +39,18 @@ protocol BackgroundSyncing: AnyObject {
     /// 之所以是**額外一支**而不是給既有那支加參數：加參數會讓每個 mock 都得改
     /// 簽名，而它們一個都不關心進度。下面的預設實作把 reporter 丟掉並轉呼無參數
     /// 版，所以既有 conformance 零改動；只有真的會回報的 `KGService` 自己覆寫。
-    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async
+    ///
+    /// 回傳 `SyncRoundOutcome` 是因為「這一輪發生了什麼」不能從
+    /// `lastBackgroundSyncError` 讀——那是四個 trigger 共用的全域欄位，理由見該型別。
+    @discardableResult
+    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome
 }
 
 extension BackgroundSyncing {
-    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async {
+    @discardableResult
+    func backgroundSync(container: ModelContainer, progress: SyncProgressReporting?) async -> SyncRoundOutcome {
         await backgroundSync(container: container)
+        return .completed
     }
 }
 

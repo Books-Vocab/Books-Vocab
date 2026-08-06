@@ -78,6 +78,14 @@ private struct QuotaStoreKey: EnvironmentKey {
     static let defaultValue: any QuotaProviding = QuotaStore.shared
 }
 
+/// 預設是一個空的 store（`phase == .ready`、零步驟），所以任何沒有注入的 preview /
+/// catalog scene 都只會看到收合狀態，不會憑空長出一個假的進度面板。
+private struct SyncProgressStoreKey: EnvironmentKey {
+    static var defaultValue: SyncProgressStore {
+        MainActor.assumeIsolated { SyncProgressStore() }
+    }
+}
+
 private struct SpeechServiceKey: EnvironmentKey {
     static let defaultValue: any Speaking = SpeechService.shared
 }
@@ -140,6 +148,10 @@ extension EnvironmentValues {
     var quotaStore: any QuotaProviding {
         get { self[QuotaStoreKey.self] }
         set { self[QuotaStoreKey.self] = newValue }
+    }
+    var syncProgressStore: SyncProgressStore {
+        get { self[SyncProgressStoreKey.self] }
+        set { self[SyncProgressStoreKey.self] = newValue }
     }
     var speechService: any Speaking {
         get { self[SpeechServiceKey.self] }
