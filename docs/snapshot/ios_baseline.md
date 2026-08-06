@@ -19,16 +19,16 @@ verified_against: dcb7b705f
 |------|------|
 | 2659 | `Support/Fixtures/Core/FixtureDatasetStore.swift` |
 | 858 | `Services/BackgroundSyncActor.swift` |
-| 686 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
+| 772 | `Services/PodcastSyncService.swift` |
+| 746 | `Services/KGService+Sync.swift` |
 | 673 | `Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift` |
 | 672 | `Views/Podcast/PodcastPlayerScene.swift` |
+| 662 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
 | 655 | `Support/Fixtures/Settings/SettingsFixtures.swift` |
 | 630 | `Services/PodcastAudioEngine.swift` |
-| 621 | `Services/PodcastSyncService.swift` |
 | 612 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
-| 601 | `Models/SharedTypes.swift` |
 
-總 Swift 行數: 81305 / 507 檔案
+總 Swift 行數: 82307 / 510 檔案
 
 ---
 
@@ -36,8 +36,8 @@ verified_against: dcb7b705f
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 275 |
-| 含 #Preview 的檔案數 | 65 |
+| Views/ + UIComponents/ 檔案總數 | 277 |
+| 含 #Preview 的檔案數 | 66 |
 
 ---
 
@@ -45,5 +45,5 @@ verified_against: dcb7b705f
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 252 |
-| async func | 292 |
+| @MainActor | 256 |
+| async func | 297 |
