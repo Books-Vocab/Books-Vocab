@@ -93,7 +93,19 @@ fi
 if [[ -n "\${MOCK_EXTERNAL_FAIL_FIRST:-}" && "\$url" == *wordnexus.lol* && "\$url" == *system/info* ]]; then
   n=\$(cat "$dir/external_calls" 2>/dev/null || echo 0)
   n=\$((n+1)); echo "\$n" > "$dir/external_calls"
-  if (( n <= MOCK_EXTERNAL_FAIL_FIRST )); then exit 6; fi
+  if (( n <= MOCK_EXTERNAL_FAIL_FIRST )); then
+    # MOCK_EXTERNAL_FAIL_SHAPE 控制**失敗長什麼樣**，預設 code000 = 忠實模擬真 curl。
+    # 實測（2026-08-06，無法解析的主機名）：
+    #   curl -sS -o - -w \$'\\n%{http_code}' → stdout=[\\n000]、exit 6
+    # 也就是說連不出去時 curl **有印東西**，呼叫端拿到的 code 是字串 "000" 而不是空字串。
+    # 舊版這裡靜默 exit 6 → 呼叫端拿到 ""，於是「只檢查空字串」的實作會在測試裡全綠、
+    # 在生產照樣誤判。shape=silent 保留舊形狀，專門用來釘住分類器不得只認其中一種。
+    if [[ "\${MOCK_EXTERNAL_FAIL_SHAPE:-code000}" != "silent" ]]; then
+      if [[ "\$want_body_plus_http" == "1" ]]; then printf '\\n000'
+      elif [[ "\$want_http_only" == "1" ]]; then printf '000'; fi
+    fi
+    exit 6
+  fi
 fi
 match_line=""
 while IFS= read -r line; do
@@ -108,7 +120,12 @@ fi
 rest="\${match_line#*|}"
 code="\${rest%%|*}"
 body="\${rest#*|}"
-if [[ "\$code" == "000" ]]; then exit 6; fi
+if [[ "\$code" == "000" ]]; then
+  # 同上：fixture 寫 000 代表「連不出去」，真 curl 會先把 000 印出來才以 6 退出。
+  if [[ "\$want_body_plus_http" == "1" ]]; then printf '\\n000'
+  elif [[ "\$want_http_only" == "1" ]]; then printf '000'; fi
+  exit 6
+fi
 if [[ "\$want_body_plus_http" == "1" ]]; then
   printf '%s\n%s' "\$body" "\$code"
 elif [[ "\$want_http_only" == "1" ]]; then
@@ -329,17 +346,68 @@ grep -q "ROLLED_BACK" "$DEPLOYLOG" 2>/dev/null && bad "external flap: 假回滾�
 ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
 [[ "$ext_calls" -ge 2 ]] && ok "external flap: 真的重試了（$ext_calls 次）" || bad "external flap: 只打了 $ext_calls 次 — 沒有重試，上面的綠是別的原因"
 
-section "外部 smoke 一直連不上 → 仍必須回滾（重試不得變成無條件放行）"
-new_scratch backend
-MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+section "外部全程拿不到任何 HTTP 回應（主機端斷網）→ 落地 + 告警，不得回滾"
+# IMP-0061。健康 gate 把**我這台量不到**判成**這次部署壞了**，而兩者不是同一件事。
+# 2026-08-04 事故：felix 的 DNS 掛了，容器與 tunnel 都好端端的、使用者也拿得到服務，
+# gate 卻從 felix 內部量外部可達性、量不到就回滾——而回滾的 `--build` 又因為同一個
+# 網路問題失敗（IMP-0060 C2）。兩個失效相關而非獨立：gate 最容易假失敗的時候，正是
+# 回滾最不可能成功的時候。
+#
+# 判準：回滾只有在**證據指控被部署的那份 code** 時才正當。localhost 探針此刻已經證明
+# 新 sha 起來了；「拿到 HTTP 回應但內容不對」是關於服務鏈的證據，「一個 HTTP 回應都
+# 拿不到」則什麼都沒證明——除了這台機器連不出去。
+#
+# 兩種 shape 都跑，逼分類器不准挑替身的形狀來認：
+#   code000 = 真 curl 的形狀（stdout 印 000、exit 6 → 呼叫端 code="000"）
+#   silent  = 舊替身的形狀（什麼都不印 → 呼叫端 code=""）
+# 只認其中一種的實作會在這裡紅一半（見 test 檔 make_mock_curl 內的實測註解）。
+for shape in code000 silent; do
+  new_scratch backend
+  MOCK_CURL="$(make_mock_curl "$(cat <<EOF
 wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
 wordnexus.lol/api/health|401|{"detail":"x"}
 EOF
 )" "$SC" "$SERVEDFILE")"
-out="$(MOCK_EXTERNAL_FAIL_FIRST=99 run_recon --once 2>/dev/null)"; rc=$?
+  ERRLOG="$SC/recon.err"
+  out="$(MOCK_EXTERNAL_FAIL_FIRST=99 MOCK_EXTERNAL_FAIL_SHAPE=$shape run_recon --once 2>"$ERRLOG")"; rc=$?
+  v="$(get_verdict "$out")"
+  [[ "$v" == "deployed" ]] && ok "host-outage[$shape]: verdict deployed（沒把斷網判成部署壞了）" || bad "host-outage[$shape]: expected deployed, got '$v' — 主機端連不出去被判成這次部署壞了 (out=$out)"
+  [[ "$rc" -eq 0 ]] && ok "host-outage[$shape]: exit 0" || bad "host-outage[$shape]: exit $rc"
+  # 落地了不代表可以假裝一切正常：verdict 與 deploy.log 都要留下「這次外部沒驗過」的痕跡。
+  # 這兩條是持久、可 grep 的證據；stderr 告警是次要的（沒人保證有人在讀 launchd err log）。
+  grep -q '"smoke":"unverified"' <<<"$out" && ok "host-outage[$shape]: verdict 標記 smoke=unverified" || bad "host-outage[$shape]: verdict 沒標 smoke 未驗證，落地被當成完全成功 (out=$out)"
+  grep -q "sha=$SHA_NEW user=reconciler smoke=unverified" "$DEPLOYLOG" && ok "host-outage[$shape]: deploy.log 記下 smoke=unverified" || bad "host-outage[$shape]: deploy.log 沒記 smoke=unverified（$(cat "$DEPLOYLOG" 2>/dev/null)）"
+  grep -q "ROLLED_BACK" "$DEPLOYLOG" 2>/dev/null && bad "host-outage[$shape]: 回滾了一個其實健康的部署" || ok "host-outage[$shape]: 未回滾"
+  grep -q "^poison " "$STATE" 2>/dev/null && bad "host-outage[$shape]: 寫了 poison — 自己把自己凍結 1 小時" || ok "host-outage[$shape]: 未寫 poison"
+  [[ "$(cat "$VERSIONFILE")" == "$SHA_NEW" ]] && ok "host-outage[$shape]: VERSION == 新 sha" || bad "host-outage[$shape]: VERSION=$(cat "$VERSIONFILE") != $SHA_NEW"
+  [[ "$(cat "$SERVEDFILE")" == "$SHA_NEW" ]] && ok "host-outage[$shape]: 容器實際 serving 新 sha" || bad "host-outage[$shape]: serving=$(cat "$SERVEDFILE") != $SHA_NEW"
+  # 正控：先證明這個探針**讀得到** stderr，否則下面「沒有回滾告警」跟「根本沒接到 stderr」
+  # 長得一模一樣（這個檔已經被這種空斷言咬過一次，見下方 no-image rollback 段的註解）。
+  grep -q "external attempt" "$ERRLOG" && ok "host-outage[$shape]: 探針讀得到 stderr（正控）" || bad "host-outage[$shape]: 連重試日誌都沒讀到 — 探針壞了，不是行為對了"
+  grep -q "ALERT: 部署健康 gate 失敗" "$ERRLOG" && bad "host-outage[$shape]: 仍發回滾告警" || ok "host-outage[$shape]: 未發回滾告警"
+  # 只認 `ALERT: ` 前綴（alert() 是唯一產生者），不要只 grep「外部 smoke」——那個詞在
+  # dry-run 預覽字串裡也有，會被別的用途的同形 token 滿足。
+  grep -q "ALERT: 外部 smoke" "$ERRLOG" && ok "host-outage[$shape]: 發了「量不到」告警要人看" || bad "host-outage[$shape]: 靜靜落地，沒有任何告警"
+  # 預算真的被吃完才宣告 unverified；否則「有人把探針整個刪掉」也會產生一樣的綠。
+  ext_calls="$(cat "$SC/external_calls" 2>/dev/null || echo 0)"
+  [[ "$ext_calls" -ge 2 ]] && ok "host-outage[$shape]: 探針真的重試到預算用盡（$ext_calls 次）" || bad "host-outage[$shape]: 只打了 $ext_calls 次 — 沒重試就宣告量不到"
+done
+
+section "外部回得了 HTTP 但 /api/health 5xx → 仍必須回滾（重試不得變成無條件放行）"
+# 這一段原本注入 MOCK_EXTERNAL_FAIL_FIRST=99（＝完全連不上）來釘「重試不得變成無條件
+# 放行」。IMP-0061 之後那個情境的正確答案改成「落地」，所以斷言被搬到上一段；但**意圖
+# 必須保留**，只是重新瞄準真正該擋的那條分支：拿得到 HTTP 回應、內容卻是壞的。
+# 這條與上一段合起來才是真正的判別力——同一個 gate 兩個相反的結論，而不是「兩邊都非零」。
+new_scratch backend
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|503|boom
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
-[[ "$v" == "rolled-back" ]] && ok "external down: 仍回滾" || bad "external down: expected rolled-back, got '$v' — 重試把真失敗吃掉了"
-grep -q "reason=smoke" "$DEPLOYLOG" && ok "external down: 理由記成 smoke" || bad "external down: deploy.log 沒記 reason=smoke"
+[[ "$v" == "rolled-back" ]] && ok "external 5xx: 仍回滾" || bad "external 5xx: expected rolled-back, got '$v' — 重試把真失敗吃掉了"
+grep -q "reason=smoke" "$DEPLOYLOG" && ok "external 5xx: 理由記成 smoke" || bad "external 5xx: deploy.log 沒記 reason=smoke"
 
 section "backend change 但不動 image → 仍 deployed（不得假回滾）"
 # IMP-0056：`backend/docker-compose.yml` 的純註解改動命中 BACKEND_TRIGGER_RE，但不進

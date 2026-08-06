@@ -62,7 +62,9 @@ KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH
 # **預算算法取決於失敗是快還是慢**：`--max-time 10` 只在「連得上但回應慢」時被吃滿；
 # DNS `no such host` / connection refused 是**瞬間**返回，所以快失敗的總預算只有
 # (attempts-1) × delay。delay 從 3 提到 5 就是為了這個：快失敗預算 12s → 20s。
-# 誠實地說：**這仍蓋不住 ~90s 的 DNS 中斷**，殘餘風險見 IMP-0061。
+# 誠實地說：**這仍蓋不住 ~90s 的 DNS 中斷**——但自 IMP-0061 起那不再是風險，只是延遲：
+# 預算用盡後的結論從「回滾」改成「落地 + 記 smoke=unverified + 告警」（見 external_smoke_ok
+# 的三分類）。所以這兩個 knob 現在買的是「多等一下也許就驗到了」，不是「賭中斷有多長」。
 KG_RECON_HEALTH_ATTEMPTS="${KG_RECON_HEALTH_ATTEMPTS:-5}"  # 兩個健康探針的輪詢次數
 KG_RECON_HEALTH_DELAY="${KG_RECON_HEALTH_DELAY:-5}"        # 每次間隔秒（見上方預算算法）
 KG_RECON_POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"  # poison 冷卻秒（過後允許重試同 sha）
@@ -184,17 +186,38 @@ localhost_health_ok() {
 #   ④ 容器自始至終沒重啟過（uptime 連續），所以 tunnel 從來不需要「接回新 origin」。
 # 這個差別會改變修法尺寸，所以值得寫清楚：見上方 knob 段的快/慢失敗預算算法。
 #
-# **這條重試緩解但蓋不住該事故**：日誌把中斷長度定界在 (0, ~90s]（下一個 90s tick 的
-# git fetch 才成功），而快失敗的預算只有 (attempts-1)×delay = 20s。真正的解是「主機端
-# 連不出去」不該被判成「這次部署壞了」——那需要區分兩者，記為 IMP-0061。
+# **重試緩解但蓋不住該事故**：日誌把中斷長度定界在 (0, ~90s]（下一個 90s tick 的 git
+# fetch 才成功），而快失敗的預算只有 (attempts-1)×delay = 20s。所以 IMP-0061 的解不是
+# 把預算加大（那是拿參數賭中斷長度），而是**把兩個問題分開判**：
+#
+#   「我這台量不到」 ≠ 「這次部署壞了」
+#
+# 判準寫成不依賴故障種類的形式：**回滾只有在證據指控被部署的那份 code 時才正當**。
+# 走到這個函式時 localhost_health_ok 已經證明新 sha 確實起來了、正在 serving，所以
+#   - 拿到 HTTP 回應（200/500/502/530/1033，CF 錯誤頁也算）→ 是關於服務鏈的證據 → `bad`
+#   - **一個 HTTP 回應都沒拿到** → 什麼都沒證明，只證明這台機器連不出去 → `unreachable`
+# 刻意只問「到底有沒有拿到回應」，不問是幾號——所以不需要那份「CF tunnel 各種故障回
+# 什麼 code」的對照表（那份表現在沒人有，而這個設計繞開了對它的依賴）。
+#
+# 分類結果放 EXTERNAL_SMOKE_CLASS 給 run_health_gate 用；unreachable 不回滾，理由見那裡。
 external_smoke_ok() {
   local want="$1" base="$KG_PUBLIC_URL"
   local attempts="$KG_RECON_HEALTH_ATTEMPTS" delay="$KG_RECON_HEALTH_DELAY"
   local i body code ver hcode
+  # 「這一輪到底有沒有拿到過任何 HTTP 回應」的見證，是上述三分類的整個支點。
+  local saw_response=0
+  EXTERNAL_SMOKE_CLASS="unreachable"
   for (( i=1; i<=attempts; i++ )); do
     body="$("$CURL_BIN" -sS -o - -w $'\n%{http_code}' --max-time 10 "$base/api/system/info" 2>/dev/null || true)"
     code="$(printf '%s\n' "$body" | tail -n1)"
     body="$(printf '%s\n' "$body" | sed '$d')"
+    # 空字串與 "000" **都**算「沒拿到回應」，兩個都要認：
+    #   真 curl 連不出去時會**把 000 印在 stdout** 再 exit 6（2026-08-06 對無法解析的
+    #   主機名實測：stdout=[\n000]、rc=6），所以這裡拿到的是字串 "000"；
+    #   而 `|| true` 吞掉失敗、或替身靜默退出時，拿到的是空字串。
+    # 只認其中一種的實作會在測試裡全綠、在生產照樣誤判——這是這條修法最容易被做假的
+    # 地方，故測試對兩種 shape 各跑一次（見 test_kg_reconcile.sh 的 host-outage 段）。
+    if [[ -n "$code" && "$code" != "000" ]]; then saw_response=1; fi
     if [[ "$code" != "200" ]]; then
       log "  external attempt $i/$attempts: /api/system/info HTTP=${code:-none} (expect 200)"
     else
@@ -202,25 +225,56 @@ external_smoke_ok() {
       if [[ "$ver" != "$want" ]]; then
         log "  external attempt $i/$attempts: version=${ver:-} != $want"
       else
-        hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || echo 000)"
+        # `|| true` + 補預設，不用 `|| echo 000`：後者在真 curl 失敗時會把 curl 自己印的
+        # "000" 與 echo 的 "000" **接起來**變成 "000000"（實測），既讓日誌印出無意義的
+        # HTTP=000000，也讓下面 `!= "000"` 的見證判斷失準。
+        hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || true)"
+        [[ -n "$hcode" ]] || hcode="000"
+        if [[ "$hcode" != "000" ]]; then saw_response=1; fi
         case "$hcode" in
-          200|401|403) return 0 ;;                          # 存在 → ok
-          404) log "  external /api/health 404 → 跳過（非失敗）"; return 0 ;;
+          200|401|403) EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;                          # 存在 → ok
+          404) log "  external /api/health 404 → 跳過（非失敗）"; EXTERNAL_SMOKE_CLASS="ok"; return 0 ;;
           *)   log "  external attempt $i/$attempts: /api/health HTTP=$hcode" ;;   # 000/500/其他 → 再試
         esac
       fi
     fi
     if (( i < attempts )); then sleep "$delay"; fi
   done
+  # 刻意保留的後果：system/info 拿到 200、但每次 /api/health 都是 000 → saw_response=1
+  # → `bad` → 照樣回滾。正確：這台機器**demonstrably 有對外連通性**（200 就是證據），
+  # 所以打不通的 /api/health 是真證據。別為了對稱把這裡「簡化」掉。
+  if (( saw_response == 1 )); then EXTERNAL_SMOKE_CLASS="bad"; fi
   return 1
 }
 
 # 三段健康 gate；失敗設 HEALTH_FAIL_REASON=<health|smoke|infra> 並 return 1
+#
+# ⚠ 這三個都**必須宣告在頂層**（不是塞進 function 裡）：`set -u` 開著，而 emit_verdict
+# 會從 noop / ff-only / locked / dry-run 這些**根本沒進過 gate** 的路徑被呼叫；未宣告的
+# 變數在那裡會 unbound → 腳本當場死掉、連 JSON verdict 都來不及印，違反輸出契約。
+# 這個失效模式已經咬過本檔一次，見下方回滾告警處 `${VAR}` 大括號那段註解。
 HEALTH_FAIL_REASON=""
+EXTERNAL_SMOKE_CLASS=""      # ok | unreachable | bad（由 external_smoke_ok 設）
+SMOKE_STATE="n/a"            # 進 verdict 與 deploy.log：n/a | ok | unverified | bad
 run_health_gate() {
   local new="$1"
   if ! localhost_health_ok "$new"; then HEALTH_FAIL_REASON="health"; return 1; fi
-  if ! external_smoke_ok "$new";  then HEALTH_FAIL_REASON="smoke";  return 1; fi
+  # 外部 smoke 三分類。注意這裡**只有 `bad` 會擋**——
+  # `unreachable` 不回滾的理由不是「寬容」，是「回滾在此刻既無正當性也不可靠」：
+  #   ① 無正當性：localhost 剛剛才證明 ${new} healthy 在跑，沒有任何證據指控這份 code；
+  #   ② 不可靠：回滾要跑 `--build`，而 2026-08-04 事故裡它正是被同一個 DNS 故障弄死的
+  #      （IMP-0060 C2）。兩個失效是**相關的**——gate 最容易假失敗的時候，正是回滾最
+  #      不可能成功的時候。對相關失效做自動補償，只會把一個問題變成兩個。
+  # 放行後 gate 退化成 localhost + infra_health，兩者都純本機、免疫於同一場斷網——
+  # 這才是「落地是安全的」這句話的根據，而不是賭。
+  if external_smoke_ok "$new"; then
+    SMOKE_STATE="ok"
+  elif [[ "$EXTERNAL_SMOKE_CLASS" == "unreachable" ]]; then
+    SMOKE_STATE="unverified"
+    alert "外部 smoke 全程拿不到任何 HTTP 回應（是 felix 對外連通性中斷，不是服務回 5xx）。localhost 已證明 ${new} 健康在跑，故**不回滾**；請從第二個地點確認 ${KG_PUBLIC_URL} 是否可達。本次已記 smoke=unverified。"
+  else
+    SMOKE_STATE="bad"; HEALTH_FAIL_REASON="smoke"; return 1
+  fi
   local ih
   set +e; "$KG_INFRA_HEALTH" >/dev/null 2>&1; ih=$?; set -e
   case "$ih" in
@@ -247,8 +301,8 @@ DEPLOYED_SHA="unknown"
 ORIGIN_SHA="unknown"
 BACKEND_CHANGED="false"
 emit_verdict() {
-  printf '{"schema":"kg.deploy.reconcile.v1","verdict":"%s","deployed_sha":"%s","origin_sha":"%s","backend_changed":%s,"ts":"%s"}\n' \
-    "$1" "$DEPLOYED_SHA" "$ORIGIN_SHA" "$BACKEND_CHANGED" "$(iso_now)"
+  printf '{"schema":"kg.deploy.reconcile.v1","verdict":"%s","deployed_sha":"%s","origin_sha":"%s","backend_changed":%s,"smoke":"%s","ts":"%s"}\n' \
+    "$1" "$DEPLOYED_SHA" "$ORIGIN_SHA" "$BACKEND_CHANGED" "$SMOKE_STATE" "$(iso_now)"
 }
 
 # ── git 封裝（一律 -C repo；fetch 可注入 GH_TOKEN credential helper，不改 remote URL）
@@ -302,8 +356,15 @@ deploy_and_gate() {
   fi
 
   if (( ok == 1 )); then
-    append_deploy_log "sha=$new_sha user=reconciler"
-    clear_poison "$ORIGIN_SHA"
+    # smoke=unverified 要留在**持久且可 grep 的**地方。stderr 的 ALERT 只是次要通知——
+    # 沒有人保證有人在讀 launchd 的 err log，而這條落地是「已部署但外部沒驗過」，
+    # 事後一定要查得到是哪一次。後綴形式，既有的 `sha=<x> user=reconciler` grep 不受影響。
+    if [[ "$SMOKE_STATE" == "unverified" ]]; then
+      append_deploy_log "sha=$new_sha user=reconciler smoke=unverified"
+    else
+      append_deploy_log "sha=$new_sha user=reconciler"
+    fi
+    clear_poison "$ORIGIN_SHA"   # 部署確實落地了，解除 poison
     log "✓ DEPLOY 成功：version=$new_sha"
     emit_verdict "deployed"
     exit 0
