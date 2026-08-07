@@ -34,6 +34,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -2804,3 +2805,77 @@ def test_show_can_print_every_field_update_can_write(tmp_path):
     """
     missing = sorted(set(BACKLOG.MUTABLE_FIELDS) - set(BACKLOG.SHOW_FIELD_ORDER))
     assert not missing, f"`update` can write fields `show` will never print: {missing}"
+
+
+def test_two_concurrent_mutations_cannot_lose_each_others_row(tmp_path):
+    """Real OS processes, and the race window widened on purpose.
+
+    Every mutation now refreshes the generated view, which makes that view a
+    read-modify-write of one shared file by every writer in the system. The
+    entry-loss guard does NOT cover this: it compares id SETS, and an `update`
+    changes a row's contents while leaving the set alone — so `add` came out
+    clean at 64-way concurrency and `update` silently dropped a change.
+
+    Measured before the lock, with a 3s gap forced between one writer's render and
+    its write: both entry FILES correct, the view carrying the slow writer's
+    snapshot, the fast writer's edit gone, `render --check` exiting 1. Caught, but
+    by whoever ran the docs gate next.
+
+    The sleep is injected into a COPY of the module, so nothing in the shipped file
+    exists only to make a test pass.
+    """
+    repo = tmp_path / "repo"
+    (repo / "docs" / "runbook" / "backlog").mkdir(parents=True)
+    (repo / "ops").mkdir()
+    src = (ROOT / "ops" / "backlog.py").read_text(encoding="utf-8")
+    anchor = "            text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())"
+    assert src.count(anchor) == 1, "the refresh's render moved; re-anchor this probe"
+    (repo / "ops" / "backlog.py").write_text(
+        src.replace(anchor, anchor + "\n            time.sleep(float(os.environ.get("
+                                     "'KG_TEST_VIEW_DELAY', '0')))"),
+        encoding="utf-8",
+    )
+    (repo / "ops" / "backlog.py").write_text(
+        (repo / "ops" / "backlog.py").read_text(encoding="utf-8")
+        .replace("import argparse\n", "import argparse\nimport time\n", 1),
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    tool = str(repo / "ops" / "backlog.py")
+
+    def run(argv, delay="0"):
+        return subprocess.run([sys.executable, tool, *argv], cwd=repo, text=True,
+                              capture_output=True,
+                              env={**os.environ, "KG_TEST_VIEW_DELAY": delay})
+
+    ids = []
+    for tag in ("alpha", "beta"):
+        out = run(["add", "--stream", "IMP", "--date", "2026-08-07", "--source", tag,
+                   "--category", "tool", "--severity", "low",
+                   "--detail", f"concurrent view probe {tag}", "--json"])
+        assert out.returncode == 0, out.stderr
+        ids.append(json.loads(out.stdout)["entry"]["id"])
+
+    import threading
+    results = {}
+
+    def slow():
+        results["slow"] = run(["update", ids[0], "--resolution", "SLOW-MARKER",
+                               "--commit"], delay="3")
+
+    thread = threading.Thread(target=slow)
+    thread.start()
+    time.sleep(0.6)   # let the slow writer get past its render
+    results["fast"] = run(["update", ids[1], "--resolution", "FAST-MARKER", "--commit"])
+    thread.join(timeout=60)
+
+    assert results["slow"].returncode == 0, results["slow"].stderr
+    assert results["fast"].returncode == 0, results["fast"].stderr
+
+    view = (repo / "docs" / "runbook" / "improvement_backlog.md").read_text(encoding="utf-8")
+    assert "SLOW-MARKER" in view, "the slow writer's row is missing from the view"
+    assert "FAST-MARKER" in view, (
+        "the fast writer's row was overwritten by a stale render — the view refresh "
+        "is not serialized"
+    )
