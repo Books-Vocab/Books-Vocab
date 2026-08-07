@@ -654,8 +654,13 @@ def plan_gates(changed_files: list[str],
     # for false alarms and gets muted. IMP-20260805-9a51e9 schedules exactly this: its
     # plan states the real store must go to 7 problems the moment its checks land.
     if backlog_entries or "ops/backlog.py" in changed_files:
+        # `--baseline-check` turns the ratchet on: schema problems AND any entry
+        # newly closed with no attributable verification. Without it the queue
+        # (`list --unverified`) has zero automatic callers, which is the whole
+        # difference between a mechanism and a ritual — and `validate` was
+        # already on this rail, so the queue rides for free.
         gates.append(_shell("backlog-validate", "data",
-                            ["ops/backlog.py", "validate"], "block"))
+                            ["ops/backlog.py", "validate", "--baseline-check"], "block"))
     if backlog_entries:
         # `validate` answers "is each entry well-formed"; it says NOTHING about whether
         # the generated view still matches the store. Mutating the store stales the
