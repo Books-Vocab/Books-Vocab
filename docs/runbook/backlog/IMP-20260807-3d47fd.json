@@ -1,0 +1,18 @@
+{
+  "acceptance": "新增 `ops/tests/` case，注入 curl rc 餵三種情境：真斷網（rc=6/28）→ 豁免；本機 Caddy 沒在聽（rc=7）→ **不**豁免；DNS 掛但 localhost 綠 → 豁免。修前第二種必須錯誤地豁免（負控）。憑證與 502 兩種情境**不列入**，它們在此之前就被分流了。",
+  "category": "arch",
+  "cost": "M",
+  "date": "2026-08-07",
+  "detail": "`ops/kg_reconcile.sh` 的 `infra_crit_is_same_outage` 判定「這個 crit 是不是就是那場對外斷網」的方式是：`EXTERNAL_SMOKE_CLASS == unreachable` 且 infra 的 crit key 集合**恰好等於 `http_probe`**（`:296`）。但 `http_probe` 只說「HTTPS 端點探針不是 200」（`ops/infra_health.sh:186`：`hst=crit; [[ \"$HTTP_CODE\" == \"200\" ]] && hst=ok`）。\n\n**破口是真的**：本機 Caddy 掛掉／沒在聽，只要外部 smoke 同時也 unreachable，就會被歸因成同一場斷網而**不回滾**——一場「新版 compose 把本機 Caddy 弄壞」的部署事故因此逃過回滾。\n\n**但初稿列的五個「完全同形」成因有兩個是假的，review 實測推翻**：\n- **憑證過期**：`cert_days_left` 走 `th_low(days, 14, 3)`（`ops/infra_health.sh:194`）；實測 `CERT_DAYS` 為 -5 / 0 / 2 / 3 一律 crit → 多一個 crit key → `crit_keys != \"http_probe\"` → **不會被豁免**。\n- **FastAPI 502**：`ops/kg_reconcile.sh:249` `if (( saw_response == 1 )); then EXTERNAL_SMOKE_CLASS=\"bad\"`；502 是拿得到的 HTTP 回應 → 判 `bad` → `:318` 直接 `return 1`，**根本走不到 infra 這一關**。\n\n真正同形的成因只剩：本機 Caddy 死／沒在聽、DNS 解析失敗、以及真正的對外斷網。記下這件事是因為初稿的錯法很典型——**把「我想得到的成因」當成「會走到這條路徑的成因」**，而中間隔著兩道會提前分流的檢查。結論站得住，支撐它的證據清單四成不成立。\n\n**落地會改到生產 reconciler 的回滾決策，需執行長明確同意後才動。**",
+  "fix_site": "ops/kg_reconcile.sh `infra_crit_is_same_outage`:296 / ops/infra_health.sh:115,186",
+  "id": "IMP-20260807-3d47fd",
+  "plan": "讓 `http_probe` 攜帶可歸因的證據而非只有 pass/fail：`ops/infra_health.sh` 把 curl 的 exit code 與 `%{http_code}` 分開記錄（rc=6 DNS / rc=7 connect refused / rc=28 timeout / rc=35 TLS 各自不同），`infra_crit_is_same_outage` 改成只在「curl rc ∈ {6,28} 且 localhost health 仍綠」時視為同一場斷網；rc=7（連得到但被拒＝本機 Caddy 沒在聽）一律不豁免、照舊回滾。**不必處理憑證過期與 502**——上面已實測它們走不到這條路徑。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "立單初稿被 review 推翻後重立",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}
