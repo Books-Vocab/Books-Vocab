@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "ops/tests/test_gate_can_fail.sh is flaky: one run in three reported '22 passed, 5 failed' with the only failures being 'declared cheap but never executed here: ui-quality-fast:red ui-quality-fast:green'; the two adjacent runs (with and without LC_ALL set) were 27/0. Unattributed. The failing assertion is the self-check that every gate declared cheap actually ran, so an intermittent red there means the suite's own coverage claim is intermittently false — and this script is now auto-triggered by the ops/**.sh route, so a flake here lands on cutover. Not in the backlog path (that segment passed both directions), so it did not affect the change being reviewed.",
+  "id": "IMP-20260807-926402",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "code review of the backlog cwd fix",
+  "status": "open",
+  "stream": "IMP"
+}
