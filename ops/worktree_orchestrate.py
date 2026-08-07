@@ -2955,6 +2955,25 @@ def _resolve_target(worktree: str, explicit: str | None, base: str, state: str |
     return branch, entry, None, None
 
 
+def _claimed_tickets(state: str | None, branch: str) -> list[str]:
+    """Tickets the ACTIVE ledger record for `branch` claims. Read-only, fail-soft.
+
+    Goes through the registry's own `list --json` rather than reaching into the
+    state file: the ledger's location is derived (git-common-dir anchored) and its
+    schema belongs to that module. A second hand-rolled reader here is how the two
+    drift — this repo has already paid for a hand-copied lock path that watched the
+    wrong file and reported FREE unconditionally.
+    """
+    rc, out = _registry(["list", *_state_arg(state), "--json"])
+    if rc != 0 or not isinstance(out, dict):
+        return []
+    for rec in out.get("records", []):
+        if isinstance(rec, dict) and rec.get("branch") == branch \
+                and rec.get("status") == "active":
+            return [str(t) for t in (rec.get("backlog") or [])]
+    return []
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     """Landed-floor guard, then registry resolve merged → worktree remove + branch -D
     (local + remote) + drop the gate-record cache."""
@@ -3097,6 +3116,11 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     # ledger closure first (idempotent even if the git teardown partially failed before).
+    # BEFORE the registry is struck. `resolve` closes the record ahead of the git
+    # steps, and a closed record is exactly what `held_tickets`-style readers filter
+    # out — so reading the claim afterwards would always answer "nothing was
+    # claimed", i.e. a check that can only ever pass.
+    claimed_at_teardown = _claimed_tickets(args.state, branch)
     _registry(["resolve", *_state_arg(args.state), "--branch", branch, "--status", "merged"])
     # FAIL-FAST on the steps later ones depend on. Half of the incident lived here:
     # `worktree remove --force` returned 128 and the loop went on to run `branch -D`
@@ -3161,11 +3185,36 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # id in a gitignored file.
     pending_anchor = sorted({r.get("id") for r in _read_anchor_queue(root)
                              if r.get("branch") == branch and r.get("landed_sha")})
+
+    # CLAIMED but never staged — a different question from `pending_anchor`, and the
+    # one that actually loses tickets. `pending_anchor` asks "did someone who
+    # remembered to close it finish the job"; this asks "did anyone remember at all".
+    # Both report an empty list on the happy path, which is exactly why the second
+    # one has to exist separately: an unclosed claim and a clean teardown were
+    # indistinguishable.
+    #
+    # Measured, on this tool's own flagship task: `open --backlog IMP-20260807-b9526c`
+    # claimed it, the work landed, `resolve` printed `pending_anchor: []`, the
+    # worktree vanished, and the entry is still `open`. Five other tickets in the
+    # same session closed correctly — every one of them FILED mid-work. The claim is
+    # taken at the start and the closure happens at the end, and nothing carried the
+    # obligation across those hours; teardown is the last moment anyone knows the
+    # claim existed.
+    #
+    # WARN, not block, and the reason is that all three of these are legitimate:
+    # investigating and deciding it needs no fix, splitting the work across branches,
+    # and abandoning a claim on purpose. A block would make the honest cases fight
+    # the tool, and `make_commit_state`'s docstring already paid for that lesson.
+    staged_here = {r.get("id") for r in _read_anchor_queue(root)
+                   if r.get("branch") == branch}
+    claimed_open = sorted(set(claimed_at_teardown) - staged_here)
+
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
                "resolved": "merged", "executed": results, "failures": failures,
                "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed,
-               "pending_anchor": pending_anchor}
+               "pending_anchor": pending_anchor,
+               "claimed_without_closure": claimed_open}
     human = ["# resolve (committed): ledger -> merged"]
     for r in results:
         human.append(f"  {'✓' if r['ok'] else '✗'} {r['cmd']}   # {r['label']}")
@@ -3175,6 +3224,15 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         human.append(f"  · {len(pending_anchor)} closure(s) landed and awaiting the "
                      f"wave's anchor: {', '.join(pending_anchor)}")
         human.append("    run `./ops/backlog.py anchor --commit` once the wave is done")
+    if claimed_open:
+        # Louder than pending_anchor on purpose: that one is a reminder about work
+        # already recorded, this one is the last chance to notice work that was
+        # never recorded at all.
+        human.append(f"  ⚠ {len(claimed_open)} claimed ticket(s) with NO staged "
+                     f"closure: {', '.join(claimed_open)}")
+        human.append("    if the work landed, it is still open — `./ops/backlog.py "
+                     "stage <id> ...` before the branch is gone, or say why it stays "
+                     "open with `update <id> --resolution ...`")
         human.append("    run: ./ops/backlog.py anchor --commit")
     _emit(payload, args.json, "\n".join(human))
     return EXIT_OK if failures == 0 else EXIT_BLOCK

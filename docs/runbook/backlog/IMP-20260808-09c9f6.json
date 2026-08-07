@@ -1,0 +1,19 @@
+{
+  "acceptance": "認領兩張、只 stage 一張、cutover 後 resolve 必須把另一張列在 claimed_without_closure 且不與 pending_anchor 混淆；且 strike 後 _claimed_tickets 回空（順序守衛）",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"claimed_tickets or claim_is_read\"",
+  "acceptance_expect_rc": 0,
+  "category": "arch",
+  "date": "2026-08-08",
+  "detail": "worktree 認領了一張單、做完、落地、拆樹——而那張單**還開著**，全程沒有任何一個工具提到它。\n\n實測（本 session 自撞）：`open --backlog IMP-20260807-b9526c` 認領 → 做完 view 移出版控 → gate pass → cutover 落地 → `resolve` 回報 `pending_anchor: []` → 工作樹消失。那張單至今 `status: open`。同一輪我另外處理的 5 張單全部正確收案，唯一漏掉的就是**開場認領的那一張**。\n\n**這個形狀有意義，不是我粗心**：認領發生在頭、結案發生在尾，中間沒有任何東西把那個義務帶過去。工作中途立的單「立完就想到要 stage」，開場認領的單則在整個實作期間都不在視線裡，而拆樹那一刻是最後一次還有人知道它存在。\n\n`resolve` 已經有 `pending_anchor`，但它問的是「有沒有 staged 但沒 anchor 的結案」——那是**已經記得要結案**的人的漏網之魚。它問不到的是「認領了但根本沒 stage」，而那才是會靜靜掉地上的那一類：兩者都回報空集合，讀起來一模一樣。\n\n資料全都在手邊：ledger 有這條 record 認領了哪些 ticket，佇列有這條分支 stage 了哪些結案。差集就是答案。",
+  "fix_site": "ops/worktree_orchestrate.py（_claimed_tickets / cmd_resolve 的捕捉點與 payload）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "agent:main-line",
+  "id": "IMP-20260808-09c9f6",
+  "plan": "cmd_resolve 在 registry strike 之前呼叫 _claimed_tickets(state, branch) 取該 record 的 backlog；與本分支已 stage 的 id 取差集；非空就進 payload 的 claimed_without_closure 並在人類輸出以 ⚠ 具名。順序是關鍵：strike 之後讀認領恆為空。",
+  "resolution": "— 待修：`resolve` 在拆樹時算「本 record 認領的 ticket」減去「本分支已 stage 的結案」，非空就具名回報。等級待定：block 會擋住合法情況（認領後判定不用修、或工作要跨多條分支），所以傾向 loud warn + 具名，與 pending_anchor 並列但語意分開。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "狗食：迴圈在自己的旗艦任務上漏掉一筆結案",
+  "status": "open",
+  "stream": "IMP"
+}
