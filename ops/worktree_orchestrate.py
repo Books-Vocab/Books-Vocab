@@ -520,10 +520,25 @@ def plan_gates(changed_files: list[str],
                             ["ops/verify_design_system.sh"], "block"))
 
     if docs:
-        gates.append(_shell("docs-lint", "docs",
-                            ["ops/docs_lint.sh", "--files", *docs], "block"))
-        gates.append(_internal("docs-conflict-markers", "docs", "block", files=docs))
-        gates.append(_internal("docs-verified-against", "docs", "warn", files=docs))
+        # All three of these gates READ the file. A doc DELETED in this diff is still
+        # a changed path, and handing it to `docs_lint --files` makes it exit 2 with
+        # "--files 路徑不存在" — so **any commit that removes a doc is blocked**, by an
+        # error phrased as if the caller mistyped a path. Measured on the commit that
+        # removed the generated ledger view (IMP-20260807-b9526c).
+        #
+        # Not silently dropped: the removal is named in its own advisory, the same way
+        # `ops-shell-untested` and `data-plane-unowned` name what they could not cover.
+        # A gate list that quietly shrinks reads as "everything was checked".
+        present = ops_test_exists or (lambda rel: True)
+        docs_live = [p for p in docs if present(p)]
+        docs_removed = [p for p in docs if p not in docs_live]
+        if docs_live:
+            gates.append(_shell("docs-lint", "docs",
+                                ["ops/docs_lint.sh", "--files", *docs_live], "block"))
+            gates.append(_internal("docs-conflict-markers", "docs", "block", files=docs_live))
+            gates.append(_internal("docs-verified-against", "docs", "warn", files=docs_live))
+        if docs_removed:
+            gates.append(_internal("docs-removed", "docs", "warn", files=docs_removed))
 
     if backend:
         tests = [p for p in backend if _is_backend_test(p)]
