@@ -128,6 +128,40 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 - **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/cutover/sync/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
 - **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → cutover 落地 → primary `git checkout --` 還原。primary 只允許「可再生」變更，絕不在 local main commit。
 
+## 批次整合（N 個工作樹 → 一次落地）
+
+單線流程（open→gate→cutover→resolve）是為**一條**分支寫的。當你 fan-out 出 N 個 agent、
+各自在自己的工作樹做完時，**不要讓它們各自 gate+cutover**。契約正本在
+`docs/sop/agent_org.md`「交回狀態」段：被派者停在 commit，落地屬於握有整批視野的整合者。
+一句話理由：**N 次隔離 gate 的資訊量少於一次合併後 gate**——每次隔離 gate 證明的是「我在我
+fork 出去的舊 main 上是綠的」，而要問的是「N 份放一起還綠不綠」，那個問題在合併前提不出來。
+
+流程：
+
+1. **從當前本地 main 開整合工作樹**：`open --intent "integrate <batch>" --slug integrate-<batch>`。
+2. **收集 N 條分支**。`cherry-pick` 而非 `merge`：merge 會把分支**碰巧帶著**的別人的 commit
+   一起復活（實測踩過——兩條分支各帶著另一個 session 已丟棄的 commit）。cherry-pick 讓你
+   逐顆決定。
+3. **衝突只解一次**。生成產物重跑 generator，不手改；表格列用前後綴接合再修散文；純新增的
+   程式碼 hunk 取兩邊。
+4. **合併後才 gate**，然後**一次 cutover**。
+5. **resolve 每一條來源分支**——見下方警告。
+
+**收尾的坑（會遇到，不是意外）**：批次整合過的分支，`resolve` 與 `preflight sweep` 會**拒絕**
+自動清除。它們的包含性判準是「這分支動過的每個檔，main 現在是不是就是這分支的版本」；而
+cherry-pick 之後若 review 修補又改了同一批檔，main 上是**更新**的版本，工具分不出「被更好的
+版本取代」與「根本沒進去」，於是保守拒絕。**那是對的**——寬鬆到能放行這種情況的規則，同樣會
+放行真正沒落地的工作（實測：正是這個拒絕暴露了一顆整合時被漏掉的 commit）。
+
+正確做法是**逐條審計後 `resolve --force`**，不是把規則改鬆。審計三步，由弱到強：
+- 每條分支的每顆 commit，主旨在 `base..main` 找得到對應嗎？（弱證明，但抓得到整批漏掉的 commit）
+- 分支動過的檔案，在 main 上都存在嗎？（抓「新增了一個從未落地的檔」）
+- 上兩步有可疑者 → 比對 patch-id 與**檔案清單**。檔案清單不同 = 不是同一個改動，即使主旨一樣。
+
+審計後若確認某顆 commit 只存在於待刪分支（例如它是別的 session 的草稿、已被對方自己的後續
+commit 取代），**先打 tag 再刪**：`git tag archive/superseded-draft-<sha> <sha>`。分支一刪就只剩
+reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替別人的工作賭。
+
 ## 並發協調（多 session 常態）
 
 同倉多 session 並發是常態，refuse 是**協調事件、不是死路**——refuse 訊息本身就是行動指引（列髒檔、給選項），照它做，不要死等輪詢：
