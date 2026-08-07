@@ -31,7 +31,7 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 - `status`：`open` → `triaged` → `in-progress` → `fixed` → `wont-fix`（`wont-fix` 須在 resolution 附理由）
 - `category`：IMP 為 `tool` / `cli` / `doc` / `arch`；APP 為 `ux` / `correctness` / `perf` / `data` / `content`
 - `severity`：`low` / `med` / `high`
-- `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
+- `resolution`：解決的敘述，或 wont-fix 理由。**可回溯的權威欄是下面的 `fixed_by`，不是這欄的散文**
 - 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
 - **resolution hash 慣例**：**不得以分支名代替 hash**——分支刪掉之後那筆 resolution 就再也
   指不到任何東西。已經發生過兩次（IMP-0063、IMP-20260805-dd35f8），兩條分支今天都不存在了

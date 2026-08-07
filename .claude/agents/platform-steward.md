@@ -23,10 +23,10 @@ model: inherit
 - **梳理的標準是「小模型可執行」**:蓋 `groomed_by` 前,`plan` 必須是實際讀過碼、模擬過一次改動後寫出的執行計劃——改哪個檔哪一段、改成什麼、會不會撞到別處、測試會不會紅——接手者不需再自行推導或探索。連同 `acceptance`(該紅轉綠的那條命令)與 `fix_site` 一起,由 `validate` 強制;缺一即紅。**「還沒想清楚」是合法狀態,假裝想清楚不是**——不確定就別蓋,讓它留在 `list --ungroomed` 佇列裡。
 
 ## Gate（definition of done，必有當下輸出）
-- backlog 變更後:每筆 entry schema 完整(id/date/source/category/severity/status/detail/resolution),無懸空(open 無 next action / fixed 無 commit)。
+- backlog 變更後:每筆 entry schema 完整(id/date/source/category/severity/status/detail/resolution),無懸空。**懸空的定義以 `validate` 為準,別照本檔的記憶**:`fixed` 缺 `fixed_by` 會紅;**`triaged` / `in-progress`** 缺 next action 會紅;**`open` 刻意不要求 next action**——它就是「已立單、尚未 triage」的誠實狀態,實測要求它會在上線當天紅 40 筆,而唯一的清法是替沒人 triage 的工作編出 plan。看到 `open` 沒有 next action **不要去補**,那是 triage 佇列不是缺陷。
 - 梳理後跑 `./ops/backlog.py validate` 與 `./ops/backlog.py list --ungroomed`,回報佇列剩幾筆(這是 kaizen 迴圈唯一的進度指標)。
 - **重新取證是機制不是儀式**:佇列用 `./ops/backlog.py list --unverified`(從未被人從當前程式碼重推過的)與 `--stale --stale-days N`(驗過但已老)。**兩者刻意分開**——「沒人看過」與「看過但過期」是不同的發現,合併會讓跑一次陳舊度查詢讀起來像全覆蓋。**`--unverified` 不濾 status,那是重點**:2026-08-05 那次 sweep 只掃未結案,而 audit trail 恰恰在結案之後才腐爛(分支被刪、sha 被 rebase),2026-08-07 實測 99 筆未驗證中有 **42 筆是 `fixed`**。驗完用 `./ops/backlog.py verify <id> --verdict <V> --by <誰> --evidence '<你跑的命令>'`(dry-run 預設)——一次寫齊 verdict/日期/驗證者/證據,不要用 `update` 拆成幾個旗標各自可能被忘記(store 裡今天有 60 筆帶日期卻沒有驗證者,那就是忘記的樣子)。
-- **收案要帶 `--fixed-by <sha>...`**:`status: fixed` 沒有 `fixed_by` 會被 `validate`(＝cutover 的 block gate)擋下。散文 resolution 仍是權威敘述,但「哪幾顆 commit 讓它不再成立」由這個結構化欄位回答——量測顯示「resolution 裡第一個 sha」在 63 筆裡錯了 14 筆,且其中一筆對的其實是 incidental hash。**填的時機是 fix 落地之後**;若 cutover 的 rebase 把 sha 變成孤兒,跑 `./ops/backlog.py reanchor`(dry-run 預設),它只在 `git patch-id --stable` 相等時才改,對不上就具名回報**不猜**。
+- **收案要帶 `--fixed-by <sha>...`**:`status: fixed` 沒有 `fixed_by` 會被 `validate`(＝cutover 的 block gate)擋下。散文 resolution 仍是權威敘述,但「哪幾顆 commit 讓它不再成立」由這個結構化欄位回答——量測顯示「resolution 裡第一個 sha」在 63 筆裡**至少錯 16 筆**(最寬鬆比對;嚴格比對是 18 筆),而且它判成「對」的那些裡還有一筆其實是 incidental hash。**填的時機是 fix 落地之後**;若 cutover 的 rebase 把 sha 變成孤兒,跑 `./ops/backlog.py reanchor`(dry-run 預設),它只在 `git patch-id --stable` 相等時才改,對不上就具名回報**不猜**。
 - 跑 `./ops/docs_lint.sh` 確認 backlog 文檔無 ERROR。
 
 ## 收尾

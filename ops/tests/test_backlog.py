@@ -1700,6 +1700,46 @@ def test_the_real_commit_resolver_answers_from_git(monkeypatch):
     assert state("0000000") == "unknown"
 
 
+def test_reachable_from_main_but_not_head_still_counts_as_ok(tmp_path, monkeypatch):
+    """The `or main` half of the reference frame, which nothing else observes.
+
+    Caught by mutation, not by reading: deleting that branch of the OR
+    (`elif has_main and merge-base…main` -> `elif False`) left the whole suite
+    green. Every other test that touches the resolver either stubs it or only
+    exercises the HEAD side, so the single most-argued decision in this design
+    was the one a refactor could silently remove.
+
+    The case that needs a witness is exactly the one the design paragraph is
+    about: a commit ON main, with HEAD parked behind it. That is what `validate`
+    sees when it runs from a worktree whose branch forked before the fix landed.
+    """
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+
+    def g(*args):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+             *args],
+            cwd=repo, capture_output=True, text=True, check=True,
+        )
+    repo.mkdir()
+    g("init", "-b", "main", "-q")
+    (repo / "a.txt").write_text("a\n")
+    g("add", "a.txt"); g("commit", "-qm", "base")
+    behind = g("rev-parse", "HEAD").stdout.strip()
+    (repo / "b.txt").write_text("b\n")
+    g("add", "b.txt"); g("commit", "-qm", "later")
+    ahead = g("rev-parse", "HEAD").stdout.strip()
+    g("checkout", "-q", behind)  # detached, parked behind main
+    monkeypatch.chdir(repo)
+
+    state = BACKLOG.make_commit_state()
+    assert state(behind) == "ok", "reachable from HEAD"
+    # The witness: unreachable from HEAD, reachable from main. Only the `or main`
+    # branch can answer `ok` here, so removing it turns this red.
+    assert state(ahead) == "ok", "reachable from main but not HEAD"
+
+
 def _force_fixed_by(store, entry_id, shas):
     """Bypass `update` to plant a state `update` is built to refuse."""
     path = store / f"{entry_id}.json"
