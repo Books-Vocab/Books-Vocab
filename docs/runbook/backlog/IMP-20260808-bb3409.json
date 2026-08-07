@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "剛加的 `claimed_without_closure`（IMP-20260808-09c9f6）在**它自己落地的那次拆除**上誤報：`resolve` 回報 `claimed_without_closure: [IMP-20260807-b9526c]`，而那張單當下已經是 `fixed`。\n\n根因：判準用的是「當下佇列裡有沒有這條分支 stage 的 row」，而 `anchor --commit` 會**消費掉** row。文件順序是 stage → cutover → resolve →（波次結束）anchor，那個順序下 resolve 看得到 row；但先 anchor 再 resolve 同樣合法，而那時證明結案的那一列已經不見了。\n\n**這是「在正常路徑上誤報的守衛」**——`make_commit_state` 的 docstring 早就寫過這條的代價：會被關掉，而且會連真訊號一起帶走。它上工第一天就示範給我看。\n\n誠實的判準是三件事的合取：認領了、**沒有** staged、**而且** store 裡也還沒關。",
   "fix_site": "ops/worktree_orchestrate.py（_entry_is_closed / cmd_resolve 的差集判準）",
+  "fixed_by": [
+    "5a252373f5dfa3f82d78f60257143cf84b563445"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "agent:main-line",
   "id": "IMP-20260808-bb3409",
@@ -14,6 +17,10 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "新守衛在自己的第一次拆除上誤報",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-line",
+  "verified_evidence": "見該 entry 的 acceptance_cmd"
 }
