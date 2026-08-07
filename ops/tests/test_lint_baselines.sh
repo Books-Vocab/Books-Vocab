@@ -31,8 +31,13 @@ trap 'rm -rf "$TMP"' EXIT
 keys_of() { grep -vE '^[[:space:]]*(#|$)' "$1" 2>/dev/null | sort -u; }
 
 # Emit today's findings in baseline key form, without touching the real file.
-emit_current_keys() {  # $1 = lint entrypoint, $2 = env var name, $3 = out path
-  env "$2=$3" "./ops/$1" --baseline >/dev/null 2>&1 || return 1
+emit_current_keys() {  # $1 = lint entrypoint (may carry a subcommand), $2 = env var, $3 = out path
+  # $1 is a literal from SET_LINTS below, deliberately word-split so an
+  # entrypoint that needs a subcommand (`backlog.py validate`) can register here
+  # instead of growing its own bespoke section outside the table — which is
+  # exactly what the coverage check further down exists to prevent.
+  # shellcheck disable=SC2086
+  env "$2=$3" ./ops/$1 --baseline >/dev/null 2>&1 || return 1
 }
 
 assert_subset() {  # $1 = label, $2 = real baseline, $3 = current-keys file, $4 = regen hint
@@ -52,6 +57,7 @@ declare -a SET_LINTS=(
   "ui_token_lint.sh|ops/ui_token_baseline.txt|KG_UI_TOKEN_BASELINE"
   "plain_deadzone_lint.sh|ops/plain_deadzone_baseline.txt|KG_DEADZONE_BASELINE"
   "injection_lint.sh|ops/injection_baseline.txt|KG_INJECTION_BASELINE"
+  "backlog.py validate|ops/backlog_closed_unverified_baseline.txt|KG_BACKLOG_BASELINE"
 )
 
 section "key-set baselines must be a subset of today's findings"
@@ -121,6 +127,8 @@ for f in ops/*_baseline.txt; do
     fail_t "$f has no coverage here — a new lint baseline can rot unnoticed; add it to SET_LINTS"
   fi
 done
+
+
 
 echo ""
 echo "lint-baselines: $pass passed, $fail failed"

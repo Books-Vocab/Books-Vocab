@@ -843,7 +843,8 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
     store = tmp_path / "backlog"
     entry = _add(store)
     BACKLOG.update_entry(store, entry["id"], verdict="PARTIAL", verified_at="2026-08-07",
-                         verified_by="agent:test", **_groom_kwargs())
+                         verified_by="agent:test", verified_evidence="pytest -k x",
+                         **_groom_kwargs())
 
     rendered = BACKLOG.render_view(store, verified_against="deadbeef")
     BACKLOG.import_legacy(rendered, store)
@@ -853,7 +854,8 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
     # are: the table does not own it, so a re-import that drops it is erasing
     # work. Adding fields to the module and not to this assertion is how the
     # original bug came back the second time.
-    for field in BACKLOG.GROOM_FIELDS + ("verdict", "verified_at", "verified_by"):
+    for field in BACKLOG.GROOM_FIELDS + ("verdict", "verified_at", "verified_by",
+                                        "verified_evidence"):
         assert loaded.get(field), f"{field} was erased by a re-import"
 
 
@@ -1907,7 +1909,7 @@ def test_verify_refuses_a_verdict_outside_the_vocabulary(tmp_path):
     entry = _add(store)
     assert BACKLOG.main([
         "verify", entry["id"], "--store", str(store), "--verdict", "LOOKS-FINE",
-        "--by", "me", "--commit",
+        "--by", "me", "--evidence", "cmd", "--at", "2026-08-07", "--commit",
     ]) != 0
     assert "verdict" not in json.loads((store / f"{entry['id']}.json").read_text())
 
@@ -1947,7 +1949,7 @@ def test_verify_can_close_an_entry_in_the_same_act(tmp_path, monkeypatch):
 
     rc = BACKLOG.main([
         "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-FIXED",
-        "--by", "agent:test", "--at", "2026-08-07",
+        "--by", "agent:test", "--evidence", "pytest -k closing", "--at", "2026-08-07",
         "--status", "fixed", "--fixed-by", "abc1234", "--commit",
     ])
     assert rc == 0
@@ -1955,3 +1957,126 @@ def test_verify_can_close_an_entry_in_the_same_act(tmp_path, monkeypatch):
     assert written["status"] == "fixed"
     assert written["fixed_by"] == ["abc1234"]
     assert written["verified_by"] == "agent:test"
+
+
+def test_unverified_means_no_attributable_verification(tmp_path):
+    """A date with no verifier is not a verification, and the first cut let 60
+    of them sit outside both the gate and the queue.
+
+    That design justified skipping the gate by pointing at this queue; measured,
+    the queue's hit rate on exactly those entries was 0 of 60 — `not verified_at`
+    is their complement by construction. A safety net whose catch is provably
+    empty is worse than no net, because it ends an argument.
+    """
+    store = tmp_path / "s"
+    dated_only = _add(store, detail="date but nobody")
+    BACKLOG.update_entry(store, dated_only["id"], verified_at="2026-08-01")
+    attributed = _add(store, detail="properly verified")
+    BACKLOG.update_entry(store, attributed["id"], verified_at="2026-08-01",
+                         verdict="CONFIRMED-OPEN", verified_by="agent:x")
+
+    unverified = {e["id"] for e in BACKLOG.select_entries(store, unverified=True)}
+    assert dated_only["id"] in unverified
+    assert attributed["id"] not in unverified
+
+
+def test_unverified_and_stale_together_are_refused(tmp_path):
+    """Their intersection is empty by construction, and an empty result reads as
+    'both queues are clear'. The neighbouring --groomed/--ungroomed pair already
+    refuses its own contradiction."""
+    with pytest.raises(BACKLOG.BacklogError):
+        BACKLOG.select_entries(tmp_path, unverified=True, stale_days=30)
+
+
+def test_half_a_verification_stamp_cannot_hide_an_entry(tmp_path):
+    """`--verified-at n/a` alone used to walk through every net at once.
+
+    validate passed it (no verdict, so the old single-sided trigger never
+    fired), `--unverified` skipped it (field non-empty), `--stale` skipped it
+    (unparseable date). One flag removed an entry from the whole mechanism.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    with pytest.raises(ValueError):
+        BACKLOG.update_entry(store, entry["id"], verified_at="n/a")
+
+    planted = dict(_payload(), verified_at="n/a")
+    assert "verdict-without-date" in {p["kind"] for p in BACKLOG.validate_entry(planted)}
+    assert planted["id"] in {
+        e["id"] for e in [planted] if not str(planted.get("verified_by") or "").strip()}
+
+
+@pytest.mark.parametrize("bad", ["2026-13-45", "9999-99-99", "0000-00-00", "2099-01-01"])
+def test_a_date_shaped_string_is_not_a_date(tmp_path, bad):
+    """`^\\d{4}-\\d{2}-\\d{2}$` is a shape. All four of these landed in the store
+    through `--at`, and the last two break the rule that was checking them:
+    `9999-99-99` and any future date are verdicts that can never go stale, which
+    is the exact thing `verdict-without-date` exists to prevent."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    rc = BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-OPEN",
+        "--by", "agent:x", "--evidence", "cmd", "--at", bad, "--commit",
+    ])
+    assert rc == 64, f"{bad} was accepted as a date"
+    assert "verified_at" not in json.loads((store / f"{entry['id']}.json").read_text())
+
+
+def test_verify_overwrites_evidence_rather_than_inheriting_it(tmp_path):
+    """Measured before `--evidence` became required: a second verifier's
+    CONFIRMED-FIXED carried the first verifier's command. Evidence that re-runs
+    to the previous verdict is worse than none, because it looks like it has
+    some."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.main(["verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-OPEN",
+                  "--by", "agent:alice", "--evidence", "pytest -k alpha",
+                  "--at", "2026-08-01", "--commit"])
+    BACKLOG.main(["verify", entry["id"], "--store", str(store), "--verdict", "PARTIAL",
+                  "--by", "agent:bob", "--evidence", "pytest -k beta",
+                  "--at", "2026-08-02", "--commit"])
+    written = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert written["verified_by"] == "agent:bob"
+    assert written["verified_evidence"] == "pytest -k beta"
+
+    # And it cannot be omitted at all: optional evidence in an "atomic" act
+    # means evidence is not in the atom.
+    with pytest.raises(SystemExit):
+        BACKLOG.main(["verify", entry["id"], "--store", str(store), "--verdict", "PARTIAL",
+                      "--by", "agent:carol", "--commit"])
+
+
+def test_the_ratchet_blocks_closing_without_verifying(tmp_path, monkeypatch):
+    """The [prompt] -> [machine] step, and the reason it is keyed on CLOSED.
+
+    The queue alone had zero automatic callers — its only caller anywhere was a
+    bullet in an agent file. `validate` was already a block gate at cutover, so
+    riding that rail costs nothing. Keyed on every entry it would red on `add`,
+    which punishes filing; keyed on closure it cannot, and closure is when the
+    audit trail starts to rot.
+    """
+    store = tmp_path / "s"
+    baseline = tmp_path / "baseline.txt"
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(baseline))
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: lambda sha: "ok")
+
+    grandfathered = _add(store, detail="closed long ago, nobody checked")
+    BACKLOG.update_entry(store, grandfathered["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="done")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline"]) == 0
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0
+
+    # Filing does NOT move the ratchet.
+    _add(store, detail="freshly filed, no verification yet")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0
+
+    # Closing without verifying does.
+    fresh = _add(store, detail="closed today without checking")
+    BACKLOG.update_entry(store, fresh["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="done")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 2
+
+    # Closing WITH an attributable verification does not.
+    BACKLOG.update_entry(store, fresh["id"], verified_at="2026-08-07",
+                         verdict="CONFIRMED-FIXED", verified_by="agent:x")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0

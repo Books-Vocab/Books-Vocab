@@ -44,6 +44,7 @@ See IMP-0042 for the separate canonical-JSON consolidation.
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import inspect
 import json
@@ -260,13 +261,15 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     ):
         problems.append({"kind": "bad-verdict", "value": verdict})
 
-    # Same argument as _check_groom's date rule: a verdict with no date cannot
-    # go stale, and a claim that never expires is a claim about code that has
-    # since moved. `verified_by` is deliberately NOT required here — 60 entries
-    # carry a date written before that field existed, and a check that reds all
-    # of them buys one loud day and then gets muted. `verify` writes it going
-    # forward; `list --unverified` keeps the remainder visible.
-    if verdict and not _DATE_RE.match(str(payload.get("verified_at") or "")):
+    # DOUBLE-sided, exactly like _check_groom: any part of the verification stamp
+    # appearing obliges the date. The first cut triggered on `verdict` alone, and
+    # a lone `--verified-at n/a` then walked through every net at once — validate
+    # passed it (no verdict), `--unverified` skipped it (field non-empty), and
+    # `--stale` skipped it (unparseable date). One flag removed an entry from the
+    # whole mechanism. That is the shape this rule exists to close, arriving from
+    # the other direction: not forgetting to fill it, filling half of it.
+    if (verdict or payload.get("verified_at") or payload.get("verified_by")) \
+            and not _real_date(payload.get("verified_at")):
         problems.append({"kind": "verdict-without-date",
                          "value": payload.get("verified_at")})
 
@@ -747,6 +750,42 @@ def list_entries(
     return sorted(hits, key=_sort_key)
 
 
+# Closed WITHOUT an attributable verification. This is the ratchet key, and the
+# choice of key is the whole design:
+#
+#   * keyed on every entry -> `add` would red the gate, because a freshly filed
+#     entry legitimately has no verification. Punishing filing is how a ledger
+#     stops being filed.
+#   * keyed on CLOSED entries -> `add` cannot move it, and closure is precisely
+#     when the audit trail starts to rot (the branch gets deleted, the sha gets
+#     rebased). Every broken audit trail found in the 2026-08-06 sweep was on a
+#     closed entry.
+#
+# The baseline is a SET OF IDS, not a count. `ops/tests/test_lint_baselines.sh`
+# already paid for that lesson: `|baseline| <= |current|` holds while membership
+# churns, so a stale key becomes a permanent re-offence slot.
+def closed_without_verification(store: Path) -> list[str]:
+    out = []
+    for payload in _iter_entries(store):
+        if payload.get("status") not in ("fixed", "wont-fix"):
+            continue
+        if not (str(payload.get("verified_at") or "").strip()
+                and str(payload.get("verified_by") or "").strip()):
+            out.append(str(payload.get("id")))
+    return sorted(out)
+
+
+def _baseline_path() -> Path:
+    return Path(os.environ.get("KG_BACKLOG_BASELINE", "ops/backlog_closed_unverified_baseline.txt"))
+
+
+def _read_baseline(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    return {ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()
+            if ln.strip() and not ln.lstrip().startswith("#")}
+
+
 def select_entries(
     store: Path,
     *,
@@ -769,9 +808,23 @@ def select_entries(
     closure: the branch gets deleted, the sha gets rebased. Every one of the
     four broken audit trails found the next day was on a `fixed` entry.
     """
+    if unverified and stale_days is not None:
+        # Mathematically empty: `unverified` keeps entries with no usable date,
+        # `stale_days` keeps only entries with one. The neighbouring
+        # --groomed/--ungroomed pair already refuses its own contradiction; an
+        # empty result here would read as "both queues are clear".
+        raise BacklogError("--unverified and --stale are mutually exclusive")
     hits = list_entries(store, **filters)
     if unverified:
-        hits = [p for p in hits if not str(p.get("verified_at") or "").strip()]
+        # No ATTRIBUTABLE verification — missing date OR missing verifier. The
+        # first cut tested only the date, which made the safety net it was
+        # justifying provably empty: the 60 entries carrying a date with no
+        # verifier were, by construction, the exact complement of the predicate.
+        # They were unreachable from the queue AND deliberately exempt from the
+        # gate, i.e. invisible to both. Measured hit rate: 0 of 60.
+        hits = [p for p in hits
+                if not str(p.get("verified_at") or "").strip()
+                or not str(p.get("verified_by") or "").strip()]
     if stale_days is not None:
         cutoff = _days_before(today or _today(), stale_days)
         # A never-verified entry is NOT stale — it belongs to `unverified`.
@@ -781,16 +834,30 @@ def select_entries(
 
 
 def _today() -> str:
-    import datetime
-
     return datetime.date.today().isoformat()
 
 
 def _days_before(day: str, days: int) -> str:
-    import datetime
+    return (datetime.date.fromisoformat(day) - datetime.timedelta(days=days)).isoformat()
 
-    year, month, dom = (int(part) for part in day.split("-"))
-    return (datetime.date(year, month, dom) - datetime.timedelta(days=days)).isoformat()
+
+def _real_date(value) -> bool:
+    r"""A date on the calendar, not a string shaped like one.
+
+    `^\d{4}-\d{2}-\d{2}$` accepts `2026-13-45`, `9999-99-99` and `0000-00-00`,
+    all measured landing in the store through `--at`. The last two break the rule
+    they were checked by: `verdict-without-date` exists because a verdict with no
+    date can never go stale, and `9999-99-99` is a verdict that never goes stale
+    while satisfying the check. Future dates are refused for the same reason —
+    a verification claimed for next year is not a verification.
+    """
+    text = str(value or "")
+    if not _DATE_RE.match(text):
+        return False
+    try:
+        return datetime.date.fromisoformat(text) <= datetime.date.today()
+    except ValueError:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1264,6 +1331,12 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 {verdicts}，或
   `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
   讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
+- **驗證歸屬**：`verified_by`（誰檢查的）/ `verified_evidence`（跑了什麼命令）。用
+  `ops/backlog.py verify <id> --verdict <V> --by <誰> --evidence '<命令>'` 一次寫齊，
+  不要用 `update` 拆成幾個各自可能被忘記的旗標。佇列 `list --unverified`（沒有可歸屬
+  驗證的，**不濾 status**）與 `list --stale --stale-days N`（驗過但已老），兩者互斥。
+  **結案（fixed / wont-fix）而無可歸屬驗證會被 `validate --baseline-check` 擋**，
+  存量記在 `ops/backlog_closed_unverified_baseline.txt`，只能降不能升
 - **梳理戳記**（`plan` / `acceptance` / `groomed_at` / `groomed_by`）：與上面的重新取證欄位
   回答**不同問題**——`verdict` 答「這問題還在嗎」，梳理戳記答「**修法想清楚了嗎**」。
   兩者曾被同一次 sweep 寫進同一組欄位，於是「哪些已經被深度論證過」無法從資料回答，
@@ -1463,8 +1536,11 @@ def build_parser() -> argparse.ArgumentParser:
                           help=f"one of {', '.join(VERDICTS)} or DUPLICATE-OF-<id>")
     p_verify.add_argument("--by", required=True,
                           help="what did the checking, e.g. agent:platform-steward")
-    p_verify.add_argument("--evidence",
-                          help="the command you ran; a verdict nobody can re-run is a claim")
+    p_verify.add_argument("--evidence", required=True,
+                          help="the command you ran; a verdict nobody can re-run is a claim. "
+                               "REQUIRED: optional evidence in an 'atomic' act means evidence "
+                               "is not in the atom, and omitting it left the PREVIOUS "
+                               "verifier's command attached to the new verdict")
     p_verify.add_argument("--at", help="YYYY-MM-DD (default: today)")
     p_verify.add_argument("--status", choices=STATUSES,
                           help="change status in the same act, when the check changed the answer")
@@ -1483,6 +1559,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("--json", action="store_true")
 
     p_validate = sub.add_parser("validate", help="schema-check every entry")
+    p_validate.add_argument(
+        "--baseline-check", dest="baseline_check", action="store_true",
+        help="also refuse NEW entries closed with no attributable verification "
+             "(verified_at + verified_by), measured against the baseline set")
+    p_validate.add_argument(
+        "--baseline", action="store_true",
+        help="rewrite the baseline set from today's store, then exit")
     _add_store_arg(p_validate)
     p_validate.add_argument("--json", action="store_true")
 
@@ -1647,8 +1730,11 @@ def _cmd_verify(args) -> int:
         "verified_at": args.at or _today(),
         "verified_by": args.by,
     }
-    if args.evidence:
-        changes["verified_evidence"] = args.evidence
+    # Unconditional. When this was `if args.evidence:` the field simply kept its
+    # old value, so a second verifier's CONFIRMED-FIXED carried the first
+    # verifier's command — evidence that re-runs to the wrong verdict, which is
+    # worse than none because it looks like it has some.
+    changes["verified_evidence"] = args.evidence
     if args.status:
         changes["status"] = args.status
     if args.fixed_by:
@@ -1661,7 +1747,11 @@ def _cmd_verify(args) -> int:
             print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "dry-run",
                               "id": args.id, "changes": changes}, ensure_ascii=False))
         else:
-            print(f"[dry-run] {args.id}: " + ", ".join(f"{k}={v!r}" for k, v in changes.items()))
+            for field, value in changes.items():
+                # old -> new, like `update`. Overwriting a previous verifier's
+                # stamp is the interesting case and the new-values-only form
+                # hid it completely.
+                print(f"[dry-run] {args.id} {field}: {str(current.get(field))[:40]!r} -> {value!r}")
             print("  (dry-run — pass --commit to land)")
         return 0
 
@@ -1844,6 +1934,26 @@ def _cmd_reanchor(args) -> int:
 
 def _cmd_validate(args) -> int:
     problems = validate_store(args.store)
+
+    current = closed_without_verification(args.store)
+    if getattr(args, "baseline", False):
+        _baseline_path().write_text(
+            "# entries closed with no attributable verification (verified_at + verified_by).\n"
+            "# Ratchet: this set may shrink, never grow. Regenerate with\n"
+            "#   ./ops/backlog.py validate --baseline\n"
+            + "\n".join(current) + "\n", encoding="utf-8")
+        print(f"wrote {_baseline_path()} ({len(current)} entries)")
+        return 0
+    if getattr(args, "baseline_check", False):
+        allowed = _read_baseline(_baseline_path())
+        for entry_id in current:
+            if entry_id not in allowed:
+                # Closing without verifying is the act this blocks. The debt that
+                # already exists is grandfathered by the baseline file — the same
+                # trade `ops/i18n_lint.sh --baseline-check` makes, and the reason
+                # "the only alternative is 60 red entries" was never true.
+                problems.append({"kind": "closed-without-verification-above-baseline",
+                                 "id": entry_id, "path": str(Path(args.store) / f"{entry_id}.json")})
     if args.json:
         print(
             json.dumps(
