@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "gate 在「rebase / merge 進行中」的工作樹上會回報 `verdict: pass`，而它其實一道實質 gate 都沒跑。\n\n實測（就是這筆單被發現的方式）：`git rebase main` 停在一個 delete-vs-modify 衝突上，我的 `&&` 鏈照樣跑了 gate，輸出是\n`verdict: pass`、`changed_files: []`、gates 只有 `review-receipts` 與 `coverage` 兩道（都不看檔案內容）。\n\n機制：半套 rebase 的樹對主幹做 `git diff` 描述的是**部分套用後的狀態**，這裡恰好算出空集合 → `plan_gates([])` 什麼都不路由 → `aggregate_verdict([])` 回 `\"pass\"`。而那個 verdict 會被**記錄下來並綁到當前 HEAD**，正是 cutover 唯一要求的證明。\n\n嚴重度 high 的理由：cutover 的整個新鮮度契約就架在這個 verdict 上。一棵處於衝突狀態的樹能拿到合法綠燈，等於那道契約在最需要它的時候失效——而且它「成功」得很安靜，沒有任何一行輸出說「我沒有跑任何 gate」。\n\n判準必須是**操作狀態**不是空 diff：一條工作已被主幹涵蓋的分支合法地沒有東西可 gate，拿空 diff 當拒絕條件會把那個正常情況也擋掉。",
+  "id": "IMP-20260808-81b5eb",
+  "resolution": "— 本 commit 已修：`cmd_gate` 前置 `_interrupted_operation()`，讀 git 自己的標記路徑（`rebase-merge` / `rebase-apply` / `MERGE_HEAD` / `CHERRY_PICK_HEAD`，經 `rev-parse --git-path` 取得所以 linked worktree 也對），有任一存在就 EXIT_BLOCK 並指出該 `--continue` 還是 `--abort`。`--plan-only` 不受影響（它不記錄 verdict）。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "Phase 3.5 落地時自撞（rebase 衝突後 gate 仍回綠）",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -2090,6 +2090,27 @@ def cmd_deploy(args: argparse.Namespace) -> int:
                             step="deploy", commit=args.commit, as_json=args.json, state=args.state)
 
 
+def _interrupted_operation(worktree: str | Path) -> str | None:
+    """`"rebase"` / `"merge"` / `"cherry-pick"` when one is in flight here, else None.
+
+    Reads the marker paths git itself uses, via `rev-parse --git-path` so it works in a
+    linked worktree (where they live under `.git/worktrees/<name>/`, not the common
+    dir). Checking `git status` output instead would make this depend on porcelain
+    wording; checking for unmerged paths alone would miss a conflict-free rebase that
+    was interrupted, which is equally incoherent to diff against.
+    """
+    for name, marker in (("rebase", "rebase-merge"), ("rebase", "rebase-apply"),
+                         ("merge", "MERGE_HEAD"), ("cherry-pick", "CHERRY_PICK_HEAD")):
+        rc, path = _git(["rev-parse", "--git-path", marker], cwd=worktree)
+        if rc == 0 and path.strip():
+            candidate = Path(path.strip())
+            if not candidate.is_absolute():
+                candidate = Path(worktree) / candidate
+            if candidate.exists():
+                return name
+    return None
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     """Impact-based verification: route changed files to the existing gate tools, run
     them, aggregate a verdict, and record it for cutover."""
@@ -2103,6 +2124,29 @@ def cmd_gate(args: argparse.Namespace) -> int:
     mismatch = _orchestrator_guard(orch, worktree, "gate", GATE_SCHEMA, args.json)
     if mismatch is not None:
         return mismatch
+
+    interrupted = _interrupted_operation(worktree)
+    if interrupted is not None and not args.plan_only:
+        # A tree with a rebase/merge in flight has no coherent diff against the trunk,
+        # and `git diff` on it reports the PARTIAL state. Measured: mid-rebase with one
+        # unmerged path, `_changed_vs_base` returned [] — so `plan_gates` routed nothing,
+        # `aggregate_verdict([])` returned "pass", and the run recorded a fresh green
+        # verdict bound to that HEAD. A gate that greenlights a conflicted tree is worse
+        # than one that fails: cutover's whole freshness contract rests on this verdict.
+        #
+        # Empty-diff alone is NOT the signal to refuse on — a branch whose work is
+        # already contained in the trunk legitimately has nothing to gate. The state of
+        # the operation is.
+        _emit({"schema": GATE_SCHEMA, "step": "gate",
+               "error": f"a {interrupted} is in progress in this worktree — finish or "
+                        f"abort it before gating. A tree mid-operation has no coherent "
+                        f"diff against the trunk, so the verdict would be recorded over "
+                        f"a partial state",
+               "worktree": worktree, "interrupted": interrupted}, args.json,
+              f"✗ gate refused: a {interrupted} is in progress in {worktree}\n"
+              f"  finish it (`git -C {worktree} {interrupted} --continue`) or abandon it "
+              f"(`--abort`), then re-run gate")
+        return EXIT_BLOCK
 
     if not args.plan_only:
         # Cheap half of the base binding: refuse before spending a gate run (an iOS gate
