@@ -407,13 +407,15 @@ def test_duplicate_verdict_keeps_the_id_it_points_at():
 
 def test_fix_site_is_taken_only_when_it_is_a_backticked_token():
     fields, misses = BACKLOG.extract_verdict_fields(
-        "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_export.py:140` 上方加模組級 X)"
+        "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_export.py:140` 上方加模組級 X,成本 S)"
     )
     assert fields["fix_site"] == "ops_world_export.py:140"
-    # Scoped to fix_site, which is what this test is named for. The stamp states
-    # no cost, and that now reports — a bare `misses == []` here would be a test
-    # about fix_site quietly forbidding every other field from ever speaking.
-    assert [m for m in misses if m["field"] == "fix_site"] == []
+    # Stays a GLOBAL assertion. A first attempt narrowed it to fix_site so the
+    # new cost report would not trip it — and a review then constructed a
+    # verdict-vocabulary regression that the narrowed form sails past while
+    # `misses == []` catches it. The fixture states a cost instead; that keeps
+    # the assertion able to see every field, which is most of its value.
+    assert misses == []
 
 
 def test_unbackticked_fix_site_is_reported_not_guessed():
@@ -824,33 +826,50 @@ def test_malformed_app_row_is_still_reported():
     assert problems[0]["id"] == "APP-20260101-abcdef"
 
 
-def test_a_stamp_with_no_readable_cost_says_so(tmp_path):
+def test_a_stamp_that_states_no_cost_at_all_is_reported(tmp_path):
     """Absence has to be visible, or "24 of 25 have a cost" means nothing.
 
     `_COST_PRESENT_RE` tests for the WORD 成本, not for "does this text state a
-    cost". A stamp that states its cost some other way — or omits it — produced
-    no field and no report, so the only signal was an empty column that looks
-    exactly like every other empty column. The commit that introduced the
-    keyword check even claimed IMP-0048 stated no cost, "checked, not assumed";
-    what it had checked was the keyword.
+    cost", so a stamp stating its cost some other way produced no field AND no
+    report — an empty column indistinguishable from every other empty column.
+
+    The three unreadable shapes get ONE reason on purpose. Splitting "written
+    unreadably" from "not written" needs a discriminator, and the only one
+    available is that same keyword test: a first attempt used it and handed
+    `各 S` — IMP-0048's real stamp — "no cost stated in the stamp", which is a
+    confident wrong answer replacing an honest silence. Twice now this entry has
+    been mis-measured by a detector rather than read: the commit that added the
+    keyword check asserted IMP-0048 stated no cost ("checked, not assumed" —
+    what it checked was the keyword), and the commit that removed it asserted
+    `各 S` no longer existed (a regex needing 40 trailing characters, against a
+    match 11 from the end).
     """
     readable = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`,成本 S)"
     fields, misses = BACKLOG.extract_verdict_fields(readable)
     assert fields["cost"] == "S"
     assert [m for m in misses if m["field"] == "cost"] == []
 
-    silent = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`)"
-    fields, misses = BACKLOG.extract_verdict_fields(silent)
-    assert "cost" not in fields
-    assert [m["reason"] for m in misses if m["field"] == "cost"] == ["no cost stated in the stamp"]
-
-    # Unreadable-but-present keeps its own, more specific reason: "written in a
-    # form I cannot parse" and "not written at all" are different findings and
-    # collapsing them would send the reader to the wrong place.
     unreadable = "—(2026-08-05 驗證 CONFIRMED-OPEN;成本 高)"
-    _fields, misses = BACKLOG.extract_verdict_fields(unreadable)
-    assert [m["reason"] for m in misses if m["field"] == "cost"] == [
-        "成本 present but not in the S/M/L form"]
+    absent = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`)"
+    keywordless = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`,各 S)"
+    for stamp in (unreadable, absent, keywordless):
+        fields, misses = BACKLOG.extract_verdict_fields(stamp)
+        assert "cost" not in fields, stamp
+        # ONE reason for all three. Splitting them needs a discriminator, and
+        # the only one available is the keyword test this rule rejects: it
+        # labelled `各 S` — IMP-0048's real stamp, a cost stated without the
+        # word — as "no cost stated", which is a confident wrong answer where
+        # there used to be an honest silence.
+        assert [m["reason"] for m in misses if m["field"] == "cost"] == [
+            "stamp states no cost this module can read"], stamp
+
+    # Not owed a cost: the verdict token was never recognised, so the stamp has
+    # not been understood at all; and a DUPLICATE-OF entry's cost lives on its
+    # target. Reporting cost on either is noise on a legitimate shape.
+    for legitimate in ("—(2026-08-05 驗證 PENDING;等上游)",
+                       "—(2026-08-05 驗證 DUPLICATE-OF-IMP-0042)"):
+        _fields, misses = BACKLOG.extract_verdict_fields(legitimate)
+        assert [m for m in misses if m["field"] == "cost"] == [], legitimate
 
     # No stamp at all is not a miss — most resolutions are a bare commit hash,
     # and reporting those would bury the real ones.
