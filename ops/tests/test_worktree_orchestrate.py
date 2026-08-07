@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -4100,3 +4101,231 @@ def test_a_refused_adopt_tells_the_operator_who_holds_the_ticket(scratch):
     assert "IMP-0001" in human and "feat/holder" in human, (
         f"the refusal names neither the ticket nor its holder:\n{human}"
     )
+
+
+def _queue_rows(primary) -> list[dict]:
+    q = Path(primary) / ".cache" / "backlog_anchor_queue.jsonl"
+    if not q.exists():
+        return []
+    return [json.loads(ln) for ln in q.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def _stage_row(primary, branch: str, entry_id: str) -> None:
+    """What `backlog.py stage` leaves behind, written directly.
+
+    Direct rather than by driving backlog.py: this test is about what CUTOVER does
+    to a queue, and shelling out to the real stager would make it depend on a store
+    fixture and on backlog.py's own validation staying green.
+    """
+    q = Path(primary) / ".cache" / "backlog_anchor_queue.jsonl"
+    q.parent.mkdir(parents=True, exist_ok=True)
+    with q.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"id": entry_id, "verdict": "CONFIRMED-FIXED", "by": "t",
+                             "evidence": "ran it", "status": "fixed", "at": "2026-08-07",
+                             "branch": branch, "landed_sha": None}) + "\n")
+
+
+@gitmark
+def test_cutover_stamps_the_landed_sha_onto_this_branchs_staged_closures(scratch):
+    """The sha only becomes knowable at the moment of landing.
+
+    A hunter stages a closure before its branch has been rebased, so it cannot know
+    which commit will carry the fix — and recording the pre-rebase sha is exactly
+    the orphaned `fixed_by` the reanchor repair exists to clean up after. Stamping
+    here means the closure names the commit that actually reached the trunk.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix a thing", "--slug", "stamped",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+
+    _stage_row(repo, "debug/stamped", "IMP-0001")
+    _stage_row(repo, "debug/other-branch", "IMP-0002")   # someone else's, untouched
+
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+    rc, payload = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    rows = {r["id"]: r for r in _queue_rows(repo)}
+    assert rows["IMP-0001"]["landed_sha"] == payload["sha"]
+    assert rows["IMP-0002"]["landed_sha"] is None, "stamped a row belonging to another branch"
+    assert payload["staged_closures"] == ["IMP-0001"]
+
+
+@gitmark
+def test_a_cutover_refused_before_it_starts_stamps_nothing(scratch):
+    """The easy half: a refusal so early the trunk is never touched.
+
+    Kept, but named for what it actually exercises. It used to be the ONLY guard on
+    the stamp's position and it cannot do that job: with no gate verdict recorded,
+    `cmd_cutover` returns before it resolves the primary and before it takes the
+    advance lock, so it never reaches the ff at all — every possible stamp position
+    passes it. Moving the stamp to just after the rebase, which is exactly the
+    dangerous placement, left this test green (mutant survived, measured). The
+    post-ff half is the test below.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix a thing", "--slug", "refused",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    _stage_row(repo, "debug/refused", "IMP-0001")
+
+    # no gate verdict recorded -> cutover refuses before it does anything
+    rc, _ = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert _queue_rows(repo)[0]["landed_sha"] is None
+
+
+@gitmark
+def test_a_cutover_that_gets_past_the_gate_and_then_fails_the_ff_stamps_nothing(scratch):
+    """The half that actually pins the stamp's position.
+
+    This drives the branch all the way through `gate` and the rebase, and then makes
+    the fast-forward itself fail — an untracked file in the primary that the branch
+    also adds, which `git merge --ff-only` refuses to overwrite and which the
+    tracked-clean readiness check deliberately allows through. So the run reaches
+    the inside of the advance lock, rebases, and returns EXIT_BLOCK with local main
+    unmoved.
+
+    That is the window the stamp must stay out of. `make_commit_state` accepts a sha
+    reachable from HEAD *or* main, so a sha written here would still validate when
+    `anchor` runs from a worktree that has not been torn down — and the entry would
+    close against a commit sitting on no trunk, with nothing downstream to complain.
+
+    Mutation-checked: moving `_stamp_anchor_queue` to just after the rebase makes
+    this red and every other test in the suite stay green.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix a thing", "--slug", "ffblocked",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "collide.txt").write_text("from the branch\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: collide"], wt)
+    _stage_row(repo, "debug/ffblocked", "IMP-0001")
+
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+
+    # untracked in the primary: passes the tracked-clean check, blocks the ff.
+    (Path(repo) / "collide.txt").write_text("already here, untracked\n")
+    before_main = _git(["rev-parse", "main"], repo)
+
+    rc, payload = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, f"expected the ff to be refused, got {payload}"
+    assert _git(["rev-parse", "main"], repo) == before_main, \
+        "local main moved; this test no longer exercises a refused landing"
+    assert _queue_rows(repo)[0]["landed_sha"] is None, (
+        "a cutover that did not land stamped a sha onto the queue — `anchor` would "
+        "close the entry against a commit on no trunk")
+
+
+@gitmark
+def test_a_concurrent_stage_cannot_wipe_the_sha_cutover_just_stamped(scratch):
+    """The stamp is a read-modify-write of the same file `stage` appends to.
+
+    Both sides now take the same lock, and this is the side where losing matters
+    more. `_stamp_anchor_queue` runs exactly once, during its branch's cutover; by
+    the time anyone notices, the branch is in the trunk and `resolve` has torn the
+    worktree down, so the sha is never re-derivable. `anchor` would then file the
+    row under "its branch has not landed", which is false, and the only other copy
+    of the answer was in a payload nobody kept.
+
+    The window is widened on purpose — the same method this repo's `_view_lock`
+    docstring uses — because the real stamp is shorter than one process start, so
+    "it did not happen at N=4" is not "it cannot happen".
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix a thing", "--slug", "stampsafe",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    _stage_row(repo, "debug/stampsafe", "IMP-0001")
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+
+    queue = Path(repo) / ".cache" / "backlog_anchor_queue.jsonl"
+    import threading
+
+    def slow_appender():
+        """A peer hunter staging its own row, holding the lock across the window."""
+        with MODULE.wr._ledger_lock(queue):
+            rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines()
+                    if ln.strip()]
+            # Wide enough that cutover certainly reaches the stamp inside it. Erring
+            # long is the safe direction: too short and an unlocked stamp simply
+            # finishes first, the windows never overlap, and the mutant survives for
+            # a timing reason rather than a correctness one.
+            time.sleep(6.0)
+            rows.append({"id": "IMP-0002", "verdict": "CONFIRMED-FIXED", "by": "peer",
+                         "evidence": "ran it", "status": "fixed", "at": "2026-08-08",
+                         "branch": "debug/peer", "landed_sha": None})
+            queue.write_text(
+                "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                encoding="utf-8")
+
+    thread = threading.Thread(target=slow_appender)
+    thread.start()
+    time.sleep(0.3)                              # let it read and settle into the gap
+    rc, payload = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    thread.join(timeout=60)
+    assert rc == MODULE.EXIT_OK, payload
+
+    rows = {r["id"]: r for r in _queue_rows(repo)}
+    assert rows["IMP-0001"]["landed_sha"] == payload["sha"], (
+        "the peer's unlocked-era write would have restored landed_sha to null while "
+        "cutover still reported the stamp as done")
+    assert "IMP-0002" in rows, "the peer's own row was lost instead"
+
+
+@gitmark
+def test_resolve_names_the_landed_closures_still_waiting_on_the_wave_anchor(scratch):
+    """Said out loud, and NOT blocking — a handoff note, not a warning.
+
+    The queue is gitignored and lives on this machine only, so nothing downstream
+    of `resolve` can notice a row nobody anchored: not the gate, not the docs lint,
+    and not any reader of the ledger — `list`, `show` and the generated view all
+    read the store, where the entry just looks open. (Not "the board": the planned
+    bounty board does not exist yet, and the only board this repo ever had,
+    `converge_board.py`, is retired. The earlier docstring's "(measured)" had
+    nothing behind it.)
+
+    Blocking would be wrong: the closure HAS landed, the entry is merely not closed
+    yet, and a teardown that refuses strands the worktree instead of fixing it. So
+    would `⚠ never anchored`, which is what the first draft printed — stamped-but-
+    unanchored is the documented normal state at this point, and a gate that reds on
+    the normal path is one that gets switched off. What earns the line is that this
+    is the last moment the worktree exists to say it.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "fix a thing", "--slug", "unanchored",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "work: notes"], wt)
+    _stage_row(repo, "debug/unanchored", "IMP-0001")
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+    assert _run_json(["cutover", "--worktree", wt, "--state", state,
+                      "--commit", "--json"])[0] == MODULE.EXIT_OK
+
+    rc, payload = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, "an unanchored closure must not block teardown"
+    assert payload["pending_anchor"] == ["IMP-0001"]

@@ -47,7 +47,15 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   讀不出來的一律**具名回報**、不猜——`ops/backlog.py import` 會印 `stamp-not-read`
 - **驗證歸屬**：`verified_by`（誰檢查的）/ `verified_evidence`（跑了什麼命令）。用
   `ops/backlog.py verify <id> --verdict <V> --by <誰> --evidence '<命令>'` 一次寫齊，
-  不要用 `update` 拆成幾個各自可能被忘記的旗標。佇列 `list --unverified`（沒有可歸屬
+  不要用 `update` 拆成幾個各自可能被忘記的旗標。
+- **在工作樹裡結案的走 `stage`，不走 `verify`**：`verify --commit` 會當場寫 store 並重生
+  這份 view，那是並行分支唯一會真的衝突的檔。改用
+  `ops/backlog.py stage <id> --verdict <V> --by <誰> --evidence '<命令>'`——旗標與 `verify`
+  相同，但只 append 進 gitignored 的波次佇列。`cutover` 落地後蓋上真正的 sha，波次結束由
+  **一個人**跑 `ops/backlog.py anchor --commit` 把整波寫進 store。`stage` 恆等於
+  `status=fixed`（沒有旗標可改）：佇列存在的理由是落地 commit 此刻還不存在，而只有 `fixed`
+  需要落地 commit；`wont-fix` 要的是理由不是 hash，當場用 `update` 寫即可。卡住整波的壞列
+  用 `ops/backlog.py unstage <id> --commit` 取下。佇列 `list --unverified`（沒有可歸屬
   驗證的，**不濾 status**）與 `list --stale --stale-days N`（驗過但已老），兩者互斥。
   **結案（fixed / wont-fix）而無可歸屬驗證會被 `validate --baseline-check` 擋**，
   存量記在 `ops/backlog_closed_unverified_baseline.txt`，只能降不能升
