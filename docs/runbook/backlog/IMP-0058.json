@@ -1,5 +1,7 @@
 {
   "acceptance": "./ops/test_ops.sh userland-portability",
+  "acceptance_cmd": "./ops/test_ops.sh userland-portability && ! git grep -q 'bsd-userland' -- ops/tests/test_ops_ci_coverage.sh",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "M",
   "date": "2026-08-04",

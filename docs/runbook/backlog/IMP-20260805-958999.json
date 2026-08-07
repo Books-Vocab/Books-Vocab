@@ -1,5 +1,7 @@
 {
   "acceptance": "cwd=repo root：bash -c 'set -e; IOS_DIR=\"ios/BooksAndVocab\"; eval \"$(grep -E \"^ASYNC_FUNC=\" ops/gen_ios_baseline.sh)\"; echo \"ASYNC_FUNC=$ASYNC_FUNC\"; [ \"$ASYNC_FUNC\" -gt 0 ]; ! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md'",
+  "acceptance_cmd": "bash -c 'set -e; IOS_DIR=\"ios/BooksAndVocab\"; eval \"$(grep -E \"^ASYNC_FUNC=\" ops/gen_ios_baseline.sh)\"; echo \"ASYNC_FUNC=$ASYNC_FUNC\"; [ \"$ASYNC_FUNC\" -gt 0 ]; ! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md'",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "S",
   "date": "2026-08-05",

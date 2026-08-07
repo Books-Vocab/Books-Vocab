@@ -1,5 +1,7 @@
 {
   "acceptance": "./ops/test_ops.sh install-hooks && ./ops/install_hooks.sh --check && [ \"$(git config --get core.hooksPath)\" = \".githooks\" ]",
+  "acceptance_cmd": "./ops/test_ops.sh install-hooks && ./ops/install_hooks.sh --check && [ \"$(git config --get core.hooksPath)\" = \".githooks\" ]",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "S",
   "date": "2026-08-05",
