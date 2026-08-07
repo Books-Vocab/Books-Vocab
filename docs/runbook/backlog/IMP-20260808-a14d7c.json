@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "review_audit.sh 的豁免詞彙有兩個洞，實測而非推測（line-anchored 比對 trailer，不是 grep 訊息內文——後者會把「刻意不用 generated-snapshot」這種句子算成使用）。\n\n① generated-snapshot 只驗名字，不驗內容。machine-repair 有路徑白名單（is_allowed_exemption 內逐檔比對 docs/runbook/backlog/*.json 與 improvement_backlog.md，比對不到就 stray 擋下），generated-snapshot 卻是 case 分支直接 return 0。這個不對稱說明設計意圖本來就是「token 要能被機器核對」，只是沒做完。\n後果實測：全歷史 11 次 generated-snapshot trailer，其中 6 次蓋住的是**手寫**的 backlog entry（合計 16 筆單的散文），只有 4 次是真正的純產物，1 次蓋 ops/injection_baseline.txt。也就是超過一半的使用，是拿一個「這是機器生的，不必人看」的字眼蓋過人寫的分析。commit 6c2af8ad 的作者已經察覺並在訊息裡寫明拒用，但工具沒攔，所以那只是個人自律。\n\n② 白名單外的 token 在歷史裡活著。Review-Exempt: backlog 出現 6 次、還有 1 次整句「純文檔同步，無行為變更；docs_lint」被當 token。這兩種 is_allowed_exemption 都會 return 1（落到 * 分支）——意思是那 7 個 commit 若被稽核就會擋。它們沒擋，是因為稽核是 --rev-range 範圍制、只看新 commit。這不是 bug，但代表：詞彙表不可發現，寫的人在當下沒有任何東西告訴他合法清單是什麼，所以就自己造一個。\n\n與 IMP-0065 同類（那筆講 single-line-small-file 量錯東西），但不是同一條：這兩個洞一個是「檢查不存在」，一個是「詞彙不可發現」。",
+  "id": "IMP-20260808-a14d7c",
+  "resolution": "— ① 給 generated-snapshot 一份路徑白名單，比照 machine-repair：只有 registry 宣告了 generator 的產物路徑（docs/snapshot/*、improvement_backlog.md、ops/injection_baseline.txt 之類）能用；蓋到任何非產物路徑就 stray 擋下並具名。手寫 backlog entry 因此會被逼回真正的 Reviewed-by。② 讓非法 token 的錯誤訊息直接印出合法清單（現在只說不合法），並在 commit-msg hook 或 backlog add 的收尾提示裡露出同一份清單——詞彙表要在人寫 trailer 的那一刻可見，不是在被擋的時候。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "架構閉環檢視時實測 Review-Exempt 使用史，2026-08-08",
+  "status": "open",
+  "stream": "IMP"
+}
