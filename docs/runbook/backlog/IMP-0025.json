@@ -1,5 +1,7 @@
 {
   "acceptance": "(cd backend && uv run pytest tests/test_ops_edit_user_commands_unit.py -q -k UserDelete)  # 今日 exit 5、17 deselected、0 collected(TestUserDelete 尚不存在);六條測試落地並實作完成後應為 6 passed",
+  "acceptance_cmd": "cd backend && uv run pytest tests/test_ops_edit_user_commands_unit.py -q -k UserDelete -p no:cacheprovider",
+  "acceptance_expect_rc": 0,
   "category": "cli",
   "cost": "M",
   "date": "2026-07-09",

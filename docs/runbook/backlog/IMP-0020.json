@@ -1,5 +1,7 @@
 {
   "acceptance": "於 repo root 執行：bash -c 'ROOT=\"$PWD\"; source ops/lib/ios_ops_catalog.sh; test \"$(catalog_reuse_build_exit_code stale 65)\" = 65 && test \"$(catalog_reuse_build_exit_code miss 0)\" = 87 && test \"$(catalog_reuse_build_exit_code not-applicable 0)\" = 87 && grep -q \"catalog_reuse_build_exit_code \\\"\\$cache_status\\\"\" ops/lib/ios_ops_catalog.sh && ! grep -qE \"^[[:space:]]*rc=87$\" ops/lib/ios_ops_catalog.sh'　（exit 0 = 綠）。收尾另跑 bash ops/test_ios_ops.sh 確認全綠（非 acceptance，是迴歸）。",
+  "acceptance_cmd": "bash -c 'ROOT=\"$PWD\"; source ops/lib/ios_ops_catalog.sh; test \"$(catalog_reuse_build_exit_code stale 65)\" = 65 && test \"$(catalog_reuse_build_exit_code miss 0)\" = 87 && test \"$(catalog_reuse_build_exit_code not-applicable 0)\" = 87 && grep -q \"catalog_reuse_build_exit_code \\\"\\$cache_status\\\"\" ops/lib/ios_ops_catalog.sh && ! grep -qE \"^[[:space:]]*rc=87$\" ops/lib/ios_ops_catalog.sh'",
+  "acceptance_expect_rc": 0,
   "category": "cli",
   "cost": "S",
   "date": "2026-07-08",
