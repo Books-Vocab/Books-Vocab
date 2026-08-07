@@ -1,5 +1,5 @@
 <!-- doc-meta
-tier: reference
+tier: archive
 authority: derived
 update_trigger: design-decision
 scope:
@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackMetrics.swift
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift
-verified_against: HEAD
+verified_against: frozen
 -->
 # Notebook Editorial Stack — Design Spec
 

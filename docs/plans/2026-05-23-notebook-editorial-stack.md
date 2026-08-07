@@ -1,5 +1,5 @@
 <!-- doc-meta
-tier: reference
+tier: archive
 authority: derived
 update_trigger: design-decision
 scope:
@@ -8,7 +8,7 @@ scope:
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookCard.swift
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookPalette.swift
   - ios/BooksAndVocab/Debug/Scenarios/NotebookListScenarios.swift
-verified_against: HEAD
+verified_against: frozen
 -->
 # Notebook Editorial Stack Implementation Plan
 

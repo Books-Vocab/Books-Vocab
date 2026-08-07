@@ -4,7 +4,7 @@ authority: derived
 update_trigger: manual
 scope:
   - backend/
-verified_against: 624f0c32
+verified_against: frozen
 -->
 
 # Backend 技術債與品質審查
