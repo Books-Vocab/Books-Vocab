@@ -4268,3 +4268,69 @@ def test_a_doc_deleted_in_the_diff_does_not_block_the_docs_gate():
     only_gone = _by_name(plan_gates([gone], ops_test_exists=lambda rel: False))
     assert "docs-lint" not in only_gone
     assert only_gone["docs-removed"]["files"] == [gone]
+
+
+@gitmark
+def test_resolve_names_claimed_tickets_that_were_never_staged(scratch, tmp_path):
+    """The failure this tool had on its own flagship task.
+
+    `open --backlog X` claimed it, the work landed, `resolve` printed
+    `pending_anchor: []`, the worktree vanished, and X was still `open`. Five other
+    tickets in the same session closed correctly — every one of them FILED mid-work.
+    The claim is taken at the start and the closure happens at the end, and nothing
+    carried the obligation across; teardown is the last moment anyone knows the claim
+    existed.
+
+    `pending_anchor` cannot cover this: it asks "did someone who remembered to close
+    it finish the job". Both report `[]` on the happy path, which is exactly why the
+    second question needs its own answer — an unclosed claim and a clean teardown
+    were byte-identical in the output.
+    """
+    tmp, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "unclosed",
+                            "--backlog", "IMP-0001", "IMP-0002",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, opened
+    wt, wt_branch = opened["path"], opened["branch"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+
+    # one of the two gets a closure; the other is the one that would vanish.
+    # Branch name from the payload, never guessed: `open` derives the prefix from
+    # the intent text, so a hardcoded "debug/…" stages a row nothing will match and
+    # the test passes for the wrong reason.
+    _stage_row(repo, wt_branch, "IMP-0001")
+
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+    assert _run_json(["cutover", "--worktree", wt, "--state", state,
+                      "--commit", "--json"])[0] == MODULE.EXIT_OK
+
+    rc, payload = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, "an unclosed claim must not block teardown"
+    assert payload["claimed_without_closure"] == ["IMP-0002"], payload
+    assert payload["pending_anchor"] == ["IMP-0001"], (
+        "the two questions must not collapse into one another")
+
+
+def test_the_claim_is_read_before_the_ledger_record_is_struck(scratch, tmp_path):
+    """Order is the whole trick.
+
+    `resolve` closes the ledger record ahead of the git steps, and every reader of
+    that ledger filters on `status == active`. Reading the claim afterwards would
+    always answer "nothing was claimed" — a check that can only ever pass, which is
+    worse than no check because it looks like one.
+    """
+    tmp, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "ordering",
+                            "--backlog", "IMP-0007", "--state", state, "--json"])
+    wt, wt_branch = opened["path"], opened["branch"]
+    assert MODULE._claimed_tickets(state, wt_branch) == ["IMP-0007"]
+
+    _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--force",
+               "--json"])
+    assert MODULE._claimed_tickets(state, wt_branch) == [], (
+        "a struck record still reported its claim — then the guard would fire after "
+        "teardown instead of before it")
