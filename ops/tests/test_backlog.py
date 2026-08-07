@@ -1219,12 +1219,42 @@ def test_view_shows_the_reverification_fields(tmp_path):
                          verified_at="2026-01-02", cost="M",
                          fix_site="ops/backlog.py:1")
     view = BACKLOG.render_view(store, verified_against="deadbeef")
-    header = view.split("\n| id ")[0] if "\n| id " in view else view
-    for field in ("verdict", "verified_at", "cost", "fix_site"):
-        assert field in view, f"{field} is still invisible in the rendered view"
-    # and the values, not just the column names
-    for value in ("CONFIRMED-OPEN", "2026-01-02", "ops/backlog.py:1"):
-        assert value in view, f"{value} missing from the view"
+
+    # Assert against the rendered TABLE, never `field in view`: _VIEW_HEADER already
+    # prints all four field names as schema prose, and interpolates the VERDICTS
+    # vocabulary — so `"verdict" in view` and `"CONFIRMED-OPEN" in view` are both
+    # satisfied by the module's own explanatory text with the table empty. Measured:
+    # dropping `verdict` or `cost` from VIEW_IMP_COLUMNS left the whole suite green.
+    header = next(line for line in view.splitlines()
+                  if line.startswith("| id ") and "detail" in line)
+    for field in BACKLOG.VIEW_IMP_COLUMNS:
+        assert f"| {field} " in header, (
+            f"{field} is not a column of the rendered table (header: {header})")
+    assert "plan" not in header and "acceptance" not in header, (
+        f"plan/acceptance must stay out of the table: {header}")
+
+    row = next(line for line in view.splitlines() if line.startswith(f"| {eid} "))
+    cells = [c.strip() for c in BACKLOG._split_row_raw(row)]
+    by_col = dict(zip(BACKLOG.VIEW_IMP_COLUMNS, cells))
+    assert by_col["verdict"] == "CONFIRMED-OPEN", by_col
+    assert by_col["verified_at"] == "2026-01-02", by_col
+    assert by_col["cost"] == "M", by_col
+    assert by_col["fix_site"] == "ops/backlog.py:1", by_col
+
+
+def test_import_requires_an_explicit_from():
+    """`--from` became required with IMP-20260805-3df783.
+
+    It used to default to the generated view. After the widening that default can
+    only fail, and failing on a default nobody typed is the kind of red that gets
+    read as "the tool is broken" rather than "you pointed it at the wrong file".
+    Untested until now: restoring `default=DEFAULT_VIEW` left the suite green.
+    """
+    parser = BACKLOG.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["import", "--commit"])
+    args = parser.parse_args(["import", "--from", "x.md"])
+    assert str(args.source_doc) == "x.md"   # argparse type=Path, not str
 
 
 def test_import_refuses_the_widened_view_instead_of_recovering_it(tmp_path):

@@ -38,8 +38,18 @@ SPEC.loader.exec_module(BACKLOG)
 # docs/runbook/improvement_backlog.md was always a latent bug: that file is a
 # generated artifact, and the moment IMP-20260805-355016 widened it to 12 columns
 # five of these tests failed for a reason that had nothing to do with the parser.
-# The fixture is the real ledger as of main@25dcc67b4 (141 IMP rows of real prose,
-# unescaped pipes and CJK) — the corpus these tests were actually written against.
+# The fixture is the real ledger as of main@0d4d4d1c3 (141 IMP + 9 APP rows of real
+# prose and CJK), byte-identical to that commit's generated view.
+#
+# WHAT IT CANNOT SEE, stated because an earlier version of this comment claimed the
+# opposite: it contains ZERO unescaped pipes inside cells. Measured — 141 IMP rows
+# carry exactly 9x141 = 1269 unescaped pipes (pure delimiters) and 9 APP rows exactly
+# 12x9 = 108; all 40 content pipes are already `\|`. It is a RENDERED artifact, so
+# every cell was escaped on the way out. The genuine hand-written pre-migration
+# ledgers do contain an unescaped pipe (IMP-0017, present in 30 historical versions),
+# and that is exactly the input the over-wide branch now refuses. This fixture cannot
+# exercise that path. A fixture easier than the input it stands for is a check kinder
+# than the thing it guards; saying so is cheaper than pretending otherwise.
 LEGACY_DOC = ROOT / "ops" / "tests" / "fixtures" / "legacy_ledger_8col.md"
 
 
@@ -501,17 +511,56 @@ def test_real_ledger_parses_with_no_losses(tmp_path):
         assert problem.get("id"), "a recovery must name the row it repaired"
 
 
-@pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
-def test_generated_view_needs_no_recovery():
-    """The post-migration invariant: a rendered view is escaped correctly, so
-    round-tripping it is clean. If this ever goes red, `render` has started
-    re-creating the damage the importer was built to repair."""
-    text = LEGACY_DOC.read_text(encoding="utf-8")
-    if "GENERATED" not in text.upper():
-        pytest.skip("ledger has not been migrated to the generated view yet")
+REAL_STORE = ROOT / "docs" / "runbook" / "backlog"
 
-    _, problems = BACKLOG.parse_legacy_table(text)
-    assert problems == [], f"the generated view does not round-trip cleanly: {problems}"
+
+@pytest.mark.skipif(not REAL_STORE.exists(), reason="store not present")
+def test_render_escapes_every_cell_in_the_real_store():
+    """`_cell`'s pipe escaping, asserted against the LIVE store.
+
+    This replaces the round-trip that used to guard it. Widening the view retired
+    `parse_legacy_table` as the view's reader, and that quietly took the escaping
+    guard with it: deleting `.replace("|", "\\|")` from `_cell` left the whole
+    suite green (measured: 112 passed), while 19 cells across the real store carry
+    a raw pipe — including `IMP-0003.fix_site`, which literally contains
+    `| IMP-0003 |`. The damage is silent end to end: `render --commit` writes it,
+    `render --check` then calls it up to date, `validate` reports 0 problems, and
+    a dozen-odd rows of the human-facing artifact are shifted.
+
+    Escaping is MORE load-bearing after the widening, not less — `fix_site` is a
+    new column and it is one of the pipe carriers.
+
+    Deliberately reads the real store rather than a fixture: a fixture would have
+    to reproduce the pipes to be worth anything, and the frozen 8-column fixture
+    demonstrably does not (all 40 of its content pipes are already escaped).
+    """
+    view = BACKLOG.render_view(REAL_STORE, verified_against="0" * 9)
+    checked = 0
+    for line in view.splitlines():
+        if line.startswith("| IMP-"):
+            expected = len(BACKLOG.VIEW_IMP_COLUMNS)
+        elif line.startswith("| APP-"):
+            expected = len(BACKLOG.APP_COLUMNS)
+        else:
+            continue
+        cells = BACKLOG._split_row_raw(line)
+        assert len(cells) == expected, (
+            f"{cells[0].strip()} rendered {len(cells)} cells, expected {expected} — "
+            "an unescaped pipe shifts every field after it"
+        )
+        checked += 1
+    # Anti-vacuity: a render that emitted nothing would satisfy the loop above.
+    assert checked >= 100, f"only {checked} rows checked — the probe, not the tree"
+
+
+@pytest.mark.skipif(not LEGACY_DOC.exists(), reason="fixture not present")
+def test_frozen_fixture_still_round_trips_without_recovery():
+    """The 8-column fixture is what `import` still claims to read; it must parse
+    with zero problems. Note what this canNOT see: the fixture's content pipes are
+    all escaped, so it cannot exercise the unescaped-pipe path that `IMP-0017`
+    exercises in the genuine pre-migration ledger."""
+    _, problems = BACKLOG.parse_legacy_table(LEGACY_DOC.read_text(encoding="utf-8"))
+    assert problems == [], f"the frozen fixture does not parse cleanly: {problems}"
 
 
 @pytest.mark.skipif(not LEGACY_DOC.exists(), reason="ledger not present")
