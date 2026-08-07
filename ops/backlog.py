@@ -1854,11 +1854,18 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
         return {"plan": [], "searched": 0, "search_depth": search_depth,
                 "window_exhausted": None, "main_depth": None}
 
-    log = _git("rev-list", f"--max-count={search_depth}", "main")
+    # HEAD, not `main` — the SAME reference frame `commit_state` calls `ok`.
+    # The first cut searched `main` alone and, on its first real run, returned
+    # 8 of 8 UNMATCHED: the rebase that orphaned those shas had rewritten them
+    # onto the BRANCH, and main had not moved. A repair tool whose search space
+    # is narrower than the space its own defect detector accepts can only fail,
+    # and it fails silently-looking (`not guessed` reads like a careful refusal
+    # rather than like looking in the wrong place).
+    log = _git("rev-list", f"--max-count={search_depth}", "HEAD")
     if log.returncode != 0:
-        raise BacklogError("reanchor needs a resolvable `main`")
+        raise BacklogError("reanchor needs a resolvable HEAD")
     candidates = log.stdout.split()
-    total = _git("rev-list", "--count", "main").stdout.strip()
+    total = _git("rev-list", "--count", "HEAD").stdout.strip()
     main_depth = int(total) if total.isdigit() else None
 
     by_patch: dict[str, list[str]] = {}
@@ -1913,7 +1920,7 @@ def _cmd_reanchor(args) -> int:
     if result["plan"]:
         window = (f"indexed {result['searched']} of {result['scanned']} commits scanned"
                   f" (--search-depth {result['search_depth']}"
-                  + (f", main is {result['main_depth']} deep" if result["main_depth"] else "")
+                  + (f", HEAD is {result[chr(39)]}deep" if False else (f", HEAD is {result['main_depth']} deep" if result["main_depth"] else ""))
                   + (", window exhausted" if result["window_exhausted"] else ", window NOT exhausted")
                   + ")")
     else:

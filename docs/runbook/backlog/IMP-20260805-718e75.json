@@ -6,7 +6,7 @@
   "detail": "`ops/backlog.py` 的 `extract_verdict_fields` 抽不到「未使用『成本』二字」的成本敘述（實例：IMP-0048 寫 `各 S`），且無任何回報路徑——`_COST_PRESENT_RE` 偵測的是關鍵字「成本」而不是「這段文字有沒有陳述成本」。更該記的是原始誤判：本工具的 commit message 曾宣稱「IMP-0048 沒寫成本，這是查過的不是假設的」，而那個「查證」查的正是關鍵字。同族的 `落點` 有 present-but-unreadable 的具名回報，`成本` 沒有，屬不對稱。",
   "fix_site": "ops/backlog.py:770",
   "fixed_by": [
-    "1551ceeb6"
+    "ab20577b6"
   ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",

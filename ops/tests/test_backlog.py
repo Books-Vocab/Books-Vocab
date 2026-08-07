@@ -1825,7 +1825,9 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     _force_fixed_by(store, entry["id"], [orphan])
 
     # Window of 1 cannot reach the equivalent commit. The answer must be "not
-    # found in the window I searched", never a guess.
+    # found in the window I searched", never a guess. (The window walks HEAD,
+    # not main: the rewritten commit lands on the branch first, and searching
+    # main alone returned 8-of-8 UNMATCHED on this tool's first real run.)
     result = BACKLOG.reanchor_store(store, search_depth=1)
     item = result["plan"][0]
     assert item["moves"] == {}
