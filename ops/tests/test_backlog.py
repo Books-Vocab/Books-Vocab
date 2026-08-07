@@ -392,6 +392,165 @@ def test_app_stream_uses_its_own_categories(tmp_path):
 
 
 # --------------------------------------------------------------------------
+# 7b. the APP stream through the CLI — the path the routing docs actually name
+#
+# Every APP assertion above calls add_entry() directly. That left the CLI half
+# of the stream — argparse wiring for --surface/--repro/--build, and the two
+# read-back commands — asserted nowhere, while the schema, the categories and
+# the owner were all in place. IMP-20260805-7ac60d is the routing half of that
+# same shape: nothing in CLAUDE.md, agent_org.md, kg-router or the two Line
+# agent files told anyone the stream existed, so it had no callers to break.
+#
+# It has callers now: .claude/agents/{ios,backend}-engineer.md hand agents this
+# flag set, and .claude/skills/kg-receipt/SKILL.md makes filing mandatory. A doc
+# that routes work into an unasserted code path is the routing gap with an extra
+# step, so these tests type the same flags those files print. (Not byte-identical
+# argv: the agent files show an elided form without --json, which these tests add
+# to read the id back. Both land on the same handler before the output branch.)
+#
+# main() rather than subprocess: it is this file's existing convention (the
+# --detail refusal test above), it keeps the suite stdlib-only for the sandbox
+# uv run, and it still crosses the whole parser -> handler -> disk boundary.
+# --------------------------------------------------------------------------
+
+_APP_SURFACE = "reader"
+_APP_REPRO = "open a 400-page EPUB, jump to chapter 12, tap within 200ms of the jump"
+_APP_BUILD = "ios 2.0.1 (build 14)"
+
+
+def _app_add_argv(store: Path, *extra: str) -> list[str]:
+    """The flag set .claude/agents/ios-engineer.md tells an agent to type."""
+    return [
+        "add",
+        "--store", str(store),
+        "--stream", "APP",
+        "--date", "2026-08-07",
+        "--source", "ios-engineer",
+        "--category", "correctness",
+        "--severity", "med",
+        "--detail", "tapping a word mid-layout selects the wrong token",
+        "--surface", _APP_SURFACE,
+        "--repro", _APP_REPRO,
+        "--build", _APP_BUILD,
+        *extra,
+    ]
+
+
+def test_cli_add_round_trips_every_app_only_field(tmp_path, capsys):
+    """The three APP-only flags must reach disk unchanged, all three of them.
+
+    Pinned per-field, not as a set: a flag that parses and is then dropped on
+    the floor is this CLI's already-observed failure (`--detail` on `update`
+    parsed, did nothing, exited 0, and cost three duplicate entries). Reading
+    the raw file rather than load_entry() keeps the module's own reader out of
+    the round trip — otherwise a symmetric bug on both sides cancels out.
+    """
+    store = tmp_path / "backlog"
+
+    rc = BACKLOG.main(_app_add_argv(store, "--json"))
+    assert rc == 0, f"filing an APP entry via the CLI failed with rc={rc}"
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "kg.backlog.add.v1"
+    entry_id = payload["entry"]["id"]
+    assert entry_id.startswith("APP-"), f"APP entry got a non-APP id: {entry_id}"
+
+    on_disk = json.loads((store / f"{entry_id}.json").read_text(encoding="utf-8"))
+    assert on_disk["stream"] == "APP"
+    assert on_disk["surface"] == _APP_SURFACE
+    assert on_disk["repro"] == _APP_REPRO
+    assert on_disk["build"] == _APP_BUILD
+
+
+def test_cli_show_hands_back_the_app_only_fields(tmp_path, capsys):
+    """A field the writer lands and the reader cannot return is still lost.
+
+    `show` is how the owning department reads an entry someone else filed, so
+    the write path being correct is only half of the round trip.
+    """
+    store = tmp_path / "backlog"
+    assert BACKLOG.main(_app_add_argv(store, "--json")) == 0
+    entry_id = json.loads(capsys.readouterr().out)["entry"]["id"]
+
+    assert BACKLOG.main(["show", entry_id, "--store", str(store), "--json"]) == 0
+    shown = json.loads(capsys.readouterr().out)["entry"]
+    assert (shown["surface"], shown["repro"], shown["build"]) == (
+        _APP_SURFACE,
+        _APP_REPRO,
+        _APP_BUILD,
+    )
+
+    # Human output too: `show` without --json is what an agent reads first, and
+    # it prints a hand-maintained field order that APP fields can fall out of.
+    #
+    # Spelled out rather than looped over BACKLOG.APP_ONLY_FIELDS: `_cmd_show`
+    # builds its field order from that same constant, so driving the assertion
+    # from it lets the two shrink together — drop `build` from the constant and
+    # it silently leaves the human output with the test still green.
+    assert BACKLOG.main(["show", entry_id, "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    for field in ("surface", "repro", "build"):
+        assert field in human, f"`show` omits {field!r} from its human output"
+
+
+def test_cli_list_stream_app_is_the_inbox_the_agent_files_name(tmp_path, capsys):
+    """`list --stream APP` is printed verbatim in both Line agent files.
+
+    If it did not filter, the department's inbox would be the whole ledger —
+    which is the mixing the two-stream split exists to prevent.
+    """
+    store = tmp_path / "backlog"
+    assert BACKLOG.main(_app_add_argv(store, "--json")) == 0
+    app_id = json.loads(capsys.readouterr().out)["entry"]["id"]
+    _add(store, stream="IMP", detail="a tool exits 0 while doing nothing")
+
+    assert BACKLOG.main(["list", "--store", str(store), "--stream", "APP", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)["entries"]
+
+    assert [entry["id"] for entry in listed] == [app_id]
+
+
+def test_cli_refuses_an_app_field_on_an_imp_entry_and_files_nothing(tmp_path, capsys):
+    """The one machine-checkable half of the "which stream?" question.
+
+    kg-receipt's checklist decides the stream by where the fix lands, and prose
+    cannot be enforced. This can: an APP-only field on an IMP entry is refused
+    at the CLI, with the usage-error code, before anything is written. Pinning
+    "files nothing" matters more than the code — a refusal that still leaves an
+    entry on disk means the next `validate` fails for a command that reported
+    an error, and the caller has no reason to go look.
+    """
+    store = tmp_path / "backlog"
+
+    rc = BACKLOG.main(
+        [
+            "add",
+            "--store", str(store),
+            "--stream", "IMP",
+            "--date", "2026-08-07",
+            "--source", "test",
+            "--category", "cli",
+            "--severity", "low",
+            "--detail", "an app problem misfiled into the tooling stream",
+            "--surface", _APP_SURFACE,
+        ]
+    )
+
+    assert rc == 64, f"expected the usage-error code, got rc={rc}"
+
+    # The problem *kind*, not just the word "surface". `add_entry` has a second
+    # ValueError path (the already-exists refusal, ops/backlog.py:383-387) whose
+    # message lists differing field names and would therefore also contain
+    # "surface" — so asserting the bare word cannot tell "refused for the right
+    # reason" from "refused for some other one".
+    err = capsys.readouterr().err
+    assert "app-field-on-imp-entry" in err, f"refused, but not for this reason: {err!r}"
+    assert "surface" in err, f"the refusal does not name the offending field: {err!r}"
+
+    assert list(store.glob("*.json")) == [], "a refused add still wrote an entry"
+
+
+# --------------------------------------------------------------------------
 # 8. update: the one mutation that overwrites, so dry-run by default
 # --------------------------------------------------------------------------
 
