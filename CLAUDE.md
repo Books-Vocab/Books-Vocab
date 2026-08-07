@@ -133,9 +133,10 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
     - **(待 Phase 3.1 後生效)** Static `DateFormatter` / `RelativeDateTimeFormatter` / `NumberFormatter` 走 `LocaleAwareFormatter`。lint 現以 baseline 模式追蹤,strict 模式由 Phase 7.1 Xcode Run Script 啟用。
 9. **工具摩擦優先修工具** `[prompt]` — 當 agent 使用既有工具完成工作流時遇到挫折、不順、輸出不自解、help 失準、入口漂移或會誘導繞路,先第一性原理判斷工具/文件/skill 哪裡壞。小問題可記入 receipt 的 tooling debt 並回到原目標；中大型問題或會導致誤判/繞過工具的問題,立即停下來修工具並驗證,再回到原本任務。
 
-## Commit / PR 政策
+## Commit / 落地政策
 
-- **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 開 PR,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
+- **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 走 `cutover` 落地本地 main,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
+  > 授權本身一字未動;改的只是它指向的機制名。原文寫「開 PR」,而 PR 合併入口已於 `90e57ba7e` 刪除(`.claude/commands/merge-prs.md`),最後一個 merge commit 停在 `0611f3cac`(2026-07-09)。落地路徑是 `worktree-flow` 的 cutover(離線 ff 本地 main),不是 PR。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)
@@ -206,5 +207,5 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
 - `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
-- iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh --write` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改;預設是印 stdout,`--write` 才落檔)
-- PR 開出前跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 PR gate
+- iOS 大規模重構**落地後**執行 `ops/gen_ios_baseline.sh --write` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改;預設是印 stdout,`--write` 才落檔)
+- **cutover 前**跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 gate

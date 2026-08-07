@@ -110,7 +110,7 @@ review 結果只在 task 工具的 internal output 不算數 — 沒在使用者
 ## 跟現有工具的關係
 
 - **`phased` skill** — 多 phase 開發的入口，本 SOP 是它的詳細版手冊
-- **`code-review` skill** — `/code-review` 全自動審本 branch；適合 PR 開出前最後一道，不是每個 phase 的 inline check
+- **`code-review` skill** — `/code-review` 全自動審本 branch；適合 **cutover 前**最後一道，不是每個 phase 的 inline check
 - **`review` skill** — 審外部 PR（gh PR）；本 SOP 不適用
 - **`/ultrareview`** — Claude Code harness 層級的 slash command（**不在** `.claude/skills/`，grep 找不到屬正常），雲端多 agent 重審本 branch / 指定 PR；user-triggered + 計費，agent **不可主動透過 Bash 或其他方式呼叫**
 
