@@ -1931,3 +1931,27 @@ def test_a_verdict_must_carry_a_date_it_can_go_stale_from():
     bad_date = _payload(verdict="CONFIRMED-OPEN", verified_at="last tuesday",
                         verified_by="agent:x")
     assert "verdict-without-date" in {p["kind"] for p in BACKLOG.validate_entry(bad_date)}
+
+
+def test_verify_can_close_an_entry_in_the_same_act(tmp_path, monkeypatch):
+    """`verify --status fixed` without `--fixed-by` was a dead end.
+
+    Hit while closing this batch: the traceability rule refuses a `fixed` entry
+    with no landing commit, so the natural closing act failed with an error
+    naming a flag `verify` did not have. Rule 9 — the entry point was wrong, not
+    the caller.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="closing act")
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: lambda sha: "ok")
+
+    rc = BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-FIXED",
+        "--by", "agent:test", "--at", "2026-08-07",
+        "--status", "fixed", "--fixed-by", "abc1234", "--commit",
+    ])
+    assert rc == 0
+    written = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert written["status"] == "fixed"
+    assert written["fixed_by"] == ["abc1234"]
+    assert written["verified_by"] == "agent:test"

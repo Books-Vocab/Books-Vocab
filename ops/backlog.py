@@ -1462,6 +1462,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--at", help="YYYY-MM-DD (default: today)")
     p_verify.add_argument("--status", choices=STATUSES,
                           help="change status in the same act, when the check changed the answer")
+    # `--status fixed` without this is a dead end: the traceability rule refuses
+    # a `fixed` entry with no landing commit, so the natural closing act
+    # (`verify … --status fixed`) failed with an error about a flag this
+    # subcommand did not have. Hit while closing this very batch.
+    p_verify.add_argument("--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
+                          help="required alongside --status fixed; the commits that landed the fix")
     p_verify.add_argument("--commit", action="store_true")
     p_verify.add_argument("--json", action="store_true")
 
@@ -1639,6 +1645,8 @@ def _cmd_verify(args) -> int:
         changes["verified_evidence"] = args.evidence
     if args.status:
         changes["status"] = args.status
+    if args.fixed_by:
+        changes["fixed_by"] = args.fixed_by
 
     current = load_entry(args.store, args.id)
     merged = _merged_and_validated(current, changes, args.id)  # raises on refusal
