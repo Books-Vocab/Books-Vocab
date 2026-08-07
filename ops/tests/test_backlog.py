@@ -31,6 +31,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,7 +39,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("backlog", ROOT / "ops" / "backlog.py")
+BACKLOG_PATH = ROOT / "ops" / "backlog.py"
+SPEC = importlib.util.spec_from_file_location("backlog", BACKLOG_PATH)
 assert SPEC and SPEC.loader
 BACKLOG = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = BACKLOG
@@ -2351,3 +2353,307 @@ def test_reanchor_searches_the_frame_the_detector_accepts(tmp_path, monkeypatch)
     _force_fixed_by(store, entry["id"], [orphan])
     result = BACKLOG.reanchor_store(store, repo=repo)
     assert result["plan"][0]["moves"] == {orphan: landed[:9]}
+
+
+def test_json_mode_stays_json_when_the_answer_is_a_refusal(tmp_path):
+    """A machine channel that turns into prose exactly when something goes wrong.
+
+    Measured: `verify ... --verdict STILL-PRESENT --json` (a value not in VERDICTS)
+    printed `ERROR invalid update: [{'kind': 'bad-verdict', ...}]` to stderr and
+    NOTHING to stdout, so a consumer doing `json.load(proc.stdout)` gets
+    `JSONDecodeError: Expecting value: line 1 column 1`. Refusals are the outcome an
+    automated caller most needs to read — ten agents driving this CLI will meet
+    `fixed-without-fixed-by` far more often than they meet success.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="probe")
+    proc = subprocess.run(
+        [sys.executable, str(BACKLOG_PATH), "update", entry["id"], "--store", str(store),
+         "--verdict", "NOT-A-REAL-VERDICT", "--commit", "--json"],
+        capture_output=True, text=True)
+    assert proc.returncode == 64
+    payload = json.loads(proc.stdout)          # must not raise
+    assert payload["ok"] is False
+    assert payload["schema"].startswith("kg.backlog.")
+    assert "bad-verdict" in json.dumps(payload, ensure_ascii=False)
+
+
+def test_every_mutation_returns_the_entry_it_wrote(tmp_path):
+    """`update --json` answered with `changes` but not the resulting entry.
+
+    That is what made `d.get('entry')` print `None` after a write that had in fact
+    succeeded — the caller could not tell "no entry in the payload" from "the write
+    did nothing", and had to re-query to find out. `add` and `show` already return
+    `entry`; the write paths are the ones where it matters most.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="probe")
+    for argv in (["update", entry["id"], "--severity", "high"],
+                 ["verify", entry["id"], "--verdict", "CONFIRMED-OPEN",
+                  "--by", "agent:x", "--evidence", "ran the thing"]):
+        proc = subprocess.run(
+            [sys.executable, str(BACKLOG_PATH), *argv, "--store", str(store),
+             "--commit", "--json"], capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+        payload = json.loads(proc.stdout)
+        assert "entry" in payload, (argv[0], sorted(payload))
+        assert payload["entry"]["id"] == entry["id"]
+
+
+def test_a_mutation_on_the_canonical_store_keeps_the_view_in_step(tmp_path, monkeypatch):
+    """Measured: `add` an entry, skip `render`, and `docs_lint.sh --registry` goes rc=1
+    ("產物與 generator 輸出不一致").
+
+    With ten agents each filing entries in their own worktree, every one of them has
+    to remember a second command — and the red does not land on whoever forgot, it
+    lands on whoever runs the gate next. The view is derived, so nothing is gained by
+    making a human the thing that keeps it derived.
+
+    Only for the CANONICAL store: an operation aimed at some other `--store` did not
+    ask for the repo's ledger view to be rewritten, so it does not get to.
+
+    Driven through `main()`, not through the library helpers. The first version of
+    this test called `add_entry()` and `_refresh_view_if_canonical()` back to back,
+    which asserts that two functions compose — a fact nobody doubted. Deleting all
+    three CLI call sites left it green, and the CLI is the whole defect: what the
+    entry says is that `add` lets its caller believe the work is finished.
+    """
+    store = tmp_path / "backlog"; store.mkdir()
+    view = tmp_path / "view.md"
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
+
+    rc = BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
+                       "--date", "2026-08-07", "--source", "an agent",
+                       "--category", "tool", "--severity", "low",
+                       "--detail", "filed by an agent"])
+    assert rc == 0
+    assert view.exists(), "the canonical view must follow its store"
+    text = view.read_text(encoding="utf-8")
+    entry_id = next(p.stem for p in store.glob("*.json"))
+    assert entry_id in text
+    # the anchor comes from `_doc_anchor()`, not from a constant baked into the
+    # refresh path — a hard-coded one survived every assertion this test used to make
+    assert "deadbeef" in text
+
+    # A scratch store must not be able to rewrite the canonical view. The view is
+    # deliberately left STALE first: rendering DEFAULT_STORE either way, a refresh
+    # that ignored the guard would look identical to one that honoured it.
+    other = tmp_path / "elsewhere"; other.mkdir()
+    BACKLOG.add_entry(store, **_entry_kwargs(detail="filed while nobody was looking"))
+    before = view.read_text(encoding="utf-8")
+    rc = BACKLOG.main(["add", "--store", str(other), "--stream", "IMP",
+                       "--date", "2026-08-07", "--source", "an agent",
+                       "--category", "tool", "--severity", "low",
+                       "--detail", "filed against a scratch store"])
+    assert rc == 0
+    assert view.read_text(encoding="utf-8") == before, \
+        "an operation on another store refreshed the canonical view"
+
+
+def test_the_automatic_refresh_cannot_drop_a_row_the_explicit_one_would_refuse(
+        tmp_path, monkeypatch):
+    """The auto-refresh must not become a second door into IMP-20260806-e06150.
+
+    `render --commit` refuses to write a view that would lose an id the previous view
+    carried — that guard exists because three entries once vanished in a re-render with
+    rc=0, empty stderr, a plausible row count and a green gate. An automatic refresh
+    that writes unconditionally would restore exactly that hole, and would fire far
+    more often than the command it bypasses.
+    """
+    store = tmp_path / "backlog"; store.mkdir()
+    view = tmp_path / "view.md"
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
+
+    doomed = BACKLOG.add_entry(store, **_entry_kwargs(detail="present in the view"))
+    keeper = BACKLOG.add_entry(store, **_entry_kwargs(detail="the other one"))
+    BACKLOG._refresh_view_if_canonical(store)
+    assert doomed["id"] in view.read_text(encoding="utf-8")
+
+    # The store loses an entry behind the tool's back — a bad merge, a stray rm.
+    (store / f"{doomed['id']}.json").unlink()
+    BACKLOG._refresh_view_if_canonical(store)
+
+    surviving = view.read_text(encoding="utf-8")
+    assert doomed["id"] in surviving, "the refresh silently deleted a row from the view"
+    assert keeper["id"] in surviving
+
+
+def test_the_rendered_view_carries_no_global_aggregate(tmp_path):
+    """The view used to end in `<!-- N IMP + M APP entries -->` and a groom counter.
+
+    Those two lines re-created inside the artifact the exact defect this store's
+    shape was chosen to escape — "every append targets the same trailing region, so
+    two worktrees appending concurrently conflict by construction". Measured on a
+    clone of the real repo, ten branches filing 1-3 entries each and landing in turn:
+    with the counters, 4 of 10 landed and the final view was STALE; without them,
+    7 of 10 landed and the view was consistent.
+    """
+    store = tmp_path / "backlog"; store.mkdir()
+    BACKLOG.add_entry(store, **_entry_kwargs(detail="one"))
+    BACKLOG.add_entry(store, **_entry_kwargs(detail="two"))
+    text = BACKLOG.render_view(store, verified_against="cafe1234")
+
+    tail = [ln for ln in text.strip().splitlines()[-3:]]
+    assert not any("entries -->" in ln for ln in tail), tail
+    assert not any(ln.startswith("<!-- groom:") for ln in tail), tail
+    # a count of anything at all is the shape being banned, not those two strings
+    assert not re.search(r"<!--[^>]*\b\d+\s*(IMP|APP|of|/)\b", text.split("|")[0])
+
+
+def test_render_reports_the_counts_it_no_longer_writes_down(tmp_path, monkeypatch, capsys):
+    """Removing the footer must not remove the information. It moves to where a
+    number costs nothing — stdout — instead of a merge conflict per branch."""
+    store = tmp_path / "backlog"; store.mkdir()
+    out = tmp_path / "view.md"
+    BACKLOG.add_entry(store, **_entry_kwargs(detail="unresolved and ungroomed"))
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "cafe1234")
+    rc = BACKLOG.main(["render", "--store", str(store), "--out", str(out), "--commit"])
+    assert rc == 0
+    printed = capsys.readouterr().out
+    assert "1 IMP + 0 APP entries" in printed, printed
+    assert "groom: 0/1" in printed, printed
+    assert "list --ungroomed" in printed, printed
+
+
+def test_a_dry_run_update_does_not_touch_the_view(tmp_path, monkeypatch):
+    """Every subcommand's help says dry-run is the default; a dry-run that rewrites a
+    version-controlled file is that promise broken in the quietest possible way."""
+    store = tmp_path / "backlog"; store.mkdir()
+    view = tmp_path / "view.md"
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
+    entry = BACKLOG.add_entry(store, **_entry_kwargs(detail="before"))
+    BACKLOG._refresh_view_if_canonical(store)
+    before = view.read_text(encoding="utf-8")
+
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--severity", "high"])
+    assert rc == 0
+    assert view.read_text(encoding="utf-8") == before, "a dry-run rewrote the view"
+
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--severity", "high", "--commit"])
+    assert rc == 0
+    assert view.read_text(encoding="utf-8") != before, "a commit did NOT rewrite it"
+
+
+def test_reanchor_and_import_keep_the_view_in_step_like_every_other_mutation(
+        tmp_path, monkeypatch):
+    """`reanchor --commit` and `import --commit` change the store exactly as much as
+    `add` does. `reanchor` got away with it because its only caller runs `render`
+    right after; `import` did not. A rule that holds for three of five mutations is
+    not a rule, it is a coincidence with good luck."""
+    store = tmp_path / "backlog"; store.mkdir()
+    view = tmp_path / "view.md"
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
+
+    # `fixed`, because that is the only status whose `fixed_by` a reanchor may move:
+    # an open entry carrying one is a self-contradiction `validate` rejects.
+    seeded = BACKLOG.add_entry(store, **_entry_kwargs(detail="seed", status="fixed",
+                                                      resolution="landed"))
+    BACKLOG.update_entry(store, seeded["id"], fixed_by=["0" * 8])
+    view.write_text("deliberately stale\n", encoding="utf-8")
+
+    # reanchor: nothing to move, so nothing to re-render — a no-op must stay a no-op
+    monkeypatch.setattr(BACKLOG, "reanchor_store",
+                        lambda *a, **k: {"plan": [], "searched": 0, "scanned": 0,
+                                         "search_depth": 1, "main_depth": None,
+                                         "window_exhausted": False})
+    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit"]) == 0
+    assert view.read_text(encoding="utf-8") == "deliberately stale\n"
+
+    # reanchor that actually moves an anchor: the view must follow
+    monkeypatch.setattr(BACKLOG, "reanchor_store",
+                        lambda *a, **k: {"plan": [{"id": seeded["id"],
+                                                   "moves": {"0" * 8: "1" * 40},
+                                                   "old_fixed_by": ["0" * 8],
+                                                   "new_fixed_by": ["1" * 40],
+                                                   "unmatched": []}],
+                                         "searched": 1, "scanned": 1,
+                                         "search_depth": 1, "main_depth": None,
+                                         "window_exhausted": False})
+    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit"]) == 0
+    assert seeded["id"] in view.read_text(encoding="utf-8")
+
+
+def test_the_atomic_write_does_not_collide_with_a_concurrent_one(tmp_path):
+    """The temp name used to be a fixed `.{name}.tmp`, which is safe only while
+    nothing writes the same path twice at once. Auto-refresh made that false: two
+    writers raced, the first `os.replace` moved the shared temp away, and the second
+    died with FileNotFoundError inside the helper whose job is to make writing safe.
+    """
+    import threading
+    target = tmp_path / "view.md"
+    errors: list[BaseException] = []
+    payloads = [f"payload-{i}\n" * 200 for i in range(8)]
+
+    def write(text: str) -> None:
+        try:
+            for _ in range(20):
+                BACKLOG._write_atomic(target, text)
+        except BaseException as exc:  # noqa: BLE001 — the point is to see it at all
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(p,)) for p in payloads]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == [], errors
+    # and every reader saw a WHOLE payload, never a spliced one
+    assert target.read_text(encoding="utf-8") in payloads
+    assert not list(tmp_path.glob(".*tmp*")), "temp files leaked"
+
+
+def test_import_refreshes_the_view_too(tmp_path, monkeypatch):
+    """Named in the sibling test's title for a week without being called there once.
+
+    `import --commit` writes entries exactly as `add` does; the only reason it looked
+    safe is that nobody ran it often. Deleting its refresh call left 114 tests green.
+    """
+    store = tmp_path / "backlog"; store.mkdir()
+    view = tmp_path / "view.md"
+    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
+    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
+    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
+    view.write_text("deliberately stale\n", encoding="utf-8")
+
+    legacy = Path(__file__).resolve().parent / "fixtures" / "legacy_ledger_8col.md"
+    rc = BACKLOG.main(["import", "--from", str(legacy), "--store", str(store),
+                       "--commit"])
+    assert rc == 0
+    assert list(store.glob("*.json")), "the fixture imported nothing"
+    text = view.read_text(encoding="utf-8")
+    assert text != "deliberately stale\n", "import left the view stale"
+    assert next(p.stem for p in store.glob("*.json")) in text
+
+
+def test_the_atomic_write_does_not_quietly_change_a_files_permissions(tmp_path):
+    """`tempfile.mkstemp` creates 0600 and `os.replace` carries that onto the target.
+
+    This one had already happened: after `_write_atomic` moved off `write_text`, the
+    280KB ledger view on disk was `-rw-------` while its sibling entry files were
+    still `-rw-r--r--`. git tracks only the exec bit, so nothing in any diff, any
+    gate or any review would ever have mentioned it — every mutation would just keep
+    demoting whatever it touched.
+    """
+    target = tmp_path / "view.md"
+    target.write_text("first\n", encoding="utf-8")
+    os.chmod(target, 0o644)
+    BACKLOG._write_atomic(target, "second\n")
+    assert oct(target.stat().st_mode & 0o777) == "0o644"
+
+    # a file it CREATES follows the umask, exactly as an ordinary create would
+    fresh = tmp_path / "fresh.md"
+    umask = os.umask(0o022)
+    os.umask(umask)
+    BACKLOG._write_atomic(fresh, "new\n")
+    assert fresh.stat().st_mode & 0o777 == (0o666 & ~umask)

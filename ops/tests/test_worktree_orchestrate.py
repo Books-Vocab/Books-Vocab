@@ -3300,3 +3300,73 @@ def test_a_missing_warn_level_tool_stays_advisory(tmp_path):
     blocker (nor the reverse — see the rc!=0 branch it mirrors)."""
     spec = MODULE._shell("ghost", "ops", ["ops/definitely_not_here.sh"], "warn")
     assert MODULE._run_gate(spec, str(tmp_path))["status"] == "warn"
+
+
+def _install_ledger_stub(repo: Path, marker: Path) -> None:
+    """A stand-in for ops/backlog.py that records how it was called and dirties the
+    tree the way the real repair does.
+
+    The ledger half (does `reanchor` actually re-point an orphaned sha) is already
+    witnessed by ops/tests/test_backlog.py; what is unwitnessed is whether the
+    orchestrator invokes the repair at all and commits what it produces.
+    """
+    (repo / "ops").mkdir(exist_ok=True)
+    (repo / "docs" / "runbook").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "runbook" / "view.md").write_text("stale\n", encoding="utf-8")
+    stub = repo / "ops" / "backlog.py"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys, pathlib\n"
+        f"m = pathlib.Path({str(marker)!r})\n"
+        "m.write_text(m.read_text() + ' '.join(sys.argv[1:]) + '\\n') if m.exists() "
+        "else m.write_text(' '.join(sys.argv[1:]) + '\\n')\n"
+        "if sys.argv[1] == 'render':\n"
+        f"    pathlib.Path({str(repo / 'docs' / 'runbook' / 'view.md')!r})"
+        ".write_text('regenerated\\n')\n",
+        encoding="utf-8")
+    stub.chmod(0o755)
+    _git(["add", "-A"], repo)
+    _git(["commit", "-qm", "install ledger stub"], repo)
+
+
+@gitmark
+def test_cutover_repairs_the_ledger_it_just_rewrote(scratch, tmp_path):
+    """cutover's rebase mutates the tree AFTER the gate last looked at it.
+
+    Measured in a clone of the real repo, both directions:
+      * a `fixed_by` sha recorded on a branch becomes `fixed-by-orphaned` once main
+        has moved under it — `validate` went 0 problems -> 1 problems;
+      * the rendered view's aggregate counter lines land stale (`162 IMP` where the
+        store says 163), because both branches rewrite those two lines and the rebase
+        takes one side. The rows themselves merge cleanly, so nothing conflicts and
+        nothing complains — the next branch simply eats a red it did not cause.
+
+    Both are the same defect: the last thing to check the tree ran before the last
+    thing to change it. So the landing step owns the repair.
+    """
+    _tmp, repo, _remote = scratch
+    marker = tmp_path / "invocations.txt"
+    _install_ledger_stub(repo, marker)
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "do the thing", "--slug", "thing",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+
+    invoked = marker.read_text(encoding="utf-8").splitlines() if marker.exists() else []
+    assert any(ln.startswith("reanchor") for ln in invoked), invoked
+    assert any(ln.startswith("render") for ln in invoked), invoked
+
+    # and what the repair produced is COMMITTED — a repair left uncommitted just
+    # moves the failure to the next cutover, which refuses on a dirty primary.
+    # tracked-clean specifically: untracked residue does not block the next cutover,
+    # a tracked leftover does.
+    assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
+    assert (repo / "docs" / "runbook" / "view.md").read_text() == "regenerated\n"
+    assert cut["repair"]["committed"] is True
