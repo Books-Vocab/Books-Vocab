@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-07",
+  "detail": "backlog.py 沒有任何搜尋子指令,於是「這件事是不是已經立過單了」在工具層無解。實例(2026-08-07):我從使用摩擦重新推導出「add/update 之後 view 不重生」的修法並寫完碼與測試,事後才發現 IMP-20260807-5bff5e 已經立單**而且梳理過**,plan 連「--store 非預設時不重生」這個細節都寫了——我重造了一份已經備妥的規格。同一天我為了回答「這是否已立單」寫了兩次臨時 python 掃 170 個 json。ledger 現在 170 筆且照使用者規劃會持續成長(一次 10 筆 →15→20),而 CLAUDE.md 的 Doc 路由第一條就是「查功能是否已實作(避免重造)」——那條規則對 docs 有 SoT 可查,對 ledger 沒有入口。需要 list --grep <pattern>(掃 detail/resolution/plan/fix_site,可與既有 --status/--stream/--severity 疊)。這對多 agent 場景特別重要:每個受派 agent 動工前應該先確認自己要修的東西沒有鄰居單。",
+  "id": "IMP-20260807-c66d97",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "tool-hardening pass: I rebuilt an already-filed entry",
+  "status": "open",
+  "stream": "IMP"
+}
