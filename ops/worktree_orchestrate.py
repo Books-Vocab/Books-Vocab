@@ -576,6 +576,20 @@ def plan_gates(changed_files: list[str],
     # they already have a declared reason to select nothing, and re-adopting them would
     # grow a warn on every marketing-manifest edit — a warn that always fires is a warn
     # nobody reads.
+    # Lint watermarks. Five of these are checked in and, before this route
+    # existed, changing ANY of them selected nothing but review-receipts —
+    # so the debt ceiling could be raised, or a stale key left to rot into a
+    # permanent re-offence slot, and the cutover gate stayed green. A ratchet
+    # whose watermark is not itself gated is a ratchet in name only.
+    # `test_lint_baselines.sh` already enumerates every checked-in baseline and
+    # fails on one it does not cover, so a single owner routes all of them and
+    # every future one — a pattern, not a file list (same rule NEUTRAL_RULES states).
+    baselines = [p for p in changed_files
+                 if re.fullmatch(r"ops/[a-z0-9_]+_baseline\.txt", p)]
+    if baselines:
+        gates.append(_shell("data-plane:ops/tests/test_lint_baselines.sh", "data",
+                            ["ops/tests/test_lint_baselines.sh"], "block"))
+
     data_yml = [p for p in changed_files
                 if p.endswith((".yml", ".yaml")) and _neutral_rule(p) is None]
     if data_yml:
@@ -675,7 +689,7 @@ def plan_gates(changed_files: list[str],
                                 registry_cmd, "block"))
 
     covered: set[str] = set()
-    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml, backlog_entries):
+    for bucket in (ios, ds, docs, backend, ops_py, ops_sh, data_yml, backlog_entries, baselines):
         covered.update(bucket)
     cov = _coverage(changed_files, covered)
     note = "every changed file is routed to a gate or declared neutral"
