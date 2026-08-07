@@ -620,6 +620,30 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
     problems: list[dict] = []
     cmd = payload.get("acceptance_cmd")
     rc = payload.get("acceptance_expect_rc")
+
+    if str(cmd or "").strip():
+        # An unparseable command is not a criterion. Stored without this check, it
+        # runs at anchor time and exits 2 — which reads as "the defect is back" and
+        # sends whoever is closing the entry to debug the FIX. Measured twice while
+        # transcribing agent output into the store: a dropped closing quote and a
+        # mangled `&&` both landed silently and only surfaced when the whole batch
+        # was re-run and reconciled against the numbers the agents had reported.
+        #
+        # `bash -n` parses without executing, so this is free and side-effect-free.
+        # It is a SYNTAX floor, not a semantic one: it cannot tell whether the
+        # command measures the right thing, only that a shell can read it.
+        try:
+            probe = subprocess.run(["bash", "-n", "-c", str(cmd)],
+                                   capture_output=True, text=True, timeout=15)
+            if probe.returncode != 0:
+                problems.append({"kind": "acceptance-cmd-does-not-parse",
+                                 "detail": probe.stderr.strip()[:300]})
+        except (OSError, subprocess.SubprocessError):
+            # No bash, or it would not run. Do NOT invent a verdict from that —
+            # a guard that turns "could not check" into "clean" is the shape this
+            # module keeps filing entries about.
+            problems.append({"kind": "acceptance-cmd-unparsed",
+                             "detail": "bash unavailable; syntax not checked"})
     # No "blank cmd" rule. The first cut had one, distinguishing `None` from `""` —
     # a distinction this schema does not make ANYWHERE (`plan`, `acceptance`,
     # `fix_site` all use `""` for absent, and `update` clears a field by writing
@@ -895,6 +919,11 @@ SHOW_FIELD_ORDER = (
 # this is the flag people reach for when an entry's wording turns out wrong.
 # The answer is `--resolution`, so the refusal has to be the thing that says it.
 REFUSED_UPDATE_FIELDS = ("detail",)
+
+# Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
+GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
+                    "--acceptance-expect-rc", "--acceptance-manual",
+                    "--fix-site", "--groomed-at", "--groomed-by")
 
 
 def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
@@ -1874,6 +1903,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--build", help="APP only: build the problem was seen on")
     p_add.add_argument("--id", dest="entry_id", help="explicit id (migration of legacy IMP-#### only)")
     p_add.add_argument("--json", action="store_true")
+    # Parsed here ONLY so that reaching for one gets a named refusal that says where
+    # it belongs. Same treatment, and the same reason, as `update --detail`: argparse's
+    # "unrecognized arguments" tells you the flag is wrong and never where the
+    # correction goes. Measured: the same mistake three times in one session, by
+    # someone who had already filed an entry about it.
+    #
+    # Grooming stays a SEPARATE act on purpose — merging it into `add` would make
+    # "pretend you worked it out at filing time" free, and being non-free is the
+    # entire value of the badge.
+    for flag in GROOM_ONLY_FLAGS:
+        p_add.add_argument(flag, dest=f"groom_only_{flag.lstrip('-').replace('-', '_')}",
+                           help=argparse.SUPPRESS)
 
     p_list = sub.add_parser("list", help="list entries")
     _add_store_arg(p_list)
@@ -2154,6 +2195,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_add(args) -> int:
+    reached = [f for f in GROOM_ONLY_FLAGS
+               if getattr(args, f"groom_only_{f.lstrip('-').replace('-', '_')}", None) is not None]
+    if reached:
+        raise BacklogError(
+            f"{', '.join(reached)} belong to `update`, not `add` — grooming is a "
+            f"separate act from filing, and it has to be: a badge you can apply while "
+            f"filing is a badge that costs nothing.\n"
+            f"  file it first:  ./ops/backlog.py add ... --json   (prints the new id)\n"
+            f"  then groom it:  ./ops/backlog.py update <id> {' '.join(reached)} ... --commit")
     entry = add_entry(
         args.store,
         stream=args.stream,

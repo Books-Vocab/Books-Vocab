@@ -1,0 +1,19 @@
+{
+  "acceptance": "未閉合引號的 acceptance_cmd 必須被 validate 具名拒絕、也無法經 update_entry 寫進 store；含子 shell 與中文字串的合法命令不得被誤擋",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k cannot_parse",
+  "acceptance_expect_rc": 0,
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "store 接受語法壞掉的 `acceptance_cmd`，而 `validate` 一聲不吭。\n\n一條 parse 不了的命令**不是判準**。它會在 anchor 時跑並回 rc=2，而那讀起來像「缺陷回來了」——結案的人會去 debug **修補**，不會去看欄位。\n\n實測，同一輪內兩次，都是我把 agent 的輸出轉錄進 store 時造成的：\n  IMP-20260805-958999 — 我把 `IOS_DIR=\"ios/BooksAndVocab\"` 當裝飾拿掉（它其實被 `ASYNC_FUNC=` 那行引用）\n  IMP-0022 — 超長命令漏了結尾的雙引號，存進去是 bash 語法錯\n\n兩次都**靜靜落地**，只有在我把整批 21 條重跑、與 agent 回報的 exit code 逐條對帳時才浮出來。沒有那個對帳步驟，它們會一路活到某次 anchor 拒絕整波，然後把帳算在修補頭上。\n\n`bash -n` 只 parse 不執行，所以這道檢查零成本零副作用。它是**語法地板不是語意地板**——只能說「shell 讀得懂這條命令」，永遠不能說「它量的是對的東西」。",
+  "fix_site": "ops/backlog.py:_check_acceptance_cmd",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "agent:main-line",
+  "id": "IMP-20260808-cba333",
+  "plan": "在 _check_acceptance_cmd 開頭對非空 cmd 跑 bash -n -c（timeout 15）；rc!=0 → acceptance-cmd-does-not-parse 附 stderr；OSError/SubprocessError → acceptance-cmd-unparsed（不得當作乾淨）。",
+  "resolution": "— 已修：`_check_acceptance_cmd` 對非空的 `acceptance_cmd` 跑 `bash -n -c`，不通過就 `acceptance-cmd-does-not-parse` 並帶 stderr。bash 不可用時回報 `acceptance-cmd-unparsed` 而**不是**當作乾淨。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Phase 5 梳理波次時自撞兩次",
+  "status": "open",
+  "stream": "IMP"
+}
