@@ -191,7 +191,8 @@ run_one() {
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/test_podcast_ops.py \
         ops/tests/test_podcast_backfill_disk.py \
-        ops/tests/test_podcast_cover_publish.py
+        ops/tests/test_podcast_cover_publish.py \
+        ops/tests/test_podcast_preview_backfill.py
       ;;
     # ── IMP-20260805-947062 收編的 4 個 group ────────────────────────────────
     # 全部跑在 backlog case 那個 --no-project sandbox 裡：這 18 支只 import stdlib
