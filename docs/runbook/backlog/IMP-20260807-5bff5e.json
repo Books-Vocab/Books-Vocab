@@ -5,14 +5,20 @@
   "date": "2026-08-07",
   "detail": "`ops/backlog.py add` 與 `update --commit` 寫完 store 就結束，不重生 `docs/runbook/improvement_backlog.md`。實測（2026-08-07，debug/backlog-traceability 工作樹）：`render --check` 事前 rc=0 印 `is up to date.`；`add` 一筆之後 rc=1 印 `STALE … 內容與 store 不一致`；刪掉該 entry 檔後回 rc=0。而 `docs/registry.yml` 的 `generated.improvement_backlog` 把 `render --check --out <path>` 宣告成 `check`，`docs_lint.sh --registry` 會**實際執行**它 → **任何一次 `add` 都讓下一道 docs gate 轉紅**，而 `add` 自己的輸出（`IMP-…  [IMP/tool/low]` 加 detail 摘要兩行）對此一字未提。gate 不是誤報，gate 是對的；壞的是入口讓呼叫者以為工作已結束。view 是 store 的純函數，沒有理由讓兩者的一致性靠呼叫者的記性維持——尤其這支 CLI 的使用者主要是 agent，而 agent 每次都是第一次用它。",
   "fix_site": "ops/backlog.py `_cmd_add` / `_cmd_update`",
+  "fixed_by": [
+    "8e9d1ca49",
+    "6b278c33d"
+  ],
   "id": "IMP-20260807-5bff5e",
   "plan": "`_cmd_add` 與 `_cmd_update`（僅 `--commit` 分支）落地成功後，在同一支程序內呼叫既有的 render 路徑重生 view，人讀輸出多印一行 `rendered docs/runbook/improvement_backlog.md`。`--store` 非預設值時**不**重生（那是測試用的臨時 store，沒有對應 view），改印一行說明；`update` 的 dry-run 本來就不寫 store，也不得重生。",
-  "resolution": "",
+  "resolution": "已修（8e9d1ca49 / 6b278c33d）。落地範圍比 plan 大：plan 只講 add / update --commit，實作把同一條規則套到全部五個 mutation（另加 verify --commit / reanchor --commit / import --commit）——規則對五個裡的三個成立不是規則，是運氣。寫入走 _write_atomic 並經過 render --commit 同一道 entry-loss 守衛；第一版繞過了它，等於把 IMP-20260806-e06150 的缺陷換一道門重開，紅測試補在 test_the_automatic_refresh_cannot_drop_a_row_the_explicit_one_would_refuse。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "backlog 收尾（本輪自用時撞見）",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-07",
+  "verified_by": "self (feat/tool-hardening 收尾)",
+  "verified_evidence": "./ops/backlog.py add（本輪三筆 IMP-20260807-b9526c / 3c1080 / 88c878）緊接 ./ops/backlog.py render --check → rc=0 'is up to date.'——acceptance 要求的正是這條，立單當下為 rc=1。另兩條 acceptance 各有測試：test_a_dry_run_update_does_not_touch_the_view、test_a_mutation_on_the_canonical_store_keeps_the_view_in_step（驅動 main() 而非 library helper，刪掉任一 CLI 呼叫點都會紅；mutation testing 實測）。"
 }
