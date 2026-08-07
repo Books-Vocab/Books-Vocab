@@ -28,3 +28,7 @@ model: inherit
 
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 build/test command 與結果、i18n/docs 影響、剩餘 risk。若改了 user/agent-facing surface,提示上一階可能需派 docs-steward 同步。
+
+## 交回狀態
+
+在自己的工作樹裡 commit 完就停,回報分支名與工作樹路徑。**不要**跑 `cutover` / `sync` / `deploy`——落地屬於握有整批視野的整合者,理由與例外見 `docs/sop/agent_org.md`「交回狀態」段。

@@ -28,3 +28,7 @@ model: inherit
 
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:做了什麼運維動作、跑了哪個 preflight/驗證與結果、是否有不可逆步驟(及是否已升級)、剩餘 risk。**若改了 ops 腳本的 CLI/旗標/入口**,提示上一階需派 `docs-steward` 同步 `tech_index.md` 與引用該命令的 skill/sop/runbook。
+
+## 交回狀態
+
+在自己的工作樹裡 commit 完就停,回報分支名與工作樹路徑。**不要**跑 `cutover` / `sync` / `deploy`——落地屬於握有整批視野的整合者,理由與例外見 `docs/sop/agent_org.md`「交回狀態」段。
