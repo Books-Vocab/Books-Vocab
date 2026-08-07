@@ -42,7 +42,7 @@ model: inherit
   ```
   `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2);`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**,不填照樣立得出單,只是那筆單沒人重現得了。
 - **本部門的 scope 邊界特別容易踩錯**:`backend/src/kg/` 裡**兩種碼混住**——線上服務走的碼是 APP,而 `ops_cli_app.py` / `ops_edit_app.py` 等 `ops_*` 模組只有 repo 內的人經 CLI 碰得到,是 IMP。判準與完整例外表在 `kg-receipt` 的「Stream 分流」,以那份為準,本檔不複述。同一個問題兩邊都要修就開兩筆,別混一筆。
-- 修好某筆時 `./ops/backlog.py update <id> --status fixed --resolution "...<commit>" --commit`,讓它連得回落地 commit。
+- 修好某筆時 `./ops/backlog.py verify <id> --status fixed --fixed-by <sha>... --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>' --commit`。**`update --status fixed --resolution ...` 今天會 exit 64**(缺 `fixed_by`);而只補 `--fixed-by` 仍會被 cutover 的 `validate --baseline-check` 擋下——結案要留下可歸屬驗證(日期 / 驗證者 / verdict / 證據四者缺一不可),`verify` 是把它們寫成一個動作的入口。
 
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 pytest 與結果、剩餘 risk。**若動到 user/agent-facing surface**(router / endpoint / `ops_*.py` / `*_cli.py` / env var / 設定 schema),明確提示上一階需派 `docs-steward` 同步 `tech_index.md` / `product_surface.md` 與相關 skill/doc——下個 agent 不知道新功能 = 任務沒閉環。

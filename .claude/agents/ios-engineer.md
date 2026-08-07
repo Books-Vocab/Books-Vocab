@@ -42,7 +42,7 @@ model: inherit
   `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2),`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**——不填照樣立得出單,只是那筆單沒人重現得了。category 名單見 `--help`。
   `--surface` 用 `docs/reference/feature_boundary/` 的**檔名**,讓 entry 直接指到 scope map(注意 `discover.md` 講的是 Explore / 共享牌組,檔名與 UI 名不同)。
 - **不要塞進 `--stream IMP`**——那是 `platform-steward` 的工具摩擦 queue,混流會讓 triage 失效(理由寫在 `ops/backlog.py` 的 `STREAMS` 註解)。分流判準見 `kg-receipt` 的「Stream 分流」,本檔不複述。
-- 修好某筆時 `./ops/backlog.py update <id> --status fixed --resolution "...<commit>" --commit`,讓它連得回落地 commit。
+- 修好某筆時 `./ops/backlog.py verify <id> --status fixed --fixed-by <sha>... --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>' --commit`。**`update --status fixed --resolution ...` 今天會 exit 64**(缺 `fixed_by`);而只補 `--fixed-by` 仍會被 cutover 的 `validate --baseline-check` 擋下——結案要留下可歸屬驗證(日期 / 驗證者 / verdict / 證據四者缺一不可),`verify` 是把它們寫成一個動作的入口。
 
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 build/test command 與結果、i18n/docs 影響、剩餘 risk。若改了 user/agent-facing surface,提示上一階可能需派 docs-steward 同步。
