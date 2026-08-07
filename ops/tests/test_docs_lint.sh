@@ -48,22 +48,74 @@ grep -q "cd backend && uv run python ops_cli.py" CLAUDE.md
 grep -q "cd backend && uv run python ops_cli.py" AGENTS.md
 grep -q "uv run python scripts/cli.py" CLAUDE.md
 grep -q "uv run python scripts/cli.py" AGENTS.md
-if grep -q "uv run ops/ops_cli.py" CLAUDE.md AGENTS.md; then
-  echo "startup docs still reference missing ops/ops_cli.py" >&2
-  exit 1
-fi
-if grep -q "uv run backend/ops_cli.py" CLAUDE.md AGENTS.md; then
-  echo "startup docs still reference root-relative backend/ops_cli.py without backend project context" >&2
-  exit 1
-fi
-if grep -q "uv run lab/llm_eval/cli.py" CLAUDE.md AGENTS.md; then
-  echo "startup docs still reference missing lab/llm_eval/cli.py" >&2
-  exit 1
-fi
-if grep -q "uv run llm-eval" CLAUDE.md AGENTS.md .claude/skills/kg-router/SKILL.md ops/capability_matrix.py; then
-  echo "startup docs still reference unavailable llm-eval console script" >&2
-  exit 1
-fi
+# Negative guards ("this string must NOT appear") over a LIST of files.
+#
+# `grep -q` returns 2 when any listed file is missing — and measured, it returns 2
+# **even when a real match exists in another file, in any order**. So a deleted or
+# renamed file does not make these noisy, it makes them STOP DETECTING, while the
+# `if` stays false and the test stays green. That is the precise failure this repo
+# has already paid for once (a `grep -P` guard that failed on every file and
+# reported ✓); the file list here includes `.claude/skills/kg-router/SKILL.md`,
+# which is a live deletion candidate.
+#
+# So: assert the files exist FIRST, loudly, then grep. Positive guards above do not
+# need this — under `set -e` their rc=2 already fails the test.
+forbid_in() {
+  local pattern="$1"; shift
+  local message="$1"; shift
+  local f
+  for f in "$@"; do
+    if [[ ! -f "$f" ]]; then
+      echo "guard input missing: $f (pattern '$pattern' would silently stop being checked)" >&2
+      exit 1
+    fi
+  done
+  if grep -q "$pattern" "$@"; then
+    echo "$message" >&2
+    exit 1
+  fi
+}
+
+# Self-check, in a subshell, before the real guards run. `forbid_in` exists to turn
+# a silent failure into a loud one, and a guard whose own failure mode is silence
+# has to prove it can speak — measured three ways on the code this replaced:
+#   real violation, all files present  -> old grep rc 0, caught
+#   file missing, no violation         -> old grep rc 2, `if` false, "clean"
+#   file missing AND real violation    -> old grep rc 2, `if` false, MISSED ENTIRELY
+# The third is the one that matters: the old form passed while a genuine violation
+# sat in a file it could read.
+(
+  probe_dir="$(mktemp -d)"
+  trap 'rm -rf "$probe_dir"' EXIT
+  printf 'VIOLATION\n' >"$probe_dir/has.txt"
+  printf 'clean\n' >"$probe_dir/clean.txt"
+
+  if ( forbid_in "VIOLATION" "probe" "$probe_dir/clean.txt" ) ; then :; else
+    echo "forbid_in reported a violation that is not there" >&2; exit 1
+  fi
+  if ( forbid_in "VIOLATION" "probe" "$probe_dir/clean.txt" "$probe_dir/has.txt" ) 2>/dev/null; then
+    echo "forbid_in missed a real violation" >&2; exit 1
+  fi
+  # the whole point: a missing file must NOT read as clean, even with a real
+  # violation sitting in a readable sibling
+  if ( forbid_in "VIOLATION" "probe" "$probe_dir/gone.txt" "$probe_dir/has.txt" ) 2>/dev/null; then
+    echo "forbid_in treated a missing input as clean — the guard is dead and silent" >&2
+    exit 1
+  fi
+) || exit 1
+
+forbid_in "uv run ops/ops_cli.py" \
+  "startup docs still reference missing ops/ops_cli.py" \
+  CLAUDE.md AGENTS.md
+forbid_in "uv run backend/ops_cli.py" \
+  "startup docs still reference root-relative backend/ops_cli.py without backend project context" \
+  CLAUDE.md AGENTS.md
+forbid_in "uv run lab/llm_eval/cli.py" \
+  "startup docs still reference missing lab/llm_eval/cli.py" \
+  CLAUDE.md AGENTS.md
+forbid_in "uv run llm-eval" \
+  "startup docs still reference unavailable llm-eval console script" \
+  CLAUDE.md AGENTS.md .claude/skills/kg-router/SKILL.md ops/capability_matrix.py
 
 ./ops/docs_lint.sh --help > /tmp/kg_docs_lint_help.out
 if grep -q '^!/usr/bin/env bash' /tmp/kg_docs_lint_help.out; then

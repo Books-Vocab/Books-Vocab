@@ -1,0 +1,19 @@
+{
+  "acceptance": "自檢的第三項是核心：缺檔 + 另一檔有真違規時，守衛必須非零；把 forbid_in 的存在性檢查換成 if false 時該自檢必須紅",
+  "acceptance_cmd": "bash ops/tests/test_docs_lint.sh",
+  "acceptance_expect_rc": 0,
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/tests/test_docs_lint.sh` 的四個否定式守衛（`if grep -q <pattern> <file...>; then fail`）在**列表中任一檔缺失時會停止偵測，而測試照樣綠**。\n\n實測（三路對照，不是推論）：\n  兩檔都在、其中一檔有違規      → grep -q rc=0，抓到\n  缺一檔、沒有違規              → rc=2，`if` 為 false，讀起來「乾淨」\n  **缺一檔、而且另一檔真的有違規** → rc=2，`if` 為 false，**違規完全沒被抓到**\n第三種與順序無關（缺檔放違規檔之前或之後都一樣）。\n\n也就是說守衛不是變吵，是**死掉且沉默**。而 `grep -q` 的 rc=1（乾淨）與 rc=2（讀不到檔）在 `if` 的眼裡完全相同。\n\n這不是假設性的：line 63 的列表含 `.claude/skills/kg-router/SKILL.md`，那是一個已在規劃中的刪除候選。任何一次刪檔或改名都會讓那條守衛靜靜下線。\n\n這個 repo 已經為同一個形狀付過一次代價（一個用 `grep -P` 的守衛在 BSD grep 上每個檔都失敗、輸出全空、開心報 ✓）。當時的結論就寫著「任何新掃描器/守衛，先加正控再相信它的沉默」。",
+  "fix_site": "ops/tests/test_docs_lint.sh（forbid_in helper + 四個否定式守衛 + 自檢段）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "agent:main-line",
+  "id": "IMP-20260808-a04560",
+  "plan": "ops/tests/test_docs_lint.sh：新增 forbid_in helper（逐檔 -f 斷言後 grep），把 line 51/55/59/63 四個否定式守衛改用它；並在真實守衛之前加一段 subshell 自檢，用臨時檔驗三件事：乾淨清單不報、真違規要報、缺檔不得讀作乾淨。",
+  "resolution": "— 已修：加 `forbid_in <pattern> <message> <files...>` helper，先逐檔斷言存在（缺檔就具名 exit 1，訊息明說「這個 pattern 會靜靜停止被檢查」），再 grep。四個否定式守衛全部改走它。肯定式守衛（`grep -q X FILE` 直式）不需要改——`set -e` 下 rc=2 本來就會讓測試紅。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "Phase 7 前置查證時實測",
+  "status": "open",
+  "stream": "IMP"
+}
