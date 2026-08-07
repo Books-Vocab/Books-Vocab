@@ -26,6 +26,24 @@ model: inherit
 - 測試:改 code/test 跑最小足夠 — `--file`/`-g`/method 重現驗證;改 UI/navigation/accessibility 用 `--ui`;跨 feature / test infra / 收尾才 `--all-targets`。
 - build 不可取代相關測試。
 
+## APP backlog(本部門是 `APP-*` 的 owner)
+
+- **開工前掃一次自己的收件匣**:`./ops/backlog.py list --stream APP`。你要動的 surface 可能已經有人立過單。
+- 在 scope 內發現**會出貨給使用者**的缺陷而本回合不修 → 立刻立單,別留在 receipt 散文裡。**下面是完整可跑的形狀,填實佔位符即可執行**:
+  ```
+  ./ops/backlog.py add --stream APP \
+    --date 2026-08-07 --source "改 Reader 高亮時撞到（ios-engineer）" \
+    --category correctness --severity med \
+    --detail "<一段話講清楚症狀與影響>" \
+    --surface <reader|vocabulary|notebook|bookshelf|podcast|settings|discover> \
+    --repro "<重現步驟>" \
+    --build "<看到問題的 build,例:main @ 917ad3e4b, Debug, iPhone 17 Pro Max iOS 26.4>"
+  ```
+  `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2),`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**——不填照樣立得出單,只是那筆單沒人重現得了。category 名單見 `--help`。
+  `--surface` 用 `docs/reference/feature_boundary/` 的**檔名**,讓 entry 直接指到 scope map(注意 `discover.md` 講的是 Explore / 共享牌組,檔名與 UI 名不同)。
+- **不要塞進 `--stream IMP`**——那是 `platform-steward` 的工具摩擦 queue,混流會讓 triage 失效(理由寫在 `ops/backlog.py` 的 `STREAMS` 註解)。分流判準見 `kg-receipt` 的「Stream 分流」,本檔不複述。
+- 修好某筆時 `./ops/backlog.py update <id> --status fixed --resolution "...<commit>" --commit`,讓它連得回落地 commit。
+
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 build/test command 與結果、i18n/docs 影響、剩餘 risk。若改了 user/agent-facing surface,提示上一階可能需派 docs-steward 同步。
 

@@ -27,6 +27,23 @@ model: inherit
 - backend pytest(確切指令與 marker 見 `docs/sop/backend.md` / `testing/backend_strategy.md`)→ 綠。
 - 改前先寫 failing test 重現。
 
+## APP backlog(本部門是 `APP-*` 的 owner)
+
+- **開工前掃一次自己的收件匣**:`./ops/backlog.py list --stream APP`。你要動的 surface 可能已經有人立過單。
+- 在 scope 內發現**會出貨給使用者**的缺陷(線上服務行為、回給 app 的資料、額度/同步結果)而本回合不修 → 立刻立單。**下面是完整可跑的形狀,填實佔位符即可執行**:
+  ```
+  ./ops/backlog.py add --stream APP \
+    --date 2026-08-07 --source "改 sync handler 時撞到（backend-engineer）" \
+    --category correctness --severity med \
+    --detail "<一段話講清楚症狀與影響>" \
+    --surface <受影響的 surface,如 sync / quota / vocab-intake / podcast> \
+    --repro "<重現步驟,含 endpoint 與 payload>" \
+    --build "<看到問題的版本,例:prod @ 917ad3e4b>"
+  ```
+  `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2);`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**,不填照樣立得出單,只是那筆單沒人重現得了。
+- **本部門的 scope 邊界特別容易踩錯**:`backend/src/kg/` 裡**兩種碼混住**——線上服務走的碼是 APP,而 `ops_cli_app.py` / `ops_edit_app.py` 等 `ops_*` 模組只有 repo 內的人經 CLI 碰得到,是 IMP。判準與完整例外表在 `kg-receipt` 的「Stream 分流」,以那份為準,本檔不複述。同一個問題兩邊都要修就開兩筆,別混一筆。
+- 修好某筆時 `./ops/backlog.py update <id> --status fixed --resolution "...<commit>" --commit`,讓它連得回落地 commit。
+
 ## 收尾
 依 `kg-receipt`(欄位見 `.claude/skills/kg-receipt/SKILL.md`)格式回報:改了什麼、跑了哪個 pytest 與結果、剩餘 risk。**若動到 user/agent-facing surface**(router / endpoint / `ops_*.py` / `*_cli.py` / env var / 設定 schema),明確提示上一階需派 `docs-steward` 同步 `tech_index.md` / `product_surface.md` 與相關 skill/doc——下個 agent 不知道新功能 = 任務沒閉環。
 
