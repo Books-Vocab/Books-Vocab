@@ -1019,11 +1019,24 @@ def extract_verdict_fields(resolution: str) -> tuple[dict, list[dict]]:
     cost = _single_or_miss("cost", _COST_RE.findall(text), misses)
     if cost:
         fields["cost"] = cost
-    elif _COST_PRESENT_RE.search(text) and not any(m["field"] == "cost" for m in misses):
-        # `各 S` and `成本 高` both state a cost this pattern cannot read. The
-        # previous version reported neither, so "24 of 25 have a cost" quietly
-        # meant "24 readable + 1 written in a form we ignore".
-        misses.append({"field": "cost", "reason": "成本 present but not in the S/M/L form"})
+    elif not any(m["field"] == "cost" for m in misses):
+        # Two different findings, kept apart because they send the reader to two
+        # different places. `成本 高` is written but unparseable — fix the text
+        # or the pattern. Nothing at all is a stamp missing a component its own
+        # declared shape includes — go find out what the cost was.
+        #
+        # The second branch is the one this whole rule exists for: the keyword
+        # test answers "does the word 成本 appear", not "does this state a
+        # cost", and a stamp that never says the word produced no field AND no
+        # report — an empty column indistinguishable from every other empty
+        # column. The commit that added the keyword check asserted IMP-0048
+        # stated no cost, "checked, not assumed"; what it had checked was the
+        # keyword. Absence that cannot be seen is the defect, not the absence.
+        misses.append({
+            "field": "cost",
+            "reason": ("成本 present but not in the S/M/L form"
+                       if _COST_PRESENT_RE.search(text) else "no cost stated in the stamp"),
+        })
 
     fix_head = _FIX_SITE_HEAD_RE.search(text)
     if fix_head:

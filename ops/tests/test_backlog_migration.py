@@ -410,7 +410,10 @@ def test_fix_site_is_taken_only_when_it_is_a_backticked_token():
         "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops_world_export.py:140` 上方加模組級 X)"
     )
     assert fields["fix_site"] == "ops_world_export.py:140"
-    assert misses == []
+    # Scoped to fix_site, which is what this test is named for. The stamp states
+    # no cost, and that now reports — a bare `misses == []` here would be a test
+    # about fix_site quietly forbidding every other field from ever speaking.
+    assert [m for m in misses if m["field"] == "fix_site"] == []
 
 
 def test_unbackticked_fix_site_is_reported_not_guessed():
@@ -819,3 +822,37 @@ def test_malformed_app_row_is_still_reported():
     assert rows == []
     assert [p["kind"] for p in problems] == ["malformed-row"]
     assert problems[0]["id"] == "APP-20260101-abcdef"
+
+
+def test_a_stamp_with_no_readable_cost_says_so(tmp_path):
+    """Absence has to be visible, or "24 of 25 have a cost" means nothing.
+
+    `_COST_PRESENT_RE` tests for the WORD 成本, not for "does this text state a
+    cost". A stamp that states its cost some other way — or omits it — produced
+    no field and no report, so the only signal was an empty column that looks
+    exactly like every other empty column. The commit that introduced the
+    keyword check even claimed IMP-0048 stated no cost, "checked, not assumed";
+    what it had checked was the keyword.
+    """
+    readable = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`,成本 S)"
+    fields, misses = BACKLOG.extract_verdict_fields(readable)
+    assert fields["cost"] == "S"
+    assert [m for m in misses if m["field"] == "cost"] == []
+
+    silent = "—(2026-08-05 驗證 CONFIRMED-OPEN;落點 `ops/x.py:10`)"
+    fields, misses = BACKLOG.extract_verdict_fields(silent)
+    assert "cost" not in fields
+    assert [m["reason"] for m in misses if m["field"] == "cost"] == ["no cost stated in the stamp"]
+
+    # Unreadable-but-present keeps its own, more specific reason: "written in a
+    # form I cannot parse" and "not written at all" are different findings and
+    # collapsing them would send the reader to the wrong place.
+    unreadable = "—(2026-08-05 驗證 CONFIRMED-OPEN;成本 高)"
+    _fields, misses = BACKLOG.extract_verdict_fields(unreadable)
+    assert [m["reason"] for m in misses if m["field"] == "cost"] == [
+        "成本 present but not in the S/M/L form"]
+
+    # No stamp at all is not a miss — most resolutions are a bare commit hash,
+    # and reporting those would bury the real ones.
+    _fields, misses = BACKLOG.extract_verdict_fields("`8aeb9e54b` 修好了")
+    assert misses == []
