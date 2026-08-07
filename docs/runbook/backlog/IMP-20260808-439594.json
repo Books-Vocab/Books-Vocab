@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "in-progress 與 triaged 機械行為完全相同，而且它現在跟認領帳本重複。\n\n第一件事：_check_traceability (ops/backlog.py:396) 裡每一條提到 triaged 的規則都在同一個集合裡提到 in-progress——444 行（兩者都不得帶 fixed_by）、451 行（兩者都欠 next action）。零個判別行為。兩個狀態值表達同一組義務。\n\n第二件事（Phase 1 之後才成立）：worktree_registry 的認領平面現在記錄「哪條工作樹持有哪張單、幾點認的」（backlog / claimed_at）。「有人正在做這張單」因此是**可推導的**。in-progress 是同一事實的第二份表示。\n\n而兩者之間沒有任何對帳程式（grep in-progress 於 ops/worktree_*.py 為空）。漂移是時間問題，且方向可預測：一條被 abandon 的工作樹會留下永遠 in-progress 的單——cmd_resolve 只改 registry record 的 status，不回頭碰 entry，也沒有東西偵測這個不一致。反向亦然：一張被認領的單，如果沒人手動 update --status，會一直顯示 open。\n\n註：認領釋放本身是對的——衝突掃描過濾 status == active，所以 resolve 一改狀態，單就自動釋出，沒有洩漏。壞的只是 entry 那一側的 in-progress 沒人同步。",
   "fix_site": "ops/backlog.py（STATUSES / RETIRED_STATUSES / PARSEABLE_STATUSES / _check_vocabulary / held_tickets / _anchors_ok / import_legacy / _cmd_list / _cmd_show）",
+  "fixed_by": [
+    "2764b12d41af911f92a6ac765a8ab70a0f12fe94"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "agent:main-line",
   "id": "IMP-20260808-439594",
@@ -14,6 +17,10 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "架構閉環檢視（使用者要求深度論證），2026-08-08",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-line",
+  "verified_evidence": "見該 entry 的 acceptance_cmd"
 }
