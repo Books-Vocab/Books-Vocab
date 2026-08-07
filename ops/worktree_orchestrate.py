@@ -50,11 +50,24 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              aggregates a pass/warn/block verdict, and RECORDS it (keyed by worktree +
              HEAD sha) so cutover can require a fresh pass. Runs the gates EXPLICITLY —
              the .githooks pre-commit is best-effort only and must not be relied on.
+  catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
+             under the branch: rebase the worktree onto local `main`. It is a verb
+             rather than a sentence because the rebase conflicts on a GENERATED file
+             (the 280KB ledger view) often enough to matter, and that conflict has
+             one right answer — re-run the generator. It does so only when the
+             conflicted set is EXACTLY that file, and aborts for anything wider.
+             HEAD moves, so `gate` must be re-run afterwards. dry-run default.
   cutover    require a fresh NON-BLOCK gate verdict (verdict in {pass, warn} AND
              recorded HEAD == current HEAD) → rebase worktree onto local `main` → ff
              the primary checkout's local `main` to it (serialized by a lock; the
-             primary must be on main + tracked-clean, since a ff updates its files).
-             OFFLINE — no push, no deploy. A `warn` is advisory: it LANDS ("landed with
+             primary must be on main + tracked-clean, since a ff updates its files)
+             → POST-LANDING REPAIR inside the same lock: the rebase ran after the
+             gate and rewrote branch shas, so ledger `fixed_by` values only become
+             correct at landing time; `backlog.py reanchor --commit` + `render
+             --commit` + `validate --baseline-check` run here and commit what they
+             produce (`Review-Exempt: machine-repair`, a path-checked token). Local
+             main's tip is therefore `trunk_tip`, which may differ from the gated
+             `sha`. OFFLINE — no push, no deploy. A `warn` is advisory: it LANDS ("landed with
              warnings") — the driving agent owns a warn's disposition, so the tool must
              not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
              dry-run default.
@@ -737,6 +750,26 @@ def _git(args: list[str], cwd: Path | str | None = None) -> tuple[int, str]:
     return proc.returncode, out
 
 
+def _noninteractive_env() -> dict[str, str]:
+    """The parent environment with every door to an interactive prompt shut.
+
+    `git -c core.editor=true` is NOT enough, and the difference is measurable: git
+    resolves `GIT_EDITOR` FIRST, so with `GIT_EDITOR=vim` a `rebase --continue`
+    launches the editor and blocks on a pipe nobody reads — forever, since these
+    runs carry no timeout. On the `cutover` path that happens INSIDE the trunk lock,
+    so one operator's editor preference freezes every cutover in the repo. Measured
+    with `GIT_EDITOR` pointed at a 25s sleep: `elapsed=25.6s` — the editor really ran.
+
+    This machine happens to have `GIT_EDITOR=true`, which is exactly why the bug was
+    invisible here: the tests were green on the environment, not on the code.
+    """
+    env = dict(os.environ)
+    env["GIT_EDITOR"] = "true"
+    env["GIT_SEQUENCE_EDITOR"] = "true"
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
 def _git_mutation(
     args: list[str],
     *,
@@ -760,6 +793,7 @@ def _git_mutation(
             heartbeat_interval=heartbeat_interval,
             capture_limit=capture_limit,
             merge_stderr=False,
+            env=_noninteractive_env(),
         )
     except (FileNotFoundError, NotADirectoryError) as exc:
         return 127, f"cwd unavailable: {exc}"
@@ -970,8 +1004,8 @@ def _behind_base_refusal(worktree: str, trunk: str, drift: dict[str, Any]) -> st
     return (f"worktree is behind {trunk} ({drift['behind_commits']} commit(s), "
             f"{len(drift['base_changed_files'])} file(s) changed on {trunk} since the "
             f"fork) — cutover rebases onto {trunk} first, so the gated tree is NOT the "
-            f"tree that lands. Run `git -C {worktree} rebase {trunk}`, then re-run "
-            f"`gate`")
+            f"tree that lands. Run `{worktree}/ops/worktree_orchestrate.py catchup "
+            f"--worktree {worktree} --commit`, then re-run `gate`")
 
 
 def _head_sha(worktree: str) -> str:
@@ -2197,16 +2231,21 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                    "primary": str(primary), **extra}, args.json,
                   f"✗ cutover refused: {reason}")
             return EXIT_BLOCK
-        rrc, rout = _git_mutation(
-            ["rebase", local], cwd=worktree, label="cutover-rebase",
-        )
+        # Normally a no-op: the shared refusal chain above already sent a behind
+        # branch to `catchup`. It can still move, because that check runs OUTSIDE
+        # this lock and a peer cutover may have advanced the trunk since — which is
+        # exactly when a generated file conflicts. Same resolution either way.
+        rrc, rout, regenerated, rnotes = _rebase_onto(worktree, local, "cutover-rebase")
         if rrc != 0:
             _git_mutation(
                 ["rebase", "--abort"], cwd=worktree, label="cutover-rebase-abort",
             )
             _emit({"schema": SCHEMA, "step": "cutover", "error": "rebase failed (aborted)",
-                   "detail": rout, "landed": False}, args.json,
-                  f"✗ rebase onto {local} failed (aborted):\n{rout}")
+                   "detail": rout, "landed": False, "regenerated": regenerated,
+                   "resolver_notes": rnotes},
+                  args.json,
+                  f"✗ rebase onto {local} failed (aborted):\n{rout}"
+                  + _resolver_note_block(rnotes))
             return EXIT_BLOCK
         sha = _head_sha(worktree)
         if gated_head is not None and sha != gated_head:
@@ -2223,7 +2262,10 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                    f"now rebased: re-run `gate`, then `cutover`")
             _emit({"schema": SCHEMA, "step": "cutover", "error": msg, "landed": False,
                    "worktree": worktree, "gated_sha": gated_head, "rebased_sha": sha,
-                   "target": local}, args.json, f"✗ cutover refused: {msg}")
+                   "target": local, "regenerated": regenerated}, args.json,
+                  f"✗ cutover refused: {msg}"
+                  + (f"\n  (the rebase also regenerated {', '.join(regenerated)} to "
+                     f"resolve a conflict in it)" if regenerated else ""))
             return EXIT_BLOCK
         # advance the local trunk by a ff-only merge IN the primary (main lives there).
         mrc, mout = _git_mutation(
@@ -2243,13 +2285,30 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                    f"{sha[:8]}", "landed": False}, args.json, "✗ post-ff verification failed")
             return EXIT_BLOCK
 
-    repair = _post_landing_repair(primary, dry_run=not args.commit)
+        # INSIDE the lock, deliberately. The repair reads and rewrites the same
+        # trunk-owned files the ff just moved, so it belongs to the same critical
+        # section. Measured outside it, 4 runs out of 4: two concurrent repairs
+        # raced in `_write_atomic` and one died with FileNotFoundError, leaving
+        # the primary dirty — and a dirty primary is what every later `cutover`
+        # refuses on. The lock is also what makes the rollback below safe: nobody
+        # else can have dirtied these paths since `_primary_ff_ready` passed.
+        repair = _post_landing_repair(primary)
+
+    trunk_tip = _head_sha(primary) if repair.get("committed") else sha
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
-               "sha": sha, "target": local, "branch": wt_branch, "verdict": verdict,
-               "warnings": warnings, "repair": repair}
+               "sha": sha, "trunk_tip": trunk_tip, "target": local, "branch": wt_branch,
+               "verdict": verdict, "warnings": warnings, "repair": repair,
+               "regenerated": regenerated}
+    repair_line = ""
+    if repair.get("committed"):
+        # Human-readable callers were told nothing at all about the repair, which
+        # made a landing that added TWO commits to the trunk print as one.
+        repair_line = f"\n  + ledger repair committed ({trunk_tip[:8]})"
+    if not repair.get("ok", True):
+        repair_line = f"\n  ! ledger repair FAILED: {repair.get('error', '?')}"
     _emit(payload, args.json,
           f"✓ cutover: ff local {local} -> {sha[:8]} (offline; run `deploy` to "
-          f"publish){warn_line}")
+          f"publish){warn_line}{repair_line}")
     return EXIT_OK
 
 
@@ -2274,24 +2333,269 @@ def _tool_mutation(argv: list[str], *, cwd: Path | str, label: str) -> tuple[int
     return proc.returncode, (proc.stdout or "")
 
 
-def _post_landing_repair(primary: Path, *, dry_run: bool) -> dict[str, Any]:
+LEDGER_PATHS = ("docs/runbook/backlog", "docs/runbook/improvement_backlog.md")
+LEDGER_VIEW = "docs/runbook/improvement_backlog.md"
+# A flat backstop, NOT "one per replayed commit" — the loop cannot see how many
+# commits are being replayed, and a bound that claims to be derived from something
+# it never reads is worse than an admitted constant. Its only job is to stop a loop
+# that has stopped making progress; a rebase replaying more than this many
+# conflicting commits is a situation for a human either way.
+_MAX_REBASE_STEPS = 100
+
+
+def _regenerate_conflicted_view(worktree: str | Path,
+                                notes: list[str] | None = None) -> str | None:
+    """Resolve a rebase conflict by re-running the generator, or decline.
+
+    Narrow on purpose. It fires only when the conflicted set is EXACTLY the ledger
+    view — a file the repo already declares generated, whose inputs (one JSON file
+    per entry) cannot conflict with each other by construction. Under those two
+    conditions "what should this file say" has one right answer and no judgement in
+    it, so a human being asked is a human being asked to type `render`.
+
+    Returns the path it resolved, or None — and None means the ordinary abort path
+    runs, unchanged. Every declining branch below is a case where regenerating would
+    be a guess: another file is also conflicted (a real decision), the generator is
+    absent, it refused (its entry-loss guard has veto), or the file on disk is not
+    what the generator would produce (so it did not actually regenerate).
+
+    That last check is `render --check`, NOT a scan for `<<<<<<<`. The scan was
+    written first and was a guaranteed false negative on the real ledger: an entry's
+    prose discusses conflict markers, so the correctly regenerated 278KB view
+    contains the substring `<<<<<<<` as CONTENT and the resolver declined every
+    time — measured, 3 of 3. "Is this file the generator's output" is a question
+    only the generator can answer; a substring cannot tell content from residue.
+
+    Every decline appends its REASON to `notes`. Without that, `catchup` printed
+    "the conflict is in files this tool will not resolve for you" over a conflict
+    list naming the one file it exists to resolve, while the generator's actual
+    refusal — which came with a complete, runnable remedy — was discarded.
+    """
+    worktree = Path(worktree)
+
+    def _decline(reason: str) -> None:
+        if notes is not None:
+            notes.append(reason)
+
+    rc, names = _git(["diff", "--name-only", "--diff-filter=U"], cwd=worktree)
+    if rc != 0:
+        _decline("could not read the conflicted file list from git")
+        return None
+    conflicted = {line.strip() for line in names.splitlines() if line.strip()}
+    if conflicted != {LEDGER_VIEW}:
+        others = sorted(conflicted - {LEDGER_VIEW})
+        _decline(f"the conflict is not confined to {LEDGER_VIEW}; also conflicted: "
+                 + (", ".join(others) if others else "(nothing — no conflict at all)"))
+        return None
+    tool = worktree / "ops" / "backlog.py"
+    if not tool.exists():
+        _decline(f"no generator in this checkout ({tool})")
+        return None
+    rc, out = _tool_mutation([sys.executable, str(tool), "render", "--commit"],
+                             cwd=worktree, label="rebase-view-regenerate")
+    if rc != 0:
+        _decline(f"the generator refused (render --commit exited {rc}): "
+                 f"{out.strip()[:600]}")
+        return None
+    rc, out = _tool_mutation([sys.executable, str(tool), "render", "--check"],
+                             cwd=worktree, label="rebase-view-verify")
+    if rc != 0:
+        _decline(f"the regenerated file is still not what the generator produces "
+                 f"(render --check exited {rc}): {out.strip()[:300]}")
+        return None
+    rc, out = _git(["add", "--", LEDGER_VIEW], cwd=worktree)
+    if rc != 0:
+        _decline(f"git add of the regenerated file failed: {out.strip()[:300]}")
+        return None
+    return LEDGER_VIEW
+
+
+def _resolver_note_block(notes: list[str]) -> str:
+    """The resolver's own account of why it stopped, for the human channel."""
+    if not notes:
+        return ""
+    return ("\n  the generated-file resolver declined:\n"
+            + "\n".join(f"    - {n}" for n in notes))
+
+
+def _rebase_onto(worktree: str | Path, trunk: str,
+                 label: str) -> tuple[int, str, list[str], list[str]]:
+    """`git rebase <trunk>`, resolving generated-file conflicts by regenerating.
+
+    Returns (rc, output, regenerated, notes). rc != 0 means the caller must abort —
+    this helper deliberately does NOT abort, because the two callers want different
+    things afterwards (cutover aborts and refuses; catchup aborts and explains).
+    `notes` carries why the resolver stopped, which is the difference between a
+    caller that can act and a caller that only knows it failed.
+    """
+    rc, out = _git_mutation(["rebase", trunk], cwd=worktree, label=label)
+    regenerated: list[str] = []
+    notes: list[str] = []
+    for _ in range(_MAX_REBASE_STEPS):
+        if rc == 0:
+            break
+        fixed = _regenerate_conflicted_view(worktree, notes)
+        if not fixed:
+            break
+        regenerated.append(fixed)
+        rc, out = _git_mutation(["rebase", "--continue"],
+                                cwd=worktree, label=f"{label}-continue")
+    return rc, out, regenerated, notes
+
+
+def cmd_catchup(args) -> int:
+    """Bring a worktree onto the current local trunk — the step `gate` and `cutover`
+    both send you to when the trunk moved under the branch.
+
+    It existed as a sentence before it existed as a command: both refusals used to
+    say "run `git -C <path> rebase main`". Handing an agent raw git there is fine
+    right up until the rebase conflicts, and in this repo it conflicts on a 280KB
+    GENERATED file — measured on a clone of the real repo, 3 to 6 branches out of
+    ten in a single round. Resolving that by hand is not a decision anybody should be
+    making; it is `render` with extra steps, and doing it wrong corrupts a ledger.
+    So the sentence became a command, and the command knows about generated files.
+    """
+    # `freeze` is a stop-the-world lock for repo surgery — history rewrite, gc,
+    # shared hooks. `catchup` REWRITES HISTORY (that is what a rebase is), so it
+    # belongs on the blocked side with open/adopt/cutover/sync/deploy, not on the
+    # draining side with resolve/sweep/gate. It was missed simply because it is the
+    # newest primitive; a lock that a new verb can walk past is not a lock.
+    blocked = _freeze_guard(args.state, "catchup", args.json)
+    if blocked is not None:
+        return blocked
+    worktree = _norm(args.worktree)
+    trunk = _local_trunk(args.base)
+    if not Path(worktree).is_dir():
+        _emit({"schema": SCHEMA, "step": "catchup", "mode": "refused",
+               "error": f"no such worktree: {worktree}"},
+              args.json, f"✗ no such worktree: {worktree}")
+        return EXIT_BLOCK
+    drift = _base_containment(worktree, trunk)
+    if drift is None:
+        # `mode` on every branch, including this one: it is the most common outcome
+        # (agents run `catchup` speculatively), so a machine caller reading
+        # payload["mode"] would KeyError precisely where nothing went wrong.
+        _emit({"schema": SCHEMA, "step": "catchup", "mode": "noop", "worktree": worktree,
+               "trunk": trunk, "behind": False, "rebased": False, "regenerated": [],
+               "resolver_notes": [], "sha": _head_sha(worktree)}, args.json,
+              f"✓ already on top of {trunk} — nothing to catch up to")
+        return EXIT_OK
+    if drift.get("containment_error"):
+        _emit({"schema": SCHEMA, "step": "catchup", "mode": "refused",
+               "error": _behind_base_refusal(worktree, trunk, drift), **drift},
+              args.json, f"✗ catchup refused: {_behind_base_refusal(worktree, trunk, drift)}")
+        return EXIT_BLOCK
+    if not args.commit:
+        _emit({"schema": SCHEMA, "step": "catchup", "mode": "dry-run", "rebased": False,
+               "worktree": worktree, "trunk": trunk, "behind": True, **drift}, args.json,
+              f"# catchup (dry-run)\n  {worktree} is {drift['behind_commits']} commit(s) "
+              f"behind {trunk}; {len(drift['base_changed_files'])} file(s) changed there\n"
+              f"  would rebase onto {trunk} (--commit), regenerating any generated file "
+              f"that conflicts\n  then re-run `gate`")
+        return EXIT_OK
+
+    before = _head_sha(worktree)
+    rc, out, regenerated, notes = _rebase_onto(worktree, trunk, "catchup-rebase")
+    if rc != 0:
+        _git_mutation(["rebase", "--abort"], cwd=worktree, label="catchup-rebase-abort")
+        _emit({"schema": SCHEMA, "step": "catchup", "mode": "committed",
+               "error": "rebase failed (aborted)", "detail": out, "rebased": False,
+               "regenerated": regenerated, "resolver_notes": notes,
+               "worktree": worktree, "trunk": trunk}, args.json,
+              # NOT "the conflict is in files this tool will not resolve for you" —
+              # that sentence was printed over a conflict list naming the one file
+              # this tool exists to resolve, every time the generator itself was the
+              # one that declined. The reason belongs to the resolver, so it says it.
+              f"✗ rebase onto {trunk} failed (aborted):\n{out}"
+              + _resolver_note_block(notes))
+        return EXIT_BLOCK
+    sha = _head_sha(worktree)
+    regen_line = (f"\n  regenerated on the way: {', '.join(regenerated)}"
+                  if regenerated else "")
+    _emit({"schema": SCHEMA, "step": "catchup", "mode": "committed", "rebased": True,
+           "worktree": worktree, "trunk": trunk, "regenerated": regenerated,
+           "resolver_notes": notes, "sha": sha, "previous_sha": before}, args.json,
+          f"✓ catchup: {worktree} rebased onto {trunk} ({before[:8]} -> {sha[:8]})"
+          f"{regen_line}\n  HEAD moved, so any gate verdict is now stale — re-run `gate`")
+    return EXIT_OK
+
+_REPAIR_MESSAGE = (
+    "ops: cutover 落地後重新推導 ledger 錨點\n\n"
+    "rebase 在 gate 之後改寫了分支的 sha,所以 entry 的 fixed_by 在落地那一刻\n"
+    "才指得到正確的 commit。這顆 commit 由 cutover 自己產生,內容全部是\n"
+    "`backlog.py reanchor --commit` + `render --commit` 從既有資料重新推導的。\n\n"
+    "Review-Exempt: machine-repair"
+)
+
+
+def _ledger_dirty(primary: Path) -> tuple[int, str]:
+    """Tracked-only dirtiness of the ledger paths.
+
+    `--untracked-files=no` on purpose, matching `_primary_ff_ready`: an untracked
+    entry JSON in the primary is a LEGAL and common state (an agent filed one and
+    has not committed it), and it does not block anybody's cutover. Counting it as
+    dirt is what led the repair to sweep other people's unfinished work into a
+    commit carrying a review exemption.
+    """
+    return _git(["status", "--porcelain", "--untracked-files=no", "--", *LEDGER_PATHS],
+                cwd=primary)
+
+
+def _repair_restore(primary: Path, out: dict[str, Any]) -> None:
+    """Put the ledger paths back to HEAD after a failed repair, and VERIFY it.
+
+    The one thing a failed repair must not do is leave the primary dirty: that is
+    the exact condition `_primary_ff_ready` refuses on, so an abandoned repair does
+    not fail one cutover, it fails EVERY later one — and it does so with a message
+    pointing the next agent at "another session is working in the primary", which is
+    not what happened. Measured before this existed: `render --commit` returned its
+    own designed refusal (exit 2, entry-loss guard), the already-written `reanchor`
+    edit was left behind, and the next cutover was blocked.
+
+    `restored` is set from a RE-READ of git's status, not from the exit code of the
+    restore command. The first version reported success from `checkout`'s rc while
+    the tree was still dirty — `checkout HEAD -- <dir>` is a silent no-op for a path
+    that is staged-new and absent from HEAD. Asserting the property instead of the
+    command is the only version that cannot drift away from what it claims.
+
+    `reset` then `checkout HEAD --` is belt AND braces, and measurably redundant
+    today: with the reset first, the plain `checkout --` form restores from an index
+    that already matches HEAD, so the two are equivalent — a mutation swapping them
+    survives every test, correctly. The pair is kept because each covers the other's
+    failure mode if a staging step ever returns to this function, and because the
+    re-read below is what actually decides the verdict either way.
+
+    Untracked files under these paths are deliberately NOT touched: they are someone
+    else's unfinished work, and this function's job is to undo its own edits.
+    """
+    _git(["reset", "-q", "--", *LEDGER_PATHS], cwd=primary)
+    _git(["checkout", "HEAD", "--", *LEDGER_PATHS], cwd=primary)
+    rc, dirty = _ledger_dirty(primary)
+    out["restored"] = rc == 0 and not dirty.strip()
+    if not out["restored"]:
+        out["error"] = (f"{out.get('error', '?')} | AND the primary could not be "
+                        f"restored ({dirty.strip()[:200]}) — it is dirty and the next "
+                        f"cutover will refuse until you clean docs/runbook by hand")
+
+
+def _post_landing_repair(primary: Path) -> dict[str, Any]:
     """Re-derive what the rebase invalidated, in the checkout that now holds it.
 
     `cutover` rebases the branch onto the current trunk and then fast-forwards. That
     rebase runs AFTER the gate — the last thing to check the tree runs before the last
-    thing to change it — so two derived artifacts land wrong, both measured:
+    thing to change it — so `fixed_by` shas written on the branch are rewritten by the
+    rebase and become `fixed-by-orphaned` (measured: validate 0 problems -> 1).
+    `reanchor` maps them back by `git patch-id --stable`, and refuses to guess when it
+    cannot. That is not repairable from the branch: the correct sha does not exist
+    until the landing has happened.
 
-      * `fixed_by` shas written on the branch are rewritten by the rebase and become
-        `fixed-by-orphaned` (validate: 0 problems -> 1). `reanchor` maps them back by
-        `git patch-id --stable`, and refuses to guess when it cannot.
-      * the rendered ledger view's aggregate counters land stale, because every branch
-        rewrites those same two lines and the rebase keeps one side. The rows merge
-        cleanly, so nothing conflicts and nothing complains.
+    `render` follows because the store just changed. (It used to also be the fix for
+    stale aggregate counters in the view; those are gone — `backlog.py:render_view`
+    says why — so this is now the ordinary "re-derive the derived artifact" step.)
 
-    Neither is repairable from the branch — the correct values do not exist until the
-    landing has happened. This runs after the ff and commits what it produces: a
-    repair left uncommitted merely relocates the failure to the next `cutover`, which
-    refuses on a dirty primary.
+    Committed, not left in the tree: an uncommitted repair merely relocates the
+    failure to the next `cutover`, which refuses on a dirty primary. And if any step
+    fails, the tree is put BACK — see `_repair_restore`.
 
     It never fails the cutover. The landing already happened; reporting a repair
     problem loudly is honest, rolling back a completed ff is not.
@@ -2301,9 +2605,6 @@ def _post_landing_repair(primary: Path, *, dry_run: bool) -> dict[str, Any]:
     if not tool.exists():
         out["reason"] = "no ledger tool in this checkout"
         return out
-    if dry_run:
-        out["reason"] = "dry-run"
-        return out
     out["ran"] = True
     for sub, label in (("reanchor", "ledger-reanchor"), ("render", "ledger-render")):
         rc, text = _tool_mutation([sys.executable, str(tool), sub, "--commit"],
@@ -2312,23 +2613,43 @@ def _post_landing_repair(primary: Path, *, dry_run: bool) -> dict[str, Any]:
         if rc != 0:
             out["ok"] = False
             out["error"] = f"{sub} exited {rc}: {text.strip()[:300]}"
+            _repair_restore(primary, out)
             return out
-    rc, dirty = _git(["status", "--porcelain", "--", "docs/runbook"], cwd=primary)
-    if rc != 0 or not dirty.strip():
+    rc, dirty = _ledger_dirty(primary)
+    if rc != 0:
+        out["ok"] = False
+        out["error"] = "could not read the primary's status after the repair"
         return out
-    _git(["add", "--", "docs/runbook"], cwd=primary)
-    crc, ctext = _git_mutation(
-        ["commit", "-m",
-         "ops: cutover 落地後重新推導 ledger 錨點與 view\n\n"
-         "rebase 在 gate 之後改寫了分支的 sha,並讓 view 的彙總行取到單邊。"
-         "兩者的正確值在落地之前都不存在,所以由落地這一步重新推導。\n\n"
-         "Review-Exempt: generated-snapshot"],
-        cwd=primary, label="ledger-repair-commit")
+    if not dirty.strip():
+        return out
+    # NO `git add`, and a pathspec on the commit. Both matter, and the reason is the
+    # same: `git commit -- <paths>` takes the working-tree content of the TRACKED
+    # files under those paths and nothing else. A `git add -- docs/runbook/backlog`
+    # also stages untracked entry JSONs, which is precisely how a co-tenant's
+    # uncommitted filing got swept into a commit whose message says "everything here
+    # was re-derived by a tool" and whose trailer buys it past the review gate.
+    # Measured: the repair commit contained COTENANT.json; without the add, it
+    # contains only the file `reanchor` actually rewrote.
+    crc, ctext = _git_mutation(["commit", "-m", _REPAIR_MESSAGE, "--", *LEDGER_PATHS],
+                               cwd=primary, label="ledger-repair-commit")
     if crc != 0:
         out["ok"] = False
         out["error"] = f"repair commit failed: {ctext.strip()[:300]}"
+        _repair_restore(primary, out)
         return out
     out["committed"] = True
+    # The repair rewrote ledger data on the trunk and no gate has looked at the
+    # result — the gate ran on the branch, before the rebase that made the repair
+    # necessary. So the repair checks its own work; a mis-anchored `fixed_by` landing
+    # silently would be handed to whichever branch cuts over next.
+    vrc, vtext = _tool_mutation(
+        [sys.executable, str(tool), "validate", "--baseline-check"],
+        cwd=primary, label="ledger-validate")
+    out["steps"].append({"step": "validate", "rc": vrc})
+    if vrc != 0:
+        out["ok"] = False
+        out["error"] = ("the repair landed but `validate --baseline-check` is red on "
+                        f"the result: {vtext.strip()[:300]}")
     return out
 
 
@@ -2819,6 +3140,16 @@ def build_parser() -> argparse.ArgumentParser:
     co.add_argument("--commit", action="store_true",
                     help="land the ff into local main (default: dry-run)")
     co.set_defaults(func=cmd_cutover)
+
+    cu = sub.add_parser("catchup", help="rebase the worktree onto the local trunk, "
+                        "resolving conflicts in generated files by re-running their "
+                        "generator; then re-run `gate` (dry-run default)")
+    add_common(cu)
+    add_base(cu)
+    cu.add_argument("--worktree", required=True, help="worktree path to rebase")
+    cu.add_argument("--commit", action="store_true",
+                    help="perform the rebase (default: report the drift only)")
+    cu.set_defaults(func=cmd_catchup)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "
                         "remove + branch -D (local/remote) + drop gate cache — no "
