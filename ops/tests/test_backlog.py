@@ -92,6 +92,17 @@ def _entry_kwargs(**overrides):
     return base
 
 
+
+def _stamp_queue(queue: Path, entry_id: str, sha: str) -> None:
+    """What `cutover` does after the ff: mark the row as actually landed."""
+    rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    for row in rows:
+        if row["id"] == entry_id:
+            row["landed_sha"] = sha
+    queue.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                     encoding="utf-8")
+
+
 def _add(store: Path, **overrides) -> dict:
     return BACKLOG.add_entry(store, **_entry_kwargs(**overrides))
 
@@ -2879,3 +2890,440 @@ def test_two_concurrent_mutations_cannot_lose_each_others_row(tmp_path):
         "the fast writer's row was overwritten by a stale render — the view refresh "
         "is not serialized"
     )
+
+
+# --------------------------------------------------------------------------
+# 17. closing an entry without the hunter ever touching the store
+# --------------------------------------------------------------------------
+
+def test_staging_a_closure_writes_no_store_and_no_view(tmp_path, capsys):
+    """The whole point of the queue.
+
+    Every store write from a hunter's branch rewrites the 280KB generated view,
+    which is the one file parallel branches provably collide on, and it does it
+    once per hunter — the O(entries) render that measured 8 mutations/sec. `stage`
+    records the SAME closure the hunter would have written, in a gitignored
+    append-only file, and the store is touched once per wave instead.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    before = (store / f"{entry['id']}.json").read_bytes()
+
+    assert BACKLOG.main([
+        "stage", entry["id"], "--store", str(store), "--queue", str(queue),
+        "--verdict", "CONFIRMED-FIXED", "--by", "agent:hunter",
+        "--evidence", "uv run pytest ops/tests/test_x.py -q",
+        "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["staged"]["id"] == entry["id"]
+    assert payload["staged"]["landed_sha"] is None   # cutover has not run yet
+
+    assert (store / f"{entry['id']}.json").read_bytes() == before, "stage wrote the store"
+    rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(rows) == 1
+    # The hunter's own evidence travels with it. An integrator who has to invent
+    # the evidence at wave end is writing the reason field nobody checked.
+    assert rows[0]["evidence"] == "uv run pytest ops/tests/test_x.py -q"
+    assert rows[0]["by"] == "agent:hunter"
+
+
+def test_staging_refuses_bad_verdicts_evidence_and_ids_exactly_as_verify_does(tmp_path):
+    """The three refusals `stage` shares with `verify`, and only those.
+
+    Named for what it covers. The previous name claimed `stage` refuses "the same
+    things verify refuses", which oversold it: the two commands differ on exactly
+    one axis — traceability — and this test never went near it. That axis is now
+    closed by construction instead (`stage` pins `status=fixed`, so the rules the
+    relaxed check drops all guard statuses it cannot emit); see the anchor-side
+    guard in `test_anchor_refuses_a_row_whose_status_is_not_fixed`.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    assert BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                         "--verdict", "TOTALLY-BOGUS", "--by", "x", "--evidence", "y"]) == 64
+    assert BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                         "--verdict", "CONFIRMED-FIXED", "--by", "x", "--evidence", "   "]) == 64
+    assert BACKLOG.main(["stage", "IMP-20260101-abcdef", "--store", str(store),
+                         "--queue", str(queue), "--verdict", "CONFIRMED-FIXED",
+                         "--by", "x", "--evidence", "y"]) == 1
+    assert not queue.exists() or queue.read_text(encoding="utf-8").strip() == ""
+
+
+def test_stage_has_no_status_flag_at_all(tmp_path):
+    """Pinning the status is what makes anchor's unconditional `fixed_by` honest.
+
+    While `--status` took the whole vocabulary, `stage --status wont-fix` ran green
+    from end to end: `_cmd_anchor` hangs `fixed_by=[landed_sha]` on every row it
+    replays, so the entry ended up a wont-fix carrying a commit hash — and
+    `validate` reported 0 problems, because no rule forbids `fixed_by` on a
+    wont-fix. `_check_traceability`'s own docstring says a wont-fix decision is
+    "a reason, not a hash".
+
+    A wave exists because the landing commit does not exist yet, and `fixed` is the
+    only status that needs one, so there is nothing to express here.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    # argparse EXITS on an unrecognized flag rather than returning; that is the
+    # shape of "this flag does not exist", and it is what we want asserted.
+    with pytest.raises(SystemExit) as exc:
+        BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                      "--verdict", "CONFIRMED-FIXED", "--by", "x", "--evidence", "y",
+                      "--status", "wont-fix"])
+    assert exc.value.code == 2, "argparse should not know --status"
+    assert BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                         "--verdict", "CONFIRMED-FIXED", "--by", "x",
+                         "--evidence", "y"]) == 0
+    rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert [r["status"] for r in rows] == [BACKLOG.STAGED_STATUS] == ["fixed"]
+
+
+def test_anchor_refuses_a_row_whose_status_is_not_fixed(tmp_path, capsys):
+    """The defence for rows `stage` did not write.
+
+    The queue is a plain gitignored jsonl and `unstage` is the sanctioned way in,
+    so a hand-written or pre-rule row can still carry any status. Anchor must not
+    replay it: the write below attaches `fixed_by` unconditionally, and on any
+    other status that is a claim the status contradicts.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    queue.write_text(json.dumps({
+        "id": entry["id"], "verdict": "CONFIRMED-FIXED", "by": "x", "evidence": "y",
+        "status": "wont-fix", "at": "2026-08-08", "branch": "b",
+        "landed_sha": "abc1234",
+    }) + "\n", encoding="utf-8")
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert "only 'fixed' can be anchored" in payload["problems"][0]["error"]
+    after = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert after["status"] == "open" and not after.get("fixed_by")
+
+
+def test_staging_one_id_twice_refuses_rather_than_replacing_the_first_evidence(tmp_path):
+    """Two rows for one entry used to be accepted in silence.
+
+    `anchor` applied both, the second overwrote the first, and `applied` listed the
+    id twice. The first hunter's evidence was gone with no warning — and evidence
+    silently replaced by someone else's is worse than none, because it still reads
+    as attributable to whoever the row now names.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    base = ["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+            "--verdict", "CONFIRMED-FIXED"]
+    assert BACKLOG.main([*base, "--by", "agent:first", "--evidence", "first cmd"]) == 0
+    assert BACKLOG.main([*base, "--by", "agent:second", "--evidence", "second cmd"]) == 64
+
+    rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(rows) == 1 and rows[0]["by"] == "agent:first"
+
+    assert BACKLOG.main([*base, "--by", "agent:second", "--evidence", "second cmd",
+                         "--replace"]) == 0
+    rows = [json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(rows) == 1 and rows[0]["by"] == "agent:second", (
+        "--replace must swap the row, not append a second one")
+
+
+def test_unstage_is_the_way_past_a_row_that_blocks_the_whole_wave(tmp_path, capsys):
+    """`anchor` is all-or-nothing, so one unusable row stops everyone.
+
+    Without an escape verb the only way out is hand-editing the queue file, and
+    this module's standing policy is that the ledger is reached through this CLI.
+    An all-or-nothing gate with no way past does not get rows fixed; it gets the
+    file edited, and nothing constrains what else changes in there.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    good, bad = _add(store, detail="keeps"), _add(store, detail="blocks")
+    for entry in (good, bad):
+        assert BACKLOG.main(["stage", entry["id"], "--store", str(store),
+                             "--queue", str(queue), "--verdict", "CONFIRMED-FIXED",
+                             "--by", "x", "--evidence", "y"]) == 0
+    _stamp_queue(queue, good["id"], "aaaaaaa11")
+    _stamp_queue(queue, bad["id"], "bbbbbbb22")
+    (store / f"{bad['id']}.json").unlink()          # whatever makes it unusable
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit"]) == 2
+    capsys.readouterr()
+
+    assert BACKLOG.main(["unstage", bad["id"], "--queue", str(queue), "--json"]) == 0
+    dry = json.loads(capsys.readouterr().out)
+    assert dry["mode"] == "dry-run" and len(dry["dropped"]) == 1
+    assert len([ln for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]) == 2, \
+        "a dry-run unstage must not touch the queue"
+
+    assert BACKLOG.main(["unstage", bad["id"], "--queue", str(queue), "--commit"]) == 0
+    assert BACKLOG.main(["unstage", bad["id"], "--queue", str(queue), "--commit"]) == 64
+    capsys.readouterr()
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["applied"] == [good["id"]]
+
+
+def test_a_malformed_queue_line_is_named_rather_than_swallowed(tmp_path, capsys):
+    """The queue has two readers and they used to have two policies.
+
+    `worktree_orchestrate._read_anchor_queue` swallows a bad file and returns `[]`,
+    which is right for a step that has already moved the trunk. `anchor` has moved
+    nothing, so it must say what is wrong and where — and the recovery has to be
+    stated, because this is the one ledger file policy allows a human to edit.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    queue.write_text('{"id": "IMP-0001", "verdict": "CONFIRMED-FIXED"\n', encoding="utf-8")
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue)]) == 64
+    err = capsys.readouterr().err
+    assert f"{queue}:1" in err, "the error must name the file and the line"
+    assert "delete the bad line" in err, "the error must state the recovery"
+
+
+def test_the_queue_lock_is_the_same_file_in_both_modules(tmp_path):
+    """Two spellings of the lock name would be two locks and no serialization.
+
+    `backlog.py` guards the queue with its own `_queue_lock`; `worktree_orchestrate
+    ._stamp_anchor_queue` reaches the same file through `worktree_registry
+    ._ledger_lock`. Both must resolve to the identical path — `with_suffix('.lock')`
+    instead of `with_name(name + '.lock')` strips `.jsonl` and yields a different
+    file, at which point each process holds its own lock, every test still passes,
+    and the rows go on disappearing. Nothing else in the suite would notice.
+    """
+    import importlib.util
+
+    def _load(name):
+        spec = importlib.util.spec_from_file_location(name, ROOT / "ops" / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules.setdefault(name, mod)
+        spec.loader.exec_module(mod)
+        return mod
+
+    registry = _load("worktree_registry")
+    queue = tmp_path / ".cache" / "backlog_anchor_queue.jsonl"
+
+    with BACKLOG._queue_lock(queue):
+        locks = list((tmp_path / ".cache").glob("*.lock"))
+    assert len(locks) == 1, f"expected exactly one lock file, got {locks}"
+
+    with registry._ledger_lock(queue):
+        pass
+    assert sorted(p.name for p in (tmp_path / ".cache").glob("*.lock")) == \
+        [locks[0].name], "the two modules lock different files"
+
+
+def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
+    """Real OS processes, and the read->write gap widened on purpose.
+
+    `read_queue` + append + `write_queue` is a read-modify-write of one shared file.
+    `_write_atomic` makes each WRITE all-or-nothing and does nothing for the gap
+    between them. Measured before the lock, staging distinct ids concurrently:
+
+        N=2 → rows lost in 6 of 6 rounds     N=24 → 16/19/21/18/19 of 24 survived
+
+    and every loser printed `[staged]` and exited 0. Nothing downstream notices — no
+    row means `cutover` never stamps it, so `resolve` cannot mention it, so the store
+    still reads the entry as open, with the work that closed it nowhere on disk.
+
+    The gap is widened rather than raced at speed because "it did not happen at N=4"
+    is not "it cannot happen": a slower disk or a bigger store brings it back. Widening
+    it INSIDE the critical section is also the sharper test — a lock that only works
+    when the section is short is not a lock.
+
+    The sleep goes into a COPY of the module, so nothing in the shipped file exists
+    only to make a test pass.
+    """
+    repo = tmp_path / "repo"
+    (repo / "docs" / "runbook" / "backlog").mkdir(parents=True)
+    (repo / "ops").mkdir()
+    src = BACKLOG_PATH.read_text(encoding="utf-8")
+    anchor = "        clash = [r for r in rows if r.get(\"id\") == args.id]"
+    assert src.count(anchor) == 1, "the stage RMW moved; re-anchor this probe"
+    (repo / "ops" / "backlog.py").write_text(
+        src.replace(anchor,
+                    "        __import__('time').sleep(float(os.environ.get("
+                    "'KG_TEST_STAGE_DELAY', '0')))\n" + anchor),
+        encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+
+    store, queue = repo / "s", repo / "q.jsonl"
+    tool = str(repo / "ops" / "backlog.py")
+    ids = []
+    for tag in ("alpha", "beta"):
+        out = subprocess.run(
+            [sys.executable, tool, "add", "--stream", "IMP", "--date", "2026-08-08",
+             "--source", tag, "--category", "tool", "--severity", "low",
+             "--detail", f"concurrent stage probe {tag}", "--store", str(store),
+             "--json"], cwd=repo, text=True, capture_output=True)
+        assert out.returncode == 0, out.stderr
+        ids.append(json.loads(out.stdout)["entry"]["id"])
+
+    def stage(entry_id, who, delay="0"):
+        return subprocess.run(
+            [sys.executable, tool, "stage", entry_id, "--store", str(store),
+             "--queue", str(queue), "--verdict", "CONFIRMED-FIXED", "--by", who,
+             "--evidence", f"{who} ran it"],
+            cwd=repo, text=True, capture_output=True,
+            env={**os.environ, "KG_TEST_STAGE_DELAY": delay})
+
+    import threading
+    results = {}
+    thread = threading.Thread(
+        target=lambda: results.update(slow=stage(ids[0], "agent:slow", delay="3")))
+    thread.start()
+    time.sleep(0.6)                     # let the slow stager get past its read
+    results["fast"] = stage(ids[1], "agent:fast")
+    thread.join(timeout=60)
+
+    assert results["slow"].returncode == 0, results["slow"].stderr
+    assert results["fast"].returncode == 0, results["fast"].stderr
+
+    rows = {r["id"]: r for r in
+            (json.loads(ln) for ln in queue.read_text(encoding="utf-8").splitlines()
+             if ln.strip())}
+    assert set(rows) == set(ids), (
+        f"a staged row was lost: queued {sorted(rows)}, staged {sorted(ids)} — "
+        f"the queue's read-modify-write is not serialized")
+
+
+def test_a_stage_that_cannot_take_the_lock_refuses_instead_of_appending(tmp_path):
+    """Fail-closed, and the opposite of `_view_lock`'s policy on purpose.
+
+    `_view_lock` proceeds unlocked when it cannot acquire, because by then the
+    mutation has landed and refusing would not unmake it. Here nothing has been
+    written yet, and an unlocked append is exactly how rows vanish in silence — so
+    the honest answer is to refuse and say why.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "nowhere" / "q.jsonl"
+    entry = _add(store)
+    (tmp_path / "nowhere").write_text("a file where the lock's directory should be\n")
+
+    with pytest.raises(BACKLOG.BacklogError) as exc:
+        with BACKLOG._queue_lock(queue):
+            pass
+    assert "refusing to stage" in str(exc.value)
+
+    assert BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue",
+                         str(queue), "--verdict", "CONFIRMED-FIXED", "--by", "x",
+                         "--evidence", "y"]) == 64
+    assert not queue.exists()
+
+
+def test_anchor_will_not_close_an_entry_on_a_commit_that_never_landed(tmp_path, capsys):
+    """An unstamped row is a branch that was staged and then abandoned.
+
+    Closing it would put a `fixed` status on work that is on no trunk at all, and
+    `fixed_by` would have nothing to point at. The row is reported, not applied,
+    and not silently dropped either.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                  "--verdict", "CONFIRMED-FIXED", "--by", "x", "--evidence", "ran it"])
+    capsys.readouterr()
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert payload["unstamped"] == [entry["id"]]
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "open"
+    # still queued: an unstamped row is waiting for its cutover, not garbage
+    assert queue.read_text(encoding="utf-8").strip() != ""
+
+
+def test_anchor_closes_the_whole_wave_in_one_pass(tmp_path, capsys):
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    a = _add(store, detail="first wave entry")
+    b = _add(store, detail="second wave entry")
+    for entry, sha in ((a, "aaaaaaa11"), (b, "bbbbbbb22")):
+        BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                      "--verdict", "CONFIRMED-FIXED", "--by", "agent:hunter",
+                      "--evidence", f"ran the acceptance for {entry['id']}"])
+        _stamp_queue(queue, entry["id"], sha)
+    capsys.readouterr()
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert sorted(payload["applied"]) == sorted([a["id"], b["id"]])
+
+    for entry, sha in ((a, "aaaaaaa11"), (b, "bbbbbbb22")):
+        written = BACKLOG.load_entry(store, entry["id"])
+        assert written["status"] == "fixed"
+        assert written["fixed_by"] == [sha]
+        assert written["verdict"] == "CONFIRMED-FIXED"
+        assert written["verified_by"] == "agent:hunter"
+        assert entry["id"] in written["verified_evidence"]
+    # consumed rows leave the queue, so a re-run is a no-op rather than a re-close
+    assert queue.read_text(encoding="utf-8").strip() == ""
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["applied"] == []
+
+
+def test_a_dry_run_anchor_changes_nothing(tmp_path, capsys):
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    entry = _add(store)
+    BACKLOG.main(["stage", entry["id"], "--store", str(store), "--queue", str(queue),
+                  "--verdict", "CONFIRMED-FIXED", "--by", "x", "--evidence", "ran it"])
+    _stamp_queue(queue, entry["id"], "ccccccc33")
+    before_entry = (store / f"{entry['id']}.json").read_bytes()
+    before_queue = queue.read_bytes()
+    capsys.readouterr()
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["mode"] == "dry-run"
+    assert (store / f"{entry['id']}.json").read_bytes() == before_entry
+    assert queue.read_bytes() == before_queue
+
+
+def test_anchor_refuses_the_whole_wave_rather_than_closing_half_of_it(tmp_path, capsys):
+    """One bad row must not leave the store half-migrated.
+
+    The queue is the only record of what a wave closed. If anchor applied rows
+    until one failed, the consumed prefix would be gone from the queue and the
+    rest would still be there, and nobody could tell from either side which
+    entries had been dealt with.
+    """
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    good = _add(store, detail="a closable entry")
+    BACKLOG.main(["stage", good["id"], "--store", str(store), "--queue", str(queue),
+                  "--verdict", "CONFIRMED-FIXED", "--by", "x", "--evidence", "ran it"])
+    _stamp_queue(queue, good["id"], "ddddddd44")
+    # a row naming an entry that has since been dropped from the store
+    with queue.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"id": "IMP-20260101-abcdef", "verdict": "CONFIRMED-FIXED",
+                             "by": "x", "evidence": "ran it", "status": "fixed",
+                             "at": "2026-08-07", "branch": "feat/gone",
+                             "landed_sha": "eeeeeee55"}) + "\n")
+    before = (store / f"{good['id']}.json").read_bytes()
+    capsys.readouterr()
+
+    rc = BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                       "--commit", "--json"])
+    assert rc != 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "IMP-20260101-abcdef" in str(payload)
+    # The refusal payload must not claim it applied the rows it did not apply. It
+    # returns before the write loop, so `applied` is a field computed on a path that
+    # never wrote — easy to leave optimistic, and a machine caller reading it would
+    # record closures that are not in the store.
+    assert payload["applied"] == [], f"refusal claims it applied {payload['applied']}"
+    assert payload["would_apply"] == [good["id"]]
+    assert (store / f"{good['id']}.json").read_bytes() == before, "a refused wave still wrote"
+    assert len(queue.read_text(encoding="utf-8").strip().splitlines()) == 2

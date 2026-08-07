@@ -2362,12 +2362,14 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         # refuses on. The lock is also what makes the rollback below safe: nobody
         # else can have dirtied these paths since `_primary_ff_ready` passed.
         repair = _post_landing_repair(primary)
+        staged_closures = _stamp_anchor_queue(primary, wt_branch, sha)
 
     trunk_tip = _head_sha(primary) if repair.get("committed") else sha
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
                "sha": sha, "trunk_tip": trunk_tip, "target": local, "branch": wt_branch,
                "verdict": verdict, "warnings": warnings, "repair": repair,
-               "regenerated": regenerated}
+               "regenerated": regenerated,
+               "staged_closures": staged_closures}
     repair_line = ""
     if repair.get("committed"):
         # Human-readable callers were told nothing at all about the repair, which
@@ -2375,6 +2377,9 @@ def cmd_cutover(args: argparse.Namespace) -> int:
         repair_line = f"\n  + ledger repair committed ({trunk_tip[:8]})"
     if not repair.get("ok", True):
         repair_line = f"\n  ! ledger repair FAILED: {repair.get('error', '?')}"
+    if staged_closures:
+        repair_line += (f"\n  staged closures stamped: {', '.join(staged_closures)}"
+                        f" — land them with `./ops/backlog.py anchor --commit`")
     _emit(payload, args.json,
           f"✓ cutover: ff local {local} -> {sha[:8]} (offline; run `deploy` to "
           f"publish){warn_line}{repair_line}")
@@ -2645,6 +2650,91 @@ def _repair_restore(primary: Path, out: dict[str, Any]) -> None:
         out["error"] = (f"{out.get('error', '?')} | AND the primary could not be "
                         f"restored ({dirty.strip()[:200]}) — it is dirty and the next "
                         f"cutover will refuse until you clean docs/runbook by hand")
+
+
+ANCHOR_QUEUE = ".cache/backlog_anchor_queue.jsonl"
+
+
+def _anchor_queue(primary: Path) -> Path:
+    return Path(primary) / ANCHOR_QUEUE
+
+
+def _read_anchor_queue(primary: Path) -> list[dict[str, Any]]:
+    path = _anchor_queue(primary)
+    if not path.exists():
+        return []
+    try:
+        return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines()
+                if ln.strip()]
+    except (OSError, json.JSONDecodeError):
+        # Never fatal HERE: a landing that already happened must not be reported as
+        # failed because this per-machine sidecar was unreadable.
+        #
+        # But be honest about what that costs. `backlog.py anchor` is the other
+        # reader and it fails LOUD on the same file (BacklogError naming the line),
+        # so an unreadable queue is silent through cutover and resolve and only
+        # surfaces at wave end. The rows do not "stay unstamped and get reported" —
+        # from here they are invisible, so nothing reports them at all. That is the
+        # right direction for a step that has already moved the trunk and the wrong
+        # one for a step that has not, which is why the two policies differ.
+        return []
+
+
+def _write_atomic(path: Path, body: str) -> None:
+    """Same shape as `worktree_registry.save_state`: sibling temp then `os.replace`,
+    so a crash mid-write cannot leave a half-line. Local rather than imported because
+    that one also serializes the ledger's dict; this writes jsonl text."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(body, encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _stamp_anchor_queue(primary: Path, branch: str, sha: str) -> list[str]:
+    """Record which commit actually reached the trunk, for this branch's rows.
+
+    A hunter stages its closure BEFORE the branch is rebased, so it cannot know
+    which commit will carry the fix — writing the pre-rebase sha is precisely the
+    orphaned `fixed_by` the reanchor repair exists to clean up afterwards. This is
+    the first moment the answer exists.
+
+    Called AFTER every post-ff refusal. `make_commit_state` accepts a sha reachable
+    from HEAD *or* main, so a sha written by a cutover that was then refused would
+    still validate when anchored from a worktree that has not been torn down — the
+    entry would close against a commit on no trunk, and nothing downstream would
+    complain. Placing this earlier looks harmless for exactly that reason.
+
+    Under the queue lock, and the loss it prevents is worse here than at `stage`.
+    Measured with the window widened (the method this repo's `_view_lock` docstring
+    already uses), in BOTH orders — a concurrent `stage` straddling this write drops
+    the stamp back to null, while cutover still reports `staged_closures: [IMP-…]`
+    and prints it. By then the branch is in the trunk and `resolve` has torn the
+    worktree down; this function only ever runs during that branch's cutover, so
+    the sha is never re-derived. `anchor` then files the row under "its branch has
+    not landed", which is false, and the only copy of the answer was in a payload
+    nobody kept. So: same lock as `stage`, and `_write_atomic` rather than
+    `write_text`, whose partial write would leave a truncated line that
+    `_read_anchor_queue` swallows and `anchor` chokes on.
+    """
+    queue = _anchor_queue(primary)
+    with wr._ledger_lock(queue):
+        rows = _read_anchor_queue(primary)
+        stamped = []
+        for row in rows:
+            if row.get("branch") == branch and not row.get("landed_sha"):
+                row["landed_sha"] = sha
+                stamped.append(row.get("id"))
+        if stamped:
+            try:
+                _write_atomic(
+                    queue,
+                    "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+            except OSError:
+                return []
+        return stamped
 
 
 def _post_landing_repair(primary: Path) -> dict[str, Any]:
@@ -3080,15 +3170,42 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         except OSError:
             pass
 
+    # Said out loud, and deliberately NOT blocking. The anchor queue is gitignored
+    # and per-machine, so nothing downstream of this teardown can notice a closure
+    # that landed but was never written into the store: not the gate, not docs lint,
+    # and not any reader of the ledger — `backlog.py list`, `show` and the generated
+    # view all read the STORE, where a staged-and-never-anchored entry simply looks
+    # open, with no trace of the work that closed it. (No claim here about the
+    # planned bounty board: it does not exist yet. The one board this repo ever had,
+    # `converge_board.py`, is retired — see worktree_registry.py's header.)
+    # Refusing would be worse: the closure HAS landed, the entry is merely not
+    # closed yet, and a teardown that refuses strands the worktree instead of
+    # fixing anything.
+    # Stamped-but-not-yet-anchored is the NORMAL state here: the documented order is
+    # stage -> cutover -> resolve per worktree, with one `anchor` at wave end. So this
+    # is a handoff note, not a warning — the first draft printed `⚠ never anchored` on
+    # every successful hunter, and `make_commit_state`'s own docstring is the argument
+    # against that: "a gate that reds on the normal path is one that gets switched
+    # off." What makes it worth printing at all is that this is the last moment the
+    # worktree exists to say it: after teardown the row's only remaining trace is an
+    # id in a gitignored file.
+    pending_anchor = sorted({r.get("id") for r in _read_anchor_queue(root)
+                             if r.get("branch") == branch and r.get("landed_sha")})
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
                "resolved": "merged", "executed": results, "failures": failures,
                "aborted_after": aborted_after,
-               "gate_cache_removed": gate_cache_removed}
+               "gate_cache_removed": gate_cache_removed,
+               "pending_anchor": pending_anchor}
     human = ["# resolve (committed): ledger -> merged"]
     for r in results:
         human.append(f"  {'✓' if r['ok'] else '✗'} {r['cmd']}   # {r['label']}")
     if gate_cache_removed:
         human.append("  ✓ dropped gate-record cache")
+    if pending_anchor:
+        human.append(f"  · {len(pending_anchor)} closure(s) landed and awaiting the "
+                     f"wave's anchor: {', '.join(pending_anchor)}")
+        human.append("    run `./ops/backlog.py anchor --commit` once the wave is done")
+        human.append("    run: ./ops/backlog.py anchor --commit")
     _emit(payload, args.json, "\n".join(human))
     return EXIT_OK if failures == 0 else EXIT_BLOCK
 

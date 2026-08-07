@@ -27,6 +27,8 @@ verified_against: 9582044dd
 
 develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那顆 sha 原封不動落地（payload 的 `sha`）。但 cutover 的 rebase 發生在 gate **之後**，而 rebase 會改寫分支上的 commit sha；ledger entry 的 `fixed_by` 因此在落地那一刻才指得到正確的 commit。所以 ff 完成後，cutover 會在**同一把 trunk 鎖內**跑 `backlog.py reanchor --commit` + `render --commit`，有改動就自己 commit 一顆（訊息帶 `Review-Exempt: machine-repair`，該 token 由 `ops/review_audit.sh` 檢查「只碰 `docs/runbook/backlog/*.json` 與 `docs/runbook/improvement_backlog.md`」，不是自由通行證）。
 
+同一把鎖內、**且在所有 post-ff refusal 之後**，cutover 還會把這顆落地 sha 蓋到這條分支在波次佇列裡的結案上（payload 的 `staged_closures`；佇列＝`<primary>/.cache/backlog_anchor_queue.jsonl`，由 `backlog.py stage` 寫入、`anchor` 消費）。**位置是契約的一部分**：`make_commit_state` 認 HEAD **或** main 任一可達，所以一次被拒絕的 cutover 若已蓋了 sha，從還沒拆掉的工作樹跑 `anchor` 會判 ok，把 entry 關在一顆不在任何主幹上的 commit——而下游沒有任何人會抱怨。
+
 **因此本地 main 的 tip 可能不是 payload 的 `sha`**——那顆在 `trunk_tip`。兩者相同表示這次沒有東西需要重推導。repair 任一步失敗一律把 `docs/runbook` 還原回 HEAD 再回報（`repair.restored`），因為留下髒 primary 會讓**之後每一次** cutover 都被拒。
 
 ### `catchup`：trunk 動了之後的那一步
