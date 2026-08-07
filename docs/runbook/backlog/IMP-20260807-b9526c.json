@@ -6,6 +6,9 @@
   "date": "2026-08-07",
   "detail": "整條 ledger 防護鏈的根因是：一個 280KB、內容是 tracked 輸入之純函數的產物被放進版控。為它付的代價逐項可數——並發分支每約 2.5 條一次 merge conflict（實測十條一輪 4/10 或 6/10 乾淨）、每條寫入路徑一道 entry-loss 守衛、一個 rebase 期間的自動重生解析器（含它自己的 render --check 驗證與婉拒回報）、一道 registry generated check、一個受路徑約束的 machine-repair review 豁免 token、以及 cutover 每次落地可能多產生的一顆 repair commit。2026-08-07 那輪 review 的 6 個 block 有 4 個只存在於這條鏈上。而 render 實測 0.2 秒。替代設計：把 view 移出版控（gitignore），改由 docs gate / render 現地產生，或由 list 子指令回答「現在 backlog 有什麼」。唯一反論是 fresh clone 的 agent 直接 Read 這個路徑會落空——需要先盤點有多少 agent-facing 指標指向這個檔案路徑（CLAUDE.md / registry / skills / agents）並決定替代入口。",
   "fix_site": "ops/backlog.py / ops/worktree_orchestrate.py / ops/review_audit.sh / docs/registry.yml / .gitignore",
+  "fixed_by": [
+    "f1b17cd914035461cb2aeb10c454fe639df24be5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "agent:main-line",
   "id": "IMP-20260807-b9526c",
@@ -14,6 +17,10 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "adversarial review of feat/tool-hardening, 2026-08-07",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-line",
+  "verified_evidence": "見該 entry 的 acceptance_cmd —— anchor --commit 會實際重跑它"
 }
