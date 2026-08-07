@@ -39,8 +39,13 @@ verified_against: a6ad9d5d
 
 ## 交回狀態:被派者停在 commit,落地是整合者的事
 
-> 這條在工具面**擋不住**(agent 與人共用同一個 git 身分,`cutover` 無從辨識呼叫者),
-> 執行力是 `[prompt]`。正因為只能靠自律,它必須寫在對的地方而不是散在三份檔裡。
+> 本節在 CLAUDE.md 組織模型「上行 = receipt」之上加一條約束:receipt 描述的**狀態**是什麼。
+
+> 執行力 `[prompt]`。**今天**沒有可鍵入的訊號:ledger record 無 actor 欄
+> (`worktree_registry.py` 的 upsert 只寫 path/branch/intent/base/status)、無 hooks、
+> agent frontmatter 無工具限縮。刻意不寫成「原理上不可能」——可行的擋點是鍵在**客體**而非
+> 主體:`open` 記下 delegated 旗標、`cutover` 對 delegated worktree 拒,那個 provenance
+> 本來就屬於 ledger。在那之前,只能靠自律,所以它必須寫在對的地方而不是散在三份檔裡。
 
 **委派出去的工作,上行交回的狀態是「在自己的工作樹裡 commit 完」,不是「已經進 main」。**
 `gate` 與 `cutover` 屬於**整合者**——也就是握有整批視野的那個節點。
@@ -56,9 +61,12 @@ verified_against: a6ad9d5d
   互相矛盾的解法,而每一個在它自己的分支上都看起來對。
 - **verdict 綁 HEAD。** N 個被派者輪流 cutover,前一個 ff 掉 main、後一個就得 rebase、
   verdict 立刻 stale 要重跑;第 N 個要重 gate N-1 次。
-- **自己批改自己的作業。** 讓寫碼的同一個節點決定它通過並推進共享 main,正是鐵律2 想擋的形狀。
+- **自己批改自己的作業。** 讓寫碼的同一個節點決定它通過並推進共享 main,是鐵律4(逐項 review,不批次)
+  與 `docs/sop/review_discipline.md` 的範圍。**不是鐵律2**——鐵律2 要的是「宣稱前有當下驗證輸出」,
+  不管那份輸出誰產生,被派者自己跑出的新鮮綠 verdict 完全滿足它。
 
-**實證(2026-08-06,11 條分支的批次)**:整合後對六筆修補派 review,找出**五筆 BLOCK**——
+**實證(2026-08-06,11 條分支的批次;修補落在 `339918579` `375f51707` `1954a9b2d` `809b451d9`
+`4612626e1` `7bdb4b98e`,gate 修復落在 `2c5efa1d4`)**:整合後對六筆修補派 review,找出**五筆 BLOCK**——
 而每一筆在它自己的分支 gate 下都是綠的。若各自 cutover,五筆全部會進 main。同一批還有一個
 只有整合者看得到的形狀:`script-help` 的七個違規裡,三個是 main 上既有、三個由某條分支帶入、
 一個由某次 review 修補帶入——沒有任何單一被派者看得到這個分布。

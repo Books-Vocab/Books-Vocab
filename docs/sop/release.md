@@ -69,14 +69,11 @@ verified_against: dcb7b705f
 
 ## develop 平面之前：批次整合
 
-三平面描述的是**一條**分支落地之後的去向。當一批工作分散在 N 個工作樹時，develop 平面
-（`cutover`）之前還有一步：把 N 條收斂成一條、衝突解一次、合併後 gate 一次、然後才 cutover 一次。
+一批工作分散在 N 個工作樹時，develop 平面之前還有一步收斂。**與三平面相關的只有一件事：
+批次整合不是第四個平面**——它發生在 develop 平面之前，產出仍是一次普通的 `cutover`。
 
-**這一步不重述於此**——流程正本在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段
-（含收尾時 `resolve`/`sweep` 會保守拒絕的原因與三步審計法），委派契約正本在
-`docs/sop/agent_org.md`「交回狀態」段（被派者停在 commit，`gate`/`cutover` 屬整合者）。
-此處只記一件與三平面直接相關的事：**批次整合不是第四個平面**，它發生在 develop 平面之前，
-產出仍是一次普通的 `cutover`。
+流程正本 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段；委派契約正本
+`docs/sop/agent_org.md`「交回狀態」段。
 
 ## Release 流程
 
