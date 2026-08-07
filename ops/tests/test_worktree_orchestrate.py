@@ -4235,3 +4235,36 @@ def test_gate_refuses_a_worktree_with_an_operation_in_flight(scratch, tmp_path):
     subprocess.run(["git", "rebase", "--abort"], cwd=str(wt), check=True,
                    capture_output=True)
     assert MODULE._interrupted_operation(wt) is None
+
+
+def test_a_doc_deleted_in_the_diff_does_not_block_the_docs_gate():
+    """Removing a doc must not be un-gateable.
+
+    All three docs gates READ the file, and a deleted path is still a changed path.
+    `docs_lint --files <gone>` exits 2 with "--files 路徑不存在" — so before this,
+    **every commit that removed a doc was blocked**, by an error phrased as if the
+    caller had mistyped. Measured on the commit that removed the generated ledger
+    view (IMP-20260807-b9526c): that was the second gate defect this repo's own
+    dogfooding turned up in one session.
+
+    The removal is NAMED rather than silently dropped, matching `ops-shell-untested`
+    and `data-plane-unowned`: a gate list that quietly shrinks reads as "everything
+    was checked".
+    """
+    gone, live = "docs/sop/removed.md", "docs/sop/kept.md"
+    gates = _by_name(plan_gates([gone, live], ops_test_exists=lambda rel: rel != gone))
+
+    assert "docs-lint" in gates
+    assert gone not in gates["docs-lint"]["cmd"], "the deleted doc was handed to docs_lint"
+    assert live in gates["docs-lint"]["cmd"]
+    for name in ("docs-conflict-markers", "docs-verified-against"):
+        assert gates[name]["files"] == [live], f"{name} still points at a deleted file"
+
+    assert gates["docs-removed"]["files"] == [gone]
+    assert gates["docs-removed"]["level"] == "warn", "a deletion is not a failure"
+
+    # and with nothing left to lint, the reading gates do not appear at all rather
+    # than running over an empty list
+    only_gone = _by_name(plan_gates([gone], ops_test_exists=lambda rel: False))
+    assert "docs-lint" not in only_gone
+    assert only_gone["docs-removed"]["files"] == [gone]
