@@ -1,0 +1,18 @@
+{
+  "acceptance": "對三支腳本各跑一次「送 SIGTERM 後量鎖與行程存活」的探針（形狀同 `ops/lib/ios_signal_traps.sh` 檔頭記載的那個）：修前必須量到 `lock=GONE` 而行程仍活、rc=0；修後必須 0 個這種樣本，且 rc=143。`devops.sh` 那一側要單獨跑，不可以 reconciler 的結果代表它。",
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-07",
+  "detail": "`ops/lib/ios_signal_traps.sh` 的檔頭（IMP-0017）量測並記載過這個 bash 語義：`trap handler EXIT INT TERM`——一個 handler 綁三個事件、且不 re-raise——**不會中止腳本**；bash 跑完 handler 後回到中斷點繼續，最後以 rc=0 正常結束，handler 還會被執行第二次。\n\n**同一形狀今天存在於三個地方，其中兩個共用同一把部署鎖**：\n- `ops/kg_reconcile.sh` 的 `main()` 取鎖後那個 trap（`KG_LOCK_DIR`，`:55` 預設 `/tmp/kg-deploy.lock`）\n- `devops.sh:250`（`DEPLOY_LOCK_DIR=\"/tmp/kg-deploy.lock\"`，`:241`）——**人工 deploy 那一側，同一把鎖**\n- `ops/backup_verify.sh:95`\n（`lab/podcast/start.sh:98` 亦同形，但不涉互斥鎖，優先度另計。）\n\n2026-08-07 以同構最小腳本在 /bin/bash 3.2.57 重現：SIGTERM 後 handler 印出 lock released，接著 5 個 tick 全部量到 `lock=GONE` 而行程仍活著，最後印 finished normally、**rc=0**、handler 再跑一次。\n\n`ops/kg_reconcile.sh:55` 的行內註解自己寫著「與 devops.sh acquire_deploy_lock 同一把鎖」。所以**只修 reconciler 那一側，互斥仍會從另一個方向破**：人工 deploy 收到 SIGTERM → 鎖被釋放 → 人工 deploy 繼續跑，而下一個 reconciler tick 拿得到鎖並開始部署，兩者並行操作同一個 compose stack。初稿的 fix_site 漏了 `devops.sh`，等於只修一半而看起來像修完。\n\n**時序也要寫對**：初稿寫「iOS 那條線兩個月前就修好、只是沒接線」，被 review 以 `git log --diff-filter=A -- ops/lib/ios_signal_traps.sh` 推翻——lib 是 `d849ad9d9`（**2026-08-06**）才建的，而 IMP-0017 立單日是 2026-07-08。所以這不是「有現成解擺著不用」，是「iOS 那條線昨天剛長出解法，部署那條線還沒收編」。這個差別會改變優先度的理由。",
+  "fix_site": "ops/kg_reconcile.sh main() 取鎖後的 trap / devops.sh:250 / ops/backup_verify.sh:95 / ops/lib/ios_signal_traps.sh（改名）",
+  "id": "IMP-20260807-a17b65",
+  "plan": "三支腳本都 source `ops/lib/ios_signal_traps.sh`（它宣告 source-only、bash 3.2 safe、零外部相依），把手寫的 `trap … EXIT INT TERM` 換成該 lib 的註冊入口，使 cleanup 恰好跑一次、信號時以 128+N 死亡。**`ops/kg_reconcile.sh` 與 `devops.sh` 必須同批改**——它們共用 `/tmp/kg-deploy.lock`，只修一側等於沒修。同批把 lib 從 `ops/lib/ios_signal_traps.sh` 改名為 `ops/lib/signal_traps.sh` 並更新現有 source 點：`ios_` 前綴讓它看起來與部署腳本無關，那個命名本身就是它沒被採用的原因之一。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "立單初稿被 review 推翻後重立",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}
