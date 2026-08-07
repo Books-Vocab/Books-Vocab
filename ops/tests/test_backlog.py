@@ -457,7 +457,10 @@ def test_update_can_set_verdict_fields(tmp_path):
     store = tmp_path / "backlog"
     entry = _add(store)
 
-    BACKLOG.update_entry(store, entry["id"], verdict="CONFIRMED-OPEN", cost="M")
+    # The date rides along: a verdict with no date can never go stale, so
+    # validate refuses the pair being split.
+    BACKLOG.update_entry(store, entry["id"], verdict="CONFIRMED-OPEN", cost="M",
+                         verified_at="2026-08-07")
 
     loaded = BACKLOG.load_entry(store, entry["id"])
     assert loaded["verdict"] == "CONFIRMED-OPEN"
@@ -680,13 +683,18 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
     """
     store = tmp_path / "backlog"
     entry = _add(store)
-    BACKLOG.update_entry(store, entry["id"], verdict="PARTIAL", **_groom_kwargs())
+    BACKLOG.update_entry(store, entry["id"], verdict="PARTIAL", verified_at="2026-08-07",
+                         verified_by="agent:test", **_groom_kwargs())
 
     rendered = BACKLOG.render_view(store, verified_against="deadbeef")
     BACKLOG.import_legacy(rendered, store)
 
     loaded = BACKLOG.load_entry(store, entry["id"])
-    for field in BACKLOG.GROOM_FIELDS + ("verdict",):
+    # The verification stamp is in this set for the same reason the groom fields
+    # are: the table does not own it, so a re-import that drops it is erasing
+    # work. Adding fields to the module and not to this assertion is how the
+    # original bug came back the second time.
+    for field in BACKLOG.GROOM_FIELDS + ("verdict", "verified_at", "verified_by"):
         assert loaded.get(field), f"{field} was erased by a re-import"
 
 
@@ -1623,3 +1631,104 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     assert [u["sha"] for u in item["unmatched"]] == [orphan]
     assert result["searched"] == 1, "the bound must be reported, not silently applied"
     assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]
+
+
+# --------------------------------------------------------------------------
+# re-verification as a mechanism, not a ritual (IMP-20260805-2834b2)
+# --------------------------------------------------------------------------
+#
+# A sweep on 2026-08-05 re-derived 25 entries from current code and rewrote 11
+# of them — a measured 11/25 error rate in first-hand descriptions. It left no
+# mechanism behind: no way to ask what has never been checked, no verifier
+# identity, no evidence. One day later, 7 of 30 unfinished entries had never
+# been verified; two days later the number is 99 of 159, and 42 of those are
+# `fixed`. That last figure is the structural blind spot — a sweep aimed at
+# unfinished entries can never see it, and closure is exactly when an audit
+# trail starts to rot (the branch gets deleted, the sha gets rebased).
+
+def test_list_unverified_includes_closed_entries(tmp_path):
+    store = tmp_path / "s"
+    _add(store, detail="never checked, still open")
+    checked = _add(store, detail="checked once")
+    closed = _add(store, detail="closed but never re-checked")
+    BACKLOG.update_entry(store, checked["id"], verified_at="2026-08-01",
+                         verdict="CONFIRMED-OPEN", verified_by="agent:sweep")
+    BACKLOG.update_entry(store, closed["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="done")
+
+    unverified = {e["id"] for e in BACKLOG.select_entries(store, unverified=True)}
+    assert checked["id"] not in unverified
+    # The whole point: a `fixed` entry with no verification record is IN the
+    # queue. Filtering the queue to unfinished work reproduces the blind spot
+    # this exists to close.
+    assert closed["id"] in unverified
+
+
+def test_list_stale_is_measured_from_verified_at(tmp_path):
+    store = tmp_path / "s"
+    old = _add(store, detail="verified long ago")
+    fresh = _add(store, detail="verified recently")
+    BACKLOG.update_entry(store, old["id"], verified_at="2026-01-01",
+                         verdict="CONFIRMED-OPEN", verified_by="agent:sweep")
+    BACKLOG.update_entry(store, fresh["id"], verified_at="2026-08-06",
+                         verdict="CONFIRMED-OPEN", verified_by="agent:sweep")
+
+    stale = {e["id"] for e in BACKLOG.select_entries(store, stale_days=30, today="2026-08-07")}
+    assert stale == {old["id"]}
+    # Never-verified entries are NOT stale — they are unverified. Merging the
+    # two would let "run the staleness query" read as full coverage while 99
+    # entries that were never looked at sit outside both answers.
+    never = _add(store, detail="never verified")
+    assert never["id"] not in {
+        e["id"] for e in BACKLOG.select_entries(store, stale_days=30, today="2026-08-07")}
+
+
+def test_verify_records_who_checked_and_with_what(tmp_path):
+    store = tmp_path / "s"
+    entry = _add(store, detail="needs re-derivation")
+
+    rc = BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-OPEN",
+        "--by", "agent:platform-steward", "--evidence", "grep -n foo ops/bar.py",
+        "--at", "2026-08-07", "--commit",
+    ])
+    assert rc == 0
+    written = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert written["verdict"] == "CONFIRMED-OPEN"
+    assert written["verified_at"] == "2026-08-07"
+    assert written["verified_by"] == "agent:platform-steward"
+    # The command is kept because a verdict with no evidence cannot be re-run,
+    # and a claim nobody can re-run is the "reason field nobody reads" failure
+    # this repo has already paid for.
+    assert written["verified_evidence"] == "grep -n foo ops/bar.py"
+
+
+def test_verify_refuses_a_verdict_outside_the_vocabulary(tmp_path):
+    store = tmp_path / "s"
+    entry = _add(store)
+    assert BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--verdict", "LOOKS-FINE",
+        "--by", "me", "--commit",
+    ]) != 0
+    assert "verdict" not in json.loads((store / f"{entry['id']}.json").read_text())
+
+
+def test_a_verdict_must_carry_a_date_it_can_go_stale_from():
+    """Symmetric with _check_groom: a badge whose preconditions nobody checks
+    decays into decoration, and a verdict with no date can never go stale.
+
+    Deliberately NOT also requiring `verified_by`: 60 entries carry a
+    `verified_at` written before that field existed, and turning them all red
+    would buy one loud day and then a muted check. `verify` writes it from now
+    on, and `list --unverified` is where the backlog of unattributed claims
+    stays visible."""
+    dated = _payload(verdict="CONFIRMED-OPEN", verified_at="2026-08-07",
+                     verified_by="agent:x")
+    assert BACKLOG.validate_entry(dated) == []
+
+    undated = _payload(verdict="CONFIRMED-OPEN", verified_by="agent:x")
+    assert "verdict-without-date" in {p["kind"] for p in BACKLOG.validate_entry(undated)}
+
+    bad_date = _payload(verdict="CONFIRMED-OPEN", verified_at="last tuesday",
+                        verified_by="agent:x")
+    assert "verdict-without-date" in {p["kind"] for p in BACKLOG.validate_entry(bad_date)}

@@ -25,6 +25,7 @@ model: inherit
 ## Gate（definition of done，必有當下輸出）
 - backlog 變更後:每筆 entry schema 完整(id/date/source/category/severity/status/detail/resolution),無懸空(open 無 next action / fixed 無 commit)。
 - 梳理後跑 `./ops/backlog.py validate` 與 `./ops/backlog.py list --ungroomed`,回報佇列剩幾筆(這是 kaizen 迴圈唯一的進度指標)。
+- **重新取證是機制不是儀式**:佇列用 `./ops/backlog.py list --unverified`(從未被人從當前程式碼重推過的)與 `--stale --stale-days N`(驗過但已老)。**兩者刻意分開**——「沒人看過」與「看過但過期」是不同的發現,合併會讓跑一次陳舊度查詢讀起來像全覆蓋。**`--unverified` 不濾 status,那是重點**:2026-08-05 那次 sweep 只掃未結案,而 audit trail 恰恰在結案之後才腐爛(分支被刪、sha 被 rebase),2026-08-07 實測 99 筆未驗證中有 **42 筆是 `fixed`**。驗完用 `./ops/backlog.py verify <id> --verdict <V> --by <誰> --evidence '<你跑的命令>'`(dry-run 預設)——一次寫齊 verdict/日期/驗證者/證據,不要用 `update` 拆成幾個旗標各自可能被忘記(store 裡今天有 60 筆帶日期卻沒有驗證者,那就是忘記的樣子)。
 - **收案要帶 `--fixed-by <sha>...`**:`status: fixed` 沒有 `fixed_by` 會被 `validate`(＝cutover 的 block gate)擋下。散文 resolution 仍是權威敘述,但「哪幾顆 commit 讓它不再成立」由這個結構化欄位回答——量測顯示「resolution 裡第一個 sha」在 63 筆裡錯了 14 筆,且其中一筆對的其實是 incidental hash。**填的時機是 fix 落地之後**;若 cutover 的 rebase 把 sha 變成孤兒,跑 `./ops/backlog.py reanchor`(dry-run 預設),它只在 `git patch-id --stable` 相等時才改,對不上就具名回報**不猜**。
 - 跑 `./ops/docs_lint.sh` 確認 backlog 文檔無 ERROR。
 
