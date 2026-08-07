@@ -1,0 +1,18 @@
+{
+  "acceptance": "`open --delegated` 後跑 `cutover --commit` 必須非零並具名 delegated；同一棵樹跑 `gate` 必須照常綠；未標 delegated 的樹行為完全不變（回歸）。",
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-07",
+  "detail": "`docs/sop/agent_org.md`「交回狀態」定了一條約束——被派者停在自己的工作樹 commit，`gate` / `cutover` 屬於整合者——但它的執行力是 `[prompt]`，因為今天沒有任何可鍵入的訊號：`ops/worktree_registry.py` 的 upsert 只寫 path/branch/intent/base/status，沒有 actor 欄；無 hooks；agent frontmatter 也沒有工具限縮。\n\n這條原本被寫成「原理上不可能，因為 agent 與人共用同一個 git identity」——**那是錯的**，review 指出可行的擋點是鍵在**客體**而非主體：worktree 是誰開的、為誰開的，那個 provenance 本來就屬於 ledger。記錯這一點的代價是把一個 S 級的改動判成不可能。",
+  "fix_site": "ops/worktree_registry.py / ops/worktree_orchestrate.py `cmd_open`,`cmd_cutover`",
+  "id": "IMP-20260807-f7f525",
+  "plan": "`open` 加 `--delegated`（由 task brief 帶入），把該旗標寫進 ledger record；`cutover` 在既有 verdict 檢查之外多一條：worktree 的 record 若標 delegated 則拒絕，訊息指向整合者路徑。`gate` **不擋**——被派者自驗是允許的，agent_org 明講。`adopt` 補登記時同樣可設此旗標。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "agent_org 交回狀態契約的 review",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}

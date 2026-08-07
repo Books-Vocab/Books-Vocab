@@ -1,0 +1,18 @@
+{
+  "acceptance": "在乾淨工作樹跑一次 `./ops/backlog.py add …`，緊接 `./ops/backlog.py render --check --out docs/runbook/improvement_backlog.md` 必須 rc=0（2026-08-07 實測為 rc=1）；且既有走 `--store <tmp>` 的測試不得因此觸碰 repo 內的 view。",
+  "category": "cli",
+  "cost": "S",
+  "date": "2026-08-07",
+  "detail": "`ops/backlog.py add` 與 `update --commit` 寫完 store 就結束，不重生 `docs/runbook/improvement_backlog.md`。實測（2026-08-07，debug/backlog-traceability 工作樹）：`render --check` 事前 rc=0 印 `is up to date.`；`add` 一筆之後 rc=1 印 `STALE … 內容與 store 不一致`；刪掉該 entry 檔後回 rc=0。而 `docs/registry.yml` 的 `generated.improvement_backlog` 把 `render --check --out <path>` 宣告成 `check`，`docs_lint.sh --registry` 會**實際執行**它 → **任何一次 `add` 都讓下一道 docs gate 轉紅**，而 `add` 自己的輸出（`IMP-…  [IMP/tool/low]` 加 detail 摘要兩行）對此一字未提。gate 不是誤報，gate 是對的；壞的是入口讓呼叫者以為工作已結束。view 是 store 的純函數，沒有理由讓兩者的一致性靠呼叫者的記性維持——尤其這支 CLI 的使用者主要是 agent，而 agent 每次都是第一次用它。",
+  "fix_site": "ops/backlog.py `_cmd_add` / `_cmd_update`",
+  "id": "IMP-20260807-5bff5e",
+  "plan": "`_cmd_add` 與 `_cmd_update`（僅 `--commit` 分支）落地成功後，在同一支程序內呼叫既有的 render 路徑重生 view，人讀輸出多印一行 `rendered docs/runbook/improvement_backlog.md`。`--store` 非預設值時**不**重生（那是測試用的臨時 store，沒有對應 view），改印一行說明；`update` 的 dry-run 本來就不寫 store，也不得重生。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "backlog 收尾（本輪自用時撞見）",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}

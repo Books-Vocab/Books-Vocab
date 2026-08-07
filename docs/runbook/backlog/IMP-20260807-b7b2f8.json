@@ -1,0 +1,18 @@
+{
+  "acceptance": "在 `plan_gates` 加一條路由到全新路徑形狀、**不改測試**，`test_gate_can_fail.sh` 必須轉紅並具名該 gate。今天會綠——那是負控。",
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-07",
+  "detail": "`ops/tests/test_gate_can_fail.sh` 用一個寫死的 `probes = [[…路徑…]]` 陣列去呼叫 `plan_gates`，再從結果收集 block gate 名字，然後要求每個名字在 `PROOFS` 裡有紅/綠證明。**這個 meta-test 的覆蓋範圍上限就是那份清單**：新增一條路由到未列出的路徑形狀，它看不見，而測試照樣印綠。\n\n2026-08-05 實測撞到：`backlog-validate` gate 接上 `docs/runbook/backlog/*.json` 之後，這支測試 27 pass / 0 fail——對新 gate 而言那個綠是**空洞的**；要手動把 `docs/runbook/backlog/IMP-0001.json` 加進 probes 它才開始檢查。一個宣稱「每個 block gate 都有紅燈證明」的測試，其真正宣稱是「每個**我記得列出來的** block gate」。",
+  "fix_site": "ops/tests/test_gate_can_fail.sh（probes 陣列）",
+  "id": "IMP-20260807-b7b2f8",
+  "plan": "從 `plan_gates` 的路由表本身反推探針，而非手列：把路由條件（副檔名 / 路徑前綴 / `DATA_PLANE_OWNERS` 的 key）抽成可枚舉的資料，測試對每個路由條件合成一個代表路徑。無法反推的條件（依賴真實檔案存在性的）保留手列，但**必須具名列出**哪些是手列的（比照 `data-plane-unowned` / `ops-shell-untested` 的具名 warn 慣例），讓清單的不完整可見而非隱形。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "接 backlog-validate gate 時撞見",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}

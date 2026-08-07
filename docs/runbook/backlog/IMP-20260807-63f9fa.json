@@ -1,0 +1,18 @@
+{
+  "acceptance": "對兩支腳本各跑一次「送 SIGTERM 後量鎖與行程存活」的探針（形狀同 `ops/lib/ios_signal_traps.sh` 檔頭記載的那個）：修前必須量到 `lock=GONE` 而行程仍活、rc=0；修後必須 0 個這種樣本，且 rc=143。",
+  "category": "tool",
+  "cost": "M",
+  "date": "2026-08-07",
+  "detail": "`ops/lib/ios_signal_traps.sh` 的檔頭（IMP-0017）已經量測並記載過這個 bash 語義：`trap handler EXIT INT TERM`——一個 handler 綁三個事件、且不 re-raise——**不會中止腳本**；bash 跑完 handler 後回到中斷點繼續，最後以 rc=0 正常結束，handler 還會被執行第二次。\n\n`ops/kg_reconcile.sh:611` 正是這個形狀，而它的 handler 內容是 `rmdir \"$KG_LOCK_DIR\"`——**那把鎖的唯一用途是跟人工 deploy 互斥**（同檔 :607 註解明寫）。`ops/backup_verify.sh:95` 同形狀。\n\n2026-08-07 以同構最小腳本在 /bin/bash 3.2.57 重現：送 SIGTERM 後 handler 印出 lock released，接著 5 個 tick 全部量到 `lock=GONE` 而行程仍活著，最後印 finished normally、**rc=0**、handler 再跑一次。套到 kg_reconcile 就是：reconciler 在 `deploy_and_gate` 期間收到 SIGTERM（launchd 停服務、機器休眠、手動 kill）→ 部署鎖被釋放 → **reconciler 繼續部署，而人工 deploy 此刻可以拿到那把已釋放的鎖** → 兩個部署並行操作同一個 compose stack，且 launchd 看到的是 exit 0（成功）。\n\niOS 那條線兩個月前就修好並留下可 source 的 lib；生產 reconciler 沒被納入。同一個已知缺陷、已有現成解，只是沒接線。**落地會動到生產 reconciler，需在 felix 上實測驗收。**",
+  "fix_site": "ops/kg_reconcile.sh:611 / ops/backup_verify.sh:95 / ops/lib/ios_signal_traps.sh（改名）",
+  "id": "IMP-20260807-63f9fa",
+  "plan": "讓 `ops/kg_reconcile.sh` 與 `ops/backup_verify.sh` source `ops/lib/ios_signal_traps.sh`（它宣告 source-only、bash 3.2 safe、零外部相依），把手寫的 `trap … EXIT INT TERM` 換成該 lib 的註冊入口，使 cleanup 恰好跑一次、信號時以 128+N 死亡。同一次改動把 lib 從 `ops/lib/ios_signal_traps.sh` 改名為 `ops/lib/signal_traps.sh` 並更新現有 source 點——`ios_` 前綴讓它看起來與部署腳本無關，那個命名本身就是它沒被採用的原因之一。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "立單前複驗 ops 腳本信號處理",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}
