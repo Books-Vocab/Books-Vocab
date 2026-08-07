@@ -44,7 +44,9 @@ See IMP-0042 for the separate canonical-JSON consolidation.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
+import fcntl
 import hashlib
 import inspect
 import json
@@ -254,6 +256,56 @@ def entry_path(store: Path, entry_id: str) -> Path:
 
 def _dumps(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+@contextlib.contextmanager
+def _view_lock():
+    """Serialize the whole read-store → render → write-view cycle.
+
+    Entry files are disjoint paths, so filing is concurrency-safe by construction.
+    The generated view is not: every mutation now refreshes it, and that refresh is
+    a read-modify-write of ONE shared file. Measured with the window widened on
+    purpose (a 3s gap between the render and the write, so a process that read
+    early writes late):
+
+      * two concurrent `update --commit` on DIFFERENT entries — both entry files
+        end up correct, and the view keeps the slow writer's snapshot: the fast
+        writer's change is simply gone. `render --check` then exits 1, so the loss
+        is caught, but by whoever runs the docs gate next rather than by whoever
+        caused it. That is precisely the shape this module keeps filing entries
+        about.
+      * concurrent `add` did NOT lose rows (17/17, 32/32, 64/64) — but only because
+        the entry-loss guard refuses a write that would delete ids. That guard
+        watches the id SET, and an `update` does not change the id set, so it is
+        structurally blind to the case above. Passing one test and failing the
+        other from the same race is the tell.
+
+    An advisory flock on a sidecar under `.cache/` (gitignored; NOT beside the view,
+    where an untracked `*.md.lock` would show up in `git status` and could be swept
+    into someone's commit). The kernel drops it when the fd closes, so a crashed
+    holder leaves nothing behind. Never fatal: a lock we cannot take is not a reason
+    to fail a mutation that has already landed, so the refresh proceeds unlocked
+    rather than not at all — the pre-existing behaviour, no worse than before.
+    """
+    lock_path = ROOT / ".cache" / "backlog_view.lock"
+    fd = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError as exc:
+        print(f"backlog: view lock unavailable ({exc}); refreshing unserialized",
+              file=sys.stderr)
+        if fd is not None:
+            os.close(fd)
+            fd = None
+    try:
+        yield
+    finally:
+        if fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
 
 def _write_atomic(path: Path, text: str) -> None:
@@ -2373,32 +2425,59 @@ def _refresh_view_if_canonical(store: Path) -> None:
     except OSError:
         return
     try:
-        text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())
-        # Same loss guard as `render --commit`, and for the same reason: three entries
-        # once disappeared in a re-render with rc=0 and a green gate. An automatic
-        # refresh that wrote unconditionally would be that hole again, on a path that
-        # runs far more often than the command it bypasses. Losing a row is never
-        # something a mutation implicitly authorises — say so and leave the view alone.
-        outgoing = _read_outgoing_view(Path(DEFAULT_VIEW))
-        dropped = ([] if outgoing is None
-                   else sorted(view_entry_ids(outgoing) - view_entry_ids(text)))
-        if dropped:
-            print(f"WARNING view NOT refreshed: writing it would delete "
-                  f"{', '.join(dropped)} — run ./ops/backlog.py render --commit to see "
-                  f"the recovery routes", file=sys.stderr)
-            return
-        # `_write_atomic`, not `write_text`, and for a reason this path owns rather
-        # than inherits: it is the FREQUENT writer of this file now — every `add`,
-        # every committed `update`/`verify` — so it is where a half-written 280KB
-        # view would actually be produced, and where two writers would actually
-        # collide.
-        _write_atomic(Path(DEFAULT_VIEW), text)
+        # The READ of the store and the WRITE of the view are one critical section.
+        # Rendering outside the lock and only serializing the write would still lose
+        # updates: what goes stale is the snapshot, not the file handle.
+        with _view_lock():
+            text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())
+            # Same loss guard as `render --commit`, and for the same reason: three
+            # entries once disappeared in a re-render with rc=0 and a green gate. An
+            # automatic refresh that wrote unconditionally would be that hole again,
+            # on a path that runs far more often than the command it bypasses. Losing
+            # a row is never something a mutation implicitly authorises — say so and
+            # leave the view alone. It is NOT a substitute for the lock: it watches
+            # the id set, so it is blind to a concurrent `update`, which changes a
+            # row's contents and leaves the set alone.
+            outgoing = _read_outgoing_view(Path(DEFAULT_VIEW))
+            dropped = ([] if outgoing is None
+                       else sorted(view_entry_ids(outgoing) - view_entry_ids(text)))
+            if dropped:
+                print(f"WARNING view NOT refreshed: writing it would delete "
+                      f"{', '.join(dropped)} — run ./ops/backlog.py render --commit to "
+                      f"see the recovery routes", file=sys.stderr)
+                return
+            # `_write_atomic`, not `write_text`, and for a reason this path owns rather
+            # than inherits: it is the FREQUENT writer of this file now — every `add`,
+            # every committed `update`/`verify` — so it is where a half-written 280KB
+            # view would actually be produced, and where two writers would actually
+            # collide.
+            _write_atomic(Path(DEFAULT_VIEW), text)
     except (BacklogError, OSError, ValueError) as exc:
         print(f"WARNING view not refreshed ({exc}); run ./ops/backlog.py render --commit",
               file=sys.stderr)
 
 
 def _cmd_render(args) -> int:
+    """Thin wrapper so the whole render lives in ONE critical section.
+
+    `--commit` is a read-store → render → read-outgoing → write-view cycle over the
+    same shared file the automatic refresh writes, so it needs the same lock or the
+    two can lose each other's work. `--check` takes it too: without the lock it
+    renders at one instant and compares against a view read at another, and can
+    report STALE about a state that never existed.
+
+    Deliberately a wrapper rather than a `with` inside the body: `_view_lock` is a
+    plain flock on a fresh fd, so it is NOT re-entrant — a nested acquire from this
+    same process would hang with nothing to kill. Keeping the acquire at exactly one
+    place per entry point is what makes that impossible rather than unlikely.
+    (`_cmd_render` does not call `_refresh_view_if_canonical`; the five mutations
+    that do never reach here.)
+    """
+    with _view_lock():
+        return _cmd_render_unlocked(args)
+
+
+def _cmd_render_unlocked(args) -> int:
     verified = args.verified_against or _doc_anchor()
     text = render_view(args.store, verified_against=verified)
 
