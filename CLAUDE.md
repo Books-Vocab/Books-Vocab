@@ -136,7 +136,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 ## Commit / 落地政策
 
 - **Worktree / feature branch 任務**:驗證全綠(測試 / lint / build / drift 等有**當下輸出**)後 **直接 commit + 走 `cutover` 落地本地 main,不先問**,事後簡述決策與理由(使用者長期授權,2026-06-04)。
-  > 授權本身一字未動;改的只是它指向的機制名。原文寫「開 PR」,而 PR 合併入口已於 `90e57ba7e` 刪除(`.claude/commands/merge-prs.md`),最後一個 merge commit 停在 `0611f3cac`(2026-07-09)。落地路徑是 `worktree-flow` 的 cutover(離線 ff 本地 main),不是 PR。
+  > 授權本身一字未動;改的只是它指向的機制名——原文指向的 PR 合併入口已被拆除。落地語意見 `docs/sop/release.md`,理由見 `IMP-20260805-34f30f`。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)

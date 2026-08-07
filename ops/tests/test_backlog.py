@@ -1289,3 +1289,46 @@ def test_import_refuses_the_widened_view_instead_of_recovering_it(tmp_path):
     kinds = {p.get("kind") for p in problems}
     assert "recovered-row" not in kinds, "the widened view was 'recovered' into a mangled row"
     assert kinds, "the row vanished with no problem reported — silence is the defect"
+
+
+def test_schema_section_blames_rebase_not_squash():
+    """The doctrine this pins was wrong for a month and cost two entries their audit trail.
+
+    It named PR squash-merge as what invalidates a resolution hash. This repo has
+    no PR merge path; what rewrites sha is the `git rebase` that `cmd_cutover`
+    runs before its `merge --ff-only`. IMP-0063 and IMP-20260805-dd35f8 both sat
+    waiting for a squash that could never arrive, and both branches are now gone.
+
+    Prose corrections rot back. Every site the correction touched is asserted
+    here so re-introducing the old mechanism name goes red.
+    """
+    header = BACKLOG._VIEW_HEADER
+    assert "squash" not in header
+    assert "rebase" in header
+
+    view = (ROOT / "docs" / "runbook" / "improvement_backlog.md").read_text(encoding="utf-8")
+    # Header段 only: entry rows quote the old doctrine verbatim as evidence and
+    # must not be caught by this.
+    assert "squash" not in view.split("## IMP")[0]
+
+    sync = (ROOT / "docs" / "sop" / "doc_sync.md").read_text(encoding="utf-8")
+    invariant = [ln for ln in sync.splitlines() if "SHA 不被改寫" in ln]
+    assert len(invariant) == 1
+    assert "rebase" in invariant[0]
+    assert "PR branch" not in sync
+
+    steward = (ROOT / ".claude" / "agents" / "docs-steward.md").read_text(encoding="utf-8")
+    desc = [ln for ln in steward.splitlines() if "KG 文檔管家" in ln]
+    assert len(desc) == 1
+    assert "PR 開出前" not in desc[0]
+    assert "cutover" in desc[0]
+
+    # Two always-on surfaces carried the same instruction and were missed by the
+    # first pass: CLAUDE.md is loaded every session, tech_index.md is a SoT.
+    # A grep boundary that skipped docs/reference/ is why. Pin both.
+    root_guide = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "開 PR" not in root_guide
+    assert "PR 開出前" not in root_guide
+
+    tech_index = (ROOT / "docs" / "reference" / "tech_index.md").read_text(encoding="utf-8")
+    assert "PR 開出前" not in tech_index
