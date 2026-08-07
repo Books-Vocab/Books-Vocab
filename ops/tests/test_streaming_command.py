@@ -168,11 +168,25 @@ def test_interrupt_during_spawned_progress_terminates_process_group(tmp_path: Pa
         "time.sleep(60)"
     )
 
+    def _pids_written() -> dict[str, int] | None:
+        """Parsed contents, or None. EXISTENCE is not the signal.
+
+        The child does `open(path,'w').write(...)`, and `open(..., 'w')` creates the
+        file before anything is written to it — so `pid_file.exists()` goes true with
+        the file still empty, and the `json.loads` after the interrupt gets `''`.
+        Measured: green in isolation, red under full-suite load, which is the window
+        widening rather than a different bug.
+        """
+        try:
+            return json.loads(pid_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
     class InterruptOnSpawned(io.StringIO):
         def write(self, value: str) -> int:
             if "phase=spawned" in value:
                 deadline = time.monotonic() + 3
-                while not pid_file.exists() and time.monotonic() < deadline:
+                while _pids_written() is None and time.monotonic() < deadline:
                     time.sleep(0.01)
                 raise KeyboardInterrupt
             return super().write(value)
