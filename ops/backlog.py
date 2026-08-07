@@ -560,9 +560,11 @@ def _split_row_raw(line: str) -> list[str]:
     tears that row into the wrong number of columns, which either drops the
     entry or shifts every field after it by one — silently, in both cases.
 
-    Cells come back raw because recovery (below) has to rejoin them, and
-    stripping first would silently eat the whitespace around an unescaped pipe:
-    `` `|| true` `` would come back as `` `||true` ``.
+    Cells come back raw and both callers clean immediately. They used to be raw
+    because `_recover_overflowing_row` had to rejoin them; that heuristic was
+    removed with IMP-20260805-3df783. Kept raw anyway so the split stays a pure
+    tokenizer — stripping here would silently eat the whitespace around an
+    unescaped pipe (`` `|| true` `` -> `` `||true` ``) for every future caller.
     """
     parts = re.split(r"(?<!\\)\|", line.strip())
     if parts and not parts[0].strip():
@@ -716,8 +718,14 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
             # `resolution` became the fix_site — and because a row came back,
             # `import_legacy` would have written that over a good entry.
             #
-            # An over-wide row is not damage to repair; it is a file from the wrong
-            # era. Say so, and name the likely cause rather than guessing at cells.
+            # An over-wide row has TWO possible causes and the note must name both.
+            # Assuming only "wrong era" misdiagnoses the one input this narrowed
+            # contract still claims to serve: an unescaped `|` inside a cell of a
+            # genuine 8-column ledger also lands here. Measured: 30 pre-migration
+            # versions of the ledger contain exactly such a row (IMP-0017). It used
+            # to import via the recovery heuristic; it is now refused, which is the
+            # right call — but "read the store instead" is unactionable advice for
+            # someone importing history, and the escape is a one-character fix.
             problems.append(
                 {
                     "kind": "malformed-row",
@@ -725,10 +733,13 @@ def parse_legacy_table(text: str) -> tuple[list[dict], list[dict]]:
                     "line": lineno,
                     "columns": len(cells),
                     "expected": len(LEGACY_COLUMNS),
-                    "note": "too many columns. `import` reads the LEGACY 8-column "
-                    "table only; the current generated view is wider and is "
-                    "deliberately NOT importable (IMP-20260805-355016 / -3df783). "
-                    "Entries are one-file-per-entry under the store — read those.",
+                    "note": "too many columns — two possible causes. (a) An "
+                    "unescaped `|` inside a cell: escape it as `\\|` and re-run; "
+                    "this is the historical hand-written case and it is fixable. "
+                    "(b) A 12-column generated view: `import` reads the LEGACY "
+                    "8-column table only, and the current view is deliberately NOT "
+                    "importable (IMP-20260805-355016 / -3df783) — its entries are "
+                    "one-file-per-entry under the store, read those instead.",
                 }
             )
             continue
@@ -1004,11 +1015,14 @@ def _render_table(entries: list[dict], columns: tuple[str, ...]) -> str:
     return head + sep + body
 
 
-# The rendered table deliberately stays at the legacy 8 columns. Widening it to
-# show the verdict fields broke the property reviewers valued most: the
-# generated view can still be read back by the importer, so the migration is
-# reversible. `show` and the schema section surface those fields instead — a
-# cosmetic column is not worth trading reversibility for.
+# SUPERSEDED 2026-08-05 by IMP-20260805-355016. This used to read "the rendered
+# table deliberately stays at the legacy 8 columns... a cosmetic column is not
+# worth trading reversibility for". Reversibility was abandoned by executive
+# ruling: it was already half-broken (the APP half never imported —
+# IMP-20260805-f4ec99 measured rc=2) and the importer's only input is a file this
+# module produced. The IMP table now renders `VIEW_IMP_COLUMNS` (12). The reason
+# this note stays rather than being deleted: the old rule read as settled policy,
+# so its absence has to be visible to whoever comes looking for it.
 
 APP_COLUMNS = (
     "id",
