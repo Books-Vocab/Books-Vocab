@@ -6,8 +6,8 @@
   "detail": "ledger schema（`ops/backlog.py:822-824`，render 進 `docs/runbook/improvement_backlog.md:36-38`）警告 resolution hash 會被 PR squash merge 作廢。本 repo 的落地路徑早已不是 PR：最後一個 merge commit 是 `0611f3cac`（2026-07-09），其後 196 個 commit 全單親；`90e57ba7e` 已把 `.claude/commands/merge-prs.md` 與 `review-ui.md`（合計 198 行）整個刪除，PR 合併入口是被刻意拆掉的。**但真兇不是「過期」而是「指錯機制」**：`cmd_cutover`（`ops/worktree_orchestrate.py:1910-1913`）在 advance lock 內先對分支跑 `git rebase <local main>`，之後（:1923-1928）才在主樹 `merge --ff-only`——ff 只是後半段，前半段把分支鑄的每個 sha 都改寫。證據：最近 200 個 commit 有 79 個 committer date 不等於 author date；`83843b65f`（docs: re-anchor verified_against 888dde5f0 到 e14f295ad，rebase 後 orphan hash）是 PR 時代之後真實發生過的孤兒事件，起因是 rebase 不是 squash。**這條過期教條已經害過人**：IMP-0063 的 resolution 寫著分支名加「squash 後由 platform-steward 更新為 squashed hash」，在一個永遠不會 squash 的拓樸上等一個不會來的事件，分支已刪——而該工作其實是以五個普通 commit 落地的。同型錯誤另見 `docs/sop/doc_sync.md:26`（自己分支的 HEAD 只在 ff 拓樸下滿足、squash merge 下必炸；實際上這條路線的 merge 就是 ff，而 branch HEAD 照樣被前面的 rebase 孤立）。**仍然合法的 PR 用法別一起改掉**：`ops/branch_audit.sh:126`（PR state 當 metadata，`docs/runbook/system.md:73` 明言 commit 可達性才是真相）、三個 workflow 的 `pull_request:` 觸發（休眠且無害）、`docs/sop/figma-token-workflow.md`（Figma plugin 從機外推分支，PR 是真正的跨越機制）。另有約 30 處「同 PR」是「同一個落地單位」的同義詞，屬詞彙債，改它是 churn 且有打壞 docs_impact source hint 的風險。",
   "fix_site": "ops/backlog.py:892",
   "fixed_by": [
-    "6f82f44d7",
-    "2c7385128"
+    "5e69d9036",
+    "db0407f74"
   ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
