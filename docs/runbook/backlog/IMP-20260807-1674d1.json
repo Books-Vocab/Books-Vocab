@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "ops/injection_lint.py:32 resolves KG_INJECTION_BASELINE (and VIEWS_ROOT at :31) against the CALLER'S CWD, while docs/reference/tech_index.md:188 states in writing that the variable is resolved against the repo root and that parent and child processes therefore agree. One of the two is wrong today. ops/backlog.py had the identical line and was fixed on 2026-08-07 to ROOT-anchor it — measured consequence there: standing in a directory holding a superset baseline made the closed-without-verification ratchet print '0 problems' rc=0 while forgiving every id. injection_lint's baseline feeds a cutover block gate and a pre-commit hook, both of which inherit the caller's environment, so the same disarm shape is available; ui_quality_gate.py reads the same variable and already hard-refuses an unreadable path, which makes a split between the two readers observable as a bare rc rather than as a message.",
+  "id": "IMP-20260807-1674d1",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "code review of the backlog cwd fix",
+  "status": "open",
+  "stream": "IMP"
+}
