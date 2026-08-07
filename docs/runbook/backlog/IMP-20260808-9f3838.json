@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-08",
+  "detail": "acceptance 是唯寫欄位——整條迴圈的出口因此沒有閉合。\n\n它的定義寫得很清楚（ops/backlog.py:1822 的 help：「該紅轉綠的那條命令」），也是全系統唯一能回答「我們憑什麼說缺陷不見了」的欄位。但 GROOM_REQUIRES (ops/backlog.py:159) 只檢查它非空，此後**沒有任何一行程式再讀它**。\n\n量測：17 筆「有 groomed_by 且已 fixed」的單，用最寬鬆的判準（acceptance 與 resolution+verified_evidence 共用任一個 4 字元以上 token）也只有 9 筆有交集；而 token 相同本來就不構成「這條命令被跑過」的證據，所以機制數是 0，9 這個數字只是上界。\n\n對照：status=fixed 要求 fixed_by 指向現在仍可達的 commit——那證明的是「有一顆可達的 commit」，不是「缺陷不見了」。兩者之間的落差，本來就該由 acceptance 補上。\n\n諷刺點值得記下來：ops/backlog.py:154 附近的註解自己警告過「沒人查前提的徽章會退化成這個 repo 已經付過兩次代價的『沒人讀的理由欄位』」。那段註解守住了徽章的**前提**（非空），沒守住徽章的**內容**。acceptance 已經變成它警告的那個欄位。\n\n同源數字：69 筆 fixed 中只有 25 筆帶 verdict、6 筆帶 verified_evidence。那個為了「讓重驗不是儀式」而蓋的機制覆蓋 9% 的結案。它設計上是選配所以沒紅，但意思是出口有 91% 是自己認證自己。",
+  "id": "IMP-20260808-9f3838",
+  "resolution": "— 二選一，不可維持現狀的第三種「長得像判準但沒人執行」。A：結構化成可執行命令 + 期望 exit code，stage 要求 hunter 附紅→綠兩次實際輸出，anchor 回填前重跑確認綠（代價：38 筆既有 groomed 需遷移）。B：改名 acceptance_note、docstring 明說沒有機器檢查它為真，並從 GROOM_REQUIRES 移除（因為非空檢查製造了它被驗證過的假象）。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "架構閉環檢視（使用者要求深度論證），2026-08-08",
+  "status": "open",
+  "stream": "IMP"
+}
