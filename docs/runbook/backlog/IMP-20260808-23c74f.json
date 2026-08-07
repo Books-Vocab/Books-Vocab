@@ -1,0 +1,19 @@
+{
+  "acceptance": "把子行程的建檔與寫入人工拉開 0.5 秒後，舊守衛紅、新守衛綠",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_streaming_command.py",
+  "acceptance_expect_rc": 0,
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "test_streaming_command.py 的 test_interrupt_during_spawned_progress_terminates_process_group 有 TOCTOU：它等的是**檔案存在**，但子行程 `open(path, \"w\")` 會先建檔、之後才寫內容。所以 `pid_file.exists()` 為真時檔案可能還是空的，隨後的 `json.loads` 拿到 `\"\"` 就炸。\n\n實測：單獨跑綠、全套負載下紅（`json.loads()` → JSONDecodeError）。負載只是把窗口撐開，不是另一個 bug；同一輪未修改的 main 跑全套是 1053 passed，所以它是機率性的。\n\n定向證明（不靠「跑幾次看看」）：把子行程改成 `open(p,\"w\"); sleep(0.5); open(p,\"w\").write(...)` 人工撐開窗口後——舊守衛（`pid_file.exists()`）以完全相同的 JSONDecodeError 紅，新守衛（能 `json.loads` 才算數）綠。\n\n這一筆的價值不在嚴重度（low），而在**它的失敗形狀會誘導誤判**：一個我完全沒碰的檔在我的分支上紅，最省力的解釋是「flaky，重跑」，而重跑真的會綠。",
+  "fix_site": "ops/tests/test_streaming_command.py:169（InterruptOnSpawned.write 的等待迴圈）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "agent:main-line",
+  "id": "IMP-20260808-23c74f",
+  "plan": "把 test_streaming_command.py 內該測試的等待條件從 pid_file.exists() 換成「read_text 後 json.loads 成功」的 helper；三秒 deadline 不變。",
+  "resolution": "— 已修：等待條件從「檔案存在」改成「檔案內容 parse 得出 JSON」。`exists()` 從來不是「寫完了」的訊號，而 `open(..., \"w\")` 正是把兩者拉開的那個呼叫。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "acceptance 工作時被它擋下全套（負載相關的假紅）",
+  "status": "open",
+  "stream": "IMP"
+}
