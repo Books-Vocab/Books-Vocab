@@ -102,11 +102,18 @@ VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of",
 
 # The one structured, machine-checkable answer to "what made this stop being
 # true". `resolution` stays authoritative as PROSE, but prose can only be read
-# by position heuristics, and the heuristic is measurably wrong: on this store,
-# "the first sha in the resolution" was the landing commit for 49 of 63 fixed
-# entries, and one of those 49 (IMP-0063) was an *incidental* hash the text
-# mentions for an unrelated reason. A field that only ever holds landing commits
-# cannot be satisfied by a sha that wandered into the paragraph.
+# by position heuristics, and the heuristic is measurably wrong.
+#
+# The number depends on how generously you match, so both ends are stated with
+# their rule (an unqualified count here was the first thing a review caught, and
+# it was wrong): under the MOST generous rule anyone could defend — any sha
+# anywhere in the resolution, 6-char prefixes, matching any element of fixed_by
+# — position-0 is right for at most **47 of 63**; under strict first-vs-first it
+# is 45. Either way 3 of the 63 carry no sha in the resolution at all. And one
+# of the entries the heuristic scores as CORRECT (IMP-0063) is an *incidental*
+# hash the text mentions for an unrelated reason, which is reachable from main
+# and therefore invisible to any reachability check. A field that only ever
+# holds landing commits cannot be satisfied by a sha that wandered in.
 TRACE_FIELDS = ("fixed_by",)
 
 # Shape only. The first cut of this required at least one a-f digit, to stop
@@ -631,7 +638,27 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str) -> dict:
     # `validate` run seeing a defect it cannot attribute to anyone.
     problems = validate_entry(updated, entry_id=entry_id, commit_state=make_commit_state())
     if problems:
-        raise ValueError(f"invalid update: {problems}")
+        # Name the repair, not just the defect. An orphaned `fixed_by` blocks
+        # every unrelated edit to that entry — `update <id> --severity high`
+        # fails with a message about a sha the caller never touched — and the
+        # two ways out are not guessable. `reanchor` is listed first because it
+        # is usually right, and second because it is NOT always: when the rebase
+        # resolved a conflict differently the patch-id differs and reanchor will
+        # correctly refuse to guess (IMP-0062), leaving the explicit form.
+        hints = []
+        if any(p["kind"] == "fixed-by-orphaned" for p in problems):
+            hints.append(
+                f"  a rebase orphaned it -> ops/backlog.py reanchor {entry_id} --commit\n"
+                f"  reanchor cannot map it -> pass the right sha: "
+                f"ops/backlog.py update {entry_id} --fixed-by <sha> --commit"
+            )
+        if any(p["kind"] == "fixed-without-fixed-by" for p in problems):
+            hints.append(
+                f"  closing it -> ops/backlog.py update {entry_id} --status fixed "
+                f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)"
+            )
+        raise ValueError("invalid update: " + repr(problems)
+                         + ("\n" + "\n".join(hints) if hints else ""))
     return updated
 
 
@@ -1217,7 +1244,7 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 - `status`：{statuses}（`wont-fix` 須在 resolution 附理由）
 - `category`：IMP 為 {imp_categories}；APP 為 {app_categories}
 - `severity`：{severities}
-- `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
+- `resolution`：解決的敘述，或 wont-fix 理由。**可回溯的權威欄是下面的 `fixed_by`，不是這欄的散文**
 - 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
 - **resolution hash 慣例**：**不得以分支名代替 hash**——分支刪掉之後那筆 resolution 就再也
   指不到任何東西。已經發生過兩次（IMP-0063、IMP-20260805-dd35f8），兩條分支今天都不存在了
@@ -1514,8 +1541,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_reanchor.add_argument("ids", nargs="*", help="entry ids; default = every entry with an orphan")
     p_reanchor.add_argument("--store", type=Path, default=DEFAULT_STORE)
     p_reanchor.add_argument(
-        "--search-depth", type=int, default=800,
-        help="how many commits back from main to scan for a patch-id match (default 800). "
+        "--search-depth", type=int, default=2000,
+        help="how many commits back from main to scan for a patch-id match (default 2000; main is deeper than that, and the result reports whether the window was exhausted). "
              "The bound is REPORTED, never silent: a miss inside the window and a miss "
              "because the window ended are different answers",
     )
@@ -1707,25 +1734,40 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
     if state is None:
         raise BacklogError("reanchor needs a git repository (no --git-dir found)")
 
-    log = _git("rev-list", f"--max-count={search_depth}", "main")
-    if log.returncode != 0:
-        raise BacklogError("reanchor needs a resolvable `main`")
-    candidates = log.stdout.split()
-
-    by_patch: dict[str, list[str]] = {}
-    for rev in candidates:
-        pid = _patch_id(rev)
-        if pid:
-            by_patch.setdefault(pid, []).append(rev)
-
-    plan: list[dict] = []
+    # Find the orphans BEFORE building the index. Indexing first cost 33.3s of
+    # `git patch-id` to print "nothing to do", which is the overwhelmingly
+    # common case — and a repair tool nobody runs because it is slow repairs
+    # nothing.
+    targets: list[tuple[dict, list[str]]] = []
     for payload in _iter_entries(store):
         if ids and payload.get("id") not in ids:
             continue
         shas = payload.get("fixed_by") or []
         orphans = [s for s in shas if _SHA_RE.match(s) and state(s) == "orphan"]
-        if not orphans:
-            continue
+        if orphans:
+            targets.append((payload, orphans))
+    if not targets:
+        return {"plan": [], "searched": 0, "search_depth": search_depth,
+                "window_exhausted": None, "main_depth": None}
+
+    log = _git("rev-list", f"--max-count={search_depth}", "main")
+    if log.returncode != 0:
+        raise BacklogError("reanchor needs a resolvable `main`")
+    candidates = log.stdout.split()
+    total = _git("rev-list", "--count", "main").stdout.strip()
+    main_depth = int(total) if total.isdigit() else None
+
+    by_patch: dict[str, list[str]] = {}
+    indexed = 0
+    for rev in candidates:
+        pid = _patch_id(rev)
+        if pid:
+            by_patch.setdefault(pid, []).append(rev)
+            indexed += 1
+
+    plan: list[dict] = []
+    for payload, orphans in targets:
+        shas = payload.get("fixed_by") or []
         moves, unmatched = {}, []
         for sha in orphans:
             pid = _patch_id(sha)
@@ -1741,7 +1783,14 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
                 "unmatched": unmatched,
                 "new_fixed_by": [moves.get(s, s) for s in shas],
             })
-    return {"plan": plan, "searched": len(candidates), "search_depth": search_depth}
+    # `searched` used to be len(candidates), which OVERSTATES the window twice
+    # over: merge commits have no patch-id and contribute nothing (272 of the
+    # first 800 here), and main is 3688 deep so the default leaves most of it
+    # unscanned. A bound that is not reported reads as "searched everything" —
+    # this tool's own argument, applied to its own number.
+    return {"plan": plan, "searched": indexed, "scanned": len(candidates),
+            "search_depth": search_depth, "main_depth": main_depth,
+            "window_exhausted": main_depth is not None and len(candidates) >= main_depth}
 
 
 def _cmd_reanchor(args) -> int:
@@ -1757,8 +1806,15 @@ def _cmd_reanchor(args) -> int:
     if args.json:
         print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
         return 0
-    print(f"[{result['mode']}] scanned {result['searched']} commits on main "
-          f"(--search-depth {result['search_depth']})")
+    if result["plan"]:
+        window = (f"indexed {result['searched']} of {result['scanned']} commits scanned"
+                  f" (--search-depth {result['search_depth']}"
+                  + (f", main is {result['main_depth']} deep" if result["main_depth"] else "")
+                  + (", window exhausted" if result["window_exhausted"] else ", window NOT exhausted")
+                  + ")")
+    else:
+        window = "no orphans, so no commits were indexed"
+    print(f"[{result['mode']}] {window}")
     for item in result["plan"]:
         for old, new in item["moves"].items():
             print(f"  {item['id']}: {old} -> {new}")
