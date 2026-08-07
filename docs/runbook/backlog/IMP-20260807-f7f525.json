@@ -7,7 +7,7 @@
   "fix_site": "ops/worktree_registry.py / ops/worktree_orchestrate.py `cmd_open`,`cmd_cutover`",
   "id": "IMP-20260807-f7f525",
   "plan": "`open` 加 `--delegated`（由 task brief 帶入），把該旗標寫進 ledger record；`cutover` 在既有 verdict 檢查之外多一條：worktree 的 record 若標 delegated 則拒絕，訊息指向整合者路徑。`gate` **不擋**——被派者自驗是允許的，agent_org 明講。`adopt` 補登記時同樣可設此旗標。",
-  "resolution": "",
+  "resolution": "— 尚未動工。**2026-08-07 更新：這條的核心前提已經被 feat/claim-plane 推翻一半，重新開工前先讀這段。**\n\n原本的理據是「今天沒有可鍵入的訊號：ledger record 無 actor 欄，`worktree_registry.py` 的 upsert 只寫 path/branch/intent/base/status」。那個欄位列舉現在是**錯的**——record 另有 `backlog` 與 `claimed_at`，而 `open --backlog ID...` → record 欄位 → `register` 拒絕（`EXIT_CLAIMED`=75）這條管線，正是本條 plan 說要從零建的「旗標 → record → refusal」。\n\n所以 `--delegated` 不是新設計，是照已存在的 pattern 再加一個欄位：`args.X is not None` 的「省略=保留 / 傳了=取代」語意、`cmd_register` 臨界區內的檢查、`cmd_open` 先登記後建樹並傳遞 exit code、失敗時 `resolve --status abandoned` 還原。連坑都已經踩過並留下測試：呼叫端若無條件轉發旗標，`[\"--delegated\", \"--json\"]` 會被 argparse 的 nargs 解成空值而走進「取代」分支，把還活著的記錄的標記無聲清掉。\n\n`docs/sop/agent_org.md` 那段的前提句已同步修正。剩下真正沒有機械訊號的，只有「誰是被派者」這個判定本身。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "agent_org 交回狀態契約的 review",

@@ -3892,3 +3892,211 @@ def test_a_restore_that_did_not_work_is_reported_as_a_failure(tmp_path, monkeypa
     assert out["restored"] is False, out
     assert "could not be restored" in out["error"], out
     assert "E1.json" in out["error"], out
+
+
+# ===========================================================================
+# open claims before it builds
+# ===========================================================================
+
+@gitmark
+def test_open_refuses_a_ticket_another_worktree_already_holds(scratch):
+    """And refuses with a non-zero code.
+
+    `cmd_open` used to read the registry's return value only to pick which of two
+    sentences to print, then `return EXIT_OK` unconditionally — so a caller that
+    checked the exit code (which is the only thing a script or an agent's `&&`
+    checks) was told the open had succeeded no matter what the ledger said.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+
+    rc, first = _run_json(["open", "--intent", "fix it", "--slug", "first",
+                           "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert first["backlog"] == ["IMP-0001"]
+
+    rc, second = _run_json(["open", "--intent", "fix it too", "--slug", "second",
+                            "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK, "a losing claimant was told the open succeeded"
+    assert second["step"] == "open"
+    # actionable: the loser has to be able to say WHO has it without reading the ledger
+    assert second["conflicts"][0]["branch"] == "debug/first"
+
+
+@gitmark
+def test_a_losing_claimant_is_left_with_no_worktree_and_no_branch(scratch):
+    """The reason `open` had to be reordered rather than just fixed.
+
+    With `git worktree add` running first, the loser ended up holding a real
+    directory and a real branch that no ledger record pointed at — residue that
+    only `sweep` would find, and only if it happened to look. Claiming first means
+    the loser never reaches the part that creates anything.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _run_json(["open", "--intent", "x", "--slug", "winner",
+               "--backlog", "IMP-0001", "--state", state, "--json"])
+
+    rc, _ = _run_json(["open", "--intent", "x", "--slug", "loser",
+                       "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+
+    assert not (repo / ".claude" / "worktrees" / "loser").exists()
+    branches = subprocess.run(["git", "branch", "--list", "feat/loser"],
+                              cwd=repo, capture_output=True, text=True).stdout
+    assert branches.strip() == "", f"the refused open left a branch behind: {branches!r}"
+    records = json.loads(Path(state).read_text())["records"]
+    assert [r["branch"] for r in records if r["status"] == "active"] == ["feat/winner"]
+
+
+@gitmark
+def test_open_gives_the_claim_back_when_the_worktree_cannot_be_created(scratch):
+    """Claiming first buys atomicity at the cost of a new failure window.
+
+    Between the claim and the `git worktree add` there is now a moment where the
+    ledger says a ticket is held by a worktree that does not exist. If `add` fails
+    the claim has to be handed back, or the ticket is stuck until a human notices
+    a record whose path is not there.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    # The branch already exists, so `worktree add -b` fails. Deliberately NOT
+    # "occupy the path": `open` checks for an existing path before it claims, so
+    # that route never reaches the window this test is about.
+    _git(["branch", "feat/blocked"], repo)
+
+    rc, payload = _run_json(["open", "--intent", "x", "--slug", "blocked",
+                             "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert payload.get("claim_released") is True
+
+    records = json.loads(Path(state).read_text())["records"]
+    assert [r for r in records if r["status"] == "active"] == [], (
+        "a failed open left an active record holding the ticket"
+    )
+    # and the ticket is immediately claimable again
+    rc, _ = _run_json(["open", "--intent", "x", "--slug", "retry",
+                       "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+
+@gitmark
+def test_open_without_a_ticket_still_works_and_claims_nothing(scratch):
+    """Most opens are not backlog work; the flag is optional and stays that way."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, payload = _run_json(["open", "--intent", "poke at something", "--slug",
+                             "explore", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert payload["backlog"] == []
+    rec = json.loads(Path(state).read_text())["records"][0]
+    assert rec["backlog"] == [] and rec["claimed_at"] is None
+
+
+@gitmark
+def test_adopting_a_live_worktree_does_not_quietly_release_its_ticket(scratch):
+    """The invariant this whole change adds, broken by the change itself.
+
+    `open`/`adopt` used to forward `--backlog` unconditionally. With no ids the argv
+    is `["--backlog", "--json"]`, and argparse's nargs="*" resolves that to `[]` —
+    not None — which is the "replace the claim" branch. So the registry's
+    "omit = leave it alone" rule was unreachable through the only two callers that
+    exist, and the registry test pinning it was pinning dead semantics.
+
+    Measured end to end before the fix: a LIVE worktree holding IMP-0001, a plain
+    `adopt` elsewhere, and the ledger came back `backlog: []`, `claimed_at: None` —
+    with a second agent able to take the ticket while the first was still working.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, live = _run_json(["open", "--intent", "x", "--slug", "live",
+                          "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    # Re-registering THIS worktree with no --backlog. `adopt` is the reachable way
+    # to do that (`open` refuses an existing path), and re-adopting a live worktree
+    # is ordinary: it is the bootstrap path and it is idempotent by design.
+    #
+    # It has to be the SAME record. An earlier version of this test adopted an
+    # unrelated second worktree and passed against the bug, because the empty list
+    # overwrites the claim of the record being registered — so wiping the unrelated
+    # record's (already empty) claim changed nothing and proved nothing.
+    rc, _ = _run_json(["adopt", "--worktree", live["path"], "--intent", "x",
+                       "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    records = json.loads(Path(state).read_text())["records"]
+    held = {r["branch"]: r.get("backlog") for r in records if r["status"] == "active"}
+    assert held.get("feat/live") == ["IMP-0001"], (
+        f"the live worktree's claim was released by an unrelated adopt: {held}"
+    )
+    # and the ticket is still not available to anyone else
+    rc, _ = _run_json(["open", "--intent", "x", "--slug", "thief",
+                       "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+
+
+@gitmark
+def test_when_the_claim_cannot_be_handed_back_open_says_what_to_run(scratch):
+    """The failure path of the failure path.
+
+    `open` releases the claim when `git worktree add` fails. If THAT release also
+    fails the ticket is stuck, and the only thing standing between the operator and
+    a ledger read is this message — which had no test, so nothing checked that it
+    named a command that exists.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    _git(["branch", "feat/stuck"], repo)   # makes `worktree add -b` fail
+
+    real = MODULE._registry
+    calls = []
+
+    def only_the_release_fails(argv):
+        calls.append(argv[0])
+        if argv[0] == "resolve":
+            return MODULE.EXIT_USAGE, None
+        return real(argv)
+
+    MODULE._registry = only_the_release_fails
+    try:
+        rc, payload = _run_json(["open", "--intent", "x", "--slug", "stuck",
+                                 "--backlog", "IMP-0001", "--state", state, "--json"])
+    finally:
+        MODULE._registry = real
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert calls == ["register", "resolve"]
+    assert payload["claim_released"] is False
+    # the ticket really is still held — the payload is not being optimistic
+    records = json.loads(Path(state).read_text())["records"]
+    assert [r["backlog"] for r in records if r["status"] == "active"] == [["IMP-0001"]]
+
+
+@gitmark
+def test_a_refused_adopt_tells_the_operator_who_holds_the_ticket(scratch):
+    """The human channel, which is the one a person actually reads.
+
+    `_registry` is called with --json, so the registry's own "already claimed by
+    [...]" line goes out as JSON and never reaches the terminal. `open` rebuilds
+    that sentence; `adopt` printed a bare "register failed", which tells a losing
+    agent nothing it can act on.
+    """
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, _ = _run_json(["open", "--intent", "x", "--slug", "holder",
+                       "--backlog", "IMP-0001", "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+
+    other = Path(repo) / ".claude" / "worktrees" / "contender"
+    _git(["worktree", "add", "-b", "feat/contender", str(other), "main"], repo)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = MODULE.main(["adopt", "--worktree", str(other), "--intent", "same work",
+                          "--backlog", "IMP-0001", "--state", state])
+    human = buf.getvalue()
+    assert rc == MODULE.EXIT_BLOCK
+    assert "IMP-0001" in human and "feat/holder" in human, (
+        f"the refusal names neither the ticket nor its holder:\n{human}"
+    )

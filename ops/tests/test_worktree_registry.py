@@ -28,6 +28,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -820,3 +821,235 @@ def test_protected_step_predicate_sees_past_option_flags():
         ["branch", "-D", "main"], primary, protected) is True
     assert MODULE._step_touches_protected(
         ["push", "origin", "--delete", "main"], primary, protected) is True
+
+
+# ===========================================================================
+# claim plane: a backlog ticket is held by at most one active worktree
+# ===========================================================================
+#
+# Why this lives in `register` and nowhere else:
+#
+#   `_ledger_lock` is a blocking flock taken on a FRESH fd every time it is
+#   entered, and flock is owned by the open file description rather than by the
+#   process — so a second acquire from the same process deadlocks forever, with
+#   no subprocess boundary to kill. That rules out "wrap a claim step around
+#   register from the outside". The claim has to happen inside the one critical
+#   section register already runs in (see `main`'s lock tuple), or it is not
+#   atomic with the record it belongs to.
+
+def _register(state: Path, branch: str, *extra: str, path: str | None = None,
+              at: str = "2026-08-07T12:00:00Z") -> int:
+    return MODULE.main([
+        "register", "--state", str(state), "--at", at,
+        "--path", path or f"/tmp/wt-{branch}", "--branch", branch,
+        "--intent", "x", "--base", "main", *extra,
+    ])
+
+
+def _active_records(state: Path) -> list[dict]:
+    return [r for r in json.loads(state.read_text())["records"]
+            if r["status"] == "active"]
+
+
+def test_a_ticket_already_held_by_an_active_worktree_is_refused(tmp_path, capsys):
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat-a", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+    capsys.readouterr()
+
+    rc = MODULE.main([
+        "register", "--state", str(state), "--at", "2026-08-07T12:01:00Z",
+        "--path", "/tmp/wt-b", "--branch", "feat-b", "--intent", "x",
+        "--base", "main", "--backlog", "IMP-0001", "--json",
+    ])
+    assert rc == MODULE.EXIT_CLAIMED
+    payload = json.loads(capsys.readouterr().out)
+    # The refusal has to be actionable: which ticket, and who has it. A bare
+    # "refused" makes the losing agent's only next move a full ledger read.
+    assert payload["action"] == "refused"
+    assert payload["conflicts"][0]["backlog"] == ["IMP-0001"]
+    assert payload["conflicts"][0]["branch"] == "feat-a"
+    assert payload["conflicts"][0]["path"] == "/tmp/wt-feat-a"
+
+    # and it must not have half-written itself into the ledger
+    assert [r["branch"] for r in _active_records(state)] == ["feat-a"]
+
+
+def test_a_losing_claim_leaves_the_ledger_exactly_as_it_found_it(tmp_path):
+    """Refusing after a partial mutation would be worse than not checking at all."""
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001")
+    before = state.read_text()
+    _register(state, "feat-b", "--backlog", "IMP-0001", "IMP-0002")
+    assert state.read_text() == before, "a refused register still wrote to the ledger"
+
+
+def test_the_ledger_writers_are_the_ones_main_serializes():
+    """Deterministic, and the reason it exists is measured.
+
+    The race test below was the only thing guarding `cmd_register`'s place in the
+    lock tuple, and it was measured to notice its removal about 1 run in 10: the
+    children are spawned in a loop, and the interpreter start-up spread (median
+    1.26 ms between arrivals, 44 ms across 24 children) serializes them before the
+    lock is ever contended. This assertion catches that mutation 10 times out of 10.
+    """
+    assert MODULE.cmd_register in MODULE.LEDGER_WRITERS, (
+        "register mutates the ledger AND now decides claims; outside the lock its "
+        "check-and-write is not atomic"
+    )
+    for writer in (MODULE.cmd_resolve, MODULE.cmd_sweep):
+        assert writer in MODULE.LEDGER_WRITERS
+
+
+def test_exactly_one_of_many_simultaneous_claimants_wins(tmp_path):
+    """24 OS processes released at the same instant by a barrier.
+
+    Without the barrier this measured almost nothing: spawning in a loop spreads
+    the children by ~1.26 ms each while the critical section (load a few hundred
+    bytes of JSON, check, save) is well under that, so they rarely overlap and an
+    UNLOCKED check-then-write passed 9 runs out of 10. Each child now blocks on a
+    sentinel file that the parent creates only after every child is up, which puts
+    them in the critical section together: the same unlocked mutation then fails
+    5 times out of 5.
+
+    The wait happens in a test-side launcher, not in the tool — nothing in the
+    shipped code exists to make this test possible.
+    """
+    state = tmp_path / "reg.json"
+    gate = tmp_path / "GO"
+    K = 24
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text(
+        "import os, runpy, sys, time\n"
+        "gate, tool = sys.argv[1], sys.argv[2]\n"
+        "while not os.path.exists(gate):\n"
+        "    time.sleep(0.001)\n"
+        "sys.argv = [tool, *sys.argv[3:]]\n"
+        "runpy.run_path(tool, run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    procs = [
+        subprocess.Popen(
+            [sys.executable, str(launcher), str(gate), str(Path(MODULE.__file__)),
+             "register", "--state", str(state), "--at", "2026-08-07T12:00:00Z",
+             "--path", str(tmp_path / f"wt{i}"), "--branch", f"feat-{i}",
+             "--intent", "x", "--base", "main", "--backlog", "IMP-0001"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        for i in range(K)
+    ]
+    time.sleep(1.5)          # every child is now spinning on the gate
+    gate.write_text("go", encoding="utf-8")
+    codes = [p.wait(timeout=120) for p in procs]
+    assert codes.count(MODULE.EXIT_OK) == 1, (
+        f"{codes.count(MODULE.EXIT_OK)} processes were told they had the ticket"
+    )
+    assert codes.count(MODULE.EXIT_CLAIMED) == K - 1, f"unexpected codes: {sorted(set(codes))}"
+
+    holders = [r for r in _active_records(state) if "IMP-0001" in (r.get("backlog") or [])]
+    assert len(holders) == 1
+    # The losers must not be in the ledger at all: an active record is what makes
+    # a claim alive, so a refused claimant that still registered would hold the
+    # ticket by the very rule the reader uses.
+    assert len(_active_records(state)) == 1
+
+
+def test_resolving_the_record_is_what_frees_the_ticket(tmp_path):
+    """No explicit release call, on purpose.
+
+    Deriving liveness from `status == active` means the release is whatever
+    already ends a worktree's life — `resolve` from cutover, `sweep`'s orphan
+    clearance, even an older binary that knows nothing about claims. An explicit
+    release would have to be added to each of those, and the one that forgot
+    would strand the ticket forever with nothing to notice.
+    """
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001")
+    assert _register(state, "feat-b", "--backlog", "IMP-0001") == MODULE.EXIT_CLAIMED
+
+    assert MODULE.main(["resolve", "--state", str(state), "--branch", "feat-a",
+                        "--status", "merged"]) == MODULE.EXIT_OK
+    assert _register(state, "feat-b", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+
+
+def test_a_worktree_re_registering_does_not_collide_with_itself(tmp_path):
+    """`register` is idempotent for the orchestrator, so it re-runs on live records."""
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat-a", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+    assert _register(state, "feat-a", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+    assert _active_records(state)[0]["backlog"] == ["IMP-0001"]
+
+
+def test_re_registering_without_a_claim_flag_keeps_the_claim(tmp_path):
+    """dict.update() would preserve it silently; this pins that as the intent.
+
+    The two readings both look reasonable — "no flag means no claim" would drop
+    it, "no flag means don't touch" keeps it — so the one that is not asserted is
+    the one a later refactor picks by accident.
+    """
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001")
+    assert _register(state, "feat-a") == MODULE.EXIT_OK
+    assert _active_records(state)[0]["backlog"] == ["IMP-0001"]
+
+
+def test_re_registering_with_a_different_claim_replaces_it(tmp_path):
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001")
+    assert _register(state, "feat-a", "--backlog", "IMP-0002") == MODULE.EXIT_OK
+    assert _active_records(state)[0]["backlog"] == ["IMP-0002"]
+    # and the ticket it let go of is claimable by someone else
+    assert _register(state, "feat-b", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+
+
+def test_a_claim_records_when_it_was_taken(tmp_path):
+    """`preflight`'s sweep is dry-run by default, so nothing auto-reclaims.
+
+    A held ticket therefore needs a timestamp for a reader to be able to say
+    "this claim is old" rather than the ticket simply vanishing from every
+    dispatch list with no explanation.
+    """
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001", at="2026-08-07T12:00:00Z")
+    rec = _active_records(state)[0]
+    assert rec["claimed_at"] == "2026-08-07T12:00:00+00:00"
+
+
+def test_a_displaced_record_takes_its_claim_with_it(tmp_path):
+    """Re-checkout collapses records; the abandoned one must not keep holding."""
+    state = tmp_path / "reg.json"
+    _register(state, "feat-old", "--backlog", "IMP-0001", path="/tmp/shared")
+    # same path, different branch => the old record is displaced to `abandoned`
+    assert _register(state, "feat-new", "--backlog", "IMP-0002",
+                     path="/tmp/shared") == MODULE.EXIT_OK
+    assert [r["branch"] for r in _active_records(state)] == ["feat-new"]
+    # the displaced record's ticket is free again
+    assert _register(state, "feat-third", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+
+
+def test_the_ledger_listing_shows_who_holds_what(tmp_path, capsys):
+    state = tmp_path / "reg.json"
+    _register(state, "feat-a", "--backlog", "IMP-0001", "IMP-0002")
+    assert MODULE.main(["list", "--state", str(state)]) == MODULE.EXIT_OK
+    human = capsys.readouterr().out
+    assert "IMP-0001" in human and "IMP-0002" in human
+
+    assert MODULE.main(["list", "--state", str(state), "--json"]) == MODULE.EXIT_OK
+    records = json.loads(capsys.readouterr().out)["records"]
+    assert records[0]["backlog"] == ["IMP-0001", "IMP-0002"]
+
+
+def test_a_ticket_id_that_is_only_nearly_right_is_refused(tmp_path):
+    """Exact comparison is required, so a near-miss must not pass silently.
+
+    Ids carry a lowercase sha suffix (`IMP-20260807-b9526c`), so the check cannot
+    case-fold without inventing ids. Measured before this: `IMP-0001`, ` IMP-0001`
+    and `imp-0001` were three different tickets and all three registers succeeded —
+    two agents both "holding" IMP-0001 with no refusal anywhere.
+    """
+    state = tmp_path / "reg.json"
+    assert _register(state, "feat-a", "--backlog", "IMP-0001") == MODULE.EXIT_OK
+    # leading/trailing space is unambiguously a typo -> trimmed, so it COLLIDES
+    assert _register(state, "feat-b", "--backlog", " IMP-0001 ") == MODULE.EXIT_CLAIMED
+    # a lower-case stream is refused rather than silently claiming a different ticket
+    assert _register(state, "feat-c", "--backlog", "imp-0001") == MODULE.EXIT_USAGE
+    assert [r["branch"] for r in _active_records(state)] == ["feat-a"]

@@ -32,12 +32,18 @@ Registry state file (per-machine, NEVER committed):
   so every linked worktree shares ONE ledger (like the shared DerivedData anchor).
   schema kg.worktree.registry.v1:
     {"schema": ..., "records": [{path, branch, intent, base, created_at,
-                                 status(active|merged|abandoned), resolved_at}]}
+                                 status(active|merged|abandoned), resolved_at,
+                                 backlog[ticket ids claimed], claimed_at}]}
   Timestamps are taken in the CLI adapter (--at overrides for tests); the IO/pure
   layers read no clock.
 
 Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human):
-  register   birth: record a new active worktree     (--path --branch --intent --base)
+  register   birth: record a new active worktree     (--path --branch --intent --base
+             [--backlog ID...]). --backlog CLAIMS those ticket ids: refused if any is
+             already held by another ACTIVE record. Omitting the flag leaves an
+             existing claim alone; passing it (even empty) replaces it. A claim lives
+             exactly as long as the record is active, so resolve/sweep release it and
+             there is no separate release verb.
   list       ledger + live classify of each record   (table / --json)
   resolve    death: strike a worktree active record  (--branch|--path --status)
   sweep      orphan sentinel: fetch → gather every worktree/branch fact → P1
@@ -60,7 +66,10 @@ Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human)
              subject was cleared resolves to *merged* (not abandoned); a record whose
              worktree merely vanished is struck abandoned.
 
-Exit codes: 0 ok | 64 usage error | 1 partial failure (sweep --commit).
+Exit codes: 0 ok | 1 partial failure (sweep --commit) | 64 usage error |
+            75 claim refused (EX_TEMPFAIL — someone else holds that ticket;
+            retry once they resolve). NOTE argparse answers 2 for a malformed
+            command line out of this same main, which is why 75 and not 2.
 """
 
 from __future__ import annotations
@@ -69,6 +78,7 @@ import argparse
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -84,6 +94,19 @@ SCHEMA = "kg.worktree.registry.v1"
 EXIT_OK = 0
 EXIT_USAGE = 64
 EXIT_PARTIAL = 1
+# A well-formed register that loses a race for a backlog ticket. It needs a code of
+# its own: not EXIT_USAGE, because the caller did nothing wrong; not EXIT_PARTIAL,
+# which means a sweep got part-way; not EXIT_OK.
+#
+# 75 = sysexits' EX_TEMPFAIL, "temporary failure; the user is invited to retry" —
+# which is exactly this situation: the same command becomes correct the moment the
+# holder resolves. Deliberately NOT 2, though 2 looked free: argparse answers 2 for
+# a malformed command line out of THIS SAME `main`, so `--brnach` (a typo) and "that
+# ticket is taken" would be indistinguishable, and an agent would drop a ticket
+# nobody holds. 2 is also spoken for by the open ruling in IMP-0042, which assigns
+# it to "block". The orchestrator maps this to its own EXIT_BLOCK (which is 1, so do
+# NOT assume the numbers match anywhere).
+EXIT_CLAIMED = 75
 
 STATUS_ACTIVE = "active"
 RESOLVE_STATUS = ("merged", "abandoned")  # terminal states a resolve can set
@@ -730,6 +753,29 @@ def _short_path(p: str | None) -> str:
 # ============================================================================
 # subcommands
 # ============================================================================
+def _normalise_tickets(raw: list[str] | None) -> tuple[list[str], list[str]]:
+    """Strip surrounding whitespace; refuse anything that is not shaped like an id.
+
+    The conflict check is exact string comparison, which it has to be — backlog ids
+    carry a lowercase sha suffix (`IMP-20260807-b9526c`), so case-folding them would
+    invent ids that do not exist. That leaves near-misses claiming nothing at all,
+    silently: measured, `IMP-0001`, ` IMP-0001` and `imp-0001` were three separate
+    tickets and all three registers succeeded. Whitespace is trimmed because it is
+    unambiguously a typo; a wrong-case stream is REFUSED rather than guessed at,
+    because guessing means rewriting the id an agent asked for.
+
+    Deliberately not "does this id exist in the backlog store": the registry does not
+    depend on `backlog.py`, and a shape check is the strongest thing available here
+    that does not invent that dependency.
+    """
+    if raw is None:
+        return [], []
+    cleaned = [tok.strip() for tok in raw]
+    ok = [tok for tok in cleaned if re.fullmatch(r"[A-Z]{2,6}-\S+", tok)]
+    bad = [tok for tok in cleaned if tok not in ok]
+    return ok, bad
+
+
 def cmd_register(args: argparse.Namespace) -> int:
     _, now_iso = resolve_now(args.at)
     path = os.path.abspath(args.path)
@@ -756,6 +802,70 @@ def cmd_register(args: argparse.Namespace) -> int:
         and (r.get("branch") == args.branch
              or (r.get("path") and _norm(r["path"]) == _norm(path)))
     ]
+    # ---- claim: at most one ACTIVE record may hold a given backlog ticket ----
+    #
+    # This check lives here, and not in a wrapper around register.
+    #
+    # The hard constraint, verified: `_ledger_lock` is a blocking flock taken on a
+    # fresh fd per entry, and flock belongs to the open file description rather than
+    # the process — a second acquire from the same process blocks forever with no
+    # subprocess to kill. Since the orchestrator's `_registry` runs `wr.main` IN
+    # PROCESS, a wrapper that took the lock and then called `main` would deadlock.
+    #
+    # What that does NOT rule out (an earlier version of this comment claimed it
+    # did): an outer caller CAN take `_ledger_lock` itself and then call
+    # `cmd_register` directly, and `_registry_mutation` in the orchestrator shows a
+    # real subprocess boundary is available too. Both were measured to work. The
+    # reason to put it here anyway is smaller and truer — the claim and the record
+    # it belongs to are one fact, so they should be written by one function inside
+    # the one critical section `main` already takes, rather than by two that have to
+    # agree about a lock.
+    #
+    # Checked against every OTHER active record — `matches` are excluded because
+    # they are precisely the records this call is about to become or abandon.
+    #
+    # Stated honestly, because "taking over" is doing some work there: `matches`
+    # includes a record displaced by PATH, which may be a different, live branch.
+    # Measured — feat-a@/p1 holding IMP-0001 and feat-b@/p2 holding IMP-0002, then
+    # `register feat-a /p2 --backlog IMP-0002` succeeds: feat-b is abandoned and its
+    # ticket changes hands with no refusal. That is the pre-existing collapse rule
+    # (one active record per path) doing its job, and it is only reachable by calling
+    # `register` directly with a path that is already occupied — `open` refuses an
+    # existing path and `adopt` reads the branch from git. It is not a hole the claim
+    # opened, but it IS a way a claim moves without anyone being told.
+    wanted, malformed = _normalise_tickets(args.backlog)
+    if malformed:
+        print(f"✗ not backlog ids: {', '.join(malformed)} — expected <STREAM>-<rest> "
+              f"with an UPPERCASE stream (IMP / APP). Ids are compared exactly, so "
+              f"`imp-0001` would silently be a different ticket from `IMP-0001` and "
+              f"claim nothing.", file=sys.stderr)
+        return EXIT_USAGE
+    if wanted:
+        conflicts = [
+            {"branch": r.get("branch"), "path": r.get("path"),
+             "backlog": sorted(set(r.get("backlog") or []) & set(wanted)),
+             "claimed_at": r.get("claimed_at")}
+            for r in records
+            # identity, not `r not in matches`: `in` compares dicts by value, so
+            # two distinct records that happen to be equal would exclude each other
+            if r.get("status") == STATUS_ACTIVE and not any(r is m for m in matches)
+            and set(r.get("backlog") or []) & set(wanted)
+        ]
+        if conflicts:
+            # Return before any mutation. A refusal that had already half-written
+            # would be worse than not checking: the loser would both be told no
+            # and be recorded as holding something.
+            payload = {"schema": SCHEMA, "action": "refused",
+                       "reason": "backlog ticket already claimed",
+                       "branch": args.branch, "wanted": wanted, "conflicts": conflicts}
+            if args.json:
+                print(json.dumps(payload, indent=2, ensure_ascii=False))
+            else:
+                for c in conflicts:
+                    print(f"✗ {', '.join(c['backlog'])} already claimed by "
+                          f"[{c['branch']}] at {c['path']}", file=sys.stderr)
+            return EXIT_CLAIMED
+
     if matches:
         # the branch is the ledger's identity key, so the branch-match record is the
         # survivor (this branch moved worktrees); whatever else held the target path
@@ -766,6 +876,14 @@ def cmd_register(args: argparse.Namespace) -> int:
             "path": path, "branch": args.branch,
             "intent": args.intent, "base": args.base,
         })
+        # Only when the flag was given. `rec.update` above preserves keys it does
+        # not name, so an omitted --backlog leaves the claim standing — which is
+        # the behaviour register's idempotence needs (the orchestrator re-registers
+        # live records) and the one a reader is least likely to guess. Passing the
+        # flag REPLACES the claim, including with an empty list to give it up.
+        if args.backlog is not None:
+            rec["backlog"] = wanted
+            rec["claimed_at"] = now_iso if wanted else None
         for d in displaced:
             d["status"] = "abandoned"
             d["resolved_at"] = now_iso
@@ -776,6 +894,7 @@ def cmd_register(args: argparse.Namespace) -> int:
             "path": path, "branch": args.branch, "intent": args.intent,
             "base": args.base, "created_at": now_iso,
             "status": STATUS_ACTIVE, "resolved_at": None,
+            "backlog": wanted, "claimed_at": now_iso if wanted else None,
         }
         records.append(rec)
         verb = "registered"
@@ -820,11 +939,23 @@ def cmd_list(args: argparse.Namespace) -> int:
     if not records:
         print(f"(empty ledger: {state_path})")
         return EXIT_OK
-    headers = ["branch", "intent", "base", "status", "live", "wt", "created", "resolved"]
+    headers = ["branch", "backlog", "claimed", "intent", "base", "status", "live",
+               "wt", "created", "resolved"]
     rows = []
     for v in enriched:
         rows.append([
             str(v.get("branch") or "-"),
+            # who holds which ticket is the question this ledger is now asked most
+            # often ("is anyone on IMP-xxxx?"), so it is a column and not a --json-only
+            # field. Resolved records keep theirs as history; the `status` column is
+            # what says whether it is still held.
+            ",".join(v.get("backlog") or []) or "-",
+            # `claimed_at` needs a reader HERE, not once the board exists. Nothing
+            # reclaims a claim automatically (preflight's sweep is dry-run by
+            # default), so "how long has this been held" is the only signal that
+            # separates a live worktree from one whose agent died — and a field with
+            # no reader is a field that drifts.
+            str(v.get("claimed_at") or "-")[:19],
             str(v.get("intent") or "-"),
             str(v.get("base") or "-"),
             str(v.get("status") or "-"),
@@ -1088,6 +1219,14 @@ def build_parser() -> argparse.ArgumentParser:
     reg.add_argument("--branch", required=True, help="branch name checked out in it")
     reg.add_argument("--intent", required=True, help="why this worktree exists (short)")
     reg.add_argument("--base", default="main", help="baseline ref it forks from (default: main)")
+    reg.add_argument(
+        "--backlog", nargs="*", default=None, metavar="ID",
+        help="backlog ticket ids this worktree CLAIMS. Refused with exit "
+             f"{EXIT_CLAIMED} if any of them is already held by another active "
+             "record. Omit to leave an existing claim untouched; pass with no ids "
+             "to give it up. A claim lives exactly as long as the record is active, "
+             "so `resolve` and `sweep` release it with no extra step.",
+    )
     reg.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     reg.set_defaults(func=cmd_register)
 
@@ -1125,6 +1264,15 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# Named, so membership can be ASSERTED. It used to be an inline tuple inside `main`,
+# and the only thing guarding `cmd_register`'s place in it was a 24-process race test
+# — which was measured to notice its removal about 1 run in 10, because the children
+# were spawned in a loop and the interpreter start-up spread (median 1.26 ms between
+# arrivals) serialized them before the lock ever mattered. A structural assertion
+# catches the same mutation every time, and costs nothing.
+LEDGER_WRITERS = (cmd_register, cmd_resolve, cmd_sweep)
+
+
 def main(argv: list[str] | None = None) -> int:
     tokens = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
@@ -1137,7 +1285,7 @@ def main(argv: list[str] | None = None) -> int:
     # JSON file). Read-only commands (list) run lock-free — the atomic save_state
     # keeps their reads from tearing. The lock spans the whole mutator, so its
     # internal load_state/save_state are one indivisible critical section.
-    if args.func in (cmd_register, cmd_resolve, cmd_sweep):
+    if args.func in LEDGER_WRITERS:
         with _ledger_lock(_state_path(args)):
             return args.func(args)
     return args.func(args)
