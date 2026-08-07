@@ -1535,7 +1535,12 @@ def test_schema_section_blames_rebase_not_squash():
     assert "squash" not in header
     assert "rebase" in header
 
-    view = (ROOT / "docs" / "runbook" / "improvement_backlog.md").read_text(encoding="utf-8")
+    # RENDERED here, not read off disk. The view left version control
+    # (IMP-20260807-b9526c) and is produced on demand, so a machine that has never
+    # run `render` has no such file — and the property being pinned belongs to the
+    # GENERATOR, not to whether a local artifact happens to exist. Reading the file
+    # made this test's verdict depend on the reader's shell history.
+    view = BACKLOG.render_view(BACKLOG.DEFAULT_STORE, verified_against="test")
     # Header段 only: entry rows quote the old doctrine verbatim as evidence and
     # must not be caught by this.
     assert "squash" not in view.split("## IMP")[0]
