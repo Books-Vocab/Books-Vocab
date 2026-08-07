@@ -1737,7 +1737,13 @@ def test_reachable_from_main_but_not_head_still_counts_as_ok(tmp_path, monkeypat
     # The repo is passed, not stood in: cwd is no longer a way to aim this
     # resolver, because cwd was also a way to disarm it.
     state = BACKLOG.make_commit_state(repo)
-    assert state(behind) == "ok", "reachable from HEAD"
+    # `behind` is reachable from BOTH arms, so asserting `ok` on it does not
+    # witness the HEAD arm — under a mutation that drops the HEAD arm's `repo=`,
+    # the main arm answers for it and the label lies. Delete main first, and the
+    # only arm left is the one this line claims to be testing.
+    g("branch", "-D", "main")
+    assert BACKLOG.make_commit_state(repo)(behind) == "ok", "reachable from HEAD"
+    g("branch", "main", ahead)
     # The witness: unreachable from HEAD, reachable from main. Only the `or main`
     # branch can answer `ok` here, so removing it turns this red.
     assert state(ahead) == "ok", "reachable from main but not HEAD"
@@ -1793,8 +1799,11 @@ def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monke
     # The CLI deliberately has no --repo flag: `reanchor` repairs the ledger of
     # the checkout it ships in, and a flag would re-open the "which repo is this
     # answering about" question the cwd fix just closed. So the fixture repo is
-    # made to BE that checkout for this test.
-    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    # made to BE that checkout for this test — but only for the CLI half, below.
+    # Pointing GIT_REPO straight at `repo` was the first attempt and it QUIETLY
+    # destroyed this test's best property: with the fallback equal to the right
+    # answer, dropping `repo=` from any threading site became unobservable, and
+    # a mutation that this very test had already caught once survived green.
 
     store = repo / "store"
     entry = _add(store, detail="reanchor fixture")
@@ -1805,12 +1814,25 @@ def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monke
     _force_fixed_by(store, entry["id"], [orphan])
     assert BACKLOG.make_commit_state(repo)(orphan) == "orphan", "fixture did not orphan the commit"
 
+    # A decoy: any site that falls back to GIT_REPO instead of using the passed
+    # `repo` now answers from a repo where none of these shas exist.
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=decoy, check=True, capture_output=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit",
+                    "-q", "--allow-empty", "-m", "decoy"], cwd=decoy, check=True,
+                   capture_output=True)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", decoy)
+
     dry = BACKLOG.reanchor_store(store, repo=repo)
     assert dry["plan"][0]["moves"] == {orphan: landed[:9]}
     # A dry run must not touch the store; the whole point of the primitive is
     # that a wrong mapping is a wrong audit trail.
     assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]
 
+    # Only now does the fixture repo become "the checkout this ships in", which
+    # is the CLI's only frame of reference.
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
     assert BACKLOG.main(["reanchor", "--store", str(store), "--commit", "--json"]) == 0
     assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [landed[:9]]
     assert BACKLOG.validate_store(store) == []
@@ -2082,9 +2104,12 @@ def test_the_ratchet_blocks_closing_without_verifying(tmp_path, monkeypatch):
                          fixed_by=["abc1234"], resolution="done")
     assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 2
 
-    # Closing WITH an attributable verification does not.
+    # Closing WITH an attributable verification does not. All four fields:
+    # date + verifier alone used to be enough, which let `update` apply through
+    # the side door the two flags `verify` bundles.
     BACKLOG.update_entry(store, fresh["id"], verified_at="2026-08-07",
-                         verdict="CONFIRMED-FIXED", verified_by="agent:x")
+                         verdict="CONFIRMED-FIXED", verified_by="agent:x",
+                         verified_evidence="pytest ops/tests/test_backlog.py")
     assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0
 
 
@@ -2185,3 +2210,144 @@ def test_validate_says_the_check_did_not_run_rather_than_saying_ok(tmp_path, mon
     kinds = {p["kind"] for p in BACKLOG.validate_store(store)}
     assert "commit-state-unavailable" in kinds
     assert BACKLOG.main(["validate", "--store", str(store)]) == 2
+
+
+def test_asking_for_the_gate_and_the_rewrite_at_once_is_refused(tmp_path, monkeypatch):
+    """`--baseline` returned early, so it silently ATE `--baseline-check`.
+
+    Measured on a copy of the real ledger, one entry closed without
+    verification and outside the baseline:
+
+        validate --baseline-check              -> rc=2, 1 problems
+        validate --baseline-check --baseline   -> rc=0, "wrote base.txt (70 entries)"
+        validate --baseline-check              -> rc=0, 0 problems
+
+    So passing the gate flag produced a green light AND permanently widened the
+    watermark by one, with no line of output saying the requested check had not
+    run. Nothing machine-driven passes both (`worktree_orchestrate` hardcodes
+    the argv), which is exactly why only a human or an agent typing it would
+    ever be hurt by it.
+
+    The refusal is argparse's, matching the three sister lints
+    (ui_token / plain_deadzone / injection) and this file's own two precedents
+    — one of which (`--unverified` / `--stale`) was added by the same commit
+    that added these two flags, with the same argument: a quiet empty result
+    reads like a pass.
+    """
+    store = tmp_path / "s"
+    _add(store, detail="anything")
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(tmp_path / "b.txt"))
+    with pytest.raises(SystemExit) as exc:
+        BACKLOG.main(["validate", "--store", str(store), "--baseline-check", "--baseline"])
+    assert exc.value.code == 2
+
+
+def test_empty_evidence_is_not_evidence(tmp_path, monkeypatch):
+    """`required=True` proves the flag was typed, not that it says anything.
+
+    `verify ... --evidence ''` exited 0 and stored `''`, which satisfies the
+    ratchet and leaves the re-verification queue — the whole apparatus cleared
+    by a stamp that records no command at all.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="probe")
+    BACKLOG.update_entry(store, entry["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="landed")
+    for hollow in ("", "   ", "\t\n"):
+        assert BACKLOG.main(["verify", entry["id"], "--store", str(store),
+                             "--verdict", "CONFIRMED-FIXED", "--by", "agent:x",
+                             "--evidence", hollow, "--commit"]) == 64  # EX_USAGE, as every refusal here
+    stored = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert not stored.get("verified_evidence")
+
+
+def test_a_half_written_stamp_does_not_clear_the_ratchet(tmp_path, monkeypatch):
+    """`update --verified-at X --verified-by Y` walked straight through it.
+
+    The ratchet asked only for a date and a name, so the two flags `verify`
+    exists to bundle could still be applied piecemeal through `update`, landing
+    a closed entry with NO verdict and NO evidence that the gate then called
+    verified. Measured: rc=2 before, rc=0 after, verdict=None evidence=None.
+
+    Attributable has to mean the whole stamp — who, when, what they concluded,
+    and what they ran. Strengthening the predicate reds exactly the same 69
+    entries it did before (measured against the real store), so this costs no
+    new debt; it only closes the side door.
+    """
+    store = tmp_path / "s"
+    baseline = tmp_path / "b.txt"
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(baseline))
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda *a, **k: lambda sha: "ok")
+
+    entry = _add(store, detail="probe")
+    BACKLOG.update_entry(store, entry["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="landed")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline"]) == 0
+    fresh = _add(store, detail="closed today")
+    BACKLOG.update_entry(store, fresh["id"], status="fixed",
+                         fixed_by=["abc1234"], resolution="landed")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 2
+
+    # Half a stamp: the two fields the old predicate asked for, nothing else.
+    BACKLOG.update_entry(store, fresh["id"], verified_at="2026-08-07", verified_by="agent:x")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 2
+
+    # The whole stamp clears it.
+    BACKLOG.update_entry(store, fresh["id"], verdict="CONFIRMED-FIXED",
+                         verified_evidence="pytest ops/tests/test_backlog.py")
+    assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0
+
+
+def test_wont_fix_does_not_launder_a_broken_fixed_by(tmp_path):
+    """One status flip made an unresolvable sha disappear from the verdict.
+
+    `_check_traceability` only resolved shas under `status == "fixed"`, so
+    measured: fixed + fixed_by=['813356b1'] -> rc=2 fixed-by-unresolvable;
+    change nothing but the status to wont-fix -> rc=0, 0 problems. The sha is no
+    less broken for the entry having been closed a different way, and "flip the
+    status" is a repair anyone reaching for a green gate would find.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="probe")
+    _force_fixed_by(store, entry["id"], ["813356b1"])
+    path = store / f"{entry['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["status"] = "wont-fix"
+    payload["resolution"] = "decided against it after discussion"
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    kinds = {p["kind"] for p in BACKLOG.validate_store(
+        store, commit_state=lambda sha: "unknown")}
+    assert "fixed-by-unresolvable" in kinds
+
+
+def test_reanchor_searches_the_frame_the_detector_accepts(tmp_path, monkeypatch):
+    """The search frame was still narrower than the acceptance frame.
+
+    `make_commit_state` calls a sha `ok` when it is reachable from HEAD **or**
+    from main, and both halves are argued for. The repair walked HEAD alone —
+    first cut walked main alone and returned 8-of-8 UNMATCHED, so the frame was
+    moved rather than widened. The case left uncovered is the mirror image and
+    just as ordinary: HEAD parked behind main, which is what a worktree looks
+    like when the fix landed on main after the branch forked. A repair tool
+    whose search space is narrower than its own detector's acceptance can only
+    report `not guessed`, which reads like care rather than like looking in the
+    wrong place.
+    """
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+
+    def g(*args):
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True,
+                              text=True, check=True)
+    root_commit = g("rev-list", "--max-parents=0", "main").stdout.strip()
+    g("checkout", "-q", root_commit)  # detached, parked behind main
+    assert BACKLOG.make_commit_state(repo)(landed) == "ok", \
+        "fixture check: landed is reachable from main, which the detector accepts"
+
+    store = repo / "store"
+    entry = _add(store, detail="orphan whose replacement is on main only")
+    _force_fixed_by(store, entry["id"], [orphan])
+    result = BACKLOG.reanchor_store(store, repo=repo)
+    assert result["plan"][0]["moves"] == {orphan: landed[:9]}
