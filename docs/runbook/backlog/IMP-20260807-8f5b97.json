@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "_check_groom 的日期用 _DATE_RE 形狀檢查而非 _real_date 曆法檢查,所以 9999-99-99 與任何未來日期都能拿到梳理徽章——這正是 verified_at 那條已經修過的同一個洞,在隔壁欄位上原封不動。另兩個同族小洞:(1) verified_evidence 是唯一沒被納入雙邊 verdict-without-date 觸發條件的驗證欄位;(2) verify <不存在的 id> 會拋出未捕捉的 KeyError traceback,而 show / update 對同樣輸入印的是乾淨訊息。",
+  "id": "IMP-20260807-8f5b97",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

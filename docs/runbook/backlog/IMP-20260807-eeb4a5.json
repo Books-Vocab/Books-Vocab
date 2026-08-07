@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-07",
+  "detail": "kg.backlog.reanchor.v1 的 JSON 鍵集隨執行路徑變動:沒有孤兒時 early return 少一個 scanned 鍵。機器消費端因此得寫成 d.get('scanned') 而不能直接索引,而這正是本 repo 在 render --json 的 dropped 鍵上已經論證過並修掉的同一個形狀(『有事才出現的鍵等於把無聲換個通道再來一次』)。",
+  "id": "IMP-20260807-eeb4a5",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

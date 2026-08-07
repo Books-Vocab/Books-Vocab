@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "fixed-by-unresolvable 擋下無關編輯時不給任何修法提示。_merged_and_validated 的 hints 只覆蓋 fixed-by-orphaned 與 fixed-without-fixed-by,而該機制存在的理由(註解自陳)正是『一顆壞 sha 會擋下這條 entry 每一個不相關的編輯』。unresolvable 擋得更死——reanchor 對它無效(它不是 orphan)。實測 update <id> --severity high 只回裸 repr,沒有一行說出路是 --fixed-by <正確 sha>。違反同一個函式自己那句 Name the repair, not just the defect。",
+  "id": "IMP-20260807-61da70",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

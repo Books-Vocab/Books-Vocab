@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-07",
+  "detail": "三顆已落地 commit 的訊息裡有經稽核推翻的數字,因無法改寫歷史(改寫會把本批 fixed_by 的 sha 全部變成孤兒,正是本分支存在的理由)故記錄於此:(1) 6826af14d 的『16 個 archive + 3 個 reference 在用 frozen』在任何 commit 狀態都不成立,那是修到一半的工作目錄快照;(2) bb65a92cb 的『回填前 66:63 缺 fixed_by + 3 壞 verdict』用該 commit 自己的碼實跑是 65(63+2);(3) 3b0b98afc 的『99/159 根本沒有 verdict(62%)』拿的是另一個謂詞的數字,沒有 verdict 的是 101/159。另 ec2278e6d 的『160 筆全部被赦免』:160 確實是該 commit 當下的 store 大小,但赦免迴圈走的是 closed_without_verification(69 筆),數字為真而掛在錯的名詞上。教訓與 IMP-0047 同族:量測要連謂詞一起記,只記數字就無法在事後判斷它答的是哪個問題。",
+  "id": "IMP-20260807-adfc53",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "_cmd_reanchor 的人類輸出(非 --json)那條 window f-string 零測試覆蓋:兩條 reanchor 測試一條走 --json、一條直接呼叫 reanchor_store。那正是 if False 死碼(內含會 KeyError 的 result[chr(39)])能長期藏在那裡的原因,而刪掉死碼並沒有補回觀察者。同一段的 main_depth 與 window_exhausted 也沒有任何斷言(mutation 實測存活)——window_exhausted 正是那個『未回報的界限讀起來像全掃過了』論證所指的欄位,該論證沒有套用到自己的輸出上。",
+  "id": "IMP-20260807-544a85",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

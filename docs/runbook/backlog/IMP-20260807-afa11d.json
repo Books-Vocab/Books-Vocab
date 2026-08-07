@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "validate_store 是 repo-threading 鏈上唯一沒收 repo 參數的一環(硬編 make_commit_state()),所以 --store <另一個 checkout 的 ledger> 是一個『沒有正確叫法』的組態:2026-08-07 起它會對那些 sha 給出確定性的假紅,且原本『站到對的 checkout 去』那條逃生路已被移除(那正是解除 gate 的同一根槓桿,移除是對的)。修法是把 repo 一路穿進 validate_store,代價是六個 make_commit_state test double 都是零參數 lambda,實測會當場 13 failed(TypeError),需一併加寬。另:fixed-by-unresolvable / fixed-by-orphaned 兩個 problem 都沒有指出判決是對哪個 repo 下的——加一個 repo 鍵就能讓那個假紅自我解釋。",
+  "id": "IMP-20260807-afa11d",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}
