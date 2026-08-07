@@ -93,7 +93,12 @@ APP_ONLY_FIELDS = ("surface", "repro", "build")
 
 # Structured results of a re-verification sweep, extracted from the resolution
 # stamp. Optional on every entry; see extract_verdict_fields().
-VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
+VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of",
+                  # Who checked, and with what. A verdict nobody can attribute
+                  # cannot be judged, and one with no command attached cannot be
+                  # re-run — which is the difference between a re-verification
+                  # and a ritual (IMP-20260805-2834b2).
+                  "verified_by", "verified_evidence")
 
 # The one structured, machine-checkable answer to "what made this stop being
 # true". `resolution` stays authoritative as PROSE, but prose can only be read
@@ -247,6 +252,16 @@ def _check_vocabulary(payload: dict) -> list[dict]:
         _DUPLICATE_VERDICT_PREFIX
     ):
         problems.append({"kind": "bad-verdict", "value": verdict})
+
+    # Same argument as _check_groom's date rule: a verdict with no date cannot
+    # go stale, and a claim that never expires is a claim about code that has
+    # since moved. `verified_by` is deliberately NOT required here — 60 entries
+    # carry a date written before that field existed, and a check that reds all
+    # of them buys one loud day and then gets muted. `verify` writes it going
+    # forward; `list --unverified` keeps the remainder visible.
+    if verdict and not _DATE_RE.match(str(payload.get("verified_at") or "")):
+        problems.append({"kind": "verdict-without-date",
+                         "value": payload.get("verified_at")})
 
     return problems
 
@@ -703,6 +718,52 @@ def list_entries(
     if ungroomed:
         hits = [payload for payload in hits if not payload.get("groomed_by")]
     return sorted(hits, key=_sort_key)
+
+
+def select_entries(
+    store: Path,
+    *,
+    unverified: bool = False,
+    stale_days: int | None = None,
+    today: str | None = None,
+    **filters,
+) -> list[dict]:
+    """The re-verification queue: what has never been checked, and what has aged.
+
+    Two questions, deliberately not merged. `unverified` is "nobody has ever
+    re-derived this from current code"; `stale_days` is "somebody did, N days
+    ago". Collapsing them would let running the staleness query read as full
+    coverage while the never-looked-at set sits outside both answers — and
+    today that set is the larger one by far (99 of 159, of which 42 are
+    `fixed`).
+
+    No status filter is applied by default, and that is the point. The 2026-08-05
+    sweep covered unfinished entries only, and an audit trail rots *after*
+    closure: the branch gets deleted, the sha gets rebased. Every one of the
+    four broken audit trails found the next day was on a `fixed` entry.
+    """
+    hits = list_entries(store, **filters)
+    if unverified:
+        hits = [p for p in hits if not str(p.get("verified_at") or "").strip()]
+    if stale_days is not None:
+        cutoff = _days_before(today or _today(), stale_days)
+        # A never-verified entry is NOT stale — it belongs to `unverified`.
+        hits = [p for p in hits
+                if _DATE_RE.match(str(p.get("verified_at") or "")) and p["verified_at"] < cutoff]
+    return hits
+
+
+def _today() -> str:
+    import datetime
+
+    return datetime.date.today().isoformat()
+
+
+def _days_before(day: str, days: int) -> str:
+    import datetime
+
+    year, month, dom = (int(part) for part in day.split("-"))
+    return (datetime.date(year, month, dom) - datetime.timedelta(days=days)).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -1344,7 +1405,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument(
         "--groomed", action="store_true", help="only entries carrying a groom stamp"
     )
+    p_list.add_argument(
+        "--unverified", action="store_true",
+        help="only entries nobody has ever re-derived from current code. NOT filtered "
+             "by status on purpose: an audit trail rots after closure, and 42 of the "
+             "99 unverified entries today are already `fixed`",
+    )
+    p_list.add_argument(
+        "--stale", action="store_true",
+        help="only entries verified longer ago than --stale-days. Distinct from "
+             "--unverified: never-checked is not the same finding as checked-and-aged",
+    )
+    p_list.add_argument("--stale-days", type=int, default=30, metavar="N")
     p_list.add_argument("--json", action="store_true")
+
+    p_verify = sub.add_parser(
+        "verify",
+        help="record a re-verification: verdict + date + verifier + evidence, as one act "
+             "(DRY-RUN by default, --commit to land)",
+    )
+    p_verify.add_argument("id")
+    _add_store_arg(p_verify)
+    p_verify.add_argument("--verdict", required=True,
+                          help=f"one of {', '.join(VERDICTS)} or DUPLICATE-OF-<id>")
+    p_verify.add_argument("--by", required=True,
+                          help="what did the checking, e.g. agent:platform-steward")
+    p_verify.add_argument("--evidence",
+                          help="the command you ran; a verdict nobody can re-run is a claim")
+    p_verify.add_argument("--at", help="YYYY-MM-DD (default: today)")
+    p_verify.add_argument("--status", choices=STATUSES,
+                          help="change status in the same act, when the check changed the answer")
+    p_verify.add_argument("--commit", action="store_true")
+    p_verify.add_argument("--json", action="store_true")
 
     p_show = sub.add_parser("show", help="show one entry")
     _add_store_arg(p_show)
@@ -1398,6 +1490,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument(
         "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
     )
+    # Reachable from `update` as well as `verify`, because the bidirectional
+    # invariant (every mutable field has a flag) has no escape hatch — an
+    # exemption list is how a field becomes unreachable without anyone noticing.
+    # `verify` is the ergonomic path that sets the whole stamp at once.
+    p_update.add_argument("--verified-by", dest="verified_by",
+                          help="what did the checking; prefer `verify` which sets the whole stamp")
+    p_update.add_argument("--verified-evidence", dest="verified_evidence",
+                          help="the command behind the verdict")
     p_update.add_argument(
         "--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
         help="commit(s) that made the defect stop being true; required by status=fixed. "
@@ -1494,9 +1594,51 @@ def _cmd_add(args) -> int:
     return 0
 
 
+def _cmd_verify(args) -> int:
+    """Record a re-verification as one act, so it cannot land half-written.
+
+    Before this, the same thing was done with `update --verdict --verified-at`,
+    two independent flags either of which could be forgotten — and 60 entries in
+    the store carry a date with no attribution, which is what forgetting looks
+    like. Here the verdict, the date, the verifier and the evidence go in
+    together or not at all.
+    """
+    changes = {
+        "verdict": args.verdict,
+        "verified_at": args.at or _today(),
+        "verified_by": args.by,
+    }
+    if args.evidence:
+        changes["verified_evidence"] = args.evidence
+    if args.status:
+        changes["status"] = args.status
+
+    current = load_entry(args.store, args.id)
+    merged = _merged_and_validated(current, changes, args.id)  # raises on refusal
+    if not args.commit:
+        if args.json:
+            print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "dry-run",
+                              "id": args.id, "changes": changes}, ensure_ascii=False))
+        else:
+            print(f"[dry-run] {args.id}: " + ", ".join(f"{k}={v!r}" for k, v in changes.items()))
+            print("  (dry-run — pass --commit to land)")
+        return 0
+
+    _write_atomic(entry_path(args.store, args.id), _dumps(merged))
+    if args.json:
+        print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "commit",
+                          "id": args.id, "changes": changes}, ensure_ascii=False))
+    else:
+        print(f"[commit] {args.id} verified {changes['verified_at']} "
+              f"by {args.by}: {args.verdict}")
+    return 0
+
+
 def _cmd_list(args) -> int:
-    entries = list_entries(
+    entries = select_entries(
         args.store,
+        unverified=getattr(args, "unverified", False),
+        stale_days=args.stale_days if getattr(args, "stale", False) else None,
         status=args.status,
         stream=args.stream,
         severity=args.severity,
@@ -1970,6 +2112,7 @@ def main(argv: list[str] | None = None) -> int:
         "import": _cmd_import,
         "render": _cmd_render,
         "reanchor": _cmd_reanchor,
+        "verify": _cmd_verify,
     }
     try:
         return handlers[args.command](args)
