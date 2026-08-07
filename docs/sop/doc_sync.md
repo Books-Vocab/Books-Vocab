@@ -23,7 +23,7 @@ verified_against: 0c9e3b7c
 3. 每份目標 doc:`grep` 舊命令/欄位/旗標/模組名清單,凡引用到被改掉的舊狀態 → 更新成新狀態。**不臆造**:找不到對應 doc 或拿不準就如實回報,別硬寫。
 4. **reference / contract / policy** 類活文檔:更新內容後把 frontmatter `verified_against` 改成被同步的 code commit(短 hash)。
    **判準是 `origin/main` 可達,不是「main 可達」**——本 repo 的拓樸是**本地 main 為主幹、超前 origin**(`ops/worktree_orchestrate.py` 的 cutover 只前進本地 main,推 origin 是另一個刻意動作),所以「local main 可達」**不蘊含**「origin/main 可達」。CI 解析的是後者,IMP-0038 那批 orphan 錨點正是卡在這個差上:本機 `docs_lint` 全綠、CI 全紅。
-   **不變式(構造,不是紀律)**:錨點必須是一個**最終會進 origin/main 且 SHA 不被改寫**的 commit。與 `origin/main` 的 merge-base 永遠滿足;自己分支的 HEAD 只在 ff 拓樸下滿足,**squash merge 下必炸**(squash 會鑄出新 SHA,分支上每個 sha 都變 orphan)。
+   **不變式(構造,不是紀律)**:錨點必須是一個**最終會進 origin/main 且 SHA 不被改寫**的 commit。與 `origin/main` 的 merge-base 永遠滿足;**自己分支的 HEAD 不滿足**——理由**不是** squash(本 repo 不 squash:最後一個 merge commit 是 `0611f3cac`(2026-07-09),其後全部單親,PR 合併入口已於 `90e57ba7e` 刪除),而是 `cmd_cutover` 在 `merge --ff-only` **之前**先對分支跑 `git rebase <本地 main>`,rebase 把分支上每個 sha 改寫成 orphan。分支已貼著本地 main 時 rebase 是 no-op、sha 得以保留,但那是常態不是保證,**不可依賴**。
    **已知代價,接受之**:錨在 base 意味著錨點不含本次改動。這是規則的內在性質、不是個案債,**不要為它開手動 re-bump 待辦**——那正是 IMP-0038 已經失敗過一次的方案(沒人記得做)。
    **這條目前沒有機器守衛**:`ops/docs_lint.sh` 的可達性判準是 **HEAD 可達**(`:418-421`),所以分支本地必綠、接不住這條。把判準改成 `origin/main` 可達是 IMP-0038 的出場條件(改完才能把 group 移回 `LINUX_GROUPS`)。在那之前這裡靠自律,寫入前自己跑一次:
    ```

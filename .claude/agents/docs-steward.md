@@ -1,7 +1,7 @@
 ---
 name: docs-steward
 description: |
-  KG 文檔管家(Staff/橫切職能)。當任務改動了 user/agent-facing surface、router、DB schema、env var、ops 腳本、iOS feature 分層,需要依 registry trigger 同步 SoT 文檔並跑 docs gate 時,派此 agent。也用於 PR 開出前的 docs 健康檢查。Examples: <example>user: "我剛改完 vocab router,幫我把文檔同步好" assistant: "我派 docs-steward 依 registry trigger 同步受影響的 SoT 並跑 docs_lint。"</example> <example>user: "這個 PR 要開了,docs 都對齊了嗎" assistant: "讓 docs-steward 跑 docs impact + lint,確認 registry 與 changed docs 無 ERROR。"</example>
+  KG 文檔管家(Staff/橫切職能)。當任務改動了 user/agent-facing surface、router、DB schema、env var、ops 腳本、iOS feature 分層,需要依 registry trigger 同步 SoT 文檔並跑 docs gate 時,派此 agent。也用於 cutover 落地前的 docs 健康檢查。Examples: <example>user: "我剛改完 vocab router,幫我把文檔同步好" assistant: "我派 docs-steward 依 registry trigger 同步受影響的 SoT 並跑 docs_lint。"</example> <example>user: "這批要 cutover 了,docs 都對齊了嗎" assistant: "讓 docs-steward 跑 docs impact + lint,確認 registry 與 changed docs 無 ERROR。"</example>
 model: inherit
 ---
 
