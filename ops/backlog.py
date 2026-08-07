@@ -80,7 +80,34 @@ CATEGORIES = {
 }
 
 SEVERITIES = ("low", "med", "high")
-STATUSES = ("open", "triaged", "in-progress", "fixed", "wont-fix")
+# `in-progress` is GONE, and it is derived now — see `held_tickets()`.
+#
+# It never had any mechanical behaviour of its own: every rule in
+# `_check_traceability` that named `triaged` named `in-progress` too, in the same
+# set. Two status values, one set of obligations.
+#
+# What killed it is that the claim plane made the same fact available for real. The
+# worktree ledger records which worktree holds which ticket and when it claimed it,
+# so "somebody is working on this" is DERIVABLE — and a stored copy of a derivable
+# fact is a copy that drifts. Measured at the moment this landed: the store had
+# exactly one `in-progress` entry (IMP-20260805-953840) and the ledger's only active
+# claim was on a completely different ticket. Nothing reconciled them, and nothing
+# ever would have: `cmd_resolve` changes the ledger record and never looks at the
+# entry, so an abandoned worktree leaves its ticket `in-progress` forever.
+STATUSES = ("open", "triaged", "fixed", "wont-fix")
+
+# Accepted on READ so old entries and old branches still load, refused on WRITE.
+# A hard removal would make every pre-existing `in-progress` entry unloadable, which
+# turns a cleanup into an outage; `validate` names it and says where to go instead.
+RETIRED_STATUSES = {"in-progress": "triaged"}
+
+# What the LEGACY PARSER will recognise as a status. Wider than STATUSES on purpose:
+# `_anchors_ok` uses the closed vocabularies to tell a data row from prose, and the
+# frozen 8-column fixture is historical text that still contains retired values.
+# Narrowing it turned three real rows into `malformed-row` findings — entries that
+# would have disappeared on import, which is precisely the loss the migration's
+# fidelity gate exists to catch. `import_legacy` maps them forward on the way in.
+PARSEABLE_STATUSES = tuple(STATUSES) + tuple(RETIRED_STATUSES)
 
 # The only status a staged closure can carry, and not a default the caller may
 # override — see `_cmd_stage`. A wave exists because the landing commit does not
@@ -409,8 +436,18 @@ def _check_vocabulary(payload: dict) -> list[dict]:
 
     if payload.get("severity") not in SEVERITIES:
         problems.append({"kind": "bad-severity", "value": payload.get("severity")})
-    if payload.get("status") not in STATUSES:
-        problems.append({"kind": "bad-status", "value": payload.get("status")})
+    status = payload.get("status")
+    if status in RETIRED_STATUSES:
+        # Named separately from `bad-status`, because "you used a value that never
+        # existed" and "you used a value that was retired, and here is what replaced
+        # it" are different problems with different fixes. A generic bad-status here
+        # would send the reader hunting for a typo.
+        problems.append({"kind": "retired-status", "value": status,
+                         "use_instead": RETIRED_STATUSES[status],
+                         "why": "who is working on this is derived from the worktree "
+                                "claim ledger now — a stored copy drifts"})
+    elif status not in STATUSES:
+        problems.append({"kind": "bad-status", "value": status})
 
     # VERDICTS was declared a closed vocabulary but only ever enforced inside
     # extract_verdict_fields(), i.e. on the way IN from a resolution stamp.
@@ -448,7 +485,7 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
         names the commits, and only true if those commits are still reachable.
       * `open` claims nothing but "filed". It is an honest state and carries no
         obligation — see the next-action rule below.
-      * `triaged` / `in-progress` claim someone looked, so they owe a next action.
+      * `triaged` claims someone looked, so it owes a next action.
       * `wont-fix` claims a decision, which is a reason, not a hash.
 
     `commit_state` is injected so this stays a pure function of its inputs: the
@@ -487,14 +524,14 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
                 # Telling that reader to run `reanchor` sends them hunting a
                 # rebase that never happened.
                 problems.append({"kind": "fixed-by-unresolvable", "sha": sha})
-    elif status in ("open", "triaged", "in-progress"):
+    elif status in ("open", "triaged"):
         if fixed_by:
             # An unfinished entry pointing at a landing commit is the status
             # lying about itself, and it is the shape that lets closed work look
             # open forever.
             problems.append({"kind": "fixed-by-on-unfinished-entry", "shas": fixed_by})
 
-    if status in ("triaged", "in-progress") and not _next_action(payload):
+    if status == "triaged" and not _next_action(payload):
         problems.append({"kind": "no-next-action", "status": status})
 
     if status == "wont-fix":
@@ -1189,7 +1226,13 @@ def _anchors_ok(cells: list[str]) -> bool:
     return (
         cells[3] in known_categories
         and cells[4] in SEVERITIES
-        and cells[5] in STATUSES
+        # PARSEABLE_STATUSES, not STATUSES: this decides "is this line a data row",
+        # and the legacy table is FROZEN historical text. Narrowing the vocabulary
+        # made three `in-progress` rows in the shipped fixture stop looking like
+        # rows at all — reported as `malformed-row`, i.e. three entries that would
+        # simply vanish on import. Reading old data and writing new data are
+        # different questions and this is the first one.
+        and cells[5] in PARSEABLE_STATUSES
     )
 
 
@@ -1204,7 +1247,7 @@ def _app_anchors_ok(cells: list[str]) -> bool:
     return (
         cells[4] in CATEGORIES["APP"]
         and cells[5] in SEVERITIES
-        and cells[6] in STATUSES
+        and cells[6] in PARSEABLE_STATUSES
     )
 
 
@@ -1491,6 +1534,16 @@ def import_legacy(text: str, store: Path) -> dict:
     imported = 0
 
     for row in rows:
+        # Map retired statuses FORWARD. A migration is exactly where that belongs:
+        # the table is frozen text and will always contain values the current
+        # vocabulary no longer accepts, and the alternative — refusing the row —
+        # loses an entry. Reported, not silent: the caller sees what was rewritten.
+        if row.get("status") in RETIRED_STATUSES:
+            problems.append({"kind": "status-migrated", "id": row["id"],
+                             "from": row["status"],
+                             "to": RETIRED_STATUSES[row["status"]]})
+            row["status"] = RETIRED_STATUSES[row["status"]]
+
         verdict_fields, misses = extract_verdict_fields(row["resolution"])
         for miss in misses:
             problems.append({"kind": "stamp-not-read", "id": row["id"], **miss})
@@ -1841,6 +1894,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--groomed", action="store_true", help="only entries carrying a groom stamp"
     )
     p_list.add_argument(
+        "--held", action="store_true",
+        help="only tickets a worktree on THIS MACHINE currently claims (derived from "
+             "the worktree ledger; there is no stored in-progress status any more)"
+    )
+    p_list.add_argument(
         "--acceptance-manual", dest="acceptance_manual", action="store_true",
         help="only entries that DECLARE no command can prove their acceptance — the "
              "set `anchor` cannot machine-check, kept countable on purpose"
@@ -2176,6 +2234,42 @@ def _queue_path(explicit: Path | None = None) -> Path:
     if explicit is not None:
         return Path(explicit)
     return _queue_anchor() / ".cache" / "backlog_anchor_queue.jsonl"
+
+
+def held_tickets(anchor: Path | None = None) -> dict[str, dict]:
+    """Which tickets are claimed right now, from the worktree ledger. DERIVED.
+
+    This replaces the stored `in-progress` status. The ledger already records the
+    claim — branch, path, timestamp — and it is the side that acts: `open --backlog`
+    takes the claim, `resolve` and `sweep` release it. A second copy in the entry had
+    no writer on the release path at all, so an abandoned worktree left its ticket
+    marked in-progress forever, and nothing would ever have noticed.
+
+    **PER-MACHINE, and callers must say so.** The ledger lives under `.cache/`, is
+    gitignored, and describes THIS checkout's worktrees. On another machine the
+    answer is legitimately empty — which means "nobody here is on it", not "nobody
+    is on it". Rendering that as a bare blank would be the same false confidence the
+    stored status produced, one layer down; `_cmd_list` labels the column instead.
+
+    Fail-soft by design: no ledger, unreadable ledger, or a ledger from an older
+    schema all yield {}. This is a convenience column on a read command, and a
+    ledger problem must not make the backlog unreadable.
+    """
+    path = (anchor or _queue_anchor()) / ".cache" / "worktree_registry.json"
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        records = state["records"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return {}
+    held: dict[str, dict] = {}
+    for rec in records:
+        if not isinstance(rec, dict) or rec.get("status") != "active":
+            continue
+        for ticket in rec.get("backlog") or []:
+            held[str(ticket)] = {"branch": rec.get("branch"),
+                                 "path": rec.get("path"),
+                                 "claimed_at": rec.get("claimed_at")}
+    return held
 
 
 def _queue_anchor() -> Path:
@@ -2600,23 +2694,49 @@ def _cmd_list(args) -> int:
         ungroomed=args.ungroomed,
         acceptance_manual=args.acceptance_manual,
     )
+    # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
+    # replaces had no writer on the release path, so it could only ever accumulate.
+    held = held_tickets()
+    if getattr(args, "held", False):
+        entries = [e for e in entries if e["id"] in held]
+
     if args.json:
-        print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries}, ensure_ascii=False))
+        print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries,
+                          # Alongside the entries rather than merged into them: it is
+                          # a fact about THIS machine's worktrees, not about the
+                          # ledger, and folding it into the entry would let a caller
+                          # persist it back as if the store owned it.
+                          "held": held, "held_scope": "this machine's worktrees only"},
+                         ensure_ascii=False))
         return 0
     for entry in entries:
+        claim = held.get(entry["id"])
+        mark = f"[{claim['branch']}]" if claim else ""
         print(
-            f"{entry['id']:<24} {entry['status']:<12} {entry['severity']:<5} "
-            f"{entry['category']:<12} {entry['detail'][:70]}"
+            f"{entry['id']:<24} {entry['status']:<10} {entry['severity']:<5} "
+            f"{entry['category']:<12} {mark:<26} {entry['detail'][:50]}"
         )
-    print(f"\n{len(entries)} entries")
+    print(f"\n{len(entries)} entries; {len(held)} ticket(s) claimed by a worktree "
+          f"ON THIS MACHINE (the ledger is per-machine — elsewhere this column is "
+          f"empty even when someone is working)")
     return 0
 
 
 def _cmd_show(args) -> int:
     entry = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
+    # The one question an agent about to pick this up actually has, and the reason
+    # it is answered HERE rather than stored on the entry: `show` is where somebody
+    # decides to start, and a claim read at that moment is current by construction.
+    claim = held_tickets().get(args.id)
     if args.json:
-        print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry}, ensure_ascii=False))
+        print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry,
+                          "held": claim,
+                          "held_scope": "this machine's worktrees only"},
+                         ensure_ascii=False))
         return 0
+    if claim:
+        print(f"⚠ claimed by {claim['branch']} since {claim['claimed_at']} "
+              f"({claim['path']}) — this machine's ledger only\n")
     for field in SHOW_FIELD_ORDER:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")

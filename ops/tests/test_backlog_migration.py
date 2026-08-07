@@ -875,3 +875,37 @@ def test_a_stamp_that_states_no_cost_at_all_is_reported(tmp_path):
     # and reporting those would bury the real ones.
     _fields, misses = BACKLOG.extract_verdict_fields("`8aeb9e54b` 修好了")
     assert misses == []
+
+
+def test_a_retired_status_is_still_a_row_and_gets_mapped_forward(tmp_path):
+    """Narrowing the vocabulary broke the READER, and the failure was silent loss.
+
+    `_anchors_ok` uses the closed vocabularies to decide "is this line a data row".
+    When `in-progress` was retired (IMP-20260808-439594), the three rows carrying it
+    in the frozen 8-column fixture stopped looking like rows at all — reported as
+    `malformed-row`, i.e. three entries that would have vanished on import. The
+    migration's own fidelity gate caught it, which is what that gate is for.
+
+    Reading old data and writing new data are different questions. `PARSEABLE_
+    STATUSES` answers the first, `STATUSES` the second, and `import_legacy` maps
+    between them — reporting each rewrite rather than doing it quietly, because a
+    migration that changes values without saying so is indistinguishable from one
+    that corrupts them.
+    """
+    table = (
+        "| id | date | source | category | severity | status | detail | resolution |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        "| IMP-0900 | 2026-01-01 | t | tool | low | in-progress | a thing | — next: x |\n"
+    )
+    rows, problems = BACKLOG.parse_legacy_table(table)
+    assert [p for p in problems if p["kind"] == "malformed-row"] == [], (
+        "a retired status made the row unrecognisable — that is entry loss")
+    assert [r["status"] for r in rows] == ["in-progress"], "the parser must not rewrite"
+
+    store = tmp_path / "s"
+    result = BACKLOG.import_legacy(table, store)
+    assert result["imported"] == 1
+    assert BACKLOG.load_entry(store, "IMP-0900")["status"] == "triaged"
+    migrated = [p for p in result["problems"] if p["kind"] == "status-migrated"]
+    assert migrated and migrated[0]["from"] == "in-progress" and migrated[0]["to"] == "triaged", (
+        "the rewrite must be reported; a silent one cannot be told from corruption")

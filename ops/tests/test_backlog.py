@@ -611,7 +611,7 @@ def test_update_does_not_change_the_id(tmp_path):
     store = tmp_path / "backlog"
     entry = _add(store, status="open")
 
-    BACKLOG.update_entry(store, entry["id"], status="in-progress",
+    BACKLOG.update_entry(store, entry["id"], status="triaged",
                          plan="claiming a status that says someone looked owes a next action")
 
     assert BACKLOG.load_entry(store, entry["id"])["id"] == entry["id"]
@@ -1650,7 +1650,13 @@ def test_fixed_by_orphaned_and_unresolvable_are_distinct_problems():
 
 
 def test_unfinished_entry_must_not_carry_fixed_by():
-    for status in ("open", "triaged", "in-progress"):
+    # DERIVED from the live vocabulary, not a hand-copied list. The literal version
+    # named `in-progress`, which was retired — a hardcoded list of statuses goes
+    # stale in exactly the direction that stops testing anything, because a removed
+    # status silently drops out of coverage while the test keeps passing on the rest.
+    unfinished = [s for s in BACKLOG.STATUSES if s not in ("fixed", "wont-fix")]
+    assert unfinished, "every status is terminal — this test now covers nothing"
+    for status in unfinished:
         entry = _payload(status=status, plan="x", acceptance="y")
         entry["fixed_by"] = ["aaaaaaa"]
         kinds = {p["kind"] for p in BACKLOG.validate_entry(
@@ -1667,7 +1673,7 @@ def test_triaged_needs_a_next_action_but_open_does_not():
     dash-prefixed next action) had decayed as filing volume grew. A gate that
     reds 40 entries at once gets muted, and forcing a next action onto an
     untriaged entry buys a fabricated plan, which is worse than an empty one.
-    `triaged` and `in-progress` are different: both CLAIM someone looked.
+    `triaged` is different: it CLAIMS someone looked.
     """
     bare = _payload(status="open", resolution="")
     assert BACKLOG.validate_entry(bare, commit_state=_traced({})) == []
@@ -3435,3 +3441,115 @@ def test_the_acceptance_expectation_is_shape_checked(tmp_path):
     kinds = [p["kind"] for p in BACKLOG.validate_entry(orphan)]
     assert "acceptance-expect-rc-without-cmd" in kinds, (
         "an expectation with nothing to expect it of would never be read")
+
+
+# --------------------------------------------------------------------------
+# 19. in-progress is derived, not stored (IMP-20260808-439594)
+# --------------------------------------------------------------------------
+
+def _ledger(anchor: Path, *records) -> Path:
+    (anchor / ".cache").mkdir(parents=True, exist_ok=True)
+    path = anchor / ".cache" / "worktree_registry.json"
+    path.write_text(json.dumps({"records": list(records)}), encoding="utf-8")
+    return path
+
+
+def test_in_progress_is_retired_and_the_refusal_says_what_replaced_it(tmp_path):
+    """It never had mechanical behaviour of its own.
+
+    Every rule in `_check_traceability` that named `triaged` named `in-progress`
+    too, in the same set — two status values, one set of obligations. What removed
+    it is that the claim plane made the same fact real: the ledger records which
+    worktree holds which ticket, so "somebody is working on this" is derivable, and
+    a stored copy of a derivable fact is a copy that drifts.
+
+    Named separately from `bad-status`: "a value that never existed" and "a value
+    that was retired, and here is its replacement" are different problems with
+    different fixes, and a generic refusal would send the reader hunting a typo.
+    """
+    assert "in-progress" not in BACKLOG.STATUSES
+    store = tmp_path / "s"
+    entry = _add(store)
+    stale = {**BACKLOG.load_entry(store, entry["id"]), "status": "in-progress"}
+
+    problems = BACKLOG.validate_entry(stale)
+    retired = [p for p in problems if p["kind"] == "retired-status"]
+    assert retired, [p["kind"] for p in problems]
+    assert retired[0]["use_instead"] == "triaged"
+    assert not [p for p in problems if p["kind"] == "bad-status"], (
+        "a retired value must not ALSO read as a typo")
+
+    # still LOADABLE — a hard removal turns a cleanup into an outage for every
+    # pre-existing entry and every branch that predates this
+    assert stale["status"] == "in-progress"
+
+
+def test_a_released_claim_disappears_from_the_derived_view(tmp_path):
+    """The case the stored status could never handle, and the reason for the change.
+
+    `cmd_resolve` changes the ledger record's status and never looks at the entry,
+    so an abandoned worktree left its ticket `in-progress` forever with nothing to
+    notice. Measured the day this landed: the store's single `in-progress` entry
+    named an owner and a branch (`debug/ios-lock-wait-heartbeat`) that no longer
+    existed, while the ledger's only active claim was on a completely different
+    ticket. Derivation makes that state unrepresentable.
+    """
+    anchor = tmp_path / "repo"
+    active = {"status": "active", "branch": "feat/x", "path": "/wt/x",
+              "backlog": ["IMP-0001"], "claimed_at": "2026-08-08T00:00:00Z"}
+    _ledger(anchor, active)
+    assert set(BACKLOG.held_tickets(anchor)) == {"IMP-0001"}
+
+    _ledger(anchor, {**active, "status": "merged"})
+    assert BACKLOG.held_tickets(anchor) == {}, (
+        "a resolved worktree still showed as holding its ticket")
+
+
+def test_the_derived_claim_is_fail_soft(tmp_path):
+    """A ledger problem must not make the backlog unreadable.
+
+    This is a convenience column on a READ command. No ledger (a fresh clone),
+    a corrupt one, and one from an older schema all mean the same thing to a
+    reader — "cannot say" — and none of them is a reason to refuse to list.
+    """
+    anchor = tmp_path / "repo"
+    (anchor / ".cache").mkdir(parents=True)
+    assert BACKLOG.held_tickets(anchor) == {}                    # missing
+
+    (anchor / ".cache" / "worktree_registry.json").write_text("{oh no", encoding="utf-8")
+    assert BACKLOG.held_tickets(anchor) == {}                    # corrupt
+
+    (anchor / ".cache" / "worktree_registry.json").write_text('{"v": 1}', encoding="utf-8")
+    assert BACKLOG.held_tickets(anchor) == {}                    # no `records`
+
+    _ledger(anchor, {"status": "active", "branch": "b", "backlog": None})
+    assert BACKLOG.held_tickets(anchor) == {}                    # active, claims nothing
+
+
+def test_list_says_the_claim_column_is_per_machine(tmp_path, capsys, monkeypatch):
+    """Empty here means "nobody on THIS machine", not "nobody".
+
+    The ledger is gitignored and describes this checkout's worktrees. Rendering an
+    empty column without saying so would rebuild the same false confidence the
+    stored status produced, one layer down — an agent on the other machine would
+    read "free" and take a ticket somebody is already holding.
+    """
+    store = tmp_path / "s"
+    held_entry, free_entry = _add(store, detail="someone has it"), _add(store, detail="free")
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {
+        held_entry["id"]: {"branch": "feat/x", "path": "/wt/x",
+                           "claimed_at": "2026-08-08T00:00:00Z"}})
+
+    assert BACKLOG.main(["list", "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    assert "feat/x" in human, "the holder's branch is not shown"
+    assert "per-machine" in human or "THIS MACHINE" in human, (
+        "an empty column that does not state its scope reads as 'nobody is on it'")
+
+    assert BACKLOG.main(["list", "--store", str(store), "--held", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [e["id"] for e in payload["entries"]] == [held_entry["id"]]
+    assert payload["held_scope"] == "this machine's worktrees only"
+    # alongside the entries, NOT merged into them: a caller that round-tripped this
+    # into the store would be re-inventing the field this change removed
+    assert "held" not in payload["entries"][0]
