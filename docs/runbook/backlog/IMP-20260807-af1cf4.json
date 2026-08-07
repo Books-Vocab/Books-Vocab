@@ -1,0 +1,18 @@
+{
+  "acceptance": "`./ops/docs_lint.sh --registry` 綠；把 check 的 `--out` 指到別的路徑必須轉紅（防複製貼上）；把腳本的 \"is up to date.\" 訊息改寫一個字，gate 必須**仍然綠**——今天會紅，那是負控。",
+  "category": "tool",
+  "cost": "S",
+  "date": "2026-08-07",
+  "detail": "`docs/registry.yml` 的 `generated.ios_baseline` 自己在註解裡寫著這件事並標「不在本次 scope」：因為 `ops/gen_ios_baseline.sh` 沒有 `--out`（產物路徑寫死在腳本裡，多給參數 exit 2），它的 `check` 只能寫成 `./ops/gen_ios_baseline.sh --check | grep -q \"docs/snapshot/ios_baseline.md is up to date.\"`——用**成功訊息的字面用字**當契約。相鄰的 `generated.improvement_backlog` 則能寫成 `render --check --out <path>`，path 是命令真正的比對目標。\n\n差別在於：前者只要有人潤飾那句成功訊息的措辭（一次無害的文案改動），gate 就會在產物完全正確的情況下轉紅，而錯誤訊息會指向 baseline 而不是指向措辭。更根本的問題是：一個寫在註解裡的 TODO 沒有 owner、不會被 triage、也不會出現在任何清單上——這就是它從 2026-08-05 到今天的狀態。",
+  "fix_site": "ops/gen_ios_baseline.sh / docs/registry.yml `generated.ios_baseline`",
+  "id": "IMP-20260807-af1cf4",
+  "plan": "給 `ops/gen_ios_baseline.sh` 一個 `--out <path>`（預設維持現值），`--check` 與 `--write` 都吃它；再把 registry 的 check 改成 `./ops/gen_ios_baseline.sh --check --out docs/snapshot/ios_baseline.md`，形狀與 improvement_backlog 收斂一致，同時刪掉那段註解 TODO。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "registry 註解裡的無主 TODO",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}

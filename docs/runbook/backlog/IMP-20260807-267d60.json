@@ -1,0 +1,18 @@
+{
+  "acceptance": "用兩條刻意衝突於同一檔的假分支跑 `integrate`：必須在第二條停下並**具名**衝突檔；`--continue` 後產出單一 gate verdict；且該 verdict 綁的是整合後的 HEAD 而非任一原分支的 HEAD。",
+  "category": "tool",
+  "cost": "L",
+  "date": "2026-08-07",
+  "detail": "2026-08-06 的 11 條分支批次收攏證明了「整合」是一個有固定形狀的動作（fork 自本地 main → cherry-pick 而非 merge → 一次解完衝突 → 合併後才 gate → 一次 cutover），而 `ops/worktree_orchestrate.py` 沒有任何原語對應它。今天的落地方式是把這個形狀寫進 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段與 `docs/sop/agent_org.md`「交回狀態」段——也就是**執行力 `[prompt]`**，靠下一個 agent 讀到並照做。\n\n同一批次裡實際發生過的事說明散文不夠：整合後對六筆修補派 review，找出**五筆 BLOCK**，而每一筆在它自己的分支 gate 下都是綠的；若各自 cutover，五筆全部會進 main。`resolve` 的 landed-floor 也擋不住這個形狀——它擋的是「未 land 就拆除」，不是「未整合就 land」。",
+  "fix_site": "ops/worktree_orchestrate.py",
+  "id": "IMP-20260807-267d60",
+  "plan": "加 `integrate --branches <b1> <b2> …`：① 從本地 main 開一棵整合樹；② 依序 cherry-pick 各分支的 commit（**非 merge**，避免把 N 個分支的 base 差異一起帶進來）；③ 衝突停下並具名回報，解完 `--continue`；④ 對合併結果跑一次既有的 `gate`；⑤ 非 block 才允許 cutover。前四步全部是既有原語的組合，不在 integrate 內新增任何 pass/fail 判斷（守住「不重造 gate」硬邊界）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "2026-08-06 十一條分支批次整合的復盤",
+  "status": "open",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-OPEN",
+  "verified_at": "2026-08-07"
+}
