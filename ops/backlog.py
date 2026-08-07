@@ -56,6 +56,10 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# The checkout whose history this ledger's `fixed_by` shas name. Separate from
+# ROOT because ROOT is also the anchor for file layout and help text, and only
+# this one is a question about git.
+GIT_REPO = ROOT
 DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 
@@ -420,11 +424,17 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
     return problems
 
 
-def _git(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], capture_output=True, text=True)
+def _git(*args: str, repo: Path | None = None) -> subprocess.CompletedProcess:
+    # The repo is a PARAMETER, defaulting to ROOT — never the caller's cwd. The
+    # shas in this ledger name commits in the checkout the ledger lives in, and
+    # no other repo can answer for them. Inheriting cwd made one command
+    # fail-open outside a repo and false-red inside a foreign one; it was also
+    # the only way tests could aim the resolver at a fixture repo, which is why
+    # the fix is an argument rather than a hard-coded ROOT.
+    return subprocess.run(["git", *args], cwd=repo or GIT_REPO, capture_output=True, text=True)
 
 
-def make_commit_state():
+def make_commit_state(repo: Path | None = None):
     """Resolve a sha to `ok` / `orphan` / `unknown`, or None outside a repo.
 
     `ok` means reachable from HEAD **or** from `main`. Neither alone works:
@@ -440,19 +450,19 @@ def make_commit_state():
     repo, so the caller can say the check did not run instead of printing a
     clean bill of health it never earned.
     """
-    if _git("rev-parse", "--git-dir").returncode != 0:
+    if _git("rev-parse", "--git-dir", repo=repo).returncode != 0:
         return None
-    has_main = _git("rev-parse", "--verify", "--quiet", "main^{commit}").returncode == 0
+    has_main = _git("rev-parse", "--verify", "--quiet", "main^{commit}", repo=repo).returncode == 0
     cache: dict[str, str] = {}
 
     def state(sha: str) -> str:
         if sha in cache:
             return cache[sha]
-        if _git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}").returncode != 0:
+        if _git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", repo=repo).returncode != 0:
             result = "unknown"
-        elif _git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0:
+        elif _git("merge-base", "--is-ancestor", sha, "HEAD", repo=repo).returncode == 0:
             result = "ok"
-        elif has_main and _git("merge-base", "--is-ancestor", sha, "main").returncode == 0:
+        elif has_main and _git("merge-base", "--is-ancestor", sha, "main", repo=repo).returncode == 0:
             result = "ok"
         else:
             result = "orphan"
@@ -471,6 +481,12 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         # A typo'd --store used to report "0 problems, exit 0" — a green gate
         # pointed at nothing. Absence is a finding, not a clean bill of health.
         return [{"kind": "store-missing", "path": str(store)}]
+
+    if commit_state is None:
+        # Same rule one level up: the resolver says None when it could not be
+        # built, and reading that as "every sha is fine" is the clean bill it
+        # explicitly refused to sign. Name the gap instead of inheriting it.
+        problems.append({"kind": "commit-state-unavailable", "root": str(ROOT)})
 
     for path in sorted(store.glob("*.json")):
         try:
@@ -776,7 +792,17 @@ def closed_without_verification(store: Path) -> list[str]:
 
 
 def _baseline_path() -> Path:
-    return Path(os.environ.get("KG_BACKLOG_BASELINE", "ops/backlog_closed_unverified_baseline.txt"))
+    # ROOT-anchored like DEFAULT_STORE, and for the same reason: the baseline and
+    # the ledger it forgives must name the same checkout. A cwd-relative default
+    # let a foreign (larger) baseline pre-forgive everything and read green.
+    # `ROOT / x` returns x unchanged when x is absolute, so one expression gives
+    # both halves: absolute overrides as given, relative ones against the repo
+    # root — matching the KG_INJECTION_BASELINE contract in tech_index.md rather
+    # than inventing a second, opposite rule for the neighbouring env var.
+    override = os.environ.get("KG_BACKLOG_BASELINE")
+    if override:
+        return ROOT / override
+    return ROOT / "ops" / "backlog_closed_unverified_baseline.txt"
 
 
 def _read_baseline(path: Path) -> set[str]:
@@ -1804,19 +1830,21 @@ def _cmd_show(args) -> int:
     return 0
 
 
-def _patch_id(rev: str) -> str | None:
+def _patch_id(rev: str, repo: Path | None = None) -> str | None:
     """`git patch-id --stable` of one commit, or None if it has no diff to hash."""
-    show = _git("show", rev)
+    show = _git("show", rev, repo=repo)
     if show.returncode != 0 or not show.stdout:
         return None
     proc = subprocess.run(
-        ["git", "patch-id", "--stable"], input=show.stdout, capture_output=True, text=True
+        ["git", "patch-id", "--stable"], input=show.stdout, cwd=repo or GIT_REPO,
+        capture_output=True, text=True
     )
     out = proc.stdout.split()
     return out[0] if out else None
 
 
-def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: int = 800) -> dict:
+def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: int = 800,
+                   repo: Path | None = None) -> dict:
     """Map orphaned `fixed_by` shas onto their post-rebase equivalents on main.
 
     The mechanism is measured, not assumed: every orphan in this repo's audit
@@ -1834,7 +1862,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
     The search window is a bound, and a bound that is not reported reads as
     "searched everything". `searched` is in the result for that reason.
     """
-    state = make_commit_state()
+    state = make_commit_state(repo)
     if state is None:
         raise BacklogError("reanchor needs a git repository (no --git-dir found)")
 
@@ -1861,17 +1889,17 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
     # is narrower than the space its own defect detector accepts can only fail,
     # and it fails silently-looking (`not guessed` reads like a careful refusal
     # rather than like looking in the wrong place).
-    log = _git("rev-list", f"--max-count={search_depth}", "HEAD")
+    log = _git("rev-list", f"--max-count={search_depth}", "HEAD", repo=repo)
     if log.returncode != 0:
         raise BacklogError("reanchor needs a resolvable HEAD")
     candidates = log.stdout.split()
-    total = _git("rev-list", "--count", "HEAD").stdout.strip()
+    total = _git("rev-list", "--count", "HEAD", repo=repo).stdout.strip()
     main_depth = int(total) if total.isdigit() else None
 
     by_patch: dict[str, list[str]] = {}
     indexed = 0
     for rev in candidates:
-        pid = _patch_id(rev)
+        pid = _patch_id(rev, repo)
         if pid:
             by_patch.setdefault(pid, []).append(rev)
             indexed += 1
@@ -1881,7 +1909,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
         shas = payload.get("fixed_by") or []
         moves, unmatched = {}, []
         for sha in orphans:
-            pid = _patch_id(sha)
+            pid = _patch_id(sha, repo)
             hits = by_patch.get(pid, []) if pid else []
             if len(hits) == 1:
                 moves[sha] = hits[0][:9]
@@ -1920,7 +1948,7 @@ def _cmd_reanchor(args) -> int:
     if result["plan"]:
         window = (f"indexed {result['searched']} of {result['scanned']} commits scanned"
                   f" (--search-depth {result['search_depth']}"
-                  + (f", HEAD is {result[chr(39)]}deep" if False else (f", HEAD is {result['main_depth']} deep" if result["main_depth"] else ""))
+                  + (f", HEAD is {result['main_depth']} deep" if result["main_depth"] else "")
                   + (", window exhausted" if result["window_exhausted"] else ", window NOT exhausted")
                   + ")")
     else:
