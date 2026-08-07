@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "`--search-depth` 有兩個不同的預設值：`build_parser` 給 `default=2000`，`reanchor_store` 的簽名給 `search_depth: int = 800`。走 CLI 搜 2000 顆 commit，程式內直接 `import` 呼叫（測試、以及 cutover 後的 post-landing repair 走的是 CLI 所以是 2000）搜 800 顆。同一個旗標名下兩個深度，重錨失敗時無從判斷是「真的找不到」還是「搜得不夠深」，而這正是 reanchor 唯一會沉默失敗的模式。",
+  "id": "IMP-20260807-bf56ce",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "Phase 0 盤點（懸賞板計劃前置）",
+  "status": "open",
+  "stream": "IMP"
+}

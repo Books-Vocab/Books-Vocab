@@ -121,6 +121,14 @@ VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of",
 # holds landing commits cannot be satisfied by a sha that wandered in.
 TRACE_FIELDS = ("fixed_by",)
 
+# One number, two doors. `reanchor` used to search 2000 commits from the CLI and
+# 800 from a direct call, because the parser and the function signature each
+# carried their own literal. That matters more here than it looks: a miss inside
+# the window and a miss because the window ended are DIFFERENT answers, and this
+# command reports which one it got — so the window being a different size
+# depending on how you got in made the report unreadable.
+DEFAULT_SEARCH_DEPTH = 2000
+
 # Shape only. The first cut of this required at least one a-f digit, to stop
 # `20260805` (a date) reading as a sha — and immediately produced a FALSE
 # NEGATIVE on `339918579`, a real commit in this repo that happens to be all
@@ -179,6 +187,35 @@ _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 class BacklogError(Exception):
     """Raised for usage errors that should exit 64 rather than traceback."""
+
+
+class EntryNotFound(BacklogError, KeyError):
+    """A store lookup for an id that is not there.
+
+    Its own type, rather than the bare `KeyError` this used to be, so `main` can
+    answer it once for every subcommand. Only `show` and `update` had remembered
+    to catch it locally; `verify` had not, and a per-command handler is a rule
+    that every future command has to be told about.
+
+    It must NOT be as wide as `except KeyError` around a command body: that
+    would also swallow a genuine dict-lookup bug inside the command and report
+    it as "no such entry" — a defect dressed as a tidy message.
+
+    The two bases each do one job:
+      - KeyError, because three tests and `import_legacy`'s carry-forward path
+        already read it that way and none of them wanted this rename. (`render`
+        has no such handler — it does not call `load_entry` at all.)
+      - BacklogError, which is NOT what routes it today — `main` catches this
+        type by name, ahead of the BacklogError clause, to answer 1 instead of
+        64. It is the fallback: delete that specific clause and the refusal
+        still arrives as a refusal rather than a traceback.
+    """
+
+    def __str__(self) -> str:  # KeyError's own would repr the id and name nothing
+        # `main` renders this into an f-string on the ERROR path. A __str__ that
+        # can raise there turns a refusal into a traceback from inside the
+        # traceback-avoidance machinery, so it must not index args blindly.
+        return f"no such entry: {self.args[0] if self.args else '<unknown>'}"
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +685,17 @@ MUTABLE_FIELDS = (
     + TRACE_FIELDS
 )
 
+# What `show` prints, in order. A named constant rather than the same four groups
+# concatenated a second time inside `_cmd_show`, because that hand-copy is exactly
+# how `fixed_by` came to be stored, validated and invisible: TRACE_FIELDS was added
+# to MUTABLE_FIELDS and not to the reader. The rule is that this is the WHOLE
+# schema, never a curated subset, and
+# `test_show_can_print_every_field_update_can_write` asserts it instead of trusting
+# this sentence.
+SHOW_FIELD_ORDER = (
+    REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + TRACE_FIELDS
+)
+
 # Digest fields the `update` parser still accepts — solely so that reaching for
 # one gets a named refusal that says where the correction belongs.
 #
@@ -733,7 +781,7 @@ def update_entry(store: Path, entry_id: str, **changes) -> dict:
 def load_entry(store: Path, entry_id: str) -> dict:
     path = entry_path(store, entry_id)
     if not path.exists():
-        raise KeyError(entry_id)
+        raise EntryNotFound(entry_id)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -1744,8 +1792,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_reanchor.add_argument("ids", nargs="*", help="entry ids; default = every entry with an orphan")
     p_reanchor.add_argument("--store", type=Path, default=DEFAULT_STORE)
     p_reanchor.add_argument(
-        "--search-depth", type=int, default=2000,
-        help="how many commits back from main to scan for a patch-id match (default 2000; main is deeper than that, and the result reports whether the window was exhausted). "
+        "--search-depth", type=int, default=DEFAULT_SEARCH_DEPTH,
+        help=f"how many commits back from main to scan for a patch-id match (default {DEFAULT_SEARCH_DEPTH}; main is deeper than that, and the result reports whether the window was exhausted). "
              "The bound is REPORTED, never silent: a miss inside the window and a miss "
              "because the window ended are different answers",
     )
@@ -1905,15 +1953,11 @@ def _cmd_list(args) -> int:
 
 
 def _cmd_show(args) -> int:
-    try:
-        entry = load_entry(args.store, args.id)
-    except KeyError:
-        print(f"no such entry: {args.id}", file=sys.stderr)
-        return 1
+    entry = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
     if args.json:
         print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry}, ensure_ascii=False))
         return 0
-    for field in REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS:
+    for field in SHOW_FIELD_ORDER:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")
     return 0
@@ -1932,7 +1976,8 @@ def _patch_id(rev: str, repo: Path | None = None) -> str | None:
     return out[0] if out else None
 
 
-def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: int = 800,
+def reanchor_store(store: Path, ids: list[str] | None = None, *,
+                   search_depth: int = DEFAULT_SEARCH_DEPTH,
                    repo: Path | None = None) -> dict:
     """Map orphaned `fixed_by` shas onto their post-rebase equivalents on main.
 
@@ -2158,11 +2203,7 @@ def _cmd_update(args) -> int:
         print("nothing to change; pass at least one field", file=sys.stderr)
         return 64
 
-    try:
-        before = load_entry(args.store, args.id)
-    except KeyError:
-        print(f"no such entry: {args.id}", file=sys.stderr)
-        return 1
+    before = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
 
     if args.commit:
         after = update_entry(args.store, args.id, **changes)
@@ -2520,12 +2561,27 @@ def main(argv: list[str] | None = None) -> int:
         # automated caller meets most often. Measured before this: a bad --verdict
         # printed prose to stderr and nothing to stdout, so json.load() raised
         # JSONDecodeError instead of yielding a readable refusal.
+        #
+        # ONE envelope for both codes. The two used to be written out separately and
+        # were byte-identical apart from the return — the same hand-copied-second-time
+        # shape this module criticises everywhere else, and nothing would have gone
+        # red if they drifted.
         print(f"ERROR {exc}", file=sys.stderr)
         if getattr(args, "json", False):
             print(json.dumps({"schema": f"kg.backlog.{args.command}.v1", "ok": False,
                               "error": str(exc), "command": args.command},
                              ensure_ascii=False))
-        return 64
+        # The codes this CLI actually uses are 0 / 1 / 2 / 64 (argparse adds its own
+        # 2 for a malformed command line):
+        #   1  — the call was fine, the answer is no. `render --check` STALE, and an
+        #        id that is not in the store.
+        #   2  — `validate` / `import` / `render` found problems.
+        #   64 — this invocation cannot be carried out: a bad flag combination, a
+        #        verdict outside the vocabulary, no field to change, AND the
+        #        preconditions `reanchor` needs (a git repo, a resolvable HEAD).
+        #        That last group is why "malformed call" is the wrong summary.
+        # `test_show_cli_reports_a_missing_entry` pins the 1.
+        return 1 if isinstance(exc, EntryNotFound) else 64
 
 
 if __name__ == "__main__":
