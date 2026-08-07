@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "`backlog.py add` 不接受梳理旗標（`--plan` / `--acceptance` / `--acceptance-cmd` / `--fix-site` / `--groomed-*`），而拒絕方式是 argparse 的 `unrecognized arguments`——**它沒說那些旗標該去哪裡**。\n\n本 session 內同一個誤用撞了兩次。分離本身是對的（立單與梳理是不同的動作：你不能梳理一個還沒調查過的東西），錯的是拒絕訊息把讀者留在原地。\n\n這個 repo 已經替 `update --detail` 解過同一個形狀：那個旗標保留在 parser 上，帶它呼叫會 exit 64、**具名該旗標並指向 `--resolution`**，而不是靜默丟棄或吐一個通用的 unrecognized。理由當時就寫清楚了：argparse 的 unrecognized arguments 不會說更正該寫去哪。\n\n註：這不是「add 應該支援梳理」——把兩個動作合併會讓「立單當下就假裝想清楚了」變得零成本，而那正是 groom 徽章存在的理由。",
   "fix_site": "ops/backlog.py（GROOM_ONLY_FLAGS / p_add 註冊 / _cmd_add 的具名拒絕）",
+  "fixed_by": [
+    "6c86d7f734a09047b8c9f0246345dea57269befc"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "agent:main-line",
   "id": "IMP-20260808-d5993d",
@@ -14,6 +17,10 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "本 session 內同一個誤用撞兩次",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-line",
+  "verified_evidence": "見 acceptance_cmd（逐一覆蓋 GROOM_ONLY_FLAGS 的每個旗標）"
 }
