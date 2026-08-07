@@ -25,7 +25,7 @@ verified_against: 9582044dd
 
 ### `cutover` 為什麼不是純 ff
 
-develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那顆 sha 原封不動落地（payload 的 `sha`）。但 cutover 的 rebase 發生在 gate **之後**，而 rebase 會改寫分支上的 commit sha；ledger entry 的 `fixed_by` 因此在落地那一刻才指得到正確的 commit。所以 ff 完成後，cutover 會在**同一把 trunk 鎖內**跑 `backlog.py reanchor --commit` + `render --commit`，有改動就自己 commit 一顆（訊息帶 `Review-Exempt: machine-repair`，該 token 由 `ops/review_audit.sh` 檢查「只碰 `docs/runbook/backlog/*.json` 與 `docs/runbook/improvement_backlog.md`」，不是自由通行證）。
+develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那顆 sha 原封不動落地（payload 的 `sha`）。但 cutover 的 rebase 發生在 gate **之後**，而 rebase 會改寫分支上的 commit sha；ledger entry 的 `fixed_by` 因此在落地那一刻才指得到正確的 commit。所以 ff 完成後，cutover 會在**同一把 trunk 鎖內**跑 `backlog.py reanchor --commit`，有改動就自己 commit 一顆（訊息帶 `Review-Exempt: machine-repair`，該 token 由 `ops/review_audit.sh` 檢查「只碰 `docs/runbook/backlog/*.json`」，不是自由通行證）。原本還有第二步 `render --commit`，隨那份 generated view 移出版控而移除（IMP-20260807-b9526c）——已經沒有 tracked 的衍生檔需要在主幹上被修。
 
 同一把鎖內、**且在所有 post-ff refusal 之後**，cutover 還會把這顆落地 sha 蓋到這條分支在波次佇列裡的結案上（payload 的 `staged_closures`；佇列＝`<primary>/.cache/backlog_anchor_queue.jsonl`，由 `backlog.py stage` 寫入、`anchor` 消費）。**位置是契約的一部分**：`make_commit_state` 認 HEAD **或** main 任一可達，所以一次被拒絕的 cutover 若已蓋了 sha，從還沒拆掉的工作樹跑 `anchor` 會判 ok，把 entry 關在一顆不在任何主幹上的 commit——而下游沒有任何人會抱怨。
 
@@ -33,7 +33,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### `catchup`：trunk 動了之後的那一步
 
-`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。差別只有一個，但在這個 repo 很要緊：rebase 會在 `docs/runbook/improvement_backlog.md` 這個 **generated** 檔上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator。`catchup` 只在**衝突集合恰好等於該 generated 檔**時自動重生，其餘一律 abort 交人。rebase 完 HEAD 就動了，所以之後一定要重跑 `gate`。
+`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。當初的差別是：rebase 會在那份 **generated** 的 ledger view 上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator，所以 `catchup` 曾內建一個「衝突集合恰好等於該檔就自動重生」的解析器。**該檔已移出版控（IMP-20260807-b9526c），衝突源與那個解析器一併消失**：現在 `catchup` 就是一次乾淨的 rebase，衝突一律 abort 交人——本來就該如此。rebase 完 HEAD 就動了，所以之後一定要重跑 `gate`。
 
 ## 版號事實 SoT 表（iOS）
 

@@ -147,3 +147,50 @@ YAML
 grep -q "active_unregistered=0" "$tmpdir/fixture_strict_pass.out"
 grep -q "backlog_unregistered=1" "$tmpdir/fixture_strict_pass.out"
 grep -q "no active registry debt; backlog docs below are informational only" "$tmpdir/fixture_strict_pass.out"
+
+# ── gitignored artifacts are not repo documents ──────────────────────────────
+# A generated file that is produced on demand and gitignored (the ledger view, after
+# IMP-20260807-b9526c) used to land in ACTIVE_UNREGISTERED the moment anyone ran its
+# generator, turning --strict red for a debt nobody could pay: registering a
+# gitignored path would then fail its own path check anywhere it had not been
+# rendered.
+#
+# The SECOND case is the one that pins the design. The short fix — count only
+# `git ls-files` — passes the first case and silently breaks this one: a doc that has
+# been added but not committed is untracked, and that is precisely what coverage
+# exists to catch. Without this assertion, "ignored-minus" and "tracked-only" are
+# indistinguishable, and the wrong one fails in the direction nobody notices.
+git_fixture="$tmpdir/gitfixture"
+mkdir -p "$git_fixture/docs/sop"
+git init -q "$git_fixture"
+cat >"$git_fixture/docs/registry.yml" <<'YAML'
+documents: []
+YAML
+printf 'docs/sop/generated.md\n' >"$git_fixture/.gitignore"
+for f in generated brand-new; do
+  cat >"$git_fixture/docs/sop/$f.md" <<'MD'
+<!-- doc-meta
+tier: sop
+authority: derived
+update_trigger: sop-change
+scope:
+  - docs/
+verified_against: HEAD
+-->
+# Fixture SOP
+MD
+done
+
+./ops/docs_registry_coverage.py --root "$git_fixture" --registry docs/registry.yml \
+  >"$tmpdir/gitfixture.out" 2>&1 || true
+if grep -q "docs/sop/generated.md" "$tmpdir/gitfixture.out"; then
+  echo "a gitignored doc was counted as repo coverage debt" >&2
+  cat "$tmpdir/gitfixture.out" >&2
+  exit 1
+fi
+if ! grep -q "docs/sop/brand-new.md" "$tmpdir/gitfixture.out"; then
+  echo "an untracked-but-not-ignored doc was NOT counted — the filter is tracked-only, not ignored-minus" >&2
+  cat "$tmpdir/gitfixture.out" >&2
+  exit 1
+fi
+grep -q "active_unregistered=1" "$tmpdir/gitfixture.out"

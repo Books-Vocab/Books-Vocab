@@ -143,9 +143,6 @@ is_allowed_exemption() {
         # git quotes paths with spaces or non-ASCII bytes; a quoted path can never
         # equal an unquoted literal, so it lands in `stray` and blocks. Refusing to
         # classify a name you cannot read is the correct direction to fail.
-        if [[ "$line" == "docs/runbook/improvement_backlog.md" ]]; then
-          continue
-        fi
         if [[ "$line" =~ ^docs/runbook/backlog/[^/]+\.json$ ]]; then
           continue
         fi
@@ -154,7 +151,7 @@ is_allowed_exemption() {
       if [[ -z "$stray" ]]; then
         return 0
       fi
-      EXEMPTION_NOTE="machine-repair only covers the re-derived ledger (docs/runbook/backlog/*.json, docs/runbook/improvement_backlog.md); this commit also touches: $stray"
+      EXEMPTION_NOTE="machine-repair only covers the re-derived ledger (docs/runbook/backlog/*.json); this commit also touches: $stray"
       return 1
       ;;
     *)

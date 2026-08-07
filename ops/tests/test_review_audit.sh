@@ -179,7 +179,6 @@ mr_case() { git -C "$MR/repo" checkout -q -B case main; }
 
 mr_case
 printf '{"a":1}\n' >"$MR/repo/docs/runbook/backlog/E1.json"
-printf 'view2\n' >"$MR/repo/docs/runbook/improvement_backlog.md"
 git -C "$MR/repo" add -A
 git -C "$MR/repo" commit -q -F - <<'EOF'
 ops: LEDGERONLY re-derived ledger
@@ -189,6 +188,25 @@ EOF
 [[ "$(verdict_for LEDGERONLY)" == "ok" ]] \
   && ok "a repair commit confined to the ledger is exempt" \
   || fail_t "ledger-only repair was not exempt: $(grep -m1 LEDGERONLY "$MR/last.txt")"
+
+# The generated view left version control (IMP-20260807-b9526c), so it left the
+# machine-repair whitelist with it. A commit that still touches that path is a
+# hand-written change wearing a token that means "a machine derived this", which is
+# the exact confusion the whitelist exists to prevent. Positive control for the
+# narrowing: without it, the case above would pass whether or not the path was
+# removed from the list.
+mr_case
+printf '{"a":9}\n' >"$MR/repo/docs/runbook/backlog/E1.json"
+printf 'view2\n' >"$MR/repo/docs/runbook/improvement_backlog.md"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+ops: VIEWSTRAY ledger plus the ex-generated view
+
+Review-Exempt: machine-repair
+EOF
+[[ "$(verdict_for VIEWSTRAY)" == "block" ]] \
+  && ok "machine-repair no longer covers the ex-generated view" \
+  || fail_t "the view is still being waved through: $(grep -m1 VIEWSTRAY "$MR/last.txt")"
 
 mr_case
 printf 'sneaked in\n' >"$MR/repo/src.py"

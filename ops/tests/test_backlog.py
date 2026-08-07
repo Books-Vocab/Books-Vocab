@@ -66,11 +66,35 @@ def _fake_object_database(monkeypatch):
     A test that needs orphan / unresolvable behaviour injects `commit_state`
     into `validate_entry` directly, and one test below drives the REAL resolver
     so this stub cannot hide a broken one.
+
+    `repo=None` is not decoration: the real `make_commit_state` takes an optional
+    repo and ONE caller passes it (`reanchor_store`). The stub used to be a bare
+    `lambda:`, i.e. NARROWER than the thing it replaces, so every test that reached
+    `reanchor` under this fixture died on a TypeError instead of exercising it —
+    which is to say no test did, until one tried. A double whose signature does not
+    match its subject cannot be a stand-in for it; `test_the_commit_state_stub_
+    matches_the_real_signature` pins the two together.
     """
     monkeypatch.setattr(
         BACKLOG, "make_commit_state",
-        lambda: lambda sha: "ok" if BACKLOG._SHA_RE.match(sha) else "unknown",
+        lambda repo=None: lambda sha: "ok" if BACKLOG._SHA_RE.match(sha) else "unknown",
     )
+
+
+def test_the_commit_state_stub_matches_the_real_signature():
+    """The autouse double above must accept exactly what the real function accepts.
+
+    Signature drift in a test double is invisible by construction: the tests that
+    use the double keep passing, and the ones that would have caught the mismatch
+    are precisely the ones the mismatch prevents from running.
+    """
+    real = inspect.signature(BACKLOG.make_commit_state)
+    stub = inspect.signature(
+        lambda repo=None: lambda sha: "ok" if BACKLOG._SHA_RE.match(sha) else "unknown")
+    assert list(real.parameters) == list(stub.parameters), (
+        f"real{real} vs stub{stub} — the double is not a stand-in for the subject")
+    for name, param in real.parameters.items():
+        assert stub.parameters[name].default == param.default, name
 
 
 def _entry_kwargs(**overrides):
@@ -90,7 +114,6 @@ def _entry_kwargs(**overrides):
     )
     base.update(overrides)
     return base
-
 
 
 def _stamp_queue(queue: Path, entry_id: str, sha: str) -> None:
@@ -2413,85 +2436,90 @@ def test_every_mutation_returns_the_entry_it_wrote(tmp_path):
         assert payload["entry"]["id"] == entry["id"]
 
 
-def test_a_mutation_on_the_canonical_store_keeps_the_view_in_step(tmp_path, monkeypatch):
-    """Measured: `add` an entry, skip `render`, and `docs_lint.sh --registry` goes rc=1
-    ("產物與 generator 輸出不一致").
+def test_no_mutation_writes_the_view(tmp_path, monkeypatch):
+    """The store is the SoT; the view is an optional local convenience.
 
-    With ten agents each filing entries in their own worktree, every one of them has
-    to remember a second command — and the red does not land on whoever forgot, it
-    lands on whoever runs the gate next. The view is derived, so nothing is gained by
-    making a human the thing that keeps it derived.
+    Every mutation used to re-render the view, and that one line of convenience was
+    the most expensive thing in this module. Measured on the real 179-entry store:
+    one render is 118–232 ms and it is O(entries), so serialising it behind a lock
+    capped mutations at ~8/sec and made a burst of n filings O(n²) — 32 filings in
+    3.5 s, 64 in 7.2 s, 128 in 16.2 s. It also made a 291 KB tracked file the one
+    thing concurrent branches provably collide on, which is what `_view_lock`, the
+    entry-loss guard on the refresh path, the registry `check:` gate, cutover's
+    render-repair step, catchup's conflict resolver and `review_audit.sh`'s
+    path-scoped exemption all existed to survive.
 
-    Only for the CANONICAL store: an operation aimed at some other `--store` did not
-    ask for the repo's ledger view to be rewritten, so it does not get to.
+    None of that bought anything a reader wanted: the inventory of every pointer to
+    the file across CLAUDE.md, the skills, the agent files and the registry found
+    SIX, and **not one of them tells anybody to read it** — they all say "generated,
+    do not hand-edit" or "this is what your rebase will conflict on". So the file is
+    gitignored now and `render` produces it on demand.
 
-    Driven through `main()`, not through the library helpers. The first version of
-    this test called `add_entry()` and `_refresh_view_if_canonical()` back to back,
-    which asserts that two functions compose — a fact nobody doubted. Deleting all
-    three CLI call sites left it green, and the CLI is the whole defect: what the
-    entry says is that `add` lets its caller believe the work is finished.
+    Driven through `main()` for every mutating subcommand, because the defect was
+    never in the helpers — it was that the CLI did a second, expensive thing its
+    caller did not ask for.
     """
     store = tmp_path / "backlog"; store.mkdir()
     view = tmp_path / "view.md"
+    # `reanchor` refuses outside a git repo (it resolves shas), so this cannot be a
+    # bare tmp dir — and it is one of the six call sites removed, so leaving it out
+    # would leave a removal unwitnessed.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
     monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
     monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
 
-    rc = BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
-                       "--date", "2026-08-07", "--source", "an agent",
-                       "--category", "tool", "--severity", "low",
-                       "--detail", "filed by an agent"])
-    assert rc == 0
-    assert view.exists(), "the canonical view must follow its store"
-    text = view.read_text(encoding="utf-8")
+    assert BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
+                         "--date", "2026-08-08", "--source", "an agent",
+                         "--category", "tool", "--severity", "low",
+                         "--detail", "filed by an agent"]) == 0
     entry_id = next(p.stem for p in store.glob("*.json"))
-    assert entry_id in text
-    # the anchor comes from `_doc_anchor()`, not from a constant baked into the
-    # refresh path — a hard-coded one survived every assertion this test used to make
-    assert "deadbeef" in text
+    assert not view.exists(), "`add` rendered the view"
 
-    # A scratch store must not be able to rewrite the canonical view. The view is
-    # deliberately left STALE first: rendering DEFAULT_STORE either way, a refresh
-    # that ignored the guard would look identical to one that honoured it.
-    other = tmp_path / "elsewhere"; other.mkdir()
-    BACKLOG.add_entry(store, **_entry_kwargs(detail="filed while nobody was looking"))
-    before = view.read_text(encoding="utf-8")
-    rc = BACKLOG.main(["add", "--store", str(other), "--stream", "IMP",
-                       "--date", "2026-08-07", "--source", "an agent",
-                       "--category", "tool", "--severity", "low",
-                       "--detail", "filed against a scratch store"])
-    assert rc == 0
-    assert view.read_text(encoding="utf-8") == before, \
-        "an operation on another store refreshed the canonical view"
+    assert BACKLOG.main(["update", entry_id, "--store", str(store),
+                         "--resolution", "— still open", "--commit"]) == 0
+    assert not view.exists(), "`update --commit` rendered the view"
+
+    assert BACKLOG.main(["verify", entry_id, "--store", str(store),
+                         "--verdict", "CONFIRMED-OPEN", "--by", "x",
+                         "--evidence", "ran it", "--commit"]) == 0
+    assert not view.exists(), "`verify --commit` rendered the view"
+
+    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit"]) == 0
+    assert not view.exists(), "`reanchor --commit` rendered the view"
+
+    # ...and the explicit command still does the job, unchanged.
+    assert BACKLOG.main(["render", "--store", str(store), "--out", str(view),
+                         "--commit"]) == 0
+    text = view.read_text(encoding="utf-8")
+    assert entry_id in text and "deadbeef" in text
 
 
-def test_the_automatic_refresh_cannot_drop_a_row_the_explicit_one_would_refuse(
+def test_render_still_refuses_to_drop_a_row_the_outgoing_view_carried(
         tmp_path, monkeypatch):
-    """The auto-refresh must not become a second door into IMP-20260806-e06150.
+    """The entry-loss guard belongs to `render`, and survives the refresh's removal.
 
-    `render --commit` refuses to write a view that would lose an id the previous view
-    carried — that guard exists because three entries once vanished in a re-render with
-    rc=0, empty stderr, a plausible row count and a green gate. An automatic refresh
-    that writes unconditionally would restore exactly that hole, and would fire far
-    more often than the command it bypasses.
+    IMP-20260806-e06150: three entries once vanished in a re-render with rc=0, empty
+    stderr, a plausible row count and a green gate. That guard was duplicated onto
+    the automatic path; deleting the automatic path must not take the original with
+    it, which is a thing a purely subtractive change can do silently.
     """
     store = tmp_path / "backlog"; store.mkdir()
     view = tmp_path / "view.md"
-    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
-    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
     monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
 
     doomed = BACKLOG.add_entry(store, **_entry_kwargs(detail="present in the view"))
     keeper = BACKLOG.add_entry(store, **_entry_kwargs(detail="the other one"))
-    BACKLOG._refresh_view_if_canonical(store)
+    assert BACKLOG.main(["render", "--store", str(store), "--out", str(view),
+                         "--commit"]) == 0
     assert doomed["id"] in view.read_text(encoding="utf-8")
 
     # The store loses an entry behind the tool's back — a bad merge, a stray rm.
     (store / f"{doomed['id']}.json").unlink()
-    BACKLOG._refresh_view_if_canonical(store)
+    BACKLOG.main(["render", "--store", str(store), "--out", str(view), "--commit"])
 
     surviving = view.read_text(encoding="utf-8")
-    assert doomed["id"] in surviving, "the refresh silently deleted a row from the view"
+    assert doomed["id"] in surviving, "render silently deleted a row from the view"
     assert keeper["id"] in surviving
 
 
@@ -2532,70 +2560,6 @@ def test_render_reports_the_counts_it_no_longer_writes_down(tmp_path, monkeypatc
     assert "list --ungroomed" in printed, printed
 
 
-def test_a_dry_run_update_does_not_touch_the_view(tmp_path, monkeypatch):
-    """Every subcommand's help says dry-run is the default; a dry-run that rewrites a
-    version-controlled file is that promise broken in the quietest possible way."""
-    store = tmp_path / "backlog"; store.mkdir()
-    view = tmp_path / "view.md"
-    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
-    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
-    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
-    entry = BACKLOG.add_entry(store, **_entry_kwargs(detail="before"))
-    BACKLOG._refresh_view_if_canonical(store)
-    before = view.read_text(encoding="utf-8")
-
-    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
-                       "--severity", "high"])
-    assert rc == 0
-    assert view.read_text(encoding="utf-8") == before, "a dry-run rewrote the view"
-
-    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
-                       "--severity", "high", "--commit"])
-    assert rc == 0
-    assert view.read_text(encoding="utf-8") != before, "a commit did NOT rewrite it"
-
-
-def test_reanchor_and_import_keep_the_view_in_step_like_every_other_mutation(
-        tmp_path, monkeypatch):
-    """`reanchor --commit` and `import --commit` change the store exactly as much as
-    `add` does. `reanchor` got away with it because its only caller runs `render`
-    right after; `import` did not. A rule that holds for three of five mutations is
-    not a rule, it is a coincidence with good luck."""
-    store = tmp_path / "backlog"; store.mkdir()
-    view = tmp_path / "view.md"
-    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
-    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
-    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
-
-    # `fixed`, because that is the only status whose `fixed_by` a reanchor may move:
-    # an open entry carrying one is a self-contradiction `validate` rejects.
-    seeded = BACKLOG.add_entry(store, **_entry_kwargs(detail="seed", status="fixed",
-                                                      resolution="landed"))
-    BACKLOG.update_entry(store, seeded["id"], fixed_by=["0" * 8])
-    view.write_text("deliberately stale\n", encoding="utf-8")
-
-    # reanchor: nothing to move, so nothing to re-render — a no-op must stay a no-op
-    monkeypatch.setattr(BACKLOG, "reanchor_store",
-                        lambda *a, **k: {"plan": [], "searched": 0, "scanned": 0,
-                                         "search_depth": 1, "main_depth": None,
-                                         "window_exhausted": False})
-    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit"]) == 0
-    assert view.read_text(encoding="utf-8") == "deliberately stale\n"
-
-    # reanchor that actually moves an anchor: the view must follow
-    monkeypatch.setattr(BACKLOG, "reanchor_store",
-                        lambda *a, **k: {"plan": [{"id": seeded["id"],
-                                                   "moves": {"0" * 8: "1" * 40},
-                                                   "old_fixed_by": ["0" * 8],
-                                                   "new_fixed_by": ["1" * 40],
-                                                   "unmatched": []}],
-                                         "searched": 1, "scanned": 1,
-                                         "search_depth": 1, "main_depth": None,
-                                         "window_exhausted": False})
-    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit"]) == 0
-    assert seeded["id"] in view.read_text(encoding="utf-8")
-
-
 def test_the_atomic_write_does_not_collide_with_a_concurrent_one(tmp_path):
     """The temp name used to be a fixed `.{name}.tmp`, which is safe only while
     nothing writes the same path twice at once. Auto-refresh made that false: two
@@ -2624,29 +2588,6 @@ def test_the_atomic_write_does_not_collide_with_a_concurrent_one(tmp_path):
     # and every reader saw a WHOLE payload, never a spliced one
     assert target.read_text(encoding="utf-8") in payloads
     assert not list(tmp_path.glob(".*tmp*")), "temp files leaked"
-
-
-def test_import_refreshes_the_view_too(tmp_path, monkeypatch):
-    """Named in the sibling test's title for a week without being called there once.
-
-    `import --commit` writes entries exactly as `add` does; the only reason it looked
-    safe is that nobody ran it often. Deleting its refresh call left 114 tests green.
-    """
-    store = tmp_path / "backlog"; store.mkdir()
-    view = tmp_path / "view.md"
-    monkeypatch.setattr(BACKLOG, "DEFAULT_STORE", store)
-    monkeypatch.setattr(BACKLOG, "DEFAULT_VIEW", view)
-    monkeypatch.setattr(BACKLOG, "_doc_anchor", lambda: "deadbeef")
-    view.write_text("deliberately stale\n", encoding="utf-8")
-
-    legacy = Path(__file__).resolve().parent / "fixtures" / "legacy_ledger_8col.md"
-    rc = BACKLOG.main(["import", "--from", str(legacy), "--store", str(store),
-                       "--commit"])
-    assert rc == 0
-    assert list(store.glob("*.json")), "the fixture imported nothing"
-    text = view.read_text(encoding="utf-8")
-    assert text != "deliberately stale\n", "import left the view stale"
-    assert next(p.stem for p in store.glob("*.json")) in text
 
 
 def test_the_atomic_write_does_not_quietly_change_a_files_permissions(tmp_path):
@@ -2817,84 +2758,6 @@ def test_show_can_print_every_field_update_can_write(tmp_path):
     missing = sorted(set(BACKLOG.MUTABLE_FIELDS) - set(BACKLOG.SHOW_FIELD_ORDER))
     assert not missing, f"`update` can write fields `show` will never print: {missing}"
 
-
-def test_two_concurrent_mutations_cannot_lose_each_others_row(tmp_path):
-    """Real OS processes, and the race window widened on purpose.
-
-    Every mutation now refreshes the generated view, which makes that view a
-    read-modify-write of one shared file by every writer in the system. The
-    entry-loss guard does NOT cover this: it compares id SETS, and an `update`
-    changes a row's contents while leaving the set alone — so `add` came out
-    clean at 64-way concurrency and `update` silently dropped a change.
-
-    Measured before the lock, with a 3s gap forced between one writer's render and
-    its write: both entry FILES correct, the view carrying the slow writer's
-    snapshot, the fast writer's edit gone, `render --check` exiting 1. Caught, but
-    by whoever ran the docs gate next.
-
-    The sleep is injected into a COPY of the module, so nothing in the shipped file
-    exists only to make a test pass.
-    """
-    repo = tmp_path / "repo"
-    (repo / "docs" / "runbook" / "backlog").mkdir(parents=True)
-    (repo / "ops").mkdir()
-    src = (ROOT / "ops" / "backlog.py").read_text(encoding="utf-8")
-    anchor = "            text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())"
-    assert src.count(anchor) == 1, "the refresh's render moved; re-anchor this probe"
-    (repo / "ops" / "backlog.py").write_text(
-        src.replace(anchor, anchor + "\n            time.sleep(float(os.environ.get("
-                                     "'KG_TEST_VIEW_DELAY', '0')))"),
-        encoding="utf-8",
-    )
-    (repo / "ops" / "backlog.py").write_text(
-        (repo / "ops" / "backlog.py").read_text(encoding="utf-8")
-        .replace("import argparse\n", "import argparse\nimport time\n", 1),
-        encoding="utf-8",
-    )
-    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-
-    tool = str(repo / "ops" / "backlog.py")
-
-    def run(argv, delay="0"):
-        return subprocess.run([sys.executable, tool, *argv], cwd=repo, text=True,
-                              capture_output=True,
-                              env={**os.environ, "KG_TEST_VIEW_DELAY": delay})
-
-    ids = []
-    for tag in ("alpha", "beta"):
-        out = run(["add", "--stream", "IMP", "--date", "2026-08-07", "--source", tag,
-                   "--category", "tool", "--severity", "low",
-                   "--detail", f"concurrent view probe {tag}", "--json"])
-        assert out.returncode == 0, out.stderr
-        ids.append(json.loads(out.stdout)["entry"]["id"])
-
-    import threading
-    results = {}
-
-    def slow():
-        results["slow"] = run(["update", ids[0], "--resolution", "SLOW-MARKER",
-                               "--commit"], delay="3")
-
-    thread = threading.Thread(target=slow)
-    thread.start()
-    time.sleep(0.6)   # let the slow writer get past its render
-    results["fast"] = run(["update", ids[1], "--resolution", "FAST-MARKER", "--commit"])
-    thread.join(timeout=60)
-
-    assert results["slow"].returncode == 0, results["slow"].stderr
-    assert results["fast"].returncode == 0, results["fast"].stderr
-
-    view = (repo / "docs" / "runbook" / "improvement_backlog.md").read_text(encoding="utf-8")
-    assert "SLOW-MARKER" in view, "the slow writer's row is missing from the view"
-    assert "FAST-MARKER" in view, (
-        "the fast writer's row was overwritten by a stale render — the view refresh "
-        "is not serialized"
-    )
-
-
-# --------------------------------------------------------------------------
-# 17. closing an entry without the hunter ever touching the store
-# --------------------------------------------------------------------------
 
 def test_staging_a_closure_writes_no_store_and_no_view(tmp_path, capsys):
     """The whole point of the queue.
