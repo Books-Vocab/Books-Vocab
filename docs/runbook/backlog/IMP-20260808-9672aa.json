@@ -2,11 +2,18 @@
   "category": "tool",
   "date": "2026-08-08",
   "detail": "gate 把「本次 diff 刪除的」doc 路徑餵給 `docs_lint --files`，於是**任何刪除 doc 的 commit 都會被擋**。\n\n實測（移除 generated ledger view 的那個 commit）：gate `verdict: block`，唯一的 block 是\n`docs-lint: exit 2: ERROR --files 路徑不存在: docs/runbook/improvement_backlog.md`。其餘 10 道全綠。\n\n機制：`plan_gates` 把 `docs = [p for p in changed_files if p.startswith(\"docs/\") and p.endswith(\".md\")]`\n整份交給三道**都會讀檔**的 gate（`docs_lint --files` / conflict-marker 掃描 / verified_against 可達性）。\n被刪的檔仍是 changed path，但三者都讀不到它。\n\n真正咬人的是**錯誤訊息的歸因**：`--files 路徑不存在` 讀起來像呼叫者填錯路徑，而不是\n「這個檔在本次 diff 裡被刪掉了，那是合法的」。第一反應會是去查自己的命令，不是去查 gate。\n\n註：這是同一個 session 內從 gate 吃出來的第二個缺陷（另一個是 IMP-20260808-81b5eb，\n衝突中的樹回綠）。兩個都只有真的拿它跑一條會刪檔／會衝突的分支才撞得到。",
+  "fixed_by": [
+    "b76492f978fa4827ff35314355dfd6d30b62e197"
+  ],
   "id": "IMP-20260808-9672aa",
   "resolution": "— 本 commit 已修：`plan_gates` 用注入的路徑探針把 docs 切成 `docs_live` 與 `docs_removed`，三道讀檔 gate 只吃前者；後者由新的 `docs-removed`（warn）**具名列出**，不靜默丟掉——照 `ops-shell-untested` / `data-plane-unowned` 的既有慣例，因為安靜縮短的 gate 清單讀起來像「全部檢查過了」。三道 gate 在沒有存活 doc 時整組不出現，而不是對空清單跑一遍。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "Phase 3.5 落地時自撞（第二個 gate 缺陷，同一輪狗食）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-line",
+  "verified_evidence": "pytest ops/tests/test_worktree_orchestrate.py -k deleted_in_the_diff → 1 passed；缺陷本體證據＝修補前該分支 gate verdict=block 且唯一 block 是 docs-lint 的『--files 路徑不存在』"
 }
