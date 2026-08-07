@@ -1985,7 +1985,6 @@ def _cmd_add(args) -> int:
         build=args.build,
         entry_id=args.entry_id,
     )
-    _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.add.v1", "entry": entry}, ensure_ascii=False))
     else:
@@ -2349,8 +2348,6 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     if args.commit:
         for row, merged in planned:
             _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
-        # once per wave, not once per hunter — that asymmetry is the point
-        _refresh_view_if_canonical(args.store)
         write_queue(queue, [r for r in rows if not r.get("landed_sha")])
 
     if args.json:
@@ -2395,7 +2392,6 @@ def _cmd_verify(args) -> int:
         return 0
 
     _write_atomic(entry_path(args.store, args.id), _dumps(merged))
-    _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "commit",
                           "id": args.id, "changes": changes, "entry": merged},
@@ -2564,13 +2560,6 @@ def _cmd_reanchor(args) -> int:
                 landed.append(item["id"])
     result["mode"] = "commit" if args.commit else "dry-run"
     result["landed"] = landed
-    if args.commit and landed:
-        # Same rule as every other store mutation: the view is derived, so whoever
-        # changed the store re-derives it. `reanchor` used to be exempt purely by
-        # luck — the one caller that runs it (cutover's repair) happens to run
-        # `render` immediately afterwards. Luck is not a rule, and a human running
-        # `reanchor --commit` by hand got a stale view and a red gate downstream.
-        _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
         return 0
@@ -2690,8 +2679,6 @@ def _cmd_update(args) -> int:
         # which the previous dry-run skipped.
         after = _merged_and_validated(before, changes, args.id)
 
-    if args.commit:
-        _refresh_view_if_canonical(args.store)
     diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
     if args.json:
         # `entry` alongside `changes`: without it a caller could not tell "the payload
@@ -2770,8 +2757,6 @@ def _cmd_import(args) -> int:
     else:
         result = import_legacy(text, args.store)
         result["mode"] = "commit"
-        if result["imported"]:
-            _refresh_view_if_canonical(args.store)
 
     result["source"] = str(args.source_doc)
     if args.json:
@@ -2825,79 +2810,25 @@ def _strip_doc_meta(text: str) -> str:
     return rest if sep else text
 
 
-def _refresh_view_if_canonical(store: Path) -> None:
-    """Keep the generated view in step with the store it is generated from.
-
-    Measured: filing an entry and not re-rendering makes `docs_lint.sh --registry`
-    exit 1. The cost of that is not paid by whoever forgot — it is paid by whoever
-    runs the gate next, which is the shape that makes a check get muted rather than
-    obeyed. The view is derived; a human is a poor place to keep a derivation.
-
-    CANONICAL store only, and the honest statement of why: an operation aimed at
-    some other `--store` did not ask for the repo's ledger view to be rewritten, so
-    it does not get to rewrite it. That is the whole reason — a modest one. (The
-    stronger-sounding claim this docstring used to make, that the guard stops a tmp
-    directory's contents from replacing the ledger, was not true of this code: the
-    render below reads DEFAULT_STORE unconditionally, so the tmp dir's contents
-    could never reach DEFAULT_VIEW. A reason nobody checks is a reason that drifts;
-    this module has filed entries about exactly that.)
-
-    Never fatal: the mutation has already landed, so a view that could not be written
-    is a warning about a derived artifact, not a reason to fail a completed write.
-    """
-    try:
-        if Path(store).resolve() != Path(DEFAULT_STORE).resolve():
-            return
-    except OSError:
-        return
-    try:
-        # The READ of the store and the WRITE of the view are one critical section.
-        # Rendering outside the lock and only serializing the write would still lose
-        # updates: what goes stale is the snapshot, not the file handle.
-        with _view_lock():
-            text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())
-            # Same loss guard as `render --commit`, and for the same reason: three
-            # entries once disappeared in a re-render with rc=0 and a green gate. An
-            # automatic refresh that wrote unconditionally would be that hole again,
-            # on a path that runs far more often than the command it bypasses. Losing
-            # a row is never something a mutation implicitly authorises — say so and
-            # leave the view alone. It is NOT a substitute for the lock: it watches
-            # the id set, so it is blind to a concurrent `update`, which changes a
-            # row's contents and leaves the set alone.
-            outgoing = _read_outgoing_view(Path(DEFAULT_VIEW))
-            dropped = ([] if outgoing is None
-                       else sorted(view_entry_ids(outgoing) - view_entry_ids(text)))
-            if dropped:
-                print(f"WARNING view NOT refreshed: writing it would delete "
-                      f"{', '.join(dropped)} — run ./ops/backlog.py render --commit to "
-                      f"see the recovery routes", file=sys.stderr)
-                return
-            # `_write_atomic`, not `write_text`, and for a reason this path owns rather
-            # than inherits: it is the FREQUENT writer of this file now — every `add`,
-            # every committed `update`/`verify` — so it is where a half-written 280KB
-            # view would actually be produced, and where two writers would actually
-            # collide.
-            _write_atomic(Path(DEFAULT_VIEW), text)
-    except (BacklogError, OSError, ValueError) as exc:
-        print(f"WARNING view not refreshed ({exc}); run ./ops/backlog.py render --commit",
-              file=sys.stderr)
-
-
 def _cmd_render(args) -> int:
-    """Thin wrapper so the whole render lives in ONE critical section.
+    """Produce the human-readable view — ON DEMAND, and only when asked.
 
-    `--commit` is a read-store → render → read-outgoing → write-view cycle over the
-    same shared file the automatic refresh writes, so it needs the same lock or the
-    two can lose each other's work. `--check` takes it too: without the lock it
-    renders at one instant and compares against a view read at another, and can
-    report STALE about a state that never existed.
+    Nothing calls this implicitly any more. The view is gitignored: it is a local
+    convenience for a person who wants the whole ledger in one file, not an artifact
+    the repo carries. Machines read the store (`list --json` / `show`), which is why
+    removing the automatic refresh cost no reader anything.
+
+    Still wrapped in the lock, and it is cheap now that it runs once per explicit
+    request rather than once per mutation: `--commit` is a read-store → render →
+    read-outgoing → write-view cycle, and two people rendering at once could still
+    tear the file. `--check` takes it too — without it, it renders at one instant and
+    compares against a view read at another, and can report STALE about a state that
+    never existed.
 
     Deliberately a wrapper rather than a `with` inside the body: `_view_lock` is a
     plain flock on a fresh fd, so it is NOT re-entrant — a nested acquire from this
     same process would hang with nothing to kill. Keeping the acquire at exactly one
     place per entry point is what makes that impossible rather than unlikely.
-    (`_cmd_render` does not call `_refresh_view_if_canonical`; the five mutations
-    that do never reach here.)
     """
     with _view_lock():
         return _cmd_render_unlocked(args)

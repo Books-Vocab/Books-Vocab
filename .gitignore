@@ -85,3 +85,9 @@ ops/swiftpm/.build/
 # worktree-local symlinks to main repo (machine-specific, never commit)
 /build
 /node_modules
+
+# 產物：由 `ops/backlog.py render --commit` 現地生成，不進版控。
+# 進版控時它是每次 mutation 都要重寫的 291KB tracked 檔——並行分支唯一真的會衝突的
+# 東西，且 render 是 O(entries) 故一波 n 筆立單是 O(n²)（實測 128 筆 16.2 秒）。
+# 機器讀 store（`list --json` / `show`）；這個檔只是人要看單一檔案時的方便產物。
+docs/runbook/improvement_backlog.md

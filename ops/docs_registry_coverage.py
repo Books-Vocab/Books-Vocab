@@ -61,11 +61,42 @@ def registry_paths(registry: Path) -> set[str]:
 
 
 def linted_docs(root: Path) -> list[Path]:
-    return sorted(
+    """Every doc on disk EXCEPT the ones git is told to ignore.
+
+    `rglob` alone counts gitignored artifacts as repo documents. Measured the day
+    `docs/runbook/improvement_backlog.md` left version control (IMP-20260807-b9526c):
+    the file is still produced on demand by `backlog.py render`, so running that one
+    command put a local artifact into ACTIVE_UNREGISTERED and turned `--strict` red —
+    a debt nobody incurred and nobody could pay, since registering a gitignored path
+    would then fail its own path check on any machine that had not rendered it.
+
+    Ignored-minus, NOT tracked-only. `git ls-files` would have been the shorter fix
+    and it is the wrong one: a doc that has been ADDED but not yet committed is
+    untracked, and it is exactly the case coverage exists to catch. Excluding it
+    would trade a false positive for a false negative, in the direction that goes
+    unnoticed.
+
+    Falls back to the unfiltered list when git cannot answer (the tests drive this
+    function against a plain fixture directory that is not a repo). That is correct
+    rather than lenient: without a repo there is no ignore rule to honour.
+    """
+    candidates = sorted(
         path
         for path in (root / "docs").rglob("*.md")
         if not path.relative_to(root).as_posix().startswith(("docs/assets/", "docs/legal/"))
     )
+    if not candidates:
+        return []
+    proc = subprocess.run(
+        ["git", "-C", str(root), "check-ignore", "--stdin"],
+        input="\n".join(str(p) for p in candidates),
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
+    )
+    # 0 = some paths are ignored, 1 = none are, 128 = not a repo / git unusable.
+    if proc.returncode not in (0, 1):
+        return candidates
+    ignored = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+    return [p for p in candidates if str(p) not in ignored]
 
 
 def doc_tier(path: Path) -> str:

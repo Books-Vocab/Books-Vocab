@@ -572,26 +572,6 @@ documents:
       - .claude/skills/devops/
       - .claude/skills/worktree-flow/
 
-  - id: runbook.improvement_backlog
-    path: docs/runbook/improvement_backlog.md
-    kind: generated
-    authority: generated
-    generator: ops/backlog.py
-    # `--out` 帶的就是本 entry 的 path，不是裝飾：docs_lint 要求 check 字串指名自己的
-    # path，而這裡的 path 是命令真正的比對目標——指到別的檔就會拿別的產物去比而轉紅。
-    check: ./ops/backlog.py render --check --out docs/runbook/improvement_backlog.md
-    triggers:
-      - improvement_filed
-      - improvement_resolved
-      - kaizen_loop_changed
-    sources:
-      # `sources` on a generated entry means "inputs whose change requires
-      # regeneration". render_view() reads the store and this script, nothing
-      # else — the steward agent and the receipt skill were listed here from the
-      # hand-maintained era and would emit a guaranteed no-op regeneration hint.
-      - docs/runbook/backlog/
-      - ops/backlog.py
-
   - id: sop.review_discipline
     path: docs/sop/review_discipline.md
     kind: sop
