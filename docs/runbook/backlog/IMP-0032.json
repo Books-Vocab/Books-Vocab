@@ -2,6 +2,10 @@
   "category": "cli",
   "date": "2026-07-14",
   "detail": "`app_review_evidence.py` 的 desired shape/build/bundle、journey、physical demo、gate evaluation 曾以 `capture_output=True` 靜默等待。現統一走 bounded streaming runner：stderr 最長每 20 秒回 phase/elapsed/PID/alive，stdout 保持單一 JSON；raw argv 不進 progress，中斷會清整個 isolated process group。",
+  "fixed_by": [
+    "4e2e89b55",
+    "4dce38a38"
+  ],
   "id": "IMP-0032",
   "resolution": "`4e2e89b55`(producer heartbeat + stdout purity + secret/process-group adversarial regressions)",
   "schema": "kg.backlog.entry.v1",

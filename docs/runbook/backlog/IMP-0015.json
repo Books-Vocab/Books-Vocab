@@ -2,6 +2,10 @@
   "category": "cli",
   "date": "2026-07-08",
   "detail": "`docs_lint.sh` 對 changed docs 不掃 git 衝突標記（`<<<<<<<`）也不驗 `verified_against` hash 在 main 可達——衝突標記+不可達 hash 雙雙進 main 而 lint 全綠（當次資料修復見 6cec330c8）。兩檢查都已進日常 gate",
+  "fixed_by": [
+    "c6c1b1619",
+    "a4a100603"
+  ],
   "id": "IMP-0015",
   "resolution": "`c6c1b1619`(衝突標記 gate + 修 5 個 invalid verified_against)+`a4a100603`(verified_against HEAD 可達性，堵 rebase 後 orphan anchor 假綠)",
   "schema": "kg.backlog.entry.v1",

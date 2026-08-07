@@ -2,6 +2,9 @@
   "category": "tool",
   "date": "2026-08-04",
   "detail": "`ops/test_devops.sh:337,342` 斷言 `caddy-status` → `sudo systemctl status caddy`、`caddyfile` → `cat /etc/caddy/Caddyfile`，但 `ops/devops_kg_safe.sh:172-179` 在遷 felix + Cloudflare Tunnel 後已改成 `pgrep -lf 'cloudflared.*tunnel'` 與「不適用（CF remotely-managed config）」。陳舊的是測試不是工具。與 IMP-0052 同一支測試、同一個成因：沒有執行面。見 resolution。",
+  "fixed_by": [
+    "8aeb9e54b"
+  ],
   "id": "IMP-0053",
   "resolution": "`8aeb9e54b`。`caddy-status` 改為前綴比對 cloudflared 探測（保留 fallback 訊息的變動自由）；`caddyfile` 沒有遠端命令可比，契約改成**不得發出任何 remote 命令**，並用 stderr 的 ingress SoT 指標證明 arm 真的跑過——空 stdout 本身是假證據（arm 被刪、subcommand 打錯、腳本提早 exit 都是空的）。修的過程順帶發現`set -o pipefail` 讓這段全部六條捕捉在 arm 被刪時會**殺掉腳本而非報錯**，已一併改走 `typed_all` helper。",
   "schema": "kg.backlog.entry.v1",

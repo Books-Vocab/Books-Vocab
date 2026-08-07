@@ -2,6 +2,9 @@
   "category": "tool",
   "date": "2026-08-03",
   "detail": "`ops/review_audit.sh:21-22` 是 `ROOT=\"${KG_REVIEW_AUDIT_ROOT:-<腳本自己的 repo>}\"; cd \"$ROOT\"`——**呼叫端的 cwd 完全無效**。後果不是理論的：`test_gate_can_fail.sh` 的 review-receipts 紅燈證明用 `( cd \"$TMP/repo\" && review_audit.sh ... )` 寫成，實際稽核的是 **KG 自己的歷史**，於是它的verdict 取決於 KG 最近幾個 commit 有沒有 trailer，而非 fixture；KG 的 commit 都補上 trailer 後該證明就轉綠（測試變紅）。工具沒錯，但「看起來吃 cwd、其實不吃」是會誘人寫錯的介面。下一步：無 `KG_REVIEW_AUDIT_ROOT` 時改以 cwd 的 git toplevel 為預設（或至少在 `--help` 與 stderr 首行印出實際稽核的 root）。",
+  "fixed_by": [
+    "b0375a9d7"
+  ],
   "id": "IMP-0049",
   "resolution": "`b0375a9d7`。解析序改為 `$KG_REVIEW_AUDIT_ROOT` → 呼叫端 cwd 的 git toplevel → 腳本自己的 repo,且**每次執行把選中的 root 印到 stderr**;解析移到 arg parsing 之後,故 `--help` 不 chdir 也不輸出。cutover gate 不受影響(cwd=worktree 且跑的是 worktree 自己的副本,兩種規則同解)。review 抓到綠向斷言 `exit 0` 是空的(指錯 repo 時 `main..HEAD` 通常為空,稽核零個 commit 也 exit 0)→ 改綁 `.summary.total==1`;並補上游一個沒包 `set +e` 的呼叫——它會在 `set -euo pipefail` 下讓整個檔案中止,底下所有 section 靜默不執行。",
   "schema": "kg.backlog.entry.v1",

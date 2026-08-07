@@ -5,6 +5,9 @@
   "date": "2026-08-05",
   "detail": "`render_view` 產出的 APP 表（`APP_COLUMNS` 11 欄，:869-881）永遠 import 不回來。`_anchors_ok`（:491-506）在 cells[3]/[4]/[5] 找 category/severity/status，而 APP 列該三格是 surface/category/severity，不匹配就落進 `malformed-row`。實測並由主線複驗：一筆 APP entry 的 store，`render` 後 `import` 得到 malformed-row（columns 11, expected 8）、imported 0、rc=2。docstring（:526-533）宣稱 APP-* rows are skipped rather than reported 是**假陳述**——那個 skip 分支（:560-561）排在 `_anchors_ok` 之後，對本模組自己 render 出來的 APP 列永遠到不了，是死碼，只有假想的 8 欄 APP 列才會觸發。`_cmd_import`（:1188）把 malformed-row 判為 lost 並回 rc=2，其註解自己寫著 those are entries that would vanish——正是這裡發生的事。今天 `import` rc=0 純粹因為 store 裡零筆 APP；第一筆 APP entry 一旦 render 進 view，這條被文檔化的指令就永久轉紅，且錯誤訊息會誣指是列格式壞掉。**連坐**：IMP-20260805-355016 的整個取捨前提是「產出的 view 仍可被 importer 讀回等於遷移可逆」，本次實測證明該性質對 APP 半邊早已不成立。測試面的縫：`ops/tests/test_backlog_migration.py:343-366` 的 render 測試只斷言排序，沒有再 import 回去。",
   "fix_site": "ops/backlog.py:613-630",
+  "fixed_by": [
+    "75183d3dc"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-f4ec99",

@@ -5,6 +5,11 @@
   "date": "2026-07-08",
   "detail": "`ios_test.sh` 的「mute rc-0 abort」故障模式。**2026-08-05 成因更正**:原記「cleanup trap 吞 exit code」已被證偽——bash EXIT trap 不會把非零改成 0(最小反例 `cleanup(){ :; }; trap cleanup EXIT; set -euo pipefail; false` → rc=1;trap 內部再失敗亦然)。真正的 rc-0 缺口在 `ops/ios_test.sh:790` 的 `trap cleanup EXIT INT TERM` **共用 handler 且不 re-raise**:被 SIGTERM 打中後 script 從中斷點繼續往下跑、照常收尾 exit 0(已用最小案例複現)。另全檔**零 ERR trap**(`grep -c 'trap.*ERR'`=0;全 repo 僅 `kg_backup.sh:36`/`review_flip_probe.sh:196` 有)→ set -e 中止時零診斷輸出(原條目後半句成立)。cache-key 缺檔觸發點已修(`4d11a11d2`)。殘留風險:任何未 `|| true` 防護的管線都可能無聲假綠。候選:`:790` 拆成 `trap cleanup EXIT` + INT/TERM 專用 handler(cleanup 後解除 trap 再 self-kill 同號),並補 ERR trap 印 line/rc 到 stderr（兩度撞號:原 IMP-0013→改 0014 又撞 release 盤點→定 0017）",
   "fix_site": "ops/ios_test.sh:790",
+  "fixed_by": [
+    "d849ad9d9",
+    "809b451d9",
+    "28d20f16b"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0017",

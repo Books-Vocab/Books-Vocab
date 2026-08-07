@@ -2,6 +2,9 @@
   "category": "doc",
   "date": "2026-06-13",
   "detail": "agent_org.md 3 處 borderline 複述鐵律判準",
+  "fixed_by": [
+    "fc2c7d454"
+  ],
   "id": "IMP-0002",
   "resolution": "`3671b89`(收斂為純指標)",
   "schema": "kg.backlog.entry.v1",

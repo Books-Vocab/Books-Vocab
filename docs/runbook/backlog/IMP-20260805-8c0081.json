@@ -5,6 +5,9 @@
   "date": "2026-08-05",
   "detail": "`ops/tests/test_catalog_scene_expectations.py` 沒有被註冊成 `ops/test_ops.sh` 的 group，也不在 `ops/tests/test_ops_ci_coverage.sh` 的 `LINUX_GROUPS` 裡，因此在本機全量套件與 CI 都永遠不會被執行。",
   "fix_site": "ops/test_ops.sh:49,126 + ops/tests/test_ops_ci_coverage.sh:49 + docs/reference/tech_index.md:144",
+  "fixed_by": [
+    "8e0081e72"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-8c0081",

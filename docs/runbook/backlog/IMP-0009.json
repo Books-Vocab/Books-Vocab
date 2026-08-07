@@ -2,6 +2,10 @@
   "category": "doc",
   "date": "2026-07-08",
   "detail": "逐項 review 固定檢查項靠 GM 每次手寫 brief,重複且易漏",
+  "fixed_by": [
+    "9a8209a4c",
+    "fbf2221cb"
+  ],
   "id": "IMP-0009",
   "resolution": "`9a8209a4c`(code-reviewer.md 內建 checklist)+`fbf2221cb`(SoT 收斂:複述→指標)",
   "schema": "kg.backlog.entry.v1",

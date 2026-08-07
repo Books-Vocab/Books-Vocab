@@ -3,6 +3,11 @@
   "date": "2026-08-04",
   "detail": "健康 gate 把**主機端連不出去**判成**這次部署壞了**，兩者不是同一件事。2026-08-04 事故裡 felix 的 DNS 掛了，容器與 tunnel 都好端端的，使用者也拿得到服務，但 gate 從 felix 內部量測外部可達性、量不到就回滾——回滾本身還因為同一個網路問題而失敗（見 IMP-0060）。重試只是把窗口從 0s 拉到 20s，而觀測到的中斷長度上界是 ~90s，所以這是緩解不是解。**方向（需定論，不要照抄）**：① external smoke 失敗改判 `warn` 而非 `block`——部署照樣落地，但發告警要人看（風險：真的壞掉時不自動回滾）；② 先分辨失敗種類——`HTTP=000`/DNS 失敗 = 我這台量不到，`5xx`/CF 錯誤頁 = 服務真的壞了，只有後者觸發回滾；③ 從**第二個地點**量（oscar 或 CF 自己的 health check），別讓「被測者」與「量測者」是同一台機器。②看起來最對稱且成本最低，但需要確認 CF tunnel 各種故障模式實際回什麼 code——那份對照表現在沒人有。",
   "fix_site": "ops/kg_reconcile.sh:external_smoke_ok + run_health_gate",
+  "fixed_by": [
+    "7416c1ef3",
+    "1954a9b2d",
+    "41e48dc9a"
+  ],
   "id": "IMP-0061",
   "resolution": "—(fixed by `7416c1ef3`+`41e48dc9a`+`1954a9b2d`)run_health_gate 改讀 `infra_health --json` 並判斷越線的是哪個 key:唯有本輪 EXTERNAL_SMOKE_CLASS=unreachable 且唯一 crit key 是 http_probe 才視為同一場斷網而不回滾,其餘 crit 照舊回滾,JSON 讀不懂 fail-closed 回滾;KG_HEALTH_PROBE_URL 釘死使兩關問同一個 URL。根因是測試替身忠實度(infra_mock 原本只 exit,把「同一場斷網會讓這關也 crit」從模型裡刪掉)。驗證 `test_ops.sh reconcile` 151 passed(先只改測試為 131/20),另以真 infra_health 端到端重放。未做:`ops/infra_health.sh:115` 的雙 000 bug 已實測污染機讀契約但不在此 scope。",
   "schema": "kg.backlog.entry.v1",

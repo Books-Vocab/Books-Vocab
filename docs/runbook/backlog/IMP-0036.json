@@ -2,6 +2,10 @@
   "category": "cli",
   "date": "2026-07-17",
   "detail": "`worktree_orchestrate.py gate` 曾把每個 shell gate 的合併輸出靜默 capture 到結束；長 iOS/pytest gate 無 PID/heartbeat，操作者無法分辨排隊、執行或卡死。現共用 bounded streaming runner，stderr 有 start/spawn/20 秒 heartbeat（正常 exit 另有 done），JSON stdout 不受污染，中斷清整個 process group，並保留 merged tail、rc/signal 語意。",
+  "fixed_by": [
+    "4e2e89b55",
+    "4dce38a38"
+  ],
   "id": "IMP-0036",
   "resolution": "`4e2e89b55`(gate heartbeat + bounded capture regressions)",
   "schema": "kg.backlog.entry.v1",

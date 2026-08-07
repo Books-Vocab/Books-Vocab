@@ -5,6 +5,11 @@
   "date": "2026-08-05",
   "detail": "**`ios_ops.sh catalog snapshots` 在 main 上已經是壞的——「看畫面」目前半殘,而這正是 IMP-0063 決定要保住的東西。** 症狀:`exitCode=65`,app 端 `VocabularyListViewScenarios.swift:241` 的 `preconditionFailure`(「UI World vocabulary.<id> must declare N visible vocabulary entries, got M」)。後果分兩層:245 張 surface PNG 仍被 salvage 機制撈回(所以「看單張圖」還能用),但 `catalog_index.json` 沒產出 → `UIreview.html` gallery 渲染失敗(`review-render-failed`),且 `catalog_appearance.json` proofCount=0 → `catalog-appearance-proof` error=`appearance.missing`。**歸因已用差分證明,不是推論**:在乾淨的 `main`(`0c9e3b7c8`, 工作區乾淨)跑同一條指令得到**完全相同**的 `pngCount=245` + `exitCode=65` + `appearance.missing`;而 `feat/freeze-ui-world` 對 `ios/BooksAndVocab/`(app target,含 `Debug/` 與 `ops/fixtures/ui_worlds/`)是**逐位元零 diff**,該次執行又是 `-only-testing:BooksAndVocabTests/CatalogSnapshotTests`,本分支改動的測試型別根本沒被執行。**與凍結無關,凍結也沒讓它變糟**——但凍結的前提之一是「catalog 還能看畫面」,所以這條該修。下一步:讀 `VocabularyListViewScenarios.swift:230-245` 的 `VocabularyListExpectedShape` 期望值,對照 `marketing_demo.json` 的 `vocabulary.vocabList*` seed 實際可見筆數(`shouldAppearInKnowledgeList` 過濾後),判斷是 seed 漂移還是期望值寫死過時。**注意這條與凍結紅線的交互**:修法若需要改 world,受 §FROZEN 紅線 2 約束(validator 會擋新 fixture key);但「改既有 seed 的 entry 內容以修復既有 bug」不算擴張,不受紅線限制。",
   "fix_site": "ios/BooksAndVocab/Debug/Scenarios/VocabularyListViewScenarios.swift:92 + ios/BooksAndVocab/Debug/Scenarios/KnowledgeGraphViewScenarios.swift:59 + ops/tests/test_catalog_scene_expectations.py(新增) + ops/test_ops.sh:49,127 + ops/tests/test_ops_ci_coverage.sh:49 + docs/reference/tech_index.md:144",
+  "fixed_by": [
+    "90f54375f",
+    "8e0081e72",
+    "f80517ec8"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0064",
