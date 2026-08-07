@@ -152,6 +152,7 @@ probes = [
     ["design-system/tokens.json"],
     ["ops/ui_quality_plane.yml"],
     ["docs/runbook/backlog/IMP-0001.json"],
+    ["ops/i18n_baseline.txt"],
     ["README.md"],
 ]
 names = set()
