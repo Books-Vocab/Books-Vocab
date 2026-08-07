@@ -2,6 +2,9 @@
   "category": "tool",
   "date": "2026-07-08",
   "detail": "`asc.sh`/`ios_release.sh` 靜默吞 ASC API 錯誤(403 agreement 無輸出 exit 1)",
+  "fixed_by": [
+    "ef5fcfb00"
+  ],
   "id": "IMP-0006",
   "resolution": "`ef5fcfb00`(fd3 透出+403 GUI 指引+test_asc §17)",
   "schema": "kg.backlog.entry.v1",

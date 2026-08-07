@@ -5,6 +5,10 @@
   "date": "2026-08-03",
   "detail": "`ops/tests/test_ui_quality_gate.sh:177-203` 用 `mv` 把**已版控**的 `ops/injection_baseline.txt` 搬走再還原，只靠 `trap restore EXIT` 復原。程序被 SIGKILL 或機器掉電落在中間 → 工作樹少一個已版控檔案，而測試本身不會說。同檔其他測試已改用 `KG_INJECTION_BASELINE` 環境變數重導（`ops/tests/test_lint_baselines.sh:51-55` 是範例）。下一步：讓 `ui_quality_gate.sh` 尊重既有的 baseline 環境變數覆寫，測試改用環境變數，`mv` 整段刪掉。 **2026-08-04 實際發生(嚴重度 low→med)**:本輪一個 repo-root `git add -A` 撞上「baseline 被搬走」的時窗，git 直接把缺席 staged 進 commit `400bd6c5f`,`ops/injection_baseline.txt` 就這樣從分支上消失,由 `9037aca00` 還原(內容與 main 位元組相同)。**原條目假設的觸發是 SIGKILL 落在 mv 與 trap 之間,但一次普通的並發 `git add -A` 就足夠,且兩邊都不會出聲**。 **2026-08-05 補:修法有嚴格順序,原「下一步」漏了前置。** 測試之所以只能 `mv`,是因為 `ops/ui_quality_gate.py:147-153 injection_args()` **硬編** baseline 路徑、只用 `.exists()` 決定 `--baseline-check` vs `--report`,完全不看 `KG_INJECTION_BASELINE`——環境變數騙不過它。環境變數本身在 lint 層已存在(`ops/injection_lint.py:31`,並由 `ops/tests/test_injection_lint.sh:42-58` 驗著)。事故複核:`git show --stat 400bd6c5f` 確為 `ops/injection_baseline.txt | 44 -----` 純刪除(12:38,夾在一個 docs commit 裡),`9037aca00`(12:43)還原且 commit message 自述成因是 repo-root `git add -A` 撞上 baseline 被搬走的時窗。",
   "fix_site": "ops/ui_quality_gate.py:154",
+  "fixed_by": [
+    "899da7076",
+    "375f51707"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0048",

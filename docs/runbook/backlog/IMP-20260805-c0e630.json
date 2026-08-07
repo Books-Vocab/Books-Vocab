@@ -5,6 +5,10 @@
   "date": "2026-08-05",
   "detail": "`ios/BooksAndVocab/Debug/Scenarios/KnowledgeGraphViewScenarios.swift:59` 的 populated 門檻宣告 `(visibleEntries:80, graphLinks:50, graphNodes:80, graphEdges:50)`，但凍結 UI World `vocabulary.knowledgeGraphPopulated` 實際只有 (4,4,4,4)，是 catalog snapshots 的第二個 fail-fast 點。",
   "fix_site": "ios/BooksAndVocab/Debug/Scenarios/KnowledgeGraphViewScenarios.swift:57-59 + ops/tests/test_catalog_scene_expectations.py（追加函式）",
+  "fixed_by": [
+    "90f54375f",
+    "8e0081e72"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-c0e630",

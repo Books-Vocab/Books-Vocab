@@ -2,6 +2,11 @@
   "category": "cli",
   "date": "2026-07-13",
   "detail": "`release.sh` 把 iOS semver 建議當成可執行 release，未要求 previous marketing version 已完成審查的 typed attestation，且先 tag/push 再 upload；被拒中的 2.0.0 因而可被誤升 2.0.1，upload 失敗也會留下 false release marker",
+  "fixed_by": [
+    "6ff5bcf10",
+    "8a222928b",
+    "c658ce243"
+  ],
   "id": "IMP-0031",
   "resolution": "`6ff5bcf10`(離線 `--new-version-after-ready` guard + semver 單調性 + upload-before-tag + 71 斷言)。**該 fix 已於 2026-08-05 被取代,原事故仍為已修復**:`dfd4c9ff8` 移除 `--new-version-after-ready`(傳入 hard-error 並指名替代路徑),因為 `075673f79`+`fcd523434` 把 `ios/<x.y.z>` 的語意改成「上架 commit」、只由 `shipped ios` 依 ASC 查證後物化——tag 存在本身就是證據,不再需要 operator 打字背書。guard 因此從「離線對證 + typed attestation」升級成真檢查:須有上架 tag、新版嚴格遞增、**且不得跳過有 build tag 卻無上架 tag 的版本**。第三條才是本事故本身(2.0.0 已上傳 build 5、還在審,2.0.1 就先 bump 過去),在 build tag 存在之前 repo 根本不記錄「某版出過 archive」,所以它是當時無法被檢查的性質。upload-before-tag 的順序保留。相關單:IMP-20260805-afc14b。",
   "schema": "kg.backlog.entry.v1",

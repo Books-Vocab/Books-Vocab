@@ -5,6 +5,10 @@
   "date": "2026-08-05",
   "detail": "`ops/backlog.py` 的 generated view 刻意維持 legacy 8 欄，因為「產出的 view 仍可被 importer 讀回」＝遷移可逆。代價是 `verdict`/`verified_at`/`cost`/`fix_site` 四個一級欄位在表格裡看不到，只有 `show` 與 `--json` 拿得到。曾嘗試加寬到 12 欄，當場打破 4 條 round-trip 測試，已撤回。",
   "fix_site": "ops/backlog.py:114-115、:506（LEGACY_COLUMNS 不動）、:520-521、:536-557（刪）、:674-699（換）、:972-976、:978（IMP_COLUMNS 插入點）、:1008、:1011-1013、:1118、:1305、:1324-1325；ops/tests/test_backlog_migration.py:35（插入 3 常數 + _def_blocks）、:100-116、:132-149、:264-278、:497-519、:522-532、:535-547、:550-558、:657-667、檔尾 773（追加 8 條新測試）；ops/tests/test_backlog.py:580-581；docs/reference/tech_index.md:131；docs/runbook/improvement_backlog.md（render --commit 產出，不手改）",
+  "fixed_by": [
+    "eee2cd207",
+    "399a65ae2"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-last-six@v3",
   "id": "IMP-20260805-355016",

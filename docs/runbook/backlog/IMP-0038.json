@@ -5,6 +5,10 @@
   "date": "2026-08-03",
   "detail": "**22 份** doc 的 `verified_against` 錨點指向 **從未進入 origin 的 pre-squash commit**（`docs/policy/safety.md` f0d37ca4、多份 `feature_boundary/*` …;建檔時記「約 10 份」,2026-08-05 逐份 `merge-base --is-ancestor origin/main` 實測為 22,`docs_lint --audit` 報 21——差的 1 份是 `docs/archive/backend_tech_debt_audit_2026-06.md` 624f0c32,archive tier 走 `:395` 的 frozen 分支、在可達性檢查前就 continue）。本機能過 `docs_lint` 只是因為本地 dangling object 仍在，CI 上（即使 `fetch-depth: 0`）一律解析失敗。Doc Tier 契約要求錨點「main 可達」，故這是實質假綠而非 CI 怪癖。`docs-lint` 因此暫時排除於 linux CI set。下一步：逐份把錨點 bump 到 main 可達 commit，然後把 group 移回 `LINUX_GROUPS`。**2026-08-05 工作量實測**:22 份只由 **11-12 個相異 hash** 組成(`f0d37ca4` 一顆就綁 8 份 doc),故實際是 12 次判斷 + 機械套回;分母是 `docs/` 68 份帶 `verified_against`、其中 50 份為 hash 錨 → 不可達佔 hash 錨的 21-22/50。機制複核:12 顆本地 `cat-file -t` 皆為 commit(dangling object 仍在)但全非 HEAD 祖先;本機 audit 只降 WARN(`ops/docs_lint.sh:417-419`),CI clone 沒有這些 object,會在 `:404-408` 的 `rev-parse --verify` 直接 ERROR 且 audit 模式降不了級。**CI 設定不缺**:`.github/workflows/ops-suite.yml:33` 已有 `fetch-depth: 0`(`:31-32` 註解即為此),只差錨點;排除點在 `ops/tests/test_ops_ci_coverage.sh:98`(`data-git-history` token 另被 `release` group `:101` 引用,token 本身要留)。",
   "fix_site": "docs/policy/safety.md:9 起共 20 份 doc 的 verified_against 行 + ops/tests/test_ops_ci_coverage.sh:98",
+  "fixed_by": [
+    "7d8084136",
+    "917ad3e4b"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0038",

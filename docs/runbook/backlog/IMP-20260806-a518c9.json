@@ -2,6 +2,9 @@
   "category": "tool",
   "date": "2026-08-06",
   "detail": "`ops/test_release.sh` 與 `ops/tests/test_script_help.sh` 各有一份「$VAR 緊接全形標點」掃描器，兩份對同一棵樹給出不同判決。前者把 `ops/kg_reconcile.sh:343` 判成違規——那行是**解釋這個陷阱本身**的註解，故意寫了 `$rollback_sha，` 當反例，bash 不展開註解，純偽陽性。差異來源：前者匹配任意位置（含註解）、無豁免機制、涵蓋範圍是寫死的排除清單、**且沒有正控**；後者要求變數在雙引號內、跳過註解行、支援 `# fw-allow: <理由>`、走 `git ls-files` 涵蓋更廣，並且會先對 fixture 證明自己抓得到違規、掃到 < 10 個檔就判定探針壞掉。這是「同一個事實有兩個讀取者必然不一致」的實例，而沒有正控的那一份正是不一致時你無法信任的那一份。另有流程面的教訓：`feat/external-smoke-retry` 的 cutover gate 沒有跑到 `test_release.sh`（它沒改 `ops/release.sh`，impact 路由選不到），所以這個偽陽性是在全量套件才浮出來的。",
+  "fixed_by": [
+    "1e38f6402"
+  ],
   "id": "IMP-20260806-a518c9",
   "resolution": "`1e38f6402`。退掉 `test_release.sh` 的複本，把規則收歸 `ops/tests/test_script_help.sh` 單一 owner，並在原處留下一段具名說明四項差異的註解（避免下一個人「補回一個檢查」）。驗證：`./ops/test_ops.sh release` rc=1 → rc=0；`./ops/tests/test_script_help.sh` 21 passed / 0 failed，含它自己的雙向正控。",
   "schema": "kg.backlog.entry.v1",

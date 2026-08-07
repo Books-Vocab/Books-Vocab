@@ -31,6 +31,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -49,6 +50,23 @@ SPEC.loader.exec_module(BACKLOG)
 # --------------------------------------------------------------------------
 
 DEFAULT_CATEGORY = {"IMP": "cli", "APP": "ux"}
+
+
+@pytest.fixture(autouse=True)
+def _fake_object_database(monkeypatch):
+    """Every well-formed sha exists; nothing else does.
+
+    Most tests in this file predate `fixed_by` and only touch `status` in
+    passing, but `update` now resolves shas for real. Pointing them at the host
+    repo's actual history would make their verdict a property of this machine.
+    A test that needs orphan / unresolvable behaviour injects `commit_state`
+    into `validate_entry` directly, and one test below drives the REAL resolver
+    so this stub cannot hide a broken one.
+    """
+    monkeypatch.setattr(
+        BACKLOG, "make_commit_state",
+        lambda: lambda sha: "ok" if BACKLOG._SHA_RE.match(sha) else "unknown",
+    )
 
 
 def _entry_kwargs(**overrides):
@@ -381,7 +399,8 @@ def test_update_changes_status_and_resolution(tmp_path):
     store = tmp_path / "backlog"
     entry = _add(store, status="open")
 
-    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="`abc1234`")
+    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="`abc1234`",
+                         fixed_by=["abc1234"])
 
     loaded = BACKLOG.load_entry(store, entry["id"])
     assert loaded["status"] == "fixed"
@@ -395,7 +414,8 @@ def test_update_does_not_change_the_id(tmp_path):
     store = tmp_path / "backlog"
     entry = _add(store, status="open")
 
-    BACKLOG.update_entry(store, entry["id"], status="in-progress")
+    BACKLOG.update_entry(store, entry["id"], status="in-progress",
+                         plan="claiming a status that says someone looked owes a next action")
 
     assert BACKLOG.load_entry(store, entry["id"])["id"] == entry["id"]
     assert len(list(store.glob("*.json"))) == 1
@@ -405,7 +425,8 @@ def test_update_leaves_untouched_fields_alone(tmp_path):
     store = tmp_path / "backlog"
     entry = _add(store, detail="the original finding", severity="high")
 
-    BACKLOG.update_entry(store, entry["id"], status="triaged")
+    BACKLOG.update_entry(store, entry["id"], status="triaged",
+                         plan="claiming a status that says someone looked owes a next action")
 
     loaded = BACKLOG.load_entry(store, entry["id"])
     assert loaded["detail"] == "the original finding"
@@ -429,7 +450,7 @@ def test_update_raises_for_unknown_id(tmp_path):
     store = tmp_path / "backlog"
     _add(store)
     with pytest.raises(KeyError):
-        BACKLOG.update_entry(store, "IMP-0404", status="fixed")
+        BACKLOG.update_entry(store, "IMP-0404", status="fixed", fixed_by=["abc1234"])
 
 
 def test_update_can_set_verdict_fields(tmp_path):
@@ -780,7 +801,8 @@ def test_render_writes_when_the_same_entries_come_out_different(tmp_path, capsys
     assert BACKLOG.main(_render_argv(store, out, "--commit")) == 0
     before = out.read_bytes()
 
-    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="abc1234")
+    BACKLOG.update_entry(store, entry["id"], status="fixed", resolution="abc1234",
+                         fixed_by=["abc1234"])
     capsys.readouterr()
 
     rc = BACKLOG.main(_render_argv(store, out, "--commit"))
@@ -1332,3 +1354,272 @@ def test_schema_section_blames_rebase_not_squash():
 
     tech_index = (ROOT / "docs" / "reference" / "tech_index.md").read_text(encoding="utf-8")
     assert "PR 開出前" not in tech_index
+
+
+# --------------------------------------------------------------------------
+# traceability: fixed_by (IMP-20260805-9a51e9)
+# --------------------------------------------------------------------------
+#
+# `resolution` is prose, and prose can only be checked by position heuristics.
+# Measured on the real store: position-0 sha was right for 49 of 63 fixed
+# entries and wrong for 14, and one of the 49 (IMP-0063) was an *incidental*
+# hash — a commit the resolution mentions for an unrelated reason. A heuristic
+# that reads "the fix is the first sha in the paragraph" cannot tell those apart,
+# so the answer moves into a field that only ever holds landing commits.
+#
+# The reference is "reachable from HEAD **or** main", not one of them:
+#   * HEAD alone accepts a branch-local sha, which is correct at gate time —
+#     the fix has not been cut over yet — but says nothing once it lands.
+#   * main alone rejects that same legitimate sha on every single cutover, and a
+#     gate that reds on the normal path is a gate that gets muted.
+# Reachable from neither means the rebase inside cutover rewrote it. That is a
+# real defect with a mechanical repair (`reanchor`), so it is an ERROR that names
+# the repair, not a warning nobody acts on.
+
+def _payload(**overrides):
+    """A validate-ready entry dict, without touching a store.
+
+    These rules are pure functions of one entry, so the tests are too: going
+    through `add_entry` would drag in the filesystem and the creation-path
+    exemption, and then the thing under test would not be the thing asserted.
+    """
+    base = _entry_kwargs(**overrides)
+    return dict(base, id="IMP-20260807-000001", schema="kg.backlog.entry.v1")
+
+
+def _traced(state_by_sha):
+    """A commit_state seam so these stay stdlib-only and repo-independent."""
+    return lambda sha: state_by_sha.get(sha, "unknown")
+
+
+def test_fixed_entry_without_fixed_by_is_a_problem():
+    entry = _payload(status="fixed", resolution="修好了")
+    problems = BACKLOG.validate_entry(entry, commit_state=_traced({}))
+    assert "fixed-without-fixed-by" in {p["kind"] for p in problems}
+
+
+def test_fixed_by_reachable_from_head_or_main_is_clean():
+    entry = _payload(status="fixed")
+    entry["fixed_by"] = ["aaaaaaa", "bbbbbbb"]
+    problems = BACKLOG.validate_entry(
+        entry, commit_state=_traced({"aaaaaaa": "ok", "bbbbbbb": "ok"})
+    )
+    assert problems == [], problems
+
+
+def test_fixed_by_orphaned_and_unresolvable_are_distinct_problems():
+    entry = _payload(status="fixed")
+    entry["fixed_by"] = ["0ffffff", "badbadb"]
+    problems = BACKLOG.validate_entry(
+        entry, commit_state=_traced({"0ffffff": "orphan", "badbadb": "unknown"})
+    )
+    kinds = {p["kind"] for p in problems}
+    # Two different causes with two different repairs: an orphan has a
+    # mechanical fix (find the patch-id-equal commit), a fabricated hash does
+    # not. Collapsing them into one "bad sha" would send the reader of the
+    # second one hunting for a rebase that never happened. IMP-0005 carried
+    # `813356b1`, a hash that exists in no object database at all.
+    assert "fixed-by-orphaned" in kinds
+    assert "fixed-by-unresolvable" in kinds
+
+
+def test_unfinished_entry_must_not_carry_fixed_by():
+    for status in ("open", "triaged", "in-progress"):
+        entry = _payload(status=status, plan="x", acceptance="y")
+        entry["fixed_by"] = ["aaaaaaa"]
+        kinds = {p["kind"] for p in BACKLOG.validate_entry(
+            entry, commit_state=_traced({"aaaaaaa": "ok"}))}
+        assert "fixed-by-on-unfinished-entry" in kinds, status
+
+
+def test_triaged_needs_a_next_action_but_open_does_not():
+    """`open` means filed-not-yet-triaged, and that is an honest state.
+
+    The first design required a next action on every unfinished entry. Measured
+    against the real store that would have turned 40 entries red on the day it
+    landed — the convention it assumed (26 of 27 unfinished entries carried a
+    dash-prefixed next action) had decayed as filing volume grew. A gate that
+    reds 40 entries at once gets muted, and forcing a next action onto an
+    untriaged entry buys a fabricated plan, which is worse than an empty one.
+    `triaged` and `in-progress` are different: both CLAIM someone looked.
+    """
+    bare = _payload(status="open", resolution="")
+    assert BACKLOG.validate_entry(bare, commit_state=_traced({})) == []
+
+    claimed = _payload(status="triaged", resolution="")
+    kinds = {p["kind"] for p in BACKLOG.validate_entry(claimed, commit_state=_traced({}))}
+    assert "no-next-action" in kinds
+
+    with_plan = dict(claimed, plan="改 foo.py 的 bar()，把 X 換成 Y")
+    assert BACKLOG.validate_entry(with_plan, commit_state=_traced({})) == []
+
+
+def test_wont_fix_needs_a_reason_that_is_not_a_bare_sha():
+    empty = _payload(status="wont-fix", resolution="")
+    assert "wont-fix-without-reason" in {
+        p["kind"] for p in BACKLOG.validate_entry(empty, commit_state=_traced({}))}
+
+    sha_only = dict(empty, resolution="  9a8209a4c  ")
+    assert "wont-fix-reason-is-a-sha" in {
+        p["kind"] for p in BACKLOG.validate_entry(sha_only, commit_state=_traced({}))}
+
+    real = dict(empty, resolution="正常行為,快取後即解;不修")
+    assert BACKLOG.validate_entry(real, commit_state=_traced({})) == []
+
+
+def test_verdict_outside_the_closed_vocabulary_is_a_problem():
+    """VERDICTS was declared closed but only ever enforced in the extractor.
+
+    Measured before this landed: `update <id> --verdict TOTALLY-BOGUS --commit`
+    exited 0, the value landed in the file, and `validate` reported 0 problems.
+    A vocabulary nothing checks is a comment.
+    """
+    entry = _payload()
+    entry["verdict"] = "TOTALLY-BOGUS"
+    assert "bad-verdict" in {p["kind"] for p in BACKLOG.validate_entry(entry)}
+
+    for good in BACKLOG.VERDICTS:
+        ok_entry = dict(entry, verdict=good)
+        assert "bad-verdict" not in {p["kind"] for p in BACKLOG.validate_entry(ok_entry)}
+
+    dup = dict(entry, verdict="DUPLICATE-OF-IMP-0007", duplicate_of="IMP-0007")
+    assert "bad-verdict" not in {p["kind"] for p in BACKLOG.validate_entry(dup)}
+
+
+def test_update_writes_fixed_by(tmp_path, monkeypatch):
+    """`--fixed-by` reaches the file, and `update` refuses a sha it cannot reach.
+
+    The resolver is stubbed rather than pointed at real commits: a test whose
+    green depends on which shas exist in the host repo is a property of the
+    host, not of this code — the same rule test_gate_can_fail.sh states for its
+    own fixture.
+    """
+    store = tmp_path / "store"
+    store.mkdir()
+    entry = _add(store)
+    monkeypatch.setattr(BACKLOG, "make_commit_state",
+                        lambda: lambda sha: "ok" if sha == "deadbee" else "unknown")
+
+    rc = BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--status", "fixed", "--fixed-by", "deadbee", "--commit",
+    ])
+    assert rc == 0
+    written = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert written["fixed_by"] == ["deadbee"]
+
+    # A sha nobody can resolve is refused at write time, so the defect never
+    # reaches the store for `validate` to find later and blame on nobody.
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--fixed-by", "badbadb", "--commit",
+    ]) == 64
+    reread = json.loads((store / f"{entry['id']}.json").read_text(encoding="utf-8"))
+    assert reread["fixed_by"] == ["deadbee"], "a refused update wrote anyway"
+
+
+def test_the_real_commit_resolver_answers_from_git(monkeypatch):
+    """A positive control for make_commit_state, which every other test stubs.
+
+    Without this, `_fake_object_database` above would keep the suite green even
+    if the real resolver were wired to nothing — a guard whose silence proves
+    nothing. Both directions are asserted against facts true of any git repo:
+    HEAD resolves and is reachable from itself; an all-zero sha resolves nowhere.
+    """
+    monkeypatch.undo()  # drop the fake odb for this test only
+    state = BACKLOG.make_commit_state()
+    assert state is not None, "tests must run inside a git repo"
+    assert state("HEAD") == "ok"
+    assert state("0000000") == "unknown"
+
+
+def _force_fixed_by(store, entry_id, shas):
+    """Bypass `update` to plant a state `update` is built to refuse."""
+    path = store / f"{entry_id}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(status="fixed", resolution="landed", fixed_by=shas)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def _git_repo(path):
+    """A throwaway repo carrying the exact shape reanchor exists for."""
+    def g(*args, **kw):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+             *args],
+            cwd=path, capture_output=True, text=True, check=kw.get("check", True),
+        )
+    path.mkdir(parents=True, exist_ok=True)
+    g("init", "-b", "main", "-q")
+    (path / "base.txt").write_text("base\n")
+    g("add", "base.txt"); g("commit", "-qm", "base")
+
+    # The change, minted on a branch — this is the sha an entry would record.
+    g("checkout", "-qb", "feat")
+    (path / "fix.txt").write_text("the fix\n")
+    g("add", "fix.txt"); g("commit", "-qm", "the fix")
+    orphan = g("rev-parse", "HEAD").stdout.strip()
+
+    # main moves, then the same change is replayed onto it — exactly what the
+    # rebase inside cutover does. Different sha, identical patch-id.
+    g("checkout", "-q", "main")
+    (path / "other.txt").write_text("meanwhile\n")
+    g("add", "other.txt"); g("commit", "-qm", "meanwhile")
+    g("cherry-pick", "feat")
+    landed = g("rev-parse", "HEAD").stdout.strip()
+    g("branch", "-qD", "feat")  # now unreachable from main, still in the odb
+    # One more commit on top, so `landed` is NOT main's tip. Without it a
+    # --search-depth of 1 would still find the answer and the bounded-search
+    # test would pass for the wrong reason.
+    (path / "after.txt").write_text("after\n")
+    g("add", "after.txt"); g("commit", "-qm", "after")
+    return orphan, landed
+
+
+def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monkeypatch):
+    monkeypatch.undo()  # the real resolver, on a real repo
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+    monkeypatch.chdir(repo)
+
+    store = repo / "store"
+    entry = _add(store, detail="reanchor fixture")
+    # Written straight to disk on purpose: `update` REFUSES an orphaned sha, so
+    # the broken state cannot be created through it. That is not a gap in the
+    # fixture — it is how the state actually arises. The sha is valid when
+    # written and the rebase orphans it afterwards, with nobody in the loop.
+    _force_fixed_by(store, entry["id"], [orphan])
+    assert BACKLOG.make_commit_state()(orphan) == "orphan", "fixture did not orphan the commit"
+
+    dry = BACKLOG.reanchor_store(store)
+    assert dry["plan"][0]["moves"] == {orphan: landed[:9]}
+    # A dry run must not touch the store; the whole point of the primitive is
+    # that a wrong mapping is a wrong audit trail.
+    assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]
+
+    assert BACKLOG.main(["reanchor", "--store", str(store), "--commit", "--json"]) == 0
+    assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [landed[:9]]
+    assert BACKLOG.validate_store(store) == []
+
+
+def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatch):
+    """One real case (IMP-0062) had a patch-id that differed because the rebase
+    resolved a conflict differently. A matcher that fell back to "closest" would
+    have silently written a neighbouring commit into the audit trail."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, _landed = _git_repo(repo)
+    monkeypatch.chdir(repo)
+
+    store = repo / "store"
+    entry = _add(store, detail="unmatchable fixture")
+    _force_fixed_by(store, entry["id"], [orphan])
+
+    # Window of 1 cannot reach the equivalent commit. The answer must be "not
+    # found in the window I searched", never a guess.
+    result = BACKLOG.reanchor_store(store, search_depth=1)
+    item = result["plan"][0]
+    assert item["moves"] == {}
+    assert [u["sha"] for u in item["unmatched"]] == [orphan]
+    assert result["searched"] == 1, "the bound must be reported, not silently applied"
+    assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]

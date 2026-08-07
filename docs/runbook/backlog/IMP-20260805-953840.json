@@ -13,6 +13,6 @@
   "source": "andon:/root/ios_lock_heartbeat; live review-card-layout-editor ios_ops test lock wait",
   "status": "in-progress",
   "stream": "IMP",
-  "verdict": "CONFIRMED",
+  "verdict": "CONFIRMED-OPEN",
   "verified_at": "2026-08-05"
 }

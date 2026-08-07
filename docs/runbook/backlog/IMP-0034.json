@@ -2,6 +2,9 @@
   "category": "tool",
   "date": "2026-07-14",
   "detail": "修改 `LiveDemoAccessUITests.swift` 時，cutover 原先誤套 Debug simulator + marketing fixture，與該測試的 Release / physical / no-fixture 契約必然衝突。現 live-only class 改走 Release generic-iOS compile gate，runtime evidence 明示交給 `app_review_evidence.py demo-run`。",
+  "fixed_by": [
+    "534acb68a"
+  ],
   "id": "IMP-0034",
   "resolution": "`534acb68a`",
   "schema": "kg.backlog.entry.v1",

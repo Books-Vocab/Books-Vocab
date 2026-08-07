@@ -2,6 +2,10 @@
   "category": "tool",
   "date": "2026-07-08",
   "detail": "catalog content-pinned seeds（wordDetail/wordEdit/search/archived 等釘死特定內容的 scenario）無 pre-flight 檢查,world 覆蓋 pinned domain 只能跑到該 surface 才 fatal;候選:emit/validate 層列舉 pinned fixture 清單並擋覆蓋",
+  "fixed_by": [
+    "6a9761d5e",
+    "5a25ae6ac"
+  ],
   "id": "IMP-0019",
   "resolution": "`6a9761d5e`+`5a25ae6ac`(emit 層:vocabulary 8 個 + reviewDeck probe/notebookReviewDeck 共 10 個 pinned fixture 入 SPEC_BASELINE_KEPT_FIXTURES,spec 模式強制 byte-equal baseline;standalone validate 不驗 pin——pin 是 spec 投影語意,非 world 格式契約)",
   "schema": "kg.backlog.entry.v1",

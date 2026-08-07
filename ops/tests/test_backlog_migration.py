@@ -591,7 +591,14 @@ def test_real_ledger_entries_pass_validation(tmp_path):
     store = tmp_path / "backlog"
     BACKLOG.import_legacy(LEGACY_DOC.read_text(encoding="utf-8"), store)
 
-    assert BACKLOG.validate_store(store) == []
+    # Traceability is excluded, not ignored: this fixture is the FROZEN 8-column
+    # table, whose `fixed` rows predate `fixed_by` and can never carry one. The
+    # assertion still fails on anything else, and asserting that the remainder is
+    # *only* traceability keeps this from quietly becoming a weaker test.
+    problems = BACKLOG.validate_store(store)
+    traceability = {"fixed-without-fixed-by", "fixed-by-orphaned",
+                    "fixed-by-unresolvable", "fixed-by-not-a-sha", "no-next-action"}
+    assert [p for p in problems if p["kind"] not in traceability] == []
 
 
 # ---------------------------------------------------------------------------
@@ -657,7 +664,7 @@ def test_validate_cli_flags_a_store_that_is_not_there(tmp_path):
     assert BACKLOG.main(["validate", "--store", str(tmp_path / "typo")]) == 2
 
 
-def test_update_dry_run_does_not_write(tmp_path):
+def test_update_dry_run_does_not_write(tmp_path, monkeypatch):
     """The headline contract of the update commit, previously asserted by no
     test: making dry-run write left the whole suite green."""
     store = tmp_path / "s"
@@ -668,12 +675,17 @@ def test_update_dry_run_does_not_write(tmp_path):
     path = store / f"{entry['id']}.json"
     before = path.read_bytes()
 
-    assert BACKLOG.main(["update", "--store", str(store), entry["id"], "--status", "fixed"]) == 0
+    # status=fixed now owes a fixed_by, and update resolves it for real. Stub
+    # the resolver so this test keeps asserting what it is named for instead of
+    # becoming a test about the host repo's history.
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: lambda sha: "ok")
+    argv = ["update", "--store", str(store), entry["id"], "--status", "fixed",
+            "--fixed-by", "abc1234"]
+
+    assert BACKLOG.main(argv) == 0
     assert path.read_bytes() == before, "dry-run wrote to the store"
 
-    assert BACKLOG.main(
-        ["update", "--store", str(store), entry["id"], "--status", "fixed", "--commit"]
-    ) == 0
+    assert BACKLOG.main(argv + ["--commit"]) == 0
     assert json.loads(path.read_text(encoding="utf-8"))["status"] == "fixed"
 
 

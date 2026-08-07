@@ -95,6 +95,24 @@ APP_ONLY_FIELDS = ("surface", "repro", "build")
 # stamp. Optional on every entry; see extract_verdict_fields().
 VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of")
 
+# The one structured, machine-checkable answer to "what made this stop being
+# true". `resolution` stays authoritative as PROSE, but prose can only be read
+# by position heuristics, and the heuristic is measurably wrong: on this store,
+# "the first sha in the resolution" was the landing commit for 49 of 63 fixed
+# entries, and one of those 49 (IMP-0063) was an *incidental* hash the text
+# mentions for an unrelated reason. A field that only ever holds landing commits
+# cannot be satisfied by a sha that wandered into the paragraph.
+TRACE_FIELDS = ("fixed_by",)
+
+# Shape only. The first cut of this required at least one a-f digit, to stop
+# `20260805` (a date) reading as a sha — and immediately produced a FALSE
+# NEGATIVE on `339918579`, a real commit in this repo that happens to be all
+# decimal. The character class cannot answer "is this a commit"; only the object
+# database can, which is what commit_state is for. A date therefore lands in
+# `fixed-by-unresolvable`, which is both true and actionable. Keep the guard
+# dumb and let the discriminator be the thing that actually knows.
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
 # The groom stamp. `verdict` answers "is this problem still real?"; these answer
 # a different question the ledger could not express — "has anyone worked out HOW
 # to fix it?" Both were being written by the same sweep into the same two
@@ -123,6 +141,13 @@ VERDICTS = (
     "MISSTATED",
     "ALREADY-FIXED",
     "OBSOLETE",
+    # Added when the check below first ran over the store: three entries had
+    # independently coined `CONFIRMED-FIXED` / `FIXED-ROOT-CAUSE` for an answer
+    # the list could not express — "this entry is closed and I checked the
+    # closure is genuine". That is not ALREADY-FIXED, which is about an OPEN
+    # entry turning out to need no work. Three independent coinages of the same
+    # missing word is a gap in the vocabulary, not three careless authors.
+    "CONFIRMED-FIXED",
 )
 _DUPLICATE_VERDICT_PREFIX = "DUPLICATE-OF-"
 
@@ -211,7 +236,100 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     if payload.get("status") not in STATUSES:
         problems.append({"kind": "bad-status", "value": payload.get("status")})
 
+    # VERDICTS was declared a closed vocabulary but only ever enforced inside
+    # extract_verdict_fields(), i.e. on the way IN from a resolution stamp.
+    # Anything that set the field directly bypassed it: measured before this
+    # landed, `update <id> --verdict TOTALLY-BOGUS --commit` exited 0, the value
+    # landed in the file, and `validate` reported 0 problems. A vocabulary
+    # nothing checks at rest is a comment.
+    verdict = payload.get("verdict")
+    if verdict and verdict not in VERDICTS and not str(verdict).startswith(
+        _DUPLICATE_VERDICT_PREFIX
+    ):
+        problems.append({"kind": "bad-verdict", "value": verdict})
+
     return problems
+
+
+def _check_traceability(payload: dict, commit_state) -> list[dict]:
+    """Hold `status` to the evidence that status implies.
+
+    Each status claims something different, so each gets its own rule:
+
+      * `fixed` claims the defect is gone. That claim is only auditable if it
+        names the commits, and only true if those commits are still reachable.
+      * `open` claims nothing but "filed". It is an honest state and carries no
+        obligation — see the next-action rule below.
+      * `triaged` / `in-progress` claim someone looked, so they owe a next action.
+      * `wont-fix` claims a decision, which is a reason, not a hash.
+
+    `commit_state` is injected so this stays a pure function of its inputs: the
+    unit tests must not need a git repo, and the one caller that does have one
+    builds the real resolver once and caches it.
+    """
+    problems: list[dict] = []
+    status = payload.get("status")
+    fixed_by = payload.get("fixed_by") or []
+
+    if not isinstance(fixed_by, list) or any(not isinstance(s, str) for s in fixed_by):
+        return [{"kind": "fixed-by-not-a-list", "value": fixed_by}]
+
+    if status == "fixed":
+        if not fixed_by:
+            problems.append({"kind": "fixed-without-fixed-by"})
+        for sha in fixed_by:
+            if not _SHA_RE.match(sha):
+                problems.append({"kind": "fixed-by-not-a-sha", "sha": sha})
+                continue
+            state = commit_state(sha) if commit_state else "ok"
+            if state == "orphan":
+                # Mechanically repairable: the rebase inside cutover rewrote it,
+                # and the rewritten commit is byte-identical often enough that
+                # `reanchor` can find it by patch-id. Distinct from the next kind
+                # because the repairs are different.
+                problems.append({"kind": "fixed-by-orphaned", "sha": sha})
+            elif state == "unknown":
+                # No object anywhere. IMP-0005 carried `813356b1`, which exists
+                # in no odb — not an orphan, a hash somebody wrote down wrong.
+                # Telling that reader to run `reanchor` sends them hunting a
+                # rebase that never happened.
+                problems.append({"kind": "fixed-by-unresolvable", "sha": sha})
+    elif status in ("open", "triaged", "in-progress"):
+        if fixed_by:
+            # An unfinished entry pointing at a landing commit is the status
+            # lying about itself, and it is the shape that lets closed work look
+            # open forever.
+            problems.append({"kind": "fixed-by-on-unfinished-entry", "shas": fixed_by})
+
+    if status in ("triaged", "in-progress") and not _next_action(payload):
+        problems.append({"kind": "no-next-action", "status": status})
+
+    if status == "wont-fix":
+        reason = str(payload.get("resolution") or "").strip()
+        if not reason:
+            problems.append({"kind": "wont-fix-without-reason"})
+        elif _SHA_RE.match(reason):
+            # A decision not to fix is an argument. A bare hash is the shape of
+            # an entry that was closed by reflex.
+            problems.append({"kind": "wont-fix-reason-is-a-sha", "value": reason})
+
+    return problems
+
+
+def _next_action(payload: dict) -> bool:
+    """Is there anything here telling the next reader what to do?
+
+    Two accepted forms, because the ledger has two eras: `plan` (structured,
+    current) and a resolution opening with an em-dash (the convention before
+    `plan` existed). Deliberately NOT required of `open` entries — measured
+    against the real store, requiring it there would have turned 40 entries red
+    the day it landed, and the only way to clear those is to invent plans for
+    work nobody has triaged. A fabricated plan is worse than an empty one.
+    """
+    if str(payload.get("plan") or "").strip():
+        return True
+    body = re.sub(r"^[—\-–]\s*", "", str(payload.get("resolution") or "").strip())
+    return bool(body.strip(" ()（）"))
 
 
 def _check_groom(payload: dict) -> list[dict]:
@@ -240,7 +358,8 @@ def _check_groom(payload: dict) -> list[dict]:
     return problems
 
 
-def validate_entry(payload: dict, *, entry_id: str | None = None) -> list[dict]:
+def validate_entry(payload: dict, *, entry_id: str | None = None,
+                   commit_state=None, check_traceability: bool = True) -> list[dict]:
     problems: list[dict] = []
 
     for field in REQUIRED_FIELDS:
@@ -270,12 +389,58 @@ def validate_entry(payload: dict, *, entry_id: str | None = None) -> list[dict]:
                 problems.append({"kind": "app-field-on-imp-entry", "field": field})
 
     problems.extend(_check_groom(payload))
+    if check_traceability:
+        problems.extend(_check_traceability(payload, commit_state))
 
     return problems
 
 
-def validate_store(store: Path) -> list[dict]:
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def make_commit_state():
+    """Resolve a sha to `ok` / `orphan` / `unknown`, or None outside a repo.
+
+    `ok` means reachable from HEAD **or** from `main`. Neither alone works:
+
+      * HEAD alone is right at gate time — the fix is committed on the worktree
+        branch and has not been cut over — but stops meaning anything after.
+      * `main` alone rejects that same legitimate sha on every cutover, and a
+        gate that reds on the normal path is one that gets switched off. This is
+        the failure the P2/P3 pairing was supposed to avoid, so it is designed
+        against rather than discovered later.
+
+    Returns None (rather than a function that always says `ok`) when there is no
+    repo, so the caller can say the check did not run instead of printing a
+    clean bill of health it never earned.
+    """
+    if _git("rev-parse", "--git-dir").returncode != 0:
+        return None
+    has_main = _git("rev-parse", "--verify", "--quiet", "main^{commit}").returncode == 0
+    cache: dict[str, str] = {}
+
+    def state(sha: str) -> str:
+        if sha in cache:
+            return cache[sha]
+        if _git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}").returncode != 0:
+            result = "unknown"
+        elif _git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0:
+            result = "ok"
+        elif has_main and _git("merge-base", "--is-ancestor", sha, "main").returncode == 0:
+            result = "ok"
+        else:
+            result = "orphan"
+        cache[sha] = result
+        return result
+
+    return state
+
+
+def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
     store = Path(store)
+    if commit_state is ...:
+        commit_state = make_commit_state()
     problems: list[dict] = []
     if not store.exists():
         # A typo'd --store used to report "0 problems, exit 0" — a green gate
@@ -291,7 +456,8 @@ def validate_store(store: Path) -> list[dict]:
         if not isinstance(payload, dict):
             problems.append({"kind": "unparseable", "path": str(path), "error": "not an object"})
             continue
-        for problem in validate_entry(payload, entry_id=path.stem):
+        for problem in validate_entry(payload, entry_id=path.stem,
+                                      commit_state=commit_state):
             problems.append({**problem, "path": str(path)})
 
     return problems
@@ -367,7 +533,15 @@ def add_entry(
     if not _SAFE_ID_RE.match(payload["id"]):
         raise ValueError(f"unusable entry id (must be a bare filename): {payload['id']!r}")
 
-    problems = validate_entry(payload, entry_id=payload["id"])
+    # Creation does not owe traceability. `import` exists to represent HISTORY,
+    # and history is full of `fixed` rows whose landing commit was never written
+    # down — refusing them here would mean the only way to migrate the ledger is
+    # to first solve the audit problem the ledger was migrated to expose.
+    # `update` is the interactive path and does enforce it (see
+    # _merged_and_validated), and `validate` enforces it over the whole store,
+    # so nothing filed this way escapes the gate — it just is not refused at the
+    # moment of writing, when the caller may genuinely not know the answer yet.
+    problems = validate_entry(payload, entry_id=payload["id"], check_traceability=False)
     if problems:
         raise ValueError(f"invalid entry: {problems}")
 
@@ -401,6 +575,7 @@ MUTABLE_FIELDS = (
     + APP_ONLY_FIELDS
     + VERDICT_FIELDS
     + GROOM_FIELDS
+    + TRACE_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -436,7 +611,10 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str) -> dict:
             continue
         updated[field] = value
 
-    problems = validate_entry(updated, entry_id=entry_id)
+    # The real resolver, not the permissive default: refusing a bad sha at write
+    # time is the difference between one caller seeing an error and every later
+    # `validate` run seeing a defect it cannot attribute to anyone.
+    problems = validate_entry(updated, entry_id=entry_id, commit_state=make_commit_state())
     if problems:
         raise ValueError(f"invalid update: {problems}")
     return updated
@@ -1207,8 +1385,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument(
         "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
     )
+    p_update.add_argument(
+        "--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
+        help="commit(s) that made the defect stop being true; required by status=fixed. "
+             "Fill it AFTER the fix lands — see reanchor if a rebase orphans one",
+    )
     p_update.add_argument("--commit", action="store_true")
     p_update.add_argument("--json", action="store_true")
+
+    p_reanchor = sub.add_parser(
+        "reanchor",
+        help="re-point orphaned fixed_by shas at their post-rebase equivalents "
+             "(DRY-RUN by default, --commit to land)",
+    )
+    p_reanchor.add_argument("ids", nargs="*", help="entry ids; default = every entry with an orphan")
+    p_reanchor.add_argument("--store", type=Path, default=DEFAULT_STORE)
+    p_reanchor.add_argument(
+        "--search-depth", type=int, default=800,
+        help="how many commits back from main to scan for a patch-id match (default 800). "
+             "The bound is REPORTED, never silent: a miss inside the window and a miss "
+             "because the window ended are different answers",
+    )
+    p_reanchor.add_argument("--commit", action="store_true")
+    p_reanchor.add_argument("--json", action="store_true")
 
     p_import = sub.add_parser(
         "import",
@@ -1316,6 +1515,105 @@ def _cmd_show(args) -> int:
     for field in REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")
+    return 0
+
+
+def _patch_id(rev: str) -> str | None:
+    """`git patch-id --stable` of one commit, or None if it has no diff to hash."""
+    show = _git("show", rev)
+    if show.returncode != 0 or not show.stdout:
+        return None
+    proc = subprocess.run(
+        ["git", "patch-id", "--stable"], input=show.stdout, capture_output=True, text=True
+    )
+    out = proc.stdout.split()
+    return out[0] if out else None
+
+
+def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: int = 800) -> dict:
+    """Map orphaned `fixed_by` shas onto their post-rebase equivalents on main.
+
+    The mechanism is measured, not assumed: every orphan in this repo's audit
+    was the *same change* rewritten by the rebase inside `cutover`, so
+    `git patch-id --stable` matches it byte-for-byte against a reachable commit.
+
+    Two deliberate refusals, both from the same rule — only move on proof:
+
+      * no match inside the window: reported as unmatched, NOT guessed at. One
+        real case (IMP-0062) had a whole-commit patch-id that differed because
+        the rebase resolved a conflict differently; a fuzzy matcher would have
+        silently picked a neighbour.
+      * more than one match: ambiguous, so nothing moves.
+
+    The search window is a bound, and a bound that is not reported reads as
+    "searched everything". `searched` is in the result for that reason.
+    """
+    state = make_commit_state()
+    if state is None:
+        raise BacklogError("reanchor needs a git repository (no --git-dir found)")
+
+    log = _git("rev-list", f"--max-count={search_depth}", "main")
+    if log.returncode != 0:
+        raise BacklogError("reanchor needs a resolvable `main`")
+    candidates = log.stdout.split()
+
+    by_patch: dict[str, list[str]] = {}
+    for rev in candidates:
+        pid = _patch_id(rev)
+        if pid:
+            by_patch.setdefault(pid, []).append(rev)
+
+    plan: list[dict] = []
+    for payload in _iter_entries(store):
+        if ids and payload.get("id") not in ids:
+            continue
+        shas = payload.get("fixed_by") or []
+        orphans = [s for s in shas if _SHA_RE.match(s) and state(s) == "orphan"]
+        if not orphans:
+            continue
+        moves, unmatched = {}, []
+        for sha in orphans:
+            pid = _patch_id(sha)
+            hits = by_patch.get(pid, []) if pid else []
+            if len(hits) == 1:
+                moves[sha] = hits[0][:9]
+            else:
+                unmatched.append({"sha": sha, "candidates": len(hits)})
+        if moves or unmatched:
+            plan.append({
+                "id": payload["id"],
+                "moves": moves,
+                "unmatched": unmatched,
+                "new_fixed_by": [moves.get(s, s) for s in shas],
+            })
+    return {"plan": plan, "searched": len(candidates), "search_depth": search_depth}
+
+
+def _cmd_reanchor(args) -> int:
+    result = reanchor_store(args.store, args.ids or None, search_depth=args.search_depth)
+    landed = []
+    if args.commit:
+        for item in result["plan"]:
+            if item["moves"]:
+                update_entry(args.store, item["id"], fixed_by=item["new_fixed_by"])
+                landed.append(item["id"])
+    result["mode"] = "commit" if args.commit else "dry-run"
+    result["landed"] = landed
+    if args.json:
+        print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
+        return 0
+    print(f"[{result['mode']}] scanned {result['searched']} commits on main "
+          f"(--search-depth {result['search_depth']})")
+    for item in result["plan"]:
+        for old, new in item["moves"].items():
+            print(f"  {item['id']}: {old} -> {new}")
+        for miss in item["unmatched"]:
+            print(f"  {item['id']}: {miss['sha']} UNMATCHED "
+                  f"({miss['candidates']} patch-id candidates in window) — not guessed")
+    if not result["plan"]:
+        print("  no orphaned fixed_by shas")
+    elif not args.commit:
+        print("  (dry-run — pass --commit to land)")
     return 0
 
 
@@ -1658,6 +1956,7 @@ def main(argv: list[str] | None = None) -> int:
         "update": _cmd_update,
         "import": _cmd_import,
         "render": _cmd_render,
+        "reanchor": _cmd_reanchor,
     }
     try:
         return handlers[args.command](args)

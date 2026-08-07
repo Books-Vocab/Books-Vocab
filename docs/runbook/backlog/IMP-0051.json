@@ -2,6 +2,12 @@
   "category": "tool",
   "date": "2026-08-04",
   "detail": "`plan_gates` 對 `ops/**/*.sh` **選不出任何 gate**（`ops/tests/test_worktree_orchestrate.py` 明文斷言為 `[]`），所以本輪改寫的 `ops/tests/test_gate_can_fail.sh` 在自己的 cutover gate 上是 `coverage` 的 uncovered 項——**偵測器沒有任何自動觸發點**：它不在 `ops-suite` CI（`test_ops_ci_coverage.sh:35`，理由是需要 UI World 資產），cutover 也不排它。被它防的失效模式撐了兩個月，而它自己的執行節奏是手動，形狀相同。**卡住的地方是自指**：把 `gate-can-fail` 排成 block gate 之後，它枚舉 block gate 時會枚舉到自己，於是必須為自己宣告一組 red/green 證明——這需要想清楚語意（自己的紅向證明是什麼？），做壞比不做糟。下一步：先讓 `ops/**/*.sh` 有路由（至少 `ops/tests/test_*.sh` → 跑該檔），再單獨處理 gate-can-fail 的自指（可能的解：枚舉時排除自身，並改由一條「meta gate 必須被某個 gate 涵蓋」的契約測試守住）。",
+  "fixed_by": [
+    "703c03e6e",
+    "1081744da",
+    "c0bf310dd",
+    "400bd6c5f"
+  ],
   "id": "IMP-0051",
   "resolution": "`703c03e6e`(路由)+`c0bf310dd`(雙向證明)+`400bd6c5f`(docs)。三層:`ops-shell-syntax`=`bash -n` 全體(唯一涵蓋那 ~1/3 沒有測試的腳本的檢查,且只需 bash)、`ops-shell:<test>`=慣例/alias 解析出的該腳本測試、`ops-shell-untested`=**具名** warn。alias map 由契約測試釘死(target 存在、真的提到該腳本、且非慣例可解),**第一次跑就抓到我自己憑名字推的 `ios_clean_derived_data.sh → test_ios_cache_evict.sh` 是假的**(那支測的是 `lib/ios_cache_evict.sh`)。自指問題的解:gate 名是 per-capability(`ops-shell`)不是 per-file,所以 `test_gate_can_fail.sh` 枚舉時只多兩個名字,各自宣告證明即可;`ops-shell` 沒有固定工具(被路由到的腳本就是命令),故新增第三種證明類 `fixture`——證的是 gate 的契約「跑它、傳遞它的 exit code」,紅向斷言 rc=3 讓「因別的原因紅」無法冒充。**副作用正是 IMP-0051 原本的訴求**:改 `test_gate_can_fail.sh` 現在會觸發跑它自己。仍未涵蓋:repo root 的 `devops.sh`(見 IMP-0052)。",
   "schema": "kg.backlog.entry.v1",

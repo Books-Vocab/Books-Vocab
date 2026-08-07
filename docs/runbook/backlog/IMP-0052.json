@@ -2,6 +2,11 @@
   "category": "tool",
   "date": "2026-08-04",
   "detail": "`devops.sh:418` 的部署命令在 `a67653fdf`（2026-06-19「retarget devops wrapper from terminated Lightsail to standby」）掉了 `--force-recreate`：`docker compose up -d --build --force-recreate` → `docker compose up -d --build`。`ops/test_devops.sh:141` 正是斷言該旗標存在（理由「so VERSION is re-read」），所以**那條測試自 2026-06-19 起就是紅的、紅了約 6.5 週而無人知**——它既不在 `ops-suite` CI（被 `test_ops_ci_coverage.sh` 以「reaches the production host over ssh」排除，見 IMP-0054），也不被任何 gate 路由（IMP-0051 本體）。本輪的 shell 路由只覆蓋 `ops/**/*.sh`，而 `devops.sh` 在 repo root，故**仍然無 gate**。**未修**：改動生產部署命令屬生產熱路徑，需明確決策——是回補旗標，還是這條 assertion 已被 felix reconciler 取代而該刪。裁定與落地見 resolution 欄。",
+  "fixed_by": [
+    "8aeb9e54b",
+    "330b87fad",
+    "03e887978"
+  ],
   "id": "IMP-0052",
   "resolution": "`8aeb9e54b`。**裁定**：reconciler 是例行部署 SoT（`docs/sop/release.md`），`devops.sh deploy` 是同一個 checkout（`~/kg-prod/backend`，felix 實查確認）的手動 break-glass 路徑，兩者都必須正確——故回補旗標而非刪斷言。旗標的必要性是可查的機制而非慣例：VERSION 是單檔 bind mount、`routers/system.py:23` 於 import 快取，自報版本只隨行程重啟改變；`up -d --build` 只在 image 或解析後 compose config hash 變了才 recreate。**原本寫的『reconciler 因 BACKEND_TRIGGER_RE 成員全部進 image 所以 by construction 必然 recreate』是錯的**，reviewer 用 `docker compose config --hash='*'` 實測推翻（見 IMP-0056）。同時：repo-root `devops.sh` 已納入 shell gate 路由、納入 `ops-suite` 的 trigger paths、納入 `docs/registry.yml` 的 `runbook.system` 與 `sop.deploy` sources（先前 `docs_impact.py --files devops.sh` 回 0 筆，現在回 2 筆 exact）。",
   "schema": "kg.backlog.entry.v1",

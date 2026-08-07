@@ -2,6 +2,9 @@
   "category": "doc",
   "date": "2026-06-13",
   "detail": "agent 檔寫「依 kg-receipt 格式」但未給欄位指標,靠 brief 餵",
+  "fixed_by": [
+    "98aa04fe6"
+  ],
   "id": "IMP-0001",
   "resolution": "`7c95a02`(補欄位指標)",
   "schema": "kg.backlog.entry.v1",

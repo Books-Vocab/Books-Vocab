@@ -2,6 +2,10 @@
   "category": "cli",
   "date": "2026-07-08",
   "detail": "`release.sh bump` 跑了立即寫檔,違 dry-run 預設慣例(實際咬人:預覽即污染 pbxproj)",
+  "fixed_by": [
+    "34cd97866",
+    "9c88b55b2"
+  ],
   "id": "IMP-0010",
   "resolution": "`34cd97866`+`9c88b55b2`(dry-run 預設+--yes+全面語意同步+迴歸)",
   "schema": "kg.backlog.entry.v1",
