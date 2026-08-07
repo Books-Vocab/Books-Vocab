@@ -1,5 +1,5 @@
 <!-- doc-meta
-tier: reference
+tier: archive
 authority: derived
 update_trigger: design-decision
 scope:
@@ -8,7 +8,7 @@ scope:
   - ios/BooksAndVocab/Views/Vocabulary/Components/NotebookStackedCoverView.swift
   - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift
   # VocabReviewBanner.swift: 不修檔,但 NotebookListView 解除引用
-verified_against: HEAD
+verified_against: frozen
 -->
 # Notebook Editorial Cover & List — Design Spec
 
