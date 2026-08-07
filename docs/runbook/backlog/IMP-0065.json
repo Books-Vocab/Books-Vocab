@@ -1,5 +1,7 @@
 {
   "acceptance": "timeout 300 bash -c 'out=$(./ops/tests/test_review_audit.sh 2>&1); rc=$?; printf \"%s\\n\" \"$out\" | grep -qF \"✓ single-line exemption blocked by normative wording\" && [ \"$rc\" -eq 0 ]'",
+  "acceptance_cmd": "out=$(./ops/tests/test_review_audit.sh 2>&1); rc=$?; printf \"%s\\n\" \"$out\" | grep -qF \"✓ single-line exemption blocked by normative wording\" && printf \"%s\\n\" \"$out\" | grep -qF \"✓ trivial-typo exemption still trailer-only\" && [ \"$rc\" -eq 0 ]",
+  "acceptance_expect_rc": 0,
   "category": "doc",
   "cost": "M",
   "date": "2026-08-05",

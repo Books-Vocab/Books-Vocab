@@ -1,5 +1,7 @@
 {
   "acceptance": "out=$(./ops/ios_test.sh --list --destination \"platform=macOS,variant=Mac Catalyst\" 2>&1); rc=$?; [ \"$rc\" -eq 2 ] && printf '%s\\n' \"$out\" | grep -q \"ios_build.sh --catalyst\"",
+  "acceptance_cmd": "out=$(./ops/ios_test.sh --list --destination \"platform=macOS,variant=Mac Catalyst\" 2>&1); rc=$?; [ \"$rc\" -eq 2 ] && printf '%s\\n' \"$out\" | grep -q \"ios_build.sh --catalyst\"",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "S",
   "date": "2026-08-03",

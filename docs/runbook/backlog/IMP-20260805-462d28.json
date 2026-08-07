@@ -1,5 +1,7 @@
 {
   "acceptance": "./ops/tests/test_docs_lint_generated_check.sh",
+  "acceptance_cmd": "./ops/tests/test_docs_lint_generated_check.sh",
+  "acceptance_expect_rc": 0,
   "category": "arch",
   "cost": "M",
   "date": "2026-08-05",

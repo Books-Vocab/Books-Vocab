@@ -1,5 +1,7 @@
 {
   "acceptance": "./ops/ios_test.sh --ui --list testExploreTabIsReachableAndRendersSection | grep -qxF -- \"-only-testing:BooksAndVocabUITests/ExploreNavigationUITests/testExploreTabIsReachableAndRendersSection\"",
+  "acceptance_cmd": "./ops/ios_test.sh --ui --list testExploreTabIsReachableAndRendersSection | grep -qxF -- \"-only-testing:BooksAndVocabUITests/ExploreNavigationUITests/testExploreTabIsReachableAndRendersSection\" && ! ./ops/ios_test.sh --ui --list testNoSuchBareMethod_IMP0030 >/dev/null 2>&1",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "M",
   "date": "2026-07-10",
