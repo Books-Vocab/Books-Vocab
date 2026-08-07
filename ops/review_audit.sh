@@ -10,7 +10,8 @@
 # Contract:
 #   - reviewed commit:   contains `Reviewed-by: <reviewer>`
 #   - exempt commit:     contains `Review-Exempt: <reason>`
-#   - allowed exemptions: trivial-typo | rename-only | format-only | generated-snapshot | single-line-small-file
+#   - allowed exemptions: trivial-typo | rename-only | format-only | generated-snapshot |
+#                         single-line-small-file | machine-repair (CHECKED: ledger paths only)
 #
 # Audited repo: $KG_REVIEW_AUDIT_ROOT, else the git toplevel of the CALLER's cwd, else
 # the repo this script lives in. The chosen root is always echoed to stderr.
@@ -108,10 +109,53 @@ exempt_count=0
 missing_count=0
 invalid_exemption_count=0
 
+EXEMPTION_NOTE=""
+
+# $1 = token, $2 = the commit's file list, one path per line.
+#
+# Most tokens are claims about the *nature* of a diff that this script cannot
+# check — it takes the author's word. `machine-repair` is deliberately not one of
+# those: it is claimed by `worktree_orchestrate.py`'s post-landing ledger repair,
+# which is a program, so the claim can be held to a path constraint. A token that
+# a machine emits and no machine checks is just a wider hole in the review gate.
+#
+# Pure bash, no jq: text mode must keep working without jq (that is why `need_jq`
+# only fires for `--json`), and a decision path that needs a tool the surrounding
+# contract says is optional is a gate that fails open on the machines that lack it.
 is_allowed_exemption() {
-  case "$1" in
+  local token="$1" files="$2" line stray=""
+  EXEMPTION_NOTE=""
+  case "$token" in
     trivial-typo|rename-only|format-only|generated-snapshot|single-line-small-file)
       return 0
+      ;;
+    machine-repair)
+      # An EMPTY file list is refused, not waved through. It is what an empty commit
+      # produces, and what an unreadable diff produces — "nothing to object to" and
+      # "could not look" are the same string here, and treating the second as the
+      # first is the failure mode this whole gate exists to prevent.
+      if [[ -z "${files//[[:space:]]/}" ]]; then
+        EXEMPTION_NOTE="machine-repair over a commit with no files — an empty or unreadable diff is not evidence that nothing needs review"
+        return 1
+      fi
+      while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        # git quotes paths with spaces or non-ASCII bytes; a quoted path can never
+        # equal an unquoted literal, so it lands in `stray` and blocks. Refusing to
+        # classify a name you cannot read is the correct direction to fail.
+        if [[ "$line" == "docs/runbook/improvement_backlog.md" ]]; then
+          continue
+        fi
+        if [[ "$line" =~ ^docs/runbook/backlog/[^/]+\.json$ ]]; then
+          continue
+        fi
+        stray+="${stray:+, }$line"
+      done <<<"$files"
+      if [[ -z "$stray" ]]; then
+        return 0
+      fi
+      EXEMPTION_NOTE="machine-repair only covers the re-derived ledger (docs/runbook/backlog/*.json, docs/runbook/improvement_backlog.md); this commit also touches: $stray"
+      return 1
       ;;
     *)
       return 1
@@ -127,12 +171,20 @@ while IFS= read -r sha; do
   reviewed_by="$(printf '%s\n' "$body" | sed -n 's/^Reviewed-by:[[:space:]]*//p' | tail -n 1)"
   review_exempt="$(printf '%s\n' "$body" | sed -n 's/^Review-Exempt:[[:space:]]*//p' | tail -n 1)"
 
-  files_json="$(
-    git show --pretty='' --name-only "$sha" \
-      | sed '/^$/d' \
-      | jq -R . \
-      | jq -s 'map(select(length > 0))'
+  # `--no-renames` and `--diff-merges=first-parent` are not cosmetic. Measured, both
+  # as ways past the checked `machine-repair` exemption below:
+  #   * a rename of `secret.txt` into the ledger directory prints only the NEW name,
+  #     so a commit that moved an arbitrary file in read as ledger-only;
+  #   * `git show --name-only` on a MERGE prints nothing at all, so an evil merge
+  #     read as a commit that touched no files.
+  files_raw="$(
+    git show --pretty='' --name-only --no-renames --diff-merges=first-parent "$sha" \
+      | sed '/^$/d'
   )"
+  files_json='[]'
+  if [[ "$JSON" -eq 1 ]]; then
+    files_json="$(printf '%s\n' "$files_raw" | sed '/^$/d' | jq -R . | jq -s 'map(select(length > 0))')"
+  fi
 
   status=""
   level="ok"
@@ -144,7 +196,7 @@ while IFS= read -r sha; do
     reviewed_count=$((reviewed_count + 1))
     ok_count=$((ok_count + 1))
   elif [[ -n "$review_exempt" ]]; then
-    if is_allowed_exemption "$review_exempt"; then
+    if is_allowed_exemption "$review_exempt" "$files_raw"; then
       status="exempt"
       note="Review-Exempt: $review_exempt"
       exempt_count=$((exempt_count + 1))
@@ -152,7 +204,7 @@ while IFS= read -r sha; do
     else
       status="invalid-exemption"
       level="block"
-      note="invalid Review-Exempt: $review_exempt"
+      note="invalid Review-Exempt: $review_exempt${EXEMPTION_NOTE:+ — $EXEMPTION_NOTE}"
       invalid_exemption_count=$((invalid_exemption_count + 1))
       block_count=$((block_count + 1))
     fi
