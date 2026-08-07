@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "fixed_by 的 sha 檢查回答的是『這字串能不能解析成 revision』,不是『這是不是 commit sha』。_SHA_RE 通過後只跑 rev-parse --verify '<s>^{commit}',而 7-40 字小寫 hex 是合法 ref 名(git 只禁 40 位全 hex 的 ref)。實測 branch 名 beefcaf、lightweight tag abcdef0、annotated tag deadbee 全部驗過、0 problems;HEAD/main 被擋只是因為含非 hex 字元,是附帶不是設計。branch 名會移動,指到它的 fixed_by 會靜默改變語意。修法一行:解析出的完整 sha 必須以記錄字串為前綴。同一行順帶修掉 tree/blob sha 與 ambiguous 前綴被誤歸成 fixed-by-unresolvable 的問題——該 kind 的定義是『odb 裡根本沒有』,但 tree/blob 是有物件而型別不對,ambiguous 是有兩顆,三者的正確修法互不相同(補長 sha vs 換 sha vs 找 rebase)。稽核者在 scratchpad repo 內用暴搜造出真實 7 字元碰撞證明了 ambiguous 這條。",
+  "id": "IMP-20260807-92a063",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}

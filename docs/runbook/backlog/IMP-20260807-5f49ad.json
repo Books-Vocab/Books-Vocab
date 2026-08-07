@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-07",
+  "detail": "validate_store 用非遞迴 store.glob('*.json'),而『store 是扁平的』這條不變式沒有任何持有者。實測:add --store <store>/archive 產生的 entry 內容完全合法,卻對 validate / ratchet / list / render 全部隱形(母 store grep 命中 0);orchestrator 那側刻意只路由 top-level(理由是避免 vacuous pass),所以巢狀檔只得到 coverage warn,而 coverage 是 warn 不 block。補一條 store.iterdir() 的 stray-path 檢查(與既有 store-missing 同族)就能把假設變成斷言。",
+  "id": "IMP-20260807-5f49ad",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
+  "status": "open",
+  "stream": "IMP"
+}
