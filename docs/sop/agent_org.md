@@ -41,11 +41,12 @@ verified_against: a201e2872
 
 > 本節在 CLAUDE.md 組織模型「上行 = receipt」之上加一條約束:receipt 描述的**狀態**是什麼。
 
-> 執行力 `[prompt]`。**今天**沒有可鍵入的訊號:ledger record 無 actor 欄
-> (`worktree_registry.py` 的 upsert 只寫 path/branch/intent/base/status)、無 hooks、
-> agent frontmatter 無工具限縮。刻意不寫成「原理上不可能」——可行的擋點是鍵在**客體**而非
-> 主體:`open` 記下 delegated 旗標、`cutover` 對 delegated worktree 拒,那個 provenance
-> 本來就屬於 ledger。在那之前,只能靠自律,所以它必須寫在對的地方而不是散在三份檔裡。
+> 執行力 `[prompt]`——但**「沒有可鍵入的訊號」這個前提已於 2026-08-07 失效**,原文據以
+> 成立的欄位列舉也已過時:`worktree_registry.py` 的 record 現在還有 `backlog` 與
+> `claimed_at`,而 `open --backlog` → record 欄位 → `register` 拒絕,正是本段預言的
+> 「鍵在**客體**而非主體」那條管線,已經跑起來了。所以 delegated 旗標不是從零開始的設計,
+> 而是照 `--backlog` 已立下的 pattern(旗標 → record → refusal,`args.X is not None`
+> 的省略/取代語意)再加一個欄位。今天仍靠自律的只剩「誰是被派者」這個判定本身。
 
 **委派出去的工作,上行交回的狀態是「在自己的工作樹裡 commit 完」,不是「已經進 main」。**
 `gate` 與 `cutover` 屬於**整合者**——也就是握有整批視野的那個節點。

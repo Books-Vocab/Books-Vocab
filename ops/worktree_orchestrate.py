@@ -38,13 +38,20 @@ watches origin/prod and turns a backend delta into a health-gated production rol
 So local main runs ahead of origin/main (backed up) and origin/prod (released) by however
 many cutovers have landed; deploy is the ONE deliberate production touch.
 
-  open       git worktree add (.claude/worktrees/<slug>, branch = <type>/<slug> where
-             type is classify_intent(intent)) forked from LOCAL `main` (offline) +
-             registry register (born-registered).
+  open       registry register (= CLAIM) FIRST, then git worktree add
+             (.claude/worktrees/<slug>, branch = <type>/<slug> where type is
+             classify_intent(intent)) forked from LOCAL `main` (offline). The order
+             matters: with `--backlog ID...` the register can REFUSE because another
+             active record holds that ticket, and a loser must not be left holding a
+             branch and a directory. A failed `worktree add` hands the claim back.
   adopt      register an ALREADY-existing worktree (bootstrap fallback: a bare
              `git worktree add` needs none of this tooling — adopt afterwards from
              inside). Registers the worktree ROOT; ledger + freeze lock anchor on the
-             TARGET's git-common-dir, never the process cwd.
+             TARGET's git-common-dir, never the process cwd. Takes `--backlog ID...`
+             too — a gate an adjacent entry point walks around is not a gate.
+             Both forward the flag ONLY when it was given: `--backlog` with no ids
+             parses to [] (not None), which is the registry's "give up the claim"
+             branch, so forwarding it unconditionally released live claims.
   gate       IMPACT-BASED verification. Diffs the worktree against its base (local
              `main`), routes each touched surface to its existing gate tool, runs them,
              aggregates a pass/warn/block verdict, and RECORDS it (keyed by worktree +
@@ -102,7 +109,8 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              preflight, gate) stay allowed so the flow can be quiesced for repo
              surgery (history rewrite, gc, shared hooks/config).
 
-Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused / partial).
+Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused /
+            open refused because a backlog ticket is already claimed / partial).
 """
 
 from __future__ import annotations
@@ -1588,7 +1596,19 @@ def cmd_preflight(args: argparse.Namespace) -> int:
 
 
 def cmd_open(args: argparse.Namespace) -> int:
-    """git worktree add + registry register (born-registered)."""
+    """registry register (= claim) + git worktree add — in that order.
+
+    The order is the point. `git worktree add` used to run first and the register
+    afterwards, with its exit code read only to choose a sentence to print before
+    an unconditional `return EXIT_OK`. Under a claim that is the worst possible
+    shape: the agent that LOST a ticket got a branch, a directory and a success
+    code, plus a warning line nothing is obliged to read.
+
+    Registering first makes the ledger the gate. The cost is a window where a
+    record can exist for a worktree that does not — so a failed `add` hands the
+    claim straight back rather than stranding the ticket on a path that is not
+    there.
+    """
     blocked = _freeze_guard(args.state, "open", args.json)
     if blocked is not None:
         return blocked
@@ -1609,23 +1629,60 @@ def cmd_open(args: argparse.Namespace) -> int:
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree path exists",
                "path": str(path)}, args.json, f"✗ worktree path already exists: {path}")
         return EXIT_USAGE
+    wanted = list(args.backlog or [])
+    # `--backlog` is forwarded ONLY when it was given. Passing it unconditionally
+    # looked harmless and was not: with no ids, the argv is `["--backlog", "--json"]`
+    # and argparse's nargs="*" resolves that to `[]`, NOT to None — which is the
+    # "replace the claim" branch. Measured end-to-end: `open --backlog IMP-0001`
+    # then a plain `adopt` on a LIVE worktree left `backlog: []`, `claimed_at: None`,
+    # and a second agent could immediately take the ticket. The registry's
+    # "omit = leave alone" rule was unreachable through the only two callers that
+    # exist, so the invariant this whole change adds was broken by the change itself.
+    claim_argv = ["--backlog", *wanted] if args.backlog is not None else []
+    reg_rc, reg_payload = _registry(
+        ["register", *_state_arg(args.state), "--path", str(path), "--branch", branch,
+         "--intent", args.intent, "--base", base, *claim_argv, "--json"])
+    if reg_rc != EXIT_OK:
+        conflicts = (reg_payload or {}).get("conflicts", [])
+        held = ", ".join(
+            f"{','.join(c.get('backlog') or [])} by [{c.get('branch')}] at {c.get('path')}"
+            for c in conflicts) or (reg_payload or {}).get("reason", "register refused")
+        _emit({"schema": SCHEMA, "step": "open", "error": "claim refused",
+               "branch": branch, "backlog": wanted, "conflicts": conflicts,
+               "registry_rc": reg_rc}, args.json,
+              f"✗ cannot open [{branch}] — {held}")
+        # EXIT_BLOCK, not EXIT_OK-with-a-warning: losing a race is a refusal, and
+        # the exit code is the only part of this a caller's `&&` can see.
+        return EXIT_BLOCK
+
     rc, out = _git_mutation(
         ["worktree", "add", "-b", branch, str(path), base],
         cwd=root,
         label="open-worktree-add",
     )
     if rc != 0:
+        # Hand the claim back. `preflight --commit` does eventually reclaim it (its
+        # sweep strikes the record, and measured: the ticket becomes claimable again
+        # right after), and even the dry-run lists it under `stale_entries` — so this
+        # is not the only recovery. It is the immediate one: without it the ticket
+        # stays held by a record whose path does not exist until somebody happens to
+        # run preflight WITH --commit, which is not the default.
+        rel_rc, _ = _registry(["resolve", *_state_arg(args.state), "--branch", branch,
+                               "--status", "abandoned"])
         _emit({"schema": SCHEMA, "step": "open", "error": "worktree add failed",
-               "detail": out}, args.json, f"✗ git worktree add failed:\n{out}")
+               "detail": out, "backlog": wanted, "claim_released": rel_rc == EXIT_OK},
+              args.json,
+              f"✗ git worktree add failed:\n{out}\n"
+              f"  {'claim released' if rel_rc == EXIT_OK else '⚠ COULD NOT release the claim — run: '
+                 f'ops/worktree_registry.py resolve --branch {branch} --status abandoned'}")
         return EXIT_BLOCK
 
-    reg_rc, _ = _registry(["register", *_state_arg(args.state), "--path", str(path),
-                           "--branch", branch, "--intent", args.intent, "--base", base])
     payload = {"schema": SCHEMA, "step": "open", "branch": branch, "path": str(path),
-               "base": base, "intent": args.intent, "registered": reg_rc == EXIT_OK}
+               "base": base, "intent": args.intent, "backlog": wanted, "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
              f"  path: {path}\n"
-             f"  {'registered in ledger' if reg_rc == EXIT_OK else '⚠ ledger register failed'}")
+             f"  registered in ledger"
+             + (f" — holding {', '.join(wanted)}" if wanted else ""))
     _emit(payload, args.json, human)
     return EXIT_OK
 
@@ -1687,16 +1744,28 @@ def cmd_adopt(args: argparse.Namespace) -> int:
               f"✗ --base {args.base!r} does not resolve in the target repo")
         return EXIT_USAGE
 
-    reg_rc, _ = _registry(["register", "--state", state, "--path", worktree,
-                           "--branch", branch, "--intent", args.intent, "--base", args.base])
+    wanted = list(args.backlog or [])
+    claim_argv = ["--backlog", *wanted] if args.backlog is not None else []  # see cmd_open
+    reg_rc, reg_payload = _registry(
+        ["register", "--state", state, "--path", worktree, "--branch", branch,
+         "--intent", args.intent, "--base", args.base, *claim_argv, "--json"])
     ok = reg_rc == EXIT_OK
+    conflicts = (reg_payload or {}).get("conflicts", [])
+    # Same sentence `open` builds. The registry's own human line never reaches the
+    # operator here: `_registry` is called with --json, so the refusal went out as
+    # JSON and the text path printed only "register failed" — a losing agent read
+    # that and had no next move.
+    held = ", ".join(
+        f"{','.join(c.get('backlog') or [])} held by [{c.get('branch')}] at {c.get('path')}"
+        for c in conflicts)
     payload = {"schema": SCHEMA, "step": "adopt", "branch": branch, "worktree": worktree,
                "base": args.base, "intent": args.intent, "ledger": state,
-               "registered": ok}
+               "backlog": wanted, "conflicts": conflicts, "registered": ok}
     human = (f"{'✓ adopted' if ok else '✗ adopt could NOT register'} worktree "
              f"[{branch}] (base {args.base})\n"
              f"  path: {worktree}\n"
-             f"  ledger: {state}" + ("" if ok else "  — register failed"))
+             f"  ledger: {state}"
+             + ("" if ok else f"  — {held or 'register failed'}"))
     _emit(payload, args.json, human)
     return EXIT_OK if ok else EXIT_BLOCK
 
@@ -3059,6 +3128,14 @@ def build_parser() -> argparse.ArgumentParser:
     add_base(op)
     op.add_argument("--intent", required=True, help="free-text intent (drives branch type)")
     op.add_argument("--slug", required=True, help="kebab-case slug for branch + path")
+    op.add_argument(
+        "--backlog", nargs="*", default=None, metavar="ID",
+        help="backlog ticket ids to CLAIM for this worktree. The claim is taken "
+             "before anything is created, so losing the race costs you nothing: "
+             "no branch, no directory, and a non-zero exit. Refused when another "
+             "ACTIVE ledger record already holds one of them; the claim is released "
+             "by `resolve`/`sweep`, with no separate release step.",
+    )
     op.set_defaults(func=cmd_open)
 
     ad = sub.add_parser("adopt", help="register an ALREADY-existing worktree in the "
@@ -3070,6 +3147,14 @@ def build_parser() -> argparse.ArgumentParser:
                     "a subdir resolves to its worktree root)")
     ad.add_argument("--intent", required=True,
                     help="why this worktree exists (recorded in the ledger)")
+    # adopt takes claims too. A gate that an adjacent entry point walks around is
+    # not a gate — adopt is the bootstrap path INTO the same ledger, so leaving it
+    # claim-blind would make "at most one worktree per ticket" true only of the
+    # worktrees that happened to be born through `open`.
+    ad.add_argument(
+        "--backlog", nargs="*", default=None, metavar="ID",
+        help="backlog ticket ids to CLAIM (same rules as `open --backlog`)",
+    )
     ad.set_defaults(func=cmd_adopt)
 
     sm = sub.add_parser("sync-main", help="guarded ff of the PRIMARY checkout's local "

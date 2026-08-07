@@ -1707,7 +1707,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument(
         "--ungroomed",
         action="store_true",
-        help="only entries nobody has worked out a fix plan for (the groom queue)",
+        help="only entries nobody has worked out a fix plan for (the groom queue). "
+             "NOTE this store knows nothing about who is WORKING on an entry: that "
+             "lives in the worktree ledger (`ops/worktree_registry.py list`, columns "
+             "`backlog` / `claimed`). A dispatch queue built from this flag alone will "
+             "hand out ids another agent already holds",
     )
     p_list.add_argument(
         "--groomed", action="store_true", help="only entries carrying a groom stamp"

@@ -9,7 +9,7 @@ version: 2.0.0
 
 把「使用者丟 intent → 隔離工作樹開發 → gate → 進本地 main」串成一條可執行流水線。你是**單一執行 agent**，逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具（`ios_ops.sh` / `verify_design_system.sh` / `docs_lint.sh` / `pytest`）。**絕不重造 gate 判斷**。
 
-所有 mutation 子指令 **dry-run 預設，`--commit` 才落地**。`--json` 給機器判讀。
+所有 mutation 子指令 **dry-run 預設，`--commit` 才落地**。`--json` 給機器判讀。**具名例外**：`open --backlog` 的認領是**沒有 dry-run 的獨佔寫入**——一個「先預覽再認領」的認領根本不是認領，中間那段時間正是它要消滅的東西。
 
 ## 拓樸：本地 main 為主幹（core mental model）
 
@@ -42,9 +42,11 @@ ops/worktree_orchestrate.py preflight --commit --json # 確認殘骸可清才落
 
 **b. open**：
 ```
-ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> --json
+ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab-slug> [--backlog IMP-xxxx ...] --json
 ```
-建 `.claude/worktrees/<slug>`、分支 `<type>/<slug>`（type 由 intent 自動判定），並在 P2 登記簿**誕生即登記**。記下回傳的 `path`。
+**先在 P2 登記簿登記（= 認領），成功才** 建 `.claude/worktrees/<slug>` 與分支 `<type>/<slug>`（type 由 intent 自動判定）。記下回傳的 `path`。
+
+**在做 backlog 上的單就一定要帶 `--backlog`**：它把那幾張單認領給這條 worktree，另一個 active 記錄已持有其一即 **refuse（rc 非 0）**，payload 的 `conflicts` 指名持有者的 branch 與 path。搶輸時**不會留下分支也不會留下目錄**——認領在建任何東西之前發生。認領的壽命 = 記錄 active 的壽命，所以 `resolve` / `sweep` 自動釋放，**沒有另一個 release 動詞**。`worktree_registry.py list` 的 `backlog` / `claimed` 欄回答「誰在做哪張單、拿多久了」。
 
 **c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。**每 phase 後 rebase 本地 main**——這是 **gate 的硬性前置**，不是減少衝突的方便：本地 main 的 tip 沒被分支 HEAD 包含時 `gate` 會直接拒（判決會綁到一棵不會落地的樹）：
 ```
