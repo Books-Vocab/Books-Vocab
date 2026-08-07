@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "worktree 流程沒有任何東西擋住「編輯落到 primary 而不是工作樹」，而 Bash 的 cwd 會在背景指令後漂回 primary。\n\n實際發生：我在 worktree 內連續用 `python3 - <<PY` 搭 `Path(\"ops/backlog.py\")` 這種**相對路徑**改檔，中途一次背景指令讓 session cwd 從\n`.claude/worktrees/<slug>` 漂回 `/Users/chenliangyu/project/kg`，之後三批編輯（兩個測試檔的刪除、重寫、修補）**全部靜默落到 primary 的 main 上**，而工作樹那份完全沒動。兩邊都沒有任何訊號：編輯成功、語法檢查過、pytest 在 primary 上跑得好好的（它跑的是 main 的碼 + 漏進去的測試改動，所以結果對我的改動毫無意義）。\n\n我是因為 `docs_lint` 說「only non-doc files changed」與我改了六個 doc 的事實矛盾才回頭查的——那是運氣，不是機制。\n\n現有防護只有一道且在很後面：cutover 的 primary-dirty refusal。它會擋，但那時已經：① 在錯的樹上跑了整輪測試、② 可能已對 primary 的 main 做了 N 次編輯、③ 真正的工作樹狀態不明。\n\n候選修法（擇一或並行）：\n① `worktree_orchestrate.py open` 的輸出除了 `path` 之外，明確給一行「之後所有指令請用這個絕對路徑前綴」，並在 skill 內把「heredoc 腳本一律用絕對路徑」寫成硬規則（目前 skill 只說 gate/cutover 要用工作樹自己那份 orchestrator，沒說編輯）。\n② 更硬的：加一個 `ops/worktree_orchestrate.py guard --worktree <path>` 或在 gate 開頭比對「primary 是否有本分支也在改的檔案未 commit」，並具名回報。\n③ 最便宜的：`gate` 現在就以工作樹為 cwd 執行，可以順手檢查 primary 的 `git status --porcelain --untracked-files=no` 是否非空，非空就 warn 並列檔名——那正是「編輯漏到 primary」的形狀，而且成本是一次 git 呼叫。",
+  "id": "IMP-20260808-e8ad13",
+  "resolution": "— 傾向 ③ + ①：gate 加一道 warn 級的 primary-dirty 具名回報（不是 block，因為 primary 有別的 session 在工作是合法的），加上 skill 內寫死「工作樹內的所有檔案操作用絕對路徑」。② 太重。",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Phase 3.5 施工時自撞（cwd 從 worktree 漂回 primary）",
+  "status": "open",
+  "stream": "IMP"
+}
