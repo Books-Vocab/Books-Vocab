@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-07",
+  "detail": "`ops/backlog.py verify <不存在的 id>` 直接吐 Python traceback：`_cmd_verify` 呼叫 `load_entry` 沒有 `except KeyError`，而隔壁 `_cmd_show` 有（`try/except KeyError` → `no such entry: <id>` + rc=1）。`main()` 的 refusal envelope 只攔 `(BacklogError, ValueError)`，KeyError 穿過去。實測（HEAD f33df64c7）：`verify IMP-NOPE-000000 --verdict CONFIRMED-FIXED --by probe --evidence x` → `KeyError: 'IMP-NOPE-000000'`，加 `--json` 也一樣是 traceback，機器讀取端拿到的不是 refusal 而是 stack trace。這是打錯 id 最常見的形狀，而 verify 是 agent 收尾必經的一步。",
+  "id": "IMP-20260807-68715b",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Phase 0 盤點（懸賞板計劃前置）",
+  "status": "open",
+  "stream": "IMP"
+}

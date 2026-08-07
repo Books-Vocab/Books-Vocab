@@ -29,6 +29,7 @@ dependencies. Anything imported here must be in the standard library.
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import os
 import re
@@ -2657,3 +2658,149 @@ def test_the_atomic_write_does_not_quietly_change_a_files_permissions(tmp_path):
     os.umask(umask)
     BACKLOG._write_atomic(fresh, "new\n")
     assert fresh.stat().st_mode & 0o777 == (0o666 & ~umask)
+
+
+# --------------------------------------------------------------------------
+# 14. a mistyped id is a refusal, not a crash — in every subcommand
+# --------------------------------------------------------------------------
+
+def test_an_id_that_is_not_there_is_refused_by_every_command_that_loads_one(tmp_path, capsys):
+    """`show` and `update` each grew their own try/except; `verify` never did.
+
+    Per-command handling is the wrong shape for this. Three call sites into the
+    same loader, two of which remembered, means the third's users met a Python
+    traceback for the most ordinary mistake there is — and `--json` met one too,
+    which is the single channel whose caller provably cannot read it (json.load
+    raises on a traceback, so the refusal arrives as a second, different error).
+
+    Asserted over all three because they are the three that load an entry today.
+    What actually stops a FOURTH command from reintroducing this is `main`'s single
+    handler, not this list — these argv are hand-written and nothing derives them
+    from the source, so a new subcommand that catches the error itself and answers
+    something else would not turn anything here red.
+    """
+    store = tmp_path / "s"
+    _add(store)  # a populated store: the failure under test is the id, not the dir
+    missing = "IMP-20260101-abcdef"
+    argvs = (
+        ["show", missing, "--store", str(store)],
+        ["update", missing, "--store", str(store), "--severity", "high"],
+        ["verify", missing, "--store", str(store), "--verdict", "CONFIRMED-OPEN",
+         "--by", "probe", "--evidence", "ran the thing"],
+    )
+    for argv in argvs:
+        rc = BACKLOG.main(list(argv))
+        captured = capsys.readouterr()
+        # The SAME code from all three. Not just non-zero: this CLI separates 1
+        # ("your question was fine, the answer is no" — `render --check` STALE)
+        # from 64 ("the call is malformed"), and a missing id has to land on one
+        # side of that line for every command, not a different side per command.
+        assert rc == 1, f"{argv[0]} answered {rc} for an id that is not in the store"
+        assert f"no such entry: {missing}" in captured.err, (
+            f"{argv[0]} did not name the missing id: {captured.err!r}"
+        )
+
+    for argv in argvs:
+        rc = BACKLOG.main([*argv, "--json"])
+        out = capsys.readouterr().out
+        # The assertion is that this parses at all. A traceback goes to stderr and
+        # leaves stdout empty, so json.loads is what actually distinguishes the two.
+        payload = json.loads(out)
+        assert payload["ok"] is False
+        assert missing in payload["error"]
+
+
+def test_the_missing_entry_refusal_is_narrower_than_a_bare_key_error(tmp_path):
+    """The refusal has to be narrower than `except KeyError`.
+
+    A bare KeyError handler around a whole command body would also swallow a real
+    dict-lookup bug inside it and report it as "no such entry" — turning a defect
+    into a reassuring message. So the loader raises its own type, and that type is
+    what the CLI answers to. It stays a KeyError as well, because three tests and
+    one recovery path in `import_legacy` already read it that way; and a BacklogError so
+    that deleting `main`'s specific clause degrades to the generic refusal rather
+    than to a traceback.
+    """
+    store = tmp_path / "s"
+    _add(store)
+    with pytest.raises(BACKLOG.EntryNotFound) as caught:
+        BACKLOG.load_entry(store, "IMP-20260101-abcdef")
+    assert isinstance(caught.value, KeyError)
+    assert isinstance(caught.value, BACKLOG.BacklogError)
+    # str() is what `main` prints. KeyError's own __str__ would repr the id and
+    # produce `ERROR 'IMP-...'`, which names nothing.
+    assert str(caught.value) == "no such entry: IMP-20260101-abcdef"
+
+
+# --------------------------------------------------------------------------
+# 15. one search depth, not two
+# --------------------------------------------------------------------------
+
+def test_the_reanchor_search_depth_has_one_default_and_not_two(tmp_path):
+    """The CLI searched 2000 commits and a direct call searched 800.
+
+    Both are doors into the same function, and `reanchor` is the one command whose
+    only silent failure is "found nothing" — with two depths there was no way to
+    read that answer, because "nothing matched" and "the window ended early" look
+    identical and the window was a different size depending on how you got in.
+
+    Compares the two real sources against each other rather than against a literal,
+    so the test cannot be satisfied by re-typing the same number in both places.
+    """
+    parsed = BACKLOG.build_parser().parse_args(["reanchor"])
+    from_signature = inspect.signature(
+        BACKLOG.reanchor_store).parameters["search_depth"].default
+    assert parsed.search_depth == from_signature, (
+        f"CLI default {parsed.search_depth} != library default {from_signature}"
+    )
+
+
+# --------------------------------------------------------------------------
+# 16. `show` returns the field that says which commit fixed it
+# --------------------------------------------------------------------------
+
+def test_show_prints_the_commits_that_closed_the_entry(tmp_path, capsys):
+    """`fixed_by` exists so a closed entry can be traced to the commit that closed it.
+
+    The human output built its field order by hand and left TRACE_FIELDS out, so
+    the one field a reader opens a fixed entry to see was the one field `show`
+    would not print — while `--json` had it all along. A field that is stored,
+    validated and invisible is, to the reader, a field that was never added.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    shas = ["8e9d1ca49", "6b278c33d"]
+    assert BACKLOG.main([
+        "verify", entry["id"], "--store", str(store), "--verdict", "CONFIRMED-FIXED",
+        "--by", "probe", "--evidence", "re-ran the acceptance command",
+        "--status", "fixed", "--fixed-by", *shas, "--commit",
+    ]) == 0
+    capsys.readouterr()
+
+    assert BACKLOG.main(["show", entry["id"], "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    # ONE assertion over the label AND the values on the SAME LINE. Two separate
+    # `in human` checks looked equivalent and were not: `resolution` is by
+    # definition the authoritative narrative and in practice almost always names
+    # the landing commits, so a real entry satisfies both halves from two
+    # different fields while `show` prints no fixed_by line at all. Measured
+    # against the unfixed code with `resolution="landed in 8e9d1ca49 and
+    # 6b278c33d"` and evidence mentioning the words "fixed_by": both assertions
+    # passed, green, with the bug fully present. This test was only red today
+    # because its own fixture happens to set `resolution=""`.
+    assert re.search(rf"^fixed_by\s+.*{shas[0]}.*{shas[1]}", human, re.M), (
+        f"`show` has no fixed_by line carrying both shas:\n{human}"
+    )
+
+
+def test_show_can_print_every_field_update_can_write(tmp_path):
+    """The reader has to cover the writer, or a new field is invisible by default.
+
+    `fixed_by` was added to MUTABLE_FIELDS and not to `show`'s field order, and it
+    stayed that way through the whole feature: stored, validated by `validate`,
+    required by the ratchet, and absent from the only human view of an entry. No
+    test could go red, because both lists were hand-maintained and neither
+    mentioned the other.
+    """
+    missing = sorted(set(BACKLOG.MUTABLE_FIELDS) - set(BACKLOG.SHOW_FIELD_ORDER))
+    assert not missing, f"`update` can write fields `show` will never print: {missing}"

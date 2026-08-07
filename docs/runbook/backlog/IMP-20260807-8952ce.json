@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-07",
+  "detail": "`ops/backlog.py show <id>` 的人讀輸出永遠不印 `fixed_by`。`_cmd_show` 的欄位迴圈是 `REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS`，漏了 `TRACE_FIELDS = (\"fixed_by\",)`；`--json` 走 `entry` 整包所以有。實測（HEAD f33df64c7）：`show IMP-20260807-5bff5e` 印 15 行、`grep -c fixed_by` = 0，同一張單 `--json` 的 `entry[\"fixed_by\"]` = `[\"8e9d1ca49\",\"6b278c33d\"]`。後果：`fixed_by` 是 IMP-20260805-9a51e9 為了可回溯性才加的欄位，而人去看一張 fixed 單時最想知道的「是哪顆 commit 修的」恰好是唯一看不到的欄位——欄位存在但預設不可見，等於沒加。",
+  "id": "IMP-20260807-8952ce",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "Phase 0 盤點（懸賞板計劃前置）",
+  "status": "open",
+  "stream": "IMP"
+}
