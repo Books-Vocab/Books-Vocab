@@ -4190,3 +4190,48 @@ def test_resolve_names_the_landed_closures_still_waiting_on_the_wave_anchor(scra
                              "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, "an unanchored closure must not block teardown"
     assert payload["pending_anchor"] == ["IMP-0001"]
+
+
+@gitmark
+def test_gate_refuses_a_worktree_with_an_operation_in_flight(scratch, tmp_path):
+    """A conflicted tree must not be able to record a green verdict.
+
+    Measured, and it is how this guard was found: a `git rebase` stopped on a
+    delete-vs-modify conflict, and `gate` run over that tree reported
+    `verdict: pass` with `changed_files: []` and two gates run. `git diff` against
+    the trunk on a half-applied rebase describes the PARTIAL state, so `plan_gates`
+    routed nothing and `aggregate_verdict([])` is "pass". That verdict is bound to
+    the current HEAD and is exactly what `cutover` demands as proof.
+
+    The signal is the OPERATION, not the empty diff: a branch already contained in
+    the trunk legitimately has nothing to gate, and refusing on empty-diff alone
+    would break that case.
+    """
+    tmp, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "midflight",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = Path(opened["path"])
+
+    # branch and trunk both touch the same line, so the rebase is guaranteed to stop
+    (wt / "clash.txt").write_text("branch side\n", encoding="utf-8")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "branch: clash"], wt)
+    (repo / "clash.txt").write_text("trunk side\n", encoding="utf-8")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "trunk: clash"], repo)
+
+    rebase = subprocess.run(["git", "rebase", "main"], cwd=str(wt),
+                            capture_output=True, text=True,
+                            env={**os.environ, "GIT_EDITOR": "true"})
+    assert rebase.returncode != 0, "the fixture failed to produce a stopped rebase"
+    assert MODULE._interrupted_operation(wt) == "rebase"
+
+    rc, payload = _run_json(["gate", "--worktree", str(wt), "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK, f"gate did not refuse a mid-rebase tree: {payload}"
+    assert payload.get("interrupted") == "rebase", payload
+    assert "verdict" not in payload, "a refused gate must not record a verdict"
+
+    # and the refusal lifts once the tree is coherent again
+    subprocess.run(["git", "rebase", "--abort"], cwd=str(wt), check=True,
+                   capture_output=True)
+    assert MODULE._interrupted_operation(wt) is None
