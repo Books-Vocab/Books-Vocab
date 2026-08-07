@@ -303,8 +303,13 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
     if not isinstance(fixed_by, list) or any(not isinstance(s, str) for s in fixed_by):
         return [{"kind": "fixed-by-not-a-list", "value": fixed_by}]
 
-    if status == "fixed":
-        if not fixed_by:
+    if status in ("fixed", "wont-fix"):
+        # `wont-fix` used to fall through both branches, so flipping the status
+        # made a broken sha vanish from the verdict — a repair anyone hunting a
+        # green gate would find, and the sha is no less broken for it. Only the
+        # REQUIREMENT to carry one is specific to `fixed`; validating the ones
+        # actually present is not.
+        if status == "fixed" and not fixed_by:
             problems.append({"kind": "fixed-without-fixed-by"})
         for sha in fixed_by:
             if not _SHA_RE.match(sha):
@@ -486,7 +491,7 @@ def validate_store(store: Path, *, commit_state=..., ) -> list[dict]:
         # Same rule one level up: the resolver says None when it could not be
         # built, and reading that as "every sha is fine" is the clean bill it
         # explicitly refused to sign. Name the gap instead of inheriting it.
-        problems.append({"kind": "commit-state-unavailable", "root": str(ROOT)})
+        problems.append({"kind": "commit-state-unavailable", "repo": str(GIT_REPO)})
 
     for path in sorted(store.glob("*.json")):
         try:
@@ -785,9 +790,13 @@ def closed_without_verification(store: Path) -> list[str]:
     for payload in _iter_entries(store):
         if payload.get("status") not in ("fixed", "wont-fix"):
             continue
-        if not (str(payload.get("verified_at") or "").strip()
-                and str(payload.get("verified_by") or "").strip()):
-            out.append(str(payload.get("id")))
+        # All four, not just date+name: with only the first two, `update
+        # --verified-at X --verified-by Y` cleared this gate while leaving no
+        # verdict and no evidence — the two fields `verify` exists to bundle,
+        # applied piecemeal through the door next to it.
+        if not all(str(payload.get(f) or "").strip()
+                   for f in ("verified_at", "verified_by", "verdict", "verified_evidence")):
+            out.append(str(payload.get(id_field := "id")))
     return sorted(out)
 
 
@@ -1585,13 +1594,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("--json", action="store_true")
 
     p_validate = sub.add_parser("validate", help="schema-check every entry")
-    p_validate.add_argument(
+    # Enforcing and re-baselining are opposite acts, and `--baseline` returned
+    # early — so passing both ran neither check, exited 0, and widened the
+    # watermark. Same treatment as the three sister lints, and as this file's
+    # own --unverified/--stale pair: a quiet empty result reads like a pass.
+    p_baseline = p_validate.add_mutually_exclusive_group()
+    p_baseline.add_argument(
         "--baseline-check", dest="baseline_check", action="store_true",
         help="also refuse NEW entries closed with no attributable verification "
-             "(verified_at + verified_by), measured against the baseline set")
-    p_validate.add_argument(
+             "(verified_at + verified_by + verdict + evidence), measured "
+             "against the baseline set")
+    p_baseline.add_argument(
         "--baseline", action="store_true",
-        help="rewrite the baseline set from today's store, then exit")
+        help="rewrite the baseline set from today's store, then exit "
+             "(cannot be combined with --baseline-check)")
     _add_store_arg(p_validate)
     p_validate.add_argument("--json", action="store_true")
 
@@ -1760,6 +1776,10 @@ def _cmd_verify(args) -> int:
     # old value, so a second verifier's CONFIRMED-FIXED carried the first
     # verifier's command — evidence that re-runs to the wrong verdict, which is
     # worse than none because it looks like it has some.
+    if not args.evidence.strip():
+        # `required=True` proves the flag was typed, not that it carries a
+        # command. An empty string satisfied the ratchet and left the queue.
+        raise BacklogError("--evidence must name what you ran; an empty string is not evidence")
     changes["verified_evidence"] = args.evidence
     if args.status:
         changes["status"] = args.status
@@ -1889,11 +1909,21 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *, search_depth: i
     # is narrower than the space its own defect detector accepts can only fail,
     # and it fails silently-looking (`not guessed` reads like a careful refusal
     # rather than like looking in the wrong place).
-    log = _git("rev-list", f"--max-count={search_depth}", "HEAD", repo=repo)
+    # HEAD **and** main — the same union `commit_state` calls `ok`. The first
+    # cut walked main alone and returned 8-of-8 UNMATCHED because the rewrite
+    # landed on the branch; moving it to HEAD alone just mirrored the bug, and
+    # left the ordinary case uncovered: HEAD parked behind main, which is what a
+    # worktree looks like when the fix landed after the branch forked. A repair
+    # tool that searches less than its own detector accepts can only report
+    # `not guessed`, and that reads like care rather than like looking in the
+    # wrong place.
+    frame = ["HEAD", "main"] if _git(
+        "rev-parse", "--verify", "--quiet", "main^{commit}", repo=repo).returncode == 0 else ["HEAD"]
+    log = _git("rev-list", f"--max-count={search_depth}", *frame, repo=repo)
     if log.returncode != 0:
         raise BacklogError("reanchor needs a resolvable HEAD")
     candidates = log.stdout.split()
-    total = _git("rev-list", "--count", "HEAD", repo=repo).stdout.strip()
+    total = _git("rev-list", "--count", *frame, repo=repo).stdout.strip()
     main_depth = int(total) if total.isdigit() else None
 
     by_patch: dict[str, list[str]] = {}
@@ -1972,6 +2002,18 @@ def _cmd_validate(args) -> int:
 
     current = closed_without_verification(args.store)
     if getattr(args, "baseline", False):
+        # Regenerating a watermark from a store whose schema never validated
+        # bakes today's breakage into the forgiven set. Measured in a non-git
+        # tree: `commit-state-unavailable` was raised and then discarded by the
+        # `return 0` below, so the ratchet re-cut itself in exactly the state
+        # the new signal exists to refuse.
+        blocking = [p for p in problems
+                    if p.get("kind") != "closed-without-verification-above-baseline"]
+        if blocking:
+            for problem in blocking:
+                print(f"ERROR {problem.get('path', '')} — {problem['kind']} {problem}")
+            print(f"refusing to rewrite the baseline over {len(blocking)} unresolved problem(s)")
+            return 2
         _baseline_path().write_text(
             "# entries closed with no attributable verification (verified_at + verified_by).\n"
             "# Ratchet: this set may shrink, never grow. Regenerate with\n"
