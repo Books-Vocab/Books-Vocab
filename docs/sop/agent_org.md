@@ -7,7 +7,7 @@ scope:
   - .claude/agents/
   - .claude/skills/kg-router/
   - .claude/skills/kg-receipt/
-verified_against: a6ad9d5d
+verified_against: a201e2872
 -->
 # 組織營運手冊（總經理 SOP）
 
@@ -127,4 +127,9 @@ DoD:       <怎樣算完成、要附哪個當下驗證輸出>
 - **小 / 中大** → 依 `kg-router`「Tool Friction」分級走對應動作(小=記錄續做 / 中大=停手修工具;鐵律9)。
 - **結構 / 架構級**(本手冊新增的第三級,前兩級之外)→ 不自決,**升級回上一階**(必要時到執行長,見 CLAUDE.md 組織模型升級觸發)。
 
-凡非當場修掉者一律經 `ops/backlog.py add` 進 `docs/runbook/backlog/`(一筆一檔的 SoT),owner=`platform-steward` 追到 resolved。
+凡非當場修掉者一律經 `ops/backlog.py add` 進 `docs/runbook/backlog/`(一筆一檔的 SoT),**分兩條 stream、兩個 owner**:
+
+- `--stream IMP` — 工具 / CLI / 文檔 / 架構摩擦,owner=`platform-steward`。
+- `--stream APP` — 會出貨給使用者的缺陷,owner=**對應 Line 部門**(`ios-engineer` / `backend-engineer`),另須附 `--surface` / `--repro` / `--build`。
+
+分流看**這缺陷誰碰得到**(使用者 vs 只有 repo 內的人),不看誰發現;可判定的判準與邊界情形寫在 `kg-receipt` 的「Stream 分流」,本文不複述(SoT 零重複)。這條分流是本手冊的一部分而非細節:**選錯 stream 等於選錯 owner**,而一筆沒有 owner 的 entry 就是被無聲遺忘的那種摩擦——正是本節要防的東西。

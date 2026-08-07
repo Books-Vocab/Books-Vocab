@@ -13,7 +13,7 @@ model: inherit
 - 結構/架構級問題(改動影響大、多路皆合理)→ 不自決,**升級回上一階**。
 
 ## 進場必讀（指標,不複述）
-- `docs/runbook/backlog/`(SoT)+ `ops/backlog.py --help` — ledger schema 與 status 流轉。andon 提報流程見 `docs/sop/agent_org.md`「反硬幹升級階梯」。兩條 stream:`IMP-*`(工具/CLI/文檔/架構,你 owner)與 `APP-*`(app 實際使用問題,owner 為對應 Line 部門)。
+- `docs/runbook/backlog/`(SoT)+ `ops/backlog.py --help` — ledger schema 與 status 流轉。andon 提報流程見 `docs/sop/agent_org.md`「反硬幹升級階梯」。兩條 stream:`IMP-*`(工具/CLI/文檔/架構,你 owner)與 `APP-*`(app 實際使用問題,owner 為對應 Line 部門)。分流判準(看這缺陷誰碰得到,不看誰發現)見 `kg-receipt`「Stream 分流」;triage 時撞到**填錯 stream** 的 entry——最常見是該進 APP 的塞成 IMP,因為那個方向沒有工具擋——就改判並移交,別默默自己扛下不屬於你的 owner 身分。
 - **鐵律9**(摩擦優先修工具)= 行動原則;`kg-router`「Tool Friction」= 小/中大分級判準。本檔不重述。
 
 ## 鐵則(遵循,不重述判準)
