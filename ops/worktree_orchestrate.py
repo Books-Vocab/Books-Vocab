@@ -2955,6 +2955,34 @@ def _resolve_target(worktree: str, explicit: str | None, base: str, state: str |
     return branch, entry, None, None
 
 
+def _entry_is_closed(root: Path, entry_id: str) -> bool:
+    """Is this ticket already resolved in the store? Plain file read, fail-open.
+
+    The queue is NOT sufficient on its own, and this function is here because the
+    guard it feeds false-positived on its first real teardown. The documented order
+    is stage -> cutover -> resolve -> (wave end) anchor, and under that order the
+    row is still queued when `resolve` looks. But anchoring BEFORE resolving is
+    equally legitimate — and `anchor --commit` DRAINS the queue, so the row that
+    proved the closure is gone by the time the guard runs. Measured: the very
+    teardown that landed this guard reported its own correctly-closed ticket.
+
+    A warning that fires on a normal path is a warning that gets switched off, and
+    it would have taken the real signal with it.
+
+    Read directly rather than through `backlog.py`: this module is deliberately
+    dependency-free (the bootstrap paradox — it has to run in a checkout too old to
+    have the rest of the toolchain), and it already treats the store as paths under
+    `LEDGER_PATHS`. Fail-OPEN — an unreadable entry yields False, i.e. "still open",
+    so the guard speaks up rather than going quiet on a file it could not check.
+    """
+    path = Path(root) / "docs" / "runbook" / "backlog" / f"{entry_id}.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("status") in (
+            "fixed", "wont-fix")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+
+
 def _claimed_tickets(state: str | None, branch: str) -> list[str]:
     """Tickets the ACTIVE ledger record for `branch` claims. Read-only, fail-soft.
 
@@ -3207,7 +3235,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # the tool, and `make_commit_state`'s docstring already paid for that lesson.
     staged_here = {r.get("id") for r in _read_anchor_queue(root)
                    if r.get("branch") == branch}
-    claimed_open = sorted(set(claimed_at_teardown) - staged_here)
+    claimed_open = sorted(t for t in claimed_at_teardown
+                          if t not in staged_here and not _entry_is_closed(root, t))
 
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
                "resolved": "merged", "executed": results, "failures": failures,

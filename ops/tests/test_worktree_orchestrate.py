@@ -4334,3 +4334,64 @@ def test_the_claim_is_read_before_the_ledger_record_is_struck(scratch, tmp_path)
     assert MODULE._claimed_tickets(state, wt_branch) == [], (
         "a struck record still reported its claim — then the guard would fire after "
         "teardown instead of before it")
+
+
+@gitmark
+def test_a_claim_already_closed_in_the_store_is_not_reported(scratch, tmp_path):
+    """The guard false-positived on its own first real teardown.
+
+    `anchor --commit` DRAINS the queue. The documented order leaves the row in place
+    when `resolve` looks (stage → cutover → resolve → wave-end anchor), but
+    anchoring first is equally legitimate — and then the row that proved the closure
+    is gone, so a queue-only predicate reports a correctly-closed ticket as
+    abandoned. Measured: the teardown that landed this guard named its own ticket.
+
+    A warning that fires on a normal path gets switched off, and takes the real
+    signal with it. So the predicate is "claimed, AND not staged, AND not already
+    resolved in the store".
+    """
+    tmp, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "drained",
+                            "--backlog", "IMP-0100", "IMP-0101",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, opened
+    wt, wt_branch = opened["path"], opened["branch"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    assert _run_json(["gate", "--worktree", wt, "--state", state, "--json"])[0] == MODULE.EXIT_OK
+    assert _run_json(["cutover", "--worktree", wt, "--state", state,
+                      "--commit", "--json"])[0] == MODULE.EXIT_OK
+
+    # IMP-0100 was closed and its queue row consumed; IMP-0101 was simply forgotten.
+    store = Path(repo) / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True, exist_ok=True)
+    (store / "IMP-0100.json").write_text(json.dumps({"id": "IMP-0100", "status": "fixed"}),
+                                         encoding="utf-8")
+    (store / "IMP-0101.json").write_text(json.dumps({"id": "IMP-0101", "status": "open"}),
+                                         encoding="utf-8")
+
+    rc, payload = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert payload["claimed_without_closure"] == ["IMP-0101"], (
+        f"a ticket already resolved in the store was reported as abandoned: {payload}")
+
+
+def test_an_unreadable_entry_keeps_the_guard_talking(tmp_path):
+    """Fail-OPEN, and the direction is the point.
+
+    `_entry_is_closed` answering False for a file it could not read means the guard
+    still speaks up. The opposite default would let a missing or corrupt entry
+    silence a real abandoned claim — silence being the failure this guard exists to
+    end.
+    """
+    root = tmp_path / "repo"
+    (root / "docs" / "runbook" / "backlog").mkdir(parents=True)
+    assert MODULE._entry_is_closed(root, "IMP-9999") is False          # absent
+    (root / "docs" / "runbook" / "backlog" / "IMP-8888.json").write_text(
+        "{not json", encoding="utf-8")
+    assert MODULE._entry_is_closed(root, "IMP-8888") is False          # corrupt
+    (root / "docs" / "runbook" / "backlog" / "IMP-7777.json").write_text(
+        json.dumps({"id": "IMP-7777", "status": "wont-fix"}), encoding="utf-8")
+    assert MODULE._entry_is_closed(root, "IMP-7777") is True           # closed counts
