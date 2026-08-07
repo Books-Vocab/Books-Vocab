@@ -1733,9 +1733,10 @@ def test_reachable_from_main_but_not_head_still_counts_as_ok(tmp_path, monkeypat
     g("add", "b.txt"); g("commit", "-qm", "later")
     ahead = g("rev-parse", "HEAD").stdout.strip()
     g("checkout", "-q", behind)  # detached, parked behind main
-    monkeypatch.chdir(repo)
 
-    state = BACKLOG.make_commit_state()
+    # The repo is passed, not stood in: cwd is no longer a way to aim this
+    # resolver, because cwd was also a way to disarm it.
+    state = BACKLOG.make_commit_state(repo)
     assert state(behind) == "ok", "reachable from HEAD"
     # The witness: unreachable from HEAD, reachable from main. Only the `or main`
     # branch can answer `ok` here, so removing it turns this red.
@@ -1789,7 +1790,11 @@ def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monke
     monkeypatch.undo()  # the real resolver, on a real repo
     repo = tmp_path / "repo"
     orphan, landed = _git_repo(repo)
-    monkeypatch.chdir(repo)
+    # The CLI deliberately has no --repo flag: `reanchor` repairs the ledger of
+    # the checkout it ships in, and a flag would re-open the "which repo is this
+    # answering about" question the cwd fix just closed. So the fixture repo is
+    # made to BE that checkout for this test.
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
 
     store = repo / "store"
     entry = _add(store, detail="reanchor fixture")
@@ -1798,9 +1803,9 @@ def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monke
     # fixture — it is how the state actually arises. The sha is valid when
     # written and the rebase orphans it afterwards, with nobody in the loop.
     _force_fixed_by(store, entry["id"], [orphan])
-    assert BACKLOG.make_commit_state()(orphan) == "orphan", "fixture did not orphan the commit"
+    assert BACKLOG.make_commit_state(repo)(orphan) == "orphan", "fixture did not orphan the commit"
 
-    dry = BACKLOG.reanchor_store(store)
+    dry = BACKLOG.reanchor_store(store, repo=repo)
     assert dry["plan"][0]["moves"] == {orphan: landed[:9]}
     # A dry run must not touch the store; the whole point of the primitive is
     # that a wrong mapping is a wrong audit trail.
@@ -1818,7 +1823,6 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     monkeypatch.undo()
     repo = tmp_path / "repo"
     orphan, _landed = _git_repo(repo)
-    monkeypatch.chdir(repo)
 
     store = repo / "store"
     entry = _add(store, detail="unmatchable fixture")
@@ -1828,7 +1832,7 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     # found in the window I searched", never a guess. (The window walks HEAD,
     # not main: the rewritten commit lands on the branch first, and searching
     # main alone returned 8-of-8 UNMATCHED on this tool's first real run.)
-    result = BACKLOG.reanchor_store(store, search_depth=1)
+    result = BACKLOG.reanchor_store(store, search_depth=1, repo=repo)
     item = result["plan"][0]
     assert item["moves"] == {}
     assert [u["sha"] for u in item["unmatched"]] == [orphan]
@@ -2082,3 +2086,102 @@ def test_the_ratchet_blocks_closing_without_verifying(tmp_path, monkeypatch):
     BACKLOG.update_entry(store, fresh["id"], verified_at="2026-08-07",
                          verdict="CONFIRMED-FIXED", verified_by="agent:x")
     assert BACKLOG.main(["validate", "--store", str(store), "--baseline-check"]) == 0
+
+
+def test_the_ratchet_cannot_be_disarmed_by_standing_somewhere_else(tmp_path, monkeypatch):
+    """The store and the baseline must name the same checkout.
+
+    Measured on the real ledger: `cd /tmp/elsewhere && <worktree>/ops/backlog.py
+    validate --baseline-check` printed `0 problems`, rc=0, while forgiving all
+    160 ids — because `DEFAULT_STORE` is ROOT-anchored and the baseline default
+    was cwd-anchored. A mismatched pair fails OPEN whenever the foreign baseline
+    is the larger one, and the gate reads green from a directory rather than
+    from the ledger. Same shape as IMP-0049 (`review_audit.sh` silently auditing
+    whichever repo the caller happened to stand in).
+
+    An explicit env override is still honoured as given: that one has a caller
+    who meant it.
+    """
+    foreign = tmp_path / "elsewhere"
+    (foreign / "ops").mkdir(parents=True)
+    (foreign / "ops" / "backlog_closed_unverified_baseline.txt").write_text(
+        "IMP-FOREIGN-PREFORGIVEN\n", encoding="utf-8")
+    monkeypatch.delenv("KG_BACKLOG_BASELINE", raising=False)
+    monkeypatch.chdir(foreign)
+
+    assert BACKLOG._baseline_path() == BACKLOG.ROOT / "ops" / "backlog_closed_unverified_baseline.txt"
+    allowed = BACKLOG._read_baseline(BACKLOG._baseline_path())
+    # Positive control on the FILE, not on its contents: this ratchet's whole
+    # purpose is to reach zero (ops/i18n_baseline.txt already has), and a
+    # non-empty assertion would red on the day the system arrives.
+    assert BACKLOG._baseline_path().exists(), "positive control: the repo's own baseline must be findable from here"
+    assert "IMP-FOREIGN-PREFORGIVEN" not in allowed
+
+    # An absolute override is honoured as given...
+    absolute = tmp_path / "explicit.txt"
+    absolute.write_text("IMP-EXPLICIT\n", encoding="utf-8")
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", str(absolute))
+    assert BACKLOG._read_baseline(BACKLOG._baseline_path()) == {"IMP-EXPLICIT"}
+
+    # ...and a RELATIVE one resolves against the repo root, not against cwd.
+    # Absolute values make all three candidate semantics (as-given / ROOT-joined
+    # / cwd-joined) identical, so only this arm can tell them apart. The choice
+    # follows the sister contract already documented for KG_INJECTION_BASELINE
+    # in docs/reference/tech_index.md: two baseline env vars in one repo with
+    # opposite relative-path rules is a trap laid for whoever reads one first.
+    monkeypatch.setenv("KG_BACKLOG_BASELINE", "ops/backlog_closed_unverified_baseline.txt")
+    assert BACKLOG._baseline_path() == BACKLOG.ROOT / "ops" / "backlog_closed_unverified_baseline.txt"
+
+
+def test_the_commit_resolver_answers_about_this_repo_not_the_callers_directory(tmp_path, monkeypatch):
+    """`_git` inherited the caller's cwd, so `validate` had a second cwd disarm.
+
+    Measured on the real ledger, one command, only cwd varying, entry carrying
+    the unresolvable sha 813356b1:
+
+        cwd=repo root   rc=2  ['fixed-by-unresolvable']
+        cwd=/tmp        rc=0  []                          <- fail-open
+        cwd=other repo  rc=2  ['fixed-by-unresolvable']   <- false red on a good sha
+
+    `make_commit_state` returned None outside a repo and the consumer read that
+    as "ok" for every sha. Pinning git to ROOT makes the answer a property of
+    the ledger's own checkout, which is the only repo the shas can mean.
+    """
+    monkeypatch.undo()  # drop the fake odb; this test drives the real resolver
+    here = subprocess.run(["git", "rev-parse", "HEAD"], cwd=BACKLOG.ROOT,
+                          capture_output=True, text=True).stdout.strip()
+
+    monkeypatch.chdir(tmp_path)  # not a git repo at all
+    state = BACKLOG.make_commit_state()
+    assert state is not None, "the resolver must not go blind because of the caller's cwd"
+    assert state(here) == "ok"
+    assert state("0000000") == "unknown"
+
+    # A *different* git repo is the other half: it must not become the frame of
+    # reference either, or a perfectly good sha reads as unresolvable.
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    for cmd in (["git", "init", "-q"], ["git", "commit", "-q", "--allow-empty", "-m", "x"]):
+        subprocess.run(cmd, cwd=foreign, check=True, capture_output=True)
+    monkeypatch.chdir(foreign)
+    assert BACKLOG.make_commit_state()(here) == "ok"
+
+
+def test_validate_says_the_check_did_not_run_rather_than_saying_ok(tmp_path, monkeypatch):
+    """The consumer contradicted the producer's docstring.
+
+    `make_commit_state` returns None "so the caller can say the check did not
+    run instead of printing a clean bill of health it never earned" — and its
+    only caller wrote `commit_state(sha) if commit_state else "ok"`, i.e. it
+    printed exactly that clean bill. An enumerated hole beats an anonymous one:
+    absence of evidence has to have its own name in the output.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="carries a sha nobody can resolve")
+    BACKLOG.update_entry(store, entry["id"], status="fixed",
+                         fixed_by=["813356b1"], resolution="done")
+
+    monkeypatch.setattr(BACKLOG, "make_commit_state", lambda: None)
+    kinds = {p["kind"] for p in BACKLOG.validate_store(store)}
+    assert "commit-state-unavailable" in kinds
+    assert BACKLOG.main(["validate", "--store", str(store)]) == 2
