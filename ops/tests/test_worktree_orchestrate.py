@@ -1647,7 +1647,10 @@ def test_behind_base_refusal_renders_in_human_mode_too(scratch):
     assert rc == MODULE.EXIT_BLOCK
     assert out.startswith("✗ cutover refused:")
     assert "1 commit(s), 1 file(s) changed on main" in out
-    assert f"git -C {wt} rebase main" in out        # the remedy is spelled out verbatim
+    # the remedy is spelled out verbatim — and it names `catchup`, not raw git: the
+    # rebase it asks for conflicts on a 280KB generated file often enough that
+    # handing an agent `git rebase` there is handing it the failure
+    assert f"catchup --worktree {wt} --commit" in out
     with pytest.raises(json.JSONDecodeError):       # human mode, not a JSON dump
         json.loads(out)
 
@@ -3302,29 +3305,80 @@ def test_a_missing_warn_level_tool_stays_advisory(tmp_path):
     assert MODULE._run_gate(spec, str(tmp_path))["status"] == "warn"
 
 
-def _install_ledger_stub(repo: Path, marker: Path) -> None:
-    """A stand-in for ops/backlog.py that records how it was called and dirties the
-    tree the way the real repair does.
+LEDGER_VIEW_REL = "docs/runbook/improvement_backlog.md"
+
+
+def _install_ledger_stub(repo: Path, marker: Path, *, fail: str = "",
+                         probe_lock: bool = False, render_noop: bool = False) -> None:
+    """A stand-in for ops/backlog.py that records HOW it was called and behaves like
+    the real generator: `render` rebuilds the view from the entry files, `--check`
+    compares, `reanchor` rewrites an anchor field.
 
     The ledger half (does `reanchor` actually re-point an orphaned sha) is already
-    witnessed by ops/tests/test_backlog.py; what is unwitnessed is whether the
-    orchestrator invokes the repair at all and commits what it produces.
+    witnessed by ops/tests/test_backlog.py; what is unwitnessed here is the
+    orchestrator's side of the contract — which subcommands, with which flags, in
+    which order, from which directory, and under which lock.
+
+    Each invocation appends `<cwd>\t<argv...>` to `marker`, so a test can assert all
+    four. `fail` names a subcommand that should exit 2 (the real `render`'s
+    entry-loss refusal is an exit 2, not a crash). `probe_lock` makes the stub try
+    the trunk lock non-blockingly and record whether it was already held.
     """
     (repo / "ops").mkdir(exist_ok=True)
-    (repo / "docs" / "runbook").mkdir(parents=True, exist_ok=True)
-    (repo / "docs" / "runbook" / "view.md").write_text("stale\n", encoding="utf-8")
+    (repo / "docs" / "runbook" / "backlog").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "runbook" / "backlog" / "E1.json").write_text(
+        "anchor=old\n", encoding="utf-8")
+    (repo / LEDGER_VIEW_REL).write_text("stale\n", encoding="utf-8")
     stub = repo / "ops" / "backlog.py"
-    stub.write_text(
-        "#!/usr/bin/env python3\n"
-        "import sys, pathlib\n"
-        f"m = pathlib.Path({str(marker)!r})\n"
-        "m.write_text(m.read_text() + ' '.join(sys.argv[1:]) + '\\n') if m.exists() "
-        "else m.write_text(' '.join(sys.argv[1:]) + '\\n')\n"
-        "if sys.argv[1] == 'render':\n"
-        f"    pathlib.Path({str(repo / 'docs' / 'runbook' / 'view.md')!r})"
-        ".write_text('regenerated\\n')\n",
-        encoding="utf-8")
+    stub.write_text(textwrap.dedent(f"""\
+        #!/usr/bin/env python3
+        import sys, pathlib, importlib.util
+        # Anchored on THIS FILE, exactly like the real tool's ROOT. Hard-coding the
+        # primary's path here made the worktree's copy read and write the primary's
+        # store, so the branch never diverged and the conflict fixture quietly
+        # stopped reproducing the thing it was named after.
+        repo = pathlib.Path(__file__).resolve().parents[1]
+        store = repo / "docs" / "runbook" / "backlog"
+        view = repo / {LEDGER_VIEW_REL!r}
+        note = ""
+        if {probe_lock!r}:
+            # Ask the same two functions the orchestrator uses, rather than
+            # re-deriving the lock path here. The hand-copied version of this probe
+            # watched `.cache/kg-main-advance` while the code locks
+            # `.cache/kg-main-advance.lock`, so it reported FREE unconditionally —
+            # a green light wired to nothing.
+            def _load(name, path):
+                spec = importlib.util.spec_from_file_location(name, path)
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[name] = mod
+                spec.loader.exec_module(mod)
+                return mod
+            _wr = _load("wr_probe", {str(ROOT / "ops" / "worktree_registry.py")!r})
+            free = _wr._try_acquire_ledger_lock_nb(repo / ".cache" / "kg-main-advance")
+            note = "\\ttrunk-lock=" + ("FREE" if free else "HELD")
+        m = pathlib.Path({str(marker)!r})
+        line = str(pathlib.Path.cwd()) + "\\t" + " ".join(sys.argv[1:]) + note + "\\n"
+        m.write_text((m.read_text() if m.exists() else "") + line)
+        sub = sys.argv[1]
+        if sub == {fail!r}:
+            print("REFUSED: stub was told to refuse", file=sys.stderr)
+            sys.exit(2)
+        expected = "".join(sorted(p.read_text() for p in store.glob("*.json")))
+        if sub == "reanchor" and "--commit" in sys.argv:
+            for p in sorted(store.glob("*.json")):
+                p.write_text(p.read_text().replace("anchor=old", "anchor=new"))
+        elif sub == "render" and "--check" in sys.argv:
+            sys.exit(0 if view.read_text() == expected else 1)
+        elif sub == "render" and "--commit" in sys.argv:
+            if not {render_noop!r}:
+                view.write_text(expected)
+        """), encoding="utf-8")
     stub.chmod(0o755)
+    # Touching docs/** routes the docs gates; this scratch repo has no real ones and
+    # a `block` verdict would stop the cutover before the rebase this test is about.
+    lint = repo / "ops" / "docs_lint.sh"
+    lint.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    lint.chmod(0o755)
     _git(["add", "-A"], repo)
     _git(["commit", "-qm", "install ledger stub"], repo)
 
@@ -3333,20 +3387,18 @@ def _install_ledger_stub(repo: Path, marker: Path) -> None:
 def test_cutover_repairs_the_ledger_it_just_rewrote(scratch, tmp_path):
     """cutover's rebase mutates the tree AFTER the gate last looked at it.
 
-    Measured in a clone of the real repo, both directions:
-      * a `fixed_by` sha recorded on a branch becomes `fixed-by-orphaned` once main
-        has moved under it — `validate` went 0 problems -> 1 problems;
-      * the rendered view's aggregate counter lines land stale (`162 IMP` where the
-        store says 163), because both branches rewrite those two lines and the rebase
-        takes one side. The rows themselves merge cleanly, so nothing conflicts and
-        nothing complains — the next branch simply eats a red it did not cause.
+    Measured in a clone of the real repo: a `fixed_by` sha recorded on a branch
+    becomes `fixed-by-orphaned` once main has moved under it — `validate` went
+    0 problems -> 1 problems. The correct sha does not exist until the landing has
+    happened, so the landing step owns the repair.
 
-    Both are the same defect: the last thing to check the tree ran before the last
-    thing to change it. So the landing step owns the repair.
+    Every flag here is load-bearing and every one of them was, at some point, not
+    asserted: dropping `--commit` from both invocations left 294 tests green while
+    the repair silently did nothing but dry-runs.
     """
     _tmp, repo, _remote = scratch
     marker = tmp_path / "invocations.txt"
-    _install_ledger_stub(repo, marker)
+    _install_ledger_stub(repo, marker, probe_lock=True)
     state = str(tmp_path / "reg.json")
 
     rc, opened = _run_json(["open", "--intent", "do the thing", "--slug", "thing",
@@ -3359,14 +3411,484 @@ def test_cutover_repairs_the_ledger_it_just_rewrote(scratch, tmp_path):
                          "--commit", "--json"])
     assert rc == MODULE.EXIT_OK and cut["landed"] is True
 
-    invoked = marker.read_text(encoding="utf-8").splitlines() if marker.exists() else []
-    assert any(ln.startswith("reanchor") for ln in invoked), invoked
-    assert any(ln.startswith("render") for ln in invoked), invoked
+    calls = [ln.split("\t") for ln in
+             marker.read_text(encoding="utf-8").splitlines()]
+    argvs = [c[1] for c in calls]
+    # the flags, not just the subcommand names
+    assert "reanchor --commit" in argvs, argvs
+    assert "render --commit" in argvs, argvs
+    assert "validate --baseline-check" in argvs, argvs
+    # the ORDER: rendering before reanchoring would publish a view built from the
+    # pre-repair store, and validating before the write would grade the old data
+    assert argvs.index("reanchor --commit") < argvs.index("render --commit") \
+        < argvs.index("validate --baseline-check"), argvs
+    # the DIRECTORY: the repair is about the trunk, which lives in the primary
+    assert {c[0] for c in calls} == {str(repo.resolve())}, calls
+    # and the LOCK: the repair rewrites the same trunk files the ff just moved, so
+    # it belongs to the same critical section. Run outside it, two concurrent
+    # repairs raced in the atomic-write helper and one died, leaving the primary
+    # dirty — which blocks every later cutover.
+    assert all("trunk-lock=HELD" in ln
+               for ln in marker.read_text(encoding="utf-8").splitlines()), \
+        marker.read_text(encoding="utf-8")
 
     # and what the repair produced is COMMITTED — a repair left uncommitted just
     # moves the failure to the next cutover, which refuses on a dirty primary.
     # tracked-clean specifically: untracked residue does not block the next cutover,
     # a tracked leftover does.
     assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
-    assert (repo / "docs" / "runbook" / "view.md").read_text() == "regenerated\n"
+    assert (repo / "docs" / "runbook" / "backlog" / "E1.json").read_text() == "anchor=new\n"
+    assert (repo / LEDGER_VIEW_REL).read_text() == "anchor=new\n"
     assert cut["repair"]["committed"] is True
+    assert cut["trunk_tip"] == _git(["rev-parse", "HEAD"], repo).strip()
+    assert cut["trunk_tip"] != cut["sha"]
+
+
+@gitmark
+def test_a_failed_repair_puts_the_primary_back_rather_than_blocking_every_later_cutover(
+        scratch, tmp_path):
+    """`render --commit`'s entry-loss refusal is an exit 2 BY DESIGN, not a crash.
+
+    Measured before this was handled: `reanchor --commit` wrote its edit, `render`
+    refused, the repair returned early, and the edit stayed in the primary's working
+    tree. The next cutover then refused with "primary working tree is dirty …
+    likely another session is working in the primary" — pointing the next agent at a
+    co-tenant who does not exist, for residue this code left. In a round of ten
+    branches that is nine of them dead on the first landing.
+    """
+    _tmp, repo, _remote = scratch
+    marker = tmp_path / "invocations.txt"
+    _install_ledger_stub(repo, marker, fail="render")
+    state = str(tmp_path / "reg.json")
+    before = (repo / "docs" / "runbook" / "backlog" / "E1.json").read_text()
+
+    rc, opened = _run_json(["open", "--intent", "do the thing", "--slug", "thing",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+
+    # the landing itself still succeeded — a completed ff is not rolled back
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+    assert cut["repair"]["ok"] is False and cut["repair"]["committed"] is False
+    assert "exited 2" in cut["repair"]["error"]
+    assert cut["repair"]["restored"] is True
+    # the whole point: the next cutover is not blocked by this one's debris
+    assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
+    assert (repo / "docs" / "runbook" / "backlog" / "E1.json").read_text() == before
+
+
+
+def _stub_repo_commit(repo: Path, msg: str) -> None:
+    subprocess.run([sys.executable, str(repo / "ops" / "backlog.py"), "render",
+                    "--commit"], cwd=str(repo), check=True, capture_output=True)
+    _git(["add", "--", "docs/runbook"], repo)
+    _git(["commit", "-qm", msg], repo)
+
+
+def _seed_neighbouring_rows(repo: Path) -> None:
+    """Rows that sort either side of what the branch and the trunk are about to add.
+
+    Without them both sides append at end-of-file and git merges the two appends
+    without complaint — the fixture would silently stop testing anything. With them,
+    both sides insert a line into the SAME gap, which is the collision the real
+    ledger produces once its rows are content-hash-scattered.
+    """
+    (repo / "docs" / "runbook" / "backlog" / "A.json").write_text("aaa\n")
+    (repo / "docs" / "runbook" / "backlog" / "Z.json").write_text("zzz\n")
+
+
+def _diverge_on_the_generated_view(repo: Path, wt: Path, *, also: str = "") -> None:
+    """Branch and trunk each file an entry, so both rewrite the generated view at the
+    same place — the shape that conflicts. `also` additionally puts a real (ungenerated)
+    conflict in `f`."""
+    (wt / "docs" / "runbook" / "backlog" / "E2.json").write_text("e2\n")
+    if also:
+        (wt / "f").write_text("branch edit\n")
+        _git(["add", "--", "f"], wt)
+    _stub_repo_commit(wt, "branch files E2")
+    (repo / "docs" / "runbook" / "backlog" / "E3.json").write_text("e3\n")
+    if also:
+        (repo / "f").write_text("trunk edit\n")
+        _git(["add", "--", "f"], repo)
+    _stub_repo_commit(repo, "trunk files E3")
+
+
+@gitmark
+def test_catchup_resolves_a_conflict_in_the_generated_view_by_regenerating(
+        scratch, tmp_path):
+    """Ten branches, each filing 1-3 ledger entries, landing in turn — measured on a
+    clone of the real repo:
+
+        counters in the view, no auto-resolve : 4/10 landed, final view STALE
+        counters removed, no auto-resolve     : 7/10 landed
+        counters removed + this resolver      : 10/10 landed
+
+    The conflicts are ordinary adjacent-row collisions in a file that is a pure
+    function of inputs which cannot conflict with each other (one JSON file per
+    entry). So there is no decision in it: the resolution is "run the generator".
+    """
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "invocations.txt")
+    _seed_neighbouring_rows(repo)
+    _stub_repo_commit(repo, "seed view")
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "file entries", "--slug", "entries",
+                            "--state", state, "--json"])
+    wt = Path(opened["path"])
+    _diverge_on_the_generated_view(repo, wt)
+
+    # the plain rebase this command replaces really does conflict
+    rc_raw, _ = MODULE._git(["rebase", "main"], cwd=str(wt))
+    assert rc_raw != 0, "the fixture stopped reproducing the conflict"
+    MODULE._git(["rebase", "--abort"], cwd=str(wt))
+
+    rc, dry = _run_json(["catchup", "--worktree", str(wt), "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK and dry["rebased"] is False and dry["behind"] is True
+
+    rc, done = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                          "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, done
+    assert done["rebased"] is True
+    assert done["regenerated"] == ["docs/runbook/improvement_backlog.md"], done
+    assert done["sha"] != done["previous_sha"]
+    assert _git(["status", "--porcelain"], wt).strip() == "", "rebase left residue"
+    # the regenerated view is the generator's output for the MERGED store, not either side
+    assert (wt / LEDGER_VIEW_REL).read_text() == "aaa\nanchor=old\ne2\ne3\nzzz\n"
+
+    # and the branch now gates and lands, which is the property that matters
+    rc, g = _run_json(["gate", "--worktree", str(wt), "--state", state, "--json"])
+    assert g["verdict"] in ("pass", "warn"), g
+    rc, cut = _run_json(["cutover", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True, cut
+
+
+@gitmark
+def test_catchup_leaves_a_conflict_in_an_ungenerated_file_for_a_human(scratch, tmp_path):
+    """The narrowness is the safety. A conflict in any file the repo has not declared
+    generated is a decision, and a tool that resolves decisions by regenerating one
+    side of them is worse than one that stops."""
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "invocations.txt")
+    _seed_neighbouring_rows(repo)
+    _stub_repo_commit(repo, "seed view")
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "file entries", "--slug", "entries",
+                            "--state", state, "--json"])
+    wt = Path(opened["path"])
+    _diverge_on_the_generated_view(repo, wt, also="f")
+
+    rc, out = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, out
+    assert out["error"] == "rebase failed (aborted)", out
+    assert out["rebased"] is False
+    # aborted cleanly: no half-rebase left for the next command to trip over
+    rc_state, _ = MODULE._git(["rev-parse", "--verify", "--quiet", "REBASE_HEAD"],
+                              cwd=str(wt))
+    assert rc_state != 0, "a rebase was left in progress"
+    assert _git(["status", "--porcelain"], wt).strip() == ""
+
+
+@gitmark
+def test_catchup_on_an_up_to_date_worktree_changes_nothing(scratch, tmp_path):
+    """A no-op has to be a cheap no-op, not a rewrite: `catchup` is the command the
+    refusals name, so agents will run it speculatively."""
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "invocations.txt")
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "nothing", "--slug", "nothing",
+                            "--state", state, "--json"])
+    wt = Path(opened["path"])
+    before = _git(["rev-parse", "HEAD"], wt).strip()
+    rc, out = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and out["behind"] is False and out["rebased"] is False
+    assert _git(["rev-parse", "HEAD"], wt).strip() == before
+
+
+def test_the_behind_base_refusal_names_a_command_that_exists():
+    """The refusal used to say `git -C <path> rebase main`, which is the operation
+    that conflicts on a generated file. A refusal is a routing decision; pointing it
+    at raw git was pointing it at the failure."""
+    msg = MODULE._behind_base_refusal("/w", "main",
+                                      {"behind_commits": 2, "base_changed_files": ["a"]})
+    assert "catchup" in msg and "git -C" not in msg, msg
+    names = {a.dest for a in MODULE.build_parser()._subparsers._group_actions}
+    assert MODULE.build_parser().parse_args(
+        ["catchup", "--worktree", "/w"]).func is MODULE.cmd_catchup
+
+
+@gitmark
+def test_the_repair_never_commits_or_destroys_a_co_tenants_untracked_entry(
+        scratch, tmp_path):
+    """An untracked entry JSON sitting in the primary is a LEGAL, common state — an
+    agent filed one and has not committed it — and `_primary_ff_ready` deliberately
+    ignores it (`--untracked-files=no`), so it does not block anyone's cutover.
+
+    Measured before this was fixed, both directions from that one state:
+      * the repair's `git add -- docs/runbook/backlog` staged it, and the resulting
+        commit — the one whose message says everything in it was re-derived by a
+        tool, carrying a review exemption — CONTAINED someone else's unfinished work;
+      * on the failing path, `git checkout HEAD -- <dir>` is a silent no-op for a
+        staged-new path absent from HEAD, so the restore reported success over a
+        primary that was still dirty. Which blocks every later cutover.
+    """
+    _tmp, repo, _remote = scratch
+    marker = tmp_path / "invocations.txt"
+    _install_ledger_stub(repo, marker)
+    state = str(tmp_path / "reg.json")
+    cotenant = repo / "docs" / "runbook" / "backlog" / "COTENANT.json"
+    cotenant.write_text("someone else is mid-thought\n", encoding="utf-8")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "co", "--state", state,
+                            "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK and cut["repair"]["committed"] is True, cut
+
+    landed = _git(["show", "--pretty=", "--name-only", "HEAD"], repo).split()
+    assert "docs/runbook/backlog/COTENANT.json" not in landed, landed
+    assert cotenant.exists(), "the repair deleted a co-tenant's file"
+    assert cotenant.read_text() == "someone else is mid-thought\n"
+    # untracked residue is fine; tracked residue is what blocks the next cutover
+    assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
+
+
+@gitmark
+def test_a_failed_repair_restores_even_when_a_co_tenants_file_is_present(
+        scratch, tmp_path):
+    """The failing half of the same state. `restored` must come from re-reading
+    git's status, not from the restore command's exit code — the command can succeed
+    while the tree is still dirty."""
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "inv.txt", fail="render")
+    state = str(tmp_path / "reg.json")
+    cotenant = repo / "docs" / "runbook" / "backlog" / "COTENANT.json"
+    cotenant.write_text("mid-thought\n", encoding="utf-8")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "co2", "--state", state,
+                            "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+
+    assert rc == MODULE.EXIT_OK and cut["landed"] is True
+    assert cut["repair"]["ok"] is False and cut["repair"]["restored"] is True
+    assert _git(["status", "--porcelain", "--untracked-files=no"], repo).strip() == ""
+    assert cotenant.exists() and cotenant.read_text() == "mid-thought\n"
+
+
+@gitmark
+def test_the_rebase_cannot_be_stopped_by_the_operators_editor(scratch, tmp_path):
+    """`git -c core.editor=true` does NOT prevent this: git reads `GIT_EDITOR` first.
+
+    Measured with `GIT_EDITOR` pointing at a 25-second sleep: the editor ran
+    (`elapsed=25.6s`). These runs carry no timeout and `cutover` holds the trunk lock
+    while rebasing, so one operator's editor preference freezes every cutover in the
+    repo. This machine's own `GIT_EDITOR=true` is why the hole was invisible here —
+    so the test sets a hostile one rather than trusting the environment.
+    """
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "inv.txt")
+    _seed_neighbouring_rows(repo)
+    _stub_repo_commit(repo, "seed view")
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "editor", "--state",
+                            state, "--json"])
+    wt = Path(opened["path"])
+    _diverge_on_the_generated_view(repo, wt)
+
+    trap = tmp_path / "editor_trap.sh"
+    trap.write_text("#!/bin/sh\nexit 7\n", encoding="utf-8")
+    trap.chmod(0o755)
+    prev = os.environ.get("GIT_EDITOR")
+    os.environ["GIT_EDITOR"] = str(trap)
+    try:
+        rc, done = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                              "--commit", "--json"])
+    finally:
+        if prev is None:
+            os.environ.pop("GIT_EDITOR", None)
+        else:
+            os.environ["GIT_EDITOR"] = prev
+
+    assert rc == MODULE.EXIT_OK, done
+    assert done["rebased"] is True
+    assert done["regenerated"] == ["docs/runbook/improvement_backlog.md"], done
+
+
+@gitmark
+def test_the_resolver_declines_when_the_generator_did_not_write(scratch, tmp_path):
+    """`render --commit` exiting 0 is not proof that the file on disk is now the
+    generator's output. `render --check` is what turns that into a fact, and without
+    it a stale conflicted view would be staged and the rebase continued over it."""
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "inv.txt", render_noop=True)
+    _seed_neighbouring_rows(repo)
+    subprocess.run([sys.executable, str(repo / "ops" / "backlog.py"), "render"],
+                   cwd=str(repo), check=True, capture_output=True)
+    # seed the committed view by hand, since this stub's render writes nothing
+    (repo / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], repo)
+    _git(["commit", "-qm", "seed view"], repo)
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "nowrite", "--state",
+                            state, "--json"])
+    wt = Path(opened["path"])
+    (wt / "docs" / "runbook" / "backlog" / "E2.json").write_text("e2\n")
+    (wt / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\ne2\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], wt); _git(["commit", "-qm", "branch"], wt)
+    (repo / "docs" / "runbook" / "backlog" / "E3.json").write_text("e3\n")
+    (repo / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\ne3\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], repo); _git(["commit", "-qm", "trunk"], repo)
+
+    rc, out = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, out
+    assert out["regenerated"] == [], out
+    assert any("render --check" in n for n in out["resolver_notes"]), out
+
+
+@gitmark
+def test_the_resolver_hands_back_the_generators_own_refusal(scratch, tmp_path):
+    """The generator's refusals arrive with a complete, runnable remedy. Discarding
+    them and printing "the conflict is in files this tool will not resolve for you"
+    — over a conflict list naming the one file it does resolve — is worse than
+    saying nothing: it sends the reader looking for a problem that is not there."""
+    _tmp, repo, _remote = scratch
+    _install_ledger_stub(repo, tmp_path / "inv.txt", fail="render")
+    _seed_neighbouring_rows(repo)
+    (repo / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], repo); _git(["commit", "-qm", "seed"], repo)
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "refusal", "--state",
+                            state, "--json"])
+    wt = Path(opened["path"])
+    (wt / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\ne2\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], wt); _git(["commit", "-qm", "branch"], wt)
+    (repo / LEDGER_VIEW_REL).write_text("aaa\nanchor=old\ne3\nzzz\n", encoding="utf-8")
+    _git(["add", "--", "docs/runbook"], repo); _git(["commit", "-qm", "trunk"], repo)
+
+    rc, out = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, out
+    assert out["resolver_notes"], out
+    joined = " ".join(out["resolver_notes"])
+    assert "render --commit exited 2" in joined, joined
+    assert "stub was told to refuse" in joined, joined
+
+
+@gitmark
+def test_catchup_is_blocked_by_freeze(scratch, tmp_path):
+    """`freeze` is the stop-the-world lock for repo surgery. `catchup` rewrites
+    history — that is what a rebase is — so it belongs on the blocked side. It was
+    missed only because it is the newest verb, and a lock a new verb can walk past
+    is not a lock."""
+    _tmp, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "frozen", "--state",
+                            state, "--json"])
+    wt = opened["path"]
+    rc, _ = _run_json(["freeze", "on", "--reason", "history rewrite", "--state", state,
+                       "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, out = _run_json(["catchup", "--worktree", wt, "--state", state, "--commit",
+                         "--json"])
+    assert rc == MODULE.EXIT_BLOCK, out
+    assert "history rewrite" in json.dumps(out, ensure_ascii=False), out
+
+
+@gitmark
+def test_the_resolver_will_not_run_the_generator_while_anything_else_is_conflicted(
+        scratch, tmp_path):
+    """The guard is `conflicted == {view}`, not `view in conflicted`, and the
+    difference is not stylistic.
+
+    Loosened to membership, the generator runs while an ENTRY file still carries
+    conflict markers — and the store reader skips unparseable entries silently. The
+    view would then be regenerated from a store that is quietly missing a row, and
+    staged as the resolution. The existing "another file conflicts" test cannot see
+    this: both versions abort in the end, so only whether the generator RAN
+    distinguishes them.
+    """
+    _tmp, repo, _remote = scratch
+    marker = tmp_path / "invocations.txt"
+    _install_ledger_stub(repo, marker)
+    _seed_neighbouring_rows(repo)
+    _stub_repo_commit(repo, "seed view")
+    state = str(tmp_path / "reg.json")
+
+    rc, opened = _run_json(["open", "--intent", "x", "--slug", "both", "--state",
+                            state, "--json"])
+    wt = Path(opened["path"])
+    # both sides edit the SAME entry file, and both add a neighbouring row
+    (wt / "docs" / "runbook" / "backlog" / "A.json").write_text("aaa-branch\n")
+    (wt / "docs" / "runbook" / "backlog" / "E2.json").write_text("e2\n")
+    _stub_repo_commit(wt, "branch")
+    (repo / "docs" / "runbook" / "backlog" / "A.json").write_text("aaa-trunk\n")
+    (repo / "docs" / "runbook" / "backlog" / "E3.json").write_text("e3\n")
+    _stub_repo_commit(repo, "trunk")
+
+    before = len(marker.read_text(encoding="utf-8").splitlines())
+    rc, out = _run_json(["catchup", "--worktree", str(wt), "--state", state,
+                         "--commit", "--json"])
+    after = marker.read_text(encoding="utf-8").splitlines()
+
+    assert rc == MODULE.EXIT_BLOCK, out
+    assert out["regenerated"] == [], out
+    assert len(after) == before, \
+        f"the generator ran during a mixed conflict: {after[before:]}"
+    assert any("not confined" in n and "A.json" in n for n in out["resolver_notes"]), out
+
+
+
+@gitmark
+def test_a_restore_that_did_not_work_is_reported_as_a_failure(tmp_path, monkeypatch):
+    """`restored` must describe the TREE, not the exit code of the command that tried.
+
+    Measured on the shape that motivated this: `git checkout HEAD -- <dir>` returns 0
+    for a path that is staged-new and absent from HEAD, having changed nothing. A
+    version that trusted that rc reported a clean primary over a dirty one — and a
+    dirty primary is what blocks every later cutover. Here the restore is stubbed out
+    entirely, so the only thing that can produce the right answer is re-reading git.
+    """
+    repo = tmp_path / "repo"; repo.mkdir()
+    _git(["init", "-q", "-b", "main"], repo)
+    _git(["config", "user.email", "t@t"], repo)
+    _git(["config", "user.name", "t"], repo)
+    (repo / "docs" / "runbook" / "backlog").mkdir(parents=True)
+    (repo / "docs" / "runbook" / "backlog" / "E1.json").write_text("committed\n")
+    _git(["add", "-A"], repo); _git(["commit", "-qm", "base"], repo)
+    (repo / "docs" / "runbook" / "backlog" / "E1.json").write_text("half-written\n")
+
+    real_git = MODULE._git
+
+    def _git_without_restore(args, **kwargs):
+        if args and args[0] in ("checkout", "reset"):
+            return 0, ""          # succeeds loudly, does nothing
+        return real_git(args, **kwargs)
+
+    monkeypatch.setattr(MODULE, "_git", _git_without_restore)
+    out: dict = {"error": "the repair failed"}
+    MODULE._repair_restore(repo, out)
+
+    assert out["restored"] is False, out
+    assert "could not be restored" in out["error"], out
+    assert "E1.json" in out["error"], out

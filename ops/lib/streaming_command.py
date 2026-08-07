@@ -52,12 +52,19 @@ def run_streamed_command(
     capture_limit: int = 8 * 1024 * 1024,
     merge_stderr: bool = False,
     timeout_seconds: float | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a child with bounded capture and periodic progress on parent stderr.
 
     The child pipes are continuously drained through a bounded queue, preventing
     pipe-buffer deadlock. Only the final ``capture_limit`` bytes per stream are kept.
     Parent stdout is never written, so callers can retain a single-JSON contract.
+
+    ``env`` replaces the child's whole environment when given (``None`` inherits).
+    It exists because some inherited variables are hazards rather than context: a
+    child that opens an interactive editor blocks forever behind a pipe nobody is
+    reading, and `git -c core.editor=...` cannot prevent that — ``GIT_EDITOR``
+    outranks it. A caller that must not be interrupted has no other way to say so.
     """
     if heartbeat_interval <= 0:
         raise ValueError("heartbeat_interval must be positive")
@@ -79,6 +86,7 @@ def run_streamed_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
         start_new_session=True,
+        env=env,
     )
     streams: dict[str, BinaryIO | None] = {}
     readers: list[threading.Thread] = []
