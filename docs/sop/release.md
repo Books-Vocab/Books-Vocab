@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: dcb7b705f
+verified_against: 9582044dd
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -17,11 +17,21 @@ verified_against: dcb7b705f
 
 | 平面 | 問題 | 真相 ref | 動詞 | 生產後果 |
 |---|---|---|---|---|
-| **develop** | 我接受了什麼 | 本地 `main` | `cutover`（worktree→本地 main，離線） | 無 |
+| **develop** | 我接受了什麼 | 本地 `main` | `cutover`（worktree→本地 main，離線；ff **＋可能一顆 ledger repair commit**） | 無 |
 | **backup** | 碼在機器外安全嗎 | `origin/main` | `sync`（push origin/main） | **無**（reconciler 不看 main） |
 | **release** | 世界該跑什麼 | `origin/prod` + tag | `deploy`（推 origin/prod）/ `release`（統一入口） | **有（唯一）** |
 
 **唯一碰生產 = `deploy`（backend）/ `release`（前後端統一）。** `sync` 只是備份，push 幾次都無所謂。
+
+### `cutover` 為什麼不是純 ff
+
+develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那顆 sha 原封不動落地（payload 的 `sha`）。但 cutover 的 rebase 發生在 gate **之後**，而 rebase 會改寫分支上的 commit sha；ledger entry 的 `fixed_by` 因此在落地那一刻才指得到正確的 commit。所以 ff 完成後，cutover 會在**同一把 trunk 鎖內**跑 `backlog.py reanchor --commit` + `render --commit`，有改動就自己 commit 一顆（訊息帶 `Review-Exempt: machine-repair`，該 token 由 `ops/review_audit.sh` 檢查「只碰 `docs/runbook/backlog/*.json` 與 `docs/runbook/improvement_backlog.md`」，不是自由通行證）。
+
+**因此本地 main 的 tip 可能不是 payload 的 `sha`**——那顆在 `trunk_tip`。兩者相同表示這次沒有東西需要重推導。repair 任一步失敗一律把 `docs/runbook` 還原回 HEAD 再回報（`repair.restored`），因為留下髒 primary 會讓**之後每一次** cutover 都被拒。
+
+### `catchup`：trunk 動了之後的那一步
+
+`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。差別只有一個，但在這個 repo 很要緊：rebase 會在 `docs/runbook/improvement_backlog.md` 這個 **generated** 檔上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator。`catchup` 只在**衝突集合恰好等於該 generated 檔**時自動重生，其餘一律 abort 交人。rebase 完 HEAD 就動了，所以之後一定要重跑 `gate`。
 
 ## 版號事實 SoT 表（iOS）
 
@@ -51,7 +61,8 @@ verified_against: dcb7b705f
 
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
-| `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff） | 無—離線可逆 |
+| `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
+| `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
@@ -60,7 +71,7 @@ verified_against: dcb7b705f
 | `shipped ios` | `ops/release.sh shipped ios` | ASC（現查）+ build tag | `ios/x.y.z`（上架標記）+ push origin | 無—唯讀查 ASC，只寫 tag |
 
 - **`gate` / `cutover` 必須用工作樹自己那份 orchestrator**（`<worktree>/ops/worktree_orchestrate.py`）：gate 的工具以工作樹為 cwd 執行，路由規則必須同代，否則會用另一版的規則排 gate 而輸出形狀完全相同。工具自身以 sha256 比對後 refuse，判決紀錄帶 `orchestrator` 身分、cutover 一併核對。`resolve` 例外，用主 repo 那份（它會刪掉工作樹本身）。
-- **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。修法：`git -C <path> rebase main` → **重跑 gate** → cutover（IMP-20260806-945e01）。
+- **`cutover` 的新鮮度是兩軸**：HEAD（判決**讀**的碼）與 base（判決落地時**身旁**的碼）。base 落後即拒——cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被判過也不是落地的那棵，而 HEAD 檢查看不到（HEAD 沒動，動的是 base）。`gate` 也會提前拒，省下白跑的 gate。修法：`catchup --commit` → **重跑 gate** → cutover（IMP-20260806-945e01）。
 - `deploy` 的 `--upstream` 預設 `origin/prod`；`sync` 的預設 `origin/main`。兩者共用守護引擎 `_guarded_advance`（primary 在 main、origin/<dest> 為 local 嚴格祖先、絕不 force、noop、ls-remote 事後驗證）。
 - `sync` 別於 `sync-main`：`sync` 是 local→origin（備份推出）；`sync-main` 是 origin→local（追上 origin，用於 fresh clone）。
 - `tag`（原名 `publish`，別名保留）push origin main = 版號 commit 的備份 + tag 標記，**非部署**。iOS 新 marketing version 的 direct tag 一樣過 `guard_ios_new_version`（見上「版號事實 SoT 表」的兩條規則），不能繞過。
