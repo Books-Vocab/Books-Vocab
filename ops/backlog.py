@@ -968,15 +968,13 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
 - `resolution`：解決 commit hash，或 wont-fix 理由（這是「可回溯」的關鍵欄）
 - 新 id 為 `<STREAM>-<YYYYMMDD>-<hash6>`，內容衍生、不用流水號；既有 `IMP-####` 沿用不改號
 - **resolution hash 慣例**：**不得以分支名代替 hash**——分支刪掉之後那筆 resolution 就再也
-  指不到任何東西。IMP-0063 是實例：它寫著分支名並註明「squash 後更新為 squashed hash」，
-  在一個永遠不會 squash 的拓樸上等一個不會來的事件，分支已刪，而那份工作其實是以五顆
-  普通 commit 落地的
-- **孤兒的成因是 rebase，不是 squash merge**（這條寫錯過，害過 IMP-0063）：本 repo 最後一個
-  merge commit 是 `0611f3cac`（2026-07-09），其後全部單親；`90e57ba7e` 已把
-  `.claude/commands/merge-prs.md` 整個刪除——PR 合併入口是**被刻意拆掉的**。真正改寫 sha 的是
-  `ops/worktree_orchestrate.py` 的 `cmd_cutover`：它在 advance lock 內先對分支跑
-  `git rebase <本地 main>`，**之後**才在主樹 `merge --ff-only`；ff 只是後半段，前半段把分支鑄的
-  每個 sha 都改寫。分支已貼著本地 main 時 rebase 是 no-op、sha 得以保留，那是常態但不是保證
+  指不到任何東西。已經發生過兩次（IMP-0063、IMP-20260805-dd35f8），兩條分支今天都不存在了
+- **孤兒 sha 的成因是 rebase**：`ops/worktree_orchestrate.py` 的 `cmd_cutover` 在 advance lock
+  內先對分支跑 `git rebase <本地 main>`，**之後**才在主樹 `merge --ff-only`；ff 只是後半段，
+  前半段把分支鑄的每個 sha 都改寫。分支已貼著本地 main 時 rebase 是 no-op、sha 得以保留，
+  那是常態但**不是保證**。落地機制的完整語意見 `docs/sop/release.md`
+- **可回溯的權威欄是 `fixed_by`（結構化），不是 resolution 的散文**：resolution 原文仍是權威
+  敘述，但「哪幾顆 commit 讓這個缺陷不再成立」由 `fixed_by: [sha, …]` 回答，`validate` 驗它
 - **重新取證欄位**（由 resolution 的 `—(YYYY-MM-DD 驗證 <VERDICT>…)` 戳記抽出，抽取為
   **附加且無損**，resolution 原文永遠是權威）：`verdict`（值域 {verdicts}，或
   `DUPLICATE-OF-<id>`）/ `verified_at` / `cost` / `fix_site` / `duplicate_of`。
