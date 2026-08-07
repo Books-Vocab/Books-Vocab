@@ -1,5 +1,7 @@
 {
   "acceptance": "cd backend && uv run pytest tests/test_ops_edit.py -k TestSeedReplace -q",
+  "acceptance_cmd": "cd backend && uv run pytest tests/test_ops_edit.py -k TestSeedReplace -q -p no:cacheprovider",
+  "acceptance_expect_rc": 0,
   "category": "cli",
   "cost": "M",
   "date": "2026-07-09",

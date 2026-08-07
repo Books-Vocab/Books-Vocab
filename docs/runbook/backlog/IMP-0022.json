@@ -1,5 +1,7 @@
 {
   "acceptance": "H=$(mktemp); R=$(mktemp); bash ops/test_infra_health.sh >$H 2>&1; hx=$?; bash ops/tests/test_kg_reconcile.sh >$R 2>&1; rx=$?; test $hx -eq 0 && test $rx -eq 0 && grep -qF \"✓ REMOTE_BUNDLE 含五個漂移 key\" $H && grep -qF \"✓ deploy_drift 兩 sha 不同 → warn 且 overall 非 crit\" $H && grep -qF \"✓ reconciler_tick_age_s 2000s → crit\" $H && grep -qF \"✓ reconciler_tick_age_s 缺值 → 非 ok\" $H && grep -qF \"✓ reconciler_poison_active 100s → warn\" $H && grep -qF \"✓ KG_HEALTH_DEPLOY_DRIFT=0 → 三個 metric 不出現\" $H && grep -qF \"✓ noop: tick 心跳已寫入 state\" $R && grep -qF \"✓ deployed: infra_health 以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫\" $R",
+  "acceptance_cmd": "bash -c 'H=$(bash ops/test_infra_health.sh 2>&1); hx=$?; R=$(bash ops/tests/test_kg_reconcile.sh 2>&1); rx=$?; test $hx -eq 0 && test $rx -eq 0 && printf \"%s\\n\" \"$H\" | grep -qF \"✓ REMOTE_BUNDLE 含五個漂移 key\" && printf \"%s\\n\" \"$H\" | grep -qF \"✓ deploy_drift 兩 sha 不同 → warn 且 overall 非 crit\" && printf \"%s\\n\" \"$H\" | grep -qF \"✓ reconciler_tick_age_s 2000s → crit\" && printf \"%s\\n\" \"$H\" | grep -qF \"✓ reconciler_tick_age_s 缺值 → 非 ok\" && printf \"%s\\n\" \"$H\" | grep -qF \"✓ reconciler_poison_active 100s → warn\" && printf \"%s\\n\" \"$H\" | grep -qF \"✓ KG_HEALTH_DEPLOY_DRIFT=0 → 三個 metric 不出現\" && printf \"%s\\n\" \"$R\" | grep -qF \"✓ noop: tick 心跳已寫入 state\" && printf \"%s\\n\" \"$R\" | grep -qF \"✓ deployed: infra_health 以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫\"'",
+  "acceptance_expect_rc": 0,
   "category": "tool",
   "cost": "M",
   "date": "2026-07-09",
