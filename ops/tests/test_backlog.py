@@ -3553,3 +3553,72 @@ def test_list_says_the_claim_column_is_per_machine(tmp_path, capsys, monkeypatch
     # alongside the entries, NOT merged into them: a caller that round-tripped this
     # into the store would be re-inventing the field this change removed
     assert "held" not in payload["entries"][0]
+
+
+def test_an_acceptance_command_that_cannot_parse_is_refused(tmp_path):
+    """An unparseable command is not a criterion.
+
+    Stored without this floor it runs at anchor time and exits 2 — which reads as
+    "the defect is back" and sends whoever is closing the entry to debug the FIX
+    rather than the field. Measured twice in one session while transcribing agent
+    output into the store: a dropped closing quote and a mangled `&&` both landed
+    silently, and only surfaced when the whole batch was re-run and reconciled
+    against the exit codes the agents had reported.
+
+    A SYNTAX floor, deliberately not a semantic one: `bash -n` can say a shell
+    could read the command, never that it measures the right thing.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
+    payload = BACKLOG.load_entry(store, entry["id"])
+
+    broken = {**payload, "acceptance_cmd": 'grep -q "unterminated ops/x.py'}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(broken)]
+    assert "acceptance-cmd-does-not-parse" in kinds, kinds
+
+    # and the write path refuses it too, so a broken criterion cannot reach the store
+    with pytest.raises(ValueError, match="acceptance-cmd-does-not-parse"):
+        BACKLOG.update_entry(store, entry["id"],
+                             acceptance_cmd='echo "still open')
+
+    # a well-formed one still passes — the floor must not reject shell it simply
+    # finds unusual (process substitution, subshells, non-ASCII in strings)
+    ok = {**payload, "acceptance_cmd":
+          'bash -c \'set -e; test "$(echo 中文)" = "中文"\' && ! grep -q x /dev/null'}
+    assert [p for p in BACKLOG.validate_entry(ok)
+            if p["kind"].startswith("acceptance-cmd")] == []
+
+
+def test_add_refuses_groom_flags_by_name_and_says_where_they_belong(tmp_path, capsys):
+    """argparse says the flag is wrong; it never says where the correction goes.
+
+    Measured: the same mistake three times in ONE session, by someone who had
+    already filed an entry about it. That is not carelessness — the flags read as
+    if they should work, because filing and grooming feel like one act right up
+    until the tool disagrees.
+
+    The separation itself stays: merging grooming into `add` would make "pretend
+    you worked it out at filing time" free, and being non-free is the entire value
+    of the badge. What changes is that the refusal names the flag and the route.
+
+    Every groom-only flag is covered by iterating the module's own list, so a flag
+    added to `update` and forgotten here is caught by the same test rather than by
+    a fourth incident.
+    """
+    store = tmp_path / "s"
+    base = ["add", "--store", str(store), "--stream", "IMP", "--date", "2026-08-08",
+            "--source", "t", "--category", "tool", "--severity", "low",
+            "--detail", "probe"]
+    for flag in BACKLOG.GROOM_ONLY_FLAGS:
+        value = "0" if flag.endswith("-rc") else "x"
+        assert BACKLOG.main([*base, flag, value]) == 64, flag
+        err = capsys.readouterr().err
+        assert flag in err, f"{flag} was refused without being named: {err}"
+        assert "update" in err, f"{flag}'s refusal does not say where it belongs: {err}"
+    # nothing was written on any of those refusals
+    assert not list(store.glob("*.json")) if store.exists() else True
+    # ...and the ordinary path still works
+    assert BACKLOG.main([*base, "--json"]) == 0
+    capsys.readouterr()
+    assert len(list(store.glob("*.json"))) == 1
