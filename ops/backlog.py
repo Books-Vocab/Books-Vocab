@@ -55,6 +55,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,12 +157,52 @@ _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 # checked, but its PRECONDITIONS can — see _check_groom(). A badge whose
 # preconditions nobody verifies decays into the "reason field nobody reads"
 # failure this repo has already paid for twice.
-GROOM_FIELDS = ("plan", "acceptance", "groomed_at", "groomed_by")
+GROOM_FIELDS = ("plan", "acceptance", "groomed_at", "groomed_by",
+                # The executable half of `acceptance`. See ACCEPTANCE_PROOF below.
+                "acceptance_cmd", "acceptance_expect_rc", "acceptance_manual")
 
 # Claiming the badge requires all of these to be non-empty. `fix_site` is in the
 # list and not in GROOM_FIELDS because it predates this and is shared with the
 # verdict stamp: a plan that cannot name where to change is not a plan.
 GROOM_REQUIRES = ("plan", "acceptance", "fix_site")
+
+# Exactly one of these, and the requirement is the whole point.
+#
+# `acceptance` is prose, and it was WRITE-ONLY: `GROOM_REQUIRES` checked it was
+# non-empty and no line of code ever read it again. Measured across the 17 entries
+# that were both groomed and closed, under the most generous rule anyone could
+# defend (any shared 4+ character token between the acceptance and the closure
+# text), at most 9 showed any overlap — and token overlap is not evidence a command
+# was run, so the real mechanism count was zero. That is exactly the "reason field
+# nobody reads" failure this module's own comments warn about, arrived at from the
+# inside: the guard protected the badge's PRECONDITION (non-emptiness) and left its
+# CONTENT unguarded.
+#
+#   acceptance_cmd + acceptance_expect_rc -> `anchor --commit` RUNS it before
+#       writing, and refuses the whole wave if the exit code disagrees. Machine-
+#       checked, so `fixed` finally means something a machine confirmed rather
+#       than "a commit exists".
+#   acceptance_manual -> a stated reason no command can express this. NOT a
+#       loophole: it is countable (`list --acceptance-manual`) and `anchor` reports
+#       how many closures in the wave rested on it, so the unverifiable set surfaces
+#       at the moment of closing instead of in an audit nobody runs.
+#
+# Two scalar fields rather than one dict because `MUTABLE_FIELDS` ↔ argparse is a
+# BIDIRECTIONAL invariant here (every field has a flag, every flag reaches a field,
+# asserted by test). A dict field would need JSON in argv or a second flag that maps
+# to no field, and either one breaks that.
+#
+# `expect_rc` is not decoration: measured on the real store, IMP-20260805-afc14b's
+# acceptance is an INVERTED detector — "exit 1 = the phenomenon this entry describes
+# still holds". Demanding rc 0 would grade it backwards.
+ACCEPTANCE_PROOF = ("acceptance_cmd", "acceptance_manual")
+
+# Grooming stamped on or after this date must carry one. Everything groomed before
+# it stays legal — 49 entries, measured, of which 39 have an acceptance that already
+# looks like a runnable command, 5 need a simulator or a device, and 5 are prose
+# that no command expresses. Turning all 49 red on the day the rule lands would make
+# the rule the thing to route around.
+ACCEPTANCE_PROOF_SINCE = "2026-08-08"
 
 # Closed vocabulary, same principle as stream/category/severity/status. Without
 # it prose misfires land in the field unchallenged: `已於 2026-07-31 驗證 CI 綠`
@@ -507,6 +548,56 @@ def _check_groom(payload: dict) -> list[dict]:
         # Without a date the badge cannot go stale, and a badge that never
         # expires is a claim about code that has since moved.
         problems.append({"kind": "groom-claim-bad-date", "value": payload.get("groomed_at")})
+
+    # Exactly one proof of acceptance — see ACCEPTANCE_PROOF.
+    #
+    # Grandfathered by DATE rather than by a baseline file of ids, and the choice is
+    # load-bearing: `groomed_at` is written at groom time, so re-grooming an old
+    # entry stamps today's date and the rule binds it. An id baseline would forgive
+    # that entry forever, which is the opposite of what a ratchet is for. It also
+    # needs no second file to keep in step with the store.
+    proofs = [f for f in ACCEPTANCE_PROOF if str(payload.get(f, "")).strip()]
+    groomed_at = str(payload.get("groomed_at", ""))
+    binds = _DATE_RE.match(groomed_at) and groomed_at >= ACCEPTANCE_PROOF_SINCE
+    if not proofs and binds:
+        problems.append({"kind": "groom-claim-without-acceptance-proof",
+                         "expected": list(ACCEPTANCE_PROOF),
+                         "since": ACCEPTANCE_PROOF_SINCE})
+    elif len(proofs) > 1:
+        # Both is not "extra safe", it is two different claims about the same
+        # question: one says a machine settles this, the other says nothing can.
+        problems.append({"kind": "groom-claim-with-conflicting-acceptance-proof",
+                         "present": proofs})
+    problems.extend(_check_acceptance_cmd(payload))
+    return problems
+
+
+def _check_acceptance_cmd(payload: dict) -> list[dict]:
+    """Shape of the executable acceptance. Checked wherever it appears, groomed or not.
+
+    `expect_rc` is validated even when it is the default, because `anchor` compares
+    against it and a string `"0"` from a hand-edited entry would never equal the int
+    the subprocess returns — a mismatch that would refuse every wave carrying that
+    entry, blaming the fix rather than the field.
+    """
+    problems: list[dict] = []
+    cmd = payload.get("acceptance_cmd")
+    rc = payload.get("acceptance_expect_rc")
+    # No "blank cmd" rule. The first cut had one, distinguishing `None` from `""` —
+    # a distinction this schema does not make ANYWHERE (`plan`, `acceptance`,
+    # `fix_site` all use `""` for absent, and `update` clears a field by writing
+    # `""`). It fired on every legitimately cleared field. "You claimed grooming
+    # without a proof" is the real failure and `_check_groom` already owns it.
+    if rc is not None:
+        if isinstance(rc, bool) or not isinstance(rc, int):
+            # `bool` is an `int` in Python and `True == 1`, so a JSON `true` would
+            # silently mean "expect exit 1". Rejected by name rather than coerced.
+            problems.append({"kind": "acceptance-expect-rc-not-an-int", "value": rc})
+        elif not 0 <= rc <= 255:
+            problems.append({"kind": "acceptance-expect-rc-out-of-range", "value": rc})
+    if rc is not None and not str(cmd or "").strip():
+        # An expectation with nothing to expect it of. Nothing would ever read it.
+        problems.append({"kind": "acceptance-expect-rc-without-cmd", "value": rc})
     return problems
 
 
@@ -879,6 +970,7 @@ def list_entries(
     category: str | None = None,
     groomed: bool = False,
     ungroomed: bool = False,
+    acceptance_manual: bool = False,
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
@@ -900,6 +992,11 @@ def list_entries(
         hits = [payload for payload in hits if payload.get("groomed_by")]
     if ungroomed:
         hits = [payload for payload in hits if not payload.get("groomed_by")]
+    if acceptance_manual:
+        # The declared-unverifiable set. It exists so that "no command can express
+        # this" is a COUNT somebody can look at, not an absence nobody notices —
+        # which is what `acceptance` itself had been for its whole life.
+        hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
     return sorted(hits, key=_sort_key)
 
 
@@ -1517,8 +1614,19 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   兩者曾被同一次 sweep 寫進同一組欄位，於是「哪些已經被深度論證過」無法從資料回答，
   這組欄位就是為此而存在。`plan` 的標準是**小模型照著就能執行、不需要再自行推導**；
   這條標準是散文、無法機器驗，但它的**前提可以**：宣告 `groomed_by` 就必須同時有
-  `plan`、`acceptance`（該紅轉綠的那條命令）與 `fix_site`，否則 `validate` 直接紅。
+  `plan`、`acceptance`、`fix_site`，否則 `validate` 直接紅。
   查未梳理的佇列用 `ops/backlog.py list --ungroomed`
+- **`acceptance` 不再是唯寫欄位**（IMP-20260808-9f3838）。它曾經只被檢查「非空」，
+  此後沒有任何一行程式再讀它——那正是本檔註解警告過兩次的「沒人讀的理由欄位」，
+  只是這次發生在守衛自己身上。2026-08-08 起，宣告梳理必須**恰好**帶其中一個：
+  - `acceptance_cmd` ＋ `acceptance_expect_rc`（預設 0）：`anchor --commit` 在寫入
+    store **之前實際執行它**，exit code 不符就拒絕整波。`expect_rc` 不是裝飾——store
+    裡有反向偵測器（「exit 1 ＝ 問題還在」），逼它回 0 會把判決做反。
+  - `acceptance_manual`：說明為什麼沒有命令能表達。**不是逃生門**，是可計數的宣告：
+    `list --acceptance-manual` 查得到，`anchor` 的 payload 也會回報本波有幾筆靠它。
+  兩個都填是拒絕的——那是對同一個問題的兩個矛盾主張。此日期之前梳理的一律沿用
+  （grandfathered by date：`groomed_at` 是梳理當下寫的，所以重新梳理會蓋上新日期而
+  受規則約束；用 id baseline 反而會永久赦免那一筆）。
 """
 
 _IMP_INTRO = """
@@ -1733,6 +1841,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--groomed", action="store_true", help="only entries carrying a groom stamp"
     )
     p_list.add_argument(
+        "--acceptance-manual", dest="acceptance_manual", action="store_true",
+        help="only entries that DECLARE no command can prove their acceptance — the "
+             "set `anchor` cannot machine-check, kept countable on purpose"
+    )
+    p_list.add_argument(
         "--unverified", action="store_true",
         help="only entries nobody has ever re-derived from current code. NOT filtered "
              "by status on purpose: an audit trail rots after closure, and 42 of the "
@@ -1884,7 +1997,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--plan",
         help="how to fix it, concrete enough for a small model to execute without re-deriving",
     )
-    p_update.add_argument("--acceptance", help="the command that must go red before / green after")
+    p_update.add_argument("--acceptance", help="prose: what red-then-green looks like")
+    p_update.add_argument(
+        "--acceptance-cmd", dest="acceptance_cmd",
+        help="the command `anchor --commit` ACTUALLY RUNS before closing this entry. "
+             "This is the field that makes `fixed` mean something a machine checked; "
+             "`--acceptance` alone is prose nothing reads")
+    p_update.add_argument(
+        "--acceptance-expect-rc", dest="acceptance_expect_rc", type=int,
+        help="exit code --acceptance-cmd must produce (default 0). Not decoration: "
+             "some entries carry an INVERTED detector where non-zero is the pass")
+    p_update.add_argument(
+        "--acceptance-manual", dest="acceptance_manual",
+        help="why no command can express this entry's acceptance. Countable, not a "
+             "loophole: `list --acceptance-manual` and `anchor` both report the set")
     p_update.add_argument("--groomed-at", dest="groomed_at", help="YYYY-MM-DD")
     p_update.add_argument(
         "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
@@ -2294,6 +2420,40 @@ def _cmd_anchor(args) -> int:
         return _cmd_anchor_locked(args, queue)
 
 
+ACCEPTANCE_TIMEOUT_SECONDS = 900
+
+
+def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
+    """Run one entry's nominated acceptance command and say whether it held.
+
+    `shell=True` and `cwd=ROOT`, because that is what the field contains: the real
+    store's acceptance strings are shell (`cd backend && uv run pytest …`,
+    `uv run --no-project … pytest -q … -k "…"`), not argv lists. The command comes
+    from the repo's own ledger, which is version-controlled and reviewed — the same
+    trust boundary as every other file this tool executes.
+
+    Progress goes to STDERR, one line at a time, because these are pytest suites and
+    the wave can carry several: a silent multi-minute pause is the failure mode the
+    heartbeat contract exists to prevent. stdout stays the single JSON document.
+    """
+    started = time.monotonic()
+    print(f"[anchor][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
+    try:
+        proc = subprocess.run(cmd, shell=True, cwd=str(ROOT), capture_output=True,
+                              text=True, timeout=ACCEPTANCE_TIMEOUT_SECONDS)
+        rc, tail = proc.returncode, (proc.stdout or proc.stderr or "").strip()[-400:]
+    except subprocess.TimeoutExpired:
+        # Reported as a distinct outcome rather than as "failed": a command that ran
+        # out of time has not said the defect is back, only that it could not answer.
+        rc, tail = None, f"timed out after {ACCEPTANCE_TIMEOUT_SECONDS}s"
+    elapsed = time.monotonic() - started
+    ok = rc == expect_rc
+    print(f"[anchor][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
+          f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s", file=sys.stderr, flush=True)
+    return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": expect_rc,
+            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail}
+
+
 def _cmd_anchor_locked(args, queue: Path) -> int:
     rows = read_queue(queue)
     ready = [r for r in rows if r.get("landed_sha")]
@@ -2323,10 +2483,35 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
         except (BacklogError, ValueError, EntryNotFound) as exc:
             problems.append({"id": row["id"], "error": str(exc)})
 
+    # THE check. Everything above validates that the closure is well-formed; this is
+    # the only step that asks whether the defect is actually gone. Runs on --commit
+    # only — these are real commands with real side effects, and a dry-run that ran
+    # them would not be one.
+    acceptance: dict[str, list] = {"ran": [], "manual": [], "unproven": []}
+    if args.commit and not problems:
+        for row, merged in planned:
+            cmd = str(merged.get("acceptance_cmd") or "").strip()
+            if not cmd:
+                bucket = "manual" if str(merged.get("acceptance_manual") or "").strip() \
+                    else "unproven"
+                acceptance[bucket].append(row["id"])
+                continue
+            outcome = _run_acceptance(row["id"], cmd,
+                                      int(merged.get("acceptance_expect_rc") or 0))
+            acceptance["ran"].append(outcome)
+            if not outcome["ok"]:
+                problems.append({
+                    "id": row["id"],
+                    "error": f"acceptance did not hold: `{cmd}` exited "
+                             f"{outcome['rc']}, expected {outcome['expect_rc']}. "
+                             f"The closure claims this defect is gone; the command "
+                             f"the entry nominated to prove that says otherwise."})
+
     payload = {
         "schema": "kg.backlog.anchor.v1",
         "mode": "commit" if args.commit else "dry-run",
         "queue": str(queue),
+        "acceptance": acceptance,
         "applied": [] if problems or not args.commit else [r["id"] for r, _ in planned],
         "would_apply": [r["id"] for r, _ in planned],
         "unstamped": unstamped,
@@ -2413,6 +2598,7 @@ def _cmd_list(args) -> int:
         category=args.category,
         groomed=args.groomed,
         ungroomed=args.ungroomed,
+        acceptance_manual=args.acceptance_manual,
     )
     if args.json:
         print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries}, ensure_ascii=False))

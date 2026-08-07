@@ -772,6 +772,10 @@ def _groom_kwargs(**overrides):
     base = dict(
         plan="1. open ops/x.py:10  2. replace the whitelist with the tuple  3. run the test",
         acceptance="pytest -q ops/tests/test_x.py::test_y",
+        # The EXECUTABLE half. `acceptance` above is prose and nothing reads it;
+        # this is what `anchor --commit` actually runs before closing the entry.
+        acceptance_cmd="true",
+        acceptance_expect_rc=0,
         fix_site="ops/x.py:10",
         groomed_at="2026-08-05",
         groomed_by="workflow:groom@v1",
@@ -884,17 +888,27 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
                          verified_by="agent:test", verified_evidence="pytest -k x",
                          **_groom_kwargs())
 
+    before = BACKLOG.load_entry(store, entry["id"])
     rendered = BACKLOG.render_view(store, verified_against="deadbeef")
     BACKLOG.import_legacy(rendered, store)
+    after = BACKLOG.load_entry(store, entry["id"])
 
-    loaded = BACKLOG.load_entry(store, entry["id"])
-    # The verification stamp is in this set for the same reason the groom fields
-    # are: the table does not own it, so a re-import that drops it is erasing
-    # work. Adding fields to the module and not to this assertion is how the
-    # original bug came back the second time.
-    for field in BACKLOG.GROOM_FIELDS + ("verdict", "verified_at", "verified_by",
-                                        "verified_evidence"):
-        assert loaded.get(field), f"{field} was erased by a re-import"
+    # BEFORE/AFTER, not a list of field names. The docstring above already says the
+    # contract is "everything the table does not own", and the first version then
+    # spelled out a list anyway — which broke the moment new groom fields landed,
+    # for the honest reason that `acceptance_manual` is mutually exclusive with
+    # `acceptance_cmd` and is CORRECTLY absent here. A list cannot express that;
+    # "nothing that had a value lost it" can, and it covers fields nobody has
+    # invented yet.
+    lost = {k: v for k, v in before.items()
+            if v not in (None, "", [], {}) and after.get(k) != v}
+    assert not lost, f"a re-import erased work: {lost}"
+    # ...and the pin that makes the above non-vacuous: these WERE set going in, so
+    # a fixture that quietly stopped setting them cannot make this test pass by
+    # having nothing to lose.
+    for field in ("plan", "acceptance", "acceptance_cmd", "groomed_by",
+                  "verdict", "verified_at", "verified_by", "verified_evidence"):
+        assert before.get(field), f"{field} was never set — this test proves nothing"
 
 
 # --------------------------------------------------------------------------
@@ -3195,3 +3209,229 @@ def test_anchor_refuses_the_whole_wave_rather_than_closing_half_of_it(tmp_path, 
     assert payload["would_apply"] == [good["id"]]
     assert (store / f"{good['id']}.json").read_bytes() == before, "a refused wave still wrote"
     assert len(queue.read_text(encoding="utf-8").strip().splitlines()) == 2
+
+
+# --------------------------------------------------------------------------
+# 18. acceptance stops being write-only (IMP-20260808-9f3838)
+# --------------------------------------------------------------------------
+
+def _stage_and_stamp(store, queue, entry_id, capsys=None, sha="aaaaaaa11"):
+    """Stage a closure and mark it landed, draining stdout on the way out.
+
+    `capsys` is drained because `stage` prints a human line and the tests below
+    parse `anchor`'s JSON out of the same buffer — leaving it in makes
+    `json.loads` fail on the FIRST test that adds a stage, which reads as a bug in
+    anchor rather than in the fixture.
+    """
+    assert BACKLOG.main(["stage", entry_id, "--store", str(store), "--queue", str(queue),
+                         "--verdict", "CONFIRMED-FIXED", "--by", "agent:hunter",
+                         "--evidence", "ran the suite"]) == 0
+    _stamp_queue(queue, entry_id, sha)
+    if capsys is not None:
+        capsys.readouterr()
+
+
+def test_anchor_runs_the_acceptance_command_before_closing(tmp_path, capsys):
+    """The one step that asks whether the defect is actually GONE.
+
+    Everything else `anchor` checks is about the closure being well-formed.
+    `status: fixed` with a reachable `fixed_by` proves a commit exists — not that
+    the problem it claims to fix stopped happening. `acceptance` was supposed to
+    close that gap and was write-only: `GROOM_REQUIRES` checked it was non-empty
+    and no line of code ever read it again (measured: of 17 entries both groomed
+    and closed, at most 9 shared any 4+ character token with their closure text,
+    and token overlap is not evidence a command ran).
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    marker = tmp_path / "it-ran"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd=f"touch {marker} && true"))
+    _stage_and_stamp(store, queue, entry["id"], capsys)
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert marker.exists(), "the acceptance command was never actually run"
+    assert payload["applied"] == [entry["id"]]
+    ran = payload["acceptance"]["ran"]
+    assert [r["id"] for r in ran] == [entry["id"]]
+    assert ran[0]["ok"] is True and ran[0]["rc"] == 0
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "fixed"
+
+
+def test_anchor_refuses_the_wave_when_the_acceptance_does_not_hold(tmp_path, capsys):
+    """A closure whose own nominated proof fails is not a closure.
+
+    All-or-nothing, same as every other anchor refusal: the failing entry takes the
+    wave down rather than letting the others through, because a wave that lands
+    around a false closure has already published the wrong answer.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    good, bad = _add(store, detail="really fixed"), _add(store, detail="not really")
+    BACKLOG.update_entry(store, good["id"], **_groom_kwargs(acceptance_cmd="true"))
+    BACKLOG.update_entry(store, bad["id"], **_groom_kwargs(acceptance_cmd="false"))
+    for e in (good, bad):
+        _stage_and_stamp(store, queue, e["id"], capsys)
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applied"] == []
+    assert any(p["id"] == bad["id"] and "acceptance did not hold" in p["error"]
+               for p in payload["problems"]), payload["problems"]
+    # the innocent one is untouched AND still queued — nothing was half-applied
+    assert BACKLOG.load_entry(store, good["id"])["status"] == "open"
+    assert len([ln for ln in queue.read_text(encoding="utf-8").splitlines() if ln.strip()]) == 2
+
+
+def test_anchor_honours_an_inverted_acceptance(tmp_path, capsys):
+    """`expect_rc` is not decoration.
+
+    Measured on the real store: IMP-20260805-afc14b's acceptance is a DETECTOR —
+    "exit 1 = the phenomenon this entry describes still holds". Demanding rc 0
+    would grade every such entry backwards, which is worse than not checking:
+    a check that is wrong in a known direction gets switched off, and takes the
+    correct ones with it.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd="false", acceptance_expect_rc=1))
+    _stage_and_stamp(store, queue, entry["id"], capsys)
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["acceptance"]["ran"][0]["ok"] is True
+    assert payload["acceptance"]["ran"][0]["rc"] == 1
+
+
+def test_anchor_counts_what_it_could_not_check(tmp_path, capsys):
+    """The unverifiable set is a NUMBER, reported at the moment of closing.
+
+    `acceptance_manual` is not a loophole and the difference is where the count
+    shows up: an absence is invisible, a declared exemption is queryable
+    (`list --acceptance-manual`) and appears in the wave's own payload. The failure
+    this replaces was silence — nobody could have said how many closures rested on
+    nothing, because nothing recorded it.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    checked = _add(store, detail="machine-checkable")
+    declared = _add(store, detail="needs a device")
+    silent = _add(store, detail="groomed before the rule existed")
+    BACKLOG.update_entry(store, checked["id"], **_groom_kwargs(acceptance_cmd="true"))
+    BACKLOG.update_entry(store, declared["id"], **_groom_kwargs(
+        acceptance_cmd=None, acceptance_expect_rc=None,
+        acceptance_manual="needs a physical device on a live backend"))
+    BACKLOG.update_entry(store, silent["id"], **_groom_kwargs(
+        acceptance_cmd=None, acceptance_expect_rc=None))
+    for e in (checked, declared, silent):
+        _stage_and_stamp(store, queue, e["id"], capsys)
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--commit", "--json"]) == 0
+    acc = json.loads(capsys.readouterr().out)["acceptance"]
+    assert [r["id"] for r in acc["ran"]] == [checked["id"]]
+    assert acc["manual"] == [declared["id"]]
+    assert acc["unproven"] == [silent["id"]], (
+        "an entry with neither proof must be counted, not quietly lumped in with "
+        "the ones that declared why")
+
+    manual = BACKLOG.list_entries(store, acceptance_manual=True)
+    assert [p["id"] for p in manual] == [declared["id"]]
+
+
+def test_a_dry_run_anchor_does_not_run_acceptance_commands(tmp_path, capsys):
+    """These are real commands with real side effects. A dry-run that ran them
+    would not be one — and the store's acceptance strings include `rm`, container
+    restarts and network calls."""
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    marker = tmp_path / "should-not-exist"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd=f"touch {marker}"))
+    _stage_and_stamp(store, queue, entry["id"], capsys)
+
+    assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                         "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert not marker.exists(), "a dry-run executed the acceptance command"
+    assert payload["acceptance"]["ran"] == []
+    assert payload["would_apply"] == [entry["id"]]
+
+
+def test_new_grooming_must_carry_a_proof_and_old_grooming_is_grandfathered(tmp_path):
+    """Ratcheted by DATE, and the choice is load-bearing.
+
+    `groomed_at` is written at groom time, so re-grooming an old entry stamps
+    today's date and the rule binds it. An id baseline would forgive that entry
+    forever — the opposite of what a ratchet is for. Turning all 49 pre-existing
+    groomed entries red on day one would have made the rule the thing to route
+    around; 39 already carry a runnable command, 5 need a device, 5 are prose no
+    command expresses.
+
+    The rule is asserted on constructed payloads because `update_entry` validates
+    BEFORE writing, so a violation cannot be persisted through it — which is the
+    stronger guarantee, and gets its own assertion at the end rather than being
+    assumed.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
+    groomed = BACKLOG.load_entry(store, entry["id"])
+    no_proof = {**groomed, "acceptance_cmd": "", "acceptance_expect_rc": None,
+                "acceptance_manual": ""}
+
+    old = {**no_proof, "groomed_at": "2026-07-01"}
+    assert BACKLOG.validate_entry(old) == [], "pre-existing grooming was not grandfathered"
+
+    fresh = {**no_proof, "groomed_at": BACKLOG.ACCEPTANCE_PROOF_SINCE}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(fresh)]
+    assert "groom-claim-without-acceptance-proof" in kinds, kinds
+
+    # either proof satisfies it
+    assert BACKLOG.validate_entry({**fresh, "acceptance_manual": "needs a device"}) == []
+    assert BACKLOG.validate_entry({**fresh, "acceptance_cmd": "true",
+                                   "acceptance_expect_rc": 0}) == []
+    # both together do not: two contradictory claims about the same question, one
+    # saying a machine settles it and one saying nothing can
+    both = {**fresh, "acceptance_cmd": "true", "acceptance_expect_rc": 0,
+            "acceptance_manual": "needs a device"}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(both)]
+    assert "groom-claim-with-conflicting-acceptance-proof" in kinds, kinds
+
+    # and the stronger half: the violation cannot be written through the CLI path
+    with pytest.raises(ValueError, match="groom-claim-without-acceptance-proof"):
+        BACKLOG.update_entry(store, entry["id"],
+                             groomed_at=BACKLOG.ACCEPTANCE_PROOF_SINCE,
+                             acceptance_cmd="", acceptance_manual="")
+
+
+def test_the_acceptance_expectation_is_shape_checked(tmp_path):
+    """`anchor` compares `rc == expect_rc` with `==`, so a string `"0"` from a
+    hand-edited entry would never match the int a subprocess returns — refusing
+    every wave that carried it, and blaming the fix rather than the field.
+
+    `bool` is rejected by NAME rather than coerced: `True` is an `int` in Python
+    and `True == 1`, so a JSON `true` would silently mean "expect exit 1".
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs())
+    payload = BACKLOG.load_entry(store, entry["id"])
+
+    for value, kind in ((True, "acceptance-expect-rc-not-an-int"),
+                        ("0", "acceptance-expect-rc-not-an-int"),
+                        (300, "acceptance-expect-rc-out-of-range"),
+                        (-1, "acceptance-expect-rc-out-of-range")):
+        probe = {**payload, "acceptance_expect_rc": value}
+        kinds = [p["kind"] for p in BACKLOG.validate_entry(probe)]
+        assert kind in kinds, f"{value!r} was accepted as an exit code: {kinds}"
+
+    orphan = {**payload, "acceptance_cmd": "", "acceptance_expect_rc": 0,
+              "acceptance_manual": "x"}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(orphan)]
+    assert "acceptance-expect-rc-without-cmd" in kinds, (
+        "an expectation with nothing to expect it of would never be read")
