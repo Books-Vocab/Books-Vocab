@@ -2243,13 +2243,93 @@ def cmd_cutover(args: argparse.Namespace) -> int:
                    f"{sha[:8]}", "landed": False}, args.json, "✗ post-ff verification failed")
             return EXIT_BLOCK
 
+    repair = _post_landing_repair(primary, dry_run=not args.commit)
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
                "sha": sha, "target": local, "branch": wt_branch, "verdict": verdict,
-               "warnings": warnings}
+               "warnings": warnings, "repair": repair}
     _emit(payload, args.json,
           f"✓ cutover: ff local {local} -> {sha[:8]} (offline; run `deploy` to "
           f"publish){warn_line}")
     return EXIT_OK
+
+
+def _tool_mutation(argv: list[str], *, cwd: Path | str, label: str) -> tuple[int, str]:
+    """Same visible-progress contract as `_git_mutation`, for a repo tool rather than
+    git. Routed through the shared runner rather than a silent `capture_output` for
+    the reason in `ops/lib/streaming_command.py`: an orchestrator subprocess that can
+    take seconds must not be invisible."""
+    try:
+        proc = run_streamed_command(
+            argv,
+            cwd=cwd,
+            label_key="mutation",
+            label=label,
+            progress_prefix="[worktree][mutation]",
+            heartbeat_interval=20.0,
+            capture_limit=64 * 1024,
+            merge_stderr=True,
+        )
+    except OSError as exc:
+        return 1, str(exc)
+    return proc.returncode, (proc.stdout or "")
+
+
+def _post_landing_repair(primary: Path, *, dry_run: bool) -> dict[str, Any]:
+    """Re-derive what the rebase invalidated, in the checkout that now holds it.
+
+    `cutover` rebases the branch onto the current trunk and then fast-forwards. That
+    rebase runs AFTER the gate — the last thing to check the tree runs before the last
+    thing to change it — so two derived artifacts land wrong, both measured:
+
+      * `fixed_by` shas written on the branch are rewritten by the rebase and become
+        `fixed-by-orphaned` (validate: 0 problems -> 1). `reanchor` maps them back by
+        `git patch-id --stable`, and refuses to guess when it cannot.
+      * the rendered ledger view's aggregate counters land stale, because every branch
+        rewrites those same two lines and the rebase keeps one side. The rows merge
+        cleanly, so nothing conflicts and nothing complains.
+
+    Neither is repairable from the branch — the correct values do not exist until the
+    landing has happened. This runs after the ff and commits what it produces: a
+    repair left uncommitted merely relocates the failure to the next `cutover`, which
+    refuses on a dirty primary.
+
+    It never fails the cutover. The landing already happened; reporting a repair
+    problem loudly is honest, rolling back a completed ff is not.
+    """
+    tool = Path(primary) / "ops" / "backlog.py"
+    out: dict[str, Any] = {"ran": False, "committed": False, "steps": [], "ok": True}
+    if not tool.exists():
+        out["reason"] = "no ledger tool in this checkout"
+        return out
+    if dry_run:
+        out["reason"] = "dry-run"
+        return out
+    out["ran"] = True
+    for sub, label in (("reanchor", "ledger-reanchor"), ("render", "ledger-render")):
+        rc, text = _tool_mutation([sys.executable, str(tool), sub, "--commit"],
+                                  cwd=primary, label=label)
+        out["steps"].append({"step": sub, "rc": rc})
+        if rc != 0:
+            out["ok"] = False
+            out["error"] = f"{sub} exited {rc}: {text.strip()[:300]}"
+            return out
+    rc, dirty = _git(["status", "--porcelain", "--", "docs/runbook"], cwd=primary)
+    if rc != 0 or not dirty.strip():
+        return out
+    _git(["add", "--", "docs/runbook"], cwd=primary)
+    crc, ctext = _git_mutation(
+        ["commit", "-m",
+         "ops: cutover 落地後重新推導 ledger 錨點與 view\n\n"
+         "rebase 在 gate 之後改寫了分支的 sha,並讓 view 的彙總行取到單邊。"
+         "兩者的正確值在落地之前都不存在,所以由落地這一步重新推導。\n\n"
+         "Review-Exempt: generated-snapshot"],
+        cwd=primary, label="ledger-repair-commit")
+    if crc != 0:
+        out["ok"] = False
+        out["error"] = f"repair commit failed: {ctext.strip()[:300]}"
+        return out
+    out["committed"] = True
+    return out
 
 
 def _active_ledger_records(state: str | None, branch: str) -> list[dict[str, Any]]:

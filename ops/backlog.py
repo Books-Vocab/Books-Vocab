@@ -223,11 +223,35 @@ def _write_atomic(path: Path, text: str) -> None:
     """Write via a temp file + os.replace so a crash cannot publish a partial
     entry. Callers rely on this: a truncated JSON entry would make the whole
     store unreadable to `render`, and the failure would surface far from the
-    write that caused it."""
+    write that caused it.
+
+    The temp name is UNIQUE per call, not the fixed `.{name}.tmp` it used to be.
+    A fixed name is only safe while nothing writes the same path twice at once,
+    and that stopped being true the moment mutations began refreshing the view:
+    two concurrent writers raced, the first `os.replace` moved the shared temp
+    away, and the second died on `FileNotFoundError` — a crash inside the helper
+    whose entire job is to make writing not crash."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp")
+    # The mode has to be set explicitly, because `mkstemp` creates 0600 and
+    # `os.replace` carries that onto the target. Measured after the switch away from
+    # `write_text`: the 280KB ledger view on disk became `-rw-------` while its
+    # sibling entry files stayed `-rw-r--r--`, and git tracks only the exec bit, so
+    # the diff showed nothing. Every `add` / `update --commit` / `render --commit`
+    # would have quietly demoted whatever it touched. Keep an existing file's mode;
+    # otherwise use the process umask, as an ordinary create would.
     try:
-        tmp.write_text(text, encoding="utf-8")
+        mode = path.stat().st_mode & 0o7777
+    except OSError:
+        umask = os.umask(0)
+        os.umask(umask)
+        mode = 0o666 & ~umask
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp",
+                                    dir=str(path.parent))
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         if tmp.exists():
@@ -1482,25 +1506,67 @@ def render_view(store: Path, *, verified_against: str) -> str:
     )
     out += _IMP_INTRO + "\n" + _render_table(imp, VIEW_IMP_COLUMNS)
     out += _APP_INTRO + "\n" + _render_table(app, APP_COLUMNS)
-    out += f"\n<!-- {len(imp)} IMP + {len(app)} APP entries -->\n"
-    # Not a table column: `plan` is prose measured in tens of kilobytes. A count is
-    # enough to notice the queue growing; `list --ungroomed` is where you act on it.
-    open_entries = [e for e in imp + app if e.get("status") not in ("fixed", "wont-fix")]
-    groomed = sum(1 for e in open_entries if e.get("groomed_by"))
-    out += f"<!-- groom: {groomed}/{len(open_entries)} unresolved entries have a fix plan -->\n"
+    # NO AGGREGATE FOOTER. There used to be two — an entry counter and a groom
+    # counter — and they re-created, inside the rendered artifact, the exact defect
+    # this module's shape was chosen to escape (see WHY THIS SHAPE, second bullet):
+    # "every append targets the same trailing region, so two worktrees appending
+    # concurrently conflict by construction". A global count IS that trailing
+    # region: two branches filing different NUMBERS of entries write `162` and `163`
+    # on the same last line, and the rebase dies with CONFLICT (content).
+    #
+    # Removing them is a large improvement and NOT a cure, and the difference
+    # matters to whoever reads this next. Measured on a clone of the real ledger,
+    # ten branches landing in turn: with the counters, 4 of 10 landed and the final
+    # view was stale; without them, 6-7 of 10 landed and the view was correct. The
+    # residual conflicts are ADJACENT-ROW insertions — `_sort_key` is `(date, id)`,
+    # so entries filed on the same day cluster, and "the same day" is exactly what
+    # concurrent branches have in common. Those are resolved a layer up, by
+    # `worktree_orchestrate.py` regenerating this file when it is the only thing in
+    # conflict. Do not read this comment as "the artifact merges now".
+    #
+    # Nothing is lost: the same two numbers are printed by `render` and answered
+    # properly by `list --ungroomed`, neither of which has to survive a merge.
     return out
+
+
+def view_counts(store: Path) -> dict[str, int]:
+    """The numbers that used to be baked into the view's last two lines. They are
+    worth reporting and not worth committing — see `render_view`."""
+    imp = list_entries(store, stream="IMP")
+    app = list_entries(store, stream="APP")
+    unresolved = [e for e in imp + app if e.get("status") not in ("fixed", "wont-fix")]
+    return {
+        "imp": len(imp),
+        "app": len(app),
+        "unresolved": len(unresolved),
+        "groomed": sum(1 for e in unresolved if e.get("groomed_by")),
+    }
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
+def _store_help_path() -> str:
+    """The default store, shown relative to the repo when it is inside it.
+
+    `relative_to` RAISES for a path outside ROOT, and it is called while BUILDING
+    THE PARSER — so a default store anywhere else does not produce an odd help
+    string, it produces a ValueError before argv is even looked at. Reached whenever
+    DEFAULT_STORE is redirected (tests do it; so would anyone pointing the tool at a
+    second ledger). Help text is not a good reason for a crash."""
+    try:
+        return str(DEFAULT_STORE.relative_to(ROOT))
+    except ValueError:
+        return str(DEFAULT_STORE)
+
+
 def _add_store_arg(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--store",
         type=Path,
         default=DEFAULT_STORE,
-        help=f"entry directory (default: {DEFAULT_STORE.relative_to(ROOT)})",
+        help=f"entry directory (default: {_store_help_path()})",
     )
 
 
@@ -1750,6 +1816,7 @@ def _cmd_add(args) -> int:
         build=args.build,
         entry_id=args.entry_id,
     )
+    _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.add.v1", "entry": entry}, ensure_ascii=False))
     else:
@@ -1802,9 +1869,11 @@ def _cmd_verify(args) -> int:
         return 0
 
     _write_atomic(entry_path(args.store, args.id), _dumps(merged))
+    _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "commit",
-                          "id": args.id, "changes": changes}, ensure_ascii=False))
+                          "id": args.id, "changes": changes, "entry": merged},
+                         ensure_ascii=False))
     else:
         print(f"[commit] {args.id} verified {changes['verified_at']} "
               f"by {args.by}: {args.verdict}")
@@ -1972,6 +2041,13 @@ def _cmd_reanchor(args) -> int:
                 landed.append(item["id"])
     result["mode"] = "commit" if args.commit else "dry-run"
     result["landed"] = landed
+    if args.commit and landed:
+        # Same rule as every other store mutation: the view is derived, so whoever
+        # changed the store re-derives it. `reanchor` used to be exempt purely by
+        # luck — the one caller that runs it (cutover's repair) happens to run
+        # `render` immediately afterwards. Luck is not a rule, and a human running
+        # `reanchor --commit` by hand got a stale view and a red gate downstream.
+        _refresh_view_if_canonical(args.store)
     if args.json:
         print(json.dumps({"schema": "kg.backlog.reanchor.v1", **result}, ensure_ascii=False))
         return 0
@@ -2095,12 +2171,17 @@ def _cmd_update(args) -> int:
         # which the previous dry-run skipped.
         after = _merged_and_validated(before, changes, args.id)
 
+    if args.commit:
+        _refresh_view_if_canonical(args.store)
     diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
     if args.json:
+        # `entry` alongside `changes`: without it a caller could not tell "the payload
+        # has no entry" from "the write did nothing", and had to re-query to find out
+        # a successful write had happened. `add` and `show` already answer this way.
         print(json.dumps(
             {"schema": "kg.backlog.update.v1",
              "mode": "commit" if args.commit else "dry-run",
-             "id": args.id, "changes": diff}, ensure_ascii=False))
+             "id": args.id, "changes": diff, "entry": after}, ensure_ascii=False))
     else:
         print(f"[{'commit' if args.commit else 'dry-run'}] {args.id}")
         for field, change in diff.items():
@@ -2170,6 +2251,8 @@ def _cmd_import(args) -> int:
     else:
         result = import_legacy(text, args.store)
         result["mode"] = "commit"
+        if result["imported"]:
+            _refresh_view_if_canonical(args.store)
 
     result["source"] = str(args.source_doc)
     if args.json:
@@ -2213,14 +2296,65 @@ def _strip_doc_meta(text: str) -> str:
     a single backlog entry. A whole-file compare would therefore turn red on
     other people's pushes and get switched off within a week.
 
-    Nothing else is normalized away: every table row, the `<!-- N IMP + M APP
-    entries -->` counter and the groom footer are all downstream of
-    docs/runbook/backlog/*.json and stay inside the comparison.
+    Nothing else is normalized away: every table row is downstream of
+    docs/runbook/backlog/*.json and stays inside the comparison. (The view used
+    to end in two aggregate counter lines; `render_view` says why they are gone.)
     """
     if not text.startswith("<!-- doc-meta"):
         return text
     _, sep, rest = text.partition("\n-->\n")
     return rest if sep else text
+
+
+def _refresh_view_if_canonical(store: Path) -> None:
+    """Keep the generated view in step with the store it is generated from.
+
+    Measured: filing an entry and not re-rendering makes `docs_lint.sh --registry`
+    exit 1. The cost of that is not paid by whoever forgot — it is paid by whoever
+    runs the gate next, which is the shape that makes a check get muted rather than
+    obeyed. The view is derived; a human is a poor place to keep a derivation.
+
+    CANONICAL store only, and the honest statement of why: an operation aimed at
+    some other `--store` did not ask for the repo's ledger view to be rewritten, so
+    it does not get to rewrite it. That is the whole reason — a modest one. (The
+    stronger-sounding claim this docstring used to make, that the guard stops a tmp
+    directory's contents from replacing the ledger, was not true of this code: the
+    render below reads DEFAULT_STORE unconditionally, so the tmp dir's contents
+    could never reach DEFAULT_VIEW. A reason nobody checks is a reason that drifts;
+    this module has filed entries about exactly that.)
+
+    Never fatal: the mutation has already landed, so a view that could not be written
+    is a warning about a derived artifact, not a reason to fail a completed write.
+    """
+    try:
+        if Path(store).resolve() != Path(DEFAULT_STORE).resolve():
+            return
+    except OSError:
+        return
+    try:
+        text = render_view(DEFAULT_STORE, verified_against=_doc_anchor())
+        # Same loss guard as `render --commit`, and for the same reason: three entries
+        # once disappeared in a re-render with rc=0 and a green gate. An automatic
+        # refresh that wrote unconditionally would be that hole again, on a path that
+        # runs far more often than the command it bypasses. Losing a row is never
+        # something a mutation implicitly authorises — say so and leave the view alone.
+        outgoing = _read_outgoing_view(Path(DEFAULT_VIEW))
+        dropped = ([] if outgoing is None
+                   else sorted(view_entry_ids(outgoing) - view_entry_ids(text)))
+        if dropped:
+            print(f"WARNING view NOT refreshed: writing it would delete "
+                  f"{', '.join(dropped)} — run ./ops/backlog.py render --commit to see "
+                  f"the recovery routes", file=sys.stderr)
+            return
+        # `_write_atomic`, not `write_text`, and for a reason this path owns rather
+        # than inherits: it is the FREQUENT writer of this file now — every `add`,
+        # every committed `update`/`verify` — so it is where a half-written 280KB
+        # view would actually be produced, and where two writers would actually
+        # collide.
+        _write_atomic(Path(DEFAULT_VIEW), text)
+    except (BacklogError, OSError, ValueError) as exc:
+        print(f"WARNING view not refreshed ({exc}); run ./ops/backlog.py render --commit",
+              file=sys.stderr)
 
 
 def _cmd_render(args) -> int:
@@ -2352,7 +2486,14 @@ def _cmd_render(args) -> int:
                 )
             )
         else:
+            counts = view_counts(args.store)
+            # The two numbers the view's footer used to carry. Reported, not
+            # committed: a count belongs where it costs nothing, and inside a
+            # version-controlled artifact it costs a merge conflict per branch.
             print(f"wrote {args.out} ({size} bytes, verified_against={verified})")
+            print(f"  {counts['imp']} IMP + {counts['app']} APP entries; "
+                  f"groom: {counts['groomed']}/{counts['unresolved']} unresolved have "
+                  f"a fix plan (`list --ungroomed` for the rest)")
     else:
         sys.stdout.write(text)
     return 0
@@ -2374,7 +2515,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return handlers[args.command](args)
     except (BacklogError, ValueError) as exc:
+        # `--json` is a machine channel, and a channel that turns into prose exactly
+        # when the answer is "no" is worst where it matters most: refusals are what an
+        # automated caller meets most often. Measured before this: a bad --verdict
+        # printed prose to stderr and nothing to stdout, so json.load() raised
+        # JSONDecodeError instead of yielding a readable refusal.
         print(f"ERROR {exc}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps({"schema": f"kg.backlog.{args.command}.v1", "ok": False,
+                              "error": str(exc), "command": args.command},
+                             ensure_ascii=False))
         return 64
 
 
