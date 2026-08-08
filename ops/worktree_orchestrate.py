@@ -57,6 +57,13 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              aggregates a pass/warn/block verdict, and RECORDS it (keyed by worktree +
              HEAD sha) so cutover can require a fresh pass. Runs the gates EXPLICITLY —
              the .githooks pre-commit is best-effort only and must not be relied on.
+  land       take a FIFO turn, then run catchup -> gate -> cutover under it.
+             The verb for converging SEVERAL worktrees: measured on a clone,
+             ten lanes driving catchup/gate/cutover by hand landed 2 of 10
+             (the trunk is single and the ff linear, so the first lander
+             staled everyone else, and the recovery raced identically);
+             through `land` the same ten landed 10 of 10 in 10 gate runs.
+             Advisory: it only guarantees one pass if every lander uses it.
   catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
              under the branch: rebase the worktree onto local `main`. It is a verb
              rather than a sentence because the rebase conflicts on a GENERATED file
@@ -2492,27 +2499,38 @@ def _rebase_onto(worktree: str | Path, trunk: str, label: str) -> tuple[int, str
     return _git_mutation(["rebase", trunk], cwd=worktree, label=label)
 
 
-def _pid_alive(pid: int) -> bool:
-    """Only used to evict a ticket whose owner is gone. PermissionError means the
-    process exists and belongs to someone else, which still counts as alive.
+def _ticket_is_abandoned(path: Path) -> bool:
+    """Is this ticket's owner gone? Answered by the kernel, not by a pid.
 
-    Non-positive pids are rejected BEFORE the probe, because `kill(2)` gives them
-    broadcast meanings rather than "this process": 0 addresses the caller's whole
-    process group and -1 addresses every process the caller may signal. Both
-    succeed, so a ticket carrying 0 would read as permanently alive and hold the
-    head of the queue forever — the exact deadlock the eviction exists to prevent.
-    A ticket is only ever written with `os.getpid()`, so anything <= 0 is a
-    corrupt ticket, and a corrupt ticket owns nothing.
+    The owner holds an exclusive flock on its OWN ticket file for the whole time
+    it is queued, so "abandoned" is simply "the flock is free" — and a flock is
+    released by the kernel when the holder dies, which is the entire reason the
+    registry uses one. An earlier version asked `os.kill(pid, 0)` instead. That
+    was wrong twice over: pids are recycled, so a crashed lane's ticket could be
+    kept alive forever by an unrelated process that inherited its number, which
+    reintroduces one level down the exact "a file is not a lock" deadlock this
+    eviction exists to prevent; and `kill(2)` treats non-positive pids as
+    broadcasts (0 = the caller's process group, -1 = every reachable process),
+    both of which SUCCEED, so a corrupt ticket carrying 0 read as permanently
+    alive. The flock answers both without a special case.
+
+    Failing to open or lock for any other reason returns False — an abandoned
+    ticket that we merely could not read must not be evicted out from under a
+    live owner. Callers hold `_land_lock`, so no live owner can enqueue mid-probe.
     """
-    if pid <= 0:
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
         return False
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except (PermissionError, OverflowError, ValueError):
+        wr.fcntl.flock(fd, wr.fcntl.LOCK_EX | wr.fcntl.LOCK_NB)
+    except OSError:
+        return False            # somebody holds it: the owner is alive
+    else:
+        wr.fcntl.flock(fd, wr.fcntl.LOCK_UN)
         return True
-    return True
+    finally:
+        os.close(fd)
 
 
 def _land_queue_dir(primary: Path) -> Path:
@@ -2542,7 +2560,7 @@ def _land_tickets(qdir: Path) -> list[tuple[int, dict]]:
         except (ValueError, OSError, json.JSONDecodeError):
             path.unlink(missing_ok=True)
             continue
-        if not _pid_alive(int(rec.get("pid", -1))):
+        if _ticket_is_abandoned(path):
             path.unlink(missing_ok=True)
             continue
         out.append((seq, rec))
@@ -2550,15 +2568,27 @@ def _land_tickets(qdir: Path) -> list[tuple[int, dict]]:
     return out
 
 
-def _land_enqueue(primary: Path, worktree: str) -> int:
+def _land_enqueue(primary: Path, worktree: str) -> tuple[int, int]:
+    """Take a ticket and hold it. Returns (seq, fd).
+
+    The fd is the ticket: the caller must keep it open for as long as it is
+    queued, because the flock on it is what proves the lane is still alive. Close
+    it — deliberately, or by dying — and the next `_land_tickets` sweep evicts the
+    ticket. `pid` is still recorded, but only so a human reading the queue can see
+    who is in it; nothing decides liveness from it.
+    """
     qdir = _land_queue_dir(primary)
     qdir.mkdir(parents=True, exist_ok=True)
     with _land_lock(primary):
         live = _land_tickets(qdir)
         seq = (live[-1][0] + 1) if live else 1
-        (qdir / f"{seq:012d}.json").write_text(
-            json.dumps({"pid": os.getpid(), "worktree": worktree}))
-    return seq
+        path = qdir / f"{seq:012d}.json"
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+        wr.fcntl.flock(fd, wr.fcntl.LOCK_EX | wr.fcntl.LOCK_NB)
+        os.write(fd, json.dumps(
+            {"pid": os.getpid(), "worktree": worktree}).encode())
+        os.fsync(fd)
+    return seq, fd
 
 
 def _land_position(primary: Path, seq: int) -> tuple[int, dict | None]:
@@ -2573,9 +2603,14 @@ def _land_position(primary: Path, seq: int) -> tuple[int, dict | None]:
     return (pos, live[0][1] if pos > 0 else None)
 
 
-def _land_release(primary: Path, seq: int) -> None:
+def _land_release(primary: Path, seq: int, fd: int | None = None) -> None:
     with _land_lock(primary):
         (_land_queue_dir(primary) / f"{seq:012d}.json").unlink(missing_ok=True)
+    if fd is not None:
+        try:
+            os.close(fd)          # drops the flock; a dead lane gets this for free
+        except OSError:
+            pass
 
 
 def _land_step(func, **kw) -> tuple[int, dict]:
@@ -2648,40 +2683,60 @@ def cmd_land(args) -> int:
               f"then run catchup --commit -> gate -> cutover --commit")
         return EXIT_OK
 
-    seq = _land_enqueue(primary, worktree)
+    seq, ticket_fd = _land_enqueue(primary, worktree)
     started = time.monotonic()
     common = {"state": args.state, "json": True, "base": args.base,
               "worktree": worktree}
     try:
         waited = 0.0
         last_beat = 0.0
+        # The timeout measures LACK OF PROGRESS, not total wait. Total wait is the
+        # wrong quantity: `land` holds the turn across the whole gate, so lane N
+        # legitimately waits (N-1) x gate. With an iOS gate at "tens of minutes"
+        # (cmd_gate's own words) a healthy lane 4 in a ten-lane batch would blow a
+        # total-wait budget and be told a "stuck peer" was to blame — the tool
+        # diagnosing a working queue as a broken one, in exactly the mixed batch
+        # this verb was written for. A queue that keeps moving is healthy however
+        # long your turn takes to arrive; a queue whose head has not changed is
+        # not.
+        last_pos = None
+        progressed_at = time.monotonic()
         while True:
             pos, ahead = _land_position(primary, seq)
             if pos == -1:
                 _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
-                       "error": "our queue ticket disappeared — another process "
-                                "judged this pid dead; re-run `land`",
+                       "error": "our queue ticket disappeared — the flock on it was "
+                                "seen free, so this lane was judged dead; re-run "
+                                "`land`",
                        "landed": False, "worktree": worktree},
                       args.json, "✗ land refused: queue ticket disappeared")
                 return EXIT_BLOCK
             if pos == 0:
                 break
-            waited = time.monotonic() - started
-            if waited >= args.queue_timeout:
+            now = time.monotonic()
+            waited = now - started
+            if pos != last_pos:
+                last_pos = pos
+                progressed_at = now
+            stalled = now - progressed_at
+            if stalled >= args.queue_timeout:
                 _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
-                       "error": f"waited {waited:.0f}s for a landing turn "
-                                f"(position {pos}); giving up so a stuck peer cannot "
-                                f"hold this lane forever",
+                       "error": f"the landing queue has not moved for {stalled:.0f}s "
+                                f"(still position {pos} after waiting {waited:.0f}s) "
+                                f"— the lane holding the turn is not making progress",
                        "landed": False, "position": pos, "ahead": ahead,
-                       "worktree": worktree},
+                       "stalled_s": round(stalled, 1),
+                       "waited_s": round(waited, 1), "worktree": worktree},
                       args.json,
-                      f"✗ land refused: still position {pos} after {waited:.0f}s")
+                      f"✗ land refused: queue stalled at position {pos} for "
+                      f"{stalled:.0f}s")
                 return EXIT_BLOCK
             if waited - last_beat >= 20:
                 last_beat = waited
                 print(f"[worktree][land] phase=waiting elapsed={waited:.0f}s "
-                      f"position={pos} aheadPid={(ahead or {}).get('pid')} "
-                      f"alive=true", file=sys.stderr, flush=True)
+                      f"position={pos} stalled={stalled:.0f}s "
+                      f"aheadPid={(ahead or {}).get('pid')} alive=true",
+                      file=sys.stderr, flush=True)
             time.sleep(0.4)
 
         steps: list[dict] = []
@@ -2710,6 +2765,22 @@ def cmd_land(args) -> int:
         orc, opay = _land_step(cmd_cutover, commit=True, **common)
         steps.append({"step": "cutover", "rc": orc, "payload": opay})
         landed = bool(opay.get("landed"))
+        # Two independent reports of the same fact. They can only disagree if the
+        # payload did not parse (`_land_step` degrades it to {"raw": ...}, and a
+        # missing "landed" then reads as False) — which would have `land` announce
+        # a refusal AFTER the trunk already moved. Say so loudly instead of
+        # picking whichever one is more comforting.
+        if landed != (orc == EXIT_OK):
+            payload_disagrees = (
+                f"cutover exit code ({orc}) and its payload (landed={landed!r}) "
+                f"disagree — trust neither; inspect local {args.base} before doing "
+                f"anything else")
+            _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                   "error": payload_disagrees, "landed": None,
+                   "cutover_rc": orc, "cutover_payload": opay,
+                   "worktree": worktree, "steps": steps},
+                  args.json, f"✗ land: {payload_disagrees}")
+            return EXIT_BLOCK
         total = time.monotonic() - started
         _emit({"schema": SCHEMA, "step": "land",
                "mode": "committed" if landed else "refused",
@@ -2725,7 +2796,7 @@ def cmd_land(args) -> int:
                f"✗ land refused at cutover: {opay.get('error')}"))
         return EXIT_OK if landed else EXIT_BLOCK
     finally:
-        _land_release(primary, seq)
+        _land_release(primary, seq, ticket_fd)
 
 
 def cmd_catchup(args) -> int:
@@ -3656,9 +3727,12 @@ def build_parser() -> argparse.ArgumentParser:
     ln.add_argument("--commit", action="store_true",
                     help="take the turn and land (default: report the queue only)")
     ln.add_argument("--queue-timeout", type=float, default=3600.0, metavar="S",
-                    help="give up waiting for a turn after S seconds (default 3600); "
-                         "a lane that waits forever cannot be told apart from a lane "
-                         "whose predecessor died holding the turn")
+                    help="give up when the queue has not MOVED for S seconds "
+                         "(default 3600). Deliberately not a total-wait budget: "
+                         "holding the turn across the gate means lane N waits "
+                         "(N-1) x gate, so a total-wait budget would fail healthy "
+                         "lanes in exactly the long-gate batches this verb exists "
+                         "for")
     ln.set_defaults(func=cmd_land)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "

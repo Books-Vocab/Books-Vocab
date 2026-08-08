@@ -66,6 +66,24 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 generated 檔時 `catchup` 自動重生解掉**（payload `regenerated`），其他任何檔案一起衝突就 abort 交你
 （那是真的決定）。rebase 完 HEAD 就動了，所以**之後一定要重跑 `gate`**。
 
+**c3. 多條工作樹同時要落地 → 用 `land`，不要手動排 gate/cutover**：
+```
+<path>/ops/worktree_orchestrate.py land --worktree <path> --json           # dry-run：目前排隊多深
+<path>/ops/worktree_orchestrate.py land --worktree <path> --commit --json  # 取號 → catchup → gate → cutover
+```
+**這是併發批次的預設路徑。** 底下 d/e 那條手動序列在單獨一條工作樹時完全正確，但**多條同時跑會不收斂**：
+本地 main 是唯一主幹、cutover 是線性 ff，所以任何一條落地就讓其餘全部變「落後」，而補救動作
+（catchup → 重跑 gate → 再 cutover）本身也在同一場競賽裡。實測 throwaway clone 十條並行照 d/e 手動跑：
+**只有 2/10 落地**，八條被 `behind main` 擋下（五條在 cutover、三條連 gate 都不給跑）；N=3 雖然 3/3 落地
+但花了 6 次 gate。改用 `land`：**10/10 落地、恰好 10 次 gate**、primary 乾淨、`validate` 0 problems。
+
+差別在臨界區的寬度。`cutover` 只把 ff 序列化，擋得住兩條互相踩，擋不住「我 gate 完的那一刻 trunk 已經動了」；
+`land` 先取一個 **FIFO 名次**，再把 catchup → gate → cutover **整段**跑在那個名次裡，所以被 gate 的樹就是落地的樹，
+一次就過。用 FIFO 而不是 flock，是因為 flock 不公平，而反覆輸掉競賽的必然是 gate 最慢的那條——混合批次裡就是 iOS。
+`--queue-timeout` 量的是**佇列多久沒動**，不是你等了多久（等多久本來就該正比於前面幾條的 gate 時間）。
+**注意 `land` 是 advisory**：它只在所有落地者都走它時才保證一次過；有人繞過去直接 `cutover --commit` 仍可能
+在你 gate 到一半推進 trunk（安全不受影響——`cutover` 自己的不變式會擋下未經 gate 的樹——但你會多跑一輪）。
+
 **d. 全 phase 完 → gate**（impact-based，顯式跑；.githooks 只 best-effort，不可依賴）：
 ```
 <path>/ops/worktree_orchestrate.py gate --worktree <path> --json
