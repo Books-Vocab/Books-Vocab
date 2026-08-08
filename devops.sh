@@ -593,6 +593,30 @@ cleanup_old_backups() {
   fi
 }
 
+# rsync flavor 分流：macOS 內建 /usr/bin/rsync 是 openrsync（--version 首行
+# `openrsync: protocol version 29`，次行才自稱 `rsync version 2.6.9 compatible`），
+# 不認 GNU 的 --info=progress2——實測 `rsync -n -a --info=progress2` 直接回
+# `unrecognized option`，整個 cmd_backup 當場中止。可攜性範式同 ops/release.sh:264 的
+# `mode="$(stat -f '%Lp' "$path" 2>/dev/null || stat -c '%a' "$path")"`。
+# 2026-08-08 實測：cmd_backup 用到的其餘旗標（-a -z --delete --exclude= --link-dest=
+# --progress --human-readable）openrsync 全部吃得下，故只有 --info=progress2 需要分流。
+# $1 = 選填的 version 首行（給測試注入用）；空則實跑 `rsync --version` 取首行。
+# 用 `rsync` 而非 `/usr/bin/rsync`：要與下面 cmd_backup 實際呼叫的那顆二進位一致
+#（裝了 Homebrew rsync 的機器 PATH 會先命中 GNU 版）。
+rsync_progress_flags() {
+  local version_line="${1:-}"
+  # 必須用 if，不可縮寫成 `[[ -z … ]] && version_line=$(…)`：本檔 :11 是 set -euo
+  # pipefail，帶參數呼叫時該 && 複合命令回 1，會當場殺掉整支腳本。
+  if [[ -z "$version_line" ]]; then
+    version_line=$(rsync --version 2>&1 | head -1)
+  fi
+  if [[ "$version_line" == openrsync* ]]; then
+    printf '%s\n' '--progress'
+  else
+    printf '%s\n' '--info=progress2' '--human-readable'
+  fi
+}
+
 cmd_backup() {
   # 注意：standby 的**權威排程/異地**備份 = standby launchd `com.kg.backup` → S3
   #（見 ~/butler/docs/kg-backend-deployment.md §4.5 / §7 G5）。本指令是 oscar 端
@@ -608,13 +632,28 @@ cmd_backup() {
   local prev
   prev=$(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" | head -1) || true  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
   mkdir -p "$dest"
-  info "rsync progress enabled: --info=progress2 --human-readable"
-  rsync -az --delete --info=progress2 --human-readable \
+  # mapfile 不可用：本檔 shebang 是 #!/bin/bash，macOS 的 /bin/bash = 3.2.57，沒有它。
+  local -a progress_flags=()
+  while IFS= read -r flag; do
+    progress_flags+=("$flag")
+  done < <(rsync_progress_flags)
+  info "rsync progress enabled: ${progress_flags[*]}"
+  # 守住 rsync 的非零退出。沒有這道守衛時，rsync 失敗只會留下它自己印的 usage／錯誤，
+  # 而上方剛印過 preflight 與「▶ 本地冷快照」，整段輸出讀起來像「跑完了」（IMP-
+  # 20260806-02bf8d 就是這樣被誤讀的）。備份指令不該用「印出 usage」當失敗訊號。
+  if ! rsync -az --delete "${progress_flags[@]}" \
     --exclude='_ops_backups/' \
     --exclude='_ops_world_backups/' \
     ${prev:+--link-dest="$prev"} \
     -e "ssh -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
-    "$SERVER:$REMOTE_DATA_DIR/" "$dest/"
+    "$SERVER:$REMOTE_DATA_DIR/" "$dest/"; then
+    echo "" >&2
+    echo "  本機 rsync：$(rsync --version 2>&1 | head -1)" >&2
+    echo "  已建立但**不完整**、不可當備份用的目錄：$dest" >&2
+    echo "  災難復原請改用 standby 的每日 S3 備份（launchd com.kg.backup →" >&2
+    echo "  ops/kg_backup.sh，見 docs/sop/deploy.md）；那條路徑與本指令各自獨立。" >&2
+    err "本地冷快照失敗：rsync 非零退出（上方為 rsync 自身輸出）。此指令沒有產出可用備份。"
+  fi
   [[ -n "$prev" ]] && info "增量基準: $(basename "$prev")（未變檔走硬連結）" \
                    || info "首次全量備份（無基準）"
 
