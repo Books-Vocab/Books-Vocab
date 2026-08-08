@@ -207,8 +207,9 @@ rc=0; "${UIQ[@]}" >"$TMP/uiq_clean.out" 2>&1 || rc=$?
 assert_green ui-quality-fast "failed=0" "$TMP/uiq_clean.out" "$rc"
 # exit 0 alone is satisfied by executing nothing at all — which is exactly how CI stayed
 # green for two months. Two independent guards against a green no-op:
-#   passed >= 5   a FLOOR (five fast lints today), not an exact count — a sixth mechanism
-#                 must not fail this, but a collapse to zero must.
+#   passed >= 5   a FLOOR (six fast lints today, floor written when there were five),
+#                 not an exact count — a seventh mechanism must not fail this, but a
+#                 collapse to zero must.
 #   unrun == 0    everything that was selected actually executed.
 #   selected > 0  the plan was not empty to begin with.
 # The third guard is new and is the one the two-month idle run needed: `selected` is the

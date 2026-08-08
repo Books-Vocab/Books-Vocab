@@ -42,6 +42,7 @@ LINUX_GROUPS=(
   ops-ci-coverage
   ui-token
   plain-deadzone
+  ui-fixture-lint
   ui-quality-plane
   python-entrypoints
   capability-matrix

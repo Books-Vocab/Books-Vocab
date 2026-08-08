@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  KG UI-test sweep — 每日一次跑完整 UI target，**諮詢性質，不是 block gate**。
+
+  為什麼存在（IMP-20260806-3ec803）：UI target 目前沒有任何例行 gate 會跑到。
+  cutover 只在分支動到 UITest 檔案時才路由 UI 測試，而整套 UI suite 因已知 flakiness
+  被刻意排除在 block gate 之外 —— 兩者相加的結果是「零例行覆蓋」：
+  testBookshelfToReaderNavigation 從 2026-06-09 起紅著，沒有任何東西發聲。
+  這支補的是那個洞的第二半（第一半是 ops/ui_fixture_lint.sh，把 fixture id 慣例不符
+  從模擬器 crash 降成秒級純文字檢查）。
+
+  **advisory 的意思是沒有人吃它的 exit code**：它的產出是 ~/Library/Logs/kg_uisweep.*.log
+  與 ios_ops.sh 自己的 run artifacts，要有人去看才有價值。把它接成 block gate 之前，
+  先解 flaky-vs-real 分流 —— 那正是當初 UI suite 被排除的理由，本 job 不推翻它。
+
+  ── 跑在哪台（與 com.kg.reconcile / com.kg.backup 不同，別照抄）──────────────
+  跑在 **oscar（主力筆電 MacBook-Air-7）**，不是常駐機 felix：felix 沒裝 Xcode，
+  沒有 iOS toolchain。路徑因此指向 oscar 的 ~/project/kg（開發 clone）。
+  它掃的是該 clone 當下 checkout 的內容 —— 也就是本地 main。
+
+  ── 為什麼帶 --dataset ────────────────────────────────────────────────────────
+  `ios_test.sh` 對 `--ui` 強制要求 `--dataset`/`--dataset-file`（UI World 是唯一
+  真相來源），bare `--ui` 在參數解析階段就 exit 1。少了這個旗標，這個 job 會每天
+  準時失敗且看起來像有在跑。`marketing_demo` 是 ops/fixtures/ui_worlds/ 目前唯一的
+  dataset，也是 cutover 路由 UI 測試時用的同一個。
+
+  ── 排程與併發 ───────────────────────────────────────────────────────────────
+  StartCalendarInterval 用 LOCAL 時間；03:00 選在無人操作的時段。筆電當下若睡著，
+  launchd 會在喚醒後補跑一次（不會累積成一串）。RunAtLoad=false：安裝當下不該
+  立刻吃掉一次數十分鐘的模擬器佔用。
+  與互動式 build/test 共用 ios_ops.sh 的 shlock，所以是排隊、不是互相踩踏。
+  ProcessType=Background 讓它在有人在用機器時被降權。
+
+  啟用/停用（由操作者手動 bootstrap，非預設掛載）：
+    cp ops/launchd/com.kg.uisweep.plist ~/Library/LaunchAgents/com.kg.uisweep.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kg.uisweep.plist
+    停用：launchctl bootout gui/$(id -u)/com.kg.uisweep
+    手動跑一次：launchctl kickstart -p gui/$(id -u)/com.kg.uisweep
+  它是 LaunchAgent（per-user）：需要登入 GUI session 才有模擬器可用。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.kg.uisweep</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/chenliangyu/project/kg/ops/ios_ops.sh</string>
+        <string>test</string>
+        <string>--ui</string>
+        <string>--dataset</string>
+        <string>marketing_demo</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/chenliangyu/project/kg</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/chenliangyu/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_uisweep.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/chenliangyu/Library/Logs/kg_uisweep.err.log</string>
+</dict>
+</plist>

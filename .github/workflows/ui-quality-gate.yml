@@ -7,6 +7,11 @@ on:
   push:
     paths: &uq_paths
       - 'ios/BooksAndVocab/**'
+      # 這條**不是** 'ios/BooksAndVocab/**' 的子集：那個 glob 要求 BooksAndVocab 後面
+      # 緊接 '/'，所以 ios/BooksAndVocabUITests/ 完全不命中。少了它，只動 UI 測試的
+      # push/PR 根本不觸發本 workflow —— 而那正是 static.ui_fixture_id 存在要擋的
+      # 那一種 diff（12166519f 改的就是 BooksAndVocabUITests.swift）。
+      - 'ios/BooksAndVocabUITests/**'
       - 'ops/ui_quality_gate.py'
       - 'ops/ui_quality_gate.sh'
       - 'ops/ui_quality_plane.py'
@@ -21,6 +26,7 @@ on:
       - 'ops/injection_lint.py'
       - 'ops/injection_lint.sh'
       - 'ops/_inject_shared.py'
+      - 'ops/ui_fixture_lint.sh'
       - '.github/workflows/ui-quality-gate.yml'
       - '.githooks/pre-commit'
   pull_request:
@@ -35,7 +41,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
       - name: Install ripgrep
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-      # --all-mechanisms, not a diff. The five fast lints each scan the whole
+      # --all-mechanisms, not a diff. The fast lints each scan the whole
       # tree against their baseline, so scoping by diff saved nothing and cost
       # everything: `--since origin/main` on a shallow checkout resolved to an
       # empty range, selected zero mechanisms and reported green on every run

@@ -546,7 +546,7 @@ grep -q -- '--all-mechanisms' .github/workflows/ui-quality-gate.yml \
 out="$("$GATE" --tier fast --execute --all-mechanisms 2>&1 || true)"
 passed_n="$(sed -n 's/.*summary: selected=[0-9]* unrun=[0-9]* passed=\([0-9]*\).*/\1/p' <<<"$out" | head -1)"
 [[ "${passed_n:-0}" -ge 5 ]] && ok "--all-mechanisms executes ${passed_n} fast mechanism(s)" \
-  || fail_t "--all-mechanisms executed ${passed_n:-0} mechanisms — expected all five fast lints"
+  || fail_t "--all-mechanisms executed ${passed_n:-0} mechanisms — expected every fast lint (floor 5; 6 today)"
 
 section "ops suite has a CI execution surface"
 grep -rq 'test_ops.sh' .github/workflows/ \

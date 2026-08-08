@@ -117,6 +117,32 @@ mechanisms:
     docs:
       - docs/sop/ios.md
 
+  - id: static.ui_fixture_id
+    layer: static-code
+    entrypoint: ops/ui_fixture_lint.sh
+    gate: manual
+    run:
+    triggers:
+      - ios/BooksAndVocabUITests/
+      - ios/BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift
+      - ios/BooksAndVocab/Support/UITestFixtureSeed+Bookshelf.swift
+    verdict: >
+      Exit code. 0 = every literal bookshelf fixture id in the UI tests is a
+      BookshelfFixtureID rawValue; 1 = unknown id, printed as file:line with a
+      camelCase→snake_case did-you-mean; 2 = structural failure (allowlist
+      empty, scan dir missing/empty) — deliberately not a silent green.
+    docs:
+      - docs/sop/ios.md
+    regression: ui-fixture-lint
+    notes: >
+      IMP-20260806-3ec803. Registered as static-code so it lands in the fast
+      tier — the point of this mechanism is that nothing routine ran the UI
+      target, so a fixture-id typo could only surface as a simulator crash
+      weeks later. Interpolated forms (`-seedFixture:bookshelf:\(id)`) and
+      `case .bookshelf(let id):` carry no literal and are deliberately not
+      findings. The scheduled UI sweep that covers the rest of that gap is
+      ops/launchd/com.kg.uisweep.plist (advisory, oscar-only).
+
   - id: structure.ui_deadcode
     layer: structure
     entrypoint: ops/ui_deadcode.py
