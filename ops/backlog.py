@@ -4721,7 +4721,9 @@ def _cmd_render_unlocked(args) -> int:
             # one layer down.
             if any(entry_id.startswith("IMP-") for entry_id in named):
                 lines.append(
-                    f"  lost IMP rows      -> ops/backlog.py import --from {args.out} --commit"
+                    "  lost IMP rows      -> not recoverable from this rendered view; "
+                    "restore each entry from git: git checkout <sha> -- "
+                    "docs/runbook/backlog/<id>.json"
                 )
             if any(entry_id.startswith("APP-") for entry_id in named):
                 lines.append(
