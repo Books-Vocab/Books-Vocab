@@ -260,8 +260,8 @@ source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
 source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
 # shellcheck source=lib/ios_run_verdict.sh
 source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
-# shellcheck source=lib/ios_signal_traps.sh
-source "$SCRIPT_DIR/lib/ios_signal_traps.sh"
+# shellcheck source=lib/signal_traps.sh
+source "$SCRIPT_DIR/lib/signal_traps.sh"
 # shellcheck source=lib/fixture_dataset_env.sh
 source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
 # Optional run-metrics logging — additive, must never break the test run.
@@ -826,7 +826,7 @@ release_test_device_lock() {
   TEST_DEVICE_LOCK_HELD=0
 }
 # cleanup exactly once, and DIE with 128+N on a signal instead of resuming with
-# the shared locks already released. See ops/lib/ios_signal_traps.sh.
+# the shared locks already released. See ops/lib/signal_traps.sh.
 kg_install_signal_traps cleanup
 
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease

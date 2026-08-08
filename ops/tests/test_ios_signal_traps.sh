@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test_ios_signal_traps.sh — signal-abort semantics for ops/lib/ios_signal_traps.sh,
+# test_ios_signal_traps.sh — signal-abort semantics for ops/lib/signal_traps.sh,
 # offline / no Xcode.
 #
 # Regression guards (IMP-0017, mute rc-0 abort, 2026-08-06):
@@ -69,7 +69,7 @@
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/../.." && pwd)"
-LIB="$WORKSPACE/ops/lib/ios_signal_traps.sh"
+LIB="$WORKSPACE/ops/lib/signal_traps.sh"
 
 pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
@@ -213,7 +213,7 @@ expect_run "A4 no signal" 0 1 yes
 # skipping the production edit would still go fully green.
 section "B. ops/ios_test.sh wiring"
 IOS_TEST="$WORKSPACE/ops/ios_test.sh"
-grep -qF 'source "$SCRIPT_DIR/lib/ios_signal_traps.sh"' "$IOS_TEST" \
+grep -qF 'source "$SCRIPT_DIR/lib/signal_traps.sh"' "$IOS_TEST" \
   && ok "B1 ios_test.sh sources the lib" || fail_t "B1 ios_test.sh does not source the lib"
 # The optional trailing word is the diagnostic tag (kg_install_signal_traps
 # <cleanup-fn> [tag]); the anchors still exclude comment lines and prose.
@@ -224,6 +224,35 @@ grep -q 'trap cleanup EXIT INT TERM' "$IOS_TEST" \
   && fail_t "B3 ios_test.sh still arms the resume-after-signal trap shape" \
   || ok "B3 the resume-after-signal trap shape is gone"
 bash -n "$IOS_TEST" && ok "B4 ios_test.sh syntax" || fail_t "B4 ios_test.sh syntax"
+
+# ── B'. shared deploy callers use the same source-only library ────────────────
+# This is deliberately structural: each caller gets its own cleanup function,
+# sources the shared library, installs the traps, and has no resume-after-signal
+# trap shape. Behavioural signal probes remain in the library fixture above and
+# the real deploy seam is documented as a named manual check in the backlog.
+section "B'. shared deploy caller wiring"
+SIGNAL_LIB="$WORKSPACE/ops/lib/signal_traps.sh"
+[[ -f "$SIGNAL_LIB" ]] && ok "B'1 shared signal library exists" \
+  || fail_t "B'1 shared signal library is missing"
+for script in "$WORKSPACE/ops/kg_reconcile.sh" "$WORKSPACE/devops.sh" "$WORKSPACE/ops/backup_verify.sh"; do
+  name="${script#"$WORKSPACE/"}"
+  bash -n "$script" && ok "B' syntax: $name" || fail_t "B' syntax: $name"
+  grep -qE '^[^#]*lib/signal_traps\.sh' "$script" \
+    && ok "B' source: $name" || fail_t "B' source missing: $name"
+  fn="$(sed -n 's/^[[:space:]]*kg_install_signal_traps \([a-z_][a-z0-9_]*\).*/\1/p' "$script" | head -1)"
+  if [[ -z "$fn" ]]; then
+    fail_t "B' install missing: $name"
+  elif grep -qE "^${fn}\(\)" "$script"; then
+    ok "B' cleanup function is local: $name"
+  else
+    fail_t "B' cleanup function $fn is not defined in $name"
+  fi
+  if grep -qE '^[^#]*trap[^#]*EXIT INT TERM' "$script"; then
+    fail_t "B' old EXIT INT TERM trap remains: $name"
+  else
+    ok "B' old trap shape absent: $name"
+  fi
+done
 
 # ── C. this file is executable ────────────────────────────────────────────────
 # `ops/tests/*.sh` are dispatched as `./ops/tests/<file>`; a 100644 file fails

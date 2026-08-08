@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ios_signal_traps.sh — abort-on-signal semantics for the iOS runner scripts.
+# signal_traps.sh — abort-on-signal semantics for deployment and iOS runners.
 # Source-only (no exec bit); bash 3.2 safe; no external dependencies.
 #
 # WHY THIS EXISTS (IMP-0017)

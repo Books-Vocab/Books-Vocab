@@ -503,6 +503,13 @@ deploy_and_gate() {
   exit 1
 }
 
+# Shared signal semantics must resolve from this file, not from the caller's
+# `$0`: this script is intentionally sourced by release/tests for pure helpers.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/signal_traps.sh
+source "$SCRIPT_DIR/lib/signal_traps.sh"
+kg_recon_release_lock() { rmdir "$KG_LOCK_DIR" 2>/dev/null || true; }
+
 # ── 主流程（一輪 tick）──────────────────────────────────────────────────────
 main() {
   local dry_run="$KG_RECON_DRY_RUN"
@@ -637,7 +644,7 @@ main() {
     log "deploy 鎖 $KG_LOCK_DIR 已被持有（人工 deploy 進行中？）→ 本輪讓路。"
     emit_verdict "locked"; exit 0
   fi
-  trap 'rmdir "$KG_LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+  kg_install_signal_traps kg_recon_release_lock kg_reconcile
 
   # 6c) 捕捉 ROLLBACK 錨點（DEPLOY 前的 deployed_sha）後進 deploy+gate（含失敗自動回滾）
   deploy_and_gate "$DEPLOYED_SHA"
