@@ -1,0 +1,17 @@
+{
+  "brief": "複習卡片版面設定給了六個欄位各自開關，自由度很高但沒有意義，使用者不知道該開哪個。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "現況（ReviewCardLayoutProfile / ReviewCardLayoutEditor）：\n  模式 picker（辨識/產出）× 面 picker（正面/背面）× 六個欄位 Toggle\n六個欄位任意組合 = 每個模式 2^6 x 2^6 種面貌，其中絕大多數沒有意義。\n\n而且模式 picker 在編一個使用者切不到的東西：VocabularyCardMode 存在\nVocabularyEntry.reviewModeRaw，只由後端 card.mode 經 BackgroundSyncActor /\nWordDetailSceneState 寫入，App 內沒有任何 UI 能改它。\n\n使用者定案（2026-08-08）：\n- 保留 per-card 的 recognition / production 方向，不動\n- 版面仍可對 recognition / production 各自調整\n- 取消 custom、取消逐欄位開關、取消正面/背面 picker\n- 每個方向只在「精簡」與「正常」之間選\n\n欄位定義：\n  正常 = 現行預設（＝舊版畫面）\n    recognition 正面 [partOfSpeech]\n    production  正面 [partOfSpeech, example]\n    背面 [difficultyTier, graphLinks, example, explanation, collocations]\n  精簡 = 拿掉例句、搭配詞、解釋\n    正面 [partOfSpeech]（production 亦同，因為例句被拿掉了）\n    背面 [difficultyTier, graphLinks]\n\n搬遷：既有持久化的欄位陣列（storageKey review_card_layout_profile_v1，\nenvelope v2，含 iCloud LWW）要對映到最接近的 preset。",
+  "id": "APP-20260808-7f0f3a",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "換掉一個持久化模型與它的編輯頁，含既有使用者設定的搬遷。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}

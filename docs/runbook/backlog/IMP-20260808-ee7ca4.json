@@ -1,0 +1,14 @@
+{
+  "brief": "複習卡的畫法綁死在複習畫面的狀態上，任何地方想再畫一次同一張卡都得手抄一份。",
+  "category": "arch",
+  "date": "2026-08-08",
+  "detail": "複習卡的渲染全部住在 TodayReviewPresenter 的 extension 上\n（TodayReviewPresenter+CardContent.swift、TodayReviewSwipeDeck.swift），\n透過 self 讀 swipeOffset / dismissPhase / state.slots / introProgress /\nreviewNaturalSectionHeights 等互動狀態，以及 onAdvanceReveal / onLinkTap 等\n十餘個 callback。\n\n後果一：設定頁要做「像素級不飄移」的即時預覽（見對應 APP 票）沒有辦法直接取用，\n只能手刻第二份，而手刻的第二份必然會飄移 —— 飄移不是紀律問題，是結構問題。\n\n後果二：catalog / snapshot 想涵蓋複習卡也一樣卡在這裡，\n這是「沒有版面守衛」那張票的成因之一。\n\n方向：抽出一個純輸入的卡片 view（卡片資料 + 版面 profile + 可用高度 -> 畫面），\n互動與 slot 動畫留在 presenter 這層包在外面。\n\n依使用者規範，架構級摩擦不自決 —— 本票登記為待決策，抽法與邊界要先對齊再動手。",
+  "id": "IMP-20260808-ee7ca4",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "把卡片渲染抽成獨立的 view，輸入是卡片資料與版面，不吃互動狀態。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "IMP"
+}

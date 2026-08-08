@@ -1,0 +1,17 @@
+{
+  "brief": "複習卡的單字後面會浮出一截灰色殘字，那其實是牌堆裡下一張卡的單字透出來。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "ReviewFoldSurface 的底色是 appSkin.palette.cardBackground.opacity(0.985)。\n複習畫面是三個常駐 slot 疊在一起（TodayReviewCardSlot），preview slot 的整層\n透明度約 0.72、縮放 0.975、Y 位移 5pt，於是下一張卡的單字會從那 1.5% 的縫隙漏出來。\n\n淨透出率 = 0.72 * 0.015 ~= 1.1%，與實測吻合：\n  截圖中殘字區的逐欄最小灰階 = 253，卡片白 = 255（1320x2868，3x）。\n\n在白底大字上這個量剛好落在肉眼可辨的門檻，使用者自己先注意到了。\n那 1.5% 透明度沒有換到任何視覺效果（卡片下方就是 pageBackground），\n只換到漏字。",
+  "id": "APP-20260808-33c9ec",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "卡片底色一行的透明度，外加確認深色模式不受影響。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}

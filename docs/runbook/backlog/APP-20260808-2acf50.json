@@ -1,0 +1,17 @@
+{
+  "brief": "複習卡背面的難度標籤從答案上方掉到答案下方，順序讀起來變怪。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "ReviewCardField.canonicalOrder 把 difficultyTier 排在 partOfSpeech 之後、\n其餘欄位之前，而背面的核心區塊（答案 + 分隔線）永遠排在所有 field 之前，\n所以難度落在答案下方。\n\nbe3f9b642 的 commit message 自己列為「已知差異」：\n\"the difficulty tier now sits after the answer rather than above it (right-aligned, as before)\"。\n也就是這一項是被知情接受的，不是意外 —— 但使用者的驗收基準否決了它。\n\n驗收基準：舊版截圖的 core 標籤在「石板」上方、右對齊。",
+  "id": "APP-20260808-2acf50",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "欄位順序常數一行，以及對應的預設 profile。",
+  "severity": "low",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}

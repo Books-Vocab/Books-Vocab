@@ -1,0 +1,17 @@
+{
+  "brief": "複習卡正面的詞性從貼在單字右邊變成自己佔一整列，把正面撐高。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "重構前，詞性與單字在同一個 HStack(alignment: .firstTextBaseline) 內：\n\n  Text(card.word) ... ; if let pos = card.partOfSpeech { Text(pos) }\n\n重構後 partOfSpeech 變成 ReviewCardField 之一，由 plan.front.fields 迭代出來，\n成為 VStack 內獨立的一列，與核心區塊之間還隔一個 foldSectionSpacing(24)。\n\n後果有兩層：正面高度多出一列＋一個間距；以及視覺語意改變 —— 詞性本來是\n單字的附屬標註，現在讀起來像一個獨立欄位。\n\n驗收基準（使用者提供）：舊版截圖 \"slate n.\" 同一行、同一基線。",
+  "id": "APP-20260808-e80f91",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "正面核心區塊的排版，一個 HStack 的組成。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}
