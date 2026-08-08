@@ -105,3 +105,9 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 - 已跑驗證命令
 - 已知風險
 - 下一步第一個 command
+
+Fan-out 受派者在回報「已完成」前，還必須在自己的工作樹執行
+`./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
+一併回報。受派者只交回 commit 與戳記；`gate` / `integrate` / `cutover` / `sync` / `deploy`
+由整合者執行。整合者若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
+`--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。

@@ -66,7 +66,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
 | `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**多條工作樹同時落地時的預設路徑**（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
-| `integrate` | `ops/worktree_orchestrate.py integrate --slug <s> --branches <b1> <b2> … --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。批次的 gate 動詞：合併後跑一次 gate，落地仍要你再跑 `cutover` |
+| `integrate` | 來源先 `worktree_registry.py hand-back --json`，再 `ops/worktree_orchestrate.py integrate --slug <s> --branches <b1> <b2> … --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。批次的 gate 動詞：合併後跑一次 gate，落地仍要你再跑 `cutover`；無 hand-back 或 hand-back 後 tip 改變會拒絕 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
@@ -87,7 +87,9 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 一批工作分散在 N 個工作樹時，develop 平面之前還有一步收斂。**與三平面相關的只有一件事：
 批次整合不是第四個平面**——它發生在 develop 平面之前，產出仍是一次普通的 `cutover`。
 
-流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段
+受派者完成最後一顆 commit 後，必須在自己的工作樹執行
+`./ops/worktree_registry.py hand-back --json`；`integrate` 會把這個戳記與來源 branch 現在的
+tip 做一致性檢查。流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段
 （含「批次交回狀態」子段）。
 
 ## Release 流程

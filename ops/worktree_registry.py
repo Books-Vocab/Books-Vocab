@@ -33,11 +33,12 @@ Registry state file (per-machine, NEVER committed):
   schema kg.worktree.registry.v1:
     {"schema": ..., "records": [{path, branch, intent, base, created_at,
                                  status(active|merged|abandoned), resolved_at,
-                                 backlog[ticket ids claimed], claimed_at}]}
+                                 backlog[ticket ids claimed], claimed_at,
+                                 handed_back_at, handed_back_sha}]}
   Timestamps are taken in the CLI adapter (--at overrides for tests); the IO/pure
   layers read no clock.
 
-Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human):
+Subcommands (register/hand-back/resolve/sweep are the P3 orchestrator API, not just human):
   register   birth: record a new active worktree     (--path --branch --intent --base
              [--backlog ID...]). --backlog CLAIMS those ticket ids: refused if any is
              already held by another ACTIVE record. Omitting the flag leaves an
@@ -46,6 +47,8 @@ Subcommands (register/resolve/sweep are the P3 orchestrator API, not just human)
              there is no separate release verb.
   list       ledger + live classify of each record   (table / --json)
   resolve    death: strike a worktree active record  (--branch|--path --status)
+  hand-back  worker hand-back: stamp the active record with the current branch tip
+             (--branch|--path; read-only git, no mutation of the worktree)
   sweep      orphan sentinel: fetch → gather every worktree/branch fact → P1
              classify + unsafe_to_drop → propose a CONSERVATIVE disposition. dry-run
              default; --commit executes clearance (remote branch → worktree remove →
@@ -969,6 +972,93 @@ def cmd_list(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_hand_back(args: argparse.Namespace) -> int:
+    """Record the exact commit a worker handed back to the integrator.
+
+    This is deliberately a registry mutation, not a git mutation: the worker has
+    already committed its work, and this command only proves which checked-out tip
+    it is returning.  Integration later compares this stamp with the source branch
+    tip in the primary checkout, so a worker that kept editing after hand-back cannot
+    be silently integrated under an old receipt.
+    """
+    _, now_iso = resolve_now(args.at)
+    state_path = _state_path(args)
+    state = load_state(state_path)
+    records: list[dict[str, Any]] = state["records"]
+
+    target_path = _norm(args.path or os.getcwd())
+    candidates = [
+        r for r in records
+        if r.get("status") == STATUS_ACTIVE
+        and ((args.branch is None or r.get("branch") == args.branch)
+             and (args.path is None or (r.get("path") and _norm(r["path"]) == target_path)))
+    ]
+    if not candidates:
+        selector = f"branch={args.branch}" if args.branch else f"path={target_path}"
+        msg = f"no active registry record matches {selector}"
+        payload = {"schema": SCHEMA, "action": "refused", "reason": msg}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+        return EXIT_USAGE
+    if len(candidates) != 1:
+        msg = "hand-back selector matches multiple active registry records"
+        payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                   "records": candidates}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+        return EXIT_USAGE
+
+    rec = candidates[0]
+    worktree = Path(rec["path"])
+    if not worktree.is_dir():
+        msg = f"registered worktree is missing: {worktree}"
+        payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                   "record": rec}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+        return EXIT_PARTIAL
+
+    rc, actual_branch = _git_ok(["branch", "--show-current"], cwd=worktree)
+    if rc != 0 or actual_branch != rec.get("branch"):
+        msg = (f"registered worktree is not on its recorded branch: expected "
+               f"{rec.get('branch')!r}, found {actual_branch or '(detached)'}")
+        payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                   "record": rec, "actual_branch": actual_branch}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+        return EXIT_PARTIAL
+
+    rc, tip_sha = _git_ok(["rev-parse", "--verify", "HEAD^{commit}"], cwd=worktree)
+    if rc != 0 or not tip_sha or "\n" in tip_sha:
+        msg = f"cannot read a single commit tip from {worktree}: {tip_sha or '(empty)'}"
+        payload = {"schema": SCHEMA, "action": "refused", "reason": msg,
+                   "record": rec}
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print(f"✗ hand-back refused: {msg}", file=sys.stderr)
+        return EXIT_PARTIAL
+
+    rec["handed_back_at"] = now_iso
+    rec["handed_back_sha"] = tip_sha
+    save_state(state_path, state)
+    payload = {"schema": SCHEMA, "action": "hand-back", "record": rec,
+               "handed_back_at": now_iso, "handed_back_sha": tip_sha}
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"✓ handed back [{rec.get('branch')}] @ {tip_sha[:12]} ({now_iso})")
+    return EXIT_OK
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     _, now_iso = resolve_now(args.at)
     if args.status not in RESOLVE_STATUS:
@@ -1237,6 +1327,17 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
     ls.set_defaults(func=cmd_list)
 
+    hb = sub.add_parser(
+        "hand-back",
+        help="worker hand-back: stamp the active record with the current checked-out tip",
+    )
+    add_state(hb)
+    hb.add_argument("--branch", default=None, help="branch of the active record")
+    hb.add_argument("--path", default=None,
+                    help="worktree path (default: current worktree)")
+    hb.add_argument("--json", action="store_true", help=f"emit {SCHEMA} JSON")
+    hb.set_defaults(func=cmd_hand_back)
+
     rs = sub.add_parser("resolve", help="death: strike a worktree's active record")
     add_state(rs)
     rs.add_argument("--branch", default=None, help="branch of the record to resolve")
@@ -1270,7 +1371,7 @@ def build_parser() -> argparse.ArgumentParser:
 # were spawned in a loop and the interpreter start-up spread (median 1.26 ms between
 # arrivals) serialized them before the lock ever mattered. A structural assertion
 # catches the same mutation every time, and costs nothing.
-LEDGER_WRITERS = (cmd_register, cmd_resolve, cmd_sweep)
+LEDGER_WRITERS = (cmd_register, cmd_hand_back, cmd_resolve, cmd_sweep)
 
 
 def main(argv: list[str] | None = None) -> int:

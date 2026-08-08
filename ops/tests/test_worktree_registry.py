@@ -631,6 +631,48 @@ def test_register_list_resolve_roundtrip(tmp_path):
     assert rec["resolved_at"].startswith("2026-07-09T12:00:00")
 
 
+def test_hand_back_stamps_the_checked_out_tip(tmp_path):
+    repo = tmp_path / "repo"
+    _init(repo)
+    state = tmp_path / "reg.json"
+    common = ["--state", str(state), "--at", FUTURE_AT]
+
+    assert MODULE.main([
+        "register", *common, "--path", str(repo), "--branch", "main",
+        "--intent", "worker", "--base", "main",
+    ]) == MODULE.EXIT_OK
+    out = io.StringIO()
+    with redirect_stdout(out):
+        assert MODULE.main([
+            "hand-back", *common, "--path", str(repo), "--branch", "main", "--json",
+        ]) == MODULE.EXIT_OK
+    payload = json.loads(out.getvalue())
+    tip = _git(["rev-parse", "HEAD"], repo)
+    assert payload["handed_back_sha"] == tip
+    record = json.loads(state.read_text())["records"][0]
+    assert record["handed_back_sha"] == tip
+    assert record["handed_back_at"].startswith("2999-01-01T00:00:00")
+
+
+def test_hand_back_refuses_when_recorded_worktree_is_on_the_wrong_branch(tmp_path):
+    repo = tmp_path / "repo"
+    _init(repo)
+    _git(["checkout", "-q", "-b", "feat/other"], repo)
+    state = tmp_path / "reg.json"
+    common = ["--state", str(state), "--at", FUTURE_AT]
+    assert MODULE.main([
+        "register", *common, "--path", str(repo), "--branch", "main",
+        "--intent", "worker", "--base", "main",
+    ]) == MODULE.EXIT_OK
+    out = io.StringIO()
+    with redirect_stdout(out):
+        rc = MODULE.main([
+            "hand-back", *common, "--path", str(repo), "--branch", "main", "--json",
+        ])
+    assert rc == MODULE.EXIT_PARTIAL
+    assert json.loads(out.getvalue())["actual_branch"] == "feat/other"
+
+
 def _active(records):
     return [r for r in records if r.get("status") == "active"]
 
@@ -898,6 +940,7 @@ def test_the_ledger_writers_are_the_ones_main_serializes():
     )
     for writer in (MODULE.cmd_resolve, MODULE.cmd_sweep):
         assert writer in MODULE.LEDGER_WRITERS
+    assert MODULE.cmd_hand_back in MODULE.LEDGER_WRITERS
 
 
 def test_exactly_one_of_many_simultaneous_claimants_wins(tmp_path):

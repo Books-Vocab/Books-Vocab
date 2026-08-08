@@ -6120,6 +6120,30 @@ def _commit_on(repo, branch, files, msg, back_to="main"):
     return sha
 
 
+def _run_integrate_json(argv):
+    """Legacy synthetic integration fixtures opt into the explicit bypass.
+
+    These tests construct source branches directly and intentionally do not model a
+    worker worktree hand-back. Production callers must omit this flag and use the
+    registry hand-back stamp; keeping the exception visible at every fixture call
+    prevents the test suite from quietly becoming the production contract.
+    """
+    assert argv and argv[0] == "integrate"
+    return _run_json(["integrate", "--allow-unhanded", *argv[1:]])
+
+
+def _seed_handoff(state, repo, branch, sha):
+    Path(state).write_text(json.dumps({
+        "schema": "kg.worktree.registry.v1",
+        "records": [{
+            "path": str(repo), "branch": branch, "intent": "fixture",
+            "base": "main", "created_at": "2999-01-01T00:00:00Z", "status": "active",
+            "resolved_at": None, "backlog": [], "claimed_at": None,
+            "handed_back_at": "2999-01-01T00:00:00Z", "handed_back_sha": sha,
+        }],
+    }))
+
+
 def _conflicting_pair(repo):
     """Two branches that both create `shared.txt` — an add/add conflict on the SECOND
     cherry-pick — and `feat/b` carries a FURTHER commit after the conflicting one.
@@ -6143,7 +6167,7 @@ def test_integrate_dry_run_names_every_commit_and_creates_nothing(scratch):
     a = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
     b = _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/b",
                          "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK, pay
@@ -6162,7 +6186,7 @@ def test_integrate_stops_at_the_conflicting_branch_and_names_the_file(scratch):
     state = str(tmp_path / "reg.json")
     a, b1, b2 = _conflicting_pair(repo)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/b",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, pay
@@ -6203,7 +6227,7 @@ def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratc
     state = str(tmp_path / "reg.json")
     a, b1, b2 = _conflicting_pair(repo)
 
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, stopped
@@ -6212,7 +6236,7 @@ def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratc
     (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
     _git(["add", "shared.txt"], wt)
 
-    rc, done = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, done = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                           "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, done
     assert done["gate"]["verdict"] in ("pass", "warn"), done
@@ -6244,7 +6268,7 @@ def test_integrate_runs_the_gate_once_for_the_whole_batch(scratch):
     _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
     _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/b",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, pay
@@ -6274,7 +6298,7 @@ def test_integrate_copies_commits_rather_than_merging_the_sources(scratch):
     b = _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
     _advance_local_main(repo, "trunkmove")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/b",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, pay
@@ -6301,7 +6325,7 @@ def test_integrate_does_not_advance_the_trunk(scratch):
     state = str(tmp_path / "reg.json")
     _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--branches", "feat/a",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, pay
     assert "a.txt" not in _local_main_files(repo)
@@ -6313,11 +6337,11 @@ def test_integrate_refuses_a_second_start_while_one_is_in_flight(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, _stopped = _run_json(["integrate", "--slug", "batch",
+    rc, _stopped = _run_integrate_json(["integrate", "--slug", "batch",
                               "--branches", "feat/a", "feat/b",
                               "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, _stopped
-    rc, again = _run_json(["integrate", "--slug", "batch",
+    rc, again = _run_integrate_json(["integrate", "--slug", "batch",
                            "--branches", "feat/a", "feat/b",
                            "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_USAGE, again
@@ -6333,7 +6357,7 @@ def test_integrate_refuses_a_second_start_while_one_is_in_flight(scratch):
 def test_integrate_continue_without_an_integration_says_which_one_is_missing(scratch):
     tmp_path, _repo, _remote = scratch
     state = str(tmp_path / "reg.json")
-    rc, pay = _run_json(["integrate", "--slug", "ghost", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "ghost", "--state", state,
                          "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_USAGE, pay
     assert "ghost" in pay["error"], pay
@@ -6344,11 +6368,11 @@ def test_integrate_continue_refuses_while_paths_are_still_unmerged(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, pay
     assert pay["conflicts"] == ["shared.txt"], pay
@@ -6361,19 +6385,19 @@ def test_integrate_abort_clears_the_in_flight_cherry_pick(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
     wt = stopped["worktree"]
 
-    rc, dry = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, dry = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--abort", "--json"])
     assert rc == MODULE.EXIT_OK and dry["mode"] == "dry-run", dry
     assert MODULE._interrupted_operation(wt) == "cherry-pick", (
         "a dry-run abort aborted something")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--abort", "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, pay
     assert MODULE._interrupted_operation(wt) is None
@@ -6389,7 +6413,7 @@ def test_integrate_names_a_branch_that_does_not_resolve(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/nope",
                          "--state", state, "--json"])
     assert rc == MODULE.EXIT_USAGE, pay
@@ -6413,7 +6437,7 @@ def test_integrate_refuses_a_branch_carrying_a_merge_commit(scratch):
     merge_sha = _git(["rev-parse", "HEAD"], repo)
     _git(["checkout", "-q", "main"], repo)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/m",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--branches", "feat/m",
                          "--state", state, "--json"])
     assert rc == MODULE.EXIT_USAGE, pay
     assert any(merge_sha[:8] in p for p in pay["problems"]), pay
@@ -6427,7 +6451,7 @@ def test_integrate_is_refused_while_the_flow_is_frozen(scratch):
     rc, _ = _run_json(["freeze", "on", "--reason", "surgery", "--state", state,
                        "--json"])
     assert rc == MODULE.EXIT_OK
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--branches", "feat/a",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, pay
     assert pay["error"] == "frozen", pay
@@ -6438,6 +6462,77 @@ def test_integrate_is_wired_into_the_parser():
     ns = p.parse_args(["integrate", "--slug", "b", "--branches", "x", "y"])
     assert ns.func is MODULE.cmd_integrate
     assert ns.branches == ["x", "y"] and ns.commit is False
+    assert ns.allow_unhanded is False
+
+
+@gitmark
+def test_integrate_refuses_a_source_branch_without_hand_back(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["error"] == "source branches were not handed back for integration"
+    assert pay["handoff"]["problems"][0]["reason"] == "no active registry record"
+    assert "hand-back" in pay["handoff"]["problems"][0]["remedy"]
+
+
+@gitmark
+def test_integrate_refuses_a_branch_that_advanced_after_hand_back(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    handed_back = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    current = _commit_on(repo, "feat/a", {"b.txt": "b\n"}, "work: a follow-up")
+    _seed_handoff(state, repo, "feat/a", handed_back)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    problem = pay["handoff"]["problems"][0]
+    assert problem["reason"] == "branch advanced after hand-back"
+    assert problem["handed_back_sha"] == handed_back
+    assert problem["current_tip_sha"] == current
+
+    # The explicit legacy bypass only covers a missing stamp; it must not turn a
+    # stale stamp into permission to integrate code that was not handed back.
+    rc, allowed = _run_json(["integrate", "--slug", "batch-allowed",
+                             "--branches", "feat/a", "--state", state,
+                             "--allow-unhanded", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, allowed
+    assert allowed["handoff"]["problems"][0]["reason"] == "branch advanced after hand-back"
+
+
+@gitmark
+def test_integrate_accepts_a_branch_whose_tip_matches_hand_back(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    handed_back = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _seed_handoff(state, repo, "feat/a", handed_back)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert pay["handoff"]["problems"] == []
+    assert pay["handoff"]["warnings"] == []
+
+
+@gitmark
+def test_integrate_allow_unhanded_is_explicit_and_names_the_warning(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--allow-unhanded", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert pay["handoff"]["problems"] == []
+    assert pay["handoff"]["warnings"] == [{
+        "branch": "feat/a",
+        "reason": "no active registry record",
+        "remedy": "./ops/worktree_registry.py hand-back --branch feat/a --json",
+    }]
 
 
 # --- the false-green shapes: three ways `integrate` could hand cutover a verdict
@@ -6453,7 +6548,7 @@ def test_integrate_refuses_to_gate_a_batch_its_own_books_do_not_add_up(scratch):
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
@@ -6467,7 +6562,7 @@ def test_integrate_refuses_to_gate_a_batch_its_own_books_do_not_add_up(scratch):
     spath.write_text(json.dumps(st))
     _git(["cherry-pick", "--abort"], wt)   # so nothing else refuses first
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, pay
     assert pay["planned_total"] == 3 and pay["accounted"] == 1, pay
@@ -6490,7 +6585,7 @@ def test_integrate_surfaces_the_gates_own_refusal_rather_than_a_null_verdict(scr
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
@@ -6500,7 +6595,7 @@ def test_integrate_surfaces_the_gates_own_refusal_rather_than_a_null_verdict(scr
     (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
     _git(["add", "shared.txt"], wt)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--continue", "--commit", "--json"])
     assert rc != MODULE.EXIT_OK, pay
     assert pay["mode"] == "refused", pay
@@ -6520,7 +6615,7 @@ def test_integrate_continue_refuses_when_the_worktree_is_on_another_branch(scrat
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     _conflicting_pair(repo)
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/b",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
@@ -6528,7 +6623,7 @@ def test_integrate_continue_refuses_when_the_worktree_is_on_another_branch(scrat
     _git(["cherry-pick", "--abort"], wt)
     _git(["checkout", "-q", "-b", "sidetrack"], wt)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                          "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, pay
     assert pay["actual_branch"] == "sidetrack", pay
@@ -6549,14 +6644,14 @@ def test_integrate_forgets_a_finished_integration(scratch):
     state = str(tmp_path / "reg.json")
     _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch", "--branches", "feat/a",
                          "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, pay
     assert pay["state_cleared"] is True, pay
     assert not MODULE._integrate_state_path(state, "batch").exists()
 
     # …and the follow-on question the residue used to answer wrongly.
-    rc, again = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, again = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                            "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_USAGE, again
     # Asserted against the WRONG CLAIM, not against a phrase: the honest answer here
@@ -6586,7 +6681,7 @@ def test_integrate_refuses_stacked_branches_that_queue_a_commit_twice(scratch):
     _git(["commit", "-qm", "work: b"], repo)
     _git(["checkout", "-q", "main"], repo)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch",
+    rc, pay = _run_integrate_json(["integrate", "--slug", "batch",
                          "--branches", "feat/a", "feat/b",
                          "--state", state, "--json"])
     assert rc == MODULE.EXIT_USAGE, pay
@@ -6594,7 +6689,7 @@ def test_integrate_refuses_stacked_branches_that_queue_a_commit_twice(scratch):
     assert dup, pay["problems"]
     assert "feat/a" in dup[0] and "feat/b" in dup[0], dup
     # naming only the tip is the documented way through, and it must still work
-    rc, ok = _run_json(["integrate", "--slug", "batch", "--branches", "feat/b",
+    rc, ok = _run_integrate_json(["integrate", "--slug", "batch", "--branches", "feat/b",
                         "--state", state, "--json"])
     assert rc == MODULE.EXIT_OK, ok
     assert [c["sha"] for c in ok["plan"][0]["commits"]][0] == a, ok
@@ -6613,7 +6708,7 @@ def test_integrate_names_a_commit_that_produced_nothing_instead_of_losing_it(scr
     a = _make_branch(repo, "feat/a", {"dup.txt": "same\n"}, "work: a")
     c = _make_branch(repo, "feat/c", {"dup.txt": "same\n"}, "work: c (same change)")
 
-    rc, stopped = _run_json(["integrate", "--slug", "batch",
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
                              "--branches", "feat/a", "feat/c",
                              "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK, stopped
@@ -6624,7 +6719,7 @@ def test_integrate_names_a_commit_that_produced_nothing_instead_of_losing_it(scr
 
     wt = stopped["worktree"]
     _git(["cherry-pick", "--skip"], wt)
-    rc, done = _run_json(["integrate", "--slug", "batch", "--state", state,
+    rc, done = _run_integrate_json(["integrate", "--slug", "batch", "--state", state,
                           "--continue", "--commit", "--json"])
     assert rc == MODULE.EXIT_OK, done
     assert [x["sha"] for x in done["skipped"]] == [c], done

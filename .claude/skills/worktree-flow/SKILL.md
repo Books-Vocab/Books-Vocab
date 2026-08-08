@@ -219,6 +219,14 @@ task brief 的「邊界」一欄要寫明這件事，並要求回報分支名與
 非批次的任務，可讓它自己跑 `gate` 自驗，但 `cutover` 一律留給整合者。
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 
+**交回前還要留下機器可讀的 hand-back 戳記。** 受派者在自己的工作樹完成最後一顆 commit 後執行：
+
+```
+./ops/worktree_registry.py hand-back --json
+```
+
+它只讀目前 checkout 的 branch 與 `HEAD`，把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；不跑 gate、cutover、sync 或 deploy。整合者的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過「沒有戳記」，不能繞過 tip mismatch；正常批次不應使用。
+
 理由不是階級，是資訊：
 
 - **合併後的 gate 才回答得了該問的問題。** 每個受派者各自 gate，證明的是「我的改動在我 fork

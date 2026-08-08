@@ -3751,8 +3751,8 @@ def _unmerged_paths(worktree: str) -> list[str]:
     return [_c_unquote(ln) for ln in out.splitlines() if ln]
 
 
-def _branch_pick_list(repo: Path, trunk: str,
-                      branch: str) -> tuple[list[dict[str, Any]], list[str], str | None]:
+def _branch_pick_list(repo: Path, trunk: str, branch: str, *, ref: str | None = None
+                      ) -> tuple[list[dict[str, Any]], list[str], str | None]:
     """(commits to pick, merge commits found, refusal). Oldest first.
 
     Merge commits are returned SEPARATELY rather than filtered away. `rev-list
@@ -3760,11 +3760,12 @@ def _branch_pick_list(repo: Path, trunk: str,
     existing is "no piece of work goes missing" must not itself be the thing that
     loses one.
     """
-    rc, _ = _git(["rev-parse", "--verify", "-q", f"{branch}^{{commit}}"], cwd=repo)
+    source_ref = ref or branch
+    rc, _ = _git(["rev-parse", "--verify", "-q", f"{source_ref}^{{commit}}"], cwd=repo)
     if rc != 0:
         return [], [], f"{branch!r} does not resolve to a commit in this repo"
     rc, out = _git(["log", "--reverse", "--no-merges", "--format=%H%x1f%s",
-                    f"{trunk}..{branch}"], cwd=repo)
+                    f"{trunk}..{source_ref}"], cwd=repo)
     if rc != 0:
         return [], [], f"cannot list {trunk}..{branch}: {out[:200]}"
     commits: list[dict[str, Any]] = []
@@ -3773,8 +3774,96 @@ def _branch_pick_list(repo: Path, trunk: str,
             continue
         sha, subject = ln.split("\x1f", 1)
         commits.append({"branch": branch, "sha": sha, "subject": subject})
-    _, mout = _git(["rev-list", "--merges", f"{trunk}..{branch}"], cwd=repo)
+    _, mout = _git(["rev-list", "--merges", f"{trunk}..{source_ref}"], cwd=repo)
     return commits, [ln for ln in mout.splitlines() if ln], None
+
+
+def _integrate_handoff_check(
+    state: str | None,
+    branches: list[str],
+    *,
+    allow_unhanded: bool,
+    repo: Path,
+) -> dict[str, Any]:
+    """Require every source branch to have a current worker hand-back stamp.
+
+    The registry answers who owns a branch and what tip they explicitly returned;
+    the primary checkout answers what the branch points to now. These are separate
+    observations on purpose. A missing stamp is optionally bypassable for imported
+    or legacy branches, but a tip mismatch is never bypassable.
+    """
+    rc, listing = _registry(["list", *_state_arg(state), "--json"])
+    if rc != EXIT_OK or not isinstance(listing, dict) or not isinstance(listing.get("records"), list):
+        return {
+            "checked": list(branches),
+            "source_refs": {},
+            "warnings": [],
+            "problems": [
+                "cannot inspect the worktree registry before integrating — "
+                "refusing closed-loop integration"
+            ],
+        }
+
+    active_by_branch: dict[str, list[dict[str, Any]]] = {}
+    for record in listing["records"]:
+        if record.get("status") == wr.STATUS_ACTIVE and record.get("branch"):
+            active_by_branch.setdefault(record["branch"], []).append(record)
+
+    warnings: list[dict[str, Any]] = []
+    problems: list[dict[str, Any]] = []
+    source_refs: dict[str, str] = {}
+    for branch in branches:
+        records = active_by_branch.get(branch, [])
+        if len(records) != 1:
+            reason = ("no active registry record" if not records else
+                      "multiple active registry records")
+            item = {
+                "branch": branch,
+                "reason": reason,
+                "remedy": f"./ops/worktree_registry.py hand-back --branch {branch} --json",
+            }
+            if allow_unhanded and not records:
+                warnings.append(item)
+            else:
+                problems.append(item)
+            continue
+
+        record = records[0]
+        handed_back_sha = record.get("handed_back_sha")
+        if not handed_back_sha:
+            item = {
+                "branch": branch,
+                "reason": "active record has no hand-back stamp",
+                "remedy": f"./ops/worktree_registry.py hand-back --branch {branch} --json",
+            }
+            if allow_unhanded:
+                warnings.append(item)
+            else:
+                problems.append(item)
+            continue
+
+        source_refs[branch] = handed_back_sha
+
+        tip_rc, current_tip = _git(
+            ["rev-parse", "--verify", "-q", f"{branch}^{{commit}}"], cwd=repo
+        )
+        if tip_rc != 0 or not current_tip:
+            problems.append({
+                "branch": branch,
+                "reason": "source branch tip cannot be resolved",
+                "handed_back_sha": handed_back_sha,
+            })
+            continue
+        if current_tip != handed_back_sha:
+            problems.append({
+                "branch": branch,
+                "reason": "branch advanced after hand-back",
+                "handed_back_sha": handed_back_sha,
+                "current_tip_sha": current_tip,
+            })
+
+    return {"checked": list(branches), "source_refs": source_refs,
+            "warnings": warnings, "problems": problems}
 
 
 def cmd_integrate(args) -> int:
@@ -3851,10 +3940,33 @@ def _integrate_start(args, spath: Path) -> int:
               f"✗ integrate refused: {msg}")
         return EXIT_USAGE
 
+    handoff = _integrate_handoff_check(
+        args.state, list(args.branches), allow_unhanded=args.allow_unhanded,
+        repo=primary,
+    )
+    if handoff["problems"]:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": "source branches were not handed back for integration",
+               "handoff": handoff, "trunk": trunk}, args.json,
+              "✗ integrate refused: source branch hand-back check failed\n"
+              + "\n".join(
+                  f"  {p.get('branch')}: {p.get('reason')}"
+                  + (f" (handed_back={p['handed_back_sha'][:12]}, "
+                     f"current={p['current_tip_sha'][:12]})"
+                     if p.get("handed_back_sha") and p.get("current_tip_sha") else "")
+                  for p in handoff["problems"]
+              ))
+        return EXIT_BLOCK
+
     plan: list[dict[str, Any]] = []
     problems: list[str] = []
     for branch in args.branches:
-        commits, merges, err = _branch_pick_list(primary, trunk, branch)
+        # A stamped branch is read through the immutable returned SHA, not through
+        # the moving branch ref. If the worker advances the branch after hand-back,
+        # a race cannot smuggle its new commit into this batch; the recheck below
+        # then refuses the run by name as well.
+        source_ref = handoff.get("source_refs", {}).get(branch, branch)
+        commits, merges, err = _branch_pick_list(primary, trunk, branch, ref=source_ref)
         if err:
             problems.append(err)
             continue
@@ -3891,6 +4003,21 @@ def _integrate_start(args, spath: Path) -> int:
                 f"branches given ({', '.join(owners)}) — they are stacked, so naming "
                 f"both queues the same commit twice and the second pick lands as an "
                 f"empty cherry-pick. Name only the tip branch, or rebase them apart")
+    # The first hand-back check protects the plan inputs; this second one closes the
+    # gap while git was enumerating commits. From here on stamped sources are pinned
+    # to their returned SHA, so a later branch movement cannot add unreturned work.
+    handoff_recheck = _integrate_handoff_check(
+        args.state, list(args.branches), allow_unhanded=args.allow_unhanded,
+        repo=primary,
+    )
+    if handoff_recheck["problems"]:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": "source branches changed while preparing the integration",
+               "handoff": {"initial": handoff, "recheck": handoff_recheck},
+               "trunk": trunk}, args.json,
+              "✗ integrate refused: source branch hand-back changed during planning")
+        return EXIT_BLOCK
+    handoff["recheck"] = handoff_recheck
     if problems:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
                "error": "one or more branches cannot be integrated as given",
@@ -3902,7 +4029,7 @@ def _integrate_start(args, spath: Path) -> int:
     if not args.commit:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
                "slug": args.slug, "trunk": trunk, "branches": list(args.branches),
-               "plan": plan, "commits": total,
+               "plan": plan, "commits": total, "handoff": handoff,
                "would_run": [f"open --slug {args.slug}",
                              f"cherry-pick x{total}", "gate"]},
               args.json,
@@ -3936,6 +4063,7 @@ def _integrate_start(args, spath: Path) -> int:
         "schema": INTEGRATE_SCHEMA, "slug": args.slug, "base": args.base,
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
         "branches": list(args.branches),
+        "handoff": handoff,
         "queue": [c for p in plan for c in p["commits"]],
         "planned_total": total,
         "picked": [], "skipped": [],
@@ -4058,6 +4186,8 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
         "slug": st["slug"], "worktree": wt, "branch": st["branch"],
         "trunk": st["trunk"], "branches": st["branches"],
+        "handoff": st.get("handoff", {"checked": st["branches"],
+                                        "warnings": [], "problems": []}),
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "head_sha": head, "gate": st["gate"], "gate_runs": 1,
         "verdict": verdict, "landed": False, "next_step": next_step,
@@ -5388,6 +5518,9 @@ def build_parser() -> argparse.ArgumentParser:
     ig.add_argument("--continue", dest="cont", action="store_true",
                     help="resume a stopped integration: conclude the suspended pick "
                          "(stage the resolved files first), apply what is left, gate")
+    ig.add_argument("--allow-unhanded", action="store_true",
+                    help="allow a source branch with no active hand-back stamp (legacy "
+                         "or imported work only); NEVER bypasses a branch-tip mismatch")
     ig.add_argument("--abort", action="store_true",
                     help="abort the in-flight cherry-pick and forget the integration "
                          "state. The WORKTREE survives — teardown is `resolve`, the "
