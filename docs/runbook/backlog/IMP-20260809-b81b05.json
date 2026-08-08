@@ -1,0 +1,14 @@
+{
+  "brief": "已經驗證過的檢查會因為後續無關 commit 改變 HEAD 而整批重跑，浪費算力與等待時間",
+  "category": "tool",
+  "date": "2026-08-09",
+  "detail": "目前 gate 以 worktree 相對本地 main 的累積 changed_files 建立 plan，並把 verdict 綁在整顆 HEAD。這保護了 cutover 不拿舊樹落地，但沒有保存每道 gate 的有效輸入或可重用結果。因此先完成程式改動並通過 gate 後，再追加只改 docs/runbook/backlog/*.json 的 commit，下一次 plan 仍會把前一批的 ops pytest、iOS 或其他昂貴 gate 選回來；純 backlog commit 單獨量測只選 review-receipts、backlog-validate、data-plane docs lint、coverage 四道，表示問題不是無條件全量，而是累積 diff 讓已驗證能力失去增量邊界。既有 IMP-20260808-94753f 解的是同一次 run 的 fail-fast 排序，IMP-20260808-4bd1ef 解的是耗時資料遺失，本票解的是跨 HEAD 的 verdict 重用與失效判定。修法不能只用 commit 類型白名單或跳過 fresh HEAD：必須對每道 gate 定義可觀察輸入指紋，只有輸入未變且工作樹新增變更不在該 gate 的責任集合時重用結果；結果與 HEAD 的關係要能讓 cutover 審計出被重用的來源 HEAD、輸入集合與失效理由。未知或無法證明未變時一律重跑。",
+  "id": "IMP-20260809-b81b05",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "gate 記錄、輸入指紋、增量失效判定與測試，涵蓋一個工具模組",
+  "severity": "high",
+  "source": "dogfood gate-selfobs",
+  "status": "open",
+  "stream": "IMP"
+}
