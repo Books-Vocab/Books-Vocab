@@ -48,7 +48,7 @@ version: 1.0.0
 - 中大型問題：help 失準、入口漂移、JSON 不穩、錯誤訊息不可行動、工具讓 agent 想繞過 typed surface。立即停下來修工具/skill/doc,跑對應 regression，再回到原目標。
 - 生產或資料寫入路徑上的摩擦預設視為中大型問題。
 
-非當場修掉者一律 `./ops/backlog.py add` 立單,**先選對 stream 再填**——選錯 stream 等於選錯 owner:
+非當場修掉者一律 `./ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 立單,**先選對 stream 再填**——選錯 stream 等於選錯 owner:
 
 - `--stream IMP` → owner `platform-steward`
 - `--stream APP` → owner 對應 Line worker(`ios-engineer` / `backend-engineer`),收件匣 `./ops/backlog.py list --stream APP`

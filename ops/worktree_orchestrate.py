@@ -319,6 +319,94 @@ def _ops_shell_test_candidates(rel: str) -> list[str]:
 # Unowned yml is therefore NAMED in a warn, not silently swallowed.
 BACKLOG_STORE_DIR = "docs/runbook/backlog/"
 
+RESOLVED_STATUSES = ("fixed", "wont-fix")
+
+
+def _refuse_unclaimable(root: Path, wanted: list[str], args, step: str,
+                        branch: str) -> int | None:
+    """The claim gate, shared by `open` and `adopt`. EXIT_BLOCK or None.
+
+    ONE implementation because `adopt` is the bootstrap path into the SAME ledger:
+    a gate an adjacent entry point walks around is not a gate, and the ledger's
+    "at most one worktree per ticket" would hold only for the worktrees that
+    happened to be born through `open`. That argument is already written on the
+    `adopt --backlog` parser for the conflict check; it applies unchanged here.
+
+    Runs BEFORE the claim, never after: a refusal that has already taken the ticket
+    has to hand it back, and the hand-back is exactly the step that fails when
+    something else has gone wrong.
+    """
+    blockers = _unclaimable(root / BACKLOG_STORE_DIR, wanted)
+    if getattr(args, "allow_ungroomed", False):
+        # Downgrades ONLY `ungroomed`. A typo and an already-closed ticket stay
+        # refusals: neither has an honest reading in which the agent should proceed.
+        waived = [p for p in blockers if p["kind"] == "ungroomed"]
+        blockers = [p for p in blockers if p["kind"] != "ungroomed"]
+        if waived:
+            # Named, not silent — the escape hatch has to be as countable in the log
+            # as `acceptance_manual` is in the store.
+            print(f"[worktree][claim] WARNING taking ungroomed ticket(s) as an "
+                  f"investigation: {', '.join(p['id'] for p in waived)}",
+                  file=sys.stderr, flush=True)
+    if not blockers:
+        return None
+    _emit({"schema": SCHEMA, "step": step, "error": "ticket not claimable",
+           "branch": branch, "backlog": wanted, "problems": blockers},
+          args.json,
+          "\u2717 cannot claim:\n" + "\n".join(
+              f"  {p['id']} \u2014 {p['kind']}\n    {p['repair']}" for p in blockers))
+    return EXIT_BLOCK
+
+
+def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
+    """Which of these tickets must not be handed to an agent, and why.
+
+    `worktree_registry` checks only the SHAPE of a `--backlog` id, and that is the
+    right call there — it deliberately does not depend on `backlog.py`. But the
+    orchestrator knows where the store is, so the check it can make is the one that
+    matters, and until now nobody made it. Measured: `open --backlog IMP-typo`
+    claimed a ticket that does not exist (the ledger then held an id nobody could
+    ever close), and `open --backlog <ungroomed>` handed an agent a ticket carrying
+    no plan, no acceptance and no fix site — which is precisely what grooming exists
+    to prevent. Both exited 0.
+
+    Reads the JSON directly rather than shelling out to `backlog.py list --json`:
+    this runs on the claim path, before a worktree exists, and the bootstrap case
+    requires the orchestrator to work when the rest of the toolchain does not. The
+    predicate is `groomed_by`, the same badge `list --ungroomed` uses — the store's
+    own definition, not a second one invented here.
+
+    An unreadable entry is `not-in-store`, NOT a pass: "could not check" turning
+    into "fine" is the shape this repo keeps filing entries about.
+    """
+    problems: list[dict] = []
+    for entry_id in ids:
+        path = Path(store_dir) / f"{entry_id}.json"
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            problems.append({
+                "id": entry_id, "kind": "not-in-store",
+                "repair": f"check the id — `ops/backlog.py list --json` lists what "
+                          f"exists; nothing named {entry_id} is in {store_dir}"})
+            continue
+        if payload.get("status") in RESOLVED_STATUSES:
+            problems.append({
+                "id": entry_id, "kind": "already-resolved",
+                "status": payload.get("status"),
+                "repair": f"`ops/backlog.py show {entry_id}` — this one is already "
+                          f"{payload.get('status')}; reopen it with `update "
+                          f"{entry_id} --status open --commit` if that is wrong"})
+        elif not str(payload.get("groomed_by") or "").strip():
+            problems.append({
+                "id": entry_id, "kind": "ungroomed",
+                "repair": f"groom it first: `ops/backlog.py update {entry_id} --plan "
+                          f"… --acceptance … --fix-site … --acceptance-cmd … "
+                          f"--groomed-at <today> --groomed-by <you> --commit`. "
+                          f"To take it as an INVESTIGATION rather than a fix, pass "
+                          f"--allow-ungroomed"})
+    return problems
+
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
     "ops/ui_quality_plane.yml": (
         ["ops/ui_quality_plane.py", "validate"],
@@ -1661,6 +1749,9 @@ def cmd_open(args: argparse.Namespace) -> int:
     # and a second agent could immediately take the ticket. The registry's
     # "omit = leave alone" rule was unreachable through the only two callers that
     # exist, so the invariant this whole change adds was broken by the change itself.
+    if _refuse_unclaimable(root, wanted, args, "open", branch) is not None:
+        return EXIT_BLOCK
+
     claim_argv = ["--backlog", *wanted] if args.backlog is not None else []
     reg_rc, reg_payload = _registry(
         ["register", *_state_arg(args.state), "--path", str(path), "--branch", branch,
@@ -1768,6 +1859,9 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
     wanted = list(args.backlog or [])
+    if _refuse_unclaimable(Path(primary_root()), wanted, args, "adopt",
+                           branch) is not None:
+        return EXIT_BLOCK
     claim_argv = ["--backlog", *wanted] if args.backlog is not None else []  # see cmd_open
     reg_rc, reg_payload = _registry(
         ["register", "--state", state, "--path", worktree, "--branch", branch,
@@ -3618,6 +3712,13 @@ def build_parser() -> argparse.ArgumentParser:
              "ACTIVE ledger record already holds one of them; the claim is released "
              "by `resolve`/`sweep`, with no separate release step.",
     )
+    op.add_argument(
+        "--allow-ungroomed", action="store_true",
+        help="take a ticket that has no plan/acceptance/fix-site — i.e. claim it as "
+             "an INVESTIGATION rather than a fix. Named in a stderr warning so the "
+             "exception is countable. Does NOT waive the other two refusals (an id "
+             "that is not in the store, or one that is already fixed/wont-fix).",
+    )
     op.set_defaults(func=cmd_open)
 
     ad = sub.add_parser("adopt", help="register an ALREADY-existing worktree in the "
@@ -3636,6 +3737,13 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument(
         "--backlog", nargs="*", default=None, metavar="ID",
         help="backlog ticket ids to CLAIM (same rules as `open --backlog`)",
+    )
+    ad.add_argument(
+        "--allow-ungroomed", action="store_true",
+        help="take a ticket that has no plan/acceptance/fix-site — i.e. claim it as "
+             "an INVESTIGATION rather than a fix. Named in a stderr warning so the "
+             "exception is countable. Does NOT waive the other two refusals (an id "
+             "that is not in the store, or one that is already fixed/wont-fix).",
     )
     ad.set_defaults(func=cmd_adopt)
 
