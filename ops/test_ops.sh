@@ -42,6 +42,7 @@ DEFAULT_TESTS=(
   plain-deadzone
   lint-baselines
   injection-lint
+  ui-fixture-lint
   ops-ci-coverage
   gate-can-fail
   ui-quality-plane
@@ -138,6 +139,7 @@ run_one() {
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
     lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
+    ui-fixture-lint)    ./ops/tests/test_ui_fixture_lint.sh ;;
     ops-ci-coverage)    ./ops/tests/test_ops_ci_coverage.sh ;;
     gate-can-fail)      ./ops/tests/test_gate_can_fail.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
