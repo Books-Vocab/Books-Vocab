@@ -1,0 +1,14 @@
+{
+  "brief": "git 有個功能會自動套用你以前解過的衝突、而且不出聲，照著現有流程文件走的人不會知道它存在，也不會知道該去檢查它做了什麼。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "本 repo 的 `rerere.enabled = true`，`.git/rr-cache` 已累積 **172 筆**錄好的衝突解法。整合樹跑 cherry-pick 時，rerere 會**自動把錄過的解法寫進工作區檔案**，而**索引仍留在 UU**。\n\n實際觀察到的形狀（2026-08-08 第二輪整合 round2-land）：`git status` 說 `UU docs/sop/ios.md`，但那個檔案裡**一個衝突標記都沒有**，內容已經是合併好的版本。`git rerere status` 才會說實話——它只列真正還沒解的那些。\n\n為什麼這件事必須寫進 skill：\n\n1. **會誤判成「工具壞了」。** UU 卻沒有標記，第一直覺是 cherry-pick 半途崩了。實際查到 rerere 花掉的時間，是純粹的困惑成本。\n2. **它是一個會猜的解法器，而它猜的東西會被 commit 進去。** rerere replay 的是**我先前在別的脈絡下做的決定**——衝突雜湊相同不代表當時那個決定在這一次仍然正確。它跟自己手寫的 resolver 是同一類風險，差別只在它預設開著、而且不出聲。\n3. **`worktree-flow` SKILL.md 完全沒有提到 rerere。** 一個照著 skill 走的 agent 不會知道要跑 `git rerere status`，也不會知道應該去驗證那些「自動好了」的檔案。\n\n修法方向（不指定實作）：skill 的整合／衝突段落要說明 rerere 開著、UU-無標記代表什麼、以及**憑證是 `git rerere status` 不是 grep 標記**；並要求對 rerere 預解的檔案做一次機械驗證（本輪的做法是證明「檔案內容 == base 套上兩側各自的純插入」）。順帶檢討 172 筆 rr-cache 要不要有生命週期。",
+  "id": "IMP-20260808-24d1cc",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一份 skill 文件的一段，外加一個要求驗證的步驟。",
+  "severity": "med",
+  "source": "第二輪整合樹 round2-land",
+  "status": "open",
+  "stream": "IMP"
+}
