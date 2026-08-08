@@ -1158,7 +1158,8 @@ COORDINATION_BROADCAST_REL = ".cache/coordination/broadcast.md"
 
 
 def _broadcast_cutover_block(primary: Path, branch: str | None,
-                             files: list[str]) -> str | None:
+                             files: list[str],
+                             worktree: str | None = None) -> str | None:
     """Post a dirty-primary refusal to the repo's shared mailbox. Returns the path it
     wrote to, or None if it could not (or should not) write.
 
@@ -1173,30 +1174,46 @@ def _broadcast_cutover_block(primary: Path, branch: str | None,
     untouched. Substituting a courtesy for the diagnosis would be strictly worse than
     never sending it.
 
-    IDEMPOTENT per (branch, dirty set). The refusal tells the operator to re-run once
-    the primary is clean, so polling is the expected usage — an append per attempt would
-    flood the mailbox humans read with the one participant that is a program. A
+    IDEMPOTENT per (day, branch, dirty set). The refusal tells the operator to re-run
+    once the primary is clean, so polling is the expected usage — an append per attempt
+    would flood the mailbox humans read with the one participant that is a program. A
     different dirty set is genuinely new information and does get posted.
+
+    The DAY is in the key because nobody deletes these. The record asks the reader to
+    remove it when handled; the real mailbox is 694 lines going back to 2026-08-05 with
+    not one entry removed. Without a day the marker never expires, so the same branch
+    blocked by the same file a week later — entirely plausible, slugs repeat and the
+    recurring dirty file is the same `ops/release.sh` — would post nothing at all.
+
+    The key hashes EVERY file, not the ten that get shown, and joins on NUL: `_c_unquote`
+    hands back real filenames, which may contain newlines, so a newline separator would
+    collide `["a\\nb"]` with `["a", "b"]`.
     """
     shown = files[:10]
-    key = hashlib.sha256("\n".join([branch or "?", *shown]).encode()).hexdigest()[:16]
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    key = hashlib.sha256(
+        "\0".join([ts[:10], branch or "?", *files]).encode()).hexdigest()[:16]
     marker = f"<!-- kg-cutover-block {key} -->"
-    listed = ", ".join(shown) + (f" … and {len(files) - 10} more"
-                                 if len(files) > 10 else "")
+    # Backtick-quoted, newlines escaped: these are real paths going into markdown, and
+    # `test_cutover_dirty_refusal_unquotes_special_paths` proves this path really does
+    # receive things like `中文檔.txt`. A `#` or a leading `-` would otherwise render as
+    # a heading or a list item, and a newline would break the record's line structure.
+    listed = ", ".join("`" + p.replace("\n", "\\n") + "`" for p in shown) + (
+        f" … and {len(files) - 10} more" if len(files) > 10 else "")
     try:
         path = primary / COORDINATION_BROADCAST_REL
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and marker in path.read_text(encoding="utf-8", errors="replace"):
             return str(path)
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         entry = (
             f"\n---\n## {ts}Z — cutover 被擋:primary 有未提交的 tracked 改動\n\n"
-            f"被擋的分支:`{branch or '(unknown)'}`\n\n"
+            f"被擋的分支:`{branch or '(unknown)'}`"
+            + (f"(worktree `{worktree}`)" if worktree else "") + "\n\n"
             f"dirty: {listed}\n\n"
             f"**這則是 `ops/worktree_orchestrate.py` 自動貼的(IMP-20260806-42d183),"
-            f"不是人寫的。** 若這些檔是你的:commit 或把它們搬進一條 worktree,被擋的那條"
-            f"就會自己過——它的 gate 判決綁在自己的 HEAD 上、仍然有效,primary 乾淨後重跑 "
-            f"cutover 即可。處理完請自行刪除本則。\n"
+            f"不是人寫的。** 若這些檔是你的:把它們 commit,或撤到一條 worktree。**然後"
+            f"被擋的那條要再跑一次 `cutover` 才會過——它不會自動重試。** 它的 gate 判決"
+            f"綁在自己的 HEAD 上、仍然有效,所以不必重跑 gate。處理完請自行刪除本則。\n"
             f"{marker}\n")
         with path.open("a", encoding="utf-8") as fh:
             fh.write(entry)
@@ -1205,8 +1222,8 @@ def _broadcast_cutover_block(primary: Path, branch: str | None,
         return None
 
 
-def _primary_ff_ready(primary: Path, local: str,
-                      branch: str | None = None) -> tuple[str, dict[str, Any]] | None:
+def _primary_ff_ready(primary: Path, local: str, branch: str | None = None,
+                      worktree: str | None = None) -> tuple[str, dict[str, Any]] | None:
     """Refusal `(reason, extra-json-fields)` (or None) for advancing the primary
     checkout's local `main` by a fast-forward. `main` is checked out in the primary,
     so a ff updates its working tree — it must be on `local`, tracked-clean, with no
@@ -1243,7 +1260,7 @@ def _primary_ff_ready(primary: Path, local: str,
         # A refusal is a coordination event, so make the tool do the coordinating.
         # This runs BEFORE the return and its result cannot change it: the reason
         # below is the diagnosis, the notice is a courtesy.
-        posted = _broadcast_cutover_block(primary, branch, files)
+        posted = _broadcast_cutover_block(primary, branch, files, worktree)
         reason = (
             "primary working tree is dirty (tracked changes) — a ff updates the "
             f"checked-out files\n  dirty: {shown}\n"
@@ -1255,7 +1272,7 @@ def _primary_ff_ready(primary: Path, local: str,
             "clean, just re-run cutover")
         if posted:
             reason += (f"\n  this block was posted for you to {posted} "
-                       f"(broadcast.md) — no need to write it by hand")
+                       f"— no need to write it by hand")
         return (reason, {"dirty_files": files, "broadcast": posted})
     return None
 
@@ -2878,7 +2895,8 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     # Serialize the trunk advance; rebase onto the CURRENT local trunk INSIDE the lock
     # so a peer cutover that just advanced it is picked up (not raced past).
     with _main_advance_lock(primary):
-        guard = _primary_ff_ready(primary, local, branch=wt_branch)
+        guard = _primary_ff_ready(primary, local, branch=wt_branch,
+                                  worktree=worktree)
         if guard:
             reason, extra = guard
             _emit({"schema": SCHEMA, "step": "cutover", "error": reason, "landed": False,
@@ -3271,8 +3289,14 @@ def cmd_land(args) -> int:
         # Same helper, not a second copy of the judgement: a duplicated rule is one
         # that drifts, and this one decides whether someone else's working tree gets
         # overwritten.
+        # NOT `_current_branch(worktree)`: git discovery walks UP, so a directory
+        # that has lost its `.git` answers with the ENCLOSING checkout's branch (i.e.
+        # `main`), and cmd_land only checks that the path is a directory. That would
+        # post an unattributable "blocked branch: main" notice — the exact thing
+        # `_broadcast_cutover_block` calls worse than posting nothing.
         guard = _primary_ff_ready(primary, _local_trunk(args.base),
-                                  branch=_current_branch(worktree))
+                                  branch=(_worktree_entry(worktree) or {}).get("branch"),
+                                  worktree=worktree)
         if guard is not None:
             reason, extra = guard
             _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
