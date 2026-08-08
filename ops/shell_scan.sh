@@ -61,7 +61,7 @@ fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 # bash 在 **UTF-8 LC_CTYPE** 下會把下一個字元的首個 byte 吃進變數名（下一個 byte
 # ≥ 0x80 就吃，**與是不是標點無關**——漢字最常見，見 :78-90 的實測矩陣）：
 #   echo "已回到 $sha，但…"   →   `sha\xEF: unbound variable`  →  set -u 當場殺掉腳本
-#   echo "已回到 $sha中文"     →   同上（原本的十個全形標點清單抓不到這個形狀）
+#   echo "已回到 $sha中文"     →   同上（原本那份十一個全形標點的清單抓不到這個形狀）
 # C locale 下同一行完全正常，所以**開發機測不出來、跑起來才炸**。實測矩陣：
 #   Bash tool（LC_CTYPE unset）→ 過；gate runner（LC_CTYPE=C.UTF-8）→ 死；
 #   felix launchd（未設 locale）→ 過；人在 Terminal.app（UTF-8）→ **死**。
@@ -83,7 +83,8 @@ echo "── no \$VAR abuts a non-ASCII character (UTF-8 locale time bomb) ─�
 #   C.UTF-8    → 中 — … 《 ， Ａ **六個全部** rc=127 `sha<?>: unbound variable`
 #   en_US.UTF-8→ 同上
 # 也就是說 bash 吃掉的是「下一個 byte 是不是 ≥ 0x80」，跟那個字元是不是標點無關。
-# 原本的十個全形標點是危害的**嚴格子集**，而這個 repo 的訊息幾乎全是中文——
+# 原本那份清單（十一個全形標點，數過：，。、：；！？「」（））是危害的**嚴格子集**，
+# 而這個 repo 的訊息幾乎全是中文——
 # `$VAR` 後面直接接漢字（`$sha中文`）才是最可能出現的形狀，卻整整不在偵測範圍內。
 # 由 round2 批次整合的 code review 具名交回，本檔自行複驗（掃描範圍的兩個已知邊界
 # 另見 IMP-20260808-2f4203：只掃雙引號內、只認 `*.sh` 副檔名）。

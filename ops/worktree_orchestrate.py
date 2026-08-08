@@ -762,9 +762,9 @@ def plan_gates(changed_files: list[str],
         # per-script by construction — `bash -n` on each changed file, and each
         # file's own test — so a check that is ABOUT the whole tree belongs to no
         # single script and was therefore reachable from no diff at all. The
-        # non-ASCII-abutment guard (`$VAR` followed by any byte >= 0x80; only ten
-        # full-width punctuation characters until 2026-08-08) lived in that hole since
-        # 2026-08-04: correct,
+        # non-ASCII-abutment guard (`$VAR` followed by any byte >= 0x80; eleven
+        # full-width punctuation characters and nothing else until 2026-08-08) lived in
+        # that hole since 2026-08-05: correct,
         # positively controlled, and never once executed by a gate.
         #
         # ONE instance regardless of how many .sh changed: it scans the whole repo,

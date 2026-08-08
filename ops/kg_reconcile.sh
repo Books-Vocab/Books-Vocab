@@ -479,8 +479,12 @@ deploy_and_gate() {
     # 講清楚操作者該做什麼：不是「兩版都壞」，是「git 退了但容器沒退」。
     # `${VAR}` 的大括號不是風格，是必要：`$rollback_sha，` 這種「變數緊接全形標點」
     # 會讓 bash 把標點的首個 byte 吃進變數名 → `unbound variable` → set -u 當場殺掉
-    # 腳本，連 verdict 都來不及印。只在沒有 LANG 的環境（例如 gate 的 subprocess
-    # runner）才發作，互動 shell 測不出來——本輪就是這樣紅在 gate、綠在我手上。
+    # 腳本，連 verdict 都來不及印。**發作條件是有 UTF-8 locale，不是沒有 LANG**——
+    # 2026-08-08 實測同形 fixture：無 LANG/LC_ALL/LC_CTYPE → rc=0、LC_ALL=C → rc=0、
+    # LC_ALL=C.UTF-8 / en_US.UTF-8 / LANG=en_US.UTF-8 → rc=1 unbound variable。
+    # gate 的 subprocess runner 釘 LC_CTYPE=C.UTF-8（`ops/lib/streaming_command.py`），
+    # 所以它死；LC_CTYPE 未設的互動 shell 是 C locale，所以它綠。本段先前寫反了，
+    # 照舊敘述跑 `env -u LANG` 驗證會看到綠並誤判這行安全。
     alert "回滾的 compose 失敗 (exit ${rrc})：git tree 與 VERSION 已回到 ${rollback_sha}，但**容器很可能仍跑著 ${new_sha}**。回滾未生效，需人工確認容器實跑版本再決定前進或後退。"
   fi
   # 回滾後確認舊版健康（best-effort，不 gate verdict；連舊版都不健康則更大聲告警）
