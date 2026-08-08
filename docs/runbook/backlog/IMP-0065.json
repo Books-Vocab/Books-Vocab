@@ -8,6 +8,9 @@
   "date": "2026-08-05",
   "detail": "**`review_audit.sh` 的五個合法豁免裡,`single-line-small-file` 是結構性壞的一條。** 它量的是換行符位置,不是改動大小——在由長 table row / 長設定行構成的檔案裡(`improvement_backlog.md` 97+ 列、`docs/registry.yml`、`ops/ui_quality_plane.yml`),「一行」與語意重量**零相關**。**實際咬到的案例就是本次**:我對 `improvement_backlog.md` 做了一段頒布全 repo 規則的語意重寫,diff 顯示 1 行(純粹是 markdown table row 的排版產物),我據此填了 `Review-Exempt: single-line-small-file`。**沒有任何工具會擋**——`review_audit.sh` 只驗 trailer 存在且合法,不驗內容是否真的符合(鐵律 4 的機器面到此為止)。我自己抓出來改派 reviewer,而該 review 在那「一行」裡挖出 3 個實質 BLOCK,判定自我驗證。其餘四條豁免(`trivial-typo`/`format-only`/`rename-only`/`generated-snapshot`)**定義上改變不了任何人的行動,維持正當**,不要矯枉過正到每個 typo 都送審。下一步:把該條收窄成「單行 **且** 不含規範性語句(必須/禁止/應/通則/規則)」,或換成語意判準「這段文字錯了,讀者會照著做錯事嗎」。",
   "fix_site": "ops/review_audit.sh:113",
+  "fixed_by": [
+    "f7a0f36508d48fe04b455186ea6c5e66fae9c8ab"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0065",
@@ -17,8 +20,10 @@
   "scope": "改一支審計腳本、加一道實際比對，補四個測試情境，順帶同步兩份說明文件；其餘四條免審理由不動。",
   "severity": "low",
   "source": "IMP-0063 的錨點改寫 review",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "IMP-0065 acceptance evidence\n\nCommand:\n./ops/tests/test_review_audit.sh\n\nResult before cutover:\n- passed: 30\n- failed: 0\n- required markers present: single-line exemption blocked by normative wording; trivial-typo exemption still trailer-only\n\nAdditional checks:\n- bash -n ops/review_audit.sh ops/tests/test_review_audit.sh: rc=0\n- ./ops/docs_lint.sh --files docs/reference/tech_index.md docs/sop/review_discipline.md: ERROR=0\n- ./ops/shell_scan.sh: passed 2 failed 0\n- fresh worktree gate at f7a0f3650: verdict=pass"
 }
