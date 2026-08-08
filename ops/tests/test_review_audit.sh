@@ -291,6 +291,64 @@ else
   fail_t "merge slipped past: $(grep -m1 EVILMERGE "$MR/last.txt")"
 fi
 
+section "backlog-grooming is a CHECKED data-only exemption"
+# Grooming changes ledger data, not executable code. It still needs two separate
+# machine proofs in the surrounding workflow (`backlog.py validate` and
+# `audit-criteria`); this receipt only says that a code reviewer is not required
+# for a commit confined to the ledger files. The path check is intentionally
+# independent from content checks so a mixed tooling change cannot hide here.
+mr_case
+printf '{"plan":"groomed"}\n' >"$MR/repo/docs/runbook/backlog/G1.json"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+docs: GROOMONLY groom the backlog ledger
+
+Review-Exempt: backlog-grooming
+EOF
+[[ "$(verdict_for GROOMONLY)" == "ok" ]] \
+  && ok "a pure backlog grooming commit is exempt" \
+  || fail_t "pure grooming was not exempt: $(grep -m1 GROOMONLY "$MR/last.txt")"
+
+mr_case
+printf '{"plan":"groomed"}\n' >"$MR/repo/docs/runbook/backlog/G1.json"
+mkdir -p "$MR/repo/ops"
+printf 'echo tool\n' >"$MR/repo/ops/tool.sh"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+docs: GROOMMIXED ledger plus tooling
+
+Review-Exempt: backlog-grooming
+EOF
+if [[ "$(verdict_for GROOMMIXED)" == "block" ]] && grep -q 'ops/tool.sh' "$MR/last.txt"; then
+  ok "grooming plus tooling blocks and names the tooling path"
+else
+  fail_t "mixed grooming slipped past: $(grep -m1 GROOMMIXED "$MR/last.txt")"
+fi
+
+mr_case
+printf 'not json\n' >"$MR/repo/docs/runbook/backlog/G1.md"
+git -C "$MR/repo" add -A
+git -C "$MR/repo" commit -q -F - <<'EOF'
+docs: GROOMNONJSON ledger-adjacent prose
+
+Review-Exempt: backlog-grooming
+EOF
+if [[ "$(verdict_for GROOMNONJSON)" == "block" ]] && grep -q 'docs/runbook/backlog/G1.md' "$MR/last.txt"; then
+  ok "a non-JSON backlog path blocks"
+else
+  fail_t "non-JSON grooming path slipped past: $(grep -m1 GROOMNONJSON "$MR/last.txt")"
+fi
+
+mr_case
+git -C "$MR/repo" commit -q --allow-empty -F - <<'EOF'
+docs: GROOMEMPTY no ledger files
+
+Review-Exempt: backlog-grooming
+EOF
+[[ "$(verdict_for GROOMEMPTY)" == "block" ]] \
+  && ok "an empty grooming commit cannot claim the exemption" \
+  || fail_t "empty grooming passed: $(grep -m1 GROOMEMPTY "$MR/last.txt")"
+
 rm -rf "$MR"
 
 echo ""

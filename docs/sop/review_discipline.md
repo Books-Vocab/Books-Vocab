@@ -46,7 +46,10 @@ verified_against: db0e9ed46
 - `format-only`
 - `generated-snapshot`
 - `single-line-small-file`
-- `machine-repair` — **唯一受檢的一個**，且只給程式用（`worktree_orchestrate.py` 的 post-landing ledger repair 自己蓋）。工具會驗這顆 commit **只碰** `docs/runbook/backlog/*.json`：越界即具名該檔並判不合法，空檔案清單也拒（「沒東西可反對」與「看不到」在這裡是同一個字串，把後者當前者正是這道 gate 要防的）。其餘五個都是無從查證的自述，工具採信作者的話
+- `machine-repair` — 只給程式用（`worktree_orchestrate.py` 的 post-landing ledger repair 自己蓋）。工具會驗這顆 commit **只碰** `docs/runbook/backlog/*.json`：越界即具名該檔並判不合法，空檔案清單也拒（「沒東西可反對」與「看不到」在這裡是同一個字串，把後者當前者正是這道 gate 要防的）。
+- `backlog-grooming` — **純看板資料梳理**用的例外；同樣由工具驗證只碰 `docs/runbook/backlog/*.json`，空檔案清單拒絕。它只免除程式碼 reviewer，不免除資料驗證：同一批仍必須提供 `backlog.py validate --baseline-check` 與 `audit-criteria` 的當下證據；只要改到 `ops/`、測試、skill 或其他文件，就不能使用此 token，必須有 `Reviewed-by:`。其餘五個都是無從查證的自述，工具採信作者的話
+
+`machine-repair` 與 `backlog-grooming` 都是**路徑受檢的資料例外，不是通用免審通行證**。`backlog-grooming` 的資料語意仍由 backlog gate 負責，review receipt gate 不替它宣稱資料正確。
 
 用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`它稽核的 repo 是**呼叫端所在的** git toplevel（可用 `$KG_REVIEW_AUDIT_ROOT` 覆寫），每次執行會把選中的 root 印到 stderr——舊版無條件 cd 回腳本自己的 repo，`( cd 別處 && review_audit.sh )` 會靜默稽核錯的歷史（IMP-0049）。
 
