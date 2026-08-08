@@ -64,6 +64,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
+| `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**多條工作樹同時落地時的預設路徑**（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |

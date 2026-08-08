@@ -4400,81 +4400,194 @@ def test_an_unreadable_entry_keeps_the_guard_talking(tmp_path):
 
 # --- land: the fair queue -------------------------------------------------
 #
-# These cover the queue primitives, which is where the logic lives. The verb's
-# end-to-end behaviour is established by measurement rather than by unit test:
+# The verb's throughput claim is established by measurement, not by unit test:
 # ten concurrent worktrees in a throwaway clone went from 2/10 landed (driving
 # catchup/gate/cutover by hand, with retries) to 10/10 in exactly 10 gate runs.
-# A unit test cannot reproduce that — it is a race, and a passing race proves
-# nothing — so the load harness is the evidence and these pin the parts a future
-# edit could quietly break.
+# A race cannot be pinned by a passing test. What these DO pin is everything a
+# later edit could delete without the measurement noticing — a first pass at
+# these tests left the gate-verdict guard, the catchup guard, the ticket release
+# and the whole liveness probe deletable with the suite still green.
+
+
+def _land_stub(name, rc=0, payload=None, boom=None):
+    """A stand-in for cmd_catchup / cmd_gate / cmd_cutover.
+
+    It must print its JSON to stdout, because that is the contract `_land_step`
+    reads it through; a stub that merely returns a dict would test a code path
+    that does not exist.
+    """
+    def run(_args, _n=name):
+        _land_stub.calls.append(_n)
+        if boom is not None:
+            raise boom
+        print(json.dumps(payload if payload is not None else {}))
+        return rc
+    return run
+
+
+def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None):
+    primary = tmp_path / "primary"
+    primary.mkdir()
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    _land_stub.calls = []
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *a, **k: None)
+    monkeypatch.setattr(MODULE, "cmd_catchup",
+                        catchup or _land_stub("catchup", 0, {"ok": True}))
+    monkeypatch.setattr(MODULE, "cmd_gate",
+                        gate or _land_stub("gate", 0, {"verdict": "pass"}))
+    monkeypatch.setattr(MODULE, "cmd_cutover",
+                        cutover or _land_stub("cutover", 0,
+                                              {"landed": True, "sha": "abc1234"}))
+    args = argparse.Namespace(worktree=str(wt), commit=True, json=True, state=None,
+                              base="main", queue_timeout=5.0)
+    return primary, args
+
+
+def _queued(primary):
+    with MODULE._land_lock(primary):
+        return MODULE._land_tickets(MODULE._land_queue_dir(primary))
+
 
 def test_the_landing_queue_hands_out_turns_in_arrival_order(tmp_path):
     primary = tmp_path
-    a = MODULE._land_enqueue(primary, "/wt/a")
-    b = MODULE._land_enqueue(primary, "/wt/b")
-    c = MODULE._land_enqueue(primary, "/wt/c")
+    a, fa = MODULE._land_enqueue(primary, "/wt/a")
+    b, fb = MODULE._land_enqueue(primary, "/wt/b")
+    c, fc = MODULE._land_enqueue(primary, "/wt/c")
     assert a < b < c
     assert MODULE._land_position(primary, a)[0] == 0
     assert MODULE._land_position(primary, b)[0] == 1
     assert MODULE._land_position(primary, c)[0] == 2
-    # releasing the head promotes exactly the next arrival, not an arbitrary one
-    MODULE._land_release(primary, a)
+    MODULE._land_release(primary, a, fa)
     assert MODULE._land_position(primary, b)[0] == 0
     assert MODULE._land_position(primary, c)[0] == 1
+    MODULE._land_release(primary, b, fb)
+    MODULE._land_release(primary, c, fc)
 
 
-def test_a_ticket_whose_owner_died_does_not_hold_the_queue_forever(tmp_path):
-    """The failure mode a naive queue has and a lock does not: flock is released
-    by the kernel when the holder dies, a file is not. If a dead ticket merely
-    sorted first, every later lane would wait behind a process that no longer
-    exists — so the eviction is the price of using files at all."""
+def test_a_ticket_whose_owner_actually_died_stops_holding_the_queue(tmp_path):
+    """An owner really dies here.
+
+    The previous version of this test hand-wrote {"pid": 0} and called that a
+    dead owner. It was not: it was a CORRUPT ticket, and it left the liveness
+    probe itself untested — the whole `os.kill` body could be deleted and this
+    test still passed. Liveness is now the kernel's answer to "is the flock
+    free", so the honest way to ask is to have a real process take the lock and
+    then kill it.
+    """
     primary = tmp_path
-    dead = MODULE._land_enqueue(primary, "/wt/dead")
-    mine = MODULE._land_enqueue(primary, "/wt/mine")
-    assert MODULE._land_position(primary, mine)[0] == 1
     qdir = MODULE._land_queue_dir(primary)
-    ticket = qdir / f"{dead:012d}.json"
-    # 0 is not "no process": kill(2) reads it as the caller's whole process
-    # group, so the probe SUCCEEDS and a naive _pid_alive would call it alive.
-    ticket.write_text(json.dumps({"pid": 0, "worktree": "/wt/dead"}))
+    qdir.mkdir(parents=True, exist_ok=True)
+    ticket = qdir / f"{1:012d}.json"
+    child = subprocess.Popen(
+        [sys.executable, "-c",
+         "import fcntl,os,sys\n"
+         "fd=os.open(sys.argv[1], os.O_CREAT|os.O_RDWR, 0o644)\n"
+         "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+         "os.write(fd, b'{\"pid\": 1, \"worktree\": \"/wt/dead\"}')\n"
+         "sys.stdout.write('held'); sys.stdout.flush()\n"
+         "import time; time.sleep(120)\n",
+         str(ticket)],
+        stdout=subprocess.PIPE)
+    try:
+        assert child.stdout.read(4) == b"held"
+        mine, fd = MODULE._land_enqueue(primary, "/wt/mine")
+        assert mine > 1, "the dead lane's ticket must sort ahead of ours"
+        # ALIVE: the holder is in front of us and stays there.
+        assert MODULE._land_position(primary, mine)[0] == 1
+        assert ticket.exists()
+    finally:
+        child.kill()
+        child.wait()
+    # DEAD: the kernel dropped the flock with the process, so the turn moves.
     assert MODULE._land_position(primary, mine)[0] == 0
-    assert not ticket.exists(), "the dead ticket should have been evicted, not skipped"
-
-    # -1 is worse: kill(2) reads it as every process the caller may signal.
-    again = MODULE._land_enqueue(primary, "/wt/dead2")
-    assert MODULE._land_position(primary, mine)[0] == 0
-    (qdir / f"{again:012d}.json").write_text(
-        json.dumps({"pid": -1, "worktree": "/wt/dead2"}))
-    assert MODULE._land_position(primary, mine)[0] == 0
+    assert not ticket.exists(), "a dead owner's ticket must be evicted, not skipped"
+    MODULE._land_release(primary, mine, fd)
 
 
-def test_a_corrupt_ticket_is_evicted_rather_than_crashing_the_queue(tmp_path):
+def test_a_corrupt_ticket_ahead_of_us_is_evicted_not_stepped_over(tmp_path):
+    """Planted AHEAD of ours on purpose: a bad ticket behind us cannot change our
+    position, so asserting position 0 with it behind would assert nothing at all.
+    """
     primary = tmp_path
-    mine = MODULE._land_enqueue(primary, "/wt/mine")
-    bad = MODULE._land_queue_dir(primary) / "000000009999.json"
+    mine, fd = MODULE._land_enqueue(primary, "/wt/mine")
+    # planted AFTER we queue, at a LOWER sequence, so it really is in front of us
+    # (planting it first is no good: enqueue sweeps it before picking our number,
+    # and then the test proves only that enqueue ran).
+    bad = MODULE._land_queue_dir(primary) / f"{mine - 1:012d}.json"
     bad.write_text("{not json")
+    with MODULE._land_lock(primary):
+        seqs_before = sorted(p.stem for p in
+                             MODULE._land_queue_dir(primary).glob("*.json"))
+    assert len(seqs_before) == 2, "the bad ticket should be sitting ahead of ours"
     assert MODULE._land_position(primary, mine)[0] == 0
     assert not bad.exists()
+    MODULE._land_release(primary, mine, fd)
+
+
+def test_land_refuses_a_blocking_gate_and_never_reaches_cutover(tmp_path, monkeypatch,
+                                                                capsys):
+    primary, args = _land_harness(
+        monkeypatch, tmp_path,
+        gate=_land_stub("gate", MODULE.EXIT_BLOCK, {"verdict": "block"}))
+    rc = MODULE.cmd_land(args)
+    assert rc == MODULE.EXIT_BLOCK
+    assert "cutover" not in _land_stub.calls, \
+        "a block verdict must not reach cutover"
+    assert json.loads(capsys.readouterr().out)["landed"] is False
+    assert _queued(primary) == [], "the turn must be released on refusal"
+
+
+def test_land_refuses_when_catchup_fails_and_never_reaches_the_gate(tmp_path,
+                                                                    monkeypatch,
+                                                                    capsys):
+    primary, args = _land_harness(
+        monkeypatch, tmp_path,
+        catchup=_land_stub("catchup", MODULE.EXIT_BLOCK, {"error": "conflict"}))
+    rc = MODULE.cmd_land(args)
+    assert rc == MODULE.EXIT_BLOCK
+    assert _land_stub.calls == ["catchup"], \
+        f"nothing may run after a failed catchup, ran: {_land_stub.calls}"
+    assert json.loads(capsys.readouterr().out)["landed"] is False
+    assert _queued(primary) == []
+
+
+def test_land_releases_its_turn_even_when_a_step_raises(tmp_path, monkeypatch):
+    """The failure that wedges every other lane. Without the `finally`, one
+    exception parks the queue head until the process exits."""
+    primary, args = _land_harness(
+        monkeypatch, tmp_path,
+        gate=_land_stub("gate", boom=RuntimeError("gate exploded")))
+    with pytest.raises(RuntimeError):
+        MODULE.cmd_land(args)
+    assert _queued(primary) == [], "an exception must not leave the turn held"
+
+
+def test_land_shouts_when_cutovers_exit_code_and_payload_disagree(tmp_path,
+                                                                  monkeypatch,
+                                                                  capsys):
+    """Reachable when a payload fails to parse: `landed` reads False while the
+    trunk has already moved. Reporting a plain refusal there would be a lie."""
+    primary, args = _land_harness(
+        monkeypatch, tmp_path,
+        cutover=_land_stub("cutover", 0, {"no_landed_key": True}))
+    rc = MODULE.cmd_land(args)
+    assert rc == MODULE.EXIT_BLOCK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["landed"] is None
+    assert "disagree" in payload["error"]
+    assert _queued(primary) == []
 
 
 def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, capsys):
-    """A dry run that enqueued would make `land --json` (the natural way to ask
-    'how deep is the queue') itself lengthen the queue it is reporting on."""
-    primary = tmp_path
-    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
-    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *a, **k: None)
-    ran: list[str] = []
-    for name in ("cmd_catchup", "cmd_gate", "cmd_cutover"):
-        monkeypatch.setattr(MODULE, name,
-                            lambda *a, _n=name, **k: ran.append(_n) or 0)
-    wt = tmp_path / "wt"
-    wt.mkdir()
-    rc = MODULE.cmd_land(argparse.Namespace(
-        worktree=str(wt), commit=False, json=True, state=None, base="main",
-        queue_timeout=1.0))
+    """A dry run that enqueued would make `land --json` — the natural way to ask
+    'how deep is the queue' — lengthen the queue it is reporting on."""
+    primary, args = _land_harness(monkeypatch, tmp_path)
+    args.commit = False
+    rc = MODULE.cmd_land(args)
     assert rc == MODULE.EXIT_OK
-    assert ran == [], "a dry run must not execute any step"
+    assert _land_stub.calls == [], "a dry run must not execute any step"
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "dry-run" and payload["landed"] is False
-    with MODULE._land_lock(primary):
-        assert MODULE._land_tickets(MODULE._land_queue_dir(primary)) == []
+    assert _queued(primary) == []
