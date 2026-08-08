@@ -1,14 +1,20 @@
 {
+  "acceptance": "kg-receipt 或 platform-steward 裡有可照抄的 -k 判準形狀；update --acceptance-cmd 對帶 -k 的命令印出選中數；store 裡選中數 0 或 1 的 -k 判準逐條檢視結果寫進 resolution",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k selector_count",
   "brief": "待辦的完成判準分成「文字描述」和「實際會跑的命令」兩份，兩份對不對得起來沒人檢查，功能缺一半也可能判定完成。",
   "category": "tool",
   "date": "2026-08-08",
   "detail": "一張票的 `acceptance`（散文判準）與 `acceptance_cmd`（實際會被跑的命令）之間**沒有任何對帳**。結案閘忠實地跑 `acceptance_cmd` 並檢查 rc，但它無從知道那條命令**涵蓋不涵蓋**散文裡列的判準。\n\n2026-08-08 實測：`IMP-20260808-ddf494` 的散文判準有六條，`acceptance_cmd` 是 `pytest … -k fixed_elsewhere`。受派者實作到一半發現那個 `-k` 只選中 **6 條裡的 2 條**——也就是說，功能缺一半的狀態下這張票照樣會被閘門判為通過並結案。他靠改測試名字讓 selector 誠實，但下一個梳理者仍然可以寫出一條選不足的 `-k`，而且沒有任何東西會出聲。\n\n這是本 repo 一號缺陷（斷言被不相干的理由滿足）在**票的層級**的版本：判準通過了，但不是因為它宣稱的那些理由。與 `IMP-20260808-c65d79`（判準只是 grep 原始碼）同族但不同因——那條講判準太弱，這條講判準與宣稱脫鉤。",
+  "fix_site": "ops/backlog.py:_cmd_update（--acceptance-cmd 寫入時印選中數）+ .claude/skills/kg-receipt/SKILL.md（可照抄的 -k 形狀）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
   "id": "IMP-20260808-95912c",
+  "plan": "**不要試圖自動判斷「這條命令有沒有涵蓋那段散文」**——那是語意問題，做不可靠，而做一半的自動判斷比沒有更危險。改成兩件可機械化的事。\n\n**① `-k` 判準必須自帶「選中幾條」的斷言。** 這是本票最具體的可執行產出。實測（2026-08-08，`audit-criteria` 首次全掃）：store 裡 **18/81** 條判準是 `pytest -k <expr>`。`-k` 選不到任何測試時 exit 5，所以**不會假綠**——但**選不到就等於沒驗**，而且一次重命名就會靜靜把它變成選不到。\n\n慣例：這類判準寫成先跑 `--collect-only -q` 斷言數量下限、再跑實測。給一個可照抄的形狀寫進 `kg-receipt` 或 `platform-steward`，讓下一個梳理者不必自己發明：\n```\nbash -c 'set -e; N=$(uv run … pytest --collect-only -q -k EXPR | grep -c \"::\"); [ \"$N\" -ge <期望數> ]; uv run … pytest -q -k EXPR'\n```\n**期望數要來自散文有幾條判準**，這就是「對帳」在機械層唯一做得到的部分。\n\n**② 寫入判準時把落差印出來。** `update --acceptance-cmd` 若命令形如 pytest 且帶 `-k`，當場跑 `--collect-only -q` 並印出**選中幾條**，讓寫的人看到數字。不阻擋，只把不可見變可見。\n\n**本票的成因實例**（不要在實作時忘記它）：`IMP-20260808-ddf494` 的散文判準有六條，`-k fixed_elsewhere` 只選中**其中兩條**——功能缺一半的狀態下這張票照樣會被結案閘判為通過。受派者是在實作到一半時自己發現的，靠的是他讀了散文，不是任何工具。\n\n**一個決策點**：本票原本還提了一條「散文條目數明顯多於選中測試數就 warn」。若 ① 落地後判斷那條 warn 的誤報率在真實 store 上超過三成，**就砍掉它只留 ①②**——一個常誤報的守衛會訓練所有人忽略它，那比沒有更糟。實作時對真實 store 跑過並把數字寫進 resolution。\n\n**明確不做**：不阻擋結案。結案閘的判準仍是 rc，不引入第二套判準。\n\n**驗收**：`kg-receipt` 或 `platform-steward` 裡有可照抄的 `-k` 判準形狀；`update --acceptance-cmd` 對帶 `-k` 的命令印出選中數；至少把 store 裡選中數為 0 或 1 的 `-k` 判準逐條檢視過並把結果寫進 resolution。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "在寫入判準時多印一個數字讓人當場看見落差，另評估要不要加一條寬鬆的提醒；不阻擋結案。",
   "severity": "high",
   "source": "2026-08-08 第二輪大門受派者回報：ddf494 的 -k selector 只選中六條散文判準裡的兩條",
-  "status": "open",
+  "status": "triaged",
   "stream": "IMP"
 }
