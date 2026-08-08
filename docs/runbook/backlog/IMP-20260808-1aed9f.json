@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "自由文字經 shell 雙引號字串進入 store 與 git 歷史，反引號會被當成命令替換而**靜默吃掉內容**。今天同一個失效發生三次：① 一則 backlog entry 的 detail 少了一整句修法（已用 --resolution 更正，見 IMP-20260808-7e9a0d）；② 一則 commit message 少了一個關鍵字串（已 --amend 修回）；③ 更早一次是手抄 acceptance 時掉一個右引號，把一條語法壞掉的命令存進 store（那次促成了 bash -n 語法地板）。三次都不是打錯字，是**同一個管道**：只要文字裡有反引號，而它被放進雙引號 shell 字串，內容就會在寫入前被 shell 改掉，而 store 與 git 都不會有任何抗議——寫進去的是「shell 執行後的結果」，讀出來看起來只是少了一句話。\n\n這條之所以嚴重，是因為 store 的整個價值建立在「寫下來的就是當時量到的」。一個會安靜刪字的寫入管道，讓每一筆 detail/plan/resolution 都帶上一個無法事後辨識的不確定性——你看不出某一句是作者沒寫，還是 shell 吃掉了。\n\n修法：把自由文字欄位的入口從「命令列參數」改成「檔案」。① 在 ops/backlog.py 為 detail / resolution / plan / acceptance / acceptance-cmd 各加一個 `<flag>-file` 版本（讀檔內容當值，與現有 flag 互斥，同時給兩個就具名拒絕）。② 在 --detail / --plan / --resolution 的 help 明說「含反引號或跳脫字元時請用 --detail-file，否則 shell 會在工具看到它之前就改掉它」。③ 這是 agent-facing surface，同 PR 同步 .claude/skills/ 與 docs/reference/tech_index.md。\n\n不做的事：不要試圖在工具內偵測「內容被 shell 吃掉了」——工具收到的字串已經是替換後的結果，資訊在進程邊界之前就沒了，任何事後偵測都是猜。唯一可靠的修法是不讓 shell 碰它。",
+  "id": "IMP-20260808-1aed9f",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "同一個失效今天第三次：反引號在雙引號 shell 字串裡被當成命令替換，靜默吃掉寫入 store 與 commit message 的內容",
+  "status": "open",
+  "stream": "IMP"
+}
