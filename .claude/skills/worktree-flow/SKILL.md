@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
+description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
 user-invocable: true
 version: 2.0.0
 ---
