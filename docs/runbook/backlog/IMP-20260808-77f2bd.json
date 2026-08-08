@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "批次整合路徑在 N=10、九成 cherry-pick 衝突下**整合本身全綠**，但**十條來源分支\n全部拒絕拆除**，留下十棵工作樹要人工處理。量測（`ops/worktree_loadtest.py --mode batch\n-n 10 --conflict shared`，throwaway clone）：\n\n    delegates 停在 commit      10/10\n    cherry-pick 衝突            9/10（每一條 pick 後都撞同一個 anchor，設計如此）\n    衝突解完後遺失的列          0（十列全在）\n    gate                        跑 1 次，verdict warn，零 block\n    cutover                     landed，main +10，validate 0，primary 乾淨\n    wall                        27.9 秒\n    **resolve 拒絕**            **10/10**，clone 裡留下十棵樹\n\n所以瓶頸不在整合而在**拆除**。`resolve` 的 landed-floor 判準是「這分支動過的每個檔，\nmain 現在是不是就是這分支的版本」；整合時解衝突會讓 main 上是**更新**的版本，工具分不出\n「被更好的版本取代」與「根本沒進去」，於是保守拒絕。**那個保守是對的**——寬鬆到能放行\n這種情況的規則，同樣會放行真正沒落地的工作（SKILL 已寫明，且實測正是這個拒絕暴露過一顆\n整合時被漏掉的 commit）。\n\n問題在於**代價是人工的且與 N 成正比**：SKILL 開的處方是「逐條審計後 `resolve --force`」，\n審計三步（commit 主旨在 base..main 找得到嗎／檔案在 main 上都存在嗎／可疑者比對 patch-id\n與檔案清單）。N=10 就是十次三步審計，N=20 就是二十次——而這三步**全部是機械可執行的**，\n今天卻要求人去做，這正是鐵律 9 說的「工具沒做完，讓人去補」。\n\n修法**不是把規則改鬆**，是給 `resolve` 第二條證據路徑：\n`resolve --via-integration <整合分支或 sha>`——工具自己跑那三步審計（逐 commit 找\npatch-id 等價或「主旨+檔案清單」等價於 main 上可達的某顆），逐條回報它**是靠哪一項比對\n放行的**，任何一條找不到就拒絕並具名。比人眼審計強，因為它會把比對依據寫出來，而人不會。\n\n未做這件事之前不要開十條批次：它會在收尾時**保證**發生十次，而每一次的正確處置都是\n「人工審計後 --force」，那正是最容易被不耐煩的 agent 直接 --force 掉的地方——一旦養成\n習慣，這道守衛就等於不存在。",
+  "id": "IMP-20260808-77f2bd",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "開跑十條之前補做批次整合路徑的量測：整合全綠 27.9 秒，但十條來源分支全部拒絕拆除",
+  "status": "open",
+  "stream": "IMP"
+}
