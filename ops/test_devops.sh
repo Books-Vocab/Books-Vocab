@@ -122,6 +122,10 @@ chmod +x "$_bk_sandbox/bin/rsync"
 {
   echo 'set -euo pipefail'
   grep -E '^(info|ok|err|section)\(\)' "$KG"
+  # cleanup_old_backups 必須一起抽：cmd_backup 收尾會呼叫它，少了它連**成功**路徑都會
+  # 以 127（command not found）收場 —— 那會讓下面 rc != 0 的斷言變成恆真、只剩 tar.gz
+  # 那半在真的量測。實測：不抽 rc=127，抽了 rc=0（失敗路徑仍為 1）。
+  awk '/^cleanup_old_backups\(\)/,/^}$/' "$KG"
   awk '/^rsync_progress_flags\(\)/,/^}$/' "$KG"
   awk '/^cmd_backup\(\)/,/^}$/' "$KG"
   echo "BACKUP_DIR='$_bk_sandbox/backups'; SERVER=stub-host; REMOTE_DATA_DIR=/stub"
