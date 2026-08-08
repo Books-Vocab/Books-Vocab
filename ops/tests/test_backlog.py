@@ -5367,6 +5367,58 @@ def test_audit_criteria_leaves_a_red_criterion_in_the_uninteresting_bucket(tmp_p
     assert payload["green"] == []
 
 
+def test_audit_criteria_names_the_last_clause_of_a_silent_failure(tmp_path, capsys):
+    """A silent && chain must expose the failed clause, not just rc=1."""
+    store = tmp_path / "s"
+    silent = _criteria_target(store, detail="silent clause", cmd="true && test 1 = 2 && true")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    row = payload["red"][0]
+    assert row["id"] == silent
+    assert "test 1 = 2" in row["failing_clause"], row
+
+
+def test_failed_acceptance_keeps_output_tail_and_adds_failing_clause(capsys):
+    """The closure gate's shared executor reports output and attribution separately."""
+    result = BACKLOG._run_acceptance(
+        "probe", "printf 'visible\\n'; printf '+ input echo\\n' >&2; false", 0)
+
+    assert result["ok"] is False
+    assert "visible" in result["output_tail"]
+    assert "+ input echo" in result["output_tail"]
+    assert "false" in result["failing_clause"]
+    assert "input echo" not in result["failing_clause"]
+    capsys.readouterr()
+
+
+def test_audit_criteria_keeps_shell_failure_in_error_without_attribution(tmp_path, capsys):
+    """A command the shell cannot start is an error, not a named failed clause."""
+    store = tmp_path / "s"
+    broken = _criteria_target(store, detail="missing command", cmd="kg-no-such-command-failing-clause")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    row = payload["error"][0]
+    assert row["id"] == broken
+    assert row["rc"] == 127
+    assert row["failing_clause"] == ""
+    assert payload["red"] == []
+
+
+def test_audit_criteria_does_not_trace_a_timeout_twice(tmp_path, capsys):
+    """Timeout means no answer; diagnostic replay must not repeat the command."""
+    store = tmp_path / "s"
+    marker = tmp_path / "runs"
+    hanging = _criteria_target(
+        store, detail="timeout is not a mismatch", cmd=f"printf x >> {marker}; sleep 30")
+
+    payload, _ = _criteria_audit(store, "--timeout-seconds", "1", capsys=capsys)
+
+    assert [row["id"] for row in payload["timeout"]] == [hanging], payload
+    assert marker.read_text(encoding="utf-8") == "x"
+
+
 def test_audit_criteria_separates_a_broken_command_from_a_red_criterion(tmp_path, capsys):
     """THE test. A command that could not run has said nothing about the defect.
 
