@@ -91,6 +91,13 @@ generated 檔時 `catchup` 自動重生解掉**（payload `regenerated`），其
 **注意 `land` 是 advisory**：它只在所有落地者都走它時才保證一次過；有人繞過去直接 `cutover --commit` 仍可能
 在你 gate 到一半推進 trunk（安全不受影響——`cutover` 自己的不變式會擋下未經 gate 的樹——但你會多跑一輪）。
 
+**`land` 取到名次後、進 gate 之前會先驗一次 primary tracked-clean**（IMP-20260808-636848），命中就直接 EXIT_BLOCK
+並在 payload 標 `refused_before: "gate"`、列出 `dirty_files`。這條存在的理由是代價分佈：`cutover` 原本只在 ff 前驗，
+所以「primary 髒」要等整輪 gate 跑完才發現——實測 574 秒的 gate 工作直接丟掉，而髒的來源是**整合者自己三秒前**寫進
+primary 的 backlog 結案。**批次整合者的對策不是靠這條預檢，而是別讓 primary 變髒**：`backlog.py stage` 把結案停在
+gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一次回填。預檢只是把踩到時的代價從十分鐘降到毫秒。
+（ff 前那次檢查仍在且**不可刪**：primary 可能在 gate 期間才變髒，兩次問的是不同時刻的問題。）
+
 **d. 全 phase 完 → gate**（impact-based，顯式跑；.githooks 只 best-effort，不可依賴）：
 ```
 <path>/ops/worktree_orchestrate.py gate --worktree <path> --json
@@ -105,15 +112,23 @@ generated 檔時 `catchup` 自動重生解掉**（payload `regenerated`），其
 - `docs/**.md` → `docs_lint.sh --files` ＋ conflict-marker 掃描 ＋ `verified_against` 可達性
 - `backend/**.py` → 只跑 diff 內的**目標測試檔**；純 src 改動無目標測試 = **warn advisory**（不跑全套，全套有已知 pre-existing 假失敗）
 - `ops/**.py` → `uv run --no-project --python 3.13 --with pytest pytest`（沙箱 uv，不碰 backend/uv.lock；block）：改 `ops/tests/test_X.py` 跑該檔；改 src（含 `ops/lib/`）跑對應 `ops/tests/test_<basename>`。每個 target 都做存在性檢查（以 worktree 為準：同 diff 新增的測試看得到、已刪除的不會塞給 pytest），**解析不到既存測試 = 跑整個 `ops/tests/`**（sandbox-unsafe 測試須自帶 dep-guard skip，前例見 `test_demo_ios_spec_emitter.py`）
-- `ops/**.sh` → 三層（IMP-0051）：① `ops-shell-syntax`＝對每個改動的腳本跑 `bash -n`（block，只需 bash，沒有機器會靜默跳過——約 1/3 的 ops 腳本根本沒有自己的測試，這是它們唯一拿得到的檢查）；② `ops-shell:<test>`＝該腳本自己的測試（block），依慣例 `ops/tests/test_X.sh` → `ops/test_X.sh` 解析，名字對不上者查 `OPS_SHELL_TEST_ALIASES`，存在性一律以 worktree 為準；③ `ops-shell-untested`＝**具名**列出解析不到測試的腳本（warn）。**這條路由讓 `ops/tests/test_gate_can_fail.sh` 第一次有了自動觸發點**——改它就會跑它
+- `ops/**.sh` → 三層（IMP-0051）：① `ops-shell-syntax`＝對每個改動的腳本跑 `bash -n`（block，只需 bash，沒有機器會靜默跳過——約 1/3 的 ops 腳本根本沒有自己的測試，這是它們唯一拿得到的檢查）；② `ops-shell:<test>`＝該腳本自己的測試（block），依慣例 `ops/tests/test_X.sh` → `ops/test_X.sh` 解析，名字對不上者查 `OPS_SHELL_TEST_ALIASES`，存在性一律以 worktree 為準；③ `ops-shell-untested`＝**具名**列出解析不到測試的腳本（warn）。**這條路由讓 `ops/tests/test_gate_can_fail.sh` 第一次有了自動觸發點**——改它就會跑它。④ `ops-shell-scan`＝**repo 級跨檔掃描**（block，入口 `ops/shell_scan.sh`，整 repo 掃一次、不做 per-file，與 `ops/tests/test_script_help.sh` 共用同一份實作）。前三層全是 per-file 的，所以一道「關於整棵樹」的檢查不屬於任何單一腳本，也就**沒有任何 diff 觸發得到它**——抓「`$VAR` 緊接全形標點」那道守衛自 2026-08-04 起就正確、帶正控、一跑就精準指出檔名行號，卻從未被 gate 執行過，直到 2026-08-08 讓 `devops.sh:669` 一路撐到 `land`（診斷約 30 分鐘，IMP-20260808-3bbfa2）。**缺口在 routing 不在守衛**，所以修法是路由＋一個共用入口，不是在 orchestrator 裡重造掃描
 - `**.yml` / `**.yaml` → `data-plane:<工具>`＝`DATA_PLANE_OWNERS` 宣告的 owner 工具（block）：`ops/ui_quality_plane.yml` → 它的 `validate` ＋ `ops/tests/test_ui_quality_plane.sh`；`docs/registry.yml` → `docs_lint.sh --registry`。無 owner 者由 `data-plane-unowned` **具名**列出（warn）。**這裡刻意沒有 `bash -n` 那種通用語法底線**——stdlib 沒有 YAML parser，而 orchestrator 是零依賴（bootstrap 悖論要求它在工具鏈之前就能跑），自己手刻一個會讓判決變成「我的 parser 的性質」而非檔案的性質。`NEUTRAL_RULES` 樹下的 yml（`promotion/`、`frozen/`）維持 neutral，不重新收編
 - `docs/runbook/backlog/*.json`（**頂層**，kaizen ledger）→ `backlog-validate`＝`backlog.py validate --baseline-check`（block；旗標是 ratchet 的執法點，不是可省的裝飾）＋`data-plane:ops/docs_lint.sh`＝`docs_lint.sh --registry`（block）。**兩道一起選是刻意的**：`validate` 只答「每筆 entry 合不合 schema」，答不出「generated view 還跟不跟得上 store」——而動 store 就會讓 view 過期，那是本 repo 今天最常踩的坑；只選前者會讓 store-only 的 diff 宣稱「每個檔都被路由了」而真正會壞的東西沒人看。**改 `ops/backlog.py` 本身也會選 `backlog-validate`**：只鍵在資料的話，檢查器可以改到讓整個 store 失效卻只跑自己的 fixture 就綠掉，下一個無關的 agent 動任何一筆 entry 就吃到不是他造成的紅（IMP-20260805-9a51e9 的 plan 正是這個形狀）。**只吃頂層**：`validate_store` 是非遞迴 glob，子目錄的檔案路由得到卻永遠讀不到，那是空洞過關。此前 `validate` 全 repo 零自動呼叫者（唯一提及是 `platform-steward.md` 的一句散文）。
 
 先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**block 必修**（回去修再重跑 gate）；**warn 是 advisory**——不擋 cutover，處置權在你（driving agent），land 時會標「landed with warnings」。
 
+**block 的 summary 怎麼讀**（IMP-20260808-c47253）：失敗**shell** gate 的 `summary` 依序是 `exit <rc>` → **含失敗標記的行**（`✗` / `FAIL` / `AssertionError` / `not ok` / `error:`，至多 20 行）→ 原本的三行尾巴 → `full output: <path>`。**先讀那幾行具名失敗行，再決定要不要開 log**；抽不到任何標記時會明說 `no failure-marked lines found`，那代表這道 gate 印的東西不帶任何已知標記，此時直接開 log。log 落在 `<anchor>/.cache/worktree_gates/<key>.<gate>.log`，**每次跑該 gate 前先刪、綠了就不留、`resolve` 一併清**，所以你看到的一定是這次的。在此之前 summary 只有尾巴——實測一次 block 的 summary 全長 94 字元，失敗斷言的名字在被截掉的上面幾十行，於是唯一能做的是重跑並祈禱重現。**不要再靠重跑取得失敗名字。**
+（internal gate——`ops-shell-syntax` / `docs-conflict-markers` / `docs-verified-against` / `coverage`——在 Python 內自組具名 summary，沒有 log 指標，那是對的，不是漏掉。）
+
 **block 的 summary 若附上 `no green ever recorded for this gate on this machine`**：那不是判決，是提示——本機的 gate 歷史裡這道 gate 從未綠過。可能是你的改動真的壞了，也可能這道 gate 在這台機器上**結構性不可能過**（`ios-build-catalyst` 缺簽章憑證擋掉每一次 iOS cutover 兩個月，就是這個形狀）。**先花一分鐘確認它能不能過**（在乾淨的 base 上單獨跑那道 gate 的命令），再決定要修改動還是修 gate。**永遠不要因此繞過流程**——工具壞了就照鐵律 9 修工具並登記 backlog。iOS build/test 很耗時 → 背景執行、主線不阻塞（鐵律 5）。
 
 `gate` 執行每個實際 child gate 時，進度只寫 stderr：`start` / `spawned` / 每 20 秒 `heartbeat`；child 正常 exit 時另寫 `done` + rc，stdout 保持單一 `kg.worktree.gate.v1` JSON。**`heartbeat` 不只證明 gate 還活著，也證明它在不在前進**——安靜的 child 會自己招認（`stalled` 及其餘欄位語意見下段正本）。progress 絕不回顯 raw argv（避免 token/password 洩漏）；中斷會向上拋出並終止整個 isolated child process group，不能只殺直接 child 留下孫行程。操作者不得把 stdout/stderr 合併後再解析 JSON，也不得用靜默 `capture_output` 旁路這個 runner。
+
+**gate child 的 `LC_CTYPE` 是工具選定的 `C.UTF-8`，不是繼承你的 shell**（IMP-20260808-3bbfa2；`phase=start` 行尾
+的 `lcCtype=` 就是那個值）。所以**「我手跑是綠的」不構成 gate 誤判的證據**——互動 shell 這裡 `LC_CTYPE` 未設（C locale，
+bash 逐 byte 判字元），gate 走的是嚴格的 UTF-8 解析路徑，`$VAR` 緊接全形標點在前者無害、在後者是 `set -u` 致死。
+要在手上重現 gate 的環境：`env -u LC_ALL LC_CTYPE=C.UTF-8 <你的命令>`。
 
 orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進度 runner；完整分類、輸出與保密契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為正本。
 
@@ -137,7 +152,7 @@ ops/worktree_orchestrate.py resolve --worktree <path> --commit --json
 
 先定 **目標身分**：branch 一律取自 `git worktree list --porcelain`，**絕不**問 `rev-parse`——worktree 的 `.git` 一旦消失（`worktree remove` 會先刪它、再慢慢 rm 樹，中途被 timeout 砍就是這個狀態），git 的 repo discovery 會**往上走**找到 primary、回答 `main`，而 porcelain 仍誠實報出真分支＋`prunable`（IMP-20260806-1359bd：曾因此排出 `branch -D main` 與 `push origin --delete main`，只被 git 自己的拒絕擋下）。
 
-再過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove`（entry 若是 `prunable`，先跑帶 heartbeat 的 `rm -rf` 把樹清掉，`worktree remove` 才有辦法成功）+ `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache**。清完真正零殘骸。**critical step 失敗即停**，不再往下跑刪分支（payload 帶 `aborted_after`）。
+再過 **landed-floor**（tree-diff 判分支是否已進本地 main）：**未 land 的分支拒絕拆除**（避免 cutover 前誤呼叫 resolve 而 force-discard 未落地工作），要強拆傳 `--force`。過了 floor = 登記簿 resolve→merged + `git worktree remove`（entry 若是 `prunable`，先跑帶 heartbeat 的 `rm -rf` 把樹清掉，`worktree remove` 才有辦法成功）+ `branch -D`（local，遠端若存在也刪）+ **刪該 worktree 的 gate-record cache 與同目錄的失敗 gate 輸出 log**（`<key>.<gate>.log`，payload 回 `gate_logs_removed`）。清完真正零殘骸。**critical step 失敗即停**，不再往下跑刪分支（payload 帶 `aborted_after`）。
 
 **被拒時看 `reason_code`，別讀散文**：`not-a-worktree` / `detached-head` / `ambiguous-ledger` = **EXIT_USAGE(64)**，你指錯路徑或該路徑需要 `--branch` 才有辦法指名；`protected-branch` / `primary-worktree` / `branch-contradicts-git` / `uncorroborated-branch` / `rm-target-unvetted` / `unsafe-step` = **EXIT_BLOCK(1)**，安全拒絕，改指令沒用，先確認你要拆的到底是哪一個 worktree。`--force` **只**降 landed-floor，**不**降任何身分護欄。**不要因為被拒就去跑 `git worktree prune`**：那會刪掉 admin entry＝該路徑唯一的 path→branch 復原資訊（也會連帶收掉其他 session 中斷 teardown 的 entry），之後只剩手打 `--branch`；正解是把 `--worktree` 指到對的路徑。`adopt` 也救不了這個狀態（它經 `--show-toplevel` 解析，對 `.git` 已消失的目錄會解到 primary 然後拒絕）。
 

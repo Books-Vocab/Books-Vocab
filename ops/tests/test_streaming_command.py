@@ -463,3 +463,134 @@ def test_timeout_kills_grandchild_after_group_leader_exits(tmp_path: Path) -> No
     finally:
         if grandchild_pid and _process_is_live(grandchild_pid):
             os.kill(grandchild_pid, signal.SIGKILL)
+
+
+# ============================================================================
+# the child's LC_CTYPE is CHOSEN, not inherited (IMP-20260808-3bbfa2)
+#
+# Measured 2026-08-08: `devops.sh:669` wrote `...目錄：$dest（已標記...）`. bash under
+# a UTF-8 LC_CTYPE eats the first byte of the full-width `（` into the variable name,
+# so `set -u` killed the script on `dest\xef: unbound variable` — inside the very
+# message that was supposed to explain a failure. It passed eight runs by hand and
+# failed 4/4 through the orchestrator, because CPython's PEP 538 coercion hands
+# children `LC_CTYPE=C.UTF-8` while an interactive shell here leaves it unset. The
+# same script took two different parse paths depending on who started it.
+#
+# The fix is not a value, it is the fact that the value is WRITTEN DOWN. These tests
+# pin both the choice and — separately — that the choice is actually in force.
+# ============================================================================
+
+def _effective_ctype(text: str) -> str:
+    for line in text.splitlines():
+        if line.startswith("LC_CTYPE="):
+            return line.split("=", 1)[1].strip().strip('"')
+    raise AssertionError(f"`locale` printed no LC_CTYPE:\n{text}")
+
+
+def test_child_lc_ctype_is_chosen_by_the_tool_not_inherited(tmp_path, monkeypatch):
+    """The caller's value is distinctive and must NOT come back out."""
+    monkeypatch.setenv("LC_CTYPE", "en_US.ISO8859-1")
+    with redirect_stderr(io.StringIO()):
+        completed = run_streamed_command(
+            [sys.executable, "-c",
+             "import os,sys; sys.stdout.write(os.environ.get('LC_CTYPE','<unset>'))"],
+            cwd=tmp_path, label_key="gate", label="ctype-probe",
+            progress_prefix="[test]", heartbeat_interval=0.05,
+        )
+    # The literal, not just the module constant: comparing the child's value only to
+    # `streaming_command.CHILD_LC_CTYPE` is self-consistent for ANY value, including
+    # one someone changes by accident. A decision that can drift silently is not a
+    # decision that was written down.
+    assert completed.stdout == "C.UTF-8"
+    assert streaming_command.CHILD_LC_CTYPE == "C.UTF-8"
+    assert completed.stdout != "en_US.ISO8859-1"
+
+
+def test_child_lc_ctype_choice_survives_a_caller_who_set_lc_all(tmp_path, monkeypatch):
+    """The trap this pair exists for.
+
+    POSIX makes `LC_ALL` outrank every `LC_*`, so setting `LC_CTYPE` next to an
+    inherited `LC_ALL` produces a variable that reads back exactly as intended and
+    has no effect whatsoever. Measured here: `LC_ALL=C LC_CTYPE=C.UTF-8` gives an
+    effective ctype of `C`. `locale` is asked for the EFFECTIVE value precisely
+    because the environment variable cannot testify about itself.
+    """
+    monkeypatch.setenv("LC_ALL", "C")
+    monkeypatch.delenv("LC_CTYPE", raising=False)
+    with redirect_stderr(io.StringIO()):
+        completed = run_streamed_command(
+            ["/usr/bin/locale"],
+            cwd=tmp_path, label_key="gate", label="ctype-effective",
+            progress_prefix="[test]", heartbeat_interval=0.05,
+        )
+    assert completed.returncode == 0
+    assert _effective_ctype(completed.stdout) == "C.UTF-8"
+
+
+@pytest.mark.parametrize("caller_env", [
+    pytest.param({}, id="bare-caller"),
+    pytest.param({"LC_ALL": "C"}, id="caller-forced-LC_ALL-C"),
+    pytest.param({"LC_CTYPE": "C"}, id="caller-forced-LC_CTYPE-C"),
+])
+def test_lc_ctype_choice_makes_children_parse_shell_the_strict_way(
+        tmp_path, monkeypatch, caller_env):
+    """What the value is FOR, asserted as behaviour rather than as a string.
+
+    `C.UTF-8` is the stricter of the two available parses: it is the one under which
+    `$VAR` abutting full-width punctuation is a fatal `unbound variable`, so a bug
+    that only a UTF-8 locale can see is caught in the gate instead of in production.
+    Under `C` the same line runs fine — which is why "whatever the caller happened to
+    have" was never an acceptable answer. Three caller environments, one outcome.
+    """
+    monkeypatch.delenv("LC_ALL", raising=False)
+    monkeypatch.delenv("LC_CTYPE", raising=False)
+    for key, value in caller_env.items():
+        monkeypatch.setenv(key, value)
+    script = tmp_path / "fw.sh"
+    script.write_text('set -u\ndest=hello\necho "dir: $dest（marked）"\n',
+                      encoding="utf-8")
+    with redirect_stderr(io.StringIO()):
+        completed = run_streamed_command(
+            ["bash", str(script)],
+            cwd=tmp_path, label_key="gate", label="ctype-behaviour",
+            progress_prefix="[test]", heartbeat_interval=0.05, merge_stderr=True,
+        )
+    assert completed.returncode != 0, (
+        "the child parsed the full-width punctuation byte-wise, i.e. it did NOT get "
+        f"the chosen UTF-8 ctype; output was {completed.stdout!r}")
+    assert "unbound variable" in completed.stdout
+
+
+def test_the_chosen_lc_ctype_is_visible_in_the_progress_stream(tmp_path):
+    """Reproducing a gate failure means reproducing its environment, so the value has
+    to be legible from a log someone already has — not only from the source."""
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        run_streamed_command(
+            [sys.executable, "-c", "pass"],
+            cwd=tmp_path, label_key="gate", label="ctype-visible",
+            progress_prefix="[test]", heartbeat_interval=0.05,
+        )
+    start = [ln for ln in stderr.getvalue().splitlines() if "phase=start" in ln]
+    assert start, stderr.getvalue()
+    assert "lcCtype=C.UTF-8" in start[0], start[0]
+
+
+def test_an_explicit_env_argument_still_gets_the_chosen_lc_ctype(tmp_path):
+    """`env=` replaces the whole environment, and the callers that use it are the
+    orchestrator's git mutations — the ones whose parse must match the gates'."""
+    with redirect_stderr(io.StringIO()):
+        completed = run_streamed_command(
+            [sys.executable, "-c",
+             "import os,sys; g=os.environ.get; sys.stdout.write('|'.join("
+             "(g('LC_CTYPE','<unset>'), g('CANARY','<unset>'), g('LC_ALL','<unset>'))))"],
+            cwd=tmp_path, label_key="gate", label="ctype-explicit-env",
+            progress_prefix="[test]", heartbeat_interval=0.05,
+            env={"CANARY": "kept", "LC_ALL": "C"},
+        )
+    # The caller's own variables survive; only the locale decision is overridden.
+    # `LC_ALL` is asserted explicitly rather than left implied: without it this test
+    # stays green when the `pop` is deleted (verified by mutation), which would leave
+    # the explicit-`env=` path — the one `_git_mutation` uses — with no assertion at
+    # all that the chosen ctype is in force rather than merely present.
+    assert completed.stdout == "C.UTF-8|kept|<unset>"

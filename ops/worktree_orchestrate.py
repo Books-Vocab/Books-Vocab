@@ -280,6 +280,10 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/ios_archive.sh": "ops/test_ios_ops.sh",
     "ops/release_bump.sh": "ops/test_release.sh",
     "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
+    # test_script_help.sh EXECUTES it (its full-width section delegates there), which
+    # is the standard this table demands. `ops-shell-scan` also runs the script on
+    # every .sh diff, but that is the scanner doing its job, not a test of it.
+    "ops/shell_scan.sh": "ops/tests/test_script_help.sh",
 }
 
 # Test scripts that must NOT be routed as a block gate, each with the reason. A gate
@@ -691,6 +695,18 @@ def plan_gates(changed_files: list[str],
               if p.endswith(".sh") and (p.startswith("ops/") or "/" not in p)]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
+        # The cross-file layer (IMP-20260808-3bbfa2). The two layers below are
+        # per-script by construction — `bash -n` on each changed file, and each
+        # file's own test — so a check that is ABOUT the whole tree belongs to no
+        # single script and was therefore reachable from no diff at all. The
+        # full-width-punctuation guard lived in that hole since 2026-08-04: correct,
+        # positively controlled, and never once executed by a gate.
+        #
+        # ONE instance regardless of how many .sh changed: it scans the whole repo,
+        # so per-file instances would be N identical runs. Block, because the thing
+        # it catches is fatal at runtime on the error path — where the script's job
+        # is to explain a failure and it instead dies mid-sentence.
+        gates.append(_shell("ops-shell-scan", "ops", ["ops/shell_scan.sh"], "block"))
         exists = ops_test_exists or (lambda rel: False)
         sh_targets: set[str] = set()
         untested: list[str] = []
@@ -1283,6 +1299,41 @@ def _gate_record_path(state: str | None, worktree: str) -> Path:
     return base_dir / "worktree_gates" / f"{key}.json"
 
 
+def _gate_log_path(record_path: Path, gate_name: str) -> Path:
+    """Where a FAILED gate's captured output is kept — beside its verdict record.
+
+    One file per (worktree, gate), named off the record so the pair is obvious on
+    disk and `resolve` can strike both with one glob. Gate names carry `:` and `/`
+    (`ops-shell:test_devops.sh`, `data-plane:ops/tests/test_lint_baselines.sh`), so
+    anything outside a conservative set folds to `_`: this is a filename, not an
+    identifier, and the record next to it holds the exact name.
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]", "_", gate_name)
+    return record_path.parent / f"{record_path.stem}.{slug}.log"
+
+
+# Lines worth lifting out of a failed gate's output. Deliberately broad: these gates
+# are a zoo — shell harnesses printing `✗`, pytest, TAP producers, bash's own
+# `error:` — and a marker set narrow enough to look tidy is one that goes silent for
+# whichever tool nobody had in mind. A false positive costs one line of noise; a miss
+# costs the re-run this whole mechanism exists to remove.
+GATE_FAILURE_MARKERS = ("✗", "FAIL", "AssertionError", "not ok", "error:")
+GATE_MAX_FAILURE_LINES = 20
+
+# The log is now the artefact an operator opens, so the capture has to be able to
+# hold a whole harness run rather than just enough to describe one. Still bounded:
+# `run_streamed_command` keeps the LAST N bytes per stream, and an unbounded capture
+# would make a chatty gate a memory incident.
+GATE_CAPTURE_LIMIT = 1024 * 1024
+
+
+def _gate_failure_lines(output: str) -> list[str]:
+    """The lines of a failed gate's output that name what failed."""
+    hits = [ln.rstrip() for ln in output.splitlines()
+            if any(m in ln for m in GATE_FAILURE_MARKERS)]
+    return hits[:GATE_MAX_FAILURE_LINES]
+
+
 def _gate_history_path(state: str | None) -> Path:
     """Append-only behavioural log of gate outcomes, beside the per-worktree verdicts.
 
@@ -1598,8 +1649,68 @@ def _run_streamed_command(
     return completed.returncode, completed.stdout
 
 
-def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
-    """Execute ONE planned gate against the worktree and return a result record."""
+def _failed_gate_summary(returncode: int, output: str, tail: str,
+                         log_path: Path | None) -> str:
+    """What a blocked operator actually reads: named failures, then the tail, then
+    where the rest of it is.
+
+    The tail alone WAS the entire summary until 2026-08-08, and it is kept — for many
+    gates the tail is the failure. What it could not do is carry a name that had
+    scrolled past it, and three lines is exactly what a shell harness's closing
+    frame costs, so the name was always the thing that got dropped.
+    """
+    lines = [f"exit {returncode}"]
+    hits = _gate_failure_lines(output)
+    if hits:
+        lines.append(f"  failure-marked lines ({len(hits)} shown):")
+        lines.extend(f"    {h}" for h in hits)
+    else:
+        # Said out loud rather than quietly degrading to the old shape. "This summary
+        # looks thin" and "this gate prints no marker the scanner knows" are different
+        # problems with different fixes, and only the second one is the tool's.
+        lines.append("  no failure-marked lines found (scanned for "
+                     f"{', '.join(GATE_FAILURE_MARKERS)})")
+    if tail:
+        lines.append("  tail:")
+        lines.extend(f"    {ln}" for ln in tail.splitlines())
+    if log_path is not None:
+        lines.append(f"  full output: {log_path}")
+    return "\n".join(lines)
+
+
+def _write_gate_log(log_path: Path, spec: dict[str, Any], cwd: Path,
+                    returncode: int, output: str) -> str | None:
+    """Persist a failed gate's captured output. Returns an error string, never raises.
+
+    Bookkeeping is never load-bearing: a gate that reddened because its own log could
+    not be written would be a fresh way to turn a green change red (same hard rule as
+    `_append_gate_history`). The header exists so the file explains itself to whoever
+    opens it hours later without the summary in front of them.
+    """
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(
+            f"# gate: {spec['name']}\n"
+            f"# cmd: {' '.join(spec.get('cmd') or [])}\n"
+            f"# cwd: {cwd}\n"
+            f"# rc: {returncode}\n"
+            f"# capture: merged stdout+stderr, last {GATE_CAPTURE_LIMIT} bytes\n"
+            f"# ---\n" + output,
+            encoding="utf-8")
+    except OSError as exc:
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def _run_gate(spec: dict[str, Any], worktree: str, *,
+              record_path: Path | None = None) -> dict[str, Any]:
+    """Execute ONE planned gate against the worktree and return a result record.
+
+    `record_path` is this worktree's verdict-record path; a failed gate's captured
+    output is written beside it and pointed at from the summary. Optional because the
+    log is an enhancement and not a precondition — without it the gate still runs and
+    still reports, it just has nowhere to put the long form.
+    """
     name, level = spec["name"], spec["level"]
     result = {"name": name, "category": spec["category"], "level": level}
     if spec["kind"] == "internal":
@@ -1630,9 +1741,19 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
 
     # shell gate — run the real tool. cwd is the worktree (or a subdir like backend).
     cwd = Path(worktree) / spec["cwd"] if spec.get("cwd") else Path(worktree)
+    log_path = _gate_log_path(record_path, name) if record_path is not None else None
+    # Struck BEFORE the run, not after: a log left by an earlier red describes a
+    # failure that may already be fixed, and nothing on disk marks it stale. Doing it
+    # here rather than on success means every exit from this function — including the
+    # spawn-failure return below — leaves no log that this run did not write.
+    if log_path is not None and log_path.exists():
+        try:
+            log_path.unlink()
+        except OSError:
+            pass
     try:
         returncode, output = _run_streamed_command(
-            spec["cmd"], cwd=cwd, gate_name=name,
+            spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,
         )
     except OSError as exc:
         # The router and the tools it routes to can be different generations
@@ -1665,11 +1786,22 @@ def _run_gate(spec: dict[str, Any], worktree: str) -> dict[str, Any]:
                 "executed": False, "summary": summary}
     tail = "\n".join(output.splitlines()[-3:]) if output else ""
     if returncode == 0:
-        status = "pass"
-    else:
-        status = "block" if level == "block" else "warn"
-    result.update({"status": status, "rc": returncode,
-                   "summary": f"exit {returncode}" + (f": {tail}" if tail else "")})
+        result.update({"status": "pass", "rc": returncode,
+                       "summary": f"exit {returncode}" + (f": {tail}" if tail else "")})
+        return result
+
+    status = "block" if level == "block" else "warn"
+    log_error = None
+    if log_path is not None:
+        log_error = _write_gate_log(log_path, spec, cwd, returncode, output)
+    summary = _failed_gate_summary(returncode, output, tail,
+                                   None if log_error else log_path)
+    if log_error:
+        # Never silent: an unwritable log and a gate that simply had nothing to say
+        # otherwise look identical, and the reader would go looking for a file that
+        # was never there.
+        summary += f"\n  ! output log not written ({log_error})"
+    result.update({"status": status, "rc": returncode, "summary": summary})
     return result
 
 
@@ -2298,9 +2430,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
                       ops_test_exists=lambda rel: (Path(worktree) / rel).is_file(),
                       base=args.base)
     results: list[dict[str, Any]] = []
+    rec_path = _gate_record_path(args.state, worktree)
     if not args.plan_only:
         for spec in plan:
-            results.append(_run_gate(spec, worktree))
+            results.append(_run_gate(spec, worktree, record_path=rec_path))
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
     head = _head_sha(worktree)
@@ -2336,7 +2469,6 @@ def cmd_gate(args: argparse.Namespace) -> int:
         # Non-blocking, but never silent: a permanently unwritable journal must not be
         # indistinguishable from a machine that simply has no history yet.
         record["history_error"] = history_error
-        rec_path = _gate_record_path(args.state, worktree)
         rec_path.parent.mkdir(parents=True, exist_ok=True)
         rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
 
@@ -2842,6 +2974,29 @@ def cmd_land(args) -> int:
                       f"aheadPid={(ahead or {}).get('pid')} alive=true",
                       file=sys.stderr, flush=True)
             time.sleep(0.4)
+
+        # The CHEAP half of the primary-clean contract, asked before anything
+        # expensive has been spent. `cutover` asks the same question again
+        # immediately before the ff, and THAT one is the load-bearing check —
+        # DO NOT DELETE IT as redundant. The two are at different moments and
+        # answer different questions: this one asks "is the primary already dirty
+        # right now", cutover's asks "is it still clean now that the gate has
+        # finished". Measured 2026-08-08: a primary that was clean at the start was
+        # dirtied DURING a 574s gate by the operator's own backlog closures, so an
+        # implementation that trusted this answer across the gate would ff over a
+        # tenant's uncommitted work.
+        #
+        # Same helper, not a second copy of the judgement: a duplicated rule is one
+        # that drifts, and this one decides whether someone else's working tree gets
+        # overwritten.
+        guard = _primary_ff_ready(primary, _local_trunk(args.base))
+        if guard is not None:
+            reason, extra = guard
+            _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                   "error": reason, "landed": False, "worktree": worktree,
+                   "primary": str(primary), "refused_before": "gate", **extra},
+                  args.json, f"✗ land refused before gate: {reason}")
+            return EXIT_BLOCK
 
         steps: list[dict] = []
         crc, cpay = _land_step(cmd_catchup, commit=True, **common)
@@ -3758,6 +3913,17 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             gate_cache_removed = True
         except OSError:
             pass
+    # ...and the failed-gate output logs sitting beside it (IMP-20260808-c47253).
+    # Same residue rule as the verdict: a log describing a gate run on a worktree
+    # that no longer exists can only mislead. The filename carries this worktree's
+    # key, so the glob cannot reach a sibling session's logs.
+    gate_logs_removed = 0
+    for stale_log in sorted(gate_cache.parent.glob(f"{gate_cache.stem}.*.log")):
+        try:
+            stale_log.unlink()
+            gate_logs_removed += 1
+        except OSError:
+            pass
 
     # Said out loud, and deliberately NOT blocking. The anchor queue is gitignored
     # and per-machine, so nothing downstream of this teardown can notice a closure
@@ -3812,6 +3978,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                "resolved": "merged", "executed": results, "failures": failures,
                "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed,
+               "gate_logs_removed": gate_logs_removed,
                "pending_anchor": pending_anchor,
                "claimed_without_closure": claimed_open}
     human = ["# resolve (committed): ledger -> merged"]
@@ -3819,6 +3986,8 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         human.append(f"  {'✓' if r['ok'] else '✗'} {r['cmd']}   # {r['label']}")
     if gate_cache_removed:
         human.append("  ✓ dropped gate-record cache")
+    if gate_logs_removed:
+        human.append(f"  ✓ dropped {gate_logs_removed} failed-gate output log(s)")
     if pending_anchor:
         human.append(f"  · {len(pending_anchor)} closure(s) landed and awaiting the "
                      f"wave's anchor: {', '.join(pending_anchor)}")

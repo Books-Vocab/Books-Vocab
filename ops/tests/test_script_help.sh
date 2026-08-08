@@ -9,6 +9,9 @@
 #   5. worktree_registry.py --help → exit 0 + 印出 orphan sentinel
 #   6. worktree_orchestrate.py --help → exit 0 + 列出 preflight/gate/cutover 子指令
 #   7. worktree_registry.py sweep --help → exit 0 + 揭示 --exclude-current 旗標
+#   8. shell_scan.sh --help → exit 0 + 印出 Usage
+#
+# 另外委派一次跨檔掃描給 ops/shell_scan.sh（實作已搬過去，見檔尾那一段的理由）。
 
 set -o pipefail
 
@@ -92,52 +95,26 @@ assert_rc "worktree_orchestrate help exits 0" 0 "$rc" "$log"
 assert_log_contains "worktree_orchestrate help" "preflight" "$log"
 assert_log_contains "worktree_orchestrate help" "cutover" "$log"
 
-# ── $VAR 緊接全形標點 = 定時炸彈 ────────────────────────────────────────────
-# bash 在 **UTF-8 LC_CTYPE** 下會把全形標點的首個 byte 吃進變數名：
-#   echo "已回到 $sha，但…"   →   `sha\xEF: unbound variable`  →  set -u 當場殺掉腳本
-# C locale 下同一行完全正常，所以**開發機測不出來、跑起來才炸**。實測矩陣：
-#   我的 Bash tool（LC_CTYPE unset）→ 過；gate runner（LC_CTYPE=C.UTF-8）→ 死；
-#   felix launchd（未設 locale）→ 過；人在 Terminal.app（UTF-8）→ **死**。
-# 這個 repo 的字串大量是中文，而命中的 9 處**全部落在錯誤路徑**——也就是它只在
-# 「已經出事了、正要印出原因」的那一刻引爆，把診斷訊息換成一行 unbound variable。
-# 2026-08-04 它讓 kg_reconcile.sh 的回滾告警整個吞掉 verdict（IMP-0062）。
-# 修法一律是 `${VAR}`。frozen/ 具名排除：刻意冷凍、不執行。
-section "no \$VAR abuts full-width punctuation (UTF-8 locale time bomb)"
-# 不用 `grep -P`：macOS 的 BSD grep 沒有這個旗標，而本檔第一版正是 `-P` + `2>/dev/null`
-# ——每個檔案都 "invalid option" 失敗、輸出全空、掃描器報 ✓。**沉默被當成沒有違規**，
-# 這正是它要防的那類假綠。改用 ERE 交替（多位元組字面值在 C locale 下也是逐 byte 比對）。
-FW_PUNCT='(，|。|、|：|；|！|？|「|」|（|）)'
-FW_RE="\"[^\"]*[$][a-zA-Z_][a-zA-Z0-9_]*$FW_PUNCT"
+# ── 跨檔掃描：委派給 ops/shell_scan.sh ──────────────────────────────────────
+# 這段的實作 2026-08-08 搬進 `ops/shell_scan.sh`，因為它**沒有任何 gate 會跑**：
+# cutover 的 ops/**.sh 路由是 per-file 的（bash -n + 該腳本自己的同名測試），而跨檔
+# 掃描器不屬於任何單一腳本。抽成獨立入口後 gate 用 `ops-shell-scan` 路由它，本檔繼續
+# 用同一份實作——**共用而非複製**：兩份掃描邏輯就是兩份會各自漂移的判準
+# （IMP-20260808-3bbfa2）。正控與 frozen/ 排除都在那支腳本裡。
+section "shell_scan help"
+out=$(run_help "ops/shell_scan.sh"); rc="${out%%|*}"; log="${out##*|}"
+assert_rc "shell_scan help exits 0" 0 "$rc" "$log"
+assert_log_contains "shell_scan help" "Usage:" "$log"
 
-# 正控：先證明掃描器抓得到已知的違規，否則下面的「沒有命中」與「掃描器壞了」無法區分。
-fw_fixture="$TMPDIR/fw_fixture.sh"
-printf 'echo "已回到 $sha，但…"\necho "safe ${sha}，braced"\n' > "$fw_fixture"  # fw-allow: 這是正控 fixture 本身，單引號內不展開
-fw_probe="$(grep -nE "$FW_RE" "$fw_fixture" 2>&1 || true)"
-if [[ "$fw_probe" != *'已回到'* ]]; then
-  fail_t "full-width scanner cannot flag a known violation — probe broken, not the tree: ${fw_probe:-<no output>}"
-elif [[ "$fw_probe" == *braced* ]]; then
-  fail_t "full-width scanner also flags the braced (safe) form — pattern too broad"
+section "cross-file shell scan (ops/shell_scan.sh)"
+scan_log="$TMPDIR/shell_scan.txt"
+"$WORKTREE/ops/shell_scan.sh" "$WORKTREE" >"$scan_log" 2>&1
+scan_rc=$?
+if [[ $scan_rc -eq 0 ]]; then
+  ok "shell_scan.sh clean (rc=0)"
 else
-  ok "full-width scanner flags the bad form and spares \${VAR} (positive control)"
-fi
-
-fw_hits="$(
-  git -C "$WORKTREE" ls-files '*.sh' \
-    | grep -v '^frozen/' \
-    | while read -r f; do
-        # 註解行 shell 不展開 → 真的無害；`# fw-allow: <理由>` 是具名豁免（需寫理由）。
-        grep -nE "$FW_RE" "$WORKTREE/$f" 2>/dev/null \
-          | grep -v '^[0-9][0-9]*: *#' | grep -v 'fw-allow' | sed "s|^|$f:|"
-      done
-)"
-scanned="$(git -C "$WORKTREE" ls-files '*.sh' | grep -cv '^frozen/')"
-if (( scanned < 10 )); then
-  fail_t "only scanned $scanned shell script(s) — the probe is broken, not the tree"
-elif [[ -n "$fw_hits" ]]; then
-  fail_t "\$VAR abuts full-width punctuation (use \${VAR}); dies under UTF-8 LC_CTYPE:"
-  printf '%s\n' "$fw_hits" | sed 's/^/      /'
-else
-  ok "no \$VAR abuts full-width punctuation across $scanned tracked shell script(s)"
+  fail_t "shell_scan.sh reported violations (rc=$scan_rc)"
+  sed 's/^/      /' "$scan_log" >&2
 fi
 
 echo ""

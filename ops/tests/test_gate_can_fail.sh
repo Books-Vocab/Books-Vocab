@@ -74,6 +74,7 @@ PROOFS=(
   "ops-shell-syntax|cheap|cheap|a script that does not parse vs one that does"
   "ops-shell|fixture|fixture|no fixed tool: the routed script IS the command, so what is provable here is the gate's contract — run it, propagate its exit code — driven through _run_gate against a script that exits 3"
   "backlog-validate|cheap|cheap|an isolated store copy with a bad severity + a missing required field, vs the same copy untouched"
+  "ops-shell-scan|cheap|cheap|two throwaway tracked trees driven through the real ops/shell_scan.sh: one with a \$VAR abutting full-width punctuation, one without"
   "data-plane|fixture|fixture|no fixed tool either: the yml's declared owner IS the command (DATA_PLANE_OWNERS), so what is provable here is that this family propagates its owner's exit code — driven through _run_gate against an owner that exits 4"
   "ios-build|expensive|journal|ops/test_ios_ops.sh covers xcodebuild failure propagation"
   "ios-build-catalyst|expensive|journal|same runner as ios-build; green needs a real Catalyst compile"
@@ -98,7 +99,7 @@ proof_for() {  # $1 = gate name -> "red|green|note", or non-zero if undeclared
 # past a failing proof is to reclassify the gate as `expensive|journal` and delete the
 # proof body, and nothing would object. Downgrading one of these is then a deliberate,
 # visible edit.
-CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate"
+CHEAP_FLOOR="ui-quality-fast review-receipts docs-lint docs-conflict-markers ops-shell-syntax ops-shell data-plane backlog-validate ops-shell-scan"
 
 # Registry of proofs this run actually ran, tagged by SOURCE. The source matters: a
 # journal-sourced green is real evidence but it is not an executed proof, and without
@@ -434,6 +435,36 @@ grep -q "data-plane-red status=block rc=4" "$TMP/internal.out" \
 grep -q "data-plane-green status=pass rc=0" "$TMP/internal.out" \
   && { ok "data-plane passes when the owner tool succeeds"; record_proof data-plane green fixture; } \
   || fail_t "data-plane did not pass an owner tool that exits 0"
+
+# --- ops-shell-scan -------------------------------------------------------------
+# The real scanner against two throwaway tracked trees. The red must name FILE:LINE,
+# not merely exit non-zero: this gate's whole reason for existing is that a check
+# nobody can act on is a check that costs a re-run (IMP-20260808-3bbfa2).
+#
+# The 12 fillers are not padding — the scanner refuses to trust a run that saw
+# suspiciously few files, so a tree below that floor would go red for the WRONG
+# reason and the red proof would pass while proving nothing.
+scan_tree() {  # $1 = dir, $2 = "1" to plant a violation
+  local i
+  mkdir -p "$1/ops"
+  git -C "$1" init -q -b main
+  for i in $(seq 1 12); do
+    printf 'var=x\necho "filler %s"\necho "safe ${var}，braced"\n' "$i" > "$1/ops/filler$i.sh"
+  done
+  # The `$` is substituted IN rather than written literally: this file is itself a
+  # tracked *.sh, so a literal offending line here would make the scanner flag its
+  # own proof — and `fw-allow` cannot rescue it, since the fixture has to stay
+  # visible to the very scan it is testing.
+  [[ "${2:-}" == "1" ]] && printf 'dest=/tmp\necho "目錄：%sdest（已標記）"\n' '$' \
+    > "$1/ops/offender.sh"
+  git -C "$1" add -A
+}
+scan_tree "$TMP/scan_bad" 1
+scan_tree "$TMP/scan_good"
+"$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_bad" >"$TMP/scan_bad.out" 2>&1 && rc=0 || rc=$?
+assert_red ops-shell-scan "ops/offender.sh:2" "$TMP/scan_bad.out" "$rc"
+"$WORKSPACE/ops/shell_scan.sh" "$TMP/scan_good" >"$TMP/scan_good.out" 2>&1 && rc=0 || rc=$?
+assert_green ops-shell-scan "passed: 2  failed: 0" "$TMP/scan_good.out" "$rc"
 
 section "expensive gates: green read from recorded behaviour, never assumed"
 # TWO independent lists, derived from the two independent kinds. Deriving the journal
