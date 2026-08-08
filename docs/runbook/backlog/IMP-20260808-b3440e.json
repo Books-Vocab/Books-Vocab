@@ -1,0 +1,14 @@
+{
+  "brief": "技術索引裡 ios_test.sh 那一格有一大段內容原封不動貼了兩次，讀的人會看到同一段講兩遍，改的人只會改到其中一半。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "docs/reference/tech_index.md 第 132 行（ios_test.sh 那一列）是一格 7128 字元的表格 cell，其中從「--list / --launch-benchmark / --coverage ...」起算約 3000 字元逐字重複兩次（實測：'runner 先走 simulator ensure-booted' 與 'keyed cache 於 build lock 內自動 LRU eviction' 兩個互不相關的長片語在同一格各出現 2 次）。\n\n兩個實害：(1) agent 查 ios_test.sh 能力時同一段讀兩遍，白燒 context；(2) 未來有人編輯重複區塊時只會改到其中一份，另一份靜默 drift——這格是 SoT，drift 的代價是下一個 agent 照著錯的那半做事。\n\n發現脈絡：IMP-0030 收尾時要在這格補一句跨 scope 行為。我補的那句所在片語只出現一次故未受影響（已確認），但重複區塊本身沒動。\n\n修法：刪掉重複的後半段，並比對兩份是否完全一致——不一致就以 ops/ios_test.sh 實際行為為準決定留哪份。建議順手 grep 同檔其他 cell 有無同樣症狀。落點 docs/reference/tech_index.md:132。",
+  "id": "IMP-20260808-b3440e",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "單格文字去重，順手確認沒有第二處同樣問題。",
+  "severity": "low",
+  "source": "IMP-0030 收尾時順手發現",
+  "status": "open",
+  "stream": "IMP"
+}
