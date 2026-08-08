@@ -1399,8 +1399,11 @@ def test_the_refusal_does_not_offer_a_recovery_that_cannot_work(tmp_path, capsys
     capsys.readouterr()
     assert BACKLOG.main(_render_argv(store, out, "--commit")) == 2
     err = capsys.readouterr().err
-    assert f"backlog.py import --from {out} --commit" in err, (
-        f"the refusal does not offer the recovery that does work: {err!r}"
+    assert "backlog.py import --from" not in err, (
+        f"the refusal offers the dead rendered-view recovery: {err!r}"
+    )
+    assert "git checkout <sha> -- docs/runbook/backlog/<id>.json" in err, (
+        f"the refusal does not offer the git recovery path: {err!r}"
     )
 
 
