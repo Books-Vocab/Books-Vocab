@@ -212,7 +212,7 @@ git checkout <previous-sha>      # 例：git checkout c2f2a27
 
 **Step 2：DB migration 已執行 / 資料已被破壞 → 還原 data 備份**
 
-`cmd_backup`（需手動執行；備份排程走 launchd `com.kg.backup`，deploy 不再自動備份）會先把 `$REMOTE_DIR/data` rsync 到本地 `~/kg/backups/data_<YYYYMMDD_HHMM>/`（rsync 依 flavor 分流顯示進度：GNU rsync 用 `--info=progress2 --human-readable`，macOS 內建 openrsync 用 `--progress`）、跑 SQLite integrity check，再打包成 `~/kg/backups/data_<YYYYMMDD_HHMM>.tar.gz` 並產生 `.sha256`。backup 會排除 `data/_ops_backups/` 與 `data/_ops_world_backups/`，避免把寫入工具產生的備份再備份一次。
+`cmd_backup`（需手動執行；備份排程走 launchd `com.kg.backup`，deploy 不再自動備份）會先把 `$REMOTE_DATA_DIR`（standby `~/kg-data`，**不是** `$REMOTE_DIR/data`）rsync 到本地 repo 根的 `backups/data_<YYYYMMDD_HHMM>/`（`devops.sh:27`）（rsync 依 flavor 分流顯示進度：GNU rsync 用 `--info=progress2 --human-readable`，macOS 內建 openrsync 用 `--progress`）、跑 SQLite integrity check，再打包成 `backups/data_<YYYYMMDD_HHMM>.tar.gz` 並產生 `.sha256`。backup 會排除 `data/_ops_backups/` 與 `data/_ops_world_backups/`，避免把寫入工具產生的備份再備份一次。
 
 rsync 若非零退出，`cmd_backup` 會**具名拒絕**（點出殘留的不完整目錄，並指向 standby 每日 S3 備份 `com.kg.backup` → `ops/kg_backup.sh`）後 exit 1，不再讓 rsync 自己印的 usage 當唯一失敗訊號。
 
