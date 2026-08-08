@@ -417,6 +417,72 @@ else
   fail_t "無法從 caller/Swift 原始碼推導取證身分（method='$DEMO_METHOD' file='$DEMO_FILE' class='$DEMO_CLASS'）"
 fi
 
+# ── 18. 跨 scope 的裸名必須被具名指認，而非回報「查無此方法」（IMP-0030 收尾）───
+# 第 14 節把容器反查修好之後仍剩一個誤導面：一個**真實存在、只是不在本 scope**
+# 的裸方法名，錯誤訊息說的是「no test method named 'X'」——那句話是假的。X 存在，
+# 只是住在另一個 target。讀者拿到那句話會去找拼字錯誤，或斷定測試不存在；真正
+# 該做的動作（補一個 --ui / --unit）沒有任何地方講。零匹配要說出「它屬於誰」。
+section "cross-scope bare method is named, not denied"
+
+# 期望值全部自我發現：挑一個「只住在 UI 樹、不住在 unit 樹」的裸名（反之亦然），
+# 硬編會隨測試樹漂移。awk 一律吃 here-string，不接 pipe（`producer | awk exit`
+# 會給 producer SIGPIPE，pipefail 下傳出 141 殺掉本腳本 —— IMP-0058 同類地雷）。
+bare_names_of() { awk -F/ 'NF>=3 { id = $3; sub(/\(.*$/, "", id); print id }' <<<"$1" | sort -u; }
+UNIT_BARES="$(bare_names_of "$UNIT_FLAGS")"
+UI_BARES="$(bare_names_of "$UI_FLAGS")"
+pick_exclusive() {  # $1=flags；$2=要排除的裸名集合（換行分隔）→ 印 "Class|bare"
+  # BSD awk（macOS 內建）的 -v 值**不接受換行**，會噴 "newline in string" 並 exit 2。
+  # 故先壓成空白分隔再 split —— Swift 方法名不含空白，這個攤平是無損的。
+  local excl_flat; excl_flat="$(tr '\n' ' ' <<<"$2")"
+  awk -F/ -v excl="$excl_flat" '
+    BEGIN { n = split(excl, a, " "); for (i = 1; i <= n; i++) if (a[i] != "") seen[a[i]] = 1 }
+    NF>=3 { bare = $3; sub(/\(.*$/, "", bare); if (!(bare in seen)) { print $2 "|" bare; exit } }
+  ' <<<"$1"
+}
+
+XS_PAIR="$(pick_exclusive "$UI_FLAGS" "$UNIT_BARES")"
+XS_CLASS="${XS_PAIR%%|*}"; XS_BARE="${XS_PAIR##*|}"
+if [[ -n "$XS_CLASS" && -n "$XS_BARE" ]]; then
+  # 不給 --ui → unit scope。名字真的存在，只是不在這個 scope。
+  XS_ERR="$("$IOS_TEST" --list "$XS_BARE" 2>&1 >/dev/null)" && XS_RC=0 || XS_RC=$?
+  [[ "$XS_RC" -ne 0 ]] \
+    && ok "跨 scope 裸名仍在 parse 期失敗（不靜默改跑另一個 scope）" \
+    || fail_t "跨 scope 裸名 exit 0 —— 0 匹配的 selector 被當成有效輸入"
+  # 只讀 stderr（`2>&1 >/dev/null`）：stdout 的 selector 不得滿足這條。
+  grep -qF -- "BooksAndVocabUITests/$XS_CLASS" <<<"$XS_ERR" \
+    && ok "錯誤指名真正的 target/容器 BooksAndVocabUITests/$XS_CLASS" \
+    || fail_t "錯誤未指名 $XS_BARE 真正所屬的 BooksAndVocabUITests/$XS_CLASS，實得：$XS_ERR"
+  grep -qF -- "--ui $XS_BARE" <<<"$XS_ERR" \
+    && ok "錯誤給出可直接複製的修正命令（--ui $XS_BARE）" \
+    || fail_t "錯誤未給出可執行的修正命令，實得：$XS_ERR"
+else
+  fail_t "找不到只住在 UI 樹的裸方法名（XS_PAIR='$XS_PAIR'）"
+fi
+
+XU_PAIR="$(pick_exclusive "$UNIT_FLAGS" "$UI_BARES")"
+XU_CLASS="${XU_PAIR%%|*}"; XU_BARE="${XU_PAIR##*|}"
+if [[ -n "$XU_CLASS" && -n "$XU_BARE" ]]; then
+  # 反向：unit 的名字配 --ui。方向不對稱地寫死一邊會讓另一半無聲失效。
+  XU_ERR="$("$IOS_TEST" --ui --list "$XU_BARE" 2>&1 >/dev/null)" && XU_RC=0 || XU_RC=$?
+  [[ "$XU_RC" -ne 0 ]] && ok "反向（unit 名 + --ui）同樣在 parse 期失敗" \
+    || fail_t "反向跨 scope 裸名 exit 0"
+  grep -qF -- "BooksAndVocabTests/$XU_CLASS" <<<"$XU_ERR" \
+    && ok "反向錯誤指名 BooksAndVocabTests/$XU_CLASS" \
+    || fail_t "反向錯誤未指名真正 target，實得：$XU_ERR"
+  grep -qF -- "--unit $XU_BARE" <<<"$XU_ERR" \
+    && ok "反向錯誤給出 --unit 修正命令" \
+    || fail_t "反向錯誤未給修正命令，實得：$XU_ERR"
+else
+  fail_t "找不到只住在 unit 樹的裸方法名（XU_PAIR='$XU_PAIR'）"
+fi
+
+# 負控：真的哪裡都不存在的名字，不得被硬扯到另一個 target。少了這條，
+# 上面四條會被「一律建議去試另一個 scope」的退化實作整組滿足。
+NC_ERR="$("$IOS_TEST" --list zzzNoSuchNameInEitherTreeZzz 2>&1 >/dev/null)" || true
+grep -qF -- "BooksAndVocabUITests/" <<<"$NC_ERR" \
+  && fail_t "不存在的名字被誤指為住在 UI target（負控失敗）：$NC_ERR" \
+  || ok "查無此名時不編造 target（負控）"
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
