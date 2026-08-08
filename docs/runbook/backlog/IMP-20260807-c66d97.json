@@ -18,5 +18,9 @@
   "severity": "med",
   "source": "tool-hardening pass: I rebuilt an already-filed entry",
   "status": "fixed",
-  "stream": "IMP"
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "整合者在 cutover 後於 primary 重跑該票 acceptance_cmd：rc=0（1.0s），list --grep openrsync 回 2 筆含 IMP-20260806-02bf8d，壞 pattern rc=64 無 traceback"
 }
