@@ -266,9 +266,18 @@ enum BookshelfFixtures {
             preconditionFailure("UI World bookshelf book \(seed.title) is missing bookAssetRef")
         }
         let installedURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: ref)
-        guard installedURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL else {
+        // Compare normalized PATHS, not URLs — see UITestFixtureSeed+Reader.swift:
+        // deletingLastPathComponent() carries a trailing slash that
+        // Book.localBooksDirectory's cached URL lacks on a fresh container, and
+        // standardizedFileURL does not normalize it away.
+        guard installedURL.deletingLastPathComponent().standardizedFileURL.path ==
+            Book.localBooksDirectory.standardizedFileURL.path
+        else {
             preconditionFailure(
-                "UI World bookshelf book \(seed.title) asset \(ref) must install directly under Books/: \(installedURL.path)"
+                "UI World bookshelf book \(seed.title) asset \(ref) must install directly under Books/: "
+                    + "asset=\(installedURL.path) "
+                    + "installedDirectory=\(installedURL.deletingLastPathComponent().standardizedFileURL.path) "
+                    + "booksDirectory=\(Book.localBooksDirectory.standardizedFileURL.path)"
             )
         }
         guard installedURL.lastPathComponent == seed.fileName else {
