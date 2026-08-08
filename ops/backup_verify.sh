@@ -39,6 +39,8 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKUP_DIR="${KG_BACKUP_DIR:-$REPO_ROOT/backups}"
+# shellcheck source=lib/signal_traps.sh
+source "$SCRIPT_DIR/lib/signal_traps.sh"
 
 QUIET="${KG_VERIFY_QUIET:-0}"
 
@@ -92,7 +94,7 @@ cleanup() {
     rm -rf "$TMPDIR_BV"
   fi
 }
-trap cleanup EXIT INT TERM
+kg_install_signal_traps cleanup backup_verify
 
 section "解壓 backup"
 info "解壓到 $TMPDIR_BV"

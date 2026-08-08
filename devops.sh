@@ -25,6 +25,9 @@ REMOTE_DATA_DIR="${KG_REMOTE_DATA_DIR:-~/kg-data}"
 PUBLIC_WEB_BASE_URL="https://wordnexus.lol"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
+# Source-only signal semantics shared with the reconciler and backup verifier.
+# shellcheck source=ops/lib/signal_traps.sh
+source "$(cd "$(dirname "$0")" && pwd)/ops/lib/signal_traps.sh"
 
 # default key + 已知 host（standby 用內建 ssh config / known_hosts，免帶 -i）
 SSH_OPTS=( -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
@@ -238,8 +241,9 @@ validate_uid() {
 
 # Production 互斥鎖：deploy/restart/migrate 並發保護
 # Mac 預設無 flock(1)，改用 mkdir 原子鎖
-DEPLOY_LOCK_DIR="/tmp/kg-deploy.lock"
+DEPLOY_LOCK_DIR="${KG_DEPLOY_LOCK_DIR:-/tmp/kg-deploy.lock}"
 DEPLOY_LOCK_HELD=0
+release_deploy_lock() { rmdir "$DEPLOY_LOCK_DIR" 2>/dev/null || true; }
 acquire_deploy_lock() {
   # 同 process 內已持有則略過（cmd_deploy → cmd_migrate 遞迴呼叫場景）
   [[ "$DEPLOY_LOCK_HELD" == "1" ]] && return 0
@@ -247,7 +251,7 @@ acquire_deploy_lock() {
     err "另一個 deploy/restart/migrate 正在進行中（$DEPLOY_LOCK_DIR 已存在）。若確認無進行中操作，請手動 rmdir $DEPLOY_LOCK_DIR"
   fi
   DEPLOY_LOCK_HELD=1
-  trap 'rmdir "$DEPLOY_LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+  kg_install_signal_traps release_deploy_lock devops
 }
 
 # ── 指令：env-check ───────────────────────────────────────────────────────────
