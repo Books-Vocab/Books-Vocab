@@ -95,7 +95,7 @@ _guard=$(printf '%s\n' "$_backup_body" | awk '/if ! rsync -az/,/^  fi$/')
 _guard_msg=$(printf '%s\n' "$_guard" | grep -v '^[[:space:]]*#' | grep -F -- '>&2' || true)
 if [[ "$(printf '%s' "$_backup_body" | grep -c -- 'if ! rsync -az' || true)" == 1 \
    && "$(printf '%s' "$_guard_msg" | grep -c -- 'com\.kg\.backup' || true)" -ge 1 \
-   && "$(printf '%s' "$_guard_msg" | grep -c -- '\$dest' || true)" -ge 1 ]]; then
+   && "$(printf '%s' "$_guard_msg" | grep -cE -- '\$\{?dest\}?' || true)" -ge 1 ]]; then
   ok "KG backup names its own failure and points at the S3 daily backup"
 else
   fail_t "KG backup names its own failure and points at the S3 daily backup"
