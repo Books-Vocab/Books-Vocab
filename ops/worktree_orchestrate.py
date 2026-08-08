@@ -175,6 +175,7 @@ EXIT_BLOCK = 1
 # local main to origin, which the felix reconciler turns into a production rollout).
 BASE_DEFAULT = "main"
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+WORKTREE_SCRATCH_REL = Path(".cache") / "agent-scratch"
 # git's canonical empty-tree object — diff base for a first-ever publish (all files new)
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
@@ -1107,6 +1108,11 @@ def primary_root() -> Path:
     worktree placement and for teardown commands that may remove the caller's own cwd
     (resolve from inside the target worktree)."""
     return wr.common_anchor()
+
+
+def worktree_scratch_path(worktree: Path | str) -> Path:
+    """Return the private, gitignored scratch directory for one worktree."""
+    return Path(worktree) / WORKTREE_SCRATCH_REL
 
 
 def _tag_snapshot(anchor: Path | str) -> str | None:
@@ -2519,10 +2525,57 @@ def cmd_open(args: argparse.Namespace) -> int:
                  f'ops/worktree_registry.py resolve --branch {branch} --status abandoned'}")
         return EXIT_BLOCK
 
+    scratch = worktree_scratch_path(path)
+    try:
+        scratch.mkdir(parents=True, exist_ok=False)
+    except OSError as exc:
+        cleanup_rc, cleanup_out = _git_mutation(
+            ["worktree", "remove", "--force", str(path)],
+            cwd=root,
+            label="open-scratch-cleanup",
+        )
+        rel_rc = EXIT_BLOCK
+        if cleanup_rc == EXIT_OK:
+            rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
+                                   "--branch", branch, "--status", "abandoned"])
+        _emit({"schema": SCHEMA, "step": "open", "error": "scratch setup failed",
+               "detail": str(exc), "scratch_dir": str(scratch),
+               "worktree_cleanup_rc": cleanup_rc, "claim_released": rel_rc == EXIT_OK,
+               "cleanup_detail": cleanup_out}, args.json,
+              f"✗ cannot create isolated scratch directory {scratch}: {exc}\n"
+              f"  worktree cleanup rc={cleanup_rc}, claim released={rel_rc == EXIT_OK}")
+        return EXIT_BLOCK
+
+    # A non-ignored scratch directory would appear as a source change and could
+    # enter a gate or a commit. Refuse the birth rather than creating a second,
+    # untracked coordination surface.
+    ignore_rc, ignore_out = _git(["check-ignore", "-q", "--", str(WORKTREE_SCRATCH_REL)],
+                                 cwd=path)
+    if ignore_rc != EXIT_OK:
+        cleanup_rc, cleanup_detail = _git_mutation(
+            ["worktree", "remove", "--force", str(path)],
+            cwd=root,
+            label="open-scratch-ignore-cleanup",
+        )
+        rel_rc = EXIT_BLOCK
+        if cleanup_rc == EXIT_OK:
+            rel_rc, _ = _registry(["resolve", *_state_arg(args.state),
+                                   "--branch", branch, "--status", "abandoned"])
+        _emit({"schema": SCHEMA, "step": "open", "error": "scratch is not ignored",
+               "scratch_dir": str(scratch), "check_ignore_rc": ignore_rc,
+               "check_ignore_detail": ignore_out, "worktree_cleanup_rc": cleanup_rc,
+               "claim_released": rel_rc == EXIT_OK, "cleanup_detail": cleanup_detail},
+              args.json,
+              f"✗ scratch directory is not gitignored: {scratch}\n"
+              f"  add an ignore rule before opening worktrees; cleanup rc={cleanup_rc}")
+        return EXIT_BLOCK
+
     payload = {"schema": SCHEMA, "step": "open", "branch": branch, "path": str(path),
-               "base": base, "intent": args.intent, "backlog": wanted, "registered": True}
+               "base": base, "intent": args.intent, "backlog": wanted,
+               "scratch_dir": str(scratch), "registered": True}
     human = (f"✓ opened worktree [{branch}] (base {base})\n"
              f"  path: {path}\n"
+             f"  scratch: {scratch}\n"
              f"  registered in ledger"
              + (f" — holding {', '.join(wanted)}" if wanted else ""))
     _emit(payload, args.json, human)
