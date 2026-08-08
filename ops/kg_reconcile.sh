@@ -227,7 +227,7 @@ external_smoke_ok() {
       else
         # `|| true` + 補預設，不用 `|| echo 000`：後者在真 curl 失敗時會把 curl 自己印的
         # "000" 與 echo 的 "000" **接起來**變成 "000000"（實測），讓日誌印出無意義的
-        # HTTP=000000。同款 bug 亦存在於 ops/infra_health.sh:115，那支還會把 "000000"
+        # HTTP=000000。同款 bug 亦存在於 ops/infra_health.sh:120，那支還會把 "000000"
         # 寫進 --json 的機讀 value（IMP-0061 review D4；不在本檔 scope，已另記）。
         hcode="$("$CURL_BIN" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base/api/health" 2>/dev/null || true)"
         [[ -n "$hcode" ]] || hcode="000"
@@ -263,7 +263,7 @@ SMOKE_STATE="n/a"            # 進 verdict 與 deploy.log：n/a | ok | unverifie
 # 從 infra_health --json 抽出 status=="crit" 的 metric key（每行一個）。
 # 只用 tr/sed：本腳本的 zero-dependency 契約是 bash/git/curl，不得為了解析 JSON 引入
 # jq/python。infra_health 的一筆 metric = 一個 {...}，且 key 恆在 status 之前
-# （ops/infra_health.sh:208 的 printf 順序），故先按 '{' 切行再逐行抽。
+# （ops/infra_health.sh:219 的 printf 順序），故先按 '{' 切行再逐行抽。
 infra_crit_keys() {
   printf '%s' "$1" | tr '{' '\n' \
     | sed -n 's/.*"key":"\([^"]*\)".*"status":"crit".*/\1/p'
@@ -273,8 +273,8 @@ infra_crit_keys() {
 # 的第二個症狀，而不是關於這次部署或這台機器的新證據。
 #
 # 為什麼需要這個判斷：external_smoke_ok 放行 unreachable 之後，infra_health 會用**同一個
-# 外部 URL** 再問一次同一個問題（ops/infra_health.sh:40 PROBE_URL、:186 非 200 一律 crit、
-# :227 crit→exit 2）。只看它的 exit code，主機端斷網就會原封不動地變成 reason=infra +
+# 外部 URL** 再問一次同一個問題（ops/infra_health.sh:40 PROBE_URL、:197 非 200 一律 crit、
+# :238 crit→exit 2）。只看它的 exit code，主機端斷網就會原封不動地變成 reason=infra +
 # 回滾 + poison——理由換了個字，行為與修法前一模一樣，而且同一輪 tick 會先發「故不回滾」
 # 再發「回滾」兩則互相矛盾的 ALERT（IMP-0061 review D1 實測）。
 #
