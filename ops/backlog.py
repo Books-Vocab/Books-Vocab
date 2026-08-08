@@ -801,6 +801,7 @@ def add_entry(
     verdict_fields: dict | None = None,
     extra: dict | None = None,
     overwrite: bool = False,
+    _gate: bool = False,
 ) -> dict:
     """Create one entry file and return the entry.
 
@@ -810,6 +811,20 @@ def add_entry(
     makes agents route around a tool. The exception is stated in `--help` rather
     than left for the next caller to discover — IMP-0040 is that lesson.
     """
+    if _gate and status == "fixed":
+        # `import --commit` writes with overwrite=True, so a legacy table row can
+        # flip a LIVE, groomed entry to `fixed` over a criterion that fails today.
+        # Reproduced: an entry with `acceptance_cmd: "false"` was closed by a
+        # one-row table, rc=0, silent. Gated against the STORED criterion — a
+        # legacy row that creates a new entry has none and grades `unproven`, which
+        # is what the historical import honestly is.
+        try:
+            stored = load_entry(store, entry_id) if entry_id else {}
+        except (EntryNotFound, OSError, ValueError):
+            stored = {}
+        _gate_closure(stored or {"id": entry_id or "(new entry)"},
+                      {"status": status}, commit=True)
+
     payload = {
         "schema": SCHEMA,
         "stream": stream,
@@ -919,6 +934,10 @@ SHOW_FIELD_ORDER = (
 # this is the flag people reach for when an entry's wording turns out wrong.
 # The answer is `--resolution`, so the refusal has to be the thing that says it.
 REFUSED_UPDATE_FIELDS = ("detail",)
+
+# Which free-text dests each subcommand refuses outright, so `_resolve_file_twins`
+# does not read a file whose value has no destination.
+REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELDS}
 
 # Free text, i.e. fields whose value is prose an agent composes rather than a
 # token from a fixed vocabulary. Every one of these gets a `--<flag>-file` twin,
@@ -1627,6 +1646,7 @@ def import_legacy(text: str, store: Path) -> dict:
                 detail=row["detail"],
                 resolution=row["resolution"],
                 verdict_fields=verdict_fields,
+                _gate=True,
             )
         except ValueError as exc:
             # Record and keep going. Dying mid-import would leave a partial
@@ -2235,6 +2255,13 @@ def _add_file_twins(parser: argparse.ArgumentParser) -> None:
         for action in list(sub._actions):
             if action.dest not in FILE_TWIN_FIELDS or not action.option_strings:
                 continue
+            if action.nargs == 0:
+                # `list --acceptance-manual` is a store_true FILTER that happens to
+                # share a dest with a free-text field. Giving it a twin manufactured
+                # a flag that can never succeed: its default is `False`, which
+                # `is not None`, so the mutual-exclusion branch fired on every call —
+                # and `list --help` advertised it with four lines about backticks.
+                continue
             long_flags = [o for o in action.option_strings if o.startswith("--")]
             if not long_flags:
                 continue
@@ -2264,6 +2291,14 @@ def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
                   f"or the path, not both.\nnothing was written.", file=sys.stderr)
             return 64
         if path is not None:
+            if dest in REFUSED_BY_COMMAND.get(args.command, ()):
+                # The handler refuses this field outright, so reading the file first
+                # would report a true statement about the wrong problem: measured,
+                # `update --detail-file /no/such/path` blamed the missing file when
+                # `detail` can never be written by `update` at all. Mark it present
+                # and let the handler's own named refusal fire.
+                setattr(args, dest, f"<{flag}-file>")
+                continue
             try:
                 text = Path(path).read_text(encoding="utf-8")
             except OSError as exc:
@@ -2291,6 +2326,17 @@ def _cmd_add(args) -> int:
             f"filing is a badge that costs nothing.\n"
             f"  file it first:  ./ops/backlog.py add ... --json   (prints the new id)\n"
             f"  then groom it:  ./ops/backlog.py update <id> {' '.join(reached)} ... --commit")
+    # The fourth door. `add --status fixed` writes the status directly, and before
+    # this it ran no acceptance at all — the review reproduced it end to end. `add`
+    # has no `--commit` (it lands immediately, a named exception to the dry-run
+    # convention), so the gate runs whenever the status is `fixed`.
+    # A brand-new entry cannot carry a criterion — grooming is a separate act, and
+    # `add` refuses the groom flags by name — so this gate can only ever grade
+    # `unproven`. It is here anyway, and the grade is reported below, because the
+    # alternative is a `fixed` that never passed through the gate at all and is
+    # indistinguishable in the store from one that did. Counting it is the point.
+    acceptance = _gate_closure({"id": "(new entry)"}, {"status": args.status},
+                               commit=True)
     entry = add_entry(
         args.store,
         stream=args.stream,
@@ -2307,7 +2353,9 @@ def _cmd_add(args) -> int:
         entry_id=args.entry_id,
     )
     if args.json:
-        print(json.dumps({"schema": "kg.backlog.add.v1", "entry": entry}, ensure_ascii=False))
+        print(json.dumps({"schema": "kg.backlog.add.v1", "entry": entry,
+                          **({"acceptance": acceptance} if acceptance else {})},
+                         ensure_ascii=False))
     else:
         print(f"{entry['id']}  [{entry['stream']}/{entry['category']}/{entry['severity']}]")
         print(f"  {entry['detail'][:120]}")
@@ -2753,7 +2801,28 @@ def _gate_closure(entry: dict, changes: dict, commit: bool) -> dict | None:
     """
     if changes.get("status") != "fixed":
         return None
-    result = _acceptance_gate({**entry, **changes}, commit)
+    if str(changes.get("acceptance_cmd") or "").strip():
+        # Rewriting the criterion in the same act that closes on it makes the gate
+        # satisfiable by its own input: measured, `update <id> --status fixed
+        # --acceptance-cmd true` replaced a red criterion, ran the replacement, and
+        # the store recorded the closure as machine-proved. Two acts, in this order,
+        # or none.
+        raise BacklogError(
+            "refusing to close and rewrite the acceptance in one act: the gate would "
+            "be checking the command you supplied with the closure, not the one the "
+            "entry stood on.\n"
+            "  change the criterion first:  ./ops/backlog.py update <id> "
+            "--acceptance-cmd '<cmd>' --commit\n"
+            "  then close:                  ./ops/backlog.py update <id> --status "
+            "fixed --fixed-by <sha> --commit")
+    # `entry`, NOT `{**entry, **changes}` — the criterion is whatever was already
+    # stored. HONEST NOTE: with the refusal above in place these two readings are no
+    # longer distinguishable from outside (the refusal removes the only call in which
+    # `changes` can carry an `acceptance_cmd`), so swapping this line back does not
+    # red the suite. The refusal is the load-bearing guard; this line is written the
+    # correct way round so that a future caller passing a criterion in `changes`
+    # cannot resurrect the hole by removing one guard.
+    result = _acceptance_gate(entry, commit)
     if result["kind"] == "failed":
         raise BacklogError(_acceptance_refusal(result))
     return result
@@ -3159,12 +3228,19 @@ def _cmd_update(args) -> int:
     # commit path agreed by coincidence: adding one parser flag produced a clean
     # dry-run followed by an exit-64 --commit. That is IMP-0040's shape inside
     # the code that cites IMP-0040.
-    refused = [f for f in REFUSED_UPDATE_FIELDS if getattr(args, f, None) is not None]
+    refused = [f for f in REFUSED_UPDATE_FIELDS
+               if getattr(args, f, None) is not None
+               or getattr(args, f"{f}_file", None) is not None]
     if refused:
         # Before anything else, and covering the whole invocation: a command
         # that applied its mutable half and complained about the rest would
         # leave the caller guessing which half landed.
-        flags = ", ".join(f"--{f}" for f in refused)
+        # Name the flag the caller actually typed. `--detail-file /no/such/path`
+        # used to report the file error, which is a true statement about the wrong
+        # problem: `detail` can never be written by `update` at all.
+        flags = ", ".join(
+            f"--{f}-file" if getattr(args, f"{f}_file", None) is not None else f"--{f}"
+            for f in refused)
         # Mode-prefixed like every other output of this command: without it the
         # dry-run and --commit forms produced byte-identical text, so the reader
         # could not tell from the output which one they had just run.
@@ -3191,16 +3267,21 @@ def _cmd_update(args) -> int:
         return 64
 
     before = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
-    # Before the write. A red acceptance must leave the store untouched, so the
-    # refusal cannot be mistaken for "some of it landed".
+    # Validate BEFORE gating, same order as `_cmd_verify`. Reversed, a typo'd
+    # `--fixed-by` ran the entry's whole acceptance suite and only then refused on
+    # traceability — measured, and on a real entry that is a 15-minute pytest run
+    # thrown away for a bad sha. It also let a hand-edited `acceptance_expect_rc:
+    # true` through, because `_acceptance_gate` coerces (`int(... or 0)`) where
+    # `validate_entry` refuses it by name.
+    merged = _merged_and_validated(before, changes, args.id)
+    # Then the gate, still before any write: a red acceptance must leave the store
+    # untouched, so the refusal cannot be mistaken for "some of it landed".
     acceptance = _gate_closure(before, changes, args.commit)  # raises on a red one
 
     if args.commit:
         after = update_entry(args.store, args.id, **changes)
     else:
-        # Same predicate as the real path — including the unknown-field check,
-        # which the previous dry-run skipped.
-        after = _merged_and_validated(before, changes, args.id)
+        after = merged
 
     diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
     if args.json:

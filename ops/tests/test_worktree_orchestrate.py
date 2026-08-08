@@ -1088,6 +1088,38 @@ def scratch(tmp_path):
     _git(["config", "user.email", "t@t"], repo)
     _git(["config", "user.name", "t"], repo)
     (repo / "f").write_text("base\n")
+    # A real, groomed, open ticket for the claim tests to take. Before the claim
+    # gate existed these tests claimed `IMP-0001` out of thin air, which is exactly
+    # the hole the gate closes — a claim on an id that is in no store. Seeding it
+    # makes the fixture agree with the world the tests describe ("another worktree
+    # already holds this TICKET").
+    store = repo / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True)
+    def _seed(entry_id, **over):
+        payload = {
+            "schema": "kg.backlog.entry.v1", "id": entry_id, "status": "open",
+            "stream": "IMP", "severity": "med", "category": "tool",
+            "date": "2026-08-08", "source": "fixture",
+            "detail": f"a ticket the claim tests can take ({entry_id})",
+            "plan": "do the thing", "acceptance": "red then green",
+            "fix_site": "ops/x.py:1", "acceptance_cmd": "true",
+            "acceptance_expect_rc": 0, "groomed_at": "2026-08-08",
+            "groomed_by": "fixture"}
+        payload.update(over)
+        (store / f"{entry_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    # Every id the claim tests reach for. They are groomed and open because the
+    # claim gate now requires both — which is the world those tests already
+    # describe in prose ("another worktree already holds this TICKET").
+    for _id in ("IMP-0002", "IMP-0007", "IMP-0100", "IMP-0101"):
+        _seed(_id)
+    (store / "IMP-0001.json").write_text(json.dumps({
+        "schema": "kg.backlog.entry.v1", "id": "IMP-0001", "status": "open",
+        "stream": "IMP", "severity": "med", "category": "tool", "date": "2026-08-08",
+        "source": "fixture", "detail": "a ticket the claim tests can take",
+        "plan": "do the thing", "acceptance": "red then green",
+        "fix_site": "ops/x.py:1", "acceptance_cmd": "true", "acceptance_expect_rc": 0,
+        "groomed_at": "2026-08-08", "groomed_by": "fixture",
+    }), encoding="utf-8")
     _git(["add", "-A"], repo)
     _git(["commit", "-qm", "base"], repo)
 
@@ -2999,7 +3031,9 @@ def test_a_gate_that_has_never_passed_says_so_at_the_moment_it_blocks(scratch):
     # to plant a stub to reach the never-green annotation at all. It now reports as a
     # block, which is what a synthetic repo should look like — no stub needed.
     docs = Path(wt) / "docs"
-    docs.mkdir()
+    # exist_ok: the scratch fixture now commits docs/runbook/backlog (the claim gate
+    # needs a real store), so `docs/` is checked out into every worktree.
+    docs.mkdir(exist_ok=True)
     (docs / "x.md").write_text("<!-- doc-meta -->\n<<<<<<< HEAD\nours\n")
     _git(["add", "-A"], wt)
     _git(["commit", "-qm", "docs: conflicted"], wt)
@@ -4591,3 +4625,83 @@ def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, caps
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "dry-run" and payload["landed"] is False
     assert _queued(primary) == []
+
+
+# --------------------------------------------------------------------------
+# claim preconditions: a ticket has to be workable before it can be taken
+#
+# `--backlog` used to be a pure shape check (`worktree_registry._normalise_tickets`
+# deliberately does not depend on backlog.py). That is right for the registry and
+# wrong for the orchestrator, which knows where the store is: measured, `open
+# --backlog IMP-typo` claimed a ticket that does not exist, and `open --backlog
+# <ungroomed>` handed an agent a ticket with no plan, no acceptance and no fix site
+# — which is the whole thing grooming exists to prevent. Both succeeded silently.
+# --------------------------------------------------------------------------
+
+def _ticket(tmp_path, entry_id, **fields):
+    store = tmp_path / "docs" / "runbook" / "backlog"
+    store.mkdir(parents=True, exist_ok=True)
+    payload = {"schema": "kg.backlog.entry.v1", "id": entry_id, "status": "open",
+               "stream": "IMP", "severity": "med", "category": "tool",
+               "date": "2026-08-08", "source": "probe", "detail": "something"}
+    payload.update(fields)
+    (store / f"{entry_id}.json").write_text(json.dumps(payload), encoding="utf-8")
+    return store
+
+
+GROOMED = {"plan": "do the thing", "acceptance": "red then green",
+           "fix_site": "ops/x.py:1", "groomed_at": "2026-08-08",
+           "groomed_by": "probe", "acceptance_cmd": "true",
+           "acceptance_expect_rc": 0}
+
+
+def test_a_groomed_open_ticket_is_claimable(tmp_path):
+    store = _ticket(tmp_path, "IMP-20260808-aaaaaa", **GROOMED)
+    assert MODULE._unclaimable(store, ["IMP-20260808-aaaaaa"]) == []
+
+
+def test_claiming_a_ticket_that_is_not_in_the_store_is_refused(tmp_path):
+    """A typo used to claim a ticket that does not exist, and the ledger then held
+    an id nobody could ever close."""
+    store = _ticket(tmp_path, "IMP-20260808-aaaaaa", **GROOMED)
+    problems = MODULE._unclaimable(store, ["IMP-20260808-typo0"])
+    assert [p["kind"] for p in problems] == ["not-in-store"], problems
+    assert problems[0]["id"] == "IMP-20260808-typo0"
+
+
+def test_claiming_an_ungroomed_ticket_is_refused_and_names_the_repair(tmp_path):
+    store = _ticket(tmp_path, "IMP-20260808-bbbbbb")     # no groom fields at all
+    problems = MODULE._unclaimable(store, ["IMP-20260808-bbbbbb"])
+    assert [p["kind"] for p in problems] == ["ungroomed"], problems
+    assert "backlog.py update" in problems[0]["repair"], problems[0]
+    assert "--allow-ungroomed" in problems[0]["repair"], (
+        "the refusal has to name its own escape hatch, or the only way past it is "
+        "to stop using the flag")
+
+
+def test_claiming_an_already_resolved_ticket_is_refused(tmp_path):
+    """Work that is already done is the other way to waste an agent, and it reads
+    exactly like a fresh ticket from the id alone."""
+    store = _ticket(tmp_path, "IMP-20260808-cccccc", status="fixed",
+                    fixed_by=["abc1234"], **GROOMED)
+    problems = MODULE._unclaimable(store, ["IMP-20260808-cccccc"])
+    assert [p["kind"] for p in problems] == ["already-resolved"], problems
+
+
+def test_every_unclaimable_ticket_is_named_not_just_the_first(tmp_path):
+    """A batch claim that reports one problem sends the caller round the loop N
+    times. Same reason `anchor` reports the whole wave."""
+    store = _ticket(tmp_path, "IMP-20260808-dddddd")
+    _ticket(tmp_path, "IMP-20260808-eeeeee", status="wont-fix",
+            resolution="decided against", **GROOMED)
+    problems = MODULE._unclaimable(store, ["IMP-20260808-dddddd", "IMP-20260808-eeeeee",
+                                        "IMP-20260808-ffffff"])
+    assert sorted(p["kind"] for p in problems) == [
+        "already-resolved", "not-in-store", "ungroomed"], problems
+
+
+def test_an_unreadable_store_does_not_silently_permit_the_claim(tmp_path):
+    """`could not check` must not become `fine`. The store directory not existing
+    is the shape a fresh clone or a wrong --state has."""
+    problems = MODULE._unclaimable(tmp_path / "no-such-store", ["IMP-20260808-aaaaaa"])
+    assert [p["kind"] for p in problems] == ["not-in-store"], problems

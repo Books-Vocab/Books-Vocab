@@ -3630,7 +3630,7 @@ def test_add_refuses_groom_flags_by_name_and_says_where_they_belong(tmp_path, ca
 
 
 # --------------------------------------------------------------------------
-# 19. one acceptance gate, all three doors to `fixed` (IMP-20260808-3646f3)
+# 21. one acceptance gate, every door to `fixed` (IMP-20260808-3646f3)
 #
 # `acceptance_cmd` is the only field that makes `fixed` mean something a machine
 # checked, and section 18 wired it into exactly ONE of the three ways an entry
@@ -3839,7 +3839,7 @@ def test_all_three_doors_go_through_one_acceptance_implementation(tmp_path, caps
 
 
 # --------------------------------------------------------------------------
-# 20. the acceptance command runs under the shell that vetted it
+# 22. the acceptance command runs under the shell that vetted it
 #     (IMP-20260808-c4bbb3)
 # --------------------------------------------------------------------------
 
@@ -3880,7 +3880,7 @@ def test_acceptance_runs_under_bash_the_same_shell_that_vets_it(tmp_path, capsys
 
 
 # --------------------------------------------------------------------------
-# 21. free text does not pass through a shell (IMP-20260808-1aed9f)
+# 23. free text does not pass through a shell (IMP-20260808-1aed9f)
 #
 # Backticks inside a double-quoted shell string are command substitution: the
 # text is rewritten before this process ever sees it, and neither the store nor
@@ -3932,7 +3932,12 @@ def test_a_flag_and_its_file_twin_together_are_refused_by_name(tmp_path, capsys)
 
     assert rc == 64
     err = capsys.readouterr().err
-    assert "--plan" in err and "--plan-file" in err, err
+    # `--plan` is a PREFIX of `--plan-file`, so `"--plan" in err` has two possible
+    # producers and is satisfied by the twin's own name. Measured: rewriting the
+    # message to say `--plan-file` twice left the old assertion green — the refusal
+    # could stop naming the bare flag, which is the entire content of "by name".
+    assert re.search(r"--plan(?!-file)", err), err
+    assert "--plan-file" in err, err
     assert BACKLOG.load_entry(store, entry["id"]).get("plan", "") == ""
 
 
@@ -3968,12 +3973,184 @@ def test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin():
     `update`'s change map is derived from MUTABLE_FIELDS rather than typed twice.
     """
     commands = BACKLOG.build_parser()._subparsers._group_actions[0].choices
-    missing = []
+    checked, broken = [], []
     for name, sub in commands.items():
-        dests = {a.dest for a in sub._actions}
-        for dest in sorted(dests & set(BACKLOG.FILE_TWIN_FIELDS)):
-            if f"{dest}_file" not in dests:
-                missing.append(f"{name} --{dest.replace('_', '-')}")
-    assert not missing, (
+        by_dest = {a.dest: a for a in sub._actions}
+        for dest in sorted(set(by_dest) & set(BACKLOG.FILE_TWIN_FIELDS)):
+            if by_dest[dest].nargs == 0:
+                # store_true FILTERS share a dest with a free-text field
+                # (`list --acceptance-manual`). A twin there is a flag that can
+                # never succeed — its default `False` is not None, so the
+                # mutual-exclusion branch fires on every call. See _add_file_twins.
+                assert f"{dest}_file" not in by_dest, (
+                    f"{name} --{dest.replace('_', '-')} takes no value; its twin "
+                    f"could only ever refuse")
+                continue
+            if f"{dest}_file" not in by_dest:
+                broken.append(f"{name} --{dest.replace('_', '-')} (no twin)")
+                continue
+            checked.append(f"{name}.{dest}")
+    assert not broken, (
         "free-text flags reachable only through argv, where a backtick is "
-        f"command substitution: {missing}")
+        f"command substitution: {broken}")
+    # Presence alone is near-tautological — it mirrors the predicate the generator
+    # uses to create them, so it can only fail if the generator is never called.
+    # Drive one twin through the parser and assert the VALUE lands on the twin dest
+    # while the bare flag stays unset.
+    assert "update.plan" in checked, checked
+    args = BACKLOG.build_parser().parse_args(
+        ["update", "IMP-0001", "--plan-file", "/dev/null"])
+    assert args.plan_file == "/dev/null" and args.plan is None
+
+
+# --------------------------------------------------------------------------
+# 24. what the first cut of section 21 did NOT pin
+#
+# Every test below was written because a mutation SURVIVED the suite as first
+# written. They are grouped rather than scattered so the next reader can see the
+# shape they share: each one is a guard whose docstring carried the whole design
+# rationale while nothing asserted the behaviour.
+# --------------------------------------------------------------------------
+
+def test_add_status_fixed_is_a_door_too_and_reports_an_unproven_closure(tmp_path, capsys):
+    """`add --status fixed` writes the status directly and ran no gate at all.
+
+    A new entry cannot carry a criterion — grooming is a separate act — so the only
+    honest grade is `unproven`. The point is that it now SAYS so: before this, a
+    `fixed` born here was indistinguishable in the store from one a command proved.
+    """
+    store = tmp_path / "s"
+    assert BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
+                         "--date", "2026-08-08", "--source", "probe",
+                         "--category", "tool", "--severity", "low",
+                         "--status", "fixed", "--detail", "born closed",
+                         "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["acceptance"]["kind"] == "unproven"
+
+
+def test_import_cannot_close_a_live_entry_over_a_red_acceptance(tmp_path, capsys):
+    """The fifth door, and the only one that OVERWRITES.
+
+    `import_legacy` calls `add_entry(overwrite=True, status=row["status"])`, so a
+    one-row legacy table could flip a groomed, open entry to `fixed` while its own
+    nominated command failed — reproduced by review at rc=0, silent.
+    """
+    store = tmp_path / "s"
+    entry = _add(store, detail="import door probe")
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(acceptance_cmd="false"))
+    table = tmp_path / "legacy.md"
+    table.write_text(
+        "| id | date | source | category | severity | status | detail | resolution |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        f"| {entry['id']} | 2026-06-01 | probe | tool | high | fixed | "
+        f"import door probe | closed by the table |\n", encoding="utf-8")
+
+    rc = BACKLOG.main(["import", "--store", str(store), "--from", str(table),
+                       "--commit", "--json"])
+    capsys.readouterr()
+    assert rc != 0, "a legacy table closed a live entry over a failing criterion"
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "open"
+
+
+def test_closing_cannot_rewrite_the_criterion_it_is_judged_by(tmp_path, capsys):
+    """The gate must not read the command supplied by the act it is gating.
+
+    Reproduced: `update <id> --status fixed --acceptance-cmd true` replaced a red
+    criterion, ran the replacement, and the payload recorded `kind: ran, ok: true`.
+    That is a gate satisfiable by its own input.
+    """
+    store = tmp_path / "s"
+    entry = _groomed(store, cmd="false")
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--status", "fixed", "--acceptance-cmd", "true",
+                       "--fixed-by", "aaaaaaa11", "--commit", "--json"])
+    assert rc != 0
+    err = json.loads(capsys.readouterr().out)["error"]
+    assert "one act" in err, err
+    after = BACKLOG.load_entry(store, entry["id"])
+    assert after["status"] == "open" and after["acceptance_cmd"] == "false"
+
+
+def test_editing_an_already_closed_entry_runs_nothing(tmp_path, capsys):
+    """Keyed on the CHANGE, not on the resulting state.
+
+    The first version of `test_updating_a_field_that_is_not_the_status_runs_nothing`
+    used an `open` entry, so `changes.get("status")` and `{**entry, **changes}
+    .get("status")` agreed and the difference was invisible. On a `fixed` entry they
+    disagree, and the merged reading re-runs a full suite on every later correction —
+    which would make `reanchor`'s repair loop unusable.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "should-not-exist"
+    entry = _groomed(store, cmd=f"touch {marker}")
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                         "--commit"]) == 0
+    capsys.readouterr()
+    marker.unlink()                       # the closing act legitimately ran it
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--resolution", "reworded afterwards", "--commit"]) == 0
+    assert not marker.exists(), (
+        "editing an entry that is ALREADY fixed re-ran its acceptance command")
+
+
+def test_a_dry_run_verify_does_not_run_acceptance_commands(tmp_path, capsys):
+    """`update` had this test; `verify` did not, and its guard deleted cleanly."""
+    store = tmp_path / "s"
+    marker = tmp_path / "should-not-exist"
+    entry = _groomed(store, cmd=f"touch {marker}")
+
+    assert BACKLOG.main(["verify", entry["id"], "--store", str(store),
+                         "--verdict", "CONFIRMED-FIXED", "--by", "probe",
+                         "--evidence", "ran it", "--status", "fixed",
+                         "--fixed-by", "aaaaaaa11", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert not marker.exists(), "a dry-run verify executed the acceptance command"
+    assert payload["acceptance"]["kind"] == "would-run"
+
+
+def test_whitespace_is_not_a_command(tmp_path, capsys):
+    """`bash -c "   "` exits 0. Without the strip, a criterion of three spaces
+    grades `ran / ok: true` — a green machine-checked badge produced by nothing,
+    which is the exact artefact this whole section exists to abolish."""
+    # Asserted on the gate directly: `update_entry` will not persist a
+    # whitespace-only criterion (the groom rule strips too), so the store cannot
+    # reach this state through the CLI — but `_acceptance_gate` is also called with
+    # entries read straight off disk, which anyone can hand-edit.
+    blank = {"id": "IMP-0001", "acceptance_cmd": "   ", "acceptance_expect_rc": 0}
+    assert BACKLOG._acceptance_gate(blank, commit=True)["kind"] == "unproven"
+    assert BACKLOG._acceptance_gate(blank, commit=False)["kind"] == "unproven"
+
+
+def test_a_bad_sha_is_refused_before_the_acceptance_suite_runs(tmp_path, capsys):
+    """Validation first, gate second — the order `verify` already used.
+
+    Reversed, a typo'd `--fixed-by` ran the entry's whole acceptance command and
+    only then refused on traceability. On a real entry that is a 15-minute pytest
+    run thrown away for a typo.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "should-not-exist"
+    entry = _groomed(store, cmd=f"touch {marker}")
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--status", "fixed", "--fixed-by", "not-a-sha!",
+                       "--commit", "--json"])
+    capsys.readouterr()
+    assert rc != 0
+    assert not marker.exists(), (
+        "the acceptance suite ran before the closure was checked for well-formedness")
+
+
+def test_a_refused_digest_flag_is_named_as_the_caller_typed_it(tmp_path, capsys):
+    """`--detail-file <missing path>` used to report the file error — a true
+    statement about the wrong problem, since `update` can never write `detail` at
+    all. The refusal must name the flag that was actually typed."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--detail-file", str(tmp_path / "nope.txt"), "--commit"])
+    assert rc == 64
+    err = capsys.readouterr().err
+    assert "--detail-file" in err, err
+    assert "--resolution" in err, "the digest refusal lost its repair hint"

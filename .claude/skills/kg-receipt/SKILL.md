@@ -18,7 +18,7 @@ version: 1.0.0
 3. 若改 user/agent-facing surface，已跑 docs impact/lint 或明確說明為何不需要。
 4. 若改 git history / branch / worktree，已跑相應 audit。
 5. 若有未跑測試，明確列原因與風險。
-6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → 用 `ops/backlog.py add` 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
+6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → 用 `ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
 
 ### Stream 分流(可判定,不是「視情況」)
 
