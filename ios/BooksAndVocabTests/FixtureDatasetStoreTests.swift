@@ -2617,6 +2617,66 @@ struct FixtureDatasetStoreTests {
         }
     }
 
+    // MARK: - Books/ containment guard (IMP-20260806-edac2b)
+
+    /// The fixture seeders guard that an installed book asset landed directly
+    /// under `Books/`. Comparing the two `URL`s naked rejects a path that
+    /// satisfies the guard's own stated requirement:
+    ///
+    /// - `installedURL.deletingLastPathComponent()` **always** yields a
+    ///   directory URL with a trailing slash.
+    /// - `Book.localBooksDirectory` is `documentDirectory.appendingPathComponent("Books")`
+    ///   computed *before* `createDirectory` runs — and `appendingPathComponent`
+    ///   only appends a trailing slash when the directory already exists. The
+    ///   result is then cached for the lifetime of the process.
+    ///
+    /// `standardizedFileURL` does not normalize a trailing slash away, so on a
+    /// fresh container the two spellings of the same directory compare unequal
+    /// and the seeder aborts. The aborting launch leaves `Books/` on disk, so
+    /// every later launch passes — which is exactly how the UI suite stays
+    /// green while the fixture is broken for anyone with a clean simulator.
+    @Test func booksContainmentGuardsCompareNormalizedPaths() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("kg-books-guard-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // Mirrors Book.localBooksDirectory: compute first, create second, cache.
+        let cachedBooksDirectory = root.appendingPathComponent("Books")
+        try FileManager.default.createDirectory(at: cachedBooksDirectory, withIntermediateDirectories: true)
+        // Mirrors FixtureDatasetStore.installURL(for:ref:) for installAs "Books/<file>".
+        let installedParent = root.appendingPathComponent("Books/reader-real-book.epub")
+            .deletingLastPathComponent()
+
+        #expect(
+            installedParent.standardizedFileURL != cachedBooksDirectory.standardizedFileURL,
+            "trailing-slash asymmetry is the trap: naked URL equality must never gate this"
+        )
+        #expect(
+            installedParent.standardizedFileURL.path == cachedBooksDirectory.standardizedFileURL.path,
+            "path comparison is what makes the two spellings of Books/ agree"
+        )
+
+        // Neither seeder may reintroduce the naked comparison.
+        for relative in [
+            "ios/BooksAndVocab/Support/UITestFixtureSeed+Reader.swift",
+            "ios/BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift",
+        ] {
+            let source = try String(
+                contentsOf: Self.repoRootURL.appendingPathComponent(relative),
+                encoding: .utf8
+            )
+            #expect(
+                !source.contains("deletingLastPathComponent().standardizedFileURL =="),
+                "\(relative): Books/ containment guard must not compare URLs naked"
+            )
+            #expect(
+                source.contains("standardizedFileURL.path =="),
+                "\(relative): Books/ containment guard must compare normalized paths"
+            )
+        }
+    }
+
     @Test @MainActor func externalDatasetOverridesFixtureSeeds() throws {
         let dataset = """
         {

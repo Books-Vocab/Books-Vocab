@@ -104,8 +104,20 @@ extension UITestFixtureSeed {
     private static func resolveReaderFixture(from seed: UIWorldReaderSeed) throws -> ReaderFixture {
         _ = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.textAssetRef)
         let bookURL = try FixtureDatasetStore.requireInstalledAssetURL(ref: seed.bookAssetRef)
-        guard bookURL.deletingLastPathComponent().standardizedFileURL == Book.localBooksDirectory.standardizedFileURL else {
-            preconditionFailure("UI World reader.realBookLibrary book asset \(seed.bookAssetRef) must install directly under Books/: \(bookURL.path)")
+        // Compare normalized PATHS, not URLs: deletingLastPathComponent() always
+        // yields a trailing slash while Book.localBooksDirectory caches the URL it
+        // computed before creating the directory (no trailing slash on a fresh
+        // container). standardizedFileURL does not normalize that away, so a naked
+        // URL == rejects a path that satisfies this very guard.
+        guard bookURL.deletingLastPathComponent().standardizedFileURL.path ==
+            Book.localBooksDirectory.standardizedFileURL.path
+        else {
+            preconditionFailure(
+                "UI World reader.realBookLibrary book asset \(seed.bookAssetRef) must install directly under Books/: "
+                    + "asset=\(bookURL.path) "
+                    + "installedDirectory=\(bookURL.deletingLastPathComponent().standardizedFileURL.path) "
+                    + "booksDirectory=\(Book.localBooksDirectory.standardizedFileURL.path)"
+            )
         }
         guard bookURL.lastPathComponent == seed.bookFileName else {
             preconditionFailure("UI World reader.realBookLibrary bookFileName \(seed.bookFileName) must match installed asset \(bookURL.lastPathComponent)")
