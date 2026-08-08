@@ -56,7 +56,7 @@ verified_against: b82fc08be
 防線層級（遷移後）:
 
 1. ~~**Lightsail AutoSnapshot**~~ — **已消滅**（Lightsail instance 2026-06-19 terminate，snapshot 與 instance 一併不存；standby 無 instance 級替代，見 `backup.md`）。
-2. ~~**本機 tar backup**~~ — `devops.sh cmd_backup` 寫死 Lightsail，**OFFLINE**；standby 改用手動冷 `tar`（見 `deploy.md §備份 SOP`）。
+2. **本機冷快照（2026-08-08 復役）** — `./ops/devops_kg_safe.sh backup` 從 standby 拉 `~/kg-data` 回本機並自動驗 SQLite integrity + sha256。原記「寫死 Lightsail 故 OFFLINE」已不成立（`devops.sh` 2026-06-19 即 retarget standby）；真正的病灶是 `cmd_backup` 傳 GNU 專屬的 `--info=progress2`，macOS 內建 openrsync 不認 → 印 usage 後中止（IMP-0023 / IMP-20260806-02bf8d，現已依 rsync flavor 分流；rsync 非零退出改為具名拒絕並指向下方第 3 層）。
 3. **AWS S3 異地 backup（現役主防線）** — 本 SOP。standby launchd 每日跑，粒度小、可逐日選版本。
 
 ---
@@ -67,7 +67,7 @@ verified_against: b82fc08be
 >
 > **機器對照（現役 = standby）**：下方 §2.2–2.8 的指令以 Lightsail 範本寫成（`ssh ubuntu@13.193.212.134`、`/home/ubuntu/knowledge_graph_api/`、`/var/log/kg_backup.log`）。**在現役 standby 上等價替換**：
 > - SSH：`ssh chenliangyu@100.118.39.104`（Tailscale，公鑰免密碼）
-> - data 目錄 / 工作區：`~/project/kg/backend/`（data 在其下 `data/`）
+> - data 目錄：`~/kg-data/`（**不是** `~/project/kg/backend/data/`——2026-06-16 已移出 worktree；同檔 :15 / :23 為準）。工作區（compose / `.env`）：`~/kg-prod/backend/`（`devops.sh:21` `REMOTE_DIR`；`~/project/kg` 是 dev-only clone，會靜默腐爛，別拿它當生產）
 > - backup log（查 sha256 對照）：standby `~/Library/Logs/kg_backup.log`
 > - 容器名：`knowledge-graph-api`（OrbStack）；`sudo` 在 macOS 通常不需（檔案 owner = `chenliangyu`，非容器 root drift）
 > - 拉 S3：standby 上若 `kg-backup-agent` 只有 PutObject 遇 `AccessDenied`，改用主力機 admin profile 拉再 scp 到 standby（同 §2.3 備援）。

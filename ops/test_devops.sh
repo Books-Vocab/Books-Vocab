@@ -85,12 +85,17 @@ fi
 # 備份（launchd com.kg.backup）。正控 = 守衛存在；指向性 = 訊息點名那條替代路徑。
 # 指向性檢查必須**限縮在守衛區塊內**：cmd_backup 開頭本來就有一句提到 com.kg.backup
 # 的註解，對整個函式範圍 grep 會被那句既有註解滿足——守衛留著但把訊息全刪掉照樣綠。
-# 那正是本檔上方剛換掉的空話斷言換個位置復發。$dest 那半是第二個正控（訊息必須點出
-# 殘留目錄，不能只喊一句失敗）。
+# 那正是本檔上方剛換掉的空話斷言換個位置復發。
+# 再往下濾一層到「真的印給人看的行」（去註解 + 必須有 >&2），原因有二：
+#   a) 註解同樣能滿足 grep（守衛裡新寫一句提到 com.kg.backup 的註解就假綠）；
+#   b) $dest 若對整個守衛範圍 grep 會是**恆真式**——awk 範圍必然含 rsync 的目的地引數
+#      那行 `"$SERVER:$REMOTE_DATA_DIR/" "$dest/"; then`，它已被第一個 conjunct 蘊含，
+#      discriminating power 為零。濾掉不含 >&2 的行才真的在鎖「訊息點出了殘留目錄」。
 _guard=$(printf '%s\n' "$_backup_body" | awk '/if ! rsync -az/,/^  fi$/')
+_guard_msg=$(printf '%s\n' "$_guard" | grep -v '^[[:space:]]*#' | grep -F -- '>&2' || true)
 if [[ "$(printf '%s' "$_backup_body" | grep -c -- 'if ! rsync -az' || true)" == 1 \
-   && "$(printf '%s' "$_guard" | grep -c -- 'com\.kg\.backup' || true)" -ge 1 \
-   && "$(printf '%s' "$_guard" | grep -c -- '\$dest' || true)" -ge 1 ]]; then
+   && "$(printf '%s' "$_guard_msg" | grep -c -- 'com\.kg\.backup' || true)" -ge 1 \
+   && "$(printf '%s' "$_guard_msg" | grep -c -- '\$dest' || true)" -ge 1 ]]; then
   ok "KG backup names its own failure and points at the S3 daily backup"
 else
   fail_t "KG backup names its own failure and points at the S3 daily backup"
@@ -101,6 +106,38 @@ fi
 [[ -n "$(rsync_flags '')" ]] \
   && ok "KG backup rsync flavor probe yields flags on this host" \
   || fail_t "KG backup rsync flavor probe yields flags on this host"
+# 以上全是 grep-on-source，擋不住「訊息一字不動、只把結尾的 err 換成 echo」——那之後
+# cmd_backup 會對空目錄繼續跑 integrity check + tar 然後 exit 0，正是 IMP-20260806-
+# 02bf8d 的病本身（拿印訊息當失敗訊號）換皮。這條用 stub rsync 實跑一次失敗路徑，
+# 斷 exit code 與磁碟產物，不看原始碼長相。全程本機離線，不碰生產。
+_bk_sandbox=$(mktemp -d)
+mkdir -p "$_bk_sandbox/bin" "$_bk_sandbox/backups"
+cat > "$_bk_sandbox/bin/rsync" <<'STUB'
+#!/bin/bash
+[[ "${1:-}" == "--version" ]] && { echo "openrsync: protocol version 29"; exit 0; }
+echo "rsync: unrecognized option --info=progress2" >&2
+exit 1
+STUB
+chmod +x "$_bk_sandbox/bin/rsync"
+{
+  echo 'set -euo pipefail'
+  grep -E '^(info|ok|err|section)\(\)' "$KG"
+  awk '/^rsync_progress_flags\(\)/,/^}$/' "$KG"
+  awk '/^cmd_backup\(\)/,/^}$/' "$KG"
+  echo "BACKUP_DIR='$_bk_sandbox/backups'; SERVER=stub-host; REMOTE_DATA_DIR=/stub"
+  echo 'cmd_backup'
+} > "$_bk_sandbox/run.sh"
+_bk_rc=0
+PATH="$_bk_sandbox/bin:$PATH" bash "$_bk_sandbox/run.sh" > "$_bk_sandbox/out" 2>&1 || _bk_rc=$?
+if [[ "$_bk_rc" -ne 0 ]] \
+   && grep -qF 'com.kg.backup' "$_bk_sandbox/out" \
+   && [[ -z "$(find "$_bk_sandbox/backups" -name '*.tar.gz' 2>/dev/null)" ]] \
+   && [[ -n "$(find "$_bk_sandbox/backups" -name '.INCOMPLETE' 2>/dev/null)" ]]; then
+  ok "KG backup really exits non-zero on rsync failure, leaving no fake artifact"
+else
+  fail_t "KG backup really exits non-zero on rsync failure, leaving no fake artifact (rc=$_bk_rc)"
+fi
+rm -rf "$_bk_sandbox"
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"
