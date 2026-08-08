@@ -13,6 +13,9 @@
 #   - allowed exemptions: trivial-typo | rename-only | format-only | generated-snapshot |
 #                         single-line-small-file | machine-repair | backlog-grooming
 #                         (the last two are CHECKED: ledger paths only)
+#   - `single-line-small-file` is also machine-checked: non-merge, at most one added
+#     and one deleted line, with no normative wording in the added line. The other
+#     four semantic tokens remain trailer-only by design.
 #
 # Audited repo: $KG_REVIEW_AUDIT_ROOT, else the git toplevel of the CALLER's cwd, else
 # the repo this script lives in. The chosen root is always echoed to stderr.
@@ -111,6 +114,7 @@ missing_count=0
 invalid_exemption_count=0
 
 EXEMPTION_NOTE=""
+EXEMPTION_FAIL_REASON=""
 
 # $1 = token, $2 = the commit's file list, one path per line.
 #
@@ -162,6 +166,44 @@ is_allowed_exemption() {
   esac
 }
 
+# `single-line-small-file` has an objective shape, so the exemption must prove that
+# shape instead of trusting the trailer. The other four semantic tokens remain
+# self-asserted: a shell script cannot reliably decide whether a typo, rename,
+# formatting-only, or generated snapshot claim is true.
+single_line_exemption_holds() {
+  local sha="$1" parents added deleted a d added_lines
+
+  parents="$(git rev-list --parents -n 1 "$sha" | wc -w)"
+  [[ "$parents" -le 2 ]] || { EXEMPTION_FAIL_REASON="merge commit"; return 1; }
+
+  added=0
+  deleted=0
+  while IFS=$'\t' read -r a d _; do
+    [[ -n "$a" ]] || continue
+    if [[ "$a" == "-" || "$d" == "-" ]]; then
+      EXEMPTION_FAIL_REASON="binary change"
+      return 1
+    fi
+    added=$((added + a))
+    deleted=$((deleted + d))
+  done < <(git show --numstat --format= "$sha")
+
+  # A one-line edit is +1/-1, so bound each side rather than their sum.
+  if [[ "$added" -gt 1 || "$deleted" -gt 1 ]]; then
+    EXEMPTION_FAIL_REASON="+${added}/-${deleted} lines, not a single line"
+    return 1
+  fi
+
+  added_lines="$(git show --unified=0 --format= "$sha" | grep '^+' | grep -v '^+++' || true)"
+  # Use a herestring rather than `grep -q` in a pipeline: under pipefail, an early
+  # match can SIGPIPE its producer and turn a real match into a false green.
+  if grep -Eq '必須|禁止|不得|一律|通則|規則|規範|應該|應當|MUST|NEVER|ALWAYS' <<<"$added_lines"; then
+    EXEMPTION_FAIL_REASON="normative wording in the added line"
+    return 1
+  fi
+  return 0
+}
+
 while IFS= read -r sha; do
   [[ -n "$sha" ]] || continue
 
@@ -195,7 +237,9 @@ while IFS= read -r sha; do
     reviewed_count=$((reviewed_count + 1))
     ok_count=$((ok_count + 1))
   elif [[ -n "$review_exempt" ]]; then
-    if is_allowed_exemption "$review_exempt" "$files_raw"; then
+    EXEMPTION_FAIL_REASON=""
+    if is_allowed_exemption "$review_exempt" "$files_raw" \
+       && { [[ "$review_exempt" != "single-line-small-file" ]] || single_line_exemption_holds "$sha"; }; then
       status="exempt"
       note="Review-Exempt: $review_exempt"
       exempt_count=$((exempt_count + 1))
@@ -203,7 +247,11 @@ while IFS= read -r sha; do
     else
       status="invalid-exemption"
       level="block"
-      note="invalid Review-Exempt: $review_exempt${EXEMPTION_NOTE:+ — $EXEMPTION_NOTE}"
+      if [[ -n "$EXEMPTION_FAIL_REASON" ]]; then
+        note="invalid Review-Exempt: $review_exempt ($EXEMPTION_FAIL_REASON)"
+      else
+        note="invalid Review-Exempt: $review_exempt${EXEMPTION_NOTE:+ — $EXEMPTION_NOTE}"
+      fi
       invalid_exemption_count=$((invalid_exemption_count + 1))
       block_count=$((block_count + 1))
     fi

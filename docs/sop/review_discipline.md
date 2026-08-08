@@ -6,7 +6,7 @@ scope:
   - .claude/skills/
   - .claude/agents/
   - docs/sop/
-verified_against: db0e9ed46
+verified_against: d29eb11ec
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
@@ -45,9 +45,9 @@ verified_against: db0e9ed46
 - `rename-only`
 - `format-only`
 - `generated-snapshot`
-- `single-line-small-file`
+- `single-line-small-file` — 工具另實際檢查非 merge、增刪各至多一行，且新增行不得含規範性語彙
 - `machine-repair` — 只給程式用（`worktree_orchestrate.py` 的 post-landing ledger repair 自己蓋）。工具會驗這顆 commit **只碰** `docs/runbook/backlog/*.json`：越界即具名該檔並判不合法，空檔案清單也拒（「沒東西可反對」與「看不到」在這裡是同一個字串，把後者當前者正是這道 gate 要防的）。
-- `backlog-grooming` — **純看板資料梳理**用的例外；同樣由工具驗證只碰 `docs/runbook/backlog/*.json`，空檔案清單拒絕。它只免除程式碼 reviewer，不免除資料驗證：同一批仍必須提供 `backlog.py validate --baseline-check` 與 `audit-criteria` 的當下證據；只要改到 `ops/`、測試、skill 或其他文件，就不能使用此 token，必須有 `Reviewed-by:`。其餘五個都是無從查證的自述，工具採信作者的話
+- `backlog-grooming` — **純看板資料梳理**用的例外；同樣由工具驗證只碰 `docs/runbook/backlog/*.json`，空檔案清單拒絕。它只免除程式碼 reviewer，不免除資料驗證：同一批仍必須提供 `backlog.py validate --baseline-check` 與 `audit-criteria` 的當下證據；只要改到 `ops/`、測試、skill 或其他文件，就不能使用此 token，必須有 `Reviewed-by:`。其餘四個語意 token 是無從查證的自述，工具採信作者的話；`single-line-small-file` 不在這個自述桶內，會實際比對 diff
 
 `machine-repair` 與 `backlog-grooming` 都是**路徑受檢的資料例外，不是通用免審通行證**。`backlog-grooming` 的資料語意仍由 backlog gate 負責，review receipt gate 不替它宣稱資料正確。
 

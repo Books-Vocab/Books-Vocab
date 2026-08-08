@@ -351,6 +351,58 @@ EOF
 
 rm -rf "$MR"
 
+section "single-line-small-file exemption is machine-checked (IMP-0065)"
+
+# One branch per case, one commit each, so the earlier JSON count assertions stay
+# scoped to their original fixture.
+sl_case() {  # $1=branch $2=file $3=content $4=commit message
+  git -C "$TMP/repo" checkout -q main
+  git -C "$TMP/repo" checkout -q -B "$1"
+  printf '%s' "$3" >"$TMP/repo/$2"
+  git -C "$TMP/repo" add "$2"
+  git -C "$TMP/repo" commit -q -F - <<EOF
+$4
+EOF
+  set +e
+  KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$AUDIT" --base main --json >"$TMP/sl_$1.json" 2>/dev/null
+  sl_rc=$?
+  set -e
+}
+
+sl_case slplain plain.txt $'a plain one line note\n' \
+  $'docs: plain one-liner\n\nReview-Exempt: single-line-small-file'
+if [[ "$sl_rc" -eq 0 ]] && jq -e '.summary.exempt==1 and .summary.block==0' "$TMP/sl_slplain.json" >/dev/null; then
+  ok "single-line exemption survives a genuine one-liner"
+else
+  fail_t "single-line exemption survives a genuine one-liner (rc=$sl_rc)"
+fi
+
+sl_case slnorm normative.txt $'這條規則:所有 agent 必須送審\n' \
+  $'docs: one line that legislates\n\nReview-Exempt: single-line-small-file'
+if [[ "$sl_rc" -eq 2 ]] && jq -e '.summary.invalidExemption==1 and .summary.block==1' "$TMP/sl_slnorm.json" >/dev/null; then
+  ok "single-line exemption blocked by normative wording"
+else
+  fail_t "single-line exemption blocked by normative wording (rc=$sl_rc)"
+fi
+
+sl_case slmulti twolines.txt $'line one\nline two\n' \
+  $'docs: two lines\n\nReview-Exempt: single-line-small-file'
+if [[ "$sl_rc" -eq 2 ]] && jq -e '.summary.invalidExemption==1' "$TMP/sl_slmulti.json" >/dev/null; then
+  ok "single-line exemption blocked by a two-line change"
+else
+  fail_t "single-line exemption blocked by a two-line change (rc=$sl_rc)"
+fi
+
+# The other semantic exemptions stay trailer-only on purpose: multi-line and
+# normative still exempt. Without this, the change would silently narrow all five.
+sl_case sltypo typo.txt $'規則一 必須\n規則二 禁止\n' \
+  $'docs: fix typo\n\nReview-Exempt: trivial-typo'
+if [[ "$sl_rc" -eq 0 ]] && jq -e '.summary.exempt==1' "$TMP/sl_sltypo.json" >/dev/null; then
+  ok "trivial-typo exemption still trailer-only"
+else
+  fail_t "trivial-typo exemption still trailer-only (rc=$sl_rc)"
+fi
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"
