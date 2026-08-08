@@ -51,6 +51,40 @@ verified_against: db0e9ed46
 
 `machine-repair` 與 `backlog-grooming` 都是**路徑受檢的資料例外，不是通用免審通行證**。`backlog-grooming` 的資料語意仍由 backlog gate 負責，review receipt gate 不替它宣稱資料正確。
 
+## Review cycle 的有界收斂
+
+逐項 review 不等於無限重審。對同一個**完整 40/64 位 commit SHA × scope**，用
+`ops/review_cycle.py` 記錄 review 結果與證據：第一次帶 BLOCK 只允許修正後再審一次；第二次仍有
+BLOCK 時輸出 `adjudication_required`，**不得自動派第三次完整 review**。裁決者必須明確選
+`accept` / `fix` / `defer` 並寫理由；新 commit 會自然開始新 cycle。
+
+### Review budget：80 分與 gate 分層
+
+這個停止條件是效率與風險的取捨：預設做到可交付的 80 分，不為了清掉所有 NIT 把同一個 scope
+磨成「永遠不落地」。第三輪只有在 scope 確實複雜，或第二輪仍有多個明顯的 release-blocking
+缺陷時才例外啟動，且必須寫下具名理由；單一 NIT 或 tooling debt 不得重新打開原始 scope。
+
+Gate 是獨立的機器 review 層，不是 LLM review 的重播：任何 gate BLOCK 都是具體退回路徑，修正
+後須以 fresh gate 證明；fresh gate 通過、review cycle 已有界收斂且收據完整時，正常變更即可落地，
+不需要為了追求文字或風格上的完美而無限追加 LLM review。遇到來回超過兩三輪，先裁決真正的
+release-blocking correctness，其餘記為 follow-up，回到交付與下一輪工具改善。
+
+```bash
+./ops/review_cycle.py --json start --scope <scope> --commit-sha <sha>
+./ops/review_cycle.py --json record --scope <scope> --commit-sha <sha> \
+  --outcome findings --reviewer <name> --evidence-file <path> \
+  --block-count <n> --nit-count <n> --tooling-debt-count <n>
+./ops/review_cycle.py --json adjudicate --scope <scope> --commit-sha <sha> \
+  --decision <accept|fix|defer> --reason '<具名理由>'
+./ops/review_cycle.py --json cancel --scope <scope> --commit-sha <sha> \
+  --reason '<reviewer 中斷或逾時的具名理由>'
+```
+
+工具只限制流程，不替 reviewer 判斷品質；`BLOCK`、`NIT`、`TOOLING-DEBT` 分桶後，前者決定
+當前 scope 是否能放行，後兩者只能作為具名 follow-up。reviewer 在 evidence 產出前崩潰或逾時時，
+先用 `cancel` 釋放 active reservation（不消耗 review slot），不可用它重置已完成的 review。
+乾淨工作樹或已有 commit 不是完成證明。
+
 用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`它稽核的 repo 是**呼叫端所在的** git toplevel（可用 `$KG_REVIEW_AUDIT_ROOT` 覆寫），每次執行會把選中的 root 印到 stderr——舊版無條件 cd 回腳本自己的 repo，`( cd 別處 && review_audit.sh )` 會靜默稽核錯的歷史（IMP-0049）。
 
 固定模板（**優先軌**：`subagent_type: "code-reviewer"`，§3–§6 已內建，prompt 只給 commit hash + scope + 特別關注點；下方 general-purpose 為 fallback 軌，才需完整帶齊六項）：

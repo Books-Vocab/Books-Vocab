@@ -1,0 +1,21 @@
+{
+  "acceptance": "bash ops/tests/test_review_cycle.sh 顯示 23 個狀態機斷言全部通過，且 duplicate start、兩次 BLOCK 後第三次自動 review、terminal cycle 追加 record、SHA alias、短 SHA、malformed state、不一致 active attempt、invalid UTF-8 evidence 與 abandoned reservation 都被正確處理。",
+  "acceptance_cmd": "bash ops/tests/test_review_cycle.sh",
+  "acceptance_expect_rc": 0,
+  "brief": "審查反覆返工時沒有人替使用者裁決因此同一問題持續消耗時間",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "本輪 review 在兩次完整往返後仍把新 blocker、原始 blocker、nit 與 tooling debt 混在同一條路徑，driving agent 因而繼續盲修。需要一個可機器讀的 review cycle 狀態：綁定被審 commit、記錄每次 review 的 delta 與結果、第二次完整 review 後把後續輸出導向 adjudication；第三次不得自動再派同一 scope。裁決必須把 blocker、nit、tooling debt 分桶，並明確指出哪些是原始 scope 的放行條件、哪些只開 follow-up，不可用乾淨 worktree 或有 commit 代替完成證明。與 IMP-20260809-b81b05 的 gate 結果重用相鄰但不同：一張管驗證成本，一張管審查收斂。",
+  "fix_site": "ops/review_cycle.py:23-316; ops/tests/test_review_cycle.sh",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "workflow:groom@v1",
+  "id": "IMP-20260809-ac2517",
+  "plan": "新增 ops/review_cycle.py 狀態機，以完整 commit SHA 與 scope 綁定 cycle；start 以 lock 保留唯一 active attempt，第一次含 BLOCK 允許修正後最後一次 review，第二次含 BLOCK 停在 adjudication_required；cancel 只釋放 reviewer 中斷或逾時的 reservation，不重置已完成 review；用 schema validation 與 atomic replace 保存 gitignored state，對 malformed state、CLI 輸入與 evidence 編碼 fail-closed；補 shell regression tests 驗證 PASS、follow-up、reservation、recovery、alias、結構化拒絕與裁決路徑。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個審查狀態工具、它的測試與一份流程契約",
+  "severity": "high",
+  "source": "user: review-loop incident",
+  "status": "open",
+  "stream": "IMP"
+}
