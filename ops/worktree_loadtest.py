@@ -131,7 +131,8 @@ def lane_row(i: int) -> str:
 def make_lane_commit(wt: Path, i: int, conflict: str) -> list[dict]:
     """The change one lane makes. Routes to a real gate; optionally collides."""
     steps = []
-    # `ops/**.sh` -> ops-shell-syntax (bash -n, block) + ops-shell-untested (warn).
+    # `ops/**.sh` -> ops-shell-syntax (bash -n, block) + ops-shell-scan (repo-wide
+    # scan, block, ~0.4s per lane) + ops-shell-untested (warn).
     # The warn also exercises the "landed with warnings" path.
     fixture = wt / "ops" / "loadtest_fixtures" / f"lt_{i:02d}.sh"
     fixture.parent.mkdir(parents=True, exist_ok=True)

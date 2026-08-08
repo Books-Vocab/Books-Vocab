@@ -14,6 +14,47 @@ from pathlib import Path
 from typing import BinaryIO
 
 
+# The ctype every child of this runner gets. THIS VALUE IS CHOSEN, NOT INHERITED —
+# that is the whole point of it existing, and the reason it is a named constant
+# rather than a line in the code below.
+#
+# Measured 2026-08-08 (IMP-20260808-3bbfa2): `devops.sh` died on
+# `dest\xef: unbound variable` through the gate and ran clean eight times by hand.
+# bash under a UTF-8 ctype reads the first byte of a full-width `（` as part of the
+# variable name; under `C` it stops at the byte boundary and the line is harmless.
+# Which path a script took depended on WHO STARTED IT: an interactive shell here
+# leaves LC_CTYPE unset (C), while CPython's PEP 538 coercion sets `C.UTF-8` before
+# spawning anything. So the tool and the human were running different parsers, and
+# the diff between them was invisible in every log either one produced.
+#
+# `C.UTF-8` is the stricter of the two and matches what the gate already ran under,
+# so this pins today's gate behaviour rather than changing it. Strictness is the
+# tie-breaker: the strict parse fails on things the permissive one waves through, and
+# a gate that is more permissive than a user's terminal is a gate that ships the bug.
+CHILD_LC_CTYPE = "C.UTF-8"
+
+
+def _child_env(env: dict[str, str] | None) -> dict[str, str]:
+    """The child's environment with the locale decision made explicitly.
+
+    `LC_ALL` is REMOVED, not left alone, and that is load-bearing: POSIX makes
+    `LC_ALL` outrank every `LC_*`, so setting `LC_CTYPE` beside an inherited
+    `LC_ALL` yields a variable that reads back exactly as intended and changes
+    nothing. Measured: `LC_ALL=C LC_CTYPE=C.UTF-8` gives an effective ctype of `C`.
+    Leaving it would reintroduce the exact disease — an invisible, caller-dependent
+    difference in how children parse — while looking like the cure.
+
+    Dropping it does let the caller's other categories (messages, time, numeric) fall
+    back to their own `LC_*`/`LANG`, which is what they would have been without an
+    `LC_ALL` at all. That is a deliberate, bounded trade: none of those categories
+    changes how a shell tokenizes a script, and ctype is the one that does.
+    """
+    resolved = dict(os.environ if env is None else env)
+    resolved.pop("LC_ALL", None)
+    resolved["LC_CTYPE"] = CHILD_LC_CTYPE
+    return resolved
+
+
 def _terminate_process_group(proc: subprocess.Popen[bytes], timeout: float = 5.0) -> None:
     """Terminate the isolated child session, escalating to KILL at deadline."""
     try:
@@ -76,6 +117,9 @@ def run_streamed_command(
     child that opens an interactive editor blocks forever behind a pipe nobody is
     reading, and `git -c core.editor=...` cannot prevent that — ``GIT_EDITOR``
     outranks it. A caller that must not be interrupted has no other way to say so.
+
+    Either way the child's ``LC_CTYPE`` is this module's choice, not the caller's —
+    see ``CHILD_LC_CTYPE`` and ``_child_env`` for why that is not a detail.
     """
     if heartbeat_interval <= 0:
         raise ValueError("heartbeat_interval must be positive")
@@ -85,8 +129,13 @@ def run_streamed_command(
         raise ValueError("timeout_seconds must be positive")
 
     print(
+        # `lcCtype` is appended last, after the fields downstream greps already
+        # match unanchored. It is here because reproducing a gate failure means
+        # reproducing its environment, and the operator reading this line usually
+        # has the log and not the source.
         f"{progress_prefix} {label_key}={label} phase=start elapsed=0.0s "
-        f"pid=not-spawned alive=false argCount={len(command)}",
+        f"pid=not-spawned alive=false argCount={len(command)} "
+        f"lcCtype={CHILD_LC_CTYPE}",
         file=sys.stderr,
         flush=True,
     )
@@ -97,7 +146,7 @@ def run_streamed_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT if merge_stderr else subprocess.PIPE,
         start_new_session=True,
-        env=env,
+        env=_child_env(env),
     )
     streams: dict[str, BinaryIO | None] = {}
     readers: list[threading.Thread] = []

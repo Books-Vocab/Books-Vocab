@@ -583,6 +583,47 @@ def test_a_repo_root_shell_script_with_no_test_lands_in_the_advisory():
     assert gates["coverage"]["uncovered"] == []
 
 
+# --- ops-shell-scan: the guard no diff could ever reach (IMP-20260808-3bbfa2) ---
+#
+# `ops/tests/test_script_help.sh` has scanned every tracked *.sh for `$VAR` abutting
+# full-width punctuation since 2026-08-04 — correctly, with a positive control, and
+# it names the offending file and line the moment anyone runs it. Nobody ran it. The
+# cutover gate routes a changed `ops/**.sh` to `bash -n` and to that script's OWN
+# test, and a repo-wide scanner is nobody's own test, so the check existed, was
+# right, and was unreachable from the only path that could have used it. On
+# 2026-08-08 that cost half an hour and let `devops.sh:669` reach `land`.
+#
+# The hole was in the ROUTING, so the fix is routing plus one shared entry point —
+# not a second copy of the scan living in the orchestrator.
+
+def test_plan_routes_shell_scan_for_any_changed_sh():
+    gates = _by_name(plan_gates(["ops/devops_kg_safe.sh"]))
+    assert "ops-shell-scan" in gates
+    assert gates["ops-shell-scan"]["level"] == "block"
+    assert gates["ops-shell-scan"]["cmd"] == ["ops/shell_scan.sh"]
+
+
+def test_plan_routes_shell_scan_for_a_repo_root_sh():
+    """Same widening as `ops-shell-syntax`: `devops.sh` lives at the root and has the
+    highest blast radius in the tree (IMP-0052)."""
+    assert "ops-shell-scan" in _names(plan_gates(["devops.sh"]))
+
+
+def test_plan_leaves_shell_scan_out_when_no_sh_changed():
+    """The control. A gate present in every plan would satisfy both tests above while
+    saying nothing about routing — and would also run a repo-wide scan on every
+    Swift-only diff."""
+    assert "ops-shell-scan" not in _names(plan_gates(["backend/src/kg/x.py",
+                                                      "ios/App/View.swift"]))
+
+
+def test_plan_routes_shell_scan_only_once_for_many_changed_sh():
+    """It is a REPO-wide scan; per-file instances would be N identical runs."""
+    names = [g["name"] for g in plan_gates(
+        ["ops/a.sh", "ops/b.sh", "devops.sh", "ops/c.sh"])]
+    assert names.count("ops-shell-scan") == 1
+
+
 def test_ui_quality_plane_yml_routes_to_its_owner_tools():
     """`ops/ui_quality_plane.yml` stopped being a mechanism *listing* on 2026-08-05: it
     now carries the `run:` argv the UI quality gate actually executes (IMP-0041). A typo
@@ -1078,6 +1119,74 @@ def _local_main_files(repo):
     return set(out.splitlines())
 
 
+SHELL_SCAN = ROOT / "ops" / "shell_scan.sh"
+
+
+def _scan_fixture(tmp_path, name, offending=None):
+    """A tracked tree the scanner can be pointed at.
+
+    Twelve filler scripts because the scanner refuses to trust a run that saw
+    suspiciously few files — a floor that exists so a broken probe cannot report
+    "clean". Satisfying it is right; switching it off for the test would delete the
+    property from exactly the place that checks the scanner.
+    """
+    repo = tmp_path / name
+    (repo / "ops").mkdir(parents=True)
+    _git(["init", "-q", "-b", "main"], repo)
+    for i in range(12):
+        (repo / "ops" / f"filler{i}.sh").write_text(
+            f'var=x\necho "filler {i}"\necho "safe ${{var}}，braced"\n',
+            encoding="utf-8")
+    if offending is not None:
+        (repo / "ops" / "offender.sh").write_text(offending, encoding="utf-8")
+    _git(["add", "-A"], repo)
+    return repo
+
+
+@gitmark
+def test_shell_scan_blocks_a_var_abutting_full_width_punctuation(tmp_path):
+    """The 2026-08-08 line, verbatim in shape."""
+    repo = _scan_fixture(tmp_path, "dirty",
+                         offending='dest=/tmp\necho "目錄：$dest（已標記）"\n')
+    proc = subprocess.run([str(SHELL_SCAN), str(repo)],
+                          capture_output=True, text=True)
+    out = proc.stdout + proc.stderr
+    assert proc.returncode != 0, out
+    # naming the site is the whole value: a scanner that only says "found 1" leaves
+    # the reader where the 94-character summary left them
+    assert "ops/offender.sh:2" in out, out
+
+
+@gitmark
+def test_shell_scan_passes_a_clean_tree_including_the_braced_form(tmp_path):
+    """The positive control for the test above, and for `${VAR}` being the FIX: the
+    fillers all contain `${var}，`, so a pattern broad enough to flag the safe form
+    turns this red."""
+    repo = _scan_fixture(tmp_path, "clean")
+    proc = subprocess.run([str(SHELL_SCAN), str(repo)],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+@gitmark
+def test_shell_scan_respects_a_named_exemption(tmp_path):
+    """`fw-allow` with a reason is the documented escape hatch; a scan that ignored
+    it would make its own fixtures unrepresentable."""
+    repo = _scan_fixture(
+        tmp_path, "exempt",
+        offending='dest=/tmp\necho "目錄：$dest（已標記）"  # fw-allow: fixture\n')
+    proc = subprocess.run([str(SHELL_SCAN), str(repo)],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_shell_scan_has_a_help_surface():
+    proc = subprocess.run([str(SHELL_SCAN), "--help"],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0
+    assert "Usage:" in proc.stdout
+
+
 @pytest.fixture
 def scratch(tmp_path):
     """A repo with a bare origin, main pushed. Chdir into the repo (the orchestrator
@@ -1187,6 +1296,12 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     # gate wrote a verdict cache beside the ledger (nit3 will strike it on resolve).
     gate_cache = MODULE._gate_record_path(state, wt)
     assert gate_cache.exists()
+    # A failed gate ALSO leaves an output log beside that cache (IMP-20260808-c47253).
+    # This run is green so there is none; plant one so the residue assertion below has
+    # something to be about. Planted through the real path helper — a hand-spelled
+    # filename would still pass while resolve cleaned a directory nobody writes to.
+    stray_log = MODULE._gate_log_path(gate_cache, "ops-shell:test_devops.sh")
+    stray_log.write_text("✗ some assertion\n", encoding="utf-8")
 
     # --- cutover: rebase onto local main + ff the primary's local main (--commit) ---
     rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
@@ -1204,6 +1319,9 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     assert "debug/reader-crash" not in _local_branches(repo)
     assert res.get("gate_cache_removed") is True
     assert not gate_cache.exists()
+    assert not stray_log.exists(), (
+        "a failed gate's output log outlives the worktree it describes unless resolve "
+        "strikes it too — same residue rule as the verdict cache")
     # ledger record struck to merged
     recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
     assert recs["debug/reader-crash"]["status"] == "merged"
@@ -3204,6 +3322,184 @@ def _diagnosis(summary: str) -> str:
     return tail.strip()
 
 
+# --- a blocked branch must say WHICH assertion failed (IMP-20260808-c47253) ---
+#
+# Measured 2026-08-08: `ops-shell:test_devops.sh` blocked `feat/devops-rsync-flavor`
+# and the summary kept for it was 94 characters long, in full —
+#     exit 1: ══════════════════════════════
+#       passed: 104  failed: 1
+#     ══════════════════════════════
+# — while that test prints `✗ <name>` for every failure it finds. The name was
+# dozens of lines above the tail and nothing kept it; `history.jsonl` stores
+# metadata only. The one move left was to re-run and hope for a repro, which cost
+# ten minutes and still did not identify the assertion. A gate that fails closed
+# but cannot say why keeps its safety and spends the operator's time instead.
+
+def _gate_from_script(tmp_path, body, name="noisy-gate"):
+    tool = tmp_path / "ops" / "noisy.sh"
+    tool.parent.mkdir(parents=True, exist_ok=True)
+    tool.write_text("#!/bin/sh\n" + textwrap.dedent(body))
+    tool.chmod(0o755)
+    return MODULE._shell(name, "ops", ["ops/noisy.sh"], "block")
+
+
+def _log_pointer(summary):
+    """The path the summary tells an operator to open, read back the way one would."""
+    for line in summary.splitlines():
+        if line.strip().startswith("full output:"):
+            return Path(line.split("full output:", 1)[1].strip())
+    raise AssertionError(f"summary names no output log:\n{summary}")
+
+
+def test_a_failing_gate_names_its_failing_lines_and_keeps_the_whole_output(tmp_path):
+    spec = _gate_from_script(tmp_path, """\
+        echo "OPENING-LINE-UNIQUE"
+        i=0; while [ $i -lt 60 ]; do echo "  ✓ passing check $i"; i=$((i+1)); done
+        echo "  ✗ named assertion"
+        echo "══════════════════════════════"
+        echo "  passed: 60  failed: 1"
+        echo "══════════════════════════════"
+        exit 1
+    """)
+    result = MODULE._run_gate(spec, str(tmp_path),
+                              record_path=tmp_path / "gates" / "deadbeef.json")
+
+    assert result["status"] == "block" and result["rc"] == 1
+    # (1) the failing assertion's NAME reaches the operator, which is the whole ticket
+    assert "named assertion" in result["summary"], result["summary"]
+    # (2) the framing tail is still there — the new lines are added, not swapped in
+    assert "passed: 60  failed: 1" in result["summary"]
+
+    # (3) the rest survives on disk. Proven with a line that is neither failure-marked
+    # nor inside the tail, so only a real capture of the child's output can contain
+    # it: a log built by echoing the summary back would not.
+    log = _log_pointer(result["summary"])
+    assert log.is_file(), f"{log} does not exist"
+    body = log.read_text(encoding="utf-8")
+    assert "OPENING-LINE-UNIQUE" in body
+    assert body.count("passing check") == 60
+    assert "OPENING-LINE-UNIQUE" not in result["summary"], \
+        "the summary stays a summary — the log is what holds everything"
+
+
+def test_a_failing_gate_with_no_failure_markers_says_so_rather_than_going_quiet(
+        tmp_path):
+    """The negative control, and the reason it is not optional.
+
+    Without it, "summary contains the failing line" is also satisfied by an
+    implementation that simply kept printing the tail — because for many gates the
+    tail IS where the failure marker sits. This one has no marker anywhere, so the
+    only way to be right about it is to have actually looked and found nothing.
+    """
+    spec = _gate_from_script(tmp_path, """\
+        echo "nothing here resembles a failure"
+        echo "the last line, which is the tail"
+        exit 3
+    """)
+    result = MODULE._run_gate(spec, str(tmp_path),
+                              record_path=tmp_path / "gates" / "deadbeef.json")
+
+    assert result["rc"] == 3
+    assert "no failure-marked lines found" in result["summary"], result["summary"]
+    assert "the last line, which is the tail" in result["summary"]
+    assert _log_pointer(result["summary"]).is_file()
+
+
+@pytest.mark.parametrize("marker,line", [
+    ("cross", "  ✗ shell scan found a violation"),
+    ("FAIL", "FAIL tests/test_thing.py::test_case"),
+    ("AssertionError", "E   AssertionError: expected 3, got 4"),
+    ("not ok", "not ok 7 - the tap-style failure"),
+    ("error:", "ops/x.sh:12: error: unbound variable"),
+])
+def test_every_declared_failure_marker_is_actually_extracted(tmp_path, marker, line):
+    """One case per marker the docstring promises.
+
+    A single-marker test would let four of the five be dropped silently, and the ones
+    most likely to rot are the ones this repo uses least often day to day.
+
+    The marker is printed FAR above the tail, and the first draft of this test did
+    not do that — it sat two lines from the end, so all five cases passed against the
+    old tail-only summary. The assertion was reading a string the OLD code had put
+    there. Twenty filler lines is what makes the extractor the only possible source.
+    """
+    spec = _gate_from_script(tmp_path, f"""\
+        echo "filler line one"
+        echo "{line}"
+        i=0; while [ $i -lt 20 ]; do echo "  ✓ unrelated passing line $i"; i=$((i+1)); done
+        echo "filler tail line"
+        exit 1
+    """)
+    result = MODULE._run_gate(spec, str(tmp_path),
+                              record_path=tmp_path / "gates" / "deadbeef.json")
+    assert line.strip() in result["summary"], f"{marker!r} not extracted: {result['summary']}"
+    assert "no failure-marked lines found" not in result["summary"]
+
+
+def test_the_failure_line_list_is_capped_and_says_how_many_it_shows(tmp_path):
+    """The cap is what keeps the summary a summary.
+
+    It travels into the gate record JSON and into `land`'s stdout payload, so an
+    uncapped list lets one chatty gate bloat both. Untested, the slice could be
+    deleted or widened and nothing would notice — the log is where the rest belongs,
+    and it is one line away in the pointer.
+    """
+    # The three closing lines carry NO marker on purpose: the tail is reproduced in
+    # the summary too, so a marker-bearing tail would make the count 23 and the test
+    # would be measuring the fixture instead of the cap. (Measured — the first draft
+    # did exactly that.)
+    spec = _gate_from_script(tmp_path, """\
+        i=0; while [ $i -lt 30 ]; do echo "  ✗ failure number $i"; i=$((i+1)); done
+        echo "──────────────"
+        echo "  passed: 0  failed: 30"
+        echo "──────────────"
+        exit 1
+    """)
+    summary = MODULE._run_gate(spec, str(tmp_path),
+                               record_path=tmp_path / "gates" / "deadbeef.json")["summary"]
+    assert summary.count("✗ failure number") == MODULE.GATE_MAX_FAILURE_LINES == 20
+    assert f"({MODULE.GATE_MAX_FAILURE_LINES} shown)" in summary
+    # the ones it dropped are still in the log it points at
+    assert _log_pointer(summary).read_text(encoding="utf-8").count(
+        "✗ failure number") == 30
+
+
+def test_a_gate_going_green_clears_the_log_its_last_red_left(tmp_path):
+    """A stale log outlives the failure it describes and nothing marks it stale.
+
+    The verdict cache is overwritten on every run; its log has to obey the same rule
+    or an operator opens a file describing a failure that was fixed hours ago — a
+    fresh way to lose the ten minutes this ticket is about.
+    """
+    rec = tmp_path / "gates" / "deadbeef.json"
+    red = MODULE._run_gate(_gate_from_script(tmp_path, 'echo "  ✗ boom"\nexit 1\n'),
+                           str(tmp_path), record_path=rec)
+    log = _log_pointer(red["summary"])
+    assert log.is_file()
+
+    green = MODULE._run_gate(_gate_from_script(tmp_path, "echo fine\nexit 0\n"),
+                             str(tmp_path), record_path=rec)
+    assert green["status"] == "pass"
+    assert "full output" not in green["summary"], "a green gate points at no log"
+    assert not log.exists(), "a green run must not leave the previous red's log behind"
+
+
+def test_a_gate_run_without_a_record_path_still_reports_normally(tmp_path):
+    """`_run_gate` is called directly by tests and could be by future callers; the
+    log is an enhancement, not a precondition. No path, no log, no crash."""
+    result = MODULE._run_gate(
+        _gate_from_script(tmp_path, """\
+            echo "  ✗ named thing"
+            i=0; while [ $i -lt 20 ]; do echo "  ✓ filler $i"; i=$((i+1)); done
+            exit 1
+        """),
+        str(tmp_path))
+    assert result["status"] == "block" and result["rc"] == 1
+    # far above the tail, so this still testifies about the extractor
+    assert "named thing" in result["summary"]
+    assert "full output" not in result["summary"]
+
+
 def test_a_missing_gate_tool_is_a_readable_block_not_a_traceback(tmp_path):
     """The router and the tools it routes to can be different generations (IMP-0045):
     a branch that deletes a script leaves a stale router still pointing at it. Letting
@@ -4459,7 +4755,8 @@ def _land_stub(name, rc=0, payload=None, boom=None):
     return run
 
 
-def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None):
+def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None,
+                  ff_ready=None):
     primary = tmp_path / "primary"
     primary.mkdir()
     wt = tmp_path / "wt"
@@ -4467,6 +4764,13 @@ def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None):
     _land_stub.calls = []
     monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
     monkeypatch.setattr(MODULE, "_freeze_guard", lambda *a, **k: None)
+    # The harness primary is a bare directory, not a checkout, so the REAL
+    # `_primary_ff_ready` would refuse every lane here on "detached HEAD". Default
+    # it to "ready" and let the tests that care inject a refusal; that injection is
+    # also what proves `cmd_land` consults this helper rather than a private copy
+    # of the same judgement (a duplicated check would ignore the patch).
+    monkeypatch.setattr(MODULE, "_primary_ff_ready",
+                        ff_ready if ff_ready is not None else (lambda *a, **k: None))
     monkeypatch.setattr(MODULE, "cmd_catchup",
                         catchup or _land_stub("catchup", 0, {"ok": True}))
     monkeypatch.setattr(MODULE, "cmd_gate",
@@ -4474,9 +4778,31 @@ def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None):
     monkeypatch.setattr(MODULE, "cmd_cutover",
                         cutover or _land_stub("cutover", 0,
                                               {"landed": True, "sha": "abc1234"}))
-    args = argparse.Namespace(worktree=str(wt), commit=True, json=True, state=None,
+    args = argparse.Namespace(worktree=str(wt), commit=True, json=True,
+                              state=str(tmp_path / "registry.json"),
                               base="main", queue_timeout=5.0)
     return primary, args
+
+
+def _recording_gate_stub(state, worktree):
+    """A gate stub that leaves the artefact a real gate run leaves behind.
+
+    `_land_stub.calls` reports whether the FUNCTION was entered; the ticket's
+    question is the operator's — did a gate actually run, i.e. is there a verdict on
+    disk that cost wall-clock time to produce. Asserting on the record file answers
+    it in the currency the real system uses. An absent file is evidence only when
+    something was capable of writing it, which is what the clean-primary companion
+    test below establishes with the very same stub.
+    """
+    rec = MODULE._gate_record_path(state, worktree)
+
+    def run(_args):
+        _land_stub.calls.append("gate")
+        rec.parent.mkdir(parents=True, exist_ok=True)
+        rec.write_text(json.dumps({"verdict": "pass"}), encoding="utf-8")
+        print(json.dumps({"verdict": "pass"}))
+        return 0
+    return run
 
 
 def _queued(primary):
@@ -4625,6 +4951,107 @@ def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, caps
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "dry-run" and payload["landed"] is False
     assert _queued(primary) == []
+
+
+# --- land: the primary-clean pre-check (IMP-20260808-636848) ---------------
+#
+# Measured 2026-08-08: a batch integrator wrote four backlog closures into the
+# primary while a `land` loop was running. The `ui-fixture-lint` gate ran 574
+# seconds, and only THEN did cutover reach its pre-ff primary-clean check and
+# refuse. The refusal was correct; its POSITION was not. The conflict was created
+# by the same operator three seconds before the gate started, so the whole cost was
+# avoidable by asking the question first.
+#
+# What these tests pin is the position, not the judgement: the judgement is
+# `_primary_ff_ready`'s and is pinned by the cutover tests above.
+
+def _dirty_primary(reason="primary working tree is dirty (tracked changes)"):
+    calls = []
+
+    def ff_ready(primary, local):
+        calls.append((str(primary), local))
+        return (reason, {"dirty_files": ["docs/runbook/backlog/IMP-0023.json"]})
+    ff_ready.calls = calls
+    return ff_ready
+
+
+def test_land_refuses_primary_dirty_before_gate_leaving_no_gate_record(
+        tmp_path, monkeypatch, capsys):
+    """The refusal has to arrive before anything expensive has been spent.
+
+    Two independent witnesses, because each alone is weak: `_land_stub.calls`
+    proves the step functions were never entered, and the absent gate record proves
+    no verdict was produced. rc alone would prove neither — `land` already exits
+    EXIT_BLOCK for a red gate, i.e. the number this refusal shares with the very
+    outcome it is supposed to be distinguishable from.
+    """
+    state, wt = str(tmp_path / "registry.json"), str(tmp_path / "wt")
+    rec = MODULE._gate_record_path(state, wt)
+    primary, args = _land_harness(
+        monkeypatch, tmp_path,
+        gate=_recording_gate_stub(state, wt),
+        ff_ready=_dirty_primary())
+
+    rc = MODULE.cmd_land(args)
+
+    assert rc == MODULE.EXIT_BLOCK
+    assert not rec.exists(), \
+        "a gate verdict on disk means a gate ran — the whole cost this check avoids"
+    assert _land_stub.calls == [], \
+        f"nothing may run once the primary is known dirty, ran: {_land_stub.calls}"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["landed"] is False
+    assert "dirty" in payload["error"]
+    # The refusal must name WHICH files, or the operator is back to guessing which
+    # of their own writes is in the way.
+    assert payload["dirty_files"] == ["docs/runbook/backlog/IMP-0023.json"]
+    assert _queued(primary) == [], "the turn must be released on refusal"
+
+
+def test_land_precheck_lets_a_clean_primary_through_to_the_gate(
+        tmp_path, monkeypatch, capsys):
+    """The positive control for the test above.
+
+    Without it, "no gate record was written" is satisfied by a stub that cannot
+    write one at all, and by a `cmd_land` that refuses every lane for any reason.
+    Same harness, same stub, one field flipped.
+    """
+    state, wt = str(tmp_path / "registry.json"), str(tmp_path / "wt")
+    rec = MODULE._gate_record_path(state, wt)
+    primary, args = _land_harness(
+        monkeypatch, tmp_path, gate=_recording_gate_stub(state, wt))
+
+    rc = MODULE.cmd_land(args)
+
+    assert rc == MODULE.EXIT_OK
+    assert _land_stub.calls == ["catchup", "gate", "cutover"]
+    assert rec.exists(), "the stub must be able to write the record it is judged by"
+    assert json.loads(capsys.readouterr().out)["landed"] is True
+    assert _queued(primary) == []
+
+
+def test_land_asks_the_primary_dirty_before_gate_question_exactly_once(
+        tmp_path, monkeypatch, capsys):
+    """`land` owns the CHEAP check; `cutover` owns the load-bearing one.
+
+    The pre-check is not a replacement for cutover's pre-ff check and must not grow
+    into one: the primary can be dirtied WHILE the gate runs — 2026-08-08 is exactly
+    that story — so the answer this call gets expires. Anyone tempted to treat one of
+    the two as redundant should read this test and
+    `test_cutover_refused_when_primary_is_dirty`, which pins the other one.
+    """
+    asked = []
+
+    def ff_ready(primary, local):
+        asked.append(local)
+        return None
+    primary, args = _land_harness(monkeypatch, tmp_path, ff_ready=ff_ready)
+
+    assert MODULE.cmd_land(args) == MODULE.EXIT_OK
+    capsys.readouterr()
+    assert asked == ["main"], (
+        "exactly one pre-check, against the LOCAL trunk `land` is heading for; "
+        f"got {asked}")
 
 
 # --------------------------------------------------------------------------
