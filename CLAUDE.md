@@ -39,9 +39,15 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
 只有「取」。
 
-**一張票要能被取,得先夠具體。** 梳理(groom)= 填上 `plan` / `acceptance` / `fix_site` +
-可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」。未梳理的票留在板上但不進
-`dispatch`——沒有修法的票不是工作,是待調查。
+**一張票要能被取,得先夠具體——而且要能被排序。** 梳理(groom)= 填上 `plan` / `acceptance` /
+`fix_site` + 可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」;**再加
+`brief` / `scope`——蓋 groom 戳記時工具當場就要求,不分日期**(既有資料另以
+`BRIEF_REQUIRED_SINCE` = 2026-08-09 為界由 `validate` grandfather)——一句白話的「壞了什麼、誰有感」
+與一句體積感,寫給**在手機看板上排序的人**,不寫給機器。前四欄讓票**做得動**,這兩欄讓票
+**排得動**:看板只有釘選 / 排序 / 延後三個動作,而它渲染的是 `detail` 前 400 字的技術散文,
+122 筆未解時那個寫入面實質是惰性的。`fix_site` 不能兼任——它是程式錨點,讀者不同。
+未梳理的票留在板上但不進 `dispatch`——沒有修法的票不是工作,是待調查;
+既有欠這兩欄的票用 `list --missing-brief` 數,那是**回填佇列不是 dispatch 佇列**。
 
 **結案只有一種意義:那條你自己寫下的判準今天真的綠。** 三條路徑通往 `status=fixed`
 (`anchor` 波次 / `update --status fixed` / `verify --status fixed`)共用同一道

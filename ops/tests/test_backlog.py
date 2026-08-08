@@ -28,6 +28,7 @@ dependencies. Anything imported here must be in the standard library.
 
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import inspect
 import json
@@ -768,9 +769,23 @@ def test_every_field_named_in_digest_fields_actually_changes_the_id():
 # --------------------------------------------------------------------------
 
 
+# The two human-facing sentences. Defined here rather than beside the tests that
+# scrutinise them (section 24) because `_groom_kwargs` needs them: stamping the
+# badge demands plain language at write time whatever date is being written, so
+# "a fully groomed entry" cannot be expressed without them any more.
+BRIEF_TEXT = "有一份自動產生的統計報告已經爛掉，但檢查程式只確認它有人負責產生就放行。"
+SCOPE_TEXT = "改一支檢查腳本、加一道比對，連帶要重生一份報告。"
+
+
 def _groom_kwargs(**overrides):
     base = dict(
         plan="1. open ops/x.py:10  2. replace the whitelist with the tuple  3. run the test",
+        # Part of the badge since BRIEF_REQUIRED_SINCE — see section 24. Carried by
+        # the shared fixture because `update_entry` refuses to stamp a groom badge
+        # without them, so every groomed fixture in this file needs them to exist
+        # at all; the tests that assert the RULE override them explicitly.
+        brief=BRIEF_TEXT,
+        scope=SCOPE_TEXT,
         acceptance="pytest -q ops/tests/test_x.py::test_y",
         # The EXECUTABLE half. `acceptance` above is prose and nothing reads it;
         # this is what `anchor --commit` actually runs before closing the entry.
@@ -1089,7 +1104,11 @@ def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_pa
     # a fixture that quietly stopped setting them cannot make this test pass by
     # having nothing to lose.
     for field in ("plan", "acceptance", "acceptance_cmd", "groomed_by",
-                  "verdict", "verified_at", "verified_by", "verified_evidence"):
+                  "verdict", "verified_at", "verified_by", "verified_evidence",
+                  # The view's table is locked to 8 columns, so these two are
+                  # carried ONLY by the "everything the table does not own" path
+                  # — exactly the path that silently dropped the groom fields once.
+                  *BACKLOG.BRIEF_FIELDS):
         assert before.get(field), f"{field} was never set — this test proves nothing"
 
 
@@ -4331,3 +4350,375 @@ def test_a_refused_digest_flag_is_named_as_the_caller_typed_it(tmp_path, capsys)
     err = capsys.readouterr().err
     assert "--detail-file" in err, err
     assert "--resolution" in err, "the digest refusal lost its repair hint"
+
+
+# --------------------------------------------------------------------------
+# 24. brief / scope — the two fields written for the HUMAN sorting the board
+#     (IMP-20260808-1785b0)
+#
+# The phone board renders the first 400 characters of `detail`, which is
+# technical prose addressed to whoever will execute the entry. The three actions
+# the board offers — pin / reorder / defer — all need a different question
+# answered in seconds: "what is broken and will I feel it" and "how big is this".
+# Measured consequence: with 122 unresolved entries the write surface existed and
+# was functionally inert, because nothing on a card supported the only decisions
+# it could make.
+#
+# `fix_site` cannot double as this. It is a CODE ANCHOR (`ops/docs_lint.sh:180`)
+# for the executor; different reader, different register, different precision.
+#
+# The rule binds by DATE for the same reason ACCEPTANCE_PROOF_SINCE does, and the
+# cutoff is asserted against the shipped store below rather than assumed.
+# --------------------------------------------------------------------------
+
+def _briefed(**overrides):
+    """A groom stamp that satisfies the new rule, dated ON the cutoff.
+
+    (`BRIEF_TEXT` / `SCOPE_TEXT` live beside `_groom_kwargs` in section 8, which
+    now needs them: the badge cannot be stamped without them at all.)
+    """
+    base = dict(_groom_kwargs(), groomed_at=BACKLOG.BRIEF_REQUIRED_SINCE)
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.parametrize("field", ["brief", "scope"])
+def test_grooming_stamped_from_the_cutoff_on_must_speak_plain_language(tmp_path, field):
+    """Grooming now means "worked out AND explained", and the second half is
+    checkable the same way the first is: by its precondition being non-empty."""
+    store = tmp_path / "s"
+    entry = _add(store)
+
+    payload = {**BACKLOG.load_entry(store, entry["id"]), **_briefed(**{field: ""})}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(payload)]
+    assert f"groom-claim-without-{field}" in kinds, kinds
+
+    # and the whole stamp, complete, is clean — otherwise the test above could be
+    # passing off some unrelated defect as the finding
+    assert BACKLOG.validate_entry({**payload, field: BRIEF_TEXT}) == []
+
+    # the stronger half: the violation cannot be written through the CLI path
+    with pytest.raises(ValueError, match=f"groom-claim-without-{field}"):
+        BACKLOG.update_entry(store, entry["id"], **_briefed(**{field: ""}))
+
+
+def test_grooming_from_before_the_cutoff_is_grandfathered(tmp_path):
+    """THE POSITIVE CONTROL for the date guard.
+
+    Without this, "the rule only binds new grooming" is a sentence in a comment
+    and nothing distinguishes it from a rule that binds everything — the store
+    would just be red, and the fix would look like backfilling 121 entries under
+    time pressure rather than a guard that was never written.
+
+    Grandfathered by DATE, not by a baseline of ids, for the reason
+    ACCEPTANCE_PROOF_SINCE states: `groomed_at` is stamped at groom time, so
+    re-grooming an old entry writes today's date and the rule binds it by itself.
+    An id whitelist would forgive that entry forever.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    old = _briefed(brief="", scope="", groomed_at="2026-07-01")
+    payload = {**BACKLOG.load_entry(store, entry["id"]), **old}
+
+    assert BACKLOG.validate_entry(payload) == [], (
+        "grooming that predates the rule was turned red by it")
+
+    # and it really is the DATE doing the forgiving: move the same payload forward
+    # and both problems appear
+    fresh = {**payload, "groomed_at": BACKLOG.BRIEF_REQUIRED_SINCE}
+    kinds = {p["kind"] for p in BACKLOG.validate_entry(fresh)}
+    assert {"groom-claim-without-brief", "groom-claim-without-scope"} <= kinds, kinds
+
+
+def test_the_cutoff_forgives_every_groom_stamp_already_in_the_shipped_store():
+    """The cutoff is a MEASUREMENT against this repo's ledger, not a guess.
+
+    A cutoff of "today" reads as the obvious choice and is wrong here: the
+    2026-08-08 grooming wave had already stamped 96 entries before this rule was
+    written, so `>= today` would have turned 95 of them red (all but this ticket,
+    whose prose this very commit writes) and taken
+    `./ops/backlog.py validate` — this entry's own acceptance command — down with
+    them. The rule must land ahead of the newest stamp that exists; the backfill
+    wave is what clears the debt, and `list --missing-brief` is what counts it.
+
+    Asserted over the real store because that is the thing that would break, and
+    a tmp_path fixture cannot know what date the last wave stamped.
+
+    The assertion is the PROPERTY ("the rule reds nothing that already exists"),
+    not the proxy that first suggested it ("the cutoff is later than every stamp
+    in the store"). The proxy is true today and stops being true the first time
+    somebody legitimately grooms on or after the cutoff WITH both fields — so a
+    test written that way would turn red on correct behaviour, which is how a
+    gate teaches people to ignore it.
+    """
+    groomed = [p for p in BACKLOG._iter_entries(BACKLOG.DEFAULT_STORE)
+               if str(p.get("groomed_at") or "").strip()]
+    assert groomed, "no groomed entries in the store — this test would be vacuous"
+
+    wanted = {f"groom-claim-without-{f}" for f in BACKLOG.BRIEF_FIELDS}
+    red = sorted(p["id"] for p in groomed
+                 if wanted & {q["kind"] for q in BACKLOG._check_groom(p)})
+    assert not red, (
+        f"BRIEF_REQUIRED_SINCE={BACKLOG.BRIEF_REQUIRED_SINCE} binds grooming that "
+        f"was stamped before the rule existed, so `./ops/backlog.py validate` is "
+        f"red on {len(red)} entry(s) nobody can fix except by backfilling prose "
+        f"under time pressure: {red[:5]}")
+
+    # The other side of the same constant, and it needs its own assertion: the
+    # test above only stops the cutoff being set too EARLY. Nothing stopped it
+    # being pushed out — set it to 2099-01-01 and the whole suite stays green
+    # while `validate` silently stops judging hand-edited groom stamps forever.
+    # This bound does not decay, because legitimate new grooming raises `newest`
+    # along with it.
+    newest = max(str(p.get("groomed_at") or "") for p in groomed)
+    day_after = (datetime.date.fromisoformat(newest)
+                 + datetime.timedelta(days=1)).isoformat()
+    assert BACKLOG.BRIEF_REQUIRED_SINCE <= day_after, (
+        f"BRIEF_REQUIRED_SINCE={BACKLOG.BRIEF_REQUIRED_SINCE} is more than one day "
+        f"past the newest stamp in the store ({newest}), so `validate` is inert "
+        f"over a window nobody declared")
+
+
+@pytest.mark.parametrize("field", ["brief", "scope"])
+def test_brief_and_scope_travel_by_file_because_they_are_free_text(tmp_path, capsys, field):
+    """Both are prose a human wrote, so both need the channel the shell cannot
+    edit — a backtick in argv is command substitution and the loss is silent."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    src = tmp_path / f"{field}.txt"
+    hostile = f"`ops/backlog.py show` 這支工具的輸出對排序者不可用，$HOME 也是\n"
+    src.write_text(hostile, encoding="utf-8")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         f"--{field}-file", str(src), "--commit"]) == 0
+    capsys.readouterr()
+    assert BACKLOG.load_entry(store, entry["id"])[field] == hostile.rstrip("\n")
+
+
+def test_brief_and_scope_are_reachable_on_add_as_well_as_update(tmp_path, capsys):
+    """Filing and explaining are the same act when the filer already knows; only
+    GROOMING is the separate one. An `add` that cannot carry them would send every
+    author through a second command to say the one thing the board displays."""
+    assert BACKLOG.main(["add", "--store", str(tmp_path / "s"), "--stream", "IMP",
+                         "--date", "2026-08-08", "--source", "probe",
+                         "--category", "tool", "--severity", "med",
+                         "--detail", "a tool reports success while doing nothing",
+                         "--brief", BRIEF_TEXT, "--scope", SCOPE_TEXT,
+                         "--json"]) == 0
+    entry = json.loads(capsys.readouterr().out)["entry"]
+    assert entry["brief"] == BRIEF_TEXT and entry["scope"] == SCOPE_TEXT
+
+
+def test_list_missing_brief_is_the_backfill_queue_not_the_dispatch_queue(tmp_path):
+    """Two properties, and the second is the one that makes the number honest.
+
+    It counts UNRESOLVED entries only: a closed entry never reaches the board, so
+    counting it would inflate the debt with work nobody can do anything about.
+    """
+    store = tmp_path / "s"
+    bare = _add(store, detail="no plain language anywhere")
+    half = _add(store, detail="brief but no scope")
+    BACKLOG.update_entry(store, half["id"], brief=BRIEF_TEXT)
+    done = _add(store, detail="both fields written")
+    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_TEXT)
+    closed = _add(store, detail="closed and never shown on the board", status="fixed")
+
+    hits = [e["id"] for e in BACKLOG.list_entries(store, missing_brief=True)]
+    assert bare["id"] in hits and half["id"] in hits
+    assert done["id"] not in hits, "an entry carrying both fields is not backfill debt"
+    assert closed["id"] not in hits, "a closed entry never reaches the board"
+
+
+def test_missing_brief_intersects_the_other_filters_rather_than_replacing_them(tmp_path):
+    store = tmp_path / "s"
+    _add(store, detail="low severity, no brief", severity="low")
+    wanted = _add(store, detail="high severity, no brief", severity="high")
+    hits = BACKLOG.list_entries(store, missing_brief=True, severity="high")
+    assert [e["id"] for e in hits] == [wanted["id"]]
+
+
+def test_list_missing_brief_is_reachable_from_argv(tmp_path, capsys):
+    store = tmp_path / "s"
+    bare = _add(store, detail="no plain language anywhere")
+    done = _add(store, detail="both fields written")
+    BACKLOG.update_entry(store, done["id"], brief=BRIEF_TEXT, scope=SCOPE_TEXT)
+
+    assert BACKLOG.main(["list", "--store", str(store), "--missing-brief", "--json"]) == 0
+    ids = [e["id"] for e in json.loads(capsys.readouterr().out)["entries"]]
+    assert ids == [bare["id"]], ids
+
+
+def test_show_prints_the_human_fields_ahead_of_the_technical_prose(tmp_path, capsys):
+    """Order is the feature. `detail` is 400+ characters of prose addressed to the
+    executor; a `brief` printed after it is a `brief` nobody reaches."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    BACKLOG.update_entry(store, entry["id"], brief=BRIEF_TEXT, scope=SCOPE_TEXT)
+
+    assert BACKLOG.main(["show", entry["id"], "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    positions = {}
+    for field in ("brief", "scope", "detail"):
+        match = re.search(rf"^{field}\s+\S", human, re.M)
+        assert match, f"`show` printed no {field} line:\n{human}"
+        positions[field] = match.start()
+    assert positions["brief"] < positions["detail"], (
+        f"the one-line summary is printed after the prose it summarises:\n{human}")
+    assert positions["scope"] < positions["detail"], human
+
+
+def test_stamping_a_groom_badge_demands_plain_language_whatever_the_date(tmp_path):
+    """The date ratchet grandfathers DATA; it must not grandfather ACTS.
+
+    `BRIEF_REQUIRED_SINCE` had to land ahead of the newest stamp in the store
+    (see the cutoff test above), which left a window in which grooming could
+    still be stamped with no plain language at all — measured, not theorised.
+    Closing it with an earlier date is impossible without reddening 95 existing
+    entries, and closing it with a list of exempt ids is the whitelist this
+    design refuses. So the two questions are answered in the two places they
+    belong: `validate` judges STORED DATA and forgives what predates the rule,
+    while claiming or refreshing the badge is an ACT happening now and is held
+    to today's standard regardless of the date being written.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    before = (store / f"{entry['id']}.json").read_bytes()
+
+    # A date the ratchet forgives, so ONLY the write-time gate can refuse this
+    stale = "2026-08-01"
+    assert stale < BACKLOG.BRIEF_REQUIRED_SINCE
+    with pytest.raises(ValueError, match="groom-claim-without-brief"):
+        BACKLOG.update_entry(store, entry["id"],
+                             **_groom_kwargs(groomed_at=stale, brief="", scope=""))
+    assert (store / f"{entry['id']}.json").read_bytes() == before
+
+    # ... and the same act with the sentences written is accepted
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(groomed_at=stale))
+    assert BACKLOG.load_entry(store, entry["id"])["brief"] == BRIEF_TEXT
+
+
+def test_editing_a_grandfathered_entry_that_is_not_re_grooming_is_untouched(tmp_path):
+    """THE POSITIVE CONTROL for the write-time gate, and the reason it is keyed
+    on the CHANGE SET rather than on the merged entry.
+
+    133 entries in the shipped store carry a groom stamp and no plain language.
+    A gate that fired on "the entry being written is groomed and has no brief"
+    would freeze every one of them: `update <id> --status fixed`, `--resolution`,
+    `verify`, `anchor` — none of which are grooming, all of which would start
+    demanding prose their caller was never asked for. The gate must fire on the
+    act of stamping the badge, and on nothing else.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    # A legacy shape: groomed before the rule, no brief, written straight to disk
+    # because `update_entry` is exactly what refuses to create it now.
+    path = store / f"{entry['id']}.json"
+    payload = {**json.loads(path.read_text(encoding="utf-8")),
+               **_groom_kwargs(groomed_at="2026-07-01")}
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    assert BACKLOG.validate_store(store) == [], "the fixture itself is already red"
+
+    # every non-grooming edit still works
+    BACKLOG.update_entry(store, entry["id"], severity="high")
+    BACKLOG.update_entry(store, entry["id"], resolution="— 之後再說")
+    assert BACKLOG.load_entry(store, entry["id"])["severity"] == "high"
+
+
+@pytest.mark.parametrize("status", ["fixed", "wont-fix"])
+def test_missing_brief_refuses_a_closed_status_instead_of_answering_empty(tmp_path, status):
+    """Same rule the two neighbouring pairs already follow, applied where it was
+    missing.
+
+    `--missing-brief` means "unresolved and unexplained", so pairing it with a
+    closed status is empty BY CONSTRUCTION — and an empty result reads as "there
+    is no such debt", which is the opposite of true: 96 closed entries carry no
+    brief today. `--groomed/--ungroomed` and `--unverified/--stale` are both
+    refused by name for exactly this reason, and the refusal has to name the
+    contradiction rather than let the caller believe the queue is clear.
+    """
+    store = tmp_path / "s"
+    _add(store, status=status, detail="closed and unexplained")
+    with pytest.raises(BACKLOG.BacklogError, match="--missing-brief"):
+        BACKLOG.list_entries(store, missing_brief=True, status=status)
+
+
+def test_missing_brief_still_composes_with_the_open_statuses(tmp_path):
+    """The refusal above must not become a blanket ban on --status."""
+    store = tmp_path / "s"
+    wanted = _add(store, status="triaged", detail="triaged, no brief",
+                  resolution="— 下一步:先量測")
+    _add(store, status="open", detail="open, no brief")
+    hits = BACKLOG.list_entries(store, missing_brief=True, status="triaged")
+    assert [e["id"] for e in hits] == [wanted["id"]]
+
+
+def test_the_groom_refusal_names_each_defect_once_and_says_how_to_repair_it(tmp_path):
+    """Two gates ask the same question of a groom stamp, so once the date binds
+    they BOTH fire and the caller sees each missing field twice — four problems
+    for two defects, distinguishable only by an internal key.
+
+    And these two kinds are the only ones whose repair is fully determined, which
+    makes them the last that should arrive as a bare defect name. The enclosing
+    function already carries hints for `fixed_by` under a comment that says "Name
+    the repair, not just the defect"; this is that rule applied where it was
+    missing.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+    bound = BACKLOG.BRIEF_REQUIRED_SINCE  # both gates active
+
+    with pytest.raises(ValueError) as excinfo:
+        BACKLOG.update_entry(store, entry["id"],
+                             **_groom_kwargs(groomed_at=bound, brief="", scope=""))
+    message = str(excinfo.value)
+
+    for field in BACKLOG.BRIEF_FIELDS:
+        assert message.count(f"groom-claim-without-{field}") == 1, (
+            f"{field} is reported more than once — both gates fired and nothing "
+            f"deduped them:\n{message}")
+        # The repair, not just the defect. Asserted as the flag the caller has to
+        # type, because "write a brief" is not a command anybody can run.
+        #
+        # Scoped to the hint line and given a word boundary, for the two reasons
+        # the sibling assertion in test_worktree_orchestrate.py was just narrowed:
+        # `--brief` is a prefix of `--brief-file`, and a substring test over the
+        # WHOLE message is satisfied by the flag appearing anywhere — including
+        # the defect list it is supposed to be the answer to.
+        hint = next((ln for ln in message.splitlines()
+                     if "add to the command you just ran" in ln), "")
+        assert hint, f"the refusal carries no repair line:\n{message}"
+        assert re.search(rf"--{field}(?=[\s=]|$)", hint), (
+            f"the repair line never says how to fix {field}:\n{hint}")
+
+
+def test_deduping_the_refusal_does_not_swallow_distinct_defects(tmp_path):
+    """The dedupe above exists because TWO GATES ask one question; it must not
+    collapse ONE gate reporting N different things.
+
+    Three kinds are emitted per-item with a discriminator the caller needs:
+    `app-field-on-imp-entry` per field, `missing-field` per field, and the
+    `fixed-by-*` family per sha (`--fixed-by` is nargs="+"). Keying the dedupe on
+    `kind` alone made each of them report the first item only — so the caller
+    fixes it, is refused again, and learns the tool drips defects one at a time.
+    That is the same "name the whole repair" failure the surrounding code was
+    written against, reintroduced by the fix for a neighbouring one.
+    """
+    store = tmp_path / "s"
+    entry = _add(store)
+
+    # One gate, two fields
+    with pytest.raises(ValueError) as excinfo:
+        BACKLOG.update_entry(store, entry["id"], surface="reader", repro="tap it")
+    message = str(excinfo.value)
+    for field in ("surface", "repro"):
+        assert f"'field': '{field}'" in message, (
+            f"only one app-field defect survived the dedupe; {field} is missing:\n{message}")
+
+    # One gate, two shas
+    with pytest.raises(ValueError) as excinfo:
+        BACKLOG.update_entry(store, entry["id"], status="fixed",
+                             fixed_by=["zzzz111", "qqqq222"])
+    message = str(excinfo.value)
+    for sha in ("zzzz111", "qqqq222"):
+        assert sha in message, (
+            f"only one bad sha survived the dedupe; {sha} is missing:\n{message}")

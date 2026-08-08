@@ -401,9 +401,18 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
         elif not str(payload.get("groomed_by") or "").strip():
             problems.append({
                 "id": entry_id, "kind": "ungroomed",
+                # The flag list is the whole value of this hint, so it has to track
+                # what `validate` actually demands. `--brief`/`--scope` joined that
+                # set on BRIEF_REQUIRED_SINCE; a repair line that omits them teaches
+                # a command whose result is refused, which is worse than no hint —
+                # the agent believes it followed the tool.
                 "repair": f"groom it first: `ops/backlog.py update {entry_id} --plan "
                           f"… --acceptance … --fix-site … --acceptance-cmd … "
-                          f"--groomed-at <today> --groomed-by <you> --commit`. "
+                          f"--brief … --scope … "
+                          f"--groomed-at <today> --groomed-by <you> --commit` "
+                          f"(--brief/--scope are one plain sentence each, written "
+                          f"for whoever SORTS the board, not for you: what breaks "
+                          f"and who feels it, and how big the change is). "
                           f"To take it as an INVESTIGATION rather than a fix, pass "
                           f"--allow-ungroomed"})
     return problems

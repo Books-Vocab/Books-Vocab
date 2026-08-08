@@ -4677,6 +4677,34 @@ def test_claiming_an_ungroomed_ticket_is_refused_and_names_the_repair(tmp_path):
     assert "--allow-ungroomed" in problems[0]["repair"], (
         "the refusal has to name its own escape hatch, or the only way past it is "
         "to stop using the flag")
+    # The flag list is the whole value of this hint, and it is hand-copied from
+    # what `validate` demands — so it drifts silently. It already did: `--brief`
+    # and `--scope` joined the groom requirement and this string kept teaching the
+    # old command, which is worse than no hint at all because the agent believes
+    # it followed the tool. Asserted per flag rather than as one blob so the
+    # failure names which one went missing.
+    # Asserted over the BACKTICKED COMMAND, not the whole repair string, and with
+    # a word boundary. Both narrowings are load-bearing, and both were found by
+    # mutation rather than reasoning:
+    #   * the string also carries prose explaining --brief/--scope, so `"--brief"
+    #     in repair` stayed green with the flags deleted from the command — the
+    #     hint then taught a command `update` refuses with exit 64, which is the
+    #     precise failure this assertion exists to catch.
+    #   * `--acceptance` is a PREFIX of `--acceptance-cmd`, so a plain substring
+    #     test is satisfied by a different flag that happens to start the same way.
+    backticked = re.search(r"`([^`]+)`", problems[0]["repair"])
+    # Named, not an IndexError from `.split("`")[1]`: the guard held either way,
+    # but a failure that says "list index out of range" makes the reader debug
+    # the test instead of reading the finding.
+    assert backticked, (
+        f"the repair hint no longer contains a backticked command:\n"
+        f"  {problems[0]['repair']}")
+    command = backticked.group(1)
+    for flag in ("--plan", "--acceptance", "--fix-site", "--acceptance-cmd",
+                 "--brief", "--scope", "--groomed-at", "--groomed-by"):
+        assert re.search(rf"{re.escape(flag)}(?=[\s=]|$)", command), (
+            f"the repair hint's command stopped naming {flag}; following it now "
+            f"produces a command `backlog.py update` will refuse:\n  {command}")
 
 
 def test_claiming_an_already_resolved_ticket_is_refused(tmp_path):

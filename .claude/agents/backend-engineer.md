@@ -36,11 +36,13 @@ model: inherit
     --date 2026-08-07 --source "改 sync handler 時撞到（backend-engineer）" \
     --category correctness --severity med \
     --detail "<一段話講清楚症狀與影響>" \
+    --brief "<一句白話:使用者會遇到什麼、什麼時候遇到>" \
+    --scope "<一句話體積感,例:一個 handler 加一道檢查,連帶一支測試>" \
     --surface <受影響的 surface,如 sync / quota / vocab-intake / podcast> \
     --repro "<重現步驟,含 endpoint 與 payload>" \
     --build "<看到問題的版本,例:prod @ 917ad3e4b>"
   ```
-  `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2)。**`--detail` 的文字含反引號 / `$` / 跳脫字元時改用 `--detail-file <路徑>`**——雙引號 shell 字串裡的反引號是命令替換,會在工具看到之前把你的句子改掉而沒有任何人抗議;`--plan` / `--resolution` / `--acceptance` / `--repro` 等自由文字欄位都有同名 `-file` 孿生;`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**,不填照樣立得出單,只是那筆單沒人重現得了。
+  `--date` / `--source` / `--category` / `--severity` / `--detail` 是 CLI 必填(漏了會 exit 2)。**`--detail` 的文字含反引號 / `$` / 跳脫字元時改用 `--detail-file <路徑>`**——雙引號 shell 字串裡的反引號是命令替換,會在工具看到之前把你的句子改掉而沒有任何人抗議;`--plan` / `--resolution` / `--acceptance` / `--repro` 等自由文字欄位都有同名 `-file` 孿生;`--surface` / `--repro` / `--build` 是 APP 專屬且**沒有機器強制**,不填照樣立得出單,只是那筆單沒人重現得了。**`--brief` / `--scope` 立單時就寫**:那是手機看板上唯一顯示得出來的東西(卡片否則只有 `detail` 前 400 字的技術散文),而 APP 票正是使用者真的碰得到、`brief` 最有內容可寫的那一類——`brief` 寫「使用者會遇到什麼」,`scope` 寫「多大」,都不寫檔名行號。梳理階段工具本來就會要求(蓋 groom 戳記時當場擋),立單時寫比事後回填便宜。
 - **本 worker 的 scope 邊界特別容易踩錯**:`backend/src/kg/` 裡**兩種碼混住**——線上服務走的碼是 APP,而 `ops_cli_app.py` / `ops_edit_app.py` 等 `ops_*` 模組只有 repo 內的人經 CLI 碰得到,是 IMP。判準與完整例外表在 `kg-receipt` 的「Stream 分流」,以那份為準,本檔不複述。同一個問題兩邊都要修就開兩筆,別混一筆。
 - 修好某筆時，**在自己的工作樹裡用 `stage` 不要用 `verify`**：`./ops/backlog.py stage <id> --verdict CONFIRMED-FIXED --by <你> --evidence '<你跑的命令>'`（**沒有 `--status`**：波次存在的理由是落地 commit 此刻還不存在，而只有 `fixed` 需要落地 commit，所以 `stage` 恆等於結案為 `fixed`；`wont-fix` 要的是理由不是 hash，當場用 `update` 寫）。它把這筆結案（連同你跑的命令）park 在 gitignored 佇列，**不寫 store、不重生 view**——那個 view 是平行分支唯一會衝突的檔，而且重生是 O(entries) 又已序列化，N 個 agent 各付一次。`cutover` 落地時自動蓋上真正的落地 sha（你在 rebase 前根本不知道那顆 sha 是什麼，自己填等於製造 orphaned `fixed_by`），波次結束由整合者跑一次 `./ops/backlog.py anchor --commit` 一起回填（全有或全無；某一列壞掉卡住整波時用 `./ops/backlog.py unstage <id> --commit` 取下，**不要手改那個 jsonl**）。`verify --commit` 仍然存在，但那是**單條、非波次**時直接在 store 上收案用的。**`update --status fixed --resolution ...` 今天會 exit 64**(缺 `fixed_by`);而只補 `--fixed-by` 仍會被 cutover 的 `validate --baseline-check` 擋下——結案要留下可歸屬驗證(日期 / 驗證者 / verdict / 證據四者缺一不可),`verify` 是把它們寫成一個動作的入口。
 
