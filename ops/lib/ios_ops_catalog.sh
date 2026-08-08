@@ -517,9 +517,31 @@ catalog_dataset_fixed_clock() {
 }
 
 catalog_source_commit() {
-  local commit
+  local commit ios_status
   commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || return 1
   [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || return 1
+  # This value is stamped into the kg.catalog.appearance.v1 sidecar, which the
+  # App Review gate compares against the release spec's sourceCommit. Snapshots
+  # rendered from an uncommitted ios/ tree are not snapshots of $commit, so
+  # returning it here is how a dirty run gets signed as release evidence.
+  #
+  # Refuse rather than mark: unlike ios_test.sh's run verdict, that sidecar has a
+  # closed key set and no consumer that could read a flag, so a mark would be
+  # decoration. Failure reuses this function's existing contract (caller maps a
+  # non-zero return to source-commit-failed).
+  #
+  # Scoped to ios/ because that is what the snapshots are a function of; whether
+  # the generator scripts must be pinned too is IMP-20260805-c7178a item (1),
+  # still open. Skipped under KG_IOS_OPS_FIXTURE because that mode seeds
+  # synthetic snapshots without ever running xcodebuild — there is no claim about
+  # the checkout to falsify.
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" != "1" ]]; then
+    ios_status="$(git -C "$ROOT" status --porcelain -- ios 2>/dev/null)" || return 1
+    if [[ -n "$ios_status" ]]; then
+      echo "[ios_ops][catalog] refusing to attribute snapshots to $commit: ios/ has uncommitted changes" >&2
+      return 1
+    fi
+  fi
   printf '%s\n' "$commit"
 }
 

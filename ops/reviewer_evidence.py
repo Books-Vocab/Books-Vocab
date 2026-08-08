@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +50,58 @@ def canonical_manifest_bytes(manifest: dict[str, Any]) -> bytes:
     return (
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     ).encode("utf-8")
+
+
+REGULAR_FILE_MODES = {"100644", "100755"}
+
+
+def _git(workspace_root: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess:
+    """Run git, turning a missing binary into the typed error the CLI contract expects."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(workspace_root), *args],
+            capture_output=True, text=text, check=False,
+        )
+    except OSError as exc:
+        raise EvidenceError(f"git.unavailable:{exc}") from exc
+
+
+def materialize_tracked_file(
+    *, workspace_root: Path, commit: str, rel_path: str, destination: Path,
+) -> Path:
+    """Write `rel_path` exactly as recorded at `commit` — never the working tree.
+
+    Evidence that names a commit must contain that commit's bytes.  Reading the
+    working tree instead lets a bundle claim one commit while carrying another's
+    files, so every failure here is terminal: there is no fall back to the
+    checkout, because that fall back is the defect this function exists to close.
+
+    The tree entry is checked before its content because ``git cat-file blob``
+    exits 0 on a symlink and hands back the link *target* — bytes that would be
+    written out as if they were the project file.
+
+    Lives here, in the shared evidence library, so the two tools that mint the
+    "these bytes are commit X" claim (``app_review_evidence.py`` for the whole
+    bundle, ``capture_profile.py reviewer-evidence`` for a single manifest)
+    cannot drift apart on what that claim means.
+    """
+    if not _COMMIT_RE.fullmatch(commit or ""):
+        raise EvidenceError(f"sourceCommit.format:{commit!r}")
+    if _git(workspace_root, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
+        raise EvidenceError(f"sourceCommit.unreachable:{commit}")
+    # --full-tree pins the path to the repo root regardless of the caller's cwd.
+    entry = _git(workspace_root, "ls-tree", "--full-tree", commit, "--", rel_path)
+    if entry.returncode != 0 or not entry.stdout.strip():
+        raise EvidenceError(f"sourceCommit.path-missing:{commit}:{rel_path}")
+    mode, kind, _rest = entry.stdout.split(maxsplit=2)
+    if kind != "blob" or mode not in REGULAR_FILE_MODES:
+        raise EvidenceError(f"sourceCommit.not-regular-file:{commit}:{rel_path}:{mode}:{kind}")
+    blob = _git(workspace_root, "cat-file", "blob", f"{commit}:{rel_path}", text=False)
+    if blob.returncode != 0:
+        raise EvidenceError(f"sourceCommit.path-missing:{commit}:{rel_path}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(blob.stdout)
+    return destination
 
 
 def _require_file(path: Path, *, label: str) -> None:

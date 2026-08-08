@@ -30,6 +30,10 @@ from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.streaming_command import run_streamed_command  # noqa: E402
+from reviewer_evidence import (  # noqa: E402
+    EvidenceError as ReviewerEvidenceError,
+    materialize_tracked_file,
+)
 
 
 URL_SCHEMA = "kg.app_review.url_checks.v1"
@@ -37,7 +41,6 @@ JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 PLAN_SCHEMA = "kg.app_review.evidence_plan.v1"
 ANCHOR_SCHEMA = "kg.app_review.anchor_refresh.v1"
 PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
-_REGULAR_FILE_MODES = {"100644", "100755"}
 _ANCHOR_FIELD = "desiredManifestSHA256"
 _ANCHOR_RE = re.compile(r'("desiredManifestSHA256"\s*:\s*)"([0-9a-f]{64})"')
 # A cold spec blocks on ~48 codes at once.  Splicing all of them into one refusal
@@ -85,47 +88,25 @@ def _run_producer_command(
     )
 
 
-def _git(workspace_root: Path, *args: str, text: bool = True) -> subprocess.CompletedProcess:
-    """Run git, turning a missing binary into the typed error the CLI contract expects."""
-    try:
-        return subprocess.run(
-            ["git", "-C", str(workspace_root), *args],
-            capture_output=True, text=text, check=False,
-        )
-    except OSError as exc:
-        raise EvidenceError(f"desired.git.unavailable:{exc}") from exc
-
-
 def _materialize_tracked_file(
     *, workspace_root: Path, commit: str, rel_path: str, destination: Path,
 ) -> Path:
-    """Write `rel_path` exactly as recorded at `commit` — never the working tree.
+    """Producer-scoped view of `reviewer_evidence.materialize_tracked_file`.
 
-    Evidence that names a commit must contain that commit's bytes.  Reading the
-    working tree instead lets a bundle claim one commit while carrying another's
-    files, so every failure here is terminal: there is no fall back to the
-    checkout, because that fall back is the defect this function exists to close.
-
-    The tree entry is checked before its content because ``git cat-file blob``
-    exits 0 on a symlink and hands back the link *target* — bytes that would be
-    written out as if they were the project file.
+    The primitive is shared so that the two tools minting the "these bytes are
+    commit X" claim cannot disagree on it; only the blame prefix is local, because
+    the gate reads these strings as block codes and ``desired`` names the producer
+    whose bundle is unusable when this fails.
     """
-    _require(bool(_COMMIT_RE.fullmatch(commit)), f"desired.sourceCommit.format:{commit!r}")
-    if _git(workspace_root, "rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
-        raise EvidenceError(f"desired.sourceCommit.unreachable:{commit}")
-    # --full-tree pins the path to the repo root regardless of the caller's cwd.
-    entry = _git(workspace_root, "ls-tree", "--full-tree", commit, "--", rel_path)
-    if entry.returncode != 0 or not entry.stdout.strip():
-        raise EvidenceError(f"desired.sourceCommit.path-missing:{commit}:{rel_path}")
-    mode, kind, _rest = entry.stdout.split(maxsplit=2)
-    if kind != "blob" or mode not in _REGULAR_FILE_MODES:
-        raise EvidenceError(f"desired.sourceCommit.not-regular-file:{commit}:{rel_path}:{mode}:{kind}")
-    blob = _git(workspace_root, "cat-file", "blob", f"{commit}:{rel_path}", text=False)
-    if blob.returncode != 0:
-        raise EvidenceError(f"desired.sourceCommit.path-missing:{commit}:{rel_path}")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_bytes(blob.stdout)
-    return destination
+    try:
+        return materialize_tracked_file(
+            workspace_root=workspace_root,
+            commit=commit,
+            rel_path=rel_path,
+            destination=destination,
+        )
+    except ReviewerEvidenceError as exc:
+        raise EvidenceError(f"desired.{exc}") from exc
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -261,6 +242,11 @@ def produce_journey(
         ("datasetSHA256", "datasetSHA256"),
     ):
         _require(release.get(field) == target.get(target_key), f"journey.{field}")
+    # The verdict reads `sourceCommit` from git but the build tuple from the
+    # checkout; when they disagree the run belongs to no commit, so it cannot be
+    # handed to this spec's clean one.  `is False` rather than falsy: a verdict
+    # produced before ios_test.sh recorded the field must not be read as clean.
+    _require(release.get("sourceTreeDirty") is False, "journey.sourceTreeDirty")
     _require(bool(_COMMIT_RE.fullmatch(str(release.get("sourceCommit") or ""))), "journey.sourceCommit")
     _require(bool(_SHA_RE.fullmatch(str(release.get("datasetSHA256") or ""))), "journey.datasetSHA256")
 
@@ -330,6 +316,7 @@ def produce_demo_access(spec: dict[str, Any], run: dict[str, Any], *, workspace_
     _require(demo.get("networkMode") == "live", "demo.networkMode")
     _require(demo.get("fixtureDataUsed") is False, "demo.fixtureDataUsed")
     _require(demo.get("evidenceKind") in {"exact-device", "live-demo"}, "demo.evidenceKind")
+    _require(demo.get("sourceTreeDirty") is False, "demo.sourceTreeDirty")
     for field, target_key in (("bundleID", "bundleID"), ("marketingVersion", "marketingVersion"), ("buildNumber", "buildNumber"), ("sourceCommit", "sourceCommit")):
         _require(demo.get(field) == target.get(target_key), f"demo.{field}")
     artifacts: list[dict[str, str]] = []

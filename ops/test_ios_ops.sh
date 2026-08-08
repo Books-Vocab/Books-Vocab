@@ -444,6 +444,53 @@ echo "$catalog_json_clean" | jq -e '.schema=="kg.ios.catalog.v1"' >/dev/null \
   && ok "catalog snapshots --json stdout remains single valid JSON despite stderr observability" || fail_t "catalog snapshots stdout not clean JSON: $catalog_json_clean"
 rm -rf "$catalog_tmp" "$catalog_xctestrun_tmp" "$bad_catalog_tmp"
 
+section "Catalog source commit attribution"
+# catalog_source_commit stamps "these snapshots are of commit X" onto the
+# appearance proof the App Review gate reads. A dirty ios/ tree makes that false.
+dirty_repo="$(mktemp -d)"
+mkdir -p "$dirty_repo/ios"
+git -C "$dirty_repo" -c init.defaultBranch=main init -q
+printf 'pinned\n' >"$dirty_repo/ios/source.txt"
+git -C "$dirty_repo" add -A >/dev/null
+git -C "$dirty_repo" -c user.name=t -c user.email=t@example.invalid commit -qm pin
+dirty_repo_head="$(git -C "$dirty_repo" rev-parse HEAD)"
+catalog_commit_clean="$(ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' || true)"
+[[ "$catalog_commit_clean" == "$dirty_repo_head" ]] \
+  && ok "catalog_source_commit returns HEAD on a clean tree" \
+  || fail_t "catalog_source_commit did not return HEAD on a clean tree: $catalog_commit_clean"
+printf 'edited\n' >>"$dirty_repo/ios/source.txt"
+catalog_dirty_cap="$dirty_repo/refusal.stderr"
+if ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' >/dev/null 2>"$catalog_dirty_cap"; then
+  fail_t "catalog_source_commit attributed snapshots to $dirty_repo_head with a dirty ios/ tree"
+else
+  grep -q 'uncommitted changes' "$catalog_dirty_cap" \
+    && ok "catalog_source_commit refuses a dirty ios/ tree and says why" \
+    || fail_t "catalog_source_commit refused without naming the cause: $(cat "$catalog_dirty_cap")"
+fi
+# Untracked non-iOS edits are not part of the claim these snapshots make.
+git -C "$dirty_repo" checkout -q -- ios/source.txt
+printf 'unrelated\n' >"$dirty_repo/notes.md"
+catalog_commit_other="$(ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' || true)"
+[[ "$catalog_commit_other" == "$dirty_repo_head" ]] \
+  && ok "catalog_source_commit ignores dirt outside ios/" \
+  || fail_t "catalog_source_commit refused for a non-iOS edit: $catalog_commit_other"
+# Fixture mode seeds synthetic snapshots and never runs xcodebuild, so it makes
+# no claim about the checkout to falsify.
+printf 'edited\n' >>"$dirty_repo/ios/source.txt"
+catalog_commit_fixture="$(KG_IOS_OPS_FIXTURE=1 ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' || true)"
+[[ "$catalog_commit_fixture" == "$dirty_repo_head" ]] \
+  && ok "catalog_source_commit stays usable under KG_IOS_OPS_FIXTURE" \
+  || fail_t "fixture mode lost catalog_source_commit: $catalog_commit_fixture"
+rm -rf "$dirty_repo"
+
+section "ios_test verdict records source tree state"
+grep -q 'status --porcelain' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test.sh inspects the working tree before stamping sourceCommit" \
+  || fail_t "ios_test.sh stamps sourceCommit without checking the working tree"
+grep -q 'sourceTreeDirty:\$sourceTreeDirty' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test.sh verdict carries sourceTreeDirty" \
+  || fail_t "ios_test.sh verdict does not carry sourceTreeDirty"
+
 section "UITest video archive surface"
 IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
 [[ -f "$IOS_TEST_VIDEO_ARCHIVE_LIB" ]] && ok "ios_test_video_archive.sh exists" || fail_t "ios_test_video_archive.sh missing"
