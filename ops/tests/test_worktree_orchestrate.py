@@ -994,6 +994,15 @@ def test_verdict_warn_dominates_pass():
 def test_verdict_block_dominates_all():
     assert aggregate_verdict([{"status": "warn"}, {"status": "block"}]) == "block"
     assert aggregate_verdict([{"status": "pass"}, {"status": "block"}]) == "block"
+    # the batch shape this actually shows up as: one genuine red alongside one red that
+    # tag surgery contaminated. The contaminated one must not launder the genuine one.
+    assert aggregate_verdict([{"status": "inconclusive"},
+                              {"status": "block"}]) == "block"
+
+
+def test_verdict_inconclusive_degrades_to_warn():
+    assert aggregate_verdict([{"status": "inconclusive"}]) == "warn"
+    assert aggregate_verdict([{"status": "pass"}, {"status": "inconclusive"}]) == "warn"
 
 
 def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_path):
@@ -1801,6 +1810,50 @@ def test_cutover_refused_when_gate_verdict_is_block(scratch):
     assert rc == MODULE.EXIT_BLOCK
     assert cut["landed"] is False
     assert "docs/reference/x.md" not in _local_main_files(repo)
+
+
+@gitmark
+def test_cutover_refuses_while_a_gate_was_left_inconclusive(scratch):
+    """An inconclusive gate folds the VERDICT to warn, and a warn LANDS — so on its own
+    the fold turns "this red could not be attributed" into "shipped with a note". That
+    is the disarm direction, and it is reachable without any tag surgery: every
+    concurrent `preflight` / `catchup` / `sync` / `deploy` runs `git fetch --prune`,
+    which imports new origin tags and moves the snapshot under an unrelated gate.
+
+    The summary already told the operator to re-run the gate; nothing made that happen.
+    cutover now refuses, which costs one gate re-run and makes the instruction real.
+    Found by review of IMP-20260805-4ec901."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "add backend endpoint", "--slug", "inconc-refuse",
+         "--state", state, "--json"])
+    wt = opened["path"]
+    src = Path(wt) / "backend" / "src" / "kg" / "app.py"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_text("x = 1\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "backend src"], wt)
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK and gate["verdict"] == "warn"
+
+    # poison exactly one row the way a real refs-changed run would, then re-fold
+    rec_path = MODULE._gate_record_path(state, wt)
+    rec = json.loads(rec_path.read_text())
+    poisoned = rec["gates"][0]["name"]
+    rec["gates"][0].update({"status": "inconclusive", "rc": 1, "refs_changed": True})
+    rec["verdict"] = MODULE.aggregate_verdict(rec["gates"])
+    # if this were "block" the test would prove nothing — the existing block refusal
+    # would catch it and the new one would never be exercised
+    assert rec["verdict"] == "warn"
+    rec_path.write_text(json.dumps(rec))
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "inconclusive" in cut["error"]
+    assert poisoned in cut["error"], "the refusal must name which gate to re-run"
+    assert "backend/src/kg/app.py" not in _local_main_files(repo)
 
 
 # --- IMP-20260806-945e01: the verdict must be bound to the tree that LANDS ---------
@@ -3763,15 +3816,30 @@ def test_the_tag_probe_reads_real_tags_and_reports_unreadable_as_unmeasured(tmp_
     before = MODULE._tag_snapshot(repo)
     assert before is not None and "refs/tags/v1" in before
     run("tag", "v2")
-    after = MODULE._tag_snapshot(repo)
-    assert MODULE._tag_delta(before, after) == 1
+    one_added = MODULE._tag_snapshot(repo)
+    assert MODULE._tag_delta(before, one_added) == 1
     assert MODULE._tag_delta(before, before) == 0
 
-    # a non-repo is unmeasured, and unmeasured never counts as a change
-    outside = MODULE._tag_snapshot(tmp_path / "not-a-repo")
-    assert outside is None
+    # the count is a count, not the constant 1: two more tags must read as two
+    run("tag", "v3")
+    run("tag", "v4")
+    assert MODULE._tag_delta(one_added, MODULE._tag_snapshot(repo)) == 2
+    # and a MOVED tag is one removal plus one addition — the docstring's claim, pinned
+    run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+        "--allow-empty", "-m", "y")
+    four = MODULE._tag_snapshot(repo)
+    run("tag", "-f", "v1")
+    assert MODULE._tag_delta(four, MODULE._tag_snapshot(repo)) == 2
+
+    # unmeasured never counts as a change — BOTH ways it can happen:
+    # a path that does not exist at all, and a real directory that is not a repo.
+    missing = MODULE._tag_snapshot(tmp_path / "does-not-exist")
+    not_a_repo = tmp_path / "plain"
+    not_a_repo.mkdir()
+    outside = MODULE._tag_snapshot(not_a_repo)
+    assert missing is None and outside is None
     assert MODULE._tag_delta(before, outside) == 0
-    assert MODULE._tag_delta(outside, after) == 0
+    assert MODULE._tag_delta(outside, four) == 0
 
 
 def test_a_failing_gate_during_a_tag_change_is_inconclusive_not_block(tmp_path, monkeypatch):
@@ -3784,7 +3852,8 @@ def test_a_failing_gate_during_a_tag_change_is_inconclusive_not_block(tmp_path, 
     So the orchestrator says which one it measured. `inconclusive` is neither pass nor
     block: block would kill work for someone else's tag surgery, pass would let a real
     red through."""
-    snaps = iter(["a1 refs/tags/v1", "a1 refs/tags/v1\nb2 refs/tags/v2"])
+    snaps = iter(["a1 refs/tags/v1",
+                  "a1 refs/tags/v1\nb2 refs/tags/v2\nc3 refs/tags/v3"])
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: next(snaps))
     monkeypatch.setattr(MODULE, "_run_streamed_command",
                         lambda *a, **k: (1, "  passed: 371  failed: 1"))
@@ -3792,9 +3861,10 @@ def test_a_failing_gate_during_a_tag_change_is_inconclusive_not_block(tmp_path, 
     r = MODULE._run_gate(spec, str(tmp_path))
     assert r["status"] == "inconclusive"
     assert r["rc"] == 1, "the real rc must survive — the point is attribution, not amnesia"
-    assert r["refsChanged"] is True
-    # the count comes from the two snapshots THIS test supplied, not from a constant
-    assert "1 tag(s)" in r["summary"]
+    assert r["refs_changed"] is True
+    # the count comes from the two snapshots THIS test supplied, not from a constant:
+    # two tags appear, so a hard-coded "1" in the summary fails here
+    assert "2 tag(s)" in r["summary"]
     assert MODULE.aggregate_verdict([r]) == "warn"
 
 
@@ -3807,8 +3877,34 @@ def test_a_failing_gate_with_stable_tags_still_blocks(tmp_path, monkeypatch):
     spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
     r = MODULE._run_gate(spec, str(tmp_path))
     assert r["status"] == "block"
-    assert r.get("refsChanged") is not True
+    assert r.get("refs_changed") is not True
     assert MODULE.aggregate_verdict([r]) == "block"
+
+
+def test_a_red_whose_refs_probe_failed_says_so_instead_of_going_quiet(tmp_path, monkeypatch):
+    """Fail-safe is the right direction — an unreadable probe must not downgrade a red —
+    but silent fail-safe is not what this module does anywhere else. `history_error`,
+    `log_error` and `executed: False` all exist for one reason: "could not measure" must
+    not look identical to "measured, nothing happened". Without this, the probe going
+    permanently blind on some machine reinstates the whole bug with zero signal.
+    Found by review of IMP-20260805-4ec901."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: None)
+    monkeypatch.setattr(MODULE, "_run_streamed_command", lambda *a, **k: (1, "  ✗ boom"))
+    spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
+    r = MODULE._run_gate(spec, str(tmp_path))
+    # the red still counts — fail-safe direction is unchanged
+    assert r["status"] == "block"
+    assert r.get("refs_changed") is not True
+    # but the inability to attribute it is on the record, not swallowed
+    assert r["refs_probe"] == "unmeasured"
+    assert "unmeasured" in r["summary"]
+
+    # control: when the probe DOES work and sees nothing, there is no such noise
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "a1 refs/tags/v1")
+    clean = MODULE._run_gate(spec, str(tmp_path))
+    assert clean["status"] == "block"
+    assert "refs_probe" not in clean
+    assert "unmeasured" not in clean["summary"]
 
 
 def test_an_inconclusive_gate_is_not_evidence_that_it_can_never_pass(tmp_path):
@@ -3822,7 +3918,7 @@ def test_an_inconclusive_gate_is_not_evidence_that_it_can_never_pass(tmp_path):
     state = str(tmp_path / "reg.json")
     orch = {"sha256": "a" * 64}
     poisoned = [{"name": "ops-shell:test_ios_ops.sh", "level": "block",
-                 "status": "inconclusive", "rc": 1, "refsChanged": True}]
+                 "status": "inconclusive", "rc": 1, "refs_changed": True}]
     for head in ("aaaaaaaa", "bbbbbbbb", "cccccccc"):
         assert MODULE._append_gate_history(state, str(tmp_path), head, orch,
                                            poisoned) is None
