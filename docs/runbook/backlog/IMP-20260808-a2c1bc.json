@@ -1,0 +1,20 @@
+{
+  "acceptance": "09 / 08 / 空 / 非數字皆判為仍在冷卻（fail closed）；合法值 90 正控維持原行為；盤點結果寫進 resolution",
+  "acceptance_cmd": "bash ops/tests/test_kg_reconcile.sh",
+  "brief": "自動部署的「這個版本壞掉了先別重試」保護，在設定值開頭是 0 的時候會失效，壞掉的版本會每 90 秒重試一次。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/kg_reconcile.sh:is_poisoned` 用 `^[0-9]+$` 之外的算術比較讀 `KG_RECON_POISON_COOLDOWN`，帶前導零的值（例如 `09`、`08`）在 shell 算術裡是**非法八進位**，於是比較失敗而函式**失敗開放**——回報「沒有中毒」。\n\n後果是生產行為：一個已知壞掉的 sha **不再被冷卻擋住，會每 90 秒重試一次**。而 reconciler 盯的是 `origin/prod`，所以這是部署路徑上的迴圈。\n\n發現方式：`infra-health` 的受派者在修 `ops/infra_health.sh` 的同型缺陷時（`^[0-9]+$` 對 `09` **失敗開放且判綠**——指標從 `metrics[]` 消失而 `overall` 保持乾淨，由 reviewer 抓到），順手查出 `kg_reconcile.sh` 的 `is_poisoned` 有**同一個形狀**。它刻意不順手修（超出票的範圍），只在 `infra_health.sh` 的「兩側語意相同」註解上加了但書，並掛了背景任務——**但背景任務不是票，不會進 dispatch，也不會有人追**。\n\n這與 `IMP-0056` 是同一族（八進位失敗開放）。同族在同一支腳本鏈上出現第三次，代表這不是個別疏忽而是缺一條共用的數值讀取。",
+  "fix_site": "ops/kg_reconcile.sh:is_poisoned（KG_RECON_POISON_COOLDOWN 的算術比較）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-a2c1bc",
+  "plan": "ops/kg_reconcile.sh:is_poisoned 讀 KG_RECON_POISON_COOLDOWN 時改成不會被前導零騙的解析（`10#$v`，或先用具名的合法性檢查再比較），且**失敗時 fail closed**——讀不到合法數值就當作「仍在冷卻」，因為錯誤地繼續重試一個壞 sha 的代價遠高於多等一輪。\n\n**先盤點再改**：grep 整條 reconciler 腳本鏈（kg_reconcile.sh / infra_health.sh / devops_kg_safe.sh）找所有把 env 值直接送進算術比較的地方，逐處判該 fail open 還是 fail closed，結論寫進 resolution。同族已知第三次（IMP-0056、infra_health.sh 的 ^[0-9]+$、本條），所以單點修補不夠——盤點若發現三處以上，抽一個共用的數值讀取 helper 並在註解裡寫明失敗方向。\n\n**測試**：09 / 08 / 空字串 / 非數字各一條，斷言 is_poisoned 回「仍在冷卻」而非「沒中毒」；合法值 90 正控維持原行為。加進既有的 ops/tests/test_kg_reconcile.sh。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支腳本裡的數值讀取改成不會被前導零騙的寫法，順便看看同一批腳本還有幾處同樣寫法；加測試。",
+  "severity": "high",
+  "source": "2026-08-08 infra-health 受派者修 infra_health.sh 同型缺陷時查出；它只掛背景任務未立票",
+  "status": "triaged",
+  "stream": "IMP"
+}

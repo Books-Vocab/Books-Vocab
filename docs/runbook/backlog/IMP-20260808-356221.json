@@ -1,0 +1,20 @@
+{
+  "acceptance": "add --stream IMP --category correctness 的訊息含 tool 與 APP-only 且 rc=64；APP 側對稱；合法組合正控不變",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k bad_category",
+  "brief": "立待辦時分類填錯，工具只回一行看不懂的內部訊息，不告訴你有哪些能填，也不說可填的選項會隨類型不同。",
+  "category": "cli",
+  "date": "2026-08-08",
+  "detail": "`backlog.py add` 拒絕不合法的 `--category` 時印的是 raw dict repr，**不印合法清單，也不說 category 的合法值隨 `--stream` 而異**：\n\n```\nERROR invalid entry: [{'kind': 'bad-category', 'value': 'correctness'}]\n```\n\n`correctness` 是 APP 專屬；IMP 只收 `tool` / `cli` / `doc` / `arch`。這個資訊確實寫在 `--help` 裡（`--category CATEGORY  IMP: ('tool','cli','doc','arch') APP: ('ux','correctness','perf','data','content')`），但拒絕的當下一個字都沒重複，於是呼叫者要嘛去翻 help、要嘛猜。\n\n2026-08-08 十分鐘內**兩次獨立命中**：`infra-health` 的受派者踩到並寫進 tooling debt（「Cost one round-trip」），我讀完它的回報後**在下一則訊息裡踩了同一個**。兩次都是在立一張講「某某東西壞了」的票時，直覺選了 `correctness`。\n\n這是小摩擦但頻率高，而且它落在**立單**這個動作上——立單是整個自我提升迴圈的入口，任何摩擦都會直接轉成「算了不立」。",
+  "fix_site": "ops/backlog.py 的 bad-category 拒絕訊息（清單自常數推導，不手抄）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-356221",
+  "plan": "`bad-category` 的拒絕訊息改成印出**該 stream 的**合法選項，例如：`invalid category \"correctness\" for stream IMP — allowed: tool, cli, doc, arch (correctness is APP-only)`。清單要從既有的常數推導，**不要手抄第二份**。\n\n**順帶盤點**：同一支工具還有哪些拒絕是 raw dict repr（`validate` 的 problem kinds 走人讀輸出時也是同樣形狀）。逐條判哪些該人性化——**不要全部改**，`validate` 的機器可讀輸出刻意是結構化的，改它會壞掉下游。只改**互動式呼叫路徑上、人會直接讀到**的那些，並在 resolution 裡列出你改了哪些、放過哪些與理由。\n\n**測試**：`add --stream IMP --category correctness` → 訊息含 `tool` 與 `APP-only` 字樣且 rc=64；`add --stream APP --category tool` → 對稱地含 APP 的合法清單；合法組合正控不受影響。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "把拒絕訊息改成印出該 stream 的合法選項；順帶檢查同一支工具還有哪些拒絕訊息也是 raw 內部格式。",
+  "severity": "low",
+  "source": "2026-08-08 十分鐘內兩次獨立命中：infra-health 受派者與我自己，兩次都在立票時直覺選了 APP 專屬的 correctness",
+  "status": "triaged",
+  "stream": "IMP"
+}
