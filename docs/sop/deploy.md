@@ -77,6 +77,8 @@ ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api --fo
 ### rollback + poison 行為
 DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/system/info`（200 且 version==新 sha）→ 外部 smoke（`wordnexus.lol` info 對齊 + `/api/health` 存在）→ `ops/infra_health.sh`（exit 0 pass／1 warn 仍 pass／2 crit **原則上** fail，唯一例外見下段）。localhost 失敗、infra 失敗、以及**外部 smoke 判 `bad`** → `git reset --hard ROLLBACK_SHA` + 寫回 VERSION + `compose up --build` 回舊版，並把該 `origin_sha` 記入 `backups/reconciler.state` 為 **poison**（cooldown `KG_RECON_POISON_COOLDOWN`，預設 1h）；cooldown 內同 sha 不重試（等 origin 前進到新 sha 或 cooldown 過），避免壞 commit 每 90 秒撞牆。rollback 走 stderr 大聲 ALERT（launchd err log 收）、exit 非 0，且**回滾自己那次 compose 的退出碼會被檢查**——失敗時發的是「回滾未生效，容器很可能仍跑新版」而不是「生產可能雙壞」（後者只在回滾真的跑完、舊版卻起不來時才發）。
 
+**reconciler 呼叫 `infra_health` 時會設 `KG_HEALTH_DEPLOY_DRIFT=0`（IMP-0022）**。那組 metric（`deploy_drift` / `reconciler_tick_age_s` / `reconciler_poison_active`）量的是「生產有沒有收斂到 `origin/prod`、reconciler 還活著沒」，而**那正是 reconciler 自己的職責**——把自己的收斂狀態納入自己的健康條件會構成迴圈：release 推進 `origin/prod` 後、下一輪收斂完成前必然 drift，於是這一關會回滾一次本來健康的部署。故自我 gate 關掉該組；人工或監控呼叫 `ops/infra_health.sh` 時預設啟用。`deploy_drift` 本身另設計成**永不 crit**（只 ok/warn），因為那個瞬態 drift 是正常的。
+
 **外部 smoke 是三分類，不是二分類（IMP-0061）**。判準：**回滾只有在證據指控被部署的那份 code 時才正當**，而走到這一步 localhost 已經證明新 sha 起來了、正在 serving。
 
 | class | 什麼情況 | 結果 |

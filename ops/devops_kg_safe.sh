@@ -202,6 +202,7 @@ main() {
       preflight
       shift
       KG_DATA_DIR="${KG_REMOTE_DATA_DIR:-/Users/chenliangyu/kg-data}" \
+      KG_PROD_REPO="${KG_REMOTE_PROD_REPO:-/Users/chenliangyu/kg-prod}" \
         "$ROOT_DIR/ops/infra_health.sh" "$@"
       ;;
     user-info)

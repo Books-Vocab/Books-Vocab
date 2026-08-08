@@ -23,6 +23,14 @@
 # 閾值可由 env 覆寫（cron 調靈敏度免改腳本）：
 #   KG_HEALTH_DISK_WARN/CRIT  INODE_WARN/CRIT  MEM_WARN/CRIT
 #   KG_HEALTH_CERT_WARN/CRIT  ERR_WARN/CRIT  SWAP_WARN/CRIT  RESTART_WARN
+#   KG_HEALTH_TICK_WARN/CRIT  （reconciler 心跳年齡秒數）
+#
+# 部署漂移組（IMP-0022）相關 env：
+#   KG_HEALTH_DEPLOY_DRIFT  1=啟用(預設) 0=停用 deploy_drift / reconciler_tick_age_s /
+#                           reconciler_poison_active 三個 metric。reconciler 自我 gate
+#                           時必須設 0，理由見下方判讀段的自噬迴圈說明。
+#   KG_PROD_REPO            felix 生產 clone 路徑（預設 /Users/chenliangyu/kg-prod）
+#   KG_RECON_POISON_COOLDOWN  poison 冷卻秒（與 kg_reconcile.sh 共用同名 env）
 #
 # Seam（測試用）：
 #   KG_BASE                 取代 ./devops.sh（攔截 `run "<bundle>"`）
@@ -37,6 +45,9 @@ DOMAIN="${KG_DOMAIN:-wordnexus.lol}"
 PUBLIC_WEB_BASE_URL="${KG_PUBLIC_WEB_BASE_URL:-https://${DOMAIN}}"
 CONTAINER="${KG_CONTAINER:-knowledge-graph-api}"
 DATA_DIR="${KG_DATA_DIR:-/Users/chenliangyu/kg-data}"
+# felix 專用生產 clone（reconciler 收斂的對象，非 ~/project/kg）。見 launchd plist 的
+# KG_RECON_REPO 與 ops/kg_reconcile.sh 的同名預設。
+PROD_REPO="${KG_PROD_REPO:-/Users/chenliangyu/kg-prod}"
 PROBE_URL="${KG_HEALTH_PROBE_URL:-${PUBLIC_WEB_BASE_URL}/api/system/info}"
 
 JSON=0
@@ -53,6 +64,15 @@ ERR_WARN="${KG_HEALTH_ERR_WARN:-20}";     ERR_CRIT="${KG_HEALTH_ERR_CRIT:-100}" 
 # 旁證信號，避免 RAM 健康時假 crit。Linux 舊值 warn20/crit50 不適用 macOS。
 SWAP_WARN="${KG_HEALTH_SWAP_WARN:-70}";   SWAP_CRIT="${KG_HEALTH_SWAP_CRIT:-90}"
 RESTART_WARN="${KG_HEALTH_RESTART_WARN:-1}"
+# reconciler 心跳年齡（秒）。launchd StartInterval=90s，故 600s ≈ 連漏 6 拍才 warn。
+TICK_WARN="${KG_HEALTH_TICK_WARN:-600}";  TICK_CRIT="${KG_HEALTH_TICK_CRIT:-1800}"
+# 刻意沿用 kg_reconcile.sh 的同名 env，兩邊語意一致（同一個冷卻窗）。
+# ⚠ 限定：本檔對它強制十進位（見下方 10# 說明），但 kg_reconcile.sh 的 is_poisoned 尚未，
+# 故 `0900` 這種前導零值下兩邊會**不一致**（那邊會讀成「沒有冷卻」→ 壞 sha 每 90 秒重撞）。
+# 已在 receipt 具名為待開票的既有缺陷，不在本票 scope。
+POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"
+# 部署漂移組總開關。reconciler 自我 gate 時關掉，理由見下方判讀段。
+DEPLOY_DRIFT="${KG_HEALTH_DEPLOY_DRIFT:-1}"
 
 log() { echo "$@" >&2; }
 
@@ -62,6 +82,7 @@ REMOTE_BUNDLE='
 set -e
 C='"$CONTAINER"'
 D='"$DATA_DIR"'
+P='"$PROD_REPO"'
 df -P / | awk "NR==2{gsub(/%/,\"\",\$5); printf \"disk_pct\t%s\n\", \$5; printf \"disk_used_gb\t%d\n\", \$3/1048576; printf \"disk_total_gb\t%d\n\", \$2/1048576}"
 df -Pi / | awk "NR==2{gsub(/%/,\"\",\$5); printf \"inode_pct\t%s\n\", \$5}"
 # macOS 記憶體：total=sysctl hw.memsize；available=(free+inactive+speculative 頁)×頁大小。
@@ -86,6 +107,15 @@ docker stats --no-stream --format "cpu_pct	{{.CPUPerc}}\nmem_pct	{{.MemPerc}}" "
 printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo active || echo inactive)"
 printf "log_errors_1h\t%s\n" "$(docker logs "$C" --since 1h 2>&1 | grep -ciE "error|exception|traceback|critical" || true)"
 printf "data_dir_mb\t%s\n" "$(du -sm "$D" 2>/dev/null | cut -f1 || echo 0)"
+# 部署漂移組（IMP-0022）。全用雙引號：本段是單引號字串，出現單引號會提前結束它，
+# 故不得改用 awk（awk 程式需要單引號）。各自帶 || 保底，printf 恆回 0，不觸 set -e。
+# host_now_epoch 讓年齡一律用**遠端**時鐘相減，免本機時鐘偏移污染讀數。
+printf "deployed_sha\t%s\n" "$(cat "$P/backend/VERSION" 2>/dev/null | head -1 | tr -d "[:space:]" || true)"
+printf "deployed_head_sha\t%s\n" "$(git -C "$P" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+printf "origin_prod_sha\t%s\n" "$(git -C "$P" rev-parse --short origin/prod 2>/dev/null || echo unknown)"
+printf "reconciler_tick_epoch\t%s\n" "$(sed -n "s/^tick //p" "$P/backups/reconciler.state" 2>/dev/null | tail -1 || true)"
+printf "reconciler_poison_epoch\t%s\n" "$(sed -n "s/^poison [^ ]* //p" "$P/backups/reconciler.state" 2>/dev/null | sort -n | tail -1 || true)"
+printf "host_now_epoch\t%s\n" "$(date +%s)"
 '
 
 log "[infra-health] 收集 host 指標 ($DOMAIN)…"
@@ -130,10 +160,17 @@ bump() { case "$1" in
   warn|unknown) [[ "$overall" == "ok" ]] && overall="warn";;
 esac; return 0; }  # 必回 0：否則 && 短路時非零會在 set -e 下中斷呼叫端
 add() { ROWS+=("$1|$2|$3|$4|${5:-}"); bump "$4"; }
+# 閾值參數（w/c）也要守，且理由與下方漂移組同一條：門檻來自 env，`09` 這種前導零會讓
+# `(( v >= w ))` 報 base 錯誤。而這裡的失效比漂移組**更陰險**——比較式是 `&&` 的左側，
+# 錯誤不中止、只回 false，於是 warn/crit 兩個分支**永久不可達**，指標永遠綠、rc 永遠 0，
+# 只有一行 stderr。`0600` 更糟：合法八進位，不報錯，靜靜變成 384。
+# **`v` 刻意不加 `10#`**：CERT_DAYS 在憑證過期時是負數，`10#-5` 會炸。
 th_high() { local v="$1" w="$2" c="$3"; [[ -z "$v" ]] && { echo unknown; return; }
-  (( v >= c )) && { echo crit; return; }; (( v >= w )) && { echo warn; return; }; echo ok; }
+  [[ "$w" =~ ^[0-9]+$ && "$c" =~ ^[0-9]+$ ]] || { echo unknown; return; }
+  (( v >= 10#$c )) && { echo crit; return; }; (( v >= 10#$w )) && { echo warn; return; }; echo ok; }
 th_low()  { local v="$1" w="$2" c="$3"; [[ -z "$v" ]] && { echo unknown; return; }
-  (( v <= c )) && { echo crit; return; }; (( v <= w )) && { echo warn; return; }; echo ok; }
+  [[ "$w" =~ ^[0-9]+$ && "$c" =~ ^[0-9]+$ ]] || { echo unknown; return; }
+  (( v <= 10#$c )) && { echo crit; return; }; (( v <= 10#$w )) && { echo warn; return; }; echo ok; }
 
 # Host 指標收集成功與否（降級守門）：container_status 一定會被遠端印出（含 "missing"），
 # disk_pct 來自 df。兩者皆空 = SSH 整段沒回應（逾時/斷線）→ 所有 host 指標其實是「未知」，
@@ -205,6 +242,79 @@ add log_errors_1h "近1h log 錯誤行" "${errs:-?}" "$(th_high "${errs:-}" $ERR
 add cert_days_left "TLS 憑證剩餘" "${CERT_DAYS:-?} 天" "$(th_low "${CERT_DAYS:-}" $CERT_WARN $CERT_CRIT)" "$CERT_DAYS"
 
 ddir="$(getm data_dir_mb)"; add data_dir_mb "資料目錄大小" "${ddir:-?}MB" ok "$ddir"
+
+# ── 4b. 部署漂移組（IMP-0022）────────────────────────────────────────────────
+# 補的是這樣一個盲區：felix 生產是否收斂到 origin/prod、reconciler 是否還活著、是否卡在
+# poison，這三件事原本只以 stderr 告警的形式存在於 launchd err log（ops/kg_reconcile.sh
+# 的 alert()），本工具的 metric 面完全不報。
+#
+# **開關的存在理由**：本檔被 ops/kg_reconcile.sh 的健康 gate 消費，crit(exit 2) 會讓剛
+# 部署成功的版本被回滾+poison。而「部署收斂」正是 reconciler 自己的職責——把它自己的
+# 收斂狀態納入它自己的健康條件會構成迴圈：release 推進 origin/prod 後、下一輪收斂完成前
+# 必然 drift，於是它回滾一次本來健康的部署。故 reconciler 呼叫本檔時關掉這組。
+# 用字串比較不用 -eq，避免非數值 env 讓 [[ ]] 報錯。
+if [[ "$DEPLOY_DRIFT" == "1" ]]; then
+  dhead="$(getm deployed_head_sha)"; dver="$(getm deployed_sha)"
+  osha="$(getm origin_prod_sha)"; hnow="$(getm host_now_epoch)"
+  # 收斂判準用 **repo HEAD**，不用 backend/VERSION。reconciler 每輪都把 HEAD ff 到
+  # origin/prod，但**非 backend 變更走 ff-only 路徑時刻意不寫 VERSION**（見
+  # kg_reconcile.sh 檔頭 :20 與 ff-only 分支，且有斷言釘著）。用 VERSION 判會讓「推了
+  # 一批 ops/docs 上 prod」這種**穩態**永久 warn，而 exit 1 正是 cron 的告警觸發條件
+  # ——長期黃燈＝長期誤報＝訊號作廢，正好抵消本指標存在的理由。VERSION 仍留在 value
+  # 字串當資訊欄（容器實際 serving 的版本）。
+  # deploy_drift **永不 crit**：release 到收斂完成之間的 drift 是設計上的正常瞬態。
+  if [[ -z "$dhead" || -z "$osha" || "$dhead" == "unknown" || "$osha" == "unknown" ]]; then
+    add deploy_drift "部署漂移(HEAD vs origin/prod)" "${dhead:-?} vs ${osha:-?}" warn ""
+  elif [[ "$dhead" == "$osha" ]]; then
+    add deploy_drift "部署漂移(HEAD vs origin/prod)" "$dhead 已收斂 (VERSION 游標 ${dver:-?})" ok ""
+  else
+    add deploy_drift "部署漂移(HEAD vs origin/prod)" "$dhead vs $osha (VERSION 游標 ${dver:-?})" warn ""
+  fi
+
+  # 心跳年齡可以 crit：它只在 reconciler 真的停擺時才紅，而上面的開關已讓自我 gate
+  # 不消費它。缺值時 th_high 回 unknown → bump 升 warn，不靜默假綠。
+  #
+  # **數值守衛不是防禦性程式設計的裝飾**：tick / poison 來自磁碟上的一個檔，可能被截斷、
+  # 手改或殘留舊格式。非數字的 token 進 $(( )) 會被當成變數名，set -u 下讓整支腳本當場
+  # 死掉、stdout 一個字都沒有卻回 rc=1——而 rc=1 會被 reconciler 讀成「WARN 仍 pass」，
+  # 於是一支死掉的工具被當成通過的工具。負數（遠端時鐘回跳）同樣不得讀成健康。
+  #
+  # **`10#` 前綴不可省，而且它擋的是比上面更糟的失效**：`^[0-9]+$` 會放行 `09` 這種前導零
+  # 字串，但 bash 把它當**八進位**、`09` 不是合法八進位 → `value too great for base` 會中止
+  # 整個 `if [[ "$DEPLOY_DRIFT" == "1" ]]` 複合命令，於是三個 metric **從 metrics[] 靜靜消失**，
+  # 而 overall 與 exit code 完全乾淨（實測 rc=0/JSON 合法）。消費端問「tick 是不是 crit」
+  # 找不到那個 key，得到的結論是「健康」。同理 `KG_RECON_POISON_COOLDOWN=0900` 會讓冷卻
+  # 比較失敗並落進 else＝**健康**那一支（實測：冷卻中的 poison 被判 ok）。而這個旋鈕正是
+  # 本批文檔剛對 operator 宣傳的那個。`0600` 更陰險——它是合法八進位，不報錯，只是靜靜
+  # 變成 384 秒。regex 已保證非空純數字，故 `10#` 恆安全。
+  tick="$(getm reconciler_tick_epoch)"; tick_age=""
+  if [[ "$tick" =~ ^[0-9]+$ && "$hnow" =~ ^[0-9]+$ ]]; then
+    tick_age=$(( 10#$hnow - 10#$tick ))
+    if (( tick_age < 0 )); then tick_age=""; fi
+  fi
+  add reconciler_tick_age_s "Reconciler 心跳年齡" "${tick_age:-?}s" "$(th_high "${tick_age:-}" $TICK_WARN $TICK_CRIT)" "$tick_age"
+
+  # poison：冷卻窗內＝reconciler 正在拒絕重試某個 sha，operator 該知道；窗過了則只是
+  # 歷史紀錄，不再是當下狀態。
+  # 「算不出來」絕不回報「無 poison」——那與本檔 :152 的原則同一條。有紀錄但缺 hnow、
+  # 或冷卻旋鈕被寫成 `1h` 這種非秒數值，都降級成 unknown（→warn），不靜靜判 ok。
+  pz="$(getm reconciler_poison_epoch)"; pz_age=""; pz_st="ok"; pz_val="無"
+  if [[ -n "$pz" ]]; then
+    if [[ "$pz" =~ ^[0-9]+$ && "$hnow" =~ ^[0-9]+$ && "$POISON_COOLDOWN" =~ ^[0-9]+$ ]]; then
+      pz_age=$(( 10#$hnow - 10#$pz ))
+      if (( pz_age < 0 )); then
+        pz_st="unknown"; pz_val="poison 時戳晚於現在（遠端時鐘回跳？）"; pz_age=""
+      elif (( pz_age < 10#$POISON_COOLDOWN )); then
+        pz_st="warn"; pz_val="${pz_age}s 前 poison（冷卻中）"
+      else
+        pz_val="${pz_age}s 前 poison（已過冷卻）"
+      fi
+    else
+      pz_st="unknown"; pz_val="有 poison 紀錄但無法判定冷卻窗"
+    fi
+  fi
+  add reconciler_poison_active "Reconciler poison" "$pz_val" "$pz_st" "$pz_age"
+fi
 
 # ── 5. 輸出 ────────────────────────────────────────────────────────────────
 is_num() { [[ "$1" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; }

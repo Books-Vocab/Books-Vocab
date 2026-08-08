@@ -274,14 +274,16 @@ KG_LOG_TZ=Asia/Taipei ./ops/devops_kg_safe.sh logs 50
 `status` 只給單一 HTTP code；要一眼看「機器本身」健不健康（系統資源 + 容器 + Caddy + TLS 憑證 + HTTPS 端點 + 近期錯誤）用 `health`。全唯讀，補 ops-cli（讀業務 DB）看不到的 host 層盲區。
 
 ```bash
-./ops/devops_kg_safe.sh health          # 人讀：14 指標 + ✓/⚠/✗ + 整體判斷
+./ops/devops_kg_safe.sh health          # 人讀：全部指標 + ✓/⚠/✗ + 整體判斷
 ./ops/devops_kg_safe.sh health --json   # 機讀：純 JSON（診斷走 stderr）
 ```
 
-- 涵蓋：磁碟/inode/記憶體/Swap、容器健康+重啟+運行時長、CPU/記憶體佔比、Caddy、**HTTPS 端點 200 探針**（一次驗 DNS+TLS+Caddy+FastAPI）、近1h log 錯誤、**TLS 憑證剩餘天數**、資料目錄大小。
+- 涵蓋：磁碟/inode/記憶體/Swap、容器健康+重啟+運行時長、CPU/記憶體佔比、**Cloudflare Tunnel 對外入口**（macOS 上沒有 Caddy）、**HTTPS 端點 200 探針**（一次驗 DNS+TLS+Tunnel+FastAPI）、近1h log 錯誤、**TLS 憑證剩餘天數**、資料目錄大小。
+- **部署漂移組（IMP-0022）**：`deploy_drift`（生產 clone HEAD vs `origin/prod`，**永不 crit**——release 到 reconciler 收斂之間的 drift 是正常瞬態；`backend/VERSION` 只當 value 裡的資訊欄，因為 ff-only 路徑刻意不寫它）、`reconciler_tick_age_s`（reconciler 心跳年齡，停擺才紅）、`reconciler_poison_active`（最近 poison 是否仍在冷卻窗）。這三項答的是「生產有沒有收斂、自動部署還活著沒」，原本只存在於 launchd err log。整組可由 `KG_HEALTH_DEPLOY_DRIFT=0` 關閉——**`kg_reconcile.sh` 自我 gate 時必須關**，否則構成「release 瞬態 drift → 回滾一次健康部署」的迴圈。
+- 刻意**不指標數寫死**：指標筆數隨開關與容器 uptime 是否可解析而變（原文寫死的「14 指標」在加入漂移組後就過期了）。
 - 每筆 metric 含 `key/label/value(人讀)/raw(數值，供二次判斷)/status`；頂層 `overall=ok|warn|crit`。
 - **exit code 反映嚴重度**：0=ok 1=warn 2=crit → cron 告警直接 `if ! health --json >/tmp/h.json 2>/dev/null; then alert; fi`。
-- 閾值可由 env 覆寫（免改腳本）：`KG_HEALTH_DISK_WARN/CRIT`、`..._CERT_WARN/CRIT`、`..._SWAP_WARN/CRIT` 等。
+- 閾值可由 env 覆寫（免改腳本）：`KG_HEALTH_DISK_WARN/CRIT`、`..._CERT_WARN/CRIT`、`..._SWAP_WARN/CRIT`、`KG_HEALTH_TICK_WARN/CRIT`（心跳年齡秒，預設 600/1800）等；另有 `KG_HEALTH_DEPLOY_DRIFT`（1/0 開關）、`KG_PROD_REPO`（生產 clone 路徑，由 safe wrapper 注入）、`KG_RECON_POISON_COOLDOWN`（與 reconciler 共用）。
 
 ## 快速診斷流程
 

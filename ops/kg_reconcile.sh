@@ -135,6 +135,22 @@ write_poison() {
   mv "$tmp" "$KG_STATE_FILE"
 }
 
+# 心跳游標（單行 `tick <epoch>`）。量的是「reconciler 這一輪真的跑起來了」，與有沒有
+# 部署無關，故所有 verdict（noop / ff-only / deployed / poisoned-skip / locked）都寫。
+# 與 poison 共用同一個 state 檔但前綴不同：既有讀寫者一律錨 `^poison `，不會誤配。
+# **刻意記錄一個已知的不變式破口**：這是本檔唯一不在 /tmp/kg-deploy.lock 之下的
+# state 讀-改-寫（write_poison / clear_poison 都只在鎖內跑）。兩個重疊的實例理論上
+# 能讓 B 的 tick mv 蓋掉 A 剛寫的 poison。launchd 對同 label 的 job 會序列化、
+# devops.sh 也從不碰這個檔，故實務上不可達；寫在這裡是為了讓它是**刻意的**而不是
+# 意外的——若哪天心跳改由別的排程器驅動，這條就得移進鎖內。
+write_tick() {
+  local tmp
+  mkdir -p "$(dirname "$KG_STATE_FILE")"
+  tmp="$(mktemp)"
+  { grep -v "^tick " "$KG_STATE_FILE" 2>/dev/null || true; printf 'tick %s\n' "$(date +%s)"; } > "$tmp"
+  mv "$tmp" "$KG_STATE_FILE"
+}
+
 clear_poison() {
   local sha="$1" tmp
   [[ -f "$KG_STATE_FILE" ]] || return 0
@@ -322,7 +338,10 @@ run_health_gate() {
   # 剛探過的那個 URL」成為結構事實而非對預設值的假設（ops/infra_health.sh:40 讀這個 env）。
   local ih ih_json
   set +e
-  ih_json="$(KG_HEALTH_PROBE_URL="${KG_PUBLIC_URL}/api/system/info" "$KG_INFRA_HEALTH" --json 2>/dev/null)"
+  # KG_HEALTH_DEPLOY_DRIFT=0：部署收斂是本腳本自己的職責，把自己的收斂狀態當成自己的
+  # 健康條件會構成迴圈——release 推進 origin/prod 後、下一輪收斂完成前必然 drift，於是
+  # 這一關會回滾一次本來健康的部署。故對自我 gate 關掉那組 metric（IMP-0022）。
+  ih_json="$(KG_HEALTH_PROBE_URL="${KG_PUBLIC_URL}/api/system/info" KG_HEALTH_DEPLOY_DRIFT=0 "$KG_INFRA_HEALTH" --json 2>/dev/null)"
   ih=$?
   set -e
   case "$ih" in
@@ -491,6 +510,11 @@ main() {
     esac
   done
   [[ "$dry_run" == "1" ]] && log "[dry-run] 只預覽，不執行任何 mutation"
+
+  # 心跳：放在 fetch 之前、且對所有 verdict 都寫——它量的是 liveness，不是部署。
+  # `|| true` 不可省：檔案系統暫時寫不進去不該讓整輪 reconcile 在 set -e 下中止，
+  # 缺一拍遠比停機好。dry-run 短路是護欄（測試斷言 dry-run 不得寫 state）。
+  [[ "$dry_run" == "1" ]] || write_tick || true
 
   # 取 GH_TOKEN（私有 repo fetch）；dry-run 不 source（不寫/不改環境依賴仍讀值無妨，但
   # 保持一致：僅在需要 fetch 時才需要）。source 不算 mutation，安全。
