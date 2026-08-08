@@ -230,6 +230,8 @@ Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`wor
 
 linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_dirty_error`；primary 有未提交 tracked 檔時只在人讀輸出具名警告，不改 gate verdict 或 exit code，避免把共用 primary 的合法並行工作誤擋。
 
+每道 gate 的結果與 append-only `history.jsonl` 另帶 `machine_state`：判決前後的 load average、active worktree 數、以及偵測到的 `xcodebuild` / `ios_test.sh`（只保留 PID＋類型，不保存 raw argv）。`ios-test-unit`、`ops-shell:test_ios_test_discovery.sh` 與 `ops-ci-coverage` 判紅且觀測到同機 iOS 工具鏈行程時，summary 會列出「可能不可重現」的污染警告與安靜狀態重跑命令；verdict 仍是 red，沒有自動 retry，因為這是歸因證據而非放寬 gate。
+
 ## Web 設計系統(`design-system/`)
 
 跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。

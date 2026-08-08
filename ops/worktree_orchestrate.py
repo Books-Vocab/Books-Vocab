@@ -1797,12 +1797,131 @@ GATE_MAX_FAILURE_LINES = 20
 # would make a chatty gate a memory incident.
 GATE_CAPTURE_LIMIT = 1024 * 1024
 
+# These are the gates for which another iOS toolchain process can change what the
+# child observes without changing the branch. Keep this list explicit: a warning on
+# every red gate becomes boilerplate, while silently treating an iOS contention red as
+# a code defect trains operators to distrust the whole gate layer (IMP-20260808-f0c1bb).
+CONTENTION_SENSITIVE_GATES = frozenset({
+    "ios-test-unit",
+    "ops-shell:test_ios_test_discovery.sh",
+    "ops-ci-coverage",
+    "ops-shell:ops-ci-coverage",
+    "ops-shell:test_ops_ci_coverage.sh",
+})
+
 
 def _gate_failure_lines(output: str) -> list[str]:
     """The lines of a failed gate's output that name what failed."""
     hits = [ln.rstrip() for ln in output.splitlines()
             if any(m in ln for m in GATE_FAILURE_MARKERS)]
     return hits[:GATE_MAX_FAILURE_LINES]
+
+
+def _machine_state(state: str | None = None) -> dict[str, Any]:
+    """Take a bounded, secret-free snapshot of state relevant to iOS gate contention.
+
+    This is attribution evidence, never a verdict.  It records process identity only
+    as ``pid`` plus a coarse kind; raw command lines can contain paths, tokens, or
+    fixture data and are not useful to the operator.  Probe failures remain visible in
+    ``probe_errors`` instead of becoming the misleading value "nothing is running".
+    """
+    errors: list[str] = []
+    load_average: list[float] | None = None
+    try:
+        load_average = [float(v) for v in os.getloadavg()]
+    except (AttributeError, OSError, ValueError) as exc:
+        errors.append(f"load_average: {type(exc).__name__}: {exc}")
+
+    processes: list[dict[str, Any]] = []
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if proc.returncode != 0:
+            errors.append(f"ps: rc={proc.returncode}: {(proc.stderr or '').strip()[:160]}")
+        else:
+            seen: set[tuple[int, str]] = set()
+            for line in (proc.stdout or "").splitlines():
+                fields = line.strip().split(None, 1)
+                if len(fields) != 2:
+                    continue
+                try:
+                    pid = int(fields[0])
+                except ValueError:
+                    continue
+                command = fields[1]
+                kind = None
+                if re.search(r"(?<![A-Za-z0-9_])xcodebuild(?![A-Za-z0-9_])", command):
+                    kind = "xcodebuild"
+                elif re.search(r"(?<![A-Za-z0-9_])ios_test\.sh(?![A-Za-z0-9_])", command):
+                    kind = "ios_test.sh"
+                if kind is None:
+                    continue
+                identity = (pid, kind)
+                if identity not in seen:
+                    processes.append({"pid": pid, "kind": kind})
+                    seen.add(identity)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        errors.append(f"ps: {type(exc).__name__}: {exc}")
+
+    active_worktrees: int | None = None
+    try:
+        state_path = Path(state).resolve() if state else wr.default_state_path()
+        registry = wr.load_state(state_path)
+        records = registry.get("records", [])
+        active_worktrees = sum(1 for row in records
+                               if isinstance(row, dict) and row.get("status") == "active")
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        errors.append(f"registry: {type(exc).__name__}: {exc}")
+
+    return {
+        "load_average": load_average,
+        "active_ios_process_count": len(processes),
+        "active_ios_processes": processes,
+        "active_worktrees": active_worktrees,
+        "probe_errors": errors,
+    }
+
+
+def _machine_state_record(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    """Merge before/after probes without claiming a process caused the red."""
+    processes: list[dict[str, Any]] = []
+    seen: set[tuple[int, str]] = set()
+    for snapshot in (before, after):
+        for process in snapshot.get("active_ios_processes", []):
+            identity = (process.get("pid"), process.get("kind"))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            processes.append({"pid": process.get("pid"), "kind": process.get("kind")})
+    errors = list(before.get("probe_errors", [])) + list(after.get("probe_errors", []))
+    return {
+        "before": before,
+        "after": after,
+        "contention": bool(processes),
+        "contention_processes": processes,
+        "probe_errors": errors,
+    }
+
+
+def _contention_warning(spec: dict[str, Any], cwd: Path,
+                        machine: dict[str, Any]) -> str | None:
+    """Render an actionable warning only for a sensitive gate with observed contention."""
+    if spec["name"] not in CONTENTION_SENSITIVE_GATES or not machine.get("contention"):
+        return None
+    processes = machine.get("contention_processes", [])
+    labels = ", ".join(f"{p.get('kind')} pid={p.get('pid')}" for p in processes)
+    rerun = f"cd {shlex.quote(str(cwd))} && {shlex.join(spec['cmd'])}"
+    return (
+        f"machine contention detected: {len(processes)} concurrent iOS tool process(es) "
+        f"({labels}); this {spec['name']} result may be non-reproducible. "
+        f"It remains red; no automatic retry. Re-run when quiet: {rerun}"
+    )
 
 
 def _gate_history_path(state: str | None) -> Path:
@@ -1858,6 +1977,7 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                         r.get("reuse", {}).get("source_head") or "")[:8] or None,
                     "reuse_reason": r.get("reuse", {}).get("reason"),
                     "input_fingerprint": (r.get("input") or {}).get("fingerprint"),
+                    "machine_state": r.get("machine_state"),
                 }, ensure_ascii=False) + "\n")
     except Exception as exc:  # noqa: BLE001 — bookkeeping is never load-bearing
         return f"{type(exc).__name__}: {exc}"
@@ -2262,7 +2382,8 @@ def _write_gate_log(log_path: Path, spec: dict[str, Any], cwd: Path,
 
 
 def _run_gate(spec: dict[str, Any], worktree: str, *,
-              record_path: Path | None = None) -> dict[str, Any]:
+              record_path: Path | None = None,
+              state: str | None = None) -> dict[str, Any]:
     """Execute ONE planned gate against the worktree and return a result record.
 
     `record_path` is this worktree's verdict-record path; a failed gate's captured
@@ -2272,6 +2393,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
     """
     name, level = spec["name"], spec["level"]
     result = {"name": name, "category": spec["category"], "level": level}
+    machine_before = _machine_state(state)
     if spec["kind"] == "internal":
         if name == "docs-conflict-markers":
             result.update(_run_conflict_markers(worktree, spec["files"]))
@@ -2296,6 +2418,7 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
             result.update(_run_verified_against(worktree, spec["files"]))
         else:  # advisory-only gate (e.g. backend-tests-advisory)
             result.update({"status": "warn", "rc": 0, "summary": spec.get("note", "advisory")})
+        result["machine_state"] = _machine_state_record(machine_before, _machine_state(state))
         return result
 
     # shell gate — run the real tool. cwd is the worktree (or a subdir like backend).
@@ -2347,8 +2470,11 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # never pass. The next genuine red then arrives carrying "no green ever
         # recorded", steering the reader away from their own bug. rc alone cannot
         # carry this: a tool that RAN and exited 127 is a real red.
-        return {**result, "status": "block" if level == "block" else "warn", "rc": 127,
-                "executed": False, "summary": summary}
+        result.update({"status": "block" if level == "block" else "warn", "rc": 127,
+                       "executed": False, "summary": summary,
+                       "machine_state": _machine_state_record(
+                           machine_before, _machine_state(state))})
+        return result
     tail = "\n".join(output.splitlines()[-3:]) if output else ""
     if returncode == 0:
         # Green needs no attribution, so the second probe is not taken at all on this
@@ -2357,7 +2483,9 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # produced exactly the answer it was asked for. It also keeps the common case
         # at one `git for-each-ref` (~140ms here) instead of two.
         result.update({"status": "pass", "rc": returncode,
-                       "summary": f"exit {returncode}" + (f": {tail}" if tail else "")})
+                       "summary": f"exit {returncode}" + (f": {tail}" if tail else ""),
+                       "machine_state": _machine_state_record(
+                           machine_before, _machine_state(state))})
         return result
     tags_after = _tag_snapshot(worktree)
 
@@ -2393,6 +2521,12 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         summary = (f"refs changed during this gate ({refs_changed} tag(s) "
                    f"added/removed); rc={returncode} is not attributable to the "
                    f"branch — re-run this gate once the tag surgery is done\n{summary}")
+    machine = _machine_state_record(machine_before, _machine_state(state))
+    result["machine_state"] = machine
+    warning = _contention_warning(spec, Path(cwd), machine) if status == "block" else None
+    if warning:
+        result["contention_warning"] = True
+        summary = f"{warning}\n{summary}"
     result.update({"status": status, "rc": returncode, "summary": summary})
     return result
 
@@ -3094,7 +3228,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
             if reused is not None:
                 results.append(reused)
                 continue
-            result = _run_gate(spec, worktree, record_path=rec_path)
+            result = _run_gate(spec, worktree, record_path=rec_path, state=args.state)
             result["reused"] = False
             result["reused_from_head"] = None
             result["reuse"] = {

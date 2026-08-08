@@ -4425,6 +4425,107 @@ def test_a_failing_gate_with_stable_tags_still_blocks(tmp_path, monkeypatch):
     assert MODULE.aggregate_verdict([r]) == "block"
 
 
+def test_contention_machine_state_detects_ios_processes_and_active_worktrees(
+        tmp_path, monkeypatch):
+    """The machine snapshot must be executable evidence, not an agent guess.
+
+    Keep the process probe synthetic: starting a process whose argv merely contains
+    ``xcodebuild`` would make this test slow and would not prove the parser's shape.
+    The registry count is read from the same state file the orchestrator receives, so
+    the result is scoped to the machine/workflow that produced the verdict.
+    """
+    state = tmp_path / "registry.json"
+    state.write_text(json.dumps({"records": [
+        {"status": "active", "path": "/tmp/a"},
+        {"status": "merged", "path": "/tmp/b"},
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(MODULE.os, "getloadavg", lambda: (3.0, 2.0, 1.0))
+
+    def fake_run(argv, **kwargs):
+        assert argv == ["ps", "-axo", "pid=,command="]
+        return subprocess.CompletedProcess(
+            argv, 0,
+            stdout="123 xcodebuild -scheme BooksAndVocab\n"
+                   "456 /bin/bash ops/ios_test.sh --unit\n"
+                   "789 python unrelated.py\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(MODULE.subprocess, "run", fake_run)
+    snapshot = MODULE._machine_state(str(state))
+
+    assert snapshot["load_average"] == [3.0, 2.0, 1.0]
+    assert snapshot["active_worktrees"] == 1
+    assert snapshot["active_ios_process_count"] == 2
+    assert snapshot["active_ios_processes"] == [
+        {"pid": 123, "kind": "xcodebuild"},
+        {"pid": 456, "kind": "ios_test.sh"},
+    ]
+    assert snapshot["probe_errors"] == []
+
+
+def test_contention_sensitive_red_names_machine_and_rerun_command(tmp_path, monkeypatch):
+    """A red under iOS contention stays red but explains how to reproduce it quietly."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(MODULE, "_run_streamed_command",
+                        lambda *a, **k: (1, "  ✗ concurrency assertion"))
+    busy = {
+        "load_average": [8.0, 7.0, 6.0],
+        "active_worktrees": 3,
+        "active_ios_process_count": 1,
+        "active_ios_processes": [{"pid": 123, "kind": "xcodebuild"}],
+        "probe_errors": [],
+    }
+    monkeypatch.setattr(MODULE, "_machine_state", lambda _state=None: busy)
+
+    spec = MODULE._shell("ios-test-unit", "ios",
+                         ["ops/ios_ops.sh", "test", "--unit", "--lease"], "block")
+    result = MODULE._run_gate(spec, str(tmp_path))
+
+    assert result["status"] == "block", "contention must not downgrade a real red"
+    assert result["machine_state"]["contention"] is True
+    assert result["machine_state"]["contention_processes"] == busy["active_ios_processes"]
+    assert "machine contention detected" in result["summary"]
+    assert "may be non-reproducible" in result["summary"]
+    assert "xcodebuild" in result["summary"]
+    assert "Re-run when quiet" in result["summary"]
+    assert "ops/ios_ops.sh test --unit --lease" in result["summary"]
+    assert result["contention_warning"] is True
+
+    state = tmp_path / "history-state.json"
+    assert MODULE._append_gate_history(
+        str(state), str(tmp_path), "a" * 40, {"sha256": "b" * 64}, [result]
+    ) is None
+    row = MODULE.gate_history_rows(str(state))[-1]
+    assert row["machine_state"]["contention"] is True
+
+
+def test_contention_warning_is_absent_when_machine_is_quiet(tmp_path, monkeypatch):
+    """The warning must not become boilerplate that operators learn to ignore."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(MODULE, "_run_streamed_command",
+                        lambda *a, **k: (1, "  ✗ real assertion"))
+    quiet = {
+        "load_average": [0.1, 0.2, 0.3],
+        "active_worktrees": 1,
+        "active_ios_process_count": 0,
+        "active_ios_processes": [],
+        "probe_errors": [],
+    }
+    monkeypatch.setattr(MODULE, "_machine_state", lambda _state=None: quiet)
+
+    result = MODULE._run_gate(
+        MODULE._shell("ops-shell:test_ios_test_discovery.sh", "ops",
+                      ["ops/test_ios_test_discovery.sh"], "block"),
+        str(tmp_path),
+    )
+
+    assert result["status"] == "block"
+    assert result["machine_state"]["contention"] is False
+    assert "machine contention detected" not in result["summary"]
+    assert result.get("contention_warning") is not True
+
+
 def test_a_red_whose_refs_probe_failed_says_so_instead_of_going_quiet(tmp_path, monkeypatch):
     """Fail-safe is the right direction — an unreadable probe must not downgrade a red —
     but silent fail-safe is not what this module does anywhere else. `history_error`,
@@ -6960,7 +7061,7 @@ def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch)
 
     calls = []
 
-    def fake_run(spec, worktree, *, record_path=None):
+    def fake_run(spec, worktree, *, record_path=None, state=None):
         calls.append(spec["name"])
         return {"name": spec["name"], "category": spec["category"],
                 "level": spec["level"], "status": "pass", "rc": 0,
@@ -7018,7 +7119,7 @@ def test_gate_reuse_is_fail_safe_for_changed_unknown_legacy_and_bad_sources(
     _git(["add", "ops/lib/foo.py", "ops/tests/test_foo.py"], wt)
     _git(["commit", "-qm", "ops: add gate input fixture"], wt)
 
-    def fake_run(spec, worktree, *, record_path=None):
+    def fake_run(spec, worktree, *, record_path=None, state=None):
         return {"name": spec["name"], "category": spec["category"],
                 "level": spec["level"], "status": "pass", "rc": 0,
                 "summary": "fixture gate ran"}

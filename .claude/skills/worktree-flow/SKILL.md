@@ -133,6 +133,8 @@ gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一�
 
 **block 的 summary 若附上 `no green ever recorded for this gate on this machine`**：那不是判決，是提示——本機的 gate 歷史裡這道 gate 從未綠過。可能是你的改動真的壞了，也可能這道 gate 在這台機器上**結構性不可能過**（`ios-build-catalyst` 缺簽章憑證擋掉每一次 iOS cutover 兩個月，就是這個形狀）。**先花一分鐘確認它能不能過**（在乾淨的 base 上單獨跑那道 gate 的命令），再決定要修改動還是修 gate。**永遠不要因此繞過流程**——工具壞了就照鐵律 9 修工具並登記 backlog。iOS build/test 很耗時 → 背景執行、主線不阻塞（鐵律 5）。
 
+**Gate 的機器 review 證據**：每道實際 gate 的 record 與 `history.jsonl` 都帶 `machine_state`，包含判決前後的 load average、active worktree 數、以及偵測到的 `xcodebuild` / `ios_test.sh`（只記 PID＋類型，不留 raw argv）。對 `ios-test-unit`、`ops-shell:test_ios_test_discovery.sh`、`ops-ci-coverage` 這三類敏感 gate，若判紅時確實觀測到同機 iOS 工具鏈行程，summary 會明說「可能不可重現」、列出污染行程，並給出安靜狀態的完整重跑命令；**仍維持紅燈，絕不自動 retry**。這是歸因證據，不是把紅降成綠，也不是重跑替代根因分析。
+
 `gate` 執行每個實際 child gate 時，進度只寫 stderr：`start` / `spawned` / 每 20 秒 `heartbeat`；child 正常 exit 時另寫 `done` + rc，stdout 保持單一 `kg.worktree.gate.v1` JSON。**`heartbeat` 不只證明 gate 還活著，也證明它在不在前進**——安靜的 child 會自己招認（`stalled` 及其餘欄位語意見下段正本）。progress 絕不回顯 raw argv（避免 token/password 洩漏）；中斷會向上拋出並終止整個 isolated child process group，不能只殺直接 child 留下孫行程。操作者不得把 stdout/stderr 合併後再解析 JSON，也不得用靜默 `capture_output` 旁路這個 runner。
 
 **gate child 的 `LC_CTYPE` 是工具選定的 `C.UTF-8`，不是繼承你的 shell**（IMP-20260808-3bbfa2；`phase=start` 行尾
