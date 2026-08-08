@@ -3577,6 +3577,28 @@ def test_gate_provenance_is_pinned_to_the_same_computation_on_every_surface(scra
     assert f"orch={token}" in line
 
 
+@gitmark
+def test_gate_report_last_line_is_the_pasteable_receipt_line(scratch):
+    """One gate run supplies both the full report and its pasteable receipt."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state)
+
+    rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+    assert rc == MODULE.EXIT_OK
+    last = text.strip().splitlines()[-1]
+    assert last.startswith("gate="), last
+
+    rc, only = _run_text(["gate", "--worktree", wt, "--state", state, "--receipt-line"])
+    assert rc == MODULE.EXIT_OK
+    assert only.strip() == last
+    assert len(only.strip().splitlines()) == 1
+
+    rc, planned = _run_text(["gate", "--worktree", wt, "--state", state, "--plan-only"])
+    assert rc == MODULE.EXIT_OK
+    assert not planned.strip().splitlines()[-1].startswith("gate=")
+
+
 def _plant_orchestrator(wt, body: str | None = None):
     """Give the scratch worktree its own copy of the orchestrator. `body=None` plants a
     byte-identical copy (the common case: the branch did not touch the tool)."""
