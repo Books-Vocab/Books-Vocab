@@ -269,7 +269,7 @@ section "ios_test.sh multi -g accumulation (--list)"
 # 故直接從真實測試自我發現兩個方法名。注意：只認 XCTest 風格 `func testXxx`；
 # 若全數遷移到 Swift Testing 命名，這裡會找不到名而 fail（屆時改抓 @Test func）。
 IOS_TEST="$WORKSPACE/ops/ios_test.sh"
-PAT_A="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | head -1 | sed 's/func //')"
+PAT_A="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | sed -n '1p' | sed 's/func //')"
 PAT_B="$(grep -rhoE 'func test[A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | tail -1 | sed 's/func //')"
 if [[ -n "$PAT_A" && -n "$PAT_B" && "$PAT_A" != "$PAT_B" ]]; then
   LIST_A="$("$IOS_TEST" -g "$PAT_A" --list 2>/dev/null)" || LIST_A=""
@@ -309,7 +309,7 @@ grep -q "方法名" <<<"$ZERO_ERR" && grep -q "容器名" <<<"$ZERO_ERR" && grep
 # ── 12b. -g 用 suite 名 E2E（--list；歷史摩擦：suite 名 → no tests matching
 #         浪費一輪 ~270s build+test）。從真實測試自我發現一個 @Suite/struct 名。──
 section "ios_test.sh -g suite-name (--list)"
-SUITE_NAME="$(grep -rhoE '^(@Suite[^A-Za-z]*)?(final )?(struct|class) [A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | grep -oE '[A-Za-z0-9_]+$' | head -1)"
+SUITE_NAME="$(grep -rhoE '^(@Suite[^A-Za-z]*)?(final )?(struct|class) [A-Za-z0-9_]+' "$WORKSPACE/ios/BooksAndVocabTests" 2>/dev/null | grep -oE '[A-Za-z0-9_]+$' | sed -n '1p')"
 if [[ -n "$SUITE_NAME" ]]; then
   SUITE_LIST="$("$IOS_TEST" -g "$SUITE_NAME" --list 2>/dev/null)" || SUITE_LIST=""
   N_SUITE="$(grep -c "only-testing:BooksAndVocabTests/$SUITE_NAME/" <<<"$SUITE_LIST" || true)"

@@ -56,11 +56,11 @@ LINUX_GROUPS=(
   # ops/ci_linux_repro.sh），比照 catalog-render 的誠實標示。放這裡的依據是推論不是量測：
   # 純 bash/awk/grep，把守衛函式從 lib awk 抽出來單獨 source，不呼叫 simctl，也不需要
   # 模擬器；section C 需要 plutil（macOS-only userland），在 linux 上會 LOUD SKIP，
-  # 摘要會報 skipped 筆數。已逐條看過本表記載的 GNU 陷阱：檔內 `grep | head -1` 那組
-  # 全部以 `|| true` 收尾，不會踩到 ios-test-discovery 那個 SIGPIPE/pipefail 141
-  # （同樣是讀碼推論，非在 ubuntu 實跑）。
-  # 不借 bsd-userland 整組排除，是因為那會把「函式寫了卻沒接上」這個本票要防的假綠
-  # 一起移出 CI——而那半段在 linux 上跑得動。真在 runner 上紅了，帶實測訊息移進
+  # 摘要會報 skipped 筆數。已逐條看過 GNU 陷阱：檔內 `grep | head -1` 那組全部以
+  # `|| true` 收尾，不會踩到 IMP-0058 那個 SIGPIPE/pipefail 141（同樣是讀碼推論，非在
+  # ubuntu 實跑；那個形狀現在另有 ops/tests/test_userland_portability.sh 掃全 ops/ 把關）。
+  # 也曾想過補一個 userland 級的 token 把它整組排除，但那會把「函式寫了卻沒接上」這個
+  # 假綠一起移出 CI——而那半段在 linux 上跑得動。真在 runner 上紅了，帶實測訊息移進
   # EXCLUDED_GROUPS 或補一個誠實的新 token，那是一行的距離。
   sim-pool-disposable
   # ── 以下 13 筆原本被排除，理由經證偽實測不成立後收進來（IMP-0054）──
@@ -78,6 +78,15 @@ LINUX_GROUPS=(
   ios-device-files
   ios-device-logs
   review-flip-probe
+  # ── IMP-0058 收編的 3 個 group ────────────────────────────────────────────
+  # 前兩個原本被一個 userland 級 token 排除，理由是 ubuntu 容器實跑打回來的真量測
+  # （ios-cache-evict 10 passed / 10 failed、ios-test-discovery 5/5 rc=141）。病灶已修：
+  # mtime/日期運算收斂到 ops/lib/userland_compat.sh，`grep -r … | head -1` 換成
+  # `sed -n '1p'`。第三個是新增的守衛本身——它在 macOS 用 PATH 前置的 GNU shim 扮演
+  # linux，在 linux 上則明示跳過 shim 章（原生執行就是直接證明），兩邊都跑得動。
+  ios-cache-evict
+  ios-test-discovery
+  userland-portability
   # ── IMP-0038：排除理由是「anchor 指向從未進 origin 的 pre-squash commit，只能從
   #    本地 dangling object 解析」。2026-08-06 收攏後 179 顆 commit 已 sync 到
   #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
@@ -126,7 +135,6 @@ DEP_TOKENS=(
   "data-ui-world||"
   "data-catalog-png||"
   "data-git-history||"
-  "bsd-userland||"
   "net-external||"
 )
 
@@ -146,10 +154,9 @@ EXCLUDED_GROUPS=(
   "visual-regression|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
   "catalog-review|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
   "podcast-ops|net-external|lab/podcast toolchain + network TTS"
-  # ── 以下三筆是我先收進 CI、再被 ubuntu 容器實跑打回來的（review 提供 runner 等價環境）──
-  # 「二進位不缺」不等於「跑得起來」：前兩筆缺的是 GNU/BSD 語意差，第三筆缺的是資產。
-  "ios-cache-evict|bsd-userland|BSD-only date/stat: date -v -900H (test_ios_cache_evict.sh:35,117) and stat -f %m (:79). On GNU both fail, every mtime collapses to one instant and the LRU ordering under test evaporates — measured 10 passed / 10 failed on ubuntu (IMP-0058)"
-  "ios-test-discovery|bsd-userland|a grep piped into head -1 at test_ios_test_discovery.sh:312 — GNU grep dies on SIGPIPE and pipefail propagates 141, killing the script. 5/5 rc=141 on ubuntu vs 5/5 rc=0 on macOS (IMP-0058)"
+  # ── 這筆是我先收進 CI、再被 ubuntu 容器實跑打回來的（review 提供 runner 等價環境）──
+  # 「二進位不缺」不等於「跑得起來」：它缺的是資產。
+  # （同批打回來的另兩筆是 GNU/BSD 語意差，病灶已由 IMP-0058 修掉並移進 LINUX_GROUPS。）
   "review-probe|data-ui-world|case 14 (test_review_probe.sh:133-145) resolves ops/fixtures/ui_worlds/marketing_demo.json:58, an absolute path to an UNTRACKED 16MB .m4a — the very dependency this table already excludes ui-quality-gate for. Admitting it while excluding ui-quality-gate was self-contradictory"
 )
 

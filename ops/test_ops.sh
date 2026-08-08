@@ -63,6 +63,7 @@ DEFAULT_TESTS=(
   ios-device-files
   ios-device-logs
   ios-test-discovery
+  userland-portability
   script-help
   lib-sourcing
   podcast-ops
@@ -191,6 +192,7 @@ run_one() {
     ios-device-files)   ./ops/tests/test_ios_device_files.sh ;;
     ios-device-logs)    ./ops/tests/test_ios_device_logs.sh ;;
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
+    userland-portability) ./ops/tests/test_userland_portability.sh ;;
     script-help)        ./ops/tests/test_script_help.sh ;;
     lib-sourcing)       ./ops/tests/test_lib_sourcing.sh ;;
     podcast-ops)
