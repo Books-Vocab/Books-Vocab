@@ -308,5 +308,148 @@ struct SharedDeckCatalogServiceTests {
         #expect(all.count == 25)                          // exactly one row per deck
         #expect(all.filter { !$0.isSoftDeleted }.count == 25)
     }
+
+    // MARK: - Guest-tolerant browse: an expired token must not log the user out
+
+    /// 逛公開牌組目錄**不該讓任何人登出**（backlog APP-20260805-0049ac）。
+    ///
+    /// 這條測試走的是真的 `KGService`（只換掉 auth 兩個縫），不是 `SpyKGService`——
+    /// 因為缺陷不在 catalog service 裡，而在它**問誰要 token**：`currentAuthToken()`
+    /// 判定過期時會先 `sessionInvalidator.logout(...)` 再 throw，`try?` 只吞後者。
+    /// 用替身餵 token 等於把待測的失效模式從模型裡刪掉，這條測試就會永遠綠。
+    @Test func testExpiredTokenBrowseDoesNotInvalidateSession() async throws {
+        // Reachability 前提，但要說清楚它值多少：**修法後這道 guard 不 load-bearing**
+        // （新路徑根本不碰 NetworkMonitor）。它只在有人把本函式改回 `currentAuthToken()`
+        // 時才有意義——那條路徑的第一道 guard 是 reachability，離線時會在碰到過期判斷
+        // 之前就丟 `.offline`，讓「沒登出」因為錯的理由成立。
+        // 而且它是 **best-effort 不是斷言**：`NetworkMonitor.isConnected` 宣告即 `= true`，
+        // 要等 `NWPathMonitor` 第一次 path update hop 到 MainActor 才修正，冷啟動的測試
+        // 程序多半在那之前就讀到 true。別把它當成硬前提。
+        try #require(
+            NetworkMonitor.shared.isConnected,
+            "此測試需要 reachability 為 true（best-effort：NetworkMonitor 預設即 true，斷網 runner 上可能放行）"
+        )
+
+        let invalidator = RecordingSessionInvalidator()
+        let service = KGService(
+            authSession: FixedTokenSession(expiresIn: -3600),
+            sessionInvalidator: invalidator
+        )
+
+        let sent = try await browseCapturingRequest(marker: "expired", kgService: service)
+
+        // 1. 過期 token 不得觸發全域登出，也不得備妥那句「請重新登入」的 alert 文案。
+        //    **這兩條才是抓到缺陷的斷言**：修法前它們實際收到
+        //    `["logout_token_expired_precheck"]` 與「您的登入已過期，請重新登入」。
+        #expect(invalidator.events.isEmpty, "browse 公開端點不得動到 session，實際：\(invalidator.events)")
+        #expect(service.sessionExpiredReason == nil)
+        // 2. 過期 token 等同無 token：以 guest 身分送出，不掛 Authorization。
+        //    誠實標註：這條在修法前**也是綠的**（舊路徑 throw 後 `try?` 給 nil，header
+        //    同樣沒掛）。它擋的是反方向的退化——別為了「省一次判斷」直接把過期 token
+        //    掛上去。後端雖然容忍，但那會讓 client 對自己的 auth 狀態說謊。
+        #expect(sent.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    /// 對稱的正向契約：**有效 token 仍然必須被掛上**。
+    ///
+    /// 少了這條，把 `authTokenWithoutInvalidation()` 整個改成 `{ nil }` 也能全綠——
+    /// 「永遠不掛 header」是上面那條負向斷言的合法解。一組只釘負向的測試，等於默許
+    /// 把功能關掉當作修好。
+    @Test func testValidTokenBrowseStillSendsBearer() async throws {
+        let invalidator = RecordingSessionInvalidator()
+        let authSession = FixedTokenSession(expiresIn: 3600)   // 遠大於 JWTExpiry 的 60s margin
+        let service = KGService(authSession: authSession, sessionInvalidator: invalidator)
+
+        let sent = try await browseCapturingRequest(marker: "valid", kgService: service)
+
+        let token = try #require(authSession.token)
+        #expect(sent.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)")
+        #expect(invalidator.events.isEmpty)
+    }
+
+    /// 跑一次 browse 並取回**這一次**送出的 request。
+    ///
+    /// `marker` 讓每個 case 有自己的 URL：探針是 static 的，用 `reset()` 清空會在兩支
+    /// 測試交錯時互相洗掉（`@MainActor` 只保證不並行執行，不保證不在 await 點交錯）。
+    /// 改成只追加、按 marker 取回，就沒有破壞性操作，也就沒有那個 race。
+    private func browseCapturingRequest(
+        marker: String, kgService: any KGServing
+    ) async throws -> URLRequest {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BrowseProbeURLProtocol.self]
+        _ = try await SharedDeckCatalogService.optionallyAuthedData(
+            from: "https://decks.test/api/decks?probe=\(marker)",
+            kgService: kgService,
+            session: URLSession(configuration: configuration)
+        )
+        return try #require(
+            BrowseProbeURLProtocol.captured(marker: marker),
+            "探針沒收到 probe=\(marker) 的 request"
+        )
+    }
+}
+
+// MARK: - Test doubles for the guest-browse auth contract
+
+/// 未簽名 JWT 的最小產生器：`expiresIn` 為負即已過期（`JWTExpiry.isExpired` 為真）。
+@MainActor
+private final class FixedTokenSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String?
+
+    init(expiresIn: TimeInterval) {
+        let header = Data(#"{"alg":"none"}"#.utf8).base64EncodedString()
+        let exp = Int(Date().addingTimeInterval(expiresIn).timeIntervalSince1970)
+        let payload = Data(#"{"sub":"user","exp":\#(exp)}"#.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        self.token = "\(header).\(payload).sig"
+    }
+}
+
+@MainActor
+private final class RecordingSessionInvalidator: SessionInvalidating {
+    private(set) var events: [String] = []
+    func logout(modelContainer: ModelContainer?, reason: String) { events.append("logout_\(reason)") }
+    func waitForPendingLocalDataCleanup() async { events.append("wait_for_cleanup") }
+}
+
+/// 捕捉送出去的 request 後立刻回 200，讓「掛了什麼 header」可斷言而完全不碰真網路。
+///
+/// 只掛在 local `URLSessionConfiguration.ephemeral` 上、**不呼叫 `URLProtocol.registerClass`**，
+/// 所以 `canInit -> true` 不會污染其他測試的 session。static 收集面只追加不清空，
+/// 呼叫端用 marker 取回自己那筆（見 `browseCapturingRequest`）。
+private final class BrowseProbeURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var requests: [URLRequest] = []
+
+    /// 取回帶指定 marker 的最後一筆。刻意不提供 `reset()`：清空是唯一會讓並行測試
+    /// 互相破壞的操作，不存在就不必靠紀律維護。
+    static func captured(marker: String) -> URLRequest? {
+        lock.withLock {
+            requests.last { $0.url?.query?.contains("probe=\(marker)") == true }
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let request = request
+        Self.lock.withLock { Self.requests.append(request) }
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+        else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"decks":[]}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 #endif

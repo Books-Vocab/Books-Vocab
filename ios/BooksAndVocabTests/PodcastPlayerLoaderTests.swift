@@ -83,6 +83,7 @@ private final class StubKGService: KGServing {
     var sessionExpiredReason: String?
 
     func currentAuthToken() async throws -> String { "token" }
+    func authTokenWithoutInvalidation() async -> String? { "token" }
     func backgroundSync(container: ModelContainer) async {}
     func healthCheck() async {}
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }

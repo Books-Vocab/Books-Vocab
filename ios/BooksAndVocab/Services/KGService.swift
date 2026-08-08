@@ -268,6 +268,14 @@ final class KGService: KGServing, LocalDataClearing {
         return token
     }
 
+    /// 見 `KGServing.authTokenWithoutInvalidation()`。刻意不碰 `NetworkMonitor`、
+    /// 不寫 `sessionExpiredReason`、不呼叫 `sessionInvalidator` —— 這個入口的全部價值
+    /// 就在於「問一下有沒有可用 token」不會改變任何狀態。
+    func authTokenWithoutInvalidation() async -> String? {
+        guard let token = await authSession.token else { return nil }
+        return JWTExpiry.isExpired(token) ? nil : token
+    }
+
     // MARK: - Session Invalidation (internal for extensions)
 
     func handleUnauthorized(modelContainer: ModelContainer?, reason: String) async {

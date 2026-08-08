@@ -7,7 +7,8 @@
 //  唯讀 mirror：guest browse（`optionallyAuthedData`）→ fetch list/detail → upsert 進
 //  獨立 `SharedDeck @Model` → reconcile orphans（**empty-response mass-delete guard**：
 //  空回應視為短暫 hiccup，不整片 tombstone）。browse 端點對 guest 開放：無 token 者
-//  正常瀏覽，不觸發登入牆。**過期 token 並非真的被容忍**——見 `optionallyAuthedData`。
+//  正常瀏覽，不觸發登入牆；**過期 token 一律降級為 guest，不會連帶登出**——見
+//  `optionallyAuthedData`。
 //
 //  本階段（Phase 1b-iii 唯讀）封面走 procedural（NotebookCoverView），**無** 遠端封面
 //  下載/cache —— 因此不需 podcast 那套 cover 檔案 cache + logout purge。
@@ -38,22 +39,36 @@ final class SharedDeckCatalogService {
     /// Browse fetch that tolerates an anonymous (guest) caller. Attaches the Bearer
     /// token only when one is present — logged-out users still load the catalog.
     ///
-    /// **`try?` 只吞掉 throw，不撤銷副作用。** `currentAuthToken()` 對過期 token 會在
-    /// throw *之前*先設 `sessionExpiredReason` 並 `sessionInvalidator.logout(...)`
-    /// （`KGService.swift` 的 `token_expired_precheck`），所以 token 已過期的使用者
-    /// 開 Explore 會被登出並看到「登入已過期」alert——即使 browse 本身是公開的。
-    /// 不會迴圈（登出後 `.task(id: isLoggedIn)` 重跑，此時無 token → 乾淨 guest fetch），
-    /// 且冷啟動的 background sync 通常比 Explore 更早撞到同一個 pre-check，故實務傷害小。
-    /// 真正的修法是讓本函式繞過 `currentAuthToken()` 自行判斷過期——那會動到 auth 路徑，
-    /// 不併入 Release-flip 這個 change set：見 backlog APP-20260805-0049ac。
-    static func optionallyAuthedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+    /// **取 token 走 `authTokenWithoutInvalidation()`，不是 `currentAuthToken()`。**
+    /// 這裡的認證是**可選的**：`/api/decks*` 沒有 auth dependency，過期 bearer 後端本來
+    /// 就當 guest（`docs/reference/sync_lifecycle.md`）。而 `currentAuthToken()` 判定過期時
+    /// 會先 `sessionInvalidator.logout(...)` 再 throw，`try?` 吞得掉錯誤卻吞不掉副作用——
+    /// 於是逛公開牌組會把人踢出登入狀態（APP-20260805-0049ac）。改用零副作用入口後，
+    /// 過期 token 等同無 token：照樣以 guest 身分讀得到目錄，session 不受影響。
+    ///
+    /// 回歸測試 `SharedDeckCatalogServiceTests.testExpiredTokenBrowseDoesNotInvalidateSession`。
+    /// `session` 只為那支測試而存在（注入 URLProtocol 探針），production 一律用預設值。
+    ///
+    /// **危險的形狀不是 `try?`，是「`currentAuthToken()` 的 throw 被丟棄」**——`try?`、
+    /// `do/catch { return }`、或隔一層 helper 再吞，副作用都照發生。Podcast 端仍有數個
+    /// 這樣的站點（`PodcastSyncService` / `PodcastHomeView` / `PodcastEpisodeListView` /
+    /// `PodcastEpisodeRow`），見 APP-20260808-f74183；此處不寫死數量，因為按字面 grep
+    /// `try?` 會漏掉 `do/catch` 那種寫法。
+    ///
+    /// 那些站點**不可無腦照抄本函式**：播放/下載端點要真實使用者，該判的是「過期時該不該
+    /// 降級為 guest」，而非只把取 token 的入口換掉。
+    static func optionallyAuthedData(
+        from urlString: String,
+        kgService: any KGServing,
+        session: URLSession = sharedURLSession
+    ) async throws -> Data {
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if let token = try? await kgService.currentAuthToken() {
+        if let token = await kgService.authTokenWithoutInvalidation() {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, _) = try await sharedURLSession.data(for: request)
+        let (data, _) = try await session.data(for: request)
         return data
     }
 

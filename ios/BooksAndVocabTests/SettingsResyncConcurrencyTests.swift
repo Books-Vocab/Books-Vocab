@@ -117,6 +117,7 @@ struct SettingsResyncConcurrencyTests {
 
         // MARK: 其餘成員維持 fatalError stub（對齊 StubKGService 慣例）
         func currentAuthToken() async throws -> String { "t" }
+        func authTokenWithoutInvalidation() async -> String? { "t" }
         func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
         func triggerPipeline(notebookId: String) async throws {}
         func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> KGPullOutcome { .unchanged }
