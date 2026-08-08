@@ -632,11 +632,24 @@ cmd_backup() {
   local prev
   prev=$(ls -1dt "$BACKUP_DIR"/data_*/ 2>/dev/null | grep -vF "/data_${date_str}/" | head -1) || true  # grep 無匹配 exit 1，避免 set -e 在首次（無既有備份）誤殺
   mkdir -p "$dest"
+  # 空輸出的防呆帶。下面的陣列若是空的，bash 3.2 對 ${a[*]} 在 set -u 下會直接噴
+  # `progress_flags[*]: unbound variable`——又一次拿難懂訊號當失敗訊號。
+  # 注意實測結果（2026-08-08，別憑推理改掉這段）：rsync **不在 PATH** 時走不到這裡，
+  # 因為 helper 的 `rsync --version 2>&1` 把 shell 自己的 "command not found" 收進
+  # version_line，非空且不以 openrsync 開頭 → 照樣吐 GNU 旗標；那條路徑最後是由下面
+  # 的 rsync 失敗守衛接住（具名拒絕 + 指向 S3，exit 1，已實測）。所以這是給「helper
+  # 未來被改成可能無輸出」留的便宜保險，不是當前可重現路徑。
+  # `|| true` 同理是保險：helper 非零退出不該讓整支腳本無聲中止，要走到下面那句 err。
+  local progress_raw=""
+  progress_raw=$(rsync_progress_flags) || true
+  if [[ -z "$progress_raw" ]]; then
+    err "偵測不到可用的 rsync（PATH 中找不到，或 rsync --version 失敗）。本地冷快照無法進行；災難復原請改用 standby 每日 S3 備份（launchd com.kg.backup → ops/kg_backup.sh）。"
+  fi
   # mapfile 不可用：本檔 shebang 是 #!/bin/bash，macOS 的 /bin/bash = 3.2.57，沒有它。
   local -a progress_flags=()
   while IFS= read -r flag; do
     progress_flags+=("$flag")
-  done < <(rsync_progress_flags)
+  done <<< "$progress_raw"
   info "rsync progress enabled: ${progress_flags[*]}"
   # 守住 rsync 的非零退出。沒有這道守衛時，rsync 失敗只會留下它自己印的 usage／錯誤，
   # 而上方剛印過 preflight 與「▶ 本地冷快照」，整段輸出讀起來像「跑完了」（IMP-
@@ -647,9 +660,13 @@ cmd_backup() {
     ${prev:+--link-dest="$prev"} \
     -e "ssh -T -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
     "$SERVER:$REMOTE_DATA_DIR/" "$dest/"; then
+    # 留下機器可辨識的殘缺標記：錯誤訊息一旦捲出 scrollback，這個空目錄在 ls 裡與
+    # 正常備份長得一模一樣（且會佔用 cleanup_old_backups 的 keep=10 額度）。不刪它
+    # ——鐵律 7 不在 data 路徑附近用 rm -rf；標記它，讓後續判讀有依據。
+    touch "$dest/.INCOMPLETE" 2>/dev/null || true
     echo "" >&2
     echo "  本機 rsync：$(rsync --version 2>&1 | head -1)" >&2
-    echo "  已建立但**不完整**、不可當備份用的目錄：$dest" >&2
+    echo "  已建立但**不完整**、不可當備份用的目錄：$dest（已標記 .INCOMPLETE）" >&2
     echo "  災難復原請改用 standby 的每日 S3 備份（launchd com.kg.backup →" >&2
     echo "  ops/kg_backup.sh，見 docs/sop/deploy.md）；那條路徑與本指令各自獨立。" >&2
     err "本地冷快照失敗：rsync 非零退出（上方為 rsync 自身輸出）。此指令沒有產出可用備份。"
