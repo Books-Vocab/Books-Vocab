@@ -6631,3 +6631,184 @@ def test_integrate_names_a_commit_that_produced_nothing_instead_of_losing_it(scr
     assert [x["sha"] for x in done["picked"]] == [a], done
     # the books still balance, so the gate was allowed to run
     assert done["gate"]["verdict"] in ("pass", "warn"), done
+
+
+@gitmark
+def test_gate_reuse_records_and_reuses_out_of_scope_inputs(scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "gate reuse", "--slug", "reuse",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "ops" / "lib").mkdir(parents=True)
+    (Path(wt) / "ops" / "tests").mkdir(parents=True)
+    (Path(wt) / "ops" / "lib" / "foo.py").write_text("value = 1\n")
+    (Path(wt) / "ops" / "tests" / "test_foo.py").write_text("def test_foo(): pass\n")
+    _git(["add", "ops/lib/foo.py", "ops/tests/test_foo.py"], wt)
+    _git(["commit", "-qm", "ops: add gate input fixture"], wt)
+
+    calls = []
+
+    def fake_run(spec, worktree, *, record_path=None):
+        calls.append(spec["name"])
+        return {"name": spec["name"], "category": spec["category"],
+                "level": spec["level"], "status": "pass", "rc": 0,
+                "summary": "fixture gate ran"}
+
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run)
+    rc, first = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    first_head = first["head_sha"]
+    ops_first = next(g for g in first["gates"] if g["name"] == "ops-pytest")
+    assert calls == ["ops-pytest", "coverage"]
+    assert ops_first["input"]["files"] == ["ops/lib/foo.py", "ops/tests/test_foo.py"]
+    assert ops_first["input"]["fingerprint"]
+    assert ops_first["reuse"]["decision"] == "rerun"
+
+    (Path(wt) / "notes.txt").write_text("unrelated backlog follow-up\n")
+    _git(["add", "notes.txt"], wt)
+    _git(["commit", "-qm", "docs: add unrelated follow-up note"], wt)
+    calls.clear()
+    rc, second = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    ops_second = next(g for g in second["gates"] if g["name"] == "ops-pytest")
+    assert calls == ["coverage"], "the expensive ops gate must be reused"
+    assert second["head_sha"] != first_head
+    assert ops_second["reused"] is True
+    assert ops_second["reused_from_head"] == first_head
+    assert ops_second["reuse"] == {"decision": "reused", "source_head": first_head,
+                                    "reason": "input_unchanged"}
+    assert second["gate_reuse"]["reused"] == [
+        {"name": "ops-pytest", "source_head": first_head, "reason": "input_unchanged"}
+    ]
+
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, cut
+    assert cut["gate_reuse"]["reused"][0]["source_head"] == first_head
+    _run_json(["resolve", "--worktree", wt, "--state", state, "--commit", "--json"])
+
+
+@gitmark
+def test_gate_reuse_is_fail_safe_for_changed_unknown_legacy_and_bad_sources(
+        scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "gate reuse", "--slug", "reuse-fail-safe",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "ops" / "lib").mkdir(parents=True)
+    (Path(wt) / "ops" / "tests").mkdir(parents=True)
+    foo = Path(wt) / "ops" / "lib" / "foo.py"
+    test = Path(wt) / "ops" / "tests" / "test_foo.py"
+    foo.write_text("value = 1\n")
+    test.write_text("def test_foo(): pass\n")
+    _git(["add", "ops/lib/foo.py", "ops/tests/test_foo.py"], wt)
+    _git(["commit", "-qm", "ops: add gate input fixture"], wt)
+
+    def fake_run(spec, worktree, *, record_path=None):
+        return {"name": spec["name"], "category": spec["category"],
+                "level": spec["level"], "status": "pass", "rc": 0,
+                "summary": "fixture gate ran"}
+
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run)
+    rc, first = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    ops_spec = next(s for s in MODULE.plan_gates(
+        first["changed_files"], ops_test_exists=lambda rel: (Path(wt) / rel).is_file(),
+        base="main") if s["name"] == "ops-pytest")
+
+    foo.write_text("value = 2\n")
+    _git(["add", "ops/lib/foo.py"], wt)
+    _git(["commit", "-qm", "ops: change gate input"], wt)
+    rc, changed = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    ops_changed = next(g for g in changed["gates"] if g["name"] == "ops-pytest")
+    assert ops_changed["reused"] is False
+    assert ops_changed["reuse"]["reason"] == "input_content_changed"
+
+    tracked = MODULE._tracked_paths(wt)
+    unknown_spec = MODULE._internal("future-gate", "meta", "block")
+    unknown = MODULE._gate_input_scope(unknown_spec, wt, changed["changed_files"], tracked)
+    assert unknown["reusable"] is False
+    previous, error = MODULE._read_gate_record(MODULE._gate_record_path(state, wt))
+    assert error is None
+    orch = MODULE._orchestrator_identity(wt)
+    current_input = next(g for g in changed["gates"] if g["name"] == "ops-pytest")["input"]
+    reused, reason = MODULE._reuse_gate(unknown_spec, unknown, previous, error, orch)
+    assert reused is None and reason == "input_scope_not_reusable"
+
+    legacy = json.loads(json.dumps(previous))
+    legacy_ops = next(g for g in legacy["gates"] if g["name"] == "ops-pytest")
+    legacy_ops.pop("input")
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, legacy, None, orch)
+    assert reused is None and reason == "source_record_has_no_input_fingerprint"
+
+    blocked = json.loads(json.dumps(previous))
+    next(g for g in blocked["gates"] if g["name"] == "ops-pytest")["status"] = "block"
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, blocked, None, orch)
+    assert reused is None and reason == "source_status_block"
+    inconclusive = json.loads(json.dumps(previous))
+    next(g for g in inconclusive["gates"] if g["name"] == "ops-pytest")["status"] = "inconclusive"
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, inconclusive, None, orch)
+    assert reused is None and reason == "source_status_inconclusive"
+
+    wrong_current = json.loads(json.dumps(current_input))
+    wrong_current["schema"] = "wrong.input.v0"
+    reused, reason = MODULE._reuse_gate(ops_spec, wrong_current, previous, None, orch)
+    assert reused is None and reason == "current_input_schema_unknown"
+    wrong_source = json.loads(json.dumps(previous))
+    wrong_source["schema"] = "wrong.gate.v0"
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, wrong_source, None, orch)
+    assert reused is None and reason == "source_record_schema_unknown"
+    wrong_input = json.loads(json.dumps(previous))
+    next(g for g in wrong_input["gates"] if g["name"] == "ops-pytest")["input"]["schema"] = "wrong.input.v0"
+    reused, reason = MODULE._reuse_gate(ops_spec, current_input, wrong_input, None, orch)
+    assert reused is None and reason == "source_input_schema_unknown"
+
+    malformed_null_gates = json.loads(json.dumps(previous))
+    malformed_null_gates["gates"] = None
+    reused, reason = MODULE._reuse_gate(
+        ops_spec, current_input, malformed_null_gates, None, orch)
+    assert reused is None and reason == "source_record_gates_invalid"
+
+    malformed_gate_item = json.loads(json.dumps(previous))
+    malformed_gate_item["gates"] = ["not-a-gate"]
+    reused, reason = MODULE._reuse_gate(
+        ops_spec, current_input, malformed_gate_item, None, orch)
+    assert reused is None and reason == "source_record_gates_invalid"
+
+
+@gitmark
+def test_gate_reuse_refuses_head_move_during_input_snapshot(scratch, monkeypatch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "gate race", "--slug", "reuse-race",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "ops" / "lib").mkdir(parents=True)
+    (Path(wt) / "ops" / "tests").mkdir(parents=True)
+    (Path(wt) / "ops" / "lib" / "foo.py").write_text("value = 1\n")
+    (Path(wt) / "ops" / "tests" / "test_foo.py").write_text("def test_foo(): pass\n")
+    _git(["add", "ops/lib/foo.py", "ops/tests/test_foo.py"], wt)
+    _git(["commit", "-qm", "ops: add race fixture"], wt)
+    initial = _git(["rev-parse", "HEAD"], wt)
+    moved = _git(["rev-parse", "main"], repo)
+    calls = []
+
+    def fake_head(path):
+        calls.append(path)
+        return initial if len(calls) == 1 else moved
+
+    def fake_run(*args, **kwargs):
+        raise AssertionError("a moving HEAD must refuse before running a gate")
+
+    monkeypatch.setattr(MODULE, "_head_sha", fake_head)
+    monkeypatch.setattr(MODULE, "_run_gate", fake_run)
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert "HEAD moved while preparing gate inputs" in gate["error"]
+    assert not MODULE._gate_record_path(state, wt).exists()

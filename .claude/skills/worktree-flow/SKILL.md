@@ -108,6 +108,12 @@ gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一�
 
 它 diff `<path>` vs 本地 `main`，把改動路由到既有 gate 工具並彙總 `verdict`（block/warn/pass），把結果**記錄下來**（綁 worktree + HEAD sha + base 包含性）供 cutover 核對。
 
+同一工作樹追加變更時，gate 可在**輸入指紋仍一致**且新增 diff 不屬於該 gate 責任範圍時重用先前的
+`pass/warn`；record 與 cutover payload 會列出 `reused_from_head`、輸入檔案集合、指紋與每道 gate
+的 rerun 理由。這不放寬 fresh current-HEAD、base containment、orchestrator identity 或
+`inconclusive` 護欄；未知 scope、輸入集合或內容變動、舊格式 record 一律重跑。看見 `reused` 不等於
+「這顆 HEAD 沒驗」——它是同一組已量過輸入的結果重用，且仍由 current HEAD 的新 record 綁定。
+
 **開跑前先擋一道：分支落後本地 main 就直接拒**（EXIT_BLOCK，payload 帶 `behind_commits` / `base_changed_files`，**不寫任何判決紀錄**）。理由：cutover 的第一個動作就是 rebase 上本地 main，所以落後的樹被 gate 判過也不會是落地的那棵——判決會綁到一棵不存在的樹（IMP-20260806-945e01：實測 58 commits 落後的分支，main 上多出的 UITest 檔在工作樹裡根本不存在，`--grep` 選三個類靜默只匹配到兩個）。修法是 `catchup --commit`（見下方 c2），然後**重跑 gate**。`--plan-only` 不受此擋（它不跑也不記，是拒絕訊息指定的預覽出口）。impact→gate 對應：
 - `ios/**` → `ios_ops.sh build` **＋** `build --catalyst`（sim 綠 ≠ Catalyst 綠）＋ `quality impact`（swift）＋ `test --unit`；**動到一般 UITest 檔**則另加 `test --ui --file <該 UITest 類> --dataset marketing_demo`（**只跑受影響的 UI 測試類，非全套**——全套當 block 會被 codebase 已知 UI flaky 誤擋每次 iOS cutover）。`LiveDemoAccessUITests` 是 Release＋實機＋live backend 專用契約，cutover gate 只跑 Release iphoneos build-for-testing 編譯 gate 並明示 runtime advisory；不得拿 simulator/fixture 偽裝其 runtime evidence，送審前仍須走 App Review `demo-run`。
 - design-system / tokens / 生成 CSS / `ios/**/Models|UIComponents/` → `verify_design_system.sh`
