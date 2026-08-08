@@ -785,6 +785,45 @@ v="$(get_verdict "$out")"
 [[ -n "$out" ]] && ok "unseeded-prod: 有 JSON verdict（輸出契約守住）" || bad "unseeded-prod: stdout 空（契約破）"
 [[ ! -s "$COMPOSELOG" ]] && ok "unseeded-prod: compose 未跑" || bad "unseeded-prod: compose 被觸發"
 
+section "poison cooldown 前導零與非法值 → fail-closed"
+
+poison_cooldown_case() {
+  local cooldown="$1" label="$2"
+  new_scratch backend
+  printf 'poison %s %s\n' "$SHA_NEW" "$(date +%s)" > "$STATE"
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  set +e
+  out="$(KG_RECON_POISON_COOLDOWN="$cooldown" run_recon --once 2>"$SC/cooldown.err")"
+  rc=$?
+  set -e
+  v="$(get_verdict "$out")"
+  if [[ "$v" == "poisoned-skip" && "$rc" -eq 0 && ! -s "$COMPOSELOG" ]]; then
+    ok "poison cooldown[$label]: value stays poisoned"
+  else
+    bad "poison cooldown[$label]: expected poisoned-skip without compose, got verdict=$v rc=$rc"
+  fi
+}
+
+poison_cooldown_case "09" "09"
+poison_cooldown_case "08" "08"
+poison_cooldown_case "" "empty"
+poison_cooldown_case "not-a-number" "non-numeric"
+poison_cooldown_case "90" "90 control"
+
+new_scratch backend
+printf 'poison %s not-a-timestamp\n' "$SHA_NEW" > "$STATE"
+MOCK_CURL="$(make_mock_curl "" "$SC")"
+set +e
+out="$(run_recon --once 2>"$SC/timestamp.err")"
+rc=$?
+set -e
+v="$(get_verdict "$out")"
+if [[ "$v" == "poisoned-skip" && "$rc" -eq 0 && ! -s "$COMPOSELOG" ]]; then
+  ok "poison cooldown[invalid timestamp]: value stays poisoned"
+else
+  bad "poison cooldown[invalid timestamp]: expected poisoned-skip without compose, got verdict=$v rc=$rc"
+fi
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"

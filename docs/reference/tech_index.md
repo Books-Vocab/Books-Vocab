@@ -14,6 +14,10 @@ verified_against: d29eb11ec
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
 
+## Reconciler poison cooldown
+
+`ops/kg_reconcile.sh` 的 `KG_RECON_POISON_COOLDOWN` 以十進位解析；前導零（例如 `09` / `08`）與空值、非數字值都不會被 Bash 八進位規則誤解，非法設定會維持 poison 的 fail-closed 冷卻狀態。未設定時使用 3600 秒預設值。
+
 ## Review receipt exemption depth
 
 `ops/review_audit.sh` 的 `single-line-small-file` 不是只驗 trailer：工具會拒絕 merge commit、超過一行增刪、binary diff，以及新增行含規範性語彙；`trivial-typo` / `rename-only` / `format-only` / `generated-snapshot` 維持 trailer-only。`machine-repair` / `backlog-grooming` 仍由工具檢查只碰 `docs/runbook/backlog/*.json`。
