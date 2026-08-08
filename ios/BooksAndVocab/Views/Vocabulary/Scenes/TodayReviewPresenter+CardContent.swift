@@ -50,6 +50,16 @@ extension TodayReviewPresenter {
                 guard !showsAnswer, interactive, isCardInteractive else { return }
                 onAdvanceReveal()
             }
+            // The face is an accessibility CONTAINER, not one merged element.
+            // Without this declaration the `.accessibilityLabel` below has no
+            // element to attach to, so SwiftUI synthesises one by MERGING the whole
+            // face and pushes every property modifier down the subtree: VoiceOver
+            // loses the face's own buttons (collocations / knowledge links / add
+            // link) and `todayReview.card.front` gets republished on 2–3 nested
+            // ~36pt buttons, so a UI-test query resolves a child instead of the card
+            // box. Declared BEFORE the property modifiers so that identifier / label
+            // / hint / action land on the container itself and stop propagating.
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(interactive ? "todayReview.card.front" : "")
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
             .accessibilityHint(showsAnswer || !interactive ? "" : "點一下翻轉卡片".localized)
@@ -209,18 +219,26 @@ extension TodayReviewPresenter {
             // 避免折疊→展開時 intrinsic 高度跳動。
             Group {
                 if mounted {
-                    // Identifier on the MOUNTED branch only: UI tests read
-                    // `todayReview.card.back`.exists as the real flip-state
-                    // signal (the folded stub deliberately carries none).
+                    // Identifier AND label on the MOUNTED branch only, for two
+                    // reasons. (1) UI tests read `todayReview.card.back`.exists as
+                    // the real flip-state signal (the folded stub deliberately
+                    // carries none). (2) The label used to sit on the enclosing
+                    // Group, i.e. on BOTH branches: it merged the mounted back into
+                    // a single element — VoiceOver could not step through the
+                    // knowledge links, collocations or the add-link button — and it
+                    // also turned the folded stub into an element announcing the
+                    // answer while the card was still face down. Same container rule
+                    // as the front face: declare `.contain` first, then attach.
                     combinedAnswerContent(currentCard, viewport: viewport)
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("todayReview.card.back")
+                        .accessibilityLabel(L10n.format("翻譯：%@", answerText))
                 } else {
                     let _ = PerfLog.review.mark("back.stub", "w=\(card.word)")
                     Color.clear
                         .frame(maxWidth: .infinity, minHeight: answerCardHeight, alignment: .top)
                 }
             }
-            .accessibilityLabel(L10n.format("翻譯：%@", answerText))
         }
         .overlay(alignment: .top) {
             ReviewFoldChevronPill(action: onCollapseReveal, accessibilityLabel: L10n.string("todayReview.fold.collapse"))
