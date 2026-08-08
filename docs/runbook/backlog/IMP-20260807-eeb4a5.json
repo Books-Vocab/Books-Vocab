@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "kg.backlog.reanchor.v1 的 JSON 鍵集隨執行路徑變動:沒有孤兒時 early return 少一個 scanned 鍵。機器消費端因此得寫成 d.get('scanned') 而不能直接索引,而這正是本 repo 在 render --json 的 dropped 鍵上已經論證過並修掉的同一個形狀(『有事才出現的鍵等於把無聲換個通道再來一次』)。",
   "fix_site": "ops/backlog.py:reanchor_store 的 early return（2845-2847 行）",
+  "fixed_by": [
+    "2cf4d644aa249b0bfd1f4a2c21a17bbca8a52399"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-eeb4a5",
@@ -16,6 +19,10 @@
   "scope": "改一支工具其中一條回傳路徑的欄位、補一句說明，加一條比鍵集的測試。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "bash -c 'out=$(./ops/backlog.py reanchor IMP-20260807-eeb4a5 --json) && grep -q scanned <<<\"$out\"'\n\nObserved before implementation: exit 1; the no-orphan JSON omitted scanned.\nObserved after implementation: exit 0.\nFresh gate after commit 2cf4d644a: ops-pytest exit 0; 250 passed in 16.58s."
 }
