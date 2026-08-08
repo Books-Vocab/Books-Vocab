@@ -6,14 +6,21 @@
   "date": "2026-08-05",
   "detail": "stage_live_demo_xctestrun enumerates xctestrun target roots through process substitution while the loop body rewrites the same plist with PlistBuddy. The producer intermittently misses the second target, so a duplicate BooksAndVocabUITests target returns success instead of fail-closed. Serial 10-run repro produced 1|0 twice and 1|1 eight times; the full fixture suite passed once then failed 1/378 on the next run.",
   "fix_site": "ops/ios_test.sh:stage_live_demo_xctestrun",
+  "fixed_by": [
+    "87bed42bd8af191b592f2292da2ec5966b46983b"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-bf0df5",
   "plan": "ops/ios_test.sh:1016 的 stage_live_demo_xctestrun 目前邊枚舉邊改同一份 plist。拆成兩段：先只收集，`local -a roots=(); while IFS= read -r env_root; do [[ -n \"$env_root\" ]] && roots+=(\"$env_root\"); done < <(xctestrun_target_env_roots \"$staged_path\")`，此迴圈內不得有任何 PlistBuddy 寫入；再 `for env_root in \"${roots[@]}\"; do` 做 sanitize、讀 BlueprintName、計數。不可用 mapfile（/bin/bash 3.2 無此內建）。同時把 ops/test_ios_ops.sh:1382-1402 的 cardinality probe 換成 acceptance 用的那支決定性探針。",
-  "resolution": "Owner: platform-steward after IMP-20260805-953840 review. Next action: snapshot env-root paths before any plist mutation in both live-demo and fixture staging, add deterministic regression for enumeration-before-mutation, then rerun ops/test_ios_ops.sh.",
+  "resolution": "已修：stage_live_demo_xctestrun 與 stage_fixture_dataset_xctestrun 都改成「先枚舉完，再變更」——原本以 process substitution 邊枚舉邊用 PlistBuddy 改同一份 plist，producer 會被寫入撞掉而漏掉第二個 target，於是重複的 BooksAndVocabUITests 只算到一個，fail-closed 反轉成 fail-open（live-demo 憑證會被注進未消毒的 plist）。\n\n受派者具名偏離 plan 一處且判對：plan 寫的 `for env_root in \"${roots[@]}\"` 在 set -euo pipefail + bash 3.2 下，空陣列展開會 `unbound variable`，正好死在它要保護的零 target fail-closed 路徑上；改用 index loop，保留兩階段結構與「不可用 mapfile」的限制。\n\n另證明票裡原本的計時 probe 當 gate 是無效的：它在未修的碼上 10/10 回綠（票宣稱 2/10 紅）。新斷言改為決定性的 cardinality 與 fixture 檢查。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "heartbeat regression gate: ops/test_ios_ops.sh live-demo target cardinality probe",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票 acceptance_cmd：rc=0 elapsed=3.0s（cardinality 1|1|1|0 與 fixture 目標檢查，非計時 probe）"
 }
