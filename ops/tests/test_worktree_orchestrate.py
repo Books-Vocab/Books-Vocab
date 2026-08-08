@@ -1040,6 +1040,53 @@ def test_verdict_inconclusive_degrades_to_warn():
     assert aggregate_verdict([{"status": "pass"}, {"status": "inconclusive"}]) == "warn"
 
 
+def test_verdict_refuses_a_status_it_does_not_know(): # noqa: D103
+    """An unknown status must block, and the fall-through must not be `pass`.
+
+    Today no producer emits one, so this is a latent charge rather than a live bug —
+    but the failure direction is GREEN, and the next status anyone adds is the most
+    likely trigger (`timeout` is already named by two open entries). A gate that
+    reports something the aggregator cannot read is the aggregator saying "I do not
+    know what I am looking at", and there is exactly one safe answer to that.
+
+    NOT `warn`: in this module `warn` means "degraded, named, disposition belongs to
+    the driving agent" — see the `inconclusive` argument in the docstring. That is a
+    state somebody JUDGED. An unrecognised status is a state nobody judged.
+    """
+    assert aggregate_verdict([{"status": "timeout"}]) == "block"
+    assert aggregate_verdict([{"status": "pass"}, {"status": "timeout"}]) == "block"
+
+
+def test_verdict_refuses_a_result_with_no_status_at_all():
+    """`{}` rather than `{"status": None}`: a MISSING key is the shape a truncated or
+    half-built result actually has, and `.get()` turns it into `None` silently — the
+    original fall-through then folded that straight to `pass`."""
+    assert aggregate_verdict([{}]) == "block"
+    assert aggregate_verdict([{"status": "pass"}, {"name": "half-built"}]) == "block"
+    assert aggregate_verdict([{"status": None}]) == "block"
+
+
+def test_verdict_names_the_offender_rather_than_just_refusing(capsys):
+    """Blocking without saying which gate leaves the reader to diff the payload by
+    hand. The name and the offending value both have to travel.
+
+    Asserted through `aggregate_verdict` — the function production actually calls —
+    and NOT only through `assert_known_statuses`. A test that reaches past the caller
+    passes against an implementation whose handler catches the exception bare and
+    throws the message away, which is exactly what the first draft of this fix did.
+    """
+    with pytest.raises(MODULE.UnknownGateStatus) as excinfo:
+        MODULE.assert_known_statuses([{"name": "ios-build", "status": "timeout"}])
+    message = str(excinfo.value)
+    assert "ios-build" in message, message
+    assert "timeout" in message, message
+
+    assert aggregate_verdict([{"name": "ios-build", "status": "timeout"}]) == "block"
+    emitted = capsys.readouterr().err
+    assert "ios-build" in emitted, emitted
+    assert "timeout" in emitted, emitted
+
+
 def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_path):
     stdout = io.StringIO()
     stderr = io.StringIO()
@@ -3861,9 +3908,51 @@ def test_a_failing_gate_with_no_failure_markers_says_so_rather_than_going_quiet(
     assert "the last line, which is the tail" in result["summary"]
     assert _log_pointer(result["summary"]).is_file()
 
+    # The tail is still shown — but it must NOT be presented under the same heading a
+    # real extraction uses. When the scanner matched nothing, the lines below it are
+    # "the last lines of the log", not "the failure". Measured cost of conflating the
+    # two (IMP-20260808-8b4690): `review-receipts` went red, matched zero markers, and
+    # its tail was `[review][ok]` / `Reviewed-by:` — so a BLOCKED gate displayed
+    # passing lines in the slot an operator reads as evidence, and the operator
+    # (correctly reading a green-looking summary) concluded the red was spurious.
+    assert "NOT failure lines" in result["summary"], \
+        "a zero-match tail must be labelled as not-evidence: " + result["summary"]
+    assert "\n  tail:\n" not in result["summary"], \
+        "the zero-match tail must not reuse the plain heading a real extraction uses"
+
+
+def test_a_matched_failure_still_labels_its_tail_plainly(tmp_path):
+    """The other half of the pair, and the reason the label is conditional.
+
+    If the warning heading were unconditional it would be noise on every ordinary
+    red — and a warning that fires on the happy path is one people stop reading,
+    which is the failure mode this whole ticket is about, one level up.
+    """
+    spec = _gate_from_script(tmp_path, """\
+        echo "  ✗ a marker the scanner knows"
+        echo "the last line, which is the tail"
+        exit 1
+    """)
+    result = MODULE._run_gate(spec, str(tmp_path),
+                              record_path=tmp_path / "gates" / "deadbeef.json")
+
+    assert "failure-marked lines" in result["summary"]
+    assert "\n  tail:\n" in result["summary"], result["summary"]
+    assert "NOT failure lines" not in result["summary"]
+
 
 @pytest.mark.parametrize("marker,line", [
     ("cross", "  ✗ shell scan found a violation"),
+    # U+2718, NOT the U+2717 above. Swift Testing prints this one, so every iOS test
+    # failure was invisible to the extractor while the list looked complete — measured
+    # on `.cache/worktree_gates/*.ios-test-unit.log`: 4 lines carry U+2718, 1 carries
+    # U+2717 (IMP-20260808-8b4690). Two codepoints that render nearly identically is
+    # exactly the shape a by-eye review of the tuple cannot catch.
+    ("heavy-cross", "  ✘ Test testGuestGate() recorded an issue"),
+    # `ops/review_audit.sh`'s verdict prefix. `review-receipts` is a BLOCK-level gate
+    # whose red output contained none of the other markers at all, so its summary
+    # fell through to the tail — and its tail is `[review][ok]` lines.
+    ("review-block", "[review][block] deadbeef01 ops: a commit with no receipt"),
     ("FAIL", "FAIL tests/test_thing.py::test_case"),
     ("AssertionError", "E   AssertionError: expected 3, got 4"),
     ("not ok", "not ok 7 - the tap-style failure"),
@@ -3872,11 +3961,11 @@ def test_a_failing_gate_with_no_failure_markers_says_so_rather_than_going_quiet(
 def test_every_declared_failure_marker_is_actually_extracted(tmp_path, marker, line):
     """One case per marker the docstring promises.
 
-    A single-marker test would let four of the five be dropped silently, and the ones
+    A single-marker test would let all but one be dropped silently, and the ones
     most likely to rot are the ones this repo uses least often day to day.
 
     The marker is printed FAR above the tail, and the first draft of this test did
-    not do that — it sat two lines from the end, so all five cases passed against the
+    not do that — it sat two lines from the end, so every case passed against the
     old tail-only summary. The assertion was reading a string the OLD code had put
     there. Twenty filler lines is what makes the extractor the only possible source.
     """
