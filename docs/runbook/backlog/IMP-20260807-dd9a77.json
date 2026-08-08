@@ -1,5 +1,6 @@
 {
   "acceptance": "兩個 fixture：(a) card 表欄位全改名、(b) `graph_<nb>.json` 內容損毀。`project_user_world` 對兩者都必須失敗或明確標記不可讀。今天 (a) 回 `[]`、(b) 回 `links: []`，兩者都靜默通過——那是負控。",
+  "brief": "查使用者資料時，資料損毀或讀不出來會被回報成「這個人本來就沒有」，讓檢查在最該報警時反而過關。",
   "category": "tool",
   "cost": "S",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "兩處各自把「不可讀」與「空」分開，不要合併成同一個回傳值：\n① `_load_cards`：`cols` 為空（表不存在）→ 維持 `return []`；表存在但無任何 wanted 欄位命中 → raise 具名例外或在回傳結構帶 `unreadable: true`。\n② `_load_graphs`：`except` 分支不得回空 links，改成帶 `unreadable: true` 並保留錯誤原因，讓呼叫端結構上無法把它當成「沒有連結」。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "後端一個檔改兩處回傳方式，加兩個餵損毀資料的測試情境。",
   "severity": "low",
   "source": "立單初稿被 review 推翻後重立",
   "status": "open",

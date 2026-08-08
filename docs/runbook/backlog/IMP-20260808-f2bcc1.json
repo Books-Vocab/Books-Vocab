@@ -1,10 +1,12 @@
 {
+  "brief": "開票工具會讓人存下一筆它自己隨即判為不合法的票，而且要等之後某條不相干的工作收尾時才爆出來。",
   "category": "tool",
   "date": "2026-08-08",
   "detail": "`ops/backlog.py add --status triaged` 會寫出一筆 `validate` 隨即拒絕的 entry，而回報這件事的是**後來某條不相干分支的 cutover gate**。\n\n`validate` 的規則是對的：`status=triaged` 表示「已經決定下一步」，所以缺 plan/resolution 時判 `no-next-action`（`ops/backlog.py:534`）。但 `add` 完全不檢查這件事——`--status` 的 choices 直接把 `triaged` 攤在那裡當合法值。\n\n實測 2026-08-08：我連續 filed 五筆 `--status triaged` 的新單（分析寫得很滿但沒有 plan），`add` 五次都成功。它們一路躺到 `feat/backlog-list-grep` 的 `land` 才被 `backlog-validate` 這道 block gate 擋下，訊息是五筆 `no-next-action`——而那條分支跟這五筆一點關係都沒有。\n\n修法方向（未裁決）：① `add` 在寫檔前跑同一份 `_check_entry`，不合法就當場拒絕並指出缺什麼 ② 或把 `triaged` 從 `add` 的 choices 拿掉——「filed」與「已決定下一步」本來就不該在同一個動作裡發生。②比較接近這個 store 的既有語氣（狀態轉換要有它自己的動作）。",
   "id": "IMP-20260808-f2bcc1",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "同一支待辦工具加一道存檔前檢查、或拿掉那個狀態選項，連同測試；改動很小（尚未梳理，體積是估的）。",
   "severity": "med",
   "source": "dogfood batch 1：整合者自己踩到，五次",
   "status": "open",

@@ -1,5 +1,6 @@
 {
   "acceptance": "`KG_HEALTH_HTTP_CODE` 分別設 `000000` / `000` / `200` 各跑一次 `./ops/infra_health.sh --json`，三次都必須 `json.loads` 成功（今天前兩者 FAIL，那是負控）；且真實 curl 失敗路徑下 `${#HTTP_CODE}` 必須是 3。",
+  "brief": "主機健康檢查在連線失敗時吐出的那份機器報告是壞格式，別的程式一讀就出錯，而那正是最需要它的時候。",
   "category": "tool",
   "cost": "S",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "兩刀，缺一不可：\n① `:115` 拿掉重複的 `|| echo 000`，改成賦值與 fallback 分離：`HTTP_CODE=\"$(curl …)\" || HTTP_CODE=000`（**不可只刪 `|| echo 000`**——curl 若在寫出前就死掉會得到空字串，那是另一個靜默錯誤）。\n② `:207` 的 `is_num` 必須拒絕前導零（或 raw 一律以字串輸出）。**這一刀才是修 JSON 契約的那刀**；只做 ① 的話 `000` 照樣讓文件非法。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "改一支健康檢查腳本的兩個地方，外加三組情境各驗一次；不動別的檔案。",
   "severity": "med",
   "source": "立單初稿被 review 推翻後重立",
   "status": "open",

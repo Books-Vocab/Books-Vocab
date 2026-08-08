@@ -1,5 +1,6 @@
 {
   "acceptance": "用兩條刻意衝突於同一檔的假分支跑 `integrate`：必須在第二條停下並**具名**衝突檔；`--continue` 後產出單一 gate verdict；且該 verdict 綁的是整合後的 HEAD 而非任一原分支的 HEAD。",
+  "brief": "多條並行工作要一起收攏時沒有工具可用、只靠文件叮嚀；各自檢查都綠、合起來才壞的東西會直接進主線。",
   "category": "tool",
   "cost": "L",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "加 `integrate --branches <b1> <b2> …`：① 從本地 main 開一棵整合樹；② 依序 cherry-pick 各分支的 commit（**非 merge**，避免把 N 個分支的 base 差異一起帶進來）；③ 衝突停下並具名回報，解完 `--continue`；④ 對合併結果跑一次既有的 `gate`；⑤ 非 block 才允許 cutover。前四步全部是既有原語的組合，不在 integrate 內新增任何 pass/fail 判斷（守住「不重造 gate」硬邊界）。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "流程工具新增一個整合指令，串既有步驟、不新增判斷；要用兩條刻意衝突的假分支驗過。",
   "severity": "med",
   "source": "2026-08-06 十一條分支批次整合的復盤",
   "status": "open",

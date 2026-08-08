@@ -1,5 +1,6 @@
 {
   "acceptance": "`./ops/docs_lint.sh --registry` 綠；把 check 的 `--out` 指到別的路徑必須轉紅（防複製貼上）；把腳本的 \"is up to date.\" 訊息改寫一個字，gate 必須**仍然綠**——今天會紅，那是負控。",
+  "brief": "有一道檢查靠比對一句成功訊息的字面用字，只要有人潤飾那句話，東西完全正常也會亮紅燈。",
   "category": "tool",
   "cost": "S",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "給 `ops/gen_ios_baseline.sh` 一個 `--out <path>`（預設維持現值），`--check` 與 `--write` 都吃它；再把 registry 的 check 改成 `./ops/gen_ios_baseline.sh --check --out docs/snapshot/ios_baseline.md`，形狀與 improvement_backlog 收斂一致，同時刪掉那段註解 TODO。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "給一支產生報告的腳本加一個輸出路徑參數，改一條檢查設定，順手刪掉一段沒人認領的待辦註解。",
   "severity": "low",
   "source": "registry 註解裡的無主 TODO",
   "status": "open",

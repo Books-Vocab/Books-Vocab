@@ -1,5 +1,6 @@
 {
   "acceptance": "對三支腳本各跑一次「送 SIGTERM 後量鎖與行程存活」的探針（形狀同 `ops/lib/ios_signal_traps.sh` 檔頭記載的那個）：修前必須量到 `lock=GONE` 而行程仍活、rc=0；修後必須 0 個這種樣本，且 rc=143。`devops.sh` 那一側要單獨跑，不可以 reconciler 的結果代表它。",
+  "brief": "部署腳本被中途終止時會先放掉部署鎖卻沒真的停下，另一個部署可能同時開始，兩邊一起動同一套線上服務。",
   "category": "tool",
   "cost": "M",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "三支腳本都 source `ops/lib/ios_signal_traps.sh`（它宣告 source-only、bash 3.2 safe、零外部相依），把手寫的 `trap … EXIT INT TERM` 換成該 lib 的註冊入口，使 cleanup 恰好跑一次、信號時以 128+N 死亡。**`ops/kg_reconcile.sh` 與 `devops.sh` 必須同批改**——它們共用 `/tmp/kg-deploy.lock`，只修一側等於沒修。同批把 lib 從 `ops/lib/ios_signal_traps.sh` 改名為 `ops/lib/signal_traps.sh` 並更新現有 source 點：`ios_` 前綴讓它看起來與部署腳本無關，那個命名本身就是它沒被採用的原因之一。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "三支運維腳本改用同一份既有的訊號處理、順手把那份共用檔改名，每支都要實際送一次終止訊號驗過。",
   "severity": "high",
   "source": "立單初稿被 review 推翻後重立",
   "status": "open",

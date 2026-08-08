@@ -1,5 +1,6 @@
 {
   "acceptance": "bash ops/test_ios_ops.sh -> 382 passed, 0 failed",
+  "brief": "iOS 建置或測試要排隊等別人先用完時整段靜默數分鐘，等的人分不出是在排隊還是已經卡死。",
   "category": "tool",
   "cost": "S",
   "date": "2026-08-05",
@@ -9,6 +10,7 @@
   "plan": "Use ops/lib/ios_lock_wait.sh as the common shlock acquisition primitive. Emit 15-second phase=lock-wait heartbeats with waiter/holder liveness; preserve stale-steal and each caller original timeout boundary. Fixture four caller kinds with fake shlock/sleep and assert only 15s/30s emissions through 33s, acquire-stop, dead/invalid holder.",
   "resolution": "Owner: platform-steward in debug/ios-lock-wait-heartbeat. Next action: add a fixture regression that proves each wait emits holder PID/alive heartbeat within the contract, then patch all four spin loops and run ops/docs/worktree gates.",
   "schema": "kg.backlog.entry.v1",
+  "scope": "把四支 iOS 腳本各自手寫的等待段收斂成一份共用實作，另加一組模擬等待情境的測試。",
   "severity": "high",
   "source": "andon:/root/ios_lock_heartbeat; live review-card-layout-editor ios_ops test lock wait",
   "status": "triaged",
