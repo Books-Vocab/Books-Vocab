@@ -1717,7 +1717,14 @@ def _shell_syntax_interpreter(fp: Path) -> str | None:
     if not words:
         return "bash"
     name = words[-1].rsplit("/", 1)[-1]
-    return name if name in _SYNTAX_CHECKABLE_SHELLS else None
+    if name not in _SYNTAX_CHECKABLE_SHELLS:
+        return None
+    # Recognised is not the same as available: the name is resolved through PATH, and
+    # `zsh` is absent from GitHub's ubuntu runner by default. Letting it fall through
+    # would raise inside `subprocess.run` and land in `bad` — a BLOCK about the SCRIPT
+    # stating a fact about the MACHINE, the very substitution this function exists to
+    # refuse. Absent interpreter is UNCHECKABLE, which is the `skipped` list's meaning.
+    return name if shutil.which(name) else None
 
 
 def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
@@ -1732,6 +1739,10 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
     this changes no verdict; it is the guard for the first one that is not."""
     bad: list[str] = []
     skipped: list[str] = []
+    # Counted, never inferred from `len(files)`. That list also holds the ones deleted
+    # in this same diff, so the old summary reported "3 shell script(s) parse" for a run
+    # that invoked bash zero times — a green whose number was simply untrue.
+    checked = 0
     for rel in files:
         fp = Path(worktree) / rel
         if not fp.is_file():
@@ -1746,6 +1757,7 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
         except (OSError, subprocess.SubprocessError) as exc:
             bad.append(f"{rel}: {type(exc).__name__}")
             continue
+        checked += 1
         if proc.returncode != 0:
             first = next((ln for ln in proc.stderr.splitlines() if ln.strip()), "")
             bad.append(f"{rel}: {first.strip()}")
@@ -1754,10 +1766,10 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
                 "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
     if skipped:
         return {"status": "pass", "rc": 0,
-                "summary": (f"{len(files) - len(skipped)} shell script(s) parse; "
-                            f"{len(skipped)} skipped (interpreter not recognised): "
-                            + ", ".join(skipped))}
-    return {"status": "pass", "rc": 0, "summary": f"{len(files)} shell script(s) parse"}
+                "summary": (f"{checked} shell script(s) parse; "
+                            f"{len(skipped)} skipped (interpreter not available or not "
+                            f"recognised): " + ", ".join(skipped))}
+    return {"status": "pass", "rc": 0, "summary": f"{checked} shell script(s) parse"}
 
 _VA_RE = re.compile(r"^\s*verified_against:\s*([0-9a-fA-F]{7,40})\s*$", re.MULTILINE)
 

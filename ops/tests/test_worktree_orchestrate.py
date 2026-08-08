@@ -790,6 +790,43 @@ def test_no_two_routable_shell_scripts_share_a_basename():
                 f"the exclusion is keyed on the changed script, not on the target"
             )
 
+    # The loop above covers where the CONVENTION applies. The set that can EMIT an
+    # `ops-shell:<basename>` gate is strictly larger, because the `test_` self-gate
+    # branch returns BEFORE the ops/+root restriction — it is path-exact, so it happily
+    # routes a `backend/test_docs_lint.sh`. The gate NAME is not path-exact: plan_gates
+    # dedupes `sh_targets` as a set of PATHS and then names each one by basename alone,
+    # so two distinct target files sharing a basename become two gates with one name —
+    # and `_gate_log_path` slugs the name, so they share one log and one clobbers the
+    # other's captured failure output, the artefact IMP-20260808-c47253 exists to keep.
+    #
+    # Two scripts resolving to the SAME target (ios_build.sh and ios_archive.sh both
+    # alias to ops/test_ios_ops.sh) is not this bug: one path, one gate, one log.
+    # Found by review of IMP-0057; nothing collides today.
+    excluded = tuple(pat for pat, _ in MODULE.SHELL_GATE_EXCLUDED_TREES)
+    routed = [p for p in out.stdout.split() if not p.startswith(excluded)]
+    assert len(routed) > 20, f"git ls-files returned {len(routed)} — the probe is broken"
+    # The RESOLVED target only — first candidate that exists, exactly as plan_gates
+    # picks it. Comparing the whole candidate list would compare hypotheticals: it
+    # always holds both `ops/tests/test_X.sh` and `ops/test_X.sh`, which share a
+    # basename by construction and of which at most one is ever real.
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    by_gate_name: dict[str, str] = {}
+    for p in routed:
+        hit = next((c for c in MODULE._ops_shell_test_candidates(p) if real(c)), None)
+        if hit is None:
+            continue
+        gname = f"ops-shell:{hit.rsplit('/', 1)[-1]}"
+        assert by_gate_name.setdefault(gname, hit) == hit, (
+            f"{hit} and {by_gate_name[gname]} are different files that both emit the "
+            f"gate {gname!r} (reached via {p}), so they share one gate log and one "
+            f"clobbers the other's failure output. Rename one, or make the gate name "
+            f"path-aware."
+        )
+    # without this the loop above is vacuously green the day resolution stops working
+    assert len(by_gate_name) > 20, (
+        f"only {len(by_gate_name)} script(s) resolved to a real test — the probe is "
+        f"broken, not the routing")
+
 
 def test_a_shell_script_outside_ops_is_routed_like_any_other():
     """`backend/view_logs.sh` 是 ops/test_devops.sh 靜態測著的那支；在 ops/ 與
@@ -864,6 +901,49 @@ def test_the_workflow_triggers_on_every_routed_script_outside_ops():
     missing = [p for p in routed_outside_ops if p not in listed]
     assert missing == [], (
         f"cutover 會路由這些腳本，但 .github/workflows/ops-suite.yml 不會因它們觸發：{missing}")
+
+
+def test_shell_syntax_counts_only_the_scripts_it_actually_parsed(tmp_path):
+    """The pass summary is the only thing anyone reads from a green syntax gate, so it
+    must not claim more than it did. `len(files)` includes the ones skipped for being
+    deleted in this same diff — in the all-deleted case the gate reported "3 shell
+    script(s) parse" having run bash zero times, which is a vacuous green stating a
+    number. Found by review of IMP-0057; the `skipped` branch inherited the same defect
+    from the pre-existing one."""
+    d = tmp_path / "ops"
+    d.mkdir()
+    (d / "real.sh").write_text("#!/usr/bin/env bash\necho ok\n")
+    (d / "skipme.sh").write_text("#!/usr/bin/env python3\nnot bash at all\n")
+    out = MODULE._run_shell_syntax(str(tmp_path),
+                                   ["ops/real.sh", "ops/gone.sh", "ops/skipme.sh"])
+    assert out["status"] == "pass"
+    assert out["summary"].startswith("1 shell script(s) parse"), out["summary"]
+    assert "1 skipped" in out["summary"]
+
+    # and the all-green path, where the same overcount lived before this fix
+    only = MODULE._run_shell_syntax(str(tmp_path), ["ops/real.sh", "ops/gone.sh"])
+    assert only["summary"] == "1 shell script(s) parse"
+    # every file deleted: nothing ran, and the summary must not pretend otherwise
+    none_left = MODULE._run_shell_syntax(str(tmp_path), ["ops/gone.sh", "ops/also-gone.sh"])
+    assert none_left["summary"] == "0 shell script(s) parse"
+
+
+def test_shell_syntax_skips_an_interpreter_the_machine_does_not_have(tmp_path, monkeypatch):
+    """`_SYNTAX_CHECKABLE_SHELLS` holds `sh`/`zsh` as well as bash, and the name is
+    resolved through PATH. A recognised-but-absent interpreter used to land in `bad` via
+    the OSError arm — a BLOCK about the SCRIPT for a fact about the MACHINE, which is
+    the exact failure the shebang handling was added to avoid. `zsh` is not on GitHub's
+    ubuntu runner by default, so this is one CI job away from being real."""
+    d = tmp_path / "ops"
+    d.mkdir()
+    (d / "zsh_tool.sh").write_text("#!/bin/zsh\nprint hi\n")
+    monkeypatch.setattr(MODULE.shutil, "which", lambda name: None if name == "zsh" else "/bin/" + name)
+    out = MODULE._run_shell_syntax(str(tmp_path), ["ops/zsh_tool.sh"])
+    assert out["status"] == "pass"
+    assert "ops/zsh_tool.sh" in out["summary"] and "skipped" in out["summary"]
+    # bash is present, so a genuinely broken bash script must still block
+    (d / "broken.sh").write_text("#!/usr/bin/env bash\nif [[ -z ]; then\n")
+    assert MODULE._run_shell_syntax(str(tmp_path), ["ops/broken.sh"])["status"] == "block"
 
 
 def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):
