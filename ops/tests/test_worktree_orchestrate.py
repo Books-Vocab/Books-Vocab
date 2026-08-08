@@ -751,7 +751,13 @@ def test_no_two_routable_shell_scripts_share_a_basename():
     it does happen the misrouting is silent and looks exactly like real coverage.
 
     If this test starts failing on the assert below because routing became path-aware,
-    the guard has been made redundant by a better fix — delete the test, don't patch it."""
+    the guard has been made redundant by a better fix — delete the test, don't patch it.
+
+    Since IMP-0057 the `routable` predicate below is no longer the gate's file filter
+    (that is now every `*.sh` minus SHELL_GATE_EXCLUDED_TREES) but exactly the set where
+    the basename CONVENTION applies. The guard therefore also pins the two halves
+    together: widen `_ops_shell_test_candidates` past ops/ + root without renaming
+    `lab/podcast/start.sh`, and this collides."""
     # the trap itself, demonstrated rather than asserted from memory
     assert (MODULE._ops_shell_test_candidates("release.sh")
             == MODULE._ops_shell_test_candidates("ops/release.sh"))
@@ -783,6 +789,81 @@ def test_no_two_routable_shell_scripts_share_a_basename():
                 f"must never be a gate ({MODULE.OPS_SHELL_UNROUTABLE_TESTS[cand]}) — "
                 f"the exclusion is keyed on the changed script, not on the target"
             )
+
+
+def test_a_shell_script_outside_ops_is_routed_like_any_other():
+    """`backend/view_logs.sh` 是 ops/test_devops.sh 靜態測著的那支；在 ops/ 與
+    repo root 之外，shell gate 之前完全不路由（IMP-0057，與 IMP-0052 同形）。"""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = _by_name(plan_gates(["backend/view_logs.sh"], ops_test_exists=real))
+    assert gates["ops-shell-syntax"]["files"] == ["backend/view_logs.sh"]
+    assert gates["ops-shell-syntax"]["level"] == "block"
+    # ops/tests/test_view_logs.sh 與 ops/test_view_logs.sh 都不存在，所以不得有 ops-shell: gate
+    assert not any(n.startswith("ops-shell:") for n in gates)
+    assert gates["ops-shell-untested"]["files"] == ["backend/view_logs.sh"]
+    assert gates["coverage"]["uncovered"] == []
+
+
+def test_a_frozen_shell_script_selects_no_shell_gate():
+    """frozen/ 是刻意冷凍的快照：掛上 gate 只會讓 advisory 永遠列著 7 個沒人打算補測試
+    的檔，advisory 一有長期雜訊就沒人看。排除必須具名，不能靠 anonymous hole。"""
+    rel = "frozen/2026-06-14-web-chrome-parity/web/start.sh"
+    real = lambda p: (ROOT / p).is_file()  # noqa: E731
+    gates = _by_name(plan_gates([rel], ops_test_exists=real))
+    assert not any(n.startswith("ops-shell") for n in gates)
+    assert gates["coverage"]["neutral"] == [[rel, "frozen/"]]
+    assert "frozen/" in dict(MODULE.SHELL_GATE_EXCLUDED_TREES)
+
+
+def test_shell_test_convention_stops_at_ops_and_root():
+    """basename 慣例（ops/tests/test_<base> / ops/test_<base>）只在 ops/ 與 repo root
+    成立。放寬 filter 後 lab/podcast/start.sh 會撞上 root start.sh 的候選，兩支互相
+    「覆蓋」而沒有執行過對方一行。"""
+    assert MODULE._ops_shell_test_candidates("lab/podcast/start.sh") == []
+    assert MODULE._ops_shell_test_candidates("backend/view_logs.sh") == []
+    assert MODULE._ops_shell_test_candidates(".claude/skills/app-debug/find-polluter.sh") == []
+    # 慣例在原本適用的兩處必須毫髮無傷
+    assert MODULE._ops_shell_test_candidates("start.sh") == ["ops/tests/test_start.sh",
+                                                            "ops/test_start.sh"]
+    assert MODULE._ops_shell_test_candidates("ops/docs_lint.sh")[0] == "ops/tests/test_docs_lint.sh"
+
+
+def test_shell_syntax_skips_a_shebang_it_cannot_run(tmp_path):
+    """語法地板拿 bash -n 打一支非 bash 腳本會產生假紅。認不出直譯器就跳過並具名——
+    an enumerated hole beats an anonymous one。"""
+    d = tmp_path / "misc"
+    d.mkdir()
+    (d / "weird.sh").write_text("#!/usr/bin/env python3\nif [[ -z ]; then\n")
+    out = MODULE._run_shell_syntax(str(tmp_path), ["misc/weird.sh"])
+    assert out["status"] == "pass"
+    assert "misc/weird.sh" in out["summary"]
+    assert "skipped" in out["summary"]
+    # 沒有 shebang 的檔（ops/lib/*.sh 有 6 支）必須仍走 bash -n，不得被降級成 skipped
+    (d / "noshebang.sh").write_text("if [[ -z ]; then\n")
+    bad = MODULE._run_shell_syntax(str(tmp_path), ["misc/noshebang.sh"])
+    assert bad["status"] == "block"
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
+def test_the_workflow_triggers_on_every_routed_script_outside_ops():
+    """cutover 路由面與 CI 觸發面對同一個檔案必須有相同意見。ops-suite.yml 的 `ops/**`
+    只涵蓋 ops/；其餘沒有共同前綴，只能逐條列，所以它是會漂的那一半——漏一條的後果
+    就是 IMP-0052 本身（本機 gate 擋得住、CI 完全看不到那支腳本）。"""
+    wf = (ROOT / ".github/workflows/ops-suite.yml").read_text()
+    block = wf.split("paths: &ops_paths", 1)[1].split("pull_request:", 1)[0]
+    listed = set(re.findall(r"^\s*- '([^']+)'", block, re.MULTILINE))
+    assert "ops/**" in listed, "解析不到 ops/** 代表探針壞了，不是 workflow 壞了"
+
+    out = subprocess.run(["git", "ls-files", "*.sh"], cwd=str(ROOT),
+                         capture_output=True, text=True, check=True)
+    excluded = tuple(pat for pat, _ in MODULE.SHELL_GATE_EXCLUDED_TREES)
+    routed_outside_ops = [p for p in out.stdout.split()
+                          if not p.startswith("ops/") and not p.startswith(excluded)]
+    assert len(routed_outside_ops) >= 5, (
+        f"git ls-files 只給了 {len(routed_outside_ops)} 支——探針壞了")
+    missing = [p for p in routed_outside_ops if p not in listed]
+    assert missing == [], (
+        f"cutover 會路由這些腳本，但 .github/workflows/ops-suite.yml 不會因它們觸發：{missing}")
 
 
 def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):

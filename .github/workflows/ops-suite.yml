@@ -18,6 +18,13 @@ on:
       # 少了這一行，測試改動會觸發 workflow，被測的那支腳本改動卻不會（IMP-0052）。
       - 'devops.sh'
       - 'start.sh'
+      # ops/ 之外的腳本也進 cutover 的 shell gate（IMP-0057）。這些路徑沒有共同前綴，
+      # 只能逐條列；由 test_the_workflow_triggers_on_every_routed_script_outside_ops 釘住。
+      - 'backend/restart_kg.sh'
+      - 'backend/view_logs.sh'
+      - 'lab/podcast/start.sh'
+      - 'scripts/ios_token_lint.sh'
+      - '.claude/skills/app-debug/find-polluter.sh'
       - '.github/workflows/ops-suite.yml'
   pull_request:
     paths: *ops_paths

@@ -272,10 +272,14 @@ else
 fi
 
 # ── CI 觸發面 vs cutover 路由面 ──────────────────────────────────────────────
-# 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且（在 ops/ 下
-# 或在 repo root）」（worktree_orchestrate.py:plan_gates）；workflow 的 `ops/**`
-# 一條就涵蓋前半，後半沒有共同前綴，只能逐條列——所以它是會漂的那一半。
+# 兩個平面對同一個檔案必須有相同意見。cutover 的路由條件是「`.sh` 且不在
+# SHELL_GATE_EXCLUDED_TREES 之下」（worktree_orchestrate.py:plan_gates）；workflow 的
+# `ops/**` 一條只涵蓋 ops/，其餘沒有共同前綴，只能逐條列——所以它是會漂的那一半。
 # 漏一條的後果就是 IMP-0052 本身：本機 gate 擋得住、CI 完全看不到那支腳本。
+#
+# 較寬的那半平面（ops/ 與 repo root 之外的 `.sh`）由 IMP-0057 加的
+# ops/tests/test_worktree_orchestrate.py::test_the_workflow_triggers_on_every_routed_script_outside_ops
+# 釘住；下面這段只查 repo root，是 bash 側的地板，刻意保留——它不需要 python 就能跑。
 WF=".github/workflows/ops-suite.yml"
 section "the workflow triggers on every root script cutover routes"
 wf_paths=()

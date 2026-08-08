@@ -321,8 +321,14 @@ def _ops_shell_test_candidates(rel: str) -> list[str]:
     if rel in OPS_SHELL_UNROUTABLE_TESTS:
         return []
     if base.startswith("test_"):
-        return [rel]  # a changed test script is its own gate
+        return [rel]  # a changed test script is its own gate (path-exact — no collision)
     alias = OPS_SHELL_TEST_ALIASES.get(rel)
+    # The basename convention only holds inside `ops/` and at the repo root. Once the
+    # routing filter widened past those (IMP-0057), `lab/podcast/start.sh` would resolve
+    # to `ops/test_start.sh` — the candidate for the ROOT `start.sh` — and be reported
+    # covered by a test that never executes a line of it. Elsewhere: named alias only.
+    if not (rel.startswith("ops/") or "/" not in rel):
+        return [alias] if alias else []
     return [c for c in (f"ops/tests/test_{base}", f"ops/test_{base}", alias) if c]
 
 
@@ -479,6 +485,18 @@ NEUTRAL_RULES: tuple[tuple[str, str], ...] = (
 )
 
 
+# shell gate 掃全 repo 的 *.sh，減去這份具名排除清單。frozen/ 是刻意冷凍的快照：
+# 掛上 gate 只會讓 ops-shell-untested advisory 永遠列著 7 個沒人打算補測試的檔，
+# 而 advisory 一旦長期有雜訊就沒人看——比沒有 advisory 更糟。排除必須具名。
+#
+# `.claude/` 刻意不在此列，即使 NEUTRAL_RULES 也有一條同名的樹：那條的理由是
+# 「agent skill 文本，由 docs registry 涵蓋」，對 `.claude/skills/app-debug/
+# find-polluter.sh` 這支可執行腳本不成立（同 IMP-0054 打掉的那批假理由）。
+SHELL_GATE_EXCLUDED_TREES: tuple[tuple[str, str], ...] = (
+    ("frozen/", "凍結快照，依定義不再變更行為"),
+)
+
+
 def _neutral_rule(rel: str) -> str | None:
     """The declared reason this path may select no gate, or None. Shared with the yml
     router so a tree that is already neutral is not re-adopted and warned about twice."""
@@ -538,10 +556,18 @@ def plan_gates(changed_files: list[str],
                            back to the whole ops/tests suite (which subsumes the
                            targeted files, and which sandbox-unsafe tests must dep-guard
                            with a skip — see test_demo_ios_spec_emitter).
-      ops/**.sh         -> `bash -n` on every one of them (the only check that covers
-                           the ~1/3 with no test), plus the test that resolves for each
-                           by name or by OPS_SHELL_TEST_ALIASES; the remainder is named
-                           in a warn advisory rather than left anonymous.
+      **.sh             -> every tracked shell script MINUS SHELL_GATE_EXCLUDED_TREES
+                           (`frozen/`): a syntax floor on each — the interpreter read
+                           from its shebang, an unrecognised one SKIPPED and named
+                           rather than guessed at — which is the only check covering
+                           the ~1/3 with no test, plus the test that resolves for each.
+                           The `ops/tests/test_<base>` / `ops/test_<base>` convention
+                           applies only inside `ops/` and at the repo root, where
+                           basenames are unique; anywhere else only an explicit
+                           OPS_SHELL_TEST_ALIASES entry counts, because a shared
+                           basename would report coverage by a test that never runs
+                           the script. The remainder is named in a warn advisory
+                           rather than left anonymous.
                            `ops_test_exists` is injected by cmd_gate (anchored at the
                            WORKTREE, so a test added in the same diff is seen); the pure
                            default (None) cannot prove existence -> whole-suite fallback.
@@ -722,8 +748,13 @@ def plan_gates(changed_files: list[str],
     # Repo-root scripts count too. The original `ops/`-prefixed filter quietly excluded
     # `devops.sh` — the production deploy command, and the single shell script in the
     # tree with the highest blast radius (IMP-0052).
+    # And the same defect one directory further out: `ops/` + root still missed 12
+    # tracked scripts, one of which (`backend/view_logs.sh`) already had a test
+    # watching it (IMP-0057). The routing surface is now every tracked `*.sh` MINUS
+    # SHELL_GATE_EXCLUDED_TREES — a named exclusion instead of an anonymous hole.
     ops_sh = [p for p in changed_files
-              if p.endswith(".sh") and (p.startswith("ops/") or "/" not in p)]
+              if p.endswith(".sh")
+              and not p.startswith(tuple(pat for pat, _ in SHELL_GATE_EXCLUDED_TREES))]
     if ops_sh:
         gates.append(_internal("ops-shell-syntax", "ops", "block", files=ops_sh))
         # The cross-file layer (IMP-20260808-3bbfa2). The two layers below are
@@ -1612,17 +1643,55 @@ def _run_conflict_markers(worktree: str, files: list[str]) -> dict[str, Any]:
     return {"status": "pass", "rc": 0, "summary": "no conflict markers"}
 
 
+_SYNTAX_CHECKABLE_SHELLS = ("bash", "sh", "zsh")
+
+
+def _shell_syntax_interpreter(fp: Path) -> str | None:
+    """The interpreter to run `-n` under, or None when it is not one we can check.
+
+    No shebang means bash. That default is load-bearing, not a fallback: six tracked
+    `ops/lib/*.sh` are sourced rather than executed and carry no shebang, and treating
+    "unknown" as "skip" would silently demote them from having a syntax floor to having
+    none — a widening of the gate that reads like a hardening of it.
+    """
+    try:
+        with fp.open(encoding="utf-8", errors="replace") as fh:
+            first = fh.readline()
+    except OSError:
+        return "bash"  # unreadable here means bash reports it, not that we look away
+    if not first.startswith("#!"):
+        return "bash"
+    # `#!/usr/bin/env bash`, `#!/bin/bash`, `#!/bin/bash -e` — the interpreter is the
+    # last token that is not a flag.
+    words = [w for w in first[2:].split() if not w.startswith("-")]
+    if not words:
+        return "bash"
+    name = words[-1].rsplit("/", 1)[-1]
+    return name if name in _SYNTAX_CHECKABLE_SHELLS else None
+
+
 def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
-    """`bash -n` every changed shell script. The floor exists because it is the only
-    check that applies to ALL of them: roughly a third of ops/*.sh has no test of its
-    own, and before IMP-0051 a shell change selected no gate whatsoever."""
+    """A syntax floor on every changed shell script. The floor exists because it is the
+    only check that applies to ALL of them: roughly a third of ops/*.sh has no test of
+    its own, and before IMP-0051 a shell change selected no gate whatsoever.
+
+    The interpreter comes from the shebang. `bash -n` on a script that is not bash is a
+    false red — indistinguishable from a real one at the gate — so a shebang we do not
+    recognise is SKIPPED and NAMED in the summary rather than guessed at: an enumerated
+    hole beats an anonymous one. Today every tracked `*.sh` is bash or shebang-less, so
+    this changes no verdict; it is the guard for the first one that is not."""
     bad: list[str] = []
+    skipped: list[str] = []
     for rel in files:
         fp = Path(worktree) / rel
         if not fp.is_file():
             continue  # deleted in this diff; routing to it would be a red for no reason
+        interpreter = _shell_syntax_interpreter(fp)
+        if interpreter is None:
+            skipped.append(rel)
+            continue
         try:
-            proc = subprocess.run(["bash", "-n", str(fp)], capture_output=True,
+            proc = subprocess.run([interpreter, "-n", str(fp)], capture_output=True,
                                   text=True, timeout=30)
         except (OSError, subprocess.SubprocessError) as exc:
             bad.append(f"{rel}: {type(exc).__name__}")
@@ -1633,6 +1702,11 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
     if bad:
         return {"status": "block", "rc": 1,
                 "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
+    if skipped:
+        return {"status": "pass", "rc": 0,
+                "summary": (f"{len(files) - len(skipped)} shell script(s) parse; "
+                            f"{len(skipped)} skipped (interpreter not recognised): "
+                            + ", ".join(skipped))}
     return {"status": "pass", "rc": 0, "summary": f"{len(files)} shell script(s) parse"}
 
 _VA_RE = re.compile(r"^\s*verified_against:\s*([0-9a-fA-F]{7,40})\s*$", re.MULTILINE)
