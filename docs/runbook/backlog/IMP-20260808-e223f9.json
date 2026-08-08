@@ -1,0 +1,14 @@
+{
+  "brief": "有一道測試宣稱「每個會出事的欄位都有安全寫法」，但它拿被檢查的那份名單當自己的依據，漏了誰就一起漏掉。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/tests/test_backlog.py` 的 `test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin` 宣稱「每個可能夾帶反引號的自由文字旗標都有 `-file` 孿生」——但它是拿 `FILE_TWIN_FIELDS` 這個常數去跟 argparse 的旗標取交集。也就是說，**它檢查的清單就是它要驗證的那份清單**。\n\n2026-08-08 實測：把 `fixed_elsewhere` 從 `FILE_TWIN_FIELDS` 刪掉，整套測試仍然全綠——因為該欄位同時從「應該有孿生的集合」裡消失了。這道守衛對「忘記把新欄位加進常數」這個唯一會發生的失效模式**完全失明**。\n\n背景：反引號經 shell 靜默吃掉寫入內容是這個 repo 已經踩過三次的坑（`IMP-20260808-1aed9f`），`-file` 孿生正是為它而生。守衛失明等於那三次的教訓沒有機器在守。",
+  "id": "IMP-20260808-e223f9",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "改寫一支測試的取材方式，改從旗標本身推導；要用刪欄位轉紅來證明。",
+  "severity": "med",
+  "source": "2026-08-08 第二輪大門受派者實測：從常數裡刪掉一個欄位，宣稱守著它的測試仍全綠",
+  "status": "open",
+  "stream": "IMP"
+}

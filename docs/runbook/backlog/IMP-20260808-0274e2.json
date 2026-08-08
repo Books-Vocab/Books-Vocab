@@ -1,0 +1,14 @@
+{
+  "brief": "同一個檔案裡出現兩個同名函式時，後面那個會無聲蓋掉前面那個，害不相干的測試爆掉，而錯誤訊息指向錯的地方。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/tests/test_backlog.py` 現在 4.7k 行。2026-08-08 受派者在檔尾附加一個 `_groomed()` helper，而檔案前段**已經有一個同名的 top-level def**——Python 取最後一個定義，前面所有使用者靜靜改吃新版本，11 個不相干的測試以一個看不出根因的 `TypeError` 爆掉。\n\n沒有任何 lint 抓得到重複的 top-level `def`。這在單檔 4.7k 行、且會被多個平行 agent 各自附加 helper 的情況下不是偶發事件，是結構性的：每一個在檔尾加 helper 的人都看不到檔頭有什麼。\n\n代價不只是那 11 個測試——是**除錯時間花在錯誤的方向上**，因為錯誤訊息指向的是使用端而不是定義端。",
+  "id": "IMP-20260808-0274e2",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "新增一支很快的靜態掃描腳本並接進既有測試與落地把關；只解這個形狀，不引入新的 lint 依賴。",
+  "severity": "med",
+  "source": "2026-08-08 第二輪大門受派者踩到：4.7k 行測試檔尾附加的 helper 與檔頭同名，11 個不相干測試以誤導性 TypeError 爆掉",
+  "status": "open",
+  "stream": "IMP"
+}
