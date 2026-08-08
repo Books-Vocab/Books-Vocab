@@ -6,7 +6,7 @@ scope:
   - ios/BooksAndVocab/Views/Explore/
   - ios/BooksAndVocab/Models/SharedDeck.swift
   - ios/BooksAndVocab/Services/SharedDeckCatalogService.swift
-verified_against: e14f295ad
+verified_against: a55244f5b
 -->
 # Explore (Shared Decks) Feature Boundary
 
@@ -42,7 +42,7 @@ verified_against: e14f295ad
 
 | 檔案 | 說明 |
 |------|------|
-| `Services/SharedDeckCatalogService.swift` | `final class SharedDeckCatalogService` = `PodcastSyncService` 1:1 analog。`optionallyAuthedData(from:kgService:)` guest browse（無 token 亦放行）；`fetchDeckList(query:)` / `fetchDeckDetail(deckId:)` / `fetchDeckCards(deckId:cursor:limit:)`；`syncAll(context:)` **全目錄 cursor 分頁**（跟 `nextCursor` 抓完整個 catalog 再 reconcile；**截斷對稱化**——分頁被截斷時 skip reconcile，partial set 絕不驅動 mass-delete）→ upsert + `reconcileLocalState(serverSummaries:context:)` **empty-response mass-delete guard**（空 server list 視為非權威、不下 tombstone）。nested `BrowseQuery`（filter → `URLQueryItem`）。測試 `SharedDeckCatalogServiceTests` / `SharedDeckModelIsolationTests` / `SharedDeckWireDecodeTests`。 |
+| `Services/SharedDeckCatalogService.swift` | `final class SharedDeckCatalogService` = `PodcastSyncService` 1:1 analog。`optionallyAuthedData(from:kgService:session:)` guest browse——**無 token 或 token 已過期皆放行，且不觸發 session invalidation**（取 token 走 `KGServing.authTokenWithoutInvalidation()` 這個零副作用入口，**不是** `currentAuthToken()`：後者對過期 token 會先 `sessionInvalidator.logout` 再 throw，`try?` 吞得掉錯誤卻吞不掉副作用，於是逛公開牌組會把人登出 —— APP-20260805-0049ac）。`session:` 帶預設值，僅供測試注入 URLProtocol 探針；`fetchDeckList(query:)` / `fetchDeckDetail(deckId:)` / `fetchDeckCards(deckId:cursor:limit:)`；`syncAll(context:)` **全目錄 cursor 分頁**（跟 `nextCursor` 抓完整個 catalog 再 reconcile；**截斷對稱化**——分頁被截斷時 skip reconcile，partial set 絕不驅動 mass-delete）→ upsert + `reconcileLocalState(serverSummaries:context:)` **empty-response mass-delete guard**（空 server list 視為非權威、不下 tombstone）。nested `BrowseQuery`（filter → `URLQueryItem`）。測試 `SharedDeckCatalogServiceTests` / `SharedDeckModelIsolationTests` / `SharedDeckWireDecodeTests`。 |
 | `Services/KGService+Decks.swift` | copy 傳輸擴充。`copyDeck(deckId:idempotencyKey:notebookName:)` 打 `POST /api/decks/{id}/copy`（`DeckCopyResponse`）；`pullCopiedDeck(...)` post-copy **notebook-first targeted pull**——複製後只針對新 notebook + 其卡做 incremental pull，讓卡片與新本即時可複習（既有 synced server rows，不進 outbox）。測試 `SharedDeckCopyPullTests`。 |
 
 ### View Layer（`Views/Explore/`）
