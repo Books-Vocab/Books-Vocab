@@ -62,9 +62,9 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 ```
 它就是那句「你先 `git rebase main`」變成的命令，差別只有一個而且很要緊：rebase 會在
 那個 generated 的 ledger view 上衝突（實測十條分支一輪 3–6 條中招）——**該檔已於 IMP-20260807-b9526c 移出版控**，所以這個衝突源今天不存在了，
-而那個檔沒有「留哪一邊」的問題——它是 store 的純函數，正解是重跑 generator。**衝突集合恰好等於
-generated 檔時 `catchup` 自動重生解掉**（payload `regenerated`），其他任何檔案一起衝突就 abort 交你
-（那是真的決定）。rebase 完 HEAD 就動了，所以**之後一定要重跑 `gate`**。
+而那個檔沒有「留哪一邊」的問題——它是 store 的純函數，正解是重跑 generator，所以 `catchup` 曾內建一個
+「衝突集合恰好等於該檔就自動重生」的解析器。**該解析器已隨檔案一起移除**：今天 `catchup` 就是一次乾淨的
+rebase，**任何**衝突都 abort 交你（那是真的決定），也不再有 `regenerated` 這個 payload 欄位。rebase 完 HEAD 就動了，所以**之後一定要重跑 `gate`**。
 
 **c3. 多條工作樹同時要落地 → 用 `land`，不要手動排 gate/cutover**：
 

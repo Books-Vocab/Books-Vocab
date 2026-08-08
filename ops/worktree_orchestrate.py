@@ -77,12 +77,15 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              merge, so a branch cannot smuggle in commits nobody named. dry-run
              default.
   catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
-             under the branch: rebase the worktree onto local `main`. It is a verb
-             rather than a sentence because the rebase conflicts on a GENERATED file
-             (the 280KB ledger view) often enough to matter, and that conflict has
-             one right answer — re-run the generator. It does so only when the
-             conflicted set is EXACTLY that file, and aborts for anything wider.
-             HEAD moves, so `gate` must be re-run afterwards. dry-run default.
+             under the branch: rebase the worktree onto local `main`. A CLEAN rebase
+             — any conflict aborts and comes back to you. It is a verb rather than a
+             sentence because a refusal that says "go run `git rebase main`" is a
+             routing decision pointed at raw git; the verb keeps the remedy inside
+             the flow (and inside `land`). It once auto-resolved conflicts confined
+             to a generated file by re-running its generator; that apparatus went
+             away with the file (IMP-20260807-b9526c) — see `_rebase_onto`, which is
+             the authority on what this actually does. HEAD moves, so `gate` must be
+             re-run afterwards. dry-run default.
   cutover    require a fresh NON-BLOCK gate verdict (verdict in {pass, warn} AND
              recorded HEAD == current HEAD) → rebase worktree onto local `main` → ff
              the primary checkout's local `main` to it (serialized by a lock; the
@@ -3623,11 +3626,14 @@ def cmd_catchup(args) -> int:
 
     It existed as a sentence before it existed as a command: both refusals used to
     say "run `git -C <path> rebase main`". Handing an agent raw git there is fine
-    right up until the rebase conflicts, and in this repo it conflicts on a 280KB
-    GENERATED file — measured on a clone of the real repo, 3 to 6 branches out of
-    ten in a single round. Resolving that by hand is not a decision anybody should be
-    making; it is `render` with extra steps, and doing it wrong corrupts a ledger.
-    So the sentence became a command, and the command knows about generated files.
+    right up until the rebase conflicts — and what the agent then does is unbounded,
+    which is why the remedy belongs to a verb the flow controls rather than to a
+    sentence in an error message. The original argument was narrower (the rebase kept
+    conflicting on a 280KB GENERATED ledger view, 3 to 6 branches out of ten in a
+    single round, and that file had one right answer), and it no longer applies: the
+    view left version control in IMP-20260807-b9526c and the resolver went with it.
+    `_rebase_onto` is the authority on the behaviour; this is now a clean rebase and
+    every conflict is a real decision that goes to a human.
     """
     # `freeze` is a stop-the-world lock for repo surgery — history rewrite, gc,
     # shared hooks. `catchup` REWRITES HISTORY (that is what a rebase is), so it
@@ -4712,9 +4718,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="land the ff into local main (default: dry-run)")
     co.set_defaults(func=cmd_cutover)
 
-    cu = sub.add_parser("catchup", help="rebase the worktree onto the local trunk, "
-                        "resolving conflicts in generated files by re-running their "
-                        "generator; then re-run `gate` (dry-run default)")
+    cu = sub.add_parser("catchup", help="rebase the worktree onto the local trunk "
+                        "(a clean rebase — any conflict aborts and comes back to "
+                        "you); then re-run `gate` (dry-run default)")
     add_common(cu)
     add_base(cu)
     cu.add_argument("--worktree", required=True, help="worktree path to rebase")
