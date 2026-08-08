@@ -3119,26 +3119,27 @@ def cmd_gate(args: argparse.Namespace) -> int:
         rec_path.parent.mkdir(parents=True, exist_ok=True)
         rec_path.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
 
+    # A receipt line the agent PASTES rather than recalls. Structured receipt
+    # fields that an agent types from memory are exactly as trustworthy as prose
+    # — a fabricated digest is no harder to produce than "tests passed". This
+    # line cannot be produced without having run the gate, and the reader can
+    # `cat` the record path to check it. Keep one renderer for both output modes;
+    # otherwise the two surfaces can silently drift apart.
+    counts = {}
+    for r in results:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+    reuse = record.get("gate_reuse", {})
+    no_changes = (" no-changes"
+                  if record.get("no_changed_files") and not args.plan_only else "")
+    record_ref = (str(_gate_record_path(args.state, worktree))
+                  if not args.plan_only else "<not recorded>")
+    receipt_line = (f"gate={verdict} record={record_ref} "
+                    f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
+                    f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
+                    f"{no_changes}")
     if getattr(args, "receipt_line", False):
-        # A receipt line the agent PASTES rather than recalls. Structured
-        # receipt fields that an agent types from memory are exactly as
-        # trustworthy as prose — a fabricated 64-hex digest is no harder to
-        # produce than "tests passed", and it removes the tonal tells that make
-        # prose lies detectable. This line cannot be produced without having run
-        # the gate, and the reader can `cat` the record path to check it.
-        counts = {}
-        for r in results:
-            counts[r["status"]] = counts.get(r["status"], 0) + 1
-        breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
-        reuse = record.get("gate_reuse", {})
-        no_changes = (" no-changes"
-                      if record.get("no_changed_files") and not args.plan_only else "")
-        record_ref = (str(_gate_record_path(args.state, worktree))
-                      if not args.plan_only else "<not recorded>")
-        print(f"gate={verdict} record={record_ref} "
-               f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
-               f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
-               f"{no_changes}")
+        print(receipt_line)
         return EXIT_OK if args.plan_only or verdict in ("pass", "warn") else EXIT_BLOCK
 
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
@@ -3173,6 +3174,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     if record.get("history_error"):
         lines.append(f"  ! gate history not written ({record['history_error']}) — "
                      f"never-green detection is blind until this is fixed")
+    if not args.plan_only:
+        lines.append(receipt_line)
     _emit(record, args.json, "\n".join(lines))
     if args.plan_only:
         return EXIT_OK
@@ -5508,7 +5511,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_base(ga)
     ga.add_argument("--worktree", required=True, help="worktree path to gate")
     ga.add_argument("--receipt-line", action="store_true",
-                    help="emit one paste-ready receipt line instead of the report")
+                    help="print ONLY the paste-ready receipt line (the normal report already ends with it)")
     ga.add_argument("--plan-only", action="store_true",
                     help="print the selected gate plan without running anything")
     ga.set_defaults(func=cmd_gate)

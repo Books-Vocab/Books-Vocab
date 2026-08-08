@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: db0e9ed46
+verified_against: 2b7aed975
 -->
 # Technical Reference Index
 
@@ -305,3 +305,10 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 | Baseline 月費表 / drift 閾值 / 變更歷史 | `docs/reference/cost_baseline.md` **(SoT)** |
 | 月度盤點 / 異常追 SOP | `docs/sop/cost_review.md` |
 | 觸發 skill | `billing`(read-only 分析+建議,執行交給 `devops`) |
+
+## Gate receipt tail contract
+
+`ops/worktree_orchestrate.py gate` 的人類可讀報告在實際執行時最後一行恆是可貼上的
+receipt：`gate=<verdict> record=… head=<sha8> orch=… gates=N <status 統計>`。
+`--receipt-line` 只切換成靜音模式、只輸出這一行；`--plan-only` 的一般報告不附 receipt，
+但顯式 `--plan-only --receipt-line` 仍輸出 `gate=planned` 哨兵，且不寫入 verdict record。
