@@ -1,11 +1,14 @@
 {
   "acceptance": "紅：今天對 [{\"status\":\"timeout\"}] 呼叫 aggregate_verdict 回 \"pass\"，對一個缺 status 欄位的 dict 也回 \"pass\"。綠：兩者都回 \"block\" 且具名帶出是哪一道 gate 的哪個 status；同時全 pass 仍回 pass、含 inconclusive 仍回 warn、含 block 仍回 block（負控，防「永遠回 block」的假實作）。",
-  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"aggregate_verdict\"",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k \"test_verdict_\"",
   "brief": "一道把關如果回報了系統不認得的結果，整批會被判定為通過，而不是被攔下來。",
   "category": "tool",
   "date": "2026-08-08",
   "detail": "aggregate_verdict（ops/worktree_orchestrate.py:895-902）是 fail-open：statuses 集合裡沒有 block 也沒有 warn 就 return pass。任何它不認得的字串都會聚合成 pass，包括 None——r.get(status) 對一個沒有 status 欄位的結果 dict 回 None，於是一筆殘缺的結果會讓整批變綠。下游 cmd_gate:2534、cutover:2586、land:3046、integrate:3429 全部以這個字串為鍵，所以偽綠會一路被 cutover 收下。這是一顆潛伏彈：今天沒有產生器會發出未知 status，但任何人想新增第三種狀態（timeout 是最可能的候選，見另一張 timeout 票）都會踩爆它，而且失敗方向是綠。修法 = 改成明確白名單，遇到未知 status 直接視為 block 並具名說出是哪個 gate 回了什麼；同時補一支測試把未知值餵進去斷言不是 pass。",
   "fix_site": "ops/worktree_orchestrate.py（搜尋 def aggregate_verdict）",
+  "fixed_by": [
+    "59226b76d"
+  ],
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:main-session",
   "id": "IMP-20260808-c6982d",
@@ -15,6 +18,10 @@
   "scope": "一個三行的聚合函式改成白名單並補一支測試。",
   "severity": "high",
   "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 第一手回報",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k test_verdict_; gate record cf73f6c3f7b9a5f4.json: 303 passed"
 }

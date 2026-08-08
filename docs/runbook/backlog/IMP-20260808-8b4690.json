@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "GATE_FAILURE_MARKERS 少了兩個實際產生器。實測 .cache/worktree_gates/492062ca42891cca.ios-test-unit.log：U+2718 命中 4 行、U+2717 命中 1 行——Swift Testing 用 U+2718，真正的失敗行對摘要不可見。實測同前綴的 review-receipts.log：現行 marker 命中 0 行，[review][block] 命中 5 行——_gate_failure_lines 回空集合，誠實分支開口說找不到，於是顯示 tail，而 tail 內容是 [review][ok] 與 Reviewed-by:。也就是一道 block 的證據欄位顯示的是通過的行。marker 表正上方 :1348-1350 的註解逐字預言了這個失效：a marker set narrow enough to look tidy is one that goes silent for whichever tool nobody had in mind。修法 = 元組補 U+2718 與 ][block]，錨點 ops/worktree_orchestrate.py:1351 與 :1361-1365；另建議 ops/lib/streaming_command.py:222 的捕獲保留 head 切片而不只 tail。明確不要做：不要改成取最後 N 條、不要抑制含 passed: 的尾行——那會把 ops-shell-scan 與 test_ios_test_discovery 的 failed: N 一起刪掉，因為它們把 pass 與 fail 印在同一行。",
   "fix_site": "ops/worktree_orchestrate.py（搜尋 GATE_FAILURE_MARKERS = ( 與 no failure-marked lines found）",
+  "fixed_by": [
+    "59226b76d"
+  ],
   "groomed_at": "2026-08-09",
   "groomed_by": "agent:main-session",
   "id": "IMP-20260808-8b4690",
@@ -15,6 +18,10 @@
   "scope": "一個常數元組加兩個項目，外加捕獲改成頭尾都留。",
   "severity": "high",
   "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 第一手回報",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k failure_marker_or_failure_lines_or_gate_summary; gate record cf73f6c3f7b9a5f4.json: 303 passed"
 }
