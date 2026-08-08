@@ -117,6 +117,15 @@ def changed_paths_since(base: str) -> list[str]:
     # which would silently render as "no registry impacts". A valid commit is not
     # evidence of shared history, so probe it separately and fail closed.
     if not run_git(["merge-base", base, "HEAD"], check=False).strip():
+        # Two different causes share this symptom and git reports neither (its stderr
+        # here is empty), so the cause has to be probed or the message will misdirect:
+        # a truncated history is fixed by deepening the fetch, never by --files.
+        if run_git(["rev-parse", "--is-shallow-repository"], check=False).strip() == "true":
+            raise SystemExit(
+                f"ERROR --since {base}:這是 shallow checkout,共同祖先很可能只是被截斷。"
+                "先 `git fetch --unshallow`(CI 設 fetch-depth: 0)再重跑;"
+                "不要改用 --files 手工列路徑繞過,那是拿可修的抓取深度換掉自動偵測。"
+            )
         raise SystemExit(
             f"ERROR --since {base} 與 HEAD 無共同祖先,無法從 merge-base 起算。"
             "--since 問的是「這條分支自己改了什麼」;要比對無關歷史請改用 --files。"
