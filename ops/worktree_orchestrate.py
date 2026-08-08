@@ -98,7 +98,8 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              main's tip is therefore `trunk_tip`, which may differ from the gated
              `sha`. OFFLINE — no push, no deploy. A `warn` is advisory: it LANDS ("landed with
              warnings") — the driving agent owns a warn's disposition, so the tool must
-             not hard-refuse it; only `block` (and a stale/absent verdict) refuses.
+             not hard-refuse it; `block`, a stale/absent verdict, and any
+             `inconclusive` gate refuse.
              dry-run default.
   resolve    target identity FIRST (the branch comes from `git worktree list
              --porcelain`, never from a `rev-parse` that would walk up into the
@@ -1208,7 +1209,8 @@ def _broadcast_cutover_block(primary: Path, branch: str | None,
         entry = (
             f"\n---\n## {ts}Z — cutover 被擋:primary 有未提交的 tracked 改動\n\n"
             f"被擋的分支:`{branch or '(unknown)'}`"
-            + (f"(worktree `{worktree}`)" if worktree else "") + "\n\n"
+            + (f" (worktree `{worktree.replace(chr(10), chr(92) + 'n')}`)"
+               if worktree else "") + "\n\n"
             f"dirty: {listed}\n\n"
             f"**這則是 `ops/worktree_orchestrate.py` 自動貼的(IMP-20260806-42d183),"
             f"不是人寫的。** 若這些檔是你的:把它們 commit,或撤到一條 worktree。**然後"
@@ -1774,6 +1776,11 @@ def _run_conflict_markers(worktree: str, files: list[str]) -> dict[str, Any]:
 
 _SYNTAX_CHECKABLE_SHELLS = ("bash", "sh", "zsh")
 
+# Indirection so a test can patch THIS name instead of `shutil.which` itself: the
+# stdlib module object is process-global, and a monkeypatch on it outlives the test
+# that set it for every other test sharing the interpreter.
+_which = shutil.which
+
 
 def _shell_syntax_interpreter(fp: Path) -> str | None:
     """The interpreter to run `-n` under, or None when it is not one we can check.
@@ -1803,7 +1810,7 @@ def _shell_syntax_interpreter(fp: Path) -> str | None:
     # would raise inside `subprocess.run` and land in `bad` — a BLOCK about the SCRIPT
     # stating a fact about the MACHINE, the very substitution this function exists to
     # refuse. Absent interpreter is UNCHECKABLE, which is the `skipped` list's meaning.
-    return name if shutil.which(name) else None
+    return name if _which(name) else None
 
 
 def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
@@ -1844,7 +1851,11 @@ def _run_shell_syntax(worktree: str, files: list[str]) -> dict[str, Any]:
         return {"status": "block", "rc": 1,
                 "summary": f"{len(bad)} shell script(s) do not parse: " + "; ".join(bad[:3])}
     if skipped:
-        return {"status": "pass", "rc": 0,
+        # warn, not pass, when NOTHING was actually checked: this is a block gate, so
+        # its colour is a claim, and a run that invoked bash zero times established
+        # nothing. Not block either — a machine missing an interpreter is not the
+        # branch's fault, the same judgement `inconclusive` encodes for gates.
+        return {"status": "pass" if checked else "warn", "rc": 0,
                 "summary": (f"{checked} shell script(s) parse; "
                             f"{len(skipped)} skipped (interpreter not available or not "
                             f"recognised): " + ", ".join(skipped))}

@@ -872,7 +872,8 @@ def test_shell_syntax_skips_a_shebang_it_cannot_run(tmp_path):
     d = tmp_path / "misc"
     d.mkdir()
     (d / "weird.sh").write_text("#!/usr/bin/env python3\nif [[ -z ]; then\n")
-    out = MODULE._run_shell_syntax(str(tmp_path), ["misc/weird.sh"])
+    (d / "fine.sh").write_text("#!/usr/bin/env bash\necho ok\n")
+    out = MODULE._run_shell_syntax(str(tmp_path), ["misc/weird.sh", "misc/fine.sh"])
     assert out["status"] == "pass"
     assert "misc/weird.sh" in out["summary"]
     assert "skipped" in out["summary"]
@@ -938,13 +939,44 @@ def test_shell_syntax_skips_an_interpreter_the_machine_does_not_have(tmp_path, m
     d = tmp_path / "ops"
     d.mkdir()
     (d / "zsh_tool.sh").write_text("#!/bin/zsh\nprint hi\n")
-    monkeypatch.setattr(MODULE.shutil, "which", lambda name: None if name == "zsh" else "/bin/" + name)
-    out = MODULE._run_shell_syntax(str(tmp_path), ["ops/zsh_tool.sh"])
+    (d / "ok.sh").write_text("#!/usr/bin/env bash\necho ok\n")
+    # patched through the module's own seam, not on the stdlib module object: the
+    # latter leaks into every other test in the process
+    monkeypatch.setattr(MODULE, "_which",
+                        lambda name: None if name == "zsh" else "/bin/" + name)
+    out = MODULE._run_shell_syntax(str(tmp_path), ["ops/zsh_tool.sh", "ops/ok.sh"])
     assert out["status"] == "pass"
     assert "ops/zsh_tool.sh" in out["summary"] and "skipped" in out["summary"]
     # bash is present, so a genuinely broken bash script must still block
     (d / "broken.sh").write_text("#!/usr/bin/env bash\nif [[ -z ]; then\n")
     assert MODULE._run_shell_syntax(str(tmp_path), ["ops/broken.sh"])["status"] == "block"
+
+
+def test_shell_syntax_that_checked_nothing_does_not_report_pass(tmp_path):
+    """`ops-shell-syntax` is a BLOCK gate, so its colour is a claim. When every routed
+    script was skipped the gate ran bash zero times and established nothing — and "I
+    verified nothing" must not share a colour with "everything passed". Exactly the
+    reason the summary stopped saying `len(files)`; found by review, one file further in.
+
+    It degrades to warn rather than block: a machine missing an interpreter is not the
+    branch's fault, which is the same judgement `inconclusive` encodes for gates."""
+    d = tmp_path / "ops"
+    d.mkdir()
+    (d / "a.sh").write_text("#!/usr/bin/env python3\nnot bash\n")
+    (d / "b.sh").write_text("#!/usr/bin/env python3\nalso not bash\n")
+    out = MODULE._run_shell_syntax(str(tmp_path), ["ops/a.sh", "ops/b.sh"])
+    assert out["status"] == "warn"
+    assert "0 shell script(s) parse" in out["summary"]
+    assert "ops/a.sh" in out["summary"] and "ops/b.sh" in out["summary"]
+
+    # control: one real check is enough to make the gate a pass again
+    (d / "c.sh").write_text("#!/usr/bin/env bash\necho ok\n")
+    mixed = MODULE._run_shell_syntax(str(tmp_path), ["ops/a.sh", "ops/c.sh"])
+    assert mixed["status"] == "pass"
+    # and a diff whose only shell file was DELETED is not "checked nothing" in this
+    # sense — there is nothing left to check, and that was already a pass
+    gone = MODULE._run_shell_syntax(str(tmp_path), ["ops/deleted.sh"])
+    assert gone["status"] == "pass"
 
 
 def test_shell_syntax_gate_names_the_file_that_will_not_parse(tmp_path):
@@ -1692,7 +1724,8 @@ def test_a_dirty_primary_broadcast_failure_never_becomes_the_refusal(
             mailbox.chmod(0o644)
 
 
-def test_a_dirty_primary_broadcast_keys_on_every_file_not_just_the_shown_ten(tmp_path):
+def test_a_dirty_primary_broadcast_keys_on_every_file_not_just_the_shown_ten(
+        tmp_path, monkeypatch):
     """The record shows ten paths but the key must cover all of them: an 11th file
     changing is a different block, and suppressing it would make the docs' claim
     ("idempotent per branch + dirty set") false for exactly the diffs big enough to
@@ -1703,6 +1736,14 @@ def test_a_dirty_primary_broadcast_keys_on_every_file_not_just_the_shown_ten(tmp
     primary.mkdir()
     mailbox = primary / MODULE.COORDINATION_BROADCAST_REL
     twelve = [f"f{i}.txt" for i in range(12)]
+
+    # the day is part of the key, so a real clock makes this flake when UTC midnight
+    # lands between two of the six calls below
+    class _Fixed:
+        @staticmethod
+        def now(tz=None):
+            return datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(MODULE, "datetime", _Fixed)
 
     assert MODULE._broadcast_cutover_block(primary, "feat/x", twelve)
     assert mailbox.read_text().count("kg-cutover-block") == 1
@@ -5323,8 +5364,18 @@ def _land_harness(monkeypatch, tmp_path, catchup=None, gate=None, cutover=None,
     # it to "ready" and let the tests that care inject a refusal; that injection is
     # also what proves `cmd_land` consults this helper rather than a private copy
     # of the same judgement (a duplicated check would ignore the patch).
+    # Recording default, not `lambda *a, **k: None`: with a blind stub nothing in the
+    # suite ever observes the ARGUMENTS cmd_land passes, so reverting the branch source
+    # to `_current_branch` left 22 tests green (review of 233c78039). A stub that
+    # swallows its inputs silently un-tests every one of them.
+    _land_harness.ff_ready_calls = []
+
+    def _recording_ff_ready(primary, local, branch=None, worktree=None):
+        _land_harness.ff_ready_calls.append({"primary": str(primary), "local": local,
+                                             "branch": branch, "worktree": worktree})
+        return None
     monkeypatch.setattr(MODULE, "_primary_ff_ready",
-                        ff_ready if ff_ready is not None else (lambda *a, **k: None))
+                        ff_ready if ff_ready is not None else _recording_ff_ready)
     monkeypatch.setattr(MODULE, "cmd_catchup",
                         catchup or _land_stub("catchup", 0, {"ok": True}))
     monkeypatch.setattr(MODULE, "cmd_gate",
@@ -5528,6 +5579,39 @@ def _dirty_primary(reason="primary working tree is dirty (tracked changes)"):
                          "broadcast": None})
     ff_ready.calls = calls
     return ff_ready
+
+
+@gitmark
+def test_land_does_not_guess_the_branch_from_a_path_that_is_not_a_worktree(
+        tmp_path, monkeypatch, capsys):
+    """`cmd_land` only checks that `--worktree` is a directory. `_current_branch` answers
+    by asking git from inside that path, and git discovery walks UP — so a directory that
+    is merely INSIDE the repo (or a worktree that lost its `.git`) answers with the
+    ENCLOSING checkout's branch, i.e. `main`. Feeding that to the coordination notice
+    posts "blocked branch: `main`", which is worse than posting nothing: it names an
+    innocent branch. `_worktree_entry` reads `git worktree list --porcelain`, which
+    cannot invent a membership. Found by review of 233c78039, where the fix shipped with
+    nothing able to observe a revert."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for a in (["init", "-q", "-b", "main"], ["-c", "user.email=t@t", "-c", "user.name=t",
+                                             "commit", "-q", "--allow-empty", "-m", "x"]):
+        subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    inside = repo / "not-a-worktree"
+    inside.mkdir()
+    # the trap, demonstrated rather than asserted from memory
+    assert MODULE._current_branch(str(inside)) == "main"
+
+    primary, args = _land_harness(monkeypatch, tmp_path)
+    args.worktree = str(inside)
+    assert MODULE.cmd_land(args) == MODULE.EXIT_OK
+    capsys.readouterr()
+
+    assert _land_harness.ff_ready_calls, "the pre-gate primary check must have been asked"
+    passed = _land_harness.ff_ready_calls[0]["branch"]
+    assert passed != "main", (
+        "cmd_land handed the ENCLOSING checkout's branch to the coordination notice")
+    assert passed is None
 
 
 def test_land_refuses_primary_dirty_before_gate_leaving_no_gate_record(
