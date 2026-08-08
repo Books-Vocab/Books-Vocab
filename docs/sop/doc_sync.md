@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - docs/
-verified_against: 4e2d680ba
+verified_against: db0e9ed46
 -->
 # Doc-Sync Agent SOP
 
@@ -42,10 +42,8 @@ verified_against: 4e2d680ba
 5. 跑 `./ops/docs_lint.sh`,確認 **ERROR=0**。預設是日常 gate:驗 registry + 本分支/工作樹 changed docs,並用 `docs_impact.py` 印出 registry impact hints 供 reviewer 檢查；當 gate 偵測到 impact hints 時,也會直接提示 `./ops/docs_impact.py --since <base> --explain` 這條 follow-up 命令,方便追 suppression 細節，並明示「下面的 frontmatter checks 只覆蓋目前 checkout 裡有變更的 docs；non-doc 變更要以上方 impact hints 判讀」。`docs_lint.sh` 現在也會直接補一條 heuristic: `impact hints = sync candidates, STALE = freshness risk`，降低把 hint 當 hard requirement 的誤讀。若這次完全沒有 docs 被選進 lint,gate 也會直說,避免把 `no docs selected` 誤讀成工具無結論。impact hints 第一版 warn-only,不會因既有全 repo doc debt 失敗。
    需要全 repo 健康盤點時才跑 `./ops/docs_lint.sh --audit` 或 `--all`；audit 會暴露歷史 invalid anchor / stale debt,不得把既有 audit debt 當成本次 doc-sync 失敗。
    要盤點控制平面覆蓋率時跑 `./ops/docs_registry_coverage.py`；human output 會優先分 `active_unregistered`(應補進 registry 的活文檔)與 `backlog_unregistered`(archive/plans/specs/snapshot 等非日常 gate debt),並明示 backlog 只屬資訊、不屬日常 gate；不再重複把 backlog 傾倒成 generic `UNREGISTERED` 清單。`--help` 也會直接說 `--strict` 只對 active debt 失敗。`--strict` 只會因尚未登記的 active docs 失敗,用來追 registry coverage debt,不是日常 PR gate。
-6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加:
-   ```
-   Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
-   ```
+6. `git commit`,prefix `docs:`,訊息一句話講同步了什麼。結尾加 `Co-Authored-By:` trailer,**值用你自己當下的模型身分**(harness 會給,形如 `Claude <模型名> <noreply@anthropic.com>`)。
+   這裡**刻意不寫死模型名**:寫死的那一版(`Claude Opus 4.8 (1M context)`)在 2026-08-08 已與現實脫節——當時最近 60 顆 commit 的 26 個 trailer **全部**是另一個值,沒有任何人照這行做。一個每次模型改版就自動說謊的指示,不如指向那個永遠正確的來源。
    git identity 用 repo global config(`Max0228`),**不要**手動 `-c user.email` 覆寫。
 
 ## 路由表(改了什麼 → 同步哪份)

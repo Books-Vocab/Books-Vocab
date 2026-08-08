@@ -6,7 +6,7 @@ scope:
   - .claude/skills/
   - .claude/agents/
   - docs/sop/
-verified_against: 7b4dee42
+verified_against: db0e9ed46
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
@@ -46,6 +46,7 @@ verified_against: 7b4dee42
 - `format-only`
 - `generated-snapshot`
 - `single-line-small-file`
+- `machine-repair` — **唯一受檢的一個**，且只給程式用（`worktree_orchestrate.py` 的 post-landing ledger repair 自己蓋）。工具會驗這顆 commit **只碰** `docs/runbook/backlog/*.json`：越界即具名該檔並判不合法，空檔案清單也拒（「沒東西可反對」與「看不到」在這裡是同一個字串，把後者當前者正是這道 gate 要防的）。其餘五個都是無從查證的自述，工具採信作者的話
 
 用 [`ops/review_audit.sh`](../../ops/review_audit.sh) 審 `origin/main..HEAD`（或 `--base` / `--rev-range` 指定範圍）。它不判斷 review 品質，只判斷 receipt 是否存在且合法；任一 commit 缺 receipt 或 exemption reason 不在白名單，exit `2`它稽核的 repo 是**呼叫端所在的** git toplevel（可用 `$KG_REVIEW_AUDIT_ROOT` 覆寫），每次執行會把選中的 root 印到 stderr——舊版無條件 cd 回腳本自己的 repo，`( cd 別處 && review_audit.sh )` 會靜默稽核錯的歷史（IMP-0049）。
 
