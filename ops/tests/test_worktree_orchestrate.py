@@ -1799,9 +1799,12 @@ def test_behind_base_refusal_renders_in_human_mode_too(scratch):
     assert rc == MODULE.EXIT_BLOCK
     assert out.startswith("✗ cutover refused:")
     assert "1 commit(s), 1 file(s) changed on main" in out
-    # the remedy is spelled out verbatim — and it names `catchup`, not raw git: the
-    # rebase it asks for conflicts on a 280KB generated file often enough that
-    # handing an agent `git rebase` there is handing it the failure
+    # the remedy is spelled out verbatim — and it names `catchup`, not raw git.
+    # (The original reason was that the rebase kept conflicting on a 280KB generated
+    # file; that file left version control in IMP-20260807-b9526c. The routing still
+    # holds for the reason that outlived it: an error message telling an agent to go
+    # run `git rebase` hands off a step whose failure mode is unbounded, and neither
+    # `land` nor the gate sees what happens next.)
     assert f"catchup --worktree {wt} --commit" in out
     with pytest.raises(json.JSONDecodeError):       # human mode, not a JSON dump
         json.loads(out)
@@ -3900,9 +3903,11 @@ def test_catchup_on_an_up_to_date_worktree_changes_nothing(scratch, tmp_path):
 
 
 def test_the_behind_base_refusal_names_a_command_that_exists():
-    """The refusal used to say `git -C <path> rebase main`, which is the operation
-    that conflicts on a generated file. A refusal is a routing decision; pointing it
-    at raw git was pointing it at the failure."""
+    """The refusal used to say `git -C <path> rebase main`. A refusal is a routing
+    decision, and pointing it at raw git routes the agent out of the flow at exactly
+    the moment the step can fail. (It was originally argued from a generated file
+    that no longer exists — IMP-20260807-b9526c — but the routing argument does not
+    depend on it.)"""
     msg = MODULE._behind_base_refusal("/w", "main",
                                       {"behind_commits": 2, "base_changed_files": ["a"]})
     assert "catchup" in msg and "git -C" not in msg, msg
