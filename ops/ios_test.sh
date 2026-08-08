@@ -9,6 +9,12 @@
 #                                                 # test dir (Swift Testing ids keep their
 #                                                 # signature); zero matches exit 1 at PARSE
 #                                                 # time instead of wasting a build+test round.
+#                                                 # A zero match also re-scans the OTHER scope:
+#                                                 # if the name really lives in the other target
+#                                                 # (a missing --ui / --unit) the error names
+#                                                 # that target/container and prints the exact
+#                                                 # command to rerun. It still exits 1 — the
+#                                                 # runner never silently switches scope.
 #                                                 # The scan is non-recursive — tests in a
 #                                                 # SUBDIRECTORY are not found; pass the
 #                                                 # `Class/method` form, which is always a
@@ -557,6 +563,33 @@ elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
     done < <(discover_only_flags "$TEST_DIR" "^${t}$" "$TEST_TARGET")
     if [[ ${#resolved[@]} -eq 0 ]]; then
       echo "[ios_test] no test method named '$t' under $TEST_DIR ($TEST_TARGET)" >&2
+      # 「本 scope 找不到」有兩個成因，對操作者是完全不同的兩件事：名字真的不存在，
+      # 或名字存在但住在另一個 target（少給一個 --ui / --unit）。不分辨就等於對後者
+      # 說謊——它存在。所以在放棄之前先掃另一個 scope，找到就指名道姓並給出可複製的
+      # 命令。這是純 awk 掃檔，只跑在錯誤路徑上，不影響正常解析成本。
+      case "$TEST_SCOPE" in
+        unit) other_scope_flag="--ui";   other_target="BooksAndVocabUITests"; other_dir="$PROJECT_ROOT/ios/BooksAndVocabUITests" ;;
+        ui)   other_scope_flag="--unit"; other_target="BooksAndVocabTests";   other_dir="$PROJECT_ROOT/ios/BooksAndVocabTests" ;;
+        *)    other_scope_flag=""; other_target=""; other_dir="" ;;
+      esac
+      elsewhere=()
+      if [[ -n "$other_dir" && -d "$other_dir" ]]; then
+        while IFS= read -r flag; do
+          [[ -n "$flag" ]] && elsewhere+=("$flag")
+        done < <(discover_only_flags "$other_dir" "^${t}$" "$other_target")
+      fi
+      # 這個 -gt 0 守衛不能拿掉。bash 3.2 + set -u 下，空陣列的兩種展開**行為不同**：
+      # `"${a[@]}"` 會 unbound variable 當場死（rc=1），但下面用的 `"${a[@]#pfx}"`
+      # 反而展開成「一個空字串引數」、rc=0（已實測）。也就是說少了守衛不會像既有
+      # ONLY_FLAGS 那樣大聲炸掉，而是靜靜多印一行空的 `[ios_test]   `。
+      if [[ ${#elsewhere[@]} -gt 0 ]]; then
+        # 印出 target/容器（去掉 -only-testing: 前綴），讓讀者直接看見它住在哪。
+        echo "[ios_test] 但這個名字存在於另一個 target：" >&2
+        printf '[ios_test]   %s\n' "${elsewhere[@]#-only-testing:}" >&2
+        echo "[ios_test] 本 scope（$TEST_TARGET）掃不到它。加上 $other_scope_flag 即可：" >&2
+        echo "[ios_test]   ./ops/ios_test.sh $other_scope_flag $t" >&2
+        exit 1
+      fi
       echo "[ios_test] 裸方法名會掃描該 scope 的 test 目錄反查所屬 class/@Suite 容器；跨 scope 請加 --ui/--unit，或直接給 Class/method。" >&2
       exit 1
     fi
