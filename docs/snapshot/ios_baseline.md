@@ -4,12 +4,12 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksAndVocab
-verified_against: dcb7b705f
+verified_against: 99aaf22f7
 -->
 
 # iOS Frontend Baseline
 
-基線日期: 2026-08-06
+基線日期: 2026-08-08
 
 ---
 
@@ -28,7 +28,7 @@ verified_against: dcb7b705f
 | 630 | `Services/PodcastAudioEngine.swift` |
 | 612 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 
-總 Swift 行數: 82307 / 510 檔案
+總 Swift 行數: 82349 / 511 檔案
 
 ---
 
