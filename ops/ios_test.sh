@@ -979,14 +979,21 @@ should_rebuild_after_test_without_building_failure() {
 stage_fixture_dataset_xctestrun() {
   local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
-  local env_root found=0
+  # 先枚舉完再變更（理由見 stage_live_demo_xctestrun 上方）：邊枚舉邊 upsert 會讓
+  # 枚舉器提早收工，漏掉的 target 拿不到 dataset——對空世界跑 UI 測試的假綠。
+  local -a env_roots=()
+  local env_root
   while IFS= read -r env_root; do
-    [[ -n "$env_root" ]] || continue
+    [[ -n "$env_root" ]] && env_roots+=("$env_root")
+  done < <(xctestrun_target_env_roots "$staged_path")
+  local i found=0
+  for ((i = 0; i < ${#env_roots[@]}; i++)); do
+    env_root="${env_roots[$i]}"
     found=1
     sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
     /usr/libexec/PlistBuddy -c "Add $env_root dict" "$staged_path" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Add $env_root:KG_FIXTURE_DATASET_DEFLATE_B64 string $UI_FIXTURE_DATASET_DEFLATE_B64" "$staged_path" || return 1
-  done < <(xctestrun_target_env_roots "$staged_path")
+  done
   [[ "$found" -eq 1 ]]
 }
 
@@ -1013,12 +1020,27 @@ sanitize_xctestrun_evidence_env_root() {
   done
 }
 
+# 枚舉與變更必須嚴格分兩段，不可邊枚舉邊改同一份 plist。
+# xctestrun_target_env_roots 跑在 process substitution 的子行程裡，與迴圈體同時存活；
+# 迴圈體每次 sanitize 都用 PlistBuddy 重寫 $staged_path，枚舉器下一次 Print 可能撞上
+# 這個重寫而失敗，於是提早結束枚舉。後果是 fail-closed 反轉成 fail-open：兩個
+# BooksAndVocabUITests 只數到 1 個，函式回 0 讓 live-demo 憑證注進未經清洗的 plist。
+# 這個競態是時序性的（回報日 2/10 命中，三日後同機 0/10），所以 regression 用假枚舉器
+# 釘死而非靠重跑。IMP-20260805-bf0df5。
+# 陣列展開用索引而非 "${env_roots[@]}"：本檔 set -u，而 /bin/bash 3.2 對空陣列的
+# "${a[@]}" 會 unbound variable 中止，正好打在零 target 的 fail-closed 路徑上。
+# 同理不可用 mapfile（3.2 無此內建）。
 stage_live_demo_xctestrun() {
   local base_path="$1" staged_path="$2"
   cp "$base_path" "$staged_path" || return 1
-  local env_root target_root blueprint_name live_env_root="" live_target_count=0
+  local -a env_roots=()
+  local env_root
   while IFS= read -r env_root; do
-    [[ -n "$env_root" ]] || continue
+    [[ -n "$env_root" ]] && env_roots+=("$env_root")
+  done < <(xctestrun_target_env_roots "$staged_path")
+  local target_root blueprint_name live_env_root="" live_target_count=0 i
+  for ((i = 0; i < ${#env_roots[@]}; i++)); do
+    env_root="${env_roots[$i]}"
     sanitize_xctestrun_evidence_env_root "$staged_path" "$env_root"
     target_root="${env_root%:TestingEnvironmentVariables}"
     blueprint_name="$(/usr/libexec/PlistBuddy -c "Print $target_root:BlueprintName" "$staged_path" 2>/dev/null || true)"
@@ -1026,7 +1048,7 @@ stage_live_demo_xctestrun() {
       live_target_count=$((live_target_count + 1))
       live_env_root="$env_root"
     fi
-  done < <(xctestrun_target_env_roots "$staged_path")
+  done
   if [[ "$live_target_count" -ne 1 ]]; then
     echo "[ios_test] error: live-demo xctestrun requires exactly one BooksAndVocabUITests target (found $live_target_count)" >&2
     return 1
