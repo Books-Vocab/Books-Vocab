@@ -3487,6 +3487,52 @@ def test_gate_reports_a_clean_primary(scratch):
 
 
 @gitmark
+def test_gate_reports_primary_status_failure(scratch, monkeypatch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "primary-status-failure.json")
+    wt = _open_wt(state, slug="primary-status-failure")
+    original_git = MODULE._git
+
+    def fail_primary_status(argv, cwd=None):
+        if list(argv) == ["status", "--porcelain", "--untracked-files=no"] \
+                and Path(cwd).resolve() == repo.resolve():
+            return 7, ""
+        return original_git(argv, cwd=cwd)
+
+    monkeypatch.setattr(MODULE, "_git", fail_primary_status)
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["primary_dirty"] == []
+    assert "rc=7" in gate["primary_dirty_error"]
+
+    rc, text = _run_text(["gate", "--worktree", wt, "--state", state])
+    assert rc == MODULE.EXIT_OK
+    assert "primary working tree status unavailable" in text
+    assert "rc=7" in text
+
+
+@gitmark
+def test_gate_plan_only_does_not_probe_primary(scratch, monkeypatch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "primary-plan-only.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "preview primary drift", "--slug", "primary-plan-only",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+
+    def unexpected_primary_probe():
+        raise AssertionError("plan-only must not probe primary")
+
+    monkeypatch.setattr(MODULE, "primary_root", unexpected_primary_probe)
+    rc, gate = _run_json(["gate", "--worktree", opened["path"], "--state", state,
+                          "--plan-only", "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["verdict"] == "planned"
+    assert "primary_dirty" not in gate
+
+
+@gitmark
 def test_gate_orchestrator_identity_is_null_when_worktree_has_no_copy(scratch):
     """The synthetic fixture repo has no ops/ tree. Provenance must degrade to "cannot
     compare" rather than inventing a mismatch — otherwise every existing test, and every
