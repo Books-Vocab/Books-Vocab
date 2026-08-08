@@ -530,11 +530,23 @@ catalog_source_commit() {
   # decoration. Failure reuses this function's existing contract (caller maps a
   # non-zero return to source-commit-failed).
   #
-  # Scoped to ios/ because that is what the snapshots are a function of; whether
-  # the generator scripts must be pinned too is IMP-20260805-c7178a item (1),
-  # still open. Skipped under KG_IOS_OPS_FIXTURE because that mode seeds
-  # synthetic snapshots without ever running xcodebuild — there is no claim about
-  # the checkout to falsify.
+  # Scoped to ios/ because that is what the snapshots are a function of. This is
+  # narrower than ios_test.sh's whole-repo check, so the two disagree on what
+  # "belongs to this commit" means: uncommitted edits to ios_ops_catalog.sh
+  # itself (which upserts requestedAppearance into the xctestrun) still get
+  # attributed here. Whether the generators must be pinned too is
+  # IMP-20260805-c7178a item (1), still open.
+  #
+  # KG_IOS_OPS_FIXTURE is exempted for test ergonomics, NOT because fixture runs
+  # make no claim — they do write catalog_appearance.json and the run receipt
+  # with this sourceCommit, and nothing downstream distinguishes a synthetic
+  # proof from a real one. The fixture catalog tests in ops/test_ios_ops.sh run
+  # against the real repo, whose tree is normally dirty. That makes this env var
+  # an off-switch: if it ever leaks into a real run, the pre-fix behaviour
+  # returns silently. The run receipt already carries `mode`; the gap is the
+  # catalog_appearance.json sidecar, which is the only thing
+  # app_review_evidence.py:produce_appearance actually reads. Marking THAT with
+  # its mode would remove the need for this exemption.
   if [[ "${KG_IOS_OPS_FIXTURE:-}" != "1" ]]; then
     ios_status="$(git -C "$ROOT" status --porcelain -- ios 2>/dev/null)" || return 1
     if [[ -n "$ios_status" ]]; then

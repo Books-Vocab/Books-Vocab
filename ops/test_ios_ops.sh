@@ -452,7 +452,7 @@ mkdir -p "$dirty_repo/ios"
 git -C "$dirty_repo" -c init.defaultBranch=main init -q
 printf 'pinned\n' >"$dirty_repo/ios/source.txt"
 git -C "$dirty_repo" add -A >/dev/null
-git -C "$dirty_repo" -c user.name=t -c user.email=t@example.invalid commit -qm pin
+git -C "$dirty_repo" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -qm pin
 dirty_repo_head="$(git -C "$dirty_repo" rev-parse HEAD)"
 catalog_commit_clean="$(ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' || true)"
 [[ "$catalog_commit_clean" == "$dirty_repo_head" ]] \
@@ -474,8 +474,11 @@ catalog_commit_other="$(ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_
 [[ "$catalog_commit_other" == "$dirty_repo_head" ]] \
   && ok "catalog_source_commit ignores dirt outside ios/" \
   || fail_t "catalog_source_commit refused for a non-iOS edit: $catalog_commit_other"
-# Fixture mode seeds synthetic snapshots and never runs xcodebuild, so it makes
-# no claim about the checkout to falsify.
+# Fixture mode is exempted for test ergonomics, not because it makes no claim:
+# it does write catalog_appearance.json and the run receipt with this
+# sourceCommit. See the rationale on catalog_source_commit itself. (This probe
+# overrides ROOT, so it is not one of the tests that needed the exemption —
+# those are the `catalog snapshots --dataset-file` runs against the real repo.)
 printf 'edited\n' >>"$dirty_repo/ios/source.txt"
 catalog_commit_fixture="$(KG_IOS_OPS_FIXTURE=1 ROOT="$dirty_repo" bash -lc 'source "'"$IOS_OPS_CATALOG_LIB"'"; catalog_source_commit' || true)"
 [[ "$catalog_commit_fixture" == "$dirty_repo_head" ]] \
@@ -490,6 +493,71 @@ grep -q 'status --porcelain' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'sourceTreeDirty:\$sourceTreeDirty' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test.sh verdict carries sourceTreeDirty" \
   || fail_t "ios_test.sh verdict does not carry sourceTreeDirty"
+# The greps above only prove the strings exist; flipping `-n` to `-z` would read
+# a dirty tree as clean and still satisfy both. write_json_verdict cannot be
+# sourced (ios_test.sh runs on load) and a real run needs a simulator, so lift
+# the actual lines out of the actual file and execute them. Extraction failure
+# must be red, not silently green — hence the shape assertions before the runs.
+verdict_dirty_snippet="$(awk '/^  if source_tree_status=/,/^  fi$/' "$WORKSPACE/ops/ios_test.sh")"
+verdict_dirty_lines="$(printf '%s\n' "$verdict_dirty_snippet" | wc -l | tr -d ' ')"
+verdict_dirty_last="$(printf '%s\n' "$verdict_dirty_snippet" | tail -n 1)"
+# The guard needs an UPPER bound, not just a lower one: an awk range whose end
+# pattern stops matching over-captures instead of under-capturing, and an
+# over-captured region satisfies every "contains X" check by construction. That
+# is not hypothetical — losing the `  fi` anchor pulls in ~189 lines of
+# write_json_verdict, including statements that write files, and this test would
+# then execute them.
+if [[ -z "$verdict_dirty_snippet" ]] \
+  || ! grep -q 'status --porcelain' <<<"$verdict_dirty_snippet" \
+  || ! grep -q 'source_tree_dirty=' <<<"$verdict_dirty_snippet" \
+  || [[ "$verdict_dirty_lines" -gt 12 ]] \
+  || [[ "$verdict_dirty_last" != "  fi" ]]; then
+  fail_t "could not lift the sourceTreeDirty block out of ios_test.sh (extraction is stale: lines=$verdict_dirty_lines last='$verdict_dirty_last')"
+else
+  ok "sourceTreeDirty block lifted from ios_test.sh for execution"
+  run_verdict_dirty_snippet() {
+    PROJECT_ROOT="$1" bash -c "set -euo pipefail
+$verdict_dirty_snippet
+printf '%s\\n' \"\$source_tree_dirty\""
+  }
+  dirty_probe="$(mktemp -d)"
+  git -C "$dirty_probe" -c init.defaultBranch=main init -q
+  printf 'pinned\n' >"$dirty_probe/tracked.txt"
+  git -C "$dirty_probe" add -A >/dev/null
+  git -C "$dirty_probe" -c user.name=t -c user.email=t@example.invalid commit -qm pin
+  [[ "$(run_verdict_dirty_snippet "$dirty_probe")" == "false" ]] \
+    && ok "sourceTreeDirty is false on a clean tree" \
+    || fail_t "sourceTreeDirty was not false on a clean tree"
+  printf 'edited\n' >>"$dirty_probe/tracked.txt"
+  [[ "$(run_verdict_dirty_snippet "$dirty_probe")" == "true" ]] \
+    && ok "sourceTreeDirty is true on a dirty tree" \
+    || fail_t "sourceTreeDirty read a dirty tree as clean"
+  git -C "$dirty_probe" checkout -q -- tracked.txt
+  : >"$dirty_probe/untracked.swift"
+  # An uncommitted new source file is the commonest shape of "built something
+  # that is in no commit", and it is exactly the shape `--porcelain -uno` would
+  # stop seeing while every modified-file probe above stayed green.
+  [[ "$(run_verdict_dirty_snippet "$dirty_probe")" == "true" ]] \
+    && ok "sourceTreeDirty counts an untracked file as dirty" \
+    || fail_t "sourceTreeDirty ignored an untracked file"
+  no_repo_probe="$(mktemp -d)"
+  [[ "$(run_verdict_dirty_snippet "$no_repo_probe")" == "true" ]] \
+    && ok "sourceTreeDirty fails closed when git cannot answer" \
+    || fail_t "sourceTreeDirty read an unanswerable tree as clean"
+  rm -rf "$dirty_probe" "$no_repo_probe"
+fi
+# The lifted block is a COPY running in another process, so it cannot see edits
+# to its surroundings: binding the jq arg to a literal, or reassigning
+# source_tree_dirty on the next line, leaves every probe above green. These two
+# static assertions cover that blind spot — the second one is a "no other
+# writer" invariant, so a legitimate refactor is expected to update the count.
+grep -qF -- '--argjson sourceTreeDirty "$source_tree_dirty"' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "verdict binds sourceTreeDirty to the computed variable, not a literal" \
+  || fail_t "ios_test.sh no longer passes \$source_tree_dirty into the verdict"
+verdict_dirty_writes="$(grep -o 'source_tree_dirty=' "$WORKSPACE/ops/ios_test.sh" | wc -l | tr -d ' ')"
+[[ "$verdict_dirty_writes" == "3" ]] \
+  && ok "source_tree_dirty is assigned only inside the lifted block" \
+  || fail_t "source_tree_dirty assigned $verdict_dirty_writes times (expected 3); a writer outside the audited block can override it"
 
 section "UITest video archive surface"
 IOS_TEST_VIDEO_ARCHIVE_LIB="$WORKSPACE/ops/lib/ios_test_video_archive.sh"
