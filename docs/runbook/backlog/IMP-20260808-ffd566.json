@@ -1,0 +1,21 @@
+{
+  "acceptance": "紅：改之前 `grep -c '\"cherry-pick\"' ops/worktree_loadtest.py` 非 0，即 loadtest 仍在自己跑 cherry-pick。綠：`batch_mode` 不再出現任何 raw `git cherry-pick` 呼叫，而是呼叫 `worktree_orchestrate.py integrate`，且 `--mode batch -n 3 --conflict shared` 實跑一次成功（貼輸出：整合完成、gate 跑過、cutover landed）。另外文檔那一側：SKILL.md 與 tech_index 引用 N=10 數字處，必須明確說出那組數字量的是哪一條管線（依 plan 選 A 或 B）；tech_index 已查證未引用該組數字，不必動。",
+  "acceptance_cmd": "grep -q \"\\\"integrate\\\"\" ops/worktree_loadtest.py && ! grep -q \"\\\"cherry-pick\\\"\" ops/worktree_loadtest.py",
+  "acceptance_expect_rc": 0,
+  "brief": "批次整合那組實測數字其實是另一條路跑出來的，照著讀會高估新指令的可靠度，而且工具壞掉時那個測試會繼續回綠",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "IMP-20260807-267d60 加了 `integrate` 原語（open → 依序 cherry-pick → 衝突具名停 → 合併後跑一次 gate）。同一個形狀在 `ops/worktree_loadtest.py:batch_mode`（268-343 行）已經有一份**手刻**實作：它自己 `open` 整合樹、自己跑 raw `git cherry-pick`、自己讀 `--diff-filter=U`、自己 `cherry-pick --continue`，然後才呼叫 orchestrator 的 `gate` / `cutover`。\n\n**最嚴重的一層是歸因錯誤，不是重複。** `.claude/skills/worktree-flow/SKILL.md`「批次整合」段與 `docs/reference/tech_index.md` 拿那組 N=10 數字（整合本身全綠、9/10 cherry-pick 衝突、零列遺失、gate 跑 1 次、27.9 秒；floor 10/10 拒絕 →`--via-integration` 放行 10/10、殘留 0）當作「批次整合這條路可靠」的證據，而讀者今天會很自然地把它讀成「用 `integrate` 會怎樣」。產生那些數字的是 load test 自己的私有管線，**而且那條管線帶著 `integrate` 刻意沒有的東西**：`resolve_keep_both` 自動解衝突器（`worktree_loadtest.py:230-265`）。`integrate` 面對衝突是停下來交給人。所以「9/10 衝突但全綠」這件事在 loadtest 是自動達成的，在 `integrate` 需要人介入九次——同一句話在兩條路徑上意思完全不同。\n\n第二層：兩份實作可以各自漂移而互不知情。`integrate` 已經有 loadtest 沒有的具名拒絕（merge commit、空 commit、跨分支重複 sha、帳目不符不准 gate），也有 loadtest 沒有的狀態機（`--continue` / `--abort` / 狀態檔）。loadtest 會繼續全綠，而真正的入口壞掉時沒有任何回歸靶場會紅——「守衛要先有正控才信它的沉默」的同一個形狀。\n\n第三層（順帶）：接上去之後 `integrate` 就有了一個 N=10 的並發回歸靶場，那是它目前完全沒有的東西（現有 20 條測試都是單一 integration、最多 3 顆 commit）。",
+  "fix_site": "ops/worktree_loadtest.py:268",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "integrate-primitive",
+  "id": "IMP-20260808-ffd566",
+  "plan": "把 `batch_mode` 的手刻段（268-343 行：`open` 整合樹 → raw `git cherry-pick` 迴圈 → `--diff-filter=U` → `cherry-pick --continue`）換成呼叫 `ops/worktree_orchestrate.py integrate --slug integrate --branches <各 lane 分支> --commit`，衝突時由 loadtest 做 `resolve_keep_both` + `git add`，再呼叫 `integrate --slug integrate --continue --commit`。`gate` 不必再單獨呼叫（`integrate` 內含），`cutover` 維持現狀。\n\n**決策點：既有那組 N=10 數字怎麼辦。** 接手的人要在兩個選項裡選一個，不要兩個都做：\n\n選項 A — 重跑並改寫數字。跑 `ops/worktree_loadtest.py --mode batch -n 10 --conflict shared`，用新數字取代 SKILL.md 與 tech_index 裡的舊數字，並註明量的是 `integrate`。\n  代價：新舊數字不可比（舊的含自動解衝突、新的含 `integrate` 的具名拒絕與狀態機），所以「27.9 秒」這類趨勢線斷掉；且 `--conflict shared` 那組 fixture 是針對已移出版控的 ledger view 設計的，可能已經打不出 9/10 的衝突率，得先確認 fixture 還有代表性。\n\n選項 B — 保留舊數字當歷史，只改標註。把既有數字標成「2026-08-06 手刻管線的量測」，新的 loadtest 產出另一組並列。\n  代價：文檔要同時養兩組數字，讀者要自己判斷哪組適用；但不必賭 fixture 還有效，也不會弄丟一條真實的歷史量測。\n\n**先做的一步（兩個選項都要）**：確認 `--conflict shared` fixture 今天還會產生衝突——它原本靠的是 `docs/runbook/improvement_backlog.md` 那份 generated view，而該檔已於 IMP-20260807-b9526c 移出版控。若不再衝突，這張票的前置就是先修 fixture，否則量到的「全綠」會是空洞過關。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支壓力測試腳本的一個 mode 改成驅動新命令，外加決定既有數字要重跑還是標成歷史",
+  "severity": "med",
+  "source": "IMP-20260807-267d60 落地時自查 + code-reviewer 獨立指出同一點",
+  "status": "open",
+  "stream": "IMP"
+}
