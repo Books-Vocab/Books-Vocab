@@ -1,0 +1,17 @@
+{
+  "brief": "複習卡的正面明明只有一個單字，卻硬撐掉半個螢幕，而畫面下半部整片空白沒人用。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "2026-08-06 be3f9b642 把正面高度預算從「貼合內容」改成「固定比例」。\n\n現行規則（ReviewCardViewport / TodayReviewMetrics）：\n  revealZoneReserve = min(max(containerHeight * frontHeightRatio(0.22), revealZoneMinHeight(180)), contentHeight/2)\n  frontHeight = contentHeight - revealZoneReserve\n且註解明講這個值「刻意在 reveal 前後保持不變」。\n\n實測（iPhone 17 Pro Max，辨識模式，正面只有題目＋詞性）：\n  卡片區 GeometryReader ~= 734pt\n  正面實畫 351.5pt（內容只有一行單字＋一行詞性）\n  「點一下展開」提示下方到底部工具列之間 341pt 完全空白\n量測方式：ops/ios_ops.sh simulator screenshot 後逐列掃描像素找卡片邊界（3x，1320x2868）。\n\n重構前的規則是 frame(minHeight: TodayReviewMetrics.frontMinHeight = 120)，\n正面貼合內容、內容少就縮，該常數在這波重構中被刪除。\n\n使用者定調：正反面資訊量天生不對等，不該平分。正面貼合內容（保留下限），\n背面吃掉剩餘全部空間。",
+  "id": "APP-20260808-255c5e",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "複習卡版面高度分配那一段，約一個檔案的算式加上它的測試。",
+  "severity": "high",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}

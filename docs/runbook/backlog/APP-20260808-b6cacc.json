@@ -1,0 +1,17 @@
+{
+  "brief": "翻開複習卡之後，例句裡的目標單字仍然被挖成填空，等於答案給了一半。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "correctness",
+  "date": "2026-08-08",
+  "detail": "2026-08-06 a5885e228 把例句渲染抽成正反面共用的\nTodayReviewPresenter+CardContent.swift 的 reviewOptionalField(.example)，\n並在其中寫死 mode: .cloze。\n\n重構前只有 production 模式的**正面**用 cloze（那一面還不能露出英文答案）；\n背面走 CardDocumentView -> CardDocumentExampleBlock -> CardRichTextRenderer.text(...)\n的預設 .highlight。\n\n正確規則：cloze 只在「這一面尚未揭曉答案」時成立，也就是 face == .front\n且 card.reviewMode == .production。其餘一律 highlight。\n\n對照證據：舊版截圖的背面例句是\n\"...neighborhood, had a **slate** stone sidewalk running...\"（slate 高亮）；\n現行畫面是 \"...out of the ______, so to speak.\"（挖空）。",
+  "id": "APP-20260808-b6cacc",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "例句渲染那一個 switch case 加一個判斷，外加一條測試。",
+  "severity": "high",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "vocabulary"
+}

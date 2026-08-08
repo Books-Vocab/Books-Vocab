@@ -1,0 +1,17 @@
+{
+  "brief": "調整複習卡版面時看不到卡片長什麼樣，只能猜，改完要跳回複習畫面才知道效果。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "版面設定頁需要一張即時預覽卡，切換精簡/正常時當場重排。\n\n使用者要求：預覽 = 「翻開卡片時的樣子」（正面段 + 背面段都展開），\n且必須與真正的複習卡「完全復刻、像素級不飄移」。\n\n「像素級不飄移」不能靠紀律保證，只能靠結構保證：預覽必須用**同一段**\n渲染程式，不得手刻第二份。前置條件見 IMP 票（卡片渲染目前綁死在\nTodayReviewPresenter 的 extension 上，吃 swipe / slot / autoplay 狀態，\n無法單獨取用）。\n\n預覽內容來源：從複習畫面工具列進來 -> 用當前那張卡；\n從設定頁進來（沒有當前卡）-> 用一張內建範例卡。",
+  "id": "APP-20260808-d4a707",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "設定頁嵌一張真的複習卡；前置是把卡片渲染從 presenter 拆出來。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}

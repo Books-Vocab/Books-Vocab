@@ -1,0 +1,17 @@
+{
+  "brief": "三個設定頁長得不一樣也不同邏輯，同一件事在不同頁要用不同方式操作。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "三個設定面目前是兩套模型在打架：\n\n  複習卡片（ReviewCardLayoutEditor）/ 複習節奏（SettingsReviewSection）/ 主設定頁\n    分組標題 SettingsSectionHeader（小圖示 + 灰字）\n    分組容器 settingsCard()（白卡）\n    選擇塊   SettingsSelectionTile\n    尺寸     AppShellMetrics\n\n  閱讀設定（ReaderSettingsPresenter+Vocab）\n    分組標題 AppSectionBlock(flat: true)（純灰字、無圖示）\n    分組容器 無，靠 AppAirDivider 切\n    選擇塊   ReaderSelectionTile\n    尺寸     ReaderMetrics\n    外殼     VocabCard + 自繪 drag handle + 自繪 header + appElevation(.z2)\n\n已確認的重複：SettingsSelectionTile 與 ReaderSelectionTile 語意完全相同\n（選中 = mutedFill + cardBorder，未選 = pageBackground + divider 淡邊，control 圓度），\n只是各寫一份、各自帶不同的 padding 責任歸屬。\n\n方向：閱讀設定收斂到另外兩頁那一套（主設定頁與帳號區已在用，反向改波及面過大），\n共用元件合併為單一入口。心智模型也要一致：分組怎麼切、選擇怎麼表達、\n即時生效 vs 需要確認，三頁要說同一種話。\n\n與 A10（原生化）是同一條線的兩刀：本票是收斂，A10 是換成原生元件。\n執行順序上先收斂再換，或直接一次換成原生即完成收斂 —— 由執行者判斷。",
+  "id": "APP-20260808-f0770b",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "把閱讀設定收斂到另外兩頁的心智模型，並合併重複的共用元件。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}

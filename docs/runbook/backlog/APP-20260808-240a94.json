@@ -1,0 +1,17 @@
+{
+  "brief": "設定介面大量是自己手刻的元件，跟系統行為不一致，也拿不到系統後續免費升級。",
+  "build": "iPhone 17 Pro Max simulator (iOS 26), Debug, 安裝於 2026-08-08 13:39；缺陷亦可由 main@a55244f5b 原始碼逐行確認",
+  "category": "ux",
+  "date": "2026-08-08",
+  "detail": "使用者定調（2026-08-08）：「iOS glass 化」的實際意思是**盡量用 iOS 26 原生元件、\n不要自己手刻**，讓 Liquid Glass 等系統外觀由平台提供，而不是由 app 這層表達。\n\n目前設定面上的自繪清單（第一刀範圍）：\n- settingsCard() / AppSectionCard（自繪白卡 + border + elevation）\n- SettingsSelectionTile / ReaderSelectionTile（自繪選擇塊）\n- SettingsStepperIconButton（自繪 +/- 步進按鈕）\n- AppSettingsDivider / AppAirDivider（自繪分隔）\n- ReaderSettingsPresenter 的 vocabControlSurface / vocabLabelChip / 自繪 drag handle 與 header\n- ReaderStepControlButton\n\n原生對應候選：List/Form + Section、Toggle、Stepper、Picker(.segmented/.palette)、\nLabeledContent、Menu、sheet + presentationDetents + 系統 toolbar/navigationTitle。\n\n必須一起處理的後果，不可略過：\n1. 這與現行設計憲法直接衝突。docs/sop/ui-design.md 的「Mochi 化北極星」是\n   自繪 editorial 路線，北極星 #1 還明文說材質歸平台、app 不自己表達。\n   改成原生優先要同一次改掉那份文件（見 IMP 票）。\n2. 換成原生 List/Form 會犧牲一部分 editorial 個性（襯線標題、自訂間距節奏）。\n   一致性與認知負擔是使用者選定的優先項，但這個代價要在執行時具名承認，\n   不能假裝沒有。\n3. 逐步進行：本票只涵蓋三個設定頁，其餘 surface 另立票。",
+  "id": "APP-20260808-240a94",
+  "repro": "1. 單字本 → 今日複習 → 全部複習\n2. 觀察正面（題目面）與翻開後的背面\n3. 與 2026-08-06 重構前的畫面對照（使用者提供的 slate/石板 截圖為基準）",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "逐步把自繪控制項換成 iOS 26 原生；三個設定頁是第一刀。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "APP",
+  "surface": "settings"
+}

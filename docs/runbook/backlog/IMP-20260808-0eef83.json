@@ -1,0 +1,14 @@
+{
+  "brief": "設計憲法寫的是自繪路線，而已定案的方向是改用系統原生元件，兩者現在互相矛盾。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "docs/sop/ui-design.md 目前的「Mochi 化北極星五條」是自繪 editorial 路線\n（Notion 風 token 系統、border 退場 divider 進場、shadow 收兩階、單一強調色、\nmotion 收斂），其中北極星 #1 明文寫「系統 bar 的材質由平台決定」「禁止對系統 bar\n疊自訂背景或第二層 glassEffect」「新開一個自繪 bar 之前必須先說明系統 bar 為什麼做不到」。\n\n使用者 2026-08-08 定案的方向是：盡量用 iOS 26 原生元件、不要自己手刻。\n這把「自繪為主、平台為輔」倒過來變成「原生為主、自繪要舉證」。\n\n在文件改掉之前，原生化的每一步在形式上都是違憲的，而 review 紀律要求違反北極星\n即 block。所以文件必須與第一刀同一次改，不能事後補。\n\n要一起講清楚的：\n- 原生優先之後，既有 AppTheme / VocabSkin / AppRoundness / AppElevation 這些 token\n  的定位變成什麼（仍適用於哪些場景、哪些場景由系統接手）\n- AppFloatingChrome 這類「沒有系統 bar 可繼承」的既有例外如何保留其正當性\n- editorial 個性（襯線標題等）在原生元件上還保得住多少，保不住的部分要具名放棄",
+  "id": "IMP-20260808-0eef83",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "改寫設計憲法中關於材質與自繪元件的那幾條，並標明取代關係。",
+  "severity": "med",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "IMP"
+}

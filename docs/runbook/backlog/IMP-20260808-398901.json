@@ -1,0 +1,14 @@
+{
+  "brief": "一次重構把複習卡的畫面改壞六處，所有自動檢查卻全部是綠的，沒有任何工具看得見畫面。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "2026-08-06 那波重構（a5885e228 / be3f9b642 / c907585a0）同時造成六處\n可見的畫面退化（見同日登記的 APP 票），而該批 commit 的驗證欄寫著：\n  ReviewCard* + ReviewChromeSlice + TodayReviewAutoplayInterruption 82/82\n  ios_ops.sh build exit=0、--catalyst exit=0\n  i18n_lint total=0、ui_token / plain_deadzone baseline-check 0 findings\n全綠。\n\n原因是這些 gate 全部只看得見「值」與「符號」，看不見「畫面」：\n- 單元測試驗的是 solver 的算術，不是渲染結果\n- ui_token / i18n / deadzone 是靜態掃描\n- catalog snapshot 機制存在（Debug/Scenarios/ 有 TodayReviewScenarios、ReviewFoldScenarios），\n  但沒有任何一條會在版面改變時轉紅\n\n值得注意的是 be3f9b642 的 commit message **自己列出**難度標籤位移是「已知差異」——\n也就是作者知道畫面變了，而流程裡沒有任何一處會因此擋下來，只能靠人事後用肉眼發現。\n這次確實是使用者用肉眼發現的。\n\n這是「守衛看不見自己該看見的東西」這一族的又一例。",
+  "id": "IMP-20260808-398901",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "替複習卡補一道會失敗的版面守衛，或把它納入既有的目錄快照。",
+  "severity": "high",
+  "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
+  "status": "open",
+  "stream": "IMP"
+}
