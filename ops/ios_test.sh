@@ -1775,8 +1775,19 @@ emit_ui_runner_lifecycle() {
 kg_ios_verdict_init test "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2" reason="$3" executed="$4"
-  local source_commit marketing_version build_number bundle_id started_at finished_at evidence_kind fixture_data_used os_name network_mode
+  local source_commit source_tree_status source_tree_dirty marketing_version build_number bundle_id started_at finished_at evidence_kind fixture_data_used os_name network_mode
   source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  # The verdict names the commit this run came from, but the build tuple below is
+  # read from the WORKING TREE's pbxproj. With uncommitted changes those two
+  # describe different things, and app_review_evidence.py would still hand the run
+  # to a clean SHA. Record the tree state so that attribution can be refused
+  # rather than silently made. A `git status` that cannot answer (no repo, no git)
+  # counts as dirty: "cannot tell" must never read as "clean".
+  if source_tree_status="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)"; then
+    if [[ -n "$source_tree_status" ]]; then source_tree_dirty=true; else source_tree_dirty=false; fi
+  else
+    source_tree_dirty=true
+  fi
   marketing_version="$(awk -F' = ' '/MARKETING_VERSION = /{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
   build_number="$(awk -F' = ' '/CURRENT_PROJECT_VERSION = /{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
   bundle_id="$(awk -F' = ' '/PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;/{gsub(/[;[:space:]]/, "", $2); print $2; exit}' "$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj")"
@@ -1805,6 +1816,7 @@ write_json_verdict() {
     --arg configuration "$CONFIGURATION" \
     --arg evidenceProducer "ops/ios_test.sh" \
     --arg sourceCommit "$source_commit" \
+    --argjson sourceTreeDirty "$source_tree_dirty" \
     --arg marketingVersion "$marketing_version" \
     --arg buildNumber "$build_number" \
     --arg bundleID "$bundle_id" \
@@ -1867,6 +1879,7 @@ write_json_verdict() {
         marketingVersion:$marketingVersion,
         buildNumber:$buildNumber,
         sourceCommit:$sourceCommit,
+        sourceTreeDirty:$sourceTreeDirty,
         datasetID:(if $datasetID == "" then null else $datasetID end),
         datasetSHA256:(if $datasetSHA256 == "" then null else $datasetSHA256 end),
         fixedClock:(if $fixedClock == "" then null else $fixedClock end),
@@ -1889,6 +1902,7 @@ write_json_verdict() {
         marketingVersion:$marketingVersion,
         buildNumber:$buildNumber,
         sourceCommit:$sourceCommit,
+        sourceTreeDirty:$sourceTreeDirty,
         evidenceKind:$evidenceKind,
         device:$destination,
         os:$osName,

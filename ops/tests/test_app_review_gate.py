@@ -62,6 +62,72 @@ def _target() -> dict:
     }
 
 
+PROJECT_REPO_PATH = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args], text=True, capture_output=True, check=True
+    )
+    return result.stdout.strip()
+
+
+def _commit_project(repo: Path, payload: bytes) -> str:
+    """Track `payload` as the repo's pbxproj and return the commit that holds it.
+
+    The gate resolves ``build.project.sha256`` against the blob recorded at
+    ``source.commit``, so the fixture world only exercises that path if it is a
+    real repository whose history actually contains the project file.  Writing
+    the same bytes into the working tree as well is deliberate: it keeps the
+    default world one where a working-tree read and a blob read agree, so the
+    tests that force them apart are the only thing that can tell them apart.
+    """
+    if not (repo / ".git").exists():
+        _git(repo, "init", "--quiet", "-b", "main")
+        _git(repo, "config", "user.email", "fixture@example.com")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "config", "commit.gpgsign", "false")
+    tracked = repo / PROJECT_REPO_PATH
+    tracked.parent.mkdir(parents=True, exist_ok=True)
+    tracked.write_bytes(payload)
+    _git(repo, "add", "--", PROJECT_REPO_PATH)
+    _git(repo, "commit", "--quiet", "-m", "fixture project")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _restage_desired_project(tmp_path: Path, payload: bytes) -> None:
+    """Replace the bundle's staged pbxproj, keeping the bundle internally consistent.
+
+    Every intra-bundle digest that mentions the project is updated, including the
+    spec anchor, so the only contract left to fail is the one under test: the
+    manifest still names the original ``source.commit``.
+    """
+    manifest_path = tmp_path / "desired" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    (tmp_path / "desired" / "inputs" / "project.pbxproj").write_bytes(payload)
+    manifest["build"]["project"]["sha256"] = _sha(payload)
+    manifest["provenance"]["inputDigests"]["project"] = _sha(payload)
+    _json(manifest_path, manifest)
+    manifest_bytes = manifest_path.read_bytes()
+
+    spec_path = tmp_path / "spec.json"
+    spec = json.loads(spec_path.read_text())
+    spec["target"]["desiredManifestSHA256"] = _sha(manifest_bytes)
+    _json(spec_path, spec)
+
+    live = tmp_path / "live"
+    (live / "desired" / "manifest.json").write_bytes(manifest_bytes)
+    audit_path = live / "audit.json"
+    audit = json.loads(audit_path.read_text())
+    audit["desired"]["manifestSHA256"] = _sha(manifest_bytes)
+    _json(audit_path, audit)
+    files = []
+    for rel in ("audit.json", "desired/manifest.json", "desired/outputs/live.png", "live/images/01_live.png"):
+        blob = (live / rel).read_bytes()
+        files.append({"path": rel, "byteSize": len(blob), "sha256": _sha(blob)})
+    _json(live / "manifest.json", {"schema": "kg.app_review.asc_mirror_bundle.v1", "files": files})
+
+
 def _write_fixture_world(tmp_path: Path) -> Path:
     target = _target()
     desired = tmp_path / "desired"
@@ -71,6 +137,7 @@ def _write_fixture_world(tmp_path: Path) -> Path:
     (desired / "inputs" / "ui_world.json").write_bytes(dataset)
     target["datasetSHA256"] = _sha(dataset)
     project = b"MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6;"
+    target["sourceCommit"] = _commit_project(tmp_path, project)
     profile = b'{"schema":"kg.capture.profile.v1","id":"profile-1"}'
     promotion = b'{"schema":"kg.app_review.promotion_manifest.v1"}'
     (desired / "inputs" / "project.pbxproj").write_bytes(project)
@@ -973,3 +1040,117 @@ def test_cli_help_is_read_only_schema_driven_and_self_describing(command: str):
     assert "offline always BLOCK" in result.stdout
     assert "--yes" not in result.stdout
     assert "submit" not in result.stdout.lower()
+
+
+def _blocks(document: dict) -> dict[str, str]:
+    return {item["code"]: str(item["actual"]) for item in document["blocks"]}
+
+
+def test_desired_project_sha_must_match_source_commit_blob(tmp_path: Path):
+    """A bundle carrying the working tree's pbxproj cannot claim an older commit.
+
+    The drifted bytes are written into the working tree as well, so an
+    implementation that read the checkout instead of the blob at
+    ``source.commit`` would see two equal digests and pass.  Only reading git
+    can fail this.
+    """
+    mod = _load_module()
+    spec = _write_fixture_world(tmp_path)
+    tracked = _sha((tmp_path / PROJECT_REPO_PATH).read_bytes())
+    drifted = b"MARKETING_VERSION = 2.0.0; CURRENT_PROJECT_VERSION = 6; // uncommitted"
+    (tmp_path / PROJECT_REPO_PATH).write_bytes(drifted)
+    _restage_desired_project(tmp_path, drifted)
+
+    result = mod.evaluate_gate(
+        spec_path=spec,
+        workspace_root=tmp_path,
+        observed_at="2026-07-13T10:00:00Z",
+        observation_mode="online",
+    )
+
+    blocks = _blocks(result.document)
+    assert result.document["verdict"]["status"] == "block"
+    assert "desired.invalid" in blocks
+    assert "source commit blob" in blocks["desired.invalid"]
+    assert tracked in blocks["desired.invalid"]
+    assert _sha(drifted) in blocks["desired.invalid"]
+    assert PROJECT_REPO_PATH in blocks["desired.invalid"]
+
+
+def test_desired_project_sha_matches_source_commit_blob_after_head_moves_on(tmp_path: Path):
+    """Pinning an older commit stays valid when the project file changes later.
+
+    This is the positive control for the negative test above: an implementation
+    that resolved the blob at ``HEAD`` rather than at ``source.commit`` would
+    block here, and one that skipped the lookup entirely would pass both.
+    """
+    mod = _load_module()
+    spec = _write_fixture_world(tmp_path)
+    pinned = json.loads((tmp_path / "desired" / "manifest.json").read_text())["source"]["commit"]
+    moved_on = _commit_project(tmp_path, b"MARKETING_VERSION = 2.0.1; CURRENT_PROJECT_VERSION = 7;")
+    assert moved_on != pinned
+
+    first = mod.evaluate_gate(
+        spec_path=spec,
+        workspace_root=tmp_path,
+        observed_at="2026-07-13T10:00:00Z",
+        observation_mode="online",
+    )
+    _attest(tmp_path, first.document["preAttestationRootSHA256"], "human")
+    _attest(tmp_path, first.document["preAttestationRootSHA256"], "agent")
+    result = mod.evaluate_gate(
+        spec_path=spec,
+        workspace_root=tmp_path,
+        observed_at="2026-07-13T10:00:00Z",
+        observation_mode="online",
+    )
+
+    assert result.document["verdict"] == {"status": "pass", "blockCount": 0}
+
+
+def test_desired_source_commit_blob_that_cannot_be_read_blocks_instead_of_skipping(
+    tmp_path: Path,
+):
+    """An unresolvable referent is a block, never a silently skipped check."""
+    mod = _load_module()
+    spec = _write_fixture_world(tmp_path)
+    manifest_path = tmp_path / "desired" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["source"]["commit"] = "c" * 40
+    manifest["provenance"]["sourceCommit"] = "c" * 40
+    _json(manifest_path, manifest)
+
+    result = mod.evaluate_gate(
+        spec_path=spec,
+        workspace_root=tmp_path,
+        observed_at="2026-07-13T10:00:00Z",
+        observation_mode="online",
+    )
+
+    blocks = _blocks(result.document)
+    assert result.document["verdict"]["status"] == "block"
+    assert "desired.invalid" in blocks
+    assert "unreachable" in blocks["desired.invalid"]
+
+
+def test_desired_source_commit_blob_check_blocks_when_git_is_unavailable(
+    tmp_path: Path, monkeypatch
+):
+    """No git binary means the claim is uncheckable, which is not the same as true."""
+    mod = _load_module()
+    spec = _write_fixture_world(tmp_path)
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    monkeypatch.setenv("PATH", str(empty_bin))
+
+    result = mod.evaluate_gate(
+        spec_path=spec,
+        workspace_root=tmp_path,
+        observed_at="2026-07-13T10:00:00Z",
+        observation_mode="online",
+    )
+
+    blocks = _blocks(result.document)
+    assert result.document["verdict"]["status"] == "block"
+    assert "desired.invalid" in blocks
+    assert "git" in blocks["desired.invalid"]

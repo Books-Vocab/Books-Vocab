@@ -23,7 +23,10 @@ FRAME_RENDER = ROOT / "promotion" / "screenshots" / "scripts" / "frame_catalog_s
 BUILD_DEMO = ROOT / "ops" / "demo" / "build_demo.py"
 SHAPE_HISTORY = ROOT / "ops" / "demo" / "marketing_account" / "shape_history.py"
 REVIEWER_EVIDENCE = ROOT / "ops" / "reviewer_evidence.py"
-IOS_PROJECT_FILE = ROOT / "ios" / "BooksAndVocab.xcodeproj" / "project.pbxproj"
+# Repo-relative on purpose: this path is only ever resolved against a git
+# commit now, and an absolute working-tree constant is what the old
+# --project-file default was built out of.
+IOS_PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
 
 # snapshot dataset 來源模式（tagged union on snapshot.source）
 SOURCE_DATASET_FILE = "dataset-file"  # 既有：吃預先 committed 的 UI World fixture
@@ -37,6 +40,7 @@ from kg.ops_world_expectation import derive_expectation  # noqa: E402
 from reviewer_evidence import (  # noqa: E402
     EvidenceError,
     build_manifest as build_reviewer_evidence_manifest,
+    materialize_tracked_file,
     write_bundle as write_reviewer_evidence_bundle,
 )
 from ui_world_manifest import UIWorldManifestError, validate_fixture_dataset_file as _validate_ui_world  # noqa: E402
@@ -667,6 +671,28 @@ def resolve_source_commit(ref: str) -> str:
     return commit
 
 
+def resolve_project_file(
+    project_file: Path | None, resolved_commit: str, destination: Path
+) -> Path:
+    """The pbxproj this bundle will describe, defaulting to the pinned commit's blob.
+
+    The old default was the working tree's copy, which belongs to no commit in
+    particular: pairing it with ``--source-commit`` produced a bundle that named
+    one commit and carried another's build identity.  An explicitly passed path
+    is still honoured — callers stage files legitimately — but it is now a named
+    act rather than what happens when you say nothing, and
+    ``app_review_gate.py`` re-derives the blob independently either way.
+    """
+    if project_file is not None:
+        return project_file
+    return materialize_tracked_file(
+        workspace_root=ROOT,
+        commit=resolved_commit,
+        rel_path=IOS_PROJECT_FILE_REL,
+        destination=destination,
+    )
+
+
 def cmd_reviewer_evidence(
     profile: CaptureProfile,
     *,
@@ -675,7 +701,7 @@ def cmd_reviewer_evidence(
     promotion_manifest_file: Path,
     render_output_dir: Path,
     bundle_dir: Path,
-    project_file: Path,
+    project_file: Path | None,
     source_commit: str,
     fixed_clock: str,
     locale: str,
@@ -686,36 +712,42 @@ def cmd_reviewer_evidence(
     """Build or atomically write a deterministic App Review evidence bundle."""
     try:
         resolved_commit = resolve_source_commit(source_commit)
-        manifest = build_reviewer_evidence_manifest(
-            profile_file=profile_file,
-            profile_id=profile.profile_id,
-            dataset_file=dataset_file,
-            promotion_manifest_file=promotion_manifest_file,
-            project_file=project_file,
-            render_output_dir=render_output_dir,
-            render_spec=reviewer_render_spec(profile),
-            device_destination=profile.snapshot.destination,
-            locale=locale,
-            fixed_clock=fixed_clock,
-            source_commit=resolved_commit,
-            generator_files=[Path(__file__).resolve(), REVIEWER_EVIDENCE],
-            profile_validator=load_profile,
-            dataset_validator=validate_fixture_dataset_file,
-            expected_marketing_version=expect_marketing_version,
-            expected_build_number=expect_build_number,
-        )
-        if commit:
-            write_reviewer_evidence_bundle(
-                manifest,
-                bundle_dir=bundle_dir,
+        # The materialized blob has to outlive both the manifest build and the
+        # bundle write, which copies it into inputs/.
+        with tempfile.TemporaryDirectory(prefix="kg-reviewer-evidence-source-") as pinned:
+            project_file = resolve_project_file(
+                project_file, resolved_commit, Path(pinned) / "project.pbxproj"
+            )
+            manifest = build_reviewer_evidence_manifest(
                 profile_file=profile_file,
+                profile_id=profile.profile_id,
                 dataset_file=dataset_file,
-                project_file=project_file,
                 promotion_manifest_file=promotion_manifest_file,
+                project_file=project_file,
                 render_output_dir=render_output_dir,
+                render_spec=reviewer_render_spec(profile),
+                device_destination=profile.snapshot.destination,
+                locale=locale,
+                fixed_clock=fixed_clock,
+                source_commit=resolved_commit,
+                generator_files=[Path(__file__).resolve(), REVIEWER_EVIDENCE],
                 profile_validator=load_profile,
                 dataset_validator=validate_fixture_dataset_file,
+                expected_marketing_version=expect_marketing_version,
+                expected_build_number=expect_build_number,
             )
+            if commit:
+                write_reviewer_evidence_bundle(
+                    manifest,
+                    bundle_dir=bundle_dir,
+                    profile_file=profile_file,
+                    dataset_file=dataset_file,
+                    project_file=project_file,
+                    promotion_manifest_file=promotion_manifest_file,
+                    render_output_dir=render_output_dir,
+                    profile_validator=load_profile,
+                    dataset_validator=validate_fixture_dataset_file,
+                )
     except EvidenceError as exc:
         raise CaptureProfileError(str(exc)) from exc
 
@@ -1123,12 +1155,15 @@ def make_parser() -> argparse.ArgumentParser:
         help="destination bundle directory (not created without --commit)",
     )
     evidence.add_argument(
-        "--project-file", default=str(IOS_PROJECT_FILE),
-        help="Xcode project.pbxproj used to read the actual marketing/build tuple",
+        "--project-file",
+        help=(
+            "Xcode project.pbxproj used to read the actual marketing/build tuple; "
+            "defaults to that file as recorded at --source-commit, never the working tree"
+        ),
     )
     evidence.add_argument(
-        "--source-commit", default="HEAD",
-        help="git commit/ref to resolve and pin in provenance (default: HEAD)",
+        "--source-commit", required=True,
+        help="git commit/ref to resolve and pin in provenance; which commit the bundle claims is the caller's assertion",
     )
     evidence.add_argument(
         "--fixed-clock", required=True,
@@ -1186,7 +1221,7 @@ def main() -> int:
                 promotion_manifest_file=_resolve_path(args.promotion_manifest),
                 render_output_dir=_resolve_path(args.render_output_dir),
                 bundle_dir=_resolve_path(args.bundle_dir),
-                project_file=_resolve_path(args.project_file),
+                project_file=_resolve_path(args.project_file) if args.project_file else None,
                 source_commit=args.source_commit,
                 fixed_clock=args.fixed_clock,
                 locale=args.locale,

@@ -448,7 +448,12 @@ def test_bundle_reruns_full_semantic_validators_on_staged_inputs(tmp_path: Path)
     assert staged_paths["dataset"].parent.name == "inputs"
 
 
-def test_capture_profile_reviewer_evidence_dry_run_writes_nothing(tmp_path: Path):
+def _reviewer_evidence_cli_world(tmp_path: Path) -> dict[str, Path | str]:
+    """Everything `capture_profile.py reviewer-evidence` needs except the project file.
+
+    Shared by the two CLI tests so that the one which omits ``--project-file``
+    differs from the one that passes it in exactly that argument.
+    """
     profile = ROOT / "ops" / "capture_profiles" / "marketing_demo.json"
     dataset = ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
     project = tmp_path / "project.pbxproj"
@@ -495,38 +500,59 @@ def test_capture_profile_reviewer_evidence_dry_run_writes_nothing(tmp_path: Path
     source_commit = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True
     ).stdout.strip()
+    return {
+        "profile": profile,
+        "dataset": dataset,
+        "project": project,
+        "outputs": outputs,
+        "bundle": bundle,
+        "promotion_manifest": promotion_manifest,
+        "source_commit": source_commit,
+    }
 
-    result = subprocess.run(
+
+def _run_reviewer_evidence_cli(world: dict, *extra: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
         [
             sys.executable,
             str(ROOT / "ops" / "capture_profile.py"),
             "reviewer-evidence",
-            str(profile),
+            str(world["profile"]),
             "--dataset-file",
-            str(dataset),
+            str(world["dataset"]),
             "--render-output-dir",
-            str(outputs),
+            str(world["outputs"]),
             "--promotion-manifest",
-            str(promotion_manifest),
+            str(world["promotion_manifest"]),
             "--bundle-dir",
-            str(bundle),
-            "--project-file",
-            str(project),
+            str(world["bundle"]),
             "--source-commit",
-            source_commit,
+            str(world["source_commit"]),
             "--fixed-clock",
             "2026-07-13T09:30:00+08:00",
             "--locale",
             "zh-Hant",
-            "--expect-marketing-version",
-            "2.0.0",
-            "--expect-build-number",
-            "6",
+            *extra,
         ],
         cwd=ROOT,
         text=True,
         capture_output=True,
         check=False,
+    )
+
+
+def test_capture_profile_reviewer_evidence_dry_run_writes_nothing(tmp_path: Path):
+    world = _reviewer_evidence_cli_world(tmp_path)
+    project, bundle = world["project"], world["bundle"]
+
+    result = _run_reviewer_evidence_cli(
+        world,
+        "--project-file",
+        str(project),
+        "--expect-marketing-version",
+        "2.0.0",
+        "--expect-build-number",
+        "6",
     )
 
     assert result.returncode == 0, result.stderr
@@ -537,6 +563,39 @@ def test_capture_profile_reviewer_evidence_dry_run_writes_nothing(tmp_path: Path
     assert payload["manifest"]["schema"] == "kg.app_review.submission.v1"
     assert payload["manifest"]["build"]["marketingVersion"] == "2.0.0"
     assert not bundle.exists()
+
+
+def test_reviewer_evidence_without_project_file_takes_the_source_commit_blob(tmp_path: Path):
+    """The CLI default is the pinned commit's pbxproj, not whatever is checked out.
+
+    Pinned to the *previous* commit that touched the project file, so the blob
+    and the checkout necessarily differ: against HEAD the two coincide in a clean
+    tree and the test would pass without proving anything.  The expected digest
+    comes from ``git cat-file`` here rather than from the tool's own output.
+    """
+    rel = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+    history = subprocess.run(
+        ["git", "log", "--format=%H", "-2", "--", rel],
+        cwd=ROOT, text=True, capture_output=True, check=True,
+    ).stdout.split()
+    if len(history) < 2:
+        pytest.skip("needs two commits touching the project file to tell blob from checkout")
+    pinned = history[1]
+    blob = subprocess.run(
+        ["git", "cat-file", "blob", f"{pinned}:{rel}"],
+        cwd=ROOT, capture_output=True, check=True,
+    ).stdout
+    assert blob != (ROOT / rel).read_bytes(), "positive control: pinned blob must differ from checkout"
+
+    world = _reviewer_evidence_cli_world(tmp_path) | {"source_commit": pinned}
+
+    result = _run_reviewer_evidence_cli(world)
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads(result.stdout)["manifest"]
+    assert manifest["build"]["project"]["sha256"] == hashlib.sha256(blob).hexdigest()
+    assert manifest["source"]["commit"] == pinned
+    assert not world["bundle"].exists()
 
 
 def test_reviewer_evidence_help_is_self_describing():

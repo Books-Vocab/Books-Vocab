@@ -944,6 +944,7 @@ def valid_run(tmp_path: Path, spec: dict) -> dict:
             "marketingVersion": target["marketingVersion"],
             "buildNumber": target["buildNumber"],
             "sourceCommit": target["sourceCommit"],
+            "sourceTreeDirty": False,
             "datasetID": target["datasetID"],
             "datasetSHA256": target["datasetSHA256"],
             "fixedClock": "2026-07-13T08:00:00Z",
@@ -972,6 +973,10 @@ def valid_run(tmp_path: Path, spec: dict) -> dict:
         (lambda run: run["options"].update(buildNumber="7"), "journey.buildNumber"),
         (lambda run: run["options"].update(evidenceKind="live-demo"), "journey.evidenceKind"),
         (lambda run: run["options"].update(evidenceProducer="caller"), "journey.producer"),
+        # A run built from a dirty tree is not a run of `sourceCommit`: the verdict
+        # reads that SHA from git while reading the build tuple from the checkout.
+        (lambda run: run["options"].update(sourceTreeDirty=True), "journey.sourceTreeDirty"),
+        (lambda run: run["options"].pop("sourceTreeDirty"), "journey.sourceTreeDirty"),
     ],
 )
 def test_journey_consumer_blocks_false_green_debug_and_provenance_drift(tmp_path: Path, mutation, code: str):
@@ -1018,6 +1023,33 @@ def test_demo_producer_rejects_fixture_masquerading_as_live_demo(tmp_path: Path)
     }
 
     with pytest.raises(evidence.EvidenceError, match="demo.fixtureDataUsed"):
+        evidence.produce_demo_access(spec, run, workspace_root=tmp_path)
+
+
+def test_demo_consumer_rejects_a_run_built_from_a_dirty_tree(tmp_path: Path):
+    """Same attribution defect as the journey path: a live-demo run off an
+    uncommitted tree cannot be signed as evidence for the spec's commit."""
+    spec = base_spec(tmp_path)
+    run = valid_run(tmp_path, spec)
+    run["demoEvidence"] = {
+        **run["options"],
+        "evidenceProducer": "ops/ios_test.sh:live-demo",
+        "evidenceKind": "live-demo",
+        "networkMode": "live",
+        "fixtureDataUsed": False,
+        "sourceTreeDirty": True,
+        "account": {
+            "provenance": "live-account",
+            "accountRef": "asc://review#name",
+            "accountIdentitySHA256": "d" * 64,
+            "entitlementSource": "live-backend",
+        },
+        "observedAt": "2026-07-13T09:05:00Z",
+        "login": "pass",
+        "entitlements": ["pro"],
+    }
+
+    with pytest.raises(evidence.EvidenceError, match="demo.sourceTreeDirty"):
         evidence.produce_demo_access(spec, run, workspace_root=tmp_path)
 
 

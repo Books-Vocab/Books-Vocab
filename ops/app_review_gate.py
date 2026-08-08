@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -41,6 +42,13 @@ _MD5_RE = re.compile(r"^[0-9a-f]{32}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _SAFE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _SAFE_FILE_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# The referent for `build.project` is the gate's own constant, never a path read
+# out of the manifest under audit: evidence allowed to name its own comparison
+# target can always name one it happens to match.  `build.project.path` is the
+# bundle-internal staging path (`inputs/project.pbxproj`) and says nothing about
+# where those bytes came from.
+_PROJECT_SOURCE_PATH = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+_REGULAR_FILE_MODES = {"100644", "100755"}
 _SURFACE_KINDS = {"metadata", "review-notes", "screenshot-copy", "website"}
 _JOURNEY_EVIDENCE_KINDS = {"exact-device", "release-equivalent-simulator"}
 _DEMO_EVIDENCE_KINDS = {"exact-device", "live-demo"}
@@ -120,6 +128,46 @@ def _json_sha(value: Any) -> str:
             value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
     )
+
+
+def _git_blob_sha256(
+    root: Path, commit: str, rel_path: str
+) -> tuple[str | None, str | None]:
+    """sha256 of `rel_path` exactly as recorded at `commit`, or (None, reason).
+
+    Kept self-contained rather than shared with the evidence producers on
+    purpose: this gate hashes its own source into every bundle it writes, so the
+    logic that decides whether a claim is true has to be inside the file that
+    gets hashed.  Reasons are returned instead of raised so an unresolvable
+    referent reaches the caller as a named block; "could not check" must never
+    read the same as "checked and fine".
+
+    ``git cat-file blob`` exits 0 for a symlink entry and hands back the link
+    target's bytes, so the tree entry's mode is verified before its content.
+    """
+    if not _COMMIT_RE.fullmatch(commit or ""):
+        return None, f"source.commit is not a 40-hex git commit: {commit!r}"
+
+    def run(*args: str, text: bool = True) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True, text=text, check=False
+        )
+
+    try:
+        if run("rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}").returncode != 0:
+            return None, f"source.commit is unreachable from {root}: {commit}"
+        entry = run("ls-tree", "--full-tree", commit, "--", rel_path)
+        if entry.returncode != 0 or not entry.stdout.strip():
+            return None, f"{rel_path} does not exist at {commit}"
+        mode, kind, _rest = entry.stdout.split(maxsplit=2)
+        if kind != "blob" or mode not in _REGULAR_FILE_MODES:
+            return None, f"{rel_path} at {commit} is not a regular file: mode={mode} kind={kind}"
+        blob = run("cat-file", "blob", f"{commit}:{rel_path}", text=False)
+        if blob.returncode != 0:
+            return None, f"{rel_path} cannot be read at {commit}"
+    except OSError as exc:
+        return None, f"git is unavailable: {exc}"
+    return _sha(blob.stdout), None
 
 
 def _read_json(path: Path, *, label: str) -> tuple[dict[str, Any], bytes]:
@@ -676,6 +724,7 @@ def _load_live_bundle(
 def _load_desired_bundle(
     path: Path,
     *,
+    workspace_root: Path,
     files: dict[str, bytes],
 ) -> tuple[dict[str, Any], str]:
     manifest, manifest_bytes = _read_json(path / "manifest.json", label="desired evidence")
@@ -783,6 +832,23 @@ def _load_desired_bundle(
         or not rebuild["entrypoint"]
     ):
         raise GateError("desired provenance rebuild bindings drift")
+    # Everything above is the bundle agreeing with itself, which a bundle built
+    # from the working tree does just as well as one built from the commit it
+    # names.  This is the only check that leaves the bundle to ask git what
+    # `source.commit` actually contains.
+    blob_sha, unresolved = _git_blob_sha256(
+        workspace_root, str(source.get("commit") or ""), _PROJECT_SOURCE_PATH
+    )
+    if unresolved is not None:
+        raise GateError(
+            f"desired build.project cannot be checked against source commit: {unresolved}"
+        )
+    if blob_sha != project.get("sha256"):
+        raise GateError(
+            "desired build.project sha256 does not match source commit blob: "
+            f"commit={source.get('commit')} path={_PROJECT_SOURCE_PATH} "
+            f"blob={blob_sha} manifest={project.get('sha256')}"
+        )
     desired_files: dict[str, bytes] = {}
     _map_file(desired_files, "inputs/desired/manifest.json", manifest_bytes)
     referenced = [
@@ -793,8 +859,10 @@ def _load_desired_bundle(
     ]
     expected_source_paths: set[str] = set()
     for label, rel, expected_sha in referenced:
-        source = _relative_path(path, rel, label=label)
-        payload = source.read_bytes() if source.is_file() else b""
+        # Not named `source`: that name holds the manifest's source block, which
+        # the checks above still need to mean what it says.
+        staged = _relative_path(path, rel, label=label)
+        payload = staged.read_bytes() if staged.is_file() else b""
         if not payload or not isinstance(expected_sha, str) or _sha(payload) != expected_sha:
             raise GateError(f"desired {label} hash mismatch: {rel}")
         expected_source_paths.add(rel)
@@ -808,8 +876,8 @@ def _load_desired_bundle(
             {"shotID", "sourceScenario", "appearance", "file", "byteSize", "sha256"},
             label=f"desired output {index}",
         )
-        source = _relative_path(path, item.get("file"), label=f"desired output {index}")
-        payload = source.read_bytes() if source.is_file() else b""
+        staged = _relative_path(path, item.get("file"), label=f"desired output {index}")
+        payload = staged.read_bytes() if staged.is_file() else b""
         if (
             not payload
             or len(payload) != item.get("byteSize")
@@ -980,7 +1048,9 @@ def evaluate_gate(
     desired_hash: str | None = None
     try:
         desired_path = _relative_path(root, spec["artifacts"]["desiredBundle"], label="desiredBundle")
-        desired, desired_hash = _load_desired_bundle(desired_path, files=files)
+        desired, desired_hash = _load_desired_bundle(
+            desired_path, workspace_root=root, files=files
+        )
     except (GateError, OSError) as exc:
         _block(blocks, "desired.invalid", "valid desired bundle", str(exc))
     if desired:

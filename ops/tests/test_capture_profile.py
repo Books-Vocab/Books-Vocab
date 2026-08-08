@@ -467,3 +467,90 @@ def test_resolve_marketing_demo_slash_and_middot_scenes():
     ]
     resolved = resolve_shot_artifacts(profile, {"artifacts": {"paths": paths}})
     assert len(resolved) == 4  # 4 shots 全匹配（含 · 的 Bookshelf 與含 / 的 Welcome）
+
+
+# ── reviewer-evidence: the claim "these bytes are commit X" must be minted, not inherited ──
+
+CAPTURE_PROFILE = ROOT / "ops" / "capture_profile.py"
+PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+
+
+def _reviewer_evidence_cli(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(CAPTURE_PROFILE), "reviewer-evidence", *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def test_reviewer_evidence_requires_an_explicit_source_commit():
+    """`--source-commit HEAD` by default let a bundle inherit whatever was checked out.
+
+    Which commit a bundle claims to describe is the caller's assertion; a tool
+    that supplies it for them mints an assertion nobody made.
+    """
+    result = _reviewer_evidence_cli(str(MARKETING_ACCOUNT))
+
+    # Not `"--source-commit" in stderr`: argparse prints the whole usage line
+    # there, so that assertion is satisfied by the flag merely existing.  Only
+    # the "are required" line distinguishes required from optional.
+    required = [line for line in result.stderr.splitlines() if "are required" in line]
+    assert result.returncode == 2
+    assert required, result.stderr
+    assert "--source-commit" in required[0]
+
+
+def test_reviewer_evidence_help_does_not_offer_a_working_tree_default():
+    result = _reviewer_evidence_cli("--help")
+
+    assert result.returncode == 0
+    assert "default: HEAD" not in result.stdout
+    assert str(ROOT / PROJECT_FILE_REL) not in result.stdout
+
+
+def test_reviewer_evidence_project_file_defaults_to_the_source_commit_blob(tmp_path: Path):
+    """Omitting --project-file resolves the pbxproj from the pinned commit, not the checkout."""
+    head = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+        text=True, capture_output=True, check=True,
+    ).stdout.strip()
+    blob = subprocess.run(
+        ["git", "-C", str(ROOT), "cat-file", "blob", f"{head}:{PROJECT_FILE_REL}"],
+        capture_output=True, check=True,
+    ).stdout
+
+    resolved = MODULE.resolve_project_file(None, head, tmp_path / "project.pbxproj")
+
+    assert resolved.read_bytes() == blob
+    assert resolved.resolve() != (ROOT / PROJECT_FILE_REL).resolve()
+
+
+def test_reviewer_evidence_project_file_stays_caller_supplied_when_given(tmp_path: Path):
+    """The explicit path is still honoured — the gate, not this tool, is the last word."""
+    supplied = tmp_path / "explicit.pbxproj"
+    supplied.write_bytes(b"MARKETING_VERSION = 9.9.9;\n")
+
+    resolved = MODULE.resolve_project_file(supplied, "0" * 40, tmp_path / "unused.pbxproj")
+
+    assert resolved == supplied
+    assert not (tmp_path / "unused.pbxproj").exists()
+
+
+def test_reviewer_evidence_parser_leaves_project_file_unset():
+    """Pins the CLI default itself: argparse never prints defaults, so the help
+    assertion above cannot tell a removed default from a silent one."""
+    args = MODULE.make_parser().parse_args([
+        "reviewer-evidence", "profile.json",
+        "--dataset-file", "d.json",
+        "--render-output-dir", "out",
+        "--promotion-manifest", "m.json",
+        "--bundle-dir", "bundle",
+        "--source-commit", "0" * 40,
+        "--fixed-clock", "2026-07-13T09:30:00+08:00",
+        "--locale", "zh-Hant",
+    ])
+
+    assert args.project_file is None
+    assert args.source_commit == "0" * 40
