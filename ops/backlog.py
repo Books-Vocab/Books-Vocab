@@ -127,6 +127,34 @@ REQUIRED_FIELDS = (
     "resolution",
 )
 
+# The two fields written for a HUMAN, and the only two in this schema whose
+# reader is not an agent.
+#
+#   brief -> one sentence, plain language: what is broken / missing, and who
+#            feels it. Not how to fix it, and no filenames, line numbers or
+#            acronyms — those are `detail`'s job and they are what makes `detail`
+#            unreadable to the person doing the sorting.
+#   scope -> one sentence of SIZE, so a cost can be estimated without opening
+#            anything: what gets touched and roughly how much.
+#
+# Why they cannot be derived from what already exists: the phone board renders
+# the first 400 characters of `detail`, which is technical prose addressed to
+# whoever will execute the entry. The three actions that surface offers — pin,
+# reorder, defer — each need "is this worth doing first", and none of them need
+# "which line changes". With 122 unresolved entries the board's write surface
+# existed and was functionally inert.
+#
+# And `fix_site` cannot double as either: it is a CODE ANCHOR
+# (`ops/docs_lint.sh:180`) for the executor. Different reader, different register,
+# different precision. A field serving two readers serves the louder one.
+BRIEF_FIELDS = ("brief", "scope")
+
+# Grooming stamped on or after this date must carry both. Everything groomed
+# before it stays legal — see _check_groom() for why the ratchet is keyed on the
+# date and not on a list of ids, and why this date is NOT "the day the rule
+# landed".
+BRIEF_REQUIRED_SINCE = "2026-08-09"
+
 # Fields that only make sense for an app-usage report. An IMP entry carrying a
 # `surface` means someone filed an app problem into the tooling stream.
 APP_ONLY_FIELDS = ("surface", "repro", "build")
@@ -605,8 +633,79 @@ def _check_groom(payload: dict) -> list[dict]:
         # question: one says a machine settles this, the other says nothing can.
         problems.append({"kind": "groom-claim-with-conflicting-acceptance-proof",
                          "present": proofs})
+
+    # Grooming now means "worked out AND explained". The badge already required
+    # the work (GROOM_REQUIRES); these require it to be sayable to the person who
+    # decides whether it happens first, and that is a genuinely different artifact
+    # — `plan` is addressed to a small model, `brief` to someone holding a phone.
+    #
+    # NOT added to GROOM_REQUIRES, deliberately: that list has no grandfather
+    # clause, so all 133 already-groomed entries lacking them would go red the
+    # moment this landed, and a rule that reds the store on arrival is a rule
+    # people route around rather than satisfy.
+    #
+    # Ratcheted by DATE for the reason ACCEPTANCE_PROOF_SINCE gives — `groomed_at`
+    # is stamped at groom time, so re-grooming an old entry writes today's date and
+    # the rule binds it with no list to maintain, whereas an id whitelist would
+    # forgive that entry forever.
+    #
+    # BRIEF_REQUIRED_SINCE is deliberately NOT the day this landed, and that is a
+    # measurement rather than a preference: the 2026-08-08 grooming wave had
+    # already stamped 96 entries by the time this rule was written, so `>= today`
+    # would have turned 95 of them red (all but this ticket, whose prose this
+    # very commit writes) and taken `validate` — this feature's own
+    # acceptance command — down with them. The rule therefore starts one day ahead
+    # of the newest stamp in the store. The cost is one day in which grooming can
+    # still be filed without plain language; the alternative was exempting that
+    # wave by id, which is the whitelist this design exists to avoid.
+    # `test_the_cutoff_forgives_every_groom_stamp_already_in_the_shipped_store`
+    # asserts the relationship instead of trusting this paragraph.
+    #
+    # The debt this leaves is not invisible: `list --missing-brief` counts it.
+    if _DATE_RE.match(groomed_at) and groomed_at >= BRIEF_REQUIRED_SINCE:
+        for field in BRIEF_FIELDS:
+            if not str(payload.get(field, "")).strip():
+                problems.append({"kind": f"groom-claim-without-{field}",
+                                 "field": field, "since": BRIEF_REQUIRED_SINCE})
+
     problems.extend(_check_acceptance_cmd(payload))
     return problems
+
+
+def _check_groom_write(changes: dict, updated: dict) -> list[dict]:
+    """Plain language is required whenever the badge is STAMPED, date irrelevant.
+
+    The date ratchet in `_check_groom` grandfathers DATA — 133 entries carry a
+    groom stamp and no plain language, and reddening them would make the rule the
+    thing to route around. But it cannot grandfather ACTS: `BRIEF_REQUIRED_SINCE` had to be
+    set past the newest stamp in the store, which left a window where grooming
+    could still be stamped with no `brief` at all, and `--groomed-at <old date>`
+    would extend that window indefinitely.
+
+    So the two questions are separated by WHERE they are asked. `validate` judges
+    stored data and forgives what predates the rule; this runs at the moment
+    someone claims or refreshes the badge, which is happening now and is held to
+    today's standard.
+
+    Keyed on the CHANGE SET, not on the merged entry, and that is the whole
+    correctness argument: 133 stored entries are groomed and have no plain
+    language, so a gate reading `updated` alone would freeze every edit to them —
+    `--status`, `--resolution`, `verify`, `anchor` — none of which are grooming.
+    Only stamping the badge trips this.
+    """
+    # `is not None`, matching the merge loop three lines above in
+    # `_merged_and_validated` rather than testing key presence. They disagreed:
+    # `update_entry(id, severity="high", groomed_at=None)` is skipped by the merge
+    # and writes no groom stamp, but presence-keying still refused it. Unreachable
+    # from the CLI today (`_cmd_update` filters None first) — and "two callers
+    # disagreed about what counts as a change" is the exact defect the enclosing
+    # function's docstring exists to record.
+    if not any(changes.get(field) is not None
+               for field in ("groomed_at", "groomed_by")):
+        return []
+    return [{"kind": f"groom-claim-without-{field}", "field": field, "at": "write"}
+            for field in BRIEF_FIELDS
+            if not str(updated.get(field, "")).strip()]
 
 
 def _check_acceptance_cmd(payload: dict) -> list[dict]:
@@ -794,6 +893,8 @@ def add_entry(
     status: str,
     detail: str,
     resolution: str = "",
+    brief: str | None = None,
+    scope: str | None = None,
     surface: str | None = None,
     repro: str | None = None,
     build: str | None = None,
@@ -836,7 +937,12 @@ def add_entry(
         "detail": detail,
         "resolution": resolution,
     }
-    for field, value in (("surface", surface), ("repro", repro), ("build", build)):
+    for field, value in (("brief", brief), ("scope", scope),
+                         ("surface", surface), ("repro", repro), ("build", build)):
+        # Truthiness, not `is not None`: an empty string is the absence this
+        # schema already represents by omission, and writing `"brief": ""` would
+        # make `list --missing-brief` report the same entry as both present and
+        # empty depending on which test it used.
         if value:
             payload[field] = value
     for field, value in (verdict_fields or {}).items():
@@ -903,11 +1009,25 @@ def add_entry(
 # mutate this one.
 MUTABLE_FIELDS = (
     ("status", "severity", "resolution", "category")
+    + BRIEF_FIELDS
     + APP_ONLY_FIELDS
     + VERDICT_FIELDS
     + GROOM_FIELDS
     + TRACE_FIELDS
 )
+
+
+def _splice_before(fields: tuple[str, ...], anchor: str,
+                   extra: tuple[str, ...]) -> tuple[str, ...]:
+    """Insert `extra` immediately before `anchor`, or die loudly at import.
+
+    `.index` rather than a second hand-written ordering: if `detail` is ever
+    renamed, this raises while the module loads instead of silently appending the
+    human-facing fields to the end, where the whole point of them — being read
+    BEFORE the 400 characters of prose they summarise — is quietly lost.
+    """
+    i = fields.index(anchor)
+    return fields[:i] + extra + fields[i:]
 
 # What `show` prints, in order. A named constant rather than the same four groups
 # concatenated a second time inside `_cmd_show`, because that hand-copy is exactly
@@ -916,8 +1036,13 @@ MUTABLE_FIELDS = (
 # schema, never a curated subset, and
 # `test_show_can_print_every_field_update_can_write` asserts it instead of trusting
 # this sentence.
+#
+# `brief` / `scope` are spliced in AHEAD of `detail` rather than appended: they
+# are the one-line answers, and printing them below the prose they summarise puts
+# them where the reader who needs them has already stopped reading.
 SHOW_FIELD_ORDER = (
-    REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + TRACE_FIELDS
+    _splice_before(REQUIRED_FIELDS, "detail", BRIEF_FIELDS)
+    + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + TRACE_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -954,6 +1079,9 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 FILE_TWIN_FIELDS = (
     "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
     "acceptance_manual", "repro", "evidence", "fix_site",
+    # Written by a human in prose, in Chinese, and quoting the thing that is
+    # broken — which is exactly the text most likely to carry a backtick.
+    *BRIEF_FIELDS,
 )
 
 # Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
@@ -986,6 +1114,25 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
     problems = validate_entry(updated, entry_id=entry_id,
                               commit_state=make_commit_state(),
                               check_traceability=check_traceability)
+    problems.extend(_check_groom_write(changes, updated))
+    # Two gates ask the same question of a groom stamp from different angles, so
+    # once the date binds BOTH fire and the caller sees each missing field twice.
+    # Four problems for two defects reads as a bigger mess than it is, and the
+    # duplicate is not even distinguishable at a glance (only the `since`/`at`
+    # key differs).
+    #
+    # Keyed on the DISCRIMINATORS, not on `kind` alone. `kind` alone is wrong and
+    # measurably so: three kinds are emitted once per item — `app-field-on-imp-entry`
+    # and `missing-field` per field, and the `fixed-by-*` family per sha (`--fixed-by`
+    # is nargs="+") — so collapsing by kind made the tool report the first item,
+    # get it fixed, and refuse again with the next. Dripping defects one at a time
+    # is the failure this function's own "name the repair" comment is about, and
+    # the two problems that ARE duplicates share kind AND field, differing only in
+    # `since`/`at`, so they still collapse.
+    seen: set = set()
+    problems = [p for p in problems
+                if not ((key := (p["kind"], p.get("field"), p.get("sha"))) in seen
+                        or seen.add(key))]
     if problems:
         # Name the repair, not just the defect. An orphaned `fixed_by` blocks
         # every unrelated edit to that entry — `update <id> --severity high`
@@ -1005,6 +1152,29 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
             hints.append(
                 f"  closing it -> ops/backlog.py update {entry_id} --status fixed "
                 f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)"
+            )
+        # These two are the ONLY kinds whose repair is fully determined, so they
+        # are the last ones that should arrive as a bare defect name. Written as
+        # the flags to add rather than "write a brief", because the thing the
+        # caller has to produce is prose and the hint has to say what it is FOR.
+        missing_prose = [p["field"] for p in problems
+                         if p["kind"] in {f"groom-claim-without-{f}" for f in BRIEF_FIELDS}]
+        if missing_prose:
+            # Phrased as flags to ADD to the command you just ran, deliberately NOT
+            # as a standalone runnable line. The neighbouring hints can be pasted
+            # verbatim and will FAIL (`<sha>` cannot pass _SHA_RE), which is what
+            # makes them safe to write that way. These two cannot: the fields take
+            # free prose, so a pasted `--brief '<…>'` SUCCEEDS and stores the
+            # placeholder — the caller walks away believing the entry is groomed.
+            # That is precisely the "it believes it followed the tool" failure this
+            # change was filed against, and it would have been reintroduced by the
+            # hint that fixes it.
+            hints.append(
+                "  add to the command you just ran: "
+                + " ".join(f"--{f} '<一句話>'" for f in missing_prose) + "\n"
+                f"  brief = 白話「壞了什麼、誰有感」(禁檔名/行號/縮寫); "
+                f"scope = 體積感讓人估得出代價。兩句都寫給在看板上排序的人,"
+                f"不是寫給接手的 agent"
             )
         raise ValueError("invalid update: " + repr(problems)
                          + ("\n" + "\n".join(hints) if hints else ""))
@@ -1073,10 +1243,20 @@ def list_entries(
     groomed: bool = False,
     ungroomed: bool = False,
     acceptance_manual: bool = False,
+    missing_brief: bool = False,
     grep: str | None = None,
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
+    if missing_brief and status in ("fixed", "wont-fix"):
+        # Empty by construction, and an empty result here reads as "no such debt"
+        # — while 96 closed entries carry no brief today. Same treatment, and the
+        # same reason, as the two pairs above and `--unverified`/`--stale`.
+        raise BacklogError(
+            f"--missing-brief already means UNRESOLVED, so --status {status} is "
+            f"empty by construction (a closed entry never reaches the board). "
+            f"Drop one: `--missing-brief` for the backfill queue, or "
+            f"`--status {status}` on its own to look at closed entries.")
 
     wanted = {
         "status": status,
@@ -1100,6 +1280,20 @@ def list_entries(
         # this" is a COUNT somebody can look at, not an absence nobody notices —
         # which is what `acceptance` itself had been for its whole life.
         hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
+    if missing_brief:
+        # The BACKFILL queue, not a dispatch queue — the difference matters enough
+        # to be in `--help` too. These entries are not unworked; most of them carry
+        # a full plan. What they lack is the sentence the board renders, so this is
+        # a writing job over existing entries, and handing one out as if it were a
+        # fix would produce a worktree with nothing to change.
+        #
+        # Restricted to UNRESOLVED entries, which is what makes the number honest:
+        # a closed entry never appears on the board, so counting it would inflate
+        # the debt with work that can have no effect. Same predicate `view_counts`
+        # uses for "unresolved", so the two numbers cannot disagree.
+        hits = [p for p in hits
+                if p.get("status") not in ("fixed", "wont-fix")
+                and any(not str(p.get(f) or "").strip() for f in BRIEF_FIELDS)]
     if grep:
         # LAST in the chain, and a filter rather than a subcommand of its own:
         # the question is never "does this text appear in the store", it is
@@ -1766,6 +1960,14 @@ receipt 裡的 tooling debt 會隨 transcript 蒸發。本 ledger 讓每個 rais
   這條標準是散文、無法機器驗，但它的**前提可以**：宣告 `groomed_by` 就必須同時有
   `plan`、`acceptance`、`fix_site`，否則 `validate` 直接紅。
   查未梳理的佇列用 `ops/backlog.py list --ungroomed`
+- **`brief` / `scope`（寫給人看的兩欄）**：`brief` = 一句白話「壞了什麼、誰有感」，
+  `scope` = 一句體積感讓人估得出代價，兩者都**不寫檔名行號**（那是 `detail` 與
+  `fix_site` 的工作）。存在理由：手機看板每張卡片渲染的是 `detail` 前 400 字的技術
+  散文，而看板只有釘選／排序／延後三個動作，每個都要在幾秒內答「值不值得先做」。
+  **蓋或更新 groom 戳記時當場就要求這兩欄**（`_check_groom_write`，與日期無關）；
+  `validate` 對**既有資料**則以 `BRIEF_REQUIRED_SINCE` 為界 grandfather，因為規則
+  落地時 store 內已有 133 筆蓋好戳記卻沒有這兩欄的 entry。缺這兩欄的未結案 entry 用
+  `ops/backlog.py list --missing-brief` 數（**回填佇列，不是 dispatch 佇列**）
 - **`acceptance` 不再是唯寫欄位**（IMP-20260808-9f3838）。它曾經只被檢查「非空」，
   此後沒有任何一行程式再讀它——那正是本檔註解警告過兩次的「沒人讀的理由欄位」，
   只是這次發生在守衛自己身上。2026-08-08 起，宣告梳理必須**恰好**帶其中一個：
@@ -1966,6 +2168,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_add.add_argument("--status", choices=STATUSES, default="open")
     p_add.add_argument("--detail", required=True)
     p_add.add_argument("--resolution", default="")
+    # Offered on `add` as well as `update`, unlike the groom flags next to them.
+    # Grooming is a separate act because a badge you can self-apply while filing
+    # costs nothing; saying in one plain sentence what you just noticed costs the
+    # filer nothing to be honest about and is the only text the board can show.
+    # From BRIEF_REQUIRED_SINCE a groom stamp needs both anyway, so making the
+    # filer wait for a second command would only delay the writing, not improve it.
+    p_add.add_argument(
+        "--brief",
+        help="ONE plain sentence for a human deciding what to work on next: what "
+             "is broken or missing and who feels it. No filenames, line numbers or "
+             "acronyms — that is --detail's job. REQUIRED whenever a groom badge "
+             "is stamped, at ANY date (`update --groomed-by ...` is refused "
+             f"without it); `validate` additionally holds stored grooming dated "
+             f"{BRIEF_REQUIRED_SINCE} or later",
+    )
+    p_add.add_argument(
+        "--scope",
+        help="ONE plain sentence of SIZE, so the cost can be judged without opening "
+             "anything (\"one script and its test\"). NOT --fix-site: that is a code "
+             "anchor for whoever executes this",
+    )
     p_add.add_argument("--surface", help="APP only: reader/vocabulary/notebook/...")
     p_add.add_argument("--repro", help="APP only: how to reproduce")
     p_add.add_argument("--build", help="APP only: build the problem was seen on")
@@ -2011,6 +2234,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--acceptance-manual", dest="acceptance_manual", action="store_true",
         help="only entries that DECLARE no command can prove their acceptance — the "
              "set `anchor` cannot machine-check, kept countable on purpose"
+    )
+    p_list.add_argument(
+        "--missing-brief", dest="missing_brief", action="store_true",
+        help="the BACKFILL queue: unresolved entries with no --brief or no --scope, "
+             "i.e. the ones the phone board can only show 400 characters of agent "
+             "prose for. NOT a dispatch queue — most of these already carry a full "
+             "plan and what they need written is a sentence, not a fix. Closed "
+             "entries are excluded because they never reach the board",
     )
     p_list.add_argument(
         "--unverified", action="store_true",
@@ -2145,6 +2376,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--severity", choices=SEVERITIES)
     p_update.add_argument("--category")
     p_update.add_argument("--resolution")
+    p_update.add_argument(
+        "--brief",
+        help="ONE plain sentence for a human deciding what to work on next: what is "
+             "broken or missing and who feels it. No filenames, line numbers or "
+             "acronyms. REQUIRED whenever this call stamps or refreshes a groom "
+             "badge, at ANY date — `--groomed-at 2026-01-01` does not get you out "
+             f"of it; `validate` additionally holds stored grooming dated "
+             f"{BRIEF_REQUIRED_SINCE} or later",
+    )
+    p_update.add_argument(
+        "--scope",
+        help="ONE plain sentence of SIZE, so the cost can be judged without opening "
+             "anything. NOT --fix-site: that is a code anchor for the executor. "
+             "Same requirement as --brief: any call that stamps a groom badge needs both",
+    )
     p_update.add_argument(
         "--detail",
         help="REFUSED: a digest input. Corrections go in --resolution; a reworded "
@@ -2387,6 +2633,8 @@ def _cmd_add(args) -> int:
         status=args.status,
         detail=args.detail,
         resolution=args.resolution,
+        brief=args.brief,
+        scope=args.scope,
         surface=args.surface,
         repro=args.repro,
         build=args.build,
@@ -3016,6 +3264,7 @@ def _cmd_list(args) -> int:
         groomed=args.groomed,
         ungroomed=args.ungroomed,
         acceptance_manual=args.acceptance_manual,
+        missing_brief=getattr(args, "missing_brief", False),
         grep=getattr(args, "grep", None),
     )
     # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
