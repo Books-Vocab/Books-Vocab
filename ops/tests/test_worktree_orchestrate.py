@@ -5134,6 +5134,47 @@ def test_claiming_an_ungroomed_ticket_is_refused_and_names_the_repair(tmp_path):
             f"produces a command `backlog.py update` will refuse:\n  {command}")
 
 
+def test_the_ungroomed_refusal_also_offers_a_ticket_that_needs_no_grooming(tmp_path):
+    """Two different needs, so two exits — and the second one used to be missing.
+
+    Everything else in this refusal answers "I need THIS ticket" by handing back a
+    grooming chore. But the usual way to arrive here is picking an id off a list that
+    does not distinguish claimable from not, and that caller wanted A ticket, not
+    this one. Until the second exit was named, the only way to find it was to already
+    know the command exists — which is the definition of a hint that is not one."""
+    store = _ticket(tmp_path, "IMP-20260808-999999")     # no groom fields at all
+    repair = MODULE._unclaimable(store, ["IMP-20260808-999999"])[0]["repair"]
+    # The COMMAND, not the bare word: "dispatch" appears in ordinary prose about
+    # handing out work, so a substring test on the word alone would be satisfied by
+    # a sentence that names no way to run anything.
+    assert "backlog.py dispatch" in repair, repair
+    # …and it has to say what that command is FOR, or it reads as a third grooming
+    # step rather than the way out of grooming.
+    assert re.search(r"unclaimed|claimable|take right now", repair), repair
+    # It must not have DISPLACED the grooming route: that is still the right answer
+    # for the caller who really did need this particular ticket.
+    assert "backlog.py update" in repair and "--allow-ungroomed" in repair, repair
+
+
+def test_the_claim_gate_only_names_backlog_py_and_never_runs_it():
+    """`_unclaimable` runs on the claim path, BEFORE any worktree exists, and the
+    bootstrap case requires the orchestrator to work when the rest of the toolchain
+    does not (its own docstring says so, and that is why it parses the store's JSON
+    by hand rather than shelling out to `backlog.py list --json`).
+
+    The repair hints name `backlog.py` subcommands, which makes "just call it" a
+    standing temptation — and a subcommand named in a hint may not even exist on the
+    branch being run, so calling one would turn a refusal into a crash. Naming is
+    free; invoking is a dependency."""
+    import inspect
+    src = inspect.getsource(MODULE._unclaimable)
+    for forbidden in ("subprocess", "run_streamed_command", "_tool_mutation",
+                      "_git_mutation", "import backlog"):
+        assert forbidden not in src, (
+            f"_unclaimable now reaches for {forbidden!r} — it must only READ the "
+            f"store's JSON; the hints name other tools, they do not run them")
+
+
 def test_claiming_an_already_resolved_ticket_is_refused(tmp_path):
     """Work that is already done is the other way to waste an agent, and it reads
     exactly like a fresh ticket from the id alone."""
@@ -5648,3 +5689,87 @@ def test_integrate_is_wired_into_the_parser():
     ns = p.parse_args(["integrate", "--slug", "b", "--branches", "x", "y"])
     assert ns.func is MODULE.cmd_integrate
     assert ns.branches == ["x", "y"] and ns.commit is False
+
+
+# --- the false-green shapes: three ways `integrate` could hand cutover a verdict
+#     it should never have produced (adversarial pass over a396e45ff) --------------
+@gitmark
+def test_integrate_refuses_to_gate_a_batch_its_own_books_do_not_add_up(scratch):
+    """The failure this guard exists for is invisible without it: a batch that lost
+    a branch's work gates GREEN, and green is exactly what `cutover` is waiting for.
+
+    It judges nothing about the code — every commit leaves the queue into exactly one
+    of `picked`/`skipped`, so the sum is an invariant of this tool's own bookkeeping.
+    Same family as cutover's `gated_sha == rebased_sha`."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _conflicting_pair(repo)
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    wt = stopped["worktree"]
+
+    spath = MODULE._integrate_state_path(state, "batch")
+    st = json.loads(spath.read_text())
+    assert st["planned_total"] == 3, st
+    st["queue"] = []                       # the queue empties without the work landing
+    st.pop("stopped", None)
+    spath.write_text(json.dumps(st))
+    _git(["cherry-pick", "--abort"], wt)   # so nothing else refuses first
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["planned_total"] == 3 and pay["accounted"] == 1, pay
+    assert not MODULE._gate_record_path(state, wt).exists(), (
+        "a verdict was recorded for a short batch — cutover would land it on green")
+
+
+@gitmark
+def test_integrate_surfaces_the_gates_own_refusal_rather_than_a_null_verdict(
+        scratch, monkeypatch):
+    """`gate` has exits that REFUSE instead of judging (mid-operation tree, wrong
+    orchestrator, base moved); those payloads carry `error` and no `verdict` at all.
+    Reporting that as "verdict: None — fix the blocking gate(s)" hands the reader
+    advice for a different problem while the real cause sits unread in gate's own
+    payload."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+
+    def refusing_gate(args):                # the SHAPE cmd_gate really emits
+        print(json.dumps({"schema": MODULE.GATE_SCHEMA, "step": "gate",
+                          "error": "a rebase is in progress in this worktree"}))
+        return MODULE.EXIT_BLOCK
+    monkeypatch.setattr(MODULE, "cmd_gate", refusing_gate)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["mode"] == "refused", pay
+    assert "a rebase is in progress" in pay["error"], pay
+
+
+@gitmark
+def test_integrate_continue_refuses_when_the_worktree_is_on_another_branch(scratch):
+    """Everything after this point — the picks, the verdict, the sha cutover lands —
+    is about whatever branch is actually checked out, not the one the state file
+    names."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _conflicting_pair(repo)
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    wt = stopped["worktree"]
+    _git(["cherry-pick", "--abort"], wt)
+    _git(["checkout", "-q", "-b", "sidetrack"], wt)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["actual_branch"] == "sidetrack", pay
+    assert pay["expected_branch"] == stopped["branch"], pay
+    assert not MODULE._gate_record_path(state, wt).exists()
