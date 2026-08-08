@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "營運憲法把 `dispatch` 當成取工作的唯一入口，但 `ops/backlog.py` 沒有這個子指令。CLAUDE.md:37「任何 session 從 `dispatch`(已梳理、未延後、未被認領的票)取一張」、CLAUDE.md:44「未梳理的票留在板上但不進 `dispatch`」、CLAUDE.md:75 自我提升迴圈「→ 梳理 → 進 `dispatch` → 被取走」——三處把它寫成名詞化的既有機制。實測 2026-08-08 於 HEAD 4e2d680ba：`./ops/backlog.py dispatch --json` → `invalid choice: 'dispatch' (choose from add, list, stage, unstage, anchor, verify, show, validate, update, reanchor, import, render)` rc=2。這是本次 dogfood 第一批要取 10 張票時打的**第一個指令**。\n\n工具自己知道這個佇列該存在卻不提供：`list --ungroomed` 的 help 明寫「A dispatch queue built from this flag alone will hand out ids another agent already holds」——它警告你別自己組，卻沒給你組好的。實際要組出 dispatch 集合，我得寫一段 python 對 `list --groomed --json` 做 `status in (open,triaged) and not held` 的過濾；每個新 session 都得重寫一次這段，而且每次都可能寫錯（漏 held 就會發出別人已認領的 id，漏 groomed 就會發出沒有修法的票）。\n\n`--held` 存在（由認領帳本推導）但沒有補集旗標，所以連「用既有旗標湊」都湊不出來：`--held` 只能拿到「已被認領的」，拿不到「未被認領的」。\n\n後果不是不方便，是**規範指向一個不存在的東西**。板子模型的第一句話是「認領即工作，不必被任命」，而它預設你能先看到可取的清單。看不到清單時，session 的實際行為會退化成「翻 list 全表自己挑」，那正是 groomed/held 兩個守衛想擋掉的失誤形狀。",
   "fix_site": "ops/backlog.py:list_entries + build_parser（--dispatch 與 dispatch 子指令共用一份實作）",
+  "fixed_by": [
+    "3cd2508b2"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-573a09",
   "plan": "把憲法名詞化的 `dispatch` 變成真的入口。\n\n**定義（三個 clause，與 CLAUDE.md:37 一字對齊）**：已梳理（`groomed_by` 非空；`validate` 已保證它蘊含 plan/acceptance/fix_site）∧ 未解（`status ∉ {fixed, wont-fix}`）∧ 未被認領（不在 `held_tickets()` 裡）。\n\n**實作**\n1. `list_entries()` 加 keyword-only `dispatch: bool = False`，插在既有過濾鏈**最後**（與 `--grep` 同一位置語意），命中即三 clause 交集。\n2. `p_list` 加 `--dispatch`，help 要寫明三個 clause 與**它看不見什麼**。\n3. 另註冊一個 `dispatch` 子指令，共用同一份實作與同一組過濾旗標（`--stream` / `--severity` / `--category` / `--grep` 都要能疊）。它存在的理由是**憲法用這個名詞**，而 agent 讀完 CLAUDE.md 會直接打它——2026-08-08 的第一批 dogfood 就是這樣撞上 `invalid choice`。兩個入口一份實作，不是兩份邏輯。\n4. 預設排序：severity（high→low）再 date（舊→新）。\n\n**必須誠實說出口的兩件事**（印在人讀輸出的結尾，`--json` 放進 meta）\n- `held` 是**這台機器**的工作樹推導出來的。另一台機器的認領看不見（帳本 per-machine 且 gitignored），所以跨機並行時這個清單是**樂觀的**。\n- `snooze` 住在看板的 overlay（`~/kg-board-state/overlay.json`，刻意不在 repo 也不在 `~/butler`），本指令**看不到**。若日後要納入，走可選的 `--overlay PATH` 而不是硬編路徑；沒有就明說「未套用延後」。\n\n**測試**：三 clause 各自的負控（未梳理不出現、已結案不出現、被認領不出現）＋ 可與既有旗標疊加取交集 ＋ `dispatch` 子指令與 `list --dispatch` 對同一 store 回傳**完全相同**的 id 集合（釘住「兩個入口一份實作」）＋ 輸出含 held/snooze 兩句 scope 警語。",
-  "resolution": "",
+  "resolution": "已修（3cd2508b2）：`list --dispatch` 與 `dispatch` 子指令**兩個入口一份實作**（共用 `_add_list_filters` 與同一個 handler object，不是包裝層；旗標集合差集恰為 `--dispatch`，由測試釘住）。三個 clause：已梳理 ∧ 未解 ∧ 未被認領；排序 severity 遞減再 date 遞增；`held` 在 `_cmd_list` 讀一次後注入過濾器，所以欄位與佇列不可能各說各話。\n\n子指令存在的理由是 CLAUDE.md 把 `dispatch` 名詞化——2026-08-08 dogfood 第一批要取十張票時，打的第一個指令就是 `backlog.py dispatch --json`，回 `invalid choice`。\n\n它會說出自己看不見什麼（人讀兩行、`--json` 放進 meta）：`held` 由**本機** gitignored 登記簿推導，跨機時這份清單是樂觀的；`snooze` 住在看板 overlay（刻意在 repo 外）故未套用。`--dispatch` 與 `--ungroomed` / `--held` / `--status fixed|wont-fix` 一律具名拒絕 exit 64——四者與三個 clause 的交集都是空集，而空的 dispatch 佇列讀起來正是「沒有工作可取」，是本工具最危險的誤讀。\n\n整合樹上實跑：`dispatch` rc=0，回 83 張可派工。",
   "schema": "kg.backlog.entry.v1",
   "scope": "在待辦工具裡新增一個「現在可領取」清單指令，連同它的測試；另有三處說明文字要跟著改。（尚未梳理，體積是估的）",
   "severity": "high",
   "source": "dogfood batch 1：取票時打的第一個指令就不存在",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0；整合樹上另實跑 backlog.py dispatch --json rc=0 回 83 張，且兩個入口（list --dispatch 與 dispatch 子指令）對同一 store 回相同 id 集合"
 }

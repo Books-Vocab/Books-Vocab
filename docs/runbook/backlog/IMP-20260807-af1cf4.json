@@ -8,13 +8,15 @@
   "fix_site": "ops/gen_ios_baseline.sh / docs/registry.yml `generated.ios_baseline`",
   "id": "IMP-20260807-af1cf4",
   "plan": "給 `ops/gen_ios_baseline.sh` 一個 `--out <path>`（預設維持現值），`--check` 與 `--write` 都吃它；再把 registry 的 check 改成 `./ops/gen_ios_baseline.sh --check --out docs/snapshot/ios_baseline.md`，形狀與 improvement_backlog 收斂一致，同時刪掉那段註解 TODO。",
-  "resolution": "",
+  "resolution": "不修——三個 referent 在 2026-08-08 隨 IMP-20260808-b63206 一併消失，這張票已無施力點。\n\n本票要求：給 `ops/gen_ios_baseline.sh` 一個 `--out`、把 `docs/registry.yml` 的 `generated.ios_baseline` check 改寫成 `--check --out <path>`、順手刪掉那段無主 TODO 註解。今天實測：\n\n- `generated.ios_baseline` entry 已移除，`grep -c 'kind: generated' docs/registry.yml` = 0，那段 TODO 註解隨 entry 一起刪掉了。\n- `gen_ios_baseline.sh` 的 `--check` 與 `--write` 已移除（沒有版控產物可比對），`./ops/gen_ios_baseline.sh --check` 今天 rc=2 `unknown arg`。腳本只剩「印到 stdout」一種模式。\n- 因此 `--out` 已無意義：沒有輸出檔可指定，也沒有 check 需要它當比對目標。\n\n**它指出的那個缺陷本身是對的，而且已經被根治而非繞過**：「用成功訊息的字面用字當契約」這個形狀，在產物移出版控後不再有任何實例（registry 的 generated entry 歸零）。若日後新增 generated entry，`docs_lint.sh --registry` 仍會要求它宣告 `check`，屆時同一個陷阱可能重現——但那會是一張新票，判準與 fix_site 都不同，不該借屍還魂。\n\n本票另一個貢獻已被吸收：它記下「一個寫在註解裡的 TODO 沒有 owner、不會被 triage、也不會出現在任何清單上」——那正是它從 2026-08-05 躺到今天的原因。這個教訓活在懸賞板模型的「摩擦走 andon → 開票」那條迴圈裡，不需要這張票繼續開著。",
   "schema": "kg.backlog.entry.v1",
   "scope": "給一支產生報告的腳本加一個輸出路徑參數，改一條檢查設定，順手刪掉一段沒人認領的待辦註解。",
   "severity": "low",
   "source": "registry 註解裡的無主 TODO",
-  "status": "open",
+  "status": "wont-fix",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "OBSOLETE",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "三個 referent 逐一實測皆已不存在：grep -c \"kind: generated\" docs/registry.yml = 0（entry 與其 TODO 註解隨 IMP-20260808-b63206 一併移除）；./ops/gen_ios_baseline.sh --check → rc=2 unknown arg（--check/--write 已移除）；因此 --out 已無輸出檔可指定、也無 check 需要它當比對目標"
 }

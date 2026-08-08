@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "`docs/snapshot/ios_baseline.md` 逐檔記錄行數，所以**任何** iOS 改動都會讓 docs gate 轉 ERROR 並要求重生這一個 repo 級的檔案——它是 fan-out 批次的衝突磁鐵：同一波有 N 個 iOS 工作樹，就會生出 N 份互相衝突的版本。\n\n而且文字與執行力對不上：`CLAUDE.md` 寫的是「iOS 大規模重構**落地後**執行 `ops/gen_ios_baseline.sh --write`」，機器閘門要求的卻是**每次** iOS 改動都得重生。實測 2026-08-08：受派者只加了 18 行 Swift（`.accessibilityElement(children:.contain)` 那一類的 modifier），`docs_lint.sh` 就轉 ERROR，被迫重生整份 baseline 並帶進自己的 commit。\n\n順帶一條可獨立修的小的：`docs_lint.sh` 只說「產物與 generator 輸出不一致」，不說**哪幾行**。受派者得把 generator 的 stdout 導出來手動 diff，才分得出「這是我造成的」還是「這是每天自轉紅的既有 debt」——而那個分辨直接決定要不要動它。值得一個 `--diff`。",
   "fix_site": "docs/registry.yml:generated.ios_baseline + ops/gen_ios_baseline.sh + .gitignore",
+  "fixed_by": [
+    "69b94654d"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-b63206",
   "plan": "把 `docs/snapshot/ios_baseline.md` 移出版控，比照 `e8889ae7d`（生成 view 移出版控）。\n\n**為什麼是刪除而不是放寬檢查**：實測 2026-08-08 — 它 49 行、`ops/gen_ios_baseline.sh` 1.1 秒可重算、grep 全 repo **沒有任何工作流讀它的內容**（引用它的四處全是「重構後記得重生」的自我指涉），而它是 `docs/registry.yml` 裡**唯一**的 `generated.*` entry、擁有**唯一**的 `check`。整套 generated-doc 機制存在只為了這一個檔案，代價卻是每一次 iOS 改動（實測：18 行 Swift modifier）都讓 docs gate 轉 ERROR 並要求把一個 repo 級產物夾進自己的 commit——fan-out 批次有 N 條 iOS 工作樹就生出 N 份互相衝突的版本。2026-08-08 的批次裡它擋住了**兩條完全沒碰 iOS 的分支**。\n\n**實作**\n1. `git rm docs/snapshot/ios_baseline.md`；把該路徑加進 `.gitignore`。\n2. 移除 `docs/registry.yml` 的 `generated.ios_baseline` entry（含它那段長註解）。\n3. `ops/gen_ios_baseline.sh`：`--write` 與 `--check` 失去意義（沒有版控產物可比對）——移除這兩個模式，只留「印到 stdout」。連同 `--help`／檔頭註解一起改。\n4. 四處 agent-facing 文字改成「需要當下基線就跑 `ops/gen_ios_baseline.sh`（印 stdout，不進版控）」：`CLAUDE.md`（Doc Freshness 段）、`docs/sop/doc_sync.md`、`docs/sop/review_discipline.md`、`docs/reference/tech_index.md`。`docs/snapshot/docs_dogfood_report_2026-06-06.md` 是 archive 性質的歷史報告，**不動**。\n5. `ops/tests/test_gen_ios_baseline.sh` 隨 `--write`／`--check` 的移除同步；`ops/test_ops.sh` 的註冊保留。\n\n**必須先確認的一件事（否則會靜靜拆掉一道守衛）**：`docs_lint.sh --registry` 有一條「宣告 `generator` 卻沒有 `check` = ERROR」的規則。刪掉唯一的 generated entry 之後，這條規則就變成零實例。去讀它的測試——如果那個測試是拿**真實的** `generated.ios_baseline` 當素材，刪除會讓它變成恆綠的空話；必須改成自帶合成 entry 的正控。如果它本來就用合成 fixture，在回報裡具名說出來即可。",
-  "resolution": "",
+  "resolution": "已修（69b94654d）：`docs/snapshot/ios_baseline.md` 移出版控並 gitignore，`docs/registry.yml` 的 `generated.ios_baseline` entry 移除，`ops/gen_ios_baseline.sh` 的 `--write` / `--check` 一併移除（沒有版控產物可比對了），六個 agent-facing 面同步。\n\n**端到端證據**（票的存在理由）：在一棵 43fe0bd02 的乾淨樹上只加一行註解到 `Book.swift`，`docs_lint.sh` RC=1 並具名 `ERROR registry — generated.ios_baseline 產物與 generator 輸出不一致`；同一行改動在改後的樹上 RC=0、`REGISTRY OK: 44 documents`。`Book.swift` 以 `git checkout --` 還原（未用 stash）。\n\n**那條「必須先確認」的指示是本票最有價值的部分。** 答案：規則本身沒事——它的測試 §3 用的是沙盒裡現造的合成 entry，刪除真實 entry 後逐條仍轉紅。但它揭出**兩個**會失去素材的守衛，其中一個 plan 沒提到：§7（逐筆弄髒真實產物）的反空轉守衛要求 `parsed == declared && >= 1`，以及 `docs_impact.py` 的 `generator` 欄輸出（由 `test_docs_impact.sh:287-288` 透過真實 entry 驗）。兩者已改成自帶合成 entry。§7 的合成 registry 刻意放**兩筆**——一筆只證明迴圈跑得動，兩筆才驗得出「逐筆」。真實 registry 的 live-fire 保留為加碼：有素材才跑，沒素材不計分、不宣稱、也不擋。\n\n受派者原本提的「零具名申報」版本被否決，理由記在此：**用拆掉一個空話守衛的動作去製造另一個空話守衛，不能接受。**\n\nreviewer 抓到兩條 BLOCK，其一是受派者自己寫的 `set -e` 洩漏——測試檔第 20 行是 `set -uo pipefail`（errexit 原本是關的），它取 rc 時用 `set +e … set -e` 把 errexit 打開留給整份腳本剩下的部分，而**沒有任何斷言在看 generator 的 rc**；一支「印對 49 行然後 exit 1」的 generator 會讓測試在章節標題後靜默死掉，今天還會紅純粹靠中止。其二是 `kg-docs-control-plane/SKILL.md:49` 一句**不指名檔案**的宣稱被本改動證偽，grep `ios_baseline` 抓不到它。\n\n受派者主動申報一條自己寫的斷言的限制：`git status unchanged` 看不到被 gitignore 的路徑（M1c 實測它仍然綠），所以它守的是「寫到任何被追蹤的檔」，產物本身由另外兩條負責——限制寫在測試旁邊，不讓它讀起來像它沒有的覆蓋。\n\n拆出的獨立票：`IMP-20260808-39326c`（`docs_lint.sh` 不說差在哪幾行）。",
   "schema": "kg.backlog.entry.v1",
   "scope": "刪掉那份統計檔並改成需要時現算，連帶清掉它專屬的一套檢查機制；四處說明文字跟著改。",
   "severity": "med",
   "source": "dogfood batch 1：iOS 受派者被迫把 repo 級產物帶進自己的 commit",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0（20 passed）；端到端前後對照：同一行 Swift 改動在改前 docs_lint RC=1 具名 generated.ios_baseline drift、改後 RC=0；5 條 mutation 各自轉紅"
 }
