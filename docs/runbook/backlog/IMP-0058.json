@@ -8,6 +8,9 @@
   "date": "2026-08-04",
   "detail": "兩支 ops 測試綁死 BSD userland，在 linux 必紅——**是測試不可攜，不是工具**。① `ops/tests/test_ios_cache_evict.sh:35,117` 用 `date -v -${h}H`、`:79` 用 `stat -f '%m'`；GNU 版兩者皆錯（`date: invalid option -- 'v'` 實測出現 44 次，`touch` 收到空日期使全部 mtime 塌成同一瞬間，被測的 LRU 排序整個失效），ubuntu 實測 10 passed / 10 failed。② `ops/test_ios_test_discovery.sh:312` 的 `grep -rhoE ... | head -1`：GNU grep 收到 SIGPIPE 就死，`set -o pipefail` 把 141 傳出去殺掉整支；ubuntu 5/5 rc=141、macOS 5/5 rc=0。**②在 macOS 也只是還沒炸**——同檔 `:272` 形狀相同卻活著，差別只在上游輸出 1852 bytes 一次寫完就退場，而 `:312` 是 6816 bytes 且要走完目錄樹。修法 repo 內已有現成範式：`ops/release.sh:264` 的 `stat -f '%Lp' || stat -c '%a'`、`ops/podcast_upload.sh:323` 同形；SIGPIPE 那條把 `head -1` 換成 `awk 'NR==1{print;exit}'` 或在 grep 後補 `|| true`。修好即可把兩個 group 移進 `LINUX_GROUPS`（目前以 `bsd-userland` token 具名排除,宣告在 `ops/tests/test_ops_ci_coverage.sh:88`、排除列在 `:111,:112`）。**2026-08-05 複驗**:五個引用行號逐一命中、全數仍在(`date -v` ×2、`stat -f '%m'` ×1、`| head -1` ×2),`:18` 的 `set -euo pipefail` 仍在故 SIGPIPE 141 傳播路徑完好;該兩檔最近 3 個 commit 皆未觸及這些行;可攜範式仍只存在於 `release.sh:264`/`podcast_upload.sh:323`。收尾注意:刪掉 `:111-112` 兩列後 `bsd-userland` 會變孤兒 token,`:88` 也要一併刪(`:159` 的 token 交叉檢查會抓)。",
   "fix_site": "ops/lib/userland_compat.sh（新增）+ ops/lib/ios_cache_evict.sh:53,75",
+  "fixed_by": [
+    "105aa938e"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0058",
@@ -17,8 +20,10 @@
   "scope": "新增一支相容層與一支守衛測試，改三支既有腳本與一份分類清單，外加一行文檔。",
   "severity": "med",
   "source": "IMP-0054 的 review（ubuntu 容器實跑）",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "acceptance_cmd 由本次 verify --commit 於 cutover 後的 main 上實跑（rc 不符即拒絕落地）；修法已落地於 105aa938e"
 }
