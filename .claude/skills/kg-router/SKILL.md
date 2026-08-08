@@ -51,7 +51,7 @@ version: 1.0.0
 非當場修掉者一律立單,但**立單前先查重**:`./ops/backlog.py list --grep '<關鍵字或檔名>'`(不分大小寫 regex,掃 detail/resolution/plan/fix_site,與其他旗標取交集)。命中就接手既有票別開新的——鄰居單常常是 `fix_site` 命中而 detail 完全沒提到那個檔。確認沒有才 `./ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 立單,**先選對 stream 再填**(能一句話講清楚就順手補 `--brief` / `--scope`,那是手機看板唯一顯示得出來的東西,梳理階段工具當場就會要求（蓋 groom 戳記時擋）)——選錯 stream 等於選錯 owner:
 
 - `--stream IMP` → owner `platform-steward`
-- `--stream APP` → owner 對應 Line worker(`ios-engineer` / `backend-engineer`),收件匣 `./ops/backlog.py list --stream APP`
+- `--stream APP` → owner 對應 Line worker(`ios-engineer` / `backend-engineer`),取票 `./ops/backlog.py dispatch --stream APP`(**不是** `list --stream APP`——`list` 會連已結案與別人認領中的一起吐給你)
 
 本節分的是**嚴重度**(小 / 中大),stream 分的是**誰是 owner**——兩者正交,一筆 entry 要各答一次。哪個缺陷屬哪條 stream 的可判定判準見 `kg-receipt`「Stream 分流」(那是 SoT,此處不複製路徑清單,免得兩邊漂移)。
 
