@@ -570,6 +570,12 @@ documents:
       - ops/branch_audit.sh
       - ops/test_devops.sh
       - ops/tests/test_branch_audit.sh
+      # 這份 runbook 有整整一段在描述 worktree 三平面與 gate summary 的形狀，卻沒有列
+      # 產生那個形狀的檔——2026-08-09 改 GATE_FAILURE_MARKERS 與 tail 標題時，
+      # `docs_impact` 結構性提名不到它，三份文檔全靠 review 手抓（IMP-20260808-8b4690）。
+      # 與上面 devops.sh 那條註解同形，只是高一層：那條講 broad glob 漏掉 repo-root，
+      # 這條講的是「文件描述了某支程式的輸出格式，卻沒把那支程式列為 source」。
+      - ops/worktree_orchestrate.py
       - docs/policy/safety.md
       - docs/sop/deploy.md
       - docs/sop/debug.md

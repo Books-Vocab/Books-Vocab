@@ -926,9 +926,41 @@ def plan_gates(changed_files: list[str],
     return gates
 
 
+# The closed vocabulary a gate result may carry. Named once so `aggregate_verdict`
+# cannot drift from the producers: every `{"status": ...}` this module writes, plus
+# `inconclusive`, which `_run_gate` sets when the refs probe could not be measured.
+GATE_STATUSES = ("pass", "warn", "block", "inconclusive")
+
+
+class UnknownGateStatus(Exception):
+    """A gate reported something the aggregator has no rule for.
+
+    An exception rather than a return value because there is no verdict to give: the
+    caller asked "what did this batch come to" and the honest answer is "I cannot read
+    one of the answers". Callers turn it into a block with the message attached.
+    """
+
+
+def assert_known_statuses(results: list[dict[str, Any]]) -> None:
+    """Refuse, by name, any result whose status is outside `GATE_STATUSES`.
+
+    Names BOTH the gate and the value it carried. A refusal that says only "unknown
+    status" sends the reader to diff the payload by hand, and the payload is the one
+    artefact they do not have in front of them when this fires.
+    """
+    unknown = [(str(r.get("name") or "<unnamed gate>"), r.get("status"))
+               for r in results if r.get("status") not in GATE_STATUSES]
+    if unknown:
+        detail = ", ".join(f"{name} -> {value!r}" for name, value in unknown)
+        raise UnknownGateStatus(
+            f"gate result(s) carry a status this aggregator has no rule for: {detail}. "
+            f"Known: {', '.join(GATE_STATUSES)}. Treated as BLOCK — an aggregator that "
+            f"cannot read an answer has not been told the batch is fine.")
+
+
 def aggregate_verdict(results: list[dict[str, Any]]) -> str:
-    """block if any gate blocked; else warn if any warned OR was inconclusive; else pass
-    (incl. empty).
+    """block if any gate blocked or carried an unreadable status; else warn if any
+    warned OR was inconclusive; else pass (incl. empty).
 
     `inconclusive` folds to WARN, and both of the other two folds would be wrong.
     `block` would kill a session's work for someone else's tag surgery — the red was
@@ -936,7 +968,26 @@ def aggregate_verdict(results: list[dict[str, Any]]) -> str:
     made: the gate never produced an attributable answer. `warn` is what this module
     already means by "degraded, named, disposition belongs to the driving agent", which
     is exactly the situation.
+
+    An UNKNOWN status folds to BLOCK, and that is a different judgement from the one
+    above (IMP-20260808-c6982d). Until 2026-08-09 the tail of this function was a bare
+    `return "pass"`, so anything outside the two membership tests — including the
+    `None` that `.get()` yields for a result dict with no `status` key at all — came
+    out green. No producer emits an unknown value today, which is exactly what made it
+    survive: it is armed for whoever adds the next status, and `timeout` is already
+    named by two open entries. Not `warn`, because `warn` is a state somebody JUDGED;
+    an unrecognised status is a state nobody judged.
     """
+    try:
+        assert_known_statuses(results)
+    except UnknownGateStatus as exc:
+        # Printed, not swallowed. The first draft caught this bare and returned
+        # "block" — which satisfied the ticket's first half (fold to block) while
+        # silently dropping its second (name the gate and the value), leaving that
+        # half with no production path at all and only a unit test calling
+        # `assert_known_statuses` directly to make it look covered.
+        print(f"[worktree][gate] {exc}", file=sys.stderr, flush=True)
+        return "block"
     statuses = {r.get("status") for r in results}
     if "block" in statuses:
         return "block"
@@ -1505,7 +1556,20 @@ def _gate_log_path(record_path: Path, gate_name: str) -> Path:
 # `error:` — and a marker set narrow enough to look tidy is one that goes silent for
 # whichever tool nobody had in mind. A false positive costs one line of noise; a miss
 # costs the re-run this whole mechanism exists to remove.
-GATE_FAILURE_MARKERS = ("✗", "FAIL", "AssertionError", "not ok", "error:")
+# Two of these were added on 2026-08-09 after the set went silent on the two gates
+# whose silence cost the most (IMP-20260808-8b4690):
+#   `✘` U+2718 — Swift Testing's marker, one codepoint away from the `✗` U+2717
+#     already here and visually near-identical, so no by-eye review of this tuple
+#     was ever going to catch it. Measured on a real ios-test-unit log: 4 lines
+#     carried U+2718, 1 carried U+2717.
+#   `[review][block]` — `ops/review_audit.sh`'s verdict prefix. Its red output
+#     contains NONE of the other markers, so a BLOCK-level gate's summary fell
+#     through to the tail, and that gate's tail is `[review][ok]` lines.
+# The comment below already predicted both; what it could not do was notice. That is
+# why the zero-match branch in `_failed_gate_summary` now changes how the tail is
+# LABELLED — adding tokens fixes the two producers we know about, and nothing else.
+GATE_FAILURE_MARKERS = ("✗", "✘", "FAIL", "AssertionError", "not ok", "error:",
+                        "[review][block]")
 GATE_MAX_FAILURE_LINES = 20
 
 # The log is now the artefact an operator opens, so the capture has to be able to
@@ -1930,7 +1994,19 @@ def _failed_gate_summary(returncode: int, output: str, tail: str,
         lines.append("  no failure-marked lines found (scanned for "
                      f"{', '.join(GATE_FAILURE_MARKERS)})")
     if tail:
-        lines.append("  tail:")
+        # The heading is CONDITIONAL, and that is the whole repair. Both branches used
+        # to print a bare `tail:`, so the slot an operator reads as "the evidence" was
+        # byte-identical whether the scanner had found the failure or found nothing at
+        # all. Measured cost (IMP-20260808-8b4690): `review-receipts` blocked, matched
+        # zero markers, and its tail — `[review][ok]` / `Reviewed-by:` — was printed
+        # into that slot. A red gate showed passing lines as its evidence, and the
+        # operator who believed the slot spent six turns on the wrong hypothesis.
+        #
+        # Conditional rather than always-on: a warning that fires on every ordinary
+        # red is one people stop reading, which is this same defect one level up.
+        lines.append("  tail:" if hits else
+                     "  tail (NOT failure lines — the scanner matched nothing, so "
+                     "these are merely the last lines and may show passes):")
         lines.extend(f"    {ln}" for ln in tail.splitlines())
     if log_path is not None:
         lines.append(f"  full output: {log_path}")
