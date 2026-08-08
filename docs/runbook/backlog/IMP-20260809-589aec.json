@@ -1,0 +1,14 @@
+{
+  "brief": "工單有四個欄位一旦建立就不能再改，但只有其中一個會好好告訴你為什麼、以及該怎麼補救，另外三個看起來像是功能沒做完，於是有人照著錯誤的理解去改工具。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "`make_entry_id(*, stream, date, source, detail)` 的四個輸入都不可變更——這是刻意的設計，\n`DIGEST_FIELDS` 直接從函式簽名讀回來，`update --detail` 也有一段寫得很好的具名拒絕。\n**問題不是設計，是四個輸入裡只有一個把這個設計說出來。**\n\n實測（2026-08-09）：\n\n    ./ops/backlog.py update <id> --detail 'x' --commit\n    [commit] --detail cannot be changed: stream, date, source, detail are the inputs\n    make_entry_id hashes, so editing one would decouple <id> from the content its id\n    is derived from.\n      correcting the record  -> put the correction in --resolution\n      a different problem    -> file it with `add`; a reworded problem statement is a\n                               different entry\n    nothing was written.\n\n    ./ops/backlog.py update <id> --source 'x' --commit\n    backlog.py: error: unrecognized arguments: --source x\n\n`update --help` 裡 `--detail` 命中 4 次（含 `--detail-file`），**`--stream` / `--date` /\n`--source` 各 0 次**。也就是說同一條規則有兩種傳達方式：一個**教你**（說出原因、給兩條\n出路），三個看起來**像沒人做**。\n\n**這已經有一個真實受害者。** 2026-08-09 另一個 session 在修自己票裡的一個過期 sha 時撞到\n`--source` 不存在，據此推論出「`source` 是這個 store 唯一的來源欄，卻沒有寫入路徑——\n一個會過期、又不可修改的欄位，就是一個必然累積假話的地方」，並準備立成一張「工具漏做寫入\n路徑」的票。那個推論**與實情相反**：不是漏做，是刻意；而正確動作（把更正寫進 `--resolution`）\n就寫在隔壁那個旗標的拒絕訊息裡，只是他看不到。**一個仔細的讀者從 argparse 的通用錯誤裡\n推出了錯誤的世界觀，這正是這條缺陷的成本。**\n\n【修法方向】\n把 `--stream` / `--date` / `--source`（以及它們的 file twin，如果慣例要求）**加進 `update`\n的 argparse，唯一的行為就是命中同一段具名拒絕**。不是為了讓它們能被改——是為了讓「不能改」\n這件事在使用點可見。這與 `--detail` 今天的行為完全一致，等於把一個已經寫好的解釋接到另外\n三個入口上。\n\n替代方案（較差，記下來以免有人選它）：在 argparse 的 error hook 裡對這三個名字特判。\n較差是因為那是第二份「哪些欄位是雜湊輸入」的知識，而 `DIGEST_FIELDS` 已經是那份知識的\n單一來源——正確的實作應該**從 `DIGEST_FIELDS` 迭代產生**這三個旗標，而不是手寫三次。\n\nacceptance 的形狀建議：對 `DIGEST_FIELDS` 裡的**每一個**欄位參數化，斷言\n`update <id> --<field> x --commit` 的 stderr 含 \"cannot be changed\" 且含 \"--resolution\"；\n外加負控：一個真正可變的欄位（例如 `--severity`）必須成功。只驗 `--source` 的判準會在\n「只補了 source 一個」的半套實作下變綠，而 `--stream` / `--date` 仍然是 argparse 錯誤。",
+  "id": "IMP-20260809-589aec",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支 CLI 的三個旗標由既有常數迭代產生，接到既有的拒絕訊息，外加一個參數化正控與一個負控。",
+  "severity": "med",
+  "source": "workflow-grooming session 據 --source 不存在推出相反結論；整合者複驗四個雜湊輸入的拒絕品質不一致",
+  "status": "open",
+  "stream": "IMP"
+}
