@@ -325,18 +325,19 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 ## 硬邊界
 
 - **工作樹內一律 `git -C <工作樹絕對路徑>` 與絕對路徑，Bash 的 cwd 不保證在指令之間持久**：背景指令、heredoc 腳本或任何一次子行程都可能讓 cwd 漂回 primary checkout（**agent harness 更是每次 Bash 呼叫都重設 cwd**——實測前一次呼叫結束在 `/tmp`，下一次的 `pwd` 直接是 `/Users/chenliangyu/project/kg` ＝ primary）。漂回之後那些 repo-relative 指令**不報錯，只是安靜地改答另一個 repo 的問題**——不變式是「它回答的是 **primary** 的狀態」：`git status --porcelain` 回報 primary 的髒檔（primary 恰好乾淨時你就得到一句「乾淨」，而你的改動明明在別處）、`git add <只存在於工作樹的 path>` 報 `pathspec … did not match any files`、`./ops/i18n_lint.sh` 之類 repo-relative 工具驗的是主 checkout。
-  - **單獨跑 `gate` 完全不覺察這件事**（實測 2026-08-08）。上面 d 段那句「工具會自己擋」只涵蓋 orchestrator 自身的位元組比對，不涵蓋你人在哪棵樹。`cmd_gate` 全程**不對 primary 做任何一次查詢**，而**空 diff 是刻意合法的**（`cmd_gate` 內 empty-diff 註解，今天在 :2427：工作已被 trunk 包含的分支本來就沒東西可 gate）。所以編輯若整批漏進 primary，工作樹 diff 為空，**兩道 meta gate 雙雙空跑而綠**——連 **block 級**的 `review-receipts` 也一樣，因為 `main..HEAD` 根本沒有 commit 可稽核：
+  - **單獨跑 `gate` 不會替你查 primary**；primary 端訊號仍由 `IMP-20260808-e8ad13` 負責。但 `IMP-20260808-b85f6a` 已讓空 diff 具名出現在 gate record 與人讀輸出：空 diff 仍是刻意合法的（工作已被 trunk 包含的分支本來就沒東西可 gate），只是現在會明說「no changes … no changed files were verified」並在 receipt 加 `no-changes`。所以編輯若整批漏進 primary，工作樹仍可能被兩道 meta gate 空跑而綠——連 **block 級**的 `review-receipts` 也一樣，因為 `main..HEAD` 根本沒有 commit 可稽核；但這個結果不再與正常 PASS 無聲同形：
 
     ```
     # gate PASS  (0 changed file(s), 2 gate(s))  orchestrator=<sha8> (worktree)
+      ⚠ no changes in this worktree vs main — no changed files were verified. If you have been editing, the edits may have landed in the primary checkout instead (cwd drift); check `git -C <worktree> status` before trusting this PASS.
       ✓ review-receipts [pass] — exit 0: review_audit: auditing <被 gate 的樹>
       ✓ coverage [pass] — 0 covered, 0 neutral, 0 uncovered
     ```
 
-    （`<sha8>` 與那個路徑因樹而異，其餘逐字。）一個大寫 PASS 加兩個勾，**沒有任何一行說「這棵樹沒有東西可驗」**——`(no impact-based gates selected …)` 印不到，因為 `plan_gates` 尾端無條件 append `coverage`（該處註解自己就寫了「`plan` is never empty」），`cmd_gate` 的 `if not plan:` 因此是死碼。**唯一的線索是 `0 changed file(s)` 這個數字**：那行印出的路徑是「被 gate 的樹」，不是「你的編輯在哪」，所以它不會揭露洩漏。**看到 `0 changed file(s)` 就停下來核對你人在哪棵樹**：那不是「改動很小」，那是「這棵樹沒有你的改動」。
+    （`<sha8>` 與那個路徑因樹而異，其餘逐字。）現在會有醒目的警告與 machine-readable 的 `no-changes` receipt；`(no impact-based gates selected …)` 仍不會印，因為 `plan_gates` 尾端無條件 append `coverage`（該處註解自己就寫了「`plan` is never empty」），`cmd_gate` 的 `if not plan:` 仍是死碼。**看到 `no-changes` 或 `0 changed file(s)` 就停下來核對你人在哪棵樹**：這不是「改動很小」，而是「這棵樹沒有你的改動」。
   - **走 `land` 會被擋，但擋的理由指向別人**：`land` 取號後、**進 gate 之前**就跑 primary tracked-clean 檢查（`_primary_ff_ready`，:3023 排在 gate 的 :3043 之前——見上方 c3 段，那是刻意的成本設計），所以編輯漏進 primary 時它擋在昂貴的 gate 之前，並逐檔列出 `dirty:`，那些正是你的編輯。訊息也確實留了 `(b) if the leftovers are yours, commit them or evacuate them to a worktree` 這條路。**它缺的不是「可能是你的」，是成因**：沒有人告訴你這些檔之所以在 primary 是因為 cwd 漂了，而你那棵工作樹是空的。primary 若剛好乾淨（漏進去的編輯已被別人 commit，或漏到了第三棵樹），這道檢查一聲不吭。
   - **手動 `gate` → `cutover` 才是「綠已經記下來了才擋」**：`cutover` 只在 ff 前查 primary（:2630），那時錯的那輪 gate 已經跑完、判決已綁 HEAD 寫進紀錄。
-  - **兩張票在補這個洞，都還沒落地，而且刻意分成兩端**：`IMP-20260808-b85f6a` 讓 `gate` 在零改動時具名說出「這棵樹相對 main 沒有任何改動、你的編輯可能漏進了主 checkout」（**worktree 端**訊號）；`IMP-20260808-e8ad13` 讓 `gate` 具名回報 primary 有未 commit 的 tracked 改動（**primary 端**訊號）。兩者皆 warn 不 block，且可以單獨為真——primary 乾淨但工作樹是空的時候，只有前者看得見。**在它們落地前，這條紀律是唯一的防線**——不是提醒，是防線。
+  - **兩張票刻意分成兩端**：`IMP-20260808-b85f6a` 已提供 worktree 端的 `no-changes` 訊號；`IMP-20260808-e8ad13` 仍負責 primary 端未 commit tracked 改動的具名回報。兩者皆 warn 不 block，且可以單獨為真——primary 乾淨但工作樹是空的時候，只有前者看得見。
 - **cutover/sync 不碰生產；deploy 才碰生產（唯一）**：cutover 只前進**本地** main（免費、可逆、不碰網路）；`sync` 只把本地 main 鏡像到 **origin/main** 備份（reconciler 不看 main → 零生產副作用）。生產部署發生在 `deploy` 把本地 main 推 **origin/prod** 之後——felix reconciler（launchd `com.kg.reconcile`，90s tick，盯 origin/prod）偵測前進且有 `backend/**` 變更即部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）。**因此「上生產」= 你刻意跑 `deploy`（或 `release.sh release`），不是每次 cutover、也不是 sync。** deploy 前確保要發布的 backend 變更 gate 已真實反映風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。deploy/`release` 全自動授權（2026-07-10），但它是**唯一碰生產**的動作，寧可 dry-run 先看 range。
 - **不重造 gate**：`gate` 只路由到既有工具。要加可斷言的 gate → 改對應工具本身，不在 orchestrate 內判 pass/fail。
 - **動 agent-facing surface**（本 CLI/skill 本身）→ 同 PR 同步 `docs/reference/tech_index.md` / `product_surface.md`（見根 CLAUDE.md「改 user/agent-facing 介面」）。

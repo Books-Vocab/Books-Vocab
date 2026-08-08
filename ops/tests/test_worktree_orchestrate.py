@@ -3395,6 +3395,17 @@ def test_gate_names_the_empty_worktree(scratch):
     assert gate["no_changed_files"] is True
     assert gate["verdict"] == "pass"
 
+    rc, text = _run_text(["gate", "--worktree", opened["path"],
+                          "--state", state])
+    assert rc == MODULE.EXIT_OK
+    assert "no changes in this worktree" in text
+    assert opened["path"] in text
+
+    rc, receipt = _run_text(["gate", "--worktree", opened["path"],
+                             "--state", state, "--receipt-line"])
+    assert rc == MODULE.EXIT_OK
+    assert "no-changes" in receipt
+
 
 @gitmark
 def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
@@ -3406,6 +3417,11 @@ def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
     assert rc == MODULE.EXIT_OK
     assert gate["changed_files"] == ["notes.txt"]
     assert gate["no_changed_files"] is False
+
+    rc, receipt = _run_text(["gate", "--worktree", wt, "--state", state,
+                             "--receipt-line"])
+    assert rc == MODULE.EXIT_OK
+    assert "no-changes" not in receipt
 
 
 @gitmark
