@@ -1,14 +1,20 @@
 {
+  "acceptance": "status=fixed 需要 fixed_by 或 fixed_elsewhere 恰好一個；只有 fixed_elsewhere 時不跑 sha 規則；list --fixed-elsewhere 可數；reanchor 跳過",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k fixed_elsewhere",
   "brief": "有些待辦的修法根本不在這個程式庫裡，做完了也沒辦法標成完成，只能永遠掛在板上。",
   "category": "cli",
   "date": "2026-08-08",
   "detail": "修在本 repo 之外的票**結不了案**。\n\n`ops/backlog.py:509-526` 的規則鏈：`status=fixed` 必須有 `fixed_by`（否則 `fixed-without-fixed-by`）；`fixed_by` 的每個元素必須符合 `_SHA_RE`（否則 `fixed-by-not-a-sha`）；還必須在本 repo 解析得到且非孤兒（`fixed-by-unresolvable` / `fixed-by-orphaned`）。三條合起來等於一個未言明的前提：**每一張票的修法都落在這個 git 倉庫裡**。\n\n那個前提今天已經不成立。store 裡至少兩張票的 `fix_site` 指向 `~/butler/kg-board/server.py`（`IMP-20260808-7e9a0d`、`IMP-20260808-47f7b4`），而 `~/butler` **刻意不用 git**——它走 Syncthing 兩機即時同步，2026-06-16 起原 git 制已棄。那裡的修法沒有 sha，將來也不會有。\n\n實測 2026-08-08（`IMP-20260808-47f7b4` 的修法已落地、selftest 全綠、紅綠證據齊備）：\n\n```\n$ ./ops/backlog.py update IMP-20260808-47f7b4 --status fixed --resolution-file ... --commit\nERROR invalid update: [{'kind': 'fixed-without-fixed-by'}]\n\n$ ./ops/backlog.py update IMP-20260808-47f7b4 --status fixed --fixed-by \"external:butler/kg-board\" ...\nERROR invalid update: [{'kind': 'fixed-by-not-a-sha', 'sha': 'external:butler/kg-board'}]\n```\n\n沒有出口。一張證據比多數本倉票都完整的單，卡在「我們的可回溯性欄位只認得一種可回溯性」。\n\n這不是要放寬 `fixed_by`——sha 那條規則是對的，它讓本倉的修法可被 `reanchor` 追著 rebase 走。缺的是**第二種、具名且可清點的**回溯形式，形狀與 `acceptance_manual` 完全一致：當機器判準不存在時，不是偷偷放行，而是**具名申報成可清點的例外**（`list --acceptance-manual` 能把它們數出來）。同一個設計換到這裡就是「修法不在本倉」的申報。\n\n順帶：本缺陷會隨著 `~/butler` 的工具面成長而變嚴重——看板、`com.kg.sync`、跨機存取層都住在那裡，而它們正是 IMP stream 最常碰的東西。",
+  "fix_site": "ops/backlog.py:_check_traceability / MUTABLE_FIELDS / FILE_TWIN_FIELDS（新欄位 fixed_elsewhere）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
   "id": "IMP-20260808-ddf494",
+  "plan": "讓修在本 repo 之外的票有結案出口，形狀比照既有的 `acceptance_manual`：**不是放寬，是具名且可清點的第二種回溯**。\n\n**實作**\n1. 新欄位 `fixed_elsewhere`（自由文字），加進 `MUTABLE_FIELDS` / `SHOW_FIELD_ORDER` / `FILE_TWIN_FIELDS`（它會含反引號與路徑）。\n2. `validate`：`status=fixed` 需要 `fixed_by` **或** `fixed_elsewhere`，且**恰好一個**（兩個都有＝對同一問題給了兩種互相矛盾的回溯宣稱，比照 `ACCEPTANCE_PROOF` 的 `groom-claim-with-conflicting-acceptance-proof`）。`fixed_elsewhere` 存在時，`fixed-by-not-a-sha` / `-unresolvable` / `-orphaned` 三條 sha 規則整組不適用。\n3. `fixed_elsewhere` 的內容必須說得出**在哪裡**與**怎麼再驗一次**（非空即可，但 help 與 refusal 訊息要明講這個期待）。\n4. `list --fixed-elsewhere` 讓這組例外可數（比照 `--acceptance-manual`）。\n5. `reanchor` 跳過它們（沒有 sha 可重錨）。\n\n**立刻可用的驗證對象**：`IMP-20260808-47f7b4`（看板 dispatch 扣認領）今天已修好、紅綠證據齊備，卡在沒有出口。它應該是第一個用 `fixed_elsewhere` 結案的票。\n\n**測試**：兩者皆無 → 拒；兩者皆有 → 拒（具名 conflicting）；只有 `fixed_elsewhere` → 過且不跑 sha 規則；`--fixed-elsewhere` 數得出來；`reanchor` 不碰它們；file twin 存在。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "改一支待辦工具的驗證規則，多開一種「修法在別處」的申報方式，連同它的測試與說明（尚未梳理，體積是估的）。",
   "severity": "high",
   "source": "dogfood batch 1：修完看板要結案時，發現沒有出口",
-  "status": "open",
+  "status": "triaged",
   "stream": "IMP"
 }
