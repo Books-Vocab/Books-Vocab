@@ -419,6 +419,12 @@ if (cd "$divergence_repo" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
   exit 1
 fi
 grep -q 'merge-base' "$tmpdir/orphan.err"
+# Positive control for the shallow case's discriminator below: that check asserts the
+# shallow message does NOT say 無共同祖先. A negative assertion with nothing pinning the
+# string down decays into "always true" the day the wording changes. Asserting it here,
+# where it must appear, makes any rewording red at the control instead of silently
+# hollowing out the discriminator.
+grep -q '無共同祖先' "$tmpdir/orphan.err"
 # Fail closed means nothing parseable on stdout either, or a caller reading only
 # stdout still sees "no changes" and the non-zero exit buys nothing.
 if [ -s "$tmpdir/orphan.out" ]; then
@@ -431,9 +437,11 @@ fi
 # stderr from `git merge-base` is 0 bytes — so if this tool blames "unrelated history"
 # and prescribes --files, it talks the reader out of the real fix (fetch depth) and into
 # hand-listing paths. Cause must be probed, not assumed.
-# --no-local rather than file://: a local path clone silently ignores --depth (leaving a
-# NON-shallow fixture that would test nothing), while file:// percent-decodes the URL and
-# so breaks whenever $TMPDIR contains a decodable escape (measured: `%41` -> rc=128).
+# --no-local rather than file://: a local path clone ignores --depth, leaving a NON-shallow
+# fixture that tests nothing. git does warn about this, but the warning lands on a stream
+# no assertion reads, so the hollow fixture would not redden anything — hence the explicit
+# is-shallow self-check below. file:// also works but percent-decodes the URL, so it breaks
+# whenever $TMPDIR holds a decodable escape (measured: `%41` -> rc=128; `%dir` is fine).
 # Both the clone and the is-shallow probe need the git env unset: `git -C <dir>` does
 # NOT override an inherited GIT_DIR, so the probe would inspect the caller's repo
 # (not shallow) and red this test while naming the wrong cause.
