@@ -451,9 +451,9 @@ if [[ -n "$XS_CLASS" && -n "$XS_BARE" ]]; then
   # 只讀 stderr（`2>&1 >/dev/null`）：stdout 的 selector 不得滿足這條。
   grep -qF -- "BooksAndVocabUITests/$XS_CLASS" <<<"$XS_ERR" \
     && ok "錯誤指名真正的 target/容器 BooksAndVocabUITests/$XS_CLASS" \
-    || fail_t "錯誤未指名 $XS_BARE 真正所屬的 BooksAndVocabUITests/$XS_CLASS，實得：$XS_ERR"
+    || fail_t "錯誤未指名 $XS_BARE 真正所屬的 BooksAndVocabUITests/${XS_CLASS}，實得：$XS_ERR"
   grep -qF -- "--ui $XS_BARE" <<<"$XS_ERR" \
-    && ok "錯誤給出可直接複製的修正命令（--ui $XS_BARE）" \
+    && ok "錯誤給出可直接複製的修正命令（--ui ${XS_BARE}）" \
     || fail_t "錯誤未給出可執行的修正命令，實得：$XS_ERR"
 else
   fail_t "找不到只住在 UI 樹的裸方法名（XS_PAIR='$XS_PAIR'）"

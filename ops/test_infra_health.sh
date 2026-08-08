@@ -166,9 +166,9 @@ UPSNIP="$(sed -n "${UPLINE_NO}p" "$SCRIPT")"
 # 其中一種會讓「另一個正確實作」變成一條指著錯誤原因的假紅。
 if printf '%s' "$UPSNIP" | grep -qE 'date (-u )?-j -f' \
    && printf '%s' "$UPSNIP" | grep -qF 'printf "container_uptime_s'; then
-  ok "抽到的是 uptime 計算行（provenance 守衛，行號 $UPLINE_NO）"
+  ok "抽到的是 uptime 計算行（provenance 守衛，行號 ${UPLINE_NO}）"
 else
-  fail_t "抽到的不是 uptime 計算行（行號 $UPLINE_NO）：$UPSNIP"
+  fail_t "抽到的不是 uptime 計算行（行號 ${UPLINE_NO}）：$UPSNIP"
 fi
 
 # StartedAt 與 NOW 都釘死 → 期望值是常數 90，不隨執行時刻漂移，也不靠「兩邊一致」蒙混

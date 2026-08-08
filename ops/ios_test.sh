@@ -586,7 +586,7 @@ elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
         # 印出 target/容器（去掉 -only-testing: 前綴），讓讀者直接看見它住在哪。
         echo "[ios_test] 但這個名字存在於另一個 target：" >&2
         printf '[ios_test]   %s\n' "${elsewhere[@]#-only-testing:}" >&2
-        echo "[ios_test] 本 scope（$TEST_TARGET）掃不到它。加上 $other_scope_flag 即可：" >&2
+        echo "[ios_test] 本 scope（${TEST_TARGET}）掃不到它。加上 $other_scope_flag 即可：" >&2
         echo "[ios_test]   ./ops/ios_test.sh $other_scope_flag $t" >&2
         exit 1
       fi
