@@ -32,7 +32,7 @@ build_entry() {
   local root="$1" name="$2" age_hours="$3" stamp
   mkdir -p "$root/$name/Build/Products"
   printf 'x%.0s' {1..2048} > "$root/$name/Build/Products/blob.bin"
-  stamp="$(date -v "-${age_hours}H" '+%Y%m%d%H%M.%S')"
+  stamp="$(kg_date_hours_ago "$age_hours" '+%Y%m%d%H%M.%S')"
   touch -m -t "$stamp" "$root/$name"
 }
 
@@ -76,7 +76,7 @@ KG_IOS_CACHE_KEEP=2 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=6 \
   kg_ios_cache_evict "$root" cur 2>/dev/null
 [[ -d "$root/cur" ]] && ok "current key 不被淘汰" || fail_t "current key 被淘汰了"
 # current key 被 touch 成最新（之後其他 caller 的 LRU 會視其為 in-use）
-cur_m="$(stat -f '%m' "$root/cur")"; n1_m="$(stat -f '%m' "$root/n1")"
+cur_m="$(kg_stat_mtime "$root/cur")"; n1_m="$(kg_stat_mtime "$root/n1")"
 [[ "$cur_m" -ge "$n1_m" ]] && ok "current key 被 touch 成最新" || fail_t "current key 未被 touch"
 
 # ── 4. min-age 內的條目受保護 ────────────────────────────────────────────
@@ -114,7 +114,7 @@ root="$(fresh_root 7)"
 build_entry "$root" n1 10; build_entry "$root" n2 20; build_entry "$root" n3 30
 build_entry "$root" old 500
 echo data > "$root/stray.txt"
-touch -m -t "$(date -v -900H '+%Y%m%d%H%M.%S')" "$root/stray.txt"
+touch -m -t "$(kg_date_hours_ago 900 '+%Y%m%d%H%M.%S')" "$root/stray.txt"
 KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=6 \
   kg_ios_cache_evict "$root" n1 2>/dev/null
 [[ -f "$root/stray.txt" ]] && ok "非目錄條目不動" || fail_t "非目錄條目被刪"

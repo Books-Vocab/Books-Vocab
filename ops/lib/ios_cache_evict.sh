@@ -25,6 +25,11 @@
 # 並發注意：ios_test.sh 在 build lock 內呼叫；catalog 無共用鎖，靠
 # 「resolve 即 touch + min-age 視窗」保護仍在跑的並行 run。
 
+# mtime 讀取走相容層：GNU 上 `stat -f` 是 --file-system，配下面兩處的 2>/dev/null 會
+# 安靜產出空清單（= 一條都不淘汰，磁碟照樣塞爆）。見 lib/userland_compat.sh 的抬頭。
+# shellcheck source=./userland_compat.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/userland_compat.sh"
+
 # kg_ios_cache_evict <cache_root> <current_key>
 kg_ios_cache_evict() {
   local cache_root="$1"
@@ -50,7 +55,7 @@ kg_ios_cache_evict() {
     [[ -n "$line" ]] && entries+=("$line")
   done < <(
     find "$cache_root" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null \
-      | xargs -0 stat -f '%m %N' 2>/dev/null \
+      | kg_stat_batch_mtime_name 2>/dev/null \
       | sort -rn
   )
 
@@ -72,7 +77,7 @@ kg_ios_cache_evict() {
 
     # Stale-snapshot guard：快照取得後、刪除前，並行 run 可能已 touch/重建
     # 這條 key（無鎖 catalog 路徑的真實視窗）。刪前重驗 mtime，變新就放過。
-    fresh_mtime="$(stat -f '%m' "$path" 2>/dev/null || echo "")"
+    fresh_mtime="$(kg_stat_mtime "$path" 2>/dev/null || echo "")"
     if [[ -z "$fresh_mtime" ]]; then
       continue  # 已被別人刪掉
     fi
