@@ -1,0 +1,14 @@
+{
+  "brief": "每道把關跑了多久其實已經量到並印在畫面上，卻沒有被記下來，所以沒有人答得出這件事平常要跑多久。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "ops/lib/streaming_command.py:276 已經算出 elapsed 並在 :278 印成 phase=done elapsed=..s，但它死在 subprocess.CompletedProcess 沒有欄位可放。ops/worktree_orchestrate.py:1662 的 _run_streamed_command 簽名沒有把它傳出來（只有一個呼叫點 :1786）。結果是 _append_gate_history（:1381-1416）九個欄位無任何時間，per-run 記錄的每個 gate 也只有 category/level/name/rc/status/summary——連 record 都沒有時間。所以 1291 筆 journal 答得出這道 gate 從沒綠過，答不出這道該跑多久。修法 = run_streamed_command 回傳 elapsed，_run_streamed_command 加寬成三元組，內部 gate 分支（:1747-1771）也用 time.monotonic 包起來以免只有那些列沒有時間，_append_gate_history 寫入 dur_s 並改成逐列時間戳（ts 目前在 :1396 迴圈外只算一次）加 run_id/idx。硬約束：iOS 那幾道會經過全域鎖，鎖等待必須與工作時間分開記，否則量到的是鄰居——.cache/ios-run-metrics.jsonl 顯示 test lockWait p90 約 243 秒。第二個硬約束：不得據此新增第三種 verdict 狀態（見 aggregate_verdict fail-open 那張票）。",
+  "id": "IMP-20260808-4bd1ef",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個回傳值加一個欄位，兩處呼叫點。",
+  "severity": "med",
+  "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 第一手回報",
+  "status": "open",
+  "stream": "IMP"
+}

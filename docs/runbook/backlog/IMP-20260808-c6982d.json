@@ -1,0 +1,14 @@
+{
+  "brief": "一道把關如果回報了系統不認得的結果，整批會被判定為通過，而不是被攔下來。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "aggregate_verdict（ops/worktree_orchestrate.py:895-902）是 fail-open：statuses 集合裡沒有 block 也沒有 warn 就 return pass。任何它不認得的字串都會聚合成 pass，包括 None——r.get(status) 對一個沒有 status 欄位的結果 dict 回 None，於是一筆殘缺的結果會讓整批變綠。下游 cmd_gate:2534、cutover:2586、land:3046、integrate:3429 全部以這個字串為鍵，所以偽綠會一路被 cutover 收下。這是一顆潛伏彈：今天沒有產生器會發出未知 status，但任何人想新增第三種狀態（timeout 是最可能的候選，見另一張 timeout 票）都會踩爆它，而且失敗方向是綠。修法 = 改成明確白名單，遇到未知 status 直接視為 block 並具名說出是哪個 gate 回了什麼；同時補一支測試把未知值餵進去斷言不是 pass。",
+  "id": "IMP-20260808-c6982d",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個三行的聚合函式改成白名單並補一支測試。",
+  "severity": "high",
+  "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 第一手回報",
+  "status": "open",
+  "stream": "IMP"
+}
