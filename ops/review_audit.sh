@@ -11,7 +11,8 @@
 #   - reviewed commit:   contains `Reviewed-by: <reviewer>`
 #   - exempt commit:     contains `Review-Exempt: <reason>`
 #   - allowed exemptions: trivial-typo | rename-only | format-only | generated-snapshot |
-#                         single-line-small-file | machine-repair (CHECKED: ledger paths only)
+#                         single-line-small-file | machine-repair | backlog-grooming
+#                         (the last two are CHECKED: ledger paths only)
 #
 # Audited repo: $KG_REVIEW_AUDIT_ROOT, else the git toplevel of the CALLER's cwd, else
 # the repo this script lives in. The chosen root is always echoed to stderr.
@@ -114,10 +115,11 @@ EXEMPTION_NOTE=""
 # $1 = token, $2 = the commit's file list, one path per line.
 #
 # Most tokens are claims about the *nature* of a diff that this script cannot
-# check — it takes the author's word. `machine-repair` is deliberately not one of
-# those: it is claimed by `worktree_orchestrate.py`'s post-landing ledger repair,
-# which is a program, so the claim can be held to a path constraint. A token that
-# a machine emits and no machine checks is just a wider hole in the review gate.
+# check — it takes the author's word. `machine-repair` and `backlog-grooming` are
+# deliberately not two of those: the former is claimed by
+# `worktree_orchestrate.py`'s post-landing ledger repair, while the latter is for
+# a human/agent grooming batch. Both are held to the same path constraint. A token
+# that a machine emits and no machine checks is just a wider hole in the review gate.
 #
 # Pure bash, no jq: text mode must keep working without jq (that is why `need_jq`
 # only fires for `--json`), and a decision path that needs a tool the surrounding
@@ -129,13 +131,13 @@ is_allowed_exemption() {
     trivial-typo|rename-only|format-only|generated-snapshot|single-line-small-file)
       return 0
       ;;
-    machine-repair)
+    machine-repair|backlog-grooming)
       # An EMPTY file list is refused, not waved through. It is what an empty commit
       # produces, and what an unreadable diff produces — "nothing to object to" and
       # "could not look" are the same string here, and treating the second as the
       # first is the failure mode this whole gate exists to prevent.
       if [[ -z "${files//[[:space:]]/}" ]]; then
-        EXEMPTION_NOTE="machine-repair over a commit with no files — an empty or unreadable diff is not evidence that nothing needs review"
+        EXEMPTION_NOTE="$token over a commit with no files — an empty or unreadable diff is not evidence that nothing needs review"
         return 1
       fi
       while IFS= read -r line; do
@@ -151,7 +153,7 @@ is_allowed_exemption() {
       if [[ -z "$stray" ]]; then
         return 0
       fi
-      EXEMPTION_NOTE="machine-repair only covers the re-derived ledger (docs/runbook/backlog/*.json); this commit also touches: $stray"
+      EXEMPTION_NOTE="$token only covers the backlog ledger (docs/runbook/backlog/*.json); this commit also touches: $stray"
       return 1
       ;;
     *)
