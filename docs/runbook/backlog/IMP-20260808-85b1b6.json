@@ -1,0 +1,14 @@
+{
+  "brief": "把一批分支合起來的工具,強迫你在合完的當下立刻跑那套十幾分鐘的檢查,就算你明知機器正忙、跑了也只會得到假結果。",
+  "category": "cli",
+  "date": "2026-08-08",
+  "detail": "`worktree_orchestrate.py integrate --continue` 的契約是「conclude the suspended pick(stage the resolved files first),apply what is left, **gate**」——三件事焊在一起,沒有停在 gate 之前的旗標。\n\n問題:這三件事的成本差三個數量級。cherry-pick 幾乎免費且不吃 CPU;gate 在有 iOS 改動時會跑 build + build --catalyst + quality + test --unit,十幾分鐘、吃滿機器。\n\n而**操作者常常知道現在不該跑 gate**:同一台機器上還有別的 worktree 在工作。本輪已量到這件事會雙向產生假紅——批次 gate 的五道 BLOCK 有兩道是假的,同一小時內另一個受派者反向被整合樹咬三次,失敗訊息全部指控程式碼、一個字都沒提資源競爭。\n\n現在唯一的出路是繞過工具手動 `git cherry-pick` 剩下的,再單獨呼叫 `gate`——也就是說,工具的設計正在把「知道機器忙」的操作者推去繞過它。這是鐵律 9 的形狀。\n\n修法方向(不指定實作):`--continue` 加一個「只把剩下的 pick 完、不 gate」的出口,讓 gate 維持成獨立可重跑的一步(它本來就是,verdict 綁 HEAD)。",
+  "id": "IMP-20260808-85b1b6",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一個子指令加一個旗標,和它的測試。",
+  "severity": "med",
+  "source": "第二輪整合樹 round2-land 實作中",
+  "status": "open",
+  "stream": "IMP"
+}
