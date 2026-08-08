@@ -264,8 +264,9 @@ extra="\${MOCK_INFRA_EXTRA_CRIT:-}"
 overall=ok
 [[ "\$hst" == "crit" ]] && overall=crit
 [[ -n "\$extra" ]] && overall=crit
-printf 'call probe_url=%s pinned=%s http_code=%s http_probe=%s extra_crit=%s overall=%s\n' \\
-  "\$probe_url" "\$pinned" "\$code" "\$hst" "\${extra:-none}" "\$overall" >> "$INFRALOG"
+printf 'call probe_url=%s pinned=%s http_code=%s http_probe=%s extra_crit=%s overall=%s deploy_drift=%s\n' \\
+  "\$probe_url" "\$pinned" "\$code" "\$hst" "\${extra:-none}" "\$overall" \\
+  "\${KG_HEALTH_DEPLOY_DRIFT:-unset}" >> "$INFRALOG"
 st_of() { if [[ "\$extra" == "\$1" ]]; then printf crit; else printf ok; fi; }
 if (( json == 1 )); then
   if [[ "\${MOCK_INFRA_MALFORMED:-0}" == "1" ]]; then
@@ -339,6 +340,10 @@ v="$(get_verdict "$out")"
 grep -q '"smoke":"n/a"' <<<"$out" && ok "noop: smoke=n/a（沒進 gate 的路徑）" || bad "noop: smoke 欄位不是 n/a (out=$out)"
 [[ ! -s "$COMPOSELOG" ]] && ok "noop: compose not called" || bad "noop: compose called ($(cat "$COMPOSELOG"))"
 grep -q "pull" "$GITLOG" && bad "noop: git pull called" || ok "noop: git pull not called"
+# 心跳量的是「reconciler 還活著嗎」不是「有沒有部署」，所以**連 noop 這條路徑都要寫**。
+# 在 noop 上斷言正是因為它是最容易被漏掉的那條：只在 deployed 路徑寫心跳的實作，會讓
+# 一台「活著但無事可做」的 reconciler 看起來跟停擺一模一樣。
+grep -q "^tick " "$STATE" 2>/dev/null && ok "noop: tick 心跳已寫入 state" || bad "noop: tick 心跳未寫入 state"
 
 section "non-backend change (docs) → ff-only"
 new_scratch docs
@@ -371,6 +376,10 @@ ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_NEW" ]] && ok "deployed: VERSION == new sha" || bad "deployed: VERSION=$ver_now != $SHA_NEW"
 # 正控：這一關真的跑過，且它探的是**與外部 smoke 同一個 URL**（歸因規則的整個支點）。
 grep -q "overall=ok" "$INFRALOG" && ok "deployed: infra_health 真的跑了且判 ok（正控）" || bad "deployed: infra_health 沒被呼叫或沒判 ok（$(cat "$INFRALOG" 2>/dev/null)）"
+# 自噬迴圈守衛：部署收斂是 reconciler **自己的職責**，把自己的收斂狀態納入自我健康
+# 條件會構成迴圈——release 後到收斂完成之間必然 drift，於是它會回滾一次本來健康的部署。
+# 故這一關必須以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫。
+grep -q "deploy_drift=0" "$INFRALOG" && ok "deployed: infra_health 以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫" || bad "deployed: infra_health 未關掉 deploy_drift，有自噬迴圈風險（$(cat "$INFRALOG" 2>/dev/null)）"
 
 section "外部 smoke 前兩次連不上 → 重試後仍 deployed（不得假回滾）"
 # IMP-0060，這是**生產實際發生過的事故**（2026-08-04 12:40Z）：容器 recreate 後

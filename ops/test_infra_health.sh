@@ -9,9 +9,14 @@
 # 注意：stub 直接吐 canned tab 指標（忽略 REMOTE_BUNDLE），故 macOS-native 探針
 #   （vm_stat/sysctl 記憶體·swap、cloudflared ingress）的真實解析行為無法在此 stub
 #   行使，須靠 standby 實機 `health --json` 驗證（見 receipt）。
-#   **例外：StartedAt 的 uptime 計算已有覆蓋**，走的是第二條 seam——把 REMOTE_BUNDLE
-#   裡那一行原封抽出來直接 eval（見「Uptime：StartedAt 是 UTC」段），繞過 stub。要為
-#   其餘 bundle 內的解析補真實覆蓋，照抄那個模式即可，不必再擴充 stub。
+#   **兩個例外，都繞過 stub 去行使真實的 bundle**：
+#   ① 單行 eval：把 REMOTE_BUNDLE 裡某一行原封抽出來直接 eval（見「Uptime：StartedAt
+#      是 UTC」段）。適合驗單一行的解析邏輯。
+#   ② **真執行整段 bundle**（較強，見「REMOTE_BUNDLE 真執行」段）：`KG_BASE` 換一支
+#      `bash -c "$2"` 的 stub，把整段 bundle 真的跑起來打 fixture repo（`KG_PROD_REPO`），
+#      端到端驗**值**。要驗「producer 印的東西消費端真的讀得到」就用這條——純掃 bundle
+#      文字的 grep 擋不住「註解列出 key 名」與「\t 換成空格」兩種突變（都實測過）。
+#   要為其餘 bundle 內的邏輯補真實覆蓋，照抄這兩個模式，不必再擴充 canned stub。
 set -euo pipefail
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -45,6 +50,17 @@ printf 'cpu_pct\t4.2\n'; printf 'mem_pct\t38.0\n'
 printf 'ingress\t%s\n' "${KG_TEST_INGRESS:-active}"
 printf 'log_errors_1h\t%s\n' "${KG_TEST_ERRS:-0}"
 printf 'data_dir_mb\t393\n'
+# 部署漂移組。預設值刻意是**健康**的（兩 sha 相同、心跳 60s 前、無 poison），否則上面
+# 那條「全綠 overall=ok」的既有斷言會紅。
+# **一律 ${VAR-default}（無冒號）**：冒號形式在變數「已設但為空字串」時也會代入 default，
+# 於是下面「心跳缺值」案例會拿到健康的 now-60 而不是空值，那條斷言就永遠不可能紅。
+# 實測：KG_TEST_TICK_EPOCH="" 時 ${VAR:-D} 得 D、${VAR-D} 得空字串。
+printf 'deployed_sha\t%s\n' "${KG_TEST_DEPLOYED_SHA-abc1234}"
+printf 'deployed_head_sha\t%s\n' "${KG_TEST_HEAD_SHA-abc1234}"
+printf 'origin_prod_sha\t%s\n' "${KG_TEST_ORIGIN_SHA-abc1234}"
+printf 'reconciler_tick_epoch\t%s\n' "${KG_TEST_TICK_EPOCH-$(( $(date +%s) - 60 ))}"
+printf 'reconciler_poison_epoch\t%s\n' "${KG_TEST_POISON_EPOCH-}"
+printf 'host_now_epoch\t%s\n' "${KG_TEST_NOW_EPOCH-$(date +%s)}"
 EOF
 chmod +x "$STUB"
 
@@ -206,6 +222,147 @@ section "降級：憑證量不到（openssl 失敗）→ unknown → overall war
 js="$(KG_HEALTH_CERT_ENDDATE="garbage-not-a-date" run_health --json 2>/dev/null || true)"
 echo "$js" | py 'import sys,json;d=json.load(sys.stdin);c=[m for m in d["metrics"] if m["key"]=="cert_days_left"][0];assert c["status"]=="unknown",c;assert d["overall"]=="warn",d["overall"]' \
   && ok "cert 量不到 → unknown→warn" || fail_t "cert 量不到 未 warn"
+
+section "REMOTE_BUNDLE 結構：五個部署漂移 key 真的在遠端 bundle 內"
+# 這五個 key 的**產生端**在 REMOTE_BUNDLE 裡，而 stub 完全忽略 bundle、直接偽造 key。
+# 少了這條，把 bundle 那五行整個刪掉、只留 stub 的偽造值，下面六段照樣全綠——與 uptime
+# 那張票被 review 抓到的存活突變是同一個形狀，故在這裡先堵。
+# 掃的是 ops/infra_health.sh，不是測試檔自己，故不會自我滿足。
+bundle_src="$(sed -n "/^REMOTE_BUNDLE='/,/^'$/p" "$SCRIPT")"
+miss=""
+for k in deployed_sha origin_prod_sha reconciler_tick_epoch reconciler_poison_epoch host_now_epoch; do
+  printf '%s' "$bundle_src" | grep -qF "$k" || miss="$miss $k"
+done
+[[ -z "$miss" ]] && ok "REMOTE_BUNDLE 含五個漂移 key" || fail_t "REMOTE_BUNDLE 缺:$miss"
+
+section "REMOTE_BUNDLE 真執行：五個 key 的值端到端到得了 getm"
+# **上面那條 grep 不夠,它擋不住它宣稱要擋的東西**（實測兩個突變體都能全綠通過）：
+#   ① 五行 producer 全刪、補一句 `# TODO: re-add deployed_sha origin_prod_sha …` 的註解
+#   ② 只把某行的 \t 換成空格 —— key 名還在,但消費端 getm 用 -F'\t' 永遠比不中
+# 所以這裡改用真執行：KG_BASE 這個 seam 吃的就是 `run "<bundle>"`,換一支真的把 bundle
+# 跑起來的 base stub,對 fixture 生產 repo 端到端驗**值**而不是驗字串出現過。
+EXECBASE="$(mktemp)"
+cat >"$EXECBASE" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "run" ] || exit 64
+bash -c "$2"
+EOF
+chmod +x "$EXECBASE"
+
+FIXPROD="$(mktemp -d)"
+mkdir -p "$FIXPROD/backend" "$FIXPROD/backups"
+echo "81f564d" > "$FIXPROD/backend/VERSION"     # 刻意與 HEAD 不同 = ff-only 穩態
+# tick 取末筆；poison 取**最大** epoch（2000）而非最後一行（1000）——兩條都靠這份 fixture
+# 行使，下面的斷言用 2000 vs 1000 的差距把「取錯那個」釘出來。
+printf 'poison deadbee 2000\npoison cafe123 1000\ntick 3000\n' > "$FIXPROD/backups/reconciler.state"
+( cd "$FIXPROD" && git init -q && git config user.email t@t.test && git config user.name t \
+  && echo x > f && git add -A && git commit -qm base \
+  && git update-ref refs/remotes/origin/prod HEAD ) >/dev/null 2>&1
+FIXSHA="$(git -C "$FIXPROD" rev-parse --short HEAD)"
+trap 'rm -f "$STUB" "$EXECBASE"; rm -rf "$FAKEBIN" "$FIXPROD"' EXIT
+
+exec_health() {  # 真跑 bundle（本機探針失敗無妨，漂移組只吃 fixture repo）
+  # KG_DATA_DIR / KG_CONTAINER 也要釘：真執行會跑 `du -sm $KG_DATA_DIR` 與
+  # `docker logs $KG_CONTAINER`，不釘的話在 **felix 上兩者都是生產**，測試耗時會變成
+  # 生產資料量的函數（唯讀，無安全問題，但成本不該綁在生產上）。
+  KG_BASE="$EXECBASE" KG_PROD_REPO="$FIXPROD" \
+  KG_DATA_DIR="$FIXPROD/backups" KG_CONTAINER="kg-test-no-such-container" \
+  KG_HEALTH_CERT_ENDDATE="$FUTURE_CERT" KG_HEALTH_HTTP_CODE=200 \
+    bash "$SCRIPT" --json 2>/dev/null
+}
+ej="$(exec_health || true)"
+echo "$ej" | py "import sys,json;d=json.load(sys.stdin);g=[m for m in d['metrics'] if m['key']=='deploy_drift'][0];assert g['status']=='ok',g;assert '$FIXSHA' in g['value'],g;assert '81f564d' in g['value'],g" \
+  && ok "真執行：HEAD==origin/prod 但 VERSION 落後（ff-only 穩態）→ deploy_drift=ok，VERSION 只當資訊欄" \
+  || fail_t "真執行：ff-only 穩態未判 ok（用 VERSION 當收斂判準會在此永久 warn）"
+echo "$ej" | py 'import sys,json,time;d=json.load(sys.stdin);now=int(time.time());g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"][0];assert g["raw"] is not None,g;assert abs((now-g["raw"])-3000)<300,(g,now)' \
+  && ok "真執行：tick epoch 經 bundle→getm 正確到位" || fail_t "真執行：tick 值沒到 getm"
+echo "$ej" | py 'import sys,json,time;d=json.load(sys.stdin);now=int(time.time());g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["raw"] is not None,g;e=now-g["raw"];assert abs(e-2000)<300,("取到的不是最大 epoch",g,e)' \
+  && ok "真執行：poison 取最大 epoch（非最後一行）" || fail_t "真執行：poison 取值錯誤"
+
+# 漂移：讓 origin/prod 前進一個 commit，HEAD 留在原地
+( cd "$FIXPROD" && echo y > f2 && git add -A && git commit -qm next \
+  && git update-ref refs/remotes/origin/prod HEAD && git reset -q --hard HEAD~1 ) >/dev/null 2>&1
+# 這一段**只**對漂移組的 metric 斷言，不碰 overall：真執行會跑到本機真實的 df / docker /
+# pgrep 探針，開發機沒有 docker 與 cloudflared 時 overall 本來就會是 crit——那是環境事實，
+# 不是受測邏輯。deploy_drift 永不 crit 的契約由上面 stub 那段釘住（環境無關）。
+echo "$(exec_health || true)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="deploy_drift"][0];assert g["status"]=="warn",g' \
+  && ok "真執行：HEAD 落後 origin/prod → deploy_drift=warn" || fail_t "真執行：HEAD 落後未判 warn"
+
+NOWE="$(date +%s)"
+
+section "deploy_drift：兩 sha 不同 → warn 且 overall 不得 crit"
+# **永不 crit** 是契約不是巧合：release 推進 origin/prod 到 reconciler 收斂完成之間，
+# drift 是設計上的正常瞬態。判 crit 會讓 reconciler 的自我健康 gate 把一次剛部署成功
+# 的健康版本回滾掉（自噬迴圈）。
+echo "$(KG_TEST_ORIGIN_SHA=deadbee run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="deploy_drift"][0];assert g["status"]=="warn",g;assert d["overall"]!="crit",d["overall"]' \
+  && ok "deploy_drift 兩 sha 不同 → warn 且 overall 非 crit" || fail_t "deploy_drift 未 warn 或誤判 crit"
+
+section "deploy_drift：origin/prod 未 seed（unknown）→ warn"
+# felix 首次切換、或 fetch 失敗時**必然**走到的第三個分支，原本零覆蓋。
+echo "$(KG_TEST_ORIGIN_SHA=unknown run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="deploy_drift"][0];assert g["status"]=="warn",g;assert d["overall"]!="crit",d["overall"]' \
+  && ok "deploy_drift origin unknown → warn" || fail_t "deploy_drift unknown 分支未 warn"
+
+section "reconciler_poison_active：有紀錄但算不出年齡 → 不得回報「無」"
+# 「量不到」絕不等於「沒有 poison」——與本檔 host_collect / cert 兩處同一原則。
+echo "$(KG_TEST_POISON_EPOCH=not-a-number run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["status"]!="ok",g;assert g["value"]!="無",g' \
+  && ok "poison 值非數值 → 非 ok 且不宣稱「無」" || fail_t "poison 非數值時 fail-open"
+
+section "reconciler_tick_age_s：非數值 tick 不得讓整支腳本猝死"
+# state 檔是磁碟上的檔（可能被截斷/手改/殘留舊格式）。非數字 token 進 $(( )) 會被當變數名，
+# set -u 下整支腳本當場死掉、stdout 一個字都沒有卻回 rc=1——而 rc=1 會被 reconciler 讀成
+# 「WARN 仍 pass」，一支死掉的工具被當成通過的工具。
+tick_junk="$(KG_TEST_TICK_EPOCH=not-a-number run_health --json 2>/dev/null || true)"
+printf '%s' "$tick_junk" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"][0];assert g["status"]!="ok",g' \
+  && ok "tick 非數值 → JSON 仍完整且該格非 ok" || fail_t "tick 非數值：JSON 壞掉或假綠（實得 ${#tick_junk} bytes）"
+
+section "前導零：通過 ^[0-9]+$ 卻過不了 bash 算術的值，不得讓 metric 靜靜消失"
+# `09` 通過正則但 bash 當它是八進位 → `value too great for base` 中止整個 if 複合命令，
+# 三個 metric 從 metrics[] 消失，而 overall / exit code 完全乾淨。消費端找不到 key，
+# 得到的結論是「健康」。這比「腳本猝死」更難發現，故各自釘一條。
+echo "$(KG_TEST_TICK_EPOCH=09 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"];assert g,"reconciler_tick_age_s 從 metrics[] 消失了（八進位中止 if 複合命令）";assert g[0]["status"]!="ok",g[0]' \
+  && ok "tick=09 → metric 仍在且非 ok（十進位強制生效）" || fail_t "tick=09 讓 metric 消失或假綠"
+
+section "前導零：POISON_COOLDOWN=0900 不得把冷卻中的 poison 判成 ok"
+# 這個旋鈕正是本批文檔剛對 operator 宣傳的那個；比較失敗會落進 else＝健康那一支。
+echo "$(KG_TEST_NOW_EPOCH=$(date +%s) KG_TEST_POISON_EPOCH=$(( $(date +%s) - 100 )) KG_RECON_POISON_COOLDOWN=0900 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["status"]=="warn",g' \
+  && ok "COOLDOWN=0900 + 100s 前 poison → 仍判 warn" || fail_t "前導零冷卻窗 fail-open 成 ok"
+
+section "前導零：poison epoch 與閾值 env 也不得 fail-open"
+echo "$(KG_TEST_POISON_EPOCH=09 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"];assert g,"reconciler_poison_active 從 metrics[] 消失了"' \
+  && ok "poison epoch=09 → metric 仍在" || fail_t "poison epoch=09 讓 metric 消失"
+# 閾值 env 的前導零最陰險：比較式是 && 左側，錯誤只回 false → warn/crit 永久不可達，
+# 指標永遠綠、rc 永遠 0。本 commit 新增的 KG_HEALTH_TICK_WARN/CRIT 正是新的消費者。
+echo "$(KG_TEST_NOW_EPOCH=$(date +%s) KG_TEST_TICK_EPOCH=$(( $(date +%s) - 1000 )) KG_HEALTH_TICK_WARN=0900 KG_HEALTH_TICK_CRIT=01800 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"][0];assert g["status"]!="ok",g' \
+  && ok "TICK_WARN=0900 + 心跳 1000s → 不得判 ok" || fail_t "閾值 env 前導零 → warn/crit 分支不可達"
+
+section "deploy_drift：兩 sha 相同 → ok"
+echo "$(run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="deploy_drift"][0];assert g["status"]=="ok",g' \
+  && ok "deploy_drift 已收斂 → ok" || fail_t "deploy_drift 收斂時未 ok"
+
+section "reconciler_tick_age_s：2000s → crit"
+echo "$(KG_TEST_NOW_EPOCH=$NOWE KG_TEST_TICK_EPOCH=$(( NOWE - 2000 )) run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"][0];assert g["status"]=="crit",g' \
+  && ok "reconciler_tick_age_s 2000s → crit" || fail_t "tick 2000s 未 crit"
+
+section "reconciler_tick_age_s：缺值 → 不得假綠"
+# 年齡一律用**遠端**時鐘（host_now_epoch）相減，免本機時鐘偏移污染；量不到時 th_high
+# 回 unknown → bump 升成 warn，不會靜默變綠。
+echo "$(KG_TEST_TICK_EPOCH= run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_tick_age_s"][0];assert g["status"]!="ok",g' \
+  && ok "reconciler_tick_age_s 缺值 → 非 ok" || fail_t "tick 缺值 假綠"
+
+section "reconciler_poison_active：距今 100s → warn；99999s → ok"
+echo "$(KG_TEST_NOW_EPOCH=$NOWE KG_TEST_POISON_EPOCH=$(( NOWE - 100 )) run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["status"]=="warn",g' \
+  && ok "reconciler_poison_active 100s → warn" || fail_t "poison 100s 未 warn"
+echo "$(KG_TEST_NOW_EPOCH=$NOWE KG_TEST_POISON_EPOCH=$(( NOWE - 99999 )) run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);g=[m for m in d["metrics"] if m["key"]=="reconciler_poison_active"][0];assert g["status"]=="ok",g' \
+  && ok "poison 冷卻已過 → ok" || fail_t "poison 冷卻已過 未 ok"
+
+section "開關：預設三個 metric 都在；KG_HEALTH_DEPLOY_DRIFT=0 → 完全不出現"
+# **正控不可省**：只斷言「=0 時不出現」的話，這條在三個 metric 根本還沒實作時就會通過
+# （空集合與空集合的交集是空的）——一條在實作前後都綠的斷言，對開關零保護。故先釘住
+# 「預設時三個都在」，再釘「關掉後都不在」，兩個方向合起來才等於「開關真的在控制它們」。
+echo "$(run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);ks={m["key"] for m in d["metrics"]};want={"deploy_drift","reconciler_tick_age_s","reconciler_poison_active"};assert want <= ks, "預設缺少: %s" % (want - ks)' \
+  && ok "預設（開關未設）三個 metric 都在（正控）" || fail_t "預設三個 metric 未全部出現"
+echo "$(KG_HEALTH_DEPLOY_DRIFT=0 run_health --json 2>/dev/null)" | py 'import sys,json;d=json.load(sys.stdin);ks={m["key"] for m in d["metrics"]};assert not (ks & {"deploy_drift","reconciler_tick_age_s","reconciler_poison_active"}),ks' \
+  && ok "KG_HEALTH_DEPLOY_DRIFT=0 → 三個 metric 不出現" || fail_t "開關無效"
 
 echo ""
 echo "═══ infra_health v2: $pass passed, $fail failed ═══"
