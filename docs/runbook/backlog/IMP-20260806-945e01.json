@@ -7,15 +7,22 @@
   "date": "2026-08-06",
   "detail": "worktree_orchestrate.py runs gate BEFORE the rebase that cutover then performs, so for any branch behind main the verdict is bound to a tree that never lands. Measured tonight: feat/dictionary-card-v1 was 58 commits behind (153 ios/ files changed on main since its fork, incl. c5d81fe35 roundness single-DOF over 89 files), feat/review-card-layout-editor 48 behind, feat/reader-liquid-glass 12 behind. The failure is silent and looks like success: cutover requires a fresh non-block verdict whose recorded HEAD == current HEAD, and that check passes because the HEAD did not change — only the base did. Concretely, TodayReviewAutoplayChromeUITests.swift does not exist in the dictionary worktree at all (it entered main via bb02ed3e1 after the fork), so a --grep selecting three UI classes silently matched two; a gate green on that tree says nothing about the three-class tree that actually lands.",
   "fix_site": "ops/worktree_orchestrate.py:cmd_gate",
+  "fixed_by": [
+    "241de307f"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-945e01",
   "plan": "無需再動。241de307f（commit 標題直接點名 IMP-20260806-945e01）已在 cmd_gate 加入方案 (a)：跑任何 gate 之前先 `_base_containment(worktree, trunk)`（:994）判斷 merge-base 是否等於 trunk，落後就以 `_behind_base_refusal`（:1022）印出落後 commit 數與檔案數並回 EXIT_BLOCK，`--plan-only` 仍可預覽路由。回歸測試也在 ops/tests/test_worktree_orchestrate.py:1502/1523/1630。關閉本條時把 fixed_by 指向 241de307f。",
-  "resolution": "Options, cheapest first: (a) gate refuses (or loudly warns) when merge-base(main, worktree) != main, naming the commit count and changed-file count; (b) gate rebases onto main first and binds the verdict to the rebased HEAD; (c) cutover re-checks that the post-rebase tree equals the gated tree and re-gates if not. (a) alone would have caught all three cases tonight.",
+  "resolution": "已修（241de307f）：cmd_gate 在跑任何 gate 之前先 _base_containment 判 merge-base 是否等於 trunk，落後就以 _behind_base_refusal 印出落後 commit 數與檔案數並回 EXIT_BLOCK，判決因此綁在會落地的那棵樹上。回歸測試在 test_worktree_orchestrate.py。",
   "schema": "kg.backlog.entry.v1",
   "scope": "程式不必再動，跑一次那三支既有測試確認，然後把票結掉。",
   "severity": "high",
   "source": "convergence line, landing 3 long-lived branches",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }

@@ -7,15 +7,22 @@
   "date": "2026-08-05",
   "detail": "`ops/tests/test_ops_ci_coverage.sh` 只驗 group→分類，從不驗 file→group，所以「測試檔存在但沒有任何 group 跑得到」是結構性偵測不到的。實測（2026-08-05, HEAD fd1109ca4）：`git ls-files ops/tests/test_* ops/test_*` 得 75 支 tracked 測試檔，`ops/test_ops.sh` 的 `run_one` 只提到 56 支，**19 支對每一個 group 都不可達**：test_app_review_evidence.py / test_app_review_gate.py / test_apply_curation.py / test_asc_reviewer_mirror.py / test_capture_profile.py / test_catalog_appearance_proof.py / test_contact_sheet.py / test_demo_ios_emitter.py / test_demo_ios_spec_emitter.py / test_devops_safe_lightsail_guard.sh / test_frame_catalog.py / test_provenance.py / test_render_fit.py / test_reviewer_evidence.py / test_shape_history.py / test_streaming_command.py / test_ui_world_manifest.py / test_uitest_flow_matrix.py / test_uitest_review_page.py。CI 不補這個洞：`.github/workflows/ops-suite.yml:49` 跑的是 `./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups)`，沒有任何 wholesale `pytest ops/tests/`。唯一會碰到它們的是 cutover gate 的 `ops/**.py` → `ops/tests/test_<basename>` 路由，而那只在該支 source 進了 diff 時才觸發——**改別的檔就永遠不跑**。其中兩支的份量：`test_streaming_command.py` 守的是鐵律 5 的 heartbeat 契約（標 `[machine]`），`test_app_review_gate.py` 守的是送審 gate。本輪 `ops/tests/test_backlog.py` 與 `test_backlog_migration.py` 也在這個洞裡（已於同 commit 註冊成 `backlog` group，故不在上表）。修法：`test_ops_ci_coverage.sh` 補一條反向 section——列舉 tracked 測試檔、對照 `run_one` 可達集合、差集非空即 fail，並比照 EXCLUDED_GROUPS 給一張具名豁免表（每筆附理由），讓「刻意不進套件」與「忘了註冊」在資料上分得開。注意 IMP-20260805-8c0081 是本條的一個 instance，但它點名的 `ops/tests/test_catalog_scene_expectations.py` 今天 `git ls-files` 與磁碟上皆不存在，該筆宜連帶重新取證。",
   "fix_site": "ops/tests/test_ops_ci_coverage.sh:212-259（file→group 反向覆蓋 section）",
+  "fixed_by": [
+    "dfb4fa913"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-947062",
   "plan": "已由 commit dfb4fa913「ops: 讓 19 支從不執行的測試檔真的跑起來（IMP-20260805-947062）」落地，不需要再做。落地形狀與本條 detail 提的修法一致：ops/tests/test_ops_ci_coverage.sh:212-259 新增 section「every tracked test file is reachable from some group」，用 `git ls-files` 列 tracked 測試檔、`awk` 剝掉註解後解析 ops/test_ops.sh 的 `run_one` 求可達集合、差集非空即 fail_t（訊息為「$f is reachable from no group — register it in ops/test_ops.sh run_one, or name it in UNGROUPED_TESTS with a reason」），並比照 EXCLUDED_GROUPS 立了一張 `path|reason` 的具名豁免表 UNGROUPED_TESTS（:144-149）與反向 stale-entry 檢查（:253-258，豁免名單裡的檔必須真的是 tracked 檔）。若日後要復活，剩下的收緊工作已另立 IMP-20260806-79f81c（可達集合含 OPTIONAL_TESTS 的 asc / release-surfaces，屬已知且刻意的邊界），不要重開本條。",
-  "resolution": "",
+  "resolution": "已修（dfb4fa913）：test_ops_ci_coverage.sh 新增 file→group 反向覆蓋檢查，19 支從不執行的測試檔全部有 group 跑得到。回填 wave 實跑其 acceptance_cmd rc=0 後確認為結案動作而非待辦。",
   "schema": "kg.backlog.entry.v1",
   "scope": "程式與測試都已落地並實測綠燈，只剩把這張單標成完成。",
   "severity": "med",
   "source": "worktree backlog-immutable-flag-refusal（修 --detail 靜默吞旗標時撞到）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }
