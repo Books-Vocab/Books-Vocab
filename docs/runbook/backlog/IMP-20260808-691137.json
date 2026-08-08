@@ -1,0 +1,14 @@
+{
+  "brief": "立單時如果內容被終端機吃掉一部分,那筆單就永遠殘缺——既不能改內容,也不能刪掉重立。",
+  "category": "cli",
+  "date": "2026-08-08",
+  "detail": "2026-08-08 實遇:用 `backlog.py add --detail \"...含反引號的技術散文...\"` 立單,argv 走 double quotes,於是 detail 裡的 `` `_run_gate` `` 與 `` `refs/tags` `` 被 shell 當成命令替換執行掉,兩個 token 從內容中消失(stderr 只留下 `command not found: _run_gate`,而 add 照常回報成功)。工具備有 `--detail-file` 正是為此,是呼叫者沒用——但**善後路徑是死的**:①`update --detail-file` 具名拒絕(stream/date/source/detail 是 `make_entry_id` 的雜湊輸入,改了 id 就與內容脫鉤——這個拒絕是對的);②**沒有 remove/delete 子指令**,所以無法刪掉重立;③`add` 是具名的 dry-run 例外、立即落地,沒有預覽窗口。結果是一筆 detail 永久殘缺的 entry,只能在 `--resolution` 裡註記更正(本輪即如此處置,見 IMP-20260808-dbdc85)。可考慮的方向(未定案):①`add` 對 detail/brief/scope 做一次可疑內容偵測——例如內容裡出現 `command not found`、或反引號數量為奇數——並要求 `--detail-file` 或 `--force`;②補一個 `remove` 子指令,限定「當天、未被任何 commit 引用、未被認領」的 entry;③`add --json` 回顯寫進去的 entry 已經有了(payload 帶 `entry`),但**沒有人會逐字比對自己剛送出的散文**,所以回顯不是有效的防線,不建議只做這個。",
+  "id": "IMP-20260808-691137",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在立單工具加一道可疑內容檢查,或補一個限定條件下的刪除子指令。",
+  "severity": "low",
+  "source": "trio worktree receipt: 立單時 --detail 被 shell 吃掉,且三條善後路徑都是死的",
+  "status": "open",
+  "stream": "IMP"
+}
