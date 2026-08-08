@@ -57,9 +57,11 @@ pass=0; fail=0
 ok()     { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 
-# ── $VAR 緊接全形標點 = 定時炸彈 ────────────────────────────────────────────
-# bash 在 **UTF-8 LC_CTYPE** 下會把全形標點的首個 byte 吃進變數名：
+# ── $VAR 緊接任何非 ASCII 字元 = 定時炸彈 ──────────────────────────────────
+# bash 在 **UTF-8 LC_CTYPE** 下會把下一個字元的首個 byte 吃進變數名（下一個 byte
+# ≥ 0x80 就吃，**與是不是標點無關**——漢字最常見，見 :78-90 的實測矩陣）：
 #   echo "已回到 $sha，但…"   →   `sha\xEF: unbound variable`  →  set -u 當場殺掉腳本
+#   echo "已回到 $sha中文"     →   同上（原本的十個全形標點清單抓不到這個形狀）
 # C locale 下同一行完全正常，所以**開發機測不出來、跑起來才炸**。實測矩陣：
 #   Bash tool（LC_CTYPE unset）→ 過；gate runner（LC_CTYPE=C.UTF-8）→ 死；
 #   felix launchd（未設 locale）→ 過；人在 Terminal.app（UTF-8）→ **死**。
