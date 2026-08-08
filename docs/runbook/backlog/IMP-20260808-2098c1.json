@@ -7,6 +7,6 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "low",
   "source": "dogfood batch 1：開 10 條工作樹時觀察到",
-  "status": "triaged",
+  "status": "open",
   "stream": "IMP"
 }

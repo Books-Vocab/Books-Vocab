@@ -7,6 +7,6 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "使用者在手機看板上直接指出：卡片內容不是給我看的",
-  "status": "triaged",
+  "status": "open",
   "stream": "IMP"
 }

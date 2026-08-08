@@ -7,6 +7,6 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "dogfood batch 1：取票時打的第一個指令就不存在",
-  "status": "triaged",
+  "status": "open",
   "stream": "IMP"
 }
