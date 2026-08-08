@@ -297,7 +297,7 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/ios_archive.sh": "ops/test_ios_ops.sh",
     "ops/release_bump.sh": "ops/test_release.sh",
     "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
-    # test_script_help.sh EXECUTES it (its full-width section delegates there), which
+    # test_script_help.sh EXECUTES it (its non-ASCII-abutment section delegates there), which
     # is the standard this table demands. `ops-shell-scan` also runs the script on
     # every .sh diff, but that is the scanner doing its job, not a test of it.
     "ops/shell_scan.sh": "ops/tests/test_script_help.sh",
@@ -762,7 +762,9 @@ def plan_gates(changed_files: list[str],
         # per-script by construction — `bash -n` on each changed file, and each
         # file's own test — so a check that is ABOUT the whole tree belongs to no
         # single script and was therefore reachable from no diff at all. The
-        # full-width-punctuation guard lived in that hole since 2026-08-04: correct,
+        # non-ASCII-abutment guard (`$VAR` followed by any byte >= 0x80; only ten
+        # full-width punctuation characters until 2026-08-08) lived in that hole since
+        # 2026-08-04: correct,
         # positively controlled, and never once executed by a gate.
         #
         # ONE instance regardless of how many .sh changed: it scans the whole repo,

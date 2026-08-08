@@ -4,11 +4,15 @@
   "date": "2026-08-08",
   "detail": "`IMP-20260806-a518c9`（status=fixed）處理的是「`ops/test_release.sh` 與\n`ops/tests/test_script_help.sh` 各有一份『$VAR 緊接全形標點』掃描器，兩份對同一棵樹給出\n不同判決」。那次收斂把實作統一到 `ops/shell_scan.sh`。**但漏了第三份。**\n\n`ops/test_asc.sh:145-153`：\n\n    # Bash 會把部分非 ASCII 字元視為變數名延伸；`$field」` 在 set -u 下會讀成未定義變數。\n    section \"Bash variable braces before non-ASCII\"\n    bad_vars=\"$(\n      LC_ALL=en_US.UTF-8 awk 'match($0, /\\$[A-Za-z_][A-Za-z0-9_]*[」）]/) { print FNR \":\" $0 }' \"$ASC\"\n    )\"\n\n它在三個維度上都比 `ops/shell_scan.sh` 弱，而且**每一個維度都往不同方向錯**：\n\n1. **字元類只有兩個字元**（`」` `）`）。而危害是「下一個 byte ≥ 0x80」——2026-08-08 實測 13 個\n   字元 × 4 種 locale，漢字 / em-dash / 刪節號 / é / emoji / NBSP / ZWSP / raw 0xFF 全部致死。\n   兩個字元是嚴格子集的嚴格子集。\n2. **鎖的 locale 相反**：這裡是 `LC_ALL=en_US.UTF-8`，`shell_scan.sh` 是 `LC_ALL=C`。兩者都\n   有寫下理由且各自成立（這裡要字元語意來避免 `（` 的首 byte 誤入 byte-wise 的 class；那裡\n   要 byte 語意才能表達 `[\\200-\\377]`），但**同一個判準的兩份實作對「該用哪個 locale」給出\n   相反答案**，本身就是「兩份會各自漂移」的教科書形狀。\n3. **只掃一個檔**（`$ASC` = `ops/asc.sh`）。而 `ops/asc.sh` 已經在 `git ls-files '*.sh'` 裡\n   （實測命中），也就是 `shell_scan.sh` **已經嚴格更廣地涵蓋它**。\n\n所以這段今天是**純冗餘**：它抓得到的，`shell_scan.sh` 全抓得到；它抓不到的（`$field中`），\n`shell_scan.sh` 抓得到。它唯一還在做的事是**製造第二個會過期的判準**——a518c9 記錄的正是\n第二份判準過期之後產生假陽性、有人去改被測的碼而不是改判準。\n\n修法：刪掉 `ops/test_asc.sh:145-153` 整段（含它上方的註解），並在該處留一行指向\n`ops/shell_scan.sh`。**不要「把它的字元類也放寬」**——那是再造第三份。\n\nacceptance 的形狀建議：斷言 `ops/test_asc.sh` 內不再出現 `[」）]` 這個字元類，**且**\n`ops/shell_scan.sh` 對一棵植入 `ops/asc.sh` 違規的樹會紅——只斷言前者，會在「刪了但沒有\n任何東西接手」的錯誤實作下也綠。",
   "id": "IMP-20260808-3dfaf3",
-  "resolution": "",
+  "resolution": "MISSTATED。週邊事實全部屬實，但**核心宣稱「shell_scan.sh 已經嚴格更廣地涵蓋它」是假的**，\n而票面依此開的處方（刪掉那九行、且「不要把它的字元類也放寬」）會刪掉 ops/asc.sh 上唯一\n覆蓋兩個已知盲點的守衛，並把正確修法一併封死。\n\n兩者的約束方向不同，是**交集不空的偏序**，不是包含關係：\n  shell_scan.sh 的 FW_RE 要求 $VAR 前面有雙引號，管線再用 grep -v '^[0-9]*: *#' 濾掉註解行。\n  test_asc.sh 的 awk 兩個約束都沒有，但字元類只有 [」）] 且只掃 ops/asc.sh。\n\n三行探針實測（2026-08-08，整合者自跑，非轉述）：\n  echo hello $field」 bare      → awk 抓到；shell_scan 抓不到（不在雙引號內）\n  # comment: $sha」 inside      → awk 抓到；shell_scan 抓不到（被註解濾網吃掉）\n  echo \"quoted $sha中\"          → shell_scan 抓到；awk 抓不到（字元類太窄）\n\n也就是說那九行 awk 在 ops/asc.sh 上**正好覆蓋 IMP-20260808-2f4203（仍 open）記錄的\nshell_scan.sh 兩個盲點**。先刪再修，中間那段時間 ops/asc.sh 的未加引號形狀無人看守。\n\n另有可執行性錯誤：刪除範圍是 :145-154 不是 :145-153。實測 sed '145,153d' → bash -n rc=2\n（syntax error near unexpected token `||`），sed '145,154d' → rc=0；`[[ -z … ]] \\` /\n`&& ok … \\` / `|| fail_t …` 是一條續行複合命令。scope 欄的「九行」同錯。\n\n正確的問題陳述與排序另立 IMP-20260808-ae9c2f 承接。本票不修。\n\n（2026-08-08 附記：承接票第一次建立時我用了 `add --id` 硬指定 id，因為我在本欄先引用了那個\nid 才去建票。結果那個 entry 的 id 不是內容雜湊——`make_entry_id(stream,date,source,detail)`\n推出 `IMP-20260808-ae9c2f`，檔名卻是我指定的值，而 `validate --baseline-check` 回 0 problems。\n未 commit 前已刪除重建，承接票的正式 id 是 `IMP-20260808-ae9c2f`。這個「`--id` 可以無聲破壞\n`update --detail-file` 拚命保護的不變式」另立 IMP-20260808-d8daa2。）",
   "schema": "kg.backlog.entry.v1",
   "scope": "刪掉一支測試裡的九行，補一個正控。",
   "severity": "low",
   "source": "round2 批次整合的第三輪 review（整合者複驗）；IMP-20260806-a518c9 的漏網第三份",
-  "status": "open",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "MISSTATED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "三行探針：echo hello $field」 bare / # comment: $sha」 inside / echo \"quoted $sha中\"，分別以 shell_scan 的 FW_RE(含 grep -v 註解濾網) 與 test_asc.sh 的 awk 各掃一次 → 前兩行只有 awk 抓到、第三行只有 shell_scan 抓到，故非包含關係；sed 145,153d 後 bash -n rc=2、145,154d 後 rc=0"
 }

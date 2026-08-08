@@ -587,7 +587,8 @@ def test_a_repo_root_shell_script_with_no_test_lands_in_the_advisory():
 # --- ops-shell-scan: the guard no diff could ever reach (IMP-20260808-3bbfa2) ---
 #
 # `ops/tests/test_script_help.sh` has scanned every tracked *.sh for `$VAR` abutting
-# full-width punctuation since 2026-08-04 — correctly, with a positive control, and
+# a non-ASCII character since 2026-08-04 (ten full-width punctuation characters until
+# 2026-08-08, any byte >= 0x80 after) — correctly, with a positive control, and
 # it names the offending file and line the moment anyone runs it. Nobody ran it. The
 # cutover gate routes a changed `ops/**.sh` to `bash -n` and to that script's OWN
 # test, and a repo-wide scanner is nobody's own test, so the check existed, was
