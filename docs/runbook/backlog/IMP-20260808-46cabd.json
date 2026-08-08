@@ -1,0 +1,20 @@
+{
+  "acceptance": "合成 store 下：戳記落後超過門檻時 dispatch 與 show 皆印提醒；未落後時皆不印（正控）；無 groomed_against 的既有票不印也不報錯",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k groomed_against",
+  "brief": "待辦上寫的修法會引用當下的行號與現況，那些會被別的修改悄悄推翻，下一個接手的人照著做等於照著一個已經不存在的世界動工。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "一張票被梳理時，`plan` / `fix_site` / `acceptance` 裡會寫進大量**當下的快照**——行號、檔案存不存在、某個機制有沒有人引用、某個常數宣告了幾筆。這些快照會被**別張票的修法**推翻，而票上沒有任何機制會察覺。下一個從 `dispatch` 取走它的人，是照著一個已經不成立的世界動工。\n\n2026-08-08 一天內兩次，成因不同、症狀相同：\n\n1. **`IMP-20260808-a14d7c`**（已梳理、當時就在 `dispatch` 佇列裡）的 plan ① 以「`docs/registry.yml:921-925` 只宣告一筆 `kind: generated`」為據建一份白名單。同日 `IMP-20260808-b63206` 落地後那幾行不存在，`grep -c 'kind: generated'` 變成 0。我是在批次收尾人工複查時才發現，靠的是剛好記得兩張票相關。\n2. **`IMP-0066`** 的 plan 步驟 4 斷言「沒有任何 script 或 workflow 引用這個檔」。受派者實測**已不成立**——`IMP-20260805-947062` 早把該檔收編進 `test_ops.sh` 的 `backlog` group，而該 group 在 Linux CI 內跑。它的結論與 plan 相同但**理由完全不同**，而它是重測後才敢改。plan 上的行號（`:726`、`48 passed`）同樣過期（實際 912 行、51 passed）。\n\n第二例特別值得注意：**受派者做對了事**（重測而非照抄），但那是它自己的紀律，不是工具給的保障。一個照著 plan 直接動工的受派者會得到錯誤的前提，而且錯得很有信心——plan 讀起來就是一份已經查證過的東西。\n\n這與 `IMP-20260808-09dd3b`（對未解票實跑判準、今天就綠的列為可疑）是同族但**不同層**：那張查的是「判準」，這張查的是「plan 裡的事實宣稱」。判準可以執行，plan 裡的散文不行。",
+  "fix_site": "ops/backlog.py：groomed_against 欄位 + _cmd_list/dispatch/show 的提醒輸出",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-46cabd",
+  "plan": "**不要試圖自動驗證 plan 裡的散文**——那是語意問題，做不可靠，做一半比不做危險。改成讓**過期變得可見**，兩個便宜的機制擇一或並用：\n\n**(a) 梳理戳記帶 base sha。** `--groomed-at` 之外再記 `groomed_against`（當時的 main sha，比照 `verified_against` 的既有形狀）。`dispatch` 與 `show` 在該 sha 距今超過 N 顆 commit 時印一行提醒：「本票的梳理快照落後 main N 顆，plan 裡的行號與『某某不存在』這類宣稱可能已過期，動工前請自行複查」。**不阻擋**——梳理陳舊不等於錯。\n\n**(b) 具名擷取 plan 裡的可檢查指標。** 梳理時若 plan 提到具體檔案路徑，把它們收進一個結構化欄位（例如 `plan_refs`），`validate` 對「路徑已不存在」出 warn。**只驗路徑存在性，不驗語意**——行號與「沒有人引用它」這類宣稱刻意不碰，因為驗錯比不驗糟。\n\n**傾向 (a)**：它零語意判斷、實作只有一個欄位加一行輸出，而且它覆蓋的是**全部**過期成因（行號漂移、檔案消失、機制被別張票改掉），(b) 只覆蓋其中一種。(b) 可作後續增量。\n\n**一個必須寫進實作的判斷**：N 的門檻要能調且要有預設，但**不要**讓它變成第二個 ratchet——這條的目的是提醒動工者，不是製造一批要清的 debt。若實作後發現 store 裡大多數已梳理票都會亮這個提醒，那代表門檻選錯了或整個 store 需要一次重新梳理，**把那個發現寫進 resolution**，不要靜靜調高門檻讓提醒消失。\n\n**測試**：合成 store + 合成 git 歷史；戳記落後超過門檻 → `dispatch` 與 `show` 都印提醒；未落後 → 兩者都不印（正控）；沒有 `groomed_against` 的既有票 → 不印也不報錯（grandfather，比照 `BRIEF_REQUIRED_SINCE` 的日期式處理）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "梳理時多記一個當時的版本點，取票與檢視時在落後太多時印一行提醒；不阻擋、不自動判斷內容對錯。",
+  "severity": "med",
+  "source": "2026-08-08 一天兩次：a14d7c 的 plan 指向已被同日另一張票刪除的 registry 行；IMP-0066 的 plan 斷言「沒人引用這個檔」已被三天前另一張票推翻",
+  "status": "triaged",
+  "stream": "IMP"
+}
