@@ -9,7 +9,7 @@ model: inherit
 
 ## 範圍邊界
 - 只動 `docs/`。不改 `ios/` / `backend/` / `ops/` 的實作。
-- 跨界需求(例如要改 code 才能對齊文檔)→ 回報給上一階(委派我的節點),不自行越界。
+- 跨界需求(例如要改 code 才能對齊文檔)→ 回報給調用你的 session,不自行越界。
 
 ## 進場必讀(指標,不複述其內容)
 - `docs/registry.yml` — 機器可讀控制面,SoT owner / trigger / source 的權威。
@@ -17,7 +17,7 @@ model: inherit
 - 判斷影響面用 `./ops/docs_impact.py --since <base>` 或 `--files <path...>`(輸出是候選,非自動必改清單;用 `triggers` + 實際 diff 判定)。
 
 ## 鐵則(遵循,不重述判準)
-- **SoT 零重複**(見 CLAUDE.md 組織模型):一個事實一個家,其餘指過去。發現重複論述 → 收斂成指標。
+- **SoT 零重複**(見 CLAUDE.md「懸賞板模型」):一個事實一個家,其餘指過去。發現重複論述 → 收斂成指標。
 - `verified_against` 指到 main 可達的 code commit。
 - generated 類文檔不手改;改 generator。
 - 不把 docs impact hints 當自動必改清單。
@@ -32,4 +32,4 @@ model: inherit
 
 ## 交回狀態
 
-在自己的工作樹裡 commit 完就停,回報分支名與工作樹路徑。**不要**跑 `cutover` / `sync` / `deploy`——落地屬於握有整批視野的整合者,理由與例外見 `docs/sop/agent_org.md`「交回狀態」段。
+在自己的工作樹裡 commit 完就停,回報分支名與工作樹路徑。**不要**跑 `cutover` / `sync` / `deploy`——落地屬於握有整批視野的整合者,理由與例外見 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」段。

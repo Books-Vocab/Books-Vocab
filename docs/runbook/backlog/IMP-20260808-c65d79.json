@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "acceptance_cmd 常見的一種寫法是「grep 原始碼確認某個禁用字串不存在」，例如\nIMP-20260808-c4bbb3 梳理時寫下的：sed 出 _run_acceptance 的函式範圍，然後\n! grep -q \"shell=True\"。這種判準無法區分「程式碼」與「說明程式碼的散文」——\n修好之後 docstring 裡多了一句解釋「為什麼不用 shell=True」，判準立刻紅，而缺陷\n其實已經不在了。實測就是這樣：三件事都做完、行為測試全綠，那條 acceptance 仍回非零。\n\n危害有兩面且方向相反：\n(a) 假紅——修好了卻說沒修好，逼人去改註解遷就 grep，也就是「為了讓判準綠而編輯散文」，\n    這比判準本身還糟；\n(b) 假綠——把禁用字串寫進註解就能讓「! grep」變紅、把它刪掉就變綠，反過來說，\n    真正的程式碼改回禁用寫法但同時刪掉註解，判準照樣綠。\n\n這不是單一張單的失誤，是梳理波次批量產生的形狀：本次 75 張梳理裡有相當比例的\nacceptance_cmd 是「grep/sed 文字探針」。它們共同的缺陷是把「檔案的文字性質」當成\n「程式的行為性質」。\n\n修法方向（擇一或並行，需要先量再決定）：\n① 在 _check_acceptance_cmd 加一道 advisory（不是 block）：偵測 acceptance_cmd 只含\n   文字探針（grep/sed/awk 針對 repo 內檔案）而不含任何測試執行器（pytest / bash\n   ops/tests/ / xcodebuild），就在 validate 列為 warn kind=acceptance-is-a-text-probe，\n   讓它可被清點；\n② 在 --acceptance-cmd 的 help 與梳理 agent 的 prompt 明說：判準要斷言「行為」，\n   文字探針只能當輔助條件，不能當唯一條件；\n③ 盤點既有 store 裡屬於這個形狀的單，逐一換成行為判準。\n\n先做①的清點再決定②③的規模——現在連「有幾張是文字探針」都答不出來。",
+  "id": "IMP-20260808-c65d79",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "修好 IMP-20260808-c4bbb3 之後它自己的 acceptance 仍然紅：docstring 裡解釋『為何不用 shell=True』的那句話滿足了 grep",
+  "status": "open",
+  "stream": "IMP"
+}

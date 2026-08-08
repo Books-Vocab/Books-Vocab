@@ -51,7 +51,7 @@ version: 1.0.0
 非當場修掉者一律 `./ops/backlog.py add` 立單,**先選對 stream 再填**——選錯 stream 等於選錯 owner:
 
 - `--stream IMP` → owner `platform-steward`
-- `--stream APP` → owner 對應 Line 部門(`ios-engineer` / `backend-engineer`),收件匣 `./ops/backlog.py list --stream APP`
+- `--stream APP` → owner 對應 Line worker(`ios-engineer` / `backend-engineer`),收件匣 `./ops/backlog.py list --stream APP`
 
 本節分的是**嚴重度**(小 / 中大),stream 分的是**誰是 owner**——兩者正交,一筆 entry 要各答一次。哪個缺陷屬哪條 stream 的可判定判準見 `kg-receipt`「Stream 分流」(那是 SoT,此處不複製路徑清單,免得兩邊漂移)。
 

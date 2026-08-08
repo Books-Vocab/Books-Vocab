@@ -84,7 +84,7 @@ verified_against: e14f295ad
 | ShareLink deep-link 分享 | 2 | ⏳ fast-follow（deferred、out-of-scope）——需 Apple portal Associated Domains + AASA 部署，屬獨立基建決策 |
 | `deckBrowsed` / `deckPreviewed` / `deckCopyCompleted` / `deckCopyFailed` telemetry 事件 | 2 | ✅ 已落地（`AppAnalytics` + `SessionMetrics` 聚合 + copy 路徑 Sentry breadcrumb）|
 | Card / Notebook provenance stamp（`sourceSharedDeckId/Version` + `source_shared_card_guid`）| 2 | ✅ 本切片（copy 落地即 stamp）|
-| PublishSheet / 「我發布的牌組」/ rating / report UI | 3 | 🔒 UGC，需執行長 go |
+| PublishSheet / 「我發布的牌組」/ rating / report UI | 3 | 🔒 UGC，需使用者 go |
 
 架構 SoT（資料模型 / API surface / 風險全集）：`docs/plans/2026-07-09-shared-decks-library.md`（archive，凍結規劃）。
 
