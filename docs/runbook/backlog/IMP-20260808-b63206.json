@@ -1,0 +1,12 @@
+{
+  "category": "arch",
+  "date": "2026-08-08",
+  "detail": "`docs/snapshot/ios_baseline.md` 逐檔記錄行數，所以**任何** iOS 改動都會讓 docs gate 轉 ERROR 並要求重生這一個 repo 級的檔案——它是 fan-out 批次的衝突磁鐵：同一波有 N 個 iOS 工作樹，就會生出 N 份互相衝突的版本。\n\n而且文字與執行力對不上：`CLAUDE.md` 寫的是「iOS 大規模重構**落地後**執行 `ops/gen_ios_baseline.sh --write`」，機器閘門要求的卻是**每次** iOS 改動都得重生。實測 2026-08-08：受派者只加了 18 行 Swift（`.accessibilityElement(children:.contain)` 那一類的 modifier），`docs_lint.sh` 就轉 ERROR，被迫重生整份 baseline 並帶進自己的 commit。\n\n順帶一條可獨立修的小的：`docs_lint.sh` 只說「產物與 generator 輸出不一致」，不說**哪幾行**。受派者得把 generator 的 stdout 導出來手動 diff，才分得出「這是我造成的」還是「這是每天自轉紅的既有 debt」——而那個分辨直接決定要不要動它。值得一個 `--diff`。",
+  "id": "IMP-20260808-b63206",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "dogfood batch 1：iOS 受派者被迫把 repo 級產物帶進自己的 commit",
+  "status": "open",
+  "stream": "IMP"
+}

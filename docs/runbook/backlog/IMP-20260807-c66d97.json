@@ -6,14 +6,17 @@
   "date": "2026-08-07",
   "detail": "backlog.py 沒有任何搜尋子指令,於是「這件事是不是已經立過單了」在工具層無解。實例(2026-08-07):我從使用摩擦重新推導出「add/update 之後 view 不重生」的修法並寫完碼與測試,事後才發現 IMP-20260807-5bff5e 已經立單**而且梳理過**,plan 連「--store 非預設時不重生」這個細節都寫了——我重造了一份已經備妥的規格。同一天我為了回答「這是否已立單」寫了兩次臨時 python 掃 170 個 json。ledger 現在 170 筆且照使用者規劃會持續成長(一次 10 筆 →15→20),而 CLAUDE.md 的 Doc 路由第一條就是「查功能是否已實作(避免重造)」——那條規則對 docs 有 SoT 可查,對 ledger 沒有入口。需要 list --grep <pattern>(掃 detail/resolution/plan/fix_site,可與既有 --status/--stream/--severity 疊)。這對多 agent 場景特別重要:每個受派 agent 動工前應該先確認自己要修的東西沒有鄰居單。",
   "fix_site": "ops/backlog.py:list_entries + build_parser 的 p_list（:1919-1959）+ _cmd_list（:2734）",
+  "fixed_by": [
+    "18ad99a74"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-c66d97",
   "plan": "只改 ops/backlog.py 一支檔，三個點，不要另開 `search` 子指令（entry 要的是「可與既有旗標疊加」，那是 list 的過濾器）。\n\n【1】`build_parser()` 的 `p_list` 區塊（:1919-1959）加一行：`p_list.add_argument(\"--grep\", metavar=\"PATTERN\", help=\"正規表示式（不分大小寫）掃 detail/resolution/plan/fix_site；可與 --status/--stream/--severity/--category/--groomed 疊加\")`。\n\n【2】`list_entries()`（:1030）加 keyword-only 參數 `grep: str | None = None`，在既有 hits 過濾鏈的最後、`return sorted(hits, key=_sort_key)` 之前插入：\n```python\nif grep:\n    try:\n        pattern = re.compile(grep, re.IGNORECASE)\n    except re.error as exc:\n        raise BacklogError(f\"--grep 不是合法的正規表示式: {exc}\") from exc\n    fields = (\"detail\", \"resolution\", \"plan\", \"fix_site\")\n    hits = [p for p in hits\n            if pattern.search(\"\\n\".join(str(p.get(f) or \"\") for f in fields))]\n```\n丟 BacklogError 而不是讓 `re.error` 穿出去：`main()`（:3353）只攔 `(BacklogError, ValueError, EntryNotFound)`，穿出去就是 IMP-20260807-68715b 剛修掉的那種 traceback。\n\n【3】`_cmd_list()`（:2734）在 `select_entries(...)` 呼叫裡加一個 `grep=getattr(args, \"grep\", None)`。`select_entries`（:1119）以 `**filters` 轉手給 `list_entries`，所以它自己不用改。\n\n【測試】加在 ops/tests/test_backlog.py：(a) tmp store 三筆、只有一筆 detail 含 needle → 只回那筆；(b) needle 只出現在 `plan` 或 `fix_site` 也要命中（證明掃的不只 detail）；(c) `--grep` 疊 `--status open` 是交集不是取代；(d) `--grep '['` → rc=1 且輸出是 refusal 一行、不含 Traceback。至少一支要驅動 `main()` 的 argv，否則刪掉 parser 那一行測試照樣綠。",
-  "resolution": "",
+  "resolution": "已修（18ad99a74）：`list --grep PATTERN` 逐欄比對後插在既有過濾鏈最後，故與所有旗標取交集；壞 regex 走 BacklogError → rc=64。同步 tech_index(SoT)、三個 agent 檔、kg-receipt / kg-router 的立單入口。\n\n受派者兩處具名偏離且都判對：① rc 用 64 而非 plan 寫的 1（1 在本 CLI 專屬 EntryNotFound，硬湊等於說謊）② plan 給的 verbatim snippet 有 bug——`\"\\n\".join(fields)` 後做 `pattern.search`，會讓 `alpha\\s+beta` 跨欄誤命中，查重工具回假陽性等於毀掉存在理由；改成逐欄 `any()` 並補 test_list_grep_does_not_match_across_field_boundaries 釘住。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "tool-hardening pass: I rebuilt an already-filed entry",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP"
 }

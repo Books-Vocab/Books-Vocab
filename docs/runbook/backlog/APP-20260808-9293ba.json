@@ -1,0 +1,12 @@
+{
+  "category": "correctness",
+  "date": "2026-08-08",
+  "detail": "`AppLanguage.swift:112-122` 的 `cloudObserver` 直接寫 `selection`，繞過 `setLanguage(_:)`。\n\n後果：**跨裝置**同步過來的語言變更不會標記 pending TipKit reset，所以 TipKit 的提示文案會留在舊語言。使用者在 iPhone 改語言、iPad 同步到之後，app 介面是新語言但 TipKit 文案是舊的。\n\npre-existing——舊碼（就地 reset 那版）同樣漏掉這條路徑，APP-20260806-498c25 的修法沒有造成回歸，也沒有修好它。一行 `PendingTipsReset.mark(in: defaults)` 可收。\n\n由受派者在修 APP-20260806-498c25 時發現並具名交回（它依邊界不能碰 store，故請整合者代立）。",
+  "id": "APP-20260808-9293ba",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "low",
+  "source": "dogfood batch 1：受派者修 TipKit 崩潰時發現的相鄰漏洞",
+  "status": "open",
+  "stream": "APP"
+}
