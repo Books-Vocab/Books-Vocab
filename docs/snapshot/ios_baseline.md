@@ -4,7 +4,7 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksAndVocab
-verified_against: 99aaf22f7
+verified_against: 9b97caabd
 -->
 
 # iOS Frontend Baseline
@@ -21,14 +21,14 @@ verified_against: 99aaf22f7
 | 858 | `Services/BackgroundSyncActor.swift` |
 | 772 | `Services/PodcastSyncService.swift` |
 | 746 | `Services/KGService+Sync.swift` |
-| 673 | `Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift` |
+| 691 | `Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift` |
 | 672 | `Views/Podcast/PodcastPlayerScene.swift` |
 | 662 | `Views/Vocabulary/Scenes/SyncCoordinator.swift` |
 | 655 | `Support/Fixtures/Settings/SettingsFixtures.swift` |
 | 630 | `Services/PodcastAudioEngine.swift` |
 | 612 | `Views/Vocabulary/Scenes/TodayReviewState.swift` |
 
-總 Swift 行數: 82349 / 511 檔案
+總 Swift 行數: 82367 / 511 檔案
 
 ---
 
