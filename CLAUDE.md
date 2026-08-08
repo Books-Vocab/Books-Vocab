@@ -34,8 +34,11 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 | **認領** | 誰在做哪張票、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
 | **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
 
-**認領即工作,不必被任命。** 任何 session 從 `dispatch`(已梳理、未延後、未被認領的票)取一張,
-`worktree_orchestrate.py open --backlog <id>` 認領,做完 `gate` → `cutover`。認領是**互斥的**:
+**認領即工作,不必被任命。** 任何 session 從 `dispatch`(`./ops/backlog.py dispatch`,或等價的
+`list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領**,worst-first)取一張,
+`worktree_orchestrate.py open --backlog <id>` 認領,做完 `gate` → `cutover`。**它有兩個看不見的東西
+且會自己說出來**:認領由**本機**登記簿推導(跨機時這份清單是樂觀的),看板的**延後不套用**
+(snooze 住在 repo 外的 overlay)——所以「未延後」不是它的 clause,要那個判斷去看板。認領是**互斥的**:
 登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
 只有「取」。
 

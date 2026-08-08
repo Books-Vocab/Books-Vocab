@@ -182,7 +182,26 @@ VERDICT_FIELDS = ("verified_at", "verdict", "cost", "fix_site", "duplicate_of",
 # hash the text mentions for an unrelated reason, which is reachable from main
 # and therefore invisible to any reachability check. A field that only ever
 # holds landing commits cannot be satisfied by a sha that wandered in.
-TRACE_FIELDS = ("fixed_by",)
+# The second form, and the reason it is a SEPARATE field rather than a wider
+# `fixed_by`: the sha rules are right. They are what lets `reanchor` follow a
+# landing commit through the rebase inside `cutover`, and widening them to accept
+# `external:butler/kg-board` would cost that for every entry to serve a few.
+#
+# What they carry is an unstated premise — that every entry's fix lands in THIS
+# git repository — and that premise is already false. Two entries in the live
+# store have a `fix_site` under `~/butler/kg-board/`, and `~/butler` deliberately
+# does not use git (Syncthing since 2026-06-16). There is no sha there and there
+# never will be one, so `IMP-20260808-47f7b4` sat finished, self-tested and
+# unclosable: `--status fixed` alone gave `fixed-without-fixed-by`, and
+# `--fixed-by external:butler/kg-board` gave `fixed-by-not-a-sha`.
+#
+# The shape is `acceptance_manual`'s, deliberately and exactly: when the
+# machine-checkable form of a claim does not exist, the answer is not to relax
+# the check but to DECLARE the exception in a field somebody can count
+# (`list --fixed-elsewhere`). Free text, and the help says what it owes — where
+# the fix lives and how to re-derive it — because an unauditable escape hatch is
+# the loophole this field is shaped to avoid being.
+TRACE_FIELDS = ("fixed_by", "fixed_elsewhere")
 
 # One number, two doors. `reanchor` used to search 2000 commits from the CLI and
 # 800 from a direct call, because the parser and the function signature each
@@ -504,17 +523,69 @@ def _check_vocabulary(payload: dict) -> list[dict]:
     return problems
 
 
-def _check_traceability(payload: dict, commit_state) -> list[dict]:
-    """Hold `status` to the evidence that status implies.
+def _check_status_obligations(payload: dict) -> list[dict]:
+    """What a status owes that needs NEITHER a sha NOR a repository to check.
 
-    Each status claims something different, so each gets its own rule:
+    Split out of `_check_traceability`, and the split is the whole fix for
+    IMP-20260808-f2bcc1. These three rules lived inside that function, mentioning
+    no commit and needing no object database, so every caller that turned
+    traceability off to forgive the SHA rules turned them off too — collateral,
+    not intent. `_cmd_stage`'s own comment says so in as many words ("the
+    exclusion is WIDER than the one rule that forces it").
 
-      * `fixed` claims the defect is gone. That claim is only auditable if it
-        names the commits, and only true if those commits are still reachable.
-      * `open` claims nothing but "filed". It is an honest state and carries no
-        obligation — see the next-action rule below.
-      * `triaged` claims someone looked, so it owes a next action.
+    The measured cost of that: `add --status triaged` wrote entries `validate`
+    immediately rejects, five of them in one session, and the thing that reported
+    it was the cutover gate of a LATER, unrelated branch.
+
+    Which statuses owe what:
+
+      * `open` claims nothing but "filed". It is an honest state and owes
+        nothing — requiring a plan there would have turned 40 entries red the day
+        it landed, and the only way to clear those is to invent plans for work
+        nobody has triaged.
+      * `triaged` claims someone looked and decided, so it owes a next action.
       * `wont-fix` claims a decision, which is a reason, not a hash.
+      * `fixed` owes traceability, which is the other function's subject.
+    """
+    problems: list[dict] = []
+    status = payload.get("status")
+
+    if status == "triaged" and not _next_action(payload):
+        problems.append({"kind": "no-next-action", "status": status})
+
+    if status == "wont-fix":
+        reason = str(payload.get("resolution") or "").strip()
+        if not reason:
+            problems.append({"kind": "wont-fix-without-reason"})
+        elif _SHA_RE.match(reason):
+            # A decision not to fix is an argument. A bare hash is the shape of
+            # an entry that was closed by reflex.
+            problems.append({"kind": "wont-fix-reason-is-a-sha", "value": reason})
+
+    return problems
+
+
+def _check_traceability(payload: dict, commit_state) -> list[dict]:
+    """Hold a CLOSED entry to the audit trail it claims.
+
+    `fixed` claims the defect is gone. That claim is only auditable if it names
+    where the fix landed, and there are exactly two forms it can take — see
+    TRACE_FIELDS:
+
+      * `fixed_by`, a list of commits in THIS repo, each of which must still be
+        reachable. Machine-followable: `reanchor` re-points them after a rebase.
+      * `fixed_elsewhere`, free text, for a fix that landed somewhere with no
+        shas at all. Not machine-followable, which is why it is COUNTABLE
+        instead (`list --fixed-elsewhere`).
+
+    Exactly one. Neither is a closure with no audit trail; both is two
+    contradictory claims about the same fix, and the reader has no way to tell
+    which one the closer meant — the same defect
+    `groom-claim-with-conflicting-acceptance-proof` names one field family over.
+
+    Everything that does NOT need a sha or a repo is in
+    `_check_status_obligations`, because callers switch this function off to
+    forgive the sha rules and used to lose those by accident.
 
     `commit_state` is injected so this stays a pure function of its inputs: the
     unit tests must not need a git repo, and the one caller that does have one
@@ -523,6 +594,7 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
     problems: list[dict] = []
     status = payload.get("status")
     fixed_by = payload.get("fixed_by") or []
+    elsewhere = str(payload.get("fixed_elsewhere") or "").strip()
 
     if not isinstance(fixed_by, list) or any(not isinstance(s, str) for s in fixed_by):
         return [{"kind": "fixed-by-not-a-list", "value": fixed_by}]
@@ -533,9 +605,32 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
         # green gate would find, and the sha is no less broken for it. Only the
         # REQUIREMENT to carry one is specific to `fixed`; validating the ones
         # actually present is not.
-        if status == "fixed" and not fixed_by:
-            problems.append({"kind": "fixed-without-fixed-by"})
-        for sha in fixed_by:
+        if status == "fixed" and not fixed_by and not elsewhere:
+            # Kind name kept as-is although two fields now satisfy it: it is
+            # referenced by `_merged_and_validated`'s repair hint and by tests,
+            # and renaming a refusal to widen it is how a hint stops firing. What
+            # it accepts is carried in the problem itself, so `--json` says so.
+            problems.append({"kind": "fixed-without-fixed-by",
+                             "accepted": list(TRACE_FIELDS)})
+        elif status == "fixed" and fixed_by and elsewhere:
+            problems.append({"kind": "fixed-with-conflicting-traceability",
+                             "present": list(TRACE_FIELDS)})
+        # The sha rules apply to shas. An entry that DECLARES its fix has none is
+        # not exempt from scrutiny — it is scrutinised by being countable — and
+        # running them anyway on the conflicting case would bury the conflict
+        # under complaints about the field that should not be there.
+        #
+        # `and status == "fixed"` is load-bearing, not defensive. The two
+        # exactly-one-of rules above are gated on `fixed`, so without it a
+        # `wont-fix` carrying BOTH a broken sha and this field got neither finding:
+        # no conflict (wrong status) and no sha check (skipped) — validated clean.
+        # Reachable from the CLI in one call on any entry with an orphaned sha,
+        # which is the state `reanchor` exists for. That is the same
+        # flip-the-status-and-the-broken-sha-disappears defect the comment eight
+        # lines up records having already paid for once, re-entered through the new
+        # field. Skipping is a property of the CLOSURE this field describes, and
+        # only `fixed` is that closure.
+        for sha in ([] if (elsewhere and status == "fixed") else fixed_by):
             if not _SHA_RE.match(sha):
                 problems.append({"kind": "fixed-by-not-a-sha", "sha": sha})
                 continue
@@ -558,18 +653,12 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
             # lying about itself, and it is the shape that lets closed work look
             # open forever.
             problems.append({"kind": "fixed-by-on-unfinished-entry", "shas": fixed_by})
-
-    if status == "triaged" and not _next_action(payload):
-        problems.append({"kind": "no-next-action", "status": status})
-
-    if status == "wont-fix":
-        reason = str(payload.get("resolution") or "").strip()
-        if not reason:
-            problems.append({"kind": "wont-fix-without-reason"})
-        elif _SHA_RE.match(reason):
-            # A decision not to fix is an argument. A bare hash is the shape of
-            # an entry that was closed by reflex.
-            problems.append({"kind": "wont-fix-reason-is-a-sha", "value": reason})
+        if elsewhere:
+            # Same defect through the new door. Without this the second form
+            # would be a way to write "this is fixed" while the status keeps
+            # saying it is not, which is precisely what the rule above refuses.
+            problems.append({"kind": "fixed-elsewhere-on-unfinished-entry",
+                             "value": elsewhere})
 
     return problems
 
@@ -792,6 +881,13 @@ def validate_entry(payload: dict, *, entry_id: str | None = None,
                 problems.append({"kind": "app-field-on-imp-entry", "field": field})
 
     problems.extend(_check_groom(payload))
+    # UNCONDITIONAL, and that is the fix for IMP-20260808-f2bcc1. `check_traceability`
+    # exists to forgive rules that need a repository; these need none, and riding
+    # along inside that switch is how `add --status triaged` came to write entries
+    # `validate` rejects. Measured before turning it on: 0 of the 141 rows in the
+    # frozen 8-column fixture and 0 of the live entries are affected, so the ratchet
+    # lands green rather than reddening the store on arrival.
+    problems.extend(_check_status_obligations(payload))
     if check_traceability:
         problems.extend(_check_traceability(payload, commit_state))
 
@@ -902,6 +998,7 @@ def add_entry(
     verdict_fields: dict | None = None,
     extra: dict | None = None,
     overwrite: bool = False,
+    historical: bool = False,
     _gate: bool = False,
 ) -> dict:
     """Create one entry file and return the entry.
@@ -970,7 +1067,7 @@ def add_entry(
     if not _SAFE_ID_RE.match(payload["id"]):
         raise ValueError(f"unusable entry id (must be a bare filename): {payload['id']!r}")
 
-    # Creation does not owe traceability. `import` exists to represent HISTORY,
+    # Creation does not owe TRACEABILITY. `import` exists to represent HISTORY,
     # and history is full of `fixed` rows whose landing commit was never written
     # down — refusing them here would mean the only way to migrate the ledger is
     # to first solve the audit problem the ledger was migrated to expose.
@@ -978,9 +1075,50 @@ def add_entry(
     # _merged_and_validated), and `validate` enforces it over the whole store,
     # so nothing filed this way escapes the gate — it just is not refused at the
     # moment of writing, when the caller may genuinely not know the answer yet.
+    #
+    # It DOES owe the status obligations, which this switch used to suppress as
+    # collateral (see `_check_status_obligations`). Refused here rather than
+    # dry-run because `add`'s contract is "additive, git-reversible, lands
+    # immediately" — there is no second call to preview into. The per-kind
+    # question that makes the refusal safe is answered in the test named
+    # `test_add_is_silent_on_an_ordinary_new_open_entry`: an ordinary new `open`
+    # entry has no plan, no acceptance and no landing commit, and this check must
+    # be SILENT on it, or the repair is a tool nobody can file with.
     problems = validate_entry(payload, entry_id=payload["id"], check_traceability=False)
+    if historical and problems:
+        # `import` is the ONE caller that represents rows written before these rules
+        # existed, and the legacy table really does contain `triaged` rows whose
+        # resolution cell is the empty marker `—`. Refusing them here does not
+        # improve the ledger: `import_legacy` records a `rejected-row` and carries
+        # on, so the entry is LOST — a migration turned into data loss, caught by
+        # `test_rerun_picks_up_edits_made_between_runs` while this landed.
+        #
+        # The forgiven set is derived by RE-RUNNING the same function on the same
+        # payload rather than listed as kinds, so it can never forgive something
+        # that check did not actually say about this entry, and a rule added there
+        # needs no edit here. `validate` still names these over the whole store —
+        # this forgives the moment of writing, not the finding.
+        forgiven = {p["kind"] for p in _check_status_obligations(payload)}
+        problems = [p for p in problems if p["kind"] not in forgiven]
     if problems:
-        raise ValueError(f"invalid entry: {problems}")
+        # Name the repair. `no-next-action` is the one kind a caller meets by
+        # reaching for a flag that looked legal, so it gets the route out — and
+        # the route deliberately does NOT mention `--plan`, which `add` refuses by
+        # name (GROOM_ONLY_FLAGS). A hint pointing at a second dead end is worse
+        # than none.
+        hint = ""
+        if any(p["kind"] == "no-next-action" for p in problems):
+            hint = (
+                "\n  `--status triaged` claims the next step is decided, so the entry "
+                "owes one. Two ways out:\n"
+                "    file it as `--status open` (the default — drop the flag) and "
+                "groom it later with `update <id> --plan ...`\n"
+                "    or say the next step now: --resolution '— <下一步>'"
+            )
+        elif any(p["kind"] == "wont-fix-without-reason" for p in problems):
+            hint = ("\n  a decision not to fix is an argument: "
+                    "--resolution '<why this will not be done>'")
+        raise ValueError(f"invalid entry: {problems}{hint}")
 
     path = entry_path(store, payload["id"])
     if path.exists() and not overwrite:
@@ -1079,6 +1217,9 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 FILE_TWIN_FIELDS = (
     "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
     "acceptance_manual", "repro", "evidence", "fix_site",
+    # A path plus the command that re-derives the fix, i.e. exactly the two
+    # things a shell rewrites: `~` and backticks.
+    "fixed_elsewhere",
     # Written by a human in prose, in Chinese, and quoting the thing that is
     # broken — which is exactly the text most likely to carry a backtick.
     *BRIEF_FIELDS,
@@ -1151,7 +1292,18 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
         if any(p["kind"] == "fixed-without-fixed-by" for p in problems):
             hints.append(
                 f"  closing it -> ops/backlog.py update {entry_id} --status fixed "
-                f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)"
+                f"--fixed-by <sha>... --commit (fill it AFTER the fix lands)\n"
+                f"  the fix is NOT in this repo (e.g. ~/butler, which has no git) -> "
+                f"--fixed-elsewhere '<where it lives + how to re-derive it>' instead; "
+                f"exactly one of the two, and the declared set is countable with "
+                f"`list --fixed-elsewhere`"
+            )
+        if any(p["kind"] == "fixed-with-conflicting-traceability" for p in problems):
+            hints.append(
+                f"  drop one: `--fixed-by` says the fix is a commit in this repo, "
+                f"`--fixed-elsewhere` says it is not. Clear the wrong one with "
+                f"`update {entry_id} --fixed-elsewhere '' --commit` (or re-set "
+                f"--fixed-by alone)"
             )
         # These two are the ONLY kinds whose repair is fully determined, so they
         # are the last ones that should arrive as a bare defect name. Written as
@@ -1243,11 +1395,31 @@ def list_entries(
     groomed: bool = False,
     ungroomed: bool = False,
     acceptance_manual: bool = False,
+    fixed_elsewhere: bool = False,
     missing_brief: bool = False,
     grep: str | None = None,
+    dispatch: bool = False,
+    held: dict | None = None,
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
+    if dispatch:
+        # Each of these intersects dispatch's own clauses to nothing, and an empty
+        # dispatch queue is the worst false read this tool can produce: it says
+        # "there is no work" to the caller whose whole reason for running it was to
+        # find some. Same treatment, and the same reason, as the three pairs above.
+        conflict = None
+        if ungroomed:
+            conflict = ("--ungroomed", "--dispatch only ever contains GROOMED entries")
+        elif status in ("fixed", "wont-fix"):
+            conflict = (f"--status {status}",
+                        "--dispatch only ever contains UNRESOLVED entries")
+        if conflict:
+            flag, why = conflict
+            raise BacklogError(
+                f"{flag} and --dispatch are empty by construction: {why}. Drop one "
+                f"— `--dispatch` for what to take next, `{flag}` on its own to look "
+                f"at that set.")
     if missing_brief and status in ("fixed", "wont-fix"):
         # Empty by construction, and an empty result here reads as "no such debt"
         # — while 96 closed entries carry no brief today. Same treatment, and the
@@ -1280,6 +1452,11 @@ def list_entries(
         # this" is a COUNT somebody can look at, not an absence nobody notices —
         # which is what `acceptance` itself had been for its whole life.
         hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
+    if fixed_elsewhere:
+        # The other declared exception, same principle: closures whose audit trail
+        # is prose because the fix landed where shas do not exist. Countable so the
+        # set can be argued with instead of accumulating unseen.
+        hits = [p for p in hits if str(p.get("fixed_elsewhere") or "").strip()]
     if missing_brief:
         # The BACKFILL queue, not a dispatch queue — the difference matters enough
         # to be in `--help` too. These entries are not unworked; most of them carry
@@ -1324,7 +1501,41 @@ def list_entries(
         fields = ("detail", "resolution", "plan", "fix_site")
         hits = [p for p in hits
                 if any(pattern.search(str(p.get(f) or "")) for f in fields)]
+    if dispatch:
+        # THE queue the operating constitution names, expressed as the intersection
+        # of its own three clauses and nothing else. It sits last, like `--grep`, so
+        # every filter above ANDs with it rather than being replaced by it.
+        #
+        # `held` is INJECTED rather than derived here, so the CLI's claim column and
+        # this filter are the same read of the same ledger. Deriving twice would let
+        # a claim taken between the two reads produce a row the list offers and
+        # simultaneously marks as taken.
+        claimed = held_tickets() if held is None else held
+        hits = [p for p in hits
+                # groomed: `validate` already guarantees the badge implies
+                # plan/acceptance/fix_site, so the badge is the whole predicate.
+                if str(p.get("groomed_by") or "").strip()
+                # unresolved
+                and p.get("status") not in ("fixed", "wont-fix")
+                # unclaimed
+                and p.get("id") not in claimed]
+        # A queue somebody takes the TOP of, so worst-first, then oldest-first.
+        # `_sort_key` is (date, id), which is right for an inventory and wrong
+        # here: it puts last week's `low` ahead of today's `high`.
+        return sorted(hits, key=lambda p: (-_severity_rank(p), _sort_key(p)))
     return sorted(hits, key=_sort_key)
+
+
+def _severity_rank(payload: dict) -> int:
+    """Position in SEVERITIES, read off the vocabulary rather than restated.
+
+    A hand-written {"high": 2, ...} map is a second copy of a closed vocabulary,
+    and this module has already paid twice for the second copy drifting.
+    """
+    try:
+        return SEVERITIES.index(str(payload.get("severity")))
+    except ValueError:
+        return -1  # outside the vocabulary: last, and `validate` names it
 
 
 # Closed WITHOUT an attributable verification. This is the ratchet key, and the
@@ -1871,6 +2082,11 @@ def import_legacy(text: str, store: Path) -> dict:
                 detail=row["detail"],
                 resolution=row["resolution"],
                 verdict_fields=verdict_fields,
+                # Named at the call site, not inherited by every writer: the
+                # exemption nobody chose is exactly what IMP-20260808-f2bcc1 was.
+                # THIS caller has the reason — the rows predate the rules — and it
+                # is the only one that does.
+                historical=True,
                 _gate=True,
             )
         except ValueError as exc:
@@ -2146,6 +2362,102 @@ def _add_store_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -> None:
+    """Every read filter, on whichever door asked for it.
+
+    `list --dispatch` and `dispatch` are ONE implementation reached two ways, and
+    this function is what makes that structural rather than a promise. A second
+    hand-written flag block behind the noun would drift, and the drift would be
+    invisible from the outside: both doors would keep returning *a* list, and the
+    caller who typed the noun would simply be unable to express a question the
+    flag can. `test_every_list_filter_is_reachable_from_the_dispatch_door` asserts
+    the two option sets differ by exactly `--dispatch`.
+
+    `dispatch_flag` is the one asymmetry: on the `dispatch` subcommand the queue
+    is the command, so a `--dispatch` flag there would be a flag that can only be
+    redundant or contradictory.
+    """
+    _add_store_arg(parser)
+    parser.add_argument("--status", choices=STATUSES)
+    parser.add_argument("--stream", choices=STREAMS)
+    parser.add_argument("--severity", choices=SEVERITIES)
+    parser.add_argument("--category")
+    parser.add_argument(
+        "--ungroomed",
+        action="store_true",
+        help="only entries nobody has worked out a fix plan for (the groom queue). "
+             "NOTE this store knows nothing about who is WORKING on an entry: that "
+             "lives in the worktree ledger (`ops/worktree_registry.py list`, columns "
+             "`backlog` / `claimed`). This flag alone is NOT a dispatch queue — it "
+             "will hand out ids another agent already holds; ask the `dispatch` "
+             "subcommand (or `list --dispatch`) instead. Named as the subcommand "
+             "and not as `--dispatch`, because this same help is printed by "
+             "`dispatch --help`, where that flag does not exist",
+    )
+    parser.add_argument(
+        "--groomed", action="store_true", help="only entries carrying a groom stamp"
+    )
+    parser.add_argument(
+        "--held", action="store_true",
+        help="only tickets a worktree on THIS MACHINE currently claims (derived from "
+             "the worktree ledger; there is no stored in-progress status any more)"
+    )
+    if dispatch_flag:
+        parser.add_argument(
+            "--dispatch", action="store_true",
+            help="WHAT TO TAKE NEXT — the intersection of three clauses: groomed "
+                 "(`groomed_by` set, which `validate` guarantees implies "
+                 "plan/acceptance/fix_site) AND unresolved (status is not fixed or "
+                 "wont-fix) AND unclaimed (no worktree on this machine holds it). "
+                 "Sorted worst-first, then oldest-first. Two things it CANNOT see, "
+                 "both printed with the result: the claim ledger is per-machine, so "
+                 "across machines this queue is OPTIMISTIC; and board deferrals live "
+                 "outside this repo, so a snoozed entry is still offered. Identical "
+                 "to the `dispatch` subcommand",
+        )
+    parser.add_argument(
+        "--acceptance-manual", dest="acceptance_manual", action="store_true",
+        help="only entries that DECLARE no command can prove their acceptance — the "
+             "set `anchor` cannot machine-check, kept countable on purpose"
+    )
+    parser.add_argument(
+        "--fixed-elsewhere", dest="fixed_elsewhere", action="store_true",
+        help="only entries closed against a fix that landed OUTSIDE this repo (no "
+             "sha to follow, so the audit trail is prose). The other declared "
+             "exception, countable for the same reason as --acceptance-manual"
+    )
+    parser.add_argument(
+        "--missing-brief", dest="missing_brief", action="store_true",
+        help="the BACKFILL queue: unresolved entries with no --brief or no --scope, "
+             "i.e. the ones the phone board can only show 400 characters of agent "
+             "prose for. NOT a dispatch queue — most of these already carry a full "
+             "plan and what they need written is a sentence, not a fix. Closed "
+             "entries are excluded because they never reach the board",
+    )
+    parser.add_argument(
+        "--unverified", action="store_true",
+        help="only entries nobody has ever re-derived from current code. NOT filtered "
+             "by status on purpose: an audit trail rots after closure, and 42 of the "
+             "99 unverified entries today are already `fixed`",
+    )
+    parser.add_argument(
+        "--stale", action="store_true",
+        help="only entries verified longer ago than --stale-days. Distinct from "
+             "--unverified: never-checked is not the same finding as checked-and-aged",
+    )
+    parser.add_argument("--stale-days", type=int, default=30, metavar="N")
+    parser.add_argument(
+        "--grep", metavar="PATTERN",
+        help="only entries whose detail/resolution/plan/fix_site match this regex "
+             "(case-insensitive). THE FIRST THING TO RUN BEFORE FILING OR FIXING "
+             "ANYTHING: 170+ entries in, `is this already filed?` had no answer in "
+             "this tool, and the cost was a groomed spec rebuilt from scratch. "
+             "ANDs with every filter above, so `--grep X --status open` is the "
+             "narrow question worth asking",
+    )
+    parser.add_argument("--json", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="backlog.py",
@@ -2208,63 +2520,21 @@ def build_parser() -> argparse.ArgumentParser:
                            help=argparse.SUPPRESS)
 
     p_list = sub.add_parser("list", help="list entries")
-    _add_store_arg(p_list)
-    p_list.add_argument("--status", choices=STATUSES)
-    p_list.add_argument("--stream", choices=STREAMS)
-    p_list.add_argument("--severity", choices=SEVERITIES)
-    p_list.add_argument("--category")
-    p_list.add_argument(
-        "--ungroomed",
-        action="store_true",
-        help="only entries nobody has worked out a fix plan for (the groom queue). "
-             "NOTE this store knows nothing about who is WORKING on an entry: that "
-             "lives in the worktree ledger (`ops/worktree_registry.py list`, columns "
-             "`backlog` / `claimed`). A dispatch queue built from this flag alone will "
-             "hand out ids another agent already holds",
+    _add_list_filters(p_list, dispatch_flag=True)
+
+    # The SAME flags, the same handler, one implementation — see `_add_list_filters`.
+    # It exists because the operating constitution nominalises this queue ("take one
+    # from `dispatch`"), and an agent that has read the constitution types the noun:
+    # the first command of the 2026-08-08 dogfood batch was `backlog.py dispatch
+    # --json`, answered with `invalid choice`. A second hand-written queue behind
+    # the noun would drift from the flag and the drift would be invisible, because
+    # both doors would keep returning *a* list.
+    p_dispatch = sub.add_parser(
+        "dispatch",
+        help="what to take next: groomed AND unresolved AND unclaimed, worst first "
+             "(identical to `list --dispatch`; accepts every `list` filter)",
     )
-    p_list.add_argument(
-        "--groomed", action="store_true", help="only entries carrying a groom stamp"
-    )
-    p_list.add_argument(
-        "--held", action="store_true",
-        help="only tickets a worktree on THIS MACHINE currently claims (derived from "
-             "the worktree ledger; there is no stored in-progress status any more)"
-    )
-    p_list.add_argument(
-        "--acceptance-manual", dest="acceptance_manual", action="store_true",
-        help="only entries that DECLARE no command can prove their acceptance — the "
-             "set `anchor` cannot machine-check, kept countable on purpose"
-    )
-    p_list.add_argument(
-        "--missing-brief", dest="missing_brief", action="store_true",
-        help="the BACKFILL queue: unresolved entries with no --brief or no --scope, "
-             "i.e. the ones the phone board can only show 400 characters of agent "
-             "prose for. NOT a dispatch queue — most of these already carry a full "
-             "plan and what they need written is a sentence, not a fix. Closed "
-             "entries are excluded because they never reach the board",
-    )
-    p_list.add_argument(
-        "--unverified", action="store_true",
-        help="only entries nobody has ever re-derived from current code. NOT filtered "
-             "by status on purpose: an audit trail rots after closure, and 42 of the "
-             "99 unverified entries today are already `fixed`",
-    )
-    p_list.add_argument(
-        "--stale", action="store_true",
-        help="only entries verified longer ago than --stale-days. Distinct from "
-             "--unverified: never-checked is not the same finding as checked-and-aged",
-    )
-    p_list.add_argument("--stale-days", type=int, default=30, metavar="N")
-    p_list.add_argument(
-        "--grep", metavar="PATTERN",
-        help="only entries whose detail/resolution/plan/fix_site match this regex "
-             "(case-insensitive). THE FIRST THING TO RUN BEFORE FILING OR FIXING "
-             "ANYTHING: 170+ entries in, `is this already filed?` had no answer in "
-             "this tool, and the cost was a groomed spec rebuilt from scratch. "
-             "ANDs with every filter above, so `--grep X --status open` is the "
-             "narrow question worth asking",
-    )
-    p_list.add_argument("--json", action="store_true")
+    _add_list_filters(p_dispatch, dispatch_flag=False)
 
     p_stage = sub.add_parser(
         "stage",
@@ -2340,6 +2610,14 @@ def build_parser() -> argparse.ArgumentParser:
     # subcommand did not have. Hit while closing this very batch.
     p_verify.add_argument("--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
                           help="required alongside --status fixed; the commits that landed the fix")
+    # The same dead end, one field over. `--fixed-by` was added here because
+    # `verify --status fixed` — this subcommand's own help calls it "the natural
+    # closing act" — failed on a flag the subcommand did not have. An entry whose
+    # fix has no sha would hit that identical wall unless the second form is
+    # reachable from the same door.
+    p_verify.add_argument("--fixed-elsewhere", dest="fixed_elsewhere",
+                          help="alternative to --fixed-by alongside --status fixed, for "
+                               "a fix that landed outside this repo; exactly one of the two")
     p_verify.add_argument("--commit", action="store_true")
     p_verify.add_argument("--json", action="store_true")
 
@@ -2449,6 +2727,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--fixed-by", dest="fixed_by", nargs="+", metavar="SHA",
         help="commit(s) that made the defect stop being true; required by status=fixed. "
              "Fill it AFTER the fix lands — see reanchor if a rebase orphans one",
+    )
+    p_update.add_argument(
+        "--fixed-elsewhere", dest="fixed_elsewhere",
+        help="the OTHER form of traceability, for a fix that landed where there are "
+             "no shas (e.g. ~/butler, which is Syncthing-synced and not a git repo). "
+             "EXACTLY ONE of this and --fixed-by; say WHERE the fix lives and HOW to "
+             "re-derive it, because nothing can follow this one mechanically. Not a "
+             "loophole — countable via `list --fixed-elsewhere`, exactly like "
+             "--acceptance-manual",
     )
     p_update.add_argument("--commit", action="store_true")
     p_update.add_argument("--json", action="store_true")
@@ -2651,7 +2938,8 @@ def _cmd_add(args) -> int:
 
 
 def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
-                     status: str | None, fixed_by: list[str] | None) -> dict:
+                     status: str | None, fixed_by: list[str] | None,
+                     fixed_elsewhere: str | None = None) -> dict:
     """The field set that records a re-verification. ONE construction, three doors.
 
     `verify` writes it now; `stage` validates it on a hunter's branch and parks it;
@@ -2678,6 +2966,11 @@ def _closure_changes(*, verdict: str, by: str, evidence: str, at: str | None,
         changes["status"] = status
     if fixed_by:
         changes["fixed_by"] = fixed_by
+    if fixed_elsewhere:
+        # Never set by `stage`/`anchor`: a wave exists precisely because a LANDING
+        # COMMIT is coming, and this field says there will never be one. It reaches
+        # the store through `verify` and `update` only.
+        changes["fixed_elsewhere"] = fixed_elsewhere
     return changes
 
 
@@ -2872,14 +3165,17 @@ def _cmd_stage(args) -> int:
                                at=args.at, status=STAGED_STATUS, fixed_by=None)
     current = load_entry(args.store, args.id)      # EntryNotFound -> refusal in main()
     # Everything `verify` checks EXCEPT the traceability rules. The exclusion is
-    # structural rather than a shortcut, but it is WIDER than the one rule that
-    # forces it: `fixed` cannot carry `fixed_by` yet (the branch has not been
-    # rebased or fast-forwarded, so the commit does not exist), and turning the
-    # check off to allow that also turns off `no-next-action`, `wont-fix-without-
-    # reason` and `wont-fix-reason-is-a-sha`, none of which mention `fixed_by`.
-    # Losing those three is harmless HERE only because the status is pinned to
-    # `fixed` above — they all guard statuses this command cannot produce.
-    # `anchor` runs the full check, with the real sha, before it writes anything.
+    # structural: `fixed` cannot carry `fixed_by` yet (the branch has not been
+    # rebased or fast-forwarded, so the commit does not exist). `anchor` runs the
+    # full check, with the real sha, before it writes anything.
+    #
+    # It used to be WIDER than the rule that forces it — `no-next-action`,
+    # `wont-fix-without-reason` and `wont-fix-reason-is-a-sha` mention no sha and
+    # were switched off with it. That is no longer true: those three moved to
+    # `_check_status_obligations`, which `validate_entry` runs unconditionally.
+    # The note stays because the same over-wide exclusion, unnoticed on THIS path
+    # (the status is pinned to `fixed`, which owes none of them), was the whole of
+    # IMP-20260808-f2bcc1 on `add`'s.
     _merged_and_validated(current, changes, args.id, check_traceability=False)
 
     row = {
@@ -3217,7 +3513,8 @@ def _cmd_verify(args) -> int:
     together or not at all.
     """
     changes = _closure_changes(verdict=args.verdict, by=args.by, evidence=args.evidence,
-                               at=args.at, status=args.status, fixed_by=args.fixed_by)
+                               at=args.at, status=args.status, fixed_by=args.fixed_by,
+                               fixed_elsewhere=args.fixed_elsewhere)
 
     current = load_entry(args.store, args.id)
     merged = _merged_and_validated(current, changes, args.id)  # raises on refusal
@@ -3252,7 +3549,46 @@ def _cmd_verify(args) -> int:
     return 0
 
 
+# What the dispatch queue is, and — the half that matters — what it cannot see.
+# Both blind spots are structural, neither is fixable here, and a queue that does
+# not say so is worse than one that does: the caller has no other way to learn it,
+# and the failure it produces (taking a ticket somebody already holds, or one the
+# board deferred) looks like the caller's mistake.
+#
+# `snooze` deliberately stays out of scope rather than being read from a hard-coded
+# path: the overlay lives outside this repo AND outside `~/butler`, and a tool that
+# reaches into a machine-local path to answer a question it advertises would be
+# right on one machine and silently wrong everywhere else. If it is ever wired in,
+# it goes through an explicit `--overlay PATH`.
+DISPATCH_CLAUSES = ("groomed", "unresolved", "unclaimed")
+DISPATCH_HELD_SCOPE = (
+    "claims are derived from THIS machine's worktree ledger (gitignored, "
+    "per-machine). Another machine's claims are invisible, so across machines this "
+    "queue is OPTIMISTIC — it can offer an id somebody is already holding."
+)
+DISPATCH_SNOOZE_SCOPE = (
+    "board deferrals are NOT applied: snooze lives in the board's overlay "
+    "(~/kg-board-state/overlay.json), outside this repo on purpose, so a snoozed "
+    "entry is still offered here."
+)
+
+
 def _cmd_list(args) -> int:
+    dispatch = getattr(args, "dispatch", False) or args.command == "dispatch"
+    # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
+    # replaces had no writer on the release path, so it could only ever accumulate.
+    # Read ONCE and threaded into the filter, so the column and the queue cannot
+    # disagree about a claim taken between two reads.
+    held = held_tickets()
+    if dispatch and getattr(args, "held", False):
+        # Empty by construction — dispatch is exactly the UNCLAIMED set. Refused
+        # here rather than in `list_entries` because `--held` is a CLI-level filter
+        # that never reaches it. See the sibling refusals there.
+        raise BacklogError(
+            "--held and --dispatch are empty by construction: --dispatch only ever "
+            "contains UNCLAIMED entries. Drop one — `--dispatch` for what to take "
+            "next, `--held` on its own to see who is on what.")
+
     entries = select_entries(
         args.store,
         unverified=getattr(args, "unverified", False),
@@ -3264,12 +3600,12 @@ def _cmd_list(args) -> int:
         groomed=args.groomed,
         ungroomed=args.ungroomed,
         acceptance_manual=args.acceptance_manual,
+        fixed_elsewhere=getattr(args, "fixed_elsewhere", False),
         missing_brief=getattr(args, "missing_brief", False),
         grep=getattr(args, "grep", None),
+        dispatch=dispatch,
+        held=held,
     )
-    # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
-    # replaces had no writer on the release path, so it could only ever accumulate.
-    held = held_tickets()
     if getattr(args, "held", False):
         entries = [e for e in entries if e["id"] in held]
 
@@ -3279,7 +3615,11 @@ def _cmd_list(args) -> int:
                           # a fact about THIS machine's worktrees, not about the
                           # ledger, and folding it into the entry would let a caller
                           # persist it back as if the store owned it.
-                          "held": held, "held_scope": "this machine's worktrees only"},
+                          "held": held, "held_scope": "this machine's worktrees only",
+                          **({"dispatch": {"clauses": list(DISPATCH_CLAUSES),
+                                           "held_scope": DISPATCH_HELD_SCOPE,
+                                           "snooze_scope": DISPATCH_SNOOZE_SCOPE}}
+                             if dispatch else {})},
                          ensure_ascii=False))
         return 0
     for entry in entries:
@@ -3289,6 +3629,13 @@ def _cmd_list(args) -> int:
             f"{entry['id']:<24} {entry['status']:<10} {entry['severity']:<5} "
             f"{entry['category']:<12} {mark:<26} {entry['detail'][:50]}"
         )
+    if dispatch:
+        print(f"\n{len(entries)} takeable ({' AND '.join(DISPATCH_CLAUSES)}), "
+              f"worst first. Claim one with "
+              f"`./ops/worktree_orchestrate.py open --backlog <id>`.")
+        print(f"  scope: {DISPATCH_HELD_SCOPE}")
+        print(f"  scope: {DISPATCH_SNOOZE_SCOPE}")
+        return 0
     print(f"\n{len(entries)} entries; {len(held)} ticket(s) claimed by a worktree "
           f"ON THIS MACHINE (the ledger is per-machine — elsewhere this column is "
           f"empty even when someone is working)")
@@ -3890,6 +4237,9 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "add": _cmd_add,
         "list": _cmd_list,
+        # The SAME handler, not a wrapper around it: two entry points into one
+        # implementation is the contract this subcommand exists to keep.
+        "dispatch": _cmd_list,
         "show": _cmd_show,
         "validate": _cmd_validate,
         "update": _cmd_update,

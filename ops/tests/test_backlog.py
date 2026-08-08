@@ -4637,7 +4637,11 @@ def test_missing_brief_refuses_a_closed_status_instead_of_answering_empty(tmp_pa
     contradiction rather than let the caller believe the queue is clear.
     """
     store = tmp_path / "s"
-    _add(store, status=status, detail="closed and unexplained")
+    # `wont-fix` carries a reason because `add` now enforces that (section 27);
+    # the fixture had been filing an entry `validate` rejects, which is the very
+    # defect that rule closes.
+    _add(store, status=status, detail="closed and unexplained",
+         resolution="not worth the complexity")
     with pytest.raises(BACKLOG.BacklogError, match="--missing-brief"):
         BACKLOG.list_entries(store, missing_brief=True, status=status)
 
@@ -4722,3 +4726,561 @@ def test_deduping_the_refusal_does_not_swallow_distinct_defects(tmp_path):
     for sha in ("zzzz111", "qqqq222"):
         assert sha in message, (
             f"only one bad sha survived the dedupe; {sha} is missing:\n{message}")
+
+
+# --------------------------------------------------------------------------
+# 25. `dispatch` — the queue the operating constitution already names
+#     (IMP-20260808-573a09)
+#
+# CLAUDE.md nominalises `dispatch` in three places ("take one from `dispatch`",
+# "an ungroomed entry stays on the board but not in `dispatch`", "groom -> into
+# `dispatch` -> taken"), and the subcommand did not exist: the FIRST command the
+# 2026-08-08 dogfood batch typed was `./ops/backlog.py dispatch --json`, which
+# exited 2 with `invalid choice`. What a session does instead is scan the whole
+# list by hand, which is exactly the failure the groomed/held guards exist to
+# prevent — hand out an id somebody already holds, or one with no fix plan.
+# --------------------------------------------------------------------------
+
+def _groomed_ticket(store, *, status=None, fixed_by=None, resolution=None, **overrides):
+    """An entry carrying a real groom badge, optionally moved on from `open`."""
+    entry = _add(store, **overrides)
+    changes = dict(_groom_kwargs())
+    if status is not None:
+        changes["status"] = status
+    if fixed_by is not None:
+        changes["fixed_by"] = fixed_by
+    if resolution is not None:
+        changes["resolution"] = resolution
+    return BACKLOG.update_entry(store, entry["id"], **changes)
+
+
+def _dispatch_store(tmp_path):
+    """One store carrying a member of every class the three clauses discriminate."""
+    store = tmp_path / "s"
+    takeable = _groomed_ticket(store, detail="groomed, unresolved, free — the only takeable one")
+    ungroomed = _add(store, detail="nobody has worked out how to fix this")
+    closed = _groomed_ticket(store, detail="already fixed", status="fixed", fixed_by=["abc1234"])
+    refused = _groomed_ticket(store, detail="decided against", status="wont-fix",
+                       resolution="not worth the complexity")
+    claimed = _groomed_ticket(store, detail="somebody is already on this one")
+    return store, dict(takeable=takeable, ungroomed=ungroomed, closed=closed,
+                       refused=refused, claimed=claimed)
+
+
+def test_dispatch_is_the_intersection_of_three_clauses_each_with_its_own_negative(tmp_path):
+    """Groomed AND unresolved AND unclaimed — and each clause is load-bearing.
+
+    Asserted as three separate absences against ONE positive control in the same
+    store, because a filter that returns the empty set satisfies every negative
+    assertion at once and would read as three passing tests.
+    """
+    store, e = _dispatch_store(tmp_path)
+    held = {e["claimed"]["id"]: {"branch": "feat/x", "path": "/wt/x",
+                                 "claimed_at": "2026-08-08T00:00:00Z"}}
+
+    ids = [p["id"] for p in BACKLOG.list_entries(store, dispatch=True, held=held)]
+
+    assert ids == [e["takeable"]["id"]], ids
+    assert e["ungroomed"]["id"] not in ids, "an entry with no fix plan was handed out"
+    assert e["closed"]["id"] not in ids, "a closed entry was handed out"
+    assert e["refused"]["id"] not in ids, "a wont-fix entry was handed out"
+    assert e["claimed"]["id"] not in ids, "an id another worktree holds was handed out"
+
+
+def test_dispatch_intersects_with_the_ordinary_filters_rather_than_replacing_them(tmp_path):
+    """`--stream` / `--severity` / `--grep` must still narrow it.
+
+    A dispatch queue that ignores the filters beside it forces the caller back to
+    the hand-rolled scan this subcommand exists to delete.
+    """
+    store = tmp_path / "s"
+    wanted = _groomed_ticket(store, detail="the ops wrapper drops its exit code", severity="high")
+    _groomed_ticket(store, detail="an unrelated high-severity problem", severity="high")
+    _groomed_ticket(store, detail="the ops wrapper is also slow", severity="low")
+
+    hits = BACKLOG.list_entries(store, dispatch=True, held={},
+                                severity="high", grep="drops its exit code")
+    assert [p["id"] for p in hits] == [wanted["id"]], hits
+
+
+def test_dispatch_hands_out_the_worst_thing_first(tmp_path):
+    """severity high->low, then oldest first — a queue with no order is a list.
+
+    `list`'s own order is (date, id), which puts a年-old `low` ahead of today's
+    `high`. That is right for an inventory and wrong for a queue somebody takes
+    the top of.
+    """
+    store = tmp_path / "s"
+    low = _groomed_ticket(store, detail="cosmetic", severity="low", date="2026-08-01")
+    high_new = _groomed_ticket(store, detail="data loss", severity="high", date="2026-08-07")
+    high_old = _groomed_ticket(store, detail="silent corruption", severity="high", date="2026-08-02")
+    med = _groomed_ticket(store, detail="confusing help", severity="med", date="2026-08-03")
+
+    ids = [p["id"] for p in BACKLOG.list_entries(store, dispatch=True, held={})]
+    assert ids == [high_old["id"], high_new["id"], med["id"], low["id"]], ids
+
+
+def test_the_dispatch_subcommand_and_list_dispatch_return_the_same_ids(tmp_path, capsys,
+                                                                      monkeypatch):
+    """Two doors, ONE implementation — pinned by the answer, not by the source.
+
+    The subcommand exists because the constitution uses that noun and an agent
+    that has read it types `dispatch`; the flag exists because it is a filter like
+    every other filter. Two hand-written queues would drift, and the drift would
+    be invisible: both doors would keep returning *a* list.
+    """
+    store, e = _dispatch_store(tmp_path)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {
+        e["claimed"]["id"]: {"branch": "feat/x", "path": "/wt/x",
+                             "claimed_at": "2026-08-08T00:00:00Z"}})
+
+    assert BACKLOG.main(["list", "--store", str(store), "--dispatch", "--json"]) == 0
+    via_flag = json.loads(capsys.readouterr().out)
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    via_noun = json.loads(capsys.readouterr().out)
+
+    flag_ids = [p["id"] for p in via_flag["entries"]]
+    noun_ids = [p["id"] for p in via_noun["entries"]]
+    # Positive control FIRST: two empty lists are also equal, and an equality that
+    # holds because both doors are broken is the one this test must not pass on.
+    assert flag_ids == [e["takeable"]["id"]], flag_ids
+    assert noun_ids == flag_ids, f"{noun_ids} != {flag_ids}"
+
+    # ...and the shared flags reach the shared implementation from both doors
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--severity", "low",
+                         "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["entries"] == []
+
+
+def test_every_list_filter_is_reachable_from_the_dispatch_door():
+    """One implementation means one flag set; a subset is a second implementation.
+
+    A filter added to `list` and forgotten on `dispatch` cannot be caught by
+    comparing results — the caller simply cannot express the question through the
+    door the constitution tells them to use.
+    """
+    commands = BACKLOG._subcommands(BACKLOG.build_parser())
+    assert "dispatch" in commands, "the constitution's first command still does not exist"
+    on_list = {o for a in commands["list"]._actions for o in a.option_strings}
+    on_dispatch = {o for a in commands["dispatch"]._actions for o in a.option_strings}
+
+    assert on_list - on_dispatch == {"--dispatch"}, (
+        "a `list` filter cannot be expressed through the `dispatch` door")
+    assert on_dispatch - on_list == set(), (
+        "`dispatch` grew a flag `list --dispatch` cannot reach")
+
+
+def test_dispatch_says_what_it_cannot_see(tmp_path, capsys, monkeypatch):
+    """Two blind spots, both stated: the claim ledger is per-machine, snooze is elsewhere.
+
+    `held` is derived from THIS checkout's gitignored worktree ledger, so on the
+    other machine the queue is optimistic — it will offer an id somebody is
+    already holding. Board deferrals live in `~/kg-board-state/overlay.json`,
+    deliberately outside this repo, so a snoozed entry is offered too. A queue
+    that presents itself as authoritative about either is worse than one that
+    admits it: the caller has no other way to learn it.
+    """
+    store, e = _dispatch_store(tmp_path)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+
+    assert BACKLOG.main(["dispatch", "--store", str(store), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    scope = payload["dispatch"]
+    assert scope["clauses"] == ["groomed", "unresolved", "unclaimed"], scope
+    assert "optimistic" in scope["held_scope"].lower(), scope["held_scope"]
+    assert "overlay.json" in scope["snooze_scope"], scope["snooze_scope"]
+
+    assert BACKLOG.main(["dispatch", "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    assert "optimistic" in human.lower(), human
+    assert "snooze" in human.lower(), human
+
+
+def test_dispatch_refuses_the_combinations_that_are_empty_by_construction(tmp_path, capsys):
+    """An empty dispatch queue reads as "no work available" — the worst false read here.
+
+    Same treatment, and the same reason, as --groomed/--ungroomed,
+    --unverified/--stale and --missing-brief + a closed status: each of these
+    intersects dispatch's own clauses to nothing, so the result would be a
+    confident empty answer to a question that was never asked.
+    """
+    store, _ = _dispatch_store(tmp_path)
+    for extra in (["--ungroomed"], ["--held"], ["--status", "fixed"],
+                  ["--status", "wont-fix"]):
+        assert BACKLOG.main(["list", "--store", str(store), "--dispatch", *extra]) == 64, extra
+        err = capsys.readouterr().err
+        assert "--dispatch" in err, f"{extra} was refused without naming the conflict: {err}"
+        # The whole value of these refusals is naming WHICH flag conflicts. Without
+        # this half, one message saying "--dispatch conflicts with something"
+        # satisfies all four cases and the caller still has to guess.
+        assert extra[0] in err, (
+            f"the refusal does not name the other side of the conflict: {err}")
+    # ...and a combination that is NOT empty by construction still works
+    assert BACKLOG.main(["list", "--store", str(store), "--dispatch",
+                         "--status", "open", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["entries"], (
+        "--dispatch --status open is a legitimate narrowing and returned nothing")
+
+
+# --------------------------------------------------------------------------
+# 26. `fixed_elsewhere` — a second, countable form of traceability
+#     (IMP-20260808-ddf494)
+#
+# `status=fixed` demanded `fixed_by`, every element had to match `_SHA_RE`, and
+# every sha had to resolve in THIS repo. Three rules with one unstated premise:
+# every entry's fix lands in this git repository. Two entries in the live store
+# have a `fix_site` under `~/butler/kg-board/`, and `~/butler` deliberately does
+# not use git (Syncthing since 2026-06-16) — there is no sha and there never will
+# be one. The shape is `acceptance_manual`'s, exactly: when the machine-checkable
+# form does not exist, DECLARE it and keep the declaration countable.
+# --------------------------------------------------------------------------
+
+ELSEWHERE = ("~/butler/kg-board/server.py:_dispatch — re-run: "
+             "`cd ~/butler/kg-board && uv run python -m pytest tests/test_dispatch.py`")
+
+
+def _closable(store, **overrides):
+    return BACKLOG.load_entry(store, _add(store, **overrides)["id"])
+
+
+def test_closing_needs_exactly_one_of_fixed_by_and_fixed_elsewhere(tmp_path):
+    """Neither is a claim with no audit trail; both are two contradictory ones.
+
+    The "both" half is not pedantry: it is the same defect
+    `groom-claim-with-conflicting-acceptance-proof` names one field family over.
+    One says the fix is a commit in this repo, the other says it is not — and a
+    reader has no way to tell which one the closer meant.
+    """
+    payload = _closable(tmp_path / "s")
+
+    neither = {**payload, "status": "fixed", "resolution": "done"}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(neither)]
+    assert "fixed-without-fixed-by" in kinds, kinds
+
+    both = {**neither, "fixed_by": ["abc1234"], "fixed_elsewhere": ELSEWHERE}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(both)]
+    assert "fixed-with-conflicting-traceability" in kinds, kinds
+    assert "fixed-without-fixed-by" not in kinds, (
+        "both-at-once must not ALSO read as none-at-all")
+
+
+def test_fixed_elsewhere_closes_an_entry_and_skips_the_sha_rules_entirely(tmp_path):
+    """The whole point: a fix with no sha, closed, and clean under `validate`.
+
+    `IMP-20260808-47f7b4` is the measured case — fixed, self-tested, red/green
+    evidence written down, and unclosable: `--status fixed` alone gave
+    `fixed-without-fixed-by`, and `--fixed-by external:butler/kg-board` gave
+    `fixed-by-not-a-sha`. There was no third door.
+    """
+    store = tmp_path / "s"
+    entry = _closable(store)
+    closed = BACKLOG.update_entry(store, entry["id"], status="fixed",
+                                  fixed_elsewhere=ELSEWHERE, resolution="landed in butler")
+
+    assert closed["fixed_elsewhere"] == ELSEWHERE
+    problems = BACKLOG.validate_entry(closed, entry_id=closed["id"])
+    assert problems == [], problems
+
+
+def test_the_sha_rules_are_skipped_only_for_a_closure_that_declares_no_sha(tmp_path):
+    """The skip has to be OBSERVED, which means the loop has to be reachable.
+
+    The first cut of this asserted "no `fixed-by-*` problem" on an entry with no
+    `fixed_by` at all: the loop ran zero times either way, so deleting the skip
+    entirely left the whole suite green. An assertion about a branch that cannot
+    be entered is not an assertion about the branch.
+
+    The second case is the defect that found: the skip used to be keyed on
+    `fixed_elsewhere` alone, while both exactly-one-of rules are keyed on `fixed`.
+    A `wont-fix` carrying a broken sha AND this field therefore got NEITHER —
+    validated clean, one CLI call away, on exactly the entries `reanchor` exists
+    for. `validate --baseline-check` is the cutover block gate, so that was a path
+    to a green light.
+    """
+    payload = _closable(tmp_path / "s")
+
+    # `fixed` + both: the CONFLICT is the finding. Complaining about the sha too
+    # would bury it under the field that should not be there.
+    both = {**payload, "status": "fixed", "resolution": "done",
+            "fixed_by": ["zzzzzzz"], "fixed_elsewhere": ELSEWHERE}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(both)]
+    assert kinds == ["fixed-with-conflicting-traceability"], kinds
+
+    # `wont-fix` + both: no conflict rule applies here, so the sha must still be
+    # judged. Nothing about a decision not to fix makes a broken hash acceptable.
+    refused = {**both, "status": "wont-fix"}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(refused)]
+    assert "fixed-by-not-a-sha" in kinds, (
+        f"a broken sha vanished by flipping the status — the exact repair anyone "
+        f"hunting a green gate would find: {kinds}")
+
+
+def test_fixed_elsewhere_on_an_unfinished_entry_is_refused_like_fixed_by_is(tmp_path):
+    """`fixed_by` on an open entry was already refused; the new field owes the same.
+
+    Otherwise the field is a way to write "this is fixed" while the status keeps
+    saying it is not — the shape that lets finished work look open forever, which
+    is what `fixed-by-on-unfinished-entry` was added for.
+    """
+    payload = _closable(tmp_path / "s")
+    for status in ("open", "triaged"):
+        entry = {**payload, "status": status, "plan": "step 1",
+                 "fixed_elsewhere": ELSEWHERE}
+        kinds = [p["kind"] for p in BACKLOG.validate_entry(entry)]
+        assert "fixed-elsewhere-on-unfinished-entry" in kinds, (status, kinds)
+
+
+def test_list_fixed_elsewhere_keeps_the_declared_exceptions_countable(tmp_path, capsys):
+    """`list --fixed-elsewhere`, for the same reason `--acceptance-manual` exists.
+
+    An escape hatch nobody can count is a loophole; one with a number attached is
+    an exception list somebody can look at and argue with.
+    """
+    store = tmp_path / "s"
+    away = _closable(store, detail="fixed in the board repo")
+    home = _closable(store, detail="fixed right here")
+    BACKLOG.update_entry(store, away["id"], status="fixed", fixed_elsewhere=ELSEWHERE,
+                         resolution="landed in butler")
+    BACKLOG.update_entry(store, home["id"], status="fixed", fixed_by=["abc1234"],
+                         resolution="landed here")
+
+    assert BACKLOG.main(["list", "--store", str(store), "--fixed-elsewhere", "--json"]) == 0
+    ids = [p["id"] for p in json.loads(capsys.readouterr().out)["entries"]]
+    assert ids == [away["id"]], ids
+
+
+def test_reanchor_leaves_a_fixed_elsewhere_entry_alone(tmp_path, monkeypatch):
+    """There is no sha to re-point, so it must not appear in the plan at all.
+
+    A DERIVED property, not an implementation: `reanchor_store` selects targets by
+    `fixed_by`, and the exactly-one-of rule means a `fixed_elsewhere` entry has
+    none, so nothing in `reanchor` had to be taught about the new field. The
+    docstring says so because no mutation of the code under review can redden this
+    — a reader who assumed it covers a skip in `reanchor` would be wrong about
+    what protects them. What it does pin is that the derivation stays true if
+    either side moves.
+
+    Paired with a positive control in the SAME store: a genuine orphan still gets
+    mapped, so "the plan is empty" cannot be what makes this pass.
+    """
+    monkeypatch.undo()  # the real resolver, on a real repo
+    repo = tmp_path / "repo"
+    orphan, landed = _git_repo(repo)
+    store = repo / "store"
+
+    orphaned = _add(store, detail="fixed here, then rebased")
+    _force_fixed_by(store, orphaned["id"], [orphan])
+    away = _add(store, detail="fixed in a repo that has no shas")
+    path = store / f"{away['id']}.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(status="fixed", resolution="landed in butler", fixed_elsewhere=ELSEWHERE)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    result = BACKLOG.reanchor_store(store, repo=repo)
+    touched = [item["id"] for item in result["plan"]]
+    assert touched == [orphaned["id"]], touched
+    assert result["plan"][0]["moves"] == {orphan: landed[:9]}
+
+
+def test_verify_can_close_an_entry_that_is_fixed_elsewhere(tmp_path, capsys):
+    """`verify --status fixed` is advertised as the natural closing act.
+
+    It grew `--fixed-by` because without it that act was a dead end — the exact
+    same dead end reappears for a fix with no sha unless the second form is
+    reachable from the same door.
+    """
+    store = tmp_path / "s"
+    entry = _closable(store)
+    assert BACKLOG.main(["verify", entry["id"], "--store", str(store),
+                         "--verdict", "CONFIRMED-FIXED", "--by", "agent:ops-engineer",
+                         "--evidence", "cd ~/butler/kg-board && uv run python -m pytest",
+                         "--status", "fixed", "--fixed-elsewhere", ELSEWHERE,
+                         "--commit", "--json"]) == 0
+    capsys.readouterr()
+    stored = BACKLOG.load_entry(store, entry["id"])
+    assert stored["status"] == "fixed" and stored["fixed_elsewhere"] == ELSEWHERE
+    assert BACKLOG.validate_entry(stored, entry_id=stored["id"]) == []
+
+
+# --------------------------------------------------------------------------
+# 27. `add` cannot write what `validate` will refuse (IMP-20260808-f2bcc1)
+#
+# `add --status triaged` wrote an entry `validate` rejects with `no-next-action`,
+# and the thing that reported it was the cutover gate of a LATER, unrelated
+# branch. Five filed in one session on 2026-08-08; all five surfaced in
+# `feat/backlog-list-grep`'s `land`.
+#
+# Root cause, and it is not "add forgot to validate": `add_entry` already calls
+# `validate_entry`, with `check_traceability=False`. That switch exists to forgive
+# the SHA rules (history is full of `fixed` rows whose landing commit was never
+# written down) — and `no-next-action` / `wont-fix-without-reason` /
+# `wont-fix-reason-is-a-sha` were sitting inside the same function, mentioning no
+# sha and needing no repo. `_cmd_stage` says so in its own comment. So the repair
+# is to stop calling them traceability, not to bolt a second rule set onto `add`.
+# --------------------------------------------------------------------------
+
+_ADD = ["--stream", "IMP", "--date", "2026-08-08", "--source", "dogfood batch 1",
+        "--category", "cli", "--severity", "med",
+        "--detail", "a tool writes an entry its own validator rejects"]
+
+
+def test_add_refuses_a_triaged_entry_with_no_next_action_and_leaves_no_file(tmp_path, capsys):
+    """The refusal has to arrive here, not in somebody else's `land`.
+
+    `triaged` claims a next step has been decided, so the entry owes one. `add`
+    offering it as a bare `--status` choice while `validate` refuses the result is
+    the tool disagreeing with itself, and the disagreement is settled by whichever
+    unrelated branch runs the gate next.
+    """
+    store = tmp_path / "s"
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "triaged"]) == 64
+    err = capsys.readouterr().err
+    assert "no-next-action" in err, err
+    # ...and it says the ways out, both of which have to be reachable FROM `add`.
+    assert "--resolution" in err, err
+    assert "--status open" in err, err
+    # `add` refuses the groom flags by name, so a hint that offers `--plan` without
+    # saying it belongs to `update` sends the caller straight into a second refusal.
+    for line in err.splitlines():
+        if "--plan" in line:
+            assert "update" in line, (
+                f"a hint offers --plan, which `add` refuses, without routing it "
+                f"through `update`: {line}")
+    assert not (store.exists() and list(store.glob("*.json"))), (
+        "a refused add left half an entry behind")
+
+
+def test_add_is_silent_on_an_ordinary_new_open_entry(tmp_path, capsys):
+    """The positive control, and the reason the check is per-kind rather than blanket.
+
+    A freshly filed entry legitimately has no plan, no acceptance and no landing
+    commit. If this pre-check red-lined that, the repair would be a tool nobody
+    can file with — a strictly worse failure than the one it fixes.
+    """
+    store = tmp_path / "s"
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--json"]) == 0
+    entry = json.loads(capsys.readouterr().out)["entry"]
+    assert entry["status"] == "open"
+    assert (store / f"{entry['id']}.json").exists()
+    # The real assertion: the two now agree about the same entry. `add` writing
+    # something `validate` refuses is the whole defect, so this is what has to hold.
+    assert BACKLOG.main(["validate", "--store", str(store)]) == 0
+    capsys.readouterr()
+
+
+def test_add_still_accepts_a_triaged_entry_that_carries_its_next_action(tmp_path, capsys):
+    """The rule is "triaged owes a next action", not "triaged is banned".
+
+    `_next_action` accepts a resolution opening with an em-dash, the convention
+    that predates `plan`. Filing straight into `triaged` stays possible for
+    somebody who has actually decided the next step.
+    """
+    store = tmp_path / "s"
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "triaged",
+                         "--resolution", "— 下一步:把 choices 收窄,並在落檔前跑同一份檢查",
+                         "--json"]) == 0
+    entry = json.loads(capsys.readouterr().out)["entry"]
+    assert entry["status"] == "triaged"
+    assert BACKLOG.main(["validate", "--store", str(store)]) == 0
+    capsys.readouterr()
+
+
+def test_add_refuses_a_wont_fix_with_no_reason(tmp_path, capsys):
+    """The sibling rule, exempted by the same switch and for no better reason.
+
+    A decision not to fix is an argument; `wont-fix` with an empty resolution is
+    the shape of an entry closed by reflex, and `add` could write it.
+    """
+    store = tmp_path / "s"
+    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "wont-fix"]) == 64
+    assert "wont-fix-without-reason" in capsys.readouterr().err
+    assert not (store.exists() and list(store.glob("*.json")))
+
+
+def test_creation_still_forgives_the_rules_that_need_a_repo(tmp_path):
+    """The exemption `check_traceability=False` was actually for, kept intact.
+
+    `import` exists to represent HISTORY, and history is full of `fixed` rows
+    whose landing commit was never written down. Refusing them at creation would
+    mean the only way to migrate the ledger is to first solve the audit problem
+    the migration exists to expose. Measured against the frozen 8-column fixture
+    when this landed: 0 of 141 rows are affected by the rules that DID move.
+    """
+    store = tmp_path / "s"
+    entry = BACKLOG.add_entry(store, **_entry_kwargs(status="fixed",
+                                                     resolution="landed long ago"))
+    assert entry["status"] == "fixed" and "fixed_by" not in entry
+
+
+def test_importing_history_keeps_a_triaged_row_the_new_rule_would_refuse(tmp_path):
+    """The regression this rule caused on its way in, pinned so it cannot come back.
+
+    The legacy table's empty-resolution marker is a bare em-dash, so a historical
+    `triaged` row with nothing decided has no next action by today's rule. With the
+    check applied to `import` as well, `add_entry` raised, `import_legacy` recorded
+    a `rejected-row` and carried on — and the entry was GONE. A migration is not a
+    place to enforce a rule invented after the data: the only way to satisfy it is
+    to invent a plan for work nobody triaged, and the alternative the importer
+    actually takes is to drop the row.
+
+    So the exemption is named at the ONE call site that has a reason for it, and
+    `validate` still reports the row afterwards — this forgives the moment of
+    writing, not the finding.
+    """
+    store = tmp_path / "s"
+    entry = BACKLOG.add_entry(store, historical=True,
+                              **_entry_kwargs(status="triaged", resolution=""))
+    assert (store / f"{entry['id']}.json").exists(), "a historical row was dropped"
+
+    # ...and it is still VISIBLE as a problem, so nothing was swept under the rug
+    kinds = [p["kind"] for p in BACKLOG.validate_store(store, commit_state=None)]
+    assert "no-next-action" in kinds, kinds
+
+    # ...while the interactive door, which has no such reason, still refuses it
+    with pytest.raises(ValueError, match="no-next-action"):
+        BACKLOG.add_entry(store, **_entry_kwargs(status="triaged", resolution="",
+                                                 detail="filed by hand today"))
+
+
+def test_the_historical_exemption_forgives_only_what_it_names(tmp_path):
+    """An exemption whose bound nothing checks is not an exemption, it is an off switch.
+
+    Written because a mutation proved it: widening the forgiven set to "every
+    problem this payload has" survived the whole suite green. `import` would then
+    write anything the legacy parser handed it — including shapes `validate` is
+    about to refuse over the entire store — which is the same "turned a check off
+    wider than the reason required" defect as the one this section exists for, one
+    caller along.
+
+    `app-field-on-imp-entry` is the probe because it is reachable through
+    `add_entry`'s own keywords and is emitted by a check the exemption does not
+    name.
+    """
+    store = tmp_path / "s"
+    with pytest.raises(ValueError, match="app-field-on-imp-entry"):
+        BACKLOG.add_entry(store, historical=True,
+                          **_entry_kwargs(stream="IMP", surface="reader"))
+    assert not (store.exists() and list(store.glob("*.json")))
+
+
+def test_fixed_elsewhere_is_reachable_through_a_channel_the_shell_cannot_edit(tmp_path):
+    """The field most likely to carry a backtick, driven through its twin for real.
+
+    Its value is a path plus the command that re-derives the fix — `~` and
+    backticks, i.e. exactly what a shell rewrites before this process sees argv.
+    The generic twin test intersects with `FILE_TWIN_FIELDS` itself, so it goes
+    quiet the moment a field leaves that constant: it can prove the twin exists,
+    never that this field still has one. This drives the value end to end.
+    """
+    store = tmp_path / "s"
+    entry = _closable(store)
+    payload = tmp_path / "elsewhere.txt"
+    payload.write_text(ELSEWHERE + "\n", encoding="utf-8")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--resolution", "landed in butler",
+                         "--fixed-elsewhere-file", str(payload), "--commit"]) == 0
+    stored = BACKLOG.load_entry(store, entry["id"])
+    assert stored["fixed_elsewhere"] == ELSEWHERE, (
+        "the backtick-bearing text did not survive the file channel verbatim")
+    assert "`" in stored["fixed_elsewhere"], "the fixture stopped testing the hazard"
