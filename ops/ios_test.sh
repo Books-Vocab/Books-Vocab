@@ -234,6 +234,13 @@ else
   SIMULATOR_BOOT_SELECTOR="$DEFAULT_SIMULATOR"
 fi
 
+if [[ "$DESTINATION" == *"Mac Catalyst"* || "$DESTINATION" == *"platform=macOS"* ]]; then
+  echo "[ios_test] error: Mac Catalyst / macOS destinations are not supported by ios_test.sh" >&2
+  echo "[ios_test]   ios_test.sh is iOS-only: its cache and product resolver do not understand the Catalyst bundle layout" >&2
+  echo "[ios_test]   use ops/ios_build.sh --catalyst for the Catalyst compile gate; it supplies the required no-signing settings" >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
@@ -295,7 +302,8 @@ ios_test_build_cache_key() {
   # products are per (platform, arch, configuration) and identical across
   # simulators of the same platform, so a pool of leased devices shares ONE warm
   # cache instead of each device fragmenting its own. A genuinely different
-  # platform (e.g. Mac Catalyst via --destination) still gets a distinct key.
+  # platform (e.g. platform=iOS vs platform=iOS Simulator) still gets a distinct
+  # key; Mac Catalyst is rejected before this cache path is reached.
   local platform_token
   platform_token="$(printf '%s' "$DESTINATION" | sed -n 's/.*platform=\([^,]*\).*/\1/p' | tr '[:upper:] ' '[:lower:]-')"
   [[ -n "$platform_token" ]] || platform_token="unknown"

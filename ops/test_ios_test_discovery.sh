@@ -483,6 +483,14 @@ grep -qF -- "BooksAndVocabUITests/" <<<"$NC_ERR" \
   && fail_t "不存在的名字被誤指為住在 UI target（負控失敗）：$NC_ERR" \
   || ok "查無此名時不編造 target（負控）"
 
+# ── 20. Mac Catalyst destination 必須被擋（IMP-0043）──────────────────────────
+section "Mac Catalyst destination refused"
+CAT_ERR="$("$IOS_TEST" --list --destination 'platform=macOS,variant=Mac Catalyst' 2>&1 >/dev/null)" && CAT_RC=0 || CAT_RC=$?
+[[ "$CAT_RC" -eq 2 ]] && ok "Catalyst destination exit 2" || fail_t "Catalyst destination rc=${CAT_RC}（應 2）"
+grep -q "ios_build.sh --catalyst" <<<"$CAT_ERR" \
+  && ok "錯誤訊息指向 ios_build.sh --catalyst" \
+  || fail_t "錯誤訊息未指向替代入口: $CAT_ERR"
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
