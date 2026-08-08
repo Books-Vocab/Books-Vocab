@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "整合者沒有任何**訊號**可以判斷「這個受派者做完了」。`worktree-flow` 的「批次交回狀態」定義了受派者停在自己工作樹的 commit，但那個狀態**在外面看不出來**——工作樹乾淨且有 commit，在受派者**兩顆 commit 之間**同樣為真。\n\n2026-08-08 第二輪實測，這個假代理指標差點釀成事故：\n\n我用「工作樹乾淨 ∧ commit 數 > 0」當作「已交回」，據此把 13 條分支送進 `integrate`。其中 `feat/coverage-claims` 當下是 3 顆 commit、乾淨。它其實還在工作——它後來又交出**第 4 顆**，內容是 `code-reviewer` 兩個 BLOCK 的修補：它的掃描器分段器忽略引號，於是字串裡的路徑被當成命令位置，`chain('ios-ops')` 多算一個檔，而**它自己在四個地方（含 SoT）斷言過那個邊界**，兩支守護測試之所以綠只是因為 fixture 剛好沒有 metacharacter。\n\n也就是說：**整合樹裡是那條分支被 reviewer 判定有缺陷的版本，而修補漏在外面。** 落地前逐分支比對 commit subject 才抓到（13 條裡遺漏 1 顆）。若沒查，送進 main 的會是已知有缺陷的版本，而 `resolve` 的包含性判準**擋不住**——它問的是「這分支動過的檔 main 現在是不是這分支的版本」，對「分支後來又長出東西」無感。\n\n同族但不同層的既有票：`IMP-20260807-f7f525` 講的是**受派者越界**（它不該自己 cutover）沒有機器在擋。本條講的是**整合者無法判斷受派者是否結束**。前者防的是做太多，後者防的是收太早。",
   "fix_site": "ops/worktree_registry.py（handed_back_at + tip sha）+ ops/worktree_orchestrate.py:cmd_integrate",
+  "fixed_by": [
+    "3bf3a3531f97203abbcc7894d644ef79811ea45d"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-721c44",
@@ -15,6 +18,10 @@
   "scope": "工作區登記簿多一個交回戳記與當時的版本點，整合指令據此拒絕未交回或交回後又改動的分支；連同派工說明一起改。",
   "severity": "high",
   "source": "2026-08-08 第二輪整合：用「工作樹乾淨+有commit」當已交回，漏掉 coverage-claims 修 reviewer BLOCK 的第 4 顆 commit，落地前逐 subject 比對才抓到",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:platform-steward",
+  "verified_evidence": "Acceptance command:\nuv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k handed_back\n\nObserved result:\n2 passed, 308 deselected in 1.05s"
 }
