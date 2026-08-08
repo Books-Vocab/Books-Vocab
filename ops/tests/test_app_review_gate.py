@@ -1042,6 +1042,27 @@ def test_cli_help_is_read_only_schema_driven_and_self_describing(command: str):
     assert "submit" not in result.stdout.lower()
 
 
+def test_app_review_chain_names_the_same_project_file():
+    """The gate keeps its own referent on purpose (evidence must not choose what
+    it is compared against), but "its own" must not become "a different file".
+    A half-applied rename would otherwise surface as an unexplained
+    `does not exist at <commit>` BLOCK rather than as a red test here.
+
+    Scoped to the App Review chain. `ops/_inject_shared.py:PBXPROJ` is a fourth
+    copy of this path and is deliberately excluded: it belongs to the injection
+    lint plane, which has no bearing on whether a bundle matches its commit.
+    """
+    sys.path.insert(0, str(ROOT / "ops"))
+    import app_review_evidence  # noqa: PLC0415
+    import capture_profile  # noqa: PLC0415
+
+    gate = _load_module()
+
+    assert gate._PROJECT_SOURCE_PATH == app_review_evidence.PROJECT_FILE_REL
+    assert gate._PROJECT_SOURCE_PATH == capture_profile.IOS_PROJECT_FILE_REL
+    assert (ROOT / gate._PROJECT_SOURCE_PATH).is_file()
+
+
 def _blocks(document: dict) -> dict[str, str]:
     return {item["code"]: str(item["actual"]) for item in document["blocks"]}
 

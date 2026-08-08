@@ -502,11 +502,14 @@ def test_reviewer_evidence_requires_an_explicit_source_commit():
     assert "--source-commit" in required[0]
 
 
-def test_reviewer_evidence_help_does_not_offer_a_working_tree_default():
+def test_reviewer_evidence_help_does_not_print_a_working_tree_path():
+    """Only what the name says. argparse never prints defaults, so help text
+    cannot distinguish a removed default from a silent one — the defaults
+    themselves are locked by `..._requires_an_explicit_source_commit` and
+    `..._parser_leaves_project_file_unset`."""
     result = _reviewer_evidence_cli("--help")
 
     assert result.returncode == 0
-    assert "default: HEAD" not in result.stdout
     assert str(ROOT / PROJECT_FILE_REL) not in result.stdout
 
 
