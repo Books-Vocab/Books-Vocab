@@ -2494,7 +2494,18 @@ def _rebase_onto(worktree: str | Path, trunk: str, label: str) -> tuple[int, str
 
 def _pid_alive(pid: int) -> bool:
     """Only used to evict a ticket whose owner is gone. PermissionError means the
-    process exists and belongs to someone else, which still counts as alive."""
+    process exists and belongs to someone else, which still counts as alive.
+
+    Non-positive pids are rejected BEFORE the probe, because `kill(2)` gives them
+    broadcast meanings rather than "this process": 0 addresses the caller's whole
+    process group and -1 addresses every process the caller may signal. Both
+    succeed, so a ticket carrying 0 would read as permanently alive and hold the
+    head of the queue forever — the exact deadlock the eviction exists to prevent.
+    A ticket is only ever written with `os.getpid()`, so anything <= 0 is a
+    corrupt ticket, and a corrupt ticket owns nothing.
+    """
+    if pid <= 0:
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:

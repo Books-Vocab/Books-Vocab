@@ -21,6 +21,7 @@ git-backed tests opt-skip if git is absent.
 from __future__ import annotations
 
 import importlib.util
+import argparse
 import ast
 import errno
 import io
@@ -4395,3 +4396,85 @@ def test_an_unreadable_entry_keeps_the_guard_talking(tmp_path):
     (root / "docs" / "runbook" / "backlog" / "IMP-7777.json").write_text(
         json.dumps({"id": "IMP-7777", "status": "wont-fix"}), encoding="utf-8")
     assert MODULE._entry_is_closed(root, "IMP-7777") is True           # closed counts
+
+
+# --- land: the fair queue -------------------------------------------------
+#
+# These cover the queue primitives, which is where the logic lives. The verb's
+# end-to-end behaviour is established by measurement rather than by unit test:
+# ten concurrent worktrees in a throwaway clone went from 2/10 landed (driving
+# catchup/gate/cutover by hand, with retries) to 10/10 in exactly 10 gate runs.
+# A unit test cannot reproduce that — it is a race, and a passing race proves
+# nothing — so the load harness is the evidence and these pin the parts a future
+# edit could quietly break.
+
+def test_the_landing_queue_hands_out_turns_in_arrival_order(tmp_path):
+    primary = tmp_path
+    a = MODULE._land_enqueue(primary, "/wt/a")
+    b = MODULE._land_enqueue(primary, "/wt/b")
+    c = MODULE._land_enqueue(primary, "/wt/c")
+    assert a < b < c
+    assert MODULE._land_position(primary, a)[0] == 0
+    assert MODULE._land_position(primary, b)[0] == 1
+    assert MODULE._land_position(primary, c)[0] == 2
+    # releasing the head promotes exactly the next arrival, not an arbitrary one
+    MODULE._land_release(primary, a)
+    assert MODULE._land_position(primary, b)[0] == 0
+    assert MODULE._land_position(primary, c)[0] == 1
+
+
+def test_a_ticket_whose_owner_died_does_not_hold_the_queue_forever(tmp_path):
+    """The failure mode a naive queue has and a lock does not: flock is released
+    by the kernel when the holder dies, a file is not. If a dead ticket merely
+    sorted first, every later lane would wait behind a process that no longer
+    exists — so the eviction is the price of using files at all."""
+    primary = tmp_path
+    dead = MODULE._land_enqueue(primary, "/wt/dead")
+    mine = MODULE._land_enqueue(primary, "/wt/mine")
+    assert MODULE._land_position(primary, mine)[0] == 1
+    qdir = MODULE._land_queue_dir(primary)
+    ticket = qdir / f"{dead:012d}.json"
+    # 0 is not "no process": kill(2) reads it as the caller's whole process
+    # group, so the probe SUCCEEDS and a naive _pid_alive would call it alive.
+    ticket.write_text(json.dumps({"pid": 0, "worktree": "/wt/dead"}))
+    assert MODULE._land_position(primary, mine)[0] == 0
+    assert not ticket.exists(), "the dead ticket should have been evicted, not skipped"
+
+    # -1 is worse: kill(2) reads it as every process the caller may signal.
+    again = MODULE._land_enqueue(primary, "/wt/dead2")
+    assert MODULE._land_position(primary, mine)[0] == 0
+    (qdir / f"{again:012d}.json").write_text(
+        json.dumps({"pid": -1, "worktree": "/wt/dead2"}))
+    assert MODULE._land_position(primary, mine)[0] == 0
+
+
+def test_a_corrupt_ticket_is_evicted_rather_than_crashing_the_queue(tmp_path):
+    primary = tmp_path
+    mine = MODULE._land_enqueue(primary, "/wt/mine")
+    bad = MODULE._land_queue_dir(primary) / "000000009999.json"
+    bad.write_text("{not json")
+    assert MODULE._land_position(primary, mine)[0] == 0
+    assert not bad.exists()
+
+
+def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, capsys):
+    """A dry run that enqueued would make `land --json` (the natural way to ask
+    'how deep is the queue') itself lengthen the queue it is reporting on."""
+    primary = tmp_path
+    monkeypatch.setattr(MODULE, "primary_root", lambda: primary)
+    monkeypatch.setattr(MODULE, "_freeze_guard", lambda *a, **k: None)
+    ran: list[str] = []
+    for name in ("cmd_catchup", "cmd_gate", "cmd_cutover"):
+        monkeypatch.setattr(MODULE, name,
+                            lambda *a, _n=name, **k: ran.append(_n) or 0)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    rc = MODULE.cmd_land(argparse.Namespace(
+        worktree=str(wt), commit=False, json=True, state=None, base="main",
+        queue_timeout=1.0))
+    assert rc == MODULE.EXIT_OK
+    assert ran == [], "a dry run must not execute any step"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "dry-run" and payload["landed"] is False
+    with MODULE._land_lock(primary):
+        assert MODULE._land_tickets(MODULE._land_queue_dir(primary)) == []
