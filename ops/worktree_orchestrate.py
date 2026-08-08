@@ -64,6 +64,18 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              staled everyone else, and the recovery raced identically);
              through `land` the same ten landed 10 of 10 in 10 gate runs.
              Advisory: it only guarantees one pass if every lander uses it.
+  integrate  the BATCH verb: fork one integration worktree off the local trunk,
+             cherry-pick N branches into it in order, stop by NAME on a conflict
+             (`--continue` after resolving, `--abort` to discard), and run the
+             EXISTING `gate` ONCE on the merged result. It answers the one question
+             per-branch gates structurally cannot: are these N pieces of work green
+             TOGETHER. Measured 2026-08-06 on an eleven-branch batch — review of the
+             integrated tree found five blocking defects, each green under its own
+             branch's gate. Adds no pass/fail of its own: the verdict is `gate`'s and
+             landing stays `cutover`'s (which already refuses a block verdict, so
+             that rule keeps living in exactly one place). cherry-pick rather than
+             merge, so a branch cannot smuggle in commits nobody named. dry-run
+             default.
   catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
              under the branch: rebase the worktree onto local `main`. It is a verb
              rather than a sentence because the rebase conflicts on a GENERATED file
@@ -3058,6 +3070,448 @@ def cmd_land(args) -> int:
         _land_release(primary, seq, ticket_fd)
 
 
+# ============================================================================
+# integrate — N branches, ONE gate
+# ============================================================================
+INTEGRATE_SCHEMA = "kg.worktree.integrate.v1"
+
+
+def _integrate_state_path(state: str | None, slug: str) -> Path:
+    """Where an in-flight integration is parked between invocations.
+
+    A conflict SUSPENDS the run — the operator leaves the process to resolve files by
+    hand — so the queue has to survive on disk or `--continue` cannot know what is left
+    to pick. Same anchoring as the gate-record cache (beside the ledger, per-machine,
+    gitignored): an integration is a local act, and nothing outside this machine has
+    any use for its half-finished state.
+    """
+    base_dir = Path(state).resolve().parent if state else wr.default_state_path().parent
+    return base_dir / "worktree_integrations" / f"{slug}.json"
+
+
+def _integrate_save(path: Path, st: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(st, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8")
+
+
+def _unmerged_paths(worktree: str) -> list[str]:
+    """The files git is waiting on. `--diff-filter=U` is git's own name for the state,
+    rather than a reading of porcelain wording, and the paths are C-unquoted for the
+    same reason `_porcelain_paths` unquotes: a conflict in a path with non-ASCII bytes
+    must still be NAMED, and this repo's docs tree is full of them."""
+    rc, out = _git(["diff", "--name-only", "--diff-filter=U"], cwd=worktree)
+    if rc != 0:
+        return []
+    return [_c_unquote(ln) for ln in out.splitlines() if ln]
+
+
+def _branch_pick_list(repo: Path, trunk: str,
+                      branch: str) -> tuple[list[dict[str, Any]], list[str], str | None]:
+    """(commits to pick, merge commits found, refusal). Oldest first.
+
+    Merge commits are returned SEPARATELY rather than filtered away. `rev-list
+    --no-merges` would drop them silently, and a batch verb whose whole reason for
+    existing is "no piece of work goes missing" must not itself be the thing that
+    loses one.
+    """
+    rc, _ = _git(["rev-parse", "--verify", "-q", f"{branch}^{{commit}}"], cwd=repo)
+    if rc != 0:
+        return [], [], f"{branch!r} does not resolve to a commit in this repo"
+    rc, out = _git(["log", "--reverse", "--no-merges", "--format=%H%x1f%s",
+                    f"{trunk}..{branch}"], cwd=repo)
+    if rc != 0:
+        return [], [], f"cannot list {trunk}..{branch}: {out[:200]}"
+    commits: list[dict[str, Any]] = []
+    for ln in out.splitlines():
+        if "\x1f" not in ln:
+            continue
+        sha, subject = ln.split("\x1f", 1)
+        commits.append({"branch": branch, "sha": sha, "subject": subject})
+    _, mout = _git(["rev-list", "--merges", f"{trunk}..{branch}"], cwd=repo)
+    return commits, [ln for ln in mout.splitlines() if ln], None
+
+
+def cmd_integrate(args) -> int:
+    """Converge N branches into ONE gated tree: fork off the local trunk, cherry-pick
+    each branch's commits in order, stop by NAME on a conflict, and run the EXISTING
+    `gate` once on the result.
+
+    The question it answers cannot be asked any other way. Each branch's own gate
+    proves "my change is green on the main I forked from"; the batch needs "these N
+    changes are green TOGETHER", and that tree does not exist until they are merged.
+    Measured 2026-08-06 on an eleven-branch batch: review of the integrated tree found
+    five blocking defects, every one of them green under its own branch's gate.
+
+    It adds NO judgement of its own — deliberately, because a second opinion about
+    pass/fail is a second place for the rules to drift:
+      * the verdict comes from `cmd_gate`, run in-process so the judge's identity is
+        the one `cutover` will check;
+      * `integrate` never lands. `cutover` already refuses a block verdict, so "only
+        a non-block result may land" keeps living in exactly one place. Re-deciding
+        it here would mean two implementations of the one rule that protects the trunk.
+    The exit code propagates the gate's verdict; it does not form one.
+
+    cherry-pick, not merge: a merge makes each source branch's whole ancestry an
+    ancestor of the result, which resurrects whatever those branches happened to be
+    carrying (measured on the same batch — two branches each held another session's
+    discarded commit). Picking is per-commit, so every commit that arrives is one
+    somebody named.
+    """
+    blocked = _freeze_guard(args.state, "integrate", args.json)
+    if blocked is not None:
+        return blocked
+    if not SLUG_RE.match(args.slug or ""):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": "slug must be kebab-case ([a-z0-9] words joined by '-')"},
+              args.json,
+              f"✗ slug {args.slug!r} must be kebab-case ([a-z0-9] joined by '-')")
+        return EXIT_USAGE
+    if args.cont and args.abort:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "error": "--continue and --abort ask for opposite things — pick one"},
+              args.json, "✗ integrate: --continue and --abort are mutually exclusive")
+        return EXIT_USAGE
+
+    spath = _integrate_state_path(args.state, args.slug)
+    if args.abort:
+        return _integrate_abort(args, spath)
+    if args.cont:
+        return _integrate_continue(args, spath)
+    return _integrate_start(args, spath)
+
+
+def _integrate_start(args, spath: Path) -> int:
+    trunk = _local_trunk(args.base)
+    primary = primary_root()
+    if not args.branches:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
+               "error": "no --branches given — an integration of nothing is not a "
+                        "shorter integration, it is a different mistake"},
+              args.json, "✗ integrate: --branches <b1> <b2> … is required")
+        return EXIT_USAGE
+    if spath.exists():
+        try:
+            live = json.loads(spath.read_text())
+        except (OSError, json.JSONDecodeError):
+            live = {}
+        msg = (f"an integration named {args.slug!r} is already in flight "
+               f"(worktree {live.get('worktree')}, {len(live.get('queue') or [])} "
+               f"commit(s) still queued) — resume it with `--continue --commit` after "
+               f"resolving, or discard it with `--abort --commit`. Starting over on "
+               f"top of it would strand a half-picked tree nothing points at")
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "error": msg,
+               "slug": args.slug, "state_file": str(spath),
+               "worktree": live.get("worktree")}, args.json,
+              f"✗ integrate refused: {msg}")
+        return EXIT_USAGE
+
+    plan: list[dict[str, Any]] = []
+    problems: list[str] = []
+    for branch in args.branches:
+        commits, merges, err = _branch_pick_list(primary, trunk, branch)
+        if err:
+            problems.append(err)
+            continue
+        if merges:
+            problems.append(
+                f"{branch!r} carries {len(merges)} merge commit(s) "
+                f"({', '.join(s[:8] for s in merges)}) in {trunk}..{branch} — a "
+                f"cherry-pick applies ONE parent's diff, so a merge has no unambiguous "
+                f"patch to take; flatten the branch (`catchup`/rebase) first")
+            continue
+        if not commits:
+            problems.append(
+                f"{branch!r} has no commits in {trunk}..{branch} — nothing to "
+                f"integrate. Either it already landed, or you meant a different branch; "
+                f"accepting it silently would report a batch as integrated that this "
+                f"branch contributed nothing to")
+            continue
+        plan.append({"branch": branch, "commits": commits})
+    if problems:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": "one or more branches cannot be integrated as given",
+               "problems": problems, "trunk": trunk}, args.json,
+              "✗ integrate refused:\n" + "\n".join(f"  {p}" for p in problems))
+        return EXIT_USAGE
+
+    total = sum(len(p["commits"]) for p in plan)
+    if not args.commit:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
+               "slug": args.slug, "trunk": trunk, "branches": list(args.branches),
+               "plan": plan, "commits": total,
+               "would_run": [f"open --slug {args.slug}",
+                             f"cherry-pick x{total}", "gate"]},
+              args.json,
+              f"# integrate (dry-run)\n"
+              f"  would fork `{args.slug}` off local {trunk}, cherry-pick {total} "
+              f"commit(s) from {len(plan)} branch(es), then run ONE gate:\n"
+              + "\n".join(
+                  f"    {p['branch']}\n" + "\n".join(
+                      f"      {c['sha'][:8]} {c['subject']}" for c in p["commits"])
+                  for p in plan)
+              + "\n  (--commit to execute; nothing lands — `cutover` still does that)")
+        return EXIT_OK
+
+    intent = f"integrate a batch of {len(plan)} branch(es) into {trunk}"
+    # The intent text deliberately omits the branch NAMES: `classify_intent` reads it
+    # to pick the branch type, and a source branch called `debug/fix-crash` would flip
+    # this worktree's own type to `debug`. The full list lives in the payload and in
+    # the state file, where nothing parses it for meaning.
+    orc, opay = _land_step(cmd_open, state=args.state, json=True, base=args.base,
+                           slug=args.slug, intent=intent, backlog=None,
+                           allow_ungroomed=False)
+    if orc != EXIT_OK:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": "could not open the integration worktree", "open": opay},
+              args.json,
+              f"✗ integrate: could not open the integration worktree — "
+              f"{opay.get('error', opay)}")
+        return EXIT_BLOCK
+
+    st = {
+        "schema": INTEGRATE_SCHEMA, "slug": args.slug, "base": args.base,
+        "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
+        "branches": list(args.branches),
+        "queue": [c for p in plan for c in p["commits"]],
+        "picked": [], "skipped": [],
+        "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    _integrate_save(spath, st)
+    return _integrate_drive(args, spath, st)
+
+
+def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
+    """Pick what is left, then gate once. The loop is resumable because every step
+    writes the queue back before the next pick can fail."""
+    wt = st["worktree"]
+    while st["queue"]:
+        item = st["queue"][0]
+        head_before = _head_sha(wt)
+        print(f"[worktree][integrate] phase=pick branch={item['branch']} "
+              f"sha={item['sha'][:8]} remaining={len(st['queue'])}",
+              file=sys.stderr, flush=True)
+        rc, out = _git_mutation(["cherry-pick", item["sha"]], cwd=wt,
+                                label=f"integrate-cherry-pick:{item['branch']}")
+        if rc != 0:
+            conflicts = _unmerged_paths(wt)
+            st["stopped"] = {**item, "head_before": head_before,
+                             "detail": out[-2000:]}
+            _integrate_save(spath, st)
+            head = (f"cherry-pick of {item['sha'][:8]} from {item['branch']!r} "
+                    f"stopped")
+            if conflicts:
+                why = (f"{head} on {len(conflicts)} conflicting file(s). Resolve them "
+                       f"in {wt}, `git -C {wt} add <paths>`, then re-run with "
+                       f"`--continue --commit`")
+            else:
+                # No unmerged paths and still a failure: an empty pick, a hook, a
+                # broken index. Saying "conflicts: []" here would be the tool
+                # inventing a diagnosis; hand over git's own words instead.
+                why = (f"{head} with no unmerged paths — git said:\n{out[-800:]}\n"
+                       f"  resolve it in {wt} by hand (`git -C {wt} cherry-pick "
+                       f"--skip` is the usual answer to an empty pick), then "
+                       f"`--continue --commit`; or discard with `--abort --commit`")
+            _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "stopped",
+                   "slug": st["slug"], "worktree": wt, "branch": st["branch"],
+                   "error": why, "conflicts": conflicts, "stopped": st["stopped"],
+                   "picked": st["picked"], "remaining": st["queue"],
+                   "state_file": str(spath)},
+                  args.json, f"✗ integrate stopped: {why}")
+            return EXIT_BLOCK
+        st["picked"].append({**item, "new_sha": _head_sha(wt)})
+        st["queue"] = st["queue"][1:]
+        st.pop("stopped", None)
+        _integrate_save(spath, st)
+    return _integrate_gate(args, spath, st)
+
+
+def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
+    """ONE gate, on the integrated tree, produced by THIS orchestrator.
+
+    In-process for the same reason `land` does it: `cutover` compares the judge's
+    identity against the worktree's own copy, so re-execing a different copy is the
+    failure that check exists to catch."""
+    wt = st["worktree"]
+    grc, gpay = _land_step(cmd_gate, state=args.state, json=True, base=args.base,
+                           worktree=wt, receipt_line=False, plan_only=False)
+    verdict = gpay.get("verdict")
+    head = _head_sha(wt)
+    st["gate"] = {
+        "verdict": verdict, "rc": grc, "head_sha": gpay.get("head_sha"),
+        "record": str(_gate_record_path(args.state, wt)),
+        "gates": [{"name": g.get("name"), "status": g.get("status"),
+                   "summary": g.get("summary")}
+                  for g in (gpay.get("gates") or [])
+                  if g.get("status") in ("block", "warn")],
+    }
+    _integrate_save(spath, st)
+    next_step = (f"{wt}/ops/worktree_orchestrate.py cutover --worktree {wt} --commit"
+                 if verdict in ("pass", "warn")
+                 else f"fix the blocking gate(s), then re-run `gate` in {wt}")
+    payload = {
+        "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
+        "slug": st["slug"], "worktree": wt, "branch": st["branch"],
+        "trunk": st["trunk"], "branches": st["branches"],
+        "picked": st["picked"], "skipped": st.get("skipped", []),
+        "head_sha": head, "gate": st["gate"], "gate_runs": 1,
+        "verdict": verdict, "landed": False, "next_step": next_step,
+        "state_file": str(spath),
+    }
+    lines = [f"# integrate {args.slug}: {len(st['picked'])} commit(s) from "
+             f"{len(st['branches'])} branch(es) -> {head[:8]}",
+             f"  gate verdict: {verdict}  (record {st['gate']['record']})"]
+    for g in st["gate"]["gates"]:
+        lines.append(f"  {'✗' if g['status'] == 'block' else '⚠'} {g['name']} — "
+                     f"{g.get('summary', '')}")
+    if st.get("skipped"):
+        lines.append("  skipped (produced no commit): "
+                     + ", ".join(f"{c['sha'][:8]} ({c['branch']})"
+                                 for c in st["skipped"]))
+    lines.append("  NOT landed — integrate gates, cutover lands:")
+    lines.append(f"    {next_step}")
+    _emit(payload, args.json, "\n".join(lines))
+    return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
+
+
+def _integrate_load(args, spath: Path, verb: str) -> dict[str, Any] | int:
+    if not spath.exists():
+        msg = (f"no integration named {args.slug!r} is in flight (nothing at {spath}) "
+               f"— start one with `integrate --slug {args.slug} --branches <b1> <b2> … "
+               f"--commit`")
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": msg, "state_file": str(spath)}, args.json,
+              f"✗ integrate --{verb} refused: {msg}")
+        return EXIT_USAGE
+    try:
+        return json.loads(spath.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": f"integration state at {spath} is unreadable ({exc}) — "
+                        f"inspect the worktree by hand; delete the file only once you "
+                        f"know what is already picked"}, args.json,
+              f"✗ integrate --{verb} refused: unreadable state at {spath}")
+        return EXIT_BLOCK
+
+
+def _integrate_continue(args, spath: Path) -> int:
+    st = _integrate_load(args, spath, "continue")
+    if isinstance(st, int):
+        return st
+    wt = st["worktree"]
+    if not Path(wt).is_dir():
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "error": f"the integration worktree is gone ({wt}) — nothing to "
+                        f"continue; discard the state with `--abort --commit`"},
+              args.json, f"✗ integrate --continue refused: {wt} is gone")
+        return EXIT_BLOCK
+
+    unmerged = _unmerged_paths(wt)
+    if unmerged:
+        msg = (f"{len(unmerged)} file(s) are still unmerged — resolve them and "
+               f"`git -C {wt} add <paths>` before continuing")
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "stopped",
+               "slug": args.slug, "worktree": wt, "error": msg,
+               "conflicts": unmerged, "remaining": st["queue"]}, args.json,
+              f"✗ integrate --continue refused: {msg}\n"
+              + "\n".join(f"    {p}" for p in unmerged))
+        return EXIT_BLOCK
+
+    if not args.commit:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
+               "slug": args.slug, "worktree": wt, "picked": st["picked"],
+               "remaining": st["queue"], "stopped": st.get("stopped")}, args.json,
+              f"# integrate --continue (dry-run)\n"
+              f"  would conclude the stopped pick and apply {len(st['queue'])} "
+              f"remaining commit(s), then run ONE gate\n  (--commit to execute)")
+        return EXIT_OK
+
+    op = _interrupted_operation(wt)
+    if op == "cherry-pick":
+        rc, out = _git_mutation(["cherry-pick", "--continue"], cwd=wt,
+                                label="integrate-cherry-pick-continue")
+        if rc != 0:
+            _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "stopped",
+                   "slug": args.slug, "worktree": wt,
+                   "error": f"`git cherry-pick --continue` failed:\n{out[-800:]}\n"
+                            f"  fix it in {wt} (an empty pick wants `git -C {wt} "
+                            f"cherry-pick --skip`), then re-run --continue; or "
+                            f"`--abort --commit`",
+                   "detail": out[-2000:]}, args.json,
+                  f"✗ integrate --continue: cherry-pick --continue failed:\n{out}")
+            return EXIT_BLOCK
+    elif op is not None:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+               "worktree": wt, "interrupted": op,
+               "error": f"a {op} is in progress in {wt} — conclude or abort it before "
+                        f"continuing the integration"}, args.json,
+              f"✗ integrate --continue refused: a {op} is in progress in {wt}")
+        return EXIT_BLOCK
+
+    stopped = st.get("stopped")
+    if stopped:
+        # Whether the stopped pick produced a commit is answered by the HEAD, not by
+        # what we hope the operator did: `--skip`, an empty resolution, or a manual
+        # `cherry-pick --continue` all leave the same absence of CHERRY_PICK_HEAD, and
+        # only the sha distinguishes "it landed" from "it did not".
+        entry = {k: stopped[k] for k in ("branch", "sha", "subject")}
+        if _head_sha(wt) != stopped.get("head_before"):
+            st["picked"].append({**entry, "new_sha": _head_sha(wt)})
+        else:
+            st.setdefault("skipped", []).append(entry)
+        st["queue"] = st["queue"][1:]
+        st.pop("stopped", None)
+        _integrate_save(spath, st)
+    return _integrate_drive(args, spath, st)
+
+
+def _integrate_abort(args, spath: Path) -> int:
+    """Abandon an in-flight integration: undo the suspended pick and drop the state.
+
+    It deliberately does NOT remove the worktree. Teardown is `resolve`'s job and only
+    `resolve` consults the landed-floor; a verb that both abandons work and deletes the
+    tree holding it is one keystroke away from discarding a resolution somebody spent
+    an hour on."""
+    st = _integrate_load(args, spath, "abort")
+    if isinstance(st, int):
+        return st
+    wt = st["worktree"]
+    op = _interrupted_operation(wt) if Path(wt).is_dir() else None
+    teardown = (f"ops/worktree_orchestrate.py resolve --worktree {wt} --force "
+                f"--commit  (--force because nothing here landed)")
+    if not args.commit:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
+               "slug": args.slug, "worktree": wt, "interrupted": op,
+               "picked": st["picked"], "remaining": st["queue"],
+               "next_step": teardown}, args.json,
+              f"# integrate --abort (dry-run)\n"
+              f"  would abort the in-flight {op or 'nothing'} in {wt} and forget the "
+              f"integration state\n"
+              f"  the worktree SURVIVES ({len(st['picked'])} commit(s) already picked) "
+              f"— tear it down with:\n    {teardown}\n  (--commit to execute)")
+        return EXIT_OK
+    if op == "cherry-pick":
+        rc, out = _git_mutation(["cherry-pick", "--abort"], cwd=wt,
+                                label="integrate-cherry-pick-abort")
+        if rc != 0:
+            _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
+                   "worktree": wt, "error": f"`git cherry-pick --abort` failed:\n{out}"
+                                            f"\n  the state file is KEPT so nothing is "
+                                            f"lost; fix the worktree by hand",
+                   "detail": out[-2000:]}, args.json,
+                  f"✗ integrate --abort failed:\n{out}")
+            return EXIT_BLOCK
+    spath.unlink(missing_ok=True)
+    _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "committed",
+           "slug": args.slug, "worktree": wt, "aborted": op,
+           "picked": st["picked"], "abandoned": st["queue"],
+           "worktree_removed": False, "next_step": teardown}, args.json,
+          f"✓ integrate --abort: {op or 'nothing'} aborted, integration state "
+          f"forgotten\n  worktree kept ({len(st['picked'])} picked commit(s)) — "
+          f"tear it down with:\n    {teardown}")
+    return EXIT_OK
+
+
 def cmd_catchup(args) -> int:
     """Bring a worktree onto the current local trunk — the step `gate` and `cutover`
     both send you to when the trunk moved under the branch.
@@ -4179,6 +4633,32 @@ def build_parser() -> argparse.ArgumentParser:
                          "lanes in exactly the long-gate batches this verb exists "
                          "for")
     ln.set_defaults(func=cmd_land)
+
+    ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
+                        "the local trunk, cherry-pick N branches into it in order, and "
+                        "run ONE gate on the result — the only way to ask whether N "
+                        "pieces of work are green TOGETHER. Gates, never lands "
+                        "(dry-run default)")
+    add_common(ig)
+    add_base(ig)
+    ig.add_argument("--slug", required=True,
+                    help="kebab-case slug: names the integration worktree and branch, "
+                         "AND identifies the integration for --continue / --abort")
+    ig.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
+                    help="source branches, cherry-picked IN THIS ORDER. Refused (by "
+                         "name) if one does not resolve, carries a merge commit, or "
+                         "has nothing to contribute")
+    ig.add_argument("--continue", dest="cont", action="store_true",
+                    help="resume a stopped integration: conclude the suspended pick "
+                         "(stage the resolved files first), apply what is left, gate")
+    ig.add_argument("--abort", action="store_true",
+                    help="abort the in-flight cherry-pick and forget the integration "
+                         "state. The WORKTREE survives — teardown is `resolve`, the "
+                         "only step that consults the landed-floor")
+    ig.add_argument("--commit", action="store_true",
+                    help="execute (default: dry-run — which for a fresh integration "
+                         "lists every commit that would be picked)")
+    ig.set_defaults(func=cmd_integrate)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "
                         "remove + branch -D (local/remote) + drop gate cache — no "
