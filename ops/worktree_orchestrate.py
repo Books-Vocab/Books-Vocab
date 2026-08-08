@@ -1058,7 +1058,9 @@ def _tag_snapshot(anchor: Path | str) -> str | None:
     """Every tag ref visible from `anchor`, or None when it could not be read.
 
     A linked worktree shares `refs/` with the primary — measured, not assumed:
-    `git rev-parse --git-path refs/tags` returns the SAME absolute path from both, so a
+    `git rev-parse --path-format=absolute --git-path refs/tags` returns a byte-identical
+    path from both (drop that flag and the primary answers relatively while the worktree
+    answers absolutely — two strings, one file), so a
     `release.sh` run over there is immediately visible to a child gate running here.
     That is how a gate's colour stops being a property of the branch and becomes a
     property of the machine (IMP-20260805-4ec901, same family as the device-lock case).
@@ -1981,13 +1983,23 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # was never there.
         summary += f"\n  ! output log not written ({log_error})"
     refs_changed = _tag_delta(tags_before, tags_after)
+    if tags_before is None or tags_after is None:
+        # Fail-safe, but never silent. The red stands — an unreadable probe is no reason
+        # to downgrade anything — yet "could not measure" must not look identical to
+        # "measured, nothing moved", which is the same rule `history_error`,
+        # `log_error` and `executed: False` each exist to enforce. A probe that goes
+        # permanently blind on some machine would otherwise reinstate this whole bug
+        # with zero signal.
+        result["refs_probe"] = "unmeasured"
+        summary += ("\n  ! refs probe unmeasured — cannot tell whether concurrent tag "
+                    "surgery contaminated this result")
     if refs_changed:
         # Not `block`: the measurement was taken while someone else moved refs under
         # it, so charging this red to the branch kills work over a machine-state
         # artefact. Not `pass` either — nothing here established the gate would have
         # been green. The rc is kept verbatim; the point is attribution, not amnesia.
         status = "inconclusive"
-        result["refsChanged"] = True
+        result["refs_changed"] = True
         summary = (f"refs changed during this gate ({refs_changed} tag(s) "
                    f"added/removed); rc={returncode} is not attributable to the "
                    f"branch — re-run this gate once the tag surgery is done\n{summary}")
@@ -2699,8 +2711,8 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     LOCAL trunk: rebase onto local `main` and fast-forward the primary checkout's
     `main` to it — OFFLINE, no push, no deploy. (Publishing to origin, and thereby
     production, is the separate `deploy` step.) A `warn` verdict LANDS ("landed with
-    warnings" — its disposition belongs to the driving agent); only `block` (and a
-    stale/absent verdict) refuses."""
+    warnings" — its disposition belongs to the driving agent); `block`, a stale/absent
+    verdict, and a verdict containing an `inconclusive` gate all refuse."""
     blocked = _freeze_guard(args.state, "cutover", args.json)
     if blocked is not None:
         return blocked
@@ -2745,6 +2757,22 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             refuse = "gate verdict is 'block' — fix the blocking gate(s) and re-run `gate`"
         elif verdict not in ("pass", "warn"):
             refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"
+        elif unattributed := [g.get("name") for g in rec.get("gates", [])
+                              if g.get("status") == "inconclusive"]:
+            # An inconclusive gate folds the VERDICT to warn, and a warn LANDS — so
+            # without this the fold quietly turns "this red could not be attributed"
+            # into "shipped with a note", which is the disarm direction. It is reachable
+            # with no tag surgery at all: every concurrent preflight/catchup/sync/deploy
+            # runs `git fetch --prune`, which imports origin's new tags and moves the
+            # snapshot under a gate that never reads tags.
+            #
+            # The gate's own summary already said "re-run this gate"; nothing made that
+            # happen. Refusing costs one gate re-run and makes the instruction real.
+            refuse = (f"{len(unattributed)} gate(s) came back inconclusive — their red "
+                      f"was measured while refs moved underneath, so it is attributable "
+                      f"to neither this branch nor the tools: "
+                      f"{', '.join(str(n) for n in unattributed[:5])}. Re-run `gate` "
+                      f"once the tag surgery is finished")
         elif verdict == "warn":
             # a warn LANDS; surface which gates warned so the record is explicit.
             # `inconclusive` folds INTO this verdict, so it has to be named here too —

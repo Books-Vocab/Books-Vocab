@@ -1,0 +1,14 @@
+{
+  "brief": "把關程式如果自己去動版本標籤，就會把自己的失敗判成「不是我的錯」而放行，等於一道再也擋不住任何東西的關卡。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "IMP-20260805-4ec901 落地後， 會在 child 前後各取一次  快照，rc≠0 且快照有變就把該 gate 標成 inconclusive。探針**不區分「別人動的 tag」與「這道 gate 自己的 child 動的 tag」**。review 已端到端重現：child 在 shared repo 下 `git tag` 並 `exit 3` → status inconclusive → aggregate warn。cutover 現已對 inconclusive 拒絕落地（同一輪 NIT-2 的處置），所以最壞後果從「靜默落地」降級成「這道 gate 永遠拿不到可歸屬判決、反覆要求重跑」——仍然是一道實質上再也給不出答案的 block gate。今天無現存 gate child 觸得到：全 repo grep，`ops/test_release.sh` 每一處 `git tag` / `tag -d` 都帶 `-C \\\"$fx_*\\\"` 指向 fixture repo。但 test_release.sh 是全 repo 最 tag-heavy 的腳本、本身又是 block gate，**少寫一個 `-C` 就得到那個結果**，而那個 bug 會偽裝成「這道 gate 最近怪怪的」。建議落點：`ops/shell_scan.sh`（repo 級跨檔掃描，任何 `*.sh` 改動都會路由到它，且已有正控慣例）加一條：tracked 腳本內的 `git tag` / `git push --tags` 不得缺 `-C` / `--git-dir`。需自帶正控（一個違規樣本要被抓到），否則就是又一條沒人能觀察它失效的守衛。",
+  "id": "IMP-20260808-dbdc85",
+  "resolution": "尚未修。**detail 有兩處被 shell 吃掉,以此處為準**:第一句應為「IMP-20260805-4ec901 落地後,`_run_gate` 會在 child 前後各取一次 `refs/tags` 快照」——立單時 --detail 走 double-quoted argv,那兩組反引號被當成命令替換執行掉了(`_run_gate` / `refs/tags` 兩個 token 因此消失)。工具備有 --detail-file 正是為此,立單者沒用。detail 不可改是刻意的:stream/date/source/detail 是 make_entry_id 的輸入。",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在既有的全 repo 腳本掃描器加一條規則與一個正控，不動 gate 本身。",
+  "severity": "med",
+  "source": "code-reviewer NIT-1 on IMP-20260805-4ec901 (911153ec9)",
+  "status": "open",
+  "stream": "IMP"
+}
