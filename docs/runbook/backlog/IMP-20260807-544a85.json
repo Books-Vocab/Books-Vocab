@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "_cmd_reanchor 的人類輸出(非 --json)那條 window f-string 零測試覆蓋:兩條 reanchor 測試一條走 --json、一條直接呼叫 reanchor_store。那正是 if False 死碼(內含會 KeyError 的 result[chr(39)])能長期藏在那裡的原因,而刪掉死碼並沒有補回觀察者。同一段的 main_depth 與 window_exhausted 也沒有任何斷言(mutation 實測存活)——window_exhausted 正是那個『未回報的界限讀起來像全掃過了』論證所指的欄位,該論證沒有套用到自己的輸出上。",
   "fix_site": "ops/tests/test_backlog.py（新增測試，覆蓋 ops/backlog.py:_cmd_reanchor 的非 --json 輸出路徑）",
+  "fixed_by": [
+    "5aa5136d2a85ca8f185220e3864bebd18357d613"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-544a85",
@@ -16,6 +19,10 @@
   "scope": "只新增一支測試，不動任何正式程式。",
   "severity": "low",
   "source": "落地前 20-agent 對抗性稽核 + 兩輪 code review",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k reanchor_human_output\n\nObserved before implementation: exit 5; 248 deselected in 0.20s (no tests collected).\nObserved after implementation: exit 0; 1 passed, 248 deselected in 1.49s.\nFresh gate after commit 5aa5136d2: ops-pytest exit 0; 249 passed in 16.34s."
 }
