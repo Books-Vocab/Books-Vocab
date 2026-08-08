@@ -1,20 +1,26 @@
 {
   "acceptance": "bash ops/test_ios_ops.sh -> 382 passed, 0 failed",
+  "acceptance_cmd": "bash ops/test_ios_ops.sh",
   "brief": "iOS 建置或測試要排隊等別人先用完時整段靜默數分鐘，等的人分不出是在排隊還是已經卡死。",
   "category": "tool",
   "cost": "S",
   "date": "2026-08-05",
   "detail": "All four handwritten iOS shlock waits (ios_test build/device, ios_build, ios_release) emit only entry/acquired/timeout; a live ios_ops test waited over two minutes with no progress after the first line. This violates the repository's <=20s visible-progress contract and makes an alive queued process indistinguishable from a hang, encouraging agents to bypass or kill typed iOS tooling.",
   "fix_site": "ops/lib/ios_lock_wait.sh + ios_build.sh/ios_test.sh/ios_release.sh",
+  "fixed_by": [
+    "4a2f4ed53"
+  ],
   "id": "IMP-20260805-953840",
   "plan": "Use ops/lib/ios_lock_wait.sh as the common shlock acquisition primitive. Emit 15-second phase=lock-wait heartbeats with waiter/holder liveness; preserve stale-steal and each caller original timeout boundary. Fixture four caller kinds with fake shlock/sleep and assert only 15s/30s emissions through 33s, acquire-stop, dead/invalid holder.",
-  "resolution": "Owner: platform-steward in debug/ios-lock-wait-heartbeat. Next action: add a fixture regression that proves each wait emits holder PID/alive heartbeat within the contract, then patch all four spin loops and run ops/docs/worktree gates.",
+  "resolution": "已修（4a2f4ed53）：`ops/lib/ios_lock_wait.sh` 成為四支 iOS 腳本共用的 shlock 取得原語，`kg_ios_wait_for_shlock` 在等待期間每跨過一個 heartbeat 邊界就印一行 `phase=lock-wait kind=… elapsed=…s pid=… alive=true holderPid=… holderAlive=…`，其中 holderAlive 由 `kill -0` 觀測。呼叫者：`ios_build.sh:182`、`ios_test.sh:711`（build 鎖）、`ios_test.sh:781`（device 鎖）、`ios_release.sh`。\n\n本條在 2026-08-08 的收斂盤點中被認定為殭屍票（修法已落地、狀態仍為 triaged）。結案由 acceptance gate 實跑其 acceptance_cmd 確認，不是憑 plan 文字。",
   "schema": "kg.backlog.entry.v1",
   "scope": "把四支 iOS 腳本各自手寫的等待段收斂成一份共用實作，另加一組模擬等待情境的測試。",
   "severity": "high",
   "source": "andon:/root/ios_lock_heartbeat; live review-card-layout-editor ios_ops test lock wait",
-  "status": "triaged",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 bash ops/test_ios_ops.sh rc=0（73.9s）；另以磁碟讀取確認 ops/lib/ios_lock_wait.sh 存在且四個呼叫點（ios_build.sh:182、ios_test.sh:711/781、ios_release.sh）全部改用它，heartbeat 行帶 holderPid/holderAlive"
 }

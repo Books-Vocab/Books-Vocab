@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "看板每張卡片顯示的是 `detail` 的前 400 字——那是寫給 agent 讀的技術散文。使用者在手機上看到的第一張卡今天長這樣（2026-08-08 實機截圖）：\n\n> `docs/registry.yml` 的 `generator:` 是全 registry 唯一宣告了「可機器檢查關係」的欄位，而 `ops/docs_lint.sh:180-188` 對 `kind: generated` 只驗兩件事：`generator:` 非空、該檔存在。**產物與產生器輸出的關係從未被評估**……\n\n這段話對執行者是對的、對排序者是不可用的。使用者在板子上唯一擁有的三個動作是**釘選 / 排序 / 延後**，而這三個動作都需要在幾秒內回答「這張值不值得先做」。要回答它，需要的是「壞了什麼、我會有感嗎」與「動起來多大」，不是修改點在第幾行。\n\n實際後果：110 張未解的票，使用者實質上按不下去任何一個按鈕——手機端的寫入面存在但**功能上是惰性的**。這不是美觀問題，是那個 surface 的存在理由沒有被滿足。\n\n缺的是兩個欄位，兩者都寫給人看、不寫給機器看：\n\n1. **一句話白話說明** —— 不含檔名行號、不含縮寫術語，講「現在會發生什麼壞事」。例：上面那張 = 「有一份自動產生的 iOS 統計報告已經爛掉（行數差 16%、第一名的檔案根本不存在），但檢查程式只確認它『有人負責產生』就放行。」\n2. **預計修改範圍** —— 白話的體積感，讓人估得出代價。例：「改一支檢查腳本，加一道比對；連帶要重生一份報告。」\n\n註：`fix_site` 已存在但它是**程式錨點**（`ops/docs_lint.sh:180`），是給執行者定位用的，不能兼任這件事——兩者的讀者、語域、精確度要求都不同。\n\n範圍上，需要的是未解的那 110 張；已結案的票不出現在板上。",
   "fix_site": "ops/backlog.py:MUTABLE_FIELDS / SHOW_FIELD_ORDER / _check_groom / p_list（新欄位 brief + scope）",
+  "fixed_by": [
+    "a96e2635c"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-1785b0",
   "plan": "兩個新欄位，兩者都**寫給人看、不寫給機器看**，都放在 `ops/backlog.py`。\n\n**欄位語意（這段就是 110 筆回填的規格，字面照抄給回填者）**\n\n- `brief` — 一句話，≤60 字，繁體中文白話。講「現在會發生什麼壞事／少了什麼」，**不講怎麼修**。**禁止**出現檔名、行號、函式名、旗標名、英文縮寫術語。多數 IMP 票使用者本人碰不到，那就誠實講「誰會被咬」（例：「跑測試的人」「下一個接手的 agent」），不要假裝使用者有感。\n  - 好：「有一份自動產生的 iOS 統計報告已經爛掉，但檢查程式只確認它有人負責產生就放行。」\n  - 壞：「`ops/docs_lint.sh:180` 對 `kind: generated` 只驗 generator 非空與檔案存在。」（這是 detail 的工作）\n- `scope` — 一句話體積感，讓人估得出代價。講**動到什麼、多大**，不講在哪一行。\n  - 好：「改一支檢查腳本、加一道比對，連帶要重生一份報告。」／「iOS 兩個檔，不動測試。」／「新增一支 lint 腳本＋它的測試＋一個排程 job。」\n  - 壞：「`ops/docs_lint.sh:180-188`」（那是 `fix_site`）\n\n**實作點**\n\n1. 常數：`BRIEF_FIELDS = (\"brief\", \"scope\")`，加進 `MUTABLE_FIELDS` 與 `SHOW_FIELD_ORDER`（`SHOW_FIELD_ORDER` 已有 `MUTABLE_FIELDS ⊆ SHOW_FIELD_ORDER` 的不變式測試釘住，別讓它紅）。`brief` / `scope` 排在 `detail` **之前**——人讀的東西在前面。\n2. `add` 與 `update` 各加 `--brief` / `--scope`。兩者都吃自由文字 → 必須落在 `FILE_TWIN_FIELDS` 裡（`_add_file_twins` 會自動生 `--brief-file` / `--scope-file`），並補測試釘住 twin 真的存在。\n3. `validate`：新增 `groom-claim-without-brief` / `groom-claim-without-scope`，**只在 `groomed_at >= BRIEF_REQUIRED_SINCE` 時綁**（落地實測後定為 **\"2026-08-09\"**，不是本 plan 原寫的 \"2026-08-08\"：2026-08-08 那波梳理在本規則寫出來前已蓋了 96 筆，`>= 2026-08-08` 會讓其中 95 筆變紅並使本票自己的 `acceptance_cmd` 失敗；起算日因此訂在 store 內最新戳記之後一天。**日期式放行的理由與「不可改成 id 白名單」不變**。另補一道與日期無關的寫入時閘 `_check_groom_write`：蓋或更新 groom 戳記當下就要求兩欄，所以「新梳理必須帶白話」不因起算日後移而落空——**回填者今天照 plan 執行就會被這道閘擋，這是預期行為，補上兩欄即可**）。理由與 `ACCEPTANCE_PROOF_SINCE` 逐字相同：以日期而非 id 白名單放行舊資料，重新梳理會蓋上今天的日期、規則因此自動綁住它；id 白名單會永遠原諒那筆，與 ratchet 的用意相反。**不要**把它們加進 `GROOM_REQUIRES`——那會讓現存 133 筆已蓋戳記卻沒有這兩欄的 entry 立刻全紅（實測；本 plan 原寫的 98 是估計值）。\n4. `list --missing-brief`：只列出「未解且缺 `brief` 或 `scope`」的 entry，讓回填債可數、可分批。help 要說清楚它是回填佇列，不是 dispatch。\n5. `docs/reference/tech_index.md`（SoT）同步新旗標與新欄位；grep `.claude/skills/`、`.claude/agents/`、`CLAUDE.md`、`docs/sop/` 內任何列舉 backlog 欄位或 `add` / `update` 旗標的地方一併同步。**梳理的定義變了**（新梳理必須附白話），凡是寫「梳理＝plan + acceptance + fix_site」的地方都要補上這兩欄。\n\n**不在本票範圍**：看板端的呈現（butler，由整合者做）、既有票的回填（另一波，規模以 `./ops/backlog.py list --missing-brief` 當下的輸出為準，不寫死數字——每多一張沒帶白話的新票，寫死的數字就再舊一次）。本票交付的是「欄位存在、新梳理必須帶、舊債可數」。\n\n**測試（鐵律 1，每條都要先紅）**\n- 新梳理缺 `brief` → validate 出 `groom-claim-without-brief`；補上 → 0 problems\n- `groomed_at` 早於 `BRIEF_REQUIRED_SINCE` 的舊 entry 缺 `brief` → **不**判紅（放行舊資料的正控）\n- `--brief-file` / `--scope-file` 存在且吃得到含反引號的文字\n- `list --missing-brief` 與其他旗標可疊加，且不含已解的 entry\n- `show` 印得出 `brief` / `scope`（`MUTABLE_FIELDS ⊆ SHOW_FIELD_ORDER` 的既有不變式測試不得紅）",
-  "resolution": "— 落地 commit 見 fixed_by。實作與本 plan 的唯一偏離：`BRIEF_REQUIRED_SINCE` 為 \"2026-08-09\" 而非 plan 原寫的 \"2026-08-08\"（理由已寫回 plan 內文，並由 `test_the_cutoff_forgives_every_groom_stamp_already_in_the_shipped_store` 對真實 store 斷言）。另新增一道與日期無關的寫入時閘 `_check_groom_write`，故回填那一波若要重新蓋 groom 戳記，必須同時帶 `--brief` / `--scope`。回填請以 plan 現行文字為準。",
+  "resolution": "已修（a96e2635c 落地欄位與閘門，699ad67af 完成 110 筆回填）：`backlog.py` 新增 `brief` / `scope` 兩個寫給人讀的欄位，`SHOW_FIELD_ORDER` 把它們排在 `detail` 之前，`list --missing-brief` 讓回填佇列可數，`validate` 以 `BRIEF_REQUIRED_SINCE`（2026-08-09）做日期式 grandfather，另加一道與日期無關的寫入時閘 `_check_groom_write`——蓋 groom 戳記當場就要求兩欄。\n\n實測（2026-08-08 看板現地）：105 張未解卡片，105 張有 brief、105 張有 scope。看板卡片改以 brief 當標題、scope 當副標，技術散文只在有 brief 時才收進摺疊區——沒有 brief 的票不會因為這個改動變得更難讀。\n\n本條在收斂盤點中被撈出為殭屍票（修法與回填皆已落地，狀態仍為 triaged）。",
   "schema": "kg.backlog.entry.v1",
   "scope": "改一支待辦工具：加兩個欄位、一個篩選開關、一條驗證規則，連同它的測試與說明；看板呈現和一百多筆舊資料補寫是另外兩批。",
   "severity": "high",
   "source": "使用者在手機看板上直接指出：卡片內容不是給我看的",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0（17.3s，含 list --missing-brief + validate + test_backlog.py 全套）；看板現地實測 105 張未解卡片全部有 brief 與 scope"
 }
