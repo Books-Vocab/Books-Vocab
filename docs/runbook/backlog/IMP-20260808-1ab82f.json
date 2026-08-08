@@ -1,10 +1,12 @@
 {
+  "brief": "改到備份行為時，「該去同步說明文件了」的提醒不會出現，那份文件因此曾經和實際行為完全相反。",
   "category": "doc",
   "date": "2026-08-08",
   "detail": "`docs/registry.yml:648` 的 `sop.backup` entry 其 `sources` 不含 `devops.sh`，所以 `ops/docs_impact.py` **結構性地看不見**任何 L2 備份相關的程式改動——改了備份行為不會有人提醒你同步那份 SOP。\n\n實測 2026-08-08：受派者修 `devops.sh:cmd_backup`（rsync flavor 分流，改變了備份在 macOS 上到底能不能跑）時，impact 工具沒有點名 `docs/sop/backup.md`；那份 doc 當時仍寫著「L2 OFFLINE」，與修完的行為相反。是 review agent 人工比對抓到的，不是工具。\n\n同族但不同條：`docs/sop/backup.md` 與 `backup_restore.md` 的內容漂移已在該批一併修掉，本條要修的是**控制面的 sources 宣告**，否則下次照樣看不見。",
   "id": "IMP-20260808-1ab82f",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "在一份控制清單裡替一條設定補上漏掉的來源，再驗提醒有沒有真的出現；一處設定的量。（尚未梳理，體積是估的）",
   "severity": "med",
   "source": "dogfood batch 1：impact 工具沒點名，靠 review agent 人工抓到",
   "status": "open",

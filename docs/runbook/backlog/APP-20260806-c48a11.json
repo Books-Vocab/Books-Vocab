@@ -1,5 +1,6 @@
 {
   "acceptance": "同一輪同步的 podcast 段（/api/podcasts list → /api/podcasts/progress）耗時，在 4 series 下由約 6.1s 降到 2.5s 以下，且所有 series 仍被 upsert、reconcile 不誤刪",
+  "brief": "開發測試版一開 app 的同步會一個一個慢慢抓播客資料、白花六秒；正式使用者不跑這段，被拖累的是我們自己的效能量測。",
   "build": "sim build 2026-08-06 06:18 (main 917ad3e4b)",
   "category": "perf",
   "date": "2026-08-06",
@@ -10,6 +11,7 @@
   "repro": "kg-pool-2 冷啟動 app → 讀 log stream 的 background_sync_triggered → background_sync_completed duration_ms",
   "resolution": "根因已定位（2026-08-06 11:53，kg-pool-2，backend 2.0.2）：那段空白是 backgroundSync 的 Phase 3（podcast catalog），不是無儀器的雜項。\n\n把 app log 與同時段伺服器 log 疊在同一條時間軸上才看得出來——app 側該段零輸出，單看 app log 只會得到「有個缺口」：\n  11:53:05.651 pullCardsToLocal completed（vocab 段共 0.53s）→ 7.6s app 全空 → 11:53:13.245 completed duration_ms=8127\n  伺服器同段：03:53:06.406 GET /api/podcasts → 4 次逐一序列的 /api/podcasts/<series>（0.8–2.2s each）→ 03:53:12.490 progress → 03:53:12.920 quota\n＝ 1 次 list + N 次序列 series 詳情 + progress = 6.1s，佔 8.1s 的四分之三；成本隨 series 數線性成長，每輪 sync 重跑，含使用者手動 resync。\n\n**嚴重度修正（這條最要緊，別漏）**：Phase 3 受 KGFeatureFlags.podcastEnabled 控制（KGFeatureFlags.swift:55/57，#if DEBUG true、else false），且 runPodcastCatalogSyncIfEnabled（KGService+Sync.swift:450）在建構 PodcastSyncService **之前**就 guard 短路，Release 因此零 podcast 網路/磁碟足跡。**所以這筆成本是 Debug／模擬器專屬，正式使用者不付。** 污染的是我們自己的效能量測與 debug 體感。\n\n程式碼座標與兩個補充（2026-08-06 12:00 併入）：\n- 序列迴圈在 PodcastSyncService.swift:361 —— `for summary in summaries { let detail = try await fetchSeriesDetail(...) }`，每個 series 一次往返。\n- 同一個檔案 :243 的 cacheCovers 已經有正確做法（withTaskGroup、maxConcurrent 3），註解甚至寫著「avoids first-sync waterfall latency without stampeding the backend」——那個 waterfall 就在它上面幾行，沒被套用。\n- 沒有變更偵測：PodcastSeriesSummary 只有 id/title/author/hostNames/color/coverPattern/coverImageURL/totalDurationSec/episodeCount，**沒有 updatedAt 或 etag**，client 無從得知哪個 series 沒變。要做 skip 得後端先在 summary 帶版本欄位。\n- 逐段實測（生產 log 03:53:05Z 那輪）：review-events 05.374 → dictionary-cards 05.753(+0.38) → podcasts list 06.406(+0.65) → series 07.204(+0.80) / 09.394(+2.19) / 10.622(+1.23) / 12.076(+1.45) → progress 12.490(+0.41) → quota 12.920(+0.43)；全輪 7.55s，podcast 段 6.08s。\n\n修法擇一或並用：① series 詳情併發而非序列（照 :243 的 taskgroup 形狀）；② list 回應帶 updated_at，未變更者跳過詳情；③ Phase 3 移出使用者主動 resync 的關鍵路徑。無論怎麼修，Phase 3 都該有進出 log——沒有它，這段時間在 app 側不可歸因。",
   "schema": "kg.backlog.entry.v1",
+  "scope": "iOS 一個同步檔改成同時抓取、再重量一次耗時；要不要請後端加上「這筆沒變」的標記另外決定。",
   "severity": "med",
   "source": "kg-pool-2 上驗證 7a8352f27 watermark 時的旁證",
   "status": "triaged",

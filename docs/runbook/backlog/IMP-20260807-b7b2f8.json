@@ -1,5 +1,6 @@
 {
   "acceptance": "在 `plan_gates` 加一條路由到全新路徑形狀、**不改測試**，`test_gate_can_fail.sh` 必須轉紅並具名該 gate。今天會綠——那是負控。",
+  "brief": "有個測試宣稱每道品管關卡都真的擋得住，其實只查它記得列出來的那幾道，新關卡看不見卻照樣印綠燈。",
   "category": "tool",
   "cost": "M",
   "date": "2026-08-07",
@@ -9,6 +10,7 @@
   "plan": "從 `plan_gates` 的路由表本身反推探針，而非手列：把路由條件（副檔名 / 路徑前綴 / `DATA_PLANE_OWNERS` 的 key）抽成可枚舉的資料，測試對每個路由條件合成一個代表路徑。無法反推的條件（依賴真實檔案存在性的）保留手列，但**必須具名列出**哪些是手列的（比照 `data-plane-unowned` / `ops-shell-untested` 的具名 warn 慣例），讓清單的不完整可見而非隱形。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "改一支測試腳本：把手列的檢查清單改成自動推導，推導不到的部分要具名列出來。",
   "severity": "med",
   "source": "接 backlog-validate gate 時撞見",
   "status": "open",

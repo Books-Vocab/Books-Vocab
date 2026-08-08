@@ -1,10 +1,12 @@
 {
+  "brief": "文件上「對照過哪一版程式」的記號，落地前的檢查只確認它曾經存在，就算那一版早被丟棄也照樣放行。",
   "category": "tool",
   "date": "2026-08-08",
   "detail": "`ops/worktree_orchestrate.py:_run_verified_against`（約 :1550-1568）被自己的文件（:482-483）描述為檢查 `verified_against` 的 **reachability**，實際只跑 `git rev-parse --verify`——那是**物件存在性**，不是可達性。\n\n後果：一顆被 rebase 孤立（orphan）的 anchor 仍然存在於 object database，因此這道檢查會放行它。`ops/tests/test_docs_lint.sh` 案 1 專門造出來的就是這種 orphan anchor，而 cutover gate 這一端看不見。\n\n這是同一條規則的**第三個讀取者**，也是最弱的一個：`ops/backlog.py` 要求 origin 可達，`ops/docs_lint.sh` 現在會對 origin 不可達發 WARN（IMP-20260805-9bb2d2 剛做），而這裡只驗物件在不在。名字比它做的事大。\n\n由受派者在修 IMP-20260805-9bb2d2 時發現並具名交回；先於該 commit 存在，不是它造成的。",
   "id": "IMP-20260808-40f07b",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
+  "scope": "改一支流程工具裡的一道檢查、補一支測試（尚未梳理，體積是估的）。",
   "severity": "med",
   "source": "dogfood batch 1：受派者修 docs_lint 時發現同規則第三個讀取者最弱",
   "status": "open",
