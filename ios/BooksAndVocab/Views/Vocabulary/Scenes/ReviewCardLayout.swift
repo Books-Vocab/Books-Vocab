@@ -110,8 +110,16 @@ struct ReviewCardViewport: Equatable {
 }
 
 struct ReviewCardRenderPlan: Equatable {
+    enum Row: Equatable {
+        case prompt
+        case answer
+        case answerDivider
+        case field(ReviewCardField)
+    }
+
     struct Face: Equatable {
         let fields: [ReviewCardField]
+        let rows: [Row]
     }
 
     /// Prompt and answer are mode semantics, rather than optional profile fields.
@@ -125,10 +133,15 @@ struct ReviewCardRenderPlan: Equatable {
         availability: ReviewCardContentAvailability
     ) -> Self {
         let layout = profile.layout(for: mode)
+        let frontFields = layout.front.filter(availability.contains)
+        let backFields = layout.back.filter(availability.contains)
+        let backRows: [Row] = [.answer]
+            + (ReviewCardLayoutSolver.drawsAnswerDivider(fields: backFields) ? [.answerDivider] : [])
+            + backFields.map(Row.field)
         return Self(
             coreIsLocked: true,
-            front: .init(fields: layout.front.filter(availability.contains)),
-            back: .init(fields: layout.back.filter(availability.contains))
+            front: .init(fields: frontFields, rows: [.prompt] + frontFields.map(Row.field)),
+            back: .init(fields: backFields, rows: backRows)
         )
     }
 }

@@ -44,6 +44,7 @@ LINUX_GROUPS=(
   plain-deadzone
   ui-fixture-lint
   ui-quality-plane
+  review-card-golden
   python-entrypoints
   capability-matrix
   worktree-orchestrator
@@ -72,6 +73,7 @@ LINUX_GROUPS=(
   reconcile
   branch-audit
   review-audit
+  review-cycle
   log-assert
   ios-release
   ios-run-verdict

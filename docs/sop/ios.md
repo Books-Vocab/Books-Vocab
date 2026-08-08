@@ -113,6 +113,8 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 `ios_ops.sh quality list|impact|validate` 是 iOS façade 上的 UI 品質控制面 discovery 入口，read-only 委派 `ops/ui_quality_plane.py`。改 UI 檔時先用 `./ops/ios_ops.sh quality impact --files <paths...> --json` 取得 static-code / structure / state-snapshot / behavior / perf / visual-regression 候選 gate，再依語意決定跑哪個 gate；這讓新 agent 不必先知道 `ui_quality_plane.py` 的內部路徑。
 
+改複習卡版面或 `ReviewCardLayoutProfile` 時，必須同步更新 `ios/BooksAndVocabTests/Golden/review_card_layout.json`，並讓 `ReviewCardLayoutGoldenTests` 與 `review-card-golden` 回歸組在同一個變更中通過。
+
 `ios_ops.sh commands --json` 是 agent capability catalog:schema 為 `kg.ios.commands.v1`,列每個 subcommand 的 `key`、`aliases`、`sideEffect`、固定 `delegate` 欄位（無委派為 `null`）、用途與輸出 JSON schema。`jsonSchemas[]` 不只列 top-level schema，也必須包含 payload 內穩定內嵌的 child schema（例如 `build/test/archive/runs` 內的 `kg.ios.diagnostics.v1`、`test --coverage` 內的 `kg.ios.coverage.v1`、`doctor` 內的 `kg.ios.sentry.v1`、`snapshot` 內的 `kg.ios.workflow.v1` / `kg.ios.runs.v1` / `kg.ios.sentry.v1`）。新 agent 不確定能不能寫入或該讀哪個 schema 時先查這個,不要解析 help 文字。
 
 ## iOS 編譯 3 步驟 SOP
