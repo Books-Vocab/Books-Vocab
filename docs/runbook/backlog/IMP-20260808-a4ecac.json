@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/test_ios_ops.sh` 沒有 section / group 過濾器：384 條斷言只能整支線性跑完，無法只跑 `ios_test fixture dataset flag` 那一段。\n\n實測 2026-08-08（受派者修 IMP-20260805-bf0df5 時）：單次全跑 80–260 秒（後者是同機多 agent 爭用時）。要迭代一個只影響單一 section 的改動，受派者最後自己寫了以 `sed` 行號區間抽函式的臨時 harness——那正是鐵律 9 說的「agent 繞過工具硬幹」的形狀，而且抽取是位置相依的，行號一動就靜靜壞掉。\n\n建議加 `--section <name>` 或 `-k <pattern>`。對照組：`ops/ios_test.sh` 已經有 `--file` / `-g` / `--ui` 的 scope 機制，`test_ios_ops.sh` 是同一個工具家族裡唯一沒有的。",
+  "id": "IMP-20260808-a4ecac",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "dogfood batch 1：受派者為了迭代自己寫了 sed 行號 harness",
+  "status": "open",
+  "stream": "IMP"
+}

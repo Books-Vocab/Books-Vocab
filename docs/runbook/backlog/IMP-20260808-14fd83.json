@@ -1,0 +1,12 @@
+{
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "三處 agent 配置面仍把 `verified_against` 的標準寫成「指到 **main 可達** 的 code commit」，而 `docs/sop/doc_sync.md:25` 已明文判定那個說法**不足**（正確標準是 origin 可達——分支上的 commit 在 cutover 的 rebase 之後會被 orphan）。\n\n出現處：`CLAUDE.md:220`、`CLAUDE.md:232`（背景 doc-sync agent 的逐字 prompt 模板）、`.claude/agents/docs-steward.md:21`。\n\n最要命的是第三處：`docs-steward` 正是實際去寫 anchor 的那個 worker，它的職責描述教它用不足的標準。正確形狀見 `.claude/skills/kg-docs-control-plane/SKILL.md:41`。\n\n由受派者的 review agent 抓到並具名交回，受派者刻意不改——它判斷「subagent 的建議不構成改 CLAUDE.md／agent 定義的授權」，這個界線判斷是對的。\n\n修完可在 `ops/tests/test_docs_lint.sh` 的 `forbid_in` 區釘死「main 可達」不得回流。",
+  "id": "IMP-20260808-14fd83",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "dogfood batch 1：受派者的 review agent 抓到，受派者依界線交回",
+  "status": "open",
+  "stream": "IMP"
+}
