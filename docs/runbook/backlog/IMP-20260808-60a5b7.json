@@ -1,0 +1,14 @@
+{
+  "brief": "沒人寫下『怎麼更新錨點才不用帶覆寫旗標』，於是發版的人會反射性帶上那個旗標，把例外變成常規。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "refresh-anchor --commit 現在在 App Review gate 紅燈時 refuse（IMP-20260805-45759f，本 commit）。code review 指出一個後果：如果沒有任何文檔寫明『哪條路徑不需要 --acknowledge-gate-block』，操作者學到的會是「重錨一律要帶那個旗標」，於是旗標變成橡皮圖章——這正是那張票要避免的東西。\n\nreviewer 讀 ops/app_review_gate.py:978-988 後提出的免旗標順序是：**先** refresh-anchor --commit（此刻 on-disk 的 desired bundle 仍與舊錨點相符、gate 還綠、守衛放行）**再** desired --commit --bundle-dir 重生 bundle。相反順序（先重生 bundle → 錨點立刻過期 → gate 紅）必定撞上守衛、必定要覆寫旗標。\n\n**這個順序尚未實測。** 本輪工作樹跑不出 desired bundle：./ops/app_review_evidence.py desired --spec ops/app_review/2.0.0.json ... 回 {\"error\": \"desired.output.knowledge_graph\", \"status\": \"block\"} rc 2（未改動的子指令，與本次改動無關的既有環境條件）。沒有實跑就往 docs/sop/ios.md 或 SKILL.md 寫操作順序，違反鐵律2，所以刻意留白並開此票。\n\n修法：在能重建 bundle 的環境（可能需要先跑 UI World render / capture profile 產出）實跑兩種順序各一次，記錄 refresh-anchor 的 gateCheck 與 rc，確認免旗標路徑真的存在；確認後在 docs/sop/ios.md:92 那段與 .claude/skills/source-command-release/SKILL.md §App Store submit hard stop 各加一句寫明順序。若實測發現免旗標路徑其實不存在（例如 gate 因其他原因恆紅），那結論同樣要寫下來——那代表覆寫旗標事實上是唯一路徑，而那是個更該被知道的事實。",
+  "id": "IMP-20260808-60a5b7",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "驗證一個兩步操作順序，然後在兩份既有文檔各加一句。",
+  "severity": "low",
+  "source": "IMP-20260805-45759f 的 code review nit 8；未實作，因為這個環境無法重建 desired bundle（desired.output.knowledge_graph），寫進 SoT 就是未經量測的斷言",
+  "status": "open",
+  "stream": "IMP"
+}
