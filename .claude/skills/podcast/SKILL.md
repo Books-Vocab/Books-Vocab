@@ -231,7 +231,7 @@ opt-out env:
 UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度條(scriptwrite / script-review / synthesize 三段平行階段展開顯示每集 EP tile) + COST BREAKDOWN 表(逐 stage:model、calls、input/output tokens、cache R/W、audio、$) + LIVE ACTIVITY feed。
 
 **成本計算來源**(`monitor/cost.py`):
-- Stage 1-10(agent):直接讀 claude CLI stream-json 的 `result.modelUsage[model].costUSD`。Claude profile 通常有完整 USD;Kimi profile 若 endpoint 不回 `costUSD`,以 Kimi Code 帳單為準
+- Stage 1-10(agent):直接讀 claude CLI stream-json 的 `result.modelUsage[model].costUSD`。Claude profile 通常有完整 USD
 - Stage 11(Vertex TTS):從 `tts_usage` event 取 `input_tokens` × `output_tokens`,套 `VERTEX_PRICING` dict。當前 default `gemini-2.5-flash-tts` $0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier);`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10 也保留。`response.usage_metadata` 缺失時 fallback 估算(`input ≈ chars/4`、`output ≈ audio_sec × 25`),event 標 `usage_source: "estimated"`
 - Stage 12-13(audio_qa / Whisper):本地跑,$0
 - Pricing 來源:Vertex Gemini 3.1 Flash TTS 用 AI Studio TTS-specific row($1/$20);2.5-pro-tts 用 Vertex 公告 base Gemini 2.5 Pro rate。`verified_against: "2026-05-30"`。改單價編輯 `VERTEX_PRICING` 或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 覆寫。
@@ -325,9 +325,8 @@ curl -sf -X DELETE "$BASE/api/workspace/$WS?confirm=$WS"
 
 | 變數 | 預設 | 說明 |
 |------|------|------|
-| `PODCAST_AGENT_PROFILE` | `claude` | Stage 1-10 agent billing/profile:`claude` 走正常 Claude Code;`kimi` 仍呼叫 `claude -p`,但注入 Kimi Code endpoint/token env。CLI 也可用 `--agent-profile claude|kimi`;workspace 會寫 `.agent_profile` 供 approve/resume 讀回 |
-| `PODCAST_AGENT_MODEL` | `opus[1m]`(claude) / `kimi-for-coding`(kimi) | Stage 1-10 agent model;CLI 也可用 `--agent-model M`。legacy `PODCAST_CLAUDE_MODEL` 仍支援但只建議當 Claude profile 相容入口 |
-| `PODCAST_KIMI_API_KEY` / `PODCAST_KIMI_KEY_FILE` | `~/.secrets/kimi.env` | Kimi profile token 來源。優先序:`PODCAST_KIMI_API_KEY` → `ANTHROPIC_AUTH_TOKEN` → key file;缺 key 時 fail-fast |
+| `PODCAST_AGENT_PROFILE` | `claude` | Stage 1-10 agent billing/profile:**目前只有 `claude`**(kimi profile 已於 2026-08-09 移除,傳入即 fail-fast)。CLI 也可用 `--agent-profile claude`;workspace 會寫 `.agent_profile` 供 approve/resume 讀回。新增後端 = `pipeline._PROFILE_DEFAULT_MODEL` 加 key + 同步 server/app.js/index.html 三處白名單 |
+| `PODCAST_AGENT_MODEL` | `opus[1m]` | Stage 1-10 agent model;CLI 也可用 `--agent-model M`。legacy `PODCAST_CLAUDE_MODEL` 仍支援但只建議當 Claude profile 相容入口 |
 | `PODCAST_STAGE_RETRIES` | `3` | 每個 agent stage 的總嘗試次數。transient 失敗(thinking-block 400 / 429 / 5xx)以**全新** `claude -p` 重試(繞過被汙染的 thinking 對話歷史);auth / 一般 400 / timeout 不重試。詳見 `docs/sop/podcast_pipeline.md` §Agent-stage 重試 |
 | `TTS_MODEL` | `gemini-2.5-flash-tts`(code 預設與 `.env` 一致,2026-06-02 起) | Vertex TTS 模型;3.1-flash-preview / 2.5-pro 可選。audio-tag palette 為 family-parametric(SoT `tts_tags.py:TAG_CONCEPTS`):scriptwrite 依目標 family 注入對應 palette,synthesize 端 `sanitize_tags_for_family` 兜底跨 family tag |
 | `TTS_MAX_CONCURRENT` | `10` | TTS batch 並發上限 |

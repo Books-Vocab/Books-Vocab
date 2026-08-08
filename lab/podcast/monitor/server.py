@@ -63,7 +63,8 @@ from workspace_status import (  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
 
-ALLOWED_AGENT_PROFILES = ("claude", "kimi")
+# Must mirror pipeline.AGENT_PROFILES.
+ALLOWED_AGENT_PROFILES = ("claude",)
 
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
