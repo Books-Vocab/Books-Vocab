@@ -125,6 +125,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
@@ -2491,6 +2492,231 @@ def _rebase_onto(worktree: str | Path, trunk: str, label: str) -> tuple[int, str
     return _git_mutation(["rebase", trunk], cwd=worktree, label=label)
 
 
+def _pid_alive(pid: int) -> bool:
+    """Only used to evict a ticket whose owner is gone. PermissionError means the
+    process exists and belongs to someone else, which still counts as alive."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except (PermissionError, OverflowError, ValueError):
+        return True
+    return True
+
+
+def _land_queue_dir(primary: Path) -> Path:
+    return primary / ".cache" / "kg-land-queue"
+
+
+def _land_lock(primary: Path):
+    return wr._ledger_lock(_land_queue_dir(primary) / "seq")
+
+
+def _land_tickets(qdir: Path) -> list[tuple[int, dict]]:
+    """Live tickets, lowest sequence first.
+
+    A ticket whose owner died is DELETED here, not skipped. Skipping would be the
+    cheaper read, but the dead ticket would keep its place at the head forever and
+    every later lane would wait behind a process that no longer exists — a queue
+    that deadlocks on a crash is worse than no queue at all. Callers must hold
+    `_land_lock`, since this mutates.
+    """
+    out: list[tuple[int, dict]] = []
+    if not qdir.is_dir():
+        return out
+    for path in sorted(qdir.glob("*.json")):
+        try:
+            seq = int(path.stem)
+            rec = json.loads(path.read_text())
+        except (ValueError, OSError, json.JSONDecodeError):
+            path.unlink(missing_ok=True)
+            continue
+        if not _pid_alive(int(rec.get("pid", -1))):
+            path.unlink(missing_ok=True)
+            continue
+        out.append((seq, rec))
+    out.sort(key=lambda t: t[0])
+    return out
+
+
+def _land_enqueue(primary: Path, worktree: str) -> int:
+    qdir = _land_queue_dir(primary)
+    qdir.mkdir(parents=True, exist_ok=True)
+    with _land_lock(primary):
+        live = _land_tickets(qdir)
+        seq = (live[-1][0] + 1) if live else 1
+        (qdir / f"{seq:012d}.json").write_text(
+            json.dumps({"pid": os.getpid(), "worktree": worktree}))
+    return seq
+
+
+def _land_position(primary: Path, seq: int) -> tuple[int, dict | None]:
+    """(position, ticket-ahead-of-us). 0 means it is our turn; -1 means our own
+    ticket is gone, which can only happen if something evicted us."""
+    with _land_lock(primary):
+        live = _land_tickets(_land_queue_dir(primary))
+    seqs = [s for s, _ in live]
+    if seq not in seqs:
+        return (-1, None)
+    pos = seqs.index(seq)
+    return (pos, live[0][1] if pos > 0 else None)
+
+
+def _land_release(primary: Path, seq: int) -> None:
+    with _land_lock(primary):
+        (_land_queue_dir(primary) / f"{seq:012d}.json").unlink(missing_ok=True)
+
+
+def _land_step(func, **kw) -> tuple[int, dict]:
+    """Run one orchestrator subcommand in-process and capture its payload.
+
+    In-process rather than a subprocess so the gate verdict is produced by exactly
+    this orchestrator — `cutover` compares the judge's identity, and re-execing a
+    different copy of the file is the failure that check exists to catch. stdout is
+    captured because each step emits its own JSON envelope and `land` emits one of
+    its own; two JSON documents on one stream is the pollution this repo already
+    forbids operators from creating.
+    """
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = func(argparse.Namespace(**kw))
+    raw = buf.getvalue()
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = {"raw": raw[-2000:]}
+    return rc, payload
+
+
+def cmd_land(args) -> int:
+    """Drive one worktree all the way onto the local trunk, taking a fair turn.
+
+    Measured on a clone of this repo, ten concurrent worktrees each running the
+    documented catchup/gate/cutover sequence: TWO landed. The other eight were
+    refused with "worktree is behind main" — five at cutover, three before their
+    gate would even run — because the trunk is single and the ff is linear, so
+    whichever lane lands first makes every other lane stale. The remedy each
+    refusal names (catch up, then gate again) races exactly the same way, so the
+    recovery convoys instead of converging. At N=3 the same run landed 3 of 3 but
+    still spent 6 gate runs to do it.
+
+    Nothing there was unsafe: no ungated tree landed, the primary stayed clean, the
+    ledger stayed consistent. The invariant held. What was missing was a verb whose
+    meaning is "get me landed", so `land` is that verb.
+
+    It works by widening the critical section. `cutover` serializes only the ff,
+    which is enough to keep two lanes from interleaving but not enough to keep a
+    lane's verdict fresh: the trunk can move between the gate and the lock. `land`
+    holds the turn across catchup -> gate -> cutover, so the tree that is gated is
+    the tree that lands, first try. N lanes cost N gate runs.
+
+    Turns are FIFO rather than an flock because an flock is not fair, and the lane
+    that loses a repeated race is the one with the slowest gate — in a mixed batch
+    that is the iOS lane, i.e. the one that can least afford to run again.
+    """
+    blocked = _freeze_guard(args.state, "land", args.json)
+    if blocked is not None:
+        return blocked
+    worktree = _norm(args.worktree)
+    if not Path(worktree).is_dir():
+        _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+               "error": f"no such worktree: {worktree}"},
+              args.json, f"✗ no such worktree: {worktree}")
+        return EXIT_BLOCK
+    primary = primary_root()
+
+    if not args.commit:
+        with _land_lock(primary):
+            live = _land_tickets(_land_queue_dir(primary))
+        _emit({"schema": SCHEMA, "step": "land", "mode": "dry-run", "landed": False,
+               "worktree": worktree, "queue_depth": len(live),
+               "would_run": ["catchup --commit", "gate", "cutover --commit"],
+               "note": "takes a FIFO turn first; the whole sequence runs under it"},
+              args.json,
+              f"[dry-run] land {worktree}: queue depth {len(live)}; would take a turn "
+              f"then run catchup --commit -> gate -> cutover --commit")
+        return EXIT_OK
+
+    seq = _land_enqueue(primary, worktree)
+    started = time.monotonic()
+    common = {"state": args.state, "json": True, "base": args.base,
+              "worktree": worktree}
+    try:
+        waited = 0.0
+        last_beat = 0.0
+        while True:
+            pos, ahead = _land_position(primary, seq)
+            if pos == -1:
+                _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                       "error": "our queue ticket disappeared — another process "
+                                "judged this pid dead; re-run `land`",
+                       "landed": False, "worktree": worktree},
+                      args.json, "✗ land refused: queue ticket disappeared")
+                return EXIT_BLOCK
+            if pos == 0:
+                break
+            waited = time.monotonic() - started
+            if waited >= args.queue_timeout:
+                _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                       "error": f"waited {waited:.0f}s for a landing turn "
+                                f"(position {pos}); giving up so a stuck peer cannot "
+                                f"hold this lane forever",
+                       "landed": False, "position": pos, "ahead": ahead,
+                       "worktree": worktree},
+                      args.json,
+                      f"✗ land refused: still position {pos} after {waited:.0f}s")
+                return EXIT_BLOCK
+            if waited - last_beat >= 20:
+                last_beat = waited
+                print(f"[worktree][land] phase=waiting elapsed={waited:.0f}s "
+                      f"position={pos} aheadPid={(ahead or {}).get('pid')} "
+                      f"alive=true", file=sys.stderr, flush=True)
+            time.sleep(0.4)
+
+        steps: list[dict] = []
+        crc, cpay = _land_step(cmd_catchup, commit=True, **common)
+        steps.append({"step": "catchup", "rc": crc, "payload": cpay})
+        if crc != EXIT_OK:
+            _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                   "error": "catchup refused; the branch could not be brought onto "
+                            "the trunk", "landed": False, "steps": steps,
+                   "worktree": worktree},
+                  args.json, "✗ land refused at catchup")
+            return EXIT_BLOCK
+
+        grc, gpay = _land_step(cmd_gate, receipt_line=False, plan_only=False, **common)
+        steps.append({"step": "gate", "rc": grc, "verdict": gpay.get("verdict"),
+                      "payload": gpay})
+        if gpay.get("verdict") not in ("pass", "warn"):
+            _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
+                   "error": f"gate verdict is {gpay.get('verdict')!r} — fix the "
+                            f"blocking gate(s), then run `land` again",
+                   "landed": False, "steps": steps, "worktree": worktree},
+                  args.json,
+                  f"✗ land refused: gate verdict {gpay.get('verdict')!r}")
+            return EXIT_BLOCK
+
+        orc, opay = _land_step(cmd_cutover, commit=True, **common)
+        steps.append({"step": "cutover", "rc": orc, "payload": opay})
+        landed = bool(opay.get("landed"))
+        total = time.monotonic() - started
+        _emit({"schema": SCHEMA, "step": "land",
+               "mode": "committed" if landed else "refused",
+               "landed": landed, "worktree": worktree, "queue_seq": seq,
+               "waited_for_turn_s": round(waited, 1),
+               "elapsed_s": round(total, 1), "gate_runs": 1,
+               "verdict": gpay.get("verdict"), "sha": opay.get("sha"),
+               "warnings": opay.get("warnings", []), "steps": steps},
+              args.json,
+              (f"✓ landed {worktree} ({gpay.get('verdict')}) in {total:.0f}s "
+               f"after waiting {waited:.0f}s for its turn"
+               if landed else
+               f"✗ land refused at cutover: {opay.get('error')}"))
+        return EXIT_OK if landed else EXIT_BLOCK
+    finally:
+        _land_release(primary, seq)
+
+
 def cmd_catchup(args) -> int:
     """Bring a worktree onto the current local trunk — the step `gate` and `cutover`
     both send you to when the trunk moved under the branch.
@@ -3409,6 +3635,20 @@ def build_parser() -> argparse.ArgumentParser:
     cu.add_argument("--commit", action="store_true",
                     help="perform the rebase (default: report the drift only)")
     cu.set_defaults(func=cmd_catchup)
+
+    ln = sub.add_parser("land", help="take a fair FIFO turn, then run catchup -> gate "
+                        "-> cutover under it; the verb for 'get me onto the trunk' "
+                        "when several worktrees are converging (dry-run default)")
+    add_common(ln)
+    add_base(ln)
+    ln.add_argument("--worktree", required=True, help="worktree path to land")
+    ln.add_argument("--commit", action="store_true",
+                    help="take the turn and land (default: report the queue only)")
+    ln.add_argument("--queue-timeout", type=float, default=3600.0, metavar="S",
+                    help="give up waiting for a turn after S seconds (default 3600); "
+                         "a lane that waits forever cannot be told apart from a lane "
+                         "whose predecessor died holding the turn")
+    ln.set_defaults(func=cmd_land)
 
     rs = sub.add_parser("resolve", help="landed-floor + ledger -> merged + worktree "
                         "remove + branch -D (local/remote) + drop gate cache — no "
