@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -97,6 +98,75 @@ def parse_registry(path: Path) -> list[Document]:
     if current is not None:
         documents.append(current)
     return documents
+
+
+def parse_surface_paths(path: Path) -> list[str]:
+    """Read the sole agent-facing surface path list from the registry."""
+    in_surface = False
+    in_paths = False
+    paths: list[str] = []
+
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line == "agent_facing_surface:":
+            in_surface = True
+            in_paths = False
+            continue
+        if in_surface and line and not line[0].isspace():
+            break
+        if not in_surface:
+            continue
+        if line == "  paths:":
+            in_paths = True
+            continue
+        if in_paths and line.startswith("    - "):
+            paths.append(strip_scalar(line[6:]))
+            continue
+        if in_paths and line.startswith("  "):
+            in_paths = False
+
+    if not paths:
+        raise SystemExit("ERROR registry 缺 agent_facing_surface.paths")
+    return paths
+
+
+def scan_surface(root: Path, paths: list[str], pattern: str) -> int:
+    """Scan registry-owned paths, including dot-directories, for a regex."""
+    try:
+        matcher = re.compile(pattern)
+    except re.error as exc:
+        raise SystemExit(f"ERROR surface pattern 無效: {exc}") from exc
+
+    files: list[Path] = []
+    for surface_path in paths:
+        target = root / surface_path
+        if not target.exists():
+            raise SystemExit(f"ERROR surface path 不存在: {surface_path}")
+        if target.is_file():
+            files.append(target)
+            continue
+        files.extend(
+            candidate
+            for candidate in sorted(target.rglob("*"))
+            if candidate.is_file() and ".git" not in candidate.relative_to(root).parts
+        )
+
+    hits = 0
+    for file_path in files:
+        relative = file_path.relative_to(root).as_posix()
+        try:
+            lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError as exc:
+            raise SystemExit(f"ERROR surface path 無法讀取: {relative}: {exc}") from exc
+        for line_number, line in enumerate(lines, start=1):
+            if matcher.search(line):
+                print(f"SURFACE {relative}:{line_number}:{line}")
+                hits += 1
+    print(f"surface_scan: pattern={pattern} roots={len(paths)} files={len(files)} hits={hits}")
+    return 0
 
 
 def normalize_path(path: str) -> str:
@@ -311,12 +381,36 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also emit candidates suppressed by registry !path/!glob exclusions.",
     )
+    surface_group = parser.add_mutually_exclusive_group()
+    surface_group.add_argument(
+        "--surface-paths",
+        action="store_true",
+        help="Print the agent-facing surface paths from docs/registry.yml agent_facing_surface.paths.",
+    )
+    surface_group.add_argument(
+        "--surface-scan",
+        metavar="PATTERN",
+        help="Regex-scan the registry-owned agent-facing surface, including dot-directories.",
+    )
+    parser.add_argument(
+        "--root",
+        metavar="DIR",
+        help="Repository root for --surface-paths/--surface-scan (default: git root).",
+    )
     args = parser.parse_args(argv)
 
-    root = repo_root()
-    registry_path = root / args.registry
+    root = Path(args.root).resolve() if args.root else repo_root()
+    registry_arg = Path(args.registry)
+    registry_path = registry_arg if registry_arg.is_absolute() else root / registry_arg
     if not registry_path.is_file():
         raise SystemExit(f"ERROR registry 不存在: {args.registry}")
+
+    if args.surface_paths or args.surface_scan is not None:
+        surface_paths = parse_surface_paths(registry_path)
+        if args.surface_paths:
+            print("\n".join(surface_paths))
+            return 0
+        return scan_surface(root, surface_paths, args.surface_scan)
 
     documents = parse_registry(registry_path)
     if args.files:

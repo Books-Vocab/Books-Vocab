@@ -115,7 +115,7 @@ Agent({
    - TDD 痕跡與測試品質：diff 是否附測試；測試是否鎖住「宣稱的語意」而非常數/實作細節（改個常數就能綠 = 假測試）
    - 風格契合：命名/分層/錯誤處理是否貼合該檔既有慣例，不引入新風格
    - 驗證證據：結論必附證據 — 親跑對應 gate（test/lint/build）貼當下輸出，或明示「本次為靜態審，未跑 gate」及原因
-4. **下游 surface 同步檢查** — 若 commit 改了 user/agent-facing 介面（CLI 子指令、admin endpoint、env var、設定 schema、CSV schema），明確要 reviewer grep `.claude/skills/`、`docs/reference/product_surface.md`、`docs/reference/tech_index.md`、`docs/sop/`、`docs/policy/`、`docs/runbook/`，凡引用到舊清單但未在同 commit/PR 同步 → 標 **block**
+4. **下游 surface 同步檢查** — 若 commit 改了 user/agent-facing 介面（CLI 子指令、admin endpoint、env var、設定 schema、CSV schema），明確要 reviewer 跑 `./ops/docs_impact.py --surface-scan '<舊命令|舊旗標|舊欄位>'`；掃描範圍唯一 SoT 是 `docs/registry.yml` 的 `agent_facing_surface`，凡命中舊介面但未在同 commit/PR 同步 → 標 **block**。不要自己用 `rg`，它預設跳過 `.claude/`。
 5. **輸出格式約束** — `severity (block / nit) | file:line | issue` 條列，或 `PASS — no issues`
 6. **限制** — 「只審這個 commit 的 diff，不要重寫 code，不要 propose 無關 refactor」
 

@@ -1,6 +1,22 @@
 version: 1
 description: "KG docs control-plane registry. Path globs are impact hints; semantic triggers and validators are the authority."
 
+agent_facing_surface:
+  # 「改了 user/agent-facing 介面就同步」要掃的路徑集合，唯一 SoT。
+  # CLAUDE.md、review SOP 與 control-plane skill 只指向這裡，不再複述清單。
+  # AGENTS.md 是 CLAUDE.md 的 symlink，刻意不列，避免同一份檔被掃兩次。
+  # docs/runbook/ 只收 system.md；同層 backlog/*.json 是凍結票據，不納入掃描。
+  paths:
+    - CLAUDE.md
+    - .claude/agents/
+    - .claude/skills/
+    - .claude/commands/
+    - docs/reference/product_surface.md
+    - docs/reference/tech_index.md
+    - docs/sop/
+    - docs/policy/
+    - docs/runbook/system.md
+
 documents:
   - id: contract.sync_lifecycle
     path: docs/reference/sync_lifecycle.md
@@ -593,6 +609,7 @@ documents:
       - phased_review_gate_changed
     sources:
       - CLAUDE.md
+      - .claude/agents/
       - .claude/skills/phased/
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
