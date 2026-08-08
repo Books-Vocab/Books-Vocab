@@ -810,7 +810,23 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
   )"
   LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null)"
   if [[ -z "$LEASED_DEVICE" ]]; then
-    echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
+    # `2>/dev/null` above drops the lease command's own diagnostics, so the
+    # reason has to travel in the JSON or it is lost. A slot refused for
+    # holding a real account is NOT exhaustion, and must not be reported as it.
+    lease_refused="$(jq -r '.refusedNonDisposable // 0' <<<"$lease_json" 2>/dev/null)"
+    lease_blind="$(jq -r '.refusedUnverifiable // 0' <<<"$lease_json" 2>/dev/null)"
+    [[ "${lease_refused:-0}" =~ ^[0-9]+$ ]] || lease_refused=0
+    [[ "${lease_blind:-0}" =~ ^[0-9]+$ ]] || lease_blind=0
+    if (( lease_blind > 0 )); then
+      # Distinct from the logged-in case on purpose: this one blocks the WHOLE
+      # pool, and telling the operator to go log simulators out would send them
+      # hunting for accounts that are not there.
+      echo "[ios_test] error: --lease 拿不到 slot：$lease_blind 台 pool simulator 無法確認帳號歸屬——是偵測本身壞了（plutil 不見了 / CoreSimulator 路徑變了 / prefs 讀不到），不是有人登入。跑 './ops/ios_ops.sh simulator lease' 看每台的實際原因。" >&2
+    elif (( lease_refused > 0 )); then
+      echo "[ios_test] error: --lease 拿不到 slot：$lease_refused 台 pool simulator 因登著非拋棄帳號被拒絕出租（UI test fixture 會清空 app 容器）。跑 './ops/ios_ops.sh simulator lease' 看是哪幾台，處理掉再重試；調大 KG_IOS_SIM_POOL_SIZE 無效。" >&2
+    else
+      echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
+    fi
     exit 1
   fi
   echo "[ios_test] leased simulator udid=$LEASED_DEVICE"

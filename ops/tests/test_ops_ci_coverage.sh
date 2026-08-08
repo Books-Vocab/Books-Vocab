@@ -51,6 +51,17 @@ LINUX_GROUPS=(
   backlog
   gen-ios-baseline
   ios-signal-traps
+  # sim-pool-disposable 的 linux 判決**未實測**（本機 docker daemon 沒開，跑不了
+  # ops/ci_linux_repro.sh），比照 catalog-render 的誠實標示。放這裡的依據是推論不是量測：
+  # 純 bash/awk/grep，把守衛函式從 lib awk 抽出來單獨 source，不呼叫 simctl，也不需要
+  # 模擬器；section C 需要 plutil（macOS-only userland），在 linux 上會 LOUD SKIP，
+  # 摘要會報 skipped 筆數。已逐條看過本表記載的 GNU 陷阱：檔內 `grep | head -1` 那組
+  # 全部以 `|| true` 收尾，不會踩到 ios-test-discovery 那個 SIGPIPE/pipefail 141
+  # （同樣是讀碼推論，非在 ubuntu 實跑）。
+  # 不借 bsd-userland 整組排除，是因為那會把「函式寫了卻沒接上」這個本票要防的假綠
+  # 一起移出 CI——而那半段在 linux 上跑得動。真在 runner 上紅了，帶實測訊息移進
+  # EXCLUDED_GROUPS 或補一個誠實的新 token，那是一行的距離。
+  sim-pool-disposable
   # ── 以下 13 筆原本被排除，理由經證偽實測不成立後收進來（IMP-0054）──
   # 共通形狀：測試本身是注入 seam 的離線 stub，散文理由描述的是它所測的那支工具。
   backup-verify
