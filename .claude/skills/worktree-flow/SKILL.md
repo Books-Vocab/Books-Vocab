@@ -131,8 +131,14 @@ gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一�
 
 **gate child 的 `LC_CTYPE` 是工具選定的 `C.UTF-8`，不是繼承你的 shell**（IMP-20260808-3bbfa2；`phase=start` 行尾
 的 `lcCtype=` 就是那個值）。所以**「我手跑是綠的」不構成 gate 誤判的證據**——互動 shell 這裡 `LC_CTYPE` 未設（C locale，
-bash 逐 byte 判字元），gate 走的是嚴格的 UTF-8 解析路徑，`$VAR` 緊接全形標點在前者無害、在後者是 `set -u` 致死。
+bash 逐 byte 判字元），gate 走的是嚴格的 UTF-8 解析路徑，`$VAR` 緊接**任何非 ASCII 字元**在前者無害、在後者是
+`set -u` 致死。**不限全形標點——漢字最常見**（`$sha中文`），em-dash / 刪節號 / `é` / emoji / NBSP 同樣致死；
+bash 判的是「下一個 byte 是否 ≥ 0x80」。守衛是 `ops/shell_scan.sh`（cutover 的 `ops-shell-scan`，block）。
 要在手上重現 gate 的環境：`env -u LC_ALL LC_CTYPE=C.UTF-8 <你的命令>`。
+
+**推論**：gate 紅而你手跑綠時，**第一嫌疑是 locale，不是資源競爭**。2026-08-08 round2 批次實測——三道 BLOCK
+全部確定性可重現，零道與機器忙碌有關；而「假紅」這個解釋之所以危險，是因為它同時（a）不需要改任何碼
+（b）建議的下一步剛好是最省事的「重跑」。**任何同時滿足這兩點的解釋，要先當嫌疑犯而不是先當答案。**
 
 orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進度 runner；完整分類、輸出與保密契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為正本。
 

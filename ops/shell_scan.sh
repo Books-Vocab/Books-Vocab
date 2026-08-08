@@ -24,12 +24,14 @@ Repo-wide shell scanner: the cross-file checks that belong to no single script,
 so nothing routes them per-file. Run once per diff that touches any *.sh.
 
 Checks:
-  1. A $VAR abutting full-width punctuation inside a double-quoted string.
-     bash under a UTF-8 LC_CTYPE reads the punctuation's first byte as part of
+  1. A $VAR abutting ANY non-ASCII character inside a double-quoted string.
+     bash under a UTF-8 LC_CTYPE reads that character's first byte as part of
      the variable name, so `set -u` kills the script — and every known hit sat
      on an error path, i.e. it fires exactly when something has already gone
      wrong and the message is the only thing left. The fix is always braces.
-     Named exemption: put `fw-allow: <reason>` in a comment on the line.
+     Not just punctuation: `$sha中`, `$sha—`, `$sha…` and `$shaＡ` all die,
+     measured under C.UTF-8 and en_US.UTF-8. Named exemption: put
+     `fw-allow: <reason>` in a comment on the line.
 
 Arguments:
   <repo-root>   tree to scan (default: this script's own repository)
@@ -68,23 +70,44 @@ fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 # 「已經出事了、正要印出原因」的那一刻引爆，把診斷訊息換成一行 unbound variable。
 # 2026-08-04 它讓 kg_reconcile.sh 的回滾告警整個吞掉 verdict（IMP-0062）。
 # 修法一律是 `${VAR}`。frozen/ 具名排除：刻意冷凍、不執行。
-echo "── no \$VAR abuts full-width punctuation (UTF-8 locale time bomb) ──"
+echo "── no \$VAR abuts a non-ASCII character (UTF-8 locale time bomb) ──"
 # 不用 `grep -P`：macOS 的 BSD grep 沒有這個旗標，而這段第一版正是 `-P` + `2>/dev/null`
 # ——每個檔案都 "invalid option" 失敗、輸出全空、掃描器報 ✓。**沉默被當成沒有違規**，
-# 這正是它要防的那類假綠。改用 ERE 交替（多位元組字面值在 C locale 下也是逐 byte 比對）。
-FW_PUNCT='(，|。|、|：|；|！|？|「|」|（|）)'
-FW_RE="\"[^\"]*[$][a-zA-Z_][a-zA-Z0-9_]*$FW_PUNCT"
+# 這正是它要防的那類假綠。
+#
+# 這裡比對的是**位元組類 \200-\377**，不是一份標點清單。理由是量出來的
+# （2026-08-08，`LC_ALL=<loc> bash -c 'set -u; sha=abc; echo "x $sha<C>y"'`）：
+#   C          → 六個字元全部 rc=0，正常輸出
+#   C.UTF-8    → 中 — … 《 ， Ａ **六個全部** rc=127 `sha<?>: unbound variable`
+#   en_US.UTF-8→ 同上
+# 也就是說 bash 吃掉的是「下一個 byte 是不是 ≥ 0x80」，跟那個字元是不是標點無關。
+# 原本的十個全形標點是危害的**嚴格子集**，而這個 repo 的訊息幾乎全是中文——
+# `$VAR` 後面直接接漢字（`$sha中文`）才是最可能出現的形狀，卻整整不在偵測範圍內。
+# 由 round2 批次整合的 code review 具名交回，本檔自行複驗（掃描範圍的兩個已知邊界
+# 另見 IMP-20260808-2f4203：只掃雙引號內、只認 `*.sh` 副檔名）。
+#
+# `LC_ALL=C` 必須明確釘住：在 UTF-8 locale 下 `[\200-\377]` 是不合法的多位元組序列，
+# grep 會拒絕整條 pattern —— 又一次「沉默被當成沒有違規」。C locale 下它就是位元組範圍。
+FW_HI="$(printf '[\200-\377]')"
+FW_RE="\"[^\"]*[$][a-zA-Z_][a-zA-Z0-9_]*${FW_HI}"
 
 # 正控：先證明掃描器抓得到已知的違規，否則下面的「沒有命中」與「掃描器壞了」無法區分。
 fw_fixture="${TMP}/fw_fixture.sh"
-printf 'echo "已回到 $sha，但…"\necho "safe ${sha}，braced"\n' > "${fw_fixture}"  # fw-allow: 這是正控 fixture 本身，單引號內不展開
-fw_probe="$(grep -nE "$FW_RE" "${fw_fixture}" 2>&1 || true)"
+# 四行、兩對。每一對都是「危險形 vs 同一個字元的加括號安全形」，所以「抓到」與
+# 「不誤抓」由同一個字元作證，而不是拿標點的命中去替漢字背書。
+printf 'echo "已回到 $sha，但…"\necho "safe ${sha}，braced"\necho "hanabuts $sha中文"\necho "safehan ${sha}中文"\n' > "${fw_fixture}"  # fw-allow: 這是正控 fixture 本身，單引號內不展開
+fw_probe="$(LC_ALL=C grep -nE "$FW_RE" "${fw_fixture}" 2>&1 || true)"
 if [[ "${fw_probe}" != *'已回到'* ]]; then
-  fail_t "full-width scanner cannot flag a known violation — probe broken, not the tree: ${fw_probe:-<no output>}"
-elif [[ "${fw_probe}" == *braced* ]]; then
-  fail_t "full-width scanner also flags the braced (safe) form — pattern too broad"
+  fail_t "non-ASCII scanner cannot flag a known punctuation violation — probe broken, not the tree: ${fw_probe:-<no output>}"
+elif [[ "${fw_probe}" != *hanabuts* ]]; then
+  # 標點只是危害的子集。實測（2026-08-08）C.UTF-8 / en_US.UTF-8 下，`$sha中`、`$sha—`、
+  # `$sha…`、`$sha《`、`$shaＡ` 全部同樣 unbound variable。在一個訊息幾乎全是中文的
+  # repo 裡，「$VAR 後面直接接漢字」才是最可能出現的形狀，而它曾經完全不在偵測範圍內。
+  fail_t "non-ASCII scanner misses \$VAR abutting a Han character — the likeliest form in this repo: ${fw_probe:-<no output>}"
+elif [[ "${fw_probe}" == *braced* || "${fw_probe}" == *safehan* ]]; then
+  fail_t "non-ASCII scanner also flags the braced (safe) form — pattern too broad"
 else
-  ok "full-width scanner flags the bad form and spares \${VAR} (positive control)"
+  ok "non-ASCII scanner flags both bad forms and spares \${VAR} (positive control)"
 fi
 
 fw_hits="$(
@@ -92,7 +115,7 @@ fw_hits="$(
     | grep -v '^frozen/' \
     | while read -r f; do
         # 註解行 shell 不展開 → 真的無害；`# fw-allow: <理由>` 是具名豁免（需寫理由）。
-        grep -nE "$FW_RE" "${ROOT}/${f}" 2>/dev/null \
+        LC_ALL=C grep -nE "$FW_RE" "${ROOT}/${f}" 2>/dev/null \
           | grep -v '^[0-9][0-9]*: *#' | grep -v 'fw-allow' | sed "s|^|${f}:|"
       done
 )"
@@ -100,10 +123,10 @@ scanned="$(git -C "${ROOT}" ls-files '*.sh' | grep -cv '^frozen/')"
 if (( scanned < 10 )); then
   fail_t "only scanned ${scanned} shell script(s) — the probe is broken, not the tree"
 elif [[ -n "${fw_hits}" ]]; then
-  fail_t "\$VAR abuts full-width punctuation (use \${VAR}); dies under UTF-8 LC_CTYPE:"
+  fail_t "\$VAR abuts a non-ASCII character (use \${VAR}); dies under UTF-8 LC_CTYPE:"
   printf '%s\n' "${fw_hits}" | sed 's/^/      /'
 else
-  ok "no \$VAR abuts full-width punctuation across ${scanned} tracked shell script(s)"
+  ok "no \$VAR abuts a non-ASCII character across ${scanned} tracked shell script(s)"
 fi
 
 echo ""
