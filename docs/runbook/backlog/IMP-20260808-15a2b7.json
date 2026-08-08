@@ -14,5 +14,5 @@
   "verdict": "MISSTATED",
   "verified_at": "2026-08-08",
   "verified_by": "agent:main-session",
-  "verified_evidence": "sed -n 4165,4166p ops/backlog.py（frame=[\"HEAD\",\"main\"]，由 76256a348 引入）；git rev-list --count HEAD main=3871 / main=3835 / 74965ce17 main=3863（票引用的 main_depth 正是後者）；git rev-list --max-count=2000 HEAD main | grep -n e52cdeed5 → 第 13 顆；git show <sha> | git patch-id --stable 兩顆不同（369b3d35… vs 72f5dbf5…）"
+  "verified_evidence": "sed -n 4163,4164p ops/backlog.py → frame = [\"HEAD\",\"main\"] if main 存在 else [\"HEAD\"]（由 76256a348 引入，已是 main 祖先）；git rev-list --count HEAD main=3871 / main=3835 / 74965ce17 main=3863（票引用的 main_depth 正是後者，證明 frame 是兩側）；git rev-list --max-count=2000 HEAD main | grep -n e52cdeed5 → 第 13 顆，被掃過；git show <sha> | git patch-id --stable 兩顆不同（369b3d35… vs 72f5dbf5…）。【2026-08-08 更正：本欄前一版把行號寫成 :4165-4166，重跑印出的是 log=... 那兩行、看不到 frame——一張主題是「引用散文沒讀實作」的票，證據欄自己不重現，同族錯誤上移一層。】"
 }
