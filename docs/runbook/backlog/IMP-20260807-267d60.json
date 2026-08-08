@@ -7,17 +7,22 @@
   "date": "2026-08-07",
   "detail": "2026-08-06 的 11 條分支批次收攏證明了「整合」是一個有固定形狀的動作（fork 自本地 main → cherry-pick 而非 merge → 一次解完衝突 → 合併後才 gate → 一次 cutover），而 `ops/worktree_orchestrate.py` 沒有任何原語對應它。今天的落地方式是把這個形狀寫進 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段與 `docs/sop/agent_org.md`「交回狀態」段——也就是**執行力 `[prompt]`**，靠下一個 agent 讀到並照做。\n\n同一批次裡實際發生過的事說明散文不夠：整合後對六筆修補派 review，找出**五筆 BLOCK**，而每一筆在它自己的分支 gate 下都是綠的；若各自 cutover，五筆全部會進 main。`resolve` 的 landed-floor 也擋不住這個形狀——它擋的是「未 land 就拆除」，不是「未整合就 land」。",
   "fix_site": "ops/worktree_orchestrate.py",
+  "fixed_by": [
+    "80a9c06f6"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260807-267d60",
   "plan": "加 `integrate --branches <b1> <b2> …`：① 從本地 main 開一棵整合樹；② 依序 cherry-pick 各分支的 commit（**非 merge**，避免把 N 個分支的 base 差異一起帶進來）；③ 衝突停下並具名回報，解完 `--continue`；④ 對合併結果跑一次既有的 `gate`；⑤ 非 block 才允許 cutover。前四步全部是既有原語的組合，不在 integrate 內新增任何 pass/fail 判斷（守住「不重造 gate」硬邊界）。",
-  "resolution": "",
+  "resolution": "已修（80a9c06f6 主體，234f0fd9f / 5a085f1f2 / b2e0e898e 為對抗性複查與 reviewer 修補）：`ops/worktree_orchestrate.py` 新增 `integrate --branches`——從本地 main 開整合樹、依序 cherry-pick（非 merge）、衝突停下並具名、`--continue` 續跑、合併後跑**一次** gate，判決綁整合後的 HEAD。\n\n**硬邊界守住了**：`integrate` 內不新增任何 pass/fail 判斷，也**不做 cutover**——票的 ⑤「非 block 才允許 cutover」已經住在 `cutover` 裡，在這裡再判等於讓保護主幹的唯一規則有兩份實作。\n\nreviewer 的 BLOCK 與受派者自己的對抗性複查撞到同一個缺陷：gate **拒判**（落後 trunk / orchestrator 不符 / 樹在操作中）時 payload 沒有 `verdict` 鍵，原本會印「verdict: None」並叫人去修一個 blocking gate，同時指向一個從未被寫出的 record。5 個 nit 全採納、無反駁項。reviewer 另用 mutation 證明受派者那條驗收測試的招牌斷言是**同義反覆**（`done[\"head_sha\"] == integrated`，而 `integrated` 是程式跑完才讀 HEAD，對「gate 太早跑」兩邊一起動），真正接住缺陷的是 `changed_files` / `picked`——docstring 已改成指名哪條擔哪個缺陷。\n\n17 條 mutation 全數轉紅（含 merge 取代 cherry-pick、gate 提早跑、吞衝突、不具名衝突檔、每顆各跑一次 gate、abort 不 abort、integrate 自己落地等）。受派者自承其中兩次 mutation 假綠（`-k` 選到 0 條測試、anchor 在檔內有兩個出現處），皆重跑確認。\n\n**本票的實地驗收不只是測試**：這條原語落地當天，第二輪門檻的三條分支就是用它所實作的形狀（人工執行同一序列）整合的——七顆 commit、**全批一次衝突**（`docs/reference/tech_index.md`）、一次 gate（14 道全綠、verdict warn）、一次 cutover。對照第一輪十條分支逐條 land：同一個檔解了四次衝突，`ios_baseline.md` 另解三次且擋住兩條沒碰 iOS 的分支。整合樹另外證明了單一分支不可能證明的事——`backlog.py dispatch`（來自 A 分支）真的被 B 分支的提示引用且跑得動，回 83 張可派工。\n\n已知後續（已立票不遺忘）：`ops/worktree_loadtest.py:batch_mode` 手刻了同形狀的私有管線，SKILL 引用的那組 N=10 數字因此**歸因錯了對象**，且該管線帶著 `integrate` 刻意沒有的自動解衝突器——見 `IMP-20260808-ffd566`，SKILL 已就地加限定語。",
   "schema": "kg.backlog.entry.v1",
   "scope": "流程工具新增一個整合指令，串既有步驟、不新增任何通過與否的判斷；要用兩條刻意衝突的假分支驗過。",
   "severity": "med",
   "source": "2026-08-06 十一條分支批次整合的復盤",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-07"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0（20 passed）；17 條 mutation 全紅；並以本批三條分支的真實整合當實地驗收——七顆 commit、一次衝突、一次 gate（14 道全綠 verdict=warn）、一次 cutover，對照第一輪逐條 land 的 4+3 次衝突"
 }

@@ -1,14 +1,20 @@
 {
+  "acceptance_manual": "修法在 ~/butler/kg-board（Syncthing 同步、刻意不進版控），而判準是「一條 bar 的四段加總是否等於未解數、且讀起來是包含關係而非四個獨立的量」——前半可由該 repo 的 selftest 斷言，後半是呈現是否讓人讀對，那不是本 repo 任何命令能表達的。可用的自動化判準會需要對 felix 上一個常駐服務發 HTTP 請求：felix 關機時該命令會紅，而那與這張票修得對不對無關——一個會因為無關原因變紅的判準，比沒有判準更糟。",
   "brief": "看板最上面那排數字其實層層包含，卻寫成一長串平行文字，看不出來哪個是哪個的一部分。",
   "category": "tool",
   "date": "2026-08-08",
   "detail": "看板頂端的計數列把一組**有包含關係**的數字寫成一串平行的文字，讀起來像四個彼此獨立的量。2026-08-08 實機：\n\n```\n110 未解 / 201 總數 · 梳理好 98（plan ∧ acceptance ∧ groomed_by） · 可派工 87（扣掉認領中 11） · high 12 med 51 low 47\n```\n\n真正的結構是一棵樹：\n\n```\n201 總數\n├── 91 已解（fixed / wont-fix，不上板）\n└── 110 未解\n    ├── 12 未梳理      ← 沒有修法，不能派\n    └── 98 梳理好\n        ├── 11 認領中   ← 有工作樹在做\n        ├──  0 延後中   ← 使用者按過延後\n        └── 87 可派工   ← 現在真的可以拿走的\n```\n\n而 `high 12 / med 51 / low 47` 是**同一個 110 的另一種切法**（正交分割），把它接在同一串文字尾巴，會讀成第五、第六、第七個並列的數字。\n\n要的是一條堆疊 bar 表達「110 怎麼被切成四塊」，顏色對應狀態，寬度即比例，數字附在圖例上；嚴重度那條是另一個維度，用第二條細 bar 或分開呈現，不要混進同一串文字。\n\n這件事的價值不在美觀：包含關係一旦是視覺的，「為什麼可派工比梳理好少 11」這個問題就不必用讀的——而那個差額正是 2026-08-08 才剛補上的認領扣除（`IMP-20260808-47f7b4`），使用者需要看得見它在動。",
+  "fixed_elsewhere": "~/butler/kg-board/server.py + 其 PAGE 模板 — 頂端計數列從一串平行文字改成一條**真分割**的比例 bar：優先序 ungroomed > held > snoozed > dispatch，所以四段加總恰等於未解數（不是四個可重疊的量），另加一條較細的 severity bar。卡片改以 brief 當標題、scope 當副標，技術散文只在有 brief 時才收進摺疊區。counts 另帶 dispatch / held 與一行 dispatch_definition。該 repo 走 Syncthing 兩機同步、刻意不進版控，所以沒有 sha 也不會有。\n\n再驗一次：開 http://100.118.39.104:8007，確認頂端是一條分段 bar 而非平行文字，且四段數字相加等於「未解」那個數。",
   "id": "IMP-20260808-8b2781",
-  "resolution": "",
+  "resolution": "已修於本 repo 之外（見 fixed_elsewhere）。使用者在手機看板上直接指出那幾個數字有包含關係、該用一條 bar 呈現；實作採**真分割**（優先序 ungroomed > held > snoozed > dispatch）而非四個可重疊的量，因為原始問題就是「讀起來像四個彼此獨立的數」。\n\n同一輪一併落地的還有卡片的 brief/scope 呈現，但那部分的 repo 側欄位由 `IMP-20260808-1785b0` 承擔，本條只涵蓋頂端那一區的呈現。",
   "schema": "kg.backlog.entry.v1",
   "scope": "改看板頁面頂端那一區，把文字換成一條比例圖再加一條嚴重度細條；只動呈現，不動資料。（尚未梳理，體積是估的）",
   "severity": "med",
   "source": "使用者在手機看板上直接指出：這幾個數字有包含關係，該用一條 bar",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案 acceptance kind=manual，理由具名（判準的後半是「呈現讓不讓人讀對」，且任何自動化判準都要打 felix 上的常駐服務、會因無關原因變紅）；修法位置與再驗步驟寫在 fixed_elsewhere"
 }

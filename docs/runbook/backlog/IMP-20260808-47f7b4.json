@@ -6,15 +6,20 @@
   "date": "2026-08-08",
   "detail": "看板的 `dispatch` 清單**不扣掉已被認領的票**，而它手上就有那份資料。\n\n`~/butler/kg-board/server.py:287` 的定義是 `[r for r in board if r[\"ready\"] and not r[\"snoozed\"]]`——兩個 clause。CLAUDE.md:37 的定義是三個：「已梳理、未延後、**未被認領**」。第三個 clause 在看板端從未實作。\n\n資料不是缺的，是被丟掉的。oscar 的 `com.kg.sync`（`~/butler/kg-board/sync_tick.py:104 claims()`）週期把 `{\"tickets_held\": [...]}` POST 到 `/api/mirror/claims`；`server.py:447-456` 收下存進 `mirror.json`。整份 payload 唯一的消費點是 `server.py:545` 的前端——只拿來畫一行 freshness 標籤。`project()` 的 `decorate()` 從頭到尾沒有 `held` 欄位。\n\n實測 2026-08-08 13:23（開完第一批 dogfood 10 條工作樹之後）：\n\n```\ndispatch rows offered by the board : 98\ntickets the mirror says are held   : 11   (claims_received_at 2026-08-08T13:21:57+08:00)\nheld ids STILL in dispatch         : 11\n```\n\n11/98 = 11.2% 的手機工作佇列是正在被做的事。同步管道本身是好的——認領後 96 秒內就到了看板——壞的是收到之後沒有人用它。\n\n後果落在使用者身上而不只是 agent：手機是使用者排序與挑選工作的地方，而它顯示的可取清單包含了正在跑的工作。批次規模愈大愈嚴重（一次開 20 條就是 20 條假貨）。\n\n註：`overlay.json` 今天是 `{}`，所以 `snoozed` 全 false，98 = ready 集合本身。這代表本缺陷與 snooze 無關，純粹是漏了 held。",
   "fix_site": "~/butler/kg-board/server.py:project/dispatch（+ held_claims、selftest.sh §3b）",
+  "fixed_elsewhere": "~/butler/kg-board/server.py — 新增 held_claims()，從 freshness mirror 的 claims 讀出被認領的票（records → branch/claimed_at/intent，退回扁平的 tickets_held），並在 project() / decorate() 把 held 帶進每一列；dispatch 清單改為 ready ∧ ¬snoozed ∧ ¬held。該 repo 走 Syncthing 兩機同步、刻意不進版控，所以沒有 sha 也不會有。\n\n再驗一次：開 http://100.118.39.104:8007（felix 上的 com.butler.kg-board），確認頂端 bar 的四段（dispatch / held / snoozed / ungroomed）加總恰等於未解數，且被認領中的票不出現在可派工清單裡。或在 felix 上跑 ~/butler/kg-board/selftest.sh 的 §3b——它刻意從 freshness.mirror.claims.tickets_held 推導 held 集合而非讀看板自己的 held 旗標（一個忘記扣掉認領的投影也會忘記發出那個旗標），無 claims 時印 VACUOUS 並明說「正控缺席」。",
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-47f7b4",
   "plan": "在 `~/butler/kg-board/server.py` 把憲法的第三個 clause 接上：\n\n(1) 新增 `held_claims()`（放在 `load_overlay` 之後、projection 段之前）：讀 `MIRROR_PATH` 的 `claims`，先走 `records` 取 `branch` / `claimed_at` / `intent`，再用扁平的 `tickets_held` `setdefault` 補齊（舊 payload 形狀仍能壓住列，只是說不出誰持有）。**刻意不設過期**：認領由 `resolve` / `sweep` 釋放而非時間，所以 mirror 過期只會讓這份 map 不完整，不會讓它列出的認領變假；扣掉一條過期但仍為真的認領，代價是一列暫時看不到、下次推送就回來，不扣的代價是兩個 session 撞同一張票。\n\n(2) `project(entries, overlay, held=None)` 多收一個參數；`decorate()` 加 `\"held\": held.get(e[\"id\"])`；`dispatch` 改成 `ready ∧ ¬snoozed ∧ ¬held`；`counts` 加 `dispatch` / `held` / `dispatch_definition`（`ready` 的唯一定義不動——新增的是「ready 減去兩種壓制」，不是第二個 ready）。\n\n(3) `/api/board` 的呼叫點傳 `held_claims()`。\n\n(4) 前端：`card()` 加 `認領中 <branch>` 標籤且該列不再顯示「可派工」；計數列拆成「梳理好 N ／ 可派工 M（扣掉認領中 K）」；「在飛」分頁從傾印 JSON 改成逐條工作樹卡片（分支、票號、intent、認領時間），並註明「認領由 resolve 釋放、不會自己過期，這個時間只說明新的認領有沒有到」。\n\n(5) `selftest.sh` 新增第 3b 項。**斷言的認領集合必須取自 `freshness.mirror.claims.tickets_held`，不得取自看板自己的 `held` 旗標**——忘了扣認領的投影同樣會忘了發旗標，一條讀自己輸出的斷言會剛好在壞掉時安靜下來（第一版就是這樣寫的，改掉了）。另驗 held 列都有 `held` 裝飾、兩個計數與清單長度一致。零認領時印 `VACUOUS` 並明說「正控缺席」，不讓沉默看起來像通過。\n\n(6) 落地方式：`~/butler` 走 Syncthing 兩機即時同步，存檔即到 felix；再 `launchctl kickstart -k gui/<uid>/com.butler.kg-board` 讓常駐程序載入新碼。",
-  "resolution": "",
+  "resolution": "已修於本 repo 之外（見 fixed_elsewhere）。本條是 `fixed_elsewhere` 這個欄位（IMP-20260808-ddf494）落地後第一張用它結案的票——它此前的狀態正是那張票存在的理由：修好了、紅綠證據齊備，卻在工具上結不掉（`--status fixed` 得到 `fixed-without-fixed-by`，`--fixed-by external:butler/kg-board` 得到 `fixed-by-not-a-sha`）。",
   "schema": "kg.backlog.entry.v1",
   "scope": "改看板那支伺服器程式：清單多扣一種狀態、卡片多一個標記、自我檢查多一項，改完重啟常駐程序。",
   "severity": "high",
   "source": "dogfood batch 1：開完 10 條工作樹後查看板，發現它照樣把那 10 條發出去",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0；修法在 ~/butler/kg-board 由 fixed_elsewhere 具名，含再驗步驟（看板 bar 四段加總 = 未解數；或 selftest.sh §3b，它刻意從 mirror 的 claims 推導 held 而非讀看板自己的旗標）"
 }
