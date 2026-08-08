@@ -46,7 +46,7 @@ version: 1.0.0
 ./ops/docs_lint.sh --registry
 ```
 
-`--registry` 現在也會實跑每筆 `kind: generated` 的 `check:` 命令(缺 `check:` 直接 ERROR)。這是新的轉紅來源:改到 `ios/BooksAndVocab/` 或 `docs/runbook/backlog/*.json` 而沒重生對應產物,docs gate 就會紅並具名該筆 + 印出重生命令。而且 `validate_registry` 是無條件呼叫,不限 `--registry` 模式。
+`--registry` 會實跑每筆 `kind: generated` 的 `check:` 命令(缺 `check:` 直接 ERROR),不一致就具名該筆 + 印出重生命令;而且 `validate_registry` 是無條件呼叫,不限 `--registry` 模式。**但今天 registry 宣告 0 筆 `kind: generated`**——兩個曾經的產物先後移出版控(`docs/runbook/improvement_backlog.md` 於 IMP-20260807-b9526c、`docs/snapshot/ios_baseline.md` 於 IMP-20260808-b63206),所以這條規則**目前沒有轉紅來源**,改 `ios/BooksAndVocab/` 或 `docs/runbook/backlog/*.json` 不會再因為「沒重生產物」而被擋。有人新增 generated entry 時才恢復施壓;規則的失敗路徑由 `ops/tests/test_docs_lint_generated_check.sh` 的合成 entry 守著,不依賴 registry 裡剛好有實例。
 
 全 repo 健康盤點才用：
 

@@ -1,27 +1,24 @@
 #!/usr/bin/env bash
-# gen_ios_baseline.sh — 產生 docs/snapshot/ios_baseline.md（registry entry: generated.ios_baseline）
+# gen_ios_baseline.sh — 現算 iOS 前端規模基線，印到 stdout
 #
 # 用法:
-#   ops/gen_ios_baseline.sh          # 印到 stdout（預設，不寫檔）
-#   ops/gen_ios_baseline.sh --write  # 寫入 docs/snapshot/ios_baseline.md
-#   ops/gen_ios_baseline.sh --check  # 比對磁碟產物與現算輸出，不一致印 STALE 並 exit 1
+#   ops/gen_ios_baseline.sh   # 印到 stdout（唯一模式，不寫檔、不進版控）
 #
-# 為什麼預設不再寫檔：--check 由 docs/registry.yml 的 `check:` 欄接進 docs_lint.sh 的
-# registry gate。若本腳本仍無條件寫檔，gate 會把它正在檢查的那個檔改成通過（自己把自己
-# 轉綠），並弄髒 cutover 依賴的乾淨樹前提。
+# 只有一個模式是刻意的（IMP-20260808-b63206）。產物曾經是 tracked 的
+# docs/snapshot/ios_baseline.md + registry 的 generated entry，代價是**任何**一行 iOS 改動
+# 都讓 docs gate 轉紅並要求把一個 repo 級產物夾進自己的 commit——一波 N 條 iOS 工作樹就生出
+# N 份互相衝突的版本，2026-08-08 那批還擋住兩條完全沒碰 iOS 的分支。它 49 行、約 1 秒可重算、
+# 且全 repo 沒有任何工作流讀它的內容，所以改成「需要當下基線就現跑」；舊有的寫檔模式與
+# 磁碟產物比對模式隨之退場（沒有版控產物可寫、可比對）。本說明刻意不再寫出那兩個旗標名——
+# help 裡出現的旗標名就是廣告，下一個 agent 會照著打。
 #
-# --check 比對前會濾掉兩個「時鐘」：整段 <!-- doc-meta -->（內含每次 commit 都會變的
-# verified_against）與 `基線日期:`（每天都會變）。不濾就會做出一個每天自轉紅、一週內被
-# 關掉的 gate。濾掉的僅此兩者；所有實質度量（Top-10、總行數、檔案數、Preview 覆蓋、
-# @MainActor / async func 計數）都仍在比對範圍內。
-#
-# STALE / up to date 的用語沿用 ops/gen_web_tokens.py 既有 idiom（印出該跑哪條命令）。
+# 兩個並行統計 counter 是 grep 對 Swift 源碼文字的近似，殘餘誤差已量測（見各賦值行旁的
+# 註解）；回歸測試 ops/tests/test_gen_ios_baseline.sh 直接驅動那兩行去掃合成 fixture。
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_DIR="$REPO_ROOT/ios/BooksAndVocab"
-OUTPUT="$REPO_ROOT/docs/snapshot/ios_baseline.md"
 # Anchor on the merge-base with origin/main, NOT on HEAD. HEAD orphans itself: the
 # generator bakes the sha into the artifact, and the very next commit (or amend, or
 # rebase) makes that sha unreachable, so docs_lint rejects a file that was correct
@@ -32,13 +29,12 @@ COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short "$(git -C "$REPO_ROOT" merge
   || git -C "$REPO_ROOT" rev-parse --short HEAD)"
 DATE="$(date +%Y-%m-%d)"
 
-usage() { sed -n '2,19p' "$0"; }
+# 印檔頭註解區塊（第 2 行起，直到第一行非 `#`）。用範圍掃描而不是寫死的 `sed -n '2,19p'`：
+# 寫死行號會在有人多加一行註解時**無聲截斷 help**，而 help 失準正是鐵律 9 要擋的那類摩擦。
+usage() { awk 'NR==1 { next } /^#/ { print; next } { exit }' "$0"; }
 
-MODE=stdout
 for arg in "$@"; do
   case "$arg" in
-    --write) MODE=write ;;
-    --check) MODE=check ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $arg" >&2; usage >&2; exit 2 ;;
   esac
@@ -78,8 +74,7 @@ MAIN_ACTOR=$({ grep -rh "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null 
 # `var sleep: (Duration) async -> Void` (323, i.e. 33 wrong).
 ASYNC_FUNC=$({ grep -rE "func [^{]*\)[[:space:]]*async|^[[:space:]]*\)[[:space:]]*async" "$IOS_DIR" --include="*.swift" 2>/dev/null || true; } | wc -l | tr -d ' ')
 
-# 命令替換會吃掉尾端換行，所以之後一律用 printf '%s\n' "$BODY" 輸出，
-# 檔尾才會是既有 committed 檔一樣的單一 \n。
+# 命令替換會吃掉尾端換行，所以輸出一律走 printf '%s\n' "$BODY"，檔尾才是單一 \n。
 BODY="$(cat << EOF
 <!-- doc-meta
 tier: snapshot
@@ -124,34 +119,4 @@ $TOP10
 EOF
 )"
 
-# 濾掉兩個時鐘：doc-meta 整段 + 基線日期。其餘一律保留。
-normalize() {
-  awk '
-    NR==1 && $0=="<!-- doc-meta" { m=1; next }
-    m && $0=="-->"               { m=0; next }
-    m                            { next }
-    /^基線日期: /                { next }
-    { print }
-  '
-}
-
-case "$MODE" in
-  stdout)
-    printf '%s\n' "$BODY"
-    ;;
-  write)
-    printf '%s\n' "$BODY" > "$OUTPUT"
-    echo "Generated: $OUTPUT (verified_against: $COMMIT_SHA)"
-    ;;
-  check)
-    if [ ! -f "$OUTPUT" ]; then
-      echo "STALE $OUTPUT 不存在(跑: ./ops/gen_ios_baseline.sh --write)"
-      exit 1
-    fi
-    if ! diff -q <(printf '%s\n' "$BODY" | normalize) <(normalize < "$OUTPUT") >/dev/null; then
-      echo "STALE $OUTPUT — 內容與 generator 輸出不一致(跑: ./ops/gen_ios_baseline.sh --write)"
-      exit 1
-    fi
-    echo "$OUTPUT is up to date."
-    ;;
-esac
+printf '%s\n' "$BODY"

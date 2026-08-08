@@ -311,8 +311,9 @@ def test_render_emits_doc_meta_the_lint_requires(tmp_path):
     assert "verified_against: abc1234" in head
 
     # `generated` is a registry *kind*, not a doc tier — docs_lint.sh:112 would
-    # reject it. The precedent is ios_baseline.md: tier: snapshot in the
-    # frontmatter, kind: generated in the registry.
+    # reject it. The precedent was ios_baseline.md (tier: snapshot in the
+    # frontmatter, kind: generated in the registry) until IMP-20260808-b63206
+    # unversioned that artifact; the registry now has no `kind: generated` entry.
     tier = next(l.split(":", 1)[1].strip() for l in head.splitlines() if l.startswith("tier:"))
     assert tier in _lint_valid_tiers(), (
         f"tier {tier!r} is not in docs_lint.sh's VALID_TIERS; the generated view "

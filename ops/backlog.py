@@ -2105,9 +2105,10 @@ def import_legacy(text: str, store: Path) -> dict:
 
 # `tier: runbook` and not `tier: generated`: `generated` is a registry *kind*
 # (docs/registry.yml), while the frontmatter `tier` is checked against
-# docs_lint.sh's VALID_TIERS, which has no such value. The precedent is
+# docs_lint.sh's VALID_TIERS, which has no such value. The precedent was
 # docs/snapshot/ios_baseline.md — tier: snapshot in the doc, kind: generated in
-# the registry.
+# the registry — until IMP-20260808-b63206 moved that artifact out of version
+# control too; the registry now declares no `kind: generated` entry at all.
 _VIEW_HEADER = """<!-- doc-meta
 tier: runbook
 authority: generated

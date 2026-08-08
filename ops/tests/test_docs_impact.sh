@@ -191,7 +191,6 @@ if grep -q "contract.sync_lifecycle" "$tmpdir/ios.out"; then
   echo "ordinary reader view changes should not imply sync lifecycle contract impact" >&2
   exit 1
 fi
-grep -q "generated.ios_baseline" "$tmpdir/ios.out"
 grep -q "reference.feature_boundary.reader" "$tmpdir/ios.out"
 
 ./ops/docs_impact.py --files ios/BooksAndVocab/Views/Settings/SettingsView.swift >"$tmpdir/settings.out"
@@ -284,14 +283,66 @@ fi
 
 ./ops/docs_impact.py --files ios/BooksAndVocab/Models/Book.swift --json >"$tmpdir/book_model.json"
 grep -q '"id": "reference.feature_boundary.bookshelf"' "$tmpdir/book_model.json"
-grep -q '"id": "generated.ios_baseline"' "$tmpdir/book_model.json"
-grep -q '"generator": "ops/gen_ios_baseline.sh"' "$tmpdir/book_model.json"
 if grep -q '"id": "contract.sync_lifecycle"' "$tmpdir/book_model.json"; then
   echo "book model changes should not imply vocabulary sync lifecycle impact by default" >&2
   exit 1
 fi
 if grep -q '"id": "sop.ios"' "$tmpdir/book_model.json"; then
   echo "ordinary iOS model changes should not imply iOS workflow SOP impact" >&2
+  exit 1
+fi
+
+# generator: 欄的輸出（docs_impact.py 的人類與 JSON 兩條輸出路徑）——用**合成 registry**
+# 驗，不用真實 registry。這兩條斷言原本拿 generated.ios_baseline 當素材，而那筆 entry 已於
+# IMP-20260808-b63206 隨產物移出版控而刪除，真實 registry 今天一筆 kind=generated 都沒有。
+# 若跟著把斷言刪掉，這段輸出邏輯就會變成沒有任何測試碰得到的死角，等下一個人加回 generated
+# entry 時才發現它壞了。--registry 旗標本來就在（docs_impact.py:307），改道即可。
+cat > "$tmpdir/synthetic_registry.yml" <<'SYNTHREG'
+documents:
+  - id: generated.probe
+    path: docs/snapshot/probe_not_on_disk.md
+    kind: generated
+    authority: generated
+    generator: ops/probe_generator.sh
+    triggers:
+      - probe_changed
+    sources:
+      - ios/BooksAndVocab/Models/
+  - id: reference.plain_probe
+    path: docs/reference/probe_not_on_disk.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - probe_changed
+    sources:
+      - ios/BooksAndVocab/Models/
+SYNTHREG
+./ops/docs_impact.py --registry "$tmpdir/synthetic_registry.yml" \
+  --files ios/BooksAndVocab/Models/Book.swift >"$tmpdir/synth.out"
+grep -q "generator=ops/probe_generator.sh" "$tmpdir/synth.out"
+./ops/docs_impact.py --registry "$tmpdir/synthetic_registry.yml" \
+  --files ios/BooksAndVocab/Models/Book.swift --json >"$tmpdir/synth.json"
+grep -q '"generator": "ops/probe_generator.sh"' "$tmpdir/synth.json"
+# 反面：沒宣告 generator 的 entry 不得長出 generator 欄。少了這條，上面兩條會被「對每筆
+# entry 都印同一個字串」這種壞法滿足——同一份輸出裡兩筆 entry，只有一筆該帶這個欄位。
+#
+# 數 key 而不是 `grep -c`：後者數的是**行**，只因為 --json 今天是 pretty-print 才碰巧等價；
+# 哪天輸出改成 compact，兩個 generator 會擠在同一行而守衛無聲弱化成「>=1」。
+synth_impacts="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+impacts = d["impacts"]
+print(len(impacts), sum(1 for i in impacts if "generator" in i))
+' "$tmpdir/synth.json")"
+if [ "$synth_impacts" != "2 1" ]; then
+  echo "synthetic registry should yield 2 impacts of which exactly 1 carries generator; got '$synth_impacts'" >&2
+  cat "$tmpdir/synth.json" >&2
+  exit 1
+fi
+# 人類路徑的同一條反面（原本只有 JSON 那邊有）。
+if [ "$(grep -c 'generator=' "$tmpdir/synth.out")" != "1" ]; then
+  echo "human output should carry exactly one generator= (only the kind=generated entry declares one)" >&2
+  cat "$tmpdir/synth.out" >&2
   exit 1
 fi
 

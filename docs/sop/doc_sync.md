@@ -72,7 +72,7 @@ verified_against: 4e2d680ba
 - **generated** = 機器產物,registry 必須有 `generator` **與 `check`**(等值檢查命令);不手改產物內容。`check` 缺了就是 `docs_lint.sh --registry` 的 ERROR;它一跑,產物與 generator 輸出不一致也會紅,並印出該跑哪條命令重生。
 - **sop** = 流程變了才動;純實作變動不必碰。
 - **policy** = 改動需在 commit message 說明原因。
-- **snapshot / archive / legal / assets** = **不碰**(機器生成 / 凍結歷史 / 法務 / 行銷)。iOS 大重構後的 `docs/snapshot/ios_baseline.md` 由 `ops/gen_ios_baseline.sh --write` 再生,不手改(不帶旗標是印 stdout)。
+- **snapshot / archive / legal / assets** = **不碰**(機器生成 / 凍結歷史 / 法務 / 行銷)。iOS 前端規模基線**不在此列也不在版控裡**:要當下數字就跑 `ops/gen_ios_baseline.sh`(只印 stdout,不寫檔),沒有產物要同步(IMP-20260808-b63206)。
 
 ## 邊界
 

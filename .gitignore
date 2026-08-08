@@ -91,3 +91,9 @@ ops/swiftpm/.build/
 # 東西，且 render 是 O(entries) 故一波 n 筆立單是 O(n²)（實測 128 筆 16.2 秒）。
 # 機器讀 store（`list --json` / `show`）；這個檔只是人要看單一檔案時的方便產物。
 docs/runbook/improvement_backlog.md
+
+# 產物：由 `ops/gen_ios_baseline.sh` 現地印出，不進版控（IMP-20260808-b63206）。
+# 進版控時它逐檔記錄行數，於是**任何**一行 iOS 改動都讓 docs gate 轉紅並要求把這個
+# repo 級產物夾進自己的 commit——一波 N 條 iOS 工作樹就生出 N 份互相衝突的版本。
+# 它 49 行、約 1 秒可重算，且全 repo 沒有任何工作流讀它的內容。
+docs/snapshot/ios_baseline.md
