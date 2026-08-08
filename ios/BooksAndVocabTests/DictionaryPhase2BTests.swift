@@ -735,6 +735,7 @@ private final class Phase2BDeleteRoutingService: KGServing, @unchecked Sendable 
     }
 
     func currentAuthToken() async throws -> String { "token" }
+    func authTokenWithoutInvalidation() async -> String? { "token" }
     func healthCheck() async {}
     func backgroundSync(container: ModelContainer) async {}
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }

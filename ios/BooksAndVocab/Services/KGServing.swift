@@ -73,6 +73,15 @@ protocol KGServing: BackgroundSyncing, DeckCopying, DictionaryServing {
     var sessionExpiredReason: String? { get set }
 
     func currentAuthToken() async throws -> String
+    /// 零副作用地取 token。**政策：過期 == 不存在**——兩者都回 nil，呼叫端一律當 guest。
+    /// 名字描述的是機制（不觸發 invalidation），政策則是這一行：**別把它當成「拿得到 token
+    /// 就代表已認證」**。（名稱由 APP-20260805-0049ac 的 acceptance_cmd 釘住，改名需先重梳票。）
+    ///
+    /// 給 auth-optional 的公開端點用（guest 亦可讀）。`currentAuthToken()` 在判定過期時
+    /// 會先 `sessionInvalidator.logout(...)` 才 throw，`try?` 吞得掉錯誤卻吞不掉那個副作用——
+    /// 於是「可選的認證」被當成「必要的認證」，逛公開牌組把人踢出登入狀態。
+    /// 需要真的認證的端點仍走 `currentAuthToken()`：那裡過期就該登出。
+    func authTokenWithoutInvalidation() async -> String?
     func healthCheck() async
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
     func triggerPipeline(notebookId: String) async throws

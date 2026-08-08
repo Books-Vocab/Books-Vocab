@@ -59,6 +59,7 @@ final class SpyKGService: KGServing {
     // MARK: - KGServing methods (unused by the tests that inject this spy)
 
     func currentAuthToken() async throws -> String { "token" }
+    func authTokenWithoutInvalidation() async -> String? { "token" }
     func healthCheck() async {}
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse { fatalError("unused") }
     func triggerPipeline(notebookId: String) async throws { fatalError("unused") }
