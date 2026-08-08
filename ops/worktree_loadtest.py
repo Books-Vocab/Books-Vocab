@@ -345,12 +345,32 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
     #     tree-diff, and a cherry-picked branch whose files were later touched by
     #     conflict resolution can read as "not landed".
     teardown = []
-    for rec in lanes + [{"slug": "integrate", "path": str(integ)}]:
-        r = run([str(orch), "resolve", "--worktree", rec["path"], "--commit", "--json"],
-                cwd=clone, label=f"resolve:{rec['slug']}")
-        teardown.append({"slug": rec["slug"], "rc": r["rc"],
-                         "refused": r["rc"] != 0,
-                         "why": (as_json(r) or {}).get("error", "")[:160]})
+    for rec in lanes:
+        # Two attempts, and BOTH are recorded. The plain form is expected to refuse
+        # (measured 10/10 before `--via-integration` existed) — keeping it in the
+        # run is what stops the report from quietly becoming "teardown is fine now"
+        # if the audit path is ever removed.
+        plain = run([str(orch), "resolve", "--worktree", rec["path"], "--commit",
+                     "--json"], cwd=clone, label=f"resolve:{rec['slug']}")
+        vouched = None
+        if plain["rc"] != 0:
+            vouched = run([str(orch), "resolve", "--worktree", rec["path"],
+                           "--via-integration", "main", "--commit", "--json"],
+                          cwd=clone, label=f"resolve-vouched:{rec['slug']}")
+        payload = as_json(vouched or plain) or {}
+        matches = [c.get("match") for c in (payload.get("audit") or {}).get("commits", [])]
+        teardown.append({
+            "slug": rec["slug"],
+            "floor_refused": plain["rc"] != 0,
+            "vouched_rc": None if vouched is None else vouched["rc"],
+            "torn_down": (vouched or plain)["rc"] == 0,
+            "audit_matches": matches,
+            "why": payload.get("error", "")[:160] if (vouched or plain)["rc"] else ""})
+    r = run([str(orch), "resolve", "--worktree", str(integ), "--commit", "--json"],
+            cwd=clone, label="resolve:integrate")
+    teardown.append({"slug": "integrate", "floor_refused": r["rc"] != 0,
+                     "vouched_rc": None, "torn_down": r["rc"] == 0,
+                     "audit_matches": []})
 
     return {
         "delegates_stopped_at_commit": sum(1 for r in lanes if r["stopped_at_commit"]),
@@ -365,7 +385,11 @@ def batch_mode(clone: Path, n: int, conflict: str, report: dict) -> dict:
                         if x.get("status") == "block"],
         "cutover_landed": bool(cut.get("landed")),
         "cutover_error": cut.get("error"),
-        "teardown_refused": [t["slug"] for t in teardown if t["refused"]],
+        "floor_refused": sum(1 for t in teardown if t["floor_refused"]),
+        "torn_down_by_audit": sum(1 for t in teardown
+                                  if t["floor_refused"] and t["torn_down"]),
+        "still_stuck": [t["slug"] for t in teardown if not t["torn_down"]],
+        "audit_match_kinds": sorted({m for t in teardown for m in t["audit_matches"]}),
         "teardown": teardown,
     }
 
@@ -450,7 +474,9 @@ def main() -> int:
     ok = (post["validate_rc"] == 0 and not post["primary_dirty"]
           and post["worktrees_left"] == 0)
     if args.mode == "batch":
-        ok = ok and result.get("cutover_landed") and not result.get("shared_rows_missing")
+        ok = (ok and result.get("cutover_landed")
+              and not result.get("shared_rows_missing")
+              and not result.get("still_stuck"))
     else:
         ok = ok and result.get("landed") == args.n
     return 0 if ok else 1
