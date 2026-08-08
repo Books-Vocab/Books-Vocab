@@ -1,6 +1,6 @@
 {
-  "acceptance": "合成的 drift entry → 輸出含具名行差異；取不到期望輸出 → 降級回原訊息且不印 diff；大產物 → 截斷並說出剩餘行數；三條各有負控",
-  "acceptance_cmd": "bash ops/tests/test_docs_lint_generated_check.sh",
+  "acceptance": "該檔存在且全綠：合成的 drift entry → 輸出含具名行差異；取不到期望輸出 → 降級回原訊息且不印 diff；大產物 → 截斷並說出剩餘行數；三條各有負控（拿掉 diff 那段即轉紅）",
+  "acceptance_cmd": "bash ops/tests/test_docs_lint_generated_diff.sh",
   "brief": "自動檢查說「這份產生出來的文件跟現況對不上」，卻不說哪幾行對不上，人得自己重跑一次去比。",
   "category": "tool",
   "date": "2026-08-08",
