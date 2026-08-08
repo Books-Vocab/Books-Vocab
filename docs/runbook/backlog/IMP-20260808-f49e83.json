@@ -1,0 +1,14 @@
+{
+  "brief": "cutover 被擋時自動留言那個功能,實際會跑的那條路沒有任何測試看著,改壞了不會有人發現。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`worktree_orchestrate.py` 的 `_broadcast_cutover_block`(cutover 被 primary 髒態擋下時自動去共用信箱留言)有兩條渲染分支:帶 `worktree=` 與不帶。\n\n**生產路徑一定走帶 worktree 的那條**(cutover 一定有 worktree),但整套測試**沒有任何一支傳 `worktree=`**。也就是說,實際會執行的那條渲染分支沒有觀察者;把它整段改壞,測試不會紅。\n\n這條缺陷的形狀,正是 a0469d5c7 那顆 commit 自己在論證的東西(「一個吞掉輸入的 stub 會靜靜把它每個輸入都變成沒被測」)——只是它沒把那個論點套用到自己新加的功能上。\n\n來源:feat/orchestrator-trio 收尾補審的第二輪 review(agent a4c32078acce823ed),reviewer 判為 ticket-sized。",
+  "id": "IMP-20260808-f49e83",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支測試,不必動生產碼。",
+  "severity": "low",
+  "source": "feat/orchestrator-trio 收尾補審 review a4c32078acce823ed",
+  "status": "open",
+  "stream": "IMP"
+}
