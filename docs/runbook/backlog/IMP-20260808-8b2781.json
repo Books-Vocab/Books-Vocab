@@ -7,6 +7,6 @@
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "使用者在手機看板上直接指出：這幾個數字有包含關係，該用一條 bar",
-  "status": "triaged",
+  "status": "open",
   "stream": "IMP"
 }
