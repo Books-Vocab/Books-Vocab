@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "併發 subagent 有一個硬上限（實測訊息：`Concurrent subagent limit reached (20)`，且工具明示 `Do not retry`）。鐵律 4 要求每個受派者完成一個可交付單位時派 `code-reviewer`——所以一個 N 條的批次在 review 階段需要 **N（受派者）+ 併發中的 reviewer 數**個 slot。N=15 時必然撞頂。\n\n2026-08-08 第二輪實測，兩個受派者**獨立**回報同一件事：\n- `ios-test-method-names`：前景派了兩次，兩次都被擋，三顆 commit **完全沒有經過獨立 review**，它具名寫進 trailer（`Reviewed-by: self` 加未驗項）而不是假裝審過。\n- `worktree-doc-warning`：第一輪 review 成功（BLOCK×3 + nit×4 全數採納），但**修正後拿不到第二輪**，它把這件事列為「本次唯一真正的妥協」。\n\n代價不是慢，是**鐵律 4 在批次規模上有一個沒人知道的天花板**：批次越大，越多受派者的工作沒被審過，而且失敗方式是「工具明示不得重試」——受派者只能自報未審，或（更糟）忘記自報。\n\n第二個受派者的處置是對的：具名申報而非硬幹。但那意味著**批次規模的上限應該由這個數字反推**，而不是由「我想派幾個」決定。",
   "fix_site": ".claude/skills/worktree-flow/SKILL.md「批次交回狀態」段 + ops/review_audit.sh（數 Reviewed-by: self）",
+  "fixed_by": [
+    "8ca133a53e390ed48b74e5c34b79a8d0085f11ea"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-ca5ffb",
   "plan": "這張票的修法改採 Gate-first，而不是把每個受派者綁一個 LLM reviewer。\n\n1. 以當下量到的 slot 上限推導批次規模：令 S=可同時存活的 agent slot、R=協調與收尾的安全餘裕、W=受派者、L=同時 reviewer，必須滿足 W + L <= S - R；若每位受派者各佔一位 reviewer，則 W <= floor((S - R) / 2)。本機實測 S=20、R=2，理論上限 9，實務預設 8。這些數字只作當次校準，公式才是契約。\n2. 普通 fan-out 的受派者做到 commit；整合者在合併後跑一次 fresh Gate。Gate 是預設機器 review，BLOCK 就退回修正，通過且 receipt 完整即可落地。\n3. LLM review 只給高風險或複雜 scope 作例外；同一完整 commit SHA × scope 最多兩輪。第二輪仍 BLOCK 就由 driving agent adjudicate，不能自動派第三輪。\n4. slot 撞頂時不得重試，也不得用 Reviewed-by: self 偽造已審；具名記錄 LLM review 未取得，讓整合後 fresh Gate 承擔機器 review。",
-  "resolution": "",
+  "resolution": "這張票的原始假設是「每位受派者都必須各自取得一位 LLM reviewer」，因此把 `Reviewed-by: self` 當成撞頂時的暫時收據；本輪驗證後不採用這條路。Gate 已是整合後樹的機器 review：普通 fan-out 由受派者做到 commit，整合者在合併後跑 fresh Gate；BLOCK 退回修正，PASS 且 receipt 完整即可落地。\n\n流程規則已寫入 `.claude/skills/worktree-flow/SKILL.md`：LLM review 只留給高風險或複雜 scope，同一完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 由 driving agent adjudicate，不自動派第三輪。若確實並行派 reviewer，令 `S` 為 slot 上限、`R` 為協調餘裕、`W` 為受派者、`L` 為 reviewer，必須滿足 `W + L ≤ S − R`；本機量到 `S=20`、`R=2`，理論上限 9，實務預設 8。撞頂不得重試或用 `Reviewed-by: self` 偽造已審，改為具名記錄未取得 LLM review，由整合後 Gate 承擔機器 review。\n\n這是對原 ticket plan 的收斂修正，不需要改 `review_audit.sh`；其既有回歸測試仍是收據格式的機器檢查。fresh Gate 已在 `8ca133a53e390ed48b74e5c34b79a8d0085f11ea` 上通過，接受判準與全 store validate 均可重跑。",
   "schema": "kg.backlog.entry.v1",
   "scope": "量出上限的實際算法，據此在流程說明裡寫一條可推導的批次規模規則；不動程式碼。",
   "severity": "high",
   "source": "2026-08-08 第二輪 dogfood：兩個受派者獨立回報 Concurrent subagent limit reached (20)，其中一個的三顆 commit 完全沒被 review",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "machine-gate",
+  "verified_evidence": "cd /Users/chenliangyu/project/kg && bash -c 'set -e; f=.claude/skills/worktree-flow/SKILL.md; grep -qF \"Gate 是預設的機器 review\" \"$f\"; grep -qF \"W + L\" \"$f\"; grep -qF \"S=20\" \"$f\"; grep -qF \"最多兩輪\" \"$f\"; grep -qF \"不得重試\" \"$f\"; grep -qF \"偽造已審\" \"$f\"; ./ops/tests/test_review_audit.sh'\nresult: rc=0; review_audit regression passed 30/30; fresh Gate on 8ca133a53 passed review-receipts, backlog-validate, data-plane:ops/docs_lint.sh, and coverage; ./ops/backlog.py validate --baseline-check returned 0 problems."
 }
