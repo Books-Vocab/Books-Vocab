@@ -431,13 +431,33 @@ fi
 # stderr from `git merge-base` is 0 bytes — so if this tool blames "unrelated history"
 # and prescribes --files, it talks the reader out of the real fix (fetch depth) and into
 # hand-listing paths. Cause must be probed, not assumed.
-git clone -q --depth=1 --no-single-branch "file://$divergence_repo" "$tmpdir/shallow"
+# --no-local rather than file://: a local path clone silently ignores --depth (leaving a
+# NON-shallow fixture that would test nothing), while file:// percent-decodes the URL and
+# so breaks whenever $TMPDIR contains a decodable escape (measured: `%41` -> rc=128).
+# Both the clone and the is-shallow probe need the git env unset: `git -C <dir>` does
+# NOT override an inherited GIT_DIR, so the probe would inspect the caller's repo
+# (not shallow) and red this test while naming the wrong cause.
+(
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  git clone -q --no-local --depth=1 --no-single-branch "$divergence_repo" "$tmpdir/shallow"
+  if [ "$(git -C "$tmpdir/shallow" rev-parse --is-shallow-repository)" != "true" ]; then
+    echo "fixture broken: the shallow clone is not actually shallow" >&2
+    exit 1
+  fi
+)
 if (cd "$tmpdir/shallow" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
     "$ROOT/ops/docs_impact.py" --since origin/main --json) >"$tmpdir/shallow.out" 2>"$tmpdir/shallow.err"; then
   echo "--since must fail closed in a shallow checkout too" >&2
   exit 1
 fi
-if ! grep -q 'shallow' "$tmpdir/shallow.err" || ! grep -q 'unshallow\|fetch-depth' "$tmpdir/shallow.err"; then
+if [ -s "$tmpdir/shallow.out" ]; then
+  echo "--since must not emit a result payload for an unresolvable shallow range" >&2
+  exit 1
+fi
+# 'shallow checkout', not 'shallow': the latter is a substring of the remedy word
+# "unshallow", so it would be satisfied by the cure alone and assert nothing about
+# whether the cause was named.
+if ! grep -q 'shallow checkout' "$tmpdir/shallow.err" || ! grep -q 'unshallow\|fetch-depth' "$tmpdir/shallow.err"; then
   echo "shallow checkout must be named as the cause, with the fetch-depth remedy; got:" >&2
   cat "$tmpdir/shallow.err" >&2
   exit 1
