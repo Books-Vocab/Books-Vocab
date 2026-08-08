@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "`gate` 在「工作樹相對本地 main 零改動檔」時回 PASS，而那正是「編輯全部漏進 primary checkout」的形狀——兩者今天的輸出**完全同形**。\n\n實測 2026-08-08（工作樹 `feat/worktree-doc-warning`，HEAD == 本地 main、尚未 commit 任何東西，即一棵「什麼都沒有」的樹）。照 `cmd_gate` 實際的呼叫形式（`base='main'`，這點很重要，見末段）取得的 plan 與各段結果：\n\n    _changed_vs_base(worktree, 'main')                 -> []\n    plan_gates([], ops_test_exists=..., base='main')   -> ['review-receipts' (block), 'coverage' (warn)]\n    ops/review_audit.sh --rev-range main..HEAD         -> rc 0（空 range，沒有 commit 可稽核）\n    aggregate_verdict(results)                          -> 'pass'\n\n操作者看到的人讀輸出（`<sha8>` 與路徑因樹而異，其餘逐字）：\n\n    # gate PASS  (0 changed file(s), 2 gate(s))  orchestrator=<sha8> (worktree)\n      ✓ review-receipts [pass] — exit 0: review_audit: auditing <被 gate 的樹>\n      ✓ coverage [pass] — 0 covered, 0 neutral, 0 uncovered\n\n一個大寫 PASS 加兩個勾。**連 block 級的 `review-receipts` 也一起空跑而綠**——它稽核的是 `main..HEAD`，零改動的樹在這個 range 裡沒有任何 commit，所以它 vacuously pass。唯一的訊號是 `0 changed file(s)` 這個數字；那行印出的路徑是「被 gate 的樹」而非「你的編輯在哪」，因此不揭露洩漏。\n\n**沒有任何一行說「這棵樹沒有東西可驗」**：`(no impact-based gates selected for these changes)` 不會印，因為 `plan_gates` 尾端（:891）無條件 append coverage，`plan` 永遠非空——而這件事**該處註解自己就寫了**：「Always planned, so `plan` is never empty and aggregate_verdict's \"pass (incl. empty)\" branch is unreachable from cmd_gate」（:889-890）。於是 `cmd_gate` :2526 的 `if not plan:` 是死碼，那句唯一可能提醒使用者的話永遠印不出來。\n\n為什麼這是缺陷而不是正常行為：`cmd_gate` :2427 的註解明說「Empty-diff alone is NOT the signal to refuse on — a branch whose work is already contained in the trunk legitimately has nothing to gate」。**那個判斷是對的，本票不要求改成 refuse。** 問題在於「合法的零改動」與「你的編輯落到了別的樹」在輸出上分不出來，而後者是實際發生過的事故形狀：IMP-20260808-e8ad13 的 source 記載一次背景指令讓 cwd 從工作樹漂回 primary，之後三批編輯全部靜默落到 primary 的 main 上，兩邊都沒有訊號。\n\n今天既有的防線都不覆蓋這個形狀：\n- `cmd_gate` 全程**不對 primary 做任何一次查詢**（全檔 `grep -c primary_dirty` = 0），所以單獨跑 gate 完全不覺察。\n- `land` 會擋，但擋的理由指向別人：它在取號後、**進 gate 之前**跑 `_primary_ff_ready`（:3023 排在 gate 的 :3043 之前），髒檔會被逐檔列出，訊息也留了「if the leftovers are yours」這條路——但沒有人把成因連到「cwd 漂了、你那棵樹是空的」。primary 剛好乾淨時（漏進去的編輯已被別人 commit，或漏到第三棵樹）它一聲不吭。\n- 手動 `gate` → `cutover` 才是最壞情況：`cutover` 只在 ff 前查 primary（:2630），那時錯的那輪 gate 已經跑完、判決已綁 HEAD 寫進紀錄。\n\n**一個額外的證據，說明這個同形有多容易騙人**：本票的第一版 detail 自己就寫錯了，宣稱輸出只有一道 `coverage`、`1 gate(s)`。原因是我用 in-process 呼叫 `plan_gates(changed, ops_test_exists=...)` 重現，**漏傳 `base`**（簽名 :512 的預設是 `None`），而 `review-receipts` 的條件是 `if base and ...`（:572），於是那道 block 級 gate 被靜默丟掉，我的重現比真實更仁慈。code review 實跑真 gate 才抓到。**這正是本票在講的同一種錯誤的遞迴版本：一個看起來綠的結果，來自一個不是你以為的那個執行環境。**\n\n與 IMP-20260808-e8ad13 互補而不重疊：那張加的是 **primary 端**的訊號（primary 髒不髒），這張加的是 **worktree 端**的訊號（這棵樹到底有沒有東西）。兩者可以單獨為真。",
   "fix_site": "ops/worktree_orchestrate.py:cmd_gate（:2457 changed 之後、:2494 record 組裝與 :2521 lines 組裝）＋ ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "185f81ec4"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "docs-steward@feat/worktree-doc-warning",
   "id": "IMP-20260808-b85f6a",
@@ -16,6 +19,10 @@
   "scope": "一支流程工具的收尾輸出多印一段警告，加兩項測試；不動判定通過與否的規則。",
   "severity": "med",
   "source": "IMP-20260805-3c7e31 施工時實測 gate 對零改動工作樹的輸出",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "bash -c 'test -f ops/worktree_orchestrate.py && grep -q \"no_changed_files\" ops/worktree_orchestrate.py && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k gate_names_the_empty_worktree'\nResult: rc=0; 1 passed, 312 deselected.\nFresh worktree gate: verdict=pass; no_changed_files=false; all 6 planned gates passed; head=185f81ec4."
 }
