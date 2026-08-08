@@ -1,6 +1,6 @@
 {
-  "acceptance": "SKILL 裡有一段可據以計算批次規模的規則且含推導（非魔術數字）；review_audit.sh 數得出帶 Reviewed-by: self 的 commit",
-  "acceptance_cmd": "bash -c \"set -e; grep -q Concurrent .claude/skills/worktree-flow/SKILL.md || grep -q 併發上限 .claude/skills/worktree-flow/SKILL.md; ./ops/tests/test_review_audit.sh\"",
+  "acceptance": "SKILL 裡有 Gate-first 規則、S/W/L/R 的可推導批次公式與當下量測值，且明確限制同一 commit SHA × scope 最多兩輪 LLM review；撞頂不得重試或用 Reviewed-by: self 偽造收據；review_audit 的既有回歸測試仍通過。",
+  "acceptance_cmd": "bash -c 'set -e; f=.claude/skills/worktree-flow/SKILL.md; grep -qF \"Gate 是預設的機器 review\" \"$f\"; grep -qF \"W + L\" \"$f\"; grep -qF \"S=20\" \"$f\"; grep -qF \"最多兩輪\" \"$f\"; grep -qF \"不得重試\" \"$f\"; grep -qF \"偽造已審\" \"$f\"; ./ops/tests/test_review_audit.sh'",
   "brief": "一次派太多助手時，它們各自請的審查員會超過系統上限而被拒絕，於是有些工作根本沒人審過，而規定卻要求每件都要審。",
   "category": "arch",
   "date": "2026-08-08",
@@ -9,7 +9,7 @@
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-ca5ffb",
-  "plan": "這條的產出**不是程式碼，是一條可依循的批次規模規則**，寫進 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」段。\n\n**要先量到的事實**（動工第一步，不要憑本文的數字）：\n1. 併發上限的實際值與計算方式——它算的是「同時存活的 subagent」還是「同一父層的」？受派者與它派出的 reviewer 是否都佔 slot？\n2. 撞頂時的行為：是拒絕（明示不得重試）還是排隊？實測訊息是前者。\n3. 協調者本身佔不佔 slot。\n\n**再據此寫規則**。可能的形狀（依量測結果選一，並在 resolution 寫下為何）：\n- (a) **批次規模上限 = ⌊上限 / 2⌋ 附近**（每個受派者峰值佔 2 個 slot：自己 + reviewer），並在 SKILL 裡寫明這個推導，讓下一個協調者能隨上限變動自己重算，而不是背一個魔術數字。\n- (b) **review 移出受派者**：受派者只 commit，由整合者在收尾時**序列**派 review。這與「批次交回狀態」的既有邏輯一致（落地權在整合者），而且序列 review 反而更符合鐵律 4 的「逐項、不批次」。代價是整合者變成序列瓶頸——第一輪已經證明那是真實成本。\n- (c) 受派者撞頂時**必須**具名申報並在 trailer 寫 `Reviewed-by: self` 加未驗項（今天已有人自發這樣做），由整合者在收尾時補派。\n\n**傾向 (a)+(c) 並行**：(a) 讓多數批次根本不撞頂，(c) 讓撞頂時的失敗是可清點的而非靜默的。(b) 留作大批次的選項但不設為預設。\n\n**明確不做**：不要重試（工具明示不得重試），也不要自己實作排隊等待——那會把一個明確的拒絕變成一個看不見的停頓。\n\n**驗收**：SKILL 裡有一段可據以計算的規則（含推導，不是魔術數字）；`review_audit.sh` 能數得出帶 `Reviewed-by: self` 的 commit（若今天數不出來，那是本票的一部分）。",
+  "plan": "這張票的修法改採 Gate-first，而不是把每個受派者綁一個 LLM reviewer。\n\n1. 以當下量到的 slot 上限推導批次規模：令 S=可同時存活的 agent slot、R=協調與收尾的安全餘裕、W=受派者、L=同時 reviewer，必須滿足 W + L <= S - R；若每位受派者各佔一位 reviewer，則 W <= floor((S - R) / 2)。本機實測 S=20、R=2，理論上限 9，實務預設 8。這些數字只作當次校準，公式才是契約。\n2. 普通 fan-out 的受派者做到 commit；整合者在合併後跑一次 fresh Gate。Gate 是預設機器 review，BLOCK 就退回修正，通過且 receipt 完整即可落地。\n3. LLM review 只給高風險或複雜 scope 作例外；同一完整 commit SHA × scope 最多兩輪。第二輪仍 BLOCK 就由 driving agent adjudicate，不能自動派第三輪。\n4. slot 撞頂時不得重試，也不得用 Reviewed-by: self 偽造已審；具名記錄 LLM review 未取得，讓整合後 fresh Gate 承擔機器 review。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": "量出上限的實際算法，據此在流程說明裡寫一條可推導的批次規模規則；不動程式碼。",

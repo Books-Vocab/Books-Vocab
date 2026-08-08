@@ -235,6 +235,10 @@ Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進�
 
 它只讀目前 checkout 的 branch 與 `HEAD`，把 `handed_back_at` / `handed_back_sha` 寫入該工作樹的 active 登記；不跑 gate、cutover、sync 或 deploy。整合者的 `integrate` 在 dry-run 與 commit 兩種模式都會檢查每條來源分支：沒有 active hand-back 戳記就拒絕，戳記後 branch tip 改變也拒絕，並列出兩顆 SHA。`--allow-unhanded` 只供 legacy/imported branch 明確繞過「沒有戳記」，不能繞過 tip mismatch；正常批次不應使用。
 
+**Gate-first review 與批次規模（有界，不追求完美）**：Gate 是預設的機器 review。普通 fan-out 的受派者做到 commit；整合者在合併後跑一次 fresh Gate，Gate BLOCK 就退回修正，Gate 通過且 receipt 完整即可落地，不因文字或風格 NIT 無限追加 LLM reviewer。LLM review 只對高風險或複雜 scope 作例外；同一個完整 `commit SHA × scope` 最多兩輪，第二輪仍 BLOCK 就停在 adjudication，由 driving agent 決定修、接受或列 follow-up，不自動派第三輪。
+
+若例外情況確實需要同時派 LLM reviewer，批次大小用當下量到的 slot 上限推導，不背魔術數字：令 `S`=可同時存活的 agent slot、`R`=保留給協調/收尾的安全餘裕、`W`=受派者、`L`=同時 reviewer，必須滿足 `W + L ≤ S − R`；若每位受派者各佔一位 reviewer，則 `W ≤ floor((S − R) / 2)`。本機實測 `S=20`，取 `R=2` 時理論上限為 9，實務預設收在 **8**；若不派 LLM reviewer，則不套用除以二，仍按衝突面與整合成本決定批次。撞頂時不得重試或用 `Reviewed-by: self` 偽造已審；具名記錄「LLM review 未取得」，由整合後 fresh Gate 承擔機器 review，複雜 scope 再由 driving agent 做一次有界裁決。
+
 理由不是階級，是資訊：
 
 - **合併後的 gate 才回答得了該問的問題。** 每個受派者各自 gate，證明的是「我的改動在我 fork
