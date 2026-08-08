@@ -1,0 +1,20 @@
+{
+  "acceptance": "兩個不同 caller 的合成執行，進度行各自帶得出自己的 caller；互換 caller 值時斷言轉紅",
+  "acceptance_cmd": "bash ops/test_ios_test_discovery.sh",
+  "brief": "同時跑多個 iOS 測試時，進度訊息沒說是誰的，於是有人把別人的編譯進度當成自己的看了好幾分鐘。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`ops/ios_test.sh` 的 **lock-wait heartbeat 帶 `caller=`**，但 **build 進度行不帶**。多條 iOS 工作樹並行時，build 輸出流裡沒有任何東西說得出這是誰的 build。\n\n2026-08-08 實測（`ios-fixture-crash` 受派者的回報）：它的 `pgrep -f 'ios_test.sh'` 匹配到**別的工作樹**的行程，同時另一條工作樹的執行把它的 log 檔當成自己的 stdout——於是**別人的 build 輸出與測試輸出都落進它的 log**。它因此**把別人的 build 當成自己的回報了好幾分鐘**，直到它從 process tree（唯一子行程是 `sleep 3`、沒有開著的 build log、鎖檔由 88721 持有）才察覺不對，改成嚴格用 `caller=` 與 verdict 檔歸屬。\n\n這與 `IMP-20260808-7cb54f`（並行 agent 共用 scratchpad、同名檔互相覆寫）是**互相加乘**的兩個洞：檔案會被搶，而流裡又沒有身分可以分辨——所以搶到之後沒有任何線索指出這不是你的。\n\n代價是**壞掉的認知**：一個 agent 依據別人的進度做決策（繼續等 / 判定卡死 / 宣稱綠）。它今天沒有造成錯誤結論，是因為受派者自己起疑去查了 process tree。",
+  "fix_site": "ops/ios_test.sh 的 build 進度輸出行（lock-wait heartbeat 已有 caller=，照抄）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-7bdba0",
+  "plan": "ops/ios_test.sh 的 build 進度行比照同檔 lock-wait heartbeat 的既有寫法補上 caller=（前例就在同一支腳本裡，不要另創格式）。範圍限於進度行，不動 verdict 檔（它已經帶 caller=）。測試：兩個不同 caller 的合成執行，各自的進度行都帶得出自己的 caller，且互換 caller 值時斷言會轉紅（否則那條斷言只是在驗「有 caller= 這五個字」）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在一支腳本的進度輸出行補上呼叫者標記，比照它自己等鎖時已經在做的寫法。",
+  "severity": "med",
+  "source": "2026-08-08 ios-fixture-crash 受派者把另一條工作樹的 build 當成自己的回報了數分鐘",
+  "status": "triaged",
+  "stream": "IMP"
+}
