@@ -34,6 +34,7 @@ import sys
 import textwrap
 import time
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -1598,7 +1599,12 @@ def test_a_dirty_primary_broadcast_names_the_blocked_branch_and_the_files(scratc
 
     posted = mailbox.read_text()
     assert branch in posted, "a notice nobody can attribute is worse than none"
-    assert "f" in posted.split(branch, 1)[1], "the dirty file must be named"
+    # the dirty LINE, parsed — not a substring search over the whole record. `f` is one
+    # character, and the 16-hex marker contains an `f` about 64% of the time, so the
+    # loose version's discriminating power was a coin flip on the slug and the wording.
+    line = next(ln for ln in posted.splitlines() if ln.startswith("dirty: "))
+    assert [c.strip("`") for c in line.removeprefix("dirty: ").split(", ")] == ["f"]
+    assert wt in posted, "the reader has to be able to find the blocked session"
     # the refusal itself is unchanged, and now says where it wrote
     assert "dirty" in cut["error"]
     assert "broadcast.md" in cut["error"]
@@ -1627,9 +1633,13 @@ def test_a_dirty_primary_broadcast_is_not_repeated_for_the_same_block(scratch):
         assert rc == MODULE.EXIT_BLOCK
     assert mailbox.read_text().count(branch) == 1
 
-    # but a DIFFERENT block is genuinely new information and must be posted
+    # but a DIFFERENT block is genuinely new information and must be posted.
+    # `add g`, NOT `add -A`: the scratch fixture ships no .gitignore, so `-A` would
+    # sweep in the tool's OWN mailbox and lock file and report them as someone's
+    # uncommitted work — the exact inverse of production, where `.cache/` is ignored
+    # (that is the premise the whole best-effort argument rests on).
     (repo / "g").write_text("a second dirty file\n")
-    _git(["add", "-A"], repo)
+    _git(["add", "g"], repo)
     rc, _cut = _run_json(["cutover", "--worktree", wt, "--state", state,
                           "--commit", "--json"])
     assert rc == MODULE.EXIT_BLOCK
@@ -1637,33 +1647,122 @@ def test_a_dirty_primary_broadcast_is_not_repeated_for_the_same_block(scratch):
 
 
 @gitmark
-def test_a_dirty_primary_broadcast_failure_never_becomes_the_refusal(scratch):
+@pytest.mark.parametrize("break_it, which", [
+    # a DIRECTORY where the file goes: read_text() raises before any write is attempted
+    (lambda mb: (mb.parent.mkdir(parents=True, exist_ok=True), mb.mkdir()), "read"),
+    # a read-only FILE: everything succeeds until `open("a")` — the write path itself.
+    # Without this case the guard never reaches the append, and an implementation whose
+    # write sits OUTSIDE the try/except passes anyway. Verified: moving the `open("a")`
+    # block out of the `except OSError` arm leaves the directory case green and turns
+    # this one red with a PermissionError traceback. Found by review of the first
+    # version of this test, which had only the directory case.
+    (lambda mb: (mb.parent.mkdir(parents=True, exist_ok=True),
+                 mb.write_text("# mailbox\n"), mb.chmod(0o444)), "write"),
+])
+def test_a_dirty_primary_broadcast_failure_never_becomes_the_refusal(
+        scratch, break_it, which):
     """`.cache/` is gitignored scratch, not a source of truth. If posting the notice
     fails, the operator must still be told the real reason — swapping a coordination
     courtesy in for the diagnosis would be strictly worse than not having it."""
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
-    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "bcast-ro",
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", f"bcast-ro-{which}",
                             "--state", state, "--json"])
     wt = opened["path"]
     (Path(wt) / "notes.txt").write_text("work\n")
     _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
     _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
 
-    # occupy the mailbox path with a DIRECTORY: every write raises
     mailbox = repo / ".cache" / "coordination" / "broadcast.md"
-    mailbox.parent.mkdir(parents=True, exist_ok=True)
-    mailbox.mkdir()
-    (repo / "f").write_text("dirty\n")
-    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
-                         "--commit", "--json"])
-    assert rc == MODULE.EXIT_BLOCK
-    assert cut["landed"] is False
-    assert "dirty" in cut["error"], "the diagnosis must survive a failed courtesy"
-    assert "f" in cut["dirty_files"]
-    assert "broadcast.md" not in cut["error"], "do not point at a file that was not written"
-    assert cut.get("broadcast") is None
-    assert "notes.txt" not in _local_main_files(repo)
+    break_it(mailbox)
+    try:
+        (repo / "f").write_text("dirty\n")
+        rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+        assert cut["landed"] is False
+        assert "dirty" in cut["error"], "the diagnosis must survive a failed courtesy"
+        assert "f" in cut["dirty_files"]
+        assert "broadcast.md" not in cut["error"], \
+            "do not point at a file that was not written"
+        assert cut.get("broadcast") is None
+        assert "notes.txt" not in _local_main_files(repo)
+    finally:
+        if mailbox.is_file():
+            mailbox.chmod(0o644)
+
+
+def test_a_dirty_primary_broadcast_keys_on_every_file_not_just_the_shown_ten(tmp_path):
+    """The record shows ten paths but the key must cover all of them: an 11th file
+    changing is a different block, and suppressing it would make the docs' claim
+    ("idempotent per branch + dirty set") false for exactly the diffs big enough to
+    matter. Same reason the join is NUL rather than newline — `_c_unquote` returns real
+    filenames, and a newline separator collides `["a\\nb"]` with `["a", "b"]`.
+    Found by review of IMP-20260806-42d183."""
+    primary = tmp_path / "p"
+    primary.mkdir()
+    mailbox = primary / MODULE.COORDINATION_BROADCAST_REL
+    twelve = [f"f{i}.txt" for i in range(12)]
+
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", twelve)
+    assert mailbox.read_text().count("kg-cutover-block") == 1
+    # same input again: still one
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", twelve)
+    assert mailbox.read_text().count("kg-cutover-block") == 1
+    # the 12th file changes — invisible in the shown ten, but a different block
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", twelve[:11] + ["other.txt"])
+    assert mailbox.read_text().count("kg-cutover-block") == 2
+    # separator collision: these two dirty sets must not share a key
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", ["a\nb"])
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", ["a", "b"])
+    assert mailbox.read_text().count("kg-cutover-block") == 4
+    # the paths go into markdown a human reads, so they are backtick-quoted and their
+    # newlines escaped: unquoted, `a\nb` splits the record's own dirty line in two and a
+    # leading `#` renders as a heading. test_cutover_dirty_refusal_unquotes_special_paths
+    # proves this path really does receive names like that.
+    lines = mailbox.read_text().splitlines()
+    assert "dirty: `a\\nb`" in lines
+    assert MODULE._broadcast_cutover_block(primary, "feat/x", ["#h.txt", "-i.txt"])
+    assert "dirty: `#h.txt`, `-i.txt`" in mailbox.read_text().splitlines()
+
+    # and a branch we could not determine is named as such rather than guessed
+    assert MODULE._broadcast_cutover_block(primary, None, ["z.txt"])
+    assert "(unknown)" in mailbox.read_text()
+
+
+def test_a_dirty_primary_broadcast_marker_expires_with_the_day(tmp_path, monkeypatch):
+    """Nobody deletes these. The record asks the reader to remove it when handled; the
+    real mailbox is 694 lines going back to 2026-08-05 with not one entry removed. So a
+    marker that never expires means the same branch blocked by the same file next week —
+    slugs repeat, and the recurring dirty file is the same `ops/release.sh` — posts
+    NOTHING, and the second block is invisible. The day is part of the key for that
+    reason, and this is the only test that can see it. Found by review."""
+    primary = tmp_path / "p"
+    primary.mkdir()
+    mailbox = primary / MODULE.COORDINATION_BROADCAST_REL
+
+    class _FrozenClock:
+        stamp = datetime(2026, 8, 8, 9, 0, tzinfo=timezone.utc)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.stamp
+
+    monkeypatch.setattr(MODULE, "datetime", _FrozenClock)
+    same = ("feat/x", ["ops/release.sh"])
+    assert MODULE._broadcast_cutover_block(primary, *same)
+    assert MODULE._broadcast_cutover_block(primary, *same)
+    assert mailbox.read_text().count("kg-cutover-block") == 1, "same day: one notice"
+
+    # a later time on the SAME day is still the same block
+    _FrozenClock.stamp = datetime(2026, 8, 8, 23, 59, tzinfo=timezone.utc)
+    assert MODULE._broadcast_cutover_block(primary, *same)
+    assert mailbox.read_text().count("kg-cutover-block") == 1
+
+    # the next day it is news again
+    _FrozenClock.stamp = datetime(2026, 8, 9, 0, 1, tzinfo=timezone.utc)
+    assert MODULE._broadcast_cutover_block(primary, *same)
+    assert mailbox.read_text().count("kg-cutover-block") == 2
 
 
 @gitmark
@@ -5423,7 +5522,7 @@ def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, caps
 def _dirty_primary(reason="primary working tree is dirty (tracked changes)"):
     calls = []
 
-    def ff_ready(primary, local, branch=None):
+    def ff_ready(primary, local, branch=None, worktree=None):
         calls.append((str(primary), local))
         return (reason, {"dirty_files": ["docs/runbook/backlog/IMP-0023.json"],
                          "broadcast": None})
@@ -5498,7 +5597,7 @@ def test_land_asks_the_primary_dirty_before_gate_question_exactly_once(
     """
     asked = []
 
-    def ff_ready(primary, local, branch=None):
+    def ff_ready(primary, local, branch=None, worktree=None):
         asked.append(local)
         return None
     primary, args = _land_harness(monkeypatch, tmp_path, ff_ready=ff_ready)
