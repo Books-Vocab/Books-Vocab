@@ -219,6 +219,12 @@ task brief 的「邊界」一欄要寫明這件事，並要求回報分支名與
 非批次的任務，可讓它自己跑 `gate` 自驗，但 `cutover` 一律留給整合者。
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 
+**每棵工作樹都有自己的暫存面。** `open` 會建立並回傳
+`<worktree>/.cache/agent-scratch/`（JSON 欄位 `scratch_dir`）；`.cache/` 已被 Git 忽略，
+Gate 與 commit 不會把它當成程式碼。受派者的暫存檔一律寫進自己回傳的 `scratch_dir`，檔名仍要帶
+用途與必要的唯一尾碼；不要在 session 共用目錄使用 `red.log`、`out.json`、`gate.err` 這類裸檔名。
+`resolve` 拆除工作樹時會一併清掉該目錄；若 scratch 無法建立或不是 gitignored，`open` 會 fail closed。
+
 **交回前還要留下機器可讀的 hand-back 戳記。** 受派者在自己的工作樹完成最後一顆 commit 後執行：
 
 ```

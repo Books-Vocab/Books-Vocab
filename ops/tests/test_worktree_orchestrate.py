@@ -1448,6 +1448,7 @@ def scratch(tmp_path):
     _git(["init", "-q", "-b", "main"], repo)
     _git(["config", "user.email", "t@t"], repo)
     _git(["config", "user.name", "t"], repo)
+    (repo / ".git" / "info" / "exclude").write_text(".cache/\n", encoding="utf-8")
     (repo / "f").write_text("base\n")
     # A real, groomed, open ticket for the claim tests to take. Before the claim
     # gate existed these tests claimed `IMP-0001` out of thin air, which is exactly
@@ -1524,6 +1525,10 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     assert opened["branch"] == "debug/reader-crash"
     wt = opened["path"]
     assert Path(wt).is_dir()
+    scratch_dir = Path(opened["scratch_dir"])
+    assert scratch_dir.is_dir()
+    assert scratch_dir.parent == Path(wt) / ".cache"
+    _git(["check-ignore", "-q", "--", str(scratch_dir)], wt)
     assert "reader-crash" in {r["branch"].split("/")[-1] for r in
                               json.loads(Path(state).read_text())["records"]}
 
@@ -1568,6 +1573,7 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
 
     # NO residue: worktree gone, local branch gone, gate-record cache struck (nit3)
     assert not Path(wt).exists()
+    assert not scratch_dir.exists()
     assert "debug/reader-crash" not in _local_branches(repo)
     assert res.get("gate_cache_removed") is True
     assert not gate_cache.exists()
@@ -1578,6 +1584,38 @@ def test_open_cutover_resolve_roundtrip_leaves_no_residue(scratch):
     recs = {r["branch"]: r for r in json.loads(Path(state).read_text())["records"]}
     assert recs["debug/reader-crash"]["status"] == "merged"
     assert recs["debug/reader-crash"]["resolved_at"] is not None
+
+
+@gitmark
+def test_two_open_worktrees_get_distinct_scratch_dirs_and_resolve_removes_them(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+
+    opened = []
+    for slug in ("scratch-alpha", "scratch-beta"):
+        rc, payload = _run_json([
+            "open", "--intent", "isolate agent scratch", "--slug", slug,
+            "--state", state, "--json",
+        ])
+        assert rc == MODULE.EXIT_OK
+        scratch_dir = Path(payload["scratch_dir"])
+        assert scratch_dir.is_dir()
+        _git(["check-ignore", "-q", "--", str(scratch_dir)], payload["path"])
+        (scratch_dir / "same-name.log").write_text(slug, encoding="utf-8")
+        opened.append((payload["path"], scratch_dir))
+
+    assert opened[0][1] != opened[1][1]
+    assert (opened[0][1] / "same-name.log").read_text(encoding="utf-8") == "scratch-alpha"
+    assert (opened[1][1] / "same-name.log").read_text(encoding="utf-8") == "scratch-beta"
+
+    for wt, scratch_dir in opened:
+        rc, resolved = _run_json([
+            "resolve", "--worktree", wt, "--state", state,
+            "--force", "--commit", "--json",
+        ])
+        assert rc == MODULE.EXIT_OK, resolved
+        assert not scratch_dir.exists()
+        assert not Path(wt).exists()
 
 
 def _advance_local_main(repo, name):

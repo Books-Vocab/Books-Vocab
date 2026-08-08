@@ -71,6 +71,12 @@ Next:
 - <只列真正需要下一輪做的事>
 ```
 
+## Worktree scratch
+
+若任務在隔離工作樹中執行，暫存檔寫入 `open` 回傳的 `scratch_dir`；不要使用 session 共用目錄的
+裸檔名（例如 `red.log`、`out.json`、`gate.err`）。不同工作樹即使使用同一個檔名也必須落在不同的
+scratch 路徑；`resolve` 後該路徑應不存在。
+
 ## Verification Rules
 
 - 不說「完成」但沒有 command。
