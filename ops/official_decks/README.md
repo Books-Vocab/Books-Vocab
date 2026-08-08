@@ -22,9 +22,12 @@ Grown from 5-card placeholders to shippable content on 2026-08-05, ahead of the
 worse than no tab at all. The three decks deliberately populate three distinct
 `category` values so the Explore filter chips have something to filter.
 
-**Adding a deck:** author the JSON by hand (these are the template), run `emit
-<spec> --json` to validate, then `check --json` to prove round-trip fidelity over
-every committed spec. Keep meanings in **繁體中文** — this is user-facing官方 content.
+**Adding a deck:** author the JSON by hand (these are the template), `git add`
+it, run `emit <spec> --json` to validate, then `check --json` to prove round-trip
+fidelity over every committed spec. Keep meanings in **繁體中文** — this is
+user-facing官方 content. `check` fails if you skipped the `git add`: what deploys
+is the commit, not your working tree — and no CI or cutover gate will catch that
+for you (see `--check` semantics below).
 
 ## Emitter
 
@@ -94,6 +97,41 @@ spec → project the stored rows back → assert the projection equals the
 spec-as-written. It catches malformed specs, colliding/duplicate cards (which
 collapse under the guid UNIQUE), and any projection-fidelity regression. This is
 the sandbox PR gate (§5.3 a).
+
+Whole-directory `check` (no spec argument) additionally asserts that **the set it
+just validated equals the set git will ship**, reported as `gitIndex` in the JSON
+payload:
+
+- `untracked` — spec on disk, absent from the git index. It validated green here
+  and will simply not exist in production. `git add` it.
+- `missing` — spec in the git index, absent from disk (`rm` without `git rm`). It
+  still ships, validated by nothing. `git rm` it or restore the file.
+
+Either list being non-empty exits 1. If git cannot be consulted at all the gate
+**errors out** rather than reporting a clean index — "I cannot see what ships"
+and "what ships is fine" are the two states this exists to keep apart. `check
+<single spec>` never enumerates the directory, so it reports
+`gitIndex.checked: false` instead of an empty (and false) clean bill.
+
+**This is a local, pre-commit gate — CI structurally cannot do its job, and
+nothing runs it for you.** Two separate limits, worth keeping apart:
+
+1. *CI cannot see the problem.* A CI run checks out a commit, so its index and
+   working tree agree by construction: a spec you forgot to `git add` was never
+   pushed and does not exist in the runner. Neither list can be non-empty there.
+   Nothing in CI can know a fourth deck was intended.
+2. *No automation invokes `check`.* No workflow and no ops script calls it. Its
+   only automated caller is the `test_cli_check_all_committed_specs` test, and
+   the local cutover gate selects that test file only when the diff touches it
+   — adding `ops/official_decks/<new>.json` alone selects nothing. So **run
+   `check` yourself before committing.** A green CI, and a green cutover gate,
+   are both silent about whether your new deck will ship.
+
+The frame is the **index**, not the commit: `check` proves the spec is staged,
+which is the closest a pre-commit gate can get (a brand-new spec is in no commit
+yet, so HEAD cannot answer). A pathspec commit (`git commit -o <other paths>`)
+can still leave a staged spec out of the tree — confirm with `git show --stat
+HEAD` after committing.
 
 **Deferred (documented, not implemented in Phase 1b-ii):**
 

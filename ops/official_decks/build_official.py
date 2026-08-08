@@ -22,8 +22,12 @@ disk writes. ``--commit`` snapshots the whole data-dir (``backup_world``) BEFORE
 writing (§3.5), then upserts idempotently. ``check`` emits each committed spec
 into a throwaway sandbox, projects it back, and asserts the projection equals the
 spec-as-written — a spec that cannot be faithfully stored (colliding cards under
-the guid UNIQUE) drifts and exits 1. The independent pre-deploy prod-parity
-check (§5.3 b) is intentionally NOT implemented here — see README.
+the guid UNIQUE) drifts and exits 1. Whole-directory ``check`` additionally
+asserts that the set it validated equals the set git will ship (see
+:func:`untracked_specs` / :func:`missing_specs`): the working tree is what this
+tool can read, but the index is what deploys, and a deck that exists in only one
+of them used to reach production silently. The independent pre-deploy
+prod-parity check (§5.3 b) is intentionally NOT implemented here — see README.
 
 The emitter reuses the store's ``canonical_card`` / ``deck_content_hash`` so guid
 and content-hash logic have a single authority in the backend package.
@@ -34,6 +38,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -56,6 +61,14 @@ _CATEGORIES = frozenset({"language", "exam", "phrase", "custom"})
 
 class SpecError(ValueError):
     """A committed spec is malformed. Message is operator-facing."""
+
+
+class GitIndexUnavailable(RuntimeError):
+    """git could not tell us what the index carries. Message is operator-facing.
+
+    Raised rather than returning an empty set, because "I cannot see the index"
+    and "the index is clean" are precisely the two states the git-index gate
+    below exists to keep apart. Collapsing them would rebuild the bug."""
 
 
 # ── spec validation / normalization (camelCase spec → snake_case store) ──
@@ -330,8 +343,83 @@ def _expected_meta(deck: dict) -> dict:
 # ── discovery + CLI ──────────────────────────────────────────────────────
 
 def discover_specs() -> list[str]:
-    """Absolute paths of every git-committed official-deck spec, sorted."""
+    """Absolute paths of every spec file ON DISK in this directory, sorted.
+
+    Reference frame: the working tree, NOT git. Alone this is the wrong frame
+    for a ship gate — a spec the curator forgot to ``git add`` is present here
+    and absent from everything that deploys, so a check built only on this set
+    goes green on a deck that will not exist in production. ``check`` therefore
+    pairs it with :func:`untracked_specs` / :func:`missing_specs`."""
     return sorted(str(p) for p in _HERE.glob("*.json"))
+
+
+def _indexed_spec_names() -> set[str]:
+    """Spec filenames the git index carries for this directory.
+
+    The index is the closest readable proxy for what ships, and the only frame
+    that works *before* a new deck's first commit — a brand-new spec is in no
+    commit yet, so HEAD cannot answer the question this gate asks. It is not
+    the same thing as the commit: a pathspec commit (``git commit -o <other
+    paths>``) can leave a staged spec out of the tree. So the gate proves the
+    spec is STAGED, which is as close as a pre-commit check can get; confirming
+    it actually landed (``git show --stat HEAD``) stays the curator's job.
+
+    ``-z`` because git otherwise C-quotes non-ASCII names; the ``"/" not in``
+    filter keeps the depth identical to ``discover_specs``' non-recursive glob,
+    so a nested file cannot masquerade as a missing top-level spec."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "--", "."],
+            cwd=str(_HERE), capture_output=True, text=True,
+        )
+    except OSError as exc:  # git absent, or _HERE is not a directory
+        raise GitIndexUnavailable(f"could not run git in {_HERE}: {exc}") from exc
+    if proc.returncode != 0:  # not a git tree, or path outside the repo
+        raise GitIndexUnavailable(
+            f"git ls-files failed in {_HERE} (rc={proc.returncode}): "
+            f"{proc.stderr.strip() or '<no stderr>'}"
+        )
+    return {
+        name for name in proc.stdout.split("\0")
+        if name.endswith(".json") and "/" not in name
+    }
+
+
+def spec_index_drift() -> dict[str, list[str]]:
+    """Both ways the validated set can diverge from the shipped one, from ONE
+    index snapshot — so the two directions cannot disagree about what git said.
+
+    Note this derives untracked-ness by SUBTRACTING the index from the disk
+    rather than asking git to list untracked files. ``git ls-files --others
+    --exclude-standard`` is blind to anything a ``.gitignore`` matches, and an
+    ignored spec is exactly as absent from production as a forgotten one."""
+    indexed = _indexed_spec_names()
+    on_disk = discover_specs()
+    on_disk_names = {Path(p).name for p in on_disk}
+    return {
+        "untracked": sorted(p for p in on_disk if Path(p).name not in indexed),
+        "missing": sorted(str(_HERE / name) for name in indexed
+                          if name not in on_disk_names),
+    }
+
+
+def untracked_specs() -> list[str]:
+    """Specs on disk that the git index does not carry, sorted.
+
+    These are the silent ones: they validate green right here and are simply
+    absent from the deployed tree. Curator forgot ``git add`` — or a
+    ``.gitignore`` pattern swallowed the file."""
+    return spec_index_drift()["untracked"]
+
+
+def missing_specs() -> list[str]:
+    """Specs the git index carries but that are absent from disk, sorted.
+
+    The mirror hole: ``rm`` without ``git rm`` leaves the spec in the index (so
+    a commit of unrelated files still ships it) while the filesystem walk stops
+    seeing it — a deck that reaches production having been validated by
+    nothing."""
+    return spec_index_drift()["missing"]
 
 
 def _load(path: str) -> dict:
@@ -388,7 +476,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         # check
-        paths = [args.spec] if args.spec else discover_specs()
+        if args.spec:
+            # A single named spec never enumerates the directory, so it has
+            # nothing to say about the index. Report that as UNCHECKED, not as
+            # an empty untracked list — a false clean is the bug, not the fix.
+            paths = [args.spec]
+            untracked: list[str] = []
+            missing: list[str] = []
+            git_index: dict = {
+                "checked": False,
+                "reason": "single-spec check does not enumerate the directory",
+            }
+        else:
+            paths = discover_specs()
+            drift = spec_index_drift()  # one index snapshot, both directions
+            untracked = drift["untracked"]
+            missing = drift["missing"]
+            git_index = {"checked": True, **drift}
+
         results = []
         drift_any = False
         for path in paths:
@@ -396,11 +501,22 @@ def main(argv: list[str] | None = None) -> int:
             r["spec"] = str(path)
             results.append(r)
             drift_any = drift_any or r["drift"]
-        _print({"mode": "check", "drift": drift_any, "specs": results},
-               json_mode=json_mode)
-        return 1 if drift_any else 0
+        _print({"mode": "check", "drift": drift_any, "gitIndex": git_index,
+                "specs": results}, json_mode=json_mode)
+        if not json_mode:
+            for path in untracked:
+                print(f"  ✗ on disk but NOT in the git index — this deck will not "
+                      f"ship; `git add` it: {path}")
+            for path in missing:
+                print(f"  ✗ in the git index but NOT on disk — it ships unvalidated; "
+                      f"`git rm` it or restore the file: {path}")
+        return 1 if (drift_any or untracked or missing) else 0
     except SpecError as exc:
         _print({"mode": "error", "error": str(exc)}, json_mode=json_mode)
+        return 1
+    except GitIndexUnavailable as exc:
+        _print({"mode": "error", "error": f"git index unreadable: {exc}"},
+               json_mode=json_mode)
         return 1
     except FileNotFoundError as exc:
         _print({"mode": "error", "error": f"spec not found: {exc}"}, json_mode=json_mode)
