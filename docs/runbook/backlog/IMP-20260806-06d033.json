@@ -6,14 +6,21 @@
   "date": "2026-08-06",
   "detail": "UI test pool 的 kg-pool-2（14A23ED5）登著生產帳號 000287.04e2…0228，LocalStore 存了 9,580 筆真實 ReviewRecord。ios_test.sh --ui 會把 pool sim 當可拋棄資源使用，而 UI-test fixture 有清空 app 容器的前例（見 uitest-fixture-device-store-wipe 教訓）。目前沒有任何機制阻止一次 --ui 執行清掉這份資料，也沒有任何檢查會在 pool sim 登著生產帳號時警告。需要：① pool sim 啟動前偵測 KGUserId 是否為生產帳號並拒絕/警告；② 或讓 fixture 只對標記過的 disposable 容器動手。",
   "fix_site": "ops/lib/ios_ops_simulator.sh:cmd_simulator_lease",
+  "fixed_by": [
+    "2c9fb100376695a65795dc81386d25edfb146bcb"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-06d033",
   "plan": "在 ops/lib/ios_ops_simulator.sh 新增頂格函式 `simulator_pool_assert_disposable() { local name=\"$1\" user_id=\"${2:-}\"; ... }`：user_id 為空、或以 kg-test 開頭者視為可拋棄回 0；其餘（例如 Apple 000287.* 這種真實帳號）印出 `[ios_ops] refuse: <name> 登著非拋棄帳號` 並回 1。再在 cmd_simulator_lease（:783 取得 udid 之後、bootstatus/boot 之前）呼叫它，user_id 由 `xcrun simctl spawn \"$udid\" defaults read com.Max0228.BooksBrowser KGUserId 2>/dev/null` 取得（讀不到當空）；回非 0 就 `rm -rf \"$leasedir\"` 並 continue 到下一個 slot。",
-  "resolution": "",
+  "resolution": "已修：cmd_simulator_lease 在解析出 udid 之後、boot 之前驗證該 pool 模擬器是否可拋棄，拒絕時釋放 lease 目錄並換下一個 slot。預設拒絕（空或 kg-test* 放行，其餘拒絕）——錯誤放行會不可逆地毀掉真實資料，錯誤拒絕只損失一個 slot。\n\n受派者具名偏離 plan 一處且判對：plan 指定用 simctl spawn 讀帳號，實測對 Shutdown 的模擬器 rc=149，而 Shutdown 正是 lease 當下的常態，於是會回空字串→判為可拋棄→放行，正好對這張票唯一存在理由的那台裝置。改用 plutil 磁碟讀取（spawn 保留為 booted 裝置的附加來源）。實測 kg-pool-2 REFUSED、其餘四台 LEASABLE，全程未開機未寫入。\n\n另擴出 unverifiable:* 哨兵（盲目不得讀成乾淨）與 rc 1/2 分流，並修掉 ios_test.sh 把拒絕誤報成「pool 耗盡、調大 POOL_SIZE」的錯誤指引。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "追查 review-event 同步慢時發現",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0；另由 reviewer 以純磁碟讀取獨立複驗真實 fleet：kg-pool-2 REFUSED、其餘四台 LEASABLE、五台狀態未變"
 }

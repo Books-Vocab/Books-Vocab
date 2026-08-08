@@ -7,16 +7,23 @@
   "date": "2026-08-06",
   "detail": "切換 app 語言在 Debug build 必崩。根因在 ios/BooksAndVocab/Models/AppLanguage.swift 的 AppLanguageStore.setLanguage(_:) 尾端 Task { try Tips.resetDatastore() }：TipKit 規定 resetDatastore() 要在 Tips.configure() 之前呼叫，之後呼叫就 throw；catch 內的 #if DEBUG 只用 XCTestConfigurationFilePath 豁免 XCTest，所以開發者跑 Debug build 一定觸發 assertionFailure。crash backtrace 逐格吻合：assertionFailure → closure #1 in AppLanguageStore.setLanguage(_:)。兩種組態都錯：Debug 是正常使用者操作直接硬崩；Release 則 assertionFailure 被編掉→reset 靜默失敗→已渲染的 TipKit 文案停在舊語言，正好是那段 Task 上方註解自稱要避免的事。修法需決定把 reset 移到 launch 時 Tips.configure() 之前（以 pending 語言變更旗標驅動），或拿掉 assertion 並改為真正處理失敗。注意偏好讀取順序是 cloud.string(forKey:) ?? defaults.string(forKey:)，NSUbiquitousKeyValueStore 為權威，若動到持久化順序需一併考慮。",
   "fix_site": "ios/BooksAndVocab/Models/AppLanguage.swift:AppLanguageStore.setLanguage(_:)",
+  "fixed_by": [
+    "7b5bf12fe7e888cfb4dad70ae4129d682f16144d"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "APP-20260806-498c25",
   "plan": "刪掉 AppLanguage.swift:200-212 整段 `Task { try Tips.resetDatastore() } catch { #if DEBUG … assertionFailure }`，原地改成只記旗標：`defaults.set(true, forKey: \"kg_pending_tips_reset\")`（:192-199 的 UX trade-off 註解保留）。再到 BooksAndVocabApp.swift:220-223 的 `.task { try? Tips.configure() }`，改成：若旗標為真先 `try? Tips.resetDatastore()`、`defaults.removeObject(forKey:)` 清旗標，然後才 `try? Tips.configure()`——TipKit 要求 reset 必須早於 configure，這樣 Debug 不再 trap，Release 也不再靜默失敗留舊語言文案。",
   "repro": "Settings → 語言 → 選任一其他語言。app 立即 SIGTRAP（EXC_BREAKPOINT）。重現兩次：10:39:45、10:51。crash 落 ~/Library/Logs/DiagnosticReports/BooksAndVocab-*.ips，faulting thread 非 main（com.apple.root.user-initiated-qos.cooperative）。",
-  "resolution": "",
+  "resolution": "已修：刪掉 setLanguage 尾端就地 `Task { try Tips.resetDatastore() }`（TipKit 規定 reset 必須早於 configure，之後呼叫必 throw，catch 內的 #if DEBUG 只豁免 XCTest，所以 Debug build 切語言必觸 assertionFailure），改成記旗標；由 BooksAndVocabApp 的 .task 在 configure **之前** 兌現。旗標的唯一 owner 抽成 PendingTipsReset。\n\n受派者具名偏離 plan 一處且判對：plan 說 reset 後清旗標，改成**只有 reset 成功才清**——`.id(appLanguage.selection)` 是那些 .task 的祖先，切語言會重建整棵 tree 讓啟動 .task 在同一 process 內再跑一次，此時 TipKit 已 configure、reset 必 throw；無條件清旗標等於把 Release 的靜默失敗搬個家。\n\n尚未做人工複驗（票自己也寫明需要），且要驗兩條：① Debug 切語言不 SIGTRAP ② 完全終止後冷啟動，log 無 deferred reset 失敗且文案為新語言。相鄰漏洞（cloudObserver 繞過 setLanguage）已另立 APP-20260808-9293ba。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "手動實跑 main 驗證 Reader glass 時撞到（模擬器 iPhone 17 Pro Max / iOS 26.4）",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "settings"
+  "surface": "settings",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0（修前該 grep 為紅）；ios_test.sh --file PendingTipsResetTests 6/6 passed 且 build-for-testing exit=0；AppTipsLocalizationTests + AppLanguageStoreBundleCacheTests 4/4"
 }
