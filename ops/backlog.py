@@ -3367,8 +3367,14 @@ def _doc_anchor() -> str:
         IMP-0038's definition: "錨點指向從未進入 origin 的 commit", which
         passes here only because the local object still exists and fails in CI.
 
-    docs_lint checks reachability from HEAD, which every one of those wrong
-    answers satisfies — so nothing downstream would catch it. The candidates
+    docs_lint's FIRST layer checks reachability from HEAD, which every one of
+    those wrong answers satisfies. Since IMP-20260805-9bb2d2 it also has a
+    second layer that checks reachability from $ORIGIN_REF (default
+    origin/main) — but that one is a WARN carrying the token
+    `origin-unreachable`, deliberately not an ERROR, because a worktree
+    anchoring at its own pre-cutover commit is a legitimate state. So the
+    downstream reader now REPORTS the mistake; it does not BLOCK it, and this
+    function still has to get the answer right on its own. The candidates
     below are ordered strongest-first and degradation is REPORTED on stderr
     rather than silent, because an enumerated hole beats an anonymous one.
     """

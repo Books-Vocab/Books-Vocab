@@ -12,6 +12,13 @@
 #      - verified_against 不是有效 sha(且不是 frozen)→ ERROR
 #   7. verified_against 必須 reachable from HEAD(merge-base --is-ancestor);
 #      orphan(rebase 後舊 hash)在 gate/files 模式 ERROR,audit 模式降 WARN(不翻既有 debt)
+#   8. 第二層:verified_against 是否 reachable from $ORIGIN_REF(預設 origin/main)。
+#      HEAD 可達 != origin 可達——本 repo 拓樸是本地 main 為主幹、刻意超前 origin,
+#      所以錨在分支自身 commit 過得了第 7 條,卻正是 cutover rebase 會 orphan 掉的那種。
+#      這條在 gate/files/audit 三種模式一律 **WARN 不 ERROR**(worktree pre-cutover 錨在
+#      自身 commit 是合法情境,升 ERROR 會把整條 worktree 流程擋死),並印一個可照抄的
+#      替代 sha。$ORIGIN_REF 不存在(未 fetch 的 clone)→ 整段跳過。
+#      注意 --strict 會把它連同其他 WARN 一起升為 fail,那是呼叫者的明示選擇。
 #
 # 用法:
 #   ops/docs_lint.sh                 # gate: registry + changed docs
@@ -23,6 +30,7 @@
 #   ops/docs_lint.sh --audit|--all   # 全 repo audit(可暴露既有 debt)
 #   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
 #   STALE_THRESHOLD=10 ops/docs_lint.sh
+#   KG_DOCS_LINT_ORIGIN_REF=origin/prod ops/docs_lint.sh   # 換 anchor 可達性的參考 ref
 #
 # Exit code:
 #   0 — 全部 OK 或僅 WARN
@@ -37,6 +45,9 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
+# anchor 可達性的第二個參考點。預設 origin/main;可覆寫成別的 ref(例如部署機的
+# origin/prod),或在沒有 remote 的環境指向任何存在的 ref。ref 不存在 → 該檢查整段跳過。
+ORIGIN_REF="${KG_DOCS_LINT_ORIGIN_REF:-origin/main}"
 STRICT=0
 MODE="gate"
 SINCE_REV=""
@@ -44,7 +55,10 @@ FILE_ARGS=()
 GATE_BASE=""
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  # 印檔頭註解:跳過 shebang,一路印到第一行非註解為止。**不要改回寫死行號**——
+  # 前身是 `sed -n '2,24p'`,而註解區早已長到第 31 行,--help 於是靜靜漏掉
+  # 「Exit code」與 STALE_THRESHOLD 那幾行。行號寫在別處、內容長在這裡,兩邊必然漂移。
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -455,6 +469,37 @@ while IFS= read -r f; do
       errors=$((errors+1))
     fi
     continue
+  fi
+
+  # Anchor origin 可達性(第二層)。上面那段驗的是 HEAD 可達,而本 repo 拓樸是
+  # 「本地 main 為主幹、刻意超前 origin」,所以錨在分支自身 commit 的 doc 上面全綠,
+  # 卻正是 cutover 的 rebase 會 orphan 掉、CI 隨後拒收的那種——「origin 可達」這條知識
+  # 原本只活在 ops/backlog.py 的 _doc_anchor() docstring 裡,這個讀取者一個字都不說。
+  #
+  # 一律 WARN 不 ERROR:worktree pre-cutover 錨在自身 commit 是**合法**情境(見上段註解),
+  # 升 ERROR 會把整條 worktree 流程擋死。$ORIGIN_REF 不存在(未 fetch / shallow clone)
+  # → 整段跳過,不得讓「沒有 remote」本身變成紅燈。
+  if origin_sha=$(git rev-parse --verify --quiet "$ORIGIN_REF^{commit}"); then
+    if ! git merge-base --is-ancestor "$verified_sha" "$origin_sha" 2>/dev/null; then
+      echo "WARN  $f — verified_against origin-unreachable(只在本分支可達,cutover 的 rebase 會把它 orphan): $verified"
+      # 短 sha 是刻意的:訊息自稱「可照抄」,而 repo 裡每個 verified_against 與
+      # ops/backlog.py:_doc_anchor 的 `value[:9]` 都是 9 碼。印 40 碼等於教人種下
+      # 唯一一個異形 anchor。
+      if suggest=$(git merge-base "$origin_sha" HEAD 2>/dev/null) && [ -n "$suggest" ] \
+        && suggest=$(git rev-parse --short=9 "$suggest" 2>/dev/null) && [ -n "$suggest" ]; then
+        echo "    建議改錨: $suggest($ORIGIN_REF 與 HEAD 的 merge-base,rebase 後仍可達)"
+      else
+        # 憑空生一顆 sha 比不給建議更糟:這裡沒有任何 origin 可達的 commit 可指。
+        echo "    建議改錨: 無 — $ORIGIN_REF 與 HEAD 無共同祖先,請先確認 KG_DOCS_LINT_ORIGIN_REF 指對 ref"
+      fi
+      warnings=$((warnings+1))
+      # 這裡 continue 而非往下跑 staleness,是為了讓 OK/WARN/ERROR 三個計數維持互斥分割
+      # (既有每個分支都是 warn+continue 或 ok+1)。代價可忽略:origin 不可達 = anchor 錨在
+      # 很新的分支 commit,verified..HEAD 之間幾乎不可能累積到 STALE_THRESHOLD 個 commit。
+      # 已知副作用:同時 origin 不可達又 scope 為空的 doc 只會聽到這一條,下一輪修完 anchor
+      # 才會聽到 scope 那條。兩者都是 WARN,計數不受影響。
+      continue
+    fi
   fi
 
   # Extract scope paths
