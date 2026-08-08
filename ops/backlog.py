@@ -52,6 +52,7 @@ import inspect
 import json
 import re
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -886,6 +887,98 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
         # wherever the field can do anything at all.
         problems.append({"kind": "acceptance-green-expected-without-cmd"})
     return problems
+
+
+SELECTOR_PROBE_TIMEOUT_SECONDS = 60
+_SHELL_OPERATOR_TOKENS = frozenset((";", "&&", "||", "|", "<", ">"))
+
+
+def _pytest_selector_probe(cmd: str) -> list[str] | None:
+    """Return a safe argv probe for a direct ``pytest -k`` command.
+
+    This is deliberately a shape detector, not a shell parser or a prose
+    interpreter. Compound commands are left alone: running their prelude just
+    to count tests would turn a visibility hint into a side-effecting write
+    hook. The last ``pytest`` token is the executable in forms such as
+    ``uv run --with pytest pytest ...``; the earlier one is only a dependency
+    specifier.
+    """
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return None
+    if not tokens or any(
+            token in _SHELL_OPERATOR_TOKENS
+            or any(operator in token for operator in (";", "|", "<", ">"))
+            for token in tokens):
+        return None
+    pytest_indexes = [index for index, token in enumerate(tokens)
+                      if Path(token).name == "pytest"]
+    if not pytest_indexes:
+        return None
+    pytest_index = pytest_indexes[-1]
+    args = tokens[pytest_index + 1:]
+    try:
+        selector_index = args.index("-k")
+    except ValueError:
+        return None
+    if selector_index + 1 >= len(args) or not args[selector_index + 1].strip():
+        return None
+    probe = list(tokens)
+    if "--collect-only" not in args:
+        probe.insert(pytest_index + 1, "--collect-only")
+    return probe
+
+
+def _pytest_collected_count(output: str) -> int | None:
+    """Extract pytest's selected count, with a node-line fallback."""
+    # With ``-k`` pytest reports ``selected/total tests collected``; matching
+    # only the denominator would make a partial selector look complete.
+    summary = re.search(r"\b(\d+)(?:/\d+)?\s+(?:tests?|items?)\s+collected\b",
+                        output)
+    if summary:
+        return int(summary.group(1))
+    if re.search(r"\bno tests collected\b", output, flags=re.IGNORECASE):
+        return 0
+    node_lines = [line for line in output.splitlines()
+                  if "::" in line and not line.lstrip().startswith(("=", "-"))]
+    return len(node_lines) if node_lines else None
+
+
+def _report_pytest_selector_count(entry_id: str, cmd: str) -> None:
+    """Print a non-blocking selection count while an acceptance command is edited."""
+    probe = _pytest_selector_probe(cmd)
+    if probe is None:
+        return
+    try:
+        result = run_streamed_command(
+            probe,
+            cwd=ROOT,
+            label_key="entry",
+            label=entry_id,
+            progress_prefix="[backlog][selector-count]",
+            merge_stderr=True,
+            timeout_seconds=SELECTOR_PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        # This is visibility feedback, never a second write gate. In particular,
+        # a missing `uv`/`pytest` executable must not turn editing a criterion into
+        # an unrelated tool outage. The eventual acceptance run still owns the
+        # authoritative result and will report the missing executable at closure.
+        print(f"[backlog][selector-count] {entry_id} selected=unavailable "
+              f"error={type(exc).__name__} (non-blocking)",
+              file=sys.stderr, flush=True)
+        return
+    if getattr(result, "timed_out", False):
+        print(f"[backlog][selector-count] {entry_id} selected=unavailable "
+              f"timeout={SELECTOR_PROBE_TIMEOUT_SECONDS:g}s (non-blocking)",
+              file=sys.stderr, flush=True)
+        return
+    output = result.stdout or ""
+    count = _pytest_collected_count(output)
+    selected = str(count) if count is not None else "unavailable"
+    print(f"[backlog][selector-count] {entry_id} selected={selected} "
+          f"rc={result.returncode} (non-blocking)", file=sys.stderr, flush=True)
 
 
 def validate_entry(payload: dict, *, entry_id: str | None = None,
@@ -4400,6 +4493,15 @@ def _cmd_update(args) -> int:
     # Then the gate, still before any write: a red acceptance must leave the store
     # untouched, so the refusal cannot be mistaken for "some of it landed".
     acceptance = _gate_closure(before, changes, args.commit)  # raises on a red one
+
+    # A selector count is author feedback, not a second closure gate. Only probe
+    # when the criterion is being edited, and never after a closing act: the latter
+    # is refused above because changing and judging a criterion in one act would
+    # make the gate self-satisfying. Compound commands are intentionally skipped
+    # by the shape detector; their prelude may have side effects.
+    if (changes.get("status") != "fixed"
+            and str(changes.get("acceptance_cmd") or "").strip()):
+        _report_pytest_selector_count(args.id, str(changes["acceptance_cmd"]))
 
     if args.commit:
         after = update_entry(args.store, args.id, **changes)
