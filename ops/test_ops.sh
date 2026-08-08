@@ -33,6 +33,7 @@ DEFAULT_TESTS=(
   worktree-orchestrator
   backlog
   review-audit
+  review-cycle
   capability-matrix
   ui-deadcode
   ui-graph
@@ -47,6 +48,7 @@ DEFAULT_TESTS=(
   gate-can-fail
   ui-quality-plane
   ui-quality-gate
+  review-card-golden
   visual-regression
   catalog-review
   catalog-scene-expectations
@@ -121,6 +123,7 @@ run_one() {
         ops/tests/test_backlog_migration.py
       ;;
     review-audit)       ./ops/tests/test_review_audit.sh ;;
+    review-cycle)       ./ops/tests/test_review_cycle.sh ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_capability_matrix.py
       ;;
@@ -145,6 +148,7 @@ run_one() {
     gate-can-fail)      ./ops/tests/test_gate_can_fail.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
+    review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;
     visual-regression)  ./ops/tests/test_visual_regression.sh ;;
     catalog-review)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \

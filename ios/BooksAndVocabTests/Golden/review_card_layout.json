@@ -1,0 +1,58 @@
+{
+  "modes": {
+    "recognition": {
+      "front": {
+        "rows": ["prompt", "field.partOfSpeech"]
+      },
+      "back": {
+        "rows": [
+          "answer",
+          "answerDivider",
+          "field.difficultyTier",
+          "field.graphLinks",
+          "field.example",
+          "field.explanation",
+          "field.collocations"
+        ]
+      }
+    },
+    "production": {
+      "front": {
+        "rows": ["prompt", "field.partOfSpeech", "field.example"]
+      },
+      "back": {
+        "rows": [
+          "answer",
+          "answerDivider",
+          "field.difficultyTier",
+          "field.graphLinks",
+          "field.example",
+          "field.explanation",
+          "field.collocations"
+        ]
+      }
+    }
+  },
+  "naturalTier": {
+    "front": {
+      "explanationLineLimit": 3,
+      "collocationRowLimit": 2,
+      "naturalExampleRadius": 5
+    },
+    "back": {
+      "explanationLineLimit": 3,
+      "collocationRowLimit": 2,
+      "naturalExampleRadius": null
+    },
+    "drawsAnswerDivider": {
+      "empty": false,
+      "withFields": true
+    }
+  },
+  "viewport": {
+    "containerHeight": 600,
+    "contentHeight": 584,
+    "revealZoneReserve": 180,
+    "frontHeight": 404
+  }
+}

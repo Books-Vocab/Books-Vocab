@@ -216,6 +216,23 @@ mechanisms:
       - docs/reference/catalog_scope.md
     notes: "FROZEN 2026-08-05 — the 76 source-text rules stay enforced for already-migrated scenarios (zero cost), but new scenarios are no longer required to join the UI World. See docs/reference/catalog_scope.md FROZEN section."
 
+  - id: snapshot.review_card_layout_golden
+    layer: state-snapshot
+    entrypoint: ios/BooksAndVocabTests/ReviewCardLayoutGoldenTests.swift
+    gate: ios-test
+    triggers:
+      - ios/BooksAndVocab/Views/Vocabulary/
+      - ios/BooksAndVocab/Models/ReviewCardLayoutProfile.swift
+    verdict: >
+      Swift Testing compares the default recognition/production front/back row
+      order, natural-tier decisions, and the 600pt viewport budget with the
+      tracked review_card_layout.json golden. An intentional visual change must
+      update that golden in the same commit and explain the change.
+    docs:
+      - docs/reference/tech_index.md
+      - docs/sop/ios.md
+    regression: review-card-golden
+
   - id: behavior.uitest_flows
     layer: behavior
     entrypoint: ops/ios_test.sh

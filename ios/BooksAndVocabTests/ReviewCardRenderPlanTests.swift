@@ -21,6 +21,16 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.coreIsLocked)
         #expect(plan.front.fields == [.partOfSpeech])
         #expect(plan.back.fields == [.difficultyTier, .graphLinks, .example, .explanation, .collocations])
+        #expect(plan.front.rows == [.prompt, .field(.partOfSpeech)])
+        #expect(plan.back.rows == [
+            .answer,
+            .answerDivider,
+            .field(.difficultyTier),
+            .field(.graphLinks),
+            .field(.example),
+            .field(.explanation),
+            .field(.collocations)
+        ])
     }
 
     @Test func arbitrary_order_is_preserved_without_mutating_the_profile() {
@@ -32,6 +42,13 @@ struct ReviewCardRenderPlanTests {
 
         #expect(plan.front.fields == [.graphLinks, .example])
         #expect(plan.back.fields == [.example, .partOfSpeech])
+        #expect(plan.front.rows == [.prompt, .field(.graphLinks), .field(.example)])
+        #expect(plan.back.rows == [
+            .answer,
+            .answerDivider,
+            .field(.example),
+            .field(.partOfSpeech)
+        ])
         #expect(profile.recognition.front == [.graphLinks, .example])
         #expect(profile.recognition.back == [.example, .partOfSpeech])
     }
@@ -49,6 +66,8 @@ struct ReviewCardRenderPlanTests {
 
         #expect(plan.front.fields.isEmpty)
         #expect(plan.back.fields == [.difficultyTier])
+        #expect(plan.front.rows == [.prompt])
+        #expect(plan.back.rows == [.answer, .answerDivider, .field(.difficultyTier)])
     }
 
     @Test func a_field_can_render_on_both_faces() {
@@ -60,6 +79,19 @@ struct ReviewCardRenderPlanTests {
 
         #expect(plan.front.fields == [.example])
         #expect(plan.back.fields == [.example])
+        #expect(plan.front.rows == [.prompt, .field(.example)])
+        #expect(plan.back.rows == [.answer, .answerDivider, .field(.example)])
+    }
+
+    @Test func an_empty_back_face_does_not_draw_a_trailing_divider() {
+        let profile = ReviewCardLayoutProfile(
+            recognition: .init(front: [], back: []),
+            production: .init(front: [], back: [])
+        )
+        let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
+
+        #expect(plan.front.rows == [.prompt])
+        #expect(plan.back.rows == [.answer])
     }
 }
 
