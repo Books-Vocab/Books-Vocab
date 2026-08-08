@@ -18,38 +18,67 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 | port | `8000` |
 | commit prefix | `ios:` / `api:` / `ops:` / `docs:` |
 
-## 組織模型（營運憲法，always-on）
+## 懸賞板模型（營運憲法，always-on）
 
-本工作區用「公司」隱喻運營,但**採相對定址,不用絕對層級**。
+本工作區的協調物是**一塊板子**,不是一張組織圖。這是 2026-08-08 的取代:先前的
+「執行長→總經理→部門」遞迴委派隱喻已**整份刪除,不留副本**。理由不是文風——那個模型
+要求每個 agent 先回答「我是誰的下一階」才能開始工作,而那個問題**在資料裡沒有答案**,
+只存在於 prompt 的敘述裡。板子相反:票在哪、誰認領了、憑證綠不綠,三件事都是**檔案**,
+任何 session 隨時可讀,不必先被誰任命。
 
-**核心原則:沒有「我在第幾層」。** 每個節點只認識兩個鄰居——**上一階**(委派我、我交 receipt 的對象)與**下一階**(我委派、向我回報的對象)。同一套委派契約在每條邊上遞迴套用,深度無限且無關緊要;插入或移除中間節點,都不必為任何人重新編號。
+**三個平面,各有唯一的檔案 SoT**
 
-**唯一固定錨邊**:執行長(使用者)→ 總經理(本主線)。使用者只跟總經理對話。其餘所有邊全是遞迴展開,無絕對座標。
+| 平面 | 問題 | SoT |
+|---|---|---|
+| **票** | 有什麼事要做、怎麼做、怎麼算做完 | `docs/runbook/backlog/<id>.json`,入口一律 `ops/backlog.py`(機器讀 `list --json` / `show`) |
+| **認領** | 誰在做哪張票、還活著嗎 | worktree 登記簿,入口 `ops/worktree_registry.py` / `ops/worktree_orchestrate.py`;`backlog.py list` 的 `held` 欄由它推導,**不儲存** |
+| **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
 
-**每條委派邊的契約(到處相同)**
-- **下行 = task brief**:目標 / 驗收條件(DoD)/ 邊界 / 必讀 SoT 指標 / 回報格式。
-- **上行 = receipt**(`kg-receipt`):驗證輸出 + 交接點。
-- 每個節點**同時**是上一階的受派者、下一階的委派者。人例外(只委派);葉節點本回合只受派,需要時仍可開下一階。
+**認領即工作,不必被任命。** 任何 session 從 `dispatch`(已梳理、未延後、未被認領的票)取一張,
+`worktree_orchestrate.py open --backlog <id>` 認領,做完 `gate` → `cutover`。認領是**互斥的**:
+登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
+只有「取」。
 
-**節點自我認知只問三件事(永不問「第幾層」)**
-1. **上一階是誰** — 我對誰負責、向誰交 receipt。
-2. **我的範圍與 gate** — 我獨佔的 definition of done。
-3. **我能派哪些下一階** — 可委派的 `.claude/agents/*` custom agent / worker。
+**一張票要能被取,得先夠具體。** 梳理(groom)= 填上 `plan` / `acceptance` / `fix_site` +
+可執行的 `acceptance_cmd`,標準是「小模型照著做不必重推」。未梳理的票留在板上但不進
+`dispatch`——沒有修法的票不是工作,是待調查。
 
-**總經理職位說明書**(總經理 = 上一階為執行長的節點,同樣遵循上述遞迴契約;其特有職責:)
-- **做**:意圖翻譯、拆 WBS、選部門與派任形狀(fan-out / pipeline)、品管 gate、整合驗證、回報。
-- **不做**:domain 實作粗活——一律下放給部門 custom agent(呼應鐵律5「所有 Agent() 背景化」)。
-- **唯一親自處理**:跨部門整合衝突,以及判斷是否升級給執行長。
+**結案只有一種意義:那條你自己寫下的判準今天真的綠。** 三條路徑通往 `status=fixed`
+(`anchor` 波次 / `update --status fixed` / `verify --status fixed`)共用同一道
+`_acceptance_gate`,`--commit` 時實跑 `acceptance_cmd`,rc 不符即拒絕落地。無命令可表達者
+用 `acceptance_manual` **具名申報**——不是漏洞,是可清點的例外。
 
-**升級給執行長的觸發(其餘總經理自決後告知)**:不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理且影響大)/ 安全紅線 / 真正的歧義。
+**開 agent 前先問值不值得。** 同時滿足「單檔、約 ≤10 行、純樣板、無語意風險」→ 自己做,
+免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
+review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
 
-**全知 ≠ 全在場**:總經理的全局觀來自讀**檔案室(SoT docs)+ 回報(receipt)**,非微觀監工每個 agent 的 context。
+**批次的落地權在整合者,不在各票。** 一批 fan-out 出去的工作,受派者**做到自己工作樹裡
+commit 為止**,`gate` / `cutover` / `sync` / `deploy` 留給握有整批視野的那個 session。
+理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」。
 
-**部門名冊**:`.claude/agents/` 目錄本身即名冊(`ls` 是清單,frontmatter `description` 是職責),**不另立手寫 roster 檔**。
+**要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
+且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
+使用者本人能做**(GUI-only、帳號持有人專屬簽署、外部系統人工步驟)→ 定讞當下立刻說,不等收尾
+receipt,說完**繼續平行推進其餘工作**。晚報一分鐘就損失一分鐘可平行的人工時間(2026-07-08:
+ASC API 403 需帳號持有人 GUI 簽協議,開場 10 分鐘定讞卻壓到收尾才報,白損 40 分鐘)。
 
-**SoT 零重複鐵則**:一個事實只有一個 owner 文檔(registry 標 `authority: SoT`);CLAUDE.md、agent 檔、流程文檔只能用 path / registry id / 鐵律編號**指過去,絕不複述**。
+**worker 名冊**:`.claude/agents/` 目錄本身即名冊(`ls` 是清單,frontmatter `description`
+是職責),**不另立手寫 roster 檔**。`code-reviewer` 是橫切共享服務:任何 session 完成一個
+可交付單位時自行調用它當鐵律4 的 gate,審畢回給調用者。
 
-**自我提升迴圈**:摩擦走 andon → receipt 強制表態(規則見 `kg-receipt`「Tooling Debt」)→ `docs/runbook/backlog/<id>.json`(SoT,一筆一檔;入口一律 `ops/backlog.py`,**機器一律讀 store**:`list --json` / `show`。單一檔案的 markdown view 已移出版控——它是 `render --commit` 現地產出的方便產物,不是任何人的資料來源,見 IMP-20260807-b9526c)→ triage 到 resolved(連 commit = 可回溯)。**兩條 stream、兩個 owner**:`--stream IMP`(工具 / CLI / 文檔 / 架構摩擦)→ `platform-steward`;`--stream APP`(會出貨給使用者的缺陷,另附 `--surface` / `--repro` / `--build`)→ 對應 Line 部門(`ios-engineer` / `backend-engineer`)。分流看**這缺陷誰碰得到**(使用者 vs 只有 repo 內的人)不看誰發現,可判定判準見 `kg-receipt`「Stream 分流」。無聲妥協(硬幹)違鐵律9;升級階梯見 `docs/sop/agent_org.md`。
+**全局觀來自檔案,不來自監工**:讀 SoT docs + 讀票 + 讀登記簿,不是盯每個 agent 的 context。
+
+**SoT 零重複鐵則**:一個事實只有一個 owner 文檔(registry 標 `authority: SoT`);CLAUDE.md、
+agent 檔、流程文檔只能用 path / registry id / 鐵律編號**指過去,絕不複述**。
+
+**自我提升迴圈(票是怎麼長出來的)**:摩擦走 andon → receipt 強制表態(規則見 `kg-receipt`
+「Tooling Debt」)→ `ops/backlog.py add` 開票 → 梳理 → 進 `dispatch` → 被取走 → 結案時連
+commit(`fixed_by`)= 可回溯。**兩條 stream、兩個 owner**:`--stream IMP`(工具 / CLI / 文檔 /
+架構摩擦)→ `platform-steward`;`--stream APP`(會出貨給使用者的缺陷,另附 `--surface` /
+`--repro` / `--build`)→ 對應 Line worker(`ios-engineer` / `backend-engineer`)。分流看
+**這缺陷誰碰得到**(使用者 vs 只有 repo 內的人)不看誰發現,可判定判準見 `kg-receipt`
+「Stream 分流」。**選錯 stream 等於選錯 owner**,而沒有 owner 的票就是會被無聲遺忘的那種摩擦。
+無聲妥協(硬幹)違鐵律9;結構 / 架構級的摩擦不自決,升級給使用者。
 
 ## ops 資料工具（always-on，不靠 skill 觸發）
 

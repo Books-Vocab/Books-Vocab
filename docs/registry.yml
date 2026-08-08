@@ -547,6 +547,11 @@ documents:
       - .claude/skills/worktree-flow/
       - .claude/skills/source-command-release/
       - .claude/commands/release.md
+      # 交回契約（受派者停在 commit、落地屬於整合者）自 2026-08-08 起住在 worktree-flow
+      # skill 的「批次交回狀態」段，而每個 worker agent 檔都覆述那條邊界。sop.agent_org
+      # 刪除後，`.claude/agents/` 一度沒有任何 registry owner——改 worker 的交回段就不會
+      # 提名任何文檔。掛在這裡是因為那條邊界講的正是 release 平面誰能動。
+      - .claude/agents/
 
   - id: runbook.system
     path: docs/runbook/system.md
@@ -585,23 +590,6 @@ documents:
       - .claude/skills/phased/
       - .claude/skills/app-debug/
       - docs/sop/review_discipline.md
-
-  - id: sop.agent_org
-    path: docs/sop/agent_org.md
-    kind: sop
-    authority: derived
-    triggers:
-      - delegation_contract_changed
-      - agent_roster_changed
-      - org_lifecycle_changed
-    sources:
-      - CLAUDE.md
-      - .claude/agents/
-      # 委派契約正本在此,而它的「批次整合」流程住在 worktree-flow skill。少了這條,改 skill
-      # 的批次段不會提名本檔(實測:docs_impact 只吐 sop.release + runbook.system),契約與流程
-      # 會各自漂移。反向(改本檔)已是 exact match。
-      - .claude/skills/worktree-flow/
-      - docs/sop/agent_org.md
 
   - id: sop.architecture
     path: docs/sop/architecture.md

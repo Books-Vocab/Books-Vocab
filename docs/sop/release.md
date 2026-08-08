@@ -86,8 +86,8 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 一批工作分散在 N 個工作樹時，develop 平面之前還有一步收斂。**與三平面相關的只有一件事：
 批次整合不是第四個平面**——它發生在 develop 平面之前，產出仍是一次普通的 `cutover`。
 
-流程正本 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段；委派契約正本
-`docs/sop/agent_org.md`「交回狀態」段。
+流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段
+（含「批次交回狀態」子段）。
 
 ## Release 流程
 

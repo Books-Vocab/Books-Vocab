@@ -14,7 +14,7 @@ verified_against: 0c9e3b7c
 
 ### 2026-08-06 追加裁決 — gallery 退出消費路徑
 
-**gallery 不再有讀者**（執行長原話：產出的一堆圖我也不太會看）。catalog 的目標從此是**保持可用但不使用**：不主動跑、不看圖、**完全停止擴張**；`ios_ops.sh catalog snapshots` 仍須跑得動——那是下方「復業條件」的前提，不是日常能力。**「給我看畫面」的預設答案改成在模擬器實跑 app**（`docs/sop/ios.md`），不再是 Read catalog PNG。
+**gallery 不再有讀者**（使用者原話：產出的一堆圖我也不太會看）。catalog 的目標從此是**保持可用但不使用**：不主動跑、不看圖、**完全停止擴張**；`ios_ops.sh catalog snapshots` 仍須跑得動——那是下方「復業條件」的前提，不是日常能力。**「給我看畫面」的預設答案改成在模擬器實跑 app**（`docs/sop/ios.md`），不再是 Read catalog PNG。
 
 三個直接後果，寫下來免得下一位以為是疏漏：
 
