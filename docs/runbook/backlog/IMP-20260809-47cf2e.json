@@ -7,6 +7,9 @@
   "date": "2026-08-09",
   "detail": "兩個獨立的洞疊在一起，讓「改了 agent-facing 介面就同步文檔」這條規則對 `.claude/agents/` 這六個檔**結構性失明**。\n\n**洞一：兩處可執行的指示都沒列 `.claude/agents/`。**\n- `CLAUDE.md:184`（Scope 規則「改 user/agent-facing 介面」）→ 要求同 PR 內 grep `.claude/skills/`、`docs/reference/product_surface.md`、`docs/reference/tech_index.md`、`docs/sop/`、`docs/policy/`、`docs/runbook/`。**沒有 `.claude/agents/`。**\n- `docs/sop/review_discipline.md:81`（「下游 surface 同步檢查」，reviewer prompt 必含）→ 同一份清單，同樣沒有。\n\n而同一份 SOP 的 doc-meta sources（`docs/sop/review_discipline.md:6-7`）**兩個都列了**。也就是說：文檔的後設資料知道 `.claude/agents/` 是它的來源，文檔給人執行的那條指示不知道。\n\n**洞二：`rg` 預設跳過 dotdir，所以照著指示做也看不見 `.claude/`。**\n即使有人自己想到要掃 agent 檔，`rg <pattern> -l` 對 `.claude/` 一律零命中，要 `--hidden`（或 `-uu`）才浮得出來。兩處指示都沒提。\n\n**實測到的後果（2026-08-08 梳理 IMP-20260808-d7ca2a 時當場踩到）**：dispatch 的「三條 clause」契約逐字複製在八個地方，其中 `.claude/agents/ios-engineer.md:31` 與 `.claude/agents/backend-engineer.md:32` 是 APP stream 兩個 Line worker **每次開工第一件事**讀的那一句。梳理者用票面給的 `rg` 命令量到「六份」，實際八份——**漏掉的正好是流量最高的兩份**，而漏掉的原因就是洞二。\n\n這兩個檔的讀者是 agent，不是人，所以沒有人會回報「文件過期了」。`.claude/agents/` 的內容今天沒有任何 gate 看著：`ops/docs_lint.sh` 不掃它（不在 registry），surface 同步的兩處指示不列它，而唯一會讀它的角色照著它做事。\n\n**修法方向（擇一或並行）**：(a) 把 `.claude/agents/` 補進上述兩處清單，並在同一句話裡寫明 `rg` 需要 `--hidden`；(b) 更根本地，把「哪些路徑構成 agent-facing surface」變成一份機器可讀清單（`docs/registry.yml` 已經是控制面），讓兩處指示指過去而不是各自複述——否則這份清單本身就是第三個會漂移的複本。**建議 (b)，(a) 當止血。**",
   "fix_site": "CLAUDE.md:184,docs/sop/review_discipline.md:81,.claude/skills/kg-docs-control-plane/SKILL.md:62,docs/registry.yml:4,docs/registry.yml:588,ops/docs_impact.py:60,ops/docs_impact.py:307,ops/tests/test_docs_impact.sh:533",
+  "fixed_by": [
+    "e9e940351a7235131ec4b419046be95672f646e5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260809-47cf2e",
@@ -16,6 +19,10 @@
   "scope": "不是「兩處各加一行」——照 plan 做是三處指示 + registry 新增一個頂層鍵 + 一支走訪器與三個旗標 + 四段測試 + tech_index 同步。半天到一天，不是十分鐘。",
   "severity": "med",
   "source": "workflow:groom-untriaged-33 收尾 review（審 17d994712 時由 d7ca2a 的複本清單錯誤揭出）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:platform-steward",
+  "verified_evidence": "./ops/tests/test_docs_impact.sh; ./ops/docs_lint.sh --registry"
 }
