@@ -1,0 +1,14 @@
+{
+  "brief": "批次檢查把十幾分鐘的編譯和測試排在前面，把幾秒鐘就能發現問題的檢查排在最後，於是每次有小錯都要先白等十分鐘，修好後還得再等一次。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "批次 gate 的 plan 是一份**靜態排序**的清單（`worktree_orchestrate.py` 的 plan builder，\n`gate --plan-only` 可看），順序大致是 review-receipts → ui-quality → ios-build →\nios-build-catalyst → ios-test-unit → docs-lint → backend-pytest → ops-pytest →\nops-shell-scan → ops-shell:<每支> → backlog-validate → …。\n\n也就是說：**最貴的在最前面，最便宜的靜態檢查在最後面。**\n\n2026-08-08 round2 批次整合的實測（28 顆 commit、82 個檔案、單次 gate，rc 全部有紀錄）：\n\n  綠的、先跑的：  review-receipts 2.6s   ui-quality-fast 40.2s   ios-build 60.0s\n                  ios-build-catalyst 47.3s   ios-test-unit 144.2s   docs-lint 1.7s\n                  backend-pytest 137.2s   ops-pytest 203.7s        小計 ≈ 637s\n  紅的、後跑的：  ops-shell-scan 0.6s\n                  ops-shell:test_ios_test_discovery.sh 10.8s\n                  backlog-validate ≈ 2s                            小計 ≈ 13.4s\n\n**三道 BLOCK 加起來 13.4 秒就能全部測出來，卻排在 10.6 分鐘的綠色工作後面。**\n而且代價要付兩次：gate 是綁 HEAD 的新鮮判決（`cmd_cutover` 要求），修完必然產生新\ncommit，HEAD 一動整套從頭重跑。所以「靜態檢查排在最後」的實際代價 = **2 × 10.6 分鐘的\n昂貴套件，換 13 秒就能得到的資訊**。\n\n這不是排程微調，是 fail-fast 的缺席。三道紅裡有兩道同根（`$VAR` 緊接全形標點），第一道\n`ops-shell-scan` 0.6 秒就指名了 17 個確切位置——若它先跑，第二道 `test_ios_test_discovery`\n的紅根本不必發生一次。\n\n修法方向（不指定實作）：\n(a) 把 plan 分成兩階段：**stage-0 = 靜態且秒級**（review-receipts、shell-scan、\n    backlog-validate、docs-lint、i18n/injection lint 這類純掃描），全綠才進 stage-1 的\n    build/test。stage-0 紅就立刻回，別開始 xcodebuild。\n(b) 或者更弱但更簡單：保留單一清單，但**依實測成本升冪排序**，成本從 gate journal 的\n    歷史 elapsed 取中位數（journal 已經在記 elapsed，資料現成）。\n\n注意一個反方論點並在 plan 裡回應它：**stage-0 先跑會讓「昂貴套件的紅」晚一點被看見**。\n在互動式使用下這是缺點嗎？不是——因為 stage-0 紅時，昂貴套件的結果在修完之後也必須重跑，\n早看到的那份判決本來就作廢。這正是「綁 HEAD 的新鮮判決」這條契約自己推出來的結論。\n\nacceptance 的形狀建議：對一棵刻意植入 shell-scan 違規的測試樹跑 gate，斷言\n**xcodebuild 從未被 spawn**（heartbeat 的 `gate=ios-build phase=spawned` 不出現），\n而不是只斷言 verdict=block——後者在今天的順序下也會綠。",
+  "id": "IMP-20260808-94753f",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支工具裡的檢查排序，加一支測試。",
+  "severity": "med",
+  "source": "round2 批次整合 gate 實測（整合者）",
+  "status": "open",
+  "stream": "IMP"
+}
