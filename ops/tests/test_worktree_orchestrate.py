@@ -3447,6 +3447,46 @@ def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
 
 
 @gitmark
+def test_gate_warns_when_the_primary_is_dirty(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "primary-dirty.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "observe primary drift", "--slug", "primary-dirty",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+
+    (repo / "f").write_text("leaked edit\n")
+    try:
+        rc, gate = _run_json(["gate", "--worktree", opened["path"],
+                              "--state", state, "--json"])
+        assert rc == MODULE.EXIT_OK
+        assert gate["primary_dirty"] == ["f"]
+        assert gate["primary_dirty_error"] is None
+        assert gate["verdict"] == "pass"
+
+        rc, text = _run_text(["gate", "--worktree", opened["path"],
+                              "--state", state])
+        assert rc == MODULE.EXIT_OK
+        assert "primary working tree has 1 uncommitted tracked file(s): f" in text
+        assert "rather than this worktree" in text
+    finally:
+        (repo / "f").write_text("base\n")
+
+
+@gitmark
+def test_gate_reports_a_clean_primary(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "primary-clean.json")
+    wt = _open_wt(state, slug="primary-clean")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["primary_dirty"] == []
+    assert gate["primary_dirty_error"] is None
+
+
+@gitmark
 def test_gate_orchestrator_identity_is_null_when_worktree_has_no_copy(scratch):
     """The synthetic fixture repo has no ops/ tree. Provenance must degrade to "cannot
     compare" rather than inventing a mismatch — otherwise every existing test, and every
