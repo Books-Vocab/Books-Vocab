@@ -93,6 +93,8 @@ Use this skill when the user asks to run the migrated source command `release`.
 
 - workflow 缺 spec、`appReviewGate.verdict.status != "pass"`、evidence `status != "pass"`，或 release gate `verdict != "pass"`，一律視為 **BLOCK**。
 - BLOCK 時只允許繼續跑 read-only `workflow` / `status` / `gate` 查詢，或照 evidence plan 的 typed producer 修補缺失／漂移／過期證據；**不得把人工 ASC GUI submit 當 fallback，也不得因使用者已登入就繞過 gate**。
+- **BLOCK 期間禁止 `refresh-anchor --commit`**：它改的正是 gate 讀來比對的 `ops/app_review/<ver>.json`，一行就能讓紅色的 `desired.manifest-sha256` block 消失（那也是它唯一能消掉的一條）。錨點更新只在確認 bundle 內容變動為預期時、且與 submit 分離的情境下進行。工具會先跑一次 App Review gate 並 refuse（`anchor.gate-blocked:<codes>`，rc 2，不寫檔也不重建 bundle）；`--acknowledge-gate-block` 是**人工斷言、需要使用者拍板**，它讓 gate 不再有否決權、但仍會被查詢一次，把當下的 block codes 記進報告的 `gateBlocks`（gate 跑不起來時記 `null`），因為寫入本身會銷毀那份紅燈證據。不帶 `--commit` 的 dry-run 比對不受影響、也不跑 gate（帶了旗標卻沒 `--commit` 會被 refuse）。
+  **這道機械檢查只覆蓋上一條 BLOCK 定義的四項中的 App Review gate 那一項**：workflow 缺 spec、evidence `status` 非 pass、release gate 非 pass 時工具照樣放行，那三項仍是 `[prompt]`、靠本段紀律。
 - 只有三者都 PASS，才可把 ASC GUI submit 作為人工下一步；這個 skill 與 `asc.sh` 都不代替操作者按下不可逆 submit。
 
 - 出 build → `./ops/ios_release.sh`（archive+export；`--upload` 推 TestFlight，對外副作用須明示）
@@ -104,5 +106,5 @@ Use this skill when the user asks to run the migrated source command `release`.
 
 - **絕不跳過使用者確認**（版號、changelog、`tag`/`release`/`resubmit`/`shipped` --yes 三關都要）。`release` 碰生產、`resubmit` 碰外部不可逆上傳，確認尤其不可省。
 - **不代替 repo 宣稱上架**。`ios/<x.y.z>` 只能由 `shipped ios` 從 ASC 查證後產生；工具 refuse 時不要用 `--commit` 繞過，那是人工斷言、要使用者拍板。
-- **App Review BLOCK 是 submit hard stop**：只能查狀態或修 typed evidence，不能手動 submit／resubmit。
+- **App Review BLOCK 是 submit hard stop**：只能查狀態或修 typed evidence，不能手動 submit／resubmit，**也不能用 `refresh-anchor --commit` 移動錨點把 block 抹掉**（見上段）。
 - `tag`/`release` 前 working tree 若有非版號檔的雜變更，先問使用者。

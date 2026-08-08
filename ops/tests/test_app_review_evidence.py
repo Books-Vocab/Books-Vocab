@@ -354,6 +354,34 @@ def stub_bundle(monkeypatch, manifest_bytes: bytes) -> list[bool]:
     return published
 
 
+def stub_gate(monkeypatch, status: str, codes: list[str]) -> list[str]:
+    """Stand in for the real gate; record which spec it was asked to judge."""
+    asked: list[str] = []
+
+    def fake_gate(spec_path, workspace_root):
+        asked.append(str(spec_path))
+        return {
+            "verdict": {"status": status, "blockCount": len(codes)},
+            "blocks": [{"code": code} for code in codes],
+        }
+
+    monkeypatch.setattr(evidence, "evaluate_gate", fake_gate)
+    return asked
+
+
+def refresh_argv(spec_path: Path, tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "refresh-anchor",
+        "--spec", str(spec_path),
+        "--profile", str(ROOT / "ops/capture_profiles/marketing_account.json"),
+        "--render-output-dir", str(tmp_path / "renders"),
+        "--fixed-clock", "2026-07-09T09:00:00Z",
+        "--locale", "zh-Hant",
+        "--workspace-root", str(ROOT),
+        *extra,
+    ]
+
+
 def anchor_kwargs(tmp_path: Path) -> dict:
     return {
         "workspace_root": ROOT,
@@ -391,11 +419,13 @@ def test_refresh_anchor_commit_moves_only_the_anchor(tmp_path: Path, monkeypatch
     spec_path, stale = stale_spec(tmp_path)
     manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
     stub_bundle(monkeypatch, manifest_bytes)
+    stub_gate(monkeypatch, "pass", [])
 
     report = evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
 
     landed = spec_path.read_text(encoding="utf-8")
     assert report["status"] == "written"
+    assert report["gateCheck"] == "pass"
     assert json.loads(landed)["target"]["desiredManifestSHA256"] == sha(manifest_bytes)
     reverted = json.loads(landed)
     reverted["target"]["desiredManifestSHA256"] = "0" * 64
@@ -414,6 +444,7 @@ def test_refresh_anchor_reports_current_and_writes_nothing_when_already_correct(
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(current, encoding="utf-8")
     stub_bundle(monkeypatch, manifest_bytes)
+    stub_gate(monkeypatch, "pass", [])
 
     report = evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
 
@@ -434,11 +465,13 @@ def test_refresh_anchor_rejects_an_unrewritable_spec_before_rebuilding(
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(doubled, encoding="utf-8")
     published = stub_bundle(monkeypatch, b'{"schema":"x"}\n')
+    asked = stub_gate(monkeypatch, "pass", [])
 
     with pytest.raises(evidence.EvidenceError, match=r"anchor\.occurrences:2"):
         evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
 
     assert published == []
+    assert asked == []  # nor a gate evaluation: the text-only precondition still runs first
     assert spec_path.read_text(encoding="utf-8") == doubled
 
 
@@ -456,6 +489,7 @@ def test_refresh_anchor_refuses_to_revert_an_edit_made_during_the_rebuild(
         return {"manifest": {}}
 
     monkeypatch.setattr(evidence, "produce_desired_bundle", racing_bundle)
+    stub_gate(monkeypatch, "pass", [])
 
     with pytest.raises(evidence.EvidenceError, match=r"anchor\.spec-changed-during-rebuild"):
         evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
@@ -473,6 +507,7 @@ def test_refresh_anchor_commit_replaces_the_spec_by_rename(tmp_path: Path, monke
     """
     spec_path, _ = stale_spec(tmp_path)
     stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "pass", [])
     destinations: list[str] = []
     real_replace = evidence.os.replace
 
@@ -490,6 +525,7 @@ def test_refresh_anchor_commit_replaces_the_spec_by_rename(tmp_path: Path, monke
 def test_refresh_anchor_commit_leaves_no_staging_file_behind(tmp_path: Path, monkeypatch):
     spec_path, _ = stale_spec(tmp_path)
     stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "pass", [])
 
     evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
 
@@ -501,15 +537,7 @@ def test_refresh_anchor_cli_is_wired_and_dry_run_by_default(tmp_path: Path, monk
     manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
     stub_bundle(monkeypatch, manifest_bytes)
 
-    code = evidence.main([
-        "refresh-anchor",
-        "--spec", str(spec_path),
-        "--profile", str(ROOT / "ops/capture_profiles/marketing_account.json"),
-        "--render-output-dir", str(tmp_path / "renders"),
-        "--fixed-clock", "2026-07-09T09:00:00Z",
-        "--locale", "zh-Hant",
-        "--workspace-root", str(ROOT),
-    ])
+    code = evidence.main(refresh_argv(spec_path, tmp_path))
 
     document = json.loads(capsys.readouterr().out)
     assert code == 0
@@ -519,6 +547,261 @@ def test_refresh_anchor_cli_is_wired_and_dry_run_by_default(tmp_path: Path, monk
     assert document["new"] == sha(manifest_bytes)
     assert document["commit"] is False
     assert spec_path.read_text(encoding="utf-8") == stale
+
+
+def test_refresh_anchor_dry_run_never_consults_the_gate(tmp_path: Path, monkeypatch):
+    """The comparison stays free: only the write is worth a gate evaluation.
+
+    Without this the guard could quietly turn every `old -> new` preview into a
+    networked gate run, and the cheapest way to ask "has the anchor moved?"
+    would stop being cheap.
+    """
+    spec_path, stale = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    asked = stub_gate(monkeypatch, "block", ["desired.manifest-sha256"])
+
+    report = evidence.refresh_desired_anchor(spec_path, commit=False, **anchor_kwargs(tmp_path))
+
+    assert asked == []
+    assert report["gateCheck"] == "not-required"
+    assert report["acknowledgedGateBlock"] is False
+    assert spec_path.read_text(encoding="utf-8") == stale
+
+
+def test_refresh_anchor_commit_refuses_while_gate_blocks(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """Moving the anchor must not be the one-liner that erases a red gate.
+
+    The refusal names the gate's own block codes rather than a generic message:
+    the operator is being told exactly which red light they were about to turn
+    green, and that string can only come from the gate report.
+    """
+    spec_path, stale = stale_spec(tmp_path)
+    published = stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    asked = stub_gate(monkeypatch, "block", ["desired.manifest-sha256", "attestation.human.expired"])
+
+    code = evidence.main(refresh_argv(spec_path, tmp_path, "--commit"))
+
+    document = json.loads(capsys.readouterr().out)
+    assert code == 2
+    assert document["status"] == "block"
+    assert "desired.manifest-sha256" in document["error"]
+    assert "attestation.human.expired" in document["error"]
+    assert "--acknowledge-gate-block" in document["error"]
+    assert spec_path.read_text(encoding="utf-8") == stale
+    assert asked == [str(spec_path)]
+    assert published == []  # refused before paying for a rebuild
+
+
+def test_refresh_anchor_refusal_previews_blocks_and_reports_the_total(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """A refusal nobody reads teaches nothing.
+
+    The real gate returns ~48 codes on a cold spec; splicing all of them into one
+    line produces a wall the operator scrolls past on the way to the override.
+    Preview a few, state the true total, and name where the rest live.
+    """
+    spec_path, stale = stale_spec(tmp_path)
+    codes = [f"claim.metadata.surface-{index:02d}" for index in range(20)]
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "block", codes)
+
+    code = evidence.main(refresh_argv(spec_path, tmp_path, "--commit"))
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert code == 2
+    assert codes[0] in error
+    assert codes[-1] not in error  # truncated, not dumped
+    assert "20 blocks" in error  # the count is the gate's, not the preview's length
+    assert "status --spec" in error  # and the full list is one named command away
+    assert spec_path.read_text(encoding="utf-8") == stale
+
+
+def test_refresh_anchor_commit_with_acknowledgement_writes(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """The escape hatch exists, is explicit, and writes down what it silenced.
+
+    The write destroys its own evidence: afterwards nothing on disk separates a
+    override of one block from an override of forty-eight. So the gate is still
+    consulted here — it just no longer decides — and its codes land in the
+    report, which is the only place that record can still exist.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    stub_bundle(monkeypatch, manifest_bytes)
+    asked = stub_gate(monkeypatch, "block", ["desired.manifest-sha256", "urls.missing"])
+
+    code = evidence.main(
+        refresh_argv(spec_path, tmp_path, "--commit", "--acknowledge-gate-block")
+    )
+
+    document = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert document["status"] == "written"
+    assert document["acknowledgedGateBlock"] is True
+    assert document["gateCheck"] == "acknowledged"
+    assert document["gateBlocks"] == ["desired.manifest-sha256", "urls.missing"]
+    assert json.loads(spec_path.read_text(encoding="utf-8"))["target"][
+        "desiredManifestSHA256"
+    ] == sha(manifest_bytes)
+    assert asked == [str(spec_path)]  # observed, not obeyed
+
+
+def test_refresh_anchor_acknowledgement_survives_an_unusable_gate(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """Observing the blocks must not quietly become a second gate.
+
+    The override is for the case where the gate cannot be satisfied, and that
+    includes the case where it cannot be run at all. A null record says "nobody
+    looked" — which is worse than a list, and still better than a refusal that
+    leaves the operator with no path at all.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    manifest_bytes = b'{"schema":"kg.app_review.submission.v1"}\n'
+    stub_bundle(monkeypatch, manifest_bytes)
+
+    def unusable_gate(spec_path, workspace_root):
+        raise evidence.EvidenceError("gate.report.invalid")
+
+    monkeypatch.setattr(evidence, "evaluate_gate", unusable_gate)
+
+    code = evidence.main(
+        refresh_argv(spec_path, tmp_path, "--commit", "--acknowledge-gate-block")
+    )
+
+    document = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert document["status"] == "written"
+    assert document["gateCheck"] == "acknowledged"
+    assert document["gateBlocks"] is None
+    assert json.loads(spec_path.read_text(encoding="utf-8"))["target"][
+        "desiredManifestSHA256"
+    ] == sha(manifest_bytes)
+
+
+def test_refresh_anchor_refuses_an_acknowledgement_that_writes_nothing(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """Without --commit there is no block being acknowledged, only a miscount.
+
+    `acknowledgedGateBlock: true` on a dry-run would make any later tally of
+    "how often did we override the gate" wrong in the direction that flatters us.
+    """
+    spec_path, stale = stale_spec(tmp_path)
+    published = stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    asked = stub_gate(monkeypatch, "pass", [])
+
+    code = evidence.main(refresh_argv(spec_path, tmp_path, "--acknowledge-gate-block"))
+
+    document = json.loads(capsys.readouterr().out)
+    assert code == 2
+    assert "anchor.acknowledge-without-commit" in document["error"]
+    assert spec_path.read_text(encoding="utf-8") == stale
+    assert published == []
+    assert asked == []
+
+
+@pytest.mark.parametrize("status", ["block", "warn", "", "unknown-future-verdict"])
+def test_refresh_anchor_commit_refuses_every_verdict_that_is_not_pass(
+    tmp_path: Path, monkeypatch, status: str
+):
+    """Fail-closed on the verdict, not open on everything the gate hasn't said yet.
+
+    An `!= "block"` test would pass today and open a write path the first time
+    the gate learns a fourth verdict word.
+    """
+    spec_path, stale = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, status, [])
+
+    with pytest.raises(evidence.EvidenceError, match=r"anchor\.gate-blocked"):
+        evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert spec_path.read_text(encoding="utf-8") == stale
+
+
+def test_refresh_anchor_commit_refuses_when_the_gate_cannot_be_evaluated(
+    tmp_path: Path, monkeypatch
+):
+    """A gate that cannot answer is not a gate that said yes."""
+    spec_path, stale = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+
+    def unusable_gate(spec_path, workspace_root):
+        raise evidence.EvidenceError("gate.execution:1")
+
+    monkeypatch.setattr(evidence, "evaluate_gate", unusable_gate)
+
+    with pytest.raises(evidence.EvidenceError, match=r"gate\.execution:1"):
+        evidence.refresh_desired_anchor(spec_path, commit=True, **anchor_kwargs(tmp_path))
+
+    assert spec_path.read_text(encoding="utf-8") == stale
+
+
+def test_refresh_anchor_refusal_previews_the_block_the_write_would_erase(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """The anchor's own block leads the preview regardless of the gate's order.
+
+    Today `desired.*` happens to be emitted first, so a naive head-of-list
+    preview shows it by luck. Insert one new check ahead of it and the refusal
+    would preview six codes that have nothing to do with what is being written.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    late = [f"journey.surface-{index:02d}.missing" for index in range(8)]
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "block", [*late, "desired.manifest-sha256"])
+
+    code = evidence.main(refresh_argv(spec_path, tmp_path, "--commit"))
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert code == 2
+    # Anchor block first, then the rest in the order the gate emitted them.
+    assert error.startswith(f"anchor.gate-blocked:desired.manifest-sha256,{late[0]},{late[1]}")
+    assert late[-1] not in error
+
+
+def test_refresh_anchor_refusal_names_only_the_block_a_write_could_erase(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """Do not tell the operator that 48 blocks are about to vanish.
+
+    Writing the spec can only clear `desired.manifest-sha256`
+    (ops/app_review_gate.py:988); the rest are unaffected. A warning that
+    overstates by 47 teaches the reader to discount the next one.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "block", ["desired.manifest-sha256", "urls.missing"])
+
+    evidence.main(refresh_argv(spec_path, tmp_path, "--commit"))
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "would erase the desired.manifest-sha256 block" in error
+    assert "would erase them" not in error
+
+
+def test_refresh_anchor_refusal_repeats_the_workspace_root_it_was_given(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """The suggested `status` command must evaluate the same workspace.
+
+    `status --workspace-root` defaults to the cwd, so a refusal that omits the
+    root hands the operator a command that inspects a different world than the
+    one that just refused them.
+    """
+    spec_path, _ = stale_spec(tmp_path)
+    stub_bundle(monkeypatch, b'{"schema":"kg.app_review.submission.v1"}\n')
+    stub_gate(monkeypatch, "block", ["desired.manifest-sha256"])
+
+    evidence.main(refresh_argv(spec_path, tmp_path, "--commit"))
+
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert f"--workspace-root {ROOT}" in error
 
 
 def test_materialize_tracked_file_refuses_path_absent_at_commit(tmp_path: Path):

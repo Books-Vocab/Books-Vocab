@@ -5,7 +5,9 @@ Network scope is HTTPS GET only.  The tool never writes App Store Connect, and
 writes locally only when ``--commit`` is explicit.  Note that ``refresh-anchor``
 is the one subcommand whose ``--commit`` writes the *spec* rather than evidence:
 the spec is the baseline evidence is compared against, so that write moves the
-thing that judges, not the thing being judged.
+thing that judges, not the thing being judged.  That write therefore evaluates
+the gate first and refuses while it is red; ``--acknowledge-gate-block`` is the
+named, reported override, not a quieter default.
 """
 
 from __future__ import annotations
@@ -38,6 +40,11 @@ PROJECT_FILE_REL = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
 _REGULAR_FILE_MODES = {"100644", "100755"}
 _ANCHOR_FIELD = "desiredManifestSHA256"
 _ANCHOR_RE = re.compile(r'("desiredManifestSHA256"\s*:\s*)"([0-9a-f]{64})"')
+# A cold spec blocks on ~48 codes at once.  Splicing all of them into one refusal
+# is the same as printing none: the operator scrolls past it to the override.
+_GATE_BLOCK_PREVIEW = 6
+# The only block a spec write can clear (ops/app_review_gate.py:988).
+_ANCHOR_BLOCK_CODE = "desired.manifest-sha256"
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _PRODUCER_TYPES = {
@@ -608,9 +615,69 @@ def _write_text_atomically(path: Path, text: str) -> None:
     os.replace(staged, path)
 
 
+def _gate_block_codes(report: dict[str, Any]) -> list[str]:
+    return [
+        block["code"] for block in report.get("blocks") or []
+        if isinstance(block, dict) and block.get("code")
+    ]
+
+
+def _refuse_if_gate_blocks(spec_path: Path, workspace_root: Path) -> None:
+    """Refuse to move the anchor while the gate that reads it is red.
+
+    Re-measuring an anchor and erasing a block are the same keystrokes, and only
+    the gate's current colour tells them apart: green means the spec is being
+    re-baselined from a state everyone agrees is good, red means the one thing
+    that noticed the drift is about to be overwritten by the drift itself.
+
+    Anything that is not an explicit pass refuses, including a gate that could
+    not answer: a verdict word this code has never seen must not read as consent.
+
+    The refusal quotes the gate's own block codes, anchor-related ones first.  A
+    generic "gate is blocking" leaves the operator to go look up what they were
+    about to erase, and an operator who has to go looking reaches for the
+    override instead; a preview ordered by the gate's own emission order shows
+    the relevant code only by luck.
+    """
+    report = evaluate_gate(spec_path, workspace_root)
+    verdict = report.get("verdict") or {}
+    if verdict.get("status") == "pass":
+        return
+    codes = _gate_block_codes(report)
+    # Stable sort: the anchor's own block leads, everything else keeps gate order.
+    ordered = sorted(codes, key=lambda code: not code.startswith("desired."))
+    named = ",".join(ordered[:_GATE_BLOCK_PREVIEW]) or str(verdict.get("status") or "unknown")
+    raise EvidenceError(
+        f"anchor.gate-blocked:{named} ({len(codes)} blocks total — "
+        f"`app_review_evidence.py status --spec {spec_path} "
+        f"--workspace-root {workspace_root}` lists them all. "
+        f"Writing the anchor would erase the {_ANCHOR_BLOCK_CODE} block among "
+        "them and change nothing else; confirm the bundle change was intended, "
+        "then re-run with --acknowledge-gate-block)"
+    )
+
+
+def _observe_gate_blocks(spec_path: Path, workspace_root: Path) -> list[str] | None:
+    """Record what an acknowledged write is about to silence, without gating on it.
+
+    The write destroys its own evidence: once the anchor moves, nothing on disk
+    separates an override of one block from an override of forty-eight, so this
+    report is the only place that record can still exist.
+
+    It must not become a second gate, though.  The override exists for the case
+    where the gate cannot be satisfied, and that includes the case where it
+    cannot be run — hence ``None`` ("nobody looked") rather than a refusal.
+    """
+    try:
+        return _gate_block_codes(evaluate_gate(spec_path, workspace_root))
+    except Exception:  # noqa: BLE001 — observation is best-effort by construction
+        return None
+
+
 def refresh_desired_anchor(
     spec_path: Path, *, workspace_root: Path, profile_file: Path,
     render_output_dir: Path, fixed_clock: str, locale: str, commit: bool,
+    acknowledge_gate_block: bool = False,
 ) -> dict[str, Any]:
     """Recompute target.desiredManifestSHA256 from a rebuilt bundle and write it back.
 
@@ -621,6 +688,12 @@ def refresh_desired_anchor(
     The value is measured from a bundle published into a temp directory — the
     same bytes the gate hashes — rather than derived from the returned manifest,
     so the number written back is one that was actually observed on disk.
+
+    A committing refresh is gated on the gate: see ``_refuse_if_gate_blocks``.
+    The check runs before the rebuild rather than beside the write, so the
+    dangerous case is the cheap one to be told about — the cost of that ordering
+    is that a refresh which would have been a no-op is refused too, since
+    whether it moves anything is not knowable before the rebuild.
     """
     spec = _load(spec_path)
     spec_text = spec_path.read_text(encoding="utf-8")
@@ -628,6 +701,23 @@ def refresh_desired_anchor(
     # alone, so decide them now: a spec this function could never rewrite should
     # not cost a full bundle rebuild to discover that.
     rewrite_anchor(spec_text, "0" * 64)
+    gate_blocks: list[str] | None = None
+    if not commit:
+        # Nothing is being written, so there is no block to acknowledge; letting
+        # the flag through would make any later tally of overrides count dry-runs.
+        if acknowledge_gate_block:
+            raise EvidenceError(
+                "anchor.acknowledge-without-commit (--acknowledge-gate-block "
+                "overrides a refusal that only --commit can trigger)"
+            )
+        gate_check = "not-required"
+    elif acknowledge_gate_block:
+        gate_check = "acknowledged"
+        gate_blocks = _observe_gate_blocks(spec_path, workspace_root)
+    else:
+        _refuse_if_gate_blocks(spec_path, workspace_root)
+        gate_check = "pass"
+        gate_blocks = []
     with tempfile.TemporaryDirectory(prefix="kg-app-review-anchor-") as raw_tmp:
         bundle_dir = Path(raw_tmp) / "bundle"
         produce_desired_bundle(
@@ -653,6 +743,9 @@ def refresh_desired_anchor(
         "new": measured,
         "changed": changed,
         "commit": commit,
+        "acknowledgedGateBlock": acknowledge_gate_block,
+        "gateCheck": gate_check,
+        "gateBlocks": gate_blocks,
         "status": "current" if not changed else ("written" if commit else "dry-run"),
     }
 
@@ -801,6 +894,17 @@ def parser() -> argparse.ArgumentParser:
         "--commit", action="store_true",
         help="write the spec; without it the old->new comparison is printed and nothing is written",
     )
+    refresh.add_argument(
+        "--acknowledge-gate-block", action="store_true",
+        help=(
+            "write even though the App Review gate is blocking. --commit otherwise "
+            "evaluates the gate first and refuses while it is red, because writing "
+            "the anchor erases the very block that noticed the drift. This flag is a "
+            "human assertion that the bundle change was intended: it strips the "
+            "gate of its veto but still records the blocks it was overriding in the "
+            "report's gateBlocks. Requires --commit"
+        ),
+    )
     urls = sub.add_parser("urls")
     urls.add_argument("--spec", type=Path, required=True)
     urls.add_argument("--observed-at")
@@ -875,6 +979,7 @@ def main(argv: list[str] | None = None) -> int:
                 profile_file=args.profile.resolve(),
                 render_output_dir=args.render_output_dir.resolve(),
                 fixed_clock=args.fixed_clock, locale=args.locale, commit=args.commit,
+                acknowledge_gate_block=args.acknowledge_gate_block,
             )
             print(json.dumps(document, ensure_ascii=False, sort_keys=True))
             return 0
