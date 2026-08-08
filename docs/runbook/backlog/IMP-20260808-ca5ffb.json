@@ -1,0 +1,20 @@
+{
+  "acceptance": "SKILL 裡有一段可據以計算批次規模的規則且含推導（非魔術數字）；review_audit.sh 數得出帶 Reviewed-by: self 的 commit",
+  "acceptance_cmd": "bash -c \"set -e; grep -q Concurrent .claude/skills/worktree-flow/SKILL.md || grep -q 併發上限 .claude/skills/worktree-flow/SKILL.md; ./ops/tests/test_review_audit.sh\"",
+  "brief": "一次派太多助手時，它們各自請的審查員會超過系統上限而被拒絕，於是有些工作根本沒人審過，而規定卻要求每件都要審。",
+  "category": "arch",
+  "date": "2026-08-08",
+  "detail": "併發 subagent 有一個硬上限（實測訊息：`Concurrent subagent limit reached (20)`，且工具明示 `Do not retry`）。鐵律 4 要求每個受派者完成一個可交付單位時派 `code-reviewer`——所以一個 N 條的批次在 review 階段需要 **N（受派者）+ 併發中的 reviewer 數**個 slot。N=15 時必然撞頂。\n\n2026-08-08 第二輪實測，兩個受派者**獨立**回報同一件事：\n- `ios-test-method-names`：前景派了兩次，兩次都被擋，三顆 commit **完全沒有經過獨立 review**，它具名寫進 trailer（`Reviewed-by: self` 加未驗項）而不是假裝審過。\n- `worktree-doc-warning`：第一輪 review 成功（BLOCK×3 + nit×4 全數採納），但**修正後拿不到第二輪**，它把這件事列為「本次唯一真正的妥協」。\n\n代價不是慢，是**鐵律 4 在批次規模上有一個沒人知道的天花板**：批次越大，越多受派者的工作沒被審過，而且失敗方式是「工具明示不得重試」——受派者只能自報未審，或（更糟）忘記自報。\n\n第二個受派者的處置是對的：具名申報而非硬幹。但那意味著**批次規模的上限應該由這個數字反推**，而不是由「我想派幾個」決定。",
+  "fix_site": ".claude/skills/worktree-flow/SKILL.md「批次交回狀態」段 + ops/review_audit.sh（數 Reviewed-by: self）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-ca5ffb",
+  "plan": "這條的產出**不是程式碼，是一條可依循的批次規模規則**，寫進 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」段。\n\n**要先量到的事實**（動工第一步，不要憑本文的數字）：\n1. 併發上限的實際值與計算方式——它算的是「同時存活的 subagent」還是「同一父層的」？受派者與它派出的 reviewer 是否都佔 slot？\n2. 撞頂時的行為：是拒絕（明示不得重試）還是排隊？實測訊息是前者。\n3. 協調者本身佔不佔 slot。\n\n**再據此寫規則**。可能的形狀（依量測結果選一，並在 resolution 寫下為何）：\n- (a) **批次規模上限 = ⌊上限 / 2⌋ 附近**（每個受派者峰值佔 2 個 slot：自己 + reviewer），並在 SKILL 裡寫明這個推導，讓下一個協調者能隨上限變動自己重算，而不是背一個魔術數字。\n- (b) **review 移出受派者**：受派者只 commit，由整合者在收尾時**序列**派 review。這與「批次交回狀態」的既有邏輯一致（落地權在整合者），而且序列 review 反而更符合鐵律 4 的「逐項、不批次」。代價是整合者變成序列瓶頸——第一輪已經證明那是真實成本。\n- (c) 受派者撞頂時**必須**具名申報並在 trailer 寫 `Reviewed-by: self` 加未驗項（今天已有人自發這樣做），由整合者在收尾時補派。\n\n**傾向 (a)+(c) 並行**：(a) 讓多數批次根本不撞頂，(c) 讓撞頂時的失敗是可清點的而非靜默的。(b) 留作大批次的選項但不設為預設。\n\n**明確不做**：不要重試（工具明示不得重試），也不要自己實作排隊等待——那會把一個明確的拒絕變成一個看不見的停頓。\n\n**驗收**：SKILL 裡有一段可據以計算的規則（含推導，不是魔術數字）；`review_audit.sh` 能數得出帶 `Reviewed-by: self` 的 commit（若今天數不出來，那是本票的一部分）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "量出上限的實際算法，據此在流程說明裡寫一條可推導的批次規模規則；不動程式碼。",
+  "severity": "high",
+  "source": "2026-08-08 第二輪 dogfood：兩個受派者獨立回報 Concurrent subagent limit reached (20)，其中一個的三顆 commit 完全沒被 review",
+  "status": "triaged",
+  "stream": "IMP"
+}

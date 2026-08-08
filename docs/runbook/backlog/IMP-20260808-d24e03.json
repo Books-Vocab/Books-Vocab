@@ -1,0 +1,20 @@
+{
+  "acceptance": "鐵律 5 本文區分協調者與子 agent 兩種做法並含可照抄的輪詢形狀；所有提到 code-reviewer 的 .claude/agents/*.md 同步",
+  "acceptance_cmd": "python3 -c \"\nimport glob,sys\nt=open(\\\"CLAUDE.md\\\").read(); i=t.index(\\\"5. **長時操作背景執行\\\"); blk=t[i:i+2200]\nf=[]\nif \\\"子 agent\\\" not in blk and \\\"受派\\\" not in blk: f.append(\\\"law5-no-scope-clause\\\")\nif \\\"until\\\" not in blk: f.append(\\\"law5-no-polling-shape\\\")\nbad=[p for p in glob.glob(\\\".claude/agents/*.md\\\") if \\\"code-reviewer\\\" in open(p).read() and \\\"前景\\\" not in open(p).read()]\nif bad: f.append(\\\"agents-missing:\\\"+\\\",\\\".join(bad))\nsys.exit(\\\"FAIL \\\"+\\\";\\\".join(f)) if f else print(\\\"OK\\\")\n\"",
+  "brief": "被派去做事的助手把耗時工作丟到背景後就停住了，要有人主動戳它才會繼續；沒被戳到的會一直停著，從外面看和還在做一模一樣。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "子 agent **無法自我喚醒**。它把耗時工作背景化（照鐵律 5）之後，這一輪就結束了；背景工作**會**完成、結果**也會**保留，但它要等協調者用 SendMessage 戳一下才收得到。鐵律 5 本文寫「完成由 notification 觸發」——那個 notification 送到的是**協調者**，不是它。\n\n2026-08-08 第二輪 15 條並行，**至少五條**停在這個地方：\n- `app-auth-explore` 連續兩次交回「Monitor 已 armed，等它通知我」（它自己另外抓到 `pgrep -f` 匹配到自身命令列的自我匹配問題——儀器判斷是對的，壞的是等待模型）。\n- `ios-fixture-crash` 交回「pid 83648 跑了 5 分鐘、預期 8.5 分鐘，等它結束」。\n- `worktree-doc-warning`、`integrate-primitive`、`ios-baseline-unversion` 各交回「review in flight」。\n\n**這不是資料遺失**（前一張票 `IMP-20260808-f67885` 誤判為斷頭，已由受派者當面糾正並判 MISSTATED）：三次被喚醒後 review 結果都完整回來，其中一次還帶 BLOCK×3。**代價是協調成本**——每個停住的受派者都要協調者發現並戳一次；批次規模越大，這個成本越線性上升，而**沒被發現的就無限期停在那裡**，從外面看起來和「還在工作」一模一樣。\n\n可行的形狀存在且便宜：在同一個 turn 內阻塞輪詢（`until [ -f <verdict> ] || ! kill -0 <pid>; do sleep 20; done`）。它同時滿足鐵律 5 的真正立意（可見進度、不靜默）與子 agent 的現實（結果必須在本 turn 內取得）。今天是靠協調者逐一發訊補救的。",
+  "fix_site": "CLAUDE.md 鐵律 5 + .claude/agents/*.md + .claude/skills/kg-receipt/SKILL.md",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-d24e03",
+  "plan": "給鐵律 5 加**適用範圍**，寫成「兩種呼叫者的兩種正確做法」，不是「一條規則加一個例外」——後者會讓下一個讀者以為子 agent 可以不守鐵律 5，那是錯的：不靜默、可見進度、主線不阻塞三件事對子 agent 一樣成立，變的只是**誰是主線**。\n\n**改哪裡**\n1. `CLAUDE.md` 鐵律 5 本文：加一段講明——協調者背景化並靠 notification 收工；**子 agent 收不到那個 notification**（它送到協調者），所以子 agent 必須在同一個 turn 內阻塞輪詢到拿到 rc。附一個可照抄的形狀：\n   ```\n   until [ -f <verdict-file> ] || ! kill -0 <pid> 2>/dev/null; do sleep 20; done\n   ```\n2. `.claude/agents/*.md`：逐份確認（**不要只改記得的那幾份**，這個 repo 今天已被「不指名檔案的宣稱 grep 抓不到」咬過一次）。\n3. `.claude/skills/kg-receipt/SKILL.md` 的收尾段。\n\n**與 `IMP-20260808-ca5ffb` 的邊界**：那張講的是併發 slot 上限讓 review 拿不到；本張講的是等待模型。兩張都會影響「受派者怎麼收工」，動工時互相讀過，但**不要合併**——一張是資源上限、一張是控制流，修法位置與判準都不同。\n\n**明確不做**：不要動鐵律 5 對協調者的語意（那條是對的且有 `[machine]` 執行點）；不要試圖用工具強制（prompt 層約束，硬做只會多一個假守衛）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在總規範加一段講明兩種呼叫者的兩種做法並附可照抄的等待寫法，逐份同步角色說明；不動程式碼。",
+  "severity": "med",
+  "source": "2026-08-08 第二輪 15 條並行中至少五條停在同一處；前身 IMP-20260808-f67885 因把協調成本誤寫成資料遺失被判 MISSTATED",
+  "status": "triaged",
+  "stream": "IMP"
+}
