@@ -2713,6 +2713,10 @@ def build_parser() -> argparse.ArgumentParser:
             "safe — that cannot be done, and a tool that pretended to would be "
             "selling reassurance. So a bare invocation is REFUSED: narrow it with "
             "--filter / --limit, look first with --dry-run, or say --all.\n\n"
+            "When a selected criterion exits with an unexpected code, the criterion "
+            "is executed twice: the second run uses `bash -x`, and the report names "
+            "the last traced `failing_clause`. This is deliberate and can repeat "
+            "side effects.\n\n"
             "It writes nothing TO THE STORE: there is no --commit and no write path. "
             "What the criteria themselves do to your machine is their own business, "
             "which is what the paragraph above is about."),
@@ -3490,6 +3494,44 @@ def _execute_criterion(entry_id: str, cmd: str, timeout_seconds: float,
     return result.returncode, (result.stdout or "").strip()[-400:], elapsed
 
 
+def _trace_failed_clause(entry_id: str, cmd: str, timeout_seconds: float,
+                         progress_prefix: str) -> str:
+    """Re-run a failed criterion under bash tracing and name its last clause.
+
+    This is intentionally a second execution only on the failure path.  The
+    trace is evidence about which clause ran last; it is not folded into the
+    criterion's output tail, because stdout/stderr are the command's evidence
+    while the trace is the runner's attribution.
+    """
+    trace_token = "KG_ACCEPT_TRACE_" + hashlib.sha256(
+        f"{entry_id}\0{cmd}".encode("utf-8")).hexdigest()[:16] + ": "
+    trace_env = dict(os.environ)
+    trace_env["PS4"] = trace_token
+    result = run_streamed_command(
+        ["bash", "-x", "-c", cmd],
+        cwd=ROOT,
+        label_key="entry",
+        label=entry_id,
+        progress_prefix=f"{progress_prefix}-trace",
+        merge_stderr=False,
+        timeout_seconds=timeout_seconds,
+        env=trace_env,
+    )
+    if getattr(result, "timed_out", False):
+        return ""
+    trace = result.stderr or ""
+    lines = []
+    for line in trace.splitlines():
+        marker = line.find(trace_token)
+        if marker >= 0:
+            lines.append((marker, line[marker + len(trace_token):].strip()))
+    if not lines:
+        return ""
+    deepest = max(marker for marker, _ in lines)
+    return next(command for marker, command in reversed(lines)
+                if marker == deepest)
+
+
 def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
     """The closing gate's reading of a criterion: did it hold, yes or no."""
     print(f"[backlog][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
@@ -3498,8 +3540,11 @@ def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
     ok = rc == expect_rc
     print(f"[backlog][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
           f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s", file=sys.stderr, flush=True)
+    failing_clause = ("" if ok or rc is None else _trace_failed_clause(
+        entry_id, cmd, ACCEPTANCE_TIMEOUT_SECONDS, "[backlog][acceptance]"))
     return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": expect_rc,
-            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail}
+            "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail,
+            "failing_clause": failing_clause}
 
 
 def _acceptance_gate(entry: dict, commit: bool) -> dict:
@@ -3551,6 +3596,8 @@ def _acceptance_refusal(result: dict) -> str:
             f"gone; the command the entry nominated to prove that says otherwise.")
     if result.get("output_tail"):
         text += f"\n  last output: {result['output_tail']}"
+    if result.get("failing_clause"):
+        text += f"\n  failing clause: {result['failing_clause']}"
     return text
 
 
@@ -3596,7 +3643,10 @@ AUDIT_CAVEAT = (
     "And `red` is not a clean bill of health: an rc this tool cannot interpret "
     "(grep's 2 for a missing file, pytest's 5 for a filter that selected nothing) "
     "lands there too, so a criterion that stopped testing its subject is invisible "
-    "here whenever it fails for the wrong reason rather than passing for one."
+    "here whenever it fails for the wrong reason rather than passing for one. "
+    "For an unexpected rc, the runner executes the criterion a second time under "
+    "`bash -x` and records the last traced command as `failing_clause`; this is "
+    "diagnostic evidence, not a new verdict, and may repeat side effects."
 )
 
 # Return codes the SHELL produces when it could not run what it was given. Neither
@@ -3666,7 +3716,11 @@ def _audit_one(entry: dict, timeout_seconds: float) -> tuple[str, dict]:
         # shell writes these codes when it could not run what it was named, so they
         # are not evidence about the defect, and an expectation built on one is an
         # expectation that "the command stays missing".
-        return "error", {**row, "reason": _SHELL_CANNOT_RUN[rc]}
+        return "error", {**row, "reason": _SHELL_CANNOT_RUN[rc],
+                           "failing_clause": ""}
+    if rc != expect_rc:
+        row["failing_clause"] = _trace_failed_clause(
+            entry["id"], cmd, timeout_seconds, "[backlog][audit]")
     return ("green" if rc == expect_rc else "red"), row
 
 
@@ -3740,7 +3794,8 @@ def _cmd_audit_criteria(args) -> int:
             buckets["error"].append(
                 _audit_row(entry, cmd=cmd,
                            expect_rc=int(entry.get("acceptance_expect_rc") or 0),
-                           rc=None, reason=unrunnable, elapsed_s=0.0, output_tail=""))
+                           rc=None, reason=unrunnable, elapsed_s=0.0,
+                           output_tail="", failing_clause=""))
         else:
             runnable.append(entry)
 
@@ -3791,6 +3846,8 @@ def _cmd_audit_criteria(args) -> int:
         for row in rows:
             extra = row.get("reason") or f"rc={row.get('rc')} expected={row.get('expect_rc')}"
             print(f"  {row['id']:<24} {extra:<34} {row['detail'][:60]}")
+            if row.get("failing_clause"):
+                print(f"    failing_clause: {row['failing_clause']}")
     print(f"\n{selected} selected ({AUDIT_POPULATION}), "
           f"{0 if args.dry_run else total} run"
           + (" (DRY RUN — nothing was executed, so every bucket above is empty for "
