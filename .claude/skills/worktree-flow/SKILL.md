@@ -67,6 +67,13 @@ generated 檔時 `catchup` 自動重生解掉**（payload `regenerated`），其
 （那是真的決定）。rebase 完 HEAD 就動了，所以**之後一定要重跑 `gate`**。
 
 **c3. 多條工作樹同時要落地 → 用 `land`，不要手動排 gate/cutover**：
+
+> **適用範圍（先讀這句，不然會做反）**：本段講的是**彼此獨立的 session**——各自帶著自己的
+> intent、各自決定何時落地。**同一批 fan-out 出去的受派者不適用**：那批的落地權在整合者，
+> 受派者做到 commit 為止就停（見下方「批次交回狀態」，那段是契約正本）。兩者都叫「多條工作樹
+> 同時在跑」，處置**相反**——搞混的代價不是效率而是正確性：各自 land 的批次拿不到「N 份放
+> 一起還綠不綠」那個答案，而 2026-08-06 十一條分支的實測裡，整合後 review 找出的五筆 BLOCK
+> 每一筆在自己分支的 gate 下都是綠的。
 ```
 <path>/ops/worktree_orchestrate.py land --worktree <path> --json           # dry-run：目前排隊多深
 <path>/ops/worktree_orchestrate.py land --worktree <path> --commit --json  # 取號 → catchup → gate → cutover
@@ -172,6 +179,7 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 `gate` / `cutover` / `sync` / `deploy` 屬於**整合者**——握有整批視野的那個 session。
 task brief 的「邊界」一欄要寫明這件事，並要求回報分支名與工作樹路徑。單一受派者、單一工作樹、
 非批次的任務，可讓它自己跑 `gate` 自驗，但 `cutover` 一律留給整合者。
+**因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 
 理由不是階級，是資訊：
 
