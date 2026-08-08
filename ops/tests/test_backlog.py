@@ -2160,6 +2160,22 @@ def test_reanchor_human_output_reports_the_window_it_searched(tmp_path, monkeypa
     assert "no orphaned fixed_by shas" in out
 
 
+def test_reanchor_result_shape_is_stable_with_or_without_orphans(tmp_path, monkeypatch):
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, _landed = _git_repo(repo)
+    with_orphan = repo / "with-orphan"
+    entry = _add(with_orphan, detail="result shape fixture")
+    _force_fixed_by(with_orphan, entry["id"], [orphan])
+
+    without_orphan = tmp_path / "without-orphan"
+    _add(without_orphan, detail="empty result shape fixture")
+    with_result = BACKLOG.reanchor_store(with_orphan, repo=repo)
+    without_result = BACKLOG.reanchor_store(without_orphan, repo=repo)
+
+    assert set(with_result) == set(without_result)
+
+
 # --------------------------------------------------------------------------
 # re-verification as a mechanism, not a ritual (IMP-20260805-2834b2)
 # --------------------------------------------------------------------------

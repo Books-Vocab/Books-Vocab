@@ -4274,6 +4274,8 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
 
     The search window is a bound, and a bound that is not reported reads as
     "searched everything". `searched` is in the result for that reason.
+    Both the orphan and no-orphan return paths keep the same result keys; a
+    field that appears only when there is work is another silent channel.
     """
     state = make_commit_state(repo)
     if state is None:
@@ -4292,7 +4294,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
         if orphans:
             targets.append((payload, orphans))
     if not targets:
-        return {"plan": [], "searched": 0, "search_depth": search_depth,
+        return {"plan": [], "searched": 0, "scanned": 0, "search_depth": search_depth,
                 "window_exhausted": None, "main_depth": None}
 
     # HEAD, not `main` — the SAME reference frame `commit_state` calls `ok`.
