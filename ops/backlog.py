@@ -1073,6 +1073,7 @@ def list_entries(
     groomed: bool = False,
     ungroomed: bool = False,
     acceptance_manual: bool = False,
+    grep: str | None = None,
 ) -> list[dict]:
     if groomed and ungroomed:
         raise BacklogError("--groomed and --ungroomed are mutually exclusive")
@@ -1099,6 +1100,36 @@ def list_entries(
         # this" is a COUNT somebody can look at, not an absence nobody notices —
         # which is what `acceptance` itself had been for its whole life.
         hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
+    if grep:
+        # LAST in the chain, and a filter rather than a subcommand of its own:
+        # the question is never "does this text appear in the store", it is
+        # "does it appear in something still open / already groomed". Only a
+        # filter can be asked that; a `search` subcommand would have to regrow
+        # every flag above it before it could answer, and until it did, callers
+        # would keep writing the throwaway scan scripts that IMP-20260807-c66d97
+        # was filed for.
+        #
+        # BacklogError, not a leaked re.error: `main()` catches
+        # (BacklogError, ValueError, EntryNotFound) and nothing else, so an
+        # unguarded compile turns a typo'd bracket into a traceback about
+        # `sre_parse` — a true statement about the wrong subject.
+        try:
+            pattern = re.compile(grep, re.IGNORECASE)
+        except re.error as exc:
+            raise BacklogError(f"--grep 不是合法的正規表示式: {exc}") from exc
+        # Four fields, not just `detail`. An entry can be an exact match for the
+        # work about to start while its detail never names the file: "is there a
+        # neighbour ticket on ops/foo.py" is answered by `fix_site`, and "did
+        # someone already work out the fix" by `plan` / `resolution`.
+        #
+        # Searched one field at a time rather than joined into one blob: with a
+        # "\n".join the separator IS whitespace, so `alpha\s+beta` matched an
+        # entry whose detail ends in "alpha" and whose plan starts with "beta"
+        # — a phrase no field contains, returned by the tool whose whole job is
+        # answering "has this already been filed" (measured, not theorised).
+        fields = ("detail", "resolution", "plan", "fix_site")
+        hits = [p for p in hits
+                if any(pattern.search(str(p.get(f) or "")) for f in fields)]
     return sorted(hits, key=_sort_key)
 
 
@@ -1993,6 +2024,15 @@ def build_parser() -> argparse.ArgumentParser:
              "--unverified: never-checked is not the same finding as checked-and-aged",
     )
     p_list.add_argument("--stale-days", type=int, default=30, metavar="N")
+    p_list.add_argument(
+        "--grep", metavar="PATTERN",
+        help="only entries whose detail/resolution/plan/fix_site match this regex "
+             "(case-insensitive). THE FIRST THING TO RUN BEFORE FILING OR FIXING "
+             "ANYTHING: 170+ entries in, `is this already filed?` had no answer in "
+             "this tool, and the cost was a groomed spec rebuilt from scratch. "
+             "ANDs with every filter above, so `--grep X --status open` is the "
+             "narrow question worth asking",
+    )
     p_list.add_argument("--json", action="store_true")
 
     p_stage = sub.add_parser(
@@ -2976,6 +3016,7 @@ def _cmd_list(args) -> int:
         groomed=args.groomed,
         ungroomed=args.ungroomed,
         acceptance_manual=args.acceptance_manual,
+        grep=getattr(args, "grep", None),
     )
     # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
     # replaces had no writer on the release path, so it could only ever accumulate.
