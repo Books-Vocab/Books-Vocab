@@ -7,12 +7,16 @@ scope:
   - ios/BooksAndVocab/
   - ops/
   - lab/
-verified_against: 2b7aed975
+verified_against: d29eb11ec
 -->
 # Technical Reference Index
 
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
+
+## Review receipt exemption depth
+
+`ops/review_audit.sh` 的 `single-line-small-file` 不是只驗 trailer：工具會拒絕 merge commit、超過一行增刪、binary diff，以及新增行含規範性語彙；`trivial-typo` / `rename-only` / `format-only` / `generated-snapshot` 維持 trailer-only。`machine-repair` / `backlog-grooming` 仍由工具檢查只碰 `docs/runbook/backlog/*.json`。
 
 ### docs impact control
 
