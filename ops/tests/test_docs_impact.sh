@@ -330,3 +330,97 @@ grep -q '"id": "policy.safety"' "$tmpdir/explain_partial.json"
 grep -q '"match_type": "suppressed-partial"' "$tmpdir/explain_partial.json"
 grep -q '"excluded_paths": \[' "$tmpdir/explain_partial.json"
 grep -q '"ops/docs_lint.sh"' "$tmpdir/explain_partial.json"
+
+# --- IMP-20260805-e98982: --since must scan merge-base..HEAD, not <rev>..HEAD ---
+# Everything above drives --files, so no test ever exercised the --since git path.
+# Fixture is a real throwaway git repo under $tmpdir (the KG repo is never written to)
+# shaped like the KG norm: local main keeps moving while a worktree branch stays forked
+# behind it. Two-dot `<base>..HEAD` then reports the base branch's own commits as this
+# branch's changes (direction reversed); three-dot `<base>...HEAD` reports only what this
+# branch actually did. The base-side change must be a MODIFICATION of a file that already
+# exists at the merge base — an addition on the base side shows up as D in `base..HEAD`
+# and is dropped by --diff-filter=ACMR, so it would hide the leak.
+divergence_repo="$tmpdir/divergence"
+mkdir -p "$divergence_repo/docs"
+(
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+  cd "$divergence_repo"
+  git -c init.defaultBranch=main init -q .
+  git symbolic-ref HEAD refs/heads/main
+  git config user.email probe@example.test
+  git config user.name probe
+  git config commit.gpgsign false
+
+  cat >docs/registry.yml <<'YAML'
+version: 1
+description: "Minimal registry for the --since divergence fixture."
+
+documents:
+  - id: probe.doc
+    path: docs/probe.md
+    kind: reference
+    triggers:
+      - probe_changed
+    sources:
+      - feature_side.md
+
+  - id: leak.doc
+    path: docs/leak.md
+    kind: reference
+    triggers:
+      - leak_changed
+    sources:
+      - main_side.md
+YAML
+  printf 'v1\n' >main_side.md
+  printf 'v1\n' >feature_side.md
+  git add -A
+  git commit -qm "shared ancestor"
+
+  printf 'v2\n' >main_side.md
+  git commit -qam "main advances while the branch is open"
+
+  git checkout -q -b feature main~1
+  printf 'v2\n' >feature_side.md
+  git commit -qam "this branch's own work"
+
+  # A history sharing no ancestor with feature, for the no-merge-base case below.
+  git checkout -q --orphan unrelated
+  git commit -qm "unrelated root"
+  git checkout -q feature
+)
+
+(cd "$divergence_repo" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
+  "$ROOT/ops/docs_impact.py" --since main --json) >"$tmpdir/divergence.json"
+if grep -q '"main_side.md"' "$tmpdir/divergence.json"; then
+  echo "--since <rev> leaked the base branch's own commits into changed_paths; use <rev>...HEAD" >&2
+  exit 1
+fi
+# The ticket's actual complaint was spurious IMPACT rows, one layer downstream of
+# changed_paths. leak.doc sources main_side.md, so a leak fails at the symptom too.
+if grep -q '"id": "leak.doc"' "$tmpdir/divergence.json"; then
+  echo "--since leaked the base branch's own commits into IMPACT candidates" >&2
+  exit 1
+fi
+# Positive control: both leak checks above are vacuous unless --since still sees this
+# branch's real change, and changed_paths must hold exactly that one path.
+if [ "$(tr -d ' \n' <"$tmpdir/divergence.json" | grep -c '"changed_paths":\["feature_side.md"\]')" != "1" ]; then
+  echo "--since should report exactly this branch's own changed path" >&2
+  exit 1
+fi
+grep -q '"id": "probe.doc"' "$tmpdir/divergence.json"
+
+# Three-dot introduces a failure mode two-dot never had: with no common ancestor,
+# `git diff <rev>...HEAD` exits 128 with EMPTY stdout. Swallowed, that renders as
+# "no registry impacts" — a false green claiming nothing changed. Must fail closed.
+if (cd "$divergence_repo" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
+    "$ROOT/ops/docs_impact.py" --since unrelated --json) >"$tmpdir/orphan.out" 2>"$tmpdir/orphan.err"; then
+  echo "--since with no merge base must fail closed, not report an empty changeset" >&2
+  exit 1
+fi
+grep -q 'merge-base' "$tmpdir/orphan.err"
+
+# --help must teach the semantics the code implements, since `--since main` is the
+# natural thing to type and the old help actively taught the two-dot form.
+grep -q '\.\.\.HEAD' "$tmpdir/help.out"
+grep -q 'merge-base' "$tmpdir/help.out"

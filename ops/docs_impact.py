@@ -113,9 +113,18 @@ def changed_paths_since(base: str) -> list[str]:
     if not run_git(["rev-parse", "--verify", f"{base}^{{commit}}"], check=False).strip():
         raise SystemExit(f"ERROR --since 不是有效 commit: {base}")
 
+    # `<base>...HEAD` needs a merge-base; without one git exits 128 with EMPTY stdout,
+    # which would silently render as "no registry impacts". A valid commit is not
+    # evidence of shared history, so probe it separately and fail closed.
+    if not run_git(["merge-base", base, "HEAD"], check=False).strip():
+        raise SystemExit(
+            f"ERROR --since {base} 與 HEAD 無共同祖先,無法從 merge-base 起算。"
+            "--since 問的是「這條分支自己改了什麼」;要比對無關歷史請改用 --files。"
+        )
+
     output = "\n".join(
         [
-            run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{base}..HEAD"], check=False),
+            run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"], check=False),
             run_git(["diff", "--name-only", "--diff-filter=ACMR", "--cached"], check=False),
             run_git(["diff", "--name-only", "--diff-filter=ACMR"], check=False),
             run_git(["ls-files", "--others", "--exclude-standard"], check=False),
@@ -280,7 +289,11 @@ def print_human(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--since", help="Git base rev; scans <rev>..HEAD plus index/worktree changes.")
+    parser.add_argument(
+        "--since",
+        help="Git base rev; scans <rev>...HEAD (from the merge-base, so a base branch that "
+        "moved on is not counted as this branch's work) plus index/worktree changes.",
+    )
     parser.add_argument("--files", nargs="+", help="Explicit changed paths, for tests or scripted callers.")
     parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
