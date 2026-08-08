@@ -7,6 +7,9 @@
   "date": "2026-08-07",
   "detail": "render --commit 被 entry-loss 守衛擋下時，會按 stream 分流印出補救路徑，IMP 那條是 `import --from <view> --commit`。這條指令是死的：對真實 view 跑 import_legacy 得 {'imported': 0, 'problems': 164}，因為 render 出 12 欄而 parse_legacy_table 只認 8 欄（IMP-20260805-355016 刻意放棄 round-trip 之後的既有後果）。用 main 的 backlog.py + main 的 view 對照得 {'imported': 0, 'problems': 161}，確認不是 feat/tool-hardening 造成的。嚴重度在 2026-08-07 升高，因為 _refresh_view_if_canonical 讓大量新路徑（add / update --commit / verify --commit / reanchor / import）都可能走到這句話。遞一條跑得動卻救不回東西的指令，正是這個守衛存在時要避免的形狀（見它自己對 APP stream 的處理：明說 importer 讀不到、只能用 add 重建）。",
   "fix_site": "ops/backlog.py:3238-3241（render 的 entry-loss 守衛裡 IMP stream 的補救行）＋ ops/tests/test_backlog.py:1200 那條斷言",
+  "fixed_by": [
+    "ac56c513940b64d5d24f806aedad9b07f63dc1c5"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-3c1080",
@@ -16,6 +19,10 @@
   "scope": "改一句提示文字，連同釘住舊文字的那條測試一起改；不動資料格式，跑一次該工具的測試。",
   "severity": "med",
   "source": "adversarial review of feat/tool-hardening, 2026-08-07",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "bash -c 'test -f ops/backlog.py && ! grep -q \"lost IMP rows.*import --from\" ops/backlog.py && grep -q \"git checkout\" ops/backlog.py && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py'\n\nObserved before cutover: exit 0; 248 passed in 14.81s.\nFresh gate after commit ac56c5139: ops-pytest exit 0; 248 passed in 16.85s."
 }
