@@ -1,6 +1,6 @@
 {
-  "acceptance": "cwd=repo root：bash -c 'set -e; IOS_DIR=\"ios/BooksAndVocab\"; eval \"$(grep -E \"^ASYNC_FUNC=\" ops/gen_ios_baseline.sh)\"; echo \"ASYNC_FUNC=$ASYNC_FUNC\"; [ \"$ASYNC_FUNC\" -gt 0 ]; ! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md'",
-  "acceptance_cmd": "bash -c 'set -e; IOS_DIR=\"ios/BooksAndVocab\"; eval \"$(grep -E \"^ASYNC_FUNC=\" ops/gen_ios_baseline.sh)\"; echo \"ASYNC_FUNC=$ASYNC_FUNC\"; [ \"$ASYNC_FUNC\" -gt 0 ]; ! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md'",
+  "acceptance": "generator 的 stdout（不是磁碟副本）裡 async func 那一列非零；由 test_gen_ios_baseline.sh 的正控斷言承擔",
+  "acceptance_cmd": "bash ops/tests/test_gen_ios_baseline.sh",
   "acceptance_expect_rc": 0,
   "brief": "一份自動產生的 iOS 統計報告裡有個數字永遠是零，因為統計方式從一開始就抓錯，比對檢查也看不出來。",
   "category": "tool",
@@ -8,17 +8,22 @@
   "date": "2026-08-05",
   "detail": "`ops/gen_ios_baseline.sh:25` 統計 `async func`，但那不是合法的 Swift 語序（正確是 func x() async），所以該指標結構性恆為 0——committed 與重算輸出都是 0。這種「穩定地錯」的指標是等值型 drift check 抓不到的盲區：比對只會說兩邊一致，而兩邊一致地錯。與同輪那筆 generated 文檔缺 equality gate 是不同缺陷，故分開登記：那條是沒人檢查產物，本條是產物裡有個永遠不會變的假數字。",
   "fix_site": "ops/gen_ios_baseline.sh:25",
+  "fixed_by": [
+    "85a6e66a9"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-20260805-958999",
   "plan": "1) 現況核實（2026-08-05 於 HEAD c21dd8a58 實跑，行號皆為今天親自讀到的）：\n   - `ops/gen_ios_baseline.sh:25` 這一行全文是 `ASYNC_FUNC=$({ grep -r \"async func\" \"$IOS_DIR\" --include=\"*.swift\" 2>/dev/null || true; } | wc -l | tr -d ' ')`；實測 `grep -r \"async func\" ios/BooksAndVocab --include=*.swift | wc -l` = 0。Swift 的語序是 `func name(...) async`，字面「async func」在合法 Swift 裡不會出現，所以這個指標結構性恆為 0。\n   - committed 產物 `docs/snapshot/ios_baseline.md:49` 就是 `| async func | 0 |`（該檔今天共 49 行；:7 是 `verified_against: 3e0973170`）。\n2) 唯一的實作改動：把 `ops/gen_ios_baseline.sh:25` 整行換成\n   `ASYNC_FUNC=$({ grep -rE \"func [^{]*\\)[[:space:]]*async\" \"$IOS_DIR\" --include=\"*.swift\" 2>/dev/null || true; } | wc -l | tr -d \" \")`\n   重點：grep 必須加 `-E`，pattern 是 POSIX ERE，GNU/BSD grep 都吃。今天實測此式 = 196。\n   **硬約束（acceptance 直接依賴）**：新的賦值必須仍是「單行、行首頂格、以 `ASYNC_FUNC=` 開頭」。acceptance 用 `grep -E \"^ASYNC_FUNC=\" ops/gen_ios_baseline.sh` 把這一行抽出來 eval，改成多行 / 加縮排 / 改變數名都會讓 acceptance 抓不到而永遠紅。\n3) 不要改用更寬的 `\\) async`（今天實測 281 筆）。多出的 85 筆不是函式宣告，實際核對過兩類：(a) closure 型別屬性 —— `ios/BooksAndVocab/Support/ReviewProbe/ReviewProbeDriver.swift:46` 的 `var sleep: (Duration) async -> Void = { try? await Task.sleep(for: $0) }`、`ios/BooksAndVocab/Views/Settings/SettingsPresenter.swift:18` 的 `var onPauseReviewClockChanged: (Bool) async -> Void = { _ in }`；(b) 跨行簽名的續行，例如 `ios/BooksAndVocab/Services/KGService+Request.swift:195` 的 `) async throws -> T {`。選 196 這版＝要求同一行內同時看得到 `func` 與 `) async`：會漏掉跨行簽名，但不會把 closure 型別算成函式。這個取捨要寫成 line 25 上方兩行註解，否則下一個人會再改一次（註解列在賦值行之上，賦值行本身仍須頂格單行）。\n4) 不要動表格 label。今天 `ops/gen_ios_baseline.sh:67` 是 `| async func | $ASYNC_FUNC |`（heredoc 內），保持字串原樣；acceptance 的第二半靠產物裡的字面 `| async func | 0 |` 定位。\n5) 重生並落檔（**不可省，acceptance 第二半就是在檢查有沒有做**）：在 repo root 跑 `./ops/gen_ios_baseline.sh`（其 line 27 的 `cat > \"$OUTPUT\" << EOF` 無條件覆寫 `docs/snapshot/ios_baseline.md`）。整份數字會大跳，今天已逐項重算過：Swift 總行數 64988→75554、檔案 435→494、`@MainActor` 208→292、Views/+UIComponents/ 檔數→266、Top-10 十行全換、`verified_against` 3e0973170→HEAD、基線日期→今天。這不是本次改壞的，是 IMP-20260805-462d28 記的既有腐爛（錨點停在 2026-06-09，其後 250 個 commit 動過 `ios/BooksAndVocab`）；commit message 要把「數字大跳＝順帶重生陳舊 baseline」明說，prefix 用 `ops:` 不是 `ios:`。\n6) 相依與排序：IMP-20260805-462d28（要把這支腳本反轉成 stdout-by-default 並加 `--check`）今天仍是 open、其 groom 草稿已被退回、尚無定案 plan，所以第 5 步照現況用無參數呼叫即可。若 462d28 先落地，第 5 步改成 `./ops/gen_ios_baseline.sh --write`；acceptance 不必改，因為它不呼叫這支腳本。\n7) 撞不到任何測試（今天 `git grep gen_ios_baseline` 全 tracked 檔核對）：唯一提到這支腳本的測試是 `ops/tests/test_docs_impact.sh:288` 的 `grep -q '\"generator\": \"ops/gen_ios_baseline.sh\"'`，只斷言 registry 的 generator 欄字串，與輸出內容無關。`docs/registry.yml:938` 的 `generator: ops/gen_ios_baseline.sh` 不必動。重生後可選擇性跑 `./ops/docs_lint.sh --files docs/snapshot/ios_baseline.md` 當 sanity check：今天它是 `OK: 1 / WARN: 1 / ERROR: 0`，WARN 是 `STALE ... 250 個 commit 動到 scope`；把錨點推到 HEAD 後該 STALE 應消失，ERROR 仍為 0。不要為此調任何門檻。\n8) 不必新增測試檔：下面那條 acceptance 今天實跑就是紅的，依鐵律 1「已有現成會紅的命令則不必另造」。長期守衛（generator 產物等值 gate）屬 IMP-20260805-462d28 的範圍，本條不要擴張。",
-  "resolution": "—(2026-08-05 驗證 CONFIRMED-OPEN；落點 `ops/gen_ios_baseline.sh:25`，成本 S。驗收：改成能匹配真實語序的樣式後重算，輸出必須非 0（`ios/` 內確有 async 函式）。通則值得寫進哪份 SOP：任何「指標恆為某個值」都該先當 bug 假設，不是當事實。)",
+  "resolution": "已修（85a6e66a9）：`ops/gen_ios_baseline.sh` 的 `ASYNC_FUNC=` 樣式改成匹配真實語序，該 counter 不再結構性恆為 0。今天實測 297，且大於只算單行簽章的 221——證明多行簽章沒被漏掉。\n\n**判準在結案前被換過一次，理由要留著**：原本的 `acceptance_cmd` 結尾是 `! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md`。該檔已於同日隨 `IMP-20260808-b63206` 移出版控——`grep` 對不存在的檔回 2，前面的 `!` 把它翻成通過。也就是說那條判準會綠，但不是因為它宣稱的理由。改成 `bash ops/tests/test_gen_ios_baseline.sh`，它斷言的是 **generator 的 stdout**（被測物本身）而非磁碟副本，比原判準更貼近要驗的東西。這個假綠案例已立成 `IMP-20260808-09dd3b`（對未解票實跑判準、今天就綠的列為可疑）。",
   "schema": "kg.backlog.entry.v1",
   "scope": "改一行統計條件加兩行註解，並重新產生那份報告（整份數字會大跳，因為報告本身早已陳舊）。",
   "severity": "low",
   "source": "backlog CLI 稽核（5-agent deep dive）",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑替換後的 acceptance_cmd rc=0（test_gen_ios_baseline.sh, 1.7s，內含 generator stdout async func 列 = 297 > 0 的正控）；原判準已具名記錄為假綠並立案 IMP-20260808-09dd3b"
 }
