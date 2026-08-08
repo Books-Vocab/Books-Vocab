@@ -20,6 +20,7 @@ Load-bearing invariants pinned here:
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -403,6 +404,172 @@ def test_seeded_official_deck_is_guest_browsable(api):
     assert len(body["sampleCards"]) == 2
     for card in body["sampleCards"]:
         assert _SRS_KEYS.isdisjoint(card.keys()), f"SRS leaked: {_SRS_KEYS & card.keys()}"
+
+
+# ── git-index reference frame: what ships vs what check reads ──────────
+#
+# The bug this section pins: ``check`` enumerated the FILESYSTEM while the
+# deploy ships the GIT INDEX. A spec the curator forgot to ``git add`` was
+# validated locally, passed CI, and then simply did not exist in production.
+# Every test here therefore controls "on disk" and "in the index" SEPARATELY —
+# an implementation that reads the working directory twice would satisfy the
+# positive case and fail the negative one.
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=str(repo), check=True,
+                   capture_output=True, text=True)
+
+
+def _write_spec(repo: Path, name: str, *, tracked: bool) -> Path:
+    path = repo / f"{name}.json"
+    path.write_text(json.dumps(_spec(deck_id=name)), encoding="utf-8")
+    if tracked:
+        _git(repo, "add", path.name)
+    return path
+
+
+@pytest.fixture()
+def spec_repo(tmp_path, monkeypatch):
+    """A throwaway git repo standing in for ``ops/official_decks/``."""
+    repo = tmp_path / "specrepo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    monkeypatch.setattr(build_official, "_HERE", repo)
+    return repo
+
+
+def test_check_fails_on_untracked_spec(spec_repo, capsys):
+    """A spec on disk but absent from the index must turn the gate red — and
+    name itself. ``drift is False`` proves the round-trip check was happy and
+    the NEW gate is what failed the run; the exact-list assertion proves the
+    tracked sibling was not swept in (a filesystem-reading implementation
+    would report both).
+
+    Deliberately paired with ``test_check_passes_when_no_untracked_specs``:
+    the two lay down the SAME two filenames with the SAME contents and differ
+    only in whether ``git add`` ran. Nothing readable from the filesystem —
+    name, size, mtime, contents — can tell the two fixtures apart, so no
+    implementation can satisfy both without asking git."""
+    _write_spec(spec_repo, "deck-one", tracked=True)
+    orphan = _write_spec(spec_repo, "deck-two", tracked=False)
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert out["drift"] is False, "round-trip was clean; only the index gate should fail"
+    assert out["gitIndex"]["checked"] is True
+    assert out["gitIndex"]["untracked"] == [str(orphan)]
+    assert out["gitIndex"]["missing"] == []
+
+
+def test_check_passes_when_no_untracked_specs(spec_repo, capsys):
+    """Same two files as the test above; only ``git add`` differs. Without this
+    reverse case ``untracked_specs`` could return the whole directory listing
+    (or ``check`` could just always exit 1) and still pass the positive one."""
+    _write_spec(spec_repo, "deck-one", tracked=True)
+    _write_spec(spec_repo, "deck-two", tracked=True)
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert out["gitIndex"] == {"checked": True, "untracked": [], "missing": []}
+    assert rc == 0
+
+
+def test_check_flags_index_only_spec_as_well_as_untracked(spec_repo, capsys):
+    """The mirror hole: ``rm`` without ``git rm`` leaves the spec in the index
+    (so it still ships) while the filesystem walk stops seeing it — the same
+    divergence, pointing the other way. Only the index can name a file that is
+    no longer on disk, so this direction is unfakeable from the filesystem."""
+    ghost = _write_spec(spec_repo, "deck-one", tracked=True)
+    _write_spec(spec_repo, "deck-two", tracked=True)
+    ghost.unlink()
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert out["gitIndex"]["missing"] == [str(ghost)]
+    assert out["gitIndex"]["untracked"] == []
+
+
+def test_gitignored_spec_is_still_reported_as_untracked(spec_repo, capsys):
+    """A spec swallowed by ``.gitignore`` is exactly as absent from production
+    as a forgotten one, so it must be reported the same way.
+
+    This pins the one property that makes subtracting-the-index the right
+    derivation: ``git ls-files --others --exclude-standard`` — the listing
+    originally prescribed for this fix — does not report ignored files, so an
+    implementation built on it goes green here while the deck never ships."""
+    _write_spec(spec_repo, "deck-one", tracked=True)
+    (spec_repo / ".gitignore").write_text("deck-two.json\n", encoding="utf-8")
+    _git(spec_repo, "add", ".gitignore")
+    ignored = _write_spec(spec_repo, "deck-two", tracked=False)
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert out["gitIndex"]["untracked"] == [str(ignored)]
+
+
+def test_nested_json_is_not_mistaken_for_a_missing_or_untracked_spec(spec_repo, capsys):
+    """``git ls-files`` recurses; ``discover_specs`` does not. The index side
+    must be clipped to the same depth or every nested JSON (fixtures, notes)
+    reads as a spec that vanished from disk."""
+    _write_spec(spec_repo, "deck-one", tracked=True)
+    nested = spec_repo / "sub"
+    nested.mkdir()
+    (nested / "nested.json").write_text("{}", encoding="utf-8")
+    _git(spec_repo, "add", "sub/nested.json")
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert out["gitIndex"] == {"checked": True, "untracked": [], "missing": []}
+    assert rc == 0
+
+
+def test_untracked_specs_refuses_to_report_a_non_git_tree_as_clean(tmp_path, monkeypatch, capsys):
+    """"I cannot see the index" and "the index is clean" are the two states
+    this gate exists to keep apart, so a missing/unavailable git must raise —
+    and must not let ``check`` exit 0."""
+    plain = tmp_path / "not-a-repo"
+    plain.mkdir()
+    (plain / "loose-deck.json").write_text(
+        json.dumps(_spec(deck_id="loose-deck")), encoding="utf-8")
+    monkeypatch.setattr(build_official, "_HERE", plain)
+
+    with pytest.raises(build_official.GitIndexUnavailable):
+        build_official.untracked_specs()
+
+    rc = build_official.main(["check", "--json"])
+    out = json.loads(capsys.readouterr().out)
+    assert rc == 1
+    assert out["mode"] == "error"
+    # `pytest.raises` above carries the load; these two only check the message
+    # is actionable. Note what each touches: `str(plain)` is the value the test
+    # itself handed to `_HERE`, so it proves the message is addressed to the
+    # right directory but NOT that git ran. "git repository" is git's own
+    # stderr, echoed through — that one is not ours to fake.
+    assert str(plain) in out["error"]
+    assert "git repository" in out["error"]
+    assert "gitIndex" not in out, "a failed lookup must not also issue a clean bill"
+
+
+def test_single_spec_check_reports_index_unchecked_not_untracked_empty(spec_repo, capsys):
+    """``check <one spec>`` never enumerates the directory, so it must report
+    the index as UNCHECKED rather than as empty — reporting ``untracked: []``
+    there would be the same false-clean this ticket removes."""
+    orphan = _write_spec(spec_repo, "deck-one", tracked=False)
+
+    rc = build_official.main(["check", str(orphan), "--json"])
+    out = json.loads(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["gitIndex"]["checked"] is False
+    assert "untracked" not in out["gitIndex"]
 
 
 # ── CLI surface ────────────────────────────────────────────────────────
