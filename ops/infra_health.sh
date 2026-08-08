@@ -75,7 +75,12 @@ docker inspect -f "container_health	{{if .State.Health}}{{.State.Health.Status}}
 container_status	{{.State.Status}}
 container_restarts	{{.RestartCount}}" "$C" 2>/dev/null || printf "container_status\tmissing\n"
 S=$(docker inspect -f "{{.State.StartedAt}}" "$C" 2>/dev/null || echo "")
-if [ -n "$S" ]; then NOW=$(date +%s); SP=${S%.*}; ST=$(date -j -f "%Y-%m-%dT%H:%M:%S" "$SP" +%s 2>/dev/null || echo "$NOW"); printf "container_uptime_s\t%s\n" "$(( NOW - ST ))"; fi
+# docker 的 State.StartedAt 是 **UTC**，故解析必須釘 TZ=UTC（與 :107 憑證解析同一寫法）。
+# 少了它，BSD date -j -f 依本機時區解讀 → 秒數被灌水本機 UTC 偏移（CST 即 +8h），剛起來的
+# 容器看起來已經跑了大半天——而 operator 最需要這條讀數的時刻正是部署後那幾分鐘
+# （IMP-20260806-e4988a）。解析失敗亦不再代入 NOW 假裝成功（那會顯示 0，與「剛起來」無法
+# 區分＝把壞掉的解析偽裝成健康讀數），改印獨立 key 讓下游判讀段出聲。
+if [ -n "$S" ]; then NOW=$(date +%s); SP=${S%.*}; ST=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "$SP" +%s 2>/dev/null || echo ""); if [ -n "$ST" ]; then printf "container_uptime_s\t%s\n" "$(( NOW - ST ))"; else printf "container_uptime_parse\tfailed\n"; fi; fi
 docker stats --no-stream --format "cpu_pct	{{.CPUPerc}}\nmem_pct	{{.MemPerc}}" "$C" 2>/dev/null | tr -d "%" || true
 # 對外入口 = Cloudflare Tunnel 連接器（macOS 無 Caddy/systemctl）。
 printf "ingress\t%s\n" "$(pgrep -f "cloudflared.*tunnel" >/dev/null 2>&1 && echo active || echo inactive)"
@@ -167,11 +172,17 @@ add container_restarts "容器重啟次數" "$cr" "$rst" "$cr"
 
 # 容器 uptime（資訊性；可佐證「重啟 0 次但剛起來」的判讀）
 up="$(getm container_uptime_s)"
+up_parse="$(getm container_uptime_parse)"
 if [[ -n "$up" ]]; then
   if   (( up >= 86400 )); then upd="$(( up/86400 ))d $(( (up%86400)/3600 ))h"
   elif (( up >= 3600 ));  then upd="$(( up/3600 ))h $(( (up%3600)/60 ))m"
   else upd="$(( up/60 ))m"; fi
   add container_uptime "容器運行時長" "$upd" ok "$up"
+elif [[ -n "$up_parse" ]]; then
+  # StartedAt 解析失敗（docker 換格式 / date 行為變了）。判 warn 而非靜默略過：這條指標
+  # 的存在理由是「重啟 0 次但剛起來」的判讀，量不到就等於那個判讀失去佐證，與本檔 :127
+  # 「量不到絕不等於健康」同一原則。不 crit——它不 gate 任何東西，只是觀測性降級。
+  add container_uptime "容器運行時長" "StartedAt 解析失敗" warn ""
 fi
 
 cpu="$(getm cpu_pct)"; add cpu "CPU" "${cpu:-?}%" ok "$cpu"
