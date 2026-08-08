@@ -1,0 +1,12 @@
+{
+  "category": "cli",
+  "date": "2026-08-08",
+  "detail": "營運憲法把 `dispatch` 當成取工作的唯一入口，但 `ops/backlog.py` 沒有這個子指令。CLAUDE.md:37「任何 session 從 `dispatch`(已梳理、未延後、未被認領的票)取一張」、CLAUDE.md:44「未梳理的票留在板上但不進 `dispatch`」、CLAUDE.md:75 自我提升迴圈「→ 梳理 → 進 `dispatch` → 被取走」——三處把它寫成名詞化的既有機制。實測 2026-08-08 於 HEAD 4e2d680ba：`./ops/backlog.py dispatch --json` → `invalid choice: 'dispatch' (choose from add, list, stage, unstage, anchor, verify, show, validate, update, reanchor, import, render)` rc=2。這是本次 dogfood 第一批要取 10 張票時打的**第一個指令**。\n\n工具自己知道這個佇列該存在卻不提供：`list --ungroomed` 的 help 明寫「A dispatch queue built from this flag alone will hand out ids another agent already holds」——它警告你別自己組，卻沒給你組好的。實際要組出 dispatch 集合，我得寫一段 python 對 `list --groomed --json` 做 `status in (open,triaged) and not held` 的過濾；每個新 session 都得重寫一次這段，而且每次都可能寫錯（漏 held 就會發出別人已認領的 id，漏 groomed 就會發出沒有修法的票）。\n\n`--held` 存在（由認領帳本推導）但沒有補集旗標，所以連「用既有旗標湊」都湊不出來：`--held` 只能拿到「已被認領的」，拿不到「未被認領的」。\n\n後果不是不方便，是**規範指向一個不存在的東西**。板子模型的第一句話是「認領即工作，不必被任命」，而它預設你能先看到可取的清單。看不到清單時，session 的實際行為會退化成「翻 list 全表自己挑」，那正是 groomed/held 兩個守衛想擋掉的失誤形狀。",
+  "id": "IMP-20260808-573a09",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "dogfood batch 1：取票時打的第一個指令就不存在",
+  "status": "triaged",
+  "stream": "IMP"
+}
