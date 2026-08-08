@@ -924,11 +924,20 @@ def plan_gates(changed_files: list[str],
 
 
 def aggregate_verdict(results: list[dict[str, Any]]) -> str:
-    """block if any gate blocked; else warn if any warned; else pass (incl. empty)."""
+    """block if any gate blocked; else warn if any warned OR was inconclusive; else pass
+    (incl. empty).
+
+    `inconclusive` folds to WARN, and both of the other two folds would be wrong.
+    `block` would kill a session's work for someone else's tag surgery — the red was
+    real but not the branch's (IMP-20260805-4ec901). `pass` would be a claim nobody
+    made: the gate never produced an attributable answer. `warn` is what this module
+    already means by "degraded, named, disposition belongs to the driving agent", which
+    is exactly the situation.
+    """
     statuses = {r.get("status") for r in results}
     if "block" in statuses:
         return "block"
-    if "warn" in statuses:
+    if "warn" in statuses or "inconclusive" in statuses:
         return "warn"
     return "pass"
 
@@ -1043,6 +1052,40 @@ def primary_root() -> Path:
     worktree placement and for teardown commands that may remove the caller's own cwd
     (resolve from inside the target worktree)."""
     return wr.common_anchor()
+
+
+def _tag_snapshot(anchor: Path | str) -> str | None:
+    """Every tag ref visible from `anchor`, or None when it could not be read.
+
+    A linked worktree shares `refs/` with the primary — measured, not assumed:
+    `git rev-parse --git-path refs/tags` returns the SAME absolute path from both, so a
+    `release.sh` run over there is immediately visible to a child gate running here.
+    That is how a gate's colour stops being a property of the branch and becomes a
+    property of the machine (IMP-20260805-4ec901, same family as the device-lock case).
+
+    Anchored at the tree being gated rather than at `primary_root()`: identical answer
+    for the reason above, one fewer git spawn (`primary_root` shells out to
+    `rev-parse --git-common-dir` first), and independent of where this process happens
+    to stand.
+
+    None means UNMEASURED and the caller must read it as "cannot tell", never as
+    "changed": a probe that fails must not manufacture inconclusives out of real reds.
+    """
+    try:
+        rc, out = _git(["for-each-ref", "--format=%(objectname) %(refname)", "refs/tags"],
+                       cwd=anchor)
+    except Exception:  # noqa: BLE001 — this is instrumentation; it may not fail a gate
+        return None
+    return out if rc == 0 else None
+
+
+def _tag_delta(before: str | None, after: str | None) -> int:
+    """How many tag refs appeared or disappeared between two snapshots. 0 when either
+    side is unmeasured (see `_tag_snapshot`) — a retagged name counts as 2, which is
+    literally what happened: one removed, one added."""
+    if before is None or after is None:
+        return 0
+    return len(set(before.splitlines()) ^ set(after.splitlines()))
 
 
 def _norm(p: str) -> str:
@@ -1503,7 +1546,14 @@ def gate_history_verdicts(state: str | None, base_names: list[str],
                 # `executed is False` = the gate never started (spawn failure): not
                 # evidence in either direction. An ABSENT key is a row written before
                 # the field existed, i.e. a real run.
-                and r.get("executed") is not False]
+                and r.get("executed") is not False
+                # Same reasoning one step further out: an `inconclusive` row DID run,
+                # but its colour was contaminated by refs moving under it, so it says
+                # nothing about whether the gate can pass. Without this it would count
+                # as an attempt and never as a green — inflating the streak until the
+                # next genuine red arrived carrying "no green ever recorded", which is
+                # the wrong hypothesis to hand someone (IMP-20260805-4ec901).
+                and r.get("status") != "inconclusive"]
         greens = [r for r in mine if r.get("status") == "pass"]
         heads = {r.get("head8") for r in mine}
         if greens:
@@ -1856,6 +1906,12 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
             log_path.unlink()
         except OSError:
             pass
+    # Bracket the run with a refs probe. Some ops tests read repo-global tag state, and
+    # `refs/` is SHARED with the primary — so a `release.sh` running over there while
+    # this gate runs can turn it red for a reason that has nothing to do with the
+    # branch. Measured 2026-08-05: `ops/test_ios_ops.sh` at 371 passed / 1 failed inside
+    # a batch gate, 371 green and exit 0 when rerun alone.
+    tags_before = _tag_snapshot(worktree)
     try:
         returncode, output = _run_streamed_command(
             spec["cmd"], cwd=cwd, gate_name=name, capture_limit=GATE_CAPTURE_LIMIT,
@@ -1891,9 +1947,15 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
                 "executed": False, "summary": summary}
     tail = "\n".join(output.splitlines()[-3:]) if output else ""
     if returncode == 0:
+        # Green needs no attribution, so the second probe is not taken at all on this
+        # path. Refs moving under a gate that PASSED changes nothing anyone would act
+        # on, and calling it inconclusive would degrade the verdict of a run that
+        # produced exactly the answer it was asked for. It also keeps the common case
+        # at one `git for-each-ref` (~140ms here) instead of two.
         result.update({"status": "pass", "rc": returncode,
                        "summary": f"exit {returncode}" + (f": {tail}" if tail else "")})
         return result
+    tags_after = _tag_snapshot(worktree)
 
     status = "block" if level == "block" else "warn"
     log_error = None
@@ -1906,6 +1968,17 @@ def _run_gate(spec: dict[str, Any], worktree: str, *,
         # otherwise look identical, and the reader would go looking for a file that
         # was never there.
         summary += f"\n  ! output log not written ({log_error})"
+    refs_changed = _tag_delta(tags_before, tags_after)
+    if refs_changed:
+        # Not `block`: the measurement was taken while someone else moved refs under
+        # it, so charging this red to the branch kills work over a machine-state
+        # artefact. Not `pass` either — nothing here established the gate would have
+        # been green. The rc is kept verbatim; the point is attribution, not amnesia.
+        status = "inconclusive"
+        result["refsChanged"] = True
+        summary = (f"refs changed during this gate ({refs_changed} tag(s) "
+                   f"added/removed); rc={returncode} is not attributable to the "
+                   f"branch — re-run this gate once the tag surgery is done\n{summary}")
     result.update({"status": status, "rc": returncode, "summary": summary})
     return result
 
@@ -2595,7 +2668,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
              f"{len(plan)} gate(s))  orchestrator={_orch_token(record)}"]
     for r in results:
-        mark = {"pass": "✓", "warn": "⚠", "block": "✗"}.get(r["status"], "?")
+        mark = {"pass": "✓", "warn": "⚠", "block": "✗",
+                "inconclusive": "~"}.get(r["status"], "?")
         lines.append(f"  {mark} {r['name']} [{r['status']}] — {r.get('summary','')}")
     if not plan:
         lines.append("  (no impact-based gates selected for these changes)")
@@ -2661,8 +2735,11 @@ def cmd_cutover(args: argparse.Namespace) -> int:
             refuse = f"gate verdict is {verdict!r}, not pass/warn — run `gate` first"
         elif verdict == "warn":
             # a warn LANDS; surface which gates warned so the record is explicit.
+            # `inconclusive` folds INTO this verdict, so it has to be named here too —
+            # otherwise the only gate that degraded the run would be the one gate the
+            # landing record does not mention.
             warnings = [g.get("name") for g in rec.get("gates", [])
-                        if g.get("status") == "warn"]
+                        if g.get("status") in ("warn", "inconclusive")]
     if not refuse:
         # Ordering is deliberate: the stale-HEAD / wrong-orchestrator / block refusals
         # still win when they apply — they are the more specific diagnosis. This one
@@ -3496,7 +3573,7 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         "gates": [{"name": g.get("name"), "status": g.get("status"),
                    "summary": g.get("summary")}
                   for g in (gpay.get("gates") or [])
-                  if g.get("status") in ("block", "warn")],
+                  if g.get("status") in ("block", "warn", "inconclusive")],
     }
     _integrate_save(spath, st)
     next_step = (f"{wt}/ops/worktree_orchestrate.py cutover --worktree {wt} --commit"

@@ -3662,6 +3662,101 @@ def test_a_non_oserror_from_the_runner_still_propagates(tmp_path, monkeypatch):
         MODULE._run_gate(MODULE._shell("ghost", "ops", ["x"], "block"), str(tmp_path))
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not on PATH")
+def test_the_tag_probe_reads_real_tags_and_reports_unreadable_as_unmeasured(tmp_path):
+    """The positive control the whole mechanism rests on. Every test below monkeypatches
+    `_tag_snapshot`, so a probe that silently returned None on every real repo would
+    leave all of them green while the feature never fired once in production — a
+    detector that cannot be observed failing is the disease this repo keeps catching.
+
+    The other half is just as load-bearing: a path that is not a repo must come back
+    UNMEASURED, not as an empty tag set. Empty-vs-populated would read as "every tag was
+    just deleted" and turn honest reds into inconclusives."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    run = lambda *a: subprocess.run(["git", *a], cwd=repo, check=True,  # noqa: E731
+                                    capture_output=True)
+    run("init", "-q")
+    run("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q",
+        "--allow-empty", "-m", "x")
+    run("tag", "v1")
+    before = MODULE._tag_snapshot(repo)
+    assert before is not None and "refs/tags/v1" in before
+    run("tag", "v2")
+    after = MODULE._tag_snapshot(repo)
+    assert MODULE._tag_delta(before, after) == 1
+    assert MODULE._tag_delta(before, before) == 0
+
+    # a non-repo is unmeasured, and unmeasured never counts as a change
+    outside = MODULE._tag_snapshot(tmp_path / "not-a-repo")
+    assert outside is None
+    assert MODULE._tag_delta(before, outside) == 0
+    assert MODULE._tag_delta(outside, after) == 0
+
+
+def test_a_failing_gate_during_a_tag_change_is_inconclusive_not_block(tmp_path, monkeypatch):
+    """A linked worktree shares `refs/` with the primary, so `release.sh` creating a tag
+    over there changes what a child gate reads over here. Measured 2026-08-05: a batch
+    gate saw `ops/test_ios_ops.sh` report 371 passed / 1 failed, rc=1; the same input
+    rerun alone was 371 green, exit 0. In the gate's eyes that red was indistinguishable
+    from a real one — the colour was a function of machine state, not of the branch.
+
+    So the orchestrator says which one it measured. `inconclusive` is neither pass nor
+    block: block would kill work for someone else's tag surgery, pass would let a real
+    red through."""
+    snaps = iter(["a1 refs/tags/v1", "a1 refs/tags/v1\nb2 refs/tags/v2"])
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: next(snaps))
+    monkeypatch.setattr(MODULE, "_run_streamed_command",
+                        lambda *a, **k: (1, "  passed: 371  failed: 1"))
+    spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
+    r = MODULE._run_gate(spec, str(tmp_path))
+    assert r["status"] == "inconclusive"
+    assert r["rc"] == 1, "the real rc must survive — the point is attribution, not amnesia"
+    assert r["refsChanged"] is True
+    # the count comes from the two snapshots THIS test supplied, not from a constant
+    assert "1 tag(s)" in r["summary"]
+    assert MODULE.aggregate_verdict([r]) == "warn"
+
+
+def test_a_failing_gate_with_stable_tags_still_blocks(tmp_path, monkeypatch):
+    """The reverse guard, and the reason the pair is the acceptance rather than the one
+    above alone: `_run_gate` rewritten to return `inconclusive` unconditionally would
+    satisfy the positive test and disarm every block gate in the repo."""
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "a1 refs/tags/v1")
+    monkeypatch.setattr(MODULE, "_run_streamed_command", lambda *a, **k: (1, "  ✗ boom"))
+    spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
+    r = MODULE._run_gate(spec, str(tmp_path))
+    assert r["status"] == "block"
+    assert r.get("refsChanged") is not True
+    assert MODULE.aggregate_verdict([r]) == "block"
+
+
+def test_an_inconclusive_gate_is_not_evidence_that_it_can_never_pass(tmp_path):
+    """Same family as the spawn-failure exclusion below, and the same reasoning: a red
+    that was contaminated by someone else's tag surgery is not a data point about
+    whether this gate can pass. It is journalled at `level: block` and `executed: True`,
+    so without an explicit exclusion it would count toward the never-green streak and
+    the NEXT genuine red would arrive carrying "no green ever recorded" — steering the
+    reader away from their own bug, which is the exact harm `executed: False` exists to
+    prevent."""
+    state = str(tmp_path / "reg.json")
+    orch = {"sha256": "a" * 64}
+    poisoned = [{"name": "ops-shell:test_ios_ops.sh", "level": "block",
+                 "status": "inconclusive", "rc": 1, "refsChanged": True}]
+    for head in ("aaaaaaaa", "bbbbbbbb", "cccccccc"):
+        assert MODULE._append_gate_history(state, str(tmp_path), head, orch,
+                                           poisoned) is None
+    assert MODULE._never_green(state, "ops-shell") is None
+
+    # positive control: three ordinary reds on the same gate DO make the streak
+    real = [{"name": "ops-shell:test_ios_ops.sh", "level": "block", "status": "block",
+             "rc": 1}]
+    for head in ("dddddddd", "eeeeeeee", "ffffffff"):
+        MODULE._append_gate_history(state, str(tmp_path), head, orch, real)
+    assert MODULE._never_green(state, "ops-shell") == {
+        "attempts": 3, "heads": 3, "worktrees": 1}
+
+
 def test_a_gate_that_never_started_is_not_evidence_about_whether_it_can_pass(tmp_path):
     """`_never_green` reads level and status, never rc — so spawn failures would count
     as block attempts and push a healthy gate over the 3-attempt threshold. The next
