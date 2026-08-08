@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "repo 有一道守衛專門抓「`$VAR` 緊接全形標點」（`ops/tests/test_script_help.sh:105`，註解裡連機制都寫清楚了，還帶正控），但**沒有任何 gate 會在可能違反它的 diff 上跑它**，所以違規照樣進得了分支、一路撐到 `land`。\n\n實測 2026-08-08，`feat/devops-rsync-flavor`：\n\n- `devops.sh:669` 寫成 `...目錄：$dest（已標記 .INCOMPLETE）`。\n- bash 在 **UTF-8 LC_CTYPE** 下會把全形「（」的首個 byte 吃進變數名，於是 `set -u` 讓腳本死在 `dest\\xef: unbound variable`——正好死在**失敗路徑的訊息裡**，所以整條「rsync 失敗要具名拒絕」的守衛被自己的訊息弄死。\n- 手跑 8 次全綠、Python 起動 4/4 全紅。原因是 **CPython 的 PEP 538 locale coercion**：互動 shell 的 `LC_CTYPE` 未設（C locale，bash 逐 byte 判 isalnum，0xEF 不是，變數名正確結束），而 gate 由 Python 起動，子程序拿到 `LC_CTYPE=C.UTF-8`。**同一支腳本在人手上與在閘門裡走不同的解析路徑。**\n- 既有守衛一跑就精準指出那一行（`devops.sh:669`），掃 104 支 tracked shell script。\n\n漏掉的是路由，不是守衛：cutover gate 的 `ops/**.sh` 路由只跑 ① `bash -n` ② 該腳本自己的同名測試 ③ 解析不到測試就具名 warn。`test_script_help.sh` 這種**跨檔掃描器**不屬於任何一支腳本，所以永遠不會被任何 diff 觸發，只有有人整組跑 `./ops/test_ops.sh script-help` 時才會執行。\n\n代價量測：整段診斷約 30 分鐘——先誤判成 flaky（手跑 3 次全綠、load average 102 下再 2 次全綠），再逐項排除 stdin / env / shebang / PWD / process group，最後才靠「用 Python 起動」重現。而 `gate` 的 block summary 只留 94 字元尾巴（`IMP-20260808-c47253`），所以整段期間我連紅的是哪一條斷言都不知道。**兩個缺口相乘**：不具名的失敗 × 只在特定 parent 下重現的失敗 = 幾乎無法診斷。\n\n修法方向（未裁決）：① 在 gate 的 `ops/**.sh` 路由加一道 repo 級 shell 掃描器（`ops-shell-scan`），凡有 `*.sh` 進 diff 就跑 `test_script_help.sh` 的掃描段（它已經是全 repo 掃描，跑一次即可，不需 per-file）② 或把該掃描抽成獨立的 `ops/shell_scan.sh` 讓 gate 與 CI 共用一個入口 ③ **另外**：orchestrator 起動 child 時應該顯式決定 `LC_CTYPE`（而不是繼承 CPython 的 coercion 結果），否則「gate 跑的環境」與「人跑的環境」永遠有一條看不見的差異；決定成哪個值都可以，但要是**寫下來的**。\n\n③ 的重要性高於前兩者：全形標點只是這個差異目前已知的一種後果。",
   "fix_site": "ops/lib/streaming_command.py（固定 LC_CTYPE）+ ops/worktree_orchestrate.py:plan_gates（新增 ops-shell-scan）",
+  "fixed_by": [
+    "80e77d75bfbb1913e213184405e20cba33243658"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-3bbfa2",
   "plan": "修法是 IMP-20260808-c47253 的 plan **C 段**（三個缺陷同源、同一條工作樹），逐字照那份做。\n\n摘要兩件事：① 在 `ops/lib/streaming_command.py` 起 child 的地方**顯式固定 `LC_CTYPE`**（選 `C.UTF-8`＝今天 gate 實際跑到的值，也較嚴格），並讓這個值在某處可被查到；註解要寫明「這是選定的，不是繼承來的」。② 新增 `ops-shell-scan` gate（level=block）：任何 `*.sh` 進 diff 就跑一次 repo 級跨檔掃描（`ops/tests/test_script_help.sh` 已有的全形標點掃描段，全 repo 掃一次即可）。可把掃描段抽成共用入口讓兩邊共用，但**不要**在 orchestrator 內重造掃描邏輯。",
-  "resolution": "",
+  "resolution": "已修：三段同源缺陷一起收。(A) cmd_land 取到 FIFO 名次後、進 catchup/gate 之前先呼叫同一支 _primary_ff_ready 預檢，命中即 EXIT_BLOCK 並回 refused_before/dirty_files；cutover ff 前那次檢查原封不動（兩次問的是不同時刻的問題，註解寫明）。(B) 失敗的 shell gate 完整輸出落到 <key>.<gate>.log，summary = exit rc + 失敗標記行(≤20) + 原尾巴 + full output 路徑，抽不到標記時明說 no failure-marked lines found；capture 上限 64KiB→1MiB，resolve 一併清。(C) streaming_command 固定 CHILD_LC_CTYPE=C.UTF-8 並移除繼承的 LC_ALL，phase=start 行附 lcCtype=；新增 ops-shell-scan（block）把掃描抽成 ops/shell_scan.sh 給 gate 與 test_script_help 共用。\n\n受派者一處票沒寫的正確加碼：**只設 LC_CTYPE 是無效的**——實測 LC_ALL=C 時 effective ctype 仍是 C，等於做出一個讀得回來卻不生效的「選擇」，正是本票要消滅的隱形差異。故連 LC_ALL 一併移除。\n\n兩次 mutation 抓到它自己寫的恆真式（marker 印在尾巴三行內、capped 測試在量 fixture 而非量上限），已修正並複驗。A 段特別註記：rc 在新舊實作下都是 EXIT_BLOCK，只斷言 rc 會全程假綠，故改斷言「ran 了哪些步驟」。",
   "schema": "kg.backlog.entry.v1",
   "scope": "兩支流程工具各改一處：把既有的整批掃描接進關卡，並固定工具啟動子程序時的文字編碼設定；附測試。",
   "severity": "high",
   "source": "dogfood batch 1：既有守衛抓得到，但沒有 gate 會在能違反它的 diff 上跑它",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }

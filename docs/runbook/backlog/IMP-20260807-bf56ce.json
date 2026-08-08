@@ -7,15 +7,22 @@
   "date": "2026-08-07",
   "detail": "`--search-depth` 有兩個不同的預設值：`build_parser` 給 `default=2000`，`reanchor_store` 的簽名給 `search_depth: int = 800`。走 CLI 搜 2000 顆 commit，程式內直接 `import` 呼叫（測試、以及 cutover 後的 post-landing repair 走的是 CLI 所以是 2000）搜 800 顆。同一個旗標名下兩個深度，重錨失敗時無從判斷是「真的找不到」還是「搜得不夠深」，而這正是 reanchor 唯一會沉默失敗的模式。",
   "fix_site": "ops/backlog.py:165 DEFAULT_SEARCH_DEPTH（單一真相）+ build_parser:2141 + reanchor_store 簽名:2810",
+  "fixed_by": [
+    "722fe6458"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-bf56ce",
   "plan": "已由 722fe6458 落地：抽出模組常數 `DEFAULT_SEARCH_DEPTH = 2000`，parser 的 `--search-depth`（2141 行）、`reanchor_store` 的簽名（2810 行）、help 文字三處全部引用它，簽名裡原本寫死的 800 已移除。若日後這條復發（有人在任一處重新寫死數字），修法同上：常數是唯一真相，三處都引用它，並且測試要比對兩個真實來源而不是比對字面值。",
-  "resolution": "",
+  "resolution": "已修（722fe6458）：搜尋深度的兩套預設值收斂成一個。回填 wave 實跑 acceptance_cmd rc=0 後確認為結案動作。",
   "schema": "kg.backlog.entry.v1",
   "scope": "已經落地，剩下確認一次判準然後把票關掉。",
   "severity": "low",
   "source": "Phase 0 盤點（懸賞板計劃前置）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }

@@ -7,15 +7,22 @@
   "date": "2026-08-07",
   "detail": "`ops/backlog.py show <id>` 的人讀輸出永遠不印 `fixed_by`。`_cmd_show` 的欄位迴圈是 `REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS`，漏了 `TRACE_FIELDS = (\"fixed_by\",)`；`--json` 走 `entry` 整包所以有。實測（HEAD f33df64c7）：`show IMP-20260807-5bff5e` 印 15 行、`grep -c fixed_by` = 0，同一張單 `--json` 的 `entry[\"fixed_by\"]` = `[\"8e9d1ca49\",\"6b278c33d\"]`。後果：`fixed_by` 是 IMP-20260805-9a51e9 為了可回溯性才加的欄位，而人去看一張 fixed 單時最想知道的「是哪顆 commit 修的」恰好是唯一看不到的欄位——欄位存在但預設不可見，等於沒加。",
   "fix_site": "ops/backlog.py:SHOW_FIELD_ORDER / _cmd_show",
+  "fixed_by": [
+    "722fe6458"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-8952ce",
   "plan": "碼已落地，剩下的是結帳。今天讀 ops/backlog.py：:899-906 已把欄位順序抽成具名的 `SHOW_FIELD_ORDER = REQUIRED_FIELDS + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + TRACE_FIELDS`，上面那段註解就在講「TRACE_FIELDS 被加進 MUTABLE_FIELDS 卻沒加進讀取端」這個誕生方式；`_cmd_show`（:2775）的迴圈改成 `for field in SHOW_FIELD_ORDER`。不變式由 ops/tests/test_backlog.py:2774 `test_show_can_print_every_field_update_can_write`（斷言 `set(MUTABLE_FIELDS) - set(SHOW_FIELD_ORDER)` 為空）守住，實際輸出由 :2740 `test_show_prints_the_commits_that_closed_the_entry` 守住。若要收案：`./ops/backlog.py update IMP-20260807-8952ce --status fixed --resolution \"已修（722fe6458）：欄位順序抽成具名 SHOW_FIELD_ORDER 並納入 TRACE_FIELDS，另補 MUTABLE_FIELDS ⊆ SHOW_FIELD_ORDER 的不變式測試\" --fixed-by 722fe6458 --commit`。日後新增欄位家族時只准動 SHOW_FIELD_ORDER 這一份，不得再手抄第二份清單。",
-  "resolution": "",
+  "resolution": "已修（722fe6458）：欄位順序抽成具名 SHOW_FIELD_ORDER 並納入 TRACE_FIELDS，show 因此印得出 fixed_by；MUTABLE_FIELDS ⊆ SHOW_FIELD_ORDER 的不變式由測試釘住。回填 wave 實跑 acceptance_cmd rc=0。",
   "schema": "kg.backlog.entry.v1",
   "scope": "程式與測試都已落地並實測綠燈，只剩把這張單標成完成。",
   "severity": "med",
   "source": "Phase 0 盤點（懸賞板計劃前置）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }

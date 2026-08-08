@@ -7,15 +7,22 @@
   "date": "2026-08-06",
   "detail": "cutover gate 的 `ops-pytest` fallback 是一道**只能紅的 block gate**。`ops/worktree_orchestrate.py:517-534`：任何一支改動的 `ops/**.py` 找不到同名 `ops/tests/test_<basename>.py` 時 `fallback=True` → `selected = [\"ops/tests\"]`，然後 532-534 行用 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests` 跑整個目錄。但 `ops/tests/test_ops_edit_batch.py` 需要 `--project backend`（`ops/test_ops.sh` 的 devops group 就是這樣跑它的），在 `--no-project` 下必失敗。2026-08-06 實測：`uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_ops_edit_batch.py` → `2 failed in 6.98s`（test_ops_edit_batch_applies_multi_step_plan / test_ops_edit_batch_stops_on_first_failure）。也就是說只要有人改一支沒有同名測試的 ops python 檔，這道 block gate 就必紅，且紅的原因與他的改動無關。`ops/worktree_orchestrate.py:250-254` 自己就寫著「只能綠的 gate 與只能紅的 gate 一樣有害」。修法方向（擇一，需實測）：fallback 改走 `./ops/test_ops.sh`（尊重每個 group 各自的 sandbox 宣告，且現在 file→group 反向覆蓋已保證每支檔案都屬於某個 group），或把 `--project backend` 才跑得動的檔案從 `--no-project` 的 whole-dir 選擇中排除並改由對應 group 執行。注意：本條與 IMP-20260805-947062 相鄰但不同——那條補的是 `test_ops.sh` 的 file→group 覆蓋（已修），本條是 cutover 平面自己的第二個洞，未被該修法涵蓋。",
   "fix_site": "ops/tests/test_ops_edit_batch.py:REQUIRES_BACKEND",
+  "fixed_by": [
+    "026f78d59"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-041d07",
   "plan": "無需再動。026f78d59 已在 ops/tests/test_ops_edit_batch.py:51-54 加上 REQUIRES_BACKEND skip guard（探 run_ops_cli 而非 --help，理由寫在 commit message 裡），使 ops-pytest 的整目錄 fallback（ops/worktree_orchestrate.py:555-570）在 --no-project 下不再必紅。若日後要進一步把 fallback 改走 ./ops/test_ops.sh，那是另一個獨立提案，不屬本條。關閉本條時把 fixed_by 指向 026f78d59。",
-  "resolution": "",
+  "resolution": "已修（026f78d59）：test_ops_edit_batch.py 加上 REQUIRES_BACKEND skip guard（探 run_ops_cli 而非 --help），cutover gate 的 ops-pytest 整目錄 fallback 在 --no-project 下不再必紅。",
   "schema": "kg.backlog.entry.v1",
   "scope": "不用改程式：跑一次確認命令，再把這張標成完成。",
   "severity": "high",
   "source": "worktree ops-test-coverage（修 IMP-20260805-947062 時實測撞到）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }

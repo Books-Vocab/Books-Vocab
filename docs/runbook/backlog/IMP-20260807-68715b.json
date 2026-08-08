@@ -7,15 +7,22 @@
   "date": "2026-08-07",
   "detail": "`ops/backlog.py verify <不存在的 id>` 直接吐 Python traceback：`_cmd_verify` 呼叫 `load_entry` 沒有 `except KeyError`，而隔壁 `_cmd_show` 有（`try/except KeyError` → `no such entry: <id>` + rc=1）。`main()` 的 refusal envelope 只攔 `(BacklogError, ValueError)`，KeyError 穿過去。實測（HEAD f33df64c7）：`verify IMP-NOPE-000000 --verdict CONFIRMED-FIXED --by probe --evidence x` → `KeyError: 'IMP-NOPE-000000'`，加 `--json` 也一樣是 traceback，機器讀取端拿到的不是 refusal 而是 stack trace。這是打錯 id 最常見的形狀，而 verify 是 agent 收尾必經的一步。",
   "fix_site": "ops/backlog.py:load_entry / EntryNotFound（refusal 由 main() 集中回答）",
+  "fixed_by": [
+    "722fe6458"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260807-68715b",
   "plan": "碼已落地，剩下的是結帳不是改碼。今天讀 ops/backlog.py：:267 已有 `class EntryNotFound(BacklogError, KeyError)`，`load_entry`（:998）丟它，`main()`（:3353 附近）的 except 鏈統一答 rc=1，`_cmd_show` / `_cmd_update` 兩份手抄的 try/except KeyError 已刪除，`_cmd_show`（:2775）的註解直接寫「EntryNotFound -> refusal in main()」。若這張單要收案，動作是：`./ops/backlog.py update IMP-20260807-68715b --status fixed --resolution \"已修（722fe6458）：load_entry 改丟 EntryNotFound(BacklogError, KeyError)，由 main() 集中答 rc=1；_cmd_show / _cmd_update 兩份手抄的 except 已刪\" --fixed-by 722fe6458 --commit`。要補迴歸測試的話，ops/tests/test_backlog.py 已有 `test_show_cli_reports_a_missing_entry` 釘住 show 的 rc=1，照它加一條驅動 `verify` argv（而非 library helper）的同型測試即可——重點是驅動 main()，因為守住這件事的是集中 handler 不是個別指令。刻意不要改成 `except KeyError` 包住指令本體：那會把指令內部真正的 dict 查找 bug 一起吞掉、報成「no such entry」。",
-  "resolution": "",
+  "resolution": "已修（722fe6458）：load_entry 改丟 EntryNotFound(BacklogError, KeyError)，由 main() 集中答 rc=1，_cmd_show / _cmd_update 兩份手抄的 except 已刪。回填 wave 實跑 verify 打錯 id：rc=1、輸出 no such entry、無 Traceback。",
   "schema": "kg.backlog.entry.v1",
   "scope": "不用改程式，補一條防回歸的小測試然後結案。",
   "severity": "med",
   "source": "Phase 0 盤點（懸賞板計劃前置）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票自己的 acceptance_cmd，rc 與 acceptance_expect_rc 相符（kind=ran）。這是結案的前置條件：宣稱過期的票會在此被拒絕而非靜靜收掉。"
 }
