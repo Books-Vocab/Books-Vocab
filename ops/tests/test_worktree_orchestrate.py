@@ -3378,6 +3378,37 @@ def test_gate_record_carries_orchestrator_identity(scratch):
 
 
 @gitmark
+def test_gate_names_the_empty_worktree(scratch):
+    """An empty diff is a legal re-gate, but its record must say it verified nothing."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "check an empty tree", "--slug", "empty-gate",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+
+    rc, gate = _run_json(["gate", "--worktree", opened["path"],
+                          "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["changed_files"] == []
+    assert gate["no_changed_files"] is True
+    assert gate["verdict"] == "pass"
+
+
+@gitmark
+def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    wt = _open_wt(state, slug="nonempty-gate")
+
+    rc, gate = _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    assert gate["changed_files"] == ["notes.txt"]
+    assert gate["no_changed_files"] is False
+
+
+@gitmark
 def test_gate_orchestrator_identity_is_null_when_worktree_has_no_copy(scratch):
     """The synthetic fixture repo has no ops/ tree. Provenance must degrade to "cannot
     compare" rather than inventing a mismatch — otherwise every existing test, and every
