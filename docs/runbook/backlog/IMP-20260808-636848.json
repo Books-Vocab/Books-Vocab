@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "批次整合者的兩件本職工作會互相殺死：**結案要寫 store（primary 的 tracked 檔），而 cutover 要求 primary tracked-clean**。\n\n實測 2026-08-08，batch 1：我在背景跑 `land` 迴圈的同時，於 primary 用 `update --status fixed --commit` 結掉四張已落地的票。`ui-fixture-lint` 的 gate 跑完 **574 秒**，接著 cutover 拒絕：\n\n```\nerror : primary working tree is dirty (tracked changes) — a ff updates the checked-out files\ndirty : docs/runbook/backlog/IMP-0023.json,\n        docs/runbook/backlog/IMP-20260805-bf0df5.json,\n        docs/runbook/backlog/IMP-20260806-02bf8d.json\n```\n\n拒絕本身是對的（ff 會更新 checked-out 檔案）。問題是**代價的分佈**：檢查發生在最貴的步驟之後，574 秒的 gate 工作直接丟掉，而衝突的來源是整合者自己三秒前寫的檔。批次愈大愈痛——N 條分支每條都可能在 gate 之後才撞到。\n\n值得注意的是：**這個問題早就有解，是我沒用**。`backlog.py stage` 把結案停在 `<primary>/.cache/backlog_anchor_queue.jsonl`（gitignored，不碰 store），`anchor` 一個波次replay 一次。整條「hunter 不碰 store + 波次集中回填」的設計就是為了這件事。但 `stage` 的 help 寫「Use this from a hunter's worktree」，讀起來像是**受派者專用**，所以我這個整合者沒把它當成自己的路徑。\n\n修法方向（未裁決）：① 把 `stage --help` 與 skill 的措辭改成「任何人在 land 進行中都該用它」，並在 `worktree-flow` 的批次段落明寫整合者的結案順序是 stage→(全部 land 完)→anchor ② `cutover` 把 primary-clean 檢查**提前到 gate 之前**再驗一次（現在只在 ff 前驗），至少讓 574 秒的浪費變成 3 秒 ③ 更根本：ff 只需要 tracked 檔沒有衝突的改動，`docs/runbook/backlog/*.json` 這種一檔一 entry 的加法式改動其實不會擋 ff——可以只拒絕「與本次 ff 會動到的路徑相交」的髒檔，而不是任何髒檔。\n\n②最便宜且立刻有效；③ 需要小心（放寬 clean 檢查是安全性取捨，不可草率）。",
+  "id": "IMP-20260808-636848",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "dogfood batch 1：整合者自己的結案寫入，在 574 秒 gate 之後殺掉自己的 cutover",
+  "status": "open",
+  "stream": "IMP"
+}
