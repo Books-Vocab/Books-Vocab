@@ -22,5 +22,7 @@
   "status": "fixed",
   "stream": "IMP",
   "verdict": "CONFIRMED-FIXED",
-  "verified_at": "2026-08-08"
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "entry 自己的 acceptance_cmd 由 update 這道新閘在收案當下實跑，payload acceptance.kind=ran"
 }
