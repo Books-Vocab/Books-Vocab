@@ -6,14 +6,21 @@
   "date": "2026-08-05",
   "detail": "docs_impact.py --since <rev> 用的是 two-dot(`<rev>..HEAD`,--help 也這樣寫)。在**已分岔**的 worktree 分支上——本 repo 的常態,因為本地 main 會在 worktree 開著時繼續前進——`--since main` 等同 `git diff main HEAD`,於是 **main 自己的 commit 也被算成本次改動**(方向相反)。實測:本分支只碰 26 個檔,`--since main` 報 changed=48,多出來的 22 個是 main 領先 merge-base 的 5 個 commit 帶進來的(.claude/agents/platform-steward.md、19 個不相干的 IMP-*.json…),並據此點名 sop.agent_org 等 doc 為候選。後果是 impact hints 的訊噪比在最需要它的場景下降,而多出來的 row 長得跟真的一模一樣——agent 只能靠逐一回頭讀 diff 才分得出來,正是這個工具本來要省掉的工。CLAUDE.md 與 docs/sop/doc_sync.md 都教 `--since <base>`,而 `main` 是最自然的填法,所以這不是誤用而是介面預設值選錯。修法擇一:(a) --since 對 <rev> 改用 `<rev>...HEAD` 三點(取 merge-base),(b) 保留 two-dot 但偵測到 <rev> 不是 HEAD 祖先時 stderr 警告並建議 merge-base,(c) 加 --since-merge-base。(a) 最合語意——使用者問的一直是「我這條分支改了什麼」。",
   "fix_site": "ops/docs_impact.py:changed_paths_since  (:112-127，f\"{base}..HEAD\" 那一行)",
+  "fixed_by": [
+    "df8b2ff67a88d7f9b26233f7618e665abcd39e0c"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-e98982",
   "plan": "採 entry 的方案 (a)，最合語意：(1) ops/docs_impact.py:120 的 `f\"{base}..HEAD\"` 改成 `f\"{base}...HEAD\"`（三點＝以 merge-base 為起點），其餘三個 diff 來源（--cached / 工作樹 / ls-files --others）不動。(2) :283 的 --since help 由 `scans <rev>..HEAD plus index/worktree changes.` 改成 `scans <rev>...HEAD (merge-base) plus index/worktree changes.`，免得 help 繼續教錯。(3) ops/docs_lint.sh 也有自己的 --since / GATE_BASE 路徑（:259-268 附近），**本單不動它**，但要在 commit message 明寫沒動，免得下一個人以為一起修了。(4) ops/tests/test_docs_impact.sh 補一案（該檔目前 0 條 --since 覆蓋，全部走 --files）：用 `git -c user.email=... commit-tree -p HEAD~5 \"HEAD~20^{tree}\"` 造一顆與 HEAD 分岔的 base，取一個「在 HEAD~20..HEAD~5 之間變過、但 HEAD~5..HEAD 沒變」的檔當 victim，斷言 `--since <base> --json` 的 changed_paths 不含 victim。",
-  "resolution": "",
+  "resolution": "已修：ops/docs_impact.py 的 changed_paths_since 從 `{base}..HEAD` 改為 `{base}...HEAD`（三點＝從 merge-base 起算），所以工作樹開著時本地 main 繼續前進，不會被算成這條分支的改動。同步 --since 的 help 與 tech_index。\n\n受派者另加了 plan 沒要求但由此改動直接造成的守衛：無 merge-base 時 `git diff A...B` 是 rc=128 **且 stdout 全空**，四個來源都 check=False，會靜靜渲染成「no registry impacts」；加 merge-base 探測並 fail closed，且以 --is-shallow-repository 分流 shallow 截斷與真正無共同祖先（兩者的解法不同）。逐條 mutation 驗證：三點改回兩點、移除守衛、拿掉 shallow 分流、改寫 orphan 訊息，四種皆轉紅。\n\n非空洞性佐證：同一顆 probe base 下兩點報 31 個路徑含不屬於該分支的 victim，三點報 8 個且不含它。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "docs-steward 在 worktree 分支上跑 ./ops/docs_impact.py --since main 判斷影響面",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0；四種 mutation 逐條轉紅；兩點/三點在同一 probe base 下分別報 31 vs 8 個路徑"
 }

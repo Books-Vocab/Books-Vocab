@@ -6,14 +6,21 @@
   "date": "2026-08-06",
   "detail": "No routine gate runs the UI test target, so a UI test can stay red indefinitely without anyone noticing. Measured: testBookshelfToReaderNavigation fails on main (50e990851) with 'com.Max0228.BooksBrowser crashed in <external symbol>', tests=1 passed=0 failed=1. Root cause is a fixture-id convention mismatch — BooksAndVocabUITests.swift:115 passes '-seedFixture:bookshelf:withBooksLibrary' (the camelCase CASE NAME) while BookshelfFixtureID's rawValue is snake_case 'with_books_library', so UITestFixtureSeed+Bookshelf.swift:7 BookshelfFixtureID(rawValue:) returns nil and failFixtureSeed preconditionFailures inside BooksAndVocabApp.init(). Dating: the bad call site is from 12166519f (2026-06-09); 2596c1595 'fail fast on UI fixture seed errors' is from 2026-06-14, FIVE DAYS LATER — it converted a silent mismatch into a hard crash, it did not cause it. FixtureDatasetUITests.swift:57 does it correctly via .bookshelf(\"with_books_library\"), so a correct call site sat beside the broken one the whole time. The gap is the gate, not the bug: cutover routes UI tests only for branches that touch a UITest FILE, and the repo deliberately excludes the full UI suite as a block gate because of known flakiness — the combination leaves zero routine coverage.",
   "fix_site": "ops/ui_fixture_lint.sh (new)",
+  "fixed_by": [
+    "9b97caabd8e41095efec46c52fc79d507fd6996b"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-3ec803",
   "plan": "（1）新增 ops/ui_fixture_lint.sh：從 ios/BooksAndVocab/Support/Fixtures/Bookshelf/BookshelfFixtures.swift 的 `enum BookshelfFixtureID` 區塊抽出所有 `= \"...\"` rawValue，再掃 ios/BooksAndVocabUITests/ 內 `-seedFixture:bookshelf:<id>` 與 `.bookshelf(\"<id>\")` 的字面值，不在清單者印檔名行號並 exit 1。（2）新增 ops/tests/test_ui_fixture_lint.sh：正例全過、注入 camelCase 假 id 必紅。（3）新增 ops/launchd/com.kg.uisweep.plist（比照 ops/launchd/com.kg.reconcile.plist）每日跑 `./ops/ios_ops.sh test --ui`，只做 advisory 不當 block gate。",
-  "resolution": "Two separable fixes. (1) Type-safety: make the seed argument carry the rawValue rather than an interpolated enum case — UITestAppLaunch.swift:29 builds '-seedFixture:bookshelf:\\(id)' from a stringly-typed id; taking BookshelfFixtureID and interpolating .rawValue makes the mismatch unrepresentable. bookshelf is currently the only domain resolving via Enum(rawValue:) (all others switch on hard strings), so this one site closes the class. (2) Coverage: run the UI target on a schedule (nightly / pre-sync) as an ADVISORY sweep with flaky-vs-real triage, rather than as a per-cutover block gate — the block-gate objection is about flakiness blocking every iOS cutover, which a non-blocking scheduled run does not incur. Fixed for this one test by feat/reader-liquid-glass d57c52add, which also repaired two other never-running UI tests; the gate gap remains after that lands.",
+  "resolution": "已修：新增 ops/ui_fixture_lint.sh（從 BookshelfFixtureID 抽 rawValue，掃 UITests 的兩種字面形狀，不在清單者印檔名行號並 exit 1；結構性失敗 exit 2 不靜默回綠）、它的 29 條斷言測試（負控優先）、com.kg.uisweep.plist 每日 advisory sweep，並註冊進 test_ops.sh / ui_quality_plane.yml（fast 層＝CI ui-quality-gate + cutover ui-quality-fast）。\n\n受派者兩處關鍵發現：① 它自己的測試斷言被**它自己寫來解釋該旗標的 XML 註解**滿足——刪掉真正的 ProgramArguments 仍然綠；改成 plutil -extract 並自帶合成 stripped plist 的自我探測。② `ios/BooksAndVocab/**` 這個 glob **不會**匹配 `ios/BooksAndVocabUITests/…`，所以 CI 那半原本永遠不會為這張票所講的 diff 形狀開火；已補 path 並以 fnmatch 實證。\n\nplist 未安裝（launchctl load 是使用者的決定）。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "convergence line, independently verifying a claim from feat/reader-liquid-glass",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0（29 條測試全過 + lint 對現況 4 個呼叫點全合法）；端到端負控：重新注入歷史上那個 camelCase id → rc=1 具名行號，git checkout -- 後 rc=0"
 }

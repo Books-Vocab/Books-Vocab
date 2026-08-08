@@ -6,14 +6,21 @@
   "date": "2026-08-05",
   "detail": "heartbeat 契約只證明『程序存在』，不證明『程序在前進』——`ops/lib/streaming_command.py` 每 20 秒回 alive=true，一顆卡死的 child 與一顆忙碌的 child 在輸出上完全一樣。實例：lldb-forensics 那顆掛 4541s 期間 heartbeat 全程健康（c6f5e3 已用『每個呼叫點自帶預算』在該支測試上局部解決，但那是逐點補丁不是契約）。可行判準：child 的累積 CPU 時間（`ps -o time`）或 stdout/stderr 累積 bytes 在連續 N 個 heartbeat 之間完全不動時，把 heartbeat 行標成 stalled=true 並讓呼叫端有機會設上限。動之前要先量『正常但安靜』的 gate 有多少（純等鎖、純下載慢），否則會造出一堆假 stalled。落點 `ops/lib/streaming_command.py`，共用面（worktree gate / app_review_evidence / ios_ops 都吃），改動要連 `ops/tests/test_streaming_command.py` 一起；注意 2026-08-05 另有 debug/ios-lock-wait-heartbeat 工作樹在改 heartbeat 相鄰面，先確認不重疊。",
   "fix_site": "ops/lib/streaming_command.py:run_streamed_command  (heartbeat 列印那段，約 :150-160)",
+  "fixed_by": [
+    "a2ee7aacf2edadcffbce7fd86090668b3a636f70"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-bc8315",
   "plan": "讓 heartbeat 從『程序存在』升級成『程序在前進』，判準用 child 的累積 stdout/stderr bytes（比 ps -o time 便宜且已在手上）：(1) 迴圈外新增 bytes_seen=0、last_progress_bytes=0、last_progress_at=started；在既有 `elif chunk:` 分支裡 bytes_seen += len(chunk)。(2) 印 heartbeat 前先判斷：若 bytes_seen > last_progress_bytes 就更新 last_progress_bytes/last_progress_at 並視為前進（stalled=false）；否則 idle = now - last_progress_at，當 idle >= heartbeat_interval（＝連續兩個 heartbeat 之間一個 byte 都沒吐）時 stalled=true。(3) heartbeat 行在既有欄位**後面**追加，順序與既有名稱一律不動：`... phase=heartbeat elapsed=Xs pid=N alive=true stalled=<bool> outBytes=<n> idle=<f>s`。安全性已查證：ops/tests/test_ios_ops_release_heartbeat.sh:21 用的是未錨定行尾的 grep -E 'phase=heartbeat elapsed=[0-9.]+s pid=[0-9]+ alive=true'，追加欄位不會打破它。(4) 本單**不**自動 kill：只把 stalled 暴露給呼叫端（worktree gate / app_review_evidence / ios_ops 三個共用面）自行決定，真要硬上限就走既有的 timeout_seconds 參數——entry 自己要求先量『正常但安靜』的 gate 有多少，沒有那份數據前不得把 stalled 接成 fail。(5) ops/tests/test_streaming_command.py 補兩案：靜默 child（`sleep`）的 heartbeat 必須出現 stalled=true；持續吐 stdout 的 child 的 heartbeat 必須全部 stalled=false。(6) entry 提醒的 debug/ios-lock-wait-heartbeat 工作樹今天已不存在（git worktree list 只剩 main），不需再對重疊。",
-  "resolution": "",
+  "resolution": "已修：heartbeat 在既有欄位之後追加 stalled / outBytes / idle，讓「還活著」升級成「還在前進」。只暴露不自動 kill，硬上限仍走 timeout_seconds。\n\n受派者找到 plan 沒涵蓋的第二層根因：drain thread 原本 `BufferedReader.read(64KiB)` 會阻塞到湊滿或 EOF——一顆每 0.12s 吐 5 bytes 的**正常** child，parent 要到它退出才一次收到 30 bytes，於是只加計數不改讀法會讓每顆低流量 child 都被誤判 stalled。改 read1。\n\n另具名一個行為變更：stalled 的謂詞本身變了（舊＝兩次 heartbeat 之間零 byte，新＝最近一整個 interval 內零 byte，新窗口是舊窗口子集，故在嚴格更多情況下為 true）。mutation 10/10 全滅。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "IMP-20260805-c6f5e3 修復時刻意留下的第三項",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑 acceptance_cmd rc=0；mutation 10/10 全滅；load average 209 下 10/10 綠"
 }
