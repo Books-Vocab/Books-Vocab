@@ -1,0 +1,20 @@
+{
+  "acceptance": "ui_quality_gate.py --json 這個字串不再出現在任何 md/yml；該列提到的每一個入口都實跑過且結果寫進 resolution",
+  "acceptance_cmd": "bash -c \"set -e; ! grep -rqn \\\"ui_quality_gate.py --json\\\" --include=*.md --include=*.yml docs .claude CLAUDE.md; ./ops/ui_quality_gate.sh --help > /dev/null\"",
+  "brief": "技術索引教人用某個指令加上某個選項，那個選項其實在另一支腳本上，照做的人會直接拿到參數錯誤。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "`docs/reference/tech_index.md:189`（標 **SoT**）寫著「`ui_quality_gate.py --json` 的 `summary` 六鍵」，並據此描述 `selected` / `unrun` / `passed` / `failed` / `warn` / `skipped` 的語意與不變式。\n\n**那個入口不存在。** 實測 2026-08-08：\n\n```\n$ ./ops/ui_quality_gate.py --files ops/injection_lint.py --json\nrc=2\nusage: ui_quality_gate.py [-h] [--since SINCE] [--files FILES [FILES ...]]\n                          [--tier {fast,slow,all}] [--dry-run] [--execute]\n```\n\n`--json` 住在 `ops/ui_quality_gate.sh`（`.sh --help` 有），不在 `.py`。所以照 SoT 做的 agent 會拿到 rc=2 的 usage error，然後開始懷疑自己的參數、環境、或那份文檔的其他部分。\n\n`injection-lint-cwd` 的受派者今天實際撞到，它的處置是繞道用 `.sh --dry-run` 取得證據並在回報裡具名——**但它沒有立票**，而是交回給協調者判。它同時回報「`CLAUDE.md` 與 `tech_index.md` 都寫」，實測 **`CLAUDE.md` 是 0 處**，全 repo 只有 `tech_index.md:189` 這一處。\n\n**為什麼這個小錯值得一張票**：那一列是 UI 品質控制面的 SoT，而它描述的六鍵不變式（五個狀態計數恆等於 `selected`）本身是對的、也有價值——錯的只是**誰提供它**。一個正確的契約掛在錯誤的入口上，比整段錯更難發現：讀者會相信內容，然後在入口上卡住並歸咎於自己。",
+  "fix_site": "docs/reference/tech_index.md:189（ui_quality 控制面那一列）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-fef67a",
+  "plan": "把 `docs/reference/tech_index.md:189` 那句「`ui_quality_gate.py --json` 的 summary 六鍵」的入口改成 `ui_quality_gate.sh --json`（六鍵的語意與不變式敘述本身是對的，不要動）。**同時逐一實跑那一列提到的其他入口**——同一列還寫了 `ui_quality_plane.py validate` / `list [--json]` / `impact --files`、`ios_ops.sh quality list --json` / `quality impact`、`ui_quality_gate.sh --tier ... --dry-run/--execute/--execute-slow/--dataset`。**一句一句打過去**，把不存在或行為不符的逐條列進 resolution。理由：這一列是全 repo 最長的一格（實測 7000 字元以上），它累積了多次改動，一個錯的入口出現代表可能有第二個，而讀者對這種長格的信任度很高。**不要**只改被點名的那一句就結案。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "改技術索引裡的一句話，把入口指到正確的那支腳本；順手確認同段其他入口敘述是否也錯。",
+  "severity": "low",
+  "source": "2026-08-08 injection-lint-cwd 受派者實撞：照 SoT 打 ui_quality_gate.py --json 得到 rc=2 usage error",
+  "status": "triaged",
+  "stream": "IMP"
+}
