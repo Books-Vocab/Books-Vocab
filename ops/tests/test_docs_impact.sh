@@ -419,6 +419,34 @@ if (cd "$divergence_repo" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
   exit 1
 fi
 grep -q 'merge-base' "$tmpdir/orphan.err"
+# Fail closed means nothing parseable on stdout either, or a caller reading only
+# stdout still sees "no changes" and the non-zero exit buys nothing.
+if [ -s "$tmpdir/orphan.out" ]; then
+  echo "--since must not emit a result payload when it cannot resolve the range" >&2
+  exit 1
+fi
+
+# A shallow checkout produces the SAME symptom (no merge base) from a different cause:
+# the common ancestor exists but was truncated. git itself says nothing here — measured
+# stderr from `git merge-base` is 0 bytes — so if this tool blames "unrelated history"
+# and prescribes --files, it talks the reader out of the real fix (fetch depth) and into
+# hand-listing paths. Cause must be probed, not assumed.
+git clone -q --depth=1 --no-single-branch "file://$divergence_repo" "$tmpdir/shallow"
+if (cd "$tmpdir/shallow" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE && \
+    "$ROOT/ops/docs_impact.py" --since origin/main --json) >"$tmpdir/shallow.out" 2>"$tmpdir/shallow.err"; then
+  echo "--since must fail closed in a shallow checkout too" >&2
+  exit 1
+fi
+if ! grep -q 'shallow' "$tmpdir/shallow.err" || ! grep -q 'unshallow\|fetch-depth' "$tmpdir/shallow.err"; then
+  echo "shallow checkout must be named as the cause, with the fetch-depth remedy; got:" >&2
+  cat "$tmpdir/shallow.err" >&2
+  exit 1
+fi
+if grep -q '無共同祖先' "$tmpdir/shallow.err"; then
+  echo "shallow truncation must not be reported as unrelated history; got:" >&2
+  cat "$tmpdir/shallow.err" >&2
+  exit 1
+fi
 
 # --help must teach the semantics the code implements, since `--since main` is the
 # natural thing to type and the old help actively taught the two-dot form.
