@@ -7,6 +7,11 @@
   "date": "2026-08-06",
   "detail": "primary 的未 commit tracked 改動擋住所有 worktree 的 cutover，而工具對此**只會拒絕、不會協調**，於是同一個摩擦靠人留言解決了三次：`.cache/coordination/broadcast.md` 內 2026-08-05 兩則（卡住 `feat/roundness-single-dof` 與 `feat/wrapup-tooling-debt`）＋2026-08-06 一則（卡住一批 11 條 backlog 修復，髒檔是 `ops/release.sh` 的部署收斂閘）。refuse 訊息本身已經很好（列髒檔、給選項、指向 session-mgmt），問題在**它把協調成本整包丟給呼叫端**：每個被擋的 session 都要自己 list_sessions、自己判斷髒檔是誰的、自己去 broadcast 留言，而留言是被動通道、對方不一定會讀。可考慮的方向（未定案，需先量測哪個真的有效）：① cutover 被擋時自動把一則具名紀錄 append 進 broadcast（誰被擋、擋在哪個檔、verdict 仍有效），把三次手寫變成零次；② 提供 `cutover --wait`，在 primary 乾淨時自動重跑，讓被擋的 session 不必輪詢；③ 更根本的：ff 只需要 primary 的**工作區**乾淨，髒檔若與 ff 的 range 完全不相交，理論上可先判定無衝突再放行——但要非常小心，`git merge --ff-only` 會動到整個工作區，且本 repo 明令禁用 stash。①最便宜且無風險，建議先做①再量還會不會有第四次。",
   "fix_site": "ops/worktree_orchestrate.py:_primary_ff_ready（:953-971 的 dirty 拒絕分支）＋ ops/tests/test_worktree_orchestrate.py",
+  "fixed_by": [
+    "18f96d6c1",
+    "0bcb767e5",
+    "d0c6fa7ef"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-42d183",
@@ -16,6 +21,10 @@
   "scope": "改一支流程工具，多寫一則自動留言，加三項測試；不動拒絕的判斷本身。",
   "severity": "med",
   "source": "batch backlog fix line, third occurrence of the same cutover blocker",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "acceptance_cmd 由本次 verify --commit 於 cutover 後的 main 上實跑（rc 不符即拒絕落地）；修法已落地於 18f96d6c1 0bcb767e5 d0c6fa7ef"
 }

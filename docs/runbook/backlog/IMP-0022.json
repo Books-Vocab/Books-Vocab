@@ -8,6 +8,9 @@
   "date": "2026-07-09",
   "detail": "felix 生產後端 git HEAD 靜默落後 origin/main 80 commits(0cea7f67 vs main),無任何告警。stale 容器的 `ops-edit seed` 舊碼**靜默丟棄** spec 的 counter-form 複習日期(review_count>0=0、next_review_at 全 null)、不合成 review_events(heatmap/streak=0)、不做 is_default→default remap(多殘留空 notebook)——差點注入「看起來全新未使用」的行銷帳號。本 session 已 deploy felix→main(0611f3ca)解當下阻塞,但**監控 gap 仍在**。**2026-08-05 指標對象更正**:架構已改為 launchd 週期 reconciler 收斂 felix→`origin/prod`(`ops/kg_reconcile.sh:1-9`),`origin/main` 已降為備份鏡像、reconciler 不看 main → 原候選的「commits behind **main**」已非正確指標。監控 gap 仍為真但形狀不同:drift 判定在 `kg_reconcile.sh:341-343`(VERSION vs origin/prod)+ crash-consistency `:356-366`,但 `alert()`(`:72`)只 printf 到 stderr→launchd err log,**未進 health**;`ops/infra_health.sh` 的 12 個 metric(`:137,143,145,149,154,166,174,183,187,191,194,196`:host_collect/disk/inode/mem/swap/container_restarts/uptime/ingress/http_probe/log_errors_1h/cert_days/data_dir_mb)無任何版本或漂移項。資料面損害(counter-form 複習日期、review_events 合成、is_default→default remap)**已修**:`ops_edit_seed_commands.py:115-140` docstring 明載支援。候選:`infra_health.sh` 加 deployed_sha vs origin/prod、reconciler last-tick 新鮮度、poison state 三項 metric。",
   "fix_site": "ops/infra_health.sh:196",
+  "fixed_by": [
+    "538b50716"
+  ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
   "id": "IMP-0022",
@@ -17,8 +20,10 @@
   "scope": "兩支運維腳本各加幾段：一個心跳寫入、三個新健康指標與一個開關，連同兩份測試與兩處說明；不碰生產資料。",
   "severity": "med",
   "source": "行銷帳號 Phase5(felix 漂移)",
-  "status": "open",
+  "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "acceptance_cmd 由本次 verify --commit 於 cutover 後的 main 上實跑（rc 不符即拒絕落地）；修法已落地於 538b50716"
 }

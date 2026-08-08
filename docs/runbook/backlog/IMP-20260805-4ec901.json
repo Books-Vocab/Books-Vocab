@@ -7,6 +7,10 @@
   "date": "2026-08-05",
   "detail": "cutover gate 的 child tool 以工作樹為 cwd 執行，但部分 ops 測試（test_ios_ops.sh 的 release/TestFlight 相關案例）會讀主 repo 的 git tag 狀態。gate 執行期間若有人在主 repo 建立/刪除 tag（例如跑 release.sh shipped ios），該道 gate 會以 rc=1 收場，在 gate 眼中與真的測試失敗無從分辨——與 IMP-20260805-5a3b26 的 device-lock 形狀同類：紅綠是機器狀態的函數。實測：2026-08-05 批次 gate 中 test_ios_ops.sh 回 passed 371 failed 1，同一份輸入單獨重跑 exit 0、371 全綠，隔離重跑 gate 亦 rc=0。",
   "fix_site": "ops/worktree_orchestrate.py:_run_gate（:1495-1567）+ aggregate_verdict（:742）",
+  "fixed_by": [
+    "2affa1497",
+    "0772f5313"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-4ec901",
@@ -16,6 +20,10 @@
   "scope": "改一支流程工具，加一道前後對照，再補兩支測試；不動任何既有測試。",
   "severity": "med",
   "source": "收尾 session 批次 gate：同一道 ops-shell:test_ios_ops.sh 在有並發 tag 手術時 rc=1、無並發時 rc=0",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "acceptance_cmd 由本次 verify --commit 於 cutover 後的 main 上實跑（rc 不符即拒絕落地）；修法已落地於 2affa1497 0772f5313"
 }

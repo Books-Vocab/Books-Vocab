@@ -7,6 +7,10 @@
   "date": "2026-08-05",
   "detail": "瀏覽公開牌組目錄不該讓任何人登出。SharedDeckCatalogService.optionallyAuthedData 的設計意圖是 auth-optional（有 token 就掛、沒有就當 guest），但它取 token 的方式是 try? await kgService.currentAuthToken()，而該函式在判定過期時會先設 sessionExpiredReason + 呼叫 sessionInvalidator.logout，才 throw。try? 只吞例外，副作用已經發生。修法：讓 optionallyAuthedData 繞過 currentAuthToken()，直接讀 authSession.token 並自行 JWTExpiry.isExpired 判斷，過期就當 guest 送出、不觸發 invalidation（需在 KGServing 協定加一個不帶副作用的取 token 入口）。不併進 2026-08-05 的 Release-flip change set，因為那會動到 auth 路徑、風險面與該次改動無關。緩解事實：不會迴圈（登出後 .task(id: isLoggedIn) 重跑會走乾淨 guest 路徑），且冷啟動的 background sync 通常比 Explore 更早撞到同一個 pre-check，所以邊際傷害小。現況已在 optionallyAuthedData 的註解上寫明，不留假不變式。",
   "fix_site": "ios/BooksAndVocab/Services/SharedDeckCatalogService.swift:optionallyAuthedData（連帶 ios/BooksAndVocab/Services/KGServing.swift 協定與 ios/BooksAndVocab/Services/KGService.swift 實作）",
+  "fixed_by": [
+    "1aa20748e",
+    "b7404b052"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "APP-20260805-0049ac",
@@ -17,7 +21,11 @@
   "scope": "iOS 三個檔小改（多一個不帶副作用的取用入口），五處測試替身各補一行，新增一支測試。",
   "severity": "med",
   "source": "Explore Release-flip Phase 3 review（blast-radius）",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "ios-engineer",
+  "verified_evidence": "./ops/ios_ops.sh build → RESULT=ok EXIT=0 (verdict kg_ios_build_verdict.1786187757-70605); ./ops/ios_ops.sh test → RESULT=ok executed=2012 (verdict kg_ios_test_verdict.1786187815-82264), xcresult 查得 testExpiredTokenBrowseDoesNotInvalidateSession()=Passed 且 testValidTokenBrowseStillSendsBearer()=Passed; 修法前同一支測試 RESULT=fail reason=tests-failed，issue 為 (invalidator.events → [\"logout_token_expired_precheck\"]).isEmpty → false; ./ops/i18n_lint.sh --baseline-check → 0 <= baseline 0; ./ops/docs_lint.sh → ERROR 0; acceptance_cmd → rc=0; ./ops/review_audit.sh → 2 commits [review][ok]（受派者於 feat/app-auth-explore 上 stage 的原始證據，整合者原樣沿用；acceptance_cmd 另由本次 verify --commit 實跑）"
 }

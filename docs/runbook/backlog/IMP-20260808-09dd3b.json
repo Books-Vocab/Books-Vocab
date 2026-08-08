@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "一張**還開著**的票，它的 `acceptance_cmd` 今天在 main 上跑應該是**紅的**——因為那條命令的全部意義就是「修好了沒」，而這張票說還沒修。如果它是綠的，只有兩種可能，兩種都是壞的：\n\n1. **它其實已經修好了**（殭屍票）。會被重新派工，下一個人白做一遍。\n2. **那條判準根本不驗它宣稱的東西**。結案時閘門會實跑它並判通過，於是一個沒修的東西被蓋上「已驗證」。\n\n第二種今天有確診案例。`IMP-20260805-958999` 的 `acceptance_cmd` 結尾是 `! grep -qF \"| async func | 0 |\" docs/snapshot/ios_baseline.md`。該檔已於 2026-08-08 隨 `IMP-20260808-b63206` 移出版控——`grep` 對不存在的檔回 2，前面的 `!` 把它翻成**通過**。判準會綠，但不是因為它宣稱的理由。這正是本 repo 的一號缺陷形狀（斷言被不相干的理由滿足），而它發生在**判準自己身上**。\n\n同族但機制不同的既有票：`IMP-20260808-807170`（靠 commit 標題點名找殭屍——訊號便宜但只覆蓋第一種）、`IMP-20260808-95912c`（判準散文與命令不對帳）、`IMP-20260808-c65d79`（判準只是 grep 原始碼）。本條是四者裡**唯一直接執行判準**的，所以它是那三條的裁決者而不是重複。",
   "fix_site": "ops/backlog.py（新子指令，唯讀）+ ops/lib/streaming_command.py（heartbeat）",
+  "fixed_by": [
+    "701524ad3"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-09dd3b",
@@ -15,6 +18,10 @@
   "scope": "待辦工具新增一個唯讀查詢，逐張實跑檢查並列出可疑的；要有逾時、進度回報與具名豁免。",
   "severity": "high",
   "source": "2026-08-08 第二輪開場前掃描 dispatch 佇列時確診 IMP-20260805-958999 的判準因檔案不存在而假綠",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "acceptance_cmd 由本次 verify --commit 於 cutover 後的 main 上實跑（rc 不符即拒絕落地）；修法已落地於 701524ad3"
 }
