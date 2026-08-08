@@ -9,10 +9,19 @@ Three rules:
   R3. If a file contains `@ObserveInjection`, it must also `import Inject`.
 
 Modes:
-  --report          Print findings, exit 0.
+  --report          Print findings; exit 0 for any tree it can scan.
   --baseline        Write current findings list to ops/injection_baseline.txt.
   --baseline-check  Compare current findings to baseline; fail if regressed.
   --strict          Any finding fails (exit 1).
+
+Exit 2 (all modes) is a structural failure, not a verdict: the Views tree is
+missing, or the scan examined zero files. Those are never reported as clean.
+
+Paths are anchored to the repo, not to the caller's cwd — the Views tree and
+`KG_INJECTION_BASELINE` resolve the same from any directory (relative overrides
+against the repo root, exactly as ops/ui_quality_gate.py resolves them before
+spawning this tool). Findings still name files repo-relatively, so the baseline
+stays portable.
 
 The baseline file may contain a leading `# sunset: YYYY-MM-DD` line. After
 that date `--baseline-check` warns even if findings haven't regressed.
@@ -28,13 +37,38 @@ import re
 import sys
 from pathlib import Path
 
-VIEWS_ROOT = Path("ios/BooksAndVocab/Views")
-BASELINE_FILE = Path(os.environ.get("KG_INJECTION_BASELINE", "ops/injection_baseline.txt"))
+# Everything this tool addresses is anchored to the repo, never to the caller's
+# cwd. Both constants below used to be bare relative Paths, which made the whole
+# verdict a function of where the invoker happened to stand: from ops/ the scan
+# found no Views tree at all, and from a directory holding a laxer
+# ops/injection_baseline.txt the gate would have read *that* one and forgiven
+# everything. ops/backlog.py carried the identical line and was ROOT-anchored on
+# 2026-08-07 after the second shape was measured there; ops/inject_codemod.py:27
+# (which shares this tool's grammar) had ROOT-anchoring right all along — but only
+# that: it still feeds absolute paths to should_skip_path and still reports a
+# zero-file run as success (IMP-20260808-e03c92).
+ROOT = Path(__file__).resolve().parents[1]
+VIEWS_ROOT = ROOT / "ios/BooksAndVocab/Views"
+
+# Resolved character-for-character like ops/ui_quality_gate.py:injection_args —
+# same variable, same default, absolute-vs-relative decided the same way. The
+# parent plans --baseline-check from its answer and the child enforces against
+# its own; the only way two processes cannot disagree about a path is to resolve
+# it identically, default included. Note `KG_INJECTION_BASELINE=` (empty) still
+# resolves to the repo root, i.e. a directory: that is the shape the parent
+# deliberately rejects with .is_file() before ever spawning us (IMP-0048), and
+# "fixing" it here would re-open the split.
+_BASELINE_RAW = os.environ.get("KG_INJECTION_BASELINE", "ops/injection_baseline.txt")
+_BASELINE_CANDIDATE = Path(_BASELINE_RAW)
+BASELINE_FILE = (
+    _BASELINE_CANDIDATE if _BASELINE_CANDIDATE.is_absolute() else ROOT / _BASELINE_CANDIDATE
+)
 LOGGER = logging.getLogger(__name__)
 
 # View-injection grammar shared with the codemod (single source of truth).
 from _inject_shared import (  # noqa: E402
     SHIM,
+    SKIP_PATH_FRAGMENTS,
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
     inject_package_linked,
@@ -42,8 +76,25 @@ from _inject_shared import (  # noqa: E402
 )
 
 
+def _display(path: Path) -> str:
+    """How a file is named inside a finding string: repo-relative.
+
+    VIEWS_ROOT is absolute so the scan cannot follow the caller's cwd, but the
+    finding strings are diffed against ops/injection_baseline.txt and written
+    back into it by --baseline. Absolute paths there would bake one machine's
+    home directory into a version-controlled file and make every entry read as
+    NEW on any other checkout. The fallback covers roots outside the repo (the
+    regression tests point VIEWS_ROOT at a temp tree).
+    """
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def scan_file(path: Path) -> list[str]:
     """Return list of finding strings for this file."""
+    label = _display(path)
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     findings: list[str] = []
@@ -57,10 +108,10 @@ def scan_file(path: Path) -> list[str]:
     # style preference.
     if inject_package_linked():
         if has_observe and not has_import:
-            findings.append(f"{path}: missing `import Inject` despite @ObserveInjection usage")
+            findings.append(f"{label}: missing `import Inject` despite @ObserveInjection usage")
     elif has_import:
         findings.append(
-            f"{path}: `import Inject` does not compile — the Inject package is not linked; "
+            f"{label}: `import Inject` does not compile — the Inject package is not linked; "
             f"@ObserveInjection comes from {SHIM}"
         )
 
@@ -92,14 +143,14 @@ def scan_file(path: Path) -> list[str]:
         while j < len(lines) and lines[j].strip() == "":
             j += 1
         if j >= len(lines) or "@ObserveInjection" not in lines[j]:
-            findings.append(f"{path}:{i+1}: struct {name}: View missing @ObserveInjection")
+            findings.append(f"{label}:{i+1}: struct {name}: View missing @ObserveInjection")
 
     # R2: per-file arity
     obs_count = text.count("@ObserveInjection")
     enable_count = text.count(".enableInjection()")
     if obs_count != enable_count:
         findings.append(
-            f"{path}: arity mismatch — @ObserveInjection={obs_count}, "
+            f"{label}: arity mismatch — @ObserveInjection={obs_count}, "
             f".enableInjection()={enable_count}"
         )
 
@@ -110,11 +161,39 @@ def collect_findings() -> list[str]:
     if not VIEWS_ROOT.exists():
         print(f"ERROR: {VIEWS_ROOT} not found", file=sys.stderr)
         sys.exit(2)
+    candidates = sorted(VIEWS_ROOT.rglob("*.swift"))
     findings: list[str] = []
-    for f in sorted(VIEWS_ROOT.rglob("*.swift")):
-        if should_skip_path(f):
+    scanned = 0
+    for f in candidates:
+        # Decide the skip on the path *inside* the tree. should_skip_path is a
+        # substring match and VIEWS_ROOT is now absolute, so a checkout that
+        # happened to live under a directory named Debug/ or Readium would
+        # otherwise exclude every file and hand back a clean-looking scan.
+        if should_skip_path(f.relative_to(VIEWS_ROOT)):
             continue
+        scanned += 1
         findings.extend(scan_file(f))
+
+    # An empty findings list means one of two very different things: "every file
+    # is compliant" or "no file was read". Only the first is a pass. Until
+    # 2026-08-08 both printed `OK — no findings.` and exited 0, which is the
+    # other half of the cwd defect above — pointed at the wrong tree, this lint
+    # certified it. Same doctrine as ops/ui_fixture_lint.sh's exit 2: a lint
+    # that cannot see anything is the kind that stays silent forever.
+    if scanned == 0:
+        why = (
+            "no .swift file exists under it"
+            if not candidates
+            else f"all {len(candidates)} .swift file(s) under it are excluded by "
+            f"{list(SKIP_PATH_FRAGMENTS)}"
+        )
+        print(
+            f"ERROR: scanned 0 files under {VIEWS_ROOT} — {why}. A lint that examined "
+            f"nothing has not shown that anything is clean; refusing to report an empty "
+            f"findings list as a pass.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return findings
 
 

@@ -1,0 +1,14 @@
+{
+  "brief": "產生 hot-reload 樣板的那支工具,站錯資料夾時會安靜地一個檔案都不處理,並回報成功。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "ops/inject_codemod.py 帶著 IMP-20260807-1674d1 的兩半缺陷,那張票只修了姊妹工具 ops/injection_lint.py。(a) :254 把**絕對**路徑餵給 _inject_shared.should_skip_path,而那是子字串比對 —— checkout 若住在任何名為 Debug/ 或 Readium 的目錄底下,每一個檔案都會被 skip;injection_lint 已於 2026-08-08 改成傳 f.relative_to(VIEWS_ROOT),並在 _inject_shared.should_skip_path 的 docstring 釘死「參數必須相對於掃描根」,codemod 是唯一還在違反該契約的呼叫端。(b) 沒有零掃描守衛:root.rglob 空手而回時印 'Scanned: 0, files modified: 0' 並 return 0 —— 正是 IMP-20260807-1674d1 命名的「掃到零個檔案被讀成通過」形狀,injection_lint 現在對此 exit 2。另注意 ops/injection_lint.py 的 ROOT 註解寫 codemod 'had it right all along',那只對 VIEWS_ROOT 成立,對這兩點都不成立;修本票時一併修正那句話,否則它會讓下一個人不去查。",
+  "id": "IMP-20260808-e03c92",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "一支腳本兩處:skip 判斷的參數與一個零掃描守衛,外加它的回歸測試。",
+  "severity": "med",
+  "source": "code review of IMP-20260807-1674d1",
+  "status": "open",
+  "stream": "IMP"
+}

@@ -409,13 +409,19 @@ EMPTY_ROOT="$(mktemp -d)"
   && ok "set-but-empty → UNRUNNABLE, the same answer the child's Path('') deserves" \
   || fail_t "empty override took the parent's fallback while the child takes the repo root — the split brain is back"
 [[ "$( (export KG_INJECTION_BASELINE="$TRACKED_BASELINE"; _inj "$ROOT") )" == "--baseline-check|nowarn" ]] \
-  && ok "a relative override resolves against the repo root, the cwd injection_lint.sh cds to" \
+  && ok "a relative override resolves against the repo root — the same anchor the child uses, whatever cwd either was invoked from" \
   || fail_t "a relative override does not resolve like the child's"
 rmdir "$EMPTY_ROOT"
 
 # Everything above is parent-side. If ops/injection_lint.py stopped honouring the
 # variable, or drifted to a different default, the parent alone would still print
 # exactly what those assert and every one of them would stay green.
+#
+# This probe used to compare the two *unresolved* strings — Path("ops/…") on both
+# sides — and was green for as long as the defect it was meant to catch was live:
+# two equal relative strings prove nothing about where each side lands, and the
+# child resolved its one against the caller's cwd (IMP-20260807-1674d1). Compare
+# the resolved files, and the anchors they resolve against.
 CONTRACT="$("$UV_BIN" run --python 3.13 python - <<'PY'
 import os, sys
 from pathlib import Path
@@ -431,19 +437,27 @@ gate = load("g", "ops/ui_quality_gate.py")
 lint = load("l1", "ops/injection_lint.py")
 os.environ["KG_INJECTION_BASELINE"] = "/tmp/kg-parent-child-contract-probe.txt"
 lint2 = load("l2", "ops/injection_lint.py")
-print("%s|%s|%s|%s" % (
-    Path(gate.DEFAULT_INJECTION_BASELINE) == lint.BASELINE_FILE,
+# A *relative* override is the input the two used to disagree on; the parent
+# resolves it against repo_root(), the child against its own ROOT.
+os.environ["KG_INJECTION_BASELINE"] = "ops/injection_baseline.txt"
+lint3 = load("l3", "ops/injection_lint.py")
+root = gate.repo_root()
+print("%s|%s|%s|%s|%s|%s" % (
+    root == lint.ROOT,
+    (root / gate.DEFAULT_INJECTION_BASELINE) == lint.BASELINE_FILE,
     lint2.BASELINE_FILE == Path("/tmp/kg-parent-child-contract-probe.txt"),
+    lint3.BASELINE_FILE == (root / "ops/injection_baseline.txt"),
     gate.DEFAULT_INJECTION_BASELINE,
     lint.BASELINE_FILE,
 ))
 PY
 )"
-IFS='|' read -r SAME_DEFAULT CHILD_HONOURS GATE_DEFAULT LINT_DEFAULT <<<"$CONTRACT"
-if [[ "$SAME_DEFAULT" == "True" && "$CHILD_HONOURS" == "True" ]]; then
-  ok "parent and child read the same variable and the same default ($GATE_DEFAULT)"
+IFS='|' read -r SAME_ANCHOR SAME_DEFAULT CHILD_HONOURS SAME_RELATIVE GATE_DEFAULT LINT_DEFAULT <<<"$CONTRACT"
+if [[ "$SAME_ANCHOR" == "True" && "$SAME_DEFAULT" == "True" \
+      && "$CHILD_HONOURS" == "True" && "$SAME_RELATIVE" == "True" ]]; then
+  ok "parent and child anchor on the same repo root and resolve the same default ($GATE_DEFAULT), absolute override and relative override to the same file"
 else
-  fail_t "parent/child baseline contract broken — gate default '$GATE_DEFAULT' vs lint '$LINT_DEFAULT', child honours override: '$CHILD_HONOURS' (raw: $CONTRACT)"
+  fail_t "parent/child baseline contract broken — same anchor: '$SAME_ANCHOR', same default: '$SAME_DEFAULT' (gate '$GATE_DEFAULT' vs lint '$LINT_DEFAULT'), absolute override honoured: '$CHILD_HONOURS', relative override agrees: '$SAME_RELATIVE' (raw: $CONTRACT)"
 fi
 
 # A refusal must not be re-labelled on its way out. main() forgives an

@@ -113,7 +113,7 @@ mechanisms:
     triggers:
       - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
-    verdict: "Exit code; InjectionNext coverage rules (R1/R2/R3) via --strict. No automated hook today — run by hand; see docs/sop/ios.md §Hot Reload."
+    verdict: "Exit code; InjectionNext coverage rules (R1/R2/R3), enforced against the baseline (run: --baseline-check, NOT --strict). Exit 2 is structural, not a verdict: Views tree missing, or the scan examined zero files (never reported as clean). layer static-code puts it in the fast tier, so it is automated in three places, not run by hand: the cutover ui-quality-fast block gate (ops/worktree_orchestrate.py), .githooks/pre-commit, and .github/workflows/ui-quality-gate.yml. See docs/sop/ios.md §Hot Reload."
     docs:
       - docs/sop/ios.md
 

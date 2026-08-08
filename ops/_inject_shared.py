@@ -14,7 +14,17 @@ from pathlib import Path
 # Path fragments excluded from injection (debug-only / vendored readers).
 SKIP_PATH_FRAGMENTS = ("Debug/", "Readium", "PDFReader")
 
-PBXPROJ = Path("ios/BooksAndVocab.xcodeproj/project.pbxproj")
+ROOT = Path(__file__).resolve().parents[1]
+
+# Read from disk by inject_package_linked(), so it must be anchored to the repo:
+# relative, it resolved against the caller's cwd and silently answered False
+# from anywhere but the repo root — flipping R3 for every file without a word.
+PBXPROJ = ROOT / "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+
+# Display only (it appears inside a finding string). Deliberately left
+# repo-relative: findings are written into the version-controlled
+# ops/injection_baseline.txt, and an absolute path there would embed one
+# machine's home directory in a file every checkout has to match.
 SHIM = Path("ios/BooksAndVocab/Support/ObserveInjectionShim.swift")
 
 
@@ -52,5 +62,17 @@ PREVIEW_OPEN_RE = re.compile(r"#Preview\b[^{]*\{")
 
 
 def should_skip_path(path: Path) -> bool:
+    """`path` MUST be relative to the scan root, never absolute.
+
+    This is a substring match, so an absolute path drags the checkout's own
+    directory names into the decision: a clone living under any directory named
+    Debug/ or Readium would skip every file and produce an empty, clean-looking
+    scan. ops/injection_lint.py passes `f.relative_to(VIEWS_ROOT)` for exactly
+    that reason; ops/inject_codemod.py still passes absolutes and carries the
+    hazard (IMP-20260808-e03c92). The fragments are also written WITHOUT a
+    leading slash here, unlike ui_token_lint.py / plain_deadzone_lint.py's
+    ("/Debug/",) — copy a fragment across in that form and it would match
+    nothing under this contract.
+    """
     s = str(path)
     return any(f in s for f in SKIP_PATH_FRAGMENTS)
