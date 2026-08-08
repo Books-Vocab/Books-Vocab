@@ -10,7 +10,7 @@
   "fix_site": "ops/ios_test.sh:528-535",
   "fixed_by": [
     "619e9525e",
-    "5c5f0ff93"
+    "e52cdeed5"
   ],
   "groomed_at": "2026-08-05",
   "groomed_by": "workflow:groom-all@v2",
@@ -23,6 +23,8 @@
   "source": "Explore P1 docs-sync",
   "status": "fixed",
   "stream": "IMP",
-  "verdict": "CONFIRMED-OPEN",
-  "verified_at": "2026-08-05"
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "agent:main-session",
+  "verified_evidence": "LC_CTYPE=C.UTF-8 ./ops/test_ios_test_discovery.sh → 63/63 綠（含第 18 節跨 scope 6 asserts）；acceptance_cmd 由本次 verify --commit 實跑 rc=0。fixed_by 第二顆改指 e52cdeed5（5c5f0ff93 是 cherry-pick 前的原始 SHA，只活在 feat/ios-test-method-names 上）。"
 }
