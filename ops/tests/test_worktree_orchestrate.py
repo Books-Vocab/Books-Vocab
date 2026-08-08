@@ -5457,7 +5457,18 @@ def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratc
     """The acceptance criterion of IMP-20260807-267d60, stated as an assertion.
 
     A verdict bound to any source branch's HEAD is precisely the verdict the batch
-    already had before integrating, and the one that missed five defects."""
+    already had before integrating, and the one that missed five defects.
+
+    Which assertion carries which defect, measured rather than assumed (a reviewer
+    caught me claiming the wrong one):
+      * `head_sha == integrated` catches a payload that MISREPORTS the head, because
+        `integrated` is read back off the worktree. It does NOT catch a gate that ran
+        too early — the run stops early, so the HEAD read afterwards is the early one
+        too and both sides move together. It is a tautology for exactly the defect
+        this test is named after.
+      * `changed_files` / `picked` / the commit COUNT are what catch that one: they
+        are expectations written here from the fixture, not read back from the run.
+    Keep all of them; just do not mistake the first for the proof."""
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
     a, b1, b2 = _conflicting_pair(repo)
@@ -5488,6 +5499,9 @@ def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratc
     # the moment the conflict settled would be missing.
     assert set(rec["changed_files"]) == {"shared.txt", "b.txt"}, rec["changed_files"]
     assert [c["sha"] for c in done["picked"]] == [a, b1, b2], done["picked"]
+    assert len(_git(["rev-list", "main..HEAD"], wt).split()) == 3, (
+        "the integrated tree does not hold one commit per authored commit — this "
+        "expectation comes from the fixture, not from anything the run reported")
     assert (Path(wt) / "shared.txt").read_text() == "alpha\nbeta\n"
 
 
@@ -5572,12 +5586,17 @@ def test_integrate_refuses_a_second_start_while_one_is_in_flight(scratch):
     rc, _stopped = _run_json(["integrate", "--slug", "batch",
                               "--branches", "feat/a", "feat/b",
                               "--state", state, "--commit", "--json"])
-    assert rc == MODULE.EXIT_BLOCK
+    assert rc == MODULE.EXIT_BLOCK, _stopped
     rc, again = _run_json(["integrate", "--slug", "batch",
                            "--branches", "feat/a", "feat/b",
                            "--state", state, "--commit", "--json"])
     assert rc == MODULE.EXIT_USAGE, again
     assert "--continue" in again["error"] and "--abort" in again["error"], again
+    # Not just "the message mentions its own flags" — it must be ABOUT the live
+    # integration: name the worktree, and be reachable only while one is genuinely
+    # in flight (see test_integrate_forgets_a_finished_integration).
+    assert again["worktree"] == _stopped["worktree"], again
+    assert Path(again["worktree"]).is_dir()
 
 
 @gitmark
@@ -5727,28 +5746,40 @@ def test_integrate_refuses_to_gate_a_batch_its_own_books_do_not_add_up(scratch):
 
 
 @gitmark
-def test_integrate_surfaces_the_gates_own_refusal_rather_than_a_null_verdict(
-        scratch, monkeypatch):
+def test_integrate_surfaces_the_gates_own_refusal_rather_than_a_null_verdict(scratch):
     """`gate` has exits that REFUSE instead of judging (mid-operation tree, wrong
     orchestrator, base moved); those payloads carry `error` and no `verdict` at all.
     Reporting that as "verdict: None — fix the blocking gate(s)" hands the reader
     advice for a different problem while the real cause sits unread in gate's own
-    payload."""
+    payload — and points at a verdict record that was never written.
+
+    Driven through the REAL refusal rather than a stubbed gate, and through the one
+    that actually happens: the trunk moving while a human resolves a conflict. That
+    is not an edge case — it is why `land` exists — and `integrate` does not run
+    `catchup`, so it is on the normal path for a batch."""
     tmp_path, repo, _remote = scratch
     state = str(tmp_path / "reg.json")
-    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _conflicting_pair(repo)
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    wt = stopped["worktree"]
 
-    def refusing_gate(args):                # the SHAPE cmd_gate really emits
-        print(json.dumps({"schema": MODULE.GATE_SCHEMA, "step": "gate",
-                          "error": "a rebase is in progress in this worktree"}))
-        return MODULE.EXIT_BLOCK
-    monkeypatch.setattr(MODULE, "cmd_gate", refusing_gate)
+    _advance_local_main(repo, "moved-while-you-resolved")
+    (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
+    _git(["add", "shared.txt"], wt)
 
-    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
-                         "--state", state, "--commit", "--json"])
-    assert rc == MODULE.EXIT_BLOCK, pay
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--continue", "--commit", "--json"])
+    assert rc != MODULE.EXIT_OK, pay
     assert pay["mode"] == "refused", pay
-    assert "a rebase is in progress" in pay["error"], pay
+    # The CAUSE has to reach the operator, and so does the remedy gate itself names.
+    assert "behind" in pay["error"], pay["error"]
+    assert "catchup" in pay["error"], pay["error"]
+    # …and it must not claim a verdict record that was never written.
+    assert "verdict" not in pay or pay.get("verdict") is None, pay
+    assert not MODULE._gate_record_path(state, wt).exists()
 
 
 @gitmark
@@ -5773,3 +5804,100 @@ def test_integrate_continue_refuses_when_the_worktree_is_on_another_branch(scrat
     assert pay["actual_branch"] == "sidetrack", pay
     assert pay["expected_branch"] == stopped["branch"], pay
     assert not MODULE._gate_record_path(state, wt).exists()
+
+
+@gitmark
+def test_integrate_forgets_a_finished_integration(scratch):
+    """A drained queue with a verdict on it is not something you can `--continue`.
+
+    Keeping the state file made a FINISHED integration answer the next
+    `integrate --slug <same>` with "already in flight … resume it with --continue
+    after resolving" — false about the state, false about the remedy, and pointing
+    at conflicts that do not exist. It was also residue `resolve` cannot strike,
+    against a module docstring that promises none."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert pay["state_cleared"] is True, pay
+    assert not MODULE._integrate_state_path(state, "batch").exists()
+
+    # …and the follow-on question the residue used to answer wrongly.
+    rc, again = _run_json(["integrate", "--slug", "batch", "--state", state,
+                           "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_USAGE, again
+    # Asserted against the WRONG CLAIM, not against a phrase: the honest answer here
+    # ("no integration named 'batch' is in flight") legitimately contains the words
+    # "in flight", and a first draft of this test failed on exactly that. What must
+    # not appear is the assertion that one is ALREADY in flight, and the instruction
+    # to resume it after resolving conflicts that do not exist.
+    assert "already in flight" not in again["error"], again["error"]
+    assert "resolving" not in again["error"], again["error"]
+    assert "start one with" in again["error"], again["error"]
+
+
+@gitmark
+def test_integrate_refuses_stacked_branches_that_queue_a_commit_twice(scratch):
+    """The mirror image of silently dropping a commit.
+
+    `main..feat/b` contains feat/a's commits when b is stacked on a, so naming both
+    queues the same commit twice; the second pick is an EMPTY cherry-pick, which
+    stops the run with no unmerged paths and a message about conflict resolution —
+    a diagnosis pointing away from the actual mistake."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _git(["checkout", "-q", "-b", "feat/b", "feat/a"], repo)
+    (Path(repo) / "b.txt").write_text("b\n")
+    _git(["add", "b.txt"], repo)
+    _git(["commit", "-qm", "work: b"], repo)
+    _git(["checkout", "-q", "main"], repo)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/b",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE, pay
+    dup = [p for p in pay["problems"] if a[:8] in p]
+    assert dup, pay["problems"]
+    assert "feat/a" in dup[0] and "feat/b" in dup[0], dup
+    # naming only the tip is the documented way through, and it must still work
+    rc, ok = _run_json(["integrate", "--slug", "batch", "--branches", "feat/b",
+                        "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, ok
+    assert [c["sha"] for c in ok["plan"][0]["commits"]][0] == a, ok
+
+
+@gitmark
+def test_integrate_names_a_commit_that_produced_nothing_instead_of_losing_it(scratch):
+    """`skipped` is the ONLY channel through which "a commit you named is not in the
+    integrated tree" reaches the operator, and it had no test at all.
+
+    Reached the way it really happens: two branches carrying the same change, so the
+    second pick is empty and `git cherry-pick --skip` is what git itself tells you to
+    run (verified against git's own output, not assumed)."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a = _make_branch(repo, "feat/a", {"dup.txt": "same\n"}, "work: a")
+    c = _make_branch(repo, "feat/c", {"dup.txt": "same\n"}, "work: c (same change)")
+
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/c",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, stopped
+    # An empty pick has NO unmerged paths — the refusal must not invent conflicts.
+    assert stopped["conflicts"] == [], stopped
+    assert stopped["stopped"]["sha"] == c, stopped
+    assert "--skip" in stopped["error"], stopped["error"]
+
+    wt = stopped["worktree"]
+    _git(["cherry-pick", "--skip"], wt)
+    rc, done = _run_json(["integrate", "--slug", "batch", "--state", state,
+                          "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, done
+    assert [x["sha"] for x in done["skipped"]] == [c], done
+    assert [x["sha"] for x in done["picked"]] == [a], done
+    # the books still balance, so the gate was allowed to run
+    assert done["gate"]["verdict"] in ("pass", "warn"), done

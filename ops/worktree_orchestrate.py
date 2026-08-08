@@ -124,9 +124,10 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              A diverged main is never auto-merged — land unique commits via cutover.
              dry-run default.
   freeze     stop-the-world surgery lock (on --reason / off / status). While frozen,
-             open/adopt/cutover/sync-main/sync/deploy refuse; draining steps (resolve, sweep,
-             preflight, gate) stay allowed so the flow can be quiesced for repo
-             surgery (history rewrite, gc, shared hooks/config).
+             open/adopt/catchup/integrate/cutover/sync-main/sync/deploy refuse (every
+             step that gives birth, rewrites history or advances a ref); draining
+             steps (resolve, sweep, preflight, gate) stay allowed so the flow can be
+             quiesced for repo surgery (history rewrite, gc, shared hooks/config).
 
 Exit codes: 0 ok | 64 usage error | 1 blocked (gate block / cutover refused /
             open refused because a backlog ticket is already claimed / partial).
@@ -3243,6 +3244,24 @@ def _integrate_start(args, spath: Path) -> int:
                 f"branch contributed nothing to")
             continue
         plan.append({"branch": branch, "commits": commits})
+    # Stacked branches (feat/b forked from feat/a) put feat/a's commits inside
+    # `main..feat/b` too, so naming both branches queues those commits TWICE. The
+    # second pick is then an empty cherry-pick, which stops the run with no unmerged
+    # paths and a diagnosis about conflict resolution — pointing at the wrong thing.
+    # Refusing by name here costs one pass over the plan, and it is the same
+    # principle as the merge-commit refusal: silently queueing a commit twice is the
+    # mirror image of silently dropping one.
+    seen: dict[str, list[str]] = {}
+    for entry in plan:
+        for commit in entry["commits"]:
+            seen.setdefault(commit["sha"], []).append(entry["branch"])
+    for sha, owners in seen.items():
+        if len(owners) > 1:
+            problems.append(
+                f"commit {sha[:8]} is in {trunk}..<branch> for more than one of the "
+                f"branches given ({', '.join(owners)}) — they are stacked, so naming "
+                f"both queues the same commit twice and the second pick lands as an "
+                f"empty cherry-pick. Name only the tip branch, or rebase them apart")
     if problems:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "slug": args.slug,
                "error": "one or more branches cannot be integrated as given",
@@ -3392,7 +3411,7 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
                "error": f"the gate refused to judge this tree: {why}",
                "gate_rc": grc, "gate_payload": gpay}, args.json,
               f"✗ integrate: the gate refused to judge {wt}:\n  {why}")
-        return EXIT_BLOCK
+        return grc
     head = _head_sha(wt)
     st["gate"] = {
         "verdict": verdict, "rc": grc, "head_sha": gpay.get("head_sha"),
@@ -3413,8 +3432,16 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
         "picked": st["picked"], "skipped": st.get("skipped", []),
         "head_sha": head, "gate": st["gate"], "gate_runs": 1,
         "verdict": verdict, "landed": False, "next_step": next_step,
-        "state_file": str(spath),
+        "state_cleared": True,
     }
+    # The queue is drained and the gate has spoken, so there is nothing left to
+    # `--continue`; keeping the file made a FINISHED integration answer the next
+    # `integrate --slug <same>` with "already in flight … resume it with --continue
+    # after resolving", which is false in three ways at once. It is also the residue
+    # `resolve` does not know how to strike, against a module docstring that promises
+    # none. A crashed run still leaves one — that case is caught by --continue's
+    # "the integration worktree is gone" refusal, which names --abort.
+    spath.unlink(missing_ok=True)
     lines = [f"# integrate {args.slug}: {len(st['picked'])} commit(s) from "
              f"{len(st['branches'])} branch(es) -> {head[:8]}",
              f"  gate verdict: {verdict}  (record {st['gate']['record']})"]
@@ -3428,7 +3455,11 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     lines.append("  NOT landed — integrate gates, cutover lands:")
     lines.append(f"    {next_step}")
     _emit(payload, args.json, "\n".join(lines))
-    return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
+    # `grc` IS the gate's verdict expressed as an exit code. Recomputing it here from
+    # the verdict string was a second copy of the one judgement this command is not
+    # allowed to own — and it lost information: gate's EXIT_USAGE(64) came out as
+    # EXIT_BLOCK(1), so a caller could not tell "I invoked it wrong" from "it refused".
+    return grc
 
 
 def _integrate_load(args, spath: Path, verb: str) -> dict[str, Any] | int:
@@ -4649,9 +4680,9 @@ def build_parser() -> argparse.ArgumentParser:
     dp.set_defaults(func=cmd_deploy)
 
     fz = sub.add_parser("freeze", help="stop-the-world surgery lock: `on` refuses new "
-                        "births/landings/publishes (open/adopt/cutover/sync-main/"
-                        "sync/deploy) until `off`; draining steps (resolve/sweep/"
-                        "preflight/gate) stay allowed")
+                        "births/landings/publishes (open/adopt/catchup/integrate/"
+                        "cutover/sync-main/sync/deploy) until `off`; draining steps "
+                        "(resolve/sweep/preflight/gate) stay allowed")
     add_common(fz)
     fz.add_argument("action", choices=["on", "off", "status"])
     fz.add_argument("--reason", default=None,
