@@ -56,9 +56,10 @@ SLOW_LAYERS = {
 # does not handle — an enumerated hole instead of a silent one.
 UNRUNNABLE = object()
 
-# Stated here rather than branched on, because ops/injection_lint.py:32 states
-# exactly the same thing — `os.environ.get("KG_INJECTION_BASELINE",
-# "ops/injection_baseline.txt")`. Reading the variable with `if override:`
+# Stated here rather than branched on, because ops/injection_lint.py's
+# _BASELINE_RAW states exactly the same thing — `os.environ.get(
+# "KG_INJECTION_BASELINE", "ops/injection_baseline.txt")`, resolved against the
+# repo root the same way. Reading the variable with `if override:`
 # instead made the two disagree on one input: for KG_INJECTION_BASELINE= (empty)
 # the parent fell back to the tracked file and planned --baseline-check while the
 # child resolved Path("") to the repo root and died with IsADirectoryError. The
@@ -160,11 +161,15 @@ def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
       [--report] + warning KG_INJECTION_BASELINE is UNSET and the tracked
                            default is absent. Nobody has bootstrapped a baseline
                            yet, so a degraded report is the only thing left to
-                           offer. Still exit 0.
+                           offer. Still exit 0 (the lint's own exit 2 for a
+                           missing or empty Views tree is unaffected — a
+                           degraded baseline verdict is not a licence to
+                           certify a tree nobody read).
       UNRUNNABLE + warning the caller NAMED a path and it is not a readable
                            file. A typo, or a stale export from an earlier
                            session — not a bootstrap. Degrading here would be a
-                           silent green: --report always exits 0 and `warn` is
+                           silent green: --report exits 0 for any tree it can
+                           actually scan, and `warn` is
                            excluded from summary["failed"], so the gate returns
                            0 with this lint switched off. This command is a
                            block-level cutover gate (ops/worktree_orchestrate.py)
@@ -184,9 +189,13 @@ def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
     aside, and a concurrent `git add -A` once committed that absence (IMP-0048).
 
     run_mech below deliberately passes no env=, so the child inherits ours, and
-    injection_lint.sh cds to the same repo root — a relative override therefore
-    resolves identically on both sides. Do not convert that call to an explicit
-    env dict: it would drop PATH/UV_BIN and injection_lint.sh would lose uv.
+    the child resolves a relative override against its own repo root (see
+    ops/injection_lint.py's BASELINE_FILE) — both sides therefore land on the
+    same file. That used to rest on injection_lint.sh happening to cd to the
+    repo root first, which held only for callers who went through the wrapper;
+    since IMP-20260807-1674d1 the module itself is anchored, so the agreement no
+    longer depends on anyone's cwd. Do not convert that call to an explicit env
+    dict: it would drop PATH/UV_BIN and injection_lint.sh would lose uv.
     """
     raw = os.environ.get("KG_INJECTION_BASELINE", DEFAULT_INJECTION_BASELINE)
     named_by_caller = "KG_INJECTION_BASELINE" in os.environ
@@ -203,7 +212,8 @@ def injection_args(root: Path) -> tuple[list[str] | object, str | None]:
             f"KG_INJECTION_BASELINE={raw!r} resolves to {baseline}, which is not a readable "
             f"file. Point it at an existing baseline, or unset it to use "
             f"{DEFAULT_INJECTION_BASELINE}. Refusing rather than degrading to --report: "
-            "--report always exits 0, so a stale export would silently disable this lint "
+            "--report exits 0 for any tree it can scan, so a stale export would silently "
+            "disable this lint "
             "on a gate that blocks cutover."
         )
     return ["--report"], (
