@@ -67,7 +67,9 @@ KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH
 # 的三分類）。所以這兩個 knob 現在買的是「多等一下也許就驗到了」，不是「賭中斷有多長」。
 KG_RECON_HEALTH_ATTEMPTS="${KG_RECON_HEALTH_ATTEMPTS:-5}"  # 兩個健康探針的輪詢次數
 KG_RECON_HEALTH_DELAY="${KG_RECON_HEALTH_DELAY:-5}"        # 每次間隔秒（見上方預算算法）
-KG_RECON_POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN:-3600}"  # poison 冷卻秒（過後允許重試同 sha）
+# `-` preserves an explicitly empty value so invalid configuration can fail closed;
+# only an unset variable receives the safe default.
+KG_RECON_POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN-3600}"  # poison 冷卻秒（過後允許重試同 sha）
 KG_RECON_DRY_RUN="${KG_RECON_DRY_RUN:-0}"
 
 # backend 觸發正則（錨定 backend/）——命中才 rebuild image。
@@ -118,10 +120,17 @@ is_poisoned() {
   line="$(grep "^poison $sha " "$KG_STATE_FILE" 2>/dev/null | tail -1 || true)"
   [[ -n "$line" ]] || return 1
   ts="$(printf '%s\n' "$line" | awk '{print $3}')"
-  [[ -n "$ts" ]] || return 1
+  [[ "$ts" =~ ^[0-9]+$ ]] || {
+    log "poison timestamp 非合法十進位，維持 fail-closed poisoned 狀態。"
+    return 0
+  }
   now="$(date +%s)"
   cooldown="$KG_RECON_POISON_COOLDOWN"
-  if (( now - ts < cooldown )); then
+  [[ "$cooldown" =~ ^[0-9]+$ ]] || {
+    log "KG_RECON_POISON_COOLDOWN 非合法十進位，維持 fail-closed poisoned 狀態。"
+    return 0
+  }
+  if (( now - 10#$ts < 10#$cooldown )); then
     return 0   # 仍在冷卻窗內 → poisoned
   fi
   return 1     # cooldown 過 → 允許重試
