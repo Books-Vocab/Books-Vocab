@@ -2130,6 +2130,36 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]
 
 
+def test_reanchor_human_output_reports_the_window_it_searched(tmp_path, monkeypatch, capsys):
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan, _landed = _git_repo(repo)
+    store = repo / "store"
+    entry = _add(store, detail="human output fixture")
+    _force_fixed_by(store, entry["id"], [orphan])
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+
+    result = BACKLOG.reanchor_store(store, repo=repo)
+    assert BACKLOG.main(["reanchor", "--store", str(store)]) == 0
+    out = capsys.readouterr().out
+    assert "[dry-run]" in out
+    assert f"HEAD is {result['main_depth']} deep" in out
+    assert "window exhausted" in out
+
+    assert BACKLOG.main([
+        "reanchor", "--store", str(store), "--search-depth", "1"
+    ]) == 0
+    out = capsys.readouterr().out
+    assert "window NOT exhausted" in out
+
+    no_orphans = tmp_path / "no-orphans"
+    _add(no_orphans, detail="no orphan fixture")
+    assert BACKLOG.main(["reanchor", "--store", str(no_orphans)]) == 0
+    out = capsys.readouterr().out
+    assert "no orphans, so no commits were indexed" in out
+    assert "no orphaned fixed_by shas" in out
+
+
 # --------------------------------------------------------------------------
 # re-verification as a mechanism, not a ritual (IMP-20260805-2834b2)
 # --------------------------------------------------------------------------
