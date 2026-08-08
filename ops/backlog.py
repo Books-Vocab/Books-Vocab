@@ -920,6 +920,23 @@ SHOW_FIELD_ORDER = (
 # The answer is `--resolution`, so the refusal has to be the thing that says it.
 REFUSED_UPDATE_FIELDS = ("detail",)
 
+# Free text, i.e. fields whose value is prose an agent composes rather than a
+# token from a fixed vocabulary. Every one of these gets a `--<flag>-file` twin,
+# because argv is not a safe channel for prose: a backtick inside a double-quoted
+# shell string is command substitution, so the text is rewritten BEFORE this
+# process sees it and nothing — not the store, not git — records that anything was
+# removed. Three occurrences in one day: a sentence lost from a `detail`, a phrase
+# lost from a commit message, and a dropped closing quote that stored an
+# unparseable acceptance command.
+#
+# No in-tool detection is possible and none is attempted: by the time argv arrives
+# the information is already gone, so any "was this mangled?" check would be a
+# guess. The only fix is a channel the shell does not touch.
+FILE_TWIN_FIELDS = (
+    "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
+    "acceptance_manual", "repro", "evidence", "fix_site",
+)
+
 # Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
 GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
                     "--acceptance-expect-rc", "--acceptance-manual",
@@ -2191,7 +2208,77 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_render.add_argument("--json", action="store_true")
 
+    _add_file_twins(parser)
     return parser
+
+
+def _subcommands(parser: argparse.ArgumentParser) -> dict:
+    return parser._subparsers._group_actions[0].choices
+
+
+def _add_file_twins(parser: argparse.ArgumentParser) -> None:
+    """Give every free-text flag a `--<flag>-file` twin, derived not hand-listed.
+
+    Walks the parser instead of carrying a table of (subcommand, flag) pairs. A
+    second list is a second thing to forget, and this module has been bitten by
+    exactly that twice: `update`'s change map was hand-written until it drifted
+    from MUTABLE_FIELDS, and half the mutable fields had no `update` flag at all
+    because nobody re-read both lists together. Here the twin cannot go missing —
+    the flag's own presence is what creates it.
+
+    A twin can satisfy a requirement, so a required base flag stops being required
+    to argparse and the "exactly one of them" rule moves to `_resolve_file_twins`.
+    The requiredness itself is remembered, not dropped.
+    """
+    twins: dict[str, list[tuple[str, str, bool]]] = {}
+    for name, sub in _subcommands(parser).items():
+        for action in list(sub._actions):
+            if action.dest not in FILE_TWIN_FIELDS or not action.option_strings:
+                continue
+            long_flags = [o for o in action.option_strings if o.startswith("--")]
+            if not long_flags:
+                continue
+            flag = max(long_flags, key=len)
+            sub.add_argument(
+                f"{flag}-file", dest=f"{action.dest}_file", metavar="PATH",
+                help=f"read {flag}'s value from a file, verbatim (trailing newline "
+                     f"dropped). Use this whenever the text may contain a backtick, "
+                     f"$ or backslash: argv passes through your shell first, and a "
+                     f"backtick there is command substitution — the text is edited "
+                     f"before this tool can see it, silently")
+            twins.setdefault(name, []).append((action.dest, flag, action.required))
+            action.required = False
+    parser._kg_file_twins = twins
+
+
+def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
+    """Fold each `--X-file` into `--X`. Returns an exit code on refusal, else None."""
+    for dest, flag, required in getattr(parser, "_kg_file_twins", {}).get(args.command, ()):
+        path = getattr(args, f"{dest}_file", None)
+        inline = getattr(args, dest, None)
+        if path is not None and inline is not None:
+            # Not "last one wins" and not "the file wins": either would produce a
+            # write whose content is not the content the caller believes they
+            # supplied, which is the exact defect the twin exists to remove.
+            print(f"{flag} and {flag}-file are mutually exclusive — pass the text "
+                  f"or the path, not both.\nnothing was written.", file=sys.stderr)
+            return 64
+        if path is not None:
+            try:
+                text = Path(path).read_text(encoding="utf-8")
+            except OSError as exc:
+                print(f"{flag}-file: {exc}\nnothing was written.", file=sys.stderr)
+                return 64
+            # Only TRAILING NEWLINES go. Every editor adds one and nobody means it;
+            # everything else — interior blank lines, trailing spaces — is delivered
+            # as written, which is the entire point of this channel.
+            setattr(args, dest, text.rstrip("\n"))
+        elif required and inline is None:
+            # argparse's own job, kept as argparse's own exit code (2): a missing
+            # required flag is a malformed command line, not a refused act.
+            _subcommands(parser)[args.command].error(
+                f"one of {flag} / {flag}-file is required")
+    return None
 
 
 def _cmd_add(args) -> int:
@@ -2570,20 +2657,26 @@ ACCEPTANCE_TIMEOUT_SECONDS = 900
 def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
     """Run one entry's nominated acceptance command and say whether it held.
 
-    `shell=True` and `cwd=ROOT`, because that is what the field contains: the real
-    store's acceptance strings are shell (`cd backend && uv run pytest …`,
-    `uv run --no-project … pytest -q … -k "…"`), not argv lists. The command comes
-    from the repo's own ledger, which is version-controlled and reviewed — the same
-    trust boundary as every other file this tool executes.
+    Run under **bash**, explicitly, and `cwd=ROOT`. The field contains shell, not an
+    argv list — the real store's strings are `cd backend && uv run pytest …`. The
+    shell has to be bash for one reason: `_check_acceptance_cmd` vets these strings
+    with `bash -n`, and `shell=True` would execute them under `/bin/sh` instead
+    (bash 3.2 in POSIX mode on macOS, dash on a Linux runner). Measured:
+    `bash -n -c '[[ 1 == 1 ]]'` exits 0, `dash -c '[[ 1 == 1 ]]'` exits 127 — so the
+    floor was certifying a property of a shell that would never run the command, and
+    a grooming agent had already begun downgrading every criterion to POSIX sh to
+    stay clear of it. A floor and an executor that disagree is worse than neither.
+    The command comes from the repo's own version-controlled ledger — the same trust
+    boundary as every other file this tool executes.
 
     Progress goes to STDERR, one line at a time, because these are pytest suites and
-    the wave can carry several: a silent multi-minute pause is the failure mode the
+    a wave can carry several: a silent multi-minute pause is the failure mode the
     heartbeat contract exists to prevent. stdout stays the single JSON document.
     """
     started = time.monotonic()
-    print(f"[anchor][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
+    print(f"[backlog][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
     try:
-        proc = subprocess.run(cmd, shell=True, cwd=str(ROOT), capture_output=True,
+        proc = subprocess.run(["bash", "-c", cmd], cwd=str(ROOT), capture_output=True,
                               text=True, timeout=ACCEPTANCE_TIMEOUT_SECONDS)
         rc, tail = proc.returncode, (proc.stdout or proc.stderr or "").strip()[-400:]
     except subprocess.TimeoutExpired:
@@ -2592,10 +2685,78 @@ def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
         rc, tail = None, f"timed out after {ACCEPTANCE_TIMEOUT_SECONDS}s"
     elapsed = time.monotonic() - started
     ok = rc == expect_rc
-    print(f"[anchor][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
+    print(f"[backlog][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
           f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s", file=sys.stderr, flush=True)
     return {"id": entry_id, "cmd": cmd, "rc": rc, "expect_rc": expect_rc,
             "ok": ok, "elapsed_s": round(elapsed, 1), "output_tail": tail}
+
+
+def _acceptance_gate(entry: dict, commit: bool) -> dict:
+    """THE precondition for writing `status: fixed`, shared by all three doors.
+
+    There are three ways an entry reaches `fixed`: the wave (`anchor`), a direct
+    `update --status fixed`, and `verify --status fixed`. Section 18 of the tests
+    wired the acceptance command into the first one only, so the other two wrote the
+    same status while checking only traceability — that a commit exists, which is a
+    different claim from "the defect is gone". Both kinds of `fixed` then sat in the
+    store looking identical, so nobody could have counted how many closures rested
+    on nothing.
+
+    ONE implementation, called from all three, is the actual fix. Three copies of
+    this check would be three things to forget the next time a door is added, and
+    forgetting is how the hole got here.
+
+    The return value is the evidence grade, and every caller reports it:
+
+      ran / failed  — a command was nominated and run; `failed` is a refusal
+      manual        — the entry declared why no command can express its acceptance
+      unproven      — neither; allowed, but counted rather than silent
+      would-run     — dry run. These commands have real side effects (`rm`,
+                      container restarts, network calls), so a dry run that
+                      executed them would not be one.
+    """
+    entry_id = entry.get("id", "?")
+    cmd = str(entry.get("acceptance_cmd") or "").strip()
+    if not cmd:
+        manual = str(entry.get("acceptance_manual") or "").strip()
+        return ({"kind": "manual", "id": entry_id, "reason": manual} if manual
+                else {"kind": "unproven", "id": entry_id})
+    expect_rc = int(entry.get("acceptance_expect_rc") or 0)
+    if not commit:
+        return {"kind": "would-run", "id": entry_id, "cmd": cmd, "expect_rc": expect_rc}
+    outcome = _run_acceptance(entry_id, cmd, expect_rc)
+    return {"kind": "ran" if outcome["ok"] else "failed", **outcome}
+
+
+def _acceptance_refusal(result: dict) -> str:
+    """One wording for the refusal, because the reader's next move depends on it.
+
+    The rc and the command's last words are what separate "the criterion is red"
+    from "the harness could not run" — without them the reader goes off to debug
+    the fix, which is the wrong end.
+    """
+    text = (f"acceptance did not hold: `{result['cmd']}` exited {result['rc']}, "
+            f"expected {result['expect_rc']}. The closure claims this defect is "
+            f"gone; the command the entry nominated to prove that says otherwise.")
+    if result.get("output_tail"):
+        text += f"\n  last output: {result['output_tail']}"
+    return text
+
+
+def _gate_closure(entry: dict, changes: dict, commit: bool) -> dict | None:
+    """Run the acceptance gate iff this write is an act of closing.
+
+    Keyed on `status` appearing in the changes and landing on `fixed`, not on the
+    resulting entry being fixed. Otherwise every later correction to a closed entry
+    — a reworded resolution, a `fixed_by` re-pointed after a rebase — would re-run a
+    full pytest suite, and `reanchor`'s repair loop would become unusable.
+    """
+    if changes.get("status") != "fixed":
+        return None
+    result = _acceptance_gate({**entry, **changes}, commit)
+    if result["kind"] == "failed":
+        raise BacklogError(_acceptance_refusal(result))
+    return result
 
 
 def _cmd_anchor_locked(args, queue: Path) -> int:
@@ -2634,22 +2795,18 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     acceptance: dict[str, list] = {"ran": [], "manual": [], "unproven": []}
     if args.commit and not problems:
         for row, merged in planned:
-            cmd = str(merged.get("acceptance_cmd") or "").strip()
-            if not cmd:
-                bucket = "manual" if str(merged.get("acceptance_manual") or "").strip() \
-                    else "unproven"
-                acceptance[bucket].append(row["id"])
-                continue
-            outcome = _run_acceptance(row["id"], cmd,
-                                      int(merged.get("acceptance_expect_rc") or 0))
-            acceptance["ran"].append(outcome)
-            if not outcome["ok"]:
-                problems.append({
-                    "id": row["id"],
-                    "error": f"acceptance did not hold: `{cmd}` exited "
-                             f"{outcome['rc']}, expected {outcome['expect_rc']}. "
-                             f"The closure claims this defect is gone; the command "
-                             f"the entry nominated to prove that says otherwise."})
+            # Same `_acceptance_gate` the other two doors call — see its docstring.
+            # The wave buckets the results because it closes many entries at once;
+            # the grade itself is decided in one place for all three.
+            result = _acceptance_gate(merged, commit=True)
+            if result["kind"] in ("ran", "failed"):
+                acceptance["ran"].append({k: v for k, v in result.items()
+                                          if k != "kind"})
+                if result["kind"] == "failed":
+                    problems.append({"id": row["id"],
+                                     "error": _acceptance_refusal(result)})
+            else:
+                acceptance[result["kind"]].append(row["id"])
 
     payload = {
         "schema": "kg.backlog.anchor.v1",
@@ -2707,10 +2864,16 @@ def _cmd_verify(args) -> int:
 
     current = load_entry(args.store, args.id)
     merged = _merged_and_validated(current, changes, args.id)  # raises on refusal
+    # Before the write, and before the dry-run report, so both forms answer the same
+    # question. `verify --status fixed` calls itself "the natural closing act" in its
+    # own parser help — it has to meet the same bar the wave does.
+    acceptance = _gate_closure(current, changes, args.commit)  # raises on a red one
     if not args.commit:
         if args.json:
             print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "dry-run",
-                              "id": args.id, "changes": changes}, ensure_ascii=False))
+                              "id": args.id, "changes": changes,
+                              **({"acceptance": acceptance} if acceptance else {})},
+                             ensure_ascii=False))
         else:
             for field, value in changes.items():
                 # old -> new, like `update`. Overwriting a previous verifier's
@@ -2723,7 +2886,8 @@ def _cmd_verify(args) -> int:
     _write_atomic(entry_path(args.store, args.id), _dumps(merged))
     if args.json:
         print(json.dumps({"schema": "kg.backlog.verify.v1", "mode": "commit",
-                          "id": args.id, "changes": changes, "entry": merged},
+                          "id": args.id, "changes": changes, "entry": merged,
+                          **({"acceptance": acceptance} if acceptance else {})},
                          ensure_ascii=False))
     else:
         print(f"[commit] {args.id} verified {changes['verified_at']} "
@@ -3027,6 +3191,9 @@ def _cmd_update(args) -> int:
         return 64
 
     before = load_entry(args.store, args.id)  # EntryNotFound -> refusal in main()
+    # Before the write. A red acceptance must leave the store untouched, so the
+    # refusal cannot be mistaken for "some of it landed".
+    acceptance = _gate_closure(before, changes, args.commit)  # raises on a red one
 
     if args.commit:
         after = update_entry(args.store, args.id, **changes)
@@ -3043,7 +3210,12 @@ def _cmd_update(args) -> int:
         print(json.dumps(
             {"schema": "kg.backlog.update.v1",
              "mode": "commit" if args.commit else "dry-run",
-             "id": args.id, "changes": diff, "entry": after}, ensure_ascii=False))
+             "id": args.id, "changes": diff, "entry": after,
+             # Present only when this write was an act of closing, and then it
+             # carries the evidence grade: a reader can tell a `fixed` a command
+             # proved from a `fixed` somebody asserted.
+             **({"acceptance": acceptance} if acceptance else {})},
+            ensure_ascii=False))
     else:
         print(f"[{'commit' if args.commit else 'dry-run'}] {args.id}")
         for field, change in diff.items():
@@ -3333,7 +3505,11 @@ def _cmd_render_unlocked(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    refusal = _resolve_file_twins(parser, args)
+    if refusal is not None:
+        return refusal
     handlers = {
         "add": _cmd_add,
         "list": _cmd_list,

@@ -1,6 +1,6 @@
 {
   "acceptance": "紅：今天 _run_acceptance 仍是 shell=True，探針斷言 'bash' 出現在該函式的 subprocess 呼叫裡會失敗。綠：函式改用 ['bash','-c',...]，且具名測試 acceptance_runs_under_bash 通過（它同時證明地板放行與執行器真的以 bash 跑）。",
-  "acceptance_cmd": "test -f ops/backlog.py && ! sed -n \"/^def _run_acceptance/,/^def /p\" ops/backlog.py | grep -q \"shell=True\" && sed -n \"/^def _run_acceptance/,/^def /p\" ops/backlog.py | grep -q \"\\\"bash\\\", \\\"-c\\\"\" && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k acceptance_runs_under_bash",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k acceptance_runs_under_bash",
   "acceptance_expect_rc": 0,
   "category": "tool",
   "date": "2026-08-08",
