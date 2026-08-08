@@ -17,7 +17,6 @@
 - [ ] **改 CSV / Card schema 欄位** → 同 PR 更新 `docs/reference/card_format.md`(SoT)
 - [ ] **改 host / port / container / Caddy 路由** → 同 PR 更新 `docs/reference/host_topology.md`(SoT)
 - [ ] **改生產禁用指令 / preflight / rollback policy** → 同 PR 更新 `docs/policy/safety.md`(SoT)+ 鐵律 7
-- [ ] **iOS 大規模重構** → 合併後執行 `ops/gen_ios_baseline.sh --write` 再生 `docs/snapshot/ios_baseline.md`
 
 ## 驗證
 

@@ -245,5 +245,5 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
 - `backend/src/kg/llm/providers.py:REGISTRY` 費率變動 / Lightsail bundle 變更 / 新供應商接入 → 同 PR 更新 `docs/reference/cost_baseline.md`(對應段 §2 pricing / §1 月費表 / §5 變更歷史)
-- iOS 大規模重構**落地後**執行 `ops/gen_ios_baseline.sh --write` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改;預設是印 stdout,`--write` 才落檔)
+- iOS 前端規模基線**不進版控、也不需要同步**:要當下數字就跑 `ops/gen_ios_baseline.sh`(只印 stdout)。它逐檔記錄行數,進版控時**任何**一行 iOS 改動都會讓 docs gate 轉紅並要求把一個 repo 級產物夾進自己的 commit(IMP-20260808-b63206)
 - **cutover 前**跑 `ops/docs_lint.sh` 確認 registry + 本次 changed docs 無 ERROR,並檢視 registry impact hints 是否需要同步文件;全 repo 健康盤點另用 `ops/docs_lint.sh --audit`/`--all`,不把既有 audit debt 當日常 gate
