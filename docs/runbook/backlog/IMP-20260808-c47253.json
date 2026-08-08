@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`gate` 擋下一條分支時，只保留失敗 gate 輸出的**末尾**，所以「哪一條斷言紅了」在事後不可回溯。\n\n實測 2026-08-08，`feat/devops-rsync-flavor` 的 `land` 被 `ops-shell:test_devops.sh` 擋下。留在 `.cache/worktree_gates/80880707db5d3889.json` 的 `summary` 欄位**總長 94 字元**，全文是：\n\n```\nexit 1: ══════════════════════════════\n  passed: 104  failed: 1\n══════════════════════════════\n```\n\n那支測試會逐條印 `✓ <名稱>` / `✗ <名稱>`，名字就在上面幾十行——被截掉了。`history.jsonl` 每列只有 `ts/gate/status/rc/level/executed/head8/orch8/wt`，也沒有輸出。\n\n於是操作者唯一能做的是**重跑並祈禱重現**。我實際做的：worktree 內手跑 3 次全綠（105/0），再灌到 load average 102 跑 2 次仍全綠。也就是說我既無法證明它是 flaky，也無法證明它不是——而這個判斷決定要不要放它進 main。整段診斷花掉約十分鐘，最後仍然不知道紅的是哪一條。\n\n這條的嚴重度來自它的**乘數效應**：block gate 的價值等於「它讓你知道該修什麼」。只說「1 failed」的 gate 把 fail-closed 的安全性留下、把可行動性拿掉，而每一次都要付重跑的錢；批次規模愈大付得愈多。\n\n修法方向（未裁決）：① 把失敗 gate 的**完整** stdout/stderr 落到 `.cache/worktree_gates/<wt>.<gate>.log`（gate 記錄已經是 per-worktree 檔案，多一支 log 不增加資料模型），summary 裡指路過去 ② 或改成保留**開頭 + 結尾**而非只有結尾，並優先抽出含失敗標記的行（`✗` / `FAIL` / `AssertionError` / `not ok`）③ 兩者都做：log 落檔給人查，summary 內嵌具名失敗行給機器讀。\n\n附帶（同一根因的另一面）：`streaming_command` 的 heartbeat 一路印 `alive=true`，但 child 的輸出沒有留下來，所以「它在做什麼」與「它為什麼失敗」都只在當下存在。",
+  "id": "IMP-20260808-c47253",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "dogfood batch 1：整合者被一條不具名的 block 擋住，花十分鐘仍不知紅的是哪條斷言",
+  "status": "open",
+  "stream": "IMP"
+}
