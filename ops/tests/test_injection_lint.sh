@@ -155,7 +155,7 @@ root_lines="$(grep -c . "$ROOT_OUT" || true)"
 if [[ "$rc" -eq 0 ]]; then
   ok "正控：站在 repo root 跑 --report rc=0（⇒ 掃到了檔案；當下 $root_lines 行 findings）"
 else
-  fail_t "站在 repo root 跑 --report → rc=$rc；後面「兩處輸出相同」的斷言會變成空對空的假綠"
+  fail_t "站在 repo root 跑 --report → rc=${rc}；後面「兩處輸出相同」的斷言會變成空對空的假綠"
   head -3 "$ROOT_ERR" | sed 's/^/      /'
 fi
 
@@ -179,11 +179,11 @@ for probe_dir in "$WORKSPACE" "$WORKSPACE/ops" "$TMP"; do
   got="$(probe_const "$probe_dir" "m.VIEWS_ROOT" 2>/dev/null || echo "<import failed>")"
   [[ "$got" == "$WORKSPACE/ios/BooksAndVocab/Views" ]] \
     && ok "從 $label 讀 VIEWS_ROOT = $got" \
-    || fail_t "從 $label 讀 VIEWS_ROOT = $got（期望 $WORKSPACE/ios/BooksAndVocab/Views）"
+    || fail_t "從 $label 讀 VIEWS_ROOT = ${got}（期望 $WORKSPACE/ios/BooksAndVocab/Views）"
   got="$(probe_const "$probe_dir" "m.BASELINE_FILE" 2>/dev/null || echo "<import failed>")"
   [[ "$got" == "$WORKSPACE/ops/injection_baseline.txt" ]] \
     && ok "從 $label 讀 BASELINE_FILE = $got" \
-    || fail_t "從 $label 讀 BASELINE_FILE = $got（期望 $WORKSPACE/ops/injection_baseline.txt）"
+    || fail_t "從 $label 讀 BASELINE_FILE = ${got}（期望 $WORKSPACE/ops/injection_baseline.txt）"
 done
 
 section "共用文法讀的 pbxproj 也對 repo 錨定"
@@ -204,7 +204,7 @@ print(s.PBXPROJ.is_absolute(), readable)
 ' 2>/dev/null || echo "<import failed>")"
   [[ "$got" == "True readable" ]] \
     && ok "從 $label 讀 PBXPROJ：絕對=True、read_text 成功" \
-    || fail_t "從 $label 讀 PBXPROJ 得到「$got」（期望「True readable」）— 讀不到就是 except OSError → False，R3 會靜靜翻面"
+    || fail_t "從 $label 讀 PBXPROJ 得到「${got}」（期望「True readable」）— 讀不到就是 except OSError → False，R3 會靜靜翻面"
 done
 
 section "相對的 KG_INJECTION_BASELINE 對 repo root 解析，不對 cwd"
@@ -215,7 +215,7 @@ DECOY_DIR="$TMP/decoy"; DECOY_REL="ops/kg_decoy_baseline.txt"
 mkdir -p "$DECOY_DIR/ops"
 write_baseline "$DECOY_DIR/$DECOY_REL" "# sunset: 2099-01-01"
 if [[ ! -e "$WORKSPACE/$DECOY_REL" ]]; then
-  ok "前提：repo root 底下沒有同名的 $DECOY_REL（相對解析必然落空）"
+  ok "前提：repo root 底下沒有同名的 ${DECOY_REL}（相對解析必然落空）"
 else
   fail_t "$WORKSPACE/$DECOY_REL 竟然存在 — 本段的紅綠會來自別的原因，請換一個誘餌檔名"
 fi
@@ -236,7 +236,7 @@ got="$(cd "$DECOY_DIR" && KG_INJECTION_BASELINE="$DECOY_REL" PYTHONPATH="$WORKSP
         "${PYRUN[@]}" -c "import injection_lint as m; print(m.BASELINE_FILE)" 2>/dev/null || echo "<import failed>")"
 [[ "$got" == "$WORKSPACE/$DECOY_REL" ]] \
   && ok "相對覆寫解到 repo root：$got" \
-  || fail_t "相對覆寫解到 $got（期望 $WORKSPACE/$DECOY_REL）— 站在別的目錄就會讀到別人的 baseline"
+  || fail_t "相對覆寫解到 ${got}（期望 $WORKSPACE/${DECOY_REL}）— 站在別的目錄就會讀到別人的 baseline"
 
 rc=0
 ( cd "$DECOY_DIR" && KG_INJECTION_BASELINE="$DECOY_REL" "${PYRUN[@]}" "$LINT_PY" --baseline-check ) \
@@ -257,7 +257,7 @@ got="$(cd "$TMP" && KG_INJECTION_BASELINE= PYTHONPATH="$WORKSPACE/ops" \
         "${PYRUN[@]}" -c "import injection_lint as m; print(m.BASELINE_FILE)" 2>/dev/null || echo "<import failed>")"
 [[ "$got" == "$WORKSPACE" ]] \
   && ok "KG_INJECTION_BASELINE=（空）仍解到 repo root $got" \
-  || fail_t "KG_INJECTION_BASELINE=（空）解到 $got（期望 $WORKSPACE）— ui_quality_gate.py 的父層攔截會與子進程分岔"
+  || fail_t "KG_INJECTION_BASELINE=（空）解到 ${got}（期望 ${WORKSPACE}）— ui_quality_gate.py 的父層攔截會與子進程分岔"
 # 常數對了還不夠：IMP-0048 保的是**行為**——子進程對空字串會死在 IsADirectoryError，
 # 所以父層才需要先用 .is_file() 攔。有人日後給 read_baseline() 補一道守衛，上面那條
 # 常數斷言會照樣綠，而父層那道攔截就變成沒有對象的儀式。
@@ -273,7 +273,7 @@ except Exception as e:
 ' 2>/dev/null || echo "<import failed>")"
 [[ "$got" == "IsADirectoryError" ]] \
   && ok "KG_INJECTION_BASELINE=（空）時 read_baseline() 仍拋 IsADirectoryError（IMP-0048 的形狀未被改掉）" \
-  || fail_t "KG_INJECTION_BASELINE=（空）時 read_baseline() 得到「$got」（期望 IsADirectoryError）— 父層的 .is_file() 攔截已無對象"
+  || fail_t "KG_INJECTION_BASELINE=（空）時 read_baseline() 得到「${got}」（期望 IsADirectoryError）— 父層的 .is_file() 攔截已無對象"
 
 section "掃到零個檔案必須 fail closed，不可讀成通過"
 # 直接注入 VIEWS_ROOT 跑 collect_findings，因為這支工具刻意**沒有**掃描根的環境
@@ -313,12 +313,12 @@ SWIFT
 rc="$(scan_probe "$TREE/clean" "$TMP/probe_clean.out")"
 [[ "$rc" -eq 0 ]] \
   && ok "負控：一個合規檔的樹 → rc=0（新守衛沒有把所有東西都變紅）" \
-  || { fail_t "負控失敗：一個合規檔的樹 → rc=$rc（期望 0）"; sed 's/^/      /' "$TMP/probe_clean.out"; }
+  || { fail_t "負控失敗：一個合規檔的樹 → rc=${rc}（期望 0）"; sed 's/^/      /' "$TMP/probe_clean.out"; }
 
 rc="$(scan_probe "$TREE/offender" "$TMP/probe_offender.out")"
 [[ "$rc" -eq 1 ]] \
   && ok "負控：一個違規檔的樹 → rc=1（findings 的紅，不是結構性的紅）" \
-  || { fail_t "負控失敗：一個違規檔的樹 → rc=$rc（期望 1）"; sed 's/^/      /' "$TMP/probe_offender.out"; }
+  || { fail_t "負控失敗：一個違規檔的樹 → rc=${rc}（期望 1）"; sed 's/^/      /' "$TMP/probe_offender.out"; }
 
 # skip 判斷必須看「樹內」的路徑。VIEWS_ROOT 現在是絕對的，若拿整條絕對路徑做
 # 子字串比對，一個住在名為 Debug/ 的目錄底下的 checkout 會排除掉每一個檔案 ——
@@ -326,7 +326,7 @@ rc="$(scan_probe "$TREE/offender" "$TMP/probe_offender.out")"
 rc="$(scan_probe "$TREE/Debug/checkout_named_like_a_skip_fragment" "$TMP/probe_debugroot.out")"
 [[ "$rc" -eq 0 ]] \
   && ok "掃描根的**上層**叫 Debug/ 不影響 skip 判斷 → rc=0（skip 看的是樹內路徑）" \
-  || { fail_t "掃描根上層叫 Debug/ 時 → rc=$rc（期望 0）— skip 拿整條絕對路徑比對，整棵樹被排除"; sed 's/^/      /' "$TMP/probe_debugroot.out"; }
+  || { fail_t "掃描根上層叫 Debug/ 時 → rc=${rc}（期望 0）— skip 拿整條絕對路徑比對，整棵樹被排除"; sed 's/^/      /' "$TMP/probe_debugroot.out"; }
 
 for case_dir in empty allskipped; do
   case "$case_dir" in
@@ -337,7 +337,7 @@ for case_dir in empty allskipped; do
   if [[ "$rc" -eq 2 ]]; then
     ok "正控：$why → rc=2"
   else
-    fail_t "正控失敗：$why → rc=$rc（期望 2）— 掃了零個檔案卻不是紅的"
+    fail_t "正控失敗：$why → rc=${rc}（期望 2）— 掃了零個檔案卻不是紅的"
     sed 's/^/      /' "$TMP/probe_$case_dir.out"
   fi
   if grep -q 'scanned 0 files' "$TMP/probe_$case_dir.out"; then
