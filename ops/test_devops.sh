@@ -83,12 +83,24 @@ fi
 # 「▶ 本地冷快照」看起來像開始工作了，很容易被讀成「跑完了」。備份指令不得用「印出
 # usage」當失敗訊號 → 呼叫點必須守住 rsync 的非零退出，並具名指向 standby 的每日 S3
 # 備份（launchd com.kg.backup）。正控 = 守衛存在；指向性 = 訊息點名那條替代路徑。
+# 指向性檢查必須**限縮在守衛區塊內**：cmd_backup 開頭本來就有一句提到 com.kg.backup
+# 的註解，對整個函式範圍 grep 會被那句既有註解滿足——守衛留著但把訊息全刪掉照樣綠。
+# 那正是本檔上方剛換掉的空話斷言換個位置復發。$dest 那半是第二個正控（訊息必須點出
+# 殘留目錄，不能只喊一句失敗）。
+_guard=$(printf '%s\n' "$_backup_body" | awk '/if ! rsync -az/,/^  fi$/')
 if [[ "$(printf '%s' "$_backup_body" | grep -c -- 'if ! rsync -az' || true)" == 1 \
-   && "$(printf '%s' "$_backup_body" | grep -c -- 'com.kg.backup' || true)" -ge 1 ]]; then
+   && "$(printf '%s' "$_guard" | grep -c -- 'com\.kg\.backup' || true)" -ge 1 \
+   && "$(printf '%s' "$_guard" | grep -c -- '\$dest' || true)" -ge 1 ]]; then
   ok "KG backup names its own failure and points at the S3 daily backup"
 else
   fail_t "KG backup names its own failure and points at the S3 daily backup"
 fi
+# 上面三條都是「注入 version 字串 → mapper 輸出」，沒有一條走**無參數**路徑，而那是
+# 生產唯一的呼叫方式（cmd_backup 不帶參數呼叫 helper）。這條蓋住 probe 本身：無論本機
+# 是哪種 flavor，都必須吐出非空旗標，否則 cmd_backup 會拿到空陣列。
+[[ -n "$(rsync_flags '')" ]] \
+  && ok "KG backup rsync flavor probe yields flags on this host" \
+  || fail_t "KG backup rsync flavor probe yields flags on this host"
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"

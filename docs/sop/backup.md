@@ -9,20 +9,22 @@ verified_against: 21ed42281
 -->
 # Backup 策略總覽
 
-> **過渡狀態（2026-06-15 起）**：正式站遷到家用常駐機 `standby`（OrbStack docker）後，原三層備份的 **L1（Lightsail AutoSnapshot）與 L2（`devops.sh` 本機 rsync）失效**——已無 Lightsail instance，`devops.sh` 寫死 Lightsail（受 `KG_ALLOW_LIGHTSAIL` guard）。**L3（S3 異地）仍是現役主防線，已從 Lightsail cron 移到 standby launchd**（`ops/launchd/com.kg.backup.plist`，跑同一支 `ops/kg_backup.sh`）。Lightsail STOP 期間其遷移當下的 AutoSnapshot 仍是漸舊的回滾資產，但**不再每日更新**。standby 目前**無自動 instance 級快照**（known gap，下表 L1 標 OFFLINE）。
+> **過渡狀態（2026-06-15 起，L2 於 2026-08-08 復役）**：正式站遷到家用常駐機 `standby`（OrbStack docker）後，**L1（Lightsail AutoSnapshot）失效**——已無 Lightsail instance。**L3（S3 異地）仍是現役主防線，已從 Lightsail cron 移到 standby launchd**（`ops/launchd/com.kg.backup.plist`，跑同一支 `ops/kg_backup.sh`）。standby 目前**無自動 instance 級快照**（known gap，下表 L1 標 OFFLINE）。
+>
+> **L2 已回到 ACTIVE（2026-08-08）**：`devops.sh` 早在 2026-06-19 就 retarget 到 standby（`KG_ALLOW_LIGHTSAIL` guard 已移除，全檔無 Lightsail 相依），本文原本記的「`devops.sh` 寫死 Lightsail rsync」已不成立。真正讓 L2 在主力機不可用的是另一件事：`cmd_backup` 無條件傳 GNU 專屬的 `--info=progress2`，macOS 內建 openrsync 不認 → 印 usage 後中止（IMP-0023 / IMP-20260806-02bf8d）。該旗標現已依 rsync flavor 分流，且 rsync 非零退出會具名拒絕並指向 L3，不再拿 usage 當失敗訊號。
 
 KG 原以**三層 backup**互相補位。各層獨立,單一層失效不阻擋整體還原。事故 SOP 走 `docs/sop/backup_restore.md`。
 
 | 層 | 工具 | 範圍 | 頻率 | 保留 | RPO | RTO | 狀態（2026-06-15） |
 |---|---|---|---|---|---|---|---|
 | L1 | Lightsail AutoSnapshot | **整個 instance**(docker / `.env` / certs / data / OS) | ~~每日 UTC 22:00~~ | 7 份 | 24h | 30–60 min | **OFFLINE**：Lightsail STOP，僅留遷移當下漸舊快照當回滾；standby 無對應替代 |
-| L2 | 本機 `devops.sh cmd_backup` + `backup_verify.sh` | `~/knowledge_graph_api/`(rsync 增量 + tar 到本機) | 手動(發版前 / 事故前) | 全部歷史(本機磁碟) | 視操作時機 | 5–10 min | **OFFLINE**：`devops.sh` 寫死 Lightsail rsync；standby 改用手動 `tar`（見 `deploy.md §備份 SOP`） |
+| L2 | 本機 `devops.sh cmd_backup` + `backup_verify.sh` | standby `~/kg-data`(rsync 增量 + tar 到本機) | 手動(發版前 / 事故前) | 全部歷史(本機磁碟) | 視操作時機 | 5–10 min | **ACTIVE**（2026-08-08 復役）：rsync 旗標依 flavor 分流，macOS openrsync 用 `--progress` |
 | L3 | AWS S3(本 SOP) | `data/`(tar+gz streaming) | 每日 UTC 03:00（**standby launchd**） | Versioning + **MFA Delete**,**無 lifecycle**(AWS 限制兩者互斥)→ 永久累積,需手動清(見 `backup_restore.md §7`) | 24h | ~15 min | **ACTIVE**（現役主防線） |
 
 ## 為什麼三層
 
 - L1 救「整個 instance 被誤刪」、「Docker 配置壞掉」。粒度粗,但唯一能還原 `.env` / `certs`。**遷移後 OFFLINE**——standby 的 `.env`/`certs` 改靠本機 Time Machine + git 重生。
-- L2 救「我在發版前怕剛改的 schema 壞了」、「想對比 5/15 vs 5/20 的某張表」— 任意時間點手動拉。**遷移後 OFFLINE**——standby 改用手動冷 `tar` 快照。
+- L2 救「我在發版前怕剛改的 schema 壞了」、「想對比 5/15 vs 5/20 的某張表」— 任意時間點手動拉。**2026-08-08 起在 macOS 主力機恢復可用**（openrsync 旗標分流）；`./ops/devops_kg_safe.sh backup` 即可從 standby 拉冷快照。
 - L3 救「server 上一切被 `rm -rf`,SSH key 也鎖在被刪的目錄裡」(2026-05-30 真實案例)。IAM 邊界硬隔絕,執行角色(`kg-backup-agent`)只能 PutObject、刪不掉歷史。**遷移後仍 ACTIVE**：同一 IAM 主體、同一 bucket，只是跑 script 的主機從 Lightsail cron 換成 standby launchd。
 
 ## 不在範圍(共識)

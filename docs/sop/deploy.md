@@ -454,12 +454,18 @@ deploy 失敗
 
 ## 備份 SOP
 
-> 🔒 **異地 S3 backup**：遷移後由 **standby launchd**（`ops/launchd/com.kg.backup.plist`，每日 11:00 台北 = UTC 03:00）跑 `ops/kg_backup.sh`，把 `data/` 串流上傳到 `s3://kg-backups-prod-967512079054/data/<UTC-date>.tar.gz`（同一 PutObject-only IAM principal `kg-backup-agent`）。舊 Lightsail `/etc/cron.d/kg-backup` 已停用。三層備份的過渡現實（L1/L2 失效、L3 移 standby）與從零還原的權威 SOP 見 [`docs/sop/backup.md`](backup.md) / [`docs/sop/backup_restore.md`](backup_restore.md)，不是本段。`devops_kg_safe.sh backup-s3-test`（受 `KG_ALLOW_LIGHTSAIL` guard）為 Lightsail 語境，rollback 時才用。
+> 🔒 **異地 S3 backup**：遷移後由 **standby launchd**（`ops/launchd/com.kg.backup.plist`，每日 11:00 台北 = UTC 03:00）跑 `ops/kg_backup.sh`，把 `data/` 串流上傳到 `s3://kg-backups-prod-967512079054/data/<UTC-date>.tar.gz`（同一 PutObject-only IAM principal `kg-backup-agent`）。舊 Lightsail `/etc/cron.d/kg-backup` 已停用。三層備份的過渡現實（L1 失效、L2 已於 2026-08-08 復役、L3 移 standby）與從零還原的權威 SOP 見 [`docs/sop/backup.md`](backup.md) / [`docs/sop/backup_restore.md`](backup_restore.md)，不是本段。`devops_kg_safe.sh backup-s3-test` 現為唯讀檢查 standby launchd `com.kg.backup`（`KG_ALLOW_LIGHTSAIL` guard 已於 2026-06-19 移除）。
 
-standby 手動快照：
+本機冷快照（**首選**，L2）——從 standby 拉回本機並自動驗 integrity + sha256：
 
 ```bash
-ssh chenliangyu@100.118.39.104 'tar czf ~/kg_data_$(date +%Y%m%d).tgz -C ~/project/kg/backend data'
+./ops/devops_kg_safe.sh backup
+```
+
+手動 `tar` 只在 L2 不可用時當退路。注意生產資料在 standby 的 `~/kg-data`（`~/project/kg` 是 dev-only clone，**備它會備到錯的東西**）：
+
+```bash
+ssh chenliangyu@100.118.39.104 'tar czf ~/kg_data_$(date +%Y%m%d).tgz -C ~ kg-data'
 # WAL 一致性需冷快照：先 docker compose stop 再 tar
 ```
 
