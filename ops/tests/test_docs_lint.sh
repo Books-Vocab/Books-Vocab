@@ -124,6 +124,12 @@ if grep -q '^!/usr/bin/env bash' /tmp/kg_docs_lint_help.out; then
   exit 1
 fi
 require_grep "docs_lint.sh — docs gate / audit / registry checks" /tmp/kg_docs_lint_help.out
+# --help 必須印**完**整個檔頭,不能只印開頭。前身是寫死的 `sed -n '2,24p'`,而註解區早已
+# 長到第 31 行,於是「Exit code」與 STALE_THRESHOLD 被靜靜截掉、沒有任何測試察覺。
+# 這兩條斷言同時釘住新舊兩種截斷:寫死行號回流,以及檔頭裡不小心插入真正空行
+# (會讓現行 awk 提早 exit)。
+require_grep "Exit code" /tmp/kg_docs_lint_help.out
+require_grep "相容 bash 3.2" /tmp/kg_docs_lint_help.out
 
 run_capture /tmp/kg_docs_lint_files.out ./ops/docs_lint.sh --files docs/reference/tech_index.md docs/sop/architecture.md
 require_grep "ERROR: 0" /tmp/kg_docs_lint_files.out
@@ -299,6 +305,69 @@ run_capture /tmp/kg_docs_lint_audit_orphan.out ./ops/docs_lint.sh --audit
 require_grep "mode=audit" /tmp/kg_docs_lint_audit_orphan.out
 require_grep "ERROR: 0" /tmp/kg_docs_lint_audit_orphan.out
 require_grep "不可達" /tmp/kg_docs_lint_audit_orphan.out
+
+# --- anchor origin 可達性(第二層,WARN 不 ERROR;IMP-20260805-9bb2d2)---
+# 「HEAD 可達」不等於「origin 可達」:本 repo 拓樸是本地 main 為主幹、刻意超前 origin,
+# 所以錨在分支自身 commit 的 doc 對 case 3 是綠的,卻正是 cutover rebase 會 orphan 掉的那種。
+# 這條知識原本只活在 backlog.py 的 _doc_anchor() docstring 裡,docs_lint 一個字都不說。
+
+# 5) 正控:ORIGIN_REF 落後 HEAD 一格 → anchor(=HEAD)origin 不可達 → WARN + 可照抄的建議 sha,
+#    且 exit 0(rc 由 run_capture 把關)。
+origin_behind="$(git rev-parse HEAD~1)"
+write_anchor_fixture "$(git rev-parse HEAD)"
+export KG_DOCS_LINT_ORIGIN_REF="$origin_behind"
+run_capture /tmp/kg_docs_lint_origin_warn.out ./ops/docs_lint.sh --files "$anchor_fixture"
+unset KG_DOCS_LINT_ORIGIN_REF
+require_grep "origin-unreachable" /tmp/kg_docs_lint_origin_warn.out
+require_grep "建議改錨" /tmp/kg_docs_lint_origin_warn.out
+# 建議的 sha 要是 9 碼短式(全 repo 的 anchor 慣例),不是 40 碼——訊息自稱可照抄。
+require_grep "$(git rev-parse --short=9 "$origin_behind")" /tmp/kg_docs_lint_origin_warn.out
+require_grep "ERROR: 0" /tmp/kg_docs_lint_origin_warn.out
+# summary 也要真的計進去。少了這行,把 `warnings=$((warnings+1))` 整行刪掉四個案子照樣綠:
+# 訊息照印、ERROR: 0 照過,只有 --strict 從此抓不到這條。(OK: 1 是 registry 檢查貢獻的,
+# 不是同一份 doc 被雙記。)
+require_grep "WARN:  1" /tmp/kg_docs_lint_origin_warn.out
+
+# 6) 正控(acceptance 形狀):ORIGIN_REF 是與 HEAD 無血緣的 root commit → 任何 anchor 都必然
+#    origin 不可達;此時沒有 merge-base 可建議,第二行必須具名說出「沒有」而不是憑空生一顆 sha。
+unrelated_origin="$(git -c user.email=docs-lint@example.test -c user.name="docs-lint fixture" commit-tree "HEAD^{tree}" -m "docs_lint unrelated origin fixture")"
+if git merge-base --is-ancestor "$(git rev-parse HEAD)" "$unrelated_origin" 2>/dev/null; then
+  echo "fixture bug: HEAD 竟然是無血緣 root commit 的祖先: $unrelated_origin" >&2
+  exit 1
+fi
+export KG_DOCS_LINT_ORIGIN_REF="$unrelated_origin"
+run_capture /tmp/kg_docs_lint_origin_norelation.out ./ops/docs_lint.sh --files "$anchor_fixture"
+unset KG_DOCS_LINT_ORIGIN_REF
+require_grep "origin-unreachable" /tmp/kg_docs_lint_origin_norelation.out
+require_grep "無共同祖先" /tmp/kg_docs_lint_origin_norelation.out
+require_grep "ERROR: 0" /tmp/kg_docs_lint_origin_norelation.out
+
+# 7) 負控:origin 可達的 anchor 不得冒這條 WARN,否則它退化成無差別警告。
+#    錨取 merge-base(origin/main, HEAD) —— 依定義 origin 可達;沒有 origin/main 的 clone
+#    (fresh / shallow CI)則落回 HEAD,此時第 8 案的 skip 語意接手,斷言仍成立。
+if origin_base=$(git merge-base origin/main HEAD 2>/dev/null) && [ -n "$origin_base" ]; then
+  write_anchor_fixture "$origin_base"
+else
+  write_anchor_fixture "$(git rev-parse HEAD)"
+fi
+run_capture /tmp/kg_docs_lint_origin_clean.out ./ops/docs_lint.sh --files "$anchor_fixture"
+if grep -q "origin-unreachable" /tmp/kg_docs_lint_origin_clean.out; then
+  echo "origin 可達的 anchor 不該冒 origin-unreachable(無差別警告)" >&2
+  dump_file /tmp/kg_docs_lint_origin_clean.out
+  exit 1
+fi
+
+# 8) 負控:ORIGIN_REF 根本不存在(未 fetch 的 clone)→ 整段跳過,不得因此變吵或變紅。
+write_anchor_fixture "$(git rev-parse HEAD)"
+export KG_DOCS_LINT_ORIGIN_REF="refs/remotes/origin/kg-docs-lint-no-such-ref-$$"
+run_capture /tmp/kg_docs_lint_origin_missing.out ./ops/docs_lint.sh --files "$anchor_fixture"
+unset KG_DOCS_LINT_ORIGIN_REF
+if grep -q "origin-unreachable" /tmp/kg_docs_lint_origin_missing.out; then
+  echo "ORIGIN_REF 不存在時應整段跳過,不該警告" >&2
+  dump_file /tmp/kg_docs_lint_origin_missing.out
+  exit 1
+fi
+require_grep "ERROR: 0" /tmp/kg_docs_lint_origin_missing.out
 
 cleanup_anchor
 trap - EXIT

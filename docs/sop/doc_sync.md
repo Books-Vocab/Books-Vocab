@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - docs/
-verified_against: 0c9e3b7c
+verified_against: 4e2d680ba
 -->
 # Doc-Sync Agent SOP
 
@@ -25,7 +25,7 @@ verified_against: 0c9e3b7c
    **判準是 `origin/main` 可達,不是「main 可達」**——本 repo 的拓樸是**本地 main 為主幹、超前 origin**(`ops/worktree_orchestrate.py` 的 cutover 只前進本地 main,推 origin 是另一個刻意動作),所以「local main 可達」**不蘊含**「origin/main 可達」。CI 解析的是後者,IMP-0038 那批 orphan 錨點正是卡在這個差上:本機 `docs_lint` 全綠、CI 全紅。
    **不變式(構造,不是紀律)**:錨點必須是一個**最終會進 origin/main 且 SHA 不被改寫**的 commit。與 `origin/main` 的 merge-base 永遠滿足;**自己分支的 HEAD 不滿足**——`cmd_cutover` 在 `merge --ff-only` **之前**先對分支跑 `git rebase <本地 main>`,rebase 把分支上每個 sha 改寫成 orphan。分支已貼著本地 main 時是 no-op、sha 得以保留,但那是常態不是保證,**不可依賴**。(孤兒成因的正本在 `ops/backlog.py` 的 ledger schema,此處不複述。)
    **已知代價,接受之**:錨在 base 意味著錨點不含本次改動。這是規則的內在性質、不是個案債,**不要為它開手動 re-bump 待辦**——那正是 IMP-0038 已經失敗過一次的方案(沒人記得做)。
-   **這條目前沒有機器守衛**:`ops/docs_lint.sh` 的可達性判準是 **HEAD 可達**(`:418-421`),所以分支本地必綠、接不住這條。把判準改成 `origin/main` 可達是 IMP-0038 的出場條件(改完才能把 group 移回 `LINUX_GROUPS`)。在那之前這裡靠自律,寫入前自己跑一次:
+   **機器守衛是 advisory 級,不是硬閘**(IMP-20260805-9bb2d2 起):`ops/docs_lint.sh` 的第一層仍是 **HEAD 可達**(ERROR),第二層才驗 **`$ORIGIN_REF` 可達**(預設 `origin/main`,可用 `KG_DOCS_LINT_ORIGIN_REF` 覆寫),命中時印帶機器 token `origin-unreachable` 的 **WARN** 加一個可照抄的替代 sha。**刻意只到 WARN**:worktree pre-cutover 錨在分支自身 commit 是合法情境,升 ERROR 會把整條 worktree 流程擋死——所以它會**提醒你**,但不會**代替你**。寫入前仍自己跑一次:
    ```
    git merge-base --is-ancestor <anchor> origin/main   # rc=0 才可寫
    ```

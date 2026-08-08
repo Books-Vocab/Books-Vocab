@@ -38,7 +38,7 @@ version: 1.0.0
 - `broad`: 只當候選，不自動改 doc。
 
 3. 判讀 trigger，而不是只看 path hint。
-4. 若同步 docs，讓 `verified_against` 指向 main 可達 code commit；doc-only 流程改動不必硬 bump unrelated reference。
+4. 若同步 docs，讓 `verified_against` 指向 **`origin/main` 可達**的 code commit（判準與不變式見 `docs/sop/doc_sync.md` 步驟 4——本地 main 刻意超前 origin，「local main 可達」不夠；`docs_lint` 對此只給帶 `origin-unreachable` token 的 WARN，不是硬閘）；doc-only 流程改動不必硬 bump unrelated reference。
 5. 驗證：
 
 ```bash
