@@ -1568,6 +1568,104 @@ def test_cutover_refused_when_primary_is_dirty(scratch):
     assert rc == MODULE.EXIT_OK and cut["landed"] is True
 
 
+# --- IMP-20260806-42d183: a refusal that coordinates instead of only refusing -------
+#
+# The dirty-primary refusal is a good message — it lists the files, gives options and
+# points at session-mgmt. What it does NOT do is any of the coordination it describes,
+# so the cost lands entirely on the blocked session: find the running sessions, work out
+# whose files those are, go write in the shared mailbox. That got done BY HAND three
+# times (broadcast.md, 2026-08-05 x2 and 2026-08-06), which is the definition of a
+# friction the tool should absorb. Only direction (1) of the ticket is implemented here:
+# leave the refusal exactly as it is, and post the notice automatically.
+
+@gitmark
+def test_a_dirty_primary_broadcast_names_the_blocked_branch_and_the_files(scratch):
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "bcast",
+                            "--state", state, "--json"])
+    wt, branch = opened["path"], opened["branch"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+
+    mailbox = repo / ".cache" / "coordination" / "broadcast.md"
+    assert not mailbox.exists()
+    (repo / "f").write_text("someone else's uncommitted work\n")
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK and cut["landed"] is False
+
+    posted = mailbox.read_text()
+    assert branch in posted, "a notice nobody can attribute is worse than none"
+    assert "f" in posted.split(branch, 1)[1], "the dirty file must be named"
+    # the refusal itself is unchanged, and now says where it wrote
+    assert "dirty" in cut["error"]
+    assert "broadcast.md" in cut["error"]
+    assert cut["broadcast"] == str(mailbox)
+
+
+@gitmark
+def test_a_dirty_primary_broadcast_is_not_repeated_for_the_same_block(scratch):
+    """Polling is the expected usage — the refusal literally says "re-run cutover once
+    the primary is clean". If each attempt appended, the mailbox other humans read would
+    be flooded by the one participant that is a program."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "bcast-idem",
+                            "--state", state, "--json"])
+    wt, branch = opened["path"], opened["branch"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+
+    mailbox = repo / ".cache" / "coordination" / "broadcast.md"
+    (repo / "f").write_text("dirty\n")
+    for _ in range(3):
+        rc, _cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                              "--commit", "--json"])
+        assert rc == MODULE.EXIT_BLOCK
+    assert mailbox.read_text().count(branch) == 1
+
+    # but a DIFFERENT block is genuinely new information and must be posted
+    (repo / "g").write_text("a second dirty file\n")
+    _git(["add", "-A"], repo)
+    rc, _cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                          "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert mailbox.read_text().count(branch) == 2
+
+
+@gitmark
+def test_a_dirty_primary_broadcast_failure_never_becomes_the_refusal(scratch):
+    """`.cache/` is gitignored scratch, not a source of truth. If posting the notice
+    fails, the operator must still be told the real reason — swapping a coordination
+    courtesy in for the diagnosis would be strictly worse than not having it."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "do it", "--slug", "bcast-ro",
+                            "--state", state, "--json"])
+    wt = opened["path"]
+    (Path(wt) / "notes.txt").write_text("work\n")
+    _git(["add", "-A"], wt); _git(["commit", "-qm", "work"], wt)
+    _run_json(["gate", "--worktree", wt, "--state", state, "--json"])
+
+    # occupy the mailbox path with a DIRECTORY: every write raises
+    mailbox = repo / ".cache" / "coordination" / "broadcast.md"
+    mailbox.parent.mkdir(parents=True, exist_ok=True)
+    mailbox.mkdir()
+    (repo / "f").write_text("dirty\n")
+    rc, cut = _run_json(["cutover", "--worktree", wt, "--state", state,
+                         "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    assert cut["landed"] is False
+    assert "dirty" in cut["error"], "the diagnosis must survive a failed courtesy"
+    assert "f" in cut["dirty_files"]
+    assert "broadcast.md" not in cut["error"], "do not point at a file that was not written"
+    assert cut.get("broadcast") is None
+    assert "notes.txt" not in _local_main_files(repo)
+
+
 @gitmark
 def test_cutover_refused_when_primary_not_on_main(scratch):
     tmp_path, repo, remote = scratch
@@ -5325,9 +5423,10 @@ def test_land_dry_run_takes_no_turn_and_runs_nothing(tmp_path, monkeypatch, caps
 def _dirty_primary(reason="primary working tree is dirty (tracked changes)"):
     calls = []
 
-    def ff_ready(primary, local):
+    def ff_ready(primary, local, branch=None):
         calls.append((str(primary), local))
-        return (reason, {"dirty_files": ["docs/runbook/backlog/IMP-0023.json"]})
+        return (reason, {"dirty_files": ["docs/runbook/backlog/IMP-0023.json"],
+                         "broadcast": None})
     ff_ready.calls = calls
     return ff_ready
 
@@ -5399,7 +5498,7 @@ def test_land_asks_the_primary_dirty_before_gate_question_exactly_once(
     """
     asked = []
 
-    def ff_ready(primary, local):
+    def ff_ready(primary, local, branch=None):
         asked.append(local)
         return None
     primary, args = _land_harness(monkeypatch, tmp_path, ff_ready=ff_ready)

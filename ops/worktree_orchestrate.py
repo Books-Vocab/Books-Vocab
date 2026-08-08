@@ -1154,7 +1154,59 @@ def _porcelain_paths(out: str) -> list[str]:
     return paths
 
 
-def _primary_ff_ready(primary: Path, local: str) -> tuple[str, dict[str, Any]] | None:
+COORDINATION_BROADCAST_REL = ".cache/coordination/broadcast.md"
+
+
+def _broadcast_cutover_block(primary: Path, branch: str | None,
+                             files: list[str]) -> str | None:
+    """Post a dirty-primary refusal to the repo's shared mailbox. Returns the path it
+    wrote to, or None if it could not (or should not) write.
+
+    The refusal message was already good — it lists the files, gives options and points
+    at session-mgmt. What it did not do is any of the coordination it describes, so the
+    whole cost landed on the blocked session: find the running sessions, work out whose
+    files those are, go write in the mailbox. That was done BY HAND three times
+    (2026-08-05 twice, 2026-08-06 once, the last blocking a batch of eleven).
+
+    BEST-EFFORT BY CONSTRUCTION. `.cache/` is gitignored scratch, never a source of
+    truth, so every failure here is swallowed and the caller's refusal reason stands
+    untouched. Substituting a courtesy for the diagnosis would be strictly worse than
+    never sending it.
+
+    IDEMPOTENT per (branch, dirty set). The refusal tells the operator to re-run once
+    the primary is clean, so polling is the expected usage — an append per attempt would
+    flood the mailbox humans read with the one participant that is a program. A
+    different dirty set is genuinely new information and does get posted.
+    """
+    shown = files[:10]
+    key = hashlib.sha256("\n".join([branch or "?", *shown]).encode()).hexdigest()[:16]
+    marker = f"<!-- kg-cutover-block {key} -->"
+    listed = ", ".join(shown) + (f" … and {len(files) - 10} more"
+                                 if len(files) > 10 else "")
+    try:
+        path = primary / COORDINATION_BROADCAST_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and marker in path.read_text(encoding="utf-8", errors="replace"):
+            return str(path)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+        entry = (
+            f"\n---\n## {ts}Z — cutover 被擋:primary 有未提交的 tracked 改動\n\n"
+            f"被擋的分支:`{branch or '(unknown)'}`\n\n"
+            f"dirty: {listed}\n\n"
+            f"**這則是 `ops/worktree_orchestrate.py` 自動貼的(IMP-20260806-42d183),"
+            f"不是人寫的。** 若這些檔是你的:commit 或把它們搬進一條 worktree,被擋的那條"
+            f"就會自己過——它的 gate 判決綁在自己的 HEAD 上、仍然有效,primary 乾淨後重跑 "
+            f"cutover 即可。處理完請自行刪除本則。\n"
+            f"{marker}\n")
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(entry)
+        return str(path)
+    except OSError:
+        return None
+
+
+def _primary_ff_ready(primary: Path, local: str,
+                      branch: str | None = None) -> tuple[str, dict[str, Any]] | None:
     """Refusal `(reason, extra-json-fields)` (or None) for advancing the primary
     checkout's local `main` by a fast-forward. `main` is checked out in the primary,
     so a ff updates its working tree — it must be on `local`, tracked-clean, with no
@@ -1188,7 +1240,11 @@ def _primary_ff_ready(primary: Path, local: str) -> tuple[str, dict[str, Any]] |
         shown = ", ".join(files[:10])
         if len(files) > 10:
             shown += f" … and {len(files) - 10} more"
-        return (
+        # A refusal is a coordination event, so make the tool do the coordinating.
+        # This runs BEFORE the return and its result cannot change it: the reason
+        # below is the diagnosis, the notice is a courtesy.
+        posted = _broadcast_cutover_block(primary, branch, files)
+        reason = (
             "primary working tree is dirty (tracked changes) — a ff updates the "
             f"checked-out files\n  dirty: {shown}\n"
             "  likely another session is working in the primary. Options: (a) use "
@@ -1196,7 +1252,11 @@ def _primary_ff_ready(primary: Path, local: str) -> tuple[str, dict[str, Any]] |
             "repo, send_message to ask the tenant to commit; (b) if the leftovers "
             "are yours, commit them or evacuate them to a worktree. The gate verdict "
             "is bound to the worktree HEAD and stays valid — once the primary is "
-            "clean, just re-run cutover", {"dirty_files": files})
+            "clean, just re-run cutover")
+        if posted:
+            reason += (f"\n  this block was posted for you to {posted} "
+                       f"(broadcast.md) — no need to write it by hand")
+        return (reason, {"dirty_files": files, "broadcast": posted})
     return None
 
 
@@ -2818,7 +2878,7 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     # Serialize the trunk advance; rebase onto the CURRENT local trunk INSIDE the lock
     # so a peer cutover that just advanced it is picked up (not raced past).
     with _main_advance_lock(primary):
-        guard = _primary_ff_ready(primary, local)
+        guard = _primary_ff_ready(primary, local, branch=wt_branch)
         if guard:
             reason, extra = guard
             _emit({"schema": SCHEMA, "step": "cutover", "error": reason, "landed": False,
@@ -3211,7 +3271,8 @@ def cmd_land(args) -> int:
         # Same helper, not a second copy of the judgement: a duplicated rule is one
         # that drifts, and this one decides whether someone else's working tree gets
         # overwritten.
-        guard = _primary_ff_ready(primary, _local_trunk(args.base))
+        guard = _primary_ff_ready(primary, _local_trunk(args.base),
+                                  branch=_current_branch(worktree))
         if guard is not None:
             reason, extra = guard
             _emit({"schema": SCHEMA, "step": "land", "mode": "refused",
