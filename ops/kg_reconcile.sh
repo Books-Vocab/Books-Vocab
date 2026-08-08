@@ -483,8 +483,10 @@ deploy_and_gate() {
     # 2026-08-08 實測同形 fixture：無 LANG/LC_ALL/LC_CTYPE → rc=0、LC_ALL=C → rc=0、
     # LC_ALL=C.UTF-8 / en_US.UTF-8 / LANG=en_US.UTF-8 → rc=1 unbound variable。
     # gate 的 subprocess runner 釘 LC_CTYPE=C.UTF-8（`ops/lib/streaming_command.py`），
-    # 所以它死；LC_CTYPE 未設的互動 shell 是 C locale，所以它綠。本段先前寫反了，
-    # 照舊敘述跑 `env -u LANG` 驗證會看到綠並誤判這行安全。
+    # 所以它死。**綠的條件是 LANG / LC_ALL / LC_CTYPE 三個都沒設**（agent 的 Bash tool
+    # 就是這種）——只說「LC_CTYPE 未設」不夠：`LANG=en_US.UTF-8` 而 LC_CTYPE 未設
+    # （macOS Terminal.app 預設）實測 rc=1，照樣死。本段先前寫反了，照舊敘述跑
+    # `env -u LANG` 驗證會看到綠並誤判這行安全。
     alert "回滾的 compose 失敗 (exit ${rrc})：git tree 與 VERSION 已回到 ${rollback_sha}，但**容器很可能仍跑著 ${new_sha}**。回滾未生效，需人工確認容器實跑版本再決定前進或後退。"
   fi
   # 回滾後確認舊版健康（best-effort，不 gate verdict；連舊版都不健康則更大聲告警）
