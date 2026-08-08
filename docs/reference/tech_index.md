@@ -218,6 +218,8 @@ Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`wor
 檔案、指紋與 rerun 理由；未知 scope、legacy record、輸入或定義變動、`block`/`inconclusive` 來源
 一律重跑。這是成本最佳化，不是跳過 fresh-HEAD 安全護欄。
 
+空 diff 仍可合法重跑，但 gate record 會以 `no_changed_files=true` 明示「沒有變更路徑被驗證」；人讀輸出會警告，`--receipt-line` 會加 `no-changes`，避免把合法 re-gate 或錯樹空跑誤讀成新修改已被驗證。
+
 ## Web 設計系統(`design-system/`)
 
 跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。
