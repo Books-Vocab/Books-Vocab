@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 """Load-test the worktree flow at N-way concurrency, inside a throwaway clone.
 
 Why this exists as a tool rather than a one-off script: the plan is 10 -> 15 -> 20
