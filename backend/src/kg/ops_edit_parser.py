@@ -133,6 +133,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("seed", parents=[jp, cp], help="一次性灌整套 demo(notebooks+cards+links)")
     p.add_argument("uid")
     p.add_argument("spec", help="seed spec JSON 檔路徑")
+    p.add_argument("--replace", action="store_true",
+                   help="先清空目標帳號整層 vocab 再灌;spec 即最終狀態,identity(users.json)不動")
     p.set_defaults(func=cmd_seed)
 
     p = sub.add_parser("clone-demo", parents=[jp, cp], help="高保真複製來源帳號 vocab 層到目標 demo 帳號 + 合成 review history")

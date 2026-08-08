@@ -14,6 +14,7 @@ from .ops_edit_support import (
     ReviewEventStore,
     _assert_clean_notebook_name,
     _card_store,
+    _passthrough_normalize,
     _clone_source_files,
     _clone_source_fingerprint,
     _count_active_cards,
@@ -38,6 +39,7 @@ from .ops_edit_support import (
     datetime,
     emit,
     json,
+    load_users_from,
     shutil,
     synthesize_many,
     tarfile,
@@ -46,6 +48,7 @@ from .ops_edit_support import (
     users_file,
     world_backup_root,
 )
+from .text_utils import normalize_nfc_lower
 
 
 # 擴充 review 形式(計數器直設,`ops_cli world-export` 的無損重放面)的合法鍵。
@@ -112,6 +115,96 @@ def _parse_review_counters(rv: dict[str, Any], label: str) -> dict[str, Any]:
     return out
 
 
+def _seed_shape_diff(
+    expected: list[dict[str, Any]], actual: list[tuple[str, str]]
+) -> tuple[list[str], list[str]]:
+    """spec 期望的卡片形狀 vs 磁碟實況,回 ``(extra, missing)``。
+
+    比對鍵是 ``(notebook_id, normalize_nfc_lower(content))`` —— 與 `CardStore.add`
+    的查重(``content = ? COLLATE NOCASE AND notebook_id = ?``)及
+    `CardStore.find_by_content` 的 ``content_nfc_lower`` 索引同鍵,否則大小寫 /
+    NFD 差異會被誤報成 extra+missing 一對。**按本比對而非只按 content**:跨本
+    同 content 是合法形狀(見 `test_cross_notebook_same_content_verify_ok`)。
+    """
+    exp = {(c["nb_id"], normalize_nfc_lower(c["content"])) for c in expected}
+    act = {(nb, normalize_nfc_lower(ct)) for nb, ct in actual}
+    extra = sorted(f"{ct}@{nb}" for nb, ct in act - exp)
+    missing = sorted(f"{ct}@{nb}" for nb, ct in exp - act)
+    return extra, missing
+
+
+def _dangling_active_notebook(dd: Path, uid: str, live_nb_ids: set[str]) -> list[str]:
+    """`vocab_ui.active_notebook_id` 是否指向已不存在的 notebook(回具名理由清單)。
+
+    **讀 users.json 的任何失敗一律收斂成一筆紅,絕不往外拋。** 呼叫點在
+    `EditContext.run` 的 verify 階段,而 `verified = verify_fn()` 在它的
+    try/except **外面**(except 只包到 apply),且此時破壞性 wipe 已經落地。
+    裸 traceback 會污染 `--json` stdout —— `cmd_seed` 自己為 spec 解析捍衛過
+    同一條契約 —— 而 operator 會拿到空 stdout 卻已經沒有資料。
+
+    壞掉**不轉綠**:`backup_user_dir` 走的 `_load_users_json_raw` 刻意容忍壞
+    JSON(所以前面不會先擋下來),但這裡若也跟著容忍成 `{}`,壞掉的 config 就
+    會靜默通過。要的是具名的紅。
+    """
+    try:
+        users = load_users_from(users_file(dd), _passthrough_normalize)
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"users.json unreadable: {exc}"]
+    if not isinstance(users, dict):
+        return [f"users.json 頂層不是 object:{type(users).__name__}"]
+    record = users.get(uid) if isinstance(users.get(uid), dict) else {}
+    cfg = record.get("config") if isinstance(record.get("config"), dict) else {}
+    vu = cfg.get("vocab_ui") if isinstance(cfg.get("vocab_ui"), dict) else {}
+    active_nb = vu.get("active_notebook_id")
+    if active_nb is None or active_nb == "":
+        return []
+    # 葉子值必須是字串才能拿去查集合 —— dict/list 會在 `in` 就 unhashable 炸掉,
+    # 而那個炸點同樣在 try 之外。isinstance 階梯守到這裡才算守完。
+    if not isinstance(active_nb, str):
+        return [f"vocab_ui.active_notebook_id 型別非法:{active_nb!r}"]
+    if active_nb in live_nb_ids:
+        return []
+    return [f"vocab_ui.active_notebook_id={active_nb} 指向已被 replace 清掉的 notebook"
+            f"(修法:ops-edit user-config-set {uid} --active-notebook <name|id>)"]
+
+
+def _seed_replace_verdict(
+    expected: list[dict[str, Any]],
+    actual: list[tuple[str, str]],
+    *,
+    link_errors: list[str],
+    field_mismatches: list[str],
+    dangling_config: list[str],
+) -> dict[str, Any]:
+    """``--replace`` 路徑的 verify 判準(純函式)。
+
+    刻意抽成純函式而非留在 verify_fn 的閉包裡:這條判準只有在「wipe 沒清乾淨」時
+    才會轉紅,而那個狀態走 CLI **產不出來**(cards 只住 cards.db,wipe 必清它)。
+    留在閉包裡就只能靠 mutation 證明它會紅,平時無人執行 —— 而「沒人查的判準等於
+    假的」正是本條目要修的病。抽出來後可以直接餵一份髒狀態斷言它轉紅。
+
+    判準用 ``len(actual)`` 而非另一次 ``count()`` 查詢:同一份讀取推導出報告值與
+    判斷值,避免兩個讀取者對同一個磁碟狀態各說各話。
+
+    ``dangling_config`` 是同族的第三種說謊:``--replace`` 不動 identity/users.json
+    (刻意),於是 ``vocab_ui.active_notebook_id`` 會指向被清掉的舊 notebook id ——
+    卡的形狀完全正確,demo 帳號的「新選詞歸哪本」卻懸空。只看卡就報綠會漏掉它。
+    """
+    extra, missing = _seed_shape_diff(expected, actual)
+    return {
+        "ok": (len(actual) == len(expected) and not link_errors
+               and not field_mismatches and not extra and not missing
+               and not dangling_config),
+        # 「筆數不符但 extra/missing 皆空」= 同本大小寫變體重複。沒有 expected_cards
+        # 這個對照數字,那個形狀的紅看起來會像沉默。
+        "expected_cards": len(expected),
+        "extra_cards": extra[:5],
+        "missing_cards": missing[:5],
+        # 不截斷:現況最多一筆。等 config 面再擴充時要與上面兩者一致改成 [:5]。
+        "dangling_config": dangling_config,
+    }
+
+
 def cmd_seed(args: argparse.Namespace) -> int:
     """一次性把 notebooks + cards + links 整套灌入(mock/demo 帳號用)。
 
@@ -136,9 +229,17 @@ def cmd_seed(args: argparse.Namespace) -> int:
     會經 `synthesize_many` 確定式合成逐筆 review events 寫入 review_events.db
     (uuid5 event_id,重跑經 store 去重而冪等)。``is_default: true`` 的 notebook
     映射到既存預設本(id 恆 "default",改名不增殖),使導出的預設本可重放。
+
+    ``--replace``:同一個 EditContext 內先清空目標帳號整層 vocab(`_is_vocab_file`
+    涵蓋的檔,含 review_events.db;identity/users.json 不動)再灌 spec,語意從
+    additive-upsert 變成「spec = 精確最終狀態」。用於把既有帳號 reshape 成新結構
+    —— additive 路徑對「同 content 換到別本」會新增第二張卡(`CardStore.add` 查重
+    綁 (content, notebook_id)),replace 則得到乾淨結果。verify 在此路徑改用精確
+    形狀比對(extra_cards / missing_cards),不再用寬鬆的 ``total >= len(cards)``。
     """
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
+    replace = bool(getattr(args, "replace", False))
     spec_path = Path(args.spec)
     if not spec_path.exists():
         raise EditError(f"spec not found: {spec_path}")
@@ -176,6 +277,37 @@ def cmd_seed(args: argparse.Namespace) -> int:
         if default_entries > 1:
             # 預設本結構上唯一(id 恆 "default");兩本以上 is_default 是矛盾 spec。
             raise EditError("notebooks 至多一本 is_default: true(預設本唯一)")
+        if replace:
+            # --replace 把「既存 notebook」這個 additive 路徑的合法參照來源整層刪掉,
+            # 所以參照必須在**這裡**驗 —— _prevalidate 跑在 plan 與 wipe 之前,dry-run
+            # 也跑。少了這一段,apply_fn 的 _resolve_nb 會在 wipe **之後**才紅:dry-run
+            # 報綠、operator 照著下 --commit、整層 vocab 已被 unlink,而 EditContext 的
+            # 錯誤輸出寫著 "committed": false —— 工具對自己的狀態說謊,正是本旗標要修的病。
+            # wipe 後 ensure_default() 會重建預設本,故 "default" 恆合法;spec 宣告的
+            # is_default entry 其 name 也映到 "default",已含在 seen_names 內。既存 id
+            # 一律不合法:replace 後那些 id 不復存在(hex id 隨機、不可預先寫進 spec)。
+            # **本規則刻意比 apply 嚴一格**:重建的預設本靠它的**顯示名**(localized,
+            # 今天是「我的單字本」)其實也解得開 —— apply 的 name_to_id 會收 nb.name。
+            # 這裡不放行,因為讓 spec 依賴一個 localized 顯示名本來就脆;擋下來時訊息
+            # 會列出合法集合,operator 改寫成 "default" 即可。
+
+            declared = seen_names | {"default"}
+            for i, c in enumerate(cards):
+                ref = c.get("notebook", "default")
+                if ref not in declared:
+                    raise EditError(
+                        f"cards[{i}] 在 --replace 下指向未宣告的 notebook {ref!r}:"
+                        f"replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 \"default\""
+                        f"(本 spec 宣告:{sorted(declared)})"
+                    )
+            for i, lk in enumerate(links):
+                ref = lk.get("notebook", "default")
+                if ref not in declared:
+                    raise EditError(
+                        f"links[{i}] 在 --replace 下指向未宣告的 notebook {ref!r}:"
+                        f"replace 會先清空整層 vocab,只能引用本 spec 宣告的本或 \"default\""
+                        f"(本 spec 宣告:{sorted(declared)})"
+                    )
         for i, c in enumerate(cards):
             if not (c.get("content") or "").strip():
                 raise EditError(f"cards[{i}] content 空白:{c!r}")
@@ -226,13 +358,35 @@ def cmd_seed(args: argparse.Namespace) -> int:
         "card_sample": [c.get("content") for c in cards[:5]],
         "link_sample": [f'{link.get("from")}→{link.get("to")} ({link.get("kind")})' for link in links[:3]],
         "review_distribution": dist,
+        "replace": replace,
     }
+    if replace:
+        # 破壞性旗標必須 dry-run 可預覽會刪什麼 —— operator 在不帶 --commit 時就該
+        # 看見「這次會清掉哪幾個檔、目標現有幾張卡」,而不是事後從 backup 反推。
+        # **次序不可調換**:`_count_active_cards` 以 mode=ro 開 WAL 模式的 cards.db,
+        # 這個讀取本身會重建 `-wal`/`-shm` 旁檔;先列 wipe_files 的話,那些由本次
+        # 讀取生出、稍後會被 wipe 刪掉的檔就不在預覽裡 —— 預覽少報等於沒預覽。
+        plan["target_active_cards_before"] = _count_active_cards(ctx.user_dir / "cards.db")
+        plan["wipe_files"] = sorted(
+            p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name)
+        )
 
     seed_state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
         # _prevalidate() 已在 plan 前跑過(dry-run 也驗);此處不重複。
         now = review_anchor or datetime.now(tz=UTC)
+        # --replace:先清整層 vocab,spec 即最終狀態。**必須早於下面任何 store 建立**
+        # —— 任何 store 一旦先開檔就持有將被 unlink 的 inode,之後的寫入落到孤兒檔,
+        # 磁碟上看不到(SQLite 的 open fd 仍指向已刪除的 inode)。identity(users.json)
+        # 不在 _is_vocab_file 涵蓋範圍內,不受影響;EditContext 已在 apply 前建快照。
+        removed_files: list[str] = []
+        if replace:
+            removed_files = sorted(
+                p.name for p in ctx.user_dir.iterdir() if p.is_file() and _is_vocab_file(p.name)
+            )
+            for name in removed_files:
+                (ctx.user_dir / name).unlink()
         nb_store = _notebook_store(ctx.user_dir)
         nb_store.ensure_default()
         # name → id 映射。**先納入所有既存 notebook**(operator 可能先
@@ -403,7 +557,8 @@ def cmd_seed(args: argparse.Namespace) -> int:
         return {"notebooks_created": created_nb, "cards_added": actually_new,
                 "skipped_dup": len(cards) - actually_new,
                 "links_added": added_links, "link_errors": link_errors,
-                "review_events_written": events_written}
+                "review_events_written": events_written,
+                "removed_files": removed_files}
 
     def verify_fn() -> dict[str, Any]:
         card_store = _card_store(ctx.user_dir)
@@ -421,9 +576,24 @@ def cmd_seed(args: argparse.Namespace) -> int:
             elif chk["meaning"] and found.meaning != chk["meaning"]:
                 field_mismatches.append(f"{chk['content']}@{chk['nb_id']}: meaning not applied")
         # link 失敗 / 欄位未落盤都算 verify 失敗 —— 否則無聲失敗報 ok。
-        return {"ok": total >= len(cards) and not errs and not field_mismatches,
-                "total_cards": total, "link_errors": errs,
-                "field_mismatches": field_mismatches[:5]}
+        out: dict[str, Any] = {"ok": total >= len(cards) and not errs and not field_mismatches,
+                               "total_cards": total, "link_errors": errs,
+                               "field_mismatches": field_mismatches[:5]}
+        if replace:
+            # replace 宣告「spec = 精確最終狀態」,所以判準也必須是精確的:
+            # `total >= len(cards)` 對 additive 是對的(既有卡本來就該留著),但對
+            # replace 會把「wipe 沒清乾淨而殘留的重複卡」讀成綠。改為雙向集合差:
+            # extra = 磁碟有而 spec 沒有(重複卡 / 殘留卡),missing = spec 有而磁碟沒有。
+            actual_pairs = [(c.notebook_id, c.content) for c in card_store.all()]
+            # identity 不動 ⇒ 舊的 active notebook 指標會指向剛被清掉的 id。
+            live_nb_ids = {nb.id for nb in _notebook_store(ctx.user_dir).all()} | {"default"}
+            dangling = _dangling_active_notebook(ctx.data_dir, ctx.uid, live_nb_ids)
+            out.update(_seed_replace_verdict(
+                seed_state.get("card_checks", []), actual_pairs,
+                link_errors=errs, field_mismatches=field_mismatches,
+                dangling_config=dangling,
+            ))
+        return out
 
     return ctx.run(action="seed", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
