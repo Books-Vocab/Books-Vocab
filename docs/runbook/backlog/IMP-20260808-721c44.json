@@ -1,0 +1,20 @@
+{
+  "acceptance": "無戳記的分支 integrate 具名拒絕；有戳記但 tip 已前進具名拒絕並印兩個 sha；一致則放行（正控）；--allow-unhanded 放行且具名說明",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k handed_back",
+  "brief": "整合的人看不出某個助手到底做完了沒，於是可能在它還在修東西的時候就把它半成品的版本收進主線。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "整合者沒有任何**訊號**可以判斷「這個受派者做完了」。`worktree-flow` 的「批次交回狀態」定義了受派者停在自己工作樹的 commit，但那個狀態**在外面看不出來**——工作樹乾淨且有 commit，在受派者**兩顆 commit 之間**同樣為真。\n\n2026-08-08 第二輪實測，這個假代理指標差點釀成事故：\n\n我用「工作樹乾淨 ∧ commit 數 > 0」當作「已交回」，據此把 13 條分支送進 `integrate`。其中 `feat/coverage-claims` 當下是 3 顆 commit、乾淨。它其實還在工作——它後來又交出**第 4 顆**，內容是 `code-reviewer` 兩個 BLOCK 的修補：它的掃描器分段器忽略引號，於是字串裡的路徑被當成命令位置，`chain('ios-ops')` 多算一個檔，而**它自己在四個地方（含 SoT）斷言過那個邊界**，兩支守護測試之所以綠只是因為 fixture 剛好沒有 metacharacter。\n\n也就是說：**整合樹裡是那條分支被 reviewer 判定有缺陷的版本，而修補漏在外面。** 落地前逐分支比對 commit subject 才抓到（13 條裡遺漏 1 顆）。若沒查，送進 main 的會是已知有缺陷的版本，而 `resolve` 的包含性判準**擋不住**——它問的是「這分支動過的檔 main 現在是不是這分支的版本」，對「分支後來又長出東西」無感。\n\n同族但不同層的既有票：`IMP-20260807-f7f525` 講的是**受派者越界**（它不該自己 cutover）沒有機器在擋。本條講的是**整合者無法判斷受派者是否結束**。前者防的是做太多，後者防的是收太早。",
+  "fix_site": "ops/worktree_registry.py（handed_back_at + tip sha）+ ops/worktree_orchestrate.py:cmd_integrate",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-721c44",
+  "plan": "讓「交回」變成一個**受派者要主動蓋、整合者看得到**的狀態，而不是從工作樹形狀推測。\n\n**實作（沿用已存在的 pattern，不從零設計）**：`ops/worktree_registry.py` 的 record 已經有 `backlog` / `claimed_at` 兩欄，且 `open --backlog ID...` → record → `register` 拒絕 這條管線已經跑通（見 `IMP-20260807-f7f525` 的 resolution 記載）。照同一形狀加一個 `handed_back_at`：\n1. 受派者收工時跑一個原語（名字可議，例如 `hand-back`）蓋戳記。它**不做任何 git 動作**——只寫 ledger，所以誤用的代價是零。\n2. `integrate` 對每條來源分支檢查該戳記：沒有戳記就**具名拒絕並列出是哪幾條**，用 `--allow-unhanded` 明示放行（比照既有的 `--allow-ungroomed`）。\n3. 戳記要記下**當時的 branch tip sha**。`integrate` 比對它與現在的 tip：不一致代表受派者在交回後又動了，一樣具名拒絕。**這條比戳記本身更重要**——它擋的正是本票的實際失效模式。\n\n**明確不做**\n- 不要試圖偵測「agent 還活著嗎」。那是 harness 的狀態，不在 repo 裡，而且會得到一個時準時不準的守衛。\n- 不要讓 `integrate` 自動等待。等待是協調者的決定，工具只該讓「還沒交回」這件事無法被忽略。\n\n**一個要順便回答的問題**：受派者忘記蓋戳記是常態（今天 15 個沒有一個知道要蓋）。所以拒絕訊息要一眼可行動，而且派工單模板要同步加這一步——否則這道閘只會製造摩擦。實作時一併改 `.claude/skills/worktree-flow/SKILL.md` 的「批次交回狀態」段與 `kg-receipt`。\n\n**測試**：無戳記的分支 → `integrate` 具名拒絕；有戳記但 tip 已前進 → 具名拒絕並印出兩個 sha；戳記與 tip 一致 → 放行（正控）；`--allow-unhanded` 放行且在輸出裡具名說明放行了哪幾條。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "工作區登記簿多一個交回戳記與當時的版本點，整合指令據此拒絕未交回或交回後又改動的分支；連同派工說明一起改。",
+  "severity": "high",
+  "source": "2026-08-08 第二輪整合：用「工作樹乾淨+有commit」當已交回，漏掉 coverage-claims 修 reviewer BLOCK 的第 4 顆 commit，落地前逐 subject 比對才抓到",
+  "status": "triaged",
+  "stream": "IMP"
+}

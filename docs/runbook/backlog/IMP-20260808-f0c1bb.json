@@ -1,0 +1,20 @@
+{
+  "acceptance": "合成「同時有其他 xcodebuild 行程」情境 → 三個已知受污染 gate 之一判紅時訊息含具名污染警告與可重跑命令；無其他行程時不含（正控）；判決紀錄有機器狀態欄位",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k contention",
+  "brief": "同一台機器上有別的工作在跑時，把關結果會誤判成程式壞了，而訊息完全不提「是資源被搶」，害人去追不存在的問題。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "批次 gate 的判決在**機器上有其他工作時不可重現**，而且失敗訊息一律指控程式碼，沒有任何一個字提到「有人在搶資源」。讀的人因此會去追一個不存在的缺陷。\n\n2026-08-08 第二輪整合實測，**五道 BLOCK 裡兩道是假的（40%）**：\n\n- `ops-shell:test_ios_test_discovery.sh` — gate 判 2 條斷言紅（「錯誤未給出可執行的修正命令」）。單獨重跑：整合樹與來源分支**都 rc=0、零失敗斷言**。時間軸對得上：gate 在 19:59 跑它時，`coverage-claims` 的受派者還在工作、正在跑它自己的 `ops-ci-coverage`（內含 iOS 探測）。\n- `ios-test-unit` — 2013 條測試裡 1 條紅：`SettingsResyncConcurrencyTests` 的「額度與連線檢查併發」期望 peak=2 得 1。安靜機器上單獨重跑：**6/6 全過（189s）**。併發測試在負載下本來就測不到重疊。\n\n**同一小時內是雙向的**：`coverage-claims` 獨立回報它遇到**三次** `ops-ci-coverage` 假紅，並查出兇手是我的整合樹 `round2-wave` 在跑 xcodebuild 搶同一份 `.cache/ios-build-derived-data`。它引用的錯誤訊息是 `\"$g is already red WITHOUT denial … fix the group first\"`——**一句對健康 group 的具名指控**。\n\n代價不是慢，是**判決不可信**。一個會在 40% 情況下誤判的 gate，會訓練所有人在紅的時候先問「是不是又假的」——而那正是 gate 存在的意義被抵銷的方式。今天我只是因為剛好在追一個跨分支缺陷才去查證；換一個趕時間的人會照著紅燈去改一份沒壞的程式。\n\n與 `IMP-20260808-721c44`（整合者看不出受派者是否交回）同根不同支：那張要的是「誰做完了」的訊號，這張要的是「判決時機器上還有誰」的訊號。兩張都源於**沒有「全部停手」這個狀態**。",
+  "fix_site": "ops/worktree_orchestrate.py 的判決紀錄 + ops/lib/streaming_command.py 的失敗摘要",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-f0c1bb",
+  "plan": "**不要試圖讓 gate 變得抗負載**——併發測試本來就需要真的能併發，而 xcodebuild 搶 DerivedData 是實體資源衝突，重試只會把不可重現變成慢且不可重現。改成讓**污染可見**。\n\n**① 判決時記下當時的機器狀態**（最小、最有價值的一半）：gate 產出 verdict 時一併記錄 `load average`、有沒有其他 `xcodebuild` / `ios_test.sh` 行程、以及 registry 裡有幾條 active worktree。放進判決紀錄與人讀輸出。**不改判決本身**——只是讓「這次判決是在什麼環境下做的」可回溯。\n\n**② 對已知會被污染的 gate，紅的時候把這件事說出口**：`ios-test-unit`、`ops-shell:test_ios_test_discovery.sh`、`ops-ci-coverage` 這三個今天實測會受污染。它們判紅且 ① 偵測到有其他 iOS 工具鏈行程時，訊息要**明講**「本機同時有 N 個 xcodebuild/ios_test 行程，本判決可能不可重現，請在安靜狀態單獨重跑 <命令> 再下結論」。**仍然判紅**——降級成 warn 會讓真缺陷溜走。\n\n**③ 決定要不要加互斥**（實作者判，把理由寫進 resolution）：`ops/lib/ios_lock_wait.sh` 已經是 iOS 工具鏈的共用鎖原語。把 `ops-ci-coverage` 的 iOS 探測腿也納入同一把鎖，可以消滅 `coverage-claims` 遇到的那三次。但**不要**把整個 gate 塞進一把全域鎖——那會讓批次 gate 與所有受派者互相阻塞，代價遠大於收益。\n\n**明確不做**：不要自動重試紅的 gate。自動重試會把「不可重現」變成「看起來穩定」，而那比現在更糟——今天至少還看得出它紅過。\n\n**驗收**：合成一個「同時有其他 xcodebuild 行程」的情境（可用假行程名），對上述三個 gate 之一判紅 → 訊息含具名的污染警告與可重跑的命令；沒有其他行程時 → 訊息不含該警告（正控）。判決紀錄裡有機器狀態欄位。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "判決時多記機器狀態，並讓三個已知會被影響的檢查在紅燈時把這件事講出來；仍然判紅，不自動重試。",
+  "severity": "high",
+  "source": "2026-08-08 第二輪整合：五道 gate BLOCK 裡兩道經單獨重跑證實為假紅；同一小時 coverage-claims 獨立回報三次反向假紅",
+  "status": "triaged",
+  "stream": "IMP"
+}
