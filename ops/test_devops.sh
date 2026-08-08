@@ -47,10 +47,48 @@ grep -q -- "--exclude='_ops_backups/'" "$KG" \
   && grep -q -- "--exclude='_ops_world_backups/'" "$KG" \
   && ok "KG backup excludes nested ops backup trees" \
   || fail_t "KG backup should exclude nested ops backup trees"
-grep -q -- "--info=progress2" "$KG" \
-  && grep -q -- "--human-readable" "$KG" \
-  && ok "KG backup rsync shows transfer progress" \
-  || fail_t "KG backup rsync should expose transfer progress"
+# 這裡原本是對 "$KG" 的**全檔** grep --info=progress2 / --human-readable。加了 rsync
+# flavor 分流之後那兩個字面值仍然出現在 devops.sh（在 rsync_progress_flags 的 printf
+# 那行），所以舊斷言不會轉紅——它會靜靜變成空話，不再證明備份呼叫點會顯示進度。失敗
+# 模式同 :37-43 的註解。改成「注入 version 字串 → 純函式輸出」的行為斷言 + 對
+# cmd_backup 函式範圍的呼叫點斷言。
+# 不可 `source devops.sh`——它有頂層 case dispatch 且 set -euo pipefail，source 會直接
+# 執行（理由同 ops/kg_reconcile.sh:24-25 的註解），故用 awk 抽函式再丟給子 bash。
+rsync_flags() {
+  local tmpf; tmpf=$(mktemp)
+  {
+    awk '/^rsync_progress_flags\(\)/,/^}$/' "$KG"
+    echo 'rsync_progress_flags "$1"'
+  } > "$tmpf"
+  bash "$tmpf" "$1"
+  rm -f "$tmpf"
+}
+[[ "$(rsync_flags 'openrsync: protocol version 29')" == '--progress' ]] \
+  && ok "KG backup picks --progress on openrsync" \
+  || fail_t "KG backup picks --progress on openrsync"
+[[ "$(rsync_flags 'rsync  version 3.3.0  protocol version 31' | tr '\n' '|')" == '--info=progress2|--human-readable|' ]] \
+  && ok "KG backup picks --info=progress2 --human-readable on GNU rsync" \
+  || fail_t "KG backup picks --info=progress2 --human-readable on GNU rsync"
+_backup_body=$(awk '/^cmd_backup\(\)/,/^}$/' "$KG")
+# grep -c 零命中時 exit 1，而本檔 :3 是 set -euo pipefail → 兩處 || true 不可省。
+# 兩半缺一不可：只驗「不含 --info=progress2」會在 cmd_backup 被改名或刪掉時假綠，
+# progress_flags[@] 那半是正控，證明看的是真的新呼叫點。
+if [[ "$(printf '%s' "$_backup_body" | grep -c -- 'progress_flags\[@\]' || true)" == 1 \
+   && "$(printf '%s' "$_backup_body" | grep -c -- '--info=progress2' || true)" == 0 ]]; then
+  ok "KG backup call site no longer hardcodes rsync progress flags"
+else
+  fail_t "KG backup call site no longer hardcodes rsync progress flags"
+fi
+# IMP-20260806-02bf8d：rsync 失敗過去只留下 rsync 自己印的 usage，前兩行 preflight 與
+# 「▶ 本地冷快照」看起來像開始工作了，很容易被讀成「跑完了」。備份指令不得用「印出
+# usage」當失敗訊號 → 呼叫點必須守住 rsync 的非零退出，並具名指向 standby 的每日 S3
+# 備份（launchd com.kg.backup）。正控 = 守衛存在；指向性 = 訊息點名那條替代路徑。
+if [[ "$(printf '%s' "$_backup_body" | grep -c -- 'if ! rsync -az' || true)" == 1 \
+   && "$(printf '%s' "$_backup_body" | grep -c -- 'com.kg.backup' || true)" -ge 1 ]]; then
+  ok "KG backup names its own failure and points at the S3 daily backup"
+else
+  fail_t "KG backup names its own failure and points at the S3 daily backup"
+fi
 
 # ── 5. Blocklist 行為 ──────────────────────────────────────────────────────
 section "Blocklist (dangerous commands blocked)"
