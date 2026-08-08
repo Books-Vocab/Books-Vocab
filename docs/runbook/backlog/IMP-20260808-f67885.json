@@ -1,0 +1,20 @@
+{
+  "acceptance": "鐵律 5 本文帶適用範圍句，明說子 agent 派出且需要其結果的 agent 必須前景 blocking；所有提到 code-reviewer 的 .claude/agents/*.md 與 kg-receipt SKILL 皆同步，逐份確認非只改記得的那幾份",
+  "acceptance_cmd": "python3 -c \"\nimport glob,sys\nt=open(\\\"CLAUDE.md\\\").read()\ni=t.index(\\\"5. **長時操作背景執行\\\")\nblk=t[i:i+1600]\nf=[]\nif \\\"前景\\\" not in blk: f.append(\\\"law5-no-foreground-clause\\\")\nif \\\"子 agent\\\" not in blk and \\\"受派\\\" not in blk: f.append(\\\"law5-no-scope-clause\\\")\nbad=[p for p in glob.glob(\\\".claude/agents/*.md\\\") if \\\"code-reviewer\\\" in open(p).read() and \\\"前景\\\" not in open(p).read()]\nif bad: f.append(\\\"agents-missing:\\\"+\\\",\\\".join(bad))\nsys.exit(\\\"FAIL \\\"+\\\";\\\".join(f)) if f else print(\\\"OK\\\")\n\"",
+  "brief": "規定要求所有助手都把工作丟到背景跑，但被派去做事的助手一旦這樣做，它請的審查員會在它交差前就消失，等於沒審。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "鐵律 5 寫「任何 `Agent()` 與耗時 Bash 一律 `run_in_background: true`。**主線不阻塞**，完成由 notification 觸發。」——這條對**主 session** 是對的，對**子 agent** 是致命的。\n\n子 agent 沒有跨 turn 等待的能力：它派出一個背景子 agent、turn 結束、那個子 agent 就跟著斷頭，結果永遠收不到。於是子 agent 面對兩個都壞的選擇——照鐵律 5 背景化（拿不到 review，鐵律 4 落空），或違反鐵律 5 前景跑（能拿到，但違反明文規定）。\n\n**2026-08-08 一天內三次實測**（皆為我派出去的受派者）：\n1. `integrate` 原語那條：受派者派 `code-reviewer` 後回報「還在跑」，系統同時回報它沒有存活中的背景子程序——reviewer 已死。它被我重新喚醒後才補做。\n2. `ios_baseline` 移出版控那條：同一形狀，同樣被喚醒後補做（且那次 reviewer 真的抓到兩條 BLOCK，其中一條是受派者自己寫的 `set -e` 洩漏——**漏掉那次 review 的代價是實在的**）。\n3. `worktree-doc-warning` 那條：受派者交回 interim heartbeat 說「review in flight」，而系統同時判定它沒有存活子程序。\n\n三次的共同結果是：**鐵律 4（逐項 review，PASS 才下一個）在受派者身上實質失效**，而失效方式是靜默的——受派者以為自己派了 review，主 session 讀到的回報也寫著「review 已派」。\n\n同族既有記載：`~/.claude/projects/.../memory/subagent-foreground-verification.md`（子 agent 套鐵律 5 背景化後結束 turn 即斷頭；prompt 要寫「前景 blocking、禁 run_in_background」）。**那份 memory 只存在於我的私有記憶裡，不在 repo 的任何 agent-facing 面上**，所以每一個新受派者都會重新踩一次。",
+  "fix_site": "CLAUDE.md 鐵律 5 + .claude/agents/*.md + .claude/skills/kg-receipt/SKILL.md",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-f67885",
+  "plan": "給鐵律 5 加**適用範圍句**，比照 `IMP-20260808-54c30e` 對 `worktree-flow` c3 的處置（那次也是同一份檔裡兩段話把同一情境導向相反動作）。\n\n**改哪裡**\n1. `CLAUDE.md` 鐵律 5 本文：在「任何 `Agent()` … 一律 `run_in_background: true`」之後加一句限定——**這條約束的是「有主線要保護」的 session**。子 agent 派出的、且自己需要其結果的 agent（典型是鐵律 4 的 `code-reviewer`）**必須前景 blocking**，因為子 agent 的 turn 一結束，它派的背景子 agent 就斷頭，結果永遠收不到。理由與鐵律 5 的立意一致（不阻塞主線），不是例外。\n2. `.claude/skills/kg-receipt/SKILL.md` 或受派者會讀到的等價位置：同一句話寫進「派 review 的方式」那段。\n3. `.claude/agents/*.md`（`ios-engineer` / `backend-engineer` / `ops-engineer` / `platform-steward` / `docs-steward`）：凡有「完成一個可交付單位時調用 code-reviewer」字樣者，補上「前景 blocking」。\n\n**不要做的事**：不要改鐵律 5 對主 session 的語意（那條是對的，而且有 `[machine]` 執行點）。也不要試圖用工具強制——這是 prompt 層的約束，硬做只會多一個假的守衛。\n\n**一個要順便回答的問題**：`.claude/agents/` 底下有幾份檔提到 code-reviewer？逐份確認，別只改你記得的那兩份。這個 repo 今天已經被「不指名檔案的宣稱 grep 抓不到」咬過一次。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在一份總規範與五、六份角色說明裡各加一句適用範圍；不動程式碼。",
+  "severity": "high",
+  "source": "2026-08-08 第二輪派工當天，三個受派者連續踩同一個坑：派出的 code-reviewer 隨自己 turn 結束而斷頭",
+  "status": "triaged",
+  "stream": "IMP"
+}
