@@ -1335,6 +1335,68 @@ ds_staged_value="$(
 [[ "$ds_staged_value" == "aGVsbG8+Pz8rLz1aWg==" ]] \
   && ok "ios_test dataset staging upserts KG_FIXTURE_DATASET_DEFLATE_B64 into xctestrun copy (base64 +/= safe)" \
   || fail_t "ios_test dataset staging roundtrip: got '$ds_staged_value'"
+# fixture staging 有同一個「邊枚舉邊改同一份 plist」的競態，但失效模式更安靜：
+# 漏掉的 target 不是回非零，而是少注入 dataset——UI target 對著空世界跑測試的假綠。
+# 同一支假枚舉器釘住：兩個 target 都必須拿到 dataset。
+ds_racy_targets="$(
+  bash -c '
+    set -uo pipefail
+    eval "$(sed -n "/^sanitize_xctestrun_evidence_env_root()/,/^}/p" "$1")"
+    eval "$(sed -n "/^stage_fixture_dataset_xctestrun()/,/^}/p" "$1")"
+    xctestrun_target_env_roots() {
+      local p="$1" i s0 s
+      s0=$(cksum < "$p")
+      printf ":TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables\n"
+      for i in $(seq 1 40); do
+        s=$(cksum < "$p")
+        [[ "$s" != "$s0" ]] && return 0
+        sleep 0.05
+      done
+      printf ":TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables\n"
+    }
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    base="$tmp/base.xctestrun"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$base" >/dev/null 2>&1
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
+    for t in 0 1; do
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$t dict" "$base"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$t:TestingEnvironmentVariables dict" "$base"
+      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$t:TestingEnvironmentVariables:KG_FIXTURE_DATASET_B64 string stale-plaintext" "$base"
+    done
+    UI_FIXTURE_DATASET_DEFLATE_B64="ZGV0ZXJtaW5pc3RpYw=="
+    staged="$tmp/base_dataset_test.scoped.xctestrun"
+    stage_fixture_dataset_xctestrun "$base" "$staged" || { printf "stage-rc-%s" "$?"; exit 0; }
+    printf "%s|%s" \
+      "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64" "$staged" 2>/dev/null)" \
+      "$(/usr/libexec/PlistBuddy -c "Print :TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables:KG_FIXTURE_DATASET_DEFLATE_B64" "$staged" 2>/dev/null)"
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$ds_racy_targets" == "ZGV0ZXJtaW5pc3RpYw==|ZGV0ZXJtaW5pc3RpYw==" ]] \
+  && ok "ios_test dataset staging injects every target even when the plist is rewritten mid-enumeration" \
+  || fail_t "ios_test dataset staging missed a target under mid-enumeration rewrite: $ds_racy_targets"
+# 零 target：與 live-demo 那例同一個守衛，但守的是 stage_fixture_dataset_xctestrun。
+# 兩個函式都用索引展開規避 /bin/bash 3.2 在 set -u 下對空陣列 "${a[@]}" 的中止；
+# 少了這例，fixture 側被「簡化」回字面展開時不會有任何 gate 變紅（實測全綠）。
+ds_zero_targets="$(
+  bash -c '
+    set -uo pipefail
+    eval "$(sed -n "/^xctestrun_target_env_roots()/,/^}/p" "$1")"
+    eval "$(sed -n "/^sanitize_xctestrun_evidence_env_root()/,/^}/p" "$1")"
+    eval "$(sed -n "/^stage_fixture_dataset_xctestrun()/,/^}/p" "$1")"
+    tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
+    base="$tmp/base.xctestrun"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$base" >/dev/null 2>&1
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$base"
+    /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$base"
+    UI_FIXTURE_DATASET_DEFLATE_B64="ZGV0ZXJtaW5pc3RpYw=="
+    stage_fixture_dataset_xctestrun "$base" "$tmp/zero.scoped.xctestrun" || { printf "stage-rc-%s" "$?"; exit 0; }
+    printf "staged-anyway"
+  ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
+)"
+[[ "$ds_zero_targets" == "stage-rc-1" ]] \
+  && ok "ios_test dataset staging fails closed on a zero-target xctestrun (bash 3.2 空陣列展開守衛)" \
+  || fail_t "ios_test dataset staging did not fail closed with zero targets: $ds_zero_targets"
 live_demo_env="$(
   bash -c '
     set -euo pipefail
@@ -1374,6 +1436,12 @@ live_demo_env="$(
 [[ "$live_demo_env" == "1|dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd|true" ]] \
   && ok "ios_test live-demo staging sanitizes all targets and injects only the dedicated UI target" \
   || fail_t "ios_test live-demo runner env contract invalid: $live_demo_env"
+# 第三例（racy）是這組斷言的重點：前兩例用真枚舉器，命中與否取決於 PlistBuddy
+# 寫入與枚舉的時序（IMP-20260805-bf0df5 回報日 2/10 紅，2026-08-08 同機 0/10 紅），
+# 時序型探針無法當 gate——它今天全綠不代表 bug 消失。第三例改用一支「枚舉期一
+# 偵測到 plist 被改寫就收工」的假枚舉器，把偶發漏數變成必然：只有當
+# stage_live_demo_xctestrun 先枚舉完所有 root 再開始變更，第二個 target 才數得到，
+# 重複 target 才會 fail-closed。
 live_demo_target_cardinality="$(
   bash -c '
     set -uo pipefail
@@ -1382,27 +1450,47 @@ live_demo_target_cardinality="$(
     eval "$(sed -n "/^stage_live_demo_xctestrun()/,/^}/p" "$1")"
     tmp="$(mktemp -d)"; trap "rm -rf \"$tmp\"" EXIT
     make_plist() {
-      local path="$1" first="$2" second="${3:-}"
+      local path="$1" target=0 name
       /usr/libexec/PlistBuddy -c "Add :TestConfigurations array" "$path" >/dev/null 2>&1
       /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0 dict" "$path"
       /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets array" "$path"
-      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0 dict" "$path"
-      /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:0:BlueprintName string $first" "$path"
-      [[ -z "$second" ]] || {
-        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1 dict" "$path"
-        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:1:BlueprintName string $second" "$path"
-      }
+      shift
+      for name in "$@"; do
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$target dict" "$path"
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$target:BlueprintName string $name" "$path"
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$target:TestingEnvironmentVariables dict" "$path"
+        /usr/libexec/PlistBuddy -c "Add :TestConfigurations:0:TestTargets:$target:TestingEnvironmentVariables:KG_LIVE_DEMO_RUN string spoof" "$path"
+        target=$((target + 1))
+      done
     }
     DEMO_ACCOUNT_IDENTITY_SHA256="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    # 零 target：枚舉結果是空陣列。/bin/bash 3.2 對空陣列展開 "${a[@]}" 在 set -u 下
+    # 會 unbound variable 中止，正好打在 fail-closed 路徑上——必須乾淨回 1，不是爆掉。
+    make_plist "$tmp/empty.xctestrun"
+    stage_live_demo_xctestrun "$tmp/empty.xctestrun" "$tmp/empty.scoped.xctestrun"; empty_rc=$?
     make_plist "$tmp/missing.xctestrun" BooksAndVocabTests
     stage_live_demo_xctestrun "$tmp/missing.xctestrun" "$tmp/missing.scoped.xctestrun"; missing_rc=$?
     make_plist "$tmp/duplicate.xctestrun" BooksAndVocabUITests BooksAndVocabUITests
     stage_live_demo_xctestrun "$tmp/duplicate.xctestrun" "$tmp/duplicate.scoped.xctestrun"; duplicate_rc=$?
-    printf "%s|%s" "$missing_rc" "$duplicate_rc"
+    # 真枚舉器的覆蓋到此為止，之後才換成決定性的假枚舉器。
+    xctestrun_target_env_roots() {
+      local p="$1" i s0 s
+      s0=$(cksum < "$p")
+      printf ":TestConfigurations:0:TestTargets:0:TestingEnvironmentVariables\n"
+      for i in $(seq 1 40); do
+        s=$(cksum < "$p")
+        [[ "$s" != "$s0" ]] && return 0
+        sleep 0.05
+      done
+      printf ":TestConfigurations:0:TestTargets:1:TestingEnvironmentVariables\n"
+    }
+    make_plist "$tmp/racy.xctestrun" BooksAndVocabUITests BooksAndVocabUITests
+    stage_live_demo_xctestrun "$tmp/racy.xctestrun" "$tmp/racy.scoped.xctestrun"; racy_rc=$?
+    printf "%s|%s|%s|%s" "$empty_rc" "$missing_rc" "$duplicate_rc" "$racy_rc"
   ' _ "$WORKSPACE/ops/ios_test.sh" 2>/dev/null
 )"
-[[ "$live_demo_target_cardinality" == "1|1" ]] \
-  && ok "ios_test live-demo staging rejects zero or multiple dedicated UI targets" \
+[[ "$live_demo_target_cardinality" == "1|1|1|1" ]] \
+  && ok "ios_test live-demo staging rejects zero or multiple dedicated UI targets (含枚舉期被改寫的決定性競態)" \
   || fail_t "ios_test live-demo target cardinality was not fail-closed: $live_demo_target_cardinality"
 live_demo_spoof_detected="$(
   bash -c '
