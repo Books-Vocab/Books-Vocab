@@ -6,14 +6,21 @@
   "date": "2026-08-05",
   "detail": "doc 的 <!-- doc-meta --> verified_against 若在 worktree 內錨到分支自己的 commit sha，該 sha 會被 cutover 前的 rebase orphan 掉，docs_lint 隨後以 ERROR 拒收，變成 cutover 的 block。這個坑 ops/backlog.py 的 render --help 已經具名警告過（--verified-against 預設取 merge-base with origin/main 而非 HEAD，docstring 花一整段解釋 rebase 會 orphan），但那個知識只存在於 backlog.py 內部；一般文檔作者手寫 frontmatter 時沒有任何守衛或提示。2026-08-05 一個下午內三條獨立分支各踩一次。",
   "fix_site": "ops/docs_lint.sh:448  (anchor 可達性區塊，緊接在 merge-base --is-ancestor HEAD 那段之後)",
+  "fixed_by": [
+    "6161c772d91a3b25e7966bf60ff0ce3829861622"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260805-9bb2d2",
   "plan": "把「anchor 必須 origin 可達」這條只存在於 backlog.py 內部的知識，變成 docs_lint 會講的話。(1) 在 ops/docs_lint.sh 的設定區（:39 STALE_THRESHOLD 旁）加 ORIGIN_REF=\"${KG_DOCS_LINT_ORIGIN_REF:-origin/main}\"。(2) 在 :448 那段 HEAD 可達性判斷**通過之後**追加第二段：先 git rev-parse --verify --quiet \"$ORIGIN_REF^{commit}\"，ref 不存在就整段跳過（未 fetch 的 clone 不得因此變紅）；ref 存在且 ! git merge-base --is-ancestor \"$verified_sha\" \"$ORIGIN_REF\" 時，warnings=$((warnings+1)) 並印兩行——第一行必須含機器 token origin-unreachable，例如 `echo \"WARN  $f — verified_against origin-unreachable(只在本分支可達,cutover 的 rebase 會把它 orphan): $verified\"`；第二行給可照抄的替代 sha：suggest=$(git merge-base \"$ORIGIN_REF\" HEAD) 後 `echo \"    建議改錨: $suggest（$ORIGIN_REF 與 HEAD 的 merge-base，rebase 後仍可達）\"`。(3) 這條**只能是 WARN，不得升 ERROR**：worktree pre-cutover 錨在分支自身 commit 是合法情境（:445-447 的註解已寫明），升 ERROR 會把整條 worktree 流程擋死；gate/files/audit 三種模式一律 WARN。(4) 在 ops/tests/test_docs_lint.sh 既有的「verified_against 可達性」段（:240 起）後面追加一案：用 git -c user.email=... commit-tree \"HEAD^{tree}\" 造一顆與 HEAD 無血緣的 root commit 當 KG_DOCS_LINT_ORIGIN_REF，對現有 doc 跑 --files，斷言 exit 0 且輸出含 origin-unreachable；再跑一次不帶該 env，斷言輸出不含該 token。(5) 檔頭註解 :13-14 補上這條新規則。注意：IMP-0038（已 fixed）與 IMP-0066 的 ① 描述的正是同一個「判準驗 HEAD 可達、CI 要 origin 可達」的落差，IMP-0066 的 plan 明文把 ① 留給 IMP-0038 的 owner，而 IMP-0038 已結案，所以這塊今天無人認領，由本單接手。",
-  "resolution": "尚未修。可能方向：(a) docs_lint 在偵測到 orphan anchor 時直接建議一個 origin 可達的替代 sha（現在只說「re-anchor 到 HEAD 可達的 code commit」，但 HEAD 可達不等於 origin 可達，本地 main 超前 origin 數十顆時照做仍會紅）；(b) 提供 ops 入口一鍵 re-anchor 指定檔案；(c) 在 worktree open 時就把 doc-meta 的 anchor 慣例寫進提示。",
+  "resolution": "已修：docs_lint.sh 在既有的 HEAD 可達性之後補第二層 origin 可達性檢查（參考 ref 由 KG_DOCS_LINT_ORIGIN_REF 指定，預設 origin/main），訊息帶機器 token origin-unreachable 並印可照抄的替代 sha。gate/files/audit 三種模式一律 WARN 不 ERROR——本 repo 拓樸是本地 main 為主幹、刻意超前 origin，worktree pre-cutover 錨在自身 commit 是合法情境，升 ERROR 會把整條 worktree 流程擋死。同步 backlog.py docstring / doc_sync.md / tech_index.md / kg-docs-control-plane SKILL。\n\n順手修掉 usage() 寫死 sed 行號導致 --help 對自己說謊（漏掉 Exit code 與 STALE_THRESHOLD）。受派者做了兩次突變覆核，證明新斷言不是裝飾。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "收尾 session：同一個 verified_against orphan 錯誤在三條分支各出現一次（word-detail-actions 的 product_surface.md 與 feature_boundary/vocabulary.md、sync-latency-watermark 的 sync_lifecycle.md）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票 acceptance_cmd：rc=0 elapsed=8.1s（合成 orphan anchor，docs_lint 印出 origin-unreachable 並給替代 sha）"
 }

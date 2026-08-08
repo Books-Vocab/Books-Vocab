@@ -6,14 +6,21 @@
   "date": "2026-08-06",
   "detail": "./ops/devops_kg_safe.sh backup 在 oscar（macOS）上必定失敗：它把 --info=progress2 --human-readable 傳給 rsync，而 macOS 內建的是 openrsync，不支援這兩個旗標 → 直接印 usage 並結束。輸出前兩行是正常的 preflight 與『▶ 本地冷快照（pull from standby）』，看起來像開始工作了，接著才噴 usage，所以很容易被讀成『跑完了』。實測 exit 立即（11:35:22 起、11:35:22 止，0 秒）。影響：部署前的本地冷快照這條路在主力機上根本不存在，而它正是 operator 最會在高風險部署前想抓的那一份。災難復原目前實際靠的是 felix 上的每日 S3 備份（com.kg.backup → kg_backup.sh，2026-08-06 03:01Z 成功，729896960 bytes，有記 sha256），那條是好的。修法二選一：① 偵測 rsync 實作（rsync --version | grep -q openrsync）後改用相容旗標或走 tar over ssh（CLAUDE.md 已記 openrsync 的 push 坑，同一個根因）；② 若冷快照非必要，讓它明確拒絕並指向 S3 備份，而不是印 usage。無論哪條，都不該讓一個備份指令用『印出 usage』當作失敗訊號。",
   "fix_site": "devops.sh:611-612 (cmd_backup)",
+  "fixed_by": [
+    "fca4282d071d04dac3247067db5dc4f25afa37bc"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-02bf8d",
   "plan": "不另立修法：IMP-0023 已把同一處（devops.sh:611-612 硬編 --info=progress2 --human-readable）寫成四步可執行計畫——新增頂格 rsync_progress_flags()、cmd_backup 改用 \"${progress_flags[@]}\"、換掉 ops/test_devops.sh:50-53 的全檔 grep 斷言、同步 docs/sop/deploy.md。照那份做即可。本條只補一項 IMP-0023 未涵蓋的要求：openrsync 分支落地後，若冷快照仍不可行，必須明確拒絕並指向 felix 的 S3 每日備份，不得再用「印 rsync usage」當失敗訊號。兩條一起關。",
-  "resolution": "",
+  "resolution": "已修：新增 rsync_progress_flags() 依 rsync flavor 分流旗標（openrsync 不吃 --info=progress2 / --human-readable），cmd_backup 改用陣列展開，並在 rsync 非零時具名拒絕、標記 .INCOMPLETE、指向 felix 的 S3 每日備份，不再拿「印 rsync usage」當失敗訊號。同步 deploy.md / backup.md / backup_restore.md。\n\n整合時另修兩顆：devops.sh:669 的 `$dest（` 在 UTF-8 LC_CTYPE 下會把全形括號首 byte 吃進變數名，set -u 死在失敗路徑的訊息裡（gate 由 Python 起動、PEP 538 coercion 設 LC_CTYPE=C.UTF-8，故手跑 8 次全綠、gate 4/4 全紅）；以及把 ops/test_devops.sh:98 鎖拼法的 `grep '\\$dest'` 改成 `\\$\\{?dest\\}?` 鎖語意。此路由缺口另立 IMP-20260808-3bbfa2。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "2.0.2 部署前想做冷快照時撞到",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票 acceptance_cmd：rc=0 elapsed=0.0s（rsync_progress_flags 存在且 cmd_backup 內無硬編 --info=progress2）"
 }
