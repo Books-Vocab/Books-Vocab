@@ -1970,6 +1970,86 @@ def test_the_real_commit_resolver_answers_from_git(monkeypatch):
     assert state("0000000") == "unknown"
 
 
+def test_a_ref_name_is_not_a_sha_even_when_it_parses(tmp_path, monkeypatch):
+    """A hex-looking branch or tag is a moving ref, not audit identity."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    _git_repo(repo)
+
+    def g(*args):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+             "-c", "commit.gpgsign=false", *args],
+            cwd=repo, capture_output=True, text=True, check=True,
+        )
+
+    g("branch", "beefcaf")
+    g("tag", "abcdef0")
+    g("tag", "-a", "deadbee", "-m", "annotated")
+    state = BACKLOG.make_commit_state(repo)
+    assert state("beefcaf") == "not-a-sha"
+    assert state("abcdef0") == "not-a-sha"
+    assert state("deadbee") == "not-a-sha"
+
+    store = repo / "store"
+    entry = _add(store, detail="hex-looking ref")
+    _force_fixed_by(store, entry["id"], ["beefcaf"])
+    kinds = {p["kind"] for p in BACKLOG.validate_store(store, commit_state=state)}
+    assert "fixed-by-not-a-sha" in kinds
+
+
+def test_a_tree_or_blob_sha_is_wrong_object_type_not_unresolvable(tmp_path, monkeypatch):
+    """An existing object with the wrong type needs a different sha, not reanchor."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    _git_repo(repo)
+
+    def g(*args):
+        return subprocess.run(["git", *args], cwd=repo, capture_output=True,
+                              text=True, check=True)
+
+    tree = g("rev-parse", "HEAD^{tree}").stdout.strip()
+    blob = g("rev-parse", "HEAD:base.txt").stdout.strip()
+    state = BACKLOG.make_commit_state(repo)
+    assert state(tree) == "wrong-type"
+    assert state(blob) == "wrong-type"
+
+    store = repo / "store"
+    entry = _add(store, detail="wrong object type")
+    _force_fixed_by(store, entry["id"], [tree])
+    kinds = {p["kind"] for p in BACKLOG.validate_store(store, commit_state=state)}
+    assert "fixed-by-not-a-commit-object" in kinds
+
+
+def test_an_ambiguous_prefix_is_its_own_problem_kind(tmp_path, monkeypatch):
+    """Multiple matching objects are not an absent object or an orphan."""
+    monkeypatch.undo()
+    calls = []
+
+    def fake_git(*args, repo=None):
+        calls.append(args)
+        if args == ("rev-parse", "--git-dir"):
+            return subprocess.CompletedProcess(args, 0, stdout=".git\n", stderr="")
+        if args == ("rev-parse", "--verify", "--quiet", "main^{commit}"):
+            return subprocess.CompletedProcess(args, 0, stdout="main\n", stderr="")
+        if args == ("rev-parse", "--disambiguate=deadbee"):
+            return subprocess.CompletedProcess(
+                args, 0, stdout=("a" * 40) + "\n" + ("b" * 40) + "\n", stderr=""
+            )
+        raise AssertionError(f"unexpected git probe: {args}")
+
+    monkeypatch.setattr(BACKLOG, "_git", fake_git)
+    state = BACKLOG.make_commit_state(tmp_path / "repo")
+    assert state("deadbee") == "ambiguous"
+    assert calls[-1] == ("rev-parse", "--disambiguate=deadbee")
+
+    store = tmp_path / "store"
+    entry = _add(store, detail="ambiguous prefix")
+    _force_fixed_by(store, entry["id"], ["deadbee"])
+    kinds = {p["kind"] for p in BACKLOG.validate_store(store, commit_state=state)}
+    assert "fixed-by-ambiguous-prefix" in kinds
+
+
 def test_reachable_from_main_but_not_head_still_counts_as_ok(tmp_path, monkeypatch):
     """The `or main` half of the reference frame, which nothing else observes.
 
