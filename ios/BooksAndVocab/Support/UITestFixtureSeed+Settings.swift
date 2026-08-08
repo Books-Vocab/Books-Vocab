@@ -20,10 +20,11 @@ extension UITestFixtureSeed {
     /// LWW timestamps included) so each launch starts from the same state no
     /// matter what a previous run left behind in the simulator.
     ///
-    /// App language is intentionally NOT pinned here: `AppLanguageStore.setLanguage`
-    /// schedules `Tips.resetDatastore()` which traps when TipKit is not yet
-    /// configured (we run during `App.init`). The UI suite already assumes a
-    /// zh-Hant simulator (see `AppPage` tab labels).
+    /// App language is intentionally NOT pinned here: the UI suite already assumes a
+    /// zh-Hant simulator (see `AppPage` tab labels). (Until APP-20260806-498c25 there
+    /// was a harder reason — `setLanguage` called `Tips.resetDatastore()` inline, which
+    /// traps when TipKit is not yet configured, and we run during `App.init`. It now
+    /// only records a deferred-reset flag, so that trap is gone.)
     @MainActor
     private static func seedCleanPreferences() {
         // 模擬器限定：這條走 production store 真實寫入路徑（UserDefaults +

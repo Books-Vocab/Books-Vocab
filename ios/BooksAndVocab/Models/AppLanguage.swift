@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import TipKit
 
 enum AppLanguage: String, CaseIterable, Identifiable {
     case system
@@ -197,19 +196,13 @@ final class AppLanguageStore: ObservableObject {
         //  - Rules of form `{ donations.count == 0 }` (e.g. LongPressTip) re-pass,
         //    so power users who've already used the feature could see the tip
         //    again. Acceptable cost for getting in-language text on next show.
-        Task {
-            do {
-                try Tips.resetDatastore()
-            } catch {
-                #if DEBUG
-                if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-                    assertionFailure("Tips.resetDatastore failed: \(error)")
-                } else {
-                    debugPrint("Tips.resetDatastore skipped during tests: \(error)")
-                }
-                #endif
-            }
-        }
+        //
+        // The reset itself cannot happen here: TipKit requires resetDatastore()
+        // to run *before* Tips.configure(), and by the time Settings is reachable
+        // TipKit is long configured — the inline call threw, and the DEBUG catch
+        // turned every language switch into a trap (APP-20260806-498c25).
+        // Record the intent instead; the launch path drains it before configure.
+        PendingTipsReset.mark(in: defaults)
     }
 
     /// The concrete language to apply for bundle/font/format decisions.
