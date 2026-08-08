@@ -1,14 +1,20 @@
 {
-  "brief": "只要動到一行 iOS 程式，就被逼著重生一份全專案統計檔，多人並行時彼此打架。",
+  "acceptance": "產物不在版控且被 gitignore；registry 無 generated entry；改一行 iOS Swift 後 docs_lint.sh 不再因 baseline 轉 ERROR；generated-without-check 那條 registry 規則仍有正控（自帶合成 entry）",
+  "acceptance_cmd": "bash -c \"set -e; test ! -f docs/snapshot/ios_baseline.md; git check-ignore -q docs/snapshot/ios_baseline.md; ! grep -q generated.ios_baseline docs/registry.yml; ./ops/docs_lint.sh --registry; ./ops/tests/test_gen_ios_baseline.sh\"",
+  "brief": "只要動到一行 iOS 程式，就被逼著重生一份沒人讀的全專案統計檔；多人並行時它會擋住彼此，連沒碰 iOS 的分支也擋。",
   "category": "arch",
   "date": "2026-08-08",
   "detail": "`docs/snapshot/ios_baseline.md` 逐檔記錄行數，所以**任何** iOS 改動都會讓 docs gate 轉 ERROR 並要求重生這一個 repo 級的檔案——它是 fan-out 批次的衝突磁鐵：同一波有 N 個 iOS 工作樹，就會生出 N 份互相衝突的版本。\n\n而且文字與執行力對不上：`CLAUDE.md` 寫的是「iOS 大規模重構**落地後**執行 `ops/gen_ios_baseline.sh --write`」，機器閘門要求的卻是**每次** iOS 改動都得重生。實測 2026-08-08：受派者只加了 18 行 Swift（`.accessibilityElement(children:.contain)` 那一類的 modifier），`docs_lint.sh` 就轉 ERROR，被迫重生整份 baseline 並帶進自己的 commit。\n\n順帶一條可獨立修的小的：`docs_lint.sh` 只說「產物與 generator 輸出不一致」，不說**哪幾行**。受派者得把 generator 的 stdout 導出來手動 diff，才分得出「這是我造成的」還是「這是每天自轉紅的既有 debt」——而那個分辨直接決定要不要動它。值得一個 `--diff`。",
+  "fix_site": "docs/registry.yml:generated.ios_baseline + ops/gen_ios_baseline.sh + .gitignore",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
   "id": "IMP-20260808-b63206",
+  "plan": "把 `docs/snapshot/ios_baseline.md` 移出版控，比照 `e8889ae7d`（生成 view 移出版控）。\n\n**為什麼是刪除而不是放寬檢查**：實測 2026-08-08 — 它 49 行、`ops/gen_ios_baseline.sh` 1.1 秒可重算、grep 全 repo **沒有任何工作流讀它的內容**（引用它的四處全是「重構後記得重生」的自我指涉），而它是 `docs/registry.yml` 裡**唯一**的 `generated.*` entry、擁有**唯一**的 `check`。整套 generated-doc 機制存在只為了這一個檔案，代價卻是每一次 iOS 改動（實測：18 行 Swift modifier）都讓 docs gate 轉 ERROR 並要求把一個 repo 級產物夾進自己的 commit——fan-out 批次有 N 條 iOS 工作樹就生出 N 份互相衝突的版本。2026-08-08 的批次裡它擋住了**兩條完全沒碰 iOS 的分支**。\n\n**實作**\n1. `git rm docs/snapshot/ios_baseline.md`；把該路徑加進 `.gitignore`。\n2. 移除 `docs/registry.yml` 的 `generated.ios_baseline` entry（含它那段長註解）。\n3. `ops/gen_ios_baseline.sh`：`--write` 與 `--check` 失去意義（沒有版控產物可比對）——移除這兩個模式，只留「印到 stdout」。連同 `--help`／檔頭註解一起改。\n4. 四處 agent-facing 文字改成「需要當下基線就跑 `ops/gen_ios_baseline.sh`（印 stdout，不進版控）」：`CLAUDE.md`（Doc Freshness 段）、`docs/sop/doc_sync.md`、`docs/sop/review_discipline.md`、`docs/reference/tech_index.md`。`docs/snapshot/docs_dogfood_report_2026-06-06.md` 是 archive 性質的歷史報告，**不動**。\n5. `ops/tests/test_gen_ios_baseline.sh` 隨 `--write`／`--check` 的移除同步；`ops/test_ops.sh` 的註冊保留。\n\n**必須先確認的一件事（否則會靜靜拆掉一道守衛）**：`docs_lint.sh --registry` 有一條「宣告 `generator` 卻沒有 `check` = ERROR」的規則。刪掉唯一的 generated entry 之後，這條規則就變成零實例。去讀它的測試——如果那個測試是拿**真實的** `generated.ios_baseline` 當素材，刪除會讓它變成恆綠的空話；必須改成自帶合成 entry 的正控。如果它本來就用合成 fixture，在回報裡具名說出來即可。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
-  "scope": "改一支檢查腳本判斷那份統計檔的方式、順便讓它講清楚差在哪，規範文字跟著改（尚未梳理，體積是估的）。",
+  "scope": "刪掉那份統計檔並改成需要時現算，連帶清掉它專屬的一套檢查機制；四處說明文字跟著改。",
   "severity": "med",
   "source": "dogfood batch 1：iOS 受派者被迫把 repo 級產物帶進自己的 commit",
-  "status": "open",
+  "status": "triaged",
   "stream": "IMP"
 }

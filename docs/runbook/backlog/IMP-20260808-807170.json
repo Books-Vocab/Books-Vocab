@@ -1,0 +1,20 @@
+{
+  "acceptance": "合成 store + 合成 commit 清單下：被 ops: commit 點名的未解票出現在候選；已 fixed 的票不出現；沒被點名的未解票不出現；被 docs: 立案 commit 點名的票出現但標記 likely-filing；不自動改任何狀態",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k zombie",
+  "brief": "有些待辦其實早就修好了，狀態卻還開著，會被重新派工，讓人白做一遍；目前只能靠人眼發現。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "票庫裡有一類單會無聲說謊：**修法早就落地了，狀態還開著**。它不是遺漏一個欄位那種小錯——它會讓這張票重新被派工，讓下一個 agent 花整段時間去修一個已經不存在的問題，而它在 `dispatch` 佇列裡看起來跟真工作一模一樣。\n\n2026-08-08 的實測規模：回填 wave 用**肉眼**在 110 張票裡撈出 7 張；同日收斂盤點又撈出 3 張（`IMP-20260805-953840`、`IMP-20260808-54c30e`、`IMP-20260808-1785b0`）。合計 **10 張，約佔當時未解票的 9%**。全部都是人讀出來的，沒有任何工具看得見。\n\n當天試過兩種偵測法，結果本身就是這張票的規格：\n\n- **靠內文關鍵字（「已修」「已落地」）→ 壞的。** 10 個命中裡多數是在講**別張票**已修，或某個子項已修。精度低到不能用，而且它自己就是這個 repo 的一號缺陷形狀（斷言被不相干的字串滿足）。\n- **靠 commit 標題點名 → 鋒利。** 掃 main 近 400 顆 commit 的 subject，抓出「點名了某張票、而那張票還開著」的組合：9 個命中，其中 4 個是真殭屍（`ops:` 前綴 + 修復動詞），3 個是**立案** commit（`docs: 立案…` / `docs: file…` / `docs: 補回 entry 檔`），2 個是同一批工作的中途 commit。**假陽性全部集中在 docs 前綴的立案／補檔 commit**，也就是這個雜訊是有結構的、可以再收斂的。",
+  "fix_site": "ops/backlog.py:list_entries + build_parser（新增 --zombie-suspects）",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-807170",
+  "plan": "給 `ops/backlog.py` 一個 `list --zombie-suspects`（名字可再議），把上面第二種偵測法變成工具。\n\n**實作**\n1. 掃 `git log --format=%H%x01%s` 的 main（深度可設，預設夠涵蓋近期批次即可），用票 id 的正則抓 subject 裡的點名。\n2. 與未解票（`status ∉ {fixed, wont-fix}`）取交集。\n3. **輸出是候選不是判決**——每筆列出 ticket id / status / brief 一行，以及點名它的 commit（sha + subject），讓讀的人自己判。這條硬邊界很重要：工具不該替人決定一張票是不是真的修好了，那是 acceptance gate 的事。\n4. 順手降噪：把 subject 明顯屬於「立案」形狀的（`docs:` 前綴且含 立案 / file / 補回 / 登記 之類的動詞）標成 `likely-filing` 而不是隱藏——**隱藏等於替人做判斷**，標註才是給資訊。\n5. `--json` 走 stdout、人讀走既有格式。\n\n**明確不做**：不自動改狀態、不自動結案。結案只有一條路，就是既有的 acceptance gate 實跑判準。\n\n**測試**：合成一個小 store + 假 commit 清單（不要打真的 git log，否則測試會隨 repo 歷史漂移）；正控＝一張未解票被 `ops:` commit 點名 → 出現在候選裡；負控三條＝已 fixed 的票不出現、沒被任何 commit 點名的未解票不出現、被 `docs: 立案` 點名的票出現但標記為 `likely-filing`。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "待辦工具新增一個列出「疑似已修」候選的查詢，只列不改狀態；用合成資料寫測試。",
+  "severity": "med",
+  "source": "2026-08-08 第二階段第一輪收斂盤點：肉眼在 110 張票裡撈出 10 張修法已落地卻仍開著的票",
+  "status": "triaged",
+  "stream": "IMP"
+}
