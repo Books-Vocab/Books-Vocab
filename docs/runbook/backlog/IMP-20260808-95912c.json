@@ -6,6 +6,9 @@
   "date": "2026-08-08",
   "detail": "一張票的 `acceptance`（散文判準）與 `acceptance_cmd`（實際會被跑的命令）之間**沒有任何對帳**。結案閘忠實地跑 `acceptance_cmd` 並檢查 rc，但它無從知道那條命令**涵蓋不涵蓋**散文裡列的判準。\n\n2026-08-08 實測：`IMP-20260808-ddf494` 的散文判準有六條，`acceptance_cmd` 是 `pytest … -k fixed_elsewhere`。受派者實作到一半發現那個 `-k` 只選中 **6 條裡的 2 條**——也就是說，功能缺一半的狀態下這張票照樣會被閘門判為通過並結案。他靠改測試名字讓 selector 誠實，但下一個梳理者仍然可以寫出一條選不足的 `-k`，而且沒有任何東西會出聲。\n\n這是本 repo 一號缺陷（斷言被不相干的理由滿足）在**票的層級**的版本：判準通過了，但不是因為它宣稱的那些理由。與 `IMP-20260808-c65d79`（判準只是 grep 原始碼）同族但不同因——那條講判準太弱，這條講判準與宣稱脫鉤。",
   "fix_site": "ops/backlog.py:_cmd_update（--acceptance-cmd 寫入時印選中數）+ .claude/skills/kg-receipt/SKILL.md（可照抄的 -k 形狀）",
+  "fixed_by": [
+    "0794525a9a2704b1658fc4677145dd2bf21a0c77"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-95912c",
@@ -15,6 +18,10 @@
   "scope": "在寫入判準時多印一個數字讓人當場看見落差，另評估要不要加一條寬鬆的提醒；不阻擋結案。",
   "severity": "high",
   "source": "2026-08-08 第二輪大門受派者回報：ddf494 的 -k selector 只選中六條散文判準裡的兩條",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:platform-steward",
+  "verified_evidence": "acceptance_cmd rc=0; selector_count targeted 3 passed; backlog suite 248 passed; fresh gate pass"
 }
