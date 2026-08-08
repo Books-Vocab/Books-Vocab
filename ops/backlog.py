@@ -66,6 +66,13 @@ GIT_REPO = ROOT
 DEFAULT_STORE = ROOT / "docs" / "runbook" / "backlog"
 DEFAULT_VIEW = ROOT / "docs" / "runbook" / "improvement_backlog.md"
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.streaming_command import run_streamed_command  # noqa: E402
+
+# Stdlib-only, like the rest of this file: `ops/lib/streaming_command.py` imports
+# nothing outside the standard library, so the sandboxed `uv run --no-project`
+# the cutover gate uses to run these tests can still load it.
+
 SCHEMA = "kg.backlog.entry.v1"
 
 # Two streams, deliberately kept apart. IMP is harness/tooling friction owned by
@@ -270,6 +277,25 @@ GROOM_REQUIRES = ("plan", "acceptance", "fix_site")
 # acceptance is an INVERTED detector — "exit 1 = the phenomenon this entry describes
 # still holds". Demanding rc 0 would grade it backwards.
 ACCEPTANCE_PROOF = ("acceptance_cmd", "acceptance_manual")
+
+# The declared exception for `audit-criteria`, and the third field in this module
+# shaped like `acceptance_manual` / `fixed_elsewhere` for the same reason.
+#
+# `audit-criteria` runs an UNRESOLVED entry's own criterion and reports the green
+# ones as suspects, because an entry that says the defect is still there should
+# have a red criterion today. Some criteria are green by design and always will
+# be: a negative assertion ("this construct no longer appears anywhere") is green
+# from the moment it is written, and stays green until somebody reintroduces the
+# thing. Those entries would sit in the suspect list forever, and a list with
+# permanent residents is a list people stop reading.
+#
+# So the answer is not a cleverer classifier — no static reading of the command
+# can tell a by-design green from a lying one — but a DECLARATION with a reason,
+# countable via `list --acceptance-green-expected` and printed in the sweep's own
+# `exempt` bucket. Free text, because the only thing that makes an exemption
+# auditable is the sentence saying why.
+ACCEPTANCE_GREEN_EXPECTED = "acceptance_green_expected"
+AUDIT_FIELDS = (ACCEPTANCE_GREEN_EXPECTED,)
 
 # Grooming stamped on or after this date must carry one. Everything groomed before
 # it stays legal — 49 entries, measured, of which 39 have an acceptance that already
@@ -847,6 +873,18 @@ def _check_acceptance_cmd(payload: dict) -> list[dict]:
     if rc is not None and not str(cmd or "").strip():
         # An expectation with nothing to expect it of. Nothing would ever read it.
         problems.append({"kind": "acceptance-expect-rc-without-cmd", "value": rc})
+    if str(payload.get(ACCEPTANCE_GREEN_EXPECTED) or "").strip() \
+            and not str(cmd or "").strip():
+        # Same defect as the rule above, one field over: an exemption from running
+        # a command exempts nothing when there is no command. It would sit in the
+        # store looking like a considered decision and be read by nobody —
+        # `audit-criteria` never reaches an entry with no `acceptance_cmd`, so the
+        # bucket it claims a place in cannot contain it.
+        #
+        # Reached from `_check_groom`, i.e. on entries carrying a groom badge —
+        # which is exactly `audit-criteria`'s population, so the rule binds
+        # wherever the field can do anything at all.
+        problems.append({"kind": "acceptance-green-expected-without-cmd"})
     return problems
 
 
@@ -1151,6 +1189,7 @@ MUTABLE_FIELDS = (
     + APP_ONLY_FIELDS
     + VERDICT_FIELDS
     + GROOM_FIELDS
+    + AUDIT_FIELDS
     + TRACE_FIELDS
 )
 
@@ -1180,7 +1219,7 @@ def _splice_before(fields: tuple[str, ...], anchor: str,
 # them where the reader who needs them has already stopped reading.
 SHOW_FIELD_ORDER = (
     _splice_before(REQUIRED_FIELDS, "detail", BRIEF_FIELDS)
-    + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + TRACE_FIELDS
+    + APP_ONLY_FIELDS + VERDICT_FIELDS + GROOM_FIELDS + AUDIT_FIELDS + TRACE_FIELDS
 )
 
 # Digest fields the `update` parser still accepts — solely so that reaching for
@@ -1217,6 +1256,10 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 FILE_TWIN_FIELDS = (
     "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
     "acceptance_manual", "repro", "evidence", "fix_site",
+    # The sentence that makes an audit exemption auditable — prose, and prose
+    # about a shell command, so it is the likeliest field in the schema to carry
+    # a backtick.
+    ACCEPTANCE_GREEN_EXPECTED,
     # A path plus the command that re-derives the fix, i.e. exactly the two
     # things a shell rewrites: `~` and backticks.
     "fixed_elsewhere",
@@ -1395,6 +1438,7 @@ def list_entries(
     groomed: bool = False,
     ungroomed: bool = False,
     acceptance_manual: bool = False,
+    acceptance_green_expected: bool = False,
     fixed_elsewhere: bool = False,
     missing_brief: bool = False,
     grep: str | None = None,
@@ -1452,6 +1496,12 @@ def list_entries(
         # this" is a COUNT somebody can look at, not an absence nobody notices —
         # which is what `acceptance` itself had been for its whole life.
         hits = [p for p in hits if str(p.get("acceptance_manual") or "").strip()]
+    if acceptance_green_expected:
+        # The third declared-exception set, same principle: `audit-criteria` skips
+        # these, so the only thing that keeps the skipping honest is that the set
+        # can be listed and argued with.
+        hits = [p for p in hits
+                if str(p.get(ACCEPTANCE_GREEN_EXPECTED) or "").strip()]
     if fixed_elsewhere:
         # The other declared exception, same principle: closures whose audit trail
         # is prose because the fix landed where shas do not exist. Countable so the
@@ -1522,8 +1572,25 @@ def list_entries(
         # A queue somebody takes the TOP of, so worst-first, then oldest-first.
         # `_sort_key` is (date, id), which is right for an inventory and wrong
         # here: it puts last week's `low` ahead of today's `high`.
-        return sorted(hits, key=lambda p: (-_severity_rank(p), _sort_key(p)))
+        return sorted(hits, key=_worst_first_key)
     return sorted(hits, key=_sort_key)
+
+
+def _worst_first_key(payload: dict) -> tuple:
+    """The order a queue is taken from the TOP of: severity descending, then oldest.
+
+    ONE definition, two readers — `dispatch` above and `audit-criteria`'s `--limit`,
+    whose help promises "same order as `dispatch`". It was written out twice before
+    this, byte-identically, which is the copy `_severity_rank`'s own docstring says
+    this module has already paid for twice: nothing goes red when two hand-written
+    copies of an ordering drift, the two commands simply stop agreeing about what
+    "worst" means and the `--limit` help quietly becomes false.
+
+    `audit-criteria` cannot reach this through `list_entries(dispatch=True)`: that
+    queue also excludes CLAIMED tickets, and a ticket somebody is holding is exactly
+    as likely to carry a lying criterion as an unclaimed one.
+    """
+    return (-_severity_rank(payload), _sort_key(payload))
 
 
 def _severity_rank(payload: dict) -> int:
@@ -2422,6 +2489,14 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
              "set `anchor` cannot machine-check, kept countable on purpose"
     )
     parser.add_argument(
+        "--acceptance-green-expected", dest="acceptance_green_expected",
+        action="store_true",
+        help="only entries that DECLARE their criterion is green by design — the "
+             "set `audit-criteria` skips rather than reports as suspect. Countable "
+             "for the same reason as --acceptance-manual: a skip nobody can list "
+             "is a check nobody can argue with"
+    )
+    parser.add_argument(
         "--fixed-elsewhere", dest="fixed_elsewhere", action="store_true",
         help="only entries closed against a fix that landed OUTSIDE this repo (no "
              "sha to follow, so the audit trail is prose). The other declared "
@@ -2622,6 +2697,59 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--commit", action="store_true")
     p_verify.add_argument("--json", action="store_true")
 
+    p_audit = sub.add_parser(
+        "audit-criteria",
+        help="RUN the acceptance_cmd of every groomed, unresolved entry and report "
+             "the ones that are already GREEN (read-only; EXECUTES stored commands)",
+        description=(
+            "An unresolved entry says its defect is still there, so its "
+            "`acceptance_cmd` — the command that says what 'gone' looks like — "
+            "should be RED today. This runs them and reports the green ones.\n\n"
+            "WHAT THIS EXECUTES: `acceptance_cmd` is free text an agent wrote into "
+            "the ledger. Some of these run pytest suites, start containers, open a "
+            "simulator or call the network. Every selected entry's command is "
+            "executed under `bash -c` at the repo root, exactly as the closing gate "
+            "would run it. NO attempt is made to judge statically which commands are "
+            "safe — that cannot be done, and a tool that pretended to would be "
+            "selling reassurance. So a bare invocation is REFUSED: narrow it with "
+            "--filter / --limit, look first with --dry-run, or say --all.\n\n"
+            "It writes nothing TO THE STORE: there is no --commit and no write path. "
+            "What the criteria themselves do to your machine is their own business, "
+            "which is what the paragraph above is about."),
+    )
+    _add_store_arg(p_audit)
+    p_audit.add_argument(
+        "--dry-run", dest="dry_run", action="store_true",
+        help="list what WOULD run, in order, and execute nothing. The sibling of "
+             "`anchor`'s dry run and there for the same reason: these commands have "
+             "real side effects, so reading them first is the only way to consent to "
+             "them. The output says so — an empty `green` under --dry-run means "
+             "nothing was measured, not that nothing is wrong")
+    p_audit.add_argument(
+        "--all", action="store_true",
+        help="run every entry in the population, however many that is. The explicit "
+             "opt-in the bare form refuses; contradicts --filter / --limit, which "
+             "already narrow")
+    p_audit.add_argument(
+        "--filter", metavar="PATTERN",
+        help="only entries whose id OR acceptance_cmd matches this regex "
+             "(case-insensitive, matched against each separately). THE flag to "
+             "reach for before a full sweep: it is what decides which stored "
+             "commands run on your machine")
+    p_audit.add_argument(
+        "--limit", type=int, metavar="N",
+        help="run at most N criteria, worst-first (same order as `dispatch`). The "
+             "ids left unrun are NAMED in the output — a truncated sweep whose gaps "
+             "are invisible reads as a clean bill of health")
+    p_audit.add_argument(
+        "--timeout-seconds", dest="timeout_seconds", type=float,
+        default=AUDIT_TIMEOUT_SECONDS, metavar="N",
+        help=f"per-criterion budget (default {AUDIT_TIMEOUT_SECONDS:g}s; the closing "
+             f"gate allows {ACCEPTANCE_TIMEOUT_SECONDS}s for the one command a human "
+             f"is waiting on, and this runs every entry's). A criterion that needs "
+             f"longer is reported as `timeout`, never as green or red")
+    p_audit.add_argument("--json", action="store_true")
+
     p_show = sub.add_parser("show", help="show one entry")
     _add_store_arg(p_show)
     p_show.add_argument("id")
@@ -2712,6 +2840,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--acceptance-manual", dest="acceptance_manual",
         help="why no command can express this entry's acceptance. Countable, not a "
              "loophole: `list --acceptance-manual` and `anchor` both report the set")
+    p_update.add_argument(
+        "--acceptance-green-expected", dest="acceptance_green_expected",
+        help="why THIS criterion is green even though the entry is unresolved — a "
+             "negative assertion, a detector for something not yet reintroduced. "
+             "Takes the entry out of `audit-criteria`'s suspect list and puts it in "
+             "the `exempt` bucket with this sentence attached. Requires an "
+             "--acceptance-cmd to exempt; countable via "
+             "`list --acceptance-green-expected`, like --acceptance-manual")
     p_update.add_argument("--groomed-at", dest="groomed_at", help="YYYY-MM-DD")
     p_update.add_argument(
         "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
@@ -3287,8 +3423,30 @@ def _cmd_anchor(args) -> int:
 ACCEPTANCE_TIMEOUT_SECONDS = 900
 
 
-def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
-    """Run one entry's nominated acceptance command and say whether it held.
+def _execute_criterion(entry_id: str, cmd: str, timeout_seconds: float,
+                       progress_prefix: str) -> tuple[int | None, str, float]:
+    """Run one stored criterion. THE executor — both readers of these strings use it.
+
+    Two things read `acceptance_cmd` by running it: the closing gate (`_run_acceptance`
+    below, via `anchor` / `update` / `verify`) and the sweep that hunts for criteria
+    which are green while their entry is open (`audit-criteria`). The sweep exists to
+    PREDICT the gate, so any difference between the two harnesses is a difference the
+    sweep would report as a property of the entry. Locale is the concrete one: this
+    runner chooses the child's `LC_CTYPE` (see `CHILD_LC_CTYPE`) while a plain
+    `subprocess.run` inherits whatever the caller had, and that byte-level parse
+    difference has already broken one script in this repo (IMP-20260808-3bbfa2). Two
+    executors would have made the audit's verdict a function of who invoked it.
+
+    What that costs the GATE, stated because it is a real change to the thing that
+    decides closures: `run_streamed_command` also REMOVES `LC_ALL` (it has to — POSIX
+    makes `LC_ALL` outrank every `LC_*`, so setting `LC_CTYPE` beside it changes
+    nothing). A caller who had `LC_ALL` set therefore gets a child whose collation
+    now falls back rather than inheriting: measured, `sort` on `a A b B` gives
+    `a A b B` under an inherited `LC_ALL=en_US.UTF-8` and `A B a b` without it.
+    Latent rather than live — 0 of today's 81 criteria use shell `sort` or `[a-z]`
+    ranges — but a criterion that grew one would be graded by a different collation
+    than before this change. The trade is deliberate: an executor that behaves the
+    same for everyone is worth more than one that reproduces each caller's shell.
 
     Run under **bash**, explicitly, and `cwd=ROOT`. The field contains shell, not an
     argv list — the real store's strings are `cd backend && uv run pytest …`. The
@@ -3302,21 +3460,41 @@ def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
     The command comes from the repo's own version-controlled ledger — the same trust
     boundary as every other file this tool executes.
 
-    Progress goes to STDERR, one line at a time, because these are pytest suites and
-    a wave can carry several: a silent multi-minute pause is the failure mode the
-    heartbeat contract exists to prevent. stdout stays the single JSON document.
+    Progress goes to STDERR because these are pytest suites: a silent multi-minute
+    pause is the failure mode the heartbeat contract (iron law 5) exists to prevent,
+    and `run_streamed_command` is where that contract lives. stdout stays the single
+    JSON document.
+
+    Returns `(rc, output_tail, elapsed)` with **rc None for a timeout**, which is not
+    a code the caller could have derived: `run_streamed_command` writes 124 when it
+    enforced the deadline, and a child may exit 124 by itself. `timed_out` is the
+    only thing that separates them — a command that ran out of time has said nothing
+    about the defect, and grading it as "failed" would be the report inventing an
+    answer.
     """
     started = time.monotonic()
-    print(f"[backlog][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
-    try:
-        proc = subprocess.run(["bash", "-c", cmd], cwd=str(ROOT), capture_output=True,
-                              text=True, timeout=ACCEPTANCE_TIMEOUT_SECONDS)
-        rc, tail = proc.returncode, (proc.stdout or proc.stderr or "").strip()[-400:]
-    except subprocess.TimeoutExpired:
-        # Reported as a distinct outcome rather than as "failed": a command that ran
-        # out of time has not said the defect is back, only that it could not answer.
-        rc, tail = None, f"timed out after {ACCEPTANCE_TIMEOUT_SECONDS}s"
+    result = run_streamed_command(
+        ["bash", "-c", cmd],
+        cwd=ROOT,
+        label_key="entry",
+        label=entry_id,
+        progress_prefix=progress_prefix,
+        # Merged, because the tail is for a human deciding where to look and the
+        # stream a command chose to talk on is not part of that decision.
+        merge_stderr=True,
+        timeout_seconds=timeout_seconds,
+    )
     elapsed = time.monotonic() - started
+    if result.timed_out:
+        return None, f"timed out after {timeout_seconds:g}s", elapsed
+    return result.returncode, (result.stdout or "").strip()[-400:], elapsed
+
+
+def _run_acceptance(entry_id: str, cmd: str, expect_rc: int) -> dict:
+    """The closing gate's reading of a criterion: did it hold, yes or no."""
+    print(f"[backlog][acceptance] {entry_id} start: {cmd[:120]}", file=sys.stderr, flush=True)
+    rc, tail, elapsed = _execute_criterion(
+        entry_id, cmd, ACCEPTANCE_TIMEOUT_SECONDS, "[backlog][acceptance]")
     ok = rc == expect_rc
     print(f"[backlog][acceptance] {entry_id} done: rc={rc} expected={expect_rc} "
           f"{'OK' if ok else 'MISMATCH'} elapsed={elapsed:.1f}s", file=sys.stderr, flush=True)
@@ -3374,6 +3552,255 @@ def _acceptance_refusal(result: dict) -> str:
     if result.get("output_tail"):
         text += f"\n  last output: {result['output_tail']}"
     return text
+
+
+# ---------------------------------------------------------------------------
+# audit-criteria — run the criteria of entries that say they are NOT fixed
+#
+# The gate above asks a criterion "is the defect gone?" at the moment somebody
+# closes an entry. This asks the same criterion the same question while the entry
+# is still OPEN, where the expected answer is no. A yes has two readings and both
+# are bad: the entry is already fixed and will be dispatched again (a zombie), or
+# the criterion does not test what its prose claims — and that one is worse,
+# because `_acceptance_gate` runs this exact command at closing time and would let
+# the closure through. Confirmed case at the top of section 28 of the tests.
+# ---------------------------------------------------------------------------
+
+# Per entry, and DERIVED from the gate's budget rather than restated: the comment
+# below argues about the ratio, so the ratio is what the code should contain. The
+# gate runs ONE command with a human waiting on that one answer; this runs every
+# unresolved entry's command in series — 81 of them today — so the gate's budget
+# would put a 20-hour ceiling on a sweep somebody is supposed to run before triage.
+# The cost of the smaller number is named rather than hidden: a criterion that needs
+# longer lands in `timeout`, which is a reported bucket and not a verdict.
+AUDIT_TIMEOUT_SECONDS = ACCEPTANCE_TIMEOUT_SECONDS // 3
+
+AUDIT_POPULATION = "groomed AND unresolved"
+
+AUDIT_CAVEAT = (
+    "green is a CANDIDATE for a human to judge, never a verdict. Some criteria are "
+    "green by design (a negative assertion is green until the defect is REintroduced), "
+    "and no reading of the command can tell those from a criterion that lies. Declare "
+    "the by-design ones with `update <id> --acceptance-green-expected '<why>'` — they "
+    "move to `exempt`, where they stay countable. "
+    # The blind spot on the OTHER side, which matters more than it reads: `red` is the
+    # long bucket nobody scrolls, and a criterion can land there for a reason that has
+    # nothing to do with its subject too. Measured on today's population: 49 of 81
+    # criteria call `grep` (exit 2 when the file it names is gone) and 18 run
+    # `pytest -k <expr>` (exit 5 when the filter selects nothing). Both read as "the
+    # defect is still there, carry on". The confirmed case this command was built for
+    # was a NEGATED grep, so it surfaced as green — the un-negated majority fails the
+    # other way and this sweep cannot see it. Nothing here can: only the shell's own
+    # 126/127 mean "could not run", and every other code belongs to a program that
+    # chose it, so a wider rc table would be a guess wearing a classifier's clothes.
+    "And `red` is not a clean bill of health: an rc this tool cannot interpret "
+    "(grep's 2 for a missing file, pytest's 5 for a filter that selected nothing) "
+    "lands there too, so a criterion that stopped testing its subject is invisible "
+    "here whenever it fails for the wrong reason rather than passing for one."
+)
+
+# Return codes the SHELL produces when it could not run what it was given. Neither
+# is evidence about the defect, and filing them under `red` would say "still broken,
+# carry on" about a command that never executed — which is this entry's own defect
+# reproduced inside the tool built to find it.
+_SHELL_CANNOT_RUN = {127: "command-not-found", 126: "not-executable"}
+
+# Static findings that stop a criterion being run at all, mapped to the word the
+# report uses. Read off `_check_acceptance_cmd` rather than re-implemented: a second
+# `bash -n` here would be a second floor to keep in step with the first.
+_AUDIT_UNRUNNABLE = {"acceptance-cmd-does-not-parse": "does-not-parse",
+                     "acceptance-cmd-unparsed": "shell-unavailable"}
+
+
+def _audit_population(store: Path) -> list[dict]:
+    """Groomed AND unresolved, worst-first.
+
+    Two of `dispatch`'s three clauses and pointedly not the third: a ticket somebody
+    is holding is exactly as likely to carry a lying criterion as an unclaimed one,
+    and dropping it would make the sweep's coverage a function of who happens to be
+    working today. Ungroomed entries are excluded because they have no criterion, and
+    closed ones because the premise — "this entry says the defect is still there" —
+    is what makes a green suspicious.
+    """
+    hits = [p for p in list_entries(store, groomed=True)
+            if p.get("status") not in ("fixed", "wont-fix")]
+    return sorted(hits, key=_worst_first_key)
+
+
+def _audit_row(entry: dict, **extra) -> dict:
+    """The identifying half of every row, so the buckets cannot describe entries
+    differently from each other."""
+    return {"id": entry.get("id"), "severity": entry.get("severity"),
+            "detail": str(entry.get("detail") or "")[:120], **extra}
+
+
+def _audit_unrunnable(entry: dict) -> str | None:
+    """Why this criterion cannot be executed at all, or None. Static, side-effect-free.
+
+    Asked BEFORE `--limit` slices the queue, so a slot is spent on a command that
+    will actually run. `bash -n` is free and this is the only way to know: a string
+    bash cannot parse exits 2 when executed, and 2 is what a hundred tools return for
+    "I found the problem" — so running it would manufacture a `red` out of a broken
+    entry, in the one bucket this command's own caveat admits it cannot police.
+    """
+    unrunnable = [_AUDIT_UNRUNNABLE[p["kind"]] for p in _check_acceptance_cmd(entry)
+                  if p["kind"] in _AUDIT_UNRUNNABLE]
+    return unrunnable[0] if unrunnable else None
+
+
+def _audit_one(entry: dict, timeout_seconds: float) -> tuple[str, dict]:
+    """Execute one criterion and classify the result. Returns (bucket, row)."""
+    cmd = str(entry.get("acceptance_cmd") or "").strip()
+    expect_rc = int(entry.get("acceptance_expect_rc") or 0)
+    rc, tail, elapsed = _execute_criterion(
+        entry["id"], cmd, timeout_seconds, "[backlog][audit]")
+    row = _audit_row(entry, cmd=cmd, expect_rc=expect_rc, rc=rc,
+                     elapsed_s=round(elapsed, 1), output_tail=tail)
+    if rc is None:
+        return "timeout", {**row, "timeout_seconds": timeout_seconds}
+    if rc in _SHELL_CANNOT_RUN:
+        # Checked BEFORE the expect_rc comparison, and that ordering decides both
+        # halves of a rare case: an entry whose `acceptance_expect_rc` is itself 126
+        # or 127 gets NO verdict from this sweep — neither the green it would have
+        # been graded nor the red. That is the right answer in both directions. The
+        # shell writes these codes when it could not run what it was named, so they
+        # are not evidence about the defect, and an expectation built on one is an
+        # expectation that "the command stays missing".
+        return "error", {**row, "reason": _SHELL_CANNOT_RUN[rc]}
+    return ("green" if rc == expect_rc else "red"), row
+
+
+def _cmd_audit_criteria(args) -> int:
+    if args.limit is not None and args.limit < 1:
+        raise BacklogError("--limit must be at least 1")
+    if args.timeout_seconds <= 0:
+        raise BacklogError("--timeout-seconds must be positive")
+    if args.all and (args.filter or args.limit is not None):
+        # `--filter` alone already runs every match, so `--all` beside either of
+        # them is not "extra" — it is a second, contradictory statement about the
+        # same question. Refused by name rather than silently letting one win.
+        raise BacklogError(
+            "--all means NO narrowing, so it contradicts --filter / --limit. "
+            "`--filter` on its own already runs every entry it matches.")
+    try:
+        pattern = re.compile(args.filter, re.IGNORECASE) if args.filter else None
+    except re.error as exc:
+        # Same reason as `--grep`: an unguarded compile turns a typo'd bracket into
+        # a traceback about `sre_parse`, a true statement about the wrong subject.
+        raise BacklogError(f"--filter 不是合法的正規表示式: {exc}") from exc
+
+    entries = _audit_population(args.store)
+    if not (args.filter or args.limit is not None or args.all or args.dry_run):
+        # A bare invocation would execute every stored command on this machine, and
+        # the store's own contents are the argument: today's population includes a
+        # `curl` at another host, an `ios_ops.sh catalog` that drives a simulator,
+        # and several infra probes. None of that is inferable from the flag list, so
+        # the default is a REFUSAL that names the size and the four ways forward
+        # rather than a sweep somebody did not know they were starting.
+        raise BacklogError(
+            f"refusing to run all {len(entries)} stored commands without being asked "
+            f"to. This subcommand EXECUTES `acceptance_cmd` out of the ledger, and "
+            f"some of those open a simulator, start containers or call the network.\n"
+            f"  see what would run:  ./ops/backlog.py audit-criteria --dry-run\n"
+            f"  pick some:           ./ops/backlog.py audit-criteria --filter <regex>\n"
+            f"  take the worst N:    ./ops/backlog.py audit-criteria --limit 10\n"
+            f"  yes, run everything: ./ops/backlog.py audit-criteria --all")
+    if pattern is not None:
+        # Two subjects, searched SEPARATELY rather than joined: an id and a command
+        # concatenated would let a pattern match across the seam, which is how
+        # `--grep` first shipped a phrase no field contained.
+        entries = [p for p in entries
+                   if pattern.search(str(p.get("id") or ""))
+                   or pattern.search(str(p.get("acceptance_cmd") or ""))]
+    selected = len(entries)
+
+    buckets: dict[str, list[dict]] = {k: [] for k in
+                                      ("green", "red", "error", "timeout",
+                                       "exempt", "manual", "unproven")}
+    runnable: list[dict] = []
+    for entry in entries:
+        cmd = str(entry.get("acceptance_cmd") or "").strip()
+        exemption = str(entry.get(ACCEPTANCE_GREEN_EXPECTED) or "").strip()
+        manual = str(entry.get("acceptance_manual") or "").strip()
+        unrunnable = _audit_unrunnable(entry) if cmd else None
+        if not cmd:
+            buckets["manual" if manual else "unproven"].append(
+                _audit_row(entry, **({"reason": manual} if manual else {})))
+        elif exemption:
+            # Listed, NOT run. The bucket is a set of declarations and saying so is
+            # what stops it being read as a measurement — and this command executes
+            # free text, so declining to run what somebody has already declared
+            # uninformative is the cheap half of the safety argument too.
+            buckets["exempt"].append(
+                _audit_row(entry, cmd=cmd, reason=exemption, ran=False))
+        elif unrunnable:
+            # Decided HERE rather than inside the run loop, so `--limit N` means N
+            # executions: a slice taken before this check spends its slots on
+            # commands that were never going to run.
+            buckets["error"].append(
+                _audit_row(entry, cmd=cmd,
+                           expect_rc=int(entry.get("acceptance_expect_rc") or 0),
+                           rc=None, reason=unrunnable, elapsed_s=0.0, output_tail=""))
+        else:
+            runnable.append(entry)
+
+    skipped = [p["id"] for p in runnable[args.limit:]] if args.limit is not None else []
+    runnable = runnable[:args.limit] if args.limit is not None else runnable
+
+    total = len(runnable)
+    if not args.dry_run:
+        for index, entry in enumerate(runnable, start=1):
+            bucket, row = _audit_one(entry, args.timeout_seconds)
+            buckets[bucket].append(row)
+            # Position in the sweep, which `run_streamed_command` cannot know.
+            # Without it a 30-minute run gives the operator no way to tell "slow"
+            # from "stuck".
+            print(f"[backlog][audit] {index}/{total} entry={entry['id']} "
+                  f"bucket={bucket}", file=sys.stderr, flush=True)
+
+    payload = {
+        "schema": "kg.backlog.audit-criteria.v1",
+        "population": AUDIT_POPULATION,
+        "caveat": AUDIT_CAVEAT,
+        "timeout_seconds": args.timeout_seconds,
+        "selected": selected,
+        # UNCONDITIONAL, both values. A dry run's empty `green` is byte-identical to
+        # a clean sweep's, so a machine reader with no flag to look at would read
+        # "nothing suspicious" off a run that measured nothing.
+        "dry_run": bool(args.dry_run),
+        "ran": 0 if args.dry_run else total,
+        "would_run": [_audit_row(p, cmd=str(p.get("acceptance_cmd") or "").strip())
+                      for p in runnable] if args.dry_run else [],
+        # NAMED, not counted. A truncated sweep whose gaps are a number reads as a
+        # clean bill of health for entries nobody looked at.
+        "skipped_by_limit": skipped,
+        **buckets,
+    }
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False))
+        return 0
+
+    if args.dry_run:
+        print(f"would run {total} command(s), in this order:")
+        for index, entry in enumerate(runnable, start=1):
+            print(f"  {index:>3}. {entry['id']:<24} "
+                  f"{str(entry.get('acceptance_cmd') or '')[:110]}")
+    for name in ("green", "error", "timeout", "red", "exempt", "manual", "unproven"):
+        rows = buckets[name]
+        print(f"\n{name} ({len(rows)})")
+        for row in rows:
+            extra = row.get("reason") or f"rc={row.get('rc')} expected={row.get('expect_rc')}"
+            print(f"  {row['id']:<24} {extra:<34} {row['detail'][:60]}")
+    print(f"\n{selected} selected ({AUDIT_POPULATION}), "
+          f"{0 if args.dry_run else total} run"
+          + (" (DRY RUN — nothing was executed, so every bucket above is empty for "
+             "that reason and not for a clean one)" if args.dry_run else "")
+          + (f", {len(skipped)} left unrun by --limit: {', '.join(skipped)}"
+             if skipped else ""))
+    print(f"  {AUDIT_CAVEAT}")
+    # Exit 0 even with suspects. This is a report a human triages, and a report that
+    # reds somebody's shell is a report that acquires a `|| true`.
+    return 0
 
 
 def _gate_closure(entry: dict, changes: dict, commit: bool) -> dict | None:
@@ -3601,6 +4028,7 @@ def _cmd_list(args) -> int:
         groomed=args.groomed,
         ungroomed=args.ungroomed,
         acceptance_manual=args.acceptance_manual,
+        acceptance_green_expected=getattr(args, "acceptance_green_expected", False),
         fixed_elsewhere=getattr(args, "fixed_elsewhere", False),
         missing_brief=getattr(args, "missing_brief", False),
         grep=getattr(args, "grep", None),
@@ -4241,6 +4669,7 @@ def main(argv: list[str] | None = None) -> int:
         # The SAME handler, not a wrapper around it: two entry points into one
         # implementation is the contract this subcommand exists to keep.
         "dispatch": _cmd_list,
+        "audit-criteria": _cmd_audit_criteria,
         "show": _cmd_show,
         "validate": _cmd_validate,
         "update": _cmd_update,

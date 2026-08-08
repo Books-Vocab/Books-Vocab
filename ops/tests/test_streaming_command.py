@@ -594,3 +594,36 @@ def test_an_explicit_env_argument_still_gets_the_chosen_lc_ctype(tmp_path):
     # the explicit-`env=` path — the one `_git_mutation` uses — with no assertion at
     # all that the chosen ctype is in force rather than merely present.
     assert completed.stdout == "C.UTF-8|kept|<unset>"
+
+
+def test_timeout_is_reported_as_its_own_fact_not_only_as_a_return_code() -> None:
+    """`124` is the runner's own word for "I killed it", and it is also a number a
+    child may exit with by itself, instantly.
+
+    A caller that has to tell those apart cannot: the return code is the same
+    integer either way. Every workaround is a guess about elapsed time, which is
+    the shape of assertion this repo keeps filing entries about — one satisfied by
+    something other than its subject. So the runner states the fact it alone knows.
+    """
+    killed = run_streamed_command(
+        ["bash", "-c", "sleep 30"],
+        cwd=Path.cwd(), label_key="source", label="killed",
+        progress_prefix="[test]", heartbeat_interval=5.0, timeout_seconds=0.5,
+    )
+    assert killed.returncode == 124 and killed.timed_out is True
+
+    volunteered = run_streamed_command(
+        ["bash", "-c", "exit 124"],
+        cwd=Path.cwd(), label_key="source", label="volunteered",
+        progress_prefix="[test]", heartbeat_interval=5.0, timeout_seconds=30,
+    )
+    assert volunteered.returncode == 124, "the fixture stopped testing the collision"
+    assert volunteered.timed_out is False, (
+        "a child that exited 124 on its own was reported as killed by the deadline")
+
+    unbounded = run_streamed_command(
+        ["bash", "-c", "true"],
+        cwd=Path.cwd(), label_key="source", label="unbounded",
+        progress_prefix="[test]", heartbeat_interval=5.0,
+    )
+    assert unbounded.timed_out is False, "the flag must exist even with no deadline set"
