@@ -120,6 +120,11 @@ def run_streamed_command(
 
     Either way the child's ``LC_CTYPE`` is this module's choice, not the caller's —
     see ``CHILD_LC_CTYPE`` and ``_child_env`` for why that is not a detail.
+
+    The returned ``CompletedProcess`` carries one extra attribute, ``timed_out``:
+    True iff THIS function enforced ``timeout_seconds``. ``returncode == 124``
+    cannot answer that — a child may exit 124 by itself — see the assignment at the
+    end of this function.
     """
     if heartbeat_interval <= 0:
         raise ValueError("heartbeat_interval must be positive")
@@ -282,7 +287,22 @@ def run_streamed_command(
     )
     stdout = tails["stdout"].decode("utf-8", errors="replace")
     stderr = None if merge_stderr else tails["stderr"].decode("utf-8", errors="replace")
-    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+    result = subprocess.CompletedProcess(command, returncode, stdout, stderr)
+    # The one fact only this function knows, stated instead of left to be inferred.
+    #
+    # `returncode == 124` is what this runner writes when IT enforced the deadline
+    # — and it is also a number a child may exit with on its own, immediately. The
+    # two are the same integer, so a caller that must distinguish "did not answer"
+    # from "answered no" has nothing to key on but elapsed time, which is a guess
+    # about scheduling. That is the shape of assertion this repo keeps filing
+    # entries about: one satisfied by something other than its subject.
+    #
+    # An attribute rather than a wider return type: every existing caller unpacks
+    # a CompletedProcess (rc / stdout / stderr) and none of them break by gaining
+    # a field. It is set unconditionally, including when no deadline was given, so
+    # reading it never needs a `getattr` default that would re-open the same hole.
+    result.timed_out = timed_out
+    return result
 
 
 def _capture_cli(argv: list[str] | None = None) -> int:

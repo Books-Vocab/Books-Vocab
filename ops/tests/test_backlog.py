@@ -34,6 +34,7 @@ import inspect
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 import sys
@@ -3241,6 +3242,14 @@ def test_two_concurrent_stages_cannot_lose_each_others_row(tmp_path):
                     "        __import__('time').sleep(float(os.environ.get("
                     "'KG_TEST_STAGE_DELAY', '0')))\n" + anchor),
         encoding="utf-8")
+    # The module imports `lib.streaming_command` (the heartbeat runner both readers
+    # of `acceptance_cmd` go through), so a copy of the FILE is not a copy of the
+    # TOOL. Copied rather than made lazy on purpose: a lazy import would let this
+    # probe pass against a checkout where the real command dies halfway through a
+    # sweep, which moves the failure from setup time to the middle of a gate.
+    shutil.copytree(BACKLOG_PATH.parent / "lib", repo / "ops" / "lib")
+    assert (repo / "ops" / "lib" / "streaming_command.py").exists(), (
+        "the probe stopped shipping the module's own dependency")
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
 
     store, queue = repo / "s", repo / "q.jsonl"
@@ -5284,3 +5293,489 @@ def test_fixed_elsewhere_is_reachable_through_a_channel_the_shell_cannot_edit(tm
     assert stored["fixed_elsewhere"] == ELSEWHERE, (
         "the backtick-bearing text did not survive the file channel verbatim")
     assert "`" in stored["fixed_elsewhere"], "the fixture stopped testing the hazard"
+
+
+# --------------------------------------------------------------------------
+# 28. `audit-criteria` — running the criteria themselves (IMP-20260808-09dd3b)
+#
+# An entry that is still OPEN says the defect is still there. Its
+# `acceptance_cmd` says what "gone" looks like. So on an open entry that command
+# should be RED today, and a green one has exactly two readings, both bad:
+#
+#   1. the entry is already fixed and nobody closed it — it will be dispatched
+#      again and the next agent redoes finished work;
+#   2. the criterion does not test what its prose claims. That one is worse,
+#      because `_acceptance_gate` RUNS this command at closing time and lets the
+#      closure through: a defect nobody fixed gets stamped machine-verified.
+#
+# Reading 2 has a confirmed case. IMP-20260805-958999's criterion ended in
+# `! grep -qF "…" docs/snapshot/ios_baseline.md`; that file left version control
+# with IMP-20260808-b63206, `grep` on a missing file exits 2, and the leading `!`
+# turns that into a pass. Green, for a reason that has nothing to do with the
+# subject.
+#
+# Every test below names `criteria` on purpose: the entry's own acceptance is
+# `pytest … -k criteria`, and a `-k` that selects nothing exits 5, not 0 —
+# measured before writing any of this. A test outside that filter is a test this
+# entry cannot be closed on.
+# --------------------------------------------------------------------------
+
+def _criteria_target(store, *, detail, cmd, **overrides):
+    """A groomed, unresolved entry carrying `cmd` as its executable criterion."""
+    entry = _add(store, detail=detail)
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd=cmd, **overrides))
+    return entry["id"]
+
+
+def _criteria_audit(store, *extra, expect_rc=0, capsys=None):
+    """Run the sweep and return (payload, stderr).
+
+    `--all` unless the caller narrows: a bare invocation is refused on purpose (the
+    command executes stored free text), and every test here is about what the sweep
+    REPORTS rather than about that guard, which has its own test.
+    """
+    narrowed = any(a in ("--filter", "--limit", "--all", "--dry-run") for a in extra)
+    argv = ["audit-criteria", "--store", str(store), "--json",
+            *([] if narrowed else ["--all"]), *extra]
+    rc = BACKLOG.main(argv)
+    captured = capsys.readouterr()
+    assert rc == expect_rc, f"rc={rc}; stderr={captured.err[-800:]}"
+    return json.loads(captured.out), captured.err
+
+
+def test_audit_criteria_flags_a_criterion_that_is_green_on_an_open_entry(tmp_path, capsys):
+    """The whole product of this command: the suspect list."""
+    store = tmp_path / "s"
+    suspect = _criteria_target(store, detail="claims to be open", cmd="true")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["green"]] == [suspect]
+    assert payload["green"][0]["rc"] == 0 and payload["green"][0]["expect_rc"] == 0
+    assert payload["green"][0]["cmd"] == "true"
+
+
+def test_audit_criteria_leaves_a_red_criterion_in_the_uninteresting_bucket(tmp_path, capsys):
+    """Red is the HEALTHY answer here, and inverting that would make the tool useless."""
+    store = tmp_path / "s"
+    healthy = _criteria_target(store, detail="genuinely still broken", cmd="false")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["red"]] == [healthy]
+    assert payload["green"] == []
+
+
+def test_audit_criteria_separates_a_broken_command_from_a_red_criterion(tmp_path, capsys):
+    """THE test. A command that could not run has said nothing about the defect.
+
+    `exit 127` is the shell saying it never found what you named. Filing that
+    under `red` means "the defect is still there, carry on" — which is the exact
+    misreading this command exists to destroy, arriving through the back door of
+    the command that hunts for it.
+    """
+    store = tmp_path / "s"
+    broken = _criteria_target(store, detail="criterion names a tool nobody has",
+                              cmd="kg-no-such-command-9f3838")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["error"]] == [broken], payload
+    assert payload["red"] == [], "a command that never ran was graded as a red criterion"
+    assert payload["error"][0]["rc"] == 127
+    assert payload["error"][0]["reason"] == "command-not-found"
+    # The shell says WHY on stderr and nowhere else. A tail that captured only
+    # stdout would report this row with an empty explanation, which is the one
+    # field telling the reader whether to go fix the entry or fix their machine.
+    assert "kg-no-such-command-9f3838" in payload["error"][0]["output_tail"], payload
+
+
+def test_audit_criteria_reports_a_hanging_criterion_as_a_timeout(tmp_path, capsys):
+    """Neither green nor red: it did not answer."""
+    store = tmp_path / "s"
+    hanging = _criteria_target(store, detail="criterion waits forever", cmd="sleep 30")
+
+    payload, _ = _criteria_audit(store, "--timeout-seconds", "1", capsys=capsys)
+
+    assert [row["id"] for row in payload["timeout"]] == [hanging], payload
+    assert payload["green"] == [] and payload["red"] == [] and payload["error"] == []
+    assert payload["timeout"][0]["timeout_seconds"] == 1
+
+
+def test_audit_criteria_does_not_read_a_124_exit_as_a_timeout(tmp_path, capsys):
+    """`124` is what the runner writes when IT killed the child — and also a number
+    a child may exit with on its own, immediately.
+
+    Keying the timeout bucket on the return code alone makes the two
+    indistinguishable, which is this entry's own defect (an assertion satisfied
+    by something other than its subject) reproduced inside the auditor.
+    """
+    store = tmp_path / "s"
+    quick = _criteria_target(store, detail="criterion exits 124 at once", cmd="exit 124")
+
+    payload, _ = _criteria_audit(store, "--timeout-seconds", "30", capsys=capsys)
+
+    assert payload["timeout"] == [], "an instant exit was reported as a timeout"
+    assert [row["id"] for row in payload["red"]] == [quick]
+
+
+def test_audit_criteria_does_not_execute_a_criterion_that_cannot_parse(tmp_path, capsys):
+    """A string no shell can read is not a criterion, and bash's syntax-error `2`
+    is indistinguishable from a hundred tools' "I found the problem"."""
+    store = tmp_path / "s"
+    good = _criteria_target(store, detail="fine", cmd="false")
+    # Hand-edited on purpose: `update` refuses this shape, so the only way it
+    # reaches the store is somebody editing the JSON — which is how the two
+    # measured cases got there.
+    broken_id = _criteria_target(store, detail="mangled while transcribing", cmd="false")
+    path = store / f"{broken_id}.json"
+    payload_on_disk = json.loads(path.read_text(encoding="utf-8"))
+    payload_on_disk["acceptance_cmd"] = 'grep -q "unterminated ops/x.py'
+    path.write_text(json.dumps(payload_on_disk, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+
+    payload, err = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["error"]] == [broken_id], payload
+    assert payload["error"][0]["reason"] == "does-not-parse"
+    # Proof of NON-EXECUTION has to come from something other than this module: the
+    # `rc: None` in that row is written by the very branch under test, so asserting
+    # it only says the code did what the code does (measured — running the command
+    # before the early return left an earlier version of this test green).
+    # `run_streamed_command` prints `phase=start` unconditionally the moment it is
+    # called, so its ABSENCE is a fact produced by the other module.
+    assert f"entry={broken_id} phase=start" not in err, err
+    assert f"entry={good} phase=start" in err, "the fixture stopped running anything"
+    assert [row["id"] for row in payload["red"]] == [good]
+
+
+def test_audit_criteria_writes_nothing_to_the_store(tmp_path, capsys):
+    """Read-only by construction — there is no `--commit` and no write path."""
+    store = tmp_path / "s"
+    _criteria_target(store, detail="green one", cmd="true")
+    _criteria_target(store, detail="red one", cmd="false")
+    before = {p.name: p.read_bytes() for p in sorted(store.glob("*.json"))}
+
+    _criteria_audit(store, capsys=capsys)
+
+    after = {p.name: p.read_bytes() for p in sorted(store.glob("*.json"))}
+    assert after == before, "the audit modified the store it was reading"
+    flags = {opt
+             for action in BACKLOG._subcommands(BACKLOG.build_parser())["audit-criteria"]._actions
+             for opt in action.option_strings}
+    assert "--commit" not in flags, "a read-only audit grew a write door"
+
+
+def test_audit_criteria_keeps_progress_on_stderr_and_json_on_stdout(tmp_path, capsys):
+    """82 entries × one command each is a multi-minute sweep, so silence is not an
+    option — and the JSON channel must survive the noise (iron law 5)."""
+    store = tmp_path / "s"
+    first = _criteria_target(store, detail="one", cmd="true")
+    second = _criteria_target(store, detail="two", cmd="false")
+
+    payload, err = _criteria_audit(store, capsys=capsys)
+
+    assert payload["schema"] == "kg.backlog.audit-criteria.v1"
+    for entry_id in (first, second):
+        # The PREFIX is asserted, not just the phase fields: it is the grep handle
+        # an operator watching a 30-minute sweep uses, and `entry=… phase=…` alone
+        # is a shape any hand-rolled print could imitate — measured, renaming the
+        # prefix left an earlier version of this test green.
+        assert f"[backlog][audit] entry={entry_id} phase=start" in err, err
+        assert re.search(rf"\[backlog\]\[audit\] entry={entry_id} phase=done .*rc=",
+                         err), err
+    # Position in the sweep, which the runner cannot know: without it "slow" and
+    # "stuck" look identical from the outside.
+    assert "[backlog][audit] 2/2 entry=" in err, err
+
+
+def test_audit_criteria_runs_only_what_the_filter_selects(tmp_path, capsys):
+    """This command executes free text out of the store. Running the whole store
+    by reflex is how a sweep opens a simulator or calls a network."""
+    store = tmp_path / "s"
+    ran = tmp_path / "ran"
+    skipped = tmp_path / "skipped"
+    wanted = _criteria_target(store, detail="the one I asked for", cmd=f"touch {ran}")
+    other = _criteria_target(store, detail="the one I did not", cmd=f"touch {skipped}")
+
+    payload, _ = _criteria_audit(store, "--filter", wanted, capsys=capsys)
+
+    assert ran.exists(), "the selected criterion never ran"
+    assert not skipped.exists(), "--filter ran a command it did not select"
+    assert payload["selected"] == 1
+    assert other not in json.dumps(payload)
+
+
+def test_audit_criteria_names_what_the_limit_left_unrun(tmp_path, capsys):
+    """A truncated sweep whose gaps are invisible reads as a clean bill of health."""
+    store = tmp_path / "s"
+    _criteria_target(store, detail="high one", cmd="true", severity="high")
+    low = _criteria_target(store, detail="low one", cmd="true", severity="low")
+
+    payload, _ = _criteria_audit(store, "--limit", "1", capsys=capsys)
+
+    assert payload["ran"] == 1
+    # The ID, not the count. The help and the payload comment both promise the unrun
+    # entries are NAMED, and a length assertion is satisfied by a list of the right
+    # size holding anything at all — measured, filling it with a placeholder string
+    # left an earlier version of this test green.
+    assert payload["skipped_by_limit"] == [low], payload
+    # Worst-first, like `dispatch`: a limit that took the low one first would be
+    # a different command than the one the help describes.
+    assert payload["green"][0]["detail"].startswith("high")
+
+
+def test_audit_criteria_honours_a_named_exemption_without_running_it(tmp_path, capsys):
+    """Green is a CANDIDATE, not a verdict — some criteria are green by design.
+
+    The answer is `acceptance_manual`'s: not a quieter check, a DECLARED
+    exception somebody can count. Reported with its reason and never run, so the
+    bucket is a list of declarations rather than a measurement pretending to be one.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "exempt-ran"
+    exempt = _criteria_target(
+        store, detail="a negative assertion, green forever", cmd=f"touch {marker}",
+        acceptance_green_expected="this criterion asserts an absence; it is green "
+                                  "until the defect is REintroduced")
+    # A second, NON-exempt entry, so the ledger filter below has something to
+    # exclude. Without it the store has one entry and an unfiltered list returns
+    # the same single id — the assertion would be satisfied by the store's size
+    # rather than by the filter (measured: making the filter a no-op left this
+    # test green).
+    _criteria_target(store, detail="an ordinary criterion", cmd="false")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert not marker.exists(), "an exempt criterion was executed anyway"
+    assert [row["id"] for row in payload["exempt"]] == [exempt]
+    assert "asserts an absence" in payload["exempt"][0]["reason"]
+    assert [row["id"] for row in payload["green"]] == [], (
+        "the exemption did not keep it out of the suspect list")
+    # Countable from the ledger too, exactly like --acceptance-manual.
+    assert [p["id"] for p in BACKLOG.list_entries(store, acceptance_green_expected=True)] \
+        == [exempt]
+
+
+def test_a_criteria_exemption_with_no_command_to_exempt_is_refused():
+    """An exemption from running a command that does not exist exempts nothing."""
+    payload = {**_entry_kwargs(), "id": "IMP-0001", "schema": BACKLOG.SCHEMA,
+               "plan": "x", "acceptance": "y", "fix_site": "ops/x.py:1",
+               "brief": BRIEF_TEXT, "scope": SCOPE_TEXT,
+               "groomed_at": "2026-08-05", "groomed_by": "workflow:groom@v1",
+               "acceptance_manual": "needs a device",
+               "acceptance_green_expected": "green by design"}
+    kinds = [p["kind"] for p in BACKLOG.validate_entry(payload)]
+    assert "acceptance-green-expected-without-cmd" in kinds, kinds
+
+
+def test_audit_criteria_looks_at_groomed_unresolved_entries_only(tmp_path, capsys):
+    """The premise is "this entry says the defect is still there". A closed entry
+    says the opposite, and an ungroomed one has no criterion worth believing."""
+    store = tmp_path / "s"
+    live = _criteria_target(store, detail="open and groomed", cmd="true")
+    closed = _criteria_target(store, detail="already closed", cmd="true")
+    BACKLOG.update_entry(store, closed, status="wont-fix",
+                         resolution="decided against it")
+    ungroomed = _add(store, detail="nobody has worked this out")["id"]
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["green"]] == [live]
+    blob = json.dumps(payload)
+    assert closed not in blob and ungroomed not in blob
+
+
+def test_audit_criteria_counts_the_entries_it_could_not_run(tmp_path, capsys):
+    """An absence nobody counts is how `acceptance` spent its whole life write-only."""
+    store = tmp_path / "s"
+    declared = _add(store, detail="needs a physical device")["id"]
+    BACKLOG.update_entry(store, declared, **_groom_kwargs(
+        acceptance_cmd=None, acceptance_expect_rc=None,
+        acceptance_manual="needs a device on a live backend"))
+    silent = _add(store, detail="groomed before the rule existed")["id"]
+    BACKLOG.update_entry(store, silent, **_groom_kwargs(
+        acceptance_cmd=None, acceptance_expect_rc=None))
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert [row["id"] for row in payload["manual"]] == [declared]
+    assert [row["id"] for row in payload["unproven"]] == [silent]
+
+
+def test_audit_criteria_says_green_is_a_candidate_not_a_verdict(tmp_path, capsys):
+    """The output is a work queue for a human. A tool that reports "these entries
+    are zombies" would be making the second claim this entry is about.
+
+    Two halves, and only one of them is evidence. The substring check is a constant
+    read against itself — it can fail only if somebody edits `AUDIT_CAVEAT` into a
+    verdict, which is exactly the regression worth a tripwire but is not a test of
+    behaviour. The half that IS behaviour is the plumbing: the caveat has to reach
+    the human channel too, and nothing else in this section drives the non-JSON
+    path at all.
+    """
+    store = tmp_path / "s"
+    _criteria_target(store, detail="suspect", cmd="true")
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+    assert "candidate" in payload["caveat"].lower(), payload["caveat"]
+    assert "red` is not a clean bill of health" in payload["caveat"], (
+        "the caveat stopped admitting the blind spot on the red side")
+
+    assert BACKLOG.main(["audit-criteria", "--store", str(store), "--all"]) == 0
+    human = capsys.readouterr().out
+    assert BACKLOG.AUDIT_CAVEAT in human, "the human channel dropped the caveat"
+    assert "green (1)" in human, human
+
+
+def test_audit_criteria_help_admits_it_executes_stored_free_text():
+    """No static safety judgement is offered anywhere, because none is possible —
+    so the help has to say what the caller is about to do instead."""
+    sub = BACKLOG._subcommands(BACKLOG.build_parser())["audit-criteria"]
+    text = sub.format_help().lower()
+
+    assert "execut" in text, text
+    assert "acceptance_cmd" in text
+    assert "--filter" in text and "--limit" in text
+
+
+def test_audit_criteria_filter_does_not_match_across_the_seam(tmp_path, capsys):
+    """`--filter` searches the id and the command SEPARATELY.
+
+    Joining them and searching the blob is the bug `--grep` already shipped once:
+    with a `"\n".join` the separator IS whitespace, so `alpha\\s+beta` matches an
+    entry whose id ends in "alpha" and whose command starts with "beta" — a string
+    neither field contains. Here the cost would be running a command the caller did
+    not select, on a subcommand whose entire safety story is "you choose what runs".
+    """
+    store = tmp_path / "s"
+    ran = tmp_path / "seam-ran"
+    entry = BACKLOG.add_entry(store, **_entry_kwargs(
+        entry_id="IMP-0091-ALPHA",
+        detail="an entry whose id ends where the command begins"))
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd=f"BETA=1; touch {ran}"))
+
+    payload, _ = _criteria_audit(store, "--filter", r"ALPHA\s+BETA", capsys=capsys)
+
+    assert payload["selected"] == 0, payload
+    assert not ran.exists(), "a pattern that matches neither field selected the entry"
+    # Positive control: the filter is not simply broken. Same store, a pattern that
+    # really is in the id, selects it.
+    payload, _ = _criteria_audit(store, "--filter", "ALPHA", capsys=capsys)
+    assert payload["selected"] == 1 and ran.exists()
+
+
+@pytest.mark.parametrize("expect_rc", [126, 127])
+def test_audit_criteria_never_grades_a_criterion_green_on_a_shell_failure(
+        tmp_path, capsys, expect_rc):
+    """An entry may not buy a green by expecting the code the shell writes when it
+    could not run the command at all.
+
+    126/127 come from the SHELL, not from the program the criterion names, so they
+    are not evidence about the defect in either direction. The ordering inside
+    `_audit_one` is what enforces that, and without this the claim was prose: no
+    entry in the suite had an expectation in that range, so moving the check after
+    the comparison changed nothing that was measured.
+    """
+    store = tmp_path / "s"
+    entry = _criteria_target(store, detail="expects the shell to keep failing",
+                             cmd="kg-no-such-command-h2c65", acceptance_expect_rc=expect_rc)
+
+    payload, _ = _criteria_audit(store, capsys=capsys)
+
+    assert payload["green"] == [], "a shell failure was graded as the criterion holding"
+    assert [row["id"] for row in payload["error"]] == [entry], payload
+    assert payload["error"][0]["rc"] == 127
+
+
+def test_audit_criteria_refuses_to_sweep_the_whole_store_unasked(tmp_path, capsys):
+    """The default must not execute every stored command.
+
+    Measured on the live ledger the day this landed: the population's commands
+    include a `curl` at another host, an `ios_ops.sh catalog` run that drives a
+    simulator, and several infra probes. None of that is visible in the flag list,
+    so a bare invocation is a sweep somebody did not know they were starting.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "unasked"
+    _criteria_target(store, detail="has side effects", cmd=f"touch {marker}")
+
+    assert BACKLOG.main(["audit-criteria", "--store", str(store), "--json"]) == 64
+    out, err = capsys.readouterr().out, capsys.readouterr().err
+    assert not marker.exists(), "the refusal still ran the command"
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    for way_out in ("--dry-run", "--filter", "--limit", "--all"):
+        assert way_out in payload["error"], payload["error"]
+
+
+def test_audit_criteria_contradictory_narrowing_is_refused(tmp_path, capsys):
+    """`--all` says "no narrowing" and `--filter`/`--limit` narrow. Letting one win
+    silently would run a set the caller did not describe."""
+    store = tmp_path / "s"
+    _criteria_target(store, detail="whatever", cmd="true")
+
+    for extra in (["--all", "--filter", "IMP"], ["--all", "--limit", "1"]):
+        assert BACKLOG.main(["audit-criteria", "--store", str(store), *extra]) == 64
+        assert "contradicts" in capsys.readouterr().err
+
+
+def test_audit_criteria_dry_run_executes_nothing_and_says_the_buckets_are_empty(
+        tmp_path, capsys):
+    """Consent needs a way to read the commands first — the same reason `anchor` has
+    a dry run. And an empty `green` from a dry run is byte-identical to a clean
+    sweep's, so the payload has to carry the difference or a machine reader will
+    take the one for the other."""
+    store = tmp_path / "s"
+    marker = tmp_path / "dry-ran"
+    entry = _criteria_target(store, detail="would have run", cmd=f"touch {marker}")
+
+    payload, err = _criteria_audit(store, "--dry-run", capsys=capsys)
+
+    assert not marker.exists(), "--dry-run executed the criterion"
+    assert "phase=start" not in err, err
+    assert payload["dry_run"] is True and payload["ran"] == 0
+    assert [row["id"] for row in payload["would_run"]] == [entry]
+    assert payload["would_run"][0]["cmd"] == f"touch {marker}"
+    assert payload["green"] == [] and payload["red"] == []
+
+
+def test_audit_criteria_asks_for_progress_inside_the_twenty_second_contract(tmp_path):
+    """Iron law 5 is a NUMBER, and nothing was holding this one.
+
+    The runner's default happens to be 20s, so the sweep satisfied the contract by
+    inheritance — measured, injecting `heartbeat_interval=600.0` into the call left
+    all 32 criteria/acceptance tests green. The interval is read back off the call
+    itself, with the runner's own defaults applied, so this holds whether the value
+    is passed explicitly or inherited.
+    """
+    seen = {}
+    original = BACKLOG.run_streamed_command
+    # Bound against the REAL signature, captured before the patch. Reading
+    # `signature(BACKLOG.run_streamed_command)` inside the spy reads the spy's own
+    # `(command, **kwargs)` — the assertion would then be inspecting the double
+    # rather than the call it stands in for, which is this section's whole subject.
+    signature = inspect.signature(original)
+
+    def spy(command, **kwargs):
+        bound = signature.bind(command, **kwargs)
+        bound.apply_defaults()
+        seen.update(bound.arguments)
+        result = subprocess.CompletedProcess(command, 0, "", "")
+        result.timed_out = False
+        return result
+
+    store = tmp_path / "s"
+    _criteria_target(store, detail="anything", cmd="true")
+    BACKLOG.run_streamed_command = spy
+    try:
+        assert BACKLOG.main(["audit-criteria", "--store", str(store), "--all"]) == 0
+    finally:
+        BACKLOG.run_streamed_command = original
+
+    assert seen, "the sweep never reached the streaming runner"
+    assert seen["heartbeat_interval"] <= 20.0, (
+        f"heartbeat every {seen['heartbeat_interval']}s breaks the <=20s contract")
+    assert seen["timeout_seconds"] == BACKLOG.AUDIT_TIMEOUT_SECONDS
