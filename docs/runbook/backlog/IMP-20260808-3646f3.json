@@ -1,6 +1,6 @@
 {
   "acceptance": "新增三個測試並全綠：(a) update --status fixed --commit 在 entry 的 acceptance_cmd 會紅時拒絕落地且 exit 非零；(b) verify --status fixed --commit 同樣拒絕；(c) 不帶 --commit 的 update 不執行任何 acceptance 命令（用會留下副作用的假命令證明它沒被跑）。今天這三個測試名稱不存在，pytest 直接非零。",
-  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider \"ops/tests/test_backlog.py::test_update_refuses_to_close_when_the_acceptance_is_red\" \"ops/tests/test_backlog.py::test_verify_refuses_to_close_when_the_acceptance_is_red\" \"ops/tests/test_backlog.py::test_a_dry_run_update_does_not_run_acceptance_commands\"",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k \"refuses_to_close or dry_run_update or three_doors or names_the_rc or says_so_in_the_payload or without_a_proof or not_the_status\"",
   "acceptance_expect_rc": 0,
   "category": "tool",
   "date": "2026-08-08",

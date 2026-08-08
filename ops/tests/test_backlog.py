@@ -865,6 +865,11 @@ _UPDATE_PLUMBING = {"id", "store", "commit", "json", "help"}
 def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
     sub = BACKLOG.build_parser()._subparsers._group_actions[0].choices["update"]
     dests = {a.dest for a in sub._actions} - _UPDATE_PLUMBING
+    # `--X-file` twins are plumbing too: they are folded into `--X` before any
+    # handler runs, so the field they reach is X's. Derived from the same module
+    # constant the twins themselves come from — restating them as literals here
+    # would be the smuggled exemption this test's comment warns about.
+    dests -= {f"{f}_file" for f in BACKLOG.FILE_TWIN_FIELDS}
     mutable = set(BACKLOG.MUTABLE_FIELDS)
 
     assert dests - mutable == set(BACKLOG.REFUSED_UPDATE_FIELDS), (
@@ -3622,3 +3627,353 @@ def test_add_refuses_groom_flags_by_name_and_says_where_they_belong(tmp_path, ca
     assert BACKLOG.main([*base, "--json"]) == 0
     capsys.readouterr()
     assert len(list(store.glob("*.json"))) == 1
+
+
+# --------------------------------------------------------------------------
+# 19. one acceptance gate, all three doors to `fixed` (IMP-20260808-3646f3)
+#
+# `acceptance_cmd` is the only field that makes `fixed` mean something a machine
+# checked, and section 18 wired it into exactly ONE of the three ways an entry
+# reaches that status. `update --status fixed` and `verify --status fixed` both
+# wrote it while checking only traceability — "a commit exists" — which is not
+# the same claim. Worse, the two kinds of `fixed` were indistinguishable in the
+# store afterwards, so nobody could have counted how many closures rested on
+# nothing.
+#
+# The tests below are written against the DOORS, not against the helper, and one
+# of them asserts that a single implementation serves all three: three copies of
+# this check would be three things to forget next time, which is how the hole
+# got here.
+# --------------------------------------------------------------------------
+
+
+def _groomed(store, cmd="true", expect_rc=0, **overrides):
+    entry = _add(store, **overrides)
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(acceptance_cmd=cmd,
+                                         acceptance_expect_rc=expect_rc))
+    return entry
+
+
+def test_update_refuses_to_close_when_the_acceptance_is_red(tmp_path, capsys):
+    """The door most likely to be used by hand, and it checked nothing.
+
+    A backfill, a re-verification, a single ticket closed by an agent that never
+    went through the wave — all of them arrive here, and all of them could write
+    `fixed` over a criterion that fails today.
+    """
+    store = tmp_path / "s"
+    entry = _groomed(store, cmd="false")
+
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                       "--commit", "--json"])
+
+    assert rc != 0, "a red acceptance closed the entry anyway"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "acceptance did not hold" in payload["error"], payload["error"]
+    # Nothing half-written: the refusal happens before the store is touched.
+    after = BACKLOG.load_entry(store, entry["id"])
+    assert after["status"] == "open" and not after.get("fixed_by")
+
+
+def test_verify_refuses_to_close_when_the_acceptance_is_red(tmp_path, capsys):
+    """`verify --status fixed` is documented in its own parser as "the natural
+    closing act". It has to answer the same question as the wave does."""
+    store = tmp_path / "s"
+    entry = _groomed(store, cmd="false")
+
+    rc = BACKLOG.main(["verify", entry["id"], "--store", str(store),
+                       "--verdict", "CONFIRMED-FIXED", "--by", "probe",
+                       "--evidence", "ran the suite", "--status", "fixed",
+                       "--fixed-by", "aaaaaaa11", "--commit", "--json"])
+
+    assert rc != 0, "a red acceptance closed the entry anyway"
+    payload = json.loads(capsys.readouterr().out)
+    assert "acceptance did not hold" in payload["error"], payload["error"]
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "open"
+
+
+def test_the_refusal_names_the_rc_and_shows_what_the_command_said(tmp_path, capsys):
+    """A refusal that says only "it failed" sends the reader to debug the fix.
+
+    The two facts that tell them where to look instead are the exit code (was it
+    the criterion or the harness?) and the command's own last words.
+
+    The probe COMPUTES its output rather than echoing a literal, and that detail is
+    the test. The first version ran `echo 'the regression is back' >&2` and asserted
+    that phrase appeared — which it did, from the refusal quoting the COMMAND back.
+    Deleting the output_tail line entirely left that version green: the assertion had
+    two possible producers and could not name which one satisfied it.
+    """
+    store = tmp_path / "s"
+    entry = _groomed(store, cmd="awk 'BEGIN{print 6*7}' >&2; exit 3")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                         "--commit", "--json"]) != 0
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert "exited 3" in error, error
+    assert "42" in error, (
+        f"only the command could have produced '42' — its text does not contain "
+        f"it, so this proves the output reached the reader: {error}")
+
+
+def test_update_runs_the_acceptance_and_says_so_in_the_payload(tmp_path, capsys):
+    """Green closes, and the closure carries its own evidence grade.
+
+    Without the payload block, a machine reading the store back could not tell a
+    `fixed` a command proved from a `fixed` somebody asserted — which is the half
+    of this defect that survives after the refusal is in place.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "it-ran"
+    entry = _groomed(store, cmd=f"touch {marker} && true")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                         "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert marker.exists(), "the acceptance command was never actually run"
+    assert payload["acceptance"]["kind"] == "ran"
+    assert payload["acceptance"]["ok"] is True and payload["acceptance"]["rc"] == 0
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "fixed"
+
+
+def test_a_dry_run_update_does_not_run_acceptance_commands(tmp_path, capsys):
+    """Same contract as `anchor`'s dry run, for the same reason: the real store's
+    acceptance strings include `rm`, container restarts and network calls."""
+    store = tmp_path / "s"
+    marker = tmp_path / "should-not-exist"
+    entry = _groomed(store, cmd=f"touch {marker}")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                         "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert not marker.exists(), "a dry-run executed the acceptance command"
+    assert payload["acceptance"]["kind"] == "would-run"
+    assert payload["acceptance"]["cmd"].startswith("touch ")
+
+
+def test_closing_without_a_proof_is_allowed_and_counted_not_silent(tmp_path, capsys):
+    """The unverifiable closure is not forbidden — it is LABELLED.
+
+    Forbidding it would only move the work outside the tool; there are real
+    entries whose acceptance needs a physical device. What must not happen is
+    the two kinds arriving in the store looking identical.
+    """
+    store = tmp_path / "s"
+    declared = _add(store, detail="needs a device")
+    BACKLOG.update_entry(store, declared["id"], **_groom_kwargs(
+        acceptance_cmd=None, acceptance_expect_rc=None,
+        acceptance_manual="needs a physical device on a live backend"))
+    silent = _add(store, detail="never groomed at all")
+
+    for entry, kind in ((declared, "manual"), (silent, "unproven")):
+        assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                             "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                             "--commit", "--json"]) == 0
+        assert json.loads(capsys.readouterr().out)["acceptance"]["kind"] == kind
+
+
+def test_updating_a_field_that_is_not_the_status_runs_nothing(tmp_path, capsys):
+    """The gate fires on the ACT of closing, not on touching a closed entry.
+
+    Otherwise every later correction to a `fixed` entry — a resolution reworded,
+    a `fixed_by` re-pointed after a rebase — would re-run a full pytest suite,
+    and `reanchor`'s repair loop would become unusable.
+    """
+    store = tmp_path / "s"
+    marker = tmp_path / "should-not-exist"
+    entry = _groomed(store, cmd=f"touch {marker}")
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--severity", "low", "--commit", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert not marker.exists(), "a non-closing update ran the acceptance command"
+    assert "acceptance" not in payload
+
+
+def test_all_three_doors_go_through_one_acceptance_implementation(tmp_path, capsys):
+    """The point of the fix, asserted structurally.
+
+    Section 18 closed the wave door and left two open. If each door grows its own
+    copy of the check, the next door added closes the same gap a third time — and
+    the copies drift, which is the failure that produced this entry. So: one
+    function, and all three callers observably route through it.
+    """
+    store, queue = tmp_path / "s", tmp_path / "q.jsonl"
+    seen: list[str] = []
+    real = BACKLOG._acceptance_gate
+
+    def spy(entry, commit):
+        seen.append(entry["id"])
+        return real(entry, commit)
+
+    BACKLOG._acceptance_gate = spy
+    try:
+        via_update = _groomed(store, detail="closed by update")
+        assert BACKLOG.main(["update", via_update["id"], "--store", str(store),
+                             "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                             "--commit", "--json"]) == 0
+
+        via_verify = _groomed(store, detail="closed by verify")
+        assert BACKLOG.main(["verify", via_verify["id"], "--store", str(store),
+                             "--verdict", "CONFIRMED-FIXED", "--by", "probe",
+                             "--evidence", "ran it", "--status", "fixed",
+                             "--fixed-by", "aaaaaaa11", "--commit", "--json"]) == 0
+
+        via_anchor = _groomed(store, detail="closed by the wave")
+        _stage_and_stamp(store, queue, via_anchor["id"], capsys)
+        assert BACKLOG.main(["anchor", "--store", str(store), "--queue", str(queue),
+                             "--commit", "--json"]) == 0
+    finally:
+        BACKLOG._acceptance_gate = real
+
+    assert seen == [via_update["id"], via_verify["id"], via_anchor["id"]], (
+        f"a door reached `fixed` without going through the shared gate: {seen}")
+
+
+# --------------------------------------------------------------------------
+# 20. the acceptance command runs under the shell that vetted it
+#     (IMP-20260808-c4bbb3)
+# --------------------------------------------------------------------------
+
+def test_acceptance_runs_under_bash_the_same_shell_that_vets_it(tmp_path, capsys):
+    """The syntax floor and the executor must be the same shell.
+
+    `_check_acceptance_cmd` parses with `bash -n`; the executor used `shell=True`,
+    which is `/bin/sh` — bash 3.2 in POSIX mode here, dash on a Linux runner. So
+    the floor certified a property of a shell that would never run the command.
+    Measured: `bash -n -c '[[ 1 == 1 ]]'` exits 0, `dash -c '[[ 1 == 1 ]]'` exits
+    127. A grooming agent had already started writing every acceptance in POSIX
+    sh to route around this, which costs the criteria their expressiveness.
+
+    The command asks the SHELL TO NAME ITSELF rather than using bash-only syntax,
+    and that choice is the whole test. Measured on this machine: `shell=True` runs
+    `/bin/sh`, which here IS bash 3.2, so `[[ -n x ]]` exits 0 under both — a test
+    built on bash-only syntax passes with the defect still in place and only reds
+    on a Linux runner, which is the worst possible place to find out. `$0` is `bash`
+    under `["bash", "-c", …]` and `/bin/sh` under `shell=True`, on every platform.
+    """
+    store = tmp_path / "s"
+    names_its_shell = 'case "$0" in *bash) exit 0 ;; *) exit 1 ;; esac'
+
+    entry = _groomed(store, cmd=names_its_shell)
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--status", "fixed", "--fixed-by", "aaaaaaa11",
+                         "--commit", "--json"]) == 0, (
+        "the acceptance ran under a shell that does not call itself bash — "
+        "the floor vets these strings with `bash -n`, so the executor must be bash")
+    assert json.loads(capsys.readouterr().out)["acceptance"]["rc"] == 0
+
+    # And the consequence the criteria authors actually feel: bash-only syntax is
+    # legal at BOTH ends, so nobody has to downgrade a criterion to POSIX sh.
+    bash_only = "[[ -n x ]] && test 1 -eq 1"
+    assert BACKLOG._check_acceptance_cmd(
+        {"acceptance_cmd": bash_only, "acceptance_expect_rc": 0}) == []
+    assert BACKLOG._run_acceptance("probe", bash_only, 0)["ok"] is True
+
+
+# --------------------------------------------------------------------------
+# 21. free text does not pass through a shell (IMP-20260808-1aed9f)
+#
+# Backticks inside a double-quoted shell string are command substitution: the
+# text is rewritten before this process ever sees it, and neither the store nor
+# git records that anything was removed. Three occurrences in one day — a lost
+# sentence in a `detail`, a lost phrase in a commit message, a dropped quote that
+# stored an unparseable acceptance command. No in-tool detection is possible:
+# by the time argv arrives the information is gone. The only fix is a channel
+# the shell does not touch.
+# --------------------------------------------------------------------------
+
+HOSTILE_TEXT = ("run `ops/backlog.py show` and note $HOME plus a \\backslash\n"
+                "\n"
+                "  an indented second paragraph, with a trailing space   ")
+
+
+def test_free_text_read_from_a_file_arrives_verbatim(tmp_path, capsys):
+    """Byte-for-byte, minus only the newline every editor adds and nobody means.
+
+    Interior blank lines, indentation and trailing spaces all survive: a channel
+    that tidies its input is a channel that edits it, which is the defect being
+    fixed, only politer.
+    """
+    store = tmp_path / "s"
+    src = tmp_path / "detail.txt"
+    src.write_text(HOSTILE_TEXT + "\n", encoding="utf-8")
+
+    assert BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
+                         "--date", "2026-08-08", "--source", "probe",
+                         "--category", "tool", "--severity", "med",
+                         "--detail-file", str(src), "--json"]) == 0
+    entry = json.loads(capsys.readouterr().out)["entry"]
+
+    assert entry["detail"] == HOSTILE_TEXT, (
+        "the file channel must deliver the bytes on disk, minus only the "
+        f"editor's trailing newline: {entry['detail']!r}")
+
+
+def test_a_flag_and_its_file_twin_together_are_refused_by_name(tmp_path, capsys):
+    """Silently preferring one would be the same class of defect: a write whose
+    content is not the content the caller believes they supplied."""
+    store = tmp_path / "s"
+    src = tmp_path / "plan.txt"
+    src.write_text("from the file", encoding="utf-8")
+    entry = _add(store)
+
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--plan", "from the flag", "--plan-file", str(src),
+                       "--commit"])
+
+    assert rc == 64
+    err = capsys.readouterr().err
+    assert "--plan" in err and "--plan-file" in err, err
+    assert BACKLOG.load_entry(store, entry["id"]).get("plan", "") == ""
+
+
+def test_a_missing_file_is_a_named_refusal_not_a_traceback(tmp_path, capsys):
+    store = tmp_path / "s"
+    entry = _add(store)
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--resolution-file", str(tmp_path / "nope.txt"), "--commit"])
+    assert rc == 64
+    assert "nope.txt" in capsys.readouterr().err
+
+
+def test_the_file_twin_of_a_refused_flag_is_refused_the_same_way(tmp_path, capsys):
+    """`update --detail` is refused because `detail` is a digest input. Routing the
+    same value through a file must not become a way around that."""
+    store = tmp_path / "s"
+    src = tmp_path / "detail.txt"
+    src.write_text("a reworded problem statement", encoding="utf-8")
+    entry = _add(store)
+
+    rc = BACKLOG.main(["update", entry["id"], "--store", str(store),
+                       "--detail-file", str(src), "--commit"])
+
+    assert rc == 64
+    assert "--resolution" in capsys.readouterr().err, "the refusal lost its repair hint"
+    assert BACKLOG.load_entry(store, entry["id"])["detail"] != "a reworded problem statement"
+
+
+def test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin():
+    """The bidirectional invariant, so the next free-text flag added is caught.
+
+    A hand-kept list of twins is exactly the shape that drifts — the same reason
+    `update`'s change map is derived from MUTABLE_FIELDS rather than typed twice.
+    """
+    commands = BACKLOG.build_parser()._subparsers._group_actions[0].choices
+    missing = []
+    for name, sub in commands.items():
+        dests = {a.dest for a in sub._actions}
+        for dest in sorted(dests & set(BACKLOG.FILE_TWIN_FIELDS)):
+            if f"{dest}_file" not in dests:
+                missing.append(f"{name} --{dest.replace('_', '-')}")
+    assert not missing, (
+        "free-text flags reachable only through argv, where a backtick is "
+        f"command substitution: {missing}")
