@@ -1373,7 +1373,7 @@ SHOW_FIELD_ORDER = (
 # "unrecognized arguments" — but it would not say where a correction goes, and
 # this is the flag people reach for when an entry's wording turns out wrong.
 # The answer is `--resolution`, so the refusal has to be the thing that says it.
-REFUSED_UPDATE_FIELDS = ("detail",)
+REFUSED_UPDATE_FIELDS = tuple(DIGEST_FIELDS)
 
 # Which free-text dests each subcommand refuses outright, so `_resolve_file_twins`
 # does not read a file whose value has no destination.
@@ -1392,7 +1392,7 @@ REFUSED_BY_COMMAND: dict[str, tuple[str, ...]] = {"update": REFUSED_UPDATE_FIELD
 # the information is already gone, so any "was this mangled?" check would be a
 # guess. The only fix is a channel the shell does not touch.
 FILE_TWIN_FIELDS = (
-    "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
+    "source", "detail", "resolution", "plan", "acceptance", "acceptance_cmd",
     "acceptance_manual", "repro", "evidence", "fix_site",
     # The sentence that makes an audit exemption auditable — prose, and prose
     # about a shell command, so it is the likeliest field in the schema to carry
@@ -2955,12 +2955,13 @@ def build_parser() -> argparse.ArgumentParser:
              "anything. NOT --fix-site: that is a code anchor for the executor. "
              "Same requirement as --brief: any call that stamps a groom badge needs both",
     )
-    p_update.add_argument(
-        "--detail",
-        help="REFUSED: a digest input. Corrections go in --resolution; a reworded "
-        "problem is a new entry (`add`). Kept on the parser so the attempt gets "
-        "an answer instead of 'unrecognized arguments'",
-    )
+    for digest_field in DIGEST_FIELDS:
+        p_update.add_argument(
+            f"--{digest_field.replace('_', '-')}", dest=digest_field,
+            help="REFUSED: a digest input. Corrections go in --resolution; a "
+            "reworded problem is a new entry (`add`). Kept on the parser so the "
+            "attempt gets an answer instead of 'unrecognized arguments'",
+        )
     p_update.add_argument("--verdict")
     p_update.add_argument("--cost")
     p_update.add_argument("--fix-site", dest="fix_site")

@@ -717,6 +717,42 @@ def test_update_refuses_a_digest_field_instead_of_silently_dropping_it(tmp_path,
     assert after["status"] == "open"
 
 
+def test_every_digest_update_flag_is_a_named_refusal_and_mutable_fields_still_work(
+    tmp_path, capsys
+):
+    """Every content-derived id input must be reachable and refused consistently.
+
+    A missing parser flag is not a harmless omission: argparse's generic error
+    makes a deliberate immutable field look like an unfinished feature. Keep the
+    rejection driven by ``DIGEST_FIELDS`` while the mutable negative control
+    proves the refusal did not make update unusable.
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="digest refusal matrix", severity="med")
+    original = BACKLOG.load_entry(store, entry["id"])
+
+    for field in BACKLOG.DIGEST_FIELDS:
+        flag = f"--{field.replace('_', '-')}"
+        value = "APP" if field == "stream" else "replacement"
+        rc = BACKLOG.main([
+            "update", entry["id"], "--store", str(store), flag, value,
+            "--commit",
+        ])
+        assert rc == 64, f"{flag} was not refused by name: rc={rc}"
+        err = capsys.readouterr().err
+        assert flag in err, f"refusal does not name {flag}: {err!r}"
+        assert "cannot be changed" in err, err
+        assert "--resolution" in err, err
+        assert BACKLOG.load_entry(store, entry["id"]) == original
+
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--severity", "low", "--commit",
+    ]) == 0
+    capsys.readouterr()
+    assert BACKLOG.load_entry(store, entry["id"])["severity"] == "low"
+
+
 def test_refused_update_fields_are_exactly_the_digest_inputs_the_cli_exposes():
     """The refusal list is not an opinion — it is the digest signature.
 
@@ -4358,6 +4394,25 @@ def test_the_file_twin_of_a_refused_flag_is_refused_the_same_way(tmp_path, capsy
     assert rc == 64
     assert "--resolution" in capsys.readouterr().err, "the refusal lost its repair hint"
     assert BACKLOG.load_entry(store, entry["id"])["detail"] != "a reworded problem statement"
+
+
+def test_the_source_file_twin_is_refused_before_reading_or_writing(tmp_path, capsys):
+    store = tmp_path / "s"
+    src = tmp_path / "source.txt"
+    src.write_text("a source correction", encoding="utf-8")
+    entry = _add(store)
+
+    rc = BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--source-file", str(src), "--commit",
+    ])
+
+    assert rc == 64
+    err = capsys.readouterr().err
+    assert "--source-file" in err, err
+    assert "cannot be changed" in err, err
+    assert "--resolution" in err, err
+    assert BACKLOG.load_entry(store, entry["id"])["source"] != "a source correction"
 
 
 def test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin():
