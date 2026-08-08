@@ -89,11 +89,11 @@ WORKSPACES_DIR = ROOT / "workspaces"
 DEFAULT_WORKFLOW_VERSION = "v1"
 WORKFLOW_MANIFEST = "workflow_manifest.json"
 STAGE_PROVENANCE_DIR = "stage_provenance"
-# Stage 1-10 agent runner profile. `kimi` intentionally still invokes the
-# Claude Code CLI binary; it injects the same Anthropic-compatible env vars as
-# the user's shell function, so subprocesses and monitor jobs work without zsh.
-AGENT_PROFILES = ("claude", "kimi")
-KIMI_BASE_URL = "https://api.kimi.com/coding"
+# Stage 1-10 agent runner profile → its default model. Single source of truth
+# for the CLI choices and the monitor allowlist; add a key here to plug in
+# another billing backend (it must speak the Anthropic-compatible CLI contract).
+_PROFILE_DEFAULT_MODEL = {"claude": "opus[1m]"}
+AGENT_PROFILES = tuple(_PROFILE_DEFAULT_MODEL)
 
 
 def _normalize_agent_profile(profile: str | None) -> str:
@@ -115,7 +115,7 @@ def _resolve_agent_model(profile: str, explicit: str | None = None) -> str:
         return legacy
     # Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
     # series-polish) reason over multi-chapter context and benefit from 1M window.
-    return "kimi-for-coding" if profile == "kimi" else "opus[1m]"
+    return _PROFILE_DEFAULT_MODEL[profile]
 
 
 AGENT_PROFILE = _normalize_agent_profile(None)
@@ -136,37 +136,10 @@ def configure_agent(profile: str | None = None, model: str | None = None) -> Non
     os.environ["PODCAST_AGENT_MODEL"] = MODEL
 
 
-def _read_kimi_token(env: dict[str, str]) -> str:
-    token = (env.get("PODCAST_KIMI_API_KEY") or env.get("ANTHROPIC_AUTH_TOKEN") or "").strip()
-    if token:
-        return token
-    key_file = Path(os.path.expanduser(env.get("PODCAST_KIMI_KEY_FILE", "~/.secrets/kimi.env")))
-    try:
-        token = "".join(key_file.read_text().split())
-    except OSError:
-        _LOGGER.debug("Could not read Kimi token file: %s", key_file)
-        token = ""
-    if not token:
-        raise RuntimeError(
-            f"Kimi API key missing. Set PODCAST_KIMI_API_KEY or write the key to {key_file}."
-        )
-    return token
-
-
 def _agent_subprocess_env() -> dict[str, str]:
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    if AGENT_PROFILE == "kimi":
-        token = _read_kimi_token(env)
-        env.update({
-            "ANTHROPIC_BASE_URL": KIMI_BASE_URL,
-            "ANTHROPIC_AUTH_TOKEN": token,
-            "ANTHROPIC_MODEL": MODEL,
-            "ANTHROPIC_DEFAULT_OPUS_MODEL": MODEL,
-            "ANTHROPIC_DEFAULT_SONNET_MODEL": MODEL,
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL": MODEL,
-            "ANTHROPIC_SMALL_FAST_MODEL": MODEL,
-        })
-    return env
+    # The claude profile inherits the user's own Claude Code auth — no endpoint
+    # or token injection. A future third-party profile would add it here.
+    return {**os.environ, "PYTHONUNBUFFERED": "1"}
 
 
 # Stream claude CLI tool-use events live via stream-json. Default ON so the
@@ -2467,15 +2440,13 @@ examples:
     parser.add_argument(
         "--agent-profile", choices=list(AGENT_PROFILES),
         help="Stage 1-10 coding-agent billing/profile. claude uses the normal "
-        "Claude Code account; kimi injects Kimi Code endpoint/token env while "
-        "still invoking the claude CLI binary. Can also be set with "
-        "PODCAST_AGENT_PROFILE.",
+        "Claude Code account. Can also be set with PODCAST_AGENT_PROFILE.",
     )
     parser.add_argument(
         "--agent-model",
-        help="Stage 1-10 agent model override. Defaults: claude=opus[1m], "
-        "kimi=kimi-for-coding. PODCAST_AGENT_MODEL also works; legacy "
-        "PODCAST_CLAUDE_MODEL remains supported.",
+        help="Stage 1-10 agent model override. Default: claude=opus[1m]. "
+        "PODCAST_AGENT_MODEL also works; legacy PODCAST_CLAUDE_MODEL remains "
+        "supported.",
     )
     parser.add_argument(
         "--workflow-version",

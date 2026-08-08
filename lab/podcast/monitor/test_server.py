@@ -208,18 +208,18 @@ def test_start_pipeline_rejects_unknown_tts_model(client, spawn):
 def test_start_pipeline_agent_profile_metadata_and_env(client, spawn):
     resp = client.post(
         "/api/pipeline/start",
-        data={"parallel": "3", "agent_profile": "kimi", "agent_model": "kimi-for-coding"},
+        data={"parallel": "3", "agent_profile": "claude", "agent_model": "sonnet"},
         files={"epub": _epub("book.epub")},
     )
     assert resp.status_code == 200, resp.text
     assert spawn.argv[-4:] == [
-        "--agent-profile", "kimi",
-        "--agent-model", "kimi-for-coding",
+        "--agent-profile", "claude",
+        "--agent-model", "sonnet",
     ]
-    assert spawn.kwargs["metadata"]["agent_profile"] == "kimi"
-    assert spawn.kwargs["metadata"]["agent_model"] == "kimi-for-coding"
-    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "kimi"
-    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "kimi-for-coding"
+    assert spawn.kwargs["metadata"]["agent_profile"] == "claude"
+    assert spawn.kwargs["metadata"]["agent_model"] == "sonnet"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "claude"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "sonnet"
 
 
 def test_start_pipeline_rejects_unknown_agent_profile(client, spawn):
@@ -261,20 +261,20 @@ def test_start_saga_agent_profile_metadata_and_env(client, spawn):
         data={
             "title": "Saga",
             "spoiler_mode": "readalong",
-            "agent_profile": "kimi",
-            "agent_model": "kimi-for-coding",
+            "agent_profile": "claude",
+            "agent_model": "sonnet",
         },
         files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
     )
     assert resp.status_code == 200, resp.text
     assert spawn.argv[-4:] == [
-        "--agent-profile", "kimi",
-        "--agent-model", "kimi-for-coding",
+        "--agent-profile", "claude",
+        "--agent-model", "sonnet",
     ]
-    assert spawn.kwargs["metadata"]["agent_profile"] == "kimi"
-    assert spawn.kwargs["metadata"]["agent_model"] == "kimi-for-coding"
-    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "kimi"
-    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "kimi-for-coding"
+    assert spawn.kwargs["metadata"]["agent_profile"] == "claude"
+    assert spawn.kwargs["metadata"]["agent_model"] == "sonnet"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_PROFILE"] == "claude"
+    assert spawn.kwargs["env"]["PODCAST_AGENT_MODEL"] == "sonnet"
 
 
 # ── upload content-hash dedup (concurrent same-EPUB guard) ──────────────────

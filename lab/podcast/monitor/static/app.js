@@ -41,7 +41,7 @@ function persistSidebarUI() {
 // means "let synthesize.py use its env default" and sends no --tts-model.
 const SETTINGS_LS_KEY = "podcast-monitor:settings";
 const ALLOWED_TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-pro-tts", "gemini-2.5-flash-tts"];
-const ALLOWED_AGENT_PROFILES = ["claude", "kimi"];
+const ALLOWED_AGENT_PROFILES = ["claude"];
 const settings = (() => {
   const defaults = { parallel: 3, ttsModel: "", agentProfile: "claude", agentModel: "" };
   try {
@@ -959,14 +959,11 @@ function refreshTtsRisk() {
 }
 
 function refreshAgentHint() {
-  const profile = $("#set-agent-profile").value;
   const model = $("#set-agent-model");
   const hint = $("#set-agent-hint");
   if (!model || !hint) return;
-  model.placeholder = profile === "kimi" ? "kimi-for-coding" : "opus[1m]";
-  hint.textContent = profile === "kimi"
-    ? "uses ~/.secrets/kimi.env or PODCAST_KIMI_API_KEY, billed via Kimi Code"
-    : "uses the normal Claude Code account; blank model defaults to opus[1m]";
+  model.placeholder = "opus[1m]";
+  hint.textContent = "uses the normal Claude Code account; blank model defaults to opus[1m]";
 }
 
 function refreshDropzonePrompt() {
