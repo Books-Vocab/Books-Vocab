@@ -81,6 +81,20 @@ Next:
 - **stream 決定 owner,所以填錯等於沒人追**:`--stream IMP` 由 `platform-steward` 追到 resolved;`--stream APP` 由對應 Line worker(`ios-engineer` / `backend-engineer`)追到 resolved,其取票入口是 `./ops/backlog.py dispatch --stream APP`(已梳理 ∧ 未解 ∧ 未被認領;`list --stream APP` 是**全表**,拿來查重不是拿來取票)。判準見上方 Checklist 的「Stream 分流」。
 - 這條判準只有**一半**是機器守的:`add --stream IMP --surface ...` 會 exit 64 被拒(`ops/tests/test_backlog.py` 釘住);反向——該進 APP 的填成 IMP——沒有任何工具擋得住,所以那一半靠上面的判準自律。
 
+### `pytest -k` acceptance 的選擇數對帳
+
+`pytest -k` 只保證命中的測試會被執行；selector 若因改名而選不到，可能仍然留下
+一條看似完整但實際沒有覆蓋的判準。因此 acceptance command 要先用
+`--collect-only` 對帳選中數，再跑真正測試。期望數來自 acceptance 散文列出的判準，
+並使用大括號終止 shell 變數：
+
+```bash
+bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::"); [ "${N}" -ge EXPECTED ]; uv run … pytest -q -k "EXPR"'
+```
+
+`backlog.py update --acceptance-cmd` 對可辨識的直接 `pytest -k` 命令會印出
+`selected=<N>`；這是寫入時的非阻擋提示，不取代結案時對 acceptance command 的實跑。
+
 ## Handoff Prompt Rule
 
 若使用者要交接 prompt，必須包含：

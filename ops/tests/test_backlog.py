@@ -3860,6 +3860,66 @@ def _groomed(store, cmd="true", expect_rc=0, **overrides):
     return entry
 
 
+def test_update_acceptance_cmd_selector_count_is_printed(tmp_path, capsys):
+    """Writing a pytest ``-k`` criterion exposes how many tests it selects."""
+    store = tmp_path / "s"
+    tests = tmp_path / "test_selector_probe.py"
+    tests.write_text(
+        "def test_needlealpha_first(): pass\n"
+        "def test_needlealpha_second(): pass\n"
+        "def test_other(): pass\n",
+        encoding="utf-8",
+    )
+    entry = _add(store)
+    cmd = (
+        "uv run --no-project --python 3.13 --with pytest pytest -q "
+        f"-p no:cacheprovider {tests} -k needlealpha"
+    )
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--acceptance-cmd", cmd, "--commit", "--json"]) == 0
+    err = capsys.readouterr().err
+    assert "selector-count" in err and "selected=2" in err, err
+    assert BACKLOG.load_entry(store, entry["id"])["acceptance_cmd"] == cmd
+
+
+def test_update_acceptance_cmd_zero_selector_count_is_visible_but_nonblocking(
+        tmp_path, capsys):
+    """A zero-selection probe is evidence for the author, not a write refusal."""
+    store = tmp_path / "s"
+    tests = tmp_path / "test_selector_probe.py"
+    tests.write_text("def test_other(): pass\n", encoding="utf-8")
+    entry = _add(store)
+    cmd = (
+        "uv run --no-project --python 3.13 --with pytest pytest -q "
+        f"-p no:cacheprovider {tests} -k needle_never_matches"
+    )
+
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--acceptance-cmd", cmd, "--commit", "--json"]) == 0
+    err = capsys.readouterr().err
+    assert "selector-count" in err and "selected=0" in err, err
+    assert BACKLOG.load_entry(store, entry["id"])["acceptance_cmd"] == cmd
+
+
+def test_update_acceptance_cmd_selector_count_unavailable_probe_is_nonblocking(
+        tmp_path, capsys, monkeypatch):
+    """A missing probe executable must not abort the criterion write."""
+    store = tmp_path / "s"
+    entry = _add(store)
+    cmd = "pytest -q -k needlealpha"
+
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("pytest")
+
+    monkeypatch.setattr(BACKLOG, "run_streamed_command", unavailable)
+    assert BACKLOG.main(["update", entry["id"], "--store", str(store),
+                         "--acceptance-cmd", cmd, "--commit", "--json"]) == 0
+    err = capsys.readouterr().err
+    assert "selected=unavailable" in err and "non-blocking" in err, err
+    assert BACKLOG.load_entry(store, entry["id"])["acceptance_cmd"] == cmd
+
+
 def test_update_refuses_to_close_when_the_acceptance_is_red(tmp_path, capsys):
     """The door most likely to be used by hand, and it checked nothing.
 
