@@ -666,7 +666,7 @@ cmd_backup() {
     touch "$dest/.INCOMPLETE" 2>/dev/null || true
     echo "" >&2
     echo "  本機 rsync：$(rsync --version 2>&1 | head -1)" >&2
-    echo "  已建立但**不完整**、不可當備份用的目錄：$dest（已標記 .INCOMPLETE）" >&2
+    echo "  已建立但**不完整**、不可當備份用的目錄：${dest}（已標記 .INCOMPLETE）" >&2
     echo "  災難復原請改用 standby 的每日 S3 備份（launchd com.kg.backup →" >&2
     echo "  ops/kg_backup.sh，見 docs/sop/deploy.md）；那條路徑與本指令各自獨立。" >&2
     err "本地冷快照失敗：rsync 非零退出（上方為 rsync 自身輸出）。此指令沒有產出可用備份。"
