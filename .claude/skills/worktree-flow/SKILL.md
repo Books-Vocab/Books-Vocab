@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
+description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
 user-invocable: true
 version: 2.0.0
 ---
@@ -220,13 +220,31 @@ task brief 的「邊界」一欄要寫明這件事，並要求回報分支名與
 
 流程：
 
-1. **從當前本地 main 開整合工作樹**：`open --intent "integrate <batch>" --slug integrate-<batch>`。
-2. **收集 N 條分支**。`cherry-pick` 而非 `merge`：merge 會把分支**碰巧帶著**的別人的 commit
-   一起復活（實測踩過——兩條分支各帶著另一個 session 已丟棄的 commit）。cherry-pick 讓你
-   逐顆決定。
-3. **衝突只解一次**。生成產物重跑 generator，不手改；表格列用前後綴接合再修散文；純新增的
-   程式碼 hunk 取兩邊。
-4. **合併後才 gate**，然後**一次 cutover**。
+1. **`integrate` 就是前四步**（開整合樹 → 依序 cherry-pick → 衝突具名停 → 合併後跑一次 gate）：
+```
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --branches <b1> <b2> … --json
+#   ↑ dry-run：逐顆列出每條分支會被 pick 的 commit，什麼都不建
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --branches <b1> <b2> … --commit --json
+```
+   **`cherry-pick` 而非 `merge`**（工具內建，不是慣例）：merge 會讓每條來源分支的整段祖先
+   變成結果的祖先，把它**碰巧帶著**的別人的 commit 一起復活（實測踩過——兩條分支各帶著另一個
+   session 已丟棄的 commit）。picking 是逐顆的，所以進來的每一顆都是有人指名的。來源分支
+   **解不出 / 帶 merge commit / 在 `main..<branch>` 沒有任何 commit**，一律**具名拒絕**
+   （EXIT_USAGE）——靜靜跳過一顆 commit 正是這個動詞存在要防的事。
+2. **衝突只解一次**。工具停在那一顆並具名衝突檔（payload 的 `conflicts` / `stopped` /
+   `picked` / `remaining`）。在整合工作樹裡解、`git add`，然後：
+```
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --json
+```
+   解法原則不變：生成產物重跑 generator，不手改；表格列用前後綴接合再修散文；純新增的
+   程式碼 hunk 取兩邊。要放棄整批用 `--abort --commit`——它只解掉進行中的 cherry-pick 並忘掉
+   整合狀態，**工作樹留著**（拆除是 `resolve` 的事，也只有它會過 landed-floor）。
+3. **合併後那一次 gate 由 `integrate` 自己跑**，verdict **綁整合後的 HEAD**，不是任一原分支的
+   HEAD——那正是本段開頭那五筆 BLOCK 逃掉的地方。in-flight 狀態存在
+   `<anchor>/.cache/worktree_integrations/<slug>.json`（per-machine、gitignored）。
+4. **`integrate` 不落地**：verdict 非 block 後**你**再跑一次 `cutover`。「非 block 才准落地」
+   那條規則只住在 `cutover` 裡，`integrate` 不重判——這是「不重造 gate」硬邊界的直接後果，
+   而不是省事。
 5. **resolve 每一條來源分支**——見下方警告。
 
 **收尾（N=10 實測 floor 必定 10/10 拒絕，用 `--via-integration` 一行過）**：`ops/worktree_loadtest.py --mode batch -n 10 --conflict shared` 量到：整合本身全綠（9/10 cherry-pick 衝突、零列遺失、gate 跑 1 次、cutover landed、27.9 秒），但**十條來源分支全部拒絕拆除**。所以請把下面這段當成必經流程而不是例外處理，並先讀 `IMP-20260808-77f2bd`——那條在提議讓工具自己跑審計。批次整合過的分支清不掉，而**兩道拒絕的理由不同**——`sweep` 對「工作樹還在」的分支一律 KEEP（那與包含性無關），`resolve` 才是被包含性判準擋下。後者的判準是「這分支動過的每個檔，main 現在是不是就是這分支的版本」；而

@@ -5314,3 +5314,337 @@ def test_resolve_refuses_without_the_flag_and_accepts_with_it(scratch):
     assert all(c["match"] for c in ok["audit"]["commits"]), ok["audit"]
     assert all(c["matched_sha"] for c in ok["audit"]["commits"]), ok["audit"]
     assert not Path(wt).exists(), "worktree survived a vouched-for resolve"
+
+
+# ---------------------------------------------------------------------------
+# integrate — N branches, ONE gate (IMP-20260807-267d60)
+#
+# The verb exists for one answer nothing else can produce: "do these N pieces of
+# work still hold together". Measured 2026-08-06 on an eleven-branch batch — review
+# of the integrated tree found FIVE blocking defects, and every one of them was
+# green under its own branch's gate. So the property under test is not "integrate
+# succeeded"; it is that the verdict is bound to the INTEGRATED head, that the
+# stop-on-conflict names the file, and that nothing here invents a pass/fail of its
+# own (the gate stays the only judge, and cutover stays the only lander).
+# ---------------------------------------------------------------------------
+def _make_branch(repo, branch, files, msg, base="main"):
+    """A branch carrying exactly one commit, with the primary left back on `base`."""
+    _git(["checkout", "-q", "-b", branch, base], repo)
+    for rel, body in files.items():
+        (Path(repo) / rel).write_text(body)
+        _git(["add", rel], repo)
+    _git(["commit", "-qm", msg], repo)
+    _git(["checkout", "-q", base], repo)
+    return _git(["rev-parse", branch], repo)
+
+
+def _commit_on(repo, branch, files, msg, back_to="main"):
+    _git(["checkout", "-q", branch], repo)
+    for rel, body in files.items():
+        (Path(repo) / rel).write_text(body)
+        _git(["add", rel], repo)
+    _git(["commit", "-qm", msg], repo)
+    sha = _git(["rev-parse", "HEAD"], repo)
+    _git(["checkout", "-q", back_to], repo)
+    return sha
+
+
+def _conflicting_pair(repo):
+    """Two branches that both create `shared.txt` — an add/add conflict on the SECOND
+    cherry-pick — and `feat/b` carries a FURTHER commit after the conflicting one.
+
+    That trailing commit is load-bearing for the tests, not decoration. With the
+    conflict on the last commit of the last branch there is nothing left to pick once
+    it is resolved, so "gate the moment the conflict is settled" and "gate when the
+    queue is empty" become the same program and no assertion can tell them apart —
+    which is precisely the mistake (a verdict bound to a tree that is not the final
+    one) the whole ticket is about."""
+    a = _make_branch(repo, "feat/a", {"shared.txt": "alpha\n"}, "work: a")
+    b1 = _make_branch(repo, "feat/b", {"shared.txt": "beta\n"}, "work: b1")
+    b2 = _commit_on(repo, "feat/b", {"b.txt": "b\n"}, "work: b2")
+    return a, b1, b2
+
+
+@gitmark
+def test_integrate_dry_run_names_every_commit_and_creates_nothing(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    b = _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/b",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert pay["mode"] == "dry-run", pay
+    picks = {p["branch"]: [c["sha"] for c in p["commits"]] for p in pay["plan"]}
+    assert picks == {"feat/a": [a], "feat/b": [b]}, pay
+    # dry-run means dry-run: no worktree, no branch, no resumable state on disk.
+    assert not (Path(repo) / ".claude" / "worktrees" / "batch").exists()
+    assert "feat/batch" not in _local_branches(repo)
+    assert not MODULE._integrate_state_path(state, "batch").exists()
+
+
+@gitmark
+def test_integrate_stops_at_the_conflicting_branch_and_names_the_file(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a, b1, b2 = _conflicting_pair(repo)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/b",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    # NAMING the file is the whole point: "cherry-pick failed" leaves the reader
+    # exactly where a bare non-zero exit would.
+    assert pay["conflicts"] == ["shared.txt"], pay
+    assert pay["stopped"]["branch"] == "feat/b", pay
+    assert pay["stopped"]["sha"] == b1, pay
+    # It stops, it does not roll back: the first branch is already applied, and the
+    # commit it stopped on is still at the head of the queue with its successor.
+    assert [p["branch"] for p in pay["picked"]] == ["feat/a"], pay
+    assert [c["sha"] for c in pay["remaining"]] == [b1, b2], pay
+    wt = pay["worktree"]
+    assert MODULE._interrupted_operation(wt) == "cherry-pick"
+    assert "<<<<<<<" in (Path(wt) / "shared.txt").read_text()
+    assert MODULE._integrate_state_path(state, "batch").exists(), (
+        "a stop with no resumable state on disk makes --continue impossible")
+
+
+@gitmark
+def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratch):
+    """The acceptance criterion of IMP-20260807-267d60, stated as an assertion.
+
+    A verdict bound to any source branch's HEAD is precisely the verdict the batch
+    already had before integrating, and the one that missed five defects."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a, b1, b2 = _conflicting_pair(repo)
+
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, stopped
+    wt = stopped["worktree"]
+
+    (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
+    _git(["add", "shared.txt"], wt)
+
+    rc, done = _run_json(["integrate", "--slug", "batch", "--state", state,
+                          "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, done
+    assert done["gate"]["verdict"] in ("pass", "warn"), done
+
+    integrated = _git(["rev-parse", "HEAD"], wt)
+    assert done["head_sha"] == integrated, done
+    rec = json.loads(MODULE._gate_record_path(state, wt).read_text())
+    assert rec["head_sha"] == integrated, rec["head_sha"]
+    assert rec["head_sha"] not in (a, b1, b2), (
+        "the verdict is bound to a SOURCE branch head — that is the pre-integration "
+        "verdict wearing a new name")
+    # Everything both branches contributed is inside the tree that was judged —
+    # including feat/b's commit AFTER the conflicted one, which is what a gate fired
+    # the moment the conflict settled would be missing.
+    assert set(rec["changed_files"]) == {"shared.txt", "b.txt"}, rec["changed_files"]
+    assert [c["sha"] for c in done["picked"]] == [a, b1, b2], done["picked"]
+    assert (Path(wt) / "shared.txt").read_text() == "alpha\nbeta\n"
+
+
+@gitmark
+def test_integrate_runs_the_gate_once_for_the_whole_batch(scratch):
+    """Counted from the gate's OWN journal, not from a number integrate reports about
+    itself. A per-branch implementation would report `gate_runs: 1` just as happily."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/b",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    rows = MODULE.gate_history_rows(state)
+    assert [r["gate"] for r in rows] == ["coverage"], rows
+    wt_key = MODULE.hashlib.sha256(
+        MODULE._norm(pay["worktree"]).encode()).hexdigest()[:16]
+    assert rows[0]["wt"] == wt_key, rows
+
+
+@gitmark
+def test_integrate_copies_commits_rather_than_merging_the_sources(scratch):
+    """cherry-pick, not merge. A merge would make the source commits ancestors of the
+    integrated head, which drags along whatever else those branches happened to be
+    carrying — measured on the 2026-08-06 batch, two branches each carried another
+    session's discarded commit.
+
+    The trunk is advanced AFTER the branches are cut, deliberately. Without that, the
+    first cherry-pick lands on the very parent the commit already had and git
+    reproduces the identical sha, so `a not in shas` would be measuring the clock
+    (committer dates have one-second granularity) rather than the operation. Moving
+    the trunk makes a rewrite unavoidable — and it is also the real shape: branches
+    are cut, then main moves under them."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a = _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    b = _make_branch(repo, "feat/b", {"b.txt": "b\n"}, "work: b")
+    _advance_local_main(repo, "trunkmove")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/b",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    wt = pay["worktree"]
+    shas = _git(["rev-list", "main..HEAD"], wt).split()
+    assert len(shas) == 2, shas
+    assert a not in shas and b not in shas, (
+        "the source commits are ancestors of the integrated head — that is a merge")
+    assert _git(["rev-list", "--merges", "main..HEAD"], wt).split() == []
+    assert (Path(wt) / "a.txt").exists() and (Path(wt) / "b.txt").exists()
+    # every commit that arrived is one the tool NAMED, source sha and new sha both
+    assert {(c["sha"], c["new_sha"]) for c in pay["picked"]} == {
+        (a, shas[1]), (b, shas[0])}, pay["picked"]
+    # the source branches are untouched by the integration
+    assert _git(["rev-parse", "feat/a"], repo) == a
+    assert _git(["rev-parse", "feat/b"], repo) == b
+
+
+@gitmark
+def test_integrate_does_not_advance_the_trunk(scratch):
+    """`integrate` gates; `cutover` lands. Keeping the two apart is what leaves the
+    existing "no block verdict may land" contract as the ONE place that rule lives."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert "a.txt" not in _local_main_files(repo)
+    assert "cutover" in pay["next_step"], pay
+
+
+@gitmark
+def test_integrate_refuses_a_second_start_while_one_is_in_flight(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _conflicting_pair(repo)
+    rc, _stopped = _run_json(["integrate", "--slug", "batch",
+                              "--branches", "feat/a", "feat/b",
+                              "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    rc, again = _run_json(["integrate", "--slug", "batch",
+                           "--branches", "feat/a", "feat/b",
+                           "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_USAGE, again
+    assert "--continue" in again["error"] and "--abort" in again["error"], again
+
+
+@gitmark
+def test_integrate_continue_without_an_integration_says_which_one_is_missing(scratch):
+    tmp_path, _repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, pay = _run_json(["integrate", "--slug", "ghost", "--state", state,
+                         "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_USAGE, pay
+    assert "ghost" in pay["error"], pay
+
+
+@gitmark
+def test_integrate_continue_refuses_while_paths_are_still_unmerged(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _conflicting_pair(repo)
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["conflicts"] == ["shared.txt"], pay
+    # and nothing was gated over the conflicted tree
+    assert not MODULE._gate_record_path(state, stopped["worktree"]).exists()
+
+
+@gitmark
+def test_integrate_abort_clears_the_in_flight_cherry_pick(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _conflicting_pair(repo)
+    rc, stopped = _run_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK
+    wt = stopped["worktree"]
+
+    rc, dry = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--abort", "--json"])
+    assert rc == MODULE.EXIT_OK and dry["mode"] == "dry-run", dry
+    assert MODULE._interrupted_operation(wt) == "cherry-pick", (
+        "a dry-run abort aborted something")
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--state", state,
+                         "--abort", "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, pay
+    assert MODULE._interrupted_operation(wt) is None
+    assert not MODULE._integrate_state_path(state, "batch").exists()
+    # The worktree itself survives: teardown is `resolve`'s job, and it is the only
+    # step that consults the landed-floor.
+    assert Path(wt).is_dir()
+    assert "resolve" in pay["next_step"], pay
+
+
+@gitmark
+def test_integrate_names_a_branch_that_does_not_resolve(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    rc, pay = _run_json(["integrate", "--slug", "batch",
+                         "--branches", "feat/a", "feat/nope",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE, pay
+    assert any("feat/nope" in p for p in pay["problems"]), pay
+    assert not any("feat/a" in p for p in pay["problems"]), pay
+
+
+@gitmark
+def test_integrate_refuses_a_branch_carrying_a_merge_commit(scratch):
+    """A merge commit has no single parent to diff against, so `rev-list --no-merges`
+    would drop it silently — and silently dropping a commit is the failure mode the
+    whole verb exists to prevent."""
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/side", {"side.txt": "s\n"}, "work: side")
+    _git(["checkout", "-q", "-b", "feat/m", "main"], repo)
+    (Path(repo) / "m.txt").write_text("m\n")
+    _git(["add", "m.txt"], repo)
+    _git(["commit", "-qm", "work: m"], repo)
+    _git(["merge", "--no-ff", "-q", "-m", "merge side", "feat/side"], repo)
+    merge_sha = _git(["rev-parse", "HEAD"], repo)
+    _git(["checkout", "-q", "main"], repo)
+
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/m",
+                         "--state", state, "--json"])
+    assert rc == MODULE.EXIT_USAGE, pay
+    assert any(merge_sha[:8] in p for p in pay["problems"]), pay
+
+
+@gitmark
+def test_integrate_is_refused_while_the_flow_is_frozen(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    _make_branch(repo, "feat/a", {"a.txt": "a\n"}, "work: a")
+    rc, _ = _run_json(["freeze", "on", "--reason", "surgery", "--state", state,
+                       "--json"])
+    assert rc == MODULE.EXIT_OK
+    rc, pay = _run_json(["integrate", "--slug", "batch", "--branches", "feat/a",
+                         "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, pay
+    assert pay["error"] == "frozen", pay
+
+
+def test_integrate_is_wired_into_the_parser():
+    p = MODULE.build_parser()
+    ns = p.parse_args(["integrate", "--slug", "b", "--branches", "x", "y"])
+    assert ns.func is MODULE.cmd_integrate
+    assert ns.branches == ["x", "y"] and ns.commit is False
