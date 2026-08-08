@@ -531,3 +531,62 @@ fi
 # natural thing to type and the old help actively taught the two-dot form.
 grep -q '\.\.\.HEAD' "$tmpdir/help.out"
 grep -q 'merge-base' "$tmpdir/help.out"
+
+# Agent-facing surface paths are registry-owned and must include dot-directories
+# without widening the scan to frozen backlog records.
+./ops/docs_impact.py --surface-paths >"$tmpdir/surface_paths.out"
+grep -qxF '.claude/agents/' "$tmpdir/surface_paths.out"
+grep -qxF 'docs/reference/tech_index.md' "$tmpdir/surface_paths.out"
+grep -qxF 'docs/runbook/system.md' "$tmpdir/surface_paths.out"
+if grep -qxF 'docs/runbook/' "$tmpdir/surface_paths.out"; then
+  echo "surface paths must not include the frozen docs/runbook backlog" >&2
+  exit 1
+fi
+
+# The scan must traverse dot-directories itself, not delegate to rg (which skips
+# them by default). A fixture keeps this long-lived test independent of repo prose.
+mkdir -p "$tmpdir/tree/.claude/agents"
+printf '%s\n' 'NEEDLE-XYZ in agent' >"$tmpdir/tree/.claude/agents/w.md"
+printf '%s\n' 'NEEDLE-XYZ in top' >"$tmpdir/tree/top.md"
+cat >"$tmpdir/tree/reg.yml" <<'EOF'
+version: 1
+description: fixture
+agent_facing_surface:
+  paths:
+    - .claude/agents/
+    - top.md
+EOF
+scan_out="$($ROOT/ops/docs_impact.py --root "$tmpdir/tree" --registry "$tmpdir/tree/reg.yml" --surface-scan 'NEEDLE-XYZ')"
+printf '%s\n' "$scan_out" | grep -qE '^SURFACE \.claude/agents/w\.md:1:'
+printf '%s\n' "$scan_out" | grep -qE '^SURFACE top\.md:1:'
+
+# Missing registry control data must fail closed and emit no path payload.
+cat >"$tmpdir/tree/no-surface.yml" <<'EOF'
+version: 1
+description: fixture without the control plane
+EOF
+if "$ROOT/ops/docs_impact.py" --root "$tmpdir/tree" --registry "$tmpdir/tree/no-surface.yml" --surface-paths \
+    >"$tmpdir/no_surface.out" 2>"$tmpdir/no_surface.err"; then
+  echo "missing agent_facing_surface.paths must fail closed" >&2
+  exit 1
+fi
+if [ -s "$tmpdir/no_surface.out" ]; then
+  echo "fail-closed surface lookup must not emit a partial path list" >&2
+  exit 1
+fi
+grep -q 'agent_facing_surface.paths' "$tmpdir/no_surface.err"
+
+# A stale path must not silently shrink the surface scan.
+cat >"$tmpdir/tree/missing-path.yml" <<'EOF'
+version: 1
+description: fixture with a stale path
+agent_facing_surface:
+  paths:
+    - missing/
+EOF
+if "$ROOT/ops/docs_impact.py" --root "$tmpdir/tree" --registry "$tmpdir/tree/missing-path.yml" \
+    --surface-scan 'NEEDLE-XYZ' >"$tmpdir/missing_path.out" 2>"$tmpdir/missing_path.err"; then
+  echo "missing surface path must fail closed" >&2
+  exit 1
+fi
+grep -q 'missing/' "$tmpdir/missing_path.err"

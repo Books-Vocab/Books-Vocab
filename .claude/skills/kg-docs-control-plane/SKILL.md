@@ -56,19 +56,13 @@ version: 1.0.0
 
 ## Agent-Facing Surface Sync
 
-改到 CLI subcommand、flag、env var、admin endpoint、設定 schema、ops control plane、skill 觸發語時，同一輪檢查：
+改到 CLI subcommand、flag、env var、admin endpoint、設定 schema、ops control plane、skill 觸發語時，同一輪跑：
 
 ```bash
-rg -n "<old-command|old-flag|old-field>" .claude/skills docs/reference docs/sop docs/policy docs/runbook AGENTS.md CLAUDE.md
+./ops/docs_impact.py --surface-scan '<舊命令|舊旗標|舊欄位>'
 ```
 
-需要同步的常見落點：
-
-- `docs/reference/tech_index.md`
-- `docs/reference/product_surface.md`
-- `docs/runbook/system.md`
-- `.claude/skills/*/SKILL.md`
-- `AGENTS.md`
+掃描範圍唯一 SoT 是 `docs/registry.yml` 的 `agent_facing_surface`；不要自己用 `rg`，它預設跳過 `.claude/`。命中舊介面而未同步就標 BLOCK。落點清單已收進控制面，這裡不再複述。
 
 ## Output Contract
 

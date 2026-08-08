@@ -14,6 +14,10 @@ verified_against: db0e9ed46
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。
 新增 router / table / env var / ops 腳本時,**同 PR 內補一行**。
 
+### docs impact control
+
+`ops/docs_impact.py` 的 `--surface-paths` 逐字輸出 `docs/registry.yml` 的 `agent_facing_surface.paths`；`--surface-scan <pattern>` 以內建 regex 走訪該清單（含 `.claude/`）並輸出 `SURFACE path:line:` 命中；`--root <dir>` 供 fixture 或隔離樹指定根目錄。缺少清單或清單路徑不存在時 fail-closed。
+
 ---
 
 ## Backend API Routers (`backend/src/kg/routers/`)
