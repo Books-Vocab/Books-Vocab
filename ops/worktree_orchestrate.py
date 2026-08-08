@@ -430,7 +430,22 @@ def _unclaimable(store_dir: Path, ids: list[str]) -> list[dict]:
                           f"for whoever SORTS the board, not for you: what breaks "
                           f"and who feels it, and how big the change is). "
                           f"To take it as an INVESTIGATION rather than a fix, pass "
-                          f"--allow-ungroomed"})
+                          f"--allow-ungroomed. "
+                          # Two different needs, so two different exits, and the
+                          # second one used to be missing. Everything above answers
+                          # "I need THIS ticket" — it hands back a grooming chore to
+                          # a caller who may not have wanted this ticket at all, only
+                          # A ticket. The common way to arrive here is picking an id
+                          # off a list that does not distinguish claimable from not,
+                          # and for that caller the cheapest correct move is to take
+                          # a different one. Named, not called: this refusal runs on
+                          # the claim path before any worktree exists, where the
+                          # orchestrator must keep working even when the rest of the
+                          # toolchain does not (see this function's docstring).
+                          f"If you did not need THIS ticket specifically, "
+                          f"`ops/backlog.py dispatch` lists the ones that are "
+                          f"already groomed, unresolved and unclaimed — i.e. the "
+                          f"ones you can take right now without grooming anything"})
     return problems
 
 DATA_PLANE_OWNERS: dict[str, tuple[list[str], ...]] = {
@@ -3274,6 +3289,7 @@ def _integrate_start(args, spath: Path) -> int:
         "trunk": trunk, "worktree": opay["path"], "branch": opay["branch"],
         "branches": list(args.branches),
         "queue": [c for p in plan for c in p["commits"]],
+        "planned_total": total,
         "picked": [], "skipped": [],
         "opened_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
@@ -3333,9 +3349,50 @@ def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
     identity against the worktree's own copy, so re-execing a different copy is the
     failure that check exists to catch."""
     wt = st["worktree"]
+    # Before spending a gate — and before WRITING a verdict cutover will trust —
+    # check that the tree about to be judged is the batch that was asked for. Every
+    # commit leaves the queue into exactly one of `picked` / `skipped`, so the sum is
+    # an invariant of this tool's own bookkeeping, not a judgement about the code
+    # (the hard boundary is "do not re-decide pass/fail", and this decides neither).
+    # It is worth stating because the failure it catches is invisible: a batch that
+    # lost a branch's work still gates GREEN, and green is exactly what cutover is
+    # waiting for. Same family as cutover's `gated_sha == rebased_sha` terminal check.
+    # Refusing here means no verdict is recorded at all, so cutover then refuses with
+    # "no gate verdict on record" rather than landing a short batch.
+    planned = st.get("planned_total")
+    accounted = len(st["picked"]) + len(st.get("skipped", []))
+    if planned is not None and accounted != planned:
+        msg = (f"integration bookkeeping does not add up: {planned} commit(s) were "
+               f"planned but {accounted} are accounted for "
+               f"({len(st['picked'])} picked + {len(st.get('skipped', []))} skipped) "
+               f"— refusing to gate, because a batch that quietly lost a branch's "
+               f"work gates GREEN and green is what `cutover` waits for. Inspect "
+               f"{wt} and the state file, then `--abort --commit` and start over")
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "slug": st["slug"], "worktree": wt, "error": msg,
+               "planned_total": planned, "accounted": accounted,
+               "picked": st["picked"], "skipped": st.get("skipped", []),
+               "remaining": st["queue"]}, args.json,
+              f"✗ integrate refused: {msg}")
+        return EXIT_BLOCK
+
     grc, gpay = _land_step(cmd_gate, state=args.state, json=True, base=args.base,
                            worktree=wt, receipt_line=False, plan_only=False)
     verdict = gpay.get("verdict")
+    if verdict is None:
+        # `gate` REFUSED rather than judged (mid-operation tree, orchestrator
+        # mismatch, base moved under us) — its payload carries `error` and no
+        # `verdict`. Falling through would report "gate verdict: None" and then tell
+        # the reader to "fix the blocking gate(s)", which is advice for a different
+        # problem entirely; the actual reason is right there in gate's own payload
+        # and must be the thing that reaches the operator.
+        why = gpay.get("error") or f"gate produced no verdict (rc={grc})"
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "slug": st["slug"], "worktree": wt, "head_sha": _head_sha(wt),
+               "error": f"the gate refused to judge this tree: {why}",
+               "gate_rc": grc, "gate_payload": gpay}, args.json,
+              f"✗ integrate: the gate refused to judge {wt}:\n  {why}")
+        return EXIT_BLOCK
     head = _head_sha(wt)
     st["gate"] = {
         "verdict": verdict, "rc": grc, "head_sha": gpay.get("head_sha"),
@@ -3404,6 +3461,23 @@ def _integrate_continue(args, spath: Path) -> int:
                "error": f"the integration worktree is gone ({wt}) — nothing to "
                         f"continue; discard the state with `--abort --commit`"},
               args.json, f"✗ integrate --continue refused: {wt} is gone")
+        return EXIT_BLOCK
+
+    here = _current_branch(wt)
+    if here != st.get("branch"):
+        # Cheap, and it guards the same thing F1 does from the other side: the state
+        # file says which branch this integration is assembling, and everything after
+        # this point (the picks, the verdict, the sha cutover will land) is about
+        # whatever branch is actually checked out. A worktree someone moved is not a
+        # worktree this integration can speak for.
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "refused",
+               "slug": args.slug, "worktree": wt, "expected_branch": st.get("branch"),
+               "actual_branch": here,
+               "error": f"{wt} is on {here!r}, but this integration is assembling "
+                        f"{st.get('branch')!r} — check the branch back out, or "
+                        f"`--abort --commit` and start over"}, args.json,
+              f"✗ integrate --continue refused: {wt} is on {here!r}, not "
+              f"{st.get('branch')!r}")
         return EXIT_BLOCK
 
     unmerged = _unmerged_paths(wt)
