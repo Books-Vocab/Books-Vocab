@@ -219,6 +219,12 @@ struct BooksAndVocabApp: App {
                 #endif
                 .task {
                     guard !AppRuntimeOptions.shouldSkipNonessentialStartupWork(arguments: runtimeArguments) else { return }
+                    // A pending language switch wants the TipKit datastore wiped so
+                    // cached tip text re-renders in the new language. TipKit only
+                    // accepts resetDatastore() *before* configure(), so it is drained
+                    // here and nowhere else; a failed drain keeps the flag for the
+                    // next cold launch. See PendingTipsReset (APP-20260806-498c25).
+                    PendingTipsReset.consume { try Tips.resetDatastore() }
                     try? Tips.configure()
                 }
                 .task {
