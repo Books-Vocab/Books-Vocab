@@ -3015,6 +3015,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     # tell that the fingerprint belonged to the earlier tree.
     head = _head_sha(worktree)
     changed = _changed_vs_base(worktree, args.base)
+    no_changed_files = not changed
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
     plan = plan_gates(changed,
@@ -3085,6 +3086,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
     record = {"schema": GATE_SCHEMA, "worktree": worktree, "base": args.base,
               "head_sha": head, "orchestrator": orch, "changed_files": changed,
+              "no_changed_files": no_changed_files,
               "plan": [{"name": g["name"], "level": g["level"], "category": g["category"],
                         "cmd": g.get("cmd")} for g in plan],
               "gates": results, "verdict": verdict,
