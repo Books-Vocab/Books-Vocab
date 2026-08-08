@@ -6,14 +6,21 @@
   "date": "2026-08-06",
   "detail": "Today Review 卡片對 UI test 幾乎不可觀測：front fold 在 container 上掛 .accessibilityLabel，SwiftUI 因此把整個正面併成單一 a11y element，並把 todayReview.card.front 這個 identifier 重複掛在 2-3 個 ~36pt 的巢狀 button 上。結果是 (a) 卡片上實際渲染了哪些欄位無法斷言、(b) 量到的 card 高度是 36pt 而非卡片框、(c) 已由截圖證實發生的 relayout，expandZone.frame.minY 完全不動。本輪因此只能改用『設定頁摘要 + 截圖』間接證明 profile 有到 UI。同一件事也讓 VoiceOver 讀不到背面的知識連結／搭配詞／新增連結按鈕。建議：給卡片一組可定址的 per-face 結構（或 children: .contain），一次修好 a11y 與可測性。量測記錄留在 ios/BooksAndVocabUITests/Pages/TodayReviewPage.swift 檔內註解。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:frontFoldSurface (第 53-59 行的 modifier 串)",
+  "fixed_by": [
+    "2ac7ba258344f2b22be40670d26a872bd46d5d4a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-3e18b5",
   "plan": "同一個根因已由 APP-20260806-761370（severity high、open、有 repro 與裁決）承載，本條請改判為它的重複並移交 APP stream；下面的計畫是給接手那筆的人用的。改 `frontFoldSurface` 的 modifier 串：目前 `.accessibilityIdentifier(...)` 之後緊接 `.accessibilityLabel(L10n.format(\"複習卡片正面：%@\", card.word))`，SwiftUI 因此把整個正面併成一個 a11y element。兩條路擇一：① 在同一個容器加 `.accessibilityElement(children: .contain)`，讓子節點保持可定址；② 把 `.accessibilityLabel` 從容器移到內層單字元件，容器只留 identifier 與 `.accessibilityAction`。同時給正面各欄位掛可定址的 identifier（例如 `todayReview.card.front.word` / `.pos` / `.example`），並確認 `todayReview.card.front` 只掛在 active slot 一次（現在 `interactive ? ... : \"\"` 的三元式在巢狀 button 上被重複發布）。落地後把 ios/BooksAndVocabUITests/Pages/TodayReviewPage.swift:44-50 那段「量測記錄」註解改寫成新事實，並解除 TodayReviewGapUITests 的失效狀態。",
-  "resolution": "",
+  "resolution": "已修（與 APP-20260806-761370 同一顆 commit，同一根因）：卡片正反面各自成為 a11y 容器，identifier 不再下推到巢狀 button，子元素恢復各自可定址。本條原本記的三個後果（欄位無法斷言、量到 36pt 而非卡框、expandZone 不動）皆源於此。\n\n未涵蓋：本條 plan 另提的 per-field identifier 沒有做，屬獨立工作，需要時另開窄票。",
   "schema": "kg.backlog.entry.v1",
   "severity": "med",
   "source": "Phase C review card layout editor (feat/review-card-layout-editor)",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "與 APP-20260806-761370 同顆 commit；本條 acceptance rc=0 elapsed=0.0s，且該票的 UI 測試實跑 rc=0/209.7s"
 }

@@ -7,16 +7,23 @@
   "date": "2026-08-06",
   "detail": "The review card front puts .accessibilityLabel on its container, so SwiftUI merges the whole face into ONE accessibility element and repeats the same identifier on several nested ~36pt buttons. Two consequences, one of them a live user-facing regression. (1) VoiceOver can no longer reach the back face's knowledge links and collocations — the branch found this itself and recorded it in ace62906e. (2) TodayReviewGapUITests can no longer measure the card: its query now resolves a nested element, so it reports cardH=19.7-36.0 and gap=185-295pt against a 44pt threshold, on all 8 fixture cards. Attribution is settled, not inferred: main PASSES this test 1/1 (measured); the branch fails it identically BEFORE and AFTER the rebase (gaps 196.4 / 185.6 / 294.8 / 200.4 value-for-value), so the merge contributes nothing; and the step screenshots show the card rendering full-size with its bottom edge directly above the expand zone, ~10pt away — there is NO visual gap. The serious part is not the red: it is that this test was added by cf82380db ('fix TodayReview flip-card detaching from expand zone') as the regression test for that exact defect, and it is now blind. It cannot distinguish 'card attached' from 'card detached', so the guard that commit installed is effectively disabled while still appearing to exist.",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:53",
+  "fixed_by": [
+    "2ac7ba258344f2b22be40670d26a872bd46d5d4a"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "APP-20260806-761370",
   "plan": "在 TodayReviewPresenter+CardContent.swift:53 的 `.accessibilityIdentifier(...)` 之前插入 `.accessibilityElement(children: .contain)`，讓卡片正面容器保持可被 XCUIElement 查詢、子元素仍各自可定址。若 `.contain` 使 :54 的 `.accessibilityLabel(L10n.format(\"複習卡片正面：%@\", card.word))` 失效，改把該 label 搬到內層顯示 word 的 Text 上，容器只留 identifier/hint/action。背面 :216-223 同一形狀一併檢查。不要改動 UI 測試本身。",
   "repro": "./ops/ios_ops.sh test --ui --lease --timeout 1800 --dataset marketing_demo --file ios/BooksAndVocabUITests/TodayReviewGapUITests.swift",
-  "resolution": "Fix the accessibility structure in production, not the test. The container's .accessibilityLabel is what merges the face; the branch treated the merging as unwanted friction rather than intent (ace62906e), so restoring addressable children should be an improvement for both VoiceOver and the test. Options: .accessibilityElement(children: .contain) on the card container, or move the label onto an inner element so the container stays queryable — either way verify with VoiceOver semantics, not just by making the gap test green again. Until then main carries a red TodayReviewGapUITests. Deliberately NOT fixed during convergence: it changes VoiceOver reading semantics in someone else's feature with no a11y test to verify against, which is not a merge repair.",
+  "resolution": "已修：`TodayReviewPresenter+CardContent.swift` 的正面與背面各在屬性 modifier **之前**插入 `.accessibilityElement(children: .contain)`。根因是「容器沒有宣告 a11y element，`.accessibilityLabel` 於是逼 SwiftUI 合成一個合併整面的元素，並把 identifier 下推整個子樹」，不是「label 寫錯」。\n\n受派者另修一處票裡沒記載、靜態可證的爆雷：背面的 `.accessibilityLabel(L10n.format(\"翻譯：%@\", answerText))` 原本掛在外層 `Group` 上，**兩個分支都吃得到**，所以摺疊 stub 是一個標著答案的元素——卡片還沒翻面 VoiceOver 就先讀出答案。已搬進 mounted 分支與 identifier 同層。\n\n同根因的 IMP-20260806-3e18b5 由同一顆 commit 收掉。它 plan 裡的 per-field identifier（todayReview.card.front.word/.pos/.example）**不在**本次 scope，受派者具名提醒那項工作會隨著重複票關閉而蒸發——若要，另開窄票承接。",
   "schema": "kg.backlog.entry.v1",
   "severity": "high",
   "source": "convergence line, landing feat/review-card-layout-editor",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-08",
+  "verified_by": "main-session",
+  "verified_evidence": "結案閘實跑該票 acceptance_cmd：./ops/ios_ops.sh test --ui --lease --dataset marketing_demo --file TodayReviewGapUITests.swift，rc=0，209.7s（真機模擬器、真租約，非結構檢查代替）"
 }
