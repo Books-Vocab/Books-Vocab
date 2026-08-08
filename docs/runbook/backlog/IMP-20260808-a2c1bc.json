@@ -6,15 +6,22 @@
   "date": "2026-08-08",
   "detail": "`ops/kg_reconcile.sh:is_poisoned` 用 `^[0-9]+$` 之外的算術比較讀 `KG_RECON_POISON_COOLDOWN`，帶前導零的值（例如 `09`、`08`）在 shell 算術裡是**非法八進位**，於是比較失敗而函式**失敗開放**——回報「沒有中毒」。\n\n後果是生產行為：一個已知壞掉的 sha **不再被冷卻擋住，會每 90 秒重試一次**。而 reconciler 盯的是 `origin/prod`，所以這是部署路徑上的迴圈。\n\n發現方式：`infra-health` 的受派者在修 `ops/infra_health.sh` 的同型缺陷時（`^[0-9]+$` 對 `09` **失敗開放且判綠**——指標從 `metrics[]` 消失而 `overall` 保持乾淨，由 reviewer 抓到），順手查出 `kg_reconcile.sh` 的 `is_poisoned` 有**同一個形狀**。它刻意不順手修（超出票的範圍），只在 `infra_health.sh` 的「兩側語意相同」註解上加了但書，並掛了背景任務——**但背景任務不是票，不會進 dispatch，也不會有人追**。\n\n這與 `IMP-0056` 是同一族（八進位失敗開放）。同族在同一支腳本鏈上出現第三次，代表這不是個別疏忽而是缺一條共用的數值讀取。",
   "fix_site": "ops/kg_reconcile.sh:is_poisoned（KG_RECON_POISON_COOLDOWN 的算術比較）",
+  "fixed_by": [
+    "7e3186a178b4391289b442af052b68316c43d940"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-a2c1bc",
   "plan": "ops/kg_reconcile.sh:is_poisoned 讀 KG_RECON_POISON_COOLDOWN 時改成不會被前導零騙的解析（`10#$v`，或先用具名的合法性檢查再比較），且**失敗時 fail closed**——讀不到合法數值就當作「仍在冷卻」，因為錯誤地繼續重試一個壞 sha 的代價遠高於多等一輪。\n\n**先盤點再改**：grep 整條 reconciler 腳本鏈（kg_reconcile.sh / infra_health.sh / devops_kg_safe.sh）找所有把 env 值直接送進算術比較的地方，逐處判該 fail open 還是 fail closed，結論寫進 resolution。同族已知第三次（IMP-0056、infra_health.sh 的 ^[0-9]+$、本條），所以單點修補不夠——盤點若發現三處以上，抽一個共用的數值讀取 helper 並在註解裡寫明失敗方向。\n\n**測試**：09 / 08 / 空字串 / 非數字各一條，斷言 is_poisoned 回「仍在冷卻」而非「沒中毒」；合法值 90 正控維持原行為。加進既有的 ops/tests/test_kg_reconcile.sh。",
-  "resolution": "",
+  "resolution": "根因已確認：`ops/kg_reconcile.sh:is_poisoned` 對 `KG_RECON_POISON_COOLDOWN` 與 poison timestamp 直接交給 Bash arithmetic；前導零 `09` / `08` 會觸發八進位解析錯誤，且條件分支失敗時沒有維持 poison，造成 fail-open 重試。先掃過 `ops/kg_reconcile.sh`、`ops/infra_health.sh`、`ops/devops_kg_safe.sh`：只有前者在這條 cooldown 路徑使用未驗證的原始 arithmetic，`infra_health.sh` 的類似數值已使用 `10#`，未找到需共用修補的第三份實作。\n\n修法是將 unset 與 explicit empty 分開：未設定才使用 3600 秒預設值；timestamp 與 cooldown 先要求非負十進位字串，再以 `10#` 解析。空值、非數字值、非法 timestamp 都 fail-closed，維持 `poisoned-skip`，不觸發 compose。新增 09、08、空值、非數字、90 秒控制組與非法 timestamp 正控。\n\n驗收在工作樹先由 155 passed / 3 failed 的紅測試驅動，修正後 `bash ops/tests/test_kg_reconcile.sh` 為 159 passed / 0 failed；fresh machine gate 對 `7e3186a17` 全部 PASS，包含 docs、shell syntax/scan、review-receipts 與 coverage（3 covered）。",
   "schema": "kg.backlog.entry.v1",
   "scope": "一支腳本裡的數值讀取改成不會被前導零騙的寫法，順便看看同一批腳本還有幾處同樣寫法；加測試。",
   "severity": "high",
   "source": "2026-08-08 infra-health 受派者修 infra_health.sh 同型缺陷時查出；它只掛背景任務未立票",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:codex-machine-gate",
+  "verified_evidence": "2026-08-09 machine-gate verification\n\n- fixed_by: 7e3186a178b4391289b442af052b68316c43d940\n- fresh gate: pass; head_sha=7e3186a178b4391289b442af052b68316c43d940\n- gate coverage: review-receipts, docs-lint, docs-conflict-markers, docs-verified-against, ops-shell-syntax, ops-shell-scan, ops-shell:test_kg_reconcile.sh, coverage all passed\n- acceptance command: bash ops/tests/test_kg_reconcile.sh\n- expected result: passed 159, failed 0\n- root-cause scope checked: ops/kg_reconcile.sh, ops/infra_health.sh, ops/devops_kg_safe.sh"
 }
