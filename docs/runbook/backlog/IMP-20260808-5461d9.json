@@ -1,0 +1,14 @@
+{
+  "brief": "兩份規範對長命令該不該背景跑下了相反的令，agent 讀到哪一份決定它的行為，等於今天的做法取決於運氣。",
+  "category": "doc",
+  "date": "2026-08-08",
+  "detail": "CLAUDE.md:167 鐵律 5（標 [machine]）：耗時 Bash 一律 run_in_background: true，主線不阻塞，完成由 notification 觸發，最長每 20 秒輪詢。docs/sop/ui_flow_evidence.md 的「Subagent 等待紀律」段落白紙黑字寫相反：把 build/test 丟 run_in_background 後結束 turn 等於永遠收不到完成通知，所以長命令一律前景跑（timeout 拉滿），工作未完不准結束 turn。兩者對同一件事下相反的令，沒有任何機器擋，行為取決於 agent 讀到哪一份。使用者 2026-08-08 已定調：背景執行的目的就是不阻塞 agent，讓它在長任務跑的時候做別的事——所以鐵律 5 的方向是對的。而 SOP 那段的理由其實只對子 agent 成立（子 agent 結束 turn 後不會被戳），它卻寫成無條件規則。修法 = 把 SOP 那段限縮成「子 agent 內部不得丟背景後結束 turn」，並指回鐵律 5 作為主線的規則；同時等 gate 進度面那張票落地後，把鐵律 5 的 20 秒輪詢改成「工具有進度面時只需在完成時回報」。",
+  "id": "IMP-20260808-5461d9",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "兩份文件的一段話，需要先定案再改。",
+  "severity": "med",
+  "source": "fork session 9c0f8e4a：gate agent-ergonomics 交叉論辯（13 agents）+ 兩個並行 session 第一手回報",
+  "status": "open",
+  "stream": "IMP"
+}
