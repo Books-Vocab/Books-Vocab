@@ -1,0 +1,19 @@
+{
+  "acceptance": "新增三個測試並全綠：(a) update --status fixed --commit 在 entry 的 acceptance_cmd 會紅時拒絕落地且 exit 非零；(b) verify --status fixed --commit 同樣拒絕；(c) 不帶 --commit 的 update 不執行任何 acceptance 命令（用會留下副作用的假命令證明它沒被跑）。今天這三個測試名稱不存在，pytest 直接非零。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider \"ops/tests/test_backlog.py::test_update_refuses_to_close_when_the_acceptance_is_red\" \"ops/tests/test_backlog.py::test_verify_refuses_to_close_when_the_acceptance_is_red\" \"ops/tests/test_backlog.py::test_a_dry_run_update_does_not_run_acceptance_commands\"",
+  "acceptance_expect_rc": 0,
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "`acceptance_cmd` 是這個系統唯一讓 fixed 有機器意義的欄位，但它只在**一道門**被執行：`_run_acceptance` 的呼叫點僅有 `_cmd_anchor_locked`（backlog.py:2643）。通往 status=fixed 的另外兩道門完全不碰它——① `update --status fixed --fixed-by <sha> --commit`（`_cmd_update`, 2992）；② `verify --status fixed ...`（`_cmd_verify`, 2696，其 --fixed-by 旗標的註解 2029-2034 明說這是『自然的收案動作』）。兩者都只驗 traceability（有沒有 fixed_by、sha 可不可達），不驗『那條你自己寫下的判準今天真的綠嗎』。後果：波次流程（stage→anchor）被守住，但任何人走直接收案這條路——歷史補登、re-verify、單張手動結案——都能在 acceptance 是紅的情況下寫下 fixed，而 store 事後看不出差別：兩種來源的 fixed 長得一模一樣。這是 IMP-20260808-9f3838（acceptance 是唯寫欄位）的另一半：那次修好了波次門，本條是剩下兩道。修法：把 `_run_acceptance` 抽成三門共用的前置檢查——凡是要寫入 status=fixed 且該 entry 帶 acceptance_cmd，就先跑它，rc 不符即拒絕落地（--commit 才跑，dry-run 只報告要跑什麼）；帶 acceptance_manual 的照舊放行但列入 unproven 計數；三門的 JSON payload 都要帶回 acceptance 結果，讓『這筆 fixed 是機器驗過的還是人說的』在 store 裡可分辨。",
+  "fix_site": "ops/backlog.py:_run_acceptance / _cmd_update / _cmd_verify",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-3646f3",
+  "plan": "把 acceptance 從『anchor 專屬前置』升格成『任何寫入 status=fixed 的共用前置』。① 在 ops/backlog.py 抽一個 _acceptance_gate(entry, commit: bool) -> dict|None：entry 帶 acceptance_cmd 且 commit 為真時呼叫既有 _run_acceptance，rc 不符 expect_rc 就回傳失敗結果；帶 acceptance_manual 者回傳 {'manual': reason}；兩者皆無回傳 {'unproven': True}。dry-run（commit=False）只回報『將會跑什麼』，不執行——比照既有 test_a_dry_run_anchor_does_not_run_acceptance_commands 的契約。② _cmd_update 與 _cmd_verify 在即將寫入 status=fixed 前呼叫它，失敗即拒絕落地並以非零 exit，錯誤訊息要印出實際 rc 與 output_tail（重用 _run_acceptance 既有欄位）。③ _cmd_anchor_locked 改為呼叫同一個 _acceptance_gate，不保留第二份邏輯——這條是重點：三門共用一份實作，才不會下次又只修好其中一道。④ 三門的 JSON payload 統一帶 acceptance 區塊（ran / manual / unproven），讓 store 之外的讀者能分辨這筆 fixed 的證據等級。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "要把三筆『已被後續工作修好但仍 open』的單收案時，發現只有 anchor 那道門會跑 acceptance",
+  "status": "open",
+  "stream": "IMP"
+}
