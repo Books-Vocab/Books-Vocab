@@ -741,6 +741,120 @@ simulator_lease_is_stale() {
   (( $(date +%s) - created > SIM_LEASE_TTL ))
 }
 
+# ── pool disposability guard (IMP-20260806-06d033) ───────────────────────────
+# A leased pool simulator is treated as a disposable resource, and UI-test
+# fixtures have wiped an app container before. kg-pool-2 was found signed into a
+# REAL Apple account (000287.04e2…) holding 9,580 genuine ReviewRecords, with
+# nothing between it and the next `ios_test.sh --ui`. A lease must now prove a
+# slot is disposable before handing it out.
+
+simulator_pool_read_user_id() {
+  # Print every KGUserId the app has stored on simulator $1, one line each,
+  # WITHOUT booting it. No identity found = no output.
+  #
+  # The on-disk container is the PRIMARY source, not a fallback. Measured
+  # 2026-08-08 on the real kg-pool-2: `simctl spawn <udid> defaults read
+  # com.Max0228.BooksBrowser KGUserId` dies rc=149 "device is not booted" — and
+  # Shutdown is exactly the state a slot is in when lease picks it up, since
+  # lease is what boots it. A spawn-only reader is therefore blind precisely
+  # when this guard matters. Reading the plist returned the account on that same
+  # Shutdown device and left it Shutdown.
+  # UNVERIFIABLE MUST NOT READ AS CLEAN. Every bail-out below emits an
+  # `unverifiable:*` sentinel rather than nothing, because "the guard could not
+  # look" and "the device is clean" are otherwise the same empty output — and
+  # empty means allow. That equivalence is the whole bug class this guard
+  # exists to remove; closing only the not-booted instance of it would leave
+  # the class open (plutil gone, layout moved, wrong devices root).
+  #
+  # The bundle id is a hardcoded constant, NOT an env override: an override
+  # here is a one-variable silent off-switch for a data-loss guard. Drift is
+  # caught instead by the test, which pins this literal against
+  # PRODUCT_BUNDLE_IDENTIFIER in the iOS pbxproj.
+  local udid="$1" bundle="com.Max0228.BooksBrowser" root plist val
+  # KG_IOS_SIM_DEVICES_ROOT is the offline-test seam
+  # (ops/tests/test_ios_ops_sim_pool_disposable.sh builds a synthetic tree).
+  # Point it somewhere wrong and the device dir vanishes -> sentinel -> refuse,
+  # so the seam fails closed.
+  root="${KG_IOS_SIM_DEVICES_ROOT:-$HOME/Library/Developer/CoreSimulator/Devices}"
+  if ! command -v plutil >/dev/null 2>&1; then
+    printf 'unverifiable:plutil-missing\n'
+    return 0
+  fi
+  if [[ ! -d "$root/$udid" ]]; then
+    printf 'unverifiable:no-device-dir\n'
+    return 0
+  fi
+  for plist in "$root/$udid/data/Containers/Data/Application"/*/Library/Preferences/"$bundle.plist"; do
+    # nullglob is not set, so an unmatched pattern stays literal; -f drops it.
+    [[ -f "$plist" ]] || continue
+    if [[ ! -r "$plist" ]]; then
+      printf 'unverifiable:unreadable-plist\n'
+      continue
+    fi
+    if val="$(plutil -extract KGUserId raw -o - "$plist" 2>/dev/null)"; then
+      if [[ -n "$val" ]]; then printf '%s\n' "$val"; fi
+    elif ! plutil -lint -s "$plist" >/dev/null 2>&1; then
+      # `-extract` fails for two very different reasons: the key is absent (a
+      # clean device) or the file is damaged (unknown contents). -lint is what
+      # separates them; only the first may be treated as clean.
+      printf 'unverifiable:malformed-plist\n'
+    fi
+  done
+  # A BOOTED device keeps preferences in cfprefsd memory, so the file can lag a
+  # value written this session. Additive, never a substitute for the disk read.
+  if [[ "$(simulator_device_state "$udid")" == "Booted" ]]; then
+    # Read-only verb by construction: `defaults read`, never write/delete.
+    val="$(xcrun simctl spawn "$udid" defaults read "$bundle" KGUserId 2>/dev/null)" || val=""
+    if [[ -n "$val" ]]; then printf '%s\n' "$val"; fi
+  fi
+  return 0
+}
+
+simulator_pool_assert_disposable() {
+  # Return 0 only when EVERY identity in $2 (newline-separated, possibly empty)
+  # is provably disposable: absent, or prefixed `kg-test`.
+  #
+  # Default-DENY, deliberately. An unrecognised identity is refused rather than
+  # allowed because the two errors are not symmetric: a wrong "allow" destroys a
+  # real person's data irreversibly, a wrong "refuse" costs one pool slot that
+  # the caller simply skips. A blacklist of known-bad prefixes would invert that.
+  local name="$1" user_id="${2:-}" line id offender=""
+  while IFS= read -r line; do
+    # Pure-bash trim. A `tr` fork would make an empty PATH silently equal to
+    # "no identity found" = allow; measured, that let a production id through.
+    # A guard must not depend on anything it can lose without noticing.
+    id="${line//[[:space:]]/}"
+    [[ -n "$id" ]] || continue
+    case "$id" in
+      kg-test*) ;;
+      *) offender="$id"; break ;;
+    esac
+  done <<<"$user_id"
+  if [[ -z "$offender" ]]; then
+    return 0
+  fi
+  # stderr, never stdout: `simulator lease` prints the UDID on stdout and
+  # callers consume it as one.
+  # Two refusal modes, two exit codes, because they have OPPOSITE shapes and
+  # opposite remedies: a real account takes out ONE slot (go log that sim out),
+  # while an unverifiable read takes out EVERY slot at once (the detector is
+  # broken — go fix it). Collapsing both into rc=1 makes the caller report a
+  # pool-wide outage as "some simulator is logged in", sending the operator
+  # hunting for accounts that were never there.
+  #   1 = a real, non-disposable identity
+  #   2 = could not verify (blind); refused because unverifiable != clean
+  case "$offender" in
+    unverifiable:*)
+      echo "[ios_ops] refuse: $name 無法確認帳號歸屬 (${offender#unverifiable:}) — 查不到不等於乾淨，拒絕出租。這通常代表偵測本身壞了（整個 pool 都會被擋），先修偵測。" >&2
+      return 2
+      ;;
+    *)
+      echo "[ios_ops] refuse: $name 登著非拋棄帳號 (KGUserId=$offender) — UI test fixture 會清空 app 容器，這台不是可拋棄資源。已跳過此 slot；確認要回收請先在該 sim 登出。" >&2
+      return 1
+      ;;
+  esac
+}
+
 cmd_simulator_lease() {
   local json=0
   while [[ $# -gt 0 ]]; do
@@ -753,7 +867,8 @@ cmd_simulator_lease() {
     esac
   done
   mkdir -p "$SIM_LEASE_ROOT"
-  local i name leasedir udid owner_pid owner_token
+  local i name leasedir udid owner_pid owner_token guard_rc
+  local refused_identity=0 refused_unverifiable=0
   owner_pid="${SIM_LEASE_OWNER_PID:-$$}"
   owner_token="$SIM_LEASE_OWNER_TOKEN"
   for (( i=1; i<=SIM_POOL_SIZE; i++ )); do
@@ -783,6 +898,20 @@ cmd_simulator_lease() {
     udid="$(simulator_pool_ensure_device "$name")" || { rm -rf "$leasedir" 2>/dev/null; continue; }
     [[ -n "$udid" ]] || { rm -rf "$leasedir" 2>/dev/null; continue; }
     printf '%s' "$udid" > "$leasedir/udid" 2>/dev/null || { rm -rf "$leasedir" 2>/dev/null; continue; }
+    # Refuse a slot that is signed into a non-disposable account, BEFORE booting
+    # it — booting is what lets the next fixture attach and wipe the container.
+    # Free the slot and try the next one rather than failing the whole lease:
+    # one dirty simulator must not take the entire `--ui` path down.
+    guard_rc=0
+    simulator_pool_assert_disposable "$name" "$(simulator_pool_read_user_id "$udid")" || guard_rc=$?
+    if (( guard_rc != 0 )); then
+      case "$guard_rc" in
+        2) refused_unverifiable=$((refused_unverifiable+1)) ;;
+        *) refused_identity=$((refused_identity+1)) ;;
+      esac
+      rm -rf "$leasedir" 2>/dev/null || true
+      continue
+    fi
     # Boot, and surface a real boot failure instead of returning ok with a dead
     # device. `simctl boot` errors when already booted, so on its failure we
     # re-check the state and only treat NON-Booted as a true failure.
@@ -801,8 +930,29 @@ cmd_simulator_lease() {
     fi
     return 0
   done
+  # Report refusals separately from exhaustion. Callers pipe our stderr to
+  # /dev/null (ops/ios_test.sh:809), so a slot rejected for holding a real
+  # account would otherwise surface as "pool exhausted" and send the operator
+  # to raise KG_IOS_SIM_POOL_SIZE — a remedy that provisions more simulators
+  # for a problem that has nothing to do with capacity.
   if [[ "$json" -eq 1 ]]; then
-    jq -nc --argjson size "$SIM_POOL_SIZE" '{schema:"kg.ios.sim-lease.v1", status:"error", error:("pool-exhausted:"+($size|tostring))}'
+    jq -nc --argjson size "$SIM_POOL_SIZE" \
+           --argjson identity "$refused_identity" \
+           --argjson unverifiable "$refused_unverifiable" \
+      '{schema:"kg.ios.sim-lease.v1", status:"error",
+        error:(if $unverifiable > 0 then "pool-blocked-unverifiable:"+($unverifiable|tostring)
+               elif $identity > 0 then "pool-blocked-non-disposable:"+($identity|tostring)
+               else "pool-exhausted:"+($size|tostring) end),
+        poolSize:$size,
+        refusedNonDisposable:$identity,
+        refusedUnverifiable:$unverifiable,
+        refusedTotal:($identity+$unverifiable)}'
+  elif (( refused_unverifiable > 0 )); then
+    # Reported first: this mode blocks every slot at once, so it is the cause
+    # that actually explains a total outage.
+    echo "✗ simulator pool 無可用 slot (size=$SIM_POOL_SIZE)：$refused_unverifiable 台無法確認帳號歸屬（偵測壞了，不是有人登入），另有 $refused_identity 台確實登著非拋棄帳號。先修偵測（見上面每台的原因），調大 KG_IOS_SIM_POOL_SIZE 沒有用。" >&2
+  elif (( refused_identity > 0 )); then
+    echo "✗ simulator pool 無可用 slot (size=$SIM_POOL_SIZE)：其中 $refused_identity 台因登著非拋棄帳號被拒絕出租。這不是容量問題，調大 KG_IOS_SIM_POOL_SIZE 沒有用——先處理上面列出的那幾台。" >&2
   else
     echo "✗ simulator pool exhausted (size=$SIM_POOL_SIZE) — raise KG_IOS_SIM_POOL_SIZE or release leases" >&2
   fi

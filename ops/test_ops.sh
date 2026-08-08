@@ -52,6 +52,7 @@ DEFAULT_TESTS=(
   docs-lint
   gen-ios-baseline
   ios-signal-traps
+  sim-pool-disposable
   ios-ops
   ios-run-verdict
   ios-cache-evict
@@ -162,6 +163,9 @@ run_one() {
       ;;
     ios-signal-traps)
       ./ops/tests/test_ios_signal_traps.sh
+      ;;
+    sim-pool-disposable)
+      ./ops/tests/test_ios_ops_sim_pool_disposable.sh
       ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
