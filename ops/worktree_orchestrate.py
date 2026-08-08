@@ -3084,10 +3084,13 @@ def cmd_gate(args: argparse.Namespace) -> int:
                 f"{streak['heads']} HEAD(s) / {streak['worktrees']} worktree(s) — worth "
                 f"checking whether it can pass at all before treating this as your bug)")
 
-    primary = primary_root()
+    primary = None
     primary_dirty: list[str] = []
     primary_dirty_error: str | None = None
-    if not args.plan_only and Path(primary).resolve() != Path(worktree).resolve():
+    if not args.plan_only:
+        primary = primary_root()
+    if (not args.plan_only and primary is not None
+            and Path(primary).resolve() != Path(worktree).resolve()):
         try:
             primary_rc, primary_status = _git(
                 ["status", "--porcelain", "--untracked-files=no"], cwd=primary
@@ -3095,7 +3098,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
         except Exception as exc:  # noqa: BLE001 — observation must not fail the gate
             primary_rc, primary_status = 127, str(exc)
         if primary_rc != 0:
-            primary_dirty_error = primary_status[:200]
+            primary_dirty_error = (primary_status[:200]
+                                   or f"git status failed with rc={primary_rc}")
         else:
             primary_dirty = _porcelain_paths(primary_status)
 
