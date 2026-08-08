@@ -774,10 +774,150 @@ def test_doc_anchor_is_reachable_from_origin_main():
         pytest.skip("no git")
     if sp.run(["git", "rev-parse", "--verify", "origin/main"],
               cwd=BACKLOG.ROOT, capture_output=True).returncode != 0:
-        pytest.skip("no origin/main")
+        pytest.fail(
+            "no origin/main in this clone — this is not a skippable environment "
+            "difference. A clone without origin/main (never fetched, or one made "
+            "with --single-branch off another branch) is PRECISELY where "
+            "backlog._doc_anchor() degrades to the merge-base with local main and "
+            "stamps an IMP-0038-shaped anchor into verified_against. Staying quiet "
+            "here removes the check from the only environment that needs it. Fix: "
+            "git fetch origin +refs/heads/main:refs/remotes/origin/main — the "
+            "explicit refspec is required; plain `git fetch origin main` updates "
+            "FETCH_HEAD only and leaves origin/main absent in a --single-branch "
+            "clone (measured: rev-parse still exits 128 afterwards)."
+        )
     rc = sp.run(["git", "merge-base", "--is-ancestor", anchor, "origin/main"],
                 cwd=BACKLOG.ROOT, capture_output=True).returncode
     assert rc == 0, f"anchor {anchor} is not reachable from origin/main — IMP-0038's shape"
+
+
+# --- the two tests below are about the probe ABOVE, not about the parser -----
+#
+# The probe is the positive control for the anchor. It used to hold its own
+# precondition — the presence of `origin/main` — with `pytest.skip`, so in a
+# clone that had never fetched it announced nothing and the suite stayed green.
+# That is the one environment where it is needed: with no `origin/main`,
+# `_doc_anchor()` degrades to the merge-base with LOCAL main, which is exactly
+# the anchor shape IMP-0038 is about. A guard whose silence is indistinguishable
+# from a pass is not a guard, so its precondition is now a failure.
+#
+# Both halves have to be pinned. Fail-closed alone is satisfiable by a guard
+# that is unconditionally red, which is a different broken thing wearing the
+# same green-to-red transition.
+#
+# WHAT THESE TWO DO NOT COVER, stated so the next reader does not overestimate
+# them: they pin the probe's PRECONDITION handling, not its final
+# `assert rc == 0`. Replacing that last assertion with a no-op leaves both of
+# these green. That gap is structural rather than neglect — `_doc_anchor()`
+# returns the merge-base with origin/main, which is necessarily an ancestor of
+# it, so an unreachable anchor cannot be synthesised through the real function.
+
+
+def _repo_with_one_commit(tmp_path, name: str):
+    """A real git repo with exactly one commit and no remotes at all."""
+    import subprocess as sp
+    repo = tmp_path / name
+    repo.mkdir()
+    sp.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    (repo / "seed.txt").write_text("x", encoding="utf-8")
+    sp.run(["git", "add", "seed.txt"], cwd=repo, check=True)
+    sp.run(["git", "-c", "user.email=t@example.invalid", "-c", "user.name=t",
+            "-c", "commit.gpgsign=false", "commit", "-q", "-m", "seed"],
+           cwd=repo, check=True)
+    return repo
+
+
+def _probe_outcome() -> tuple[str, str]:
+    """Run the probe against whatever `BACKLOG.ROOT` currently points at and
+    report `(how it ended, what it said)` — "returned", or the class name of
+    what it raised, plus that exception's text.
+
+    The text is carried out rather than dropped so a caller can pin WHICH guard
+    fired. The class name alone identifies the mechanism, not the reason: if the
+    unrelated `no git` branch were ever also turned into a `pytest.fail`, a test
+    asserting only "Failed" would go green for the wrong reason.
+
+    `except BaseException` is load-bearing. `pytest.skip()` raises `Skipped` and
+    `pytest.fail()` raises `Failed`; both derive from `BaseException`, NEITHER
+    from `Exception`. Written as `except Exception`, a skip would sail straight
+    through this helper and mark the CALLING test skipped — silently converting a
+    test about silent skipping into one more silent skip, and pytest does not
+    exit non-zero for skips, so the acceptance command could never go red.
+    (Measured: skip + `except Exception` gives "1 passed, 1 skipped", rc 0.)
+    """
+    try:
+        test_doc_anchor_is_reachable_from_origin_main()
+    except (KeyboardInterrupt, SystemExit):
+        raise  # an operator aborting the run is not a verdict about the probe
+    except BaseException as exc:
+        return type(exc).__name__, str(exc)
+    return "returned", ""
+
+
+def test_origin_probe_fails_loudly_when_origin_main_is_absent(tmp_path, monkeypatch):
+    """No `origin/main` is not an environment difference to be waved through.
+
+    It is the precise condition under which `_doc_anchor()` mints the anchor the
+    probe exists to catch, so the probe going quiet there means the check is
+    absent exactly where it is load-bearing.
+    """
+    import subprocess as sp
+    repo = _repo_with_one_commit(tmp_path, "no-origin")
+    monkeypatch.setattr(BACKLOG, "ROOT", repo)
+
+    # Preconditions, so that a red below can mean only one thing. Without them a
+    # regression in `_doc_anchor()` would route the probe into its unrelated
+    # "no git" skip and this test would go red pointing at the wrong branch.
+    assert BACKLOG._doc_anchor() != "unknown", "probe would leave via its 'no git' skip"
+    assert sp.run(["git", "rev-parse", "--verify", "origin/main"],
+                  cwd=repo, capture_output=True).returncode != 0, \
+        "the fixture grew an origin/main; it is no longer the degraded environment"
+
+    outcome, detail = _probe_outcome()
+    assert outcome == "Failed", (
+        f"the origin-reachability probe {outcome} in a repo with no origin/main, "
+        "which is the very environment where _doc_anchor() degrades to local main"
+    )
+    # Pin the reason, not just the mechanism — and with it the ACTIONABLE remedy,
+    # which is the whole point of failing instead of skipping.
+    #
+    # The needle is the refspec, not "git fetch". Mutation testing caught the
+    # looser version: deleting the remedy left the assertion green, because the
+    # same message also says `git fetch origin main` in the clause explaining why
+    # that shorter form does NOT work. A token that appears twice with opposite
+    # meanings cannot witness which one survived.
+    assert "+refs/heads/main:refs/remotes/origin/main" in detail, (
+        f"the probe failed without telling the reader how to fix it: {detail!r}"
+    )
+
+
+def test_origin_probe_still_passes_when_the_ref_it_needs_is_there(tmp_path, monkeypatch):
+    """The other half: a guard that can only ever be red is also broken.
+
+    Same synthetic repo plus the one ref the probe needs. Fail-closed written as
+    an unconditional `pytest.fail` would turn this red, and without it no test in
+    this file could tell that mistake from the fix.
+    """
+    import subprocess as sp
+    repo = _repo_with_one_commit(tmp_path, "with-origin")
+    sp.run(["git", "update-ref", "refs/remotes/origin/main", "HEAD"], cwd=repo, check=True)
+    monkeypatch.setattr(BACKLOG, "ROOT", repo)
+
+    # Same two preconditions as the sibling above, for the same reason. Without
+    # the first, a `_doc_anchor()` returning "unknown" sends the probe out through
+    # its unrelated "no git" skip and the message below states something untrue —
+    # it would report an anchor "reachable from origin/main" when there is no
+    # anchor at all. A guard that misnames its own cause is this ticket's shape.
+    assert BACKLOG._doc_anchor() != "unknown", "probe would leave via its 'no git' skip"
+    assert sp.run(["git", "rev-parse", "--verify", "origin/main"],
+                  cwd=repo, capture_output=True).returncode == 0, \
+        "the fixture has no origin/main; it cannot stand for the healthy case"
+
+    outcome, _detail = _probe_outcome()
+    assert outcome == "returned", (
+        f"the origin-reachability probe {outcome} in a repo whose anchor IS "
+        "reachable from origin/main — a guard that can never be green"
+    )
 
 
 def _app_row(**overrides) -> str:
