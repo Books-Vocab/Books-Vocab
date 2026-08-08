@@ -1,0 +1,20 @@
+{
+  "acceptance": "open 產生的暫存路徑存在且被 gitignore；resolve 後不存在；兩條同時開的工作樹拿到不同路徑",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_worktree_orchestrate.py -k scratch",
+  "brief": "同一批同時開工的助手共用一個暫存資料夾，各自用了同名檔案就會互相覆蓋，讀到別人的結果卻以為是自己的。",
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "同一批 fan-out 出去的受派者**共用同一個 scratchpad 目錄**（session 級，子 agent 繼承）。於是兩個 agent 各自用一個「看起來很自然」的檔名（`red.log`、`out.json`、`gate.err`）就會互相覆寫，而且是用 `>` 靜靜截斷，沒有任何一方會知道。\n\n2026-08-08 第二輪 dogfood 實測：`app-auth-explore` 的受派者把 iOS 測試輸出導到 `red.log`，`ios-fixture-crash` 的受派者同時開同一個路徑，結果那個檔變成兩個寫入者的交錯內容——**它的頭和尾互相矛盾**，受派者一度據此做出錯誤判讀，是它自己察覺不對勁才回頭查。\n\n代價不是壞掉的檔案，是**壞掉的認知**：一個 agent 讀到另一個 agent 的測試輸出，卻以為那是自己的。它可能因此宣稱綠、宣稱紅、或宣稱一個根本不存在的失敗。批次規模越大命中率越高——本輪 15 條並行。\n\n值得注意的是：`ops/ios_test.sh` **早就解掉了同一個問題**，它的 verdict 檔是 `kg_ios_test_verdict.<epoch>-<pid>` 並帶 `caller=` 欄。所以正確形狀在這個 repo 內已有前例，缺的是把它變成受派者一定會遵守的東西。",
+  "fix_site": "ops/worktree_orchestrate.py:cmd_open / cmd_resolve + .claude/skills/worktree-flow/SKILL.md",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-7cb54f",
+  "plan": "這條有兩半，**第二半才是真的修法**。\n\n**① 立即（文字層）**：在受派者會讀到的地方寫明「暫存檔名必須帶唯一後綴」。位置：`.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」段，以及 `.claude/skills/kg-receipt/SKILL.md`。前例直接指向 `ops/ios_test.sh` 的 `kg_ios_test_verdict.<epoch>-<pid>` 加 `caller=` 欄——**不要另創慣例**。\n\n**② 真正的修法（機制層）**：文字層擋不住「沒讀到那句話的下一個 agent」。想清楚哪一個做得到，並在 resolution 裡寫下為何選它：\n- (a) 讓每個受派者拿到**自己的**暫存目錄。若 harness 已提供 per-agent 目錄，那就只需在派工單模板裡指向它——**先查清楚有沒有，不要假設沒有**。\n- (b) 若只有 session 級目錄，則由 `worktree_orchestrate.py open` 順手建一個 `<worktree>/.scratch/`（gitignored，`resolve` 一併刪），並在 `open` 的輸出裡把路徑印給呼叫者。工作樹本來就是一人一棵，天然隔離。\n- (c) 不做機制、只做文字——**只有在 (a)(b) 都被證實不可行時才選這個**，並具名說明理由。\n\n**傾向 (b)**：它與現有的「一票一樹」不變式對齊，且 `resolve` 已經在做拆除，多刪一個目錄成本近乎零。但先驗證 (a)。\n\n**測試**：`open` 產生的路徑存在且被 gitignore；`resolve` 後該目錄不存在；兩條同時開的工作樹拿到**不同**路徑（這條是本票的全部重點，沒有它等於沒修）。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "讓每條工作樹開工時就拿到自己的暫存目錄，收工時一併清掉；另在兩份說明裡寫明檔名規則。",
+  "severity": "med",
+  "source": "2026-08-08 第二輪 dogfood：兩條 iOS 工作樹的受派者同時寫同一個 red.log，檔案變成交錯內容並導致誤判",
+  "status": "triaged",
+  "stream": "IMP"
+}
