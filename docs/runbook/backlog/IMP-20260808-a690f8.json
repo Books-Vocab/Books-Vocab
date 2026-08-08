@@ -21,7 +21,8 @@
   "source": "合成負載壓測 worktree_orchestrate（throwaway clone，N=3 與 N=10）——為了在真正開 10 條之前先知道工具撐不撐得住",
   "status": "fixed",
   "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
   "verified_at": "2026-08-08",
   "verified_by": "main-session",
-  "verified_evidence": "acceptance re-run at closing time rc=0; load harness N=10 land 10/10 in 10 gate runs; 6/6 mutants killed"
+  "verified_evidence": "land N=10 in a throwaway clone: 10/10 landed, exactly 10 gate runs, 81s; the entry's own acceptance_cmd re-run green at closing time"
 }
