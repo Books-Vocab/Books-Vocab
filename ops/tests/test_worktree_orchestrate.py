@@ -4705,3 +4705,157 @@ def test_an_unreadable_store_does_not_silently_permit_the_claim(tmp_path):
     is the shape a fresh clone or a wrong --state has."""
     problems = MODULE._unclaimable(tmp_path / "no-such-store", ["IMP-20260808-aaaaaa"])
     assert [p["kind"] for p in problems] == ["not-in-store"], problems
+
+
+# --------------------------------------------------------------------------
+# --via-integration: the teardown audit, run by the tool instead of by a human
+#
+# Measured with ops/worktree_loadtest.py --mode batch -n 10 --conflict shared:
+# integration itself is green (9/10 picks conflict, every conflict resolved, ZERO
+# rows lost, one gate, one cutover, 27.9s) and then **10 of 10 source branches
+# refuse teardown**. The refusal is correct — `resolve` is a force-discard, and
+# after conflict resolution main holds a NEWER version than the branch, which is
+# indistinguishable by tree-diff from "never landed". The documented remedy is a
+# three-step manual audit per branch, and all three steps are mechanical.
+#
+# So: a SECOND evidence path, not a looser rule. `--force` still means "I looked";
+# `--via-integration <ref>` means "prove it", and the tool says what it matched on.
+# --------------------------------------------------------------------------
+
+def _commit(repo, name, body, msg):
+    (Path(repo) / name).write_text(body, encoding="utf-8")
+    _git(["add", name], repo)
+    _git(["commit", "-qm", msg], repo)
+    return _git(["rev-parse", "HEAD"], repo).strip()
+
+
+def test_a_cherry_picked_branch_is_vouched_for_by_patch_id(scratch):
+    """The strong match: same change, different sha."""
+    tmp_path, repo, remote = scratch
+    _git(["checkout", "-q", "-b", "feat/lane"], repo)
+    sha = _commit(repo, "lane.txt", "lane work\n", "ops: lane work")
+    _git(["checkout", "-q", "main"], repo)
+    # main MUST have moved first. With main still at the branch point, git
+    # fast-forwards the cherry-pick and the branch becomes a literal ancestor —
+    # a state the landed-floor already accepts, so the audit would never be
+    # reached. Every real integration has main ahead (other lanes landed first).
+    _commit(repo, "trunk.txt", "someone else landed\n", "ops: unrelated trunk work")
+    _git(["cherry-pick", sha], repo)
+
+    audit = MODULE._audit_integrated("feat/lane", "main")
+    assert audit["ok"] is True, audit
+    assert [c["match"] for c in audit["commits"]] == ["patch-id"], audit
+
+
+def test_a_branch_whose_content_was_amended_during_integration_still_vouches(scratch):
+    """The realistic case, and the one tree-diff cannot see.
+
+    Integration resolves a conflict, so what landed is NOT byte-identical to what
+    the branch held — patch-id differs. Subject plus the set of files touched is
+    the next strongest thing that is still mechanical.
+    """
+    tmp_path, repo, remote = scratch
+    _git(["checkout", "-q", "-b", "feat/lane2"], repo)
+    _commit(repo, "shared.md", "| lane2 |\n", "ops: lane2 row")
+    _git(["checkout", "-q", "main"], repo)
+    # same subject, same file, DIFFERENT content (a merged version)
+    _commit(repo, "shared.md", "| lane1 |\n| lane2 |\n", "ops: lane2 row")
+
+    audit = MODULE._audit_integrated("feat/lane2", "main")
+    assert audit["ok"] is True, audit
+    assert [c["match"] for c in audit["commits"]] == ["subject+files"], audit
+
+
+def test_a_commit_that_never_landed_is_named_and_refused(scratch):
+    """The whole point of keeping the floor: this is the case the manual audit
+    exists to catch, and it is the case an impatient `--force` walks straight past."""
+    tmp_path, repo, remote = scratch
+    _git(["checkout", "-q", "-b", "feat/lane3"], repo)
+    kept = _commit(repo, "a.txt", "landed\n", "ops: landed part")
+    lost = _commit(repo, "b.txt", "dropped\n", "ops: the part integration missed")
+    _git(["checkout", "-q", "main"], repo)
+    _commit(repo, "trunk.txt", "someone else landed\n", "ops: unrelated trunk work")
+    _git(["cherry-pick", kept], repo)
+
+    audit = MODULE._audit_integrated("feat/lane3", "main")
+    assert audit["ok"] is False, audit
+    unmatched = [c for c in audit["commits"] if c["match"] is None]
+    assert [c["subject"] for c in unmatched] == ["ops: the part integration missed"]
+    assert lost[:9] in [c["sha"] for c in unmatched][0], audit
+
+
+def test_a_same_subject_commit_touching_other_files_does_not_vouch(scratch):
+    """Subject alone is not evidence. Two commits can share a message and change
+    unrelated things — the file set is what makes the weaker match usable."""
+    tmp_path, repo, remote = scratch
+    _git(["checkout", "-q", "-b", "feat/lane4"], repo)
+    _commit(repo, "wanted.txt", "x\n", "ops: same subject")
+    _git(["checkout", "-q", "main"], repo)
+    _commit(repo, "unrelated.txt", "y\n", "ops: same subject")
+
+    audit = MODULE._audit_integrated("feat/lane4", "main")
+    assert audit["ok"] is False, audit
+    assert audit["commits"][0]["match"] is None, audit
+
+
+def test_the_audit_reports_what_each_commit_was_matched_on(scratch):
+    """A verdict without its grounds is the 'reason field nobody reads'. The
+    operator has to be able to see that a branch got through on the WEAK match."""
+    tmp_path, repo, remote = scratch
+    _git(["checkout", "-q", "-b", "feat/lane5"], repo)
+    strong = _commit(repo, "s.txt", "strong\n", "ops: strong one")
+    _commit(repo, "w.txt", "weak\n", "ops: weak one")
+    _git(["checkout", "-q", "main"], repo)
+    _commit(repo, "trunk.txt", "someone else landed\n", "ops: unrelated trunk work")
+    _git(["cherry-pick", strong], repo)
+    _commit(repo, "w.txt", "weak, but merged differently\n", "ops: weak one")
+
+    audit = MODULE._audit_integrated("feat/lane5", "main")
+    assert audit["ok"] is True, audit
+    assert sorted(c["match"] for c in audit["commits"]) == ["patch-id", "subject+files"]
+    assert all(c["matched_sha"] for c in audit["commits"]), audit
+
+
+def test_resolve_refuses_without_the_flag_and_accepts_with_it(scratch):
+    """End to end through the CLI: the floor still stands, and the flag is the
+    second door — not a rename of --force."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "reg.json")
+    rc, opened = _run_json(["open", "--intent", "lane", "--slug", "picked",
+                            "--state", state, "--json"])
+    assert rc == MODULE.EXIT_OK
+    wt = opened["path"]
+    (Path(wt) / "picked.txt").write_text("work\n", encoding="utf-8")
+    _git(["add", "-A"], wt)
+    _git(["commit", "-qm", "ops: picked work"], wt)
+    sha = _git(["rev-parse", "HEAD"], wt).strip()
+    # Integrate by hand, exactly as a batch integrator would: trunk moves first,
+    # then the pick, then the conflict resolution EDITS the content — merging this
+    # lane's line with another lane's. That last step is the whole point: without
+    # it main holds a byte-identical copy, the tree-diff floor says "landed", and
+    # the audit is never reached. With it, main holds a NEWER version and the floor
+    # cannot tell that from "never landed".
+    _commit(repo, "trunk.txt", "someone else landed\n", "ops: unrelated trunk work")
+    _git(["cherry-pick", sha], repo)
+    _commit(repo, "picked.txt", "work\nand another lane's line\n",
+            "ops: picked work")
+
+    rc, refused = _run_json(["resolve", "--worktree", wt, "--state", state,
+                             "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, refused
+    assert "--via-integration" in refused["reason"], (
+        "the refusal must name the evidence path, or the only way past it is --force")
+
+    rc, ok = _run_json(["resolve", "--worktree", wt, "--state", state,
+                        "--via-integration", "main", "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, ok
+    assert ok["audit"]["ok"] is True
+    # Either rung is a pass here, and which one is not the CLI's contract: the
+    # pick itself survives in main's history with its patch-id intact, so the
+    # STRONGER rung vouches even though a later commit edited the same file. The
+    # weaker rung is exercised where it actually applies — a conflict resolved
+    # inside the pick, which produces one commit whose content differs. See
+    # test_a_branch_whose_content_was_amended_during_integration_still_vouches.
+    assert all(c["match"] for c in ok["audit"]["commits"]), ok["audit"]
+    assert all(c["matched_sha"] for c in ok["audit"]["commits"]), ok["audit"]
+    assert not Path(wt).exists(), "worktree survived a vouched-for resolve"

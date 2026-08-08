@@ -130,6 +130,7 @@ import json
 import os
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import time
@@ -3404,6 +3405,119 @@ def _claimed_tickets(state: str | None, branch: str) -> list[str]:
     return []
 
 
+AUDIT_SEARCH_DEPTH = 2000
+
+
+def _patch_id_index(ref: str, depth: int) -> dict[str, str]:
+    """patch-id -> commit sha, for the last `depth` commits reachable from `ref`.
+
+    One `git log -p | git patch-id` pass rather than two processes per commit:
+    at depth 2000 the per-commit form takes minutes, and a check nobody is willing
+    to wait for is a check that gets skipped.
+    """
+    proc = subprocess.run(
+        f"git log -p --no-color --max-count={int(depth)} {shlex.quote(ref)} "
+        f"| git patch-id --stable",
+        shell=True, cwd=str(primary_root()), stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, text=True)
+    index: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            index.setdefault(parts[0], parts[1])
+    return index
+
+
+def _subject_file_index(ref: str, depth: int) -> dict[str, list[tuple[str, frozenset]]]:
+    """subject -> [(sha, files)], the weaker match's raw material."""
+    rc, out = _git(["log", f"--max-count={int(depth)}", "--name-only",
+                    "--format=%x01%H%x00%s", ref])
+    index: dict[str, list[tuple[str, frozenset]]] = {}
+    if rc != 0:
+        return index
+    for block in out.split("\x01"):
+        if not block.strip():
+            continue
+        head, _, body = block.partition("\n")
+        sha, _, subject = head.partition("\x00")
+        files = frozenset(ln for ln in body.splitlines() if ln.strip())
+        index.setdefault(subject, []).append((sha, files))
+    return index
+
+
+def _commit_patch_id(sha: str) -> str | None:
+    proc = subprocess.run(
+        f"git show {shlex.quote(sha)} | git patch-id --stable", shell=True,
+        cwd=str(primary_root()), stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, text=True)
+    parts = proc.stdout.split()
+    return parts[0] if parts else None
+
+
+def _audit_integrated(branch: str, base: str,
+                      depth: int = AUDIT_SEARCH_DEPTH) -> dict:
+    """Did every commit unique to `branch` reach `base`, and on what evidence?
+
+    This is the three-step audit `.claude/skills/worktree-flow/SKILL.md` prescribes
+    for a batch-integrated branch, executed by the tool instead of by a person.
+
+    Why it is needed: `resolve`'s landed-floor asks "is this branch's net change in
+    base", by tree-diff. After a batch integration the answer is legitimately NO —
+    conflict resolution left base holding a NEWER version than the branch — and that
+    is byte-for-byte indistinguishable from "this work never landed". Measured with
+    `ops/worktree_loadtest.py --mode batch -n 10 --conflict shared`: **10 of 10**
+    source branches refuse teardown. Every one of them needs the same audit, and all
+    three of its steps are mechanical.
+
+    Why not simply loosen the floor: a rule permissive enough to pass this case also
+    passes work that never landed at all, and that refusal has already caught one
+    commit dropped during an integration. So this is a SECOND door, and it reports
+    which comparison opened it — a branch that got through on the weaker match is
+    visible as such, rather than being indistinguishable from a strong one.
+
+    Two comparisons, strongest first:
+
+      patch-id      the same change under a different sha (a clean cherry-pick)
+      subject+files the same message AND exactly the same set of paths — the case
+                    where integration edited the content while merging. Subject
+                    alone is NOT accepted: two commits can share a message and touch
+                    unrelated files, which is the shape that would wave through a
+                    branch nobody integrated.
+    """
+    rc, out = _git(["rev-list", "--reverse", f"{base}..{branch}"])
+    if rc != 0:
+        return {"ok": False, "error": f"cannot list {base}..{branch}", "commits": []}
+    shas = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    if not shas:
+        # Nothing unique to the branch: it is an ancestor of base. The floor would
+        # not have refused, so getting here means the caller asked anyway.
+        return {"ok": True, "commits": [], "base": base, "searched": 0}
+
+    by_patch = _patch_id_index(base, depth)
+    by_subject = _subject_file_index(base, depth)
+
+    results = []
+    for sha in shas:
+        _, subject = _git(["log", "-1", "--format=%s", sha])
+        subject = subject.strip()
+        _, names = _git(["show", "--name-only", "--format=", sha])
+        files = frozenset(ln.strip() for ln in names.splitlines() if ln.strip())
+        match, matched = None, None
+        pid = _commit_patch_id(sha)
+        if pid and pid in by_patch:
+            match, matched = "patch-id", by_patch[pid]
+        else:
+            for cand_sha, cand_files in by_subject.get(subject, []):
+                if cand_files == files and files:
+                    match, matched = "subject+files", cand_sha
+                    break
+        results.append({"sha": sha[:9], "subject": subject, "match": match,
+                        "matched_sha": (matched or "")[:9] or None,
+                        "files": sorted(files)[:8]})
+    return {"ok": all(r["match"] for r in results), "commits": results,
+            "base": base, "searched": min(depth, len(by_patch))}
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     """Landed-floor guard, then registry resolve merged → worktree remove + branch -D
     (local + remote) + drop the gate-record cache."""
@@ -3448,16 +3562,55 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # Called out of order (before cutover) it would vaporize unlanded work. Refuse a
     # branch whose net change is NOT already in base — using the registry's tree-diff
     # containment (never git cherry; same authority the sweep trusts). --force overrides.
+    audit = None
     if not args.force:
         _fetch()  # base may have advanced; compare against the fresh tip
         if not wr.landed_in_base(args.base, branch):
-            reason = (f"branch {branch!r} is not landed in {args.base} (tree-diff) — "
-                      "resolve would force-discard unlanded work; run `cutover` first "
-                      "or pass --force")
-            _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
-                   "reason": reason, "branch": branch, "landed": False}, args.json,
-                  f"✗ resolve refused: {reason}")
-            return EXIT_BLOCK
+            # SECOND EVIDENCE PATH, not a looser floor. After a batch integration
+            # the tree-diff answer is legitimately "no" — conflict resolution left
+            # base holding a NEWER version than the branch — and that is
+            # indistinguishable from "never landed". Measured with
+            # `ops/worktree_loadtest.py --mode batch -n 10 --conflict shared`:
+            # 10 of 10 source branches land here. `--via-integration <ref>` runs
+            # the audit the SKILL prescribes, mechanically, and reports what each
+            # commit was matched on.
+            if args.via_integration:
+                audit = _audit_integrated(branch, args.via_integration)
+                if not audit["ok"]:
+                    missing = [c for c in audit["commits"] if not c["match"]]
+                    reason = (
+                        f"branch {branch!r} is not landed in {args.base} (tree-diff), "
+                        f"and the integration audit against {args.via_integration!r} "
+                        f"could not account for {len(missing)} of "
+                        f"{len(audit['commits'])} commit(s): "
+                        + "; ".join(f"{c['sha']} {c['subject']!r}" for c in missing[:5])
+                        + ". Either they never landed, or the ref you named is not "
+                        "the one that carried them.")
+                    _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
+                           "reason": reason, "branch": branch, "landed": False,
+                           "audit": audit}, args.json,
+                          f"✗ resolve refused: {reason}")
+                    return EXIT_BLOCK
+                weak = [c["sha"] for c in audit["commits"]
+                        if c["match"] == "subject+files"]
+                print(f"[worktree][audit] {branch}: "
+                      f"{len(audit['commits'])} commit(s) accounted for in "
+                      f"{args.via_integration}"
+                      + (f"; {len(weak)} on the WEAKER subject+files match "
+                         f"({', '.join(weak[:5])})" if weak else ""),
+                      file=sys.stderr, flush=True)
+            else:
+                reason = (f"branch {branch!r} is not landed in {args.base} (tree-diff) "
+                          "— resolve would force-discard unlanded work. If it was "
+                          "batch-integrated (conflict resolution leaves base holding a "
+                          "NEWER version, which reads identically to 'never landed'), "
+                          f"prove it with `--via-integration {args.base}` and the tool "
+                          "will audit every commit and say what it matched on. "
+                          "Otherwise run `cutover` first, or pass --force.")
+                _emit({"schema": SCHEMA, "step": "resolve", "error": "refused",
+                       "reason": reason, "branch": branch, "landed": False}, args.json,
+                      f"✗ resolve refused: {reason}")
+                return EXIT_BLOCK
 
     # teardown MUST run from the primary root: step 1 removes the target worktree,
     # which may be the very directory this process was invoked from. For the same
@@ -3538,6 +3691,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
     if not args.commit:
         payload = {"schema": SCHEMA, "step": "resolve", "mode": "dry-run", "branch": branch,
+                   # what let this teardown through, when it was not the
+                   # plain tree-diff floor. Absent means the floor passed.
+                   **({"audit": audit} if audit else {}),
                    "plan": [{"label": s["label"], "cmd": s["cmd"]} for s in steps]}
         human = ("# resolve (dry-run) — ledger -> merged, then:\n"
                  + "\n".join(f"  {s['cmd']}   # {s['label']}" for s in steps)
@@ -3641,6 +3797,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                           if t not in staged_here and not _entry_is_closed(root, t))
 
     payload = {"schema": SCHEMA, "step": "resolve", "mode": "committed", "branch": branch,
+                   # what let this teardown through, when it was not the
+                   # plain tree-diff floor. Absent means the floor passed.
+                   **({"audit": audit} if audit else {}),
                "resolved": "merged", "executed": results, "failures": failures,
                "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed,
@@ -3851,6 +4010,14 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--worktree", required=True, help="worktree path to resolve")
     rs.add_argument("--branch", default=None,
                     help="branch to resolve (default: the worktree's checked-out branch)")
+    rs.add_argument(
+        "--via-integration", dest="via_integration", metavar="REF", default=None,
+        help="prove a batch-integrated branch landed: audit every commit unique to "
+             "it against REF (usually `main`), accepting a patch-id match or an "
+             "identical subject AND file set, and refusing by name if any commit is "
+             "unaccounted for. This is a second evidence path, not --force: --force "
+             "means 'I looked', this means 'the tool looked and here is what it "
+             "matched on'.")
     rs.add_argument("--force", action="store_true",
                     help="override the landed-floor (tear down even if the branch's work "
                          "is NOT yet in base — accepts the loss of unlanded work)")
