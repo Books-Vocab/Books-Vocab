@@ -1,0 +1,12 @@
+{
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "**N=10 併發 cutover 只有 2 條落地。** 量測方式：clone 主倉到 throwaway 目錄，N 個 lane 各自 open → 建一支不相干的 ops/*.sh → commit → gate → cutover → resolve，全部併發。安全面完全守住（primary 乾淨、零 ungated tree 落地、validate 0 problems、帳本一致）——**壞的不是正確性，是收斂性**。N=3：3/3 落地，但用掉 6 次 gate（1+2+3，三角數）。N=10：**2/10 落地**，8 條被拒，全部同一個根因『worktree is behind main』——其中 5 條在 cutover 被拒、3 條連 gate 都不給跑（gate 對落後的樹直接拒絕，理由是 cutover 會先 rebase 所以 gate 一棵註定被改寫的樹是白做）。根因鏈：本地 main 是唯一主幹且 cutover 用 ff-only，所以任一 lane 落地都會讓其餘所有 lane 變成『落後』。每條 lane 必須贏一場競賽——在自己 gate 跑完之前沒有別人落地——而勝率隨 N 陡降。恢復路徑（catchup → gate → cutover）本身也在同一場競賽裡，所以會 convoy。**同一個根因今天散成三種不同的拒絕訊息、兩種不同的補救**：gate 期『behind main → 跑 catchup』、cutover 期『behind main → 跑 catchup』、cutover 鎖內『rebase moved HEAD → 重跑 gate』。操作者（或 agent）必須三種都認得、還要挑對補救，而工具沒有任何一個動詞負責『把我弄上去』。**這正好擋在 10→15→20 的路上**，且 N 越大越糟。修法方向（擇一或組合）：① 新增 land 動詞，內含公平 FIFO 佇列，把 catchup→gate→cutover 整段納入排隊，讓 N 條在 N 次 gate 內全部落地——最小可行、把 2/10 變 10/10，代價是 gate 不再平行；② 記錄 verdict 時一併記下該次 gate 實際消費的輸入路徑集合，cutover 時若 trunk delta 與該集合不相交則 verdict 存活（保守預設為『全 repo』＝不存活，只有明確宣告窄輸入的 gate 才享有），與 ① 併用可逼近 N 次平行 gate；③ 批次 cutover：一次鎖內連續 ff 多條分支，對合併結果只 gate 一次。壓測腳本本身應收進 ops/ 成為可重跑的工具（今天在 scratchpad），因為 10→15→20 每一級都要重量一次。",
+  "id": "IMP-20260808-a690f8",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "high",
+  "source": "合成負載壓測 worktree_orchestrate（throwaway clone，N=3 與 N=10）——為了在真正開 10 條之前先知道工具撐不撐得住",
+  "status": "open",
+  "stream": "IMP"
+}

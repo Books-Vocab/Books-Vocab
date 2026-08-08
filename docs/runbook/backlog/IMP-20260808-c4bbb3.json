@@ -1,0 +1,19 @@
+{
+  "acceptance": "紅：今天 _run_acceptance 仍是 shell=True，探針斷言 'bash' 出現在該函式的 subprocess 呼叫裡會失敗。綠：函式改用 ['bash','-c',...]，且具名測試 acceptance_runs_under_bash 通過（它同時證明地板放行與執行器真的以 bash 跑）。",
+  "acceptance_cmd": "test -f ops/backlog.py && ! sed -n \"/^def _run_acceptance/,/^def /p\" ops/backlog.py | grep -q \"shell=True\" && sed -n \"/^def _run_acceptance/,/^def /p\" ops/backlog.py | grep -q \"\\\"bash\\\", \\\"-c\\\"\" && uv run --no-project --python 3.13 --with pytest pytest -q -p no:cacheprovider ops/tests/test_backlog.py -k acceptance_runs_under_bash",
+  "acceptance_expect_rc": 0,
+  "category": "tool",
+  "date": "2026-08-08",
+  "detail": "acceptance 的語法地板與執行器用的不是同一個 shell。地板 `_check_acceptance_cmd`（ops/backlog.py:636）跑 `[\"bash\", \"-n\", \"-c\", cmd]`＝PATH 上的 bash（本機是 homebrew bash 5）；執行器 `_run_acceptance`（:2586）跑 `subprocess.run(cmd, shell=True)`＝`/bin/sh`（macOS 上是 bash 3.2 的 POSIX 模式，Linux CI 上是 dash）。**同一條命令因此被三個不同的 shell 評估**：寫入時 bash 5 說可以，執行時 bash 3.2 或 dash 可能不行。本機實測 `bash -n -c '[[ 1 == 1 ]]'` rc=0、`dash -c '[[ 1 == 1 ]]'` rc=127。今天的實際危害在 macOS 上偏低（/bin/sh 是 bash），但機制上這道地板宣稱的是它沒有驗過的東西——它保證的是『bash 5 parse 得過』，寫進 store 的契約卻是『執行器跑得動』。副作用已經看得到：一位梳理 agent 因為發現這件事，把整批八條 acceptance 全部降級成 POSIX sh 寫法（只用 test/grep/&&/!），也就是這個不一致**已經在讓人繞路**，而繞路的成本是判準的表達力。修法：讓執行器顯式用 bash——`_run_acceptance` 改成 `subprocess.run([\"bash\", \"-c\", cmd], ...)`（不要用 shell=True），這樣執行器與地板同為 bash，且 agent 寫的 `[[ ]]` / process substitution / 陣列全部合法。同時把這個選擇寫進 `--acceptance-cmd` 的 help 與 `_run_acceptance` 的 docstring（現在 docstring 只說 shell=True 是因為『欄位裝的就是一條真命令』，沒說是哪個 shell）。測試：一條只有 bash 懂的命令（`[[ -n x ]]`）必須在地板與執行器兩端都通過。",
+  "fix_site": "ops/backlog.py:_run_acceptance (:2586) / _check_acceptance_cmd (:636)",
+  "groomed_at": "2026-08-08",
+  "groomed_by": "main-session",
+  "id": "IMP-20260808-c4bbb3",
+  "plan": "把 ops/backlog.py 的 _run_acceptance 從 subprocess.run(cmd, shell=True, ...) 改成 subprocess.run(['bash','-c',cmd], ...)，其餘參數（cwd=ROOT、capture_output、timeout=ACCEPTANCE_TIMEOUT_SECONDS）不動。理由寫進 docstring：地板用 bash -n，執行器就必須是 bash，否則地板驗的是另一支 shell 的性質。順手把 --acceptance-cmd 的 help 補一句『以 bash 執行』，讓寫 acceptance 的人知道可以用 [[ ]]。測試加在 ops/tests/test_backlog.py，名稱含 acceptance_runs_under_bash：一條 bash-only 的命令（例如 [[ -n x ]]）必須 (a) 通過 _check_acceptance_cmd 不被拒、(b) 經 _run_acceptance 執行得到 rc=0。第二半是關鍵——只驗地板的話，把執行器改回 sh 也照樣綠。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "severity": "med",
+  "source": "梳理 agent 回報：它為了避開這個風險，把整批 acceptance 命令刻意降級成 POSIX sh 寫法",
+  "status": "open",
+  "stream": "IMP"
+}
