@@ -294,6 +294,20 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 - **政策**：primary 上工作**早 commit、常 commit**；agent 對 primary 是**過境不常駐**——別讓 uncommitted 改動在 primary 過夜擋別人的 cutover。
 - **協調信箱（被動通道，優先於 send_message）**：`<repo>/.cache/coordination/broadcast.md`（全員）與 `<repo>/.cache/coordination/<slug>.md`（點對點，slug=你的 worktree slug）。`.cache/` gitignored、不進版控。**讀時機**（每個節點順手 `cat`，無檔即略過）：open 後、gate 前、cutover 被 refuse 時、暫停/待命前。**寫**：對其他 session 的非急件協調（排程、讓路、注意事項）寫進對方 `<slug>.md` 或 broadcast，**送出即完成、不等回覆**；急件（要對方立刻停手）才用 `send_message`（每則會跳使用者確認框，host 硬閘、配置免不了——所以批次合併、能少則少）。過期訊息由寫入者自清（附日期，處理完即刪）。
 
+## Review loop 的停止條件
+
+`review_cycle.py` 是鐵律 4 的收斂控制面：同一個完整 `commit SHA × scope` 第一次 BLOCK 修正後
+最多再審一次；第二次仍有 BLOCK 就停在 `adjudication_required`，由 driving agent 做
+`accept` / `fix` / `defer` 裁決，**不得自動派第三次完整 review**。NIT 與 TOOLING-DEBT
+要分桶、具名追蹤，不得為了清掉它們把原始 scope 無限擴大。reviewer 中斷或逾時時先以
+`cancel` 釋放 reservation，不得用它重置已完成的 review。每次新 commit 都是新 cycle；
+狀態機與證據入口見 `ops/review_cycle.py` 及 `docs/sop/review_discipline.md`。
+
+預設目標是可交付的 80 分：第三輪只留給確實複雜，或第二輪仍有多個明顯 release-blocking 缺陷
+的 scope，並須具名說明理由。Gate 是另一道機器 review 閘門；gate BLOCK 會退回，fresh gate
+通過後不應為了清 NIT 而無限重派 LLM reviewer。超過兩三輪時，先把 correctness 與邊際效益遞減
+分開裁決，後者記成 follow-up。
+
 ## 硬邊界
 
 - **工作樹內一律 `git -C <工作樹絕對路徑>` 與絕對路徑，Bash 的 cwd 不保證在指令之間持久**：背景指令、heredoc 腳本或任何一次子行程都可能讓 cwd 漂回 primary checkout（**agent harness 更是每次 Bash 呼叫都重設 cwd**——實測前一次呼叫結束在 `/tmp`，下一次的 `pwd` 直接是 `/Users/chenliangyu/project/kg` ＝ primary）。漂回之後那些 repo-relative 指令**不報錯，只是安靜地改答另一個 repo 的問題**——不變式是「它回答的是 **primary** 的狀態」：`git status --porcelain` 回報 primary 的髒檔（primary 恰好乾淨時你就得到一句「乾淨」，而你的改動明明在別處）、`git add <只存在於工作樹的 path>` 報 `pathspec … did not match any files`、`./ops/i18n_lint.sh` 之類 repo-relative 工具驗的是主 checkout。
