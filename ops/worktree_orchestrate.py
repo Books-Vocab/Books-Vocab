@@ -3110,12 +3110,15 @@ def cmd_gate(args: argparse.Namespace) -> int:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
         breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
         reuse = record.get("gate_reuse", {})
-        no_changes = " no-changes" if record.get("no_changed_files") else ""
-        print(f"gate={verdict} record={_gate_record_path(args.state, worktree)} "
+        no_changes = (" no-changes"
+                      if record.get("no_changed_files") and not args.plan_only else "")
+        record_ref = (str(_gate_record_path(args.state, worktree))
+                      if not args.plan_only else "<not recorded>")
+        print(f"gate={verdict} record={record_ref} "
                f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
                f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}"
                f"{no_changes}")
-        return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
+        return EXIT_OK if args.plan_only or verdict in ("pass", "warn") else EXIT_BLOCK
 
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
              f"{len(plan)} gate(s))  orchestrator={_orch_token(record)}"]
@@ -3124,7 +3127,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
             f"  ⚠ no changes in this worktree vs {args.base} — no changed files were "
             f"verified. If you have been editing, the edits may have landed in the "
             f"primary checkout instead (cwd drift); check `git -C {worktree} status` "
-            "before trusting this PASS."
+            "before trusting this gate result."
         )
     for r in results:
         mark = {"pass": "✓", "warn": "⚠", "block": "✗",

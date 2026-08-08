@@ -3408,6 +3408,28 @@ def test_gate_names_the_empty_worktree(scratch):
 
 
 @gitmark
+def test_gate_plan_only_receipt_does_not_record_empty_signal(scratch):
+    """Plan-only previews must not masquerade as a recorded empty verification."""
+    tmp_path, repo, remote = scratch
+    state = str(tmp_path / "plan-reg.json")
+    rc, opened = _run_json(
+        ["open", "--intent", "preview empty tree", "--slug", "plan-empty",
+         "--state", state, "--json"]
+    )
+    assert rc == MODULE.EXIT_OK
+
+    rc, receipt = _run_text(
+        ["gate", "--worktree", opened["path"], "--state", state,
+         "--plan-only", "--receipt-line"]
+    )
+    assert rc == MODULE.EXIT_OK
+    assert "gate=planned" in receipt
+    assert "record=<not recorded>" in receipt
+    assert "no-changes" not in receipt
+    assert not MODULE._gate_record_path(state, opened["path"]).exists()
+
+
+@gitmark
 def test_gate_marks_a_changed_worktree_as_nonempty(scratch):
     tmp_path, repo, remote = scratch
     state = str(tmp_path / "reg.json")
