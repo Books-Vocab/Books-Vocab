@@ -60,6 +60,17 @@ def run_streamed_command(
     pipe-buffer deadlock. Only the final ``capture_limit`` bytes per stream are kept.
     Parent stdout is never written, so callers can retain a single-JSON contract.
 
+    Each heartbeat also reports whether the child is *moving*, not merely present:
+    ``outBytes`` is the cumulative child output observed so far — stdout and stderr
+    COMBINED, since either one advancing means the child is alive and working —
+    ``idle`` the time since output last advanced, and ``stalled=true`` means a whole
+    heartbeat interval passed without a single byte on either stream. ``alive=true`` cannot carry this — a wedged child
+    and a working one are indistinguishable by existence alone. Nothing here kills
+    anything: ``stalled`` is exposed so callers can decide, and a caller that wants a
+    hard ceiling still uses ``timeout_seconds``. Silence is not always failure (lock
+    waits and slow downloads are legitimately quiet), so wiring ``stalled`` to a
+    verdict requires per-call-site evidence that its quiet periods are bounded.
+
     ``env`` replaces the child's whole environment when given (``None`` inherits).
     It exists because some inherited variables are hazards rather than context: a
     child that opens an interactive editor blocks forever behind a pipe nobody is
@@ -108,7 +119,16 @@ def run_streamed_command(
             assert pipe is not None
             try:
                 while True:
-                    chunk = pipe.read(64 * 1024)
+                    # ``read1``, not ``read``: BufferedReader.read(n) blocks until it
+                    # has n bytes or EOF, so a child emitting less than 64 KiB hands
+                    # the parent nothing until it exits. That is invisible while the
+                    # only question is "what was the tail", and fatal once output is
+                    # the progress signal — every low-volume child would read as
+                    # stalled. ``read1`` returns whatever one raw read yields; it
+                    # exists because Popen's default ``bufsize=-1`` makes these pipes
+                    # BufferedReaders. An unbuffered ``bufsize=0`` would hand back
+                    # raw FileIO objects, which have no ``read1``.
+                    chunk = pipe.read1(64 * 1024)
                     if not chunk:
                         break
                     chunks.put((stream_name, chunk))
@@ -132,6 +152,9 @@ def run_streamed_command(
         next_heartbeat = started + heartbeat_interval
         deadline = started + timeout_seconds if timeout_seconds is not None else None
         timed_out = False
+        bytes_seen = 0
+        last_progress_bytes = 0
+        last_progress_at = started
         while open_streams:
             now = time.monotonic()
             timeout = max(0.001, next_heartbeat - now)
@@ -144,12 +167,24 @@ def run_streamed_command(
             if chunk is None:
                 open_streams.discard(stream_name)
             elif chunk:
+                bytes_seen += len(chunk)
                 tail = tails[stream_name]
                 tail.extend(chunk)
                 if len(tail) > capture_limit:
                     del tail[:-capture_limit]
 
             now = time.monotonic()
+            if bytes_seen > last_progress_bytes:
+                # Timestamp progress where it is OBSERVED, not where it is reported.
+                # Sampling this only at heartbeat time makes ``idle`` under-report
+                # real silence by up to a whole interval — measured: a child that
+                # went quiet at t=0.02s still printed idle=0.0s at the t=0.5s beat,
+                # which at the default interval is a 20-second lie told to exactly
+                # the callers who exist to set budgets from this number. It also
+                # keeps ``stalled`` an honest predicate instead of one that is true
+                # only because heartbeats happen never to fire early.
+                last_progress_bytes = bytes_seen
+                last_progress_at = now
             if deadline is not None and now >= deadline:
                 # The group leader may have exited while a descendant still
                 # owns inherited pipes. The open-stream deadline applies to
@@ -159,9 +194,19 @@ def run_streamed_command(
                 deadline = None
             if now >= next_heartbeat and open_streams:
                 alive = str(proc.poll() is None).lower()
+                idle = now - last_progress_at
+                # The progress fields are appended AFTER the existing ones: downstream
+                # greps match an unanchored `... pid=N alive=true` prefix and must
+                # keep matching.
+                stalled = str(idle >= heartbeat_interval).lower()
                 print(
                     f"{progress_prefix} {label_key}={label} phase=heartbeat "
-                    f"elapsed={now - started:.1f}s pid={proc.pid} alive={alive}",
+                    f"elapsed={now - started:.1f}s pid={proc.pid} alive={alive} "
+                    # ``idle`` prints 2dp while ``elapsed`` keeps 1dp on purpose: at
+                    # 1dp a 0.48s idle renders as `stalled=false idle=0.5s` against a
+                    # 0.5s interval, a line that contradicts itself. Rounding noise is
+                    # tolerable in a duration; a self-contradicting line is not.
+                    f"stalled={stalled} outBytes={bytes_seen} idle={idle:.2f}s",
                     file=sys.stderr,
                     flush=True,
                 )
