@@ -120,6 +120,8 @@ gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一�
 
 先 `gate --plan-only --json` 可預覽選出的 gate 集合而不執行。**block 必修**（回去修再重跑 gate）；**warn 是 advisory**——不擋 cutover，處置權在你（driving agent），land 時會標「landed with warnings」。
 
+**第三種 status：`inconclusive`（渲染成 `~`，IMP-20260805-4ec901）**——那道 gate**真的紅了，但那個紅不歸這條分支**。linked worktree 與 primary **共用 `refs/`**（`git rev-parse --git-path refs/tags` 兩邊回同一個絕對路徑，不是各自一份），所以有人在 primary 跑 `release.sh` 建/刪 tag 時，正在這裡跑、且會讀 repo 全域 tag 狀態的 child（`ops/test_ios_ops.sh` 的 release/TestFlight 案例）就會以 rc=1 收場。實測 2026-08-05：批次 gate 中它回 371 passed / 1 failed，同一份輸入單獨重跑 371 全綠 exit 0——**紅綠是機器狀態的函數**，與 device-lock 那條同形。orchestrator 因此在每道 shell gate **前後各取一次 tag 快照**（綠的那條路徑不取第二次：綠不需要歸因），rc≠0 且快照有變就標 `inconclusive`：**rc 原封保留**，summary 開頭寫明變了幾個 tag。三件事跟著改變：① `aggregate_verdict` 把它折成 **warn**（折成 block 會為別人的 tag 手術殺掉你的工作，折成 pass 則是宣稱一個沒人證明過的東西）；② `land` 的 warnings 清單會列出它；③ **它不計入 never-green 連勝**——被污染的紅不是「這道 gate 從沒綠過」的證據。**你該做的**：等 tag 手術結束後重跑那道 gate，不要當成自己的 bug 去追。快照讀不到時（非 repo / git 失敗）一律當**未量測**而非「全部 tag 被刪」，所以壞掉的探針只會讓機制沉默，不會把誠實的紅洗成 inconclusive。
+
 **block 的 summary 怎麼讀**（IMP-20260808-c47253）：失敗**shell** gate 的 `summary` 依序是 `exit <rc>` → **含失敗標記的行**（`✗` / `FAIL` / `AssertionError` / `not ok` / `error:`，至多 20 行）→ 原本的三行尾巴 → `full output: <path>`。**先讀那幾行具名失敗行，再決定要不要開 log**；抽不到任何標記時會明說 `no failure-marked lines found`，那代表這道 gate 印的東西不帶任何已知標記，此時直接開 log。log 落在 `<anchor>/.cache/worktree_gates/<key>.<gate>.log`，**每次跑該 gate 前先刪、綠了就不留、`resolve` 一併清**，所以你看到的一定是這次的。在此之前 summary 只有尾巴——實測一次 block 的 summary 全長 94 字元，失敗斷言的名字在被截掉的上面幾十行，於是唯一能做的是重跑並祈禱重現。**不要再靠重跑取得失敗名字。**
 （internal gate——`ops-shell-syntax` / `docs-conflict-markers` / `docs-verified-against` / `coverage`——在 Python 內自組具名 summary，沒有 log 指標，那是對的，不是漏掉。）
 
