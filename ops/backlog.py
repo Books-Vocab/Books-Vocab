@@ -668,6 +668,12 @@ def _check_traceability(payload: dict, commit_state) -> list[dict]:
                 # `reanchor` can find it by patch-id. Distinct from the next kind
                 # because the repairs are different.
                 problems.append({"kind": "fixed-by-orphaned", "sha": sha})
+            elif state == "ambiguous":
+                problems.append({"kind": "fixed-by-ambiguous-prefix", "sha": sha})
+            elif state == "wrong-type":
+                problems.append({"kind": "fixed-by-not-a-commit-object", "sha": sha})
+            elif state == "not-a-sha":
+                problems.append({"kind": "fixed-by-not-a-sha", "sha": sha})
             elif state == "unknown":
                 # No object anywhere. IMP-0005 carried `813356b1`, which exists
                 # in no odb — not an orphan, a hash somebody wrote down wrong.
@@ -1036,7 +1042,7 @@ def _git(*args: str, repo: Path | None = None) -> subprocess.CompletedProcess:
 
 
 def make_commit_state(repo: Path | None = None):
-    """Resolve a sha to `ok` / `orphan` / `unknown`, or None outside a repo.
+    """Resolve a fixed-by value to its object identity, or None outside a repo.
 
     `ok` means reachable from HEAD **or** from `main`. Neither alone works:
 
@@ -1046,6 +1052,12 @@ def make_commit_state(repo: Path | None = None):
         gate that reds on the normal path is one that gets switched off. This is
         the failure the P2/P3 pairing was supposed to avoid, so it is designed
         against rather than discovered later.
+
+    The resolver distinguishes `unknown` (no object), `not-a-sha` (a ref name
+    resolved to a commit), `wrong-type` (an existing tree/blob), and
+    `ambiguous` (a short prefix names multiple objects). A ref is not an
+    acceptable identity even when Git can resolve it today: the ref can move
+    after the ledger records it.
 
     Returns None (rather than a function that always says `ok`) when there is no
     repo, so the caller can say the check did not run instead of printing a
@@ -1059,14 +1071,47 @@ def make_commit_state(repo: Path | None = None):
     def state(sha: str) -> str:
         if sha in cache:
             return cache[sha]
-        if _git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", repo=repo).returncode != 0:
-            result = "unknown"
-        elif _git("merge-base", "--is-ancestor", sha, "HEAD", repo=repo).returncode == 0:
-            result = "ok"
-        elif has_main and _git("merge-base", "--is-ancestor", sha, "main", repo=repo).returncode == 0:
-            result = "ok"
+
+        # `rev-parse --verify <sha>^{commit}` collapses three different cases:
+        # an absent object, a tree/blob, and a ref name that peels to a commit.
+        # Ask Git the questions in an order that preserves those distinctions.
+        disambiguated = _git("rev-parse", f"--disambiguate={sha}", repo=repo)
+        object_matches = [
+            line.strip() for line in disambiguated.stdout.splitlines()
+            if re.fullmatch(r"[0-9a-f]{40}", line.strip())
+        ]
+        if len(object_matches) > 1:
+            result = "ambiguous"
         else:
-            result = "orphan"
+            resolved = _git("rev-parse", "--verify", "--quiet", sha, repo=repo)
+            object_sha = resolved.stdout.strip()
+            if resolved.returncode != 0 or not object_sha:
+                result = "unknown"
+            else:
+                object_type = _git("cat-file", "-t", object_sha, repo=repo)
+                if object_type.returncode != 0:
+                    result = "unknown"
+                elif object_type.stdout.strip() != "commit":
+                    # Annotated tags resolve to a tag object through the raw
+                    # ref, but peel successfully through `^{commit}`. They
+                    # are still moving refs, whereas a tree/blob sha cannot
+                    # peel to a commit and is genuinely the wrong object.
+                    peeled = _git(
+                        "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}",
+                        repo=repo,
+                    )
+                    result = "not-a-sha" if peeled.returncode == 0 else "wrong-type"
+                elif _SHA_RE.match(sha) and not object_sha.startswith(sha):
+                    # A branch or tag name can be all lowercase hex and pass
+                    # `_SHA_RE`; only the resolved object identity can expose
+                    # that it was a moving ref rather than the recorded sha.
+                    result = "not-a-sha"
+                elif _git("merge-base", "--is-ancestor", object_sha, "HEAD", repo=repo).returncode == 0:
+                    result = "ok"
+                elif has_main and _git("merge-base", "--is-ancestor", object_sha, "main", repo=repo).returncode == 0:
+                    result = "ok"
+                else:
+                    result = "orphan"
         cache[sha] = result
         return result
 
@@ -1424,6 +1469,21 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
                 f"  a rebase orphaned it -> ops/backlog.py reanchor {entry_id} --commit\n"
                 f"  reanchor cannot map it -> pass the right sha: "
                 f"ops/backlog.py update {entry_id} --fixed-by <sha> --commit"
+            )
+        if any(p["kind"] == "fixed-by-ambiguous-prefix" for p in problems):
+            hints.append(
+                "  fixed_by is an ambiguous short prefix -> use a longer or full "
+                "40-character commit sha; do not run reanchor"
+            )
+        if any(p["kind"] == "fixed-by-not-a-commit-object" for p in problems):
+            hints.append(
+                "  fixed_by names an existing non-commit object -> replace it "
+                "with the commit sha, not a tree or blob sha"
+            )
+        if any(p["kind"] == "fixed-by-not-a-sha" for p in problems):
+            hints.append(
+                "  fixed_by resolved as a moving ref name -> pass the full or "
+                "unambiguous commit sha, not a branch or tag name"
             )
         if any(p["kind"] == "fixed-without-fixed-by" for p in problems):
             hints.append(
