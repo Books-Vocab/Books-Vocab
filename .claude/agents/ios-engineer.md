@@ -28,7 +28,7 @@ model: inherit
 
 ## APP backlog(本 worker 是 `APP-*` 的 owner)
 
-- **開工前掃一次自己的收件匣**:`./ops/backlog.py list --stream APP`。你要動的 surface 可能已經有人立過單。
+- **開工前掃一次自己的收件匣**:`./ops/backlog.py list --stream APP`。你要動的 surface 可能已經有人立過單。**要動的檔或症狀已有關鍵字就直接問**:`./ops/backlog.py list --grep '<檔名或症狀>'`(不分大小寫 regex,掃 detail/resolution/plan/fix_site,可疊 `--stream APP --status open`)——鄰居單常常是 `fix_site` 命中而 detail 完全沒提到那個檔。
 - 在 scope 內發現**會出貨給使用者**的缺陷而本回合不修 → 立刻立單,別留在 receipt 散文裡。**下面是完整可跑的形狀,填實佔位符即可執行**:
   ```
   ./ops/backlog.py add --stream APP \

@@ -849,6 +849,183 @@ def test_ungroomed_filter_composes_with_the_others(tmp_path):
     assert [e["id"] for e in hits] == [wanted["id"]]
 
 
+# --------------------------------------------------------------------------
+# 8b. list --grep — "has this already been filed?"
+#
+# Every other filter here answers a question about an entry's METADATA, and
+# none of them answer the one question an agent has before starting work. The
+# store is 170 entries and growing in waves of 10-20; the observed cost of not
+# being able to ask it was a full rebuild of a spec that was already written
+# AND already groomed (IMP-20260807-c66d97 rebuilt IMP-20260807-5bff5e), plus
+# two throwaway python scripts written the same day to scan the store by hand.
+#
+# It is a filter on `list` rather than a `search` subcommand on purpose: the
+# question is almost never "does this text appear anywhere", it is "does this
+# text appear in something still OPEN" or "...in something already groomed".
+# A separate subcommand cannot stack, so it would have to re-grow every flag
+# `list` already has, and until it did, every caller would go back to the
+# throwaway script.
+# --------------------------------------------------------------------------
+
+
+def test_list_grep_keeps_only_the_entries_whose_text_matches(tmp_path):
+    store = tmp_path / "backlog"
+    hit = _add(store, detail="macOS ships openrsync; a push exits 0 and copies nothing")
+    _add(store, detail="the gate reads green with no tests run")
+    _add(store, detail="ios build picks the wrong scheme")
+
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="openrsync")] == [hit["id"]]
+    # The empty answer has to be reachable and has to be EMPTY. If a miss
+    # returned the whole store, "nobody has filed this" and "the filter did
+    # nothing" would be the same observation — and the second one is the
+    # reading that makes an agent rebuild a spec that already exists.
+    assert BACKLOG.list_entries(store, grep="nfs-over-carrier-pigeon") == []
+
+
+@pytest.mark.parametrize("field", ["resolution", "plan", "fix_site"])
+def test_list_grep_reads_the_fix_fields_not_only_detail(tmp_path, field):
+    """`detail` says what broke; plan / fix_site / resolution say where and how.
+
+    An agent about to touch `ops/foo.py` is asking "is there a neighbour ticket
+    on this file", and that string lives in `fix_site` — an entry can be a
+    perfect match for the work about to start while its `detail` never names
+    the file at all. A detail-only grep answers "no" on exactly those.
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="a tool reports success while doing nothing")
+    _add(store, detail="an unrelated neighbour", date="2026-08-06")
+    BACKLOG.update_entry(store, entry["id"],
+                         **_groom_kwargs(**{field: "ops/openrsync_probe.py:42"}))
+
+    hits = [e["id"] for e in BACKLOG.list_entries(store, grep="openrsync")]
+    assert hits == [entry["id"]], f"--grep never looked at `{field}`"
+
+
+def test_list_grep_intersects_the_other_filters_rather_than_replacing_them(tmp_path):
+    """AND, not OR, and not "the last filter wins".
+
+    A union would return every groomed entry plus every textual match, which
+    reads as a plausible answer and is the wrong set. The assertions below pin
+    the intersection from both sides: each predicate alone is strictly wider
+    than the two together.
+    """
+    store = tmp_path / "backlog"
+    groomed_hit = _add(store, detail="openrsync push exits 0 and copies nothing")
+    BACKLOG.update_entry(store, groomed_hit["id"], **_groom_kwargs())
+    raw_hit = _add(store, detail="openrsync ignores --delete without saying so")
+    groomed_other = _add(store, detail="the gate reads green with no tests run")
+    BACKLOG.update_entry(store, groomed_other["id"], **_groom_kwargs())
+
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="openrsync", groomed=True)] \
+        == [groomed_hit["id"]]
+    assert {e["id"] for e in BACKLOG.list_entries(store, grep="openrsync")} \
+        == {groomed_hit["id"], raw_hit["id"]}
+    assert {e["id"] for e in BACKLOG.list_entries(store, groomed=True)} \
+        == {groomed_hit["id"], groomed_other["id"]}
+
+    # Same statement against a metadata filter that partitions the store
+    # differently, so the AND is not an accident of the groom badge.
+    BACKLOG.update_entry(store, raw_hit["id"], status="wont-fix",
+                         resolution="not worth it")
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="openrsync", status="open")] \
+        == [groomed_hit["id"]]
+
+
+def test_list_grep_does_not_match_across_field_boundaries(tmp_path):
+    """Each field is searched on its own, not as one concatenated blob.
+
+    Joining the four fields with "\\n" and searching once is a line shorter and
+    wrong: `alpha\\s+beta` then matches an entry whose detail ends in "alpha"
+    and whose plan begins with "beta", because the separator IS whitespace. The
+    caller asked whether one field contains that phrase and got back an entry
+    where no field does — a false positive in a tool whose entire job is
+    answering "has this already been filed".
+    """
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="the tool reports alpha")
+    BACKLOG.update_entry(store, entry["id"], **_groom_kwargs(plan="beta lives here"))
+
+    assert BACKLOG.list_entries(store, grep=r"alpha\s+beta") == []
+    assert BACKLOG.list_entries(store, grep=r"(?s)alpha.*beta") == []
+    # ...while each field on its own still matches, i.e. the fix is a boundary,
+    # not a narrowing.
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="alpha")] == [entry["id"]]
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="beta lives")] == [entry["id"]]
+
+
+def test_list_grep_is_case_insensitive_and_takes_a_regex(tmp_path):
+    store = tmp_path / "backlog"
+    entry = _add(store, detail="OpenRsync silently drops the push")
+    _add(store, detail="the gate reads green with no tests run")
+
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep="openrsync")] == [entry["id"]]
+    assert [e["id"] for e in BACKLOG.list_entries(store, grep=r"open.?rsync")] == [entry["id"]]
+
+
+def test_list_grep_refuses_a_broken_pattern_by_name(tmp_path, capsys):
+    """A typo'd bracket is a refusal, not a stack trace.
+
+    `main()` only catches (BacklogError, ValueError, EntryNotFound); letting
+    `re.error` out would print a traceback whose top line is about `sre_parse`,
+    i.e. it would blame this tool's internals for the caller's pattern. That is
+    the defect IMP-20260807-68715b was filed for, one command over.
+    """
+    store = tmp_path / "backlog"
+    _add(store)
+
+    rc = BACKLOG.main(["list", "--store", str(store), "--grep", "["])
+
+    # 64 is this CLI's documented "cannot carry out this invocation" (see the
+    # code ladder in `main()`), which is what a malformed pattern is.
+    assert rc == 64
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err and "Traceback" not in captured.out
+    assert "--grep" in captured.err, captured.err
+
+
+def test_list_grep_is_reachable_from_argv(tmp_path, capsys):
+    """Every other test here calls `list_entries()` directly, so deleting the
+    parser line would leave all of them green while `--grep` is an
+    `unrecognized arguments` error at the only place anyone types it."""
+    store = tmp_path / "backlog"
+    hit = _add(store, detail="openrsync push exits 0 and copies nothing")
+    _add(store, detail="the gate reads green with no tests run")
+
+    assert BACKLOG.main(
+        ["list", "--store", str(store), "--grep", "openrsync", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [e["id"] for e in payload["entries"]] == [hit["id"]]
+
+
+def test_list_grep_gets_no_file_twin(tmp_path):
+    """`--grep` is a query, not prose on its way into the store.
+
+    `_add_file_twins` derives a `--<flag>-file` twin for every flag whose dest
+    is in FILE_TWIN_FIELDS. That set is a whitelist of STORE FIELDS: the twin
+    exists so prose reaches the store unedited by a shell that eats backticks.
+    `--grep` writes nothing, so there is no stored text for a twin to protect.
+
+    Note the tempting-but-wrong version of this argument — "a mangled query is
+    harmless because you would see it in the results". You would not: a pattern
+    the shell narrowed returns FEWER rows, and zero rows reads as "nobody has
+    filed this", which is the exact failure this flag was added to remove.
+
+    The neighbouring `--acceptance-manual` is the precedent, and it shows the
+    cost concretely: it shares a dest with a free-text field, so it got a twin,
+    and that twin was a flag that could never succeed (default `False` is not
+    None, so the mutual-exclusion branch fired on every call). A filter with a
+    twin is a broken flag, not a safer one. `--grep` stays on the right side by
+    having a dest of its own, and this test is what keeps that true.
+    """
+    parser = BACKLOG.build_parser()
+    flags = {opt for action in BACKLOG._subcommands(parser)["list"]._actions
+             for opt in action.option_strings}
+
+    assert "--grep" in flags
+    assert "--grep-file" not in flags
+    assert "grep" not in BACKLOG.FILE_TWIN_FIELDS
+
+
 # Every flag on `update` must actually reach the field it names. A flag whose
 # dest is filtered out by the collection whitelist is accepted and then
 # discarded: `--detail X --status Y --commit` exits 0 having dropped X.

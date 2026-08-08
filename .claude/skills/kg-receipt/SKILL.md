@@ -18,7 +18,7 @@ version: 1.0.0
 3. 若改 user/agent-facing surface，已跑 docs impact/lint 或明確說明為何不需要。
 4. 若改 git history / branch / worktree，已跑相應 audit。
 5. 若有未跑測試，明確列原因與風險。
-6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → 用 `ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
+6. **Tooling Debt 強制表態**:`none` 或一筆。非 trivial 且未當場修 → **先查重再立單**:`./ops/backlog.py list --grep '<關鍵字或檔名>'`(不分大小寫 regex,掃 detail/resolution/plan/fix_site,可疊 `--status open` 等)。這一步不是禮貌是機制:170 筆規模下已經發生過「重造一份已梳理的規格」(IMP-20260807-c66d97)。命中就改為在 receipt 裡指名那張既有票,別開第二張。確認沒有才用 `ops/backlog.py add`（**自由文字含反引號 / `$` / 跳脫字元時改用 `--<flag>-file <路徑>`**——argv 會先過你的 shell，反引號在那裡是命令替換，句子會在工具看到之前被改掉且無人抗議） 登記(store 一筆一檔;要看全貌用 `list --json` / `show`,別去讀 markdown view——它已不在版控裡)。**stream 由「這缺陷誰碰得到」決定,不由誰發現、也不由嚴重度決定**(判準見下「Stream 分流」)。撞到摩擦無聲妥協(硬幹)= 違鐵律9。
 
 ### Stream 分流(可判定,不是「視情況」)
 
