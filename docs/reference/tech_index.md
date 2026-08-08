@@ -220,6 +220,8 @@ Live-only worktree gate 例外：修改 `LiveDemoAccessUITests.swift` 時，`wor
 
 空 diff 仍可合法重跑，但 gate record 會以 `no_changed_files=true` 明示「沒有變更路徑被驗證」；人讀輸出會警告，`--receipt-line` 會加 `no-changes`，避免把合法 re-gate 或錯樹空跑誤讀成新修改已被驗證。
 
+linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_dirty_error`；primary 有未提交 tracked 檔時只在人讀輸出具名警告，不改 gate verdict 或 exit code，避免把共用 primary 的合法並行工作誤擋。
+
 ## Web 設計系統(`design-system/`)
 
 跨平台 design token 橋接層。Token SoT = `tokens.json`(W3C DTCG),經兩條生成鏈出貨:**Style Dictionary → iOS `DesignTokens.swift`**(scalar bridge)與 **`gen_web_tokens.py` → web CSS**。

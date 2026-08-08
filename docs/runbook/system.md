@@ -62,6 +62,8 @@ Do not bypass these entrypoints unless explicitly required and reviewed.
 9. **Wave closure — a hunter never writes the store.** A worktree cannot write a correct `fixed_by`: the landing sha does not exist yet, and cutover's rebase rewrites whatever the branch was carrying, so an entry closed in place anchors on an orphan. (The rationale this item used to give — that closing rewrote the generated ledger view, the one file parallel branches provably collide on, at O(entries) per hunter — retired with that view at IMP-20260807-b9526c: it is gitignored now and only the explicit `render` subcommand writes it.) Instead: `backlog.py stage <id> --verdict <V> --by <who> --evidence '<cmd>'（含反引號時用 --evidence-file）` appends to the gitignored per-repo queue (no `--status`: a wave exists because the landing commit does not exist yet, and `fixed` is the only status that needs one). `cutover` stamps the real landed sha; at wave end ONE `backlog.py anchor --commit` replays the batch into the store, all or nothing. `unstage <id> --commit` is the escape hatch for a row that blocks the wave — never hand-edit the queue. `resolve` lists this branch's still-unanchored closures (`pending_anchor`) without blocking: that is the normal state at teardown, and it is the last moment the worktree exists to say it.
 10. All mutation subcommands are dry-run by default; `--commit` to land.
 
+`gate` 對 linked worktree 另記錄 `primary`、`primary_dirty` 與 `primary_dirty_error`：tracked dirty primary 只產生明示警告，不改 verdict 或 exit code；讀不到 primary 狀態也必須明示，不能靜默當成乾淨。`--plan-only` 不查也不記錄這個觀測。
+
 ## Operational Definition of Done
 - `preflight` succeeded.
 - Backup exists and path recorded.

@@ -3084,6 +3084,21 @@ def cmd_gate(args: argparse.Namespace) -> int:
                 f"{streak['heads']} HEAD(s) / {streak['worktrees']} worktree(s) — worth "
                 f"checking whether it can pass at all before treating this as your bug)")
 
+    primary = primary_root()
+    primary_dirty: list[str] = []
+    primary_dirty_error: str | None = None
+    if not args.plan_only and Path(primary).resolve() != Path(worktree).resolve():
+        try:
+            primary_rc, primary_status = _git(
+                ["status", "--porcelain", "--untracked-files=no"], cwd=primary
+            )
+        except Exception as exc:  # noqa: BLE001 — observation must not fail the gate
+            primary_rc, primary_status = 127, str(exc)
+        if primary_rc != 0:
+            primary_dirty_error = primary_status[:200]
+        else:
+            primary_dirty = _porcelain_paths(primary_status)
+
     record = {"schema": GATE_SCHEMA, "worktree": worktree, "base": args.base,
               "head_sha": head, "orchestrator": orch, "changed_files": changed,
               "no_changed_files": no_changed_files,
@@ -3092,6 +3107,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
               "gates": results, "verdict": verdict,
               "gate_reuse": _reuse_summary(results)}
     if not args.plan_only:
+        record.update({"primary": str(primary), "primary_dirty": primary_dirty,
+                       "primary_dirty_error": primary_dirty_error})
         # Non-blocking, but never silent: a permanently unwritable journal must not be
         # indistinguishable from a machine that simply has no history yet.
         record["history_error"] = history_error
@@ -3128,6 +3145,20 @@ def cmd_gate(args: argparse.Namespace) -> int:
             f"verified. If you have been editing, the edits may have landed in the "
             f"primary checkout instead (cwd drift); check `git -C {worktree} status` "
             "before trusting this gate result."
+        )
+    if not args.plan_only and primary_dirty_error:
+        lines.append(
+            f"  ⚠ primary working tree status unavailable: {primary_dirty_error} — "
+            "inspect the primary checkout before trusting this gate result."
+        )
+    elif not args.plan_only and primary_dirty:
+        shown = ", ".join(primary_dirty[:5])
+        if len(primary_dirty) > 5:
+            shown += f" … and {len(primary_dirty) - 5} more"
+        lines.append(
+            f"  ⚠ primary working tree has {len(primary_dirty)} uncommitted tracked "
+            f"file(s): {shown} — if these are your edits, they landed in the primary "
+            "checkout rather than this worktree."
         )
     for r in results:
         mark = {"pass": "✓", "warn": "⚠", "block": "✗",
