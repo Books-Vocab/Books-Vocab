@@ -164,6 +164,7 @@ from lib.streaming_command import run_streamed_command  # noqa: E402
 
 SCHEMA = "kg.worktree.orchestrate.v1"
 GATE_SCHEMA = "kg.worktree.gate.v1"
+GATE_INPUT_SCHEMA = "kg.worktree.gate-input.v1"
 FREEZE_SCHEMA = "kg.worktree.freeze.v1"
 EXIT_OK = 0
 EXIT_USAGE = 64
@@ -1538,6 +1539,218 @@ def _gate_record_path(state: str | None, worktree: str) -> Path:
     return base_dir / "worktree_gates" / f"{key}.json"
 
 
+def _tracked_paths(worktree: str) -> list[str] | None:
+    """Return tracked paths from the tree being gated, or None when it cannot be read.
+
+    Reuse is an optimisation, so an unreadable path inventory is not a reason to make
+    a claim about unchanged inputs.  The caller treats None as an unknown scope and
+    runs the gate.
+    """
+    rc, out = _git(["ls-files", "-z"], cwd=worktree)
+    if rc != 0:
+        return None
+    return sorted(p for p in out.split("\0") if p)
+
+
+def _input_file_digest(worktree: str, paths: list[str]) -> str | None:
+    """Hash the exact worktree bytes and modes for a bounded input file set."""
+    h = hashlib.sha256()
+    try:
+        for rel in paths:
+            fp = Path(worktree) / rel
+            h.update(rel.encode("utf-8", "surrogateescape"))
+            h.update(b"\0")
+            if fp.is_symlink():
+                h.update(b"symlink\0")
+                h.update(os.readlink(fp).encode("utf-8", "surrogateescape"))
+            elif fp.is_file():
+                h.update(b"file\0")
+                h.update(fp.read_bytes())
+            else:
+                h.update(b"missing\0")
+            try:
+                h.update(str(fp.stat().st_mode & 0o7777).encode("ascii"))
+            except OSError:
+                h.update(b"stat-missing")
+            h.update(b"\0")
+    except (OSError, UnicodeError):
+        return None
+    return h.hexdigest()
+
+
+def _gate_input_scope(spec: dict[str, Any], worktree: str,
+                      changed_files: list[str], tracked: list[str] | None) -> dict[str, Any]:
+    """Resolve a conservative, auditable input scope for one gate.
+
+    This is intentionally narrower than the whole repository for expensive gates, but
+    broader than the changed paths: the tool being reused may scan a whole subsystem.
+    A gate without a defensible scope is explicitly non-reusable rather than silently
+    guessed.  The returned descriptor is persisted with the verdict.
+    """
+    name = str(spec.get("name", ""))
+    kind = "unknown"
+    files: list[str] = []
+    if tracked is not None:
+        if name == "review-receipts":
+            kind = "history"
+        elif name == "coverage":
+            kind = "changed-files"
+            files = sorted(changed_files)
+        elif name == "backlog-validate":
+            kind = "tracked-subsystem"
+            files = [p for p in tracked if p == "ops/backlog.py" or
+                     (p.startswith(BACKLOG_STORE_DIR) and
+                      "/" not in p[len(BACKLOG_STORE_DIR):] and p.endswith(".json"))]
+        elif name == "data-plane:ops/docs_lint.sh":
+            kind = "tracked-control-plane"
+            files = [p for p in tracked if p == "docs/registry.yml" or
+                     p.startswith("ops/docs") and p.endswith((".py", ".sh"))]
+        elif name in {"docs-lint", "docs-conflict-markers"}:
+            kind = "tracked-docs"
+            files = [p for p in tracked if p.startswith("docs/") and
+                     (p.endswith(".md") or p == "docs/registry.yml")]
+            files.extend(p for p in tracked if p.startswith("ops/docs") and
+                         p.endswith((".py", ".sh")))
+        elif name == "docs-verified-against":
+            # Reachability is a property of the repository's commit graph, not only
+            # the bytes of the named documents.  Keep this cheap gate honest until a
+            # graph fingerprint exists.
+            kind = "unknown"
+        elif name == "ops-pytest":
+            kind = "tracked-subsystem"
+            files = [p for p in tracked if p.startswith("ops/") or
+                     p.startswith(".github/workflows/")]
+        elif name.startswith("ops-shell"):
+            kind = "tracked-shell-tree"
+            files = [p for p in tracked if p.endswith(".sh") and
+                     not p.startswith(tuple(pat for pat, _ in SHELL_GATE_EXCLUDED_TREES))]
+        elif spec.get("category") == "ios":
+            kind = "tracked-ios-surface"
+            files = [p for p in tracked if p.startswith("ios/") or
+                     p.startswith("ops/ios") or p.startswith("ops/lib/ios") or
+                     p.startswith("ops/tests/test_ios") or p.startswith("ops/test_ios") or
+                     p.startswith("ops/ui_quality") or p.startswith("ops/tests/test_ui_quality")]
+        elif spec.get("category") == "backend":
+            kind = "tracked-backend-surface"
+            files = [p for p in tracked if p.startswith("backend/") or
+                     p in {"pyproject.toml", "uv.lock"}]
+        elif spec.get("category") == "design-system":
+            kind = "tracked-design-system"
+            files = [p for p in tracked if p.startswith("design-system/") or
+                     p.startswith("ops/verify_design_system") or p.startswith("ops/token") or
+                     p.startswith("ops/gen_") or p.startswith("ios/BooksAndVocab/Models/") or
+                     p.startswith("ios/BooksAndVocab/UIComponents/") or
+                     p in {"backend/static/kg-tokens.css", "backend/static/kg-components.css",
+                           "package.json", "package-lock.json"}]
+
+    clean = not bool(_git(["status", "--porcelain", "--untracked-files=all"],
+                          cwd=worktree)[1])
+    definition = {
+        "name": spec.get("name"), "category": spec.get("category"),
+        "kind": spec.get("kind"), "level": spec.get("level"),
+        "cmd": spec.get("cmd"), "cwd": spec.get("cwd"),
+        "files": spec.get("files"),
+    }
+    descriptor: dict[str, Any] = {
+        "schema": GATE_INPUT_SCHEMA, "kind": kind, "files": sorted(files),
+        "worktree_clean": clean,
+        "definition_fingerprint": hashlib.sha256(
+            json.dumps(definition, sort_keys=True, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")).hexdigest(),
+    }
+    descriptor["fingerprint"] = (
+        _input_file_digest(worktree, descriptor["files"])
+        if kind not in {"unknown", "history"} else None
+    )
+    descriptor["reusable"] = bool(
+        kind not in {"unknown", "history", "changed-files"}
+        and descriptor["fingerprint"] is not None and clean
+    )
+    return descriptor
+
+
+def _read_gate_record(path: Path) -> tuple[dict[str, Any] | None, str | None]:
+    """Read the previous live-worktree record without making reuse fail open."""
+    if not path.exists():
+        return None, "no_prior_record"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None, "prior_record_unreadable"
+    return (payload, None) if isinstance(payload, dict) else (None, "prior_record_invalid")
+
+
+def _reuse_gate(spec: dict[str, Any], current_input: dict[str, Any],
+                previous: dict[str, Any] | None, previous_error: str | None,
+                orchestrator: dict[str, Any], base: str = BASE_DEFAULT
+                ) -> tuple[dict[str, Any] | None, str]:
+    """Return a copied prior result only when every reuse proof is present."""
+    if previous is None:
+        return None, previous_error or "no_prior_record"
+    if not current_input.get("reusable"):
+        return None, "input_scope_not_reusable"
+    if current_input.get("schema") != GATE_INPUT_SCHEMA:
+        return None, "current_input_schema_unknown"
+    if previous.get("schema") != GATE_SCHEMA:
+        return None, "source_record_schema_unknown"
+    if previous.get("base") != base:
+        return None, "base_changed"
+    old_orchestrator = previous.get("orchestrator")
+    if not isinstance(old_orchestrator, dict):
+        return None, "source_record_orchestrator_invalid"
+    old_orch = old_orchestrator.get("sha256")
+    if old_orch != orchestrator.get("sha256"):
+        return None, "orchestrator_changed"
+    previous_gates = previous.get("gates")
+    if not isinstance(previous_gates, list) or any(
+            not isinstance(gate, dict) for gate in previous_gates):
+        return None, "source_record_gates_invalid"
+    prior = next((gate for gate in previous_gates
+                  if gate.get("name") == spec.get("name")), None)
+    if not isinstance(prior, dict):
+        return None, "no_prior_gate"
+    if prior.get("status") not in {"pass", "warn"}:
+        return None, f"source_status_{prior.get('status', 'missing')}"
+    old_input = prior.get("input")
+    if not isinstance(old_input, dict):
+        return None, "source_record_has_no_input_fingerprint"
+    if old_input.get("schema") != GATE_INPUT_SCHEMA:
+        return None, "source_input_schema_unknown"
+    if old_input.get("kind") != current_input.get("kind"):
+        return None, "input_scope_changed"
+    if old_input.get("files") != current_input.get("files"):
+        return None, "input_file_set_changed"
+    if old_input.get("definition_fingerprint") != current_input.get("definition_fingerprint"):
+        return None, "gate_definition_changed"
+    if old_input.get("fingerprint") != current_input.get("fingerprint"):
+        return None, "input_content_changed"
+    if old_input.get("worktree_clean") is not True or current_input.get("worktree_clean") is not True:
+        return None, "worktree_not_clean"
+    copied = dict(prior)
+    reuse_metadata = prior.get("reuse")
+    if reuse_metadata is not None and not isinstance(reuse_metadata, dict):
+        return None, "source_gate_reuse_metadata_invalid"
+    source_head = (reuse_metadata or {}).get("source_head") or previous.get("head_sha")
+    copied["reused"] = True
+    copied["reused_from_head"] = source_head
+    copied["reuse"] = {"decision": "reused", "source_head": source_head,
+                       "reason": "input_unchanged"}
+    copied["input"] = current_input
+    copied["summary"] = f"reused from {str(source_head)[:8]}: {prior.get('summary', '')}"
+    return copied, "input_unchanged"
+
+
+def _reuse_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Small, human-readable audit projection for gate and cutover payloads."""
+    reused = [{"name": r.get("name"),
+               "source_head": r.get("reused_from_head") or r.get("reuse", {}).get("source_head"),
+               "reason": r.get("reuse", {}).get("reason")} for r in results
+              if r.get("reuse", {}).get("decision") == "reused"]
+    rerun = [{"name": r.get("name"), "reason": r.get("reuse", {}).get("reason")}
+             for r in results if r.get("reuse", {}).get("decision") != "reused"]
+    return {"reused": reused, "rerun": rerun}
+
+
 def _gate_log_path(record_path: Path, gate_name: str) -> Path:
     """Where a FAILED gate's captured output is kept — beside its verdict record.
 
@@ -1634,6 +1847,11 @@ def _append_gate_history(state: str | None, worktree: str, head: str,
                     "head8": head[:8],
                     "orch8": orch["sha256"][:8],
                     "wt": wt_key,
+                    "reused": r.get("reuse", {}).get("decision") == "reused",
+                    "reuse_source_head8": str(
+                        r.get("reuse", {}).get("source_head") or "")[:8] or None,
+                    "reuse_reason": r.get("reuse", {}).get("reason"),
+                    "input_fingerprint": (r.get("input") or {}).get("fingerprint"),
                 }, ensure_ascii=False) + "\n")
     except Exception as exc:  # noqa: BLE001 — bookkeeping is never load-bearing
         return f"{type(exc).__name__}: {exc}"
@@ -2791,6 +3009,11 @@ def cmd_gate(args: argparse.Namespace) -> int:
                   f"✗ gate refused: {msg}")
             return EXIT_BLOCK
 
+    # Snapshot the HEAD BEFORE resolving input scopes. A concurrent commit in this
+    # worktree between the diff/fingerprint probe and the record write would otherwise
+    # let a reused result acquire the wrong HEAD identity; cutover's later check cannot
+    # tell that the fingerprint belonged to the earlier tree.
+    head = _head_sha(worktree)
     changed = _changed_vs_base(worktree, args.base)
     # anchor test-existence at the WORKTREE so a test file added in this very diff
     # is seen (the primary checkout may not have it yet)
@@ -2800,11 +3023,43 @@ def cmd_gate(args: argparse.Namespace) -> int:
     results: list[dict[str, Any]] = []
     rec_path = _gate_record_path(args.state, worktree)
     if not args.plan_only:
+        previous, previous_error = _read_gate_record(rec_path)
+        tracked = _tracked_paths(worktree)
         for spec in plan:
-            results.append(_run_gate(spec, worktree, record_path=rec_path))
+            current_input = _gate_input_scope(spec, worktree, changed, tracked)
+            now = _head_sha(worktree)
+            if now != head:
+                payload = {"schema": GATE_SCHEMA, "step": "gate",
+                           "error": (f"worktree HEAD moved while preparing gate inputs "
+                                     f"({head[:8]} -> {now[:8]}) — re-run gate"),
+                           "worktree": worktree, "initial_head": head, "current_head": now}
+                _emit(payload, args.json, f"✗ gate refused: {payload['error']}")
+                return EXIT_BLOCK
+            reused, reason = _reuse_gate(spec, current_input, previous, previous_error, orch,
+                                         args.base)
+            if reused is not None:
+                results.append(reused)
+                continue
+            result = _run_gate(spec, worktree, record_path=rec_path)
+            result["reused"] = False
+            result["reused_from_head"] = None
+            result["reuse"] = {
+                "decision": "rerun",
+                "source_head": previous.get("head_sha") if previous else None,
+                "reason": reason,
+            }
+            result["input"] = current_input
+            results.append(result)
     verdict = aggregate_verdict(results) if not args.plan_only else "planned"
 
-    head = _head_sha(worktree)
+    now = _head_sha(worktree)
+    if not args.plan_only and now != head:
+        payload = {"schema": GATE_SCHEMA, "step": "gate",
+                   "error": (f"worktree HEAD moved while gates ran "
+                             f"({head[:8]} -> {now[:8]}) — discard this run and re-run gate"),
+                   "worktree": worktree, "initial_head": head, "current_head": now}
+        _emit(payload, args.json, f"✗ gate refused: {payload['error']}")
+        return EXIT_BLOCK
     if not args.plan_only:
         # History FIRST, so the never-green check below sees this run too: "never green
         # in N attempts" is only honest if N includes the red being reported.
@@ -2832,7 +3087,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
               "head_sha": head, "orchestrator": orch, "changed_files": changed,
               "plan": [{"name": g["name"], "level": g["level"], "category": g["category"],
                         "cmd": g.get("cmd")} for g in plan],
-              "gates": results, "verdict": verdict}
+              "gates": results, "verdict": verdict,
+              "gate_reuse": _reuse_summary(results)}
     if not args.plan_only:
         # Non-blocking, but never silent: a permanently unwritable journal must not be
         # indistinguishable from a machine that simply has no history yet.
@@ -2851,8 +3107,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
         for r in results:
             counts[r["status"]] = counts.get(r["status"], 0) + 1
         breakdown = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+        reuse = record.get("gate_reuse", {})
         print(f"gate={verdict} record={_gate_record_path(args.state, worktree)} "
-              f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown}")
+              f"head={head[:8]} orch={_orch_token(record)} gates={len(plan)} {breakdown} "
+              f"reused={len(reuse.get('reused', []))} rerun={len(reuse.get('rerun', []))}")
         return EXIT_OK if verdict in ("pass", "warn") else EXIT_BLOCK
 
     lines = [f"# gate {verdict.upper()}  ({len(changed)} changed file(s), "
@@ -2901,12 +3159,14 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     verdict: str | None = None
     gated_head: str | None = None
     warnings: list[str] = []
+    gate_reuse: dict[str, Any] = {"reused": [], "rerun": []}
     if not rec_path.exists():
         refuse = "no gate verdict on record — run `gate` first"
     else:
         rec = json.loads(rec_path.read_text())
         verdict = rec.get("verdict")
         gated_head = rec.get("head_sha")
+        gate_reuse = rec.get("gate_reuse") or _reuse_summary(rec.get("gates", []))
         rec_orch = (rec.get("orchestrator") or {}).get("sha256")
         wt_orch = orch["worktree_copy_sha256"]
         if rec.get("head_sha") != head:
@@ -2974,7 +3234,7 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     if not args.commit:
         payload = {"schema": SCHEMA, "step": "cutover", "mode": "dry-run", "landed": False,
                    "branch": wt_branch, "target": local, "verdict": verdict,
-                   "warnings": warnings}
+                   "warnings": warnings, "gate_reuse": gate_reuse}
         _emit(payload, args.json,
               f"# cutover (dry-run)\n  would rebase {wt_branch} onto {local}, then "
               f"ff local {local} to it (offline — no push, no deploy){warn_line}\n"
@@ -3054,7 +3314,8 @@ def cmd_cutover(args: argparse.Namespace) -> int:
     trunk_tip = _head_sha(primary) if repair.get("committed") else sha
     payload = {"schema": SCHEMA, "step": "cutover", "mode": "committed", "landed": True,
                "sha": sha, "trunk_tip": trunk_tip, "target": local, "branch": wt_branch,
-               "verdict": verdict, "warnings": warnings, "repair": repair,
+               "verdict": verdict, "warnings": warnings, "gate_reuse": gate_reuse,
+               "repair": repair,
                "staged_closures": staged_closures}
     repair_line = ""
     if repair.get("committed"):
