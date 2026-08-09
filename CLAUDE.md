@@ -35,8 +35,12 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 | **看板** | 現在該先做哪張、哪張延後 | `~/butler/kg-board`(讀 origin/main 的 clone;手機端只做**排序 / 釘選 / 延後**三個動作,不能認領也不能結案) |
 
 **認領即工作,不必被任命。** 任何 session 從 `dispatch`(`./ops/backlog.py dispatch`,或等價的
-`list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)取一張,
-`worktree_orchestrate.py open --backlog <id>` 認領,做完 commit → `./ops/worktree_registry.py hand-back --json` 後停止；只有使用者明示目前沒有其他 agent/session 工作且授權 gate + cutover,才進本地 main。**它有兩個看不見的東西
+`list --dispatch`;**已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋**,worst-first)取票；一個 Ticket Factory
+thread 可批量 `add → verify(必要時) → groom`，不把一張 ticket 當成一個 thread。多個 Delivery Team
+thread 各取不重疊 task batch；每個 thread 的 Integrator 再派 N 個 child worktree，child 做完 commit
+→ `./ops/worktree_registry.py hand-back --json` 只是內部交回，Integrator 以 `integrate --append`
+fan-in，最後 `close-wave --commit --sync` 才是該 team 的 primary＋origin/main 完成。只有使用者明示
+delivery-loop 授權，Integrator 才進 Gate/cutover/sync；其他 child 停在 hand-back。**它有兩個看不見的東西
 且會自己說出來**:認領由**本機**登記簿推導(跨機時這份清單是樂觀的),看板的**延後不套用**
 (snooze 住在 repo 外的 overlay)——所以「未延後」不是它的 clause,要那個判斷去看板。認領是**互斥的**:
 登記簿對同一張票只給一個 active record,第二個要求會被具名拒絕。沒有「派」這個動作,
@@ -62,7 +66,14 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
 review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
 
-**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 受派 worker 無例外,只做到自己工作樹裡 commit + hand-back；尚未取得授權的整合者可對一般工作樹做 branch-local `catchup`，或用 `integrate ... --commit --no-gate` 純組裝，但完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的整合 session 可執行 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）/ `gate` / `land` / `cutover` / `resolve`，或直接使用串接上述原語的 `close-wave`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
+**預設假設多 session 並行,落地權在取得使用者明示授權的 Delivery Team Integrator,不在各票。** child
+無例外只做到自己的 commit + hand-back；Integrator 未授權前可用 `integrate ... --commit --no-gate`
+與 `--append` 純組裝，整合 state 禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。取得本
+Team delivery-loop 授權後，Integrator 執行 `close-wave --commit --sync`：唯一 fresh Gate、cutover、
+resolve、anchor/validate、origin/main sync；其他 Delivery Team 可並行，最後共享 ref 由 lock 序列化。
+`deploy` / `release` 仍須另外明示 release 意圖。正常溝通讀 registry/state/receipt；只有衝突、state
+不一致、resource collision 或 primary race 才用內建 thread message，訊息帶 team/slug/branch/path/HEAD/
+state/evidence/action。完整正本見 `.claude/skills/worktree-flow/SKILL.md`。
 
 **要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
 且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有
@@ -141,7 +152,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `billing` | 「這月花多少」/ cost / 帳單 / drift / 升降 bundle / token 燒多少錢 | 三源(AWS/GCP/內部 LLM)對齊 + 月度盤點 + read-only 建議 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
-| `worktree-flow` | 新 session 丟 debug/dev/research intent 且要在隔離 git worktree 開發；任務宣稱「需要在 main 上做」；發布上生產 | 隔離工作樹 intent→commit/hand-back 預設流程，以及各自明示意圖下的 develop / backup / release 三平面。編排 `ops/worktree_orchestrate.py` 原語（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。預設假設多 session 並行；只有使用者明示目前無其他 agent/session 且授權 gate + cutover 才進 develop 平面，此授權不解鎖 sync/deploy/release。兩條 lane 叫**票務隊／交付隊**，完整票路徑叫**票單閉環**，免票明示修復叫**直修道**；收斂協調器用 `close-wave`。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
+| `worktree-flow` | Ticket Factory／多個 Delivery Team thread／隔離工作樹 intent→child hand-back→Integrator fan-in→primary＋remote；「需要 main」任務；發布上生產 | `worktree-flow` skill + `ops/worktree_orchestrate.py`（preflight/open/adopt/gate/catchup/land/integrate/close-wave/cutover/resolve/sync/deploy/sync-main/freeze）。child 預設 commit＋hand-back；Integrator 用 `integrate --append` 與 `close-wave --commit --sync` 完成 delivery-loop；sync 推 origin/main=備份、deploy 才推 origin/prod=部署；異常才 thread message，正常以 registry/state/receipt 溝通。三平面語意見 `docs/sop/release.md`。（**已退役** `converge`/`promote`。） |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 **另有 plugin skill 全域可用**(`phased`(多步驟 feature / refactor / bugfix 的結構化執行入口 — 切 phase + 邊做邊 review N-1)、`anthropic-skills:*`、`review`、`verify`、`run`、`code-review`、`init`、`schedule`、`loop`、`update-config` 等),觸發描述見 system reminder。
@@ -172,7 +183,7 @@ cd lab/llm_eval && uv run python scripts/cli.py <subcommand> [args]
 
 ## Commit / 落地政策
 
-- **Worktree / feature branch 任務**:做完最小充分驗證後直接 commit,執行 `./ops/worktree_registry.py hand-back --json`,保留工作樹並回報 branch/path/HEAD；**預設不跑 gate/cutover**。只有使用者當下明示「目前沒有其他 agent/session 工作」且「可直接 gate + cutover」才完整落地本地 main。這項 2026-08-09 授權邊界取代 2026-06-04 的自動落地 standing authorization；只解鎖 develop 平面，不授權 `sync` / `deploy` / `release`，工具護欄不變。
+- **Worktree / feature branch 任務**:child 做完最小充分驗證後直接 commit、`./ops/worktree_registry.py hand-back --json`，保留工作樹並回報 branch/path/HEAD；**預設不跑 gate/cutover**。握有整批視野的 Delivery Team Integrator 若取得當下 delivery-loop 授權，才以 `close-wave --commit --sync` 完整落地 primary＋origin/main；這是 Team 完成，不是 child hand-back。`deploy` / `release` 仍不包含在內。工具護欄不變。
 - commit message 用 Identity 表 prefix(`ios:` / `api:` / `ops:` / `docs:`);邏輯獨立改動分開 commit。
 
 ## Scope 規則(觸發式,非 always-on)

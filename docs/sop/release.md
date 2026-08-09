@@ -63,15 +63,18 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### Develop 平面授權預設
 
-一般 session 預設假設同 repo 有其他工作同時進行，完成局部驗證與 commit 後執行 `./ops/worktree_registry.py hand-back --json`，保留工作樹並交回；不自行執行會觸發 Gate 的 `integrate`、`gate`、`land`、`cutover` 或 `resolve` 或 `close-wave`。授權前可對一般工作樹做 branch-local `catchup`，批次純組裝則只能使用 `integrate ... --commit --no-gate`；兩者完成後都重新 hand-back。有存活 integration state 的整合樹禁止 catchup；main 前進時須 abort、核對來源 hand-back tip、明示 teardown，再從新 main 重建。只有使用者當下明示「目前沒有其他 agent/session 工作」且授權本 session 直接 gate + cutover，才可進 develop 平面。這只解鎖會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`land`／`cutover`／`resolve` 或 `close-wave`；`sync`、`deploy`、`release` 仍須另有明示 backup／release 意圖。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
+Ticket Factory 是一個可批量產票的 thread；Delivery Team 是多個可並行的 thread，每個 thread 的 Integrator
+可派 N 個 child worktree。child 預設完成局部驗證、commit、`hand-back` 即停；Integrator 以
+`integrate --append` 持續 fan-in，取得當下 delivery-loop 授權後才執行 `close-wave --commit --sync`，
+把本輪真正閉環定義為 primary＋origin/main。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
 
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
 | `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**已取得落地授權後**,多條獨立工作樹的預設序列化路徑（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
-| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`；授權前 `integrate --slug <s> --branches <b...> --commit --no-gate`；取得 develop 授權後才執行會觸發 Gate 的 fresh／`--continue --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。`--no-gate` 只組裝並 hand-back；state 不可跨 catchup，base 移動須 abort／驗來源／teardown／重建；最終 integrate 只跑一次 Gate，落地仍另跑 `cutover` |
-| `close-wave` | 交付隊收斂協調器的可重入入口：`close-wave --slug <s> --branches <b...> --commit`；同 slug 重跑可續接命名衝突／Gate／cutover／來源 resolve／anchor／validate 停點，最後才拆整合樹 | 本地 `main` + 來源 branches + backlog anchor queue | 本地 `main`（透過整合樹再 `cutover`） | 無—develop 內部閉環；**不**自動 `sync`、`deploy` 或跨越其他 active worktree。仍須先滿足正常 develop 授權 |
+| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`；初始用 `integrate --slug <s> --branches <b...> --commit --no-gate`，晚回 child 用同 slug `integrate --append --branches <b...> --commit`；最後由 Integrator 統一 Gate | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。`--no-gate`／`--append` 只組裝；Gate 開始後不得追加來源，改列下一輪或異常傳訊 |
+| `close-wave` | Delivery Team Integrator 的可重入入口：`close-wave --slug <s> --branches <b...> --commit [--sync]`；同 slug 重跑可續接整合／Gate／cutover／來源 resolve／anchor／validate／remote sync 停點 | 本地 `main` + 來源 branches + backlog anchor queue | `--commit` 前進本地 `main`；`--sync` 推 exact tip 到 `origin/main` | 其他 team active worktree 可存在；只處理明示 branches。`--sync` 是 backup，不 deploy；primary＋remote sequence 由 delivery-loop lock 序列化 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
@@ -89,15 +92,13 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ## develop 平面之前：批次整合
 
-一批工作分散在 N 個工作樹時，develop 平面之前還有一步收斂。**與三平面相關的只有一件事：
-批次整合不是第四個平面**——它發生在 develop 平面之前，產出仍是一次普通的 `cutover`。
-
-受派者完成最後一顆 commit 後，必須在自己的工作樹執行
-`./ops/worktree_registry.py hand-back --json`；`integrate` 會把這個戳記與來源 branch 現在的
-tip 做一致性檢查。尚有其他 session 或尚未取得 develop 授權時，fresh／continue 一律加
-`--no-gate`，整合樹完成純組裝後也 commit + hand-back；等條件成立，才由握有整批視野的整合
-session 在最終整合樹跑唯一 Gate。流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`
-「批次整合」段（含「批次交回狀態」子段）。
+一批工作分散在 N 個工作樹時，develop 平面之前由該 Delivery Team thread 的 Integrator 收斂；這
+不是第四個平面，而是 delivery-loop 的組裝階段。受派 child 完成最後一顆 commit 後，必須在自己的
+工作樹執行 `./ops/worktree_registry.py hand-back --json`；`integrate` 會把戳記與來源 branch 現在的
+tip 做一致性檢查。Integrator 可先用 `--no-gate` 組裝、晚回 child 用 `--append`，但只有在預期 child
+全回來並取得本輪授權後，才跑一次 final Gate，接著 `close-wave --commit --sync` 完成 primary＋
+origin/main。多個 Delivery Team 可並行，shared lock 只序列化最後共享 ref side effects。流程正本與
+交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段。
 
 ## Release 流程
 
