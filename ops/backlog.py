@@ -1357,8 +1357,10 @@ def add_entry(
     forcing two calls to file one issue is precisely the kind of friction that
     makes agents route around a tool. The exception is stated in `--help` rather
     than left for the next caller to discover — IMP-0040 is that lesson.  The CLI
-    can still pass ``commit=False`` for an explicit preview; internal importers
-    keep the historical immediate-write default.
+    passes ``commit=False`` both for an explicit preview and for `add --stage`;
+    the latter records the composed payload on the shared queue before a later
+    `anchor` writes it. Internal importers keep the historical immediate-write
+    default.
     """
     if _gate and status == "fixed":
         # `import --commit` writes with overwrite=True, so a legacy table row can
@@ -2958,15 +2960,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_add = sub.add_parser(
         "add",
-        help="file a new entry (lands immediately by default)",
+        help="file a new entry (lands immediately, previews, or parks with --stage)",
         description=(
             "File a new entry. Unlike overwrite-style mutations, this command "
             "WRITES IMMEDIATELY by default so an observed problem is not lost. "
-            "Use --dry-run to preview without writing; --commit is accepted as "
-            "an explicit spelling of the fast default."
+            "Use --dry-run to preview without writing, or --stage to park the "
+            "entry until its branch lands; --commit explicitly spells the fast "
+            "default."
         ),
     )
     _add_store_arg(p_add)
+    p_add.add_argument(
+        "--queue", type=Path, default=None,
+        help="staged-add queue (default: <primary>/.cache/backlog_anchor_queue.jsonl; "
+             "only valid with --stage)",
+    )
     p_add.add_argument("--stream", choices=STREAMS, required=True)
     p_add.add_argument("--date", required=True, help="YYYY-MM-DD")
     p_add.add_argument("--source", required=True, help="where this was noticed")
@@ -3010,6 +3018,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="explicitly select the default immediate-write mode; useful when a "
              "generic mutation runner always spells its write intent",
     )
+    add_mode.add_argument(
+        "--stage", action="store_true",
+        help="validate and queue the new entry without writing the store; "
+             "`anchor --commit` materializes it after the branch lands",
+    )
     p_add.add_argument("--json", action="store_true")
     # Parsed here ONLY so that reaching for one gets a named refusal that says where
     # it belongs. Same treatment, and the same reason, as `update --detail`: argparse's
@@ -3034,7 +3047,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_lifecycle.add_argument("--json", action="store_true")
 
-    p_list = sub.add_parser("list", help="list entries")
+    p_list = sub.add_parser(
+        "list",
+        help="list entries and report staged queue work pending anchor",
+        description="list entries and report staged queue work pending anchor",
+    )
     _add_list_filters(p_list, dispatch_flag=True)
 
     # The SAME flags, the same handler, one implementation — see `_add_list_filters`.
@@ -3093,7 +3110,8 @@ def build_parser() -> argparse.ArgumentParser:
         "anchor",
         help="replay the wave's staged closures into the store, all or nothing "
              "(DRY-RUN by default, --commit to land). Rows whose branch has not "
-             "landed are reported and left queued",
+             "landed are reported and left queued; staged adds are materialized "
+             "when their landing sha is present",
     )
     _add_store_arg(p_anchor)
     p_anchor.add_argument("--queue", type=Path, default=None)
@@ -3204,7 +3222,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_show.add_argument("--json", action="store_true")
 
-    p_validate = sub.add_parser("validate", help="schema-check every entry")
+    p_validate = sub.add_parser(
+        "validate",
+        help="schema-check every entry and report staged queue work pending anchor",
+        description="schema-check every entry and report staged queue work pending anchor",
+    )
     # Enforcing and re-baselining are opposite acts, and `--baseline` returned
     # early — so passing both ran neither check, exited 0, and widened the
     # watermark. Same treatment as the three sister lints, and as this file's
@@ -3700,7 +3722,10 @@ def _cmd_add(args) -> int:
             "historical terminal rows with `import`"
         )
 
-    commit = not args.dry_run
+    if args.queue is not None and not args.stage:
+        raise BacklogError("--queue is only valid with `add --stage`")
+
+    commit = not args.dry_run and not args.stage
     outcome: dict = {}
     entry = add_entry(
         args.store,
@@ -3721,6 +3746,20 @@ def _cmd_add(args) -> int:
         _outcome=outcome,
         commit=commit,
     )
+    if args.stage:
+        row, queue = _stage_add(args, entry)
+        if args.json:
+            print(json.dumps({"schema": "kg.backlog.add.v1", "mode": "staged",
+                              "written": False, "entry": entry,
+                              "staged": row, "queue": str(queue)},
+                             ensure_ascii=False))
+        else:
+            print(f"[staged] {entry['id']} [{entry['stream']}/{entry['category']}/"
+                  f"{entry['severity']}]\n"
+                  f"  queued in {queue} — materializes when the wave runs "
+                  f"`./ops/backlog.py anchor --commit`")
+        return 0
+
     mode = "commit" if commit else "dry-run"
     written = bool(outcome["written"])
     if args.json:
@@ -3800,6 +3839,48 @@ def _queue_path(explicit: Path | None = None) -> Path:
     if explicit is not None:
         return Path(explicit)
     return _queue_anchor() / ".cache" / "backlog_anchor_queue.jsonl"
+
+
+def _stage_add(args, entry: dict) -> tuple[dict, Path]:
+    """Park a newly composed entry on the shared wave queue.
+
+    The store and the queue are two possible homes for the same content-derived
+    id. Both must be checked before the row is appended: checking only the store
+    lets two worktrees stage the same issue and checking only the queue lets a
+    staged issue overwrite an entry that another branch already filed.
+    """
+    queue = _queue_path(args.queue)
+    row = {
+        "kind": "add",
+        "id": entry["id"],
+        "entry": entry,
+        "branch": _current_branch(),
+        # `cutover` stamps this once the branch reaches the trunk. Until then
+        # `anchor` must leave the row visible and unmaterialized.
+        "landed_sha": None,
+    }
+    path = entry_path(args.store, entry["id"])
+    # Match anchor's lock order (queue -> entries), otherwise a concurrent stage
+    # and anchor could deadlock while each holds the lock the other needs.
+    with _queue_lock(queue):
+        with _entry_lock(path):
+            if path.exists():
+                raise BacklogError(
+                    f"{entry['id']} already exists in the store; staged add would "
+                    "collide with an existing entry"
+                )
+            rows = read_queue(queue)
+            clash = next((r for r in rows if r.get("id") == entry["id"]), None)
+            if clash is not None:
+                raise BacklogError(
+                    f"{entry['id']} is already staged on branch "
+                    f"{clash.get('branch') or '<unknown>'}. Two staged adds for one "
+                    "id would make anchor choose an arbitrary payload; resolve the "
+                    "collision before retrying."
+                )
+            rows.append(row)
+            write_queue(queue, rows)
+    return row, queue
 
 
 def held_tickets(anchor: Path | None = None) -> dict[str, dict]:
@@ -3928,6 +4009,28 @@ def read_queue(path: Path) -> list[dict]:
                 f"drop every staged closure that has not been anchored yet."
             ) from exc
     return rows
+
+
+def _pending_queue_summary(queue: Path | None = None) -> dict:
+    """Expose per-machine queue work without making it part of the store.
+
+    A staged add is intentionally absent from `list`'s entry rows until its
+    landing commit exists and `anchor` materializes it. The count is therefore a
+    separate, explicitly local fact; hiding it would turn a forgotten anchor into
+    a silent omission.
+    """
+    path = _queue_path(queue)
+    try:
+        rows = read_queue(path)
+    except BacklogError as exc:
+        return {"queue": str(path), "error": str(exc)}
+    return {
+        "queue": str(path),
+        "total": len(rows),
+        "staged_adds": sum(1 for row in rows if row.get("kind") == "add"),
+        "staged_closures": sum(1 for row in rows if row.get("kind") != "add"),
+        "unstamped": sum(1 for row in rows if not row.get("landed_sha")),
+    }
 
 
 def write_queue(path: Path, rows: list[dict]) -> None:
@@ -4562,8 +4665,33 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     unstamped = [r["id"] for r in rows if not r.get("landed_sha")]
 
     planned: list[tuple[dict, dict, dict]] = []
+    staged_adds: list[tuple[dict, dict]] = []
     problems: list[dict] = []
     for row in ready:
+        if row.get("kind") == "add":
+            try:
+                entry = row.get("entry")
+                if not isinstance(entry, dict) or entry.get("id") != row.get("id"):
+                    raise BacklogError(
+                        "staged add row must carry an entry whose id matches the row"
+                    )
+                entry_problems = validate_entry(
+                    entry, entry_id=row["id"], check_traceability=False
+                )
+                if entry_problems:
+                    raise BacklogError(f"staged add is invalid: {entry_problems}")
+                path = entry_path(args.store, row["id"])
+                if path.exists():
+                    existing = load_entry(args.store, row["id"])
+                    if existing != entry:
+                        raise BacklogError(
+                            f"{row['id']} already exists in the store with different "
+                            "content; refusing to overwrite it during anchor"
+                        )
+                staged_adds.append((row, entry))
+            except (BacklogError, ValueError, EntryNotFound) as exc:
+                problems.append({"id": row.get("id", "<missing>"), "error": str(exc)})
+            continue
         try:
             if row.get("status") != STAGED_STATUS:
                 # `stage` pins this, so a row that disagrees was hand-written or
@@ -4616,7 +4744,9 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     # criterion, overwrite a newly groomed `false` criterion, and consume the queue.
     if args.commit and not problems:
         with contextlib.ExitStack() as locks:
-            for entry_id in sorted({row["id"] for row, _current, _merged in planned}):
+            target_ids = ({row["id"] for row, _current, _merged in planned}
+                          | {row["id"] for row, _entry in staged_adds})
+            for entry_id in sorted(target_ids):
                 locks.enter_context(_entry_lock(entry_path(args.store, entry_id)))
             for row, current, _merged in planned:
                 latest = load_entry(args.store, row["id"])
@@ -4627,9 +4757,19 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
                                  "acceptance; refusing the whole wave so newer "
                                  "groom/update evidence is not overwritten",
                     })
+            for row, entry in staged_adds:
+                path = entry_path(args.store, row["id"])
+                if path.exists() and load_entry(args.store, row["id"]) != entry:
+                    problems.append({
+                        "id": row["id"],
+                        "error": "entry appeared or changed while anchor was "
+                                 "validating the staged add; refusing the whole wave",
+                    })
             if not problems:
                 for row, _current, merged in planned:
                     _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
+                for row, entry in staged_adds:
+                    _write_atomic(entry_path(args.store, row["id"]), _dumps(entry))
                 write_queue(queue, [r for r in rows if not r.get("landed_sha")])
 
     payload = {
@@ -4637,9 +4777,13 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
         "mode": "commit" if args.commit else "dry-run",
         "queue": str(queue),
         "acceptance": acceptance,
-        "applied": ([] if problems or not args.commit
-                    else [r["id"] for r, _current, _merged in planned]),
-        "would_apply": [r["id"] for r, _current, _merged in planned],
+        "applied": [] if problems or not args.commit else (
+            [r["id"] for r, _current, _merged in planned]
+            + [r["id"] for r, _entry in staged_adds]
+        ),
+        "would_apply": ([r["id"] for r, _current, _merged in planned]
+                        + [r["id"] for r, _entry in staged_adds]),
+        "staged_adds": [r["id"] for r, _entry in staged_adds],
         "unstamped": unstamped,
         "problems": problems,
     }
@@ -4651,7 +4795,7 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
         else:
             for p in problems:
                 print(f"✗ {p['id']}: {p['error']}", file=sys.stderr)
-            print(f"refusing the whole wave ({len(planned)} other rows left queued)\n"
+            print(f"refusing the whole wave ({len(planned) + len(staged_adds)} other rows left queued)\n"
                   f"  drop a row you cannot fix with "
                   f"`./ops/backlog.py unstage <id> --commit`", file=sys.stderr)
         return 2
@@ -4663,6 +4807,10 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
         for row, _current, _merged in planned:
             print(f"[{'commit' if args.commit else 'dry-run'}] {verb} {row['id']} "
                   f"fixed_by {row['landed_sha']}")
+        for row, _ in staged_adds:
+            print(f"[{'commit' if args.commit else 'dry-run'}] "
+                  f"{'materialized' if args.commit else 'would materialize'} "
+                  f"{row['id']} from staged add (landed_sha {row['landed_sha']})")
         for entry_id in unstamped:
             print(f"  (still queued: {entry_id} — its branch has not landed)")
         if not args.commit and planned:
@@ -4813,6 +4961,7 @@ def _cmd_list(args) -> int:
     groomed_against_warnings = _groomed_against_warnings(
         entries, max_commits=args.groomed_against_max_commits,
     )
+    staged_queue = _pending_queue_summary()
 
     if args.json:
         print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries,
@@ -4827,6 +4976,7 @@ def _cmd_list(args) -> int:
                                            "withheld_blocked": withheld_blocked}}
                            if dispatch else {}),
                           "groomed_against_warnings": groomed_against_warnings,
+                          "staged_queue": staged_queue,
                           },
                          ensure_ascii=False))
         return 0
@@ -4849,9 +4999,15 @@ def _cmd_list(args) -> int:
             waiting_on = ", ".join(withheld["waiting_on"])
             print(f"  withheld (blocked): {withheld['id']} waiting on {waiting_on}")
         return 0
+    queue_note = (
+        f"{staged_queue.get('staged_adds', 0)} staged add(s) pending anchor in "
+        f"{staged_queue['queue']}"
+        if "error" not in staged_queue
+        else f"staged queue unreadable: {staged_queue['error']}"
+    )
     print(f"\n{len(entries)} entries; {len(held)} ticket(s) claimed by a worktree "
           f"ON THIS MACHINE (the ledger is per-machine — elsewhere this column is "
-          f"empty even when someone is working)")
+          f"empty even when someone is working); {queue_note}")
     return 0
 
 
@@ -5035,6 +5191,7 @@ def _cmd_reanchor(args) -> int:
 
 def _cmd_validate(args) -> int:
     problems = validate_store(args.store)
+    staged_queue = _pending_queue_summary()
 
     current = closed_without_verification(args.store)
     if getattr(args, "baseline", False):
@@ -5070,14 +5227,22 @@ def _cmd_validate(args) -> int:
     if args.json:
         print(
             json.dumps(
-                {"schema": "kg.backlog.validate.v1", "problems": problems, "ok": not problems},
+                # Queue state is local scratch, not a validation problem, but its
+                # count is part of the command's discoverability contract.
+                {"schema": "kg.backlog.validate.v1", "problems": problems,
+                 "ok": not problems, "staged_queue": staged_queue},
                 ensure_ascii=False,
             )
         )
     else:
         for problem in problems:
             print(f"ERROR {problem.get('path', '')} — {problem['kind']} {problem}")
-        print(f"{len(problems)} problems")
+        if "error" in staged_queue:
+            queue_note = f"staged queue unreadable: {staged_queue['error']}"
+        else:
+            queue_note = (f"{staged_queue['staged_adds']} staged add(s) pending anchor "
+                          f"in {staged_queue['queue']}")
+        print(f"{len(problems)} problems; {queue_note}")
     return 2 if problems else 0
 
 
