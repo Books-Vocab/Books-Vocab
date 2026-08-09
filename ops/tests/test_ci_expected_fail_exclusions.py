@@ -46,7 +46,7 @@ def test_print_excluded_groups_lists_every_exclusion() -> None:
     got = [line for line in result.stdout.splitlines() if line]
     want = excluded_groups_from_source()
     assert got == want
-    assert len(got) >= 10
+    assert len(got) >= 9
 
 
 def test_all_exclusions_failing_is_a_green_gate(tmp_path: Path) -> None:

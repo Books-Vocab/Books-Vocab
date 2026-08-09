@@ -213,7 +213,7 @@ fi
 
 section "--include-ci stays green on a clean tree"
 # The plane requires `run:` only of the gates it owns (`gate: manual`), and
-# some others cannot have one — snapshot.catalog_coverage's entrypoint is a
+# some others cannot have one — snapshot.review_card_layout_golden's entrypoint is a
 # Swift test file that `ios_ops.sh test` enforces. Failing those here would
 # make validate and the runner disagree about the same file and turn a
 # documented flag permanently red on an unmodified checkout.

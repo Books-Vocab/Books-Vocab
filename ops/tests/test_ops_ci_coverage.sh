@@ -69,7 +69,7 @@ LINUX_GROUPS=(
   gen-ios-baseline
   ios-signal-traps
   # sim-pool-disposable 的 linux 判決**未實測**（本機 docker daemon 沒開，跑不了
-  # ops/ci_linux_repro.sh），比照 catalog-render 的誠實標示。放這裡的依據是推論不是量測：
+  # ops/ci_linux_repro.sh），所以放這裡的依據是推論，不冒充實測：
   # 純 bash/awk/grep，把守衛函式從 lib awk 抽出來單獨 source，不呼叫 simctl，也不需要
   # 模擬器；section C 需要 plutil（macOS-only userland），在 linux 上會 LOUD SKIP，
   # 摘要會報 skipped 筆數。已逐條看過 GNU 陷阱：檔內 `grep | head -1` 那組全部以
