@@ -116,6 +116,8 @@ extension ReaderView {
                 closeOverlay(.settings)
             }
         )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     @ViewBuilder

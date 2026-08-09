@@ -40,16 +40,6 @@ struct ReaderSettingsPresenter: View {
         ("深", 0.60)
     ]
 
-    var fontToneLabel: String {
-        switch bindings.font.wrappedValue {
-        case .serif: "classic"
-        case .crimsonPro: "reader"
-        case .sans: "clean"
-        case .mono: "coded"
-        @unknown default: bindings.font.wrappedValue.rawValue
-        }
-    }
-
     var body: some View {
         vocabLayout
         .enableInjection()

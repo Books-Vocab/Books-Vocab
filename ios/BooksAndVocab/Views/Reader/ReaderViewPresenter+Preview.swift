@@ -64,8 +64,6 @@ struct ReaderChromePreviewScene: View {
                 isPanelLarge: false,
                 onToggleHeight: {}
             )
-        } settingsPanel: {
-            EmptyView()
         }
         .enableInjection()
     }

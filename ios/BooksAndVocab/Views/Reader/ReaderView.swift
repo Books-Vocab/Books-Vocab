@@ -87,7 +87,10 @@ struct ReaderView: View {
             readerMainContent
         } translationPanel: {
             translationPanelContent
-        } settingsPanel: {
+        }
+        // 閱讀設定改由系統 sheet 呈現（APP-20260808-240a94）：detents 與
+        // drag indicator 由平台提供，取代原本自繪的底部 overlay 卡片 + handle。
+        .sheet(isPresented: isReaderSettingsPresented) {
             settingsPanelContent
         }
         .safeAreaInset(edge: .top) {
@@ -162,6 +165,17 @@ struct ReaderView: View {
         }
         .loginGateSheet($loginGate)
         .enableInjection()
+    }
+
+    /// `chromeState.overlay` 仍是唯一真相（swipe-to-dismiss / 選字 teardown 都走
+    /// `closeOverlay(.settings)`），這裡只是把它投影成系統 sheet 要的 `Bool` binding。
+    private var isReaderSettingsPresented: Binding<Bool> {
+        Binding(
+            get: { chromeState.overlay == .settings },
+            set: { isPresented in
+                if !isPresented { closeOverlay(.settings) }
+            }
+        )
     }
 
     @ViewBuilder private var tableOfContentsSheet: some View {

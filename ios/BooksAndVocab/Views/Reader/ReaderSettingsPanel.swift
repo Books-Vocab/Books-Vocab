@@ -81,7 +81,7 @@ struct ReaderSettingsPanel: View {
 }
 
 struct ReaderSettingsPanelPreviewHarness: View {
-    @Environment(\.appTheme) private var appTheme
+    @ObserveInjection private var inject
     let initialFontSizeText: String
     let canDecreaseFontSize: Bool
     let canIncreaseFontSize: Bool
@@ -114,25 +114,19 @@ struct ReaderSettingsPanelPreviewHarness: View {
         )
     }
 
+    /// 面板本身現在是一整頁 `NavigationStack + Form`（原生 sheet 內容），
+    /// harness 不再需要自己鋪頁面底色或把它推到畫面底部。
     var body: some View {
-        ZStack {
-            appTheme.palette.pageBackground.ignoresSafeArea()
-
-            VStack {
-                Spacer()
-
-                ReaderSettingsPresenter(
-                    state: state,
-                    bindings: bindings,
-                    onDecreaseFontSize: {},
-                    onIncreaseFontSize: {},
-                    onSelectTheme: { theme = $0 },
-                    onSelectUnderlineOpacity: { underlineOpacity = $0 },
-                    onDismiss: {}
-                )
-                .padding(.horizontal)
-            }
-        }
+        ReaderSettingsPresenter(
+            state: state,
+            bindings: bindings,
+            onDecreaseFontSize: {},
+            onIncreaseFontSize: {},
+            onSelectTheme: { theme = $0 },
+            onSelectUnderlineOpacity: { underlineOpacity = $0 },
+            onDismiss: {}
+        )
+        .enableInjection()
     }
 }
 

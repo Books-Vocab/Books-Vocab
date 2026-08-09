@@ -1220,3 +1220,7 @@
 "已完成" = "Done";
 "已略過" = "Skipped";
 "失敗" = "Failed";
+
+/* settings-native-converge (APP-20260808-240a94 / f0770b) */
+"字級" = "Text Size";
+"主題" = "Theme";
