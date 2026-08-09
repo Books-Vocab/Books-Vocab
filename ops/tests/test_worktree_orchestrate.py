@@ -6576,6 +6576,66 @@ def test_integrate_continue_gates_the_integrated_head_not_a_source_branch(scratc
 
 
 @gitmark
+def test_integrate_continue_no_gate_stops_before_the_gate(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a, b1, b2 = _conflicting_pair(repo)
+
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, stopped
+    wt = stopped["worktree"]
+    (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
+    _git(["add", "shared.txt"], wt)
+
+    rc, picked = _run_integrate_json(["integrate", "--slug", "batch",
+                            "--state", state, "--continue", "--commit",
+                            "--no-gate", "--json"])
+    assert rc == MODULE.EXIT_OK, picked
+    assert picked["mode"] == "picked", picked
+    assert picked["gated"] is False, picked
+    assert picked["verdict"] is None, picked
+    assert [c["sha"] for c in picked["picked"]] == [a, b1, b2], picked
+    assert MODULE.gate_history_rows(state) == []
+    assert not MODULE._gate_record_path(state, wt).exists()
+    saved = json.loads(MODULE._integrate_state_path(state, "batch").read_text())
+    assert saved["queue"] == []
+    assert saved["gate_pending"] is True
+
+
+@gitmark
+def test_integrate_continue_no_gate_then_gate_runs_alone_on_the_final_tree(scratch):
+    tmp_path, repo, _remote = scratch
+    state = str(tmp_path / "reg.json")
+    a, b1, b2 = _conflicting_pair(repo)
+
+    rc, stopped = _run_integrate_json(["integrate", "--slug", "batch",
+                             "--branches", "feat/a", "feat/b",
+                             "--state", state, "--commit", "--json"])
+    assert rc == MODULE.EXIT_BLOCK, stopped
+    wt = stopped["worktree"]
+    (Path(wt) / "shared.txt").write_text("alpha\nbeta\n")
+    _git(["add", "shared.txt"], wt)
+
+    rc, picked = _run_integrate_json(["integrate", "--slug", "batch",
+                            "--state", state, "--continue", "--commit",
+                            "--no-gate", "--json"])
+    assert rc == MODULE.EXIT_OK, picked
+    assert picked["mode"] == "picked", picked
+
+    rc, done = _run_integrate_json(["integrate", "--slug", "batch",
+                          "--state", state, "--continue", "--commit", "--json"])
+    assert rc == MODULE.EXIT_OK, done
+    assert done["gate"]["verdict"] in ("pass", "warn"), done
+    integrated = _git(["rev-parse", "HEAD"], wt)
+    rec = json.loads(MODULE._gate_record_path(state, wt).read_text())
+    assert rec["head_sha"] == integrated, rec
+    assert MODULE.gate_history_rows(state), "the delayed gate must write its journal"
+    assert not MODULE._integrate_state_path(state, "batch").exists()
+
+
+@gitmark
 def test_integrate_runs_the_gate_once_for_the_whole_batch(scratch):
     """Counted from the gate's OWN journal, not from a number integrate reports about
     itself. A per-branch implementation would report `gate_runs: 1` just as happily."""
