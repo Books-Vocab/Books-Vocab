@@ -386,7 +386,7 @@
     "datasetID": "spec-820aa288ffea",
     "datasetSHA256": "ac4db64112eb58076af94a66ba51287c5791b00d610d6949d3fff92cc5531350",
     "demoAccountIdentitySHA256": "d76dd80a34e4dd248d18f6312fc9f608e922522625a84b8a90c5c4db4461ed21",
-    "desiredManifestSHA256": "4f8c028ad9ba28fc26046370d1773ffcd5e7ebddadc34dd675a43c73903a1fcf",
+    "desiredManifestSHA256": "027f6d0284ad297083570f2f73daf78b5e28bffe5c9b34d19d357730c8863fc3",
     "marketingVersion": "2.0.0",
     "platform": "IOS",
     "screenshotDisplayType": "APP_IPHONE_65",
