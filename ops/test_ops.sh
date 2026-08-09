@@ -69,6 +69,7 @@ DEFAULT_TESTS=(
   script-help
   install-hooks
   lib-sourcing
+  alias-coverage
   podcast-ops
   # ── IMP-20260805-947062：以下 4 個 group 收編原本對每個 group 都不可達的 19 支
   #    測試檔。反向覆蓋由 ops/tests/test_ops_ci_coverage.sh 的
@@ -211,6 +212,7 @@ run_one() {
     script-help)        ./ops/tests/test_script_help.sh ;;
     install-hooks)      ./ops/tests/test_install_hooks.sh ;;
     lib-sourcing)       ./ops/tests/test_lib_sourcing.sh ;;
+    alias-coverage)     ./ops/tests/test_shell_alias_coverage.sh --self-test ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/test_podcast_ops.py \
