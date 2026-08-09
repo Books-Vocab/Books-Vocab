@@ -38,11 +38,14 @@ struct ReaderSettingsPresenter: View {
     let onResetToDefaults: () -> Void
     let onDismiss: () -> Void
 
+    /// label 是 **L10n key**（由 `vocabHighlightSection` 丟給 `L10n.string`），
+    /// 不是要顯示的字。用中文字面當 key 會與其他畫面的同名字面撞在一起 ——
+    /// 「淡」「中」在 Localizable.strings 裡本來就有別的擁有者。
     let opacityOptions: [(label: String, value: Double)] = [
-        ("隱藏", 0.0),
-        ("淡", 0.15),
-        ("中", 0.35),
-        ("深", 0.60)
+        ("reader.settings.highlight.opacity.hidden", 0.0),
+        ("reader.settings.highlight.opacity.light", 0.15),
+        ("reader.settings.highlight.opacity.medium", 0.35),
+        ("reader.settings.highlight.opacity.strong", 0.60)
     ]
 
     var body: some View {

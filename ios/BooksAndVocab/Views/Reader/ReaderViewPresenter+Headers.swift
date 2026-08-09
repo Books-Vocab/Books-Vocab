@@ -65,7 +65,7 @@ struct ReaderTopChrome: View, Equatable {
 
             HStack(spacing: AppSpacing.s1) {
                 toolButton("list.bullet", L10n.string("目錄"), onShowTableOfContents)
-                toolButton("textformat.size", L10n.string("閱讀設定"), onShowReaderSettings)
+                toolButton("textformat.size", L10n.string("reader.settings.title"), onShowReaderSettings)
                 toolButton("text.book.closed", L10n.string("選擇單字本"), onShowNotebookPicker)
                 toolButton("chevron.up", L10n.string("收起標題列"), onCollapseHeader)
                     .appFloatingChromeMorph(id: "more", in: glass)
