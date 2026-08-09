@@ -62,6 +62,17 @@ grep -q '\[review\]\[block\] .* ops: missing receipt' "$TMP/review_audit.txt" \
 grep -q '\[review\]\[block\] .* refactor: too broad for exemption' "$TMP/review_audit.txt" \
   && ok "invalid exemption classified" || fail_t "invalid exemption missing"
 
+set +e
+KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$AUDIT" --base main --machine-gate >"$TMP/machine_gate_audit.txt" 2>&1
+machine_gate_rc=$?
+set -e
+[[ "$machine_gate_rc" -eq 2 ]] && ok "machine-gate still blocks invalid exemptions" \
+  || fail_t "machine-gate changed invalid exemption handling (rc=$machine_gate_rc)"
+grep -q '\[review\]\[ok\] .* ops: missing receipt' "$TMP/machine_gate_audit.txt" \
+  && grep -q 'deferred to this fresh machine gate' "$TMP/machine_gate_audit.txt" \
+  && ok "machine-gate records missing receipts as deferred, not as fake review" \
+  || fail_t "machine-gate did not expose deferred receipt"
+
 section "JSON schema"
 set +e
 KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$AUDIT" --base main --json >"$TMP/review_audit.json" 2>"$TMP/review_audit_json.err"
@@ -82,6 +93,21 @@ if jq -e '.schema=="kg.review_audit.v1"
 else
   cat "$TMP/review_audit.json" >&2
   fail_t "json schema invalid"
+fi
+
+set +e
+KG_REVIEW_AUDIT_ROOT="$TMP/repo" "$AUDIT" --base main --machine-gate --json >"$TMP/machine_gate_audit.json" 2>/dev/null
+machine_gate_json_rc=$?
+set -e
+if [[ "$machine_gate_json_rc" -eq 2 ]] && jq -e \
+  '.summary.total==4 and .summary.ok==3 and .summary.block==1
+   and .summary.machineGateDeferred==1
+   and any(.commits[]; .status=="machine-gate-deferred")' \
+   "$TMP/machine_gate_audit.json" >/dev/null; then
+  ok "machine-gate JSON exposes deferred count while preserving invalid blocks"
+else
+  cat "$TMP/machine_gate_audit.json" >&2
+  fail_t "machine-gate JSON schema/counts invalid"
 fi
 
 section "Clean branch"
