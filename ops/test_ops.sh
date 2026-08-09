@@ -121,7 +121,8 @@ run_one() {
       # --no-project sandbox as the cutover gate uses.
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_backlog.py \
-        ops/tests/test_backlog_migration.py
+        ops/tests/test_backlog_migration.py &&
+      ./ops/tests/test_backlog_add_stage.sh
       ;;
     review-audit)       ./ops/tests/test_review_audit.sh ;;
     review-cycle)       ./ops/tests/test_review_cycle.sh ;;
@@ -188,7 +189,8 @@ run_one() {
       ./ops/tests/test_ios_ops_release_heartbeat.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
-        ops/tests/test_ios_coverage.py
+        ops/tests/test_ios_coverage.py &&
+      ./ops/tests/test_ios_build_covers_test_targets.sh
       ;;
     ios-run-verdict)    ./ops/tests/test_ios_run_verdict.sh ;;
     ios-cache-evict)    ./ops/tests/test_ios_cache_evict.sh ;;
