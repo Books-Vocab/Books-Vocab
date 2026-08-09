@@ -75,15 +75,13 @@ enum VocabularyListViewScenarios {
                     expected: .visibleExactly(0)
                 )
             }
-            // Marketing capture source for `ops/capture_profiles/website.json`
-            // (vocab_list shot). Opens on the "已複習" tab with the review clock
+            // Dense reviewed-state inspection. Opens on the "已複習" tab with the review clock
             // frozen at the marketing anchor day, so the fresh-green cohort Phase 1
             // shaped (~16 low-count cards, ratio 0.001–0.038) sorts to the top of
             // the tab and the progress bars read as a green→amber gradient instead
             // of the flat all-expired list the default "複習優先" sort captured.
-            Scenario("Reviewed · Marketing", layout: .fill) {
-                // Force light: website.json marks this shot `appearance: light`, but
-                // AppThemeContainer(.system) otherwise follows the dark sim. Matches
+            Scenario("Reviewed · Dense", layout: .fill) {
+                // Force light so this high-density state stays deterministic while
                 // the reader marketing shot so the website set reads as one light
                 // family (the Knowledge Graph WKWebView stays its own dark viz).
                 // 門檻對齊凍結 world：`vocabulary.vocabListPopulated` 只有 5 筆

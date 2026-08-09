@@ -27,16 +27,17 @@
 #   ./ops/ios_ops.sh simulator screenshot [--out <png>] [--device booted] [--json]
 #   ./ops/ios_ops.sh runs [--json]
 #   ./ops/ios_ops.sh snapshot [--json] [--skip-xcode] [--skip-simulator] [--include-logs] [--log-since 5m] [--log-limit 200]
-#   ./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json]
-#   ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json]
-#   ./ops/ios_ops.sh catalog clean [--json]
+#   ./ops/ios_ops.sh catalog list --dataset <name>|--dataset-file <path> [--json]
+#   ./ops/ios_ops.sh catalog open --dataset <name>|--dataset-file <path> [--scenario <category/title>] [--json]
+#   ./ops/ios_ops.sh catalog capture --session <id> --out <png> [--json]
+#   ./ops/ios_ops.sh catalog close --session <id> [--json]
 #   ./ops/ios_ops.sh quality list [--json] | impact --files <path...> [--json] | impact --since <ref> [--json] | validate
 #   ./ops/ios_ops.sh review-probe --simulator|--device <udid> --dataset <name>|--dataset-file <path> [--flips N] [--release] [--instruments] ...  # review-flip 量測 rig（詳 ./ops/review_flip_probe.sh --help）
 #   ./ops/ios_ops.sh commands [--json]
 #
 # Side-effect model:
 # - status/archives/issues/logs/sentry/doctor/workflow/gate/xcode/simulator status/runs/snapshot/dashboard/quality/commands are read-only.
-# - build/test/archive/simulator screenshot/catalog snapshots are local machine side effects.
+# - build/test/archive/simulator screenshot/catalog are local machine side effects.
 # - archive only uploads when --upload is passed through explicitly.
 
 set -euo pipefail

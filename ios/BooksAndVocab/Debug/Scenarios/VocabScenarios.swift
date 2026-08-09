@@ -22,31 +22,24 @@ enum VocabScenarios {
         }
 
         // MARK: Knowledge Graph
-        // Data-bearing scenes are wrapped in CatalogGraphSnapshotScene: the
-        // graph canvas lives in a WKWebView, invisible to `layer.render(in:)`
-        // snapshots — the freezer settles the d3 layout and swaps in a
-        // rasterized overlay first. Empty/No Links render the native empty
-        // state (no webview), so they need no wrapper.
+        // The graph canvas is a WKWebView. Catalog runs in a real simulator
+        // window so the system compositor renders it without a snapshot shim.
         playbook.addScenarios(of: "Vocabulary · Knowledge Graph") {
-            Scenario("With Data", layout: .fill) { context in
-                CatalogGraphSnapshotScene(context: context) {
-                    AppThemeContainer {
-                        KnowledgeGraphPresenterPreviewHarness(
-                            state: KnowledgeGraphPresenterPreviewData.state(showsSettings: false)
-                        )
-                    }
-                    .environmentObject(AppAppearanceStore.preview)
+            Scenario("With Data", layout: .fill) {
+                AppThemeContainer {
+                    KnowledgeGraphPresenterPreviewHarness(
+                        state: KnowledgeGraphPresenterPreviewData.state(showsSettings: false)
+                    )
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
-            Scenario("Settings Open", layout: .fill) { context in
-                CatalogGraphSnapshotScene(context: context) {
-                    AppThemeContainer {
-                        KnowledgeGraphPresenterPreviewHarness(
-                            state: KnowledgeGraphPresenterPreviewData.state(showsSettings: true)
-                        )
-                    }
-                    .environmentObject(AppAppearanceStore.preview)
+            Scenario("Settings Open", layout: .fill) {
+                AppThemeContainer {
+                    KnowledgeGraphPresenterPreviewHarness(
+                        state: KnowledgeGraphPresenterPreviewData.state(showsSettings: true)
+                    )
                 }
+                .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("Empty", layout: .fill) {
                 AppThemeContainer {

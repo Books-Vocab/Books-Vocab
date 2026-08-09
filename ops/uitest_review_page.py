@@ -1,9 +1,8 @@
 #!/usr/bin/env -S uv run --python 3.13 python
 """Build a standalone UIreview.html root for one UITest run.
 
-The catalog gallery and UITest flow review share the same HTML renderer, but
-their artifact roots are different: catalog owns surface/state review; UITest
-owns a single flow/session with screenshots, contact sheets, and the run video.
+This evidence belongs to one executed UITest flow and is independent from the
+interactive Catalog agent workbench.
 """
 from __future__ import annotations
 
@@ -15,7 +14,7 @@ import os
 import shutil
 from pathlib import Path
 
-from catalog_review_sync import REVIEW_HTML_NAME
+from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, esc, image_modal_script, shell_css, status_badge
 from uitest_review_workspace import (
     ensure_workspace,

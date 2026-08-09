@@ -727,7 +727,7 @@ def plan_gates(changed_files: list[str],
         if swift:
             # Kept, but honestly named and honestly scoped: this reports the
             # SLOW mechanisms the diff touches that cutover deliberately does
-            # not run (visual regression, catalog snapshots, UI flows). It is
+            # not run (for example, full UI flows). It is
             # advisory because it is a cost/coverage trade, not a check.
             gates.append(_internal("ui-quality-slow-pending", "ios", "warn",
                                    note="slow UI mechanisms triggered by this diff were not "
@@ -1832,6 +1832,7 @@ _IOS_TEST_INPUTS = frozenset({
     "ops/ios_coverage.py",
     "ops/ios_diagnostics.py",
     "ops/ui_world_manifest.py",
+    "ops/uitest_contact_sheet.py",
     "ops/lib/ios_test_discovery.sh",
     "ops/lib/ios_build_progress.sh",
     "ops/lib/ios_lock_wait.sh",

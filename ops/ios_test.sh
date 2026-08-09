@@ -1526,7 +1526,7 @@ build_ui_step_contact_sheet() {
 
   UI_TEST_SCREENSHOT_MANIFEST="$UI_TEST_SCREENSHOT_DIR/review_manifest.json"
   UI_TEST_CONTACT_SHEET="$UI_TEST_SCREENSHOT_DIR/contact_sheet.png"
-  if "$SCRIPT_DIR/catalog_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
+  if "$SCRIPT_DIR/uitest_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
       --source uitest \
       --appearance light \
       --cols 3 \
@@ -1545,7 +1545,7 @@ build_ui_step_contact_sheet() {
   # Quick visual summary — four evenly-spaced steps in one row, large cells —
   # so agents can eyeball the flow without opening the full sheet.
   UI_TEST_QUICK4_SHEET="$UI_TEST_SCREENSHOT_DIR/quick4_contact_sheet.png"
-  if "$SCRIPT_DIR/catalog_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
+  if "$SCRIPT_DIR/uitest_contact_sheet.py" "$UI_TEST_SCREENSHOT_DIR" \
       --source uitest \
       --appearance light \
       --take evenly:4 \

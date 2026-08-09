@@ -173,49 +173,6 @@ mechanisms:
       - docs/reference/tech_index.md
     regression: ui-graph
 
-  - id: snapshot.catalog
-    layer: state-snapshot
-    entrypoint: ops/ios_ops.sh
-    gate: manual
-    run:
-      - catalog
-      - snapshots
-    requires:
-      - ui-world
-    triggers:
-      - ios/BooksAndVocab/Debug/
-      - ios/BooksAndVocab/Views/
-      - ios/BooksAndVocab/UIComponents/
-      - ops/render_catalog_review.py
-      - ops/catalog_review_cli.py
-      - ops/catalog_review_manifest.py
-      - ops/catalog_review_renderer.py
-      - ops/catalog_review_sync.py
-      - ops/catalog_contact_sheet.py
-    verdict: >
-      `ios_ops.sh catalog snapshots` writes build/snapshots/catalog-full-<UTC>/
-      (surface PNGs per device variant — iPhone 15 Pro portrait + iPad Pro 11
-      landscape, each light+dark; catalog_index.json, review_manifest.json with
-      `devices` field, UIreview.html with device toggle). Coverage gaps via `catalog_review_cli.py gaps`.
-    docs:
-      - docs/reference/catalog_scope.md
-      - docs/sop/ios.md
-    notes: "FROZEN 2026-08-05, gallery retired as a consumer 2026-08-06 — keep it runnable, do not run it. New screens do not get catalog surfaces; the UI World feeding it is frozen. Nothing runs this periodically (gate: manual), so breakage surfaces only when someone next needs it — accepted cost, not an oversight (it sat broken with exitCode=65 from 2026-08-05 until IMP-0064 landed on 08-06). Scene count thresholds are reconciled against the frozen world by the pure-Python group `catalog-scene-expectations`. Scope, red lines and un-freeze conditions: docs/reference/catalog_scope.md FROZEN section."
-
-  - id: snapshot.catalog_coverage
-    layer: state-snapshot
-    entrypoint: ios/BooksAndVocabTests/CatalogCoverageTests.swift
-    gate: ios-test
-    triggers:
-      - ios/BooksAndVocab/Debug/CatalogScene.swift
-      - ios/BooksAndVocab/Views/
-    verdict: >
-      XCTest: every ScreenID maps to exactly one featureScreen surface; no
-      duplicate/undeclared taxonomy. Red at `ios_ops.sh test`.
-    docs:
-      - docs/reference/catalog_scope.md
-    notes: "FROZEN 2026-08-05 — the 76 source-text rules stay enforced for already-migrated scenarios (zero cost), but new scenarios are no longer required to join the UI World. See docs/reference/catalog_scope.md FROZEN section."
-
   - id: snapshot.review_card_layout_golden
     layer: state-snapshot
     entrypoint: ios/BooksAndVocabTests/ReviewCardLayoutGoldenTests.swift
@@ -276,26 +233,3 @@ mechanisms:
     docs:
       - docs/sop/ios.md
     regression: review-flip-probe
-
-  - id: visual.catalog_regression
-    layer: visual-regression
-    entrypoint: ops/visual_regression.py
-    gate: manual
-    run:
-      - --auto
-    triggers:
-      - ios/BooksAndVocab/Views/
-      - ios/BooksAndVocab/UIComponents/
-      - ios/BooksAndVocab/Models/AppColors.swift
-      - ios/BooksAndVocab/Models/AppTheme.swift
-      - ios/BooksAndVocab/Models/AppMetrics.swift
-      - ios/BooksAndVocab/Models/AppFonts.swift
-    verdict: >
-      pHash diff between two catalog snapshot roots (--auto pairs the two
-      newest usable roots; default threshold 1.0 — run-to-run noise is 0,
-      real scenario changes land >= 1e4). Exit 1 lists changed/removed
-      surfaces with per-pair distances; added surfaces are informational.
-      Regenerate the current root first: ./ops/ios_ops.sh catalog snapshots.
-    docs:
-      - docs/reference/catalog_scope.md
-    regression: visual-regression

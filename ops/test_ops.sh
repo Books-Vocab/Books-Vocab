@@ -49,9 +49,6 @@ DEFAULT_TESTS=(
   ui-quality-plane
   ui-quality-gate
   review-card-golden
-  visual-regression
-  catalog-review
-  catalog-scene-expectations
   docs-lint
   gen-ios-baseline
   ios-signal-traps
@@ -79,7 +76,7 @@ DEFAULT_TESTS=(
   streaming-command
   app-review
   demo-data
-  catalog-render
+  uitest-contact-sheet
 )
 
 OPTIONAL_TESTS=(
@@ -159,16 +156,6 @@ run_one() {
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;
-    visual-regression)  ./ops/tests/test_visual_regression.sh ;;
-    catalog-review)
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
-        ops/tests/test_catalog_review.py \
-        ops/tests/test_catalog_review_entry.py
-      ;;
-    catalog-scene-expectations)
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
-        ops/tests/test_catalog_scene_expectations.py
-      ;;
     docs-lint)
       ./ops/tests/test_docs_impact.sh
       ./ops/tests/test_docs_registry_coverage.sh
@@ -237,7 +224,6 @@ run_one() {
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_app_review_evidence.py \
         ops/tests/test_app_review_gate.py \
-        ops/tests/test_reviewer_evidence.py \
         ops/tests/test_asc_reviewer_mirror.py \
         ops/tests/test_provenance.py
       ;;
@@ -247,17 +233,13 @@ run_one() {
         ops/tests/test_demo_ios_spec_emitter.py \
         ops/tests/test_shape_history.py \
         ops/tests/test_apply_curation.py \
-        ops/tests/test_capture_profile.py \
         ops/tests/test_ui_world_manifest.py \
         ops/tests/test_uitest_flow_matrix.py \
         ops/tests/test_uitest_review_page.py
       ;;
-    catalog-render)
+    uitest-contact-sheet)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_catalog_appearance_proof.py \
-        ops/tests/test_contact_sheet.py \
-        ops/tests/test_frame_catalog.py \
-        ops/tests/test_render_fit.py
+        ops/tests/test_uitest_contact_sheet.py
       ;;
     asc)
       ./ops/test_asc.sh

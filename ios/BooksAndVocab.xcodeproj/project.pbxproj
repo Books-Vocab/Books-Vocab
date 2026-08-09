@@ -13,10 +13,8 @@
 		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
 		E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E9677BD92F6056C80095D2E1 /* StoreKit.framework */; };
 		E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EF2FC09DCA0038B2FA /* Playbook */; };
-		E97244F22FC09DCA0038B2FA /* PlaybookSnapshot in Frameworks */ = {isa = PBXBuildFile; productRef = E97244F12FC09DCA0038B2FA /* PlaybookSnapshot */; };
 		E97244F42FC09DCA0038B2FA /* PlaybookUI in Frameworks */ = {isa = PBXBuildFile; productRef = E97244F32FC09DCA0038B2FA /* PlaybookUI */; };
 		E97245042FC0A23E0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97245032FC0A23E0038B2FA /* Playbook */; };
-		E97245062FC0A23E0038B2FA /* PlaybookSnapshot in Frameworks */ = {isa = PBXBuildFile; productRef = E97245052FC0A23E0038B2FA /* PlaybookSnapshot */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -73,7 +71,6 @@
 				E97244F42FC09DCA0038B2FA /* PlaybookUI in Frameworks */,
 				E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */,
 				AA000002READIUM02 /* ReadiumStreamer in Frameworks */,
-				E97244F22FC09DCA0038B2FA /* PlaybookSnapshot in Frameworks */,
 				E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */,
 				AA000003READIUM03 /* ReadiumNavigator in Frameworks */,
 				AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */,
@@ -86,7 +83,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				E97245042FC0A23E0038B2FA /* Playbook in Frameworks */,
-				E97245062FC0A23E0038B2FA /* PlaybookSnapshot in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -156,7 +152,6 @@
 				E9D331AE2F521D2D00D4355C /* GoogleSignIn */,
 				E9D331B02F521D2D00D4355C /* GoogleSignInSwift */,
 				E97244EF2FC09DCA0038B2FA /* Playbook */,
-				E97244F12FC09DCA0038B2FA /* PlaybookSnapshot */,
 				E97244F32FC09DCA0038B2FA /* PlaybookUI */,
 			);
 			productName = BooksAndVocab;
@@ -182,7 +177,6 @@
 			name = BooksAndVocabTests;
 			packageProductDependencies = (
 				E97245032FC0A23E0038B2FA /* Playbook */,
-				E97245052FC0A23E0038B2FA /* PlaybookSnapshot */,
 			);
 			productName = BooksAndVocabTests;
 			productReference = E9EC4E212F4DD27200C3FFB6 /* BooksAndVocabTests.xctest */;
@@ -689,11 +683,6 @@
 			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
 			productName = Playbook;
 		};
-		E97244F12FC09DCA0038B2FA /* PlaybookSnapshot */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
-			productName = PlaybookSnapshot;
-		};
 		E97244F32FC09DCA0038B2FA /* PlaybookUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
@@ -703,11 +692,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
 			productName = Playbook;
-		};
-		E97245052FC0A23E0038B2FA /* PlaybookSnapshot */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
-			productName = PlaybookSnapshot;
 		};
 		E9D331AE2F521D2D00D4355C /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;

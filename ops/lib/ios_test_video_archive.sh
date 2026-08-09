@@ -6,7 +6,7 @@
 # lib moves the finalized mp4 into build/snapshots/uitest-videos/ with a
 # timestamped name, maintains index.json (kg.ios.uitest-videos.v1, newest
 # first), and prunes to KG_UITEST_VIDEO_KEEP (default 10) so the archive
-# can't grow unbounded. catalog_review_sync.py reads index.json and mirrors
+# can't grow unbounded. The UITest review workspace reads index.json and mirrors
 # the recordings into each review root for the UIreview.html gallery.
 
 # uitest_video_archive <video_path> <dest_root> <scope> <caller> [timestamp]

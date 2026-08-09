@@ -24,12 +24,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-OPS_DIR = Path(__file__).resolve().parent
-if str(OPS_DIR) not in sys.path:
-    sys.path.insert(0, str(OPS_DIR))
-from catalog_appearance_proof import APPEARANCE_SCHEMA, validate_appearance_proof
-
-
 SPEC_SCHEMA = "kg.app_review.gate.v1"
 JOURNEY_SCHEMA = "kg.app_review.journey.v1"
 DEMO_SCHEMA = "kg.app_review.demo_access.v1"
@@ -59,7 +53,6 @@ _PRODUCER_TYPES = {
     "ios-ui-journey",
     "demo-access",
     "url-checks",
-    "catalog-appearance",
     "agent-attestation",
     "human-attestation",
 }
@@ -264,7 +257,6 @@ def load_spec(path: Path) -> dict[str, Any]:
         "journeys",
         "demoAccess",
         "urlChecks",
-        "appearanceProof",
         "attestations",
     }
     if not isinstance(artifacts, dict) or set(artifacts) != expected_artifact_keys:
@@ -293,16 +285,6 @@ def load_spec(path: Path) -> dict[str, Any]:
         _relative_path(Path("."), item["path"], label=key)
         if not isinstance(item["maxAgeHours"], (int, float)) or item["maxAgeHours"] <= 0:
             raise GateError(f"gate {key} maxAgeHours must be positive")
-    appearance = artifacts.get("appearanceProof")
-    if not isinstance(appearance, dict) or set(appearance) != {"path", "maxAgeHours", "sha256"}:
-        raise GateError("gate appearanceProof ref keys do not match the closed contract")
-    _relative_path(Path("."), appearance["path"], label="appearanceProof")
-    if not isinstance(appearance["maxAgeHours"], (int, float)) or appearance["maxAgeHours"] <= 0:
-        raise GateError("gate appearanceProof maxAgeHours must be positive")
-    if appearance["sha256"] != "pending" and (
-        not isinstance(appearance["sha256"], str) or not _SHA_RE.fullmatch(appearance["sha256"])
-    ):
-        raise GateError("gate appearanceProof sha256 must be SHA-256 or pending")
     attestations = artifacts.get("attestations")
     if not isinstance(attestations, dict) or set(attestations) != {"human", "agent"}:
         raise GateError("gate attestations must require human and agent")
@@ -314,7 +296,6 @@ def load_spec(path: Path) -> dict[str, Any]:
         "liveMirrorBundle",
         "demoAccess",
         "urlChecks",
-        "appearanceProof",
         "attestation.human",
         "attestation.agent",
         *(f"journey.{journey_id}" for journey_id in journey_ids),
@@ -1495,54 +1476,6 @@ def evaluate_gate(
             else:
                 for claim_id in required["claimIDs"]:
                     evidence_by_claim[claim_id].append(f"url:{required['id']}:live-url")
-
-    appearance_ref = spec["artifacts"]["appearanceProof"]
-    appearance_path = _relative_path(root, appearance_ref["path"], label="appearanceProof")
-    if appearance_ref["sha256"] == "pending":
-        _block(blocks, "appearance.sha256.pending", "pinned SHA-256", "pending")
-    elif appearance_path.is_file():
-        actual_appearance_sha = _sha(appearance_path.read_bytes())
-        if actual_appearance_sha != appearance_ref["sha256"]:
-            _block(
-                blocks,
-                "appearance.sha256",
-                appearance_ref["sha256"],
-                actual_appearance_sha,
-            )
-    try:
-        appearance = _load_optional_json(
-            root,
-            appearance_ref["path"],
-            label="appearance proof",
-            bundle_rel="inputs/appearance-proof.json",
-            files=files,
-        )
-    except GateError as exc:
-        _block(blocks, "appearance.invalid", "valid JSON", str(exc))
-        appearance = None
-        appearance_load_failed = True
-    else:
-        appearance_load_failed = False
-    if appearance is None and not appearance_load_failed:
-        _block(blocks, "appearance.missing", appearance_ref["path"], "missing")
-    elif appearance is not None:
-        appearance_validation = validate_appearance_proof(
-            appearance,
-            source_commit=target["sourceCommit"],
-            dataset_id=target["datasetID"],
-            dataset_sha256=target["datasetSHA256"],
-            fixed_clock=((desired.get("capture") or {}).get("fixedClock")) if desired else None,
-        )
-        for issue in appearance_validation["issues"]:
-            _block(blocks, issue["code"], issue["expected"], issue["actual"])
-        fresh, reason = _fresh(
-            appearance.get("observedAt"),
-            observed_at=observed,
-            max_age_hours=appearance_ref["maxAgeHours"],
-            label="appearance proof observedAt",
-        )
-        if not fresh:
-            _block(blocks, "appearance.freshness", "fresh", reason)
 
     pre_root = _pre_root(files)
     attestation_summaries: dict[str, Any] = {}

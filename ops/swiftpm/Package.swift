@@ -2,8 +2,7 @@
 import PackageDescription
 
 // ops-internal Swift tooling that needs external SwiftPM dependencies (and so
-// cannot use the single-file `#!/usr/bin/env swift` pattern of
-// `ops/catalog_png_inspect.swift`). Built once and cached under
+// cannot use a single-file `#!/usr/bin/env swift` script). Built once and cached under
 // `.cache/ops-swift-build/` by `ops/lib/kgindex_build.sh`.
 //
 // `kgindex` is a neutral IndexStore extractor: given an Xcode IndexStore and a

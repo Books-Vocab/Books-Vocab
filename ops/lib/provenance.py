@@ -9,12 +9,8 @@ commits, and until this module existed nothing in the emitted verdict said which
 Content hash, not git commit: a commit id attributes an uncommitted edit to the
 committed version, which is exactly the case where the difference matters most.
 
-This module is the SoT for tool-identity hashing. Two other streaming-sha256 copies
-exist — `ops/reviewer_evidence.py:32` (`sha256_file`, alongside `_logical_tool_path:81`)
-and `ops/ui_world_manifest.py:515` (`_sha256_hex`). Migrating them here is IMP-0042's
-scope, not a drive-by change: reviewer_evidence's output is a hard contract validated by
-`ops/app_review_gate.py:735-760`. (`ops/capture_profile.py` has no copy — it imports
-from reviewer_evidence.)
+This module is the SoT for tool-identity hashing. `ops/ui_world_manifest.py` still
+has a local `_sha256_hex`; migrating that copy belongs to its own bounded change.
 """
 
 from __future__ import annotations
