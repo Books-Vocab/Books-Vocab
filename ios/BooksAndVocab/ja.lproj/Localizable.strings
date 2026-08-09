@@ -1138,34 +1138,18 @@
 /* MARK: - Review card layout editor */
 "複習卡片" = "復習カード";
 "reviewCardLayout.title" = "復習カード";
-"reviewCardLayout.mode.section" = "カードの種類";
-"reviewCardLayout.face.front" = "表面";
-"reviewCardLayout.face.back" = "裏面";
-"reviewCardLayout.preview.title" = "プレビュー";
-"reviewCardLayout.preview.empty" = "この面は固定の項目だけを表示します。";
 "reviewCardLayout.locked.prompt" = "問題";
 "reviewCardLayout.locked.answer" = "答え";
-"reviewCardLayout.locked.caption" = "常に表示";
-"reviewCardLayout.fields.section" = "任意の項目";
 "reviewCardLayout.field.partOfSpeech" = "品詞";
-"reviewCardLayout.field.partOfSpeech.caption" = "n. や v. など";
 "reviewCardLayout.field.difficultyTier" = "難易度";
-"reviewCardLayout.field.difficultyTier.caption" = "単語の難易度ラベル";
 "reviewCardLayout.field.graphLinks" = "ナレッジリンク";
-"reviewCardLayout.field.graphLinks.caption" = "関連単語とリンク追加の入口";
 "reviewCardLayout.field.example" = "例文";
-"reviewCardLayout.field.example.caption" = "この単語を登録したときの原文";
 "reviewCardLayout.field.explanation" = "解説";
-"reviewCardLayout.field.explanation.caption" = "語義と補足";
 "reviewCardLayout.field.collocations" = "コロケーション";
-"reviewCardLayout.field.collocations.caption" = "よく使われる組み合わせ";
 "reviewCardLayout.reset" = "デフォルトに戻す";
-"reviewCardLayout.reset.currentMode" = "「%@」をデフォルトに戻す";
 "reviewCardLayout.reset.all" = "すべてデフォルトに戻す";
 "reviewCardLayout.footer" = "スペースが足りないときは、例文・解説・コロケーションから順に短縮します。問題・答え・品詞・難易度は隠れません。";
 "todayReview.layoutEditor.open" = "復習カードを調整";
-"settings.reviewCardLayout.default" = "デフォルト";
-"settings.reviewCardLayout.custom" = "カスタム";
 
 /* Settings — 逐步同步進度列 */
 "送出複習紀錄" = "復習記録をアップロード";
@@ -1191,3 +1175,10 @@
 /* settings-native-converge (APP-20260808-240a94 / f0770b) */
 "字級" = "文字サイズ";
 "主題" = "テーマ";
+
+/* settings-native-converge · APP-20260808-7f0f3a 版面 preset */
+"reviewCardLayout.preset.standard" = "標準";
+"reviewCardLayout.preset.compact" = "コンパクト";
+"settings.reviewCardLayout.standard" = "標準";
+"settings.reviewCardLayout.compact" = "コンパクト";
+"settings.reviewCardLayout.mixed" = "混在";

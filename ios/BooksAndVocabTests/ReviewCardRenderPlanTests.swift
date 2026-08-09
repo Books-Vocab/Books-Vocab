@@ -43,35 +43,34 @@ struct ReviewCardRenderPlanTests {
         ])
     }
 
-    @Test func arbitrary_order_is_preserved_without_mutating_the_profile() {
-        let profile = ReviewCardLayoutProfile(
-            recognition: .init(front: [.graphLinks, .example], back: [.example, .partOfSpeech]),
-            production: .init(front: [], back: [])
-        )
+    /// 版面自由度自 APP-20260808-7f0f3a 起塌縮成兩個 preset，所以這些測試不再
+    /// 拿任意欄位陣列建 profile —— 它們驗的本來就是 availability 過濾與順序保留，
+    /// 用 preset 產出的面一樣驗得到，而且不必為了測試保留一個沒人用得到的建構子。
+    @Test func compact_preset_drops_the_three_long_form_fields() {
+        let profile = ReviewCardLayoutProfile(recognition: .compact, production: .compact)
         let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
 
-        #expect(plan.front.fields == [.graphLinks, .example])
-        #expect(plan.back.fields == [.example, .partOfSpeech])
-        #expect(plan.front.rows == [.prompt, .field(.graphLinks), .field(.example)])
-        // 背面開了詞性也只是貼著答案字，不會多長一列出來。
-        #expect(plan.back.inlineFields == [.partOfSpeech])
-        #expect(plan.back.blockFields == [.example])
+        #expect(plan.front.fields == [.partOfSpeech])
+        #expect(plan.back.fields == [.difficultyTier, .graphLinks])
+        // 詞性貼在核心詞的基線上，所以精簡正面同樣只有核心那一列。
+        #expect(plan.front.inlineFields == [.partOfSpeech])
+        #expect(plan.front.blockFields.isEmpty)
+        #expect(plan.front.rows == [.prompt])
+        // 難度仍是答案之上的徽章；答案底下只剩圖譜連結，所以有 answerDivider
+        // 而沒有 fieldDivider（一欄的第一格不帶線）。
+        #expect(plan.back.aboveCore == [.difficultyTier])
+        #expect(plan.back.belowCore == [.graphLinks])
         #expect(plan.back.rows == [
+            .field(.difficultyTier),
             .answer,
             .answerDivider,
-            .field(.example)
+            .field(.graphLinks)
         ])
-        #expect(profile.recognition.front == [.graphLinks, .example])
-        #expect(profile.recognition.back == [.example, .partOfSpeech])
     }
 
     @Test func unavailable_optional_fields_are_filtered_per_face() {
-        let profile = ReviewCardLayoutProfile(
-            recognition: .init(front: [.partOfSpeech, .example, .collocations], back: [.difficultyTier, .graphLinks]),
-            production: .init(front: [], back: [])
-        )
         let plan = ReviewCardRenderPlan.make(
-            profile: profile,
+            profile: .default,
             mode: .recognition,
             availability: .init(partOfSpeech: false, difficultyTier: true, example: false, explanation: false, collocations: false, graphLinks: false)
         )
@@ -83,12 +82,16 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.back.rows == [.field(.difficultyTier), .answer])
     }
 
+    /// 產出方向的「正常」把例句同時放在正反面 —— 一個欄位可以在兩面都畫。
     @Test func a_field_can_render_on_both_faces() {
-        let profile = ReviewCardLayoutProfile(
-            recognition: .init(front: [.example], back: [.example]),
-            production: .init(front: [], back: [])
-        )
-        let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
+        let plan = ReviewCardRenderPlan.make(profile: .default, mode: .production, availability: .init(
+            partOfSpeech: false,
+            difficultyTier: false,
+            example: true,
+            explanation: false,
+            collocations: false,
+            graphLinks: false
+        ))
 
         #expect(plan.front.fields == [.example])
         #expect(plan.back.fields == [.example])
@@ -97,11 +100,14 @@ struct ReviewCardRenderPlanTests {
     }
 
     @Test func an_empty_back_face_does_not_draw_a_trailing_divider() {
-        let profile = ReviewCardLayoutProfile(
-            recognition: .init(front: [], back: []),
-            production: .init(front: [], back: [])
-        )
-        let plan = ReviewCardRenderPlan.make(profile: profile, mode: .recognition, availability: all)
+        let plan = ReviewCardRenderPlan.make(profile: .default, mode: .recognition, availability: .init(
+            partOfSpeech: false,
+            difficultyTier: false,
+            example: false,
+            explanation: false,
+            collocations: false,
+            graphLinks: false
+        ))
 
         #expect(plan.front.rows == [.prompt])
         #expect(plan.back.rows == [.answer])

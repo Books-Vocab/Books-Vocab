@@ -11,28 +11,22 @@ import SwiftUI
 /// disagree with what the card is drawing.
 ///
 /// 版面：與「複習節奏」「閱讀設定」同一套原生心智模型 —— `Form` + `Section`
-/// (`SettingsSectionHeader` / `SettingsSectionFooter`)，選擇 = `Picker`，
-/// 開關 = `Toggle`，鎖定列 = `LabeledContent`。分隔線與列高一律由平台畫，
-/// 不再有卡片背景與自繪分隔（APP-20260808-240a94 / f0770b）。
+/// (`SettingsSectionHeader` / `SettingsSectionFooter`)，選擇 = `Picker`。
+/// 分隔線與列高一律由平台畫（APP-20260808-240a94 / f0770b）。
+///
+/// 自由度：每個方向（辨識 / 產出）只在「正常」與「精簡」之間選
+/// （APP-20260808-7f0f3a）。六個欄位各自開關的舊模型連同它的正面/背面 picker
+/// 一起退場 —— 那個自由度沒有人知道該怎麼用。
 struct ReviewCardLayoutEditor: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewCardLayoutStore) private var store
 
-    /// Opens on the mode of the card being looked at, so the first thing editable
-    /// is the thing on screen.
-    @State private var mode: VocabularyCardMode
-    @State private var face: ReviewCardFace = .front
-
-    init(initialMode: VocabularyCardMode = .recognition) {
-        _mode = State(initialValue: initialMode)
-    }
-
     var body: some View {
         Form {
-            pickerSection
-            previewSection
-            fieldsSection
+            ForEach(VocabularyCardMode.allCases, id: \.rawValue) { mode in
+                directionSection(mode)
+            }
         }
         .navigationTitle(L10n.string("reviewCardLayout.title"))
         .inlineNavigationBarTitle()
@@ -42,76 +36,68 @@ struct ReviewCardLayoutEditor: View {
         .enableInjection()
     }
 
-    // MARK: - Derived state
+    // MARK: - Direction
 
-    private var layout: ReviewCardModeLayout { store.profile.layout(for: mode) }
-
-    private var activeFields: [ReviewCardField] {
-        switch face {
-        case .front: layout.front
-        case .back: layout.back
-        }
-    }
-
-    /// Prompt on the front, answer on the back — mode semantics, not a profile
-    /// field, which is exactly why the row cannot be switched off.
-    private var lockedRowTitle: String {
-        L10n.string(face == .front ? "reviewCardLayout.locked.prompt" : "reviewCardLayout.locked.answer")
-    }
-
-    // MARK: - Pickers
-
-    private var pickerSection: some View {
+    /// 一個方向一個 Section：上面是二選一，下面是這個選擇當下會畫成什麼樣。
+    /// 預覽直接讀 `store.profile.layout(for:)`，所以它不可能與卡片說法不同。
+    private func directionSection(_ mode: VocabularyCardMode) -> some View {
         Section {
-            Picker(L10n.string("reviewCardLayout.mode.section"), selection: $mode) {
-                ForEach(VocabularyCardMode.allCases, id: \.rawValue) { candidate in
-                    Text(candidate.localizedTitle).tag(candidate)
+            Picker(mode.localizedTitle, selection: presetBinding(mode)) {
+                ForEach(ReviewCardLayoutPreset.allCases, id: \.rawValue) { preset in
+                    Text(L10n.string(preset.titleKey)).tag(preset)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .accessibilityIdentifier("reviewCardLayout.modePicker")
+            .accessibilityIdentifier("reviewCardLayout.preset.\(mode.rawValue)")
 
-            Picker(L10n.string("reviewCardLayout.preview.title"), selection: $face) {
-                Text(L10n.string("reviewCardLayout.face.front")).tag(ReviewCardFace.front)
-                Text(L10n.string("reviewCardLayout.face.back")).tag(ReviewCardFace.back)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityIdentifier("reviewCardLayout.facePicker")
-        } header: {
-            SettingsSectionHeader(
-                title: L10n.string("reviewCardLayout.mode.section"),
-                icon: "rectangle.split.2x1"
-            )
-        }
-    }
-
-    // MARK: - Preview
-
-    private var previewSection: some View {
-        Section {
             VStack(alignment: .leading, spacing: AppSpacing.s2) {
-                previewRow(title: lockedRowTitle, isLocked: true)
-
-                ForEach(activeFields, id: \.self) { field in
-                    previewRow(title: L10n.string(field.titleKey), isLocked: false)
+                previewRow(
+                    title: L10n.string("reviewCardLayout.locked.prompt"),
+                    isLocked: true,
+                    identifier: "reviewCardLayout.lockedRow.\(mode.rawValue).prompt"
+                )
+                ForEach(store.profile.layout(for: mode).front, id: \.self) { field in
+                    previewRow(
+                        title: L10n.string(field.titleKey),
+                        isLocked: false,
+                        identifier: "reviewCardLayout.previewField.\(mode.rawValue).front.\(field.rawValue)"
+                    )
                 }
 
-                if activeFields.isEmpty {
-                    Text(L10n.string("reviewCardLayout.preview.empty"))
-                        .font(appSkin.typography.caption)
-                        .foregroundStyle(appSkin.palette.tertiaryText)
+                previewRow(
+                    title: L10n.string("reviewCardLayout.locked.answer"),
+                    isLocked: true,
+                    identifier: "reviewCardLayout.lockedRow.\(mode.rawValue).answer"
+                )
+                ForEach(store.profile.layout(for: mode).back, id: \.self) { field in
+                    previewRow(
+                        title: L10n.string(field.titleKey),
+                        isLocked: false,
+                        identifier: "reviewCardLayout.previewField.\(mode.rawValue).back.\(field.rawValue)"
+                    )
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("reviewCardLayout.preview")
         } header: {
-            SettingsSectionHeader(title: L10n.string("reviewCardLayout.preview.title"), icon: "eye")
+            SettingsSectionHeader(title: mode.localizedTitle, icon: "rectangle.split.2x1")
+        } footer: {
+            if mode == VocabularyCardMode.allCases.last {
+                SettingsSectionFooter(L10n.string("reviewCardLayout.footer"))
+            }
         }
     }
 
-    private func previewRow(title: String, isLocked: Bool) -> some View {
+    private func presetBinding(_ mode: VocabularyCardMode) -> Binding<ReviewCardLayoutPreset> {
+        Binding(
+            get: { store.profile.preset(for: mode) },
+            set: { store.setPreset($0, for: mode) }
+        )
+    }
+
+    /// 每一列都掛 identifier：preset 的結果是這一頁**唯一**可斷言的東西
+    /// （segmented picker 的當選段不可靠），UI test 靠列的存在與否判定 preset。
+    private func previewRow(title: String, isLocked: Bool, identifier: String) -> some View {
         HStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: isLocked ? "lock.fill" : "circle.fill")
                 .font(appSkin.typography.iconTiny)
@@ -121,73 +107,15 @@ struct ReviewCardLayoutEditor: View {
                 .foregroundStyle(appSkin.palette.primaryText)
             Spacer(minLength: AppSpacing.s2)
         }
-    }
-
-    // MARK: - Rows
-
-    private var fieldsSection: some View {
-        Section {
-            lockedRow
-
-            ForEach(ReviewCardField.canonicalOrder, id: \.self) { field in
-                fieldRow(field)
-            }
-        } header: {
-            SettingsSectionHeader(title: L10n.string("reviewCardLayout.fields.section"), icon: "checklist")
-        } footer: {
-            SettingsSectionFooter(L10n.string("reviewCardLayout.footer"))
-        }
-    }
-
-    /// 題目/答案那一列：`LabeledContent` 而非 Toggle —— 沒有開關就是它的契約。
-    private var lockedRow: some View {
-        LabeledContent {
-            Text(L10n.string("reviewCardLayout.locked.caption"))
-        } label: {
-            Label(lockedRowTitle, systemImage: "lock.fill")
-        }
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("reviewCardLayout.lockedRow")
-    }
-
-    private func fieldRow(_ field: ReviewCardField) -> some View {
-        Toggle(isOn: binding(for: field)) {
-            VStack(alignment: .leading, spacing: AppSpacing.s1) {
-                Text(L10n.string(field.titleKey))
-                Text(L10n.string(field.captionKey))
-                    .font(appSkin.typography.caption)
-                    .foregroundStyle(appSkin.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .accessibilityIdentifier("reviewCardLayout.toggle.\(field.rawValue)")
-    }
-
-    private func binding(for field: ReviewCardField) -> Binding<Bool> {
-        Binding(
-            get: { activeFields.contains(field) },
-            set: { isOn in
-                var updated = store.profile.layout(for: mode)
-                switch face {
-                case .front:
-                    updated.front = ReviewCardField.toggling(field, in: updated.front, isOn: isOn)
-                case .back:
-                    updated.back = ReviewCardField.toggling(field, in: updated.back, isOn: isOn)
-                }
-                store.setLayout(updated, for: mode)
-            }
-        )
+        .accessibilityIdentifier(identifier)
     }
 
     // MARK: - Reset
 
+    /// 只剩「全部恢復」：一個方向只有兩個值，「只恢復這個方向」等同按另一顆。
     private var resetMenu: some View {
         Menu {
-            Button(L10n.format("reviewCardLayout.reset.currentMode", mode.localizedTitle)) {
-                store.reset(mode)
-            }
-            .accessibilityIdentifier("reviewCardLayout.reset.currentMode")
-
             Button(L10n.string("reviewCardLayout.reset.all"), role: .destructive) {
                 store.resetAll()
             }
@@ -205,12 +133,11 @@ struct ReviewCardLayoutEditor: View {
 struct ReviewCardLayoutEditorSheet: View {
     @ObserveInjection private var inject
 
-    let initialMode: VocabularyCardMode
     let onDone: () -> Void
 
     var body: some View {
         NavigationStack {
-            ReviewCardLayoutEditor(initialMode: initialMode)
+            ReviewCardLayoutEditor()
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(L10n.string("完成"), action: onDone)
@@ -235,15 +162,15 @@ struct ReviewCardLayoutEditorSheet: View {
     .environmentObject(AppAppearanceStore.preview)
 }
 
-#Preview("產出模式 / 正面全開") {
+#Preview("辨識精簡 / 產出正常") {
     AppThemeContainer {
         NavigationStack {
-            ReviewCardLayoutEditor(initialMode: .production)
+            ReviewCardLayoutEditor()
         }
     }
     .environment(\.reviewCardLayoutStore, .inMemory(profile: ReviewCardLayoutProfile(
-        recognition: .init(front: [], back: []),
-        production: .init(front: ReviewCardField.canonicalOrder, back: ReviewCardField.canonicalOrder)
+        recognition: .compact,
+        production: .standard
     )))
     .environmentObject(AppAppearanceStore.preview)
 }

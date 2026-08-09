@@ -33,29 +33,28 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         let review = try startReview(app: app)
         let editor = ReviewCardLayoutEditorPage(app: app)
 
-        // ── 1. Toolbar entry opens the editor on the current card's mode ────────
+        // ── 1. Toolbar entry opens the editor ──────────────────────────────────
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 10))
         review.layoutEditorButton.tapWhenReady()
         guard editor.waitUntilVisible() else {
             captureStep("editor-did-not-open", app: app)
-            XCTFail("工具列入口必須開出 layout editor；face picker 缺席")
+            XCTFail("工具列入口必須開出 layout editor；方向 preset picker 缺席")
             return
         }
-        editor.lockedRow.assertExists()
+        editor.lockedRow("recognition", "prompt").assertExists()
 
         // Reset to the built-in default first: the profile outlives the app
         // process, so a previous method's edits would otherwise be the baseline.
-        editor.resetMenu.tapWhenReady()
-        editor.resetAllItem.tapWhenReady()
-        XCTAssertFalse(editor.isOn("graphLinks"), "辨識正面預設不含知識連結")
+        editor.resetAll()
+        editor.previewField("recognition", face: "back", field: "example").assertExists()
         editor.done()
 
-        // ── 2. Enabling a field re-lays out the card behind the sheet ──────────
+        // ── 2. Switching to 精簡 re-lays out the card behind the sheet ─────────
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
-        editor.setField("graphLinks", on: true)
-        XCTAssertTrue(editor.isOn("graphLinks"))
+        editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
+        editor.previewField("recognition", face: "back", field: "example").assertDoesNotExist()
         editor.done()
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
         RunLoop.current.run(until: Date().addingTimeInterval(0.8))
@@ -64,7 +63,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         // buttons), so the rendered fields are not assertable from the outside —
         // the machine-checkable half of "the store reached the UI" is step 5's
         // derived Settings summary, which re-renders from the same store.
-        captureStep("card-after-enabling-links", app: app)
+        captureStep("card-after-switching-to-compact", app: app)
 
         // Layout only: the card must still be on its front, still card 1.
         review.cardBack.assertDoesNotExist()
@@ -73,7 +72,10 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         // ── 3. Reopening keeps the edit ─────────────────────────────────────────
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
-        XCTAssertTrue(editor.isOn("graphLinks"), "關閉再開啟 editor 必須保留設定")
+        XCTAssertTrue(
+            editor.previewField("recognition", face: "back", field: "example").waitUntilGone(timeout: 3),
+            "關閉再開啟 editor 必須保留精簡設定"
+        )
         editor.done()
 
         // ── 4. Settings reads the SAME profile ─────────────────────────────────
@@ -91,14 +93,16 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         settings.openReviewCardLayout()
         XCTAssertTrue(editor.waitUntilVisible())
         XCTAssertTrue(
-            editor.isOn("graphLinks"),
+            editor.previewField("recognition", face: "back", field: "example").waitUntilGone(timeout: 3),
             "設定頁與複習頁必須讀寫同一份 profile"
         )
 
         // ── 5. Reset all puts every mode back, and the summary follows ─────────
-        editor.resetMenu.tapWhenReady()
-        editor.resetAllItem.tapWhenReady()
-        XCTAssertFalse(editor.isOn("graphLinks"), "恢復全部預設後辨識正面應回到只有詞性")
+        editor.resetAll()
+        XCTAssertTrue(
+            editor.previewField("recognition", face: "back", field: "example").waitUntilExists(timeout: 5),
+            "恢復全部預設後應回到正常版面（背面含例句）"
+        )
 
         app.navigationBars.buttons.element(boundBy: 0).tapWhenReady()
         guard settings.reviewCardLayoutValue.waitUntilExists(timeout: 8) else {
@@ -114,9 +118,10 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         captureStep("reset-all", app: app)
     }
 
-    /// Worst case for the compaction ladder: every optional field on, on both
-    /// faces. The card may scroll or compact, but the grading toolbar is chrome
-    /// OUTSIDE the card region and must stay hittable.
+    /// Worst case for the compaction ladder: both directions on 正常, which is the
+    /// richest face the preset model can produce. The card may scroll or compact,
+    /// but the grading toolbar is chrome OUTSIDE the card region and must stay
+    /// hittable.
     @MainActor
     func testGradingToolbarStaysOperableWithEveryFieldEnabled() throws {
         let app = launchIsolatedApp(
@@ -128,15 +133,14 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
 
         let review = try startReview(app: app)
         let editor = ReviewCardLayoutEditorPage(app: app)
-        let fields = ["partOfSpeech", "difficultyTier", "graphLinks", "example", "explanation", "collocations"]
 
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
-        for field in fields { editor.setField(field, on: true) }
-        editor.selectFace(1)
-        for field in fields { editor.setField(field, on: true) }
+        editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
+        editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
+        editor.previewField("recognition", face: "back", field: "collocations").assertExists()
         editor.done()
-        captureStep("all-fields-on", app: app)
+        captureStep("both-directions-standard", app: app)
 
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
         XCTAssertTrue(
