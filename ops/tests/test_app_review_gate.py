@@ -467,25 +467,6 @@ def _write_fixture_world(tmp_path: Path) -> Path:
     }
     _json(tmp_path / "urls.json", urls)
 
-    appearance = {
-        "schema": "kg.catalog.appearance.v1",
-        "verdict": {"status": "pass", "proofCount": 1},
-        "sourceCommit": target["sourceCommit"],
-        "datasetID": target["datasetID"],
-        "datasetSHA256": target["datasetSHA256"],
-        "fixedClock": "2026-07-13T08:00:00Z",
-        "observedAt": "2026-07-13T09:25:00Z",
-        "captures": [
-            {
-                "id": "reader-light",
-                "requestedAppearance": "light",
-                "actualAppearance": "light",
-                "pixelSHA256": "8" * 64,
-            }
-        ],
-    }
-    _json(tmp_path / "appearance.json", appearance)
-
     target["desiredManifestSHA256"] = desired_hash
     spec = {
         "schema": "kg.app_review.gate.v1",
@@ -496,11 +477,6 @@ def _write_fixture_world(tmp_path: Path) -> Path:
             "journeys": [{"id": "core", "path": "journeys/core.json", "maxAgeHours": 24}],
             "demoAccess": {"path": "demo.json", "maxAgeHours": 24},
             "urlChecks": {"path": "urls.json", "maxAgeHours": 24},
-            "appearanceProof": {
-                "path": "appearance.json",
-                "maxAgeHours": 24,
-                "sha256": _sha((tmp_path / "appearance.json").read_bytes()),
-            },
             "attestations": {
                 "human": "attestations/human.json",
                 "agent": "attestations/agent.json",
@@ -553,7 +529,6 @@ def _write_fixture_world(tmp_path: Path) -> Path:
             "journey.core": {"type": "ios-ui-journey", "authority": "ios-release-test", "command": "produce journey"},
             "demoAccess": {"type": "demo-access", "authority": "live-demo", "command": "produce demo"},
             "urlChecks": {"type": "url-checks", "authority": "https-get", "command": "produce urls"},
-            "appearanceProof": {"type": "catalog-appearance", "authority": "catalog-run", "command": "produce appearance"},
             "attestation.human": {"type": "human-attestation", "authority": "release-owner", "command": "attest human"},
             "attestation.agent": {"type": "agent-attestation", "authority": "gate-agent", "command": "attest agent"},
         },
@@ -908,47 +883,6 @@ def test_demo_claim_cannot_self_label_fixture_as_exact_device(tmp_path: Path):
     assert "demo.account.live-binding" in codes
 
 
-@pytest.mark.parametrize(
-    ("mutation", "expected_code"),
-    [
-        ("missing", "appearance.missing"),
-        ("hash", "appearance.sha256"),
-        ("verdict", "appearance.verdict"),
-        ("pixel", "appearance.capture.0.appearance"),
-    ],
-)
-def test_appearance_proof_is_required_hash_pinned_and_fail_closed(
-    tmp_path: Path, mutation: str, expected_code: str
-):
-    mod = _load_module()
-    spec_path = _write_fixture_world(tmp_path)
-    appearance_path = tmp_path / "appearance.json"
-    appearance = json.loads(appearance_path.read_text())
-    if mutation == "missing":
-        appearance_path.unlink()
-    elif mutation == "hash":
-        appearance["captures"][0]["pixelSHA256"] = "7" * 64
-        _json(appearance_path, appearance)
-    elif mutation == "verdict":
-        appearance["verdict"]["status"] = "fail"
-        _json(appearance_path, appearance)
-    elif mutation == "pixel":
-        appearance["captures"][0]["actualAppearance"] = "dark"
-        _json(appearance_path, appearance)
-    if mutation in {"verdict", "pixel"}:
-        spec = json.loads(spec_path.read_text())
-        spec["artifacts"]["appearanceProof"]["sha256"] = _sha(appearance_path.read_bytes())
-        _json(spec_path, spec)
-
-    result = mod.evaluate_gate(
-        spec_path=spec_path,
-        workspace_root=tmp_path,
-        observed_at="2026-07-13T10:00:00Z",
-        observation_mode="online",
-    )
-
-    assert expected_code in {item["code"] for item in result.document["blocks"]}
-
 
 def test_bundle_is_exactly_hash_closed_and_verify_detects_extra(tmp_path: Path):
     mod = _load_module()
@@ -1054,12 +988,9 @@ def test_app_review_chain_names_the_same_project_file():
     """
     sys.path.insert(0, str(ROOT / "ops"))
     import app_review_evidence  # noqa: PLC0415
-    import capture_profile  # noqa: PLC0415
-
     gate = _load_module()
 
     assert gate._PROJECT_SOURCE_PATH == app_review_evidence.PROJECT_FILE_REL
-    assert gate._PROJECT_SOURCE_PATH == capture_profile.IOS_PROJECT_FILE_REL
     assert (ROOT / gate._PROJECT_SOURCE_PATH).is_file()
 
 

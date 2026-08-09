@@ -5,17 +5,16 @@ import SwiftUI
 /// Catalog scenarios for the full Reader chrome (`ReaderViewPresenter`), as
 /// rendered through `ReaderView.presenterState`. Reuses the internal
 /// `ReaderChromePreviewScene` preview seam from `ReaderViewPresenter+Preview.swift`
-/// so #Preview / Catalog / Snapshot stay aligned.
+/// so #Preview and the agent workbench stay aligned.
 ///
 /// Preview harness visibility lifted from `private` → `internal` in:
 /// - ReaderViewPresenter+Preview.swift (ReaderChromePreviewScene)
 ///
 /// Note: most scenarios render synthetic block placeholders for page content
 /// (no live publication / WKWebView), driving every state purely off
-/// `ReaderViewPresenterState`. The "Reading · Marketing Content" scenario is the
-/// exception: it renders native SwiftUI book prose (`pageContent: .prose`) so the
-/// App Store / website reader shot shows real book text — it is the capture
-/// source for `ops/capture_profiles/website.json`.
+/// `ReaderViewPresenterState`. The "Reading · Prose" scenario is the exception:
+/// it renders native SwiftUI book prose (`pageContent: .prose`) so an agent can
+/// inspect chrome against realistic content.
 enum ReaderChromeScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Reader View · Chrome") {
@@ -109,7 +108,7 @@ enum ReaderChromeScenarios {
                 .environmentObject(AppAppearanceStore.preview)
             }
 
-            Scenario("Reading · Marketing Content", layout: .fill) {
+            Scenario("Reading · Prose", layout: .fill) {
                 // Force light appearance so the translation card resolves to the
                 // light theme's white card. In the shipped reader the sepia paper
                 // is coupled to the light skin; capturing this scene in a dark sim

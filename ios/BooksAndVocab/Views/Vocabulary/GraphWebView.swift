@@ -17,25 +17,6 @@ struct GraphForces: Equatable, Encodable {
     }
 }
 
-#if DEBUG
-// MARK: - Catalog snapshot hook
-
-/// Fires on the main actor after `initGraph(...)` has been evaluated in the
-/// web content process — the earliest point where catalog snapshot tooling
-/// (`CatalogGraphSnapshotFreezer`) can settle the simulation and rasterize.
-/// `nil` (default, and always in production paths) is a no-op.
-private struct KGGraphWebViewInitHookKey: EnvironmentKey {
-    static let defaultValue: (@MainActor (WKWebView) -> Void)? = nil
-}
-
-extension EnvironmentValues {
-    var kgGraphWebViewInitHook: (@MainActor (WKWebView) -> Void)? {
-        get { self[KGGraphWebViewInitHookKey.self] }
-        set { self[KGGraphWebViewInitHookKey.self] = newValue }
-    }
-}
-#endif
-
 // MARK: - GraphWebView
 
 struct GraphWebView: UIViewRepresentable {
@@ -105,10 +86,6 @@ extension GraphWebView {
     ) {
         let coord = context.coordinator
         coord.onNodeTap = onNodeTap
-        #if DEBUG
-        coord.onInitGraphApplied = context.environment.kgGraphWebViewInitHook
-        #endif
-
         let sig = themeSignature(colorScheme: colorScheme, backgroundHex: backgroundHex,
                                   labelHex: labelHex, labelShadowHex: labelShadowHex,
                                   tierHexes: tierHexes, edgeHexes: edgeHexes)
@@ -261,12 +238,6 @@ extension GraphWebView {
         var lastThemeSignature: String? = nil
         var lastForces: GraphForces? = nil
         var lastDataSignature: String? = nil
-        #if DEBUG
-        /// Catalog snapshot hook (`\.kgGraphWebViewInitHook`); nil in all
-        /// production and interactive paths.
-        var onInitGraphApplied: (@MainActor (WKWebView) -> Void)?
-        #endif
-
         init(onNodeTap: @escaping (String) -> Void) {
             self.onNodeTap = onNodeTap
         }
@@ -279,18 +250,8 @@ extension GraphWebView {
             evaluateInitGraph(json, in: webView)
         }
 
-        /// Single funnel for `initGraph` evaluation so the DEBUG snapshot hook
-        /// fires on both paths (immediate send and ready-flush of a pending
-        /// payload) only after the JS actually ran in the web process.
         private func evaluateInitGraph(_ json: String, in webView: WKWebView) {
-            webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')") { [weak self, weak webView] _, _ in
-                #if DEBUG
-                MainActor.assumeIsolated {
-                    guard let self, let webView else { return }
-                    self.onInitGraphApplied?(webView)
-                }
-                #endif
-            }
+            webView.evaluateJavaScript("initGraph('\(json.jsSingleQuoteEscaped)')", completionHandler: nil)
         }
 
         // MARK: WKScriptMessageHandler

@@ -1,10 +1,5 @@
 {
   "artifacts": {
-    "appearanceProof": {
-      "maxAgeHours": 24,
-      "path": "build/app-review/appearance/2.0.0.json",
-      "sha256": "pending"
-    },
     "attestations": {
       "agent": "build/app-review/attestations/2.0.0-agent.json",
       "human": "build/app-review/attestations/2.0.0-human.json"
@@ -291,11 +286,6 @@
     "liveMirrorMaxAgeHours": 12
   },
   "producers": {
-    "appearanceProof": {
-      "authority": "validated pinned catalog run",
-      "command": "./ops/app_review_evidence.py appearance --spec ops/app_review/2.0.0.json --catalog-root <validated-catalog-root> --out build/app-review/appearance/2.0.0.json --commit",
-      "type": "catalog-appearance"
-    },
     "attestation.agent": {
       "authority": "independent release gate agent",
       "command": "./ops/app_review_evidence.py attest --actor agent --subject <independent-agent> --pre-root-sha256 <gate-pre-root> --observed-at <RFC3339> --expires-at <RFC3339> --spec ops/app_review/2.0.0.json --out build/app-review/attestations/2.0.0-agent.json --commit",
@@ -312,8 +302,8 @@
       "type": "demo-access"
     },
     "desiredBundle": {
-      "authority": "checked-in desired ASC manifest",
-      "command": "./ops/app_review_evidence.py desired --spec ops/app_review/2.0.0.json --profile ops/capture_profiles/marketing_account.json --render-output-dir promotion/screenshots/dist/app-store/iphone --bundle-dir build/app-review/desired-2.0.0/bundle --fixed-clock 2026-07-09T09:00:00Z --locale zh-Hant --commit",
+      "authority": "release owner supplied final ASC bundle",
+      "command": "test -f build/app-review/desired-2.0.0/bundle/manifest.json",
       "type": "desired-bundle"
     },
     "journey.account-pro": {

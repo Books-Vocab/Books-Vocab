@@ -122,7 +122,7 @@ struct BooksAndVocabApp: App {
 
     var body: some Scene {
         WindowGroup {
-            #if DEBUG && canImport(Playbook)
+            #if DEBUG && targetEnvironment(simulator) && canImport(Playbook)
             if ProcessInfo.processInfo.arguments.contains("-catalog") {
                 CatalogScene()
             } else {

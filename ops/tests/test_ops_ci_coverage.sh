@@ -110,26 +110,12 @@ LINUX_GROUPS=(
   #    origin/main，且逐份實測全部 active doc 的 verified_against 都能從 origin/main
   #    可達 —— 那個理由現在是假的，所以收進來。
   docs-lint
-  # 純 Python：讀 ops/fixtures/ui_worlds/marketing_demo.json 與兩支 Debug scene
-  # 的原始碼字面量做對帳，不需要模擬器（那正是它存在的理由——Swift 端的
-  # precondition 只有跑得動 simulator 時才會講話）。
-  catalog-scene-expectations
   # ── IMP-20260805-947062 收編的 4 個 group ──────────────────────────────────
   # 全都跑在 --no-project sandbox（stdlib + pytest），逐支在 macOS 實測過。
   streaming-command
   app-review
   demo-data
-  # catalog-render 的 linux 判決**未實測**：本機沒有 docker，跑不了
-  # ops/ci_linux_repro.sh。放這裡是因為手上證據不支持排除——它讀的三個資產
-  # （iphone_frame.png/.json、sources/iphone-framed/01_vocab_list.png）都是 tracked，
-  # 拿的 pillow 走 `uv run --with pillow`，而 CI 既然跑得動 `uv run --with pytest`
-  # 就有同一條 PyPI 路徑；四支測試都沒有 /System/Library、字型、sips、xcrun 之類的
-  # macOS 專屬相依（實際 grep 過）。
-  # 刻意**不**借 data-catalog-png 排除：那個 token 的意思是「只有模擬器跑得出來的
-  # PNG」，這裡的是 tracked 資產，借用等於寫一個假理由——正是 IMP-0054 砍掉 13 個
-  # group 的那種病。真在 runner 上紅了，帶著實測訊息移進 EXCLUDED_GROUPS 或補一個
-  # 誠實的新 token，那是一行的距離。
-  catalog-render
+  uitest-contact-sheet
 )
 
 # token|要從 PATH 拿掉的命令|功能探針（皆空 = 這個 token 無法用 PATH 證偽）
@@ -151,7 +137,6 @@ DEP_TOKENS=(
   "bin-ssh|ssh scp rsync|ssh -V"
   "data-indexstore||"
   "data-ui-world||"
-  "data-catalog-png||"
   "data-git-history||"
   "net-external||"
 )
@@ -169,8 +154,6 @@ EXCLUDED_GROUPS=(
   "lldb-forensics|bin-xcode|shells out to xcrun 4x for real — dies with it denied. Tokened bin-lldb first; the falsifier rejected that on the spot (it never invokes lldb directly)"
   "ui-deadcode|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
   "ui-graph|data-indexstore|reads an IndexStore that only an Xcode build produces; the xcodebuild binary itself is never invoked"
-  "visual-regression|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
-  "catalog-review|data-catalog-png|compares rendered catalog PNGs that only a simulator run produces"
   "podcast-ops|net-external|lab/podcast toolchain + network TTS"
   # ── 這筆是我先收進 CI、再被 ubuntu 容器實跑打回來的（review 提供 runner 等價環境）──
   # 「二進位不缺」不等於「跑得起來」：它缺的是資產。

@@ -6,19 +6,14 @@ import SwiftUI
 ///
 /// Vocabulary rows, graph links, and auth all come from UI World. The catalog
 /// disables the view's remote graph `.task` and injects manifest-derived links,
-/// so snapshots never depend on network, demo mode, or simulator session state.
+/// so inspection never depends on network, demo mode, or simulator session state.
 enum KnowledgeGraphViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Knowledge Graph View") {
-            // Wrapped in CatalogGraphSnapshotScene: the graph renders in a
-            // WKWebView, which `layer.render(in:)` snapshots cannot see — the
-            // freezer settles the d3 layout and swaps in a rasterized overlay
-            // before the snapshot is taken. The empty scene needs no wrapper
-            // (no webview is ever mounted in its empty state).
-            Scenario("Populated graph", layout: .fill) { context in
-                CatalogGraphSnapshotScene(context: context) {
-                    KnowledgeGraphViewScene(fixture: .populated)
-                }
+            // Catalog runs inside a real simulator window, so WKWebView content
+            // is rendered by the system compositor without a rasterization shim.
+            Scenario("Populated graph", layout: .fill) {
+                KnowledgeGraphViewScene(fixture: .populated)
             }
             Scenario("Logged out · empty graph", layout: .fill) {
                 KnowledgeGraphViewScene(fixture: .loggedOutEmpty)
@@ -57,9 +52,8 @@ private enum KnowledgeGraphViewFixture {
             // 全螢幕知識圖 = Stats 縮圖關聯圖的放大版（primary 全 active）。
             // 門檻對齊凍結 world：`vocabulary.knowledgeGraphPopulated` 是 4 筆
             // entry、兩對雙向 link（4 條）→ 4 節點 4 邊。原本 (80,50,80,50) 是
-            // 行銷密度時代的 floor，凍結後補資料等於繼續餵 catalog（違反
-            // catalog_scope.md §FROZEN 紅線），所以改斷言不改 world。對帳測試：
-            // ops/tests/test_catalog_scene_expectations.py
+            // 舊展示輸出曾要求 80/50/80/50；agent tool 只驗這個 UI World
+            // 實際宣告的最小結構，不再為展示密度擴充 fixture。
             return .init(visibleEntries: .atLeast(4), graphLinks: .atLeast(4), graphNodes: .atLeast(4), graphEdges: .atLeast(4))
         case .loggedOutEmpty:
             return .init(visibleEntries: .exactly(0), graphLinks: .exactly(0), graphNodes: .exactly(0), graphEdges: .exactly(0))

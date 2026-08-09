@@ -141,11 +141,11 @@ cmd_commands_json() {
       {
         key:"catalog",
         aliases:[],
-        sideEffect:"local-test; local-artifact export",
-        command:"./ops/ios_ops.sh catalog prepare [--destination <xcodebuild-destination>] [--json] | ./ops/ios_ops.sh catalog snapshots [--out-root <dir>] [--destination <xcodebuild-destination>] [--group <category>]... [--scenario <category/title>]... [--dataset <name> | --dataset-file <path>] [--reuse-build] [--json] | ./ops/ios_ops.sh catalog clean [--json]",
+        sideEffect:"local-build; simulator lease",
+        command:"./ops/ios_ops.sh catalog list --dataset <name>|--dataset-file <path> [--json] | ./ops/ios_ops.sh catalog open --dataset <name>|--dataset-file <path> [--scenario <category/title>] [--json] | ./ops/ios_ops.sh catalog capture --session <id> --out <png> [--json] | ./ops/ios_ops.sh catalog close --session <id> [--json]",
         delegate:null,
-        purpose:"prepare or reuse catalog snapshot build cache, batch-render Playbook scenarios with an explicit UI World dataset, and clean local snapshot cache",
-        jsonSchemas:["kg.ios.catalog.prepare.v1","kg.ios.catalog.v1","kg.ios.catalog.clean.v1"]
+        purpose:"launch the interactive Catalog in a disposable simulator with an explicit UI World for agent inspection",
+        jsonSchemas:["kg.ios.catalog-agent.v1"]
       },
       {
         key:"quality",

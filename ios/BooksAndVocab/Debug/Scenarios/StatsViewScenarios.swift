@@ -18,14 +18,8 @@ import SwiftData
 enum StatsViewScenarios {
     static func register(in playbook: Playbook) {
         playbook.addScenarios(of: "Stats View") {
-            // 關聯圖 card hosts a WKWebView (invisible to `layer.render(in:)`
-            // snapshots), so the populated scene is wrapped in
-            // CatalogGraphSnapshotScene — active only when the seed actually
-            // carries graph links (link-less datasets render the empty card,
-            // which needs no freeze). Empty scene has no webview by
-            // construction.
-            Scenario("Populated", layout: .fill) { context in
-                StatsViewPopulatedScene(context: context)
+            Scenario("Populated", layout: .fill) {
+                StatsViewScene(fixture: .populated)
             }
             Scenario("Empty", layout: .fill) {
                 StatsViewScene(fixture: .empty)
@@ -112,22 +106,6 @@ enum StatsViewTime {
 
 // MARK: - Scene harness
 
-/// Populated scene + snapshot freezer, assembled once in `init` (a freezer
-/// must not be re-created on body re-evaluation — it arms the scenario's
-/// SnapshotWaiter).
-private struct StatsViewPopulatedScene: View {
-    private let content: CatalogGraphSnapshotScene<StatsViewScene>
-
-    init(context: ScenarioContext) {
-        let scene = StatsViewScene(fixture: .populated)
-        self.content = CatalogGraphSnapshotScene(context: context, isActive: scene.hasGraphLinks) {
-            scene
-        }
-    }
-
-    var body: some View { content }
-}
-
 /// `@MainActor` body so the in-memory container is seeded and env-default
 /// services resolve on the main actor before `@Query` reads.
 private struct StatsViewScene: View {
@@ -138,8 +116,6 @@ private struct StatsViewScene: View {
     /// links, which legitimately renders the card's empty state).
     let graphLinks: [KGGraphLink]
     private let frozenStore: ReviewSettingsStore
-
-    var hasGraphLinks: Bool { !graphLinks.isEmpty }
 
     init(fixture: StatsViewFixture) {
         let seed = FixtureDatasetStore.requireVocabularySeed(for: fixture.vocabularyID)

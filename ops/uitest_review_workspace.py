@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from catalog_review_sync import REVIEW_HTML_NAME
+from uitest_review_contract import REVIEW_HTML_NAME
 from uitest_review_ui import artifact_link, dom_id, esc, filter_script, shell_css, status_badge, status_kind
 
 

@@ -36,14 +36,13 @@ enum WordDetailScenarios {
                     .environmentObject(AppAppearanceStore.preview)
                 }
             }
-            // Marketing capture source for `ops/capture_profiles/website.json`
-            // (review_card shot). Renders the full Word Detail card — definition,
+            // Full-content inspection state. Renders the complete Word Detail card — definition,
             // pronunciation, example, related words — content-vertically pinned to
             // the top (unlike Today Review's fold, whose front card overlaps the
             // answer). Driven by `marketingCapture.wordDetail`: entries[0] is the
             // focused hero, the whole seed is `allEntries` so its graph links
             // resolve to real related cards.
-            Scenario("Marketing", layout: .fill) {
+            Scenario("Full Content", layout: .fill) {
                 MainActor.assumeIsolated {
                     Self.marketingSheet()
                 }

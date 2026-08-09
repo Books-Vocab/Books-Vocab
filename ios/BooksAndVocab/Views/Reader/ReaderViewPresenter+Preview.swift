@@ -4,11 +4,9 @@ import SwiftUI
 /// Page-content mode for `ReaderChromePreviewScene`.
 ///
 /// - `.skeleton`: synthetic block placeholders (default). Used by the UI-QA
-///   Catalog scenarios that focus on chrome states — the live reader body is a
-///   WKWebView and never appears in `layer.render(in:)` snapshots.
-/// - `.prose`: native SwiftUI book prose with vocab-highlight bands. Used by the
-///   marketing capture pipeline (`ops/capture_profiles/website.json`) so the App
-///   Store / website reader shot shows real book text instead of a skeleton.
+///   Catalog scenarios that focus on chrome states.
+/// - `.prose`: native SwiftUI book prose with vocab-highlight bands, available
+///   when an agent needs to inspect chrome against realistic content.
 enum ReaderPreviewPageContent: Equatable {
     case skeleton
     case prose

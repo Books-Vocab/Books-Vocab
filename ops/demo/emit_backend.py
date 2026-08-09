@@ -5,9 +5,8 @@ it with zero further design decisions.
 
 OUTPUT PATH(S)
   ops/demo/demo_expectation.json   (schema "kg.ops_world_expectation.v1")
-  (the regenerated world-expectation, structurally identical to
-  ops/capture_profiles/marketing_demo_expectation.json — it is what
-  `ops_cli world-diff` / capture_profile assert the seeded account against.)
+  (the regenerated world-expectation consumed by `ops_cli world-diff` when an
+  operator needs to assert the seeded account.)
 
   emit() does NOT mutate production data. "emit-backend" produces:
     1. the two ops_edit invocations (as argv lists, for the operator/runbook),
@@ -56,7 +55,7 @@ EXPECTATION MAPPING  (SoT dataset -> kg.ops_world_expectation.v1)
   Field subset is intentional: the expectation asserts the *observable* world
   (names/colors/meanings/edge kinds), not interval/difficulty internals — it is
   the assertion surface for `ops_cli world-diff`, mirroring
-  ops/capture_profiles/marketing_demo_expectation.json. Ordering is deterministic
+  the backend projection contract. Ordering is deterministic
   and SoT-driven: notebooks in dataset order; cards in dataset order; graph
   groups in dataset-notebook order (only notebooks that actually carry links),
   links in dataset order within each group.
@@ -153,7 +152,7 @@ def build_expectation(dataset: dict[str, Any]) -> dict[str, Any]:
 def _serialize_expectation(expectation: dict[str, Any]) -> str:
     """Canonical on-disk form: 2-space indent, non-ASCII preserved, trailing NL.
 
-    Mirrors ops/capture_profiles/marketing_demo_expectation.json formatting so a
+    Mirrors the canonical world-expectation formatting so a
     --check byte-compare is meaningful.
     """
     return json.dumps(expectation, ensure_ascii=False, indent=2) + "\n"

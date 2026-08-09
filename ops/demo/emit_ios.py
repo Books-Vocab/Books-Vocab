@@ -639,7 +639,7 @@ def _emit_spec(
             "drift": False,
             "written": [str(out)],
             "inject_hint": (
-                f"./ops/ios_ops.sh catalog snapshots --dataset-file {out} ...  # or: "
+                f"./ops/ios_ops.sh catalog open --dataset-file {out} ...  # or: "
                 f"./ops/ios_test.sh --ui --dataset-file {out} ..."
             ),
         }

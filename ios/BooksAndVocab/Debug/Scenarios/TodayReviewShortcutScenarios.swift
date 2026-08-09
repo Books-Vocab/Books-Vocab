@@ -14,9 +14,8 @@ import SwiftUI
 /// is gated the same way.
 enum TodayReviewShortcutScenarios {
     /// Manifest surfaces (category + source-declared backing view) — 與 `register`
-    /// 的 macCatalyst gating 對稱:非 Catalyst 時為空,避免 `CatalogCoverageTests`
-    /// 把宣告但未註冊的群組判為缺漏。每個 category 對應其具體 production 元件型別,
-    /// 讓 gallery / IndexStore 由源碼真相映射 surface→type。
+    /// 的 macCatalyst gating 對稱：非 Catalyst 時為空。每個 category 對應其
+    /// production 元件型別，讓 agent 查詢能由源碼真相映射 surface→type。
     static var manifestSurfaces: [(category: String, backing: any View.Type)] {
         #if targetEnvironment(macCatalyst)
         [

@@ -5,26 +5,21 @@
 # ///
 """Composite many UI PNGs into ONE labeled contact sheet.
 
-Why: "look at these screens" should cost one Read, not N. Reading 6 phone PNGs
-separately burns ~6x the image tokens; a single downscaled montage shows the
-same thing for one. This is the machine-face way for an agent to *see* the
-gallery — catalog snapshots, UITest step screenshots, or raw PNG files — no
-browser, no server, one image artifact.
+Why: UI-test evidence often contains many step PNGs. A single downscaled montage
+lets an agent inspect a run with one image read. This tool accepts UITest step
+screenshots or an explicit directory of raw PNG files; it is not a Catalog,
+gallery, snapshot generator, or marketing renderer.
 
 Pure grid math (plan_grid / select_items) is stdlib so it stays testable in the
 plain venv; Pillow is lazy-imported only for the actual pixel I/O.
 
 Three zoom levels (overview -> detail -> magnify), one tool:
-  overview   uv run ops/catalog_contact_sheet.py <root> --surface "Bookshelf View"
-             uv run ops/catalog_contact_sheet.py <root> --feature Reader --appearance both --cols 4
-             uv run ops/catalog_contact_sheet.py /tmp/kg_ios_ui_steps.x --source uitest --take evenly:4
-  detail     uv run ops/catalog_contact_sheet.py <root> --id <assetID>            # one shot, large, light+dark
-             uv run ops/catalog_contact_sheet.py <root> --ids id1,id2,id3         # free composition, in order
-  magnify    uv run ops/catalog_contact_sheet.py <root> --surface "Podcast Player View" --zoom center
-             uv run ops/catalog_contact_sheet.py <root> --id <assetID> --zoom 0.0,0.45,1.0,0.25
+  overview   uv run ops/uitest_contact_sheet.py /tmp/kg_ios_ui_steps.x --source uitest --take evenly:4
+  detail     uv run ops/uitest_contact_sheet.py /tmp/screens --source images --ids id1,id2,id3
+  magnify    uv run ops/uitest_contact_sheet.py /tmp/screens --source images --id <assetID> --zoom center
 Agentic visual review:
-  quick 4    uv run ops/catalog_contact_sheet.py <ui-step-dir> --source uitest --take evenly:4 --manifest-out auto
-  raw pngs   uv run ops/catalog_contact_sheet.py /tmp/screens --source images --contains player --take first,last
+  quick 4    uv run ops/uitest_contact_sheet.py <ui-step-dir> --source uitest --take evenly:4 --manifest-out auto
+  raw pngs   uv run ops/uitest_contact_sheet.py /tmp/screens --source images --contains player --take first,last
 
 Prints the output PNG path (Read it). With --json, prints machine-readable
 artifact metadata including selected items and an absolute image path.
@@ -40,13 +35,6 @@ from pathlib import Path
 # Sheets this tool writes back into the scanned directory; never re-ingest
 # them as input shots on a later pass over the same dir.
 GENERATED_SHEET_NAMES = {"contact_sheet.png", "quick4_contact_sheet.png"}
-CATALOG_SIDECAR_NAMES = {
-    "catalog.html",
-    "catalog_index.json",
-    "review_state.json",
-    "UIreview.html",
-    "ui_graph.json",
-}
 
 
 def plan_grid(n, cols, cell_w, cell_h, label_h, gap, pad):
@@ -266,8 +254,7 @@ def render_contact_sheet(items, root, out_path, *, cols=3, cell_w=320,
 
     root = Path(root)
     # Cell height defaults from the FIRST real image's aspect (post-crop) so the
-    # historic catalog path stays byte-compatible in spirit. Rendering itself
-    # still preserves each image's aspect and letterboxes heterogeneous images.
+    # Keep each image's aspect and letterbox heterogeneous inputs.
     sample = Image.open(root / items[0]["relPath"])
     if crop_region:
         sample = sample.crop(resolve_crop_box(sample.width, sample.height, crop_region))
@@ -387,37 +374,11 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
     )
 
 
-def _catalog_sidecars(root: Path) -> list[Path]:
-    if not root.is_dir():
-        return []
-    return sorted(path for name in CATALOG_SIDECAR_NAMES if (path := root / name).exists())
-
-
 def _resolve_source(root, source="auto"):
     root = Path(root)
     source = source or "auto"
-    if source not in {"auto", "catalog", "uitest", "images"}:
+    if source not in {"auto", "uitest", "images"}:
         raise SystemExit(f"unknown source: {source}")
-
-    if source in {"auto", "catalog"}:
-        cand = root / "review_manifest.json" if root.is_dir() else root
-        if cand.exists():
-            return SourceBundle(
-                manifest=json.loads(cand.read_text()),
-                image_root=(root if root.is_dir() else root.parent),
-                source_kind="catalog",
-                manifest_path=cand,
-            )
-        if source == "catalog":
-            raise SystemExit(f"manifest not found: {cand}")
-        sidecars = _catalog_sidecars(root)
-        if sidecars:
-            found = ", ".join(path.name for path in sidecars)
-            raise SystemExit(
-                "catalog-like visual artifact is missing review_manifest.json: "
-                f"{root} (found {found}); rerun catalog snapshots from UI World "
-                "or pass --source images explicitly for non-SoT raw PNG inspection"
-            )
 
     if source in {"auto", "uitest"} and root.is_dir():
         pngs = sorted(p for p in root.glob("*.png") if p.name not in GENERATED_SHEET_NAMES)
@@ -460,8 +421,8 @@ def write_selected_manifest(path: Path, *, source: SourceBundle, out: Path, info
 
 def main():
     ap = argparse.ArgumentParser(description="Composite UI PNGs into one agent-friendly contact sheet.")
-    ap.add_argument("root", type=Path, help="artifact dir, review_manifest.json, UITest step dir, or PNG dir")
-    ap.add_argument("--source", default="auto", choices=["auto", "catalog", "uitest", "images"],
+    ap.add_argument("root", type=Path, help="UITest step directory, PNG file, or PNG directory")
+    ap.add_argument("--source", default="auto", choices=["auto", "uitest", "images"],
                     help="input adapter (default: auto-detect)")
     ap.add_argument("--surface")
     ap.add_argument("--lane")

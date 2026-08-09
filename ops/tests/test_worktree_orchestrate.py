@@ -742,7 +742,7 @@ def test_a_yaml_with_no_owner_tool_is_named_not_swallowed():
 
 def test_a_neutral_yaml_stays_neutral_and_is_not_named_twice():
     """`promotion/` and `frozen/` already have a neutral rule. Routing yml must not
-    re-adopt them, or every marketing-manifest edit grows a warn that means nothing."""
+    re-adopt them, or every asset-metadata edit grows a warn that means nothing."""
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["promotion/screenshots/manifest.yml"],
                                 ops_test_exists=real))
