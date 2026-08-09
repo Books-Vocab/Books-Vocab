@@ -27,6 +27,48 @@ struct PodcastSilentFailureTests {
         return s
     }
 
+    // MARK: - Podcast auth-optional browse
+
+    @Test func optional_browse_expired_token_does_not_invalidate_session() async throws {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let authSession = PodcastFixedTokenSession(expiresIn: -3600)
+        let service = KGService(authSession: authSession, sessionInvalidator: invalidator)
+
+        let sent = try await browseCapturingRequest(marker: "expired", kgService: service)
+
+        #expect(invalidator.events.isEmpty)
+        #expect(service.sessionExpiredReason == nil)
+        #expect(sent.value(forHTTPHeaderField: "Authorization") == nil)
+    }
+
+    @Test func optional_browse_valid_token_still_sends_bearer() async throws {
+        let invalidator = PodcastRecordingSessionInvalidator()
+        let authSession = PodcastFixedTokenSession(expiresIn: 3600)
+        let service = KGService(authSession: authSession, sessionInvalidator: invalidator)
+
+        let sent = try await browseCapturingRequest(marker: "valid", kgService: service)
+
+        let token = try #require(authSession.token)
+        #expect(sent.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)")
+        #expect(invalidator.events.isEmpty)
+    }
+
+    private func browseCapturingRequest(
+        marker: String, kgService: any KGServing
+    ) async throws -> URLRequest {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PodcastBrowseProbeURLProtocol.self]
+        _ = try await PodcastSyncService.optionallyAuthedData(
+            from: "https://podcast.test/api/podcasts?probe=\(marker)",
+            kgService: kgService,
+            session: URLSession(configuration: configuration)
+        )
+        return try #require(
+            PodcastBrowseProbeURLProtocol.captured(marker: marker),
+            "探針沒收到 probe=\(marker) 的 request"
+        )
+    }
+
     // MARK: - #5b  Follow toggle rollback
 
     @Test func follow_toggle_persists_on_save_success() {
@@ -262,5 +304,65 @@ struct PodcastSilentFailureTests {
         #expect(vm.renderState == nil)
         #expect(vm.scrollLeadSentenceId == nil)
     }
+}
+
+@MainActor
+private final class PodcastFixedTokenSession: AuthSessionProviding {
+    let isLoggedIn = true
+    let token: String?
+
+    init(expiresIn: TimeInterval) {
+        let header = Data(#"{"alg":"none"}"#.utf8).base64EncodedString()
+        let exp = Int(Date().addingTimeInterval(expiresIn).timeIntervalSince1970)
+        let payload = Data(#"{"sub":"user","exp":\#(exp)}"#.utf8)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        token = "\(header).\(payload).sig"
+    }
+}
+
+@MainActor
+private final class PodcastRecordingSessionInvalidator: SessionInvalidating {
+    private(set) var events: [String] = []
+
+    func logout(modelContainer: ModelContainer?, reason: String) {
+        events.append("logout_\(reason)")
+    }
+
+    func waitForPendingLocalDataCleanup() async {
+        events.append("wait_for_cleanup")
+    }
+}
+
+private final class PodcastBrowseProbeURLProtocol: URLProtocol, @unchecked Sendable {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var requests: [URLRequest] = []
+
+    static func captured(marker: String) -> URLRequest? {
+        lock.withLock {
+            requests.last { $0.url?.query?.contains("probe=\(marker)") == true }
+        }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let request = request
+        Self.lock.withLock { Self.requests.append(request) }
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)
+        else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+            return
+        }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"episodes":[]}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 #endif

@@ -421,10 +421,8 @@ struct PodcastEpisodeListView: View {
             let url = URL(string: urlStr)
         else { return }
         Task { @MainActor in
-            var headers: [String: String] = [:]
-            if let token = try? await kgService.currentAuthToken() {
-                headers["Authorization"] = "Bearer \(token)"
-            }
+            guard let token = await kgService.authTokenWithoutInvalidation() else { return }
+            let headers = ["Authorization": "Bearer \(token)"]
             PodcastAssetPreloader.shared.preload(url: url, headers: headers)
         }
     }
