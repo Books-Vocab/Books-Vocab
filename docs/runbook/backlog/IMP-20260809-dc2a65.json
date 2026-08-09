@@ -1,0 +1,28 @@
+{
+  "acceptance": "mutation 測試證明任何 receipt 欄位錯配、過期、log 改寫或遠端未完成都不可能產生 pass；只有本機 orchestrator 能寫 gate record，遠端 worker 對 registry/main/gate/cutover 零寫入；remote eligible child 可選擇 Felix，其餘維持 local，pre-start failure 才可 fallback；既有 aggregate verdict、progress、history、HEAD/base/orchestrator freshness 與 cutover gate 全部不變。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_gate_adapter.py ops/tests/test_worktree_orchestrate.py && ./ops/docs_lint.sh",
+  "blocked_by": [
+    "IMP-20260809-aa70b0",
+    "IMP-20260809-1c4bcf",
+    "IMP-20260809-84e9e4",
+    "IMP-20260808-043e16",
+    "IMP-20260808-4bd1ef"
+  ],
+  "brief": "遠端檢查即使成功也不能被現有把關流程信任，因此目前只能當旁證，無法真正減少整合等待時間。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "remote worker 永遠不得讀寫 worktree registry、gate record、local main、integration state、cutover、sync 或 deploy；唯一有權寫 gate record 的仍是 Oscar 上呼叫端 worktree 內、與該 HEAD 匹配的 worktree_orchestrate.py。adapter 只路由 profile registry 明示 remote_eligible 且不需 Xcode／Simulator／Git metadata／production state 的 child gate；其餘 gate 保持本地。遠端 receipt 必須在本機核對 schema version、job id、host=felix、source commit/tree digest、canonical profile/spec digest、tool identity、rc/status、timestamps/freshness、log/artifact digest 與 admission snapshot；任一缺欄、錯配、過期、log 被改、worker 中斷或結果無法歸因即視為未執行，不得合成 pass。驗證後 adapter 只把 child gate 的既有 status/summary 交回原 `_run_gate` 聚合路徑，不新增 verdict 狀態、不改 pass/warn/block/inconclusive 語意、不改 cutover 的 HEAD/base/orchestrator freshness 檢查。進度消費既有 IMP-20260808-043e16 sidecar，不另造第二份進度平面；耗時消費 IMP-20260808-4bd1ef history，不另造第二份歷史。第一階段 opt-in，任何遠端基礎設施錯誤回 local fallback 只允許在 child 尚未開始時發生並具名記錄。",
+  "fix_site": "ops/worktree_orchestrate.py::_run_gate；ops/lib/compute_receipt.py；ops/tests/test_compute_gate_adapter.py；ops/tests/test_worktree_orchestrate.py；docs/runbook/system.md；docs/sop/release.md；docs/reference/tech_index.md",
+  "groomed_against": "57c2f2204c30",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260809-dc2a65",
+  "plan": "1. 先用假 receipt 寫紅測試，逐一 mutation source SHA、tree digest、spec digest、tool digest、host、timestamp、rc、log digest、admission 與 child-started 狀態，證明沒有一個錯配能變成 pass。2. 在本機新增 receipt verifier，輸入為當下 gate plan 與本機重算 digests，輸出僅為 validated child result 或具名拒絕。3. 在 `_run_gate` 前加 opt-in route hook；只有 registry remote_eligible 的 child gate可交給 compute façade，結果仍走原 aggregate/history/progress writer。4. pre-start transport/admission failure 可具名回 local；child 已啟動後失敗直接保留原 rc／block，不自動重跑掩蓋結果。5. 斷言 remote worker 沒有任何 registry/gate/main/cutover writer，cutover 原有 freshness、base containment 與 orchestrator provenance 測試原封通過。6. 跑 worktree orchestrator 全測試、docs impact／lint；跨機 source/materialization 已由前置 façade 票的 live selftest 驗證，本票不重造第二個 transport smoke。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "在既有工作樹把關器增加一個可選的遠端 gate adapter、收據驗證與回歸測試，不改落地主幹規則。",
+  "severity": "high",
+  "source": "2026-08-09 Felix compute design：遠端結果若要節省 gate 時間，必須由 Oscar 本機 orchestrator 驗證後才能成為既有 gate verdict 的輸入。",
+  "status": "triaged",
+  "stream": "IMP"
+}

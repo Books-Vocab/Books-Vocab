@@ -1,0 +1,21 @@
+{
+  "acceptance": "測試先證明現況沒有 profile 契約而為紅；實作後證明合法 profile 產出穩定 canonical spec digest，未知 profile、自由 argv、未宣告參數／環境、dirty source、需 Git metadata 卻標 remote 與任何 production side effect 全部 fail closed；能力表只暴露 plan 與受控 run surface，沒有 raw remote shell。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_contract.py ops/tests/test_capability_matrix.py && ./ops/docs_lint.sh",
+  "brief": "自動分配目前沒有一份可機器驗證的工作型別與安全邊界，所以 agent 仍得臨場猜哪些檢查能搬、能帶哪些參數。",
+  "category": "arch",
+  "date": "2026-08-09",
+  "detail": "Felix 算力若直接暴露成任意遠端命令，agent 仍必須理解 SSH、shell quoting、遠端路徑、正式站禁區與各 gate 的工具需求，沒有節省推理，反而擴大誤用面。先建立唯一、靜態、可驗證的 compute profile 契約；v1 只允許已知的 backend 測試與純讀檢查，不接受 raw argv、任意 shell、任意環境變數或任意工作目錄。每個 profile 必須宣告參數 schema、固定命令模板、source kind（v1 僅 clean committed tree）、required capabilities、resource class、timeout、remote eligibility、git metadata requirement、side effects、artifact contract 與最低遠端效益門檻。production data／credential、固定 production port、deploy、migration、ops edit、cutover、sync 與 release 一律不可成為 profile。能力表須把 agent-facing 入口與 minimum tier 寫清楚。這張票只定義語意與 fail-closed parser，不碰 SSH、Felix 或排程。",
+  "fix_site": "ops/compute_profiles.yml；ops/lib/compute_contract.py；ops/capability_matrix.py；ops/tests/test_compute_contract.py；ops/tests/test_capability_matrix.py；docs/reference/tech_index.md",
+  "groomed_against": "57c2f2204c30",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260809-aa70b0",
+  "plan": "1. 先以失敗測試釘住未知 profile、額外參數、raw argv、環境透傳、dirty source、production side effect 與未宣告 capability 均被具名拒絕。2. 新增版本化 profile registry 與純函式 parser／validator；所有 profile 解析為 canonical command spec 與 spec digest，命令不得由自由文字拼接。3. v1 僅登錄有明確價值且不需完整 Xcode 的 backend targeted pytest 與少數純讀 profile；requires_git_metadata 的 profile 先標 local-only，不假裝遠端可跑。4. 在 capability matrix 登錄 readonly plan 與 operator run 兩個 surface，並依 docs control plane 同步 agent-facing 索引。5. 跑契約測試、能力表測試與 docs impact／lint。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "新增一份小型工作型別登錄表、解析器、能力表入口與契約測試，不執行任何跨機工作。",
+  "severity": "med",
+  "source": "2026-08-09 使用者澄清：agent 留在 Oscar session，應只呼叫型別化工具，由工具決定是否使用 Felix 算力；不是遠端 agent scheduling。",
+  "status": "triaged",
+  "stream": "IMP"
+}

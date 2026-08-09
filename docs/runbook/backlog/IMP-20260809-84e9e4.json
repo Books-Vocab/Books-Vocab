@@ -1,0 +1,26 @@
+{
+  "acceptance": "測試以完整決策矩陣證明 auto 的 local/felix 選擇與 reason codes 穩定，explicit felix 無法繞 admission，未知 probe fail closed 到 local；命令列沒有 raw argv／ssh／path surface，profile 參數不會出現在 transport shell 或 heartbeat，stdout 始終是單一可解析 JSON；local 與 Felix 對同一 source/spec 產生同 schema 收據，結果只寫呼叫 worktree的 cache，從不寫遠端原始 clone、primary main 或 gate record；live source-identity selftest 的 requested 與 materialized commit/tree 完全一致且 verified=true。",
+  "acceptance_cmd": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_compute_cli.py ops/tests/test_streaming_command.py ops/tests/test_capability_matrix.py && ./ops/compute.py selftest --target felix --profile source-identity --json | jq -e '.verified == true and .source.commit_sha == .remote.source.commit_sha and .source.tree_sha256 == .remote.source.tree_sha256' && ./ops/docs_lint.sh",
+  "blocked_by": [
+    "IMP-20260809-aa70b0",
+    "IMP-20260809-1c4bcf",
+    "IMP-20260808-4bd1ef"
+  ],
+  "brief": "Oscar 上的 agent 現在仍要自己判斷機器、拼跨機命令、搬來源與撿結果，跨機算力沒有省下時間或推理。",
+  "category": "cli",
+  "date": "2026-08-09",
+  "detail": "agent-facing 入口應是 ./ops/compute.py plan|run|status，run 只收 profile 與該 profile 的型別化 flags，target 預設 auto，亦可明示 local 或 felix 以便除錯；即使明示 felix 也不可繞過 capability／admission。agent 不得接觸 ssh、IP、xcp、Felix 路徑、遠端 clone、tar、uv cache、PID 或 cleanup。adapter 內部只調用現有 xmachine/xcp/felix 動詞的固定模板；唯一可插入命令字串的 job_id、digest 與 profile key 都先經封閉字元驗證，profile 參數只放 manifest，不進 shell。auto 先過靜態 capability，再比較兩機 live admission、profile 的 resource class、傳輸／環境 warmup 成本與預估工作時間；預估值消費既有 gate history duration 票 IMP-20260808-4bd1ef，不另造第二份時間資料，資料不足則依 profile 的 minimum_remote_seconds 保守留 local。Oscar 忙而 Felix 可用且預估淨節省為正才遠端；任何 probe 不確定均 local 並給 reason codes。執行進度沿用 streaming_command 的安全 heartbeat；單一 JSON stdout 僅回 decision、job id、receipt/log/artifact path 與摘要，詳細 log 留在呼叫 worktree 的 .cache/compute，不寫 primary main、共享 gate record 或 backlog。這不是 remote agent scheduling，也不在 Felix 啟動 agent。",
+  "fix_site": "ops/compute.py；ops/lib/compute_router.py；ops/lib/xmachine_transport.py；ops/tests/test_compute_cli.py；ops/capability_matrix.py；docs/reference/tech_index.md",
+  "groomed_against": "57c2f2204c30",
+  "groomed_at": "2026-08-09",
+  "groomed_by": "agent:platform-steward",
+  "id": "IMP-20260809-84e9e4",
+  "plan": "1. 先以 fake transport／fake admission／fake history 寫決策表紅測試：remote-ineligible、Felix unreachable、capability 缺失、admission fail、無歷史、預估不划算均選 local；Oscar 忙、Felix admitted 且淨節省為正才選 felix；explicit felix 仍受安全拒絕。2. 實作 plan/status/run CLI，所有輸入先經 compute contract canonicalize，stdout 維持單一 JSON，stderr 為安全進度。3. 實作 xmachine adapter：固定呼叫既有跨機動詞，動態 shell token 僅允許工具產生的封閉 job id/digest/profile key；來源 capsule、request、receipt 與 artifact 由工具搬運，任何 profile 參數均不得進 shell。4. 實作 local 與 Felix backend，使同一 canonical spec／receipt schema 可比較；Felix 失敗不在 child 已開始後自動重跑 local，避免隱藏非冪等風險。5. 消費既有 gate duration/history；缺資料時用 registry 門檻，不重算另一套歷史。6. 將收據／log 原子寫入目前 worktree 的 .cache/compute，新增 capability matrix 與 tech index 入口並跑 docs surface scan／lint；最後跑 source-identity live selftest，核對 requested commit/tree 與遠端 materialized commit/tree 完全相同且正式 API 前後健康。",
+  "resolution": "",
+  "schema": "kg.backlog.entry.v1",
+  "scope": "新增一個單一命令列 façade、自動目標選擇、既有跨機動詞 adapter、進度與本地收據儲存，屬中型工具改動。",
+  "severity": "med",
+  "source": "2026-08-09 使用者要求 Oscar 上的 session 直接呼叫一個好用工具，工具內部處理 Felix、SSH、來源傳輸與結果，不讓執行 agent 操作遠端原始碼。",
+  "status": "triaged",
+  "stream": "IMP"
+}
