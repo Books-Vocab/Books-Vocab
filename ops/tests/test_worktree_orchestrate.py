@@ -615,7 +615,13 @@ def test_shell_routing_resolves_against_the_real_repo():
 def test_catalog_shell_routes_to_its_behavioral_boundary_test():
     real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
     gates = _by_name(plan_gates(["ops/lib/ios_ops_catalog.sh"], ops_test_exists=real))
-    assert "ops-shell:test_catalog_agent_boundary.py" in gates
+    gate = gates["ops-shell:test_catalog_agent_boundary.sh"]
+    assert gate["cmd"] == ["ops/tests/test_catalog_agent_boundary.sh"]
+    assert os.access(ROOT / gate["cmd"][0], os.X_OK)
+    executed = subprocess.run(
+        [str(ROOT / gate["cmd"][0])], cwd=ROOT, text=True, capture_output=True, check=False
+    )
+    assert executed.returncode == 0, executed.stdout + executed.stderr
     assert "ops-shell-untested" not in gates
 
 

@@ -289,6 +289,26 @@ catalog_abort_active_session
     assert result.returncode == 0, result.stderr
 
 
+def test_catalog_keeper_process_exits_at_bounded_lifetime(tmp_path: Path) -> None:
+    script, _state, _log = _catalog_shell_prelude(
+        tmp_path, "catalog-keeper", owner_token="catalog-keeper"
+    )
+    script += """
+catalog_start_keeper catalog-keeper 1
+keeper_pid="$CATALOG_ACTIVE_KEEPER_PID"
+kill -0 "$keeper_pid" || exit 80
+for _attempt in $(seq 1 30); do
+  kill -0 "$keeper_pid" 2>/dev/null || exit 0
+  sleep 0.1
+done
+exit 81
+"""
+
+    result = subprocess.run(["bash", "-c", script], text=True, capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_catalog_start_trap_erases_and_releases_owned_simulator(tmp_path: Path) -> None:
     session = "catalog-abort"
     script, state, log = _catalog_shell_prelude(tmp_path, session, owner_token=session)
