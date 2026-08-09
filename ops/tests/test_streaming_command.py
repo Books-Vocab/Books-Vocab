@@ -96,6 +96,26 @@ def test_progress_contract_and_separate_streams(tmp_path: Path) -> None:
         assert "alive=" in line
 
 
+def test_completed_process_returns_the_monotonic_elapsed(tmp_path: Path) -> None:
+    progress = io.StringIO()
+
+    with redirect_stderr(progress):
+        completed = run_streamed_command(
+            [sys.executable, "-c", "import time; time.sleep(0.04)"],
+            cwd=tmp_path,
+            label_key="gate",
+            label="duration-source",
+            progress_prefix="[test]",
+            heartbeat_interval=0.02,
+        )
+
+    assert completed.elapsed_s >= 0.03
+    assert completed.elapsed_s < 2
+    done = next(line for line in progress.getvalue().splitlines() if "phase=done" in line)
+    displayed = float(_field(done, "elapsed").rstrip("s"))
+    assert displayed == pytest.approx(completed.elapsed_s, abs=0.11)
+
+
 def test_silent_child_heartbeat_reports_stalled_with_stable_field_order(tmp_path: Path) -> None:
     """A child that is alive but producing nothing must be distinguishable.
 

@@ -1123,7 +1123,7 @@ def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_pat
     ]
 
     with redirect_stdout(stdout), redirect_stderr(stderr):
-        rc, tail = MODULE._run_streamed_command(
+        rc, tail, dur_s = MODULE._run_streamed_command(
             command,
             cwd=tmp_path,
             gate_name="slow-gate",
@@ -1141,6 +1141,7 @@ def test_streamed_gate_runner_heartbeats_to_stderr_and_keeps_stdout_pure(tmp_pat
     assert "phase=done" in progress
     assert "rc=0" in progress
     assert tail.splitlines()[-1] == "last"
+    assert dur_s >= 0.06
 
 
 def test_streamed_gate_runner_bounds_capture_and_preserves_nonzero_exit(tmp_path):
@@ -1152,7 +1153,7 @@ def test_streamed_gate_runner_bounds_capture_and_preserves_nonzero_exit(tmp_path
     ]
 
     with redirect_stderr(stderr):
-        rc, tail = MODULE._run_streamed_command(
+        rc, tail, dur_s = MODULE._run_streamed_command(
             command,
             cwd=tmp_path,
             gate_name="failing-gate",
@@ -1165,6 +1166,31 @@ def test_streamed_gate_runner_bounds_capture_and_preserves_nonzero_exit(tmp_path
     assert tail.endswith("END\n")
     assert "phase=done" in stderr.getvalue()
     assert "rc=7" in stderr.getvalue()
+    assert dur_s >= 0
+
+
+def test_shell_and_internal_gate_results_carry_duration(tmp_path, monkeypatch):
+    monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
+    monkeypatch.setattr(
+        MODULE,
+        "_run_streamed_command",
+        lambda *args, **kwargs: (0, "lockWaitMs=9000 deviceRunLockWaitMs=3000", 12.5),
+    )
+
+    shell = MODULE._run_gate(
+        MODULE._shell("ios-test-unit", "ios", ["ops/ios_ops.sh", "test"], "block"),
+        str(tmp_path),
+    )
+    internal = MODULE._run_gate(
+        MODULE._internal(
+            "coverage", "meta", "warn", covered=[], neutral=[], uncovered=[]
+        ),
+        str(tmp_path),
+    )
+
+    assert shell["dur_s"] == 12.5
+    assert internal["dur_s"] >= 0
+    assert internal["status"] == "pass"
 
 
 def test_git_mutation_streams_semantic_progress_without_exposing_argv(
@@ -3926,6 +3952,43 @@ def _history_lines(state):
     return [json.loads(ln) for ln in p.read_text().splitlines() if ln.strip()]
 
 
+def test_gate_history_records_duration_and_stable_run_order(tmp_path, monkeypatch):
+    moments = iter([
+        datetime(2026, 8, 9, 1, 2, 3, 1, tzinfo=timezone.utc),
+        datetime(2026, 8, 9, 1, 2, 3, 2, tzinfo=timezone.utc),
+        datetime(2026, 8, 9, 1, 2, 3, 3, tzinfo=timezone.utc),
+    ])
+
+    class SequencedDatetime:
+        @classmethod
+        def now(cls, tz):
+            assert tz is timezone.utc
+            return next(moments)
+
+    monkeypatch.setattr(MODULE, "datetime", SequencedDatetime)
+    state = str(tmp_path / "reg.json")
+    orch = {"sha256": "a" * 64}
+    results = [
+        {"name": "first", "status": "pass", "rc": 0, "level": "block", "dur_s": 1.25},
+        {"name": "second", "status": "warn", "rc": 0, "level": "warn", "dur_s": 2.5},
+    ]
+
+    assert MODULE._append_gate_history(state, str(tmp_path), "b" * 40, orch, results) is None
+    assert MODULE._append_gate_history(state, str(tmp_path), "c" * 40, orch, results[:1]) is None
+    rows = _history_lines(state)
+
+    assert [row["dur_s"] for row in rows] == [1.25, 2.5, 1.25]
+    assert [row["idx"] for row in rows] == [0, 1, 0]
+    assert rows[0]["run_id"] == rows[1]["run_id"]
+    assert rows[2]["run_id"] != rows[0]["run_id"]
+    assert len({(row["run_id"], row["idx"]) for row in rows}) == len(rows)
+    assert [row["ts"] for row in rows] == [
+        "2026-08-09T01:02:03.000001Z",
+        "2026-08-09T01:02:03.000002Z",
+        "2026-08-09T01:02:03.000003Z",
+    ]
+
+
 @gitmark
 def test_gate_appends_one_history_line_per_executed_gate(scratch):
     tmp_path, repo, remote = scratch
@@ -3936,6 +3999,10 @@ def test_gate_appends_one_history_line_per_executed_gate(scratch):
     assert rc == MODULE.EXIT_OK
     rows = _history_lines(state)
     assert [r["gate"] for r in rows] == [g["name"] for g in gate["gates"]]
+    assert [r["dur_s"] for r in rows] == [g["dur_s"] for g in gate["gates"]]
+    assert all(isinstance(g["dur_s"], float) and g["dur_s"] >= 0 for g in gate["gates"])
+    assert [r["idx"] for r in rows] == list(range(len(rows)))
+    assert len({r["run_id"] for r in rows}) == 1
     row = rows[0]
     assert row["status"] == "warn" and row["level"] == "warn"
     assert row["head8"] == gate["head_sha"][:8]
@@ -4578,7 +4645,7 @@ def test_a_failing_gate_during_a_tag_change_is_inconclusive_not_block(tmp_path, 
                   "a1 refs/tags/v1\nb2 refs/tags/v2\nc3 refs/tags/v3"])
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: next(snaps))
     monkeypatch.setattr(MODULE, "_run_streamed_command",
-                        lambda *a, **k: (1, "  passed: 371  failed: 1"))
+                        lambda *a, **k: (1, "  passed: 371  failed: 1", 1.0))
     spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
     r = MODULE._run_gate(spec, str(tmp_path))
     assert r["status"] == "inconclusive"
@@ -4595,7 +4662,8 @@ def test_a_failing_gate_with_stable_tags_still_blocks(tmp_path, monkeypatch):
     above alone: `_run_gate` rewritten to return `inconclusive` unconditionally would
     satisfy the positive test and disarm every block gate in the repo."""
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "a1 refs/tags/v1")
-    monkeypatch.setattr(MODULE, "_run_streamed_command", lambda *a, **k: (1, "  ✗ boom"))
+    monkeypatch.setattr(MODULE, "_run_streamed_command",
+                        lambda *a, **k: (1, "  ✗ boom", 1.0))
     spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
     r = MODULE._run_gate(spec, str(tmp_path))
     assert r["status"] == "block"
@@ -4646,7 +4714,7 @@ def test_contention_sensitive_red_names_machine_and_rerun_command(tmp_path, monk
     """A red under iOS contention stays red but explains how to reproduce it quietly."""
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
     monkeypatch.setattr(MODULE, "_run_streamed_command",
-                        lambda *a, **k: (1, "  ✗ concurrency assertion"))
+                        lambda *a, **k: (1, "  ✗ concurrency assertion", 1.0))
     busy = {
         "load_average": [8.0, 7.0, 6.0],
         "active_worktrees": 3,
@@ -4682,7 +4750,7 @@ def test_contention_warning_is_absent_when_machine_is_quiet(tmp_path, monkeypatc
     """The warning must not become boilerplate that operators learn to ignore."""
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: "stable")
     monkeypatch.setattr(MODULE, "_run_streamed_command",
-                        lambda *a, **k: (1, "  ✗ real assertion"))
+                        lambda *a, **k: (1, "  ✗ real assertion", 1.0))
     quiet = {
         "load_average": [0.1, 0.2, 0.3],
         "active_worktrees": 1,
@@ -4712,7 +4780,8 @@ def test_a_red_whose_refs_probe_failed_says_so_instead_of_going_quiet(tmp_path, 
     permanently blind on some machine reinstates the whole bug with zero signal.
     Found by review of IMP-20260805-4ec901."""
     monkeypatch.setattr(MODULE, "_tag_snapshot", lambda _anchor: None)
-    monkeypatch.setattr(MODULE, "_run_streamed_command", lambda *a, **k: (1, "  ✗ boom"))
+    monkeypatch.setattr(MODULE, "_run_streamed_command",
+                        lambda *a, **k: (1, "  ✗ boom", 1.0))
     spec = MODULE._shell("ops-shell:test_ios_ops.sh", "ops", ["ops/test_ios_ops.sh"], "block")
     r = MODULE._run_gate(spec, str(tmp_path))
     # the red still counts — fail-safe direction is unchanged
