@@ -353,6 +353,58 @@ for case_dir in empty allskipped; do
   fi
 done
 
+section "comments and member ordering are parsed as code, not raw text"
+mkdir -p "$TREE/injection_good" "$TREE/injection_negative"
+cat >"$TREE/injection_good/LineCommentMention.swift" <<'SWIFT'
+struct LineCommentMention: View {
+    @ObserveInjection var inject
+    // @ObserveInjection is mentioned in this explanation, not declared.
+    var body: some View { EmptyView().enableInjection() }
+}
+SWIFT
+cat >"$TREE/injection_good/BlockCommentMention.swift" <<'SWIFT'
+struct BlockCommentMention: View {
+    @ObserveInjection var inject
+    /* .enableInjection() is mentioned in this explanation, not called. */
+    var body: some View { EmptyView().enableInjection() }
+}
+SWIFT
+cat >"$TREE/injection_good/NestedTypeBeforeInjection.swift" <<'SWIFT'
+struct NestedTypeBeforeInjection: View {
+    enum Density { case compact }
+    typealias Payload = String
+    static let title = "fixture"
+    @ObserveInjection var inject
+    var body: some View { EmptyView().enableInjection() }
+}
+SWIFT
+rc="$(scan_probe "$TREE/injection_good" "$TMP/probe_injection_good.out")"
+[[ "$rc" -eq 0 ]] \
+  && ok "正控：註解提及 injection 名稱、巢狀型別先於屬性 → rc=0" \
+  || { fail_t "正控失敗：註解與巢狀型別 fixture → rc=${rc}（期望 0）"; sed 's/^/      /' "$TMP/probe_injection_good.out"; }
+
+cat >"$TREE/injection_negative/MissingPairing.swift" <<'SWIFT'
+struct MissingPairing: View {
+    @ObserveInjection var inject
+    var body: some View { EmptyView() }
+}
+SWIFT
+cat >"$TREE/injection_negative/MissingAttribute.swift" <<'SWIFT'
+struct MissingAttribute: View {
+    var body: some View { EmptyView().enableInjection() }
+}
+SWIFT
+rc="$(scan_probe "$TREE/injection_negative" "$TMP/probe_injection_negative.out")"
+[[ "$rc" -eq 1 ]] \
+  && ok "負控：真正缺少配對／屬性仍回 rc=1" \
+  || { fail_t "負控失敗：真正缺少配對／屬性 → rc=${rc}（期望 1）"; sed 's/^/      /' "$TMP/probe_injection_negative.out"; }
+grep -q 'arity mismatch' "$TMP/probe_injection_negative.out" \
+  && ok "負控：缺少 .enableInjection() 具名回報 arity mismatch" \
+  || fail_t "負控失敗：缺少 .enableInjection() 沒有 arity mismatch"
+grep -q 'missing @ObserveInjection' "$TMP/probe_injection_negative.out" \
+  && ok "負控：缺少 @ObserveInjection 具名回報" \
+  || fail_t "負控失敗：缺少 @ObserveInjection 沒有具名回報"
+
 echo ""
 echo "injection-lint: $pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
