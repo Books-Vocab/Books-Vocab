@@ -124,11 +124,7 @@ final class LiveDemoAccessUITests: UITestCase {
         // trigger an XCTest failure screenshot. The kept proof is cropped to
         // the entitlement card and therefore contains no account identifier.
         let proofElement = hasActivePro ? activePro : inactivePro
-        if proofElement.exists {
-            proofElement.scrollIntoView()
-        } else {
-            app.swipeUp()
-        }
+        proofElement.scrollIntoView()
 
         XCTAssertTrue(isLoggedIn, "Live demo device is not signed in")
         XCTAssertTrue(identityExists, "Live demo account identity is unavailable")

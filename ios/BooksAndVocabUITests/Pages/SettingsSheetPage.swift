@@ -116,18 +116,9 @@ struct SettingsSheetPage {
     }
 
     /// 開啟「複習卡片」列。
-    ///
-    /// 不用 `scrollIntoView()`：那個 helper 是對**元素自己** `swipeUp()`，元素**完全**離屏時
-    /// XCTest 直接以 `visible frame is empty, which may happen if the element is offscreen` 失敗。
-    /// 上面兩個 opener 能用它，是因為它們的列只是部分被遮住。這一列排在「聲音回饋」
-    /// 「觸覺回饋」之後，偏好區變長後整列會落在摺線下，必須捲**容器**。
     @discardableResult
     func openReviewCardLayout(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Self {
-        var attempts = 0
-        while !reviewCardLayoutRow.isHittable && attempts < 8 {
-            app.swipeUp()
-            attempts += 1
-        }
+        reviewCardLayoutRow.scrollIntoView(file: file, line: line)
         reviewCardLayoutRow.tapWhenReady(file: file, line: line)
         return self
     }

@@ -71,8 +71,14 @@ extension XCUIElement {
 
     func scrollIntoView(timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = UInt(#line)) {
         let deadline = Date().addingTimeInterval(timeout)
+        let app = XCUIApplication()
+        let container = app.scrollViews.firstMatch
         while !isHittable && Date() < deadline {
-            swipeUp()
+            if container.exists {
+                container.swipeUp()
+            } else {
+                app.swipeUp()
+            }
         }
         XCTAssertTrue(isHittable, "Element remained non-hittable after scrolling: \(self.description)", file: file, line: line)
     }
