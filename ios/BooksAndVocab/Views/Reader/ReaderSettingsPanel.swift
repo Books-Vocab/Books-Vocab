@@ -8,15 +8,21 @@
 
 import SwiftUI
 
+/// 閱讀設定**頁**（不含 chrome）—— 同一個 View 掛在兩個入口下：閱讀器工具列
+/// （由 `ReaderSettingsPanelSheet` 包上 stack 與完成鍵）與設定▸偏好▸閱讀設定
+/// （由 `navigationDestination` 直接 push）。與 `ReviewCardLayoutEditor` /
+/// `ReviewCardLayoutEditorSheet` 同構。
+///
+/// 兩個入口讀寫的是**同一份** `ReaderSettings`（環境預設值為 `.shared`），
+/// 所以這裡沒有「某一本書的設定」這種東西 —— 閱讀偏好本來就是使用者層級的。
 struct ReaderSettingsPanel: View {
     @ObserveInjection private var inject
     @Bindable var settings: ReaderSettings
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
-    let onDismiss: () -> Void
 
     private var presenterState: ReaderSettingsPresenter.State {
         .init(
-            fontSizeText: String(format: "%.2gx", settings.fontSize),
+            fontSizeText: settings.fontSizeText,
             fontScale: settings.fontSize,
             canDecreaseFontSize: settings.fontSize > 0.75,
             canIncreaseFontSize: settings.fontSize < 2.0
@@ -44,8 +50,7 @@ struct ReaderSettingsPanel: View {
             onIncreaseFontSize: increaseFontSize,
             onSelectTheme: selectTheme,
             onSelectUnderlineOpacity: selectUnderlineOpacity,
-            onResetToDefaults: resetToDefaults,
-            onDismiss: onDismiss
+            onResetToDefaults: resetToDefaults
         )
     }
 
@@ -90,6 +95,31 @@ struct ReaderSettingsPanel: View {
     }
 }
 
+/// 閱讀器工具列入口的 sheet 外殼。頁面本身與設定頁共用，只有 chrome
+/// （stack + 完成鍵）不同 —— 與 `ReviewCardLayoutEditorSheet` 同一個做法。
+struct ReaderSettingsPanelSheet: View {
+    @ObserveInjection private var inject
+
+    /// 外殼只是把 settings 轉交給頁面，自己不寫 —— 用 `let` 而不是 `@Bindable`，
+    /// 綁定關係屬於頁面。與 `ReviewCardLayoutEditorSheet` 一致。
+    let settings: ReaderSettings
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ReaderSettingsPanel(settings: settings)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.string("reader.settings.done"), action: onDone)
+                            .fontWeight(.semibold)
+                            .accessibilityIdentifier("reader.settings.done")
+                    }
+                }
+        }
+        .enableInjection()
+    }
+}
+
 struct ReaderSettingsPanelPreviewHarness: View {
     @ObserveInjection private var inject
     let initialFontSizeText: String
@@ -126,21 +156,23 @@ struct ReaderSettingsPanelPreviewHarness: View {
         )
     }
 
-    /// 面板本身現在是一整頁 `NavigationStack + Form`（原生 sheet 內容），
-    /// harness 不再需要自己鋪頁面底色或把它推到畫面底部。
+    /// 頁面本身已不帶 `NavigationStack`（那是兩個入口各自的 chrome），所以
+    /// harness 自己補一個 —— 否則 Catalog scenario 看不到標題列，也看不到掛在
+    /// `.primaryAction` 上的重置選單，而那正是這個 scenario 要驗的東西之一。
     var body: some View {
-        ReaderSettingsPresenter(
-            state: state,
-            bindings: bindings,
-            // Catalog / #Preview 也走真的加減，否則預覽卡在 harness 裡是死的，
-            // 而「改設定會不會即時反映」正是這個 scenario 要看的事。
-            onDecreaseFontSize: { fontScale = max(0.75, fontScale - 0.125) },
-            onIncreaseFontSize: { fontScale = min(2.0, fontScale + 0.125) },
-            onSelectTheme: { theme = $0 },
-            onSelectUnderlineOpacity: { underlineOpacity = $0 },
-            onResetToDefaults: resetHarnessToDefaults,
-            onDismiss: {}
-        )
+        NavigationStack {
+            ReaderSettingsPresenter(
+                state: state,
+                bindings: bindings,
+                // Catalog / #Preview 也走真的加減，否則預覽卡在 harness 裡是死的，
+                // 而「改設定會不會即時反映」正是這個 scenario 要看的事。
+                onDecreaseFontSize: { fontScale = max(0.75, fontScale - 0.125) },
+                onIncreaseFontSize: { fontScale = min(2.0, fontScale + 0.125) },
+                onSelectTheme: { theme = $0 },
+                onSelectUnderlineOpacity: { underlineOpacity = $0 },
+                onResetToDefaults: resetHarnessToDefaults
+            )
+        }
         .enableInjection()
     }
 

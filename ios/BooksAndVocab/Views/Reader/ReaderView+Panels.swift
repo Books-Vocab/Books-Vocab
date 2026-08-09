@@ -110,9 +110,9 @@ extension ReaderView {
 
     @ViewBuilder
     var settingsPanelContent: some View {
-        ReaderSettingsPanel(
+        ReaderSettingsPanelSheet(
             settings: settings,
-            onDismiss: {
+            onDone: {
                 closeOverlay(.settings)
             }
         )

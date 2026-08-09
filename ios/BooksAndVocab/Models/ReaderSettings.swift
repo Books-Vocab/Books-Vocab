@@ -224,6 +224,12 @@ final class ReaderSettings {
         }
     }
 
+    /// 字級倍率的顯示字串。閱讀設定頁的 Stepper 與設定▸偏好 的摘要列共用，
+    /// 免得兩個入口把同一個數字 format 成不同樣子。
+    var fontSizeText: String {
+        String(format: "%.2gx", fontSize)
+    }
+
     var vocabHighlightPreferences: VocabHighlightPreferences {
         VocabHighlightPreferences(
             colorPreset: vocabHighlightColorPreset,

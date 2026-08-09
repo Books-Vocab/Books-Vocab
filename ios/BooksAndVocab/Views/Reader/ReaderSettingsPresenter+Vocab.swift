@@ -21,27 +21,27 @@ extension ReaderSettingsPresenter {
 
     // MARK: Layout
 
+    /// **一頁，不含 chrome** —— 沒有自己的 `NavigationStack`、沒有「完成」。
+    ///
+    /// 這是為了讓同一頁能掛在兩個入口下，與 `ReviewCardLayoutEditor` 完全同構：
+    /// 從閱讀器進來時由 `ReaderSettingsPanelSheet` 補上 stack 與完成鍵；從
+    /// 設定▸偏好 進來時直接被 `navigationDestination` push，用既有的返回鍵。
+    /// 頁面自己帶 `NavigationStack` 的話，push 進設定會變成雙層導覽列。
     var vocabLayout: some View {
-        NavigationStack {
-            Form {
-                vocabPreviewSection
-                vocabTypographySection
-                vocabAppearanceSection
-                vocabHighlightSection
-                vocabDebugSection
-            }
-            .navigationTitle(L10n.string("reader.settings.title"))
-            .inlineNavigationBarTitle()
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { resetMenu }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(L10n.string("reader.settings.done"), action: onDismiss)
-                        .accessibilityIdentifier("reader.settings.done")
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("reader.settingsPanel")
+        Form {
+            vocabPreviewSection
+            vocabTypographySection
+            vocabAppearanceSection
+            vocabHighlightSection
+            vocabDebugSection
         }
+        .navigationTitle(L10n.string("reader.settings.title"))
+        .inlineNavigationBarTitle()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { resetMenu }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("reader.settingsPanel")
     }
 
     // MARK: Reset
