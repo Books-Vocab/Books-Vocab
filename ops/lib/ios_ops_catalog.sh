@@ -955,6 +955,15 @@ catalog_resolve_destination_device_udid() {
   ' <<<"$devices_json"
 }
 
+catalog_reuse_build_exit_code() {
+  local cache_status="$1" run_rc="${2:-1}"
+  if [[ "$cache_status" == "stale" && "$run_rc" -ne 0 ]]; then
+    printf '%s\n' "$run_rc"
+  else
+    printf '%s\n' 87
+  fi
+}
+
 cmd_catalog_snapshots_json() {
   local out_root="$1" destination="$2" groups_csv="${3:-}" scenarios_csv="${4:-}" dataset_path="${5:-}" reuse_build_only="${6:-0}" persist_workspace_artifact="${7:-0}"
   local generated_at mode container_data snapshot_source xcode_log xcode_err rc test_cmd
@@ -1075,7 +1084,7 @@ cmd_catalog_snapshots_json() {
 
       if [[ "$cache_status" != "hit" || "${rc:-1}" -ne 0 ]]; then
         if [[ "$reuse_build_only" -eq 1 ]]; then
-          rc=87
+          rc="$(catalog_reuse_build_exit_code "$cache_status" "${rc:-1}")"
         else
           if catalog_rebuild_scoped_cache "$destination" "$derived_data_root" "$xcode_log" "$xcode_err"; then
             base_xctestrun="$(catalog_find_xctestrun "$derived_data_root")"
