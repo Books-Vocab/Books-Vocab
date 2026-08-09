@@ -62,6 +62,9 @@ LINUX_GROUPS=(
   script-help
   install-hooks
   lib-sourcing
+  # alias-coverage 的 --self-test 只要 bash + uv：合成 sandbox 做正負控，不建 git
+  # worktree（那條路徑是 --prove，CI 不走）、不碰 Xcode，1 秒級。
+  alias-coverage
   backlog
   gen-ios-baseline
   ios-signal-traps
