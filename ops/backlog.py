@@ -245,8 +245,14 @@ _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 # preconditions nobody verifies decays into the "reason field nobody reads"
 # failure this repo has already paid for twice.
 GROOM_FIELDS = ("plan", "acceptance", "groomed_at", "groomed_by",
+                "groomed_against",
                 # The executable half of `acceptance`. See ACCEPTANCE_PROOF below.
                 "acceptance_cmd", "acceptance_expect_rc", "acceptance_manual")
+
+# A warning threshold, not a closure gate. The current main has moved 256 commits
+# since the oldest active grooming wave, so a smaller default would turn the
+# whole existing queue into noise; callers can narrow it for a deliberate audit.
+GROOMED_AGAINST_MAX_COMMITS = 500
 
 # Claiming the badge requires all of these to be non-empty. `fix_site` is in the
 # list and not in GROOM_FIELDS because it predates this and is shared with the
@@ -725,10 +731,15 @@ def _check_groom(payload: dict) -> list[dict]:
     out, so one entry wearing the badge without a plan quietly removes itself
     from the work queue while adding nothing.
     """
-    if not (payload.get("groomed_by") or payload.get("groomed_at")):
-        return []  # not claimed — nothing to hold it to
-
+    groomed_against = str(payload.get("groomed_against") or "").strip()
     problems: list[dict] = []
+    if groomed_against and not _SHA_RE.fullmatch(groomed_against):
+        problems.append({"kind": "groom-claim-bad-against",
+                         "value": payload.get("groomed_against")})
+
+    if not (payload.get("groomed_by") or payload.get("groomed_at")):
+        return problems  # not claimed — nothing to hold it to
+
     for field in GROOM_REQUIRES:
         if not str(payload.get(field, "")).strip():
             problems.append({"kind": f"groom-claim-without-{field}", "field": field})
@@ -1111,6 +1122,58 @@ def _git(*args: str, repo: Path | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], cwd=repo or GIT_REPO, capture_output=True, text=True)
 
 
+def _main_commit(repo: Path | None = None) -> str | None:
+    """Return the checkout's local main tip, or None when no such ref exists."""
+    result = _git("rev-parse", "--verify", "--quiet", "main^{commit}", repo=repo)
+    sha = result.stdout.strip()
+    return sha if result.returncode == 0 and _SHA_RE.fullmatch(sha) else None
+
+
+def _groomed_against_warning(
+    entry: dict, *, max_commits: int = GROOMED_AGAINST_MAX_COMMITS,
+    repo: Path | None = None, main_sha: str | None = None,
+) -> dict | None:
+    """Describe a grooming snapshot that is materially behind local main.
+
+    This deliberately reports only a measurable ancestry distance. An absent or
+    unresolvable base is grandfathered/silent: the warning is a prompt to re-check
+    prose, not a second validation gate that would manufacture a new queue.
+    """
+    against = str(entry.get("groomed_against") or "").strip()
+    if not against or not _SHA_RE.fullmatch(against):
+        return None
+    main_sha = main_sha or _main_commit(repo)
+    if main_sha is None:
+        return None
+    result = _git("rev-list", "--count", f"{against}..{main_sha}", repo=repo)
+    if result.returncode != 0:
+        return None
+    try:
+        commits_behind = int(result.stdout.strip())
+    except ValueError:
+        return None
+    if commits_behind <= max_commits:
+        return None
+    return {
+        "id": entry.get("id"),
+        "groomed_against": against,
+        "commits_behind": commits_behind,
+        "threshold": max_commits,
+    }
+
+
+def _groomed_against_warnings(
+    entries: list[dict], *, max_commits: int = GROOMED_AGAINST_MAX_COMMITS,
+    repo: Path | None = None,
+) -> list[dict]:
+    main_sha = _main_commit(repo)
+    if main_sha is None:
+        return []
+    return [warning for entry in entries
+            if (warning := _groomed_against_warning(
+                entry, max_commits=max_commits, repo=repo, main_sha=main_sha))]
+
+
 def make_commit_state(repo: Path | None = None):
     """Resolve a fixed-by value to its object identity, or None outside a repo.
 
@@ -1487,7 +1550,8 @@ FILE_TWIN_FIELDS = (
 # Flags that exist on `add`'s parser solely to be refused by name. See `_cmd_add`.
 GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
                     "--acceptance-expect-rc", "--acceptance-manual",
-                    "--fix-site", "--groomed-at", "--groomed-by")
+                    "--fix-site", "--groomed-at", "--groomed-by",
+                    "--groomed-against")
 
 
 def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
@@ -2683,6 +2747,16 @@ def _add_store_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _nonnegative_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a non-negative integer") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
+    return number
+
+
 def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -> None:
     """Every read filter, on whichever door asked for it.
 
@@ -2783,6 +2857,12 @@ def _add_list_filters(parser: argparse.ArgumentParser, *, dispatch_flag: bool) -
              "--unverified: never-checked is not the same finding as checked-and-aged",
     )
     parser.add_argument("--stale-days", type=int, default=30, metavar="N")
+    parser.add_argument(
+        "--groomed-against-max-commits", type=_nonnegative_int,
+        default=GROOMED_AGAINST_MAX_COMMITS, metavar="N",
+        help=f"warn when groomed_against is more than N commits behind local main "
+             f"(default {GROOMED_AGAINST_MAX_COMMITS}; warning only)",
+    )
     parser.add_argument(
         "--grep", metavar="PATTERN",
         help="only entries whose detail/resolution/plan/fix_site match this regex "
@@ -3018,6 +3098,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_show = sub.add_parser("show", help="show one entry")
     _add_store_arg(p_show)
     p_show.add_argument("id")
+    p_show.add_argument(
+        "--groomed-against-max-commits", type=_nonnegative_int,
+        default=GROOMED_AGAINST_MAX_COMMITS, metavar="N",
+        help=f"warn when groomed_against is more than N commits behind local main "
+             f"(default {GROOMED_AGAINST_MAX_COMMITS}; warning only)",
+    )
     p_show.add_argument("--json", action="store_true")
 
     p_validate = sub.add_parser("validate", help="schema-check every entry")
@@ -3117,6 +3203,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--groomed-at", dest="groomed_at", help="YYYY-MM-DD")
     p_update.add_argument(
         "--groomed-by", dest="groomed_by", help="what did the grooming, e.g. workflow:groom@v1"
+    )
+    p_update.add_argument(
+        "--groomed-against", dest="groomed_against",
+        help="main commit SHA the grooming plan was checked against; when omitted "
+             "while refreshing a groom stamp, the current local main tip is recorded",
     )
     # Reachable from `update` as well as `verify`, because the bidirectional
     # invariant (every mutable field has a flag) has no escape hatch — an
@@ -4341,6 +4432,14 @@ def _withheld_blocked(store: Path, candidates: list[dict], held: dict) -> list[d
     return sorted(withheld, key=lambda row: row["id"])
 
 
+def _groomed_against_warning_line(warning: dict) -> str:
+    return (
+        f"⚠ groomed_against stale: {warning['id']} snapshot is "
+        f"{warning['commits_behind']} commits behind main "
+        f"(threshold {warning['threshold']}); re-check the plan before starting."
+    )
+
+
 def _cmd_list(args) -> int:
     dispatch = getattr(args, "dispatch", False) or args.command == "dispatch"
     # DERIVED, never stored — see `held_tickets()`. The stored `in-progress` this
@@ -4383,6 +4482,9 @@ def _cmd_list(args) -> int:
             args.store, select_entries(args.store, **unfiltered), held)
     if getattr(args, "held", False):
         entries = [e for e in entries if e["id"] in held]
+    groomed_against_warnings = _groomed_against_warnings(
+        entries, max_commits=args.groomed_against_max_commits,
+    )
 
     if args.json:
         print(json.dumps({"schema": "kg.backlog.list.v1", "entries": entries,
@@ -4395,7 +4497,9 @@ def _cmd_list(args) -> int:
                                            "held_scope": DISPATCH_HELD_SCOPE,
                                            "snooze_scope": DISPATCH_SNOOZE_SCOPE,
                                            "withheld_blocked": withheld_blocked}}
-                             if dispatch else {})},
+                           if dispatch else {}),
+                          "groomed_against_warnings": groomed_against_warnings,
+                          },
                          ensure_ascii=False))
         return 0
     for entry in entries:
@@ -4405,6 +4509,8 @@ def _cmd_list(args) -> int:
             f"{entry['id']:<24} {entry['status']:<10} {entry['severity']:<5} "
             f"{entry['category']:<12} {mark:<26} {entry['detail'][:50]}"
         )
+    for warning in groomed_against_warnings:
+        print(_groomed_against_warning_line(warning))
     if dispatch:
         print(f"\n{len(entries)} takeable ({' AND '.join(DISPATCH_CLAUSES)}), "
               f"worst first. Claim one with "
@@ -4427,15 +4533,22 @@ def _cmd_show(args) -> int:
     # it is answered HERE rather than stored on the entry: `show` is where somebody
     # decides to start, and a claim read at that moment is current by construction.
     claim = held_tickets().get(args.id)
+    groomed_against_warning = _groomed_against_warning(
+        entry, max_commits=args.groomed_against_max_commits,
+    )
     if args.json:
         print(json.dumps({"schema": "kg.backlog.show.v1", "entry": entry,
                           "held": claim,
-                          "held_scope": "this machine's worktrees only"},
+                          "held_scope": "this machine's worktrees only",
+                          **({"groomed_against_warning": groomed_against_warning}
+                             if groomed_against_warning else {})},
                          ensure_ascii=False))
         return 0
     if claim:
         print(f"⚠ claimed by {claim['branch']} since {claim['claimed_at']} "
               f"({claim['path']}) — this machine's ledger only\n")
+    if groomed_against_warning:
+        print(_groomed_against_warning_line(groomed_against_warning))
     for field in SHOW_FIELD_ORDER:
         if field in entry and field != "schema":
             print(f"{field:<12} {entry[field]}")
@@ -4680,6 +4793,16 @@ def _cmd_update(args) -> int:
         for field in MUTABLE_FIELDS
         if getattr(args, field, None) is not None
     }
+    if (
+        "groomed_against" not in changes
+        and any(changes.get(field) is not None for field in ("groomed_at", "groomed_by"))
+    ):
+        # A refreshed groom stamp should not silently lose its reference frame.
+        # Keep the explicit flag for fixture/import use, but make the ordinary CLI
+        # path capture the main tip that the human just inspected.
+        current_main = _main_commit()
+        if current_main:
+            changes["groomed_against"] = current_main
     if not changes:
         print("nothing to change; pass at least one field", file=sys.stderr)
         return 64
