@@ -3914,6 +3914,55 @@ def test_anchor_closes_the_whole_wave_in_one_pass(tmp_path, capsys):
     assert json.loads(capsys.readouterr().out)["applied"] == []
 
 
+def test_anchor_branch_filter_keeps_parallel_delivery_wave_rows_isolated(
+    tmp_path, capsys
+):
+    store = tmp_path / "s"
+    queue = tmp_path / "q.jsonl"
+    a = _add(store, detail="first delivery wave entry")
+    b = _add(store, detail="second delivery wave entry")
+    for entry, branch, sha in (
+        (a, "feat/team-a", "aaaaaaa11"),
+        (b, "feat/team-b", "bbbbbbb22"),
+    ):
+        BACKLOG.main([
+            "stage", entry["id"], "--store", str(store), "--queue", str(queue),
+            "--verdict", "CONFIRMED-FIXED", "--by", "agent:hunter",
+            "--evidence", f"ran the acceptance for {entry['id']}",
+        ])
+        capsys.readouterr()
+        rows = [
+            json.loads(line) for line in queue.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        for row in rows:
+            if row["id"] == entry["id"]:
+                row["branch"] = branch
+                row["landed_sha"] = sha
+        queue.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+    assert BACKLOG.main([
+        "anchor", "--store", str(store), "--queue", str(queue),
+        "--branches", "feat/team-a", "--commit", "--json",
+    ]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert first["applied"] == [a["id"]], first
+    assert first["deferred"] == [b["id"]], first
+    assert BACKLOG.load_entry(store, a["id"])["status"] == "fixed"
+    assert BACKLOG.load_entry(store, b["id"])["status"] == "open"
+
+    assert BACKLOG.main([
+        "anchor", "--store", str(store), "--queue", str(queue),
+        "--branches", "feat/team-b", "--commit", "--json",
+    ]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["applied"] == [b["id"]], second
+    assert queue.read_text(encoding="utf-8").strip() == ""
+
+
 def test_a_dry_run_anchor_changes_nothing(tmp_path, capsys):
     store = tmp_path / "s"
     queue = tmp_path / "q.jsonl"

@@ -78,10 +78,11 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
              that rule keeps living in exactly one place). cherry-pick rather than
              merge, so a branch cannot smuggle in commits nobody named. dry-run
              default.
-  close-wave  the Delivery Team coordinator verb: resume one named batch through
-              integrate -> one fresh gate -> cutover -> source/integration resolve
-              -> backlog anchor -> validate. It refuses foreign active worktrees,
-              never syncs or deploys, and reruns the same slug after a named stop.
+  close-wave  the Delivery Team Integrator verb: resume one named batch through
+              integrate/append -> one fresh gate -> cutover -> source/integration
+              resolve -> backlog anchor -> validate; with --sync it mirrors the
+              exact landed primary tip to origin/main. Other teams may stay active;
+              the same slug resumes after a named stop. It never deploys.
   catchup    the step `gate` and `cutover` BOTH send you to when the trunk moved
              under the branch: rebase the worktree onto local `main`. A CLEAN rebase
              — any conflict aborts and comes back to you. It is a verb rather than a
@@ -1378,6 +1379,18 @@ def _main_advance_lock(primary: Path):
     worse, interleave). Reuses the registry's reviewed flock primitive on a sidecar
     beside the ledger (`.cache/`, gitignored, one per repo)."""
     return wr._ledger_lock(primary / ".cache" / "kg-main-advance")
+
+
+def _delivery_loop_lock(primary: Path):
+    """Serialize each Delivery Team's final primary+remote closure.
+
+    Child worktrees and integration rounds remain parallel. The final sequence is
+    one critical section because its Gate must be based on the current primary,
+    its cutover advances primary/main, and its sync mirrors that exact resulting
+    tip. A Delivery Team waits on this lock; it does not need another team to
+    coordinate manually.
+    """
+    return wr._ledger_lock(primary / ".cache" / "kg-delivery-loop")
 
 
 _C_ESCAPES = {"n": 0x0A, "t": 0x09, "r": 0x0D, "a": 0x07, "b": 0x08,
@@ -3310,6 +3323,17 @@ def _backend_paths_in_range(primary: Path, lo: str, hi: str) -> list[str]:
 
 def _guarded_advance(*, src_branch: str, dest_branch: str, production: bool, step: str,
                      commit: bool, as_json: bool, state: str | None) -> int:
+    """Serialize a trunk publish against local cutover and other sync operations."""
+    with _main_advance_lock(primary_root()):
+        return _guarded_advance_locked(
+            src_branch=src_branch, dest_branch=dest_branch, production=production,
+            step=step, commit=commit, as_json=as_json, state=state,
+        )
+
+
+def _guarded_advance_locked(*, src_branch: str, dest_branch: str, production: bool,
+                            step: str, commit: bool, as_json: bool,
+                            state: str | None) -> int:
     """Guarded fast-forward publish of local `src_branch` to `origin/dest_branch`.
 
     The shared engine behind the two trunk-publish verbs of the three-plane model:
@@ -4557,10 +4581,10 @@ def cmd_integrate(args) -> int:
               args.json,
               f"✗ slug {args.slug!r} must be kebab-case ([a-z0-9] joined by '-')")
         return EXIT_USAGE
-    if args.cont and args.abort:
+    if sum(bool(flag) for flag in (args.cont, args.abort, args.append)) > 1:
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate",
-               "error": "--continue and --abort ask for opposite things — pick one"},
-              args.json, "✗ integrate: --continue and --abort are mutually exclusive")
+               "error": "--append, --continue, and --abort are mutually exclusive"},
+              args.json, "✗ integrate: --append, --continue, and --abort are mutually exclusive")
         return EXIT_USAGE
 
     spath = _integrate_state_path(args.state, args.slug)
@@ -4571,6 +4595,8 @@ def cmd_integrate(args) -> int:
     with wr._ledger_lock(spath):
         if args.abort:
             return _integrate_abort(args, spath)
+        if args.append:
+            return _integrate_append(args, spath)
         if args.cont:
             return _integrate_continue(args, spath)
         return _integrate_start(args, spath)
@@ -4771,6 +4797,227 @@ def _integrate_start(args, spath: Path) -> int:
     st["source_claim"] = source_claim
     _integrate_save(spath, st)
     return _integrate_drive(args, spath, st)
+
+
+def _integrate_append(args, spath: Path) -> int:
+    """Fan in more handed-back child branches into an existing round.
+
+    A Delivery Team master can start an integration round as soon as the first
+    child returns. Later children are appended to that same integration tree,
+    rather than forcing the master to wait for the whole fan-out or opening a
+    second tree. Append is deliberately pick-only: the round's one Gate is
+    meaningful only after the master declares the expected child set complete.
+    """
+    if not args.branches:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug,
+               "error": "--append requires one or more new --branches"}, args.json,
+              "integrate --append: --branches <new-child-branch> is required")
+        return EXIT_USAGE
+    if len(args.branches) != len(set(args.branches)):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "error": "duplicate source branch in --branches",
+               "branches": list(args.branches)}, args.json,
+              "integrate --append refused: each child branch may be appended once")
+        return EXIT_USAGE
+
+    st = _integrate_load(args, spath, "append")
+    if isinstance(st, int):
+        return st
+    wt = st.get("worktree")
+    if not wt or not Path(wt).is_dir():
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "error": f"the integration worktree is gone ({wt})"},
+              args.json, f"integrate --append refused: {wt} is gone")
+        return EXIT_BLOCK
+    here = _current_branch(wt)
+    if here != st.get("branch"):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "worktree": wt,
+               "expected_branch": st.get("branch"), "actual_branch": here,
+               "error": f"the integration worktree is on {here!r}, not "
+                        f"{st.get('branch')!r}"}, args.json,
+              f"integrate --append refused: {wt} is on {here!r}, not "
+              f"{st.get('branch')!r}")
+        return EXIT_BLOCK
+
+    # Never put a later child in front of an unresolved earlier pick. A Gate
+    # already recorded is evidence for a different child set and cannot be
+    # silently invalidated by appending.
+    unmerged = _unmerged_paths(wt)
+    current_op = _interrupted_operation(wt)
+    if unmerged or current_op:
+        op = current_op or "unmerged paths"
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "worktree": wt, "error": f"{op} is in progress",
+               "conflicts": unmerged,
+               "next_step": f"resolve it in {wt}, then re-run integrate --continue"},
+              args.json,
+              f"integrate --append refused: {op} is in progress in {wt}; "
+              "continue the current pick first")
+        return EXIT_BLOCK
+    if st.get("queue"):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "worktree": wt, "remaining": st["queue"],
+               "error": "the current integration queue is not empty",
+               "next_step": f"integrate --slug {args.slug} --continue --commit "
+                            "--no-gate"}, args.json,
+              f"integrate --append refused: {len(st['queue'])} existing pick(s) "
+              "remain; drain them before appending")
+        return EXIT_BLOCK
+    if not st.get("gate_pending"):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "worktree": wt,
+               "error": "integration is not at the appendable pick-only hand-back point",
+               "next_step": f"integrate --slug {args.slug} --continue --commit "
+                            "--no-gate"}, args.json,
+              "integrate --append refused: state is not marked gate_pending")
+        return EXIT_BLOCK
+    if st.get("gate"):
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "worktree": wt, "gate": st["gate"],
+               "error": "a Gate already judged this child set; append requires a new "
+                        "round or an explicit Gate retry"}, args.json,
+              "integrate --append refused: this round already has Gate evidence")
+        return EXIT_BLOCK
+
+    old_branches = list(st.get("branches") or [])
+    duplicate = [branch for branch in args.branches if branch in old_branches]
+    if duplicate:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "error": "source branch already belongs to this "
+                        "integration", "branches": duplicate}, args.json,
+              "integrate --append refused: " + ", ".join(duplicate)
+              + " already belongs to this round")
+        return EXIT_USAGE
+
+    primary = primary_root()
+    trunk = st.get("trunk") or _local_trunk(args.base)
+    handoff = _integrate_handoff_check(
+        args.state, list(args.branches), allow_unhanded=args.allow_unhanded,
+        repo=primary,
+    )
+    if handoff["problems"]:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "error": "new source branches were not handed back",
+               "handoff": handoff, "trunk": trunk}, args.json,
+              "integrate --append refused: source hand-back check failed\n"
+              + "\n".join(f"  {p.get('branch')}: {p.get('reason')}"
+                          for p in handoff["problems"]))
+        return EXIT_BLOCK
+
+    plan: list[dict[str, Any]] = []
+    problems: list[str] = []
+    accounted = {
+        str(item.get("sha")) for item in (st.get("picked") or [])
+        if item.get("sha")
+    } | {
+        str(item.get("sha")) for item in (st.get("skipped") or [])
+        if item.get("sha")
+    }
+    new_seen: set[str] = set()
+    for branch in args.branches:
+        source_ref = handoff.get("source_refs", {}).get(branch, branch)
+        commits, merges, err = _branch_pick_list(primary, trunk, branch, ref=source_ref)
+        if err:
+            problems.append(err)
+            continue
+        if merges:
+            problems.append(
+                f"{branch!r} carries {len(merges)} merge commit(s) "
+                f"({', '.join(s[:8] for s in merges)}) in {trunk}..{branch} — "
+                "flatten the branch (catchup/rebase) first")
+            continue
+        if not commits:
+            problems.append(
+                f"{branch!r} has no commits in {trunk}..{branch} — nothing to integrate")
+            continue
+        duplicate_sha = [item["sha"] for item in commits
+                         if item["sha"] in accounted or item["sha"] in new_seen]
+        if duplicate_sha:
+            problems.append(
+                f"{branch!r} repeats already-accounted commit(s): "
+                + ", ".join(sha[:8] for sha in duplicate_sha)
+                + " — name only the new child branch or rebuild stacked work")
+            continue
+        new_seen.update(item["sha"] for item in commits)
+        plan.append({"branch": branch, "commits": commits})
+
+    handoff_recheck = _integrate_handoff_check(
+        args.state, list(args.branches), allow_unhanded=args.allow_unhanded,
+        repo=primary,
+    )
+    if handoff_recheck["problems"]:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug,
+               "error": "source branch changed while preparing the append",
+               "handoff": {"initial": handoff, "recheck": handoff_recheck},
+               "trunk": trunk}, args.json,
+              "integrate --append refused: source hand-back changed during planning")
+        return EXIT_BLOCK
+    handoff["recheck"] = handoff_recheck
+    if problems:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "slug": args.slug, "error": "one or more new branches cannot be appended",
+               "problems": problems, "trunk": trunk}, args.json,
+              "integrate --append refused:\n" + "\n".join(f"  {p}" for p in problems))
+        return EXIT_USAGE
+
+    total = sum(len(entry["commits"]) for entry in plan)
+    if not args.commit:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "mode": "dry-run", "slug": args.slug, "worktree": wt,
+               "existing_branches": old_branches, "branches": list(args.branches),
+               "plan": plan, "commits": total, "handoff": handoff,
+               "head_sha": _head_sha(wt),
+               "would_run": [f"cherry-pick x{total}", "stop before the Gate"]},
+              args.json,
+              f"# integrate --append (dry-run)\n  would cherry-pick {total} "
+              f"commit(s) from {len(plan)} new child branch(es) into {wt}\n"
+              "  the round Gate remains deferred until the master declares the "
+              "full child set (--commit to execute)")
+        return EXIT_OK
+
+    merged_handoff = dict(st.get("handoff") or {})
+    merged_handoff["checked"] = list(merged_handoff.get("checked") or []) \
+        + list(args.branches)
+    merged_handoff["source_refs"] = {
+        **(merged_handoff.get("source_refs") or {}),
+        **(handoff.get("source_refs") or {}),
+    }
+    merged_handoff["warnings"] = list(merged_handoff.get("warnings") or []) \
+        + list(handoff.get("warnings") or [])
+    merged_handoff["problems"] = list(merged_handoff.get("problems") or []) \
+        + list(handoff.get("problems") or [])
+    merged_handoff["append_rechecks"] = list(merged_handoff.get("append_rechecks") or []) \
+        + [handoff_recheck]
+    candidate = dict(st)
+    candidate["branches"] = old_branches + list(args.branches)
+    candidate["handoff"] = merged_handoff
+    candidate["queue"] = list(st.get("queue") or []) \
+        + [item for entry in plan for item in entry["commits"]]
+    candidate["planned_total"] = int(st.get("planned_total") or 0) + total
+    # Claim the whole candidate set atomically before saving expanded state or
+    # touching the integration tree. Existing claims are idempotent.
+    source_claim = _integrate_claim_sources(args, candidate)
+    if not source_claim["ok"]:
+        _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "operation": "append",
+               "mode": "refused", "slug": args.slug, "worktree": wt,
+               "error": "new source branches already belong to another integration",
+               "source_claim": source_claim}, args.json,
+              "integrate --append refused: source ownership could not be acquired")
+        return EXIT_BLOCK
+    candidate["source_claim"] = source_claim
+    candidate["gate_pending"] = True
+    st.clear()
+    st.update(candidate)
+    _integrate_save(spath, st)
+
+    # Append is intrinsically a partial-round operation. Even if a caller omits
+    # --no-gate, never judge a tree while more children may still be returning.
+    drive_args = argparse.Namespace(**vars(args))
+    drive_args.no_gate = True
+    return _integrate_drive(drive_args, spath, st)
 
 
 def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
@@ -5316,6 +5563,12 @@ def _delivery_require_anchor_receipt(payload: dict[str, Any]) -> str | None:
         return "anchor receipt has non-list problems"
     if problems:
         return f"anchor receipt has {len(problems)} problem(s)"
+    unstamped = payload.get("unstamped")
+    if not isinstance(unstamped, list):
+        return "anchor receipt has non-list unstamped"
+    if unstamped:
+        return (f"anchor receipt still has {len(unstamped)} selected closure(s) "
+                "without a landed sha")
     applied = payload.get("applied")
     if not isinstance(applied, list) or any(
         not isinstance(ticket_id, str) for ticket_id in applied
@@ -5484,7 +5737,11 @@ def _delivery_state_error(
 
 
 def _delivery_registry_records(args: argparse.Namespace) -> tuple[int, list[dict[str, Any]]]:
-    registry_script = primary_root() / "ops" / "worktree_registry.py"
+    # Run the registry implementation that belongs to this coordinator.  During
+    # the first delivery-loop round the coordinator can still be in an isolated
+    # worktree while primary is on the previous tool version; using primary's
+    # copy here would make the new close-wave protocol self-incompatible.
+    registry_script = Path(__file__).resolve().parent / "worktree_registry.py"
     argv = ["list"]
     if args.state:
         argv += ["--state", args.state]
@@ -5720,11 +5977,9 @@ def _delivery_anchor_and_commit(
             steps.append({"name": "anchor-guard", "rc": rrc,
                           "error": "could not read the worktree registry"})
             return EXIT_BLOCK, steps
-        foreign = _delivery_foreign_active(records, allowed)
-        if foreign:
-            steps.append({"name": "anchor-guard", "error": "foreign active worktree appeared",
-                          "foreign_active": foreign})
-            return EXIT_BLOCK, steps
+        # Other Delivery Teams may still have active child/integration worktrees.
+        # The finalization lock serializes their primary side effects, while this
+        # wave only resolves the explicit branches in `allowed` below.
 
         persisted: dict[str, Any] | None = None
         marker: dict[str, Any] = {}
@@ -5810,9 +6065,13 @@ def _delivery_anchor_and_commit(
                 return EXIT_BLOCK, steps
 
         anchor_rc, anchor_payload = _delivery_json_tool(
-            primary / "ops" / "backlog.py",
+            Path(__file__).resolve().parent / "backlog.py",
             primary,
-            ["anchor", "--commit"],
+            [
+                "anchor", "--store", str(primary / "docs" / "runbook" / "backlog"),
+                "--queue", str(_anchor_queue(primary)),
+                "--branches", *sorted(allowed), "--commit",
+            ],
             label=f"anchor:{slug}",
             expected_schema="kg.backlog.anchor.v1",
             required_keys=("applied", "problems"),
@@ -5887,14 +6146,84 @@ def _delivery_anchor_and_commit(
         return anchor_commit_rc, steps
 
 
+def _delivery_sync_close_wave(
+    args: argparse.Namespace,
+    primary: Path,
+    manifest_path: Path | None,
+    steps: list[dict[str, Any]],
+) -> tuple[int, dict[str, Any] | None]:
+    """Complete the delivery-loop's explicit backup leg.
+
+    The local cutover is develop; this is the separately named backup action.
+    Persisting sync_status makes a push failure resumable without repeating Gate,
+    cutover, resolve, or anchor.
+    """
+    if not getattr(args, "sync", False):
+        return EXIT_OK, None
+    if manifest_path is None:
+        steps.append({"name": "sync", "error": "no integration manifest to mark sync"})
+        return EXIT_BLOCK, None
+    current = _delivery_load_json(manifest_path)
+    if current is None:
+        steps.append({"name": "sync", "error": "integration manifest disappeared before sync"})
+        return EXIT_BLOCK, None
+    marker = dict(current.get("close_wave") or {})
+    if marker.get("sync_status") == "completed":
+        steps.append({"name": "sync", "mode": "already-synced",
+                      "sync": marker.get("sync")})
+        return EXIT_OK, marker.get("sync")
+
+    # Keep the whole delivery-loop on one coordinator version.  This matters
+    # when the first close-wave is launched from an isolated branch whose new
+    # `--sync` contract has not reached primary yet.
+    orchestrator = Path(__file__).resolve()
+    sync_rc, sync_payload = _delivery_json_tool(
+        orchestrator,
+        primary,
+        ["sync", "--commit", *_state_arg(args.state)],
+        label=f"sync:{args.slug}",
+        expected_schema=SCHEMA,
+        required_keys=("verdict",),
+    )
+    steps.append({"name": "sync", "rc": sync_rc, "payload": sync_payload})
+    if sync_rc != EXIT_OK or sync_payload.get("verdict") not in ("pushed", "noop"):
+        return sync_rc or EXIT_BLOCK, sync_payload
+
+    current = _delivery_load_json(manifest_path)
+    if current is None:
+        steps.append({"name": "sync", "error": "integration manifest disappeared after sync"})
+        return EXIT_BLOCK, sync_payload
+    current["close_wave"] = {
+        **(current.get("close_wave") or {}),
+        "sync_status": "completed",
+        "sync": sync_payload,
+    }
+    try:
+        _integrate_save(manifest_path, current)
+    except OSError as exc:
+        steps.append({"name": "sync",
+                      "error": f"sync succeeded but receipt could not be saved: {exc}"})
+        return EXIT_BLOCK, sync_payload
+    return EXIT_OK, sync_payload
+
+
 def cmd_close_wave(args: argparse.Namespace) -> int:
+    """Run one end-to-end Delivery Team closure under the shared finalization lock."""
+    if not getattr(args, "commit", False):
+        return _cmd_close_wave_impl(args)
+    with _delivery_loop_lock(primary_root()):
+        return _cmd_close_wave_impl(args)
+
+
+def _cmd_close_wave_impl(args: argparse.Namespace) -> int:
     """Run the Delivery Team's complete, resumable batch closure.
 
-    Workers still stop at commit + hand-back.  This verb belongs to the one
-    coordinator that owns the whole wave and is only safe after the caller has
-    obtained the normal develop-plane authorization.  It refuses when another
-    active worktree is visible, so a Catalog or unrelated session cannot be
-    resolved accidentally.
+    Workers still stop at commit + hand-back. This verb belongs to the Delivery
+    Team master/integrator and continues through primary cutover. With --sync it
+    also mirrors the landed primary tip to origin/main. Other teams' worktrees
+    are allowed to remain active: every teardown target is still an explicit
+    source branch or this round's integration branch, and the finalization lock
+    serializes the shared primary/remote side effects.
     """
     if not SLUG_RE.match(args.slug or ""):
         _emit({
@@ -6021,25 +6350,29 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             "error": "could not read the worktree registry; no closure was attempted",
         }, args.json, "✗ close-wave refused: registry-list failed")
         return EXIT_BLOCK
-    foreign = _delivery_foreign_active(records, allowed)
-    if foreign:
-        _emit({
-            "schema": DELIVERY_SCHEMA, "step": "close-wave",
-            "error": "another active worktree exists; close-wave will not cross its boundary",
-            "allowed_branches": sorted(allowed), "foreign_active": foreign,
-        }, args.json,
-            "✗ close-wave refused: other active worktrees exist\n"
-            + "\n".join(f"  {item['branch']} @ {item['path']}" for item in foreign))
-        return EXIT_BLOCK
-
     if args.commit and manifest is not None and manifest_delivery_status == "completed":
+        steps: list[dict[str, Any]] = []
+        sync_rc, sync_payload = _delivery_sync_close_wave(
+            args, primary, manifest_path, steps,
+        )
+        if sync_rc != EXIT_OK:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "steps": steps, "manifest": str(manifest_path) if manifest_path else None,
+            }, args.json, "✗ close-wave stopped during remote sync")
+            return sync_rc
+        marker = (_delivery_load_json(manifest_path) or {}).get("close_wave", {})
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave",
             "mode": "already-closed", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
+            "steps": steps, "sync_status": marker.get("sync_status", "not-requested"),
         }, args.json,
-            f"✓ close-wave {args.slug}: already closed; no sync/deploy run")
+            f"close-wave {args.slug}: already closed"
+            + (" and synced" if marker.get("sync_status") == "completed"
+               else "; remote sync not requested"))
         return EXIT_OK
 
     if (args.commit and manifest is not None
@@ -6075,13 +6408,27 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 args=args, state_path=state_path, manifest_path=manifest_path,
                 error=f"could not persist recovered close-wave completion: {exc}",
             )
+        recovery_steps: list[dict[str, Any]] = []
+        sync_rc, _sync_payload = _delivery_sync_close_wave(
+            args, primary, manifest_path, recovery_steps,
+        )
+        if sync_rc != EXIT_OK:
+            _emit({
+                "schema": DELIVERY_SCHEMA, "step": "close-wave",
+                "mode": "stopped", "slug": args.slug, "branches": branches,
+                "steps": recovery_steps, "manifest": str(manifest_path),
+            }, args.json, "close-wave recovered locally but remote sync stopped")
+            return sync_rc
         _emit({
             "schema": DELIVERY_SCHEMA, "step": "close-wave",
             "mode": "recovered", "slug": args.slug, "branches": branches,
             "integration_branch": manifest.get("branch"),
             "manifest": str(manifest_path) if manifest_path else None,
+            "steps": recovery_steps,
         }, args.json,
-            f"✓ close-wave {args.slug}: recovered after teardown; no sync/deploy run")
+            f"close-wave {args.slug}: recovered after teardown"
+            + (" and synced" if getattr(args, "sync", False)
+               else "; remote sync not requested"))
         return EXIT_OK
 
     if not args.commit:
@@ -6095,6 +6442,8 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
             "backlog.py validate --baseline-check",
             "resolve the integration tree",
         ]
+        if getattr(args, "sync", False):
+            plan.append("sync --commit -> origin/main (backup leg)")
         if integration_state:
             next_step = "integrate --continue --commit"
         elif manifest:
@@ -6114,7 +6463,9 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
 
     steps: list[dict[str, Any]] = []
     coordinator_orchestrator = Path(__file__).resolve()
-    primary_orchestrator = primary / "ops" / "worktree_orchestrate.py"
+    # Use the coordinator's version for every sub-step, including resolve and
+    # validate, until this round's cutover makes it the primary version.
+    primary_orchestrator = coordinator_orchestrator
     target_base = _local_trunk(args.base)
     integration_worktree: Path | None = None
     integration_branch: str | None = None
@@ -6213,16 +6564,9 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
     rrc, records = _delivery_registry_records(args)
     if rrc != EXIT_OK:
         return EXIT_BLOCK
-    foreign = _delivery_foreign_active(records, allowed)
-    if foreign:
-        _emit({
-            "schema": DELIVERY_SCHEMA, "step": "close-wave",
-            "error": "another active worktree appeared before cutover",
-            "allowed_branches": sorted(allowed), "foreign_active": foreign,
-        }, args.json,
-            "✗ close-wave stopped before cutover: another active worktree appeared\n"
-            + "\n".join(f"  {item['branch']} @ {item['path']}" for item in foreign))
-        return EXIT_BLOCK
+    # Other teams may have active worktrees. The shared Delivery Team lock keeps
+    # their close-wave primary/sync sequence out of this critical section; their
+    # source branches are not targets of this wave's resolve calls.
 
     if manifest is not None:
         integration_worktree = integration_worktree or Path(str(manifest["worktree"]))
@@ -6400,6 +6744,9 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
         completed_manifest["close_wave"] = {
             **(completed_manifest.get("close_wave") or {}),
             "status": "completed",
+            "sync_status": (
+                "pending" if getattr(args, "sync", False) else "not-requested"
+            ),
         }
         try:
             _integrate_save(manifest_path, completed_manifest)
@@ -6409,14 +6756,30 @@ def cmd_close_wave(args: argparse.Namespace) -> int:
                 error=f"could not persist completed close-wave state: {exc}",
             )
 
+    sync_rc, _sync_payload = _delivery_sync_close_wave(
+        args, primary, manifest_path, steps,
+    )
+    if sync_rc != EXIT_OK:
+        _emit({
+            "schema": DELIVERY_SCHEMA, "step": "close-wave",
+            "mode": "stopped", "slug": args.slug, "steps": steps,
+            "manifest": str(manifest_path) if manifest_path else None,
+        }, args.json, "close-wave landed locally but remote sync stopped")
+        return sync_rc
+
+    final_manifest = _delivery_load_json(manifest_path) if manifest_path else None
+    final_marker = ((final_manifest or {}).get("close_wave")
+                    if isinstance(final_manifest, dict) else {}) or {}
     _emit({
         "schema": DELIVERY_SCHEMA, "step": "close-wave", "mode": "committed",
         "slug": args.slug, "branches": branches, "integration_branch": integration_branch,
         "steps": steps, "primary_dirty": _delivery_primary_dirty(primary),
+        "sync_status": final_marker.get("sync_status", "not-requested"),
     }, args.json,
         f"✓ close-wave {args.slug}: integrated, gated, cut over, sources resolved, "
-        "anchored, validated, integration tree resolved\n"
-        "  sync/deploy intentionally not run")
+        "anchored, validated, integration tree resolved"
+        + (" and synced to origin/main" if final_marker.get("sync_status") == "completed"
+           else " (remote sync not requested)"))
     return EXIT_OK
 
 
@@ -7683,8 +8046,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     cw = sub.add_parser(
         "close-wave",
-        help="Delivery Team closure: integrate -> one fresh Gate -> cutover -> "
-             "resolve sources/integration -> anchor -> validate (dry-run default)",
+        help="Delivery Team Integrator closure: integrate/append -> one fresh Gate "
+             "-> cutover -> resolve -> anchor -> validate -> optional origin/main "
+             "sync (dry-run default)",
     )
     add_common(cw)
     add_base(cw)
@@ -7693,14 +8057,18 @@ def build_parser() -> argparse.ArgumentParser:
     cw.add_argument("--branches", nargs="+", metavar="BRANCH", default=None,
                     help="source branches for a fresh wave; omit when resuming its state")
     cw.add_argument("--commit", action="store_true",
-                    help="execute the complete local closure; requires the normal "
-                         "develop-plane authorization at the caller")
+                    help="execute the complete local closure; requires the caller's "
+                         "delivery-loop develop authorization")
+    cw.add_argument("--sync", action="store_true",
+                    help="after local cutover and closure, push the resulting primary "
+                         "main to origin/main; explicit backup leg, never deploys")
     cw.set_defaults(func=cmd_close_wave)
 
     ig = sub.add_parser("integrate", help="batch verb: fork an integration worktree off "
                         "the local trunk, cherry-pick N branches into it in order, and "
                         "run ONE gate on the result — the only way to ask whether N "
-                        "pieces of work are green TOGETHER. Gates, never lands "
+                        "pieces of work are green TOGETHER. Use --append for a late "
+                        "child before the one Gate; integrates, never lands "
                         "(dry-run default)")
     add_common(ig)
     add_base(ig)
@@ -7715,6 +8083,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="resume a stopped integration: conclude the suspended pick "
                          "(stage the resolved files first), apply what is left, then "
                          "gate (or use --no-gate to stop after picking)")
+    ig.add_argument("--append", action="store_true",
+                    help="append newly handed-back child branches to an existing "
+                         "pick-only round; always stops before the round's one Gate")
     ig.add_argument("--no-gate", dest="no_gate", action="store_true",
                     help="pick only: drain the queue and STOP before the gate; the "
                          "integration state survives, so the next `--continue --commit` "

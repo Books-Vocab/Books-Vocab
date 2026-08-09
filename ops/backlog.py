@@ -3130,6 +3130,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_store_arg(p_anchor)
     p_anchor.add_argument("--queue", type=Path, default=None)
+    p_anchor.add_argument(
+        "--branches", nargs="+", default=None, metavar="BRANCH",
+        help="only materialize rows stamped by these branches; leaves other "
+             "Delivery Teams' queued closures untouched",
+    )
     p_anchor.add_argument("--commit", action="store_true")
     p_anchor.add_argument("--json", action="store_true")
 
@@ -4695,8 +4700,17 @@ def _gate_closure(entry: dict, changes: dict, commit: bool) -> dict | None:
 
 def _cmd_anchor_locked(args, queue: Path) -> int:
     rows = read_queue(queue)
-    ready = [r for r in rows if r.get("landed_sha")]
-    unstamped = [r["id"] for r in rows if not r.get("landed_sha")]
+    branch_filter = set(args.branches or [])
+    selected = [
+        r for r in rows
+        if not branch_filter or r.get("branch") in branch_filter
+    ]
+    deferred = [
+        r for r in rows
+        if branch_filter and r.get("branch") not in branch_filter
+    ]
+    ready = [r for r in selected if r.get("landed_sha")]
+    unstamped = [r["id"] for r in selected if not r.get("landed_sha")]
 
     planned: list[tuple[dict, dict, dict]] = []
     staged_adds: list[tuple[dict, dict]] = []
@@ -4824,13 +4838,15 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
                     _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
                 for row, entry in staged_adds:
                     _write_atomic(entry_path(args.store, row["id"]), _dumps(entry))
-                write_queue(queue, [r for r in rows if not r.get("landed_sha")])
+                consumed = {id(r) for r in ready}
+                write_queue(queue, [r for r in rows if id(r) not in consumed])
 
     payload = {
         "schema": "kg.backlog.anchor.v1",
         "mode": "commit" if args.commit else "dry-run",
         "queue": str(queue),
         "acceptance": acceptance,
+        "branches": sorted(branch_filter),
         "applied": [] if problems or not args.commit else (
             [r["id"] for r, _current, _merged in planned]
             + [r["id"] for r, _entry in staged_adds]
@@ -4839,6 +4855,7 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
                         + [r["id"] for r, _entry in staged_adds]),
         "staged_adds": [r["id"] for r, _entry in staged_adds],
         "unstamped": unstamped,
+        "deferred": [r.get("id") for r in deferred],
         "problems": problems,
     }
     if problems:
