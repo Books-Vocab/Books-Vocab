@@ -163,8 +163,8 @@ struct SettingsReviewSection: View {
     /// enabled 著色表達，而是把對應的 increment/decrement closure 傳 nil —— 平台
     /// 自己把那一半 stepper 變灰並停止觸發。
     ///
-    /// `private`：injection_lint R1 對非 private 的 `struct …: View` 要求緊接
-    /// `@ObserveInjection`，而本型別純粹是 row builder，沒有自己的注入生命週期。
+    /// `private`：injection_lint R1 對非 private 的 `struct …: View` 要求緊接一個
+    /// hot-reload 觀測屬性，而本型別純粹是 row builder，沒有自己的注入生命週期。
     private struct ParamRow: View {
         let label: String
         let value: String
