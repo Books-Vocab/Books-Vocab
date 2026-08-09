@@ -122,11 +122,14 @@ struct ReaderSettingsPanelSheet: View {
 
 struct ReaderSettingsPanelPreviewHarness: View {
     @ObserveInjection private var inject
-    let initialFontSizeText: String
+    /// 只收倍率，顯示字串一律由它推導。以前 harness 另收一個寫死的
+    /// `initialFontSizeText`，加上即時預覽之後那兩者會互相打架 ——
+    /// 「Bounds (max)」scenario 會標著 2.0x 卻畫出 1.0x 的字。
+    let initialFontScale: Double
     let canDecreaseFontSize: Bool
     let canIncreaseFontSize: Bool
 
-    @State private var fontScale: Double = 1.0
+    @State private var fontScale: Double?
     @State private var lineHeight: Double = 1.5
     @State private var font: ReaderFont = .serif
     @State private var theme: ReaderTheme = .sepia
@@ -135,10 +138,13 @@ struct ReaderSettingsPanelPreviewHarness: View {
     @State private var showHitTestingDebug = false
     @State private var scrollMode = false
 
+    /// 尚未被使用者動過時用傳進來的初值；動過之後才吃 @State。
+    private var resolvedFontScale: Double { fontScale ?? initialFontScale }
+
     private var state: ReaderSettingsPresenter.State {
         .init(
-            fontSizeText: initialFontSizeText,
-            fontScale: fontScale,
+            fontSizeText: ReaderSettings.fontSizeText(for: resolvedFontScale),
+            fontScale: resolvedFontScale,
             canDecreaseFontSize: canDecreaseFontSize,
             canIncreaseFontSize: canIncreaseFontSize
         )
@@ -166,8 +172,8 @@ struct ReaderSettingsPanelPreviewHarness: View {
                 bindings: bindings,
                 // Catalog / #Preview 也走真的加減，否則預覽卡在 harness 裡是死的，
                 // 而「改設定會不會即時反映」正是這個 scenario 要看的事。
-                onDecreaseFontSize: { fontScale = max(0.75, fontScale - 0.125) },
-                onIncreaseFontSize: { fontScale = min(2.0, fontScale + 0.125) },
+                onDecreaseFontSize: { fontScale = max(0.75, resolvedFontScale - 0.125) },
+                onIncreaseFontSize: { fontScale = min(2.0, resolvedFontScale + 0.125) },
                 onSelectTheme: { theme = $0 },
                 onSelectUnderlineOpacity: { underlineOpacity = $0 },
                 onResetToDefaults: resetHarnessToDefaults
@@ -194,7 +200,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
 #Preview("Reader Settings") {
     AppThemeContainer {
         ReaderSettingsPanelPreviewHarness(
-            initialFontSizeText: "1.0x",
+            initialFontScale: 1.0,
             canDecreaseFontSize: true,
             canIncreaseFontSize: true
         )
@@ -205,7 +211,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
 #Preview("Reader Settings / Bounds") {
     AppThemeContainer {
         ReaderSettingsPanelPreviewHarness(
-            initialFontSizeText: "0.75x",
+            initialFontScale: 0.75,
             canDecreaseFontSize: false,
             canIncreaseFontSize: true
         )
