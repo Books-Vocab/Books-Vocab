@@ -159,7 +159,8 @@ verify_post_deploy() {
   # 2) /api/health — 需要 auth，unauth 預期 401（代表 route 存在 + auth wire 正常）
   #    404/000 視為 endpoint 消失或網路斷，記紅；500 視為 app 起火，記紅
   local health_http
-  health_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/health" 2>/dev/null || echo "000")
+  health_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/health" 2>/dev/null || true)
+  health_http="${health_http:-000}"
   case "$health_http" in
     401|403)
       ok "/api/health 受 auth 保護 (HTTP ${health_http}), endpoint 正常"
@@ -183,7 +184,8 @@ verify_post_deploy() {
   # 3) Sentry verify（opt-in via SENTRY_VERIFY=1）
   if [[ "${SENTRY_VERIFY:-0}" == "1" ]]; then
     local sentry_http
-    sentry_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/system/sentry-test" 2>/dev/null || echo "000")
+    sentry_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/system/sentry-test" 2>/dev/null || true)
+    sentry_http="${sentry_http:-000}"
     case "$sentry_http" in
       401|403)
         ok "/api/system/sentry-test 存在且 admin 保護 (HTTP ${sentry_http})"
