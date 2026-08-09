@@ -169,9 +169,12 @@ run_one() {
       ./ops/tests/test_docs_registry_coverage.sh
       ./ops/tests/test_docs_lint.sh
       ./ops/tests/test_docs_lint_generated_check.sh
+      ./ops/tests/test_docs_lint_generated_diff.sh
       ;;
     gen-ios-baseline)
       ./ops/tests/test_gen_ios_baseline.sh
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_swift_decl_count.py
       ;;
     ios-signal-traps)
       ./ops/tests/test_ios_signal_traps.sh
