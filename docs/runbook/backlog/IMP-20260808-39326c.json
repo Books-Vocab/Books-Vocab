@@ -10,7 +10,7 @@
   "groomed_by": "main-session",
   "id": "IMP-20260808-39326c",
   "plan": "讓 `docs_lint.sh` 在 generated 產物 drift 時印出實際差異，而不是叫呼叫者自己去跑那條 check。\n\n**實作**：`ops/docs_lint.sh` 判定 drift 的那一段（約 231 行），在既有訊息之後追加受限長度的 unified diff——把 generator 的 stdout 與磁碟產物送進 `diff -u`，截到前 N 行（N 取 40 上下，並在截斷時明說「還有 M 行」）。\n\n**兩個必須想清楚的地方**\n1. **generator 不見得把產物印到 stdout。** registry 的 `check` 是一條自由文字命令，形狀不保證。所以取得「應該長什麼樣」的方式必須從 registry 宣告推導，取不到就**誠實降級**回今天的訊息，而不是印一份猜的 diff——印錯的 diff 比不印更糟。\n2. **今天 registry 的 generated entry 是零筆**（b63206 落地後）。所以這條的測試**必須自帶合成 entry**，不能依賴真實素材；同一個 repo 今天已經因為「守衛依賴真實實例」被咬過兩次（`test_docs_lint_generated_check.sh` §7 與 `test_docs_impact.sh:287`）。\n\n**測試**：合成一份會 drift 的 generated entry → 輸出含具名行差異；合成一份取不到期望輸出的 → 降級回原訊息且**不**印 diff；產物很大時 → 截斷並說出剩餘行數。三條都要有負控（拿掉 diff 那段 → 轉紅）。",
-  "resolution": "",
+  "resolution": "以 `ops/docs_lint.sh` 的現有 `generator` 宣告作為唯一可取得期望內容的來源：drift 時先保留原本的 ERROR，再嘗試以零參數執行 generator，只有成功且 stdout 非空、產物檔存在時才印最多 40 行的 unified diff；generator 失敗、輸出為空或產物不存在時誠實降級，不猜 diff，也不改變原本的非零判決。截斷時明示尚有多少行差異未顯示。\n\n測試 `bash ops/tests/test_docs_lint_generated_diff.sh` 以合成 registry 覆蓋：基本 drift 具名行差異、generator 不可用時的舊訊息 fallback、大型產物的有界輸出；三條測試各自移除 diff 呼叫作負控。另跑 `bash ops/tests/test_docs_lint_generated_check.sh`（29 passed）、`bash -n`、`./ops/docs_lint.sh --registry`（ERROR 0）及 `./ops/backlog.py validate --baseline-check --json`（0 problems）。\n\n偏離：票面原先以「generator stdout」描述期望內容，但 registry 的 generator 是自由文字命令，不能假定每個命令都能安全重生產物；因此只在可驗證的零參數 stdout 形狀印 diff，其餘維持舊錯誤訊息，避免產生誤導證據。",
   "schema": "kg.backlog.entry.v1",
   "scope": "一支把關腳本裡加一段印差異的輸出，加上用合成資料寫的三條測試。",
   "severity": "low",
