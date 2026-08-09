@@ -20,6 +20,10 @@ from .user_store import load_users_from
 SCHEMA = "kg.ops_world_state.v1"
 
 
+class WorldProjectionError(RuntimeError):
+    """投影無法忠實表達磁碟狀態時的 fail-loud 錯誤。"""
+
+
 def _passthrough_normalize(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     return users, False
 
@@ -96,6 +100,8 @@ def _load_cards(user_dir: Path) -> list[dict[str, Any]]:
         ]
         selected = [col for col in wanted if col in cols]
         if not selected:
+            if cols:
+                raise WorldProjectionError(f"{db_path}: card table has no supported projection columns")
             return []
         order_col = "notebook_id" if "notebook_id" in cols else "content" if "content" in cols else "id"
         deleted_predicate = "COALESCE(is_deleted, 0) = 0" if "is_deleted" in cols else "1 = 1"
@@ -128,10 +134,17 @@ def _load_graphs(user_dir: Path) -> list[dict[str, Any]]:
         notebook_id = path.stem.removeprefix("graph_")
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            links: list[dict[str, Any]] = []
+        except (OSError, json.JSONDecodeError) as exc:
+            raise WorldProjectionError(f"{path}: unable to read graph JSON") from exc
         else:
-            links = raw if isinstance(raw, list) else list(raw.values()) if isinstance(raw, dict) else []
+            if isinstance(raw, list):
+                links = raw
+            elif isinstance(raw, dict):
+                links = list(raw.values())
+            else:
+                raise WorldProjectionError(
+                    f"{path}: expected graph JSON top-level list or object, got {type(raw).__name__}"
+                )
         active_links = [
             {
                 "id": link.get("id"),
