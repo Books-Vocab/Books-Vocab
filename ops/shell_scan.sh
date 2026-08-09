@@ -33,6 +33,10 @@ Checks:
      measured under C.UTF-8 and en_US.UTF-8. Named exemption: put
      `fw-allow: <reason>` in a comment on the line.
 
+  2. Bare git tag and git push --tags invocations. Every invocation must name
+     its repository with -C <repo> or --git-dir=<repo>; comments and
+     explanatory strings are ignored.
+
 Arguments:
   <repo-root>   tree to scan (default: this script's own repository)
 
@@ -130,6 +134,188 @@ elif [[ -n "${fw_hits}" ]]; then
   printf '%s\n' "${fw_hits}" | sed 's/^/      /'
 else
   ok "no \$VAR abuts a non-ASCII character across ${scanned} tracked shell script(s)"
+fi
+
+# ── bare git tag / push --tags must name the repository ──────────────────────
+# Tag commands read and mutate refs in the process cwd. A gate child sharing the
+# checkout can therefore inspect or change another session's refs unless the
+# invocation explicitly selects its fixture/repository. Scan shell tokens rather
+# than raw text so comments and explanatory strings do not become false hits.
+tag_scan_file() {
+  LC_ALL=C awk '
+    BEGIN {
+      single_quote = sprintf("%c", 39)
+      reset_command()
+    }
+    function reset_command() {
+      command_start = 1
+      in_git = 0
+      repo_target = 0
+      subcommand = ""
+      push_tags = 0
+      skip_arg = 0
+    }
+    function report_if_unsafe(    unsafe) {
+      unsafe = !repo_target && (subcommand == "tag" || (subcommand == "push" && push_tags))
+      if (unsafe) {
+        print FNR ":" $0
+      }
+    }
+    {
+      stripped = ""
+      single = 0
+      escaped = 0
+      for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        if (single) {
+          if (c == single_quote) {
+            single = 0
+          }
+          stripped = stripped " "
+          continue
+        }
+        if (double) {
+          if (escaped) {
+            escaped = 0
+          } else if (c == "\\") {
+            escaped = 1
+          } else if (c == "\"") {
+            double = 0
+          }
+          stripped = stripped " "
+          continue
+        }
+        if (c == single_quote) {
+          single = 1
+          stripped = stripped " __kg_quoted__ "
+          continue
+        }
+        if (c == "\"") {
+          double = 1
+          stripped = stripped " __kg_quoted__ "
+          continue
+        }
+        if (c == "#") {
+          break
+        }
+        stripped = stripped c
+      }
+
+      gsub(/[;&|(){}]/, " & ", stripped)
+      token_count = split(stripped, tokens, /[[:space:]]+/)
+      for (i = 1; i <= token_count; i++) {
+        token = tokens[i]
+        if (token == "") {
+          continue
+        }
+        if (token ~ /^[;&|(){}]$/) {
+          if (in_git) {
+            report_if_unsafe()
+          }
+          reset_command()
+          continue
+        }
+        if (!command_start) {
+          if (!in_git) {
+            continue
+          }
+          if (skip_arg) {
+            skip_arg = 0
+            continue
+          }
+          if (token == "__kg_quoted__") {
+            continue
+          }
+          if (token == "-C" || token == "--git-dir") {
+            repo_target = 1
+            skip_arg = 1
+            continue
+          }
+          if (token ~ /^--git-dir=/) {
+            repo_target = 1
+            continue
+          }
+          if (token == "-c" || token == "--config-env") {
+            skip_arg = 1
+            continue
+          }
+          if (subcommand == "push" && token == "--tags") {
+            push_tags = 1
+            continue
+          }
+          if (token ~ /^-/) {
+            continue
+          }
+          if (subcommand == "") {
+            subcommand = token
+          }
+          continue
+        }
+        if (token ~ /^(if|then|else|elif|while|until|do|!|time)$/) {
+          continue
+        }
+        if (token ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+          continue
+        }
+        if (token ~ /^(command|env|exec|sudo)$/) {
+          continue
+        }
+        if (token == "git") {
+          command_start = 0
+          in_git = 1
+          repo_target = 0
+          subcommand = ""
+          push_tags = 0
+          skip_arg = 0
+        } else {
+          command_start = 0
+        }
+      }
+      if (substr($0, length($0), 1) != "\\") {
+        if (in_git) {
+          report_if_unsafe()
+        }
+        reset_command()
+      }
+    }
+  ' "$1"
+}
+
+tag_fixture="${TMP}/tag_fixture.sh"
+printf '%s\n' \
+  '# git tag is documentation' \
+  'git tag bad' \
+  'git -C "$repo" tag safe' \
+  'git --git-dir="$repo/.git" tag safe' \
+  'git push --tags origin' \
+  'git -C "$repo" push --tags origin' \
+  'git --git-dir="$repo" push --tags origin' \
+  'echo "git tag is explanation"' \
+  "grep -q 'git push --tags' \"\$file\"" \
+  > "${tag_fixture}"
+tag_probe="$(tag_scan_file "${tag_fixture}")"
+if [[ "${tag_probe}" != *'2:git tag bad'* || "${tag_probe}" != *'5:git push --tags origin'* ]]; then
+  fail_t "tag scanner cannot flag known bare tag/push violations — probe broken: ${tag_probe:-<no output>}"
+elif [[ "${tag_probe}" == *'3:git -C'* || "${tag_probe}" == *'4:git --git-dir'* \
+  || "${tag_probe}" == *'6:git -C'* || "${tag_probe}" == *'7:git --git-dir'* \
+  || "${tag_probe}" == *'8:echo'* || "${tag_probe}" == *'9:grep'* ]]; then
+  fail_t "tag scanner flags targeted commands or explanatory text — pattern too broad: ${tag_probe}"
+else
+  ok "tag scanner flags bare tag/push and spares targeted commands/text (positive control)"
+fi
+
+tag_hits="$(
+  git -C "${ROOT}" ls-files '*.sh' \
+    | grep -v '^frozen/' \
+    | while IFS= read -r f; do
+        tag_scan_file "${ROOT}/${f}" | sed "s|^|${f}:|"
+      done
+)"
+if [[ -n "${tag_hits}" ]]; then
+  fail_t "bare git tag/tag push must name a repository (-C or --git-dir):"
+  printf '%s\n' "${tag_hits}" | sed 's/^/      /'
+else
+  ok "all tracked tag/tag-push invocations name a repository"
 fi
 
 echo ""
