@@ -140,6 +140,7 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - 要覆寫必須**兩個一起帶**：`--extra-settings CODE_SIGNING_ALLOWED=YES --extra-settings CODE_SIGNING_REQUIRED=YES`（後到者勝）。只帶前者會留下 `CODE_SIGNING_REQUIRED=NO`，變成「嘗試簽章但簽不動也不失敗」——一道不可能紅的 gate，比原本更糟。
 - **已知覆蓋缺口（刻意接受）**：`ops/ios_release.sh` 的 archive 是 `-destination 'generic/platform=iOS'`，**本 repo 從不簽 Mac Catalyst 產物**。因此 Catalyst 的簽章 / entitlement-vs-profile 相容性（`app-sandbox`、`icloud-container-identifiers`、`applesignin`、`aps-environment`、`DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER` 的 bundle-id↔container 映射）目前**無處驗證**。接受理由：不以 Catalyst 出貨，且模擬器 `ios-build` gate 仍跑 `ProcessProductPackaging`，entitlements plist 本身壞掉照樣紅。要改成出貨 Catalyst，這個缺口必須先補。
 - `ops/ios_test.sh` 對 Mac Catalyst / macOS destination 直接 `exit 2`，並在 stderr 說明它是 iOS-only、其產物解析不支援 Catalyst bundle layout；Catalyst 目前只到 compile，入口是 `ops/ios_build.sh --catalyst`。
+- live-only UITest compile gate 的 `generic/platform=iOS` 同樣是 compile-only：`ops/ios_test.sh` 只對這個精確 destination 加 `CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`；具名實機 destination 保留正常簽章。兩者的 signing mode 進入 test cache key，unsigned generic 產物不可被 exact-device 路徑重用。
 
 ### Step 2：還原案發現場
 

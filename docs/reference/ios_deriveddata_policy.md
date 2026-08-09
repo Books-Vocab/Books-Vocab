@@ -91,7 +91,7 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 - **同裝置執行鎖**:`test-without-building` 另會經 `/tmp/kg-ios-test-device-<selector-hash>.lock` 序列化同一台 simulator。這層不是保護 DerivedData，而是保護 simulator runtime/app state：兩個 warm-cache run 若都瞄準同一台預設機器，現在會在 `deviceRunLockWaitMs` 排隊，而不是互撞。
 - **agent/CI 預設拒絕共享 simulator**:在 `/.codex/worktrees/`、`WORKTREE_BRANCH` 或 `CI` 上，若測試 run 仍打共享預設 simulator，`ios_test.sh` 會直接 fail-fast，要求 `--lease` / `--device` / `--destination`。只有單機除錯才可用 `KG_IOS_TEST_ALLOW_SHARED_SIM=1` 明示 opt-out；目的不是功能限制，而是把原本隱性序列化與共享 state 風險前置成明確操作契約。
 - **完成 sentinel** `.kg-test-cache-complete`:build 成功才在持鎖下寫;hit 偵測(`ios_test_cache_is_complete`)與 double-check 都要求它。`-d` 目錄檢查無法區分「完整」與「中斷留下的 half-written bundle」,sentinel 是 build 真完成的證明——中斷的 build 不寫 sentinel,下個 agent 重建而非吃毒化 cache。
-- **platform/arch cache key**:test cache key 用 platform token + arch(非具體裝置名),pool 各模擬器共享一份暖 build cache。
+- **platform/arch/signing cache key**:test cache key 用 platform token + arch + signing mode(非具體裝置名),pool 各模擬器共享一份暖 build cache；`generic/platform=iOS` 的 unsigned compile-only 產物與 exact-device 的 signed/installable 產物必須分開，禁止跨模式重用。
 - **模擬器 pool**:`./ops/ios_ops.sh simulator lease`/`release`,有界 pool `kg-pool-1..N`(env `KG_IOS_SIM_POOL_SIZE` 預設 3)。mkdir 原子租借 + `mv` 原子回收 stale(TTL `KG_IOS_SIM_LEASE_TTL` 預設 1800s)；**stale 判斷先看 owner pid 是否仍存活**，live run 不會因 TTL 被回收。lease 另帶 owner token，cleanup release 只會刪自己的 slot，不會因為知道同一個 UDID 就清掉別人的 lease。這是當初失控的 155G XCTestDevices clone 的**有界、有生命週期**對應物——租借會重用與回收。
 - **用法**:`./ops/ios_test.sh --unit --lease`(自動租/釋)或 `--device <udid|name>` / `--destination '<...>'`。
 
