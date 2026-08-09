@@ -67,7 +67,9 @@ many cutovers have landed; deploy is the ONE deliberate production touch.
   integrate  the BATCH verb: fork one integration worktree off the local trunk,
              cherry-pick N branches into it in order, stop by NAME on a conflict
              (`--continue` after resolving, `--abort` to discard), and run the
-             EXISTING `gate` ONCE on the merged result. It answers the one question
+             EXISTING `gate` ONCE on the merged result (or `--no-gate` to hand back
+             after picking so a later `--continue --commit` runs only that gate). It
+             answers the one question
              per-branch gates structurally cannot: are these N pieces of work green
              TOGETHER. Measured 2026-08-06 on an eleven-branch batch — review of the
              integrated tree found five blocking defects, each green under its own
@@ -4169,11 +4171,18 @@ def _integrate_start(args, spath: Path) -> int:
             live = json.loads(spath.read_text())
         except (OSError, json.JSONDecodeError):
             live = {}
-        msg = (f"an integration named {args.slug!r} is already in flight "
-               f"(worktree {live.get('worktree')}, {len(live.get('queue') or [])} "
-               f"commit(s) still queued) — resume it with `--continue --commit` after "
-               f"resolving, or discard it with `--abort --commit`. Starting over on "
-               f"top of it would strand a half-picked tree nothing points at")
+        if live.get("gate_pending") and not (live.get("queue") or []):
+            msg = (f"an integration named {args.slug!r} has picked all "
+                   f"{len(live.get('picked') or [])} commit(s), but its gate has not "
+                   f"run yet (worktree {live.get('worktree')}) — resume with "
+                   f"`--continue --commit` to run ONLY the gate, or discard it with "
+                   f"`--abort --commit`")
+        else:
+            msg = (f"an integration named {args.slug!r} is already in flight "
+                   f"(worktree {live.get('worktree')}, {len(live.get('queue') or [])} "
+                   f"commit(s) still queued) — resume it with `--continue --commit` after "
+                   f"resolving, or discard it with `--abort --commit`. Starting over on "
+                   f"top of it would strand a half-picked tree nothing points at")
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "error": msg,
                "slug": args.slug, "state_file": str(spath),
                "worktree": live.get("worktree")}, args.json,
@@ -4267,15 +4276,17 @@ def _integrate_start(args, spath: Path) -> int:
 
     total = sum(len(p["commits"]) for p in plan)
     if not args.commit:
+        action = ("pick only and stop before the gate" if args.no_gate
+                  else "pick the commits, then run ONE gate")
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
                "slug": args.slug, "trunk": trunk, "branches": list(args.branches),
                "plan": plan, "commits": total, "handoff": handoff,
                "would_run": [f"open --slug {args.slug}",
-                             f"cherry-pick x{total}", "gate"]},
+                             f"cherry-pick x{total}"] + ([] if args.no_gate else ["gate"])},
               args.json,
               f"# integrate (dry-run)\n"
               f"  would fork `{args.slug}` off local {trunk}, cherry-pick {total} "
-              f"commit(s) from {len(plan)} branch(es), then run ONE gate:\n"
+              f"commit(s) from {len(plan)} branch(es), then {action}:\n"
               + "\n".join(
                   f"    {p['branch']}\n" + "\n".join(
                       f"      {c['sha'][:8]} {c['subject']}" for c in p["commits"])
@@ -4314,8 +4325,12 @@ def _integrate_start(args, spath: Path) -> int:
 
 
 def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
-    """Pick what is left, then gate once. The loop is resumable because every step
-    writes the queue back before the next pick can fail."""
+    """Pick what is left, then gate once unless the caller explicitly defers it.
+
+    The loop is resumable because every step writes the queue back before the next
+    pick can fail. ``--no-gate`` is a real handoff, not a verdict: it leaves the
+    integration state alive so a later ``--continue --commit`` gates the final tree.
+    """
     wt = st["worktree"]
     while st["queue"]:
         item = st["queue"][0]
@@ -4355,7 +4370,36 @@ def _integrate_drive(args, spath: Path, st: dict[str, Any]) -> int:
         st["queue"] = st["queue"][1:]
         st.pop("stopped", None)
         _integrate_save(spath, st)
+    if getattr(args, "no_gate", False):
+        return _integrate_picked_only(args, spath, st)
     return _integrate_gate(args, spath, st)
+
+
+def _integrate_picked_only(args, spath: Path, st: dict[str, Any]) -> int:
+    """Persist a picked-but-ungated integration and hand control back.
+
+    This deliberately does not infer a verdict or create a gate record. The next
+    ``integrate --continue --commit`` takes the normal ``_integrate_gate`` path,
+    keeping the gate independently re-runnable and bound to the final HEAD.
+    """
+    st["gate_pending"] = True
+    _integrate_save(spath, st)
+    wt = st["worktree"]
+    next_step = (f"{wt}/ops/worktree_orchestrate.py integrate --slug "
+                 f"{st['slug']} --continue --commit")
+    payload = {
+        "schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "picked",
+        "slug": st["slug"], "worktree": wt, "branch": st["branch"],
+        "trunk": st["trunk"], "branches": st["branches"],
+        "picked": st["picked"], "skipped": st.get("skipped", []),
+        "remaining": st.get("queue", []), "head_sha": _head_sha(wt),
+        "gated": False, "verdict": None, "landed": False,
+        "state_cleared": False, "gate_pending": True, "next_step": next_step,
+    }
+    _emit(payload, args.json,
+          f"✓ integrate {st['slug']}: picked {len(st['picked'])} commit(s), "
+          f"stopped before the gate\n  next: {next_step}")
+    return EXIT_OK
 
 
 def _integrate_gate(args, spath: Path, st: dict[str, Any]) -> int:
@@ -4522,12 +4566,19 @@ def _integrate_continue(args, spath: Path) -> int:
         return EXIT_BLOCK
 
     if not args.commit:
+        if st.get("gate_pending") and not st.get("queue"):
+            action = ("stop before the gate (the queue is already empty)"
+                      if args.no_gate else
+                      "run ONLY the gate on the already-integrated tree")
+        else:
+            action = ("stop before the gate" if args.no_gate
+                      else "apply the remaining commits, then run ONE gate")
         _emit({"schema": INTEGRATE_SCHEMA, "step": "integrate", "mode": "dry-run",
                "slug": args.slug, "worktree": wt, "picked": st["picked"],
                "remaining": st["queue"], "stopped": st.get("stopped")}, args.json,
               f"# integrate --continue (dry-run)\n"
               f"  would conclude the stopped pick and apply {len(st['queue'])} "
-              f"remaining commit(s), then run ONE gate\n  (--commit to execute)")
+              f"remaining commit(s), then {action}\n  (--commit to execute)")
         return EXIT_OK
 
     op = _interrupted_operation(wt)
@@ -5757,7 +5808,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "has nothing to contribute")
     ig.add_argument("--continue", dest="cont", action="store_true",
                     help="resume a stopped integration: conclude the suspended pick "
-                         "(stage the resolved files first), apply what is left, gate")
+                         "(stage the resolved files first), apply what is left, then "
+                         "gate (or use --no-gate to stop after picking)")
+    ig.add_argument("--no-gate", dest="no_gate", action="store_true",
+                    help="pick only: drain the queue and STOP before the gate; the "
+                         "integration state survives, so the next `--continue --commit` "
+                         "runs ONLY the gate on the already-integrated tree")
     ig.add_argument("--allow-unhanded", action="store_true",
                     help="allow a source branch with no active hand-back stamp (legacy "
                          "or imported work only); NEVER bypasses a branch-tip mismatch")

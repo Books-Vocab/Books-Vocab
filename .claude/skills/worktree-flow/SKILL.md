@@ -279,6 +279,15 @@ ops/worktree_orchestrate.py integrate --slug integrate-<batch> --branches <b1> <
 ```
 ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --json
 ```
+   若機器正忙、操作者只想先把 pick 收完而不讓工具猜測 Gate 的環境是否可信，可改用：
+```
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --no-gate --json
+```
+   這會保留 in-flight state、排空 queue 並明確回報 `gated=false`；接著同一棵整合樹執行
+```
+ops/worktree_orchestrate.py integrate --slug integrate-<batch> --continue --commit --json
+```
+   只跑一次綁定最終 HEAD 的 Gate。`--no-gate` 不產生 verdict，也不改變 `cutover` 的放行規則。
    解法原則不變：生成產物重跑 generator，不手改；表格列用前後綴接合再修散文；純新增的
    程式碼 hunk 取兩邊。要放棄整批用 `--abort --commit`——它只解掉進行中的 cherry-pick 並忘掉
    整合狀態，**工作樹留著**（拆除是 `resolve` 的事，也只有它會過 landed-floor）。
