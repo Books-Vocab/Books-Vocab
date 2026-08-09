@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "docs/sop/ui-design.md 目前的「Mochi 化北極星五條」是自繪 editorial 路線\n（Notion 風 token 系統、border 退場 divider 進場、shadow 收兩階、單一強調色、\nmotion 收斂），其中北極星 #1 明文寫「系統 bar 的材質由平台決定」「禁止對系統 bar\n疊自訂背景或第二層 glassEffect」「新開一個自繪 bar 之前必須先說明系統 bar 為什麼做不到」。\n\n使用者 2026-08-08 定案的方向是：盡量用 iOS 26 原生元件、不要自己手刻。\n這把「自繪為主、平台為輔」倒過來變成「原生為主、自繪要舉證」。\n\n在文件改掉之前，原生化的每一步在形式上都是違憲的，而 review 紀律要求違反北極星\n即 block。所以文件必須與第一刀同一次改，不能事後補。\n\n要一起講清楚的：\n- 原生優先之後，既有 AppTheme / VocabSkin / AppRoundness / AppElevation 這些 token\n  的定位變成什麼（仍適用於哪些場景、哪些場景由系統接手）\n- AppFloatingChrome 這類「沒有系統 bar 可繼承」的既有例外如何保留其正當性\n- editorial 個性（襯線標題等）在原生元件上還保得住多少，保不住的部分要具名放棄",
   "fix_site": "docs/sop/ui-design.md:24, docs/sop/ui-design.md:34, docs/sop/ui-design.md:38, docs/sop/ui-design.md:67, docs/reference/ui/review_checklist.md:66",
+  "fixed_by": [
+    "2c2883e40c95871f6c200165c9240fa07566328b"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-0eef83",
@@ -16,6 +19,10 @@
   "scope": "改寫設計憲法中關於材質與自繪元件的那幾條，並標明取代關係。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r3-0eef83",
+  "verified_evidence": "set -x; uv run --no-project --python 3.13 python - <<'PY'\nimport json, os, re, sys\nD = \"docs/sop/ui-design.md\"\nC = \"docs/reference/ui/review_checklist.md\"\nMS = \"<!-- ui-policy: mochi-polaris-v1 status=superseded -->\"\nMC = \"<!-- ui-policy: component-sourcing -->\"\nfor path in (D, C):\n    if not os.path.isfile(path):\n        sys.exit(\"missing \" + path)\nd = open(D, encoding=\"utf-8\").read()\nc = open(C, encoding=\"utf-8\").read()\nassert \"## Motion Contract\" in d, \"anchor gone: ui-design.md truncated\"\nh = re.search(r\"(?m)^###[^\\n]*Mochi[^\\n]*$\", d)\nassert h, \"anchor gone: no '### ... Mochi ...' heading in ui-design.md\"\nshell = [l for l in d.splitlines() if l.startswith(\"| App Shell |\")]\nassert shell, \"anchor gone: no '| App Shell |' table row in ui-design.md\"\nassert MS in d, \"old polaris block not marked superseded\"\ngap = h.start() - (d.index(MS) + len(MS))\nassert 0 <= gap <= 200, \"superseded marker not attached to the Mochi block (gap=%d)\" % gap\nassert MC in d, \"no component-sourcing marker\"\nassert d.index(MC) < h.start(), \"component-sourcing policy must precede the superseded block\"\ntail = d.split(MC, 1)[1]\nm = re.search(r\"```json\\s*(\\{.*?\\})\\s*```\", tail, re.S)\nassert m, \"no json block after the component-sourcing marker\"\nassert \"\\n### \" not in tail[:m.start()], \"json block sits in a different section from its marker\"\np = json.loads(m.group(1))[\"component_sourcing\"]\nassert p[\"default\"] == \"native\", p\nassert p[\"burden_of_proof\"] == \"custom\", p\nassert p[\"supersedes\"] == \"mochi-polaris-v1\", p\nnat = p[\"native_default_components\"]\nassert all(re.fullmatch(r\"[A-Za-z][A-Za-z0-9]*\", str(s)) for s in nat), nat\nassert {\"List\", \"Form\", \"Toggle\", \"Stepper\"} <= set(nat), nat\nassert len(nat) >= 5, nat\nprec = p[\"custom_precedents\"]\nassert prec, \"no custom precedent recorded\"\nfor e in prec:\n    f, sym = e[\"file\"], e[\"symbol\"]\n    assert f.startswith(\"ios/\"), \"precedent must be ios code: \" + f\n    assert os.path.isfile(f), \"precedent file not in tree: \" + f\n    assert re.fullmatch(r\"[A-Za-z][A-Za-z0-9_]*\", sym), sym\n    assert sym in open(f, encoding=\"utf-8\").read(), \"symbol %s not found in %s\" % (sym, f)\n    assert e[\"reason\"].strip(), e\nts = p[\"token_scope\"]\nfor k in (\"AppTheme\", \"VocabSkin\", \"AppRoundness\", \"AppElevation\"):\n    assert ts.get(k) == \"app-drawn\", \"token_scope[%s] must be 'app-drawn', got %r\" % (k, ts.get(k))\nassert [s for s in p[\"surrendered\"] if str(s).strip()], \"editorial surrender not named\"\nassert any(\"component_sourcing\" in l for l in shell), \"App Shell row does not cite component_sourcing\"\nassert MC in c, \"review checklist does not carry the policy marker\"\nassert \"- [ ]\" in c.split(MC, 1)[1], \"policy marker in checklist is above no checkbox group\"\nprint(\"OK\")\nPY"
 }

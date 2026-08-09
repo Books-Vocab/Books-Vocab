@@ -7,6 +7,9 @@
   "date": "2026-08-06",
   "detail": "ops/gen_ios_baseline.sh 有兩處『今天剛好還是對的』的計數脆弱點,都屬於『數字會靜默算錯』這一類,現況實測皆無影響故未在 958999 一併修:(1) TOTAL_LINES 用 `find … -exec wc -l {} + | tail -1`,當 find 因 ARG_MAX 分批 exec 時 wc 會吐出多行 total,tail -1 只取最後一批 → 總行數靜默少算。今天 507 檔 / 30301 bytes vs ARG_MAX 1048576,約 34 倍餘裕,只吐 1 行 total,三種算法(tail -1 / cat|wc -l / awk 加總)皆為 81296,所以現在是對的。(2) TOP10 用 `grep -v \"total\"` 濾掉 wc 的合計行,但那是無錨點子字串比對,任何路徑含小寫 total 的 .swift 都會被踢出 Top-10 排行;今天 ios/BooksAndVocab 下 0 個這種路徑。",
   "fix_site": "ops/gen_ios_baseline.sh:48-50（TOP10）+ :53（TOTAL_LINES）+ ops/tests/test_gen_ios_baseline.sh（新增合成 fixture 段）",
+  "fixed_by": [
+    "a27820de53502aa9bcac613b0b3f725b68be74a8"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-64a603",
@@ -16,6 +19,10 @@
   "scope": "改一支產生器的兩行計算方式，並補三段合成情境的測試。",
   "severity": "low",
   "source": "IMP-20260805-958999 收尾時順手稽核 gen_ios_baseline.sh 其餘 counter",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r3-64a603",
+  "verified_evidence": "bash -c 'test -f ops/tests/test_gen_ios_baseline.sh && grep -qF TOTAL_LINES ops/tests/test_gen_ios_baseline.sh && grep -qF TOP10 ops/tests/test_gen_ios_baseline.sh && bash ops/tests/test_gen_ios_baseline.sh && ./ops/gen_ios_baseline.sh --check'"
 }

@@ -6,6 +6,10 @@
   "date": "2026-08-08",
   "detail": "`docs/reference/tech_index.md:189`（標 **SoT**）寫著「`ui_quality_gate.py --json` 的 `summary` 六鍵」，並據此描述 `selected` / `unrun` / `passed` / `failed` / `warn` / `skipped` 的語意與不變式。\n\n**那個入口不存在。** 實測 2026-08-08：\n\n```\n$ ./ops/ui_quality_gate.py --files ops/injection_lint.py --json\nrc=2\nusage: ui_quality_gate.py [-h] [--since SINCE] [--files FILES [FILES ...]]\n                          [--tier {fast,slow,all}] [--dry-run] [--execute]\n```\n\n`--json` 住在 `ops/ui_quality_gate.sh`（`.sh --help` 有），不在 `.py`。所以照 SoT 做的 agent 會拿到 rc=2 的 usage error，然後開始懷疑自己的參數、環境、或那份文檔的其他部分。\n\n`injection-lint-cwd` 的受派者今天實際撞到，它的處置是繞道用 `.sh --dry-run` 取得證據並在回報裡具名——**但它沒有立票**，而是交回給協調者判。它同時回報「`CLAUDE.md` 與 `tech_index.md` 都寫」，實測 **`CLAUDE.md` 是 0 處**，全 repo 只有 `tech_index.md:189` 這一處。\n\n**為什麼這個小錯值得一張票**：那一列是 UI 品質控制面的 SoT，而它描述的六鍵不變式（五個狀態計數恆等於 `selected`）本身是對的、也有價值——錯的只是**誰提供它**。一個正確的契約掛在錯誤的入口上，比整段錯更難發現：讀者會相信內容，然後在入口上卡住並歸咎於自己。",
   "fix_site": "docs/reference/tech_index.md:189（ui_quality 控制面那一列）",
+  "fixed_by": [
+    "2d8315c55a99167322203d34bd2ab67fff75100f",
+    "ee7c13cc518cc27d785286bb7a14d4378791b61e"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "main-session",
   "id": "IMP-20260808-fef67a",
@@ -15,6 +19,10 @@
   "scope": "改技術索引裡的一句話，把入口指到正確的那支腳本；順手確認同段其他入口敘述是否也錯。",
   "severity": "low",
   "source": "2026-08-08 injection-lint-cwd 受派者實撞：照 SoT 打 ui_quality_gate.py --json 得到 rc=2 usage error",
-  "status": "triaged",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "r3-fef67a",
+  "verified_evidence": "IMP-20260808-fef67a evidence\n\nRed/acceptance:\n- Ticket acceptance command before edit: rc=0 despite stale string because Bash ignores errexit for a !-negated pipeline.\n- Corrected pre-edit guard using if grep; then exit 1; fi: rc=1.\n- Ticket acceptance command after edit: rc=0.\n\nUI quality entrypoints:\n- ./ops/ui_quality_plane.py validate: rc=0, 15 mechanisms valid.\n- ./ops/ui_quality_plane.py list: rc=0.\n- ./ops/ui_quality_plane.py list --json: rc=0.\n- ./ops/ui_quality_plane.py impact --files docs/reference/tech_index.md: rc=0, no mechanisms triggered.\n- ./ops/ui_quality_plane.py impact --since HEAD: rc=0, no mechanisms triggered.\n- ./ops/ios_ops.sh quality list --json: rc=0.\n- ./ops/ios_ops.sh quality impact --files docs/reference/tech_index.md --json: rc=0, empty list.\n- ./ops/ui_quality_gate.py --files docs/reference/tech_index.md --json: rc=2; current parser knows --json but requires exactly one of --dry-run or --execute.\n- ./ops/ui_quality_gate.sh --files docs/reference/tech_index.md --json: rc=2 for the same missing-mode reason.\n- ./ops/ui_quality_gate.sh --files docs/reference/tech_index.md --dry-run --json: rc=0, selected=0.\n- ./ops/ui_quality_gate.sh --files ios/BooksAndVocab/Views/Reader/ReaderView.swift --tier fast --dry-run --json: rc=0, selected=11, unrun=5, skipped=6.\n- Same fast command with --execute: rc=0, passed=5, skipped=6.\n- ./ops/ui_quality_gate.sh --files ops/review_flip_probe.sh --tier slow --dry-run --json: rc=0, planned with explicit dataset warning.\n- Same slow dry-run with --dataset marketing_demo: rc=0, planned command includes --flips 30 --dataset marketing_demo.\n- Slow --execute --execute-slow with all heavy gates excluded except structure.ui_graph: rc=0, ui_graph passed; selected=11, passed=1, skipped=10.\n\nAdditional doc-sync:\n- git show 5b5fdb8b7 confirms Kuhn removed the xcstrings needs_review scanner and xcstrings count from ops/i18n_lint.sh.\n- 5b5fdb8b7 is not reachable from HEAD, main, or origin/main, so verified_against was intentionally not changed.\n\nFinal validation:\n- acceptance_cmd: rc=0.\n- ./ops/docs_lint.sh --files docs/reference/tech_index.md docs/sop/i18n_lint.md: rc=0, ERROR=0; one pre-existing STALE warning for i18n_lint.md.\n- git diff --check -- docs/reference/tech_index.md docs/sop/i18n_lint.md: rc=0.\n\nAcceptance hardening follow-up:\n- Updated only through ./ops/backlog.py update --acceptance-cmd-file ... --commit; backlog JSON was not hand-edited.\n- Stored acceptance command includes positive path checks for docs, .claude, CLAUDE.md, and executable ui_quality_gate.sh.\n- Stored acceptance command against disposable HEAD^ tech-index blob: rc=1.\n- Stored acceptance command against current tree: rc=0.\n- ./ops/docs_lint.sh: rc=0, ERROR=0; one pre-existing STALE warning for i18n_lint.md.\n- Commit: 942c39f6b docs: harden UI quality ticket acceptance."
 }

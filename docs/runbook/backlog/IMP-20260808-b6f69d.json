@@ -3,12 +3,19 @@
   "category": "tool",
   "date": "2026-08-08",
   "detail": "`worktree_orchestrate.py:_stamp_landed_sha`（約 :4108-4120）在 cutover 時替 anchor\nqueue 的 row 蓋上 `landed_sha`，條件是：\n\n    if row.get(\"branch\") == branch and not row.get(\"landed_sha\"):\n\n也就是**只有那一條 row 自己那個分支被 cutover 時才會被蓋**。\n\n在 CLAUDE.md 明訂的**批次落地模型**下，這個條件恆為假：\n「一批 fan-out 出去的工作，受派者做到自己工作樹裡 commit 為止，`gate` / `cutover` /\n`sync` / `deploy` 留給握有整批視野的那個 session。」\n受派者在**自己的分支上** `stage`，整合者把 commit **cherry-pick 進整合分支**、\ncutover 的是**整合分支**。受派者的分支從頭到尾**沒有被 cutover 過一次**。\n\n實測（2026-08-08，round2 批次，17 個受派者、14 條分支併入 `feat/round2-land`）：\n`.cache/backlog_anchor_queue.jsonl` 有 3 筆 staged closure，branch 分別是\n`debug/ios-fixture-crash` / `feat/app-auth-explore` / `feat/demo-seed-dupe`，\n`landed_sha` 全為 `null`。整合分支 cutover 時比對的是 `feat/round2-land`，\n一筆都不會匹配。\n\n後果，且每一層都恰好是工具自己寫下要避免的：\n1. `anchor --commit` 依 `:3399` 的規則把這 3 筆「report and LEFT」，理由是\n   「staged on a branch that has not reached the trunk」——**那句話是假的**，\n   程式碼早就在 trunk 上了。這正是 `_stamp_landed_sha` docstring 自己擔心的\n   「`anchor` then files the row under『its branch has not landed』, which is false」，\n   只是它擔心的入口是並發寫入，實際走進來的是批次模型本身。\n2. 受派者 worktree `resolve` 時，`pending_anchor` 的過濾條件是\n   `branch == branch AND landed_sha`（:4799-4800），所以印出的是 `[]`。\n   而那段註解明說「this is the last moment the worktree exists to say it: after\n   teardown the row's only remaining trace is an id in a gitignored file」——\n   在批次模型下，這個「最後一次機會」**結構性地永遠是空的**。\n3. 於是最有價值的那份證據會靜靜消失：這 3 筆 row 帶的是**受派者自己跑出來的**\n   evidence（例如 `ios_ops.sh test --unit --lease … RESULT=fail(4 issues) -> RESULT=ok\n   executed=1 552s`）。整合者在 wave 末端只能自己重寫一份——而 `stage --evidence`\n   的 help 原文就是在講這件事不該發生：「an integrator inventing it at wave end is\n   writing the reason field nobody checked」。\n\n【這是今天第三個同族實例】\n同一個根：**ledger 記下的分支／SHA 身分，在 cherry-pick 之後失效**。\n  - IMP-20260808-15a2b7：`fixed_by` 記的是 cherry-pick 前的 SHA，`reanchor` 只掃 main\n  - IMP-20260808-40f07b：`verified_against` 只驗物件存在，不驗可達\n  - 本張：staged closure 的 `landed_sha` 只認自己的分支\n三張的 plan 應該先對齊同一個問題：**「這件工作落地了沒有」在批次模型下該用什麼判定**\n（patch-id？trailer？整合者顯式宣告？），再各自實作。\n\n修法方向（不指定實作，但要能同時解掉「誰蓋」與「拿什麼蓋」）：\n(a) cutover 時除了比對 `branch`，也接受「該 row 的 branch 上的 commit 已由 patch-id\n    出現在正在落地的這批裡」。與 15a2b7 的 reanchor 共用同一個 patch-id 比對。\n(b) 或者由整合者顯式宣告：`cutover --absorbs <branch>...`（或從 integrate 的\n    queue 自動推導受併入的分支清單，那份清單工具本來就有），比對時把那些分支也算進去。\n(b) 較穩：patch-id 在解過衝突之後就不相等，而批次整合幾乎必然解衝突（本輪解了三輪）。\n\nacceptance 的形狀建議：造一棵樹，在分支 A 上 `stage` 一筆、把 A 的 commit\ncherry-pick 進 B、cutover B，斷言該 row 的 `landed_sha` **非 null** 且等於 B 上的那顆——\n不要只斷言 `anchor` 不報錯（今天的行為下它也不報錯，只是靜靜把 row 留著）。",
+  "fixed_by": [
+    "dbe75ef6d7967af7bebe996ab2c12405f93db918"
+  ],
   "id": "IMP-20260808-b6f69d",
   "resolution": "—（2026-08-08 第三輪 review 複驗：全部屬實，severity high 成立，但補一個 plan 不該倚賴的論點）`:4113` 是全檔**唯一**寫 `landed_sha` 的地方（三處出現：:4112 讀、:4113 寫、:4800 讀），所以確實沒有任何回收路徑。當下的 SoT 損害可量：`IMP-20260806-edac2b` / `APP-20260805-0049ac` / `IMP-0024` 三張今天仍是 `status=open`、`fixed_by` 空、`verified_by` 空，而它們的修法就在這一批裡。／ **但不要在 plan 裡寫「反正會有人被派去重做」**：這三張今天**不在** `dispatch`（`./ops/backlog.py dispatch --json` 回 77 筆，皆不含它們）。那條升級路徑不是活的，論證要靠「證據永久消失 + 看板宣稱未解」本身，不靠一個沒量過的後果。",
   "schema": "kg.backlog.entry.v1",
   "scope": "一支流程工具裡的一個比對條件，和一個端到端測試案例。",
   "severity": "high",
   "source": "round2 批次整合實測（整合者，3 筆 staged closure 全部 landed_sha=null）",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "round3-integrator",
+  "verified_evidence": "uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_worktree_orchestrate.py -k 'via_integration or landed_sha or pending_anchor' => 3 passed"
 }
