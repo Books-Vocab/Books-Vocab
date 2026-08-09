@@ -11,11 +11,15 @@
   "groomed_by": "groom-wave-2026-08-08",
   "id": "IMP-20260806-2782f0",
   "plan": "根因是 fixedClock 這個值沒有 owner，三方（world 刻意 null / scene 才有真正的凍結時鐘 / proof 要求非空）沒有共同真相。(1) **禁用的修法**：往 ops/fixtures/ui_worlds/marketing_demo.json 補 marketingCapture.reviewClock——那違反 docs/reference/catalog_scope.md §FROZEN 紅線，而且 ios/BooksAndVocabTests/RepoFixtureDatasetsContractTests.swift:77 有一條 `#expect(marketing.reviewClock == nil, ...)` 會當場擋下。(2) 改 CatalogSnapshotTests.swift:578：fixedClock 不再取 `FixtureDatasetStore.marketingCapture()?.reviewClock?.frozenNow ?? \"\"`，改成取 scene 實際使用的凍結錨點——ios/BooksAndVocab/Debug/Scenarios/MarketingReviewClock.swift 的 `MarketingReviewClock.now(fallback:)`，格式化成 RFC3339 UTC 字串。KnowledgeGraphViewScenarios.swift:178 的 fixedNow 與 VocabularyListViewScenarios.swift:226 的 marketingFrozenStore 都走同一個來源，改在共用程式碼上三方就會對齊。(3) `?? \"\"` 必須刪掉：空字串是「證據不存在」偽裝成「證據為空」。取不到時就在 Swift 端當場紅（沿用 :615 既有的 issue 機制但改成取不到即 fail），不要讓 ops/catalog_appearance_proof.py:113 在下游才報 appearance.fixedClock.format。(4) 對帳點：ops/app_review_evidence.py:468 比的是 proof 與 catalog_run_receipt.json 兩造一致、不是釘死字面值，所以 receipt 那側（ops/lib/ios_ops_catalog.sh 的 catalog_write_run_receipt_json 的 fixed_clock 參數）也要餵同一個值；送審 spec 釘的 datasetID 是 spec-820aa288ffea，與 catalog 用的 marketing_demo 是不同 dataset，故耦合必須落在共用程式碼而不是資料。(5) 另補一支純 Python 鏡子測試（仿 ops/tests/test_catalog_scene_expectations.py 把 Swift-only 的矛盾搬到可離線跑的地方）：讀 MarketingReviewClock.swift 與 world JSON，斷言 catalog 的 fixedClock 來源不是那個結構上必為 null 的 reviewClock。這支是驗收之外的早期警報，不能取代驗收。",
-  "resolution": "",
+  "resolution": "現行 Catalog 系統正進行整體重構；舊架構的 fixedClock 驗收與修法將被取代，本輪不再投入、執行或以其結果阻擋 R6-R8 收尾。",
   "schema": "kg.backlog.entry.v1",
   "scope": "iOS 測試端改取值來源並拿掉空值退路，運維端對齊同一個值，加一支離線檢查；驗收要重跑約八分鐘的整套截圖。",
   "severity": "med",
   "source": "IMP-0064 修好後第一次跑完整 catalog snapshots 才露出",
-  "status": "open",
-  "stream": "IMP"
+  "status": "wont-fix",
+  "stream": "IMP",
+  "verdict": "OBSOLETE",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:r6-r8-integrator",
+  "verified_evidence": "使用者於 2026-08-09 確認 Catalog 系統正在大重構，現行完整 snapshots 的成功或失敗均不具決策價值；本輪完整排除 Catalog。"
 }
