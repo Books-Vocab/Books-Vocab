@@ -1,34 +1,10 @@
 import SwiftUI
 
-// MARK: - Stepper Buttons, Card/Chrome/TextInput Modifiers, Input Fields
-
-struct SettingsStepperIconButton: View {
-    @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
-    let systemImage: String
-    let enabled: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(appSkin.typography.iconMedium.weight(.medium))
-                .foregroundStyle(enabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
-                .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
-                .background(
-                    AppRoundedRect(roundness: appSkin.roundness.control)
-                        .fill(appSkin.palette.pageBackground)
-                )
-                .overlay(
-                    AppRoundedRect(roundness: appSkin.roundness.control)
-                        .stroke(appSkin.palette.cardBorder, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .enableInjection()
-    }
-}
+// MARK: - Card/Chrome/TextInput Modifiers, Input Fields
+//
+// 自繪的 +/- 步進按鈕 `SettingsStepperIconButton` 已於 APP-20260808-240a94 退場：
+// 唯一呼叫端「複習節奏」改用原生 `Stepper`，上下界由傳 nil 的 increment/decrement
+// closure 表達，不再由 app 自己畫按鈕與著色。
 
 struct SettingsCardModifier: ViewModifier {
     @Environment(\.appSkin) private var appSkin
