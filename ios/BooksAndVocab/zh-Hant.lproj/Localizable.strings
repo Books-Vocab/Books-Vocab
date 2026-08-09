@@ -1198,3 +1198,9 @@
 "settings.reviewCardLayout.standard" = "正常";
 "settings.reviewCardLayout.compact" = "精簡";
 "settings.reviewCardLayout.mixed" = "混合";
+
+/* settings-native-converge · APP-20260808-d4a707 預覽範例卡 */
+"reviewCardLayout.sample.translation" = "機緣巧合的美好發現";
+"reviewCardLayout.sample.explanation" = "指在沒有刻意尋找的情況下，偶然遇見美好事物的能力或事件。";
+"reviewCardLayout.sample.book" = "範例書";
+"reviewCardLayout.sample.chapter" = "範例章節";

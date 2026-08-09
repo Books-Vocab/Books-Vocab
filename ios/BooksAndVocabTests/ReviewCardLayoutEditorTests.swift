@@ -70,6 +70,38 @@ struct ReviewCardFieldOrderingTests {
     }
 }
 
+// MARK: - Built-in preview sample card
+
+/// 設定頁沒有「當前那張卡」時，預覽用的是程式內常數範例卡。它必須六個可選欄位
+/// 全部備齊 —— `ReviewCardContentAvailability.forReviewCard` 會濾掉缺席的欄位，
+/// 缺一個就會讓使用者切 preset 時預覽紋風不動，看起來像壞掉。
+@MainActor
+struct ReviewCardLayoutPreviewSampleTests {
+
+    @Test func sample_card_has_every_optional_field_available() {
+        for mode in VocabularyCardMode.allCases {
+            let sample = ReviewCardLayoutPreviewCard.sampleCard(for: mode)
+            let availability = ReviewCardContentAvailability.forReviewCard(
+                partOfSpeech: sample.card.partOfSpeech,
+                difficultyTier: sample.card.difficultyTier,
+                exampleCount: sample.card.examples.count,
+                explanationParagraphCount: sample.backDocument.meaningParagraphs().count,
+                collocationCount: sample.card.collocations.count
+            )
+
+            for field in ReviewCardField.canonicalOrder {
+                #expect(availability.contains(field), "範例卡缺了 \(field.rawValue)，預覽會對該欄位無反應")
+            }
+        }
+    }
+
+    @Test func sample_card_carries_the_mode_it_was_asked_for() {
+        for mode in VocabularyCardMode.allCases {
+            #expect(ReviewCardLayoutPreviewCard.sampleCard(for: mode).card.reviewMode == mode)
+        }
+    }
+}
+
 // MARK: - Editor ↔ store
 
 @MainActor

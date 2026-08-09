@@ -1215,3 +1215,9 @@
 "settings.reviewCardLayout.standard" = "Standard";
 "settings.reviewCardLayout.compact" = "Compact";
 "settings.reviewCardLayout.mixed" = "Mixed";
+
+/* settings-native-converge · APP-20260808-d4a707 預覽範例卡 */
+"reviewCardLayout.sample.translation" = "a happy accident; an unexpected discovery";
+"reviewCardLayout.sample.explanation" = "The occurrence of finding something good without having looked for it.";
+"reviewCardLayout.sample.book" = "Sample Book";
+"reviewCardLayout.sample.chapter" = "Sample Chapter";

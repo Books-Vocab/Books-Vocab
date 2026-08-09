@@ -1183,3 +1183,9 @@
 "settings.reviewCardLayout.standard" = "표준";
 "settings.reviewCardLayout.compact" = "간결";
 "settings.reviewCardLayout.mixed" = "혼합";
+
+/* settings-native-converge · APP-20260808-d4a707 預覽範例卡 */
+"reviewCardLayout.sample.translation" = "뜻밖의 행운 같은 발견";
+"reviewCardLayout.sample.explanation" = "찾으려 하지 않았는데 좋은 것을 우연히 만나는 일 또는 그런 능력.";
+"reviewCardLayout.sample.book" = "예시 도서";
+"reviewCardLayout.sample.chapter" = "예시 장";
