@@ -7179,6 +7179,11 @@ def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypat
         "ops/ios_ops.sh",
         "ops/ios_build.sh",
         "ops/ios_test.sh",
+        "ops/ios_diagnostics.py",
+        "ops/ios_coverage.py",
+        "ops/ui_world_manifest.py",
+        "ops/uitest_review_page.py",
+        "ops/fixtures/ui_worlds/marketing_demo.json",
         "ops/lib/ios_ops_core.sh",
         "ops/lib/ios_build_progress.sh",
         "ops/lib/ios_test_discovery.sh",
@@ -7206,6 +7211,10 @@ def test_gate_reuse_separates_ios_build_and_test_tool_inputs(tmp_path, monkeypat
     assert "ops/ios_test.sh" not in build_before["files"]
     assert "ops/ios_test.sh" in test_before["files"]
     assert "ops/ios_build.sh" not in test_before["files"]
+    assert "ops/ios_diagnostics.py" in build_before["files"]
+    assert "ops/ios_coverage.py" in test_before["files"]
+    assert "ops/uitest_review_page.py" in test_before["files"]
+    assert "ops/fixtures/ui_worlds/marketing_demo.json" in test_before["files"]
     assert live_before["kind"] == "tracked-ios-test-surface"
     assert "ops/ios_test.sh" in live_before["files"]
 
@@ -7251,6 +7260,14 @@ def test_ios_gate_input_map_covers_declared_shell_dependencies():
         return {f"ops/lib/{name}" for name in re.findall(
             r"(?:source|METRICS_LIB=)[^\n]*?/lib/([A-Za-z0-9_]+[.]sh)", text)}
 
+    def declared_files(rel):
+        text = (ROOT / rel).read_text()
+        names = re.findall(
+            r"[$](?:SCRIPT_DIR|PROJECT_ROOT)/(?:ops/)?([A-Za-z0-9_./-]+[.](?:py|sh))",
+            text,
+        )
+        return {f"ops/{name}" for name in names}
+
     common = set(MODULE._IOS_OPS_COMMON_INPUTS)
     common.update(
         p.relative_to(ROOT).as_posix()
@@ -7258,10 +7275,15 @@ def test_ios_gate_input_map_covers_declared_shell_dependencies():
     )
     assert declared_libs("ops/ios_ops.sh") <= common
     assert declared_libs("ops/lib/ios_ops_catalog.sh") <= common
-    assert declared_libs("ops/ios_build.sh") <= (
+    assert declared_files("ops/ios_build.sh") <= (
         common | set(MODULE._IOS_BUILD_INPUTS))
-    assert declared_libs("ops/ios_test.sh") <= (
-        common | set(MODULE._IOS_TEST_INPUTS))
+    test_inputs = common | set(MODULE._IOS_TEST_INPUTS)
+    test_inputs.update(
+        p.relative_to(ROOT).as_posix()
+        for pattern in ("ops/uitest_review_*.py", "ops/catalog_*.py")
+        for p in ROOT.glob(pattern)
+    )
+    assert declared_files("ops/ios_test.sh") <= test_inputs
 
 
 @gitmark

@@ -1598,6 +1598,7 @@ _IOS_OPS_COMMON_INPUTS = frozenset({
 })
 _IOS_BUILD_INPUTS = frozenset({
     "ops/ios_build.sh",
+    "ops/ios_diagnostics.py",
     "ops/lib/ios_build_progress.sh",
     "ops/lib/ios_lock_wait.sh",
     "ops/lib/ios_run_metrics.sh",
@@ -1605,6 +1606,9 @@ _IOS_BUILD_INPUTS = frozenset({
 })
 _IOS_TEST_INPUTS = frozenset({
     "ops/ios_test.sh",
+    "ops/ios_coverage.py",
+    "ops/ios_diagnostics.py",
+    "ops/ui_world_manifest.py",
     "ops/lib/ios_test_discovery.sh",
     "ops/lib/ios_build_progress.sh",
     "ops/lib/ios_lock_wait.sh",
@@ -1634,7 +1638,12 @@ def _ios_executable_input_files(name: str, tracked: list[str]) -> tuple[str, lis
     else:
         return None
     files = [p for p in tracked if p.startswith("ios/") or p in explicit or
-             p.startswith("ops/lib/ios_ops_")]
+             p.startswith("ops/lib/ios_ops_") or
+             (kind == "tracked-ios-test-surface" and (
+                 p.startswith("ops/fixtures/ui_worlds/") or
+                 p.startswith("ops/uitest_review_") or
+                 p.startswith("ops/catalog_")
+             ))]
     return kind, files
 
 
