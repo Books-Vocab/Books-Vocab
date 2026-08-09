@@ -1,6 +1,6 @@
 {
   "acceptance": "ui_quality_gate.py --json 這個字串不再出現在任何 md/yml；該列提到的每一個入口都實跑過且結果寫進 resolution",
-  "acceptance_cmd": "bash -c \"set -e; ! grep -rqn \\\"ui_quality_gate.py --json\\\" --include=*.md --include=*.yml docs .claude CLAUDE.md; ./ops/ui_quality_gate.sh --help > /dev/null\"",
+  "acceptance_cmd": "bash -c 'set -e; test -d docs; test -d .claude; test -f CLAUDE.md; test -x ./ops/ui_quality_gate.sh; if grep -rqn \"ui_quality_gate.py --json\" --include=\"*.md\" --include=\"*.yml\" docs .claude CLAUDE.md; then exit 1; fi; ./ops/ui_quality_gate.sh --help >/dev/null'",
   "brief": "技術索引教人用某個指令加上某個選項，那個選項其實在另一支腳本上，照做的人會直接拿到參數錯誤。",
   "category": "doc",
   "date": "2026-08-08",
