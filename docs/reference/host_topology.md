@@ -92,7 +92,7 @@ for p in 80 443; do aws lightsail open-instance-public-ports --instance-name boo
 
 **4. Bootstrap**：`apt install -y docker.io docker-compose-plugin caddy` → `git clone <repo> ~/knowledge_graph_api`。
 
-**5. 放 .env**（生產 secrets，從 standby `~/project/kg/backend/.env` 取，**勿入庫**）。
+**5. 放 .env**（生產 secrets，從 standby `~/kg-prod/backend/.env` 取，**勿入庫**）。
 
 **6. Caddyfile** `/etc/caddy/Caddyfile`（見上方 §Routing rollback 區塊）→ `systemctl restart caddy`。
 

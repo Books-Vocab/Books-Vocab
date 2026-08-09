@@ -8,17 +8,19 @@ allowed-tools: Bash, Read, Grep
 
 ## Identity
 
-> ✅ **2026-06-19 起 `devops_kg_safe.sh` / `devops.sh` 已 retarget 到 standby**（不再寫死 Lightsail，已移除 `KG_ALLOW_LIGHTSAIL` guard）。transport 由 `KG_SERVER` / `KG_REMOTE_DIR` / `KG_REMOTE_DATA_DIR` 控制，default = `chenliangyu@100.118.39.104` / `~/project/kg/backend` / `~/kg-data`（Tailscale 免密碼，不再用 `-i lightsail_kg_prod`）。`deploy/restart/migrate/backup` 直接透傳 standby（破壞性 `run` 仍由 `is_blocked_run` 守護）。權威服務層程序 = `~/butler/docs/kg-backend-deployment.md`。Lightsail instance 已 terminate，僅作冷重建 rollback 備援（見 `docs/reference/host_topology.md §Rollback`）。
+> ✅ **2026-06-19 起 `devops_kg_safe.sh` / `devops.sh` 已 retarget 到 standby**（不再寫死 Lightsail，已移除 `KG_ALLOW_LIGHTSAIL` guard）。transport 由 `KG_SERVER` / `KG_REMOTE_DIR` / `KG_REMOTE_DATA_DIR` 控制，default = `chenliangyu@100.118.39.104` / `~/kg-prod/backend` / `~/kg-data`（Tailscale 免密碼，不再用 `-i lightsail_kg_prod`）。`deploy/restart/migrate/backup` 直接透傳 standby（破壞性 `run` 仍由 `is_blocked_run` 守護）。權威服務層程序 = `~/butler/docs/kg-backend-deployment.md`。Lightsail instance 已 terminate，僅作冷重建 rollback 備援（見 `docs/reference/host_topology.md §Rollback`）。
 
 | key | value（現役 standby） | rollback（Lightsail，已 terminate） |
 |-----|-------|-------|
 | host | `chenliangyu@100.118.39.104`（Tailscale，OrbStack；`KG_SERVER`） | `ubuntu@<冷重建新 IP>`（Caddy） |
-| repo | `~/project/kg/backend`（git 同步；`KG_REMOTE_DIR`） | `~/knowledge_graph_api` |
+| repo | `~/kg-prod/backend`（生產 checkout；`KG_REMOTE_DIR`） | `~/knowledge_graph_api` |
 | data | `~/kg-data`（`KG_REMOTE_DATA_DIR`） | `~/knowledge_graph_api/data` |
 | 對外 | Cloudflare Tunnel `kg-standby`（CF 邊緣終結 TLS） | Caddy（Let's Encrypt） |
 | domain | `wordnexus.lol`（hostname 不變） | 同 |
 | container | `knowledge-graph-api`（service `kg-api`） | 同 |
 | port | `8000` | 同 |
+
+> standby 的 `~/kg-prod` 是生產 checkout（追 `origin/prod`，reconciler 從此 build）；`~/project/kg` 是 dev / resume-only，**不要在其 backend 跑 compose**。
 
 ## 安全規則
 
@@ -334,7 +336,7 @@ DNS fail → DNS issue（注意 NS 遷移期 resolver 快取，見 ~/butler/docs
 # 整機級災難（standby 容器/資料壞）→ 從 S3 拉每日備份還原：
 
 # 1. 停容器
-ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose stop'
+ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose stop'
 
 # 2. 備份當前壞資料（標時間戳）
 ssh chenliangyu@100.118.39.104 'tar czf ~/broken_data_$(date +%Y%m%d_%H%M).tgz -C ~ kg-data'
@@ -343,7 +345,7 @@ ssh chenliangyu@100.118.39.104 'tar czf ~/broken_data_$(date +%Y%m%d_%H%M).tgz -
 #    解開到 ~/kg-data/（2026-06-16 移出 worktree），細節見 docs/sop/backup_restore.md
 
 # 4. 起容器 + 驗
-ssh chenliangyu@100.118.39.104 'cd ~/project/kg/backend && docker compose up -d && curl -s http://localhost:8000/api/system/info'
+ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d && curl -s http://localhost:8000/api/system/info'
 ```
 
 > 完整還原 SOP（S3 拉取 / WAL 一致性 / 跨主機指令對照）見 `docs/sop/backup_restore.md`。
