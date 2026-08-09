@@ -67,6 +67,7 @@ DEFAULT_TESTS=(
   ios-test-discovery
   userland-portability
   script-help
+  install-hooks
   lib-sourcing
   podcast-ops
   # ── IMP-20260805-947062：以下 4 個 group 收編原本對每個 group 都不可達的 19 支
@@ -206,6 +207,7 @@ run_one() {
     ios-test-discovery) ./ops/test_ios_test_discovery.sh ;;
     userland-portability) ./ops/tests/test_userland_portability.sh ;;
     script-help)        ./ops/tests/test_script_help.sh ;;
+    install-hooks)      ./ops/tests/test_install_hooks.sh ;;
     lib-sourcing)       ./ops/tests/test_lib_sourcing.sh ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
