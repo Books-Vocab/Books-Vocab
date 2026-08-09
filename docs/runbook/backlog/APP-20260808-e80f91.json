@@ -8,6 +8,9 @@
   "date": "2026-08-08",
   "detail": "重構前，詞性與單字在同一個 HStack(alignment: .firstTextBaseline) 內：\n\n  Text(card.word) ... ; if let pos = card.partOfSpeech { Text(pos) }\n\n重構後 partOfSpeech 變成 ReviewCardField 之一，由 plan.front.fields 迭代出來，\n成為 VStack 內獨立的一列，與核心區塊之間還隔一個 foldSectionSpacing(24)。\n\n後果有兩層：正面高度多出一列＋一個間距；以及視覺語意改變 —— 詞性本來是\n單字的附屬標註，現在讀起來像一個獨立欄位。\n\n驗收基準（使用者提供）：舊版截圖 \"slate n.\" 同一行、同一基線。",
   "fix_site": "ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:133, ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:164, ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:306, ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:320, ios/BooksAndVocab/Views/Vocabulary/Scenes/TodayReviewPresenter+CardContent.swift:457, ios/BooksAndVocab/Views/Vocabulary/Scenes/ReviewCardLayout.swift:113, ios/BooksAndVocab/Models/ReviewCardLayoutProfile.swift:8",
+  "fixed_by": [
+    "785f64052908b6bd5fb0fa406767cbee7db03cba"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "APP-20260808-e80f91",
@@ -18,7 +21,11 @@
   "scope": "複習卡欄位語意、solver、presenter、profile 與相關測試。",
   "severity": "med",
   "source": "使用者實機比對舊版截圖 + 主 session 逐像素量測",
-  "status": "open",
+  "status": "fixed",
   "stream": "APP",
-  "surface": "vocabulary"
+  "surface": "vocabulary",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:ios-engineer",
+  "verified_evidence": "acceptance_cmd（**已於同波 commit f70c2bf6b 重指錨點**）跑過，rc=0，九條 clause 全綠。\n兩處重指、原因各異，都寫在該 commit 的 message 裡：\n(1) 待驗檔 TodayReviewPresenter+CardContent.swift → ReviewCardView.swift（IMP-20260808-ee7ca4\n    同波把該檔搬空刪除；b6cacc/e80f91 的 plan 本來就寫明「本票在 ee7ca4 之後重指錨點」）。\n(2) `pos-is-the-inline-field` 的 ReviewCardLayoutProfile.swift → ReviewCardLayout.swift：\n    該檔在本批次中途改派給 APP-20260808-7f0f3a 的受派者（要整檔換成 preset 模型），\n    故 `var rendersInlineWithCore` 改放 ReviewCardLayout.swift 的 extension ReviewCardField。\n    clause 語意（「只有 partOfSpeech 為 true」）一字未改，仍被機器檢查。\n\n修在 commit b1e38a082。刻意的畫面改動同 commit 更新 golden（兩個 mode 的正面 rows 不再列\nfield.partOfSpeech）與 ReviewCardRenderPlanTests 的 row 斷言。\n另跑：./ops/i18n_lint.sh --baseline-check rc=0、./ops/ui_token_lint.sh --baseline-check rc=0、\n./ops/docs_lint.sh ERROR 0。\n留給整合者（本輪受派者被明確禁止跑任何 Xcode 工具）：./ops/ios_ops.sh build 編譯 gate，\n以及 ReviewCardRenderPlanTests / ReviewCardBudgetParityTests / ReviewCardLayoutGoldenTests 的實跑。"
 }
