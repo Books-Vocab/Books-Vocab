@@ -4622,20 +4622,19 @@ def test_every_free_text_flag_that_can_carry_a_backtick_has_a_file_twin():
 # rationale while nothing asserted the behaviour.
 # --------------------------------------------------------------------------
 
-def test_add_status_fixed_is_a_door_too_and_reports_an_unproven_closure(tmp_path, capsys):
-    """`add --status fixed` writes the status directly and ran no gate at all.
-
-    A new entry cannot carry a criterion — grooming is a separate act — so the only
-    honest grade is `unproven`. The point is that it now SAYS so: before this, a
-    `fixed` born here was indistinguishable in the store from one a command proved.
-    """
+def test_add_cannot_birth_a_ticket_already_closed(tmp_path, capsys):
+    """Interactive filing starts a lifecycle; historical terminal rows use import."""
     store = tmp_path / "s"
-    assert BACKLOG.main(["add", "--store", str(store), "--stream", "IMP",
-                         "--date", "2026-08-08", "--source", "probe",
-                         "--category", "tool", "--severity", "low",
-                         "--status", "fixed", "--detail", "born closed",
-                         "--json"]) == 0
-    assert json.loads(capsys.readouterr().out)["acceptance"]["kind"] == "unproven"
+    assert BACKLOG.main([
+        "add", "--store", str(store), "--stream", "IMP",
+        "--date", "2026-08-08", "--source", "probe",
+        "--category", "tool", "--severity", "low",
+        "--status", "fixed", "--detail", "born closed", "--json",
+    ]) == 64
+    captured = capsys.readouterr()
+    assert "status=open" in captured.err
+    assert "import" in captured.err
+    assert not list(store.glob("*.json")) if store.exists() else True
 
 
 def test_import_cannot_close_a_live_entry_over_a_red_acceptance(tmp_path, capsys):
@@ -5204,6 +5203,128 @@ def test_groom_commit_makes_an_unresolved_entry_dispatchable(
     assert [row["id"] for row in dispatched["entries"]] == [entry["id"]]
 
 
+@pytest.mark.parametrize("first_proof", ["cmd", "manual"])
+def test_regroom_replaces_the_acceptance_snapshot_instead_of_mixing_it(
+    tmp_path, capsys, monkeypatch, first_proof
+):
+    store = tmp_path / "s"
+    entry = _add(store)
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+    initial = _groom_kwargs()
+    if first_proof == "cmd":
+        initial.update(
+            acceptance_cmd="exit 7", acceptance_expect_rc=7,
+            acceptance_manual="", acceptance_green_expected="detector is negative",
+        )
+    else:
+        initial.update(
+            acceptance_cmd="", acceptance_manual="signed-in device inspection",
+        )
+        initial.pop("acceptance_expect_rc", None)
+        initial.pop("acceptance_green_expected", None)
+    BACKLOG.update_entry(store, entry["id"], **initial)
+
+    if first_proof == "cmd":
+        proof = ["--acceptance-manual", "a human must inspect the signed-in state"]
+    else:
+        proof = ["--acceptance-cmd", "true"]
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], *proof, "--commit", "--json")) == 0
+    stored = json.loads(capsys.readouterr().out)["entry"]
+
+    if first_proof == "cmd":
+        assert stored["acceptance_manual"]
+        assert not stored.get("acceptance_cmd")
+    else:
+        assert stored["acceptance_cmd"] == "true"
+        assert not stored.get("acceptance_manual")
+    assert stored.get("acceptance_expect_rc", 0) == 0
+    assert not stored.get("acceptance_green_expected")
+
+
+def test_groom_refuses_a_ticket_claimed_by_another_worktree(tmp_path, capsys, monkeypatch):
+    store = tmp_path / "s"
+    entry = _add(store)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {
+        entry["id"]: {"branch": "feat/other", "path": "/tmp/other-worktree",
+                       "claimed_at": "2026-08-09T00:00:00Z"}
+    })
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true", "--commit",
+        "--json")) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "claimed" in payload["error"].lower()
+    assert "feat/other" in payload["error"]
+
+
+def test_groom_allows_the_worktree_that_owns_the_claim(tmp_path, capsys, monkeypatch):
+    store = tmp_path / "s"
+    entry = _add(store)
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {
+        entry["id"]: {"branch": "feat/this", "path": str(BACKLOG.ROOT),
+                       "claimed_at": "2026-08-09T00:00:00Z"}
+    })
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true", "--commit",
+        "--json")) == 0
+    assert json.loads(capsys.readouterr().out)["entry"]["status"] == "triaged"
+
+
+def test_groom_cannot_reopen_a_ticket_closed_while_it_waits_for_the_entry_lock(
+    tmp_path, monkeypatch
+):
+    """Closed-check and write are one transition, not two raceable snapshots."""
+    import threading
+
+    store = tmp_path / "s"
+    entry = _add(store)
+    path = BACKLOG.entry_path(store, entry["id"])
+    monkeypatch.setattr(BACKLOG, "held_tickets", lambda *a, **k: {})
+    monkeypatch.setattr(BACKLOG, "_main_commit", lambda repo=None: "abc1234")
+    args = BACKLOG.build_parser().parse_args(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true", "--commit", "--json"
+    ))
+    BACKLOG._resolve_file_twins(BACKLOG.build_parser(), args)
+    result = {}
+
+    def groom_after_lock():
+        try:
+            BACKLOG._cmd_groom(args)
+        except BACKLOG.BacklogError as exc:
+            result["error"] = str(exc)
+
+    with BACKLOG._entry_lock(path):
+        thread = threading.Thread(target=groom_after_lock)
+        thread.start()
+        time.sleep(0.03)
+        closed = BACKLOG.load_entry(store, entry["id"])
+        closed.update(status="wont-fix", resolution="superseded while claimed")
+        BACKLOG._write_atomic(path, BACKLOG._dumps(closed))
+    thread.join(timeout=2)
+
+    assert "closed" in result.get("error", "").lower()
+    assert BACKLOG.load_entry(store, entry["id"])["status"] == "wont-fix"
+
+
+def test_groom_against_must_be_reachable_from_local_main(tmp_path, capsys, monkeypatch):
+    repo = tmp_path / "repo"
+    _against, current = _groomed_against_repo(repo)
+    orphan = "f" * 40
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    store = tmp_path / "s"
+    entry = _add(store)
+
+    assert BACKLOG.main(_groom_argv(
+        store, entry["id"], "--acceptance-cmd", "true",
+        "--against", orphan, "--json")) == 64
+    payload = json.loads(capsys.readouterr().out)
+    assert "reachable" in payload["error"].lower()
+    assert current in payload["error"]
+
+
 def test_groom_requires_exactly_one_acceptance_proof(tmp_path, capsys):
     store = tmp_path / "s"
     entry = _add(store)
@@ -5261,6 +5382,8 @@ def test_lifecycle_is_a_machine_readable_contract_not_tribal_knowledge(capsys):
     assert acts["verify"]["required_for_dispatch"] is False
     assert acts["groom"]["required_for_dispatch"] is True
     assert acts["dispatch"]["writes_store"] is False
+    assert "optimistic" in acts["dispatch"]["held_scope"].lower()
+    assert "snooze" in acts["dispatch"]["snooze_scope"].lower()
     assert set(acts["close"]["branches"]) == {"single", "wave", "decline"}
     assert payload["terminal_statuses"] == ["fixed", "wont-fix"]
 
@@ -5817,20 +5940,44 @@ def test_add_library_dry_run_never_executes_a_stored_acceptance_command(tmp_path
     assert not marker.exists(), "add_entry(commit=False) executed acceptance_cmd"
 
 
-def test_add_success_reports_whether_it_created_or_reused_the_entry(tmp_path, capsys):
+def test_add_success_reports_whether_it_actually_wrote(tmp_path, capsys):
     store = tmp_path / "s"
 
     assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--json"]) == 0
     created = json.loads(capsys.readouterr().out)
     assert created["written"] is True
-    assert created["created"] is True
-    assert created["existing"] is False
 
     assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--json"]) == 0
     reused = json.loads(capsys.readouterr().out)
     assert reused["written"] is False
-    assert reused["created"] is False
-    assert reused["existing"] is True
+    assert set(created) - set(reused) == set(), (created, reused)
+
+
+def test_add_dry_run_and_commit_return_the_same_entry(tmp_path, capsys):
+    preview_store = tmp_path / "preview"
+    committed_store = tmp_path / "committed"
+
+    assert BACKLOG.main([
+        "add", "--store", str(preview_store), *_ADD, "--dry-run", "--json",
+    ]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert BACKLOG.main([
+        "add", "--store", str(committed_store), *_ADD, "--commit", "--json",
+    ]) == 0
+    committed = json.loads(capsys.readouterr().out)
+
+    assert preview["entry"] == committed["entry"]
+    assert preview["written"] is False and committed["written"] is True
+
+
+def test_add_refuses_dry_run_and_commit_together_without_writing(tmp_path):
+    store = tmp_path / "s"
+    with pytest.raises(SystemExit) as excinfo:
+        BACKLOG.main([
+            "add", "--store", str(store), *_ADD, "--dry-run", "--commit",
+        ])
+    assert excinfo.value.code == 2
+    assert not list(store.glob("*.json")) if store.exists() else True
 
 
 @pytest.mark.parametrize(
@@ -5855,6 +6002,81 @@ def test_add_refusal_reports_mode_and_that_nothing_was_written(
     assert "written=false" in captured.err
 
 
+@pytest.mark.parametrize("missing_file", [False, True])
+def test_add_file_twin_refusals_keep_the_json_mode_envelope(
+    tmp_path, capsys, missing_file
+):
+    store = tmp_path / "s"
+    base = [item for pair in zip(_ADD[::2], _ADD[1::2])
+            for item in pair if pair[0] != "--detail"]
+    detail_file = tmp_path / "missing.txt"
+    argv = ["add", "--store", str(store), *base]
+    if missing_file:
+        argv += ["--detail-file", str(detail_file)]
+    else:
+        detail_file.write_text("from file", encoding="utf-8")
+        argv += ["--detail", "inline", "--detail-file", str(detail_file)]
+
+    assert BACKLOG.main([*argv, "--json"]) == 64
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["mode"] == "commit" and payload["written"] is False
+    assert "mode=commit" in captured.err and "written=false" in captured.err
+    assert not list(store.glob("*.json")) if store.exists() else True
+
+
+def test_add_file_twin_human_refusal_names_mode_and_no_write(tmp_path, capsys):
+    store = tmp_path / "s"
+    detail_file = tmp_path / "detail.txt"
+    detail_file.write_text("from file", encoding="utf-8")
+    base = [item for pair in zip(_ADD[::2], _ADD[1::2])
+            for item in pair if pair[0] != "--detail"]
+
+    assert BACKLOG.main([
+        "add", "--store", str(store), *base, "--detail", "inline",
+        "--detail-file", str(detail_file),
+    ]) == 64
+    captured = capsys.readouterr()
+    assert "mode=commit" in captured.err and "written=false" in captured.err
+    assert "mutually exclusive" in captured.err
+
+
+def test_concurrent_identical_add_reports_only_the_actual_writer(tmp_path):
+    """The existence check and write outcome share one per-entry lock."""
+    import threading
+
+    store = tmp_path / "s"
+    preview_outcome = {}
+    payload = BACKLOG.add_entry(
+        store, stream="IMP", date="2026-08-08", source="concurrent probe",
+        category="cli", severity="med", status="open",
+        detail="two agents file the same observation", commit=False,
+        _outcome=preview_outcome,
+    )
+    path = BACKLOG.entry_path(store, payload["id"])
+    outcome = {}
+    finished = threading.Event()
+
+    def file_identical():
+        BACKLOG.add_entry(
+            store, stream=payload["stream"], date=payload["date"],
+            source=payload["source"], category=payload["category"],
+            severity=payload["severity"], status=payload["status"],
+            detail=payload["detail"], commit=True, _outcome=outcome,
+        )
+        finished.set()
+
+    with BACKLOG._entry_lock(path):
+        thread = threading.Thread(target=file_identical)
+        thread.start()
+        time.sleep(0.03)
+        assert not finished.is_set(), "the second add bypassed the per-entry lock"
+        BACKLOG._write_atomic(path, BACKLOG._dumps(payload))
+    thread.join(timeout=2)
+
+    assert finished.is_set() and outcome == {"written": False}
+
+
 def test_add_refuses_a_triaged_entry_with_no_next_action_and_leaves_no_file(tmp_path, capsys):
     """The refusal has to arrive here, not in somebody else's `land`.
 
@@ -5866,17 +6088,8 @@ def test_add_refuses_a_triaged_entry_with_no_next_action_and_leaves_no_file(tmp_
     store = tmp_path / "s"
     assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "triaged"]) == 64
     err = capsys.readouterr().err
-    assert "no-next-action" in err, err
-    # ...and it says the ways out, both of which have to be reachable FROM `add`.
-    assert "--resolution" in err, err
-    assert "--status open" in err, err
-    # `add` refuses the groom flags by name, so a hint that offers `--plan` without
-    # saying it belongs to `update` sends the caller straight into a second refusal.
-    for line in err.splitlines():
-        if "--plan" in line:
-            assert "update" in line, (
-                f"a hint offers --plan, which `add` refuses, without routing it "
-                f"through `update`: {line}")
+    assert "status=open" in err, err
+    assert "groom" in err, err
     assert not (store.exists() and list(store.glob("*.json"))), (
         "a refused add left half an entry behind")
 
@@ -5899,21 +6112,15 @@ def test_add_is_silent_on_an_ordinary_new_open_entry(tmp_path, capsys):
     capsys.readouterr()
 
 
-def test_add_still_accepts_a_triaged_entry_that_carries_its_next_action(tmp_path, capsys):
-    """The rule is "triaged owes a next action", not "triaged is banned".
-
-    `_next_action` accepts a resolution opening with an em-dash, the convention
-    that predates `plan`. Filing straight into `triaged` stays possible for
-    somebody who has actually decided the next step.
-    """
+def test_add_refuses_triaged_even_when_a_next_action_is_supplied(tmp_path, capsys):
     store = tmp_path / "s"
-    assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "triaged",
-                         "--resolution", "— 下一步:把 choices 收窄,並在落檔前跑同一份檢查",
-                         "--json"]) == 0
-    entry = json.loads(capsys.readouterr().out)["entry"]
-    assert entry["status"] == "triaged"
-    assert BACKLOG.main(["validate", "--store", str(store)]) == 0
-    capsys.readouterr()
+    assert BACKLOG.main([
+        "add", "--store", str(store), *_ADD, "--status", "triaged",
+        "--resolution", "— 下一步:把 choices 收窄,並在落檔前跑同一份檢查",
+        "--json",
+    ]) == 64
+    assert "groom" in capsys.readouterr().err
+    assert not list(store.glob("*.json")) if store.exists() else True
 
 
 def test_add_refuses_a_wont_fix_with_no_reason(tmp_path, capsys):
@@ -5924,7 +6131,7 @@ def test_add_refuses_a_wont_fix_with_no_reason(tmp_path, capsys):
     """
     store = tmp_path / "s"
     assert BACKLOG.main(["add", "--store", str(store), *_ADD, "--status", "wont-fix"]) == 64
-    assert "wont-fix-without-reason" in capsys.readouterr().err
+    assert "status=open" in capsys.readouterr().err
     assert not (store.exists() and list(store.glob("*.json")))
 
 

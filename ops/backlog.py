@@ -505,6 +505,38 @@ def _write_atomic(path: Path, text: str) -> None:
             tmp.unlink()
 
 
+@contextlib.contextmanager
+def _entry_lock(path: Path):
+    """Serialize create-or-reuse for one entry path and fail closed on lock errors.
+
+    Atomic replacement prevents partial JSON; it does not make the preceding
+    exists/read/compare decision atomic.  Two agents filing the same observation in
+    one checkout therefore need one critical section if ``written`` is to describe
+    this invocation rather than an earlier snapshot.  The sidecar belongs in the
+    gitignored worktree cache, keyed by the absolute target path, so it never becomes
+    backlog data and unrelated entry files remain fully parallel.
+    """
+    key = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()
+    lock_path = ROOT / ".cache" / "backlog_entry_locks" / f"{key}.lock"
+    fd = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    except OSError as exc:
+        if fd is not None:
+            os.close(fd)
+        raise BacklogError(
+            f"entry lock unavailable for {path.name}: {exc}; nothing was written"
+        ) from exc
+    try:
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 # ---------------------------------------------------------------------------
 # validation
 # ---------------------------------------------------------------------------
@@ -1315,6 +1347,7 @@ def add_entry(
     overwrite: bool = False,
     historical: bool = False,
     _gate: bool = False,
+    _outcome: dict | None = None,
     commit: bool = True,
 ) -> dict:
     """Compose one entry and, by default, create its file.
@@ -1395,9 +1428,9 @@ def add_entry(
     # moment of writing, when the caller may genuinely not know the answer yet.
     #
     # It DOES owe the status obligations, which this switch used to suppress as
-    # collateral (see `_check_status_obligations`). Refused here rather than
-    # dry-run because `add`'s contract is "additive, git-reversible, lands
-    # immediately" — there is no second call to preview into. The per-kind
+    # collateral (see `_check_status_obligations`). The CLI defaults to an
+    # immediate additive write but also exposes an explicit dry-run; both paths
+    # must reject the same invalid payload before any write. The per-kind
     # question that makes the refusal safe is answered in the test named
     # `test_add_is_silent_on_an_ordinary_new_open_entry`: an ordinary new `open`
     # entry has no plan, no acceptance and no landing commit, and this check must
@@ -1439,22 +1472,30 @@ def add_entry(
         raise ValueError(f"invalid entry: {problems}{hint}")
 
     path = entry_path(store, payload["id"])
-    if path.exists() and not overwrite:
-        existing = json.loads(path.read_text(encoding="utf-8"))
-        if existing == payload:
-            return payload  # genuinely idempotent: nothing to write
-        # Silent clobber is the failure this refuses. Ids are content-derived,
-        # so re-filing text that was later triaged re-mints the SAME id and
-        # would reset status/resolution with no diff to notice and rc=0. Only
-        # `import_legacy` passes overwrite=True, and it merges first.
-        raise ValueError(
-            f"{payload['id']} already exists with different content; "
-            f"use `update` to change it (differing: "
-            f"{sorted(k for k in set(existing) | set(payload) if existing.get(k) != payload.get(k))})"
-        )
+    lock = _entry_lock(path) if commit else contextlib.nullcontext()
+    with lock:
+        if path.exists() and not overwrite:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            if existing == payload:
+                if _outcome is not None:
+                    _outcome["written"] = False
+                return payload  # genuinely idempotent: nothing to write
+            # Silent clobber is the failure this refuses. Ids are content-derived,
+            # so re-filing text that was later triaged re-mints the SAME id and
+            # would reset status/resolution with no diff to notice and rc=0. Only
+            # `import_legacy` passes overwrite=True, and it merges first.
+            raise ValueError(
+                f"{payload['id']} already exists with different content; "
+                f"use `update` to change it (differing: "
+                f"{sorted(k for k in set(existing) | set(payload) if existing.get(k) != payload.get(k))})"
+            )
 
-    if commit:
-        _write_atomic(path, _dumps(payload))
+        if commit:
+            _write_atomic(path, _dumps(payload))
+        if _outcome is not None:
+            # Set inside the same critical section that made the write decision;
+            # it is an observed outcome, not a TOCTOU inference.
+            _outcome["written"] = commit
     return payload
 
 
@@ -1559,7 +1600,8 @@ GROOM_ONLY_FLAGS = ("--plan", "--acceptance", "--acceptance-cmd",
 
 
 def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
-                          *, check_traceability: bool = True) -> dict:
+                          *, check_traceability: bool = True,
+                          clear_fields: tuple[str, ...] = ()) -> dict:
     """The single predicate both `update_entry` and the CLI dry-run run through.
 
     Two copies of this used to exist and the dry-run copy omitted the
@@ -1567,10 +1609,13 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
     command with --commit could exit 64.
     """
     unknown = [field for field in changes if field not in MUTABLE_FIELDS]
+    unknown.extend(field for field in clear_fields if field not in MUTABLE_FIELDS)
     if unknown:
         raise ValueError(f"unknown field(s): {unknown}; mutable: {sorted(MUTABLE_FIELDS)}")
 
     updated = dict(payload)
+    for field in clear_fields:
+        updated.pop(field, None)
     for field, value in changes.items():
         if value is None:
             continue
@@ -1675,7 +1720,8 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
     return updated
 
 
-def update_entry(store: Path, entry_id: str, **changes) -> dict:
+def update_entry(store: Path, entry_id: str, *, _clear_fields: tuple[str, ...] = (),
+                 _lock_held: bool = False, **changes) -> dict:
     """Change fields on an existing entry, in place, keeping its id.
 
     The id digest deliberately covers only the fields that identify WHICH
@@ -1687,10 +1733,19 @@ def update_entry(store: Path, entry_id: str, **changes) -> dict:
     created a field nobody reads is the quiet half of the drift this store
     exists to remove.
     """
+    if not _lock_held:
+        with _entry_lock(entry_path(store, entry_id)):
+            return update_entry(
+                store, entry_id, _clear_fields=_clear_fields,
+                _lock_held=True, **changes
+            )
+
     payload = load_entry(store, entry_id)
     # Validate BEFORE writing, so a rejected update leaves the file exactly as
     # it was rather than half-applied.
-    updated = _merged_and_validated(payload, changes, entry_id)
+    updated = _merged_and_validated(
+        payload, changes, entry_id, clear_fields=_clear_fields
+    )
     _write_atomic(entry_path(store, entry_id), _dumps(updated))
     return updated
 
@@ -3454,8 +3509,8 @@ def _add_file_twins(parser: argparse.ArgumentParser) -> None:
     parser._kg_file_twins = twins
 
 
-def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
-    """Fold each `--X-file` into `--X`. Returns an exit code on refusal, else None."""
+def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> None:
+    """Fold each `--X-file` into `--X`; semantic refusals use the common envelope."""
     for dest, flag, required in getattr(parser, "_kg_file_twins", {}).get(args.command, ()):
         path = getattr(args, f"{dest}_file", None)
         inline = getattr(args, dest, None)
@@ -3463,9 +3518,10 @@ def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
             # Not "last one wins" and not "the file wins": either would produce a
             # write whose content is not the content the caller believes they
             # supplied, which is the exact defect the twin exists to remove.
-            print(f"{flag} and {flag}-file are mutually exclusive — pass the text "
-                  f"or the path, not both.\nnothing was written.", file=sys.stderr)
-            return 64
+            raise BacklogError(
+                f"{flag} and {flag}-file are mutually exclusive — pass the text "
+                "or the path, not both; nothing was written"
+            )
         if path is not None:
             if dest in REFUSED_BY_COMMAND.get(args.command, ()):
                 # The handler refuses this field outright, so reading the file first
@@ -3478,8 +3534,9 @@ def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
             try:
                 text = Path(path).read_text(encoding="utf-8")
             except OSError as exc:
-                print(f"{flag}-file: {exc}\nnothing was written.", file=sys.stderr)
-                return 64
+                raise BacklogError(
+                    f"{flag}-file: {exc}; nothing was written"
+                ) from exc
             # Only TRAILING NEWLINES go. Every editor adds one and nobody means it;
             # everything else — interior blank lines, trailing spaces — is delivered
             # as written, which is the entire point of this channel.
@@ -3489,9 +3546,6 @@ def _resolve_file_twins(parser: argparse.ArgumentParser, args) -> int | None:
             # required flag is a malformed command line, not a refused act.
             _subcommands(parser)[args.command].error(
                 f"one of {flag} / {flag}-file is required")
-    return None
-
-
 def _lifecycle_contract() -> dict:
     """One machine-readable model for help text, skills and automation."""
     return {
@@ -3507,7 +3561,7 @@ def _lifecycle_contract() -> dict:
         "acts": [
             {
                 "id": "add", "actor": "recorder", "command": "backlog.py add",
-                "meaning": "preserve an observed problem after deduplication",
+                "meaning": "preserve an observed problem as status=open after deduplication",
                 "writes_store": True, "write_mode": "immediate-default",
                 "required_for_dispatch": True,
             },
@@ -3528,6 +3582,8 @@ def _lifecycle_contract() -> dict:
                 "meaning": "read the worst-first takeable queue",
                 "writes_store": False, "write_mode": "read-only",
                 "required_for_dispatch": False,
+                "held_scope": DISPATCH_HELD_SCOPE,
+                "snooze_scope": DISPATCH_SNOOZE_SCOPE,
             },
             {
                 "id": "claim", "actor": "worker",
@@ -3546,7 +3602,7 @@ def _lifecycle_contract() -> dict:
                 "branch_commands": {
                     "single": "verify --status fixed --fixed-by/--fixed-elsewhere --commit",
                     "wave": "stage -> cutover/resolve stamps landing -> anchor --commit",
-                    "decline": "update --status wont-fix --resolution <reason> --commit",
+                    "decline": "verify the disposition, then update --status wont-fix --resolution <reason> --commit",
                 },
             },
         ],
@@ -3565,7 +3621,7 @@ def _lifecycle_contract() -> dict:
             },
             {
                 "id": "duplicate",
-                "path": "verify DUPLICATE-OF-<id> -> update wont-fix with the canonical id and reason",
+                "path": "verify DUPLICATE-OF-<id> -> update --duplicate-of <id> --status wont-fix with the canonical id and reason",
             },
             {
                 "id": "manual-acceptance",
@@ -3577,7 +3633,7 @@ def _lifecycle_contract() -> dict:
             },
             {
                 "id": "recurrence",
-                "path": "do not reopen through groom; dedupe and add a new dated occurrence",
+                "path": "do not reopen through groom; dedupe and add a new occurrence with its observed date/source so identity is distinct",
             },
         ],
     }
@@ -3591,7 +3647,8 @@ def _cmd_lifecycle(args) -> int:
 
     print("Ticket lifecycle (roles may share an actor; acts and evidence stay separate):")
     for act in contract["acts"]:
-        required = "required before dispatch" if act["required_for_dispatch"] else "orthogonal"
+        required = ("required before dispatch" if act["required_for_dispatch"]
+                    else "not a dispatch precondition")
         print(f"  {act['id']:<8} {act['actor']:<20} {required}: {act['meaning']}")
     print("Terminal: fixed (proved + traced) / wont-fix (reasoned decline).")
     print("Common scenarios:")
@@ -3610,24 +3667,16 @@ def _cmd_add(args) -> int:
             f"filing is a badge that costs nothing.\n"
             f"  file it first:  ./ops/backlog.py add ... --json   (prints the new id)\n"
             f"  then groom it:  ./ops/backlog.py groom <id> --help")
-    # The fourth door. `add --status fixed` writes the status directly, and before
-    # this it ran no acceptance at all — the review reproduced it end to end. `add`
-    # has no `--commit` (it lands immediately, a named exception to the dry-run
-    # convention), so the gate runs whenever the status is `fixed`.
-    # A brand-new entry cannot carry a criterion — grooming is a separate act, and
-    # `add` refuses the groom flags by name — so this gate can only ever grade
-    # `unproven`. It is here anyway, and the grade is reported below, because the
-    # alternative is a `fixed` that never passed through the gate at all and is
-    # indistinguishable in the store from one that did. Counting it is the point.
+    if args.status != "open":
+        raise BacklogError(
+            f"`add` starts a ticket at status=open, not {args.status!r}. "
+            "Work out an unresolved ticket with `groom`; close an existing ticket "
+            "through `verify --status fixed` / `update --status wont-fix`; ingest "
+            "historical terminal rows with `import`"
+        )
+
     commit = not args.dry_run
-    candidate_id = args.entry_id or make_entry_id(
-        stream=args.stream, date=args.date, source=args.source, detail=args.detail
-    )
-    existed_before = bool(
-        _SAFE_ID_RE.match(candidate_id) and entry_path(args.store, candidate_id).exists()
-    )
-    acceptance = _gate_closure({"id": "(new entry)"}, {"status": args.status},
-                               commit=commit)
+    outcome: dict = {}
     entry = add_entry(
         args.store,
         stream=args.stream,
@@ -3644,22 +3693,19 @@ def _cmd_add(args) -> int:
         repro=args.repro,
         build=args.build,
         entry_id=args.entry_id,
+        _outcome=outcome,
         commit=commit,
     )
     mode = "commit" if commit else "dry-run"
-    written = commit and not existed_before
+    written = bool(outcome["written"])
     if args.json:
         print(json.dumps({"schema": "kg.backlog.add.v1", "mode": mode,
-                          "written": written, "created": written,
-                          "existing": existed_before, "entry": entry,
-                          **({"acceptance": acceptance} if acceptance else {})},
+                          "written": written, "entry": entry},
                          ensure_ascii=False))
     else:
         print(f"{entry['id']}  [{entry['stream']}/{entry['category']}/{entry['severity']}]")
-        print(f"  mode={mode}; written={str(written).lower()}; "
-              f"created={str(written).lower()}; existing={str(existed_before).lower()}; "
-              f"{entry['detail'][:120]}")
-        if existed_before:
+        print(f"  mode={mode}; written={str(written).lower()}; {entry['detail'][:120]}")
+        if commit and not written:
             print("  nothing written; an identical entry already exists")
         elif not commit:
             print("  nothing written; rerun without --dry-run (or pass --commit) to file it")
@@ -4576,7 +4622,7 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     return 0
 
 
-def _cmd_verify(args) -> int:
+def _cmd_verify(args, *, _lock_held: bool = False) -> int:
     """Record a re-verification as one act, so it cannot land half-written.
 
     Before this, the same thing was done with `update --verdict --verified-at`,
@@ -4585,6 +4631,10 @@ def _cmd_verify(args) -> int:
     like. Here the verdict, the date, the verifier and the evidence go in
     together or not at all.
     """
+    if args.commit and not _lock_held:
+        with _entry_lock(entry_path(args.store, args.id)):
+            return _cmd_verify(args, _lock_held=True)
+
     changes = _closure_changes(verdict=args.verdict, by=args.by, evidence=args.evidence,
                                at=args.at, status=args.status, fixed_by=args.fixed_by,
                                fixed_elsewhere=args.fixed_elsewhere)
@@ -4983,14 +5033,26 @@ def _cmd_validate(args) -> int:
     return 2 if problems else 0
 
 
-def _cmd_groom(args) -> int:
+def _cmd_groom(args, *, _lock_held: bool = False) -> int:
     """Typed lifecycle door; `_cmd_update` remains the sole mutation engine."""
+    if args.commit and not _lock_held:
+        with _entry_lock(entry_path(args.store, args.id)):
+            return _cmd_groom(args, _lock_held=True)
+
     before = load_entry(args.store, args.id)
     if before.get("status") in ("fixed", "wont-fix"):
         raise BacklogError(
             f"{args.id} is closed (status={before.get('status')}); `groom` never "
             "reopens closed tickets. If the problem recurred, file the new "
             "occurrence with `add` so the old closure remains an honest audit trail"
+        )
+
+    claim = held_tickets().get(args.id)
+    claim_path = str((claim or {}).get("path") or "")
+    if claim and (not claim_path or Path(claim_path).resolve() != ROOT.resolve()):
+        raise BacklogError(
+            f"{args.id} is claimed by {claim.get('branch')} at {claim_path or '(unknown path)'}; "
+            "only the worktree owning a live claim may re-groom its executable spec"
         )
 
     proofs = [
@@ -5004,16 +5066,51 @@ def _cmd_groom(args) -> int:
             "command can express it"
         )
 
+    if args.groomed_against:
+        main_sha = _main_commit()
+        against = str(args.groomed_against).strip()
+        if main_sha is None:
+            raise BacklogError(
+                "cannot validate --against because local main does not resolve; "
+                "omit it to let groom capture local main automatically"
+            )
+        ancestry = _git("merge-base", "--is-ancestor", against, main_sha)
+        if ancestry.returncode != 0:
+            raise BacklogError(
+                f"--against {against} is not reachable from local main {main_sha}; "
+                "a grooming snapshot with no readable base cannot become dispatchable"
+            )
+
+    # Grooming replaces the executable snapshot. Merge semantics are right for
+    # generic `update` and wrong here: switching command -> manual used to inherit
+    # the old command and create two contradictory proofs; switching the other way
+    # inherited the old manual exception. Reset every omitted proof adjunct too.
+    if proofs == ["acceptance_cmd"]:
+        clear_fields = ["acceptance_manual"]
+        if args.acceptance_expect_rc is None:
+            clear_fields.append("acceptance_expect_rc")
+        if args.acceptance_green_expected is None:
+            clear_fields.append("acceptance_green_expected")
+    else:
+        clear_fields = [
+            "acceptance_cmd", "acceptance_expect_rc", "acceptance_green_expected"
+        ]
+    args._clear_fields = tuple(clear_fields)
+
     # `triaged` means somebody decided the next action. A complete groom plan is
     # exactly that decision, so leaving the status open would create two answers
     # to the same question. Verification remains independent: no verified_* field
     # is touched here, and dispatch does not require one.
     args.status = "triaged"
     args.groomed_at = args.groomed_at or _today()
-    return _cmd_update(args)
+    return _cmd_update(args, _lock_held=_lock_held)
 
 
-def _cmd_update(args) -> int:
+def _cmd_update(args, *, _lock_held: bool = False) -> int:
+    if args.commit and not _lock_held:
+        with _entry_lock(entry_path(args.store, args.id)):
+            return _cmd_update(args, _lock_held=True)
+
     # Derived from MUTABLE_FIELDS, not a second hand-written list. The previous
     # hand-written tuple happened to be a subset, so the dry-run path and the
     # commit path agreed by coincidence: adding one parser flag produced a clean
@@ -5053,6 +5150,7 @@ def _cmd_update(args) -> int:
         for field in MUTABLE_FIELDS
         if getattr(args, field, None) is not None
     }
+    clear_fields = tuple(getattr(args, "_clear_fields", ()))
     if (
         "groomed_against" not in changes
         and any(changes.get(field) is not None for field in ("groomed_at", "groomed_by"))
@@ -5063,7 +5161,7 @@ def _cmd_update(args) -> int:
         current_main = _main_commit()
         if current_main:
             changes["groomed_against"] = current_main
-    if not changes:
+    if not changes and not clear_fields:
         print("nothing to change; pass at least one field", file=sys.stderr)
         return 64
 
@@ -5074,7 +5172,9 @@ def _cmd_update(args) -> int:
     # thrown away for a bad sha. It also let a hand-edited `acceptance_expect_rc:
     # true` through, because `_acceptance_gate` coerces (`int(... or 0)`) where
     # `validate_entry` refuses it by name.
-    merged = _merged_and_validated(before, changes, args.id)
+    merged = _merged_and_validated(
+        before, changes, args.id, clear_fields=clear_fields
+    )
     # Then the gate, still before any write: a red acceptance must leave the store
     # untouched, so the refusal cannot be mistaken for "some of it landed".
     acceptance = _gate_closure(before, changes, args.commit)  # raises on a red one
@@ -5089,11 +5189,18 @@ def _cmd_update(args) -> int:
         _report_pytest_selector_count(args.id, str(changes["acceptance_cmd"]))
 
     if args.commit:
-        after = update_entry(args.store, args.id, **changes)
+        after = update_entry(
+            args.store, args.id, _clear_fields=clear_fields,
+            _lock_held=_lock_held, **changes
+        )
     else:
         after = merged
 
-    diff = {k: {"from": before.get(k, ""), "to": after[k]} for k in changes}
+    changed_fields = [*changes, *(field for field in clear_fields if field not in changes)]
+    diff = {
+        field: {"from": before.get(field, ""), "to": after.get(field, "")}
+        for field in changed_fields
+    }
     if args.json:
         # `entry` alongside `changes`: without it a caller could not tell "the payload
         # has no entry" from "the write did nothing", and had to re-query to find out
@@ -5406,9 +5513,6 @@ def _cmd_render_unlocked(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    refusal = _resolve_file_twins(parser, args)
-    if refusal is not None:
-        return refusal
     handlers = {
         "add": _cmd_add,
         "lifecycle": _cmd_lifecycle,
@@ -5430,6 +5534,7 @@ def main(argv: list[str] | None = None) -> int:
         "anchor": _cmd_anchor,
     }
     try:
+        _resolve_file_twins(parser, args)
         return handlers[args.command](args)
     except (BacklogError, ValueError) as exc:
         # `--json` is a machine channel, and a channel that turns into prose exactly
