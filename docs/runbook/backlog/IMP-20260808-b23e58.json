@@ -7,6 +7,9 @@
   "date": "2026-08-08",
   "detail": "兩份 agent-facing 文檔把 `KG_REMOTE_DIR` 的預設值寫成 `~/project/kg/backend`，實際是 `~/kg-prod/backend`（`devops.sh:21`）。\n\n出現處：`.claude/skills/devops/SKILL.md:11`、`docs/sop/debug.md:324`。\n\n這條錯得特別危險，因為它**正好指向 felix 上那個已知會靜默腐爛的 dev-only clone**。felix 有兩個 clone：`~/kg-prod`（生產，追 origin/prod）與 `~/project/kg`（dev-only，不會自己更新）。把運維指令指到後者，會讓 operator 對著一份舊碼做判斷卻以為在看生產。同一批剛加的「dev-only clone」警語與這兩處直接打架。\n\n修法是把兩處改成 `~/kg-prod/backend` 並說明兩個 clone 的分工；`docs/reference/host_topology.md`(SoT) 若也提到要一併對齊。",
   "fix_site": ".claude/skills/devops/SKILL.md:11,.claude/skills/devops/SKILL.md:16,.claude/skills/devops/SKILL.md:330,.claude/skills/devops/SKILL.md:339,docs/sop/debug.md:82,docs/sop/debug.md:99,docs/sop/debug.md:324,docs/sop/debug.md:325,docs/sop/debug.md:326,docs/reference/host_topology.md:95",
+  "fixed_by": [
+    "2ed2df9112d7514a3ed67bd0138c030b06df9b07"
+  ],
   "groomed_at": "2026-08-08",
   "groomed_by": "workflow:groom-untriaged-33",
   "id": "IMP-20260808-b23e58",
@@ -16,6 +19,10 @@
   "scope": "三份 agent-facing/SoT 文檔的生產 clone 路徑與雙 clone 分工說明。",
   "severity": "high",
   "source": "dogfood batch 1：受派者改 devops.sh 時順手發現",
-  "status": "open",
-  "stream": "IMP"
+  "status": "fixed",
+  "stream": "IMP",
+  "verdict": "CONFIRMED-FIXED",
+  "verified_at": "2026-08-09",
+  "verified_by": "agent:machine-gate",
+  "verified_evidence": "Acceptance before: rc=1 expect=0 (old path remained in SKILL.md).\nAcceptance after: rc=0 expect=0 on committed tree.\n./ops/docs_lint.sh: ERROR 0; existing STALE/impact messages are WARN only.\n./ops/review_audit.sh --rev-range HEAD~1..HEAD: PASS.\n./ops/backlog.py validate --baseline-check --json: problems=[], ok=true."
 }
