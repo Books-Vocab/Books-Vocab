@@ -1587,6 +1587,57 @@ def _input_file_digest(worktree: str, paths: list[str]) -> str | None:
     return h.hexdigest()
 
 
+_IOS_OPS_COMMON_INPUTS = frozenset({
+    "ops/ios_ops.sh",
+    # ios_ops.sh sources every ios_ops_* module before dispatch.  The catalog
+    # module also sources these three transitively, so a parse/load failure in
+    # any of them affects both build and test commands.
+    "ops/lib/ios_cache_evict.sh",
+    "ops/lib/fixture_dataset_env.sh",
+    "ops/lib/userland_compat.sh",
+})
+_IOS_BUILD_INPUTS = frozenset({
+    "ops/ios_build.sh",
+    "ops/lib/ios_build_progress.sh",
+    "ops/lib/ios_lock_wait.sh",
+    "ops/lib/ios_run_metrics.sh",
+    "ops/lib/ios_run_verdict.sh",
+})
+_IOS_TEST_INPUTS = frozenset({
+    "ops/ios_test.sh",
+    "ops/lib/ios_test_discovery.sh",
+    "ops/lib/ios_build_progress.sh",
+    "ops/lib/ios_lock_wait.sh",
+    "ops/lib/ios_test_video_archive.sh",
+    "ops/lib/ios_run_metrics.sh",
+    "ops/lib/ios_run_verdict.sh",
+    "ops/lib/signal_traps.sh",
+})
+
+
+def _ios_executable_input_files(name: str, tracked: list[str]) -> tuple[str, list[str]] | None:
+    """Return a conservative command-specific iOS input surface.
+
+    All iOS commands read the project tree and the common ios_ops dispatcher.  Build
+    and test then delegate to different top-level scripts.  Keeping those delegates
+    separate is what lets a retry reuse an already-green build after repairing only
+    the test runner; shared wrapper/libs still invalidate both, and an unknown iOS
+    gate deliberately falls back to the broader category scope below.
+    """
+    if name in {"ios-build", "ios-build-catalyst"}:
+        kind = "tracked-ios-build-surface"
+        explicit = _IOS_OPS_COMMON_INPUTS | _IOS_BUILD_INPUTS
+    elif name == "ios-test-unit" or name.startswith("ios-test-ui:") or \
+            name == "ios-live-demo-uitest-compile":
+        kind = "tracked-ios-test-surface"
+        explicit = _IOS_OPS_COMMON_INPUTS | _IOS_TEST_INPUTS
+    else:
+        return None
+    files = [p for p in tracked if p.startswith("ios/") or p in explicit or
+             p.startswith("ops/lib/ios_ops_")]
+    return kind, files
+
+
 def _gate_input_scope(spec: dict[str, Any], worktree: str,
                       changed_files: list[str], tracked: list[str] | None) -> dict[str, Any]:
     """Resolve a conservative, auditable input scope for one gate.
@@ -1634,11 +1685,18 @@ def _gate_input_scope(spec: dict[str, Any], worktree: str,
             files = [p for p in tracked if p.endswith(".sh") and
                      not p.startswith(tuple(pat for pat, _ in SHELL_GATE_EXCLUDED_TREES))]
         elif spec.get("category") == "ios":
-            kind = "tracked-ios-surface"
-            files = [p for p in tracked if p.startswith("ios/") or
-                     p.startswith("ops/ios") or p.startswith("ops/lib/ios") or
-                     p.startswith("ops/tests/test_ios") or p.startswith("ops/test_ios") or
-                     p.startswith("ops/ui_quality") or p.startswith("ops/tests/test_ui_quality")]
+            executable = _ios_executable_input_files(name, tracked)
+            if executable is not None:
+                kind, files = executable
+            else:
+                # Quality/advisory/unknown iOS gates keep the broad fail-safe scope.
+                # A new gate must earn a narrower dependency declaration explicitly.
+                kind = "tracked-ios-surface"
+                files = [p for p in tracked if p.startswith("ios/") or
+                         p.startswith("ops/ios") or p.startswith("ops/lib/ios") or
+                         p.startswith("ops/tests/test_ios") or p.startswith("ops/test_ios") or
+                         p.startswith("ops/ui_quality") or
+                         p.startswith("ops/tests/test_ui_quality")]
         elif spec.get("category") == "backend":
             kind = "tracked-backend-surface"
             files = [p for p in tracked if p.startswith("backend/") or
