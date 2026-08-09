@@ -1137,6 +1137,16 @@ def test_every_update_flag_reaches_a_field_and_every_field_has_a_flag():
     assert mutable - dests == set(), "a mutable field has no way in"
 
 
+def test_update_acceptance_contract_is_pinned_to_epilog():
+    sub = BACKLOG._subcommands(BACKLOG.build_parser())["update"]
+    assert sub.epilog
+    for field in BACKLOG.ACCEPTANCE_PROOF:
+        assert field in sub.epilog
+    assert BACKLOG.ACCEPTANCE_PROOF_SINCE in sub.epilog
+    assert "bash -n" in sub.epilog
+    assert "repo root" in sub.epilog
+
+
 def test_import_carries_forward_every_field_the_legacy_table_does_not_own(tmp_path):
     """A re-import must not erase work done through `update`.
 

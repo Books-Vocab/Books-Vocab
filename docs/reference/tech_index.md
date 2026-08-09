@@ -333,6 +333,10 @@ linked worktree 的 gate record 另含 `primary`、`primary_dirty`、`primary_di
 | 月度盤點 / 異常追 SOP | `docs/sop/cost_review.md` |
 | 觸發 skill | `billing`(read-only 分析+建議,執行交給 `devops`) |
 
+## Backlog acceptance contract pointer
+
+`backlog.py` 的 acceptance proof 契約唯一入口是 `./ops/backlog.py update --help` 的 epilog；本索引只保留指標，不重複契約內容。
+
 ## Gate receipt tail contract
 
 `ops/worktree_orchestrate.py gate` 的人類可讀報告在實際執行時最後一行恆是可貼上的
