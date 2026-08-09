@@ -2206,6 +2206,137 @@ def _git_repo(path):
     return orphan, landed
 
 
+def _groomed_against_repo(path):
+    """A main branch with a known grooming base and three later commits."""
+    def g(*args):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+             "-c", "commit.gpgsign=false", *args],
+            cwd=path, capture_output=True, text=True, check=True,
+        )
+
+    path.mkdir(parents=True, exist_ok=True)
+    g("init", "-b", "main", "-q")
+    target = path / "history.txt"
+    target.write_text("grooming base\n", encoding="utf-8")
+    g("add", "history.txt")
+    g("commit", "-qm", "grooming base")
+    against = g("rev-parse", "HEAD").stdout.strip()
+    for index in range(3):
+        target.write_text(f"grooming base\nchange {index}\n", encoding="utf-8")
+        g("add", "history.txt")
+        g("commit", "-qm", f"change {index}")
+    current = g("rev-parse", "HEAD").stdout.strip()
+    return against, current
+
+
+def test_groomed_against_round_trips_through_update_and_show(tmp_path, capsys):
+    store = tmp_path / "store"
+    entry = _add(store, detail="grooming provenance is writable")
+    against = "a" * 40
+
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--groomed-against", against, "--commit",
+    ]) == 0
+    capsys.readouterr()
+
+    stored = BACKLOG.load_entry(store, entry["id"])
+    assert stored["groomed_against"] == against
+    assert BACKLOG.main(["show", entry["id"], "--store", str(store)]) == 0
+    human = capsys.readouterr().out
+    assert re.search(rf"^groomed_against\s+{against}$", human, re.M), human
+
+
+def test_groomed_against_is_captured_when_refreshing_a_groom_stamp(
+    tmp_path, capsys, monkeypatch
+):
+    repo = tmp_path / "repo"
+    _against, current = _groomed_against_repo(repo)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    store = tmp_path / "store"
+    entry = _add(store, detail="automatic grooming provenance")
+
+    assert BACKLOG.main([
+        "update", entry["id"], "--store", str(store),
+        "--plan", "inspect ops/backlog.py and update the queue warning",
+        "--acceptance", "the synthetic history warning is visible",
+        "--acceptance-cmd", "true", "--fix-site", "ops/backlog.py:1",
+        "--brief", "待辦快照落後時接手者會先看到複查提醒。",
+        "--scope", "一支工具與一支測試，沒有資料遷移。",
+        "--groomed-at", "2026-08-09", "--groomed-by", "test:groom@v1",
+        "--commit",
+    ]) == 0
+    capsys.readouterr()
+    assert BACKLOG.load_entry(store, entry["id"])["groomed_against"] == current
+
+
+def test_groomed_against_stale_warning_uses_synthetic_main_history(
+    tmp_path, capsys, monkeypatch
+):
+    repo = tmp_path / "repo"
+    against, current = _groomed_against_repo(repo)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    store = tmp_path / "store"
+    stale = _groomed_ticket(store, detail="stale grooming snapshot")
+    BACKLOG.update_entry(store, stale["id"], groomed_against=against)
+    fresh = _groomed_ticket(store, detail="fresh grooming snapshot")
+    BACKLOG.update_entry(store, fresh["id"], groomed_against=current)
+
+    assert BACKLOG.main([
+        "dispatch", "--store", str(store),
+        "--groomed-against-max-commits", "2", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    warnings = payload["groomed_against_warnings"]
+    assert [warning["id"] for warning in warnings] == [stale["id"]]
+    assert warnings[0]["commits_behind"] == 3
+    assert warnings[0]["threshold"] == 2
+
+    assert BACKLOG.main([
+        "dispatch", "--store", str(store),
+        "--groomed-against-max-commits", "2",
+    ]) == 0
+    human = capsys.readouterr().out
+    assert human.count("groomed_against stale") == 1, human
+    assert "3 commits behind main" in human
+
+    assert BACKLOG.main([
+        "show", stale["id"], "--store", str(store),
+        "--groomed-against-max-commits", "2",
+    ]) == 0
+    shown = capsys.readouterr().out
+    assert "groomed_against stale" in shown
+    assert "3 commits behind main" in shown
+
+
+def test_groomed_against_missing_or_current_is_silent_and_grandfathered(
+    tmp_path, capsys, monkeypatch
+):
+    repo = tmp_path / "repo"
+    _against, current = _groomed_against_repo(repo)
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    store = tmp_path / "store"
+    legacy = _groomed_ticket(store, detail="legacy grooming stamp")
+    fresh = _groomed_ticket(store, detail="current grooming stamp")
+    BACKLOG.update_entry(store, fresh["id"], groomed_against=current)
+
+    assert BACKLOG.main([
+        "dispatch", "--store", str(store),
+        "--groomed-against-max-commits", "0", "--json",
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["groomed_against_warnings"] == []
+    assert "groomed_against_warning" not in payload
+
+    assert BACKLOG.main([
+        "show", legacy["id"], "--store", str(store),
+        "--groomed-against-max-commits", "0",
+    ]) == 0
+    human = capsys.readouterr().out
+    assert "groomed_against stale" not in human
+
+
 def test_reanchor_moves_an_orphan_onto_its_patch_id_equal_commit(tmp_path, monkeypatch):
     monkeypatch.undo()  # the real resolver, on a real repo
     repo = tmp_path / "repo"
