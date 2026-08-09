@@ -125,6 +125,20 @@ extension ReviewCardField {
         case .graphLinks: false
         }
     }
+
+    /// 這一列畫在該面 core 之上。難度是「詞的徽章」，不是答案底下的內容區塊：
+    /// 出貨版一直把它右對齊畫在答案字上方（見 git a5885e228^ 的 combinedAnswerContent）。
+    /// canonicalOrder 決定不了這件事——它只排 field 彼此的先後，排不了 field 與 core。
+    static func rendersAboveCore(_ field: ReviewCardField, on face: ReviewCardFace) -> Bool {
+        field == .difficultyTier && face == .back
+    }
+
+    /// 一面的 block 欄位分成 core 之上與之下兩欄，兩邊各自保持原相對順序。
+    static func split(_ fields: [ReviewCardField], on face: ReviewCardFace)
+        -> (aboveCore: [ReviewCardField], belowCore: [ReviewCardField]) {
+        (fields.filter { rendersAboveCore($0, on: face) },
+         fields.filter { !rendersAboveCore($0, on: face) })
+    }
 }
 
 struct ReviewCardRenderPlan: Equatable {
@@ -136,6 +150,7 @@ struct ReviewCardRenderPlan: Equatable {
     }
 
     struct Face: Equatable {
+        let face: ReviewCardFace
         /// 這一面啟用的全部欄位，**含 inline 的**。編輯器與既有測試讀它。
         let fields: [ReviewCardField]
         /// 核心列本身：正面是題目、背面是答案。
@@ -148,14 +163,21 @@ struct ReviewCardRenderPlan: Equatable {
         /// 已經含在 `.core` 的量測裡，再配一格就是多一列＋多一個 gap。
         var blockFields: [ReviewCardField] { fields.filter { !$0.rendersInlineWithCore } }
 
+        /// 畫在 core 之上那一欄（背面的難度徽章）。
+        var aboveCore: [ReviewCardField] { ReviewCardField.split(blockFields, on: face).aboveCore }
+
+        /// 畫在 core 之下那一欄（其餘全部）。
+        var belowCore: [ReviewCardField] { ReviewCardField.split(blockFields, on: face).belowCore }
+
         /// 真正畫出來的列序。inline 欄位不在其中：它們沒有自己的列。
         var rows: [Row] {
-            let blocks = blockFields
+            let below = belowCore
             let answerRule = coreRow == .answer
-                && ReviewCardLayoutSolver.drawsAnswerDivider(fields: blocks)
-            return [coreRow]
+                && ReviewCardLayoutSolver.drawsAnswerDivider(fields: below)
+            return aboveCore.map(Row.field)
+                + [coreRow]
                 + (answerRule ? [Row.answerDivider] : [])
-                + blocks.map(Row.field)
+                + below.map(Row.field)
         }
     }
 
@@ -172,8 +194,16 @@ struct ReviewCardRenderPlan: Equatable {
         let layout = profile.layout(for: mode)
         return Self(
             coreIsLocked: true,
-            front: .init(fields: layout.front.filter(availability.contains), coreRow: .prompt),
-            back: .init(fields: layout.back.filter(availability.contains), coreRow: .answer)
+            front: .init(
+                face: .front,
+                fields: layout.front.filter(availability.contains),
+                coreRow: .prompt
+            ),
+            back: .init(
+                face: .back,
+                fields: layout.back.filter(availability.contains),
+                coreRow: .answer
+            )
         )
     }
 }

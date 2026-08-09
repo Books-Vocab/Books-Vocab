@@ -6,9 +6,9 @@
       },
       "back": {
         "rows": [
+          "field.difficultyTier",
           "answer",
           "answerDivider",
-          "field.difficultyTier",
           "field.graphLinks",
           "field.example",
           "field.explanation",
@@ -22,9 +22,9 @@
       },
       "back": {
         "rows": [
+          "field.difficultyTier",
           "answer",
           "answerDivider",
-          "field.difficultyTier",
           "field.graphLinks",
           "field.example",
           "field.explanation",

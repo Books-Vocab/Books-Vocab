@@ -34,6 +34,29 @@ struct ReviewCardFieldOrderingTests {
         #expect(ReviewCardField.toggling(.graphLinks, in: once, isOn: true) == once)
     }
 
+    /// 「畫在 core 之上」只有背面的難度徽章成立。canonicalOrder 排不了 field 與 core
+    /// 的先後，所以這個規則必須自成一條，且不能被 face 混淆。
+    @Test func only_the_back_difficulty_tier_renders_above_the_core_row() {
+        #expect(ReviewCardField.rendersAboveCore(.difficultyTier, on: .back))
+        #expect(!ReviewCardField.rendersAboveCore(.difficultyTier, on: .front))
+        for field in ReviewCardField.allCases where field != .difficultyTier {
+            #expect(!ReviewCardField.rendersAboveCore(field, on: .front))
+            #expect(!ReviewCardField.rendersAboveCore(field, on: .back))
+        }
+    }
+
+    @Test func splitting_a_face_keeps_both_halves_in_their_original_order() {
+        let fields: [ReviewCardField] = [.graphLinks, .difficultyTier, .example, .explanation]
+
+        let back = ReviewCardField.split(fields, on: .back)
+        #expect(back.aboveCore == [.difficultyTier])
+        #expect(back.belowCore == [.graphLinks, .example, .explanation])
+
+        let front = ReviewCardField.split(fields, on: .front)
+        #expect(front.aboveCore.isEmpty)
+        #expect(front.belowCore == fields)
+    }
+
     @Test func every_field_has_a_localizable_label_key() {
         for field in ReviewCardField.canonicalOrder {
             #expect(!field.titleKey.isEmpty)

@@ -25,10 +25,14 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.front.inlineFields == [.partOfSpeech])
         #expect(plan.front.blockFields.isEmpty)
         #expect(plan.front.rows == [.prompt])
+        // 難度是詞的徽章，畫在答案字之上；其餘 block 欄位在答案之下。
+        #expect(plan.back.aboveCore == [.difficultyTier])
+        #expect(plan.back.belowCore == [.graphLinks, .example, .explanation, .collocations])
+        #expect(plan.front.aboveCore.isEmpty)
         #expect(plan.back.rows == [
+            .field(.difficultyTier),
             .answer,
             .answerDivider,
-            .field(.difficultyTier),
             .field(.graphLinks),
             .field(.example),
             .field(.explanation),
@@ -72,7 +76,8 @@ struct ReviewCardRenderPlanTests {
         #expect(plan.front.fields.isEmpty)
         #expect(plan.back.fields == [.difficultyTier])
         #expect(plan.front.rows == [.prompt])
-        #expect(plan.back.rows == [.answer, .answerDivider, .field(.difficultyTier)])
+        // 只剩難度時它在答案之上，而答案底下已無內容 —— 不畫那條懸空的線。
+        #expect(plan.back.rows == [.field(.difficultyTier), .answer])
     }
 
     @Test func a_field_can_render_on_both_faces() {

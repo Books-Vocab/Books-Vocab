@@ -148,6 +148,27 @@ struct ReviewCardDefaultParityTests {
     @Test func the_answer_divider_is_drawn_only_when_something_follows_it() {
         #expect(!ReviewCardLayoutSolver.drawsAnswerDivider(fields: []))
         #expect(ReviewCardLayoutSolver.drawsAnswerDivider(fields: [.graphLinks]))
+
+        // 難度搬到 core 之上後，「背面只開難度」底下已經沒有東西了 —— 那條線若照畫
+        // 就是一條懸空的分隔線，正是這條規則當初存在的理由。
+        let tierOnly = ReviewCardRenderPlan.make(
+            profile: ReviewCardLayoutProfile(
+                recognition: .init(front: [], back: [.difficultyTier]),
+                production: .init(front: [], back: [])
+            ),
+            mode: .recognition,
+            availability: .init(
+                partOfSpeech: true,
+                difficultyTier: true,
+                example: true,
+                explanation: true,
+                collocations: true,
+                graphLinks: true
+            )
+        )
+        #expect(tierOnly.back.aboveCore == [.difficultyTier])
+        #expect(!ReviewCardLayoutSolver.drawsAnswerDivider(fields: tierOnly.back.belowCore))
+        #expect(tierOnly.back.rows == [.field(.difficultyTier), .answer])
     }
 }
 
