@@ -1626,6 +1626,9 @@ DERIVED_DATA_ROOT="$(ios_test_derived_data_root)"
 [[ -d "$DERIVED_DATA_ROOT" ]] && touch "$DERIVED_DATA_ROOT" 2>/dev/null || true
 XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
 while :; do
+  # A retry/rebuild is a new attempt; a timeout reason must not leak into its
+  # final verdict if the later attempt fails for another reason.
+  INCONCLUSIVE_REASON=""
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
   TMPOUT=$(mktemp)
   [[ -n "$RESULT_DIR" ]] && rm -rf "$RESULT_DIR"
@@ -1641,6 +1644,7 @@ while :; do
     EXIT_CODE=$?
     if [[ "$EXIT_CODE" -ne 0 ]] && should_rebuild_after_test_without_building_failure; then
       CACHE_STATUS="rebuild-after-failure"
+      INCONCLUSIVE_REASON=""
       BUILD_LOG="$(mktemp)"
       BUILD_RESULT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_ios_test_build_result.XXXXXX")"
       BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
