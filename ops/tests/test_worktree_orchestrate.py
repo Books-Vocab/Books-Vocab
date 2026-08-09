@@ -666,6 +666,18 @@ def test_docs_registry_yml_routes_to_the_registry_lint():
     assert gates["coverage"]["uncovered"] == []
 
 
+def test_registry_lint_is_not_planned_twice_when_docs_lint_files_covers_it():
+    """`docs_lint.sh --files` validates the registry before dispatching its mode, so a
+    separate `--registry` run would assert the same fact twice for one diff."""
+    real = lambda rel: (ROOT / rel).is_file()  # noqa: E731
+    gates = plan_gates(["docs/registry.yml", "docs/sop/ios.md"],
+                       ops_test_exists=real)
+    docs_lint_runs = [g["cmd"] for g in gates
+                      if g.get("cmd", [None])[0] == "ops/docs_lint.sh"]
+    assert docs_lint_runs == [["ops/docs_lint.sh", "--files", "docs/sop/ios.md"]]
+    assert _by_name(gates)["coverage"]["uncovered"] == []
+
+
 def test_the_same_tool_is_not_planned_twice_for_one_diff():
     """Changing a yml AND the script that tests it must not run that script twice. The
     shell router already selected `ops/tests/test_ui_quality_plane.sh`; the data-plane
