@@ -7,6 +7,9 @@ import SwiftUI
 struct SettingsPresenter: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) var appSkin
+    /// 閱讀偏好是使用者層級的單例（環境預設 `.shared`），與閱讀器工具列入口
+    /// 讀寫的是同一份。
+    @Environment(\.readerSettings) private var readerSettings
 
     let state: SettingsPresenterState
     let translationSourceLang: Binding<TranslationLanguage>
@@ -27,6 +30,7 @@ struct SettingsPresenter: View {
     @State private var showTranslationLanguage = false
     @State private var showReviewSection = false
     @State private var showReviewCardLayout = false
+    @State private var showReaderSettings = false
 
     var body: some View {
         NavigationStack {
@@ -73,6 +77,12 @@ struct SettingsPresenter: View {
             }
             .navigationDestination(isPresented: $showReviewCardLayout) {
                 ReviewCardLayoutEditor()
+            }
+            // 與複習卡片同一種入口：push 一個沒有自己 chrome 的頁面。閱讀偏好
+            // 存在使用者層級的 ReaderSettings（環境預設 `.shared`），不綁任何
+            // 一本書，所以這裡不需要「有書打開」也能改。
+            .navigationDestination(isPresented: $showReaderSettings) {
+                ReaderSettingsPanel(settings: readerSettings)
             }
             .navigationDestination(isPresented: $showAccountDetail) {
                 SettingsAccountDetailView(
@@ -131,7 +141,8 @@ struct SettingsPresenter: View {
             actions: actions,
             onShowTranslationLanguage: { showTranslationLanguage = true },
             onShowReviewSettings: { showReviewSection = true },
-            onShowReviewCardLayout: { showReviewCardLayout = true }
+            onShowReviewCardLayout: { showReviewCardLayout = true },
+            onShowReaderSettings: { showReaderSettings = true }
         )
     }
 

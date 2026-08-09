@@ -36,7 +36,6 @@ struct ReaderSettingsPresenter: View {
     let onSelectUnderlineOpacity: (Double) -> Void
     /// 恢復預設 —— 與複習卡版面編輯器同形的 toolbar 入口。
     let onResetToDefaults: () -> Void
-    let onDismiss: () -> Void
 
     /// label 是 **L10n key**（由 `vocabHighlightSection` 丟給 `L10n.string`），
     /// 不是要顯示的字。用中文字面當 key 會與其他畫面的同名字面撞在一起 ——
@@ -78,8 +77,7 @@ struct ReaderSettingsPresenter: View {
             onIncreaseFontSize: {},
             onSelectTheme: { _ in },
             onSelectUnderlineOpacity: { _ in },
-            onResetToDefaults: {},
-            onDismiss: {}
+            onResetToDefaults: {}
         )
         .padding()
     }
@@ -108,8 +106,7 @@ struct ReaderSettingsPresenter: View {
             onIncreaseFontSize: {},
             onSelectTheme: { _ in },
             onSelectUnderlineOpacity: { _ in },
-            onResetToDefaults: {},
-            onDismiss: {}
+            onResetToDefaults: {}
         )
     }
     .preferredColorScheme(.dark)

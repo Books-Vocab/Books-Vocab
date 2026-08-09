@@ -4,6 +4,8 @@ struct SettingsPreferencesSection: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewCardLayoutStore) private var reviewCardLayoutStore
+    /// 與正上方「複習卡片」列同一個做法：摘要值直接讀 store，不經 state 轉一手。
+    @Environment(\.readerSettings) private var readerSettings
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
     let onShowTranslationLanguage: () -> Void
@@ -11,6 +13,9 @@ struct SettingsPreferencesSection: View {
     /// Card presentation, deliberately its own row rather than a page inside
     /// 複習節奏 — that page owns SRS scheduling rules, not what a card looks like.
     var onShowReviewCardLayout: () -> Void = {}
+    /// 閱讀設定 — 與「複習卡片」同一種列。閱讀器 chrome 的入口是情境入口
+    /// （看著書調），這裡是偏好入口（平常調），兩者都保留，也都指向同一頁。
+    var onShowReaderSettings: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
@@ -140,6 +145,22 @@ struct SettingsPreferencesSection: View {
                     .accessibilityIdentifier("settings.preferences.reviewCardLayoutValue")
                 }
                 .accessibilityIdentifier("settings.preferences.reviewCardLayoutRow")
+
+                SettingsDivider()
+
+                // 閱讀設定
+                SettingsNavigationRow(
+                    icon: "textformat.size",
+                    label: "reader.settings.title",
+                    action: onShowReaderSettings
+                ) {
+                    SettingsStatusValue(
+                        text: "\(readerSettings.font.displayName) · \(readerSettings.fontSizeText)",
+                        color: appSkin.palette.secondaryText
+                    )
+                    .accessibilityIdentifier("settings.preferences.readerSettingsValue")
+                }
+                .accessibilityIdentifier("settings.preferences.readerSettingsRow")
 
                 if state.showAutoSync {
                     SettingsDivider()
