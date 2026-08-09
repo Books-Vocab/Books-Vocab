@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 struct PodcastSubtitleCue: Identifiable, Equatable {
     let id: Int
@@ -17,6 +18,12 @@ struct PodcastSentence: Identifiable, Equatable {
     let words: [PodcastSubtitleCue]
 }
 
+/// `@Observable` because `PodcastPlayerViewModel.visibleSentences` projects
+/// `sentences` straight into three view bodies. Without it the subtitle only
+/// redraws by coincidence — the same body happens to read the tracked
+/// `subtitleState` in the same frame; split those reads apart and the subtitle
+/// sticks on the previous episode.
+@Observable
 final class PodcastSubtitleEngine {
     private(set) var cues: [PodcastSubtitleCue] = []
     private(set) var sentences: [PodcastSentence] = []
