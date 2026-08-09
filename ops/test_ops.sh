@@ -239,7 +239,7 @@ run_one() {
         ops/tests/test_uitest_review_page.py
       ;;
     catalog-agent)
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+      ./ops/tests/test_catalog_agent_boundary.sh \
         ops/tests/test_catalog_agent_boundary.py
       ;;
     uitest-contact-sheet)

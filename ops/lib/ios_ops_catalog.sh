@@ -12,6 +12,26 @@ CATALOG_ACTIVE_LEASE_DIR=""
 CATALOG_ACTIVE_SESSION_MAX_SECONDS=""
 CATALOG_RELEASE_JSON=""
 
+catalog_start_keeper() {
+  local session="$1" lifetime_seconds="$2"
+  [[ "$lifetime_seconds" =~ ^[0-9]+$ && "$lifetime_seconds" -gt 0 ]] || {
+    echo "✗ Catalog keeper lifetime must be a positive integer" >&2
+    return 1
+  }
+
+  # Keep the lease alive after the short-lived `catalog open` process exits,
+  # but stop at the pool TTL so a forgotten session can become reclaimable.
+  nohup bash -c '
+    limit="$1"
+    while (( SECONDS < limit )); do
+      remaining=$((limit - SECONDS))
+      (( remaining > 15 )) && sleep 15 || sleep "$remaining"
+    done
+  ' "$session" "$lifetime_seconds" </dev/null >/dev/null 2>&1 &
+  CATALOG_ACTIVE_KEEPER_PID="$!"
+  disown "$CATALOG_ACTIVE_KEEPER_PID" 2>/dev/null || true
+}
+
 catalog_stop_keeper() {
   local session="$1" keeper_pid="$2" command=""
   [[ "$keeper_pid" =~ ^[0-9]+$ ]] || return 0
@@ -273,19 +293,7 @@ catalog_start_session() {
   mkdir -p "$CATALOG_SESSION_ROOT"
   build_log="$CATALOG_SESSION_ROOT/$CATALOG_ACTIVE_SESSION.build.log"
 
-  # The keeper makes the lease survive the short-lived `catalog open` CLI, but
-  # it is deliberately bounded. After it exits, the simulator pool's existing
-  # TTL stale-lease rule can reclaim a forgotten/crashed session.
-  nohup bash -c '
-    limit="$1"
-    while (( SECONDS < limit )); do
-      remaining=$((limit - SECONDS))
-      (( remaining > 15 )) && sleep 15 || sleep "$remaining"
-    done
-  ' "$CATALOG_ACTIVE_SESSION" "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
-    </dev/null >/dev/null 2>&1 &
-  CATALOG_ACTIVE_KEEPER_PID="$!"
-  disown "$CATALOG_ACTIVE_KEEPER_PID" 2>/dev/null || true
+  catalog_start_keeper "$CATALOG_ACTIVE_SESSION" "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" || return 1
   catalog_arm_cleanup
 
   SIM_LEASE_OWNER_PID="$CATALOG_ACTIVE_KEEPER_PID"

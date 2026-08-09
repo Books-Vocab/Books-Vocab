@@ -303,7 +303,7 @@ OPS_SHELL_TEST_ALIASES: dict[str, str] = {
     "ops/ios_test.sh": "ops/test_ios_test_discovery.sh",
     "ops/ios_build.sh": "ops/test_ios_ops.sh",
     "ops/ios_archive.sh": "ops/test_ios_ops.sh",
-    "ops/lib/ios_ops_catalog.sh": "ops/tests/test_catalog_agent_boundary.py",
+    "ops/lib/ios_ops_catalog.sh": "ops/tests/test_catalog_agent_boundary.sh",
     "ops/release_bump.sh": "ops/test_release.sh",
     "ops/review_flip_probe.sh": "ops/tests/test_review_probe.sh",
     # test_script_help.sh EXECUTES it (its non-ASCII-abutment section delegates there), which
