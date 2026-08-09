@@ -16,6 +16,7 @@ scope:
   - backend/src/kg/ops_world_projection.py
   - backend/src/kg/ops_world_expectation.py
   - backend/src/kg/ops_world_export.py
+  - backend/src/kg/ops_world_diff.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
 verified_against: 9d235539c
@@ -88,6 +89,8 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 `snapshot.source=dataset-file` 時 `snapshot.datasetFile` 必須是完整 `kg.fixture.dataset.v2` UI World（`source=spec-emit` 時 datasetFile 缺席，world 由 spec on-demand emit 為同 schema 產物，再走同一驗證）:`load_profile` 委派 `ops/ui_world_manifest.py` 驗證 top-level key set、`datasetID`、asset buckets(`books/audio/images/subtitles/text`)與每個 asset 的 `sourcePath/byteSize/sha256/installAs/contentType`;同時驗 settings auth/entitlements refs、runtime podcast audio/subtitle refs、reader/bookshelf book refs、notebook cover refs、preferred notebook refs,以及 Book `fileName/format` 對齊 asset `installAs/contentType`。source 檔缺失、byteSize/hash 漂移、跨引用缺失或 row↔asset 漂移都直接 fail-fast,不把錯誤延後到 simulator 或 renderer。
 
 **何時用 capture profile**:需要「造景 → verify(world-diff)→ snapshot → render」**可重現串接**、需要 derive-expectation 做 drift guard、或要進 CI/行銷流程的場景。
+
+**world-diff 的兩種 spec 模式**：`kg.ops_world_expectation.v1` 做投影 mismatch；`kg.seed_spec.v1` 走 `world-export` 嚴格雙向比對，另回報 `unexpected-*` 與 `unverified`。
 
 **何時裸 `ops-edit` 就好**:一次性 support 重現、單帳號臨時造景、不需 expectation/render 的探索性操作。別為單發操作硬套 profile。
 

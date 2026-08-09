@@ -72,7 +72,7 @@ if try_violating_commit "$A" "$TMP/a.log"; then
   after="$(commit_count "$A")"
   [[ "$after" -eq $((before + 1)) ]] \
     && ok "未安裝時 commit 成立（反控有效）" \
-    || fail_t "未安裝時 rc=0 但 commit 數沒增加（$before → $after）"
+    || fail_t "未安裝時 rc=0 但 commit 數沒增加（${before} → ${after}）"
 else
   fail_t "未安裝時 commit 就被擋 — fixture 不乾淨，後面的斷言會是假綠"
   sed 's/^/      /' "$TMP/a.log" >&2
@@ -101,12 +101,12 @@ grep -q 'STUB_DS_GUARD_FIRED' "$TMP/b.log" \
   || { fail_t "commit 失敗了，但輸出沒有 STUB_DS_GUARD_FIRED — 擋它的是別的原因"; sed 's/^/      /' "$TMP/b.log" >&2; }
 after="$(commit_count "$B")"
 [[ "$after" -eq "$before" ]] && ok "被擋下時 commit 數未增加" \
-  || fail_t "被擋下卻多了一個 commit（$before → $after）"
+  || fail_t "被擋下卻多了一個 commit（${before} → ${after}）"
 
 section "--check 未安裝時 rc=1；--uninstall 是有效逃生口"
 C="$TMP/repo_c"; make_fixture "$C"
 ( cd "$C" && "$WORKTREE/ops/install_hooks.sh" --check ) >"$TMP/c_check0.log" 2>&1; rc=$?
-[[ $rc -eq 1 ]] && ok "--check 未安裝時 rc=1" || fail_t "--check 未安裝時 rc=$rc（期望 1）"
+[[ $rc -eq 1 ]] && ok "--check 未安裝時 rc=1" || fail_t "--check 未安裝時 rc=${rc}（期望 1）"
 ( cd "$C" && "$WORKTREE/ops/install_hooks.sh" --yes ) >/dev/null 2>&1
 ( cd "$C" && "$WORKTREE/ops/install_hooks.sh" --uninstall ) >"$TMP/c_uninstall.log" 2>&1; rc=$?
 [[ $rc -eq 0 ]] && ok "--uninstall rc=0" \
