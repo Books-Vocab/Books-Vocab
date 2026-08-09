@@ -54,3 +54,6 @@ jobs:
         run: ./ops/tests/test_ops_ci_coverage.sh
       - name: Run platform-independent ops groups
         run: ./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups)
+      - name: Falsify the exclusions (expected-fail)
+        # 每條 EXCLUDED_GROUPS 在 ubuntu 上都該死；竟然活著 = 這條排除是假的。
+        run: ./ops/ci_expected_fail_exclusions.sh

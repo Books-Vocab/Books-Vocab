@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 在本機用 docker 重跑 `ops-suite` workflow 的兩個 step。
+# 在本機用 docker 重跑 `ops-suite` workflow 的三個 step。
 #
 # 為什麼需要這支：`LINUX_GROUPS`（`ops/tests/test_ops_ci_coverage.sh`）的成員資格是
 # 一句**關於 linux 的斷言**，而開發機是 macOS。少了它，唯一的驗法是推上去等 CI——
@@ -91,10 +91,13 @@ echo "STEP1_RC=$s1"
 echo "── step 2: run platform-independent ops groups ──"
 ./ops/test_ops.sh $(./ops/tests/test_ops_ci_coverage.sh --print-linux-groups); s2=$?
 echo "STEP2_RC=$s2"
-(( s1 == 0 && s2 == 0 ))
+echo "── step 3: falsify the exclusions (expected-fail) ──"
+./ops/ci_expected_fail_exclusions.sh; s3=$?
+echo "STEP3_RC=$s3"
+(( s1 == 0 && s2 == 0 && s3 == 0 ))
 EOF
 
-echo "── 跑 workflow 的兩個 step（約 5 分鐘）──"
+echo "── 跑 workflow 的三個 step（約 10 分鐘）──"
 rc=0
 docker run --rm -v "$TMP/repo:/w" -v "$TMP/run.sh:/run.sh:ro" "$IMAGE" \
   bash /run.sh 2>&1 | tee "$TMP/full.log" || rc=$?
