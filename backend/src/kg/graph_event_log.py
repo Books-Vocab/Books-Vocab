@@ -41,6 +41,10 @@ from .sqlite_ledger import (
     now_utc as _now,
 )
 
+# Ids per ``IN`` clause when checking which events the store already has. Kept
+# below SQLite's pre-3.32 default limit of 999 bound variables per statement.
+_EXISTS_QUERY_CHUNK = 500
+
 
 class GraphEventType(StrEnum):
     """一筆圖譜變動的種類。對應 GraphStore 的 mutation 方法。"""
@@ -120,6 +124,23 @@ class GraphEventStore:
             self.engine, tables=[GraphEvent.__table__], checkfirst=True
         )
 
+    def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
+        """Return which of ``event_ids`` this store already holds.
+
+        Graph history backfills can resend a large batch. One ``session.get`` per
+        id turns that into one point query per event, so keep the existence lookup
+        batched and below SQLite's pre-3.32 bound-variable ceiling.
+        """
+        known: set[str] = set()
+        for start in range(0, len(event_ids), _EXISTS_QUERY_CHUNK):
+            chunk = event_ids[start : start + _EXISTS_QUERY_CHUNK]
+            known.update(
+                session.exec(
+                    select(GraphEvent.event_id).where(GraphEvent.event_id.in_(chunk))
+                ).all()
+            )
+        return known
+
     def insert_many(self, drafts: list[GraphEventDraft]) -> dict[str, int]:
         """冪等批次 append。已存在的 ``event_id`` skip;每筆取得嚴格遞增唯一 ingested_at。"""
         inserted = 0
@@ -130,8 +151,9 @@ class GraphEventStore:
             last_ingested = normalize_last_ingested(
                 session.exec(select(func.max(GraphEvent.ingested_at))).one()
             )
+            known_ids = self._existing_event_ids(session, [d.event_id for d in drafts])
             for d in drafts:
-                if session.get(GraphEvent, d.event_id) is not None:
+                if d.event_id in known_ids:
                     skipped += 1
                     continue
                 ingested_at = next_ingested_at(last_ingested, _now())
@@ -156,6 +178,7 @@ class GraphEventStore:
                         is_synthetic=d.is_synthetic,
                     )
                 )
+                known_ids.add(d.event_id)
                 inserted += 1
             session.commit()
         return {"inserted": inserted, "skipped": skipped}
