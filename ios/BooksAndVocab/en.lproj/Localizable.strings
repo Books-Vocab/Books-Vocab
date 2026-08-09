@@ -1225,3 +1225,5 @@
 /* reader-settings-preview · APP-20260809-ca8e30 即時預覽 */
 "reader.settings.section.preview" = "Preview";
 "reader.settings.preview.accessibilityLabel" = "Live preview of the reading settings";
+"reader.settings.reset" = "Reset";
+"reader.settings.reset.all" = "Reset reading settings to default";

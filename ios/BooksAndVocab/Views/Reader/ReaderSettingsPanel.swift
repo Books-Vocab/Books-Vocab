@@ -44,6 +44,7 @@ struct ReaderSettingsPanel: View {
             onIncreaseFontSize: increaseFontSize,
             onSelectTheme: selectTheme,
             onSelectUnderlineOpacity: selectUnderlineOpacity,
+            onResetToDefaults: resetToDefaults,
             onDismiss: onDismiss
         )
     }
@@ -77,6 +78,14 @@ struct ReaderSettingsPanel: View {
     private func selectUnderlineOpacity(_ value: Double) {
         withAnimation(AppMotion.panelState) {
             settings.underlineOpacity = value
+        }
+    }
+
+    /// 走與主題 / 標記濃度同一個 `AppMotion.panelState`，所以重置時上方的即時
+    /// 預覽是「動畫地」回到預設，不是瞬間跳掉。
+    private func resetToDefaults() {
+        withAnimation(AppMotion.panelState) {
+            settings.resetToDefaults()
         }
     }
 }
@@ -129,9 +138,24 @@ struct ReaderSettingsPanelPreviewHarness: View {
             onIncreaseFontSize: { fontScale = min(2.0, fontScale + 0.125) },
             onSelectTheme: { theme = $0 },
             onSelectUnderlineOpacity: { underlineOpacity = $0 },
+            onResetToDefaults: resetHarnessToDefaults,
             onDismiss: {}
         )
         .enableInjection()
+    }
+
+    /// harness 沒有 `ReaderSettings` 單例可重置（它跑在 Catalog / #Preview 裡，
+    /// 不該去動使用者真正的偏好），所以把同一組出廠常數寫回自己的 @State。
+    private func resetHarnessToDefaults() {
+        withAnimation(AppMotion.panelState) {
+            fontScale = ReaderSettings.defaultFontSize
+            lineHeight = ReaderSettings.defaultLineHeight
+            font = ReaderSettings.defaultFont
+            scrollMode = ReaderSettings.defaultScrollMode
+            vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
+            underlineOpacity = VocabHighlightPreferences.default.opacity
+            showHitTestingDebug = ReaderSettings.defaultShowHitTestingDebug
+        }
     }
 }
 

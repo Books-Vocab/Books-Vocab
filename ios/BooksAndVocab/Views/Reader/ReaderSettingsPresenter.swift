@@ -34,6 +34,8 @@ struct ReaderSettingsPresenter: View {
     let onIncreaseFontSize: () -> Void
     let onSelectTheme: (ReaderTheme) -> Void
     let onSelectUnderlineOpacity: (Double) -> Void
+    /// 恢復預設 —— 與複習卡版面編輯器同形的 toolbar 入口。
+    let onResetToDefaults: () -> Void
     let onDismiss: () -> Void
 
     let opacityOptions: [(label: String, value: Double)] = [
@@ -73,6 +75,7 @@ struct ReaderSettingsPresenter: View {
             onIncreaseFontSize: {},
             onSelectTheme: { _ in },
             onSelectUnderlineOpacity: { _ in },
+            onResetToDefaults: {},
             onDismiss: {}
         )
         .padding()
@@ -102,6 +105,7 @@ struct ReaderSettingsPresenter: View {
             onIncreaseFontSize: {},
             onSelectTheme: { _ in },
             onSelectUnderlineOpacity: { _ in },
+            onResetToDefaults: {},
             onDismiss: {}
         )
     }
