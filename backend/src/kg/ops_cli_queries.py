@@ -24,7 +24,7 @@ from kg.ops_shared import (
 from kg.ops_world_diff import diff_world_state, load_expectation
 from kg.ops_world_export import WorldExportError, export_seed_spec
 from kg.ops_world_projection import SCHEMA as WORLD_STATE_SCHEMA
-from kg.ops_world_projection import project_user_world
+from kg.ops_world_projection import WorldProjectionError, project_user_world
 from kg.quota_service import token_cost_usd
 from kg.user_store import load_users_from
 
@@ -166,7 +166,11 @@ def cmd_user_config(args: argparse.Namespace) -> None:
 def cmd_world_state(args: argparse.Namespace) -> None:
     dd = data_dir()
     uid = resolve_uid(args.uid, dd)
-    payload = project_user_world(uid, data_root=dd)
+    try:
+        payload = project_user_world(uid, data_root=dd)
+    except WorldProjectionError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     if args.json:
         emit_json(payload)
         return
@@ -200,7 +204,11 @@ def cmd_world_export(args: argparse.Namespace) -> None:
 def cmd_world_diff(args: argparse.Namespace) -> None:
     dd = data_dir()
     uid = resolve_uid(args.uid, dd)
-    actual = project_user_world(uid, data_root=dd)
+    try:
+        actual = project_user_world(uid, data_root=dd)
+    except WorldProjectionError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
     expected = load_expectation(args.spec)
     payload = diff_world_state(actual, expected)
     payload["user_id"] = uid

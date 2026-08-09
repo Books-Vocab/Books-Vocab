@@ -18,7 +18,7 @@ scope:
   - backend/src/kg/ops_world_export.py
   - ops/capture_profile.py
   - ops/ui_world_manifest.py
-verified_against: c7a0b2bf5
+verified_against: 9d235539c
 -->
 # Ops Product-State Plane（產品狀態控制面）
 
@@ -103,7 +103,7 @@ seed(spec) → export → seed(新沙盒) → export  ⇒  兩份 export 相等�
 |---|------|------|------------|
 | ① | 跨檔交易 + 單帳號快照含 identity | **已補** | 單帳號 backup 內嵌該 uid 的 `users.json` record + scoped email_index；`restore` 能一起回復 config/identity。原「users.json 不在 tar」破口已關。 |
 | ② | 整世界 snapshot/restore | **已補** | `world-snapshot` / `world-restore` 已進 control plane；`backup_world` 含 `users.json`，落 `_ops_world_backups/`。 |
-| ③ | 讀寫不對齊 | **仍在(結構)** | 寫面 store / 讀面模組化 query / 投影面第三路徑，仍無共用 schema version。見 §1。state-diff 必經 `project_user_world` 自定義投影。 |
+| ③ | 讀寫不對齊 | **仍在(結構)** | 寫面 store / 讀面模組化 query / 投影面第三路徑，仍無共用 schema version。見 §1。state-diff 必經 `project_user_world` 自定義投影；投影面遇不可讀資料會以 `WorldProjectionError` fail-loud，真正的空資料仍投影成空。 |
 | ④ | 冪等語意不一致 | **仍在(刻意)** | `link-add` 冪等但**不更新** confidence/kind/reason，只有 `--if-exists update` 會覆寫；`seed` 是 upsert 覆蓋核心欄；`clone-demo` 是全覆蓋先清後換。三種重跑語意不同，造景前要知道你在用哪種。 |
 | ⑤ | graph = per-notebook JSON + 快取 | **仍在(設計)** | `_load_graphs` 直讀 `graph_*.json` 繞快取。任何 graph 斷言/驗證**必讀磁碟**，不可信 GraphStore in-memory 態。 |
 | ⑥ | clone-demo 綁來源真實內容 | **仍在(本質)** | byte-clone 來源 vocab 層,可重現需 `--expect-source-fingerprint` 鎖來源 uid,否則來源漂移會改 clone 結果。 |
