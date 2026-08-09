@@ -1,15 +1,21 @@
 ---
 name: worktree-flow
-description: "隔離工作樹 intent→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent 並要在隔離 git worktree 自動開發到 merge 進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。亦涵蓋「需要 main」的任務路由（bootstrap 悖論→adopt、repo 手術→freeze）。"
+description: "隔離工作樹 intent→commit/hand-back 預設流程，以及明示授權後的 gate→cutover 全流程。當使用者開新 session 丟一個 debug / dev / research intent，或要求把工作樹整合進本地 main 時觸發。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / cutover / resolve / sync / deploy / sync-main / freeze）串起 P1 健康判定 + P2 登記簿 + 既有 gate 工具；純 research/唯讀不開 worktree。預設假設多 session 並行，完成 commit 與 hand-back 後停止；只有使用者明示目前沒有其他 agent/session 工作且授權 gate+cutover，才進 develop 平面。三平面：cutover=develop（離線落地本地 main）、sync=backup（推 origin/main 備份、零生產副作用）、deploy=release（推 origin/prod=唯一觸發生產部署）。"
 user-invocable: true
-version: 2.0.0
+version: 2.1.0
 ---
 
 # worktree-flow
 
-把「使用者丟 intent → 隔離工作樹開發 → gate → 進本地 main」串成一條可執行流水線。你是**單一執行 agent**，逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具（`ios_ops.sh` / `verify_design_system.sh` / `docs_lint.sh` / `pytest`）。**絕不重造 gate 判斷**。
+把「使用者丟 intent → 隔離工作樹開發 → commit + hand-back」串成預設流水線；若使用者明示目前沒有其他 agent/session 工作且授權 gate + cutover，才續走 develop 平面進本地 main。逐步呼叫原語 `ops/worktree_orchestrate.py`（下稱 `orchestrate`）。它只**編排**：P1 `ops/lib/worktree_state.py`（純健康判定）、P2 `ops/worktree_registry.py`（誕生→解決登記簿 + 孤兒哨兵）、與既有 gate 工具（`ios_ops.sh` / `verify_design_system.sh` / `docs_lint.sh` / `pytest`）。**絕不重造 gate 判斷**。
 
-所有 mutation 子指令 **dry-run 預設，`--commit` 才落地**。`--json` 給機器判讀。**具名例外**：`open --backlog` 的認領是**沒有 dry-run 的獨佔寫入**——一個「先預覽再認領」的認領根本不是認領，中間那段時間正是它要消滅的東西。
+## 預設停止點（授權邊界）
+
+**永遠先假設同 repo 有多個 session 同時工作。** 正常情況做到：局部驗證 → commit → `./ops/worktree_registry.py hand-back --json` → 回報 branch／worktree／HEAD，然後停止。不要自行跑 `gate`、`land`、`cutover`、`resolve`、`sync` 或 `deploy`；保留工作樹給後續整合者。
+
+只有使用者在當下明示兩件事，才可越過停止點：① 現在沒有其他 agent/session 在工作；② 授權本 session 直接跑 gate + cutover。缺任一項都停在 hand-back。這項授權只解鎖 develop 平面的 `catchup`／`gate`／`land`／`cutover`／`resolve`；`sync`、`deploy`、`release` 仍須使用者另有明示的 backup／release 意圖。這是協調政策，不放寬任何工具護欄；一旦獲授權，仍完整走 catchup → fresh gate → cutover，不能拿 targeted test 代替 Gate。
+
+所有 mutation 子指令 **dry-run 預設，`--commit` 才落地**。`--json` 給機器判讀。**具名例外**：`open --backlog` 的認領與 `./ops/worktree_registry.py hand-back` 的交回戳記都會立即寫入、沒有 `--commit`；前者必須原子取得獨佔認領，後者必須讓整合者讀到與當下 branch tip 綁定的交回狀態。
 
 ## 拓樸：本地 main 為主幹（core mental model）
 
@@ -36,7 +42,7 @@ ops/worktree_orchestrate.py preflight --commit --json # 確認殘骸可清才落
 ### 3. 純 research / 唯讀 → 不開 worktree
 若 intent 是調查、盤點、回答問題、讀碼分析（**無程式碼寫入**）→ **直接做、直接回報，不開 worktree**。開 worktree 只為了承載會進 main 的 commit。`orchestrate open` 依 intent 類型命名分支（debug/* | feat/* | research/*）——research/* 分支僅用於**會產出 commit 的**探索（如寫 spike/POC）；純唯讀不需要。
 
-### 4. 寫 code → 隔離工作樹開發到 cutover
+### 4. 寫 code → 隔離工作樹開發到 commit + hand-back
 
 **a. 拆 phase**：載入 `phased` skill，把任務切成可獨立 commit 的 phase plan。
 
@@ -54,7 +60,7 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 
 **在做 backlog 上的單就一定要帶 `--backlog`**：它把那幾張單認領給這條 worktree，另一個 active 記錄已持有其一即 **refuse（rc 非 0）**，payload 的 `conflicts` 指名持有者的 branch 與 path。搶輸時**不會留下分支也不會留下目錄**——認領在建任何東西之前發生。認領的壽命 = 記錄 active 的壽命，所以 `resolve` / `sweep` 自動釋放，**沒有另一個 release 動詞**。`worktree_registry.py list` 的 `backlog` / `claimed` 欄回答「誰在做哪張單、拿多久了」。
 
-**c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。**每 phase 後 rebase 本地 main**——這是 **gate 的硬性前置**，不是減少衝突的方便：本地 main 的 tip 沒被分支 HEAD 包含時 `gate` 會直接拒（判決會綁到一棵不會落地的樹）：
+**c. 逐 phase 實作（phased 模式）**：在 worktree 內做第 N phase 時，**同步派 code review agent 審 N-1 phase**（鐵律 4 逐項 review，鐵律 5 所有 Agent 背景化）。每個 phase 收尾 commit。預設不因「可能稍後要 gate」而在每 phase 主動 rebase；那會讓平行 session 的主幹前進反覆改寫本分支。只有已取得本節授權、準備進 gate，或整合者明示要求追主幹時才執行：
 ```
 <path>/ops/worktree_orchestrate.py catchup --worktree <path> --commit
 ```
@@ -70,10 +76,10 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 「衝突集合恰好等於該檔就自動重生」的解析器。**該解析器已隨檔案一起移除**：今天 `catchup` 就是一次乾淨的
 rebase，**任何**衝突都 abort 交你（那是真的決定），也不再有 `regenerated` 這個 payload 欄位。rebase 完 HEAD 就動了，所以**之後一定要重跑 `gate`**。
 
-**c3. 多條工作樹同時要落地 → 用 `land`，不要手動排 gate/cutover**：
+**c3. 已獲明示授權且多條獨立工作樹要落地 → 用 `land`，不要手動排 gate/cutover**：
 
-> **適用範圍（先讀這句，不然會做反）**：本段講的是**彼此獨立的 session**——各自帶著自己的
-> intent、各自決定何時落地。**同一批 fan-out 出去的受派者不適用**：那批的落地權在整合者，
+> **適用範圍（先讀這句，不然會做反）**：`land` 不是一般 session 的預設收尾。只有使用者已明示
+> 目前沒有其他 agent/session 工作並授權本 session gate + cutover 時，本段才適用。**同一批 fan-out 出去的受派者不適用**：那批的落地權在整合者，
 > 受派者做到 commit 為止就停（見下方「批次交回狀態」，那段是契約正本）。兩者都叫「多條工作樹
 > 同時在跑」，處置**相反**——搞混的代價不是效率而是正確性：各自 land 的批次拿不到「N 份放
 > 一起還綠不綠」那個答案，而 2026-08-06 十一條分支的實測裡，整合後 review 找出的五筆 BLOCK
@@ -82,7 +88,7 @@ rebase，**任何**衝突都 abort 交你（那是真的決定），也不再有
 <path>/ops/worktree_orchestrate.py land --worktree <path> --json           # dry-run：目前排隊多深
 <path>/ops/worktree_orchestrate.py land --worktree <path> --commit --json  # 取號 → catchup → gate → cutover
 ```
-**這是併發批次的預設路徑。** 底下 d/e 那條手動序列在單獨一條工作樹時完全正確，但**多條同時跑會不收斂**：
+**這是取得落地授權後，多條獨立工作樹的序列化路徑；不是一般 session 的預設路徑。** 底下 d/e 那條手動序列在單獨一條工作樹時完全正確，但**多條同時跑會不收斂**：
 本地 main 是唯一主幹、cutover 是線性 ff，所以任何一條落地就讓其餘全部變「落後」，而補救動作
 （catchup → 重跑 gate → 再 cutover）本身也在同一場競賽裡。實測 throwaway clone 十條並行照 d/e 手動跑：
 **只有 2/10 落地**，八條被 `behind main` 擋下（五條在 cutover、三條連 gate 都不給跑）；N=3 雖然 3/3 落地
@@ -102,7 +108,7 @@ primary 的 backlog 結案。**批次整合者的對策不是靠這條預檢，�
 gitignored 的 anchor queue（不碰 store），整批 land 完再 `anchor` 一次回填。預檢只是把踩到時的代價從十分鐘降到毫秒。
 （ff 前那次檢查仍在且**不可刪**：primary 可能在 gate 期間才變髒，兩次問的是不同時刻的問題。）
 
-**d. 全 phase 完 → gate**（impact-based，顯式跑；.githooks 只 best-effort，不可依賴）：
+**d. 已取得本節明示授權後，全 phase 完 → gate**（impact-based，顯式跑；.githooks 只 best-effort，不可依賴）：
 ```
 <path>/ops/worktree_orchestrate.py gate --worktree <path> --json
 ```
@@ -162,12 +168,12 @@ session 動了 refs／裝置鎖被佔），那類已經有專屬判定 `inconclu
 
 orchestrator 自己的 mutation / network subprocess 同樣不得旁路可見進度 runner；完整分類、輸出與保密契約以 `docs/reference/tech_index.md` 的 `ops/lib/streaming_command.py` 段落為正本。
 
-**e. 非 block 才 cutover（離線落地本地 main）**：
+**e. 已取得本節明示授權且非 block，才 cutover（離線落地本地 main）**：
 ```
 <path>/ops/worktree_orchestrate.py cutover --worktree <path> --json          # dry-run 預覽
 <path>/ops/worktree_orchestrate.py cutover --worktree <path> --commit --json # ff 本地 main
 ```
-它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn}、記錄的 HEAD == 當前 HEAD、**產出該判決的 orchestrator == 工作樹現在這份**、且**本地 `main` 的 tip 已被 worktree HEAD 包含**；stale/缺紀錄/block/換版本/落後 base 都會被拒）→ rebase 上本地 `main` → 在 primary 上 **`git merge --ff-only` 前進本地 main**（受 per-repo 鎖序列化）。**離線、不 push、不部署。** ff 完成後、**同一把鎖內**還會跑一次 post-landing repair（今天只剩 `backlog.py reanchor --commit` 一步；原本其後接的 `render --commit` → `validate --baseline-check` 隨那份 generated view 移出版控而移除）：cutover 的 rebase 在 gate **之後**改寫了分支 sha，ledger entry 的 `fixed_by` 要到落地那一刻才指得到正確的 commit。有改動它就自己 commit 一顆（`Review-Exempt: machine-repair`，`review_audit.sh` 會檢查這顆只碰 ledger）。**所以本地 main 的 tip 可能不是 payload 的 `sha`**——那顆在 `trunk_tip`；repair 的結果在 `repair`（`ok` / `committed` / `restored` / `steps`），失敗會把 `docs/runbook` 還原回 HEAD 再回報，不留髒 primary。護欄：primary 必須在 `main` 上且 **tracked-clean、無 merge/rebase 進行中**（ff 會更新 primary 工作區）——髒了會被拒，先 commit/撤離。`warn` 會 land 並標 `warnings: [<gate 名>]`。落地本地 main 已長期授權（不先問）。
+它**要求新鮮的非 block verdict**（verdict ∈ {pass, warn}、記錄的 HEAD == 當前 HEAD、**產出該判決的 orchestrator == 工作樹現在這份**、且**本地 `main` 的 tip 已被 worktree HEAD 包含**；stale/缺紀錄/block/換版本/落後 base 都會被拒）→ rebase 上本地 `main` → 在 primary 上 **`git merge --ff-only` 前進本地 main**（受 per-repo 鎖序列化）。**離線、不 push、不部署。** ff 完成後、**同一把鎖內**還會跑一次 post-landing repair（今天只剩 `backlog.py reanchor --commit` 一步；原本其後接的 `render --commit` → `validate --baseline-check` 隨那份 generated view 移出版控而移除）：cutover 的 rebase 在 gate **之後**改寫了分支 sha，ledger entry 的 `fixed_by` 要到落地那一刻才指得到正確的 commit。有改動它就自己 commit 一顆（`Review-Exempt: machine-repair`，`review_audit.sh` 會檢查這顆只碰 ledger）。**所以本地 main 的 tip 可能不是 payload 的 `sha`**——那顆在 `trunk_tip`；repair 的結果在 `repair`（`ok` / `committed` / `restored` / `steps`），失敗會把 `docs/runbook` 還原回 HEAD 再回報，不留髒 primary。護欄：primary 必須在 `main` 上且 **tracked-clean、無 merge/rebase 進行中**（ff 會更新 primary 工作區）——髒了會被拒，先 commit/撤離。`warn` 會 land 並標 `warnings: [<gate 名>]`。**能做不等於已授權做**：沒有「目前只有本 session」加「直接 gate + cutover」的當下明示，就回到本節頂端的 hand-back 停止點。
 
 **base 包含性這一條 dry-run 也會拒**（帶 `behind_commits` / `base_changed_files`），修法 `catchup --commit`（見 c2）後**必須重跑 gate**。包含性通過時 rebase 是 no-op，所以**落地的 sha == 被 gate 的 sha**；這條等式在鎖內 rebase 之後、ff 之前**再驗一次**（payload `gated_sha` / `rebased_sha`）——包含性檢查在鎖外，別的 session 可能在那之間 cutover 前進了主幹，而 rebase 刻意是對**當下**主幹做的。此時 main 不會前進，工作樹已被 rebase，重跑 gate 即可。
 
@@ -208,22 +214,22 @@ ops/worktree_orchestrate.py deploy --commit --json  # ff push 本地 main → or
 
 宣稱「這要在 main 上做」時先問：**要的是 main 的內容還是身分？** 內容 → fresh worktree（更乾淨）。真需要 primary 的只有三類，各有原語：
 
-- **bootstrap 悖論**（primary checkout 過舊、連本工具鏈都沒有）→ 裸 `git worktree add -b <branch> <path> origin/main`（純 git 原語，不需任何 repo 工具）→ `cd <path>` → `ops/worktree_orchestrate.py adopt --intent "<why>"`（`--worktree` 預設 cwd）補登記 ledger，之後照常走 gate/cutover/resolve。
+- **bootstrap 悖論**（primary checkout 過舊、連本工具鏈都沒有）→ 裸 `git worktree add -b <branch> <path> origin/main`（純 git 原語，不需任何 repo 工具）→ `cd <path>` → `ops/worktree_orchestrate.py adopt --intent "<why>"`（`--worktree` 預設 cwd）補登記 ledger，之後回到本 skill 頂端的授權邊界。
 - **primary 落後 origin**（本地 main 反被 origin 超前——在本地為主模型下**不正常**，只發生在：剛 clone 的機器、或 felix 部署 clone 其 main 追 origin、或別台 push 了東西）→ `sync-main`（dry-run 預設）。護欄三綠才動：tracked-clean（untracked 不擋）＋ primary 在 main 上且無 merge/rebase 進行中 ＋ 嚴格落後 origin（ancestor check）。分岔的 main **絕不** auto-merge/rebase——refusal 指向 cutover。**注意方向**：sync-main 是 origin→本地（追上 origin）；日常開發機的本地 main 是超前 origin 的，sync-main 在那是 noop。
 - **stop-the-world repo 手術**（history rewrite / aggressive gc / 共享 hooks·config）→ 先 `freeze on --reason "<surgery>"`：open/adopt/catchup/**integrate**/land/cutover/sync/sync-main/**deploy** 全拒（顯示 reason），resolve/sweep/preflight/gate 放行（排空用）。排空到 registry 零 active → 備份 refs → 執行手術 → 驗證 → `freeze off`。
-- **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → cutover 落地 → primary `git checkout --` 還原。primary 只允許「可再生」變更，絕不在 local main commit。
+- **primary 上的 tracked 檔實質修改**（做著做著冒出來的）→ 撤離：`git diff` 導出 patch → worktree 內 apply → commit + hand-back → primary `git checkout --` 還原；之後仍回到頂端授權邊界。primary 只允許「可再生」變更，絕不在 local main commit。
 
 ## 批次整合（N 個工作樹 → 一次落地）
 
-單線流程（open→gate→cutover→resolve）是為**一條**分支寫的。當你 fan-out 出 N 個 agent、
+取得頂端雙重明示授權後的單線 develop 流程（open→gate→cutover→resolve）是為**一條**分支寫的。當你 fan-out 出 N 個 agent、
 各自在自己的工作樹做完時，**不要讓它們各自 gate+cutover**。
 
 ### 批次交回狀態（本段是契約正本）
 
-**受派者上行交回的狀態是「在自己的工作樹裡 commit 完」，不是「已經進 main」。**
-`gate` / `cutover` / `sync` / `deploy` 屬於**整合者**——握有整批視野的那個 session。
+**所有 session 的預設上行交回狀態都是「在自己的工作樹裡 commit 完」，不是「已經進 main」；批次受派者更無例外。**
+`gate`／`cutover` 屬於**取得使用者 develop 授權的整合者**——握有整批視野的那個 session；`sync`／`deploy` 不由此解鎖，仍各自要求 backup／release 意圖。
 task brief 的「邊界」一欄要寫明這件事，並要求回報分支名與工作樹路徑。單一受派者、單一工作樹、
-非批次的任務，可讓它自己跑 `gate` 自驗，但 `cutover` 一律留給整合者。
+非批次任務也停在 commit + hand-back；只有符合頂端授權邊界時，才由同一個 session 兼任整合者跑 gate + cutover。
 **因此受派者不跑 `land`**——`land` 內含 cutover。上方 c3 的佇列是給彼此獨立的 session 的，不是給同一批 fan-out 的；派工單的「邊界」一欄要把這句寫進去，因為 c3 讀起來很像在鼓勵每條各自落地。
 
 **每棵工作樹都有自己的暫存面。** `open` 會建立並回傳
@@ -337,7 +343,7 @@ git rerere diff
 
 ### 多輪同步、一次原子落地
 
-第四／第五輪可各自在不同 slug 的 integration tree 同步 `integrate`；兩邊完成後，分別對兩條 integration branch 執行 `worktree_registry.py hand-back`，再由第三棵 parent integration tree 把這兩條 branch 當來源 `integrate`。parent 的 Gate 才是跨輪組合證據，最後只對 parent `cutover` 一次，所以 final cutover 前本地 main 完全不動。落地後依序：來源 workers 用 `resolve --via-integration main` → 第四／第五輪 integration trees 用同一方式 resolve → parent tree 一般 resolve。`--via-integration REF` 只接受已是 base 祖先的 REF；未落地的 round branch 即使 patch audit 對得上，也不能授權拆來源。
+第四／第五輪可各自在不同 slug 的 integration tree 同步組裝，但在尚有其他 session 或尚未取得頂端雙重明示授權時，fresh／continue 一律用 `integrate ... --commit --no-gate`，完成純 pick／解衝突後各自 commit + hand-back。第三棵 parent integration tree 也以 `--no-gate` 組裝兩條 child branch，commit + hand-back 後停止。等其他 session 全停且取得雙重明示授權，才在 parent 執行 `integrate --continue --commit` 跑唯一 fresh Gate，非 BLOCK 後只對 parent `cutover` 一次。獲授權落地後依序：來源 workers 用 `resolve --via-integration main` → 第四／第五輪 integration trees 用同一方式 resolve → parent tree 一般 resolve。`--via-integration REF` 只接受已是 base 祖先的 REF；未落地的 round branch 即使 patch audit 對得上，也不能授權拆來源。
 
 ### Round 6–8 三 session 壓力測試契約（2026-08-09）
 
@@ -345,15 +351,15 @@ git rerere diff
 
 **啟動前建立共同基準。** 三個 session 必須記下同一顆本地 `main` SHA `M`，並在各自的批次 receipt 寫明 `session_id`、15 個 ticket id、integration branch。先用 `backlog.py validate --baseline-check` 驗 store，再對三份 ticket 集合做程式化對帳：id 不得重疊，`fix_site` 的檔案／行域不得交疊；有重疊就調整分配或排成具名前置，不靠三個 session 自己避讓。`open --next-backlog` 的 registry lock 只保證單票認領互斥，不替跨 session 的 fix-site 分區背書。
 
-**三層拓撲，不讓子輪競爭 primary。** 每個 session 在自己的 integration tree 收攏 15 張單；受派 worker 只做到 commit，並執行 `worktree_registry.py hand-back`，不各自 gate／cutover。三棵 round integration branch 都完成後，開一棵 parent integration tree（例如 `r6-r8-land`）依序 `integrate` 三棵 branch、只在 parent 上解衝突。parent 的 fresh Gate 才是 45 張放在一起的 release evidence；只有 parent 通過非 BLOCK verdict 後才對本地 `main` 執行**一次** `cutover`。因此三個 session 可並行做事，但 primary 的寫入與最終 cutover 是序列化的。
+**三層拓撲，不讓子輪競爭 primary。** 每個 session 在自己的 integration tree 收攏 15 張單；受派 worker 只做到 commit，並執行 `./ops/worktree_registry.py hand-back`，不各自 gate／cutover。尚有平行 session 時，三棵 round integration tree 的 fresh／continue 都用 `integrate ... --commit --no-gate` 完成純組裝，再各自 commit + hand-back。parent integration tree（例如 `r6-r8-land`）也用 `--no-gate` 依序組裝三棵 branch、只在 parent 解衝突，再 commit + hand-back。等其他 session 全停且取得頂端雙重明示授權，才在 parent 執行 `integrate --continue --commit` 跑 fresh Gate；非 BLOCK 後對本地 `main` 執行**一次** `cutover`。因此 Gate、primary 寫入與最終 cutover 都由獲授權整合者序列化。
 
-**Gate 用輸入變更決定，不用 commit 數量決定。** child integration 若已停在 in-flight pick，可用 `integrate --continue --commit --no-gate` 先排空純 pick／衝突整理，再由 parent 提供唯一 final evidence；不可把 `--no-gate` 當成放行。這避免同一批變更先後跑三次等價 Gate；parent 必須跑一次 fresh Gate。Gate BLOCK 後只修 parent integration tree，依 input fingerprint 只重跑失效或未知 scope 的 gate；成功 gate 可重用，未知依賴、輸入集合變動、orchestrator 不同代或 `inconclusive` 一律重跑。parent 之後若只追加 backlog closure metadata，沿用當下 code verdict，改跑 acceptance、`backlog.py validate --baseline-check` 與 `review_audit`，不為純 metadata 重跑 iOS／ops 全量 Gate。
+**Gate 用輸入變更決定，不用 commit 數量決定。** 授權前，child／round／parent integration 的 fresh 與 `--continue` 一律加 `--no-gate`，只排空純 pick／衝突整理並保留 in-flight state；不可把 `--no-gate` 當成放行。等其他 session 全停且取得雙重明示授權，parent 用 `integrate --continue --commit` 消耗該 state 並提供唯一 final evidence。這避免同一批變更先後跑多次等價 Gate；parent 必須跑一次 fresh Gate。Gate BLOCK 後只修 parent integration tree，依 input fingerprint 只重跑失效或未知 scope 的 gate；成功 gate 可重用，未知依賴、輸入集合變動、orchestrator 不同代或 `inconclusive` 一律重跑。parent 之後若只追加 backlog closure metadata，沿用當下 code verdict，改跑 acceptance、`backlog.py validate --baseline-check` 與 `review_audit`，不為純 metadata 重跑 iOS／ops 全量 Gate。
 
 **Review 是有界的機器輔助，不是完美競賽。** 普通單一修補不自動配一對 LLM reviewer；高風險或複雜 scope 才例外派。沿用 `review_cycle.py` 的完整 `commit SHA × scope` 最多兩輪：第二輪仍 BLOCK 就進 driving-agent adjudication，選 `fix`、`accept` 或 `defer` 並具名；NIT 與 tooling debt 不得把 45 張單重新打開成無限迴圈。Gate 本身是獨立 review 層，fresh Gate 非 BLOCK 且 receipt／acceptance 齊全就是可交付的 80 分。
 
 **壓測只量會影響決策的數字。** 三個 session 的共享 receipt／`.cache/coordination/` 應至少記：共同基準 `M`、各批 ticket／fix-site 對帳結果、source commit 數與衝突數、Gate planned／executed／reused／BLOCK／WARN、Gate wall-clock 與各階段 heartbeat、review cycle 次數、hand-back／resolve 殘留、primary cutover 次數，以及實際工具摩擦。工具問題若造成誤判、繞過、資料遺失或浪費一整輪 Gate，當場修並補回歸驗證；較小摩擦先記 receipt，不能因追求工具完美而中止壓測。
 
-**Round 6–8 的完成條件。** 45 張單有且只有一個 owner，三棵 child integration branch 全 hand-back，parent 所有來源 commit 可追溯且衝突已具名解決；parent fresh Gate 無 BLOCK；每張單的 acceptance 或具名 manual evidence 已結案；`backlog.py validate --baseline-check` 為 0 problems；所有來源與 parent worktree 已 `resolve`，primary tracked-clean，沒有未解 active registry 或 zombie process。WARN、延後的 NIT／tooling debt 與其理由要留在 receipt，不能冒充 PASS，也不必阻止進入下一輪。
+**Round 6–8 的完成條件。** 授權前的穩定交回點是：45 張單有且只有一個 owner，三棵 child 與 parent integration branch 全部 commit + hand-back，parent 所有來源 commit 可追溯且衝突已具名解決，沒有任何 Gate／cutover。取得頂端雙重明示授權後，完整收斂條件才再加上：parent fresh Gate 無 BLOCK；每張單的 acceptance 或具名 manual evidence 已結案；`backlog.py validate --baseline-check` 為 0 problems；所有來源與 parent worktree 已 `resolve`，primary tracked-clean，沒有未解 active registry 或 zombie process。WARN、延後的 NIT／tooling debt 與其理由要留在 receipt，不能冒充 PASS，也不必阻止進入下一輪。
 
 **收尾（先保留手刻管線的歷史量測，再列真正 `integrate` 的量測）**：
 
@@ -381,7 +387,7 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 
 ## 並發協調（多 session 常態）
 
-> **範圍**：本段講的是**彼此獨立的 session**——各自帶著自己的 intent、各自 cutover，衝突點在共享的 primary。同一批 fan-out 出去的受派者**不適用**：那批不各自 cutover，見上方「批次整合」的「批次交回狀態」段。兩者都叫並發，處置相反。
+> **範圍**：本段講的是**彼此獨立的 session**——各自帶著自己的 intent，但預設都停在 commit + hand-back，不各自 cutover；衝突由之後取得明示授權的整合者處理。同一批 fan-out 出去的受派者同樣遵守上方「批次交回狀態」。
 
 同倉多 session 並發是常態，refuse 是**協調事件、不是死路**——refuse 訊息本身就是行動指引（列髒檔、給選項），照它做，不要死等輪詢：
 
@@ -420,7 +426,7 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
   - **走 `land` 會被擋，但擋的理由指向別人**：`land` 取號後、**進 gate 之前**就跑 primary tracked-clean 檢查（`_primary_ff_ready`，:3023 排在 gate 的 :3043 之前——見上方 c3 段，那是刻意的成本設計），所以編輯漏進 primary 時它擋在昂貴的 gate 之前，並逐檔列出 `dirty:`，那些正是你的編輯。訊息也確實留了 `(b) if the leftovers are yours, commit them or evacuate them to a worktree` 這條路。**它缺的不是「可能是你的」，是成因**：沒有人告訴你這些檔之所以在 primary 是因為 cwd 漂了，而你那棵工作樹是空的。primary 若剛好乾淨（漏進去的編輯已被別人 commit，或漏到了第三棵樹），這道檢查一聲不吭。
   - **手動 `gate` → `cutover` 才是「綠已經記下來了才擋」**：`cutover` 只在 ff 前查 primary（:2630），那時錯的那輪 gate 已經跑完、判決已綁 HEAD 寫進紀錄。
   - **兩張票刻意分成兩端**：`IMP-20260808-b85f6a` 已提供 worktree 端的 `no-changes` 訊號；`IMP-20260808-e8ad13` 仍負責 primary 端未 commit tracked 改動的具名回報。兩者皆 warn 不 block，且可以單獨為真——primary 乾淨但工作樹是空的時候，只有前者看得見。
-- **cutover/sync 不碰生產；deploy 才碰生產（唯一）**：cutover 只前進**本地** main（免費、可逆、不碰網路）；`sync` 只把本地 main 鏡像到 **origin/main** 備份（reconciler 不看 main → 零生產副作用）。生產部署發生在 `deploy` 把本地 main 推 **origin/prod** 之後——felix reconciler（launchd `com.kg.reconcile`，90s tick，盯 origin/prod）偵測前進且有 `backend/**` 變更即部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）。**因此「上生產」= 你刻意跑 `deploy`（或 `release.sh release`），不是每次 cutover、也不是 sync。** deploy 前確保要發布的 backend 變更 gate 已真實反映風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。deploy/`release` 全自動授權（2026-07-10），但它是**唯一碰生產**的動作，寧可 dry-run 先看 range。
+- **cutover/sync 不碰生產；deploy 才碰生產（唯一）**：cutover 只前進**本地** main（免費、可逆、不碰網路）；`sync` 只把本地 main 鏡像到 **origin/main** 備份（reconciler 不看 main → 零生產副作用）。生產部署發生在 `deploy` 把本地 main 推 **origin/prod** 之後——felix reconciler（launchd `com.kg.reconcile`，90s tick，盯 origin/prod）偵測前進且有 `backend/**` 變更即部署 wordnexus.lol（compose rebuild + 健康 gate + auto-rollback）。**因此「上生產」= 你刻意跑 `deploy`（或 `release.sh release`），不是每次 cutover、也不是 sync。** deploy 前確保要發布的 backend 變更 gate 已真實反映風險；資料面操作（migration/DB）仍走 `devops` skill 與鐵律 7。頂端的 gate + cutover 雙重授權**不包含** `sync`／`deploy`／`release`；這三者仍須使用者明示對應的備份或發布意圖。
 - **不重造 gate**：`gate` 只路由到既有工具。要加可斷言的 gate → 改對應工具本身，不在 orchestrate 內判 pass/fail。
 - **動 agent-facing surface**（本 CLI/skill 本身）→ 同 PR 同步 `docs/reference/tech_index.md` / `product_surface.md`（見根 CLAUDE.md「改 user/agent-facing 介面」）。
 - 收尾照 `kg-receipt`：驗證輸出 + 交接點。工具摩擦記 tooling debt（鐵律 9）。
@@ -430,17 +436,18 @@ reflog，而 reflog 會過期；tag 成本為零、風險歸零，也不必替�
 preflight ─▶ 讀地圖 ─▶ research? ──yes──▶ 直接做（不開 worktree）
                           │no
                           ▼
-              phased 拆 phase ─▶ open(fork 本地 main) ─▶ [每 phase: 實作 + review N-1 + rebase 本地 main]
-                          ─▶ gate ──behind main?──▶ catchup --commit(乾淨 rebase，衝突即 abort) ─▶ 重跑 gate
-                          ─▶ gate(block?) ──yes──▶ 修
-                                   │no（pass/warn）
-                                   ▼
-          （批次：N 條分支 ─▶ integrate --slug … --branches …(cherry-pick 進整合樹, 不前進任何共享 ref) ─▶ gate）
-                                   ▼
-                    cutover(離線 ff 本地 main ＋ post-landing ledger repair) ─▶ resolve(landed-floor→清乾淨)
-                                   │
-                          （攢數個 cutover）
-                                   ├──▶ sync --commit(push origin/main = 備份, 零生產)
-                                   ▼
-                    deploy --commit(push origin/prod = 觸發生產部署)
+              phased 拆 phase ─▶ open(fork 本地 main) ─▶ [每 phase: 實作 + review N-1]
+                          ─▶ 局部驗證 ─▶ commit ─▶ hand-back ─▶ 回報 branch/path/HEAD ─▶ STOP
+                                                        │
+                     使用者明示「無其他 session」且授權 gate+cutover？
+                                                        │yes
+                                                        ▼
+                     catchup(需要時) ─▶ fresh gate(block? ──yes──▶ 修後重跑)
+                                                        │pass/warn
+                                                        ▼
+          （批次：N 條已 hand-back 分支 ─▶ integrate(cherry-pick 進整合樹，不前進共享 ref) ─▶ fresh gate）
+                                                        ▼
+                    cutover(離線 ff 本地 main ＋ post-landing ledger repair) ─▶ resolve
+
+          sync(backup)／deploy 或 release(release) 是另外的使用者意圖，不由 develop 授權解鎖
 ```

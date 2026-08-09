@@ -35,4 +35,4 @@ model: inherit
 
 ## 交回狀態
 
-在自己的工作樹裡 commit 完就停,回報分支名與工作樹路徑。**不要**跑 `cutover` / `sync` / `deploy`——落地屬於握有整批視野的整合者,理由與例外見 `.claude/skills/worktree-flow/SKILL.md`「批次交回狀態」段。
+在自己的工作樹裡 commit 完後執行 `./ops/worktree_registry.py hand-back --json` 就停,回報分支名、工作樹路徑與 HEAD。**不要**跑 `gate` / `land` / `cutover` / `resolve`；只有使用者當下明示目前沒有其他 agent/session 工作且授權 gate + cutover 才可例外進 develop 平面。`sync` / `deploy` / `release` 不由此解鎖,仍須明示 backup / release 意圖。正本見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」。

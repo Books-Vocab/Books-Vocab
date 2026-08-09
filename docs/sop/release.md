@@ -61,12 +61,16 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ## 動詞對照
 
+### Develop 平面授權預設
+
+一般 session 預設假設同 repo 有其他工作同時進行，完成局部驗證與 commit 後執行 `./ops/worktree_registry.py hand-back --json`，保留工作樹並交回；不自行執行 `gate`、`land`、`cutover` 或 `resolve`。只有使用者當下明示「目前沒有其他 agent/session 工作」且授權本 session 直接 gate + cutover，才可進 develop 平面。這只解鎖 develop 平面的 `catchup`／`gate`／`land`／`cutover`／`resolve`；`sync`、`deploy`、`release` 仍須另有明示 backup／release 意圖。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
+
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
-| `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**多條工作樹同時落地時的預設路徑**（手動序列實測 N=10 只有 2/10 收斂） |
+| `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**已取得落地授權後**,多條獨立工作樹的預設序列化路徑（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
-| `integrate` | 來源先 `worktree_registry.py hand-back --json`，再 `ops/worktree_orchestrate.py integrate --slug <s> --branches <b1> <b2> … --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。批次的 gate 動詞：合併後跑一次 gate，落地仍要你再跑 `cutover`；無 hand-back 或 hand-back 後 tip 改變會拒絕 |
+| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`，再 `ops/worktree_orchestrate.py integrate --slug <s> --branches <b1> <b2> … --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。批次的 gate 動詞：合併後跑一次 gate，落地仍要你再跑 `cutover`；無 hand-back 或 hand-back 後 tip 改變會拒絕 |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
