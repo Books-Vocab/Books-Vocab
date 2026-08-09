@@ -30,6 +30,7 @@ VIEWS_ROOT = ROOT / "ios/BooksAndVocab/Views"
 from _inject_shared import (  # noqa: E402
     STRUCT_VIEW_RE,
     PREVIEW_OPEN_RE,
+    SKIP_PATH_FRAGMENTS,
     inject_package_linked,
     should_skip_path,
 )
@@ -251,7 +252,7 @@ def main() -> int:
     total = modified = obs_total = mod_total = 0
     baseline_lines: list[str] = []
     for f in files:
-        if should_skip_path(f):
+        if should_skip_path(f.relative_to(root)):
             continue
         total += 1
         result, summary = process_file(f)
@@ -270,6 +271,21 @@ def main() -> int:
             print(f"{f}: obs[{obs}] mod[{mod}]{sk}")
         if args.apply:
             f.write_text(result, encoding="utf-8")
+
+    if total == 0:
+        why = (
+            "no .swift file exists under it"
+            if not files
+            else f"all {len(files)} .swift file(s) under it are excluded by "
+            f"{list(SKIP_PATH_FRAGMENTS)}"
+        )
+        print(
+            f"ERROR: scanned 0 files under {root} — {why}. A codemod that "
+            "examined nothing has not shown that anything is safe to change; "
+            "refusing to report a successful scan.",
+            file=sys.stderr,
+        )
+        return 2
 
     print(
         f"\nScanned: {total}, files modified: {modified}, "
