@@ -2216,6 +2216,33 @@ def _git_repo(path):
     return orphan, landed
 
 
+def _git_repo_with_patch_id_mismatch(path):
+    """A rebase-shaped repo whose replacement commit has a different patch-id."""
+    def g(*args):
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t",
+             "-c", "commit.gpgsign=false", *args],
+            cwd=path, capture_output=True, text=True, check=True,
+        )
+
+    path.mkdir(parents=True, exist_ok=True)
+    g("init", "-b", "main", "-q")
+    (path / "base.txt").write_text("base\n")
+    g("add", "base.txt"); g("commit", "-qm", "base")
+    g("checkout", "-qb", "feat")
+    (path / "fix.txt").write_text("the fix\n")
+    g("add", "fix.txt"); g("commit", "-qm", "the fix")
+    orphan = g("rev-parse", "HEAD").stdout.strip()
+
+    g("checkout", "-q", "main")
+    (path / "meanwhile.txt").write_text("meanwhile\n")
+    g("add", "meanwhile.txt"); g("commit", "-qm", "meanwhile")
+    (path / "fix.txt").write_text("the fix, resolved differently\n")
+    g("add", "fix.txt"); g("commit", "-qm", "the fix, resolved differently")
+    g("branch", "-qD", "feat")
+    return orphan
+
+
 def _groomed_against_repo(path):
     """A main branch with a known grooming base and three later commits."""
     def g(*args):
@@ -2413,8 +2440,37 @@ def test_reanchor_refuses_to_guess_when_no_patch_id_matches(tmp_path, monkeypatc
     item = result["plan"][0]
     assert item["moves"] == {}
     assert [u["sha"] for u in item["unmatched"]] == [orphan]
+    assert item["unmatched"][0]["reason"] == "search-window-not-covered"
+    assert "--search-depth" in item["unmatched"][0]["next_step"]
     assert result["searched"] == 1, "the bound must be reported, not silently applied"
     assert json.loads((store / f"{entry['id']}.json").read_text())["fixed_by"] == [orphan]
+
+
+def test_reanchor_reports_patch_id_mismatch_after_full_frame_scan(
+    tmp_path, monkeypatch, capsys
+):
+    """A full-frame miss is a changed patch, not an unexplored search window."""
+    monkeypatch.undo()
+    repo = tmp_path / "repo"
+    orphan = _git_repo_with_patch_id_mismatch(repo)
+    store = repo / "store"
+    entry = _add(store, detail="patch id changed during conflict resolution")
+    _force_fixed_by(store, entry["id"], [orphan])
+
+    result = BACKLOG.reanchor_store(store, search_depth=100, repo=repo)
+    miss = result["plan"][0]["unmatched"][0]
+    assert result["window_exhausted"] is True
+    assert miss["reason"] == "patch-id-mismatch"
+    assert f"update {entry['id']} --fixed-by" in miss["next_step"]
+
+    monkeypatch.setattr(BACKLOG, "GIT_REPO", repo)
+    assert BACKLOG.main([
+        "reanchor", "--store", str(store), "--search-depth", "100", "--json"
+    ]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "frame_depth" in payload
+    assert "main_depth" not in payload
+    assert payload["plan"][0]["unmatched"][0]["reason"] == "patch-id-mismatch"
 
 
 def test_reanchor_human_output_reports_the_window_it_searched(tmp_path, monkeypatch, capsys):
@@ -2430,7 +2486,7 @@ def test_reanchor_human_output_reports_the_window_it_searched(tmp_path, monkeypa
     assert BACKLOG.main(["reanchor", "--store", str(store)]) == 0
     out = capsys.readouterr().out
     assert "[dry-run]" in out
-    assert f"HEAD is {result['main_depth']} deep" in out
+    assert f"frame is {result['frame_depth']} commits deep" in out
     assert "window exhausted" in out
 
     assert BACKLOG.main([
@@ -2461,6 +2517,8 @@ def test_reanchor_result_shape_is_stable_with_or_without_orphans(tmp_path, monke
     without_result = BACKLOG.reanchor_store(without_orphan, repo=repo)
 
     assert set(with_result) == set(without_result)
+    assert "frame_depth" in with_result
+    assert "main_depth" not in with_result
 
 
 # --------------------------------------------------------------------------
@@ -3269,6 +3327,14 @@ def test_the_reanchor_search_depth_has_one_default_and_not_two(tmp_path):
     assert parsed.search_depth == from_signature, (
         f"CLI default {parsed.search_depth} != library default {from_signature}"
     )
+
+
+def test_reanchor_help_describes_the_head_main_frame_and_fallback():
+    parser = BACKLOG.build_parser()
+    help_text = parser._subparsers._group_actions[0].choices["reanchor"].format_help()
+    assert "from HEAD and main to scan" in help_text
+    assert "HEAD-only" in help_text
+    assert "from main to scan" not in help_text
 
 
 # --------------------------------------------------------------------------

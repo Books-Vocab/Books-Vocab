@@ -3454,7 +3454,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_reanchor.add_argument("--store", type=Path, default=DEFAULT_STORE)
     p_reanchor.add_argument(
         "--search-depth", type=int, default=DEFAULT_SEARCH_DEPTH,
-        help=f"how many commits back from main to scan for a patch-id match (default {DEFAULT_SEARCH_DEPTH}; main is deeper than that, and the result reports whether the window was exhausted). "
+        help=f"how many commits back from HEAD and main to scan for a patch-id match (default {DEFAULT_SEARCH_DEPTH}; the frame falls back to HEAD-only when main is unavailable, and the result reports whether the window was exhausted). "
              "The bound is REPORTED, never silent: a miss inside the window and a miss "
              "because the window ended are different answers",
     )
@@ -5092,7 +5092,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
             targets.append((payload, orphans))
     if not targets:
         return {"plan": [], "searched": 0, "scanned": 0, "search_depth": search_depth,
-                "window_exhausted": None, "main_depth": None}
+                "window_exhausted": None, "frame_depth": None}
 
     # HEAD, not `main` — the SAME reference frame `commit_state` calls `ok`.
     # The first cut searched `main` alone and, on its first real run, returned
@@ -5116,7 +5116,7 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
         raise BacklogError("reanchor needs a resolvable HEAD")
     candidates = log.stdout.split()
     total = _git("rev-list", "--count", *frame, repo=repo).stdout.strip()
-    main_depth = int(total) if total.isdigit() else None
+    frame_depth = int(total) if total.isdigit() else None
 
     by_patch: dict[str, list[str]] = {}
     indexed = 0
@@ -5136,7 +5136,30 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
             if len(hits) == 1:
                 moves[sha] = hits[0][:9]
             else:
-                unmatched.append({"sha": sha, "candidates": len(hits)})
+                if len(hits) > 1:
+                    reason = "ambiguous-patch-id"
+                    next_step = (
+                        f"choose the correct landed commit and run update {payload['id']} "
+                        "--fixed-by <sha>"
+                    )
+                elif frame_depth is None or len(candidates) < frame_depth:
+                    reason = "search-window-not-covered"
+                    next_step = (
+                        f"rerun reanchor with --search-depth > {len(candidates)} "
+                        "to cover the full frame"
+                    )
+                else:
+                    reason = "patch-id-mismatch"
+                    next_step = (
+                        f"run update {payload['id']} --fixed-by {sha} with the "
+                        "correct landed commit"
+                    )
+                unmatched.append({
+                    "sha": sha,
+                    "candidates": len(hits),
+                    "reason": reason,
+                    "next_step": next_step,
+                })
         if moves or unmatched:
             plan.append({
                 "id": payload["id"],
@@ -5150,8 +5173,8 @@ def reanchor_store(store: Path, ids: list[str] | None = None, *,
     # unscanned. A bound that is not reported reads as "searched everything" —
     # this tool's own argument, applied to its own number.
     return {"plan": plan, "searched": indexed, "scanned": len(candidates),
-            "search_depth": search_depth, "main_depth": main_depth,
-            "window_exhausted": main_depth is not None and len(candidates) >= main_depth}
+            "search_depth": search_depth, "frame_depth": frame_depth,
+            "window_exhausted": frame_depth is not None and len(candidates) >= frame_depth}
 
 
 def _cmd_reanchor(args) -> int:
@@ -5170,7 +5193,8 @@ def _cmd_reanchor(args) -> int:
     if result["plan"]:
         window = (f"indexed {result['searched']} of {result['scanned']} commits scanned"
                   f" (--search-depth {result['search_depth']}"
-                  + (f", HEAD is {result['main_depth']} deep" if result["main_depth"] else "")
+                  + (f", frame is {result['frame_depth']} commits deep"
+                     if result["frame_depth"] is not None else "")
                   + (", window exhausted" if result["window_exhausted"] else ", window NOT exhausted")
                   + ")")
     else:
@@ -5181,7 +5205,8 @@ def _cmd_reanchor(args) -> int:
             print(f"  {item['id']}: {old} -> {new}")
         for miss in item["unmatched"]:
             print(f"  {item['id']}: {miss['sha']} UNMATCHED "
-                  f"({miss['candidates']} patch-id candidates in window) — not guessed")
+                  f"({miss['candidates']} patch-id candidates in window) — "
+                  f"{miss['reason']}: {miss['next_step']}")
     if not result["plan"]:
         print("  no orphaned fixed_by shas")
     elif not args.commit:
