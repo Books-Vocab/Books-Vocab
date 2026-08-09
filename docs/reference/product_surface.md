@@ -52,6 +52,10 @@ verified_against: 57c2f2204
 - **State matrix error states**: notebook list / podcast list / bookshelf / translation settings / today review failure feedback
 - **Sentry crash reporting**: opt-in via Info.plist `SentryDSN` + auth scrubbing + frame locals dropped + breadcrumb across services + `KGService` iOS HTTP breadcrumb
 
+## KG 懸賞板（`ops/kg_board`）
+
+- **手機優先的當前決策看板**：固定 trust strip 具名顯示 clone 落後量、本機領先量與程序版號；首頁以「現在／阻塞／進行中／全部」四個決策分頁呈現 canonical `backlog.py dispatch`、`blocked_by` 與 mirror claims，核心指標為可開始／進行中／被阻擋／待梳理，歷史 total/fixed/wont-fix 降為次要資訊。每張票只允許個人覆蓋層的釘選、排序、延後，不提供認領或結案。瀏覽器寫 `POST /api/priority` 使用程序短期同源 CSRF；主機 mirror 寫入仍使用長期 Bearer，長期 token 不進頁面。
+
 ## Backend (`backend/src/kg`)
 
 - **Auth/user identity**: Apple/Google + web auth + cookie admin session + provider switch / session invalidation matrix + `google_auth` case-insensitive bool normalize + 唯讀 profile face (`GET /api/user/profile` → `displayName`/`email`/`provider`，由登入 record 衍生，與可變 config bundle 分離)
