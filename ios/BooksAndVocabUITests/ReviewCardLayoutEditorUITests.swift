@@ -41,12 +41,15 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
             XCTFail("工具列入口必須開出 layout editor；方向 preset picker 缺席")
             return
         }
-        editor.lockedRow("recognition", "prompt").assertExists()
+        editor.previewCard.assertExists()
 
         // Reset to the built-in default first: the profile outlives the app
         // process, so a previous method's edits would otherwise be the baseline.
         editor.resetAll()
-        editor.previewField("recognition", face: "back", field: "example").assertExists()
+        XCTAssertTrue(
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.standard),
+            "恢復全部預設後辨識方向應該停在「正常」"
+        )
         editor.done()
 
         // ── 2. Switching to 精簡 re-lays out the card behind the sheet ─────────
@@ -54,7 +57,9 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
         editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
-        editor.previewField("recognition", face: "back", field: "example").assertDoesNotExist()
+        XCTAssertTrue(
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact)
+        )
         editor.done()
         XCTAssertTrue(review.cardFront.waitUntilExists(timeout: 8))
         RunLoop.current.run(until: Date().addingTimeInterval(0.8))
@@ -73,7 +78,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         review.layoutEditorButton.tapWhenReady()
         XCTAssertTrue(editor.waitUntilVisible())
         XCTAssertTrue(
-            editor.previewField("recognition", face: "back", field: "example").waitUntilGone(timeout: 3),
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact),
             "關閉再開啟 editor 必須保留精簡設定"
         )
         editor.done()
@@ -93,15 +98,15 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         settings.openReviewCardLayout()
         XCTAssertTrue(editor.waitUntilVisible())
         XCTAssertTrue(
-            editor.previewField("recognition", face: "back", field: "example").waitUntilGone(timeout: 3),
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.compact),
             "設定頁與複習頁必須讀寫同一份 profile"
         )
 
         // ── 5. Reset all puts every mode back, and the summary follows ─────────
         editor.resetAll()
         XCTAssertTrue(
-            editor.previewField("recognition", face: "back", field: "example").waitUntilExists(timeout: 5),
-            "恢復全部預設後應回到正常版面（背面含例句）"
+            editor.isPresetSelected("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.standard),
+            "恢復全部預設後應回到正常版面"
         )
 
         app.navigationBars.buttons.element(boundBy: 0).tapWhenReady()
@@ -138,7 +143,7 @@ final class ReviewCardLayoutEditorUITests: UITestCase {
         XCTAssertTrue(editor.waitUntilVisible())
         editor.selectPreset("recognition", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
         editor.selectPreset("production", index: ReviewCardLayoutEditorPage.PresetIndex.standard)
-        editor.previewField("recognition", face: "back", field: "collocations").assertExists()
+        editor.previewCard.assertExists()
         editor.done()
         captureStep("both-directions-standard", app: app)
 

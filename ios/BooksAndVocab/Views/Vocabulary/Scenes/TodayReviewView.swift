@@ -212,7 +212,10 @@ struct TodayReviewView: View {
             // Writes straight through to the shared store, so the card behind the
             // sheet re-lays out live. Nothing here touches reveal stage, current
             // index or session persistence.
-            ReviewCardLayoutEditorSheet(onDone: { showLayoutEditor = false })
+            ReviewCardLayoutEditorSheet(
+                previewCard: state.presenterState.currentCard,
+                onDone: { showLayoutEditor = false }
+            )
         }
         .toastSheet(item: $explainSheetItem) { item in
             CollocationExplainSheet(

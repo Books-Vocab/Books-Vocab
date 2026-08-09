@@ -30,15 +30,19 @@ struct ReviewCardLayoutEditorPage {
         element("reviewCardLayout.preset.\(mode)")
     }
 
-    /// 題目／答案列。它沒有開關就是它的契約。
-    func lockedRow(_ mode: String, _ face: String) -> XCUIElement {
-        element("reviewCardLayout.lockedRow.\(mode).\(face)")
+    /// 辨識方向的即時預覽卡（一張真的複習卡，翻開的樣子）。
+    var previewCard: XCUIElement { element("reviewCardLayout.preview") }
+
+    var productionPreviewCard: XCUIElement { element("reviewCardLayout.preview.production") }
+
+    /// segmented picker 的一段。選中狀態是這一頁語言無關、可機器斷言的訊號 ——
+    /// 預覽卡本身是 `interactive: false` 的展示品，內部不掛可查詢的錨點。
+    func presetSegment(_ mode: String, index: Int) -> XCUIElement {
+        presetPicker(mode).buttons.element(boundBy: index)
     }
 
-    /// 預覽裡的一個欄位列。存在與否＝該方向目前 preset 的結果，
-    /// 是這一頁唯一語言無關、可機器斷言的訊號。
-    func previewField(_ mode: String, face: String, field: String) -> XCUIElement {
-        element("reviewCardLayout.previewField.\(mode).\(face).\(field)")
+    func isPresetSelected(_ mode: String, index: Int) -> Bool {
+        presetSegment(mode, index: index).isSelected
     }
 
     // MARK: - Actions
@@ -51,7 +55,7 @@ struct ReviewCardLayoutEditorPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> Self {
-        presetPicker(mode).buttons.element(boundBy: index).tapWhenReady(file: file, line: line)
+        presetSegment(mode, index: index).tapWhenReady(file: file, line: line)
         return self
     }
 

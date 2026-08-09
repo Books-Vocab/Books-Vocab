@@ -19,8 +19,15 @@ import SwiftUI
 /// 一起退場 —— 那個自由度沒有人知道該怎麼用。
 struct ReviewCardLayoutEditor: View {
     @ObserveInjection private var inject
-    @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewCardLayoutStore) private var store
+
+    /// 從複習畫面工具列進來時是「當前那張卡」；從設定頁進來沒有當前卡，
+    /// 走 `ReviewCardLayoutPreviewCard.sampleCard(for:)` 的內建範例卡。
+    var previewCard: TodayReviewPresenterState.CurrentCard?
+
+    init(previewCard: TodayReviewPresenterState.CurrentCard? = nil) {
+        self.previewCard = previewCard
+    }
 
     var body: some View {
         Form {
@@ -38,8 +45,8 @@ struct ReviewCardLayoutEditor: View {
 
     // MARK: - Direction
 
-    /// 一個方向一個 Section：上面是二選一，下面是這個選擇當下會畫成什麼樣。
-    /// 預覽直接讀 `store.profile.layout(for:)`，所以它不可能與卡片說法不同。
+    /// 一個方向一個 Section：上面是二選一，下面是這個選擇當下**真的**會畫成
+    /// 什麼樣 —— 預覽用的是出貨複習卡的同一個 view，餵同一份 store.profile。
     private func directionSection(_ mode: VocabularyCardMode) -> some View {
         Section {
             Picker(mode.localizedTitle, selection: presetBinding(mode)) {
@@ -51,34 +58,7 @@ struct ReviewCardLayoutEditor: View {
             .labelsHidden()
             .accessibilityIdentifier("reviewCardLayout.preset.\(mode.rawValue)")
 
-            VStack(alignment: .leading, spacing: AppSpacing.s2) {
-                previewRow(
-                    title: L10n.string("reviewCardLayout.locked.prompt"),
-                    isLocked: true,
-                    identifier: "reviewCardLayout.lockedRow.\(mode.rawValue).prompt"
-                )
-                ForEach(store.profile.layout(for: mode).front, id: \.self) { field in
-                    previewRow(
-                        title: L10n.string(field.titleKey),
-                        isLocked: false,
-                        identifier: "reviewCardLayout.previewField.\(mode.rawValue).front.\(field.rawValue)"
-                    )
-                }
-
-                previewRow(
-                    title: L10n.string("reviewCardLayout.locked.answer"),
-                    isLocked: true,
-                    identifier: "reviewCardLayout.lockedRow.\(mode.rawValue).answer"
-                )
-                ForEach(store.profile.layout(for: mode).back, id: \.self) { field in
-                    previewRow(
-                        title: L10n.string(field.titleKey),
-                        isLocked: false,
-                        identifier: "reviewCardLayout.previewField.\(mode.rawValue).back.\(field.rawValue)"
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            previewCardView(mode)
         } header: {
             SettingsSectionHeader(title: mode.localizedTitle, icon: "rectangle.split.2x1")
         } footer: {
@@ -95,20 +75,31 @@ struct ReviewCardLayoutEditor: View {
         )
     }
 
-    /// 每一列都掛 identifier：preset 的結果是這一頁**唯一**可斷言的東西
-    /// （segmented picker 的當選段不可靠），UI test 靠列的存在與否判定 preset。
-    private func previewRow(title: String, isLocked: Bool, identifier: String) -> some View {
-        HStack(spacing: appSkin.spacing.inlineGap) {
-            Image(systemName: isLocked ? "lock.fill" : "circle.fill")
-                .font(appSkin.typography.iconTiny)
-                .foregroundStyle(isLocked ? appSkin.palette.tertiaryText : appSkin.palette.accent)
-            Text(title)
-                .font(isLocked ? appSkin.typography.body.weight(.semibold) : appSkin.typography.body)
-                .foregroundStyle(appSkin.palette.primaryText)
-            Spacer(minLength: AppSpacing.s2)
+    /// 一張真的複習卡（翻開的樣子），不是欄位名稱清單。
+    ///
+    /// identifier 寫成兩個字面值而不是內插：`reviewCardLayout.preview` 是
+    /// `ReviewCardLayoutEditorPage` 沿用至今的錨點，掛在主要方向（辨識）上；
+    /// 產出方向另給一個後綴 id。內插寫法會讓那個歷史錨點在原始碼裡消失。
+    @ViewBuilder
+    private func previewCardView(_ mode: VocabularyCardMode) -> some View {
+        let card = ReviewCardLayoutPreviewCard(
+            currentCard: previewContent(for: mode),
+            profile: store.profile
+        )
+        if mode == .recognition {
+            card.accessibilityIdentifier("reviewCardLayout.preview")
+        } else {
+            card.accessibilityIdentifier("reviewCardLayout.preview.production")
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier(identifier)
+    }
+
+    /// 當前那張卡只屬於它自己的方向；另一個方向一律用範例卡，否則等於拿辨識卡
+    /// 去示範產出版面。
+    private func previewContent(for mode: VocabularyCardMode) -> TodayReviewPresenterState.CurrentCard {
+        if let previewCard, previewCard.card.reviewMode == mode {
+            return previewCard
+        }
+        return ReviewCardLayoutPreviewCard.sampleCard(for: mode)
     }
 
     // MARK: - Reset
@@ -133,11 +124,13 @@ struct ReviewCardLayoutEditor: View {
 struct ReviewCardLayoutEditorSheet: View {
     @ObserveInjection private var inject
 
+    /// 工具列入口帶著「當前那張卡」進來，設定頁入口不帶。
+    let previewCard: TodayReviewPresenterState.CurrentCard?
     let onDone: () -> Void
 
     var body: some View {
         NavigationStack {
-            ReviewCardLayoutEditor()
+            ReviewCardLayoutEditor(previewCard: previewCard)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(L10n.string("完成"), action: onDone)

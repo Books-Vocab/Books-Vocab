@@ -1182,3 +1182,9 @@
 "settings.reviewCardLayout.standard" = "標準";
 "settings.reviewCardLayout.compact" = "コンパクト";
 "settings.reviewCardLayout.mixed" = "混在";
+
+/* settings-native-converge · APP-20260808-d4a707 預覽範例卡 */
+"reviewCardLayout.sample.translation" = "思いがけない幸運な発見";
+"reviewCardLayout.sample.explanation" = "探していないのに素敵なものに出会うこと、またはその能力。";
+"reviewCardLayout.sample.book" = "サンプルの本";
+"reviewCardLayout.sample.chapter" = "サンプルの章";
