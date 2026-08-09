@@ -137,6 +137,19 @@ def test_neutral_file_is_declared_with_a_reason():
     assert cov["neutral"] == [["README.md", "README.md"]]
 
 
+def test_claude_neutral_reason_does_not_claim_docs_coverage():
+    """Keep the neutral reason honest while docs_lint does not scan `.claude/`."""
+    source = (ROOT / "ops" / "docs_lint.sh").read_text()
+    match = re.search(r"(?ms)^all_docs\(\) \{\n(?P<body>.*?)^}", source)
+    assert match, "docs_lint.sh all_docs() definition is not parseable"
+    if ".claude" in match.group("body"):
+        return
+
+    reason = dict(MODULE.NEUTRAL_RULES)[".claude/"]
+    forbidden_claims = ("registry", "docs_lint", "涵蓋")
+    assert not any(claim in reason.casefold() for claim in forbidden_claims), reason
+
+
 def test_coverage_partition_is_exact():
     files = ["ios/BooksAndVocab/A.swift", "README.md", "lab/x.rb", "docs/reference/tech_index.md"]
     cov = next(g for g in plan_gates(files) if g["name"] == "coverage")
