@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ops/
   - backend/
-verified_against: db0e9ed46
+verified_against: 44d0c76c5
 -->
 # Release / 部署 / 版本管理 — 三平面心智模型
 
@@ -21,7 +21,7 @@ verified_against: db0e9ed46
 | **backup** | 碼在機器外安全嗎 | `origin/main` | `sync`（push origin/main） | **無**（reconciler 不看 main） |
 | **release** | 世界該跑什麼 | `origin/prod` + tag | `deploy`（推 origin/prod）/ `release`（統一入口） | **有（唯一）** |
 
-**唯一碰生產 = `deploy`（backend）/ `release`（前後端統一）。** `sync` 只是備份，push 幾次都無所謂。
+**唯一碰生產 = `deploy`（backend）/ `release`（前後端統一）。** `sync` 只是備份；取得明示 backup 意圖後可重複執行，develop 授權本身不包含它。
 
 ### `cutover` 為什麼不是純 ff
 
@@ -33,7 +33,7 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### `catchup`：trunk 動了之後的那一步
 
-`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。當初的差別是：rebase 會在那份 **generated** 的 ledger view 上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator，所以 `catchup` 曾內建一個「衝突集合恰好等於該檔就自動重生」的解析器。**該檔已移出版控（IMP-20260807-b9526c），衝突源與那個解析器一併消失**：現在 `catchup` 就是一次乾淨的 rebase，衝突一律 abort 交人——本來就該如此。rebase 完 HEAD 就動了，所以之後一定要重跑 `gate`。
+`gate` 與 `cutover` 在分支落後本地 main 時都會拒絕並要你先追上。那一步現在是 `catchup --commit`（原本是叫你自己跑 `git rebase main`）。當初的差別是：rebase 會在那份 **generated** 的 ledger view 上衝突（實測十條分支一輪，3–6 條中招），而那個檔沒有「該保留哪一邊」的問題——它是 store 的純函數，正解就是重跑 generator，所以 `catchup` 曾內建一個「衝突集合恰好等於該檔就自動重生」的解析器。**該檔已移出版控（IMP-20260807-b9526c），衝突源與那個解析器一併消失**：現在 `catchup` 就是一次乾淨的 rebase，衝突一律 abort 交人——本來就該如此。rebase 完 HEAD 就動了：已取得 develop 授權者必須跑 fresh `gate`；授權前只有一般且無存活 integration state 的工作樹可 catchup，完成後重新 `hand-back` 更新 SHA。整合樹 base 前進時必須走下方 abort／驗來源／teardown／重建路徑。
 
 ## 版號事實 SoT 表（iOS）
 
@@ -63,14 +63,14 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 ### Develop 平面授權預設
 
-一般 session 預設假設同 repo 有其他工作同時進行，完成局部驗證與 commit 後執行 `./ops/worktree_registry.py hand-back --json`，保留工作樹並交回；不自行執行 `gate`、`land`、`cutover` 或 `resolve`。只有使用者當下明示「目前沒有其他 agent/session 工作」且授權本 session 直接 gate + cutover，才可進 develop 平面。這只解鎖 develop 平面的 `catchup`／`gate`／`land`／`cutover`／`resolve`；`sync`、`deploy`、`release` 仍須另有明示 backup／release 意圖。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
+一般 session 預設假設同 repo 有其他工作同時進行，完成局部驗證與 commit 後執行 `./ops/worktree_registry.py hand-back --json`，保留工作樹並交回；不自行執行會觸發 Gate 的 `integrate`、`gate`、`land`、`cutover` 或 `resolve`。授權前可對一般工作樹做 branch-local `catchup`，批次純組裝則只能使用 `integrate ... --commit --no-gate`；兩者完成後都重新 hand-back。有存活 integration state 的整合樹禁止 catchup；main 前進時須 abort、核對來源 hand-back tip、明示 teardown，再從新 main 重建。只有使用者當下明示「目前沒有其他 agent/session 工作」且授權本 session 直接 gate + cutover，才可進 develop 平面。這只解鎖會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）／`gate`／`land`／`cutover`／`resolve`；`sync`、`deploy`、`release` 仍須另有明示 backup／release 意圖。此政策只決定誰在何時呼叫動詞，不改變下表的工具語意與護欄。
 
 | 動詞 | 工具 | 讀 | 前進 | 副作用 |
 |---|---|---|---|---|
 | `cutover` | `ops/worktree_orchestrate.py cutover --commit` | worktree branch | 本地 `main`（ff，**之後可能再 +1 顆 repair commit**） | 無—離線可逆 |
 | `land` | `ops/worktree_orchestrate.py land --worktree <path> --commit` | 本地 `main` | 本地 `main`（取 FIFO 名次後 catchup→gate→cutover 一氣呵成） | 無—離線可逆；**已取得落地授權後**,多條獨立工作樹的預設序列化路徑（手動序列實測 N=10 只有 2/10 收斂） |
 | `catchup` | `ops/worktree_orchestrate.py catchup --commit` | 本地 `main` | worktree branch（rebase） | 無—只動那條 worktree |
-| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`，再 `ops/worktree_orchestrate.py integrate --slug <s> --branches <b1> <b2> … --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。批次的 gate 動詞：合併後跑一次 gate，落地仍要你再跑 `cutover`；無 hand-back 或 hand-back 後 tip 改變會拒絕 |
+| `integrate` | 來源先 `./ops/worktree_registry.py hand-back --json`；授權前 `integrate --slug <s> --branches <b...> --commit --no-gate`；取得 develop 授權後才執行會觸發 Gate 的 fresh／`--continue --commit` | 本地 `main` + N 條來源分支 | **新開的整合 worktree**（cherry-pick，**非 merge**）| 無—**不前進任何共享 ref**。`--no-gate` 只組裝並 hand-back；state 不可跨 catchup，base 移動須 abort／驗來源／teardown／重建；最終 integrate 只跑一次 Gate，落地仍另跑 `cutover` |
 | `sync` | `ops/worktree_orchestrate.py sync --commit` | 本地 main | `origin/main`（守護 ff） | **零** |
 | `deploy` | `ops/worktree_orchestrate.py deploy --commit` | 本地 main | `origin/prod`（守護 ff） | **生產**—reconciler 部署 |
 | `tag` | `ops/release.sh tag <api\|ios> <v>` | 版號檔 | 版號 commit + tag + push origin main。**api 打 `api/x.y.z`；ios 打 `ios/x.y.z+<build>`（build 級封版，不是上架標記）** | 備份/標記，無生產 |
@@ -93,8 +93,10 @@ develop 平面**前進本地 main 的方式**仍是 ff——被 gate 過的那�
 
 受派者完成最後一顆 commit 後，必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`；`integrate` 會把這個戳記與來源 branch 現在的
-tip 做一致性檢查。流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`「批次整合」段
-（含「批次交回狀態」子段）。
+tip 做一致性檢查。尚有其他 session 或尚未取得 develop 授權時，fresh／continue 一律加
+`--no-gate`，整合樹完成純組裝後也 commit + hand-back；等條件成立，才由握有整批視野的整合
+session 在最終整合樹跑唯一 Gate。流程正本與交回契約皆在 `.claude/skills/worktree-flow/SKILL.md`
+「批次整合」段（含「批次交回狀態」子段）。
 
 ## Release 流程
 

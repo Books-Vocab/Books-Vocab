@@ -62,7 +62,7 @@ Monorepo:`ios/`(SwiftUI BooksAndVocab app)+ `backend/`(FastAPI / Python,含官�
 免開 agent、免全套 receipt。此門檻與鐵律5 正交:判的是「要不要開」,一旦開了,背景化照常適用。
 review 豁免是**另一件事**,只認 `docs/sop/review_discipline.md`「Receipt 契約」的白名單。
 
-**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 所有 session 都**做到自己工作樹裡 commit + hand-back 為止**；只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的 session 可執行 develop 平面的 `catchup` / `gate` / `land` / `cutover` / `resolve`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
+**預設假設多 session 並行,落地權在取得使用者明示授權的整合者,不在各票。** 受派 worker 無例外,只做到自己工作樹裡 commit + hand-back；尚未取得授權的整合者可對一般工作樹做 branch-local `catchup`，或用 `integrate ... --commit --no-gate` 純組裝，但完成後必須重新 hand-back；有存活 integration state 的整合樹禁止 catchup，main 前進時須 abort/驗來源/teardown/重建。只有握有整批視野且使用者已明示「目前沒有其他 agent/session 工作、可直接 gate + cutover」的整合 session 可執行 develop 平面會觸發 Gate 的最終 `integrate ... --commit`（fresh 或 `--continue`）/ `gate` / `land` / `cutover` / `resolve`。這項授權不包含 `sync` / `deploy` / `release`；三者仍須明示 backup / release 意圖。理由與實證見 `.claude/skills/worktree-flow/SKILL.md`「預設停止點」與「批次交回狀態」。
 
 **要問使用者的只有五類**(其餘自決後告知):不可逆生產操作 / 預算·成本 / 策略分岔(多路皆合理
 且影響大)/ 安全紅線 / 真正的歧義。**外加一類且要求即時**:執行中確認某個外部動作**只有

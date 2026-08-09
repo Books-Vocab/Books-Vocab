@@ -6,7 +6,7 @@ scope:
   - .claude/skills/
   - .claude/agents/
   - docs/sop/
-verified_against: 785f64052
+verified_against: 44d0c76c5
 -->
 # 逐項 Review 落地手冊（鐵律 4）
 
@@ -72,8 +72,9 @@ BLOCK 時輸出 `adjudication_required`，**不得自動派第三次完整 revie
 缺陷時才例外啟動，且必須寫下具名理由；單一 NIT 或 tooling debt 不得重新打開原始 scope。
 
 Gate 是獨立的機器 review 層，不是 LLM review 的重播：任何 gate BLOCK 都是具體退回路徑，修正
-後須以 fresh gate 證明；fresh gate 通過、review cycle 已有界收斂且收據完整時，正常變更即可落地，
-不需要為了追求文字或風格上的完美而無限追加 LLM review。遇到來回超過兩三輪，先裁決真正的
+後須以 fresh gate 證明。**Gate 綠只提供證據，不授予落地權**：一般 session 仍停在 commit + hand-back；
+只有取得 `worktree-flow` 頂端 develop 授權的整合 session，才可在 fresh gate 通過、review cycle 已有界
+收斂且收據完整後落地。不要為了追求文字或風格上的完美而無限追加 LLM review。遇到來回超過兩三輪，先裁決真正的
 release-blocking correctness，其餘記為 follow-up，回到交付與下一輪工具改善。
 
 ```bash
