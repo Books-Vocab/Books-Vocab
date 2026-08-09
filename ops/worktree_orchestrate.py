@@ -5058,6 +5058,7 @@ RESOLVE_REFUSALS = {
     "primary-worktree": EXIT_BLOCK,
     "branch-contradicts-git": EXIT_BLOCK,
     "uncorroborated-branch": EXIT_BLOCK,
+    "integration-ref-unresolvable": EXIT_BLOCK,
     "rm-target-unvetted": EXIT_BLOCK,
     "unsafe-step": EXIT_BLOCK,
 }
@@ -5338,7 +5339,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     # Called out of order (before cutover) it would vaporize unlanded work. Refuse a
     # branch whose net change is NOT already in base — using the registry's tree-diff
     # containment (never git cherry; same authority the sweep trusts). --force overrides.
+    root = primary_root()
     audit = None
+    integrated_closures: list[str] = []
     if not args.force:
         _fetch()  # base may have advanced; compare against the fresh tip
         if not wr.landed_in_base(args.base, branch):
@@ -5388,11 +5391,31 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                       f"✗ resolve refused: {reason}")
                 return EXIT_BLOCK
 
+    # A successful integration audit is the batch model's equivalent of cutover:
+    # it proves this source branch reached the named trunk ref after cherry-pick or
+    # conflict resolution. Preserve the hunter's staged evidence before teardown,
+    # using the integration ref's actual tip just as ordinary cutover stamps its
+    # landed trunk tip. Without this, resolve deletes the only branch identity that
+    # can connect the queue row to the landed work and anchor leaves it unstamped
+    # forever (IMP-20260808-b6f69d).
+    if args.commit and audit is not None and args.via_integration:
+        rc, integrated_sha = _git(["rev-parse", f"{args.via_integration}^{{commit}}"],
+                                  cwd=root)
+        if rc != 0 or not integrated_sha.strip():
+            return _refuse(
+                "integration-ref-unresolvable",
+                f"integration audit passed but {args.via_integration!r} no longer "
+                "resolves to a commit; refusing teardown before losing the staged "
+                "closure's branch identity",
+                branch=branch,
+            )
+        integrated_closures = _stamp_anchor_queue(
+            root, branch, integrated_sha.strip())
+
     # teardown MUST run from the primary root: step 1 removes the target worktree,
     # which may be the very directory this process was invoked from. For the same
     # reason the gate-cache path is resolved NOW — its default-state branch derives
     # the ledger anchor from the process cwd, which teardown may be about to remove.
-    root = primary_root()
     gate_cache = _gate_record_path(args.state, worktree)
     steps: list[dict[str, Any]] = []
 
@@ -5591,6 +5614,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
                "aborted_after": aborted_after,
                "gate_cache_removed": gate_cache_removed,
                "gate_logs_removed": gate_logs_removed,
+               "staged_closures": integrated_closures,
                "pending_anchor": pending_anchor,
                "claimed_without_closure": claimed_open}
     human = ["# resolve (committed): ledger -> merged"]

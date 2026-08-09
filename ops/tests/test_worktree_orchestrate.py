@@ -6371,6 +6371,7 @@ def test_resolve_refuses_without_the_flag_and_accepts_with_it(scratch):
     _git(["add", "-A"], wt)
     _git(["commit", "-qm", "ops: picked work"], wt)
     sha = _git(["rev-parse", "HEAD"], wt).strip()
+    _stage_row(repo, opened["branch"], "IMP-0001")
     # Integrate by hand, exactly as a batch integrator would: trunk moves first,
     # then the pick, then the conflict resolution EDITS the content — merging this
     # lane's line with another lane's. That last step is the whole point: without
@@ -6400,6 +6401,10 @@ def test_resolve_refuses_without_the_flag_and_accepts_with_it(scratch):
     # test_a_branch_whose_content_was_amended_during_integration_still_vouches.
     assert all(c["match"] for c in ok["audit"]["commits"]), ok["audit"]
     assert all(c["matched_sha"] for c in ok["audit"]["commits"]), ok["audit"]
+    rows = {row["id"]: row for row in _queue_rows(repo)}
+    assert rows["IMP-0001"]["landed_sha"] == _git(["rev-parse", "main"], repo).strip(), (
+        "a vouched-for batch branch was torn down without stamping its closure")
+    assert ok["pending_anchor"] == ["IMP-0001"], ok
     assert not Path(wt).exists(), "worktree survived a vouched-for resolve"
 
 
