@@ -167,7 +167,9 @@ private extension XCUIElement.ElementType {
     }
 }
 
-private extension XCTAttachment {
+// `fileprivate` 到 2026-08-09 為止都夠用，因為只有本檔在附加診斷。
+// `TodayReviewFrontBudgetUITests` 起，量測型 UI 測試也要替附件命名。
+extension XCTAttachment {
     func named(_ name: String) -> XCTAttachment {
         self.name = name
         self.lifetime = .keepAlways

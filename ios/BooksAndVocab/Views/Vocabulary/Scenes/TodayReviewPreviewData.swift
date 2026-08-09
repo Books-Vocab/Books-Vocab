@@ -66,6 +66,7 @@ struct TodayReviewFixtureScene: View {
 /// `TodayReviewPresenterState`，只用卡片資料 + profile + 可用高度就畫得出一張卡。
 /// 設定頁的即時預覽（APP-20260808-d4a707）與 catalog 走的是同一條路。
 struct ReviewCardFixtureScene: View {
+    @ObserveInjection private var inject
     let fixtureID: TodayReviewFixtureID
     var showsAnswer: Bool = true
 
@@ -86,6 +87,7 @@ struct ReviewCardFixtureScene: View {
             }
         }
         .environmentObject(AppAppearanceStore.preview)
+        .enableInjection()
     }
 }
 
