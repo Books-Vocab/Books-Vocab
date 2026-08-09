@@ -1,6 +1,9 @@
 #if os(iOS)
 import SwiftUI
 
+/// 生字標記色票選擇。刻意仍是自繪的色票格（第一刀原生化明文排除它 ——
+/// 它同時服務 podcast 設定 popover，另立票），但選擇塊本身已改用兩個設定面
+/// 共用的 `SettingsSelectionTile`，不再有 reader 專屬的第二份實作。
 struct VocabHighlightColorPresetPicker: View {
     @ObserveInjection private var inject
     @Binding var selection: VocabHighlightColorPreset
@@ -24,7 +27,7 @@ struct VocabHighlightColorPresetPicker: View {
                             selection = preset
                         }
                     } label: {
-                        ReaderSelectionTile(isSelected: isSelected) {
+                        SettingsSelectionTile(isSelected: isSelected, density: .compact) {
                             VStack(spacing: AppSpacing.s2) {
                                 Circle()
                                     .fill(preset.swiftUIColor(for: colorScheme))
@@ -39,7 +42,6 @@ struct VocabHighlightColorPresetPicker: View {
                                     .minimumScaleFactor(0.75)
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, ReaderMetrics.vocabOptionVerticalPadding)
                         }
                         .contentShape(Rectangle())
                     }

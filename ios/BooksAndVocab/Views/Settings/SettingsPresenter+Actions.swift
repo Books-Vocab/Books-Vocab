@@ -406,22 +406,45 @@ struct SettingsSelectableRow<Leading: View>: View {
     }
 }
 
+/// 選中／未選的方塊式選項 —— repo 內**唯一**一份（APP-20260808-f0770b）。
+/// reader 側原本的同構實作 `ReaderSelectionTile` 已併入本型別：選取填色、描邊、
+/// 前景色與 `.isSelected` trait 都只寫在這裡，padding 由具名密度表達、不開放自由值。
+///
+/// 不含 row 型的選擇：`SettingsSelectableRow`（accent 8% 底 + 右側 checkmark）
+/// 是另一種語意，刻意不合併。
 struct SettingsSelectionTile<Content: View>: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let isSelected: Bool
+    let density: Density
     let content: Content
 
-    init(isSelected: Bool, @ViewBuilder content: () -> Content) {
+    /// 只開放兩個具名密度，不開放自由 padding —— 合併前兩份實作的差異就出在
+    /// padding 責任歸屬，重新開放等於把裂縫留著。
+    enum Density {
+        case standard
+        case compact
+
+        var verticalPadding: CGFloat {
+            switch self {
+            case .standard: AppSettingsMetrics.selectionTileVerticalPaddingStandard
+            case .compact: AppSettingsMetrics.selectionTileVerticalPaddingCompact
+            }
+        }
+    }
+
+    init(isSelected: Bool, density: Density = .standard, @ViewBuilder content: () -> Content) {
         self.isSelected = isSelected
+        self.density = density
         self.content = content()
     }
 
     var body: some View {
         content
+            .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, appSkin.spacing.controlHorizontalPadding)
-            .padding(.vertical, appSkin.spacing.controlHorizontalPadding)
+            .padding(.horizontal, AppSettingsMetrics.selectionTileHorizontalPadding)
+            .padding(.vertical, density.verticalPadding)
             .background(
                 AppRoundedRect(roundness: appSkin.roundness.control)
                     .fill(isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground)
@@ -429,10 +452,13 @@ struct SettingsSelectionTile<Content: View>: View {
             .overlay(
                 AppRoundedRect(roundness: appSkin.roundness.control)
                     .stroke(
-                        isSelected ? appSkin.palette.cardBorder : appSkin.palette.divider.opacity(0.4),
+                        isSelected
+                            ? appSkin.palette.cardBorder
+                            : appSkin.palette.divider.opacity(AppSettingsMetrics.selectionTileUnselectedBorderOpacity),
                         lineWidth: 1
                     )
             )
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
             .enableInjection()
     }
 }
