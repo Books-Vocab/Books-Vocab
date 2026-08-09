@@ -1613,6 +1613,16 @@ def _merged_and_validated(payload: dict, changes: dict, entry_id: str,
     if unknown:
         raise ValueError(f"unknown field(s): {unknown}; mutable: {sorted(MUTABLE_FIELDS)}")
 
+    before_status = payload.get("status")
+    after_status = changes.get("status", before_status)
+    if (before_status in ("fixed", "wont-fix")
+            and after_status not in ("fixed", "wont-fix")):
+        raise BacklogError(
+            f"{entry_id} is closed (status={before_status}); a normal mutation "
+            "cannot reopen it. A recurrence is a new `add` with its observed "
+            "date/source so the previous closure remains an honest audit trail"
+        )
+
     updated = dict(payload)
     for field in clear_fields:
         updated.pop(field, None)
@@ -4536,7 +4546,7 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     ready = [r for r in rows if r.get("landed_sha")]
     unstamped = [r["id"] for r in rows if not r.get("landed_sha")]
 
-    planned: list[tuple[dict, dict]] = []
+    planned: list[tuple[dict, dict, dict]] = []
     problems: list[dict] = []
     for row in ready:
         try:
@@ -4556,7 +4566,10 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
                 at=row.get("at"), status=row.get("status"),
                 fixed_by=[row["landed_sha"]])
             current = load_entry(args.store, row["id"])
-            planned.append((row, _merged_and_validated(current, changes, row["id"])))
+            planned.append((
+                row, current,
+                _merged_and_validated(current, changes, row["id"]),
+            ))
         except (BacklogError, ValueError, EntryNotFound) as exc:
             problems.append({"id": row["id"], "error": str(exc)})
 
@@ -4566,7 +4579,7 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
     # them would not be one.
     acceptance: dict[str, list] = {"ran": [], "manual": [], "unproven": []}
     if args.commit and not problems:
-        for row, merged in planned:
+        for row, _current, merged in planned:
             # Same `_acceptance_gate` the other two doors call — see its docstring.
             # The wave buckets the results because it closes many entries at once;
             # the grade itself is decided in one place for all three.
@@ -4580,13 +4593,38 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
             else:
                 acceptance[result["kind"]].append(row["id"])
 
+    # Acceptance may be expensive, so do not hold entry locks while it runs. Before
+    # writing, acquire every target lock in deterministic id order and compare the
+    # exact snapshots the gates graded. Any concurrent groom/update/verify then
+    # either lands before this comparison and aborts the WHOLE wave, or waits until
+    # all writes finish. Without this optimistic CAS, anchor could prove an old
+    # criterion, overwrite a newly groomed `false` criterion, and consume the queue.
+    if args.commit and not problems:
+        with contextlib.ExitStack() as locks:
+            for entry_id in sorted({row["id"] for row, _current, _merged in planned}):
+                locks.enter_context(_entry_lock(entry_path(args.store, entry_id)))
+            for row, current, _merged in planned:
+                latest = load_entry(args.store, row["id"])
+                if latest != current:
+                    problems.append({
+                        "id": row["id"],
+                        "error": "entry changed while anchor was validating its "
+                                 "acceptance; refusing the whole wave so newer "
+                                 "groom/update evidence is not overwritten",
+                    })
+            if not problems:
+                for row, _current, merged in planned:
+                    _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
+                write_queue(queue, [r for r in rows if not r.get("landed_sha")])
+
     payload = {
         "schema": "kg.backlog.anchor.v1",
         "mode": "commit" if args.commit else "dry-run",
         "queue": str(queue),
         "acceptance": acceptance,
-        "applied": [] if problems or not args.commit else [r["id"] for r, _ in planned],
-        "would_apply": [r["id"] for r, _ in planned],
+        "applied": ([] if problems or not args.commit
+                    else [r["id"] for r, _current, _merged in planned]),
+        "would_apply": [r["id"] for r, _current, _merged in planned],
         "unstamped": unstamped,
         "problems": problems,
     }
@@ -4603,16 +4641,11 @@ def _cmd_anchor_locked(args, queue: Path) -> int:
                   f"`./ops/backlog.py unstage <id> --commit`", file=sys.stderr)
         return 2
 
-    if args.commit:
-        for row, merged in planned:
-            _write_atomic(entry_path(args.store, row["id"]), _dumps(merged))
-        write_queue(queue, [r for r in rows if not r.get("landed_sha")])
-
     if args.json:
         print(json.dumps(payload, ensure_ascii=False))
     else:
         verb = "closed" if args.commit else "would close"
-        for row, _ in planned:
+        for row, _current, _merged in planned:
             print(f"[{'commit' if args.commit else 'dry-run'}] {verb} {row['id']} "
                   f"fixed_by {row['landed_sha']}")
         for entry_id in unstamped:
