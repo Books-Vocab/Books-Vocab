@@ -646,6 +646,10 @@ documents:
       - backup_retention_changed
       - backup_monitoring_changed
     sources:
+      # L2 備份路徑：實作、正式入口 wrapper 與回歸測試。
+      - devops.sh
+      - ops/devops_kg_safe.sh
+      - ops/test_devops.sh
       - ops/kg_backup.sh
       - ops/launchd/com.kg.backup.plist
       - ops/cron/kg-backup.cron
@@ -663,6 +667,9 @@ documents:
       - backup_artifact_contract_changed
       - backup_safety_boundary_changed
     sources:
+      - devops.sh
+      - ops/devops_kg_safe.sh
+      - ops/test_devops.sh
       - ops/kg_backup.sh
       - ops/launchd/com.kg.backup.plist
       - ops/cron/kg-backup.cron

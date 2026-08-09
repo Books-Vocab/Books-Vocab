@@ -97,6 +97,10 @@ grep -q "sop.architecture" "$tmpdir/architecture.out"
 grep -q "sop.backup" "$tmpdir/backup.out"
 grep -q "sop.backup_restore" "$tmpdir/backup.out"
 
+./ops/docs_impact.py --files devops.sh >"$tmpdir/devops_backup.out"
+grep -q "^IMPACT sop\.backup docs/sop/backup\.md " "$tmpdir/devops_backup.out"
+grep -q "^IMPACT sop\.backup_restore docs/sop/backup_restore\.md " "$tmpdir/devops_backup.out"
+
 ./ops/docs_impact.py --files ops/i18n_lint.sh ios/BooksAndVocab/Localization/L10n.swift ios/BooksAndVocab/en.lproj/Localizable.stringsdict >"$tmpdir/i18n.out"
 grep -q "sop.i18n_lint" "$tmpdir/i18n.out"
 grep -q "sop.i18n_plural_keys" "$tmpdir/i18n.out"
