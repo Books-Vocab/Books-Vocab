@@ -62,6 +62,41 @@ struct TodayReviewFixtureScene: View {
     }
 }
 
+/// 「抽對了」的活證明：**不經 presenter**、不餵 20 個 no-op callback、不造一整份
+/// `TodayReviewPresenterState`，只用卡片資料 + profile + 可用高度就畫得出一張卡。
+/// 設定頁的即時預覽（APP-20260808-d4a707）與 catalog 走的是同一條路。
+struct ReviewCardFixtureScene: View {
+    let fixtureID: TodayReviewFixtureID
+    var showsAnswer: Bool = true
+
+    var body: some View {
+        AppThemeContainer {
+            GeometryReader { proxy in
+                if let content = TodayReviewFixtures.renderModel(for: fixtureID).state.currentCard {
+                    ReviewCardView(
+                        content: content,
+                        profile: .default,
+                        viewport: ReviewCardViewport(containerHeight: proxy.size.height),
+                        showsAnswer: showsAnswer,
+                        interactive: false,
+                        actions: .none
+                    )
+                    .padding(.horizontal, TodayReviewMetrics.cardHorizontalInset)
+                }
+            }
+        }
+        .environmentObject(AppAppearanceStore.preview)
+    }
+}
+
+#Preview("Review Card / Bare (front)") {
+    ReviewCardFixtureScene(fixtureID: .front, showsAnswer: false)
+}
+
+#Preview("Review Card / Bare (back)") {
+    ReviewCardFixtureScene(fixtureID: .back)
+}
+
 #Preview("Today Review / Front") {
     TodayReviewFixtureScene(fixtureID: .front)
 }

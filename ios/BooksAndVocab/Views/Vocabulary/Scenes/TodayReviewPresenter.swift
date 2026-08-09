@@ -3,18 +3,12 @@ import SwiftUI
 // MARK: - State
 
 struct TodayReviewPresenterState {
-    struct LinkGroup: Identifiable {
-        let id: String
-        let label: String
-        let items: [KGCardLinkSummary]
-        let overflowCount: Int
-    }
-
-    struct CurrentCard {
-        let card: CardPresentation
-        let linkGroups: [LinkGroup]
-        let backDocument: CardDocument
-    }
+    /// 兩個型別已搬進 `ReviewCardView.swift`（卡片渲染不再需要先造一個 presenter）。
+    /// **走 typealias 而非 rename 是量出來的決定**：這兩個名字全 repo 有 27 處、散在
+    /// 6 個檔（含不在 Scenes 目錄下、最容易漏掉的 Support/Fixtures/TodayReview/
+    /// TodayReviewFixtures.swift），typealias 讓那 27 處零改動。
+    typealias LinkGroup = ReviewCardLinkGroup
+    typealias CurrentCard = ReviewCardContent
 
     let progressText: String
     let currentCard: CurrentCard?
@@ -91,9 +85,7 @@ struct TodayReviewPresenter: View {
         repeating: TodayReviewPresenter.initialFrontSlotHeight,
         count: TodayReviewCardSlotLayout.slotCount
     )
-    @State var reviewNaturalSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
-    @State var reviewIntermediateSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
-    @State var reviewCompactSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    // 三階量測快取已隨卡片渲染搬進 `ReviewCardView` 自己的 @State（IMP-20260808-ee7ca4）。
 
     /// 目前 active slot 的實測 front 高度（非 active slot cap 到此值）。
     var activeCardHeight: CGFloat {

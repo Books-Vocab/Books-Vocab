@@ -31,6 +31,14 @@ enum TodayReviewScenarios {
             Scenario("Long content overflow", layout: .fill) {
                 TodayReviewFixtureScene(fixtureID: .longContent)
             }
+            // 這兩個 scenario 走 ReviewCardView 而不經 presenter —— 卡片渲染是否
+            // 真的脫鉤了，看它們畫不畫得出來就知道（IMP-20260808-ee7ca4）。
+            Scenario("Card only · Front", layout: .fill) {
+                ReviewCardFixtureScene(fixtureID: .front, showsAnswer: false)
+            }
+            Scenario("Card only · Back", layout: .fill) {
+                ReviewCardFixtureScene(fixtureID: .back)
+            }
         }
     }
 }
